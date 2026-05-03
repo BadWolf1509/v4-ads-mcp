@@ -45,8 +45,8 @@ _TESTCONTAINERS_DEFAULTS = (
 
 @pytest.fixture(autouse=True)
 def _test_env() -> Generator[None, None, None]:
-    """Inject a complete env into every test, clearing real env to avoid leaks."""
-    with patch.dict(os.environ, {**_TEST_ENV, **_TESTCONTAINERS_DEFAULTS}, clear=True):
+    """Inject test env over real env. Settings reads only what we provide here; testcontainers/Docker SDK keeps access to Windows env (LOCALAPPDATA, etc) needed for container management."""
+    with patch.dict(os.environ, {**_TEST_ENV, **_TESTCONTAINERS_DEFAULTS}, clear=False):
         yield
 
 
