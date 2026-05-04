@@ -64,31 +64,53 @@ def _build_redirect_uri(request: Request) -> str:
 
 
 @router.get("/start")
-async def oauth_start(invite: str, request: Request) -> RedirectResponse:
+async def oauth_start(
+    request: Request,
+    invite: str | None = None,
+    mode: str | None = None,
+) -> RedirectResponse:
     """Redirect the manager to Google's consent screen.
 
-    `invite` is a state-signed payload containing manager_id, minted by the
-    admin bootstrap CLI. Phase 1b replaces this with a panel session.
+    Supports two flows:
+    - mode=panel_login: self-onboarding; no invite required.
+    - invite=<token>: CLI invite flow with signed manager_id.
     """
     settings = get_settings()
-    try:
-        invite_payload = verify_state(invite, settings.session_signing_key)
-    except InvalidStateError as e:
-        raise HTTPException(status_code=400, detail=f"invalid invite: {e}") from e
 
-    manager_id_str = invite_payload.get("manager_id")
-    if not manager_id_str:
-        raise HTTPException(status_code=400, detail="invite missing manager_id")
+    if mode == "panel_login":
+        # Self-onboarding: no invite required. Manager will be looked up or
+        # created in the callback by email.
+        callback_state = sign_state(
+            {"mode": "panel_login"},
+            settings.session_signing_key,
+        )
+    else:
+        # CLI invite flow: requires a signed invite carrying manager_id.
+        if not invite:
+            raise HTTPException(
+                status_code=400,
+                detail="Either 'invite' (CLI flow) or 'mode=panel_login' is required",
+            )
+        try:
+            invite_payload = verify_state(invite, settings.session_signing_key)
+        except InvalidStateError as e:
+            raise HTTPException(status_code=400, detail=f"invalid invite: {e}") from e
 
-    # Validate manager exists.
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
-        m = await managers.get_by_id(conn, UUID(manager_id_str))
-        if m is None or not m.is_active:
-            raise HTTPException(status_code=404, detail="manager not found or inactive")
+        manager_id_str = invite_payload.get("manager_id")
+        if not manager_id_str:
+            raise HTTPException(status_code=400, detail="invite missing manager_id")
 
-    # Mint a new state with manager_id for the callback to recover.
-    callback_state = sign_state({"manager_id": manager_id_str}, settings.session_signing_key)
+        # Validate manager exists.
+        pool = connection.get_pool()
+        async with pool.acquire() as conn:
+            m = await managers.get_by_id(conn, UUID(manager_id_str))
+            if m is None or not m.is_active:
+                raise HTTPException(status_code=404, detail="manager not found or inactive")
+
+        callback_state = sign_state(
+            {"manager_id": manager_id_str},
+            settings.session_signing_key,
+        )
 
     params = {
         "client_id": settings.google_oauth_client_id,
@@ -101,17 +123,17 @@ async def oauth_start(invite: str, request: Request) -> RedirectResponse:
         "include_granted_scopes": "true",
     }
     url = f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
-    log.info("oauth_start", manager_id=manager_id_str)
+    log.info("oauth_start", mode=mode)
     return RedirectResponse(url=url, status_code=302)
 
 
-@router.get("/callback", name="oauth_callback")
+@router.get("/callback", name="oauth_callback", response_model=None)
 async def oauth_callback(
     request: Request,
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
-) -> HTMLResponse:
+) -> HTMLResponse | RedirectResponse:
     """Exchange the auth code for a refresh token and persist it encrypted."""
     if error:
         return _error_page(f"O Google retornou um erro: {error}", status=400)
@@ -124,8 +146,8 @@ async def oauth_callback(
     except InvalidStateError as e:
         return _error_page(f"State inválido ou expirado: {e}", status=400)
 
-    manager_id_str = payload["manager_id"]
-    manager_id = UUID(manager_id_str)
+    mode = payload.get("mode")
+    manager_id_str = payload.get("manager_id")
 
     # Exchange code → tokens.
     async with httpx.AsyncClient(timeout=30.0) as http:
@@ -170,6 +192,53 @@ async def oauth_callback(
             status=403,
         )
 
+    # Resolve manager_id based on flow mode.
+    pool_resolve = connection.get_pool()
+    if mode == "panel_login":
+        # Self-onboarding: find existing manager by email or create a new one.
+        async with pool_resolve.acquire() as conn:
+            existing = await managers.get_by_email(conn, google_email)
+            if existing is not None:
+                if not existing.is_active:
+                    return _error_page(
+                        f"Conta {google_email} desativada. Contate um admin.",
+                        status=403,
+                    )
+                manager_id = existing.id
+                # Promote first-ever login to admin if there are no admins yet
+                # (bootstrap path — saves a manual SQL step).
+                row = await conn.fetchrow(
+                    "SELECT count(*) AS n FROM managers WHERE role = 'admin' AND is_active = true"
+                )
+                if row and int(row["n"]) == 0:
+                    await conn.execute(
+                        "UPDATE managers SET role = 'admin' WHERE id = $1",
+                        existing.id,
+                    )
+            else:
+                # First-time user: create as admin if no admin exists yet,
+                # otherwise as gestor.
+                row = await conn.fetchrow(
+                    "SELECT count(*) AS n FROM managers WHERE role = 'admin' AND is_active = true"
+                )
+                role = "admin" if (row is None or int(row["n"]) == 0) else "gestor"
+                from uuid import uuid4
+
+                new_id = uuid4()
+                full_name = userinfo.get("name") or None
+                await managers.create(
+                    conn,
+                    manager_id=new_id,
+                    email=google_email,
+                    full_name=full_name,
+                    role=role,
+                )
+                manager_id = new_id
+    elif manager_id_str:
+        manager_id = UUID(manager_id_str)
+    else:
+        return _error_page("State payload missing both manager_id and mode.", status=400)
+
     # Encrypt + persist.
     master_key = derive_master_key_from_settings(settings.aes_master_key)
     refresh_enc = encrypt_refresh_token(refresh_token, master_key)
@@ -183,7 +252,33 @@ async def oauth_callback(
             scopes=_REQUIRED_SCOPES,
         )
 
-    log.info("oauth_callback_success", manager_id=manager_id_str, google_email=google_email)
+    if mode == "panel_login":
+        # Issue panel session cookie + redirect to dashboard.
+        from src.auth.panel_session import (
+            PANEL_SESSION_COOKIE_NAME,
+            PANEL_SESSION_TTL_SECONDS,
+            sign_panel_session,
+        )
+
+        cookie_value = sign_panel_session(
+            manager_id=str(manager_id),
+            email=google_email,
+            signing_key=settings.session_signing_key,
+        )
+        response = RedirectResponse(url="/", status_code=302)
+        response.set_cookie(
+            key=PANEL_SESSION_COOKIE_NAME,
+            value=cookie_value,
+            max_age=PANEL_SESSION_TTL_SECONDS,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            path="/",
+        )
+        log.info("oauth_panel_login_success", manager_id=str(manager_id), google_email=google_email)
+        return response
+
+    log.info("oauth_callback_success", manager_id=str(manager_id), google_email=google_email)
     return _success_page(google_email)
 
 

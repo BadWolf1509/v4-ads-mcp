@@ -61,6 +61,10 @@ def create_app(skip_db_init: bool = False) -> FastAPI:
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
+    from src.web.routes import router as web_router
+
+    app.include_router(web_router)
+
     return app
 
 

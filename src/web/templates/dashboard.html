@@ -1,0 +1,41 @@
+{% extends "_base.html" %}
+{% from "_components.html" import stat, badge, alert %}
+
+{% block title %}Dashboard — V4 Ads MCP{% endblock %}
+
+{% block content %}
+<h1>Bem-vindo, {{ current_user.full_name or current_user.email.split('@')[0] }}!</h1>
+<p style="color: var(--v4-gray-700); margin-bottom: 32px;">
+  {% if current_user.is_admin %}{{ badge("Admin", "error") }}{% else %}{{ badge("Gestor", "neutral") }}{% endif %}
+  Logado como <code>{{ current_user.email }}</code>.
+</p>
+
+<div class="v4-stat-grid">
+  {{ stat("Contas acessiveis", accounts_count, "Google Ads") }}
+  {{ stat("Sessoes MCP ativas", sessions_count) }}
+  {% if oauth_email %}
+    {{ stat("Conexao Google", oauth_email, "Conectado em " + oauth_connected_at.strftime("%d/%m/%Y")) }}
+  {% else %}
+    {{ stat("Conexao Google", "Nao conectada", "Vai em /accounts pra conectar") }}
+  {% endif %}
+</div>
+
+<div class="v4-card">
+  <div class="v4-card__header">
+    <h3 class="v4-card__title">Proximos passos</h3>
+  </div>
+
+  <ul style="padding-left: 20px;">
+    {% if not oauth_email %}
+    <li><a href="/accounts">Conectar conta Google Ads</a> — autorize acesso ao MCC</li>
+    {% endif %}
+    {% if accounts_count == 0 %}
+    <li>Pedir pra um admin atribuir contas que voce pode operar</li>
+    {% endif %}
+    {% if sessions_count == 0 %}
+    <li><a href="/sessions">Criar uma sessao MCP</a> — gera o Bearer token pra colar no Claude/Codex</li>
+    {% endif %}
+    <li><a href="/audit">Ver seu audit log</a></li>
+  </ul>
+</div>
+{% endblock %}

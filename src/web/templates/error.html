@@ -1,0 +1,11 @@
+{% extends "_base.html" %}
+
+{% block title %}Erro — V4 Ads MCP{% endblock %}
+
+{% block content %}
+<div class="v4-card" style="max-width: 600px; margin: 40px auto; text-align: center;">
+  <h2 style="color: var(--v4-red);">{{ title or "Algo deu errado" }}</h2>
+  <p style="color: var(--v4-gray-700); margin: 24px 0;">{{ message or "Tente novamente em alguns segundos." }}</p>
+  <a href="/" class="v4-btn v4-btn--secondary">Voltar ao dashboard</a>
+</div>
+{% endblock %}

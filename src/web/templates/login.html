@@ -1,0 +1,24 @@
+{% extends "_base.html" %}
+
+{% block title %}Login — V4 Ads MCP{% endblock %}
+
+{% block content %}
+<div style="max-width: 480px; margin: 80px auto; text-align: center;">
+  <img src="/static/logo/v4-symbol.svg" alt="V4" style="height: 64px; margin-bottom: 24px;">
+  <h1 style="margin-bottom: 12px;">V4 Ads MCP</h1>
+  <p style="color: var(--v4-gray-700); margin-bottom: 32px; font-size: 15px;">
+    Conecte suas contas Google Ads ao Claude, Codex e outras IAs.
+  </p>
+
+  <a href="/oauth/google/start?mode=panel_login" class="v4-btn v4-btn--primary" style="display: inline-flex; align-items: center; gap: 12px; font-size: 15px; padding: 12px 24px;">
+    <svg width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path fill="#fff" d="M21.35 11.1h-9.17v2.97h5.3c-.23 1.49-1.74 4.36-5.3 4.36-3.19 0-5.79-2.65-5.79-5.92 0-3.27 2.6-5.92 5.79-5.92 1.81 0 3.03.77 3.72 1.43l2.54-2.45C16.85 4.18 14.93 3.1 12.18 3.1c-5.04 0-9.13 4.09-9.13 9.13 0 5.04 4.09 9.13 9.13 9.13 5.27 0 8.76-3.7 8.76-8.92 0-.6-.06-1.06-.14-1.34z"/>
+    </svg>
+    Entrar com Google V4
+  </a>
+
+  <p style="margin-top: 32px; font-size: 13px; color: var(--v4-gray-300);">
+    Acesso restrito a contas <code>@v4company.com</code>.
+  </p>
+</div>
+{% endblock %}
