@@ -1,0 +1,60 @@
+{% extends "_base.html" %}
+{% from "_components.html" import badge %}
+
+{% block title %}Admin / Managers — V4 Ads MCP{% endblock %}
+
+{% block content %}
+<h1>Admin · Managers</h1>
+
+<div class="v4-card">
+  <div class="v4-card__header">
+    <h3 class="v4-card__title">{{ managers|length }} gestores cadastrados</h3>
+  </div>
+
+  <table class="v4-table">
+    <thead>
+      <tr>
+        <th>Email</th>
+        <th>Nome</th>
+        <th>Role</th>
+        <th>Status</th>
+        <th>Criado</th>
+        <th>Ultimo acesso</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in managers %}
+      <tr>
+        <td><strong>{{ m.email }}</strong></td>
+        <td>{{ m.full_name or "-" }}</td>
+        <td>
+          {% if m.role == "admin" %}{{ badge("Admin", "error") }}{% else %}{{ badge("Gestor", "neutral") }}{% endif %}
+        </td>
+        <td>
+          {% if m.is_active %}{{ badge("Ativo", "success") }}{% else %}{{ badge("Desativado", "neutral") }}{% endif %}
+        </td>
+        <td>{{ m.created_at.strftime("%d/%m/%Y") }}</td>
+        <td>{{ m.last_seen_at.strftime("%d/%m %H:%M") if m.last_seen_at else "-" }}</td>
+        <td style="text-align: right;">
+          {% if m.id != current_user.id %}
+          <form method="POST" action="/admin/managers/{{ m.id }}/toggle-role" style="display: inline;">
+            <button class="v4-btn v4-btn--small v4-btn--secondary">
+              {% if m.role == "admin" %}Despromover{% else %}Promover{% endif %}
+            </button>
+          </form>
+          <form method="POST" action="/admin/managers/{{ m.id }}/toggle-active" style="display: inline;">
+            <button class="v4-btn v4-btn--small {% if m.is_active %}v4-btn--danger{% else %}v4-btn--secondary{% endif %}">
+              {% if m.is_active %}Desativar{% else %}Reativar{% endif %}
+            </button>
+          </form>
+          {% else %}
+          <span style="color: var(--v4-gray-300); font-size: 12px;">(voce)</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

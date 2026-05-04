@@ -1,0 +1,44 @@
+{% extends "_base.html" %}
+{% from "_components.html" import badge %}
+
+{% block title %}Admin / Contas — V4 Ads MCP{% endblock %}
+
+{% block content %}
+<h1>Admin · Contas Google Ads</h1>
+<p style="color: var(--v4-gray-700);">
+  Sincronizadas diariamente via Cloud Scheduler. Usar /admin/access pra atribuir gestores.
+</p>
+
+<div class="v4-card">
+  <div class="v4-card__header">
+    <h3 class="v4-card__title">{{ accounts|length }} contas ativas</h3>
+  </div>
+
+  <table class="v4-table">
+    <thead>
+      <tr>
+        <th>Customer ID</th>
+        <th>Nome</th>
+        <th>MCC</th>
+        <th>Moeda</th>
+        <th>Fuso</th>
+        <th>Test?</th>
+        <th>Ultima sync</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in accounts %}
+      <tr>
+        <td><code>{{ a.customer_id }}</code></td>
+        <td><strong>{{ a.descriptive_name }}</strong></td>
+        <td><code>{{ a.mcc_id }}</code></td>
+        <td>{{ a.currency_code or "-" }}</td>
+        <td>{{ a.time_zone or "-" }}</td>
+        <td>{% if a.is_test_account %}{{ badge("Test", "warning") }}{% else %}-{% endif %}</td>
+        <td>{{ a.synced_at.strftime("%d/%m %H:%M") }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "_base.html" %}
+
+{% block title %}Admin / Acessos — V4 Ads MCP{% endblock %}
+
+{% block content %}
+<h1>Admin · Matriz de acessos</h1>
+<p style="color: var(--v4-gray-700);">
+  Marque a celula pra dar acesso de write a um gestor numa conta. Mudancas sao instantaneas.
+</p>
+
+<div class="v4-card" style="overflow-x: auto;">
+  <table class="v4-table">
+    <thead>
+      <tr>
+        <th style="position: sticky; left: 0; background: var(--v4-gray-50); z-index: 1;">Conta / Gestor</th>
+        {% for m in managers_list %}
+        <th style="text-align: center; min-width: 100px;">
+          <span style="font-size: 11px; word-break: break-word;">{{ m.email.split('@')[0] }}</span>
+        </th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in accounts %}
+      <tr>
+        <td style="position: sticky; left: 0; background: var(--v4-white); white-space: nowrap;">
+          <strong>{{ a.descriptive_name }}</strong>
+          <br><span style="font-size: 11px; color: var(--v4-gray-300);">{{ a.customer_id }}</span>
+        </td>
+        {% for m in managers_list %}
+        <td style="text-align: center;">
+          <input type="checkbox"
+                 {% if (m.id|string, a.customer_id) in access_set %}checked{% endif %}
+                 hx-post="/admin/access/toggle"
+                 hx-vals='{"manager_id": "{{ m.id }}", "customer_id": "{{ a.customer_id }}"}'
+                 hx-trigger="change"
+                 hx-swap="outerHTML">
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

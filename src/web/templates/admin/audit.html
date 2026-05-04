@@ -1,0 +1,101 @@
+{% extends "_base.html" %}
+{% from "_components.html" import badge %}
+
+{% block title %}Admin / Audit — V4 Ads MCP{% endblock %}
+
+{% block content %}
+<h1>Admin · Audit log global</h1>
+
+<div class="v4-card">
+  <form method="GET" action="/admin/audit" style="display: grid; grid-template-columns: repeat(4, 1fr) auto; gap: 12px; align-items: end;">
+    <div class="v4-form__group" style="margin: 0;">
+      <label class="v4-form__label">Gestor</label>
+      <select name="manager_id" class="v4-select">
+        <option value="">Todos</option>
+        {% for m in managers_list %}
+        <option value="{{ m.id }}" {% if filter_manager_id == m.id|string %}selected{% endif %}>{{ m.email }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="v4-form__group" style="margin: 0;">
+      <label class="v4-form__label">Conta</label>
+      <select name="customer_id" class="v4-select">
+        <option value="">Todas</option>
+        {% for a in accounts %}
+        <option value="{{ a.customer_id }}" {% if filter_customer_id == a.customer_id %}selected{% endif %}>{{ a.descriptive_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="v4-form__group" style="margin: 0;">
+      <label class="v4-form__label">Tipo</label>
+      <select name="action_type" class="v4-select">
+        <option value="all" {% if filter_action_type == "all" %}selected{% endif %}>Todos</option>
+        <option value="mutate" {% if filter_action_type == "mutate" %}selected{% endif %}>Mutate</option>
+        <option value="read" {% if filter_action_type == "read" %}selected{% endif %}>Read</option>
+      </select>
+    </div>
+    <div class="v4-form__group" style="margin: 0;">
+      <label class="v4-form__label">Periodo</label>
+      <select name="days" class="v4-select">
+        <option value="1" {% if filter_days == 1 %}selected{% endif %}>1 dia</option>
+        <option value="7" {% if filter_days == 7 %}selected{% endif %}>7 dias</option>
+        <option value="14" {% if filter_days == 14 %}selected{% endif %}>14 dias</option>
+        <option value="30" {% if filter_days == 30 %}selected{% endif %}>30 dias</option>
+        <option value="90" {% if filter_days == 90 %}selected{% endif %}>90 dias</option>
+      </select>
+    </div>
+    <button type="submit" class="v4-btn v4-btn--primary">Filtrar</button>
+  </form>
+</div>
+
+<div class="v4-card">
+  <div class="v4-card__header">
+    <h3 class="v4-card__title">{{ rows|length }} eventos</h3>
+  </div>
+
+  {% if rows %}
+  <table class="v4-table">
+    <thead>
+      <tr>
+        <th>Data/Hora</th>
+        <th>Gestor</th>
+        <th>Operacao</th>
+        <th>Conta</th>
+        <th>Tipo</th>
+        <th>Status</th>
+        <th>Alvos</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.occurred_at.strftime("%d/%m %H:%M:%S") }}</td>
+        <td><strong>{{ r.manager_email or "?" }}</strong></td>
+        <td><code>{{ r.operation }}</code></td>
+        <td>
+          {% if r.customer_id %}
+            {{ r.account_name or r.customer_id }}
+          {% else %}-{% endif %}
+        </td>
+        <td>
+          {% if r.action_type == "mutate" %}{{ badge("Mutate", "warning") }}
+          {% elif r.action_type == "read" %}{{ badge("Read", "neutral") }}
+          {% else %}{{ badge(r.action_type, "neutral") }}
+          {% endif %}
+        </td>
+        <td>
+          {% if r.status == "success" %}{{ badge("OK", "success") }}
+          {% elif r.status == "error" %}{{ badge("Erro", "error") }}
+          {% else %}{{ badge(r.status, "neutral") }}
+          {% endif %}
+        </td>
+        <td>{{ r.target_count or "-" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color: var(--v4-gray-300); text-align: center; padding: 32px;">Nenhum evento.</p>
+  {% endif %}
+</div>
+{% endblock %}

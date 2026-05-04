@@ -12,6 +12,7 @@ from src.auth.panel_session import PANEL_SESSION_COOKIE_NAME
 from src.auth.sessions import generate_session_token, hash_session_token
 from src.db import connection
 from src.db.repositories import (
+    google_ads_accounts,
     google_oauth_connections,
     manager_account_access,
     mcp_sessions,
@@ -26,6 +27,12 @@ from src.web.deps import (
 log = structlog.get_logger(__name__)
 
 router = APIRouter(tags=["web"])
+
+
+def _require_admin(user: CurrentUser) -> None:
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
@@ -290,5 +297,227 @@ async def audit_page(
             "filter_customer_id": customer_id or "",
             "filter_days": days,
             "accessible_accounts": accessible,
+        },
+    )
+
+
+@router.get("/admin/managers", response_class=HTMLResponse)
+async def admin_managers(
+    request: Request,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+) -> HTMLResponse:
+    _require_admin(user)
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id, email, full_name, role, is_active, created_at, last_seen_at FROM managers ORDER BY email"
+        )
+    return templates.TemplateResponse(
+        request,
+        "admin/managers.html",
+        {"current_user": user, "managers": [dict(r) for r in rows]},
+    )
+
+
+@router.post("/admin/managers/{manager_id}/toggle-active", response_class=HTMLResponse)
+async def admin_managers_toggle_active(
+    request: Request,
+    manager_id: UUID,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+) -> RedirectResponse:
+    _require_admin(user)
+    if manager_id == user.id:
+        raise HTTPException(status_code=400, detail="Nao pode desativar voce mesmo")
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE managers SET is_active = NOT is_active WHERE id = $1",
+            manager_id,
+        )
+    return RedirectResponse(url="/admin/managers", status_code=303)
+
+
+@router.post("/admin/managers/{manager_id}/toggle-role", response_class=HTMLResponse)
+async def admin_managers_toggle_role(
+    request: Request,
+    manager_id: UUID,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+) -> RedirectResponse:
+    _require_admin(user)
+    if manager_id == user.id:
+        raise HTTPException(status_code=400, detail="Nao pode mudar seu proprio role")
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE managers SET role =
+              CASE WHEN role = 'admin' THEN 'gestor' ELSE 'admin' END
+            WHERE id = $1
+            """,
+            manager_id,
+        )
+    return RedirectResponse(url="/admin/managers", status_code=303)
+
+
+@router.get("/admin/accounts", response_class=HTMLResponse)
+async def admin_accounts(
+    request: Request,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+) -> HTMLResponse:
+    _require_admin(user)
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        accs = await google_ads_accounts.list_all(conn)
+    return templates.TemplateResponse(
+        request,
+        "admin/accounts.html",
+        {"current_user": user, "accounts": accs},
+    )
+
+
+@router.get("/admin/access", response_class=HTMLResponse)
+async def admin_access(
+    request: Request,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+) -> HTMLResponse:
+    _require_admin(user)
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        managers_rows = await conn.fetch(
+            "SELECT id, email, role, is_active FROM managers WHERE is_active = true ORDER BY email"
+        )
+        accs = await google_ads_accounts.list_all(conn)
+        access_rows = await conn.fetch("SELECT manager_id, customer_id FROM manager_account_access")
+    # Build set of (manager_id, customer_id) for quick lookup
+    access_set = {(str(r["manager_id"]), r["customer_id"]) for r in access_rows}
+    return templates.TemplateResponse(
+        request,
+        "admin/access.html",
+        {
+            "current_user": user,
+            "managers_list": [dict(r) for r in managers_rows],
+            "accounts": accs,
+            "access_set": access_set,
+        },
+    )
+
+
+@router.post("/admin/access/toggle", response_class=HTMLResponse)
+async def admin_access_toggle(
+    request: Request,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+    manager_id: str = Form(...),
+    customer_id: str = Form(...),
+) -> HTMLResponse:
+    _require_admin(user)
+    pool = connection.get_pool()
+    target_mid = UUID(manager_id)
+    async with pool.acquire() as conn:
+        # Toggle: if exists, delete; else grant write
+        exists = await conn.fetchval(
+            "SELECT 1 FROM manager_account_access WHERE manager_id = $1 AND customer_id = $2",
+            target_mid,
+            customer_id,
+        )
+        if exists:
+            await manager_account_access.revoke(
+                conn,
+                manager_id=target_mid,
+                customer_id=customer_id,
+            )
+            granted = False
+        else:
+            await manager_account_access.grant(
+                conn,
+                manager_id=target_mid,
+                customer_id=customer_id,
+                access_level="write",
+                granted_by=user.id,
+            )
+            granted = True
+
+    # Return a tiny HTMX-friendly fragment that swaps the cell
+    state = "checked" if granted else ""
+    return HTMLResponse(
+        f'<input type="checkbox" {state} '
+        f'hx-post="/admin/access/toggle" '
+        f'hx-vals=\'{{"manager_id": "{manager_id}", "customer_id": "{customer_id}"}}\' '
+        f'hx-trigger="change" '
+        f'hx-swap="outerHTML">'
+    )
+
+
+@router.get("/admin/audit", response_class=HTMLResponse)
+async def admin_audit(
+    request: Request,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+    manager_id: str | None = None,
+    customer_id: str | None = None,
+    action_type: str = "all",
+    days: int = 7,
+    limit: int = 200,
+) -> HTMLResponse:
+    _require_admin(user)
+    if action_type not in ("mutate", "read", "all"):
+        action_type = "all"
+    if days not in (1, 7, 14, 30, 90):
+        days = 7
+    if limit < 1 or limit > 1000:
+        limit = 200
+
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        where = [f"al.occurred_at > now() - interval '{days} days'"]
+        params: list[object] = []
+        if manager_id:
+            where.append(f"al.manager_id = ${len(params) + 1}")
+            params.append(UUID(manager_id))
+        if customer_id:
+            where.append(f"al.customer_id = ${len(params) + 1}")
+            params.append(customer_id)
+        if action_type != "all":
+            where.append(f"al.action_type = ${len(params) + 1}")
+            params.append(action_type)
+        where_sql = " AND ".join(where)
+
+        rows = await conn.fetch(
+            f"""
+            SELECT
+              al.occurred_at,
+              al.action_type,
+              al.operation,
+              al.customer_id,
+              al.target_count,
+              al.status,
+              al.duration_ms,
+              al.error_message,
+              m.email AS manager_email,
+              gaa.descriptive_name AS account_name
+            FROM audit_log al
+            LEFT JOIN managers m ON m.id = al.manager_id
+            LEFT JOIN google_ads_accounts gaa ON gaa.customer_id = al.customer_id
+            WHERE {where_sql}
+            ORDER BY al.occurred_at DESC
+            LIMIT {limit}
+            """,
+            *params,
+        )
+        managers_rows = await conn.fetch(
+            "SELECT id, email FROM managers WHERE is_active = true ORDER BY email"
+        )
+        accs = await google_ads_accounts.list_all(conn)
+
+    return templates.TemplateResponse(
+        request,
+        "admin/audit.html",
+        {
+            "current_user": user,
+            "rows": [dict(r) for r in rows],
+            "managers_list": [dict(r) for r in managers_rows],
+            "accounts": accs,
+            "filter_manager_id": manager_id or "",
+            "filter_customer_id": customer_id or "",
+            "filter_action_type": action_type,
+            "filter_days": days,
         },
     )
