@@ -62,7 +62,10 @@ async def test_start_redirects_to_google(client: AsyncClient) -> None:
     location = response.headers["location"]
     assert location.startswith("https://accounts.google.com/o/oauth2/v2/auth?")
     qs = parse_qs(urlparse(location).query)
-    assert "adwords" in qs["scope"][0]
+    scope_str = qs["scope"][0]
+    assert "adwords" in scope_str
+    assert "userinfo.email" in scope_str
+    assert "openid" in scope_str
     assert qs["access_type"] == ["offline"]
     assert qs["prompt"] == ["consent"]
 
@@ -97,7 +100,7 @@ async def test_callback_persists_encrypted_refresh_token(client: AsyncClient) ->
         )
     )
     respx.get("https://www.googleapis.com/oauth2/v2/userinfo").mock(
-        return_value=Response(200, json={"email": "manager@gmail.com"})
+        return_value=Response(200, json={"email": "manager@v4company.com"})
     )
 
     response = await client.get(
@@ -111,7 +114,7 @@ async def test_callback_persists_encrypted_refresh_token(client: AsyncClient) ->
     async with pool.acquire() as conn:
         c = await google_oauth_connections.get_active_for_manager(conn, mid)
     assert c is not None
-    assert c.google_email == "manager@gmail.com"
+    assert c.google_email == "manager@v4company.com"
     assert c.refresh_token_enc != b"1//06fake-refresh"  # encrypted, not plaintext
     assert len(c.refresh_token_enc) > 16  # nonce + ct + tag
 
@@ -144,3 +147,37 @@ async def test_callback_rejects_google_error(client: AsyncClient) -> None:
     )
     assert response.status_code == 400
     assert "access_denied" in response.text
+
+
+@pytest.mark.integration
+@respx.mock
+async def test_callback_rejects_non_v4_email(client: AsyncClient) -> None:
+    """OAuth callback must 403 when the userinfo email isn't @v4company.com."""
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="d@v4.com", full_name=None)
+    state = sign_state({"manager_id": str(mid)}, _SIGNING_KEY)
+
+    respx.post("https://oauth2.googleapis.com/token").mock(
+        return_value=Response(
+            200,
+            json={
+                "access_token": "ya29.fake",
+                "refresh_token": "1//06fake",
+                "expires_in": 3600,
+                "scope": "openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/adwords",
+                "token_type": "Bearer",
+            },
+        )
+    )
+    respx.get("https://www.googleapis.com/oauth2/v2/userinfo").mock(
+        return_value=Response(200, json={"email": "attacker@gmail.com"}),
+    )
+
+    response = await client.get(
+        f"/oauth/google/callback?code=fake&state={state}",
+        follow_redirects=False,
+    )
+    assert response.status_code == 403
+    assert "v4company.com" in response.text

@@ -16,6 +16,7 @@ import structlog
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from src.auth.domain_check import is_allowed_email
 from src.auth.oauth_state import InvalidStateError, sign_state, verify_state
 from src.auth.tokens import derive_master_key_from_settings, encrypt_refresh_token
 from src.config import get_settings
@@ -25,6 +26,17 @@ from src.db.repositories import google_oauth_connections, managers
 log = structlog.get_logger(__name__)
 
 GOOGLE_ADWORDS_SCOPE = "https://www.googleapis.com/auth/adwords"
+GOOGLE_PROFILE_SCOPE = "https://www.googleapis.com/auth/userinfo.profile"
+GOOGLE_EMAIL_SCOPE = "https://www.googleapis.com/auth/userinfo.email"
+GOOGLE_OPENID_SCOPE = "openid"
+
+_REQUIRED_SCOPES = [
+    GOOGLE_OPENID_SCOPE,
+    GOOGLE_EMAIL_SCOPE,
+    GOOGLE_PROFILE_SCOPE,
+    GOOGLE_ADWORDS_SCOPE,
+]
+
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
@@ -81,7 +93,7 @@ async def oauth_start(invite: str, request: Request) -> RedirectResponse:
     params = {
         "client_id": settings.google_oauth_client_id,
         "redirect_uri": _build_redirect_uri(request),
-        "scope": GOOGLE_ADWORDS_SCOPE,
+        "scope": " ".join(_REQUIRED_SCOPES),
         "response_type": "code",
         "access_type": "offline",
         "prompt": "consent",
@@ -152,6 +164,12 @@ async def oauth_callback(
         userinfo = userinfo_resp.json() if userinfo_resp.status_code == 200 else {}
         google_email = userinfo.get("email") or "unknown"
 
+    if not is_allowed_email(google_email):
+        return _error_page(
+            f"Conta {google_email} nao autorizada — apenas @v4company.com.",
+            status=403,
+        )
+
     # Encrypt + persist.
     master_key = derive_master_key_from_settings(settings.aes_master_key)
     refresh_enc = encrypt_refresh_token(refresh_token, master_key)
@@ -162,7 +180,7 @@ async def oauth_callback(
             manager_id=manager_id,
             google_email=google_email,
             refresh_token_enc=refresh_enc,
-            scopes=[GOOGLE_ADWORDS_SCOPE],
+            scopes=_REQUIRED_SCOPES,
         )
 
     log.info("oauth_callback_success", manager_id=manager_id_str, google_email=google_email)
