@@ -124,19 +124,24 @@ jobs:
           done
 
           # Phase 1a added a Bearer auth gate to /mcp. Smoke now verifies
-          # the gate rejects unauthenticated requests with 401 (instead of
-          # the old "tools/list returns []" check). Authenticated calls are
-          # covered by integration tests + manual E2E via Claude Desktop.
-          echo "Probing /mcp Bearer gate (expect 401)..."
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${SERVICE_URL}/mcp" \
-            -H "Content-Type: application/json" \
-            -H "Accept: application/json, text/event-stream" \
-            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
-          if [ "$STATUS" != "401" ]; then
-            echo "  ✗ /mcp returned $STATUS, expected 401 (auth gate not enforcing)"
-            exit 1
-          fi
-          echo "  ✓ /mcp gated correctly (401 without Bearer)"
+          # the gate rejects unauthenticated requests with 401. Retry until
+          # propagation completes — /health may switch revisions before /mcp.
+          echo "Probing /mcp Bearer gate (expect 401, with retry)..."
+          for i in $(seq 1 18); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${SERVICE_URL}/mcp" \
+              -H "Content-Type: application/json" \
+              -H "Accept: application/json, text/event-stream" \
+              -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
+            if [ "$STATUS" = "401" ]; then
+              echo "  ✓ /mcp gated correctly (401) after $((i * 5))s"
+              break
+            fi
+            if [ "$i" -eq 18 ]; then
+              echo "  ✗ /mcp returned $STATUS (expected 401) after 90s — auth gate not enforcing"
+              exit 1
+            fi
+            sleep 5
+          done
           echo "Smoke tests passed."
 
       - name: Rollback on failure
