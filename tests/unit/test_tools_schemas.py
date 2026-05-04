@@ -29,7 +29,7 @@ def test_customer_id_pattern_is_consistent():
 
 
 def test_all_phase_2_tools_registered():
-    """All 23 tools (20 Phase 2 + 3 campaign mutations) registered."""
+    """All 25 tools (20 Phase 2 + 3 campaign mutations + 2 ad group mutations) registered."""
     expected = {
         "apply_change",
         "list_my_accounts",
@@ -61,6 +61,9 @@ def test_all_phase_2_tools_registered():
         "update_campaign_bidding",
         "update_campaign_budget",
         "update_campaign_status",
+        # ad group mutations
+        "update_ad_group_bid",
+        "update_ad_group_status",
     }
     actual = {t.name for t in all_tools()}
     missing = expected - actual
@@ -94,6 +97,8 @@ def test_no_unexpected_tools():
         "update_campaign_bidding",
         "update_campaign_budget",
         "update_campaign_status",
+        "update_ad_group_bid",
+        "update_ad_group_status",
     }
     actual = {t.name for t in all_tools()}
     unexpected = actual - expected

@@ -78,6 +78,8 @@ def import_all_tools() -> None:
         list_gaql_resources,
         list_my_accounts,
         run_gaql,
+        update_ad_group_bid,
+        update_ad_group_status,
         update_campaign_bidding,
         update_campaign_budget,
         update_campaign_status,
