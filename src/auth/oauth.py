@@ -36,11 +36,19 @@ router = APIRouter(prefix="/oauth/google", tags=["oauth"])
 def _build_redirect_uri(request: Request) -> str:
     """Construct the absolute callback URL based on the running host.
 
-    Cloud Run sets X-Forwarded-* headers; FastAPI/uvicorn surfaces them via
-    request.url. Using request.url ensures the URL matches what's registered
-    with the OAuth Client (which we configured to the run.app URL).
+    Cloud Run terminates TLS at the GFE; the container sees HTTP internally,
+    so request.url.scheme is "http" even when the client used HTTPS. We force
+    https here because the OAuth Client in Google Cloud Console is registered
+    with the public https:// URL — sending http:// causes redirect_uri_mismatch.
+
+    --proxy-headers / X-Forwarded-Proto were tried but didn't take effect
+    reliably under Cloud Run's CNB-launched uvicorn. Forcing https in code is
+    bulletproof and the only callable URL externally is https anyway.
     """
-    return str(request.url_for("oauth_callback"))
+    url = str(request.url_for("oauth_callback"))
+    if url.startswith("http://"):
+        url = "https://" + url[len("http://") :]
+    return url
 
 
 @router.get("/start")
