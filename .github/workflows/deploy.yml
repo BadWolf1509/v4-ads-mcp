@@ -31,14 +31,33 @@ jobs:
         env:
           PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: |
-          # --suppress-logs: build still runs + waits, but skip log streaming.
-          # Streaming requires reading Cloud Build's system logs bucket which
-          # the deployer SA doesn't have storage.objects.get on. Build logs
+          # Submit async + poll: gcloud's default sync wait fails reading the
+          # default logs bucket (SA lacks storage.objects.get). Async returns
+          # immediately with a build ID; we poll status ourselves. Build logs
           # remain visible in Cloud Build Console.
-          gcloud builds submit \
+          BUILD_ID=$(gcloud builds submit \
             --pack image=southamerica-east1-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
-            --suppress-logs \
-            .
+            --async \
+            --format='value(id)' \
+            .)
+          echo "Build submitted: $BUILD_ID"
+          echo "Console: https://console.cloud.google.com/cloud-build/builds/${BUILD_ID}?project=${PROJECT_ID}"
+
+          # Poll up to 15 minutes (90 * 10s)
+          for i in $(seq 1 90); do
+            STATUS=$(gcloud builds describe "$BUILD_ID" --region=global --format='value(status)')
+            echo "[poll $i] status=$STATUS"
+            case "$STATUS" in
+              SUCCESS) echo "Build succeeded"; exit 0 ;;
+              FAILURE|INTERNAL_ERROR|TIMEOUT|CANCELLED|EXPIRED)
+                echo "Build failed with status: $STATUS"
+                exit 1
+                ;;
+            esac
+            sleep 10
+          done
+          echo "Build timed out after 15 minutes"
+          exit 1
 
       - name: Update migration job image
         env:
