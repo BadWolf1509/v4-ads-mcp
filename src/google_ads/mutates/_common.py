@@ -41,20 +41,16 @@ def reset() -> None:
 def import_all_builders() -> None:
     """Eagerly import every mutate module so its register_builder runs.
 
-    NOTE: at this stage only the module structure is in place; later tasks
-    add the actual builder modules (campaigns, ad_groups, keywords,
-    negatives, recommendations). Imports are wrapped in contextlib.suppress
-    so incomplete state during build-out doesn't crash apply_change.
+    Imports are wrapped in contextlib.suppress(ImportError) defensively
+    so a missing builder module doesn't crash apply_change at startup.
     """
     with contextlib.suppress(ImportError):
-        from src.google_ads.mutates import campaigns  # type: ignore[attr-defined]  # noqa: F401
+        from src.google_ads.mutates import campaigns  # noqa: F401
     with contextlib.suppress(ImportError):
-        from src.google_ads.mutates import ad_groups  # type: ignore[attr-defined]  # noqa: F401
+        from src.google_ads.mutates import ad_groups  # noqa: F401
     with contextlib.suppress(ImportError):
-        from src.google_ads.mutates import keywords  # type: ignore[attr-defined]  # noqa: F401
+        from src.google_ads.mutates import keywords  # noqa: F401
     with contextlib.suppress(ImportError):
-        from src.google_ads.mutates import negatives  # type: ignore[attr-defined]  # noqa: F401
+        from src.google_ads.mutates import negatives  # noqa: F401
     with contextlib.suppress(ImportError):
-        from src.google_ads.mutates import (  # type: ignore[attr-defined]
-            recommendations,  # noqa: F401
-        )
+        from src.google_ads.mutates import recommendations  # noqa: F401
