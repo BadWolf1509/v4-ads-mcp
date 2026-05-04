@@ -83,5 +83,7 @@ def import_all_tools() -> None:
         update_campaign_bidding,
         update_campaign_budget,
         update_campaign_status,
+        update_keyword_bid,
+        update_keyword_status,
         validate_gaql,
     )
