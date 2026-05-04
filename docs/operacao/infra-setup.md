@@ -38,10 +38,17 @@ This document records the cloud-console actions performed once to bootstrap the 
   - Userinfo endpoint failed during OAuth (scope `adwords` alone doesn't include email); google_email is currently "unknown". Add `email` scope in Phase 1b.
   - Developer token still in Test mode (15k ops/day quota). Submit for Standard Access when quota becomes constraining.
 
-### Phase 2 — Read tools (TBD - awaiting user E2E)
+### Phase 2 — Read tools (2026-05-04)
 - 16 curated read tools (visao geral, performance, tactical, client report) + 3 GAQL utilities (run_gaql, validate_gaql, list_gaql_resources) shipped.
 - Total tools registered: 20 (incl. list_my_accounts from Phase 1a).
 - Rate limit module enforces 15k ops/day per developer token (Basic Access). Warning at 80%, block at 100%.
 - Audit log captures sensitive reads only (recommendations, run_gaql, conversion_actions).
 - jsonschema input validation in MCP call_tool (defense in depth).
-- E2E pending — user runs the test prompts in `phase-1a-bootstrap.md` Phase 2 section. Once verified, replace this paragraph with the actual sign-off summary listing tools called + customer_ids tested.
+- 114 tests passing (unit + integration with testcontainers Postgres + mocked Google Ads SDK).
+- E2E verified via Codex on conta `5894449831` (Mestre da Obra - Cotia):
+  - `get_account_overview`: returned 30-day KPIs + previous-period comparison (impressions 8590 vs 8086, +6.2%; conversions 237 vs 197, +20.3%; CPA dropped from R$ 10.76 to R$ 10.04).
+  - `get_budget_pacing`: returned 1 active campaign with daily_budget R$ 100, MTD spend R$ 213.92, projected R$ 1657.88 (53.5% of monthly budget).
+  - `get_campaign_performance` (top 5, 7-day): returned the 1 active campaign with R$ 581.75 spend, 151 clicks, CTR 7.57%.
+  - `get_search_terms_report` (14-day): returned 64 search terms without conversions totaling R$ 271.81, candidates for negative keywords identified by Codex.
+  - `run_gaql` with custom GAQL: returned 1 row with descriptive_name "Mestre da Obra - Cotia", currency BRL.
+- Codex performed intelligent analysis on top of the raw tool outputs (% deltas, negative keyword candidates, projection vs budget) — proving the gestor workflow value end-to-end.
