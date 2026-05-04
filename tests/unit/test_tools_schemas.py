@@ -31,6 +31,7 @@ def test_customer_id_pattern_is_consistent():
 def test_all_phase_2_tools_registered():
     """All 20 Phase 2 tools (16 read + 3 utility + list_my_accounts) registered."""
     expected = {
+        "apply_change",
         "list_my_accounts",
         # visao geral
         "get_account_overview",
@@ -65,6 +66,7 @@ def test_all_phase_2_tools_registered():
 def test_no_unexpected_tools():
     """Catch accidental new tool registrations not in the expected set."""
     expected = {
+        "apply_change",
         "list_my_accounts",
         "get_account_overview",
         "get_budget_pacing",
