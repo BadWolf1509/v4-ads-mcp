@@ -29,7 +29,7 @@ def test_customer_id_pattern_is_consistent():
 
 
 def test_all_phase_2_tools_registered():
-    """All 20 Phase 2 tools (16 read + 3 utility + list_my_accounts) registered."""
+    """All 23 tools (20 Phase 2 + 3 campaign mutations) registered."""
     expected = {
         "apply_change",
         "list_my_accounts",
@@ -57,6 +57,10 @@ def test_all_phase_2_tools_registered():
         "run_gaql",
         "validate_gaql",
         "list_gaql_resources",
+        # campaign mutations
+        "update_campaign_bidding",
+        "update_campaign_budget",
+        "update_campaign_status",
     }
     actual = {t.name for t in all_tools()}
     missing = expected - actual
@@ -87,6 +91,9 @@ def test_no_unexpected_tools():
         "run_gaql",
         "validate_gaql",
         "list_gaql_resources",
+        "update_campaign_bidding",
+        "update_campaign_budget",
+        "update_campaign_status",
     }
     actual = {t.name for t in all_tools()}
     unexpected = actual - expected
