@@ -66,11 +66,13 @@ def import_all_tools() -> None:
         get_campaign_performance,
         get_conversion_actions,
         get_device_performance,
+        get_funnel_metrics,
         get_geo_performance,
         get_hourly_performance,
         get_keyword_performance,
         get_negative_keywords_audit,
         get_recommendations,
         get_search_terms_report,
+        get_top_keywords_creatives,
         list_my_accounts,
     )
