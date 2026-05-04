@@ -7,6 +7,7 @@ is small.
 """
 
 from typing import Any
+from uuid import UUID
 
 # Imported lazily inside the factory to keep this module unit-testable
 # without the heavy google-ads SDK import.
@@ -32,3 +33,39 @@ def build_client(
         "use_proto_plus": True,
     }
     return GoogleAdsClient.load_from_dict(config)
+
+
+class NoOAuthConnectionError(Exception):
+    """Raised by build_client_for_manager when the manager has no active OAuth."""
+
+
+async def build_client_for_manager(*, manager_id: UUID) -> Any:
+    """Build a GoogleAdsClient using the active OAuth refresh token of the given manager.
+
+    Raises NoOAuthConnectionError if the manager has no active connection.
+    """
+    from src.auth.tokens import decrypt_refresh_token, derive_master_key_from_settings
+    from src.config import get_settings
+    from src.db import connection
+    from src.db.repositories import google_oauth_connections
+
+    settings = get_settings()
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        oc = await google_oauth_connections.get_active_for_manager(conn, manager_id)
+    if oc is None:
+        raise NoOAuthConnectionError(
+            "Gestor nao tem conexao Google Ads ativa. Pede pra ele conectar via "
+            "/oauth/google/start."
+        )
+
+    master_key = derive_master_key_from_settings(settings.aes_master_key)
+    refresh_token = decrypt_refresh_token(oc.refresh_token_enc, master_key)
+
+    return build_client(
+        refresh_token=refresh_token,
+        developer_token=settings.google_ads_developer_token,
+        client_id=settings.google_oauth_client_id,
+        client_secret=settings.google_oauth_client_secret,
+        login_customer_id=settings.google_ads_login_customer_id,
+    )
