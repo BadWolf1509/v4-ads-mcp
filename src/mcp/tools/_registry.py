@@ -59,7 +59,12 @@ def import_all_tools() -> None:
     """Import every tool module so its register_tool decorator runs."""
     from src.mcp.tools import (  # noqa: F401
         get_account_overview,
+        get_ad_group_performance,
         get_budget_pacing,
+        get_campaign_performance,
+        get_device_performance,
+        get_geo_performance,
+        get_hourly_performance,
         get_recommendations,
         list_my_accounts,
     )
