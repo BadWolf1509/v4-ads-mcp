@@ -48,6 +48,11 @@ def create_app(skip_db_init: bool = False) -> FastAPI:
         return {"status": "ok", "version": __version__}
 
     mount_mcp(app)
+
+    from src.auth.oauth import router as oauth_router
+
+    app.include_router(oauth_router)
+
     return app
 
 
