@@ -52,3 +52,11 @@ This document records the cloud-console actions performed once to bootstrap the 
   - `get_search_terms_report` (14-day): returned 64 search terms without conversions totaling R$ 271.81, candidates for negative keywords identified by Codex.
   - `run_gaql` with custom GAQL: returned 1 row with descriptive_name "Mestre da Obra - Cotia", currency BRL.
 - Codex performed intelligent analysis on top of the raw tool outputs (% deltas, negative keyword candidates, projection vs budget) — proving the gestor workflow value end-to-end.
+
+### Phase 3a — Core mutations (TBD - awaiting user E2E)
+- 10 mutation tools shipped: 3 campaign (status/budget/bidding), 2 ad_group (status/bid), 2 keyword (status/bid), 1 negative_keywords, 2 recommendations.
+- Plus `apply_change` utility tool to consume confirmation tokens.
+- Total tools registered: 31 (20 from Phase 2 + 1 apply_change + 10 mutations).
+- Governance: blast_radius classifier (auto vs confirm per spec §7.1), dry_run with 8-char alphanumeric tokens + 10-min TTL + session-scoped, audit_log captures every mutation with google_request_id.
+- 162 tests passing (unit + integration with testcontainers + mocked Google Ads SDK).
+- E2E pending — user runs the test prompts in `phase-1a-bootstrap.md` Phase 3a section. Once verified, replace this paragraph with actual sign-off (which mutations were executed + Change History screenshots/IDs).

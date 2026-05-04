@@ -181,3 +181,63 @@ GROUP BY operation;
 -- Rate counter should reflect today's usage
 SELECT * FROM rate_counters WHERE date = current_date;
 ```
+
+---
+
+## Phase 3a — Testing core mutations
+
+After Phase 3a deploys, verify the 10 mutation tools work end-to-end via Codex/Claude Desktop. **CAUTION:** these tools modify production Google Ads accounts. Use a safe test pattern: pause + immediately re-enable, or use a campaign with low/no budget.
+
+### Available mutations
+
+- `update_campaign_status`, `update_campaign_budget`, `update_campaign_bidding`
+- `update_ad_group_status`, `update_ad_group_bid`
+- `update_keyword_status`, `update_keyword_bid`
+- `add_negative_keywords`
+- `apply_recommendation`, `dismiss_recommendation`
+- `apply_change` (utility — consume confirmation_token from any of the above)
+
+### Test prompts
+
+1. **Auto-apply path (low risk):**
+   > "Use add_negative_keywords na conta 5894449831, campanha 22934537062, para adicionar 'free' como BROAD."
+
+   Expected: `status: applied`, change visible in Google Ads UI Change History.
+
+2. **Dry-run + apply path (budget):**
+   > "Use update_campaign_budget na conta 5894449831, campanha 22934537062, novo orcamento R$ 110."
+
+   Expected: `status: dry_run`, `confirmation_token: <8 chars>`, preview with current vs new vs delta_pct.
+
+   Then:
+   > "Use apply_change com token <token>"
+
+   Expected: `status: applied`, change visible in Google Ads UI.
+
+3. **Bulk dry-run path (status):**
+   > "Pause as campanhas X, Y, Z, W, V, U na conta 5894449831." (6 campaigns -> dry-run)
+
+   Expected: `status: dry_run`, single token covering all 6.
+
+### Verify in Google Ads UI
+
+1. Open https://ads.google.com → conta `5894449831` (Mestre da Obra - Cotia)
+2. Tools & Settings → Change History
+3. Each mutation should appear under your name (`wellinton.ribeiro@v4company.com`) with timestamp + before/after values
+
+### Verify audit log
+
+```sql
+SELECT occurred_at, operation, target_count, status, google_request_id
+FROM audit_log
+WHERE action_type = 'mutate'
+  AND occurred_at > now() - interval '1 hour'
+ORDER BY occurred_at DESC;
+```
+
+Each successful mutation should have a `google_request_id` (proves the call hit Google's API).
+
+### Rollback if needed
+
+To undo a status change: re-run the same tool with the previous status. To undo a budget change: re-run with the previous amount. There is no atomic rollback yet — manual.
+```
