@@ -222,3 +222,73 @@ async def accounts_revoke_connection(
         await google_oauth_connections.revoke(conn, connection_id)
 
     return RedirectResponse(url="/accounts", status_code=303)
+
+
+@router.get("/audit", response_class=HTMLResponse)
+async def audit_page(
+    request: Request,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+    action_type: str = "all",  # 'mutate' | 'read' | 'all'
+    customer_id: str | None = None,
+    days: int = 30,
+    limit: int = 100,
+) -> HTMLResponse:
+    """Show manager's own audit_log entries (last N days, filterable)."""
+    # Sanitize input
+    if action_type not in ("mutate", "read", "all"):
+        action_type = "all"
+    if days not in (1, 7, 14, 30, 90):
+        days = 30
+    if limit < 1 or limit > 1000:
+        limit = 100
+
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        # Build query with optional filters
+        where = ["manager_id = $1", f"occurred_at > now() - interval '{days} days'"]
+        params: list[object] = [user.id]
+        if action_type != "all":
+            where.append(f"action_type = ${len(params) + 1}")
+            params.append(action_type)
+        if customer_id:
+            where.append(f"customer_id = ${len(params) + 1}")
+            params.append(customer_id)
+
+        where_sql = " AND ".join(where)
+        rows = await conn.fetch(
+            f"""
+            SELECT
+              audit_log.occurred_at,
+              audit_log.action_type,
+              audit_log.operation,
+              audit_log.customer_id,
+              audit_log.target_count,
+              audit_log.status,
+              audit_log.duration_ms,
+              audit_log.error_message,
+              audit_log.google_request_id,
+              gaa.descriptive_name AS account_name
+            FROM audit_log
+            LEFT JOIN google_ads_accounts gaa ON gaa.customer_id = audit_log.customer_id
+            WHERE {where_sql}
+            ORDER BY audit_log.occurred_at DESC
+            LIMIT {limit}
+            """,
+            *params,
+        )
+
+        # Also fetch list of accounts the manager can see (for the filter dropdown)
+        accessible = await manager_account_access.list_accounts_for_manager(conn, user.id)
+
+    return templates.TemplateResponse(
+        request,
+        "audit.html",
+        {
+            "current_user": user,
+            "rows": [dict(r) for r in rows],
+            "filter_action_type": action_type,
+            "filter_customer_id": customer_id or "",
+            "filter_days": days,
+            "accessible_accounts": accessible,
+        },
+    )

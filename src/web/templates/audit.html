@@ -1,0 +1,109 @@
+{% extends "_base.html" %}
+{% from "_components.html" import badge, alert %}
+
+{% block title %}Audit log — V4 Ads MCP{% endblock %}
+
+{% block content %}
+<h1>Meu audit log</h1>
+<p style="color: var(--v4-gray-700);">
+  Suas chamadas MCP nos ultimos {{ filter_days }} dias.
+</p>
+
+<div class="v4-card">
+  <form method="GET" action="/audit" style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 12px; align-items: end;">
+    <div class="v4-form__group" style="margin: 0;">
+      <label class="v4-form__label" for="action_type">Tipo</label>
+      <select id="action_type" name="action_type" class="v4-select">
+        <option value="all" {% if filter_action_type == "all" %}selected{% endif %}>Todos</option>
+        <option value="mutate" {% if filter_action_type == "mutate" %}selected{% endif %}>Mutacoes</option>
+        <option value="read" {% if filter_action_type == "read" %}selected{% endif %}>Reads sensiveis</option>
+      </select>
+    </div>
+
+    <div class="v4-form__group" style="margin: 0;">
+      <label class="v4-form__label" for="customer_id">Conta</label>
+      <select id="customer_id" name="customer_id" class="v4-select">
+        <option value="">Todas</option>
+        {% for a in accessible_accounts %}
+        <option value="{{ a.customer_id }}" {% if filter_customer_id == a.customer_id %}selected{% endif %}>
+          {{ a.descriptive_name }} ({{ a.customer_id }})
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="v4-form__group" style="margin: 0;">
+      <label class="v4-form__label" for="days">Periodo</label>
+      <select id="days" name="days" class="v4-select">
+        <option value="1" {% if filter_days == 1 %}selected{% endif %}>Ultimo dia</option>
+        <option value="7" {% if filter_days == 7 %}selected{% endif %}>Ultimos 7 dias</option>
+        <option value="14" {% if filter_days == 14 %}selected{% endif %}>Ultimos 14 dias</option>
+        <option value="30" {% if filter_days == 30 %}selected{% endif %}>Ultimos 30 dias</option>
+        <option value="90" {% if filter_days == 90 %}selected{% endif %}>Ultimos 90 dias</option>
+      </select>
+    </div>
+
+    <button type="submit" class="v4-btn v4-btn--primary">Filtrar</button>
+  </form>
+</div>
+
+<div class="v4-card">
+  <div class="v4-card__header">
+    <h3 class="v4-card__title">Eventos ({{ rows|length }})</h3>
+  </div>
+
+  {% if rows %}
+  <table class="v4-table">
+    <thead>
+      <tr>
+        <th>Data/Hora</th>
+        <th>Operacao</th>
+        <th>Conta</th>
+        <th>Tipo</th>
+        <th>Status</th>
+        <th>Alvos</th>
+        <th>Duracao</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.occurred_at.strftime("%d/%m %H:%M:%S") }}</td>
+        <td><code>{{ r.operation }}</code></td>
+        <td>
+          {% if r.customer_id %}
+            <strong>{{ r.account_name or r.customer_id }}</strong>
+            <br><span style="font-size: 11px; color: var(--v4-gray-300);">{{ r.customer_id }}</span>
+          {% else %}
+            <span style="color: var(--v4-gray-300);">-</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if r.action_type == "mutate" %}{{ badge("Mutate", "warning") }}
+          {% elif r.action_type == "read" %}{{ badge("Read", "neutral") }}
+          {% elif r.action_type == "auth" %}{{ badge("Auth", "neutral") }}
+          {% else %}{{ badge(r.action_type, "neutral") }}
+          {% endif %}
+        </td>
+        <td>
+          {% if r.status == "success" %}{{ badge("OK", "success") }}
+          {% elif r.status == "error" %}
+            {{ badge("Erro", "error") }}
+            {% if r.error_message %}<br><span title="{{ r.error_message }}" style="font-size: 11px; color: var(--v4-gray-300); cursor: help;">{{ r.error_message[:40] }}{% if r.error_message|length > 40 %}...{% endif %}</span>{% endif %}
+          {% elif r.status == "denied" %}{{ badge("Negado", "error") }}
+          {% else %}{{ badge(r.status, "neutral") }}
+          {% endif %}
+        </td>
+        <td>{{ r.target_count if r.target_count is not none else "-" }}</td>
+        <td>{{ r.duration_ms ~ " ms" if r.duration_ms else "-" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color: var(--v4-gray-300); text-align: center; padding: 32px;">
+    Nenhum evento no periodo selecionado.
+  </p>
+  {% endif %}
+</div>
+{% endblock %}
