@@ -31,8 +31,13 @@ jobs:
         env:
           PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: |
+          # --suppress-logs: build still runs + waits, but skip log streaming.
+          # Streaming requires reading Cloud Build's system logs bucket which
+          # the deployer SA doesn't have storage.objects.get on. Build logs
+          # remain visible in Cloud Build Console.
           gcloud builds submit \
             --pack image=southamerica-east1-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
+            --suppress-logs \
             .
 
       - name: Update migration job image
