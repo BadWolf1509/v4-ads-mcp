@@ -102,6 +102,18 @@ jobs:
             --set-env-vars="APP_ENV=production,APP_TIMEZONE=America/Sao_Paulo,LOG_LEVEL=info" \
             --set-secrets="DATABASE_URL=database-url:latest,SESSION_SIGNING_KEY=session-signing-key:latest,AES_MASTER_KEY=aes-master-key:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,GOOGLE_ADS_DEVELOPER_TOKEN=google-ads-developer-token:latest,GOOGLE_ADS_LOGIN_CUSTOMER_ID=google-ads-login-customer-id:latest,SUPABASE_URL=supabase-url:latest,SUPABASE_ANON_KEY=supabase-anon-key:latest,SUPABASE_SERVICE_KEY=supabase-service-key:latest"
 
+      - name: Route 100% traffic to latest revision
+        env:
+          REGION: ${{ secrets.GCP_REGION }}
+        run: |
+          # gcloud run deploy normally auto-routes to the new revision, but a
+          # one-off `update-traffic --to-revisions=X=100` (used during incident
+          # debugging) PINS traffic to that specific revision and subsequent
+          # deploys silently leave traffic on the old rev. --to-latest is
+          # idempotent — safe to run on every deploy.
+          gcloud run services update-traffic v4-ads-mcp \
+            --region=${REGION} --to-latest
+
       - name: Smoke test
         run: |
           SERVICE_URL=$(gcloud run services describe v4-ads-mcp \
