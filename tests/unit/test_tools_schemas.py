@@ -29,8 +29,9 @@ def test_customer_id_pattern_is_consistent():
 
 
 def test_all_phase_2_tools_registered():
-    """All 27 tools (20 Phase 2 + 3 campaign mutations + 2 ad group mutations + 2 keyword mutations) registered."""
+    """All 28 tools (20 Phase 2 + 3 campaign mutations + 2 ad group mutations + 2 keyword mutations + 1 negatives) registered."""
     expected = {
+        "add_negative_keywords",
         "apply_change",
         "list_my_accounts",
         # visao geral
@@ -76,6 +77,7 @@ def test_all_phase_2_tools_registered():
 def test_no_unexpected_tools():
     """Catch accidental new tool registrations not in the expected set."""
     expected = {
+        "add_negative_keywords",
         "apply_change",
         "list_my_accounts",
         "get_account_overview",
