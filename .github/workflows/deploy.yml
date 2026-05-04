@@ -68,6 +68,15 @@ jobs:
             --image=southamerica-east1-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
             --region=${REGION}
 
+      - name: Update resync job image
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          REGION: ${{ secrets.GCP_REGION }}
+        run: |
+          gcloud run jobs update v4-ads-mcp-resync \
+            --image=southamerica-east1-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
+            --region=${REGION}
+
       - name: Run database migrations
         env:
           REGION: ${{ secrets.GCP_REGION }}
