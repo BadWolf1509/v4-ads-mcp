@@ -60,11 +60,17 @@ def import_all_tools() -> None:
     from src.mcp.tools import (  # noqa: F401
         get_account_overview,
         get_ad_group_performance,
+        get_ad_performance,
+        get_audience_performance,
         get_budget_pacing,
         get_campaign_performance,
+        get_conversion_actions,
         get_device_performance,
         get_geo_performance,
         get_hourly_performance,
+        get_keyword_performance,
+        get_negative_keywords_audit,
         get_recommendations,
+        get_search_terms_report,
         list_my_accounts,
     )

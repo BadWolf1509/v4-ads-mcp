@@ -1,0 +1,97 @@
+"""Tool: get_keyword_performance - per-keyword metrics + Quality Score."""
+
+from typing import Any
+
+from src.google_ads.queries._common import micros_to_currency, parse_date_range
+from src.google_ads.queries.tactical import keyword_performance_query
+from src.google_ads.reports import run_report
+from src.mcp.context import get_current
+from src.mcp.tools._registry import register_tool
+
+_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "customer_id": {"type": "string", "pattern": "^[0-9]{10}$"},
+        "date_range": {"default": "LAST_30_DAYS"},
+        "status": {
+            "type": "string",
+            "enum": ["enabled", "paused", "removed", "all"],
+            "default": "enabled",
+        },
+        "limit": {"type": "integer", "minimum": 1, "maximum": 10000, "default": 200},
+    },
+    "required": ["customer_id"],
+    "additionalProperties": False,
+}
+
+
+def _row_formatter(row: Any) -> dict[str, Any]:
+    m = row.metrics
+    qi = row.ad_group_criterion.quality_info
+    pe = row.ad_group_criterion.position_estimates
+    impr = int(m.impressions)
+    clicks = int(m.clicks)
+    cost_micros = int(m.cost_micros)
+    return {
+        "criterion_id": str(row.ad_group_criterion.criterion_id),
+        "keyword_text": row.ad_group_criterion.keyword.text,
+        "match_type": str(row.ad_group_criterion.keyword.match_type).split(".")[-1],
+        "status": str(row.ad_group_criterion.status).split(".")[-1],
+        "quality_score": int(qi.quality_score) if qi.quality_score else None,
+        "quality_creative": str(qi.creative_quality_score).split(".")[-1]
+        if qi.creative_quality_score
+        else None,
+        "quality_post_click": str(qi.post_click_quality_score).split(".")[-1]
+        if qi.post_click_quality_score
+        else None,
+        "quality_search_predicted_ctr": str(qi.search_predicted_ctr).split(".")[-1]
+        if qi.search_predicted_ctr
+        else None,
+        "first_page_cpc_brl": micros_to_currency(pe.first_page_cpc_micros)
+        if pe.first_page_cpc_micros
+        else None,
+        "top_of_page_cpc_brl": micros_to_currency(pe.top_of_page_cpc_micros)
+        if pe.top_of_page_cpc_micros
+        else None,
+        "ad_group_id": str(row.ad_group.id),
+        "ad_group_name": row.ad_group.name,
+        "campaign_id": str(row.campaign.id),
+        "campaign_name": row.campaign.name,
+        "impressions": impr,
+        "clicks": clicks,
+        "cost_brl": micros_to_currency(cost_micros),
+        "conversions": round(float(m.conversions), 2),
+        "conversions_value_brl": round(float(m.conversions_value), 2),
+        "ctr": round(clicks / impr, 4) if impr else 0.0,
+        "cpc_brl": micros_to_currency(cost_micros / clicks) if clicks else 0.0,
+    }
+
+
+@register_tool(
+    name="get_keyword_performance",
+    description=(
+        "Performance por palavra-chave com Quality Score completo (3 componentes: "
+        "creative, post_click, search_predicted_ctr) + estimativas de first_page_cpc "
+        "e top_of_page_cpc. Filtros: status (enabled|paused|removed|all), limit."
+    ),
+    input_schema=_SCHEMA,
+)
+async def get_keyword_performance(args: dict[str, Any]) -> dict[str, Any]:
+    ctx = get_current()
+    customer_id = args["customer_id"]
+    start, end = parse_date_range(args.get("date_range", "LAST_30_DAYS"))
+    status = args.get("status", "enabled")
+    limit = args.get("limit", 200)
+    rows = await run_report(
+        manager_id=ctx.manager_id,
+        session_id=ctx.session_id,
+        customer_id=customer_id,
+        query=keyword_performance_query(start, end, status, limit),
+        row_formatter=_row_formatter,
+        operation_name="get_keyword_performance",
+    )
+    return {
+        "customer_id": customer_id,
+        "period": {"from": start.isoformat(), "to": end.isoformat()},
+        "rows": rows,
+    }
