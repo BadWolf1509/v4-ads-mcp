@@ -40,8 +40,11 @@ def create_app(skip_db_init: bool = False) -> FastAPI:
         lifespan=lifespan,
     )
 
-    @app.get("/healthz")
-    async def healthz() -> dict[str, str]:
+    # NOTE: /healthz is intercepted by Google Front End on Cloud Run before
+    # the request reaches the container (returns Google's 404 HTML page).
+    # Use /health instead. Confirmed empirically on Cloud Run rev 00001.
+    @app.get("/health")
+    async def health() -> dict[str, str]:
         return {"status": "ok", "version": __version__}
 
     mount_mcp(app)
