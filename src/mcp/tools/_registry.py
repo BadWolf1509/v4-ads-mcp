@@ -60,6 +60,8 @@ def import_all_tools() -> None:
     from src.mcp.tools import (  # noqa: F401
         add_negative_keywords,
         apply_change,
+        apply_recommendation,
+        dismiss_recommendation,
         get_account_overview,
         get_ad_group_performance,
         get_ad_performance,

@@ -113,3 +113,87 @@ async def run_mutation(
             target_count=target_count,
             status=status,
         )
+
+
+async def run_recommendation_action(
+    *,
+    manager_id: UUID,
+    session_id: UUID,
+    customer_id: str,
+    operation_type: str,  # 'apply_recommendation' | 'dismiss_recommendation'
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Execute a recommendation action via RecommendationService.
+
+    Different from run_mutation because recommendations use a dedicated
+    service, not the generic GoogleAdsService.mutate path. Same audit +
+    rate limit hooks.
+    """
+    from src.google_ads.mutates.recommendations import (
+        execute_apply_recommendation,
+        execute_dismiss_recommendation,
+    )
+
+    settings = get_settings()
+    token_id = hash_developer_token(settings.google_ads_developer_token)
+    started = time.monotonic()
+    pool = connection.get_pool()
+    google_request_id: str | None = None
+    error_message: str | None = None
+    status = "success"
+    target_count = 1  # one recommendation per call
+
+    try:
+        async with pool.acquire() as conn:
+            await before_call(conn, token_id, estimated_ops=1)
+
+        client = await build_client_for_manager(manager_id=manager_id)
+
+        try:
+            if operation_type == "apply_recommendation":
+                response = execute_apply_recommendation(client, customer_id, payload)
+            elif operation_type == "dismiss_recommendation":
+                response = execute_dismiss_recommendation(client, customer_id, payload)
+            else:
+                raise ValueError(f"Unknown recommendation operation: {operation_type}")
+            google_request_id = getattr(response, "request_id", None) or None
+        except Exception as e:
+            raise to_friendly(e) from e
+
+        return {
+            "google_request_id": google_request_id,
+            "applied_count": 1,
+        }
+    except Exception as e:
+        status = "error"
+        error_message = str(e)
+        raise
+    finally:
+        duration_ms = int((time.monotonic() - started) * 1000)
+        async with pool.acquire() as conn:
+            await record_actual(
+                conn,
+                token_id,
+                actual_ops=1,
+                estimated_ops=1,
+            )
+            await audit_log.record(
+                conn,
+                manager_id=manager_id,
+                session_id=session_id,
+                customer_id=customer_id,
+                action_type="mutate",
+                operation=operation_type,
+                target_count=target_count,
+                params_summary={"keys": sorted(payload.keys())},
+                google_request_id=google_request_id,
+                status=status,
+                error_message=error_message,
+                duration_ms=duration_ms,
+            )
+        log.info(
+            "recommendation_action_executed",
+            operation=operation_type,
+            customer_id=customer_id,
+            status=status,
+        )
