@@ -1,0 +1,98 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # required for Workload Identity Federation
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Submit build via Buildpacks
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          gcloud builds submit \
+            --pack image=southamerica-east1-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
+            .
+
+      - name: Update migration job image
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          REGION: ${{ secrets.GCP_REGION }}
+        run: |
+          gcloud run jobs update v4-ads-mcp-migrate \
+            --image=southamerica-east1-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
+            --region=${REGION}
+
+      - name: Run database migrations
+        env:
+          REGION: ${{ secrets.GCP_REGION }}
+        run: |
+          gcloud run jobs execute v4-ads-mcp-migrate --region=${REGION} --wait
+
+      - name: Deploy to Cloud Run
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          REGION: ${{ secrets.GCP_REGION }}
+        run: |
+          gcloud run deploy v4-ads-mcp \
+            --image=southamerica-east1-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
+            --region=${REGION} \
+            --service-account=v4-ads-mcp-runtime@${PROJECT_ID}.iam.gserviceaccount.com \
+            --allow-unauthenticated \
+            --min-instances=0 \
+            --max-instances=10 \
+            --concurrency=80 \
+            --cpu=1 \
+            --memory=512Mi \
+            --timeout=300 \
+            --set-env-vars="APP_ENV=production,APP_TIMEZONE=America/Sao_Paulo,LOG_LEVEL=info" \
+            --set-secrets="DATABASE_URL=database-url:latest,SESSION_SIGNING_KEY=session-signing-key:latest,AES_MASTER_KEY=aes-master-key:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,GOOGLE_ADS_DEVELOPER_TOKEN=google-ads-developer-token:latest,GOOGLE_ADS_LOGIN_CUSTOMER_ID=google-ads-login-customer-id:latest,SUPABASE_URL=supabase-url:latest,SUPABASE_ANON_KEY=supabase-anon-key:latest,SUPABASE_SERVICE_KEY=supabase-service-key:latest"
+
+      - name: Smoke test
+        run: |
+          SERVICE_URL=$(gcloud run services describe v4-ads-mcp \
+            --region=${{ secrets.GCP_REGION }} --format='value(status.url)')
+          echo "Service URL: $SERVICE_URL"
+          echo "Probing /healthz..."
+          curl -fsS "${SERVICE_URL}/healthz" | grep -q '"status":"ok"'
+          echo "Probing /mcp tools/list..."
+          curl -fsS -X POST "${SERVICE_URL}/mcp" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json, text/event-stream" \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
+            | grep -q '"tools":\[\]'
+          echo "Smoke tests passed."
+
+      - name: Rollback on failure
+        if: failure()
+        env:
+          REGION: ${{ secrets.GCP_REGION }}
+        run: |
+          # Roll service traffic to previous healthy revision (if one exists).
+          PREV=$(gcloud run revisions list --service=v4-ads-mcp --region=${REGION} \
+            --format='value(metadata.name)' --limit=2 | tail -n 1)
+          if [ -n "$PREV" ]; then
+            gcloud run services update-traffic v4-ads-mcp \
+              --region=${REGION} --to-revisions="${PREV}=100" || echo "Rollback skipped: no prior revision"
+          fi
