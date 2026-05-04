@@ -132,3 +132,52 @@ Expect a row with `operation = 'list_my_accounts'`, `target_count = 29`, `status
 - **Resync fails with "AUTHENTICATION_ERROR"** — the admin's refresh token expired or was revoked. Re-run step 3 (invite + OAuth) for the admin.
 - **Resync fails with "no active OAuth connection"** — no admin has done OAuth yet; complete step 3 first.
 - **Claude says "tool not found"** — restart Claude Desktop fully (not just close window). Check the Bearer token is exactly as printed (no leading/trailing spaces).
+
+---
+
+## Phase 2 — Testing read tools
+
+After Phase 2 deploys, verify the 16 + 3 read tools work end-to-end via Codex/Claude Desktop. Use a current MCP session token (rotate if expired via `python -m src.scripts.admin create-session ...`).
+
+### Pick a non-trivial customer_id
+
+The 23 active V4 accounts are listed by `list_my_accounts`. Pick one with real recent activity for testing — e.g., 'Mestre da Obra - Cotia' (5894449831).
+
+### Test prompts (paste into Claude/Codex)
+
+1. **Account overview:**
+   > "Use get_account_overview na conta 5894449831 ultimos 30 dias e mostra a comparacao com periodo anterior."
+
+   Expected: numbers for impressions/clicks/cost/conv/ROAS, with current vs previous side-by-side.
+
+2. **Budget pacing:**
+   > "Quais campanhas da conta 5894449831 estao acima do projetado pro mes?"
+
+   Expected: list of campaigns with daily_budget, MTD spend, projection, % over budget.
+
+3. **Performance breakdown:**
+   > "Top 5 campanhas por gasto na conta 5894449831, ultimos 7 dias."
+
+   Expected: 5 campaigns ordered by cost.
+
+4. **Tactical:**
+   > "Quais search terms na conta 5894449831 gastaram mais sem converter nos ultimos 14 dias?"
+
+   Expected: list of search terms with cost > 0 and conversions = 0.
+
+5. **GAQL escape hatch:**
+   > "Roda este GAQL na conta 5894449831: SELECT customer.descriptive_name, customer.currency_code FROM customer"
+
+   Expected: 1 row with the descriptive_name + currency.
+
+### Verify audit + rate limit
+
+```sql
+-- Sensitive reads (recommendations, run_gaql, conversion_actions) should be audited
+SELECT operation, count(*) FROM audit_log
+WHERE occurred_at > now() - interval '1 hour' AND action_type = 'read'
+GROUP BY operation;
+
+-- Rate counter should reflect today's usage
+SELECT * FROM rate_counters WHERE date = current_date;
+```

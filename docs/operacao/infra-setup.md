@@ -37,3 +37,11 @@ This document records the cloud-console actions performed once to bootstrap the 
 - Known limitations carried into Phase 1b:
   - Userinfo endpoint failed during OAuth (scope `adwords` alone doesn't include email); google_email is currently "unknown". Add `email` scope in Phase 1b.
   - Developer token still in Test mode (15k ops/day quota). Submit for Standard Access when quota becomes constraining.
+
+### Phase 2 — Read tools (TBD - awaiting user E2E)
+- 16 curated read tools (visao geral, performance, tactical, client report) + 3 GAQL utilities (run_gaql, validate_gaql, list_gaql_resources) shipped.
+- Total tools registered: 20 (incl. list_my_accounts from Phase 1a).
+- Rate limit module enforces 15k ops/day per developer token (Basic Access). Warning at 80%, block at 100%.
+- Audit log captures sensitive reads only (recommendations, run_gaql, conversion_actions).
+- jsonschema input validation in MCP call_tool (defense in depth).
+- E2E pending — user runs the test prompts in `phase-1a-bootstrap.md` Phase 2 section. Once verified, replace this paragraph with the actual sign-off summary listing tools called + customer_ids tested.
