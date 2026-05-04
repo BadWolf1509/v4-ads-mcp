@@ -98,8 +98,22 @@ jobs:
           SERVICE_URL=$(gcloud run services describe v4-ads-mcp \
             --region=${{ secrets.GCP_REGION }} --format='value(status.url)')
           echo "Service URL: $SERVICE_URL"
-          echo "Probing /health..."
-          curl -fsS "${SERVICE_URL}/health" | grep -q '"status":"ok"'
+
+          # Retry /health for up to 90s — Cloud Run traffic propagation
+          # can lag a few seconds after a new revision is deployed.
+          echo "Probing /health (with retry)..."
+          for i in $(seq 1 18); do
+            if curl -fsS "${SERVICE_URL}/health" | grep -q '"status":"ok"'; then
+              echo "  ✓ /health responded after $((i * 5))s"
+              break
+            fi
+            if [ "$i" -eq 18 ]; then
+              echo "  ✗ /health did not respond within 90s"
+              exit 1
+            fi
+            sleep 5
+          done
+
           echo "Probing /mcp tools/list..."
           curl -fsS -X POST "${SERVICE_URL}/mcp" \
             -H "Content-Type: application/json" \
