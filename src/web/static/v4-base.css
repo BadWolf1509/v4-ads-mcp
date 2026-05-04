@@ -1,0 +1,127 @@
+/* V4 base styles — light theme, Montserrat */
+@import url('https://fonts.bunny.net/css?family=montserrat:300,400,500,600,700,800&display=swap');
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--v4-font-body);
+  font-size: var(--v4-body-size);
+  line-height: var(--v4-body-line);
+  color: var(--v4-gray-900);
+  background: var(--v4-white);
+}
+
+h1 { font-size: var(--v4-h1-size); font-weight: var(--v4-h1-weight); line-height: var(--v4-h1-line); margin: 0 0 var(--v4-space-4); }
+h2 { font-size: var(--v4-h2-size); font-weight: var(--v4-h2-weight); line-height: var(--v4-h2-line); margin: 0 0 var(--v4-space-3); }
+h3 { font-size: var(--v4-h3-size); font-weight: var(--v4-h3-weight); line-height: var(--v4-h3-line); margin: 0 0 var(--v4-space-2); }
+h4 { font-size: var(--v4-h4-size); font-weight: var(--v4-h4-weight); line-height: var(--v4-h4-line); margin: 0 0 var(--v4-space-2); }
+
+p { margin: 0 0 var(--v4-space-3); }
+
+a {
+  color: var(--v4-red);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--v4-red-medium);
+  text-decoration: underline;
+}
+
+code, pre {
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 13px;
+  background: var(--v4-gray-50);
+  padding: 2px 6px;
+  border-radius: var(--v4-radius-sm);
+}
+
+pre {
+  padding: var(--v4-space-4);
+  overflow-x: auto;
+  border: 1px solid var(--v4-gray-100);
+}
+
+main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--v4-space-6) var(--v4-space-4);
+}
+
+/* Header */
+.v4-header {
+  background: var(--v4-white);
+  border-bottom: 1px solid var(--v4-gray-100);
+  padding: var(--v4-space-3) var(--v4-space-4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.v4-header__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--v4-space-3);
+  text-decoration: none;
+  color: var(--v4-gray-900);
+}
+
+.v4-header__brand:hover {
+  color: var(--v4-gray-900);
+  text-decoration: none;
+}
+
+.v4-header__logo {
+  height: 32px;
+  width: auto;
+}
+
+.v4-header__title {
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
+
+.v4-header__nav {
+  display: flex;
+  gap: var(--v4-space-4);
+}
+
+.v4-header__nav a {
+  color: var(--v4-gray-700);
+  font-weight: 500;
+}
+
+.v4-header__nav a:hover {
+  color: var(--v4-red);
+}
+
+.v4-header__user {
+  display: flex;
+  align-items: center;
+  gap: var(--v4-space-3);
+  font-size: 13px;
+  color: var(--v4-gray-700);
+}
+
+.v4-header__user a.logout {
+  font-size: 12px;
+  color: var(--v4-gray-700);
+}
+
+/* Footer */
+.v4-footer {
+  border-top: 1px solid var(--v4-gray-100);
+  padding: var(--v4-space-6) var(--v4-space-4);
+  margin-top: var(--v4-space-12);
+  text-align: center;
+  font-size: var(--v4-small-size);
+  color: var(--v4-gray-300);
+}

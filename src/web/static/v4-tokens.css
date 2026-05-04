@@ -1,0 +1,74 @@
+/* V4 Company Design Tokens */
+:root {
+  /* PRIMARY — Vermelho V4 (#e50914) */
+  --v4-red:           #e50914;
+  --v4-red-medium:    #b20710;
+  --v4-red-dark:      #80050b;
+  --v4-red-darkest:   #400306;
+
+  /* NEUTRALS — Light */
+  --v4-white:         #ffffff;
+  --v4-gray-50:       #f5f5f5;
+  --v4-gray-100:      #e5e5e5;
+  --v4-gray-200:      #cccccc;
+  --v4-gray-300:      #b3b3b3;
+
+  /* NEUTRALS — Dark */
+  --v4-gray-700:      #333333;
+  --v4-gray-800:      #262626;
+  --v4-gray-900:      #1a1a1a;
+  --v4-black:         #000000;
+
+  /* SECONDARY — Status */
+  --v4-green:         #52cc5a;
+  --v4-gold:          #ffc02a;
+
+  /* TYPOGRAPHY (Montserrat — Bunny Fonts CDN) */
+  --v4-font-primary:  'Montserrat', system-ui, -apple-system, sans-serif;
+  --v4-font-body:     'Montserrat', system-ui, -apple-system, sans-serif;
+
+  /* Hierarchy from V4 brand book */
+  --v4-h1-size: 36px;
+  --v4-h1-weight: 800;
+  --v4-h1-line: 1.1;
+
+  --v4-h2-size: 28px;
+  --v4-h2-weight: 700;
+  --v4-h2-line: 1.2;
+
+  --v4-h3-size: 20px;
+  --v4-h3-weight: 600;
+  --v4-h3-line: 1.3;
+
+  --v4-h4-size: 16px;
+  --v4-h4-weight: 600;
+  --v4-h4-line: 1.4;
+
+  --v4-body-size: 14px;
+  --v4-body-weight: 400;
+  --v4-body-line: 1.5;
+
+  --v4-small-size: 12px;
+  --v4-small-line: 1.4;
+
+  /* SPACING */
+  --v4-space-1: 4px;
+  --v4-space-2: 8px;
+  --v4-space-3: 12px;
+  --v4-space-4: 16px;
+  --v4-space-6: 24px;
+  --v4-space-8: 32px;
+  --v4-space-12: 48px;
+  --v4-space-16: 64px;
+
+  /* RADII */
+  --v4-radius-sm: 4px;
+  --v4-radius-md: 8px;
+  --v4-radius-lg: 12px;
+  --v4-radius-xl: 16px;
+
+  /* SHADOWS */
+  --v4-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --v4-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --v4-shadow-modal: 0 10px 25px rgba(0, 0, 0, 0.15);
+}

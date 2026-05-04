@@ -53,6 +53,14 @@ def create_app(skip_db_init: bool = False) -> FastAPI:
 
     app.include_router(oauth_router)
 
+    from pathlib import Path
+
+    from fastapi.staticfiles import StaticFiles
+
+    static_dir = Path(__file__).parent / "web" / "static"
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
     return app
 
 

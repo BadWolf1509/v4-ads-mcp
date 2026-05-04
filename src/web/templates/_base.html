@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}V4 Ads MCP{% endblock %}</title>
+  <link rel="stylesheet" href="/static/v4-tokens.css">
+  <link rel="stylesheet" href="/static/v4-base.css">
+  <link rel="stylesheet" href="/static/v4-components.css">
+  <link rel="icon" type="image/svg+xml" href="/static/logo/v4-symbol.svg">
+  <script src="https://unpkg.com/htmx.org@2.0.3" defer></script>
+</head>
+<body>
+  <header class="v4-header">
+    <a class="v4-header__brand" href="/">
+      <img src="/static/logo/v4-symbol.svg" class="v4-header__logo" alt="V4">
+      <span class="v4-header__title">Ads MCP</span>
+    </a>
+
+    {% if current_user %}
+    <nav class="v4-header__nav">
+      <a href="/">Dashboard</a>
+      <a href="/accounts">Contas</a>
+      <a href="/sessions">Sessoes MCP</a>
+      <a href="/audit">Audit</a>
+      {% if current_user.is_admin %}
+      <a href="/admin/managers">Admin</a>
+      {% endif %}
+    </nav>
+    <div class="v4-header__user">
+      <span>{{ current_user.email }}</span>
+      <a class="logout" href="/logout">Sair</a>
+    </div>
+    {% endif %}
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="v4-footer">
+    V4 Ads MCP — interno V4 Company
+  </footer>
+</body>
+</html>

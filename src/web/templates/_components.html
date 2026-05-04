@@ -1,0 +1,15 @@
+{% macro stat(label, value, sublabel=None) %}
+<div class="v4-stat">
+  <div class="v4-stat__label">{{ label }}</div>
+  <div class="v4-stat__value">{{ value }}</div>
+  {% if sublabel %}<div class="v4-stat__sublabel">{{ sublabel }}</div>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro badge(text, kind="neutral") %}
+<span class="v4-badge v4-badge--{{ kind }}">{{ text }}</span>
+{% endmacro %}
+
+{% macro alert(message, kind="info") %}
+<div class="v4-alert v4-alert--{{ kind }}">{{ message }}</div>
+{% endmacro %}
