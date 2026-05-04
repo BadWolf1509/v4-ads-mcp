@@ -45,10 +45,20 @@ def build_server() -> Any:
 
     @server.call_tool()  # type: ignore[untyped-decorator]
     async def call_tool(name: str, arguments: dict[str, Any] | None) -> list[TextContent]:
+        import jsonschema  # noqa: PLC0415
+
         tool = get_tool(name)
         if tool is None:
             raise ValueError(f"Unknown tool: {name}")
-        result = await tool.handler(arguments or {})
+        args = arguments or {}
+        try:
+            jsonschema.validate(args, tool.input_schema)
+        except jsonschema.ValidationError as e:
+            raise ValueError(
+                f"Invalid arguments for tool '{name}': {e.message} "
+                f"(at path: {'/'.join(str(p) for p in e.absolute_path) or '<root>'})"
+            ) from e
+        result = await tool.handler(args)
         # MCP requires tool result to be a list of content blocks; we return
         # a single TextContent with JSON-serialized payload.
         return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, default=str))]
