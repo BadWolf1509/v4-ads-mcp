@@ -61,3 +61,13 @@ This document records the cloud-console actions performed once to bootstrap the 
 - 162 tests passing (unit + integration with testcontainers + mocked Google Ads SDK).
 - E2E approach: deferred to operations (gestores) doing real work — synthetic test mutations risk altering live accounts. Validation channel = audit_log table + Google Ads UI Change History. Test prompts in `phase-1a-bootstrap.md` Phase 3a section remain available for ad-hoc validation if needed.
 - First-touch monitoring plan: track audit_log for the first week of operations use; flag any failures (status='error') for investigation.
+
+### Phase 1b — Web panel (TBD - awaiting user E2E)
+- 5 gestor pages (login, dashboard, accounts, sessions, audit) + 4 admin pages (managers, accounts, access matrix, audit) shipped.
+- Authentication: unified Google OAuth (deviation from spec §5.1 which prescribed Supabase Auth + separate Google OAuth) — single flow with scopes {openid, email, profile, adwords} restricted to @v4company.com.
+- Panel session: signed cookie `v4_panel_session` (24h TTL, httpOnly, Secure, SameSite=Lax). HMAC-signed with session_signing_key.
+- First-ever login auto-promoted to admin (bootstrap path).
+- Templates: Jinja2 + V4 design tokens (no JS framework, no build step). HTMX via CDN for inline interactions (revoke session, toggle access).
+- 203 tests passing (unit + integration with testcontainers).
+- Existing CLI admin remains available as escape hatch.
+- E2E pending — user runs the test flows in `phase-1a-bootstrap.md` Phase 1b section.

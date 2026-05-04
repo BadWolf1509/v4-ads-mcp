@@ -240,4 +240,69 @@ Each successful mutation should have a `google_request_id` (proves the call hit 
 ### Rollback if needed
 
 To undo a status change: re-run the same tool with the previous status. To undo a budget change: re-run with the previous amount. There is no atomic rollback yet — manual.
-```
+
+---
+
+## Phase 1b — Testing the web panel
+
+After Phase 1b deploys, the panel UI is the primary onboarding flow (CLI admin remains available as escape hatch). The token created in Phase 1a remains valid; existing MCP integrations don't break.
+
+### URL
+
+`https://v4-ads-mcp-jf26mmrgqa-rj.a.run.app/`
+
+### Test flows
+
+1. **Login (incognito browser):**
+   - Open the URL in a new private/incognito window (no cached session).
+   - Should redirect to `/login`.
+   - Click "Entrar com Google V4".
+   - Authorize a `@v4company.com` Google account.
+   - Should land on `/` (dashboard) with header showing your email + role badge.
+
+2. **Domain rejection:**
+   - Logout. Try logging in with a `@gmail.com` account.
+   - Should see error page: "Conta XXX nao autorizada — apenas @v4company.com."
+
+3. **Sessions self-service:**
+   - Click "Sessoes MCP" in the nav.
+   - Click "Criar nova sessao", label "test-from-panel", TTL 30 dias.
+   - Token is shown ONCE — copy it.
+   - Open the existing Codex/Claude config and verify the new token works:
+     ```bash
+     curl -X POST https://v4-ads-mcp-jf26mmrgqa-rj.a.run.app/mcp \
+       -H "Content-Type: application/json" \
+       -H "Accept: application/json, text/event-stream" \
+       -H "Authorization: Bearer <new_token>" \
+       -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
+       | python -c 'import json,sys; print(len(json.load(sys.stdin)["result"]["tools"]))'
+     ```
+     Should print `31`.
+   - Back in the panel, click "Revogar" on the test session — confirms with HTMX swap, table updates without page reload.
+   - Re-run the curl above — should get HTTP 401 (token revoked).
+
+4. **Accounts page:**
+   - Click "Contas". Should show your active OAuth connection + the 23 V4 accounts you have access to.
+
+5. **Audit page:**
+   - Click "Audit". Should show your recent MCP calls (the curl tests above generate entries).
+
+6. **Admin pages (only visible if you're admin):**
+   - `/admin/managers` — should list all managers including you.
+   - `/admin/accounts` — should list 23 active accounts.
+   - `/admin/access` — matrix of managers × accounts; toggle a checkbox and confirm DB updates (live HTMX).
+   - `/admin/audit` — global log with filters.
+
+### Expected outcomes
+
+- New gestores can self-onboard without admin interaction (just need an `@v4company.com` Google account).
+- Existing CLI workflows (admin.py) continue to work — escape hatch retained.
+- Sessions created via panel are interchangeable with sessions created via CLI.
+- Mobile-responsive: cards stack vertically on narrow viewports (basic responsiveness via `auto-fill` grid).
+
+### Troubleshooting
+
+- **Login button does nothing**: check OAuth client redirect URI includes `/oauth/google/callback`.
+- **"Conta unknown nao autorizada"**: userinfo endpoint failed or returned no email — check that the OAuth consent screen has email + profile scopes enabled.
+- **Cookie not persisting**: ensure HTTPS; browser may strip Secure cookies on HTTP. The Cloud Run URL is HTTPS.
+- **HTMX checkbox toggle not working**: check browser console for HTMX errors; ensure the response from /admin/access/toggle returns the `<input>` fragment.
