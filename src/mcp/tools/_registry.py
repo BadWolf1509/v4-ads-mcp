@@ -74,5 +74,8 @@ def import_all_tools() -> None:
         get_recommendations,
         get_search_terms_report,
         get_top_keywords_creatives,
+        list_gaql_resources,
         list_my_accounts,
+        run_gaql,
+        validate_gaql,
     )
