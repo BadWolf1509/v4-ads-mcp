@@ -35,6 +35,9 @@ target-version = "py312"
 select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "ASYNC"]
 ignore = ["E501"]  # handled by formatter
 
+[tool.ruff.lint.per-file-ignores]
+"tests/unit/test_rate_limit.py" = ["F401"]  # spec-provided file; unused imports intentional
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
