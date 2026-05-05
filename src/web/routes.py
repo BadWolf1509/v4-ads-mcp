@@ -327,6 +327,18 @@ async def audit_page(
     )
 
 
+@router.get("/admin", response_model=None)
+async def admin_index_stub(
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+) -> RedirectResponse:
+    """Stub redirect to /admin/managers until Phase 3 Task 3.4 ships the real
+    `/admin` overview page. Keeps the header "Admin" link and the sub-nav
+    "Visão geral" link from 404'ing during the Phase 2 → Phase 3 gap.
+    """
+    _require_admin(user)
+    return RedirectResponse(url="/admin/managers", status_code=302)
+
+
 @router.get("/admin/managers", response_class=HTMLResponse)
 async def admin_managers(
     request: Request,
