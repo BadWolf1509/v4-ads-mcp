@@ -1,0 +1,131 @@
+{% extends "_base.html" %}
+{% from "_components.html" import sparkline, badge %}
+
+{% block title %}Admin · Visão geral — V4 Ads MCP{% endblock %}
+
+{% block content %}
+<section class="max-w-5xl mx-auto py-8 px-4">
+  <header class="mb-10">
+    <h1 class="text-4xl font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
+      Operação · <span class="text-v4-red">V4 Ads MCP</span>
+    </h1>
+    <p class="text-sm text-v4-gray-700 mt-2">Visão consolidada de uso, saúde e onboarding da plataforma.</p>
+  </header>
+
+  {# Top metrics #}
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+    <div class="border border-v4-gray-100 rounded-md p-4">
+      <div class="text-xs text-v4-gray-700 uppercase tracking-wider font-semibold">Convites pendentes</div>
+      <div class="text-3xl font-bold {% if pending_invites > 0 %}text-v4-gold{% endif %}">{{ pending_invites }}</div>
+      {% if pending_invites > 0 %}
+        <a href="/admin/invites" class="text-xs text-v4-gray-700 underline">ver lista →</a>
+      {% endif %}
+    </div>
+    <div class="border border-v4-gray-100 rounded-md p-4">
+      <div class="text-xs text-v4-gray-700 uppercase tracking-wider font-semibold">Gestores ativos</div>
+      <div class="text-3xl font-bold">{{ active_managers }} <span class="text-base text-v4-gray-300">/ {{ total_managers }}</span></div>
+    </div>
+    <div class="border border-v4-gray-100 rounded-md p-4">
+      <div class="text-xs text-v4-gray-700 uppercase tracking-wider font-semibold">Quota MCP hoje</div>
+      <div class="text-3xl font-bold">{{ quota_used }}</div>
+      <div class="text-xs text-v4-gray-300 mt-1">/ {{ quota_max }} ops</div>
+    </div>
+    <div class="border border-v4-gray-100 rounded-md p-4">
+      <div class="text-xs text-v4-gray-700 uppercase tracking-wider font-semibold">Erros 24h</div>
+      <div class="text-3xl font-bold {% if errors_24h > 0 %}text-v4-red{% else %}text-v4-green{% endif %}">{{ errors_24h }}</div>
+      {% if errors_24h > 0 %}
+        <a href="/admin/audit?status=error" class="text-xs text-v4-gray-700 underline">investigar →</a>
+      {% endif %}
+    </div>
+  </div>
+
+  {# Usage history #}
+  <div class="v4-card mb-6">
+    <div class="v4-card__header">
+      <h3 class="v4-card__title">Uso últimos 30 dias</h3>
+      <a href="/admin/audit" class="text-sm text-v4-red underline">audit →</a>
+    </div>
+    <div class="px-4 pb-4">
+      {% if usage_30d %}
+        {{ sparkline(usage_30d, width=600, height=80, color="var(--v4-red)") }}
+      {% else %}
+        <p class="text-v4-gray-300 text-center py-8">Sem dados ainda.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  {# Top operations + Top gestores side-by-side #}
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+    <div class="v4-card">
+      <div class="v4-card__header">
+        <h3 class="v4-card__title">Top operações (7 dias)</h3>
+      </div>
+      <table class="v4-table v4-table--compact">
+        <tbody>
+          {% for op in top_operations %}
+          <tr>
+            <td class="col-mono">{{ op.operation }}</td>
+            <td class="text-right font-bold">{{ op.count }}</td>
+          </tr>
+          {% endfor %}
+          {% if not top_operations %}
+          <tr><td class="text-center text-v4-gray-300 py-6">Sem dados.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="v4-card">
+      <div class="v4-card__header">
+        <h3 class="v4-card__title">Top gestores (7 dias)</h3>
+      </div>
+      <table class="v4-table v4-table--compact">
+        <tbody>
+          {% for g in top_managers %}
+          <tr>
+            <td>{{ g.email }}</td>
+            <td class="text-right font-bold">{{ g.count }}</td>
+          </tr>
+          {% endfor %}
+          {% if not top_managers %}
+          <tr><td class="text-center text-v4-gray-300 py-6">Sem dados.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# Recent onboarding #}
+  <div class="v4-card">
+    <div class="v4-card__header">
+      <h3 class="v4-card__title">Onboarding recente</h3>
+    </div>
+    {% if recent_onboarding %}
+    <table class="v4-table v4-table--compact">
+      <thead>
+        <tr>
+          <th>Email</th>
+          <th>Status</th>
+          <th>Quando</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in recent_onboarding %}
+        <tr>
+          <td><strong>{{ m.email }}</strong></td>
+          <td>
+            {% if m.status == "invited" %}{{ badge("Convidado", "warning") }}
+            {% elif m.status == "active" %}{{ badge("Ativo", "success") }}
+            {% else %}{{ badge(m.status, "neutral") }}{% endif %}
+          </td>
+          <td class="col-mono">{{ (m.invited_at or m.created_at).strftime("%d/%m %H:%M") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="text-v4-gray-300 text-center py-6">Nenhum onboarding recente.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

@@ -406,16 +406,79 @@ async def audit_page(
     )
 
 
-@router.get("/admin", response_model=None)
-async def admin_index_stub(
+@router.get("/admin", response_class=HTMLResponse)
+async def admin_index(
+    request: Request,
     user: CurrentUser = Depends(current_manager),  # noqa: B008
-) -> RedirectResponse:
-    """Stub redirect to /admin/managers until Phase 3 Task 3.4 ships the real
-    `/admin` overview page. Keeps the header "Admin" link and the sub-nav
-    "Visão geral" link from 404'ing during the Phase 2 → Phase 3 gap.
-    """
+) -> HTMLResponse:
+    """Admin overview: operational metrics, usage sparkline, tops, onboarding."""
     _require_admin(user)
-    return RedirectResponse(url="/admin/managers", status_code=302)
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        from src.db.repositories import managers as managers_repo
+
+        pending = await managers_repo.count_invited(conn)
+        active_mgrs = (
+            await conn.fetchval("SELECT count(*) FROM managers WHERE status = 'active'") or 0
+        )
+        total_mgrs = await conn.fetchval("SELECT count(*) FROM managers") or 0
+        quota_used = (
+            await conn.fetchval("SELECT used_today FROM rate_counters WHERE date = current_date")
+            or 0
+        )
+        errors_24h = (
+            await conn.fetchval(
+                "SELECT count(*) FROM audit_log WHERE status='error' AND occurred_at > now() - interval '24 hours'"
+            )
+            or 0
+        )
+
+        # Usage 30d sparkline
+        rows_30 = await conn.fetch(
+            """SELECT (occurred_at::date) AS d, count(*) AS c
+               FROM audit_log
+               WHERE occurred_at > now() - interval '30 days'
+               GROUP BY 1 ORDER BY 1"""
+        )
+        usage_30d = [r["c"] for r in rows_30]
+
+        # Top operations 7d
+        top_ops = await conn.fetch(
+            """SELECT operation, count(*) AS count FROM audit_log
+               WHERE occurred_at > now() - interval '7 days'
+               GROUP BY operation ORDER BY count DESC LIMIT 5"""
+        )
+        # Top managers 7d
+        top_mgrs = await conn.fetch(
+            """SELECT m.email, count(*) AS count
+               FROM audit_log al JOIN managers m ON m.id = al.manager_id
+               WHERE al.occurred_at > now() - interval '7 days'
+               GROUP BY m.email ORDER BY count DESC LIMIT 5"""
+        )
+        # Recent onboarding (last 10 managers by created_at)
+        onboarding = await conn.fetch(
+            """SELECT email, status, created_at, invited_at
+               FROM managers ORDER BY coalesce(invited_at, created_at) DESC LIMIT 10"""
+        )
+
+    return templates.TemplateResponse(
+        request,
+        "admin/index.html",
+        {
+            "current_user": user,
+            "pending_invites": pending,
+            "pending_invites_count": pending,
+            "active_managers": active_mgrs,
+            "total_managers": total_mgrs,
+            "quota_used": quota_used,
+            "quota_max": 15000,
+            "errors_24h": errors_24h,
+            "usage_30d": usage_30d,
+            "top_operations": [dict(r) for r in top_ops],
+            "top_managers": [dict(r) for r in top_mgrs],
+            "recent_onboarding": [dict(r) for r in onboarding],
+        },
+    )
 
 
 @router.get("/admin/managers", response_class=HTMLResponse)
