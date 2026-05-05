@@ -462,16 +462,17 @@ async def audit_export_csv(
 @router.get("/audit/{audit_id}", response_class=HTMLResponse)
 async def audit_detail(
     request: Request,
-    audit_id: str,
+    audit_id: int,
     user: CurrentUser = Depends(current_manager),  # noqa: B008
 ) -> HTMLResponse:
+    """Audit event detail. audit_log.id is BIGSERIAL (int), not UUID."""
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         from src.db.repositories import audit_log
 
         # Gestores see only their own; admins see any
         scope_id = None if user.is_admin else user.id
-        event = await audit_log.get_by_id(conn, audit_id=UUID(audit_id), manager_id=scope_id)
+        event = await audit_log.get_by_id(conn, audit_id=audit_id, manager_id=scope_id)
     if event is None:
         raise HTTPException(status_code=404, detail="Audit event not found or out of scope")
     return templates.TemplateResponse(

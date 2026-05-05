@@ -32,7 +32,6 @@ async def db(pg):
 async def test_get_by_id_returns_full_row(db):
     mid = uuid4()
     sid = uuid4()
-    aid = uuid4()
     pool = db
     async with pool.acquire() as conn:
         await conn.execute(
@@ -44,12 +43,13 @@ async def test_get_by_id_returns_full_row(db):
             sid,
             mid,
         )
-        await conn.execute(
-            """INSERT INTO audit_log (id, manager_id, session_id, customer_id, action_type, operation, status,
+        # audit_log.id is BIGSERIAL — let DB generate, capture via RETURNING.
+        aid = await conn.fetchval(
+            """INSERT INTO audit_log (manager_id, session_id, customer_id, action_type, operation, status,
                                        target_count, params_summary, error_message, duration_ms, occurred_at)
-               VALUES ($1, $2, $3, '1234567890', 'read', 'list_my_accounts', 'success',
-                       23, '{}'::jsonb, NULL, 7, now())""",
-            aid,
+               VALUES ($1, $2, '1234567890', 'read', 'list_my_accounts', 'success',
+                       23, '{}'::jsonb, NULL, 7, now())
+               RETURNING id""",
             mid,
             sid,
         )
@@ -65,7 +65,6 @@ async def test_get_by_id_scopes_to_manager(db):
     """Gestor passing manager_id can't see other gestores' events."""
     mid = uuid4()
     other = uuid4()
-    aid = uuid4()
     pool = db
     async with pool.acquire() as conn:
         await conn.execute(
@@ -75,10 +74,10 @@ async def test_get_by_id_scopes_to_manager(db):
             mid,
             other,
         )
-        await conn.execute(
-            """INSERT INTO audit_log (id, manager_id, action_type, operation, status, occurred_at)
-               VALUES ($1, $2, 'read', 'op', 'success', now())""",
-            aid,
+        aid = await conn.fetchval(
+            """INSERT INTO audit_log (manager_id, action_type, operation, status, occurred_at)
+               VALUES ($1, 'read', 'op', 'success', now())
+               RETURNING id""",
             other,  # belongs to OTHER manager
         )
         result = await audit_log.get_by_id(conn, audit_id=aid, manager_id=mid)
@@ -90,17 +89,16 @@ async def test_get_by_id_scopes_to_manager(db):
 async def test_get_by_id_admin_sees_any(db):
     """When manager_id=None (admin context), any audit_id is reachable."""
     other = uuid4()
-    aid = uuid4()
     pool = db
     async with pool.acquire() as conn:
         await conn.execute(
             """INSERT INTO managers (id, email, status, role) VALUES ($1, 'b@v4company.com', 'active', 'gestor')""",
             other,
         )
-        await conn.execute(
-            """INSERT INTO audit_log (id, manager_id, action_type, operation, status, occurred_at)
-               VALUES ($1, $2, 'read', 'op', 'success', now())""",
-            aid,
+        aid = await conn.fetchval(
+            """INSERT INTO audit_log (manager_id, action_type, operation, status, occurred_at)
+               VALUES ($1, 'read', 'op', 'success', now())
+               RETURNING id""",
             other,
         )
         result = await audit_log.get_by_id(conn, audit_id=aid, manager_id=None)

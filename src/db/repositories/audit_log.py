@@ -57,10 +57,10 @@ async def record(
 async def get_by_id(
     conn: asyncpg.Connection,
     *,
-    audit_id: UUID,
+    audit_id: int,
     manager_id: UUID | None,
 ) -> dict[str, Any] | None:
-    """Fetch a single audit event.
+    """Fetch a single audit event by its BIGSERIAL id.
 
     If manager_id is provided, scoped to that gestor (returns None if event belongs to another).
     If manager_id is None (admin context), returns any event by id.
