@@ -505,6 +505,47 @@ async def admin_invites(
     )
 
 
+@router.post("/admin/invites/new", response_class=HTMLResponse, response_model=None)
+async def admin_invites_new(
+    request: Request,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+    email: str = Form(...),
+    full_name: str = Form(""),
+) -> RedirectResponse:
+    _require_admin(user)
+    email = email.strip().lower()
+    if not email.endswith("@v4company.com"):
+        return RedirectResponse(url="/admin/invites?error=bad_domain", status_code=303)
+
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        # Idempotency: if email already exists in any status, don't double-invite
+        existing = await conn.fetchval("SELECT 1 FROM managers WHERE email = $1", email)
+        if existing:
+            return RedirectResponse(url="/admin/invites?error=exists", status_code=303)
+
+        from src.db.repositories import managers as managers_repo
+        await managers_repo.create_invited(
+            conn, email=email, invited_by=user.id, full_name=(full_name or None),
+        )
+    return RedirectResponse(url="/admin/invites", status_code=303)
+
+
+@router.post("/admin/invites/{invite_id}/cancel", response_class=HTMLResponse, response_model=None)
+async def admin_invites_cancel(
+    request: Request,
+    invite_id: str,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+) -> HTMLResponse:
+    _require_admin(user)
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        from src.db.repositories import managers as managers_repo
+        await managers_repo.delete_invite(conn, manager_id=UUID(invite_id))
+    # HTMX swap: remove the row by returning empty content
+    return HTMLResponse("")
+
+
 @router.get("/admin/audit", response_class=HTMLResponse)
 async def admin_audit(
     request: Request,
