@@ -144,3 +144,12 @@
   <pre><code>{{ content }}</code></pre>
 </div>
 {% endmacro %}
+
+{% macro empty_state(title, body=None, icon=None, action=None) %}
+<div class="v4-empty">
+  {% if icon %}<div class="v4-empty__icon">{{ icon|safe }}</div>{% endif %}
+  <div class="v4-empty__title">{{ title }}</div>
+  {% if body %}<div class="v4-empty__body">{{ body|safe }}</div>{% endif %}
+  {% if action %}<div>{{ action|safe }}</div>{% endif %}
+</div>
+{% endmacro %}

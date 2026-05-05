@@ -437,3 +437,25 @@
   border: 0;
   overflow-x: auto;
 }
+
+.v4-empty {
+  text-align: center;
+  padding: var(--v4-space-12) var(--v4-space-4);
+  color: var(--v4-gray-300);
+}
+.v4-empty__icon {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto var(--v4-space-4);
+  color: var(--v4-gray-200);
+}
+.v4-empty__title {
+  font-size: var(--v4-h4-size);
+  font-weight: 600;
+  color: var(--v4-gray-700);
+  margin: 0 0 var(--v4-space-2);
+}
+.v4-empty__body {
+  font-size: 14px;
+  margin-bottom: var(--v4-space-4);
+}
