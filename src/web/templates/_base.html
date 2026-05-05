@@ -172,5 +172,14 @@
     }
   }
 </script>
+<script>
+  function v4ToggleRow(rowId) {
+    const row = document.getElementById(rowId);
+    const detail = document.getElementById(rowId + '-detail');
+    if (!row || !detail) return;
+    row.classList.toggle('is-open');
+    detail.classList.toggle('is-open');
+  }
+</script>
 </body>
 </html>

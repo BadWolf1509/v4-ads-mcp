@@ -235,3 +235,12 @@
   <span class="v4-tooltip__bubble" role="tooltip">{{ text }}</span>
 </span>
 {% endmacro %}
+
+{# Expandable row pattern (no macro — inline in templates):
+  <tr id="row-1" class="is-expandable" onclick="v4ToggleRow('row-1')">
+    <td>cell 1</td><td>cell 2</td>
+  </tr>
+  <tr id="row-1-detail" class="v4-table__detail">
+    <td colspan="2">Detail content here</td>
+  </tr>
+#}
