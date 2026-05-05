@@ -191,3 +191,17 @@
   {% if footer %}<div class="v4-modal__footer">{{ footer|safe }}</div>{% endif %}
 </dialog>
 {% endmacro %}
+
+{% macro breadcrumb(items) %}
+{# items: list of dicts {label: str, url: str|None} — last item without url is rendered as current #}
+<nav class="v4-breadcrumb" aria-label="Breadcrumb">
+  {% for item in items %}
+    {% if not loop.last and item.url %}
+      <a href="{{ item.url }}">{{ item.label }}</a>
+      <span class="v4-breadcrumb__separator">/</span>
+    {% else %}
+      <span class="v4-breadcrumb__current" aria-current="page">{{ item.label }}</span>
+    {% endif %}
+  {% endfor %}
+</nav>
+{% endmacro %}

@@ -563,3 +563,18 @@
     border-radius: 0;
   }
 }
+
+.v4-breadcrumb {
+  display: flex;
+  gap: var(--v4-space-2);
+  align-items: center;
+  font-size: 13px;
+  margin-bottom: var(--v4-space-3);
+}
+.v4-breadcrumb a {
+  color: var(--v4-gray-300);
+  text-decoration: none;
+}
+.v4-breadcrumb a:hover { color: var(--v4-gray-700); }
+.v4-breadcrumb__separator { color: var(--v4-gray-200); }
+.v4-breadcrumb__current { color: var(--v4-gray-900); font-weight: 500; }
