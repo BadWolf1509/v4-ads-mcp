@@ -1,45 +1,160 @@
 {% extends "_base.html" %}
+{% from "_components.html" import empty_state %}
 
-{% block title %}Admin / Acessos — V4 Ads MCP{% endblock %}
+{% block title %}Admin · Acessos — V4 Ads MCP{% endblock %}
 
 {% block content %}
-<h1>Admin · Matriz de acessos</h1>
-<p style="color: var(--v4-gray-700);">
-  Marque a celula pra dar acesso de write a um gestor numa conta. Mudancas sao instantaneas.
-</p>
+<section class="max-w-7xl mx-auto py-6 px-4">
+  <header class="mb-6">
+    <h1 class="text-3xl font-extrabold tracking-tight">Matriz de acessos</h1>
+    <p class="text-sm text-v4-gray-700">Marque a célula pra dar acesso de write a um gestor numa conta. Mudanças instantâneas.</p>
+  </header>
 
-<div class="v4-card" style="overflow-x: auto;">
-  <table class="v4-table">
-    <thead>
-      <tr>
-        <th style="position: sticky; left: 0; background: var(--v4-gray-50); z-index: 1;">Conta / Gestor</th>
-        {% for m in managers_list %}
-        <th style="text-align: center; min-width: 100px;">
-          <span style="font-size: 11px; word-break: break-word;">{{ m.email.split('@')[0] }}</span>
-        </th>
+  {% if not managers_list %}
+    {{ empty_state(
+      "Nenhum gestor cadastrado.",
+      "Convide um gestor pra começar a atribuir acessos.",
+      action='<a href="/admin/invites" class="v4-btn v4-btn--primary">Convidar gestor</a>'
+    ) }}
+  {% elif not accounts %}
+    {{ empty_state("Nenhuma conta sincronizada.", "Aguarde o resync diário ou verifique o setup do MCC.") }}
+  {% else %}
+
+  {# Search + bulk toolbar #}
+  <div class="bg-v4-gray-50 border border-v4-gray-100 rounded-md p-3 mb-4 flex flex-wrap gap-3 items-center">
+    <input type="search" id="search-gestor" placeholder="Buscar gestor..."
+           class="v4-input v4-input--search v4-input--small" style="width: 200px;"
+           onkeyup="filterMatrix()">
+    <input type="search" id="search-account" placeholder="Buscar conta..."
+           class="v4-input v4-input--search v4-input--small" style="width: 200px;"
+           onkeyup="filterMatrix()">
+
+    <div class="ml-auto flex gap-2">
+      <button type="button" class="v4-btn v4-btn--small v4-btn--secondary"
+              onclick="openBulkGrantModal()">Selecionar todas pra gestor…</button>
+      <button type="button" class="v4-btn v4-btn--small v4-btn--secondary"
+              onclick="openCopyModal()">Copiar acessos…</button>
+    </div>
+  </div>
+
+  <div class="overflow-x-auto v4-card" style="padding: 0;">
+    <table class="v4-table v4-table--compact" id="access-matrix">
+      <thead>
+        <tr>
+          <th class="sticky left-0 bg-v4-gray-50 z-[2]">Conta / Gestor</th>
+          {% for m in managers_list %}
+            <th class="text-center min-w-[120px]" data-manager-email="{{ m.email|lower }}">
+              <div class="text-xs break-words">{{ m.email.split('@')[0] }}</div>
+            </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in accounts %}
+        <tr data-account-name="{{ a.descriptive_name|lower }}" data-account-id="{{ a.customer_id }}">
+          <td class="sticky left-0 bg-white whitespace-nowrap">
+            <strong>{{ a.descriptive_name }}</strong>
+            <div class="text-xs text-v4-gray-300 font-mono">{{ a.customer_id }}</div>
+          </td>
+          {% for m in managers_list %}
+          <td class="text-center" data-manager-id="{{ m.id }}">
+            <input type="checkbox"
+                   {% if (m.id|string, a.customer_id) in access_set %}checked{% endif %}
+                   hx-post="/admin/access/toggle"
+                   hx-vals='{"manager_id": "{{ m.id }}", "customer_id": "{{ a.customer_id }}"}'
+                   hx-trigger="change"
+                   hx-swap="outerHTML"
+                   hx-on::after-request="if (event.detail.successful) { showToast(this.checked ? 'Acesso liberado' : 'Acesso revogado', 'success'); }">
+          </td>
+          {% endfor %}
+        </tr>
         {% endfor %}
-      </tr>
-    </thead>
-    <tbody>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="text-sm text-v4-gray-700 mt-4">
+    Em mobile, use <a href="/admin/access/by-manager" class="underline">visão por gestor</a>.
+  </p>
+
+  {# Bulk grant modal #}
+  <dialog class="v4-modal" id="bulk-grant-modal">
+    <div class="v4-modal__header">
+      <h3 class="v4-modal__title">Selecionar todas as contas pra gestor</h3>
+      <button type="button" class="v4-modal__close" onclick="document.getElementById('bulk-grant-modal').close()">×</button>
+    </div>
+    <form method="POST" action="/admin/access/bulk-grant" class="v4-modal__body grid gap-3">
+      <label class="v4-form__label">Gestor</label>
+      <select name="manager_id" class="v4-select" required>
+        <option value="">Selecione...</option>
+        {% for m in managers_list %}<option value="{{ m.id }}">{{ m.email }}</option>{% endfor %}
+      </select>
+      {# All visible account ids hidden as multiple inputs #}
       {% for a in accounts %}
-      <tr>
-        <td style="position: sticky; left: 0; background: var(--v4-white); white-space: nowrap;">
-          <strong>{{ a.descriptive_name }}</strong>
-          <br><span style="font-size: 11px; color: var(--v4-gray-300);">{{ a.customer_id }}</span>
-        </td>
-        {% for m in managers_list %}
-        <td style="text-align: center;">
-          <input type="checkbox"
-                 {% if (m.id|string, a.customer_id) in access_set %}checked{% endif %}
-                 hx-post="/admin/access/toggle"
-                 hx-vals='{"manager_id": "{{ m.id }}", "customer_id": "{{ a.customer_id }}"}'
-                 hx-trigger="change"
-                 hx-swap="outerHTML">
-        </td>
-        {% endfor %}
-      </tr>
+        <input type="hidden" name="customer_ids" value="{{ a.customer_id }}">
       {% endfor %}
-    </tbody>
-  </table>
-</div>
+      <div class="text-sm text-v4-gray-700">Vai liberar acesso a todas as {{ accounts|length }} contas.</div>
+      <div class="flex justify-end gap-2 mt-2">
+        <button type="button" class="v4-btn v4-btn--secondary v4-btn--small" onclick="document.getElementById('bulk-grant-modal').close()">Cancelar</button>
+        <button type="submit" class="v4-btn v4-btn--primary v4-btn--small">Liberar todas</button>
+      </div>
+    </form>
+  </dialog>
+
+  {# Copy modal #}
+  <dialog class="v4-modal" id="copy-modal">
+    <div class="v4-modal__header">
+      <h3 class="v4-modal__title">Copiar acessos</h3>
+      <button type="button" class="v4-modal__close" onclick="document.getElementById('copy-modal').close()">×</button>
+    </div>
+    <form method="POST" action="/admin/access/bulk-copy" class="v4-modal__body grid gap-3">
+      <label class="v4-form__label">De</label>
+      <select name="from_manager_id" class="v4-select" required>
+        <option value="">Selecione gestor de origem...</option>
+        {% for m in managers_list %}<option value="{{ m.id }}">{{ m.email }}</option>{% endfor %}
+      </select>
+      <label class="v4-form__label">Para</label>
+      <select name="to_manager_id" class="v4-select" required>
+        <option value="">Selecione gestor de destino...</option>
+        {% for m in managers_list %}<option value="{{ m.id }}">{{ m.email }}</option>{% endfor %}
+      </select>
+      <div class="text-sm text-v4-red-medium">⚠ Substitui todos os acessos do destino pelos do origem.</div>
+      <div class="flex justify-end gap-2 mt-2">
+        <button type="button" class="v4-btn v4-btn--secondary v4-btn--small" onclick="document.getElementById('copy-modal').close()">Cancelar</button>
+        <button type="submit" class="v4-btn v4-btn--primary v4-btn--small">Copiar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    function openBulkGrantModal() { document.getElementById('bulk-grant-modal').showModal(); }
+    function openCopyModal() { document.getElementById('copy-modal').showModal(); }
+
+    function filterMatrix() {
+      const gestor = document.getElementById('search-gestor').value.toLowerCase();
+      const account = document.getElementById('search-account').value.toLowerCase();
+
+      // Filter columns by gestor
+      document.querySelectorAll('th[data-manager-email]').forEach(th => {
+        const visible = !gestor || th.dataset.managerEmail.includes(gestor);
+        th.style.display = visible ? '' : 'none';
+        const colIndex = Array.from(th.parentNode.children).indexOf(th);
+        document.querySelectorAll('tbody tr').forEach(tr => {
+          const cell = tr.children[colIndex];
+          if (cell) cell.style.display = visible ? '' : 'none';
+        });
+      });
+
+      // Filter rows by account
+      document.querySelectorAll('tbody tr[data-account-name]').forEach(tr => {
+        const visible = !account
+                     || tr.dataset.accountName.includes(account)
+                     || tr.dataset.accountId.includes(account);
+        tr.style.display = visible ? '' : 'none';
+      });
+    }
+  </script>
+
+  {% endif %}
+</section>
 {% endblock %}

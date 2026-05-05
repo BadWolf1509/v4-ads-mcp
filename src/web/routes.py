@@ -647,7 +647,7 @@ async def admin_access(
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         managers_rows = await conn.fetch(
-            "SELECT id, email, role, is_active FROM managers WHERE is_active = true ORDER BY email"
+            "SELECT id, email, full_name, role FROM managers WHERE is_active = true ORDER BY email"
         )
         accs = await google_ads_accounts.list_all(conn)
         access_rows = await conn.fetch("SELECT manager_id, customer_id FROM manager_account_access")
@@ -665,6 +665,46 @@ async def admin_access(
             "pending_invites_count": pending,
         },
     )
+
+
+@router.post("/admin/access/bulk-grant", response_class=HTMLResponse, response_model=None)
+async def admin_access_bulk_grant(
+    request: Request,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+    manager_id: str = Form(...),  # noqa: B008
+    customer_ids: list[str] = Form(...),  # noqa: B008
+) -> RedirectResponse:
+    _require_admin(user)
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        await manager_account_access.bulk_grant(
+            conn,
+            manager_id=UUID(manager_id),
+            customer_ids=customer_ids,
+            granted_by=user.id,
+        )
+    return RedirectResponse(url="/admin/access", status_code=303)
+
+
+@router.post("/admin/access/bulk-copy", response_class=HTMLResponse, response_model=None)
+async def admin_access_bulk_copy(
+    request: Request,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+    from_manager_id: str = Form(...),
+    to_manager_id: str = Form(...),
+) -> RedirectResponse:
+    _require_admin(user)
+    if from_manager_id == to_manager_id:
+        return RedirectResponse(url="/admin/access?error=same_manager", status_code=303)
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        await manager_account_access.copy_access(
+            conn,
+            from_manager_id=UUID(from_manager_id),
+            to_manager_id=UUID(to_manager_id),
+            granted_by=user.id,
+        )
+    return RedirectResponse(url="/admin/access", status_code=303)
 
 
 @router.post("/admin/access/toggle", response_class=HTMLResponse)
