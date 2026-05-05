@@ -281,3 +281,28 @@
 .v4-card--highlighted {
   border-left: 3px solid var(--v4-red);
 }
+
+.v4-badge--counter {
+  background: var(--v4-gold);
+  color: var(--v4-gray-900);
+  border-radius: 999px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.v4-badge--icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.v4-badge--icon svg {
+  width: 12px;
+  height: 12px;
+}

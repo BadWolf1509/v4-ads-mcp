@@ -6,8 +6,13 @@
 </div>
 {% endmacro %}
 
-{% macro badge(text, kind="neutral") %}
-<span class="v4-badge v4-badge--{{ kind }}">{{ text }}</span>
+{% macro badge(text, kind="neutral", icon=None) %}
+  {%- set classes = "v4-badge v4-badge--" ~ kind -%}
+  {%- if icon %}{% set classes = classes ~ " v4-badge--icon" %}{% endif -%}
+  <span class="{{ classes }}">
+    {%- if icon %}{{ icon|safe }}{% endif -%}
+    {{ text }}
+  </span>
 {% endmacro %}
 
 {% macro alert(message, kind="info") %}
