@@ -1,6 +1,5 @@
 """Web panel sessions routes integration tests."""
 
-import re
 from uuid import uuid4
 
 import pytest
@@ -25,7 +24,9 @@ async def test_sessions_list_requires_auth(client: AsyncClient):
 
 
 @pytest.mark.integration
-async def test_sessions_create_returns_token_once(client: AsyncClient):
+async def test_sessions_create_redirects_to_detail(client: AsyncClient):
+    """Task 5.2: POST /sessions/new now redirects to /sessions/{id}?token_flash=true.
+    The plaintext token is no longer in the response body; it goes in a flash cookie."""
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         mid = uuid4()
@@ -40,15 +41,14 @@ async def test_sessions_create_returns_token_once(client: AsyncClient):
         "/sessions/new",
         data={"label": "Test client", "ttl_days": "90"},
         cookies={PANEL_SESSION_COOKIE_NAME: cookie},
+        follow_redirects=False,
     )
-    assert response.status_code == 200
-    # Token should be in body — format is mcp_<43 url-safe chars>
-    match = re.search(r"mcp_[A-Za-z0-9_-]+", response.text)
-    assert match, "Token not found in response body"
-    token = match.group(0)
-    assert token.startswith("mcp_")
-    # Snippets should reference the token
-    assert response.text.count(token) >= 4  # token shown in 4 snippets
+    # New flow: 303 redirect to /sessions/{id}?token_flash=true
+    assert response.status_code == 303
+    location = response.headers["location"]
+    assert "token_flash=true" in location
+    # Flash token cookie set for the detail page scope
+    assert "v4_session_flash_token" in response.cookies
 
 
 @pytest.mark.integration

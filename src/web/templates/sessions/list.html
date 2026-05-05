@@ -1,36 +1,39 @@
 {% extends "_base.html" %}
-{% from "_components.html" import badge, alert %}
+{% from "_components.html" import alert %}
 
-{% block title %}Sessoes MCP — V4 Ads MCP{% endblock %}
+{% block title %}Sessões MCP — V4 Ads MCP{% endblock %}
 
 {% block content %}
-<h1>Sessoes MCP</h1>
-<p style="color: var(--v4-gray-700); margin-bottom: 24px;">
-  Cada sessao e um Bearer token usado por um cliente MCP (Claude Desktop, Codex, Cursor, etc).
-  Tokens sao mostrados <strong>uma vez</strong> ao criar — copie e cole no cliente.
-</p>
+<section class="max-w-4xl mx-auto py-6 px-4">
+  <header class="mb-6">
+    <h1 class="text-3xl font-extrabold tracking-tight">Sessões MCP</h1>
+    <p class="text-sm text-v4-gray-700">Cada sessão é um Bearer token usado por um cliente MCP (Claude Desktop, Codex, Cursor). Tokens são mostrados <strong>uma vez</strong> no momento da criação.</p>
+  </header>
 
-<div class="v4-card">
-  <div class="v4-card__header">
-    <h3 class="v4-card__title">Criar nova sessao</h3>
+  <div class="v4-card">
+    <div class="v4-card__header">
+      <h3 class="v4-card__title">Criar nova sessão</h3>
+    </div>
+    <form method="POST" action="/sessions/new"
+          class="grid grid-cols-1 md:grid-cols-[1fr_180px_auto] gap-3 items-end">
+      <div class="v4-form__group" style="margin: 0;">
+        <label class="v4-form__label" for="label">Nome (cliente / máquina)</label>
+        <input type="text" id="label" name="label" class="v4-input"
+               placeholder="Ex: Claude Desktop pessoal" required>
+      </div>
+      <div class="v4-form__group" style="margin: 0;">
+        <label class="v4-form__label" for="ttl_days">Validade</label>
+        <select id="ttl_days" name="ttl_days" class="v4-select">
+          <option value="30">30 dias</option>
+          <option value="60">60 dias</option>
+          <option value="90" selected>90 dias</option>
+          <option value="180">180 dias</option>
+        </select>
+      </div>
+      <button type="submit" class="v4-btn v4-btn--primary">Criar</button>
+    </form>
   </div>
-  <form method="POST" action="/sessions/new" style="display: grid; grid-template-columns: 1fr 200px auto; gap: 12px; align-items: end;">
-    <div class="v4-form__group" style="margin: 0;">
-      <label class="v4-form__label" for="label">Nome (cliente / maquina)</label>
-      <input type="text" id="label" name="label" class="v4-input" placeholder="Ex: Claude Desktop pessoal" required>
-    </div>
-    <div class="v4-form__group" style="margin: 0;">
-      <label class="v4-form__label" for="ttl_days">Validade</label>
-      <select id="ttl_days" name="ttl_days" class="v4-select">
-        <option value="30">30 dias</option>
-        <option value="60">60 dias</option>
-        <option value="90" selected>90 dias</option>
-        <option value="180">180 dias</option>
-      </select>
-    </div>
-    <button type="submit" class="v4-btn v4-btn--primary">Criar</button>
-  </form>
-</div>
 
-{% include "sessions/_table.html" %}
+  {% include "sessions/_table.html" %}
+</section>
 {% endblock %}

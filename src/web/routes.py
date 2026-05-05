@@ -214,14 +214,14 @@ async def sessions_list(
     )
 
 
-@router.post("/sessions/new", response_class=HTMLResponse)
+@router.post("/sessions/new", response_class=HTMLResponse, response_model=None)
 async def sessions_create(
     request: Request,
     user: CurrentUser = Depends(current_manager),  # noqa: B008
     label: str = Form(""),
     ttl_days: int = Form(DEFAULT_TTL_DAYS),
-) -> HTMLResponse:
-    """Create a new MCP session. Token is shown ONCE on this page."""
+) -> RedirectResponse:
+    """Create a new MCP session. Redirects to /sessions/{id} with flash-token cookie."""
     if not label:
         label = "Untitled"
     if ttl_days not in (30, 60, 90, 180):
@@ -238,19 +238,21 @@ async def sessions_create(
             ttl_days=ttl_days,
         )
 
-    # Show one-time reveal page with copy-paste snippets.
-    service_url = "https://v4-ads-mcp-jf26mmrgqa-rj.a.run.app"  # TODO: from settings
-    return templates.TemplateResponse(
-        request,
-        "sessions/created.html",
-        {
-            "current_user": user,
-            "session": sess,
-            "token": token,
-            "service_url": service_url,
-            "mcp_url": f"{service_url}/mcp",
-        },
+    # Redirect to permanent detail page; plaintext token travels in a transient cookie.
+    response = RedirectResponse(
+        url=f"/sessions/{sess.id}?token_flash=true",
+        status_code=303,
     )
+    response.set_cookie(
+        "v4_session_flash_token",
+        token,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        max_age=60,  # 60 seconds — won't persist on devices away from keyboard
+        path=f"/sessions/{sess.id}",  # restrict scope to the detail page
+    )
+    return response
 
 
 @router.post("/sessions/{session_id}/revoke", response_class=HTMLResponse)

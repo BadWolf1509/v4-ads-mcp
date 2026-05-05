@@ -1,17 +1,17 @@
-{% from "_components.html" import badge %}
+{% from "_components.html" import badge, empty_state %}
 
 <div id="sessions-table" class="v4-card">
   <div class="v4-card__header">
-    <h3 class="v4-card__title">Sessoes ativas ({{ sessions|length }})</h3>
+    <h3 class="v4-card__title">Sessões ativas ({{ sessions|length }})</h3>
   </div>
 
   {% if sessions %}
-  <table class="v4-table">
+  <table class="v4-table v4-table--compact">
     <thead>
       <tr>
-        <th>Label</th>
+        <th>Nome</th>
         <th>Criada</th>
-        <th>Ultimo uso</th>
+        <th>Último uso</th>
         <th>Expira</th>
         <th></th>
       </tr>
@@ -19,39 +19,33 @@
     <tbody>
       {% for s in sessions %}
       <tr>
-        <td><strong>{{ s.label or "(sem nome)" }}</strong></td>
-        <td>{{ s.created_at.strftime("%d/%m/%Y %H:%M") }}</td>
         <td>
-          {% if s.last_used_at %}
-            {{ s.last_used_at.strftime("%d/%m/%Y %H:%M") }}
-          {% else %}
-            <span style="color: var(--v4-gray-300);">Nunca</span>
-          {% endif %}
+          <a href="/sessions/{{ s.id }}" class="font-semibold hover:text-v4-red">
+            {{ s.label or "(sem nome)" }}
+          </a>
         </td>
-        <td>
-          {% if s.expires_at %}
-            {{ s.expires_at.strftime("%d/%m/%Y") }}
-          {% else %}
-            <em>sem expiracao</em>
-          {% endif %}
+        <td class="col-mono">{{ s.created_at.strftime("%d/%m/%Y %H:%M") }}</td>
+        <td class="col-mono">
+          {% if s.last_used_at %}{{ s.last_used_at.strftime("%d/%m %H:%M") }}{% else %}<span class="text-v4-gray-300">nunca</span>{% endif %}
         </td>
-        <td style="text-align: right;">
-          <button
-            class="v4-btn v4-btn--small v4-btn--danger"
-            hx-post="/sessions/{{ s.id }}/revoke"
-            hx-target="#sessions-table"
-            hx-swap="outerHTML"
-            hx-confirm="Tem certeza que quer revogar a sessao '{{ s.label }}'? O Bearer correspondente para de funcionar imediatamente.">
-            Revogar
-          </button>
+        <td class="col-mono">
+          {% if s.expires_at %}{{ s.expires_at.strftime("%d/%m/%Y") }}{% else %}<em>—</em>{% endif %}
+        </td>
+        <td class="text-right">
+          <button type="button" class="v4-btn v4-btn--small v4-btn--danger"
+                  onclick='openConfirm({
+                    title: "Revogar sessão?",
+                    message: "A sessão {{ s.label|tojson }} para de funcionar imediatamente. Bearer atual fica inválido. Você precisa criar uma nova sessão pra reconfigurar.",
+                    okLabel: "Revogar",
+                    kind: "danger",
+                    onConfirm: () => htmx.ajax("POST", "/sessions/{{ s.id }}/revoke", { target: "#sessions-table", swap: "outerHTML" })
+                  })'>Revogar</button>
         </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-  <p style="color: var(--v4-gray-300); text-align: center; padding: 32px;">
-    Nenhuma sessao ativa. Crie uma acima.
-  </p>
+    {{ empty_state("Nenhuma sessão ativa.", "Crie uma acima pra configurar Claude/Codex/Cursor.") }}
   {% endif %}
 </div>
