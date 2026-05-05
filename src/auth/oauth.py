@@ -8,6 +8,8 @@ The `invite` token is an HMAC-signed payload with manager_id (created
 by the bootstrap CLI). Phase 1b will replace this with a panel session.
 """
 
+from dataclasses import dataclass
+from typing import Any, Literal
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -24,6 +26,67 @@ from src.db import connection
 from src.db.repositories import google_oauth_connections, managers
 
 log = structlog.get_logger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class CallbackDecision:
+    """Outcome of the OAuth allowlist decision tree.
+
+    kind='login'    → proceed; action determines whether to flip status/create row
+    kind='redirect' → redirect to `location`; do not create or update any manager row
+    """
+
+    kind: Literal["login", "redirect"]
+    location: str | None = None
+    action: Literal["promote_invited", "bootstrap_admin"] | None = None
+
+
+async def handle_callback_decision(
+    *,
+    email: str,
+    google_id: str,
+    google_email: str,
+    managers_table_empty: bool,
+    bootstrap_emails: set[str],
+    existing_manager: dict[str, Any] | None,
+) -> CallbackDecision:
+    """Pure decision tree for the panel_login OAuth callback. No DB writes, no I/O.
+
+    Caller is responsible for applying the resulting action (flipping status,
+    creating bootstrap admin row, etc.). Phase 2 (Q8) replaces today's
+    auto-create-on-first-login with explicit allowlist.
+
+    `existing_manager` is a dict (or None) with keys 'status', 'is_active',
+    'id', 'role'. We use .get() so callers can pass partial dicts in tests.
+    `google_id` and `google_email` are accepted for symmetry / future use even
+    though the current decision logic uses only `email`.
+    """
+    email_norm = email.strip().lower()
+
+    # 1. Domain gate
+    if not email_norm.endswith("@v4company.com"):
+        return CallbackDecision(kind="redirect", location="/access-denied?reason=domain")
+
+    # 2. Email in managers table?
+    if existing_manager is not None:
+        status = existing_manager.get("status", "active")
+        is_active = existing_manager.get("is_active", True)
+
+        if status == "active" and is_active:
+            return CallbackDecision(kind="login")
+
+        if status == "invited":
+            return CallbackDecision(kind="login", action="promote_invited")
+
+        # status == "inactive" OR is_active=False
+        return CallbackDecision(kind="redirect", location="/access-denied?reason=deactivated")
+
+    # 3. Email NOT in managers table — bootstrap path?
+    if managers_table_empty and email_norm in bootstrap_emails:
+        return CallbackDecision(kind="login", action="bootstrap_admin")
+
+    # 4. Default: not invited
+    return CallbackDecision(kind="redirect", location="/access-denied?reason=not_invited")
 
 GOOGLE_ADWORDS_SCOPE = "https://www.googleapis.com/auth/adwords"
 GOOGLE_PROFILE_SCOPE = "https://www.googleapis.com/auth/userinfo.profile"
@@ -195,33 +258,55 @@ async def oauth_callback(
     # Resolve manager_id based on flow mode.
     pool_resolve = connection.get_pool()
     if mode == "panel_login":
-        # Self-onboarding: find existing manager by email or create a new one.
+        # Self-onboarding via allowlist (Phase 2 — Q8). The existing-manager
+        # decision tree is centralised in handle_callback_decision so it can
+        # be unit-tested independently from DB I/O.
         async with pool_resolve.acquire() as conn:
             existing = await managers.get_by_email(conn, google_email)
-            if existing is not None:
-                if not existing.is_active:
-                    return _error_page(
-                        f"Conta {google_email} desativada. Contate um admin.",
-                        status=403,
-                    )
-                manager_id = existing.id
-                # Promote first-ever login to admin if there are no admins yet
-                # (bootstrap path — saves a manual SQL step).
-                row = await conn.fetchrow(
-                    "SELECT count(*) AS n FROM managers WHERE role = 'admin' AND is_active = true"
-                )
-                if row and int(row["n"]) == 0:
-                    await conn.execute(
-                        "UPDATE managers SET role = 'admin' WHERE id = $1",
-                        existing.id,
-                    )
+            existing_dict: dict[str, Any] | None
+            if existing is None:
+                existing_dict = None
             else:
-                # First-time user: create as admin if no admin exists yet,
-                # otherwise as gestor.
-                row = await conn.fetchrow(
-                    "SELECT count(*) AS n FROM managers WHERE role = 'admin' AND is_active = true"
-                )
-                role = "admin" if (row is None or int(row["n"]) == 0) else "gestor"
+                existing_dict = {
+                    "id": existing.id,
+                    "status": existing.status,
+                    "is_active": existing.is_active,
+                    "role": existing.role,
+                }
+            table_empty = (await managers.count_all(conn)) == 0
+
+        decision = await handle_callback_decision(
+            email=google_email,
+            google_id=str(userinfo.get("id", "")),
+            google_email=google_email,
+            managers_table_empty=table_empty,
+            bootstrap_emails=settings.bootstrap_admin_emails_set,
+            existing_manager=existing_dict,
+        )
+
+        if decision.kind == "redirect":
+            assert decision.location is not None
+            response = RedirectResponse(url=decision.location, status_code=302)
+            # Pass the attempted email via short-lived cookie so /access-denied
+            # can show a useful message without persisting anything.
+            response.set_cookie(
+                "v4_attempted_email",
+                google_email,
+                httponly=True,
+                secure=True,
+                samesite="lax",
+                max_age=60,
+                path="/",
+            )
+            return response
+
+        # decision.kind == "login" — apply the action and resolve manager_id
+        async with pool_resolve.acquire() as conn:
+            if decision.action == "promote_invited":
+                assert existing is not None
+                await managers.mark_active(conn, manager_id=existing.id)
+                manager_id = existing.id
+            elif decision.action == "bootstrap_admin":
                 from uuid import uuid4
 
                 new_id = uuid4()
@@ -231,9 +316,13 @@ async def oauth_callback(
                     manager_id=new_id,
                     email=google_email,
                     full_name=full_name,
-                    role=role,
+                    role="admin",
                 )
                 manager_id = new_id
+            else:
+                # status='active' login — manager_id from existing
+                assert existing is not None
+                manager_id = existing.id
     elif manager_id_str:
         manager_id = UUID(manager_id_str)
     else:
