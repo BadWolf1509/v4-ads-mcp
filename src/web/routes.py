@@ -62,6 +62,15 @@ async def logout() -> RedirectResponse:
     return response
 
 
+@router.get("/help", response_class=HTMLResponse)
+async def help_page(
+    request: Request,
+    user: CurrentUser | None = Depends(optional_current_manager),  # noqa: B008
+) -> HTMLResponse:
+    """Onboarding consolidated. Accessible logged-in or out (login link is included)."""
+    return templates.TemplateResponse(request, "help.html", {"current_user": user})
+
+
 @router.get("/access-denied", response_class=HTMLResponse, response_model=None)
 async def access_denied(
     request: Request,

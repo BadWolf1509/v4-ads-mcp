@@ -1,0 +1,63 @@
+{% extends "_base.html" %}
+{% from "_components.html" import code_block %}
+
+{% block title %}Help — V4 Ads MCP{% endblock %}
+
+{% block content %}
+<article class="max-w-3xl mx-auto py-12 px-6 prose">
+  <h1 class="text-4xl font-extrabold tracking-tight text-v4-gray-900 mb-2">Help</h1>
+  <p class="text-v4-gray-700 mb-12">Onboarding consolidado pra usar o V4 Ads MCP no seu cliente de IA preferido.</p>
+
+  <section class="mb-12">
+    <h2 class="text-2xl font-bold mb-4">O que é o V4 Ads MCP</h2>
+    <p>
+      Servidor MCP (Model Context Protocol) interno V4 que conecta as contas Google Ads que você gerencia ao Claude, Codex e Cursor.
+      Você pede em linguagem natural — "performance da conta X últimos 30 dias", "pause keywords sem conversão" — e o assistente
+      executa via ferramentas auditadas + governança (dry-run + apply para mutações).
+    </p>
+  </section>
+
+  <section class="mb-12">
+    <h2 class="text-2xl font-bold mb-4">Como configurar — passo a passo</h2>
+    <ol class="space-y-4">
+      <li><strong>Login no painel</strong> — acesse <a href="/login" class="underline">/login</a> com sua conta <code>@v4company.com</code>.</li>
+      <li><strong>Espere o admin liberar contas</strong> — em <a href="/accounts" class="underline">/accounts</a> você verá as contas que pode gerenciar.</li>
+      <li><strong>Crie uma sessão MCP</strong> em <a href="/sessions" class="underline">/sessions</a> — copie o Bearer token (aparece UMA vez).</li>
+      <li><strong>Configure seu cliente</strong> com os snippets abaixo.</li>
+    </ol>
+  </section>
+
+  <section class="mb-12">
+    <h3 class="text-xl font-semibold mb-3">Claude Desktop</h3>
+    <p class="mb-3">Edite <code>%APPDATA%\Claude\claude_desktop_config.json</code> (Windows) ou <code>~/Library/Application Support/Claude/claude_desktop_config.json</code> (Mac):</p>
+    {{ code_block('{\n  "mcpServers": {\n    "v4-ads": {\n      "url": "https://v4-ads-mcp-jf26mmrgqa-rj.a.run.app/mcp",\n      "headers": {\n        "Authorization": "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"\n      }\n    }\n  }\n}', filename="claude_desktop_config.json") }}
+    <p class="mt-3 text-sm text-v4-gray-700"><strong>Reinicie o Claude Desktop totalmente</strong> (sair pelo system tray, não só fechar a janela).</p>
+  </section>
+
+  <section class="mb-12">
+    <h3 class="text-xl font-semibold mb-3">Codex CLI</h3>
+    {{ code_block('[mcp_servers.v4-ads]\nurl = "https://v4-ads-mcp-jf26mmrgqa-rj.a.run.app/mcp"\n\n[mcp_servers.v4-ads.headers]\nAuthorization = "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"', filename="~/.codex/config.toml") }}
+  </section>
+
+  <section class="mb-12">
+    <h3 class="text-xl font-semibold mb-3">Cursor</h3>
+    {{ code_block('{\n  "mcpServers": {\n    "v4-ads": {\n      "url": "https://v4-ads-mcp-jf26mmrgqa-rj.a.run.app/mcp",\n      "headers": {\n        "Authorization": "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"\n      }\n    }\n  }\n}', filename=".cursor/mcp.json") }}
+  </section>
+
+  <section class="mb-12">
+    <h2 class="text-2xl font-bold mb-4">FAQ</h2>
+
+    <h3 class="text-lg font-semibold mt-6 mb-2">"Tool not found" no Claude</h3>
+    <p>Reinicie o Claude Desktop completamente (sair pelo system tray). Verifique que o Bearer token está exatamente como copiado, sem espaços extras.</p>
+
+    <h3 class="text-lg font-semibold mt-6 mb-2">Perdi o token, e agora?</h3>
+    <p>Tokens só aparecem uma vez. Crie uma <a href="/sessions" class="underline">nova sessão</a> em <code>/sessions</code> e descarte a anterior em <code>Revogar</code>.</p>
+
+    <h3 class="text-lg font-semibold mt-6 mb-2">Não vejo as contas que deveria gerenciar</h3>
+    <p>Peça pro admin V4 da sua unidade liberar via <code>/admin/access</code>.</p>
+
+    <h3 class="text-lg font-semibold mt-6 mb-2">"acesso negado" depois de logar com Google</h3>
+    <p>Seu email não está na allowlist. Peça pro admin te adicionar em <code>/admin/invites</code>.</p>
+  </section>
+</article>
+{% endblock %}
