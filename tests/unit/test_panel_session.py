@@ -27,12 +27,25 @@ def test_round_trip_recovers_payload():
 
 
 def test_tampered_cookie_rejected():
+    """Stitch the body of cookie-1 with the tag of cookie-2 — guaranteed mismatch.
+
+    Avoids the base64url boundary trap: flipping the last char of an HMAC tag
+    can decode to the same bytes (last char encodes only 4 of its 6 bits when
+    the tag is 32 bytes / 256 bits), occasionally letting the test pass-through.
+    """
     cookie = sign_panel_session(
         manager_id="abc",
         email="t@v4company.com",
         signing_key=_SIGNING_KEY,
     )
-    tampered = cookie[:-1] + ("X" if cookie[-1] != "X" else "Y")
+    other = sign_panel_session(
+        manager_id="other",
+        email="o@v4company.com",
+        signing_key=_SIGNING_KEY,
+    )
+    body = cookie.split(".", 1)[0]
+    other_tag = other.split(".", 1)[1]
+    tampered = f"{body}.{other_tag}"
     with pytest.raises(InvalidPanelSessionError):
         verify_panel_session(tampered, _SIGNING_KEY)
 
