@@ -155,5 +155,22 @@
   // HTMX hook: server can return HX-Trigger: {"toast": {"message": "...", "kind": "success"}}
   document.body.addEventListener('toast', (e) => showToast(e.detail.message, e.detail.kind));
 </script>
+<script>
+  function v4DropdownToggle(id) {
+    const dd = document.getElementById(id);
+    const isOpen = dd.classList.toggle('is-open');
+    dd.querySelector('.v4-dropdown__trigger').setAttribute('aria-expanded', String(isOpen));
+    if (isOpen) {
+      const closeOnOutside = (e) => {
+        if (!dd.contains(e.target)) {
+          dd.classList.remove('is-open');
+          dd.querySelector('.v4-dropdown__trigger').setAttribute('aria-expanded', 'false');
+          document.removeEventListener('click', closeOnOutside);
+        }
+      };
+      setTimeout(() => document.addEventListener('click', closeOnOutside), 0);
+    }
+  }
+</script>
 </body>
 </html>

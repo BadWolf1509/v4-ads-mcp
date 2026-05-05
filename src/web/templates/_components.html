@@ -205,3 +205,26 @@
   {% endfor %}
 </nav>
 {% endmacro %}
+
+{% macro dropdown(id, items, trigger_label="⋯") %}
+{# items: list of dicts with keys: label, url (optional), post_url (optional), kind (optional, 'danger'), separator (optional, true => render <hr>) #}
+<div class="v4-dropdown" id="{{ id }}">
+  <button type="button" class="v4-dropdown__trigger" aria-haspopup="menu" aria-expanded="false"
+          onclick="v4DropdownToggle('{{ id }}')">{{ trigger_label }}</button>
+  <div class="v4-dropdown__menu" role="menu">
+    {% for item in items %}
+      {% if item.separator %}
+        <div class="v4-dropdown__divider" role="separator"></div>
+      {% elif item.url %}
+        <a class="v4-dropdown__item {% if item.kind == 'danger' %}v4-dropdown__item--danger{% endif %}"
+           href="{{ item.url }}" role="menuitem">{{ item.label }}</a>
+      {% elif item.post_url %}
+        <button class="v4-dropdown__item {% if item.kind == 'danger' %}v4-dropdown__item--danger{% endif %}"
+                type="button" role="menuitem"
+                hx-post="{{ item.post_url }}" hx-target="{{ item.target or 'closest tr' }}"
+                hx-swap="{{ item.swap or 'outerHTML' }}">{{ item.label }}</button>
+      {% endif %}
+    {% endfor %}
+  </div>
+</div>
+{% endmacro %}
