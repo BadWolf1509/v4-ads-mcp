@@ -369,3 +369,31 @@
   font-size: 12px;
   color: var(--v4-red);
 }
+
+.v4-pagination {
+  display: flex;
+  gap: var(--v4-space-1);
+  align-items: center;
+  padding: var(--v4-space-3) 0;
+  font-size: 13px;
+}
+.v4-pagination__info {
+  margin-right: auto;
+  color: var(--v4-gray-300);
+}
+.v4-pagination__btn {
+  background: transparent;
+  border: 1px solid var(--v4-gray-200);
+  color: var(--v4-gray-900);
+  padding: 6px 10px;
+  border-radius: var(--v4-radius-sm);
+  font-size: 13px;
+  cursor: pointer;
+}
+.v4-pagination__btn:hover { background: var(--v4-gray-50); }
+.v4-pagination__btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.v4-pagination__btn.is-current {
+  background: var(--v4-gray-900);
+  color: var(--v4-white);
+  border-color: var(--v4-gray-900);
+}
