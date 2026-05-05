@@ -124,6 +124,55 @@ async def run_report(
     return results
 
 
+async def lookup_country_names(
+    *,
+    manager_id: UUID,
+    session_id: UUID,
+    customer_id: str,
+    country_ids: set[str],
+) -> dict[str, dict[str, str]]:
+    """Resolve country_criterion_ids -> {name, country_code} via geo_target_constant.
+
+    geo_target_constant is global Google Ads metadata (not per-customer data),
+    but the query still goes through a customer endpoint -- we reuse the same
+    customer_id the caller used. Returns empty dict on empty input. IDs not
+    returned by Google are absent from the result; callers decide the fallback.
+
+    Cost: typically 1 op (a single small batch).
+    """
+    if not country_ids:
+        return {}
+    # Country IDs come from row formatters as digit strings. Sort for query
+    # stability (helps caching/debugging). Embed directly as integers in the
+    # IN clause; geo_target_constant.id is int64 in GAQL.
+    ids_clause = ",".join(sorted(country_ids))
+    query = (
+        "SELECT geo_target_constant.id, geo_target_constant.name, "
+        "geo_target_constant.country_code "
+        "FROM geo_target_constant "
+        f"WHERE geo_target_constant.id IN ({ids_clause})"
+    )
+
+    def _format(row: Any) -> dict[str, Any]:
+        gtc = row.geo_target_constant
+        return {
+            "id": str(gtc.id),
+            "name": str(gtc.name),
+            "country_code": str(gtc.country_code),
+        }
+
+    rows = await run_report(
+        manager_id=manager_id,
+        session_id=session_id,
+        customer_id=customer_id,
+        query=query,
+        row_formatter=_format,
+        operation_name="lookup_country_names",
+        audit_this_call=False,
+    )
+    return {r["id"]: {"name": r["name"], "country_code": r["country_code"]} for r in rows}
+
+
 async def execute_gaql_raw(
     *,
     manager_id: UUID,

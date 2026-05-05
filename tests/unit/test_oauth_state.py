@@ -24,8 +24,18 @@ def test_state_is_url_safe():
 
 
 def test_tampered_state_rejected():
+    """An attacker substituting body or tag with a different value must be rejected.
+
+    Robust formulation: stitch the body of state-1 with the tag of state-2.
+    The tag won't match the body's HMAC -> InvalidStateError. Avoids the trap
+    of flipping the last base64url char (which has 2 unused bits and may decode
+    to the same bytes, occasionally letting the test pass-through silently).
+    """
     state = sign_state({"manager_id": "uuid-1"}, _SIGNING_KEY)
-    tampered = state[:-1] + ("X" if state[-1] != "X" else "Y")
+    other = sign_state({"manager_id": "uuid-other"}, _SIGNING_KEY)
+    body = state.split(".", 1)[0]
+    other_tag = other.split(".", 1)[1]
+    tampered = f"{body}.{other_tag}"
     with pytest.raises(InvalidStateError):
         verify_state(tampered, _SIGNING_KEY)
 

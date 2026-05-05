@@ -134,13 +134,55 @@ async def test_geo_performance_returns_rows(bound_context):
             "cpc_brl": 0.50,
         }
     ]
-    with patch(
-        "src.mcp.tools.get_geo_performance.run_report",
-        AsyncMock(return_value=fake_rows),
+    fake_country_map = {"2076": {"name": "Brazil", "country_code": "BR"}}
+    with (
+        patch(
+            "src.mcp.tools.get_geo_performance.run_report",
+            AsyncMock(return_value=fake_rows),
+        ),
+        patch(
+            "src.mcp.tools.get_geo_performance.lookup_country_names",
+            AsyncMock(return_value=fake_country_map),
+        ),
     ):
         result = await get_geo_performance({"customer_id": "1234567890"})
 
     assert result["rows"][0]["country_criterion_id"] == "2076"
+    assert result["rows"][0]["country_name"] == "Brazil"
+    assert result["rows"][0]["country_code"] == "BR"
+
+
+@pytest.mark.asyncio
+async def test_geo_performance_unknown_country_falls_back_to_none(bound_context):
+    """If geo_target_constant doesn't return a row for an ID, country_name is None."""
+    from src.mcp.tools.get_geo_performance import get_geo_performance
+
+    fake_rows = [
+        {
+            "country_criterion_id": "9999999",  # not a real country ID
+            "impressions": 100,
+            "clicks": 5,
+            "cost_brl": 1.0,
+            "conversions": 0,
+            "conversions_value_brl": 0,
+            "ctr": 0.05,
+            "cpc_brl": 0.20,
+        }
+    ]
+    with (
+        patch(
+            "src.mcp.tools.get_geo_performance.run_report",
+            AsyncMock(return_value=fake_rows),
+        ),
+        patch(
+            "src.mcp.tools.get_geo_performance.lookup_country_names",
+            AsyncMock(return_value={}),  # lookup returned nothing
+        ),
+    ):
+        result = await get_geo_performance({"customer_id": "1234567890"})
+
+    assert result["rows"][0]["country_name"] is None
+    assert result["rows"][0]["country_code"] is None
 
 
 @pytest.mark.asyncio
