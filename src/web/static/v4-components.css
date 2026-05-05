@@ -358,3 +358,14 @@
   accent-color: var(--v4-red);
   margin: 0;
 }
+
+.v4-form__help {
+  margin-top: var(--v4-space-1);
+  font-size: 12px;
+  color: var(--v4-gray-300);
+}
+.v4-form__error {
+  margin-top: var(--v4-space-1);
+  font-size: 12px;
+  color: var(--v4-red);
+}

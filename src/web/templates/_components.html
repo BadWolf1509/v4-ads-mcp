@@ -22,6 +22,21 @@
 </div>
 {% endmacro %}
 
+{% macro form_group(label, name, type="text", value="", placeholder="", required=false, help=None, error=None) %}
+<div class="v4-form__group">
+  <label class="v4-form__label" for="{{ name }}">{{ label }}{% if required %} *{% endif %}</label>
+  {% if type == "textarea" %}
+    <textarea id="{{ name }}" name="{{ name }}" class="v4-textarea" placeholder="{{ placeholder }}"
+              {% if required %}required{% endif %}>{{ value }}</textarea>
+  {% else %}
+    <input id="{{ name }}" name="{{ name }}" type="{{ type }}" class="v4-input" value="{{ value }}"
+           placeholder="{{ placeholder }}" {% if required %}required{% endif %}>
+  {% endif %}
+  {% if help and not error %}<div class="v4-form__help">{{ help }}</div>{% endif %}
+  {% if error %}<div class="v4-form__error">{{ error }}</div>{% endif %}
+</div>
+{% endmacro %}
+
 {% macro search_input(name, value="", placeholder="Buscar...", attrs="") %}
 <input type="search" name="{{ name }}" class="v4-input v4-input--search"
        value="{{ value }}" placeholder="{{ placeholder }}" {{ attrs|safe }}>
