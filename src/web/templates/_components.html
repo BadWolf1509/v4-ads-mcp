@@ -180,3 +180,14 @@
           onConfirm: () => htmx.ajax("POST", {{ post_url|tojson }}, {{ ("{ target: '" ~ target ~ "', swap: '" ~ (swap or "outerHTML") ~ "' }") if target else "{}" }})
         })'>{{ label }}</button>
 {% endmacro %}
+
+{% macro modal(id, title, body, footer=None) %}
+<dialog class="v4-modal" id="{{ id }}" aria-labelledby="{{ id }}-title">
+  <div class="v4-modal__header">
+    <h3 class="v4-modal__title" id="{{ id }}-title">{{ title }}</h3>
+    <button type="button" class="v4-modal__close" onclick="document.getElementById('{{ id }}').close()" aria-label="Fechar">×</button>
+  </div>
+  <div class="v4-modal__body">{{ body|safe }}</div>
+  {% if footer %}<div class="v4-modal__footer">{{ footer|safe }}</div>{% endif %}
+</dialog>
+{% endmacro %}
