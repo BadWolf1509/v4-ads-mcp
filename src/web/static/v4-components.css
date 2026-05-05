@@ -626,3 +626,28 @@
   background: var(--v4-gray-100);
   margin: 4px 0;
 }
+
+.v4-tooltip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: help;
+}
+.v4-tooltip__bubble {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--v4-gray-900);
+  color: var(--v4-white);
+  padding: 6px 10px;
+  border-radius: var(--v4-radius-sm);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--v4-motion-fast) var(--v4-ease-out);
+  z-index: var(--v4-z-dropdown);
+}
+.v4-tooltip:hover .v4-tooltip__bubble,
+.v4-tooltip:focus-within .v4-tooltip__bubble { opacity: 1; }
