@@ -793,58 +793,70 @@ async def admin_audit(
     manager_id: str | None = None,
     customer_id: str | None = None,
     action_type: str = "all",
+    status: str = "all",
     days: int = 7,
-    limit: int = 200,
+    page: int = 1,
 ) -> HTMLResponse:
     _require_admin(user)
-    if action_type not in ("mutate", "read", "all"):
-        action_type = "all"
-    if days not in (1, 7, 14, 30, 90):
-        days = 7
-    if limit < 1 or limit > 1000:
-        limit = 200
+
+    page_size = 50
+    offset = (page - 1) * page_size
 
     pool = connection.get_pool()
     async with pool.acquire() as conn:
-        where = [f"al.occurred_at > now() - interval '{days} days'"]
-        params: list[object] = []
+        where = ["al.occurred_at > now() - ($1 || ' days')::interval"]
+        params: list[Any] = [str(days)]
+        idx = 2
         if manager_id:
-            where.append(f"al.manager_id = ${len(params) + 1}")
+            where.append(f"al.manager_id = ${idx}")
             params.append(UUID(manager_id))
+            idx += 1
         if customer_id:
-            where.append(f"al.customer_id = ${len(params) + 1}")
+            where.append(f"al.customer_id = ${idx}")
             params.append(customer_id)
+            idx += 1
         if action_type != "all":
-            where.append(f"al.action_type = ${len(params) + 1}")
+            where.append(f"al.action_type = ${idx}")
             params.append(action_type)
-        where_sql = " AND ".join(where)
+            idx += 1
+        if status != "all":
+            where.append(f"al.status = ${idx}")
+            params.append(status)
+            idx += 1
 
-        rows = await conn.fetch(
-            f"""
-            SELECT
-              al.occurred_at,
-              al.action_type,
-              al.operation,
-              al.customer_id,
-              al.target_count,
-              al.status,
-              al.duration_ms,
-              al.error_message,
-              m.email AS manager_email,
-              gaa.descriptive_name AS account_name
-            FROM audit_log al
-            LEFT JOIN managers m ON m.id = al.manager_id
-            LEFT JOIN google_ads_accounts gaa ON gaa.customer_id = al.customer_id
-            WHERE {where_sql}
-            ORDER BY al.occurred_at DESC
-            LIMIT {limit}
-            """,
-            *params,
-        )
+        count_sql = f"SELECT count(*) FROM audit_log al WHERE {' AND '.join(where)}"
+        total = await conn.fetchval(count_sql, *params) or 0
+        total_pages = max(1, (total + page_size - 1) // page_size)
+
+        rows_sql = f"""SELECT al.id, al.occurred_at, al.action_type, al.operation,
+                              al.customer_id, al.target_count, al.status, al.duration_ms,
+                              m.email AS manager_email,
+                              gaa.descriptive_name AS account_name
+                       FROM audit_log al
+                       LEFT JOIN managers m ON m.id = al.manager_id
+                       LEFT JOIN google_ads_accounts gaa ON gaa.customer_id = al.customer_id
+                       WHERE {" AND ".join(where)}
+                       ORDER BY al.occurred_at DESC LIMIT ${idx} OFFSET ${idx + 1}"""
+        params_with_pagination = params + [page_size, offset]
+        rows = await conn.fetch(rows_sql, *params_with_pagination)
+
         managers_rows = await conn.fetch(
             "SELECT id, email FROM managers WHERE is_active = true ORDER BY email"
         )
         accs = await google_ads_accounts.list_all(conn)
+
+    # Build query_string for CSV export link
+    qparts = []
+    if manager_id:
+        qparts.append(f"manager_id={manager_id}")
+    if customer_id:
+        qparts.append(f"customer_id={customer_id}")
+    if action_type != "all":
+        qparts.append(f"action_type={action_type}")
+    if status != "all":
+        qparts.append(f"status={status}")
+    qparts.append(f"days={days}")
+    query_string = "&".join(qparts)
 
     pending = await pending_invites_count()
     return templates.TemplateResponse(
@@ -858,7 +870,46 @@ async def admin_audit(
             "filter_manager_id": manager_id or "",
             "filter_customer_id": customer_id or "",
             "filter_action_type": action_type,
+            "filter_status": status,
             "filter_days": days,
+            "current_page": page,
+            "total_pages": total_pages,
+            "query_string": query_string,
             "pending_invites_count": pending,
         },
+    )
+
+
+@router.get("/admin/audit/export.csv", response_model=None)
+async def admin_audit_export_csv(
+    request: Request,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+    manager_id: str | None = None,
+    action_type: str = "all",
+    customer_id: str | None = None,
+    days: int = 7,
+) -> StreamingResponse:
+    """Stream CSV export of the global audit log (admin) with current filters applied."""
+    _require_admin(user)
+    pool = connection.get_pool()
+    scope_manager_id = UUID(manager_id) if manager_id else None
+
+    async def stream() -> AsyncIterator[bytes]:
+        async with pool.acquire() as conn:
+            from src.db.repositories import audit_log
+
+            async for line in audit_log.export_csv_rows(
+                conn,
+                manager_id=scope_manager_id,
+                customer_id=customer_id,
+                action_type=action_type if action_type != "all" else None,
+                days=days,
+            ):
+                yield line.encode("utf-8")
+
+    filename = f"audit-admin-{datetime.utcnow().strftime('%Y-%m-%d')}.csv"
+    return StreamingResponse(
+        stream(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

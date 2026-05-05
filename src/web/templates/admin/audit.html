@@ -1,101 +1,104 @@
 {% extends "_base.html" %}
-{% from "_components.html" import badge %}
+{% from "_components.html" import badge, empty_state, pagination %}
 
-{% block title %}Admin / Audit — V4 Ads MCP{% endblock %}
+{% block title %}Admin · Audit global — V4 Ads MCP{% endblock %}
 
 {% block content %}
-<h1>Admin · Audit log global</h1>
+<section class="max-w-7xl mx-auto py-6 px-4">
+  <header class="mb-6 flex flex-wrap items-end justify-between gap-3">
+    <h1 class="text-3xl font-extrabold tracking-tight">Audit global</h1>
+    <div class="flex gap-2">
+      <a href="/admin/audit?status=error&days={{ filter_days }}" class="v4-btn v4-btn--small v4-btn--secondary">⚠ Só erros</a>
+      <a href="/admin/audit/export.csv?{{ query_string }}" class="v4-btn v4-btn--small v4-btn--secondary">⤓ Exportar CSV</a>
+    </div>
+  </header>
 
-<div class="v4-card">
-  <form method="GET" action="/admin/audit" style="display: grid; grid-template-columns: repeat(4, 1fr) auto; gap: 12px; align-items: end;">
+  <form method="GET" action="/admin/audit"
+        class="sticky top-[53px] z-[10] bg-white border-b border-v4-gray-100 py-3 mb-4 grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
     <div class="v4-form__group" style="margin: 0;">
       <label class="v4-form__label">Gestor</label>
-      <select name="manager_id" class="v4-select">
+      <select name="manager_id" class="v4-select" onchange="this.form.submit()">
         <option value="">Todos</option>
         {% for m in managers_list %}
-        <option value="{{ m.id }}" {% if filter_manager_id == m.id|string %}selected{% endif %}>{{ m.email }}</option>
+          <option value="{{ m.id }}" {% if filter_manager_id == m.id|string %}selected{% endif %}>{{ m.email }}</option>
         {% endfor %}
       </select>
     </div>
     <div class="v4-form__group" style="margin: 0;">
       <label class="v4-form__label">Conta</label>
-      <select name="customer_id" class="v4-select">
+      <select name="customer_id" class="v4-select" onchange="this.form.submit()">
         <option value="">Todas</option>
         {% for a in accounts %}
-        <option value="{{ a.customer_id }}" {% if filter_customer_id == a.customer_id %}selected{% endif %}>{{ a.descriptive_name }}</option>
+          <option value="{{ a.customer_id }}" {% if filter_customer_id == a.customer_id %}selected{% endif %}>{{ a.descriptive_name }}</option>
         {% endfor %}
       </select>
     </div>
     <div class="v4-form__group" style="margin: 0;">
       <label class="v4-form__label">Tipo</label>
-      <select name="action_type" class="v4-select">
+      <select name="action_type" class="v4-select" onchange="this.form.submit()">
         <option value="all" {% if filter_action_type == "all" %}selected{% endif %}>Todos</option>
-        <option value="mutate" {% if filter_action_type == "mutate" %}selected{% endif %}>Mutate</option>
-        <option value="read" {% if filter_action_type == "read" %}selected{% endif %}>Read</option>
+        <option value="mutate" {% if filter_action_type == "mutate" %}selected{% endif %}>Mutações</option>
+        <option value="read" {% if filter_action_type == "read" %}selected{% endif %}>Reads</option>
       </select>
     </div>
     <div class="v4-form__group" style="margin: 0;">
-      <label class="v4-form__label">Periodo</label>
-      <select name="days" class="v4-select">
-        <option value="1" {% if filter_days == 1 %}selected{% endif %}>1 dia</option>
-        <option value="7" {% if filter_days == 7 %}selected{% endif %}>7 dias</option>
-        <option value="14" {% if filter_days == 14 %}selected{% endif %}>14 dias</option>
-        <option value="30" {% if filter_days == 30 %}selected{% endif %}>30 dias</option>
-        <option value="90" {% if filter_days == 90 %}selected{% endif %}>90 dias</option>
+      <label class="v4-form__label">Status</label>
+      <select name="status" class="v4-select" onchange="this.form.submit()">
+        <option value="all" {% if filter_status == "all" %}selected{% endif %}>Todos</option>
+        <option value="success" {% if filter_status == "success" %}selected{% endif %}>OK</option>
+        <option value="error" {% if filter_status == "error" %}selected{% endif %}>Erros</option>
       </select>
     </div>
-    <button type="submit" class="v4-btn v4-btn--primary">Filtrar</button>
+    <div class="v4-form__group" style="margin: 0;">
+      <label class="v4-form__label">Período</label>
+      <select name="days" class="v4-select" onchange="this.form.submit()">
+        {% for n in [1, 7, 14, 30, 90] %}
+          <option value="{{ n }}" {% if filter_days == n %}selected{% endif %}>{{ n }} dias</option>
+        {% endfor %}
+      </select>
+    </div>
   </form>
-</div>
-
-<div class="v4-card">
-  <div class="v4-card__header">
-    <h3 class="v4-card__title">{{ rows|length }} eventos</h3>
-  </div>
 
   {% if rows %}
-  <table class="v4-table">
+  <table class="v4-table v4-table--compact v4-table--sticky-head">
     <thead>
       <tr>
-        <th>Data/Hora</th>
+        <th>Quando</th>
         <th>Gestor</th>
-        <th>Operacao</th>
+        <th>Operação</th>
         <th>Conta</th>
         <th>Tipo</th>
         <th>Status</th>
         <th>Alvos</th>
+        <th></th>
       </tr>
     </thead>
     <tbody>
       {% for r in rows %}
       <tr>
-        <td>{{ r.occurred_at.strftime("%d/%m %H:%M:%S") }}</td>
+        <td class="col-mono">{{ r.occurred_at.strftime("%d/%m %H:%M:%S") }}</td>
         <td><strong>{{ r.manager_email or "?" }}</strong></td>
-        <td><code>{{ r.operation }}</code></td>
-        <td>
-          {% if r.customer_id %}
-            {{ r.account_name or r.customer_id }}
-          {% else %}-{% endif %}
-        </td>
+        <td class="col-mono">{{ r.operation }}</td>
+        <td>{{ r.account_name or r.customer_id or "—" }}</td>
         <td>
           {% if r.action_type == "mutate" %}{{ badge("Mutate", "warning") }}
           {% elif r.action_type == "read" %}{{ badge("Read", "neutral") }}
-          {% else %}{{ badge(r.action_type, "neutral") }}
-          {% endif %}
+          {% else %}{{ badge(r.action_type, "neutral") }}{% endif %}
         </td>
         <td>
-          {% if r.status == "success" %}{{ badge("OK", "success") }}
-          {% elif r.status == "error" %}{{ badge("Erro", "error") }}
-          {% else %}{{ badge(r.status, "neutral") }}
-          {% endif %}
+          {% if r.status == "success" %}{{ badge("✓ OK", "success") }}
+          {% elif r.status == "error" %}{{ badge("✗ Erro", "error") }}
+          {% else %}{{ badge(r.status, "neutral") }}{% endif %}
         </td>
-        <td>{{ r.target_count or "-" }}</td>
+        <td>{{ r.target_count or "—" }}</td>
+        <td><a href="/audit/{{ r.id }}" class="v4-btn v4-btn--ghost v4-btn--small">→</a></td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+  {{ pagination(current_page, total_pages, "/admin/audit", "page") }}
   {% else %}
-  <p style="color: var(--v4-gray-300); text-align: center; padding: 32px;">Nenhum evento.</p>
+    {{ empty_state("Nenhum evento.", "Tente um período maior ou remova filtros.") }}
   {% endif %}
-</div>
+</section>
 {% endblock %}
