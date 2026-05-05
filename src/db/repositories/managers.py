@@ -92,12 +92,15 @@ async def create_invited(
 
     Raises asyncpg.UniqueViolationError if email already exists in managers.
     """
+    from uuid import uuid4
+
     row = await conn.fetchrow(
         """
-        INSERT INTO managers (email, full_name, role, status, is_active, invited_by, invited_at)
-        VALUES ($1, $2, 'gestor', 'invited', true, $3, $4)
+        INSERT INTO managers (id, email, full_name, role, status, is_active, invited_by, invited_at)
+        VALUES ($1, $2, $3, 'gestor', 'invited', true, $4, $5)
         RETURNING *
         """,
+        uuid4(),
         email,
         full_name,
         invited_by,

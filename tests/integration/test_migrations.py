@@ -41,6 +41,11 @@ async def test_migrations_are_idempotent(pg: PostgresContainer) -> None:
         pool = connection.get_pool()
         async with pool.acquire() as conn:
             applied = await conn.fetch("SELECT name FROM _migrations ORDER BY name")
-            assert [r["name"] for r in applied] == ["001_initial_schema.sql"]
+            # Each new migration file must be added here so this test acts as a
+            # guard: if you added 003_*.sql, append it to the expected list.
+            assert [r["name"] for r in applied] == [
+                "001_initial_schema.sql",
+                "002_managers_status.sql",
+            ]
     finally:
         await connection.close_pool()
