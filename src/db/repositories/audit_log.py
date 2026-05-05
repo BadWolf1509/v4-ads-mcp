@@ -1,5 +1,8 @@
 """Append-only audit log writes."""
 
+import csv
+import io
+from collections.abc import AsyncIterator
 from typing import Any
 from uuid import UUID
 
@@ -49,3 +52,126 @@ async def record(
     )
     assert row is not None
     return int(row["id"])
+
+
+async def get_by_id(
+    conn: asyncpg.Connection,
+    *,
+    audit_id: UUID,
+    manager_id: UUID | None,
+) -> dict[str, Any] | None:
+    """Fetch a single audit event.
+
+    If manager_id is provided, scoped to that gestor (returns None if event belongs to another).
+    If manager_id is None (admin context), returns any event by id.
+    """
+    if manager_id is None:
+        row = await conn.fetchrow(
+            """SELECT al.*, m.email AS manager_email,
+                      s.label AS session_label,
+                      a.descriptive_name AS account_name
+               FROM audit_log al
+               LEFT JOIN managers m ON m.id = al.manager_id
+               LEFT JOIN mcp_sessions s ON s.id = al.session_id
+               LEFT JOIN google_ads_accounts a ON a.customer_id = al.customer_id
+               WHERE al.id = $1""",
+            audit_id,
+        )
+    else:
+        row = await conn.fetchrow(
+            """SELECT al.*, m.email AS manager_email,
+                      s.label AS session_label,
+                      a.descriptive_name AS account_name
+               FROM audit_log al
+               LEFT JOIN managers m ON m.id = al.manager_id
+               LEFT JOIN mcp_sessions s ON s.id = al.session_id
+               LEFT JOIN google_ads_accounts a ON a.customer_id = al.customer_id
+               WHERE al.id = $1 AND al.manager_id = $2""",
+            audit_id,
+            manager_id,
+        )
+    return dict(row) if row else None
+
+
+async def summary_stats(conn: asyncpg.Connection) -> dict[str, int]:
+    """Aggregate counts over the last 24 hours."""
+    row = await conn.fetchrow(
+        """SELECT
+             count(*) AS total,
+             count(*) FILTER (WHERE status = 'success') AS success,
+             count(*) FILTER (WHERE status = 'error') AS errors
+           FROM audit_log
+           WHERE occurred_at > now() - interval '24 hours'"""
+    )
+    return {
+        "total_24h": row["total"],
+        "success_24h": row["success"],
+        "errors_24h": row["errors"],
+    }
+
+
+async def export_csv_rows(
+    conn: asyncpg.Connection,
+    *,
+    manager_id: UUID | None = None,
+    customer_id: str | None = None,
+    action_type: str | None = None,
+    days: int = 7,
+) -> AsyncIterator[str]:
+    """Yield CSV lines (header + data) for streaming response."""
+    where = ["occurred_at > now() - ($1 || ' days')::interval"]
+    params: list[Any] = [str(days)]
+    idx = 2
+    if manager_id is not None:
+        where.append(f"manager_id = ${idx}")
+        params.append(manager_id)
+        idx += 1
+    if customer_id:
+        where.append(f"customer_id = ${idx}")
+        params.append(customer_id)
+        idx += 1
+    if action_type and action_type != "all":
+        where.append(f"action_type = ${idx}")
+        params.append(action_type)
+        idx += 1
+    sql = f"""SELECT al.occurred_at, m.email, al.operation, al.customer_id,
+                     al.action_type, al.status, al.target_count, al.duration_ms,
+                     al.error_message, al.google_request_id
+              FROM audit_log al LEFT JOIN managers m ON m.id = al.manager_id
+              WHERE {" AND ".join(where)}
+              ORDER BY al.occurred_at DESC"""
+
+    # Header
+    header = [
+        "occurred_at",
+        "manager_email",
+        "operation",
+        "customer_id",
+        "action_type",
+        "status",
+        "target_count",
+        "duration_ms",
+        "error_message",
+        "google_request_id",
+    ]
+    buf = io.StringIO()
+    csv.writer(buf).writerow(header)
+    yield buf.getvalue()
+
+    async for row in conn.cursor(sql, *params):
+        buf = io.StringIO()
+        csv.writer(buf).writerow(
+            [
+                row["occurred_at"].isoformat() if row["occurred_at"] else "",
+                row["email"] or "",
+                row["operation"] or "",
+                row["customer_id"] or "",
+                row["action_type"] or "",
+                row["status"] or "",
+                row["target_count"] if row["target_count"] is not None else "",
+                row["duration_ms"] if row["duration_ms"] is not None else "",
+                row["error_message"] or "",
+                row["google_request_id"] or "",
+            ]
+        )
+        yield buf.getvalue()
