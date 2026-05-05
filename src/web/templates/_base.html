@@ -40,6 +40,9 @@
 </head>
 <body>
   <header class="v4-header">
+    <button class="v4-header__hamburger" type="button" aria-label="Abrir menu" aria-controls="mobile-drawer" aria-expanded="false" onclick="toggleDrawer()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
     <a class="v4-header__brand" href="/">
       <img src="/static/logo/logo_v4_puro_round.svg" class="v4-header__logo" alt="V4">
       <span class="v4-header__title">Ads MCP</span>
@@ -64,6 +67,45 @@
   {% if current_user and current_user.is_admin and request.url.path.startswith('/admin') %}
     {% include "admin/_subnav.html" %}
   {% endif %}
+
+<div id="mobile-drawer" class="v4-drawer" role="dialog" aria-hidden="true" aria-label="Menu">
+  <div class="v4-drawer__backdrop" onclick="toggleDrawer()"></div>
+  <nav class="v4-drawer__panel" aria-label="Mobile">
+    {% if current_user %}
+      <div class="v4-drawer__section">
+        <a href="/" class="v4-drawer__link">Dashboard</a>
+        <a href="/accounts" class="v4-drawer__link">Contas</a>
+        <a href="/sessions" class="v4-drawer__link">Sessões</a>
+        <a href="/audit" class="v4-drawer__link">Audit</a>
+        <a href="/help" class="v4-drawer__link">Help</a>
+      </div>
+      {% if current_user.is_admin %}
+      <div class="v4-drawer__section">
+        <div class="v4-drawer__heading">Admin</div>
+        <a href="/admin" class="v4-drawer__link">Visão geral</a>
+        <a href="/admin/managers" class="v4-drawer__link">Managers</a>
+        <a href="/admin/invites" class="v4-drawer__link">Convites</a>
+        <a href="/admin/accounts" class="v4-drawer__link">Contas</a>
+        <a href="/admin/access" class="v4-drawer__link">Acessos</a>
+        <a href="/admin/audit" class="v4-drawer__link">Audit global</a>
+      </div>
+      {% endif %}
+      <div class="v4-drawer__section">
+        <div class="v4-drawer__heading">{{ current_user.email }}</div>
+        <a href="/logout" class="v4-drawer__link">Sair</a>
+      </div>
+    {% endif %}
+  </nav>
+</div>
+<script>
+  function toggleDrawer() {
+    const drawer = document.getElementById('mobile-drawer');
+    const isOpen = drawer.classList.toggle('is-open');
+    drawer.setAttribute('aria-hidden', String(!isOpen));
+    document.querySelector('.v4-header__hamburger')?.setAttribute('aria-expanded', String(isOpen));
+    document.body.style.overflow = isOpen ? 'hidden' : '';
+  }
+</script>
 
   <main>
     {% block content %}{% endblock %}
