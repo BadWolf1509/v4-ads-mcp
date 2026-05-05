@@ -111,3 +111,50 @@ async def can_manager_access(
     if level == "read":
         return True
     return bool(row["access_level"] == "write")
+
+
+async def bulk_grant(
+    conn: asyncpg.Connection,
+    *,
+    manager_id: UUID,
+    customer_ids: list[str],
+    granted_by: UUID,
+    access_level: str = "write",
+) -> int:
+    """Idempotent bulk grant. Inserts rows that don't exist; ignores duplicates."""
+    if not customer_ids:
+        return 0
+    rows = [(manager_id, cid, access_level, granted_by) for cid in customer_ids]
+    await conn.executemany(
+        """INSERT INTO manager_account_access (manager_id, customer_id, access_level, granted_by)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (manager_id, customer_id) DO NOTHING""",
+        rows,
+    )
+    return len(rows)
+
+
+async def copy_access(
+    conn: asyncpg.Connection,
+    *,
+    from_manager_id: UUID,
+    to_manager_id: UUID,
+    granted_by: UUID,
+) -> int:
+    """Replace destination's access with source's access. Atomic."""
+    async with conn.transaction():
+        await conn.execute(
+            "DELETE FROM manager_account_access WHERE manager_id = $1",
+            to_manager_id,
+        )
+        result = await conn.execute(
+            """INSERT INTO manager_account_access (manager_id, customer_id, access_level, granted_by)
+               SELECT $1, customer_id, access_level, $2
+               FROM manager_account_access
+               WHERE manager_id = $3""",
+            to_manager_id,
+            granted_by,
+            from_manager_id,
+        )
+    # asyncpg returns 'INSERT 0 N'
+    return int(result.rsplit(" ", 1)[-1])

@@ -6,7 +6,7 @@ import pytest
 from testcontainers.postgres import PostgresContainer
 
 from src.db import connection, migrate
-from src.db.repositories import managers
+from src.db.repositories import manager_account_access, managers
 
 
 @pytest.fixture
@@ -190,3 +190,81 @@ async def test_count_all(db):
         )
     async with pool.acquire() as conn:
         assert await managers.count_all(conn) == 2
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_bulk_grant_idempotent(db):
+    mid = uuid4()
+    pool = db
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """INSERT INTO managers (id, email, status, role) VALUES ($1, 'a@v4company.com', 'active', 'gestor')""",
+            mid,
+        )
+        await conn.execute(
+            """INSERT INTO google_ads_accounts (customer_id, descriptive_name, mcc_id, synced_at) VALUES
+               ('1111111111', 'A', '6436352492', now()),
+               ('2222222222', 'B', '6436352492', now()),
+               ('3333333333', 'C', '6436352492', now())"""
+        )
+        await manager_account_access.bulk_grant(
+            conn,
+            manager_id=mid,
+            customer_ids=["1111111111", "2222222222"],
+            granted_by=mid,
+        )
+        # Re-run with overlap — should be idempotent
+        await manager_account_access.bulk_grant(
+            conn,
+            manager_id=mid,
+            customer_ids=["2222222222", "3333333333"],
+            granted_by=mid,
+        )
+        rows = await conn.fetch(
+            "SELECT customer_id FROM manager_account_access WHERE manager_id = $1", mid
+        )
+    cids = sorted([r["customer_id"] for r in rows])
+    assert cids == ["1111111111", "2222222222", "3333333333"]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_copy_access_replaces_destination(db):
+    src = uuid4()
+    dst = uuid4()
+    pool = db
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """INSERT INTO managers (id, email, status, role) VALUES
+               ($1, 'src@v4company.com', 'active', 'gestor'),
+               ($2, 'dst@v4company.com', 'active', 'gestor')""",
+            src,
+            dst,
+        )
+        await conn.execute(
+            """INSERT INTO google_ads_accounts (customer_id, descriptive_name, mcc_id, synced_at) VALUES
+               ('1111111111', 'A', '6436352492', now()),
+               ('2222222222', 'B', '6436352492', now()),
+               ('3333333333', 'C', '6436352492', now())"""
+        )
+        # src has 1+2; dst has 3
+        await conn.execute(
+            """INSERT INTO manager_account_access (manager_id, customer_id, access_level, granted_by) VALUES
+               ($1, '1111111111', 'write', $1),
+               ($1, '2222222222', 'write', $1),
+               ($2, '3333333333', 'write', $2)""",
+            src,
+            dst,
+        )
+        await manager_account_access.copy_access(
+            conn,
+            from_manager_id=src,
+            to_manager_id=dst,
+            granted_by=src,
+        )
+        # After copy: dst should have 1+2 (replaced 3)
+        rows = await conn.fetch(
+            "SELECT customer_id FROM manager_account_access WHERE manager_id = $1", dst
+        )
+    assert sorted([r["customer_id"] for r in rows]) == ["1111111111", "2222222222"]
