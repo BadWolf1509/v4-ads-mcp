@@ -68,7 +68,9 @@ async def test_mark_active_only_invited(db):
                ($1, 'admin@v4company.com', 'active', 'admin'),
                ($2, 'invited@v4company.com', 'invited', 'gestor'),
                ($3, 'inactive@v4company.com', 'inactive', 'gestor')""",
-            inviter, invited_id, inactive_id,
+            inviter,
+            invited_id,
+            inactive_id,
         )
 
     async with pool.acquire() as conn:
@@ -81,7 +83,8 @@ async def test_mark_active_only_invited(db):
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             "SELECT email, status FROM managers WHERE id IN ($1, $2)",
-            invited_id, inactive_id,
+            invited_id,
+            inactive_id,
         )
     statuses = {r["email"]: r["status"] for r in rows}
     assert statuses["invited@v4company.com"] == "active"
@@ -100,7 +103,10 @@ async def test_list_invited_returns_only_invited(db):
                ($2, 'pending1@v4company.com', 'invited', 'gestor'),
                ($3, 'pending2@v4company.com', 'invited', 'gestor'),
                ($4, 'active@v4company.com', 'active', 'gestor')""",
-            inviter, uuid4(), uuid4(), uuid4(),
+            inviter,
+            uuid4(),
+            uuid4(),
+            uuid4(),
         )
 
     async with pool.acquire() as conn:
@@ -126,7 +132,9 @@ async def test_delete_invite_only_if_invited(db):
                ($1, 'admin@v4company.com', 'active', 'admin'),
                ($2, 'pending@v4company.com', 'invited', 'gestor'),
                ($3, 'active@v4company.com', 'active', 'gestor')""",
-            inviter, invited_id, active_id,
+            inviter,
+            invited_id,
+            active_id,
         )
 
     async with pool.acquire() as conn:
@@ -137,12 +145,8 @@ async def test_delete_invite_only_if_invited(db):
         assert deleted is False
 
     async with pool.acquire() as conn:
-        active_still_there = await conn.fetchval(
-            "SELECT 1 FROM managers WHERE id = $1", active_id
-        )
-        invited_gone = await conn.fetchval(
-            "SELECT 1 FROM managers WHERE id = $1", invited_id
-        )
+        active_still_there = await conn.fetchval("SELECT 1 FROM managers WHERE id = $1", active_id)
+        invited_gone = await conn.fetchval("SELECT 1 FROM managers WHERE id = $1", invited_id)
     assert active_still_there == 1
     assert invited_gone is None
 
@@ -161,7 +165,9 @@ async def test_count_invited(db):
                ($1, 'a@v4company.com', 'invited', 'gestor'),
                ($2, 'b@v4company.com', 'invited', 'gestor'),
                ($3, 'c@v4company.com', 'active', 'admin')""",
-            uuid4(), uuid4(), uuid4(),
+            uuid4(),
+            uuid4(),
+            uuid4(),
         )
 
     async with pool.acquire() as conn:
@@ -179,7 +185,8 @@ async def test_count_all(db):
             """INSERT INTO managers (id, email, status, role) VALUES
                ($1, 'a@v4company.com', 'invited', 'gestor'),
                ($2, 'b@v4company.com', 'active', 'admin')""",
-            uuid4(), uuid4(),
+            uuid4(),
+            uuid4(),
         )
     async with pool.acquire() as conn:
         assert await managers.count_all(conn) == 2

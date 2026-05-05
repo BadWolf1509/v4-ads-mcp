@@ -342,7 +342,11 @@ async def admin_managers(
     return templates.TemplateResponse(
         request,
         "admin/managers.html",
-        {"current_user": user, "managers": [dict(r) for r in rows], "pending_invites_count": pending},
+        {
+            "current_user": user,
+            "managers": [dict(r) for r in rows],
+            "pending_invites_count": pending,
+        },
     )
 
 
@@ -525,8 +529,12 @@ async def admin_invites_new(
             return RedirectResponse(url="/admin/invites?error=exists", status_code=303)
 
         from src.db.repositories import managers as managers_repo
+
         await managers_repo.create_invited(
-            conn, email=email, invited_by=user.id, full_name=(full_name or None),
+            conn,
+            email=email,
+            invited_by=user.id,
+            full_name=(full_name or None),
         )
     return RedirectResponse(url="/admin/invites", status_code=303)
 
@@ -541,6 +549,7 @@ async def admin_invites_cancel(
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         from src.db.repositories import managers as managers_repo
+
         await managers_repo.delete_invite(conn, manager_id=UUID(invite_id))
     # HTMX swap: remove the row by returning empty content
     return HTMLResponse("")

@@ -88,6 +88,7 @@ async def handle_callback_decision(
     # 4. Default: not invited
     return CallbackDecision(kind="redirect", location="/access-denied?reason=not_invited")
 
+
 GOOGLE_ADWORDS_SCOPE = "https://www.googleapis.com/auth/adwords"
 GOOGLE_PROFILE_SCOPE = "https://www.googleapis.com/auth/userinfo.profile"
 GOOGLE_EMAIL_SCOPE = "https://www.googleapis.com/auth/userinfo.email"

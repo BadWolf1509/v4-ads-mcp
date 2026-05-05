@@ -50,11 +50,7 @@ class Settings(BaseSettings):
     @property
     def bootstrap_admin_emails_set(self) -> set[str]:
         """Parse the comma-separated env into a normalized lowercased set."""
-        return {
-            e.strip().lower()
-            for e in self.bootstrap_admin_emails.split(",")
-            if e.strip()
-        }
+        return {e.strip().lower() for e in self.bootstrap_admin_emails.split(",") if e.strip()}
 
     @field_validator("google_ads_login_customer_id")
     @classmethod
