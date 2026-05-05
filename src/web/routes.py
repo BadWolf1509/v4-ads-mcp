@@ -22,6 +22,7 @@ from src.web.deps import (
     CurrentUser,
     current_manager,
     optional_current_manager,
+    pending_invites_count,
 )
 
 log = structlog.get_logger(__name__)
@@ -312,10 +313,11 @@ async def admin_managers(
         rows = await conn.fetch(
             "SELECT id, email, full_name, role, is_active, created_at, last_seen_at FROM managers ORDER BY email"
         )
+    pending = await pending_invites_count()
     return templates.TemplateResponse(
         request,
         "admin/managers.html",
-        {"current_user": user, "managers": [dict(r) for r in rows], "pending_invites_count": 0},
+        {"current_user": user, "managers": [dict(r) for r in rows], "pending_invites_count": pending},
     )
 
 
@@ -368,10 +370,11 @@ async def admin_accounts(
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         accs = await google_ads_accounts.list_all(conn)
+    pending = await pending_invites_count()
     return templates.TemplateResponse(
         request,
         "admin/accounts.html",
-        {"current_user": user, "accounts": accs, "pending_invites_count": 0},
+        {"current_user": user, "accounts": accs, "pending_invites_count": pending},
     )
 
 
@@ -390,6 +393,7 @@ async def admin_access(
         access_rows = await conn.fetch("SELECT manager_id, customer_id FROM manager_account_access")
     # Build set of (manager_id, customer_id) for quick lookup
     access_set = {(str(r["manager_id"]), r["customer_id"]) for r in access_rows}
+    pending = await pending_invites_count()
     return templates.TemplateResponse(
         request,
         "admin/access.html",
@@ -398,7 +402,7 @@ async def admin_access(
             "managers_list": [dict(r) for r in managers_rows],
             "accounts": accs,
             "access_set": access_set,
-            "pending_invites_count": 0,
+            "pending_invites_count": pending,
         },
     )
 
@@ -508,6 +512,7 @@ async def admin_audit(
         )
         accs = await google_ads_accounts.list_all(conn)
 
+    pending = await pending_invites_count()
     return templates.TemplateResponse(
         request,
         "admin/audit.html",
@@ -520,6 +525,6 @@ async def admin_audit(
             "filter_customer_id": customer_id or "",
             "filter_action_type": action_type,
             "filter_days": days,
-            "pending_invites_count": 0,
+            "pending_invites_count": pending,
         },
     )
