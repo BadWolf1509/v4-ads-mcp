@@ -153,3 +153,19 @@
   {% if action %}<div>{{ action|safe }}</div>{% endif %}
 </div>
 {% endmacro %}
+
+{% macro skeleton_row(width="100%", height="16px") %}
+<div class="v4-skeleton" style="width: {{ width }}; height: {{ height }};"></div>
+{% endmacro %}
+
+{% macro skeleton_table(columns=4, rows=5) %}
+<div class="v4-skeleton-table" aria-busy="true" aria-live="polite">
+  {% for r in range(rows) %}
+  <div style="display: grid; grid-template-columns: repeat({{ columns }}, 1fr); gap: 12px; padding: 8px 0;">
+    {% for c in range(columns) %}
+      <div class="v4-skeleton" style="height: 14px;"></div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% endmacro %}
