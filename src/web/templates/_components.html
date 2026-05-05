@@ -22,6 +22,32 @@
 </div>
 {% endmacro %}
 
+{% macro search_input(name, value="", placeholder="Buscar...", attrs="") %}
+<input type="search" name="{{ name }}" class="v4-input v4-input--search"
+       value="{{ value }}" placeholder="{{ placeholder }}" {{ attrs|safe }}>
+{% endmacro %}
+
+{% macro textarea(name, value="", placeholder="", rows=4, attrs="") %}
+<textarea name="{{ name }}" class="v4-textarea" rows="{{ rows }}"
+          placeholder="{{ placeholder }}" {{ attrs|safe }}>{{ value }}</textarea>
+{% endmacro %}
+
+{% macro checkbox(name, label, checked=false, value="true", attrs="") %}
+<label class="v4-check">
+  <input type="checkbox" name="{{ name }}" value="{{ value }}"
+         {% if checked %}checked{% endif %} {{ attrs|safe }}>
+  <span>{{ label }}</span>
+</label>
+{% endmacro %}
+
+{% macro radio(name, label, value, checked=false, attrs="") %}
+<label class="v4-radio">
+  <input type="radio" name="{{ name }}" value="{{ value }}"
+         {% if checked %}checked{% endif %} {{ attrs|safe }}>
+  <span>{{ label }}</span>
+</label>
+{% endmacro %}
+
 {% macro card(title=None, action=None, variant="default", body="") %}
   {%- set classes = "v4-card" -%}
   {%- if variant != "default" %}{% set classes = classes ~ " v4-card--" ~ variant %}{% endif -%}
