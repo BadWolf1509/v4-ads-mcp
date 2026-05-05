@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 
 from src.auth.panel_session import PANEL_SESSION_COOKIE_NAME
 from src.auth.sessions import generate_session_token, hash_session_token
+from src.config import get_settings
 from src.db import connection
 from src.db.repositories import (
     google_ads_accounts,
@@ -212,6 +213,46 @@ async def sessions_list(
             "sessions": sessions,
         },
     )
+
+
+@router.get("/sessions/{session_id}", response_class=HTMLResponse)
+async def session_detail(
+    request: Request,
+    session_id: str,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+    token_flash: bool = False,
+) -> HTMLResponse:
+    """Permanent detail page for a single MCP session. Shows flash token once on creation."""
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        session = await mcp_sessions.get_by_id(
+            conn,
+            session_id=UUID(session_id),
+            manager_id=user.id,
+        )
+    if session is None:
+        raise HTTPException(status_code=404, detail="Sessão não encontrada")
+
+    flash_token = request.cookies.get("v4_session_flash_token") if token_flash else None
+    settings = get_settings()
+    mcp_url = f"{settings.public_base_url}/mcp"
+
+    response = templates.TemplateResponse(
+        request,
+        "sessions/detail.html",
+        {
+            "current_user": user,
+            "session": session,
+            "flash_token": flash_token,
+            "mcp_url": mcp_url,
+        },
+    )
+    if flash_token:
+        response.delete_cookie(
+            "v4_session_flash_token",
+            path=f"/sessions/{session_id}",
+        )
+    return response
 
 
 @router.post("/sessions/new", response_class=HTMLResponse, response_model=None)

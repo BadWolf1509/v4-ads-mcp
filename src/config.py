@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     supabase_anon_key: str
     supabase_service_key: str
 
+    # Public URL for MCP endpoint (used in session detail snippets)
+    public_base_url: str = "https://v4-ads-mcp-jf26mmrgqa-rj.a.run.app"
+
     # Phase 2: invite-only allowlist bootstrap
     # Comma-separated emails that get auto-promoted to admin on first OAuth login,
     # but ONLY when the managers table is empty. Once seeded, this value is dormant.

@@ -1,0 +1,94 @@
+{% extends "_base.html" %}
+{% from "_components.html" import breadcrumb, alert, badge, code_block, button %}
+
+{% block title %}Sessão · {{ session.label }} — V4 Ads MCP{% endblock %}
+
+{% block content %}
+<section class="max-w-3xl mx-auto py-6 px-4">
+  {{ breadcrumb([
+    {"label": "Sessões", "url": "/sessions"},
+    {"label": session.label or "(sem nome)"}
+  ]) }}
+
+  <header class="mb-6 flex items-center gap-3 flex-wrap">
+    <h1 class="text-3xl font-extrabold tracking-tight">{{ session.label or "(sem nome)" }}</h1>
+    {% if session.revoked_at %}{{ badge("Revogada", "neutral") }}
+    {% else %}{{ badge("Ativa", "success") }}{% endif %}
+  </header>
+
+  <div class="text-sm text-v4-gray-700 mb-6 grid grid-cols-2 md:grid-cols-3 gap-3">
+    <div>Criada em<br><strong>{{ session.created_at.strftime("%d/%m/%Y %H:%M") }}</strong></div>
+    <div>Último uso<br><strong>{% if session.last_used_at %}{{ session.last_used_at.strftime("%d/%m %H:%M") }}{% else %}nunca{% endif %}</strong></div>
+    <div>Expira<br><strong>{% if session.expires_at %}{{ session.expires_at.strftime("%d/%m/%Y") }}{% else %}—{% endif %}</strong></div>
+  </div>
+
+  {% if flash_token %}
+  <div class="bg-v4-gold-soft border border-v4-gold rounded-md p-4 mb-6">
+    <h3 class="font-semibold text-v4-gray-900 mb-2">⚠ Token Bearer · só aparece UMA vez</h3>
+    <p class="text-sm text-v4-gray-700 mb-3">Copie agora. Esta página vai esconder o token assim que você sair ou recarregar.</p>
+    <div class="bg-v4-gray-900 text-white p-3 rounded font-mono text-sm break-all" id="flash-token">{{ flash_token }}</div>
+    <button class="v4-btn v4-btn--small v4-btn--secondary mt-3"
+            onclick="navigator.clipboard.writeText(document.getElementById('flash-token').innerText); this.innerText = 'Copiado!'; setTimeout(() => this.innerText = 'Copiar token', 2000);">Copiar token</button>
+  </div>
+  {% endif %}
+
+  <div class="v4-card">
+    <div class="v4-card__header">
+      <h3 class="v4-card__title">Configurar no cliente</h3>
+    </div>
+    <p class="text-sm text-v4-gray-700 mb-4">
+      Substitua <code>mcp_xxx...</code> pelo seu token. {% if not flash_token %}<strong>Token só foi mostrado na criação.</strong> Se você perdeu, revogue esta sessão e crie uma nova.{% endif %}
+    </p>
+
+    <details open class="mb-4">
+      <summary class="cursor-pointer font-semibold py-2">Claude Desktop</summary>
+      {{ code_block('{
+  "mcpServers": {
+    "v4-ads": {
+      "url": "' ~ mcp_url ~ '",
+      "headers": {
+        "Authorization": "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
+      }
+    }
+  }
+}', filename="claude_desktop_config.json") }}
+    </details>
+
+    <details class="mb-4">
+      <summary class="cursor-pointer font-semibold py-2">Codex CLI</summary>
+      {{ code_block('[mcp_servers.v4-ads]
+url = "' ~ mcp_url ~ '"
+
+[mcp_servers.v4-ads.headers]
+Authorization = "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"', filename="~/.codex/config.toml") }}
+    </details>
+
+    <details class="mb-4">
+      <summary class="cursor-pointer font-semibold py-2">Cursor</summary>
+      {{ code_block('{
+  "mcpServers": {
+    "v4-ads": {
+      "url": "' ~ mcp_url ~ '",
+      "headers": {
+        "Authorization": "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
+      }
+    }
+  }
+}', filename=".cursor/mcp.json") }}
+    </details>
+  </div>
+
+  {% if not session.revoked_at %}
+  <div class="mt-8 flex gap-2 justify-end">
+    <button type="button" class="v4-btn v4-btn--danger v4-btn--small"
+            onclick='openConfirm({
+              title: "Revogar esta sessão?",
+              message: "O Bearer correspondente para de funcionar imediatamente.",
+              okLabel: "Revogar",
+              kind: "danger",
+              onConfirm: () => htmx.ajax("POST", "/sessions/{{ session.id }}/revoke", { target: "body", swap: "innerHTML" }).then(() => window.location.href = "/sessions")
+            })'>Revogar sessão</button>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
