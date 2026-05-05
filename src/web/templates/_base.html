@@ -114,6 +114,30 @@
   <footer class="v4-footer">
     V4 Ads MCP — interno V4 Company
   </footer>
+<dialog class="v4-confirm-dialog" id="v4-confirm-dialog" aria-labelledby="v4-confirm-title">
+  <form method="dialog" class="v4-confirm-dialog__body">
+    <h3 class="v4-confirm-dialog__title" id="v4-confirm-title"></h3>
+    <p class="v4-confirm-dialog__message" id="v4-confirm-message"></p>
+    <div class="v4-confirm-dialog__actions">
+      <button type="button" class="v4-btn v4-btn--secondary v4-btn--small" data-confirm-cancel>Cancelar</button>
+      <button type="button" class="v4-btn v4-btn--danger v4-btn--small" data-confirm-ok>Confirmar</button>
+    </div>
+  </form>
+</dialog>
+<script>
+  // Public API: openConfirm({ title, message, okLabel, kind, onConfirm })
+  function openConfirm(opts) {
+    const dlg = document.getElementById('v4-confirm-dialog');
+    document.getElementById('v4-confirm-title').textContent = opts.title || 'Confirmar?';
+    document.getElementById('v4-confirm-message').textContent = opts.message || '';
+    const okBtn = dlg.querySelector('[data-confirm-ok]');
+    okBtn.textContent = opts.okLabel || 'Confirmar';
+    okBtn.className = 'v4-btn v4-btn--small v4-btn--' + (opts.kind || 'danger');
+    okBtn.onclick = () => { dlg.close(); opts.onConfirm && opts.onConfirm(); };
+    dlg.querySelector('[data-confirm-cancel]').onclick = () => dlg.close();
+    dlg.showModal();
+  }
+</script>
 <div class="v4-toast-region" id="v4-toast-region" aria-live="polite" aria-atomic="true"></div>
 <script>
   function showToast(message, kind) {

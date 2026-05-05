@@ -491,3 +491,34 @@
 @keyframes v4-toast-out {
   to { opacity: 0; transform: translateX(20px); }
 }
+
+.v4-confirm-dialog[open] {
+  border: 0;
+  padding: 0;
+  border-radius: var(--v4-radius-lg);
+  box-shadow: var(--v4-shadow-modal);
+  max-width: 440px;
+  width: calc(100vw - var(--v4-space-8));
+}
+.v4-confirm-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.4);
+  animation: v4-fade-in var(--v4-motion-base);
+}
+.v4-confirm-dialog__body {
+  padding: var(--v4-space-6);
+}
+.v4-confirm-dialog__title {
+  font-size: var(--v4-h3-size);
+  font-weight: 600;
+  margin: 0 0 var(--v4-space-2);
+}
+.v4-confirm-dialog__message {
+  color: var(--v4-gray-700);
+  margin: 0 0 var(--v4-space-4);
+  font-size: 14px;
+}
+.v4-confirm-dialog__actions {
+  display: flex;
+  gap: var(--v4-space-2);
+  justify-content: flex-end;
+}

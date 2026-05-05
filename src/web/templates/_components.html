@@ -169,3 +169,14 @@
   {% endfor %}
 </div>
 {% endmacro %}
+
+{% macro confirm_button(label, post_url, message, title="Confirmar?", ok_label="Confirmar", kind="danger", target=None, swap=None) %}
+<button type="button" class="v4-btn v4-btn--small v4-btn--{{ kind }}"
+        onclick='openConfirm({
+          title: {{ title|tojson }},
+          message: {{ message|tojson }},
+          okLabel: {{ ok_label|tojson }},
+          kind: {{ kind|tojson }},
+          onConfirm: () => htmx.ajax("POST", {{ post_url|tojson }}, {{ ("{ target: '" ~ target ~ "', swap: '" ~ (swap or "outerHTML") ~ "' }") if target else "{}" }})
+        })'>{{ label }}</button>
+{% endmacro %}
