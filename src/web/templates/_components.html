@@ -87,3 +87,23 @@
     {%- if label %}<span class="v4-btn__label">{{ label }}</span>{% endif -%}
   </button>
 {% endmacro %}
+
+{% macro sparkline(values, width=60, height=16, color="var(--v4-red)") %}
+  {%- if values and values|length > 1 -%}
+    {%- set vmax = values|max -%}
+    {%- set vmin = values|min -%}
+    {%- set span = (vmax - vmin) if vmax != vmin else 1 -%}
+    {%- set step = width / (values|length - 1) -%}
+    {%- set ns = namespace(points=[]) -%}
+    {%- for v in values -%}
+      {%- set x = loop.index0 * step -%}
+      {%- set y = height - ((v - vmin) / span) * height -%}
+      {%- set ns.points = ns.points + [(x|round(2)) ~ "," ~ (y|round(2))] -%}
+    {%- endfor -%}
+    <svg class="v4-sparkline" viewBox="0 0 {{ width }} {{ height }}"
+         width="{{ width }}" height="{{ height }}" aria-hidden="true">
+      <polyline points="{{ ns.points|join(' ') }}"
+                fill="none" stroke="{{ color }}" stroke-width="1.5" stroke-linejoin="round"/>
+    </svg>
+  {%- endif -%}
+{% endmacro %}
