@@ -1,0 +1,65 @@
+{% extends "_base.html" %}
+{% from "_components.html" import alert, badge, empty_state, form_group, button %}
+
+{% block title %}Admin / Convites — V4 Ads MCP{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl">
+  <h1>Convites</h1>
+  <p class="text-v4-gray-700 mb-6">
+    Adicione gestores pelo email <code>@v4company.com</code> antes do primeiro login deles. Sem convite, o login é rejeitado.
+  </p>
+
+  <div class="v4-card">
+    <div class="v4-card__header">
+      <h3 class="v4-card__title">Adicionar gestor</h3>
+    </div>
+    <form method="POST" action="/admin/invites/new" class="grid grid-cols-1 md:grid-cols-[2fr_1fr_auto] gap-3 items-end">
+      {{ form_group("Email V4", "email", type="email", placeholder="gestor@v4company.com", required=true) }}
+      {{ form_group("Nome (opcional)", "full_name", placeholder="Maria Silva") }}
+      <button type="submit" class="v4-btn v4-btn--primary">Convidar</button>
+    </form>
+  </div>
+
+  <div class="v4-card">
+    <div class="v4-card__header">
+      <h3 class="v4-card__title">Pendentes ({{ invites|length }})</h3>
+    </div>
+    {% if invites %}
+    <table class="v4-table v4-table--compact">
+      <thead>
+        <tr>
+          <th>Email</th>
+          <th>Nome</th>
+          <th>Convidado por</th>
+          <th>Convidado em</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inv in invites %}
+        <tr>
+          <td><strong>{{ inv.email }}</strong></td>
+          <td>{{ inv.full_name or "—" }}</td>
+          <td class="col-mono">{{ inv.invited_by_email or "?" }}</td>
+          <td>{{ inv.invited_at.strftime("%d/%m/%Y %H:%M") }}</td>
+          <td class="text-right">
+            <button type="button" class="v4-btn v4-btn--small v4-btn--ghost"
+                    onclick='openConfirm({
+                      title: "Cancelar convite?",
+                      message: "Remove o convite de " + {{ inv.email|tojson }} + ". O usuário não poderá logar até ser convidado novamente.",
+                      okLabel: "Cancelar convite",
+                      kind: "danger",
+                      onConfirm: () => htmx.ajax("POST", "/admin/invites/{{ inv.id }}/cancel", { target: "closest tr", swap: "outerHTML" })
+                    })'>Cancelar</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      {{ empty_state("Nenhum convite pendente", "Use o formulário acima pra convidar um novo gestor.") }}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

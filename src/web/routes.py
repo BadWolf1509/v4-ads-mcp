@@ -477,6 +477,34 @@ async def admin_access_toggle(
     )
 
 
+@router.get("/admin/invites", response_class=HTMLResponse)
+async def admin_invites(
+    request: Request,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+) -> HTMLResponse:
+    _require_admin(user)
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        invites = await conn.fetch(
+            """SELECT m.id, m.email, m.full_name, m.invited_at,
+                      inviter.email AS invited_by_email
+               FROM managers m
+               LEFT JOIN managers inviter ON inviter.id = m.invited_by
+               WHERE m.status = 'invited'
+               ORDER BY m.invited_at DESC"""
+        )
+    pending = await pending_invites_count()
+    return templates.TemplateResponse(
+        request,
+        "admin/invites.html",
+        {
+            "current_user": user,
+            "invites": [dict(r) for r in invites],
+            "pending_invites_count": pending,
+        },
+    )
+
+
 @router.get("/admin/audit", response_class=HTMLResponse)
 async def admin_audit(
     request: Request,
