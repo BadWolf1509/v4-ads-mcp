@@ -672,3 +672,31 @@
   padding: var(--v4-space-4);
   border-bottom: 2px solid var(--v4-gray-100);
 }
+
+/* Sticky table header — opt-in via wrapper class */
+.v4-table--sticky-head thead th {
+  position: sticky;
+  top: 0;
+  background: var(--v4-gray-50);
+  z-index: 1;
+}
+
+/* Compact (Operational mode) variant */
+.v4-table--compact th,
+.v4-table--compact td {
+  padding: var(--v4-cell-pad-compact);
+  font-size: 12px;
+}
+.v4-table--compact th {
+  font-size: 10px;
+}
+.v4-table--compact tr {
+  height: var(--v4-row-height-compact);
+}
+
+/* Mono variant for IDs/operations columns */
+.v4-table .col-mono {
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 12px;
+  color: var(--v4-gray-700);
+}
