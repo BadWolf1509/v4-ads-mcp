@@ -80,3 +80,19 @@ This document records the cloud-console actions performed once to bootstrap the 
   - `/admin/managers`: 1 admin row (Wellinton Ribeiro, badge ADMIN, ATIVO, criado 04/05/2026, último acesso 04/05 14:14, marcado "(você)").
 - Phase 1a known-limitation #1 (google_email="unknown" because OAuth used only `adwords` scope) is now resolved: new connections via panel use `{openid, email, profile, adwords}` and the email column populates correctly. Legacy "unknown" rows from Phase 1a remain visible until those connections are revoked + reauthorized — cosmetic only.
 - Logo renders correctly across all pages including the login hero.
+
+### Phase FE Redesign v2 (2026-05-05) — code-complete in production
+- 56 commits across 6 phases shipping a Hybrid Editorial+Operational identity per `docs/superpowers/specs/2026-05-05-frontend-redesign-v2-design.md` and `docs/superpowers/plans/2026-05-05-frontend-redesign-v2-plan.md`.
+- Design system v2: Tailwind CDN integrated with V4 token bridge (`bg-v4-red`, `text-display`, `font-mono`, `transition-v4-out`); 22 components in `_components.html` (refined: button/card/badge/alert/inputs/form_group; new: sparkline, pagination, code_block, empty_state, toast, skeleton, confirm_dialog, modal, breadcrumb, dropdown, tooltip, expandable_row, sticky/compact tables); ~520 lines added to CSS; new `v4-motion.css`; 5 JS helpers in `_base.html` (toggleDrawer, showToast, openConfirm, v4DropdownToggle, v4ToggleRow).
+- Auth/Q8: invite-only allowlist enforced. Migration `002_managers_status.sql` adds `status` (`invited`/`active`/`inactive`) + `invited_by` + `invited_at`. OAuth callback decision tree (pure `handle_callback_decision` + 8 unit tests). `BOOTSTRAP_ADMIN_EMAILS` env var (Cloud Run revision `00058+`). `/access-denied` page with 3 reason variants.
+- 15 pages redesigned/created (9 redesigned + 6 new):
+  - **Editorial:** `/login` (display 56 hero "V4 Ads MCP. IA + Google Ads."), `/access-denied`, `/help`.
+  - **Hybrid hero:** `/` dashboard (Editorial hero + Operational stats + admin extras card), `/admin` (visão geral consolidada).
+  - **Operational tables:** `/audit` (sticky filters + auto-submit + day grouping + expand row + CSV export), `/audit/{id}` detail, `/admin/audit` (+ status filter + gestor filter), `/admin/access` matrix v2 (search + bulk grant + copy access modals), `/admin/access/by-manager` + `/admin/access/{id}` (mobile per-gestor paradigm).
+  - **List + form:** `/accounts`, `/sessions` (flow change: POST → 302 → `/sessions/{id}?token_flash=true`), `/sessions/{id}` permanent detail, `/admin/managers` (search + dropdown ⋯ + filters), `/admin/accounts` (search + MCC filter), `/admin/invites` (Q8 list + form).
+- Sub-nav admin (Visão geral · Managers · Convites · Contas · Acessos · Audit global) with live-counter badge for pending invites.
+- Mobile-aware: hamburger drawer below 768px; tables >3 cols become card list; access matrix has dedicated per-gestor route.
+- Backend touchpoints: 1 migration, ~10 new repository functions (managers invite lifecycle, audit_log get_by_id/summary_stats/export_csv_rows, mcp_sessions.get_by_id, manager_account_access.bulk_grant/copy_access), 12+ new routes, allowlist OAuth flow.
+- Tests: 101 unit + 8 OAuth allowlist + integration test updates (sessions flow + admin audit header). All CI green.
+- E2E partially verified during deploy: smoke screenshot of `/admin/invites` showing form + sub-nav badge + Lucas Soares pending invite. Final visual regression sweep across all 15 pages deferred to operations during real onboarding (`docs/operacao/screenshots/after/` directory awaits captures).
+- Out of scope (deferred to follow-up sub-projects per the spec): multi-tenancy backend (`unidades` table + 3-tier RBAC), multi-MCC OAuth, single→multi migration, dark mode opt-in.
