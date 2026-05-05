@@ -127,3 +127,20 @@
   </nav>
   {%- endif -%}
 {% endmacro %}
+
+{% macro code_block(content, language=None, filename=None) %}
+{% set block_id = "code-" ~ (range(100000, 999999) | random) %}
+<div class="v4-code-block" id="{{ block_id }}">
+  <div class="v4-code-block__header">
+    <span>{% if filename %}{{ filename }}{% elif language %}{{ language }}{% else %}snippet{% endif %}</span>
+    <button class="v4-code-block__copy" type="button"
+            onclick="
+              const code = document.getElementById('{{ block_id }}').querySelector('pre').innerText;
+              navigator.clipboard.writeText(code);
+              this.innerText = 'Copiado!';
+              setTimeout(() => this.innerText = 'Copiar', 2000);
+            ">Copiar</button>
+  </div>
+  <pre><code>{{ content }}</code></pre>
+</div>
+{% endmacro %}
