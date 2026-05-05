@@ -30,6 +30,7 @@ class CurrentUser:
         self.role = manager.role
         self.is_admin = manager.role == "admin"
         self.is_active = manager.is_active
+        self.last_seen_at = manager.last_seen_at
 
 
 async def _resolve_session(request: Request) -> PanelSession | None:

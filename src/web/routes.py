@@ -1,5 +1,6 @@
 """Web panel routes."""
 
+from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
@@ -101,12 +102,76 @@ async def dashboard(
     request: Request,
     user: CurrentUser = Depends(current_manager),  # noqa: B008
 ) -> HTMLResponse:
-    """Dashboard: quick stats + nav."""
+    """Dashboard: editorial hero + operational stats + admin extras."""
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         accounts = await manager_account_access.list_accounts_for_manager(conn, user.id)
-        sessions_active = await mcp_sessions.list_for_manager(conn, user.id, include_revoked=False)
+        active_sessions = await mcp_sessions.list_for_manager(conn, user.id, include_revoked=False)
         oauth_conn = await google_oauth_connections.get_active_for_manager(conn, user.id)
+
+        # Recent calls (last 5 by this manager)
+        recent = await conn.fetch(
+            """SELECT occurred_at, operation, customer_id, status,
+                      (SELECT descriptive_name FROM google_ads_accounts a
+                       WHERE a.customer_id = al.customer_id LIMIT 1) AS account_name
+               FROM audit_log al
+               WHERE manager_id = $1
+               ORDER BY occurred_at DESC LIMIT 5""",
+            user.id,
+        )
+
+        # Calls today (count + sparkline of last 7 days)
+        today = datetime.utcnow().date()
+        calls_today = (
+            await conn.fetchval(
+                "SELECT count(*) FROM audit_log WHERE manager_id = $1 AND occurred_at::date = $2",
+                user.id,
+                today,
+            )
+            or 0
+        )
+        sparkline_rows = await conn.fetch(
+            """SELECT (occurred_at::date) as d, count(*) AS c
+               FROM audit_log
+               WHERE manager_id = $1 AND occurred_at >= $2
+               GROUP BY 1 ORDER BY 1""",
+            user.id,
+            today - timedelta(days=6),
+        )
+        # Build 7-day series, filling zeros for missing days
+        days = [today - timedelta(days=i) for i in range(6, -1, -1)]
+        counts_by_day = {r["d"]: r["c"] for r in sparkline_rows}
+        sparkline_values = [counts_by_day.get(d, 0) for d in days]
+
+        admin_ops = None
+        if user.is_admin:
+            from src.db.repositories import managers as managers_repo
+
+            pending = await managers_repo.count_invited(conn)
+            errors_24h = (
+                await conn.fetchval(
+                    "SELECT count(*) FROM audit_log WHERE status='error' AND occurred_at > now() - interval '24 hours'",
+                )
+                or 0
+            )
+            quota_used = (
+                await conn.fetchval(
+                    "SELECT used_today FROM rate_counters WHERE date = current_date LIMIT 1",
+                )
+                or 0
+            )
+            active_mgrs = (
+                await conn.fetchval("SELECT count(*) FROM managers WHERE status = 'active'") or 0
+            )
+            total_mgrs = await conn.fetchval("SELECT count(*) FROM managers") or 0
+            admin_ops = {
+                "pending_invites": pending,
+                "quota_used": quota_used,
+                "quota_max": 15000,
+                "errors_24h": errors_24h,
+                "active_managers": active_mgrs,
+                "total_managers": total_mgrs,
+            }
 
     return templates.TemplateResponse(
         request,
@@ -114,9 +179,14 @@ async def dashboard(
         {
             "current_user": user,
             "accounts_count": len(accounts),
-            "sessions_count": len(sessions_active),
+            "sessions_count": len(active_sessions),
             "oauth_email": oauth_conn.google_email if oauth_conn else None,
             "oauth_connected_at": oauth_conn.connected_at if oauth_conn else None,
+            "calls_today": calls_today,
+            "calls_sparkline": sparkline_values,
+            "recent_calls": [dict(r) for r in recent],
+            "unidade_label": "—",  # placeholder until sub-project 2 ships
+            "admin_ops": admin_ops,
         },
     )
 
