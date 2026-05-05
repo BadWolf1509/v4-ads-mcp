@@ -222,3 +222,47 @@
   margin: 0 var(--v4-space-4);
   box-shadow: var(--v4-shadow-modal);
 }
+
+/* Button — ghost + icon-only + loading */
+.v4-btn--ghost {
+  background: transparent;
+  color: var(--v4-gray-700);
+  border: 0;
+}
+.v4-btn--ghost:hover {
+  background: var(--v4-gray-50);
+  color: var(--v4-gray-900);
+}
+
+.v4-btn--icon {
+  padding: 8px;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.v4-btn[data-loading="true"] {
+  position: relative;
+  color: transparent !important;
+  pointer-events: none;
+}
+.v4-btn[data-loading="true"]::after {
+  content: '';
+  position: absolute;
+  inset: 50% 0 0 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  color: var(--v4-white);
+  animation: v4-btn-spin 0.6s linear infinite;
+}
+.v4-btn--secondary[data-loading="true"]::after,
+.v4-btn--ghost[data-loading="true"]::after {
+  color: var(--v4-gray-700);
+}
+@keyframes v4-btn-spin { to { transform: rotate(360deg); } }

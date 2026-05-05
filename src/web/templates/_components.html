@@ -13,3 +13,14 @@
 {% macro alert(message, kind="info") %}
 <div class="v4-alert v4-alert--{{ kind }}">{{ message }}</div>
 {% endmacro %}
+
+{% macro button(label, variant="primary", size="md", type="button", loading=false, icon=None, extra_classes="", attrs="") %}
+  {%- set classes = "v4-btn v4-btn--" ~ variant -%}
+  {%- if size == "small" %}{% set classes = classes ~ " v4-btn--small" %}{% endif -%}
+  {%- if icon and not label %}{% set classes = classes ~ " v4-btn--icon" %}{% endif -%}
+  {%- if extra_classes %}{% set classes = classes ~ " " ~ extra_classes %}{% endif -%}
+  <button type="{{ type }}" class="{{ classes }}"{% if loading %} data-loading="true"{% endif %} {{ attrs|safe }}>
+    {%- if icon %}<span class="v4-btn__icon" aria-hidden="true">{{ icon|safe }}</span>{% endif -%}
+    {%- if label %}<span class="v4-btn__label">{{ label }}</span>{% endif -%}
+  </button>
+{% endmacro %}
