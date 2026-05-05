@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -103,3 +104,20 @@ async def list_for_manager(
             manager_id,
         )
     return [_row_to_session(r) for r in rows]
+
+
+async def get_by_id(
+    conn: asyncpg.Connection,
+    *,
+    session_id: UUID,
+    manager_id: UUID,
+) -> dict[str, Any] | None:
+    """Fetch one session, scoped to the owning manager. Returns None if not found or not owned."""
+    row = await conn.fetchrow(
+        """SELECT id, manager_id, label, created_at, last_used_at, expires_at, revoked_at
+           FROM mcp_sessions
+           WHERE id = $1 AND manager_id = $2""",
+        session_id,
+        manager_id,
+    )
+    return dict(row) if row else None
