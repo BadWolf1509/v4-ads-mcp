@@ -15,8 +15,11 @@
   </span>
 {% endmacro %}
 
-{% macro alert(message, kind="info") %}
-<div class="v4-alert v4-alert--{{ kind }}">{{ message }}</div>
+{% macro alert(message, kind="info", title=None) %}
+<div class="v4-alert v4-alert--{{ kind }}" role="alert">
+  {% if title %}<div class="v4-alert__title">{{ title }}</div>{% endif %}
+  <div class="v4-alert__body">{{ message|safe }}</div>
+</div>
 {% endmacro %}
 
 {% macro card(title=None, action=None, variant="default", body="") %}

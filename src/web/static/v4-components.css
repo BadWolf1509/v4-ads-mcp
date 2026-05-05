@@ -306,3 +306,15 @@
   width: 12px;
   height: 12px;
 }
+
+.v4-alert--success {
+  background: var(--v4-green-soft);
+  border-left-color: var(--v4-green);
+  color: #1a5b22;
+}
+
+.v4-alert__title {
+  font-weight: 600;
+  margin-bottom: var(--v4-space-1);
+}
+.v4-alert__body { line-height: 1.5; }
