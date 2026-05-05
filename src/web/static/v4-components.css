@@ -437,6 +437,17 @@
   border: 0;
   overflow-x: auto;
 }
+/* Inner <code> inherits background+padding from v4-base.css `code, pre` rule
+   which gave each wrapped line a light highlight band on the dark <pre>.
+   Reset so the dark code block reads cleanly. */
+.v4-code-block code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+  font-family: inherit;
+  font-size: inherit;
+}
 
 .v4-empty {
   text-align: center;

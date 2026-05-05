@@ -48,10 +48,10 @@ Authorization = "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
 }
 {%- endset -%}
 
-<section class="max-w-3xl mx-auto px-6 py-16">
+<div class="max-w-6xl mx-auto px-6 py-16" id="topo">
 
-  {# Editorial hero #}
-  <header class="mb-12">
+  {# Editorial hero — full width above the 2-col layout #}
+  <header class="mb-12 max-w-3xl">
     <h1 class="text-4xl md:text-5xl font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
       Como <span class="text-v4-red">começar.</span>
     </h1>
@@ -61,227 +61,300 @@ Authorization = "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
     </p>
   </header>
 
-  {# Inline TOC — anchors to in-page sections. Tight, no fancy sticky on first pass. #}
-  <nav aria-label="Sumário" class="mb-12 border-l-2 border-v4-gray-100 pl-4 text-sm">
-    <div class="text-xs uppercase tracking-wider font-semibold text-v4-gray-700 mb-2">Nesta página</div>
-    <ul class="space-y-1">
-      <li><a href="#o-que-e" class="text-v4-gray-900 hover:text-v4-red">1. O que é o V4 Ads MCP</a></li>
-      <li><a href="#passo-a-passo" class="text-v4-gray-900 hover:text-v4-red">2. Passo a passo</a></li>
-      <li><a href="#claude-desktop" class="text-v4-gray-900 hover:text-v4-red">3. Configurar Claude Desktop</a></li>
-      <li><a href="#claude-code" class="text-v4-gray-900 hover:text-v4-red">4. Configurar Claude Code (CLI)</a></li>
-      <li><a href="#codex" class="text-v4-gray-900 hover:text-v4-red">5. Configurar Codex CLI</a></li>
-      <li><a href="#cursor" class="text-v4-gray-900 hover:text-v4-red">6. Configurar Cursor</a></li>
-      <li><a href="#faq" class="text-v4-gray-900 hover:text-v4-red">7. FAQ</a></li>
-      <li><a href="#suporte" class="text-v4-gray-900 hover:text-v4-red">8. Ainda com dúvida</a></li>
-    </ul>
-  </nav>
+  {# 2-col layout at lg+: content left, TOC sticky right.
+     Mobile (<lg): single col, TOC inline at top, content below.
+     Uses flex-col mobile / grid lg+ via display utilities. #}
+  <div class="flex flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_220px] lg:gap-16">
 
-  {# 1. O que é #}
-  <section id="o-que-e" class="mb-16 scroll-mt-20">
-    <h2 class="text-2xl font-bold text-v4-gray-900 mb-4">1. O que é o V4 Ads MCP</h2>
-    <p class="text-v4-gray-700 leading-relaxed mb-3">
-      Servidor MCP (Model Context Protocol) interno V4 que conecta as contas Google Ads que você
-      gerencia ao seu cliente de IA. Você pede em linguagem natural — <em>"performance da conta X
-      últimos 30 dias"</em>, <em>"pause keywords sem conversão"</em> — e o assistente executa via
-      ferramentas auditadas.
-    </p>
-    <p class="text-v4-gray-700 leading-relaxed">
-      Toda mutação passa por governance (dry-run + apply pra ações de risco) e tudo é registrado
-      no <a href="/audit" class="underline text-v4-red hover:text-v4-red-medium">audit log</a>.
-    </p>
-  </section>
+    {# TOC — order-first on mobile, lg:order-last (right column) on desktop. #}
+    <aside class="order-first lg:order-last mb-10 lg:mb-0 lg:sticky lg:top-20 lg:self-start">
+      <nav aria-label="Sumário" class="border-l-2 border-v4-gray-100 pl-4 text-sm">
+        <div class="text-xs uppercase tracking-wider font-semibold text-v4-gray-700 mb-2">Nesta página</div>
+        <ul class="space-y-1">
+          <li><a href="#o-que-e" class="text-v4-gray-900 hover:text-v4-red transition-colors">1. O que é</a></li>
+          <li><a href="#passo-a-passo" class="text-v4-gray-900 hover:text-v4-red transition-colors">2. Passo a passo</a></li>
+          <li><a href="#claude-desktop" class="text-v4-gray-900 hover:text-v4-red transition-colors">3. Claude Desktop</a></li>
+          <li><a href="#claude-code" class="text-v4-gray-900 hover:text-v4-red transition-colors">4. Claude Code (CLI)</a></li>
+          <li><a href="#codex" class="text-v4-gray-900 hover:text-v4-red transition-colors">5. Codex CLI</a></li>
+          <li><a href="#cursor" class="text-v4-gray-900 hover:text-v4-red transition-colors">6. Cursor</a></li>
+          <li><a href="#faq" class="text-v4-gray-900 hover:text-v4-red transition-colors">7. FAQ</a></li>
+          <li><a href="#suporte" class="text-v4-gray-900 hover:text-v4-red transition-colors">8. Ainda com dúvida</a></li>
+        </ul>
+      </nav>
+    </aside>
 
-  <hr class="border-v4-gray-100 mb-16">
+    {# Main content — order-2 on mobile (after TOC), lg:order-first (left col) #}
+    <main class="order-2 lg:order-first max-w-3xl">
 
-  {# 2. Passo a passo #}
-  <section id="passo-a-passo" class="mb-16 scroll-mt-20">
-    <h2 class="text-2xl font-bold text-v4-gray-900 mb-4">2. Passo a passo</h2>
-    <ol class="list-decimal list-outside pl-6 space-y-3 text-v4-gray-700 leading-relaxed">
-      <li>
-        <strong class="text-v4-gray-900">Login no painel</strong> —
-        acesse <a href="/login" class="underline text-v4-red hover:text-v4-red-medium">/login</a>
-        com sua conta <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">@v4company.com</code>.
-        Login só funciona se um admin V4 tiver te convidado em
-        <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">/admin/invites</code>.
-      </li>
-      <li>
-        <strong class="text-v4-gray-900">Espere o admin liberar contas</strong> —
-        em <a href="/accounts" class="underline text-v4-red hover:text-v4-red-medium">/accounts</a>
-        você vê as contas Google Ads que pode operar. Se a lista estiver vazia, peça acesso ao admin
-        (ele libera em <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">/admin/access</code>).
-      </li>
-      <li>
-        <strong class="text-v4-gray-900">Crie uma sessão MCP</strong> —
-        em <a href="/sessions" class="underline text-v4-red hover:text-v4-red-medium">/sessions</a>,
-        dê um nome (ex: <em>"Claude Desktop pessoal"</em>) e crie. O Bearer token aparece <strong>UMA
-        vez</strong> — copie agora ou nunca mais o veja.
-      </li>
-      <li>
-        <strong class="text-v4-gray-900">Configure seu cliente</strong> com o snippet correspondente
-        nas seções abaixo. Substitua <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">mcp_xxxxxxxx...</code>
-        pelo seu token real.
-      </li>
-    </ol>
-  </section>
+      {# 1. O que é #}
+      <section id="o-que-e" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-v4-gray-900 mb-4">1. O que é o V4 Ads MCP</h2>
+        <p class="text-v4-gray-700 leading-relaxed mb-3">
+          Servidor MCP (Model Context Protocol) interno V4 que conecta as contas Google Ads que você
+          gerencia ao seu cliente de IA. Você pede em linguagem natural — <em>"performance da conta X
+          últimos 30 dias"</em>, <em>"pause keywords sem conversão"</em> — e o assistente executa via
+          ferramentas auditadas.
+        </p>
+        <p class="text-v4-gray-700 leading-relaxed">
+          Toda mutação passa por governance (dry-run + apply pra ações de risco) e tudo é registrado
+          no <a href="/audit" class="underline text-v4-red hover:text-v4-red-medium">audit log</a>.
+        </p>
+      </section>
 
-  <hr class="border-v4-gray-100 mb-16">
+      <hr class="border-v4-gray-100 mb-16">
 
-  {# 3. Claude Desktop #}
-  <section id="claude-desktop" class="mb-16 scroll-mt-20">
-    <h2 class="text-2xl font-bold text-v4-gray-900 mb-2">3. Claude Desktop</h2>
-    <p class="text-v4-gray-700 leading-relaxed mb-4">
-      Edite <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">%APPDATA%\Claude\claude_desktop_config.json</code>
-      (Windows) ou <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">~/Library/Application Support/Claude/claude_desktop_config.json</code>
-      (Mac). Se já houver outros <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">mcpServers</code> configurados,
-      adicione <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">"v4-ads"</code> dentro do bloco existente.
-    </p>
-    {{ code_block(claude_desktop_snippet, filename="claude_desktop_config.json") }}
-    <p class="mt-4 text-sm text-v4-gray-700">
-      <strong class="text-v4-gray-900">Reinicie o Claude Desktop totalmente</strong> — sair pelo system
-      tray, não só fechar a janela. Tools só aparecem após restart completo.
-    </p>
-  </section>
+      {# 2. Passo a passo #}
+      <section id="passo-a-passo" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-v4-gray-900 mb-4">2. Passo a passo</h2>
+        <ol class="list-decimal list-outside pl-6 space-y-3 text-v4-gray-700 leading-relaxed">
+          <li>
+            <strong class="text-v4-gray-900">Login no painel</strong> —
+            acesse <a href="/login" class="underline text-v4-red hover:text-v4-red-medium">/login</a>
+            com sua conta <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">@v4company.com</code>.
+            Login só funciona se um admin V4 tiver te convidado em
+            <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">/admin/invites</code>.
+          </li>
+          <li>
+            <strong class="text-v4-gray-900">Espere o admin liberar contas</strong> —
+            em <a href="/accounts" class="underline text-v4-red hover:text-v4-red-medium">/accounts</a>
+            você vê as contas Google Ads que pode operar. Se a lista estiver vazia, peça acesso ao admin
+            (ele libera em <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">/admin/access</code>).
+          </li>
+          <li>
+            <strong class="text-v4-gray-900">Crie uma sessão MCP</strong> —
+            em <a href="/sessions" class="underline text-v4-red hover:text-v4-red-medium">/sessions</a>,
+            dê um nome (ex: <em>"Claude Desktop pessoal"</em>) e crie. O Bearer token aparece <strong>UMA
+            vez</strong> — copie agora ou nunca mais o veja.
+          </li>
+          <li>
+            <strong class="text-v4-gray-900">Configure seu cliente</strong> com o snippet correspondente
+            nas seções abaixo. Substitua <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">mcp_xxxxxxxx...</code>
+            pelo seu token real.
+          </li>
+        </ol>
+        <a href="#topo" class="v4-help__topo">↑ Voltar ao topo</a>
+      </section>
 
-  <hr class="border-v4-gray-100 mb-16">
+      <hr class="border-v4-gray-100 mb-16">
 
-  {# 4. Claude Code (CLI) #}
-  <section id="claude-code" class="mb-16 scroll-mt-20">
-    <h2 class="text-2xl font-bold text-v4-gray-900 mb-2">4. Claude Code (CLI)</h2>
-    <p class="text-v4-gray-700 leading-relaxed mb-4">
-      Comando único — adiciona o servidor ao seu Claude Code local.
-    </p>
-    {{ code_block(claude_code_snippet, filename="terminal") }}
-  </section>
+      {# 3. Claude Desktop #}
+      <section id="claude-desktop" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-v4-gray-900 mb-2">3. Claude Desktop</h2>
+        <p class="text-v4-gray-700 leading-relaxed mb-4">
+          Edite <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">%APPDATA%\Claude\claude_desktop_config.json</code>
+          (Windows) ou <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">~/Library/Application Support/Claude/claude_desktop_config.json</code>
+          (Mac). Se já houver outros <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">mcpServers</code> configurados,
+          adicione <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">"v4-ads"</code> dentro do bloco existente.
+        </p>
+        {{ code_block(claude_desktop_snippet, filename="claude_desktop_config.json") }}
+        <p class="mt-4 text-sm text-v4-gray-700">
+          <strong class="text-v4-gray-900">Reinicie o Claude Desktop totalmente</strong> — sair pelo system
+          tray, não só fechar a janela. Tools só aparecem após restart completo.
+        </p>
+        <a href="#topo" class="v4-help__topo">↑ Voltar ao topo</a>
+      </section>
 
-  <hr class="border-v4-gray-100 mb-16">
+      <hr class="border-v4-gray-100 mb-16">
 
-  {# 5. Codex CLI #}
-  <section id="codex" class="mb-16 scroll-mt-20">
-    <h2 class="text-2xl font-bold text-v4-gray-900 mb-2">5. Codex CLI</h2>
-    <p class="text-v4-gray-700 leading-relaxed mb-4">
-      Adicione (ou crie) <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">~/.codex/config.toml</code>:
-    </p>
-    {{ code_block(codex_snippet, filename="~/.codex/config.toml") }}
-  </section>
+      {# 4. Claude Code (CLI) #}
+      <section id="claude-code" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-v4-gray-900 mb-2">4. Claude Code (CLI)</h2>
+        <p class="text-v4-gray-700 leading-relaxed mb-4">
+          Comando único — adiciona o servidor ao seu Claude Code local.
+        </p>
+        {{ code_block(claude_code_snippet, filename="terminal") }}
+        <a href="#topo" class="v4-help__topo">↑ Voltar ao topo</a>
+      </section>
 
-  <hr class="border-v4-gray-100 mb-16">
+      <hr class="border-v4-gray-100 mb-16">
 
-  {# 6. Cursor #}
-  <section id="cursor" class="mb-16 scroll-mt-20">
-    <h2 class="text-2xl font-bold text-v4-gray-900 mb-2">6. Cursor</h2>
-    <p class="text-v4-gray-700 leading-relaxed mb-4">
-      Cursor → Settings → MCP → "Add new MCP Server" — preencha como Streamable HTTP, ou edite
-      direto <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">.cursor/mcp.json</code> no
-      diretório do projeto:
-    </p>
-    {{ code_block(cursor_snippet, filename=".cursor/mcp.json") }}
-  </section>
+      {# 5. Codex CLI #}
+      <section id="codex" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-v4-gray-900 mb-2">5. Codex CLI</h2>
+        <p class="text-v4-gray-700 leading-relaxed mb-4">
+          Adicione (ou crie) <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">~/.codex/config.toml</code>:
+        </p>
+        {{ code_block(codex_snippet, filename="~/.codex/config.toml") }}
+        <a href="#topo" class="v4-help__topo">↑ Voltar ao topo</a>
+      </section>
 
-  <hr class="border-v4-gray-100 mb-16">
+      <hr class="border-v4-gray-100 mb-16">
 
-  {# 7. FAQ — uses native <details> for expandable items, no JS needed #}
-  <section id="faq" class="mb-16 scroll-mt-20">
-    <h2 class="text-2xl font-bold text-v4-gray-900 mb-6">7. FAQ</h2>
+      {# 6. Cursor #}
+      <section id="cursor" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-v4-gray-900 mb-2">6. Cursor</h2>
+        <p class="text-v4-gray-700 leading-relaxed mb-4">
+          Cursor → Settings → MCP → "Add new MCP Server" — preencha como Streamable HTTP, ou edite
+          direto <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">.cursor/mcp.json</code> no
+          diretório do projeto:
+        </p>
+        {{ code_block(cursor_snippet, filename=".cursor/mcp.json") }}
+        <a href="#topo" class="v4-help__topo">↑ Voltar ao topo</a>
+      </section>
 
-    <div class="space-y-3">
-      <details class="border border-v4-gray-100 rounded-md group">
-        <summary class="cursor-pointer px-4 py-3 font-semibold text-v4-gray-900 select-none list-none flex justify-between items-center">
-          <span>"Tool not found" no Claude Desktop</span>
-          <span class="text-v4-gray-300 group-open:rotate-90 transition-transform">▸</span>
-        </summary>
-        <div class="px-4 pb-4 text-v4-gray-700 leading-relaxed">
-          Reinicie o Claude Desktop completamente (sair pelo system tray, não só fechar a janela).
-          Verifique também que o Bearer token foi copiado exatamente como mostrado, sem espaços
-          extras antes/depois nem quebras de linha.
+      <hr class="border-v4-gray-100 mb-16">
+
+      {# 7. FAQ — uses native <details> for expandable items, no JS needed #}
+      <section id="faq" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-v4-gray-900 mb-6">7. FAQ</h2>
+
+        <div class="space-y-3">
+          <details class="v4-help__faq">
+            <summary>
+              <span>"Tool not found" no Claude Desktop</span>
+              <span class="v4-help__faq-arrow">▸</span>
+            </summary>
+            <div class="v4-help__faq-body">
+              Reinicie o Claude Desktop completamente (sair pelo system tray, não só fechar a janela).
+              Verifique também que o Bearer token foi copiado exatamente como mostrado, sem espaços
+              extras antes/depois nem quebras de linha.
+            </div>
+          </details>
+
+          <details class="v4-help__faq">
+            <summary>
+              <span>Perdi o token, e agora?</span>
+              <span class="v4-help__faq-arrow">▸</span>
+            </summary>
+            <div class="v4-help__faq-body">
+              Tokens só aparecem uma vez na criação. Vá em
+              <a href="/sessions" class="underline text-v4-red hover:text-v4-red-medium">/sessions</a>,
+              revogue a sessão antiga e crie uma nova — atualize seu config com o novo token.
+            </div>
+          </details>
+
+          <details class="v4-help__faq">
+            <summary>
+              <span>Não vejo as contas que deveria gerenciar</span>
+              <span class="v4-help__faq-arrow">▸</span>
+            </summary>
+            <div class="v4-help__faq-body">
+              Peça pro admin V4 da sua unidade liberar acesso em
+              <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">/admin/access</code>.
+              Em <a href="/accounts" class="underline text-v4-red hover:text-v4-red-medium">/accounts</a>
+              você confirma quais contas estão no seu escopo.
+            </div>
+          </details>
+
+          <details class="v4-help__faq">
+            <summary>
+              <span>"Acesso negado" depois de logar com Google</span>
+              <span class="v4-help__faq-arrow">▸</span>
+            </summary>
+            <div class="v4-help__faq-body">
+              Seu email <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">@v4company.com</code> não
+              está na allowlist. Peça pro admin te adicionar em
+              <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">/admin/invites</code>. Sem convite
+              prévio, o login é rejeitado.
+            </div>
+          </details>
+
+          <details class="v4-help__faq">
+            <summary>
+              <span>O que conta como sessão MCP "ativa"?</span>
+              <span class="v4-help__faq-arrow">▸</span>
+            </summary>
+            <div class="v4-help__faq-body">
+              Uma sessão fica ativa enquanto não foi revogada e não expirou (TTL padrão: 90 dias).
+              Cada cliente (Claude Desktop, Codex, Cursor) deve ter sua própria sessão — não compartilhe
+              tokens entre clientes. Se você usa Claude Desktop no PC e no notebook, crie uma sessão
+              pra cada.
+            </div>
+          </details>
+
+          <details class="v4-help__faq">
+            <summary>
+              <span>Erro / mutação que eu não fiz aparece no audit?</span>
+              <span class="v4-help__faq-arrow">▸</span>
+            </summary>
+            <div class="v4-help__faq-body">
+              Verifique em <a href="/sessions" class="underline text-v4-red hover:text-v4-red-medium">/sessions</a>
+              se há sessões que você não reconhece. Revogue qualquer suspeita e avise o admin
+              imediatamente — todo evento fica em
+              <a href="/audit" class="underline text-v4-red hover:text-v4-red-medium">/audit</a> com
+              IP, user-agent e timestamp pra rastrear.
+            </div>
+          </details>
         </div>
-      </details>
+        <a href="#topo" class="v4-help__topo">↑ Voltar ao topo</a>
+      </section>
 
-      <details class="border border-v4-gray-100 rounded-md group">
-        <summary class="cursor-pointer px-4 py-3 font-semibold text-v4-gray-900 select-none list-none flex justify-between items-center">
-          <span>Perdi o token, e agora?</span>
-          <span class="text-v4-gray-300 group-open:rotate-90 transition-transform">▸</span>
-        </summary>
-        <div class="px-4 pb-4 text-v4-gray-700 leading-relaxed">
-          Tokens só aparecem uma vez na criação. Vá em
-          <a href="/sessions" class="underline text-v4-red hover:text-v4-red-medium">/sessions</a>,
-          revogue a sessão antiga e crie uma nova — atualize seu config com o novo token.
-        </div>
-      </details>
+      <hr class="border-v4-gray-100 mb-16">
 
-      <details class="border border-v4-gray-100 rounded-md group">
-        <summary class="cursor-pointer px-4 py-3 font-semibold text-v4-gray-900 select-none list-none flex justify-between items-center">
-          <span>Não vejo as contas que deveria gerenciar</span>
-          <span class="text-v4-gray-300 group-open:rotate-90 transition-transform">▸</span>
-        </summary>
-        <div class="px-4 pb-4 text-v4-gray-700 leading-relaxed">
-          Peça pro admin V4 da sua unidade liberar acesso em
-          <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">/admin/access</code>.
-          Em <a href="/accounts" class="underline text-v4-red hover:text-v4-red-medium">/accounts</a>
-          você confirma quais contas estão no seu escopo.
-        </div>
-      </details>
+      {# 8. Suporte #}
+      <section id="suporte" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-v4-gray-900 mb-3">8. Ainda com dúvida</h2>
+        <p class="text-v4-gray-700 leading-relaxed">
+          Fala com o admin V4 da sua unidade — quem te convidou em
+          <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">/admin/invites</code> é o ponto
+          de contato natural. Pra problemas de plataforma (servidor fora do ar, deploy quebrado),
+          o admin escala pro time central.
+        </p>
+        <a href="#topo" class="v4-help__topo">↑ Voltar ao topo</a>
+      </section>
 
-      <details class="border border-v4-gray-100 rounded-md group">
-        <summary class="cursor-pointer px-4 py-3 font-semibold text-v4-gray-900 select-none list-none flex justify-between items-center">
-          <span>"Acesso negado" depois de logar com Google</span>
-          <span class="text-v4-gray-300 group-open:rotate-90 transition-transform">▸</span>
-        </summary>
-        <div class="px-4 pb-4 text-v4-gray-700 leading-relaxed">
-          Seu email <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">@v4company.com</code> não
-          está na allowlist. Peça pro admin te adicionar em
-          <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">/admin/invites</code>. Sem convite
-          prévio, o login é rejeitado.
-        </div>
-      </details>
-
-      <details class="border border-v4-gray-100 rounded-md group">
-        <summary class="cursor-pointer px-4 py-3 font-semibold text-v4-gray-900 select-none list-none flex justify-between items-center">
-          <span>O que conta como sessão MCP "ativa"?</span>
-          <span class="text-v4-gray-300 group-open:rotate-90 transition-transform">▸</span>
-        </summary>
-        <div class="px-4 pb-4 text-v4-gray-700 leading-relaxed">
-          Uma sessão fica ativa enquanto não foi revogada e não expirou (TTL padrão: 90 dias).
-          Cada cliente (Claude Desktop, Codex, Cursor) deve ter sua própria sessão — não compartilhe
-          tokens entre clientes. Se você usa Claude Desktop no PC e no notebook, crie uma sessão
-          pra cada.
-        </div>
-      </details>
-
-      <details class="border border-v4-gray-100 rounded-md group">
-        <summary class="cursor-pointer px-4 py-3 font-semibold text-v4-gray-900 select-none list-none flex justify-between items-center">
-          <span>Erro / mutação que eu não fiz aparece no audit?</span>
-          <span class="text-v4-gray-300 group-open:rotate-90 transition-transform">▸</span>
-        </summary>
-        <div class="px-4 pb-4 text-v4-gray-700 leading-relaxed">
-          Verifique em <a href="/sessions" class="underline text-v4-red hover:text-v4-red-medium">/sessions</a>
-          se há sessões que você não reconhece. Revogue qualquer suspeita e avise o admin
-          imediatamente — todo evento fica em
-          <a href="/audit" class="underline text-v4-red hover:text-v4-red-medium">/audit</a> com
-          IP, user-agent e timestamp pra rastrear.
-        </div>
-      </details>
-    </div>
-  </section>
-
-  <hr class="border-v4-gray-100 mb-16">
-
-  {# 8. Suporte #}
-  <section id="suporte" class="mb-16 scroll-mt-20">
-    <h2 class="text-2xl font-bold text-v4-gray-900 mb-3">8. Ainda com dúvida</h2>
-    <p class="text-v4-gray-700 leading-relaxed">
-      Fala com o admin V4 da sua unidade — quem te convidou em
-      <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">/admin/invites</code> é o ponto
-      de contato natural. Pra problemas de plataforma (servidor fora do ar, deploy quebrado),
-      o admin escala pro time central.
-    </p>
-  </section>
-
-</section>
+    </main>
+  </div>
+</div>
 
 <style>
-  /* Hide native <details> marker since we render our own ▸ arrow */
-  details > summary::-webkit-details-marker { display: none; }
-  details > summary { list-style: none; }
+  /* FAQ <details> — clean look + hover affordance + smooth arrow rotation */
+  .v4-help__faq {
+    border: 1px solid var(--v4-gray-100);
+    border-radius: var(--v4-radius-md);
+    transition: border-color var(--v4-motion-fast) var(--v4-ease-out);
+  }
+  .v4-help__faq:hover {
+    border-color: var(--v4-gray-200);
+  }
+  .v4-help__faq > summary {
+    cursor: pointer;
+    padding: 12px 16px;
+    font-weight: 600;
+    color: var(--v4-gray-900);
+    user-select: none;
+    list-style: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-radius: var(--v4-radius-md);
+    transition: background var(--v4-motion-fast) var(--v4-ease-out);
+  }
+  .v4-help__faq > summary::-webkit-details-marker { display: none; }
+  .v4-help__faq > summary:hover {
+    background: var(--v4-gray-50);
+  }
+  .v4-help__faq[open] > summary {
+    border-bottom: 1px solid var(--v4-gray-100);
+    border-radius: var(--v4-radius-md) var(--v4-radius-md) 0 0;
+  }
+  .v4-help__faq-arrow {
+    color: var(--v4-gray-300);
+    transition: transform var(--v4-motion-base) var(--v4-ease-out);
+  }
+  .v4-help__faq[open] .v4-help__faq-arrow {
+    transform: rotate(90deg);
+    color: var(--v4-red);
+  }
+  .v4-help__faq-body {
+    padding: 12px 16px 16px;
+    color: var(--v4-gray-700);
+    line-height: 1.6;
+  }
+
+  /* "↑ Voltar ao topo" inline link at end of long sections */
+  .v4-help__topo {
+    display: inline-block;
+    margin-top: 24px;
+    font-size: 12px;
+    color: var(--v4-gray-300);
+    text-decoration: none;
+    transition: color var(--v4-motion-fast);
+  }
+  .v4-help__topo:hover {
+    color: var(--v4-red);
+    text-decoration: none;
+  }
 </style>
 
 {% endblock %}
