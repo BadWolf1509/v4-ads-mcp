@@ -1,0 +1,64 @@
+{% extends "_base.html" %}
+{% from "_components.html" import breadcrumb, badge %}
+
+{% block title %}Audit · {{ event.operation }} — V4 Ads MCP{% endblock %}
+
+{% block content %}
+<section class="max-w-3xl mx-auto py-6 px-4">
+  {{ breadcrumb([
+    {"label": "Audit", "url": "/audit"},
+    {"label": event.occurred_at.strftime("%d/%m %H:%M:%S")}
+  ]) }}
+
+  <header class="mb-6 flex items-center gap-3 flex-wrap">
+    <h1 class="text-3xl font-extrabold tracking-tight font-mono">{{ event.operation }}</h1>
+    {% if event.status == "success" %}{{ badge("✓ OK", "success") }}
+    {% elif event.status == "error" %}{{ badge("✗ Erro", "error") }}
+    {% else %}{{ badge(event.status, "neutral") }}{% endif %}
+  </header>
+
+  <dl class="grid grid-cols-[140px_1fr] gap-y-3 gap-x-4 text-sm mb-8">
+    <dt class="text-v4-gray-700 uppercase text-xs font-semibold pt-1">Manager</dt>
+    <dd><strong>{{ event.manager_email or "—" }}</strong></dd>
+
+    <dt class="text-v4-gray-700 uppercase text-xs font-semibold pt-1">Sessão</dt>
+    <dd>{{ event.session_label or "—" }}</dd>
+
+    <dt class="text-v4-gray-700 uppercase text-xs font-semibold pt-1">Conta</dt>
+    <dd>
+      {% if event.customer_id %}
+        <strong>{{ event.account_name or event.customer_id }}</strong>
+        <span class="text-v4-gray-300 ml-2 font-mono">{{ event.customer_id }}</span>
+      {% else %}—{% endif %}
+    </dd>
+
+    <dt class="text-v4-gray-700 uppercase text-xs font-semibold pt-1">Tipo</dt>
+    <dd class="font-mono">{{ event.action_type }}</dd>
+
+    <dt class="text-v4-gray-700 uppercase text-xs font-semibold pt-1">Duração</dt>
+    <dd class="font-mono">{{ event.duration_ms or "—" }}{% if event.duration_ms %}ms{% endif %}</dd>
+
+    <dt class="text-v4-gray-700 uppercase text-xs font-semibold pt-1">Alvos</dt>
+    <dd>{{ event.target_count if event.target_count is not none else "—" }}</dd>
+
+    {% if event.google_request_id %}
+    <dt class="text-v4-gray-700 uppercase text-xs font-semibold pt-1">Request ID</dt>
+    <dd><code class="text-xs">{{ event.google_request_id }}</code></dd>
+    {% endif %}
+  </dl>
+
+  {% if event.error_message %}
+  <div class="mb-6">
+    <h3 class="text-sm font-semibold text-v4-gray-700 uppercase mb-2">Mensagem de erro</h3>
+    <div class="bg-v4-red-soft text-v4-red-dark p-4 rounded-md font-mono text-sm whitespace-pre-wrap">{{ event.error_message }}</div>
+  </div>
+  {% endif %}
+
+  {% if event.params_summary %}
+  <div class="mb-6">
+    <h3 class="text-sm font-semibold text-v4-gray-700 uppercase mb-2">Parâmetros</h3>
+    <pre class="bg-v4-gray-900 text-white p-4 rounded-md font-mono text-xs overflow-x-auto">{{ event.params_summary | tojson(indent=2) }}</pre>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
