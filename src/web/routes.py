@@ -1,12 +1,15 @@
 """Web panel routes."""
 
+from collections import OrderedDict
+from collections.abc import AsyncIterator
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from src.auth.panel_session import PANEL_SESSION_COOKIE_NAME
@@ -337,72 +340,122 @@ async def accounts_revoke_connection(
 
 
 @router.get("/audit", response_class=HTMLResponse)
-async def audit_page(
+async def audit(
     request: Request,
     user: CurrentUser = Depends(current_manager),  # noqa: B008
-    action_type: str = "all",  # 'mutate' | 'read' | 'all'
+    action_type: str = "all",
     customer_id: str | None = None,
-    days: int = 30,
-    limit: int = 100,
+    status: str = "all",
+    days: int = 7,
+    page: int = 1,
 ) -> HTMLResponse:
-    """Show manager's own audit_log entries (last N days, filterable)."""
-    # Sanitize input
-    if action_type not in ("mutate", "read", "all"):
-        action_type = "all"
-    if days not in (1, 7, 14, 30, 90):
-        days = 30
-    if limit < 1 or limit > 1000:
-        limit = 100
+    page_size = 50
+    offset = (page - 1) * page_size
 
     pool = connection.get_pool()
     async with pool.acquire() as conn:
-        # Build query with optional filters
-        where = ["manager_id = $1", f"occurred_at > now() - interval '{days} days'"]
-        params: list[object] = [user.id]
+        accounts = await manager_account_access.list_accounts_for_manager(conn, user.id)
+
+        # Build dynamic WHERE
+        where = ["al.manager_id = $1", "al.occurred_at > now() - ($2 || ' days')::interval"]
+        params: list[Any] = [user.id, str(days)]
+        idx = 3
         if action_type != "all":
-            where.append(f"action_type = ${len(params) + 1}")
+            where.append(f"al.action_type = ${idx}")
             params.append(action_type)
+            idx += 1
         if customer_id:
-            where.append(f"customer_id = ${len(params) + 1}")
+            where.append(f"al.customer_id = ${idx}")
             params.append(customer_id)
+            idx += 1
+        if status != "all":
+            where.append(f"al.status = ${idx}")
+            params.append(status)
+            idx += 1
 
-        where_sql = " AND ".join(where)
-        rows = await conn.fetch(
-            f"""
-            SELECT
-              audit_log.occurred_at,
-              audit_log.action_type,
-              audit_log.operation,
-              audit_log.customer_id,
-              audit_log.target_count,
-              audit_log.status,
-              audit_log.duration_ms,
-              audit_log.error_message,
-              audit_log.google_request_id,
-              gaa.descriptive_name AS account_name
-            FROM audit_log
-            LEFT JOIN google_ads_accounts gaa ON gaa.customer_id = audit_log.customer_id
-            WHERE {where_sql}
-            ORDER BY audit_log.occurred_at DESC
-            LIMIT {limit}
-            """,
-            *params,
-        )
+        count_sql = f"SELECT count(*) FROM audit_log al WHERE {' AND '.join(where)}"
+        total = await conn.fetchval(count_sql, *params) or 0
+        total_pages = max(1, (total + page_size - 1) // page_size)
 
-        # Also fetch list of accounts the manager can see (for the filter dropdown)
-        accessible = await manager_account_access.list_accounts_for_manager(conn, user.id)
+        rows_sql = f"""SELECT al.*, a.descriptive_name AS account_name
+                       FROM audit_log al LEFT JOIN google_ads_accounts a
+                         ON a.customer_id = al.customer_id
+                       WHERE {" AND ".join(where)}
+                       ORDER BY al.occurred_at DESC LIMIT ${idx} OFFSET ${idx + 1}"""
+        params_with_pagination = params + [page_size, offset]
+        rows = await conn.fetch(rows_sql, *params_with_pagination)
+
+    # Group by day for sticky day headers
+    grouped: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
+    today = datetime.utcnow().date()
+    for r in rows:
+        d = r["occurred_at"].date()
+        if d == today:
+            label = "Hoje"
+        elif d == today - timedelta(days=1):
+            label = "Ontem"
+        else:
+            label = d.strftime("%d/%m/%Y")
+        grouped.setdefault(label, []).append(dict(r))
+
+    # Preserve query string for CSV export link
+    qparts = []
+    if action_type != "all":
+        qparts.append(f"action_type={action_type}")
+    if customer_id:
+        qparts.append(f"customer_id={customer_id}")
+    if status != "all":
+        qparts.append(f"status={status}")
+    qparts.append(f"days={days}")
+    query_string = "&".join(qparts)
 
     return templates.TemplateResponse(
         request,
         "audit.html",
         {
             "current_user": user,
-            "rows": [dict(r) for r in rows],
+            "grouped": grouped,
+            "accessible_accounts": accounts,
             "filter_action_type": action_type,
-            "filter_customer_id": customer_id or "",
+            "filter_customer_id": customer_id,
+            "filter_status": status,
             "filter_days": days,
-            "accessible_accounts": accessible,
+            "current_page": page,
+            "total_pages": total_pages,
+            "query_string": query_string,
         },
+    )
+
+
+@router.get("/audit/export.csv", response_model=None)
+async def audit_export_csv(
+    request: Request,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+    action_type: str = "all",
+    customer_id: str | None = None,
+    days: int = 7,
+) -> StreamingResponse:
+    """Stream CSV export of the gestor's audit log with current filters applied."""
+    pool = connection.get_pool()
+
+    async def stream() -> AsyncIterator[bytes]:
+        async with pool.acquire() as conn:
+            from src.db.repositories import audit_log
+
+            async for line in audit_log.export_csv_rows(
+                conn,
+                manager_id=user.id,
+                customer_id=customer_id,
+                action_type=action_type if action_type != "all" else None,
+                days=days,
+            ):
+                yield line.encode("utf-8")
+
+    filename = f"audit-{datetime.utcnow().strftime('%Y-%m-%d')}.csv"
+    return StreamingResponse(
+        stream(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
