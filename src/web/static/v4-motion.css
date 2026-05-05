@@ -1,0 +1,45 @@
+/* V4 motion utilities — apply via class for transitions/animations */
+
+.v4-fade-in {
+  animation: v4-fade-in var(--v4-motion-base) var(--v4-ease-out);
+}
+@keyframes v4-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.v4-slide-up {
+  animation: v4-slide-up var(--v4-motion-slow) var(--v4-ease-spring);
+}
+@keyframes v4-slide-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.v4-pulse {
+  animation: v4-pulse 2s var(--v4-ease-out) infinite;
+}
+@keyframes v4-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
+}
+
+/* HTMX-aware: indicate loading on htmx-request */
+.htmx-indicator { opacity: 0; transition: opacity var(--v4-motion-base); }
+.htmx-request .htmx-indicator { opacity: 1; }
+.htmx-request.htmx-indicator { opacity: 1; }
+
+/* Skeleton shimmer */
+.v4-skeleton {
+  background: linear-gradient(90deg,
+    var(--v4-gray-100) 0%,
+    var(--v4-gray-50) 50%,
+    var(--v4-gray-100) 100%);
+  background-size: 200% 100%;
+  animation: v4-skeleton-shimmer 1.4s var(--v4-ease-out) infinite;
+  border-radius: var(--v4-radius-sm);
+}
+@keyframes v4-skeleton-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}

@@ -71,4 +71,34 @@
   --v4-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
   --v4-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
   --v4-shadow-modal: 0 10px 25px rgba(0, 0, 0, 0.15);
+
+  /* Display (Editorial hero) */
+  --v4-display-size: 56px;
+  --v4-display-weight: 800;
+  --v4-display-line: 1.0;
+  --v4-display-track: -0.025em;
+
+  /* Soft backgrounds (alerts, badges without alarm tone) */
+  --v4-red-soft:   #fde2e4;
+  --v4-green-soft: #e8f7ea;
+  --v4-gold-soft:  #fff7e0;
+
+  /* Operational density */
+  --v4-row-height-compact: 36px;
+  --v4-cell-pad-compact: 8px 12px;
+  --v4-border-subtle: 1px solid var(--v4-gray-100);
+
+  /* Z-index scale */
+  --v4-z-base:     1;
+  --v4-z-sticky:   10;
+  --v4-z-dropdown: 100;
+  --v4-z-modal:    1000;
+  --v4-z-toast:    1100;
+
+  /* Motion */
+  --v4-motion-fast: 100ms;
+  --v4-motion-base: 180ms;
+  --v4-motion-slow: 320ms;
+  --v4-ease-out:    cubic-bezier(0.2, 0.8, 0.2, 1);
+  --v4-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
