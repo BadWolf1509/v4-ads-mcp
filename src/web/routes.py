@@ -707,6 +707,70 @@ async def admin_access_bulk_copy(
     return RedirectResponse(url="/admin/access", status_code=303)
 
 
+@router.get("/admin/access/by-manager", response_class=HTMLResponse)
+async def admin_access_by_manager(
+    request: Request,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+) -> HTMLResponse:
+    _require_admin(user)
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        managers_with_counts = await conn.fetch(
+            """SELECT m.id, m.email, m.full_name,
+                      count(maa.customer_id) AS access_count
+               FROM managers m
+               LEFT JOIN manager_account_access maa ON maa.manager_id = m.id
+               WHERE m.is_active = true
+               GROUP BY m.id ORDER BY m.email"""
+        )
+        total_accounts = await conn.fetchval("SELECT count(*) FROM google_ads_accounts") or 0
+        pending = await pending_invites_count()
+    return templates.TemplateResponse(
+        request,
+        "admin/access_by_manager.html",
+        {
+            "current_user": user,
+            "managers_with_counts": [dict(r) for r in managers_with_counts],
+            "total_accounts": total_accounts,
+            "pending_invites_count": pending,
+        },
+    )
+
+
+@router.get("/admin/access/{manager_id}", response_class=HTMLResponse)
+async def admin_access_manager_detail(
+    request: Request,
+    manager_id: str,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+) -> HTMLResponse:
+    _require_admin(user)
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        mgr_row = await conn.fetchrow(
+            "SELECT id, email, full_name FROM managers WHERE id = $1", UUID(manager_id)
+        )
+        if mgr_row is None:
+            raise HTTPException(status_code=404, detail="Gestor not found")
+        accs = await google_ads_accounts.list_all(conn)
+        access_rows = await conn.fetch(
+            "SELECT customer_id FROM manager_account_access WHERE manager_id = $1",
+            UUID(manager_id),
+        )
+        access_set = {r["customer_id"] for r in access_rows}
+        pending = await pending_invites_count()
+    return templates.TemplateResponse(
+        request,
+        "admin/access_manager_detail.html",
+        {
+            "current_user": user,
+            "manager": dict(mgr_row),
+            "accounts": accs,
+            "access_set": access_set,
+            "pending_invites_count": pending,
+        },
+    )
+
+
 @router.post("/admin/access/toggle", response_class=HTMLResponse)
 async def admin_access_toggle(
     request: Request,

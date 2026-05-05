@@ -1,0 +1,27 @@
+{% extends "_base.html" %}
+
+{% block title %}Admin · Acessos por gestor — V4 Ads MCP{% endblock %}
+
+{% block content %}
+<section class="max-w-2xl mx-auto py-6 px-4">
+  <header class="mb-6">
+    <h1 class="text-3xl font-extrabold tracking-tight">Acessos por gestor</h1>
+    <p class="text-sm text-v4-gray-700">Visão list-friendly pra mobile. <a href="/admin/access" class="underline">matriz completa →</a></p>
+  </header>
+
+  {% for m in managers_with_counts %}
+  <a href="/admin/access/{{ m.id }}"
+     class="block border border-v4-gray-100 rounded-md p-4 mb-2 hover:bg-v4-gray-50 transition-colors">
+    <div class="flex justify-between items-center">
+      <div>
+        <strong>{{ m.email }}</strong>
+        {% if m.full_name %}<div class="text-xs text-v4-gray-300">{{ m.full_name }}</div>{% endif %}
+      </div>
+      <div class="text-sm text-v4-gray-700">
+        {{ m.access_count }} / {{ total_accounts }} contas →
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+</section>
+{% endblock %}
