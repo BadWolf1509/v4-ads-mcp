@@ -41,6 +41,21 @@ class Settings(BaseSettings):
     supabase_anon_key: str
     supabase_service_key: str
 
+    # Phase 2: invite-only allowlist bootstrap
+    # Comma-separated emails that get auto-promoted to admin on first OAuth login,
+    # but ONLY when the managers table is empty. Once seeded, this value is dormant.
+    # Set on Cloud Run via env var. Not a secret — it's an allowlist of bootstrap users.
+    bootstrap_admin_emails: str = ""
+
+    @property
+    def bootstrap_admin_emails_set(self) -> set[str]:
+        """Parse the comma-separated env into a normalized lowercased set."""
+        return {
+            e.strip().lower()
+            for e in self.bootstrap_admin_emails.split(",")
+            if e.strip()
+        }
+
     @field_validator("google_ads_login_customer_id")
     @classmethod
     def validate_customer_id_format(cls, v: str) -> str:
