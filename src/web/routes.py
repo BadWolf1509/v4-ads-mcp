@@ -156,7 +156,7 @@ async def dashboard(
             )
             quota_used = (
                 await conn.fetchval(
-                    "SELECT used_today FROM rate_counters WHERE date = current_date LIMIT 1",
+                    "SELECT COALESCE(SUM(operations_used), 0) FROM rate_counters WHERE date = current_date",
                 )
                 or 0
             )
@@ -423,7 +423,9 @@ async def admin_index(
         )
         total_mgrs = await conn.fetchval("SELECT count(*) FROM managers") or 0
         quota_used = (
-            await conn.fetchval("SELECT used_today FROM rate_counters WHERE date = current_date")
+            await conn.fetchval(
+                "SELECT COALESCE(SUM(operations_used), 0) FROM rate_counters WHERE date = current_date"
+            )
             or 0
         )
         errors_24h = (
