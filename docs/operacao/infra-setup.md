@@ -62,12 +62,21 @@ This document records the cloud-console actions performed once to bootstrap the 
 - E2E approach: deferred to operations (gestores) doing real work — synthetic test mutations risk altering live accounts. Validation channel = audit_log table + Google Ads UI Change History. Test prompts in `phase-1a-bootstrap.md` Phase 3a section remain available for ad-hoc validation if needed.
 - First-touch monitoring plan: track audit_log for the first week of operations use; flag any failures (status='error') for investigation.
 
-### Phase 1b — Web panel (TBD - awaiting user E2E)
+### Phase 1b — Web panel (2026-05-05)
 - 5 gestor pages (login, dashboard, accounts, sessions, audit) + 4 admin pages (managers, accounts, access matrix, audit) shipped.
 - Authentication: unified Google OAuth (deviation from spec §5.1 which prescribed Supabase Auth + separate Google OAuth) — single flow with scopes {openid, email, profile, adwords} restricted to @v4company.com.
 - Panel session: signed cookie `v4_panel_session` (24h TTL, httpOnly, Secure, SameSite=Lax). HMAC-signed with session_signing_key.
 - First-ever login auto-promoted to admin (bootstrap path).
 - Templates: Jinja2 + V4 design tokens (no JS framework, no build step). HTMX via CDN for inline interactions (revoke session, toggle access).
+- Brand assets: official V4 SVG logo (`logo_v4_puro_round.svg`, 667 bytes vector-pure) replacing initial placeholder. Renders in header of every page + login hero. Reserve `logo_v4_puro_round_transparente.svg` (585 bytes) kept for future dark-mode/footer use.
 - 203 tests passing (unit + integration with testcontainers).
 - Existing CLI admin remains available as escape hatch.
-- E2E pending — user runs the test flows in `phase-1a-bootstrap.md` Phase 1b section.
+- E2E verified by user on 2026-05-05 via 5 screenshots covering all gestor + admin pages in production:
+  - Login flow worked end-to-end. Re-OAuth populated google_email = wellinton.ribeiro@v4company.com, fixing the "unknown" carryover from Phase 1a (which had only `adwords` scope).
+  - Dashboard `/`: greeting "Bem-vindo, Wellinton Ribeiro!", ADMIN badge, "23 contas acessíveis", "1 sessão MCP ativa", Google connection card showing wellinton.ribeiro@v4company.com (Conectado em 05/05/2026 00:51).
+  - `/accounts`: 2 OAuth connections rendered (new with-email ATIVA from 05/05 + legacy "unknown" ATIVA from 04/05) + table of 23 Google Ads accounts (CIDs 3237459217 → 9985020293, including "3 Lagoas Locações", "DR DÉRICK VINHAS", "Mestre da Obra - Cotia" etc.).
+  - `/sessions`: 1 active "Claude Desktop" session listed (criada 04/05/2026 04:56, último uso 04/05/2026 14:14, expira 02/08/2026). Revoke button rendered.
+  - `/audit`: 2 events captured — both `list_my_accounts` READ ops, status OK, target_count 23, durations 7ms + 6ms.
+  - `/admin/managers`: 1 admin row (Wellinton Ribeiro, badge ADMIN, ATIVO, criado 04/05/2026, último acesso 04/05 14:14, marcado "(você)").
+- Phase 1a known-limitation #1 (google_email="unknown" because OAuth used only `adwords` scope) is now resolved: new connections via panel use `{openid, email, profile, adwords}` and the email column populates correctly. Legacy "unknown" rows from Phase 1a remain visible until those connections are revoked + reauthorized — cosmetic only.
+- Logo renders correctly across all pages including the login hero.
