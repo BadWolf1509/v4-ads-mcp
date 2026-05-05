@@ -674,11 +674,17 @@ async def admin_accounts(
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         accs = await google_ads_accounts.list_all(conn)
+    mccs = sorted({a.mcc_id for a in accs if a.mcc_id})
     pending = await pending_invites_count()
     return templates.TemplateResponse(
         request,
         "admin/accounts.html",
-        {"current_user": user, "accounts": accs, "pending_invites_count": pending},
+        {
+            "current_user": user,
+            "accounts": accs,
+            "mccs": mccs,
+            "pending_invites_count": pending,
+        },
     )
 
 
