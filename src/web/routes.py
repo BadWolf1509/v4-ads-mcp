@@ -611,7 +611,7 @@ async def admin_managers(
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT id, email, full_name, role, is_active, created_at, last_seen_at FROM managers ORDER BY email"
+            "SELECT id, email, full_name, role, is_active, status, created_at, last_seen_at FROM managers ORDER BY email"
         )
     pending = await pending_invites_count()
     return templates.TemplateResponse(
