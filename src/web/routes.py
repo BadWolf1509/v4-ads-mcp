@@ -315,7 +315,7 @@ async def admin_managers(
     return templates.TemplateResponse(
         request,
         "admin/managers.html",
-        {"current_user": user, "managers": [dict(r) for r in rows]},
+        {"current_user": user, "managers": [dict(r) for r in rows], "pending_invites_count": 0},
     )
 
 
@@ -371,7 +371,7 @@ async def admin_accounts(
     return templates.TemplateResponse(
         request,
         "admin/accounts.html",
-        {"current_user": user, "accounts": accs},
+        {"current_user": user, "accounts": accs, "pending_invites_count": 0},
     )
 
 
@@ -398,6 +398,7 @@ async def admin_access(
             "managers_list": [dict(r) for r in managers_rows],
             "accounts": accs,
             "access_set": access_set,
+            "pending_invites_count": 0,
         },
     )
 
@@ -519,5 +520,6 @@ async def admin_audit(
             "filter_customer_id": customer_id or "",
             "filter_action_type": action_type,
             "filter_days": days,
+            "pending_invites_count": 0,
         },
     )

@@ -73,3 +73,13 @@ async def optional_current_manager(request: Request) -> CurrentUser | None:
     if m is None or not m.is_active:
         return None
     return CurrentUser(m)
+
+
+async def pending_invites_count() -> int:
+    """Lightweight count for the sub-nav badge. Returns 0 if table empty or feature off."""
+    from src.db import connection
+    from src.db.repositories import managers
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        # Will be implemented in Task 2.5; for now return 0 to keep the badge hidden.
+        return 0

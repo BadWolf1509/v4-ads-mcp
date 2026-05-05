@@ -125,3 +125,36 @@ main {
   font-size: var(--v4-small-size);
   color: var(--v4-gray-300);
 }
+
+/* Admin sub-nav */
+.v4-subnav {
+  background: var(--v4-gray-50);
+  border-bottom: 1px solid var(--v4-gray-100);
+  padding: var(--v4-space-3) var(--v4-space-4);
+  display: flex;
+  gap: var(--v4-space-4);
+  align-items: center;
+  position: sticky;
+  top: 53px; /* below header — header is ~52px */
+  z-index: var(--v4-z-sticky);
+  font-size: 13px;
+  overflow-x: auto;
+}
+.v4-subnav__link {
+  color: var(--v4-gray-700);
+  text-decoration: none;
+  font-weight: 500;
+  white-space: nowrap;
+  padding: var(--v4-space-1) 0;
+  border-bottom: 2px solid transparent;
+  transition: border-color var(--v4-motion-fast) var(--v4-ease-out),
+              color var(--v4-motion-fast) var(--v4-ease-out);
+}
+.v4-subnav__link:hover {
+  color: var(--v4-gray-900);
+  text-decoration: none;
+}
+.v4-subnav__link.is-active {
+  color: var(--v4-red);
+  border-bottom-color: var(--v4-red);
+}

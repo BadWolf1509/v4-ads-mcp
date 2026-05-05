@@ -61,6 +61,9 @@
     </div>
     {% endif %}
   </header>
+  {% if current_user and current_user.is_admin and request.url.path.startswith('/admin') %}
+    {% include "admin/_subnav.html" %}
+  {% endif %}
 
   <main>
     {% block content %}{% endblock %}
