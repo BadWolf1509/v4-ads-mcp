@@ -14,6 +14,20 @@
 <div class="v4-alert v4-alert--{{ kind }}">{{ message }}</div>
 {% endmacro %}
 
+{% macro card(title=None, action=None, variant="default", body="") %}
+  {%- set classes = "v4-card" -%}
+  {%- if variant != "default" %}{% set classes = classes ~ " v4-card--" ~ variant %}{% endif -%}
+  <div class="{{ classes }}">
+    {% if title or action %}
+    <div class="v4-card__header">
+      {% if title %}<h3 class="v4-card__title">{{ title }}</h3>{% endif %}
+      {% if action %}<div class="v4-card__action">{{ action|safe }}</div>{% endif %}
+    </div>
+    {% endif %}
+    {{ body|safe }}
+  </div>
+{% endmacro %}
+
 {% macro button(label, variant="primary", size="md", type="button", loading=false, icon=None, extra_classes="", attrs="") %}
   {%- set classes = "v4-btn v4-btn--" ~ variant -%}
   {%- if size == "small" %}{% set classes = classes ~ " v4-btn--small" %}{% endif -%}

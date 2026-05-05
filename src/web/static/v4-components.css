@@ -266,3 +266,18 @@
   color: var(--v4-gray-700);
 }
 @keyframes v4-btn-spin { to { transform: rotate(360deg); } }
+
+.v4-card--compact {
+  padding: var(--v4-space-4);
+  border-radius: var(--v4-radius-md);
+}
+.v4-card--compact .v4-card__header {
+  margin-bottom: var(--v4-space-3);
+}
+.v4-card--compact .v4-card__title {
+  font-size: var(--v4-h4-size);
+}
+
+.v4-card--highlighted {
+  border-left: 3px solid var(--v4-red);
+}
