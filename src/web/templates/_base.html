@@ -9,6 +9,33 @@
   <link rel="stylesheet" href="/static/v4-components.css">
   <link rel="stylesheet" href="/static/v4-motion.css">
   <link rel="icon" type="image/svg+xml" href="/static/logo/logo_v4_puro_round.svg">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'v4-red':   { DEFAULT: '#e50914', medium: '#b20710', dark: '#80050b', soft: '#fde2e4' },
+            'v4-gray':  { 50: '#f5f5f5', 100: '#e5e5e5', 200: '#cccccc', 300: '#b3b3b3',
+                          700: '#333333', 800: '#262626', 900: '#1a1a1a' },
+            'v4-green': { DEFAULT: '#52cc5a', soft: '#e8f7ea' },
+            'v4-gold':  { DEFAULT: '#ffc02a', soft: '#fff7e0' },
+          },
+          fontFamily: {
+            sans: ['Montserrat', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'Consolas', 'monospace'],
+          },
+          fontSize: {
+            'display': ['56px', { lineHeight: '1.0', letterSpacing: '-0.025em' }],
+          },
+          transitionTimingFunction: {
+            'v4-out':    'cubic-bezier(0.2, 0.8, 0.2, 1)',
+            'v4-spring': 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+          },
+        }
+      }
+    }
+  </script>
   <script src="https://unpkg.com/htmx.org@2.0.3" defer></script>
 </head>
 <body>
