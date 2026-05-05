@@ -62,6 +62,31 @@ async def logout() -> RedirectResponse:
     return response
 
 
+@router.get("/access-denied", response_class=HTMLResponse, response_model=None)
+async def access_denied(
+    request: Request,
+    reason: str = "not_invited",
+) -> HTMLResponse:
+    """Q8 invite-only landing page. No auth required.
+
+    Reads a transient `v4_attempted_email` cookie set by the OAuth callback
+    before redirect, so the page can show which email was rejected. Cookie is
+    cleared on read so it doesn't persist or leak across logins.
+    """
+    attempted_email = request.cookies.get("v4_attempted_email")
+    response = templates.TemplateResponse(
+        request,
+        "access_denied.html",
+        {
+            "current_user": None,
+            "reason": reason,
+            "attempted_email": attempted_email,
+        },
+    )
+    response.delete_cookie("v4_attempted_email", path="/")
+    return response
+
+
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(
     request: Request,

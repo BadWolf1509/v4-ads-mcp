@@ -1,0 +1,40 @@
+{% extends "_base.html" %}
+{% from "_components.html" import button %}
+
+{% block title %}Acesso negado — V4 Ads MCP{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto py-16 px-4 text-center">
+  {% if reason == "domain" %}
+    <div class="text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
+      Domínio não permitido.
+    </div>
+    <p class="mt-6 text-v4-gray-700">
+      O V4 Ads MCP é restrito a contas <code>@v4company.com</code>. Use sua conta corporativa.
+    </p>
+  {% elif reason == "deactivated" %}
+    <div class="text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
+      Conta desativada.
+    </div>
+    <p class="mt-6 text-v4-gray-700">
+      Sua conta foi desativada por um admin. Entre em contato com o admin V4 da sua unidade pra reativar.
+    </p>
+  {% else %}
+    <div class="text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
+      Você ainda não tem acesso.
+    </div>
+    <p class="mt-6 text-v4-gray-700">
+      O V4 Ads MCP é uma ferramenta interna por convite. Peça pro admin V4 da sua unidade adicionar o seu email à allowlist:
+    </p>
+    {% if attempted_email %}
+    <div class="my-4 inline-block bg-v4-gray-50 px-4 py-2 rounded-md font-mono text-sm">
+      {{ attempted_email }}
+    </div>
+    {% endif %}
+  {% endif %}
+
+  <div class="mt-8">
+    <a href="/logout" class="v4-btn v4-btn--secondary">Logout</a>
+  </div>
+</div>
+{% endblock %}
