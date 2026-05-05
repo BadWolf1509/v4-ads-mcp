@@ -114,5 +114,22 @@
   <footer class="v4-footer">
     V4 Ads MCP — interno V4 Company
   </footer>
+<div class="v4-toast-region" id="v4-toast-region" aria-live="polite" aria-atomic="true"></div>
+<script>
+  function showToast(message, kind) {
+    kind = kind || 'success';
+    const region = document.getElementById('v4-toast-region');
+    const toast = document.createElement('div');
+    toast.className = 'v4-toast v4-toast--' + kind;
+    toast.textContent = message;
+    region.appendChild(toast);
+    setTimeout(() => {
+      toast.classList.add('is-leaving');
+      setTimeout(() => toast.remove(), 200);
+    }, 3500);
+  }
+  // HTMX hook: server can return HX-Trigger: {"toast": {"message": "...", "kind": "success"}}
+  document.body.addEventListener('toast', (e) => showToast(e.detail.message, e.detail.kind));
+</script>
 </body>
 </html>
