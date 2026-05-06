@@ -4,6 +4,8 @@ import jsonschema
 import pytest
 
 from src.mcp.tools._registry import all_tools, import_all_tools
+from src.mcp.tools.update_ad_group_bid import _SCHEMA as AD_GROUP_BID_SCHEMA
+from src.mcp.tools.update_keyword_bid import _SCHEMA as KEYWORD_BID_SCHEMA
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -132,3 +134,65 @@ def test_every_tool_input_schema_disallows_extra_properties():
             assert tool.input_schema.get("additionalProperties") is False, (
                 f"{tool.name} doesn't have additionalProperties: false"
             )
+
+
+def test_update_keyword_bid_accepts_zero_bid():
+    """Keyword bid schema should accept new_cpc_bid_brl: 0 to allow inheriting from parent."""
+    valid_input = {
+        "customer_id": "1234567890",
+        "bids": [
+            {
+                "ad_group_id": "1",
+                "criterion_id": "2",
+                "new_cpc_bid_brl": 0,
+            }
+        ],
+    }
+    # Should not raise ValidationError
+    jsonschema.validate(valid_input, KEYWORD_BID_SCHEMA)
+
+
+def test_update_keyword_bid_rejects_negative_bid():
+    """Keyword bid schema should reject new_cpc_bid_brl: -1."""
+    invalid_input = {
+        "customer_id": "1234567890",
+        "bids": [
+            {
+                "ad_group_id": "1",
+                "criterion_id": "2",
+                "new_cpc_bid_brl": -1,
+            }
+        ],
+    }
+    with pytest.raises(jsonschema.exceptions.ValidationError):
+        jsonschema.validate(invalid_input, KEYWORD_BID_SCHEMA)
+
+
+def test_update_ad_group_bid_accepts_zero_bid():
+    """Ad group bid schema should accept new_cpc_bid_brl: 0 to allow inheriting from parent."""
+    valid_input = {
+        "customer_id": "1234567890",
+        "bids": [
+            {
+                "ad_group_id": "1",
+                "new_cpc_bid_brl": 0,
+            }
+        ],
+    }
+    # Should not raise ValidationError
+    jsonschema.validate(valid_input, AD_GROUP_BID_SCHEMA)
+
+
+def test_update_ad_group_bid_rejects_negative_bid():
+    """Ad group bid schema should reject new_cpc_bid_brl: -1."""
+    invalid_input = {
+        "customer_id": "1234567890",
+        "bids": [
+            {
+                "ad_group_id": "1",
+                "new_cpc_bid_brl": -1,
+            }
+        ],
+    }
+    with pytest.raises(jsonschema.exceptions.ValidationError):
+        jsonschema.validate(invalid_input, AD_GROUP_BID_SCHEMA)

@@ -22,7 +22,7 @@ _SCHEMA: dict[str, Any] = {
                 "properties": {
                     "ad_group_id": {"type": "string", "pattern": "^[0-9]+$"},
                     "criterion_id": {"type": "string", "pattern": "^[0-9]+$"},
-                    "new_cpc_bid_brl": {"type": "number", "exclusiveMinimum": 0},
+                    "new_cpc_bid_brl": {"type": "number", "minimum": 0},
                 },
                 "required": ["ad_group_id", "criterion_id", "new_cpc_bid_brl"],
                 "additionalProperties": False,
