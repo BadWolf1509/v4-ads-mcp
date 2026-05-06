@@ -192,17 +192,16 @@ RESOURCES: dict[str, Any] = {
         ],
     },
     "recommendation": {
-        "description": "Recomendacoes pendentes do Google Ads.",
+        "description": (
+            "Recomendacoes pendentes do Google Ads. "
+            "Campos de impacto (base_metrics.*, potential_metrics.*) sao "
+            "selectable_with-restricted no v24 e devem ser consultados por tipo "
+            "especifico via run_gaql."
+        ),
         "fields": [
             "recommendation.resource_name",
             "recommendation.type",
             "recommendation.dismissed",
-            "recommendation.impact.base_metrics.impressions",
-            "recommendation.impact.base_metrics.clicks",
-            "recommendation.impact.base_metrics.cost_micros",
-            "recommendation.impact.potential_metrics.impressions",
-            "recommendation.impact.potential_metrics.clicks",
-            "recommendation.impact.potential_metrics.cost_micros",
         ],
     },
     "asset": {
