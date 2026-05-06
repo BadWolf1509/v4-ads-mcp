@@ -13,7 +13,7 @@ def build_update_ad_group_status(
     new_status = payload["new_status"].upper()
     operations = []
     ad_group_service = client.get_service("AdGroupService")
-    status_enum = client.enums.AdGroupStatusEnum.AdGroupStatus
+    status_enum = client.enums.AdGroupStatusEnum
     for agid in payload["ad_group_ids"]:
         op = client.get_type("MutateOperation")
         ag_op = op.ad_group_operation

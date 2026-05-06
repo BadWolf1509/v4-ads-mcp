@@ -13,7 +13,7 @@ def build_update_keyword_status(
     new_status = payload["new_status"].upper()
     operations = []
     criterion_service = client.get_service("AdGroupCriterionService")
-    status_enum = client.enums.AdGroupCriterionStatusEnum.AdGroupCriterionStatus
+    status_enum = client.enums.AdGroupCriterionStatusEnum
     for kw in payload["keywords"]:
         op = client.get_type("MutateOperation")
         crit_op = op.ad_group_criterion_operation

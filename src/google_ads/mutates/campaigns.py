@@ -18,7 +18,7 @@ def build_update_campaign_status(
     new_status = payload["new_status"].upper()
     operations = []
     campaign_service = client.get_service("CampaignService")
-    status_enum = client.enums.CampaignStatusEnum.CampaignStatus
+    status_enum = client.enums.CampaignStatusEnum
     for cid in payload["campaign_ids"]:
         op = client.get_type("MutateOperation")
         campaign_op = op.campaign_operation

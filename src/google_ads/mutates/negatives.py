@@ -21,7 +21,7 @@ def build_add_negative_keywords(
 
     operations = []
     campaign_service = client.get_service("CampaignService")
-    match_type_enum = client.enums.KeywordMatchTypeEnum.KeywordMatchType
+    match_type_enum = client.enums.KeywordMatchTypeEnum
     campaign_resource = campaign_service.campaign_path(customer_id, campaign_id)
 
     for kw in keywords:
