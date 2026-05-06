@@ -80,6 +80,7 @@ def import_all_tools() -> None:
         get_top_keywords_creatives,
         list_gaql_resources,
         list_my_accounts,
+        remove_negative_keywords,
         run_gaql,
         update_ad_group_bid,
         update_ad_group_status,

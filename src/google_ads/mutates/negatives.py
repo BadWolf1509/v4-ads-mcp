@@ -1,4 +1,4 @@
-"""Mutate builder for adding campaign-level negative keywords."""
+"""Mutate builders for campaign-level negative keywords (add and remove)."""
 
 from typing import Any
 
@@ -34,6 +34,26 @@ def build_add_negative_keywords(
         criterion.negative = True
         criterion.keyword.text = text
         criterion.keyword.match_type = match_type_enum[mt]
+        operations.append(op)
+
+    return operations
+
+
+@register_builder("remove_negative_keywords")
+def build_remove_negative_keywords(
+    client: Any, customer_id: str, payload: dict[str, Any]
+) -> list[Any]:
+    """payload: {campaign_id: str, criterion_ids: [str]}"""
+    campaign_id = payload["campaign_id"]
+    criterion_ids = payload["criterion_ids"]
+
+    operations = []
+    cc_service = client.get_service("CampaignCriterionService")
+
+    for crit_id in criterion_ids:
+        op = client.get_type("MutateOperation")
+        crit_op = op.campaign_criterion_operation
+        crit_op.remove = cc_service.campaign_criterion_path(customer_id, campaign_id, crit_id)
         operations.append(op)
 
     return operations

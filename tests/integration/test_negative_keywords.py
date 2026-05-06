@@ -139,3 +139,58 @@ async def test_add_negative_keywords_summary_lists_match_types(db, session_ctx):
 
     assert "BROAD" in result["blast_summary"]
     assert "PHRASE" in result["blast_summary"]
+
+
+@pytest.mark.integration
+async def test_remove_negative_keywords_auto_applies_single(db, session_ctx):
+    from src.mcp.tools.remove_negative_keywords import remove_negative_keywords
+
+    with (
+        patch(
+            "src.google_ads.mutations.build_client_for_manager",
+            AsyncMock(return_value=_fake_client()),
+        ),
+        patch(
+            "src.google_ads.mutations.get_builder",
+            return_value=lambda c, cid, p: [MagicMock()],
+        ),
+    ):
+        result = await remove_negative_keywords(
+            {
+                "customer_id": "1234567890",
+                "campaign_id": "111",
+                "criterion_ids": ["222333"],
+            }
+        )
+
+    assert result["status"] == "applied"
+    assert result["applied_count"] == 1
+
+
+@pytest.mark.integration
+async def test_remove_negative_keywords_auto_applies_bulk(db, session_ctx):
+    """Even 100 criterion removals auto-apply (spec §7.1: negatives are safe)."""
+    from src.mcp.tools.remove_negative_keywords import remove_negative_keywords
+
+    criterion_ids = [str(i) for i in range(100)]
+
+    with (
+        patch(
+            "src.google_ads.mutations.build_client_for_manager",
+            AsyncMock(return_value=_fake_client()),
+        ),
+        patch(
+            "src.google_ads.mutations.get_builder",
+            return_value=lambda c, cid, p: [MagicMock() for _ in range(100)],
+        ),
+    ):
+        result = await remove_negative_keywords(
+            {
+                "customer_id": "1234567890",
+                "campaign_id": "111",
+                "criterion_ids": criterion_ids,
+            }
+        )
+
+    assert result["status"] == "applied"
+    assert result["applied_count"] == 100

@@ -80,6 +80,7 @@ def test_no_unexpected_tools():
     """Catch accidental new tool registrations not in the expected set."""
     expected = {
         "add_negative_keywords",
+        "remove_negative_keywords",
         "apply_change",
         "apply_recommendation",
         "dismiss_recommendation",

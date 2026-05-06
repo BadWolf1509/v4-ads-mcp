@@ -103,11 +103,11 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
         max_delta_pct = float(params.get("max_delta_pct", 100.0))  # unknown = high
         return _bid_classify(operation, target_count, max_delta_pct)
 
-    # Negatives — safe, always auto
-    if operation == "add_negative_keywords":
+    # Negatives — safe, always auto (spec §7.1)
+    if operation in ("add_negative_keywords", "remove_negative_keywords"):
         return RiskClassification(
             RiskLevel.AUTO,
-            f"add_negative_keywords ({target_count} negatives) — auto, negatives raramente quebram",
+            f"{operation} ({target_count} negatives) — auto, negatives raramente quebram",
         )
 
     # Recommendations — Google's own suggestions; auto-apply
