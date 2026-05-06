@@ -188,7 +188,7 @@ async def execute_gaql_raw(
 
     def _flatten(row: Any) -> dict[str, Any]:
         # Convert proto message to dict via google.protobuf.json_format
-        from google.protobuf.json_format import MessageToDict  # type: ignore[import-untyped]
+        from google.protobuf.json_format import MessageToDict
 
         return MessageToDict(row._pb, preserving_proto_field_name=True)  # type: ignore[no-any-return]
 
