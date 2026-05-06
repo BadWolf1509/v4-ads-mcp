@@ -71,6 +71,19 @@ async def run_mutation(
             # Capture request_id if available
             google_request_id = getattr(response, "request_id", None) or None
         except Exception as e:
+            # Log the raw exception with traceback BEFORE wrapping it in the
+            # friendly PT-BR error. Without this, when to_friendly falls
+            # through to the generic "Erro inesperado..." (because the SDK
+            # exception had no `.failure` attribute), there's no signal in
+            # production logs about what actually went wrong.
+            log.exception(
+                "mutation_raw_exception",
+                operation=operation_type,
+                customer_id=customer_id,
+                target_count=target_count,
+                exc_type=type(e).__name__,
+                exc_module=type(e).__module__,
+            )
             raise to_friendly(e) from e
 
         return {

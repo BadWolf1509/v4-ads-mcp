@@ -46,8 +46,12 @@ def to_friendly(exc: Exception) -> GoogleAdsFriendlyError:
     # Avoid importing the Google SDK here to keep this module testable in isolation.
     failure = getattr(exc, "failure", None)
     if failure is None:
+        # Include exception class name in the user-visible message so the
+        # symptom carries one bit of diagnostic info even before logs are
+        # consulted. The full traceback is captured upstream via log.exception.
+        exc_type_name = type(exc).__name__
         return GoogleAdsFriendlyError(
-            "Erro inesperado ao falar com o Google Ads.",
+            f"Erro inesperado ao falar com o Google Ads ({exc_type_name}).",
             original=exc,
         )
 
