@@ -70,9 +70,6 @@ async def test_apply_change_executes_mutation(db, session_ctx):
     fake_client = MagicMock()
     fake_service = MagicMock()
     fake_response = MagicMock()
-    fake_response._underlay_call.trailing_metadata.return_value = [
-        ("request-id", "fake-google-request-id")
-    ]
     fake_service.mutate = MagicMock(return_value=fake_response)
     fake_client.get_service = MagicMock(return_value=fake_service)
     fake_client.get_type = MagicMock(return_value=MagicMock(mutate_operations=[]))
@@ -85,6 +82,10 @@ async def test_apply_change_executes_mutation(db, session_ctx):
         patch(
             "src.google_ads.mutations.get_builder",
             return_value=lambda c, cid, p: [MagicMock()],
+        ),
+        patch(
+            "src.google_ads.mutations.get_request_id",
+            return_value="fake-google-request-id",
         ),
     ):
         result = await apply_change({"confirmation_token": token})

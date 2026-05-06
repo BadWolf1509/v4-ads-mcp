@@ -50,7 +50,6 @@ def _fake_client():
     fc = MagicMock()
     fs = MagicMock()
     fr = MagicMock()
-    fr._underlay_call.trailing_metadata.return_value = [("request-id", "req-neg")]
     fs.mutate = MagicMock(return_value=fr)
     fc.get_service = MagicMock(return_value=fs)
     fc.get_type = MagicMock(return_value=MagicMock(mutate_operations=[]))
@@ -69,6 +68,10 @@ async def test_add_negative_keywords_auto_applies_single(db, session_ctx):
         patch(
             "src.google_ads.mutations.get_builder",
             return_value=lambda c, cid, p: [MagicMock()],
+        ),
+        patch(
+            "src.google_ads.mutations.get_request_id",
+            return_value="req-neg",
         ),
     ):
         result = await add_negative_keywords(
@@ -99,6 +102,10 @@ async def test_add_negative_keywords_auto_applies_bulk(db, session_ctx):
             "src.google_ads.mutations.get_builder",
             return_value=lambda c, cid, p: [MagicMock() for _ in range(100)],
         ),
+        patch(
+            "src.google_ads.mutations.get_request_id",
+            return_value="req-neg",
+        ),
     ):
         result = await add_negative_keywords(
             {
@@ -124,6 +131,10 @@ async def test_add_negative_keywords_summary_lists_match_types(db, session_ctx):
         patch(
             "src.google_ads.mutations.get_builder",
             return_value=lambda c, cid, p: [MagicMock(), MagicMock()],
+        ),
+        patch(
+            "src.google_ads.mutations.get_request_id",
+            return_value="req-neg",
         ),
     ):
         result = await add_negative_keywords(
@@ -154,6 +165,10 @@ async def test_remove_negative_keywords_auto_applies_single(db, session_ctx):
             "src.google_ads.mutations.get_builder",
             return_value=lambda c, cid, p: [MagicMock()],
         ),
+        patch(
+            "src.google_ads.mutations.get_request_id",
+            return_value="req-neg",
+        ),
     ):
         result = await remove_negative_keywords(
             {
@@ -182,6 +197,10 @@ async def test_remove_negative_keywords_auto_applies_bulk(db, session_ctx):
         patch(
             "src.google_ads.mutations.get_builder",
             return_value=lambda c, cid, p: [MagicMock() for _ in range(100)],
+        ),
+        patch(
+            "src.google_ads.mutations.get_request_id",
+            return_value="req-neg",
         ),
     ):
         result = await remove_negative_keywords(

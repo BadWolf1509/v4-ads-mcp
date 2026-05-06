@@ -50,7 +50,6 @@ def _fake_client():
     fc = MagicMock()
     fs = MagicMock()
     fr = MagicMock()
-    fr._underlay_call.trailing_metadata.return_value = [("request-id", "req-kw")]
     fs.mutate = MagicMock(return_value=fr)
     fc.get_service = MagicMock(return_value=fs)
     fc.get_type = MagicMock(return_value=MagicMock(mutate_operations=[]))
@@ -69,6 +68,10 @@ async def test_update_keyword_status_single_auto_applies(db, session_ctx):
         patch(
             "src.google_ads.mutations.get_builder",
             return_value=lambda c, cid, p: [MagicMock()],
+        ),
+        patch(
+            "src.google_ads.mutations.get_request_id",
+            return_value="req-kw",
         ),
     ):
         result = await update_keyword_status(
@@ -121,6 +124,10 @@ async def test_update_keyword_bid_small_change_auto(db, session_ctx):
         patch(
             "src.google_ads.mutations.get_builder",
             return_value=lambda c, cid, p: [MagicMock()],
+        ),
+        patch(
+            "src.google_ads.mutations.get_request_id",
+            return_value="req-kw",
         ),
     ):
         result = await update_keyword_bid(

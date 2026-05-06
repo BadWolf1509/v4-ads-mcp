@@ -46,10 +46,9 @@ async def session_ctx(db):
     clear_current()
 
 
-def _fake_client_with_response(request_id: str = "req-rec"):
+def _fake_client_with_response():
     fc = MagicMock()
     fr = MagicMock()
-    fr._underlay_call.trailing_metadata.return_value = [("request-id", request_id)]
     fs = MagicMock()
     fs.apply_recommendation = MagicMock(return_value=fr)
     fs.dismiss_recommendation = MagicMock(return_value=fr)
@@ -62,9 +61,15 @@ def _fake_client_with_response(request_id: str = "req-rec"):
 async def test_apply_recommendation_auto_applies(db, session_ctx):
     from src.mcp.tools.apply_recommendation import apply_recommendation
 
-    with patch(
-        "src.google_ads.mutations.build_client_for_manager",
-        AsyncMock(return_value=_fake_client_with_response("req-apply")),
+    with (
+        patch(
+            "src.google_ads.mutations.build_client_for_manager",
+            AsyncMock(return_value=_fake_client_with_response()),
+        ),
+        patch(
+            "src.google_ads.mutations.get_request_id",
+            return_value="req-apply",
+        ),
     ):
         result = await apply_recommendation(
             {
@@ -82,9 +87,15 @@ async def test_apply_recommendation_auto_applies(db, session_ctx):
 async def test_dismiss_recommendation_auto_applies(db, session_ctx):
     from src.mcp.tools.dismiss_recommendation import dismiss_recommendation
 
-    with patch(
-        "src.google_ads.mutations.build_client_for_manager",
-        AsyncMock(return_value=_fake_client_with_response("req-dismiss")),
+    with (
+        patch(
+            "src.google_ads.mutations.build_client_for_manager",
+            AsyncMock(return_value=_fake_client_with_response()),
+        ),
+        patch(
+            "src.google_ads.mutations.get_request_id",
+            return_value="req-dismiss",
+        ),
     ):
         result = await dismiss_recommendation(
             {
