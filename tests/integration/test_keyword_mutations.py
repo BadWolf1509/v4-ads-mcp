@@ -50,7 +50,7 @@ def _fake_client():
     fc = MagicMock()
     fs = MagicMock()
     fr = MagicMock()
-    fr.request_id = "req-kw"
+    fr._underlay_call.trailing_metadata.return_value = [("request-id", "req-kw")]
     fs.mutate = MagicMock(return_value=fr)
     fc.get_service = MagicMock(return_value=fs)
     fc.get_type = MagicMock(return_value=MagicMock(mutate_operations=[]))

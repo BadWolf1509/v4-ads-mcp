@@ -28,8 +28,40 @@ from src.governance.rate_limit import (
 
 log = structlog.get_logger(__name__)
 
+_REQUEST_ID_METADATA_KEY = "request-id"
+
 # Eagerly import builders so they're registered before any tool runs.
 import_all_builders()
+
+
+def _extract_request_id(response: Any) -> str | None:
+    """Extract the Google Ads request ID from the gRPC trailing metadata.
+
+    In the google-ads Python SDK the response object returned by service
+    calls (e.g. ``ga_service.mutate()``) is a
+    ``_UnaryUnaryWrapper`` — a ``grpc.Call`` subclass injected by the
+    ``ExceptionInterceptor``.  The ``request-id`` header lives in the
+    **trailing** metadata of the underlying gRPC call.
+
+    The SDK's ``_UnaryUnaryWrapper.trailing_metadata()`` has a known
+    copy-paste bug: it delegates to ``initial_metadata()`` instead of
+    ``trailing_metadata()``, so calling it directly always returns the
+    wrong headers.  We therefore reach into the private ``_underlay_call``
+    attribute to bypass the buggy wrapper.
+
+    Falls back gracefully to ``None`` when:
+    - the SDK is not installed (unit tests with plain ``MagicMock``),
+    - the private attribute is absent (future SDK refactor),
+    - trailing metadata is empty or the key is missing.
+    """
+    try:
+        underlay = response._underlay_call
+        for key, value in underlay.trailing_metadata() or []:
+            if key == _REQUEST_ID_METADATA_KEY:
+                return value or None
+    except AttributeError:
+        pass
+    return None
 
 
 async def run_mutation(
@@ -68,8 +100,8 @@ async def run_mutation(
             for op in operations:
                 request.mutate_operations.append(op)
             response = ga_service.mutate(request=request)
-            # Capture request_id if available
-            google_request_id = getattr(response, "request_id", None) or None
+            # Capture request_id from gRPC trailing metadata (key "request-id").
+            google_request_id = _extract_request_id(response)
         except Exception as e:
             # Log the raw exception with traceback BEFORE wrapping it in the
             # friendly PT-BR error. Without this, when to_friendly falls
@@ -169,7 +201,7 @@ async def run_recommendation_action(
                 response = execute_dismiss_recommendation(client, customer_id, payload)
             else:
                 raise ValueError(f"Unknown recommendation operation: {operation_type}")
-            google_request_id = getattr(response, "request_id", None) or None
+            google_request_id = _extract_request_id(response)
         except Exception as e:
             raise to_friendly(e) from e
 

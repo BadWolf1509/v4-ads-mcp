@@ -49,7 +49,7 @@ async def session_ctx(db):
 def _fake_client_with_response(request_id: str = "req-rec"):
     fc = MagicMock()
     fr = MagicMock()
-    fr.request_id = request_id
+    fr._underlay_call.trailing_metadata.return_value = [("request-id", request_id)]
     fs = MagicMock()
     fs.apply_recommendation = MagicMock(return_value=fr)
     fs.dismiss_recommendation = MagicMock(return_value=fr)

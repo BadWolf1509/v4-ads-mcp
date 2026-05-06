@@ -54,7 +54,7 @@ async def test_update_campaign_status_single_auto_applies(db, session_ctx):
     fake_client = MagicMock()
     fake_service = MagicMock()
     fake_response = MagicMock()
-    fake_response.request_id = "req-123"
+    fake_response._underlay_call.trailing_metadata.return_value = [("request-id", "req-123")]
     fake_service.mutate = MagicMock(return_value=fake_response)
     fake_client.get_service = MagicMock(return_value=fake_service)
     fake_client.get_type = MagicMock(return_value=MagicMock(mutate_operations=[]))
