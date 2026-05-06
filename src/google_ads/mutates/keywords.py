@@ -34,7 +34,14 @@ def build_update_keyword_status(
 
 @register_builder("update_keyword_bid")
 def build_update_keyword_bid(client: Any, customer_id: str, payload: dict[str, Any]) -> list[Any]:
-    """payload: {bids: [{ad_group_id: str, criterion_id: str, new_cpc_bid_micros: int}]}"""
+    """payload: {bids: [{ad_group_id: str, criterion_id: str, new_cpc_bid_micros: int}]}
+
+    new_cpc_bid_micros == 0 means "clear the override, inherit from ad group".
+    The Google Ads API rejects literal cpc_bid_micros=0 as "Too low" because BRL
+    accounts enforce a minimum CPC. To clear, leave the field unset on the proto
+    but keep "cpc_bid_micros" in the update_mask — the API reads that as "set to
+    default / clear" for optional int64 fields with presence semantics.
+    """
     operations = []
     criterion_service = client.get_service("AdGroupCriterionService")
     for bid_change in payload["bids"]:
@@ -44,7 +51,10 @@ def build_update_keyword_bid(client: Any, customer_id: str, payload: dict[str, A
         crit.resource_name = criterion_service.ad_group_criterion_path(
             customer_id, bid_change["ad_group_id"], bid_change["criterion_id"]
         )
-        crit.cpc_bid_micros = int(bid_change["new_cpc_bid_micros"])
+        new_micros = int(bid_change["new_cpc_bid_micros"])
+        if new_micros > 0:
+            crit.cpc_bid_micros = new_micros
+        # else: don't set — mask alone signals "clear override"
         client.copy_from(
             crit_op.update_mask,
             FieldMask(paths=["cpc_bid_micros"]),

@@ -32,7 +32,11 @@ def build_update_ad_group_status(
 
 @register_builder("update_ad_group_bid")
 def build_update_ad_group_bid(client: Any, customer_id: str, payload: dict[str, Any]) -> list[Any]:
-    """payload: {bids: [{ad_group_id: str, new_cpc_bid_micros: int}]}"""
+    """payload: {bids: [{ad_group_id: str, new_cpc_bid_micros: int}]}
+
+    new_cpc_bid_micros == 0 means "clear the override, inherit from campaign".
+    See update_keyword_bid builder for the rationale on field-mask-without-value.
+    """
     operations = []
     ad_group_service = client.get_service("AdGroupService")
     for bid_change in payload["bids"]:
@@ -40,7 +44,10 @@ def build_update_ad_group_bid(client: Any, customer_id: str, payload: dict[str, 
         ag_op = op.ad_group_operation
         ag = ag_op.update
         ag.resource_name = ad_group_service.ad_group_path(customer_id, bid_change["ad_group_id"])
-        ag.cpc_bid_micros = int(bid_change["new_cpc_bid_micros"])
+        new_micros = int(bid_change["new_cpc_bid_micros"])
+        if new_micros > 0:
+            ag.cpc_bid_micros = new_micros
+        # else: don't set — mask alone signals "clear override"
         client.copy_from(
             ag_op.update_mask,
             FieldMask(paths=["cpc_bid_micros"]),
