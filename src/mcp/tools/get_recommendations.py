@@ -25,21 +25,37 @@ _TYPE_PT = {
     "ADD_AGE_GROUP_CRITERION": "Adicionar criterio de faixa etaria",
     "TEXT_AD": "Criar texto de anuncio",
     "CALLOUT_EXTENSION": "Adicionar extensao de chamada",
+    "CALLOUT_ASSET": "Adicionar asset de chamada",
     "SITELINK_EXTENSION": "Adicionar extensao de sitelink",
+    "SITELINK_ASSET": "Adicionar asset de sitelink",
     "ENHANCED_CPC_OPT_IN": "Ativar lance otimizado",
+    "SEARCH_PARTNERS_OPT_IN": "Ativar parceiros de pesquisa",
     "MAXIMIZE_CONVERSIONS_OPT_IN": "Migrar pra Maximizar conversoes",
     "MAXIMIZE_CLICKS_OPT_IN": "Migrar pra Maximizar clicks",
     "TARGET_CPA_OPT_IN": "Migrar pra Target CPA",
+    "TARGET_ROAS_OPT_IN": "Migrar pra Target ROAS",
     "MAXIMIZE_CONVERSION_VALUE_OPT_IN": "Migrar pra Maximizar valor",
+    "PERFORMANCE_MAX_OPT_IN": "Migrar pra Performance Max",
     "MOVE_UNUSED_BUDGET": "Mover orcamento nao usado",
     "FORECASTING_CAMPAIGN_BUDGET": "Aumentar orcamento da campanha",
+    "CAMPAIGN_BUDGET": "Ajustar orcamento da campanha",
     "RESPONSIVE_SEARCH_AD": "Criar anuncio responsivo",
+    "RESPONSIVE_SEARCH_AD_ASSET": "Adicionar asset em RSA",
+    "RESPONSIVE_SEARCH_AD_IMPROVE_AD_STRENGTH": "Melhorar forca do RSA",
+    "DYNAMIC_IMAGE_EXTENSION_OPT_IN": "Ativar imagens dinamicas",
+    "USE_BROAD_MATCH_KEYWORD": "Usar correspondencia ampla",
+    "DISPLAY_EXPANSION_OPT_IN": "Ativar expansao display",
+    "LEAD_FORM_ASSET": "Adicionar formulario de leads",
+    "IMPROVE_GOOGLE_TAG_COVERAGE": "Melhorar cobertura da Google Tag",
 }
 
 
 def _row_formatter(row: Any) -> dict[str, Any]:
     rec = row.recommendation
-    type_str = str(rec.type).split(".")[-1]
+    # proto-plus IntEnum: str(v) returns the int as string ("29"); .name gives "SITELINK_ASSET".
+    # Fall back to str() for plain strings (used by unit-test mocks).
+    rec_type = rec.type
+    type_str = rec_type.name if hasattr(rec_type, "name") else str(rec_type)
     return {
         "resource_name": rec.resource_name,
         "type": type_str,
