@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from google.protobuf.field_mask_pb2 import FieldMask
+
 from src.google_ads.mutates._common import register_builder
 
 
@@ -22,7 +24,7 @@ def build_update_ad_group_status(
         ag.status = status_enum[new_status]
         client.copy_from(
             ag_op.update_mask,
-            client.get_type("FieldMask")(paths=["status"]),
+            FieldMask(paths=["status"]),
         )
         operations.append(op)
     return operations
@@ -41,7 +43,7 @@ def build_update_ad_group_bid(client: Any, customer_id: str, payload: dict[str, 
         ag.cpc_bid_micros = int(bid_change["new_cpc_bid_micros"])
         client.copy_from(
             ag_op.update_mask,
-            client.get_type("FieldMask")(paths=["cpc_bid_micros"]),
+            FieldMask(paths=["cpc_bid_micros"]),
         )
         operations.append(op)
     return operations

@@ -56,7 +56,7 @@ module = ["asyncpg.*", "structlog.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["google.ads.*"]
+module = ["google.ads.*", "google.protobuf.*", "google.protobuf.field_mask_pb2"]
 ignore_missing_imports = true
 ignore_errors = true
 

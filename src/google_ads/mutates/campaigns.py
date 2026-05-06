@@ -7,6 +7,8 @@ ready to send to GoogleAdsService.mutate.
 
 from typing import Any
 
+from google.protobuf.field_mask_pb2 import FieldMask
+
 from src.google_ads.mutates._common import register_builder
 
 
@@ -28,7 +30,7 @@ def build_update_campaign_status(
         # Set field mask
         client.copy_from(
             campaign_op.update_mask,
-            client.get_type("FieldMask")(paths=["status"]),
+            FieldMask(paths=["status"]),
         )
         operations.append(op)
     return operations
@@ -50,7 +52,7 @@ def build_update_campaign_budget(
     budget.amount_micros = int(payload["new_amount_micros"])
     client.copy_from(
         budget_op.update_mask,
-        client.get_type("FieldMask")(paths=["amount_micros"]),
+        FieldMask(paths=["amount_micros"]),
     )
     return [op]
 
@@ -71,20 +73,20 @@ def build_update_campaign_bidding(
         campaign.target_cpa.target_cpa_micros = int(payload["target_value_micros"])
         client.copy_from(
             campaign_op.update_mask,
-            client.get_type("FieldMask")(paths=["target_cpa.target_cpa_micros"]),
+            FieldMask(paths=["target_cpa.target_cpa_micros"]),
         )
     elif strategy == "TARGET_ROAS":
         campaign.target_roas.target_roas = float(payload["target_roas"])
         client.copy_from(
             campaign_op.update_mask,
-            client.get_type("FieldMask")(paths=["target_roas.target_roas"]),
+            FieldMask(paths=["target_roas.target_roas"]),
         )
     elif strategy == "MAXIMIZE_CONVERSIONS":
         target_micros = int(payload.get("target_value_micros", 0))
         campaign.maximize_conversions.target_cpa_micros = target_micros
         client.copy_from(
             campaign_op.update_mask,
-            client.get_type("FieldMask")(paths=["maximize_conversions.target_cpa_micros"]),
+            FieldMask(paths=["maximize_conversions.target_cpa_micros"]),
         )
     else:
         raise ValueError(f"Unsupported bidding strategy: {strategy}")
