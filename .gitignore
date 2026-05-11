@@ -23,6 +23,7 @@ coverage.xml
 *.swp
 .claude/
 .cursor/
+.superpowers/
 
 # OS
 .DS_Store
