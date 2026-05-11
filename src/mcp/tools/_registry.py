@@ -59,6 +59,7 @@ def import_all_tools() -> None:
     """Import every tool module so its register_tool decorator runs."""
     from src.mcp.tools import (  # noqa: F401
         add_negative_keywords,
+        add_negatives_from_search_terms,
         apply_change,
         apply_recommendation,
         dismiss_recommendation,

@@ -34,6 +34,7 @@ def test_all_phase_2_tools_registered():
     """All 30 tools (20 Phase 2 + 3 campaign mutations + 2 ad group mutations + 2 keyword mutations + 1 negatives + 2 recommendations) registered."""
     expected = {
         "add_negative_keywords",
+        "add_negatives_from_search_terms",
         "apply_change",
         "apply_recommendation",
         "dismiss_recommendation",
@@ -82,6 +83,7 @@ def test_no_unexpected_tools():
     """Catch accidental new tool registrations not in the expected set."""
     expected = {
         "add_negative_keywords",
+        "add_negatives_from_search_terms",
         "remove_negative_keywords",
         "apply_change",
         "apply_recommendation",
