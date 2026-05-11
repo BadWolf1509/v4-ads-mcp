@@ -36,6 +36,9 @@ _CASES: list[tuple[str, dict, RiskLevel, str]] = [
     ),
     # Negatives always auto
     ("add_negative_keywords", {"target_count": 100}, RiskLevel.AUTO, "negatives"),
+    # add_negatives_from_search_terms — same rule as other negatives (AUTO)
+    ("add_negatives_from_search_terms", {"target_count": 50}, RiskLevel.AUTO, "negatives"),
+    ("add_negatives_from_search_terms", {"target_count": 500}, RiskLevel.AUTO, "negatives"),
     # Recommendations always auto
     ("apply_recommendation", {"target_count": 1}, RiskLevel.AUTO, "recommendation"),
     ("dismiss_recommendation", {"target_count": 1}, RiskLevel.AUTO, "recommendation"),

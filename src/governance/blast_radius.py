@@ -104,7 +104,11 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
         return _bid_classify(operation, target_count, max_delta_pct)
 
     # Negatives — safe, always auto (spec §7.1)
-    if operation in ("add_negative_keywords", "remove_negative_keywords"):
+    if operation in (
+        "add_negative_keywords",
+        "remove_negative_keywords",
+        "add_negatives_from_search_terms",
+    ):
         return RiskClassification(
             RiskLevel.AUTO,
             f"{operation} ({target_count} negatives) — auto, negatives raramente quebram",
