@@ -89,7 +89,11 @@ async def run_mutation(
             for op in operations:
                 request.mutate_operations.append(op)
             if partial_failure:
-                request.partial_failure_mode = client.enums.PartialFailureModeEnum.PARTIAL_FAILURE
+                # MutateGoogleAdsRequest.partial_failure is a plain bool field
+                # (not an enum). When True, errors don't roll back successful
+                # operations and per-op failures surface via
+                # response.partial_failure_error.details (a GoogleAdsFailure).
+                request.partial_failure = True
             reset_request_id()
             response = ga_service.mutate(request=request)
             google_request_id = get_request_id()
