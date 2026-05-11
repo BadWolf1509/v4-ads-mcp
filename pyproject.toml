@@ -42,7 +42,7 @@ ignore = ["E501"]  # handled by formatter
 "tests/unit/test_rate_limit.py" = ["F401"]  # spec-provided file; unused imports intentional
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 strict = true
 warn_unreachable = true
 no_implicit_reexport = true
