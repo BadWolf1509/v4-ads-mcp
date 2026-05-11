@@ -27,7 +27,7 @@ It is **internal only**: not a SaaS, not resold, no third-party data. Replaces V
 
 ## Current state (always update this section after major work)
 
-**Last updated:** 2026-05-05
+**Last updated:** 2026-05-11
 
 ### Shipped + in production
 
@@ -36,11 +36,12 @@ It is **internal only**: not a SaaS, not resold, no third-party data. Replaces V
 | Phase 0 — Foundation | ✅ 2026-05-03 | initial setup |
 | Phase 1a — Auth + first MCP tool | ✅ 2026-05-04 | 23 accounts populated |
 | Phase 2 — Read tools (16+3) | ✅ 2026-05-04 | 19 read tools live |
-| Phase 3a — Core mutations (10) | ✅ 2026-05-04 | code-complete, E2E deferred to ops |
+| Phase 3a — Core mutations (10) | ✅ 2026-05-04 | code-complete; bug-bash 2026-05-06 (11 fix commits) |
 | Phase 1b — Web panel (initial) | ✅ 2026-05-05 | 9 pages |
 | FE Redesign v2 (phases 0-5) | ✅ 2026-05-05 | 56 commits, see infra-setup.md |
+| Phase 3a+ — `remove_negative_keywords` | ✅ 2026-05-06 | extra mutation tool [8b5d1d8](https://github.com/BadWolf1509/v4-ads-mcp/commit/8b5d1d8) |
 
-**31 MCP tools** registered: 20 read + 10 mutations + `apply_change`.
+**32 MCP tools** registered: 20 read + 11 mutations + `apply_change`.
 **15 web pages** in production with Hybrid Editorial+Operational identity (FE Redesign v2).
 **Q8 invite-only allowlist** active — only `@v4company.com` emails pre-invited via `/admin/invites` can complete OAuth.
 **`BOOTSTRAP_ADMIN_EMAILS`** env on Cloud Run = `wellinton.ribeiro@v4company.com` (dormant since managers table is populated).
@@ -48,7 +49,7 @@ It is **internal only**: not a SaaS, not resold, no third-party data. Replaces V
 ### Pending / future
 
 - **Operação real** com gestores piloto (recomendado próximo passo) — convidar 2-3 via `/admin/invites`, acompanhar audit log, validar Phase 3a mutations em uso real
-- **Standard Access do Google Ads** — submetido em 2026-05-05, decisão em ~3 dias úteis. Quando aprovar, quota 15k → 1M+ ops/dia
+- **Standard Access do Google Ads** — case `26521440673` resubmetido em 2026-05-11 com design doc atualizado em PDF (a submissão original de 2026-05-05 não retornou veredicto na janela estimada de 3 dias). Aguardar nova janela de ~3 dias úteis. Quando aprovar, quota 15k → 1M+ ops/dia
 - **Phase 3b** — 15 mutation tools avançadas (RSAs, assets, audiences, customer_match, conversions, bulk_pause_by_query). Esperar sinal da operação real antes de priorizar
 - **Sub-projetos 2-4 (multi-tenancy)** — `unidades` table + 3-tier RBAC, multi-MCC OAuth, migração single→multi. Só faz sentido quando V4 quiser onboardar 2ª unidade
 - **Quality wins menores** — datetime.utcnow → datetime.now(UTC); GitHub Actions Node 20 → 24; revogar legacy "unknown" OAuth do Phase 1a; cancelar invite teste do Lucas Soares se ainda estiver pendente
