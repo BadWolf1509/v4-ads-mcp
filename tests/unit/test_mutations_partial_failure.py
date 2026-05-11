@@ -88,6 +88,7 @@ async def test_run_mutation_partial_failure_returns_per_op_status(monkeypatch):
         "error": "CRITERION_EXISTS",
     }
     assert result["partial_failures"][2] == {"index": 2, "status": "added", "error": None}
+    assert result["applied_count"] == 2  # 2 added, 1 failed
 
 
 @pytest.mark.asyncio

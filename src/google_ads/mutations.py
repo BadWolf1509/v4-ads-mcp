@@ -53,7 +53,10 @@ async def run_mutation(
     Args:
         partial_failure: When True, sets request.partial_failure_mode = PARTIAL_FAILURE.
             Individual op failures don't abort the request; per-op status is returned
-            in `partial_failures` list. When False (default), any error aborts.
+            in `partial_failures` list (each entry: {index, status: 'added'|'failed', error}).
+            Callers are responsible for re-mapping specific error codes (e.g. CRITERION_EXISTS
+            or DUPLICATE_KEYWORD → status='already_exists') in their tool-layer response.
+            When False (default), any error aborts.
         params_summary: Optional override for audit_log.params_summary. When None,
             defaults to {"keys": sorted(payload.keys())}.
     """
@@ -93,24 +96,32 @@ async def run_mutation(
 
             # Parse per-op status when partial_failure is enabled
             per_op_results: list[dict[str, Any]] = []
-            if partial_failure and hasattr(response, "mutate_operation_responses"):
-                for idx, op_resp in enumerate(response.mutate_operation_responses):
-                    if op_resp.HasField("partial_failure_error"):
-                        per_op_results.append(
-                            {
-                                "index": idx,
-                                "status": "failed",
-                                "error": op_resp.partial_failure_error.message,
-                            }
-                        )
-                    else:
-                        per_op_results.append(
-                            {
-                                "index": idx,
-                                "status": "added",
-                                "error": None,
-                            }
-                        )
+            if partial_failure:
+                if hasattr(response, "mutate_operation_responses"):
+                    for idx, op_resp in enumerate(response.mutate_operation_responses):
+                        if op_resp.HasField("partial_failure_error"):
+                            per_op_results.append(
+                                {
+                                    "index": idx,
+                                    "status": "failed",
+                                    "error": op_resp.partial_failure_error.message,
+                                }
+                            )
+                        else:
+                            per_op_results.append(
+                                {
+                                    "index": idx,
+                                    "status": "added",
+                                    "error": None,
+                                }
+                            )
+                else:
+                    log.warning(
+                        "partial_failure_response_missing_operation_responses",
+                        operation=operation_type,
+                        customer_id=customer_id,
+                        target_count=target_count,
+                    )
         except Exception as e:
             # Log the raw exception with traceback BEFORE wrapping it in the
             # friendly PT-BR error. Without this, when to_friendly falls
@@ -127,11 +138,12 @@ async def run_mutation(
             )
             raise to_friendly(e) from e
 
+        applied_count = target_count
+        if partial_failure and per_op_results:
+            applied_count = sum(1 for r in per_op_results if r["status"] == "added")
         return {
             "google_request_id": google_request_id,
-            "applied_count": sum(1 for r in per_op_results if r["status"] == "added")
-            if partial_failure
-            else target_count,
+            "applied_count": applied_count,
             "partial_failures": per_op_results,
         }
     except Exception as e:
