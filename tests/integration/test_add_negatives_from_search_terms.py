@@ -47,24 +47,77 @@ async def session_ctx(db):
 
 
 def _client_with_responses(per_op_errors):
-    """Build a fake SDK client where mutate() returns a response with per-op statuses."""
+    """Build a fake SDK client where mutate() returns a response with per-op statuses.
+
+    Simulates the real API shape:
+    - Top-level partial_failure_error.code is 0 if all OK, else non-zero
+    - Top-level partial_failure_error.details contains a GoogleAdsFailure-like
+      proto with per-op locations (we mock the unpack via index_to_error)
+    - Each MutateOperationResponse has _pb.WhichOneof('response') returning
+      a field name (success) or None (failure)
+    """
     client = MagicMock()
+
+    # Build per-op mock responses with realistic WhichOneof behavior
     fake_responses = []
-    for err in per_op_errors:
+    for _idx, err in enumerate(per_op_errors):
         r = MagicMock()
-        if err:
-            r.HasField = lambda f, e=err: f == "partial_failure_error"
-            r.partial_failure_error.message = err
+        if err is None:
+            r._pb.WhichOneof = MagicMock(return_value="campaign_criterion_result")
         else:
-            r.HasField = lambda f: False
+            r._pb.WhichOneof = MagicMock(return_value=None)
         fake_responses.append(r)
+
+    # Build top-level response
     response = MagicMock(mutate_operation_responses=fake_responses)
+
+    # If any op failed, top-level partial_failure_error has non-zero code +
+    # a single details entry we'll cause the unpack path to populate
+    # error_by_index with the per_op_errors values.
+    failed_indices = [i for i, e in enumerate(per_op_errors) if e is not None]
+    if failed_indices:
+        # Simulate a GoogleAdsFailure detail. The implementation duck-type-checks
+        # for hasattr(raw, "type_url") and hasattr(raw, "Unpack") — MagicMock
+        # satisfies both automatically. We just set type_url and stub Unpack.
+        class _FakeError:
+            def __init__(self, idx, msg):
+                self.message = msg
+                self.location = MagicMock()
+                self.location.field_path_elements = [MagicMock(index=idx)]
+
+        fake_errors = [_FakeError(i, per_op_errors[i]) for i in failed_indices]
+
+        def fake_unpack(target_pb):
+            target_pb.errors = fake_errors
+
+        raw_any = MagicMock()
+        raw_any.type_url = "type.googleapis.com/google.ads.googleads.v20.errors.GoogleAdsFailure"
+        raw_any.Unpack = fake_unpack
+
+        fake_detail = MagicMock()
+        fake_detail._pb = raw_any
+
+        response.partial_failure_error.code = 1
+        response.partial_failure_error.details = [fake_detail]
+
+        failure_type_stub = MagicMock()
+        failure_type_stub._meta.pb = lambda: MagicMock(errors=[])
+    else:
+        response.partial_failure_error.code = 0
+        response.partial_failure_error.details = []
+        failure_type_stub = MagicMock()
+        failure_type_stub._meta.pb = lambda: MagicMock(errors=[])
+
     fake_service = MagicMock()
     fake_service.mutate = MagicMock(return_value=response)
     client.get_service = MagicMock(return_value=fake_service)
-    client.get_type = MagicMock(
-        return_value=MagicMock(mutate_operations=[], partial_failure_mode=MagicMock())
-    )
+
+    def get_type(name):
+        if name == "GoogleAdsFailure":
+            return failure_type_stub
+        return MagicMock(mutate_operations=[], partial_failure_mode=MagicMock())
+
+    client.get_type = MagicMock(side_effect=get_type)
     client.enums.PartialFailureModeEnum.PARTIAL_FAILURE = "PARTIAL_FAILURE"
     return client
 

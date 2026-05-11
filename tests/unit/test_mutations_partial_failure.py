@@ -12,33 +12,87 @@ def _client_with_partial_failure(per_op_errors: list[str | None]):
     """Mock client whose .mutate() returns a response with the given per-op errors.
 
     per_op_errors[i] = None means op i succeeded; a string is the error message.
+    Simulates the real API shape:
+    - Top-level partial_failure_error.code is 0 if all OK, else non-zero
+    - Top-level partial_failure_error.details contains a GoogleAdsFailure-like
+      proto with per-op locations (we mock the unpack via index_to_error)
+    - Each MutateOperationResponse has _pb.WhichOneof('response') returning
+      a field name (success) or None (failure)
     """
     client = MagicMock()
 
-    # Mock the mutate response
+    # Build per-op mock responses with realistic WhichOneof behavior
     responses = []
-    for err in per_op_errors:
+    for _idx, err in enumerate(per_op_errors):
         r = MagicMock()
-        if err:
-            r.HasField = MagicMock(side_effect=lambda f, e=err: f == "partial_failure_error")
-            r.partial_failure_error.message = err
+        # _pb.WhichOneof returns field name on success, None on failure
+        if err is None:
+            r._pb.WhichOneof = MagicMock(return_value="campaign_criterion_result")
         else:
-            r.HasField = MagicMock(return_value=False)
-            r.campaign_criterion_result.resource_name = f"customers/123/campaignCriteria/{id(r)}"
+            r._pb.WhichOneof = MagicMock(return_value=None)
         responses.append(r)
 
+    # Build top-level response
     fake_response = MagicMock()
     fake_response.mutate_operation_responses = responses
+
+    # If any op failed, top-level partial_failure_error has non-zero code +
+    # a single details entry we'll cause the unpack path to populate
+    # error_by_index with the per_op_errors values.
+    failed_indices = [i for i, e in enumerate(per_op_errors) if e is not None]
+    if failed_indices:
+        # Simulate a GoogleAdsFailure detail. The implementation duck-type-checks
+        # for hasattr(raw, "type_url") and hasattr(raw, "Unpack") — MagicMock
+        # satisfies both automatically. We just set type_url and stub Unpack.
+        class _FakeError:
+            def __init__(self, idx: int, msg: str) -> None:
+                self.message = msg
+                self.location = MagicMock()
+                self.location.field_path_elements = [MagicMock(index=idx)]
+
+        fake_errors = [
+            _FakeError(i, per_op_errors[i])  # type: ignore[arg-type]
+            for i in failed_indices
+        ]
+
+        def fake_unpack(target_pb: MagicMock) -> None:
+            target_pb.errors = fake_errors
+
+        raw_any = MagicMock()
+        raw_any.type_url = "type.googleapis.com/google.ads.googleads.v20.errors.GoogleAdsFailure"
+        raw_any.Unpack = fake_unpack
+
+        # The proto-plus wrapper detail must expose _pb = raw_any
+        fake_detail = MagicMock()
+        fake_detail._pb = raw_any
+
+        fake_response.partial_failure_error.code = 1  # Non-zero = errors present
+        fake_response.partial_failure_error.details = [fake_detail]
+
+        # client.get_type("GoogleAdsFailure") returns a stub whose _meta.pb()
+        # returns a fresh MagicMock that fake_unpack will populate
+        failure_type_stub = MagicMock()
+        failure_type_stub._meta.pb = lambda: MagicMock(errors=[])
+    else:
+        fake_response.partial_failure_error.code = 0
+        fake_response.partial_failure_error.details = []
+        failure_type_stub = MagicMock()
+        failure_type_stub._meta.pb = lambda: MagicMock(errors=[])
 
     fake_service = MagicMock()
     fake_service.mutate = MagicMock(return_value=fake_response)
     client.get_service = MagicMock(return_value=fake_service)
-    client.get_type = MagicMock(
-        return_value=MagicMock(
+
+    def get_type(name: str) -> MagicMock:
+        if name == "GoogleAdsFailure":
+            return failure_type_stub
+        # Default: mutate request and operations stub
+        return MagicMock(
             mutate_operations=[],
             partial_failure_mode=MagicMock(),
         )
-    )
+
+    client.get_type = MagicMock(side_effect=get_type)
     client.enums.PartialFailureModeEnum.PARTIAL_FAILURE = "PARTIAL_FAILURE"
     return client
 
