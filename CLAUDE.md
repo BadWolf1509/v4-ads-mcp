@@ -48,11 +48,11 @@ It is **internal only**: not a SaaS, not resold, no third-party data. Replaces V
 
 ### Pending / future
 
-- **Operação real** com gestores piloto (recomendado próximo passo) — convidar 2-3 via `/admin/invites`, acompanhar audit log, validar Phase 3a mutations em uso real
+- **Operação real** com gestores piloto (recomendado próximo passo) — Lucas Soares (`lucassoares@v4company.com`, gestor real da unidade Maceió) já tem OAuth ativo (2026-05-05) e MCP session "Codex Lucas" criada mas **nunca usou** (`last_seen_at`/`last_used_at` null). É piloto #1 natural — agendar onboarding. Convidar +1-2 gestores via `/admin/invites`, acompanhar audit log, validar Phase 3a mutations em uso real
 - **Standard Access do Google Ads** — case `26521440673` resubmetido em 2026-05-11 com design doc atualizado em PDF (a submissão original de 2026-05-05 não retornou veredicto na janela estimada de 3 dias). Aguardar nova janela de ~3 dias úteis. Quando aprovar, quota 15k → 1M+ ops/dia
-- **Phase 3b** — 15 mutation tools avançadas (RSAs, assets, audiences, customer_match, conversions, bulk_pause_by_query). Esperar sinal da operação real antes de priorizar
+- **Phase 3b** — 14 mutation tools avançadas faltantes da spec (`create_campaign`, `create_ad_group`, `add_keywords`, `update_keyword_match_type`, `add_negatives_from_search_terms`, `create_rsa`, `update_rsa`, `update_ad_status`, `create_asset`, `link_assets`, `apply_audience`, `upload_customer_match_list`, `create_conversion_action`, `import_offline_conversions`, `bulk_pause_by_query`) + 2 utilities (`get_my_rate_limit_status`, `get_my_audit_log`) + 1 read novo crítico (`get_change_history` — 2 skills V4 marcam "CRÍTICO antes de tudo"). Sprint 3b.1 (low-quota, não bloqueado por Standard Access): `add_negatives_from_search_terms` + `get_change_history`. Ordem subsequente priorizada por sinal da operação piloto.
 - **Sub-projetos 2-4 (multi-tenancy)** — `unidades` table + 3-tier RBAC, multi-MCC OAuth, migração single→multi. Só faz sentido quando V4 quiser onboardar 2ª unidade
-- **Quality wins menores** — datetime.utcnow → datetime.now(UTC); GitHub Actions Node 20 → 24; revogar legacy "unknown" OAuth do Phase 1a; cancelar invite teste do Lucas Soares se ainda estiver pendente
+- **Quality wins menores** — ~~datetime.utcnow → datetime.now(UTC)~~ ✅ 2026-05-11; GitHub Actions Node 20 → 24 (bump `actions/checkout@v4→@v5`, `setup-python@v5→@v6`, `auth@v2→@v3` em PR isolado para testar); ~~revogar legacy "unknown" OAuth do Phase 1a~~ (aguardando confirmação explícita)
 
 ## Read these first when continuing work
 
