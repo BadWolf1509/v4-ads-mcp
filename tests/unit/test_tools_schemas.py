@@ -45,6 +45,7 @@ def test_all_phase_2_tools_registered():
         "get_recommendations",
         # performance
         "get_campaign_performance",
+        "get_change_history",
         "get_ad_group_performance",
         "get_device_performance",
         "get_geo_performance",
@@ -93,6 +94,7 @@ def test_no_unexpected_tools():
         "get_budget_pacing",
         "get_recommendations",
         "get_campaign_performance",
+        "get_change_history",
         "get_ad_group_performance",
         "get_device_performance",
         "get_geo_performance",

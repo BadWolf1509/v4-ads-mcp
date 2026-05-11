@@ -69,6 +69,7 @@ def import_all_tools() -> None:
         get_audience_performance,
         get_budget_pacing,
         get_campaign_performance,
+        get_change_history,
         get_conversion_actions,
         get_device_performance,
         get_funnel_metrics,
