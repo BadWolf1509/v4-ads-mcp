@@ -1,7 +1,7 @@
 """CRUD for the `managers` table."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 import asyncpg
@@ -104,7 +104,7 @@ async def create_invited(
         email,
         full_name,
         invited_by,
-        datetime.utcnow(),
+        datetime.now(UTC),
     )
     assert row is not None
     return _row_to_manager(row)

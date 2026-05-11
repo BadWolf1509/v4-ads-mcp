@@ -2,7 +2,7 @@
 
 from collections import OrderedDict
 from collections.abc import AsyncIterator
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -125,7 +125,7 @@ async def dashboard(
         )
 
         # Calls today (count + sparkline of last 7 days)
-        today = datetime.utcnow().date()
+        today = datetime.now(UTC).date()
         calls_today = (
             await conn.fetchval(
                 "SELECT count(*) FROM audit_log WHERE manager_id = $1 AND occurred_at::date = $2",
@@ -430,7 +430,7 @@ async def audit(
 
     # Group by day for sticky day headers
     grouped: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
-    today = datetime.utcnow().date()
+    today = datetime.now(UTC).date()
     for r in rows:
         d = r["occurred_at"].date()
         if d == today:
@@ -494,7 +494,7 @@ async def audit_export_csv(
             ):
                 yield line.encode("utf-8")
 
-    filename = f"audit-{datetime.utcnow().strftime('%Y-%m-%d')}.csv"
+    filename = f"audit-{datetime.now(UTC).strftime('%Y-%m-%d')}.csv"
     return StreamingResponse(
         stream(),
         media_type="text/csv",
@@ -1061,7 +1061,7 @@ async def admin_audit_export_csv(
             ):
                 yield line.encode("utf-8")
 
-    filename = f"audit-admin-{datetime.utcnow().strftime('%Y-%m-%d')}.csv"
+    filename = f"audit-admin-{datetime.now(UTC).strftime('%Y-%m-%d')}.csv"
     return StreamingResponse(
         stream(),
         media_type="text/csv",
