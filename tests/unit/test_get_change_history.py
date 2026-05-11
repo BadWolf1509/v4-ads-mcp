@@ -172,3 +172,23 @@ async def test_tool_returns_period_and_rows(monkeypatch):
     assert "rows" in result
     assert "summary" in result
     assert result["summary"]["total_changes"] == 0
+
+
+@pytest.mark.asyncio
+async def test_tool_rejects_range_over_30_days(monkeypatch):
+    """RangeTooWideError from change_history_query propagates through the tool."""
+    from unittest.mock import AsyncMock
+
+    from src.google_ads.queries.change_history import RangeTooWideError
+    from src.mcp.tools import get_change_history as mod
+
+    # No need to stub run_report — the error should fire before we call the API
+    monkeypatch.setattr(mod, "run_report", AsyncMock(return_value=[]))
+
+    with pytest.raises(RangeTooWideError):
+        await mod.get_change_history(
+            {
+                "customer_id": "1234567890",
+                "date_range": {"from": "2026-01-01", "to": "2026-03-01"},  # 60 days
+            }
+        )

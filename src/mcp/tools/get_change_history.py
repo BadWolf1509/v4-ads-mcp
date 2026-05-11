@@ -88,7 +88,9 @@ def _parse_resource_path(path: str) -> tuple[str | None, str | None]:
     if len(parts) < 4 or parts[0] != "customers":
         return None, None
     resource_plural = parts[2]
-    # Common resource names — singular form for the return
+    # Keep these singular-form keys in sync with _RESOURCE_TYPES (SCREAMING_SNAKE)
+    # at the top of the module. Adding a resource type to the schema enum without
+    # adding its plural form here will silently yield (None, None).
     plural_to_type = {
         "campaigns": "campaign",
         "adGroups": "ad_group",
@@ -257,18 +259,18 @@ async def get_change_history(args: dict[str, Any]) -> dict[str, Any]:
         customer_id=customer_id,
         rows=rows,
     )
+    # name_map only contains ('campaign', id) and ('ad_group', id) keys —
+    # for other resource types (BIDDING_STRATEGY, CONVERSION_ACTION, ASSET, etc),
+    # the raw resource path is used as resource_name per spec §4.5.
     for r in rows:
-        # Prefer the resource_id's own resource_type lookup; fall back to campaign_id
+        resource_path = r.pop("_resource_path")
         key = (r["resource_type"].lower(), r["resource_id"])
         if key in name_map:
             r["resource_name"] = name_map[key]
         elif r["campaign_id"]:
-            r["resource_name"] = name_map.get(
-                ("campaign", r["campaign_id"]), r.pop("_resource_path")
-            )
+            r["resource_name"] = name_map.get(("campaign", r["campaign_id"]), resource_path)
         else:
-            r["resource_name"] = r.pop("_resource_path")
-        r.pop("_resource_path", None)
+            r["resource_name"] = resource_path
 
     summary = _build_summary(rows)
 
