@@ -8,6 +8,20 @@ call this as 'CRITICO antes de tudo' to detect:
 - Who changed what
 
 Audited as a sensitive read.
+
+Caveats (empirically verified against production change_event 2026-05-11):
+- Propagation lag: change_event is NOT real-time. Mutations made via the
+  Google Ads API or UI typically take MINUTES TO HOURS to surface in
+  change_event. If a recent change isn't visible, that's normal — the
+  V4 skills should re-query later rather than assume the mutation failed.
+- 30-day window is the documented retention; some date_range presets
+  (like `DURING LAST_30_DAYS` in raw GAQL) may hit a slightly tighter
+  boundary. Our path uses explicit BETWEEN dates and tolerates 30 days.
+- Google does NOT distinguish 'user applied via Recommendations UI' from
+  'Google auto-apply' in change_event.client_type — both surface as
+  GOOGLE_ADS_RECOMMENDATIONS. summary.auto_applied_count counts the
+  union; cross-reference auto-apply settings on the account if intent
+  matters.
 """
 
 from collections import Counter

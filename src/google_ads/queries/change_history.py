@@ -7,6 +7,13 @@ class RangeTooWideError(ValueError):
     """Raised when the requested date_range exceeds the 30-day API limit."""
 
 
+# Google Ads change_event has a documented ~30-day retention.
+# Empirically (smoke 2026-05-11) the `DURING LAST_30_DAYS` GAQL preset
+# can hit "too old" depending on edge timing; our path uses explicit
+# BETWEEN dates which has worked at exactly 30 days. If the API tightens
+# further, drop this to 29 and resolve LAST_30_DAYS in parse_date_range
+# accordingly, OR translate Google's "too old" error to a friendly
+# PT-BR retry hint.
 _MAX_DAYS = 30
 
 
