@@ -71,7 +71,7 @@ async def test_get_change_history_aggregates_with_auto_apply(db, session_ctx):
     mock_events = [
         _make_change_event_row(
             user="fulano@v4company.com",
-            ct="GOOGLE_ADS_UI",
+            ct="GOOGLE_ADS_WEB_CLIENT",
             rtype="CAMPAIGN",
             op="UPDATE",
             resource_path="customers/123/campaigns/100",
@@ -79,7 +79,7 @@ async def test_get_change_history_aggregates_with_auto_apply(db, session_ctx):
         ),
         _make_change_event_row(
             user="fulano@v4company.com",
-            ct="GOOGLE_ADS_UI",
+            ct="GOOGLE_ADS_WEB_CLIENT",
             rtype="AD_GROUP_CRITERION",
             op="CREATE",
             resource_path="customers/123/adGroupCriteria/200~300",
@@ -87,14 +87,14 @@ async def test_get_change_history_aggregates_with_auto_apply(db, session_ctx):
         ),
         _make_change_event_row(
             user="ana@v4company.com",
-            ct="GOOGLE_ADS_UI",
+            ct="GOOGLE_ADS_WEB_CLIENT",
             rtype="BIDDING_STRATEGY",
             op="UPDATE",
             resource_path="customers/123/biddingStrategies/400",
         ),
         _make_change_event_row(
             user="google@google.com",
-            ct="GOOGLE_ADS_RECOMMENDATIONS_AUTO_APPLY",
+            ct="GOOGLE_ADS_RECOMMENDATIONS",
             rtype="CAMPAIGN",
             op="UPDATE",
             resource_path="customers/123/campaigns/100",

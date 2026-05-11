@@ -83,12 +83,11 @@ def test_client_types_filter():
         resource_types=None,
         operation_types=None,
         user_emails=None,
-        client_types=["GOOGLE_ADS_RECOMMENDATIONS_AUTO_APPLY", "GOOGLE_ADS_UI"],
+        client_types=["GOOGLE_ADS_RECOMMENDATIONS", "GOOGLE_ADS_WEB_CLIENT"],
         limit=200,
     )
     assert (
-        "change_event.client_type IN ('GOOGLE_ADS_RECOMMENDATIONS_AUTO_APPLY', 'GOOGLE_ADS_UI')"
-        in q
+        "change_event.client_type IN ('GOOGLE_ADS_RECOMMENDATIONS', 'GOOGLE_ADS_WEB_CLIENT')" in q
     )
 
 
@@ -101,7 +100,7 @@ def test_all_filters_combined():
         resource_types=["CAMPAIGN"],
         operation_types=["UPDATE", "REMOVE"],
         user_emails=["x@v4company.com"],
-        client_types=["GOOGLE_ADS_UI"],
+        client_types=["GOOGLE_ADS_WEB_CLIENT"],
         limit=50,
     )
     assert "FROM change_event" in q
@@ -109,7 +108,7 @@ def test_all_filters_combined():
     assert "change_event.change_resource_type IN ('CAMPAIGN')" in q
     assert "change_event.resource_change_operation IN ('UPDATE', 'REMOVE')" in q
     assert "change_event.user_email IN ('x@v4company.com')" in q
-    assert "change_event.client_type IN ('GOOGLE_ADS_UI')" in q
+    assert "change_event.client_type IN ('GOOGLE_ADS_WEB_CLIENT')" in q
     assert "LIMIT 50" in q
 
 

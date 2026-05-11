@@ -3,7 +3,7 @@
 Wraps the change_event GAQL resource with structured filters and a summary
 block. Two V4 skills (auditoria-google-ads + analise-performance-google-ads)
 call this as 'CRITICO antes de tudo' to detect:
-- Auto-apply Recommendations (client_type=GOOGLE_ADS_RECOMMENDATIONS_AUTO_APPLY)
+- Auto-apply Recommendations (client_type=GOOGLE_ADS_RECOMMENDATIONS)
 - Structural changes (geo settings, conversion actions, bidding strategy)
 - Who changed what
 
@@ -35,20 +35,32 @@ _RESOURCE_TYPES = [
     "AD_GROUP_ASSET",
 ]
 
+# ChangeClientType enum values from Google Ads API (verified empirically
+# against production change_event 2026-05-11 — names DIFFER from common
+# guesses like GOOGLE_ADS_UI / GOOGLE_ADS_RECOMMENDATIONS_AUTO_APPLY).
 _CLIENT_TYPES = [
-    "GOOGLE_ADS_UI",
-    "GOOGLE_ADS_API",
-    "GOOGLE_ADS_RECOMMENDATIONS_AUTO_APPLY",
+    "UNSPECIFIED",
+    "UNKNOWN",
+    "GOOGLE_ADS_WEB_CLIENT",  # Web UI (Google Ads website)
     "GOOGLE_ADS_AUTOMATED_RULES",
+    "GOOGLE_ADS_SCRIPTS",
     "GOOGLE_ADS_BULK_UPLOAD",
+    "GOOGLE_ADS_API",
     "GOOGLE_ADS_EDITOR",
     "GOOGLE_ADS_MOBILE_APP",
-    "GOOGLE_ADS_SCRIPTS",
-    "GOOGLE_ADS_WEB_SERVICES",
+    "GOOGLE_ADS_RECOMMENDATIONS",  # Includes auto-apply Recommendations
+    "SEARCH_ADS_360_SYNC",
+    "SEARCH_ADS_360_POST",
+    "INTERNAL_TOOL",
     "OTHER",
 ]
 
-_AUTO_APPLY_CLIENT_TYPE = "GOOGLE_ADS_RECOMMENDATIONS_AUTO_APPLY"
+# Auto-apply Recommendations changes surface as GOOGLE_ADS_RECOMMENDATIONS
+# (Google does not distinguish "applied by user via Recommendations UI"
+# from "applied by Google auto-apply" in change_event.client_type). V4
+# skills using auto_applied_count should cross-reference with the auto-apply
+# Recommendations settings to confirm.
+_AUTO_APPLY_CLIENT_TYPE = "GOOGLE_ADS_RECOMMENDATIONS"
 
 _SCHEMA: dict[str, Any] = {
     "type": "object",
