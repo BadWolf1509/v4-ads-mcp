@@ -45,8 +45,18 @@ async def run_mutation(
     operation_type: str,
     payload: dict[str, Any],
     target_count: int,
+    partial_failure: bool = False,
+    params_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Execute a mutation. Returns {google_request_id, applied_count, partial_failures}."""
+    """Execute a mutation. Returns {google_request_id, applied_count, partial_failures}.
+
+    Args:
+        partial_failure: When True, sets request.partial_failure_mode = PARTIAL_FAILURE.
+            Individual op failures don't abort the request; per-op status is returned
+            in `partial_failures` list. When False (default), any error aborts.
+        params_summary: Optional override for audit_log.params_summary. When None,
+            defaults to {"keys": sorted(payload.keys())}.
+    """
     settings = get_settings()
     token_id = hash_developer_token(settings.google_ads_developer_token)
     started = time.monotonic()
@@ -75,9 +85,32 @@ async def run_mutation(
             request.customer_id = customer_id
             for op in operations:
                 request.mutate_operations.append(op)
+            if partial_failure:
+                request.partial_failure_mode = client.enums.PartialFailureModeEnum.PARTIAL_FAILURE
             reset_request_id()
-            ga_service.mutate(request=request)
+            response = ga_service.mutate(request=request)
             google_request_id = get_request_id()
+
+            # Parse per-op status when partial_failure is enabled
+            per_op_results: list[dict[str, Any]] = []
+            if partial_failure and hasattr(response, "mutate_operation_responses"):
+                for idx, op_resp in enumerate(response.mutate_operation_responses):
+                    if op_resp.HasField("partial_failure_error"):
+                        per_op_results.append(
+                            {
+                                "index": idx,
+                                "status": "failed",
+                                "error": op_resp.partial_failure_error.message,
+                            }
+                        )
+                    else:
+                        per_op_results.append(
+                            {
+                                "index": idx,
+                                "status": "added",
+                                "error": None,
+                            }
+                        )
         except Exception as e:
             # Log the raw exception with traceback BEFORE wrapping it in the
             # friendly PT-BR error. Without this, when to_friendly falls
@@ -96,8 +129,10 @@ async def run_mutation(
 
         return {
             "google_request_id": google_request_id,
-            "applied_count": target_count,
-            "partial_failures": [],
+            "applied_count": sum(1 for r in per_op_results if r["status"] == "added")
+            if partial_failure
+            else target_count,
+            "partial_failures": per_op_results,
         }
     except Exception as e:
         status = "error"
@@ -121,7 +156,9 @@ async def run_mutation(
                 action_type="mutate",
                 operation=operation_type,
                 target_count=target_count,
-                params_summary={"keys": sorted(payload.keys())},  # don't log full payload
+                params_summary=params_summary
+                if params_summary is not None
+                else {"keys": sorted(payload.keys())},
                 google_request_id=google_request_id,
                 status=status,
                 error_message=error_message,
