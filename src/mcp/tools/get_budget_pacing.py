@@ -27,7 +27,7 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         "campaign_id": str(row.campaign.id),
         "campaign_name": row.campaign.name,
         "daily_budget_brl": micros_to_currency(row.campaign_budget.amount_micros),
-        "delivery_method": str(row.campaign_budget.delivery_method),
+        "delivery_method": row.campaign_budget.delivery_method.name,
         "cost_micros_today": int(row.metrics.cost_micros),
     }
 

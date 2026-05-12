@@ -87,43 +87,108 @@ Default `limit=500`. Pra accounts com milhares de search terms únicas, gestor p
 
 **YAGNI:** gestor pode usar `limit=N` mais agressivo. Quando ficar dor, considerar `min_cost_brl` filter.
 
-## Tools exercised (todas working)
+## Achados de produto (expanded findings — product test framing)
 
-- ✅ `list_my_accounts` — listou 23 contas, MCC bem populado
-- ✅ `get_account_overview` — tracking_warning ✅, comparative ✅, enum decode ✅ (`type: "SEARCH"`)
-- ✅ `get_campaign_performance` — 1 row, all enum fields legíveis
-- ✅ `get_ad_group_performance` — 7 rows, ordering by cost desc ✅
-- ✅ `get_search_terms_report` — 50 rows com status legível (`"ADDED"`, `"NONE"`), ad_group_name + campaign_name presentes ✅
+### F7. `get_recommendations` — `type_pt` redundancy quando sem PT-BR mapping
 
-**0 bugs encontrados nesta sessão.** Account exercitada em 5 read tools, todos os Sprint 3b.7 enum decode fixes confirmados na vertical médica.
+Recommendation `FORECASTING_SET_TARGET_CPA` retornada como:
+```json
+{"type": "FORECASTING_SET_TARGET_CPA", "type_pt": "FORECASTING_SET_TARGET_CPA"}
+```
 
-## Recommended actions (gestor decision)
+`type_pt` field existe mas duplica `type` quando não há tradução. Gestor pensa que tradução funcionou. Melhores comportamentos:
+- (a) `type_pt: null` quando sem mapping (gestor sabe usar `type`)
+- (b) Mapping curado para os 10-20 tipos mais comuns + `null` para o resto
 
-Curtas, prontas pra executar via MCP:
+**Severidade:** Low-medium. Não quebra fluxo, mas comunica "feature de tradução existe" quando não. **Spawn-task candidato.**
 
-1. **Add negativas de concorrentes** (5 nomes) — usar `add_negatives_from_search_terms` ou `add_negative_keywords`. Esperado: ~R$ 16/mês economizados, redução de form fills lixo (spam de pessoas procurando outro médico).
+### F8. `get_negative_keywords_audit` reveals empty list
 
-2. **Add negativas informacionais (CAMPAIGN level, phrase match):**
-   - `pediatra` (1 palavra)
-   - `desodorante` (1 palavra)
-   - `bombinha` (1 palavra)
-   - `como tira` (phrase)
-   - `exercicios` (1 palavra)
-   - `tem cura` (phrase)
-   - `o que significa` (phrase)
-   - `sintomas cancer` (phrase — pode ser SUS-seeker)
-   - Esperado: ~R$ 40-50/mês economizados, ad spend redirecionado pra intent comercial
+Conta tem ZERO campaign-level negatives (`total_negatives: 0`). Tool retornou empty list corretamente. **Tool funciona, finding é account-level.** Explica F2 + F3 actionability (sem negativas → tudo passa).
 
-3. **Restructure HIPERIDROSE ad group** (out of MCP scope, gestor faz na UI):
-   - Investigar por que CPA é 2x média — pode ser landing page errada, ad copy fraco, ou KWs broad puxando tráfego ruim
+### F9. ALL keywords são BROAD match (account-level finding)
 
-4. **Restructure PECTUS + BROMIDROSE ad groups** (CTR <1%):
-   - Provavelmente ad copy ou KWs precisam revisão
+10/10 keywords amostrados são `match_type: "BROAD"`. Conta depende 100% do broad matching algorithm — explica search terms ruins. **Account hygiene, não MCP issue.**
+
+### F10. `first_page_cpc_brl` + `top_of_page_cpc_brl` retornam `null` para todos os 10 KWs
+
+Position estimates da Google API são `null`. Pode ser:
+- Account em MAXIMIZE_CONVERSIONS (auto-bidding) — Google não computa CPC estimates per-keyword
+- Low volume bridge — confirmar via run_gaql
+
+**Validation via run_gaql:** Conta usa `bidding_strategy_type: "MAXIMIZE_CONVERSIONS"` (confirmado). Position estimates não fazem sentido nesse modo. **Não é bug — comportamento correto da Google API.**
+
+### F11. 🚨 `get_budget_pacing` retorna `delivery_method` como int string
+
+```json
+{"delivery_method": "2"}  // should be "STANDARD"
+```
+
+**Same bug class de Sprint 3b.7 UX-2/UX-3** (proto-plus v20 repr regression). Sprint 3b.7 fixou 22 call sites em 10 tools mas **missed `get_budget_pacing.py:30`**. Cross-validation: `run_gaql` com mesma field retorna `"STANDARD"` corretamente.
+
+**Fix mecânico aplicado nesta sessão:** `str(row.campaign_budget.delivery_method)` → `row.campaign_budget.delivery_method.name`.
+
+**Severidade:** Medium. Gestor que olha pacing fica confuso (`"2"` é ACCELERATED ou STANDARD?). Fix shipped junto com este doc.
+
+### F12. 🚨 `update_keyword_bid` não pré-valida campaign bidding strategy
+
+Conta usa `MAXIMIZE_CONVERSIONS` (auto-bidding). KWs têm `cpc_bid_micros = 0` por design (Google não armazena bid manual em auto-bidding). Tool aceita update payload e retorna dry-run com `delta_pct: 100.0%` em todas 6 KWs (porque vai de 0 → R$ 2-3.5). CONFIRM path foi acionado (good — variation >20%) mas confirmation_reason cita variation, NÃO "auto-bidding strategy active."
+
+Se gestor confirmar via apply_change, Google provavelmente ignora silenciosamente (manual bid em campaign auto-bid não funciona). **Silent-acceptance bug class** (família A1-A5 do Sprints 3b.3-3b.6).
+
+**Suggested fix:** pre-flight check em `update_keyword_bid` que detecta `campaign.bidding_strategy_type != MANUAL_CPC` e rejeita com mensagem clara antes do dry-run.
+
+**Severidade:** Medium. Pode chegar até `apply_change` e gestor pensar que aplicou, mas Google ignora. Spawn-task candidato.
+
+## Tools exercised (TODAS as 21 read tools + 4 mutate tools dry-run)
+
+### Read tools — 21 de 21 ✅
+
+| Tool | Result | Notes |
+|---|---|---|
+| `list_my_accounts` | ✅ | 23 contas listadas |
+| `get_account_overview` | ✅ | tracking_warning fires ✅ (5ª vertical) |
+| `get_campaign_performance` | ✅ | enum decode `status: "ENABLED"`, `type: "SEARCH"` |
+| `get_ad_group_performance` | ✅ | 7 rows, ordering by cost |
+| `get_keyword_performance` | ✅ | match_type, quality_* todos legíveis (F10 null OK) |
+| `get_search_terms_report` | ✅ | status `"ADDED"`/`"NONE"` legível |
+| `get_ad_performance` | ✅ | `ad_strength: "EXCELLENT"`, type `"RESPONSIVE_SEARCH_AD"` |
+| `get_negative_keywords_audit` | ✅ | Empty (F8) — handled |
+| `get_recommendations` | ✅⚠ | F7 — type_pt redundancy |
+| `get_geo_performance` | ✅ | Single country (by design) |
+| `get_device_performance` | ✅ | MOBILE 99% |
+| `get_hourly_performance` | ✅ | day_of_week decoded |
+| `get_audience_performance` | ✅ | Empty rows handled |
+| `get_funnel_metrics` | ✅ | tracking_warning em totals ✅ |
+| `get_budget_pacing` | 🚨 | **F11** — delivery_method enum not decoded (fix shipped) |
+| `get_top_keywords_creatives` | ✅ | metric configurável |
+| `get_conversion_actions` | ✅ | 11 actions, todos enums decoded |
+| `get_change_history` | ✅ | Empty + summary block |
+| `list_gaql_resources` | ✅ | 15 resources catalog |
+| `run_gaql` | ✅ | Raw GAQL works, decoded properly |
+| `validate_gaql` | ✅ | Reject bogus field corretamente |
+
+### Mutation tools — 4 testadas via CONFIRM path (sem apply_change)
+
+| Tool | Result | Notes |
+|---|---|---|
+| `update_keyword_bid` | ✅⚠ | F12 — sem pre-check bidding strategy. CONFIRM funcionou (variation >20%). Token `T3DCK4A9` gerado, NÃO aplicado |
+| `bulk_pause_by_query` | ✅ | `status: "no_op"` quando filter sem matches — clean UX |
+| `update_campaign_budget` | ✅ | Dry-run com blast_summary PT-BR. Token `YUKMZOYG` gerado, NÃO aplicado |
+| `validate_gaql` | ✅ | Read utility — reject bogus field |
+
+**0 mutations aplicadas.** 2 confirmation tokens gerados expiram em 10 min sem efeito.
 
 ## Summary
 
-**Sprint P2 + 3b.7 health check em vertical nova:** todos os fixes shipados funcionam corretamente. ROAS warning helper validated em 5 verticals distintas. Enum decode (UX-2/UX-3) sem regressions. Zero novos bugs encontrados.
+**Sprint P2 + 3b.7 health check em vertical nova:** todos os fixes shipados funcionam corretamente. ROAS warning helper validated em 5 verticals distintas (medicina = 5ª). Enum decode (UX-2/UX-3) sem regressions em 21 read tools testadas.
 
-**Real account-management value identified:** R$ 60+ mensais em desperdício de spend acionável via tools existentes (`add_negative_keywords` ou `add_negatives_from_search_terms`). Wellington pode executar a otimização nesta sessão se quiser.
+**Achados de produto (3 novos bugs + 3 nice-to-haves):**
+- 🚨 **F11** (bug): `get_budget_pacing.delivery_method` enum não decoded — fix shipped nesta sessão. Sprint 3b.7 missed this file.
+- 🚨 **F12** (bug class silent-acceptance): `update_keyword_bid` aceita payload em campaign auto-bidding sem validar — spawn-task candidato
+- ⚠ **F7** (UX): `get_recommendations.type_pt` redundancy quando sem PT-BR mapping — spawn-task candidato
+- 💡 F5, F6, F9-F10: nice-to-haves documentados (YAGNI)
 
-**P3 outcome:** ✅ vertical nova exercitada sem surpresas técnicas, signal forte de produto (tools úteis pra gestor real fazer otimização de tráfego em conta médica).
+**Real account-management value identified (não acionado nesta sessão — escopo de teste de produto):** R$ 60+ mensais em desperdício de spend acionável via tools existentes.
+
+**P3 outcome:** ✅ todas as 21 read tools + 4 mutate-CONFIRM tools testadas em vertical nova (medicina). Tool count 39 mantido + 3 findings actionable surfaceadas. Stabilization compounding mantido (F11 é regression de Sprint 3b.7, não new bug introduced).
