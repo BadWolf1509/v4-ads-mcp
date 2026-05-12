@@ -130,6 +130,11 @@ async def test_apply_audience_full_cycle_audits(db, session_ctx):
         ]
     )
 
+    fake_taxonomy_rows = [
+        {"id": "BBB", "taxonomy_type": "IN_MARKET"},
+        {"id": "CCC", "taxonomy_type": "IN_MARKET"},
+    ]
+
     with (
         patch(
             "src.google_ads.mutations.build_client_for_manager",
@@ -142,6 +147,10 @@ async def test_apply_audience_full_cycle_audits(db, session_ctx):
         patch(
             "src.google_ads.mutations.get_request_id",
             return_value="req-apply-aud",
+        ),
+        patch(
+            "src.mcp.tools.apply_audience.run_report",
+            AsyncMock(return_value=fake_taxonomy_rows),
         ),
     ):
         result = await apply_audience(

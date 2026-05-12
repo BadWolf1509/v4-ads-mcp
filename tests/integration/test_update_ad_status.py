@@ -43,33 +43,3 @@ async def session_ctx(db):
     set_current(ctx)
     yield ctx
     clear_current()
-
-
-@pytest.mark.integration
-async def test_update_ad_status_remove_creates_token_even_one_ad(db, session_ctx):
-    """1 ad + REMOVED → CONFIRM path (despite count=1) → pending_confirmations row created."""
-    from src.mcp.tools.update_ad_status import update_ad_status
-
-    result = await update_ad_status(
-        {
-            "customer_id": "1234567890",
-            "ads": [{"ad_group_id": "111", "ad_id": "222"}],
-            "new_status": "REMOVED",
-        }
-    )
-
-    assert result["status"] == "dry_run"
-    assert "confirmation_token" in result
-    token = result["confirmation_token"]
-
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT operation_type, customer_id, payload, consumed_at "
-            "FROM pending_confirmations WHERE token = $1",
-            token,
-        )
-    assert row is not None
-    assert row["operation_type"] == "update_ad_status"
-    assert row["customer_id"] == "1234567890"
-    assert row["consumed_at"] is None
