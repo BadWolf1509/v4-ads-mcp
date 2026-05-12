@@ -18,7 +18,7 @@ import hashlib
 from typing import Any
 
 from src.db import connection
-from src.google_ads.queries._common import parse_date_range
+from src.google_ads.queries._common import InvalidDateRangeError, parse_date_range
 from src.google_ads.queries.bulk_pause import (
     FilterValidationError,
     bulk_pause_query,
@@ -178,7 +178,14 @@ async def bulk_pause_by_query(args: dict[str, Any]) -> dict[str, Any]:
             "error": str(e),
         }
 
-    start, end = parse_date_range(date_range_arg)
+    try:
+        start, end = parse_date_range(date_range_arg)
+    except InvalidDateRangeError as e:
+        return {
+            "status": "error",
+            "operation": "bulk_pause_by_query",
+            "error": f"date_range invalido: {e}",
+        }
     query = bulk_pause_query(
         target_type=target_type,
         filter_clause=filter_clause,
@@ -246,6 +253,7 @@ async def bulk_pause_by_query(args: dict[str, Any]) -> dict[str, Any]:
         "total_cost_brl": round(total_cost, 2),
         "filter_hash": filter_hash,
         "__target_count__": count,
+        "__partial_failure__": True,
     }
     summary = (
         f"Pausar {count} {target_type}(s). Custo total R$ {total_cost:.2f} no periodo. "

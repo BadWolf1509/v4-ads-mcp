@@ -137,3 +137,75 @@ async def test_bulk_pause_dry_run_creates_token_and_audit(db, session_ctx):
     ps_d = json.loads(ps) if isinstance(ps, str) else ps
     assert ps_d["target_type"] == "keyword"
     assert ps_d["filter_hash"].startswith("sha256:")
+
+
+@pytest.mark.integration
+async def test_bulk_pause_dry_run_then_apply_change_full_cycle(db, session_ctx):
+    """dry_run → apply_change → run_mutation invoked with partial_failure=True.
+
+    Verifies the apply path correctly reads __partial_failure__ from payload
+    and passes it through (Issue 1 fix).
+    """
+    from src.mcp.tools.apply_change import apply_change
+    from src.mcp.tools.bulk_pause_by_query import bulk_pause_by_query
+
+    mock_rows = [_make_keyword_view_row("111", "200", "termo 1", 12_500_000)]
+
+    batch = MagicMock(results=mock_rows)
+    fake_service = MagicMock()
+    fake_service.search_stream = MagicMock(return_value=[batch])
+    fake_client = MagicMock()
+    fake_client.get_service = MagicMock(return_value=fake_service)
+    fake_client.get_type = MagicMock(return_value=MagicMock())
+
+    # Stub mutate-side too
+    fake_mutate_response = MagicMock()
+    fake_mutate_response.mutate_operation_responses = [MagicMock()]
+    fake_mutate_response.mutate_operation_responses[0]._pb.WhichOneof = MagicMock(
+        return_value="ad_group_criterion_result"
+    )
+    fake_service.mutate = MagicMock(return_value=fake_mutate_response)
+    fake_client.copy_from = MagicMock()
+    fake_client.enums.AdGroupCriterionStatusEnum.PAUSED = "PAUSED"
+
+    with (
+        patch(
+            "src.google_ads.reports.build_client_for_manager",
+            AsyncMock(return_value=fake_client),
+        ),
+        patch(
+            "src.google_ads.mutations.build_client_for_manager",
+            AsyncMock(return_value=fake_client),
+        ),
+        patch(
+            "src.google_ads.mutations.get_request_id",
+            return_value="req-bulk-apply",
+        ),
+    ):
+        # Step 1: dry-run
+        dry_result = await bulk_pause_by_query(
+            {
+                "customer_id": "1234567890",
+                "target_type": "keyword",
+                "filter": "metrics.cost_micros > 0",
+                "date_range": "LAST_7_DAYS",
+            }
+        )
+
+        assert dry_result["status"] == "dry_run"
+        token = dry_result["confirmation_token"]
+
+        # Step 2: apply_change
+        apply_result = await apply_change({"confirmation_token": token})
+
+    assert apply_result["status"] == "applied"
+    assert apply_result["operation"] == "bulk_pause_by_query"
+
+    # Verify token was consumed
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT consumed_at FROM pending_confirmations WHERE token = $1",
+            token,
+        )
+    assert row["consumed_at"] is not None

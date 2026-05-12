@@ -179,3 +179,28 @@ async def test_invalid_filter_returns_error(monkeypatch):
     # Critical: no API call, no token creation
     run_report_mock.assert_not_called()
     create_pending_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_invalid_date_range_returns_error(monkeypatch):
+    """Tool catches InvalidDateRangeError and converts to status:'error'."""
+    from src.mcp.tools import bulk_pause_by_query as mod
+
+    run_report_mock = AsyncMock()
+    create_pending_mock = AsyncMock()
+    monkeypatch.setattr(mod, "run_report", run_report_mock)
+    monkeypatch.setattr(mod, "create_pending", create_pending_mock)
+
+    result = await mod.bulk_pause_by_query(
+        {
+            "customer_id": "1234567890",
+            "target_type": "keyword",
+            "filter": "ad_group_criterion.status = 'ENABLED'",
+            "date_range": "LAST_FORTNIGHT",  # invalid preset
+        }
+    )
+
+    assert result["status"] == "error"
+    assert "date_range" in result["error"].lower()
+    run_report_mock.assert_not_called()
+    create_pending_mock.assert_not_called()
