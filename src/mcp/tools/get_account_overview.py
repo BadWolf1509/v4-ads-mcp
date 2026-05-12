@@ -6,6 +6,7 @@ from src.google_ads.queries._common import (
     get_comparison_range,
     micros_to_currency,
     parse_date_range,
+    value_proxy_warning,
 )
 from src.google_ads.queries.overview import overview_query
 from src.google_ads.reports import run_report
@@ -53,7 +54,7 @@ def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
     cost = sum(r["cost_micros"] for r in rows)
     conv = sum(r["conversions"] for r in rows)
     conv_val = sum(r["conversions_value"] for r in rows)
-    return {
+    aggregate = {
         "impressions": impr,
         "clicks": clicks,
         "cost_brl": micros_to_currency(cost),
@@ -64,6 +65,11 @@ def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "cost_per_conversion_brl": micros_to_currency(cost / conv) if conv else 0.0,
         "roas": round(conv_val / micros_to_currency(cost), 2) if cost else 0.0,
     }
+    # UX-1: detect tracking placeholder (conversions_value == conversions exact 1:1)
+    warning = value_proxy_warning(aggregate["conversions"], aggregate["conversions_value_brl"])
+    if warning:
+        aggregate["tracking_warning"] = warning
+    return aggregate
 
 
 def _row_formatter(row: Any) -> dict[str, Any]:

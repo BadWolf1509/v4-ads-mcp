@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from src.google_ads.queries._common import micros_to_currency, parse_date_range
+from src.google_ads.queries._common import micros_to_currency, parse_date_range, value_proxy_warning
 from src.google_ads.queries.client_report import funnel_query
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
@@ -40,6 +40,18 @@ def _build_funnel(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
     cost_brl = micros_to_currency(cost)
 
+    totals: dict[str, Any] = {
+        "cost_brl": cost_brl,
+        "conversions_value_brl": round(conv_val, 2),
+        "roas": round(conv_val / cost_brl, 2) if cost_brl else 0.0,
+        "average_order_value_brl": round(conv_val / conv, 2) if conv else 0.0,
+        "cost_per_conversion_brl": round(cost_brl / conv, 2) if conv else 0.0,
+    }
+    # UX-1: detect tracking placeholder
+    warning = value_proxy_warning(round(conv, 2), totals["conversions_value_brl"])
+    if warning:
+        totals["tracking_warning"] = warning
+
     return {
         "stages": [
             {"stage": "impressions", "value": impr},
@@ -54,13 +66,7 @@ def _build_funnel(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 "rate_from_prev_pct": round(conv / clicks * 100, 2) if clicks else 0.0,
             },
         ],
-        "totals": {
-            "cost_brl": cost_brl,
-            "conversions_value_brl": round(conv_val, 2),
-            "roas": round(conv_val / cost_brl, 2) if cost_brl else 0.0,
-            "average_order_value_brl": round(conv_val / conv, 2) if conv else 0.0,
-            "cost_per_conversion_brl": round(cost_brl / conv, 2) if conv else 0.0,
-        },
+        "totals": totals,
     }
 
 
