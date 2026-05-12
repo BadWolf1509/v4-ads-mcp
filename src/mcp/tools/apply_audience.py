@@ -31,6 +31,7 @@ from typing import Any
 
 from src.db import connection
 from src.google_ads.mutations import run_mutation
+from src.google_ads.reports import run_report
 from src.governance.blast_radius import RiskLevel, classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
@@ -75,6 +76,11 @@ _ALREADY_EXISTS_PATTERNS = (
     "CRITERION_EXISTS",
     "DUPLICATE_CRITERION",
 )
+
+# A3 finding (Sprint 3b.4 smoke): Google silently drops user_interest attachments
+# when taxonomy_type is incompatible with target_type. SEARCH ad_groups accept
+# IN_MARKET + AFFINITY; VERTICAL_GEO (Display Topics, IDs 1-79999) silently dropped.
+_COMPATIBLE_TAXONOMIES = ("IN_MARKET", "AFFINITY")
 
 
 def _preflight_validate(
@@ -127,6 +133,70 @@ def _preflight_validate(
                 f"(esperado prefixo customers/{customer_id}/, recebido "
                 f"'{att['audience_resource_name']}')"
             )
+
+    return None
+
+
+async def _validate_user_interest_taxonomies(
+    ctx: Any, customer_id: str, attachments: list[dict[str, Any]]
+) -> str | None:
+    """Returns error message PT-BR if any user_interest taxonomy incompatible; None if OK.
+
+    Performs 1 GAQL batch lookup if user_interest attachments present.
+    Returns None (skip) if no user_interest in batch.
+
+    Spec §3.3: SEARCH ad_groups/campaigns only accept IN_MARKET + AFFINITY
+    taxonomies. VERTICAL_GEO (Display Topics, IDs 1-79999) is silently dropped
+    by Google (A3 finding).
+    """
+    user_interest_ids: list[str] = []
+    user_interest_indices: list[int] = []
+    for i, att in enumerate(attachments):
+        if att["audience_type"] == "user_interest":
+            ui_id = att["audience_resource_name"].rsplit("/", 1)[-1]
+            user_interest_ids.append(ui_id)
+            user_interest_indices.append(i)
+
+    if not user_interest_ids:
+        return None  # No user_interest attachments; skip GAQL lookup
+
+    ids_clause = ", ".join(user_interest_ids)
+    query = (
+        f"SELECT user_interest.user_interest_id, user_interest.taxonomy_type "
+        f"FROM user_interest "
+        f"WHERE user_interest.user_interest_id IN ({ids_clause})"
+    )
+    rows = await run_report(
+        manager_id=ctx.manager_id,
+        session_id=ctx.session_id,
+        customer_id=customer_id,
+        query=query,
+        row_formatter=lambda r: {
+            "id": str(r.user_interest.user_interest_id),
+            "taxonomy_type": r.user_interest.taxonomy_type.name,
+        },
+        operation_name="apply_audience_preflight_taxonomy_lookup",
+        audit_this_call=False,  # internal read for validation, not user-facing audit
+    )
+
+    taxonomy_by_id = {row["id"]: row["taxonomy_type"] for row in rows}
+
+    incompatible: list[dict[str, Any]] = []
+    for i, ui_id in zip(user_interest_indices, user_interest_ids, strict=True):
+        taxonomy = taxonomy_by_id.get(ui_id, "UNKNOWN")
+        if taxonomy not in _COMPATIBLE_TAXONOMIES:
+            incompatible.append({"index": i, "id": ui_id, "taxonomy": taxonomy})
+
+    if incompatible:
+        details = ", ".join(
+            f"attachments[{x['index']}]={x['id']} ({x['taxonomy']})" for x in incompatible
+        )
+        return (
+            f"user_interest attachments com taxonomy_type incompativel detectados: "
+            f"{details}. Apenas {', '.join(_COMPATIBLE_TAXONOMIES)} sao aceitas pra "
+            f"attachment em ad_group/campaign (V4 use case SEARCH). VERTICAL_GEO "
+            f"(Display Topics, IDs 1-79999) eh silently dropado pelo Google."
+        )
 
     return None
 
@@ -191,6 +261,16 @@ async def apply_audience(args: dict[str, Any]) -> dict[str, Any]:
             "operation": "apply_audience",
             "customer_id": customer_id,
             "error": preflight_error,
+        }
+
+    # A3: async pre-flight (GAQL taxonomy lookup) — only runs if sync passes + has user_interest
+    taxonomy_error = await _validate_user_interest_taxonomies(ctx, customer_id, attachments)
+    if taxonomy_error:
+        return {
+            "status": "error",
+            "operation": "apply_audience",
+            "customer_id": customer_id,
+            "error": taxonomy_error,
         }
 
     risk = classify(

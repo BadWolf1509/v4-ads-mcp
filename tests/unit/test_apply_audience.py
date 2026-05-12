@@ -208,7 +208,9 @@ async def test_preflight_allows_campaign_user_interest_exclusion():
     """
     from src.mcp.tools.apply_audience import apply_audience
 
+    fake_run_report = AsyncMock(return_value=[{"id": "91501", "taxonomy_type": "IN_MARKET"}])
     with (
+        patch("src.mcp.tools.apply_audience.run_report", fake_run_report),
         patch("src.mcp.tools.apply_audience.create_pending", AsyncMock(return_value="TOKEN123")),
         patch("src.mcp.tools.apply_audience.connection") as conn_module,
     ):
@@ -255,8 +257,14 @@ async def test_auto_path_observation_under_threshold():
             "partial_failures": [{"index": i, "status": "added", "error": None} for i in range(5)],
         }
 
-    with patch(
-        "src.mcp.tools.apply_audience.run_mutation", AsyncMock(side_effect=fake_run_mutation)
+    fake_run_report = AsyncMock(
+        return_value=[{"id": str(91500 + i), "taxonomy_type": "IN_MARKET"} for i in range(5)]
+    )
+    with (
+        patch("src.mcp.tools.apply_audience.run_report", fake_run_report),
+        patch(
+            "src.mcp.tools.apply_audience.run_mutation", AsyncMock(side_effect=fake_run_mutation)
+        ),
     ):
         result = await apply_audience(
             {
@@ -290,7 +298,9 @@ async def test_confirm_path_exclusion_count_one():
     """
     from src.mcp.tools.apply_audience import apply_audience
 
+    fake_run_report = AsyncMock(return_value=[{"id": "91501", "taxonomy_type": "IN_MARKET"}])
     with (
+        patch("src.mcp.tools.apply_audience.run_report", fake_run_report),
         patch("src.mcp.tools.apply_audience.create_pending", AsyncMock(return_value="ABC12345")),
         patch("src.mcp.tools.apply_audience.connection") as conn_module,
     ):
@@ -332,14 +342,23 @@ async def test_partial_failure_mapping_already_attached():
         {"index": 0, "status": "added", "error": None},
         {"index": 1, "status": "failed", "error": "CRITERION_EXISTS: criterion already exists"},
     ]
-    with patch(
-        "src.mcp.tools.apply_audience.run_mutation",
-        AsyncMock(
-            return_value={
-                "google_request_id": "req-2",
-                "applied_count": 1,
-                "partial_failures": fake_partials,
-            }
+    fake_run_report = AsyncMock(
+        return_value=[
+            {"id": "91501", "taxonomy_type": "IN_MARKET"},
+            {"id": "91502", "taxonomy_type": "IN_MARKET"},
+        ]
+    )
+    with (
+        patch("src.mcp.tools.apply_audience.run_report", fake_run_report),
+        patch(
+            "src.mcp.tools.apply_audience.run_mutation",
+            AsyncMock(
+                return_value={
+                    "google_request_id": "req-2",
+                    "applied_count": 1,
+                    "partial_failures": fake_partials,
+                }
+            ),
         ),
     ):
         result = await apply_audience(
@@ -384,8 +403,18 @@ async def test_custom_params_summary_aggregates_without_raw_resource_names():
             "partial_failures": [{"index": i, "status": "added", "error": None} for i in range(4)],
         }
 
-    with patch(
-        "src.mcp.tools.apply_audience.run_mutation", AsyncMock(side_effect=fake_run_mutation)
+    fake_run_report = AsyncMock(
+        return_value=[
+            {"id": "BBB", "taxonomy_type": "IN_MARKET"},
+            {"id": "CCC", "taxonomy_type": "IN_MARKET"},
+            {"id": "DDD", "taxonomy_type": "AFFINITY"},
+        ]
+    )
+    with (
+        patch("src.mcp.tools.apply_audience.run_report", fake_run_report),
+        patch(
+            "src.mcp.tools.apply_audience.run_mutation", AsyncMock(side_effect=fake_run_mutation)
+        ),
     ):
         await apply_audience(
             {
@@ -428,3 +457,195 @@ async def test_custom_params_summary_aggregates_without_raw_resource_names():
     serialized = str(summary)
     for fragment in ("AAA", "BBB", "CCC", "DDD"):
         assert fragment not in serialized
+
+
+# ----- A3 taxonomy pre-flight tests (5) -----
+
+
+@pytest.mark.asyncio
+async def test_taxonomy_preflight_rejects_vertical_geo():
+    """A3 regression: VERTICAL_GEO (Display Topics, IDs 1-79999) silently dropped by Google.
+
+    Pre-flight GAQL lookup detects taxonomy and rejects before mutation.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    from src.mcp.tools.apply_audience import apply_audience
+
+    fake_run_report = AsyncMock(return_value=[{"id": "7", "taxonomy_type": "VERTICAL_GEO"}])
+    with patch("src.mcp.tools.apply_audience.run_report", fake_run_report):
+        result = await apply_audience(
+            {
+                "customer_id": "1234567890",
+                "target_type": "ad_group",
+                "mode": "observation",
+                "attachments": [
+                    {
+                        "target_id": "111",
+                        "audience_type": "user_interest",
+                        "audience_resource_name": "customers/1234567890/userInterests/7",
+                    }
+                ],
+            }
+        )
+
+    assert result["status"] == "error"
+    assert "VERTICAL_GEO" in result["error"] or "taxonomy" in result["error"].lower()
+    assert "IN_MARKET" in result["error"] or "AFFINITY" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_taxonomy_preflight_allows_in_market():
+    """Sanity: IN_MARKET taxonomy passes through pre-flight (and gets to dispatch)."""
+    from unittest.mock import AsyncMock, patch
+
+    from src.mcp.tools.apply_audience import apply_audience
+
+    fake_run_report = AsyncMock(return_value=[{"id": "80001", "taxonomy_type": "IN_MARKET"}])
+    fake_run_mutation = AsyncMock(
+        return_value={
+            "google_request_id": "req-1",
+            "applied_count": 1,
+            "partial_failures": [{"index": 0, "status": "added", "error": None}],
+        }
+    )
+    with (
+        patch("src.mcp.tools.apply_audience.run_report", fake_run_report),
+        patch("src.mcp.tools.apply_audience.run_mutation", fake_run_mutation),
+    ):
+        result = await apply_audience(
+            {
+                "customer_id": "1234567890",
+                "target_type": "ad_group",
+                "mode": "observation",
+                "attachments": [
+                    {
+                        "target_id": "111",
+                        "audience_type": "user_interest",
+                        "audience_resource_name": "customers/1234567890/userInterests/80001",
+                    }
+                ],
+            }
+        )
+
+    assert result["status"] == "applied"
+
+
+@pytest.mark.asyncio
+async def test_taxonomy_preflight_allows_affinity():
+    """Sanity: AFFINITY taxonomy passes through."""
+    from unittest.mock import AsyncMock, patch
+
+    from src.mcp.tools.apply_audience import apply_audience
+
+    fake_run_report = AsyncMock(return_value=[{"id": "90100", "taxonomy_type": "AFFINITY"}])
+    fake_run_mutation = AsyncMock(
+        return_value={
+            "google_request_id": "req-2",
+            "applied_count": 1,
+            "partial_failures": [{"index": 0, "status": "added", "error": None}],
+        }
+    )
+    with (
+        patch("src.mcp.tools.apply_audience.run_report", fake_run_report),
+        patch("src.mcp.tools.apply_audience.run_mutation", fake_run_mutation),
+    ):
+        result = await apply_audience(
+            {
+                "customer_id": "1234567890",
+                "target_type": "ad_group",
+                "mode": "observation",
+                "attachments": [
+                    {
+                        "target_id": "111",
+                        "audience_type": "user_interest",
+                        "audience_resource_name": "customers/1234567890/userInterests/90100",
+                    }
+                ],
+            }
+        )
+
+    assert result["status"] == "applied"
+
+
+@pytest.mark.asyncio
+async def test_taxonomy_preflight_skipped_when_no_user_interest():
+    """Perf: GAQL lookup NOT called when batch is pure user_list."""
+    from unittest.mock import AsyncMock, patch
+
+    from src.mcp.tools.apply_audience import apply_audience
+
+    fake_run_report = AsyncMock()  # Should NOT be called
+    fake_run_mutation = AsyncMock(
+        return_value={
+            "google_request_id": "req-3",
+            "applied_count": 1,
+            "partial_failures": [{"index": 0, "status": "added", "error": None}],
+        }
+    )
+    with (
+        patch("src.mcp.tools.apply_audience.run_report", fake_run_report),
+        patch("src.mcp.tools.apply_audience.run_mutation", fake_run_mutation),
+    ):
+        result = await apply_audience(
+            {
+                "customer_id": "1234567890",
+                "target_type": "ad_group",
+                "mode": "observation",
+                "attachments": [
+                    {
+                        "target_id": "111",
+                        "audience_type": "user_list",
+                        "audience_resource_name": "customers/1234567890/userLists/123",
+                    }
+                ],
+            }
+        )
+
+    assert result["status"] == "applied"
+    fake_run_report.assert_not_called()  # Perf gate
+
+
+@pytest.mark.asyncio
+async def test_taxonomy_preflight_batch_lookup_single_read():
+    """Perf: 3 user_interest attachments → 1 GAQL call (not 3)."""
+    from unittest.mock import AsyncMock, patch
+
+    from src.mcp.tools.apply_audience import apply_audience
+
+    fake_run_report = AsyncMock(
+        return_value=[
+            {"id": "80001", "taxonomy_type": "IN_MARKET"},
+            {"id": "80002", "taxonomy_type": "IN_MARKET"},
+            {"id": "90100", "taxonomy_type": "AFFINITY"},
+        ]
+    )
+    fake_run_mutation = AsyncMock(
+        return_value={
+            "google_request_id": "req-4",
+            "applied_count": 3,
+            "partial_failures": [{"index": i, "status": "added", "error": None} for i in range(3)],
+        }
+    )
+    with (
+        patch("src.mcp.tools.apply_audience.run_report", fake_run_report),
+        patch("src.mcp.tools.apply_audience.run_mutation", fake_run_mutation),
+    ):
+        result = await apply_audience(
+            {
+                "customer_id": "1234567890",
+                "target_type": "ad_group",
+                "mode": "observation",
+                "attachments": [
+                    {
+                        "target_id": "111",
+                        "audience_type": "user_interest",
+                        "audience_resource_name": f"customers/1234567890/userInterests/{i}",
+                    }
+                    for i in (80001, 80002, 90100)
+                ],
+            }
+        )
+
+    assert result["status"] == "applied"
+    assert fake_run_report.call_count == 1  # Single batch lookup
