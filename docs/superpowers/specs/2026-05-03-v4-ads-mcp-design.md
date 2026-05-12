@@ -284,7 +284,9 @@ Refresh do access_token é automático no SDK Google. App nunca lida com access 
 
 **Grupos de anúncios:** `create_ad_group`, `update_ad_group_status`, `update_ad_group_bid`.
 
-**Palavras-chave:** `add_keywords`, `update_keyword_status`, `update_keyword_match_type`, `update_keyword_bid`.
+**Palavras-chave:** `add_keywords`, `update_keyword_status`, ~~`update_keyword_match_type`~~, `update_keyword_bid`.
+
+> **~~`update_keyword_match_type`~~ — DESCARTADO (Sprint 3b.3 pivot 2026-05-12).** API immutability finding: `KeywordInfo.text` + `KeywordInfo.match_type` formam a IDENTIDADE do `AdGroupCriterion` (não são campos modificáveis post-creation). Para "trocar match type" de uma keyword, o workflow correto Google Ads é: (1) pausar criterion antigo via `update_keyword_status(new_status=PAUSED)`, (2) criar nova criterion com match_type desejado via `add_keywords`. O Quality Score history fica no criterion antigo (não migra). V4 skills `analise-performance-google-ads` + `auditoria-google-ads` já alinham com esse workflow ("pause + replace"). Sprint 3b.3 pivotou para `add_keywords` por essa razão — entregou a metade additiva do workflow. A pause-half já estava shipped via Sprint 3a `update_keyword_status`.
 
 **Negativas:** `add_negative_keywords` (`level` = campaign|ad_group|shared_set), `add_negatives_from_search_terms`.
 
