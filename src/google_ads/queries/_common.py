@@ -121,3 +121,21 @@ METRIC_FIELDS = {
 def micros_to_currency(micros: int | float) -> float:
     """Google Ads stores money in micros (millionths). 1_500_000 micros = R$ 1.50."""
     return round(micros / 1_000_000.0, 2)
+
+
+def value_proxy_warning(conversions: float, conversions_value: float) -> str | None:
+    """Returns warning string PT-BR if conversions_value == conversions (1:1 placeholder
+    tracking), else None.
+
+    Real revenue tracking would have value != count (unless every conversion is
+    coincidentally R$ 1.00 — extremely unlikely). 1:1 ratio strong signals that
+    conversion action uses default value=1.0 BRL placeholder, making ROAS misleading.
+
+    Sprint 3b.7 (P1b dogfood UX-1 finding).
+    """
+    if conversions > 0 and conversions == conversions_value:
+        return (
+            "conversions_value == conversions (1:1 ratio). Tracking provavelmente "
+            "sem revenue real — ROAS pode ser misleading."
+        )
+    return None
