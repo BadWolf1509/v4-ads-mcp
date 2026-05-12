@@ -26,7 +26,7 @@ def _row_formatter(row: Any) -> dict[str, Any]:
     cost_micros = int(m.cost_micros)
     return {
         "hour": int(row.segments.hour),
-        "day_of_week": str(row.segments.day_of_week).split(".")[-1],
+        "day_of_week": row.segments.day_of_week.name,
         "impressions": impr,
         "clicks": clicks,
         "cost_brl": micros_to_currency(cost_micros),

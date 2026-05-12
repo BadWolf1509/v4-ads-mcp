@@ -25,7 +25,7 @@ def _row_formatter(row: Any) -> dict[str, Any]:
     clicks = int(m.clicks)
     cost_micros = int(m.cost_micros)
     return {
-        "device": str(row.segments.device).split(".")[-1],
+        "device": row.segments.device.name,
         "impressions": impr,
         "clicks": clicks,
         "cost_brl": micros_to_currency(cost_micros),

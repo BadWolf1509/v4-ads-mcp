@@ -33,7 +33,7 @@ def _row_formatter(row: Any) -> dict[str, Any]:
     return {
         "ad_group_id": str(row.ad_group.id),
         "ad_group_name": row.ad_group.name,
-        "status": str(row.ad_group.status).split(".")[-1],
+        "status": row.ad_group.status.name,
         "campaign_id": str(row.campaign.id),
         "campaign_name": row.campaign.name,
         "impressions": impr,

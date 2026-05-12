@@ -23,11 +23,11 @@ def _row_formatter(row: Any) -> dict[str, Any]:
     return {
         "id": str(ca.id),
         "name": ca.name,
-        "status": str(ca.status).split(".")[-1],
-        "category": str(ca.category).split(".")[-1],
-        "type": str(ca.type).split(".")[-1],
-        "counting_type": str(ca.counting_type).split(".")[-1],
-        "attribution_model": str(ca.attribution_model_settings.attribution_model).split(".")[-1],
+        "status": ca.status.name,
+        "category": ca.category.name,
+        "type": ca.type.name,
+        "counting_type": ca.counting_type.name,
+        "attribution_model": ca.attribution_model_settings.attribution_model.name,
         "default_value_brl": (
             micros_to_currency(ca.value_settings.default_value * 1_000_000)
             if ca.value_settings.default_value

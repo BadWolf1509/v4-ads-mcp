@@ -27,7 +27,7 @@ def _row_formatter(row: Any) -> dict[str, Any]:
     cost_micros = int(m.cost_micros)
     return {
         "search_term": row.search_term_view.search_term,
-        "status": str(row.search_term_view.status).split(".")[-1],
+        "status": row.search_term_view.status.name,
         "ad_group_id": str(row.ad_group.id),
         "ad_group_name": row.ad_group.name,
         "campaign_id": str(row.campaign.id),

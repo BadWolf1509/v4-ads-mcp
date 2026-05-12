@@ -21,7 +21,7 @@ def _row_formatter(row: Any) -> dict[str, Any]:
     return {
         "criterion_id": str(row.campaign_criterion.criterion_id),
         "keyword_text": row.campaign_criterion.keyword.text,
-        "match_type": str(row.campaign_criterion.keyword.match_type).split(".")[-1],
+        "match_type": row.campaign_criterion.keyword.match_type.name,
         "campaign_id": str(row.campaign.id),
         "campaign_name": row.campaign.name,
     }

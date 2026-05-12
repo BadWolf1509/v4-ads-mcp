@@ -35,16 +35,14 @@ def _row_formatter(row: Any) -> dict[str, Any]:
     return {
         "criterion_id": str(row.ad_group_criterion.criterion_id),
         "keyword_text": row.ad_group_criterion.keyword.text,
-        "match_type": str(row.ad_group_criterion.keyword.match_type).split(".")[-1],
-        "status": str(row.ad_group_criterion.status).split(".")[-1],
+        "match_type": row.ad_group_criterion.keyword.match_type.name,
+        "status": row.ad_group_criterion.status.name,
         "quality_score": int(qi.quality_score) if qi.quality_score else None,
-        "quality_creative": str(qi.creative_quality_score).split(".")[-1]
-        if qi.creative_quality_score
-        else None,
-        "quality_post_click": str(qi.post_click_quality_score).split(".")[-1]
+        "quality_creative": qi.creative_quality_score.name if qi.creative_quality_score else None,
+        "quality_post_click": qi.post_click_quality_score.name
         if qi.post_click_quality_score
         else None,
-        "quality_search_predicted_ctr": str(qi.search_predicted_ctr).split(".")[-1]
+        "quality_search_predicted_ctr": qi.search_predicted_ctr.name
         if qi.search_predicted_ctr
         else None,
         "first_page_cpc_brl": micros_to_currency(pe.first_page_cpc_micros)

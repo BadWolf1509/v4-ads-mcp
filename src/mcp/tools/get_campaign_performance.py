@@ -33,8 +33,8 @@ def _row_formatter(row: Any) -> dict[str, Any]:
     return {
         "campaign_id": str(row.campaign.id),
         "campaign_name": row.campaign.name,
-        "status": str(row.campaign.status).split(".")[-1],
-        "type": str(row.campaign.advertising_channel_type).split(".")[-1],
+        "status": row.campaign.status.name,
+        "type": row.campaign.advertising_channel_type.name,
         "impressions": impr,
         "clicks": clicks,
         "cost_brl": micros_to_currency(cost_micros),

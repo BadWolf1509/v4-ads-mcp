@@ -37,9 +37,9 @@ def _row_formatter(row: Any) -> dict[str, Any]:
     final_urls = list(ad.final_urls) if ad.final_urls else []
     return {
         "ad_id": str(ad.id),
-        "status": str(row.ad_group_ad.status).split(".")[-1],
-        "type": str(ad.type).split(".")[-1],
-        "ad_strength": str(row.ad_group_ad.ad_strength).split(".")[-1],
+        "status": row.ad_group_ad.status.name,
+        "type": ad.type.name,
+        "ad_strength": row.ad_group_ad.ad_strength.name,
         "headlines": headlines,
         "descriptions": descriptions,
         "final_urls": final_urls,

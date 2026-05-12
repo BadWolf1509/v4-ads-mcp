@@ -33,7 +33,7 @@ def _kw_formatter(row: Any) -> dict[str, Any]:
     return {
         "criterion_id": str(row.ad_group_criterion.criterion_id),
         "keyword_text": row.ad_group_criterion.keyword.text,
-        "match_type": str(row.ad_group_criterion.keyword.match_type).split(".")[-1],
+        "match_type": row.ad_group_criterion.keyword.match_type.name,
         "campaign_name": row.campaign.name,
         "ad_group_name": row.ad_group.name,
         "impressions": impr,
@@ -57,7 +57,7 @@ def _ad_formatter(row: Any) -> dict[str, Any]:
         "ad_id": str(ad.id),
         "headlines": headlines,
         "descriptions": descriptions,
-        "ad_strength": str(row.ad_group_ad.ad_strength).split(".")[-1],
+        "ad_strength": row.ad_group_ad.ad_strength.name,
         "campaign_name": row.campaign.name,
         "ad_group_name": row.ad_group.name,
         "impressions": impr,
