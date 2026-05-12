@@ -95,13 +95,26 @@ Common scopes: `web`, `admin`, `auth`, `db`, `mcp`, `ci`, `design-system`, `conf
 ### Verification cadence (always before commit)
 
 ```bash
-python -m ruff check src tests
-python -m ruff format --check src tests   # easy to forget — CI catches it
-python -m mypy src
-python -m pytest tests/unit -q
+python scripts/check_pre_push.py
 ```
 
-If `ruff format --check` flags issues, run `python -m ruff format src tests` to auto-fix, then commit.
+Roda em sequência (fail-fast): ruff check → ruff format check → mypy → pytest
+unit (com filter `-m "not integration"`) → pytest non-DB integration. ~30s.
+Sem Docker.
+
+Opt-in full sweep (requer Docker Desktop rodando):
+
+```bash
+python scripts/check_pre_push_full.py
+```
+
+Adiciona um 6º step (`pytest tests/integration -m integration`) com
+testcontainers. ~60-90s. Use antes de push quando mudou mutate flow ou
+qualquer caminho exercitado por DB integration tests. Sem Docker, exit 2
+com hint clara — não silenciosamente skipa.
+
+Se algum step falhar, corrija e re-rode. Comandos individuais listados em
+`scripts/_runner.py` para debug isolado.
 
 ### Test fixture pattern
 
@@ -239,7 +252,7 @@ Operational mode (audit, access matrix, /admin/managers, /admin/accounts, /admin
 
 ## Don't do
 
-- Don't push to main without running `ruff check && ruff format --check && mypy src` locally first. CI will catch it but it wastes a deploy cycle.
+- Don't push to main without running `python scripts/check_pre_push.py` first. CI catches lint/type/test failures but it wastes a deploy cycle and may trigger rollback if integration tests reveal a bug. Lesson Sprint 3b.5: gate gap (apenas unit pre-push) deixou 2 integration tests quebrados escaparem para CI.
 - Don't add new dependencies without checking the project's "no build step" principle. We have Tailwind via CDN, HTMX via CDN — no node, no Vite, no React.
 - Don't modify production data via raw SQL on Supabase without extreme care. Use Python script with explicit `BEGIN/COMMIT` and idempotency check.
 - Don't skip the `superpowers:brainstorming` skill before creative work even if the request seems "simple."
