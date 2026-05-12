@@ -27,7 +27,7 @@ It is **internal only**: not a SaaS, not resold, no third-party data. Replaces V
 
 ## Current state (always update this section after major work)
 
-**Last updated:** 2026-05-11
+**Last updated:** 2026-05-12
 
 ### Shipped + in production
 
@@ -42,8 +42,9 @@ It is **internal only**: not a SaaS, not resold, no third-party data. Replaces V
 | Phase 3a+ — `remove_negative_keywords` | ✅ 2026-05-06 | extra mutation tool [8b5d1d8](https://github.com/BadWolf1509/v4-ads-mcp/commit/8b5d1d8) |
 | Sprint 3b.1 — `add_negatives_from_search_terms` + `get_change_history` | ✅ 2026-05-11 | 11 commits ([f156d99..3549778](https://github.com/BadWolf1509/v4-ads-mcp/compare/c660c6c..3549778)); smoke runbook signed-off ([`phase-3b-1-bootstrap.md`](docs/operacao/phase-3b-1-bootstrap.md), [9fbfb1c](https://github.com/BadWolf1509/v4-ads-mcp/commit/9fbfb1c)) |
 | Sprint 3b.2 — `update_ad_status` + `bulk_pause_by_query` | ✅ 2026-05-11 | 11 commits ([1ee0bda..24854dc](https://github.com/BadWolf1509/v4-ads-mcp/compare/edbb8ba..24854dc)); smoke runbook signed-off em conta real ([`phase-3b-2-bootstrap.md`](docs/operacao/phase-3b-2-bootstrap.md)) — 2 bugs reais pegos pelo pre-smoke (GAQL parens + REMOVED retrofit gap nos 3 status ops existentes) fixados em `24854dc`. Retrofit completo: `blast_radius.classify` + extends `run_report` com `params_summary` + 4 status ops passam `new_status`. |
+| Sprint 3b.3 — `add_keywords` | ✅ 2026-05-12 | 5 commits ([220ae25e..657f8f6](https://github.com/BadWolf1509/v4-ads-mcp/compare/4d54878..657f8f6)); smoke runbook signed-off em conta real ([`phase-3b-3-bootstrap.md`](docs/operacao/phase-3b-3-bootstrap.md)) — production revision `v4-ads-mcp-00096-mzm`. **2 achados reais** documentados: (A1) Google faz silent dedupe em vez de `CRITERION_EXISTS` quando KW duplicada, portanto idempotência via Google API behavior (não via nosso `_classify_partial` mapping); (A2) **bug pré-existente Sprint 3a:** `update_*_status(REMOVED)` passa dry-run mas `apply_change` falha — Google rejeita REMOVED em `.status.update`. Spawn-task criado pra fix posterior. Pivot original `update_keyword_match_type` → `add_keywords` por API immutability finding (KeywordInfo.text+match_type são identidade do criterion, não modificáveis). |
 
-**36 MCP tools** registered: 21 read + 14 mutations + `apply_change`.
+**37 MCP tools** registered: 21 read + 15 mutations + `apply_change`.
 **15 web pages** in production with Hybrid Editorial+Operational identity (FE Redesign v2).
 **Q8 invite-only allowlist** active — only `@v4company.com` emails pre-invited via `/admin/invites` can complete OAuth.
 **`BOOTSTRAP_ADMIN_EMAILS`** env on Cloud Run = `wellinton.ribeiro@v4company.com` (dormant since managers table is populated).
@@ -52,7 +53,7 @@ It is **internal only**: not a SaaS, not resold, no third-party data. Replaces V
 
 - **Modelo operacional: solo dogfood com contas reais** — `wellinton.ribeiro@v4company.com` é o único gestor de tráfego usando o MCP por enquanto. Sinal de produto vem de uso direto + smoke runbook em conta real (modelo [`phase-3b-1-bootstrap.md`](docs/operacao/phase-3b-1-bootstrap.md), que pegou 2 bugs reais no Sprint 3b.1). Lucas Soares (`lucassoares@v4company.com`) tem OAuth + MCP session ativos mas dormentes — gestor real V4, sem expectativa de uso por enquanto. Multi-gestor + multi-tenancy ficam adiados.
 - **Standard Access do Google Ads** — case `26521440673` resubmetido em 2026-05-11 com design doc atualizado em PDF (a submissão original de 2026-05-05 não retornou veredicto na janela estimada de 3 dias). Aguardar nova janela de ~3 dias úteis. Quando aprovar, quota 15k → 1M+ ops/dia
-- **Phase 3b restante** — 12 mutation tools faltantes (`create_campaign`, `create_ad_group`, `add_keywords`, `update_keyword_match_type`, `create_rsa`, `update_rsa`, `create_asset`, `link_assets`, `apply_audience`, `upload_customer_match_list`, `create_conversion_action`, `import_offline_conversions`) + 2 utilities (`get_my_rate_limit_status`, `get_my_audit_log`). **Sprint 3b.3 candidatos** (sem dependência de Standard Access): `update_keyword_match_type` (modify existing — baixa quota) e/ou `apply_audience` (observation/targeting). **Sprints 3b.4-3b.5** (alto quota — bloqueado por Standard Access): creates de campanha/RSA. Decisão de próximo sprint depende de sinal do dogfood + veredicto do Standard Access (case `26521440673`, esperado ~14/maio).
+- **Phase 3b restante** — 10 mutation tools faltantes (`create_campaign`, `create_ad_group`, `create_rsa`, `update_rsa`, `create_asset`, `link_assets`, `apply_audience`, `upload_customer_match_list`, `create_conversion_action`, `import_offline_conversions`) + 2 utilities (`get_my_rate_limit_status`, `get_my_audit_log`). `update_keyword_match_type` descartado por API immutability (Sprint 3b.3 finding). **Sprint 3b.4 candidatos** (sem dependência de Standard Access): `apply_audience` (observation/targeting — baixa quota) ou fix do bug REMOVED-on-update descoberto no Sprint 3b.3 smoke (afeta todos os 4 status ops). **Sprints 3b.5+** (alto quota — bloqueado por Standard Access): creates de campanha/RSA. Decisão de próximo sprint depende de sinal do dogfood + veredicto do Standard Access (case `26521440673`, esperado ~14/maio).
 - **Sub-projetos 2-4 (multi-tenancy)** — `unidades` table + 3-tier RBAC, multi-MCC OAuth, migração single→multi. Adiado indefinidamente (sem demanda — modelo solo é o estado atual e Lucas não vai operar).
 - **Quality wins menores** — ~~datetime.utcnow → datetime.now(UTC)~~ ✅ 2026-05-11; GitHub Actions Node 20 → 24 (bump `actions/checkout@v4→@v5`, `setup-python@v5→@v6`, `auth@v2→@v3` em PR isolado para testar); ~~revogar legacy "unknown" OAuth do Phase 1a~~ ✅ 2026-05-11 (connection `43a78bc1-d1e4-4077-9774-5d6a4bd49a89` soft-revoked)
 
