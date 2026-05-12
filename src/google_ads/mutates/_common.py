@@ -58,3 +58,5 @@ def import_all_builders() -> None:
         from src.google_ads.mutates import negatives  # noqa: F401
     with contextlib.suppress(ImportError):
         from src.google_ads.mutates import recommendations  # noqa: F401
+    with contextlib.suppress(ImportError):
+        from src.google_ads.mutates import audiences  # noqa: F401
