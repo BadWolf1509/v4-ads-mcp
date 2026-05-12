@@ -100,13 +100,17 @@ def test_schema_rejects_malformed_audience_resource_name():
 
 @pytest.mark.asyncio
 async def test_preflight_rejects_bid_modifier_with_exclusion():
-    """mode=exclusion + bid_modifier present → error (semanticamente N/A)."""
+    """mode=exclusion + bid_modifier present → error (semanticamente N/A).
+
+    Uses ad_group target_type so A4 rule (campaign+exclusion+user_list) does not
+    fire first — tests only the bid_modifier+exclusion incompatibility rule.
+    """
     from src.mcp.tools.apply_audience import apply_audience
 
     result = await apply_audience(
         {
             "customer_id": "1234567890",
-            "target_type": "campaign",
+            "target_type": "ad_group",
             "mode": "exclusion",
             "attachments": [
                 {
@@ -169,6 +173,70 @@ async def test_preflight_rejects_cross_account_resource_name():
     assert "outra conta" in result["error"].lower() or "9999999999" in result["error"]
 
 
+@pytest.mark.asyncio
+async def test_preflight_rejects_campaign_user_list_exclusion():
+    """A4 regression: campaign-level exclusion of user_list is silently dropped by Google.
+
+    Tool must reject the combo with PT-BR error directing to ad_group level.
+    """
+    from src.mcp.tools.apply_audience import apply_audience
+
+    result = await apply_audience(
+        {
+            "customer_id": "1234567890",
+            "target_type": "campaign",
+            "mode": "exclusion",
+            "attachments": [
+                {
+                    "target_id": "22169885957",
+                    "audience_type": "user_list",
+                    "audience_resource_name": "customers/1234567890/userLists/9377822529",
+                }
+            ],
+        }
+    )
+    assert result["status"] == "error"
+    assert "user_list" in result["error"].lower() or "customer match" in result["error"].lower()
+    assert "ad_group" in result["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_preflight_allows_campaign_user_interest_exclusion():
+    """Sanity: user_interest exclusion at campaign level continues to work after A4 fix.
+
+    A4 only blocks user_list exclusion at campaign level — user_interest is fine.
+    """
+    from src.mcp.tools.apply_audience import apply_audience
+
+    with (
+        patch("src.mcp.tools.apply_audience.create_pending", AsyncMock(return_value="TOKEN123")),
+        patch("src.mcp.tools.apply_audience.connection") as conn_module,
+    ):
+        conn_module.get_pool.return_value.acquire.return_value.__aenter__ = AsyncMock(
+            return_value=AsyncMock()
+        )
+        conn_module.get_pool.return_value.acquire.return_value.__aexit__ = AsyncMock(
+            return_value=None
+        )
+        result = await apply_audience(
+            {
+                "customer_id": "1234567890",
+                "target_type": "campaign",
+                "mode": "exclusion",
+                "attachments": [
+                    {
+                        "target_id": "22169885957",
+                        "audience_type": "user_interest",
+                        "audience_resource_name": "customers/1234567890/userInterests/91501",
+                    }
+                ],
+            }
+        )
+
+    # Either dry_run (exclusion always confirms) or applied — but NOT error
+    assert result["status"] != "error"
+
+
 # ----- AUTO + CONFIRM path tests (2) -----
 
 
@@ -214,7 +282,12 @@ async def test_auto_path_observation_under_threshold():
 
 @pytest.mark.asyncio
 async def test_confirm_path_exclusion_count_one():
-    """1 exclusion → CONFIRM (always confirm in exclusion mode, regardless of count)."""
+    """1 exclusion → CONFIRM (always confirm in exclusion mode, regardless of count).
+
+    Uses user_interest at campaign level so A4 rule does not block — only
+    user_list exclusion at campaign is rejected (A4). user_interest exclusion
+    at campaign continues to work normally.
+    """
     from src.mcp.tools.apply_audience import apply_audience
 
     with (
@@ -235,8 +308,8 @@ async def test_confirm_path_exclusion_count_one():
                 "attachments": [
                     {
                         "target_id": "22169885957",
-                        "audience_type": "user_list",
-                        "audience_resource_name": "customers/1234567890/userLists/9377822529",
+                        "audience_type": "user_interest",
+                        "audience_resource_name": "customers/1234567890/userInterests/91501",
                     }
                 ],
             }

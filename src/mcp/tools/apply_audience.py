@@ -16,6 +16,11 @@ exclusion → CONFIRM (delivery impact policy, matches Sprint 3b.2 REMOVED).
 Up to 100 attachments per call (cap conservative — audience attachments are
 deliberate ops vs keyword adds).
 
+Sprint 3b.5 A4 constraint: user_list exclusion at campaign level is NOT
+supported by Google Ads API (negative flag silently dropped). Use
+target_type='ad_group' for user_list exclusion. user_interest exclusion
+at campaign level works normally.
+
 Idempotency (Sprint 3b.3 lesson): Google likely silent-dedupes duplicates;
 defensive _classify_partial mapping for CRITERION_EXISTS / DUPLICATE_CRITERION
 is kept but may not fire in practice.
@@ -73,15 +78,31 @@ _ALREADY_EXISTS_PATTERNS = (
 
 
 def _preflight_validate(
-    customer_id: str, mode: str, attachments: list[dict[str, Any]]
+    customer_id: str, target_type: str, mode: str, attachments: list[dict[str, Any]]
 ) -> str | None:
     """Returns error message PT-BR if invalid; None if OK.
 
-    Validations (spec §3.5 #7-9):
+    Validations (spec §3.5 + Sprint 3b.5 §3.2):
+    - A4 (NEW): campaign + exclusion + user_list combo (Google silent-overrides)
     - bid_modifier + exclusion incompatibility
     - audience_type vs resource_name path consistency
     - audience_resource_name customer_id consistency
     """
+    # A4 finding (Sprint 3b.4 smoke + 3b.5 brainstorming empirical):
+    # Google silently overrides negative=True → false on CampaignCriterion when
+    # subtype is user_list. AdGroupCriterion honors it correctly. Direct gestor
+    # to ad_group level for user_list exclusion.
+    if target_type == "campaign" and mode == "exclusion":
+        offending = [i for i, a in enumerate(attachments) if a["audience_type"] == "user_list"]
+        if offending:
+            return (
+                f"Customer Match (user_list) exclusion em campaign level nao eh "
+                f"suportada pela Google Ads API — negative flag eh silently dropado "
+                f"em CampaignCriterion para user_list. Use target_type='ad_group' "
+                f"em vez disso (attachments {offending} sao user_list). "
+                f"user_interest exclusion em campaign continua funcionando."
+            )
+
     if mode == "exclusion":
         offending = [i for i, a in enumerate(attachments) if "bid_modifier" in a]
         if offending:
@@ -144,6 +165,9 @@ def _classify_partial(error: str | None) -> str:
         "top-level (observation|exclusion) + ate 100 attachments. "
         "Observation = positive attach (negative=False, bid_modifier opcional 0.1-10.0). "
         "Exclusion = negative=True (delivery exclusion, bid_modifier nao permitido). "
+        "IMPORTANT: user_list exclusion em campaign nao funciona (Google silently drops "
+        "negative flag) — use target_type='ad_group' pra Customer Match exclusion. "
+        "user_interest exclusion em campaign funciona normalmente. "
         "Classification: observation ≤20 AUTO, >20 CONFIRM; exclusion sempre CONFIRM "
         "(delivery impact). Idempotente state-wise (Google deduplica server-side). "
         "Use com get_audience_performance pra ver attachments existentes + escolher "
@@ -160,7 +184,7 @@ async def apply_audience(args: dict[str, Any]) -> dict[str, Any]:
     target_count = len(attachments)
 
     # Pre-flight validation (schema can't express conditional rules)
-    preflight_error = _preflight_validate(customer_id, mode, attachments)
+    preflight_error = _preflight_validate(customer_id, target_type, mode, attachments)
     if preflight_error:
         return {
             "status": "error",
