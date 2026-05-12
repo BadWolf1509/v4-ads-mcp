@@ -135,6 +135,32 @@ Mark with `@pytest.mark.integration` so the unit suite skips them by default.
 - **`rate_counters`** has column `operations_used` (NOT `used_today`) and composite PK `(developer_token_id, date)` — aggregate with `SUM` if you want a global view.
 - **`managers.status`** added in migration 002. Values: `'invited' | 'active' | 'inactive'`. Existing pre-002 rows backfilled to `'active'` via DEFAULT.
 
+### Mutate builder test convention (post-Sprint 3b.5)
+
+New mutate builder tests MUST use `tests/unit/fixtures/proto_capture.py::make_capture_client`
+instead of MagicMock when asserting on proto field assignments. MagicMock accepts any
+attribute set silently, masking bugs like Sprint 3b.4 A4 (Google override of `negative=True`
+on CampaignCriterion user_list — shipped the bug because the test couldn't verify the
+field was actually being set).
+
+Pattern:
+
+```python
+from tests.unit.fixtures.proto_capture import make_capture_client
+
+def test_builder_sets_critical_field():
+    client = make_capture_client()
+    ops = build_my_thing(client, customer_id, payload)
+    op = ops[0]
+    assert op.field("ad_group_criterion_operation.create.negative") is True
+    assert op.has("ad_group_criterion_operation.create.bid_modifier") is False
+```
+
+Retrofitting existing builder tests (negatives, keywords, ad_groups) is optional and
+deferred — only the audiences builder has been retrofitted (Sprint 3b.5). The existing
+builders empirically work in production, so retrofit is a YAGNI candidate unless a specific
+bug is suspected.
+
 ### Deploy/ops flow
 
 1. Code change locally → ruff + format + mypy + pytest pass
