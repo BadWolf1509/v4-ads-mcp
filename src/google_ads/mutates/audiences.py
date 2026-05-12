@@ -59,3 +59,34 @@ def build_apply_audience(client: Any, customer_id: str, payload: dict[str, Any])
         ops.append(op)
 
     return ops
+
+
+@register_builder("remove_audience")
+def build_remove_audience(client: Any, customer_id: str, payload: dict[str, Any]) -> list[Any]:
+    """payload: {target_type: 'ad_group'|'campaign', target_id: str, criterion_ids: [str]}
+
+    Each criterion_id becomes one MutateOperation with remove (not create):
+      - target_type='ad_group' → ad_group_criterion_operation.remove = resource_name
+        Resource format: customers/{cid}/adGroupCriteria/{target_id}~{criterion_id}
+      - target_type='campaign' → campaign_criterion_operation.remove = resource_name
+        Resource format: customers/{cid}/campaignCriteria/{criterion_id}
+        (FLAT path — campaign_criterion has no compound key)
+
+    Critical correctness: AdGroupCriterion uses ~-compound key (ad_group_id~criterion_id),
+    CampaignCriterion is flat (just criterion_id). Builder constructs paths inline.
+    """
+    target_type = payload["target_type"]
+    target_id = payload["target_id"]
+    criterion_ids = payload["criterion_ids"]
+
+    ops: list[Any] = []
+    for crit_id in criterion_ids:
+        op = client.get_type("MutateOperation")
+        if target_type == "ad_group":
+            crit_op = op.ad_group_criterion_operation
+            crit_op.remove = f"customers/{customer_id}/adGroupCriteria/{target_id}~{crit_id}"
+        else:  # campaign
+            crit_op = op.campaign_criterion_operation
+            crit_op.remove = f"customers/{customer_id}/campaignCriteria/{crit_id}"
+        ops.append(op)
+    return ops
