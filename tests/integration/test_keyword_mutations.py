@@ -114,6 +114,10 @@ async def test_update_keyword_bid_small_change_auto(db, session_ctx):
     ]
     with (
         patch(
+            "src.mcp.tools.update_keyword_bid.validate_manual_cpc_strategy",
+            AsyncMock(return_value=None),  # F12 pre-flight passes (Sprint 3b.8)
+        ),
+        patch(
             "src.mcp.tools.update_keyword_bid.run_report",
             AsyncMock(return_value=fake_lookup),
         ),
@@ -158,9 +162,15 @@ async def test_update_keyword_bid_large_change_dry_runs(db, session_ctx):
             "current_cpc_bid_micros": 1_000_000,
         }
     ]
-    with patch(
-        "src.mcp.tools.update_keyword_bid.run_report",
-        AsyncMock(return_value=fake_lookup),
+    with (
+        patch(
+            "src.mcp.tools.update_keyword_bid.validate_manual_cpc_strategy",
+            AsyncMock(return_value=None),  # F12 pre-flight passes (Sprint 3b.8)
+        ),
+        patch(
+            "src.mcp.tools.update_keyword_bid.run_report",
+            AsyncMock(return_value=fake_lookup),
+        ),
     ):
         result = await update_keyword_bid(
             {
@@ -182,9 +192,15 @@ async def test_update_keyword_bid_large_change_dry_runs(db, session_ctx):
 async def test_update_keyword_bid_returns_error_for_missing(db, session_ctx):
     from src.mcp.tools.update_keyword_bid import update_keyword_bid
 
-    with patch(
-        "src.mcp.tools.update_keyword_bid.run_report",
-        AsyncMock(return_value=[]),
+    with (
+        patch(
+            "src.mcp.tools.update_keyword_bid.validate_manual_cpc_strategy",
+            AsyncMock(return_value=None),  # F12 pre-flight passes (Sprint 3b.8)
+        ),
+        patch(
+            "src.mcp.tools.update_keyword_bid.run_report",
+            AsyncMock(return_value=[]),
+        ),
     ):
         result = await update_keyword_bid(
             {
