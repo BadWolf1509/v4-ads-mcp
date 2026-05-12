@@ -47,6 +47,7 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
 
     target_count = int(saved.payload.get("__target_count__", 1))
     partial_failure = bool(saved.payload.get("__partial_failure__", False))
+    params_summary = saved.payload.get("__params_summary__")  # None → default in run_mutation
     result = await run_mutation(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
@@ -55,6 +56,7 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
         payload=saved.payload,
         target_count=target_count,
         partial_failure=partial_failure,
+        params_summary=params_summary,
     )
     return {
         "status": "applied",

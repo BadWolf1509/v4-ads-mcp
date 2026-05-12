@@ -110,6 +110,7 @@ async def remove_audience(args: dict[str, Any]) -> dict[str, Any]:
         "criterion_ids": criterion_ids,
         "__target_count__": target_count,
         "__partial_failure__": True,
+        "__params_summary__": _build_params_summary(target_type, target_id, target_count),
     }
     summary = f"Remover {target_count} audience criteria do {target_type} {target_id}."
 
