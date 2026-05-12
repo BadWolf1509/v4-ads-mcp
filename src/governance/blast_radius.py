@@ -157,6 +157,20 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
             f"apply_audience: observation com >20 attachments ({target_count}) — confirmar",
         )
 
+    # Remove audience — always CONFIRM (spec §7.1 "Remove qualquer coisa = sempre confirma")
+    # Audience criterion removal can restore audience to delivery pool (if exclusion).
+    # Symmetric with Sprint 3b.2 REMOVED policy principle.
+    if operation == "remove_audience":
+        if target_count <= 0:
+            return RiskClassification(
+                RiskLevel.CONFIRM,
+                f"remove_audience: target_count={target_count} desconhecido — confirmar",
+            )
+        return RiskClassification(
+            RiskLevel.CONFIRM,
+            f"remove_audience ({target_count} criteria) — sempre confirma (spec §7.1 remove)",
+        )
+
     # Recommendations — Google's own suggestions; auto-apply
     if operation in ("apply_recommendation", "dismiss_recommendation"):
         return RiskClassification(

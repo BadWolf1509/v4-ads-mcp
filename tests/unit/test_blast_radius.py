@@ -58,6 +58,9 @@ _CASES: list[tuple[str, dict, RiskLevel, str]] = [
     ("apply_audience", {"target_count": 21, "mode": "observation"}, RiskLevel.CONFIRM, "20"),
     ("apply_audience", {"target_count": 1, "mode": "exclusion"}, RiskLevel.CONFIRM, "exclusion"),
     ("apply_audience", {"target_count": 50, "mode": "exclusion"}, RiskLevel.CONFIRM, "exclusion"),
+    # remove_audience — always CONFIRM (spec §7.1 remove principle), regardless of count
+    ("remove_audience", {"target_count": 1}, RiskLevel.CONFIRM, "sempre confirma"),
+    ("remove_audience", {"target_count": 50}, RiskLevel.CONFIRM, "sempre confirma"),
 ]
 
 
