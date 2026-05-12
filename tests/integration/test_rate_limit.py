@@ -1,7 +1,6 @@
 """Rate limit logic tests against testcontainers Postgres."""
 
-from datetime import UTC, date, datetime, timedelta
-from uuid import uuid4
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from testcontainers.postgres import PostgresContainer

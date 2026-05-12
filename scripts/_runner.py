@@ -24,9 +24,11 @@ BASE_STEPS: list[Step] = [
     Step("ruff check", [sys.executable, "-m", "ruff", "check", "src", "tests"]),
     Step("ruff format check", [sys.executable, "-m", "ruff", "format", "--check", "src", "tests"]),
     Step("mypy", [sys.executable, "-m", "mypy", "src"]),
-    # 'not integration' filter mirrors CI behavior — excludes misplaced
-    # testcontainers-dependent tests in tests/unit/ (e.g., test_rate_limit.py
-    # which is actually a DB integration test but lives in tests/unit/).
+    # 'not integration' filter mirrors CI behavior (CI runs unit + non-DB
+    # integration in one step). Filter exclui any test marked
+    # @pytest.mark.integration even if accidentally placed in tests/unit/ —
+    # defensive: convention is to live in tests/integration/ but marker is
+    # the authoritative signal.
     Step(
         "pytest unit", [sys.executable, "-m", "pytest", "tests/unit", "-m", "not integration", "-q"]
     ),
