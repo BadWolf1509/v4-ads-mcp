@@ -123,6 +123,23 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
             f"{operation} ({target_count} negatives) — auto, negatives raramente quebram",
         )
 
+    # Add keywords — additive operation (per spec §7.1: Add KWs ≤20 em 1 ad_group = auto)
+    if operation == "add_keywords":
+        if target_count <= 0:
+            return RiskClassification(
+                RiskLevel.CONFIRM,
+                f"add_keywords: target_count={target_count} desconhecido — confirmar",
+            )
+        if target_count <= 20:
+            return RiskClassification(
+                RiskLevel.AUTO,
+                f"add_keywords ({target_count} KWs em 1 ad_group) — auto",
+            )
+        return RiskClassification(
+            RiskLevel.CONFIRM,
+            f"add_keywords: more than 20 KWs ({target_count}) — confirmar",
+        )
+
     # Recommendations — Google's own suggestions; auto-apply
     if operation in ("apply_recommendation", "dismiss_recommendation"):
         return RiskClassification(

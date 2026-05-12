@@ -63,6 +63,10 @@ _CASES: list[tuple[str, dict, RiskLevel, str]] = [
     ),
     ("update_ad_status", {"target_count": 1, "new_status": "REMOVED"}, RiskLevel.CONFIRM, "remove"),
     ("update_ad_status", {"target_count": 1, "new_status": "PAUSED"}, RiskLevel.AUTO, "single"),
+    # add_keywords — AUTO threshold is 20 per spec §7.1 (Add KWs ≤20 em 1 ad_group)
+    ("add_keywords", {"target_count": 20}, RiskLevel.AUTO, "ad_group"),
+    ("add_keywords", {"target_count": 21}, RiskLevel.CONFIRM, "20"),
+    ("add_keywords", {"target_count": 100}, RiskLevel.CONFIRM, "20"),
 ]
 
 
