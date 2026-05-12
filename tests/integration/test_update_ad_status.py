@@ -9,6 +9,8 @@ from src.db import connection, migrate
 from src.db.repositories import managers, mcp_sessions
 from src.mcp.context import McpRequestContext, clear_current, set_current
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 async def pg() -> PostgresContainer:
