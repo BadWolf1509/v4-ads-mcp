@@ -24,7 +24,10 @@ BASE_STEPS: list[Step] = [
     Step("ruff check", ["ruff", "check", "src", "tests"]),
     Step("ruff format check", ["ruff", "format", "--check", "src", "tests"]),
     Step("mypy", ["mypy", "src"]),
-    Step("pytest unit", ["pytest", "tests/unit", "-q"]),
+    # 'not integration' filter mirrors CI behavior — excludes misplaced
+    # testcontainers-dependent tests in tests/unit/ (e.g., test_rate_limit.py
+    # which is actually a DB integration test but lives in tests/unit/).
+    Step("pytest unit", ["pytest", "tests/unit", "-m", "not integration", "-q"]),
     Step(
         "pytest non-DB integration",
         ["pytest", "tests/integration", "-m", "not integration", "-q"],
