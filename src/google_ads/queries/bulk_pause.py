@@ -118,7 +118,12 @@ def bulk_pause_query(
     where_parts = []
     if "metrics." in filter_clause and "segments.date" not in filter_clause:
         where_parts.append(gaql_date_clause(start, end))
-    where_parts.append(f"({filter_clause})")
+    # Note: do NOT wrap filter_clause in parentheses — GAQL does not support
+    # parenthesized grouping in WHERE clauses (Google rejects with "invalid
+    # field name '('"). validate_filter() already restricts to AND-chained
+    # conditions; user-supplied OR conditions are technically supported but
+    # will follow standard left-to-right precedence with AND binding tighter.
+    where_parts.append(filter_clause)
     where_clause = " AND ".join(where_parts)
 
     return f"""

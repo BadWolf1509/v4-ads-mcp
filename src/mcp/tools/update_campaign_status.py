@@ -45,7 +45,7 @@ async def update_campaign_status(args: dict[str, Any]) -> dict[str, Any]:
 
     risk = classify(
         operation="update_campaign_status",
-        params={"target_count": target_count},
+        params={"target_count": target_count, "new_status": new_status},
     )
     payload = {
         "campaign_ids": campaign_ids,

@@ -54,7 +54,7 @@ async def update_keyword_status(args: dict[str, Any]) -> dict[str, Any]:
 
     risk = classify(
         operation="update_keyword_status",
-        params={"target_count": target_count},
+        params={"target_count": target_count, "new_status": new_status},
     )
     payload = {
         "keywords": keywords,
