@@ -42,26 +42,7 @@ _CASES: list[tuple[str, dict, RiskLevel, str]] = [
     # Recommendations always auto
     ("apply_recommendation", {"target_count": 1}, RiskLevel.AUTO, "recommendation"),
     ("dismiss_recommendation", {"target_count": 1}, RiskLevel.AUTO, "recommendation"),
-    # REMOVED status always confirms (spec §7.1: "Remove qualquer coisa = sempre confirm")
-    (
-        "update_campaign_status",
-        {"target_count": 1, "new_status": "REMOVED"},
-        RiskLevel.CONFIRM,
-        "remove",
-    ),
-    (
-        "update_ad_group_status",
-        {"target_count": 1, "new_status": "REMOVED"},
-        RiskLevel.CONFIRM,
-        "remove",
-    ),
-    (
-        "update_keyword_status",
-        {"target_count": 3, "new_status": "REMOVED"},
-        RiskLevel.CONFIRM,
-        "remove",
-    ),
-    ("update_ad_status", {"target_count": 1, "new_status": "REMOVED"}, RiskLevel.CONFIRM, "remove"),
+    # Sanity check: PAUSED still works
     ("update_ad_status", {"target_count": 1, "new_status": "PAUSED"}, RiskLevel.AUTO, "single"),
     # add_keywords — AUTO threshold is 20 per spec §7.1 (Add KWs ≤20 em 1 ad_group)
     ("add_keywords", {"target_count": 20}, RiskLevel.AUTO, "ad_group"),

@@ -28,7 +28,7 @@ _SCHEMA: dict[str, Any] = {
         },
         "new_status": {
             "type": "string",
-            "enum": ["ENABLED", "PAUSED", "REMOVED"],
+            "enum": ["ENABLED", "PAUSED"],
         },
     },
     "required": ["customer_id", "keywords", "new_status"],
@@ -39,9 +39,10 @@ _SCHEMA: dict[str, Any] = {
 @register_tool(
     name="update_keyword_status",
     description=(
-        "Pausa, ativa ou remove uma ou mais palavras-chave. Cada keyword e "
-        "identificada por (ad_group_id, criterion_id). Ate 5 keywords auto-aplica; "
-        ">5 retorna preview com confirmation_token."
+        "Pausa ou ativa uma ou mais palavras-chave. Cada keyword e identificada por "
+        "(ad_group_id, criterion_id). Ate 5 keywords auto-aplica; >5 retorna preview "
+        "com confirmation_token. Para REMOVER keywords, use Google Ads UI (tool dedicada "
+        "`remove_keyword` pode ser adicionada em sprint futura se demanda real surgir)."
     ),
     input_schema=_SCHEMA,
 )

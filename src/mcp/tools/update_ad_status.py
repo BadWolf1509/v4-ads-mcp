@@ -29,7 +29,7 @@ _SCHEMA: dict[str, Any] = {
         },
         "new_status": {
             "type": "string",
-            "enum": ["ENABLED", "PAUSED", "REMOVED"],
+            "enum": ["ENABLED", "PAUSED"],
         },
     },
     "required": ["customer_id", "ads", "new_status"],
@@ -40,10 +40,10 @@ _SCHEMA: dict[str, Any] = {
 @register_tool(
     name="update_ad_status",
     description=(
-        "Pausa, ativa ou remove um ou mais anuncios individuais por (ad_group_id, ad_id). "
-        "Ate 5 anuncios + new_status != REMOVED auto-aplica; >5 OR new_status=REMOVED "
-        "retorna preview com confirmation_token. Use depois de get_ad_performance pra "
-        "controle granular sem mexer no ad_group inteiro."
+        "Pausa ou ativa um ou mais anuncios. Cada anuncio e identificado por "
+        "(ad_group_id, ad_id). Ate 5 anuncios auto-aplica; >5 retorna preview "
+        "com confirmation_token. Para REMOVER anuncios, use Google Ads UI (tool "
+        "dedicada `remove_ad` pode ser adicionada em sprint futura se demanda real surgir)."
     ),
     input_schema=_SCHEMA,
 )

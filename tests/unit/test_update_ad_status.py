@@ -42,6 +42,19 @@ def test_schema_rejects_invalid_new_status():
         validate(bad, _SCHEMA)
 
 
+def test_schema_rejects_removed_new_status():
+    """Sprint 3b.5 A2 fix: REMOVED removed from enum (Google rejects on apply).
+
+    Use Google Ads UI to remove entities — MCP tools only do ENABLED/PAUSED now.
+    """
+    from src.mcp.tools.update_ad_status import _SCHEMA
+
+    bad = _good_payload()
+    bad["new_status"] = "REMOVED"
+    with pytest.raises(ValidationError):
+        validate(bad, _SCHEMA)
+
+
 @pytest.mark.asyncio
 async def test_auto_path_paused_under_threshold():
     """3 ads + PAUSED → AUTO, run_mutation called, no token."""
@@ -101,30 +114,3 @@ async def test_confirm_path_bulk_over_threshold():
     assert result["status"] == "dry_run"
     assert result["confirmation_token"] == "ABC12345"
     assert "to_apply" in result
-
-
-@pytest.mark.asyncio
-async def test_confirm_path_remove_even_with_one_ad():
-    """1 ad + REMOVED → CONFIRM (REMOVED always confirms regardless of count)."""
-    from src.mcp.tools.update_ad_status import update_ad_status
-
-    with (
-        patch("src.mcp.tools.update_ad_status.create_pending", AsyncMock(return_value="REM00001")),
-        patch("src.mcp.tools.update_ad_status.connection") as conn_module,
-    ):
-        conn_module.get_pool.return_value.acquire.return_value.__aenter__ = AsyncMock(
-            return_value=AsyncMock()
-        )
-        conn_module.get_pool.return_value.acquire.return_value.__aexit__ = AsyncMock(
-            return_value=None
-        )
-        result = await update_ad_status(
-            {
-                "customer_id": "1234567890",
-                "ads": [{"ad_group_id": "111", "ad_id": "222"}],
-                "new_status": "REMOVED",
-            }
-        )
-
-    assert result["status"] == "dry_run"
-    assert result["confirmation_token"] == "REM00001"

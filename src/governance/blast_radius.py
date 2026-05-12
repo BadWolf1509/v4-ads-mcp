@@ -73,24 +73,17 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
     """Classify a mutation operation as auto-apply or requires-confirmation.
 
     `params` is a dict like {target_count: int, delta_pct?: float, max_delta_pct?: float,
-    new_status?: 'ENABLED'|'PAUSED'|'REMOVED'}.
+    new_status?: 'ENABLED'|'PAUSED'}.
     """
     target_count = int(params.get("target_count", 0))
-    new_status = (params.get("new_status") or "").upper()
 
-    # Status changes (campaign/ad_group/ad/keyword) — bulk-aware,
-    # but REMOVED always confirms (spec §7.1: "Remove qualquer coisa")
+    # Status changes (campaign/ad_group/ad/keyword) — bulk-aware
     if operation in (
         "update_campaign_status",
         "update_ad_group_status",
         "update_ad_status",
         "update_keyword_status",
     ):
-        if new_status == "REMOVED":
-            return RiskClassification(
-                RiskLevel.CONFIRM,
-                f"{operation}: new_status=REMOVED — remove qualquer coisa sempre confirma (spec §7.1)",
-            )
         return _bulk_status_classify(operation, target_count)
 
     # Budget mutations — always confirm (spec §7.1)
