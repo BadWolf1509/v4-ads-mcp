@@ -51,6 +51,8 @@ def import_all_builders() -> None:
     with contextlib.suppress(ImportError):
         from src.google_ads.mutates import ads  # noqa: F401
     with contextlib.suppress(ImportError):
+        from src.google_ads.mutates import bulk  # noqa: F401
+    with contextlib.suppress(ImportError):
         from src.google_ads.mutates import keywords  # noqa: F401
     with contextlib.suppress(ImportError):
         from src.google_ads.mutates import negatives  # noqa: F401
