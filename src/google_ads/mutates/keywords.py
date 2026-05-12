@@ -61,3 +61,38 @@ def build_update_keyword_bid(client: Any, customer_id: str, payload: dict[str, A
         )
         operations.append(op)
     return operations
+
+
+@register_builder("add_keywords")
+def build_add_keywords(client: Any, customer_id: str, payload: dict[str, Any]) -> list[Any]:
+    """payload: {ad_group_id: str, keywords: [{text: str, match_type: 'EXACT'|'PHRASE'|'BROAD', cpc_bid_micros?: int}]}
+
+    Each keyword becomes one MutateOperation with ad_group_criterion_operation.create:
+      - ad_group resource path (1 ad_group per call by design)
+      - status = ENABLED (new criteria active by default; gestor pauses via update_keyword_status if needed)
+      - keyword.text + keyword.match_type
+      - optional cpc_bid_micros (omit = inherit ad_group default bid)
+    """
+    ad_group_id = payload["ad_group_id"]
+    keywords = payload["keywords"]
+    operations: list[Any] = []
+
+    ad_group_service = client.get_service("AdGroupService")
+    ad_group_resource = ad_group_service.ad_group_path(customer_id, ad_group_id)
+    match_type_enum = client.enums.KeywordMatchTypeEnum
+    status_enabled = client.enums.AdGroupCriterionStatusEnum.ENABLED
+
+    for kw in keywords:
+        op = client.get_type("MutateOperation")
+        crit_op = op.ad_group_criterion_operation
+        crit = crit_op.create
+        crit.ad_group = ad_group_resource
+        crit.status = status_enabled
+        crit.keyword.text = kw["text"]
+        mt = kw["match_type"].upper()
+        crit.keyword.match_type = match_type_enum[mt]
+        if "cpc_bid_micros" in kw:
+            crit.cpc_bid_micros = int(kw["cpc_bid_micros"])
+        operations.append(op)
+
+    return operations
