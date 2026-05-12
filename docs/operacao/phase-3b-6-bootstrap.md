@@ -189,20 +189,65 @@ Returned: **0 rows** ✓ **ZERO audience criteria orfãs restantes**.
 - [x] **Nutry sandbox completamente zerado** após 4 sprints de testing debt
 - [x] **Real biz workflow validation:** mixed types + mixed negative flags handled atomicamente
 
-## Decisão Wellington — Mestre da Obra JP cleanup (PENDENTE)
+## Mestre da Obra JP cleanup — EXECUTED com achado A5 ⚠️
 
-Sprint 3b.4 T3 criou criterion `2480650242694` na Mestre da Obra JP campaign `22169885957` (Customer Match observation acidental — A4 silent override). É benign observation (zero delivery impact). Pode ser revertido via:
+Wellington aprovou remove do criterion `2480650242694` (Sprint 3b.4 T3 Customer Match observation acidental no campaign `22169885957`). **Primeira tentativa falhou silenciosamente** — descobriu Sprint 3b.6 smoke finding A5.
+
+### Tentativa 1 (FALHA silenciosa)
 
 ```
-remove_audience(
-  customer_id="7862230676",
-  target_type="campaign",
-  target_id="22169885957",
-  criterion_ids=["2480650242694"]
-)
+remove_audience(customer_id="7862230676", target_type="campaign", target_id="22169885957", criterion_ids=["2480650242694"])
+→ confirmation_token: "82KZ0R44"
+apply_change(confirmation_token="82KZ0R44")
+→ status: "applied", applied_count: 1, google_request_id: "1HmFrpDhyyBjr8EFPUs7_w"
 ```
 
-Decisão fica **com Wellington** — não executado neste smoke (Nutry cleanup era o objetivo primário).
+GAQL post-apply:
+```
+SELECT campaign_criterion.resource_name, campaign_criterion.status
+FROM campaign_criterion
+WHERE campaign.id = 22169885957 AND campaign_criterion.criterion_id = '2480650242694'
+```
+
+Retornou: **1 row, status: ENABLED** — criterion **NÃO foi removido** apesar do success response!
+
+### Diagnóstico A5
+
+Resource_name real é `customers/7862230676/campaignCriteria/22169885957~2480650242694` — **compound key** `{campaign_id}~{criterion_id}`. Sprint 3b.6 builder construía path flat `customers/X/campaignCriteria/{criterion_id}` (sem `~`).
+
+**SDK introspection confirmou:**
+```python
+CampaignCriterionServiceClient.campaign_criterion_path(cid, campaign_id, criterion_id)
+→ "customers/{cid}/campaignCriteria/{campaign_id}~{criterion_id}"  # compound
+```
+
+Google aceitou o path malformado flat e retornou success **silenciosamente** — não fez nada. Sprint 3b.6 spec/builder assumiu (errado) que CampaignCriterion path era flat enquanto AdGroupCriterion era compound. Na verdade **ambos são compound**.
+
+**Classe A5 — Silent acceptance of malformed resource_name.** 5ª classe da família: A1 (silent dedupe in adds), A3 (silent drop), A4 (silent override), A5 (silent ack of bad path). Smoke pegou o bug porque GAQL post-verify era step obrigatório do runbook.
+
+### Fix shippado em commit `0c68bca`
+
+- `src/google_ads/mutates/audiences.py`: builder agora usa SDK path helpers (`AdGroupCriterionService.ad_group_criterion_path` + `CampaignCriterionService.campaign_criterion_path`) — authoritative format, no inline construction drift
+- `tests/unit/fixtures/proto_capture.py`: fixture adicionou 2 service mocks pros criterion path helpers (3-arg compound signature)
+- `tests/unit/test_remove_audience_builder.py`: tests #2 + #5 corrigidos pra compound key. Test #5 (antes `..._path_omits_target_id`) renamed para `..._path_includes_target_id_via_tilde`
+
+Production revision atualizada: `v4-ads-mcp-00117-frb`.
+
+### Tentativa 2 (POST A5 FIX) — SUCCESS
+
+```
+remove_audience(...same payload...)
+→ confirmation_token: "U5R2U7ZC"
+apply_change(confirmation_token="U5R2U7ZC")
+→ status: "applied", applied_count: 1, google_request_id: "RBXdbgBbsdWp76S7Ax52kg"
+```
+
+GAQL post-apply: **0 rows** ✅ criterion realmente removido.
+
+- [x] Criterion `2480650242694` removido em produção (revision `v4-ads-mcp-00117-frb`)
+- [x] A5 silent-acceptance pattern documented + fixed in production
+- [x] `remove_audience` validado em campaign ATIVA (real traffic) — confidence beyond Nutry sandbox
+- [x] Smart bidding re-learning começa: monitorar CPA WoW próximas 1-2 semanas pra estabilização
 
 ## Sign-off final
 
