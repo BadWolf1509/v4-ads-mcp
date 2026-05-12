@@ -67,6 +67,16 @@ _CASES: list[tuple[str, dict, RiskLevel, str]] = [
     ("add_keywords", {"target_count": 20}, RiskLevel.AUTO, "ad_group"),
     ("add_keywords", {"target_count": 21}, RiskLevel.CONFIRM, "20"),
     ("add_keywords", {"target_count": 100}, RiskLevel.CONFIRM, "20"),
+    # apply_audience — observation: AUTO threshold 20 (matches add_keywords); exclusion: always CONFIRM
+    (
+        "apply_audience",
+        {"target_count": 20, "mode": "observation"},
+        RiskLevel.AUTO,
+        "20 attachments",
+    ),
+    ("apply_audience", {"target_count": 21, "mode": "observation"}, RiskLevel.CONFIRM, "20"),
+    ("apply_audience", {"target_count": 1, "mode": "exclusion"}, RiskLevel.CONFIRM, "exclusion"),
+    ("apply_audience", {"target_count": 50, "mode": "exclusion"}, RiskLevel.CONFIRM, "exclusion"),
 ]
 
 

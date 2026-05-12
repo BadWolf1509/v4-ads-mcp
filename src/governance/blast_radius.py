@@ -140,6 +140,30 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
             f"add_keywords: more than 20 KWs ({target_count}) — confirmar",
         )
 
+    # Apply audience — mode-aware (observation additive ≤20 = auto;
+    # exclusion always confirms per spec §7.1 delivery-impact policy)
+    if operation == "apply_audience":
+        mode = (params.get("mode") or "").lower()
+        if mode == "exclusion":
+            return RiskClassification(
+                RiskLevel.CONFIRM,
+                "apply_audience: exclusion mode — sempre confirma (delivery impact)",
+            )
+        if target_count <= 0:
+            return RiskClassification(
+                RiskLevel.CONFIRM,
+                f"apply_audience: target_count={target_count} desconhecido — confirmar",
+            )
+        if target_count <= 20:
+            return RiskClassification(
+                RiskLevel.AUTO,
+                f"apply_audience observation ({target_count} attachments) — auto",
+            )
+        return RiskClassification(
+            RiskLevel.CONFIRM,
+            f"apply_audience: observation com >20 attachments ({target_count}) — confirmar",
+        )
+
     # Recommendations — Google's own suggestions; auto-apply
     if operation in ("apply_recommendation", "dismiss_recommendation"):
         return RiskClassification(
