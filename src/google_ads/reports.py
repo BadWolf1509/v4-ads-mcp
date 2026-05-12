@@ -47,6 +47,7 @@ async def run_report(
     operation_name: str,
     estimated_ops: int = 1,
     audit_this_call: bool = False,
+    params_summary: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Run a GAQL query against the given customer; return formatted rows.
 
@@ -108,7 +109,7 @@ async def run_report(
                     action_type="read",
                     operation=operation_name,
                     target_count=len(results) if status == "success" else None,
-                    params_summary=None,
+                    params_summary=params_summary,
                     status=status,
                     error_message=error_message,
                     duration_ms=duration_ms,
