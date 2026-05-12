@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _runner import (  # noqa: E402, type: ignore
+from _runner import (  # noqa: E402
     BASE_STEPS,
     DB_INTEGRATION_STEP,
     check_docker,
@@ -31,7 +31,7 @@ from _runner import (  # noqa: E402, type: ignore
 def main() -> int:
     ok, hint = check_docker()
     if not ok:
-        print(f"❌ {hint}", file=sys.stderr)
+        print(f"[FAIL] {hint}", file=sys.stderr)
         return 2
     return run_steps([*BASE_STEPS, DB_INTEGRATION_STEP])
 

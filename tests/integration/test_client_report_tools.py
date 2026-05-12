@@ -17,7 +17,6 @@ def bound_context():
 
 
 @pytest.mark.asyncio
-@pytest.mark.integration
 async def test_funnel_metrics_computes_rates(bound_context):
     from src.mcp.tools.get_funnel_metrics import get_funnel_metrics
 

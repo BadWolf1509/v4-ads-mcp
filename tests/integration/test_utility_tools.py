@@ -17,7 +17,6 @@ def bound_context():
 
 
 @pytest.mark.asyncio
-@pytest.mark.integration
 async def test_run_gaql_returns_rows_and_truncation_flag(bound_context):
     from src.mcp.tools.run_gaql import run_gaql
 

@@ -9,7 +9,7 @@ Sequence (fail-fast):
     5. pytest tests/integration -m "not integration" -q
 
 For full sweep including DB integration tests (requires Docker), use:
-    python scripts/check-pre-push-full.py
+    python scripts/check_pre_push_full.py
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _runner import BASE_STEPS, run_steps  # noqa: E402, type: ignore
+from _runner import BASE_STEPS, run_steps  # noqa: E402
 
 if __name__ == "__main__":
     sys.exit(run_steps(BASE_STEPS))

@@ -23,7 +23,6 @@ def bound_context():
 
 @pytest.mark.asyncio
 @freeze_time("2026-05-15")
-@pytest.mark.integration
 async def test_account_overview_aggregates_and_compares(bound_context):
     from src.mcp.tools.get_account_overview import get_account_overview
 

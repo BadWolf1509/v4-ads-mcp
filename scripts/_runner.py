@@ -98,7 +98,7 @@ def check_docker() -> tuple[bool, str]:
     """
     hint_off = (
         "Docker Desktop nao esta rodando. Start Docker e re-rode "
-        "'python scripts/check-pre-push-full.py'."
+        "'python scripts/check_pre_push_full.py'."
     )
     try:
         result = subprocess.run(

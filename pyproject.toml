@@ -46,7 +46,6 @@ python_version = "3.13"
 strict = true
 warn_unreachable = true
 no_implicit_reexport = true
-exclude = ["scripts/"]
 
 [[tool.mypy.overrides]]
 module = ["testcontainers.*"]
@@ -73,6 +72,14 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["grpc", "grpc.*"]
 ignore_missing_imports = true
+
+# scripts/check_pre_push*.py are thin entries with dynamic sys.path imports
+# from sibling _runner module. The dynamic import pattern (sys.path.insert
+# then top-level import) is correct at runtime but unresolvable to mypy.
+# _runner.py itself remains strictly type-checked.
+[[tool.mypy.overrides]]
+module = ["scripts.check_pre_push", "scripts.check_pre_push_full"]
+ignore_errors = true
 
 
 [tool.pytest.ini_options]
