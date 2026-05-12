@@ -41,7 +41,7 @@ It is **internal only**: not a SaaS, not resold, no third-party data. Replaces V
 | FE Redesign v2 (phases 0-5) | ✅ 2026-05-05 | 56 commits, see infra-setup.md |
 | Phase 3a+ — `remove_negative_keywords` | ✅ 2026-05-06 | extra mutation tool [8b5d1d8](https://github.com/BadWolf1509/v4-ads-mcp/commit/8b5d1d8) |
 | Sprint 3b.1 — `add_negatives_from_search_terms` + `get_change_history` | ✅ 2026-05-11 | 11 commits ([f156d99..3549778](https://github.com/BadWolf1509/v4-ads-mcp/compare/c660c6c..3549778)); smoke runbook signed-off ([`phase-3b-1-bootstrap.md`](docs/operacao/phase-3b-1-bootstrap.md), [9fbfb1c](https://github.com/BadWolf1509/v4-ads-mcp/commit/9fbfb1c)) |
-| Sprint 3b.2 — `update_ad_status` + `bulk_pause_by_query` | ✅ 2026-05-11 | 10 commits ([1ee0bda..2983228](https://github.com/BadWolf1509/v4-ads-mcp/compare/edbb8ba..2983228)); smoke runbook pending [`phase-3b-2-bootstrap.md`](docs/operacao/phase-3b-2-bootstrap.md); also retrofits `blast_radius.classify` for REMOVED-always-confirm + extends `run_report` with `params_summary` kwarg |
+| Sprint 3b.2 — `update_ad_status` + `bulk_pause_by_query` | ✅ 2026-05-11 | 11 commits ([1ee0bda..24854dc](https://github.com/BadWolf1509/v4-ads-mcp/compare/edbb8ba..24854dc)); smoke runbook signed-off em conta real ([`phase-3b-2-bootstrap.md`](docs/operacao/phase-3b-2-bootstrap.md)) — 2 bugs reais pegos pelo pre-smoke (GAQL parens + REMOVED retrofit gap nos 3 status ops existentes) fixados em `24854dc`. Retrofit completo: `blast_radius.classify` + extends `run_report` com `params_summary` + 4 status ops passam `new_status`. |
 
 **36 MCP tools** registered: 21 read + 14 mutations + `apply_change`.
 **15 web pages** in production with Hybrid Editorial+Operational identity (FE Redesign v2).
