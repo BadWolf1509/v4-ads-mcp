@@ -1,6 +1,12 @@
 """Shared helpers for GAQL query construction."""
 
+from __future__ import annotations
+
 from datetime import UTC, date, datetime, timedelta
+from typing import Any
+from uuid import UUID
+
+from src.google_ads.reports import run_report
 
 
 class InvalidDateRangeError(ValueError):
@@ -138,4 +144,59 @@ def value_proxy_warning(conversions: float, conversions_value: float) -> str | N
             "conversions_value == conversions (1:1 ratio). Tracking provavelmente "
             "sem revenue real — ROAS pode ser misleading."
         )
+    return None
+
+
+async def validate_manual_cpc_strategy(
+    manager_id: UUID,
+    session_id: UUID,
+    customer_id: str,
+    ad_group_ids: list[str],
+) -> str | None:
+    """Returns PT-BR error string if any ad_group is in non-MANUAL_CPC/ENHANCED_CPC
+    campaign; else None.
+
+    Performs 1 GAQL batch lookup. Whitelist {MANUAL_CPC, ENHANCED_CPC} matches
+    strategies que honram cpc_bid_micros field (Google Ads API v23 docs:
+    https://developers.google.com/google-ads/api/docs/campaigns/bidding/override-strategies).
+
+    Sprint 3b.8 (P3 dogfood F12 finding — silent-acceptance bug family 6th variant).
+    """
+    if not ad_group_ids:
+        return None
+
+    ids_clause = ", ".join(ad_group_ids)
+    query = (
+        f"SELECT ad_group.id, campaign.id, campaign.name, "
+        f"campaign.bidding_strategy_type "
+        f"FROM ad_group WHERE ad_group.id IN ({ids_clause})"
+    )
+
+    def _format(row: Any) -> dict[str, str]:
+        return {
+            "ad_group_id": str(row.ad_group.id),
+            "campaign_id": str(row.campaign.id),
+            "campaign_name": row.campaign.name,
+            "strategy": row.campaign.bidding_strategy_type.name,
+        }
+
+    rows = await run_report(
+        manager_id=manager_id,
+        session_id=session_id,
+        customer_id=customer_id,
+        query=query,
+        row_formatter=_format,
+        operation_name="validate_manual_cpc_strategy",
+    )
+
+    whitelist = {"MANUAL_CPC", "ENHANCED_CPC"}
+    for r in rows:
+        if r["strategy"] not in whitelist:
+            return (
+                f"Campaign '{r['campaign_name']}' (id {r['campaign_id']}) usa "
+                f"bidding_strategy_type '{r['strategy']}'. Manual CPC bids sao "
+                f"ignorados nesta estrategia (Google API silent-failure). Mude "
+                f"para MANUAL_CPC via update_campaign_bidding, ou ajuste budget/"
+                f"targeting via outras tools."
+            )
     return None
