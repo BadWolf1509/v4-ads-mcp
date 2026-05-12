@@ -4,7 +4,10 @@ from typing import Any
 
 from src.db import connection
 from src.google_ads.mutations import run_mutation
-from src.google_ads.queries._common import micros_to_currency
+from src.google_ads.queries._common import (
+    micros_to_currency,
+    validate_manual_cpc_strategy,
+)
 from src.google_ads.reports import run_report
 from src.governance.blast_radius import RiskLevel, classify
 from src.governance.dry_run import create_pending
@@ -59,6 +62,22 @@ async def update_keyword_bid(args: dict[str, Any]) -> dict[str, Any]:
     customer_id = args["customer_id"]
     bids_input = args["bids"]
     target_count = len(bids_input)
+
+    # F12 pre-flight (Sprint 3b.8): reject if any campaign uses auto-bidding strategy.
+    # Google ignora cpc_bid_micros updates silenciosamente em non-MANUAL_CPC strategies.
+    ad_group_ids_unique = list({b["ad_group_id"] for b in bids_input})
+    strategy_error = await validate_manual_cpc_strategy(
+        manager_id=ctx.manager_id,
+        session_id=ctx.session_id,
+        customer_id=customer_id,
+        ad_group_ids=ad_group_ids_unique,
+    )
+    if strategy_error:
+        return {
+            "status": "error",
+            "error": strategy_error,
+            "operation": "update_keyword_bid",
+        }
 
     crit_ids = [b["criterion_id"] for b in bids_input]
     ids_clause = ", ".join(crit_ids)
