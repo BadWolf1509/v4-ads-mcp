@@ -83,8 +83,15 @@ class CapturedOp:
 def make_capture_client() -> MagicMock:
     """Mock SDK client whose get_type() returns CapturedOp instances.
 
-    Path helpers (ad_group_path, campaign_path) + enums return predictable
-    strings so tests can assert on the path values written to the op.
+    Path helpers + enums return predictable strings so tests can assert on the
+    path values written to the op. Helpers mirror the actual SDK signatures:
+    - AdGroupService.ad_group_path(cid, ag_id) → parent ad_group path
+    - CampaignService.campaign_path(cid, c_id) → parent campaign path
+    - AdGroupCriterionService.ad_group_criterion_path(cid, ag_id, crit_id)
+      → compound ~-separated criterion path
+    - CampaignCriterionService.campaign_criterion_path(cid, c_id, crit_id)
+      → compound ~-separated criterion path (Sprint 3b.6 A5 fix — used to be
+      flat in old code, corrected to compound matching SDK).
     """
     client = MagicMock()
 
@@ -92,12 +99,24 @@ def make_capture_client() -> MagicMock:
     ag_service.ad_group_path = lambda cid, ag_id: f"customers/{cid}/adGroups/{ag_id}"
     camp_service = MagicMock()
     camp_service.campaign_path = lambda cid, c_id: f"customers/{cid}/campaigns/{c_id}"
+    ag_crit_service = MagicMock()
+    ag_crit_service.ad_group_criterion_path = lambda cid, ag_id, crit_id: (
+        f"customers/{cid}/adGroupCriteria/{ag_id}~{crit_id}"
+    )
+    camp_crit_service = MagicMock()
+    camp_crit_service.campaign_criterion_path = lambda cid, c_id, crit_id: (
+        f"customers/{cid}/campaignCriteria/{c_id}~{crit_id}"
+    )
 
     def get_service(name: str) -> Any:
         if name == "AdGroupService":
             return ag_service
         if name == "CampaignService":
             return camp_service
+        if name == "AdGroupCriterionService":
+            return ag_crit_service
+        if name == "CampaignCriterionService":
+            return camp_crit_service
         return MagicMock()
 
     client.get_service = get_service

@@ -22,7 +22,14 @@ def test_builder_ad_group_single_criterion():
 
 
 def test_builder_campaign_single_criterion():
-    """campaign target → campaign_criterion_operation.remove with FLAT path (no ~)."""
+    """campaign target → campaign_criterion_operation.remove with COMPOUND ~-separated path.
+
+    Sprint 3b.6 A5 fix: CampaignCriterion uses compound key
+    {campaign_id}~{criterion_id} (same as AdGroupCriterion), NOT flat as
+    originally assumed. Real Google API resource_name format confirmed via
+    SDK helper introspection + Mestre da Obra JP smoke (remove with flat
+    path was silently accepted but did not actually remove).
+    """
     from src.google_ads.mutates.audiences import build_remove_audience
 
     client = make_capture_client()
@@ -35,7 +42,7 @@ def test_builder_campaign_single_criterion():
     assert len(ops) == 1
     assert (
         ops[0].field("campaign_criterion_operation.remove")
-        == "customers/1163862076/campaignCriteria/2480650242694"
+        == "customers/1163862076/campaignCriteria/22169885957~2480650242694"
     )
 
 
@@ -81,8 +88,16 @@ def test_builder_ad_group_path_includes_target_id_via_tilde():
     assert path.endswith("~1234")
 
 
-def test_builder_campaign_path_omits_target_id():
-    """Regression: campaign resource_name is flat (campaignCriteria/criterion_id), NO ~."""
+def test_builder_campaign_path_includes_target_id_via_tilde():
+    """Regression A5 (Sprint 3b.6 smoke): campaign resource_name uses compound
+    {campaign_id}~{criterion_id} key — SAME format as ad_group.
+
+    Prior version of this test asserted FLAT path (no ~) — that assumption was
+    wrong, leading to a silent-acceptance bug in production (Google accepted the
+    malformed flat path but did not actually remove the criterion). Confirmed
+    via SDK CampaignCriterionServiceClient.campaign_criterion_path() helper
+    which is the authoritative source.
+    """
     from src.google_ads.mutates.audiences import build_remove_audience
 
     client = make_capture_client()
@@ -93,8 +108,8 @@ def test_builder_campaign_path_omits_target_id():
     }
     ops = build_remove_audience(client, "1163862076", payload)
     path = ops[0].field("campaign_criterion_operation.remove")
-    assert path == "customers/1163862076/campaignCriteria/1234"
-    assert "~" not in path  # Critical: campaign path has no tilde
+    assert path == "customers/1163862076/campaignCriteria/999~1234"
+    assert "999~1234" in path  # Critical: compound key, not flat
 
 
 def test_builder_empty_criterion_ids_returns_empty():

@@ -67,26 +67,39 @@ def build_remove_audience(client: Any, customer_id: str, payload: dict[str, Any]
 
     Each criterion_id becomes one MutateOperation with remove (not create):
       - target_type='ad_group' → ad_group_criterion_operation.remove = resource_name
-        Resource format: customers/{cid}/adGroupCriteria/{target_id}~{criterion_id}
+        Resource format: customers/{cid}/adGroupCriteria/{ad_group_id}~{criterion_id}
       - target_type='campaign' → campaign_criterion_operation.remove = resource_name
-        Resource format: customers/{cid}/campaignCriteria/{criterion_id}
-        (FLAT path — campaign_criterion has no compound key)
+        Resource format: customers/{cid}/campaignCriteria/{campaign_id}~{criterion_id}
 
-    Critical correctness: AdGroupCriterion uses ~-compound key (ad_group_id~criterion_id),
-    CampaignCriterion is flat (just criterion_id). Builder constructs paths inline.
+    Sprint 3b.6 smoke finding A5: BOTH AdGroupCriterion AND CampaignCriterion use
+    compound ~-separated resource_name keys (corrected — prior version was wrong
+    about CampaignCriterion being flat). Uses SDK path helpers as authoritative
+    source — these always produce the canonical resource_name format.
+
+    Without the compound key, Google silently accepts the malformed flat path,
+    returns applied_count=1, but does NOT actually remove the criterion (4th
+    instance of the silent-acceptance class — A1 dedupe, A3 drop, A4 override,
+    A5 path-malformed). Smoke caught this on Mestre da Obra JP campaign cleanup
+    attempt of criterion 2480650242694.
     """
     target_type = payload["target_type"]
     target_id = payload["target_id"]
     criterion_ids = payload["criterion_ids"]
+
+    if target_type == "ad_group":
+        path_service = client.get_service("AdGroupCriterionService")
+        path_fn = path_service.ad_group_criterion_path
+    else:  # campaign
+        path_service = client.get_service("CampaignCriterionService")
+        path_fn = path_service.campaign_criterion_path
 
     ops: list[Any] = []
     for crit_id in criterion_ids:
         op = client.get_type("MutateOperation")
         if target_type == "ad_group":
             crit_op = op.ad_group_criterion_operation
-            crit_op.remove = f"customers/{customer_id}/adGroupCriteria/{target_id}~{crit_id}"
-        else:  # campaign
+        else:
             crit_op = op.campaign_criterion_operation
-            crit_op.remove = f"customers/{customer_id}/campaignCriteria/{crit_id}"
+        crit_op.remove = path_fn(customer_id, target_id, crit_id)
         ops.append(op)
     return ops
