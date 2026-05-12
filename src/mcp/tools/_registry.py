@@ -61,6 +61,7 @@ def import_all_tools() -> None:
         add_keywords,
         add_negative_keywords,
         add_negatives_from_search_terms,
+        apply_audience,
         apply_change,
         apply_recommendation,
         bulk_pause_by_query,
