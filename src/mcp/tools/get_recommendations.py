@@ -47,6 +47,13 @@ _TYPE_PT = {
     "DISPLAY_EXPANSION_OPT_IN": "Ativar expansao display",
     "LEAD_FORM_ASSET": "Adicionar formulario de leads",
     "IMPROVE_GOOGLE_TAG_COVERAGE": "Melhorar cobertura da Google Tag",
+    # Forecasting variants (P3 dogfood F7 finding — FORECASTING_SET_TARGET_CPA missing)
+    "FORECASTING_SET_TARGET_CPA": "Definir Target CPA previsto",
+    "FORECASTING_SET_TARGET_ROAS": "Definir Target ROAS previsto",
+    # Performance Max upgrades (Google pushes these aggressively in 2024+)
+    "UPGRADE_LOCAL_CAMPAIGN_TO_PERFORMANCE_MAX": "Migrar Local pra Performance Max",
+    "UPGRADE_SMART_SHOPPING_CAMPAIGN_TO_PERFORMANCE_MAX": "Migrar Smart Shopping pra Performance Max",
+    "IMPROVE_PERFORMANCE_MAX_AD_STRENGTH": "Melhorar forca do Performance Max",
 }
 
 
@@ -59,15 +66,16 @@ def _row_formatter(row: Any) -> dict[str, Any]:
     return {
         "resource_name": rec.resource_name,
         "type": type_str,
-        "type_pt": _TYPE_PT.get(type_str, type_str),
+        "type_pt": _TYPE_PT.get(type_str),  # None when no PT-BR mapping exists
     }
 
 
 @register_tool(
     name="get_recommendations",
     description=(
-        "Recomendacoes pendentes do Google Ads pra conta: tipo (com nome em PT-BR "
-        "quando reconhecido) e resource_name pra aplicar via apply_recommendation "
+        "Recomendacoes pendentes do Google Ads pra conta: tipo (com type_pt em "
+        "PT-BR quando reconhecido, null caso contrario) e resource_name pra aplicar "
+        "via apply_recommendation "
         "ou dispensar via dismiss_recommendation. Para ver impacto detalhado de "
         "uma recomendacao especifica, use run_gaql filtrando por recommendation.type."
     ),

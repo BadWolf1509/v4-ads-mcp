@@ -1,5 +1,6 @@
 """Unit tests for get_recommendations row formatter."""
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -46,3 +47,49 @@ async def test_get_recommendations_formatter_resolves_proto_intenum_to_name() ->
     # returned '29' for proto-plus IntEnum, breaking the PT-BR translation.
     assert result["type"] == "SITELINK_ASSET"
     assert result["type_pt"] == "Adicionar asset de sitelink"
+
+
+def test_type_pt_is_none_when_no_pt_br_mapping() -> None:
+    """F7 fix: untranslated types return type_pt: None (not duplicate of type)."""
+    from src.mcp.tools.get_recommendations import _row_formatter
+
+    fake_row = SimpleNamespace(
+        recommendation=SimpleNamespace(
+            resource_name="customers/123/recommendations/abc",
+            type=SimpleNamespace(name="UNKNOWN_FUTURE_TYPE_NOT_IN_MAPPING"),
+        )
+    )
+    result = _row_formatter(fake_row)
+    assert result["type"] == "UNKNOWN_FUTURE_TYPE_NOT_IN_MAPPING"
+    assert result["type_pt"] is None
+
+
+def test_type_pt_returns_pt_br_for_known_type() -> None:
+    """Existing mapping still works (regression check for backward compat)."""
+    from src.mcp.tools.get_recommendations import _row_formatter
+
+    fake_row = SimpleNamespace(
+        recommendation=SimpleNamespace(
+            resource_name="customers/123/recommendations/abc",
+            type=SimpleNamespace(name="KEYWORD"),
+        )
+    )
+    result = _row_formatter(fake_row)
+    assert result["type"] == "KEYWORD"
+    assert result["type_pt"] == "Adicionar palavra-chave"
+
+
+def test_type_pt_includes_forecasting_set_target_cpa() -> None:
+    """F7 fix: P3 dogfood found this type was missing from mapping."""
+    from src.mcp.tools.get_recommendations import _row_formatter
+
+    fake_row = SimpleNamespace(
+        recommendation=SimpleNamespace(
+            resource_name="customers/123/recommendations/abc",
+            type=SimpleNamespace(name="FORECASTING_SET_TARGET_CPA"),
+        )
+    )
+    result = _row_formatter(fake_row)
+    assert result["type"] == "FORECASTING_SET_TARGET_CPA"
+    assert result["type_pt"] is not None
+    assert "Target CPA" in result["type_pt"]
