@@ -155,7 +155,9 @@ def _build_entities(target_type: str, rows: list[dict[str, Any]]) -> list[dict[s
         "apply_change(token). Limite hard: 100 entidades por chamada (se exceder, "
         "rejeita pedindo refinar). filter eh apenas o corpo da WHERE clause (sem "
         "SELECT/FROM/LIMIT). date_range default LAST_30_DAYS auto-injeta segments.date "
-        "BETWEEN quando filter usa metrics.*."
+        "BETWEEN quando filter usa metrics.*. RECOMENDACAO: pra evitar incluir "
+        "entidades ja pausadas, adicione `AND <target>.status = 'ENABLED'` no filter "
+        "(ex: `ad_group_criterion.status = 'ENABLED'` pra keywords)."
     ),
     input_schema=_SCHEMA,
 )

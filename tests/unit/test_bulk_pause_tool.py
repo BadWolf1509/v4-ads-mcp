@@ -153,3 +153,29 @@ async def test_valid_count_creates_token_with_capture(monkeypatch):
     assert len(captured_payload["entities"]) == 2
     assert captured_payload["entities"][0]["ad_group_id"] == "111"
     assert captured_payload["entities"][0]["criterion_id"] == "200"
+
+
+@pytest.mark.asyncio
+async def test_invalid_filter_returns_error(monkeypatch):
+    """Tool catches FilterValidationError and converts to status:'error' dict."""
+    from src.mcp.tools import bulk_pause_by_query as mod
+
+    create_pending_mock = AsyncMock()
+    run_report_mock = AsyncMock()
+    monkeypatch.setattr(mod, "run_report", run_report_mock)
+    monkeypatch.setattr(mod, "create_pending", create_pending_mock)
+
+    result = await mod.bulk_pause_by_query(
+        {
+            "customer_id": "1234567890",
+            "target_type": "keyword",
+            "filter": "metrics.cost_micros > 0; DROP TABLE users",
+        }
+    )
+
+    assert result["status"] == "error"
+    # Verify the PT-BR message reaches the user
+    assert "ponto-e-virgula" in result["error"].lower() or ";" in result["error"]
+    # Critical: no API call, no token creation
+    run_report_mock.assert_not_called()
+    create_pending_mock.assert_not_called()
