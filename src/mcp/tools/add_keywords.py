@@ -6,9 +6,17 @@ match_type. Combined with update_keyword_status (pause old) +
 add_negatives_from_search_terms (block bad terms), this completes the
 'pause underperformer + add replacement' workflow.
 
-Up to 500 per call. AUTO ≤20 per spec §7.1. Idempotent: re-running with
-the same text+match_type returns 'already_exists' per-row (via
-partial_failure mode + Google CRITERION_EXISTS detection).
+Up to 500 per call. AUTO ≤20 per spec §7.1.
+
+Idempotency note (Sprint 3b.3 smoke 2026-05-12 finding A1):
+Re-adding the same (text, match_type) into the same ad_group is
+**state-idempotent** but the API surfaces this via Google's server-side
+silent dedupe — NOT via a CRITERION_EXISTS partial_failure error. So
+the returned per-row `status` will be `"added"` on the duplicate call
+(not `"already_exists"`), and no second criterion is created. The
+`_classify_partial` mapping for `CRITERION_EXISTS` / `DUPLICATE_KEYWORD`
+is kept as a defensive guard in case Google changes the behavior, but
+in practice today it does not fire.
 """
 
 from collections import Counter
@@ -84,8 +92,9 @@ def _classify_partial(error: str | None) -> str:
         "Cria N novas palavras-chave positivas em 1 ad_group. Cada keyword tem "
         "text + match_type (EXACT|PHRASE|BROAD) + cpc_bid_micros opcional (herda "
         "do ad_group se omitido). Ate 500 por chamada. AUTO se ≤20 (spec §7.1), "
-        "CONFIRM se >20. Idempotente: rodar 2x retorna 'already_exists' por linha "
-        "sem falhar. Use com update_keyword_status (pausar antigas) + "
+        "CONFIRM se >20. Idempotente state-wise (Google deduplica server-side se "
+        "rodar 2x com mesmo text+match_type — sem criar criterion duplicada). "
+        "Use com update_keyword_status (pausar antigas) + "
         "add_negatives_from_search_terms (bloquear termos ruins) pra workflow "
         "completo de 'pausa + adiciona' da skill analise-performance."
     ),
