@@ -79,6 +79,8 @@ def test_all_phase_2_tools_registered():
         # keyword mutations
         "update_keyword_bid",
         "update_keyword_status",
+        # audience mutations
+        "remove_audience",
     }
     actual = {t.name for t in all_tools()}
     missing = expected - actual
@@ -96,6 +98,7 @@ def test_no_unexpected_tools():
         "apply_recommendation",
         "bulk_pause_by_query",
         "dismiss_recommendation",
+        "remove_audience",
         "remove_negative_keywords",
         "list_my_accounts",
         "get_account_overview",
