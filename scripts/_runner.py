@@ -21,22 +21,24 @@ class Step:
 
 # Pre-defined step lists
 BASE_STEPS: list[Step] = [
-    Step("ruff check", ["ruff", "check", "src", "tests"]),
-    Step("ruff format check", ["ruff", "format", "--check", "src", "tests"]),
-    Step("mypy", ["mypy", "src"]),
+    Step("ruff check", [sys.executable, "-m", "ruff", "check", "src", "tests"]),
+    Step("ruff format check", [sys.executable, "-m", "ruff", "format", "--check", "src", "tests"]),
+    Step("mypy", [sys.executable, "-m", "mypy", "src"]),
     # 'not integration' filter mirrors CI behavior — excludes misplaced
     # testcontainers-dependent tests in tests/unit/ (e.g., test_rate_limit.py
     # which is actually a DB integration test but lives in tests/unit/).
-    Step("pytest unit", ["pytest", "tests/unit", "-m", "not integration", "-q"]),
+    Step(
+        "pytest unit", [sys.executable, "-m", "pytest", "tests/unit", "-m", "not integration", "-q"]
+    ),
     Step(
         "pytest non-DB integration",
-        ["pytest", "tests/integration", "-m", "not integration", "-q"],
+        [sys.executable, "-m", "pytest", "tests/integration", "-m", "not integration", "-q"],
     ),
 ]
 
 DB_INTEGRATION_STEP = Step(
     "pytest DB integration",
-    ["pytest", "tests/integration", "-m", "integration", "-q"],
+    [sys.executable, "-m", "pytest", "tests/integration", "-m", "integration", "-q"],
 )
 
 
@@ -62,7 +64,7 @@ def run_steps(steps: list[Step]) -> int:
         print(_color(f"==> [{i}/{total}] {step.name}", "36"))  # cyan
         result = subprocess.run(step.cmd)
         if result.returncode != 0:
-            print(_color(f"❌ {step.name} FAILED", "31"), file=sys.stderr)  # red
+            print(_color(f"FAILED: {step.name}", "31"), file=sys.stderr)  # red
             print(
                 f"   Run individually to debug: {' '.join(step.cmd)}",
                 file=sys.stderr,
@@ -70,18 +72,17 @@ def run_steps(steps: list[Step]) -> int:
             elapsed = time.perf_counter() - start
             print(
                 _color(
-                    f"❌ Pre-push check FAILED at step {i}/{total} "
-                    f"({step.name}) after {elapsed:.1f}s.",
+                    f"FAILED at step {i}/{total} ({step.name}) after {elapsed:.1f}s.",
                     "31",
                 ),
                 file=sys.stderr,
             )
             return 1
-        print(_color(f"✅ {step.name} OK", "32"))  # green
+        print(_color(f"OK: {step.name}", "32"))  # green
     elapsed = time.perf_counter() - start
     print(
         _color(
-            f"✅ All pre-push checks passed ({total} steps in {elapsed:.1f}s).",
+            f"All pre-push checks passed ({total} steps in {elapsed:.1f}s).",
             "32",
         )
     )
@@ -96,7 +97,7 @@ def check_docker() -> tuple[bool, str]:
     TimeoutExpired (daemon hung), or non-zero exit (daemon off).
     """
     hint_off = (
-        "Docker Desktop não está rodando. Start Docker e re-rode "
+        "Docker Desktop nao esta rodando. Start Docker e re-rode "
         "'python scripts/check-pre-push-full.py'."
     )
     try:
@@ -106,7 +107,7 @@ def check_docker() -> tuple[bool, str]:
             capture_output=True,
         )
     except FileNotFoundError:
-        return False, "Docker CLI não encontrado no PATH. Instale Docker Desktop."
+        return False, "Docker CLI nao encontrado no PATH. Instale Docker Desktop."
     except subprocess.TimeoutExpired:
         return False, hint_off
     if result.returncode == 0:

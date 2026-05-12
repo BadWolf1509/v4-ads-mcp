@@ -46,6 +46,7 @@ python_version = "3.13"
 strict = true
 warn_unreachable = true
 no_implicit_reexport = true
+exclude = ["scripts/"]
 
 [[tool.mypy.overrides]]
 module = ["testcontainers.*"]
@@ -72,6 +73,7 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["grpc", "grpc.*"]
 ignore_missing_imports = true
+
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

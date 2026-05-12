@@ -1,6 +1,8 @@
+import pytest
 from httpx import AsyncClient
 
 
+@pytest.mark.integration
 async def test_mcp_no_auth_returns_401(client: AsyncClient) -> None:
     """Without Bearer, /mcp must reject with 401."""
     response = await client.post(
@@ -11,6 +13,7 @@ async def test_mcp_no_auth_returns_401(client: AsyncClient) -> None:
     assert response.status_code == 401
 
 
+@pytest.mark.integration
 async def test_mcp_bad_bearer_returns_401(client: AsyncClient) -> None:
     """Unknown Bearer token must reject with 401."""
     response = await client.post(

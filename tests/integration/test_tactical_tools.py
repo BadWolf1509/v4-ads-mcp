@@ -17,6 +17,7 @@ def bound_context():
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_keyword_performance_returns_qs(bound_context):
     from src.mcp.tools.get_keyword_performance import get_keyword_performance
 
