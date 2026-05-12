@@ -37,6 +37,7 @@ def test_all_phase_2_tools_registered():
         "add_negatives_from_search_terms",
         "apply_change",
         "apply_recommendation",
+        "bulk_pause_by_query",
         "dismiss_recommendation",
         "list_my_accounts",
         # visao geral
@@ -87,10 +88,11 @@ def test_no_unexpected_tools():
     expected = {
         "add_negative_keywords",
         "add_negatives_from_search_terms",
-        "remove_negative_keywords",
         "apply_change",
         "apply_recommendation",
+        "bulk_pause_by_query",
         "dismiss_recommendation",
+        "remove_negative_keywords",
         "list_my_accounts",
         "get_account_overview",
         "get_budget_pacing",

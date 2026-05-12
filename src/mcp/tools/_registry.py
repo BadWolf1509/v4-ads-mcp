@@ -62,6 +62,7 @@ def import_all_tools() -> None:
         add_negatives_from_search_terms,
         apply_change,
         apply_recommendation,
+        bulk_pause_by_query,
         dismiss_recommendation,
         get_account_overview,
         get_ad_group_performance,
