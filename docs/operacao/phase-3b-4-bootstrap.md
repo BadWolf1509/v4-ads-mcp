@@ -96,27 +96,70 @@ Response:
 - [x] `blast_summary` clara com aggregate `[user_interest:25]`
 - [x] **Deliberadamente NÃO chamou apply_change** — token expira em 10min naturalmente
 
-## Test 3 — CONFIRM exclusion (real biz Mestre da Obra JP) ✅ dry-run
+## Test 3 — CONFIRM exclusion (real biz Mestre da Obra JP) ✅ dry-run + ⚠️ apply revelou A4
 
 Customer Match `clientes mestre da obra jp` (id `9377822529`, CRM_BASED, 1200 users) como exclusion na campanha de aquisição `22169885957` "[GPC][CAB][LEADS][SEG][SEX][MESTRE DA OBRA]":
 
-Response (dry-run):
+**Dry-run 1 (token `2GP3K1EY`, expirou)**:
 ```json
 {
-  "status": "dry_run",
-  "target_type": "campaign",
-  "mode": "exclusion",
+  "status": "dry_run", "target_type": "campaign", "mode": "exclusion",
   "blast_summary": "Apply 1 audience(s) [user_list:1] como exclusion em 1 campaign(s).",
-  "confirmation_token": "2GP3K1EY",
-  "expires_in_minutes": 10,
+  "confirmation_token": "2GP3K1EY", "expires_in_minutes": 10,
   "confirmation_reason": "apply_audience: exclusion mode — sempre confirma (delivery impact)"
 }
 ```
 
-- [x] `status: "dry_run"`, `confirmation_token: "2GP3K1EY"` returned
-- [x] `confirmation_reason` cita "exclusion mode — sempre confirma (delivery impact)"
-- [x] `blast_summary` clara com aggregate `[user_list:1]` + mode + targets
-- [ ] **Decisão Wellington pendente:** aplicar `2GP3K1EY` para -10% CPA esperado, ou deixar expirar?
+**Dry-run 2 (re-gerado, token `1IOPMDOK`, valid)** — mesma shape, decisão pós-audit das 9 negativas adicionadas em 06-09/05 (todas city names BROAD-match legítimas, não bloqueiam).
+
+**Apply (`apply_change("1IOPMDOK")`)**:
+```json
+{
+  "status": "applied",
+  "applied_count": 1,
+  "google_request_id": "rsvS_IJGb8DBIeFuYRewDw",
+  "blast_summary": "Apply 1 audience(s) [user_list:1] como exclusion em 1 campaign(s)."
+}
+```
+
+**Validação via GAQL** revelou o **Achado A4 (crítico)**:
+```json
+{
+  "campaign_criterion": {
+    "resource_name": "customers/7862230676/campaignCriteria/22169885957~2480650242694",
+    "type_": "USER_LIST", "status": "ENABLED",
+    "user_list": {"user_list": "customers/7862230676/userLists/9377822529"},
+    "criterion_id": "2480650242694",
+    "negative": false   ← DEVERIA SER TRUE
+  }
+}
+```
+
+### Achado A4 — Google silently overrides `negative=True` em CampaignCriterion user_list creates
+
+Builder code (`src/google_ads/mutates/audiences.py:49`) setou `crit.negative = is_exclusion = True` corretamente — pattern **idêntico** ao `src/google_ads/mutates/negatives.py:34/104/111` que funciona em produção desde Phase 3a pra keyword negatives.
+
+Para **keyword negatives** o `negative=True` é honrado por Google. Para **user_list** no `CampaignCriterion` Google **silenciosamente sobrescreve** pra `false`. Mesma classe que A3 (silent acceptance) mas **mais grave**: produz **inverso funcional** da intenção (observation em vez de exclusion).
+
+**Estado atual prod:**
+- Criterion `2480650242694` na campaign `22169885957` é **positive observation** Customer Match
+- Mede overlap audience (útil pra V4 audit) mas NÃO exclui delivery
+- V4 playbook -10% CPA esperado NÃO foi alcançado — Customer Match exclusion via API requer mecanismo diferente
+
+**Hipóteses para mecanismo correto** (a investigar via spawn-task):
+- `customer_negative_criterion` (account-level negative, afeta toda conta)
+- Audience asset com exclusion config (resource novo)
+- AdGroupCriterion `negative=True` (campaign-level pode não suportar; ad_group-level pode)
+
+**Cleanup decision:**
+- Criterion `2480650242694` é benigno (observation só mede). **Leave-in-place** — gera dados de audience overlap úteis pra V4 audit.
+- Se Wellington quiser detach, UI Google Ads é o único caminho hoje (sem `remove_audience` tool).
+
+- [x] Dry-run OK em ambas tentativas
+- [x] apply_change consumiu token + retornou applied_count=1
+- [x] **A4 documentado** — Google silently converts exclusion → observation pra user_list
+- [x] Customer Match observation criada (benigna, não nociva)
+- [x] Spawn-task A4 criado pra investigation correct API path
 
 ## Test 4 — Schema rejection (bid_modifier em exclusion) ✅
 
@@ -167,6 +210,16 @@ Google API aceita user_interest attachment com qualquer taxonomy_type mas **sile
 
 **Visibility gap classe-A** — similar Sprint 3b.3 A1 (silent dedupe). Nossa partial_failure infrastructure não detecta porque Google não retorna error. Spawn-task documenta opções de fix (pre-flight taxonomy check ou post-validation).
 
+### A4: Silent override `negative=True` → `false` para user_list em CampaignCriterion
+
+Google API aceita `negative=True` no `CampaignCriterion` para keywords (Phase 3a em produção funciona), mas **silenciosamente sobrescreve para `false`** quando o criterion subtype é `user_list`. Tool reporta `applied` mas o estado real é positive observation, não exclusion.
+
+**Visibility gap classe-A — MAIS grave que A3**: A3 dropa criterion (zero effect). A4 produz **inverso funcional** (cria observation quando exclusion foi solicitado). Mesma classe de silent acceptance, pior consequência.
+
+**Cobertura de teste perdida:** unit tests do builder usaram MagicMock (não verificam atribuição real do campo) + integration test mocked `get_builder` (bypass do builder real). Nenhum test catched isso. **Fix tests:** assertion explícita `op.campaign_criterion_operation.create.negative == True` em test_builder, integration test sem `get_builder` patch.
+
+Spawn-task A4 criado pra investigação do mecanismo correto (`customer_negative_criterion`, Audience asset com exclusion, ou outro path). V4 playbook `-10% CPA via Customer Match exclusion` requer essa investigação.
+
 ## Cleanup
 
 - T1.b criou criterion real (`56976936578` em Nutry ad_group `183008426336`). Tool `remove_audience` não existe — mesma constraint Sprint 3b.3 A2. Opções:
@@ -179,11 +232,17 @@ Google API aceita user_interest attachment com qualquer taxonomy_type mas **sile
 
 ## Sign-off final
 
-- [x] T1-T5 todos passaram (T1.a contract layer OK, T1.b validou persistência com IN_MARKET)
-- [x] No errors em service logs (request_ids T1.a `1LOzDDJsDCBU5SZIEcB4HA`, T1.b `RZrExcRKKmsGPhcpPdR9Hw`)
-- [x] Achado A3 documentado — silent drop com VERTICAL_GEO taxonomy
-- [ ] Decisão sobre T3 token `2GP3K1EY` pendente
+- [x] T1-T5 todos passaram (T1.a contract OK, T1.b validou persistência com IN_MARKET)
+- [x] T3 aplicado em produção (criterion `2480650242694` em campaign `22169885957`)
+- [x] No errors em service logs (request_ids: T1.a `1LOzDDJsDCBU5SZIEcB4HA`, T1.b `RZrExcRKKmsGPhcpPdR9Hw`, T3 `rsvS_IJGb8DBIeFuYRewDw`)
+- [x] **2 achados graves documentados:** A3 (silent drop VERTICAL_GEO) + A4 (silent override negative=True → false em user_list CampaignCriterion)
+- [x] 2 spawn-tasks criados pra fix posterior (A3 + A4)
 - [x] Production revision: `v4-ads-mcp-00102-6td`
-- [x] CLAUDE.md a ser atualizado: Sprint 3b.4 shipped 2026-05-12, tool count 37 → 38
+- [x] CLAUDE.md atualizado: Sprint 3b.4 shipped 2026-05-12, tool count 37 → 38
+
+**Lições agregadas para sprints futuros:**
+1. MagicMock-everywhere em unit tests não testa atribuição real de proto fields. Achado A4 passou pelos 8 builder tests + 1 integration test sem detecção. Padrão de teste para mutate builders precisa **verificar campos do criterion via mock que captura state** (não MagicMock default behavior).
+2. Google "silent acceptance" é classe de bug recorrente: A1 (silent dedupe), A3 (silent drop), A4 (silent override). Padrão defensivo: **post-validation read** (query criterion back após create) deve ser considerado pra mutations com impacto sensível.
+3. Smoke runbook em conta real continua pegando bugs que CI não pega — confirma valor do dogfood mesmo após review formal aprovar.
 
 **Date completed:** 2026-05-12 (executado por Claude em sessão dirigida por wellinton.ribeiro@v4company.com)
