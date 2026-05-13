@@ -61,6 +61,9 @@ _CASES: list[tuple[str, dict, RiskLevel, str]] = [
     # remove_audience — always CONFIRM (spec §7.1 remove principle), regardless of count
     ("remove_audience", {"target_count": 1}, RiskLevel.CONFIRM, "sempre confirma"),
     ("remove_audience", {"target_count": 50}, RiskLevel.CONFIRM, "sempre confirma"),
+    # create_conversion_action — always CONFIRM (spec §7.1 creates sensitive; tracking affects ROAS)
+    ("create_conversion_action", {"target_count": 1}, RiskLevel.CONFIRM, "spec §7.1"),
+    ("create_conversion_action", {"target_count": 5}, RiskLevel.CONFIRM, "spec §7.1"),
 ]
 
 

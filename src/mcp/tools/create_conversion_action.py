@@ -115,7 +115,7 @@ def _build_params_summary(actions: list[dict[str, Any]]) -> dict[str, Any]:
     name="create_conversion_action",
     description=(
         "Cria 1-5 ConversionActions no nivel customer. Cada action: name "
-        "(1-100 chars) + category + type. Always-CONFIRM. Categorias supportadas "
+        "(1-100 chars) + category + type. Always-CONFIRM. Categorias suportadas "
         "(18 V4-focused): LEAD, PURCHASE, SIGNUP, DEFAULT, SUBMIT_LEAD_FORM, "
         "BOOK_APPOINTMENT, REQUEST_QUOTE, PHONE_CALL_LEAD, IMPORTED_LEAD, "
         "QUALIFIED_LEAD, CONVERTED_LEAD, ADD_TO_CART, BEGIN_CHECKOUT, "
