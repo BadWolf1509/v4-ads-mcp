@@ -290,3 +290,76 @@ async def validate_parent_campaigns_for_ad_group_create(
             )
 
     return None
+
+
+async def validate_parent_ad_groups_for_rsa_create(
+    manager_id: UUID,
+    session_id: UUID,
+    customer_id: str,
+    rsas: list[dict[str, Any]],
+) -> str | None:
+    """Returns PT-BR error string if any parent ad_group fails validation; else None.
+
+    Validates per RSA spec:
+    1. Parent ad_group exists
+    2. ad_group.status != REMOVED
+    3. ad_group's parent campaign.advertising_channel_type IN {SEARCH, SEARCH_PARTNERS}
+
+    Performs 1 GAQL batch lookup for unique ad_group_ids.
+    Returns first-found offender error message (matches Sprint 3b.5 A3 pattern).
+    """
+    ad_group_ids = list({rsa["ad_group_id"] for rsa in rsas})
+    if not ad_group_ids:
+        return None
+
+    ids_clause = ", ".join(ad_group_ids)
+    query = (
+        f"SELECT ad_group.id, ad_group.name, ad_group.status, "
+        f"campaign.id, campaign.name, campaign.advertising_channel_type "
+        f"FROM ad_group WHERE ad_group.id IN ({ids_clause})"
+    )
+
+    def _format(row: Any) -> dict[str, str]:
+        return {
+            "ad_group_id": str(row.ad_group.id),
+            "ad_group_name": row.ad_group.name,
+            "ad_group_status": row.ad_group.status.name,
+            "campaign_id": str(row.campaign.id),
+            "campaign_name": row.campaign.name,
+            "channel_type": row.campaign.advertising_channel_type.name,
+        }
+
+    rows = await run_report(
+        manager_id=manager_id,
+        session_id=session_id,
+        customer_id=customer_id,
+        query=query,
+        row_formatter=_format,
+        operation_name="validate_parent_ad_groups_for_rsa_create",
+    )
+
+    by_id = {r["ad_group_id"]: r for r in rows}
+    valid_channels = {"SEARCH", "SEARCH_PARTNERS"}
+
+    for rsa in rsas:
+        agid = rsa["ad_group_id"]
+        ag = by_id.get(agid)
+
+        if ag is None:
+            return f"Ad_group {agid} nao encontrado na conta. Verifique o ad_group_id."
+
+        if ag["ad_group_status"] == "REMOVED":
+            return (
+                f"Ad_group '{ag['ad_group_name']}' (id {agid}) esta REMOVED. "
+                f"Nao e possivel criar RSA em ad_group removido."
+            )
+
+        if ag["channel_type"] not in valid_channels:
+            return (
+                f"Ad_group '{ag['ad_group_name']}' (id {agid}) pertence a campaign "
+                f"'{ag['campaign_name']}' com advertising_channel_type "
+                f"'{ag['channel_type']}'. RSAs (Responsive Search Ads) so funcionam "
+                f"em campaigns SEARCH ou SEARCH_PARTNERS."
+            )
+
+    return None
