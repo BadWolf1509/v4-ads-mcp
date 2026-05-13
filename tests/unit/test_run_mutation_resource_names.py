@@ -214,8 +214,8 @@ def _make_client(fake_response) -> MagicMock:
     failure_stub = MagicMock()
     failure_stub._meta.pb = lambda: MagicMock(errors=[])
     client.get_type = MagicMock(
-        side_effect=lambda name: failure_stub
-        if name == "GoogleAdsFailure"
-        else MagicMock(mutate_operations=[])
+        side_effect=lambda name: (
+            failure_stub if name == "GoogleAdsFailure" else MagicMock(mutate_operations=[])
+        )
     )
     return client
