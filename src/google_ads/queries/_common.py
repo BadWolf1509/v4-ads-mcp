@@ -499,3 +499,113 @@ async def validate_conversion_action_create(
             )
 
     return None
+
+
+async def validate_campaign_for_value_rule_set(
+    manager_id: UUID,
+    session_id: UUID,
+    customer_id: str,
+    campaign_id: str,
+) -> str | None:
+    """Returns PT-BR error string if campaign invalid for value rule set attachment; else None.
+
+    Validates:
+    1. Campaign exists
+    2. campaign.status != REMOVED
+
+    Sprint 3b.19B — pre-flight for create_conversion_value_rule_set when
+    attachment_type=CAMPAIGN.
+    """
+    query = (
+        f"SELECT campaign.id, campaign.name, campaign.status "
+        f"FROM campaign WHERE campaign.id = {campaign_id}"
+    )
+
+    def _format(row: Any) -> dict[str, str]:
+        return {
+            "campaign_id": str(row.campaign.id),
+            "campaign_name": row.campaign.name,
+            "campaign_status": row.campaign.status.name,
+        }
+
+    rows = await run_report(
+        manager_id=manager_id,
+        session_id=session_id,
+        customer_id=customer_id,
+        query=query,
+        row_formatter=_format,
+        operation_name="validate_campaign_for_value_rule_set",
+    )
+
+    if not rows:
+        return f"Campaign {campaign_id} nao encontrada na conta. Verifique o campaign_id."
+
+    camp = rows[0]
+    if camp["campaign_status"] == "REMOVED":
+        return (
+            f"Campaign '{camp['campaign_name']}' (id {camp['campaign_id']}) "
+            f"esta REMOVED. Nao e possivel anexar RuleSet a campaign removida."
+        )
+
+    return None
+
+
+async def validate_geo_target_constants_for_value_rule(
+    manager_id: UUID,
+    session_id: UUID,
+    customer_id: str,
+    geo_paths: list[str],
+) -> str | None:
+    """Returns PT-BR error string if any geo target invalid for V4; else None.
+
+    Validates:
+    1. Each geo_target_constant resource_name exists
+    2. country_code == "BR" (V4 invariant — all V4 accounts in Brazil)
+
+    Performs 1 GAQL batch lookup. Returns first-offender error in INPUT order.
+
+    Sprint 3b.19B — pre-flight for create_conversion_value_rule_set when
+    rules include GEO_LOCATION condition_type.
+    """
+    if not geo_paths:
+        return None
+
+    # Single-quote-escape per GAQL string literal syntax (mirror 3b.19A helper)
+    quoted = ", ".join("'" + p.replace("'", "''") + "'" for p in geo_paths)
+    query = (
+        f"SELECT geo_target_constant.resource_name, "
+        f"geo_target_constant.country_code, geo_target_constant.name "
+        f"FROM geo_target_constant "
+        f"WHERE geo_target_constant.resource_name IN ({quoted})"
+    )
+
+    def _format(row: Any) -> dict[str, str]:
+        return {
+            "resource_name": row.geo_target_constant.resource_name,
+            "country_code": row.geo_target_constant.country_code,
+            "name": row.geo_target_constant.name,
+        }
+
+    rows = await run_report(
+        manager_id=manager_id,
+        session_id=session_id,
+        customer_id=customer_id,
+        query=query,
+        row_formatter=_format,
+        operation_name="validate_geo_target_constants_for_value_rule",
+    )
+
+    by_path = {r["resource_name"]: r for r in rows}
+
+    for path in geo_paths:
+        row = by_path.get(path)
+        if row is None:
+            return f"Geo target '{path}' nao encontrado. Verifique o resource path."
+        if row["country_code"] != "BR":
+            return (
+                f"Geo target '{row['name']}' ({path}) tem country_code "
+                f"'{row['country_code']}', esperado 'BR' (V4 invariant: todas "
+                "contas V4 sao do Brasil)."
+            )
+
+    return None
