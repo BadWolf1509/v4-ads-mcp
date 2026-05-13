@@ -259,3 +259,145 @@ async def test_preview_includes_attachment_and_filter_flags(_ctx) -> None:
     assert preview["rule_count"] == 1
     assert preview["has_category_filter"] is True
     assert "ADD" in preview["operations"]
+
+
+@pytest.mark.asyncio
+async def test_customer_attachment_does_not_call_campaign_validator(_ctx) -> None:
+    """CUSTOMER attachment should NOT invoke campaign pre-flight."""
+    from src.mcp.tools.create_conversion_value_rule_set import (
+        create_conversion_value_rule_set,
+    )
+
+    campaign_validator = AsyncMock(return_value=None)
+    geo_validator = AsyncMock(return_value=None)
+
+    with (
+        patch(
+            "src.mcp.tools.create_conversion_value_rule_set.validate_campaign_for_value_rule_set",
+            campaign_validator,
+        ),
+        patch(
+            "src.mcp.tools.create_conversion_value_rule_set.validate_geo_target_constants_for_value_rule",
+            geo_validator,
+        ),
+        patch(
+            "src.mcp.tools.create_conversion_value_rule_set.create_pending",
+            AsyncMock(return_value="T"),
+        ),
+        patch("src.mcp.tools.create_conversion_value_rule_set.connection.get_pool") as mock_pool,
+    ):
+        mock_pool.return_value.acquire.return_value.__aenter__ = AsyncMock(return_value=None)
+        mock_pool.return_value.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        await create_conversion_value_rule_set(
+            {
+                "customer_id": "1234567890",
+                "attachment_type": "CUSTOMER",
+                "rules": [_device_rule()],
+            }
+        )
+
+    campaign_validator.assert_not_called()
+    geo_validator.assert_not_called()  # DEVICE rule has no geo
+
+
+@pytest.mark.asyncio
+async def test_geo_paths_dedup_cross_rules(_ctx) -> None:
+    """Two rules sharing same geo path → geo validator called with 1 unique path."""
+    from src.mcp.tools.create_conversion_value_rule_set import (
+        create_conversion_value_rule_set,
+    )
+
+    geo_validator = AsyncMock(return_value=None)
+
+    with (
+        patch(
+            "src.mcp.tools.create_conversion_value_rule_set.validate_campaign_for_value_rule_set",
+            AsyncMock(return_value=None),
+        ),
+        patch(
+            "src.mcp.tools.create_conversion_value_rule_set.validate_geo_target_constants_for_value_rule",
+            geo_validator,
+        ),
+        patch(
+            "src.mcp.tools.create_conversion_value_rule_set.create_pending",
+            AsyncMock(return_value="T"),
+        ),
+        patch("src.mcp.tools.create_conversion_value_rule_set.connection.get_pool") as mock_pool,
+    ):
+        mock_pool.return_value.acquire.return_value.__aenter__ = AsyncMock(return_value=None)
+        mock_pool.return_value.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        await create_conversion_value_rule_set(
+            {
+                "customer_id": "1234567890",
+                "attachment_type": "CUSTOMER",
+                "rules": [
+                    {
+                        "action": {"operation": "ADD", "value": 10.0},
+                        "condition_type": "GEO_LOCATION",
+                        "geo_condition": {
+                            "geo_target_constants": ["geoTargetConstants/20114"],
+                            "geo_match_type": "ANY",
+                        },
+                    },
+                    {
+                        "action": {"operation": "ADD", "value": 20.0},
+                        "condition_type": "GEO_LOCATION",
+                        "geo_condition": {
+                            "geo_target_constants": ["geoTargetConstants/20114"],
+                            "geo_match_type": "ANY",
+                        },
+                    },
+                ],
+            }
+        )
+
+    # Validator called once with deduped list (1 unique path, not 2)
+    assert geo_validator.call_count == 1
+    call_kwargs = geo_validator.call_args.kwargs
+    assert call_kwargs["geo_paths"] == ["geoTargetConstants/20114"]
+
+
+@pytest.mark.asyncio
+async def test_no_geo_rules_skips_geo_validator(_ctx) -> None:
+    """Only DEVICE/NO_CONDITION rules → geo validator NOT called."""
+    from src.mcp.tools.create_conversion_value_rule_set import (
+        create_conversion_value_rule_set,
+    )
+
+    geo_validator = AsyncMock(return_value=None)
+
+    with (
+        patch(
+            "src.mcp.tools.create_conversion_value_rule_set.validate_campaign_for_value_rule_set",
+            AsyncMock(return_value=None),
+        ),
+        patch(
+            "src.mcp.tools.create_conversion_value_rule_set.validate_geo_target_constants_for_value_rule",
+            geo_validator,
+        ),
+        patch(
+            "src.mcp.tools.create_conversion_value_rule_set.create_pending",
+            AsyncMock(return_value="T"),
+        ),
+        patch("src.mcp.tools.create_conversion_value_rule_set.connection.get_pool") as mock_pool,
+    ):
+        mock_pool.return_value.acquire.return_value.__aenter__ = AsyncMock(return_value=None)
+        mock_pool.return_value.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        await create_conversion_value_rule_set(
+            {
+                "customer_id": "1234567890",
+                "attachment_type": "CUSTOMER",
+                "rules": [
+                    _device_rule(),
+                    {
+                        "action": {"operation": "SET", "value": 50.0},
+                        "condition_type": "NO_CONDITION",
+                    },
+                ],
+            }
+        )
+
+    geo_validator.assert_not_called()

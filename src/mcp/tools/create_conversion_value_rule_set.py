@@ -118,6 +118,16 @@ _SCHEMA: dict[str, Any] = {
                         },
                     },
                 },
+                "allOf": [
+                    {
+                        "if": {"properties": {"condition_type": {"const": "DEVICE"}}},
+                        "then": {"required": ["device_condition"]},
+                    },
+                    {
+                        "if": {"properties": {"condition_type": {"const": "GEO_LOCATION"}}},
+                        "then": {"required": ["geo_condition"]},
+                    },
+                ],
             },
         },
     },
