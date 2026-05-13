@@ -54,3 +54,32 @@ def build_update_ad_group_bid(client: Any, customer_id: str, payload: dict[str, 
         )
         operations.append(op)
     return operations
+
+
+@register_builder("create_ad_group")
+def build_create_ad_group(client: Any, customer_id: str, payload: dict[str, Any]) -> list[Any]:
+    """payload: {ad_groups: [{campaign_id, name, type?, status?, cpc_bid_micros?}]}
+
+    Defaults: type=SEARCH_STANDARD, status=PAUSED. cpc_bid_micros optional
+    (only valid in MANUAL_CPC/ENHANCED_CPC campaigns — pre-flight in tool
+    validates via validate_parent_campaigns_for_ad_group_create).
+
+    Note: Google's AdGroup proto uses `type_` (trailing underscore) because
+    `type` is Python reserved word.
+    """
+    operations = []
+    campaign_service = client.get_service("CampaignService")
+    type_enum = client.enums.AdGroupTypeEnum
+    status_enum = client.enums.AdGroupStatusEnum
+    for ag_spec in payload["ad_groups"]:
+        op = client.get_type("MutateOperation")
+        ag_op = op.ad_group_operation
+        ag = ag_op.create
+        ag.name = ag_spec["name"]
+        ag.campaign = campaign_service.campaign_path(customer_id, ag_spec["campaign_id"])
+        ag.type_ = type_enum[ag_spec.get("type", "SEARCH_STANDARD")]
+        ag.status = status_enum[ag_spec.get("status", "PAUSED")]
+        if "cpc_bid_micros" in ag_spec:
+            ag.cpc_bid_micros = ag_spec["cpc_bid_micros"]
+        operations.append(op)
+    return operations
