@@ -516,9 +516,12 @@ async def validate_campaign_for_value_rule_set(
     Sprint 3b.19B — pre-flight for create_conversion_value_rule_set when
     attachment_type=CAMPAIGN.
     """
+    # int() cast: fail-fast on non-numeric input + defense against future callers
+    # bypassing schema validation. campaign.id is numeric so bare interpolation
+    # is safe (no quotes needed).
     query = (
         f"SELECT campaign.id, campaign.name, campaign.status "
-        f"FROM campaign WHERE campaign.id = {campaign_id}"
+        f"FROM campaign WHERE campaign.id = {int(campaign_id)}"
     )
 
     def _format(row: Any) -> dict[str, str]:

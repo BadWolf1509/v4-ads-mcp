@@ -154,3 +154,27 @@ async def test_validate_geo_targets_empty_list_returns_none(monkeypatch) -> None
         geo_paths=[],
     )
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_validate_geo_targets_single_quote_escape(monkeypatch) -> None:
+    """Path with embedded single-quote is doubled-escaped in GAQL (injection guard)."""
+    captured_query: list[str] = []
+
+    async def fake_run_report(**kwargs: Any) -> list[dict[str, str]]:
+        captured_query.append(kwargs["query"])
+        return []  # Force not-found path
+
+    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    result = await validate_geo_target_constants_for_value_rule(
+        manager_id=uuid4(),
+        session_id=uuid4(),
+        customer_id="1234567890",
+        geo_paths=["geoTargetConstants/O'Reilly"],
+    )
+    # Result is error (path won't match anything in real DB), but the
+    # critical assertion is GAQL was correctly escaped to prevent injection.
+    assert result is not None
+    assert len(captured_query) == 1
+    # Doubled-quote escape pattern: O''Reilly inside literal
+    assert "'geoTargetConstants/O''Reilly'" in captured_query[0]
