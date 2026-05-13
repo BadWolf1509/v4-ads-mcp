@@ -157,6 +157,13 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
             f"apply_audience: observation com >20 attachments ({target_count}) — confirmar",
         )
 
+    # Create ad_group — always CONFIRM (spec §7.1 creates sensitive)
+    if operation == "create_ad_group":
+        return RiskClassification(
+            RiskLevel.CONFIRM,
+            "create_ad_group: criacao de entidade(s) — sempre CONFIRM (spec §7.1)",
+        )
+
     # Remove audience — always CONFIRM (spec §7.1 "Remove qualquer coisa = sempre confirma")
     # Audience criterion removal can restore audience to delivery pool (if exclusion).
     # Symmetric with Sprint 3b.2 REMOVED policy principle.
