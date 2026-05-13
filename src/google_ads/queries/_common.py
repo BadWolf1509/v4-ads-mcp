@@ -363,3 +363,87 @@ async def validate_parent_ad_groups_for_rsa_create(
             )
 
     return None
+
+
+async def validate_existing_rsas_for_update(
+    manager_id: UUID,
+    session_id: UUID,
+    customer_id: str,
+    updates: list[dict[str, Any]],
+) -> str | None:
+    """Returns PT-BR error string if any ad fails validation; else None.
+
+    Validates per update spec:
+    1. Ad exists
+    2. ad.type == RESPONSIVE_SEARCH_AD (cannot update other types via this tool)
+    3. Parent ad_group.status != REMOVED
+    4. Parent campaign.advertising_channel_type IN {SEARCH, SEARCH_PARTNERS}
+
+    Performs 1 GAQL batch lookup for unique ad_ids.
+    Returns first-found offender error message.
+    """
+    ad_ids = list({u["ad_id"] for u in updates})
+    if not ad_ids:
+        return None
+
+    ids_clause = ", ".join(ad_ids)
+    query = (
+        f"SELECT ad_group_ad.ad.id, ad_group_ad.ad.type, "
+        f"ad_group.id, ad_group.name, ad_group.status, "
+        f"campaign.id, campaign.name, campaign.advertising_channel_type "
+        f"FROM ad_group_ad WHERE ad_group_ad.ad.id IN ({ids_clause})"
+    )
+
+    def _format(row: Any) -> dict[str, str]:
+        return {
+            "ad_id": str(row.ad_group_ad.ad.id),
+            "ad_type": row.ad_group_ad.ad.type.name,
+            "ad_group_id": str(row.ad_group.id),
+            "ad_group_name": row.ad_group.name,
+            "ad_group_status": row.ad_group.status.name,
+            "campaign_id": str(row.campaign.id),
+            "campaign_name": row.campaign.name,
+            "channel_type": row.campaign.advertising_channel_type.name,
+        }
+
+    rows = await run_report(
+        manager_id=manager_id,
+        session_id=session_id,
+        customer_id=customer_id,
+        query=query,
+        row_formatter=_format,
+        operation_name="validate_existing_rsas_for_update",
+    )
+
+    by_id = {r["ad_id"]: r for r in rows}
+    valid_channels = {"SEARCH", "SEARCH_PARTNERS"}
+
+    for u in updates:
+        aid = u["ad_id"]
+        ad = by_id.get(aid)
+
+        if ad is None:
+            return f"Ad {aid} nao encontrado na conta. Verifique o ad_id."
+
+        if ad["ad_type"] != "RESPONSIVE_SEARCH_AD":
+            return (
+                f"Ad {aid} tem type '{ad['ad_type']}', nao RESPONSIVE_SEARCH_AD. "
+                f"update_rsa so suporta RSAs — outros types (ETA legacy, Display, "
+                f"Video) precisam de tools dedicados."
+            )
+
+        if ad["ad_group_status"] == "REMOVED":
+            return (
+                f"Ad_group '{ad['ad_group_name']}' (id {ad['ad_group_id']}) parent "
+                f"do Ad {aid} esta REMOVED. Nao e possivel atualizar RSA em "
+                f"ad_group removido."
+            )
+
+        if ad["channel_type"] not in valid_channels:
+            return (
+                f"Campaign '{ad['campaign_name']}' (id {ad['campaign_id']}) parent "
+                f"do Ad {aid} tem channel_type '{ad['channel_type']}'. RSAs so "
+                f"funcionam em campaigns SEARCH ou SEARCH_PARTNERS."
+            )
+
+    return None
