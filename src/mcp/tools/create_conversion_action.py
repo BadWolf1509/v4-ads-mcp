@@ -33,8 +33,11 @@ from src.mcp.context import get_current
 from src.mcp.tools._registry import register_tool
 
 _CATEGORY_ENUM = [
+    # Sprint 3b.19A F17: "LEAD" REMOVED — not a valid enum value em google-ads v20
+    # (deprecated/removed). Use SUBMIT_LEAD_FORM (form submit) or PHONE_CALL_LEAD
+    # (call lead) ou IMPORTED_LEAD (CRM import) ou QUALIFIED_LEAD/CONVERTED_LEAD
+    # (lead lifecycle) — todos sao specific lead variants em vez do generico LEAD.
     "DEFAULT",
-    "LEAD",
     "PURCHASE",
     "SIGNUP",
     "SUBMIT_LEAD_FORM",
@@ -116,10 +119,12 @@ def _build_params_summary(actions: list[dict[str, Any]]) -> dict[str, Any]:
     description=(
         "Cria 1-5 ConversionActions no nivel customer. Cada action: name "
         "(1-100 chars) + category + type. Always-CONFIRM. Categorias suportadas "
-        "(18 V4-focused): LEAD, PURCHASE, SIGNUP, DEFAULT, SUBMIT_LEAD_FORM, "
-        "BOOK_APPOINTMENT, REQUEST_QUOTE, PHONE_CALL_LEAD, IMPORTED_LEAD, "
-        "QUALIFIED_LEAD, CONVERTED_LEAD, ADD_TO_CART, BEGIN_CHECKOUT, "
-        "SUBSCRIBE_PAID, DOWNLOAD, CONTACT, ENGAGEMENT, PAGE_VIEW. Tipos: "
+        "(17 V4-focused, sem o LEAD generico removido em google-ads v20): "
+        "PURCHASE, SIGNUP, DEFAULT, SUBMIT_LEAD_FORM (form submit, WhatsApp), "
+        "BOOK_APPOINTMENT, REQUEST_QUOTE, PHONE_CALL_LEAD (call lead), "
+        "IMPORTED_LEAD (CRM import), QUALIFIED_LEAD, CONVERTED_LEAD, "
+        "ADD_TO_CART, BEGIN_CHECKOUT, SUBSCRIBE_PAID, DOWNLOAD, CONTACT, "
+        "ENGAGEMENT, PAGE_VIEW. Tipos: "
         "WEBPAGE (tag manual install fora do escopo MCP), UPLOAD_CLICKS "
         "(offline conversion import — Standard Access required pra usar), "
         "UPLOAD_CALLS (offline call import). Defaults: status=ENABLED, "

@@ -23,7 +23,7 @@ async def test_returns_none_when_all_names_unique(monkeypatch) -> None:
         session_id=uuid4(),
         customer_id="1234567890",
         actions=[
-            {"name": "Lead WhatsApp", "category": "LEAD", "type": "WEBPAGE"},
+            {"name": "Lead WhatsApp", "category": "SUBMIT_LEAD_FORM", "type": "WEBPAGE"},
             {"name": "Compra Checkout", "category": "PURCHASE", "type": "WEBPAGE"},
         ],
     )
@@ -42,7 +42,7 @@ async def test_rejects_single_duplicate_name(monkeypatch) -> None:
         manager_id=uuid4(),
         session_id=uuid4(),
         customer_id="1234567890",
-        actions=[{"name": "Lead WhatsApp", "category": "LEAD", "type": "WEBPAGE"}],
+        actions=[{"name": "Lead WhatsApp", "category": "SUBMIT_LEAD_FORM", "type": "WEBPAGE"}],
     )
     assert result is not None
     assert "Lead WhatsApp" in result
@@ -65,7 +65,7 @@ async def test_rejects_first_offender_when_multiple_duplicates(monkeypatch) -> N
         session_id=uuid4(),
         customer_id="1234567890",
         actions=[
-            {"name": "Lead WhatsApp", "category": "LEAD", "type": "WEBPAGE"},
+            {"name": "Lead WhatsApp", "category": "SUBMIT_LEAD_FORM", "type": "WEBPAGE"},
             {"name": "Compra Checkout", "category": "PURCHASE", "type": "WEBPAGE"},
         ],
     )
@@ -104,5 +104,5 @@ async def test_gaql_exception_propagates(monkeypatch) -> None:
             manager_id=uuid4(),
             session_id=uuid4(),
             customer_id="1234567890",
-            actions=[{"name": "X", "category": "LEAD", "type": "WEBPAGE"}],
+            actions=[{"name": "X", "category": "SUBMIT_LEAD_FORM", "type": "WEBPAGE"}],
         )

@@ -40,7 +40,7 @@ async def test_returns_dry_run_with_token_on_happy_path(_ctx) -> None:
             {
                 "customer_id": "1234567890",
                 "conversion_actions": [
-                    {"name": "Lead Test", "category": "LEAD", "type": "WEBPAGE"}
+                    {"name": "Lead Test", "category": "SUBMIT_LEAD_FORM", "type": "WEBPAGE"}
                 ],
             }
         )
@@ -51,7 +51,7 @@ async def test_returns_dry_run_with_token_on_happy_path(_ctx) -> None:
     assert len(result["actions_preview"]) == 1
     preview = result["actions_preview"][0]
     assert preview["name"] == "Lead Test"
-    assert preview["category"] == "LEAD"
+    assert preview["category"] == "SUBMIT_LEAD_FORM"
     assert preview["type"] == "WEBPAGE"
 
 
@@ -68,7 +68,7 @@ async def test_returns_error_on_preflight_duplicate_name(_ctx) -> None:
             {
                 "customer_id": "1234567890",
                 "conversion_actions": [
-                    {"name": "Lead Test", "category": "LEAD", "type": "WEBPAGE"}
+                    {"name": "Lead Test", "category": "SUBMIT_LEAD_FORM", "type": "WEBPAGE"}
                 ],
             }
         )
@@ -101,13 +101,13 @@ async def test_blast_summary_format_single_action(_ctx) -> None:
             {
                 "customer_id": "1234567890",
                 "conversion_actions": [
-                    {"name": "Lead Test", "category": "LEAD", "type": "WEBPAGE"}
+                    {"name": "Lead Test", "category": "SUBMIT_LEAD_FORM", "type": "WEBPAGE"}
                 ],
             }
         )
 
     assert "Criar 1 conversion_action(s)" in result["blast_summary"]
-    assert "'LEAD': 1" in result["blast_summary"]
+    assert "'SUBMIT_LEAD_FORM': 1" in result["blast_summary"]
     assert "'WEBPAGE': 1" in result["blast_summary"]
 
 
@@ -133,16 +133,17 @@ async def test_batch_3_actions_summary_distribution(_ctx) -> None:
             {
                 "customer_id": "1234567890",
                 "conversion_actions": [
-                    {"name": "L1", "category": "LEAD", "type": "WEBPAGE"},
-                    {"name": "L2", "category": "LEAD", "type": "UPLOAD_CLICKS"},
+                    {"name": "L1", "category": "SUBMIT_LEAD_FORM", "type": "WEBPAGE"},
+                    {"name": "L2", "category": "SUBMIT_LEAD_FORM", "type": "UPLOAD_CLICKS"},
                     {"name": "P1", "category": "PURCHASE", "type": "WEBPAGE"},
+                    # NOTE: F17 fix — LEAD removed from v20 schema. Using SUBMIT_LEAD_FORM x2.
                 ],
             }
         )
 
     assert "Criar 3 conversion_action(s)" in result["blast_summary"]
-    # Counter dict str format: {'LEAD': 2, 'PURCHASE': 1}
-    assert "'LEAD': 2" in result["blast_summary"]
+    # Counter dict str format: {'SUBMIT_LEAD_FORM': 2, 'PURCHASE': 1}
+    assert "'SUBMIT_LEAD_FORM': 2" in result["blast_summary"]
     assert "'PURCHASE': 1" in result["blast_summary"]
     assert "'WEBPAGE': 2" in result["blast_summary"]
     assert "'UPLOAD_CLICKS': 1" in result["blast_summary"]
@@ -179,7 +180,7 @@ async def test_preview_includes_value_settings_flag(_ctx) -> None:
                             "always_use_default_value": True,
                         },
                     },
-                    {"name": "L1", "category": "LEAD", "type": "WEBPAGE"},
+                    {"name": "L1", "category": "SUBMIT_LEAD_FORM", "type": "WEBPAGE"},
                 ],
             }
         )

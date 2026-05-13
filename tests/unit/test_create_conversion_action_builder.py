@@ -7,7 +7,7 @@ from tests.unit.fixtures.proto_capture import make_capture_client
 
 
 def _sample_action(**overrides):
-    base = {"name": "Lead Test", "category": "LEAD", "type": "WEBPAGE"}
+    base = {"name": "Lead Test", "category": "SUBMIT_LEAD_FORM", "type": "WEBPAGE"}
     base.update(overrides)
     return base
 
@@ -23,7 +23,7 @@ def test_builder_sets_name_category_type() -> None:
     assert len(ops) == 1
     op = ops[0]
     assert op.field("conversion_action_operation.create.name") == "Lead Test"
-    assert op.field("conversion_action_operation.create.category") == "CAT_LEAD"
+    assert op.field("conversion_action_operation.create.category") == "CAT_SUBMIT_LEAD_FORM"
     assert op.field("conversion_action_operation.create.type_") == "TYPE_WEBPAGE"
 
 
@@ -100,7 +100,7 @@ def test_builder_batch_of_3_mixed_categories() -> None:
         "1234567890",
         {
             "conversion_actions": [
-                _sample_action(name="A1", category="LEAD"),
+                _sample_action(name="A1", category="SUBMIT_LEAD_FORM"),
                 _sample_action(name="A2", category="PURCHASE", type="UPLOAD_CLICKS"),
                 _sample_action(name="A3", category="SIGNUP", type="UPLOAD_CALLS"),
             ]
@@ -108,7 +108,7 @@ def test_builder_batch_of_3_mixed_categories() -> None:
     )
     assert len(ops) == 3
     assert ops[0].field("conversion_action_operation.create.name") == "A1"
-    assert ops[0].field("conversion_action_operation.create.category") == "CAT_LEAD"
+    assert ops[0].field("conversion_action_operation.create.category") == "CAT_SUBMIT_LEAD_FORM"
     assert ops[0].field("conversion_action_operation.create.type_") == "TYPE_WEBPAGE"
     assert ops[1].field("conversion_action_operation.create.name") == "A2"
     assert ops[1].field("conversion_action_operation.create.category") == "CAT_PURCHASE"

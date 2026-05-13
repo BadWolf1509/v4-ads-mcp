@@ -153,7 +153,7 @@ async def test_create_conversion_action_full_cycle_audits(db, session_ctx) -> No
             {
                 "customer_id": "1234567890",
                 "conversion_actions": [
-                    {"name": "Test Lead Int", "category": "LEAD", "type": "WEBPAGE"}
+                    {"name": "Test Lead Int", "category": "SUBMIT_LEAD_FORM", "type": "WEBPAGE"}
                 ],
             }
         )
@@ -193,7 +193,7 @@ async def test_create_conversion_action_full_cycle_audits(db, session_ctx) -> No
     summary_d = json.loads(summary) if isinstance(summary, str) else summary
     assert summary_d == {
         "count": 1,
-        "categories": {"LEAD": 1},
+        "categories": {"SUBMIT_LEAD_FORM": 1},
         "types": {"WEBPAGE": 1},
         "with_default_value": 0,
         "with_always_use_default": 0,

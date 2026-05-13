@@ -8,6 +8,14 @@
 **Spec:** `docs/superpowers/specs/2026-05-13-sprint-3b.19A-design.md`
 **Plan:** `docs/superpowers/plans/2026-05-13-sprint-3b.19A-plan.md`
 
+## F17 finding (smoke T1 initial run, fixed via Sprint 3b.19A.1)
+
+T1 inicial falhou com `KeyError: 'LEAD'` (production logs `mutation_raw_exception`). Root cause: `LEAD` foi REMOVIDO do `ConversionActionCategoryEnum` em google-ads SDK v20 (era value 6 historicamente; agora há gap entre SIGNUP=5 e DOWNLOAD=7). Sprint design assumia LEAD válido (legacy docs/common knowledge); context7 não surfacou esse gap pois o exemplo de docs cobriu apenas `type_` (WEBPAGE).
+
+**Fix:** removido `LEAD` do `_CATEGORY_ENUM` whitelist em `create_conversion_action.py`. Smoke runbook + tests atualizados pra usar `SUBMIT_LEAD_FORM` (equivalente semântico mais próximo: form submit via WhatsApp/site). Outras alternativas pro V4: `PHONE_CALL_LEAD` (call-driven), `IMPORTED_LEAD` (CRM), `QUALIFIED_LEAD`/`CONVERTED_LEAD` (lifecycle).
+
+Tool count stays at 45. Schema agora tem 17 categorias (não 18).
+
 ## Pre-flight
 
 - [ ] Deploy lands successfully
@@ -25,7 +33,7 @@ create_conversion_action(
   customer_id="1163862076",
   conversion_actions=[{
     "name": "[TEST 3b.19A] Lead WhatsApp Site",
-    "category": "LEAD",
+    "category": "SUBMIT_LEAD_FORM",
     "type": "WEBPAGE"
   }]
 )
@@ -33,11 +41,11 @@ create_conversion_action(
 
 Expected:
 - [ ] `status: "dry_run"` com `confirmation_token`
-- [ ] `actions_preview[0]` tem name + category=LEAD + type=WEBPAGE + counting_type=ONE_PER_CLICK + has_value_settings=False
-- [ ] `blast_summary` mencionando "Criar 1 conversion_action(s): categorias {'LEAD': 1}, tipos {'WEBPAGE': 1}."
+- [ ] `actions_preview[0]` tem name + category=SUBMIT_LEAD_FORM + type=WEBPAGE + counting_type=ONE_PER_CLICK + has_value_settings=False
+- [ ] `blast_summary` mencionando "Criar 1 conversion_action(s): categorias {'SUBMIT_LEAD_FORM': 1}, tipos {'WEBPAGE': 1}."
 - [ ] Apply via `apply_change` → `status: "applied"`, `applied_count: 1`, `google_request_id` presente
 - [ ] **F13 critical:** `resource_names` returns `["customers/1163862076/conversionActions/<new_id>"]` (top-level ConversionAction format) — TERCEIRA validação F13 in-prod (1ª create_rsa via ad_group_ad_operation, 2ª update_rsa via ad_operation, 3ª agora via conversion_action_operation)
-- [ ] GAQL verify: `SELECT conversion_action.id, conversion_action.name, conversion_action.category, conversion_action.type, conversion_action.status FROM conversion_action WHERE conversion_action.name = '[TEST 3b.19A] Lead WhatsApp Site'` retorna 1 row com status=ENABLED, type=WEBPAGE, category=LEAD
+- [ ] GAQL verify: `SELECT conversion_action.id, conversion_action.name, conversion_action.category, conversion_action.type, conversion_action.status FROM conversion_action WHERE conversion_action.name = '[TEST 3b.19A] Lead WhatsApp Site'` retorna 1 row com status=ENABLED, type=WEBPAGE, category=SUBMIT_LEAD_FORM
 
 ## Test T2 — Schema rejection (missing required `category`)
 
@@ -61,7 +69,7 @@ create_conversion_action(
   customer_id="1163862076",
   conversion_actions=[{
     "name": "[TEST 3b.19A] Lead WhatsApp Site",
-    "category": "LEAD",
+    "category": "SUBMIT_LEAD_FORM",
     "type": "WEBPAGE"
   }]
 )
