@@ -108,6 +108,7 @@ def test_all_phase_2_tools_registered():
         "get_my_audit_log",
         # create patterns
         "create_rsa",
+        "create_conversion_action",
         # update patterns
         "update_rsa",
     }
@@ -162,6 +163,7 @@ def test_no_unexpected_tools():
         "get_my_rate_limit_status",
         "get_my_audit_log",
         "create_rsa",
+        "create_conversion_action",
         "update_rsa",
     }
     actual = {t.name for t in all_tools()}
