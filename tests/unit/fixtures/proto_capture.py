@@ -189,6 +189,8 @@ def make_capture_client() -> MagicMock:
     camp_crit_service.campaign_criterion_path = lambda cid, c_id, crit_id: (
         f"customers/{cid}/campaignCriteria/{c_id}~{crit_id}"
     )
+    ad_service = MagicMock()
+    ad_service.ad_path = lambda cid, ad_id: f"customers/{cid}/ads/{ad_id}"
 
     def get_service(name: str) -> Any:
         if name == "AdGroupService":
@@ -199,6 +201,8 @@ def make_capture_client() -> MagicMock:
             return ag_crit_service
         if name == "CampaignCriterionService":
             return camp_crit_service
+        if name == "AdService":
+            return ad_service
         return MagicMock()
 
     client.get_service = get_service
