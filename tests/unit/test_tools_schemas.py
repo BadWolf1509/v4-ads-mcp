@@ -108,6 +108,8 @@ def test_all_phase_2_tools_registered():
         "get_my_audit_log",
         # create patterns
         "create_rsa",
+        # update patterns
+        "update_rsa",
     }
     actual = {t.name for t in all_tools()}
     missing = expected - actual
@@ -160,6 +162,7 @@ def test_no_unexpected_tools():
         "get_my_rate_limit_status",
         "get_my_audit_log",
         "create_rsa",
+        "update_rsa",
     }
     actual = {t.name for t in all_tools()}
     unexpected = actual - expected

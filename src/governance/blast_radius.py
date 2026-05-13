@@ -171,6 +171,13 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
             "create_rsa: criacao de RSA(s) — sempre CONFIRM (spec §7.1)",
         )
 
+    # Update RSA — always CONFIRM (spec §7.1)
+    elif operation == "update_rsa":
+        return RiskClassification(
+            RiskLevel.CONFIRM,
+            "update_rsa: modificacao de RSA(s) existente(s) — sempre CONFIRM (spec §7.1)",
+        )
+
     # Remove audience — always CONFIRM (spec §7.1 "Remove qualquer coisa = sempre confirma")
     # Audience criterion removal can restore audience to delivery pool (if exclusion).
     # Symmetric with Sprint 3b.2 REMOVED policy principle.
