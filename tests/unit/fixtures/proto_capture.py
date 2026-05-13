@@ -172,8 +172,10 @@ def make_capture_client() -> MagicMock:
     - AdGroupCriterionService.ad_group_criterion_path(cid, ag_id, crit_id)
       → compound ~-separated criterion path
     - CampaignCriterionService.campaign_criterion_path(cid, c_id, crit_id)
-      → compound ~-separated criterion path (Sprint 3b.6 A5 fix — used to be
-      flat in old code, corrected to compound matching SDK).
+      → compound ~-separated criterion path (Sprint 3b.6 A5 fix)
+    - AdService.ad_path(cid, ad_id) → top-level ad path (Sprint 3b.18)
+    - ConversionActionService.conversion_action_path(cid, ca_id) → conversion
+      action path (Sprint 3b.19A)
     """
     client = MagicMock()
 
@@ -191,6 +193,10 @@ def make_capture_client() -> MagicMock:
     )
     ad_service = MagicMock()
     ad_service.ad_path = lambda cid, ad_id: f"customers/{cid}/ads/{ad_id}"
+    conv_action_service = MagicMock()
+    conv_action_service.conversion_action_path = lambda cid, ca_id: (
+        f"customers/{cid}/conversionActions/{ca_id}"
+    )
 
     def get_service(name: str) -> Any:
         if name == "AdGroupService":
@@ -203,10 +209,30 @@ def make_capture_client() -> MagicMock:
             return camp_crit_service
         if name == "AdService":
             return ad_service
+        if name == "ConversionActionService":
+            return conv_action_service
         return MagicMock()
 
     client.get_service = get_service
     client.get_type = lambda _name: CapturedOp()
     client.enums.AdGroupCriterionStatusEnum.ENABLED = "AG_ENABLED"
     client.enums.CampaignCriterionStatusEnum.ENABLED = "CAMP_ENABLED"
+
+    # ConversionAction enums (Sprint 3b.19A). Return enum name as scalar string
+    # so test assertions can check value passed correctly.
+    class _EnumDict:
+        def __init__(self, prefix: str) -> None:
+            self._prefix = prefix
+
+        def __getitem__(self, key: str) -> str:
+            return f"{self._prefix}_{key}"
+
+        def __getattr__(self, key: str) -> str:
+            return f"{self._prefix}_{key}"
+
+    client.enums.ConversionActionCategoryEnum = _EnumDict("CAT")
+    client.enums.ConversionActionTypeEnum = _EnumDict("TYPE")
+    client.enums.ConversionActionStatusEnum = _EnumDict("STATUS")
+    client.enums.ConversionActionCountingTypeEnum = _EnumDict("COUNTING")
+
     return client
