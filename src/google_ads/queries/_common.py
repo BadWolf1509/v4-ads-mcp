@@ -447,3 +447,55 @@ async def validate_existing_rsas_for_update(
             )
 
     return None
+
+
+async def validate_conversion_action_create(
+    manager_id: UUID,
+    session_id: UUID,
+    customer_id: str,
+    actions: list[dict[str, Any]],
+) -> str | None:
+    """Returns PT-BR error string if any ConversionAction name already exists; else None.
+
+    Validates name uniqueness per Google API constraint:
+    - ConversionAction.name is unique per customer (server-side enforced)
+
+    Performs 1 GAQL batch lookup over input names. Returns first-found
+    offender error message in INPUT order (deterministic UX).
+
+    Mirrors Sprint 3b.16 validate_parent_ad_groups_for_rsa_create pattern.
+    """
+    if not actions:
+        return None
+
+    names = [a["name"] for a in actions]
+    # Single-quote-escape per GAQL string literal syntax (doubled-quote pattern,
+    # same as SQL). Names may contain "'" → must be escaped to avoid injection.
+    quoted = ", ".join("'" + n.replace("'", "''") + "'" for n in names)
+    query = (
+        f"SELECT conversion_action.name FROM conversion_action "
+        f"WHERE conversion_action.name IN ({quoted})"
+    )
+
+    def _format(row: Any) -> dict[str, str]:
+        return {"conversion_action_name": row.conversion_action.name}
+
+    rows = await run_report(
+        manager_id=manager_id,
+        session_id=session_id,
+        customer_id=customer_id,
+        query=query,
+        row_formatter=_format,
+        operation_name="validate_conversion_action_create",
+    )
+
+    existing = {r["conversion_action_name"] for r in rows}
+
+    for a in actions:
+        if a["name"] in existing:
+            return (
+                f"ConversionAction '{a['name']}' ja existe na conta. "
+                "Use outro nome (nomes sao unicos por customer)."
+            )
+
+    return None
