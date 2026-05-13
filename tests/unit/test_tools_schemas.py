@@ -19,6 +19,43 @@ def test_every_tool_has_valid_schema():
         jsonschema.Draft202012Validator.check_schema(tool.input_schema)
 
 
+def test_no_composition_keywords_in_any_schema():
+    """Anthropic Messages API rejects oneOf/allOf/anyOf in tool input_schema.
+
+    Empirical finding Sprint 3b.19B.1: the API error message says "at the top
+    level" but rejects these keywords at ANY nesting level (top-level of root
+    AND top-level of subschemas inside `items`/`properties.*`). Two tools
+    shipped with violations broke the entire Claude session via 400 error:
+    - Sprint 3b.18 update_rsa: anyOf in properties.updates.items
+    - Sprint 3b.19B create_conversion_value_rule_set: allOf at root + in items
+
+    Walks every registered tool's schema recursively. Express runtime-only
+    constraints (cross-field, conditional requireds) inside the tool body
+    instead — both above were ported to pre-flight checks.
+    """
+    forbidden = {"oneOf", "allOf", "anyOf"}
+    offenders: list[tuple[str, str]] = []
+
+    def walk(tool_name: str, node: object, path: str) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key in forbidden:
+                    offenders.append((tool_name, f"{path}.{key}"))
+                walk(tool_name, value, f"{path}.{key}")
+        elif isinstance(node, list):
+            for i, item in enumerate(node):
+                walk(tool_name, item, f"{path}[{i}]")
+
+    for tool in all_tools():
+        walk(tool.name, tool.input_schema, "input_schema")
+
+    assert not offenders, (
+        "Schemas with oneOf/allOf/anyOf rejected by Anthropic API "
+        "(see Sprint 3b.19B.1 lesson):\n"
+        + "\n".join(f"  {name}: {path}" for name, path in offenders)
+    )
+
+
 def test_registered_tool_count_matches_files_on_disk():
     """Regression for Sprints 3b.12-3b.14 bug: manual import list lagged behind
     actual files, leaving 3 tools dead in production despite tests passing

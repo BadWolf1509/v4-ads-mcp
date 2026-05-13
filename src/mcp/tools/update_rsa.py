@@ -6,8 +6,10 @@ field_mask).
 
 Pre-flight validates ad existence + RSA type + parent ad_group/campaign
 context. Same JSONSchema rules as create_rsa for individual fields
-(headlines 3-15 × 30 chars, etc) but all mutable fields optional, with
-anyOf enforcing at least one provided.
+(headlines 3-15 x 30 chars, etc) but all mutable fields optional. The
+"at least one mutable field per update" constraint is enforced at runtime
+in the tool body (Sprint 3b.19B.1: top-level anyOf is rejected by the
+Anthropic Messages API; schema can't express it declaratively).
 """
 
 from collections import Counter
@@ -19,6 +21,28 @@ from src.governance.blast_radius import classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
 from src.mcp.tools._registry import register_tool
+
+_MUTABLE_FIELDS = ("headlines", "descriptions", "final_urls", "path1", "path2")
+
+
+def _validate_updates_have_mutable_field(
+    updates: list[dict[str, Any]],
+) -> str | None:
+    """Returns PT-BR error if any update lacks all mutable fields; else None.
+
+    Replaces schema-level anyOf (rejected by Anthropic API — see Sprint
+    3b.19B.1). First-found-offender semantics mirror Sprint 3b.5 pre-flight
+    pattern for consistent UX.
+    """
+    for u in updates:
+        if not any(f in u for f in _MUTABLE_FIELDS):
+            fields = ", ".join(_MUTABLE_FIELDS)
+            return (
+                f"Update do ad_id {u['ad_id']} sem nenhum campo mutavel. "
+                f"Forneca ao menos um de: {fields}."
+            )
+    return None
+
 
 _SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -61,13 +85,6 @@ _SCHEMA: dict[str, Any] = {
                     "path2": {"type": "string", "maxLength": 15},
                 },
                 "required": ["ad_id"],
-                "anyOf": [
-                    {"required": ["headlines"]},
-                    {"required": ["descriptions"]},
-                    {"required": ["final_urls"]},
-                    {"required": ["path1"]},
-                    {"required": ["path2"]},
-                ],
                 "additionalProperties": False,
             },
         },
@@ -110,6 +127,10 @@ async def update_rsa(args: dict[str, Any]) -> dict[str, Any]:
     customer_id = args["customer_id"]
     updates = args["updates"]
     target_count = len(updates)
+
+    shape_error = _validate_updates_have_mutable_field(updates)
+    if shape_error:
+        return {"status": "error", "error": shape_error, "operation": "update_rsa"}
 
     error = await validate_existing_rsas_for_update(
         manager_id=ctx.manager_id,

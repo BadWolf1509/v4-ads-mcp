@@ -118,26 +118,40 @@ _SCHEMA: dict[str, Any] = {
                         },
                     },
                 },
-                "allOf": [
-                    {
-                        "if": {"properties": {"condition_type": {"const": "DEVICE"}}},
-                        "then": {"required": ["device_condition"]},
-                    },
-                    {
-                        "if": {"properties": {"condition_type": {"const": "GEO_LOCATION"}}},
-                        "then": {"required": ["geo_condition"]},
-                    },
-                ],
             },
         },
     },
-    "allOf": [
-        {
-            "if": {"properties": {"attachment_type": {"const": "CAMPAIGN"}}},
-            "then": {"required": ["campaign_id"]},
-        }
-    ],
 }
+
+
+def _validate_payload_shape(args: dict[str, Any]) -> str | None:
+    """Returns PT-BR error if conditional shape rules violated; else None.
+
+    Replaces schema-level allOf+if/then (rejected by Anthropic API — see
+    Sprint 3b.19B.1). Enforces:
+    - attachment_type=CAMPAIGN requires campaign_id
+    - condition_type=DEVICE requires device_condition
+    - condition_type=GEO_LOCATION requires geo_condition
+    """
+    if args["attachment_type"] == "CAMPAIGN" and "campaign_id" not in args:
+        return (
+            "attachment_type=CAMPAIGN requer campaign_id no payload. "
+            "Use CUSTOMER para anexar ao customer inteiro, ou forneca "
+            "campaign_id."
+        )
+    for i, rule in enumerate(args["rules"]):
+        ctype = rule["condition_type"]
+        if ctype == "DEVICE" and "device_condition" not in rule:
+            return (
+                f"rules[{i}] tem condition_type=DEVICE mas falta device_condition. "
+                f"Forneca device_condition.device_types ou use NO_CONDITION."
+            )
+        if ctype == "GEO_LOCATION" and "geo_condition" not in rule:
+            return (
+                f"rules[{i}] tem condition_type=GEO_LOCATION mas falta geo_condition. "
+                f"Forneca geo_condition.geo_target_constants ou use NO_CONDITION."
+            )
+    return None
 
 
 def _build_params_summary(payload: dict[str, Any]) -> dict[str, Any]:
@@ -176,6 +190,14 @@ async def create_conversion_value_rule_set(args: dict[str, Any]) -> dict[str, An
     attachment_type = args["attachment_type"]
     rules = args["rules"]
     target_count = len(rules) + 1  # N rules + 1 set
+
+    shape_error = _validate_payload_shape(args)
+    if shape_error:
+        return {
+            "status": "error",
+            "error": shape_error,
+            "operation": "create_conversion_value_rule_set",
+        }
 
     # Pre-flight 1: campaign (if CAMPAIGN attachment)
     if attachment_type == "CAMPAIGN":

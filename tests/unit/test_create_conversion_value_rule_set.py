@@ -360,6 +360,88 @@ async def test_geo_paths_dedup_cross_rules(_ctx) -> None:
 
 
 @pytest.mark.asyncio
+async def test_rejects_campaign_attachment_without_campaign_id(_ctx) -> None:
+    """Sprint 3b.19B.1: schema-level allOf root removed (Anthropic API rejects).
+    Constraint moved to runtime — attachment_type=CAMPAIGN without campaign_id
+    returns structured PT-BR error before any pre-flight call.
+    """
+    from src.mcp.tools.create_conversion_value_rule_set import (
+        create_conversion_value_rule_set,
+    )
+
+    campaign_validator = AsyncMock(return_value=None)
+
+    with patch(
+        "src.mcp.tools.create_conversion_value_rule_set.validate_campaign_for_value_rule_set",
+        campaign_validator,
+    ):
+        result = await create_conversion_value_rule_set(
+            {
+                "customer_id": "1234567890",
+                "attachment_type": "CAMPAIGN",
+                "rules": [_device_rule()],
+            }
+        )
+
+    assert result["status"] == "error"
+    assert "campaign_id" in result["error"]
+    assert result["operation"] == "create_conversion_value_rule_set"
+    # Validation must short-circuit before pre-flight call (no live API hit)
+    campaign_validator.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_rejects_device_condition_type_without_device_condition(_ctx) -> None:
+    """Sprint 3b.19B.1: schema-level allOf-items removed. Runtime check
+    enforces condition_type=DEVICE → device_condition required.
+    """
+    from src.mcp.tools.create_conversion_value_rule_set import (
+        create_conversion_value_rule_set,
+    )
+
+    result = await create_conversion_value_rule_set(
+        {
+            "customer_id": "1234567890",
+            "attachment_type": "CUSTOMER",
+            "rules": [
+                {
+                    "action": {"operation": "ADD", "value": 10.0},
+                    "condition_type": "DEVICE",
+                }
+            ],
+        }
+    )
+
+    assert result["status"] == "error"
+    assert "device_condition" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_rejects_geo_condition_type_without_geo_condition(_ctx) -> None:
+    """Sprint 3b.19B.1: condition_type=GEO_LOCATION → geo_condition required
+    via runtime check (was allOf-items before)."""
+    from src.mcp.tools.create_conversion_value_rule_set import (
+        create_conversion_value_rule_set,
+    )
+
+    result = await create_conversion_value_rule_set(
+        {
+            "customer_id": "1234567890",
+            "attachment_type": "CUSTOMER",
+            "rules": [
+                {
+                    "action": {"operation": "ADD", "value": 10.0},
+                    "condition_type": "GEO_LOCATION",
+                }
+            ],
+        }
+    )
+
+    assert result["status"] == "error"
+    assert "geo_condition" in result["error"]
+
+
+@pytest.mark.asyncio
 async def test_no_geo_rules_skips_geo_validator(_ctx) -> None:
     """Only DEVICE/NO_CONDITION rules → geo validator NOT called."""
     from src.mcp.tools.create_conversion_value_rule_set import (
