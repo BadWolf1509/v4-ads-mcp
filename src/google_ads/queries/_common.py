@@ -200,3 +200,93 @@ async def validate_manual_cpc_strategy(
                 f"targeting via outras tools."
             )
     return None
+
+
+async def validate_parent_campaigns_for_ad_group_create(
+    manager_id: UUID,
+    session_id: UUID,
+    customer_id: str,
+    ad_groups: list[dict[str, Any]],
+) -> str | None:
+    """Returns PT-BR error string if any parent campaign fails validation; else None.
+
+    Validates per ad_group spec:
+    1. Parent campaign exists
+    2. campaign.status != REMOVED
+    3. ad_group.type matches campaign.advertising_channel_type
+       (SEARCH_STANDARD → SEARCH; SHOPPING_PRODUCT_ADS → SHOPPING)
+    4. If cpc_bid_micros provided, campaign.bidding_strategy_type IN
+       {MANUAL_CPC, ENHANCED_CPC} (F12 lesson — Sprint 3b.8)
+
+    Performs 1 GAQL batch lookup for all unique campaign_ids.
+    Returns first-found offender error message (matches Sprint 3b.5 A3 pattern).
+    """
+    campaign_ids = list({ag["campaign_id"] for ag in ad_groups})
+    if not campaign_ids:
+        return None
+
+    ids_clause = ", ".join(campaign_ids)
+    query = (
+        f"SELECT campaign.id, campaign.name, campaign.status, "
+        f"campaign.advertising_channel_type, campaign.bidding_strategy_type "
+        f"FROM campaign WHERE campaign.id IN ({ids_clause})"
+    )
+
+    def _format(row: Any) -> dict[str, str]:
+        return {
+            "campaign_id": str(row.campaign.id),
+            "campaign_name": row.campaign.name,
+            "status": row.campaign.status.name,
+            "channel_type": row.campaign.advertising_channel_type.name,
+            "strategy": row.campaign.bidding_strategy_type.name,
+        }
+
+    rows = await run_report(
+        manager_id=manager_id,
+        session_id=session_id,
+        customer_id=customer_id,
+        query=query,
+        row_formatter=_format,
+        operation_name="validate_parent_campaigns_for_ad_group_create",
+    )
+
+    by_id = {r["campaign_id"]: r for r in rows}
+
+    type_to_channel = {
+        "SEARCH_STANDARD": "SEARCH",
+        "SHOPPING_PRODUCT_ADS": "SHOPPING",
+    }
+    manual_strategies = {"MANUAL_CPC", "ENHANCED_CPC"}
+
+    for ag in ad_groups:
+        cid = ag["campaign_id"]
+        camp = by_id.get(cid)
+
+        if camp is None:
+            return f"Campaign {cid} nao encontrada na conta. Verifique o campaign_id."
+
+        if camp["status"] == "REMOVED":
+            return (
+                f"Campaign '{camp['campaign_name']}' (id {cid}) esta REMOVED. "
+                f"Nao e possivel criar ad_group em campaign removida."
+            )
+
+        ag_type = ag.get("type", "SEARCH_STANDARD")
+        expected_channel = type_to_channel.get(ag_type)
+        if expected_channel and camp["channel_type"] != expected_channel:
+            return (
+                f"Ad_group type '{ag_type}' incompativel com campaign "
+                f"'{camp['campaign_name']}' (id {cid}) — advertising_channel_type "
+                f"= '{camp['channel_type']}'. Use type matching o canal."
+            )
+
+        if "cpc_bid_micros" in ag and camp["strategy"] not in manual_strategies:
+            return (
+                f"Campaign '{camp['campaign_name']}' (id {cid}) usa "
+                f"bidding_strategy_type '{camp['strategy']}'. cpc_bid_micros "
+                f"sera ignorado silenciosamente pela Google nesta estrategia "
+                f"(Sprint 3b.8 F12 lesson). Remova cpc_bid_micros do payload "
+                f"ou mude campaign para MANUAL_CPC."
+            )
+
+    return None
