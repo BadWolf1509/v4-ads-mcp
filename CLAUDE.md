@@ -181,6 +181,35 @@ deferred — only the audiences builder has been retrofitted (Sprint 3b.5). The 
 builders empirically work in production, so retrofit is a YAGNI candidate unless a specific
 bug is suspected.
 
+### Pre-flight test convention (post-Sprint 3b.8)
+
+When adding a pre-flight call to an existing mutate tool — especially one that
+invokes `run_report` via a shared helper in `src/google_ads/queries/_common.py` —
+the existing integration tests MUST mock the new helper. Pattern:
+
+```python
+with patch(
+    "src.mcp.tools.<your_tool>.<helper_name>",
+    AsyncMock(return_value=None),  # pre-flight passes
+):
+    ...
+```
+
+Why this matters: the helper's `run_report` import lives in `_common.py`
+namespace, NOT the tool's namespace. Existing test patches targeting
+`src.mcp.tools.<tool>.run_report` do NOT cover the pre-flight call site.
+
+Bug class recorrente — appeared in Sprint 3b.5 (commit `3c23fc5`,
+`apply_audience` pre-flight) and Sprint 3b.8 (commit `5fa1fd3`,
+`update_keyword_bid` + `update_ad_group_bid` pre-flight). Both shipped to
+main + caught by CI (DB integration step) but missed by local
+`check_pre_push.py` (fast script doesn't run DB integration tests).
+
+Mitigation: before pushing a pre-flight change, run
+`python scripts/check_pre_push_full.py` (Docker required) to catch this
+class locally. Alternative: rely on CI as catch-all + plan for 1 follow-up
+fix commit if CI red.
+
 ### Deploy/ops flow
 
 1. Code change locally → ruff + format + mypy + pytest pass
@@ -256,7 +285,7 @@ Operational mode (audit, access matrix, /admin/managers, /admin/accounts, /admin
 
 ## Don't do
 
-- Don't push to main without running `python scripts/check_pre_push.py` first. CI catches lint/type/test failures but it wastes a deploy cycle and may trigger rollback if integration tests reveal a bug. Lesson Sprint 3b.5: gate gap (apenas unit pre-push) deixou 2 integration tests quebrados escaparem para CI.
+- Don't push to main without running `python scripts/check_pre_push.py` first. CI catches lint/type/test failures but it wastes a deploy cycle and may trigger rollback if integration tests reveal a bug. Lesson Sprint 3b.5/3b.8: pre-flight additions to existing mutate tools require the OPT-IN full sweep (`check_pre_push_full.py`, Docker required) — fast script doesn't run DB integration tests where pre-flight mock gaps surface.
 - Don't add new dependencies without checking the project's "no build step" principle. We have Tailwind via CDN, HTMX via CDN — no node, no Vite, no React.
 - Don't modify production data via raw SQL on Supabase without extreme care. Use Python script with explicit `BEGIN/COMMIT` and idempotency check.
 - Don't skip the `superpowers:brainstorming` skill before creative work even if the request seems "simple."
