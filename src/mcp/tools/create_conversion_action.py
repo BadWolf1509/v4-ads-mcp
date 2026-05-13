@@ -33,15 +33,17 @@ from src.mcp.context import get_current
 from src.mcp.tools._registry import register_tool
 
 _CATEGORY_ENUM = [
-    # Sprint 3b.19A removed values (validated empiricamente em smoke runbook):
-    # - "LEAD" (F17): removido do SDK v20 — era value 6 historicamente, agora
-    #   há gap entre SIGNUP=5 e DOWNLOAD=7.
+    # Sprint 3b.19A removed values (validated empiricamente em smoke runbook,
+    # including per-value probe em 3b.19A.1):
+    # - "LEAD" (F17): removido do SDK v20 — era value 6 historicamente.
     # - "IMPORTED_LEAD" (F18): ENUM_VALUE_NOT_PERMITTED — system-managed pelo
-    #   Google Lead Form / CRM import workflow, nao user-creatable via API.
+    #   Google Lead Form / CRM import workflow.
     # - "QUALIFIED_LEAD" (F18): INVALID_VALUE — system-managed (lead lifecycle).
     # - "CONVERTED_LEAD" (F18): INVALID_VALUE — system-managed (lead lifecycle).
-    # Para lead-gen V4 use case, gestor usa SUBMIT_LEAD_FORM (form submit via
-    # WhatsApp/site) ou PHONE_CALL_LEAD (call-driven lead).
+    # - "DOWNLOAD" (F19): INVALID_VALUE em WEBPAGE + UPLOAD_CLICKS types —
+    #   provavelmente requer GOOGLE_PLAY_DOWNLOAD type (app-install workflow,
+    #   niche excluido do _TYPE_ENUM v0).
+    # Final whitelist: 13 categorias V4-focused empirically validated.
     "DEFAULT",
     "PURCHASE",
     "SIGNUP",
@@ -52,7 +54,6 @@ _CATEGORY_ENUM = [
     "ADD_TO_CART",
     "BEGIN_CHECKOUT",
     "SUBSCRIBE_PAID",
-    "DOWNLOAD",
     "CONTACT",
     "ENGAGEMENT",
     "PAGE_VIEW",
@@ -121,13 +122,12 @@ def _build_params_summary(actions: list[dict[str, Any]]) -> dict[str, Any]:
     description=(
         "Cria 1-5 ConversionActions no nivel customer. Cada action: name "
         "(1-100 chars) + category + type. Always-CONFIRM. Categorias suportadas "
-        "(14 V4-focused, validadas empiricamente em smoke 3b.19A — sem LEAD "
-        "generico, IMPORTED_LEAD, QUALIFIED_LEAD, CONVERTED_LEAD que sao "
-        "system-managed pelo Google lead lifecycle): PURCHASE, SIGNUP, DEFAULT, "
+        "(13 V4-focused, empirically validated em smoke 3b.19A + per-value probe "
+        "3b.19A.1; LEAD/IMPORTED_LEAD/QUALIFIED_LEAD/CONVERTED_LEAD/DOWNLOAD "
+        "excluidos por SDK gap ou system-managed): PURCHASE, SIGNUP, DEFAULT, "
         "SUBMIT_LEAD_FORM (form submit, WhatsApp), BOOK_APPOINTMENT, "
         "REQUEST_QUOTE, PHONE_CALL_LEAD (call lead), ADD_TO_CART, "
-        "BEGIN_CHECKOUT, SUBSCRIBE_PAID, DOWNLOAD, CONTACT, ENGAGEMENT, "
-        "PAGE_VIEW. Tipos: "
+        "BEGIN_CHECKOUT, SUBSCRIBE_PAID, CONTACT, ENGAGEMENT, PAGE_VIEW. Tipos: "
         "WEBPAGE (tag manual install fora do escopo MCP), UPLOAD_CLICKS "
         "(offline conversion import — Standard Access required pra usar), "
         "UPLOAD_CALLS (offline call import). Defaults: status=ENABLED, "
