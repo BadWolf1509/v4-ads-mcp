@@ -65,4 +65,5 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
         "blast_summary": saved.blast_summary,
         "google_request_id": result["google_request_id"],
         "applied_count": result["applied_count"],
+        "resource_names": result.get("resource_names", []),
     }

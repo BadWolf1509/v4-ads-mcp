@@ -153,6 +153,10 @@ async def test_create_ad_group_full_cycle_audits(db, session_ctx) -> None:
     assert apply_result["operation"] == "create_ad_group"
     assert apply_result["applied_count"] == 1
     assert apply_result["google_request_id"] == "req-create-ag"
+    # F13: resource_names propagated from run_mutation through apply_change
+    assert "resource_names" in apply_result
+    assert isinstance(apply_result["resource_names"], list)
+    assert len(apply_result["resource_names"]) == apply_result["applied_count"]
 
     # Step 3: Verify audit_log row has expected target_count + google_request_id
     # + custom params_summary (names excluded, only distribution counts).

@@ -204,10 +204,28 @@ async def run_mutation(
         applied_count = target_count
         if partial_failure and per_op_results:
             applied_count = sum(1 for r in per_op_results if r["status"] == "added")
+
+        # Extract resource_names from mutate_operation_responses (Sprint 3b.15 F13 fix).
+        # Each successful op has WhichOneof("response") set to a *_result message
+        # (e.g., ad_group_result, campaign_result) containing resource_name field.
+        # Failed ops in partial_failure have None (no result oneof set).
+        # Returns [] when the field is absent (SDK version drift safety net).
+        resource_names: list[str | None] = []
+        if hasattr(response, "mutate_operation_responses"):
+            for op_resp in response.mutate_operation_responses:
+                raw = op_resp._pb if hasattr(op_resp, "_pb") else op_resp
+                oneof_field = raw.WhichOneof("response") if hasattr(raw, "WhichOneof") else None
+                if oneof_field is None:
+                    resource_names.append(None)
+                else:
+                    result_proto = getattr(raw, oneof_field)
+                    resource_names.append(getattr(result_proto, "resource_name", None) or None)
+
         return {
             "google_request_id": google_request_id,
             "applied_count": applied_count,
             "partial_failures": per_op_results,
+            "resource_names": resource_names,
         }
     except Exception as e:
         status = "error"

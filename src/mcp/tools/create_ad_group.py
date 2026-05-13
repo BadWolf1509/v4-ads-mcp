@@ -7,8 +7,10 @@ F12-style bidding strategy check if cpc_bid_micros provided.
 Default status: PAUSED (safe default — match V4 playbook setup → review →
 activate flow). Newly-created ad_group has no keywords/ads yet.
 
-Not idempotent — Google permits duplicate names. Calling twice with same
-payload creates 2 ad_groups.
+Not idempotent from MCP side, but Google enforces name uniqueness within
+campaign — re-running with same (campaign_id, name) returns an error
+'AdGroup with the same name already exists' at apply_change time.
+Idempotency-by-error effective.
 """
 
 from collections import Counter
@@ -82,8 +84,10 @@ def _build_params_summary(ad_groups: list[dict[str, Any]]) -> dict[str, Any]:
         "(PAUSED default | ENABLED) + cpc_bid_micros opcional (so valido em "
         "campaigns MANUAL_CPC/ENHANCED_CPC). Sempre CONFIRM (creates sensitive "
         "per spec §7.1). Pre-flight rejeita campaign inexistente, REMOVED, ou "
-        "channel/strategy incompativel. NAO idempotente — Google permite nomes "
-        "duplicados. Apos criar, use add_keywords + add ads pra setup completo."
+        "channel/strategy incompativel. NAO idempotente do lado MCP, mas Google "
+        "enforces name uniqueness within campaign — re-running com mesmo "
+        "(campaign_id, name) retorna error em apply_change. Idempotency-by-error "
+        "effective. Apos criar, use add_keywords + add ads pra setup completo."
     ),
     input_schema=_SCHEMA,
 )
