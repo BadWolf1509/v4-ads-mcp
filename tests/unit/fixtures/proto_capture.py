@@ -9,14 +9,23 @@ Usage:
     ops = build_apply_audience(client, "1234567890", payload)
     assert ops[0].field("ad_group_criterion_operation.create.negative") is True
 
-Repeated fields (Sprint 3b.16):
-    # proto-plus repeated message field (.add() pattern)
-    rsa.headlines.add().text = "H1"
+Repeated fields (Sprint 3b.16, simplified em 3b.17 post-F16):
+    # proto-plus repeated message field — use .append() with typed instance
+    h = client.get_type("AdTextAsset")
+    h.text = "H1"
+    rsa.headlines.append(h)
     op.field_count("...responsive_search_ad.headlines")  # → 1
 
-    # proto-plus repeated scalar field (.append() pattern)
+    # proto-plus repeated scalar field — use .append() with raw value
     ad.final_urls.append("https://example.com/")
     op.field_count("...ad.final_urls")  # → 1
+
+NOTE (Sprint 3b.17 / F16 lesson): we previously had .add() support here
+(mocking raw protobuf API), but proto-plus repeated message fields don't
+expose .add() — only .append(). Tests passed but builder broke in
+production (Sprint 3b.16 smoke T1 caught it). Mock surface now mirrors
+proto-plus reality. Don't add .add() back — let it AttributeError loudly
+if any builder regresses.
 """
 
 from typing import Any
@@ -24,25 +33,19 @@ from unittest.mock import MagicMock
 
 
 class _RepeatedCapture:
-    """Captures proto-plus repeated field usage (.add() and .append()).
+    """Captures proto-plus repeated field usage via .append().
 
-    When builder code does ``rsa.headlines.add()`` or
-    ``ad.final_urls.append(url)``, the relevant _SubCapture detects the first
-    mutation call and promotes itself to a _RepeatedCapture stored in the
-    parent dict under the same key.
+    When builder code does ``rsa.headlines.append(item)`` or
+    ``ad.final_urls.append(url)``, the relevant _SubCapture detects the
+    first .append() call and promotes itself to a _RepeatedCapture stored
+    in the parent dict under the same key.
     """
 
     def __init__(self) -> None:
         self._items: list[Any] = []
 
-    def add(self) -> "_SubCapture":
-        """Create a new sub-message and return it (for field assignment)."""
-        item = _SubCapture("_item", {})
-        self._items.append(item)
-        return item
-
     def append(self, value: Any) -> None:
-        """Append a scalar value (e.g. URL string)."""
+        """Append a value (proto-plus typed instance, dict, or scalar)."""
         self._items.append(value)
 
     def __len__(self) -> int:
@@ -73,14 +76,15 @@ class _SubCapture:
             self._captured[key] = _SubCapture(key, self._captured)
         return self._captured[key]
 
-    def add(self) -> "_SubCapture":
-        """Promote this sub-capture to a _RepeatedCapture in parent, then add."""
-        repeated = _RepeatedCapture()
-        self._parent[self._name] = repeated
-        return repeated.add()
-
     def append(self, value: Any) -> None:
-        """Promote this sub-capture to a _RepeatedCapture in parent, then append."""
+        """Promote this sub-capture to a _RepeatedCapture in parent, then append.
+
+        proto-plus repeated message fields use .append(typed_instance) —
+        raw .add() (raw protobuf descriptor pool API) is NOT supported by
+        proto-plus and would AttributeError in production. Sprint 3b.16 F16
+        lesson: this mock used to support .add(), tests passed but real SDK
+        rejected — fixture now mirrors proto-plus reality.
+        """
         repeated = _RepeatedCapture()
         self._parent[self._name] = repeated
         repeated.append(value)
