@@ -176,6 +176,10 @@ def make_capture_client() -> MagicMock:
     - AdService.ad_path(cid, ad_id) → top-level ad path (Sprint 3b.18)
     - ConversionActionService.conversion_action_path(cid, ca_id) → conversion
       action path (Sprint 3b.19A)
+    - ConversionValueRuleService.conversion_value_rule_path(cid, rule_id) →
+      conversion value rule path (Sprint 3b.19B)
+    - ConversionValueRuleSetService.conversion_value_rule_set_path(cid, set_id)
+      → conversion value rule set path (Sprint 3b.19B)
     """
     client = MagicMock()
 
@@ -197,6 +201,14 @@ def make_capture_client() -> MagicMock:
     conv_action_service.conversion_action_path = lambda cid, ca_id: (
         f"customers/{cid}/conversionActions/{ca_id}"
     )
+    conv_value_rule_service = MagicMock()
+    conv_value_rule_service.conversion_value_rule_path = lambda cid, rule_id: (
+        f"customers/{cid}/conversionValueRules/{rule_id}"
+    )
+    conv_value_rule_set_service = MagicMock()
+    conv_value_rule_set_service.conversion_value_rule_set_path = lambda cid, set_id: (
+        f"customers/{cid}/conversionValueRuleSets/{set_id}"
+    )
 
     def get_service(name: str) -> Any:
         if name == "AdGroupService":
@@ -211,6 +223,10 @@ def make_capture_client() -> MagicMock:
             return ad_service
         if name == "ConversionActionService":
             return conv_action_service
+        if name == "ConversionValueRuleService":
+            return conv_value_rule_service
+        if name == "ConversionValueRuleSetService":
+            return conv_value_rule_set_service
         return MagicMock()
 
     client.get_service = get_service
@@ -234,5 +250,14 @@ def make_capture_client() -> MagicMock:
     client.enums.ConversionActionTypeEnum = _EnumDict("TYPE")
     client.enums.ConversionActionStatusEnum = _EnumDict("STATUS")
     client.enums.ConversionActionCountingTypeEnum = _EnumDict("COUNTING")
+
+    # ConversionValueRule + RuleSet enums (Sprint 3b.19B). Use _EnumDict helper.
+    client.enums.ValueRuleOperationEnum = _EnumDict("OP")
+    client.enums.ValueRuleDeviceTypeEnum = _EnumDict("DEVICE")
+    client.enums.ValueRuleGeoLocationMatchTypeEnum = _EnumDict("MATCH")
+    client.enums.ValueRuleSetAttachmentTypeEnum = _EnumDict("ATTACH")
+    client.enums.ValueRuleSetDimensionEnum = _EnumDict("DIM")
+    client.enums.ConversionValueRuleStatusEnum = _EnumDict("RULE_STATUS")
+    client.enums.ConversionValueRuleSetStatusEnum = _EnumDict("SET_STATUS")
 
     return client

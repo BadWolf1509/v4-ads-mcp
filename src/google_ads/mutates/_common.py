@@ -62,3 +62,5 @@ def import_all_builders() -> None:
         from src.google_ads.mutates import audiences  # noqa: F401
     with contextlib.suppress(ImportError):
         from src.google_ads.mutates import conversion_actions  # noqa: F401
+    with contextlib.suppress(ImportError):
+        from src.google_ads.mutates import conversion_value_rules  # noqa: F401
