@@ -83,6 +83,7 @@ def test_all_phase_2_tools_registered():
         "remove_audience",
         # utilities
         "get_my_rate_limit_status",
+        "get_my_audit_log",
     }
     actual = {t.name for t in all_tools()}
     missing = expected - actual
@@ -132,6 +133,7 @@ def test_no_unexpected_tools():
         "update_keyword_bid",
         "update_keyword_status",
         "get_my_rate_limit_status",
+        "get_my_audit_log",
     }
     actual = {t.name for t in all_tools()}
     unexpected = actual - expected

@@ -175,3 +175,60 @@ async def export_csv_rows(
             ]
         )
         yield buf.getvalue()
+
+
+async def list_for_manager(
+    conn: asyncpg.Connection,
+    *,
+    manager_id: UUID,
+    days: int = 7,
+    limit: int = 100,
+    customer_id: str | None = None,
+    action_type: str | None = None,
+) -> list[dict[str, Any]]:
+    """Paginated list of audit_log rows scoped to a manager.
+
+    Filters (all optional except manager_id):
+    - days: time window (default 7)
+    - limit: row cap (default 100, max enforced by caller schema)
+    - customer_id: filter by account
+    - action_type: filter by 'mutate'/'read'/'auth'/'system'; None or 'all' → no filter
+
+    Returns rows ORDER BY occurred_at DESC, with subset of columns (omits
+    params_summary to keep response compact; use get_by_id() for full detail).
+    """
+    where = ["manager_id = $1", "occurred_at > now() - ($2 || ' days')::interval"]
+    params: list[Any] = [manager_id, str(days)]
+    idx = 3
+    if customer_id:
+        where.append(f"customer_id = ${idx}")
+        params.append(customer_id)
+        idx += 1
+    if action_type and action_type != "all":
+        where.append(f"action_type = ${idx}")
+        params.append(action_type)
+        idx += 1
+    params.append(limit)
+    sql = f"""SELECT id, occurred_at, operation, customer_id, action_type,
+                     target_count, status, duration_ms, google_request_id,
+                     error_message
+              FROM audit_log
+              WHERE {" AND ".join(where)}
+              ORDER BY occurred_at DESC
+              LIMIT ${idx}"""
+    rows = await conn.fetch(sql, *params)
+    return [
+        {
+            "id": int(r["id"]),
+            "occurred_at": r["occurred_at"].isoformat() if r["occurred_at"] else None,
+            "operation": r["operation"],
+            "customer_id": r["customer_id"],
+            "action_type": r["action_type"],
+            "target_count": int(r["target_count"]) if r["target_count"] is not None else None,
+            "status": r["status"],
+            "duration_ms": int(r["duration_ms"]) if r["duration_ms"] is not None else None,
+            "google_request_id": r["google_request_id"],
+            "error_message": r["error_message"],
+        }
+        for r in rows
+    ]
