@@ -49,12 +49,18 @@ def build_create_rsa(client: Any, customer_id: str, payload: dict[str, Any]) -> 
         aga.status = status_enum[rsa_spec.get("status", "PAUSED")]
         ad = aga.ad
         rsa = ad.responsive_search_ad
+        # NOTE (Sprint 3b.16 F16 fix): proto-plus repeated message fields use
+        # .append() with new typed instance, NOT .add() (raw protobuf API).
+        # Smoke test in Nutry caught this — tests passed with ProtoFieldCapture
+        # mock supporting .add() but real google-ads SDK doesn't.
         for headline_text in rsa_spec["headlines"]:
-            h = rsa.headlines.add()
+            h = client.get_type("AdTextAsset")
             h.text = headline_text
+            rsa.headlines.append(h)
         for desc_text in rsa_spec["descriptions"]:
-            d = rsa.descriptions.add()
+            d = client.get_type("AdTextAsset")
             d.text = desc_text
+            rsa.descriptions.append(d)
         for url in rsa_spec["final_urls"]:
             ad.final_urls.append(url)
         if "path1" in rsa_spec:
