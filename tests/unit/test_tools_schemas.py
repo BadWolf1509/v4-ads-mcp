@@ -19,6 +19,27 @@ def test_every_tool_has_valid_schema():
         jsonschema.Draft202012Validator.check_schema(tool.input_schema)
 
 
+def test_registered_tool_count_matches_files_on_disk():
+    """Regression for Sprints 3b.12-3b.14 bug: manual import list lagged behind
+    actual files, leaving 3 tools dead in production despite tests passing
+    (pytest import side effects masked the registry gap).
+
+    With pkgutil auto-discovery in import_all_tools(), this should be
+    structurally impossible. Defense-in-depth: verify 1:1 count match.
+    """
+    import pathlib
+
+    registered_count = len(all_tools())
+    tools_dir = pathlib.Path(__file__).resolve().parent.parent.parent / "src" / "mcp" / "tools"
+    file_count = sum(1 for f in tools_dir.glob("*.py") if not f.stem.startswith("_"))
+
+    assert registered_count == file_count, (
+        f"Tool count mismatch: {registered_count} registered, {file_count} files in tools/. "
+        f"Likely cause: a tool file exists but its module wasn't imported by import_all_tools(). "
+        f"With pkgutil auto-discovery this should be impossible — check _registry.py."
+    )
+
+
 def test_customer_id_pattern_is_consistent():
     """Every tool that has a customer_id field must use the same pattern."""
     for tool in all_tools():

@@ -56,45 +56,20 @@ def reset() -> None:
 
 
 def import_all_tools() -> None:
-    """Import every tool module so its register_tool decorator runs."""
-    from src.mcp.tools import (  # noqa: F401
-        add_keywords,
-        add_negative_keywords,
-        add_negatives_from_search_terms,
-        apply_audience,
-        apply_change,
-        apply_recommendation,
-        bulk_pause_by_query,
-        dismiss_recommendation,
-        get_account_overview,
-        get_ad_group_performance,
-        get_ad_performance,
-        get_audience_performance,
-        get_budget_pacing,
-        get_campaign_performance,
-        get_change_history,
-        get_conversion_actions,
-        get_device_performance,
-        get_funnel_metrics,
-        get_geo_performance,
-        get_hourly_performance,
-        get_keyword_performance,
-        get_negative_keywords_audit,
-        get_recommendations,
-        get_search_terms_report,
-        get_top_keywords_creatives,
-        list_gaql_resources,
-        list_my_accounts,
-        remove_audience,
-        remove_negative_keywords,
-        run_gaql,
-        update_ad_group_bid,
-        update_ad_group_status,
-        update_ad_status,
-        update_campaign_bidding,
-        update_campaign_budget,
-        update_campaign_status,
-        update_keyword_bid,
-        update_keyword_status,
-        validate_gaql,
-    )
+    """Import every tool module so its register_tool decorator runs.
+
+    Auto-discovery via pkgutil — iterates non-private modules in this package.
+    Avoids the manual import-list maintenance burden that bit Sprints 3b.12,
+    3b.13, 3b.14 (new tools shipped but absent from old hardcoded list,
+    dead in production despite passing unit tests via pytest import side
+    effects).
+    """
+    import importlib
+    import pkgutil
+
+    from src.mcp import tools as tools_pkg
+
+    for _, mod_name, _ in pkgutil.iter_modules(tools_pkg.__path__):
+        if mod_name.startswith("_"):
+            continue  # skip _registry, __init__, etc
+        importlib.import_module(f"src.mcp.tools.{mod_name}")
