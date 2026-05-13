@@ -64,6 +64,9 @@ _CASES: list[tuple[str, dict, RiskLevel, str]] = [
     # create_conversion_action — always CONFIRM (spec §7.1 creates sensitive; tracking affects ROAS)
     ("create_conversion_action", {"target_count": 1}, RiskLevel.CONFIRM, "spec §7.1"),
     ("create_conversion_action", {"target_count": 5}, RiskLevel.CONFIRM, "spec §7.1"),
+    # create_conversion_value_rule_set — always CONFIRM (spec §7.1 creates sensitive; rules affect ROAS attribution)
+    ("create_conversion_value_rule_set", {"target_count": 1}, RiskLevel.CONFIRM, "spec §7.1"),
+    ("create_conversion_value_rule_set", {"target_count": 5}, RiskLevel.CONFIRM, "spec §7.1"),
 ]
 
 

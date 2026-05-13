@@ -186,6 +186,14 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
             "create_conversion_action: criacao de ConversionAction(s) — sempre CONFIRM (spec §7.1)",
         )
 
+    # Create conversion value rule set — always CONFIRM (spec §7.1 creates
+    # sensitive + rules afetam ROAS attribution via conditional value boost)
+    elif operation == "create_conversion_value_rule_set":
+        return RiskClassification(
+            RiskLevel.CONFIRM,
+            "create_conversion_value_rule_set: criacao de RuleSet com rules — sempre CONFIRM (spec §7.1)",
+        )
+
     # Remove audience — always CONFIRM (spec §7.1 "Remove qualquer coisa = sempre confirma")
     # Audience criterion removal can restore audience to delivery pool (if exclusion).
     # Symmetric with Sprint 3b.2 REMOVED policy principle.
