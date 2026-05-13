@@ -230,7 +230,12 @@ async def test_create_conversion_value_rule_set_full_cycle_returns_3_resource_na
     assert rows[0]["google_request_id"] == "req-create-rs"
     summary = rows[0]["params_summary"]
     summary_d = json.loads(summary) if isinstance(summary, str) else summary
-    assert summary_d["rule_count"] == 2
-    assert summary_d["attachment_type"] == "CUSTOMER"
-    assert summary_d["operations"] == {"ADD": 2}
-    assert summary_d["condition_types"] == {"DEVICE": 1, "GEO_LOCATION": 1}
+    assert summary_d == {
+        "rule_count": 2,
+        "attachment_type": "CUSTOMER",
+        "campaign_scoped": False,
+        "operations": {"ADD": 2},
+        "condition_types": {"DEVICE": 1, "GEO_LOCATION": 1},
+        "with_category_filter": False,
+        "category_filter_count": 0,
+    }
