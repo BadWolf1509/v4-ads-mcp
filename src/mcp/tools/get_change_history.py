@@ -28,11 +28,24 @@ from collections import Counter
 from typing import Any
 from uuid import UUID
 
-from src.google_ads.queries._common import parse_date_range
+from src.google_ads.queries._common import resolve_date_window
 from src.google_ads.queries.change_history import change_history_query
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
 from src.mcp.tools._registry import register_tool
+
+_DATE_PRESETS = [
+    "TODAY",
+    "YESTERDAY",
+    "LAST_7_DAYS",
+    "LAST_14_DAYS",
+    "LAST_30_DAYS",
+    "LAST_90_DAYS",
+    "THIS_MONTH",
+    "LAST_MONTH",
+    "THIS_WEEK",
+    "LAST_WEEK",
+]
 
 _RESOURCE_TYPES = [
     "CAMPAIGN",
@@ -80,7 +93,25 @@ _SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "customer_id": {"type": "string", "pattern": "^[0-9]{10}$"},
-        "date_range": {"default": "LAST_7_DAYS"},
+        "date_range": {
+            "type": "string",
+            "enum": _DATE_PRESETS,
+            "default": "LAST_7_DAYS",
+            "description": "Periodo via preset. Para periodo custom, use start_date+end_date.",
+        },
+        "start_date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": (
+                "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, "
+                "sobrepoe date_range preset. Obriga end_date."
+            ),
+        },
+        "end_date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
+        },
         "resource_types": {
             "type": "array",
             "items": {"type": "string", "enum": _RESOURCE_TYPES},
@@ -255,7 +286,11 @@ async def _resolve_names(
 async def get_change_history(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()
     customer_id = args["customer_id"]
-    start, end = parse_date_range(args.get("date_range", "LAST_7_DAYS"))
+    start, end = resolve_date_window(
+        date_range=args.get("date_range", "LAST_7_DAYS"),
+        start_date=args.get("start_date"),
+        end_date=args.get("end_date"),
+    )
     limit = args.get("limit", 200)
 
     query = change_history_query(
