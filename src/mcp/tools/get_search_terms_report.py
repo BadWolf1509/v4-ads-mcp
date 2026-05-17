@@ -44,7 +44,7 @@ _SCHEMA: dict[str, Any] = {
             "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
             "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
         },
-        "limit": {"type": "integer", "minimum": 1, "maximum": 10000, "default": 500},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 10000, "default": 50},
     },
     "required": ["customer_id"],
     "additionalProperties": False,
@@ -91,7 +91,7 @@ async def get_search_terms_report(args: dict[str, Any]) -> dict[str, Any]:
         start_date=args.get("start_date"),
         end_date=args.get("end_date"),
     )
-    limit = args.get("limit", 500)
+    limit = args.get("limit", 50)
     rows = await run_report(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
