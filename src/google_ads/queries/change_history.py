@@ -96,7 +96,7 @@ def negative_criterion_creations_query(*, start: date, end: date) -> str:
     Raises RangeTooWideError if range exceeds ~30 days (change_event API limit).
     """
     range_days = (end - start).days + 1
-    if range_days > 31:  # Allow up to 31 days inclusive
+    if range_days > _MAX_DAYS:
         raise RangeTooWideError(
             f"Janela maxima de {_MAX_DAYS} dias para historico de mudancas — "
             f"recebido {range_days} dias. Limite da API do Google Ads."
