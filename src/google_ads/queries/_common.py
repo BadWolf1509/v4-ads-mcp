@@ -94,6 +94,30 @@ def parse_date_range(arg: str | dict[str, str]) -> tuple[date, date]:
     raise InvalidDateRangeError(f"Unhandled preset {preset}")  # unreachable
 
 
+def resolve_date_window(
+    date_range: str | dict[str, str] | None,
+    start_date: str | None,
+    end_date: str | None,
+) -> tuple[date, date]:
+    """Resolve date_range preset OR explicit start_date+end_date pair into (start, end).
+
+    Precedence: if both start_date and end_date are provided, those win over date_range.
+    Mismatched pair (only one of start_date/end_date) is rejected.
+
+    Sprint 3b.20: replaces direct parse_date_range calls in tool bodies so that custom
+    periods can be expressed via two top-level params (each with explicit `type: "string"`)
+    instead of a single composite param without `type`, which caused Claude to serialize
+    the dict as a JSON string and break the parser (relatorio 2026-05-17, finding #1).
+    """
+    if start_date is not None and end_date is None:
+        raise InvalidDateRangeError("end_date e obrigatorio quando start_date e informado.")
+    if end_date is not None and start_date is None:
+        raise InvalidDateRangeError("start_date e obrigatorio quando end_date e informado.")
+    if start_date is not None and end_date is not None:
+        return parse_date_range({"from": start_date, "to": end_date})
+    return parse_date_range(date_range if date_range is not None else "LAST_30_DAYS")
+
+
 def get_comparison_range(start: date, end: date) -> tuple[date, date]:
     """Given a date range, return the immediately-previous period of equal length.
 
