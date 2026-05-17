@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -47,10 +48,9 @@ def parse_date_range(arg: str | dict[str, str]) -> tuple[date, date]:
     Claude serialized a dict as a JSON string (relatorio 2026-05-17 finding #1).
     """
     if isinstance(arg, str) and arg.strip().startswith("{"):
-        try:
+        with contextlib.suppress(ValueError):
             arg = json.loads(arg)
-        except (ValueError, json.JSONDecodeError):
-            pass  # fall through to preset matching, which will raise a clean error
+        # if parse failed, fall through to preset matching with original string
 
     if isinstance(arg, dict):
         try:

@@ -124,12 +124,16 @@ def test_resolve_date_window_only_end_raises() -> None:
 
 def test_resolve_date_window_invalid_custom_format_raises() -> None:
     with pytest.raises(InvalidDateRangeError):
-        resolve_date_window(date_range="LAST_7_DAYS", start_date="not-a-date", end_date="2026-05-14")
+        resolve_date_window(
+            date_range="LAST_7_DAYS", start_date="not-a-date", end_date="2026-05-14"
+        )
 
 
 def test_resolve_date_window_inverted_custom_raises() -> None:
     with pytest.raises(InvalidDateRangeError, match="after"):
-        resolve_date_window(date_range="LAST_7_DAYS", start_date="2026-05-14", end_date="2026-05-08")
+        resolve_date_window(
+            date_range="LAST_7_DAYS", start_date="2026-05-14", end_date="2026-05-08"
+        )
 
 
 # ---------- parse_date_range defensive JSON parse (Sprint 3b.20) ----------
