@@ -126,3 +126,48 @@ def test_range_over_30_days_raises():
             limit=200,
         )
     assert "30" in str(excinfo.value)
+
+
+# ---------- negative_criterion_creations_query (Sprint 3b.21) ----------
+
+
+def test_negative_criterion_creations_query_format():
+    from src.google_ads.queries.change_history import (
+        RangeTooWideError,
+        negative_criterion_creations_query,
+    )
+
+    q = negative_criterion_creations_query(start=date(2026, 4, 17), end=date(2026, 5, 17))
+    # Selects only the 3 fields we need
+    assert "change_event.change_resource_name" in q
+    assert "change_event.change_date_time" in q
+    assert "change_event.user_email" in q
+    # Filters
+    assert "FROM change_event" in q
+    assert "change_event.change_date_time BETWEEN '2026-04-17' AND '2026-05-17'" in q
+    assert "change_event.change_resource_type = 'CAMPAIGN_CRITERION'" in q
+    assert "change_event.resource_change_operation = 'CREATE'" in q
+    # Ordering + limit
+    assert "ORDER BY change_event.change_date_time DESC" in q
+    assert "LIMIT 10000" in q
+
+
+def test_negative_criterion_creations_query_rejects_over_30d():
+    from src.google_ads.queries.change_history import (
+        RangeTooWideError,
+        negative_criterion_creations_query,
+    )
+
+    with pytest.raises(RangeTooWideError, match="30 dias"):
+        negative_criterion_creations_query(start=date(2026, 4, 1), end=date(2026, 5, 17))
+
+
+def test_negative_criterion_creations_query_at_exactly_30d_ok():
+    from src.google_ads.queries.change_history import (
+        RangeTooWideError,
+        negative_criterion_creations_query,
+    )
+
+    # 30-day boundary: start+29 days inclusive = 30 days total
+    q = negative_criterion_creations_query(start=date(2026, 4, 18), end=date(2026, 5, 17))
+    assert "FROM change_event" in q
