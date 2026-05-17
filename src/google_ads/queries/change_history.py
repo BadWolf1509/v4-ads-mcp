@@ -84,3 +84,33 @@ def change_history_query(
         ORDER BY change_event.change_date_time DESC
         LIMIT {limit}
     """.strip()
+
+
+def negative_criterion_creations_query(*, start: date, end: date) -> str:
+    """Build GAQL for fetching campaign_criterion CREATE events.
+
+    Used by get_negative_keywords_audit to enrich each negative keyword with
+    its created_date + added_by_email. Filters to CAMPAIGN_CRITERION resource
+    type + CREATE operation. Sprint 3b.21.
+
+    Raises RangeTooWideError if range exceeds ~30 days (change_event API limit).
+    """
+    range_days = (end - start).days + 1
+    if range_days > 31:  # Allow up to 31 days inclusive
+        raise RangeTooWideError(
+            f"Janela maxima de {_MAX_DAYS} dias para historico de mudancas — "
+            f"recebido {range_days} dias. Limite da API do Google Ads."
+        )
+
+    return f"""
+        SELECT
+          change_event.change_resource_name,
+          change_event.change_date_time,
+          change_event.user_email
+        FROM change_event
+        WHERE change_event.change_date_time BETWEEN '{start.isoformat()}' AND '{end.isoformat()}'
+          AND change_event.change_resource_type = 'CAMPAIGN_CRITERION'
+          AND change_event.resource_change_operation = 'CREATE'
+        ORDER BY change_event.change_date_time DESC
+        LIMIT 10000
+    """.strip()
