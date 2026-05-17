@@ -41,7 +41,9 @@ def _ctx():
 @freeze_time("2026-05-17")
 @pytest.mark.asyncio
 async def test_audit_enriches_per_criterion_when_match_exists():
-    with patch("src.mcp.tools.get_negative_keywords_audit.run_report", new_callable=AsyncMock) as mock_run:
+    with patch(
+        "src.mcp.tools.get_negative_keywords_audit.run_report", new_callable=AsyncMock
+    ) as mock_run:
         mock_run.side_effect = [
             # Query A — negatives
             [_negative_row("111"), _negative_row("222")],
@@ -62,14 +64,20 @@ async def test_audit_enriches_per_criterion_when_match_exists():
 @freeze_time("2026-05-17")
 @pytest.mark.asyncio
 async def test_audit_summary_counts_three_buckets():
-    with patch("src.mcp.tools.get_negative_keywords_audit.run_report", new_callable=AsyncMock) as mock_run:
+    with patch(
+        "src.mcp.tools.get_negative_keywords_audit.run_report", new_callable=AsyncMock
+    ) as mock_run:
         mock_run.side_effect = [
             # 5 negatives
             [_negative_row(str(i)) for i in range(1, 6)],
             # CREATEs: 1 last_7_days (criterion 1), 1 between 7-30d (criterion 2), 3 not in change_event
             [
-                _create_event("1", "2026-05-15 10:00:00+00:00", "user@v4.com"),  # 2 days ago = last_7
-                _create_event("2", "2026-04-25 10:00:00+00:00", "user@v4.com"),  # 22 days ago = last_30 only
+                _create_event(
+                    "1", "2026-05-15 10:00:00+00:00", "user@v4.com"
+                ),  # 2 days ago = last_7
+                _create_event(
+                    "2", "2026-04-25 10:00:00+00:00", "user@v4.com"
+                ),  # 22 days ago = last_30 only
             ],
         ]
         result = await get_negative_keywords_audit({"customer_id": "9999999999"})
@@ -87,7 +95,9 @@ async def test_audit_summary_counts_three_buckets():
 @pytest.mark.asyncio
 async def test_audit_picks_most_recent_create_when_duplicates():
     """If change_event has 2 CREATE events for same criterion_id, pick the most recent."""
-    with patch("src.mcp.tools.get_negative_keywords_audit.run_report", new_callable=AsyncMock) as mock_run:
+    with patch(
+        "src.mcp.tools.get_negative_keywords_audit.run_report", new_callable=AsyncMock
+    ) as mock_run:
         mock_run.side_effect = [
             [_negative_row("777")],
             [
@@ -105,7 +115,9 @@ async def test_audit_picks_most_recent_create_when_duplicates():
 @freeze_time("2026-05-17")
 @pytest.mark.asyncio
 async def test_audit_handles_empty_change_event_result():
-    with patch("src.mcp.tools.get_negative_keywords_audit.run_report", new_callable=AsyncMock) as mock_run:
+    with patch(
+        "src.mcp.tools.get_negative_keywords_audit.run_report", new_callable=AsyncMock
+    ) as mock_run:
         mock_run.side_effect = [
             [_negative_row("111"), _negative_row("222")],
             [],  # No CREATEs in last 30d
@@ -125,7 +137,9 @@ async def test_audit_handles_empty_change_event_result():
 @freeze_time("2026-05-17")
 @pytest.mark.asyncio
 async def test_audit_handles_empty_negatives_result():
-    with patch("src.mcp.tools.get_negative_keywords_audit.run_report", new_callable=AsyncMock) as mock_run:
+    with patch(
+        "src.mcp.tools.get_negative_keywords_audit.run_report", new_callable=AsyncMock
+    ) as mock_run:
         mock_run.side_effect = [[], []]
         result = await get_negative_keywords_audit({"customer_id": "9999999999"})
 
@@ -143,7 +157,9 @@ async def test_audit_handles_empty_negatives_result():
 async def test_audit_ignores_create_events_for_criteria_not_in_current_state():
     """change_event may have CREATEs for criteria that were later REMOVED — those
     don't appear in Query A's current state. Tool must not surface them."""
-    with patch("src.mcp.tools.get_negative_keywords_audit.run_report", new_callable=AsyncMock) as mock_run:
+    with patch(
+        "src.mcp.tools.get_negative_keywords_audit.run_report", new_callable=AsyncMock
+    ) as mock_run:
         mock_run.side_effect = [
             [_negative_row("111")],
             [
