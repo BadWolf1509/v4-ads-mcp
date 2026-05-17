@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -40,7 +41,17 @@ def parse_date_range(arg: str | dict[str, str]) -> tuple[date, date]:
 
     Accepts either a preset string (e.g., 'LAST_7_DAYS') or an explicit
     dict {from: ISO_DATE, to: ISO_DATE}.
+
+    Sprint 3b.20 safety net: if `arg` is a string that looks like a JSON object,
+    parse it before applying preset matching. This recovers from cases where
+    Claude serialized a dict as a JSON string (relatorio 2026-05-17 finding #1).
     """
+    if isinstance(arg, str) and arg.strip().startswith("{"):
+        try:
+            arg = json.loads(arg)
+        except (ValueError, json.JSONDecodeError):
+            pass  # fall through to preset matching, which will raise a clean error
+
     if isinstance(arg, dict):
         try:
             start = date.fromisoformat(arg["from"])
