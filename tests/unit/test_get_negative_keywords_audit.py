@@ -144,6 +144,9 @@ async def test_audit_handles_empty_negatives_result():
         result = await get_negative_keywords_audit({"customer_id": "9999999999"})
 
     assert result["total_negatives"] == 0
+    assert result["returned_count"] == 0
+    assert result["truncated"] is False
+    assert result["limit"] == 100  # default
     assert result["by_campaign"] == []
     assert result["additions_summary"] == {
         "last_7_days": 0,
@@ -172,3 +175,83 @@ async def test_audit_ignores_create_events_for_criteria_not_in_current_state():
     assert result["total_negatives"] == 1
     assert len(result["by_campaign"][0]["negatives"]) == 1
     assert result["additions_summary"]["last_7_days"] == 1  # criterion 999 doesn't count
+
+
+# ---------- Sprint 3b.23 (F22 fix): limit + truncation + ordering ----------
+
+
+@freeze_time("2026-05-17")
+@pytest.mark.asyncio
+async def test_audit_applies_limit_and_marks_truncated():
+    """Sprint 3b.23 F22: when total > limit, by_campaign is truncated + truncated=True."""
+    with patch(
+        "src.mcp.tools.get_negative_keywords_audit.run_report", new_callable=AsyncMock
+    ) as mock_run:
+        # 50 negatives total
+        mock_run.side_effect = [
+            [_negative_row(str(i)) for i in range(1, 51)],
+            [],  # no enrichment — all in unknown bucket
+        ]
+        result = await get_negative_keywords_audit({"customer_id": "9999999999", "limit": 10})
+
+    # Total unchanged (full account count)
+    assert result["total_negatives"] == 50
+    # returned_count = limit applied
+    assert result["returned_count"] == 10
+    assert result["truncated"] is True
+    assert result["limit"] == 10
+    # by_campaign has only 10 negatives total
+    total_in_response = sum(len(c["negatives"]) for c in result["by_campaign"])
+    assert total_in_response == 10
+    # additions_summary computed on FULL set (50 unknown)
+    assert result["additions_summary"]["pre_30_days_or_unknown"] == 50
+
+
+@freeze_time("2026-05-17")
+@pytest.mark.asyncio
+async def test_audit_orders_recent_first_then_unknown():
+    """Sprint 3b.23 F22: with mixed recent + unknown, recent come FIRST in by_campaign
+    (sorted DESC by created_date)."""
+    with patch(
+        "src.mcp.tools.get_negative_keywords_audit.run_report", new_callable=AsyncMock
+    ) as mock_run:
+        mock_run.side_effect = [
+            # 5 negatives total
+            [_negative_row(str(i)) for i in range(1, 6)],
+            # CREATEs for 3 of them with different dates
+            [
+                _create_event("1", "2026-05-16 10:00:00+00:00", "u@v4.com"),  # most recent
+                _create_event("3", "2026-05-10 10:00:00+00:00", "u@v4.com"),  # middle
+                _create_event("5", "2026-05-01 10:00:00+00:00", "u@v4.com"),  # oldest with date
+            ],
+        ]
+        result = await get_negative_keywords_audit({"customer_id": "9999999999", "limit": 5})
+
+    # Collect criterion_ids in returned order across all campaigns
+    returned_ids: list[str] = []
+    for camp in result["by_campaign"]:
+        for n in camp["negatives"]:
+            returned_ids.append(n["criterion_id"])
+
+    # First 3 should be the ones with dates, in DESC date order: 1, 3, 5
+    # Last 2 should be the ones without dates: 2, 4 (in original order, stable sort)
+    assert returned_ids[:3] == ["1", "3", "5"]
+    assert set(returned_ids[3:]) == {"2", "4"}
+
+
+@freeze_time("2026-05-17")
+@pytest.mark.asyncio
+async def test_audit_no_truncation_when_total_within_limit():
+    """Sprint 3b.23: when total <= limit, truncated=False + returned_count == total."""
+    with patch(
+        "src.mcp.tools.get_negative_keywords_audit.run_report", new_callable=AsyncMock
+    ) as mock_run:
+        mock_run.side_effect = [
+            [_negative_row(str(i)) for i in range(1, 11)],  # 10 negatives
+            [],
+        ]
+        result = await get_negative_keywords_audit({"customer_id": "9999999999", "limit": 100})
+
+    assert result["total_negatives"] == 10
+    assert result["returned_count"] == 10
+    assert result["truncated"] is False

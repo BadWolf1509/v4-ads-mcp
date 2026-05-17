@@ -17,6 +17,18 @@ _SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "customer_id": {"type": "string", "pattern": "^[0-9]{10}$"},
+        "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 100,
+            "description": (
+                "Maximo de negativas retornadas em by_campaign (ordenadas recentes primeiro). "
+                "total_negatives + additions_summary refletem conta inteira (nao truncados). "
+                "Default 100; aumentar so se necessario (contas grandes podem exceder MCP "
+                "response cap acima de ~125 rows)."
+            ),
+        },
     },
     "required": ["customer_id"],
     "additionalProperties": False,
@@ -99,13 +111,18 @@ def _compute_summary(negatives_with_dates: list[dict[str, Any]], today: date) ->
         "retention ~30 dias). Util pra auditoria de cobertura de negativas, "
         "identificar duplicacoes ou gaps, e narrar 'X negativas adicionadas no "
         "periodo' em report semanal. Bloco additions_summary no root agrega "
-        "counts por janela (7d / 30d / pre-30d-ou-desconhecido)."
+        "counts por janela (7d / 30d / pre-30d-ou-desconhecido) — sobre a conta "
+        "INTEIRA, nao truncado. by_campaign retorna max `limit` negativas "
+        "(default 100, max 1000) ordenadas por adicao recente primeiro. "
+        "Quando truncado, response inclui `truncated: true` + `total_negatives` "
+        "reflete o universo completo da conta."
     ),
     input_schema=_SCHEMA,
 )
 async def get_negative_keywords_audit(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()
     customer_id = args["customer_id"]
+    limit = args.get("limit", 100)
     today = datetime.now(UTC).date()
     creates_start = today - timedelta(days=29)
     creates_end = today
@@ -142,9 +159,26 @@ async def get_negative_keywords_audit(args: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    # Group by campaign — same as before, but with enriched fields per negative
+    total = len(enriched)
+    summary = _compute_summary(enriched, today)  # Computed on FULL set, not truncated
+
+    # Prioritize recent first (created_date != null DESC), then unknown (null).
+    # Stable sort within each bucket preserves original ordering (campaign-grouping).
+    recent = sorted(
+        (n for n in enriched if n["created_date"] is not None),
+        key=lambda n: n["created_date"],
+        reverse=True,
+    )
+    unknown = [n for n in enriched if n["created_date"] is None]
+    prioritized = recent + unknown
+
+    # Truncate to limit
+    sliced = prioritized[:limit]
+    truncated = total > limit
+
+    # Group by campaign — only what's in the sliced view
     by_campaign: dict[str, dict[str, Any]] = {}
-    for n in enriched:
+    for n in sliced:
         cid = n["campaign_id"]
         if cid not in by_campaign:
             by_campaign[cid] = {
@@ -164,7 +198,10 @@ async def get_negative_keywords_audit(args: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "customer_id": customer_id,
-        "total_negatives": len(enriched),
-        "additions_summary": _compute_summary(enriched, today),
+        "total_negatives": total,
+        "returned_count": len(sliced),
+        "truncated": truncated,
+        "limit": limit,
+        "additions_summary": summary,
         "by_campaign": list(by_campaign.values()),
     }
