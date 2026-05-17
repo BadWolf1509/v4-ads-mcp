@@ -130,3 +130,22 @@ def test_resolve_date_window_invalid_custom_format_raises() -> None:
 def test_resolve_date_window_inverted_custom_raises() -> None:
     with pytest.raises(InvalidDateRangeError, match="after"):
         resolve_date_window(date_range="LAST_7_DAYS", start_date="2026-05-14", end_date="2026-05-08")
+
+
+# ---------- parse_date_range defensive JSON parse (Sprint 3b.20) ----------
+
+
+def test_parse_date_range_recovers_from_json_string_dict() -> None:
+    """Safety net: if Claude serializes dict as JSON string (root cause of relatorio
+    finding #1), helper detects and parses it instead of falling through to preset
+    uppercase which would corrupt the keys."""
+    start, end = parse_date_range('{"from":"2026-05-08","to":"2026-05-14"}')
+    assert start == date(2026, 5, 8)
+    assert end == date(2026, 5, 14)
+
+
+def test_parse_date_range_invalid_json_string_falls_through_to_preset_error() -> None:
+    """String starting with '{' but invalid JSON should not silently succeed —
+    fall through to the preset error path with original (lowercased) input visible."""
+    with pytest.raises(InvalidDateRangeError, match="Unknown date_range preset"):
+        parse_date_range("{not valid json}")
