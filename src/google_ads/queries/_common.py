@@ -145,6 +145,43 @@ def gaql_date_clause(start: date, end: date) -> str:
     return f"segments.date BETWEEN '{start.isoformat()}' AND '{end.isoformat()}'"
 
 
+# Plural-form keys in sync with resource types Google Ads emits via change_event.
+# Compound IDs (e.g., {campaign_id}~{criterion_id}) returned as-is — caller splits if needed.
+# Sprint 3b.21: extracted from get_change_history.py for cross-tool reuse.
+_RESOURCE_PLURAL_TO_TYPE: dict[str, str] = {
+    "campaigns": "campaign",
+    "adGroups": "ad_group",
+    "adGroupAds": "ad_group_ad",
+    "adGroupCriteria": "ad_group_criterion",
+    "campaignCriteria": "campaign_criterion",
+    "campaignBudgets": "campaign_budget",
+    "biddingStrategies": "bidding_strategy",
+    "conversionActions": "conversion_action",
+    "customerNegativeCriteria": "customer_negative_criterion",
+    "assets": "asset",
+    "campaignAssets": "campaign_asset",
+    "adGroupAssets": "ad_group_asset",
+}
+
+
+def parse_resource_path(path: str) -> tuple[str | None, str | None]:
+    """Parse 'customers/{cid}/{resource_plural}/{id}[...]' into (resource_type, id).
+
+    Returns:
+      (resource_type, id) when path matches known pattern.
+      (None, id) when plural is unknown but id is parseable.
+      (None, None) when path is malformed.
+
+    Adding a new resource type? Update `_RESOURCE_PLURAL_TO_TYPE` above.
+    """
+    parts = path.split("/")
+    if len(parts) < 4 or parts[0] != "customers":
+        return None, None
+    resource_plural = parts[2]
+    resource_id = parts[3] if len(parts) > 3 else None
+    return _RESOURCE_PLURAL_TO_TYPE.get(resource_plural), resource_id
+
+
 # Common metric SELECT fragments — reuse across many tools
 METRIC_FIELDS = {
     "impressions": "metrics.impressions",

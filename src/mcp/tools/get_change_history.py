@@ -28,7 +28,7 @@ from collections import Counter
 from typing import Any
 from uuid import UUID
 
-from src.google_ads.queries._common import resolve_date_window
+from src.google_ads.queries._common import parse_resource_path, resolve_date_window
 from src.google_ads.queries.change_history import change_history_query
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
@@ -135,48 +135,18 @@ _SCHEMA: dict[str, Any] = {
 }
 
 
-def _parse_resource_path(path: str) -> tuple[str | None, str | None]:
-    """Parse 'customers/123/campaigns/456' -> ('campaign', '456').
-
-    Returns (None, None) if path is unrecognized.
-    """
-    parts = path.split("/")
-    # path is "customers/{cid}/{resource_plural}/{id}[...]"
-    if len(parts) < 4 or parts[0] != "customers":
-        return None, None
-    resource_plural = parts[2]
-    # Keep these singular-form keys in sync with _RESOURCE_TYPES (SCREAMING_SNAKE)
-    # at the top of the module. Adding a resource type to the schema enum without
-    # adding its plural form here will silently yield (None, None).
-    plural_to_type = {
-        "campaigns": "campaign",
-        "adGroups": "ad_group",
-        "adGroupAds": "ad_group_ad",
-        "adGroupCriteria": "ad_group_criterion",
-        "campaignCriteria": "campaign_criterion",
-        "campaignBudgets": "campaign_budget",
-        "biddingStrategies": "bidding_strategy",
-        "conversionActions": "conversion_action",
-        "customerNegativeCriteria": "customer_negative_criterion",
-        "assets": "asset",
-        "campaignAssets": "campaign_asset",
-        "adGroupAssets": "ad_group_asset",
-    }
-    return plural_to_type.get(resource_plural), parts[3] if len(parts) > 3 else None
-
-
 def _row_formatter(row: Any) -> dict[str, Any]:
     ce = row.change_event
     resource_path = str(ce.change_resource_name)
-    _rtype, rid = _parse_resource_path(resource_path)
+    _rtype, rid = parse_resource_path(resource_path)
     # changed_fields is a FieldMask (paths joined by '.'); split into list
     changed = list(ce.changed_fields.paths) if hasattr(ce.changed_fields, "paths") else []
 
     # campaign / ad_group references on change_event are resource paths; convert
     campaign_path = str(ce.campaign) if ce.campaign else ""
     ad_group_path = str(ce.ad_group) if ce.ad_group else ""
-    _, campaign_id = _parse_resource_path(campaign_path) if campaign_path else (None, None)
-    _, ad_group_id = _parse_resource_path(ad_group_path) if ad_group_path else (None, None)
+    _, campaign_id = parse_resource_path(campaign_path) if campaign_path else (None, None)
+    _, ad_group_id = parse_resource_path(ad_group_path) if ad_group_path else (None, None)
 
     op_enum = ce.resource_change_operation
     op_str = op_enum.name if hasattr(op_enum, "name") else str(op_enum)
