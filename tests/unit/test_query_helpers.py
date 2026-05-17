@@ -153,3 +153,43 @@ def test_parse_date_range_invalid_json_string_falls_through_to_preset_error() ->
     fall through to the preset error path with original (lowercased) input visible."""
     with pytest.raises(InvalidDateRangeError, match="Unknown date_range preset"):
         parse_date_range("{not valid json}")
+
+
+# ---------- parse_resource_path (Sprint 3b.21, extracted from get_change_history) ----------
+
+from src.google_ads.queries._common import parse_resource_path
+
+
+def test_parse_resource_path_campaign() -> None:
+    rtype, rid = parse_resource_path("customers/7862230676/campaigns/21359547724")
+    assert rtype == "campaign"
+    assert rid == "21359547724"
+
+
+def test_parse_resource_path_campaign_criterion_compound() -> None:
+    """campaign_criterion uses compound id {campaign_id}~{criterion_id} — Sprint 3b.6 A5."""
+    rtype, rid = parse_resource_path(
+        "customers/7862230676/campaignCriteria/21359547724~1234567890"
+    )
+    assert rtype == "campaign_criterion"
+    assert rid == "21359547724~1234567890"
+
+
+def test_parse_resource_path_ad_group_criterion_compound() -> None:
+    rtype, rid = parse_resource_path(
+        "customers/7862230676/adGroupCriteria/164805426684~9876543210"
+    )
+    assert rtype == "ad_group_criterion"
+    assert rid == "164805426684~9876543210"
+
+
+def test_parse_resource_path_unknown_plural_returns_none() -> None:
+    rtype, rid = parse_resource_path("customers/123/fooBars/456")
+    assert rtype is None
+    assert rid == "456"  # current behavior: id parsed even when type unknown
+
+
+def test_parse_resource_path_malformed_returns_nones() -> None:
+    rtype, rid = parse_resource_path("not/a/valid/path")
+    assert rtype is None
+    assert rid is None
