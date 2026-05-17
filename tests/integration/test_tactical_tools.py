@@ -109,14 +109,18 @@ async def test_negative_keywords_audit_groups_by_campaign(bound_context):
             "campaign_name": "Performance",
         },
     ]
-    with patch(
-        "src.mcp.tools.get_negative_keywords_audit.run_report", AsyncMock(return_value=fake_rows)
-    ):
+    mock_run = AsyncMock(side_effect=[fake_rows, []])  # negatives, then empty creates
+    with patch("src.mcp.tools.get_negative_keywords_audit.run_report", mock_run):
         result = await get_negative_keywords_audit({"customer_id": "1234567890"})
     assert result["total_negatives"] == 3
     assert len(result["by_campaign"]) == 2
     brand = next(c for c in result["by_campaign"] if c["campaign_id"] == "c1")
     assert len(brand["negatives"]) == 2
+    # Enriched fields present (no create events => all None)
+    for camp in result["by_campaign"]:
+        for n in camp["negatives"]:
+            assert n["created_date"] is None
+            assert n["added_by_email"] is None
 
 
 @pytest.mark.asyncio
