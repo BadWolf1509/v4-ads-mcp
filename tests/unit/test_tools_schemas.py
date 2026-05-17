@@ -287,3 +287,26 @@ def test_update_ad_group_bid_rejects_negative_bid():
     }
     with pytest.raises(jsonschema.exceptions.ValidationError):
         jsonschema.validate(invalid_input, AD_GROUP_BID_SCHEMA)
+
+
+def test_get_account_overview_accepts_custom_period():
+    """Verify Sprint 3b.20 pattern works on canonical tool."""
+    from src.mcp.tools.get_account_overview import _SCHEMA
+
+    valid_custom = {
+        "customer_id": "1234567890",
+        "start_date": "2026-05-08",
+        "end_date": "2026-05-14",
+    }
+    jsonschema.validate(valid_custom, _SCHEMA)
+
+    valid_preset = {"customer_id": "1234567890", "date_range": "LAST_7_DAYS"}
+    jsonschema.validate(valid_preset, _SCHEMA)
+
+
+def test_get_account_overview_rejects_invalid_date_format():
+    from src.mcp.tools.get_account_overview import _SCHEMA
+
+    invalid = {"customer_id": "1234567890", "start_date": "08/05/2026", "end_date": "2026-05-14"}
+    with pytest.raises(jsonschema.exceptions.ValidationError):
+        jsonschema.validate(invalid, _SCHEMA)
