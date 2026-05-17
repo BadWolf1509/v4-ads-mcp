@@ -210,6 +210,34 @@ def test_no_unexpected_tools():
     assert not unexpected, f"Unexpected tools: {unexpected}"
 
 
+def test_date_range_schemas_are_explicit():
+    """Schemas with `date_range` MUST declare type: "string" + enum of presets.
+
+    Sprint 3b.20: missing `type` field caused Claude to serialize dict-as-string,
+    breaking parse_date_range. Defense-in-depth — fails CI if a regression
+    reintroduces a loose `date_range` schema.
+
+    For tools that need custom periods, add `start_date` + `end_date` as separate
+    string properties with pattern YYYY-MM-DD (see resolve_date_window helper).
+    """
+    offenders: list[tuple[str, str]] = []
+
+    for tool in all_tools():
+        props = tool.input_schema.get("properties", {})
+        dr = props.get("date_range")
+        if dr is None:
+            continue
+        if dr.get("type") != "string":
+            offenders.append((tool.name, f"date_range.type={dr.get('type')!r}"))
+        elif "enum" not in dr:
+            offenders.append((tool.name, "date_range missing enum"))
+
+    assert not offenders, (
+        "date_range schemas without explicit type+enum (Sprint 3b.20 regression):\n"
+        + "\n".join(f"  {name}: {reason}" for name, reason in offenders)
+    )
+
+
 def test_every_tool_has_description():
     for tool in all_tools():
         assert tool.description, f"{tool.name} has no description"
