@@ -9,6 +9,7 @@ from src.google_ads.queries._common import (
     InvalidDateRangeError,
     get_comparison_range,
     parse_date_range,
+    resolve_date_window,
 )
 
 
@@ -89,3 +90,43 @@ def test_comparison_range_handles_single_day() -> None:
     prev_start, prev_end = get_comparison_range(start, end)
     assert prev_start == date(2026, 5, 13)
     assert prev_end == date(2026, 5, 13)
+
+
+# ---------- resolve_date_window (Sprint 3b.20) ----------
+
+
+@freeze_time("2026-05-15")
+def test_resolve_date_window_preset_only() -> None:
+    start, end = resolve_date_window(date_range="LAST_7_DAYS", start_date=None, end_date=None)
+    assert start == date(2026, 5, 8)
+    assert end == date(2026, 5, 14)
+
+
+def test_resolve_date_window_custom_range() -> None:
+    start, end = resolve_date_window(
+        date_range="LAST_30_DAYS",  # should be overridden
+        start_date="2026-05-08",
+        end_date="2026-05-14",
+    )
+    assert start == date(2026, 5, 8)
+    assert end == date(2026, 5, 14)
+
+
+def test_resolve_date_window_only_start_raises() -> None:
+    with pytest.raises(InvalidDateRangeError, match="end_date"):
+        resolve_date_window(date_range="LAST_7_DAYS", start_date="2026-05-08", end_date=None)
+
+
+def test_resolve_date_window_only_end_raises() -> None:
+    with pytest.raises(InvalidDateRangeError, match="start_date"):
+        resolve_date_window(date_range="LAST_7_DAYS", start_date=None, end_date="2026-05-14")
+
+
+def test_resolve_date_window_invalid_custom_format_raises() -> None:
+    with pytest.raises(InvalidDateRangeError):
+        resolve_date_window(date_range="LAST_7_DAYS", start_date="not-a-date", end_date="2026-05-14")
+
+
+def test_resolve_date_window_inverted_custom_raises() -> None:
+    with pytest.raises(InvalidDateRangeError, match="after"):
+        resolve_date_window(date_range="LAST_7_DAYS", start_date="2026-05-14", end_date="2026-05-08")
