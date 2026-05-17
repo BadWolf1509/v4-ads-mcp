@@ -29,25 +29,14 @@ from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
 from src.mcp.tools._registry import register_tool
 
-# Reuse 3b.19A 13-value V4-focused whitelist
-_CATEGORY_ENUM = [
-    "DEFAULT",
-    "PURCHASE",
-    "SIGNUP",
-    "SUBMIT_LEAD_FORM",
-    "BOOK_APPOINTMENT",
-    "REQUEST_QUOTE",
-    "PHONE_CALL_LEAD",
-    "ADD_TO_CART",
-    "BEGIN_CHECKOUT",
-    "SUBSCRIBE_PAID",
-    "CONTACT",
-    "ENGAGEMENT",
-    "PAGE_VIEW",
-]
-
+# Sprint 3b.22 (F25+F27 cleanup): removed _CATEGORY_ENUM (conversion_action_categories
+# Google API only accepts [] / [STORE_VISIT] / [STORE_SALE], the 13-cat whitelist
+# herdada de 3b.19A é invalida pra esse campo — STORE out of scope v0).
+# Removed NO_CONDITION from condition_type enum (Google rejects para non-Store
+# RuleSets: "Dimension NO_CONDITION can only be used by Store Visits/Store Sales
+# value rule set.").
 _OPERATION_ENUM = ["ADD", "MULTIPLY", "SET"]
-_CONDITION_TYPE_ENUM = ["DEVICE", "GEO_LOCATION", "NO_CONDITION"]
+_CONDITION_TYPE_ENUM = ["DEVICE", "GEO_LOCATION"]
 _DEVICE_TYPE_ENUM = ["MOBILE", "DESKTOP", "TABLET"]
 _GEO_MATCH_TYPE_ENUM = ["ANY", "LOCATION_OF_PRESENCE"]
 _ATTACHMENT_TYPE_ENUM = ["CUSTOMER", "CAMPAIGN"]
@@ -60,11 +49,6 @@ _SCHEMA: dict[str, Any] = {
         "customer_id": {"type": "string", "pattern": "^[0-9]{10}$"},
         "attachment_type": {"type": "string", "enum": _ATTACHMENT_TYPE_ENUM},
         "campaign_id": {"type": "string", "pattern": "^[0-9]+$"},
-        "conversion_action_categories": {
-            "type": "array",
-            "items": {"type": "string", "enum": _CATEGORY_ENUM},
-            "uniqueItems": True,
-        },
         "rules": {
             "type": "array",
             "minItems": 1,
@@ -144,12 +128,12 @@ def _validate_payload_shape(args: dict[str, Any]) -> str | None:
         if ctype == "DEVICE" and "device_condition" not in rule:
             return (
                 f"rules[{i}] tem condition_type=DEVICE mas falta device_condition. "
-                f"Forneca device_condition.device_types ou use NO_CONDITION."
+                f"Forneca device_condition.device_types."
             )
         if ctype == "GEO_LOCATION" and "geo_condition" not in rule:
             return (
                 f"rules[{i}] tem condition_type=GEO_LOCATION mas falta geo_condition. "
-                f"Forneca geo_condition.geo_target_constants ou use NO_CONDITION."
+                f"Forneca geo_condition.geo_target_constants."
             )
     return None
 
@@ -163,8 +147,6 @@ def _build_params_summary(payload: dict[str, Any]) -> dict[str, Any]:
         "campaign_scoped": payload["attachment_type"] == "CAMPAIGN",
         "operations": dict(Counter(r["action"]["operation"] for r in rules)),
         "condition_types": dict(Counter(r["condition_type"] for r in rules)),
-        "with_category_filter": bool(payload.get("conversion_action_categories")),
-        "category_filter_count": len(payload.get("conversion_action_categories") or []),
     }
 
 
@@ -175,12 +157,12 @@ def _build_params_summary(payload: dict[str, Any]) -> dict[str, Any]:
         "1-10 ConversionValueRule(s) nested. Always-CONFIRM. Rules condicionais "
         "ajustam o valor de conversao por device (MOBILE/DESKTOP/TABLET) ou geo "
         "(geo_target_constants resource paths). Action operations: ADD (soma "
-        "valor fixo), MULTIPLY (multiplica), SET (sobrescreve). Optional "
-        "conversion_action_categories filter (13 V4-focused categories da 3b.19A). "
+        "valor fixo), MULTIPLY (multiplica), SET (sobrescreve). "
         "attachment_type=CAMPAIGN requer campaign_id; CUSTOMER aplica conta "
-        "inteira. NO_CONDITION rule e fallback default. v0 NAO suporta "
-        "AUDIENCE/ITINERARY conditions. Geo targets validados como BR-only "
-        "(V4 invariant)."
+        "inteira (Google limita 1 RuleSet CUSTOMER-level por conta — sprint 3b.19B "
+        "F26). v0 NAO suporta AUDIENCE/ITINERARY conditions nem categorias filter "
+        "(Google API restringe filter a STORE_VISIT/STORE_SALE — out of scope v0). "
+        "Geo targets validados como BR-only (V4 invariant)."
     ),
     input_schema=_SCHEMA,
 )
@@ -275,7 +257,6 @@ async def create_conversion_value_rule_set(args: dict[str, Any]) -> dict[str, An
     preview = {
         "attachment_type": attachment_type,
         "rule_count": len(rules),
-        "has_category_filter": params_summary["with_category_filter"],
         "operations": list(op_dist.keys()),
         "condition_types": list(cond_dist.keys()),
     }

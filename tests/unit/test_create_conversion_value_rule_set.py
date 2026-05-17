@@ -249,7 +249,6 @@ async def test_preview_includes_attachment_and_filter_flags(_ctx) -> None:
                 "customer_id": "1234567890",
                 "attachment_type": "CAMPAIGN",
                 "campaign_id": "99",
-                "conversion_action_categories": ["PURCHASE"],
                 "rules": [_device_rule()],
             }
         )
@@ -257,7 +256,6 @@ async def test_preview_includes_attachment_and_filter_flags(_ctx) -> None:
     preview = result["preview"]
     assert preview["attachment_type"] == "CAMPAIGN"
     assert preview["rule_count"] == 1
-    assert preview["has_category_filter"] is True
     assert "ADD" in preview["operations"]
 
 
@@ -443,7 +441,7 @@ async def test_rejects_geo_condition_type_without_geo_condition(_ctx) -> None:
 
 @pytest.mark.asyncio
 async def test_no_geo_rules_skips_geo_validator(_ctx) -> None:
-    """Only DEVICE/NO_CONDITION rules → geo validator NOT called."""
+    """Only DEVICE rules → geo validator NOT called."""
     from src.mcp.tools.create_conversion_value_rule_set import (
         create_conversion_value_rule_set,
     )
@@ -475,11 +473,67 @@ async def test_no_geo_rules_skips_geo_validator(_ctx) -> None:
                 "rules": [
                     _device_rule(),
                     {
-                        "action": {"operation": "SET", "value": 50.0},
-                        "condition_type": "NO_CONDITION",
+                        "action": {"operation": "MULTIPLY", "value": 1.5},
+                        "condition_type": "DEVICE",
+                        "device_condition": {"device_types": ["DESKTOP"]},
                     },
                 ],
             }
         )
 
     geo_validator.assert_not_called()
+
+
+# ---------- Sprint 3b.22 regression guards (F25 + F27 schema cleanup) ----------
+
+
+def test_schema_rejects_no_condition_value_in_condition_type() -> None:
+    """Sprint 3b.22 F25 regression: condition_type=NO_CONDITION must be schema-rejected.
+
+    Google API only allows NO_CONDITION for Store Visits/Store Sales RuleSets
+    (STORE out of scope v0). Removing it from schema prevents gestor from
+    hitting the silent runtime rejection.
+    """
+    import jsonschema
+
+    from src.mcp.tools.create_conversion_value_rule_set import _SCHEMA
+
+    invalid = {
+        "customer_id": "1234567890",
+        "attachment_type": "CUSTOMER",
+        "rules": [
+            {
+                "action": {"operation": "SET", "value": 50.0},
+                "condition_type": "NO_CONDITION",
+            }
+        ],
+    }
+    with pytest.raises(jsonschema.exceptions.ValidationError):
+        jsonschema.validate(invalid, _SCHEMA)
+
+
+def test_schema_rejects_conversion_action_categories_field() -> None:
+    """Sprint 3b.22 F27 regression: conversion_action_categories field must be
+    schema-rejected (additionalProperties: false enforces).
+
+    Google API only accepts [] / [STORE_VISIT] / [STORE_SALE] for this field;
+    the 13-cat whitelist herdada de 3b.19A é invalida. Field removed from v0.
+    """
+    import jsonschema
+
+    from src.mcp.tools.create_conversion_value_rule_set import _SCHEMA
+
+    invalid = {
+        "customer_id": "1234567890",
+        "attachment_type": "CUSTOMER",
+        "conversion_action_categories": ["PURCHASE"],
+        "rules": [
+            {
+                "action": {"operation": "ADD", "value": 10.0},
+                "condition_type": "DEVICE",
+                "device_condition": {"device_types": ["MOBILE"]},
+            }
+        ],
+    }
+    with pytest.raises(jsonschema.exceptions.ValidationError):
+        jsonschema.validate(invalid, _SCHEMA)

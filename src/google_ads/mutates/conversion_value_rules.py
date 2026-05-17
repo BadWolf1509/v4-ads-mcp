@@ -1,9 +1,10 @@
 """Mutate builders for conversion_value_rule + conversion_value_rule_set operations.
 
 Sprint 3b.19B — primeiro arquivo desta categoria. ConversionValueRuleSet
-attaches a CUSTOMER ou CAMPAIGN (NOT ConversionAction direct — link via
-conversion_action_categories filter). Rules vivem INSIDE the RuleSet via
-resource_name references.
+attaches a CUSTOMER ou CAMPAIGN. Rules vivem INSIDE the RuleSet via
+resource_name references (Sprint 3b.22 removeu `conversion_action_categories`
+filter — Google API só aceita [] OU STORE_VISIT OU STORE_SALE para esse
+campo, STORE out of scope v0).
 
 Chained mutation pattern (validated via context7 + Google Ads API docs):
 - N rule operations com temp resource_names (negative IDs)
@@ -42,18 +43,22 @@ def build_create_conversion_value_rule_set(
 ) -> list[Any]:
     """Chained mutation: N rules with temp resource_names + 1 RuleSet referencing them.
 
-    payload schema:
+    payload schema (post-Sprint 3b.22 cleanup):
       attachment_type: CUSTOMER | CAMPAIGN
       campaign_id?: str  (required when attachment_type == CAMPAIGN)
-      conversion_action_categories?: list[str]  (optional category filter)
       rules: list of rule specs, each:
         action: {operation: ADD|MULTIPLY|SET, value: float}
-        condition_type: DEVICE | GEO_LOCATION | NO_CONDITION
+        condition_type: DEVICE | GEO_LOCATION
         device_condition?: {device_types: list[str]}
         geo_condition?: {
           geo_target_constants: list[str],
-          geo_match_type?: ANY|LOCATION_OF_PRESENCE|AREA_OF_INTEREST
+          geo_match_type?: ANY|LOCATION_OF_PRESENCE
         }
+
+    Sprint 3b.22 removed (per smoke 3b.19B findings F25 + F27):
+    - condition_type=NO_CONDITION (Google API restricts to Store Visits/Sales)
+    - conversion_action_categories field (Google API restricts to [] OR
+      [STORE_VISIT] OR [STORE_SALE]; STORE out of scope v0)
 
     Returns a list of MutateOperation instances: N rule ops followed by
     1 RuleSet op. The server resolves temp paths to real IDs on execution.
@@ -98,7 +103,6 @@ def build_create_conversion_value_rule_set(
             rule.geo_location_condition.geo_match_type = match_enum[
                 geo_cond.get("geo_match_type", "ANY")
             ]
-        # NO_CONDITION: leave conditions empty (default rule — no condition fields needed)
 
         rule.status = rule_status_enum.ENABLED  # V4 invariant: always ENABLED on create
         operations.append(op)
@@ -121,12 +125,9 @@ def build_create_conversion_value_rule_set(
     for dim in sorted(unique_condition_types):
         rs.dimensions.append(dim_enum[dim])
 
-    # Category filter (optional — links RuleSet to specific conversion action categories)
-    categories = payload.get("conversion_action_categories") or []
-    if categories:
-        cat_enum = client.enums.ConversionActionCategoryEnum  # Reuse from 3b.19A
-        for cat in categories:
-            rs.conversion_action_categories.append(cat_enum[cat])
+    # Sprint 3b.22 (F27 cleanup): removed conversion_action_categories filter.
+    # Google API only accepts empty / [STORE_VISIT] / [STORE_SALE] for this
+    # field; the 13-cat whitelist herdada de 3b.19A was invalid here.
 
     rs.status = set_status_enum.ENABLED  # V4 invariant: always ENABLED on create
 
