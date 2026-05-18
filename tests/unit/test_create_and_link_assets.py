@@ -99,7 +99,7 @@ def test_validate_rejects_promotion_with_both_discounts():
         "attachment_level": "CAMPAIGN",
         "attachment_id": "customers/1234567890/campaigns/99999",
         "promotion_target": "Verão 2026",
-        "discount_modifier": "NONE",
+        "discount_modifier": "UP_TO",
         "percent_off": 20.0,
         "money_amount_off_brl": 50.0,
         "final_urls": ["https://example.com/promo"],
@@ -115,7 +115,7 @@ def test_validate_rejects_promotion_without_any_discount():
         "attachment_level": "CAMPAIGN",
         "attachment_id": "customers/1234567890/campaigns/99999",
         "promotion_target": "Verão 2026",
-        "discount_modifier": "NONE",
+        "discount_modifier": "UP_TO",
         "final_urls": ["https://example.com/promo"],
     }
     error = _validate_payload_shape(_valid_payload(assets=[asset]))
@@ -164,7 +164,7 @@ def test_validate_rejects_promotion_end_date_before_start():
         "attachment_level": "CAMPAIGN",
         "attachment_id": "customers/1234567890/campaigns/99999",
         "promotion_target": "Verão 2026",
-        "discount_modifier": "NONE",
+        "discount_modifier": "UP_TO",
         "percent_off": 20.0,
         "final_urls": ["https://example.com/promo"],
         "start_date": "2026-06-01",

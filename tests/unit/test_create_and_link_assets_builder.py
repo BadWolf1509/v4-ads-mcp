@@ -152,7 +152,7 @@ def test_builder_promotion_money_amount_off_sets_amount_micros_and_brl():
         "attachment_level": "CAMPAIGN",
         "attachment_id": "customers/1234567890/campaigns/99999",
         "promotion_target": "Verão 2026",
-        "discount_modifier": "NONE",
+        "discount_modifier": "UP_TO",
         "money_amount_off_brl": 50.0,
         "final_urls": ["https://example.com/promo"],
     }
@@ -179,7 +179,7 @@ def test_builder_promotion_with_date_range_sets_both():
         "attachment_level": "CAMPAIGN",
         "attachment_id": "customers/1234567890/campaigns/99999",
         "promotion_target": "Verão 2026",
-        "discount_modifier": "NONE",
+        "discount_modifier": "UP_TO",
         "percent_off": 20.0,
         "final_urls": ["https://example.com/promo"],
         "start_date": "2026-06-01",
@@ -372,7 +372,7 @@ def test_builder_promotion_always_sets_language_code_pt_br():
         "attachment_level": "CAMPAIGN",
         "attachment_id": "customers/1234567890/campaigns/99999",
         "promotion_target": "Verão 2026",
-        "discount_modifier": "NONE",
+        "discount_modifier": "UP_TO",
         "percent_off": 20.0,
         "final_urls": ["https://example.com/promo"],
     }
@@ -390,7 +390,7 @@ def test_builder_promotion_money_amount_off_always_brl():
         "attachment_level": "CAMPAIGN",
         "attachment_id": "customers/1234567890/campaigns/99999",
         "promotion_target": "Verão 2026",
-        "discount_modifier": "NONE",
+        "discount_modifier": "UP_TO",
         "money_amount_off_brl": 100.0,
         "final_urls": ["https://example.com/promo"],
     }

@@ -87,7 +87,10 @@ def build_create_and_link_assets(
         elif atype == "PROMOTION":
             promo = asset.promotion_asset
             promo.promotion_target = a["promotion_target"]
-            promo.discount_modifier = discount_mod_enum[a["discount_modifier"]]
+            # F40 (Sprint 3b.25.2): discount_modifier now optional.
+            # Omit field for exact discount; pass UP_TO for "até X% off" rendering.
+            if "discount_modifier" in a:
+                promo.discount_modifier = discount_mod_enum[a["discount_modifier"]]
             if "percent_off" in a:
                 # 1_000_000 micros = 100% per Google spec; multiply by 10_000
                 promo.percent_off = int(a["percent_off"] * 10_000)

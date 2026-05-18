@@ -25,15 +25,19 @@ from src.mcp.tools._registry import register_tool
 
 _ASSET_TYPES = ["SITELINK", "CALLOUT", "STRUCTURED_SNIPPET", "CALL", "PROMOTION"]
 _ATTACHMENT_LEVELS = ["CUSTOMER", "CAMPAIGN", "AD_GROUP"]
-# F38 (Sprint 3b.25.1): StructuredSnippetAsset.header is a STRING field (not proto enum).
+# F38 (Sprint 3b.25.1/.2): StructuredSnippetAsset.header is a STRING field (not proto enum).
 # Google rejects ALL_CAPS values like "SERVICE_CATALOG" with "input string value is invalid".
-# API expects display strings from
-# https://developers.google.com/google-ads/api/reference/data/structured-snippet-headers
+# API expects display strings from Google's localized whitelist at
+# https://developers.google.com/google-ads/api/data/structured-snippet-headers
 # V4 BR-invariant: use Portuguese (pt-BR) display strings.
-# Smoke discovered in T6 (header="SERVICE_CATALOG") + T7 (header="BRANDS") — both rejected.
+#
+# Empirically verified PT-BR values (Sprint 3b.25.2 smoke re-test):
+# - "Serviços" ✅ (matches existing Nutry asset 259782606115)
+# - "Marcas" ✅ (T7 re-test PASS)
+# Other values below are best-guess translations from Google's localized table.
+# Sprint 3b.25.x candidate: per-value empirical probe for remaining 11 headers.
 _STRUCTURED_SNIPPET_HEADERS = [
     "Bairros",
-    "Catálogo de serviços",
     "Comodidades",
     "Cursos",
     "Cursos de graduação",
@@ -43,6 +47,7 @@ _STRUCTURED_SNIPPET_HEADERS = [
     "Marcas",
     "Modelos",
     "Programas",
+    "Serviços",
     "Tipos",
     "Tipos de cobertura do seguro",
 ]
@@ -87,7 +92,10 @@ _SCHEMA: dict[str, Any] = {
                         "pattern": r"^[\d\s\(\)\-]{10,20}$",
                     },
                     "promotion_target": {"type": "string", "minLength": 1, "maxLength": 20},
-                    "discount_modifier": {"type": "string", "enum": ["NONE", "UP_TO"]},
+                    # F40 (Sprint 3b.25.2): "NONE" removed — Google's
+                    # PromotionExtensionDiscountModifierEnum only has UNSPECIFIED + UP_TO.
+                    # Omit field entirely for "exact" discount semantics; UP_TO = "até X% off".
+                    "discount_modifier": {"type": "string", "enum": ["UP_TO"]},
                     "percent_off": {"type": "number", "minimum": 0.01, "maximum": 100.0},
                     "money_amount_off_brl": {"type": "number", "minimum": 0.01},
                     "start_date": {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"},
@@ -104,7 +112,9 @@ _PER_TYPE_REQUIRED = {
     "CALLOUT": ["callout_text"],
     "STRUCTURED_SNIPPET": ["header", "values"],
     "CALL": ["phone_number"],
-    "PROMOTION": ["promotion_target", "discount_modifier", "final_urls"],
+    # F40 (Sprint 3b.25.2): discount_modifier moved OUT of required — optional now.
+    # Omit for exact discount; pass UP_TO for "até X% off" rendering.
+    "PROMOTION": ["promotion_target", "final_urls"],
 }
 
 _PER_TYPE_ALLOWED: dict[str, set[str]] = {
