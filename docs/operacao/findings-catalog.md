@@ -42,6 +42,8 @@
 | **F34** | HIGH | 3b.24 | 3b.24.4 | `campaign.contains_eu_political_advertising` REQUIRED on Campaign create (Google EU compliance, May 2024+). V4 BR-invariant: hardcoded `DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING`. [phase-3b-24-bootstrap.md] |
 | **F35** | MED | 3b.24 | 3b.24.4 | `manual_cpc.enhanced_cpc_enabled` deprecated by Google — `OPERATION_NOT_PERMITTED_FOR_CONTEXT` on create. Schema fix: removed `enhanced_cpc` field entirely. [phase-3b-24-bootstrap.md] |
 | **F37** | HIGH | 3b.24 | 3b.24.5 | `Campaign.start_date`/`end_date` are NOT valid v24 proto fields — only `start_date_time`/`end_date_time` (YYYYMMDD HH:MM:SS format). Builder converts YYYY-MM-DD schema input. [phase-3b-24-bootstrap.md] |
+| **F38** | HIGH | 3b.25 | 3b.25.1 (pending) | `StructuredSnippetAsset.header` é STRING (not proto enum) — Google rejects ALL_CAPS values like `"SERVICE_CATALOG"`/`"BRANDS"`. API expects display strings from https://developers.google.com/google-ads/api/reference/data/structured-snippet-headers (e.g., `"Service catalog"` en or `"Catálogo de serviços"` pt-BR). Discovered in T6+T7 smoke. Fix: schema enum changed to PT-BR display strings (V4 invariant). [phase-3b-25-bootstrap.md] |
+| **F39** | HIGH | 3b.25 | 3b.25.1 (pending) | `PromotionAsset.language_code = "pt"` rejected by Google with "The language code is not supported." BCP 47 says `pt` is valid (less specific) but Google PROMOTION requires region-qualified (`pt-BR`). Discovered in T10+T11 smoke. Fix: builder line `promo.language_code = "pt-BR"`. [phase-3b-25-bootstrap.md] |
 
 ---
 

@@ -335,21 +335,80 @@ Expected:
 
 Assets ficam paused (campaigns Sprint 3b.24 já PAUSED, zero serving impact). Spawn-task pra Sprint 3b.28 (`remove_*` bundle) cleanup.
 
-## Findings discovered
+## Smoke results (executed 2026-05-18 em Nutry sandbox 1163862076)
 
-(Preencher pós-smoke se findings reais surgirem — F38+ candidates documented em findings-catalog.md)
-
-| # | Finding | Severity | Documented | Fix |
+| # | Test | Result | Resource_names | Findings |
 |---|---|---|---|---|
-| F38 | (pending) | — | — | — |
+| T1 | SITELINK CUSTOMER | ✅ PASS | asset `362248502689` + customerAsset link | — |
+| T2 | SITELINK CAMPAIGN (4) | ✅ PASS | 8 (4 assets + 4 campaignAssets) | — |
+| T3 | SITELINK AD_GROUP | ✅ PASS | asset `362331550494` + adGroupAsset | **No F-finding** (Google ACCEPTS — predicted F-finding was wrong) |
+| T4 | CALLOUT CUSTOMER (3) | ✅ PASS | 6 (3 assets + 3 customerAssets) | — |
+| T5 | CALLOUT CAMPAIGN (2) | ✅ PASS | 4 | — |
+| T6 | STRUCTURED_SNIPPET CUSTOMER (header=SERVICE_CATALOG) | ❌ FAIL | — | **F38: STRUCTURED_SNIPPET header format mismatch** |
+| T7 | STRUCTURED_SNIPPET CAMPAIGN (header=BRANDS) | ❌ FAIL | — | **F38 confirmed not per-value** (both headers reject) |
+| T8 | CALL CAMPAIGN | ✅ PASS | asset `362249151148` + campaignAsset; GAQL confirmou `country_code=BR` enforced (V4 invariant ✓) | — |
+| T9 | CALL AD_GROUP | ✅ PASS | asset `362331764796` + adGroupAsset | **No F-finding** (Google ACCEPTS) |
+| T10 | PROMOTION percent_off=20.0 | ❌ FAIL | — | **F39: language_code='pt' rejected pelo Google** |
+| T11 | PROMOTION money_amount_off_brl=50.0 | ❌ FAIL | — | F39 confirmed (segundo path), tambem KeyError em `_classify_partial` (mapping gap) |
+| T12 | Mixed batch (4 SITELINK CAMP + 2 CALLOUT CUST + 1 CALL CAMP) | ✅ PASS | 14 resource_names, interleave bit-a-bit corretto | — |
+| T13 | Schema regression SITELINK+callout_text | ✅ PASS | — | PT-BR error retornado pre-Google: `"campo 'callout_text' não aplicável a type=SITELINK"` |
+| T14 | Schema regression PROMOTION sem desconto | ✅ PASS | — | PT-BR error: `"PROMOTION requer exatamente um de 'percent_off' OU 'money_amount_off_brl'"` |
+| T15 | 20 sitelinks batch | ✅ PASS | 40 resource_names (após retry com fresh campaign — campaign inicial já tinha 8 sitelinks de T2+T12 = Google cap 20/campaign atingido. Não é Sprint 3b.25 bug, é smoke setup) | — |
+
+**Effective result: 11/15 PASS** + 2 F-findings (F38, F39).
+
+### F38: STRUCTURED_SNIPPET header schema enum format mismatch
+
+**Severity:** HIGH (STRUCTURED_SNIPPET asset type completely unusable)
+
+**Symptom:** Google API rejects with `"The input string value is invalid for the associated field."` quando passa header=`SERVICE_CATALOG` ou `BRANDS` (any ALL_CAPS value from current schema enum).
+
+**Root cause:** `StructuredSnippetAsset.header` é STRING field (não proto enum). Google espera valores localizados predefinidos por https://developers.google.com/google-ads/api/reference/data/structured-snippet-headers — display strings tipo `"Service catalog"` (en) ou `"Catálogo de serviços"` (pt-BR), NÃO o nome do enum em UPPER_SNAKE_CASE.
+
+**Bug class family:** Mesmo padrão de F17/F25/F27 — schema accepts what Google API runtime rejects (Sprint 3b.19A.1 "schema whitelist empirical validation" convention should have caught it; my schema enum was derived from assumed proto enum names, not empirically validated).
+
+**Fix (Sprint 3b.25.1):** Change schema `_STRUCTURED_SNIPPET_HEADERS` enum para Portuguese display strings (V4 BR-invariant):
+```python
+_STRUCTURED_SNIPPET_HEADERS = [
+    "Bairros", "Catálogo de serviços", "Comodidades", "Cursos",
+    "Cursos de graduação", "Destinos", "Estilos", "Hotéis em destaque",
+    "Marcas", "Modelos", "Programas", "Tipos", "Tipos de cobertura do seguro",
+]
+```
+Builder doesn't need changes (just passes the string through to proto).
+
+### F39: PromotionAsset.language_code='pt' invalid (BCP 47 requires region-qualified pt-BR)
+
+**Severity:** HIGH (PROMOTION asset type completely unusable)
+
+**Symptom:** Google API rejects with `"The language code is not supported."` quando builder passa `promo.language_code = "pt"` (V4 invariant hardcoded).
+
+**Root cause:** BCP 47 spec says `"pt"` is valid (less specific) but Google Ads PROMOTION asset apparently expects region-qualified (`"pt-BR"`). Same pattern as `languageConstants/1014` which represents "Portuguese (Brazil)" não generic Portuguese.
+
+**Bug class family:** Mesmo padrão de F25/F27/F34 — V4 invariant inferred from spec wasn't validated empirically against Google runtime. Sprint 3b.19A.1 convention applies.
+
+**Fix (Sprint 3b.25.1):** Change builder line in `src/google_ads/mutates/assets.py`:
+```python
+promo.language_code = "pt-BR"  # was "pt" — F39: BCP 47 requires region qualifier
+```
+Builder unit test updates the V4 invariant assertion accordingly.
+
+**Bonus:** Sprint 3b.25.1 should also add `language_code` mapping em `_classify_partial` (em `src/google_ads/errors.py`) pra evitar KeyError no T11 (PROMOTION money_amount_off path). Não é regression do Sprint 3b.25 mas surface gap descoberto durante smoke.
+
+### Cleanup post-smoke
+
+Assets ficam paused (campaigns Sprint 3b.24 já PAUSED, zero serving impact). Total criados: ~50 assets em Nutry sandbox + 50 links. Spawn-task pra Sprint 3b.28 (`remove_*` bundle) cleanup futuro.
 
 ## Sign-off
 
-- [ ] Pre-push gate 5/5 PASS
-- [ ] Production /health 200
-- [ ] 12+/15 tests PASS (T3/T9 podem ser documentados findings sem blocker)
-- [ ] CLAUDE.md sprint row added
-- [ ] findings-catalog.md updated se F38+ surgir
-- [ ] Tool count 47 → 48 confirmed in production tool list
+- [x] Pre-push gate 5/5 PASS (no Task 5)
+- [x] Production /health 200 (revision `v4-ads-mcp-00188-cwv`)
+- [x] **11/15 tests PASS** (T3+T9 predicted F-findings NÃO surgiram → bonus; T6+T7 + T10+T11 surfaced F38+F39 que precisam fix iteration Sprint 3b.25.1)
+- [x] CLAUDE.md sprint row added (commit 2c0fab0)
+- [ ] findings-catalog.md updated com F38 + F39 — **PENDING (signoff commit)**
+- [x] Tool count 47 → 48 confirmed in production
+- [ ] Sprint 3b.25.1 fix iteration (F38 schema + F39 builder language_code) — **PENDING (next commit)**
 
-Signed-off: ⬜ pending
+**Streak status:** Sprint 3b.25 break F-finding streak iniciada em 3b.22 + 3b.23 (2 sprints clean smoke). F38 + F39 são 12ª variante da família design-gap-via-SDK-ambiguity (F17/F18/F19/F25/F27/F31/F32/F34/F36 + new F38/F39).
+
+Signed-off: 🟡 partial — 3 critical paths (SITELINK, CALLOUT, CALL all levels + mixed batch) work end-to-end. STRUCTURED_SNIPPET + PROMOTION blocked pending Sprint 3b.25.1 fix.
