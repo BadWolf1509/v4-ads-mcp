@@ -147,6 +147,7 @@ def test_all_phase_2_tools_registered():
         "create_rsa",
         "create_conversion_action",
         "create_conversion_value_rule_set",
+        "create_campaign",  # Sprint 3b.24
         # update patterns
         "update_rsa",
     }
@@ -203,6 +204,7 @@ def test_no_unexpected_tools():
         "create_rsa",
         "create_conversion_action",
         "create_conversion_value_rule_set",
+        "create_campaign",  # Sprint 3b.24
         "update_rsa",
     }
     actual = {t.name for t in all_tools()}
