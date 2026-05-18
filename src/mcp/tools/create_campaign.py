@@ -21,6 +21,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.db import connection
+from src.google_ads.queries._common import validate_geo_target_constants_br_only
+from src.governance.blast_radius import classify
+from src.governance.dry_run import create_pending
+from src.mcp.context import get_current
+from src.mcp.tools._registry import register_tool
+
 _BIDDING_STRATEGY_ENUM = [
     "MAXIMIZE_CONVERSIONS",
     "MAXIMIZE_CONVERSION_VALUE",
@@ -110,3 +117,115 @@ def _validate_payload_shape(args: dict[str, Any]) -> str | None:
         return f"start_date ({start}) posterior a end_date ({end})."
 
     return None
+
+
+def _build_params_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    """Audit-safe: counts only, NO copy text per spec §3.6."""
+    bs = payload["bidding_strategy"]
+    return {
+        "bidding_strategy_type": bs["type"],
+        "daily_budget_brl": payload["daily_budget_brl"],
+        "geo_count": len(payload["geo_targets"]),
+        "has_schedule": ("start_date" in payload) or ("end_date" in payload),
+    }
+
+
+@register_tool(
+    name="create_campaign",
+    description=(
+        "Cria 1 SEARCH campaign nova em uma conta V4. Always-CONFIRM. Schema "
+        "requer name + bidding_strategy + daily_budget_brl + geo_targets (lista "
+        "de geoTargetConstants resource paths, validados como BR via pre-flight "
+        "V4). Status sempre PAUSED on create — gestor liga manualmente apos "
+        "review. Language defaults Portuguese. Search Partners + Display Network "
+        "OFF (V4 defaults). Bidding strategies suportadas v0: MAXIMIZE_CONVERSIONS, "
+        "MAXIMIZE_CONVERSION_VALUE, TARGET_CPA (requer target_cpa_brl), "
+        "TARGET_ROAS (requer target_roas), MANUAL_CPC (opcional enhanced_cpc), "
+        "MAXIMIZE_CLICKS (opcional cpc_bid_ceiling_brl). Conversion goals "
+        "inherit account-default (override fica pra v1). Channel SEARCH only v0 "
+        "(PMAX/DISPLAY/SHOPPING v1). F13 resource_names auto-retorna paths "
+        "criados (budget + campaign + N geo criterions + PT language criterion)."
+    ),
+    input_schema=_SCHEMA,
+)
+async def create_campaign(args: dict[str, Any]) -> dict[str, Any]:
+    ctx = get_current()
+    customer_id = args["customer_id"]
+
+    # Runtime payload validation (Sprint 3b.19B.1 pattern)
+    shape_error = _validate_payload_shape(args)
+    if shape_error:
+        return {
+            "status": "error",
+            "error": shape_error,
+            "operation": "create_campaign",
+        }
+
+    # Pre-flight: V4 BR-invariant geo validation
+    error = await validate_geo_target_constants_br_only(
+        manager_id=ctx.manager_id,
+        session_id=ctx.session_id,
+        customer_id=customer_id,
+        geo_paths=args["geo_targets"],
+    )
+    if error:
+        return {
+            "status": "error",
+            "error": error,
+            "operation": "create_campaign",
+        }
+
+    # Compute target_count: 1 budget + 1 campaign + N geos + 1 language
+    geo_count = len(args["geo_targets"])
+    target_count = 2 + geo_count + 1
+
+    risk = classify(
+        operation="create_campaign",
+        params={"target_count": target_count},
+    )
+
+    params_summary = _build_params_summary(args)
+    bs = args["bidding_strategy"]
+
+    summary = (
+        f"Criar 1 campanha SEARCH (PAUSED) + budget BRL "
+        f"{args['daily_budget_brl']:.2f}/dia + {geo_count} geo target(s) + "
+        f"PT language. Bidding: {bs['type']}."
+    )
+
+    payload = {
+        **args,
+        "__target_count__": target_count,
+        "__params_summary__": params_summary,
+    }
+
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        token = await create_pending(
+            conn,
+            session_id=ctx.session_id,
+            customer_id=customer_id,
+            operation_type="create_campaign",
+            payload=payload,
+            blast_summary=summary,
+        )
+
+    preview = {
+        "name": args["name"],
+        "bidding_strategy_type": bs["type"],
+        "daily_budget_brl": args["daily_budget_brl"],
+        "geo_count": geo_count,
+        "has_schedule": params_summary["has_schedule"],
+    }
+
+    return {
+        "status": "dry_run",
+        "operation": "create_campaign",
+        "customer_id": customer_id,
+        "blast_summary": summary,
+        "preview": preview,
+        "confirmation_token": token,
+        "expires_in_minutes": 10,
+        "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
+        "confirmation_reason": risk.reason,
+    }
