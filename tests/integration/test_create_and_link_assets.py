@@ -134,8 +134,7 @@ async def test_create_and_link_assets_dry_run_emits_token_and_audit_pending(
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT operation_type, customer_id FROM pending_mutations "
-            "WHERE confirmation_token = $1",
+            "SELECT operation_type, customer_id FROM pending_confirmations WHERE token = $1",
             result["confirmation_token"],
         )
     assert len(rows) == 1
