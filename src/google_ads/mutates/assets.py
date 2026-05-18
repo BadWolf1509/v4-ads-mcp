@@ -102,6 +102,9 @@ def build_create_and_link_assets(
             if "end_date" in a:
                 promo.end_date = a["end_date"]
 
+        else:
+            raise ValueError(f"unexpected asset type: {atype!r}")
+
         operations.append(asset_op_wrap)
 
         # ----- Link op (branches on attachment_level) -----
@@ -125,6 +128,9 @@ def build_create_and_link_assets(
             ag.asset = temp_asset_path
             ag.ad_group = a["attachment_id"]
             ag.field_type = ft
+
+        else:
+            raise ValueError(f"unexpected attachment_level: {alevel!r}")
 
         operations.append(link_op_wrap)
 

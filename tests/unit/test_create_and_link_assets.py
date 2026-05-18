@@ -149,6 +149,15 @@ def test_validate_rejects_campaign_level_with_invalid_resource_path():
     assert "resource path" in error["error"].lower() or "customers/" in error["error"]
 
 
+def test_validate_rejects_ad_group_level_with_invalid_resource_path():
+    asset = _valid_sitelink_asset()
+    asset["attachment_level"] = "AD_GROUP"
+    asset["attachment_id"] = "77777"  # raw id, not resource path
+    error = _validate_payload_shape(_valid_payload(assets=[asset]))
+    assert error is not None
+    assert "adGroups" in error["error"] or "resource path" in error["error"].lower()
+
+
 def test_validate_rejects_promotion_end_date_before_start():
     asset = {
         "type": "PROMOTION",
@@ -285,3 +294,53 @@ async def test_tool_summary_includes_counts_by_type_and_level():
         assert summary["total_ops_chained"] == 6
     finally:
         clear_current()
+
+
+# ============================================================================
+# _build_summary direct unit test (pure function, no mocks needed)
+# ============================================================================
+
+
+def test_build_summary_returns_correct_counts_and_distinct_ids():
+    """_build_summary computes counts + distinct attachment_ids correctly.
+
+    Tests deduplication branch: 2 SITELINKs share same campaign attachment_id,
+    so attachment_ids_distinct == 1 (not 2).
+    """
+    from src.mcp.tools.create_and_link_assets import _build_summary
+
+    payload = {
+        "customer_id": "1234567890",
+        "assets": [
+            {
+                "type": "SITELINK",
+                "attachment_level": "CAMPAIGN",
+                "attachment_id": "customers/1234567890/campaigns/99999",
+                "link_text": "Sobre",
+                "final_urls": ["https://example.com/sobre"],
+            },
+            {
+                "type": "SITELINK",
+                "attachment_level": "CAMPAIGN",
+                "attachment_id": "customers/1234567890/campaigns/99999",  # same campaign
+                "link_text": "Contato",
+                "final_urls": ["https://example.com/contato"],
+            },
+            {
+                "type": "CALLOUT",
+                "attachment_level": "CUSTOMER",
+                "attachment_id": "1234567890",
+                "callout_text": "Atendimento 24h",
+            },
+        ],
+    }
+
+    summary = _build_summary(payload)
+
+    assert summary == {
+        "asset_count": 3,
+        "by_type": {"SITELINK": 2, "CALLOUT": 1},
+        "by_level": {"CAMPAIGN": 2, "CUSTOMER": 1},
+        "attachment_ids_distinct": 2,  # 1 campaign + 1 customer = 2 distinct
+        "total_ops_chained": 6,
+    }

@@ -220,7 +220,12 @@ async def test_create_and_link_assets_full_cycle_returns_interleaved_resource_na
     assert rows[0]["google_request_id"] == "req-create-assets"
     summary = rows[0]["params_summary"]
     summary_d = json.loads(summary) if isinstance(summary, str) else summary
-    assert summary_d["asset_count"] == asset_count
-    assert summary_d["by_type"] == {"SITELINK": asset_count}
-    assert summary_d["by_level"] == {"CAMPAIGN": asset_count}
-    assert summary_d["total_ops_chained"] == two_n
+    # Full-dict equality — catches missing/extra fields if _build_summary changes
+    # All 3 SITELINK assets target the same campaign → attachment_ids_distinct == 1
+    assert summary_d == {
+        "asset_count": asset_count,
+        "by_type": {"SITELINK": asset_count},
+        "by_level": {"CAMPAIGN": asset_count},
+        "attachment_ids_distinct": 1,
+        "total_ops_chained": two_n,
+    }
