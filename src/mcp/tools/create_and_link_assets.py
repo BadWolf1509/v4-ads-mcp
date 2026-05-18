@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.mcp.tools._registry import register_tool
+
 _ASSET_TYPES = ["SITELINK", "CALLOUT", "STRUCTURED_SNIPPET", "CALL", "PROMOTION"]
 _ATTACHMENT_LEVELS = ["CUSTOMER", "CAMPAIGN", "AD_GROUP"]
 _STRUCTURED_SNIPPET_HEADERS = [
@@ -197,3 +199,21 @@ def _validate_payload_shape(payload: dict[str, Any]) -> dict[str, Any] | None:
                 )
 
     return None
+
+
+@register_tool(
+    name="create_and_link_assets",
+    description=(
+        "Cria N text-extension assets (SITELINK/CALLOUT/STRUCTURED_SNIPPET/CALL/PROMOTION) "
+        "e vincula em escopo CUSTOMER/CAMPAIGN/AD_GROUP via chained mutation (2N ops atomic). "
+        "Always-CONFIRM. Sprint 3b.25."
+    ),
+    input_schema=_SCHEMA,
+)
+async def create_and_link_assets(args: dict[str, Any]) -> dict[str, Any]:
+    """Sprint 3b.25 handler stub — full dry_run implementation in Task 3."""
+    return {
+        "status": "error",
+        "error": "create_and_link_assets handler not yet implemented (Sprint 3b.25 Task 3)",
+        "operation": "create_and_link_assets",
+    }

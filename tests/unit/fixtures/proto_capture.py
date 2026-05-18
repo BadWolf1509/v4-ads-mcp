@@ -295,4 +295,9 @@ def make_capture_client() -> MagicMock:
     # DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING (Brazilian advertiser).
     client.enums.EuPoliticalAdvertisingStatusEnum = _BareEnumDict()
 
+    # Asset enums (Sprint 3b.25): return the key as-is so builder tests can
+    # assert field_type == "CALLOUT", discount_modifier == "UP_TO", etc.
+    client.enums.AssetFieldTypeEnum = _BareEnumDict()
+    client.enums.PromotionExtensionDiscountModifierEnum = _BareEnumDict()
+
     return client
