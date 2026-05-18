@@ -142,18 +142,14 @@ def test_runtime_enhanced_cpc_only_with_manual_cpc():
     assert "enhanced_cpc" in error
 
     # MANUAL_CPC + enhanced_cpc is OK
-    payload = _valid_payload(
-        bidding_strategy={"type": "MANUAL_CPC", "enhanced_cpc": True}
-    )
+    payload = _valid_payload(bidding_strategy={"type": "MANUAL_CPC", "enhanced_cpc": True})
     assert _validate_payload_shape(payload) is None
 
 
 def test_runtime_cpc_bid_ceiling_only_with_maximize_clicks():
     from src.mcp.tools.create_campaign import _validate_payload_shape
 
-    payload = _valid_payload(
-        bidding_strategy={"type": "MANUAL_CPC", "cpc_bid_ceiling_brl": 1.5}
-    )
+    payload = _valid_payload(bidding_strategy={"type": "MANUAL_CPC", "cpc_bid_ceiling_brl": 1.5})
     error = _validate_payload_shape(payload)
     assert error is not None
     assert "cpc_bid_ceiling_brl" in error
@@ -182,9 +178,7 @@ def test_runtime_target_roas_invalid_with_wrong_strategy():
     from src.mcp.tools.create_campaign import _validate_payload_shape
 
     # MAX_CONVERSIONS + target_roas is invalid
-    payload = _valid_payload(
-        bidding_strategy={"type": "MAXIMIZE_CONVERSIONS", "target_roas": 4.0}
-    )
+    payload = _valid_payload(bidding_strategy={"type": "MAXIMIZE_CONVERSIONS", "target_roas": 4.0})
     error = _validate_payload_shape(payload)
     assert error is not None
     assert "target_roas" in error
@@ -236,12 +230,12 @@ async def test_pre_flight_geo_rejection_propagates():
     with (
         patch(
             "src.mcp.tools.create_campaign.validate_geo_target_constants_br_only",
-            AsyncMock(return_value="Geo target 'Canada' (geoTargetConstants/...) tem country_code 'CA', esperado 'BR'."),
+            AsyncMock(
+                return_value="Geo target 'Canada' (geoTargetConstants/...) tem country_code 'CA', esperado 'BR'."
+            ),
         ),
     ):
-        result = await create_campaign(
-            _valid_payload(geo_targets=["geoTargetConstants/2124"])
-        )
+        result = await create_campaign(_valid_payload(geo_targets=["geoTargetConstants/2124"]))
 
     assert result["status"] == "error"
     assert "BR" in result["error"]

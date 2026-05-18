@@ -91,3 +91,139 @@ def build_update_campaign_bidding(
     else:
         raise ValueError(f"Unsupported bidding strategy: {strategy}")
     return [op]
+
+
+def _brl_to_micros(brl: float) -> int:
+    """Convert BRL to micros (1 BRL = 1_000_000 micros).
+
+    Sprint 3b.24 — used by build_create_campaign for budget + bidding strategy
+    targets. Other create patterns use similar conversion (e.g., create_conversion_action).
+    """
+    return int(brl * 1_000_000)
+
+
+@register_builder("create_campaign")
+def build_create_campaign(client: Any, customer_id: str, payload: dict[str, Any]) -> list[Any]:
+    """Build N+M+2 chained operations for create_campaign (Sprint 3b.24).
+
+    payload schema (post-_validate_payload_shape):
+      name: str
+      bidding_strategy: {type: str, target_cpa_brl?: float, target_roas?: float,
+                         cpc_bid_ceiling_brl?: float, enhanced_cpc?: bool}
+      daily_budget_brl: float
+      geo_targets: list[str]  (geoTargetConstants/{id} paths)
+      start_date?: str  (YYYY-MM-DD)
+      end_date?: str    (YYYY-MM-DD)
+
+    Returns list[MutateOperation] in order:
+      [0] campaign_budget_operation.create (temp resource: campaignBudgets/-1)
+      [1] campaign_operation.create (temp resource: campaigns/-2, refs budget -1)
+      [2..N+1] campaign_criterion_operation.create × N (locations, ref campaign -2)
+      [N+2] campaign_criterion_operation.create (PT language, ref campaign -2)
+
+    Chained mutation pattern (Sprint 3b.19B established): N+M+2 ops em single
+    MutateGoogleAdsRequest. Google replaces temp resource names with real IDs
+    post-create. F13 (Sprint 3b.15) auto-returns resource_names array.
+
+    V4 invariants hardcoded:
+    - status PAUSED on create
+    - advertising_channel_type SEARCH (v0)
+    - network: target_google_search=True, target_search_network=False,
+      target_content_network=False (V4 defaults)
+    - language: languageConstants/1014 (Portuguese)
+    - budget delivery_method STANDARD
+
+    Bidding strategy → oneof field mapping (proto-plus):
+    - MAXIMIZE_CONVERSIONS → campaign.maximize_conversions (optional target_cpa_micros)
+    - MAXIMIZE_CONVERSION_VALUE → campaign.maximize_conversion_value (optional target_roas)
+    - TARGET_CPA → campaign.target_cpa.target_cpa_micros
+    - TARGET_ROAS → campaign.target_roas.target_roas (decimal, e.g., 4.0 = 400%)
+    - MANUAL_CPC → campaign.manual_cpc.enhanced_cpc_enabled
+    - MAXIMIZE_CLICKS → campaign.target_spend (optional cpc_bid_ceiling_micros)
+    """
+    operations: list[Any] = []
+
+    # Enums needed
+    budget_delivery_enum = client.enums.BudgetDeliveryMethodEnum
+    channel_enum = client.enums.AdvertisingChannelTypeEnum
+    status_enum = client.enums.CampaignStatusEnum
+
+    # Temp resource paths
+    budget_temp_path = f"customers/{customer_id}/campaignBudgets/-1"
+    campaign_temp_path = f"customers/{customer_id}/campaigns/-2"
+
+    # ----- Op 0: Campaign Budget -----
+    budget_op_wrap = client.get_type("MutateOperation")
+    budget_op = budget_op_wrap.campaign_budget_operation
+    budget = budget_op.create
+    budget.resource_name = budget_temp_path
+    budget.name = f"{payload['name']} - budget"
+    budget.amount_micros = _brl_to_micros(payload["daily_budget_brl"])
+    budget.delivery_method = budget_delivery_enum.STANDARD
+    operations.append(budget_op_wrap)
+
+    # ----- Op 1: Campaign -----
+    campaign_op_wrap = client.get_type("MutateOperation")
+    campaign_op = campaign_op_wrap.campaign_operation
+    campaign = campaign_op.create
+    campaign.resource_name = campaign_temp_path
+    campaign.name = payload["name"]
+    campaign.status = status_enum.PAUSED  # V4 invariant
+    campaign.advertising_channel_type = channel_enum.SEARCH  # v0
+    campaign.campaign_budget = budget_temp_path  # temp ref
+
+    # Network settings V4 invariants
+    campaign.network_settings.target_google_search = True
+    campaign.network_settings.target_search_network = False  # No Search Partners
+    campaign.network_settings.target_content_network = False  # No Display
+
+    # Bidding strategy oneof
+    bs = payload["bidding_strategy"]
+    bs_type = bs["type"]
+    if bs_type == "MAXIMIZE_CONVERSIONS":
+        # Assign to local var to touch oneof submessage (satisfies ruff B018)
+        max_conv = campaign.maximize_conversions
+        if "target_cpa_brl" in bs:
+            max_conv.target_cpa_micros = _brl_to_micros(bs["target_cpa_brl"])
+    elif bs_type == "MAXIMIZE_CONVERSION_VALUE":
+        max_conv_val = campaign.maximize_conversion_value
+        if "target_roas" in bs:
+            max_conv_val.target_roas = bs["target_roas"]
+    elif bs_type == "TARGET_CPA":
+        campaign.target_cpa.target_cpa_micros = _brl_to_micros(bs["target_cpa_brl"])
+    elif bs_type == "TARGET_ROAS":
+        campaign.target_roas.target_roas = bs["target_roas"]
+    elif bs_type == "MANUAL_CPC":
+        campaign.manual_cpc.enhanced_cpc_enabled = bs.get("enhanced_cpc", False)
+    elif bs_type == "MAXIMIZE_CLICKS":
+        # MAXIMIZE_CLICKS uses target_spend message in proto
+        target_spend = campaign.target_spend
+        if "cpc_bid_ceiling_brl" in bs:
+            target_spend.cpc_bid_ceiling_micros = _brl_to_micros(bs["cpc_bid_ceiling_brl"])
+
+    # Schedule (optional)
+    if "start_date" in payload:
+        campaign.start_date = payload["start_date"]
+    if "end_date" in payload:
+        campaign.end_date = payload["end_date"]
+
+    operations.append(campaign_op_wrap)
+
+    # ----- Ops 2..N+1: Geo Criterion ops -----
+    for geo_path in payload["geo_targets"]:
+        geo_op_wrap = client.get_type("MutateOperation")
+        geo_op = geo_op_wrap.campaign_criterion_operation
+        geo_crit = geo_op.create
+        geo_crit.campaign = campaign_temp_path  # temp ref
+        geo_crit.location.geo_target_constant = geo_path
+        operations.append(geo_op_wrap)
+
+    # ----- Op N+2: PT Language Criterion -----
+    lang_op_wrap = client.get_type("MutateOperation")
+    lang_op = lang_op_wrap.campaign_criterion_operation
+    lang_crit = lang_op.create
+    lang_crit.campaign = campaign_temp_path  # temp ref
+    lang_crit.language.language_constant = "languageConstants/1014"  # PT (V4)
+    operations.append(lang_op_wrap)
+
+    return operations

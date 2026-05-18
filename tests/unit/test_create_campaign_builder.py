@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from tests.unit.fixtures.proto_capture import make_capture_client
 
 
@@ -30,53 +28,33 @@ def test_builder_happy_path_max_conversions_minimal():
 
     # Op 0: budget
     budget_op = ops[0]
-    assert "campaignBudgets/-1" in budget_op.field(
-        "campaign_budget_operation.create.resource_name"
-    )
+    assert "campaignBudgets/-1" in budget_op.field("campaign_budget_operation.create.resource_name")
     assert budget_op.field("campaign_budget_operation.create.amount_micros") == 10_000_000
-    assert (
-        budget_op.field("campaign_budget_operation.create.delivery_method") == "STANDARD"
-    )
+    assert budget_op.field("campaign_budget_operation.create.delivery_method") == "STANDARD"
 
     # Op 1: campaign
     campaign_op = ops[1]
-    assert "campaigns/-2" in campaign_op.field(
-        "campaign_operation.create.resource_name"
-    )
+    assert "campaigns/-2" in campaign_op.field("campaign_operation.create.resource_name")
     assert campaign_op.field("campaign_operation.create.name") == "Test Campaign"
     assert campaign_op.field("campaign_operation.create.status") == "PAUSED"
-    assert (
-        campaign_op.field("campaign_operation.create.advertising_channel_type")
-        == "SEARCH"
-    )
-    assert "campaignBudgets/-1" in campaign_op.field(
-        "campaign_operation.create.campaign_budget"
-    )
+    assert campaign_op.field("campaign_operation.create.advertising_channel_type") == "SEARCH"
+    assert "campaignBudgets/-1" in campaign_op.field("campaign_operation.create.campaign_budget")
     # Network settings V4 defaults
     assert (
-        campaign_op.field(
-            "campaign_operation.create.network_settings.target_google_search"
-        )
-        is True
+        campaign_op.field("campaign_operation.create.network_settings.target_google_search") is True
     )
     assert (
-        campaign_op.field(
-            "campaign_operation.create.network_settings.target_search_network"
-        )
+        campaign_op.field("campaign_operation.create.network_settings.target_search_network")
         is False
     )
     assert (
-        campaign_op.field(
-            "campaign_operation.create.network_settings.target_content_network"
-        )
+        campaign_op.field("campaign_operation.create.network_settings.target_content_network")
         is False
     )
 
     # Op 2: geo criterion
     geo_op = ops[2]
-    assert "campaigns/-2" in geo_op.field(
-        "campaign_criterion_operation.create.campaign"
-    )
+    assert "campaigns/-2" in geo_op.field("campaign_criterion_operation.create.campaign")
     assert (
         geo_op.field("campaign_criterion_operation.create.location.geo_target_constant")
         == "geoTargetConstants/2076"
@@ -84,9 +62,7 @@ def test_builder_happy_path_max_conversions_minimal():
 
     # Op 3: language criterion (PT hardcoded)
     lang_op = ops[3]
-    assert "campaigns/-2" in lang_op.field(
-        "campaign_criterion_operation.create.campaign"
-    )
+    assert "campaigns/-2" in lang_op.field("campaign_criterion_operation.create.campaign")
     assert (
         lang_op.field("campaign_criterion_operation.create.language.language_constant")
         == "languageConstants/1014"
@@ -97,47 +73,33 @@ def test_builder_target_cpa_sets_target_cpa_micros():
     from src.google_ads.mutates.campaigns import build_create_campaign
 
     client = make_capture_client()
-    payload = _payload(
-        bidding_strategy={"type": "TARGET_CPA", "target_cpa_brl": 25.0}
-    )
+    payload = _payload(bidding_strategy={"type": "TARGET_CPA", "target_cpa_brl": 25.0})
     ops = build_create_campaign(client, "1234567890", payload)
 
     campaign_op = ops[1]
-    assert (
-        campaign_op.field("campaign_operation.create.target_cpa.target_cpa_micros")
-        == 25_000_000
-    )
+    assert campaign_op.field("campaign_operation.create.target_cpa.target_cpa_micros") == 25_000_000
 
 
 def test_builder_target_roas_sets_target_roas():
     from src.google_ads.mutates.campaigns import build_create_campaign
 
     client = make_capture_client()
-    payload = _payload(
-        bidding_strategy={"type": "TARGET_ROAS", "target_roas": 4.0}
-    )
+    payload = _payload(bidding_strategy={"type": "TARGET_ROAS", "target_roas": 4.0})
     ops = build_create_campaign(client, "1234567890", payload)
 
     campaign_op = ops[1]
-    assert (
-        campaign_op.field("campaign_operation.create.target_roas.target_roas") == 4.0
-    )
+    assert campaign_op.field("campaign_operation.create.target_roas.target_roas") == 4.0
 
 
 def test_builder_manual_cpc_with_enhanced_cpc_flag():
     from src.google_ads.mutates.campaigns import build_create_campaign
 
     client = make_capture_client()
-    payload = _payload(
-        bidding_strategy={"type": "MANUAL_CPC", "enhanced_cpc": True}
-    )
+    payload = _payload(bidding_strategy={"type": "MANUAL_CPC", "enhanced_cpc": True})
     ops = build_create_campaign(client, "1234567890", payload)
 
     campaign_op = ops[1]
-    assert (
-        campaign_op.field("campaign_operation.create.manual_cpc.enhanced_cpc_enabled")
-        is True
-    )
+    assert campaign_op.field("campaign_operation.create.manual_cpc.enhanced_cpc_enabled") is True
 
 
 def test_builder_maximize_clicks_with_ceiling():
@@ -154,9 +116,7 @@ def test_builder_maximize_clicks_with_ceiling():
 
     campaign_op = ops[1]
     assert (
-        campaign_op.field(
-            "campaign_operation.create.target_spend.cpc_bid_ceiling_micros"
-        )
+        campaign_op.field("campaign_operation.create.target_spend.cpc_bid_ceiling_micros")
         == 2_500_000
     )
 
@@ -179,9 +139,7 @@ def test_builder_multiple_geo_targets_emit_multiple_criterion_ops():
 
     # Geo criterion ops at positions 2, 3, 4
     geo_paths = [
-        ops[i].field(
-            "campaign_criterion_operation.create.location.geo_target_constant"
-        )
+        ops[i].field("campaign_criterion_operation.create.location.geo_target_constant")
         for i in range(2, 5)
     ]
     assert geo_paths == [

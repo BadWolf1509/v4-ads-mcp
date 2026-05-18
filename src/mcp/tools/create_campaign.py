@@ -99,14 +99,9 @@ def _validate_payload_shape(args: dict[str, Any]) -> str | None:
     if "cpc_bid_ceiling_brl" in bs and bs_type != "MAXIMIZE_CLICKS":
         return "cpc_bid_ceiling_brl so e valido com MAXIMIZE_CLICKS."
     if "target_cpa_brl" in bs and bs_type not in ("TARGET_CPA", "MAXIMIZE_CONVERSIONS"):
-        return (
-            "target_cpa_brl valido apenas para TARGET_CPA ou MAXIMIZE_CONVERSIONS "
-            "(eCPC mode)."
-        )
+        return "target_cpa_brl valido apenas para TARGET_CPA ou MAXIMIZE_CONVERSIONS (eCPC mode)."
     if "target_roas" in bs and bs_type not in ("TARGET_ROAS", "MAXIMIZE_CONVERSION_VALUE"):
-        return (
-            "target_roas valido apenas para TARGET_ROAS ou MAXIMIZE_CONVERSION_VALUE."
-        )
+        return "target_roas valido apenas para TARGET_ROAS ou MAXIMIZE_CONVERSION_VALUE."
 
     # Schedule validation
     start = args.get("start_date")

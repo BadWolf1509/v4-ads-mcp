@@ -260,4 +260,21 @@ def make_capture_client() -> MagicMock:
     client.enums.ConversionValueRuleStatusEnum = _EnumDict("RULE_STATUS")
     client.enums.ConversionValueRuleSetStatusEnum = _EnumDict("SET_STATUS")
 
+    # Campaign create enums (Sprint 3b.24). Return the raw member name as a
+    # plain string so builder tests can assert e.g. status == "PAUSED",
+    # advertising_channel_type == "SEARCH", delivery_method == "STANDARD".
+    # _EnumDict prefix set to "" so __getattr__("PAUSED") → "PAUSED" (no prefix).
+    class _BareEnumDict:
+        """Like _EnumDict but returns the key itself (no prefix)."""
+
+        def __getitem__(self, key: str) -> str:
+            return key
+
+        def __getattr__(self, key: str) -> str:
+            return key
+
+    client.enums.BudgetDeliveryMethodEnum = _BareEnumDict()
+    client.enums.AdvertisingChannelTypeEnum = _BareEnumDict()
+    client.enums.CampaignStatusEnum = _BareEnumDict()
+
     return client
