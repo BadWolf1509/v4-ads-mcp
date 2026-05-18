@@ -25,20 +25,26 @@ from src.mcp.tools._registry import register_tool
 
 _ASSET_TYPES = ["SITELINK", "CALLOUT", "STRUCTURED_SNIPPET", "CALL", "PROMOTION"]
 _ATTACHMENT_LEVELS = ["CUSTOMER", "CAMPAIGN", "AD_GROUP"]
+# F38 (Sprint 3b.25.1): StructuredSnippetAsset.header is a STRING field (not proto enum).
+# Google rejects ALL_CAPS values like "SERVICE_CATALOG" with "input string value is invalid".
+# API expects display strings from
+# https://developers.google.com/google-ads/api/reference/data/structured-snippet-headers
+# V4 BR-invariant: use Portuguese (pt-BR) display strings.
+# Smoke discovered in T6 (header="SERVICE_CATALOG") + T7 (header="BRANDS") — both rejected.
 _STRUCTURED_SNIPPET_HEADERS = [
-    "AMENITIES",
-    "BRANDS",
-    "COURSES",
-    "DEGREE_PROGRAMS",
-    "DESTINATIONS",
-    "FEATURED_HOTELS",
-    "INSURANCE_COVERAGE",
-    "MODELS",
-    "NEIGHBORHOODS",
-    "SERVICE_CATALOG",
-    "SHOWS",
-    "STYLES",
-    "TYPES",
+    "Bairros",
+    "Catálogo de serviços",
+    "Comodidades",
+    "Cursos",
+    "Cursos de graduação",
+    "Destinos",
+    "Estilos",
+    "Hotéis em destaque",
+    "Marcas",
+    "Modelos",
+    "Programas",
+    "Tipos",
+    "Tipos de cobertura do seguro",
 ]
 
 _SCHEMA: dict[str, Any] = {

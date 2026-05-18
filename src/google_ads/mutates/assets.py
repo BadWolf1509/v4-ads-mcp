@@ -10,7 +10,8 @@ time. F13 (Sprint 3b.15) auto-extracts 2N resource_names from response.
 
 V4 invariants hardcoded (no schema fields):
 - CallAsset.country_code = "BR"
-- PromotionAsset.language_code = "pt"
+- PromotionAsset.language_code = "pt-BR" (F39 Sprint 3b.25.1: BCP 47 region-qualified;
+  Google rejects bare "pt" with "The language code is not supported.")
 - PromotionAsset.money_amount_off.currency_code = "BRL"
 
 Proto field names verified via context7 against /websites/developers_google_google-ads_api
@@ -94,7 +95,9 @@ def build_create_and_link_assets(
                 # 1 BRL = 1_000_000 micros
                 promo.money_amount_off.amount_micros = int(a["money_amount_off_brl"] * 1_000_000)
                 promo.money_amount_off.currency_code = "BRL"  # V4 invariant
-            promo.language_code = "pt"  # V4 invariant
+            promo.language_code = (
+                "pt-BR"  # V4 invariant (F39 Sprint 3b.25.1: BCP 47 region-qualified)
+            )
             for url in a["final_urls"]:
                 asset.final_urls.append(url)
             if "start_date" in a:

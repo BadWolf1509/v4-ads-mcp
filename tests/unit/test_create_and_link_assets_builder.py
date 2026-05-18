@@ -85,7 +85,7 @@ def test_builder_structured_snippet_sets_header_and_values():
         "type": "STRUCTURED_SNIPPET",
         "attachment_level": "CAMPAIGN",
         "attachment_id": "customers/1234567890/campaigns/99999",
-        "header": "SERVICE_CATALOG",
+        "header": "Catálogo de serviços",  # F38 Sprint 3b.25.1: PT-BR display string
         "values": ["SEO", "Mídia Paga", "Branding"],
     }
     client = make_capture_client()
@@ -94,7 +94,7 @@ def test_builder_structured_snippet_sets_header_and_values():
     asset_op = ops[0]
     assert (
         asset_op.field("asset_operation.create.structured_snippet_asset.header")
-        == "SERVICE_CATALOG"
+        == "Catálogo de serviços"
     )
     assert asset_op.field_count("asset_operation.create.structured_snippet_asset.values") == 3
 
@@ -359,8 +359,12 @@ def test_builder_call_always_sets_country_code_br():
         assert ops[0].field("asset_operation.create.call_asset.country_code") == "BR"
 
 
-def test_builder_promotion_always_sets_language_code_pt():
-    """V4 invariant: language_code hardcoded pt regardless of payload."""
+def test_builder_promotion_always_sets_language_code_pt_br():
+    """V4 invariant: language_code hardcoded pt-BR regardless of payload.
+
+    F39 Sprint 3b.25.1: was "pt" — Google rejects with "The language code is not
+    supported." BCP 47 requires region-qualified for Google PROMOTION asset.
+    """
     from src.google_ads.mutates.assets import build_create_and_link_assets
 
     asset = {
@@ -374,7 +378,7 @@ def test_builder_promotion_always_sets_language_code_pt():
     }
     client = make_capture_client()
     ops = build_create_and_link_assets(client, "1234567890", _payload_with_assets([asset]))
-    assert ops[0].field("asset_operation.create.promotion_asset.language_code") == "pt"
+    assert ops[0].field("asset_operation.create.promotion_asset.language_code") == "pt-BR"
 
 
 def test_builder_promotion_money_amount_off_always_brl():
