@@ -12,12 +12,12 @@
 
 ## Pre-flight
 
-- [ ] Deploy lands successfully (`gh run watch <id>` shows green Deploy)
-- [ ] Service `/health` returns 200
-- [ ] Reload MCP client (restart Claude Code session pra schema cache atualizar)
-- [ ] Tool `create_campaign` visível em MCP tool list (count 46 → 47)
+- [x] Deploy lands successfully (`gh run watch 26008265894` green em ~3m)
+- [x] Service `/health` returns 200
+- [ ] **Wellington action: restart Claude Code session pra schema cache atualizar com novo tool** (F28 reproducer — controller session pre-deploy não vê `create_campaign`)
+- [ ] Tool `create_campaign` visível em MCP tool list (count 46 → 47) — verificar post-restart
 
-Production revision: `<fill-in>`.
+Production revision: `v4-ads-mcp-00175-dfn`.
 
 ## Test T1 — Happy path: MAX_CONVERSIONS + 1 geo (Brazil whole)
 
