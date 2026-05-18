@@ -399,16 +399,45 @@ Builder unit test updates the V4 invariant assertion accordingly.
 
 Assets ficam paused (campaigns Sprint 3b.24 já PAUSED, zero serving impact). Total criados: ~50 assets em Nutry sandbox + 50 links. Spawn-task pra Sprint 3b.28 (`remove_*` bundle) cleanup futuro.
 
+## Re-test post Sprint 3b.25.1 + 3b.25.2 (production revisions 00191-f56 + final)
+
+| # | Test | Result | Notes |
+|---|---|---|---|
+| T6 | STRUCTURED_SNIPPET CUSTOMER header=`"Catálogo de serviços"` | ❌ FAIL (3b.25.1) | F38 value wrong; existing Nutry asset uses `"Serviços"` |
+| T6 | STRUCTURED_SNIPPET CUSTOMER header=`"Serviços"` | ✅ PASS (3b.25.2) | Asset `362271923449`; GAQL bit-a-bit match |
+| T7 | STRUCTURED_SNIPPET CAMPAIGN header=`"Marcas"` | ✅ PASS (3b.25.1) | Asset `362184778412`; PT-BR direction validated |
+| T10 | PROMOTION percent_off=20 + UP_TO + pt-BR | ✅ PASS (3b.25.1) | **R6 critical assertion validated bit-a-bit via GAQL: `percent_off=200_000` (20.0×10_000)** + `language_code="pt-BR"` |
+| T11 | PROMOTION money_amount_off=50 + NONE | ❌ FAIL (3b.25.1) | F40 surface: `discount_modifier=NONE` invalid |
+| T11 | PROMOTION money_amount_off=50 + UP_TO | ✅ PASS (3b.25.1) | Asset `362352269832`; GAQL: `amount_micros=50_000_000`, `currency_code="BRL"`, `language_code="pt-BR"` |
+
+**Final smoke result (after 2 fix iterations):**
+
+| Result | Count | Tests |
+|---|---|---|
+| ✅ PASS | 15/15 | All asset types × all attachment levels working end-to-end |
+| F-findings emerged + fixed | 3 | F38 (STRUCTURED_SNIPPET header format) + F39 (language_code pt-BR) + F40 (discount_modifier NONE) |
+| F-findings emerged + fixed inline | All resolved | Sprint 3b.25.1 (F38 partial + F39) + Sprint 3b.25.2 (F38 full + F40) |
+
 ## Sign-off
 
-- [x] Pre-push gate 5/5 PASS (no Task 5)
-- [x] Production /health 200 (revision `v4-ads-mcp-00188-cwv`)
-- [x] **11/15 tests PASS** (T3+T9 predicted F-findings NÃO surgiram → bonus; T6+T7 + T10+T11 surfaced F38+F39 que precisam fix iteration Sprint 3b.25.1)
+- [x] Pre-push gate 5/5 PASS (across all 3 sprint iterations)
+- [x] Production /health 200 (revisions `v4-ads-mcp-00188-cwv` → `v4-ads-mcp-00191-f56` → final)
+- [x] **15/15 tests PASS** após 2 fix iterations (3b.25.1 + 3b.25.2)
 - [x] CLAUDE.md sprint row added (commit 2c0fab0)
-- [ ] findings-catalog.md updated com F38 + F39 — **PENDING (signoff commit)**
+- [x] findings-catalog.md updated com F38 + F39 + F40
 - [x] Tool count 47 → 48 confirmed in production
-- [ ] Sprint 3b.25.1 fix iteration (F38 schema + F39 builder language_code) — **PENDING (next commit)**
+- [x] Sprint 3b.25.1 fix iteration shipped (`7060376` — F38 schema + F39 builder language_code)
+- [x] Sprint 3b.25.2 fix iteration shipped (`987b37e` — F38 "Serviços" + F40 discount_modifier optional)
+- [ ] Sprint 3b.25.x candidate: per-value probe pra outros 11 PT-BR headers (tentative values)
 
-**Streak status:** Sprint 3b.25 break F-finding streak iniciada em 3b.22 + 3b.23 (2 sprints clean smoke). F38 + F39 são 12ª variante da família design-gap-via-SDK-ambiguity (F17/F18/F19/F25/F27/F31/F32/F34/F36 + new F38/F39).
+**Streak status:** Sprint 3b.25 break F-finding streak iniciada em 3b.22 + 3b.23 (2 sprints clean smoke). F38 + F39 + F40 são 13ª variante da família design-gap-via-SDK-ambiguity (F17/F18/F19/F25/F27/F31/F32/F34/F36 + F38/F39/F40). Convention 3b.19A.1 (per-value empirical probe) caught all 3 before V4 production use.
 
-Signed-off: 🟡 partial — 3 critical paths (SITELINK, CALLOUT, CALL all levels + mixed batch) work end-to-end. STRUCTURED_SNIPPET + PROMOTION blocked pending Sprint 3b.25.1 fix.
+**V4 production-ready capabilities pós-Sprint 3b.25:**
+- ✅ SITELINK across CUSTOMER/CAMPAIGN/AD_GROUP
+- ✅ CALLOUT across CUSTOMER/CAMPAIGN/AD_GROUP
+- ✅ STRUCTURED_SNIPPET (Serviços + Marcas headers validated; 11 outros tentative)
+- ✅ CALL across CUSTOMER/CAMPAIGN/AD_GROUP (V4 invariant `country_code=BR` enforced)
+- ✅ PROMOTION (percent_off OR money_amount_off, V4 invariants BR + pt-BR + BRL)
+- ✅ Mixed batch (até 20 assets, qualquer combinação)
+
+Signed-off: ✅ **complete** — all 5 asset types × 3 attachment levels production-ready em Nutry sandbox. Onboarding completo de campaign + assets via Claude/Codex MCP destravado.
