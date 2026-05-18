@@ -141,11 +141,11 @@ def build_create_campaign(client: Any, customer_id: str, payload: dict[str, Any]
     - MANUAL_CPC → campaign.manual_cpc (optional enhanced_cpc_enabled)
     - MAXIMIZE_CLICKS → campaign.target_spend (optional cpc_bid_ceiling_micros)
 
-    Sprint 3b.24.1 F30 fix: each branch now uses explicit sub-message instantiation
-    + assignment (``campaign.X = client.get_type("X")``). Prior bare attribute access
-    (``campaign.maximize_conversions.field = ...``) does NOT initialize the oneof in
-    proto-plus, causing Google Ads API to reject all 6 strategies as "required field
-    was not present" or "operation not allowed for given context" during apply_change.
+    Sprint 3b.24.3 F33 fix: bare attribute access (``campaign.target_cpa.target_cpa_micros``)
+    IS the canonical pattern — it both initialises the sub-message and marks the oneof.
+    Sprint 3b.24.1 F30 "fix" used ``client.get_type("X")`` without parens (returns a
+    CLASS, not instance) which silently fails to mark the oneof. Canonical pattern
+    verified via context7 official google-ads-python examples (PMax + Demand Gen).
     """
     operations: list[Any] = []
 
@@ -186,47 +186,52 @@ def build_create_campaign(client: Any, customer_id: str, payload: dict[str, Any]
     campaign.network_settings.target_search_network = False  # No Search Partners
     campaign.network_settings.target_content_network = False  # No Display
 
-    # Bidding strategy oneof — Sprint 3b.24.1 F30 fix.
+    # Bidding strategy oneof — Sprint 3b.24.3 F33 fix.
     #
-    # BARE ATTRIBUTE ACCESS does NOT initialize the oneof in proto-plus (e.g.
-    # `campaign.maximize_conversions` returns the sub-message object but does NOT
-    # mark it as the active oneof member, so Google Ads API sees an unset oneof
-    # and rejects with "required field was not present" or "operation not allowed
-    # for given context"). The canonical fix is explicit assignment:
-    #   sub = client.get_type("MaximizeConversions")
-    #   sub.target_cpa_micros = ...          # set optional scalars on the sub-obj
-    #   campaign.maximize_conversions = sub  # THIS marks the oneof as set
-    # Verified via Google Ads Python SDK canonical examples (context7 / google-ads-python).
+    # CANONICAL PATTERN (verified via context7 / google-ads-python official examples):
+    # Use bare attribute access to set sub-message fields. Accessing
+    # `campaign.maximize_conversions.field = value` IS the correct way to mark
+    # the oneof in proto-plus — it initialises the sub-message and marks it as
+    # the active oneof member in a single step.
+    #
+    # Sprint 3b.24.1 F30 "fix" was WRONG: it used `client.get_type("X")` without
+    # parens, which returns a CLASS (not an instance). Assigning a class to a
+    # proto-plus field is silently accepted but does NOT initialize the oneof.
+    # The bare attribute access pattern (e.g. `campaign.target_cpa.target_cpa_micros`)
+    # is what the official Google Ads Python SDK examples use:
+    #   campaign.maximize_conversion_value.target_roas = 3.5  (PMax example)
+    #   campaign.target_cpa.target_cpa_micros = 1_000_000     (Demand Gen example)
+    #
+    # For strategies with no configurable sub-fields (MANUAL_CPC, MAXIMIZE_CLICKS),
+    # use client.get_type("X")() WITH parens to create an instance, then assign —
+    # this matches the simple create_campaign SDK example pattern.
     bs = payload["bidding_strategy"]
     bs_type = bs["type"]
     if bs_type == "MAXIMIZE_CONVERSIONS":
-        max_conv = client.get_type("MaximizeConversions")
         if "target_cpa_brl" in bs:
-            max_conv.target_cpa_micros = _brl_to_micros(bs["target_cpa_brl"])
-        campaign.maximize_conversions = max_conv
+            campaign.maximize_conversions.target_cpa_micros = _brl_to_micros(bs["target_cpa_brl"])
+        else:
+            # No optional fields — assign an empty instance to mark the oneof.
+            campaign.maximize_conversions = client.get_type("MaximizeConversions")()
     elif bs_type == "MAXIMIZE_CONVERSION_VALUE":
-        max_conv_val = client.get_type("MaximizeConversionValue")
         if "target_roas" in bs:
-            max_conv_val.target_roas = bs["target_roas"]
-        campaign.maximize_conversion_value = max_conv_val
+            campaign.maximize_conversion_value.target_roas = bs["target_roas"]
+        else:
+            # No optional fields — assign an empty instance to mark the oneof.
+            campaign.maximize_conversion_value = client.get_type("MaximizeConversionValue")()
     elif bs_type == "TARGET_CPA":
-        target_cpa = client.get_type("TargetCpa")
-        target_cpa.target_cpa_micros = _brl_to_micros(bs["target_cpa_brl"])
-        campaign.target_cpa = target_cpa
+        campaign.target_cpa.target_cpa_micros = _brl_to_micros(bs["target_cpa_brl"])
     elif bs_type == "TARGET_ROAS":
-        target_roas = client.get_type("TargetRoas")
-        target_roas.target_roas = bs["target_roas"]
-        campaign.target_roas = target_roas
+        campaign.target_roas.target_roas = bs["target_roas"]
     elif bs_type == "MANUAL_CPC":
-        manual_cpc = client.get_type("ManualCpc")
-        manual_cpc.enhanced_cpc_enabled = bs.get("enhanced_cpc", False)
-        campaign.manual_cpc = manual_cpc
+        campaign.manual_cpc.enhanced_cpc_enabled = bs.get("enhanced_cpc", False)
     elif bs_type == "MAXIMIZE_CLICKS":
         # MAXIMIZE_CLICKS maps to TargetSpend proto message (Google's naming).
-        target_spend = client.get_type("TargetSpend")
         if "cpc_bid_ceiling_brl" in bs:
-            target_spend.cpc_bid_ceiling_micros = _brl_to_micros(bs["cpc_bid_ceiling_brl"])
-        campaign.target_spend = target_spend
+            campaign.target_spend.cpc_bid_ceiling_micros = _brl_to_micros(bs["cpc_bid_ceiling_brl"])
+        else:
+            # No optional fields — assign an empty instance to mark the oneof.
+            campaign.target_spend = client.get_type("TargetSpend")()
 
     # Schedule (optional)
     if "start_date" in payload:

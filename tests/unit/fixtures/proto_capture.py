@@ -97,10 +97,19 @@ class CapturedOp:
     tests. Builder code does e.g. `op.ad_group_criterion_operation.create.negative = True`
     — capture stores it so tests can assert via
     `op.field("ad_group_criterion_operation.create.negative")`.
+
+    Callable support (Sprint 3b.24.3 F33): ``client.get_type("X")()`` is the
+    canonical pattern for no-optional-fields bidding strategies.  ``CapturedOp``
+    is callable and returns a fresh ``CapturedOp`` instance so builder tests work
+    without TypeError.
     """
 
     def __init__(self) -> None:
         self._captured: dict[str, Any] = {}
+
+    def __call__(self, *args: Any, **kwargs: Any) -> "CapturedOp":
+        """Allow client.get_type("X")() — returns a fresh empty CapturedOp."""
+        return CapturedOp()
 
     def __setattr__(self, key: str, value: Any) -> None:
         if key.startswith("_"):
