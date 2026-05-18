@@ -253,11 +253,16 @@ def build_create_campaign(client: Any, customer_id: str, payload: dict[str, Any]
             # F33 reversal (Sprint 3b.24.4): get_type returns INSTANCE directly; no parens.
             campaign.target_spend = client.get_type("TargetSpend")
 
-    # Schedule (optional)
+    # Schedule (optional) — Google Ads API v24 Campaign proto uses
+    # `start_date_time` / `end_date_time` (YYYYMMDD HH:MM:SS format),
+    # NOT bare `start_date` / `end_date`. F37 (Sprint 3b.24.5):
+    # convert YYYY-MM-DD schema input to Google's expected format.
     if "start_date" in payload:
-        campaign.start_date = payload["start_date"]
+        compact = payload["start_date"].replace("-", "")
+        campaign.start_date_time = f"{compact} 00:00:00"
     if "end_date" in payload:
-        campaign.end_date = payload["end_date"]
+        compact = payload["end_date"].replace("-", "")
+        campaign.end_date_time = f"{compact} 23:59:59"
 
     operations.append(campaign_op_wrap)
 

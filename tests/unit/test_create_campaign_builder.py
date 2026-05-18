@@ -197,8 +197,9 @@ def test_builder_schedule_dates_set_when_provided():
     ops = build_create_campaign(client, "1234567890", payload)
 
     campaign_op = ops[1]
-    assert campaign_op.field("campaign_operation.create.start_date") == "2026-05-20"
-    assert campaign_op.field("campaign_operation.create.end_date") == "2026-12-31"
+    # F37 (Sprint 3b.24.5): proto uses *_date_time fields with YYYYMMDD HH:MM:SS format
+    assert campaign_op.field("campaign_operation.create.start_date_time") == "20260520 00:00:00"
+    assert campaign_op.field("campaign_operation.create.end_date_time") == "20261231 23:59:59"
 
 
 def test_builder_omits_schedule_when_not_provided():
@@ -208,5 +209,5 @@ def test_builder_omits_schedule_when_not_provided():
     ops = build_create_campaign(client, "1234567890", _payload())
 
     campaign_op = ops[1]
-    assert campaign_op.has("campaign_operation.create.start_date") is False
-    assert campaign_op.has("campaign_operation.create.end_date") is False
+    assert campaign_op.has("campaign_operation.create.start_date_time") is False
+    assert campaign_op.has("campaign_operation.create.end_date_time") is False
