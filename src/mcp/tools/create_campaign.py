@@ -59,7 +59,8 @@ _SCHEMA: dict[str, Any] = {
                 "target_cpa_brl": {"type": "number", "minimum": 0.01},
                 "target_roas": {"type": "number", "minimum": 0.01},
                 "cpc_bid_ceiling_brl": {"type": "number", "minimum": 0.01},
-                "enhanced_cpc": {"type": "boolean"},
+                # enhanced_cpc REMOVED (F35, Sprint 3b.24.4): deprecated by Google,
+                # rejected on Campaign create with OPERATION_NOT_PERMITTED_FOR_CONTEXT.
             },
         },
         "daily_budget_brl": {"type": "number", "minimum": 1.0},
@@ -101,8 +102,7 @@ def _validate_payload_shape(args: dict[str, Any]) -> str | None:
         return "TARGET_ROAS requer bidding_strategy.target_roas."
 
     # Strategy-specific optional fields rejected on wrong strategy
-    if "enhanced_cpc" in bs and bs_type != "MANUAL_CPC":
-        return "enhanced_cpc so e valido com MANUAL_CPC."
+    # enhanced_cpc REMOVED (F35, Sprint 3b.24.4): deprecated; not in schema anymore.
     if "cpc_bid_ceiling_brl" in bs and bs_type != "MAXIMIZE_CLICKS":
         return "cpc_bid_ceiling_brl so e valido com MAXIMIZE_CLICKS."
     if "target_cpa_brl" in bs and bs_type not in ("TARGET_CPA", "MAXIMIZE_CONVERSIONS"):
@@ -140,7 +140,7 @@ def _build_params_summary(payload: dict[str, Any]) -> dict[str, Any]:
         "review. Language defaults Portuguese. Search Partners + Display Network "
         "OFF (V4 defaults). Bidding strategies suportadas v0: MAXIMIZE_CONVERSIONS, "
         "MAXIMIZE_CONVERSION_VALUE, TARGET_CPA (requer target_cpa_brl), "
-        "TARGET_ROAS (requer target_roas), MANUAL_CPC (opcional enhanced_cpc), "
+        "TARGET_ROAS (requer target_roas), MANUAL_CPC, "
         "MAXIMIZE_CLICKS (opcional cpc_bid_ceiling_brl). Conversion goals "
         "inherit account-default (override fica pra v1). Channel SEARCH only v0 "
         "(PMAX/DISPLAY/SHOPPING v1). F13 resource_names auto-retorna paths "

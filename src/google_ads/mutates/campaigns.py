@@ -109,7 +109,8 @@ def build_create_campaign(client: Any, customer_id: str, payload: dict[str, Any]
     payload schema (post-_validate_payload_shape):
       name: str
       bidding_strategy: {type: str, target_cpa_brl?: float, target_roas?: float,
-                         cpc_bid_ceiling_brl?: float, enhanced_cpc?: bool}
+                         cpc_bid_ceiling_brl?: float}
+                         # enhanced_cpc removed F35 Sprint 3b.24.4
       daily_budget_brl: float
       geo_targets: list[str]  (geoTargetConstants/{id} paths)
       start_date?: str  (YYYY-MM-DD)
@@ -138,14 +139,21 @@ def build_create_campaign(client: Any, customer_id: str, payload: dict[str, Any]
     - MAXIMIZE_CONVERSION_VALUE → campaign.maximize_conversion_value (optional target_roas)
     - TARGET_CPA → campaign.target_cpa (required target_cpa_micros)
     - TARGET_ROAS → campaign.target_roas (required target_roas, decimal e.g. 4.0 = 400%)
-    - MANUAL_CPC → campaign.manual_cpc (optional enhanced_cpc_enabled)
+    - MANUAL_CPC → campaign.manual_cpc (empty instance; enhanced_cpc_enabled REMOVED F35)
     - MAXIMIZE_CLICKS → campaign.target_spend (optional cpc_bid_ceiling_micros)
 
-    Sprint 3b.24.3 F33 fix: bare attribute access (``campaign.target_cpa.target_cpa_micros``)
-    IS the canonical pattern — it both initialises the sub-message and marks the oneof.
-    Sprint 3b.24.1 F30 "fix" used ``client.get_type("X")`` without parens (returns a
-    CLASS, not instance) which silently fails to mark the oneof. Canonical pattern
-    verified via context7 official google-ads-python examples (PMax + Demand Gen).
+    Sprint 3b.24.4 F33 reversal: ``client.get_type("X")`` returns an INSTANCE directly
+    (not a class). Sprint 3b.24.3 added ``()`` to 3 branches, causing TypeError in
+    production. Correct pattern for no-scalar branches: assign the instance directly
+    without calling it. For scalar-bearing branches: bare sub-field access
+    (``campaign.target_cpa.target_cpa_micros = X``) initialises the oneof in one step.
+
+    Sprint 3b.24.4 F34: Google now REQUIRES ``contains_eu_political_advertising`` on
+    Campaign create. V4 is Brazilian — hardcoded DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING.
+
+    Sprint 3b.24.4 F35: ``manual_cpc.enhanced_cpc_enabled`` is deprecated by Google and
+    is rejected on Campaign create (OPERATION_NOT_PERMITTED_FOR_CONTEXT). Removed from
+    schema + builder. MANUAL_CPC branch now assigns an empty ManualCpc instance.
     """
     operations: list[Any] = []
 
@@ -181,6 +189,12 @@ def build_create_campaign(client: Any, customer_id: str, payload: dict[str, Any]
     campaign.advertising_channel_type = channel_enum.SEARCH  # v0
     campaign.campaign_budget = budget_temp_path  # temp ref
 
+    # F34 (Sprint 3b.24.4): Google added contains_eu_political_advertising as
+    # REQUIRED on Campaign create. V4 is Brazilian — no EU political ads (hardcoded).
+    campaign.contains_eu_political_advertising = (
+        client.enums.EuPoliticalAdvertisingStatusEnum.DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING
+    )
+
     # Network settings V4 invariants
     campaign.network_settings.target_google_search = True
     campaign.network_settings.target_search_network = False  # No Search Partners
@@ -211,27 +225,33 @@ def build_create_campaign(client: Any, customer_id: str, payload: dict[str, Any]
         if "target_cpa_brl" in bs:
             campaign.maximize_conversions.target_cpa_micros = _brl_to_micros(bs["target_cpa_brl"])
         else:
-            # No optional fields — assign an empty instance to mark the oneof.
-            campaign.maximize_conversions = client.get_type("MaximizeConversions")()
+            # No optional fields — assign instance to mark the oneof.
+            # F33 reversal (Sprint 3b.24.4): get_type returns INSTANCE directly; no parens.
+            campaign.maximize_conversions = client.get_type("MaximizeConversions")
     elif bs_type == "MAXIMIZE_CONVERSION_VALUE":
         if "target_roas" in bs:
             campaign.maximize_conversion_value.target_roas = bs["target_roas"]
         else:
-            # No optional fields — assign an empty instance to mark the oneof.
-            campaign.maximize_conversion_value = client.get_type("MaximizeConversionValue")()
+            # No optional fields — assign instance to mark the oneof.
+            # F33 reversal (Sprint 3b.24.4): get_type returns INSTANCE directly; no parens.
+            campaign.maximize_conversion_value = client.get_type("MaximizeConversionValue")
     elif bs_type == "TARGET_CPA":
         campaign.target_cpa.target_cpa_micros = _brl_to_micros(bs["target_cpa_brl"])
     elif bs_type == "TARGET_ROAS":
         campaign.target_roas.target_roas = bs["target_roas"]
     elif bs_type == "MANUAL_CPC":
-        campaign.manual_cpc.enhanced_cpc_enabled = bs.get("enhanced_cpc", False)
+        # F35 (Sprint 3b.24.4): enhanced_cpc_enabled is deprecated; rejected by Google
+        # on Campaign create (OPERATION_NOT_PERMITTED_FOR_CONTEXT). Use canonical
+        # empty-instance assignment to mark the oneof without setting any sub-fields.
+        campaign.manual_cpc = client.get_type("ManualCpc")
     elif bs_type == "MAXIMIZE_CLICKS":
         # MAXIMIZE_CLICKS maps to TargetSpend proto message (Google's naming).
         if "cpc_bid_ceiling_brl" in bs:
             campaign.target_spend.cpc_bid_ceiling_micros = _brl_to_micros(bs["cpc_bid_ceiling_brl"])
         else:
-            # No optional fields — assign an empty instance to mark the oneof.
-            campaign.target_spend = client.get_type("TargetSpend")()
+            # No optional fields — assign instance to mark the oneof.
+            # F33 reversal (Sprint 3b.24.4): get_type returns INSTANCE directly; no parens.
+            campaign.target_spend = client.get_type("TargetSpend")
 
     # Schedule (optional)
     if "start_date" in payload:

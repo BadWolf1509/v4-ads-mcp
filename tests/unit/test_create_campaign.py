@@ -130,20 +130,16 @@ def test_runtime_target_roas_requires_target_roas():
     assert "target_roas" in error
 
 
-def test_runtime_enhanced_cpc_only_with_manual_cpc():
-    from src.mcp.tools.create_campaign import _validate_payload_shape
+def test_schema_rejects_enhanced_cpc_field():
+    """F35 (Sprint 3b.24.4): enhanced_cpc removed from schema (deprecated by Google,
+    rejected on Campaign create). additionalProperties: false on bidding_strategy
+    means any payload containing it is now invalid at schema level.
+    """
+    from src.mcp.tools.create_campaign import _SCHEMA
 
-    # MAX_CONVERSIONS + enhanced_cpc is invalid
-    payload = _valid_payload(
-        bidding_strategy={"type": "MAXIMIZE_CONVERSIONS", "enhanced_cpc": True}
-    )
-    error = _validate_payload_shape(payload)
-    assert error is not None
-    assert "enhanced_cpc" in error
-
-    # MANUAL_CPC + enhanced_cpc is OK
-    payload = _valid_payload(bidding_strategy={"type": "MANUAL_CPC", "enhanced_cpc": True})
-    assert _validate_payload_shape(payload) is None
+    invalid = _valid_payload(bidding_strategy={"type": "MANUAL_CPC", "enhanced_cpc": True})
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(invalid, _SCHEMA)
 
 
 def test_runtime_cpc_bid_ceiling_only_with_maximize_clicks():

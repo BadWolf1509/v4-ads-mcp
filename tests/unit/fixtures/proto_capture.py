@@ -98,18 +98,15 @@ class CapturedOp:
     — capture stores it so tests can assert via
     `op.field("ad_group_criterion_operation.create.negative")`.
 
-    Callable support (Sprint 3b.24.3 F33): ``client.get_type("X")()`` is the
-    canonical pattern for no-optional-fields bidding strategies.  ``CapturedOp``
-    is callable and returns a fresh ``CapturedOp`` instance so builder tests work
-    without TypeError.
+    NOTE (Sprint 3b.24.4 F33 reversal): ``__call__`` has been removed. The real
+    google-ads-python SDK's ``client.get_type("X")`` returns an INSTANCE directly —
+    calling it with ``()`` raises TypeError in production. Sprint 3b.24.3 added
+    ``__call__`` here so tests would pass with ``client.get_type("X")()``, but that
+    masked the production TypeError. Mock surface now mirrors SDK reality: no parens.
     """
 
     def __init__(self) -> None:
         self._captured: dict[str, Any] = {}
-
-    def __call__(self, *args: Any, **kwargs: Any) -> "CapturedOp":
-        """Allow client.get_type("X")() — returns a fresh empty CapturedOp."""
-        return CapturedOp()
 
     def __setattr__(self, key: str, value: Any) -> None:
         if key.startswith("_"):
@@ -294,5 +291,8 @@ def make_capture_client() -> MagicMock:
     client.enums.BudgetDeliveryMethodEnum = _BareEnumDict()
     client.enums.AdvertisingChannelTypeEnum = _BareEnumDict()
     client.enums.CampaignStatusEnum = _BareEnumDict()
+    # F34 (Sprint 3b.24.4): EU political advertising compliance — V4 always
+    # DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING (Brazilian advertiser).
+    client.enums.EuPoliticalAdvertisingStatusEnum = _BareEnumDict()
 
     return client
