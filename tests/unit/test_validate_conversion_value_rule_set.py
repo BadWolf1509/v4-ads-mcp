@@ -9,7 +9,7 @@ import pytest
 
 from src.google_ads.queries._common import (
     validate_campaign_for_value_rule_set,
-    validate_geo_target_constants_for_value_rule,
+    validate_geo_target_constants_br_only,
 )
 
 
@@ -99,7 +99,7 @@ async def test_validate_geo_targets_happy_path_all_br(monkeypatch) -> None:
         ]
 
     monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
-    result = await validate_geo_target_constants_for_value_rule(
+    result = await validate_geo_target_constants_br_only(
         manager_id=uuid4(),
         session_id=uuid4(),
         customer_id="1234567890",
@@ -127,7 +127,7 @@ async def test_validate_geo_targets_first_offender_non_br(monkeypatch) -> None:
         ]
 
     monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
-    result = await validate_geo_target_constants_for_value_rule(
+    result = await validate_geo_target_constants_br_only(
         manager_id=uuid4(),
         session_id=uuid4(),
         customer_id="1234567890",
@@ -147,7 +147,7 @@ async def test_validate_geo_targets_empty_list_returns_none(monkeypatch) -> None
         raise AssertionError("run_report should not be called for empty input")
 
     monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
-    result = await validate_geo_target_constants_for_value_rule(
+    result = await validate_geo_target_constants_br_only(
         manager_id=uuid4(),
         session_id=uuid4(),
         customer_id="1234567890",
@@ -166,7 +166,7 @@ async def test_validate_geo_targets_single_quote_escape(monkeypatch) -> None:
         return []  # Force not-found path
 
     monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
-    result = await validate_geo_target_constants_for_value_rule(
+    result = await validate_geo_target_constants_br_only(
         manager_id=uuid4(),
         session_id=uuid4(),
         customer_id="1234567890",

@@ -625,22 +625,22 @@ async def validate_campaign_for_value_rule_set(
     return None
 
 
-async def validate_geo_target_constants_for_value_rule(
+async def validate_geo_target_constants_br_only(
     manager_id: UUID,
     session_id: UUID,
     customer_id: str,
     geo_paths: list[str],
 ) -> str | None:
-    """Returns PT-BR error string if any geo target invalid for V4; else None.
+    """Returns PT-BR error string if any geo target is non-BR; else None.
 
-    Validates:
-    1. Each geo_target_constant resource_name exists
+    Validates each geo_target_constant resource_name:
+    1. Exists in Google Ads (queryable via GAQL)
     2. country_code == "BR" (V4 invariant — all V4 accounts in Brazil)
 
     Performs 1 GAQL batch lookup. Returns first-offender error in INPUT order.
 
-    Sprint 3b.19B — pre-flight for create_conversion_value_rule_set when
-    rules include GEO_LOCATION condition_type.
+    Sprint 3b.19B (initial) + 3b.24 (renamed generic) — pre-flight for any
+    create_* tool that accepts BR-only geo_target_constant paths.
     """
     if not geo_paths:
         return None
@@ -667,7 +667,7 @@ async def validate_geo_target_constants_for_value_rule(
         customer_id=customer_id,
         query=query,
         row_formatter=_format,
-        operation_name="validate_geo_target_constants_for_value_rule",
+        operation_name="validate_geo_target_constants_br_only",
     )
 
     by_path = {r["resource_name"]: r for r in rows}

@@ -22,7 +22,7 @@ from typing import Any
 from src.db import connection
 from src.google_ads.queries._common import (
     validate_campaign_for_value_rule_set,
-    validate_geo_target_constants_for_value_rule,
+    validate_geo_target_constants_br_only,
 )
 from src.governance.blast_radius import classify
 from src.governance.dry_run import create_pending
@@ -211,7 +211,7 @@ async def create_conversion_value_rule_set(args: dict[str, Any]) -> dict[str, An
                 seen.add(p)
                 deduped.append(p)
 
-        error = await validate_geo_target_constants_for_value_rule(
+        error = await validate_geo_target_constants_br_only(
             manager_id=ctx.manager_id,
             session_id=ctx.session_id,
             customer_id=customer_id,

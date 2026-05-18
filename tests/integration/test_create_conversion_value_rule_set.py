@@ -146,7 +146,7 @@ async def test_create_conversion_value_rule_set_full_cycle_returns_3_resource_na
     # CRITICAL (Sprint 3b.11 lesson): patch pre-flight at tool module namespace.
     # validate_campaign_for_value_rule_set is only called for CAMPAIGN attachment —
     # still patched defensively so geo-only test stays hermetic.
-    # validate_geo_target_constants_for_value_rule fires because we have a
+    # validate_geo_target_constants_br_only fires because we have a
     # GEO_LOCATION rule — must be mocked to skip real OAuth/GAQL call.
     with (
         patch(
@@ -154,7 +154,7 @@ async def test_create_conversion_value_rule_set_full_cycle_returns_3_resource_na
             AsyncMock(return_value=None),
         ),
         patch(
-            "src.mcp.tools.create_conversion_value_rule_set.validate_geo_target_constants_for_value_rule",
+            "src.mcp.tools.create_conversion_value_rule_set.validate_geo_target_constants_br_only",
             AsyncMock(return_value=None),
         ),
         patch(

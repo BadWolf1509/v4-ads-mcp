@@ -50,7 +50,7 @@ async def test_dry_run_happy_path_customer_device(_ctx) -> None:
             AsyncMock(return_value=None),
         ),
         patch(
-            "src.mcp.tools.create_conversion_value_rule_set.validate_geo_target_constants_for_value_rule",
+            "src.mcp.tools.create_conversion_value_rule_set.validate_geo_target_constants_br_only",
             AsyncMock(return_value=None),
         ),
         patch(
@@ -93,7 +93,7 @@ async def test_dry_run_happy_path_campaign_with_geo(_ctx) -> None:
             campaign_validator,
         ),
         patch(
-            "src.mcp.tools.create_conversion_value_rule_set.validate_geo_target_constants_for_value_rule",
+            "src.mcp.tools.create_conversion_value_rule_set.validate_geo_target_constants_br_only",
             geo_validator,
         ),
         patch(
@@ -157,7 +157,7 @@ async def test_preflight_rejects_non_br_geo_target(_ctx) -> None:
             AsyncMock(return_value=None),
         ),
         patch(
-            "src.mcp.tools.create_conversion_value_rule_set.validate_geo_target_constants_for_value_rule",
+            "src.mcp.tools.create_conversion_value_rule_set.validate_geo_target_constants_br_only",
             AsyncMock(
                 return_value=(
                     "Geo target 'United States' (geoTargetConstants/2840) tem "
@@ -192,7 +192,7 @@ async def test_blast_summary_format_mixed_batch(_ctx) -> None:
             AsyncMock(return_value=None),
         ),
         patch(
-            "src.mcp.tools.create_conversion_value_rule_set.validate_geo_target_constants_for_value_rule",
+            "src.mcp.tools.create_conversion_value_rule_set.validate_geo_target_constants_br_only",
             AsyncMock(return_value=None),
         ),
         patch(
@@ -232,7 +232,7 @@ async def test_preview_includes_attachment_and_filter_flags(_ctx) -> None:
             AsyncMock(return_value=None),
         ),
         patch(
-            "src.mcp.tools.create_conversion_value_rule_set.validate_geo_target_constants_for_value_rule",
+            "src.mcp.tools.create_conversion_value_rule_set.validate_geo_target_constants_br_only",
             AsyncMock(return_value=None),
         ),
         patch(
@@ -275,7 +275,7 @@ async def test_customer_attachment_does_not_call_campaign_validator(_ctx) -> Non
             campaign_validator,
         ),
         patch(
-            "src.mcp.tools.create_conversion_value_rule_set.validate_geo_target_constants_for_value_rule",
+            "src.mcp.tools.create_conversion_value_rule_set.validate_geo_target_constants_br_only",
             geo_validator,
         ),
         patch(
@@ -314,7 +314,7 @@ async def test_geo_paths_dedup_cross_rules(_ctx) -> None:
             AsyncMock(return_value=None),
         ),
         patch(
-            "src.mcp.tools.create_conversion_value_rule_set.validate_geo_target_constants_for_value_rule",
+            "src.mcp.tools.create_conversion_value_rule_set.validate_geo_target_constants_br_only",
             geo_validator,
         ),
         patch(
@@ -454,7 +454,7 @@ async def test_no_geo_rules_skips_geo_validator(_ctx) -> None:
             AsyncMock(return_value=None),
         ),
         patch(
-            "src.mcp.tools.create_conversion_value_rule_set.validate_geo_target_constants_for_value_rule",
+            "src.mcp.tools.create_conversion_value_rule_set.validate_geo_target_constants_br_only",
             geo_validator,
         ),
         patch(
