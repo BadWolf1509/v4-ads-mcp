@@ -166,6 +166,9 @@ def build_create_campaign(client: Any, customer_id: str, payload: dict[str, Any]
     budget.name = f"{payload['name']} - budget"
     budget.amount_micros = _brl_to_micros(payload["daily_budget_brl"])
     budget.delivery_method = budget_delivery_enum.STANDARD
+    budget.explicitly_shared = False  # V4 invariant — standalone budget; shared=True is only
+    # for portfolio bidding strategies. Standalone strategies (MAX_CONVERSIONS, TARGET_CPA, etc)
+    # require explicitly_shared=False. Sprint 3b.24.2 F32 fix.
     operations.append(budget_op_wrap)
 
     # ----- Op 1: Campaign -----

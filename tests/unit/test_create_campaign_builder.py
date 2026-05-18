@@ -31,6 +31,8 @@ def test_builder_happy_path_max_conversions_minimal():
     assert "campaignBudgets/-1" in budget_op.field("campaign_budget_operation.create.resource_name")
     assert budget_op.field("campaign_budget_operation.create.amount_micros") == 10_000_000
     assert budget_op.field("campaign_budget_operation.create.delivery_method") == "STANDARD"
+    # Sprint 3b.24.2 F32: budget must be non-shared for standalone bidding strategies
+    assert budget_op.field("campaign_budget_operation.create.explicitly_shared") is False
 
     # Op 1: campaign
     campaign_op = ops[1]
