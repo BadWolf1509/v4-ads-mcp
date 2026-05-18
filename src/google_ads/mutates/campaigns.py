@@ -136,10 +136,16 @@ def build_create_campaign(client: Any, customer_id: str, payload: dict[str, Any]
     Bidding strategy → oneof field mapping (proto-plus):
     - MAXIMIZE_CONVERSIONS → campaign.maximize_conversions (optional target_cpa_micros)
     - MAXIMIZE_CONVERSION_VALUE → campaign.maximize_conversion_value (optional target_roas)
-    - TARGET_CPA → campaign.target_cpa.target_cpa_micros
-    - TARGET_ROAS → campaign.target_roas.target_roas (decimal, e.g., 4.0 = 400%)
-    - MANUAL_CPC → campaign.manual_cpc.enhanced_cpc_enabled
+    - TARGET_CPA → campaign.target_cpa (required target_cpa_micros)
+    - TARGET_ROAS → campaign.target_roas (required target_roas, decimal e.g. 4.0 = 400%)
+    - MANUAL_CPC → campaign.manual_cpc (optional enhanced_cpc_enabled)
     - MAXIMIZE_CLICKS → campaign.target_spend (optional cpc_bid_ceiling_micros)
+
+    Sprint 3b.24.1 F30 fix: each branch now uses explicit sub-message instantiation
+    + assignment (``campaign.X = client.get_type("X")``). Prior bare attribute access
+    (``campaign.maximize_conversions.field = ...``) does NOT initialize the oneof in
+    proto-plus, causing Google Ads API to reject all 6 strategies as "required field
+    was not present" or "operation not allowed for given context" during apply_change.
     """
     operations: list[Any] = []
 
@@ -177,29 +183,47 @@ def build_create_campaign(client: Any, customer_id: str, payload: dict[str, Any]
     campaign.network_settings.target_search_network = False  # No Search Partners
     campaign.network_settings.target_content_network = False  # No Display
 
-    # Bidding strategy oneof
+    # Bidding strategy oneof — Sprint 3b.24.1 F30 fix.
+    #
+    # BARE ATTRIBUTE ACCESS does NOT initialize the oneof in proto-plus (e.g.
+    # `campaign.maximize_conversions` returns the sub-message object but does NOT
+    # mark it as the active oneof member, so Google Ads API sees an unset oneof
+    # and rejects with "required field was not present" or "operation not allowed
+    # for given context"). The canonical fix is explicit assignment:
+    #   sub = client.get_type("MaximizeConversions")
+    #   sub.target_cpa_micros = ...          # set optional scalars on the sub-obj
+    #   campaign.maximize_conversions = sub  # THIS marks the oneof as set
+    # Verified via Google Ads Python SDK canonical examples (context7 / google-ads-python).
     bs = payload["bidding_strategy"]
     bs_type = bs["type"]
     if bs_type == "MAXIMIZE_CONVERSIONS":
-        # Assign to local var to touch oneof submessage (satisfies ruff B018)
-        max_conv = campaign.maximize_conversions
+        max_conv = client.get_type("MaximizeConversions")
         if "target_cpa_brl" in bs:
             max_conv.target_cpa_micros = _brl_to_micros(bs["target_cpa_brl"])
+        campaign.maximize_conversions = max_conv
     elif bs_type == "MAXIMIZE_CONVERSION_VALUE":
-        max_conv_val = campaign.maximize_conversion_value
+        max_conv_val = client.get_type("MaximizeConversionValue")
         if "target_roas" in bs:
             max_conv_val.target_roas = bs["target_roas"]
+        campaign.maximize_conversion_value = max_conv_val
     elif bs_type == "TARGET_CPA":
-        campaign.target_cpa.target_cpa_micros = _brl_to_micros(bs["target_cpa_brl"])
+        target_cpa = client.get_type("TargetCpa")
+        target_cpa.target_cpa_micros = _brl_to_micros(bs["target_cpa_brl"])
+        campaign.target_cpa = target_cpa
     elif bs_type == "TARGET_ROAS":
-        campaign.target_roas.target_roas = bs["target_roas"]
+        target_roas = client.get_type("TargetRoas")
+        target_roas.target_roas = bs["target_roas"]
+        campaign.target_roas = target_roas
     elif bs_type == "MANUAL_CPC":
-        campaign.manual_cpc.enhanced_cpc_enabled = bs.get("enhanced_cpc", False)
+        manual_cpc = client.get_type("ManualCpc")
+        manual_cpc.enhanced_cpc_enabled = bs.get("enhanced_cpc", False)
+        campaign.manual_cpc = manual_cpc
     elif bs_type == "MAXIMIZE_CLICKS":
-        # MAXIMIZE_CLICKS uses target_spend message in proto
-        target_spend = campaign.target_spend
+        # MAXIMIZE_CLICKS maps to TargetSpend proto message (Google's naming).
+        target_spend = client.get_type("TargetSpend")
         if "cpc_bid_ceiling_brl" in bs:
             target_spend.cpc_bid_ceiling_micros = _brl_to_micros(bs["cpc_bid_ceiling_brl"])
+        campaign.target_spend = target_spend
 
     # Schedule (optional)
     if "start_date" in payload:

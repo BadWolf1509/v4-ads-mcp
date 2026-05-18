@@ -121,24 +121,33 @@ class CapturedOp:
         for part in path.split("."):
             if isinstance(cur, _SubCapture):
                 cur = cur._captured
+            elif isinstance(cur, CapturedOp):
+                # CapturedOp stored via explicit assignment (canonical proto-plus
+                # oneof pattern: campaign.X = client.get_type("X")).
+                # Sprint 3b.24.1 F30: explicit oneof assignment stores a CapturedOp
+                # as a value; traversal must descend into its _captured dict.
+                cur = cur._captured
             if isinstance(cur, dict) and part in cur:
                 cur = cur[part]
             else:
                 return None
-        if isinstance(cur, _SubCapture):
+        if isinstance(cur, (_SubCapture, CapturedOp)):
             return None  # Sub-message, not a leaf value
         return cur
 
     def has(self, path: str) -> bool:
         """True if path was explicitly assigned (vs never set)."""
         raw = self._raw(path)
-        return raw is not None and not isinstance(raw, _SubCapture)
+        return raw is not None and not isinstance(raw, (_SubCapture, CapturedOp))
 
     def _raw(self, path: str) -> Any:
         """Internal: resolve path without the _SubCapture→None coercion."""
         cur: Any = self._captured
         for part in path.split("."):
             if isinstance(cur, _SubCapture):
+                cur = cur._captured
+            elif isinstance(cur, CapturedOp):
+                # See field() note above — descend into explicitly-assigned sub-ops.
                 cur = cur._captured
             if isinstance(cur, dict) and part in cur:
                 cur = cur[part]
