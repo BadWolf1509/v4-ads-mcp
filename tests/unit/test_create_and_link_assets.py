@@ -6,6 +6,9 @@ Builder tests live in test_create_and_link_assets_builder.py (separate file).
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
+
 import jsonschema
 import pytest
 
@@ -187,3 +190,98 @@ def test_schema_has_no_composition_keywords():
     assert '"oneOf"' not in schema_json
     assert '"allOf"' not in schema_json
     assert '"anyOf"' not in schema_json
+
+
+# ============================================================================
+# Dry-run flow tests (Layer 1 + Layer 2 + audit prep)
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_tool_returns_dry_run_with_token_and_summary():
+    from src.mcp.context import McpRequestContext, clear_current, set_current
+    from src.mcp.tools.create_and_link_assets import create_and_link_assets
+
+    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
+    set_current(ctx)
+    try:
+        # Mock pool.acquire context manager + create_pending
+        mock_conn = AsyncMock()
+        mock_pool = MagicMock()
+        mock_acquire_cm = MagicMock()
+        mock_acquire_cm.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_acquire_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_pool.acquire.return_value = mock_acquire_cm
+
+        with (
+            patch(
+                "src.mcp.tools.create_and_link_assets.create_pending",
+                AsyncMock(return_value="test-token-123"),
+            ),
+            patch(
+                "src.mcp.tools.create_and_link_assets.connection.get_pool",
+                return_value=mock_pool,
+            ),
+        ):
+            args = {
+                "customer_id": "1234567890",
+                "assets": [_valid_sitelink_asset()],
+            }
+            result = await create_and_link_assets(args)
+
+        assert result["status"] == "dry_run"
+        assert result["operation"] == "create_and_link_assets"
+        assert result["confirmation_token"] == "test-token-123"
+        assert "summary" in result
+    finally:
+        clear_current()
+
+
+@pytest.mark.asyncio
+async def test_tool_summary_includes_counts_by_type_and_level():
+    from src.mcp.context import McpRequestContext, clear_current, set_current
+    from src.mcp.tools.create_and_link_assets import create_and_link_assets
+
+    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
+    set_current(ctx)
+    try:
+        mock_conn = AsyncMock()
+        mock_pool = MagicMock()
+        mock_acquire_cm = MagicMock()
+        mock_acquire_cm.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_acquire_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_pool.acquire.return_value = mock_acquire_cm
+
+        with (
+            patch(
+                "src.mcp.tools.create_and_link_assets.create_pending",
+                AsyncMock(return_value="test-token-456"),
+            ),
+            patch(
+                "src.mcp.tools.create_and_link_assets.connection.get_pool",
+                return_value=mock_pool,
+            ),
+        ):
+            callout_customer = {
+                "type": "CALLOUT",
+                "attachment_level": "CUSTOMER",
+                "attachment_id": "1234567890",
+                "callout_text": "Atendimento 24h",
+            }
+            args = {
+                "customer_id": "1234567890",
+                "assets": [
+                    _valid_sitelink_asset(),
+                    _valid_sitelink_asset(),
+                    callout_customer,
+                ],
+            }
+            result = await create_and_link_assets(args)
+
+        summary = result["summary"]
+        assert summary["asset_count"] == 3
+        assert summary["by_type"] == {"SITELINK": 2, "CALLOUT": 1}
+        assert summary["by_level"] == {"CAMPAIGN": 2, "CUSTOMER": 1}
+        assert summary["total_ops_chained"] == 6
+    finally:
+        clear_current()

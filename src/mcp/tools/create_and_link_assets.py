@@ -17,6 +17,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.db import connection
+from src.governance.blast_radius import classify
+from src.governance.dry_run import create_pending
+from src.mcp.context import get_current
 from src.mcp.tools._registry import register_tool
 
 _ASSET_TYPES = ["SITELINK", "CALLOUT", "STRUCTURED_SNIPPET", "CALL", "PROMOTION"]
@@ -201,19 +205,100 @@ def _validate_payload_shape(payload: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def _build_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    """Audit-safe summary: counts only, NO copy text per spec §3.6.
+
+    Returns dict with asset_count, by_type, by_level, attachment_ids_distinct,
+    total_ops_chained.
+    """
+    by_type: dict[str, int] = {}
+    by_level: dict[str, int] = {}
+    distinct_ids: set[str] = set()
+    for a in payload["assets"]:
+        by_type[a["type"]] = by_type.get(a["type"], 0) + 1
+        by_level[a["attachment_level"]] = by_level.get(a["attachment_level"], 0) + 1
+        distinct_ids.add(a["attachment_id"])
+    n = len(payload["assets"])
+    return {
+        "asset_count": n,
+        "by_type": by_type,
+        "by_level": by_level,
+        "attachment_ids_distinct": len(distinct_ids),
+        "total_ops_chained": 2 * n,
+    }
+
+
 @register_tool(
     name="create_and_link_assets",
     description=(
-        "Cria N text-extension assets (SITELINK/CALLOUT/STRUCTURED_SNIPPET/CALL/PROMOTION) "
-        "e vincula em escopo CUSTOMER/CAMPAIGN/AD_GROUP via chained mutation (2N ops atomic). "
-        "Always-CONFIRM. Sprint 3b.25."
+        "Cria N text-assets novos (1-20 por call) e linka cada um ao escopo "
+        "solicitado (CUSTOMER/CAMPAIGN/AD_GROUP) em chained mutation atomic. "
+        "Always-CONFIRM. Tipos suportados v0: SITELINK, CALLOUT, "
+        "STRUCTURED_SNIPPET, CALL, PROMOTION (text-extension family, "
+        "SEARCH-relevant). V4 invariants hardcoded: country_code=BR para CALL, "
+        "language_code=pt para PROMOTION, currency_code=BRL para "
+        "PROMOTION.money_amount_off. Cada item de `assets` carrega type + "
+        "attachment_level + attachment_id + payload type-specific. Builder usa "
+        "chained mutation (N CreateAssetOp + N Create{Customer,Campaign,"
+        "AdGroup}AssetOp em single MutateGoogleAdsRequest com temp resource_names). "
+        "F13 auto-retorna 2N resource_names. attachment_id formato: customer_id "
+        "(CUSTOMER), 'customers/X/campaigns/Y' (CAMPAIGN), 'customers/X/adGroups/Y' "
+        "(AD_GROUP). PROMOTION requer exatamente um de percent_off OU "
+        "money_amount_off_brl."
     ),
     input_schema=_SCHEMA,
 )
 async def create_and_link_assets(args: dict[str, Any]) -> dict[str, Any]:
-    """Sprint 3b.25 handler stub — full dry_run implementation in Task 3."""
+    ctx = get_current()
+    customer_id = args["customer_id"]
+
+    # Runtime payload validation (Sprint 3b.19B.1 pattern).
+    # IMPORTANT: _validate_payload_shape returns the FULL error dict
+    # (NOT just a string like Sprint 3b.24 create_campaign).
+    shape_error = _validate_payload_shape(args)
+    if shape_error is not None:
+        return shape_error  # already a full dict
+
+    summary = _build_summary(args)
+    target_count = summary["total_ops_chained"]
+
+    risk = classify(
+        operation="create_and_link_assets",
+        params={"target_count": target_count},
+    )
+
+    blast_summary = (
+        f"Criar {summary['asset_count']} asset(s) text-extension + "
+        f"{summary['asset_count']} link(s). Tipos: "
+        f"{', '.join(f'{k}:{v}' for k, v in summary['by_type'].items())}. "
+        f"Níveis: {', '.join(f'{k}:{v}' for k, v in summary['by_level'].items())}."
+    )
+
+    payload = {
+        **args,
+        "__target_count__": target_count,
+        "__params_summary__": summary,
+    }
+
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        token = await create_pending(
+            conn,
+            session_id=ctx.session_id,
+            customer_id=customer_id,
+            operation_type="create_and_link_assets",
+            payload=payload,
+            blast_summary=blast_summary,
+        )
+
     return {
-        "status": "error",
-        "error": "create_and_link_assets handler not yet implemented (Sprint 3b.25 Task 3)",
+        "status": "dry_run",
         "operation": "create_and_link_assets",
+        "customer_id": customer_id,
+        "blast_summary": blast_summary,
+        "summary": summary,
+        "confirmation_token": token,
+        "expires_in_minutes": 10,
+        "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
+        "confirmation_reason": risk.reason,
     }
