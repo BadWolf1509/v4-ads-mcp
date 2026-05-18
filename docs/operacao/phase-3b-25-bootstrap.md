@@ -12,12 +12,12 @@
 
 ## Pre-flight
 
-- [ ] Deploy lands successfully
-- [ ] Service `/health` returns 200
-- [ ] Tool `create_and_link_assets` visível em MCP tool list (count 47 → 48)
+- [x] Deploy lands successfully (CI green em 26048190492, Deploy success em 26048190375)
+- [x] Service `/health` returns 200
+- [ ] Tool `create_and_link_assets` visível em MCP tool list (count 47 → 48) — Wellington verifica em sessão Claude pós-restart
 - [ ] F28 reproducer: gestor pode precisar restart Claude Code session pro schema cache propagar
 
-Production revision: `<PREENCHER pós-deploy>`.
+Production revision: `v4-ads-mcp-00188-cwv` (Deploy verde, /health 200, CI green pós-fix CI red Sprint 3b.24 + Sprint 3b.25 typo).
 
 ## Reference: Nutry sandbox campaigns (from Sprint 3b.24)
 
