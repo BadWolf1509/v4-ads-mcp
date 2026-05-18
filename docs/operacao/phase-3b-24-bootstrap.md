@@ -163,7 +163,7 @@ create_campaign(
   name="[3b.24 smoke] T7 - multigeo + schedule",
   bidding_strategy={"type": "MAXIMIZE_CONVERSIONS"},
   daily_budget_brl=15.0,
-  geo_targets=["geoTargetConstants/2076", "geoTargetConstants/20180"],  # Brasil + SP state
+  geo_targets=["geoTargetConstants/2076", "geoTargetConstants/20106"],  # Brasil + SP state
   start_date="2026-05-20",
   end_date="2026-12-31"
 )
