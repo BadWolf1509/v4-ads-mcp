@@ -147,6 +147,20 @@ def test_validate_error_contains_row_index():
     assert "conversions[1]" in error["error"]
 
 
+def test_validate_accepts_exactly_5min_clock_skew():
+    """Boundary: exactly 5 minutes in future is accepted (clock skew tolerance)."""
+    ok = _valid_conversion(offset_minutes=5)
+    assert _validate_payload_shape(_valid_payload(conversions=[ok])) is None
+
+
+def test_validate_rejects_conversion_at_exactly_91_days_old():
+    """Boundary: conversions older than 90 days rejected (Google's hard window)."""
+    bad = _valid_conversion(offset_minutes=-(91 * 24 * 60))
+    error = _validate_payload_shape(_valid_payload(conversions=[bad]))
+    assert error is not None
+    assert "90 dias" in error["error"]
+
+
 # ============================================================================
 # No-composition-keywords regression guard (Sprint 3b.19B.1 convention)
 # ============================================================================

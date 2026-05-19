@@ -129,8 +129,9 @@ def _validate_payload_shape(payload: dict[str, Any]) -> dict[str, Any] | None:
             )
 
         # Check 3: not too old (Google's 90-day click-to-conversion window)
-        days_ago = (now_brt - dt).days
-        if days_ago > 90:
+        elapsed = now_brt - dt
+        if elapsed > timedelta(days=90):
+            days_ago = elapsed.days
             return _err(
                 idx,
                 f"conversion_date_time '{conv['conversion_date_time']}' tem "
@@ -145,7 +146,7 @@ def _validate_payload_shape(payload: dict[str, Any]) -> dict[str, Any] | None:
             "status": "error",
             "error": (
                 f"gclids duplicados no batch: {dupes[:3]}"
-                f"{'...' if len(dupes) > 3 else ''}. "
+                f"{' ...' if len(dupes) > 3 else ''}. "
                 "Use order_id pra dedupe se intencional."
             ),
             "operation": "import_offline_conversions",
@@ -158,7 +159,8 @@ def _validate_payload_shape(payload: dict[str, Any]) -> dict[str, Any] | None:
         return {
             "status": "error",
             "error": (
-                f"order_id duplicados no batch: {dupes[:3]}. "
+                f"order_id duplicados no batch: {dupes[:3]}"
+                f"{' ...' if len(dupes) > 3 else ''}. "
                 "Cada conversão deve ter order_id único."
             ),
             "operation": "import_offline_conversions",
