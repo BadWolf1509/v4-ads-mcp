@@ -15,7 +15,7 @@
 - [ ] Tool `import_offline_conversions` visível em MCP tool list (count 48 → 49)
 - [ ] F28 reproducer: gestor pode precisar restart Claude Code session pro schema cache propagar
 
-Production revision: `<PREENCHER pós-deploy>`.
+Production revision: `v4-ads-mcp-00196-h22` (Deploy verde 2026-05-19, /health 200, CI green).
 
 ## Pre-smoke setup: capture real gclids + create UPLOAD_CLICKS ConversionAction
 
