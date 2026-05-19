@@ -27,6 +27,13 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from src.db import connection
+from src.google_ads.queries._common import validate_conversion_action_for_upload
+from src.governance.blast_radius import classify
+from src.governance.dry_run import create_pending
+from src.mcp.context import get_current
+from src.mcp.tools._registry import register_tool
+
 _BRT = timezone(timedelta(hours=-3))
 
 _SCHEMA: dict[str, Any] = {
@@ -167,3 +174,116 @@ def _validate_payload_shape(payload: dict[str, Any]) -> dict[str, Any] | None:
         }
 
     return None
+
+
+def _build_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    """Audit-safe summary: counts/sums only, NO gclid content per spec §3.6.
+
+    Returns: conversion_count, sum_value_brl, date_range, gclids_distinct,
+    order_ids_present, conversion_action_id.
+    """
+    conversions = payload["conversions"]
+    dates = sorted(c["conversion_date_time"] for c in conversions)
+    distinct_gclids = {c["gclid"] for c in conversions}
+    order_ids_present = sum(1 for c in conversions if "order_id" in c)
+    sum_value = sum(float(c["conversion_value_brl"]) for c in conversions)
+
+    return {
+        "conversion_count": len(conversions),
+        "sum_value_brl": round(sum_value, 2),
+        "date_range": {
+            "earliest": dates[0] if dates else "",
+            "latest": dates[-1] if dates else "",
+        },
+        "gclids_distinct": len(distinct_gclids),
+        "order_ids_present": order_ids_present,
+        "conversion_action_id": payload["conversion_action_id"],
+    }
+
+
+@register_tool(
+    name="import_offline_conversions",
+    description=(
+        "Importa N conversões offline (1-100 por call) match-by-gclid pra "
+        "Google Ads attribuir ROAS + alimentar Smart Bidding. Always-CONFIRM. "
+        "Workflow V4 lead-gen: gestor captura gclid no URL da landing → salva "
+        "no CRM → quando lead converte (WhatsApp confirmation, contrato assinado, "
+        "pagamento) → chama tool com batch de gclids + datas + valores. V4 "
+        "invariants hardcoded: currency_code=BRL, timezone=-03:00 (São Paulo), "
+        "consent.ad_user_data=GRANTED (LGPD V4-aligned). Pre-flight valida "
+        "conversion_action_id existe + tem type=UPLOAD_CLICKS. partial_failure=True: "
+        "conversões individuais com erro (gclid expirado, data inválida) são "
+        "reportadas em response.failures[] mas não bloqueiam o batch. Sprint 3b.26 "
+        "introduz dispatcher run_conversion_upload paralelo a run_mutation."
+    ),
+    input_schema=_SCHEMA,
+)
+async def import_offline_conversions(args: dict[str, Any]) -> dict[str, Any]:
+    ctx = get_current()
+    customer_id = args["customer_id"]
+    conversion_action_id = args["conversion_action_id"]
+
+    # Layer 2: Runtime payload validation (Sprint 3b.19B.1 convention).
+    # IMPORTANT: _validate_payload_shape returns the FULL error dict
+    # (NOT just a string like Sprint 3b.24 create_campaign).
+    shape_error = _validate_payload_shape(args)
+    if shape_error is not None:
+        return shape_error
+
+    # Layer 3: Async pre-flight (GAQL conversion_action lookup)
+    pre_flight_error = await validate_conversion_action_for_upload(
+        manager_id=ctx.manager_id,
+        session_id=ctx.session_id,
+        customer_id=customer_id,
+        conversion_action_id=conversion_action_id,
+    )
+    if pre_flight_error is not None:
+        return {
+            "status": "error",
+            "error": pre_flight_error,
+            "operation": "import_offline_conversions",
+        }
+
+    summary = _build_summary(args)
+    target_count = summary["conversion_count"]
+
+    risk = classify(
+        operation="import_offline_conversions",
+        params={"target_count": target_count},
+    )
+
+    blast_summary = (
+        f"Importar {summary['conversion_count']} conversões offline "
+        f"(sum R$ {summary['sum_value_brl']:.2f}, range "
+        f"{summary['date_range']['earliest']} → {summary['date_range']['latest']}) "
+        f"pra conversion_action_id={conversion_action_id}"
+    )
+
+    payload = {
+        **args,
+        "__target_count__": target_count,
+        "__params_summary__": summary,
+    }
+
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        token = await create_pending(
+            conn,
+            session_id=ctx.session_id,
+            customer_id=customer_id,
+            operation_type="import_offline_conversions",
+            payload=payload,
+            blast_summary=blast_summary,
+        )
+
+    return {
+        "status": "dry_run",
+        "operation": "import_offline_conversions",
+        "customer_id": customer_id,
+        "blast_summary": blast_summary,
+        "summary": summary,
+        "confirmation_token": token,
+        "expires_in_minutes": 10,
+        "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
+        "confirmation_reason": risk.reason,
+    }

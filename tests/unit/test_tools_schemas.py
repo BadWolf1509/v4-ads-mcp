@@ -149,6 +149,7 @@ def test_all_phase_2_tools_registered():
         "create_conversion_value_rule_set",
         "create_campaign",  # Sprint 3b.24
         "create_and_link_assets",  # Sprint 3b.25
+        "import_offline_conversions",  # Sprint 3b.26
         # update patterns
         "update_rsa",
     }
@@ -207,6 +208,7 @@ def test_no_unexpected_tools():
         "create_conversion_value_rule_set",
         "create_campaign",  # Sprint 3b.24
         "create_and_link_assets",  # Sprint 3b.25
+        "import_offline_conversions",  # Sprint 3b.26
         "update_rsa",
     }
     actual = {t.name for t in all_tools()}

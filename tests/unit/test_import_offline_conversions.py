@@ -7,6 +7,8 @@ Dispatcher tests (run_conversion_upload) live in test_run_conversion_upload.py.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import jsonschema
 import pytest
@@ -174,3 +176,166 @@ def test_schema_has_no_composition_keywords():
     assert '"oneOf"' not in schema_json
     assert '"allOf"' not in schema_json
     assert '"anyOf"' not in schema_json
+
+
+# ============================================================================
+# Dry-run flow tests (Layer 1 + Layer 2 + Layer 3 + audit prep)
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_tool_returns_dry_run_with_token_and_summary():
+    from src.mcp.context import McpRequestContext, clear_current, set_current
+    from src.mcp.tools.import_offline_conversions import import_offline_conversions
+
+    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
+    set_current(ctx)
+    try:
+        mock_conn = AsyncMock()
+        mock_pool = MagicMock()
+        mock_acquire_cm = MagicMock()
+        mock_acquire_cm.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_acquire_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_pool.acquire.return_value = mock_acquire_cm
+
+        with (
+            patch(
+                "src.mcp.tools.import_offline_conversions.validate_conversion_action_for_upload",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "src.mcp.tools.import_offline_conversions.create_pending",
+                AsyncMock(return_value="TOKEN001"),
+            ),
+            patch(
+                "src.mcp.tools.import_offline_conversions.connection.get_pool",
+                return_value=mock_pool,
+            ),
+        ):
+            args = _valid_payload()
+            result = await import_offline_conversions(args)
+
+        assert result["status"] == "dry_run"
+        assert result["operation"] == "import_offline_conversions"
+        assert result["confirmation_token"] == "TOKEN001"
+        assert "summary" in result
+        assert result["summary"]["conversion_count"] == 1
+    finally:
+        clear_current()
+
+
+@pytest.mark.asyncio
+async def test_tool_summary_includes_sum_value_and_date_range():
+    from src.mcp.context import McpRequestContext, clear_current, set_current
+    from src.mcp.tools.import_offline_conversions import import_offline_conversions
+
+    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
+    set_current(ctx)
+    try:
+        mock_conn = AsyncMock()
+        mock_pool = MagicMock()
+        mock_acquire_cm = MagicMock()
+        mock_acquire_cm.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_acquire_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_pool.acquire.return_value = mock_acquire_cm
+
+        c1 = _valid_conversion(offset_minutes=-1440)  # 1 day ago
+        c1["conversion_value_brl"] = 100.0
+        c2 = _valid_conversion(offset_minutes=-60)  # 1 hour ago
+        c2["gclid"] = "Cj0_DIFFERENT"
+        c2["conversion_value_brl"] = 250.0
+
+        with (
+            patch(
+                "src.mcp.tools.import_offline_conversions.validate_conversion_action_for_upload",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "src.mcp.tools.import_offline_conversions.create_pending",
+                AsyncMock(return_value="TOKEN002"),
+            ),
+            patch(
+                "src.mcp.tools.import_offline_conversions.connection.get_pool",
+                return_value=mock_pool,
+            ),
+        ):
+            args = _valid_payload(conversions=[c1, c2])
+            result = await import_offline_conversions(args)
+
+        summary = result["summary"]
+        assert summary["conversion_count"] == 2
+        assert summary["sum_value_brl"] == 350.0
+        assert summary["gclids_distinct"] == 2
+        assert summary["order_ids_present"] == 0
+        assert "earliest" in summary["date_range"]
+        assert "latest" in summary["date_range"]
+    finally:
+        clear_current()
+
+
+@pytest.mark.asyncio
+async def test_tool_summary_counts_order_ids_present():
+    from src.mcp.context import McpRequestContext, clear_current, set_current
+    from src.mcp.tools.import_offline_conversions import import_offline_conversions
+
+    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
+    set_current(ctx)
+    try:
+        mock_conn = AsyncMock()
+        mock_pool = MagicMock()
+        mock_acquire_cm = MagicMock()
+        mock_acquire_cm.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_acquire_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_pool.acquire.return_value = mock_acquire_cm
+
+        c1 = _valid_conversion()
+        c1["order_id"] = "crm-001"
+        c2 = _valid_conversion()
+        c2["gclid"] = "Cj0_DIFFERENT_2"  # no order_id
+        c3 = _valid_conversion()
+        c3["gclid"] = "Cj0_DIFFERENT_3"
+        c3["order_id"] = "crm-003"
+
+        with (
+            patch(
+                "src.mcp.tools.import_offline_conversions.validate_conversion_action_for_upload",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "src.mcp.tools.import_offline_conversions.create_pending",
+                AsyncMock(return_value="TOKEN003"),
+            ),
+            patch(
+                "src.mcp.tools.import_offline_conversions.connection.get_pool",
+                return_value=mock_pool,
+            ),
+        ):
+            args = _valid_payload(conversions=[c1, c2, c3])
+            result = await import_offline_conversions(args)
+
+        assert result["summary"]["order_ids_present"] == 2
+    finally:
+        clear_current()
+
+
+@pytest.mark.asyncio
+async def test_tool_pre_flight_error_propagates():
+    from src.mcp.context import McpRequestContext, clear_current, set_current
+    from src.mcp.tools.import_offline_conversions import import_offline_conversions
+
+    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
+    set_current(ctx)
+    try:
+        with patch(
+            "src.mcp.tools.import_offline_conversions.validate_conversion_action_for_upload",
+            AsyncMock(return_value="conversion_action_id=999 não existe em customer_id=1234567890"),
+        ):
+            args = _valid_payload()
+            args["conversion_action_id"] = "999"
+            result = await import_offline_conversions(args)
+
+        assert result["status"] == "error"
+        assert "não existe" in result["error"]
+        assert "confirmation_token" not in result
+    finally:
+        clear_current()
