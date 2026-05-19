@@ -684,3 +684,62 @@ async def validate_geo_target_constants_br_only(
             )
 
     return None
+
+
+async def validate_conversion_action_for_upload(
+    *,
+    manager_id: UUID,
+    session_id: UUID,
+    customer_id: str,
+    conversion_action_id: str,
+) -> str | None:
+    """GAQL pre-flight: conversion_action exists + type=UPLOAD_CLICKS + status != REMOVED.
+
+    Sprint 3b.26 — pre-flight for import_offline_conversions tool.
+    Returns PT-BR error message OR None if valid.
+    """
+    query = (
+        "SELECT conversion_action.id, conversion_action.type, conversion_action.status "
+        "FROM conversion_action "
+        f"WHERE conversion_action.id = {conversion_action_id}"
+    )
+
+    def _format(row: Any) -> dict[str, Any]:
+        return {
+            "conversion_action": {
+                "id": str(row.conversion_action.id),
+                "type": row.conversion_action.type.name
+                if hasattr(row.conversion_action.type, "name")
+                else str(row.conversion_action.type),
+                "status": row.conversion_action.status.name
+                if hasattr(row.conversion_action.status, "name")
+                else str(row.conversion_action.status),
+            }
+        }
+
+    rows = await run_report(
+        manager_id=manager_id,
+        session_id=session_id,
+        customer_id=customer_id,
+        query=query,
+        row_formatter=_format,
+        operation_name="validate_conversion_action_for_upload",
+    )
+
+    if not rows:
+        return (
+            f"conversion_action_id={conversion_action_id} não existe em customer_id={customer_id}"
+        )
+
+    row = rows[0]["conversion_action"]
+    if row["type"] != "UPLOAD_CLICKS":
+        return (
+            f"conversion_action_id={conversion_action_id} tem type={row['type']}; "
+            f"UploadClickConversions requer type=UPLOAD_CLICKS. Crie ConversionAction "
+            f"nova via create_conversion_action com type=UPLOAD_CLICKS."
+        )
+
+    if row["status"] == "REMOVED":
+        return f"conversion_action_id={conversion_action_id} está REMOVED; não aceita uploads."
+
+    return None
