@@ -146,7 +146,8 @@ async def test_upload_constructs_request_with_correct_customer_id_and_partial_fa
     request = service.upload_click_conversions.call_args[1]["request"]
     assert request.customer_id == "1234567890"
     assert request.partial_failure is True
-    assert request.debug_enabled is False
+    # F42 (Sprint 3b.26.1): debug_enabled removed from v24 UploadClickConversionsRequest;
+    # builder no longer sets it. Previously asserted False.
 
 
 @pytest.mark.asyncio
@@ -456,30 +457,6 @@ async def test_parse_response_handles_all_failed():
     assert len(result["failures"]) == 3
 
 
-@pytest.mark.asyncio
-async def test_upload_request_debug_enabled_false():
-    """V4 invariant: debug_enabled is always False (production)."""
-    from src.google_ads.conversions import run_conversion_upload
-
-    client = _mock_client_with_success_response(1)
-
-    patches = _common_patches(client)
-    for p in patches:
-        p.start()
-    try:
-        await run_conversion_upload(
-            manager_id=uuid4(),
-            session_id=uuid4(),
-            customer_id="1234567890",
-            operation_type="import_offline_conversions",
-            payload=_payload(),
-            target_count=1,
-            params_summary={"conversion_count": 1},
-        )
-    finally:
-        for p in patches:
-            p.stop()
-
-    service = client.get_service.return_value
-    request = service.upload_click_conversions.call_args[1]["request"]
-    assert request.debug_enabled is False
+# F42 (Sprint 3b.26.1): test_upload_request_debug_enabled_false removed —
+# UploadClickConversionsRequest.debug_enabled doesn't exist in v24 SDK.
+# Builder no longer sets it. Smoke T7 caught the AttributeError pré-fix.

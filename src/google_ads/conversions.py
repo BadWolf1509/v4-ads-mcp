@@ -75,7 +75,9 @@ async def run_conversion_upload(
         request = client.get_type("UploadClickConversionsRequest")
         request.customer_id = customer_id
         request.partial_failure = True  # Python field — NOT partial_failure_enabled
-        request.debug_enabled = False
+        # F42 (Sprint 3b.26.1): debug_enabled field REMOVED from v24
+        # UploadClickConversionsRequest proto. Setting it raises AttributeError.
+        # Smoke T7 caught: "Unknown field for UploadClickConversionsRequest: debug_enabled"
 
         conversion_action_path = (
             f"customers/{customer_id}/conversionActions/{payload['conversion_action_id']}"
