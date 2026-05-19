@@ -701,7 +701,9 @@ async def validate_conversion_action_for_upload(
     query = (
         "SELECT conversion_action.id, conversion_action.type, conversion_action.status "
         "FROM conversion_action "
-        f"WHERE conversion_action.id = {conversion_action_id}"
+        # int() guard: fail-fast on non-numeric + injection defense (mirrors
+        # validate_campaign_for_value_rule_set pattern)
+        f"WHERE conversion_action.id = {int(conversion_action_id)}"
     )
 
     def _format(row: Any) -> dict[str, Any]:

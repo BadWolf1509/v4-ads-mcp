@@ -106,11 +106,13 @@ async def run_conversion_upload(
     except Exception as e:
         status = "error"
         error_message = str(e)
-        log.error(
+        # log.exception (not log.error) captures the raw traceback before
+        # to_friendly() may swallow the original diagnostic. Mirrors
+        # mutations.py pattern.
+        log.exception(
             "conversion_upload_failed",
             operation=operation_type,
             customer_id=customer_id,
-            error=error_message,
         )
         friendly = to_friendly(e)
         err_text = str(friendly)
