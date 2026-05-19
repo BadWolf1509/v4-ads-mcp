@@ -114,13 +114,13 @@
 
 | Status | Count |
 |---|---|
-| **Fixed** (source code change) | 22 |
-| **Doc fix only** (tool description / runbook update) | 5 |
+| **Fixed** (source code change) | 26 (added F38, F39, F40, F42) |
+| **Doc fix only** (tool description / runbook update) | 6 (added F41 — Nutry sandbox sem traffic, environment limit) |
 | **Not-a-bug** (Google behavior, expected) | 2 |
 | **Known limitation / workaround documented** | 3 |
-| **Open** (real fix pending) | 1 (A4 — Customer Match exclusion mechanism for V4 playbook) |
+| **Open** (real fix pending) | 1 (A4 — Customer Match exclusion mechanism for V4 playbook, Sprint 3b.27 candidate) |
 
-**Total findings tracked:** 33
+**Total findings tracked:** 38 (was 33 + F38/F39/F40/F41/F42)
 
 ---
 
@@ -130,11 +130,10 @@
 
 | Sprint | Findings introduced |
 |---|---|
-| 3b.20 | F1 (closed), F2 (closed) — both from 2026-05-15 dogfood report |
-| 3b.21 | F22 (→ 3b.23), F23 (limitation, existed since 3b.1) |
-| 3b.22 | none (closes 3b.19B F25/F27) |
 | 3b.23 | F28 (MCP cache lag, not-fixable) |
 | 3b.24 | F29 (doc), F30 (→ 3b.24.4), F32 (→ 3b.24.2), F33 (→ 3b.24.4), F34 (→ 3b.24.4), F35 (→ 3b.24.4), F36 (Google constraint), F37 (→ 3b.24.5) |
+| 3b.25 | F38 (→ 3b.25.1 + 3b.25.2), F39 (→ 3b.25.1), F40 (→ 3b.25.2) |
+| 3b.26 | F41 (env limitation, doc-only), F42 (→ 3b.26.1) |
 
 ---
 

@@ -33,3 +33,6 @@ Thumbs.db
 dist/
 build/
 *.log
+
+# Local-only documentation drafts (not tracked, but kept locally)
+docs/operacao/standard-access-design-doc.*
