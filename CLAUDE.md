@@ -31,23 +31,21 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 
 ### Pending / future
 
-- **Modelo operacional:** solo dogfood — Wellington é único user. Lucas Soares OAuth active mas dormant. Multi-tenancy adiado indefinidamente (sem demanda).
-- **Sprint 3b.32 candidate (next-in-queue):** família audit_* restante (audit_zombie_keywords #11 ICE 315, audit_orphan_smart_actions #12 ICE 288, audit_negative_criterion_overlap, audit_assets_parity_between_campaigns) OR remove_* bundle OR audit_log gap fix. Decisão Wellington baseada em dogfood real.
-- **Sprint 3b.31 (shipped):** audit_competitor_keywords (53rd tool, #6 ICE 432 dogfood). Smoke **8/8 PASS** (zero DEFERRED) — caso real Nutry: 3 keywords positivas pagando pra aparecer em buscas de competidores (Clínica Seven, Dr. Hilquias Rocha, Rodrigo Sousa).
-- **Sprint 3b.30 (shipped):** audit_quality_score (52nd tool, #1 ICE 504 dogfood). Smoke 6/8 PASS + 2 DEFERRED (T7-T8 env limitation Nutry sem QS data — pattern F41/F45).
-- **A4 OPEN finding:** Customer Match exclusion mechanism (aberto desde 3b.4/3b.5). Agora desbloqueado via `upload_customer_match_list` (3b.28). Investigation candidate Sprint 3b.28.x ou dedicado.
-- **Sub-demandas LOW priority:** B2-B4 shipped 3b.29 (validate_gaql hints + lag warnings); B5 shipped 3b.29 (`run_gaql.aggregate_by`); Sprint 3b.25.x shipped 2026-05-20 (per-value probe STRUCTURED_SNIPPET — 10/13 ACCEPTED, 3 rejected removed). Resta: ProtoFieldCapture retrofit em builders pré-3b.5 (YAGNI); simetria CRUD missing (`update_conversion_value_rule_set`, STORE support); Sprint 3b.19B Nutry smoke pending; audit_log integration em `run_gaql`/`get_my_audit_log`/`get_my_rate_limit_status` (gap antigo descoberto em 3b.29 review).
+- **Modelo operacional:** solo dogfood — Wellington único user. Lucas Soares OAuth dormant. Multi-tenancy adiado indefinidamente.
+- **Sprint 3b.32 candidate (next-in-queue):** audit_zombie_keywords (#11 ICE 315), audit_orphan_smart_actions (#12 ICE 288), audit_negative_criterion_overlap, audit_assets_parity_between_campaigns OR remove_* bundle OR audit_log gap fix. Decisão Wellington baseada em dogfood.
+- **A4 OPEN finding:** Customer Match exclusion mechanism (aberto desde 3b.4/3b.5, desbloqueada via `upload_customer_match_list` 3b.28). Investigation candidate dedicado.
+- **LOW priority pendings:** audit_log gap em `run_gaql`/`get_my_audit_log`/`get_my_rate_limit_status` (description "Sempre auditado" sem `audit_log.record()` explicit — descoberto 3b.29); simetria CRUD missing (`update_conversion_value_rule_set`, STORE support); Sprint 3b.19B Nutry smoke pending; smoke 3b.30 T7-T8 em conta production V4 (Nutry sem QS data — F41/F45 pattern).
+- **YAGNI sem demanda:** ProtoFieldCapture retrofit em builders pré-3b.5 (work empirically em prod).
 - **Standard Access GAds:** case `26521440673` passive wait. Uso atual ~0.07% Basic, zero blocker. Quando aprovar, 1-line change em `rate_limit.py:20`.
 
 ## Read these first when continuing work
 
 ```
 docs/operacao/findings-catalog.md       # ★ Bug history (A1-A5, F1-F45 by class — 45 findings)
-docs/operacao/sprint-history.md         # Detailed sprint table 3b.1→3b.28
+docs/operacao/sprint-history.md         # Detailed sprint table 3b.1→3b.31
 docs/operacao/phase-3b-XX-bootstrap.md  # Smoke runbook per sprint
-docs/operacao/dogfood-2026-05-19-mestre-da-obra-jp-cleanup-massivo.md  # Real-session debug findings + ICE
-docs/superpowers/specs/                  # Design docs per sprint
-docs/superpowers/plans/                  # Implementation plans per sprint
+docs/operacao/dogfood-2026-05-19-mestre-da-obra-jp-cleanup-massivo.md  # ICE-ranked backlog
+docs/superpowers/specs/  +  plans/      # Design + implementation per sprint
 ```
 
 ## Conventions
