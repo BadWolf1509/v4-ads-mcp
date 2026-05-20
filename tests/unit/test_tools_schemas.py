@@ -152,6 +152,7 @@ def test_all_phase_2_tools_registered():
         "import_offline_conversions",  # Sprint 3b.26
         # update patterns
         "update_rsa",
+        "update_conversion_action",  # Sprint 3b.27
     }
     actual = {t.name for t in all_tools()}
     missing = expected - actual
@@ -210,6 +211,7 @@ def test_no_unexpected_tools():
         "create_and_link_assets",  # Sprint 3b.25
         "import_offline_conversions",  # Sprint 3b.26
         "update_rsa",
+        "update_conversion_action",  # Sprint 3b.27
     }
     actual = {t.name for t in all_tools()}
     unexpected = actual - expected
