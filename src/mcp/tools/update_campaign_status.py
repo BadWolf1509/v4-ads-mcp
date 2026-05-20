@@ -34,7 +34,9 @@ _SCHEMA: dict[str, Any] = {
         "Pausa ou ativa uma ou mais campanhas. Ate 5 campanhas auto-aplica; "
         ">5 retorna preview com confirmation_token (chamar apply_change pra aplicar). "
         "Para REMOVER campanhas, use Google Ads UI (tool dedicada `remove_campaign` "
-        "pode ser adicionada em sprint futura se demanda real surgir)."
+        "pode ser adicionada em sprint futura se demanda real surgir). "
+        "Nota: campaign.status pode lagar alguns minutos entre queries Google Ads — "
+        "se decisao critica (ex: pausar campanha REMOVED), re-query antes de agir."
     ),
     input_schema=_SCHEMA,
 )

@@ -81,7 +81,9 @@ def _row_formatter(row: Any) -> dict[str, Any]:
     description=(
         "Performance por campanha: impressoes, clicks, custo, conversoes, valor, "
         "CTR, CPC. Ordenado por custo desc. Filtros opcionais: status (enabled|"
-        "paused|removed|all), limit (default 100)."
+        "paused|removed|all), limit (default 100). "
+        "Nota: campaign.status pode lagar alguns minutos entre queries (cache Google) "
+        "— se decisao critica baseada em status, re-query antes de agir."
     ),
     input_schema=_SCHEMA,
 )

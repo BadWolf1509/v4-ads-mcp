@@ -188,7 +188,9 @@ def _build_entities(target_type: str, rows: list[dict[str, Any]]) -> list[dict[s
         "SELECT/FROM/LIMIT). date_range default LAST_30_DAYS auto-injeta segments.date "
         "BETWEEN quando filter usa metrics.*. RECOMENDACAO: pra evitar incluir "
         "entidades ja pausadas, adicione `AND <target>.status = 'ENABLED'` no filter "
-        "(ex: `ad_group_criterion.status = 'ENABLED'` pra keywords)."
+        "(ex: `ad_group_criterion.status = 'ENABLED'` pra keywords). "
+        "Nota: <entity>.status pode lagar alguns minutos entre queries Google Ads — "
+        "preview pode mostrar entidades ja pausadas/REMOVED. Re-query antes de apply."
     ),
     input_schema=_SCHEMA,
 )
