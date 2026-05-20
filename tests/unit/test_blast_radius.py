@@ -98,3 +98,48 @@ def test_missing_target_count_is_confirm():
     """Edge case: caller forgot to pass target_count."""
     result = classify(operation="update_keyword_bid", params={})
     assert result.level == RiskLevel.CONFIRM
+
+
+class TestUpdateConversionActionClassify:
+    def test_single_rename_only_is_auto(self):
+        result = classify(
+            operation="update_conversion_action",
+            params={"updates": [{"conversion_action_id": "123", "name": "novo nome"}]},
+        )
+        assert result.level == RiskLevel.AUTO
+
+    def test_single_disable_primary_for_goal_is_confirm(self):
+        result = classify(
+            operation="update_conversion_action",
+            params={"updates": [{"conversion_action_id": "123", "primary_for_goal": False}]},
+        )
+        assert result.level == RiskLevel.CONFIRM
+
+    def test_single_disable_include_in_metric_is_confirm(self):
+        result = classify(
+            operation="update_conversion_action",
+            params={
+                "updates": [{"conversion_action_id": "123", "include_in_conversions_metric": False}]
+            },
+        )
+        assert result.level == RiskLevel.CONFIRM
+
+    def test_batch_of_two_is_confirm_even_rename_only(self):
+        result = classify(
+            operation="update_conversion_action",
+            params={
+                "updates": [
+                    {"conversion_action_id": "123", "name": "a"},
+                    {"conversion_action_id": "456", "name": "b"},
+                ]
+            },
+        )
+        assert result.level == RiskLevel.CONFIRM
+
+    def test_set_primary_for_goal_true_is_auto_for_single(self):
+        """Setting True (enable) is safe — only False (disable) needs CONFIRM."""
+        result = classify(
+            operation="update_conversion_action",
+            params={"updates": [{"conversion_action_id": "123", "primary_for_goal": True}]},
+        )
+        assert result.level == RiskLevel.AUTO

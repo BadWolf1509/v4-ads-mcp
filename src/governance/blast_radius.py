@@ -194,6 +194,25 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
             "create_conversion_value_rule_set: criacao de RuleSet com rules — sempre CONFIRM (spec §7.1)",
         )
 
+    # Update conversion action — AUTO single rename; CONFIRM otherwise
+    # (Sprint 3b.27). Disabling primary_for_goal or include_in_conversions_metric
+    # turns off Smart Bidding signal — high impact, always CONFIRM.
+    elif operation == "update_conversion_action":
+        updates = params.get("updates", [])
+        has_unsafe_disable = any(
+            u.get("primary_for_goal") is False or u.get("include_in_conversions_metric") is False
+            for u in updates
+        )
+        if len(updates) == 1 and not has_unsafe_disable:
+            return RiskClassification(
+                RiskLevel.AUTO,
+                "update_conversion_action: 1 entity sem desligar Smart Bidding signal",
+            )
+        return RiskClassification(
+            RiskLevel.CONFIRM,
+            f"update_conversion_action: {len(updates)} entity/ies — requer preview",
+        )
+
     # Remove audience — always CONFIRM (spec §7.1 "Remove qualquer coisa = sempre confirma")
     # Audience criterion removal can restore audience to delivery pool (if exclusion).
     # Symmetric with Sprint 3b.2 REMOVED policy principle.
