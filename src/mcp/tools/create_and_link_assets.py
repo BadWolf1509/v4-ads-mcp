@@ -31,16 +31,28 @@ _ATTACHMENT_LEVELS = ["CUSTOMER", "CAMPAIGN", "AD_GROUP"]
 # https://developers.google.com/google-ads/api/data/structured-snippet-headers
 # V4 BR-invariant: use Portuguese (pt-BR) display strings.
 #
-# Empirically verified PT-BR values (Sprint 3b.25.2 smoke re-test):
-# - "Serviços" ✅ (matches existing Nutry asset 259782606115)
-# - "Marcas" ✅ (T7 re-test PASS)
-# Other values below are best-guess translations from Google's localized table.
-# Sprint 3b.25.x candidate: per-value empirical probe for remaining 11 headers.
+# Empirically verified PT-BR values (Sprint 3b.25.x per-value probe em Nutry 2026-05-20):
+# - "Comodidades" ✅
+# - "Cursos" ✅
+# - "Destinos" ✅
+# - "Estilos" ✅
+# - "Hotéis em destaque" ✅
+# - "Marcas" ✅ (Sprint 3b.25.2)
+# - "Modelos" ✅
+# - "Programas" ✅
+# - "Serviços" ✅ (Sprint 3b.25.2)
+# - "Tipos" ✅
+#
+# REJECTED por Google ("input string value is invalid") — removed from whitelist:
+# - "Bairros" ❌ (provavelmente Google usa "Localidades")
+# - "Cursos de graduação" ❌ (vertical-restricted ou tradução diferente)
+# - "Tipos de cobertura do seguro" ❌ (vertical-restricted insurance)
+#
+# Lesson: 13 headers tentativos pre-probe → 10 confirmados empiricamente.
+# Whitelist agora 100% validada per CLAUDE.md convention 3b.19A.1.
 _STRUCTURED_SNIPPET_HEADERS = [
-    "Bairros",
     "Comodidades",
     "Cursos",
-    "Cursos de graduação",
     "Destinos",
     "Estilos",
     "Hotéis em destaque",
@@ -49,7 +61,6 @@ _STRUCTURED_SNIPPET_HEADERS = [
     "Programas",
     "Serviços",
     "Tipos",
-    "Tipos de cobertura do seguro",
 ]
 
 _SCHEMA: dict[str, Any] = {
