@@ -18,22 +18,22 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 
 **Last updated:** 2026-05-20
 
-### Shipped (51 tools em produção)
+### Shipped (52 tools em produção)
 
 | Phase | Status | Notes |
 |---|---|---|
 | Phases 0-1b + 3a + FE Redesign v2 | ✅ 2026-05-03→05 | Foundation done. See [`infra-setup.md`](docs/operacao/infra-setup.md). |
-| Sprint 3b.1 → 3b.29 (29 sprints) | ✅ 2026-05-04→20 | All shipped + signed-off em conta real. **Detail per sprint:** [`sprint-history.md`](docs/operacao/sprint-history.md). **Bug history (45 findings):** [`findings-catalog.md`](docs/operacao/findings-catalog.md). |
+| Sprint 3b.1 → 3b.30 (30 sprints) | ✅ 2026-05-04→20 | All shipped + signed-off em conta real. **Detail per sprint:** [`sprint-history.md`](docs/operacao/sprint-history.md). **Bug history (45 findings):** [`findings-catalog.md`](docs/operacao/findings-catalog.md). |
 
-**51 MCP tools** registered: 23 read + 27 mutations + `apply_change`. Production revision post-`1f07d3e` (Sprint 3b.29 — `run_gaql.aggregate_by` extension; /health 200, CI green).
+**52 MCP tools** registered: 24 read + 27 mutations + `apply_change`. Production revision post-`668ddb1` (Sprint 3b.30 — `audit_quality_score` 52nd tool; /health 200, CI green).
 **15 web pages** in production (FE Redesign v2 Hybrid Editorial+Operational identity).
 **Q8 invite-only allowlist** active — only `@v4company.com` emails pre-invited via `/admin/invites` can complete OAuth.
 
 ### Pending / future
 
 - **Modelo operacional:** solo dogfood — Wellington é único user. Lucas Soares OAuth active mas dormant. Multi-tenancy adiado indefinidamente (sem demanda).
-- **Sprint 3b.30 candidate (next-in-queue):** audit_quality_score (#4 ICE 504 do dogfood MO-JP 2026-05-19) OR remove_* bundle. Decisão Wellington baseada em prioridade dogfood (audit_*) vs cleanup utility (remove_*).
-- **Sprint 3b.30+:** família audit_* curadas (audit_competitor_keywords, audit_zombie_keywords, audit_orphan_smart_actions, audit_negative_criterion_overlap, audit_assets_parity_between_campaigns); remove_* bundle se Sprint 3b.30 for audit.
+- **Sprint 3b.31 candidate (next-in-queue):** família audit_* curadas (audit_competitor_keywords #6 ICE 432, audit_zombie_keywords #11 ICE 315, audit_orphan_smart_actions #12 ICE 288, audit_negative_criterion_overlap, audit_assets_parity_between_campaigns) OR remove_* bundle. Decisão Wellington baseada em dogfood real.
+- **Sprint 3b.30 (shipped):** audit_quality_score (52nd tool, #1 ICE 504 dogfood). Smoke T1-T8 pending Wellington next-session (MCP cache pre-deploy).
 - **A4 OPEN finding:** Customer Match exclusion mechanism (aberto desde 3b.4/3b.5). Agora desbloqueado via `upload_customer_match_list` (3b.28). Investigation candidate Sprint 3b.28.x ou dedicado.
 - **Sub-demandas LOW priority:** B2-B4 shipped 3b.29 (validate_gaql hints + lag warnings); B5 shipped 3b.29 (`run_gaql.aggregate_by`); Sprint 3b.25.x shipped 2026-05-20 (per-value probe STRUCTURED_SNIPPET — 10/13 ACCEPTED, 3 rejected removed). Resta: ProtoFieldCapture retrofit em builders pré-3b.5 (YAGNI); simetria CRUD missing (`update_conversion_value_rule_set`, STORE support); Sprint 3b.19B Nutry smoke pending; audit_log integration em `run_gaql`/`get_my_audit_log`/`get_my_rate_limit_status` (gap antigo descoberto em 3b.29 review).
 - **Standard Access GAds:** case `26521440673` passive wait. Uso atual ~0.07% Basic, zero blocker. Quando aprovar, 1-line change em `rate_limit.py:20`.
