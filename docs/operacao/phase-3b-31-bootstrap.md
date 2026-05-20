@@ -20,14 +20,25 @@
 
 ## Pre-flight
 
-- [ ] Deploy lands successfully (CI + Deploy green em commit A4)
-- [ ] Service `/health` returns 200 (`{"status":"ok","version":"0.1.0"}`)
-- [ ] Tool `audit_competitor_keywords` registered (test_registered_tool_count_matches_files_on_disk 53==53 PASS)
-- [ ] Pre-push gate `python scripts/check_pre_push.py` 5/5 PASS
-- [ ] Schema regression `test_no_composition_keywords_in_any_schema` passa
-- [ ] Unit tests `tests/unit/test_competitor_analysis.py` 14/14 PASS (A1)
-- [ ] Unit tests `tests/unit/test_audit_competitor_keywords_query.py` 6/6 PASS (A2)
-- [ ] Integration tests `tests/integration/test_audit_competitor_keywords.py` 3/3 PASS (A4)
+- [x] Deploy lands successfully (CI + Deploy green em commit `a01954b`)
+- [x] Service `/health` returns 200 (`{"status":"ok","version":"0.1.0"}`)
+- [x] Tool `audit_competitor_keywords` registered (test_registered_tool_count_matches_files_on_disk 53==53 PASS)
+- [x] Pre-push gate `python scripts/check_pre_push.py` 5/5 PASS
+- [x] Schema regression `test_no_composition_keywords_in_any_schema` passa
+- [x] Unit tests `tests/unit/test_competitor_analysis.py` 14/14 PASS (commit `24f1903`)
+- [x] Unit tests `tests/unit/test_audit_competitor_keywords_query.py` 6/6 PASS (commit `3944d04`)
+- [x] Integration tests `tests/integration/test_audit_competitor_keywords.py` 3/3 PASS (commit `a01954b`)
+
+## Smoke results — execution pending Wellington next-session
+
+MCP client desta sessão cacheou tool list pre-deploy → `audit_competitor_keywords` não visível pra controller. Pattern análogo Sprint 3b.30 A5. Wellington executa em nova sessão MCP.
+
+**Confidence em production:**
+- ✅ A1 spec + code quality reviewer APPROVED (14/14 reqs + 14/14 tests)
+- ✅ A2 combined reviewer APPROVED (6/6 tests + zero issues)
+- ✅ A3 mcp-tool-quality-reviewer APPROVED (25/25 checks)
+- ✅ A4 integration tests 3/3 PASS + CI green + Deploy green + /health 200
+- ✅ 23 testes total cobrindo todos branches do algoritmo
 
 ## Smoke results — pendente Wellington
 
