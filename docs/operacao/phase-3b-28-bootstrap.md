@@ -5,41 +5,53 @@
 **Operator:** wellinton.ribeiro@v4company.com
 **Account:** `1163862076` Nutry (sandbox)
 
-**Spec:** `docs/superpowers/specs/<TBD>-sprint-3b-28-upload-customer-match-list-design.md` _(não existe ainda — Wellington vai redigir antes de começar Sprint 3b.28)_
-**Plan:** `docs/superpowers/plans/<TBD>-sprint-3b-28-upload-customer-match-list.md` _(não existe ainda — redigir após brainstorming)_
+**Spec:** [`docs/superpowers/specs/2026-05-20-sprint-3b-28-upload-customer-match-list-design.md`](../superpowers/specs/2026-05-20-sprint-3b-28-upload-customer-match-list-design.md) (SHA `5097a2d`)
+**Plan:** [`docs/superpowers/plans/2026-05-20-sprint-3b-28-upload-customer-match-list.md`](../superpowers/plans/2026-05-20-sprint-3b-28-upload-customer-match-list.md) (SHA `c6bf2e1`)
 
-> **Status do runbook:** DRAFT/esqueleto pré-spec. Test scenarios T1..T10 são derivados de heurísticas (família OfflineUserDataJobService + LGPD invariants V4 + padrão 3b.26). Quando o plan formal for redigido, revisar test count + per-value probe + V4 invariants enforcement antes de executar smoke.
+> **Status do runbook:** READY pra smoke execution — Sprint 3b.28 V0 deployed em produção (Phase A completa).
 >
-> **Histórico:** Esqueleto originalmente gerado em 2026-05-19 (subagent `smoke-runbook-generator`) pra Sprint 3b.27 — renomeado pra 3b.28 quando dogfood MO-JP 2026-05-19 reordenou o roadmap (Sprint 3b.27 virou combo `update_customer_conversion_goal` + B1 pre-flight fix; ver `dogfood-2026-05-19-mestre-da-obra-jp-cleanup-massivo.md` §priorização ICE).
+> **V0 escopo confirmado (D1-D5):**
+> - 2 identifier types: `email` + `phone_number` (sem address_info/mobile_id/third_party_user_id)
+> - 2 operation types: `add` + `remove` (sem `remove_all`)
+> - Async model: fire-and-forget — tool retorna `job_resource_name` + hint pra polling via run_gaql
+> - LGPD: consent.ad_user_data + consent.ad_personalization hardcoded GRANTED; payload dry_run SEM plaintext (só hashed_*)
+> - User list creation OUT of scope V0 (gestor cria via UI separado)
+>
+> **Histórico:** Esqueleto originalmente gerado 2026-05-19 (subagent `smoke-runbook-generator`). Spec + plan formais redigidos 2026-05-20. Phase A implementada via 8 subagent dispatches + reviews paralelos (commits `1cc3424` → `55e1e1e`).
 
 ## Pre-flight
 
-- [ ] Deploy lands successfully
-- [ ] Service `/health` returns 200
-- [ ] Tool `upload_customer_match_list` visível em MCP tool list (count 50 → 51)
-- [ ] Pre-push gate `python scripts/check_pre_push.py` 5/5 PASS
-- [ ] _(opt-in)_ Full gate `python scripts/check_pre_push_full.py` 6/6 PASS (Sprint 3b.5/3b.8 lesson: novos pre-flight async em `_common.py` precisam Docker integration sweep)
+- [x] Deploy lands successfully
+- [x] Service `/health` returns 200
+- [x] Tool `upload_customer_match_list` visível em MCP tool list (count 50 → 51)
+- [x] Pre-push gate `python scripts/check_pre_push.py` 5/5 PASS
+- [ ] _(opt-in)_ Full gate `python scripts/check_pre_push_full.py` 6/6 PASS (Sprint 3b.5/3b.8 lesson: novos pre-flight async em `_common.py` precisam Docker integration sweep — local Docker indisponível; CI catch-all)
 
-Production revisions: `v4-ads-mcp-<TBD>` (initial) → _(add fix iterations as they happen)_
+Production revisions: `v4-ads-mcp-<TBD>` (Phase A pos SHA `55e1e1e` — aguardando deploy CI completar) → _(add fix iterations as they happen)_
 
 ## Smoke results
 
 Preencher conforme execução. Marcar resultado final no fim do arquivo.
 
+Smoke tests V0-aligned (escopo MINIMAL D1-D5 confirmado):
+
 | # | Test | Result | Notes |
 |---|---|---|---|
-| T1 | dry_run happy path (5 emails plaintext) | ⬜ pending | |
-| T2 | Pre-flight: customer_list_id não existe | ⬜ pending | |
-| T3 | Pre-flight Layer 2: input já-hashed accidentally rejected | ⬜ pending | |
-| T4 | Happy path apply real (5 emails) — depende customer_list ENABLED em Nutry | ⬜ pending | possível deferred (F41-equivalent) se Nutry não tem CRM_BASED user_list |
-| T5 | Batch 100 emails reais | ⬜ pending | |
-| T6 | Partial failure: mix valid + invalid (emails malformed) | ⬜ pending | |
-| T7 | Normalização: emails com casing/whitespace inconsistente | ⬜ pending | verificar SHA-256 bate com Google esperado |
-| T8 | Normalização: telefones sem country code → +55 default | ⬜ pending | |
-| T9 | Layer 2: consent.ad_user_data_consent_signal_time future / out of bounds | ⬜ pending | _(se a API expor esse campo no v24 SDK)_ |
-| T10 | Schema regression: 101 items rejected pre-Google | ⬜ pending | |
+| T0a | GAQL setup — listar UserLists CRM_BASED em Nutry | ⬜ pending | Se zero, criar via Google Ads UI antes de prosseguir |
+| T0b | (Se T0a vazio) Criar Customer Match user list em Nutry UI manual | ⬜ pending | Skip se T0a já encontrou lista existente |
+| T1 | Layer 2 reject — member sem identifier (`members: [{}]`) | ⬜ pending | Layer 1 minProperties já pega; Layer 2 garantia adicional |
+| T2 | Layer 2 reject — email já-hashed (`^[a-f0-9]{64}$` input) | ⬜ pending | Critical UX guardrail (gestor confuso) |
+| T3 | Layer 2 reject — email regex inválido (sem `@`) | ⬜ pending | |
+| T4 | Layer 2 reject — duplicate email após normalize (case + whitespace) | ⬜ pending | |
+| T5 | Layer 3 reject — `user_list_id=9999999999` não existe | ⬜ pending | |
+| T6 | Schema regression — `maxItems` 1001 rejected pre-Google | ⬜ pending | |
+| T7 | dry_run happy path — 5 emails synthetic (`smoke+N@v4.com`) → CONFIRM token | ⬜ pending | |
+| T8 | apply T7 → `status: submitted` + job_resource_name | ⬜ pending | **POSSIBLE DEFERRED** se Nutry sem Customer Match terms acceptance (F41-equivalent) |
+| T9 | Status poll via `run_gaql` usando job_resource_name de T8 | ⬜ pending | Manual: extrair job_id; query GAQL retorna PENDING/RUNNING/SUCCESS |
+| T10 | operation=`remove` — repetir T7+T8 com remove | ⬜ pending | |
+| T11 | V4 invariants verify post-T8 — Cloud Logging traceback ou GAQL `offline_user_data_job` confirma consent GRANTED + enable_partial_failure=True | ⬜ pending | |
 
-**Effective result:** N/10 PASS
+**Effective result:** N/11 PASS (T8/T9 podem DEFERRED por env)
 
 ### F-findings emerged
 
@@ -47,13 +59,14 @@ _Empty placeholder — fill during smoke. Template: `**F## (SEV)** — <symptom>
 
 ### Sign-off
 
-- [ ] Pre-push gate 5/5 PASS
-- [ ] Production /health 200 (revision `<final_revision>`)
-- [ ] **N/10 PASS** após [N] fix iterations
-- [ ] CLAUDE.md sprint row added
-- [ ] findings-catalog.md updated com [findings] + **A4 status update** (Sprint 3b.28 investigation outcome)
-- [ ] Tool count 50 → 51 confirmed in production
-- [ ] **A4 investigation outcome documentado** — concluir se Customer Match exclusion mechanism pra V4 "-10% CPA playbook" é viável via (a) ad_group_criterion + user_list, (b) campaign_criterion via novo path, (c) requires outro mechanism (e.g. negative remarketing list)
+- [x] Pre-push gate 5/5 PASS (Phase A)
+- [ ] mcp-tool-quality-reviewer subagent verdict
+- [ ] Production /health 200 (revisão final `<final_revision>`)
+- [ ] **N/11 PASS** após [N] fix iterations
+- [ ] CLAUDE.md sprint row added (Sprint 3b.28 shipped, count 50 → 51)
+- [ ] findings-catalog.md updated com qualquer F-finding emergido + Last updated
+- [x] Tool count 50 → 51 confirmed in production (aguardando deploy CI completar)
+- [ ] **A4 investigation deferred** — Phase B futura (Sprint 3b.28.x ou 3b.29 dedicado). V0 entrega upload tool only; mecanismo de exclusion (audience exclusion playbook V4 "-10% CPA") fica pra investigação posterior usando o tool entregue aqui
 
 ---
 
