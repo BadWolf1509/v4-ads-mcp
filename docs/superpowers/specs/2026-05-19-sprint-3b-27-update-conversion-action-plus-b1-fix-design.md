@@ -662,4 +662,4 @@ Para considerar Sprint 3b.27 shipped:
 - [ ] Smoke 12/12 PASS em Nutry (deferred OK se Nutry environment limitation tipo F41 do 3b.26)
 - [ ] CLAUDE.md row Sprint 3b.27 atualizada (in_progress → shipped, count 49→50)
 - [ ] findings-catalog F43 row movida open → Fixed Sprint 3b.27 + summary Open 2→1
-- [ ] Wellington Wellington executa Opção C SIMPLIFICADA MO 23/05 via MCP (validação produção real)
+- [ ] Wellington executa Opção C SIMPLIFICADA MO 23/05 via MCP (validação produção real)
