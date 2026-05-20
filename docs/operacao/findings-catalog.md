@@ -4,7 +4,7 @@
 >
 > **Maintainer note:** Add a new entry here whenever a finding is documented in a smoke runbook. Keep entries scannable — link to runbook for detail.
 >
-> **Last updated:** 2026-05-20 (Sprint 3b.27 signoff — F43 Fixed, F44 catalogado e Fixed em 3b.27.1)
+> **Last updated:** 2026-05-20 (Sprint 3b.28 signoff — F45 catalogado env limitation)
 
 ---
 
@@ -109,6 +109,7 @@
 |---|---|---|---|---|
 | **F36** | HIGH | 3b.24 | doc-only | `TARGET_CPA` + `TARGET_ROAS` rejeitam em accounts sem conversion data history. Nutry sandbox tem 14+ conversion actions de 3b.19A mas zero real data → reject. Real V4 production accounts (com tracking history) funcionam. Tool description documenta. |
 | **F41** | LOW | 3b.26 | doc-only | Nutry sandbox sem traffic recente (zero clicks LAST_90_DAYS) — `click_view` retorna empty → real gclids não disponíveis pra T4-T6 happy paths em `import_offline_conversions`. Não é Sprint 3b.26 bug; é smoke-environment limitation. Workaround: T7 partial_failure path com fake gclids valida dispatcher + parsing end-to-end (UNPARSEABLE_GCLID error_code retornado bit-a-bit). Real production V4 accounts com gestor inputando gclids ativos vão funcionar. Smoke runbook updated com guidance. |
+| **F45** | LOW | 3b.28 | doc-only | Nutry sandbox sem CRM_BASED_USER_LIST disponível pra smoke T7-T11 do `upload_customer_match_list`. Customer Match terms acceptance pré-requisito requer Google Ads UI manual + provavelmente não aceitável em sandbox (4 user_lists existentes são todas RULE_BASED/LOGICAL + read_only). Tool funcionalmente validada via Layer 1/2/3 reject paths (T1-T6 PASS) + 31 unit tests + 5 integration tests (incluindo LGPD raw-query verification de payload sem plaintext em pending_confirmations). Não é Sprint 3b.28 bug; é smoke-environment limitation similar a F41. Real V4 production accounts com Customer Match policy aceita vão funcionar. [phase-3b-28-bootstrap.md] |
 
 ---
 
@@ -117,12 +118,12 @@
 | Status | Count |
 |---|---|
 | **Fixed** (source code change) | 26 (added F38, F39, F40, F42) |
-| **Doc fix only** (tool description / runbook update) | 6 (added F41 — Nutry sandbox sem traffic, environment limit) |
+| **Doc fix only** (tool description / runbook update) | 7 (added F45 — Nutry sandbox sem CRM_BASED user_list pra smoke 3b.28) |
 | **Not-a-bug** (Google behavior, expected) | 2 |
 | **Known limitation / workaround documented** | 3 |
-| **Open** (real fix pending) | 1 (A4 — Customer Match exclusion mechanism for V4 playbook, Sprint 3b.28 candidate) |
+| **Open** (real fix pending) | 1 (A4 — Customer Match exclusion mechanism for V4 playbook; agora a tool `upload_customer_match_list` está disponível, então A4 investigation pode prosseguir em sprint futuro usando-a) |
 
-**Total findings tracked:** 40 (was 39 + F44 do Sprint 3b.27 smoke 2026-05-20)
+**Total findings tracked:** 41 (was 40 + F45 do Sprint 3b.28 smoke 2026-05-20)
 
 ---
 
@@ -138,6 +139,7 @@
 | 3b.26 | F41 (env limitation, doc-only), F42 (→ 3b.26.1) |
 | dogfood 2026-05-19 (MO-JP) | F43 (→ 3b.27) |
 | 3b.27 | F44 (→ 3b.27.1) |
+| 3b.28 | F45 (env limitation, doc-only) |
 
 ---
 
