@@ -814,3 +814,109 @@ async def validate_conversion_actions_exist(
         }
 
     return None
+
+
+async def validate_keyword_criterion_types(
+    *,
+    manager_id: UUID,
+    session_id: UUID,
+    customer_id: str,
+    keyword_pairs: list[tuple[str, str]],
+) -> dict[str, Any] | None:
+    """GAQL pre-flight: each (ad_group_id, criterion_id) exists + is positive.
+
+    Returns:
+        None if all positive valid
+        dict with {error, negative_ids_blocked, positive_ids_safe, to_retry_with}
+            for negative mixture
+        dict with {error, missing_ids} for IDs not found (short-circuit)
+
+    Sprint 3b.27 fix B1/F43 (Silent-acceptance design gap family — F43).
+
+    Discovered via dogfood 2026-05-19 MO-JP cleanup massivo: update_keyword_status
+    accepts batches silently when including criterion with negative=true; only
+    apply_change fails with Google generic error "Negative ad group criteria are
+    not updateable" which doesn't identify problematic IDs.
+    """
+    if not keyword_pairs:
+        return None
+
+    crit_ids = sorted({c for _, c in keyword_pairs})
+    ids_clause = ", ".join(str(int(c)) for c in crit_ids)
+    query = (
+        "SELECT ad_group.id, ad_group_criterion.criterion_id, "
+        "ad_group_criterion.negative, ad_group_criterion.type "
+        "FROM ad_group_criterion "
+        f"WHERE ad_group_criterion.criterion_id IN ({ids_clause})"
+    )
+
+    def _format(row: Any) -> dict[str, Any]:
+        return {
+            "ad_group_id": str(row.ad_group.id),
+            "criterion_id": str(row.ad_group_criterion.criterion_id),
+            "negative": bool(row.ad_group_criterion.negative),
+            "type": row.ad_group_criterion.type.name
+            if hasattr(row.ad_group_criterion.type, "name")
+            else str(row.ad_group_criterion.type),
+        }
+
+    rows = await run_report(
+        manager_id=manager_id,
+        session_id=session_id,
+        customer_id=customer_id,
+        query=query,
+        row_formatter=_format,
+        operation_name="validate_keyword_criterion_types",
+    )
+
+    # Key found rows by (ad_group_id, criterion_id) for O(1) lookup
+    found: dict[tuple[str, str], dict[str, Any]] = {}
+    for r in rows:
+        key = (r["ad_group_id"], r["criterion_id"])
+        found[key] = r
+
+    missing: list[dict[str, str]] = []
+    negative_blocked: list[dict[str, str]] = []
+    positive_safe: list[dict[str, str]] = []
+
+    for ad_group_id, criterion_id in keyword_pairs:
+        key = (ad_group_id, criterion_id)
+        if key not in found:
+            missing.append({"ad_group_id": ad_group_id, "criterion_id": criterion_id})
+            continue
+        if found[key]["negative"]:
+            negative_blocked.append({"ad_group_id": ad_group_id, "criterion_id": criterion_id})
+        else:
+            positive_safe.append({"ad_group_id": ad_group_id, "criterion_id": criterion_id})
+
+    # Short-circuit: missing IDs antes do negative check
+    if missing:
+        return {
+            "error": (
+                f"criterion_ids não encontrados em customer_id={customer_id}: "
+                f"{[m['criterion_id'] for m in missing]}. Verifique se IDs estão "
+                f"corretos (ad_group_id + criterion_id) e se o gestor ainda tem "
+                f"acesso à conta."
+            ),
+            "missing_ids": missing,
+        }
+
+    if negative_blocked:
+        return {
+            "error": (
+                f"{len(negative_blocked)}/{len(keyword_pairs)} criterion_ids são "
+                f"ad_group_criterion com negative=true. Google API rejeita updates "
+                f"em negative criteria (state machine separada). Re-chame "
+                f"update_keyword_status apenas com os criterion_ids POSITIVE "
+                f"listados em positive_ids_safe. Pra desnegativar uma keyword, "
+                f"use Google Ads UI (sem tool MCP dedicada hoje)."
+            ),
+            "negative_ids_blocked": negative_blocked,
+            "positive_ids_safe": positive_safe,
+            "to_retry_with": (
+                f"update_keyword_status(customer_id='{customer_id}', "
+                f"keywords=positive_ids_safe, new_status=<your_status>)"
+            ),
+        }
+
+    return None
