@@ -4,7 +4,7 @@
 >
 > **Maintainer note:** Add a new entry here whenever a finding is documented in a smoke runbook. Keep entries scannable — link to runbook for detail.
 >
-> **Last updated:** 2026-05-20 (Sprint 3b.28 signoff — F45 catalogado env limitation)
+> **Last updated:** 2026-05-20 (Sprint 3b.31 signoff — zero F-findings novos em 3b.29/3b.30/3b.31. Last finding catalogado: F45 em 3b.28.)
 
 ---
 

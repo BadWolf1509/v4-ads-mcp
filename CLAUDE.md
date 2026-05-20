@@ -23,7 +23,7 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 | Phase | Status | Notes |
 |---|---|---|
 | Phases 0-1b + 3a + FE Redesign v2 | ✅ 2026-05-03→05 | Foundation done. See [`infra-setup.md`](docs/operacao/infra-setup.md). |
-| Sprint 3b.1 → 3b.31 (31 sprints) | ✅ 2026-05-04→20 | All shipped + signed-off em conta real. **Detail per sprint:** [`sprint-history.md`](docs/operacao/sprint-history.md). **Bug history (45 findings):** [`findings-catalog.md`](docs/operacao/findings-catalog.md). |
+| Sprint 3b.1 → 3b.31 (31 sprints) | ✅ 2026-05-04→20 | All shipped + signed-off em conta real. **Detail per sprint:** [`sprint-history.md`](docs/operacao/sprint-history.md). **Bug history (41 findings, F1-F45):** [`findings-catalog.md`](docs/operacao/findings-catalog.md). |
 
 **53 MCP tools** registered: 25 read + 27 mutations + `apply_change`. Production revision post-`a01954b` (Sprint 3b.31 — `audit_competitor_keywords` 53rd tool; /health 200, CI green).
 **15 web pages** in production (FE Redesign v2 Hybrid Editorial+Operational identity).
@@ -41,7 +41,7 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 ## Read these first when continuing work
 
 ```
-docs/operacao/findings-catalog.md       # ★ Bug history (A1-A5, F1-F45 by class — 45 findings)
+docs/operacao/findings-catalog.md       # ★ Bug history (A1-A5, F1-F45 highest ID — 41 unique findings)
 docs/operacao/sprint-history.md         # Detailed sprint table 3b.1→3b.31
 docs/operacao/phase-3b-XX-bootstrap.md  # Smoke runbook per sprint
 docs/operacao/dogfood-2026-05-19-mestre-da-obra-jp-cleanup-massivo.md  # ICE-ranked backlog
