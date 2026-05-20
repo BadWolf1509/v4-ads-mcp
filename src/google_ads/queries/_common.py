@@ -795,7 +795,7 @@ async def validate_conversion_actions_exist(
     if missing:
         return {
             "error": (
-                f"conversion_action_ids não existe em customer_id={customer_id}: "
+                f"conversion_action_ids não existem em customer_id={customer_id}: "
                 f"{missing}. Verifique IDs via get_conversion_actions(customer_id='{customer_id}')."
             ),
             "missing_ids": missing,
