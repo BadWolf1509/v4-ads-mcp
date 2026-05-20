@@ -81,6 +81,39 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
             "failures": result["failures"],
         }
 
+    # Sprint 3b.28: OfflineUserDataJobService path (Customer Match upload).
+    if saved.operation_type == "upload_customer_match_list":
+        from src.google_ads.customer_match import run_offline_user_data_job
+
+        result = await run_offline_user_data_job(
+            manager_id=ctx.manager_id,
+            session_id=ctx.session_id,
+            customer_id=saved.customer_id,
+            user_list_id=saved.payload["user_list_id"],
+            operation_type=saved.payload["operation"],
+            hashed_members=saved.payload["hashed_members"],
+        )
+        job_id = result["job_resource_name"].rsplit("/", 1)[-1]
+        return {
+            "status": "submitted",
+            "operation": "upload_customer_match_list",
+            "customer_id": saved.customer_id,
+            "user_list_id": saved.payload["user_list_id"],
+            "operation_type": saved.payload["operation"],
+            "members_submitted": result["members_submitted"],
+            "job_resource_name": result["job_resource_name"],
+            "google_request_id_create_job": result["google_request_id_create_job"],
+            "google_request_id_add_ops": result["google_request_id_add_ops"],
+            "google_request_id_run_job": result["google_request_id_run_job"],
+            "to_check_status": (
+                f"Job é assíncrono no backend Google (processa em horas). "
+                f"Pra verificar status, use run_gaql com query 'SELECT "
+                f"offline_user_data_job.status, offline_user_data_job."
+                f"failure_reason FROM offline_user_data_job WHERE "
+                f"offline_user_data_job.id = {job_id}'."
+            ),
+        }
+
     # Default path: chained mutation via GoogleAdsService.mutate (Sprint 3b.1-3b.25).
     partial_failure = bool(saved.payload.get("__partial_failure__", False))
     result = await run_mutation(
