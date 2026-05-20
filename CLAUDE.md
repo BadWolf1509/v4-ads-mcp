@@ -33,7 +33,7 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 
 - **Modelo operacional:** solo dogfood — Wellington é único user. Lucas Soares OAuth active mas dormant. Multi-tenancy adiado indefinidamente (sem demanda).
 - **Sprint 3b.31 candidate (next-in-queue):** família audit_* curadas (audit_competitor_keywords #6 ICE 432, audit_zombie_keywords #11 ICE 315, audit_orphan_smart_actions #12 ICE 288, audit_negative_criterion_overlap, audit_assets_parity_between_campaigns) OR remove_* bundle. Decisão Wellington baseada em dogfood real.
-- **Sprint 3b.30 (shipped):** audit_quality_score (52nd tool, #1 ICE 504 dogfood). Smoke T1-T8 pending Wellington next-session (MCP cache pre-deploy).
+- **Sprint 3b.30 (shipped):** audit_quality_score (52nd tool, #1 ICE 504 dogfood). Smoke 6/8 PASS + 2 DEFERRED (T7-T8 env limitation Nutry sem QS data — pattern F41/F45).
 - **A4 OPEN finding:** Customer Match exclusion mechanism (aberto desde 3b.4/3b.5). Agora desbloqueado via `upload_customer_match_list` (3b.28). Investigation candidate Sprint 3b.28.x ou dedicado.
 - **Sub-demandas LOW priority:** B2-B4 shipped 3b.29 (validate_gaql hints + lag warnings); B5 shipped 3b.29 (`run_gaql.aggregate_by`); Sprint 3b.25.x shipped 2026-05-20 (per-value probe STRUCTURED_SNIPPET — 10/13 ACCEPTED, 3 rejected removed). Resta: ProtoFieldCapture retrofit em builders pré-3b.5 (YAGNI); simetria CRUD missing (`update_conversion_value_rule_set`, STORE support); Sprint 3b.19B Nutry smoke pending; audit_log integration em `run_gaql`/`get_my_audit_log`/`get_my_rate_limit_status` (gap antigo descoberto em 3b.29 review).
 - **Standard Access GAds:** case `26521440673` passive wait. Uso atual ~0.07% Basic, zero blocker. Quando aprovar, 1-line change em `rate_limit.py:20`.

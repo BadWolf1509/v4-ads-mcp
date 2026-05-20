@@ -28,16 +28,39 @@
 - [x] Unit tests `tests/unit/test_audit_quality_score_query.py` 5/5 PASS (commit `d8f4f70`)
 - [x] Integration tests `tests/integration/test_audit_quality_score.py` 3/3 PASS (commit `668ddb1`)
 
-## Smoke results — execution pending Wellington next-session
+## Smoke results — executado 2026-05-20 (post-deploy reload)
 
 | # | Test | Result | Notes |
 |---|---|---|---|
-| T1-T8 | Todos os smoke cases | ⏸ PENDING | MCP client desta sessão cacheou tool list pre-deploy — `audit_quality_score` não visível. Wellington executa em nova sessão MCP. Code paths já validados via 24 testes (16 unit pure flags + 5 GAQL builder + 3 integration wire-up). |
+| T1 | sem filters (defaults LAST_30_DAYS + min_imp=10) | ✅ PASS | `days: 30`, `total_flagged: 0`, shape correto. Nutry low-volume → empty esperado. |
+| T2 | min_impressions=1 (low-volume fallback) | ✅ PASS | Defaults overrides corretamente, ainda 0 flagged. |
+| T3 | ad_group_ids=["193008426336"] | ✅ PASS | `filters_applied.ad_group_ids: ["193008426336"]`, dias=30. |
+| T4 | start_date=2026-05-01, end_date=2026-05-14 (custom range) | ✅ PASS | `date_range_resolved: {start: 2026-05-01, end: 2026-05-14, days: 14}` — inclusive correct. |
+| T5 | limit=10 | ✅ PASS | `filters_applied.limit: 10` correctly applied. |
+| T6 | date_range="LAST_7_DAYS" | ✅ PASS | `days: 7`, start `2026-05-13`, end `2026-05-19` — preset resolução correta. |
+| T7 | Empirical candidate_pause via run_gaql | ⚠️ DEFERRED | Nutry sandbox tem 36 kw ENABLED mas **todas QS=NULL** (Google não calcula pra low-volume). Tool filtra `IS NOT NULL` per spec — vazio é comportamento correto. Sem QS=1/2 reais pra validar candidate_pause empiricamente. |
+| T8 | Empirical duplicate_intent | ⚠️ DEFERRED | Mesma env limitation — Nutry sem QS data pra triggerar amplification. |
 
-**Status efetivo:** Sprint 3b.30 **code shipped** via subagent-driven (pattern 3b.27/3b.28/3b.29). Smoke real diferido pra próxima sessão MCP (igual padrão Sprint 3b.28 que teve T7-T11 DEFERRED por env limitation).
+**Effective result:** 6/8 PASS + 2 DEFERRED (env limitation, igual padrão F41/F45 — Nutry sandbox sem dados production).
+
+### Diagnóstico empírico
+
+Confirmação via `run_gaql` aggregate_by:
+
+```
+SELECT ad_group_criterion.status FROM keyword_view LIMIT 50
+→ ENABLED:36, PAUSED:9, REMOVED:5 (50 keywords total)
+
+SELECT ad_group_criterion.quality_info.quality_score FROM keyword_view 
+WHERE status='ENABLED' AND quality_score IS NOT NULL
+→ 0 rows (todas as 36 ENABLED têm QS=NULL)
+```
+
+Nutry sandbox é low-volume — Google só calcula QS após volume mínimo de impressions. Tool funcionalmente correta; smoke empirical real precisa de conta production com QS calculados (ex: MO-JP, qualquer V4 com histórico real).
 
 **Confidence em production:**
-- ✅ A1 spec compliance reviewer APPROVED + code quality reviewer APPROVED (após I1 fix mutation + M1 named constants + 2 boundary tests)
+- ✅ Shape + filters + date resolution validados em 6/6 cases executados
+- ✅ A1 spec compliance + code quality reviewers APPROVED (após I1 fix mutation + M1 named constants + 2 boundary tests)
 - ✅ A2 combined reviewer APPROVED (22/22 checks)
 - ✅ A3 mcp-tool-quality-reviewer APPROVED (22/22 checks)
 - ✅ A4 integration tests 3/3 PASS + CI green + Deploy green + /health 200
@@ -464,7 +487,8 @@ Não há cleanup necessário:
 - [x] Spec compliance reviewer subagent APPROVED (A1 com 1 fix iteration → A1.1)
 - [x] Code quality reviewer subagent APPROVED (A1, A2, A3)
 - [x] Production `/health` 200 (revisão post-`668ddb1`)
-- [⏸] T1-T8 smoke real: PENDING Wellington next-session (MCP cache desta sessão pre-deploy)
+- [x] T1-T6 PASS (shape + filters + date resolution validated)
+- [⚠️] T7-T8 DEFERRED (env limitation Nutry — sem QS data, igual padrão F41/F45)
 - [x] CLAUDE.md sprint counter atualizado (3b.29 → 3b.30)
 - [x] sprint-history.md updated com entry Sprint 3b.30
 - [x] findings-catalog.md sem updates (zero F-findings — não emergiu)
