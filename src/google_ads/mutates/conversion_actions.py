@@ -73,15 +73,17 @@ def build_create_conversion_action(
 def build_update_conversion_action(
     client: Any, customer_id: str, payload: dict[str, Any]
 ) -> list[Any]:
-    """payload: {updates: [{conversion_action_id, name?, primary_for_goal?, include_in_conversions_metric?}]}
+    """payload: {updates: [{conversion_action_id, name?, primary_for_goal?}]}
 
     Builds MutateOperation messages with dynamic field_mask per item.
     Each update item gets its own field_mask listing only the fields present
     in the payload — critical so Google update doesn't override absent
     fields with default values (silent bug).
 
-    Sprint 3b.27 — update tool (3 fields V0: name, primary_for_goal,
-    include_in_conversions_metric).
+    Sprint 3b.27 — update tool. V0 = 2 mutable fields (name, primary_for_goal).
+    F44 (3b.27.1): `include_in_conversions_metric` removed — Google v24 marca
+    field immutable em update, mesmo que SDK descriptor aceite (Silent-acceptance
+    family). Descoberto em smoke T7 2026-05-20.
     """
     operations: list[Any] = []
     for spec in payload["updates"]:
@@ -99,9 +101,6 @@ def build_update_conversion_action(
         if "primary_for_goal" in spec:
             ca.primary_for_goal = spec["primary_for_goal"]
             fields_to_mask.append("primary_for_goal")
-        if "include_in_conversions_metric" in spec:
-            ca.include_in_conversions_metric = spec["include_in_conversions_metric"]
-            fields_to_mask.append("include_in_conversions_metric")
 
         for field_name in fields_to_mask:
             ca_op.update_mask.paths.append(field_name)

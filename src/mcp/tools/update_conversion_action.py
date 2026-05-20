@@ -1,10 +1,15 @@
-"""Tool: update_conversion_action — update name, primary_for_goal, include_in_conversions_metric.
+"""Tool: update_conversion_action — update name, primary_for_goal.
 
-Sprint 3b.27. V0 minimal: 3 fields mutáveis (todos opcionais — incluir ao menos 1).
+Sprint 3b.27. V0 minimal: 2 fields mutáveis (todos opcionais — incluir ao menos 1).
 Field mask dinâmico por item via builder.
 
 Pre-flight async: validate_conversion_actions_exist (each ID exists + not REMOVED).
 Layer 2 sync: _validate_payload_shape (item tem ≥1 field mutável; sem duplicate IDs).
+
+**F44 (Sprint 3b.27.1):** `include_in_conversions_metric` REMOVIDO do schema V0 — Google
+runtime rejeita com "The field attempted to be mutated is immutable" em
+ConversionAction.update v24, mesmo que SDK descriptor aceite. Família Silent-acceptance.
+Descoberto em smoke T7 2026-05-20. Pra desligar conv metric tracking, use Google Ads UI.
 """
 
 from typing import Any
@@ -17,7 +22,7 @@ from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
 from src.mcp.tools._registry import register_tool
 
-_MUTABLE_FIELDS = ("name", "primary_for_goal", "include_in_conversions_metric")
+_MUTABLE_FIELDS = ("name", "primary_for_goal")
 
 _SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -33,7 +38,6 @@ _SCHEMA: dict[str, Any] = {
                     "conversion_action_id": {"type": "string", "pattern": "^[0-9]+$"},
                     "name": {"type": "string", "minLength": 1, "maxLength": 100},
                     "primary_for_goal": {"type": "boolean"},
-                    "include_in_conversions_metric": {"type": "boolean"},
                 },
                 "required": ["conversion_action_id"],
                 "additionalProperties": False,
@@ -84,10 +88,11 @@ def _validate_payload_shape(args: dict[str, Any]) -> str | None:
     name="update_conversion_action",
     description=(
         "Atualiza ConversionAction: name, primary_for_goal (off = action vira "
-        "non-biddable em todas as campaigns), include_in_conversions_metric "
-        "(off = excluir das metric conversions). 3 fields V0 — todos opcionais "
-        "por item (forneça ao menos 1). Single item rename auto-aplica; "
-        "qualquer batch > 1 OU qualquer field False retorna preview com token."
+        "non-biddable em todas as campaigns). 2 fields V0 — todos opcionais por "
+        "item (forneça ao menos 1). Single item rename auto-aplica; qualquer "
+        "batch > 1 OU primary_for_goal=False retorna preview com token. Pra "
+        "desligar include_in_conversions_metric, use Google Ads UI (Google v24 "
+        "marca o field como immutable — F44)."
     ),
     input_schema=_SCHEMA,
 )

@@ -3,6 +3,11 @@
 Uses ProtoFieldCapture (NOT MagicMock) per convention pós-Sprint 3b.5 —
 silent attribute accept on MagicMock would mask field-name typos (F16/F42
 lesson).
+
+F44 (Sprint 3b.27.1): `include_in_conversions_metric` removed from V0 schema —
+Google v24 marca field como immutable em ConversionAction.update (Silent-
+acceptance family). Tests do field removidos. Pra desligar conv metric, use
+Google Ads UI.
 """
 
 from tests.unit.fixtures.proto_capture import make_capture_client
@@ -19,7 +24,6 @@ def test_build_op_sets_only_name_when_only_name_provided():
     op = ops[0]
     assert op.field("conversion_action_operation.update.name") == "Novo Nome"
     assert op.has("conversion_action_operation.update.primary_for_goal") is False
-    assert op.has("conversion_action_operation.update.include_in_conversions_metric") is False
     assert list(op.field("conversion_action_operation.update_mask.paths")) == ["name"]
 
 
@@ -33,20 +37,6 @@ def test_build_op_sets_primary_for_goal_field():
     op = ops[0]
     assert op.field("conversion_action_operation.update.primary_for_goal") is False
     assert list(op.field("conversion_action_operation.update_mask.paths")) == ["primary_for_goal"]
-
-
-def test_build_op_sets_include_in_conversions_metric_field():
-    from src.google_ads.mutates.conversion_actions import build_update_conversion_action
-
-    client = make_capture_client()
-    payload = {"updates": [{"conversion_action_id": "123", "include_in_conversions_metric": False}]}
-    ops = build_update_conversion_action(client, "1163862076", payload)
-
-    op = ops[0]
-    assert op.field("conversion_action_operation.update.include_in_conversions_metric") is False
-    assert list(op.field("conversion_action_operation.update_mask.paths")) == [
-        "include_in_conversions_metric"
-    ]
 
 
 def test_build_op_constructs_correct_resource_name():
@@ -63,7 +53,8 @@ def test_build_op_constructs_correct_resource_name():
     )
 
 
-def test_build_ops_handles_batch_of_3_different_field_combos():
+def test_build_ops_handles_batch_with_different_field_combos():
+    """F44: batch of 3 with distinct masks (name only / primary_for_goal only / both)."""
     from src.google_ads.mutates.conversion_actions import build_update_conversion_action
 
     client = make_capture_client()
@@ -74,7 +65,7 @@ def test_build_ops_handles_batch_of_3_different_field_combos():
             {
                 "conversion_action_id": "333",
                 "name": "C",
-                "include_in_conversions_metric": False,
+                "primary_for_goal": True,
             },
         ]
     }
@@ -86,11 +77,11 @@ def test_build_ops_handles_batch_of_3_different_field_combos():
         "primary_for_goal"
     ]
     assert sorted(list(ops[2].field("conversion_action_operation.update_mask.paths"))) == sorted(
-        ["name", "include_in_conversions_metric"]
+        ["name", "primary_for_goal"]
     )
 
 
-def test_build_op_all_three_fields_present():
+def test_build_op_both_v0_fields_present():
     from src.google_ads.mutates.conversion_actions import build_update_conversion_action
 
     client = make_capture_client()
@@ -100,7 +91,6 @@ def test_build_op_all_three_fields_present():
                 "conversion_action_id": "555",
                 "name": "Tudo",
                 "primary_for_goal": True,
-                "include_in_conversions_metric": True,
             }
         ]
     }
@@ -109,7 +99,6 @@ def test_build_op_all_three_fields_present():
     op = ops[0]
     assert op.field("conversion_action_operation.update.name") == "Tudo"
     assert op.field("conversion_action_operation.update.primary_for_goal") is True
-    assert op.field("conversion_action_operation.update.include_in_conversions_metric") is True
     assert sorted(list(op.field("conversion_action_operation.update_mask.paths"))) == sorted(
-        ["name", "primary_for_goal", "include_in_conversions_metric"]
+        ["name", "primary_for_goal"]
     )

@@ -195,14 +195,12 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
         )
 
     # Update conversion action — AUTO single rename; CONFIRM otherwise
-    # (Sprint 3b.27). Disabling primary_for_goal or include_in_conversions_metric
-    # turns off Smart Bidding signal — high impact, always CONFIRM.
+    # (Sprint 3b.27). Disabling primary_for_goal turns off Smart Bidding signal —
+    # high impact, always CONFIRM.
+    # F44 (3b.27.1): include_in_conversions_metric removed from V0 (immutable in v24).
     elif operation == "update_conversion_action":
         updates = params.get("updates", [])
-        has_unsafe_disable = any(
-            u.get("primary_for_goal") is False or u.get("include_in_conversions_metric") is False
-            for u in updates
-        )
+        has_unsafe_disable = any(u.get("primary_for_goal") is False for u in updates)
         if len(updates) == 1 and not has_unsafe_disable:
             return RiskClassification(
                 RiskLevel.AUTO,

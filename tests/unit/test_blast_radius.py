@@ -115,15 +115,6 @@ class TestUpdateConversionActionClassify:
         )
         assert result.level == RiskLevel.CONFIRM
 
-    def test_single_disable_include_in_metric_is_confirm(self):
-        result = classify(
-            operation="update_conversion_action",
-            params={
-                "updates": [{"conversion_action_id": "123", "include_in_conversions_metric": False}]
-            },
-        )
-        assert result.level == RiskLevel.CONFIRM
-
     def test_batch_of_two_is_confirm_even_rename_only(self):
         result = classify(
             operation="update_conversion_action",
