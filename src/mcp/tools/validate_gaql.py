@@ -18,6 +18,48 @@ _SCHEMA: dict[str, Any] = {
 }
 
 
+def _augment_error_hint(query: str, friendly_message: str) -> str:
+    """Append contextual hints to common GAQL errors.
+
+    Patterns catalogados via dogfood MO-JP 2026-05-19 (B2, B3):
+    - B2: FROM change_event + erro de janela 30 dias.
+    - B3: segments.conversion_action* + metrics.cost_micros incompativel.
+
+    Mensagem original sempre preservada; hint apendado como `... | Hint: ...`.
+    """
+    if not query or not friendly_message:
+        return friendly_message
+
+    q = query.lower()
+    m = friendly_message.lower()
+
+    # B2: change_event resource tem janela maxima 30 dias inclusive.
+    # LAST_30_DAYS abrange 31 dias (hoje + 30 anteriores) e e rejeitado.
+    if "from change_event" in q and ("too old" in m or "older than 30 days" in m or "30 days" in m):
+        return (
+            friendly_message + " | Hint: change_event tem janela maxima de 30 dias inclusive — "
+            "LAST_30_DAYS conta 31 dias e e rejeitado. Use LAST_14_DAYS ou "
+            "date range explicito (start_date + end_date <= 30 dias)."
+        )
+
+    # B3: segments.conversion_action* + metrics.cost_micros conflito.
+    # Google rejeita "unsupported metric" quando ambos no SELECT.
+    if (
+        "segments.conversion_action" in q
+        and "metrics.cost_micros" in q
+        and ("unsupported metric" in m or "unsupported metrics" in m)
+    ):
+        return (
+            friendly_message
+            + " | Hint: segments.conversion_action* nao combina com metrics.cost_micros "
+            "no mesmo SELECT. Use 2 queries separadas: (1) conv por action com "
+            "segments.conversion_action sem cost; (2) cost agregado por campaign "
+            "sem segments."
+        )
+
+    return friendly_message
+
+
 @register_tool(
     name="validate_gaql",
     description=(
@@ -45,6 +87,8 @@ async def validate_gaql(args: dict[str, Any]) -> dict[str, Any]:
     except Exception as e:
         try:
             friendly = to_friendly(e)
-            return {"valid": False, "error": friendly.message_pt, "code": friendly.code}
+            hinted = _augment_error_hint(query, friendly.message_pt)
+            return {"valid": False, "error": hinted, "code": friendly.code}
         except Exception:
-            return {"valid": False, "error": str(e), "code": None}
+            hinted = _augment_error_hint(query, str(e))
+            return {"valid": False, "error": hinted, "code": None}

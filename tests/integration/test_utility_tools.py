@@ -105,6 +105,86 @@ async def test_validate_gaql_returns_invalid_with_error(bound_context):
 
 
 @pytest.mark.asyncio
+async def test_validate_gaql_appends_b2_hint_for_change_event_window(bound_context):
+    """B2: error 'too old' on FROM change_event query should append window hint."""
+    from src.google_ads.errors import GoogleAdsFriendlyError
+    from src.mcp.tools.validate_gaql import validate_gaql
+
+    fake_client = MagicMock()
+    fake_client.get_type = MagicMock(return_value=MagicMock())
+    fake_service = MagicMock()
+    fake_service.search = MagicMock(side_effect=Exception("simulated"))
+    fake_client.get_service = MagicMock(return_value=fake_service)
+
+    friendly = GoogleAdsFriendlyError(
+        "Google Ads retornou: The requested start date is too old. It cannot be older than 30 days.",
+        code="QUERY_ERROR",
+    )
+
+    with (
+        patch(
+            "src.mcp.tools.validate_gaql.build_client_for_manager",
+            AsyncMock(return_value=fake_client),
+        ),
+        patch("src.mcp.tools.validate_gaql.to_friendly", return_value=friendly),
+    ):
+        result = await validate_gaql(
+            {
+                "customer_id": "1234567890",
+                "query": (
+                    "SELECT change_event.change_date_time, change_event.user_email "
+                    "FROM change_event WHERE change_event.change_date_time DURING LAST_30_DAYS"
+                ),
+            }
+        )
+
+    assert result["valid"] is False
+    assert "change_event tem janela" in result["error"].lower() or "30 dias" in result["error"]
+    assert "LAST_14_DAYS" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_validate_gaql_appends_b3_hint_for_conversion_action_cost_micros(bound_context):
+    """B3: 'unsupported metric' with segments.conversion_action + cost_micros should append split-query hint."""
+    from src.google_ads.errors import GoogleAdsFriendlyError
+    from src.mcp.tools.validate_gaql import validate_gaql
+
+    fake_client = MagicMock()
+    fake_client.get_type = MagicMock(return_value=MagicMock())
+    fake_service = MagicMock()
+    fake_service.search = MagicMock(side_effect=Exception("simulated"))
+    fake_client.get_service = MagicMock(return_value=fake_service)
+
+    friendly = GoogleAdsFriendlyError(
+        "Cannot select the following segments because at least one unsupported metric is "
+        "found in SELECT or WHERE clause: 'segments.conversion_action' "
+        "(unsupported metrics: 'cost_micros').",
+        code="QUERY_ERROR",
+    )
+
+    with (
+        patch(
+            "src.mcp.tools.validate_gaql.build_client_for_manager",
+            AsyncMock(return_value=fake_client),
+        ),
+        patch("src.mcp.tools.validate_gaql.to_friendly", return_value=friendly),
+    ):
+        result = await validate_gaql(
+            {
+                "customer_id": "1234567890",
+                "query": (
+                    "SELECT segments.conversion_action, metrics.conversions, "
+                    "metrics.cost_micros FROM campaign WHERE campaign.id IN (123)"
+                ),
+            }
+        )
+
+    assert result["valid"] is False
+    assert "2 queries" in result["error"].lower()
+    assert "cost_micros" in result["error"].lower()
+
+
+@pytest.mark.asyncio
 async def test_list_gaql_resources_returns_catalog():
     from src.mcp.tools.list_gaql_resources import list_gaql_resources
 
