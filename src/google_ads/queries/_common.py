@@ -745,3 +745,72 @@ async def validate_conversion_action_for_upload(
         return f"conversion_action_id={conversion_action_id} está REMOVED; não aceita uploads."
 
     return None
+
+
+async def validate_conversion_actions_exist(
+    *,
+    manager_id: UUID,
+    session_id: UUID,
+    customer_id: str,
+    conversion_action_ids: list[str],
+) -> dict[str, Any] | None:
+    """GAQL pre-flight: each ID exists + status != REMOVED.
+
+    Returns:
+        None if all valid
+        dict with {error, missing_ids} OR {error, removed_ids} if issues.
+
+    Missing IDs short-circuit before REMOVED check (cleaner error UX).
+
+    Sprint 3b.27 — pre-flight for update_conversion_action tool.
+    """
+    ids_clause = ", ".join(str(int(cid)) for cid in conversion_action_ids)
+    query = (
+        "SELECT conversion_action.id, conversion_action.status "
+        "FROM conversion_action "
+        f"WHERE conversion_action.id IN ({ids_clause})"
+    )
+
+    def _format(row: Any) -> dict[str, Any]:
+        return {
+            "conversion_action": {
+                "id": str(row.conversion_action.id),
+                "status": row.conversion_action.status.name
+                if hasattr(row.conversion_action.status, "name")
+                else str(row.conversion_action.status),
+            }
+        }
+
+    rows = await run_report(
+        manager_id=manager_id,
+        session_id=session_id,
+        customer_id=customer_id,
+        query=query,
+        row_formatter=_format,
+        operation_name="validate_conversion_actions_exist",
+    )
+
+    found_ids = {r["conversion_action"]["id"] for r in rows}
+    missing = [cid for cid in conversion_action_ids if cid not in found_ids]
+    if missing:
+        return {
+            "error": (
+                f"conversion_action_ids não existe em customer_id={customer_id}: "
+                f"{missing}. Verifique IDs via get_conversion_actions(customer_id='{customer_id}')."
+            ),
+            "missing_ids": missing,
+        }
+
+    removed = [
+        r["conversion_action"]["id"] for r in rows if r["conversion_action"]["status"] == "REMOVED"
+    ]
+    if removed:
+        return {
+            "error": (
+                f"conversion_action_ids com status=REMOVED não aceitam updates: {removed}. "
+                f"Para reativar, use Google Ads UI (sem tool MCP dedicada hoje)."
+            ),
+            "removed_ids": removed,
+        }
+
+    return None
