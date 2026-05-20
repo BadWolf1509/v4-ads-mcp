@@ -29,29 +29,22 @@
 - [x] Unit tests `tests/unit/test_audit_competitor_keywords_query.py` 6/6 PASS (commit `3944d04`)
 - [x] Integration tests `tests/integration/test_audit_competitor_keywords.py` 3/3 PASS (commit `a01954b`)
 
-## Smoke results — execution pending Wellington next-session
+## Smoke results — executado 2026-05-20 (post-reload)
 
-MCP client desta sessão cacheou tool list pre-deploy → `audit_competitor_keywords` não visível pra controller. Pattern análogo Sprint 3b.30 A5. Wellington executa em nova sessão MCP.
-
-**Confidence em production:**
-- ✅ A1 spec + code quality reviewer APPROVED (14/14 reqs + 14/14 tests)
-- ✅ A2 combined reviewer APPROVED (6/6 tests + zero issues)
-- ✅ A3 mcp-tool-quality-reviewer APPROVED (25/25 checks)
-- ✅ A4 integration tests 3/3 PASS + CI green + Deploy green + /health 200
-- ✅ 23 testes total cobrindo todos branches do algoritmo
-
-## Smoke results — pendente Wellington
+**8/8 PASS** — sem DEFERREDs! Tool funcionalmente validada em produção com **caso real de competidores Nutry** detectado.
 
 | # | Test | Result | Notes |
 |---|---|---|---|
-| T1 | brand "nutry" — sanity self-match | ⬜ pending | |
-| T2 | brand inexistente "kjadflk" — empty everything | ⬜ pending | |
-| T3 | 2 brands [matched, "kjadflk"] — apenas matched em suggested | ⬜ pending | |
-| T4 | date_range=LAST_30_DAYS | ⬜ pending | |
-| T5 | start_date+end_date custom range | ⬜ pending | |
-| T6 | limit=5 — truncation | ⬜ pending | |
-| T7 | Empirical match: keyword matched em sandbox | ⬜ pending | Pode ser DEFERRED se Nutry sem match |
-| T8 | Schema validation: brand 2-char rejeitada | ⬜ pending | |
+| T1 | brand "nutry" sem filters (defaults) | ✅ PASS | Shape correto, LAST_7_DAYS=7 days, empty (Nutry não tem kw com text "nutry") |
+| T2 | brand inexistente "kjadflk" | ✅ PASS | empty everything + zero suggested |
+| T3 | 2 brands [nutry, kjadflk] mixed | ✅ PASS | competitor_brands echo correto, zero matches |
+| T4 | date_range=LAST_30_DAYS | ✅ PASS | date_range_resolved 2026-04-20→05-19, days=30 |
+| T5 | start_date=2026-05-01, end_date=2026-05-14 | ✅ PASS | days=14 inclusive correto |
+| T6 | limit=5 | ✅ PASS | Shape preserve (Nutry empty mas truncate fields presentes) |
+| T7 | **Empirical match com competidores reais** | ✅ **PASS — CASO REAL** | 3 positive_keywords matched: "Clínica Seven nutricionista" → clínica seven; "Dr. Hilquias Rocha" → hilquias rocha; "Rodrigo Sousa Nutricionista" → rodrigo sousa. Sorted alphabetical. 6 suggested_negatives (EXACT+PHRASE per brand). Reason text inclui counts + cost. case-insensitive working. |
+| T8 | brand "MO" 2-char | ✅ PASS | Schema rejeita: `Input validation error: 'MO' is too short` (minLength=3 enforced) |
+
+**Insight operacional T7**: Nutry tem 3 keywords positivas pagando pra aparecer em buscas de competidores diretos (Clínica Seven, Dr. Hilquias Rocha, Rodrigo Sousa). Wellington pode optar por adicionar como negative keywords via `add_negative_keywords` (suggested já provê text + match_type EXACT/PHRASE prontos).
 
 ## Pre-smoke setup
 
