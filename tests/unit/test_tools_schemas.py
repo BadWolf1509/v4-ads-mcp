@@ -150,6 +150,7 @@ def test_all_phase_2_tools_registered():
         "create_campaign",  # Sprint 3b.24
         "create_and_link_assets",  # Sprint 3b.25
         "import_offline_conversions",  # Sprint 3b.26
+        "upload_customer_match_list",  # Sprint 3b.28
         # update patterns
         "update_rsa",
         "update_conversion_action",  # Sprint 3b.27
@@ -210,6 +211,7 @@ def test_no_unexpected_tools():
         "create_campaign",  # Sprint 3b.24
         "create_and_link_assets",  # Sprint 3b.25
         "import_offline_conversions",  # Sprint 3b.26
+        "upload_customer_match_list",  # Sprint 3b.28
         "update_rsa",
         "update_conversion_action",  # Sprint 3b.27
     }
