@@ -21,9 +21,16 @@ coverage.xml
 .vscode/
 .idea/
 *.swp
-.claude/
 .cursor/
 .superpowers/
+
+# Claude Code: versionar hooks/agents/skills/settings compartilháveis;
+# manter local-only o que tem allowlist pessoal ou estado efêmero.
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
+!.claude/agents/
+!.claude/skills/
 
 # OS
 .DS_Store
