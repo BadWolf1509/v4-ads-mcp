@@ -77,7 +77,7 @@ async def run_gaql(args: dict[str, Any]) -> dict[str, Any]:
         return {
             "customer_id": customer_id,
             "total_rows_scanned": len(rows),
-            "group_count": len(groups[:_MAX_ROWS]),
+            "group_count": len(groups),
             "truncated": truncated,
             "groups": groups[:_MAX_ROWS],
         }
