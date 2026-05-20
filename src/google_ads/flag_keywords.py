@@ -11,6 +11,11 @@ Pure function, zero Google SDK imports -- testable standalone.
 
 from dataclasses import dataclass
 
+# QS thresholds são Google research convention (não config — guard rail hardcoded).
+# Documented em CLAUDE.md/spec section 2 "Thresholds QS hardcoded".
+_QS_PAUSE_MAX = 2  # QS 1-2 = waste signal (Google: low relevance)
+_QS_PROMOTE_MIN = 7  # QS 7-10 = high relevance (Google: promote para EXACT)
+
 
 @dataclass(frozen=True, slots=True)
 class KeywordRow:
@@ -68,9 +73,17 @@ def flag_keywords(
     candidates: list[tuple[KeywordRow, list[str]]] = []
     for row in rows:
         flags: list[str] = []
-        if row.quality_score <= 2 and row.impressions >= min_impressions and row.clicks == 0:
+        if (
+            row.quality_score <= _QS_PAUSE_MAX
+            and row.impressions >= min_impressions
+            and row.clicks == 0
+        ):
             flags.append("candidate_pause")
-        if row.quality_score >= 7 and row.match_type == "BROAD" and row.conversions >= 1:
+        if (
+            row.quality_score >= _QS_PROMOTE_MIN
+            and row.match_type == "BROAD"
+            and row.conversions >= 1
+        ):
             flags.append("candidate_promote_exact")
         if flags:
             candidates.append((row, flags))
@@ -80,11 +93,14 @@ def flag_keywords(
     for row, _ in candidates:
         text_to_adgroups.setdefault(row.keyword_text, set()).add(row.ad_group_id)
 
-    # 3. Amplify with duplicate_intent (only if text em >1 ad_group)
+    # 3. Amplify with duplicate_intent (only if text em >1 ad_group).
+    # Copia primary_flags pra all_flags (evita mutar lista de candidates —
+    # trap pra futuro maintainer se adicionar 2nd pass sobre candidates).
     flagged: list[FlaggedKeyword] = []
-    for row, flags in candidates:
+    for row, primary_flags in candidates:
+        all_flags = list(primary_flags)
         if len(text_to_adgroups[row.keyword_text]) > 1:
-            flags.append("duplicate_intent")
+            all_flags.append("duplicate_intent")
         flagged.append(
             FlaggedKeyword(
                 ad_group_id=row.ad_group_id,
@@ -98,7 +114,7 @@ def flag_keywords(
                 clicks=row.clicks,
                 conversions=row.conversions,
                 cost_brl=row.cost_brl,
-                flags=tuple(flags),
+                flags=tuple(all_flags),
             )
         )
 

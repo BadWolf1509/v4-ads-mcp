@@ -203,3 +203,21 @@ def test_truncate_at_limit_returns_total_pre_truncate():
     flagged, total = flag_keywords(rows, min_impressions=10, limit=200)
     assert len(flagged) == 200
     assert total == 250
+
+
+def test_candidate_pause_flagged_at_impressions_boundary_equals_threshold():
+    """Boundary: impressions == min_impressions deve flagar (>=, não >)."""
+    row = _make_row(quality_score=2, impressions=10, clicks=0)
+    flagged, total = flag_keywords([row], min_impressions=10, limit=200)
+    assert len(flagged) == 1
+    assert flagged[0].flags == ("candidate_pause",)
+    assert total == 1
+
+
+def test_candidate_promote_exact_flagged_at_qs_boundary_7():
+    """Boundary: QS == 7 deve flagar (>=, não >)."""
+    row = _make_row(quality_score=7, match_type="BROAD", conversions=1)
+    flagged, total = flag_keywords([row], min_impressions=10, limit=200)
+    assert len(flagged) == 1
+    assert flagged[0].flags == ("candidate_promote_exact",)
+    assert total == 1
