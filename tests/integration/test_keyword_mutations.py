@@ -62,6 +62,10 @@ async def test_update_keyword_status_single_auto_applies(db, session_ctx):
 
     with (
         patch(
+            "src.mcp.tools.update_keyword_status.validate_keyword_criterion_types",
+            AsyncMock(return_value=None),  # bypass preflight (F43 pre-flight)
+        ),
+        patch(
             "src.google_ads.mutations.build_client_for_manager",
             AsyncMock(return_value=_fake_client()),
         ),
@@ -89,13 +93,17 @@ async def test_update_keyword_status_bulk_dry_runs(db, session_ctx):
     from src.mcp.tools.update_keyword_status import update_keyword_status
 
     keywords = [{"ad_group_id": "111", "criterion_id": str(9000 + i)} for i in range(10)]
-    result = await update_keyword_status(
-        {
-            "customer_id": "1234567890",
-            "keywords": keywords,
-            "new_status": "PAUSED",
-        }
-    )
+    with patch(
+        "src.mcp.tools.update_keyword_status.validate_keyword_criterion_types",
+        AsyncMock(return_value=None),  # bypass preflight (F43 pre-flight)
+    ):
+        result = await update_keyword_status(
+            {
+                "customer_id": "1234567890",
+                "keywords": keywords,
+                "new_status": "PAUSED",
+            }
+        )
     assert result["status"] == "dry_run"
     assert "confirmation_token" in result
 
@@ -215,3 +223,88 @@ async def test_update_keyword_bid_returns_error_for_missing(db, session_ctx):
             }
         )
     assert result["status"] == "error"
+
+
+@pytest.mark.integration
+async def test_update_keyword_status_preflight_rejects_negative(db, session_ctx):
+    """F43 fix: pre-flight rejects batch with negative criteria.
+
+    Mock at TOOL namespace (convention pós-3b.5/3b.8 — patches at _common
+    would slip pre-push local gate).
+    """
+    from src.mcp.tools.update_keyword_status import update_keyword_status
+
+    args = {
+        "customer_id": "7862230676",
+        "keywords": [
+            {"ad_group_id": "1", "criterion_id": "11"},
+            {"ad_group_id": "1", "criterion_id": "12"},
+        ],
+        "new_status": "PAUSED",
+    }
+    mock_response = {
+        "error": "1/2 criterion_ids são negative...",
+        "negative_ids_blocked": [{"ad_group_id": "1", "criterion_id": "12"}],
+        "positive_ids_safe": [{"ad_group_id": "1", "criterion_id": "11"}],
+        "to_retry_with": "update_keyword_status(...)",
+    }
+    with patch(
+        "src.mcp.tools.update_keyword_status.validate_keyword_criterion_types",
+        AsyncMock(return_value=mock_response),
+    ):
+        result = await update_keyword_status(args)
+
+    assert result["status"] == "error"
+    assert result["operation"] == "update_keyword_status"
+    assert result["customer_id"] == "7862230676"
+    assert result["negative_ids_blocked"] == [{"ad_group_id": "1", "criterion_id": "12"}]
+    assert result["positive_ids_safe"] == [{"ad_group_id": "1", "criterion_id": "11"}]
+
+
+@pytest.mark.integration
+async def test_update_keyword_status_preflight_passes_only_positive(db, session_ctx):
+    """F43 fix: regression — pre-flight returns None preserves pre-existing behavior."""
+    from src.mcp.tools.update_keyword_status import update_keyword_status
+
+    args = {
+        "customer_id": "7862230676",
+        "keywords": [{"ad_group_id": "1", "criterion_id": "11"}],
+        "new_status": "PAUSED",
+    }
+    with (
+        patch(
+            "src.mcp.tools.update_keyword_status.validate_keyword_criterion_types",
+            AsyncMock(return_value=None),
+        ),
+        patch(
+            "src.mcp.tools.update_keyword_status.run_mutation",
+            AsyncMock(return_value={"applied_count": 1, "google_request_id": "req-z"}),
+        ),
+    ):
+        result = await update_keyword_status(args)
+    assert result["status"] == "applied"
+    assert result["applied_count"] == 1
+
+
+@pytest.mark.integration
+async def test_update_keyword_status_preflight_missing_id_short_circuits(db, session_ctx):
+    """F43 fix: missing IDs return missing_ids without negative_ids_blocked."""
+    from src.mcp.tools.update_keyword_status import update_keyword_status
+
+    args = {
+        "customer_id": "7862230676",
+        "keywords": [{"ad_group_id": "1", "criterion_id": "99"}],
+        "new_status": "PAUSED",
+    }
+    mock_response = {
+        "error": "criterion_ids não encontrados: ['99']",
+        "missing_ids": [{"ad_group_id": "1", "criterion_id": "99"}],
+    }
+    with patch(
+        "src.mcp.tools.update_keyword_status.validate_keyword_criterion_types",
+        AsyncMock(return_value=mock_response),
+    ):
+        result = await update_keyword_status(args)
+    assert result["status"] == "error"
+    assert result["missing_ids"] == [{"ad_group_id": "1", "criterion_id": "99"}]
+    assert "negative_ids_blocked" not in result

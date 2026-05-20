@@ -4,6 +4,7 @@ from typing import Any
 
 from src.db import connection
 from src.google_ads.mutations import run_mutation
+from src.google_ads.queries._common import validate_keyword_criterion_types
 from src.governance.blast_radius import RiskLevel, classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
@@ -52,6 +53,24 @@ async def update_keyword_status(args: dict[str, Any]) -> dict[str, Any]:
     keywords = args["keywords"]
     new_status = args["new_status"]
     target_count = len(keywords)
+
+    # Sprint 3b.27 fix B1/F43: pre-flight async — Google API rejects negative
+    # ad_group_criterion updates with generic error that doesn't identify which
+    # IDs were problematic. Splits batch into positive vs negative.
+    keyword_pairs = [(k["ad_group_id"], k["criterion_id"]) for k in keywords]
+    preflight_error = await validate_keyword_criterion_types(
+        manager_id=ctx.manager_id,
+        session_id=ctx.session_id,
+        customer_id=customer_id,
+        keyword_pairs=keyword_pairs,
+    )
+    if preflight_error:
+        return {
+            "status": "error",
+            "operation": "update_keyword_status",
+            "customer_id": customer_id,
+            **preflight_error,
+        }
 
     risk = classify(
         operation="update_keyword_status",
