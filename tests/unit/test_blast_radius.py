@@ -134,3 +134,26 @@ class TestUpdateConversionActionClassify:
             params={"updates": [{"conversion_action_id": "123", "primary_for_goal": True}]},
         )
         assert result.level == RiskLevel.AUTO
+
+
+class TestUploadCustomerMatchListClassify:
+    def test_always_confirm_regardless_of_member_count(self):
+        result_single = classify(
+            operation="upload_customer_match_list",
+            params={"members": [{"email": "x@y.com"}]},
+        )
+        assert result_single.level == RiskLevel.CONFIRM
+
+        result_batch = classify(
+            operation="upload_customer_match_list",
+            params={"members": [{"email": f"x{i}@y.com"} for i in range(50)]},
+        )
+        assert result_batch.level == RiskLevel.CONFIRM
+
+    def test_reason_includes_pii_upload_mention(self):
+        result = classify(
+            operation="upload_customer_match_list",
+            params={"members": [{"email": "x@y.com"}, {"phone_number": "+5511..."}]},
+        )
+        assert "PII" in result.reason
+        assert "2" in result.reason

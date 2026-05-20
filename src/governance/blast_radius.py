@@ -211,6 +211,16 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
             f"update_conversion_action: {len(updates)} entity/ies — requer preview",
         )
 
+    # Upload Customer Match list — sempre CONFIRM (Sprint 3b.28).
+    # PII upload tem alto blast radius (LGPD audit + Google billing baseado
+    # em members ingeridos). Não há AUTO path V0.
+    elif operation == "upload_customer_match_list":
+        members = params.get("members", [])
+        return RiskClassification(
+            RiskLevel.CONFIRM,
+            f"upload_customer_match_list: {len(members)} membro(s) — PII upload, sempre CONFIRM",
+        )
+
     # Remove audience — always CONFIRM (spec §7.1 "Remove qualquer coisa = sempre confirma")
     # Audience criterion removal can restore audience to delivery pool (if exclusion).
     # Symmetric with Sprint 3b.2 REMOVED policy principle.
