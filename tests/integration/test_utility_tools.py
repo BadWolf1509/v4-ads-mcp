@@ -204,3 +204,114 @@ async def test_list_gaql_resources_returns_catalog():
     assert "campaign" in names
     assert "keyword_view" in names
     assert "search_term_view" in names
+
+
+@pytest.mark.asyncio
+async def test_run_gaql_without_aggregate_by_returns_rows_unchanged(bound_context):
+    """Regression: shape original mantido quando aggregate_by ausente."""
+    from src.mcp.tools.run_gaql import run_gaql
+
+    fake_rows = [{"campaign": {"id": "123"}}, {"campaign": {"id": "456"}}]
+
+    with patch(
+        "src.mcp.tools.run_gaql.execute_gaql_raw",
+        AsyncMock(return_value=fake_rows),
+    ):
+        result = await run_gaql(
+            {
+                "customer_id": "1234567890",
+                "query": "SELECT campaign.id FROM campaign",
+            }
+        )
+
+    assert result["row_count"] == 2
+    assert result["truncated"] is False
+    assert "rows" in result
+    assert "groups" not in result
+
+
+@pytest.mark.asyncio
+async def test_run_gaql_with_aggregate_by_returns_groups_shape(bound_context):
+    """aggregate_by ativo retorna groups[] + metadata, sem rows[]."""
+    from src.mcp.tools.run_gaql import run_gaql
+
+    fake_rows = [
+        {"field_type": "SITELINK"},
+        {"field_type": "STRUCTURED_SNIPPET"},
+        {"field_type": "STRUCTURED_SNIPPET"},
+        {"field_type": "SITELINK"},
+        {"field_type": "STRUCTURED_SNIPPET"},
+    ]
+
+    with patch(
+        "src.mcp.tools.run_gaql.execute_gaql_raw",
+        AsyncMock(return_value=fake_rows),
+    ):
+        result = await run_gaql(
+            {
+                "customer_id": "1234567890",
+                "query": "SELECT campaign_asset.field_type FROM campaign_asset",
+                "aggregate_by": ["field_type"],
+            }
+        )
+
+    assert "rows" not in result
+    assert result["total_rows_scanned"] == 5
+    assert result["group_count"] == 2
+    assert result["truncated"] is False
+    assert result["groups"] == [
+        {"key": {"field_type": "STRUCTURED_SNIPPET"}, "count": 3},
+        {"key": {"field_type": "SITELINK"}, "count": 2},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_run_gaql_aggregate_truncates_at_1000_groups(bound_context):
+    """1500 grupos unicos -> truncado a 1000 com truncated:true.
+
+    Tambem valida fix A2.1: group_count reporta 1500 (pre-slice), nao 1000.
+    """
+    from src.mcp.tools.run_gaql import run_gaql
+
+    # Generate 1500 unique field values
+    fake_rows = [{"x": f"val_{i}"} for i in range(1500)]
+
+    with patch(
+        "src.mcp.tools.run_gaql.execute_gaql_raw",
+        AsyncMock(return_value=fake_rows),
+    ):
+        result = await run_gaql(
+            {
+                "customer_id": "1234567890",
+                "query": "SELECT x FROM something",
+                "aggregate_by": ["x"],
+            }
+        )
+
+    assert result["total_rows_scanned"] == 1500
+    assert len(result["groups"]) == 1000
+    assert result["group_count"] == 1500  # regression guard pra fix A2.1
+    assert result["truncated"] is True
+
+
+@pytest.mark.asyncio
+async def test_run_gaql_rejects_more_than_10k_raw_rows(bound_context):
+    """Safety net hard: >10k raw rows com aggregate_by raises ValueError."""
+    from src.mcp.tools.run_gaql import run_gaql
+
+    fake_rows = [{"x": "val"} for _ in range(10_001)]
+
+    with (
+        patch(
+            "src.mcp.tools.run_gaql.execute_gaql_raw",
+            AsyncMock(return_value=fake_rows),
+        ),
+        pytest.raises(ValueError, match=r"(?i)refine WHERE clause"),
+    ):
+        await run_gaql(
+            {
+                "customer_id": "1234567890",
+                "query": "SELECT x FROM something",
+                "aggregate_by": ["x"],
+            }
+        )
