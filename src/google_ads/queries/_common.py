@@ -920,3 +920,93 @@ async def validate_keyword_criterion_types(
         }
 
     return None
+
+
+async def validate_user_list_for_upload(
+    *,
+    manager_id: UUID,
+    session_id: UUID,
+    customer_id: str,
+    user_list_id: str,
+) -> dict[str, Any] | None:
+    """GAQL pre-flight: user_list existe + type=CRM_BASED_USER_LIST + writable.
+
+    Checks (em ordem, curto-circuita no primeiro fail):
+    1. Lista existe (else: missing_id)
+    2. type == CRM_BASED_USER_LIST (else: wrong_type)
+    3. read_only == False (else: customer_match_policy_not_accepted likely)
+    4. membership_status == OPEN (else: closed)
+
+    Returns None if valid, dict com {error, ...} se issue.
+
+    Sprint 3b.28 — pre-flight pra upload_customer_match_list tool.
+    """
+    query = (
+        "SELECT user_list.id, user_list.name, user_list.type, "
+        "user_list.read_only, user_list.membership_status "
+        "FROM user_list "
+        f"WHERE user_list.id = {int(user_list_id)}"
+    )
+
+    def _format(row: Any) -> dict[str, Any]:
+        return {
+            "user_list": {
+                "id": str(row.user_list.id),
+                "name": row.user_list.name,
+                "type": row.user_list.type.name
+                if hasattr(row.user_list.type, "name")
+                else str(row.user_list.type),
+                "read_only": bool(row.user_list.read_only),
+                "membership_status": row.user_list.membership_status.name
+                if hasattr(row.user_list.membership_status, "name")
+                else str(row.user_list.membership_status),
+            }
+        }
+
+    rows = await run_report(
+        manager_id=manager_id,
+        session_id=session_id,
+        customer_id=customer_id,
+        query=query,
+        row_formatter=_format,
+        operation_name="validate_user_list_for_upload",
+    )
+
+    if not rows:
+        return {
+            "error": (
+                f"user_list_id={user_list_id} não existe em customer_id={customer_id}. "
+                f"Verifique IDs via run_gaql ou Google Ads UI > Audience Manager."
+            ),
+            "missing_id": user_list_id,
+        }
+
+    ul = rows[0]["user_list"]
+
+    if ul["type"] != "CRM_BASED_USER_LIST":
+        return {
+            "error": (
+                f"user_list_id={user_list_id} type={ul['type']}; upload requer "
+                f"CRM_BASED_USER_LIST. Crie nova lista via Google Ads UI > "
+                f"Audience Manager > Customer Match."
+            ),
+        }
+
+    if ul["read_only"]:
+        return {
+            "error": (
+                f"user_list_id={user_list_id} está read_only. Provável causa: "
+                f"Customer Match policy não aceita pra conta. Aceite em Google Ads "
+                f"UI > Tools > Audience Manager > Customer lists > Accept terms."
+            ),
+        }
+
+    if ul["membership_status"] != "OPEN":
+        return {
+            "error": (
+                f"user_list_id={user_list_id} membership_status={ul['membership_status']}; "
+                f"não aceita uploads agora. Status esperado: OPEN."
+            ),
+        }
+
+    return None
