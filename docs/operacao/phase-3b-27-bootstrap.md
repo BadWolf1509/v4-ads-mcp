@@ -18,46 +18,50 @@
 - [ ] Pre-push gate `python scripts/check_pre_push.py` 5/5 PASS
 - [ ] Pre-push full `python scripts/check_pre_push_full.py` 6/6 PASS (validar mock no namespace correto da tool)
 
-Production revisions: `v4-ads-mcp-XXXXX-xxx` (Phase A, post SHA `6807b27`) → `v4-ads-mcp-XXXXX-xxx` (Phase B, post SHA `9b51b1a`) → [add fix iterations as they happen]
+Production revisions: `v4-ads-mcp-00202-vhk` (Phase A, post SHA `6807b27`) → `v4-ads-mcp-00203-h2n` (Phase B, post SHA `9b51b1a`) → `v4-ads-mcp-00204-86d` (Sprint 3b.27.1 F44 fix, post SHA `c903eb8`).
 
-## Smoke results
-
-Preencher conforme execução. Marcar resultado final no fim do arquivo.
+## Smoke results (executed 2026-05-20)
 
 | # | Test | Result | Notes |
 |---|---|---|---|
-| T0a | GAQL setup — listar 3-5 ConversionActions ENABLED em Nutry | ⬜ pending | |
-| T0b | GAQL setup — listar ad_group_criterion misturados positive + negative | ⬜ pending | |
-| T1 | `update_conversion_action` dry_run rename 2 actions (batch > 1 força CONFIRM) | ⬜ pending | |
-| T2 | apply T1 → GAQL verify `conversion_action.name` mudou | ⬜ pending | |
-| T3 | pre-flight reject — conversion_action_id `9999999999` não existe (Layer 3) | ⬜ pending | |
-| T4 | Layer 2 reject — item sem field mutável (só `conversion_action_id`) | ⬜ pending | |
-| T5 | Layer 2 reject — duplicate `conversion_action_id` no batch | ⬜ pending | |
-| T6 | batch dry_run — 3 actions com fields diferentes (rename + primary_for_goal=false + include_in_conversions_metric=false) | ⬜ pending | |
-| T7 | **CRITICAL** apply T6 + verify GAQL — Store visits action vira non-biddable (caso real MO 23/05) | ⬜ pending | |
-| T8 | schema regression — `maxItems` 51 items rejected (boundary 50) | ⬜ pending | |
-| T9 | `update_keyword_status` regression — só positives (5 keywords PAUSED) ainda funciona | ⬜ pending | |
-| T10 | F43 trigger — 100% negativos (1 negative_id) → hard reject | ⬜ pending | |
-| T11 | F43 trigger — mistura 3 positives + 2 negatives → split com listas separadas | ⬜ pending | |
-| T12 | missing IDs — `criterion_id=999` inexistente → `missing_ids` curto-circuita | ⬜ pending | |
+| T0a | GAQL setup — listar ConversionActions ENABLED em Nutry | ✅ PASS | 15 actions ENABLED capturadas. IDs selecionados pra T1/T2/T6/T7: 7609026149, 7609025252, 7609025255, 7609025258, 7609025261 |
+| T0b | GAQL setup — capturar criterion positives + criar 3 negatives via add_negatives_from_search_terms | ✅ PASS | Nutry tinha zero ad_group-level negatives. 3 negatives criadas no ad_group 183298670618: `2484115686648` (comprar), `2485805828555` (atacado), `2485806292035` (vendedor). Request `TWmivwzUKDlZIYif5xppGQ`. |
+| T1 | `update_conversion_action` dry_run rename 2 actions | ✅ PASS | Token `9EYGJI5C`, status=dry_run, batch>1 forçou CONFIRM, fields_updated=["name"] cada |
+| T2 | apply T1 → GAQL verify | ✅ PASS | applied_count=2, request `Cb21RNpd5tn6Rin8xFhwgA`. Names bit-a-bit `[3b.27-smoke] T1 renamed *` |
+| T3 | pre-flight reject — ID 9999999999 | ✅ PASS | Layer 3 reject com `missing_ids: ["9999999999"]` + PT-BR error "não existem" (grammar fix A1) |
+| T4 | Layer 2 reject — sem field mutável | ✅ PASS | Mensagem PT-BR completa identificando ID + listando fields aceitos |
+| T5 | Layer 2 reject — duplicate ID | ✅ PASS | `error` lista duplicates: `['7609026149']` |
+| T6 | batch dry_run 3 actions com fields combinados | ❌→✅ | **Initial FAIL** (Sprint 3b.27): F44 found — include_in_conversions_metric immutable. **Re-run PASS** pós-3b.27.1: 3 actions com combinação name + primary_for_goal. Token `2D27RT15`, fields_updated combinados (1×name, 1×primary_for_goal, 1×["name","primary_for_goal"]) |
+| T7 | **CRITICAL** apply T6 + GAQL verify | ❌→✅ | **Initial FAIL** (Sprint 3b.27): "The field attempted to be mutated is immutable" (F44). **Re-run PASS** pós-3b.27.1: applied_count=3, request `c4064QPP0yiT_w8gAGDIJA`. GAQL verify bit-a-bit OK: action 7609025261 com `name=[3b.27-smoke] T6 renamed REQUEST_QUOTE` + `primary_for_goal=false` (caso real MO 23/05 validado) |
+| T8 | schema regression maxItems 51 | ✅ PASS | Layer 1 jsonschema "is too long" antes de chegar na tool function |
+| T9 | `update_keyword_status` regression — 5 positives PAUSED | ✅ PASS | F43 pre-flight retornou None (all positive), `applied_count=5`, request `RjGrePyaA-UAnq3a5pUMEw`. AUTO branch preservado. Cleanup: 5 keywords reverteram pra ENABLED via request `j5CqPCK3sfAR6vIvpaWlnA` |
+| T10 | F43 trigger — 100% negativos (1 ID) | ✅ PASS | Hard reject: `negative_ids_blocked=[1 item]`, `positive_ids_safe=[]`, msg PT-BR completa com `to_retry_with` |
+| T11 | F43 trigger — mistura 3 positives + 2 negatives | ✅ PASS | Split correto: `negative_ids_blocked=[2]`, `positive_ids_safe=[3]`, msg "2/5 criterion_ids são negative" |
+| T12 | F43 missing ID curto-circuita | ✅ PASS | Response com `missing_ids` apenas, SEM `negative_ids_blocked` (curto-circuito confirmado) |
 
-**Effective result:** N/12 PASS
+**Effective result: 14/14 PASS** após 1 fix iteration (Sprint 3b.27.1) pra F44.
 
 ### F-findings emerged
 
-[Empty placeholder — fill during smoke. Template: `**F## (SEV)** — <symptom>. Fix: <plan>. Family: <bug class>.`]
+- **F44 (HIGH, Fixed 3b.27.1)** — `ConversionAction.include_in_conversions_metric` é IMMUTABLE em update operation v24 do Google Ads API, mesmo que SDK descriptor aceite o field. Família Silent-acceptance design gap (mesma do A1-A5, F11/F12, F17-F19, F25/F27, F30-F37, F38-F40, F42, F43). Builder tests via ProtoFieldCapture passaram, dry_run passou, mas apply falhou com `"The field attempted to be mutated is immutable."` Diagnosis isolado: `primary_for_goal=False` sozinho OK (request `vw3Dp2KQqcgS2wqd4VjWtQ`), `include_in_conversions_metric=False` sozinho falha. Fix: removido do schema V0 + builder + classify + tests em commit `c903eb8`. Pra desligar conv metric tracking, gestor usa Google Ads UI. Discovered em smoke T7 2026-05-20.
 
 ### Sign-off
 
-- [ ] Pre-push gate 5/5 PASS (Phase A + Phase B)
-- [ ] Pre-push full 6/6 PASS
-- [ ] mcp-tool-quality-reviewer subagent PASS
-- [ ] Production /health 200 (revision final)
-- [ ] **12/12 PASS** após [N] fix iterations
-- [ ] CLAUDE.md sprint row added (Sprint 3b.27 shipped, count 49 → 50)
-- [ ] findings-catalog.md F43 row movida `open` → `Fixed Sprint 3b.27` + summary Open 2→1
-- [ ] Tool count 49 → 50 confirmed in production
-- [ ] **Wellington executa Opção C SIMPLIFICADA MO 23/05 via MCP** (validação produção real, fora-de-sandbox)
+- [x] Pre-push gate 5/5 PASS (Phase A + Phase B + 3b.27.1)
+- [x] mcp-tool-quality-reviewer subagent: 11 PASS / 0 FAIL / 5 N/A → READY TO PUSH
+- [x] Production /health 200 (revisão final `v4-ads-mcp-00204-86d`)
+- [x] **14/14 PASS** após 1 fix iteration (3b.27.1)
+- [ ] CLAUDE.md sprint row added (Sprint 3b.27 shipped, count 49 → 50) — pending C3 final commit
+- [ ] findings-catalog.md F43 row movida `open` → `Fixed Sprint 3b.27` + add F44 row Fixed + summary update — pending C3 final commit
+- [x] Tool count 49 → 50 confirmed in production (`mcp__v4-ads__update_conversion_action` visível pós-restart)
+- [ ] **Wellington executa Opção C SIMPLIFICADA MO 23/05 via MCP** — pendente Wellington (sexta-feira)
+
+**Status:** ✅ **SHIPPED** — combo Sprint 3b.27 entregue. F43 fix end-to-end validado em produção (T9-T12). update_conversion_action V0 com 2 fields (name + primary_for_goal) validado em produção (T1+T2+T6+T7 ambos paths AUTO+CONFIRM). Caso real MO 23/05 (`primary_for_goal=false` apply via batch) destravado.
+
+**Cleanup pendente em Nutry sandbox (opcional):**
+- 4 ConversionActions com names `[3b.27-smoke] *` (originais `[F19-probe]` / `[F19-probe-iso]`) podem ser revertidas
+- Action `7609025261` (`REQUEST_QUOTE`) está com `primary_for_goal=false`
+- 3 negative keywords `[3b.27-smoke] *` no ad_group `183298670618` podem ser removidas via Google Ads UI
 
 ---
 

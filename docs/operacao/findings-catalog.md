@@ -4,7 +4,7 @@
 >
 > **Maintainer note:** Add a new entry here whenever a finding is documented in a smoke runbook. Keep entries scannable — link to runbook for detail.
 >
-> **Last updated:** 2026-05-19 (dogfood MO-JP cleanup — B1 catalogado como F43)
+> **Last updated:** 2026-05-20 (Sprint 3b.27 signoff — F43 Fixed, F44 catalogado e Fixed em 3b.27.1)
 
 ---
 
@@ -46,7 +46,8 @@
 | **F39** | HIGH | 3b.25 | 3b.25.1 | `PromotionAsset.language_code = "pt"` rejected by Google with "The language code is not supported." BCP 47 says `pt` is valid (less specific) but Google PROMOTION requires region-qualified (`pt-BR`). Discovered in T10+T11 smoke. Fix: builder line `promo.language_code = "pt-BR"`. T10 re-test PASS bit-a-bit via GAQL. [phase-3b-25-bootstrap.md] |
 | **F40** | HIGH | 3b.25.1 | 3b.25.2 | `PromotionAsset.discount_modifier="NONE"` rejected — Google's `PromotionExtensionDiscountModifierEnum` only has UNSPECIFIED + UP_TO (NOT NONE). Discovered when T11 re-test still failed pós-F39 fix (different root cause). Fix: schema enum `["NONE","UP_TO"]` → `["UP_TO"]`; field moved out of required (optional now — omit for exact discount, UP_TO for "até X% off"); builder only sets if present. T11 re-test PASS pós-fix. [phase-3b-25-bootstrap.md] |
 | **F42** | HIGH | 3b.26 | 3b.26.1 | `UploadClickConversionsRequest.debug_enabled` field removed em google-ads SDK v24 — builder line `request.debug_enabled = False` raised `AttributeError: Unknown field for UploadClickConversionsRequest: debug_enabled`. Blocked TODAS upload calls (T7 partial_failure path inacessível). Discovered em smoke T7 (5 fake gclids). Root cause via Cloud Logging traceback. Fix: remove single line + delete dedicated `test_upload_request_debug_enabled_false` unit test. Pattern Java setDebugEnabled→python `debug_enabled` field deprecated by Google sem aviso de migração. T7 re-test PASS pós-fix com 5 UNPARSEABLE_GCLID errors retornados em failures array. [phase-3b-26-bootstrap.md] |
-| **F43** | HIGH | dogfood 2026-05-19 MO-JP | open (Sprint 3b.27 candidate) | `update_keyword_status` aceita batch silenciosamente quando inclui criterion_id com `negative=true` flag, mas `apply_change` falha com erro Google genérico (`Negative ad group criteria are not updateable`) que NÃO identifica quais IDs do batch eram negative. Discovered em sessão cleanup massivo MO-JP cirurgia GERADORES (22 IDs batch, 5 eram negative). Custo: 1 retry apply_change + 1 GAQL custom cross-check + 1 dry-run re-roll (token queimado) + raciocínio cross-check. Fix proposto: pre-flight GAQL `SELECT ad_group_criterion.criterion_id, ad_group_criterion.negative FROM ad_group_criterion WHERE criterion_id IN (...)` que split positive/negative + rejeita pre-Google se há mistura, com mensagem `to_retry_with` listando IDs safe. Pattern: padrão A3/A5 já estabelecido em outras tools. [dogfood-2026-05-19-mestre-da-obra-jp-cleanup-massivo.md §B1] |
+| **F43** | HIGH | dogfood 2026-05-19 MO-JP | 3b.27 | `update_keyword_status` aceita batch silenciosamente quando inclui criterion_id com `negative=true` flag, mas `apply_change` falha com erro Google genérico (`Negative ad group criteria are not updateable`) que NÃO identifica quais IDs do batch eram negative. Discovered em sessão cleanup massivo MO-JP cirurgia GERADORES (22 IDs batch, 5 eram negative). Fix Sprint 3b.27: novo helper `validate_keyword_criterion_types` em `_common.py` faz GAQL `SELECT ad_group_criterion.criterion_id, ad_group_criterion.negative, ad_group_criterion.type FROM ad_group_criterion WHERE criterion_id IN (...)` + split em `positive_ids_safe` / `negative_ids_blocked` / `missing_ids` (missing curto-circuita antes do negative check). Hard reject com `to_retry_with` template. Smoke T9-T12 validou em produção 14/14 PASS (T11 mistura 3+2 retornou split correto). [dogfood-2026-05-19-mestre-da-obra-jp-cleanup-massivo.md §B1, phase-3b-27-bootstrap.md] |
+| **F44** | HIGH | 3b.27 | 3b.27.1 | `ConversionAction.include_in_conversions_metric` é IMMUTABLE em update operation v24 do Google Ads API, mesmo que SDK descriptor aceite o field. Builder tests via ProtoFieldCapture passaram, dry_run passou, mas apply falhou com `"The field attempted to be mutated is immutable."` Discovered em smoke T7 (batch 3 actions com 3 fields combinados). Diagnosis isolado: `primary_for_goal=False` sozinho OK (request `vw3Dp2KQqcgS2wqd4VjWtQ`), `include_in_conversions_metric=False` sozinho falha. Fix Sprint 3b.27.1: field removido do schema V0 + builder + classify + tests (commit `c903eb8`). V0 final = 2 fields mutáveis (`name`, `primary_for_goal`). Pra desligar conv metric tracking, gestor usa Google Ads UI. Tool description atualizada cita F44 explicitly. [phase-3b-27-bootstrap.md §F-findings] |
 
 ---
 
@@ -119,9 +120,9 @@
 | **Doc fix only** (tool description / runbook update) | 6 (added F41 — Nutry sandbox sem traffic, environment limit) |
 | **Not-a-bug** (Google behavior, expected) | 2 |
 | **Known limitation / workaround documented** | 3 |
-| **Open** (real fix pending) | 2 (A4 — Customer Match exclusion mechanism, Sprint 3b.28 candidate; F43 — pre-flight negative check em `update_keyword_status`, Sprint 3b.27 candidate) |
+| **Open** (real fix pending) | 1 (A4 — Customer Match exclusion mechanism for V4 playbook, Sprint 3b.28 candidate) |
 
-**Total findings tracked:** 39 (was 38 + F43 do dogfood MO-JP 2026-05-19)
+**Total findings tracked:** 40 (was 39 + F44 do Sprint 3b.27 smoke 2026-05-20)
 
 ---
 
@@ -135,7 +136,8 @@
 | 3b.24 | F29 (doc), F30 (→ 3b.24.4), F32 (→ 3b.24.2), F33 (→ 3b.24.4), F34 (→ 3b.24.4), F35 (→ 3b.24.4), F36 (Google constraint), F37 (→ 3b.24.5) |
 | 3b.25 | F38 (→ 3b.25.1 + 3b.25.2), F39 (→ 3b.25.1), F40 (→ 3b.25.2) |
 | 3b.26 | F41 (env limitation, doc-only), F42 (→ 3b.26.1) |
-| dogfood 2026-05-19 (MO-JP) | F43 (open, Sprint 3b.27 candidate) |
+| dogfood 2026-05-19 (MO-JP) | F43 (→ 3b.27) |
+| 3b.27 | F44 (→ 3b.27.1) |
 
 ---
 
