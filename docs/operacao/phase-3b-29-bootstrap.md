@@ -18,45 +18,50 @@
 
 ## Pre-flight
 
-- [ ] Deploy lands successfully
-- [ ] Service `/health` returns 200
-- [ ] Tool `run_gaql` ainda visível em MCP tool list (count 51, sem incremento — sprint é extensão de existing tool)
-- [ ] Pre-push gate `python scripts/check_pre_push.py` 5/5 PASS
-- [ ] Schema regression `test_no_composition_keywords_in_any_schema` passa (aggregate_by é simple array of string, sem oneOf/allOf/anyOf — 3b.19B.1 convention)
-- [ ] Unit tests `tests/unit/test_aggregation.py` 9/9 PASS (pure function coverage)
-- [ ] Integration tests `tests/integration/test_utility_tools.py` 4 novos PASS (regression + 3 paths)
+- [x] Deploy lands successfully (CI + Deploy green em commit `1f07d3e`)
+- [x] Service `/health` returns 200 (`{"status":"ok","version":"0.1.0"}`)
+- [x] Tool `run_gaql` ainda visível em MCP tool list (count 51, sem incremento)
+- [x] Pre-push gate `python scripts/check_pre_push.py` 5/5 PASS (validado em A3)
+- [x] Schema regression `test_no_composition_keywords_in_any_schema` passa
+- [x] Unit tests `tests/unit/test_aggregation.py` 9/9 PASS (commit `b86ef09`)
+- [x] Integration tests `tests/integration/test_utility_tools.py` 4 novos PASS (commit `e0a0abd`)
 
-Production revisions: `v4-ads-mcp-<TBD>` (initial post deploy) → _(add fix iterations as they happen)_
+Production revisions: deploy post `1f07d3e` em 2026-05-20 17:10 UTC.
 
-## Smoke results
-
-Preencher conforme execução. Marcar resultado final no fim do arquivo.
+## Smoke results — executado 2026-05-20
 
 | # | Test | Result | Notes |
 |---|---|---|---|
-| T1 | Backward compat — sem aggregate_by | ⬜ pending | Sanity check shape original preservado |
-| T2 | Aggregate por status — 1 field | ⬜ pending | Smallest aggregation case |
-| T3 | Reproduce caso B5 — `campaign_asset` × 2 fields | ⬜ pending | Caso real dogfood; output reduzido vs raw rows |
-| T4 | Field path inexistente — `aggregate_by:["nonexistent.field"]` | ⬜ pending | None key behavior |
-| T5 | Empty result + aggregate_by | ⬜ pending | Edge case 0 rows |
-| T6 | Safety net — query patológica >10k rows | ⬜ pending | Possível DEFERRED se não conseguir gerar 10k rows reais |
+| T1 | Backward compat — sem aggregate_by | ✅ PASS | `rows[]` shape, `row_count: 5`, sem `groups` |
+| T2 | Aggregate por status — 1 field | ✅ PASS | 1 grupo `PAUSED:5`, soma counts = total_rows_scanned |
+| T3 | Reproduce caso B5 — `campaign_asset` × 2 fields | ✅ PASS | **119 rows → 7 groups** (massive reduction), ordered DESC: SITELINK(68) > CALLOUT(40) > CALL(4) > STRUCTURED_SNIPPET(3) > PROMOTION(2) > BUSINESS_NAME(1) > BUSINESS_LOGO(1). B5 sub-demanda **RESOLVED**. |
+| T4 | Field path inexistente | ✅ PASS | 1 grupo `{key: {nonexistent.field: null}, count: 5}` — preserve visibility working |
+| T5 | Empty result + aggregate_by | ✅ PASS | `total_rows_scanned: 0`, `group_count: 0`, `groups: []` — shape consistente |
+| T6 | Safety net — query patológica >10k rows | ⚠️ DEFERRED | Volume Nutry insuficiente: change_event tem hard cap 10k pelo Google; keyword_view só tem 57 entries. Unit test `test_run_gaql_rejects_more_than_10k_raw_rows` mocked cobre o path. Igual padrão F41/F45 (env limitation, não bug). |
 
-**Effective result:** N/6 PASS
+**Effective result:** 5/6 PASS + 1 DEFERRED (env limitation)
+
+### Observações empíricas
+
+- **T3:** `asset.type` retornou `null` em todos grupos. GAQL não retorna nested asset metadata via `campaign_asset` query direto — pra ter `asset.type` populated precisa query `FROM asset` separadamente. **Não é bug do aggregator** — é GAQL semantics. Multi-field key (field_type + asset.type) preserved corretamente.
+- **T6 fallback:** `change_event` tem cap nativo Google de 10k LIMIT obrigatório ("Change event requests must specify a LIMIT in query and LIMIT should be less than or equal to 10k"). Outros resources (`keyword_view`, etc.) em Nutry têm volume baixo. Safety net validado apenas via unit test mocked.
 
 ### F-findings emerged
 
-_Empty placeholder — fill during smoke. Template: `**F## (SEV)** — <symptom>. Fix: <plan>. Family: <bug class>.`_
+Nenhum F-finding novo. T6 DEFERRED é env limitation (similar a F41 RSA recreate em sandbox, F45 Customer Match em Nutry). Não bug — não cataloga.
 
 ### Sign-off
 
-- [ ] Pre-push gate 5/5 PASS
-- [ ] mcp-tool-quality-reviewer subagent verdict
-- [ ] Production /health 200 (revisão final `<final_revision>`)
-- [ ] **N/6 PASS** após [N] fix iterations
-- [ ] CLAUDE.md sprint row added (Sprint 3b.29 shipped — `run_gaql.aggregate_by`)
-- [ ] findings-catalog.md updated com qualquer F-finding emergido + Last updated
-- [ ] B5 sub-demanda do dogfood MO-JP 2026-05-19 marcada RESOLVED
-- [ ] Tool count permanece 51 (sprint é feature em existing tool, sem add)
+- [x] Pre-push gate 5/5 PASS (validado em A1/A2/A3)
+- [x] Spec compliance reviewer subagent ✅ APPROVED em A1, A2 (após fix A2.1), A3
+- [x] Code quality reviewer subagent ✅ APPROVED em A1, A2, A3
+- [x] Production /health 200 (revisão pós `1f07d3e`)
+- [x] **5/6 PASS + 1 DEFERRED** após 1 fix iteration (A2.1 `group_count` pre-slice)
+- [x] CLAUDE.md sprint counter atualizado (3b.1→3b.29)
+- [x] sprint-history.md updated com entry Sprint 3b.29
+- [x] findings-catalog.md sem updates (zero F-findings novos)
+- [x] B5 sub-demanda do dogfood MO-JP 2026-05-19 marcada RESOLVED
+- [x] Tool count permanece 51 (sprint é feature em existing tool, sem add)
 
 ---
 
