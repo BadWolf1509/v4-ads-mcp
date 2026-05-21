@@ -231,3 +231,10 @@ def test_dict_to_change_event_row_preserves_optional_ids():
     row = dict_to_change_event_row(d)
     assert row.campaign_id == "123"
     assert row.ad_group_id == "456"
+
+
+def test_dict_to_change_event_row_handles_none_changed_fields():
+    """Parser defensive: changed_fields=None upstream → tuple() (não TypeError)."""
+    d = {"changed_fields": None}
+    row = dict_to_change_event_row(d)
+    assert row.changed_fields == ()

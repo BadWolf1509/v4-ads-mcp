@@ -92,7 +92,7 @@ def dict_to_change_event_row(d: dict[str, Any]) -> ChangeEventRow:
         resource_id=str(d.get("resource_id", "")),
         resource_name=str(d.get("resource_name", "")),
         operation=str(d.get("operation", "")),
-        changed_fields=tuple(d.get("changed_fields", [])),
+        changed_fields=tuple(d.get("changed_fields") or []),
         campaign_id=d.get("campaign_id"),
         ad_group_id=d.get("ad_group_id"),
     )
