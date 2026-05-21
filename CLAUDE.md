@@ -18,21 +18,21 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 
 **Last updated:** 2026-05-21
 
-### Shipped (53 tools em produção)
+### Shipped (54 tools em produção)
 
 | Phase | Status | Notes |
 |---|---|---|
 | Phases 0-1b + 3a + FE Redesign v2 | ✅ 2026-05-03→05 | Foundation done. See [`infra-setup.md`](docs/operacao/infra-setup.md). |
-| Sprint 3b.1 → 3b.32 (32 sprints) | ✅ 2026-05-04→21 | All shipped + signed-off em conta real. **Detail per sprint:** [`sprint-history.md`](docs/operacao/sprint-history.md). **Bug history (41 findings, F1-F45):** [`findings-catalog.md`](docs/operacao/findings-catalog.md). |
+| Sprint 3b.1 → 3b.33 (33 sprints) | ✅ 2026-05-04→21 | All shipped + signed-off em conta real. **Detail per sprint:** [`sprint-history.md`](docs/operacao/sprint-history.md). **Bug history (42 findings, F1-F46):** [`findings-catalog.md`](docs/operacao/findings-catalog.md). |
 
-**53 MCP tools** registered: 25 read + 27 mutations + `apply_change`. Production revision post-Sprint 3b.32 Quality Wins HIGH (G1+B1+UX2 — `get_conversion_actions` enriquecida com `primary_for_goal` + `include_in_conversions_metric`; `get_change_history` lag warning HORAS; `update_conversion_action` doc dry-run+confirm flow; /health 200, CI green).
+**54 MCP tools** registered: 26 read + 27 mutations + `apply_change`. Production revision post-Sprint 3b.33 — `detect_drift` 54th tool (W1 ICE 486 dogfood 21/05). Smoke 6/6 effective PASS + caso real Pedro Vytor em ML Antiguidades detectado (segundo cliente cruzado). F46 NOVO (GAQL BETWEEN end_date midnight bug — afeta 3 tools). /health 200, CI green.
 **15 web pages** in production (FE Redesign v2 Hybrid Editorial+Operational identity).
 **Q8 invite-only allowlist** active — only `@v4company.com` emails pre-invited via `/admin/invites` can complete OAuth.
 
 ### Pending / future
 
 - **Modelo operacional:** solo dogfood — Wellington único user. Lucas Soares OAuth dormant. Multi-tenancy adiado indefinidamente.
-- **Sprint 3b.33 candidate (next-in-queue):** **W1 `detect_drift`** (ICE 486 dogfood 21/05 — auditar mudanças não-coordenadas pós-batch, pattern V4 cross-conta) ou **W3 `audit_goal_attribution`** (ICE 360 dogfood 21/05 — pre-flight pra `primary_for_goal` mexer Smart Bidding). Outras opções: audit_zombie_keywords (#11 ICE 315), audit_orphan_smart_actions (#12 ICE 288), audit_negative_criterion_overlap, audit_assets_parity_between_campaigns OR remove_* bundle OR audit_log gap fix. Decisão Wellington baseada em dogfood.
+- **Sprint 3b.34 candidate (next-in-queue):** **F46 fix** (HIGH urgency — GAQL BETWEEN end_date midnight bug afeta `get_change_history`/`get_negative_keywords_audit`/`detect_drift`) ou **W3 `audit_goal_attribution`** (ICE 360 dogfood 21/05 — pre-flight pra `primary_for_goal` mexer Smart Bidding). Outras opções: audit_zombie_keywords (#11 ICE 315), audit_orphan_smart_actions (#12 ICE 288), audit_negative_criterion_overlap, audit_assets_parity_between_campaigns OR remove_* bundle OR audit_log gap fix. Decisão Wellington baseada em dogfood.
 - **A4 OPEN finding:** Customer Match exclusion mechanism (aberto desde 3b.4/3b.5, desbloqueada via `upload_customer_match_list` 3b.28). Investigation candidate dedicado.
 - **LOW priority pendings:** audit_log gap em `run_gaql`/`get_my_audit_log`/`get_my_rate_limit_status` (description "Sempre auditado" sem `audit_log.record()` explicit — descoberto 3b.29); simetria CRUD missing (`update_conversion_value_rule_set`, STORE support); Sprint 3b.19B Nutry smoke pending; smoke 3b.30 T7-T8 em conta production V4 (Nutry sem QS data — F41/F45 pattern); G2 `change_event` em `list_gaql_resources` (ICE 360); UX1 doc nota GAQL fields opcionais vazios (ICE 360); B2 schema enum CONVERSION_ACTION em `get_change_history` (ICE 288); B3 validate_gaql detectar LIKE OR LIKE (ICE 192).
 - **YAGNI sem demanda:** ProtoFieldCapture retrofit em builders pré-3b.5 (work empirically em prod).
