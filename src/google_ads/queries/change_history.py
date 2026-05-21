@@ -1,6 +1,18 @@
-"""GAQL builder for the change_event resource (used by get_change_history tool)."""
+"""GAQL builder for the change_event resource (used by get_change_history tool).
 
-from datetime import date
+F46 (Sprint 3b.34 fix): Google GAQL interpreta `BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'`
+em campo TIMESTAMP (change_event.change_date_time) como `>= 'YYYY-MM-DD 00:00:00'
+AND <= 'YYYY-MM-DD 00:00:00'` — midnight start-of-day exclusive em ambos extremos.
+Resultado pré-fix: single-day window retornava 0 rows silenciosamente; multi-day
+window excluía changes do end_date depois do meio-dia. Fix: append `timedelta(days=1)`
+ao end_date antes do isoformat — Google passa a interpretar como `<= midnight do
+dia seguinte`, capturando o dia inteiro inclusive. Empirically validated em Sprint
+3b.33 T3 (Pedro Vytor cluster 20/05 10:12-10:13 retorna em window 19→20+1=21).
+Bug família: design-gap-via-Google-API-semantics. Affects: get_change_history,
+get_negative_keywords_audit (via negative_criterion_creations_query), detect_drift.
+"""
+
+from datetime import date, timedelta
 
 
 class RangeTooWideError(ValueError):
@@ -15,6 +27,21 @@ class RangeTooWideError(ValueError):
 # accordingly, OR translate Google's "too old" error to a friendly
 # PT-BR retry hint.
 _MAX_DAYS = 30
+
+
+def _format_change_date_between(start: date, end: date) -> str:
+    """Format change_event.change_date_time BETWEEN clause with F46-fix end+1 day.
+
+    Google interprets date-string in BETWEEN as midnight 00:00:00. Without the +1 day,
+    single-day windows return empty and multi-day windows exclude changes from end_date
+    after midnight. This helper centralizes the workaround across both builders so the
+    fix is applied consistently.
+    """
+    end_inclusive = end + timedelta(days=1)
+    return (
+        f"change_event.change_date_time BETWEEN "
+        f"'{start.isoformat()}' AND '{end_inclusive.isoformat()}'"
+    )
 
 
 def _quote_literal(s: str) -> str:
@@ -51,9 +78,7 @@ def change_history_query(
             f"recebido {range_days} dias. Limite da API do Google Ads."
         )
 
-    where: list[str] = [
-        f"change_event.change_date_time BETWEEN '{start.isoformat()}' AND '{end.isoformat()}'"
-    ]
+    where: list[str] = [_format_change_date_between(start, end)]
 
     if resource_types:
         where.append(f"change_event.change_resource_type IN {_format_in_clause(resource_types)}")
@@ -108,7 +133,7 @@ def negative_criterion_creations_query(*, start: date, end: date) -> str:
           change_event.change_date_time,
           change_event.user_email
         FROM change_event
-        WHERE change_event.change_date_time BETWEEN '{start.isoformat()}' AND '{end.isoformat()}'
+        WHERE {_format_change_date_between(start, end)}
           AND change_event.change_resource_type = 'CAMPAIGN_CRITERION'
           AND change_event.resource_change_operation = 'CREATE'
         ORDER BY change_event.change_date_time DESC
