@@ -201,6 +201,8 @@ async def test_conversion_actions_returns_count(bound_context):
             "attribution_model": "DATA_DRIVEN",
             "default_value_brl": 0.0,
             "always_use_default_value": False,
+            "primary_for_goal": True,
+            "include_in_conversions_metric": True,
         },
     ]
     with patch(
@@ -209,3 +211,5 @@ async def test_conversion_actions_returns_count(bound_context):
         result = await get_conversion_actions({"customer_id": "1234567890"})
     assert result["count"] == 1
     assert result["actions"][0]["name"] == "Purchase"
+    assert result["actions"][0]["primary_for_goal"] is True
+    assert result["actions"][0]["include_in_conversions_metric"] is True

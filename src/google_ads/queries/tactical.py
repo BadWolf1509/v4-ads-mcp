@@ -113,6 +113,8 @@ def conversion_actions_query() -> str:
           conversion_action.counting_type,
           conversion_action.attribution_model_settings.attribution_model,
           conversion_action.value_settings.default_value,
-          conversion_action.value_settings.always_use_default_value
+          conversion_action.value_settings.always_use_default_value,
+          conversion_action.primary_for_goal,
+          conversion_action.include_in_conversions_metric
         FROM conversion_action
     """.strip()

@@ -34,6 +34,8 @@ def _row_formatter(row: Any) -> dict[str, Any]:
             else 0.0
         ),
         "always_use_default_value": bool(ca.value_settings.always_use_default_value),
+        "primary_for_goal": bool(ca.primary_for_goal),
+        "include_in_conversions_metric": bool(ca.include_in_conversions_metric),
     }
 
 
@@ -41,7 +43,9 @@ def _row_formatter(row: Any) -> dict[str, Any]:
     name="get_conversion_actions",
     description=(
         "Acoes de conversao configuradas na conta com status, categoria, tipo, "
-        "atribuicao e valor default. Util pra auditoria de tracking."
+        "atribuicao, valor default, primary_for_goal (Smart Bidding optimization) "
+        "e include_in_conversions_metric (dashboard 'Conversions' metric). "
+        "Util pra auditoria de tracking + decisao de promocao Secondary->Primary."
     ),
     input_schema=_SCHEMA,
 )
