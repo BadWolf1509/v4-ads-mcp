@@ -133,7 +133,7 @@ _SCHEMA: dict[str, Any] = {
 **Notas:**
 
 - `responsible_user_emails` é **optional** (default `[]` = "incident mode")
-- `LAST_2_DAYS` é preset NOVO — atende V4 D+1/D+2 padrão pós-batch (lição 46). Adicionado em `_DATE_PRESETS` local da tool detect_drift (não no `get_change_history` — quando passar `LAST_2_DAYS` via wrapper internal call, resolve antes de chamar)
+- `LAST_2_DAYS` é preset NOVO — atende V4 D+1/D+2 padrão pós-batch (lição 46). Implementação: `detect_drift.py` resolve `LAST_2_DAYS` (ou qualquer preset/custom range) localmente via `resolve_date_window` em `start_date`/`end_date` strings ANTES de invocar `get_change_history` internamente (passando `start_date`+`end_date` explícitos, NÃO o preset). Evita coupling com `get_change_history` schema enum
 - `limit` default 100 (cap 500) — mesmo padrão `get_negative_keywords_audit` (Sprint 3b.23 F22 fix)
 - Sem `resource_types`/`operation_types` filter V0 — gestor filtra client-side ou usa `get_change_history` direto
 - Sem `auto_apply_only` filter V0 — flag `auto_apply_detected` cobre
@@ -294,8 +294,7 @@ def detect_drift(
        - auto_apply_detected (severity low): any drift row com client_type sentinel
        - multiple_users_detected (severity medium): >1 distinct non-auto-apply user
        - structural_change (severity high): any REMOVE em _STRUCTURAL_RESOURCE_TYPES
-    5. Sort drift rows DESC by change_date_time (stable; input deveria já vir DESC
-       de get_change_history mas defensivo).
+    5. Sort drift rows DESC by change_date_time via `sorted(..., key=lambda r: r.change_date_time, reverse=True)` (Python's sort é guaranteed stable). Input deveria já vir DESC de get_change_history mas defensivo.
     6. Truncate to limit. truncated = True se len(drift_rows) > limit.
     7. Return DriftResult.
 
