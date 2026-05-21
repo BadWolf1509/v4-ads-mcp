@@ -101,6 +101,7 @@ def test_all_phase_2_tools_registered():
         "apply_change",
         "apply_recommendation",
         "bulk_pause_by_query",
+        "detect_drift",  # Sprint 3b.33
         "dismiss_recommendation",
         "list_my_accounts",
         # visao geral
@@ -175,6 +176,7 @@ def test_no_unexpected_tools():
         "apply_change",
         "apply_recommendation",
         "bulk_pause_by_query",
+        "detect_drift",  # Sprint 3b.33
         "dismiss_recommendation",
         "remove_audience",
         "remove_negative_keywords",
