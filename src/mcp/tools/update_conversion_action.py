@@ -89,10 +89,14 @@ def _validate_payload_shape(args: dict[str, Any]) -> str | None:
     description=(
         "Atualiza ConversionAction: name, primary_for_goal (off = action vira "
         "non-biddable em todas as campaigns). 2 fields V0 — todos opcionais por "
-        "item (forneça ao menos 1). Single item rename auto-aplica; qualquer "
-        "batch > 1 OU primary_for_goal=False retorna preview com token. Pra "
-        "desligar include_in_conversions_metric, use Google Ads UI (Google v24 "
-        "marca o field como immutable — F44)."
+        "item (forneça ao menos 1). Single item rename auto-aplica. Batch > 1 "
+        "OU primary_for_goal=False retorna preview dry-run com "
+        "`confirmation_token` (UUID string, expires em 10 min). Fluxo: 1) chame "
+        "esta tool -> recebe response com status='dry_run' + confirmation_token. "
+        "2) revise `changes` (lista de fields_updated por ID). 3) chame "
+        "`apply_change(confirmation_token=<token>)` pra executar. Pra desligar "
+        "include_in_conversions_metric, use Google Ads UI (Google v24 marca o "
+        "field como immutable — F44)."
     ),
     input_schema=_SCHEMA,
 )
