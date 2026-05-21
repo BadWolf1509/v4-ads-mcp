@@ -9,19 +9,23 @@ call this as 'CRITICO antes de tudo' to detect:
 
 Audited as a sensitive read.
 
-Caveats (empirically verified against production change_event 2026-05-11):
-- Propagation lag: change_event is NOT real-time. Mutations made via the
-  Google Ads API or UI typically take MINUTES TO HOURS to surface in
-  change_event. If a recent change isn't visible, that's normal — the
-  V4 skills should re-query later rather than assume the mutation failed.
-- 30-day window is the documented retention; some date_range presets
-  (like `DURING LAST_30_DAYS` in raw GAQL) may hit a slightly tighter
-  boundary. Our path uses explicit BETWEEN dates and tolerates 30 days.
-- Google does NOT distinguish 'user applied via Recommendations UI' from
-  'Google auto-apply' in change_event.client_type — both surface as
-  GOOGLE_ADS_RECOMMENDATIONS. summary.auto_applied_count counts the
-  union; cross-reference auto-apply settings on the account if intent
-  matters.
+Caveats (empirically verified against production change_event 2026-05-11 e
+re-confirmado em dogfood 2026-05-21 MO-JP):
+- Propagation lag: change_event é AUDIT LOG LAGGING, NOT real-time. Mutações
+  via API ou UI tipicamente levam MINUTOS A **HORAS** (já visto >3h em
+  produção) para surface em change_event. O lag afeta MÚLTIPLOS campos, não
+  apenas `campaign.status` — também `ai_max_setting.enable_ai_max`,
+  `asset_automation_settings`, `text_guidelines.messaging_restrictions`, etc.
+- Padrão V4 pra validar estado ATUAL pós-mutação (revert/incident recovery):
+  use `run_gaql FROM campaign` como LEADING indicator (real-time) e
+  `get_change_history` como LAGGING (audit log). Se divergirem, confie no
+  leading. Se um campo opcional não retornar no GAQL, está vazio/removido.
+- 30-day window é a retenção documentada; alguns date_range presets podem
+  bater limite ligeiramente menor. Nosso path usa explicit BETWEEN dates.
+- Google não distingue 'user applied via Recommendations UI' de 'Google
+  auto-apply' em change_event.client_type — ambos surface como
+  GOOGLE_ADS_RECOMMENDATIONS. summary.auto_applied_count conta a união;
+  cross-reference auto-apply settings se intent matters.
 """
 
 from collections import Counter
@@ -247,9 +251,11 @@ async def _resolve_names(
         "filtros opcionais (resource_types, operation_types, user_emails, "
         "client_types). Util pra auditoria 'CRITICO antes de tudo': detectar "
         "auto-apply Recommendations, mudancas estruturais, e quem mexeu no que. "
-        "Inclui bloco summary com totais por usuario/resource/operation e contagem "
-        "de auto-apply. Janela maxima 30 dias (limite da API). Audited como read "
-        "sensivel."
+        "ATENCAO: latency de indexacao pode chegar a HORAS (>3h ja visto em "
+        "producao) e afeta multiplos campos. Pra validar estado atual (revert/"
+        "incident), use `run_gaql FROM campaign` como leading indicator. Inclui "
+        "summary com totais por usuario/resource/operation. Janela maxima 30 "
+        "dias. Audited como read sensivel."
     ),
     input_schema=_SCHEMA,
 )
