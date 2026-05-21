@@ -94,6 +94,7 @@ def test_all_phase_2_tools_registered():
         "add_keywords",
         "audit_competitor_keywords",
         "audit_goal_attribution",  # Sprint 3b.35
+        "audit_orphan_smart_actions",  # Sprint 3b.37
         "audit_quality_score",
         "audit_zombie_keywords",  # Sprint 3b.36
         "create_ad_group",
@@ -171,6 +172,7 @@ def test_no_unexpected_tools():
         "add_keywords",
         "audit_competitor_keywords",
         "audit_goal_attribution",  # Sprint 3b.35
+        "audit_orphan_smart_actions",  # Sprint 3b.37
         "audit_quality_score",
         "audit_zombie_keywords",  # Sprint 3b.36
         "create_ad_group",
