@@ -93,6 +93,7 @@ def test_all_phase_2_tools_registered():
     expected = {
         "add_keywords",
         "audit_competitor_keywords",
+        "audit_goal_attribution",  # Sprint 3b.35
         "audit_quality_score",
         "create_ad_group",
         "add_negative_keywords",
@@ -168,6 +169,7 @@ def test_no_unexpected_tools():
     expected = {
         "add_keywords",
         "audit_competitor_keywords",
+        "audit_goal_attribution",  # Sprint 3b.35
         "audit_quality_score",
         "create_ad_group",
         "add_negative_keywords",
