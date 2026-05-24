@@ -34,7 +34,8 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 
 | Sprint | Status | Notes |
 |---|---|---|
-| Sprint M.1 — Foundation | ✅ 2026-05-24 | DB schema 003_meta_schema.sql (4 tabelas + ALTER em audit_log/pending_confirmations) + 3 repositories + settings meta_app_id/meta_app_secret. **ZERO MCP tools ainda.** Wellington manual checklist Task 8 (Meta App em BM V4 Lima Soares & Co + Secret Manager) pendente. Sprint family completo: [spec](docs/superpowers/specs/2026-05-24-meta-ads-incorporation-design.md) + [plan M.1](docs/superpowers/plans/2026-05-24-sprint-m1-meta-foundation.md). Roadmap: 25 sprints M.1-M.25 (~3-6 meses até paridade ~45 tools Meta). |
+| Sprint M.1 — Foundation | ✅ 2026-05-24 | DB schema 003_meta_schema.sql (4 tabelas + ALTER em audit_log/pending_confirmations) + 3 repositories + settings meta_app_id/meta_app_secret. **ZERO MCP tools ainda.** Task 8 ✅ done: Meta App criado em developers.facebook.com (App ID `1522411803012799`, BM V4 Lima Soares & Co, Dev Mode), Use Cases habilitados (`ads_read`+`ads_management`+`business_management`), OAuth Redirect URI configurado, secrets `meta-app-id`/`meta-app-secret` em GCP Secret Manager + IAM secretAccessor, `META_APP_ID`+`META_APP_SECRET` env vars em Cloud Run, /health 200, deploy smoke 2/2. Sprint family completo: [spec](docs/superpowers/specs/2026-05-24-meta-ads-incorporation-design.md) + [plan M.1](docs/superpowers/plans/2026-05-24-sprint-m1-meta-foundation.md). Roadmap: 25 sprints M.1-M.25 (~3-6 meses até paridade ~45 tools Meta). |
+| Sprint M.1.1 — Legal pages hotfix | ✅ 2026-05-24 | `/legal/privacy` + `/legal/terms` páginas públicas (V4 brand: red #e50914, Montserrat, editorial hero pattern de help.html). LGPD-compliant, jurisdição BR foro João Pessoa. Required by Meta App Settings (URLs whitelist) e App Review futuro M.2. Commit f56ffe6. |
 
 ### Pending / future
 
@@ -43,6 +44,8 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
   - `004_audit_log_provider_id.sql` migration: rename `google_request_id` → `provider_request_id` (22 caller files).
   - `meta_rate_counters` repository ainda não existe (tabela criada em M.1, sem CRUD Python).
   - `conftest.py _TEST_ENV` precisa de `META_APP_ID` + `META_APP_SECRET` quando Meta OAuth tests entrarem.
+  - **Meta App Review submit pendente:** banner "Atualmente não qualificado para envio" diz "Exclusão de dados do usuário" falta callback POST (Meta espera endpoint que valida `signed_request`, não URL estática). M.2.X candidate: implementar `/oauth/meta/data-deletion-callback` (~2-4h). Não bloqueia uso atual em Dev Mode (Wellington + até 25 admins liberados sem App Review).
+  - Adicionar 3 colaboradores V4 Lima Soares & Co como App Admins quando time começar a usar (deferred do M.1 — Wellington única admin V0).
 - **Modelo operacional:** Wellington dev + early user; 3 colaboradores V4 Lima Soares & Co usarão MCP após M.2+ ship OAuth Meta + primeiras tools. Multi-tenancy não mais "adiado indefinidamente" — V1 real.
 - **Sprint 3b.38 candidates:** audit_negative_criterion_overlap, audit_assets_parity_between_campaigns, remove_* bundle, audit_log gap fix, W2 `verify_campaign_state` (ICE 280). Wellington decide baseado em dogfood.
 - **Real biz findings pendente investigação (fora-MCP):** ML Antiguidades 5 primary PURCHASE actions zero conv em 30d (detectado 3b.37 — Smart Bidding cego, requer Wellington investigar tracking pixel). MO-JP+ML total 527 zombie keywords + 19 orphan conversion actions cleanup-ready.
