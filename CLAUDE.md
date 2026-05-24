@@ -2,12 +2,13 @@
 
 Auto-loaded by Claude Code. Read first.
 
-**V4 Ads MCP** é tool interna da V4 Company (marketing digital, BR) que conecta Google Ads accounts a Claude/Codex/Cursor via Model Context Protocol. Gestores pedem em PT-BR — _"top 5 campanhas por gasto últimos 7 dias"_, _"pause keywords sem conversão"_ — e o assistente executa via tools curadas read/mutate com governança (audit_log, rate_limit, always-CONFIRM em mutates de blast radius alto).
+**V4 Ads MCP** é tool interna da V4 Company (marketing digital, BR) que conecta Google Ads + Meta Ads accounts a Claude/Codex/Cursor via Model Context Protocol. Gestores pedem em PT-BR — _"top 5 campanhas por gasto últimos 7 dias"_, _"pause keywords sem conversão"_ — e o assistente executa via tools curadas read/mutate com governança (audit_log, rate_limit, always-CONFIRM em mutates de blast radius alto).
 
 Interno only, não SaaS, sem terceiros. Substitui Supermetrics.
 
 - **Production:** `https://v4-ads-mcp-jf26mmrgqa-rj.a.run.app`
-- **MCC:** `6436352492` (V4 Maceió, ~23 client accounts)
+- **MCC Google Ads:** `6436352492` (V4 Maceió, ~23 client accounts)
+- **Unidade operacional:** V4 Lima Soares & Co (João Pessoa, PB) — Wellington dev + 3 colaboradores futuros.
 - **Admin:** `wellinton.ribeiro@v4company.com`
 
 ## Stack
@@ -16,9 +17,9 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 
 ## Current state
 
-**Last updated:** 2026-05-21
+**Last updated:** 2026-05-24
 
-### Shipped (57 tools em produção)
+### Shipped — Google Ads (57 tools em produção)
 
 | Phase | Status | Notes |
 |---|---|---|
@@ -29,9 +30,20 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 **15 web pages** in production (FE Redesign v2 Hybrid Editorial+Operational identity).
 **Q8 invite-only allowlist** active — only `@v4company.com` emails pre-invited via `/admin/invites` can complete OAuth.
 
+### Shipped — Meta Ads (sprint family M)
+
+| Sprint | Status | Notes |
+|---|---|---|
+| Sprint M.1 — Foundation | ✅ 2026-05-24 | DB schema 003_meta_schema.sql (4 tabelas + ALTER em audit_log/pending_confirmations) + 3 repositories + settings meta_app_id/meta_app_secret. **ZERO MCP tools ainda.** Wellington manual checklist Task 8 (Meta App em BM V4 Lima Soares & Co + Secret Manager) pendente. Sprint family completo: [spec](docs/superpowers/specs/2026-05-24-meta-ads-incorporation-design.md) + [plan M.1](docs/superpowers/plans/2026-05-24-sprint-m1-meta-foundation.md). Roadmap: 25 sprints M.1-M.25 (~3-6 meses até paridade ~45 tools Meta). |
+
 ### Pending / future
 
-- **Modelo operacional:** solo dogfood — Wellington único user. Lucas Soares OAuth dormant. Multi-tenancy adiado indefinidamente.
+- **Sprint M.2 — Meta Ads** próximos passos críticos descobertos em M.1 final review (devem ser Task 1-N do M.2 plan):
+  - `audit_log.record()` precisa de `platform: Literal["google","meta"]` param ANTES de qualquer Meta tool chamar (risco: pollution audit log).
+  - `004_audit_log_provider_id.sql` migration: rename `google_request_id` → `provider_request_id` (22 caller files).
+  - `meta_rate_counters` repository ainda não existe (tabela criada em M.1, sem CRUD Python).
+  - `conftest.py _TEST_ENV` precisa de `META_APP_ID` + `META_APP_SECRET` quando Meta OAuth tests entrarem.
+- **Modelo operacional:** Wellington dev + early user; 3 colaboradores V4 Lima Soares & Co usarão MCP após M.2+ ship OAuth Meta + primeiras tools. Multi-tenancy não mais "adiado indefinidamente" — V1 real.
 - **Sprint 3b.38 candidates:** audit_negative_criterion_overlap, audit_assets_parity_between_campaigns, remove_* bundle, audit_log gap fix, W2 `verify_campaign_state` (ICE 280). Wellington decide baseado em dogfood.
 - **Real biz findings pendente investigação (fora-MCP):** ML Antiguidades 5 primary PURCHASE actions zero conv em 30d (detectado 3b.37 — Smart Bidding cego, requer Wellington investigar tracking pixel). MO-JP+ML total 527 zombie keywords + 19 orphan conversion actions cleanup-ready.
 - **A4 OPEN finding:** Customer Match exclusion mechanism (aberto desde 3b.4/3b.5, desbloqueada via `upload_customer_match_list` 3b.28). Investigation candidate dedicado.

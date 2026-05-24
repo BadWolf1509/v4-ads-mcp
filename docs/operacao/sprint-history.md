@@ -1,10 +1,18 @@
 # Sprint history archive — V4 Ads MCP
 
-> **Purpose:** Detailed history of Sprints 3b.1 through 3b.37. Extracted from CLAUDE.md `Current state` table to reduce context bootstrap cost in new Claude Code sessions. CLAUDE.md keeps only compact 1-line summary per sprint with link back here.
+> **Purpose:** Detailed history of Sprints 3b.1 through 3b.37 (Google Ads) + Sprint family M (Meta Ads, starting M.1 2026-05-24). Extracted from CLAUDE.md `Current state` table to reduce context bootstrap cost in new Claude Code sessions.
 
-> **Last extracted:** 2026-05-21 (Sprints 3b.32-3b.37 appended — 6 sprints, 4 novas tools 53→57, F46 discovered+fixed).
+> **Last extracted:** 2026-05-24 (Sprint M.1 Meta Ads Foundation shipped — 6 commits, 4 new DB tables, 3 new repositories, 2 new settings, ZERO MCP tools yet).
 
 > **For findings cross-reference:** see [findings-catalog.md](findings-catalog.md).
+
+---
+
+## Meta Ads sprint family — M.1 onwards (May 2026 →)
+
+| Sprint | Status | Detail |
+|---|---|---|
+| Sprint M.1 — Meta Ads Foundation (DB + repos + settings) | ✅ 2026-05-24 | 6 commits ([d4b2485..7fe05c8](https://github.com/BadWolf1509/v4-ads-mcp/compare/48588ca..7fe05c8)); ZERO MCP tools (pure infrastructure). Migration `003_meta_schema.sql` cria 4 tabelas (`meta_oauth_connections`, `meta_ad_accounts`, `manager_meta_account_access`, `meta_rate_counters`) + ALTER `audit_log`/`pending_confirmations` (add `platform TEXT DEFAULT 'google'` column). 3 repositories paralelos a Google (asyncpg + dataclasses slots+frozen). 2 settings (`meta_app_id`, `meta_app_secret`, empty defaults — graceful boot sem secrets). 12 integration tests (3+5+4). CI/Deploy verdes em `7fe05c8`, /health 200, 4 Meta tables criadas em prod (0 rows). **1 finding CI:** `test_migrations_are_idempotent` tinha hardcoded list de migrations esperadas que não incluía 003 — descoberto + fixado em CI run 2. **Sprint family completo:** [spec](../superpowers/specs/2026-05-24-meta-ads-incorporation-design.md) (10 sections, M.1-M.25 roadmap, ~3-6 meses, ~45 tools Meta paridade quase total com Google) + [plan M.1](../superpowers/plans/2026-05-24-sprint-m1-meta-foundation.md). Task 8 Wellington manual (Meta App em BM V4 Lima Soares & Co + Secret Manager) pendente. Decisões arquiteturais: implementação nativa V4 (Meta MCP oficial tem limitações + não funciona em Codex), naming `meta_*` prefix em tools Meta (Google sem prefix preservado), OAuth Facebook Login for Business per-user, tabelas separadas (não generalizar com `platform` column). **Próximas tasks críticas M.2 descobertas em final review:** (1) `audit_log.record()` precisa de `platform` param antes de qualquer Meta tool; (2) migration `004_audit_log_provider_id.sql` rename (22 callers); (3) `meta_rate_counters` repository CRUD ainda não existe; (4) `conftest.py _TEST_ENV` precisa de `META_APP_ID`/`META_APP_SECRET` quando Meta OAuth tests entrarem. |
 
 ---
 

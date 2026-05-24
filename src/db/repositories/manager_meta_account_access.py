@@ -1,21 +1,10 @@
 """CRUD for `manager_meta_account_access` (which manager can operate which Meta ad account)."""
 
-from dataclasses import dataclass
-from datetime import datetime
 from uuid import UUID
 
 import asyncpg
 
 from src.db.repositories.meta_ad_accounts import MetaAdAccount, _row_to_account
-
-
-@dataclass(slots=True, frozen=True)
-class MetaAccountAccess:
-    manager_id: UUID
-    ad_account_id: str
-    access_level: str  # 'read' | 'write'
-    granted_at: datetime
-    granted_by: UUID | None
 
 
 async def grant(
