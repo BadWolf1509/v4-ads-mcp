@@ -18,6 +18,7 @@ from src.db.repositories import (
     manager_account_access,
     managers,
     mcp_sessions,
+    meta_ad_accounts,
     meta_oauth_connections,
 )
 
@@ -387,3 +388,116 @@ async def test_meta_oauth_get_active_none_when_no_connection(db) -> None:
         await managers.create(conn, manager_id=mid, email="mn@v4.com", full_name=None)
         result = await meta_oauth_connections.get_active_for_manager(conn, mid)
         assert result is None
+
+
+# ---------- meta_ad_accounts ----------
+
+
+@pytest.mark.integration
+async def test_meta_accounts_upsert_and_list(db) -> None:
+    async with db.acquire() as conn:
+        n = await meta_ad_accounts.upsert_many(
+            conn,
+            [
+                {
+                    "ad_account_id": "act_111",
+                    "business_id": "bm_999",
+                    "business_name": "V4 Lima Soares & Co",
+                    "account_name": "Cliente Alpha Meta",
+                    "currency": "BRL",
+                    "timezone_name": "America/Sao_Paulo",
+                    "account_status": 1,
+                },
+                {
+                    "ad_account_id": "act_222",
+                    "business_id": "bm_999",
+                    "business_name": "V4 Lima Soares & Co",
+                    "account_name": "Cliente Beta Meta",
+                    "currency": "BRL",
+                    "timezone_name": "America/Sao_Paulo",
+                    "account_status": 1,
+                },
+            ],
+        )
+        assert n == 2
+        all_accounts = await meta_ad_accounts.list_all(conn)
+        assert len(all_accounts) == 2
+        names = [a.account_name for a in all_accounts]
+        assert names == sorted(names)  # ORDER BY account_name
+
+
+@pytest.mark.integration
+async def test_meta_accounts_mark_inactive_except(db) -> None:
+    async with db.acquire() as conn:
+        await meta_ad_accounts.upsert_many(
+            conn,
+            [
+                {"ad_account_id": "act_1", "business_id": "bm_A", "account_name": "A"},
+                {"ad_account_id": "act_2", "business_id": "bm_A", "account_name": "B"},
+                {"ad_account_id": "act_3", "business_id": "bm_A", "account_name": "C"},
+            ],
+        )
+        deactivated = await meta_ad_accounts.mark_inactive_except(
+            conn, business_id="bm_A", keep_ad_account_ids=["act_1", "act_3"]
+        )
+        assert deactivated == 1
+        active = await meta_ad_accounts.list_all(conn)
+        ids = {a.ad_account_id for a in active}
+        assert ids == {"act_1", "act_3"}
+
+
+@pytest.mark.integration
+async def test_meta_accounts_personal_no_business_id(db) -> None:
+    """Ad account 'personal' (sem Business Manager) é legal Meta — business_id NULL."""
+    async with db.acquire() as conn:
+        n = await meta_ad_accounts.upsert_many(
+            conn,
+            [
+                {
+                    "ad_account_id": "act_personal",
+                    "business_id": None,
+                    "account_name": "Personal Account",
+                    "account_status": 1,
+                }
+            ],
+        )
+        assert n == 1
+        all_accounts = await meta_ad_accounts.list_all(conn)
+        assert len(all_accounts) == 1
+        assert all_accounts[0].business_id is None
+
+
+@pytest.mark.integration
+async def test_meta_accounts_get_by_id(db) -> None:
+    async with db.acquire() as conn:
+        await meta_ad_accounts.upsert_many(
+            conn,
+            [{"ad_account_id": "act_xyz", "account_name": "XYZ", "account_status": 1}],
+        )
+        found = await meta_ad_accounts.get_by_id(conn, "act_xyz")
+        assert found is not None
+        assert found.ad_account_id == "act_xyz"
+        assert found.account_name == "XYZ"
+
+        missing = await meta_ad_accounts.get_by_id(conn, "act_does_not_exist")
+        assert missing is None
+
+
+@pytest.mark.integration
+async def test_meta_accounts_mark_inactive_empty_keep_list(db) -> None:
+    async with db.acquire() as conn:
+        await meta_ad_accounts.upsert_many(
+            conn,
+            [
+                {"ad_account_id": "act_z1", "business_id": "bm_Z", "account_name": "Z1"},
+                {"ad_account_id": "act_z2", "business_id": "bm_Z", "account_name": "Z2"},
+            ],
+        )
+        deactivated = await meta_ad_accounts.mark_inactive_except(
+            conn, business_id="bm_Z", keep_ad_account_ids=[]
+        )
+        assert deactivated == 2
+        active = await meta_ad_accounts.list_all(conn)
+        # bm_Z accounts deactivated; other tests may have left rows that don't match bm_Z
+        bm_z_remaining = [a for a in active if a.business_id == "bm_Z"]
+        assert bm_z_remaining == []
