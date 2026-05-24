@@ -1,0 +1,101 @@
+{% extends "_base.html" %}
+
+{% block title %}Política de Privacidade — V4 Ads MCP{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-6 py-16">
+  <!-- Editorial hero -->
+  <header class="mb-12">
+    <h1 class="text-4xl md:text-5xl font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
+      Política de <span class="text-v4-red">privacidade.</span>
+    </h1>
+    <p class="mt-4 text-base text-v4-gray-700 leading-relaxed">
+      Como o V4 Ads MCP coleta, usa e protege dados dos colaboradores autorizados.
+    </p>
+    <p class="mt-2 text-sm text-v4-gray-700">
+      Última atualização: <strong>24 de maio de 2026</strong>.
+    </p>
+  </header>
+
+  <!-- Section 1: Quem somos -->
+  <h2 class="text-2xl font-bold text-v4-gray-900 mt-12 mb-4">1. Quem somos</h2>
+  <p class="text-base text-v4-gray-900 leading-relaxed mb-4">
+    O <strong>V4 Ads MCP</strong> é uma ferramenta interna operada pela <strong>V4 Lima Soares & Co</strong>
+    (unidade da V4 Company em João Pessoa, PB), criada para automatizar tarefas de marketing digital
+    nos clientes V4 via plataformas Google Ads e Meta Ads. Esta ferramenta é restrita a colaboradores
+    autorizados com email <code class="px-1 py-0.5 bg-v4-gray-50 rounded text-sm">@v4company.com</code>.
+  </p>
+  <p class="text-base text-v4-gray-900 leading-relaxed mb-4">
+    <strong>Controlador dos dados:</strong> V4 Lima Soares & Co<br>
+    <strong>Contato:</strong> <a href="mailto:wellinton.ribeiro@v4company.com" class="text-v4-red hover:underline">wellinton.ribeiro@v4company.com</a>
+  </p>
+
+  <!-- Section 2: Dados coletados -->
+  <h2 class="text-2xl font-bold text-v4-gray-900 mt-12 mb-4">2. Dados coletados</h2>
+  <p class="text-base text-v4-gray-900 leading-relaxed mb-4">Coletamos apenas dados necessários para operar a ferramenta:</p>
+  <ul class="list-disc pl-6 text-base text-v4-gray-900 leading-relaxed mb-4 space-y-2">
+    <li><strong>Email corporativo</strong> @v4company.com (autenticação OAuth Google/Meta)</li>
+    <li><strong>Nome do gestor</strong> e role (admin/gestor)</li>
+    <li><strong>IDs de contas de anúncio</strong> (Google Customer ID, Meta Ad Account ID) às quais o gestor tem acesso</li>
+    <li><strong>Tokens OAuth</strong> (refresh_token Google, access_token Meta) — armazenados <strong>cifrados via AES-256</strong> no banco</li>
+    <li><strong>Logs de auditoria</strong> de operações executadas: operação, alvo, timestamp, manager_id, resultado</li>
+    <li><strong>Metadata de sessão MCP</strong>: timestamps, hash do Bearer token (token original nunca armazenado em claro)</li>
+  </ul>
+
+  <!-- Section 3: Como usamos -->
+  <h2 class="text-2xl font-bold text-v4-gray-900 mt-12 mb-4">3. Como usamos seus dados</h2>
+  <ul class="list-disc pl-6 text-base text-v4-gray-900 leading-relaxed mb-4 space-y-2">
+    <li>Operar serviços de marketing digital nos clientes V4 (consulta e gerenciamento de campanhas Google Ads e Meta Ads)</li>
+    <li>Auditoria de mutações para governança interna (compliance + investigação de incidentes)</li>
+    <li>Aplicar limites de taxa por gestor para proteger quotas de API das plataformas externas</li>
+    <li>Detecção de drift e divergências em configurações de campanha</li>
+  </ul>
+  <p class="text-base text-v4-gray-900 leading-relaxed mb-4">
+    <strong>Nenhum dado é compartilhado com terceiros.</strong> Esta ferramenta não vende, aluga ou
+    cede dados pessoais a outras empresas. Os dados permanecem no ambiente controlado V4.
+  </p>
+
+  <!-- Section 4: Onde armazenamos -->
+  <h2 class="text-2xl font-bold text-v4-gray-900 mt-12 mb-4">4. Onde armazenamos</h2>
+  <p class="text-base text-v4-gray-900 leading-relaxed mb-4">
+    Dados ficam em <strong>Supabase Postgres</strong> hospedado em Google Cloud
+    (<code class="px-1 py-0.5 bg-v4-gray-50 rounded text-sm">southamerica-east1</code>, Brasil).
+    Tokens OAuth são cifrados com chave AES-256 armazenada em Google Secret Manager.
+  </p>
+
+  <!-- Section 5: Retenção -->
+  <h2 class="text-2xl font-bold text-v4-gray-900 mt-12 mb-4">5. Retenção dos dados</h2>
+  <ul class="list-disc pl-6 text-base text-v4-gray-900 leading-relaxed mb-4 space-y-2">
+    <li><strong>Tokens OAuth:</strong> mantidos enquanto a conexão está ativa; deletados em revoke explícito</li>
+    <li><strong>Logs de auditoria:</strong> retidos indefinidamente para compliance e investigação histórica</li>
+    <li><strong>Tokens de sessão MCP:</strong> válidos até revoke explícito ou expiry programado</li>
+  </ul>
+
+  <!-- Section 6: Seus direitos (LGPD) -->
+  <h2 class="text-2xl font-bold text-v4-gray-900 mt-12 mb-4">6. Seus direitos (LGPD)</h2>
+  <p class="text-base text-v4-gray-900 leading-relaxed mb-4">
+    Conforme a Lei Geral de Proteção de Dados (Lei 13.709/2018), você tem direito a:
+  </p>
+  <ul class="list-disc pl-6 text-base text-v4-gray-900 leading-relaxed mb-4 space-y-2">
+    <li><strong>Acesso, correção ou exclusão</strong> dos seus dados — solicite via email para o contato abaixo</li>
+    <li><strong>Revogação de OAuth Google</strong> a qualquer momento via <a href="https://myaccount.google.com/permissions" class="text-v4-red hover:underline">Google Account Permissions</a></li>
+    <li><strong>Revogação de OAuth Meta</strong> a qualquer momento via <a href="https://www.facebook.com/settings?tab=business_tools" class="text-v4-red hover:underline">Facebook Business Tools Settings</a> ou painel admin V4</li>
+    <li><strong>Portabilidade</strong> dos seus dados em formato estruturado</li>
+  </ul>
+
+  <!-- Section 7: Atualizações -->
+  <h2 class="text-2xl font-bold text-v4-gray-900 mt-12 mb-4">7. Atualizações desta política</h2>
+  <p class="text-base text-v4-gray-900 leading-relaxed mb-4">
+    Mudanças relevantes nesta Política são comunicadas previamente via email corporativo aos
+    gestores ativos. A versão vigente está sempre acessível em
+    <code class="px-1 py-0.5 bg-v4-gray-50 rounded text-sm">/legal/privacy</code>.
+  </p>
+
+  <!-- Section 8: Contato -->
+  <h2 class="text-2xl font-bold text-v4-gray-900 mt-12 mb-4">8. Contato</h2>
+  <p class="text-base text-v4-gray-900 leading-relaxed mb-4">
+    Dúvidas, solicitações ou exercício de direitos LGPD:
+    <a href="mailto:wellinton.ribeiro@v4company.com" class="text-v4-red hover:underline font-semibold">wellinton.ribeiro@v4company.com</a>
+  </p>
+</div>
+{% endblock %}

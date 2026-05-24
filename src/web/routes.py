@@ -76,6 +76,24 @@ async def help_page(
     return templates.TemplateResponse(request, "help.html", {"current_user": user})
 
 
+@router.get("/legal/privacy", response_class=HTMLResponse)
+async def legal_privacy(
+    request: Request,
+    user: CurrentUser | None = Depends(optional_current_manager),  # noqa: B008
+) -> HTMLResponse:
+    """Public Privacy Policy. Required by Meta Marketing API App Settings."""
+    return templates.TemplateResponse(request, "legal/privacy.html", {"current_user": user})
+
+
+@router.get("/legal/terms", response_class=HTMLResponse)
+async def legal_terms(
+    request: Request,
+    user: CurrentUser | None = Depends(optional_current_manager),  # noqa: B008
+) -> HTMLResponse:
+    """Public Terms of Service. Required by Meta Marketing API App Settings."""
+    return templates.TemplateResponse(request, "legal/terms.html", {"current_user": user})
+
+
 @router.get("/access-denied", response_class=HTMLResponse, response_model=None)
 async def access_denied(
     request: Request,

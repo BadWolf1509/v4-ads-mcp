@@ -1,0 +1,101 @@
+{% extends "_base.html" %}
+
+{% block title %}Termos de Uso — V4 Ads MCP{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-6 py-16">
+  <header class="mb-12">
+    <h1 class="text-4xl md:text-5xl font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
+      Termos de <span class="text-v4-red">uso.</span>
+    </h1>
+    <p class="mt-4 text-base text-v4-gray-700 leading-relaxed">
+      Regras de uso aceitável do V4 Ads MCP por colaboradores autorizados.
+    </p>
+    <p class="mt-2 text-sm text-v4-gray-700">
+      Última atualização: <strong>24 de maio de 2026</strong>.
+    </p>
+  </header>
+
+  <h2 class="text-2xl font-bold text-v4-gray-900 mt-12 mb-4">1. Uso restrito</h2>
+  <p class="text-base text-v4-gray-900 leading-relaxed mb-4">
+    O <strong>V4 Ads MCP</strong> é uma ferramenta interna da V4 Lima Soares & Co, restrita
+    exclusivamente a colaboradores autorizados da V4 Company. O acesso é concedido por <strong>convite
+    individual</strong> a emails <code class="px-1 py-0.5 bg-v4-gray-50 rounded text-sm">@v4company.com</code>
+    previamente cadastrados. Uso por terceiros ou contas não autorizadas é proibido.
+  </p>
+
+  <h2 class="text-2xl font-bold text-v4-gray-900 mt-12 mb-4">2. Uso aceitável</h2>
+  <p class="text-base text-v4-gray-900 leading-relaxed mb-4">Você pode usar a ferramenta para:</p>
+  <ul class="list-disc pl-6 text-base text-v4-gray-900 leading-relaxed mb-4 space-y-2">
+    <li>Operar campanhas de marketing digital nas contas Google Ads e Meta Ads dos clientes V4</li>
+    <li>Consultar métricas, configurar campanhas, aplicar otimizações e auditorias</li>
+    <li>Realizar atividades operacionais legítimas dentro do escopo definido pela V4 Company</li>
+  </ul>
+
+  <h2 class="text-2xl font-bold text-v4-gray-900 mt-12 mb-4">3. Uso proibido</h2>
+  <p class="text-base text-v4-gray-900 leading-relaxed mb-4">É vedado:</p>
+  <ul class="list-disc pl-6 text-base text-v4-gray-900 leading-relaxed mb-4 space-y-2">
+    <li>Compartilhar Bearer tokens MCP ou credenciais de sessão com terceiros</li>
+    <li>Usar a ferramenta em contas de clientes sem autorização explícita do cliente e da V4</li>
+    <li>Tentar extrair dados massivos fora do escopo operacional V4</li>
+    <li>Realizar engenharia reversa ou tentar contornar controles de governança (confirmation flow, audit_log, rate limits)</li>
+    <li>Usar a ferramenta para fins pessoais não relacionados às atividades V4</li>
+  </ul>
+
+  <h2 class="text-2xl font-bold text-v4-gray-900 mt-12 mb-4">4. Confirmação de mutações</h2>
+  <p class="text-base text-v4-gray-900 leading-relaxed mb-4">
+    Operações de <strong>blast radius alto</strong> (mutações que alteram campanhas, lances, status,
+    audiências, ou configurações de conversão) requerem <strong>fluxo de confirmação explícito</strong>
+    (CONFIRM token + apply_change). Você é responsável por validar os dry-run previews antes de aprovar
+    qualquer mutação. Wellington e admins V4 monitoram <code class="px-1 py-0.5 bg-v4-gray-50 rounded text-sm">audit_log</code>.
+  </p>
+
+  <h2 class="text-2xl font-bold text-v4-gray-900 mt-12 mb-4">5. Disponibilidade</h2>
+  <p class="text-base text-v4-gray-900 leading-relaxed mb-4">
+    A ferramenta é fornecida em regime <strong>best-effort</strong>, sem SLA garantido. Manutenções
+    planejadas são comunicadas previamente via email corporativo aos gestores ativos.
+  </p>
+
+  <h2 class="text-2xl font-bold text-v4-gray-900 mt-12 mb-4">6. Sem garantias</h2>
+  <p class="text-base text-v4-gray-900 leading-relaxed mb-4">
+    O software é fornecido <strong>"NO ESTADO EM QUE SE ENCONTRA"</strong>. A V4 Lima Soares & Co
+    não garante ausência de bugs, exatidão absoluta dos dados retornados pelas APIs externas
+    (Google/Meta), nem disponibilidade contínua sem interrupções.
+  </p>
+
+  <h2 class="text-2xl font-bold text-v4-gray-900 mt-12 mb-4">7. Limitação de responsabilidade</h2>
+  <p class="text-base text-v4-gray-900 leading-relaxed mb-4">
+    A V4 Lima Soares & Co <strong>não se responsabiliza</strong> por perdas decorrentes de uso
+    incorreto da ferramenta, decisões operacionais tomadas pelos gestores, ou comportamentos das
+    APIs externas (Google Ads, Meta Marketing API). Cada gestor é responsável por validar dry-run
+    previews antes de confirmar mutações em campanhas reais.
+  </p>
+
+  <h2 class="text-2xl font-bold text-v4-gray-900 mt-12 mb-4">8. Privacidade</h2>
+  <p class="text-base text-v4-gray-900 leading-relaxed mb-4">
+    O tratamento dos seus dados pessoais segue a nossa
+    <a href="/legal/privacy" class="text-v4-red hover:underline font-semibold">Política de Privacidade</a>,
+    em conformidade com a LGPD (Lei 13.709/2018).
+  </p>
+
+  <h2 class="text-2xl font-bold text-v4-gray-900 mt-12 mb-4">9. Modificações destes termos</h2>
+  <p class="text-base text-v4-gray-900 leading-relaxed mb-4">
+    A V4 Lima Soares & Co reserva-se o direito de modificar estes Termos a qualquer momento,
+    com comunicação prévia via email corporativo. A versão vigente está sempre acessível em
+    <code class="px-1 py-0.5 bg-v4-gray-50 rounded text-sm">/legal/terms</code>.
+  </p>
+
+  <h2 class="text-2xl font-bold text-v4-gray-900 mt-12 mb-4">10. Jurisdição</h2>
+  <p class="text-base text-v4-gray-900 leading-relaxed mb-4">
+    Estes Termos são regidos pela legislação brasileira. Fica eleito o foro da comarca de
+    <strong>João Pessoa, Paraíba</strong>, para dirimir qualquer controvérsia, com renúncia
+    expressa a qualquer outro, por mais privilegiado que seja.
+  </p>
+
+  <h2 class="text-2xl font-bold text-v4-gray-900 mt-12 mb-4">11. Contato</h2>
+  <p class="text-base text-v4-gray-900 leading-relaxed mb-4">
+    Dúvidas sobre estes Termos:
+    <a href="mailto:wellinton.ribeiro@v4company.com" class="text-v4-red hover:underline font-semibold">wellinton.ribeiro@v4company.com</a>
+  </p>
+</div>
+{% endblock %}
