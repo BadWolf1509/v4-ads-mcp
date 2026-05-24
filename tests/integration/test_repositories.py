@@ -16,6 +16,7 @@ from src.db.repositories import (
     google_ads_accounts,
     google_oauth_connections,
     manager_account_access,
+    manager_meta_account_access,
     managers,
     mcp_sessions,
     meta_ad_accounts,
@@ -501,3 +502,115 @@ async def test_meta_accounts_mark_inactive_empty_keep_list(db) -> None:
         # bm_Z accounts deactivated; other tests may have left rows that don't match bm_Z
         bm_z_remaining = [a for a in active if a.business_id == "bm_Z"]
         assert bm_z_remaining == []
+
+
+# ---------- manager_meta_account_access ----------
+
+
+@pytest.mark.integration
+async def test_meta_access_grant_list_revoke(db) -> None:
+    async with db.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="ma@v4.com", full_name=None)
+        await meta_ad_accounts.upsert_many(
+            conn,
+            [
+                {"ad_account_id": "act_111", "business_id": "bm_X", "account_name": "X"},
+            ],
+        )
+        await manager_meta_account_access.grant(conn, manager_id=mid, ad_account_id="act_111")
+
+        accounts = await manager_meta_account_access.list_accounts_for_manager(conn, mid)
+        assert len(accounts) == 1
+        assert accounts[0].ad_account_id == "act_111"
+
+        assert await manager_meta_account_access.can_manager_access(conn, mid, "act_111") is True
+        assert await manager_meta_account_access.can_manager_access(conn, mid, "act_999") is False
+
+        assert (
+            await manager_meta_account_access.can_manager_access(
+                conn, mid, "act_111", level="write"
+            )
+            is True
+        )
+
+        await manager_meta_account_access.revoke(conn, manager_id=mid, ad_account_id="act_111")
+        accounts2 = await manager_meta_account_access.list_accounts_for_manager(conn, mid)
+        assert accounts2 == []
+
+
+@pytest.mark.integration
+async def test_meta_access_grant_all_active(db) -> None:
+    async with db.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="mga@v4.com", full_name=None)
+        await meta_ad_accounts.upsert_many(
+            conn,
+            [
+                {"ad_account_id": "act_a", "business_id": "bm_A", "account_name": "A"},
+                {"ad_account_id": "act_b", "business_id": "bm_A", "account_name": "B"},
+            ],
+        )
+        n = await manager_meta_account_access.grant_all_active(conn, manager_id=mid)
+        assert n == 2
+        accounts = await manager_meta_account_access.list_accounts_for_manager(conn, mid)
+        assert len(accounts) == 2
+
+        # Idempotent re-run inserts 0 (ON CONFLICT DO NOTHING).
+        n2 = await manager_meta_account_access.grant_all_active(conn, manager_id=mid)
+        assert n2 == 0
+
+
+@pytest.mark.integration
+async def test_meta_access_bulk_grant_idempotent(db) -> None:
+    async with db.acquire() as conn:
+        mid = uuid4()
+        granter = uuid4()
+        await managers.create(conn, manager_id=mid, email="bg@v4.com", full_name=None)
+        await managers.create(conn, manager_id=granter, email="granter@v4.com", full_name=None)
+        await meta_ad_accounts.upsert_many(
+            conn,
+            [
+                {"ad_account_id": "act_bg1", "business_id": "bm_BG", "account_name": "BG1"},
+                {"ad_account_id": "act_bg2", "business_id": "bm_BG", "account_name": "BG2"},
+            ],
+        )
+
+        n = await manager_meta_account_access.bulk_grant(
+            conn,
+            manager_id=mid,
+            ad_account_ids=["act_bg1", "act_bg2"],
+            granted_by=granter,
+        )
+        # bulk_grant returns len(ids), not actual inserts (documented)
+        assert n == 2
+
+        accounts = await manager_meta_account_access.list_accounts_for_manager(conn, mid)
+        ids = {a.ad_account_id for a in accounts}
+        assert ids == {"act_bg1", "act_bg2"}
+
+        # Idempotent re-run with same ids returns 2 (per documented semantics)
+        # but actually inserts 0 rows (ON CONFLICT DO NOTHING)
+        n2 = await manager_meta_account_access.bulk_grant(
+            conn,
+            manager_id=mid,
+            ad_account_ids=["act_bg1", "act_bg2"],
+            granted_by=granter,
+        )
+        assert n2 == 2
+        accounts_after = await manager_meta_account_access.list_accounts_for_manager(conn, mid)
+        # Same accounts visible — no duplicates
+        assert {a.ad_account_id for a in accounts_after} == {"act_bg1", "act_bg2"}
+
+
+@pytest.mark.integration
+async def test_meta_access_bulk_grant_empty_list_no_op(db) -> None:
+    async with db.acquire() as conn:
+        mid = uuid4()
+        granter = uuid4()
+        await managers.create(conn, manager_id=mid, email="bge@v4.com", full_name=None)
+        await managers.create(conn, manager_id=granter, email="granter2@v4.com", full_name=None)
+        n = await manager_meta_account_access.bulk_grant(
+            conn, manager_id=mid, ad_account_ids=[], granted_by=granter
+        )
+        assert n == 0
