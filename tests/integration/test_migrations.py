@@ -46,6 +46,7 @@ async def test_migrations_are_idempotent(pg: PostgresContainer) -> None:
             assert [r["name"] for r in applied] == [
                 "001_initial_schema.sql",
                 "002_managers_status.sql",
+                "003_meta_schema.sql",
             ]
     finally:
         await connection.close_pool()
