@@ -18,6 +18,7 @@ from src.db.repositories import (
     manager_account_access,
     managers,
     mcp_sessions,
+    meta_oauth_connections,
 )
 
 
@@ -303,3 +304,86 @@ async def test_audit_record_returns_id(db) -> None:
             duration_ms=42,
         )
         assert log_id > 0
+
+
+# ---------- meta_oauth_connections ----------
+
+
+@pytest.mark.integration
+async def test_meta_oauth_upsert_then_update(db) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    async with db.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="mo@v4.com", full_name=None)
+        future = datetime.now(timezone.utc) + timedelta(days=60)  # noqa: UP017
+        c1 = await meta_oauth_connections.upsert(
+            conn,
+            manager_id=mid,
+            fb_user_id="123456789",
+            fb_email="mo@gmail.com",
+            access_token_enc=b"enc-v1",
+            token_expires_at=future,
+            scopes=["ads_read", "ads_management"],
+        )
+        c2 = await meta_oauth_connections.upsert(
+            conn,
+            manager_id=mid,
+            fb_user_id="123456789",
+            fb_email="mo@gmail.com",
+            access_token_enc=b"enc-v2",
+            token_expires_at=future,
+            scopes=["ads_read", "ads_management", "business_management"],
+        )
+        # Same row (UNIQUE on manager_id + fb_user_id), token updated.
+        assert c1.id == c2.id
+        assert c2.access_token_enc == b"enc-v2"
+        assert "business_management" in c2.scopes
+
+
+@pytest.mark.integration
+async def test_meta_oauth_get_active_returns_latest_non_revoked(db) -> None:
+    import asyncio
+    from datetime import datetime, timedelta, timezone
+
+    async with db.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="mg@v4.com", full_name=None)
+        future = datetime.now(timezone.utc) + timedelta(days=60)  # noqa: UP017
+        c1 = await meta_oauth_connections.upsert(
+            conn,
+            manager_id=mid,
+            fb_user_id="111",
+            fb_email="primary@fb.com",
+            access_token_enc=b"e1",
+            token_expires_at=future,
+            scopes=["ads_read"],
+        )
+        await asyncio.sleep(0.01)  # force connected_at to differ on fast CI
+        c2 = await meta_oauth_connections.upsert(
+            conn,
+            manager_id=mid,
+            fb_user_id="222",
+            fb_email="other@fb.com",
+            access_token_enc=b"e2",
+            token_expires_at=future,
+            scopes=["ads_read"],
+        )
+        active = await meta_oauth_connections.get_active_for_manager(conn, mid)
+        assert active is not None
+        # Most recent inserted wins.
+        assert active.id == c2.id
+
+        await meta_oauth_connections.revoke(conn, c2.id)
+        active_after = await meta_oauth_connections.get_active_for_manager(conn, mid)
+        assert active_after is not None
+        assert active_after.id == c1.id
+
+
+@pytest.mark.integration
+async def test_meta_oauth_get_active_none_when_no_connection(db) -> None:
+    async with db.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="mn@v4.com", full_name=None)
+        result = await meta_oauth_connections.get_active_for_manager(conn, mid)
+        assert result is None
