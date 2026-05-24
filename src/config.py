@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     google_ads_developer_token: str
     google_ads_login_customer_id: str
 
+    # Meta Ads API (Sprint M.1 foundation)
+    meta_app_id: str = ""
+    meta_app_secret: str = ""
+
     # Supabase (auth + DB)
     supabase_url: str
     supabase_anon_key: str
