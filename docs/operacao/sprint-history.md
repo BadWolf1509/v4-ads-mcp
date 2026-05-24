@@ -1,8 +1,8 @@
 # Sprint history archive — V4 Ads MCP
 
-> **Purpose:** Detailed history of Sprints 3b.1 through 3b.31. Extracted from CLAUDE.md `Current state` table to reduce context bootstrap cost in new Claude Code sessions. CLAUDE.md keeps only compact 1-line summary per sprint with link back here.
+> **Purpose:** Detailed history of Sprints 3b.1 through 3b.37. Extracted from CLAUDE.md `Current state` table to reduce context bootstrap cost in new Claude Code sessions. CLAUDE.md keeps only compact 1-line summary per sprint with link back here.
 
-> **Last extracted:** 2026-05-20 (Sprints 3b.24-3b.31 appended).
+> **Last extracted:** 2026-05-21 (Sprints 3b.32-3b.37 appended — 6 sprints, 4 novas tools 53→57, F46 discovered+fixed).
 
 > **For findings cross-reference:** see [findings-catalog.md](findings-catalog.md).
 

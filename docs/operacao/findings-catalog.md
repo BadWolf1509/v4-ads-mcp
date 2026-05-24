@@ -4,7 +4,7 @@
 >
 > **Maintainer note:** Add a new entry here whenever a finding is documented in a smoke runbook. Keep entries scannable — link to runbook for detail.
 >
-> **Last updated:** 2026-05-21 (Sprint 3b.34 signoff — F46 FIXED em `0785dbf` (`_format_change_date_between` helper aplica `+1 day` no end). 42 unique findings (F1-F46 highest, alguns IDs skipped).)
+> **Last updated:** 2026-05-21 (Sprint 3b.37 signoff — zero F-findings novos em 3b.35/3b.36/3b.37. 42 unique findings (F1-F46 highest, alguns IDs skipped). Last finding catalogado: F46 fixed em 3b.34.)
 
 ---
 

@@ -18,33 +18,36 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 
 **Last updated:** 2026-05-21
 
-### Shipped (54 tools em produção)
+### Shipped (57 tools em produção)
 
 | Phase | Status | Notes |
 |---|---|---|
 | Phases 0-1b + 3a + FE Redesign v2 | ✅ 2026-05-03→05 | Foundation done. See [`infra-setup.md`](docs/operacao/infra-setup.md). |
 | Sprint 3b.1 → 3b.37 (37 sprints) | ✅ 2026-05-04→21 | All shipped + signed-off em conta real. **Detail per sprint:** [`sprint-history.md`](docs/operacao/sprint-history.md). **Bug history (42 findings, F1-F46):** [`findings-catalog.md`](docs/operacao/findings-catalog.md). |
 
-**57 MCP tools** registered: 29 read + 27 mutations + `apply_change`. Production post-Sprint 3b.37 — `audit_orphan_smart_actions` 57ª tool (ICE 288 cleanup ConversionActions dogfood 19/05). Smoke 6/6 PASS — **2 casos reais MASSIVOS**: MO-JP 12 ConversionActions orphan (4 primary_for_goal=true incluindo Smart Campaign actions), ML Antiguidades **7 PURCHASE orphans em 30d (5 primary) = e-commerce SEM tracking purchase, Smart Bidding cego** — EMERGENCY real biz finding. Sprint 3b.36 — `audit_zombie_keywords` shipped. Zero F-findings novos 3b.37. /health 200, CI green.
+**57 MCP tools** registered: 29 read + 27 mutations + `apply_change`. Latest sprints: 3b.33 `detect_drift`, 3b.34 F46 fix, 3b.35 `audit_goal_attribution`, 3b.36 `audit_zombie_keywords` (default limit=100 lição), 3b.37 `audit_orphan_smart_actions`. /health 200, CI green.
 **15 web pages** in production (FE Redesign v2 Hybrid Editorial+Operational identity).
 **Q8 invite-only allowlist** active — only `@v4company.com` emails pre-invited via `/admin/invites` can complete OAuth.
 
 ### Pending / future
 
 - **Modelo operacional:** solo dogfood — Wellington único user. Lucas Soares OAuth dormant. Multi-tenancy adiado indefinidamente.
-- **Sprint 3b.38 candidate (next-in-queue):** audit_negative_criterion_overlap, audit_assets_parity_between_campaigns OR remove_* bundle OR audit_log gap fix OR W2 `verify_campaign_state` (ICE 280). audit_orphan_smart_actions shipped Sprint 3b.37 — detectou EMERGENCY em ML Antiguidades (5 primary PURCHASE actions sem conversion em 30d). audit_zombie_keywords shipped 3b.36 com WATCH (default limit=200 estoura MCP cap em conta grande). V1 candidates bump defaults.
+- **Sprint 3b.38 candidates:** audit_negative_criterion_overlap, audit_assets_parity_between_campaigns, remove_* bundle, audit_log gap fix, W2 `verify_campaign_state` (ICE 280). Wellington decide baseado em dogfood.
+- **Real biz findings pendente investigação (fora-MCP):** ML Antiguidades 5 primary PURCHASE actions zero conv em 30d (detectado 3b.37 — Smart Bidding cego, requer Wellington investigar tracking pixel). MO-JP+ML total 527 zombie keywords + 19 orphan conversion actions cleanup-ready.
 - **A4 OPEN finding:** Customer Match exclusion mechanism (aberto desde 3b.4/3b.5, desbloqueada via `upload_customer_match_list` 3b.28). Investigation candidate dedicado.
-- **LOW priority pendings:** audit_log gap em `run_gaql`/`get_my_audit_log`/`get_my_rate_limit_status` (description "Sempre auditado" sem `audit_log.record()` explicit — descoberto 3b.29); simetria CRUD missing (`update_conversion_value_rule_set`, STORE support); Sprint 3b.19B Nutry smoke pending; smoke 3b.30 T7-T8 em conta production V4 (Nutry sem QS data — F41/F45 pattern); G2 `change_event` em `list_gaql_resources` (ICE 360); UX1 doc nota GAQL fields opcionais vazios (ICE 360); B2 schema enum CONVERSION_ACTION em `get_change_history` (ICE 288); B3 validate_gaql detectar LIKE OR LIKE (ICE 192).
+- **LOW priority pendings:** audit_log gap em `run_gaql`/`get_my_audit_log`/`get_my_rate_limit_status` (description "Sempre auditado" sem `audit_log.record()` explicit); simetria CRUD missing (`update_conversion_value_rule_set`, STORE support); Sprint 3b.19B Nutry smoke pending; smoke 3b.30 T7-T8 production V4 (Nutry sem QS data); G2 `change_event` em `list_gaql_resources`; UX1 doc nota GAQL fields opcionais vazios; B2 schema enum CONVERSION_ACTION em `get_change_history`; B3 validate_gaql detectar LIKE OR LIKE.
+- **WATCH (não-blocker):** 3b.36 default `limit=200` em `audit_zombie_keywords` estoura MCP cap em conta com 500+ entries — V1 candidate bump default. 3b.37 já usa default=100.
 - **YAGNI sem demanda:** ProtoFieldCapture retrofit em builders pré-3b.5 (work empirically em prod).
 - **Standard Access GAds:** case `26521440673` passive wait. Uso atual ~0.07% Basic, zero blocker. Quando aprovar, 1-line change em `rate_limit.py:20`.
 
 ## Read these first when continuing work
 
 ```
-docs/operacao/findings-catalog.md       # ★ Bug history (A1-A5, F1-F45 highest ID — 41 unique findings)
-docs/operacao/sprint-history.md         # Detailed sprint table 3b.1→3b.31
+docs/operacao/findings-catalog.md       # ★ Bug history (A1-A5 + F1-F46, 42 unique findings)
+docs/operacao/sprint-history.md         # Detailed sprint table 3b.1→3b.37
 docs/operacao/phase-3b-XX-bootstrap.md  # Smoke runbook per sprint
 docs/operacao/dogfood-2026-05-19-mestre-da-obra-jp-cleanup-massivo.md  # ICE-ranked backlog
+docs/operacao/dogfood-2026-05-21-mestre-da-obra-jp-drift-detection.md  # W1/W2/W3 + B1/B2/B3 findings (drift + lição 47)
 docs/superpowers/specs/  +  plans/      # Design + implementation per sprint
 ```
 
