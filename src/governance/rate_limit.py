@@ -163,3 +163,97 @@ def hash_developer_token(token: str) -> str:
     import hashlib
 
     return hashlib.sha256(token.encode("utf-8")).hexdigest()[:32]
+
+
+# ============================================================================
+# Meta Ads — Business Use Case (BUC) tracking (Sprint M.2a Task 7)
+# ============================================================================
+
+
+def _parse_buc_header_pct(buc_header: str, *, ad_account_id: str) -> int:
+    """Parse X-Business-Use-Case-Usage header + return max usage pct for ad_account.
+
+    BUC format: {"<numeric_ad_account_id>": [{"type":"ads_management",
+                  "call_count": 42, "total_cputime": 12, "total_time": 35,
+                  "estimated_time_to_regain_access": 0}]}
+
+    Strategy: max(call_count, total_cputime, total_time) across all entries
+    for the matching ad_account. Returns 0 if header empty/malformed/no-match.
+    """
+    if not buc_header:
+        return 0
+    try:
+        import json
+
+        parsed = json.loads(buc_header)
+    except (ValueError, TypeError):
+        return 0
+
+    if not isinstance(parsed, dict):
+        return 0
+
+    numeric_id = ad_account_id.replace("act_", "")
+    pcts: list[int] = []
+    for acct_key, usages in parsed.items():
+        if acct_key != numeric_id:
+            continue
+        if not isinstance(usages, list):
+            continue
+        for u in usages:
+            if not isinstance(u, dict):
+                continue
+            pcts.extend(
+                [
+                    int(u.get("call_count", 0)),
+                    int(u.get("total_cputime", 0)),
+                    int(u.get("total_time", 0)),
+                ]
+            )
+    return max(pcts) if pcts else 0
+
+
+async def record_actual_meta(
+    *,
+    app_id: str,
+    ad_account_id: str,
+    buc_header: str,
+    calls: int = 1,
+) -> None:
+    """Parse BUC header + persist counter increments + throttle pct.
+
+    Hashes app_id (SHA-256 truncated 32-char) before persisting for storage privacy.
+    Structlog warning if throttle_pct > 75%.
+    """
+    import hashlib
+    from datetime import date
+
+    from src.db import connection
+    from src.db.repositories import meta_rate_counters
+
+    throttle_pct = _parse_buc_header_pct(buc_header, ad_account_id=ad_account_id)
+    app_id_hash = hashlib.sha256(app_id.encode()).hexdigest()[:32]
+    today = date.today()
+
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        await meta_rate_counters.increment_calls(
+            conn,
+            app_id=app_id_hash,
+            ad_account_id=ad_account_id,
+            date=today,
+            by=calls,
+        )
+        await meta_rate_counters.update_throttle(
+            conn,
+            app_id=app_id_hash,
+            ad_account_id=ad_account_id,
+            date=today,
+            throttle_pct=throttle_pct,
+        )
+
+    if throttle_pct > 75:
+        log.warning(
+            "meta_rate_limit_warning",
+            ad_account_id=ad_account_id,
+            throttle_pct=throttle_pct,
+        )
