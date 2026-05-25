@@ -55,6 +55,7 @@ docs/operacao/phase-M-2b-bootstrap.md   # Smoke runbook Meta M.2b (8 tests pende
 docs/operacao/dogfood-2026-05-19-mestre-da-obra-jp-cleanup-massivo.md   # ICE-ranked Google backlog
 docs/operacao/dogfood-2026-05-21-mestre-da-obra-jp-drift-detection.md   # Drift detection findings (W1/W2/W3 + B1/B2/B3)
 docs/operacao/dogfood-2026-05-25-meta-first-tool-real-biz-findings.md   # Meta dogfood findings (D1/D2/D3 + cross-platform)
+docs/operacao/tool-audit-2026-05-25.md  # ★ Tool count analysis (58 tools, 22 zombies, sweet spot 30-45)
 docs/superpowers/specs/2026-05-24-meta-ads-incorporation-design.md      # ★ Meta sprint family overview (M.1-M.25 roadmap)
 docs/superpowers/specs/  +  plans/      # Design + implementation per sprint
 ```
