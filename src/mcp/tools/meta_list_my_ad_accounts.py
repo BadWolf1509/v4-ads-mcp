@@ -27,6 +27,7 @@ _DESCRIPTION = (
     name="meta_list_my_ad_accounts",
     description=_DESCRIPTION,
     input_schema={"type": "object", "properties": {}, "additionalProperties": False},
+    bucket="always",
 )
 async def handler(_args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()
