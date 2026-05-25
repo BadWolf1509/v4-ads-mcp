@@ -27,6 +27,7 @@ async def build_meta_api_for_manager(*, manager_id: UUID) -> Any:
         MetaTokenExpiredError: token expired (60d natural expiry)
     """
     from facebook_business.api import FacebookAdsApi  # noqa: PLC0415
+    from facebook_business.session import FacebookSession  # noqa: PLC0415
 
     from src.auth.tokens import decrypt_refresh_token, derive_master_key_from_settings
     from src.config import get_settings
@@ -47,9 +48,13 @@ async def build_meta_api_for_manager(*, manager_id: UUID) -> Any:
     master_key = derive_master_key_from_settings(settings.aes_master_key)
     access_token = decrypt_refresh_token(oc.access_token_enc, master_key)
 
-    return FacebookAdsApi(
-        access_token=access_token,
+    # facebook_business v21: FacebookAdsApi.__init__ accepts (session, api_version,
+    # enable_debug_logger) — NOT access_token/app_id/app_secret kwargs directly.
+    # Construct FacebookSession first, then pass to FacebookAdsApi. This pattern
+    # mirrors what FacebookAdsApi.init() does internally but avoids global state.
+    session = FacebookSession(
         app_id=settings.meta_app_id,
         app_secret=settings.meta_app_secret,
-        api_version="v22.0",
+        access_token=access_token,
     )
+    return FacebookAdsApi(session=session, api_version="v22.0")
