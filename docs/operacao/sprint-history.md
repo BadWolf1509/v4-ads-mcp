@@ -2,7 +2,7 @@
 
 > **Purpose:** Detailed history of Sprints 3b.1 through 3b.37 (Google Ads) + Sprint family M (Meta Ads, starting M.1 2026-05-24). Extracted from CLAUDE.md `Current state` table to reduce context bootstrap cost in new Claude Code sessions.
 
-> **Last extracted:** 2026-05-25 (Sprint M.2b shipped + smoke 5/8 PASS + F48 fixed + **Meta App Review SUBMITTED 2026-05-25**; 12 commits, 59ª tool, T4/T7/T8 smoke + Meta review response pendentes; até 10 dias úteis Meta timeline).
+> **Last extracted:** 2026-05-25 (Sprint M.2b shipped + **smoke 8/8 PASS** + F48/F49 fixed + **Meta App Review SUBMITTED 2026-05-25**; 14 commits, 59ª tool, A5 validado em prod, apenas Meta review response pendente; até 10 dias úteis Meta timeline).
 
 > **For findings cross-reference:** see [findings-catalog.md](findings-catalog.md).
 
