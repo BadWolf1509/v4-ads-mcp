@@ -12,6 +12,57 @@
     <p class="text-sm text-v4-gray-700 mt-2">Visão consolidada de uso, saúde e onboarding da plataforma.</p>
   </header>
 
+  {# OAuth connections card #}
+  <section class="v4-card mb-6 p-4">
+    <h2 class="text-lg font-semibold text-v4-gray-900 mb-4">Suas conexões OAuth</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {# Google connection #}
+      <div class="p-4 border border-v4-gray-100 rounded-md">
+        <div class="flex items-center justify-between mb-2">
+          <span class="font-medium text-v4-gray-900">Google Ads</span>
+          {% if google_conn %}
+            <span class="text-xs px-2 py-1 bg-v4-green-soft text-v4-green rounded">Conectado</span>
+          {% else %}
+            <span class="text-xs px-2 py-1 bg-v4-gray-50 text-v4-gray-700 rounded">Desconectado</span>
+          {% endif %}
+        </div>
+        {% if google_conn %}
+          <p class="text-sm text-v4-gray-700">{{ google_conn.google_email }}</p>
+          <p class="text-xs text-v4-gray-700">Conectado em {{ google_conn.connected_at.strftime('%d/%m/%Y') }}</p>
+          <a href="/oauth/google/start?mode=panel_login" class="text-xs text-v4-red hover:underline mt-2 inline-block">Reconectar</a>
+        {% else %}
+          <a href="/oauth/google/start?mode=panel_login" class="v4-btn v4-btn--small v4-btn--primary mt-2 inline-block">Conectar Google</a>
+        {% endif %}
+      </div>
+
+      {# Meta connection — NEW (Sprint M.2a) #}
+      <div class="p-4 border border-v4-gray-100 rounded-md">
+        <div class="flex items-center justify-between mb-2">
+          <span class="font-medium text-v4-gray-900">Meta Ads</span>
+          {% if meta_conn %}
+            {% if meta_token_expiring_soon %}
+              <span class="text-xs px-2 py-1 bg-v4-gold-soft text-v4-gold rounded">Expira em breve</span>
+            {% else %}
+              <span class="text-xs px-2 py-1 bg-v4-green-soft text-v4-green rounded">Conectado</span>
+            {% endif %}
+          {% else %}
+            <span class="text-xs px-2 py-1 bg-v4-gray-50 text-v4-gray-700 rounded">Desconectado</span>
+          {% endif %}
+        </div>
+        {% if meta_conn %}
+          <p class="text-sm text-v4-gray-700">{{ meta_conn.fb_email }}</p>
+          <p class="text-xs text-v4-gray-700">
+            Expira em {{ meta_conn.token_expires_at.strftime('%d/%m/%Y') }}
+            ({{ meta_days_until_expiry }} dias)
+          </p>
+          <a href="/oauth/meta/start" class="text-xs text-v4-red hover:underline mt-2 inline-block">Reconectar</a>
+        {% else %}
+          <a href="/oauth/meta/start" class="v4-btn v4-btn--small v4-btn--primary mt-2 inline-block">Conectar Meta</a>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
   {# Top metrics #}
   <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
     <div class="border border-v4-gray-100 rounded-md p-4">

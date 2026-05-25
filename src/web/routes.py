@@ -21,6 +21,7 @@ from src.db.repositories import (
     google_oauth_connections,
     manager_account_access,
     mcp_sessions,
+    meta_oauth_connections,
 )
 from src.db.repositories.mcp_sessions import DEFAULT_TTL_DAYS
 from src.web.deps import (
@@ -612,6 +613,18 @@ async def admin_index(
                FROM managers ORDER BY coalesce(invited_at, created_at) DESC LIMIT 10"""
         )
 
+        # Load OAuth connections
+        google_conn = await google_oauth_connections.get_active_for_manager(conn, user.id)
+        meta_conn = await meta_oauth_connections.get_active_for_manager(conn, user.id)
+
+    # Compute meta token expiry signals
+    meta_token_expiring_soon = False
+    meta_days_until_expiry: int | None = None
+    if meta_conn is not None:
+        delta = meta_conn.token_expires_at - datetime.now(UTC)
+        meta_days_until_expiry = max(0, delta.days)
+        meta_token_expiring_soon = delta.days < 7
+
     return templates.TemplateResponse(
         request,
         "admin/index.html",
@@ -628,6 +641,10 @@ async def admin_index(
             "top_operations": [dict(r) for r in top_ops],
             "top_managers": [dict(r) for r in top_mgrs],
             "recent_onboarding": [dict(r) for r in onboarding],
+            "google_conn": google_conn,
+            "meta_conn": meta_conn,
+            "meta_token_expiring_soon": meta_token_expiring_soon,
+            "meta_days_until_expiry": meta_days_until_expiry,
         },
     )
 
