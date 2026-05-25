@@ -27,6 +27,8 @@ _TEST_ENV = {
     "SUPABASE_ANON_KEY": "test-anon",
     "SUPABASE_SERVICE_KEY": "test-service",
     "LOG_LEVEL": "warning",
+    "META_APP_ID": "test_meta_app_123456789",
+    "META_APP_SECRET": "test_meta_secret_dummy_value_at_least_32_chars_long",
 }
 
 # Testcontainers needs DOCKER_HOST + Ryuk-disable on Windows + Docker Desktop
