@@ -216,7 +216,7 @@ async def list_for_manager(
     params.append(limit)
     sql = f"""SELECT id, occurred_at, operation, customer_id, action_type,
                      target_count, status, duration_ms, provider_request_id,
-                     error_message
+                     error_message, platform
               FROM audit_log
               WHERE {" AND ".join(where)}
               ORDER BY occurred_at DESC
@@ -234,6 +234,7 @@ async def list_for_manager(
             "duration_ms": int(r["duration_ms"]) if r["duration_ms"] is not None else None,
             "provider_request_id": r["provider_request_id"],
             "error_message": r["error_message"],
+            "platform": r["platform"],
         }
         for r in rows
     ]
