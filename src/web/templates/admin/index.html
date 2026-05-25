@@ -60,7 +60,8 @@
           {# M.2b: action buttons + warning + flash #}
           <div class="flex gap-2 mt-4">
             <form method="post" action="/oauth/meta/refresh-accounts" style="margin: 0;">
-              {{ button("Atualizar lista", variant="secondary", size="small") }}
+              {# F49: button() macro default type="button" — explicit type="submit" required dentro de form pra submeter #}
+              {{ button("Atualizar lista", variant="secondary", size="small", type="submit") }}
             </form>
             {{ button("Revogar conexão", variant="danger", size="small", type="button", attrs='onclick="document.getElementById(\'meta-revoke-modal\').showModal()"') }}
           </div>
