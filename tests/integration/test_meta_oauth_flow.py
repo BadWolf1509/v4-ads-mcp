@@ -159,12 +159,20 @@ async def test_oauth_callback_blocks_missing_essentials(client: AsyncClient) -> 
 
 @pytest.mark.integration
 @respx.mock
-async def test_oauth_callback_blocks_non_v4_email(client: AsyncClient) -> None:
-    """/me returns email outside @v4company.com → 302 access-denied (domain)."""
+async def test_oauth_callback_accepts_personal_fb_email(client: AsyncClient) -> None:
+    """fb_email NÃO precisa ser @v4company.com — Facebook account é PESSOAL do gestor.
+
+    Authoritative auth é o manager_id no state HMAC (assinado quando gestor já
+    estava logado V4 em /admin). fb_email é metadata cosmético — armazenado em
+    meta_oauth_connections.fb_email pra display, mas não usado pra auth check.
+
+    Sprint M.2a fix: removido is_allowed_email(fb_email) check do callback Meta
+    (era restrição impraticável — contas FB pessoais usam gmail/hotmail).
+    """
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         mid = uuid4()
-        await managers.create(conn, manager_id=mid, email="nv@v4company.com", full_name="Nv")
+        await managers.create(conn, manager_id=mid, email="dev@v4company.com", full_name="Dev")
 
     state = _make_state(str(mid))
 
@@ -176,16 +184,38 @@ async def test_oauth_callback_blocks_non_v4_email(client: AsyncClient) -> None:
     )
     respx.get("https://graph.facebook.com/v22.0/me").mock(
         return_value=Response(
-            200, json={"id": "999", "email": "stranger@external.com", "name": "X"}
+            200,
+            json={"id": "999", "email": "wellington.ribeiro.eng@gmail.com", "name": "Wellington"},
         )
+    )
+    respx.get("https://graph.facebook.com/v22.0/debug_token").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": {
+                    "scopes": [
+                        "ads_read",
+                        "ads_management",
+                        "business_management",
+                        "email",
+                        "public_profile",
+                    ]
+                }
+            },
+        )
+    )
+    respx.get("https://graph.facebook.com/v22.0/me/adaccounts").mock(
+        return_value=Response(200, json={"data": []})
     )
 
     resp = await client.get(
         f"/oauth/meta/callback?code=fake_code&state={state}",
         follow_redirects=False,
     )
+    # NÃO deve mais bloquear por domain — deve completar OAuth flow
     assert resp.status_code == 302
-    assert "reason=domain" in resp.headers["location"]
+    assert "/admin?meta_connected=1" in resp.headers["location"]
+    assert "reason=domain" not in resp.headers["location"]
 
 
 @pytest.mark.integration

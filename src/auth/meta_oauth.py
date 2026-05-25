@@ -23,7 +23,6 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from src.auth.domain_check import is_allowed_email
 from src.auth.oauth_state import InvalidStateError, sign_state, verify_state
 from src.auth.tokens import derive_master_key_from_settings, encrypt_refresh_token
 from src.config import get_settings
@@ -110,13 +109,15 @@ async def meta_oauth_callback(
     1. Verify state HMAC
     2. POST /oauth/access_token → short-lived token
     3. GET /oauth/access_token?grant_type=fb_exchange_token → long-lived token
-    4. GET /me → fb_user_id + fb_email
-    5. is_allowed_email check
-    6. GET /debug_token → granted_scopes
-    7. check_meta_granted_scopes → block if missing essentials
-    8. Encrypt + upsert meta_oauth_connections
-    9. GET /me/adaccounts → upsert meta_ad_accounts + grant_all_active
-    10. audit_log + redirect to /admin
+    4. GET /me → fb_user_id + fb_email (metadata only — NÃO valida domínio
+       porque fb_email é a conta Facebook PESSOAL do gestor, geralmente
+       gmail/hotmail. O authoritative auth check é o manager_id no state
+       HMAC, assinado quando o gestor já estava logado V4 em /admin.)
+    5. GET /debug_token → granted_scopes
+    6. check_meta_granted_scopes → block if missing essentials
+    7. Encrypt + upsert meta_oauth_connections
+    8. GET /me/adaccounts → upsert meta_ad_accounts + grant_all_active
+    9. audit_log + redirect to /admin
     """
     if error:
         msg = error_description or error
@@ -220,15 +221,9 @@ async def meta_oauth_callback(
                 status_code=302,
             )
 
-        # Step 5: V4 domain check
-        if not is_allowed_email(fb_email):
-            log.warning("meta_oauth_email_not_v4", fb_email=fb_email)
-            return RedirectResponse(
-                f"/access-denied?reason=domain&email={fb_email}",
-                status_code=302,
-            )
-
-        # Step 6: GET /debug_token → check granted scopes
+        # Step 5: GET /debug_token → check granted scopes
+        # (Skip V4 domain check: fb_email é conta Facebook PESSOAL do gestor;
+        #  authoritative auth é o manager_id no state HMAC.)
         debug_resp = await http.get(
             f"{META_GRAPH_BASE}/debug_token",
             params={
@@ -246,7 +241,7 @@ async def meta_oauth_callback(
                 status=debug_resp.status_code,
             )
 
-        # Step 7: block if essentials missing
+        # Step 6: block if essentials missing
         missing = check_meta_granted_scopes(granted_scopes)
         if missing:
             log.warning("meta_oauth_missing_essentials", missing=list(missing))
@@ -255,12 +250,12 @@ async def meta_oauth_callback(
                 status_code=302,
             )
 
-        # Step 8: encrypt + upsert connection
+        # Step 7: encrypt + upsert connection
         master_key = derive_master_key_from_settings(settings.aes_master_key)
         encrypted = encrypt_refresh_token(access_token, master_key)
         token_expires_at = datetime.now(UTC) + timedelta(seconds=expires_in_seconds)
 
-        # Step 9: list ad accounts
+        # Step 8: list ad accounts
         adacc_resp = await http.get(
             f"{META_GRAPH_BASE}/me/adaccounts",
             params={
@@ -272,7 +267,7 @@ async def meta_oauth_callback(
         if adacc_resp.status_code == 200:
             ad_accounts_data = adacc_resp.json().get("data", [])
 
-    # Step 8+9 persist (outside http context)
+    # Step 7+8 persist (outside http context)
     pool = connection.get_pool()
     accounts_payload: list[dict[str, Any]] = []
     async with pool.acquire() as conn:
@@ -311,7 +306,7 @@ async def meta_oauth_callback(
                     ad_account_id=a["ad_account_id"],
                 )
 
-        # Step 10: audit
+        # Step 9: audit
         await audit_log.record(
             conn,
             manager_id=manager_id,
