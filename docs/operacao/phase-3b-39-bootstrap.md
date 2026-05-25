@@ -300,9 +300,76 @@ Se MCP Inspector disponível, validar que tool entries em `tools/list` response 
 
 ---
 
-## Test T3 — Wellington Claude Code config procedure
+## Test T3 — Wellington Claude Code restart (D3 fix obsoleted manual config)
 
-**Setup:** Core deliverable de F1. Wellington edita manualmente `~/.claude/settings.json` adicionando defer_loading per-tool. Procedure step-by-step abaixo. Decision gate D2 confirma: defer_loading é CLIENT-SIDE Anthropic Messages API parameter, NÃO server config — Claude Code repassa pro API call.
+**⚠️ ATENÇÃO — runbook procedure 3.1-3.8 abaixo está OBSOLETO pós-D3 finding (commit `590261d` 2026-05-25).**
+
+**O que mudou (D3 finding):** WebFetch direto a docs Claude Code oficiais (https://code.claude.com/docs/en/mcp#scale-with-mcp-tool-search) revelou que:
+1. Claude Code v2.x já tem `ENABLE_TOOL_SEARCH=true` por DEFAULT — todas MCP tools são deferred automaticamente
+2. `settings.json tools[].defer_loading` NÃO existe no schema Claude Code (era best-guess errado D2)
+3. Mecanismo correto pra promover always-loaded é **`_meta.anthropic/alwaysLoad: true` server-side per-tool** (MCP standard field)
+
+**Fix aplicado (D3):** `src/mcp/server.py` `_build_tool_meta(bucket)` helper emite `anthropic/alwaysLoad: True` em `_meta` quando bucket="always" (21 tools). Defer tools (38) omitem field → Claude Code default = deferred via Tool Search Tool. **Zero config Wellington side needed.**
+
+**Procedure T3 atualizado (substitui Steps 3.1-3.8 originais):**
+
+### Step 3.1 — Wellington verify deploy verde + restart Claude Code
+
+```powershell
+# Confirma /health 200
+Invoke-WebRequest https://v4-ads-mcp-jf26mmrgqa-rj.a.run.app/health
+```
+
+### Step 3.2 — Quit Claude Code completamente + reabrir
+
+```powershell
+# Fecha todos processos Claude Code
+Get-Process | Where-Object {$_.ProcessName -like "*claude*"} | Stop-Process -Force
+# Reabrir manualmente
+```
+
+### Step 3.3 — Verify v4-ads connected em sessão fresh
+
+Slash command em sessão Claude Code:
+```
+/mcp
+```
+
+Esperado: lista MCP servers connected, `v4-ads` presente.
+
+### Step 3.4 — Verify tool count em context default
+
+Em sessão fresh Claude Code, ask:
+```
+Quais tools v4-ads você tem disponíveis agora?
+```
+
+Esperado:
+- Claude lista ~21 tools always-loaded em context default (bucket="always")
+- 38 tools defer NÃO aparecem na lista inicial — mas continuam invocáveis via Tool Search Tool quando named explicitly
+- Token usage reduced ~66% em descriptions tools (proxy: contexto Claude reporta menos tokens em initialization)
+
+### Validação T3 atualizada:
+
+- [ ] `/health` 200 confirmed
+- [ ] Wellington restart Claude Code completo
+- [ ] `/mcp` slash command mostra `v4-ads` connected
+- [ ] Tool count default em context ~21 (bucket="always" subset)
+- [ ] **NÃO editou `~/.claude/settings.json`** (D3 confirma config Wellington side é zero — fix é server-side)
+- [ ] Defer tools acessíveis via name explicit (T5 cobre)
+
+**Result:** ⬜ pending Wellington restart + verification
+
+---
+
+## OBSOLETE — Procedure original Steps 3.1-3.8 (preserved for audit trail)
+
+> Esta seção documenta o que TINHAMOS planejado pré-D3 finding (commit `590261d`). PRESERVADA pra audit trail + lição cross-layer research importance. **NÃO seguir** — substituída pelo Step 3.1-3.4 acima.
+
+### [OBSOLETE] Original setup
+Core deliverable de F1 (versão pré-D3). Wellington edita manualmente `~/.claude/settings.json` adicionando defer_loading per-tool. Procedure step-by-step abaixo. Decision gate D2 confirma: defer_loading é CLIENT-SIDE Anthropic Messages API parameter, NÃO server config — Claude Code repassa pro API call.
+
+**Por que obsoleto:** D3 finding (commit `590261d` 2026-05-25) descobriu via docs oficial Claude Code que (1) Tool Search é default em v2.x, (2) settings.json `tools[].defer_loading` não existe nesse schema, (3) mecanismo real é server-side `_meta.anthropic/alwaysLoad` per tool. Procedure manual abaixo seria no-op em Claude Code real.
 
 ### Step 3.1 — Locate Claude Code user settings file
 
