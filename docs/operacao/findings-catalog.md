@@ -4,7 +4,7 @@
 >
 > **Maintainer note:** Add a new entry here whenever a finding is documented in a smoke runbook. Keep entries scannable — link to runbook for detail.
 >
-> **Last updated:** 2026-05-25 (Sprint 3b.38 ship + Meta App Review response + Sprint 3b.39 F1 refactor ship: **+D2 decision-not-bug** (MCP defer_loading client-side discovery via OQ1 research — F1 server-metadata-only implementation via bucket classification 21 always + 38 defer). 51 unique findings (F1-F52 + A1-A6 + D1-D2, alguns IDs skipped).)
+> **Last updated:** 2026-05-25 (Sprint 3b.38 + Meta App Review + Sprint 3b.39 F1 + D3 fix ship: **+D2** (MCP defer_loading client-side discovery via OQ1) + **+D3** (real mechanism is server-side per-tool `_meta.anthropic/alwaysLoad` — Claude Code Tool Search default v2.x; D2 was wrong about location). **52 unique findings** (F1-F52 + A1-A6 + D1-D3, alguns IDs skipped). Lesson reinforced 3× consecutiva: sempre verificar docs oficial cliente ANTES de design refactor cross-layer (D1+D2+D3).)
 
 ---
 

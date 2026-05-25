@@ -19,7 +19,14 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 
 ## Current state
 
-**Last updated:** 2026-05-25
+**Last updated:** 2026-05-25 — pós-Sprint 3b.39 F1 D3 fix ship (server-side `anthropic/alwaysLoad` mecanismo correto). **52 findings** (F1-F52 + A1-A6 + D1-D3). Token rotation procedure documentado em conventions (Bearer issued via UI `/sessions/new`).
+
+### Quick-start próxima sessão (TL;DR)
+
+- **Sprint atual:** Sprint 3b.39 F1 ✅ shipped — Tool bucket classification (21 always + 38 defer) + `_meta.anthropic/alwaysLoad` server-side fix. Decision gate F1→F2 outcome-based timeout 14d (Wellington 7d feedback D+7 = 2026-06-01).
+- **Próximo natural:** Sprint 3b.40 plan (Fase 2 Caminho C — `get_performance_breakdown` substitui 9 reports) OR Sprint M.3 plan (`meta_get_campaign_performance` paridade Pareto + Caminho B+ Meta volume).
+- **Token v4-ads:** rotacionado 25/05 funcional. Procedure pra futuro: UI `/sessions/new` (NÃO inventar tokens, backend valida via hash).
+- **Quando ler outros docs:** `findings-catalog.md` se bug suspeito, `sprint-history.md` se detalhe per-sprint, specs/plans se executar fase pending.
 
 ### Shipped — 59 MCP tools (57 Google + 2 Meta)
 
@@ -29,14 +36,14 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 | Google Sprint 3b.1 → 3b.37 (37 sprints) | ✅ 2026-05-04→21 | 57 tools shipped + smoke real. Detail per sprint: [`sprint-history.md`](docs/operacao/sprint-history.md). Latest: 3b.33 `detect_drift`, 3b.34 F46 fix, 3b.35 `audit_goal_attribution`, 3b.36 `audit_zombie_keywords`, 3b.37 `audit_orphan_smart_actions`. |
 | Meta Sprint M.1 + M.1.1 + M.2a + M.2b | ✅ 2026-05-24→25 | DB foundation (4 tables) + OAuth flow + facebook_business v21 SDK + 2 tools MCP (`meta_list_my_ad_accounts` + `meta_get_account_overview`) + endpoints `/oauth/meta/{data-deletion-callback,refresh-accounts}` + admin UI Revogar/Refresh buttons + A5 fix. **App Review respondido 25/05 10:58 GMT-3: `public_profile` APROVADA, `Marketing API Access Tier` REJEITADA (insufficient calls 15d). Decisão Caminho B+ janela observação 30-45 dias — acelerar M.3+ pra volume natural + re-submit Full Access após atingir 500 calls/15d threshold.** Detail: [`sprint-history.md`](docs/operacao/sprint-history.md) §Meta family. Roadmap M.3-M.25 segue normal (Limited Access permite testing, MAS docs Meta diz "extremamente limitado, não para produção visualizado para cliente publicitário" — observação throttle obrigatória). |
 | Sprint 3b.38 | ✅ 2026-05-25 | F52 fix `audit_zombie_keywords` adiciona `ad_group_status` field + description warning (Opção C dogfood B6). F23 fix `get_change_history` clamp LAST_30_DAYS pra today-28 + warning na response (promoted "known limitation" → "fixed"). B1 description refino "HORAS" → "DIAS" (medição empírica dogfood 25/05 >4 dias). Smoke real 5/5 PASS: T1 280 zumbis = 170 REMOVED + 110 ENABLED match exato dogfood (DELL 93 + GPA02 ANDAIME 77 órfãs cosméticas), T2+T3 F23 clamp/no-clamp positive/negative. |
-| Sprint 3b.39 (refactor F1) | ✅ 2026-05-25 | Fase 1 do refactor arquitetural V4 Ads MCP (spec: `2026-05-25-architecture-refactor-design.md`). **Tool count stays at 59** (metadata-only F1). 6 tasks A-F via subagent-driven (haiku+sonnet+haiku waves). **Discovery D2 pré-plan via OQ1 research:** MCP `defer_loading` é CLIENT-SIDE Anthropic API param, NÃO server metadata — F1 reformulada server-metadata-only + Wellington manual Claude Code config. **Server changes:** `@register_tool` decorator add `bucket: Literal["always", "defer"]` kwarg + MCP SDK 1.22.0 `Tool._meta` field populated com `{"com.v4company/bucket": ...}` em `list_tools()` + mass-tag 59 tool files (`# bucket:` line 1 + `[CORE]`/`[DEFER]` description prefix + `bucket="..."` kwarg). **Final bucket state:** 21 always + 38 defer = 59 (data-driven via audit_log uses_30d). **Smoke runbook** `phase-3b-39-bootstrap.md` 6 tests T1-T6 + Wellington Claude Code config procedure step-by-step `~/.claude/settings.json`. **Pre-push 5/5 + 792/792 unit tests + CI verde.** Decision gate F1→F2 outcome-based timeout 14d. Próxima: Fase 2 (Sprint 3b.40 — Caminho C consolidação `get_performance_breakdown`). |
+| Sprint 3b.39 (refactor F1) | ✅ 2026-05-25 | Fase 1 do refactor arquitetural V4 Ads MCP (spec: `2026-05-25-architecture-refactor-design.md`). **Tool count stays at 59** (metadata-only F1). 6 tasks A-F via subagent-driven + 2 D-findings cross-layer descobertas (D2 pré-plan via OQ1, D3 pré-Wellington-config). **Final bucket state:** 21 always + 38 defer = 59 (data-driven via audit_log uses_30d). **Server-side mechanism (D3 correct):** `@register_tool` decorator add `bucket: Literal["always", "defer"]` kwarg + `_meta` field per Tool com `{"com.v4company/bucket": ..., "anthropic/alwaysLoad": true}` (omit alwaysLoad em defer) + mass-tag 59 tool files (`# bucket:` line 1 + `[CORE]`/`[DEFER]` description prefix). **D3 finding:** Claude Code v2.x `ENABLE_TOOL_SEARCH=true` por DEFAULT — todas MCP tools defer automaticamente. Mecanismo pra promover always-loaded é `_meta.anthropic/alwaysLoad: true` server-side per-tool (NÃO client-side settings.json como D2 inicialmente assumiu). Wellington action: ZERO config edits — apenas restart Claude Code. **Smoke real validado bit-a-bit em produção** pós-restart: `list_my_accounts` retornou 25 contas via always-loaded path + 38 deferred tools confirmadas via system reminder. **Pre-push 5/5 + 792/792 unit tests + CI verde + token rotation procedure** documentado (UI `/sessions/new` issuing). Decision gate F1→F2 outcome-based timeout 14d (Wellington 7d feedback D+7=2026-06-01). Próxima: Fase 2 (Sprint 3b.40 — Caminho C consolidação `get_performance_breakdown`). |
 
-**/health 200, CI green.** **16 web pages** em prod. **Q8 invite-only allowlist** ativo. **51 findings catalogados** (F1-F52 + A1-A6 + D1-D2, alguns IDs skipped): [`findings-catalog.md`](docs/operacao/findings-catalog.md). **Smoke real M.2b 8/8 PASS** com F48 (FacebookSession factory `a281c00`) + F49 (button macro type `fe9a976`) caught/fixed em prod. **Smoke real 3b.38 5/5 PASS** F52 ad_group_status field + F23 clamp validados bit-a-bit em conta MO-JP+CAB (280 zumbis = 170 REMOVED + 110 ENABLED match exato dogfood). F50/F51 retrospective trace de F33/F37 (já fixados desde 2026-05-18). D1 decision-not-bug: Meta App Review Standard Tier rejeitado, Caminho B+ janela observação 30-45 dias. D2 decision-not-bug: MCP defer_loading client-side Anthropic API param (Sprint 3b.39 F1 server-metadata-only via bucket classification).
+**/health 200, CI green.** **16 web pages** em prod. **Q8 invite-only allowlist** ativo. **52 findings catalogados** (F1-F52 + A1-A6 + D1-D3, alguns IDs skipped): [`findings-catalog.md`](docs/operacao/findings-catalog.md). **Smoke real M.2b 8/8 PASS** com F48 (FacebookSession factory) + F49 (button macro) caught/fixed em prod. **Smoke real 3b.38 5/5 PASS** F52 ad_group_status field + F23 clamp validados bit-a-bit em conta MO-JP+CAB. **Smoke real 3b.39 F1 PASS** em produção: 21 always + 38 deferred + token rotation completa pós-Bearer exposure incident. F50/F51 retrospective trace de F33/F37 (já fixados desde 2026-05-18). **D1-D3 trio decision-not-bug:** D1 (Meta App Review Standard Tier rejeitado — Caminho B+ janela observação 30-45 dias), D2 (MCP defer_loading client-side Anthropic API param — wrong design assumption), D3 (real mechanism is server-side per-tool `_meta.anthropic/alwaysLoad` — Claude Code Tool Search default v2.x). **Lição reinforced 3× consecutiva:** sempre verificar docs oficial cliente ANTES de design refactor cross-layer (D1+D2+D3 cada salvou 2-3 dias wasted work).
 
 ### Pending / future
 
 - **Meta App Review RESPONDIDO 2026-05-25 10:58 GMT-3** — `public_profile` ✅ APROVADA, `Marketing API Access Tier` ❌ REJEITADA. Critério literal Meta: ≥500 calls/15d + <15% error rate (atualizado, era 1.500 antes). Nomenclatura atual: **Limited Access** (ex-"Standard", default sem App Review — "extremamente limitado, NÃO para produção visualizado para cliente publicitário" docs Meta literal) vs **Full Access** (ex-"Advanced", o que rejeitou). **Decisão Caminho B+ janela observação 30-45 dias** — V4 LS&Co (Wellington + 3 colab futuros) = 4 users ≤ 25 cap Dev Mode/Limited OK pra testing, MAS red flag throttle em produção real. **Estratégia:** acelerar M.3+ pra ship mais tools Meta (`meta_get_campaign_performance` etc) → Wellington usa naturalmente day-to-day → volume cresce → ~30-45 dias atinge 500 calls cumulativas → re-submit Full Access com fundamento. Não-Caminho A permanente (risk throttle production), não-Caminho B forçado (3×/dia waste). **Monitorar X-Business-Use-Case-Usage** em `meta_rate_counters` table — se Wellington bater throttle real antes da janela, priorize re-submit imediato. **Decision gate atualizado:** continuar M.3 = ≥3 calls/semana dogfood; senão pivot Google. **Action quando colab entrarem:** add como App Roles → Administrators no Meta Dev Console (Dev Mode permite 25). Ver D1 finding pra detalhes técnicos + 2 conceitos diferentes (Marketing API tier vs resource access tier).
-- **Refactor arquitetural Sprint 3b.39 ✅ shipped (Fase 1)** — tool bucket classification + Wellington Claude Code config doc. D2 finding: MCP defer_loading client-side (não server metadata). Estado: 21 always + 38 defer = 59. Smoke runbook 6 tests + Wellington 7d feedback collection pending. Decision gate F1→F2 outcome-based timeout 14d. **Próximo Sprint 3b.40 (Fase 2):** Caminho C consolidação `get_performance_breakdown(level, dimension)` substitui 9 reports = -9 tools permanente. Spec: [`2026-05-25-architecture-refactor-design.md`](docs/superpowers/specs/2026-05-25-architecture-refactor-design.md).
+- **Refactor arquitetural Sprint 3b.39 ✅ F1 SHIPPED + VALIDATED** — bucket classification (21 always + 38 defer = 59) + server-side `_meta.anthropic/alwaysLoad` (D3 correct mechanism). Wellington action = restart Claude Code (zero settings.json edits, D2 inicialmente errado). Smoke real produção PASS (system reminder confirmou "38 deferred tools available"). Wellington 7d feedback collection: D+7 = 2026-06-01 (5 perguntas estruturadas). Decision gate F1→F2 outcome-based timeout 14d. **Próximo Sprint 3b.40 (Fase 2):** Caminho C consolidação `get_performance_breakdown(level, dimension)` substitui 9 reports = -9 tools permanente. Spec: [`2026-05-25-architecture-refactor-design.md`](docs/superpowers/specs/2026-05-25-architecture-refactor-design.md).
 - **Sprint 3b.39+ post-F1 candidates** (fora-refactor): audit_negative_criterion_overlap, audit_assets_parity_between_campaigns, remove_* bundle, audit_log gap fix em `run_gaql`/`get_my_audit_log`/`get_my_rate_limit_status`, W2 `verify_campaign_state` ICE 280.
 - **A4 OPEN finding:** Customer Match exclusion mechanism (3b.4/3b.5+). Sprint dedicated candidate.
 - **3 colaboradores V4 LS&Co como Meta App Administrators** quando time começar a usar — adicionar via Meta Dev Console > App Roles > Administrators (Limited Access/Dev Mode permite 25 admins/testers sem Full Access tier, OK pra janela observação Caminho B+).
@@ -48,17 +55,22 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 
 ## Read these first when continuing work
 
+**Critical (read se task envolve):**
 ```
-docs/operacao/findings-catalog.md       # ★ Bug history (48 findings, F1-F51 + A1-A6)
-docs/operacao/sprint-history.md         # Detailed sprint table (3b.1→3b.37 + M.1→M.2b)
+docs/operacao/findings-catalog.md       # ★ Bug history 52 findings (F1-F52 + A1-A6 + D1-D3)
+docs/operacao/sprint-history.md         # ★ Sprint table per-row detail (3b.1→3b.39 + M.1→M.2b)
+docs/superpowers/specs/2026-05-25-architecture-refactor-design.md   # ★ Refactor arquitetural 4 fases
+```
+
+**Reference (se relevant pra task atual):**
+```
 docs/operacao/phase-3b-XX-bootstrap.md  # Smoke runbook per Google sprint
 docs/operacao/phase-M-2a-bootstrap.md   # Smoke runbook Meta M.2a (template pra M-family)
 docs/operacao/phase-M-2b-bootstrap.md   # Smoke runbook Meta M.2b (8/8 PASS)
-docs/operacao/dogfood-2026-05-19-mestre-da-obra-jp-cleanup-massivo.md   # ICE-ranked Google backlog
-docs/operacao/dogfood-2026-05-21-mestre-da-obra-jp-drift-detection.md   # Drift detection findings (W1/W2/W3 + B1/B2/B3)
-docs/operacao/dogfood-2026-05-25-meta-first-tool-real-biz-findings.md   # Meta dogfood findings (D1/D2/D3 + cross-platform)
-docs/operacao/tool-audit-2026-05-25.md  # ★ Tool count analysis (58 tools, 22 zombies, sweet spot 30-45)
-docs/superpowers/specs/2026-05-24-meta-ads-incorporation-design.md      # ★ Meta sprint family overview (M.1-M.25 roadmap)
+docs/operacao/tool-audit-2026-05-25.md  # Tool count analysis (sweet spot 30-45)
+docs/operacao/tool-buckets-2026-05-25.md  # Bucket classification per-tool (Sprint 3b.39 source)
+docs/superpowers/specs/2026-05-24-meta-ads-incorporation-design.md   # Meta family roadmap M.1-M.25
+docs/operacao/dogfood-2026-05-{19,21,25}-*.md                        # Real biz feedback findings
 docs/superpowers/specs/  +  plans/      # Design + implementation per sprint
 ```
 
@@ -196,6 +208,22 @@ Force Cloud Run pick up new secret versions: `gcloud run services update v4-ads-
 Tailwind CDN (no build) + V4 tokens em `src/web/static/v4-tokens.css`. 22 components em `_components.html` macros. Vanilla JS, no Alpine/React. **Editorial mode** (login/access-denied/help/admin hero): display 36-56px, V4 red `#e50914`, generous whitespace. **Operational mode** (audit/access matrix/admin/*): compact 12-14px, mono metadata, dense.
 
 **F49 lesson — `button()` macro:** default `type="button"`. Quando usado dentro de `<form>`, MUST passar `type="submit"` explicitly senão NÃO submete form (browser default). Pattern: `{{ button("Salvar", variant="primary", type="submit") }}`.
+
+### Tool bucket classification (post-3b.39 F1)
+
+`@register_tool` decorator aceita `bucket: Literal["always", "defer"]` kwarg (default `"defer"`, conservative). Cada tool file tem `# bucket: always|defer` line 1 (grepability) + description prefix `[CORE]`/`[DEFER]` + `_meta.com.v4company/bucket` em `list_tools()`. **D3 mechanism:** quando bucket="always", `_meta` também inclui `"anthropic/alwaysLoad": true` — Claude Code v2.x default `ENABLE_TOOL_SEARCH=true` defere TODAS MCP tools, esse field per-tool é único way de promover always-loaded. Bucket source-of-truth: [`tool-buckets-2026-05-25.md`](docs/operacao/tool-buckets-2026-05-25.md). Re-classify mensal via audit_log uses_30d query.
+
+### Token rotation procedure (Bearer v4-ads MCP)
+
+Bearer tokens v4-ads-mcp SÓ são válidos se issued via backend UI (NÃO inventar). Procedure:
+1. Browser https://v4-ads-mcp-jf26mmrgqa-rj.a.run.app/sessions (Google OAuth login)
+2. "Nova session" → label + TTL (30/60/90/180 dias)
+3. Pós-create, token plaintext flash em `/sessions/{id}?token_flash=true` (cookie expira em 60s — copia imediato OU gera novo)
+4. Cole em `~/.claude.json` → `mcpServers.v4-ads.headers.Authorization` substituindo só o token (backup `.bak` first, validate JSON sintaxe pós-edit)
+5. Restart Claude Code
+6. Revoga token antigo em `/sessions` UI
+
+NUNCA cole secret em chat — backend hash em `mcp_sessions.token_hash`, 401 se Bearer não bate.
 
 ## Tools available (this Claude session)
 
