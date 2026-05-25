@@ -47,6 +47,7 @@ async def test_migrations_are_idempotent(pg: PostgresContainer) -> None:
                 "001_initial_schema.sql",
                 "002_managers_status.sql",
                 "003_meta_schema.sql",
+                "004_audit_log_provider_id.sql",
             ]
     finally:
         await connection.close_pool()
