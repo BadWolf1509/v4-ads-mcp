@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_components.html" import sparkline, badge %}
+{% from "_components.html" import sparkline, badge, button, modal %}
 
 {% block title %}Admin · Visão geral — V4 Ads MCP{% endblock %}
 
@@ -56,11 +56,46 @@
             ({{ meta_days_until_expiry }} dias)
           </p>
           <a href="/oauth/meta/start" class="text-xs text-v4-red hover:underline mt-2 inline-block">Reconectar</a>
+
+          {# M.2b: action buttons + warning + flash #}
+          <div class="flex gap-2 mt-4">
+            <form method="post" action="/oauth/meta/refresh-accounts" style="margin: 0;">
+              {{ button("Atualizar lista", variant="secondary", size="small") }}
+            </form>
+            {{ button("Revogar conexão", variant="danger", size="small", type="button", attrs='onclick="document.getElementById(\'meta-revoke-modal\').showModal()"') }}
+          </div>
+
+          {% if meta_token_expiring_soon %}
+            <div class="mt-4 p-3 bg-v4-gold-soft border-l-4 border-v4-gold rounded text-sm text-v4-gray-900">
+              <span class="font-semibold">⚠ Token expira em breve</span>
+              <p class="text-xs text-v4-gray-700 mt-1">Recomendado reconectar via "Reconectar" antes de {{ meta_conn.token_expires_at.strftime('%d/%m/%Y') }}.</p>
+            </div>
+          {% endif %}
+
+          {% if meta_refreshed %}
+            <div class="mt-4 p-3 bg-v4-green-soft border-l-4 border-v4-green rounded text-sm text-v4-gray-900">
+              <span class="font-semibold">✓ Lista de ad accounts atualizada</span>
+              <p class="text-xs text-v4-gray-700 mt-1">Sincronização via Graph API concluída.</p>
+            </div>
+          {% endif %}
         {% else %}
           <a href="/oauth/meta/start" class="v4-btn v4-btn--small v4-btn--primary mt-2 inline-block">Conectar Meta</a>
         {% endif %}
       </div>
     </div>
+
+    {# M.2b: Revoke confirmation modal #}
+    {% if meta_conn %}
+      {{ modal(
+        "meta-revoke-modal",
+        "Revogar conexão Meta",
+        "<p>Vai desativar todas as tools Meta até reconectar via <strong>/oauth/meta/start</strong>.</p><p class=\"mt-2 text-sm text-v4-gray-700\"><strong>Confirma?</strong></p>",
+        "<form method=\"post\" action=\"/oauth/meta/revoke\" style=\"display: flex; gap: 8px; justify-content: flex-end; margin: 0;\">" ~
+        "<button type=\"button\" onclick=\"this.closest('dialog').close()\" class=\"v4-btn v4-btn--small v4-btn--secondary\">Cancelar</button>" ~
+        "<button type=\"submit\" class=\"v4-btn v4-btn--small v4-btn--danger\">Revogar</button>" ~
+        "</form>"
+      ) }}
+    {% endif %}
   </section>
 
   {# Top metrics #}
