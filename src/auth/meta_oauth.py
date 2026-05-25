@@ -29,7 +29,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from src.auth.oauth_state import InvalidStateError, sign_state, verify_state
-from src.auth.tokens import derive_master_key_from_settings, encrypt_refresh_token
+from src.auth.tokens import (
+    decrypt_refresh_token,
+    derive_master_key_from_settings,
+    encrypt_refresh_token,
+)
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import (
@@ -457,3 +461,90 @@ async def meta_data_deletion_callback(request: Request) -> dict[str, str]:
         "url": url,
         "confirmation_code": confirmation_code,
     }
+
+
+@router.post("/refresh-accounts")
+async def meta_oauth_refresh_accounts(
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+) -> RedirectResponse:
+    """Re-sync meta_ad_accounts list via Graph /me/adaccounts.
+
+    Útil quando cliente novo entra no BM ou ad account é renomeada.
+    Não requer reconnect OAuth (usa long-lived token existente).
+    """
+    settings = get_settings()
+    pool = connection.get_pool()
+
+    async with pool.acquire() as conn:
+        oc = await meta_oauth_connections.get_active_for_manager(conn, user.id)
+        if oc is None:
+            raise HTTPException(status_code=404, detail="No active Meta connection")
+
+        # Check token expiry (proactive)
+        if oc.token_expires_at and (oc.token_expires_at - datetime.now(UTC)).days < 0:
+            raise HTTPException(
+                status_code=422,
+                detail="Token Meta expirou. Reconectar via /oauth/meta/start.",
+            )
+
+        master_key = derive_master_key_from_settings(settings.aes_master_key)
+        access_token = decrypt_refresh_token(oc.access_token_enc, master_key)
+
+    async with httpx.AsyncClient(timeout=30.0) as http:
+        adacc_resp = await http.get(
+            f"{META_GRAPH_BASE}/me/adaccounts",
+            params={
+                "fields": "id,name,business,account_status,currency,timezone_name",
+                "access_token": access_token,
+            },
+        )
+        ad_accounts_data: list[dict[str, Any]] = (
+            adacc_resp.json().get("data", []) if adacc_resp.status_code == 200 else []
+        )
+
+    accounts_payload: list[dict[str, Any]] = []
+    for a in ad_accounts_data:
+        ad_id_raw = a.get("id", "")
+        if not ad_id_raw.startswith("act_"):
+            ad_id_raw = f"act_{ad_id_raw}"
+        business = a.get("business") or {}
+        accounts_payload.append(
+            {
+                "ad_account_id": ad_id_raw,
+                "business_id": business.get("id"),
+                "business_name": business.get("name"),
+                "account_name": a.get("name", ad_id_raw),
+                "currency": a.get("currency"),
+                "timezone_name": a.get("timezone_name"),
+                "account_status": a.get("account_status"),
+            }
+        )
+
+    async with pool.acquire() as conn:
+        if accounts_payload:
+            await meta_ad_accounts.upsert_many(conn, accounts_payload)
+            for a in accounts_payload:
+                await manager_meta_account_access.grant(
+                    conn,
+                    manager_id=user.id,
+                    ad_account_id=a["ad_account_id"],
+                )
+
+        await audit_log.record(
+            conn,
+            manager_id=user.id,
+            session_id=None,
+            customer_id=None,
+            action_type="auth",
+            operation="meta_refresh_accounts",
+            target_count=len(accounts_payload),
+            status="success",
+            platform="meta",
+        )
+
+    log.info(
+        "meta_accounts_refreshed",
+        manager_id=str(user.id),
+        count=len(accounts_payload),
+    )
+    return RedirectResponse("/admin?meta_refreshed=1", status_code=302)

@@ -641,6 +641,10 @@ async def admin_index(
         meta_days_until_expiry = max(0, delta.days)
         meta_token_expiring_soon = delta.days < 7
 
+    meta_connected = request.query_params.get("meta_connected") == "1"
+    meta_revoked = request.query_params.get("meta_revoked") == "1"
+    meta_refreshed = request.query_params.get("meta_refreshed") == "1"
+
     return templates.TemplateResponse(
         request,
         "admin/index.html",
@@ -661,6 +665,9 @@ async def admin_index(
             "meta_conn": meta_conn,
             "meta_token_expiring_soon": meta_token_expiring_soon,
             "meta_days_until_expiry": meta_days_until_expiry,
+            "meta_connected": meta_connected,
+            "meta_revoked": meta_revoked,
+            "meta_refreshed": meta_refreshed,
         },
     )
 
