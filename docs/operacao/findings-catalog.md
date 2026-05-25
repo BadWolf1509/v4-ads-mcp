@@ -4,7 +4,7 @@
 >
 > **Maintainer note:** Add a new entry here whenever a finding is documented in a smoke runbook. Keep entries scannable — link to runbook for detail.
 >
-> **Last updated:** 2026-05-25 (Sprint 3b.38 ship + Meta App Review response + reanálise pós-docs oficial Meta: +1 finding novo **F52** (audit_zombie_keywords órfãs cosméticas), F23 promoted "fix shipped", B1 description refined. **+D1 decision-not-bug** (Meta App Review Full Access rejected — decisão Caminho B+ janela observação 30-45 dias após reanálise docs oficial; critérios exatos: 500 calls/15d + <15% error). 50 unique findings (F1-F52 + A1-A6 + D1, alguns IDs skipped).)
+> **Last updated:** 2026-05-25 (Sprint 3b.38 ship + Meta App Review response + Sprint 3b.39 F1 refactor ship: **+D2 decision-not-bug** (MCP defer_loading client-side discovery via OQ1 research — F1 server-metadata-only implementation via bucket classification 21 always + 38 defer). 51 unique findings (F1-F52 + A1-A6 + D1-D2, alguns IDs skipped).)
 
 ---
 
@@ -127,6 +127,7 @@
 
 | # | Severity | Discovered | Decision | Summary |
 |---|---|---|---|---|
+| **D2** | INFO | Sprint 3b.39 OQ1 research 2026-05-25 | Caminho server-metadata-only + client-config | **MCP `defer_loading` é parâmetro CLIENT-SIDE da Anthropic Messages API, NÃO server metadata.** Research OQ1 do refactor arquitetural confirmou via [Anthropic advanced-tool-use docs](https://www.anthropic.com/engineering/advanced-tool-use): `defer_loading: true` é configurado em `client.beta.messages.create(tools=[...])` com beta header `advanced-tool-use-2025-11-20`. Tool Search Tool é Anthropic-provided special tool (`tool_search_tool_regex_20251119`), NÃO pattern MCP server. **Implicação V4 Ads MCP:** server-side mudou de "modificar list_tools()" pra "expor bucket metadata via description prefix `[CORE]`/`[DEFER]` + `_meta.com.v4company/bucket` structured field". Wellington manual configura `~/.claude/settings.json` com defer per-tool baseado em prefix. **Lição reinforced:** sempre research API features cross-layer (client vs server) ANTES de design — Fase 1 inicial spec assumiu server-side incorrectly, descoberto via writing-plans skill research pré-implementation (~2-3 dias wasted work prevented). **Implementação Sprint 3b.39:** (1) `@register_tool` decorator add `bucket: Literal["always", "defer"]` kwarg (commit 6e1ddc9); (2) MCP SDK `Tool._meta` field populated com `{"com.v4company/bucket": "always"|"defer"}` em `list_tools()` (commit 2ede685, MCP SDK 1.22.0 supports); (3) Mass-tag 59 tool files: `# bucket:` line 1 + `[CORE]`/`[DEFER]` prefix em description + `bucket="always"|"defer"` kwarg (commits 7e64834 + ac0941a + e376898); (4) Runbook `phase-3b-39-bootstrap.md` 6 tests + Wellington Claude Code config procedure step-by-step (commit ad2c12c). Final state: 21 always + 38 defer = 59 tools. [phase-3b-39-bootstrap.md + spec refactor §5 + commits 3b.39] |
 | **D1** | INFO | M.2b App Review 2026-05-25 10:58 GMT-3 | Caminho B+ — Janela observação 30-45 dias | **Meta App Review respondeu: `public_profile` ✅ APROVADA, `Marketing API Access Tier` ❌ REJEITADA.** Motivo Meta literal: *"Our records do not show a sufficient number of Ads API calls in the last 15 days by this application. It is required that the application successfully integrate with the Ads API before it is approved for Marketing API standard access tier."* **Critérios exatos Meta (docs oficial revisão pós-rejeição):** (1) ≥500 chamadas Marketing API/15d — **atualizado, era 1.500 antes**, (2) <15% error rate nas últimas 500 calls. **Nomenclatura ATUALIZADA (atenção pra documentação não-stale):** "Standard Access" agora é **Limited Access** (default sem App Review), "Advanced Access" agora é **Full Access** (o que rejeitou aqui). 2 conceitos diferentes coexistem: **(a) Nível de acesso à API de Marketing** Limited/Full (volume + escala) — rejeitado aqui; **(b) Nível de acesso ao recurso** Standard/Advanced (cada permission individual) — Standard auto-aprovado pra business apps. **Red flag Limited Access (docs Meta literal):** *"Volumes extremamente limitados por conta de anúncios. Somente para desenvolvimento. NÃO para apps em produção visualizado para um cliente publicitário."* Tradução prática: throttle agressivo + risco em uso real Wellington nos 12 ad_accounts V4 LS&Co se ficar permanente. **Decisão Wellington Caminho B+ (não Caminho A permanente, não Caminho B forçado):** janela observação 30-45 dias. Strategy: **acelerar M.3+ pra ship mais tools Meta** (`meta_get_campaign_performance` etc) → Wellington usa naturalmente day-to-day → volume cresce → ~30-45 dias atinge 500 calls cumulativas → **re-submit Full Access** com fundamento. **Por que NÃO Caminho A permanente:** risk throttle production. **Por que NÃO Caminho B forçado** (3×/dia em 12 contas = 540 calls em 15d): waste Wellington time, melhor cadência natural. **Por que Caminho B+ ganha:** balance esforço/benefício — M.3+ teria sido shipped de qualquer jeito (roadmap original M.1-M.25), e volume gerado é byproduct. **Monitorar:** `meta_rate_counters` table X-Business-Use-Case-Usage — se Wellington bater throttle real antes da janela completa, priorize re-submit imediato. **Decision gate atualizado:** continuar roadmap M.3-M.25 = ≥3 calls/semana dogfood Wellington (não-mais "App Review APPROVED" como pré-req); senão pivot Google. **Action quando colab entrarem:** add como App Roles → Administrators no Meta Dev Console (Limited Access permite 25 admins/testers). **Re-submit Full Access ON roadmap** (originalmente OFF na análise inicial pré-leitura docs) — agendado pra ~30-45 dias após volume natural atingido. [screenshot resposta App Review 2026-05-25 + docs Meta `developers.facebook.com/documentation/ads-commerce/marketing-api/get-started/authorization` + CLAUDE.md §Pending] |
 
 ---
@@ -139,10 +140,10 @@
 | **Doc fix only** (tool description / runbook update) | 8 (added F47 — PowerShell pipe CRLF M.2a) |
 | **Not-a-bug** (Google behavior, expected) | 2 |
 | **Known limitation / workaround documented** | 2 (was 3 — F23 fixed em 3b.38) |
-| **Strategic decision** (ecosystem constraint, not code) | 1 (D1 — Meta App Review Standard Tier rejected, Dev Mode permanente) |
+| **Strategic decision** (ecosystem constraint, not code) | 2 (D1 — Meta App Review Standard Tier rejected; D2 — MCP defer_loading client-side discovery Sprint 3b.39) |
 | **Open** (real fix pending) | 1 (A4 — Customer Match exclusion mechanism) |
 
-**Total findings tracked:** 50 (was 49 + D1 — Meta App Review decision documented).
+**Total findings tracked:** 51 (was 50 + D2 — MCP defer_loading client-side Sprint 3b.39 research).
 
 ---
 
@@ -159,6 +160,7 @@
 | Retrospective (audit_log 2026-05-18) | F50 (produção confirma TypeError F33 — audit_log id=140), F51 (produção confirma AttributeError F37 — audit_log id=149) |
 | 3b.38 | F52 (audit_zombie_keywords não filtra ad_group.status — órfãs cosméticas em ad_group REMOVED), F23 promoted "known limitation" → "fixed" (get_change_history LAST_30_DAYS clamp + warning) |
 | M.2b App Review response | D1 (Meta App Review Full Access rejected — decisão Caminho B+ janela observação 30-45 dias, acelerar M.3+ pra volume natural, re-submit Full Access após 500 calls/15d) |
+| 3b.39 | D2 (MCP defer_loading client-side Anthropic API parameter — F1 server-metadata-only via @register_tool bucket kwarg + Tool._meta field + description prefix [CORE]/[DEFER]) |
 
 ---
 
