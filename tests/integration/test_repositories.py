@@ -21,6 +21,7 @@ from src.db.repositories import (
     mcp_sessions,
     meta_ad_accounts,
     meta_oauth_connections,
+    meta_rate_counters,
 )
 
 
@@ -614,3 +615,75 @@ async def test_meta_access_bulk_grant_empty_list_no_op(db) -> None:
             conn, manager_id=mid, ad_account_ids=[], granted_by=granter
         )
         assert n == 0
+
+
+# ---------- meta_rate_counters ----------
+
+
+@pytest.mark.integration
+async def test_meta_rate_counters_increment_creates_row_first_time(db) -> None:
+    """First call insert row with calls_used=1."""
+    from datetime import date
+
+    async with db.acquire() as conn:
+        today = date.today()
+        n = await meta_rate_counters.increment_calls(
+            conn, app_id="app_hash_abc", ad_account_id="act_111", date=today, by=1
+        )
+        assert n == 1
+        counter = await meta_rate_counters.get_counter(
+            conn, app_id="app_hash_abc", ad_account_id="act_111", date=today
+        )
+        assert counter is not None
+        assert counter.calls_used == 1
+
+
+@pytest.mark.integration
+async def test_meta_rate_counters_increment_adds_to_existing(db) -> None:
+    """Subsequent calls increment same row."""
+    from datetime import date
+
+    async with db.acquire() as conn:
+        today = date.today()
+        await meta_rate_counters.increment_calls(
+            conn, app_id="app_hash_xyz", ad_account_id="act_222", date=today, by=3
+        )
+        await meta_rate_counters.increment_calls(
+            conn, app_id="app_hash_xyz", ad_account_id="act_222", date=today, by=2
+        )
+        counter = await meta_rate_counters.get_counter(
+            conn, app_id="app_hash_xyz", ad_account_id="act_222", date=today
+        )
+        assert counter is not None
+        assert counter.calls_used == 5
+
+
+@pytest.mark.integration
+async def test_meta_rate_counters_update_throttle(db) -> None:
+    """update_throttle writes pct + creates row if absent."""
+    from datetime import date
+
+    async with db.acquire() as conn:
+        today = date.today()
+        await meta_rate_counters.increment_calls(
+            conn, app_id="app_hash_t", ad_account_id="act_t", date=today, by=1
+        )
+        await meta_rate_counters.update_throttle(
+            conn, app_id="app_hash_t", ad_account_id="act_t", date=today, throttle_pct=42
+        )
+        counter = await meta_rate_counters.get_counter(
+            conn, app_id="app_hash_t", ad_account_id="act_t", date=today
+        )
+        assert counter is not None
+        assert counter.last_throttle_pct == 42
+
+
+@pytest.mark.integration
+async def test_meta_rate_counters_get_counter_returns_none_when_missing(db) -> None:
+    from datetime import date
+
+    async with db.acquire() as conn:
+        result = await meta_rate_counters.get_counter(
+            conn, app_id="nonexistent", ad_account_id="act_x", date=date.today()
+        )
+        assert result is None
