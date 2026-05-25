@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: get_top_keywords_creatives - top N keywords + top N RSAs by metric."""
 
 from typing import Any
@@ -110,11 +111,12 @@ _METRIC_KEY = {
 @register_tool(
     name="get_top_keywords_creatives",
     description=(
-        "Top N palavras-chave + top N anuncios (RSAs) ranqueados por metrica "
+        "[DEFER] Top N palavras-chave + top N anuncios (RSAs) ranqueados por metrica "
         "configuravel (cost, conversions, clicks, impressions). Default top_n=10, "
         "metric=cost. Util pra relatorio cliente — secao de destaques."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def get_top_keywords_creatives(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

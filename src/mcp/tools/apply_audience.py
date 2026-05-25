@@ -1,3 +1,4 @@
+# bucket: always
 """Tool: apply_audience - attach user_list or user_interest audience criteria
 to existing ad_group or campaign.
 
@@ -230,7 +231,7 @@ def _classify_partial(error: str | None) -> str:
 @register_tool(
     name="apply_audience",
     description=(
-        "Anexa audience criteria (user_list ou user_interest) a 1+ ad_groups OU "
+        "[CORE] Anexa audience criteria (user_list ou user_interest) a 1+ ad_groups OU "
         "campaigns existentes. target_type top-level (ad_group|campaign) + mode "
         "top-level (observation|exclusion) + ate 100 attachments. "
         "Observation = positive attach (negative=False, bid_modifier opcional 0.1-10.0). "
@@ -244,6 +245,7 @@ def _classify_partial(error: str | None) -> str:
         "user_list ou user_interest resource_names existentes."
     ),
     input_schema=_SCHEMA,
+    bucket="always",
 )
 async def apply_audience(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

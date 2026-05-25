@@ -46,9 +46,7 @@ def register_tool(
         RuntimeError: If tool name is already registered.
     """
     if bucket not in ("always", "defer"):
-        raise ValueError(
-            f"bucket must be 'always' or 'defer', got {bucket!r}"
-        )
+        raise ValueError(f"bucket must be 'always' or 'defer', got {bucket!r}")
 
     def decorator(fn: ToolHandler) -> ToolHandler:
         if name in _TOOLS:

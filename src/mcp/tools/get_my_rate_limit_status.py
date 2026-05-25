@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: get_my_rate_limit_status — current daily quota usage for V4's dev token."""
 
 import time
@@ -30,11 +31,12 @@ _INPUT_SCHEMA: dict[str, Any] = {
 @register_tool(
     name="get_my_rate_limit_status",
     description=(
-        "Quota diaria do Google Ads developer token da V4: usado/limite/percentual "
+        "[DEFER] Quota diaria do Google Ads developer token da V4: usado/limite/percentual "
         "para o dia UTC atual. Sem parametros — quota e por dev token (atravessa "
         "todas as 23 contas). Reset a meia-noite UTC."
     ),
     input_schema=_INPUT_SCHEMA,
+    bucket="defer",
 )
 async def get_my_rate_limit_status(_args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: upload_customer_match_list — upload members (email/phone) pra Customer Match user list.
 
 Sprint 3b.28. V0 minimal:
@@ -138,7 +139,7 @@ def _hash_members(members: list[dict[str, Any]]) -> list[dict[str, str]]:
 @register_tool(
     name="upload_customer_match_list",
     description=(
-        "Upload members (email/phone) pra Customer Match user list. SHA-256 "
+        "[DEFER] Upload members (email/phone) pra Customer Match user list. SHA-256 "
         "hash client-side (PII nunca sai unhashed). LGPD invariants: consent "
         "GRANTED + audit log sem plaintext. Operation: 'add' (incluir) ou "
         "'remove' (excluir — opt-out LGPD). User list deve existir (CRM_BASED + "
@@ -146,6 +147,7 @@ def _hash_members(members: list[dict[str, Any]]) -> list[dict[str, str]]:
         "pra checar status (jobs processam em horas no backend Google)."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def upload_customer_match_list(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

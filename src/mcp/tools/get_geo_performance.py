@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: get_geo_performance - metrics by geographic location (country level)."""
 
 from typing import Any
@@ -71,10 +72,11 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 @register_tool(
     name="get_geo_performance",
     description=(
-        "Performance por pais (com nome resolvido via geo_target_constant). "
+        "[DEFER] Performance por pais (com nome resolvido via geo_target_constant). "
         "Util pra identificar regioes underperformantes."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def get_geo_performance(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

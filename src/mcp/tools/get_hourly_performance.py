@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: get_hourly_performance - metrics by hour and day of week."""
 
 from typing import Any
@@ -71,11 +72,12 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 @register_tool(
     name="get_hourly_performance",
     description=(
-        "Performance segmentada por hora (0-23) e dia da semana (MONDAY-SUNDAY). "
+        "[DEFER] Performance segmentada por hora (0-23) e dia da semana (MONDAY-SUNDAY). "
         "Util pra encontrar janelas de melhor/pior performance e ajustar bid "
         "adjustments por horario."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def get_hourly_performance(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

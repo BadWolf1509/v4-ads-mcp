@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: add_negatives_from_search_terms - bulk add negatives derived from search_terms_report.
 
 Workflow: gestor calls get_search_terms_report -> picks bad terms -> passes them
@@ -79,13 +80,14 @@ def _classify_partial(error: str | None) -> str:
 @register_tool(
     name="add_negatives_from_search_terms",
     description=(
-        "Adiciona negativas derivadas do search_terms_report em batch. Aceita "
+        "[DEFER] Adiciona negativas derivadas do search_terms_report em batch. Aceita "
         "ate 500 termos com scope campaign|ad_group|shared_set. Sempre auto-aplica "
         "(spec §7.1) — idempotente: termos ja existentes retornam status "
         "'already_exists' sem falha. Use apos get_search_terms_report pra picar "
         "termos performando mal e exclui-los do leilao."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def add_negatives_from_search_terms(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

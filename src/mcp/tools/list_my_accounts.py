@@ -1,3 +1,4 @@
+# bucket: always
 """Tool: list_my_accounts — returns Google Ads accounts the caller can operate."""
 
 import time
@@ -23,11 +24,12 @@ _INPUT_SCHEMA = {
 @register_tool(
     name="list_my_accounts",
     description=(
-        "Lista as contas Google Ads que o gestor logado tem permissão pra operar. "
+        "[CORE] Lista as contas Google Ads que o gestor logado tem permissão pra operar. "
         "Retorna o customer_id (sem traços), nome, moeda, fuso e flag de conta de teste. "
         "Sem parâmetros — usa a sessão MCP pra identificar o gestor."
     ),
     input_schema=_INPUT_SCHEMA,
+    bucket="always",
 )
 async def list_my_accounts(_args: dict[str, Any]) -> list[dict[str, Any]]:
     ctx = get_current()

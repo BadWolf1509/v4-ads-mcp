@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: apply_change - consume a confirmation token + execute the saved mutation.
 
 Sprint 3b.26 introduces branching: operation_type=="import_offline_conversions" routes
@@ -31,11 +32,12 @@ _SCHEMA: dict[str, Any] = {
 @register_tool(
     name="apply_change",
     description=(
-        "Confirma e aplica uma mutacao previamente previewed via dry-run. Token "
+        "[DEFER] Confirma e aplica uma mutacao previamente previewed via dry-run. Token "
         "expira em 10 minutos. Cada token e consumivel apenas 1 vez e amarrado "
         "a sessao MCP que o gerou."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

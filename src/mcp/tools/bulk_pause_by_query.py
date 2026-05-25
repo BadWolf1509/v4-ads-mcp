@@ -1,3 +1,4 @@
+# bucket: always
 """Tool: bulk_pause_by_query - pause N entities matching a GAQL filter (dry-run).
 
 Workflow:
@@ -180,7 +181,7 @@ def _build_entities(target_type: str, rows: list[dict[str, Any]]) -> list[dict[s
 @register_tool(
     name="bulk_pause_by_query",
     description=(
-        "Pausa em batch entidades (keyword|ad|campaign|ad_group) matched por um GAQL "
+        "[CORE] Pausa em batch entidades (keyword|ad|campaign|ad_group) matched por um GAQL "
         "filter. Sempre dry-run obrigatório (spec §7.1): retorna preview com até 10 "
         "amostras + custo total + confirmation_token (TTL 10min). Apply via "
         "apply_change(token). Limite hard: 100 entidades por chamada (se exceder, "
@@ -193,6 +194,7 @@ def _build_entities(target_type: str, rows: list[dict[str, Any]]) -> list[dict[s
         "preview pode mostrar entidades ja pausadas/REMOVED. Re-query antes de apply."
     ),
     input_schema=_SCHEMA,
+    bucket="always",
 )
 async def bulk_pause_by_query(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

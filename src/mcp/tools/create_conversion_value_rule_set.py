@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: create_conversion_value_rule_set - create 1 RuleSet with 1-10 rules nested.
 
 Always-CONFIRM (creates sensitive per spec §7.1; rules affect ROAS attribution
@@ -153,7 +154,7 @@ def _build_params_summary(payload: dict[str, Any]) -> dict[str, Any]:
 @register_tool(
     name="create_conversion_value_rule_set",
     description=(
-        "Cria 1 ConversionValueRuleSet (customer-level ou campaign-level) com "
+        "[DEFER] Cria 1 ConversionValueRuleSet (customer-level ou campaign-level) com "
         "1-10 ConversionValueRule(s) nested. Always-CONFIRM. Rules condicionais "
         "ajustam o valor de conversao por device (MOBILE/DESKTOP/TABLET) ou geo "
         "(geo_target_constants resource paths). Action operations: ADD (soma "
@@ -165,6 +166,7 @@ def _build_params_summary(payload: dict[str, Any]) -> dict[str, Any]:
         "Geo targets validados como BR-only (V4 invariant)."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def create_conversion_value_rule_set(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

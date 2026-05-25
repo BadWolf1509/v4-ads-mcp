@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: get_negative_keywords_audit - campaign-level negative keywords with created_date enrichment."""
 
 from __future__ import annotations
@@ -106,7 +107,7 @@ def _compute_summary(negatives_with_dates: list[dict[str, Any]], today: date) ->
 @register_tool(
     name="get_negative_keywords_audit",
     description=(
-        "Lista palavras-chave negativas aplicadas em nivel de campanha, com data "
+        "[DEFER] Lista palavras-chave negativas aplicadas em nivel de campanha, com data "
         "de criacao e usuario que adicionou (quando rastreavel via change_event, "
         "retention ~30 dias). Util pra auditoria de cobertura de negativas, "
         "identificar duplicacoes ou gaps, e narrar 'X negativas adicionadas no "
@@ -118,6 +119,7 @@ def _compute_summary(negatives_with_dates: list[dict[str, Any]], today: date) ->
         "reflete o universo completo da conta."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def get_negative_keywords_audit(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

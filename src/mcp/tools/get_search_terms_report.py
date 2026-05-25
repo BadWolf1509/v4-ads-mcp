@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: get_search_terms_report - actual search terms that triggered ads."""
 
 from typing import Any
@@ -76,12 +77,13 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 @register_tool(
     name="get_search_terms_report",
     description=(
-        "Termos de busca reais que dispararam anuncios. Status indica se ja foi "
+        "[DEFER] Termos de busca reais que dispararam anuncios. Status indica se ja foi "
         "adicionado como palavra-chave (ADDED) ou negativa (EXCLUDED) ou nem um "
         "nem outro (NONE). Util pra encontrar negativas pra adicionar e termos "
         "performantes pra promover."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def get_search_terms_report(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

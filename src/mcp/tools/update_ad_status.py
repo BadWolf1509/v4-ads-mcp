@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: update_ad_status - pause/enable/remove individual ads (ad_group_ad)."""
 
 from typing import Any
@@ -40,12 +41,13 @@ _SCHEMA: dict[str, Any] = {
 @register_tool(
     name="update_ad_status",
     description=(
-        "Pausa ou ativa um ou mais anuncios. Cada anuncio e identificado por "
+        "[DEFER] Pausa ou ativa um ou mais anuncios. Cada anuncio e identificado por "
         "(ad_group_id, ad_id). Ate 5 anuncios auto-aplica; >5 retorna preview "
         "com confirmation_token. Para REMOVER anuncios, use Google Ads UI (tool "
         "dedicada `remove_ad` pode ser adicionada em sprint futura se demanda real surgir)."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def update_ad_status(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

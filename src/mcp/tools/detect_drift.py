@@ -1,3 +1,4 @@
+# bucket: always
 """Tool: detect_drift — auditar mudanças NÃO-autorizadas pós-batch V4.
 
 Sprint 3b.33 — W1 do dogfood 2026-05-21 MO-JP+CAB (ICE 486).
@@ -114,7 +115,7 @@ def _resolve_date_window_local(
 @register_tool(
     name="detect_drift",
     description=(
-        "Detecta mudanças NÃO-autorizadas em conta Google Ads (workflow "
+        "[CORE] Detecta mudanças NÃO-autorizadas em conta Google Ads (workflow "
         "co-management V4 pós-batch). Compara change_event com lista de "
         "responsible_user_emails: tudo NÃO-listado conta como drift. Auto-apply "
         "Recommendations sempre conta como drift. Output: summary (count + "
@@ -125,6 +126,7 @@ def _resolve_date_window_local(
         "indicator. Sempre auditado."
     ),
     input_schema=_SCHEMA,
+    bucket="always",
 )
 async def detect_drift(args: dict[str, Any]) -> dict[str, Any]:
     get_current()  # ensure context is bound (programmer-error guard)

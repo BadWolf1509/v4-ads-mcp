@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: update_conversion_action — update name, primary_for_goal.
 
 Sprint 3b.27. V0 minimal: 2 fields mutáveis (todos opcionais — incluir ao menos 1).
@@ -87,7 +88,7 @@ def _validate_payload_shape(args: dict[str, Any]) -> str | None:
 @register_tool(
     name="update_conversion_action",
     description=(
-        "Atualiza ConversionAction: name, primary_for_goal (off = action vira "
+        "[DEFER] Atualiza ConversionAction: name, primary_for_goal (off = action vira "
         "non-biddable em todas as campaigns). 2 fields V0 — todos opcionais por "
         "item (forneça ao menos 1). Single item rename auto-aplica. Batch > 1 "
         "OU primary_for_goal=False retorna preview dry-run com "
@@ -99,6 +100,7 @@ def _validate_payload_shape(args: dict[str, Any]) -> str | None:
         "field como immutable — F44)."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def update_conversion_action(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

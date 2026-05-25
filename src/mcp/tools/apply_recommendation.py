@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: apply_recommendation - apply a Google Ads recommendation. Auto-applies."""
 
 from typing import Any
@@ -29,11 +30,12 @@ _SCHEMA: dict[str, Any] = {
 @register_tool(
     name="apply_recommendation",
     description=(
-        "Aplica uma recomendacao pendente do Google Ads. Sempre auto-aplica "
+        "[DEFER] Aplica uma recomendacao pendente do Google Ads. Sempre auto-aplica "
         "(o Google ja avaliou o impacto). Use get_recommendations primeiro "
         "para listar as disponiveis."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def apply_recommendation(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

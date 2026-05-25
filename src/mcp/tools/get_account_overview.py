@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: get_account_overview - KPIs for date range with previous-period comparison."""
 
 from typing import Any
@@ -112,11 +113,12 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 @register_tool(
     name="get_account_overview",
     description=(
-        "KPIs consolidados de uma conta Google Ads (impressoes, clicks, custo, "
+        "[DEFER] KPIs consolidados de uma conta Google Ads (impressoes, clicks, custo, "
         "conversoes, valor, CTR, CPC, CPA, ROAS) para um periodo, com comparativo "
         "do periodo imediatamente anterior de mesma duracao."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def get_account_overview(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

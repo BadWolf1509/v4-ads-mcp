@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: update_campaign_bidding - change a campaign's bidding strategy. Always confirms."""
 
 from typing import Any
@@ -36,10 +37,11 @@ _SCHEMA: dict[str, Any] = {
 @register_tool(
     name="update_campaign_bidding",
     description=(
-        "Muda a estrategia de bidding de uma campanha (TARGET_CPA, TARGET_ROAS, "
+        "[DEFER] Muda a estrategia de bidding de uma campanha (TARGET_CPA, TARGET_ROAS, "
         "MAXIMIZE_CONVERSIONS). Sempre exige confirmacao via apply_change."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def update_campaign_bidding(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

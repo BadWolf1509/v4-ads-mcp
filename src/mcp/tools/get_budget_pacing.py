@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: get_budget_pacing - per-campaign budget vs MTD spend + projection."""
 
 from datetime import UTC, datetime
@@ -87,11 +88,12 @@ def _project(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 @register_tool(
     name="get_budget_pacing",
     description=(
-        "Por campanha ativa: orcamento diario, gasto MTD, projecao de fim de mes, "
+        "[DEFER] Por campanha ativa: orcamento diario, gasto MTD, projecao de fim de mes, "
         "% consumido do orcamento mensal. Util pra ver no inicio do dia se alguma "
         "campanha esta acelerada/lenta demais."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def get_budget_pacing(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

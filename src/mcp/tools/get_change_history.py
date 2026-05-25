@@ -1,3 +1,4 @@
+# bucket: always
 """Tool: get_change_history - audit-log of recent changes to the account.
 
 Wraps the change_event GAQL resource with structured filters and a summary
@@ -261,7 +262,7 @@ async def _resolve_names(
 @register_tool(
     name="get_change_history",
     description=(
-        "Historico de mudancas (change_event) na conta nos ultimos 7-30 dias com "
+        "[CORE] Historico de mudancas (change_event) na conta nos ultimos 7-30 dias com "
         "filtros opcionais (resource_types, operation_types, user_emails, "
         "client_types). Util pra auditoria 'CRITICO antes de tudo': detectar "
         "auto-apply Recommendations, mudancas estruturais, e quem mexeu no que. "
@@ -273,6 +274,7 @@ async def _resolve_names(
         "LAST_30_DAYS auto-clamped pra today-28 com warning F23). Audited."
     ),
     input_schema=_SCHEMA,
+    bucket="always",
 )
 async def get_change_history(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

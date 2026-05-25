@@ -1,3 +1,4 @@
+# bucket: always
 """Tool: create_conversion_action - create 1-5 ConversionActions at customer level.
 
 Always-CONFIRM (creates sensitive per spec §7.1; conversion tracking affects
@@ -120,7 +121,7 @@ def _build_params_summary(actions: list[dict[str, Any]]) -> dict[str, Any]:
 @register_tool(
     name="create_conversion_action",
     description=(
-        "Cria 1-5 ConversionActions no nivel customer. Cada action: name "
+        "[CORE] Cria 1-5 ConversionActions no nivel customer. Cada action: name "
         "(1-100 chars) + category + type. Always-CONFIRM. Categorias suportadas "
         "(13 V4-focused, empirically validated em smoke 3b.19A + per-value probe "
         "3b.19A.1; LEAD/IMPORTED_LEAD/QUALIFIED_LEAD/CONVERTED_LEAD/DOWNLOAD "
@@ -137,6 +138,7 @@ def _build_params_summary(actions: list[dict[str, Any]]) -> dict[str, Any]:
         "Google Ads UI ou tools especificas (sprints futuras)."
     ),
     input_schema=_SCHEMA,
+    bucket="always",
 )
 async def create_conversion_action(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

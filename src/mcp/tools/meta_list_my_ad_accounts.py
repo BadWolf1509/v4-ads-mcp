@@ -1,3 +1,4 @@
+# bucket: always
 """List Meta Ad Accounts the manager has access to (Sprint M.2a Task 9).
 
 Source: manager_meta_account_access (local cache, populated on OAuth callback).

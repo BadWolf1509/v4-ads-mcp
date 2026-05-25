@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: get_keyword_performance - per-keyword metrics + Quality Score."""
 
 from typing import Any
@@ -99,11 +100,12 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 @register_tool(
     name="get_keyword_performance",
     description=(
-        "Performance por palavra-chave com Quality Score completo (3 componentes: "
+        "[DEFER] Performance por palavra-chave com Quality Score completo (3 componentes: "
         "creative, post_click, search_predicted_ctr) + estimativas de first_page_cpc "
         "e top_of_page_cpc. Filtros: status (enabled|paused|removed|all), limit."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def get_keyword_performance(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

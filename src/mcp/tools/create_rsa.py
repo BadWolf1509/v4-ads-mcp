@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: create_rsa - create 1-5 Responsive Search Ads in existing ad_groups.
 
 Always-CONFIRM (creates sensitive per spec §7.1). Pre-flight validates parent
@@ -97,7 +98,7 @@ def _build_params_summary(rsas: list[dict[str, Any]]) -> dict[str, Any]:
 @register_tool(
     name="create_rsa",
     description=(
-        "Cria 1-5 Responsive Search Ads (RSAs) em ad_groups existentes. "
+        "[DEFER] Cria 1-5 Responsive Search Ads (RSAs) em ad_groups existentes. "
         "Cada RSA tem ad_group_id (parent) + headlines (3-15 strings, max 30 chars cada) "
         "+ descriptions (2-4 strings, max 90 chars cada) + final_urls (1+ URLs) + "
         "path1/path2 opcionais (display URL paths, max 15 chars cada) + status opcional "
@@ -108,6 +109,7 @@ def _build_params_summary(rsas: list[dict[str, Any]]) -> dict[str, Any]:
         "(geralmente minutos)."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def create_rsa(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

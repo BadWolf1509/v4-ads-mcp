@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: run_gaql - escape hatch to execute arbitrary GAQL queries.
 
 V0 (Sprint 3b.29): adiciona aggregate_by opcional pra client-side
@@ -46,13 +47,14 @@ _MAX_RAW_ROWS_FOR_AGGREGATE = 10_000
 @register_tool(
     name="run_gaql",
     description=(
-        "Escape hatch: executa qualquer GAQL contra a conta. Use apenas quando as "
+        "[DEFER] Escape hatch: executa qualquer GAQL contra a conta. Use apenas quando as "
         "tools curadas nao cobrem o caso. Sempre auditado. Limite: resultado "
         f"truncado em {_MAX_ROWS} linhas pra evitar respostas gigantes. Suporta "
         "aggregate_by (client-side GROUP BY+COUNT) pra queries com cardinalidade "
         "alta — retorna groups[] ordenado por count DESC."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def run_gaql(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

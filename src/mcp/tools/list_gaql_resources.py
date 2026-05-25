@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: list_gaql_resources - return the curated GAQL resource catalog."""
 
 from typing import Any
@@ -15,11 +16,12 @@ _SCHEMA: dict[str, Any] = {
 @register_tool(
     name="list_gaql_resources",
     description=(
-        "Catalogo curado de resources GAQL (15+) com seus campos comumente usados. "
+        "[DEFER] Catalogo curado de resources GAQL (15+) com seus campos comumente usados. "
         "Inclui tambem a lista de segments aplicaveis. Use junto com run_gaql ou "
         "validate_gaql pra construir queries customizadas."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def list_gaql_resources(_args: dict[str, Any]) -> dict[str, Any]:
     return {

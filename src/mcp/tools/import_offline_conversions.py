@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: import_offline_conversions — upload N offline conversions via ConversionUploadService.
 
 Sprint 3b.26. First V4 tool that does NOT use GoogleAdsService.mutate. Uses
@@ -204,7 +205,7 @@ def _build_summary(payload: dict[str, Any]) -> dict[str, Any]:
 @register_tool(
     name="import_offline_conversions",
     description=(
-        "Importa N conversões offline (1-100 por call) match-by-gclid pra "
+        "[DEFER] Importa N conversões offline (1-100 por call) match-by-gclid pra "
         "Google Ads attribuir ROAS + alimentar Smart Bidding. Always-CONFIRM. "
         "Workflow V4 lead-gen: gestor captura gclid no URL da landing → salva "
         "no CRM → quando lead converte (WhatsApp confirmation, contrato assinado, "
@@ -217,6 +218,7 @@ def _build_summary(payload: dict[str, Any]) -> dict[str, Any]:
         "introduz dispatcher run_conversion_upload paralelo a run_mutation."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def import_offline_conversions(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

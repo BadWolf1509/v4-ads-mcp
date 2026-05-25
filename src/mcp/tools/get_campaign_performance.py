@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: get_campaign_performance - metrics per campaign."""
 
 from typing import Any
@@ -79,13 +80,14 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 @register_tool(
     name="get_campaign_performance",
     description=(
-        "Performance por campanha: impressoes, clicks, custo, conversoes, valor, "
+        "[DEFER] Performance por campanha: impressoes, clicks, custo, conversoes, valor, "
         "CTR, CPC. Ordenado por custo desc. Filtros opcionais: status (enabled|"
         "paused|removed|all), limit (default 100). "
         "Nota: campaign.status pode lagar alguns minutos entre queries (cache Google) "
         "— se decisao critica baseada em status, re-query antes de agir."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def get_campaign_performance(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

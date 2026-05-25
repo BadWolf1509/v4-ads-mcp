@@ -1,3 +1,4 @@
+# bucket: always
 """Tool: audit_competitor_keywords — detect competitor brand spending.
 
 Sprint 3b.31 — #6 fila ICE 432 do dogfood MO-JP 2026-05-19.
@@ -64,7 +65,7 @@ _SCHEMA: dict[str, Any] = {
 @register_tool(
     name="audit_competitor_keywords",
     description=(
-        "Detecta gasto em concorrência: keywords positivas ENABLED com text "
+        "[CORE] Detecta gasto em concorrência: keywords positivas ENABLED com text "
         "matching competitor brands + search terms entregues no date window que "
         "matched brand competidora. Output: 2 listas + summary (total cost wasted "
         "real) + suggested_negatives (EXACT + PHRASE per matched brand). Filtros: "
@@ -75,6 +76,7 @@ _SCHEMA: dict[str, Any] = {
         "re-query se decisão crítica."
     ),
     input_schema=_SCHEMA,
+    bucket="always",
 )
 async def audit_competitor_keywords(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

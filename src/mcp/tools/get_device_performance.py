@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: get_device_performance - metrics per device (mobile/desktop/tablet)."""
 
 from typing import Any
@@ -70,10 +71,11 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 @register_tool(
     name="get_device_performance",
     description=(
-        "Performance segmentada por device (MOBILE, DESKTOP, TABLET, CONNECTED_TV, "
+        "[DEFER] Performance segmentada por device (MOBILE, DESKTOP, TABLET, CONNECTED_TV, "
         "OTHER). Util pra ajustar bid adjustments por dispositivo."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def get_device_performance(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

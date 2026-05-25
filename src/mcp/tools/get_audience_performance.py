@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: get_audience_performance - audiences/segments applied + metrics."""
 
 from typing import Any
@@ -85,10 +86,11 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 @register_tool(
     name="get_audience_performance",
     description=(
-        "Performance por audiencia/segmento aplicado em ad groups: listas de "
+        "[DEFER] Performance por audiencia/segmento aplicado em ad groups: listas de "
         "remarketing (user_list) ou interesses (user_interest_category) + metricas."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def get_audience_performance(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

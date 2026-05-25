@@ -1,3 +1,4 @@
+# bucket: always
 """meta_get_account_overview — 1ª tool Meta com Graph API real call (Sprint M.2b).
 
 Single ad_account, fields essenciais, comparativo período anterior,
@@ -204,6 +205,7 @@ async def meta_get_account_overview(
     name="meta_get_account_overview",
     description=_DESCRIPTION,
     input_schema=_INPUT_SCHEMA,
+    bucket="always",
 )
 async def handler(args: dict[str, Any]) -> dict[str, Any]:
     """MCP tool handler — pulls context from contextvars, delegates to core function."""

@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: create_ad_group - create 1-10 new ad_groups in existing campaigns.
 
 Always-CONFIRM (creates sao sensitive per spec §7.1). Pre-flight validates
@@ -78,7 +79,7 @@ def _build_params_summary(ad_groups: list[dict[str, Any]]) -> dict[str, Any]:
 @register_tool(
     name="create_ad_group",
     description=(
-        "Cria 1-10 novos ad_groups em campaigns existentes. Cada ad_group tem "
+        "[DEFER] Cria 1-10 novos ad_groups em campaigns existentes. Cada ad_group tem "
         "campaign_id (parent) + name (1-255 chars) + type opcional "
         "(SEARCH_STANDARD default | SHOPPING_PRODUCT_ADS) + status opcional "
         "(PAUSED default | ENABLED) + cpc_bid_micros opcional (so valido em "
@@ -90,6 +91,7 @@ def _build_params_summary(ad_groups: list[dict[str, Any]]) -> dict[str, Any]:
         "effective. Apos criar, use add_keywords + add ads pra setup completo."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def create_ad_group(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

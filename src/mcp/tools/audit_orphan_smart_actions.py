@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: audit_orphan_smart_actions — detectar ConversionActions sem uso real.
 
 Sprint 3b.37 — ICE 288 (#12 backlog dogfood 2026-05-19 cleanup massivo MO-JP).
@@ -87,7 +88,7 @@ _SCHEMA: dict[str, Any] = {
 @register_tool(
     name="audit_orphan_smart_actions",
     description=(
-        "Detecta ConversionActions orphan: ENABLED com zero conversions "
+        "[DEFER] Detecta ConversionActions orphan: ENABLED com zero conversions "
         "(metrics.all_conversions=0.0) em window LAST_30_DAYS (default). "
         "Pre-cleanup decision tool — use pra identificar tracking pixels "
         "obsoletos, ações de campanhas removidas, conversion actions criadas "
@@ -98,6 +99,7 @@ _SCHEMA: dict[str, Any] = {
         "end_date custom. Server-side hardcoded: status=ENABLED. Sempre auditado."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def audit_orphan_smart_actions(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

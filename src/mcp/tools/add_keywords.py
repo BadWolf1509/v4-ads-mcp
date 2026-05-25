@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: add_keywords - create new positive keywords in 1 ad_group.
 
 Workflow: gestor identifies needed keyword variations (typically via
@@ -89,7 +90,7 @@ def _classify_partial(error: str | None) -> str:
 @register_tool(
     name="add_keywords",
     description=(
-        "Cria N novas palavras-chave positivas em 1 ad_group. Cada keyword tem "
+        "[DEFER] Cria N novas palavras-chave positivas em 1 ad_group. Cada keyword tem "
         "text + match_type (EXACT|PHRASE|BROAD) + cpc_bid_micros opcional (herda "
         "do ad_group se omitido). Ate 500 por chamada. AUTO se ≤20 (spec §7.1), "
         "CONFIRM se >20. Idempotente state-wise (Google deduplica server-side se "
@@ -99,6 +100,7 @@ def _classify_partial(error: str | None) -> str:
         "completo de 'pausa + adiciona' da skill analise-performance."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def add_keywords(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

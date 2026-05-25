@@ -1,3 +1,4 @@
+# bucket: always
 """Tool: get_recommendations - Google Ads recommendations pending for account."""
 
 from typing import Any
@@ -73,13 +74,14 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 @register_tool(
     name="get_recommendations",
     description=(
-        "Recomendacoes pendentes do Google Ads pra conta: tipo (com type_pt em "
+        "[CORE] Recomendacoes pendentes do Google Ads pra conta: tipo (com type_pt em "
         "PT-BR quando reconhecido, null caso contrario) e resource_name pra aplicar "
         "via apply_recommendation "
         "ou dispensar via dismiss_recommendation. Para ver impacto detalhado de "
         "uma recomendacao especifica, use run_gaql filtrando por recommendation.type."
     ),
     input_schema=_SCHEMA,
+    bucket="always",
 )
 async def get_recommendations(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

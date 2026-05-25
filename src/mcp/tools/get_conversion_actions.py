@@ -1,3 +1,4 @@
+# bucket: always
 """Tool: get_conversion_actions - conversion actions configured + status."""
 
 from typing import Any
@@ -42,12 +43,13 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 @register_tool(
     name="get_conversion_actions",
     description=(
-        "Acoes de conversao configuradas na conta com status, categoria, tipo, "
+        "[CORE] Acoes de conversao configuradas na conta com status, categoria, tipo, "
         "atribuicao, valor default, primary_for_goal (Smart Bidding optimization) "
         "e include_in_conversions_metric (dashboard 'Conversions' metric). "
         "Util pra auditoria de tracking + decisao de promocao Secondary->Primary."
     ),
     input_schema=_SCHEMA,
+    bucket="always",
 )
 async def get_conversion_actions(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

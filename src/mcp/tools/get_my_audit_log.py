@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: get_my_audit_log — paginated history das operações do gestor logado."""
 
 import time
@@ -48,11 +49,12 @@ _INPUT_SCHEMA: dict[str, Any] = {
 @register_tool(
     name="get_my_audit_log",
     description=(
-        "Historico das proprias operacoes do gestor via MCP (mutations + audited "
+        "[DEFER] Historico das proprias operacoes do gestor via MCP (mutations + audited "
         "reads), com filtros por janela de tempo, conta, e tipo de acao. Retorna "
         "ordenado por occurred_at DESC. Scoped automaticamente ao gestor logado."
     ),
     input_schema=_INPUT_SCHEMA,
+    bucket="defer",
 )
 async def get_my_audit_log(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

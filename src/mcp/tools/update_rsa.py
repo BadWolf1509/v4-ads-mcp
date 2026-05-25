@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: update_rsa - modify existing Responsive Search Ads.
 
 Always-CONFIRM. Updates via AdService.mutate_ads (not AdGroupAdService).
@@ -111,7 +112,7 @@ def _build_params_summary(updates: list[dict[str, Any]]) -> dict[str, Any]:
 @register_tool(
     name="update_rsa",
     description=(
-        "Modifica 1-5 RSAs existentes. Cada update tem ad_id + pelo menos 1 dos "
+        "[DEFER] Modifica 1-5 RSAs existentes. Cada update tem ad_id + pelo menos 1 dos "
         "campos mutaveis: headlines (3-15 × 30 chars), descriptions (2-4 × 90 "
         "chars), final_urls (1+), path1/path2 (15 chars cada). Listas fornecidas "
         "SUBSTITUEM as existentes (semantics proto-plus + field_mask). Sempre "
@@ -121,6 +122,7 @@ def _build_params_summary(updates: list[dict[str, Any]]) -> dict[str, Any]:
         "pode re-aprovar (geralmente minutos)."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def update_rsa(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

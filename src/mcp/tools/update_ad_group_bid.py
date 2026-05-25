@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: update_ad_group_bid - update CPC bids on one or more ad groups."""
 
 from typing import Any
@@ -49,10 +50,11 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 @register_tool(
     name="update_ad_group_bid",
     description=(
-        "Atualiza CPC bid de um ou mais grupos de anuncios. Ate 5 grupos com "
+        "[DEFER] Atualiza CPC bid de um ou mais grupos de anuncios. Ate 5 grupos com "
         "variacao maxima <=20% auto-aplica; senao retorna preview com token."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def update_ad_group_bid(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

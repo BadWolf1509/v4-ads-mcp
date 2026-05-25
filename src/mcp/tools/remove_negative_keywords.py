@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: remove_negative_keywords - remove campaign-level negative keywords. Auto-applies."""
 
 from typing import Any
@@ -27,11 +28,12 @@ _SCHEMA: dict[str, Any] = {
 @register_tool(
     name="remove_negative_keywords",
     description=(
-        "Remove palavras-chave negativas em nivel de campanha. Sempre auto-aplica "
+        "[DEFER] Remove palavras-chave negativas em nivel de campanha. Sempre auto-aplica "
         "(negativas raramente quebram coisas - spec §7.1). Aceita ate 500 remocoes "
         "por chamada via criterion_id."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def remove_negative_keywords(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

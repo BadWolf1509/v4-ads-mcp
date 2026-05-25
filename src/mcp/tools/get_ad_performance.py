@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: get_ad_performance - RSA performance + ad_strength + headlines/descriptions."""
 
 from typing import Any
@@ -91,10 +92,11 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 @register_tool(
     name="get_ad_performance",
     description=(
-        "Performance por anuncio (RSA) com headlines, descriptions, final_urls e "
+        "[DEFER] Performance por anuncio (RSA) com headlines, descriptions, final_urls e "
         "ad_strength (POOR|AVERAGE|GOOD|EXCELLENT). Filtros: status, limit."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def get_ad_performance(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

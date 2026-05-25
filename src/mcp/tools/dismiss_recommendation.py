@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: dismiss_recommendation - dismiss a Google Ads recommendation. Auto-applies."""
 
 from typing import Any
@@ -23,8 +24,11 @@ _SCHEMA: dict[str, Any] = {
 
 @register_tool(
     name="dismiss_recommendation",
-    description=("Dispensa (rejeita) uma recomendacao pendente do Google Ads. Auto-aplica."),
+    description=(
+        "[DEFER] Dispensa (rejeita) uma recomendacao pendente do Google Ads. Auto-aplica."
+    ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def dismiss_recommendation(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

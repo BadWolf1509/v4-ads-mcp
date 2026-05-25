@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: get_funnel_metrics - full funnel impressions -> clicks -> conv -> revenue."""
 
 from typing import Any
@@ -108,11 +109,12 @@ def _build_funnel(rows: list[dict[str, Any]]) -> dict[str, Any]:
 @register_tool(
     name="get_funnel_metrics",
     description=(
-        "Funil completo da conta: impressoes -> clicks -> conversoes -> valor "
+        "[DEFER] Funil completo da conta: impressoes -> clicks -> conversoes -> valor "
         "(receita), com taxas de conversao entre etapas e KPIs derivados (ROAS, "
         "AOV, CPA). Util pra relatorio cliente."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def get_funnel_metrics(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

@@ -1,3 +1,4 @@
+# bucket: defer
 """Tool: update_campaign_budget - update a campaign's daily budget. Always confirms."""
 
 from typing import Any
@@ -37,11 +38,12 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 @register_tool(
     name="update_campaign_budget",
     description=(
-        "Atualiza o orcamento diario de uma campanha. Sempre exige confirmacao "
+        "[DEFER] Atualiza o orcamento diario de uma campanha. Sempre exige confirmacao "
         "via apply_change (mudancas de orcamento sao sensiveis - spec §7.1). "
         "Retorna preview com valor atual + novo + delta percentual."
     ),
     input_schema=_SCHEMA,
+    bucket="defer",
 )
 async def update_campaign_budget(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

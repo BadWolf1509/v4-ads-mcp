@@ -1,3 +1,4 @@
+# bucket: always
 """Tool: create_campaign — create 1 SEARCH campaign with budget + geo + PT language.
 
 Always-CONFIRM (creates campaign — sensitive per spec §7.1). Chained mutation
@@ -133,7 +134,7 @@ def _build_params_summary(payload: dict[str, Any]) -> dict[str, Any]:
 @register_tool(
     name="create_campaign",
     description=(
-        "Cria 1 SEARCH campaign nova em uma conta V4. Always-CONFIRM. Schema "
+        "[CORE] Cria 1 SEARCH campaign nova em uma conta V4. Always-CONFIRM. Schema "
         "requer name + bidding_strategy + daily_budget_brl + geo_targets (lista "
         "de geoTargetConstants resource paths, validados como BR via pre-flight "
         "V4). Status sempre PAUSED on create — gestor liga manualmente apos "
@@ -147,6 +148,7 @@ def _build_params_summary(payload: dict[str, Any]) -> dict[str, Any]:
         "criados (budget + campaign + N geo criterions + PT language criterion)."
     ),
     input_schema=_SCHEMA,
+    bucket="always",
 )
 async def create_campaign(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()
