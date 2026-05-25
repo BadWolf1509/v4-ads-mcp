@@ -93,9 +93,9 @@ Local `pg` + `db` fixtures per file (NOT shared `db_pool` — doesn't exist). Ma
 - `managers.status`: `'invited' | 'active' | 'inactive'`.
 - `pending_confirmations.token` (NOT `id`) is primary key; `payload` is jsonb.
 
-### Mutate builder test convention (post-3b.5, F16/F42/F44 lessons)
+### Mutate builder test convention (post-3b.5, F16/F42/F44/F51 lessons)
 
-**Always use `tests/unit/fixtures/proto_capture.py::make_capture_client` (NOT MagicMock)** when asserting proto field assignments. MagicMock silently accepts any attribute → masks bugs (A4 user_list override, F16 .add()/.append(), F42 removed-field-not-detected, F44 immutable-field-silent-pass).
+**Always use `tests/unit/fixtures/proto_capture.py::make_capture_client` (NOT MagicMock)** when asserting proto field assignments. MagicMock silently accepts any attribute → masks bugs (A4 user_list override, F16 .add()/.append(), F42 removed-field-not-detected, F44 immutable-field-silent-pass, F51 renamed-field-old-name-not-detected).
 
 ```python
 from tests.unit.fixtures.proto_capture import make_capture_client
@@ -104,6 +104,13 @@ client = make_capture_client()
 ops = build_my_thing(client, customer_id, payload)
 assert ops[0].field("ad_group_criterion_operation.create.negative") is True
 assert ops[0].has("ad_group_criterion_operation.create.bid_modifier") is False
+```
+
+**Field rename guard (post-F51):** quando um proto field é RENOMEADO entre versões SDK (ex: `start_date` → `start_date_time` em Campaign v24), o test MUST assertar tanto presença do nome novo quanto AUSÊNCIA do nome antigo. `CapturedOp._SubCapture.__setattr__` aceita silenciosamente qualquer atributo, então só `has(new) is True` deixa passar bugs que escrevem no nome antigo. Padrão:
+
+```python
+assert ops[0].has("campaign_operation.create.start_date_time") is True   # new field ✓
+assert ops[0].has("campaign_operation.create.start_date") is False       # old field MUST be absent
 ```
 
 Retrofit pré-3b.5 builders YAGNI. Convention novo dispatcher: same pattern em `test_run_conversion_upload.py` (`e055ef7`) + `test_run_offline_user_data_job.py` (3b.28). **Meta SDK uses dicts (not proto), pattern future-only:** M.3+ mutate tools precisarão de `MetaCaptureClient` fixture análogo.
