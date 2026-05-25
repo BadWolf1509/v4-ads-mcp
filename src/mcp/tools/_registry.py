@@ -6,7 +6,7 @@ The MCP server (server.py) iterates `_TOOLS` to power list_tools and call_tool.
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 # Each handler receives the parsed-input dict and returns a JSON-serializable result.
 ToolHandler = Callable[[dict[str, Any]], Awaitable[Any]]
@@ -18,6 +18,7 @@ class RegisteredTool:
     description: str
     input_schema: dict[str, Any]
     handler: ToolHandler
+    bucket: Literal["always", "defer"] = "defer"
 
 
 _TOOLS: dict[str, RegisteredTool] = {}
@@ -28,14 +29,36 @@ def register_tool(
     name: str,
     description: str,
     input_schema: dict[str, Any],
+    bucket: Literal["always", "defer"] = "defer",
 ) -> Callable[[ToolHandler], ToolHandler]:
-    """Decorator: registers the function as the handler for `name`."""
+    """Decorator: registers the function as the handler for `name`.
+
+    Args:
+        name: Tool name (unique identifier).
+        description: Tool description for list_tools.
+        input_schema: JSON schema for tool inputs.
+        bucket: Loading strategy. 'defer' (default) = opt-in via client parameter;
+                'always' = core/warm tools that should be available immediately.
+                Used for server-side metadata and grepability.
+
+    Raises:
+        ValueError: If bucket is not 'always' or 'defer'.
+        RuntimeError: If tool name is already registered.
+    """
+    if bucket not in ("always", "defer"):
+        raise ValueError(
+            f"bucket must be 'always' or 'defer', got {bucket!r}"
+        )
 
     def decorator(fn: ToolHandler) -> ToolHandler:
         if name in _TOOLS:
             raise RuntimeError(f"Tool '{name}' already registered")
         _TOOLS[name] = RegisteredTool(
-            name=name, description=description, input_schema=input_schema, handler=fn
+            name=name,
+            description=description,
+            input_schema=input_schema,
+            handler=fn,
+            bucket=bucket,
         )
         return fn
 
