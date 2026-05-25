@@ -4,7 +4,7 @@
 >
 > **Maintainer note:** Add a new entry here whenever a finding is documented in a smoke runbook. Keep entries scannable — link to runbook for detail.
 >
-> **Last updated:** 2026-05-25 (Sprint 3b.38 — dogfood 25/05 zombies-audit ship: +1 finding novo **F52** (audit_zombie_keywords não filtra ad_group.status — 60% zumbis órfãs cosméticas em ad_groups REMOVED), F23 promoted "known limitation" → "fix shipped" (LAST_30_DAYS clamp + warning), B1 description refined "HORAS" → "DIAS". 49 unique findings (F1-F52 + A1-A6, alguns IDs skipped).)
+> **Last updated:** 2026-05-25 (Sprint 3b.38 ship + Meta App Review response: +1 finding novo **F52** (audit_zombie_keywords órfãs cosméticas), F23 promoted "fix shipped", B1 description refined. **+D1 decision-not-bug** (Meta App Review Standard Tier rejected, decisão Caminho A Dev Mode permanente). 50 unique findings (F1-F52 + A1-A6 + D1, alguns IDs skipped).)
 
 ---
 
@@ -121,6 +121,16 @@
 
 ---
 
+## Bug class 7: Strategic decisions (ecosystem constraint, not-a-bug, decision documented)
+
+**Pattern:** Provider (Meta/Google) impõe constraint não-código que requer decisão estratégica V4 — escolha entre re-tentar atender critério OU aceitar limitação como permanente. Registrar pra evitar re-investigação futura quando alguém perguntar "por que está em X mode?".
+
+| # | Severity | Discovered | Decision | Summary |
+|---|---|---|---|---|
+| **D1** | INFO | M.2b App Review 2026-05-25 10:58 GMT-3 | Caminho A — Dev Mode permanente | **Meta App Review respondeu: `public_profile` ✅ APROVADA, `Marketing API Access Tier` ❌ REJEITADA.** Motivo Meta literal: *"Our records do not show a sufficient number of Ads API calls in the last 15 days by this application. It is required that the application successfully integrate with the Ads API before it is approved for Marketing API standard access tier."* **Critério circular Meta:** precisa volume de calls pra aprovar Standard Tier que ABRE app pra volume externo. App interno V4 com 1 dia de uso + 1 admin (Wellington) atinge zero do threshold esperado (~750+ calls cumulativas em 15d distribuídas em vários ad_accounts/users). **Decisão Wellington 25/05:** Caminho A — aceitar Dev Mode permanente. V4 LS&Co tem 4 users totais (Wellington + 3 colab futuros), Dev Mode permite 25 admins/testers = sobra 6× cap. Standard Access Tier NÃO-NECESSÁRIO pra uso interno. **Diferenças Dev Mode vs Standard Tier:** mesma SDK + mesmas tools + mesmos rate limits (BUC) + mesmas APIs Graph. Única diferença é "quem pode autenticar OAuth no app": Dev Mode apenas admins/testers (até 25), Standard qualquer Facebook user. **Decision gate atualizado:** continuar roadmap M.3-M.25 = ≥3 calls/semana dogfood Wellington (não-mais "App Review APPROVED" como pré-req); senão pivot Google. **Action quando colab entrarem:** add como App Roles → Administrators no Meta Dev Console. **Re-submit Standard Tier OFF a roadmap** — só se V4 globalizar tool pra clientes externos não-V4 (improvável). [screenshot resposta App Review 2026-05-25 + CLAUDE.md §Pending] |
+
+---
+
 ## Summary by status
 
 | Status | Count |
@@ -129,9 +139,10 @@
 | **Doc fix only** (tool description / runbook update) | 8 (added F47 — PowerShell pipe CRLF M.2a) |
 | **Not-a-bug** (Google behavior, expected) | 2 |
 | **Known limitation / workaround documented** | 2 (was 3 — F23 fixed em 3b.38) |
+| **Strategic decision** (ecosystem constraint, not code) | 1 (D1 — Meta App Review Standard Tier rejected, Dev Mode permanente) |
 | **Open** (real fix pending) | 1 (A4 — Customer Match exclusion mechanism) |
 
-**Total findings tracked:** 49 (was 48 + F52 — dogfood 25/05 órfãs cosméticas).
+**Total findings tracked:** 50 (was 49 + D1 — Meta App Review decision documented).
 
 ---
 
@@ -147,6 +158,7 @@
 | M.2b | F48 (FacebookAdsApi.__init__ signature, fixed `a281c00`), F49 (button() macro default type, fixed same-session) |
 | Retrospective (audit_log 2026-05-18) | F50 (produção confirma TypeError F33 — audit_log id=140), F51 (produção confirma AttributeError F37 — audit_log id=149) |
 | 3b.38 | F52 (audit_zombie_keywords não filtra ad_group.status — órfãs cosméticas em ad_group REMOVED), F23 promoted "known limitation" → "fixed" (get_change_history LAST_30_DAYS clamp + warning) |
+| M.2b App Review response | D1 (Meta App Review Standard Tier rejected — decisão Caminho A Dev Mode permanente, roadmap M.3-M.25 unchanged) |
 
 ---
 
