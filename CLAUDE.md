@@ -29,17 +29,17 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 | Google Sprint 3b.1 → 3b.37 (37 sprints) | ✅ 2026-05-04→21 | 57 tools shipped + smoke real. Detail per sprint: [`sprint-history.md`](docs/operacao/sprint-history.md). Latest: 3b.33 `detect_drift`, 3b.34 F46 fix, 3b.35 `audit_goal_attribution`, 3b.36 `audit_zombie_keywords`, 3b.37 `audit_orphan_smart_actions`. |
 | Meta Sprint M.1 + M.1.1 + M.2a + M.2b | ✅ 2026-05-24→25 | DB foundation (4 tables) + OAuth flow + facebook_business v21 SDK + 2 tools MCP (`meta_list_my_ad_accounts` + `meta_get_account_overview`) + endpoints `/oauth/meta/{data-deletion-callback,refresh-accounts}` + admin UI Revogar/Refresh buttons + A5 fix. **App Review pendente Wellington manual fora-MCP.** Detail: [`sprint-history.md`](docs/operacao/sprint-history.md) §Meta family. Roadmap M.3-M.25. |
 
-**/health 200, CI green.** **16 web pages** em prod. **Q8 invite-only allowlist** ativo. **45 findings catalogados** (F1-F48 + A1-A6, A5 closed em M.2b, F48 caught + fixed em M.2b smoke real): [`findings-catalog.md`](docs/operacao/findings-catalog.md).
+**/health 200, CI green.** **16 web pages** em prod. **Q8 invite-only allowlist** ativo. **48 findings catalogados** (F1-F51 + A1-A6, alguns IDs skipped): [`findings-catalog.md`](docs/operacao/findings-catalog.md). **Smoke real M.2b 8/8 PASS** com F48 (FacebookSession factory `a281c00`) + F49 (button macro type `fe9a976`) caught/fixed em prod. F50/F51 retrospective trace de F33/F37 (já fixados desde 2026-05-18).
 
 ### Pending / future
 
-- **Sprint M.2b smoke 8/8 PASS** (T1+T2+T3+T4+T5+T6+T7+T8). 2 findings caught + fixed em prod: F48 (FacebookSession factory `a281c00`) + F49 (button() macro default type `fe9a976`). A5 fix validado em prod (audit rows com platform="meta" propagated).
-- **Meta App Review SUBMITTED 2026-05-25** (Wellington manual fora-MCP): permissions `Marketing API Access Tier` + `public_profile` em análise Meta (até 10 dias úteis, pode estender). Screencast Loom + 3 sub-processors declarados (Google LLC / Supabase Inc. / Anthropic PBC) + DPO Wellington (CNPJ 58.143.480/0001-20) + LGPD compliance. **Decision gate pós-resposta Meta:** se APPROVED → 2 semanas dogfood Wellington (≥3 usos/semana = continua M.3-M.25; senão pause + Google backlog). Se REJECTED → iterate feedback + re-submit (Dev Mode allow 25 admins meanwhile, sem urgência).
-- **Sprint 3b.38 candidates** (post-Meta M.2b decision): audit_negative_criterion_overlap, audit_assets_parity_between_campaigns, remove_* bundle, audit_log gap fix em `run_gaql`/`get_my_audit_log`/`get_my_rate_limit_status`, W2 `verify_campaign_state` ICE 280.
-- **Real biz pendente investigação (fora-MCP):** ML Antiguidades 5 primary PURCHASE actions zero conv 30d (Smart Bidding cego, tracking pixel) + MO-JP+ML 527 zombie keywords + 19 orphan actions cleanup. Meta dogfood findings em [`dogfood-2026-05-25-meta-first-tool-real-biz-findings.md`](docs/operacao/dogfood-2026-05-25-meta-first-tool-real-biz-findings.md).
-- **A4 OPEN finding:** Customer Match exclusion mechanism (3b.4/3b.5+). Investigation candidate dedicado.
-- **3 colaboradores V4 LS&Co como App Admins Meta** quando time começar a usar (deferred M.1 — Dev Mode permite 25 admins sem App Review).
-- **LOW pendings:** simetria CRUD (`update_conversion_value_rule_set`, STORE), Sprint 3b.19B Nutry smoke, 3b.30 T7-T8 production Nutry sem QS, G2 `change_event` em `list_gaql_resources`, UX1 GAQL fields opcionais vazios, B2/B3 schema hints `get_change_history`/`validate_gaql`.
+- **Meta App Review SUBMITTED 2026-05-25** — permissions `Marketing API Access Tier` + `public_profile` em análise (até 10 dias úteis). **Decision gate pós-resposta:** APPROVED → 2 semanas dogfood Wellington (≥3 usos/semana = continua M.3-M.25; senão Google pivot). REJECTED → iterate feedback + re-submit (Dev Mode allow 25 admins meanwhile).
+- **Sprint 3b.38 candidates** (decision gate ou Caminho B): audit_negative_criterion_overlap, audit_assets_parity_between_campaigns, remove_* bundle, audit_log gap fix em `run_gaql`/`get_my_audit_log`/`get_my_rate_limit_status`, W2 `verify_campaign_state` ICE 280.
+- **Caminho C consolidação** (qualquer hora, sweet spot 30-45 tools): 13 reports zombies → 2-3 generic via `get_performance_breakdown(level, dimension)`. Reduz 22% tool count. Ver [`tool-audit-2026-05-25.md`](docs/operacao/tool-audit-2026-05-25.md).
+- **A4 OPEN finding:** Customer Match exclusion mechanism (3b.4/3b.5+). Sprint dedicated candidate.
+- **3 colaboradores V4 LS&Co como Meta App Admins** quando time começar a usar (Dev Mode permite 25 admins sem App Review).
+- **Real biz findings dogfood** (fora-MCP, owner gestor V4 não-dev): ML Antiguidades cross-platform tracking pixel + MDO Cotia 2 accounts duplicadas + WJX FECHADO. Ver [`dogfood-2026-05-25-meta-first-tool-real-biz-findings.md`](docs/operacao/dogfood-2026-05-25-meta-first-tool-real-biz-findings.md).
+- **LOW pendings:** simetria CRUD (`update_conversion_value_rule_set` STORE), 3b.19B Nutry smoke, 3b.30 T7-T8 production Nutry sem QS, G2 `change_event` em `list_gaql_resources`, UX1 GAQL fields opcionais vazios, B2/B3 schema hints `get_change_history`/`validate_gaql`.
 - **WATCH (não-blocker):** 3b.36 default `limit=200` estoura MCP cap em contas 500+ entries (V1 bump). 3b.37 já default=100.
 - **YAGNI sem demanda:** ProtoFieldCapture retrofit pré-3b.5 builders.
 - **Standard Access GAds:** case `26521440673` passive. Uso ~0.07% Basic, zero blocker. Quando aprovar, 1-line em `rate_limit.py:20`.
@@ -47,11 +47,11 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 ## Read these first when continuing work
 
 ```
-docs/operacao/findings-catalog.md       # ★ Bug history (44 findings, F1-F47 + A1-A6)
-docs/operacao/sprint-history.md         # Detailed sprint table (3b.1→3b.37 + M.1→M.2a)
+docs/operacao/findings-catalog.md       # ★ Bug history (48 findings, F1-F51 + A1-A6)
+docs/operacao/sprint-history.md         # Detailed sprint table (3b.1→3b.37 + M.1→M.2b)
 docs/operacao/phase-3b-XX-bootstrap.md  # Smoke runbook per Google sprint
 docs/operacao/phase-M-2a-bootstrap.md   # Smoke runbook Meta M.2a (template pra M-family)
-docs/operacao/phase-M-2b-bootstrap.md   # Smoke runbook Meta M.2b (8 tests pendente Wellington)
+docs/operacao/phase-M-2b-bootstrap.md   # Smoke runbook Meta M.2b (8/8 PASS)
 docs/operacao/dogfood-2026-05-19-mestre-da-obra-jp-cleanup-massivo.md   # ICE-ranked Google backlog
 docs/operacao/dogfood-2026-05-21-mestre-da-obra-jp-drift-detection.md   # Drift detection findings (W1/W2/W3 + B1/B2/B3)
 docs/operacao/dogfood-2026-05-25-meta-first-tool-real-biz-findings.md   # Meta dogfood findings (D1/D2/D3 + cross-platform)
@@ -144,9 +144,17 @@ Resolve via `resolve_date_window` em `_common.py`. Bug F1 root cause: pre-3b.20 
 
 GAQL `BETWEEN end_date` é midnight-exclusive (F46) — `_format_change_date_between` helper aplica `timedelta(days=1)` pra capturar dia inteiro. Shared between `change_history_query` + `negative_criterion_creations_query`.
 
-### Meta SDK conventions (post-M.2a)
+### Meta SDK conventions (post-M.2a/M.2b)
 
-- **Never `FacebookAdsApi.init()`** — sets global state, perigoso em async multi-manager. Sempre construir instance direta: `FacebookAdsApi(access_token=..., app_id=..., app_secret=..., api_version="v22.0")`.
+- **Never `FacebookAdsApi.init()`** — sets global state, perigoso em async multi-manager. Use o factory pure `build_facebook_ads_api()` em `src/meta_ads/client.py`.
+- **F48 lesson — factory pattern correto:** `FacebookAdsApi.__init__()` aceita só `(session, api_version, enable_debug_logger)`, NÃO `access_token`/`app_id`/`app_secret` direto. Construir `FacebookSession(...)` primeiro:
+  ```python
+  from facebook_business.session import FacebookSession
+  from facebook_business.api import FacebookAdsApi
+  session = FacebookSession(app_id=..., app_secret=..., access_token=...)
+  api = FacebookAdsApi(session=session, api_version="v22.0")
+  ```
+  Integration tests mockam `run_meta_graph_get` (nível acima) → testing gap NÃO pega TypeError em `FacebookAdsApi.__init__`. Mitigação: unit tests em `tests/unit/test_meta_client.py` cobrem factory contract diretamente.
 - **Long-lived token expiration check:** toda Meta tool MUST chamar `build_meta_api_for_manager()` que valida `token_expires_at` (~60d expiry). Reactive: erro PT-BR pede reconectar; proactive cron M.X+.
 - **Audit log Meta:** `audit_log.record(... platform="meta", provider_request_id=response.headers().get("x-fb-trace-id"))`. Default `platform="google"` preserva Google callers existentes.
 - **BUC parsing post-call:** `record_actual_meta()` parseia `X-Business-Use-Case-Usage` header → `meta_rate_counters` increment + throttle pct. Structlog warning se >75%.
@@ -185,6 +193,8 @@ Force Cloud Run pick up new secret versions: `gcloud run services update v4-ads-
 
 Tailwind CDN (no build) + V4 tokens em `src/web/static/v4-tokens.css`. 22 components em `_components.html` macros. Vanilla JS, no Alpine/React. **Editorial mode** (login/access-denied/help/admin hero): display 36-56px, V4 red `#e50914`, generous whitespace. **Operational mode** (audit/access matrix/admin/*): compact 12-14px, mono metadata, dense.
 
+**F49 lesson — `button()` macro:** default `type="button"`. Quando usado dentro de `<form>`, MUST passar `type="submit"` explicitly senão NÃO submete form (browser default). Pattern: `{{ button("Salvar", variant="primary", type="submit") }}`.
+
 ## Tools available (this Claude session)
 
 - **gcloud** authed `wellinton.ribeiro@v4company.com`, project `v4-ads-mcp-prod`. Admin bypass `git push origin main` OK.
@@ -221,3 +231,5 @@ Tailwind CDN (no build) + V4 tokens em `src/web/static/v4-tokens.css`. 22 compon
 - Don't call `FacebookAdsApi.init()` em Meta tools — sets global state, perigoso em async (M.2a convention).
 - Don't upload secrets via PowerShell pipe `|` — usa arquivo binary intermediário (F47 lesson). Plus, NUNCA cole secret em chat — rotaciona se exposed.
 - Don't apply `is_allowed_email` (V4 domain) check em Meta OAuth callback — `fb_email` é conta FB pessoal do gestor (A6 lesson). Authoritative auth é manager_id no state HMAC.
+- Don't pass `access_token`/`app_id`/`app_secret` kwargs direto pra `FacebookAdsApi.__init__()` — use `FacebookSession` bridge (F48). Use factory `build_facebook_ads_api()` em `src/meta_ads/client.py`.
+- Don't usar `{{ button() }}` macro dentro de `<form>` sem `type="submit"` explicit — default `type="button"` não submete (F49).
