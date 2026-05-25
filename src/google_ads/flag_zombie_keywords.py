@@ -16,6 +16,7 @@ class KeywordRow:
 
     ad_group_id: str
     ad_group_name: str
+    ad_group_status: str  # "ENABLED" | "PAUSED" | "REMOVED" — F52 pra detectar órfãs cosméticas
     campaign_name: str
     keyword_id: str
     keyword_text: str
@@ -33,6 +34,7 @@ class ZombieKeyword:
 
     ad_group_id: str
     ad_group_name: str
+    ad_group_status: str  # F52: revela órfãs em ad_group REMOVED (no-op pra batch real)
     campaign_name: str
     keyword_id: str
     keyword_text: str
@@ -71,6 +73,7 @@ def flag_zombie_keywords(
         ZombieKeyword(
             ad_group_id=r.ad_group_id,
             ad_group_name=r.ad_group_name,
+            ad_group_status=r.ad_group_status,
             campaign_name=r.campaign_name,
             keyword_id=r.keyword_id,
             keyword_text=r.keyword_text,

@@ -192,3 +192,68 @@ async def test_tool_rejects_range_over_30_days(monkeypatch):
                 "date_range": {"from": "2026-01-01", "to": "2026-03-01"},  # 60 days
             }
         )
+
+
+@pytest.mark.asyncio
+async def test_f23_last_30_days_clamped_with_warning(monkeypatch):
+    """F23 fix Sprint 3b.38: LAST_30_DAYS preset resolves to yesterday-29 = today-30,
+    bate na borda exclusiva do Google API (start_date deve ser > today-30).
+
+    Tool clampa start_date pra today-28 (margem 2-day) + adiciona
+    `date_range_warning` explicativo na response. Non-breaking change —
+    existing consumers podem ignorar o field novo.
+
+    Dogfood 2026-05-25 MO-JP descobriu: LAST_30_DAYS resultava em "The
+    requested start date is too old" mesmo com preset disponível no schema.
+    """
+    from src.mcp.tools import get_change_history as mod
+
+    async def fake_run_report(**kwargs):
+        return []
+
+    monkeypatch.setattr(mod, "run_report", fake_run_report)
+
+    async def fake_resolve_names(**kwargs):
+        return {}
+
+    monkeypatch.setattr(mod, "_resolve_names", fake_resolve_names)
+
+    result = await mod.get_change_history(
+        {"customer_id": "1234567890", "date_range": "LAST_30_DAYS"}
+    )
+
+    # Clamp aplicado: warning presente
+    assert "date_range_warning" in result
+    assert "F23" in result["date_range_warning"]
+    assert "coerced" in result["date_range_warning"]
+    # Period reflete data pós-clamp
+    assert "period" in result
+
+
+@pytest.mark.asyncio
+async def test_f23_no_warning_when_within_retention_window(monkeypatch):
+    """F23 fix Sprint 3b.38: window dentro da retention (LAST_7_DAYS) não dispara
+    o clamp — `date_range_warning` ausente na response.
+
+    Negative test pra evitar regressão (warning persistente em todos os calls).
+    """
+    from src.mcp.tools import get_change_history as mod
+
+    async def fake_run_report(**kwargs):
+        return []
+
+    monkeypatch.setattr(mod, "run_report", fake_run_report)
+
+    async def fake_resolve_names(**kwargs):
+        return {}
+
+    monkeypatch.setattr(mod, "_resolve_names", fake_resolve_names)
+
+    result = await mod.get_change_history(
+        {"customer_id": "1234567890", "date_range": "LAST_7_DAYS"}
+    )
+
+    # Sem clamp: warning ausente
+    assert "date_range_warning" not in result
+    assert "period" in result
+    assert result["summary"]["total_changes"] == 0

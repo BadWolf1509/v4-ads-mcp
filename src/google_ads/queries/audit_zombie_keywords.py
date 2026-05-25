@@ -42,6 +42,7 @@ def build_audit_zombie_keywords_query(
           ad_group_criterion.status,
           ad_group.id,
           ad_group.name,
+          ad_group.status,
           campaign.name,
           metrics.impressions,
           metrics.clicks,
@@ -59,10 +60,14 @@ def parse_keyword_view_row(row: Any) -> dict[str, Any]:
 
     Uses `.name` on match_type/status enums (Sprint 3b.7 lesson: proto-plus
     v20+ repr regression — `str(enum)` retorna integer, `.name` retorna 'BROAD').
+
+    F52: include ad_group.status pra revelar órfãs cosméticas (keywords
+    ENABLED em ad_group REMOVED — no-op pra batch update real).
     """
     return {
         "ad_group_id": str(row.ad_group.id),
         "ad_group_name": row.ad_group.name,
+        "ad_group_status": row.ad_group.status.name,
         "campaign_name": row.campaign.name,
         "keyword_id": str(row.ad_group_criterion.criterion_id),
         "keyword_text": row.ad_group_criterion.keyword.text,
@@ -80,6 +85,7 @@ def dict_to_keyword_row(d: dict[str, Any]) -> KeywordRow:
     return KeywordRow(
         ad_group_id=str(d.get("ad_group_id", "")),
         ad_group_name=str(d.get("ad_group_name", "")),
+        ad_group_status=str(d.get("ad_group_status", "")),
         campaign_name=str(d.get("campaign_name", "")),
         keyword_id=str(d.get("keyword_id", "")),
         keyword_text=str(d.get("keyword_text", "")),

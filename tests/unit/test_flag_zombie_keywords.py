@@ -10,6 +10,7 @@ def _make_kw(
     *,
     ad_group_id: str = "1001",
     ad_group_name: str = "AG1",
+    ad_group_status: str = "ENABLED",
     campaign_name: str = "C1",
     keyword_id: str = "K1",
     keyword_text: str = "andaime metálico",
@@ -23,6 +24,7 @@ def _make_kw(
     return KeywordRow(
         ad_group_id=ad_group_id,
         ad_group_name=ad_group_name,
+        ad_group_status=ad_group_status,
         campaign_name=campaign_name,
         keyword_id=keyword_id,
         keyword_text=keyword_text,
@@ -124,3 +126,31 @@ def test_total_count_pre_truncate_preserved():
     zombies, total = flag_zombie_keywords(rows, limit=10)
     assert len(zombies) == 2
     assert total == 2  # only the 2 zombies count
+
+
+def test_ad_group_status_propagated_to_zombie():
+    """F52 regression: ad_group_status flows from KeywordRow → ZombieKeyword.
+
+    Orphans em ad_group REMOVED são detected zombies tecnicamente mas no-op
+    pra batch update real (keyword ENABLED em ad_group REMOVED não compete).
+    Consumer precisa filtrar pelo campo pra cleanup de impacto técnico.
+    """
+    rows = [
+        _make_kw(
+            keyword_id="A",
+            ad_group_status="ENABLED",
+            keyword_text="alpha",
+        ),
+        _make_kw(
+            keyword_id="B",
+            ad_group_status="REMOVED",  # órfã cosmética
+            keyword_text="beta",
+        ),
+    ]
+    zombies, total = flag_zombie_keywords(rows, limit=10)
+    assert total == 2
+    # Sorted by ad_group_name (same) + keyword_text ASC
+    assert zombies[0].keyword_text == "alpha"
+    assert zombies[0].ad_group_status == "ENABLED"
+    assert zombies[1].keyword_text == "beta"
+    assert zombies[1].ad_group_status == "REMOVED"

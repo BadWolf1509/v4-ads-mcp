@@ -70,7 +70,11 @@ _SCHEMA: dict[str, Any] = {
         "list ordenada por ad_group_name ASC + keyword_text ASC pra agrupar "
         "visualmente. Filtros: ad_group_ids[] opcional, limit (default 200, max "
         "1000), date_range preset OR start_date+end_date custom. Server-side "
-        "hardcoded: status=ENABLED + negative=FALSE. Sempre auditado."
+        "hardcoded: status=ENABLED + negative=FALSE. Sempre auditado. ATENÇÃO "
+        "(F52): zumbis incluem keywords em ad_groups REMOVED (órfãs cosméticas — "
+        "não competem em leilão, não impactam QS/Smart Bidding). Filtre pelo "
+        "campo `ad_group_status='ENABLED'` no consumer pra cleanup de impacto "
+        "técnico real, OU mantenha tudo pra inventário cosmético."
     ),
     input_schema=_SCHEMA,
 )
@@ -133,6 +137,7 @@ async def audit_zombie_keywords(args: dict[str, Any]) -> dict[str, Any]:
             {
                 "ad_group_id": z.ad_group_id,
                 "ad_group_name": z.ad_group_name,
+                "ad_group_status": z.ad_group_status,  # F52
                 "campaign_name": z.campaign_name,
                 "keyword_id": z.keyword_id,
                 "keyword_text": z.keyword_text,

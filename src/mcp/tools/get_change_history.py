@@ -9,13 +9,16 @@ call this as 'CRITICO antes de tudo' to detect:
 
 Audited as a sensitive read.
 
-Caveats (empirically verified against production change_event 2026-05-11 e
-re-confirmado em dogfood 2026-05-21 MO-JP):
+Caveats (empirically verified against production change_event 2026-05-11,
+re-confirmado em dogfood 2026-05-21 MO-JP, e refinado em dogfood 2026-05-25
+MO-JP+CAB pós-reverts Pedro 21/05):
 - Propagation lag: change_event é AUDIT LOG LAGGING, NOT real-time. Mutações
-  via API ou UI tipicamente levam MINUTOS A **HORAS** (já visto >3h em
-  produção) para surface em change_event. O lag afeta MÚLTIPLOS campos, não
-  apenas `campaign.status` — também `ai_max_setting.enable_ai_max`,
-  `asset_automation_settings`, `text_guidelines.messaging_restrictions`, etc.
+  via API ou UI tipicamente levam MINUTOS A **DIAS** (>4 dias já visto em
+  produção — dogfood 25/05 reconfirmou 3 dos 4 reverts Pedro de 21/05 ainda
+  não surfaceavam 4 dias depois) para surface em change_event. O lag afeta
+  MÚLTIPLOS campos, não apenas `campaign.status` — também
+  `ai_max_setting.enable_ai_max`, `asset_automation_settings`,
+  `text_guidelines.messaging_restrictions`, etc.
 - Padrão V4 pra validar estado ATUAL pós-mutação (revert/incident recovery):
   use `run_gaql FROM campaign` como LEADING indicator (real-time) e
   `get_change_history` como LAGGING (audit log). Se divergirem, confie no
@@ -29,6 +32,7 @@ re-confirmado em dogfood 2026-05-21 MO-JP):
 """
 
 from collections import Counter
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -37,6 +41,16 @@ from src.google_ads.queries.change_history import change_history_query
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
 from src.mcp.tools._registry import register_tool
+
+# F23 fix Sprint 3b.38: Google's change_event retention is 30 days exclusive
+# (start_date must be > today-30). Our LAST_30_DAYS preset resolves to
+# yesterday-29 = today-30 = boundary case Google rejects with
+# "The requested start date is too old."
+#
+# Mitigation: clamp resolved start_date to max(start, today-28) — 2-day
+# safety margin against UTC drift + add warning to response payload.
+# Non-breaking: existing callers receive valid data + new field they can ignore.
+_RETENTION_SAFETY_DAYS = 28
 
 _DATE_PRESETS = [
     "TODAY",
@@ -251,22 +265,48 @@ async def _resolve_names(
         "filtros opcionais (resource_types, operation_types, user_emails, "
         "client_types). Util pra auditoria 'CRITICO antes de tudo': detectar "
         "auto-apply Recommendations, mudancas estruturais, e quem mexeu no que. "
-        "ATENCAO: latency de indexacao pode chegar a HORAS (>3h ja visto em "
-        "producao) e afeta multiplos campos. Pra validar estado atual (revert/"
-        "incident), use `run_gaql FROM campaign` como leading indicator. Inclui "
-        "summary com totais por usuario/resource/operation. Janela maxima 30 "
-        "dias. Audited como read sensivel."
+        "ATENCAO: latency de indexacao pode chegar a DIAS (>4 dias ja visto em "
+        "producao — dogfood 25/05 MO-JP) e afeta multiplos campos. Pra validar "
+        "estado atual (revert/incident), use `run_gaql FROM campaign` como "
+        "leading indicator. Inclui summary com totais por usuario/resource/"
+        "operation. Janela maxima 30 dias (Google retention exclusivo — preset "
+        "LAST_30_DAYS auto-clamped pra today-28 com warning F23). Audited."
     ),
     input_schema=_SCHEMA,
 )
 async def get_change_history(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()
     customer_id = args["customer_id"]
+
+    # F23 fix Sprint 3b.38: clamp APENAS quando o usuário passou preset string
+    # (LAST_30_DAYS, etc). Custom dates — seja via start_date/end_date separados
+    # OU via date_range dict {from, to} legacy — honra intent do usuário
+    # (Google rejeita explicitamente se demais antigo, OU change_history_query
+    # raise RangeTooWideError se > 30 dias).
+    raw_date_range = args.get("date_range", "LAST_7_DAYS")
+    has_custom_dates = (
+        args.get("start_date") is not None and args.get("end_date") is not None
+    ) or isinstance(raw_date_range, dict)
+
     start, end = resolve_date_window(
-        date_range=args.get("date_range", "LAST_7_DAYS"),
+        date_range=raw_date_range,
         start_date=args.get("start_date"),
         end_date=args.get("end_date"),
     )
+
+    today = datetime.now(UTC).date()
+    earliest_allowed = today - timedelta(days=_RETENTION_SAFETY_DAYS)
+    retention_warning: str | None = None
+    if not has_custom_dates and start < earliest_allowed:
+        original_start = start
+        start = earliest_allowed
+        retention_warning = (
+            f"date_range coerced from {original_start.isoformat()} to "
+            f"{start.isoformat()} (F23: Google change_event retention é 30 dias "
+            "exclusivos — clamp pra today-28 evita rejeição na borda). Use "
+            "start_date+end_date custom pra window precisa dentro do limite."
+        )
+
     limit = args.get("limit", 200)
 
     query = change_history_query(
@@ -311,9 +351,12 @@ async def get_change_history(args: dict[str, Any]) -> dict[str, Any]:
 
     summary = _build_summary(rows)
 
-    return {
+    response: dict[str, Any] = {
         "customer_id": customer_id,
         "period": {"from": start.isoformat(), "to": end.isoformat()},
         "rows": rows,
         "summary": summary,
     }
+    if retention_warning is not None:
+        response["date_range_warning"] = retention_warning
+    return response

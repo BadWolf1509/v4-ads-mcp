@@ -22,6 +22,7 @@ def test_build_query_includes_required_fields():
         "ad_group_criterion.status",
         "ad_group.id",
         "ad_group.name",
+        "ad_group.status",  # F52: revelar órfãs em ad_group REMOVED
         "campaign.name",
         "metrics.impressions",
         "metrics.clicks",
@@ -58,6 +59,7 @@ def test_dict_to_keyword_row_handles_missing_fields():
     row = dict_to_keyword_row(d)
     assert row.keyword_text == "test"
     assert row.ad_group_id == ""
+    assert row.ad_group_status == ""  # F52
     assert row.impressions == 0
     assert row.clicks == 0
     assert row.cost_brl == 0.0
@@ -72,6 +74,7 @@ def test_parse_keyword_view_row_handles_enums_and_micros():
     - proto-plus v20+ regression (str(enum) returns int, .name returns 'BROAD'/'ENABLED')
     - cost_micros / 1_000_000.0 conversion
     - int casting on ad_group.id + criterion_id
+    - F52: ad_group.status enum unwrap via .name
     """
     fake_row = SimpleNamespace(
         ad_group_criterion=SimpleNamespace(
@@ -82,7 +85,11 @@ def test_parse_keyword_view_row_handles_enums_and_micros():
             ),
             status=SimpleNamespace(name="ENABLED"),
         ),
-        ad_group=SimpleNamespace(id=1001, name="AG1"),
+        ad_group=SimpleNamespace(
+            id=1001,
+            name="AG1",
+            status=SimpleNamespace(name="ENABLED"),  # F52
+        ),
         campaign=SimpleNamespace(name="C1"),
         metrics=SimpleNamespace(
             impressions=0,
@@ -94,7 +101,38 @@ def test_parse_keyword_view_row_handles_enums_and_micros():
     result = parse_keyword_view_row(fake_row)
     assert result["keyword_id"] == "12345"  # int → str
     assert result["ad_group_id"] == "1001"  # int → str
+    assert result["ad_group_status"] == "ENABLED"  # F52 .name resolution
     assert result["match_type"] == "BROAD"  # .name resolution
     assert result["status"] == "ENABLED"  # .name resolution
     assert result["cost_brl"] == 0.0  # cost_micros / 1_000_000.0
     assert result["keyword_text"] == "andaime metálico"
+
+
+def test_parse_keyword_view_row_orphan_ad_group_removed():
+    """F52 scenario: keyword ENABLED em ad_group REMOVED é órfã cosmética.
+
+    Reproduz pegadinha do dogfood 2026-05-25 MO-JP+CAB: tool retornava 280
+    zombies mas 170 (60.7%) eram órfãs em DELL JPA + GPA02 ANDAIME CAB
+    (ad_groups REMOVED) — keywords não competem em leilão, batch PAUSE no-op.
+    """
+    fake_row = SimpleNamespace(
+        ad_group_criterion=SimpleNamespace(
+            criterion_id=999,
+            keyword=SimpleNamespace(
+                text="dell notebook",
+                match_type=SimpleNamespace(name="BROAD"),
+            ),
+            status=SimpleNamespace(name="ENABLED"),
+        ),
+        ad_group=SimpleNamespace(
+            id=174842025340,
+            name="DELL",
+            status=SimpleNamespace(name="REMOVED"),  # órfã cosmética
+        ),
+        campaign=SimpleNamespace(name="JPA"),
+        metrics=SimpleNamespace(impressions=0, clicks=0, cost_micros=0, conversions=0),
+    )
+    result = parse_keyword_view_row(fake_row)
+    assert result["ad_group_status"] == "REMOVED"
+    assert result["status"] == "ENABLED"  # keyword ENABLED mas ad_group REMOVED
+    assert result["ad_group_name"] == "DELL"
