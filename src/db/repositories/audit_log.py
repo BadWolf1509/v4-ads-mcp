@@ -3,7 +3,7 @@
 import csv
 import io
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 import asyncpg
@@ -23,8 +23,12 @@ async def record(
     status: str = "success",  # 'success' | 'error' | 'denied'
     error_message: str | None = None,
     duration_ms: int | None = None,
+    platform: Literal["google", "meta"] = "google",
 ) -> int:
-    """Insert a row into audit_log; returns the new row id."""
+    """Insert a row into audit_log; returns the new row id.
+
+    platform: 'google' (default, preserves existing callers) | 'meta'.
+    """
     import json
 
     row = await conn.fetchrow(
@@ -33,9 +37,9 @@ async def record(
             manager_id, session_id, customer_id,
             action_type, operation, target_count,
             params_summary, google_request_id, status,
-            error_message, duration_ms
+            error_message, duration_ms, platform
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11)
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12)
         RETURNING id
         """,
         manager_id,
@@ -49,6 +53,7 @@ async def record(
         status,
         error_message,
         duration_ms,
+        platform,
     )
     assert row is not None
     return int(row["id"])
