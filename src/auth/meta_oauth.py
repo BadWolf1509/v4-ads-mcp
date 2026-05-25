@@ -14,6 +14,7 @@ scopes. Callback BLOCKS if ads_read or ads_management missing (essentials)
 """
 
 import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -73,7 +74,7 @@ def _verify_meta_signed_request(signed_request: str, app_secret: str) -> dict[st
         payload_bytes = base64.urlsafe_b64decode(
             encoded_payload + "=" * (-len(encoded_payload) % 4)
         )
-    except (ValueError, Exception):
+    except (ValueError, TypeError, binascii.Error):
         return None
 
     expected_sig = hmac.new(
@@ -448,8 +449,11 @@ async def meta_data_deletion_callback(request: Request) -> dict[str, str]:
         confirmation_code=confirmation_code,
     )
 
-    base_url = "https://v4-ads-mcp-jf26mmrgqa-rj.a.run.app"
+    url = str(request.url_for("data_deletion_status", code=confirmation_code))
+    # Force HTTPS (Cloud Run terminates TLS at GFE, mirror _build_redirect_uri pattern)
+    if url.startswith("http://"):
+        url = "https://" + url[len("http://") :]
     return {
-        "url": f"{base_url}/legal/data-deletion-status/{confirmation_code}",
+        "url": url,
         "confirmation_code": confirmation_code,
     }

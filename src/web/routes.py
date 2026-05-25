@@ -95,7 +95,9 @@ async def legal_terms(
     return templates.TemplateResponse(request, "legal/terms.html", {"current_user": user})
 
 
-@router.get("/legal/data-deletion-status/{code}", response_class=HTMLResponse)
+@router.get(
+    "/legal/data-deletion-status/{code}", response_class=HTMLResponse, name="data_deletion_status"
+)
 async def data_deletion_status(
     request: Request,
     code: str,
