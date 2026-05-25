@@ -209,9 +209,9 @@ async def test_dispatcher_returns_job_resource_name_and_three_request_ids(fake_c
         )
 
     assert result["job_resource_name"] == "customers/1163862076/offlineUserDataJobs/JOB123"
-    assert "google_request_id_create_job" in result
-    assert "google_request_id_add_ops" in result
-    assert "google_request_id_run_job" in result
+    assert "provider_request_id_create_job" in result
+    assert "provider_request_id_add_ops" in result
+    assert "provider_request_id_run_job" in result
     assert result["members_submitted"] == 2
 
 

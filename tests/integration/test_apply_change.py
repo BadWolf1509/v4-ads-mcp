@@ -92,7 +92,7 @@ async def test_apply_change_executes_mutation(db, session_ctx):
 
     assert result["status"] == "applied"
     assert result["operation"] == "update_campaign_status"
-    assert result["google_request_id"] == "fake-google-request-id"
+    assert result["provider_request_id"] == "fake-google-request-id"
 
 
 @pytest.mark.integration

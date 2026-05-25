@@ -82,7 +82,7 @@ async def test_update_ad_group_bid_passes_preflight_when_manual_cpc() -> None:
             "src.mcp.tools.update_ad_group_bid.run_mutation",
             AsyncMock(
                 return_value={
-                    "google_request_id": "req-test-1",
+                    "provider_request_id": "req-test-1",
                     "applied_count": 1,
                 }
             ),

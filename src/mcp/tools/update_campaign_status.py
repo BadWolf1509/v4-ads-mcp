@@ -77,7 +77,7 @@ async def update_campaign_status(args: dict[str, Any]) -> dict[str, Any]:
             "customer_id": customer_id,
             "blast_summary": summary,
             "applied_count": result["applied_count"],
-            "google_request_id": result["google_request_id"],
+            "provider_request_id": result["provider_request_id"],
             "auto_applied_reason": risk.reason,
         }
 

@@ -41,9 +41,9 @@
     <dt class="text-v4-gray-700 uppercase text-xs font-semibold pt-1">Alvos</dt>
     <dd>{{ event.target_count if event.target_count is not none else "—" }}</dd>
 
-    {% if event.google_request_id %}
+    {% if event.provider_request_id %}
     <dt class="text-v4-gray-700 uppercase text-xs font-semibold pt-1">Request ID</dt>
-    <dd><code class="text-xs">{{ event.google_request_id }}</code></dd>
+    <dd><code class="text-xs">{{ event.provider_request_id }}</code></dd>
     {% endif %}
   </dl>
 

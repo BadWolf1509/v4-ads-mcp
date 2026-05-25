@@ -76,7 +76,7 @@ async def test_audit_log_accepts_platform_meta(db) -> None:
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_audit_log_writes_provider_request_id(db) -> None:
-    """Regression: column renamed from google_request_id (Task 2)."""
+    """Regression: column renamed from provider_request_id (Task 2)."""
     async with db.acquire() as conn:
         mid = uuid4()
         await managers.create(conn, manager_id=mid, email="aprid@v4.com", full_name=None)

@@ -50,7 +50,7 @@ async def run_conversion_upload(
     """Execute an offline conversion upload via ConversionUploadService.
 
     Returns {status, operation, customer_id, applied_count, failed_count,
-             failures: [...], google_request_id}.
+             failures: [...], provider_request_id}.
 
     Sprint 3b.26 — first dispatcher that does NOT use GoogleAdsService.mutate.
     """
@@ -58,7 +58,7 @@ async def run_conversion_upload(
     token_id = hash_developer_token(settings.google_ads_developer_token)
     started = time.monotonic()
     pool = connection.get_pool()
-    google_request_id: str | None = None
+    provider_request_id: str | None = None
     applied_count = 0
     failed_count = 0
     failures: list[dict[str, Any]] = []
@@ -101,7 +101,7 @@ async def run_conversion_upload(
         reset_request_id()
         service = client.get_service("ConversionUploadService")
         response = service.upload_click_conversions(request=request)
-        google_request_id = get_request_id()
+        provider_request_id = get_request_id()
 
         applied_count, failed_count, failures = _parse_upload_response(response, payload, client)
 
@@ -135,7 +135,7 @@ async def run_conversion_upload(
                 operation=operation_type,
                 target_count=target_count,
                 params_summary=params_summary or {"conversion_count": target_count},
-                google_request_id=google_request_id or "",
+                provider_request_id=provider_request_id or "",
                 status=status,
                 error_message=error_message,
                 duration_ms=duration_ms,
@@ -145,7 +145,7 @@ async def run_conversion_upload(
             "operation": operation_type,
             "customer_id": customer_id,
             "error": err_text,
-            "google_request_id": google_request_id or "",
+            "provider_request_id": provider_request_id or "",
         }
 
     # Success path
@@ -166,7 +166,7 @@ async def run_conversion_upload(
             operation=operation_type,
             target_count=target_count,
             params_summary=params_summary or {"conversion_count": target_count},
-            google_request_id=google_request_id or "",
+            provider_request_id=provider_request_id or "",
             status=status,
             error_message=error_message,
             duration_ms=duration_ms,
@@ -189,7 +189,7 @@ async def run_conversion_upload(
         "applied_count": applied_count,
         "failed_count": failed_count,
         "failures": failures,
-        "google_request_id": google_request_id or "",
+        "provider_request_id": provider_request_id or "",
     }
 
 

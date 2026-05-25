@@ -418,7 +418,7 @@ async def test_parse_response_counts_applied_correctly_all_success():
     assert result["applied_count"] == 5
     assert result["failed_count"] == 0
     assert result["failures"] == []
-    assert result["google_request_id"] == "req-005"
+    assert result["provider_request_id"] == "req-005"
 
 
 @pytest.mark.asyncio

@@ -152,23 +152,23 @@ async def test_create_ad_group_full_cycle_audits(db, session_ctx) -> None:
     assert apply_result["status"] == "applied"
     assert apply_result["operation"] == "create_ad_group"
     assert apply_result["applied_count"] == 1
-    assert apply_result["google_request_id"] == "req-create-ag"
+    assert apply_result["provider_request_id"] == "req-create-ag"
     # F13: resource_names propagated from run_mutation through apply_change
     assert "resource_names" in apply_result
     assert isinstance(apply_result["resource_names"], list)
     assert len(apply_result["resource_names"]) == apply_result["applied_count"]
 
-    # Step 3: Verify audit_log row has expected target_count + google_request_id
+    # Step 3: Verify audit_log row has expected target_count + provider_request_id
     # + custom params_summary (names excluded, only distribution counts).
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT operation, target_count, params_summary, google_request_id "
+            "SELECT operation, target_count, params_summary, provider_request_id "
             "FROM audit_log WHERE operation = 'create_ad_group'"
         )
     assert len(rows) == 1
     assert rows[0]["target_count"] == 1
-    assert rows[0]["google_request_id"] == "req-create-ag"
+    assert rows[0]["provider_request_id"] == "req-create-ag"
     summary = rows[0]["params_summary"]
     summary_d = json.loads(summary) if isinstance(summary, str) else summary
     assert summary_d == {

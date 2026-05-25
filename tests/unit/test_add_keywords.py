@@ -96,7 +96,7 @@ async def test_auto_path_under_threshold():
     async def fake_run_mutation(**kwargs):
         captured.update(kwargs)
         return {
-            "google_request_id": "req-1",
+            "provider_request_id": "req-1",
             "applied_count": 5,
             "partial_failures": [{"index": i, "status": "added", "error": None} for i in range(5)],
         }
@@ -157,7 +157,7 @@ async def test_partial_failure_mapping_already_exists():
         "src.mcp.tools.add_keywords.run_mutation",
         AsyncMock(
             return_value={
-                "google_request_id": "req-2",
+                "provider_request_id": "req-2",
                 "applied_count": 2,
                 "partial_failures": fake_partials,
             }
@@ -190,7 +190,7 @@ async def test_custom_params_summary_aggregates_metadata():
     async def fake_run_mutation(**kwargs):
         captured.update(kwargs)
         return {
-            "google_request_id": "req-3",
+            "provider_request_id": "req-3",
             "applied_count": 4,
             "partial_failures": [{"index": i, "status": "added", "error": None} for i in range(4)],
         }

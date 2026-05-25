@@ -75,7 +75,7 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
             "operation": saved.operation_type,
             "customer_id": saved.customer_id,
             "blast_summary": saved.blast_summary,
-            "google_request_id": result["google_request_id"],
+            "provider_request_id": result["provider_request_id"],
             "applied_count": result["applied_count"],
             "failed_count": result["failed_count"],
             "failures": result["failures"],
@@ -102,9 +102,9 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
             "operation_type": saved.payload["operation"],
             "members_submitted": result["members_submitted"],
             "job_resource_name": result["job_resource_name"],
-            "google_request_id_create_job": result["google_request_id_create_job"],
-            "google_request_id_add_ops": result["google_request_id_add_ops"],
-            "google_request_id_run_job": result["google_request_id_run_job"],
+            "provider_request_id_create_job": result["provider_request_id_create_job"],
+            "provider_request_id_add_ops": result["provider_request_id_add_ops"],
+            "provider_request_id_run_job": result["provider_request_id_run_job"],
             "to_check_status": (
                 f"Job é assíncrono no backend Google (processa em horas). "
                 f"Pra verificar status, use run_gaql com query 'SELECT "
@@ -131,7 +131,7 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
         "operation": saved.operation_type,
         "customer_id": saved.customer_id,
         "blast_summary": saved.blast_summary,
-        "google_request_id": result["google_request_id"],
+        "provider_request_id": result["provider_request_id"],
         "applied_count": result["applied_count"],
         "resource_names": result.get("resource_names", []),
     }

@@ -205,7 +205,7 @@ async def test_create_conversion_value_rule_set_full_cycle_returns_3_resource_na
     assert apply_result["operation"] == "create_conversion_value_rule_set"
     # target_count = N rules + 1 set = 2 + 1 = 3
     assert apply_result["applied_count"] == 3
-    assert apply_result["google_request_id"] == "req-create-rs"
+    assert apply_result["provider_request_id"] == "req-create-rs"
 
     # F13 (Sprint 3b.15) — chained mutation case: 3 resource_names in order.
     # Verifies ordering: rule1 path → rule2 path → set path, matching the
@@ -217,17 +217,17 @@ async def test_create_conversion_value_rule_set_full_cycle_returns_3_resource_na
     assert apply_result["resource_names"][1] == "customers/1234567890/conversionValueRules/22222"
     assert apply_result["resource_names"][2] == "customers/1234567890/conversionValueRuleSets/99999"
 
-    # Step 3: Verify audit_log row has expected target_count + google_request_id
+    # Step 3: Verify audit_log row has expected target_count + provider_request_id
     # + custom params_summary (counts only — no rule content per spec §3.6).
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT operation, target_count, params_summary, google_request_id "
+            "SELECT operation, target_count, params_summary, provider_request_id "
             "FROM audit_log WHERE operation = 'create_conversion_value_rule_set'"
         )
     assert len(rows) == 1
     assert rows[0]["target_count"] == 3
-    assert rows[0]["google_request_id"] == "req-create-rs"
+    assert rows[0]["provider_request_id"] == "req-create-rs"
     summary = rows[0]["params_summary"]
     summary_d = json.loads(summary) if isinstance(summary, str) else summary
     assert summary_d == {

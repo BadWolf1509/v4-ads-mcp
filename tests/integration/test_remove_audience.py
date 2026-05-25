@@ -175,17 +175,17 @@ async def test_remove_audience_full_cycle_audits(db, session_ctx):
     assert apply_result["status"] == "applied"
     assert apply_result["applied_count"] == 2  # 2 removed + 1 already_removed
 
-    # Step 3: Verify audit_log row has expected target_count + google_request_id +
+    # Step 3: Verify audit_log row has expected target_count + provider_request_id +
     # custom params_summary
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT operation, target_count, params_summary, google_request_id "
+            "SELECT operation, target_count, params_summary, provider_request_id "
             "FROM audit_log WHERE operation = 'remove_audience'"
         )
     assert len(rows) == 1
     assert rows[0]["target_count"] == 3
-    assert rows[0]["google_request_id"] == "req-remove-aud"
+    assert rows[0]["provider_request_id"] == "req-remove-aud"
     summary = rows[0]["params_summary"]
     summary_d = json.loads(summary) if isinstance(summary, str) else summary
     assert summary_d == {

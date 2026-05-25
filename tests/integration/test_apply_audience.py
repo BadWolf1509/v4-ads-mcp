@@ -189,12 +189,12 @@ async def test_apply_audience_full_cycle_audits(db, session_ctx):
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT operation, target_count, params_summary, google_request_id "
+            "SELECT operation, target_count, params_summary, provider_request_id "
             "FROM audit_log WHERE operation = 'apply_audience'"
         )
     assert len(rows) == 1
     assert rows[0]["target_count"] == 3
-    assert rows[0]["google_request_id"] == "req-apply-aud"
+    assert rows[0]["provider_request_id"] == "req-apply-aud"
     summary = rows[0]["params_summary"]
     summary_d = json.loads(summary) if isinstance(summary, str) else summary
     assert summary_d == {

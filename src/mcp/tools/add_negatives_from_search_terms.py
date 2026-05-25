@@ -135,7 +135,7 @@ async def add_negatives_from_search_terms(args: dict[str, Any]) -> dict[str, Any
         "operation": "add_negatives_from_search_terms",
         "customer_id": customer_id,
         "applied_count": result["applied_count"],
-        "google_request_id": result["google_request_id"],
+        "provider_request_id": result["provider_request_id"],
         "auto_applied_reason": risk.reason,
         "added": added,
     }

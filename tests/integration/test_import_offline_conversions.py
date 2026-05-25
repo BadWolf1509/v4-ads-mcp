@@ -177,7 +177,7 @@ async def test_import_offline_conversions_full_cycle_returns_applied_count_and_a
     assert apply_result["operation"] == "import_offline_conversions"
     assert apply_result["applied_count"] == 3
     assert apply_result["failed_count"] == 2
-    assert apply_result["google_request_id"] == "req-conv-int"
+    assert apply_result["provider_request_id"] == "req-conv-int"
     assert len(apply_result["failures"]) == 2
     # Failed rows are indices 3 and 4 (after 3 successes)
     assert apply_result["failures"][0]["row_index"] == 3
@@ -192,12 +192,12 @@ async def test_import_offline_conversions_full_cycle_returns_applied_count_and_a
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT operation, target_count, params_summary, google_request_id "
+            "SELECT operation, target_count, params_summary, provider_request_id "
             "FROM audit_log WHERE operation = 'import_offline_conversions'"
         )
     assert len(rows) == 1
     assert rows[0]["target_count"] == 5
-    assert rows[0]["google_request_id"] == "req-conv-int"
+    assert rows[0]["provider_request_id"] == "req-conv-int"
     summary = rows[0]["params_summary"]
     summary_d = json.loads(summary) if isinstance(summary, str) else summary
     assert summary_d["conversion_count"] == 5

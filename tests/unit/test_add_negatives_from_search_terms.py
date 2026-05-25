@@ -96,7 +96,7 @@ async def test_tool_zips_partial_failures_back_to_input():
         "src.mcp.tools.add_negatives_from_search_terms.run_mutation",
         AsyncMock(
             return_value={
-                "google_request_id": "req-123",
+                "provider_request_id": "req-123",
                 "applied_count": 2,
                 "partial_failures": fake_partials,
             }
@@ -130,7 +130,7 @@ async def test_tool_zips_partial_failures_back_to_input():
 
     assert result["status"] == "applied"
     assert result["applied_count"] == 2
-    assert result["google_request_id"] == "req-123"
+    assert result["provider_request_id"] == "req-123"
     assert len(result["added"]) == 3
     assert result["added"][0]["search_term"] == "a"
     assert result["added"][0]["status"] == "added"
@@ -150,7 +150,7 @@ async def test_tool_passes_custom_params_summary_to_run_mutation():
     async def _stub(**kwargs):
         captured.update(kwargs)
         return {
-            "google_request_id": "r",
+            "provider_request_id": "r",
             "applied_count": 2,
             "partial_failures": [
                 {"index": 0, "status": "added", "error": None},

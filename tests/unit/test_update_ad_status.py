@@ -64,7 +64,7 @@ async def test_auto_path_paused_under_threshold():
         "src.mcp.tools.update_ad_status.run_mutation",
         AsyncMock(
             return_value={
-                "google_request_id": "req-1",
+                "provider_request_id": "req-1",
                 "applied_count": 3,
                 "partial_failures": [],
             }
@@ -84,7 +84,7 @@ async def test_auto_path_paused_under_threshold():
 
     assert result["status"] == "applied"
     assert result["applied_count"] == 3
-    assert result["google_request_id"] == "req-1"
+    assert result["provider_request_id"] == "req-1"
     assert "confirmation_token" not in result
 
 

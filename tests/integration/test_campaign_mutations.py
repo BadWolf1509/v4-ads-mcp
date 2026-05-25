@@ -81,7 +81,7 @@ async def test_update_campaign_status_single_auto_applies(db, session_ctx):
         )
 
     assert result["status"] == "applied"
-    assert result["google_request_id"] == "req-123"
+    assert result["provider_request_id"] == "req-123"
     assert result["applied_count"] == 1
 
 

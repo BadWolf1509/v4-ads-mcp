@@ -159,7 +159,7 @@ async def update_ad_group_bid(args: dict[str, Any]) -> dict[str, Any]:
             "blast_summary": summary,
             "changes": changes,
             "applied_count": result["applied_count"],
-            "google_request_id": result["google_request_id"],
+            "provider_request_id": result["provider_request_id"],
             "auto_applied_reason": risk.reason,
         }
 

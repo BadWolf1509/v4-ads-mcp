@@ -32,7 +32,7 @@ def _fake_event(
         "target_count": 1,
         "status": "success",
         "duration_ms": 100,
-        "google_request_id": "req-abc",
+        "provider_request_id": "req-abc",
         "error_message": None,
     }
 

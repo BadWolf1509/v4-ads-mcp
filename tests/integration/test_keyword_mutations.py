@@ -278,7 +278,7 @@ async def test_update_keyword_status_preflight_passes_only_positive(db, session_
         ),
         patch(
             "src.mcp.tools.update_keyword_status.run_mutation",
-            AsyncMock(return_value={"applied_count": 1, "google_request_id": "req-z"}),
+            AsyncMock(return_value={"applied_count": 1, "provider_request_id": "req-z"}),
         ),
     ):
         result = await update_keyword_status(args)

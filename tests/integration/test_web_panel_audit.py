@@ -49,7 +49,7 @@ async def test_audit_lists_managers_own_events(client: AsyncClient):
             target_count=3,
             status="success",
             duration_ms=120,
-            google_request_id="req-fake",
+            provider_request_id="req-fake",
         )
 
     cookie = sign_panel_session(

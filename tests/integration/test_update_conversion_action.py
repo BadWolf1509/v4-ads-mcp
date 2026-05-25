@@ -100,13 +100,13 @@ async def test_single_rename_auto_applies(db, session_ctx):
         ),
         patch(
             "src.mcp.tools.update_conversion_action.run_mutation",
-            AsyncMock(return_value={"applied_count": 1, "google_request_id": "req-abc"}),
+            AsyncMock(return_value={"applied_count": 1, "provider_request_id": "req-abc"}),
         ),
     ):
         result = await update_conversion_action(args)
     assert result["status"] == "applied"
     assert result["applied_count"] == 1
-    assert result["google_request_id"] == "req-abc"
+    assert result["provider_request_id"] == "req-abc"
     assert result["changes"][0]["fields_updated"] == ["name"]
 
 

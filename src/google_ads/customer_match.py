@@ -98,7 +98,7 @@ async def run_offline_user_data_job(
     2. add_offline_user_data_job_operations (operations[], enable_partial_failure=True)
     3. run_offline_user_data_job (fire-and-forget; backend processa em horas)
 
-    Returns dict com job_resource_name + 3 google_request_ids + members_submitted.
+    Returns dict com job_resource_name + 3 provider_request_ids + members_submitted.
 
     Sprint 3b.28 — segundo dispatcher non-mutate, paralelo a run_conversion_upload
     do Sprint 3b.26.
@@ -155,8 +155,8 @@ async def run_offline_user_data_job(
 
     return {
         "job_resource_name": job_resource,
-        "google_request_id_create_job": create_req_id,
-        "google_request_id_add_ops": add_req_id,
-        "google_request_id_run_job": run_req_id,
+        "provider_request_id_create_job": create_req_id,
+        "provider_request_id_add_ops": add_req_id,
+        "provider_request_id_run_job": run_req_id,
         "members_submitted": len(hashed_members),
     }

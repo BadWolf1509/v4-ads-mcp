@@ -80,7 +80,7 @@ async def test_apply_recommendation_auto_applies(db, session_ctx):
 
     assert result["status"] == "applied"
     assert result["operation"] == "apply_recommendation"
-    assert result["google_request_id"] == "req-apply"
+    assert result["provider_request_id"] == "req-apply"
 
 
 @pytest.mark.integration
@@ -106,4 +106,4 @@ async def test_dismiss_recommendation_auto_applies(db, session_ctx):
 
     assert result["status"] == "applied"
     assert result["operation"] == "dismiss_recommendation"
-    assert result["google_request_id"] == "req-dismiss"
+    assert result["provider_request_id"] == "req-dismiss"

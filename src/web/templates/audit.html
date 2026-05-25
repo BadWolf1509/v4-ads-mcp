@@ -121,10 +121,10 @@
                   <pre class="bg-v4-gray-50 p-2 rounded text-xs overflow-x-auto">{{ r.params_summary | tojson(indent=2) }}</pre>
                 </div>
                 {% endif %}
-                {% if r.google_request_id %}
+                {% if r.provider_request_id %}
                 <div class="col-span-1 md:col-span-2 text-xs">
                   <span class="text-v4-gray-700 uppercase">Google Request ID:</span>
-                  <code class="ml-2">{{ r.google_request_id }}</code>
+                  <code class="ml-2">{{ r.provider_request_id }}</code>
                 </div>
                 {% endif %}
               </div>

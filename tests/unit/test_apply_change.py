@@ -35,7 +35,7 @@ async def test_apply_change_propagates_resource_names(_ctx) -> None:
 
     # run_mutation now returns resource_names in its dict (F13)
     fake_mutation_result = {
-        "google_request_id": "req-apply-test",
+        "provider_request_id": "req-apply-test",
         "applied_count": 2,
         "partial_failures": [],
         "resource_names": [
@@ -62,7 +62,7 @@ async def test_apply_change_propagates_resource_names(_ctx) -> None:
 
     assert result["status"] == "applied"
     assert result["applied_count"] == 2
-    assert result["google_request_id"] == "req-apply-test"
+    assert result["provider_request_id"] == "req-apply-test"
     assert "resource_names" in result
     assert result["resource_names"] == [
         "customers/1234567890/adGroups/111",
@@ -123,13 +123,13 @@ async def test_apply_change_routes_import_offline_conversions_to_run_conversion_
                         "applied_count": 5,
                         "failed_count": 0,
                         "failures": [],
-                        "google_request_id": "req-conv-001",
+                        "provider_request_id": "req-conv-001",
                     }
                 ),
             ) as mock_conv_upload,
             patch(
                 "src.mcp.tools.apply_change.run_mutation",
-                AsyncMock(return_value={"google_request_id": "should-not-be-called"}),
+                AsyncMock(return_value={"provider_request_id": "should-not-be-called"}),
             ) as mock_mutate,
         ):
             result = await apply_change({"confirmation_token": "TOKEN001"})
@@ -191,7 +191,7 @@ async def test_apply_change_routes_other_operations_to_run_mutation():
                 "src.mcp.tools.apply_change.run_mutation",
                 AsyncMock(
                     return_value={
-                        "google_request_id": "req-mut-001",
+                        "provider_request_id": "req-mut-001",
                         "applied_count": 4,
                         "resource_names": ["customers/X/campaigns/Y"],
                     }

@@ -132,7 +132,7 @@ async def test_run_mutation_partial_failure_returns_per_op_status(monkeypatch):
             partial_failure=True,
         )
 
-    assert result["google_request_id"] == "req-pf"
+    assert result["provider_request_id"] == "req-pf"
     assert "partial_failures" in result
     assert len(result["partial_failures"]) == 3
     assert result["partial_failures"][0] == {"index": 0, "status": "added", "error": None}

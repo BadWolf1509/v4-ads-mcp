@@ -195,7 +195,7 @@ async def test_create_and_link_assets_full_cycle_returns_interleaved_resource_na
     assert apply_result["status"] == "applied"
     assert apply_result["operation"] == "create_and_link_assets"
     assert apply_result["applied_count"] == two_n  # 2N ops
-    assert apply_result["google_request_id"] == "req-create-assets"
+    assert apply_result["provider_request_id"] == "req-create-assets"
 
     # F13 cross-cutting: 2N resource_names, ordering [asset0, link0, asset1, link1, ...]
     assert "resource_names" in apply_result
@@ -211,12 +211,12 @@ async def test_create_and_link_assets_full_cycle_returns_interleaved_resource_na
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT operation, target_count, params_summary, google_request_id "
+            "SELECT operation, target_count, params_summary, provider_request_id "
             "FROM audit_log WHERE operation = 'create_and_link_assets'"
         )
     assert len(rows) == 1
     assert rows[0]["target_count"] == two_n
-    assert rows[0]["google_request_id"] == "req-create-assets"
+    assert rows[0]["provider_request_id"] == "req-create-assets"
     summary = rows[0]["params_summary"]
     summary_d = json.loads(summary) if isinstance(summary, str) else summary
     # Full-dict equality — catches missing/extra fields if _build_summary changes

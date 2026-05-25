@@ -48,7 +48,7 @@ async def run_mutation(
     partial_failure: bool = False,
     params_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Execute a mutation. Returns {google_request_id, applied_count, partial_failures}.
+    """Execute a mutation. Returns {provider_request_id, applied_count, partial_failures}.
 
     Args:
         partial_failure: When True, sets request.partial_failure_mode = PARTIAL_FAILURE.
@@ -64,7 +64,7 @@ async def run_mutation(
     token_id = hash_developer_token(settings.google_ads_developer_token)
     started = time.monotonic()
     pool = connection.get_pool()
-    google_request_id: str | None = None
+    provider_request_id: str | None = None
     error_message: str | None = None
     status = "success"
 
@@ -96,7 +96,7 @@ async def run_mutation(
                 request.partial_failure = True
             reset_request_id()
             response = ga_service.mutate(request=request)
-            google_request_id = get_request_id()
+            provider_request_id = get_request_id()
 
             # Parse per-op status when partial_failure is enabled.
             #
@@ -222,7 +222,7 @@ async def run_mutation(
                     resource_names.append(getattr(result_proto, "resource_name", None) or None)
 
         return {
-            "google_request_id": google_request_id,
+            "provider_request_id": provider_request_id,
             "applied_count": applied_count,
             "partial_failures": per_op_results,
             "resource_names": resource_names,
@@ -252,7 +252,7 @@ async def run_mutation(
                 params_summary=params_summary
                 if params_summary is not None
                 else {"keys": sorted(payload.keys())},
-                google_request_id=google_request_id,
+                provider_request_id=provider_request_id,
                 status=status,
                 error_message=error_message,
                 duration_ms=duration_ms,
@@ -289,7 +289,7 @@ async def run_recommendation_action(
     token_id = hash_developer_token(settings.google_ads_developer_token)
     started = time.monotonic()
     pool = connection.get_pool()
-    google_request_id: str | None = None
+    provider_request_id: str | None = None
     error_message: str | None = None
     status = "success"
     target_count = 1  # one recommendation per call
@@ -308,12 +308,12 @@ async def run_recommendation_action(
                 execute_dismiss_recommendation(client, customer_id, payload)
             else:
                 raise ValueError(f"Unknown recommendation operation: {operation_type}")
-            google_request_id = get_request_id()
+            provider_request_id = get_request_id()
         except Exception as e:
             raise to_friendly(e) from e
 
         return {
-            "google_request_id": google_request_id,
+            "provider_request_id": provider_request_id,
             "applied_count": 1,
         }
     except Exception as e:
@@ -338,7 +338,7 @@ async def run_recommendation_action(
                 operation=operation_type,
                 target_count=target_count,
                 params_summary={"keys": sorted(payload.keys())},
-                google_request_id=google_request_id,
+                provider_request_id=provider_request_id,
                 status=status,
                 error_message=error_message,
                 duration_ms=duration_ms,

@@ -177,7 +177,7 @@ async def test_update_rsa_full_cycle_audits(db, session_ctx) -> None:
     assert apply_result["status"] == "applied"
     assert apply_result["operation"] == "update_rsa"
     assert apply_result["applied_count"] == 1
-    assert apply_result["google_request_id"] == "req-update-rsa"
+    assert apply_result["provider_request_id"] == "req-update-rsa"
 
     # F13 (Sprint 3b.15) — resource_names extraction with ad_result oneof.
     # Validates top-level Ad path format (no compound ~-separator).
@@ -186,17 +186,17 @@ async def test_update_rsa_full_cycle_audits(db, session_ctx) -> None:
     assert len(apply_result["resource_names"]) == apply_result["applied_count"]
     assert apply_result["resource_names"][0] == expected_resource_name
 
-    # Step 3: Verify audit_log row has expected target_count + google_request_id
+    # Step 3: Verify audit_log row has expected target_count + provider_request_id
     # + custom params_summary (counts only — no ad copy text per spec §3.6).
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT operation, target_count, params_summary, google_request_id "
+            "SELECT operation, target_count, params_summary, provider_request_id "
             "FROM audit_log WHERE operation = 'update_rsa'"
         )
     assert len(rows) == 1
     assert rows[0]["target_count"] == 1
-    assert rows[0]["google_request_id"] == "req-update-rsa"
+    assert rows[0]["provider_request_id"] == "req-update-rsa"
     summary = rows[0]["params_summary"]
     summary_d = json.loads(summary) if isinstance(summary, str) else summary
     assert summary_d == {
