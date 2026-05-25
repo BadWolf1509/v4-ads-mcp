@@ -227,6 +227,7 @@ def test_no_unexpected_tools():
         "update_rsa",
         "update_conversion_action",  # Sprint 3b.27
         "meta_list_my_ad_accounts",  # Sprint M.2a Task 9
+        "meta_get_account_overview",  # Sprint M.2b Task C
     }
     actual = {t.name for t in all_tools()}
     unexpected = actual - expected
