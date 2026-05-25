@@ -19,6 +19,30 @@ SERVER_VERSION = "0.1.0"
 
 log = structlog.get_logger(__name__)
 
+
+def _build_tool_meta(bucket: str) -> dict[str, Any]:
+    """Build _meta dict for a tool based on its bucket classification.
+
+    Returns:
+        - V4-specific: 'com.v4company/bucket' = 'always' or 'defer' (always present)
+        - Anthropic standard: 'anthropic/alwaysLoad' = True (ONLY when bucket='always')
+
+    The anthropic/alwaysLoad field is the standard MCP mechanism for opting
+    individual tools out of Claude Code's default tool-search deferral
+    (ENABLE_TOOL_SEARCH=true default in Claude Code v2.x). Tools without this
+    field default to deferred — exactly what we want for bucket='defer'.
+
+    D3 finding (Sprint 3b.39): D2 originally assumed defer_loading was
+    client-side settings.json. Real mechanism is server-side per-tool _meta
+    via anthropic/alwaysLoad. Docs reference:
+    https://code.claude.com/docs/en/mcp#scale-with-mcp-tool-search
+    """
+    meta: dict[str, Any] = {"com.v4company/bucket": bucket}
+    if bucket == "always":
+        meta["anthropic/alwaysLoad"] = True
+    return meta
+
+
 # ASGI callable types
 _Scope = MutableMapping[str, Any]
 _ASGIReceive = Callable[[], Awaitable[MutableMapping[str, Any]]]
@@ -34,18 +58,28 @@ def build_server() -> Any:
 
     @server.list_tools()  # type: ignore[no-untyped-call, untyped-decorator]
     async def list_tools() -> list[Tool]:
-        # Expose bucket classification via MCP `_meta` field using reverse-DNS
-        # namespacing per spec (com.v4company/bucket). Clients that introspect
-        # tools/list response can route on this; the prefix tag in the
-        # description (added by Task C) remains the primary signal for Claude's
-        # client-side heuristic. `defer_loading` is a separate CLIENT-SIDE
-        # Anthropic API parameter and is NOT exposed via MCP server metadata.
+        # Expose bucket classification via 2 _meta fields:
+        #
+        # 1. `com.v4company/bucket` (always present) — reverse-DNS namespacing
+        #    per MCP spec, value "always" or "defer". V4-specific introspection.
+        #
+        # 2. `anthropic/alwaysLoad` (only when bucket="always") — Anthropic Claude
+        #    Code standard MCP field (D3 finding 3b.39). With ENABLE_TOOL_SEARCH
+        #    default-on in Claude Code v2.x, all MCP tools default to deferred
+        #    (on-demand via tool search). Setting `alwaysLoad: true` per-tool
+        #    promotes specific tools to always-loaded in context. This is the
+        #    correct mechanism for Sprint 3b.39 F1 — NOT client-side settings.json
+        #    config (that schema doesn't exist in Claude Code, D2 was wrong about
+        #    location). Defer tools (bucket="defer") get no anthropic/alwaysLoad
+        #    field → Claude Code defaults to deferred (via Tool Search).
+        #
+        # Docs ref: https://code.claude.com/docs/en/mcp#scale-with-mcp-tool-search
         return [
             Tool(
                 name=t.name,
                 description=t.description,
                 inputSchema=t.input_schema,
-                _meta={"com.v4company/bucket": t.bucket},
+                _meta=_build_tool_meta(t.bucket),
             )
             for t in all_tools()
         ]

@@ -129,3 +129,67 @@ def test_build_server_list_tools_includes_meta_for_all_registered_tools() -> Non
         assert tool.meta["com.v4company/bucket"] in ("always", "defer"), (
             f"tool {tool.name} has invalid bucket value {tool.meta['com.v4company/bucket']!r}"
         )
+
+
+def test_build_tool_meta_always_includes_anthropic_alwaysload() -> None:
+    """D3 finding (Sprint 3b.39 fix): bucket='always' tools must include
+    'anthropic/alwaysLoad': True in _meta. This is Claude Code's standard
+    mechanism for opting tools out of default Tool Search deferral.
+
+    Without this field, Claude Code defaults all MCP tools to deferred
+    (ENABLE_TOOL_SEARCH=true default in v2.x). Tools with the field are
+    promoted to always-loaded in context.
+    """
+    from src.mcp.server import _build_tool_meta  # noqa: PLC0415
+
+    meta_always = _build_tool_meta("always")
+    assert meta_always == {
+        "com.v4company/bucket": "always",
+        "anthropic/alwaysLoad": True,
+    }
+
+
+def test_build_tool_meta_defer_omits_anthropic_alwaysload() -> None:
+    """D3 finding: bucket='defer' tools must NOT include anthropic/alwaysLoad.
+    Absence of the field tells Claude Code to use default behavior (deferred
+    via Tool Search). Explicit False would still allow Claude to load them.
+    """
+    from src.mcp.server import _build_tool_meta  # noqa: PLC0415
+
+    meta_defer = _build_tool_meta("defer")
+    assert meta_defer == {"com.v4company/bucket": "defer"}
+    assert "anthropic/alwaysLoad" not in meta_defer
+
+
+def test_list_tools_anthropic_alwaysload_count_matches_always_bucket() -> None:
+    """End-to-end D3 regression: number of tools with 'anthropic/alwaysLoad': True
+    in list_tools response must equal number of bucket='always' tools in registry.
+
+    Verifies the fix is plumbed end-to-end through Tool construction + serialization.
+    """
+    import anyio  # noqa: PLC0415
+    from mcp.types import ListToolsRequest  # noqa: PLC0415
+
+    from src.mcp.server import build_server  # noqa: PLC0415
+    from src.mcp.tools._registry import _TOOLS  # noqa: PLC0415
+
+    expected_always = sum(1 for t in _TOOLS.values() if t.bucket == "always")
+
+    server = build_server()
+    handler = server.request_handlers[ListToolsRequest]
+    request = ListToolsRequest(method="tools/list", params=None)
+
+    async def _run() -> Any:
+        return await handler(request)
+
+    result = anyio.run(_run)
+    tools_list = result.root.tools
+
+    actual_alwaysload = sum(
+        1 for t in tools_list if t.meta and t.meta.get("anthropic/alwaysLoad") is True
+    )
+
+    assert actual_alwaysload == expected_always, (
+        f"Expected {expected_always} tools with anthropic/alwaysLoad=True, "
+        f"got {actual_alwaysload}. Registry/list_tools out of sync."
+    )
