@@ -53,6 +53,10 @@ def create_app(skip_db_init: bool = False) -> FastAPI:
 
     app.include_router(oauth_router)
 
+    from src.auth import meta_oauth as meta_oauth_module
+
+    app.include_router(meta_oauth_module.router)
+
     from pathlib import Path
 
     from fastapi.staticfiles import StaticFiles

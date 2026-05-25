@@ -19,6 +19,41 @@
     <p class="mt-6 text-v4-gray-700">
       Sua conta foi desativada por um admin. Entre em contato com o admin V4 da sua unidade pra reativar.
     </p>
+  {% elif reason == 'meta_scopes_missing' %}
+    <div class="text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
+      Permissões Meta incompletas.
+    </div>
+    <p class="mt-6 text-v4-gray-700">
+      Você não concedeu uma das permissões essenciais durante o consent do Facebook:
+    </p>
+    <ul class="list-disc pl-6 mt-3 text-left text-v4-gray-700">
+      {% for scope in missing_scopes %}
+      <li><code class="px-1 py-0.5 bg-v4-gray-50 rounded text-sm">{{ scope }}</code></li>
+      {% endfor %}
+    </ul>
+    <p class="mt-4 text-v4-gray-700">
+      Por favor, <a href="/oauth/meta/start" class="text-v4-red hover:underline">conecte novamente</a>
+      e marque <strong>TODAS as opções</strong> no consent screen do Facebook.
+    </p>
+  {% elif reason == 'meta_oauth_error' %}
+    <div class="text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
+      Erro no login Meta.
+    </div>
+    <p class="mt-6 text-v4-gray-700">O Facebook retornou um erro durante o consent:</p>
+    <p class="mt-2 text-sm bg-v4-gray-50 p-3 rounded"><code>{{ detail }}</code></p>
+    <p class="mt-4"><a href="/oauth/meta/start" class="text-v4-red hover:underline">Tentar novamente</a></p>
+  {% elif reason == 'meta_token_exchange_failed' %}
+    <div class="text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
+      Falha na troca do token Meta.
+    </div>
+    <p class="mt-6 text-v4-gray-700">Não conseguimos completar a autenticação. Pode ser timeout temporário.</p>
+    <p class="mt-4"><a href="/oauth/meta/start" class="text-v4-red hover:underline">Tentar novamente</a></p>
+  {% elif reason in ('meta_oauth_incomplete', 'meta_state_invalid', 'meta_userinfo_failed', 'meta_userinfo_incomplete') %}
+    <div class="text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
+      Erro inesperado no login Meta.
+    </div>
+    <p class="mt-6 text-v4-gray-700">Reason: <code>{{ reason }}</code></p>
+    <p class="mt-4"><a href="/oauth/meta/start" class="text-v4-red hover:underline">Tentar novamente</a></p>
   {% else %}
     <div class="text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
       Você ainda não tem acesso.

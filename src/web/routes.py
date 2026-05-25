@@ -98,14 +98,23 @@ async def legal_terms(
 async def access_denied(
     request: Request,
     reason: str = "not_invited",
+    email: str | None = None,
+    detail: str | None = None,
+    missing: str | None = None,
 ) -> HTMLResponse:
     """Q8 invite-only landing page. No auth required.
 
     Reads a transient `v4_attempted_email` cookie set by the OAuth callback
     before redirect, so the page can show which email was rejected. Cookie is
     cleared on read so it doesn't persist or leak across logins.
+
+    Also accepts Meta OAuth error params:
+    - email: rejected email address (passed via query param for Meta domain check)
+    - detail: error detail string (meta_oauth_error branch)
+    - missing: comma-separated missing scope names (meta_scopes_missing branch)
     """
-    attempted_email = request.cookies.get("v4_attempted_email")
+    attempted_email = request.cookies.get("v4_attempted_email") or email
+    missing_scopes = missing.split(",") if missing else []
     response = templates.TemplateResponse(
         request,
         "access_denied.html",
@@ -113,6 +122,9 @@ async def access_denied(
             "current_user": None,
             "reason": reason,
             "attempted_email": attempted_email,
+            "email": email,
+            "detail": detail,
+            "missing_scopes": missing_scopes,
         },
     )
     response.delete_cookie("v4_attempted_email", path="/")
