@@ -19,7 +19,7 @@ async def record(
     operation: str,
     target_count: int | None = None,
     params_summary: dict[str, Any] | None = None,
-    google_request_id: str | None = None,
+    provider_request_id: str | None = None,
     status: str = "success",  # 'success' | 'error' | 'denied'
     error_message: str | None = None,
     duration_ms: int | None = None,
@@ -36,7 +36,7 @@ async def record(
         INSERT INTO audit_log (
             manager_id, session_id, customer_id,
             action_type, operation, target_count,
-            params_summary, google_request_id, status,
+            params_summary, provider_request_id, status,
             error_message, duration_ms, platform
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12)
@@ -49,7 +49,7 @@ async def record(
         operation,
         target_count,
         json.dumps(params_summary) if params_summary is not None else None,
-        google_request_id,
+        provider_request_id,
         status,
         error_message,
         duration_ms,
@@ -141,7 +141,7 @@ async def export_csv_rows(
         idx += 1
     sql = f"""SELECT al.occurred_at, m.email, al.operation, al.customer_id,
                      al.action_type, al.status, al.target_count, al.duration_ms,
-                     al.error_message, al.google_request_id
+                     al.error_message, al.provider_request_id
               FROM audit_log al LEFT JOIN managers m ON m.id = al.manager_id
               WHERE {" AND ".join(where)}
               ORDER BY al.occurred_at DESC"""
@@ -157,7 +157,7 @@ async def export_csv_rows(
         "target_count",
         "duration_ms",
         "error_message",
-        "google_request_id",
+        "provider_request_id",
     ]
     buf = io.StringIO()
     csv.writer(buf).writerow(header)
@@ -176,7 +176,7 @@ async def export_csv_rows(
                 row["target_count"] if row["target_count"] is not None else "",
                 row["duration_ms"] if row["duration_ms"] is not None else "",
                 row["error_message"] or "",
-                row["google_request_id"] or "",
+                row["provider_request_id"] or "",
             ]
         )
         yield buf.getvalue()
@@ -215,7 +215,7 @@ async def list_for_manager(
         idx += 1
     params.append(limit)
     sql = f"""SELECT id, occurred_at, operation, customer_id, action_type,
-                     target_count, status, duration_ms, google_request_id,
+                     target_count, status, duration_ms, provider_request_id,
                      error_message
               FROM audit_log
               WHERE {" AND ".join(where)}
@@ -232,7 +232,7 @@ async def list_for_manager(
             "target_count": int(r["target_count"]) if r["target_count"] is not None else None,
             "status": r["status"],
             "duration_ms": int(r["duration_ms"]) if r["duration_ms"] is not None else None,
-            "google_request_id": r["google_request_id"],
+            "provider_request_id": r["provider_request_id"],
             "error_message": r["error_message"],
         }
         for r in rows

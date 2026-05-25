@@ -71,3 +71,29 @@ async def test_audit_log_accepts_platform_meta(db) -> None:
         row = await conn.fetchrow("SELECT platform FROM audit_log WHERE id = $1", log_id)
         assert row is not None
         assert row["platform"] == "meta"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_audit_log_writes_provider_request_id(db) -> None:
+    """Regression: column renamed from google_request_id (Task 2)."""
+    async with db.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="aprid@v4.com", full_name=None)
+        log_id = await audit_log.record(
+            conn,
+            manager_id=mid,
+            session_id=None,
+            customer_id="act_999",
+            action_type="read",
+            operation="meta_list_my_ad_accounts",
+            provider_request_id="x-fb-trace-id-123",
+            status="success",
+            platform="meta",
+        )
+        row = await conn.fetchrow(
+            "SELECT provider_request_id, platform FROM audit_log WHERE id = $1", log_id
+        )
+        assert row is not None
+        assert row["provider_request_id"] == "x-fb-trace-id-123"
+        assert row["platform"] == "meta"
