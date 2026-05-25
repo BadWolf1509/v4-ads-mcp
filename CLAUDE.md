@@ -17,7 +17,7 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 
 ## Current state
 
-**Last updated:** 2026-05-24
+**Last updated:** 2026-05-25
 
 ### Shipped — Google Ads (57 tools em produção)
 
@@ -26,7 +26,7 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 | Phases 0-1b + 3a + FE Redesign v2 | ✅ 2026-05-03→05 | Foundation done. See [`infra-setup.md`](docs/operacao/infra-setup.md). |
 | Sprint 3b.1 → 3b.37 (37 sprints) | ✅ 2026-05-04→21 | All shipped + signed-off em conta real. **Detail per sprint:** [`sprint-history.md`](docs/operacao/sprint-history.md). **Bug history (42 findings, F1-F46):** [`findings-catalog.md`](docs/operacao/findings-catalog.md). |
 
-**57 MCP tools** registered: 29 read + 27 mutations + `apply_change`. Latest sprints: 3b.33 `detect_drift`, 3b.34 F46 fix, 3b.35 `audit_goal_attribution`, 3b.36 `audit_zombie_keywords` (default limit=100 lição), 3b.37 `audit_orphan_smart_actions`. /health 200, CI green.
+**57 Google MCP tools + 1 Meta MCP tool = 58 total** registered. Latest sprints: 3b.33 `detect_drift`, 3b.34 F46 fix, 3b.35 `audit_goal_attribution`, 3b.36 `audit_zombie_keywords` (default limit=100 lição), 3b.37 `audit_orphan_smart_actions`. /health 200, CI green.
 **15 web pages** in production (FE Redesign v2 Hybrid Editorial+Operational identity).
 **Q8 invite-only allowlist** active — only `@v4company.com` emails pre-invited via `/admin/invites` can complete OAuth.
 
@@ -36,16 +36,19 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 |---|---|---|
 | Sprint M.1 — Foundation | ✅ 2026-05-24 | DB schema 003_meta_schema.sql (4 tabelas + ALTER em audit_log/pending_confirmations) + 3 repositories + settings meta_app_id/meta_app_secret. **ZERO MCP tools ainda.** Task 8 ✅ done: Meta App criado em developers.facebook.com (App ID `1522411803012799`, BM V4 Lima Soares & Co, Dev Mode), Use Cases habilitados (`ads_read`+`ads_management`+`business_management`), OAuth Redirect URI configurado, secrets `meta-app-id`/`meta-app-secret` em GCP Secret Manager + IAM secretAccessor, `META_APP_ID`+`META_APP_SECRET` env vars em Cloud Run, /health 200, deploy smoke 2/2. Sprint family completo: [spec](docs/superpowers/specs/2026-05-24-meta-ads-incorporation-design.md) + [plan M.1](docs/superpowers/plans/2026-05-24-sprint-m1-meta-foundation.md). Roadmap: 25 sprints M.1-M.25 (~3-6 meses até paridade ~45 tools Meta). |
 | Sprint M.1.1 — Legal pages hotfix | ✅ 2026-05-24 | `/legal/privacy` + `/legal/terms` páginas públicas (V4 brand: red #e50914, Montserrat, editorial hero pattern de help.html). LGPD-compliant, jurisdição BR foro João Pessoa. Required by Meta App Settings (URLs whitelist) e App Review futuro M.2. Commit f56ffe6. |
+| Sprint M.2a — OAuth + SDK + 1st tool | ✅ 2026-05-25 | **58ª tool MCP `meta_list_my_ad_accounts` em produção.** 5 prep tasks foundation (audit_log platform kwarg + migration 004 `provider_request_id` rename 50 callers + meta_rate_counters repo + conftest META env). facebook_business v21 SDK + `src/meta_ads/` package (client/reports/errors). OAuth flow Meta (`/oauth/meta/{start,callback,revoke}`) com granular permission enforcement + long-lived token ~60d. Admin UI: card "Conexões OAuth" Google + Meta. **+1 hotfix:** removido `is_allowed_email` check do callback Meta (design error — contas FB são pessoais gmail/etc, não corporativas — A6). Smoke real V4 Lima Soares & Co: T1+T2+T4+T7 ✅ PASS (12 ad accounts Meta sincronizadas, audit log multi-platform, Google regression-free), T3/T5/T6 skip (edge cases). 14 commits ([3d82fbe..e93a05b](https://github.com/BadWolf1509/v4-ads-mcp/compare/3d82fbe..e93a05b)). Sprint family: [spec](docs/superpowers/specs/2026-05-24-sprint-m2a-meta-oauth-first-tool-design.md) + [plan](docs/superpowers/plans/2026-05-24-sprint-m2a-meta-oauth-first-tool.md) + [runbook](docs/operacao/phase-M-2a-bootstrap.md). |
 
 ### Pending / future
 
-- **Sprint M.2 — Meta Ads** próximos passos críticos descobertos em M.1 final review (devem ser Task 1-N do M.2 plan):
-  - `audit_log.record()` precisa de `platform: Literal["google","meta"]` param ANTES de qualquer Meta tool chamar (risco: pollution audit log).
-  - `004_audit_log_provider_id.sql` migration: rename `google_request_id` → `provider_request_id` (22 caller files).
-  - `meta_rate_counters` repository ainda não existe (tabela criada em M.1, sem CRUD Python).
-  - `conftest.py _TEST_ENV` precisa de `META_APP_ID` + `META_APP_SECRET` quando Meta OAuth tests entrarem.
-  - **Meta App Review submit pendente:** banner "Atualmente não qualificado para envio" diz "Exclusão de dados do usuário" falta callback POST (Meta espera endpoint que valida `signed_request`, não URL estática). M.2.X candidate: implementar `/oauth/meta/data-deletion-callback` (~2-4h). Não bloqueia uso atual em Dev Mode (Wellington + até 25 admins liberados sem App Review).
-  - Adicionar 3 colaboradores V4 Lima Soares & Co como App Admins quando time começar a usar (deferred do M.1 — Wellington única admin V0).
+- **Sprint M.2b — Meta Ads polish + App Review** (próximo, ~1-2 dias estimados):
+  - Tool `meta_get_account_overview` (spend, impressions, clicks, ctr, currency, status, last_activity per ad_account_id) — usa primeiro Graph API real call via `run_meta_graph_get` (M.2a infra).
+  - Endpoint `/oauth/meta/data-deletion-callback` (POST com `signed_request` validation) — pré-requisito Meta App Review.
+  - Webapp polish: botão Revogar com modal confirm, botão "Refresh Meta accounts", cards refinados.
+  - Per-value smoke probes (account_status enum coverage, token expired, permissions revoked).
+  - Wellington manual: Meta App Review submit (screencast + URLs já configuradas).
+  - **Decision gate pós-M.2b:** 2 semanas dogfood Wellington. Se usar Meta tools ≥3x/semana → continua roadmap M.3-M.25; senão pause e foca Google backlog (3b.38+).
+- **A5 finding (M.2a discovery):** `get_my_audit_log` return dict missing `platform` field — coluna existe em DB (Sprint M.2a), só não exposed em handler tool. ~30 min fix (M.2b candidate ou separate Quick Win).
+- **Adicionar 3 colaboradores V4 Lima Soares & Co como App Admins** quando time começar a usar (deferred M.1 — Wellington única admin V0). Não bloqueia: até 25 admins permitidos em Dev Mode sem App Review.
 - **Modelo operacional:** Wellington dev + early user; 3 colaboradores V4 Lima Soares & Co usarão MCP após M.2+ ship OAuth Meta + primeiras tools. Multi-tenancy não mais "adiado indefinidamente" — V1 real.
 - **Sprint 3b.38 candidates:** audit_negative_criterion_overlap, audit_assets_parity_between_campaigns, remove_* bundle, audit_log gap fix, W2 `verify_campaign_state` (ICE 280). Wellington decide baseado em dogfood.
 - **Real biz findings pendente investigação (fora-MCP):** ML Antiguidades 5 primary PURCHASE actions zero conv em 30d (detectado 3b.37 — Smart Bidding cego, requer Wellington investigar tracking pixel). MO-JP+ML total 527 zombie keywords + 19 orphan conversion actions cleanup-ready.
