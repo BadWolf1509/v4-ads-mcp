@@ -34,11 +34,18 @@ def build_server() -> Any:
 
     @server.list_tools()  # type: ignore[no-untyped-call, untyped-decorator]
     async def list_tools() -> list[Tool]:
+        # Expose bucket classification via MCP `_meta` field using reverse-DNS
+        # namespacing per spec (com.v4company/bucket). Clients that introspect
+        # tools/list response can route on this; the prefix tag in the
+        # description (added by Task C) remains the primary signal for Claude's
+        # client-side heuristic. `defer_loading` is a separate CLIENT-SIDE
+        # Anthropic API parameter and is NOT exposed via MCP server metadata.
         return [
             Tool(
                 name=t.name,
                 description=t.description,
                 inputSchema=t.input_schema,
+                _meta={"com.v4company/bucket": t.bucket},
             )
             for t in all_tools()
         ]
