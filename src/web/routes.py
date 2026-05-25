@@ -95,6 +95,20 @@ async def legal_terms(
     return templates.TemplateResponse(request, "legal/terms.html", {"current_user": user})
 
 
+@router.get("/legal/data-deletion-status/{code}", response_class=HTMLResponse)
+async def data_deletion_status(
+    request: Request,
+    code: str,
+    user: CurrentUser | None = Depends(optional_current_manager),  # noqa: B008
+) -> HTMLResponse:
+    """Public data deletion confirmation status page. Meta App Review requirement."""
+    return templates.TemplateResponse(
+        request,
+        "legal/data_deletion_status.html",
+        {"current_user": user, "confirmation_code": code},
+    )
+
+
 @router.get("/access-denied", response_class=HTMLResponse, response_model=None)
 async def access_denied(
     request: Request,

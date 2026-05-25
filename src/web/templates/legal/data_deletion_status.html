@@ -1,0 +1,35 @@
+{% extends "_base.html" %}
+
+{% block title %}Solicitação de exclusão de dados — V4 Ads MCP{% endblock %}
+
+{% block content %}
+<div class="legal-content" style="max-width: 720px; margin: 64px auto; padding: 0 24px;">
+    <h1>Solicitação de exclusão de dados recebida</h1>
+
+    <p><strong>Código de confirmação:</strong> <code>{{ confirmation_code }}</code></p>
+
+    <p>Recebemos sua solicitação de exclusão de dados associados à sua conta Facebook
+    no V4 Ads MCP — ferramenta interna da V4 Company (V4 Lima Soares & Co, João Pessoa/PB).</p>
+
+    <h2>Próximos passos</h2>
+
+    <p>O administrador <strong>Wellington Ribeiro</strong> processará sua solicitação
+    manualmente em até <strong>30 dias úteis</strong>. Você receberá confirmação por email
+    quando os dados forem removidos dos nossos sistemas:</p>
+
+    <ul>
+        <li>Tabelas <code>meta_oauth_connections</code> (token OAuth)</li>
+        <li>Tabela <code>meta_ad_accounts</code> (cache de ad accounts)</li>
+        <li>Tabela <code>manager_meta_account_access</code> (permissões)</li>
+        <li>Rows do <code>audit_log</code> associadas à sua interação Meta</li>
+    </ul>
+
+    <h2>Contato</h2>
+
+    <p>Dúvidas: <a href="mailto:wellinton.ribeiro@v4company.com">wellinton.ribeiro@v4company.com</a></p>
+
+    <p style="margin-top: 48px; color: #666; font-size: 0.875rem;">
+        <a href="/legal/privacy">Política de Privacidade</a> · <a href="/legal/terms">Termos de Uso</a>
+    </p>
+</div>
+{% endblock %}
