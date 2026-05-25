@@ -2,6 +2,7 @@
 
 Auto-loaded by Claude Code. Read first.
 
+
 **V4 Ads MCP** é tool interna da V4 Company (marketing digital, BR) que conecta Google Ads + Meta Ads accounts a Claude/Codex/Cursor via Model Context Protocol. Gestores pedem em PT-BR — _"top 5 campanhas por gasto últimos 7 dias"_, _"pause keywords sem conversão"_ — e o assistente executa via tools curadas read/mutate com governança (audit_log, rate_limit, always-CONFIRM em mutates de blast radius alto).
 
 Interno only, não SaaS, sem terceiros. Substitui Supermetrics.
@@ -20,20 +21,19 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 
 **Last updated:** 2026-05-25
 
-### Shipped — 58 MCP tools (57 Google + 1 Meta)
+### Shipped — 59 MCP tools (57 Google + 2 Meta)
 
 | Stream | Status | Notes |
 |---|---|---|
 | Phases 0-1b + 3a + FE Redesign v2 | ✅ 2026-05-03→05 | Foundation. See [`infra-setup.md`](docs/operacao/infra-setup.md). |
 | Google Sprint 3b.1 → 3b.37 (37 sprints) | ✅ 2026-05-04→21 | 57 tools shipped + smoke real. Detail per sprint: [`sprint-history.md`](docs/operacao/sprint-history.md). Latest: 3b.33 `detect_drift`, 3b.34 F46 fix, 3b.35 `audit_goal_attribution`, 3b.36 `audit_zombie_keywords`, 3b.37 `audit_orphan_smart_actions`. |
-| Meta Sprint M.1 + M.1.1 + M.2a | ✅ 2026-05-24→25 | DB foundation (4 tables) + OAuth flow (`/oauth/meta/*`) + facebook_business v21 SDK + 1ª tool MCP `meta_list_my_ad_accounts`. Smoke real V4 LS&Co BM 12 ad accounts sincronizadas. Detail: [`sprint-history.md`](docs/operacao/sprint-history.md) §Meta family. Roadmap M.1-M.25 (~3-6 meses até paridade ~45 tools Meta). |
+| Meta Sprint M.1 + M.1.1 + M.2a + M.2b | ✅ 2026-05-24→25 | DB foundation (4 tables) + OAuth flow + facebook_business v21 SDK + 2 tools MCP (`meta_list_my_ad_accounts` + `meta_get_account_overview`) + endpoints `/oauth/meta/{data-deletion-callback,refresh-accounts}` + admin UI Revogar/Refresh buttons + A5 fix. **App Review pendente Wellington manual fora-MCP.** Detail: [`sprint-history.md`](docs/operacao/sprint-history.md) §Meta family. Roadmap M.3-M.25. |
 
-**/health 200, CI green.** **15 web pages** em prod (FE Redesign v2 Hybrid Editorial+Operational). **Q8 invite-only allowlist** ativo — só `@v4company.com` emails pre-invited via `/admin/invites` completam OAuth. **44 findings catalogados** (F1-F47 + A1-A6): [`findings-catalog.md`](docs/operacao/findings-catalog.md).
+**/health 200, CI green.** **16 web pages** em prod (FE Redesign v2 + data-deletion-status). **Q8 invite-only allowlist** ativo. **44 findings catalogados** (F1-F47 + A1-A6, A5 closed em M.2b): [`findings-catalog.md`](docs/operacao/findings-catalog.md).
 
 ### Pending / future
 
-- **Sprint M.2b — Meta polish + App Review** (próximo, ~1-2 dias): `meta_get_account_overview` tool (1ª Graph API real call via `run_meta_graph_get`) + endpoint `/oauth/meta/data-deletion-callback` (pré-req App Review) + admin UI polish (revoke modal, refresh accounts button) + per-value smoke probes + Wellington manual App Review submit. **Decision gate pós-M.2b:** 2 semanas dogfood Wellington — ≥3 usos/semana = continua M.3-M.25; senão pause + foca Google backlog.
-- **Quick wins descobertos M.2a:** A5 (`get_my_audit_log` return missing `platform` field, ~30 min); A6 (Meta OAuth `is_allowed_email` — JÁ FIXED em hotfix `e93a05b`).
+- **Sprint M.2b smoke real + App Review submit** (Wellington manual, ~45 min smoke + ~2h App Review prep): executar 8 tests em [`phase-M-2b-bootstrap.md`](docs/operacao/phase-M-2b-bootstrap.md) (T1 meta_get_account_overview happy → T8 refresh UX) + Meta App Review submit. **Decision gate pós-M.2b:** 2 semanas dogfood Wellington — ≥3 usos/semana = continua M.3-M.25; senão pause + foca Google backlog.
 - **Sprint 3b.38 candidates** (post-Meta M.2b decision): audit_negative_criterion_overlap, audit_assets_parity_between_campaigns, remove_* bundle, audit_log gap fix em `run_gaql`/`get_my_audit_log`/`get_my_rate_limit_status`, W2 `verify_campaign_state` ICE 280.
 - **Real biz pendente investigação (fora-MCP):** ML Antiguidades 5 primary PURCHASE actions zero conv 30d (Smart Bidding cego, tracking pixel) + MO-JP+ML 527 zombie keywords + 19 orphan actions cleanup. Meta dogfood findings em [`dogfood-2026-05-25-meta-first-tool-real-biz-findings.md`](docs/operacao/dogfood-2026-05-25-meta-first-tool-real-biz-findings.md).
 - **A4 OPEN finding:** Customer Match exclusion mechanism (3b.4/3b.5+). Investigation candidate dedicado.
@@ -50,6 +50,7 @@ docs/operacao/findings-catalog.md       # ★ Bug history (44 findings, F1-F47 +
 docs/operacao/sprint-history.md         # Detailed sprint table (3b.1→3b.37 + M.1→M.2a)
 docs/operacao/phase-3b-XX-bootstrap.md  # Smoke runbook per Google sprint
 docs/operacao/phase-M-2a-bootstrap.md   # Smoke runbook Meta M.2a (template pra M-family)
+docs/operacao/phase-M-2b-bootstrap.md   # Smoke runbook Meta M.2b (8 tests pendente Wellington)
 docs/operacao/dogfood-2026-05-19-mestre-da-obra-jp-cleanup-massivo.md   # ICE-ranked Google backlog
 docs/operacao/dogfood-2026-05-21-mestre-da-obra-jp-drift-detection.md   # Drift detection findings (W1/W2/W3 + B1/B2/B3)
 docs/operacao/dogfood-2026-05-25-meta-first-tool-real-biz-findings.md   # Meta dogfood findings (D1/D2/D3 + cross-platform)
