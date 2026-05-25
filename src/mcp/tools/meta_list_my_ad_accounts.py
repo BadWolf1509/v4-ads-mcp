@@ -14,7 +14,7 @@ from src.mcp.tools._meta_common import META_ACCOUNT_STATUS_LABELS
 from src.mcp.tools._registry import register_tool
 
 _DESCRIPTION = (
-    "Lista as contas de anúncio Meta às quais o gestor tem acesso. "
+    "[CORE] Lista as contas de anúncio Meta às quais o gestor tem acesso. "
     "Fonte: cache local sincronizado quando o gestor conecta Meta via OAuth. "
     "Pra forçar refresh dos accounts, gestor precisa reconectar via painel admin. "
     "Retorna: ad_account_id ('act_<numeric>'), account_name, business_id/name "

@@ -28,7 +28,7 @@ from src.meta_ads.reports import run_meta_graph_get
 log = structlog.get_logger(__name__)
 
 _DESCRIPTION = (
-    "Overview de uma conta Meta Ads: métricas essenciais (spend, impressões, clicks, "
+    "[CORE] Overview de uma conta Meta Ads: métricas essenciais (spend, impressões, clicks, "
     "CTR, CPC, reach, frequency, conversões, conversion_value, purchase_roas) "
     "para o período selecionado com comparativo do período anterior de mesma duração. "
     "Inclui warnings PT-BR pra account_status problemático e token OAuth expirando. "
