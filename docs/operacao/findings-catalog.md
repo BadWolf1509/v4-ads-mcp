@@ -51,6 +51,7 @@
 | **F44** | HIGH | 3b.27 | 3b.27.1 | `ConversionAction.include_in_conversions_metric` é IMMUTABLE em update operation v24 do Google Ads API, mesmo que SDK descriptor aceite o field. Builder tests via ProtoFieldCapture passaram, dry_run passou, mas apply falhou com `"The field attempted to be mutated is immutable."` Discovered em smoke T7 (batch 3 actions com 3 fields combinados). Diagnosis isolado: `primary_for_goal=False` sozinho OK (request `vw3Dp2KQqcgS2wqd4VjWtQ`), `include_in_conversions_metric=False` sozinho falha. Fix Sprint 3b.27.1: field removido do schema V0 + builder + classify + tests (commit `c903eb8`). V0 final = 2 fields mutáveis (`name`, `primary_for_goal`). Pra desligar conv metric tracking, gestor usa Google Ads UI. Tool description atualizada cita F44 explicitly. [phase-3b-27-bootstrap.md §F-findings] |
 | **F46** | MED | 3b.33 | 3b.34 | `change_event.change_date_time BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'` em GAQL trata end_date como **midnight 00:00:00 start-of-day exclusive**, não inclusive end-of-day. Resultado pré-fix: single-day window `start_date=end_date=2026-05-20` retornava **0 rows silenciosamente** (mesmo que dia tenha changes); multi-day window excluía changes de end_date depois do meio-dia. Discovered em smoke 3b.33 T3 (Pedro Vytor cluster 20/05 10:12-10:13 não retornou com window 19→20, retornou só com 19→21). Affected: `get_change_history` (3b.1), `get_negative_keywords_audit` via `negative_criterion_creations_query` (3b.21), `detect_drift` (3b.33). **Fix Sprint 3b.34 (commit `0785dbf`):** novo helper `_format_change_date_between(start, end)` em `change_history.py` aplica `timedelta(days=1)` ao end_date antes do isoformat. Google passa a interpretar como `<= midnight do dia seguinte`, capturando o dia inteiro inclusive. Helper compartilhado entre `change_history_query` e `negative_criterion_creations_query` pra consistência. 3 regression tests F46-specific. Range validation (30-day cap) preservada — usa user-facing end_date, NÃO o transformed end+1. Família design-gap-via-Google-API-semantics. 15ª variante da silent-acceptance family (returns empty silently instead of erroring). [phase-3b-33-bootstrap.md] |
 | **F47** | HIGH (procedural) | M.2a smoke real | M.2a runbook fix | **PowerShell pipe `\|` no Windows converte LF→CRLF mesmo com `python sys.stdout.buffer.write()` binary** — secret upload via `python -c "sys.stdout.buffer.write(b'...')" \| gcloud secrets versions add ... --data-file=-` resultou em **`\r\r\n` trailing** no GCP Secret Manager. Causou Meta OAuth flow falhar com "ID do app inválido" (`client_id=1522411803012799%0D%0A` na URL — `%0D%0A` = `\r\n` URL-encoded). Mesma classe de bug atingiu `meta-app-id` (v1) e `meta-app-secret` (v1-v5 todas com 3 bytes trailing). Plus a verification side via `gcloud secrets versions access \| python ...` também mente — pipe adiciona `\r\n` no read side, fazendo `clean=False` mesmo quando o secret stored estava limpo. **Root cause:** Windows pipes são text-mode default; Python sequer alcança raw bytes através do pipe. **Mitigation:** SEMPRE usar arquivo binary intermediário pra secret creation. Procedure pra runbooks futuros: `python -c "open('tmp.bin', 'wb').write(b'<value>')"` + `(Get-Item tmp.bin).Length` (valida tamanho binary exato) + `gcloud secrets versions add ... --data-file=tmp.bin` (gcloud lê arquivo direto, binary-safe) + `Remove-Item tmp.bin` + `Clear-History`. Bash não tem esse problema (Linux/WSL/Git-Bash pipes são byte-clean). **Secret rotation forçada** porque Wellington colou o secret comprometido em chat durante diagnosis — Meta App Reset + nova versão v6 limpa + v1-v5 disabled (defense in depth). [phase-M-2a-bootstrap.md] |
+| **F48** | HIGH | M.2b smoke real T1 | M.2b same-session fix (commit `a281c00`) | **`facebook_business v21 FacebookAdsApi.__init__` aceita só `(session, api_version, enable_debug_logger)` — NÃO `access_token`/`app_id`/`app_secret` direto como kwargs**. M.2a `build_meta_api_for_manager` em `src/meta_ads/client.py` estava passando esses kwargs direto → `TypeError: FacebookAdsApi.__init__() got an unexpected keyword argument 'access_token'` em runtime. **Why not caught in CI:** integration tests da Meta family (test_meta_oauth_flow.py, test_meta_get_account_overview.py) mockam `run_meta_graph_get` no nível do orchestrator — nunca exercise real `build_meta_api_for_manager` factory. Bug surface só quando smoke real chama tool MCP em prod fazendo Graph call de verdade. **Why not caught in M.2a smoke:** `meta_list_my_ad_accounts` (1ª tool Meta shipped) usa cache local `meta_ad_accounts` table — não chama `build_meta_api_for_manager`. M.2b `meta_get_account_overview` é PRIMEIRA tool com real Graph call → bug surface aqui. **Fix:** construir `FacebookSession(app_id=..., app_secret=..., access_token=...)` primeiro, depois `FacebookAdsApi(session=session, api_version="v22.0")`. Mirror what `FacebookAdsApi.init()` does internamente mas mantém convention M.2a de NÃO usar global state. **Testing gap mitigation:** adicionado unit test `tests/unit/test_meta_client.py` que cobre `build_meta_api_for_manager` factory pattern (verifica session construction + api_version + sem TypeError). **Family:** facebook_business SDK signature contract change não detectado em testing. Mesma class de bug pode atingir outros SDK call sites em M.3+ se SDK signature mudar entre versões. [phase-M-2b-bootstrap.md, commit `a281c00`] |
 
 ---
 
@@ -120,13 +121,13 @@
 
 | Status | Count |
 |---|---|
-| **Fixed** (source code change) | 26 (added F38, F39, F40, F42) |
-| **Doc fix only** (tool description / runbook update) | 7 (added F45 — Nutry sandbox sem CRM_BASED user_list pra smoke 3b.28) |
+| **Fixed** (source code change) | 28 (added F46, F48 — M.2b smoke real) |
+| **Doc fix only** (tool description / runbook update) | 8 (added F47 — PowerShell pipe CRLF M.2a) |
 | **Not-a-bug** (Google behavior, expected) | 2 |
 | **Known limitation / workaround documented** | 3 |
-| **Open** (real fix pending) | 1 (A4 — Customer Match exclusion mechanism for V4 playbook; agora a tool `upload_customer_match_list` está disponível, então A4 investigation pode prosseguir em sprint futuro usando-a) |
+| **Open** (real fix pending) | 1 (A4 — Customer Match exclusion mechanism) |
 
-**Total findings tracked:** 41 (was 40 + F45 do Sprint 3b.28 smoke 2026-05-20)
+**Total findings tracked:** 45 (was 41 + F46/F47/F48 + A6).
 
 ---
 
@@ -136,13 +137,10 @@
 
 | Sprint | Findings introduced |
 |---|---|
-| 3b.23 | F28 (MCP cache lag, not-fixable) |
-| 3b.24 | F29 (doc), F30 (→ 3b.24.4), F32 (→ 3b.24.2), F33 (→ 3b.24.4), F34 (→ 3b.24.4), F35 (→ 3b.24.4), F36 (Google constraint), F37 (→ 3b.24.5) |
-| 3b.25 | F38 (→ 3b.25.1 + 3b.25.2), F39 (→ 3b.25.1), F40 (→ 3b.25.2) |
-| 3b.26 | F41 (env limitation, doc-only), F42 (→ 3b.26.1) |
-| dogfood 2026-05-19 (MO-JP) | F43 (→ 3b.27) |
-| 3b.27 | F44 (→ 3b.27.1) |
 | 3b.28 | F45 (env limitation, doc-only) |
+| 3b.33 | F46 (GAQL BETWEEN end_date midnight-exclusive → 3b.34 fix) |
+| M.2a | A6 (Meta OAuth domain check design error, fixed `e93a05b`), F47 (PowerShell pipe CRLF, procedural fix runbook) |
+| M.2b | F48 (FacebookAdsApi.__init__ signature, fixed `a281c00`) |
 
 ---
 
