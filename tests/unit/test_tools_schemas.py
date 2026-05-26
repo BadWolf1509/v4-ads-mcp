@@ -229,6 +229,7 @@ def test_no_unexpected_tools():
         "meta_list_my_ad_accounts",  # Sprint M.2a Task 9
         "meta_get_account_overview",  # Sprint M.2b Task C
         "meta_get_campaign_performance",  # Sprint M.3 Task 3
+        "meta_get_ad_set_performance",  # Sprint M.3 Task 4
     }
     actual = {t.name for t in all_tools()}
     unexpected = actual - expected
