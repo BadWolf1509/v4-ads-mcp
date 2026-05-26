@@ -12,6 +12,20 @@ META_ACCOUNT_STATUS_LABELS: dict[int, str] = {
 }
 
 
+META_EFFECTIVE_STATUS_LABELS: dict[str, str] = {
+    "ACTIVE": "ATIVO",
+    "PAUSED": "PAUSADO",
+    "ARCHIVED": "ARQUIVADO",
+    "DELETED": "REMOVIDO",
+    "PENDING_REVIEW": "EM_REVISÃO",
+    "DISAPPROVED": "REPROVADO",
+    "PREAPPROVED": "PRÉ_APROVADO",
+    "PENDING_BILLING_INFO": "COBRANÇA_PENDENTE",
+    "CAMPAIGN_PAUSED": "CAMPANHA_PAUSADA",
+    "ADSET_PAUSED": "ADSET_PAUSADO",
+}
+
+
 def parse_meta_ad_account_id(raw: str) -> str:
     """Normalize ad_account_id to 'act_<numeric>' format."""
     if raw.startswith("act_"):
