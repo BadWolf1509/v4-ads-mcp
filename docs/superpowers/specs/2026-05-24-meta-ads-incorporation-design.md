@@ -621,19 +621,73 @@ Cada sprint Meta segue padrão estabelecido (Sprint 3b.27+):
 
 **Pós-Opção C (2026-05-27):** 27 sprints (25 original + M.5.5 + M.5.6) × 3-5 dias = ~85-135 dias úteis = **~3.5-6 meses**. App Review Meta: paralelo, Limited Access janela observação 30-45 dias pra acumular 500 calls/15d pra re-submit Full Access.
 
-### Cross-reference Meta MCP oficial (2026-05-27 análise)
+### Cross-reference Meta MCP oficial (2026-05-27 análise + teste empírico)
 
-Meta MCP oficial (`mcp.facebook.com/ads`, lançado 29/Abr/2026) tem **29 tools** em 5 categorias. Cross-reference com nosso roadmap:
+Meta MCP oficial (`mcp.facebook.com/ads`, lançado 29/Abr/2026) **expandiu de 29 → 44 tools** entre launch e teste empírico V4 2026-05-27. Correção: search inicial HeyOz/Synter referenciam state launch (29); Meta adicionou +15 tools desde então.
+
+**Breakdown 44 tools por categoria (validado empiricamente via ads_get_ad_accounts + outras):**
+
+| Categoria | Count | Tools (selected) |
+|---|---|---|
+| Campaign Management | 5 | create_campaign, create_ad_set, create_ad, update_entity, activate_entity |
+| **Catalog (DPA)** | **12 (+2)** | 10 originais + catalog_create_product_set + catalog_search_product |
+| Accounts | 2 | get_ad_accounts, get_ad_entities |
+| **Pages** | **3 (+2)** | pages_for_business + ad_account_pages + user_pages |
+| **🆕 Creative Management** | **5 NEW** | create_creative, get_creatives, get_creative_ads, get_ad_images, get_ad_videos |
+| **🆕 Audiences** | **4 NEW** | create_custom_audience, get_ad_account_custom_audiences, get_custom_audience, update_custom_audience_users |
+| Dataset/Pixel Health | 5 (+1) | get_datasets + 4 originais (details/quality/stats/errors) |
+| Insights | 5 | advertiser_context, anomaly_signal, auction_benchmarks, industry_benchmark, performance_trend |
+| Helpers | 3 (+1) | opportunity_score + help_article + **get_field_context** ⭐ |
+| **TOTAL** | **44** | |
+
+**Cross-reference com V4 roadmap:**
 
 | Bucket | Count | Decisão V4 |
 |---|---|---|
 | ✅ Já shipped V4 (M.2a + M.3) | 2 | meta_list_my_ad_accounts + 3 performance tools |
-| 📅 Já planejado V4 M.4-M.25 | 7 | 5 campaign mgmt + pages_for_business + performance_trend partial |
+| 📅 Já planejado V4 M.4-M.25 | 14 | 5 campaign mgmt + 3 pages + 5 creative + 1 update_custom_audience (overlap M.21+M.23-M.25) |
 | 🆕 ADD Sprint M.5.5 | 3 | anomaly + auction + industry benchmarks (HIGH priority) |
-| 🆕 ADD Sprint M.5.6 | 3 V4 / 6 Meta | pixel_health consolidated + opportunity_score + advertiser_context |
-| ❌ REJEITAR (não-fit V4) | 11 | 10 catalog/DPA + help_article |
+| 🆕 ADD Sprint M.5.6 | 3 V4 / 6 Meta | pixel_health consolidated (5 dataset tools) + opportunity_score + advertiser_context |
+| 🆕 ADD V1 consider | 1 | meta_get_field_context — schema metadata helper (teria evitado F53/F54) |
+| ❌ REJEITAR (não-fit V4) | 13 | 12 catalog/DPA + help_article |
 
-**V4 diferenciadores únicos vs Meta MCP oficial (não cobertos por Meta):** audits family (M.11-M.15 zombie/orphan/goal/delivery/drift), mutates governance (M.16-M.22 com always-CONFIRM dry_run + confirmation_token), audiences family (M.23-M.25 custom + lookalike + offline conversions), PT-BR errors + governance V4 (audit_log + BUC tracking + rate_limit), cross-platform Google + Meta unified.
+### 🚨 Gradual rollout Meta MCP oficial — 2 níveis (descoberta empírica 2026-05-27)
+
+Teste empírico em 12 contas V4 Lima Soares & Co revelou:
+
+**Nível 1 — Account-level (`is_ads_mcp_enabled` flag):**
+- ✅ **7/12 contas enabled** (Cotia MDO, Mestre da Obra Cotia, ICSER, SedLoc CONTA 01, Fardim Tintas, Dr. Dérick Vinhas, Imperial Alimentos)
+- ❌ **5/12 contas NOT enabled** (ML Antiguidades, Wellington personal, 3 Lagoas Locações, Dra. Paula Minchillo, WJX [CLOSED])
+- Razão: *"Ads MCP is gradually being rolled out. Please check back at a later date to use Ads MCP with this Ad Account."*
+
+**Nível 2 — Tool-level (certas tools "new" bloqueadas mesmo em accounts enabled):**
+- ❌ `ads_get_datasets` — *"This tool is new and is being gradually rolled out"*
+- ❌ `ads_get_ad_account_custom_audiences` — idem
+- ❌ `ads_get_creatives` — idem
+- (provavelmente mais tools afetadas — não testado exaustivamente)
+
+**Implicação estratégica:** V4 MCP nossas tools cobrem **100% das 12 contas** (validado smoke real ML Antiguidades 2026-05-27 retornou data real). Meta MCP oficial cobre **58% das contas + sub-100% das tools mesmo em enabled accounts** → V4 build-strategy é robusto, não substituível por Meta MCP oficial no estado atual rollout.
+
+### 🪄 F55 finding — Meta /insights vs /entities endpoints separation (RAIZ F53/F54)
+
+Teste `ads_get_field_context` revelou empiricamente:
+- `effective_status` → válido em `levels=[campaign, adset, ad]` mas APENAS em endpoints `/campaigns`, `/adsets`, `/ads`. **NÃO** em `/insights`.
+- `daily_budget` → válido `levels=[campaign, adset]` em entity endpoints. **NÃO** em `/insights`.
+- `creative_id` → válido `levels=[ad]` em entity endpoint. **NÃO** em `/insights`.
+- `billing_event` → não existe no catalog (unknown_fields).
+- `spend`, `purchases` → não existem como direct fields (são via alias `amount_spent` + extraction de `actions[]`).
+
+**Root cause F53/F54 explicado:**
+- Meta tem **2 endpoints separados** com field whitelists diferentes:
+  - `/insights` = APENAS metrics fields (spend, impressions, ctr, cpc, reach, frequency, actions, action_values, purchase_roas)
+  - `/campaigns`, `/adsets`, `/ads` = metadata fields (effective_status, daily_budget, creative_id, name, etc.)
+- M.3 wrongly misturou ambos em `/insights?fields=...` call → Meta rejeitou metadata fields
+- **Meta MCP oficial faz 2-step query natively** (entity endpoint pra metadata + insights endpoint pra metrics, depois join client-side)
+- V1 enhancement Sprint M.3.2 (planejado): implementar mesma 2-step query no V4 MCP pra restaurar status filter
+
+Catalogado F55 em `findings-catalog.md`.
+
+**V4 diferenciadores únicos vs Meta MCP oficial:** audits family (M.11-M.15), mutates governance (M.16-M.22 always-CONFIRM), 100% contas cobertas vs Meta MCP gradual rollout 58%, PT-BR errors + audit_log + BUC tracking + cross-platform Google + Meta unified.
 
 ---
 
