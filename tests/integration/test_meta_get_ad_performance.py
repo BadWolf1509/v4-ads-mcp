@@ -187,7 +187,8 @@ async def test_level_ad_in_params(db):
 
     assert captured_params["level"] == "ad"
     assert "ad_id" in captured_params["fields"]
-    assert "creative_id" in captured_params["fields"]
+    # M.3.1.1 (F54): creative_id removed from INSIGHTS_FIELDS_AD — Meta rejects
+    assert "creative_id" not in captured_params["fields"]
 
 
 @pytest.mark.integration
