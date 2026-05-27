@@ -46,7 +46,7 @@ def test_query_with_custom_date_range_yyyy_mm_dd():
 
 
 def test_query_selects_all_required_fields():
-    """Output must include all 11 fields needed by KeywordRow dataclass."""
+    """Output must include all fields needed by KeywordRow dataclass."""
     query = build_audit_quality_score_query(
         start_date="2026-04-20",
         end_date="2026-05-20",
@@ -55,6 +55,7 @@ def test_query_selects_all_required_fields():
     expected_fields = [
         "ad_group.id",
         "ad_group.name",
+        "ad_group.status",  # A2 (espelha F52)
         "campaign.name",
         "ad_group_criterion.criterion_id",
         "ad_group_criterion.keyword.text",

@@ -23,6 +23,7 @@ class KeywordRow:
 
     ad_group_id: str
     ad_group_name: str
+    ad_group_status: str  # A2 (espelha F52): revela órfãs em ad_group REMOVED
     campaign_name: str
     keyword_id: str
     keyword_text: str
@@ -40,6 +41,7 @@ class FlaggedKeyword:
 
     ad_group_id: str
     ad_group_name: str
+    ad_group_status: str  # A2 (espelha F52)
     campaign_name: str
     keyword_id: str
     keyword_text: str
@@ -105,6 +107,7 @@ def flag_keywords(
             FlaggedKeyword(
                 ad_group_id=row.ad_group_id,
                 ad_group_name=row.ad_group_name,
+                ad_group_status=row.ad_group_status,  # A2 (espelha F52)
                 campaign_name=row.campaign_name,
                 keyword_id=row.keyword_id,
                 keyword_text=row.keyword_text,

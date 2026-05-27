@@ -83,7 +83,11 @@ _SCHEMA: dict[str, Any] = {
         "min_impressions (default 10), limit (default 200, max 1000), date_range "
         "preset OR start_date+end_date custom (default LAST_30_DAYS). Sempre "
         "auditado. Nota: QS pode lagar entre queries (cache Google) — re-query "
-        "se decisão crítica baseada em QS."
+        "se decisão crítica baseada em QS. ATENÇÃO (F52): keywords flagged podem "
+        "estar em ad_groups REMOVED (órfãs cosméticas — não competem em leilão, "
+        "não impactam QS/Smart Bidding). Cada row tem field `ad_group_status` "
+        "— filtre `ad_group_status='ENABLED'` no consumer pra cleanup de impacto "
+        "técnico real, OU mantenha tudo pra inventário cosmético."
     ),
     input_schema=_SCHEMA,
     bucket="always",
@@ -154,6 +158,7 @@ async def audit_quality_score(args: dict[str, Any]) -> dict[str, Any]:
             {
                 "ad_group_id": f.ad_group_id,
                 "ad_group_name": f.ad_group_name,
+                "ad_group_status": f.ad_group_status,  # A2 (espelha F52)
                 "campaign_name": f.campaign_name,
                 "keyword_id": f.keyword_id,
                 "keyword_text": f.keyword_text,

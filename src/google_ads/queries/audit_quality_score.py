@@ -26,7 +26,7 @@ def build_audit_quality_score_query(
     """
     query = (
         "SELECT "
-        "ad_group.id, ad_group.name, campaign.name, "
+        "ad_group.id, ad_group.name, ad_group.status, campaign.name, "  # A2 (espelha F52): + ad_group.status
         "ad_group_criterion.criterion_id, "
         "ad_group_criterion.keyword.text, "
         "ad_group_criterion.keyword.match_type, "
@@ -57,6 +57,7 @@ def parse_keyword_view_row(row: Any) -> dict[str, Any]:
     return {
         "ad_group_id": str(row.ad_group.id),
         "ad_group_name": row.ad_group.name,
+        "ad_group_status": row.ad_group.status.name,  # A2 (espelha F52)
         "campaign_name": row.campaign.name,
         "keyword_id": str(row.ad_group_criterion.criterion_id),
         "keyword_text": row.ad_group_criterion.keyword.text,
@@ -74,6 +75,7 @@ def dict_to_keyword_row(d: dict[str, Any]) -> KeywordRow:
     return KeywordRow(
         ad_group_id=d["ad_group_id"],
         ad_group_name=d["ad_group_name"],
+        ad_group_status=d["ad_group_status"],  # A2 (espelha F52)
         campaign_name=d["campaign_name"],
         keyword_id=d["keyword_id"],
         keyword_text=d["keyword_text"],

@@ -11,6 +11,7 @@ def _make_row(
     *,
     ad_group_id: str = "1001",
     ad_group_name: str = "AG1",
+    ad_group_status: str = "ENABLED",  # A2 (espelha F52)
     campaign_name: str = "C1",
     keyword_id: str = "1",
     keyword_text: str = "kw",
@@ -24,6 +25,7 @@ def _make_row(
     return KeywordRow(
         ad_group_id=ad_group_id,
         ad_group_name=ad_group_name,
+        ad_group_status=ad_group_status,  # A2 (espelha F52)
         campaign_name=campaign_name,
         keyword_id=keyword_id,
         keyword_text=keyword_text,
@@ -34,6 +36,19 @@ def _make_row(
         conversions=conversions,
         cost_brl=cost_brl,
     )
+
+
+def test_f52_pattern_ad_group_status_propagates_to_flagged_keyword():
+    """A2 (espelha F52): ad_group_status field propaga de KeywordRow → FlaggedKeyword."""
+    row = _make_row(
+        ad_group_status="REMOVED",
+        quality_score=2,
+        impressions=15,
+        clicks=0,
+    )
+    flagged, _ = flag_keywords([row], min_impressions=10, limit=200)
+    assert len(flagged) == 1
+    assert flagged[0].ad_group_status == "REMOVED"
 
 
 def test_empty_rows_returns_empty():

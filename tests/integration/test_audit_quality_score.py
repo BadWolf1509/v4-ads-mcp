@@ -25,6 +25,7 @@ async def test_returns_flagged_keywords_shape(bound_context):
         {
             "ad_group_id": "1001",
             "ad_group_name": "AG1",
+            "ad_group_status": "ENABLED",
             "campaign_name": "C1",
             "keyword_id": "K1",
             "keyword_text": "gerador energia",
@@ -38,6 +39,7 @@ async def test_returns_flagged_keywords_shape(bound_context):
         {
             "ad_group_id": "1002",
             "ad_group_name": "AG2",
+            "ad_group_status": "ENABLED",
             "campaign_name": "C1",
             "keyword_id": "K2",
             "keyword_text": "gerador honda",
@@ -100,6 +102,7 @@ async def test_respects_min_impressions_threshold(bound_context):
         {
             "ad_group_id": "1001",
             "ad_group_name": "AG1",
+            "ad_group_status": "ENABLED",
             "campaign_name": "C1",
             "keyword_id": "K1",
             "keyword_text": "kw_low",
@@ -114,6 +117,7 @@ async def test_respects_min_impressions_threshold(bound_context):
         {
             "ad_group_id": "1001",
             "ad_group_name": "AG1",
+            "ad_group_status": "ENABLED",
             "campaign_name": "C1",
             "keyword_id": "K2",
             "keyword_text": "kw_high",
@@ -140,3 +144,63 @@ async def test_respects_min_impressions_threshold(bound_context):
 
     assert result["total_flagged"] == 1
     assert result["flagged_keywords"][0]["keyword_text"] == "kw_high"
+
+
+@pytest.mark.asyncio
+async def test_a2_orphan_keywords_in_removed_ad_groups_exposed(bound_context):
+    """A2 (espelha F52): keywords flagged em ad_groups REMOVED appear with
+    ad_group_status='REMOVED' na response, permitting consumer-side filter.
+
+    Pattern idêntico ao F52 regression em audit_zombie_keywords (dogfood
+    2026-05-25). Consumer pode filtrar `ad_group_status == 'ENABLED'` pra
+    cleanup de impacto técnico real, OU manter tudo pra inventário cosmético.
+    """
+    from src.mcp.tools.audit_quality_score import audit_quality_score
+
+    fake_rows = [
+        {
+            "ad_group_id": "2001",
+            "ad_group_name": "GPA01_GERAL",
+            "ad_group_status": "ENABLED",  # impactável
+            "campaign_name": "GPA",
+            "keyword_id": "K1",
+            "keyword_text": "alpha",
+            "match_type": "BROAD",
+            "quality_score": 2,
+            "impressions": 50,
+            "clicks": 0,
+            "conversions": 0,
+            "cost_brl": 0.0,
+        },
+        {
+            "ad_group_id": "174842025340",
+            "ad_group_name": "DELL",
+            "ad_group_status": "REMOVED",  # órfã cosmética
+            "campaign_name": "JPA",
+            "keyword_id": "K2",
+            "keyword_text": "beta",
+            "match_type": "BROAD",
+            "quality_score": 1,
+            "impressions": 30,
+            "clicks": 0,
+            "conversions": 0,
+            "cost_brl": 0.0,
+        },
+    ]
+    with patch(
+        "src.mcp.tools.audit_quality_score.run_report",
+        AsyncMock(return_value=fake_rows),
+    ):
+        result = await audit_quality_score({"customer_id": "1234567890"})
+
+    assert result["total_flagged"] == 2
+    # Sorted by QS ASC (1 antes de 2), so K2/DELL first
+    assert result["flagged_keywords"][0]["ad_group_name"] == "DELL"
+    assert result["flagged_keywords"][0]["ad_group_status"] == "REMOVED"
+    assert result["flagged_keywords"][1]["ad_group_name"] == "GPA01_GERAL"
+    assert result["flagged_keywords"][1]["ad_group_status"] == "ENABLED"
+
+    # Consumer-side filter pattern documented em description A2
+    impactable = [k for k in result["flagged_keywords"] if k["ad_group_status"] == "ENABLED"]
+    assert len(impactable) == 1
+    assert impactable[0]["keyword_text"] == "alpha"
