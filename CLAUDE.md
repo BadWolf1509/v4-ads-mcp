@@ -109,14 +109,17 @@ docs/superpowers/specs/2026-05-25-architecture-refactor-design.md   # ★ Refact
 
 **Reference (se relevant pra task atual):**
 ```
-docs/operacao/phase-3b-XX-bootstrap.md  # Smoke runbook per Google sprint
-docs/operacao/phase-M-2a-bootstrap.md   # Smoke runbook Meta M.2a (template pra M-family)
-docs/operacao/phase-M-2b-bootstrap.md   # Smoke runbook Meta M.2b (8/8 PASS)
-docs/operacao/phase-M-3-bootstrap.md    # Smoke runbook Meta M.3 (8/10 PASS, T4+T6 DEFERRED V1 pós F53+F54 hotfix)
-docs/operacao/tool-audit-2026-05-25.md  # Tool count analysis (sweet spot 30-45)
-docs/operacao/tool-buckets-2026-05-25.md  # Bucket classification per-tool (Sprint 3b.39 source)
-docs/operacao/dogfood-2026-05-{19,21,25}-*.md                        # Real biz feedback findings
-docs/superpowers/specs/  +  plans/      # Design + implementation per sprint
+docs/operacao/phase-3b-39-bootstrap.md  # Bucket classification F1 (3b.39)
+docs/operacao/phase-3b-40-bootstrap.md  # Quick Wins A1+B9+A2 (3b.40, current)
+docs/operacao/phase-M-2a-bootstrap.md   # Meta foundation (M.2a)
+docs/operacao/phase-M-2b-bootstrap.md   # Meta account overview (M.2b)
+docs/operacao/phase-M-3-bootstrap.md    # Meta performance tools (M.3, 8/10 PASS pós F53+F54)
+docs/operacao/tool-buckets-2026-05-25.md  # Bucket classification per-tool (active source-of-truth)
+docs/operacao/infra-setup.md            # Foundation setup (Phases 0-1b + 3a)
+docs/operacao/dogfood-*.md (7 files)    # Real biz feedback (MO-JP, ML Antiguidades, Nutry, Dr Derick, Meta-first)
+docs/superpowers/specs/ (6 active)      # Current sprint specs (3b.40, M.3, M.2b, M.2a, refactor, Meta incorporation)
+docs/superpowers/plans/ (6 active)      # Current sprint plans (matching specs)
+docs/_archive/ (113 files preserved)    # Sprints SHIPPED ≥7 dias: plans (40) + specs (35) + runbooks (29) + setup docs (3). NÃO grep aqui exceto debug histórico — use git log primeiro.
 ```
 
 ## Conventions
