@@ -42,9 +42,7 @@ def bound_context():
 
 
 @pytest.mark.integration
-async def test_a1_dry_run_with_more_than_5_keywords_includes_sample_top_5(
-    db, bound_context
-):
+async def test_a1_dry_run_with_more_than_5_keywords_includes_sample_top_5(db, bound_context):
     """A1: 6 keywords → CONFIRM path → response inclui sample_keywords top 5 + sample_truncated=true."""
     from src.mcp.tools.update_keyword_status import update_keyword_status
 
