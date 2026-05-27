@@ -2,6 +2,9 @@
 
 A1: DRY_RUN path (>5 keywords) inclui sample_keywords (top 5).
 AUTO_APPLY path (<=5 keywords) NÃO inclui sample_keywords (sem preview).
+
+Use session_ctx pattern (persists manager + mcp_session em DB) pra satisfazer
+FK constraint pending_confirmations.session_id → mcp_sessions.id.
 """
 
 from unittest.mock import AsyncMock, patch
@@ -11,6 +14,7 @@ import pytest
 from testcontainers.postgres import PostgresContainer
 
 from src.db import connection, migrate
+from src.db.repositories import managers, mcp_sessions
 from src.mcp.context import McpRequestContext, clear_current, set_current
 
 pytestmark = pytest.mark.asyncio
@@ -34,15 +38,26 @@ async def db(pg: PostgresContainer):
 
 
 @pytest.fixture
-def bound_context():
-    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
+async def session_ctx(db):
+    """Persist manager + mcp_session em DB (FK constraint pending_confirmations)."""
+    pool = db
+    async with pool.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="t@v4.com", full_name=None)
+        from src.auth.sessions import generate_session_token, hash_session_token
+
+        token = generate_session_token()
+        sess = await mcp_sessions.create(
+            conn, manager_id=mid, token_hash=hash_session_token(token), label="t"
+        )
+    ctx = McpRequestContext(manager_id=mid, session_id=sess.id)
     set_current(ctx)
     yield ctx
     clear_current()
 
 
 @pytest.mark.integration
-async def test_a1_dry_run_with_more_than_5_keywords_includes_sample_top_5(db, bound_context):
+async def test_a1_dry_run_with_more_than_5_keywords_includes_sample_top_5(db, session_ctx):
     """A1: 6 keywords → CONFIRM path → response inclui sample_keywords top 5 + sample_truncated=true."""
     from src.mcp.tools.update_keyword_status import update_keyword_status
 
@@ -87,7 +102,7 @@ async def test_a1_dry_run_with_more_than_5_keywords_includes_sample_top_5(db, bo
 
 
 @pytest.mark.integration
-async def test_a1_auto_apply_with_5_or_fewer_keywords_omits_sample(db, bound_context):
+async def test_a1_auto_apply_with_5_or_fewer_keywords_omits_sample(db, session_ctx):
     """A1: 3 keywords (≤5) → AUTO path → response NÃO contém sample_keywords."""
     from src.mcp.tools.update_keyword_status import update_keyword_status
 
@@ -121,7 +136,7 @@ async def test_a1_auto_apply_with_5_or_fewer_keywords_omits_sample(db, bound_con
 
 
 @pytest.mark.integration
-async def test_a1_dry_run_with_partial_fetch_returns_none_for_missing(db, bound_context):
+async def test_a1_dry_run_with_partial_fetch_returns_none_for_missing(db, session_ctx):
     """A1 edge: fetch retorna partial → sample_keywords contains None pra missing IDs."""
     from src.mcp.tools.update_keyword_status import update_keyword_status
 

@@ -93,9 +93,19 @@ async def test_update_keyword_status_bulk_dry_runs(db, session_ctx):
     from src.mcp.tools.update_keyword_status import update_keyword_status
 
     keywords = [{"ad_group_id": "111", "criterion_id": str(9000 + i)} for i in range(10)]
-    with patch(
-        "src.mcp.tools.update_keyword_status.validate_keyword_criterion_types",
-        AsyncMock(return_value=None),  # bypass preflight (F43 pre-flight)
+    fake_lookup = {
+        ("111", str(9000 + i)): {"keyword_text": f"kw_{i}", "match_type": "BROAD"}
+        for i in range(10)
+    }
+    with (
+        patch(
+            "src.mcp.tools.update_keyword_status.validate_keyword_criterion_types",
+            AsyncMock(return_value=None),  # bypass preflight (F43 pre-flight)
+        ),
+        patch(
+            "src.mcp.tools.update_keyword_status.fetch_keyword_texts",
+            AsyncMock(return_value=fake_lookup),  # bypass A1 fetch (Sprint 3b.40)
+        ),
     ):
         result = await update_keyword_status(
             {
@@ -106,6 +116,9 @@ async def test_update_keyword_status_bulk_dry_runs(db, session_ctx):
         )
     assert result["status"] == "dry_run"
     assert "confirmation_token" in result
+    # A1 (Sprint 3b.40): sample_keywords presente no dry-run path
+    assert "sample_keywords" in result
+    assert len(result["sample_keywords"]) == 5
 
 
 @pytest.mark.integration
