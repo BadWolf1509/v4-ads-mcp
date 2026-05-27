@@ -33,9 +33,11 @@ _COMMON_INSIGHTS_FIELDS = [
     "action_values",
     "purchase_roas",
 ]
-# M.3.1: effective_status removed (F53). Other metadata fields (objective,
-# optimization_goal, billing_event, daily_budget, creative_id) kept — empirical
-# smoke validates per-iteration. If Meta rejects more, iterate.
+# M.3.1: effective_status removed (F53). M.3.1.1 iteration 2 (F54):
+# billing_event + daily_budget (adset) + creative_id (ad) also rejected by
+# Meta Insights API empirically. Kept: objective (campaign), optimization_goal
+# (adset) — both empirically validated in iteration 1.
+# V1 enhancement: enrich via 2-step query (/adsets + /ads endpoints).
 INSIGHTS_FIELDS_CAMPAIGN = [
     "campaign_id",
     "campaign_name",
@@ -48,8 +50,6 @@ INSIGHTS_FIELDS_ADSET = [
     "campaign_id",
     "campaign_name",
     "optimization_goal",
-    "billing_event",
-    "daily_budget",
     *_COMMON_INSIGHTS_FIELDS,
 ]
 INSIGHTS_FIELDS_AD = [
@@ -59,7 +59,6 @@ INSIGHTS_FIELDS_AD = [
     "adset_name",
     "campaign_id",
     "campaign_name",
-    "creative_id",
     *_COMMON_INSIGHTS_FIELDS,
 ]
 

@@ -49,7 +49,9 @@ def test_build_insights_call_adset_level() -> None:
     assert params["level"] == "adset"
     assert "adset_id" in params["fields"]
     assert "optimization_goal" in params["fields"]
-    assert "daily_budget" in params["fields"]
+    # M.3.1.1 (F54): billing_event + daily_budget removed (Meta Insights rejects)
+    assert "billing_event" not in params["fields"]
+    assert "daily_budget" not in params["fields"]
     assert "effective_status" not in params["fields"]
 
 
@@ -63,8 +65,9 @@ def test_build_insights_call_ad_level() -> None:
     )
     assert params["level"] == "ad"
     assert "ad_id" in params["fields"]
-    assert "creative_id" in params["fields"]
     assert params["limit"] == 500
+    # M.3.1.1 (F54): creative_id removed (Meta Insights rejects)
+    assert "creative_id" not in params["fields"]
     assert "effective_status" not in params["fields"]
 
 
