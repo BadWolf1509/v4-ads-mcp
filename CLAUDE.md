@@ -19,16 +19,16 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 
 ## Current state
 
-**Last updated:** 2026-05-27 — pós-sessão M.3 ship + smoke real + hotfix iterativo M.3.1+M.3.1.1 (F53+F54 caught) + Meta MCP oficial analysis (44 tools confirmed + F55 architectural lesson) + CI fix integration test gap. **55 findings** (F1-F55 + A1-A6 + D1-D3).
+**Last updated:** 2026-05-27 — Sprint 3b.40 ship (3 quick wins mutate safety A1+B9+A2 + F56 catalog, ICE somado 2030 dogfood MO-JP 27/05). Sprint anterior mesma sessão: M.3 ship + smoke real + hotfix iterativo M.3.1+M.3.1.1 (F53+F54 caught) + Meta MCP oficial analysis (44 tools confirmed + F55 architectural lesson) + CI fix integration test gap. **56 findings** (F1-F56 + A1-A6 + D1-D3).
 
 ### Quick-start próxima sessão (TL;DR)
 
-- **Production state:** 62 MCP tools (57 Google + 5 Meta) deployed + `/health` 200. Last commit `465656f` (CI fix). Bucket: **22 always + 40 defer**. Caminho B+ Meta volume **RESTORED** em produção pós-hotfix F53+F54.
+- **Production state:** 62 MCP tools (57 Google + 5 Meta) deployed + `/health` 200. Last commit `ecf926b` (smoke runbook Sprint 3b.40). Bucket: **22 always + 40 defer**. Caminho B+ Meta volume **RESTORED** em produção pós-hotfix F53+F54. Sprint 3b.40 shipped: 3 quick wins mutate safety (A1+B9+A2) — `get_keyword_performance` retorna `negative: bool`, `audit_quality_score` retorna `ad_group_status`, `update_keyword_status` dry-run retorna `sample_keywords` top 5.
 - **Próximo natural sprint** (escolha 1, priority ordered):
   1. **Sprint M.4** — `meta_get_geo_performance` + `_device` + `_hourly` (alta volume Caminho B+, multiplica calls/session)
   2. **Sprint M.5.5** — `meta_competitive_intelligence` (anomaly + auction + industry benchmarks, diferenciador competitivo único)
   3. **Sprint M.3.2** — V1 enhancement 2-step query (restaura effective_status filter via `/campaigns?fields=effective_status` → `/insights?filtering=campaign_id IN`, F55 architecture lesson)
-  4. **Sprint 3b.40** — Fase 2 refactor Caminho C (consolidação `get_performance_breakdown(level, dimension)` substitui 9 reports)
+  4. **Sprint 3b.41** — Fase 2 refactor Caminho C (consolidação `get_performance_breakdown(level, dimension)` substitui 9 reports — renumerado de 3b.40, agora 3b.41 pós Sprint 3b.40 Quick Wins ship)
 - **Tokens válidos:**
   - v4-ads Bearer: rotacionado 25/05 (procedure: UI `/sessions/new`, NÃO inventar — backend hash valida)
   - Meta OAuth Wellington: reconectado 27/05 00:37 GMT (anterior invalidado server-side antes natural expiry — F-finding candidate B8). Nova expiry 26/07/2026.
@@ -44,12 +44,13 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 | Stream | Range | Highlights |
 |---|---|---|
 | Foundation (Phases 0-1b + 3a + FE Redesign v2) | 2026-05-03→05 | See [`infra-setup.md`](docs/operacao/infra-setup.md). |
-| Google sprints 3b.1 → 3b.39 (39 sprints) | 2026-05-04→25 | 57 tools shipped. Latest: 3b.33 `detect_drift`, 3b.35 `audit_goal_attribution`, 3b.36 `audit_zombie_keywords`, 3b.37 `audit_orphan_smart_actions`, 3b.38 (F52+F23+B1 fixes), 3b.39 (bucket classification F1 + D3 alwaysLoad mechanism, 21 always + 38 defer pre-M.3). Detail per sprint: [`sprint-history.md`](docs/operacao/sprint-history.md). |
+| Google sprints 3b.1 → 3b.40 (40 sprints) | 2026-05-04→27 | 57 tools shipped + 3 enrichments. Latest: 3b.33 `detect_drift`, 3b.35 `audit_goal_attribution`, 3b.36 `audit_zombie_keywords`, 3b.37 `audit_orphan_smart_actions`, 3b.38 (F52+F23+B1 fixes), 3b.39 (bucket classification F1 + D3 alwaysLoad mechanism), 3b.40 (Quick Wins Mutate Safety A1+B9+A2 + F56 catalog — sample_keywords dry-run + negative field + ad_group_status). Detail per sprint: [`sprint-history.md`](docs/operacao/sprint-history.md). |
 | Meta family M.1 → M.3.1.1 | 2026-05-24→27 | 5 tools shipped: `meta_list_my_ad_accounts` (M.2a, cache) + `meta_get_account_overview` (M.2b, Graph API) + `meta_get_campaign_performance` (M.3, always) + `meta_get_ad_set_performance` (M.3, defer) + `meta_get_ad_performance` (M.3, defer). DB foundation (4 tables) + OAuth flow + admin UI Revogar/Refresh + endpoints data-deletion-callback + refresh-accounts. **Meta App Review respondido 2026-05-25:** `public_profile` ✅, `Marketing API Tier` ❌ (insufficient calls 15d) → Caminho B+ janela observação 30-45d (acelerar M.3+ pra volume natural). **M.3 smoke real 2026-05-27 caught F53+F54** (Meta Insights API rejeita `effective_status`/`billing_event`/`daily_budget`/`creative_id` em fields=) → **M.3.1+M.3.1.1 hotfix iterativo** (commits `984a7ae`+`b3ba6b5`) → tools restored em produção. **Smoke final 8/10 PASS** em ML Antiguidades: T1+T2+T3 success com data real (spend=411.83, ctr=3.77%, hierarquia campaign→adset→ad math consistente), T5+T7+T8+T9+T10 PASS, T4+T6 DEFERRED V1 (effective_status filter feature gone até V1 2-step query restore). |
 
-**Production:** `/health` 200, CI green em `465656f` (CI fix integration test gap creative_id assertion legacy). 16 web pages prod. Q8 invite-only allowlist ativo.
+**Production:** `/health` 200, CI green em `ecf926b` (smoke runbook Sprint 3b.40). 16 web pages prod. Q8 invite-only allowlist ativo.
 
-**55 findings catalogados** ([`findings-catalog.md`](docs/operacao/findings-catalog.md)):
+**56 findings catalogados** ([`findings-catalog.md`](docs/operacao/findings-catalog.md)):
+- **F56 (MED, sessão 2026-05-27 Sprint 3b.40):** `get_keyword_performance` retornava positive E negative `ad_group_criterion` indistintamente — workflow risk em mutate downstream. Mitigation Opção A+C (field `negative: bool` + description warning). Family design-gap-via-missing-discriminator (variant silent-acceptance, similar F52 missing parent filter).
 - **F53+F54+F55 trio (HIGH, sessão 2026-05-27):** Meta /insights vs /entities endpoints separation arquitetura — root cause Meta Insights API field whitelist gaps. F55 = architectural lesson catalogado via Meta MCP oficial `ads_get_field_context` empirical probe.
 - **D1-D3 trio (decision-not-bug):** D1 Meta App Review Standard rejeitado → Caminho B+, D2 MCP defer_loading client-side (initial wrong assumption), D3 real mechanism server-side `_meta.anthropic/alwaysLoad`.
 - **F47-F52 (recent):** F47 PowerShell secret pipe CRLF, F48 FacebookSession factory, F49 button macro form submit, F50/F51 retrospective F33/F37 traces, F52 ad_group_status órfãs cosméticas.
@@ -61,7 +62,7 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 - **Sprint M.4** (3 tools breakdowns geo+device+hourly) — alta volume Caminho B+, multiplica calls/session
 - **Sprint M.5.5** (3 tools anomaly+auction+industry benchmarks) — diferenciador competitivo único vs Meta MCP oficial
 - **Sprint M.3.2** (V1 enhancement 2-step query) — restaura effective_status filter via `/campaigns?fields=effective_status` → `/insights?filtering=campaign_id IN` (F55 architecture lesson)
-- **Sprint 3b.40** (Fase 2 refactor Caminho C) — consolidação `get_performance_breakdown(level, dimension)` substitui 9 reports = -9 tools permanente. Spec: [`2026-05-25-architecture-refactor-design.md`](docs/superpowers/specs/2026-05-25-architecture-refactor-design.md).
+- **Sprint 3b.41** (Fase 2 refactor Caminho C) — consolidação `get_performance_breakdown(level, dimension)` substitui 9 reports = -9 tools permanente. Spec: [`2026-05-25-architecture-refactor-design.md`](docs/superpowers/specs/2026-05-25-architecture-refactor-design.md). (Renumerado de 3b.40 pós Sprint 3b.40 Quick Wins ship 27/05.)
 
 **⏰ Decision gates (calendário):**
 - **2026-06-01** (D+7 desde Sprint 3b.39 F1 ship): Wellington 7d feedback Sprint 3b.39 F1 → decide F1→F2 timeline. 5 perguntas estruturadas.
@@ -97,8 +98,8 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 
 **Critical (read se task envolve):**
 ```
-docs/operacao/findings-catalog.md       # ★ Bug history 55 findings (F1-F55 + A1-A6 + D1-D3) — F53/F54/F55 trio = Meta API endpoint architecture lesson
-docs/operacao/sprint-history.md         # ★ Sprint table per-row detail (3b.1→3b.39 + M.1→M.3.1.1) — comprehensive history
+docs/operacao/findings-catalog.md       # ★ Bug history 56 findings (F1-F56 + A1-A6 + D1-D3) — F53/F54/F55 trio = Meta API endpoint architecture lesson + F56 (3b.40) negative discriminator gap
+docs/operacao/sprint-history.md         # ★ Sprint table per-row detail (3b.1→3b.40 + M.1→M.3.1.1) — comprehensive history
 docs/superpowers/specs/2026-05-24-meta-ads-incorporation-design.md   # ★ Meta family roadmap M.1→M.27 (recently updated com Meta MCP oficial 44 tools cross-reference)
 docs/superpowers/specs/2026-05-25-architecture-refactor-design.md   # ★ Refactor arquitetural 4 fases (Fase 1 ✅ shipped 3b.39)
 ```
