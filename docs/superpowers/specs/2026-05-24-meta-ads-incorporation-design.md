@@ -557,18 +557,22 @@ V1: pre-flight throttle prediction baseado em rolling window.
 | **M.1** | Migrations `003_meta_schema.sql` + `004_audit_log_provider_id.sql` + repositories Meta + Meta App criado em BM V4 Lima Soares & Co (Development Mode) + secrets `meta_app_id`/`meta_app_secret` em Secret Manager + privacy policy URL public. |
 | **M.2** | OAuth flow Meta (`src/auth/meta_oauth.py` + routes + webapp UI) + Meta SDK integration (`src/meta_ads/client.py` + `reports.py`) + 2 tools (`meta_list_my_ad_accounts` + `meta_get_account_overview`) + smoke runbook + **submeter Meta App Review** pra `ads_read`+`ads_management`+`business_management`. |
 
-### Read tools (8 sprints, 2-3 tools cada)
+### Read tools (10 sprints — **+M.5.5 + M.5.6 from Opção C 2026-05-27**)
 
-| Sprint | Tools | Google equivalentes |
+| Sprint | Tools | Google equivalentes / Meta MCP oficial equiv |
 |---|---|---|
-| **M.3** | `meta_get_campaign_performance`, `meta_get_ad_set_performance`, `meta_get_ad_performance` | get_campaign_performance, get_ad_group_performance, get_ad_performance |
-| **M.4** | `meta_get_geo_performance`, `meta_get_device_performance`, `meta_get_hourly_performance` | idem |
+| **M.3** ✅ | `meta_get_campaign_performance`, `meta_get_ad_set_performance`, `meta_get_ad_performance` | get_campaign_performance, get_ad_group_performance, get_ad_performance / `ads_get_ad_entities` |
+| **M.4** | `meta_get_geo_performance`, `meta_get_device_performance`, `meta_get_hourly_performance` | idem Google |
 | **M.5** | `meta_get_audience_performance`, `meta_get_top_creatives` | get_audience_performance, get_top_keywords_creatives |
+| **M.5.5** 🆕 | `meta_get_anomaly_signal`, `meta_get_auction_benchmarks`, `meta_get_industry_benchmark` | Meta MCP oficial: `ads_insights_anomaly_signal` + `ads_insights_auction_ranking_benchmarks` + `ads_insights_industry_benchmark`. **Diferenciador competitivo** — gestor pede "estamos abaixo da média?" / "alerta CPL caiu 40% vs baseline 30d". Adicionado em Opção C cross-reference Meta MCP oficial. |
+| **M.5.6** 🆕 | `meta_get_pixel_health` (consolida 4 dataset_* Meta MCP oficial em 1), `meta_get_opportunity_score`, `meta_get_advertiser_context` | Meta MCP oficial: `ads_get_dataset_details` + `_quality` + `_stats` + `_errors` → 1 V4 consolidated; `ads_get_opportunity_score`; `ads_insights_advertiser_context`. Onboarding nova conta + health check mensal. |
 | **M.6** | `meta_get_budget_pacing`, `meta_get_funnel_metrics` | idem |
 | **M.7** | `meta_get_change_history`, `meta_get_conversion_events` | get_change_history, get_conversion_actions |
-| **M.8** | `meta_get_pages_for_business`, `meta_get_pixel_diagnostics` | (Meta-specific) |
+| **M.8** | `meta_get_pages_for_business` (⚠️ pixel_diagnostics movido pra M.5.6 consolidated) | Meta MCP oficial: `ads_get_pages_for_business` |
 | **M.9** | `meta_bulk_pause_by_filter` (read+dry-run preview) | bulk_pause_by_query (read-side only) |
 | **M.10** | `get_my_audit_log` + `get_my_rate_limit_status` Meta-aware (mods de existentes) | (modificação) |
+
+**Rejeitados Meta MCP oficial (não-fit V4 V0):** 10 catalog/DPA tools (`ads_catalog_*`) + `ads_get_help_article`. Decisão Opção C 2026-05-27 — V4 gestores predominantemente lead-gen + brand, sem e-commerce DPA. Re-avaliar V1 se cliente V4 adicionar e-commerce major.
 
 ### Audits Meta (5 sprints)
 
@@ -615,7 +619,21 @@ Cada sprint Meta segue padrão estabelecido (Sprint 3b.27+):
 
 ### Tempo total estimado
 
-25 sprints × 3-5 dias = ~75-125 dias úteis = **3-6 meses**. App Review Meta: paralelo, ~3-10 dias úteis após M.2 submit.
+**Pós-Opção C (2026-05-27):** 27 sprints (25 original + M.5.5 + M.5.6) × 3-5 dias = ~85-135 dias úteis = **~3.5-6 meses**. App Review Meta: paralelo, Limited Access janela observação 30-45 dias pra acumular 500 calls/15d pra re-submit Full Access.
+
+### Cross-reference Meta MCP oficial (2026-05-27 análise)
+
+Meta MCP oficial (`mcp.facebook.com/ads`, lançado 29/Abr/2026) tem **29 tools** em 5 categorias. Cross-reference com nosso roadmap:
+
+| Bucket | Count | Decisão V4 |
+|---|---|---|
+| ✅ Já shipped V4 (M.2a + M.3) | 2 | meta_list_my_ad_accounts + 3 performance tools |
+| 📅 Já planejado V4 M.4-M.25 | 7 | 5 campaign mgmt + pages_for_business + performance_trend partial |
+| 🆕 ADD Sprint M.5.5 | 3 | anomaly + auction + industry benchmarks (HIGH priority) |
+| 🆕 ADD Sprint M.5.6 | 3 V4 / 6 Meta | pixel_health consolidated + opportunity_score + advertiser_context |
+| ❌ REJEITAR (não-fit V4) | 11 | 10 catalog/DPA + help_article |
+
+**V4 diferenciadores únicos vs Meta MCP oficial (não cobertos por Meta):** audits family (M.11-M.15 zombie/orphan/goal/delivery/drift), mutates governance (M.16-M.22 com always-CONFIRM dry_run + confirmation_token), audiences family (M.23-M.25 custom + lookalike + offline conversions), PT-BR errors + governance V4 (audit_log + BUC tracking + rate_limit), cross-platform Google + Meta unified.
 
 ---
 
