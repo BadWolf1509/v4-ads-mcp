@@ -6,10 +6,13 @@ from typing import Any
 from src.db import connection
 from src.google_ads.mutations import run_mutation
 from src.google_ads.queries._common import validate_keyword_criterion_types
+from src.google_ads.queries.keyword_lookup import fetch_keyword_texts
 from src.governance.blast_radius import RiskLevel, classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
 from src.mcp.tools._registry import register_tool
+
+_SAMPLE_SIZE = 5  # A1: top 5 fixed V0 (configurable só se demanda real)
 
 _SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -114,11 +117,33 @@ async def update_keyword_status(args: dict[str, Any]) -> dict[str, Any]:
             payload=payload,
             blast_summary=summary,
         )
+
+    # A1: fetch keyword_texts pra sample preview (top 5 da lista caller)
+    text_index = await fetch_keyword_texts(
+        manager_id=ctx.manager_id,
+        session_id=ctx.session_id,
+        customer_id=customer_id,
+        keyword_pairs=keyword_pairs,
+    )
+    sample_keywords = []
+    for ad_group_id, criterion_id in keyword_pairs[:_SAMPLE_SIZE]:
+        text_info = text_index.get((ad_group_id, criterion_id), {})
+        sample_keywords.append(
+            {
+                "ad_group_id": ad_group_id,
+                "criterion_id": criterion_id,
+                "keyword_text": text_info.get("keyword_text"),  # None se não resolvido
+                "match_type": text_info.get("match_type"),
+            }
+        )
+
     return {
         "status": "dry_run",
         "operation": "update_keyword_status",
         "customer_id": customer_id,
         "blast_summary": summary,
+        "sample_keywords": sample_keywords,
+        "sample_truncated": target_count > _SAMPLE_SIZE,
         "confirmation_token": token,
         "expires_in_minutes": 10,
         "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
