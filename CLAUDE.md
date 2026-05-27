@@ -26,14 +26,13 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 - **Production state:** 62 MCP tools (57 Google + 5 Meta) deployed + `/health` 200. Last commit `ecf926b` (smoke runbook Sprint 3b.40). Bucket: **22 always + 40 defer**. Caminho B+ Meta volume **RESTORED** em produção pós-hotfix F53+F54. Sprint 3b.40 shipped: 3 quick wins mutate safety (A1+B9+A2) — `get_keyword_performance` retorna `negative: bool`, `audit_quality_score` retorna `ad_group_status`, `update_keyword_status` dry-run retorna `sample_keywords` top 5.
 - **Próximo natural sprint** (escolha 1, priority ordered):
   1. **Sprint M.4** — `meta_get_geo_performance` + `_device` + `_hourly` (alta volume Caminho B+, multiplica calls/session)
-  2. **Sprint M.5.5** — `meta_competitive_intelligence` (anomaly + auction + industry benchmarks, diferenciador competitivo único)
-  3. **Sprint M.3.2** — V1 enhancement 2-step query (restaura effective_status filter via `/campaigns?fields=effective_status` → `/insights?filtering=campaign_id IN`, F55 architecture lesson)
-  4. **Sprint 3b.41** — Fase 2 refactor Caminho C (consolidação `get_performance_breakdown(level, dimension)` substitui 9 reports — renumerado de 3b.40, agora 3b.41 pós Sprint 3b.40 Quick Wins ship)
+  2. **Sprint M.5** — `meta_get_audience_performance` + `meta_get_top_creatives` (read coverage Meta)
+  3. **Sprint 3b.41** — Fase 2 refactor Caminho C (consolidação `get_performance_breakdown(level, dimension)` substitui 9 reports — renumerado de 3b.40, agora 3b.41 pós Sprint 3b.40 Quick Wins ship)
 - **Tokens válidos:**
   - v4-ads Bearer: rotacionado 25/05 (procedure: UI `/sessions/new`, NÃO inventar — backend hash valida)
   - Meta OAuth Wellington: reconectado 27/05 00:37 GMT (anterior invalidado server-side antes natural expiry — F-finding candidate B8). Nova expiry 26/07/2026.
 - **Meta MCP oficial conectado (2026-05-27):** Wellington testou — **44 tools** (correção 29→44, +15 desde launch Apr/2026). Gradual rollout 2-tier: 7/12 V4 contas enabled + algumas tools "new" blocked. V4 build-strategy validated (100% cobertura vs Meta MCP 58%). 🪄 **Use `ads_get_field_context` (Meta MCP oficial) pra validate Meta fields ANTES de shipping novas V4 Meta tools** — teria evitado F53+F54 100%.
-- **Roadmap atualizado Meta (+2 sprints Opção C):** M.4 → M.5 → **M.5.5** (anomaly+benchmarks) → **M.5.6** (pixel_health+opportunity+context) → M.6 → ... → M.27. Spec: `2026-05-24-meta-ads-incorporation-design.md` §7.
+- **Roadmap Meta enxuto (11 sprints pós-M.3.1.1):** M.4 → M.5 → M.6 → M.7 → M.16-M.18 (mutates status/budget/bid) → M.19 → M.20-M.22 (create) → M.23 (Customer Match). Spec original 22 sprints cortado pós-3b.40 cleanup (descartados M.5.5/M.5.6/M.8/M.11-M.15/M.24/M.25 = ~50% reduction). Re-considerar diferenciador competitivo (M.5.5) só se Caminho B+ falhar hit volume 25/06.
 - **Decision gates próximas:**
   - **2026-06-01** (D+7): Wellington 7d feedback Sprint 3b.39 F1 → decide F1→F2 timeline
   - **2026-06-25 a 2026-07-10** (D+30-45): Caminho B+ Meta volume checkpoint → atingiu 500 calls/15d? → re-submit Full Access App Review
@@ -60,39 +59,43 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 
 **🔥 Next sprint (escolha 1):**
 - **Sprint M.4** (3 tools breakdowns geo+device+hourly) — alta volume Caminho B+, multiplica calls/session
-- **Sprint M.5.5** (3 tools anomaly+auction+industry benchmarks) — diferenciador competitivo único vs Meta MCP oficial
-- **Sprint M.3.2** (V1 enhancement 2-step query) — restaura effective_status filter via `/campaigns?fields=effective_status` → `/insights?filtering=campaign_id IN` (F55 architecture lesson)
-- **Sprint 3b.41** (Fase 2 refactor Caminho C) — consolidação `get_performance_breakdown(level, dimension)` substitui 9 reports = -9 tools permanente. Spec: [`2026-05-25-architecture-refactor-design.md`](docs/superpowers/specs/2026-05-25-architecture-refactor-design.md). (Renumerado de 3b.40 pós Sprint 3b.40 Quick Wins ship 27/05.)
+- **Sprint M.5** (audience + top_creatives) — completa read coverage Meta
+- **Sprint 3b.41** (Fase 2 refactor Caminho C) — consolidação `get_performance_breakdown(level, dimension)` substitui 9 reports = -9 tools permanente. Spec: [`2026-05-25-architecture-refactor-design.md`](docs/superpowers/specs/2026-05-25-architecture-refactor-design.md). Aguardar M.5 shipped antes (refactor precisa de ≥9 reports estáveis).
 
 **⏰ Decision gates (calendário):**
 - **2026-06-01** (D+7 desde Sprint 3b.39 F1 ship): Wellington 7d feedback Sprint 3b.39 F1 → decide F1→F2 timeline. 5 perguntas estruturadas.
 - **2026-06-25 a 2026-07-10** (D+30-45 desde Caminho B+ ativado): Meta volume checkpoint. Se atingiu 500 calls/15d threshold → re-submit Full Access App Review. Monitor `meta_rate_counters` table X-Business-Use-Case-Usage. Decision gate atualizado: continuar Meta = ≥3 calls/semana dogfood; senão pivot Google.
 - **2026-07-25** (Meta OAuth Wellington expira): reconectar via `/admin` ANTES desta data (token expira 26/07/2026).
 
-**🗺️ Roadmap Meta family (M.4 → M.27, 22 sprints restantes pós-M.3.1.1):**
-- Reads: M.4 (geo+device+hourly) → M.5 (audience+top_creatives) → M.5.5 (anomaly+benchmarks) → M.5.6 (pixel_health+opportunity+context) → M.6 (budget_pacing+funnel) → M.7 (change_history+conversion_events) → M.8 (pages_for_business)
-- Audits: M.11-M.15 (zombie_ads/orphan_pixels/goal_attribution/delivery_health/detect_drift)
-- Mutates: M.16-M.22 (update status/budget/bid + create campaign/adset/ad/creative + bulk_pause)
-- Audiences: M.23-M.25 (apply/remove/create custom + lookalike + offline conversions)
-- Spec: [`2026-05-24-meta-ads-incorporation-design.md`](docs/superpowers/specs/2026-05-24-meta-ads-incorporation-design.md) §7
+**🗺️ Roadmap Meta family enxuto (11 sprints pós-M.3.1.1, ~3 meses dev solo):**
+- Reads: M.4 (geo+device+hourly) → M.5 (audience+top_creatives) → M.6 (budget_pacing+funnel) → M.7 (change_history+conversion_events)
+- Mutates: M.16-M.18 (update status+budget+bid) → M.19 (create campaign) → M.20-M.22 (create adset+ad+creative)
+- Audiences: M.23 (Customer Match — apply/remove/create custom)
+- Spec original: [`2026-05-24-meta-ads-incorporation-design.md`](docs/superpowers/specs/2026-05-24-meta-ads-incorporation-design.md) §7 — **DESCARTADOS** em 2026-05-27 cleanup: M.5.5/M.5.6 (diferenciador competitivo cosmético), M.8 (pages_for_business niche), M.11-M.15 (5 audits — dogfood manual via run_gaql cobre), M.24-M.25 (lookalike+offline conversions avançadas)
+- Re-considerar M.5.5 (anomaly+benchmarks) só se Caminho B+ falhar 500 calls/15d em 25/06 (diferenciador pra re-pitch Full Access)
 
 **📋 Backlog Google sprints 3b.39+ post-F1:** audit_negative_criterion_overlap, audit_assets_parity_between_campaigns, remove_* bundle, audit_log gap fix em `run_gaql`/`get_my_audit_log`/`get_my_rate_limit_status`, W2 `verify_campaign_state` ICE 280.
 
-**📝 Backlog LOW:**
-- A4 OPEN finding: Customer Match exclusion mechanism (3b.4/3b.5+, sprint dedicated candidate)
-- Simetria CRUD `update_conversion_value_rule_set` STORE, 3b.19B Nutry smoke, 3b.30 T7-T8 production Nutry sem QS
+**📝 Backlog LOW (bundle em Sprint Quick Wins #2 Q3):**
 - G2 `change_event` em `list_gaql_resources`, UX1 GAQL fields opcionais vazios, B2/B3 schema hints
-- WATCH (não-blocker): 3b.36 default `limit=200` estoura MCP cap em contas 500+ entries (V1 bump)
 - B7: BUC tracking observability gap em error path Meta (run_meta_graph_get só parseia BUC header em success — error responses não increment counter)
-- B8 candidate: Meta OAuth long-lived token pode ser invalidado server-side por Meta antes natural expiry (caught 2026-05-27 — após 36h reconnect). Investigar pattern + considerar proactive token refresh job V1.
+- A4 OPEN: Customer Match exclusion mechanism (3b.4+ sem demand real — sprint dedicado só se V4 ativar -10% CPA playbook)
 
 **👥 Operational pendings:**
 - 3 colaboradores V4 LS&Co como Meta App Administrators (quando time começar a usar — Meta Dev Console > App Roles, Dev Mode permite 25)
 - Real biz findings dogfood (fora-MCP, owner gestor): ML Antiguidades cross-platform tracking pixel + MDO Cotia 2 accounts duplicadas + WJX FECHADO. Ver [`dogfood-2026-05-25-meta-first-tool-real-biz-findings.md`](docs/operacao/dogfood-2026-05-25-meta-first-tool-real-biz-findings.md)
 
-**🟢 No-action / monitoring:**
+**🟢 No-action / monitoring (passive):**
 - Standard Access GAds case `26521440673` passive (uso ~0.07% Basic, zero blocker; quando aprovar = 1-line em `rate_limit.py:20`)
-- YAGNI sem demanda: ProtoFieldCapture retrofit pré-3b.5 builders
+- WATCH 3b.36 default `limit=200` estoura MCP cap em contas 500+ entries (workaround docs, V1 bump se demanda)
+- B8 candidate: Meta OAuth long-lived token server-side invalidation pattern (caught 1×, wait reincidência pra promover F-finding)
+
+**🗑️ Descartados 2026-05-27 (declarados YAGNI permanente):**
+- Simetria CRUD `update_conversion_value_rule_set` STORE (STORE out-of-scope V4 — sem retail físico)
+- 3b.19B Nutry smoke pending (prod estável 4 meses, low-risk)
+- 3b.30 T7-T8 production Nutry sem QS (known-limitation: Nutry low-volume Google não calcula QS)
+- ProtoFieldCapture retrofit pré-3b.5 builders (YAGNI declarado 3b.27)
+- `/sprint-bootstrap` skill (zero uso real — `superpowers:brainstorming` + `writing-plans` cobrem)
 
 ## Read these first when continuing work
 
@@ -100,7 +103,7 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 ```
 docs/operacao/findings-catalog.md       # ★ Bug history 56 findings (F1-F56 + A1-A6 + D1-D3) — F53/F54/F55 trio = Meta API endpoint architecture lesson + F56 (3b.40) negative discriminator gap
 docs/operacao/sprint-history.md         # ★ Sprint table per-row detail (3b.1→3b.40 + M.1→M.3.1.1) — comprehensive history
-docs/superpowers/specs/2026-05-24-meta-ads-incorporation-design.md   # ★ Meta family roadmap M.1→M.27 (recently updated com Meta MCP oficial 44 tools cross-reference)
+docs/superpowers/specs/2026-05-24-meta-ads-incorporation-design.md   # ★ Meta family roadmap (spec original 22 sprints, CLAUDE.md tem versão enxuta 11 pós-cleanup 27/05)
 docs/superpowers/specs/2026-05-25-architecture-refactor-design.md   # ★ Refactor arquitetural 4 fases (Fase 1 ✅ shipped 3b.39)
 ```
 
@@ -312,7 +315,6 @@ NUNCA cole secret em chat — backend hash em `mcp_sessions.token_hash`, 401 se 
 - **Have a plan?** `superpowers:subagent-driven-development` skill.
 - **Bug?** `superpowers:systematic-debugging` skill.
 - **Library/SDK question?** `plugin:context7:context7` (training data may be stale, especially for facebook_business + Meta Graph API quirks).
-- **New sprint?** `/sprint-bootstrap` (user-only skill — scaffolds plan + runbook).
 - **F-finding to catalog?** `/findings-add` (user-only skill — auto-increments F##).
 - **Quality audit antes de push?** Dispatch `mcp-tool-quality-reviewer` subagent.
 - **Smoke runbook esqueleto?** Dispatch `smoke-runbook-generator` subagent.
