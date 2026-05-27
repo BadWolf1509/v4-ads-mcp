@@ -69,6 +69,7 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         "keyword_text": row.ad_group_criterion.keyword.text,
         "match_type": row.ad_group_criterion.keyword.match_type.name,
         "status": row.ad_group_criterion.status.name,
+        "negative": bool(row.ad_group_criterion.negative),  # B9 (F56)
         "quality_score": int(qi.quality_score) if qi.quality_score else None,
         "quality_creative": qi.creative_quality_score.name if qi.creative_quality_score else None,
         "quality_post_click": qi.post_click_quality_score.name
@@ -102,7 +103,11 @@ def _row_formatter(row: Any) -> dict[str, Any]:
     description=(
         "[DEFER] Performance por palavra-chave com Quality Score completo (3 componentes: "
         "creative, post_click, search_predicted_ctr) + estimativas de first_page_cpc "
-        "e top_of_page_cpc. Filtros: status (enabled|paused|removed|all), limit."
+        "e top_of_page_cpc. Filtros: status (enabled|paused|removed|all), limit. "
+        "ATENÇÃO (F56): retorna positive E negative ad_group_criterion indistintamente. "
+        "Cada row tem field `negative: bool` — filtre `negative=false` no consumer pra "
+        "workflows de PAUSE/análise QS, OU use `audit_zombie_keywords`/`audit_quality_score` "
+        "(filtram `negative=FALSE` server-side)."
     ),
     input_schema=_SCHEMA,
     bucket="defer",

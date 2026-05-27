@@ -13,6 +13,7 @@ def keyword_performance_query(start: date, end: date, status: str, limit: int) -
           ad_group_criterion.keyword.text,
           ad_group_criterion.keyword.match_type,
           ad_group_criterion.status,
+          ad_group_criterion.negative,
           ad_group_criterion.quality_info.quality_score,
           ad_group_criterion.quality_info.creative_quality_score,
           ad_group_criterion.quality_info.post_click_quality_score,
