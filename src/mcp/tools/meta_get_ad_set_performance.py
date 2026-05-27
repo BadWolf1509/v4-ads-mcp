@@ -21,8 +21,8 @@ _DESCRIPTION = (
     "[DEFER] Performance por ad set Meta Ads: spend, impressões, clicks, CTR, "
     "CPC, reach, frequency, purchases, purchases_value_brl, purchase_roas, leads. "
     "Inclui campaign_id/name parent + optimization_goal + billing_event + "
-    "daily_budget_brl (CBO=None). Ordenado por spend desc. Filtros: "
-    "effective_status (ACTIVE|PAUSED|ARCHIVED|ALL), limit (max 500)."
+    "daily_budget_brl (CBO=None). Ordenado por spend desc. Filtros: limit (max 500). "
+    "[V0 limitation M.3.1] effective_status filter não suportado pela Meta Insights API."
 )
 
 _INPUT_SCHEMA: dict[str, Any] = {
@@ -58,12 +58,6 @@ _INPUT_SCHEMA: dict[str, Any] = {
             "pattern": r"^\d{4}-\d{2}-\d{2}$",
             "description": "Custom range end. Sobrescreve preset. Requires start_date.",
         },
-        "effective_status": {
-            "type": "string",
-            "enum": ["ACTIVE", "PAUSED", "ARCHIVED", "ALL"],
-            "default": "ACTIVE",
-            "description": "Filter por effective_status. ALL inclui tudo.",
-        },
         "limit": {
             "type": "integer",
             "minimum": 1,
@@ -85,7 +79,6 @@ async def meta_get_ad_set_performance(
     date_range: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
-    effective_status: str = "ACTIVE",
     limit: int = 100,
 ) -> dict[str, Any]:
     """Core logic — testable by integration tests."""
@@ -115,7 +108,6 @@ async def meta_get_ad_set_performance(
         ad_account_id=ad_account_id,
         start=start,
         end=end,
-        effective_status=effective_status,
         limit=limit,
     )
 
@@ -133,7 +125,6 @@ async def meta_get_ad_set_performance(
                 "level": "adset",
                 "start": start.isoformat(),
                 "end": end.isoformat(),
-                "effective_status": effective_status,
             },
         )
     except Exception as e:  # noqa: BLE001
@@ -171,6 +162,5 @@ async def handler(args: dict[str, Any]) -> dict[str, Any]:
         date_range=args.get("date_range"),
         start_date=args.get("start_date"),
         end_date=args.get("end_date"),
-        effective_status=args.get("effective_status", "ACTIVE"),
         limit=args.get("limit", 100),
     )

@@ -23,7 +23,6 @@ def test_build_insights_call_campaign_level() -> None:
         ad_account_id="act_123",
         start=date(2026, 5, 1),
         end=date(2026, 5, 7),
-        effective_status="ACTIVE",
         limit=100,
     )
     assert edge == "/act_123/insights"
@@ -34,7 +33,9 @@ def test_build_insights_call_campaign_level() -> None:
     assert params["time_range"] == '{"since":"2026-05-01","until":"2026-05-07"}'
     assert params["limit"] == 100
     assert params["ad_account_id"] == "act_123"
-    assert "filtering" in params  # ACTIVE != ALL → filtering injected
+    # M.3.1 (F53): effective_status filter removido — Meta Insights API rejeita
+    assert "filtering" not in params
+    assert "effective_status" not in params["fields"]
 
 
 def test_build_insights_call_adset_level() -> None:
@@ -43,13 +44,13 @@ def test_build_insights_call_adset_level() -> None:
         ad_account_id="act_456",
         start=date(2026, 1, 1),
         end=date(2026, 1, 31),
-        effective_status="PAUSED",
         limit=50,
     )
     assert params["level"] == "adset"
     assert "adset_id" in params["fields"]
     assert "optimization_goal" in params["fields"]
     assert "daily_budget" in params["fields"]
+    assert "effective_status" not in params["fields"]
 
 
 def test_build_insights_call_ad_level() -> None:
@@ -58,39 +59,25 @@ def test_build_insights_call_ad_level() -> None:
         ad_account_id="act_789",
         start=date(2026, 5, 25),
         end=date(2026, 5, 25),
-        effective_status="ACTIVE",
         limit=500,
     )
     assert params["level"] == "ad"
     assert "ad_id" in params["fields"]
     assert "creative_id" in params["fields"]
     assert params["limit"] == 500
+    assert "effective_status" not in params["fields"]
 
 
-def test_build_insights_call_status_all_omits_filtering() -> None:
+def test_build_insights_call_never_injects_filtering() -> None:
+    """M.3.1 hotfix (F53): filtering block removed entirely. NEVER injected."""
     _, params = build_insights_call(
         level="campaign",
         ad_account_id="act_1",
         start=date(2026, 5, 1),
         end=date(2026, 5, 1),
-        effective_status="ALL",
         limit=10,
     )
     assert "filtering" not in params
-
-
-def test_build_insights_call_status_active_injects_filtering() -> None:
-    _, params = build_insights_call(
-        level="campaign",
-        ad_account_id="act_1",
-        start=date(2026, 5, 1),
-        end=date(2026, 5, 1),
-        effective_status="ACTIVE",
-        limit=10,
-    )
-    assert "filtering" in params
-    assert "ACTIVE" in params["filtering"]
-    assert "effective_status" in params["filtering"]
 
 
 # ============================================================================

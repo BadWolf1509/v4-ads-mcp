@@ -154,8 +154,8 @@ async def test_happy_path_returns_sorted_rows(db):
 
 
 @pytest.mark.integration
-async def test_effective_status_filter_active_default(db):
-    """Default effective_status=ACTIVE → filtering injetado nos params."""
+async def test_never_injects_filtering(db):
+    """M.3.1 (F53): filtering block removed entirely — Meta Insights rejects effective_status filter."""
     from src.mcp.tools.meta_get_campaign_performance import (
         meta_get_campaign_performance,
     )
@@ -176,39 +176,10 @@ async def test_effective_status_filter_active_default(db):
             manager_id=mid,
             session_id=uuid4(),
             ad_account_id="act_123456",
-        )
-
-    assert "filtering" in captured_params
-    assert "ACTIVE" in captured_params["filtering"]
-
-
-@pytest.mark.integration
-async def test_effective_status_all_omits_filtering(db):
-    """effective_status=ALL → NÃO injeta filtering."""
-    from src.mcp.tools.meta_get_campaign_performance import (
-        meta_get_campaign_performance,
-    )
-
-    mid = await _seed_manager_with_meta_conn(db)
-
-    captured_params: dict = {}
-
-    async def capture_call(**kwargs):
-        captured_params.update(kwargs["params"])
-        return {"data": []}
-
-    with patch(
-        "src.mcp.tools.meta_get_campaign_performance.run_meta_graph_get",
-        new=AsyncMock(side_effect=capture_call),
-    ):
-        await meta_get_campaign_performance(
-            manager_id=mid,
-            session_id=uuid4(),
-            ad_account_id="act_123456",
-            effective_status="ALL",
         )
 
     assert "filtering" not in captured_params
+    assert "effective_status" not in captured_params["fields"]
 
 
 @pytest.mark.integration

@@ -1,9 +1,16 @@
 # bucket: always
-"""Shared insights helpers for meta_get_*_performance tools (Sprint M.3).
+"""Shared insights helpers for meta_get_*_performance tools (Sprint M.3 + M.3.1 hotfix).
 
 Pure module — zero SDK imports, fully unit-testable.
 
 Reusa META_EFFECTIVE_STATUS_LABELS de src.mcp.tools._meta_common.
+
+M.3.1 hotfix (F53): `effective_status` removed from fields lists + filtering
+block — Meta Insights API rejects it (it's Campaign/AdSet/Ad metadata, not
+an Insights metric field). V0 returns all entities regardless of status;
+V1 enhancement = 2-step query (fetch /campaigns?fields=effective_status,
+then /insights?filtering=[campaign_id IN <ids>]). Parser preserves defensive
+fallback `effective_status="UNKNOWN"` for backwards compat with response shape.
 """
 
 from datetime import date
@@ -26,11 +33,13 @@ _COMMON_INSIGHTS_FIELDS = [
     "action_values",
     "purchase_roas",
 ]
+# M.3.1: effective_status removed (F53). Other metadata fields (objective,
+# optimization_goal, billing_event, daily_budget, creative_id) kept — empirical
+# smoke validates per-iteration. If Meta rejects more, iterate.
 INSIGHTS_FIELDS_CAMPAIGN = [
     "campaign_id",
     "campaign_name",
     "objective",
-    "effective_status",
     *_COMMON_INSIGHTS_FIELDS,
 ]
 INSIGHTS_FIELDS_ADSET = [
@@ -41,7 +50,6 @@ INSIGHTS_FIELDS_ADSET = [
     "optimization_goal",
     "billing_event",
     "daily_budget",
-    "effective_status",
     *_COMMON_INSIGHTS_FIELDS,
 ]
 INSIGHTS_FIELDS_AD = [
@@ -52,7 +60,6 @@ INSIGHTS_FIELDS_AD = [
     "campaign_id",
     "campaign_name",
     "creative_id",
-    "effective_status",
     *_COMMON_INSIGHTS_FIELDS,
 ]
 
@@ -63,12 +70,15 @@ def build_insights_call(
     ad_account_id: str,
     start: date,
     end: date,
-    effective_status: str,
     limit: int,
 ) -> tuple[str, dict[str, Any]]:
     """Build Graph API edge path + params dict for a /insights call.
 
     Returns: (edge, params) — caller passes both to run_meta_graph_get.
+
+    M.3.1 hotfix (F53): effective_status param removed from signature.
+    Filtering block omitted — Meta Insights API rejects `effective_status` as
+    filter field. V1 enhancement = 2-step query pra restore filter capability.
     """
     fields_by_level = {
         "campaign": INSIGHTS_FIELDS_CAMPAIGN,
@@ -83,10 +93,6 @@ def build_insights_call(
         "limit": limit,
         "ad_account_id": ad_account_id,  # passed thru for BUC counter key
     }
-    if effective_status != "ALL":
-        params["filtering"] = (
-            f'[{{"field":"effective_status","operator":"IN","value":["{effective_status}"]}}]'
-        )
     return edge, params
 
 
