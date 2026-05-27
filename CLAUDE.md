@@ -19,54 +19,88 @@ Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamab
 
 ## Current state
 
-**Last updated:** 2026-05-27 — pós-Sprint M.3.1 + M.3.1.1 hotfix ship (smoke real revelou F53 + F54 Meta Insights API field whitelist gaps, fix iterativo 2 deploys, 8/10 PASS final). **54 findings** (F1-F54 + A1-A6 + D1-D3). Token rotation procedure documentado em conventions (Bearer issued via UI `/sessions/new`).
+**Last updated:** 2026-05-27 — pós-sessão M.3 ship + smoke real + hotfix iterativo M.3.1+M.3.1.1 (F53+F54 caught) + Meta MCP oficial analysis (44 tools confirmed + F55 architectural lesson) + CI fix integration test gap. **55 findings** (F1-F55 + A1-A6 + D1-D3).
 
 ### Quick-start próxima sessão (TL;DR)
 
-- **Sprint atual:** Sprint M.3.1 + M.3.1.1 ✅ shipped pós-smoke real BLOCKER caught — F53 (effective_status invalid em Meta Insights fields/filtering params) + F54 (billing_event/daily_budget/creative_id invalid). 3 tools M.3 restored em produção (T1+T2+T3 PASS em ML Antiguidades data real). Tool count permanece 62. 8 smoke PASS + 2 DEFERRED V1 (effective_status filter feature gone pós-fix; restaurada via 2-step query V1).
-- **Próximo natural:** Sprint M.4 plan (`meta_get_geo_performance` + `meta_get_device_performance` + `meta_get_hourly_performance` — multiplica volume Caminho B+ per session) OR Sprint 3b.40 plan (Fase 2 refactor Caminho C consolidação) OR V1 enhancement Sprint M.3.2 (2-step query restaurar effective_status filter via `/campaigns?fields=effective_status` → `/insights?filtering=campaign_id IN`).
-- **Token v4-ads:** rotacionado 25/05 funcional. Procedure pra futuro: UI `/sessions/new` (NÃO inventar tokens, backend valida via hash).
-- **Meta OAuth Wellington:** reconectado 27/05 00:37 GMT (server-side token rejection caught em smoke — original 25/05 token invalidado por Meta antes do natural expiry). Nova expiry 26/07/2026 (59 dias).
-- **Quando ler outros docs:** `findings-catalog.md` se bug suspeito, `sprint-history.md` se detalhe per-sprint, specs/plans se executar fase pending.
+- **Production state:** 62 MCP tools (57 Google + 5 Meta) deployed + `/health` 200. Last commit `465656f` (CI fix). Bucket: **22 always + 40 defer**. Caminho B+ Meta volume **RESTORED** em produção pós-hotfix F53+F54.
+- **Próximo natural sprint** (escolha 1, priority ordered):
+  1. **Sprint M.4** — `meta_get_geo_performance` + `_device` + `_hourly` (alta volume Caminho B+, multiplica calls/session)
+  2. **Sprint M.5.5** — `meta_competitive_intelligence` (anomaly + auction + industry benchmarks, diferenciador competitivo único)
+  3. **Sprint M.3.2** — V1 enhancement 2-step query (restaura effective_status filter via `/campaigns?fields=effective_status` → `/insights?filtering=campaign_id IN`, F55 architecture lesson)
+  4. **Sprint 3b.40** — Fase 2 refactor Caminho C (consolidação `get_performance_breakdown(level, dimension)` substitui 9 reports)
+- **Tokens válidos:**
+  - v4-ads Bearer: rotacionado 25/05 (procedure: UI `/sessions/new`, NÃO inventar — backend hash valida)
+  - Meta OAuth Wellington: reconectado 27/05 00:37 GMT (anterior invalidado server-side antes natural expiry — F-finding candidate B8). Nova expiry 26/07/2026.
+- **Meta MCP oficial conectado (2026-05-27):** Wellington testou — **44 tools** (correção 29→44, +15 desde launch Apr/2026). Gradual rollout 2-tier: 7/12 V4 contas enabled + algumas tools "new" blocked. V4 build-strategy validated (100% cobertura vs Meta MCP 58%). 🪄 **Use `ads_get_field_context` (Meta MCP oficial) pra validate Meta fields ANTES de shipping novas V4 Meta tools** — teria evitado F53+F54 100%.
+- **Roadmap atualizado Meta (+2 sprints Opção C):** M.4 → M.5 → **M.5.5** (anomaly+benchmarks) → **M.5.6** (pixel_health+opportunity+context) → M.6 → ... → M.27. Spec: `2026-05-24-meta-ads-incorporation-design.md` §7.
+- **Decision gates próximas:**
+  - **2026-06-01** (D+7): Wellington 7d feedback Sprint 3b.39 F1 → decide F1→F2 timeline
+  - **2026-06-25 a 2026-07-10** (D+30-45): Caminho B+ Meta volume checkpoint → atingiu 500 calls/15d? → re-submit Full Access App Review
+- **Quando ler outros docs:** [bug suspeito → `findings-catalog.md`] [sprint detail → `sprint-history.md`] [execute pending → spec+plan] [Meta strategy → `2026-05-24-meta-ads-incorporation-design.md`]
 
 ### Shipped — 62 MCP tools (57 Google + 5 Meta)
 
-| Stream | Status | Notes |
+| Stream | Range | Highlights |
 |---|---|---|
-| Phases 0-1b + 3a + FE Redesign v2 | ✅ 2026-05-03→05 | Foundation. See [`infra-setup.md`](docs/operacao/infra-setup.md). |
-| Google Sprint 3b.1 → 3b.37 (37 sprints) | ✅ 2026-05-04→21 | 57 tools shipped + smoke real. Detail per sprint: [`sprint-history.md`](docs/operacao/sprint-history.md). Latest: 3b.33 `detect_drift`, 3b.34 F46 fix, 3b.35 `audit_goal_attribution`, 3b.36 `audit_zombie_keywords`, 3b.37 `audit_orphan_smart_actions`. |
-| Meta Sprint M.1 + M.1.1 + M.2a + M.2b | ✅ 2026-05-24→25 | DB foundation (4 tables) + OAuth flow + facebook_business v21 SDK + 2 tools MCP (`meta_list_my_ad_accounts` + `meta_get_account_overview`) + endpoints `/oauth/meta/{data-deletion-callback,refresh-accounts}` + admin UI Revogar/Refresh buttons + A5 fix. **App Review respondido 25/05 10:58 GMT-3: `public_profile` APROVADA, `Marketing API Access Tier` REJEITADA (insufficient calls 15d). Decisão Caminho B+ janela observação 30-45 dias — acelerar M.3+ pra volume natural + re-submit Full Access após atingir 500 calls/15d threshold.** Detail: [`sprint-history.md`](docs/operacao/sprint-history.md) §Meta family. Roadmap M.3-M.25 segue normal (Limited Access permite testing, MAS docs Meta diz "extremamente limitado, não para produção visualizado para cliente publicitário" — observação throttle obrigatória). |
-| Sprint 3b.38 | ✅ 2026-05-25 | F52 fix `audit_zombie_keywords` adiciona `ad_group_status` field + description warning (Opção C dogfood B6). F23 fix `get_change_history` clamp LAST_30_DAYS pra today-28 + warning na response (promoted "known limitation" → "fixed"). B1 description refino "HORAS" → "DIAS" (medição empírica dogfood 25/05 >4 dias). Smoke real 5/5 PASS: T1 280 zumbis = 170 REMOVED + 110 ENABLED match exato dogfood (DELL 93 + GPA02 ANDAIME 77 órfãs cosméticas), T2+T3 F23 clamp/no-clamp positive/negative. |
-| Sprint 3b.39 (refactor F1) | ✅ 2026-05-25 | Fase 1 do refactor arquitetural V4 Ads MCP (spec: `2026-05-25-architecture-refactor-design.md`). **Tool count stays at 59** (metadata-only F1). 6 tasks A-F via subagent-driven + 2 D-findings cross-layer descobertas (D2 pré-plan via OQ1, D3 pré-Wellington-config). **Final bucket state:** 21 always + 38 defer = 59 (data-driven via audit_log uses_30d). **Server-side mechanism (D3 correct):** `@register_tool` decorator add `bucket: Literal["always", "defer"]` kwarg + `_meta` field per Tool com `{"com.v4company/bucket": ..., "anthropic/alwaysLoad": true}` (omit alwaysLoad em defer) + mass-tag 59 tool files (`# bucket:` line 1 + `[CORE]`/`[DEFER]` description prefix). **D3 finding:** Claude Code v2.x `ENABLE_TOOL_SEARCH=true` por DEFAULT — todas MCP tools defer automaticamente. Mecanismo pra promover always-loaded é `_meta.anthropic/alwaysLoad: true` server-side per-tool (NÃO client-side settings.json como D2 inicialmente assumiu). Wellington action: ZERO config edits — apenas restart Claude Code. **Smoke real validado bit-a-bit em produção** pós-restart: `list_my_accounts` retornou 25 contas via always-loaded path + 38 deferred tools confirmadas via system reminder. **Pre-push 5/5 + 792/792 unit tests + CI verde + token rotation procedure** documentado (UI `/sessions/new` issuing). Decision gate F1→F2 outcome-based timeout 14d (Wellington 7d feedback D+7=2026-06-01). Próxima: Fase 2 (Sprint 3b.40 — Caminho C consolidação `get_performance_breakdown`). |
-| Sprint M.3 | ✅ 2026-05-26 | 3 tools Meta performance (paridade Google get_*_performance): `meta_get_campaign_performance` bucket=always (Pareto Meta top), `meta_get_ad_set_performance` bucket=defer, `meta_get_ad_performance` bucket=defer. Approach C — shared `src/meta_ads/insights.py` (~150 LOC) + 3 thin handlers (~30 LOC cada) + `META_EFFECTIVE_STATUS_LABELS` em `_meta_common.py`. Tool count 59→62 (22 always + 40 defer). **Caminho B+ contribution:** +3-6 calls/dia naturais Wellington dogfood. **Smoke real revelou F53 (effective_status invalid Meta field) → hotfix M.3.1.** |
-| Sprint M.3.1 + M.3.1.1 (hotfix F53 + F54) | ✅ 2026-05-27 | Smoke real T1 ICSER caught F53: Meta Insights API rejeita `effective_status` em fields/filtering — TODAS 3 tools M.3 broken em produção desde deploy 2026-05-26. M.3.1 commit `984a7ae` remove effective_status de 3 INSIGHTS_FIELDS_* + filtering block + schema/signature. Smoke iteration 2 caught F54: more invalid fields (billing_event, daily_budget, creative_id) — M.3.1.1 commit `b3ba6b5` remove esses. Tool count permanece 62 (schema-only fix). **Smoke real final ML Antiguidades 8/10 PASS + 2 DEFERRED V1:** T1+T2+T3 success (data real spend=411.83, ctr=3.77%, hierarquia campaign→adset→ad math consistente), T5 custom date range correct (Apr-only 70.97 vs Apr+May 411.83), T7 account inexistente PT-BR, T8 token expirado msg implicit (reproduzido T1 attempt #1), T9 BUC tracking ML calls_used=5 throttle=1%, T10 audit_log 5 success entries com x-fb-trace-id populated. T4+T6 DEFERRED V1 (effective_status filter feature gone). V0 trade-off: tools retornam todas entities, gestor filtra client-side. V1 enhancement: 2-step query `/campaigns?fields=effective_status` + `/insights?filtering=campaign_id IN`. Lição F17-F44 family reinforced: Meta schema/field whitelists MUST empirically validated pre-ship (per-value probe contra real sandbox). Caminho B+ Meta volume RESTORED em produção. |
+| Foundation (Phases 0-1b + 3a + FE Redesign v2) | 2026-05-03→05 | See [`infra-setup.md`](docs/operacao/infra-setup.md). |
+| Google sprints 3b.1 → 3b.39 (39 sprints) | 2026-05-04→25 | 57 tools shipped. Latest: 3b.33 `detect_drift`, 3b.35 `audit_goal_attribution`, 3b.36 `audit_zombie_keywords`, 3b.37 `audit_orphan_smart_actions`, 3b.38 (F52+F23+B1 fixes), 3b.39 (bucket classification F1 + D3 alwaysLoad mechanism, 21 always + 38 defer pre-M.3). Detail per sprint: [`sprint-history.md`](docs/operacao/sprint-history.md). |
+| Meta family M.1 → M.3.1.1 | 2026-05-24→27 | 5 tools shipped: `meta_list_my_ad_accounts` (M.2a, cache) + `meta_get_account_overview` (M.2b, Graph API) + `meta_get_campaign_performance` (M.3, always) + `meta_get_ad_set_performance` (M.3, defer) + `meta_get_ad_performance` (M.3, defer). DB foundation (4 tables) + OAuth flow + admin UI Revogar/Refresh + endpoints data-deletion-callback + refresh-accounts. **Meta App Review respondido 2026-05-25:** `public_profile` ✅, `Marketing API Tier` ❌ (insufficient calls 15d) → Caminho B+ janela observação 30-45d (acelerar M.3+ pra volume natural). **M.3 smoke real 2026-05-27 caught F53+F54** (Meta Insights API rejeita `effective_status`/`billing_event`/`daily_budget`/`creative_id` em fields=) → **M.3.1+M.3.1.1 hotfix iterativo** (commits `984a7ae`+`b3ba6b5`) → tools restored em produção. **Smoke final 8/10 PASS** em ML Antiguidades: T1+T2+T3 success com data real (spend=411.83, ctr=3.77%, hierarquia campaign→adset→ad math consistente), T5+T7+T8+T9+T10 PASS, T4+T6 DEFERRED V1 (effective_status filter feature gone até V1 2-step query restore). |
 
-**/health 200, CI green.** **16 web pages** em prod. **Q8 invite-only allowlist** ativo. **52 findings catalogados** (F1-F52 + A1-A6 + D1-D3, alguns IDs skipped): [`findings-catalog.md`](docs/operacao/findings-catalog.md). **Smoke real M.2b 8/8 PASS** com F48 (FacebookSession factory) + F49 (button macro) caught/fixed em prod. **Smoke real 3b.38 5/5 PASS** F52 ad_group_status field + F23 clamp validados bit-a-bit em conta MO-JP+CAB. **Smoke real 3b.39 F1 PASS** em produção: 21 always + 38 deferred + token rotation completa pós-Bearer exposure incident. F50/F51 retrospective trace de F33/F37 (já fixados desde 2026-05-18). **D1-D3 trio decision-not-bug:** D1 (Meta App Review Standard Tier rejeitado — Caminho B+ janela observação 30-45 dias), D2 (MCP defer_loading client-side Anthropic API param — wrong design assumption), D3 (real mechanism is server-side per-tool `_meta.anthropic/alwaysLoad` — Claude Code Tool Search default v2.x). **Lição reinforced 3× consecutiva:** sempre verificar docs oficial cliente ANTES de design refactor cross-layer (D1+D2+D3 cada salvou 2-3 dias wasted work).
+**Production:** `/health` 200, CI green em `465656f` (CI fix integration test gap creative_id assertion legacy). 16 web pages prod. Q8 invite-only allowlist ativo.
 
-### Pending / future
+**55 findings catalogados** ([`findings-catalog.md`](docs/operacao/findings-catalog.md)):
+- **F53+F54+F55 trio (HIGH, sessão 2026-05-27):** Meta /insights vs /entities endpoints separation arquitetura — root cause Meta Insights API field whitelist gaps. F55 = architectural lesson catalogado via Meta MCP oficial `ads_get_field_context` empirical probe.
+- **D1-D3 trio (decision-not-bug):** D1 Meta App Review Standard rejeitado → Caminho B+, D2 MCP defer_loading client-side (initial wrong assumption), D3 real mechanism server-side `_meta.anthropic/alwaysLoad`.
+- **F47-F52 (recent):** F47 PowerShell secret pipe CRLF, F48 FacebookSession factory, F49 button macro form submit, F50/F51 retrospective F33/F37 traces, F52 ad_group_status órfãs cosméticas.
+- **Lição reinforced N× consecutiva:** sempre verificar docs oficial cliente ANTES de design refactor cross-layer (D1+D2+D3 + F53+F54+F55 cada salvou 1-3 dias wasted work).
 
-- **Meta App Review RESPONDIDO 2026-05-25 10:58 GMT-3** — `public_profile` ✅ APROVADA, `Marketing API Access Tier` ❌ REJEITADA. Critério literal Meta: ≥500 calls/15d + <15% error rate (atualizado, era 1.500 antes). Nomenclatura atual: **Limited Access** (ex-"Standard", default sem App Review — "extremamente limitado, NÃO para produção visualizado para cliente publicitário" docs Meta literal) vs **Full Access** (ex-"Advanced", o que rejeitou). **Decisão Caminho B+ janela observação 30-45 dias** — V4 LS&Co (Wellington + 3 colab futuros) = 4 users ≤ 25 cap Dev Mode/Limited OK pra testing, MAS red flag throttle em produção real. **Estratégia:** acelerar M.3+ pra ship mais tools Meta (`meta_get_campaign_performance` etc) → Wellington usa naturalmente day-to-day → volume cresce → ~30-45 dias atinge 500 calls cumulativas → re-submit Full Access com fundamento. Não-Caminho A permanente (risk throttle production), não-Caminho B forçado (3×/dia waste). **Monitorar X-Business-Use-Case-Usage** em `meta_rate_counters` table — se Wellington bater throttle real antes da janela, priorize re-submit imediato. **Decision gate atualizado:** continuar M.3 = ≥3 calls/semana dogfood; senão pivot Google. **Action quando colab entrarem:** add como App Roles → Administrators no Meta Dev Console (Dev Mode permite 25). Ver D1 finding pra detalhes técnicos + 2 conceitos diferentes (Marketing API tier vs resource access tier).
-- **Refactor arquitetural Sprint 3b.39 ✅ F1 SHIPPED + VALIDATED** — bucket classification (22 always + 40 defer = 62 pós-M.3) + server-side `_meta.anthropic/alwaysLoad` (D3 correct mechanism). Wellington action = restart Claude Code (zero settings.json edits, D2 inicialmente errado). Smoke real produção PASS (system reminder confirmou "38 deferred tools available" antes-M.3). Wellington 7d feedback collection: D+7 = 2026-06-01 (5 perguntas estruturadas). Decision gate F1→F2 outcome-based timeout 14d. **Próximo Sprint 3b.40 (Fase 2):** Caminho C consolidação `get_performance_breakdown(level, dimension)` substitui 9 reports = -9 tools permanente. Spec: [`2026-05-25-architecture-refactor-design.md`](docs/superpowers/specs/2026-05-25-architecture-refactor-design.md).
-- **Sprint M.3 ✅ SHIPPED código — Wellington smoke real PENDING** — 3 tools Meta performance shipped código + CI/Deploy verde + production /health 200. Runbook `phase-M-3-bootstrap.md` 10 tests T1-T10 (3 happy paths + status ALL + custom date + per-value probe 4 effective_status + 2 error paths + BUC tracking + audit_log validation). Wellington action: restart Claude Code → escolher ad_account com Pixel purchase configurado → executar T1-T10 (~30min). Per-value probe T6 vai validar 4 valores enum (ACTIVE/PAUSED/ARCHIVED/ALL) — se algum Meta rejeitar, remover do schema enum + catalog F-finding. **Caminho B+ Meta volume começa acumular D+1** (Wellington dogfood +3-6 calls/dia naturais → 30-45d viável atingir 500 calls/15d threshold Full Access).
-- **Próximo Sprint M.4 candidate** — `meta_get_geo_performance` + `meta_get_device_performance` + `meta_get_hourly_performance` (3 tools breakdowns paralelos a Google equivalents). Alta prioridade Caminho B+ — multiplica volume per session (gestor pede geo/device como follow-up natural ao campaign-level).
-- **Roadmap Meta expandido +2 sprints (Opção C 2026-05-27 cross-reference Meta MCP oficial):** **Sprint M.5.5** `meta_competitive_intelligence` (3 tools — anomaly_signal + auction_benchmarks + industry_benchmark = diferenciador competitivo). **Sprint M.5.6** `meta_account_health` (3 tools — pixel_health consolidated + opportunity_score + advertiser_context). Spec `2026-05-24-meta-ads-incorporation-design.md` §7 Roadmap.
-- **Correção contagem Meta MCP oficial (2026-05-27 teste empírico):** Inicialmente reportei 29 tools (search HeyOz/Synter outdated com state launch Apr/2026). Wellington conectou MCP oficial — **contagem real = 44 tools** (+15 desde launch: 5 creative mgmt + 4 audiences + 2 pages + 1 dataset + 3 helpers). Testes empíricos revelaram **gradual rollout 2-tier:** (a) account-level `is_ads_mcp_enabled` = false em 5/12 contas V4 (ML Antiguidades + Wellington personal + 3 Lagoas + Dra. Paula Minchillo + WJX); (b) tool-level — certas tools "new" bloqueadas mesmo em accounts enabled (`get_datasets` + `get_ad_account_custom_audiences` + `get_creatives` confirmed). **Implicação:** V4 MCP cobre **100% contas** vs Meta MCP oficial **58%** — V4 build-strategy validated. **F55 catalogado** (Meta /insights vs /entities endpoints separation = root cause F53/F54 finalmente explicado via `ads_get_field_context` magic helper).
-- **Sprint 3b.39+ post-F1 candidates** (fora-refactor): audit_negative_criterion_overlap, audit_assets_parity_between_campaigns, remove_* bundle, audit_log gap fix em `run_gaql`/`get_my_audit_log`/`get_my_rate_limit_status`, W2 `verify_campaign_state` ICE 280.
-- **A4 OPEN finding:** Customer Match exclusion mechanism (3b.4/3b.5+). Sprint dedicated candidate.
-- **3 colaboradores V4 LS&Co como Meta App Administrators** quando time começar a usar — adicionar via Meta Dev Console > App Roles > Administrators (Limited Access/Dev Mode permite 25 admins/testers sem Full Access tier, OK pra janela observação Caminho B+).
-- **Real biz findings dogfood** (fora-MCP, owner gestor V4 não-dev): ML Antiguidades cross-platform tracking pixel + MDO Cotia 2 accounts duplicadas + WJX FECHADO. Ver [`dogfood-2026-05-25-meta-first-tool-real-biz-findings.md`](docs/operacao/dogfood-2026-05-25-meta-first-tool-real-biz-findings.md).
-- **LOW pendings:** simetria CRUD (`update_conversion_value_rule_set` STORE), 3b.19B Nutry smoke, 3b.30 T7-T8 production Nutry sem QS, G2 `change_event` em `list_gaql_resources`, UX1 GAQL fields opcionais vazios, B2/B3 schema hints `get_change_history`/`validate_gaql`.
-- **WATCH (não-blocker):** 3b.36 default `limit=200` estoura MCP cap em contas 500+ entries (V1 bump). 3b.37 já default=100.
-- **YAGNI sem demanda:** ProtoFieldCapture retrofit pré-3b.5 builders.
-- **Standard Access GAds:** case `26521440673` passive. Uso ~0.07% Basic, zero blocker. Quando aprovar, 1-line em `rate_limit.py:20`.
+### Pending / future (priority ordered)
+
+**🔥 Next sprint (escolha 1):**
+- **Sprint M.4** (3 tools breakdowns geo+device+hourly) — alta volume Caminho B+, multiplica calls/session
+- **Sprint M.5.5** (3 tools anomaly+auction+industry benchmarks) — diferenciador competitivo único vs Meta MCP oficial
+- **Sprint M.3.2** (V1 enhancement 2-step query) — restaura effective_status filter via `/campaigns?fields=effective_status` → `/insights?filtering=campaign_id IN` (F55 architecture lesson)
+- **Sprint 3b.40** (Fase 2 refactor Caminho C) — consolidação `get_performance_breakdown(level, dimension)` substitui 9 reports = -9 tools permanente. Spec: [`2026-05-25-architecture-refactor-design.md`](docs/superpowers/specs/2026-05-25-architecture-refactor-design.md).
+
+**⏰ Decision gates (calendário):**
+- **2026-06-01** (D+7 desde Sprint 3b.39 F1 ship): Wellington 7d feedback Sprint 3b.39 F1 → decide F1→F2 timeline. 5 perguntas estruturadas.
+- **2026-06-25 a 2026-07-10** (D+30-45 desde Caminho B+ ativado): Meta volume checkpoint. Se atingiu 500 calls/15d threshold → re-submit Full Access App Review. Monitor `meta_rate_counters` table X-Business-Use-Case-Usage. Decision gate atualizado: continuar Meta = ≥3 calls/semana dogfood; senão pivot Google.
+- **2026-07-25** (Meta OAuth Wellington expira): reconectar via `/admin` ANTES desta data (token expira 26/07/2026).
+
+**🗺️ Roadmap Meta family (M.4 → M.27, 22 sprints restantes pós-M.3.1.1):**
+- Reads: M.4 (geo+device+hourly) → M.5 (audience+top_creatives) → M.5.5 (anomaly+benchmarks) → M.5.6 (pixel_health+opportunity+context) → M.6 (budget_pacing+funnel) → M.7 (change_history+conversion_events) → M.8 (pages_for_business)
+- Audits: M.11-M.15 (zombie_ads/orphan_pixels/goal_attribution/delivery_health/detect_drift)
+- Mutates: M.16-M.22 (update status/budget/bid + create campaign/adset/ad/creative + bulk_pause)
+- Audiences: M.23-M.25 (apply/remove/create custom + lookalike + offline conversions)
+- Spec: [`2026-05-24-meta-ads-incorporation-design.md`](docs/superpowers/specs/2026-05-24-meta-ads-incorporation-design.md) §7
+
+**📋 Backlog Google sprints 3b.39+ post-F1:** audit_negative_criterion_overlap, audit_assets_parity_between_campaigns, remove_* bundle, audit_log gap fix em `run_gaql`/`get_my_audit_log`/`get_my_rate_limit_status`, W2 `verify_campaign_state` ICE 280.
+
+**📝 Backlog LOW:**
+- A4 OPEN finding: Customer Match exclusion mechanism (3b.4/3b.5+, sprint dedicated candidate)
+- Simetria CRUD `update_conversion_value_rule_set` STORE, 3b.19B Nutry smoke, 3b.30 T7-T8 production Nutry sem QS
+- G2 `change_event` em `list_gaql_resources`, UX1 GAQL fields opcionais vazios, B2/B3 schema hints
+- WATCH (não-blocker): 3b.36 default `limit=200` estoura MCP cap em contas 500+ entries (V1 bump)
+- B7: BUC tracking observability gap em error path Meta (run_meta_graph_get só parseia BUC header em success — error responses não increment counter)
+- B8 candidate: Meta OAuth long-lived token pode ser invalidado server-side por Meta antes natural expiry (caught 2026-05-27 — após 36h reconnect). Investigar pattern + considerar proactive token refresh job V1.
+
+**👥 Operational pendings:**
+- 3 colaboradores V4 LS&Co como Meta App Administrators (quando time começar a usar — Meta Dev Console > App Roles, Dev Mode permite 25)
+- Real biz findings dogfood (fora-MCP, owner gestor): ML Antiguidades cross-platform tracking pixel + MDO Cotia 2 accounts duplicadas + WJX FECHADO. Ver [`dogfood-2026-05-25-meta-first-tool-real-biz-findings.md`](docs/operacao/dogfood-2026-05-25-meta-first-tool-real-biz-findings.md)
+
+**🟢 No-action / monitoring:**
+- Standard Access GAds case `26521440673` passive (uso ~0.07% Basic, zero blocker; quando aprovar = 1-line em `rate_limit.py:20`)
+- YAGNI sem demanda: ProtoFieldCapture retrofit pré-3b.5 builders
 
 ## Read these first when continuing work
 
 **Critical (read se task envolve):**
 ```
-docs/operacao/findings-catalog.md       # ★ Bug history 52 findings (F1-F52 + A1-A6 + D1-D3)
-docs/operacao/sprint-history.md         # ★ Sprint table per-row detail (3b.1→3b.39 + M.1→M.2b)
-docs/superpowers/specs/2026-05-25-architecture-refactor-design.md   # ★ Refactor arquitetural 4 fases
+docs/operacao/findings-catalog.md       # ★ Bug history 55 findings (F1-F55 + A1-A6 + D1-D3) — F53/F54/F55 trio = Meta API endpoint architecture lesson
+docs/operacao/sprint-history.md         # ★ Sprint table per-row detail (3b.1→3b.39 + M.1→M.3.1.1) — comprehensive history
+docs/superpowers/specs/2026-05-24-meta-ads-incorporation-design.md   # ★ Meta family roadmap M.1→M.27 (recently updated com Meta MCP oficial 44 tools cross-reference)
+docs/superpowers/specs/2026-05-25-architecture-refactor-design.md   # ★ Refactor arquitetural 4 fases (Fase 1 ✅ shipped 3b.39)
 ```
 
 **Reference (se relevant pra task atual):**
@@ -74,9 +108,9 @@ docs/superpowers/specs/2026-05-25-architecture-refactor-design.md   # ★ Refact
 docs/operacao/phase-3b-XX-bootstrap.md  # Smoke runbook per Google sprint
 docs/operacao/phase-M-2a-bootstrap.md   # Smoke runbook Meta M.2a (template pra M-family)
 docs/operacao/phase-M-2b-bootstrap.md   # Smoke runbook Meta M.2b (8/8 PASS)
+docs/operacao/phase-M-3-bootstrap.md    # Smoke runbook Meta M.3 (8/10 PASS, T4+T6 DEFERRED V1 pós F53+F54 hotfix)
 docs/operacao/tool-audit-2026-05-25.md  # Tool count analysis (sweet spot 30-45)
 docs/operacao/tool-buckets-2026-05-25.md  # Bucket classification per-tool (Sprint 3b.39 source)
-docs/superpowers/specs/2026-05-24-meta-ads-incorporation-design.md   # Meta family roadmap M.1-M.25
 docs/operacao/dogfood-2026-05-{19,21,25}-*.md                        # Real biz feedback findings
 docs/superpowers/specs/  +  plans/      # Design + implementation per sprint
 ```
@@ -220,6 +254,33 @@ Tailwind CDN (no build) + V4 tokens em `src/web/static/v4-tokens.css`. 22 compon
 
 `@register_tool` decorator aceita `bucket: Literal["always", "defer"]` kwarg (default `"defer"`, conservative). Cada tool file tem `# bucket: always|defer` line 1 (grepability) + description prefix `[CORE]`/`[DEFER]` + `_meta.com.v4company/bucket` em `list_tools()`. **D3 mechanism:** quando bucket="always", `_meta` também inclui `"anthropic/alwaysLoad": true` — Claude Code v2.x default `ENABLE_TOOL_SEARCH=true` defere TODAS MCP tools, esse field per-tool é único way de promover always-loaded. Bucket source-of-truth: [`tool-buckets-2026-05-25.md`](docs/operacao/tool-buckets-2026-05-25.md). Re-classify mensal via audit_log uses_30d query.
 
+### Meta API field validation (post-F53/F54/F55, M.3.1+M.3.1.1 lessons)
+
+Meta tem **2 endpoints separados** com field whitelists diferentes:
+- `/insights` = APENAS metrics fields (spend, impressions, ctr, cpc, reach, frequency, actions, action_values, purchase_roas)
+- `/campaigns`, `/adsets`, `/ads` = metadata fields (effective_status, daily_budget, creative_id, name, objective, optimization_goal, billing_event, etc.)
+
+**Antes de shipping nova Meta tool com novos fields:**
+1. **Use Meta MCP oficial `ads_get_field_context([field_names])` PRIMEIRO** — retorna `levels=[campaign|adset|ad|ad_account]` + `supported_filter_operators` + `enum_values`. Confirma endpoint correto + valida field existe. **Teria evitado F53+F54 100%** em 2 minutos vs 2 deploy cycles + hotfix iteration. Meta MCP oficial configurado em `~/.claude.json` mcpServers.
+2. **OU per-value probe contra real Meta sandbox account** (convention 3b.19A.1 análogo Google) em smoke runbook ANTES de production deploy.
+
+**V1 enhancement pattern (Sprint M.3.2 candidate):** 2-step query restaura status/metadata filter:
+```python
+# Step 1: filter entities by metadata
+entity_ids = await fetch("/act_X/{level}s?fields=id,effective_status&filtering=[...]")
+# Step 2: get insights filtered by entity_ids
+metrics = await fetch("/act_X/insights?level={level}&filtering=[{'field':'{level}_id','operator':'IN','value':entity_ids}]")
+```
+
+### When removing fields from schema/whitelist (post-M.3.1.1 CI fix lesson)
+
+Quando remover field de `INSIGHTS_FIELDS_*` (Meta) OU enum whitelist (Google), **MUST grep todos test files** ANTES de commit:
+```bash
+grep -rn "field_name" tests/    # find ALL assertions
+```
+
+`check_pre_push.py` (step 5/5 `non-DB integration`) **NÃO pega** integration tests com testcontainers DB (`@pytest.mark.integration`). `check_pre_push_full.py` pegaria mas Wellington Windows sem Docker → não roda local. CI cloud testcontainers pega — mas é 8+ min cycle. Grep upfront economiza 1 deploy cycle.
+
 ### Token rotation procedure (Bearer v4-ads MCP)
 
 Bearer tokens v4-ads-mcp SÓ são válidos se issued via backend UI (NÃO inventar). Procedure:
@@ -270,3 +331,6 @@ NUNCA cole secret em chat — backend hash em `mcp_sessions.token_hash`, 401 se 
 - Don't apply `is_allowed_email` (V4 domain) check em Meta OAuth callback — `fb_email` é conta FB pessoal do gestor (A6 lesson). Authoritative auth é manager_id no state HMAC.
 - Don't pass `access_token`/`app_id`/`app_secret` kwargs direto pra `FacebookAdsApi.__init__()` — use `FacebookSession` bridge (F48). Use factory `build_facebook_ads_api()` em `src/meta_ads/client.py`.
 - Don't usar `{{ button() }}` macro dentro de `<form>` sem `type="submit"` explicit — default `type="button"` não submete (F49).
+- Don't shippar nova Meta tool sem validar fields via `ads_get_field_context` (Meta MCP oficial) OR per-value probe contra real Meta sandbox PRIMEIRO. Meta tem `/insights` vs `/entities` endpoint separation (F55) — fields metadata como `effective_status`/`daily_budget`/`creative_id` válidos em entity endpoints, NÃO em `/insights` (F53+F54 = 2 deploy cycles wasted que magic helper teria evitado).
+- Don't remover field de `INSIGHTS_FIELDS_*` ou enum whitelist sem `grep -rn "field_name" tests/` PRIMEIRO. `check_pre_push.py` step 5/5 NÃO pega integration tests DB (testcontainers) — só CI cloud pega, com 8min delay. Lição M.3.1.1 CI fix `465656f` (creative_id assertion legacy).
+- Don't assumir Meta long-lived token (~60d expiry) é válido só porque `meta_oauth_connections.token_expires_at > now()` — Meta pode invalidar server-side antes do natural expiry por security/policy reasons (caught 2026-05-27, token de 25/05 invalidado após 36h). Sempre handle `to_friendly_meta_error` subcode 458/467/460/463 graciosamente.
