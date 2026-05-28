@@ -52,8 +52,9 @@ async def run_meta_graph_get(
         Parsed JSON response body (dict with "data" key for collection edges).
 
     Raises:
+        MetaAccessDeniedError: manager sem grant na ad account (hard-gate)
+        MetaSystemUserTokenMissingError: secret meta-system-user-token não configurado
         MetaAdsFriendlyError: friendly PT-BR error wrapping Meta API failures
-        NoMetaConnectionError | MetaTokenExpiredError: from build_meta_api_for_manager
     """
     settings = get_settings()
 
@@ -65,9 +66,8 @@ async def run_meta_graph_get(
             allowed = await manager_meta_account_access.can_manager_access(
                 conn, manager_id, ad_account_id, level="read"
             )
-        if not allowed:
-            if audit_this_call:
-                async with connection.get_pool().acquire() as conn:
+            if not allowed:
+                if audit_this_call:
                     await audit_log.record(
                         conn,
                         manager_id=manager_id,
@@ -80,9 +80,10 @@ async def run_meta_graph_get(
                         error_message="Gestor sem acesso à conta Meta",
                         platform="meta",
                     )
-            raise MetaAccessDeniedError(
-                f"Você não tem acesso à conta {ad_account_id}. Peça ao admin pra liberar no painel."
-            )
+                raise MetaAccessDeniedError(
+                    f"Você não tem acesso à conta {ad_account_id}. "
+                    f"Peça ao admin pra liberar no painel."
+                )
 
     api = build_meta_api(
         system_user_token=settings.meta_system_user_token,
