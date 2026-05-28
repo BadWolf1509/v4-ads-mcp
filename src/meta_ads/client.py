@@ -86,6 +86,7 @@ def build_meta_api(
         app_id=app_id,
         app_secret=app_secret,
         access_token=system_user_token,
+        api_version=api_version,
     )
 
 

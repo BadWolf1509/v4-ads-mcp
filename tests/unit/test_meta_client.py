@@ -166,6 +166,17 @@ def test_build_meta_api_returns_facebook_ads_api_instance():
     assert isinstance(api, FacebookAdsApi)
 
 
+def test_build_meta_api_accepts_custom_api_version():
+    """Allow override pra future SDK upgrades — api_version must be forwarded (bug fix)."""
+    api = build_meta_api(
+        system_user_token="TKN",
+        app_id="111",
+        app_secret="sec",
+        api_version="v23.0",
+    )
+    assert isinstance(api, FacebookAdsApi)
+
+
 # Sanity tests pra novas error classes
 
 
