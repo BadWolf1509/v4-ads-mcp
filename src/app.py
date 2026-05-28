@@ -10,7 +10,7 @@ from src.config import get_settings
 from src.db import connection
 from src.logging import configure_logging
 from src.mcp.server import mount_mcp
-from src.web.middleware import CSRFOriginMiddleware
+from src.web.middleware import CSRFOriginMiddleware, SecurityHeadersMiddleware
 
 __version__ = "0.1.0"
 
@@ -49,6 +49,7 @@ def create_app(skip_db_init: bool = False) -> FastAPI:
         return {"status": "ok", "version": __version__}
 
     app.add_middleware(CSRFOriginMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
 
     mount_mcp(app)
 
