@@ -20,7 +20,9 @@ from src.db.repositories import (
     google_ads_accounts,
     google_oauth_connections,
     manager_account_access,
+    manager_meta_account_access,
     mcp_sessions,
+    meta_ad_accounts,
     meta_oauth_connections,
 )
 from src.db.repositories.mcp_sessions import DEFAULT_TTL_DAYS
@@ -798,8 +800,6 @@ async def admin_access_meta(
         managers_rows = await conn.fetch(
             "SELECT id, email, full_name, role FROM managers WHERE is_active = true ORDER BY email"
         )
-        from src.db.repositories import meta_ad_accounts
-
         accounts = await meta_ad_accounts.list_all(conn)
         access_rows = await conn.fetch(
             "SELECT manager_id, ad_account_id FROM manager_meta_account_access"
@@ -813,6 +813,148 @@ async def admin_access_meta(
             "current_user": user,
             "managers_list": [dict(r) for r in managers_rows],
             "accounts": accounts,
+            "access_set": access_set,
+            "pending_invites_count": pending,
+        },
+    )
+
+
+@router.post("/admin/access/meta/toggle", response_class=HTMLResponse)
+async def admin_access_meta_toggle(
+    request: Request,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+    manager_id: str = Form(...),
+    ad_account_id: str = Form(...),
+) -> HTMLResponse:
+    _require_admin(user)
+    pool = connection.get_pool()
+    target_mid = UUID(manager_id)
+    async with pool.acquire() as conn:
+        exists = await conn.fetchval(
+            "SELECT 1 FROM manager_meta_account_access WHERE manager_id=$1 AND ad_account_id=$2",
+            target_mid,
+            ad_account_id,
+        )
+        if exists:
+            await manager_meta_account_access.revoke(
+                conn, manager_id=target_mid, ad_account_id=ad_account_id
+            )
+            granted = False
+        else:
+            await manager_meta_account_access.grant(
+                conn,
+                manager_id=target_mid,
+                ad_account_id=ad_account_id,
+                access_level="write",
+                granted_by=user.id,
+            )
+            granted = True
+    state = "checked" if granted else ""
+    return HTMLResponse(
+        f'<input type="checkbox" {state} hx-post="/admin/access/meta/toggle" '
+        f'hx-vals=\'{{"manager_id": "{manager_id}", "ad_account_id": "{ad_account_id}"}}\' '
+        f'hx-trigger="change" hx-swap="outerHTML">'
+    )
+
+
+@router.post("/admin/access/meta/bulk-grant", response_class=HTMLResponse, response_model=None)
+async def admin_access_meta_bulk_grant(
+    request: Request,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+    manager_id: str = Form(...),  # noqa: B008
+    ad_account_ids: list[str] = Form(...),  # noqa: B008
+) -> RedirectResponse:
+    _require_admin(user)
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        await manager_meta_account_access.bulk_grant(
+            conn,
+            manager_id=UUID(manager_id),
+            ad_account_ids=ad_account_ids,
+            granted_by=user.id,
+        )
+    return RedirectResponse(url="/admin/access/meta", status_code=303)
+
+
+@router.post("/admin/access/meta/bulk-copy", response_class=HTMLResponse, response_model=None)
+async def admin_access_meta_bulk_copy(
+    request: Request,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+    from_manager_id: str = Form(...),
+    to_manager_id: str = Form(...),
+) -> RedirectResponse:
+    _require_admin(user)
+    if from_manager_id == to_manager_id:
+        return RedirectResponse(url="/admin/access/meta?error=same_manager", status_code=303)
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        await manager_meta_account_access.copy_access(
+            conn,
+            from_manager_id=UUID(from_manager_id),
+            to_manager_id=UUID(to_manager_id),
+            granted_by=user.id,
+        )
+    return RedirectResponse(url="/admin/access/meta", status_code=303)
+
+
+@router.get("/admin/access/meta/by-manager", response_class=HTMLResponse)
+async def admin_access_meta_by_manager(
+    request: Request,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+) -> HTMLResponse:
+    _require_admin(user)
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        managers_with_counts = await conn.fetch(
+            """SELECT m.id, m.email, m.full_name,
+                      count(mmaa.ad_account_id) AS access_count
+               FROM managers m
+               LEFT JOIN manager_meta_account_access mmaa ON mmaa.manager_id = m.id
+               WHERE m.is_active = true
+               GROUP BY m.id ORDER BY m.email"""
+        )
+        total_accounts = await conn.fetchval("SELECT count(*) FROM meta_ad_accounts") or 0
+        pending = await pending_invites_count()
+    return templates.TemplateResponse(
+        request,
+        "admin/access_by_manager_meta.html",
+        {
+            "current_user": user,
+            "managers_with_counts": [dict(r) for r in managers_with_counts],
+            "total_accounts": total_accounts,
+            "pending_invites_count": pending,
+        },
+    )
+
+
+@router.get("/admin/access/meta/{manager_id}", response_class=HTMLResponse)
+async def admin_access_meta_manager_detail(
+    request: Request,
+    manager_id: str,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+) -> HTMLResponse:
+    _require_admin(user)
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        mgr_row = await conn.fetchrow(
+            "SELECT id, email, full_name FROM managers WHERE id = $1", UUID(manager_id)
+        )
+        if mgr_row is None:
+            raise HTTPException(status_code=404, detail="Gestor not found")
+        accs = await meta_ad_accounts.list_all(conn)
+        access_rows = await conn.fetch(
+            "SELECT ad_account_id FROM manager_meta_account_access WHERE manager_id = $1",
+            UUID(manager_id),
+        )
+        access_set = {r["ad_account_id"] for r in access_rows}
+        pending = await pending_invites_count()
+    return templates.TemplateResponse(
+        request,
+        "admin/access_manager_detail_meta.html",
+        {
+            "current_user": user,
+            "manager": dict(mgr_row),
+            "accounts": accs,
             "access_set": access_set,
             "pending_invites_count": pending,
         },
