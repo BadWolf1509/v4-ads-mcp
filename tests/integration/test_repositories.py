@@ -617,6 +617,32 @@ async def test_meta_access_bulk_grant_empty_list_no_op(db) -> None:
         assert n == 0
 
 
+@pytest.mark.integration
+async def test_meta_copy_access_replaces_destination(db) -> None:
+    async with db.acquire() as conn:
+        m_a = uuid4()
+        m_b = uuid4()
+        await managers.create(conn, manager_id=m_a, email="ca@v4.com", full_name=None)
+        await managers.create(conn, manager_id=m_b, email="cb@v4.com", full_name=None)
+        await meta_ad_accounts.upsert_many(
+            conn,
+            [
+                {"ad_account_id": "act_1", "business_id": "bm_C", "account_name": "C1"},
+                {"ad_account_id": "act_2", "business_id": "bm_C", "account_name": "C2"},
+            ],
+        )
+        await manager_meta_account_access.grant(conn, manager_id=m_a, ad_account_id="act_1")
+        await manager_meta_account_access.grant(conn, manager_id=m_b, ad_account_id="act_2")
+        n = await manager_meta_account_access.copy_access(
+            conn, from_manager_id=m_a, to_manager_id=m_b, granted_by=m_a
+        )
+        assert n == 1
+        accts = await manager_meta_account_access.list_accounts_for_manager(conn, m_b)
+        assert {a.ad_account_id for a in accts} == {
+            "act_1"
+        }  # destination replaced with source's grants
+
+
 # ---------- meta_rate_counters ----------
 
 

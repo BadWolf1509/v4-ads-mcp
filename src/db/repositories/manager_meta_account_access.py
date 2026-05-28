@@ -134,6 +134,27 @@ async def bulk_grant(
     return len(rows)
 
 
-# NOTE: copy_access (clone one manager's access to another, present in
-# google_ads parallel) is intentionally omitted from M.1 — no caller yet.
-# Add in a future sprint if admin UI requires manager-to-manager copy.
+async def copy_access(
+    conn: asyncpg.Connection,
+    *,
+    from_manager_id: UUID,
+    to_manager_id: UUID,
+    granted_by: UUID,
+) -> int:
+    """Replace destination's Meta access with source's access. Atomic."""
+    async with conn.transaction():
+        await conn.execute(
+            "DELETE FROM manager_meta_account_access WHERE manager_id = $1",
+            to_manager_id,
+        )
+        result = await conn.execute(
+            """INSERT INTO manager_meta_account_access
+                   (manager_id, ad_account_id, access_level, granted_by)
+               SELECT $1, ad_account_id, access_level, $2
+               FROM manager_meta_account_access
+               WHERE manager_id = $3""",
+            to_manager_id,
+            granted_by,
+            from_manager_id,
+        )
+    return int(result.rsplit(" ", 1)[-1])
