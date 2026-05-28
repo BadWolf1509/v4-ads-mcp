@@ -17,9 +17,9 @@ import structlog
 
 from src.config import get_settings
 from src.db import connection
-from src.db.repositories import audit_log
+from src.db.repositories import audit_log, manager_meta_account_access
 from src.governance.rate_limit import record_actual_meta
-from src.meta_ads.client import build_meta_api_for_manager
+from src.meta_ads.client import MetaAccessDeniedError, build_meta_api
 from src.meta_ads.errors import to_friendly_meta_error
 
 log = structlog.get_logger(__name__)
@@ -56,7 +56,39 @@ async def run_meta_graph_get(
         NoMetaConnectionError | MetaTokenExpiredError: from build_meta_api_for_manager
     """
     settings = get_settings()
-    api = await build_meta_api_for_manager(manager_id=manager_id)
+
+    # Hard-gate (Modelo B): manager precisa de grant na conta. O token é compartilhado,
+    # então a matriz manager_meta_account_access é o ÚNICO freio.
+    ad_account_id = (params or {}).get("ad_account_id")
+    if ad_account_id:
+        async with connection.get_pool().acquire() as conn:
+            allowed = await manager_meta_account_access.can_manager_access(
+                conn, manager_id, ad_account_id, level="read"
+            )
+        if not allowed:
+            if audit_this_call:
+                async with connection.get_pool().acquire() as conn:
+                    await audit_log.record(
+                        conn,
+                        manager_id=manager_id,
+                        session_id=session_id,
+                        customer_id=ad_account_id,
+                        action_type="read",
+                        operation=operation_name,
+                        params_summary=params_summary,
+                        status="denied",
+                        error_message="Gestor sem acesso à conta Meta",
+                        platform="meta",
+                    )
+            raise MetaAccessDeniedError(
+                f"Você não tem acesso à conta {ad_account_id}. Peça ao admin pra liberar no painel."
+            )
+
+    api = build_meta_api(
+        system_user_token=settings.meta_system_user_token,
+        app_id=settings.meta_app_id,
+        app_secret=settings.meta_app_secret,
+    )
 
     log.info("meta_graph_get_start", edge=edge, operation=operation_name)
     started = time.monotonic()
