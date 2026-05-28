@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     # Meta Ads API (Sprint M.1 foundation)
     meta_app_id: str = ""
     meta_app_secret: str = ""
+    # Meta Ads — system user token (Modelo B, Secret Manager: meta-system-user-token).
+    # Token NÃO expira; vazio = feature de execução Meta indisponível (erro PT-BR amigável).
+    meta_system_user_token: str = ""
 
     # Supabase (auth + DB)
     supabase_url: str

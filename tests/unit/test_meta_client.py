@@ -16,9 +16,12 @@ from facebook_business.session import FacebookSession
 
 from src.meta_ads.client import (
     META_GRAPH_API_VERSION,
+    MetaAccessDeniedError,
+    MetaSystemUserTokenMissingError,
     MetaTokenExpiredError,
     NoMetaConnectionError,
     build_facebook_ads_api,
+    build_meta_api,
 )
 
 
@@ -138,3 +141,43 @@ def test_no_meta_connection_error_is_exception():
 
 def test_meta_token_expired_error_is_exception():
     assert issubclass(MetaTokenExpiredError, Exception)
+
+
+# Tests for build_meta_api (Modelo B — system-user token, no per-manager DB lookup)
+
+
+def test_build_meta_api_raises_when_system_user_token_empty():
+    """Empty system_user_token deve raise MetaSystemUserTokenMissingError."""
+    with pytest.raises(MetaSystemUserTokenMissingError):
+        build_meta_api(
+            system_user_token="",
+            app_id="111",
+            app_secret="sec",
+        )
+
+
+def test_build_meta_api_returns_facebook_ads_api_instance():
+    """Token válido deve retornar FacebookAdsApi instance (mirrors build_facebook_ads_api tests)."""
+    api = build_meta_api(
+        system_user_token="TKN",
+        app_id="111",
+        app_secret="sec",
+    )
+    assert isinstance(api, FacebookAdsApi)
+
+
+# Sanity tests pra novas error classes
+
+
+def test_meta_system_user_token_missing_error_is_exception():
+    assert issubclass(MetaSystemUserTokenMissingError, Exception)
+
+
+def test_meta_access_denied_error_is_exception():
+    assert issubclass(MetaAccessDeniedError, Exception)
+
+
+def test_meta_access_denied_error_stores_message():
+    err = MetaAccessDeniedError("sem acesso à conta 123")
+    assert err.message == "sem acesso à conta 123"
+    assert str(err) == "sem acesso à conta 123"
