@@ -108,19 +108,19 @@
   {%- endif -%}
 {% endmacro %}
 
-{% macro pagination(current, total, base_url, query_param="page") %}
+{% macro pagination(current, total, base_url, query_param="page", query_string="") %}
   {%- if total > 1 -%}
   <nav class="v4-pagination" aria-label="Paginação">
     <span class="v4-pagination__info">Página {{ current }} de {{ total }}</span>
     {% set prev = current - 1 %}
     {% set next = current + 1 %}
     {%- if prev >= 1 -%}
-      <a class="v4-pagination__btn" href="{{ base_url }}?{{ query_param }}={{ prev }}">‹ Anterior</a>
+      <a class="v4-pagination__btn" href="{{ base_url }}?{{ query_param }}={{ prev }}{% if query_string %}&{{ query_string }}{% endif %}">‹ Anterior</a>
     {%- else -%}
       <button class="v4-pagination__btn" disabled>‹ Anterior</button>
     {%- endif -%}
     {%- if next <= total -%}
-      <a class="v4-pagination__btn" href="{{ base_url }}?{{ query_param }}={{ next }}">Próxima ›</a>
+      <a class="v4-pagination__btn" href="{{ base_url }}?{{ query_param }}={{ next }}{% if query_string %}&{{ query_string }}{% endif %}">Próxima ›</a>
     {%- else -%}
       <button class="v4-pagination__btn" disabled>Próxima ›</button>
     {%- endif -%}

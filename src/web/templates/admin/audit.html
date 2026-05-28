@@ -96,7 +96,7 @@
       {% endfor %}
     </tbody>
   </table>
-  {{ pagination(current_page, total_pages, "/admin/audit", "page") }}
+  {{ pagination(current_page, total_pages, "/admin/audit", "page", query_string=query_string) }}
   {% else %}
     {{ empty_state("Nenhum evento.", "Tente um período maior ou remova filtros.") }}
   {% endif %}

@@ -136,7 +136,7 @@
     </div>
     {% endfor %}
 
-    {{ pagination(current_page, total_pages, "/audit", "page") }}
+    {{ pagination(current_page, total_pages, "/audit", "page", query_string=query_string) }}
   {% else %}
     {{ empty_state("Nenhum evento no período selecionado.", "Tente um período maior ou remova filtros.") }}
   {% endif %}
