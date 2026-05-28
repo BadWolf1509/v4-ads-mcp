@@ -469,7 +469,10 @@ async def meta_oauth_refresh_accounts(
     """Re-sync meta_ad_accounts list via Graph /me/adaccounts.
 
     Útil quando cliente novo entra no BM ou ad account é renomeada.
-    Não requer reconnect OAuth (usa long-lived token existente).
+    Usa o system-user token (settings.meta_system_user_token / Secret Manager:
+    meta-system-user-token) — não depende de conexão OAuth pessoal do gestor.
+    Grants de acesso são controlados exclusivamente pela matriz admin (Modelo B):
+    nenhum manager_meta_account_access é criado automaticamente.
     """
     settings = get_settings()
     token = settings.meta_system_user_token

@@ -164,4 +164,4 @@ async def test_refresh_accounts_no_system_token_returns_422(app_with_db, monkeyp
 
     assert resp.status_code == 422
     body = resp.text
-    assert "system user" in body.lower() or "não configurado" in body.lower()
+    assert "não configurado" in body.lower()
