@@ -42,9 +42,9 @@
     <table class="v4-table v4-table--compact" id="access-matrix">
       <thead>
         <tr>
-          <th class="sticky left-0 bg-v4-gray-50 z-[2]">Conta / Gestor</th>
+          <th scope="col" class="sticky left-0 bg-v4-gray-50 z-[2]">Conta / Gestor</th>
           {% for m in managers_list %}
-            <th class="text-center min-w-[120px]" data-manager-email="{{ m.email|lower }}">
+            <th scope="col" class="text-center min-w-[120px]" data-manager-email="{{ m.email|lower }}">
               <div class="text-xs break-words">{{ m.email.split('@')[0] }}</div>
             </th>
           {% endfor %}
@@ -53,7 +53,7 @@
       <tbody>
         {% for a in accounts %}
         <tr data-account-name="{{ a.account_name|lower }}" data-account-id="{{ a.ad_account_id }}">
-          <td class="sticky left-0 bg-white whitespace-nowrap">
+          <th scope="row" class="sticky left-0 bg-white whitespace-nowrap">
             <strong>{{ a.account_name }}</strong>
             {% if a.account_status == 1 %}
               <span class="text-xs" style="color: var(--v4-green, #16a34a);">● ativo</span>
@@ -62,10 +62,11 @@
             {% endif %}
             <div class="text-xs text-v4-gray-300">{{ a.business_name or "—" }}</div>
             <div class="text-xs text-v4-gray-300 font-mono">{{ a.ad_account_id }}</div>
-          </td>
+          </th>
           {% for m in managers_list %}
           <td class="text-center" data-manager-id="{{ m.id }}">
             <input type="checkbox"
+                   aria-label="Acesso de {{ m.email.split('@')[0] }} à conta {{ a.account_name }}"
                    {% if (m.id|string, a.ad_account_id) in access_set %}checked{% endif %}
                    hx-post="/admin/access/meta/toggle"
                    hx-vals='{"manager_id": "{{ m.id }}", "ad_account_id": "{{ a.ad_account_id }}"}'
@@ -85,14 +86,14 @@
   </p>
 
   {# Bulk grant modal #}
-  <dialog class="v4-modal" id="bulk-grant-modal">
+  <dialog class="v4-modal" id="bulk-grant-modal" aria-labelledby="bulk-grant-meta-title">
     <div class="v4-modal__header">
-      <h3 class="v4-modal__title">Selecionar todas as contas pra gestor</h3>
-      <button type="button" class="v4-modal__close" onclick="document.getElementById('bulk-grant-modal').close()">×</button>
+      <h3 class="v4-modal__title" id="bulk-grant-meta-title">Selecionar todas as contas pra gestor</h3>
+      <button type="button" class="v4-modal__close" aria-label="Fechar" onclick="document.getElementById('bulk-grant-modal').close()">×</button>
     </div>
     <form method="POST" action="/admin/access/meta/bulk-grant" class="v4-modal__body grid gap-3">
-      <label class="v4-form__label">Gestor</label>
-      <select name="manager_id" class="v4-select" required>
+      <label class="v4-form__label" for="bulk-grant-mgr-meta">Gestor</label>
+      <select id="bulk-grant-mgr-meta" name="manager_id" class="v4-select" required>
         <option value="">Selecione...</option>
         {% for m in managers_list %}<option value="{{ m.id }}">{{ m.email }}</option>{% endfor %}
       </select>
@@ -109,19 +110,19 @@
   </dialog>
 
   {# Copy modal #}
-  <dialog class="v4-modal" id="copy-modal">
+  <dialog class="v4-modal" id="copy-modal" aria-labelledby="copy-meta-title">
     <div class="v4-modal__header">
-      <h3 class="v4-modal__title">Copiar acessos</h3>
-      <button type="button" class="v4-modal__close" onclick="document.getElementById('copy-modal').close()">×</button>
+      <h3 class="v4-modal__title" id="copy-meta-title">Copiar acessos</h3>
+      <button type="button" class="v4-modal__close" aria-label="Fechar" onclick="document.getElementById('copy-modal').close()">×</button>
     </div>
     <form method="POST" action="/admin/access/meta/bulk-copy" class="v4-modal__body grid gap-3">
-      <label class="v4-form__label">De</label>
-      <select name="from_manager_id" class="v4-select" required>
+      <label class="v4-form__label" for="copy-from-meta">De</label>
+      <select id="copy-from-meta" name="from_manager_id" class="v4-select" required>
         <option value="">Selecione gestor de origem...</option>
         {% for m in managers_list %}<option value="{{ m.id }}">{{ m.email }}</option>{% endfor %}
       </select>
-      <label class="v4-form__label">Para</label>
-      <select name="to_manager_id" class="v4-select" required>
+      <label class="v4-form__label" for="copy-to-meta">Para</label>
+      <select id="copy-to-meta" name="to_manager_id" class="v4-select" required>
         <option value="">Selecione gestor de destino...</option>
         {% for m in managers_list %}<option value="{{ m.id }}">{{ m.email }}</option>{% endfor %}
       </select>
