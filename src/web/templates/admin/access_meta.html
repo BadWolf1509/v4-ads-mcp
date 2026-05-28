@@ -1,7 +1,7 @@
 {% extends "_base.html" %}
 {% from "_components.html" import empty_state %}
 
-{% block title %}Admin · Acessos — V4 Ads MCP{% endblock %}
+{% block title %}Admin · Acessos Meta — V4 Ads MCP{% endblock %}
 
 {% block content %}
 <section class="max-w-7xl mx-auto py-6 px-4">
@@ -18,7 +18,7 @@
       action='<a href="/admin/invites" class="v4-btn v4-btn--primary">Convidar gestor</a>'
     ) }}
   {% elif not accounts %}
-    {{ empty_state("Nenhuma conta sincronizada.", "Aguarde o resync diário ou verifique o setup do MCC.") }}
+    {{ empty_state("Nenhuma conta Meta sincronizada.", "Rode o refresh em Contas → Meta.") }}
   {% else %}
 
   {# Search + bulk toolbar #}
@@ -52,17 +52,23 @@
       </thead>
       <tbody>
         {% for a in accounts %}
-        <tr data-account-name="{{ a.descriptive_name|lower }}" data-account-id="{{ a.customer_id }}">
+        <tr data-account-name="{{ a.account_name|lower }}" data-account-id="{{ a.ad_account_id }}">
           <td class="sticky left-0 bg-white whitespace-nowrap">
-            <strong>{{ a.descriptive_name }}</strong>
-            <div class="text-xs text-v4-gray-300 font-mono">{{ a.customer_id }}</div>
+            <strong>{{ a.account_name }}</strong>
+            {% if a.account_status == 1 %}
+              <span class="text-xs" style="color: var(--v4-green, #16a34a);">● ativo</span>
+            {% else %}
+              <span class="text-xs text-v4-red-medium">● {{ a.account_status }}</span>
+            {% endif %}
+            <div class="text-xs text-v4-gray-300">{{ a.business_name or "—" }}</div>
+            <div class="text-xs text-v4-gray-300 font-mono">{{ a.ad_account_id }}</div>
           </td>
           {% for m in managers_list %}
           <td class="text-center" data-manager-id="{{ m.id }}">
             <input type="checkbox"
-                   {% if (m.id|string, a.customer_id) in access_set %}checked{% endif %}
-                   hx-post="/admin/access/toggle"
-                   hx-vals='{"manager_id": "{{ m.id }}", "customer_id": "{{ a.customer_id }}"}'
+                   {% if (m.id|string, a.ad_account_id) in access_set %}checked{% endif %}
+                   hx-post="/admin/access/meta/toggle"
+                   hx-vals='{"manager_id": "{{ m.id }}", "ad_account_id": "{{ a.ad_account_id }}"}'
                    hx-trigger="change"
                    hx-swap="outerHTML"
                    hx-on::after-request="if (event.detail.successful) { showToast(this.checked ? 'Acesso liberado' : 'Acesso revogado', 'success'); }">
@@ -75,7 +81,7 @@
   </div>
 
   <p class="text-sm text-v4-gray-700 mt-4">
-    Em mobile, use <a href="/admin/access/by-manager" class="underline">visão por gestor</a>.
+    Em mobile, use <a href="/admin/access/meta/by-manager" class="underline">visão por gestor</a>.
   </p>
 
   {# Bulk grant modal #}
@@ -84,7 +90,7 @@
       <h3 class="v4-modal__title">Selecionar todas as contas pra gestor</h3>
       <button type="button" class="v4-modal__close" onclick="document.getElementById('bulk-grant-modal').close()">×</button>
     </div>
-    <form method="POST" action="/admin/access/bulk-grant" class="v4-modal__body grid gap-3">
+    <form method="POST" action="/admin/access/meta/bulk-grant" class="v4-modal__body grid gap-3">
       <label class="v4-form__label">Gestor</label>
       <select name="manager_id" class="v4-select" required>
         <option value="">Selecione...</option>
@@ -92,7 +98,7 @@
       </select>
       {# All visible account ids hidden as multiple inputs #}
       {% for a in accounts %}
-        <input type="hidden" name="customer_ids" value="{{ a.customer_id }}">
+        <input type="hidden" name="ad_account_ids" value="{{ a.ad_account_id }}">
       {% endfor %}
       <div class="text-sm text-v4-gray-700">Vai liberar acesso a todas as {{ accounts|length }} contas.</div>
       <div class="flex justify-end gap-2 mt-2">
@@ -108,7 +114,7 @@
       <h3 class="v4-modal__title">Copiar acessos</h3>
       <button type="button" class="v4-modal__close" onclick="document.getElementById('copy-modal').close()">×</button>
     </div>
-    <form method="POST" action="/admin/access/bulk-copy" class="v4-modal__body grid gap-3">
+    <form method="POST" action="/admin/access/meta/bulk-copy" class="v4-modal__body grid gap-3">
       <label class="v4-form__label">De</label>
       <select name="from_manager_id" class="v4-select" required>
         <option value="">Selecione gestor de origem...</option>

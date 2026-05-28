@@ -787,6 +787,38 @@ async def admin_access(
     )
 
 
+@router.get("/admin/access/meta", response_class=HTMLResponse)
+async def admin_access_meta(
+    request: Request,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+) -> HTMLResponse:
+    _require_admin(user)
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        managers_rows = await conn.fetch(
+            "SELECT id, email, full_name, role FROM managers WHERE is_active = true ORDER BY email"
+        )
+        from src.db.repositories import meta_ad_accounts
+
+        accounts = await meta_ad_accounts.list_all(conn)
+        access_rows = await conn.fetch(
+            "SELECT manager_id, ad_account_id FROM manager_meta_account_access"
+        )
+    access_set = {(str(r["manager_id"]), r["ad_account_id"]) for r in access_rows}
+    pending = await pending_invites_count()
+    return templates.TemplateResponse(
+        request,
+        "admin/access_meta.html",
+        {
+            "current_user": user,
+            "managers_list": [dict(r) for r in managers_rows],
+            "accounts": accounts,
+            "access_set": access_set,
+            "pending_invites_count": pending,
+        },
+    )
+
+
 @router.post("/admin/access/bulk-grant", response_class=HTMLResponse, response_model=None)
 async def admin_access_bulk_grant(
     request: Request,

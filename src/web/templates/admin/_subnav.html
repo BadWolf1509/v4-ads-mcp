@@ -11,7 +11,7 @@
     {% endif %}
   </a>
   <a href="/admin/accounts"
-     class="v4-subnav__link {% if request.url.path == '/admin/accounts' %}is-active{% endif %}">Contas</a>
+     class="v4-subnav__link {% if request.url.path.startswith('/admin/accounts') %}is-active{% endif %}">Contas</a>
   <a href="/admin/access"
      class="v4-subnav__link {% if request.url.path.startswith('/admin/access') %}is-active{% endif %}">Acessos</a>
   <a href="/admin/audit"
