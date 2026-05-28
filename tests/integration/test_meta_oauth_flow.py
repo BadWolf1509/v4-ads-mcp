@@ -9,7 +9,7 @@ from testcontainers.postgres import PostgresContainer
 
 from src.auth.oauth_state import sign_state
 from src.db import connection, migrate
-from src.db.repositories import managers, meta_oauth_connections
+from src.db.repositories import manager_meta_account_access, managers, meta_oauth_connections
 
 _SIGNING_KEY = "x" * 32
 _AES_MASTER = "y" * 43  # urlsafe base64 source for 32 bytes
@@ -122,6 +122,9 @@ async def test_oauth_callback_happy_path(client: AsyncClient) -> None:
         assert oc is not None
         assert oc.fb_email == "ok@v4company.com"
         assert "ads_read" in oc.scopes
+        # Modelo B: callback deve NÃO auto-grant — zero rows em manager_meta_account_access.
+        granted = await manager_meta_account_access.list_accounts_for_manager(conn, mid)
+        assert granted == [], "Callback não deve auto-grant matrix access (Modelo B)"
 
 
 @pytest.mark.integration

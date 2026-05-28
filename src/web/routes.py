@@ -920,6 +920,7 @@ async def admin_access_meta_bulk_copy(
     return RedirectResponse(url="/admin/access/meta", status_code=303)
 
 
+# IMPORTANT: keep /by-manager BEFORE /{manager_id} (literal must match before the path param).
 @router.get("/admin/access/meta/by-manager", response_class=HTMLResponse)
 async def admin_access_meta_by_manager(
     request: Request,

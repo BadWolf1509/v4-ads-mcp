@@ -37,7 +37,6 @@ from src.config import get_settings
 from src.db import connection
 from src.db.repositories import (
     audit_log,
-    manager_meta_account_access,
     meta_ad_accounts,
     meta_oauth_connections,
 )
@@ -166,7 +165,7 @@ async def meta_oauth_callback(
     5. GET /debug_token → granted_scopes
     6. check_meta_granted_scopes → block if missing essentials
     7. Encrypt + upsert meta_oauth_connections
-    8. GET /me/adaccounts → upsert meta_ad_accounts + grant_all_active
+    8. GET /me/adaccounts → upsert meta_ad_accounts (Modelo B: sem auto-grant)
     9. audit_log + redirect to /admin
     """
     if error:
@@ -349,12 +348,7 @@ async def meta_oauth_callback(
             )
         if accounts_payload:
             await meta_ad_accounts.upsert_many(conn, accounts_payload)
-            for a in accounts_payload:
-                await manager_meta_account_access.grant(
-                    conn,
-                    manager_id=manager_id,
-                    ad_account_id=a["ad_account_id"],
-                )
+        # Modelo B: sem auto-grant — acesso é concedido só via matriz admin.
 
         # Step 9: audit
         await audit_log.record(

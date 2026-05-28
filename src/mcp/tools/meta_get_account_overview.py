@@ -12,7 +12,7 @@ from uuid import UUID
 import structlog
 
 from src.db import connection
-from src.db.repositories import meta_ad_accounts, meta_oauth_connections
+from src.db.repositories import meta_ad_accounts
 from src.mcp.context import get_current
 from src.mcp.tools._meta_common import META_ACCOUNT_STATUS_LABELS
 from src.mcp.tools._registry import register_tool
@@ -31,7 +31,7 @@ _DESCRIPTION = (
     "[CORE] Overview de uma conta Meta Ads: métricas essenciais (spend, impressões, clicks, "
     "CTR, CPC, reach, frequency, conversões, conversion_value, purchase_roas) "
     "para o período selecionado com comparativo do período anterior de mesma duração. "
-    "Inclui warnings PT-BR pra account_status problemático e token OAuth expirando. "
+    "Inclui warnings PT-BR pra account_status problemático. "
     "Requer conexão Meta ativa (gestor deve ter conectado via /oauth/meta/start). "
     "Use meta_list_my_ad_accounts pra listar IDs disponíveis."
 )
@@ -107,7 +107,7 @@ async def meta_get_account_overview(
         return {"status": "error", "error_message": f"Parâmetros de data inválidos: {e}"}
     prev_start, prev_end = shift_to_previous_period(current_start, current_end)
 
-    # 2. Get account metadata + oauth connection
+    # 2. Get account metadata
     async with pool.acquire() as conn:
         account = await meta_ad_accounts.get_by_id(conn, ad_account_id)
         if account is None:
@@ -117,12 +117,6 @@ async def meta_get_account_overview(
                     f"Ad account {ad_account_id} não encontrada. "
                     f"Use meta_refresh_accounts ou reconnect via /oauth/meta/start."
                 ),
-            }
-        oc = await meta_oauth_connections.get_active_for_manager(conn, manager_id)
-        if oc is None:
-            return {
-                "status": "error",
-                "error_message": ("Nenhuma conexão Meta ativa. Conectar via /oauth/meta/start."),
             }
 
     account_status_label = META_ACCOUNT_STATUS_LABELS.get(
@@ -182,7 +176,8 @@ async def meta_get_account_overview(
     current_metrics = parse_insights_response(current_resp)
     previous_metrics = parse_insights_response(previous_resp)
     deltas = compute_deltas(current_metrics, previous_metrics)
-    warnings = build_warnings(account_status_label, oc.token_expires_at, datetime.now(UTC))
+    # Modelo B: acesso via system-user token — sem personal token expiry warning.
+    warnings = build_warnings(account_status_label, None, datetime.now(UTC))
 
     return {
         "status": "success",
