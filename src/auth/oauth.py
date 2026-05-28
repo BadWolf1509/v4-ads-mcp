@@ -8,6 +8,7 @@ The `invite` token is an HMAC-signed payload with manager_id (created
 by the bootstrap CLI). Phase 1b will replace this with a panel session.
 """
 
+import html
 from dataclasses import dataclass
 from typing import Any, Literal
 from urllib.parse import urlencode
@@ -379,7 +380,7 @@ def _success_page(email: str) -> HTMLResponse:
 <style>body{{font-family:system-ui;max-width:640px;margin:80px auto;padding:0 24px;color:#333}}.ok{{color:#228B22}}</style>
 </head><body>
 <h1 class="ok">✅ Conectado</h1>
-<p>Conta Google <code>{email}</code> autorizada.</p>
+<p>Conta Google <code>{html.escape(email)}</code> autorizada.</p>
 <p>Próximo passo: o admin precisa atribuir a você as contas Google Ads que você pode operar (no MVP, isso é manual via CLI). Após isso, peça pra ele criar uma sessão MCP e te enviar o token.</p>
 <p>Pode fechar esta aba.</p>
 </body></html>""",
@@ -394,7 +395,7 @@ def _error_page(message: str, *, status: int) -> HTMLResponse:
 <style>body{{font-family:system-ui;max-width:640px;margin:80px auto;padding:0 24px;color:#333}}.err{{color:#c00}}</style>
 </head><body>
 <h1 class="err">❌ Falha</h1>
-<p>{message}</p>
+<p>{html.escape(message)}</p>
 <p><a href="/health">Status do serviço</a></p>
 </body></html>""",
         status_code=status,

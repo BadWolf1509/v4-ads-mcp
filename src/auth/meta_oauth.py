@@ -171,10 +171,8 @@ async def meta_oauth_callback(
     if error:
         msg = error_description or error
         log.warning("meta_oauth_callback_error_param", error=error, msg=msg)
-        return RedirectResponse(
-            f"/access-denied?reason=meta_oauth_error&detail={msg[:200]}",
-            status_code=302,
-        )
+        qs = urlencode({"reason": "meta_oauth_error", "detail": msg[:200]})
+        return RedirectResponse(f"/access-denied?{qs}", status_code=302)
     if not code or not state:
         return RedirectResponse(
             "/access-denied?reason=meta_oauth_incomplete",
