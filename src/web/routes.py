@@ -29,6 +29,7 @@ from src.db.repositories import (
     meta_oauth_connections,
 )
 from src.db.repositories.mcp_sessions import DEFAULT_TTL_DAYS
+from src.mcp.tools._meta_common import META_ACCOUNT_STATUS_LABELS
 from src.web.deps import (
     CurrentUser,
     current_manager,
@@ -57,6 +58,14 @@ def _toggle_checkbox_fragment(*, post_url: str, vals: dict[str, str], checked: b
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+
+
+def meta_status_label(status: int | None) -> str:
+    """Jinja filter: resolve Meta account_status int to PT-BR label."""
+    return META_ACCOUNT_STATUS_LABELS.get(status or 0, "DESCONHECIDO")
+
+
+templates.env.filters["meta_status_label"] = meta_status_label
 
 
 @router.get("/login", response_class=HTMLResponse, response_model=None)
