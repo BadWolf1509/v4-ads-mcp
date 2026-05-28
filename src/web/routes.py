@@ -113,14 +113,14 @@ async def legal_terms(
 )
 async def data_deletion_status(
     request: Request,
-    code: str,
+    code: UUID,
     user: CurrentUser | None = Depends(optional_current_manager),  # noqa: B008
 ) -> HTMLResponse:
     """Public data deletion confirmation status page. Meta App Review requirement."""
     return templates.TemplateResponse(
         request,
         "legal/data_deletion_status.html",
-        {"current_user": user, "confirmation_code": code},
+        {"current_user": user, "confirmation_code": str(code)},
     )
 
 
@@ -283,11 +283,15 @@ async def session_detail(
     token_flash: bool = False,
 ) -> HTMLResponse:
     """Permanent detail page for a single MCP session. Shows flash token once on creation."""
+    try:
+        parsed_session_id = UUID(session_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Sessão não encontrada") from None
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         session = await mcp_sessions.get_by_id(
             conn,
-            session_id=UUID(session_id),
+            session_id=parsed_session_id,
             manager_id=user.id,
         )
     if session is None:
@@ -970,17 +974,21 @@ async def admin_access_meta_manager_detail(
     user: CurrentUser = Depends(current_manager),  # noqa: B008
 ) -> HTMLResponse:
     _require_admin(user)
+    try:
+        parsed_manager_id = UUID(manager_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Gestor not found") from None
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         mgr_row = await conn.fetchrow(
-            "SELECT id, email, full_name FROM managers WHERE id = $1", UUID(manager_id)
+            "SELECT id, email, full_name FROM managers WHERE id = $1", parsed_manager_id
         )
         if mgr_row is None:
             raise HTTPException(status_code=404, detail="Gestor not found")
         accs = await meta_ad_accounts.list_all(conn)
         access_rows = await conn.fetch(
             "SELECT ad_account_id FROM manager_meta_account_access WHERE manager_id = $1",
-            UUID(manager_id),
+            parsed_manager_id,
         )
         access_set = {r["ad_account_id"] for r in access_rows}
         pending = await pending_invites_count()
@@ -1074,17 +1082,21 @@ async def admin_access_manager_detail(
     user: CurrentUser = Depends(current_manager),  # noqa: B008
 ) -> HTMLResponse:
     _require_admin(user)
+    try:
+        parsed_manager_id = UUID(manager_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Gestor not found") from None
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         mgr_row = await conn.fetchrow(
-            "SELECT id, email, full_name FROM managers WHERE id = $1", UUID(manager_id)
+            "SELECT id, email, full_name FROM managers WHERE id = $1", parsed_manager_id
         )
         if mgr_row is None:
             raise HTTPException(status_code=404, detail="Gestor not found")
         accs = await google_ads_accounts.list_all(conn)
         access_rows = await conn.fetch(
             "SELECT customer_id FROM manager_account_access WHERE manager_id = $1",
-            UUID(manager_id),
+            parsed_manager_id,
         )
         access_set = {r["customer_id"] for r in access_rows}
         pending = await pending_invites_count()
@@ -1210,11 +1222,15 @@ async def admin_invites_cancel(
     user: CurrentUser = Depends(current_manager),  # noqa: B008
 ) -> HTMLResponse:
     _require_admin(user)
+    try:
+        parsed_invite_id = UUID(invite_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Não encontrado") from None
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         from src.db.repositories import managers as managers_repo
 
-        await managers_repo.delete_invite(conn, manager_id=UUID(invite_id))
+        await managers_repo.delete_invite(conn, manager_id=parsed_invite_id)
     # HTMX swap: remove the row by returning empty content
     return HTMLResponse("")
 
