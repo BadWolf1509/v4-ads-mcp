@@ -1,6 +1,11 @@
-"""Integration tests Sprint M.2b: /oauth/meta/refresh-accounts endpoint."""
+"""Integration tests: /oauth/meta/refresh-accounts endpoint (Modelo B).
 
-from datetime import UTC, datetime, timedelta
+Modelo B: refresh-accounts uses shared system-user token from settings
+(META_SYSTEM_USER_TOKEN), NOT the personal OAuth connection of the logged-in
+manager. Grants are controlled exclusively by the admin access matrix — this
+endpoint does NOT auto-grant any manager_meta_account_access rows.
+"""
+
 from uuid import uuid4
 
 import pytest
@@ -9,12 +14,13 @@ from httpx import ASGITransport, AsyncClient, Response
 from testcontainers.postgres import PostgresContainer
 
 from src.db import connection, migrate
-from src.db.repositories import managers, meta_ad_accounts, meta_oauth_connections
+from src.db.repositories import managers, meta_ad_accounts
 
 pytestmark = pytest.mark.asyncio
 
 _SIGNING_KEY = "x" * 32
 _AES_MASTER = "y" * 43
+_SYSTEM_TOKEN = "fake_system_user_token"
 
 
 @pytest.fixture
@@ -31,6 +37,7 @@ async def app_with_db(pg, monkeypatch):
     monkeypatch.setenv("AES_MASTER_KEY", _AES_MASTER)
     monkeypatch.setenv("META_APP_ID", "test_app_id")
     monkeypatch.setenv("META_APP_SECRET", "test_app_secret")
+    monkeypatch.setenv("META_SYSTEM_USER_TOKEN", _SYSTEM_TOKEN)
 
     from src.app import create_app
 
@@ -50,37 +57,25 @@ async def client(app_with_db) -> AsyncClient:
         yield c
 
 
-async def _seed_manager_with_meta(*, token_expires_days: int = 60):
-    """Seed manager + meta_oauth_connections with real-ish encrypted token."""
-    from src.auth.tokens import derive_master_key_from_settings, encrypt_refresh_token
-    from src.config import get_settings
-
+async def _seed_manager():
+    """Seed a bare manager (no Meta OAuth connection required in Modelo B)."""
     mid = uuid4()
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         await managers.create(conn, manager_id=mid, email="t@v4company.com", full_name="Tester")
-        settings = get_settings()
-        master_key = derive_master_key_from_settings(settings.aes_master_key)
-        real_enc = encrypt_refresh_token("fake_long_token", master_key)
-        await meta_oauth_connections.upsert(
-            conn,
-            manager_id=mid,
-            fb_user_id="fb_user_test",
-            fb_email="t@v4company.com",
-            access_token_enc=real_enc,
-            token_expires_at=datetime.now(UTC) + timedelta(days=token_expires_days),
-            scopes=["ads_read", "ads_management"],
-        )
     return mid
 
 
 @pytest.mark.integration
 @respx.mock
-async def test_refresh_accounts_happy_path(app_with_db, monkeypatch):
-    """POST /refresh-accounts → respx Graph /me/adaccounts → upsert + grant + redirect."""
-    mid = await _seed_manager_with_meta()
+async def test_refresh_accounts_happy_path(app_with_db):
+    """POST /refresh-accounts with system-user token → upsert meta_ad_accounts → redirect.
 
-    # Mock Graph /me/adaccounts
+    No manager_meta_account_access rows must be created (grants are matrix-only).
+    """
+    mid = await _seed_manager()
+
+    # Mock Graph /me/adaccounts (system user resolves /me to system user)
     respx.get("https://graph.facebook.com/v22.0/me/adaccounts").mock(
         return_value=Response(
             200,
@@ -99,7 +94,6 @@ async def test_refresh_accounts_happy_path(app_with_db, monkeypatch):
         )
     )
 
-    # Override current_manager dependency to bypass session cookie auth
     from src.web.deps import CurrentUser, current_manager
 
     pool = connection.get_pool()
@@ -124,17 +118,28 @@ async def test_refresh_accounts_happy_path(app_with_db, monkeypatch):
     assert resp.status_code == 302
     assert "/admin?meta_refreshed=1" in resp.headers["location"]
 
-    # Verify upsert happened
+    # Verify upsert happened in meta_ad_accounts
     async with pool.acquire() as conn:
         account = await meta_ad_accounts.get_by_id(conn, "act_777")
     assert account is not None
     assert account.account_name == "Refreshed Client"
 
+    # Verify NO auto-grant was created (Modelo B — matrix controls grants)
+    async with pool.acquire() as conn:
+        count = await conn.fetchval(
+            "SELECT COUNT(*) FROM manager_meta_account_access WHERE manager_id = $1",
+            mid,
+        )
+    assert count == 0, "refresh-accounts must NOT auto-grant any ad account access"
+
 
 @pytest.mark.integration
-async def test_refresh_accounts_token_expired_returns_422(app_with_db):
-    """token_expires_at no passado → 422 PT-BR error."""
-    mid = await _seed_manager_with_meta(token_expires_days=-1)
+async def test_refresh_accounts_no_system_token_returns_422(app_with_db, monkeypatch):
+    """Empty META_SYSTEM_USER_TOKEN → 422 with PT-BR error message."""
+    # Override env AFTER app fixture (get_settings() reads env fresh each call)
+    monkeypatch.setenv("META_SYSTEM_USER_TOKEN", "")
+
+    mid = await _seed_manager()
 
     from src.web.deps import CurrentUser, current_manager
 
@@ -159,4 +164,4 @@ async def test_refresh_accounts_token_expired_returns_422(app_with_db):
 
     assert resp.status_code == 422
     body = resp.text
-    assert "expirou" in body.lower()
+    assert "system user" in body.lower() or "não configurado" in body.lower()

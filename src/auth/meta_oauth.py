@@ -30,7 +30,6 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from src.auth.oauth_state import InvalidStateError, sign_state, verify_state
 from src.auth.tokens import (
-    decrypt_refresh_token,
     derive_master_key_from_settings,
     encrypt_refresh_token,
 )
@@ -473,29 +472,21 @@ async def meta_oauth_refresh_accounts(
     Não requer reconnect OAuth (usa long-lived token existente).
     """
     settings = get_settings()
+    token = settings.meta_system_user_token
+    if not token:
+        raise HTTPException(
+            status_code=422,
+            detail="Token do system user Meta não configurado.",
+        )
+
     pool = connection.get_pool()
-
-    async with pool.acquire() as conn:
-        oc = await meta_oauth_connections.get_active_for_manager(conn, user.id)
-        if oc is None:
-            raise HTTPException(status_code=404, detail="No active Meta connection")
-
-        # Check token expiry (proactive)
-        if oc.token_expires_at and (oc.token_expires_at - datetime.now(UTC)).days < 0:
-            raise HTTPException(
-                status_code=422,
-                detail="Token Meta expirou. Reconectar via /oauth/meta/start.",
-            )
-
-        master_key = derive_master_key_from_settings(settings.aes_master_key)
-        access_token = decrypt_refresh_token(oc.access_token_enc, master_key)
 
     async with httpx.AsyncClient(timeout=30.0) as http:
         adacc_resp = await http.get(
             f"{META_GRAPH_BASE}/me/adaccounts",
             params={
                 "fields": "id,name,business,account_status,currency,timezone_name",
-                "access_token": access_token,
+                "access_token": token,
             },
         )
         ad_accounts_data: list[dict[str, Any]] = (
@@ -523,12 +514,7 @@ async def meta_oauth_refresh_accounts(
     async with pool.acquire() as conn:
         if accounts_payload:
             await meta_ad_accounts.upsert_many(conn, accounts_payload)
-            for a in accounts_payload:
-                await manager_meta_account_access.grant(
-                    conn,
-                    manager_id=user.id,
-                    ad_account_id=a["ad_account_id"],
-                )
+        # No auto-grant: Modelo B matrix controls grants exclusively.
 
         await audit_log.record(
             conn,
