@@ -1,3 +1,4 @@
+{% from "_components.html" import button %}
 <!doctype html>
 <html lang="pt-BR">
 <head>
@@ -61,7 +62,7 @@
     </nav>
     <div class="v4-header__user">
       <span>{{ current_user.email }}</span>
-      <a class="logout" href="/logout">Sair</a>
+      <form method="POST" action="/logout" class="inline">{{ button("Sair", variant="ghost", type="submit") }}</form>
     </div>
     {% endif %}
   </header>
@@ -93,7 +94,7 @@
       {% endif %}
       <div class="v4-drawer__section">
         <div class="v4-drawer__heading">{{ current_user.email }}</div>
-        <a href="/logout" class="v4-drawer__link">Sair</a>
+        <form method="POST" action="/logout"><button type="submit" class="v4-drawer__link" style="background:none;border:none;padding:0;cursor:pointer;width:100%;text-align:left;">Sair</button></form>
       </div>
     {% endif %}
   </nav>

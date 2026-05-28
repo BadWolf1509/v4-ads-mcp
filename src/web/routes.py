@@ -73,9 +73,9 @@ async def login_page(
     )
 
 
-@router.get("/logout")
+@router.post("/logout")
 async def logout() -> RedirectResponse:
-    """Clear panel session cookie + redirect to login."""
+    """Clear panel session cookie + redirect to login. POST-only to prevent logout-CSRF."""
     response = RedirectResponse(url="/login", status_code=302)
     response.delete_cookie(key=PANEL_SESSION_COOKIE_NAME, path="/")
     return response
@@ -157,7 +157,7 @@ async def access_denied(
             "missing_scopes": missing_scopes,
         },
     )
-    response.delete_cookie("v4_attempted_email", path="/")
+    response.delete_cookie("v4_attempted_email", path="/access-denied")
     return response
 
 

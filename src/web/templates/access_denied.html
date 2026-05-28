@@ -68,8 +68,10 @@
     {% endif %}
   {% endif %}
 
+  {% if current_user %}
   <div class="mt-8">
-    <a href="/logout" class="v4-btn v4-btn--secondary">Logout</a>
+    <form method="POST" action="/logout" class="inline">{{ button("Logout", variant="secondary", type="submit") }}</form>
   </div>
+  {% endif %}
 </div>
 {% endblock %}

@@ -62,10 +62,11 @@ async def test_logout_clears_cookie(client: AsyncClient):
         email="lo@v4company.com",
         signing_key=_SIGNING_KEY,
     )
-    response = await client.get(
+    response = await client.post(
         "/logout",
         cookies={PANEL_SESSION_COOKIE_NAME: cookie},
         follow_redirects=False,
+        headers={"origin": "http://test"},
     )
     assert response.status_code == 302
     assert response.headers["location"] == "/login"

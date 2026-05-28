@@ -298,7 +298,7 @@ async def oauth_callback(
                 secure=True,
                 samesite="lax",
                 max_age=60,
-                path="/",
+                path="/access-denied",
             )
             return response
 
