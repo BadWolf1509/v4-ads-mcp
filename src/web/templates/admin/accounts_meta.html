@@ -1,0 +1,38 @@
+{% extends "_base.html" %}
+{% block title %}Admin · Contas Meta — V4 Ads MCP{% endblock %}
+{% block content %}
+<section class="max-w-7xl mx-auto py-6 px-4">
+  <header class="mb-6"><h1 class="text-3xl font-extrabold tracking-tight">Contas Meta</h1></header>
+  {% include "admin/_accounts_tabs.html" %}
+
+  <div class="v4-card mb-4 flex items-center gap-3">
+    <span class="font-semibold">Token do system user:</span>
+    {% if token_configured %}
+      <span class="v4-badge v4-badge--success">configurado ✓</span>
+    {% else %}
+      <span class="v4-badge v4-badge--error">não configurado</span>
+      <span class="text-sm text-v4-gray-700">Suba o secret <code>meta-system-user-token</code>.</span>
+    {% endif %}
+    <form method="POST" action="/oauth/meta/refresh-accounts" class="ml-auto">
+      <button type="submit" class="v4-btn v4-btn--small v4-btn--secondary">Sincronizar contas</button>
+    </form>
+  </div>
+
+  <div class="overflow-x-auto v4-card" style="padding:0">
+    <table class="v4-table v4-table--compact">
+      <thead><tr><th>Conta</th><th>Cliente</th><th>Status</th><th>Moeda</th><th>Sync</th></tr></thead>
+      <tbody>
+        {% for a in accounts %}
+        <tr>
+          <td><strong>{{ a.account_name }}</strong><div class="text-xs font-mono text-v4-gray-300">{{ a.ad_account_id }}</div></td>
+          <td>{{ a.business_name or "—" }}</td>
+          <td>{% if a.account_status == 1 %}<span style="color:#16a34a">● ativo</span>{% else %}<span style="color:#dc2626">● {{ a.account_status }}</span>{% endif %}</td>
+          <td>{{ a.currency or "—" }}</td>
+          <td class="text-xs text-v4-gray-300">{{ a.synced_at.strftime('%d/%m %H:%M') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

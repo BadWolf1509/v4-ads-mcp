@@ -136,3 +136,21 @@ async def test_admin_access_meta_by_manager_renders(client: AsyncClient):
     )
     assert response.status_code == 200
     assert "Acessos por gestor" in response.text
+
+
+@pytest.mark.integration
+async def test_admin_accounts_meta_renders_token_status(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GET /admin/accounts/meta with empty token → 200 with 'não configurado'."""
+    monkeypatch.setenv("META_SYSTEM_USER_TOKEN", "")
+    pool = connection.get_pool()
+    admin_id, _ = await _bootstrap_admin_and_gestor(pool)
+
+    response = await client.get(
+        "/admin/accounts/meta",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 200
+    assert "Token do system user" in response.text
+    assert "não configurado" in response.text

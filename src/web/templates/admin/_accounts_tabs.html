@@ -1,0 +1,7 @@
+{# Accounts tab bar: Google | Meta #}
+<nav class="v4-subnav" aria-label="Plataforma de contas" style="top: 96px; gap: var(--v4-space-6); margin-bottom: var(--v4-space-4);">
+  <a href="/admin/accounts"
+     class="v4-subnav__link {% if '/meta' not in request.url.path %}is-active{% endif %}">Google</a>
+  <a href="/admin/accounts/meta"
+     class="v4-subnav__link {% if '/meta' in request.url.path %}is-active{% endif %}">Meta</a>
+</nav>

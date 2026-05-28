@@ -760,6 +760,29 @@ async def admin_accounts(
     )
 
 
+@router.get("/admin/accounts/meta", response_class=HTMLResponse)
+async def admin_accounts_meta(
+    request: Request,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+) -> HTMLResponse:
+    _require_admin(user)
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        accounts = await meta_ad_accounts.list_all(conn)
+    pending = await pending_invites_count()
+    token_configured = bool(get_settings().meta_system_user_token)
+    return templates.TemplateResponse(
+        request,
+        "admin/accounts_meta.html",
+        {
+            "current_user": user,
+            "accounts": accounts,
+            "token_configured": token_configured,
+            "pending_invites_count": pending,
+        },
+    )
+
+
 @router.get("/admin/access", response_class=HTMLResponse)
 async def admin_access(
     request: Request,
