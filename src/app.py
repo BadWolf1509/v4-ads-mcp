@@ -10,6 +10,7 @@ from src.config import get_settings
 from src.db import connection
 from src.logging import configure_logging
 from src.mcp.server import mount_mcp
+from src.web.middleware import CSRFOriginMiddleware
 
 __version__ = "0.1.0"
 
@@ -46,6 +47,8 @@ def create_app(skip_db_init: bool = False) -> FastAPI:
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok", "version": __version__}
+
+    app.add_middleware(CSRFOriginMiddleware)
 
     mount_mcp(app)
 
