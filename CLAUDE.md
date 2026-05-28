@@ -126,6 +126,15 @@ docs/_archive/ (113 files preserved)    # Sprints SHIPPED ≥7 dias: plans (40) 
 
 > Quick reference. Full bug taxonomy + lessons: [`findings-catalog.md`](docs/operacao/findings-catalog.md). Sprint detail: [`sprint-history.md`](docs/operacao/sprint-history.md).
 
+### Princípios de código (Karpathy)
+
+Heurísticas-teste pra reduzir erros típicos de LLM. Complementam (não repetem) o system prompt + cultura YAGNI já vigentes. Fonte: [`andrej-karpathy-skills`](https://github.com/multica-ai/andrej-karpathy-skills).
+
+- **Teste das 200→50:** se escreveu 200 linhas e dava 50, reescreva. Pergunte "um eng. sênior chamaria isso de overcomplicado?" — se sim, simplifique.
+- **Rastreabilidade da diff:** cada linha alterada deve rastrear direto ao pedido. Não "melhore" código adjacente nem refatore o que não está quebrado; remova só os órfãos que SUAS mudanças criaram.
+- **Tarefa → meta verificável:** reformule antes de codar — "corrige o bug" → "escreve teste que reproduz, depois faz passar"; "adiciona validação" → "testes pra inputs inválidos, depois faz passar".
+- **Premissas explícitas:** se há múltiplas interpretações, apresente — não escolha em silêncio. Push back quando existe caminho mais simples.
+
 ### Git workflow
 
 Solo dev on `main` with admin bypass. CI: ruff + format + mypy + pytest unit + integration. Deploy: parallel, Docker build, migrations via Cloud Run Job. Commit messages: `feat(scope): ...` / `fix(scope): ...` / `docs(scope): ...` / `chore: ...`. Common scopes: `web`, `admin`, `auth`, `db`, `mcp`, `meta_ads`, `ci`, `design-system`. Co-author trailer with Claude when assistant did the work.
