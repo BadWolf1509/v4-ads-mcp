@@ -49,9 +49,17 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 class CSRFOriginMiddleware(BaseHTTPMiddleware):
     """Reject unsafe-method requests whose Origin/Referer host != the request Host.
 
-    Cookie-auth CSRF defense for same-origin browser apps. Comparing against the
-    request's own Host header (not a hardcoded URL) is robust to multiple hostnames
-    (e.g. Cloud Run's two service URLs).
+    Cookie-auth CSRF defense (defense-in-depth on top of the SameSite=Lax session
+    cookie, which already blocks the cookie on cross-site POSTs). Comparing against
+    the request's own Host header (not a hardcoded URL) is robust to multiple
+    hostnames (e.g. Cloud Run's two service URLs).
+
+    Posture (OWASP "verifying origin with standard headers"): block ONLY when an
+    Origin/Referer is present AND its host mismatches. A *missing* Origin/Referer is
+    not evidence of CSRF — browsers always attach Origin to cross-site POSTs, so a
+    real attack carries a (mismatched) Origin and is blocked; absence just means a
+    non-browser client (curl, server-to-server, tests). Blocking absence would add
+    no protection (SameSite=Lax already covers it) while breaking legitimate clients.
     """
 
     async def dispatch(
@@ -59,9 +67,9 @@ class CSRFOriginMiddleware(BaseHTTPMiddleware):
     ) -> Response:
         path = request.url.path
         if request.method not in _SAFE_METHODS and not path.startswith(_CSRF_EXEMPT_PREFIXES):
-            host = request.headers.get("host")
             source = request.headers.get("origin") or request.headers.get("referer")
-            source_host = urlparse(source).netloc if source else None
-            if not host or source_host != host:
-                return JSONResponse({"detail": "CSRF: origem inválida"}, status_code=403)
+            if source is not None:
+                host = request.headers.get("host")
+                if urlparse(source).netloc != host:
+                    return JSONResponse({"detail": "CSRF: origem inválida"}, status_code=403)
         return await call_next(request)

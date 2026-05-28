@@ -42,11 +42,17 @@ async def test_csrf_blocks_cross_origin_post() -> None:
 
 
 @pytest.mark.asyncio
-async def test_csrf_blocks_missing_origin_post() -> None:
-    """POST with no Origin and no Referer must be rejected."""
+async def test_csrf_allows_missing_origin_post() -> None:
+    """POST with no Origin and no Referer is allowed (not a CSRF signal).
+
+    Browsers always attach Origin to cross-site POSTs, so absence means a
+    non-browser client (curl, server-to-server, tests). SameSite=Lax already
+    blocks the session cookie on genuine cross-site POSTs; blocking absent-Origin
+    here would add no protection while breaking legitimate non-browser callers.
+    """
     async with AsyncClient(transport=ASGITransport(app=_app()), base_url="http://testserver") as c:
         r = await c.post("/x", headers={"host": "testserver"})
-        assert r.status_code == 403
+        assert r.status_code == 200
 
 
 @pytest.mark.asyncio
