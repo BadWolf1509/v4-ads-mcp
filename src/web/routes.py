@@ -7,11 +7,12 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from src.auth.panel_session import PANEL_SESSION_COOKIE_NAME
@@ -365,7 +366,7 @@ async def sessions_revoke(
     request: Request,
     session_id: UUID,
     user: CurrentUser = Depends(current_manager),  # noqa: B008
-) -> HTMLResponse:
+) -> Response:
     """Revoke a session. Returns updated list HTML for HTMX swap, OR redirects."""
     pool = connection.get_pool()
     async with pool.acquire() as conn:
@@ -379,9 +380,17 @@ async def sessions_revoke(
         # Return fresh list
         sessions = await mcp_sessions.list_for_manager(conn, user.id, include_revoked=False)
 
-    # If HTMX request, return just the table fragment; otherwise return full page.
+    # If HTMX request, decide by the originating page.
+    # Detail page (/sessions/<id>) → send HX-Redirect so HTMX navigates cleanly.
+    # List page (/sessions) → swap table fragment in-place (existing behaviour).
     is_htmx = request.headers.get("HX-Request") == "true"
     if is_htmx:
+        current_url = request.headers.get("HX-Current-URL", "")
+        current_path = urlparse(current_url).path
+        if current_path.startswith("/sessions/") and current_path.rstrip("/") != "/sessions":
+            # Came from the detail page — redirect without flashing the fragment.
+            return Response(status_code=204, headers={"HX-Redirect": "/sessions"})
+        # Came from the list page — return fresh table fragment for in-place swap.
         return templates.TemplateResponse(
             request,
             "sessions/_table.html",

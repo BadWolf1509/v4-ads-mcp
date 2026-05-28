@@ -52,7 +52,8 @@ async def test_sessions_create_redirects_to_detail(client: AsyncClient):
 
 
 @pytest.mark.integration
-async def test_sessions_revoke_returns_updated_list(client: AsyncClient):
+async def test_sessions_revoke_list_page_returns_fragment(client: AsyncClient):
+    """Revoke from the list page (HX-Current-URL=/sessions) → 200 + table fragment in-place."""
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         mid = uuid4()
@@ -74,8 +75,41 @@ async def test_sessions_revoke_returns_updated_list(client: AsyncClient):
     response = await client.post(
         f"/sessions/{sess1.id}/revoke",
         cookies={PANEL_SESSION_COOKIE_NAME: cookie},
-        headers={"HX-Request": "true"},
+        headers={
+            "HX-Request": "true",
+            "HX-Current-URL": "http://test/sessions",
+        },
     )
     assert response.status_code == 200
-    # The revoked session's label should NOT appear in the response (only active shown)
+    # Returns the table fragment — revoked session gone, other still present
     assert "B" in response.text  # still has B
+    assert "sessions-table" in response.text  # it's the fragment, not the full page
+
+
+@pytest.mark.integration
+async def test_sessions_revoke_detail_page_returns_hx_redirect(client: AsyncClient):
+    """Revoke from the detail page (HX-Current-URL=/sessions/<id>) → 204 + HX-Redirect header."""
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="rvd@v4company.com", full_name=None)
+        token1 = generate_session_token()
+        sess1 = await mcp_sessions.create(
+            conn, manager_id=mid, token_hash=hash_session_token(token1), label="C"
+        )
+
+    cookie = sign_panel_session(
+        manager_id=str(mid),
+        email="rvd@v4company.com",
+        signing_key=_SIGNING_KEY,
+    )
+    response = await client.post(
+        f"/sessions/{sess1.id}/revoke",
+        cookies={PANEL_SESSION_COOKIE_NAME: cookie},
+        headers={
+            "HX-Request": "true",
+            "HX-Current-URL": f"http://test/sessions/{sess1.id}",
+        },
+    )
+    assert response.status_code == 204
+    assert response.headers.get("HX-Redirect") == "/sessions"

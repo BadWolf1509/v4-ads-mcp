@@ -86,7 +86,7 @@ Authorization = "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"', filename="~/.codex/config.to
               message: "O Bearer correspondente para de funcionar imediatamente.",
               okLabel: "Revogar",
               kind: "danger",
-              onConfirm: () => htmx.ajax("POST", "/sessions/{{ session.id }}/revoke", { target: "body", swap: "innerHTML" }).then(() => window.location.href = "/sessions")
+              onConfirm: () => htmx.ajax("POST", "/sessions/{{ session.id }}/revoke", { swap: "none" })
             })'>Revogar sessão</button>
   </div>
   {% endif %}
