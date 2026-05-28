@@ -1,5 +1,7 @@
 """Web panel routes."""
 
+import html
+import json
 from collections import OrderedDict
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
@@ -41,6 +43,15 @@ router = APIRouter(tags=["web"])
 def _require_admin(user: CurrentUser) -> None:
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
+
+
+def _toggle_checkbox_fragment(*, post_url: str, vals: dict[str, str], checked: bool) -> str:
+    state = "checked" if checked else ""
+    hx_vals = html.escape(json.dumps(vals), quote=True)
+    return (
+        f'<input type="checkbox" {state} hx-post="{post_url}" '
+        f'hx-vals=\'{hx_vals}\' hx-trigger="change" hx-swap="outerHTML">'
+    )
 
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -872,11 +883,12 @@ async def admin_access_meta_toggle(
                 granted_by=user.id,
             )
             granted = True
-    state = "checked" if granted else ""
     return HTMLResponse(
-        f'<input type="checkbox" {state} hx-post="/admin/access/meta/toggle" '
-        f'hx-vals=\'{{"manager_id": "{manager_id}", "ad_account_id": "{ad_account_id}"}}\' '
-        f'hx-trigger="change" hx-swap="outerHTML">'
+        _toggle_checkbox_fragment(
+            post_url="/admin/access/meta/toggle",
+            vals={"manager_id": manager_id, "ad_account_id": ad_account_id},
+            checked=granted,
+        )
     )
 
 
@@ -1124,13 +1136,12 @@ async def admin_access_toggle(
             granted = True
 
     # Return a tiny HTMX-friendly fragment that swaps the cell
-    state = "checked" if granted else ""
     return HTMLResponse(
-        f'<input type="checkbox" {state} '
-        f'hx-post="/admin/access/toggle" '
-        f'hx-vals=\'{{"manager_id": "{manager_id}", "customer_id": "{customer_id}"}}\' '
-        f'hx-trigger="change" '
-        f'hx-swap="outerHTML">'
+        _toggle_checkbox_fragment(
+            post_url="/admin/access/toggle",
+            vals={"manager_id": manager_id, "customer_id": customer_id},
+            checked=granted,
+        )
     )
 
 
