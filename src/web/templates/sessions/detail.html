@@ -28,7 +28,7 @@
     <p class="text-sm text-v4-gray-700 mb-3">Copie agora. Esta página vai esconder o token assim que você sair ou recarregar.</p>
     <div class="bg-v4-gray-900 text-white p-3 rounded font-mono text-sm break-all" id="flash-token">{{ flash_token }}</div>
     <button class="v4-btn v4-btn--small v4-btn--secondary mt-3"
-            onclick="navigator.clipboard.writeText(document.getElementById('flash-token').innerText); this.innerText = 'Copiado!'; setTimeout(() => this.innerText = 'Copiar token', 2000);">Copiar token</button>
+            onclick="navigator.clipboard.writeText(document.getElementById('flash-token').innerText); this.innerText = 'Copiado!'; setTimeout(() => this.innerText = 'Copiar token', 2000); if (typeof showToast === 'function') showToast('Copiado!', 'success');">Copiar token</button>
   </div>
   {% endif %}
 

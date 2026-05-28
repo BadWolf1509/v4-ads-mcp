@@ -15,7 +15,7 @@
 
   <div class="v4-card">
     <div class="mb-3 flex flex-wrap gap-3 items-center">
-      {{ search_input("mgr-search", placeholder="Buscar email...", attrs='oninput="filterManagers()" style="flex: 1; max-width: 320px;"') }}
+      {{ search_input("mgr-search", placeholder="Buscar email...", attrs='oninput="filterManagers()" style="flex: 1; max-width: 320px;"', aria_label="Buscar gestor por email") }}
       <select id="mgr-role" class="v4-select" onchange="filterManagers()" style="width: 140px;">
         <option value="all">Todos os roles</option>
         <option value="admin">Admin</option>

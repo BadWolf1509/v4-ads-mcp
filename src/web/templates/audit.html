@@ -78,7 +78,9 @@
         </thead>
         <tbody>
           {% for r in events %}
-          <tr id="row-{{ r.id }}" class="is-expandable" onclick="v4ToggleRow('row-{{ r.id }}')">
+          <tr id="row-{{ r.id }}" class="is-expandable" onclick="v4ToggleRow('row-{{ r.id }}')"
+              tabindex="0" role="button" aria-expanded="false"
+              onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();v4ToggleRow('row-{{ r.id }}');}">
             <td class="col-mono">{{ r.occurred_at.strftime("%H:%M:%S") }}</td>
             <td class="col-mono">{{ r.operation }}</td>
             <td>

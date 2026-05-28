@@ -1,19 +1,25 @@
 {# Admin sub-nav · rendered only when on /admin/* routes #}
 <nav class="v4-subnav" aria-label="Admin">
   <a href="/admin"
-     class="v4-subnav__link {% if request.url.path == '/admin' %}is-active{% endif %}">Visão geral</a>
+     class="v4-subnav__link {% if request.url.path == '/admin' %}is-active{% endif %}"
+     {% if request.url.path == '/admin' %}aria-current="page"{% endif %}>Visão geral</a>
   <a href="/admin/managers"
-     class="v4-subnav__link {% if request.url.path == '/admin/managers' %}is-active{% endif %}">Managers</a>
+     class="v4-subnav__link {% if request.url.path == '/admin/managers' %}is-active{% endif %}"
+     {% if request.url.path == '/admin/managers' %}aria-current="page"{% endif %}>Managers</a>
   <a href="/admin/invites"
-     class="v4-subnav__link {% if request.url.path == '/admin/invites' %}is-active{% endif %}">
+     class="v4-subnav__link {% if request.url.path == '/admin/invites' %}is-active{% endif %}"
+     {% if request.url.path == '/admin/invites' %}aria-current="page"{% endif %}>
     Convites{% if pending_invites_count and pending_invites_count > 0 %}
       <span class="v4-badge v4-badge--counter">{{ pending_invites_count }}</span>
     {% endif %}
   </a>
   <a href="/admin/accounts"
-     class="v4-subnav__link {% if request.url.path.startswith('/admin/accounts') %}is-active{% endif %}">Contas</a>
+     class="v4-subnav__link {% if request.url.path.startswith('/admin/accounts') %}is-active{% endif %}"
+     {% if request.url.path.startswith('/admin/accounts') %}aria-current="page"{% endif %}>Contas</a>
   <a href="/admin/access"
-     class="v4-subnav__link {% if request.url.path.startswith('/admin/access') %}is-active{% endif %}">Acessos</a>
+     class="v4-subnav__link {% if request.url.path.startswith('/admin/access') %}is-active{% endif %}"
+     {% if request.url.path.startswith('/admin/access') %}aria-current="page"{% endif %}>Acessos</a>
   <a href="/admin/audit"
-     class="v4-subnav__link {% if request.url.path == '/admin/audit' %}is-active{% endif %}">Audit global</a>
+     class="v4-subnav__link {% if request.url.path == '/admin/audit' %}is-active{% endif %}"
+     {% if request.url.path == '/admin/audit' %}aria-current="page"{% endif %}>Audit global</a>
 </nav>

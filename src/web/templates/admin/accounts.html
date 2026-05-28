@@ -13,7 +13,7 @@
 
   <div class="v4-card">
     <div class="mb-3 flex flex-wrap gap-3 items-center">
-      {{ search_input("acc-search", placeholder="Buscar nome ou customer_id...", attrs='oninput="filterAccs()"') }}
+      {{ search_input("acc-search", placeholder="Buscar nome ou customer_id...", attrs='oninput="filterAccs()"', aria_label="Buscar conta por nome ou customer_id") }}
       <select id="mcc-filter" class="v4-select" onchange="filterAccs()" style="width: 200px;">
         <option value="all">Todos os MCCs</option>
         {% for mcc in mccs %}<option value="{{ mcc }}">{{ mcc }}</option>{% endfor %}

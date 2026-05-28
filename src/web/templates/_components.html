@@ -37,9 +37,9 @@
 </div>
 {% endmacro %}
 
-{% macro search_input(name, value="", placeholder="Buscar...", attrs="") %}
+{% macro search_input(name, value="", placeholder="Buscar...", attrs="", aria_label="Buscar") %}
 <input type="search" name="{{ name }}" class="v4-input v4-input--search"
-       value="{{ value }}" placeholder="{{ placeholder }}" {{ attrs|safe }}>
+       value="{{ value }}" placeholder="{{ placeholder }}" aria-label="{{ aria_label }}" {{ attrs|safe }}>
 {% endmacro %}
 
 {% macro textarea(name, value="", placeholder="", rows=4, attrs="") %}
@@ -88,7 +88,7 @@
   </button>
 {% endmacro %}
 
-{% macro sparkline(values, width=60, height=16, color="var(--v4-red)") %}
+{% macro sparkline(values, width=60, height=16, color="var(--v4-red)", aria_label=None) %}
   {%- if values and values|length > 1 -%}
     {%- set vmax = values|max -%}
     {%- set vmin = values|min -%}
@@ -101,7 +101,8 @@
       {%- set ns.points = ns.points + [(x|round(2)) ~ "," ~ (y|round(2))] -%}
     {%- endfor -%}
     <svg class="v4-sparkline" viewBox="0 0 {{ width }} {{ height }}"
-         width="{{ width }}" height="{{ height }}" aria-hidden="true">
+         width="{{ width }}" height="{{ height }}"
+         {% if aria_label %}role="img" aria-label="{{ aria_label }}"{% else %}aria-hidden="true"{% endif %}>
       <polyline points="{{ ns.points|join(' ') }}"
                 fill="none" stroke="{{ color }}" stroke-width="1.5" stroke-linejoin="round"/>
     </svg>
@@ -139,6 +140,7 @@
               navigator.clipboard.writeText(code);
               this.innerText = 'Copiado!';
               setTimeout(() => this.innerText = 'Copiar', 2000);
+              if (typeof showToast === 'function') showToast('Copiado!', 'success');
             ">Copiar</button>
   </div>
   <pre><code>{{ content }}</code></pre>

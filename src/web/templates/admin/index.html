@@ -134,7 +134,7 @@
     </div>
     <div class="px-4 pb-4">
       {% if usage_30d %}
-        {{ sparkline(usage_30d, width=600, height=80, color="var(--v4-red)") }}
+        {{ sparkline(usage_30d, width=600, height=80, color="var(--v4-red)", aria_label="Uso dos últimos 30 dias") }}
       {% else %}
         <p class="text-v4-gray-300 text-center py-8">Sem dados ainda.</p>
       {% endif %}

@@ -106,6 +106,20 @@
     drawer.setAttribute('aria-hidden', String(!isOpen));
     document.querySelector('.v4-header__hamburger')?.setAttribute('aria-expanded', String(isOpen));
     document.body.style.overflow = isOpen ? 'hidden' : '';
+    if (isOpen) {
+      document.querySelector('.v4-drawer__panel a, .v4-drawer__panel button')?.focus();
+    }
+  }
+  if (!window._v4DrawerEscBound) {
+    window._v4DrawerEscBound = true;
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        const drawer = document.getElementById('mobile-drawer');
+        if (drawer && drawer.classList.contains('is-open')) {
+          toggleDrawer();
+        }
+      }
+    });
   }
 </script>
 
@@ -181,6 +195,8 @@
     if (!row || !detail) return;
     row.classList.toggle('is-open');
     detail.classList.toggle('is-open');
+    const isOpen = row.classList.contains('is-open');
+    row.setAttribute('aria-expanded', String(isOpen));
   }
 </script>
 </body>
