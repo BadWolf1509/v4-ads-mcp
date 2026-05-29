@@ -711,3 +711,36 @@
   font-size: 12px;
   color: var(--v4-gray-700);
 }
+
+/* ── Previously-phantom classes (T17) ──────────────────────────────────────── */
+
+/* Compact search input (access.html / access_meta.html filter bars) */
+.v4-input--small {
+  padding: var(--v4-space-1) var(--v4-space-2);  /* 4px 8px */
+  font-size: var(--v4-small-size);               /* 12px */
+}
+
+/* Button internal spans — icon slot and label slot */
+.v4-btn__icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.v4-btn__label {
+  display: inline;
+}
+
+/* Sparkline SVG block wrapper */
+.v4-sparkline {
+  display: block;
+  overflow: visible;
+}
+
+/* Modal footer row (used by admin revoke-confirmation modal) */
+.v4-modal__footer {
+  padding: var(--v4-space-3) var(--v4-space-6);
+  border-top: 1px solid var(--v4-gray-100);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--v4-space-2);
+}
