@@ -2,7 +2,7 @@
 
 <div id="sessions-table" class="v4-card">
   <div class="v4-card__header">
-    <h3 class="v4-card__title">Sessões ativas ({{ sessions|length }})</h3>
+    <h3 class="v4-card__title">Sessões (não revogadas) ({{ sessions|length }})</h3>
   </div>
 
   {% if sessions %}
@@ -13,6 +13,7 @@
         <th scope="col">Criada</th>
         <th scope="col">Último uso</th>
         <th scope="col">Expira</th>
+        {% if include_revoked %}<th scope="col">Status</th>{% endif %}
         <th scope="col"></th>
       </tr>
     </thead>
@@ -31,7 +32,13 @@
         <td class="col-mono">
           {% if s.expires_at %}{{ s.expires_at.strftime("%d/%m/%Y") }}{% else %}<em>—</em>{% endif %}
         </td>
+        {% if include_revoked %}
+        <td>
+          {% if s.revoked_at %}{{ badge("revogada", "neutral") }}{% else %}{{ badge("ativa", "success") }}{% endif %}
+        </td>
+        {% endif %}
         <td class="text-right">
+          {% if not s.revoked_at %}
           <button type="button" class="v4-btn v4-btn--small v4-btn--danger"
                   onclick='openConfirm({
                     title: "Revogar sessão?",
@@ -40,12 +47,13 @@
                     kind: "danger",
                     onConfirm: () => htmx.ajax("POST", "/sessions/{{ s.id }}/revoke", { target: "#sessions-table", swap: "outerHTML" })
                   })'>Revogar</button>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-    {{ empty_state("Nenhuma sessão ativa.", "Crie uma acima pra configurar Claude/Codex/Cursor.") }}
+    {{ empty_state("Nenhuma sessão.", "Crie uma acima pra configurar Claude/Codex/Cursor.") }}
   {% endif %}
 </div>

@@ -113,3 +113,59 @@ async def test_sessions_revoke_detail_page_returns_hx_redirect(client: AsyncClie
     )
     assert response.status_code == 204
     assert response.headers.get("HX-Redirect") == "/sessions"
+
+
+@pytest.mark.integration
+async def test_sessions_list_include_revoked_shows_revoked(client: AsyncClient):
+    """GET /sessions?include_revoked=1 includes a revoked session in the response."""
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="ir@v4company.com", full_name=None)
+        token1 = generate_session_token()
+        sess1 = await mcp_sessions.create(
+            conn, manager_id=mid, token_hash=hash_session_token(token1), label="Revogada"
+        )
+        await mcp_sessions.revoke(conn, sess1.id)
+
+    cookie = sign_panel_session(
+        manager_id=str(mid),
+        email="ir@v4company.com",
+        signing_key=_SIGNING_KEY,
+    )
+    response = await client.get(
+        "/sessions?include_revoked=1",
+        cookies={PANEL_SESSION_COOKIE_NAME: cookie},
+    )
+    assert response.status_code == 200
+    assert "Revogada" in response.text
+
+
+@pytest.mark.integration
+async def test_sessions_revoke_list_page_has_hx_trigger_toast(client: AsyncClient):
+    """Revoke from the list page → HX-Trigger header contains 'toast'."""
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="rth@v4company.com", full_name=None)
+        token1 = generate_session_token()
+        sess1 = await mcp_sessions.create(
+            conn, manager_id=mid, token_hash=hash_session_token(token1), label="ToastTest"
+        )
+
+    cookie = sign_panel_session(
+        manager_id=str(mid),
+        email="rth@v4company.com",
+        signing_key=_SIGNING_KEY,
+    )
+    response = await client.post(
+        f"/sessions/{sess1.id}/revoke",
+        cookies={PANEL_SESSION_COOKIE_NAME: cookie},
+        headers={
+            "HX-Request": "true",
+            "HX-Current-URL": "http://test/sessions",
+        },
+    )
+    assert response.status_code == 200
+    hx_trigger = response.headers.get("HX-Trigger", "")
+    assert "toast" in hx_trigger

@@ -269,11 +269,14 @@ async def dashboard(
 async def sessions_list(
     request: Request,
     user: CurrentUser = Depends(current_manager),  # noqa: B008
+    include_revoked: bool = False,
 ) -> HTMLResponse:
     """List manager's MCP sessions."""
     pool = connection.get_pool()
     async with pool.acquire() as conn:
-        sessions = await mcp_sessions.list_for_manager(conn, user.id, include_revoked=False)
+        sessions = await mcp_sessions.list_for_manager(
+            conn, user.id, include_revoked=include_revoked
+        )
 
     return templates.TemplateResponse(
         request,
@@ -281,6 +284,7 @@ async def sessions_list(
         {
             "current_user": user,
             "sessions": sessions,
+            "include_revoked": include_revoked,
         },
     )
 
@@ -389,6 +393,8 @@ async def sessions_revoke(
         # Return fresh list
         sessions = await mcp_sessions.list_for_manager(conn, user.id, include_revoked=False)
 
+    _toast_trigger = '{"toast": {"message": "Sessão revogada.", "kind": "success"}}'
+
     # If HTMX request, decide by the originating page.
     # Detail page (/sessions/<id>) → send HX-Redirect so HTMX navigates cleanly.
     # List page (/sessions) → swap table fragment in-place (existing behaviour).
@@ -398,17 +404,22 @@ async def sessions_revoke(
         current_path = urlparse(current_url).path
         if current_path.startswith("/sessions/") and current_path.rstrip("/") != "/sessions":
             # Came from the detail page — redirect without flashing the fragment.
-            return Response(status_code=204, headers={"HX-Redirect": "/sessions"})
+            return Response(
+                status_code=204,
+                headers={"HX-Redirect": "/sessions", "HX-Trigger": _toast_trigger},
+            )
         # Came from the list page — return fresh table fragment for in-place swap.
-        return templates.TemplateResponse(
+        resp = templates.TemplateResponse(
             request,
             "sessions/_table.html",
-            {"current_user": user, "sessions": sessions},
+            {"current_user": user, "sessions": sessions, "include_revoked": False},
         )
+        resp.headers["HX-Trigger"] = _toast_trigger
+        return resp
     return templates.TemplateResponse(
         request,
         "sessions/list.html",
-        {"current_user": user, "sessions": sessions},
+        {"current_user": user, "sessions": sessions, "include_revoked": False},
     )
 
 

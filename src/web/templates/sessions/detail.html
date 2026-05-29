@@ -39,6 +39,7 @@
     <p class="text-sm text-v4-gray-700 mb-4">
       Substitua <code>mcp_xxx...</code> pelo seu token. {% if not flash_token %}<strong>Token só foi mostrado na criação.</strong> Se você perdeu, revogue esta sessão e crie uma nova.{% endif %}
     </p>
+    {% if flash_token %}<p class="text-sm text-v4-gold mt-2">↓ Substitua <code>mcp_xxx...</code> nos exemplos abaixo pelo token destacado em amarelo acima.</p>{% endif %}
 
     <details open class="mb-4">
       <summary class="cursor-pointer font-semibold py-2">Claude Desktop</summary>

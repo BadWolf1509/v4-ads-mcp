@@ -30,8 +30,17 @@
           <option value="180">180 dias</option>
         </select>
       </div>
-      <button type="submit" class="v4-btn v4-btn--primary">Criar</button>
+      <button type="submit" class="v4-btn v4-btn--primary" onclick="setTimeout(() => this.disabled = true, 0)">Criar</button>
     </form>
+    <p class="text-sm text-v4-gray-700 mt-2">⚠ O token aparece <strong>uma única vez</strong> na próxima tela, por ~60 segundos. Tenha o arquivo de config do seu cliente MCP aberto antes de criar.</p>
+  </div>
+
+  <div class="mb-2 text-right text-sm">
+    {% if include_revoked %}
+      <a href="/sessions" class="text-v4-red underline">ver só ativas</a>
+    {% else %}
+      <a href="/sessions?include_revoked=1" class="text-v4-gray-700 underline">ver revogadas</a>
+    {% endif %}
   </div>
 
   {% include "sessions/_table.html" %}
