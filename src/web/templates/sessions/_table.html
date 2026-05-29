@@ -2,7 +2,7 @@
 
 <div id="sessions-table" class="v4-card">
   <div class="v4-card__header">
-    <h3 class="v4-card__title">Sessões (não revogadas) ({{ sessions|length }})</h3>
+    <h3 class="v4-card__title">{% if include_revoked %}Sessões ({{ sessions|length }}){% else %}Sessões (não revogadas) ({{ sessions|length }}){% endif %}</h3>
   </div>
 
   {% if sessions %}

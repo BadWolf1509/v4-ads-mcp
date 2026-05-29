@@ -143,3 +143,50 @@ async def test_audit_does_not_show_other_managers_events(client: AsyncClient):
     )
     assert response.status_code == 200
     assert "run_gaql_other_manager" not in response.text
+
+
+@pytest.mark.integration
+async def test_audit_export_csv_filters_by_status(client: AsyncClient):
+    """CSV export with status=error must include only error rows, not success rows."""
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        mid = uuid4()
+        await managers.create(
+            conn, manager_id=mid, email="csv_status@v4company.com", full_name=None
+        )
+        await audit_log.record(
+            conn,
+            manager_id=mid,
+            session_id=None,
+            customer_id=None,
+            action_type="read",
+            operation="op_success_one",
+            target_count=1,
+            status="success",
+            duration_ms=10,
+        )
+        await audit_log.record(
+            conn,
+            manager_id=mid,
+            session_id=None,
+            customer_id=None,
+            action_type="read",
+            operation="op_error_one",
+            target_count=0,
+            status="error",
+            duration_ms=5,
+            error_message="something went wrong",
+        )
+
+    cookie = sign_panel_session(
+        manager_id=str(mid),
+        email="csv_status@v4company.com",
+        signing_key=_SIGNING_KEY,
+    )
+    response = await client.get(
+        "/audit/export.csv?status=error",
+        cookies={PANEL_SESSION_COOKIE_NAME: cookie},
+    )
+    assert response.status_code == 200
+    assert "op_error_one" in response.text
+    assert "op_success_one" not in response.text

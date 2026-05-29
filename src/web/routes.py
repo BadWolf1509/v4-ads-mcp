@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 from uuid import UUID
 
 import structlog
@@ -408,10 +408,17 @@ async def sessions_revoke(
                 headers={"HX-Redirect": "/sessions", "HX-Trigger": _toast_trigger},
             )
         # Came from the list page — return fresh table fragment for in-place swap.
+        # Preserve include_revoked from the originating page's query string.
+        qs = parse_qs(urlparse(current_url).query)
+        include_revoked = qs.get("include_revoked", ["0"])[0] in ("1", "true", "True")
+        async with pool.acquire() as conn:
+            sessions = await mcp_sessions.list_for_manager(
+                conn, user.id, include_revoked=include_revoked
+            )
         resp = templates.TemplateResponse(
             request,
             "sessions/_table.html",
-            {"current_user": user, "sessions": sessions, "include_revoked": False},
+            {"current_user": user, "sessions": sessions, "include_revoked": include_revoked},
         )
         resp.headers["HX-Trigger"] = _toast_trigger
         return resp
@@ -570,6 +577,7 @@ async def audit_export_csv(
     user: CurrentUser = Depends(current_manager),  # noqa: B008
     action_type: str = "all",
     customer_id: str | None = None,
+    status: str = "all",
     days: int = 7,
 ) -> StreamingResponse:
     """Stream CSV export of the gestor's audit log with current filters applied."""
@@ -584,6 +592,7 @@ async def audit_export_csv(
                 manager_id=user.id,
                 customer_id=customer_id,
                 action_type=action_type if action_type != "all" else None,
+                status=status if status != "all" else None,
                 days=days,
             ):
                 yield line.encode("utf-8")
@@ -1366,6 +1375,7 @@ async def admin_audit_export_csv(
     manager_id: str | None = None,
     action_type: str = "all",
     customer_id: str | None = None,
+    status: str = "all",
     days: int = 7,
 ) -> StreamingResponse:
     """Stream CSV export of the global audit log (admin) with current filters applied."""
@@ -1382,6 +1392,7 @@ async def admin_audit_export_csv(
                 manager_id=scope_manager_id,
                 customer_id=customer_id,
                 action_type=action_type if action_type != "all" else None,
+                status=status if status != "all" else None,
                 days=days,
             ):
                 yield line.encode("utf-8")

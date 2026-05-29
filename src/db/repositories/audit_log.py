@@ -121,6 +121,7 @@ async def export_csv_rows(
     manager_id: UUID | None = None,
     customer_id: str | None = None,
     action_type: str | None = None,
+    status: str | None = None,
     days: int = 7,
 ) -> AsyncIterator[str]:
     """Yield CSV lines (header + data) for streaming response."""
@@ -138,6 +139,10 @@ async def export_csv_rows(
     if action_type and action_type != "all":
         where.append(f"action_type = ${idx}")
         params.append(action_type)
+        idx += 1
+    if status and status != "all":
+        where.append(f"status = ${idx}")
+        params.append(status)
         idx += 1
     sql = f"""SELECT al.occurred_at, m.email, al.operation, al.customer_id,
                      al.action_type, al.status, al.target_count, al.duration_ms,

@@ -142,6 +142,46 @@ async def test_sessions_list_include_revoked_shows_revoked(client: AsyncClient):
 
 
 @pytest.mark.integration
+async def test_sessions_revoke_with_include_revoked_preserves_context(client: AsyncClient):
+    """Revoke from list page with ?include_revoked=1 → fragment still shows revoked rows."""
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="rvir@v4company.com", full_name=None)
+        # Active session — will be revoked
+        token1 = generate_session_token()
+        sess1 = await mcp_sessions.create(
+            conn, manager_id=mid, token_hash=hash_session_token(token1), label="ToRevoke"
+        )
+        # Already-revoked session — must appear in the returned fragment
+        token2 = generate_session_token()
+        sess2 = await mcp_sessions.create(
+            conn, manager_id=mid, token_hash=hash_session_token(token2), label="AlreadyRevoked"
+        )
+        await mcp_sessions.revoke(conn, sess2.id)
+
+    cookie = sign_panel_session(
+        manager_id=str(mid),
+        email="rvir@v4company.com",
+        signing_key=_SIGNING_KEY,
+    )
+    response = await client.post(
+        f"/sessions/{sess1.id}/revoke",
+        cookies={PANEL_SESSION_COOKIE_NAME: cookie},
+        headers={
+            "HX-Request": "true",
+            "HX-Current-URL": "http://test/sessions?include_revoked=1",
+        },
+    )
+    assert response.status_code == 200
+    # Fragment must include the previously-revoked session (context preserved)
+    assert "AlreadyRevoked" in response.text
+    # The card title must reflect the all-sessions mode (no "não revogadas" text)
+    assert "não revogadas" not in response.text
+    assert "sessions-table" in response.text
+
+
+@pytest.mark.integration
 async def test_sessions_revoke_list_page_has_hx_trigger_toast(client: AsyncClient):
     """Revoke from the list page → HX-Trigger header contains 'toast'."""
     pool = connection.get_pool()
