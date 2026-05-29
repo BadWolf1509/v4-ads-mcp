@@ -178,6 +178,7 @@ def _common_patches(client, request_id="req-001"):
         patch(
             "src.google_ads.conversions.build_client_for_manager", AsyncMock(return_value=client)
         ),
+        patch("src.google_ads.conversions.ensure_account_access", AsyncMock(return_value=None)),
         patch("src.google_ads.conversions.before_call", AsyncMock(return_value=None)),
         patch("src.google_ads.conversions.record_actual", AsyncMock(return_value=None)),
         patch("src.google_ads.conversions.audit_log.record", AsyncMock(return_value=None)),

@@ -36,6 +36,7 @@ async def test_run_report_uses_custom_params_summary(monkeypatch):
     audit_mock = AsyncMock()
     with (
         patch.object(reports.connection, "get_pool"),
+        patch.object(reports, "ensure_account_access", AsyncMock()),
         patch.object(reports, "before_call", AsyncMock()),
         patch.object(reports, "record_actual", AsyncMock()),
         patch.object(reports.audit_log, "record", audit_mock),
@@ -69,6 +70,7 @@ async def test_run_report_default_params_summary_is_none(monkeypatch):
     audit_mock = AsyncMock()
     with (
         patch.object(reports.connection, "get_pool"),
+        patch.object(reports, "ensure_account_access", AsyncMock()),
         patch.object(reports, "before_call", AsyncMock()),
         patch.object(reports, "record_actual", AsyncMock()),
         patch.object(reports.audit_log, "record", audit_mock),

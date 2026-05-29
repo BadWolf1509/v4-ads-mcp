@@ -87,9 +87,13 @@ async def test_dispatcher_creates_job_with_customer_match_metadata(fake_ctx):
 
     client, service = _make_capture_client_with_offline_user_data_job_service()
 
-    with patch(
-        "src.google_ads.customer_match.build_client_for_manager",
-        AsyncMock(return_value=client),
+    with (
+        patch(
+            "src.google_ads.customer_match.build_client_for_manager",
+            AsyncMock(return_value=client),
+        ),
+        patch("src.google_ads.customer_match.connection.get_pool"),
+        patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
     ):
         await run_offline_user_data_job(
             manager_id=fake_ctx["manager_id"],
@@ -118,9 +122,13 @@ async def test_dispatcher_consent_lgpd_invariants_granted(fake_ctx):
 
     client, service = _make_capture_client_with_offline_user_data_job_service()
 
-    with patch(
-        "src.google_ads.customer_match.build_client_for_manager",
-        AsyncMock(return_value=client),
+    with (
+        patch(
+            "src.google_ads.customer_match.build_client_for_manager",
+            AsyncMock(return_value=client),
+        ),
+        patch("src.google_ads.customer_match.connection.get_pool"),
+        patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
     ):
         await run_offline_user_data_job(
             manager_id=fake_ctx["manager_id"],
@@ -145,9 +153,13 @@ async def test_dispatcher_add_operations_partial_failure_true(fake_ctx):
 
     client, service = _make_capture_client_with_offline_user_data_job_service()
 
-    with patch(
-        "src.google_ads.customer_match.build_client_for_manager",
-        AsyncMock(return_value=client),
+    with (
+        patch(
+            "src.google_ads.customer_match.build_client_for_manager",
+            AsyncMock(return_value=client),
+        ),
+        patch("src.google_ads.customer_match.connection.get_pool"),
+        patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
     ):
         await run_offline_user_data_job(
             manager_id=fake_ctx["manager_id"],
@@ -171,9 +183,13 @@ async def test_dispatcher_user_data_uses_hashed_email_field(fake_ctx):
 
     client, service = _make_capture_client_with_offline_user_data_job_service()
 
-    with patch(
-        "src.google_ads.customer_match.build_client_for_manager",
-        AsyncMock(return_value=client),
+    with (
+        patch(
+            "src.google_ads.customer_match.build_client_for_manager",
+            AsyncMock(return_value=client),
+        ),
+        patch("src.google_ads.customer_match.connection.get_pool"),
+        patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
     ):
         await run_offline_user_data_job(
             manager_id=fake_ctx["manager_id"],
@@ -195,9 +211,13 @@ async def test_dispatcher_returns_job_resource_name_and_three_request_ids(fake_c
 
     client, service = _make_capture_client_with_offline_user_data_job_service()
 
-    with patch(
-        "src.google_ads.customer_match.build_client_for_manager",
-        AsyncMock(return_value=client),
+    with (
+        patch(
+            "src.google_ads.customer_match.build_client_for_manager",
+            AsyncMock(return_value=client),
+        ),
+        patch("src.google_ads.customer_match.connection.get_pool"),
+        patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
     ):
         result = await run_offline_user_data_job(
             manager_id=fake_ctx["manager_id"],
@@ -222,9 +242,13 @@ async def test_dispatcher_remove_operation_uses_remove_field(fake_ctx):
 
     client, service = _make_capture_client_with_offline_user_data_job_service()
 
-    with patch(
-        "src.google_ads.customer_match.build_client_for_manager",
-        AsyncMock(return_value=client),
+    with (
+        patch(
+            "src.google_ads.customer_match.build_client_for_manager",
+            AsyncMock(return_value=client),
+        ),
+        patch("src.google_ads.customer_match.connection.get_pool"),
+        patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
     ):
         await run_offline_user_data_job(
             manager_id=fake_ctx["manager_id"],

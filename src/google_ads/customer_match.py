@@ -17,6 +17,8 @@ from uuid import UUID
 
 import structlog
 
+from src.db import connection
+from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.request_id import get_request_id, reset_request_id
 
@@ -103,6 +105,15 @@ async def run_offline_user_data_job(
     Sprint 3b.28 — segundo dispatcher non-mutate, paralelo a run_conversion_upload
     do Sprint 3b.26.
     """
+    async with connection.get_pool().acquire() as conn:
+        await ensure_account_access(
+            conn,
+            manager_id=manager_id,
+            customer_id=customer_id,
+            session_id=session_id,
+            operation_name="upload_customer_match_list",
+            level="write",
+        )
     log.info(
         "run_offline_user_data_job_start",
         customer_id=customer_id,

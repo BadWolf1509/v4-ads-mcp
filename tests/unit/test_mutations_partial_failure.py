@@ -115,9 +115,10 @@ async def test_run_mutation_partial_failure_returns_per_op_status(monkeypatch):
     )
     monkeypatch.setattr(mutations, "get_request_id", lambda: "req-pf")
 
-    # Stub the DB hooks (before_call, record_actual, audit_log.record)
+    # Stub the DB hooks (before_call, record_actual, audit_log.record, access gate)
     with (
         patch.object(mutations.connection, "get_pool"),
+        patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch.object(mutations, "before_call", AsyncMock()),
         patch.object(mutations, "record_actual", AsyncMock()),
         patch.object(mutations.audit_log, "record", AsyncMock()),
@@ -168,6 +169,7 @@ async def test_run_mutation_uses_custom_params_summary(monkeypatch):
     audit_mock = AsyncMock()
     with (
         patch.object(mutations.connection, "get_pool"),
+        patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch.object(mutations, "before_call", AsyncMock()),
         patch.object(mutations, "record_actual", AsyncMock()),
         patch.object(mutations.audit_log, "record", audit_mock),

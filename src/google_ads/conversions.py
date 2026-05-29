@@ -22,6 +22,7 @@ import structlog
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import audit_log
+from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
 from src.google_ads.request_id import (
@@ -55,6 +56,15 @@ async def run_conversion_upload(
     Sprint 3b.26 — first dispatcher that does NOT use GoogleAdsService.mutate.
     """
     settings = get_settings()
+    async with connection.get_pool().acquire() as conn:
+        await ensure_account_access(
+            conn,
+            manager_id=manager_id,
+            customer_id=customer_id,
+            session_id=session_id,
+            operation_name=operation_type,
+            level="write",
+        )
     token_id = hash_developer_token(settings.google_ads_developer_token)
     started = time.monotonic()
     pool = connection.get_pool()
