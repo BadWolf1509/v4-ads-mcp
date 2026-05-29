@@ -90,9 +90,10 @@ Authorization = "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
       <section id="o-que-e" class="mb-16 scroll-mt-20">
         <h2 class="text-2xl font-bold text-v4-gray-900 mb-4">1. O que é o V4 Ads MCP</h2>
         <p class="text-v4-gray-700 leading-relaxed mb-3">
-          Servidor MCP (Model Context Protocol) interno V4 que conecta as contas Google Ads que você
-          gerencia ao seu cliente de IA. Você pede em linguagem natural — <em>"performance da conta X
-          últimos 30 dias"</em>, <em>"pause keywords sem conversão"</em> — e o assistente executa via
+          Servidor MCP (Model Context Protocol) interno V4 que conecta as contas <strong>Google Ads</strong>
+          e <strong>Meta Ads</strong> que você gerencia ao seu cliente de IA. Você pede em linguagem
+          natural — <em>"performance da conta X últimos 30 dias"</em>, <em>"pause keywords sem
+          conversão"</em>, <em>"top campanhas Meta por gasto"</em> — e o assistente executa via
           ferramentas auditadas.
         </p>
         <p class="text-v4-gray-700 leading-relaxed">
@@ -116,8 +117,8 @@ Authorization = "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
           <li>
             <strong class="text-v4-gray-900">Espere o admin liberar contas</strong> —
             em <a href="/accounts" class="underline text-v4-red hover:text-v4-red-medium">/accounts</a>
-            você vê as contas Google Ads que pode operar. Se a lista estiver vazia, peça ao admin da
-            sua unidade pra liberar acesso pra você.
+            você vê as contas <strong>Google Ads</strong> e <strong>Meta Ads</strong> que pode operar. Se
+            uma lista estiver vazia, peça ao admin da sua unidade pra liberar acesso pra você.
           </li>
           <li>
             <strong class="text-v4-gray-900">Crie uma sessão MCP</strong> —
@@ -230,7 +231,20 @@ Authorization = "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
             <div class="v4-help__faq-body">
               Peça ao admin da sua unidade pra liberar acesso pra você.
               Em <a href="/accounts" class="underline text-v4-red hover:text-v4-red-medium">/accounts</a>
-              você confirma quais contas estão no seu escopo.
+              você confirma quais contas Google Ads e Meta Ads estão no seu escopo.
+            </div>
+          </details>
+
+          <details class="v4-help__faq">
+            <summary>
+              <span>Pedi algo numa conta e recebi "sem acesso"</span>
+              <span class="v4-help__faq-arrow">▸</span>
+            </summary>
+            <div class="v4-help__faq-body">
+              Você só opera contas que o admin liberou pra você (Google Ads e Meta Ads). Se uma
+              ferramenta retornou "você não tem acesso à conta", confirme seu escopo em
+              <a href="/accounts" class="underline text-v4-red hover:text-v4-red-medium">/accounts</a>
+              e peça ao admin da sua unidade pra conceder a conta.
             </div>
           </details>
 
@@ -252,10 +266,11 @@ Authorization = "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
               <span class="v4-help__faq-arrow">▸</span>
             </summary>
             <div class="v4-help__faq-body">
-              Uma sessão fica ativa enquanto não foi revogada e não expirou (TTL padrão: 90 dias).
-              Cada cliente (Claude Desktop, Codex, Cursor) deve ter sua própria sessão — não compartilhe
-              tokens entre clientes. Se você usa Claude Desktop no PC e no notebook, crie uma sessão
-              pra cada.
+              O token funciona enquanto a sessão não foi revogada e está dentro da validade (TTL padrão:
+              90 dias). A lista em <a href="/sessions" class="underline text-v4-red hover:text-v4-red-medium">/sessions</a>
+              mostra as sessões não-revogadas — uma já expirada pode aparecer ali mas não autentica mais;
+              revogue e crie outra. Cada cliente (Claude Desktop, Codex, Cursor) deve ter sua própria
+              sessão — não compartilhe tokens entre clientes.
             </div>
           </details>
 
@@ -269,7 +284,7 @@ Authorization = "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
               se há sessões que você não reconhece. Revogue qualquer suspeita e avise o admin
               imediatamente — todo evento fica em
               <a href="/audit" class="underline text-v4-red hover:text-v4-red-medium">/audit</a> com
-              IP, user-agent e timestamp pra rastrear.
+              gestor, sessão, operação, conta, status, horário e ID de rastreamento.
             </div>
           </details>
         </div>
