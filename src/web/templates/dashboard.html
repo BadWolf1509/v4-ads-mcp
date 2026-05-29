@@ -27,36 +27,27 @@
 
   {# Operational stat grid #}
   <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
-    <div class="border border-v4-gray-100 rounded-md p-3">
-      <div class="text-xs text-v4-gray-700 uppercase tracking-wider font-semibold">Contas</div>
-      <div class="text-3xl font-bold mt-1">{{ accounts_count }}</div>
-      <div class="text-xs text-v4-gray-300 mt-1">Google Ads acessíveis</div>
-    </div>
-
-    <div class="border border-v4-gray-100 rounded-md p-3">
-      <div class="text-xs text-v4-gray-700 uppercase tracking-wider font-semibold">Sessões</div>
-      <div class="text-3xl font-bold mt-1">{{ sessions_count }}</div>
-      <div class="text-xs text-v4-gray-300 mt-1">MCP ativas</div>
-    </div>
-
-    <div class="border border-v4-gray-100 rounded-md p-3">
-      <div class="text-xs text-v4-gray-700 uppercase tracking-wider font-semibold">Chamadas hoje</div>
-      <div class="text-3xl font-bold mt-1">{{ calls_today }}</div>
+    {{ stat("Contas", accounts_count, "Google Ads acessíveis") }}
+    {{ stat("Sessões", sessions_count, "MCP ativas") }}
+    {# Calls stat: sparkline sublabel doesn't fit stat() — kept ad-hoc #}
+    <div class="v4-stat">
+      <div class="v4-stat__label">Chamadas hoje</div>
+      <div class="v4-stat__value">{{ calls_today }}</div>
       {% if calls_sparkline %}
         <div class="mt-1">{{ sparkline(calls_sparkline, width=80, height=14) }}</div>
       {% else %}
-        <div class="text-xs text-v4-gray-300 mt-1">últimos 7 dias</div>
+        <div class="v4-stat__sublabel">últimos 7 dias</div>
       {% endif %}
     </div>
-
-    <div class="border border-v4-gray-100 rounded-md p-3">
-      <div class="text-xs text-v4-gray-700 uppercase tracking-wider font-semibold">Conexão Google</div>
+    {# Google connection: conditional email/link content — doesn't map to stat() cleanly, kept ad-hoc #}
+    <div class="v4-stat">
+      <div class="v4-stat__label">Conexão Google</div>
       {% if oauth_email %}
         <div class="text-sm font-semibold mt-1 truncate" title="{{ oauth_email }}">{{ oauth_email }}</div>
-        <div class="text-xs text-v4-gray-300 mt-1">conectado em {{ oauth_connected_at.strftime("%d/%m") }}</div>
+        <div class="v4-stat__sublabel">conectado em {{ oauth_connected_at.strftime("%d/%m") }}</div>
       {% else %}
         <div class="text-sm font-semibold mt-1 text-v4-red">Não conectada</div>
-        <div class="text-xs text-v4-gray-300 mt-1"><a href="/accounts" class="underline">conectar</a></div>
+        <div class="v4-stat__sublabel"><a href="/accounts" class="underline">conectar</a></div>
       {% endif %}
     </div>
   </div>

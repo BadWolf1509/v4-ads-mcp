@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_components.html" import sparkline, badge, button, modal %}
+{% from "_components.html" import sparkline, badge, button, modal, stat, alert %}
 
 {% block title %}Admin · Visão geral — V4 Ads MCP{% endblock %}
 
@@ -21,9 +21,9 @@
         <div class="flex items-center justify-between mb-2">
           <span class="font-medium text-v4-gray-900">Google Ads</span>
           {% if google_conn %}
-            <span class="text-xs px-2 py-1 bg-v4-green-soft text-v4-green rounded">Conectado</span>
+            {{ badge("Conectado", "success") }}
           {% else %}
-            <span class="text-xs px-2 py-1 bg-v4-gray-50 text-v4-gray-700 rounded">Desconectado</span>
+            {{ badge("Desconectado", "neutral") }}
           {% endif %}
         </div>
         {% if google_conn %}
@@ -41,12 +41,12 @@
           <span class="font-medium text-v4-gray-900">Meta Ads</span>
           {% if meta_conn %}
             {% if meta_token_expiring_soon %}
-              <span class="text-xs px-2 py-1 bg-v4-gold-soft text-v4-gold rounded">Expira em breve</span>
+              {{ badge("Expira em breve", "warning") }}
             {% else %}
-              <span class="text-xs px-2 py-1 bg-v4-green-soft text-v4-green rounded">Conectado</span>
+              {{ badge("Conectado", "success") }}
             {% endif %}
           {% else %}
-            <span class="text-xs px-2 py-1 bg-v4-gray-50 text-v4-gray-700 rounded">Desconectado</span>
+            {{ badge("Desconectado", "neutral") }}
           {% endif %}
         </div>
         {% if meta_conn %}
@@ -67,16 +67,14 @@
           </div>
 
           {% if meta_token_expiring_soon %}
-            <div class="mt-4 p-3 bg-v4-gold-soft border-l-4 border-v4-gold rounded text-sm text-v4-gray-900">
-              <span class="font-semibold">⚠ Token expira em breve</span>
-              <p class="text-xs text-v4-gray-700 mt-1">Recomendado reconectar via "Reconectar" antes de {{ meta_conn.token_expires_at.strftime('%d/%m/%Y') }}.</p>
+            <div class="mt-4">
+              {{ alert('Recomendado reconectar via "Reconectar" antes de ' ~ meta_conn.token_expires_at.strftime('%d/%m/%Y') ~ '.', "warning", "Token expira em breve") }}
             </div>
           {% endif %}
 
           {% if meta_refreshed %}
-            <div class="mt-4 p-3 bg-v4-green-soft border-l-4 border-v4-green rounded text-sm text-v4-gray-900">
-              <span class="font-semibold">✓ Lista de ad accounts atualizada</span>
-              <p class="text-xs text-v4-gray-700 mt-1">Sincronização via Graph API concluída.</p>
+            <div class="mt-4">
+              {{ alert("Sincronização via Graph API concluída.", "success", "Lista de ad accounts atualizada") }}
             </div>
           {% endif %}
         {% else %}
@@ -101,27 +99,26 @@
 
   {# Top metrics #}
   <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-    <div class="border border-v4-gray-100 rounded-md p-4">
-      <div class="text-xs text-v4-gray-700 uppercase tracking-wider font-semibold">Convites pendentes</div>
-      <div class="text-3xl font-bold {% if pending_invites > 0 %}text-v4-gold{% endif %}">{{ pending_invites }}</div>
+    {# Pending invites: conditional link sublabel — kept as v4-stat structure #}
+    <div class="v4-stat">
+      <div class="v4-stat__label">Convites pendentes</div>
+      <div class="v4-stat__value {% if pending_invites > 0 %}text-v4-gold{% endif %}">{{ pending_invites }}</div>
       {% if pending_invites > 0 %}
-        <a href="/admin/invites" class="text-xs text-v4-gray-700 underline">ver lista →</a>
+        <a href="/admin/invites" class="v4-stat__sublabel underline">ver lista →</a>
       {% endif %}
     </div>
-    <div class="border border-v4-gray-100 rounded-md p-4">
-      <div class="text-xs text-v4-gray-700 uppercase tracking-wider font-semibold">Gestores ativos</div>
-      <div class="text-3xl font-bold">{{ active_managers }} <span class="text-base text-v4-gray-300">/ {{ total_managers }}</span></div>
+    {# Active managers: compound "X / Y" value — kept as v4-stat structure #}
+    <div class="v4-stat">
+      <div class="v4-stat__label">Gestores ativos</div>
+      <div class="v4-stat__value">{{ active_managers }} <span class="text-base text-v4-gray-300">/ {{ total_managers }}</span></div>
     </div>
-    <div class="border border-v4-gray-100 rounded-md p-4">
-      <div class="text-xs text-v4-gray-700 uppercase tracking-wider font-semibold">Quota MCP hoje</div>
-      <div class="text-3xl font-bold">{{ quota_used }}</div>
-      <div class="text-xs text-v4-gray-300 mt-1">/ {{ quota_max }} ops</div>
-    </div>
-    <div class="border border-v4-gray-100 rounded-md p-4">
-      <div class="text-xs text-v4-gray-700 uppercase tracking-wider font-semibold">Erros 24h</div>
-      <div class="text-3xl font-bold {% if errors_24h > 0 %}text-v4-red{% else %}text-v4-green{% endif %}">{{ errors_24h }}</div>
+    {{ stat("Quota MCP hoje", quota_used, "/ " ~ quota_max ~ " ops") }}
+    {# Errors 24h: conditional link + color on value — kept as v4-stat structure #}
+    <div class="v4-stat">
+      <div class="v4-stat__label">Erros 24h</div>
+      <div class="v4-stat__value {% if errors_24h > 0 %}text-v4-red{% else %}text-v4-green{% endif %}">{{ errors_24h }}</div>
       {% if errors_24h > 0 %}
-        <a href="/admin/audit?status=error" class="text-xs text-v4-gray-700 underline">investigar →</a>
+        <a href="/admin/audit?status=error" class="v4-stat__sublabel underline">investigar →</a>
       {% endif %}
     </div>
   </div>

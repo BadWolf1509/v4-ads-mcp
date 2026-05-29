@@ -3,9 +3,9 @@
 {% block title %}Erro — V4 Ads MCP{% endblock %}
 
 {% block content %}
-<div class="v4-card" style="max-width: 600px; margin: 40px auto; text-align: center;">
-  <h2 style="color: var(--v4-red);">{{ title or "Algo deu errado" }}</h2>
-  <p style="color: var(--v4-gray-700); margin: 24px 0;">{{ message or "Tente novamente em alguns segundos." }}</p>
+<section class="max-w-xl mx-auto py-16 px-4 text-center">
+  <h2 class="text-v4-red mb-6">{{ title or "Algo deu errado" }}</h2>
+  <p class="text-v4-gray-700 mb-6">{{ message or "Tente novamente em alguns segundos." }}</p>
   <a href="/" class="v4-btn v4-btn--secondary">Voltar ao dashboard</a>
-</div>
+</section>
 {% endblock %}

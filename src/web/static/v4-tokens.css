@@ -101,4 +101,11 @@
   --v4-motion-slow: 320ms;
   --v4-ease-out:    cubic-bezier(0.2, 0.8, 0.2, 1);
   --v4-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Sticky offset — header + subnav stack (used by platform tab bars) */
+  --v4-tab-bar-offset:    96px;
+  /* Sticky offset — filter bar below header only (used by audit filter rows) */
+  --v4-subnav-offset:     53px;
+  /* Sticky offset — day header below header+filter bar (audit day grouping) */
+  --v4-audit-day-offset: 120px;
 }

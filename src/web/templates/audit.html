@@ -17,7 +17,8 @@
 
   {# Sticky filter bar with auto-submit #}
   <form id="audit-filters" method="GET" action="/audit"
-        class="sticky top-[53px] z-[10] bg-white border-b border-v4-gray-100 py-3 mb-4 flex flex-wrap gap-3 items-end">
+        class="sticky z-[10] bg-white border-b border-v4-gray-100 py-3 mb-4 flex flex-wrap gap-3 items-end"
+        style="top: var(--v4-subnav-offset);">
     <div class="v4-form__group" style="margin: 0;">
       <label class="v4-form__label" for="action_type">Tipo</label>
       <select id="action_type" name="action_type" class="v4-select"
@@ -60,7 +61,8 @@
   {% if grouped %}
     {% for day, events in grouped.items() %}
     <div class="mb-6">
-      <h3 class="sticky top-[120px] z-[5] bg-v4-gray-50 border-y border-v4-gray-100 py-2 px-3 text-xs uppercase tracking-wider font-semibold text-v4-gray-700">
+      <h3 class="sticky z-[5] bg-v4-gray-50 border-y border-v4-gray-100 py-2 px-3 text-xs uppercase tracking-wider font-semibold text-v4-gray-700"
+          style="top: var(--v4-audit-day-offset);">
         {{ day }}
       </h3>
       <table class="v4-table v4-table--compact">
