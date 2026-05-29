@@ -25,7 +25,7 @@
               onchange="this.form.submit()">
         <option value="all" {% if filter_action_type == "all" %}selected{% endif %}>Todos</option>
         <option value="mutate" {% if filter_action_type == "mutate" %}selected{% endif %}>Mutações</option>
-        <option value="read" {% if filter_action_type == "read" %}selected{% endif %}>Reads sensíveis</option>
+        <option value="read" {% if filter_action_type == "read" %}selected{% endif %}>Consultas sensíveis</option>
       </select>
     </div>
     <div class="v4-form__group" style="margin: 0;">
@@ -73,7 +73,7 @@
             <th scope="col">Conta</th>
             <th scope="col">Tipo</th>
             <th scope="col">Status</th>
-            <th scope="col">Alvos</th>
+            <th scope="col" title="Número de entidades afetadas pela operação">Alvos</th>
             <th scope="col">Duração</th>
             <th scope="col"></th>
           </tr>
@@ -127,7 +127,7 @@
                 {% endif %}
                 {% if r.provider_request_id %}
                 <div class="col-span-1 md:col-span-2 text-xs">
-                  <span class="text-v4-gray-700 uppercase">Google Request ID:</span>
+                  <span class="text-v4-gray-700 uppercase">ID de rastreamento:</span>
                   <code class="ml-2">{{ r.provider_request_id }}</code>
                 </div>
                 {% endif %}

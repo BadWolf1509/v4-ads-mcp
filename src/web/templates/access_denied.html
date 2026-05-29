@@ -52,7 +52,8 @@
     <h1 class="text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
       Erro inesperado no login Meta.
     </h1>
-    <p class="mt-6 text-v4-gray-700">Reason: <code>{{ reason }}</code></p>
+    <!-- reason: {{ reason }} -->
+    <p class="mt-6 text-v4-gray-700">Ocorreu um erro inesperado durante a autenticação. Tente novamente — se persistir, avise o admin da sua unidade.</p>
     <p class="mt-4"><a href="/oauth/meta/start" class="text-v4-red hover:underline">Tentar novamente</a></p>
   {% else %}
     <h1 class="text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
@@ -66,6 +67,7 @@
       {{ attempted_email }}
     </div>
     {% endif %}
+    <p class="mt-4"><a href="/help" class="text-v4-red hover:underline">Veja o guia de onboarding</a></p>
   {% endif %}
 
   {% if current_user %}

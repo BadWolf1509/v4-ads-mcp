@@ -105,3 +105,14 @@ async def test_invalid_cookie_redirects_to_login(client: AsyncClient):
     )
     assert response.status_code == 302
     assert response.headers["location"] == "/login"
+
+
+@pytest.mark.integration
+async def test_access_denied_meta_state_invalid_shows_friendly_message(client: AsyncClient):
+    """B3: internal meta OAuth error codes must NOT be shown raw; friendly PT-BR message instead."""
+    response = await client.get("/access-denied?reason=meta_state_invalid")
+    assert response.status_code == 200
+    assert "Reason:" not in response.text
+    assert "Ocorreu um erro inesperado durante a autenticação" in response.text
+    # Raw reason is preserved in an HTML comment for debugging, not in visible content.
+    assert "<!-- reason: meta_state_invalid -->" in response.text

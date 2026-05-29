@@ -259,7 +259,6 @@ async def dashboard(
             "calls_today": calls_today,
             "calls_sparkline": sparkline_values,
             "recent_calls": [dict(r) for r in recent],
-            "unidade_label": "—",  # placeholder until sub-project 2 ships
             "admin_ops": admin_ops,
         },
     )
