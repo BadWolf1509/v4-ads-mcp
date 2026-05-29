@@ -171,23 +171,27 @@ async def export_csv_rows(
     csv.writer(buf).writerow(header)
     yield buf.getvalue()
 
-    async for row in conn.cursor(sql, *params):
-        buf = io.StringIO()
-        csv.writer(buf).writerow(
-            [
-                row["occurred_at"].isoformat() if row["occurred_at"] else "",
-                row["email"] or "",
-                row["operation"] or "",
-                row["customer_id"] or "",
-                row["action_type"] or "",
-                row["status"] or "",
-                row["target_count"] if row["target_count"] is not None else "",
-                row["duration_ms"] if row["duration_ms"] is not None else "",
-                row["error_message"] or "",
-                row["provider_request_id"] or "",
-            ]
-        )
-        yield buf.getvalue()
+    # asyncpg server-side cursors MUST run inside an explicit transaction.
+    # (Pre-existing bug surfaced by the first test to actually iterate this
+    # generator: NoActiveSQLTransactionError without this wrapper.)
+    async with conn.transaction():
+        async for row in conn.cursor(sql, *params):
+            buf = io.StringIO()
+            csv.writer(buf).writerow(
+                [
+                    row["occurred_at"].isoformat() if row["occurred_at"] else "",
+                    row["email"] or "",
+                    row["operation"] or "",
+                    row["customer_id"] or "",
+                    row["action_type"] or "",
+                    row["status"] or "",
+                    row["target_count"] if row["target_count"] is not None else "",
+                    row["duration_ms"] if row["duration_ms"] is not None else "",
+                    row["error_message"] or "",
+                    row["provider_request_id"] or "",
+                ]
+            )
+            yield buf.getvalue()
 
 
 async def list_for_manager(
