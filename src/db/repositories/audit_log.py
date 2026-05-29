@@ -125,23 +125,26 @@ async def export_csv_rows(
     days: int = 7,
 ) -> AsyncIterator[str]:
     """Yield CSV lines (header + data) for streaming response."""
-    where = ["occurred_at > now() - ($1 || ' days')::interval"]
+    # All WHERE clauses qualified with the `al` alias: the SELECT joins `managers m`,
+    # which ALSO has a `status` column → unqualified `status` is ambiguous (asyncpg
+    # AmbiguousColumnError). Qualify everything for safety/consistency with the SELECT.
+    where = ["al.occurred_at > now() - ($1 || ' days')::interval"]
     params: list[Any] = [str(days)]
     idx = 2
     if manager_id is not None:
-        where.append(f"manager_id = ${idx}")
+        where.append(f"al.manager_id = ${idx}")
         params.append(manager_id)
         idx += 1
     if customer_id:
-        where.append(f"customer_id = ${idx}")
+        where.append(f"al.customer_id = ${idx}")
         params.append(customer_id)
         idx += 1
     if action_type and action_type != "all":
-        where.append(f"action_type = ${idx}")
+        where.append(f"al.action_type = ${idx}")
         params.append(action_type)
         idx += 1
     if status and status != "all":
-        where.append(f"status = ${idx}")
+        where.append(f"al.status = ${idx}")
         params.append(status)
         idx += 1
     sql = f"""SELECT al.occurred_at, m.email, al.operation, al.customer_id,
