@@ -42,11 +42,6 @@
        value="{{ value }}" placeholder="{{ placeholder }}" aria-label="{{ aria_label }}" {{ attrs|safe }}>
 {% endmacro %}
 
-{% macro textarea(name, value="", placeholder="", rows=4, attrs="") %}
-<textarea name="{{ name }}" class="v4-textarea" rows="{{ rows }}"
-          placeholder="{{ placeholder }}" {{ attrs|safe }}>{{ value }}</textarea>
-{% endmacro %}
-
 {% macro checkbox(name, label, checked=false, value="true", attrs="") %}
 <label class="v4-check">
   <input type="checkbox" name="{{ name }}" value="{{ value }}"
@@ -61,20 +56,6 @@
          {% if checked %}checked{% endif %} {{ attrs|safe }}>
   <span>{{ label }}</span>
 </label>
-{% endmacro %}
-
-{% macro card(title=None, action=None, variant="default", body="") %}
-  {%- set classes = "v4-card" -%}
-  {%- if variant != "default" %}{% set classes = classes ~ " v4-card--" ~ variant %}{% endif -%}
-  <div class="{{ classes }}">
-    {% if title or action %}
-    <div class="v4-card__header">
-      {% if title %}<h3 class="v4-card__title">{{ title }}</h3>{% endif %}
-      {% if action %}<div class="v4-card__action">{{ action|safe }}</div>{% endif %}
-    </div>
-    {% endif %}
-    {{ body|safe }}
-  </div>
 {% endmacro %}
 
 {% macro button(label, variant="primary", size="md", type="button", loading=false, icon=None, extra_classes="", attrs="") %}
@@ -154,33 +135,6 @@
   {% if body %}<div class="v4-empty__body">{{ body|safe }}</div>{% endif %}
   {% if action %}<div>{{ action|safe }}</div>{% endif %}
 </div>
-{% endmacro %}
-
-{% macro skeleton_row(width="100%", height="16px") %}
-<div class="v4-skeleton" style="width: {{ width }}; height: {{ height }};"></div>
-{% endmacro %}
-
-{% macro skeleton_table(columns=4, rows=5) %}
-<div class="v4-skeleton-table" aria-busy="true" aria-live="polite">
-  {% for r in range(rows) %}
-  <div style="display: grid; grid-template-columns: repeat({{ columns }}, 1fr); gap: 12px; padding: 8px 0;">
-    {% for c in range(columns) %}
-      <div class="v4-skeleton" style="height: 14px;"></div>
-    {% endfor %}
-  </div>
-  {% endfor %}
-</div>
-{% endmacro %}
-
-{% macro confirm_button(label, post_url, message, title="Confirmar?", ok_label="Confirmar", kind="danger", target=None, swap=None) %}
-<button type="button" class="v4-btn v4-btn--small v4-btn--{{ kind }}"
-        onclick='openConfirm({
-          title: {{ title|tojson }},
-          message: {{ message|tojson }},
-          okLabel: {{ ok_label|tojson }},
-          kind: {{ kind|tojson }},
-          onConfirm: () => htmx.ajax("POST", {{ post_url|tojson }}, {{ ("{ target: '" ~ target ~ "', swap: '" ~ (swap or "outerHTML") ~ "' }") if target else "{}" }})
-        })'>{{ label }}</button>
 {% endmacro %}
 
 {% macro modal(id, title, body, footer=None) %}

@@ -2,8 +2,7 @@
 
 F48: facebook_business v21 FacebookAdsApi.__init__ aceita só
 (session, api_version, enable_debug_logger) — NÃO access_token/app_id/app_secret
-kwargs direto. Testing gap em M.2a: integration tests mockam run_meta_graph_get,
-nunca exercise real build_meta_api_for_manager → TypeError surface só em smoke real.
+kwargs direto.
 
 Mitigation: extract build_facebook_ads_api() pure factory + unit test direto.
 Garante que factory pattern não regride se facebook_business upgrade no futuro
@@ -18,8 +17,6 @@ from src.meta_ads.client import (
     META_GRAPH_API_VERSION,
     MetaAccessDeniedError,
     MetaSystemUserTokenMissingError,
-    MetaTokenExpiredError,
-    NoMetaConnectionError,
     build_facebook_ads_api,
     build_meta_api,
 )
@@ -130,17 +127,6 @@ def test_facebook_ads_api_signature_accepts_session_kwarg():
     session = FacebookSession(app_id="a", app_secret="b", access_token="c")
     api = FacebookAdsApi(session=session, api_version="v22.0")
     assert isinstance(api, FacebookAdsApi)
-
-
-# Sanity tests pra error classes (used as module-level imports in tools)
-
-
-def test_no_meta_connection_error_is_exception():
-    assert issubclass(NoMetaConnectionError, Exception)
-
-
-def test_meta_token_expired_error_is_exception():
-    assert issubclass(MetaTokenExpiredError, Exception)
 
 
 # Tests for build_meta_api (Modelo B — system-user token, no per-manager DB lookup)

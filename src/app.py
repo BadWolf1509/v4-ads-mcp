@@ -4,7 +4,9 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import JSONResponse, RedirectResponse, Response
 
 from src.config import get_settings
 from src.db import connection
@@ -72,6 +74,32 @@ def create_app(skip_db_init: bool = False) -> FastAPI:
     from src.web.routes import router as web_router
 
     app.include_router(web_router)
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> Response:
+        # 3xx: preserve redirect (e.g. 302→/login from current_manager dep).
+        if 300 <= exc.status_code < 400:
+            location = (exc.headers or {}).get("Location", "/")
+            return RedirectResponse(url=location, status_code=exc.status_code)
+
+        # MCP + OAuth paths: JSON error (machine consumers).
+        if request.url.path.startswith(("/mcp", "/oauth")):
+            return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+
+        # Browser panel: friendly error page.
+        from src.web.routes import templates  # noqa: PLC0415
+
+        friendly: dict[str, str | int | None] = {
+            "current_user": None,
+            "title": "Não encontrado" if exc.status_code == 404 else "Algo deu errado",
+            "message": exc.detail or "Tente novamente em alguns segundos.",
+        }
+        return templates.TemplateResponse(
+            request,
+            "error.html",
+            friendly,
+            status_code=exc.status_code,
+        )
 
     return app
 
