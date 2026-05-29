@@ -78,6 +78,10 @@ async def test_apply_change_executes_mutation(db, session_ctx):
 
     with (
         patch(
+            "src.google_ads.mutations.ensure_account_access",
+            AsyncMock(return_value=None),
+        ),
+        patch(
             "src.google_ads.mutations.build_client_for_manager",
             AsyncMock(return_value=fake_client),
         ),
