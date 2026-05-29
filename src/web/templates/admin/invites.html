@@ -4,7 +4,7 @@
 {% block title %}Admin / Convites — V4 Ads MCP{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl">
+<section class="max-w-4xl mx-auto py-6 px-4">
   <h1>Convites</h1>
   <p class="text-v4-gray-700 mb-6">
     Adicione gestores pelo email <code>@v4company.com</code> antes do primeiro login deles. Sem convite, o login é rejeitado.
@@ -61,5 +61,5 @@
       {{ empty_state("Nenhum convite pendente", "Use o formulário acima pra convidar um novo gestor.") }}
     {% endif %}
   </div>
-</div>
+</section>
 {% endblock %}

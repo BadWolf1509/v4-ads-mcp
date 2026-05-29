@@ -8,6 +8,7 @@
     <h1 class="text-3xl font-extrabold tracking-tight">Acessos por gestor</h1>
     <p class="text-sm text-v4-gray-700">Visão list-friendly pra mobile. <a href="/admin/access" class="underline">matriz completa →</a></p>
   </header>
+  {% include "admin/_access_tabs.html" %}
 
   {% for m in managers_with_counts %}
   <a href="/admin/access/{{ m.id }}"
