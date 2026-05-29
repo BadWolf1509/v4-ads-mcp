@@ -89,10 +89,22 @@ def create_app(skip_db_init: bool = False) -> FastAPI:
         # Browser panel: friendly error page.
         from src.web.routes import templates  # noqa: PLC0415
 
+        # Starlette's default details are English ("Not Found", "Method Not Allowed",
+        # "Internal Server Error"). Replace those generic strings with PT-BR; keep our
+        # own custom PT-BR details (e.g. "Sessão não encontrada") untouched.
+        generic_details = {"Not Found", "Method Not Allowed", "Internal Server Error", "Forbidden"}
+        detail = exc.detail
+        if exc.status_code == 404 and (not detail or detail in generic_details):
+            message = "A página que você procura não existe ou foi movida."
+        elif not detail or detail in generic_details:
+            message = "Tente novamente em alguns segundos."
+        else:
+            message = str(detail)
+
         friendly: dict[str, str | int | None] = {
             "current_user": None,
             "title": "Não encontrado" if exc.status_code == 404 else "Algo deu errado",
-            "message": exc.detail or "Tente novamente em alguns segundos.",
+            "message": message,
         }
         return templates.TemplateResponse(
             request,

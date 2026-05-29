@@ -12,12 +12,15 @@ _SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 # HMAC signed_request) and the MCP endpoint (Bearer-token auth, not cookie).
 _CSRF_EXEMPT_PREFIXES = ("/oauth/", "/mcp")
 
-# External origins loaded by _base.html (verified 2026-05-28):
+# Complete inventory of external origins the panel loads (verified 2026-05-29 via
+# grep of templates + static; promoted from Report-Only to enforcing after smoke
+# confirmed zero CSP violations in the browser console across all panel pages):
 #   - https://cdn.tailwindcss.com  → script (Play CDN, needs 'unsafe-eval')
-#   - https://unpkg.com            → script (htmx.org@2.0.3)
+#   - https://unpkg.com            → script (htmx.org@2.0.3, SRI-pinned)
 #   - https://fonts.bunny.net      → stylesheet (@import in v4-base.css) + font files
 # No Google Fonts, no image CDNs. All other assets are self-hosted under /static/.
-_CSP_REPORT_ONLY = (
+# Inline <script>/<style> blocks are covered by 'unsafe-inline'/'unsafe-eval'.
+_CSP_POLICY = (
     "default-src 'self'; "
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com; "
     "style-src 'self' 'unsafe-inline' https://fonts.bunny.net; "
@@ -30,8 +33,10 @@ _CSP_REPORT_ONLY = (
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Set security headers on every response.
 
-    CSP is Report-Only (not enforcing) so an overly-tight policy cannot break
-    the UI. Promote to Content-Security-Policy once violations stabilise.
+    CSP is enforced (not Report-Only): the policy was validated against the full
+    external-origin inventory + browser-console smoke (zero violations) before
+    promotion. If a new external resource is added, update _CSP_POLICY in the
+    same commit or it will be blocked.
     """
 
     async def dispatch(
@@ -42,7 +47,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
         resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
-        resp.headers.setdefault("Content-Security-Policy-Report-Only", _CSP_REPORT_ONLY)
+        resp.headers.setdefault("Content-Security-Policy", _CSP_POLICY)
         return resp
 
 

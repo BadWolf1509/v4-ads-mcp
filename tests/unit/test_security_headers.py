@@ -29,17 +29,17 @@ async def test_security_headers_present() -> None:
     assert r.headers["x-content-type-options"] == "nosniff"
     assert "referrer-policy" in r.headers
     assert "strict-transport-security" in r.headers
-    # CSP is report-only (so it can't break the UI)
-    assert "content-security-policy-report-only" in r.headers
-    assert "content-security-policy" not in r.headers  # NOT enforcing yet
+    # CSP is now enforced (validated against the full origin inventory + smoke).
+    assert "content-security-policy" in r.headers
+    assert "content-security-policy-report-only" not in r.headers  # no longer report-only
 
 
 @pytest.mark.asyncio
-async def test_security_headers_csp_report_only_value() -> None:
-    """CSP-Report-Only must reference known safe origins."""
+async def test_security_headers_csp_value() -> None:
+    """Enforced CSP must reference the known safe origins."""
     async with AsyncClient(transport=ASGITransport(app=_app()), base_url="http://t") as c:
         r = await c.get("/x")
-    csp = r.headers["content-security-policy-report-only"]
+    csp = r.headers["content-security-policy"]
     assert "default-src" in csp
     assert "script-src" in csp
     assert "https://cdn.tailwindcss.com" in csp
