@@ -19,10 +19,10 @@
     <table class="v4-table v4-table--compact">
       <thead>
         <tr>
-          <th>Email Google</th>
-          <th>Conectada em</th>
-          <th>Status</th>
-          <th></th>
+          <th scope="col">Email Google</th>
+          <th scope="col">Conectada em</th>
+          <th scope="col">Status</th>
+          <th scope="col"></th>
         </tr>
       </thead>
       <tbody>
@@ -61,7 +61,7 @@
     </div>
     {% if accounts %}
       <div class="mb-3">
-        {{ search_input("acc-search", placeholder="Buscar por nome ou ID da conta...", attrs='oninput="filterAccounts()"') }}
+        {{ search_input("acc-search", placeholder="Buscar por nome ou ID da conta...", attrs='oninput="filterAccounts()"', aria_label="Buscar conta Google Ads por nome ou ID") }}
       </div>
       <table class="v4-table v4-table--compact" id="accounts-table">
         <thead>
@@ -98,7 +98,7 @@
   </div>
 
   <div class="v4-card mt-6">
-    <h2 class="text-xl font-bold mb-3">Contas Meta Ads acessíveis ({{ meta_accounts|length }})</h2>
+    <div class="v4-card__header"><h3 class="v4-card__title">Contas Meta Ads acessíveis ({{ meta_accounts|length }})</h3></div>
     {% if not meta_accounts %}
       {{ alert("Nenhuma conta Meta liberada ainda. Peça ao admin da sua unidade.", "info") }}
     {% else %}

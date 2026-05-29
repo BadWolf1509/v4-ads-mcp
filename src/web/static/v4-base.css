@@ -171,6 +171,7 @@ main {
 @media (max-width: 767px) {
   .v4-header__hamburger { display: block; }
   .v4-header__nav { display: none; }
+  .v4-header__user { display: none; }
 }
 
 /* Mobile drawer */

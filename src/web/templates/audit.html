@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_components.html" import badge, empty_state, pagination %}
+{% from "_components.html" import badge, empty_state, pagination, tooltip %}
 
 {% block title %}Audit log — V4 Ads MCP{% endblock %}
 
@@ -73,7 +73,7 @@
             <th scope="col">Conta</th>
             <th scope="col">Tipo</th>
             <th scope="col">Status</th>
-            <th scope="col" title="Número de entidades afetadas pela operação">Alvos</th>
+            <th scope="col">{{ tooltip("Número de entidades afetadas pela operação", "Alvos") }}</th>
             <th scope="col">Duração</th>
             <th scope="col"></th>
           </tr>

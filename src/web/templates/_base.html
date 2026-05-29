@@ -51,13 +51,13 @@
 
     {% if current_user %}
     <nav class="v4-header__nav">
-      <a href="/">Dashboard</a>
-      <a href="/accounts">Contas</a>
-      <a href="/sessions">Sessões</a>
-      <a href="/audit">Audit</a>
-      <a href="/help">Help</a>
+      <a href="/" {% if request.url.path == "/" %}aria-current="page"{% endif %}>Dashboard</a>
+      <a href="/accounts" {% if request.url.path == "/accounts" %}aria-current="page"{% endif %}>Contas</a>
+      <a href="/sessions" {% if request.url.path.startswith("/sessions") %}aria-current="page"{% endif %}>Sessões</a>
+      <a href="/audit" {% if request.url.path.startswith("/audit") %}aria-current="page"{% endif %}>Audit</a>
+      <a href="/help" {% if request.url.path == "/help" %}aria-current="page"{% endif %}>Help</a>
       {% if current_user.is_admin %}
-      <a href="/admin">Admin</a>
+      <a href="/admin" {% if request.url.path.startswith("/admin") %}aria-current="page"{% endif %}>Admin</a>
       {% endif %}
     </nav>
     <div class="v4-header__user">
