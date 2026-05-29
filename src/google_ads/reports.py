@@ -187,14 +187,15 @@ async def lookup_country_names(
 async def execute_gaql_raw(
     *,
     manager_id: UUID,
+    session_id: UUID,
     customer_id: str,
     query: str,
     estimated_ops: int = 1,
 ) -> list[dict[str, Any]]:
     """Run a GAQL query and return rows as plain dicts of field paths to values.
 
-    Used by `run_gaql` utility tool; no formatter, no audit (audit is added by the
-    tool itself since it's a sensitive escape hatch).
+    Used by `run_gaql` utility tool; no formatter. Always audited — run_gaql is
+    a sensitive escape hatch and every successful call must appear in the audit log.
     """
 
     def _flatten(row: Any) -> dict[str, Any]:
@@ -205,11 +206,11 @@ async def execute_gaql_raw(
 
     return await run_report(
         manager_id=manager_id,
-        session_id=manager_id,  # session_id used only for audit; ignored when audit_this_call=False
+        session_id=session_id,
         customer_id=customer_id,
         query=query,
         row_formatter=_flatten,
         operation_name="run_gaql",
         estimated_ops=estimated_ops,
-        audit_this_call=False,
+        audit_this_call=True,
     )

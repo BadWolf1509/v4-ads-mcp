@@ -43,6 +43,9 @@ async def resolve_session_to_context(authorization_header: str | None) -> McpReq
         session = await mcp_sessions.find_by_hash(conn, token_hash)
         if session is None:
             raise UnauthorizedError("Session not found, expired, or revoked")
+        m = await managers.get_by_id(conn, session.manager_id)
+        if m is None or not m.is_active:
+            raise UnauthorizedError("Manager inactive or not found")
         # Touch last_used_at + manager.last_seen_at in same connection.
         await mcp_sessions.touch_last_used(conn, session.id)
         await managers.touch_last_seen(conn, session.manager_id)

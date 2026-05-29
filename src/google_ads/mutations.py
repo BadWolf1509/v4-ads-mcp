@@ -306,6 +306,16 @@ async def run_recommendation_action(
 
     try:
         async with pool.acquire() as conn:
+            await ensure_account_access(
+                conn,
+                manager_id=manager_id,
+                customer_id=customer_id,
+                session_id=session_id,
+                operation_name=operation_type,
+                level="write",
+            )
+
+        async with pool.acquire() as conn:
             await before_call(conn, token_id, estimated_ops=1)
 
         client = await build_client_for_manager(manager_id=manager_id)

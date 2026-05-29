@@ -64,6 +64,7 @@ async def run_gaql(args: dict[str, Any]) -> dict[str, Any]:
 
     rows = await execute_gaql_raw(
         manager_id=ctx.manager_id,
+        session_id=ctx.session_id,
         customer_id=customer_id,
         query=query,
     )
