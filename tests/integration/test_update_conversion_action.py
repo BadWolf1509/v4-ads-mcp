@@ -13,7 +13,7 @@ import pytest
 from testcontainers.postgres import PostgresContainer
 
 from src.db import connection, migrate
-from src.db.repositories import managers, mcp_sessions
+from src.db.repositories import google_ads_accounts, manager_account_access, managers, mcp_sessions
 from src.mcp.context import McpRequestContext, clear_current, set_current
 
 
@@ -45,6 +45,16 @@ async def session_ctx(db):
         token = generate_session_token()
         sess = await mcp_sessions.create(
             conn, manager_id=mid, token_hash=hash_session_token(token), label="t"
+        )
+    # Seed google_ads_accounts + grant write access so ensure_account_access passes.
+    # This file uses customer_id="1163862076" (not the default 1234567890).
+    async with pool.acquire() as conn:
+        await google_ads_accounts.upsert_many(
+            conn,
+            [{"customer_id": "1163862076", "mcc_id": "0000000000", "descriptive_name": "Test"}],
+        )
+        await manager_account_access.grant(
+            conn, manager_id=mid, customer_id="1163862076", access_level="write", granted_by=mid
         )
     ctx = McpRequestContext(manager_id=mid, session_id=sess.id)
     set_current(ctx)
