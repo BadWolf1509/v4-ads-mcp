@@ -61,12 +61,12 @@
     </div>
     {% if accounts %}
       <div class="mb-3">
-        {{ search_input("acc-search", placeholder="Buscar nome ou customer_id...", attrs='oninput="filterAccounts()"') }}
+        {{ search_input("acc-search", placeholder="Buscar por nome ou ID da conta...", attrs='oninput="filterAccounts()"') }}
       </div>
       <table class="v4-table v4-table--compact" id="accounts-table">
         <thead>
           <tr>
-            <th>Customer ID</th>
+            <th scope="col">ID da conta</th>
             <th>Nome</th>
             <th>Moeda</th>
             <th>Fuso</th>
@@ -94,6 +94,36 @@
       </script>
     {% else %}
       {{ alert("Você não tem acesso a nenhuma conta ainda. Peça pro admin V4 da sua unidade liberar acessos em /admin/access.", "warning") }}
+    {% endif %}
+  </div>
+
+  <div class="v4-card mt-6">
+    <h2 class="text-xl font-bold mb-3">Contas Meta Ads acessíveis ({{ meta_accounts|length }})</h2>
+    {% if not meta_accounts %}
+      {{ alert("Nenhuma conta Meta liberada ainda. Peça ao admin da sua unidade.", "info") }}
+    {% else %}
+    <div class="overflow-x-auto">
+      <table class="v4-table v4-table--compact">
+        <thead>
+          <tr>
+            <th scope="col">Conta</th>
+            <th scope="col">Cliente</th>
+            <th scope="col">Status</th>
+            <th scope="col">Moeda</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in meta_accounts %}
+          <tr>
+            <td><strong>{{ a.account_name }}</strong><div class="text-xs font-mono text-v4-gray-300">{{ a.ad_account_id }}</div></td>
+            <td>{{ a.business_name or "—" }}</td>
+            <td>{% if a.account_status == 1 %}<span class="text-v4-green">● {{ a.account_status | meta_status_label }}</span>{% else %}<span class="text-v4-red-medium">● {{ a.account_status | meta_status_label }}</span>{% endif %}</td>
+            <td>{{ a.currency or "—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     {% endif %}
   </div>
 </section>

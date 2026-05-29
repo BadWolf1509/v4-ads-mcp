@@ -431,6 +431,7 @@ async def accounts_page(
             user.id,
         )
         accounts = await manager_account_access.list_accounts_for_manager(conn, user.id)
+        meta_accounts = await manager_meta_account_access.list_accounts_for_manager(conn, user.id)
 
     return templates.TemplateResponse(
         request,
@@ -439,6 +440,7 @@ async def accounts_page(
             "current_user": user,
             "connections": [dict(r) for r in all_conns],
             "accounts": accounts,
+            "meta_accounts": meta_accounts,
         },
     )
 
