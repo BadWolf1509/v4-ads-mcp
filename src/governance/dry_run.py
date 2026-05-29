@@ -19,6 +19,8 @@ from uuid import UUID
 
 import asyncpg
 
+from src.google_ads.access import ensure_account_access
+
 DEFAULT_TTL_MINUTES = 10
 _TOKEN_ALPHABET = string.ascii_uppercase + string.digits  # 36 chars
 _TOKEN_LEN = 8
@@ -45,6 +47,7 @@ def generate_token() -> str:
 async def create_pending(
     conn: asyncpg.Connection,
     *,
+    manager_id: UUID,
     session_id: UUID,
     customer_id: str,
     operation_type: str,
@@ -52,7 +55,19 @@ async def create_pending(
     blast_summary: str,
     ttl_minutes: int = DEFAULT_TTL_MINUTES,
 ) -> str:
-    """Persist a pending confirmation. Returns the token."""
+    """Persist a pending confirmation. Returns the token.
+
+    Gates per-account access first: a manager cannot even PREVIEW (mint a token
+    for) an account they weren't granted.
+    """
+    await ensure_account_access(
+        conn,
+        manager_id=manager_id,
+        customer_id=customer_id,
+        session_id=session_id,
+        operation_name=operation_type,
+        level="write",
+    )
     # Loop on collision (extremely unlikely with 36^8 space + 10min TTL).
     for _ in range(5):
         token = generate_token()

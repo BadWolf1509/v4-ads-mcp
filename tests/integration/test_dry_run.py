@@ -1,5 +1,6 @@
 """dry_run module integration tests against testcontainers Postgres."""
 
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
@@ -46,7 +47,7 @@ async def session_id(db):
         sess = await mcp_sessions.create(
             conn, manager_id=mid, token_hash=hash_session_token(token), label="t"
         )
-        yield sess.id
+        yield sess.id, mid
 
 
 @pytest.mark.integration
@@ -61,20 +62,23 @@ async def test_generate_token_format() -> None:
 
 @pytest.mark.integration
 async def test_create_and_consume_roundtrip(db, session_id) -> None:
+    sid, mid = session_id
     pool = db
-    async with pool.acquire() as conn:
-        token = await create_pending(
-            conn,
-            session_id=session_id,
-            customer_id="1234567890",
-            operation_type="update_campaign_budget",
-            payload={"campaign_id": "111", "new_amount_micros": 100_000_000},
-            blast_summary="Budget mudara de R$ 50 pra R$ 100",
-        )
-        assert len(token) == 8
+    with patch("src.governance.dry_run.ensure_account_access", AsyncMock(return_value=None)):
+        async with pool.acquire() as conn:
+            token = await create_pending(
+                conn,
+                manager_id=mid,
+                session_id=sid,
+                customer_id="1234567890",
+                operation_type="update_campaign_budget",
+                payload={"campaign_id": "111", "new_amount_micros": 100_000_000},
+                blast_summary="Budget mudara de R$ 50 pra R$ 100",
+            )
+            assert len(token) == 8
 
     async with pool.acquire() as conn:
-        result = await consume(conn, token=token, session_id=session_id)
+        result = await consume(conn, token=token, session_id=sid)
         assert isinstance(result, ConsumeResult)
         assert result.customer_id == "1234567890"
         assert result.operation_type == "update_campaign_budget"
@@ -83,7 +87,7 @@ async def test_create_and_consume_roundtrip(db, session_id) -> None:
     # Second consume must fail (already consumed)
     async with pool.acquire() as conn:
         with pytest.raises(InvalidTokenError, match="already consumed"):
-            await consume(conn, token=token, session_id=session_id)
+            await consume(conn, token=token, session_id=sid)
 
 
 @pytest.mark.integration
@@ -97,17 +101,20 @@ async def test_consume_rejects_unknown_token(db, session_id) -> None:
 @pytest.mark.integration
 async def test_consume_rejects_wrong_session(db, session_id) -> None:
     """Token from session A can't be applied by session B."""
+    sid, mid = session_id
     pool = db
     other_session = uuid4()
-    async with pool.acquire() as conn:
-        token = await create_pending(
-            conn,
-            session_id=session_id,
-            customer_id="1234567890",
-            operation_type="update_campaign_budget",
-            payload={},
-            blast_summary="...",
-        )
+    with patch("src.governance.dry_run.ensure_account_access", AsyncMock(return_value=None)):
+        async with pool.acquire() as conn:
+            token = await create_pending(
+                conn,
+                manager_id=mid,
+                session_id=sid,
+                customer_id="1234567890",
+                operation_type="update_campaign_budget",
+                payload={},
+                blast_summary="...",
+            )
 
     async with pool.acquire() as conn:
         with pytest.raises(InvalidTokenError, match="session"):
@@ -117,22 +124,25 @@ async def test_consume_rejects_wrong_session(db, session_id) -> None:
 @pytest.mark.integration
 async def test_consume_rejects_expired_token(db, session_id) -> None:
     """Tokens older than 10 minutes can't be applied."""
+    sid, mid = session_id
     pool = db
-    async with pool.acquire() as conn:
-        token = await create_pending(
-            conn,
-            session_id=session_id,
-            customer_id="1234567890",
-            operation_type="update_campaign_budget",
-            payload={},
-            blast_summary="...",
-        )
-        # Manually expire it
-        await conn.execute(
-            "UPDATE pending_confirmations SET expires_at = now() - interval '1 minute' WHERE token = $1",
-            token,
-        )
+    with patch("src.governance.dry_run.ensure_account_access", AsyncMock(return_value=None)):
+        async with pool.acquire() as conn:
+            token = await create_pending(
+                conn,
+                manager_id=mid,
+                session_id=sid,
+                customer_id="1234567890",
+                operation_type="update_campaign_budget",
+                payload={},
+                blast_summary="...",
+            )
+            # Manually expire it
+            await conn.execute(
+                "UPDATE pending_confirmations SET expires_at = now() - interval '1 minute' WHERE token = $1",
+                token,
+            )
 
     async with pool.acquire() as conn:
         with pytest.raises(InvalidTokenError, match="expired"):
-            await consume(conn, token=token, session_id=session_id)
+            await consume(conn, token=token, session_id=sid)

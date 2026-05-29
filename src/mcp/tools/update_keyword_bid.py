@@ -182,6 +182,7 @@ async def update_keyword_bid(args: dict[str, Any]) -> dict[str, Any]:
     async with pool.acquire() as conn:
         token = await create_pending(
             conn,
+            manager_id=ctx.manager_id,
             session_id=ctx.session_id,
             customer_id=customer_id,
             operation_type="update_keyword_bid",

@@ -53,19 +53,21 @@ async def test_apply_change_executes_mutation(db, session_ctx):
     from src.mcp.tools.apply_change import apply_change
 
     pool = db
-    async with pool.acquire() as conn:
-        token = await create_pending(
-            conn,
-            session_id=session_ctx.session_id,
-            customer_id="1234567890",
-            operation_type="update_campaign_status",
-            payload={
-                "campaign_ids": ["111"],
-                "new_status": "PAUSED",
-                "__target_count__": 1,
-            },
-            blast_summary="Pausar campanha 111",
-        )
+    with patch("src.governance.dry_run.ensure_account_access", AsyncMock(return_value=None)):
+        async with pool.acquire() as conn:
+            token = await create_pending(
+                conn,
+                manager_id=session_ctx.manager_id,
+                session_id=session_ctx.session_id,
+                customer_id="1234567890",
+                operation_type="update_campaign_status",
+                payload={
+                    "campaign_ids": ["111"],
+                    "new_status": "PAUSED",
+                    "__target_count__": 1,
+                },
+                blast_summary="Pausar campanha 111",
+            )
 
     fake_client = MagicMock()
     fake_service = MagicMock()
