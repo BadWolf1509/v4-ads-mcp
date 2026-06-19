@@ -3,19 +3,19 @@
 Usage (run from project root with venv active):
 
   # Bootstrap admin (idempotent — uses email as upsert key)
-  python -m src.scripts.admin bootstrap-admin --email wellinton@v4company.com --name "Wellinton Ribeiro"
+  python -m src.scripts.admin bootstrap-admin --email wellington.ribeiro@v4company.com --name "Wellington Ribeiro"
 
   # Generate the invite URL for a manager to do OAuth
-  python -m src.scripts.admin invite --email wellinton@v4company.com [--base-url https://...]
+  python -m src.scripts.admin invite --email wellington.ribeiro@v4company.com [--base-url https://...]
 
   # Grant a manager access to all currently-active accounts
-  python -m src.scripts.admin grant-all --email wellinton@v4company.com
+  python -m src.scripts.admin grant-all --email wellington.ribeiro@v4company.com
 
   # Create an MCP session token (printed once)
-  python -m src.scripts.admin create-session --email wellinton@v4company.com --label "Claude Desktop"
+  python -m src.scripts.admin create-session --email wellington.ribeiro@v4company.com --label "Claude Desktop"
 
   # List sessions for a manager
-  python -m src.scripts.admin list-sessions --email wellinton@v4company.com
+  python -m src.scripts.admin list-sessions --email wellington.ribeiro@v4company.com
 
 DATABASE_URL must be set in env (e.g. via Secret Manager fetch).
 """

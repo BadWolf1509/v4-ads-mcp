@@ -8,9 +8,9 @@ Interno only, não SaaS, sem terceiros. Substitui Supermetrics.
 
 - **Production:** `https://v4-ads-mcp-jf26mmrgqa-rj.a.run.app`
 - **MCC Google Ads:** `6436352492` (V4 Maceió, 25 client accounts)
-- **BM Meta Ads:** V4 Lima Soares & Co (12 ad accounts; execução via **system-user token** compartilhado — Modelo B)
+- **BM Meta Ads:** V4 Lima Soares & Co (22 ad accounts; execução via **system-user token** compartilhado — Modelo B)
 - **Unidade operacional:** V4 Lima Soares & Co (João Pessoa, PB) — Wellington dev + 3 colaboradores futuros
-- **Admin:** `wellinton.ribeiro@v4company.com`
+- **Admin:** `wellington.ribeiro@v4company.com`
 
 ## Stack
 

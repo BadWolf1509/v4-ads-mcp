@@ -104,6 +104,19 @@ async def run() -> int:
 
         log.info("resync_complete", upserted=n, deactivated=deactivated)
         print(f"OK: upserted {n} accounts, deactivated {deactivated}")
+
+        # Piggyback: refresh do inventário Meta no MESMO job/scheduler, pra conta
+        # nova aparecer zero-touch. Best-effort — falha Meta não quebra o resync
+        # Google (e é no-op se o system-user token não estiver no job).
+        try:
+            from src.jobs.meta_resync import resync_meta
+
+            n_meta = await resync_meta()
+            print(f"OK: Meta upserted {n_meta} accounts")
+        except Exception as e:  # noqa: BLE001
+            log.warning("resync_meta_failed", error=str(e))
+            print(f"WARN: Meta resync falhou (non-fatal): {e}", file=sys.stderr)
+
         return 0
     finally:
         await connection.close_pool()
