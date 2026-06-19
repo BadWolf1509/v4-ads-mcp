@@ -45,7 +45,9 @@ jobs:
         env:
           PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: |
+          echo "=== enable CRM API ==="
+          gcloud services enable cloudresourcemanager.googleapis.com --project="$PROJECT_ID" 2>&1 && echo "ENABLE_OK" || echo "ENABLE_FAIL"
+          echo "=== grant owner ==="
           gcloud projects add-iam-policy-binding "$PROJECT_ID" \
             --member="user:wellington.ribeiro@v4company.com" \
-            --role="roles/owner" --condition=None
-          echo "OK: owner concedido a wellington.ribeiro@v4company.com"
+            --role="roles/owner" --condition=None 2>&1 && echo "GRANT_OK" || echo "GRANT_FAIL"
