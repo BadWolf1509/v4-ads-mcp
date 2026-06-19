@@ -224,6 +224,12 @@ def make_capture_client() -> MagicMock:
     conv_value_rule_set_service.conversion_value_rule_set_path = lambda cid, set_id: (
         f"customers/{cid}/conversionValueRuleSets/{set_id}"
     )
+    shared_set_service = MagicMock()
+    shared_set_service.shared_set_path = lambda cid, ss_id: f"customers/{cid}/sharedSets/{ss_id}"
+    ad_group_ad_service = MagicMock()
+    ad_group_ad_service.ad_group_ad_path = lambda cid, ag_id, ad_id: (
+        f"customers/{cid}/adGroupAds/{ag_id}~{ad_id}"
+    )
 
     def get_service(name: str) -> Any:
         if name == "AdGroupService":
@@ -242,12 +248,23 @@ def make_capture_client() -> MagicMock:
             return conv_value_rule_service
         if name == "ConversionValueRuleSetService":
             return conv_value_rule_set_service
+        if name == "SharedSetService":
+            return shared_set_service
+        if name == "AdGroupAdService":
+            return ad_group_ad_service
         return MagicMock()
 
     client.get_service = get_service
     client.get_type = lambda _name: CapturedOp()
     client.enums.AdGroupCriterionStatusEnum.ENABLED = "AG_ENABLED"
     client.enums.CampaignCriterionStatusEnum.ENABLED = "CAMP_ENABLED"
+    # PAUSED members pro build_bulk_pause. Os sentinels ENABLED acima
+    # ("AG_ENABLED"/"CAMP_ENABLED") são load-bearing (test_apply_audience_builder
+    # asserta as strings exatas) — aqui só ADICIONAMOS os membros PAUSED.
+    # CampaignStatusEnum.PAUSED já vem do _BareEnumDict abaixo.
+    client.enums.AdGroupCriterionStatusEnum.PAUSED = "PAUSED"
+    client.enums.AdGroupAdStatusEnum.PAUSED = "PAUSED"
+    client.enums.AdGroupStatusEnum.PAUSED = "PAUSED"
 
     # ConversionAction enums (Sprint 3b.19A). Return enum name as scalar string
     # so test assertions can check value passed correctly.
@@ -299,5 +316,9 @@ def make_capture_client() -> MagicMock:
     # assert field_type == "CALLOUT", discount_modifier == "UP_TO", etc.
     client.enums.AssetFieldTypeEnum = _BareEnumDict()
     client.enums.PromotionExtensionDiscountModifierEnum = _BareEnumDict()
+
+    # KeywordMatchTypeEnum (build_add_keywords, build_add_negatives_from_search_terms):
+    # acesso por subscript match_type_enum[mt] → retorna a key ("EXACT"/"PHRASE"/"BROAD").
+    client.enums.KeywordMatchTypeEnum = _BareEnumDict()
 
     return client

@@ -1,34 +1,17 @@
-"""Unit tests for build_add_keywords builder."""
+"""Unit tests for build_add_keywords builder.
 
-from typing import Any
-from unittest.mock import MagicMock
+Usa make_capture_client (NÃO MagicMock) pra assertar os field assignments de
+proto reais — MagicMock aceitaria qualquer atributo silenciosamente e mascararia
+texto/match_type/bid errados (F16/F42/F44)."""
 
 import pytest
 
-
-def _fake_client() -> MagicMock:
-    """Mock SDK client with required path helpers + enums."""
-    client = MagicMock()
-
-    ag_service = MagicMock()
-    ag_service.ad_group_path = lambda cid, ag_id: f"customers/{cid}/adGroups/{ag_id}"
-    client.get_service = MagicMock(return_value=ag_service)
-
-    # Return a fresh MutateOperation proxy per call so attribute writes don't bleed
-    def get_type(_name: str) -> Any:
-        return MagicMock()
-
-    client.get_type = get_type
-
-    # Match type enum: lookups return identity strings
-    client.enums.KeywordMatchTypeEnum.__getitem__ = lambda _self, k: k
-    client.enums.AdGroupCriterionStatusEnum.ENABLED = "ENABLED"
-    return client
+from tests.unit.fixtures.proto_capture import make_capture_client
 
 
 @pytest.fixture
-def client() -> MagicMock:
-    return _fake_client()
+def client():
+    return make_capture_client()
 
 
 def test_builder_emits_one_op_per_keyword(client):
@@ -44,6 +27,16 @@ def test_builder_emits_one_op_per_keyword(client):
     ops = build_add_keywords(client, "1234567890", payload)
     assert len(ops) == 2
 
+    base = "ad_group_criterion_operation.create"
+    # op 0 — campos exatos escritos no create
+    assert ops[0].field(f"{base}.ad_group") == "customers/1234567890/adGroups/111"
+    assert ops[0].field(f"{base}.status") == "AG_ENABLED"  # ENABLED por default
+    assert ops[0].field(f"{base}.keyword.text") == "nutricionista jp"
+    assert ops[0].field(f"{base}.keyword.match_type") == "EXACT"
+    # op 1 — text/match_type distintos provam que não há vazamento entre ops
+    assert ops[1].field(f"{base}.keyword.text") == "nutricionista esportiva"
+    assert ops[1].field(f"{base}.keyword.match_type") == "PHRASE"
+
 
 def test_builder_supports_optional_cpc_bid_micros(client):
     from src.google_ads.mutates.keywords import build_add_keywords
@@ -58,22 +51,28 @@ def test_builder_supports_optional_cpc_bid_micros(client):
     ops = build_add_keywords(client, "1234567890", payload)
     assert len(ops) == 2
 
+    base = "ad_group_criterion_operation.create"
+    # presente → setado com o valor; ausente → NÃO setado (herda o bid do ad_group)
+    assert ops[0].has(f"{base}.cpc_bid_micros") is True
+    assert ops[0].field(f"{base}.cpc_bid_micros") == 2000000
+    assert ops[1].has(f"{base}.cpc_bid_micros") is False
+
 
 def test_builder_match_type_case_normalized(client):
-    """match_type 'exact' (lowercase) is normalized to 'EXACT'."""
+    """match_type 'exact' (lowercase) é normalizado pra 'EXACT' no campo escrito."""
     from src.google_ads.mutates.keywords import build_add_keywords
 
     payload = {
         "ad_group_id": "111",
         "keywords": [{"text": "x", "match_type": "exact"}],
     }
-    # Should not raise — case-insensitive lookup via .upper()
     ops = build_add_keywords(client, "1234567890", payload)
     assert len(ops) == 1
+    assert ops[0].field("ad_group_criterion_operation.create.keyword.match_type") == "EXACT"
 
 
 def test_builder_empty_list_returns_empty(client):
-    """Edge: empty keywords array → empty ops list (schema rejects this, but builder is defensive)."""
+    """Edge: lista vazia → ops vazia (schema rejeita, mas o builder é defensivo)."""
     from src.google_ads.mutates.keywords import build_add_keywords
 
     ops = build_add_keywords(client, "1234567890", {"ad_group_id": "111", "keywords": []})

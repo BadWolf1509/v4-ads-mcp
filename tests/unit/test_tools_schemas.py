@@ -56,6 +56,34 @@ def test_no_composition_keywords_in_any_schema():
     )
 
 
+def test_builder_tests_use_capture_client_not_magicmock():
+    """Builder tests DEVEM usar fixtures/proto_capture.make_capture_client, nunca
+    um MagicMock client cru.
+
+    MagicMock aceita qualquer atribuição de campo proto silenciosamente — mascara
+    bugs de campo errado/ausente (F16/F42/F44 + A4: negative=True virou False sem
+    ser detectado). make_capture_client captura os assignments pra asserção real.
+
+    Offender = test_*_builder.py que referencia MagicMock SEM importar
+    make_capture_client (rolou o próprio mock em vez da fixture). Arquivos que
+    usam make_capture_client e ainda importam MagicMock pra uso ancilar (ex:
+    override pontual de path helper) são legítimos e ficam de fora.
+    """
+    import pathlib
+
+    unit_dir = pathlib.Path(__file__).resolve().parent
+    offenders: list[str] = []
+    for path in sorted(unit_dir.glob("test_*_builder.py")):
+        src = path.read_text(encoding="utf-8")
+        if "MagicMock" in src and "make_capture_client" not in src:
+            offenders.append(path.name)
+
+    assert not offenders, (
+        "Builder tests com MagicMock client cru em vez de make_capture_client "
+        "(bugs de proto field mascarados — F16/F42/F44):\n" + "\n".join(f"  {n}" for n in offenders)
+    )
+
+
 def test_registered_tool_count_matches_files_on_disk():
     """Regression for Sprints 3b.12-3b.14 bug: manual import list lagged behind
     actual files, leaving 3 tools dead in production despite tests passing

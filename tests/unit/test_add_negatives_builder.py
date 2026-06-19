@@ -1,44 +1,17 @@
-"""Unit tests for build_add_negatives_from_search_terms builder."""
+"""Unit tests for build_add_negatives_from_search_terms builder.
 
-from typing import Any
-from unittest.mock import MagicMock
+Usa make_capture_client (NÃO MagicMock) pra assertar dispatch por scope +
+negative=True + keyword.text/match_type. A regressão clássica A4 (Google trocava
+negative=True por False) só é pega assertando o campo real — MagicMock mascara."""
 
 import pytest
 
-
-def _fake_client() -> MagicMock:
-    """Mock SDK client where get_type returns fresh MutateOperation proxies."""
-    client = MagicMock()
-
-    # CampaignService.campaign_path returns a path string
-    cs = MagicMock()
-    cs.campaign_path = lambda cid, camp_id: f"customers/{cid}/campaigns/{camp_id}"
-    ags = MagicMock()
-    ags.ad_group_path = lambda cid, ag_id: f"customers/{cid}/adGroups/{ag_id}"
-    sss = MagicMock()
-    sss.shared_set_path = lambda cid, ss_id: f"customers/{cid}/sharedSets/{ss_id}"
-
-    def get_service(name: str) -> Any:
-        return {"CampaignService": cs, "AdGroupService": ags, "SharedSetService": sss}[name]
-
-    client.get_service = get_service
-
-    # Track which sub-op fields were touched so tests can assert scope dispatch
-    def get_type(_name: str) -> Any:
-        m = MagicMock()
-        m._touched = {}
-        return m
-
-    client.get_type = get_type
-
-    # Match type enum: returns the string identity for assertion
-    client.enums.KeywordMatchTypeEnum.__getitem__ = lambda _self, k: k
-    return client
+from tests.unit.fixtures.proto_capture import make_capture_client
 
 
 @pytest.fixture
-def client() -> MagicMock:
-    return _fake_client()
+def client():
+    return make_capture_client()
 
 
 def test_builder_dispatches_campaign_scope(client):
@@ -63,6 +36,13 @@ def test_builder_dispatches_campaign_scope(client):
     ops = build_add_negatives_from_search_terms(client, "1234567890", payload)
     assert len(ops) == 2
 
+    base = "campaign_criterion_operation.create"
+    assert ops[0].field(f"{base}.campaign") == "customers/1234567890/campaigns/111"
+    assert ops[0].field(f"{base}.negative") is True  # exclusão, NÃO keyword positiva
+    assert ops[0].field(f"{base}.keyword.text") == "ruim 1"
+    assert ops[0].field(f"{base}.keyword.match_type") == "EXACT"
+    assert ops[1].field(f"{base}.keyword.match_type") == "PHRASE"
+
 
 def test_builder_dispatches_ad_group_scope(client):
     from src.google_ads.mutates.negatives import build_add_negatives_from_search_terms
@@ -74,6 +54,12 @@ def test_builder_dispatches_ad_group_scope(client):
     }
     ops = build_add_negatives_from_search_terms(client, "1234567890", payload)
     assert len(ops) == 1
+
+    base = "ad_group_criterion_operation.create"
+    assert ops[0].field(f"{base}.ad_group") == "customers/1234567890/adGroups/222"
+    assert ops[0].field(f"{base}.negative") is True
+    assert ops[0].field(f"{base}.keyword.text") == "termo"
+    assert ops[0].field(f"{base}.keyword.match_type") == "EXACT"
 
 
 def test_builder_dispatches_shared_set_scope(client):
@@ -92,6 +78,13 @@ def test_builder_dispatches_shared_set_scope(client):
     ops = build_add_negatives_from_search_terms(client, "1234567890", payload)
     assert len(ops) == 1
 
+    base = "shared_criterion_operation.create"
+    assert ops[0].field(f"{base}.shared_set") == "customers/1234567890/sharedSets/333"
+    # shared_set NÃO seta negative (o próprio conjunto já é de negativas) — ausente
+    assert ops[0].has(f"{base}.negative") is False
+    assert ops[0].field(f"{base}.keyword.text") == "compartilhada"
+    assert ops[0].field(f"{base}.keyword.match_type") == "BROAD"
+
 
 def test_builder_mixes_scopes_in_single_call(client):
     from src.google_ads.mutates.negatives import build_add_negatives_from_search_terms
@@ -105,6 +98,10 @@ def test_builder_mixes_scopes_in_single_call(client):
     }
     ops = build_add_negatives_from_search_terms(client, "1234567890", payload)
     assert len(ops) == 3
+    # cada row vai pro oneof correto (dispatch por scope)
+    assert ops[0].has("campaign_criterion_operation.create.campaign") is True
+    assert ops[1].has("ad_group_criterion_operation.create.ad_group") is True
+    assert ops[2].has("shared_criterion_operation.create.shared_set") is True
 
 
 def test_builder_rejects_unknown_scope(client):
@@ -115,12 +112,12 @@ def test_builder_rejects_unknown_scope(client):
             {"search_term": "x", "match_type": "EXACT", "scope": "account", "scope_id": "1"},
         ]
     }
-    with pytest.raises((ValueError, KeyError)):
+    with pytest.raises(ValueError):
         build_add_negatives_from_search_terms(client, "1234567890", payload)
 
 
 def test_builder_default_match_type_is_exact(client):
-    """Items without match_type field should default to EXACT (per spec §3.2)."""
+    """Items sem match_type defaultam pra EXACT (spec §3.2) — campo escrito é EXACT."""
     from src.google_ads.mutates.negatives import build_add_negatives_from_search_terms
 
     payload = {
@@ -130,3 +127,4 @@ def test_builder_default_match_type_is_exact(client):
     }
     ops = build_add_negatives_from_search_terms(client, "1234567890", payload)
     assert len(ops) == 1
+    assert ops[0].field("campaign_criterion_operation.create.keyword.match_type") == "EXACT"
