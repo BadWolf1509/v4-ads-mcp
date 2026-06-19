@@ -1,0 +1,51 @@
+name: break-glass-iam
+
+# Break-glass: recuperar acesso humano ao projeto depois que a conta admin antiga
+# (owner) foi excluida na migracao de e-mail. Roda como a deploy SA (via WIF, mesma
+# auth do deploy.yml). Em modo "check" (default) so reporta se a SA pode conceder
+# IAM; com apply=apply, concede roles/owner a wellington.ribeiro@v4company.com.
+# EFEMERO — apagar este arquivo depois de usar.
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Digite 'apply' pra CONCEDER owner; deixe 'check' pra so checar as permissoes da SA"
+        type: string
+        default: "check"
+
+jobs:
+  break-glass:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Quem sou eu + a SA pode conceder IAM?
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          echo "Acting as: $(gcloud config get-value account)"
+          echo "--- permissoes relevantes da SA em $PROJECT_ID ---"
+          gcloud projects test-iam-permissions "$PROJECT_ID" \
+            --permissions=resourcemanager.projects.setIamPolicy,resourcemanager.projects.getIamPolicy \
+            --format="value(permissions)" || echo "(test-iam-permissions falhou)"
+
+      - name: Conceder owner a wellington (apply)
+        if: ${{ inputs.apply == 'apply' }}
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+            --member="user:wellington.ribeiro@v4company.com" \
+            --role="roles/owner" --condition=None
+          echo "OK: owner concedido a wellington.ribeiro@v4company.com"
