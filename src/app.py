@@ -47,8 +47,26 @@ def create_app(skip_db_init: bool = False) -> FastAPI:
     # the request reaches the container (returns Google's 404 HTML page).
     # Use /health instead. Confirmed empirically on Cloud Run rev 00001.
     @app.get("/health")
-    async def health() -> dict[str, str]:
-        return {"status": "ok", "version": __version__}
+    async def health(deep: bool = False) -> Response:
+        """Liveness (default) + readiness opcional (?deep=1 verifica o DB).
+
+        O smoke do deploy bate /health (shallow) → sempre 200. Com ?deep=1 faz
+        SELECT 1 no pool: 200 se o DB responde, 503 'degraded' se não — readiness
+        real (antes um deploy com DB inacessível passava no smoke estático).
+        """
+        if not deep:
+            return JSONResponse({"status": "ok", "version": __version__})
+        try:
+            pool = connection.get_pool()
+            async with pool.acquire() as conn:
+                await conn.fetchval("SELECT 1")
+        except Exception as e:  # noqa: BLE001 — readiness reporta qualquer falha de DB
+            log.warning("health_deep_db_failed", error=str(e))
+            return JSONResponse(
+                {"status": "degraded", "version": __version__, "db": "error"},
+                status_code=503,
+            )
+        return JSONResponse({"status": "ok", "version": __version__, "db": "ok"})
 
     app.add_middleware(CSRFOriginMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)

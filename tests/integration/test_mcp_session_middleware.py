@@ -101,3 +101,31 @@ async def test_resolution_touches_last_used(db) -> None:
     async with pool.acquire() as conn:
         refreshed_list = await mcp_sessions.list_for_manager(conn, mid)
         assert refreshed_list[0].last_used_at is not None
+
+
+@pytest.mark.integration
+async def test_resolution_binds_log_context(db) -> None:
+    """resolve binda manager_id/session_id nos contextvars do structlog —
+    todo log do request passa a carregar a identidade do gestor (antes
+    bind_request_context estava órfão e os logs em prod saíam sem correlação)."""
+    import structlog
+
+    from src.logging import clear_request_context
+
+    clear_request_context()
+    pool = db
+    async with pool.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="lc@v4.com", full_name=None)
+        token = generate_session_token()
+        await mcp_sessions.create(
+            conn, manager_id=mid, token_hash=hash_session_token(token), label="t"
+        )
+
+    ctx = await resolve_session_to_context(f"Bearer {token}")
+    try:
+        bound = structlog.contextvars.get_contextvars()
+        assert bound.get("manager_id") == str(ctx.manager_id)
+        assert bound.get("session_id") == str(ctx.session_id)
+    finally:
+        clear_request_context()
