@@ -16,13 +16,13 @@ Ferramenta **interna da V4 Company** que conecta as contas **Google Ads** e **Me
 
 ## Stack
 
-Python 3.12 · FastAPI + Jinja2 + Tailwind (CDN) + HTMX 2 · `mcp` Streamable HTTP · `google-ads` (v24) · `facebook-business` · Supabase Postgres via `asyncpg` (SQL cru, sem ORM) · Cloud Run (`southamerica-east1`) · GitHub Actions + Workload Identity Federation · pytest + testcontainers · ruff + mypy strict.
+Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jinja2 + Tailwind (CDN) + HTMX 2 · `mcp` Streamable HTTP · `google-ads` (v24) · `facebook-business` · Supabase Postgres via `asyncpg` (SQL cru, sem ORM) · Cloud Run (`southamerica-east1`) · GitHub Actions + Workload Identity Federation · pytest + testcontainers · ruff + mypy strict.
 
 Sem build step de frontend (Tailwind/HTMX via CDN).
 
 ## Dev setup
 
-1. Python 3.12 (`pyenv install 3.12` ou via sistema).
+1. Python 3.13 (`pyenv install 3.13` ou via sistema; mínimo 3.12).
 2. Venv: `uv venv` (ou `python -m venv .venv`); ative: `source .venv/bin/activate` (Linux/macOS) ou `.venv\Scripts\activate` (Windows).
 3. Deps: `uv pip install -e ".[dev]"` (ou `pip install -e ".[dev]"`).
 4. Copie `.env.example` → `.env` e preencha os valores (segredos vêm do GCP Secret Manager em produção).

@@ -14,30 +14,35 @@ Interno only, não SaaS, sem terceiros. Substitui Supermetrics.
 
 ## Stack
 
-Python 3.12 · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamable HTTP · `google-ads>=27.0.0` (v24) · `facebook-business>=21.0.0` · Supabase Postgres via `asyncpg` (raw SQL, no ORM) · Cloud Run (`southamerica-east1`) · GitHub Actions + WIF · pytest + testcontainers + `respx`/`freezegun` · ruff + mypy strict. Sem build step de frontend.
+Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jinja2 + Tailwind CDN + HTMX 2 · `mcp>=1.2.0` Streamable HTTP · `google-ads>=27.0.0` (v24) · `facebook-business>=21.0.0` · Supabase Postgres via `asyncpg` (raw SQL, no ORM) · Cloud Run (`southamerica-east1`) · GitHub Actions + WIF · pytest + testcontainers + `respx`/`freezegun` · ruff + mypy strict. Sem build step de frontend.
 
 ## Current state
 
-**Última atualização:** 2026-05-29. Produção verde em `82d1060`, `/health` 200. **~62 MCP tools** (57 Google + 5 Meta), bucket ~22 always + 40 defer.
+**Última atualização:** 2026-06-19. Produção verde em `84024a5`, `/health` 200. **~62 MCP tools** (57 Google + 5 Meta), bucket ~22 always + 40 defer.
 
-**O que existe:** Foundation (Phases 0-1b/3a) + 40 sprints Google (3b.1→3b.40) + família Meta (M.1→M.3.1.1) + **camada de acesso/segurança** (sessão 2026-05-28/29): Meta Access Matrix com system-user token (Modelo B), **hard-gate de acesso por conta** enforçado na camada MCP (Google + Meta), middleware de segurança (CSRF + CSP enforcing + SRI), e melhorias de UX/a11y do painel. Detalhe completo: [`sprint-history.md`](docs/operacao/sprint-history.md) (tabela por sprint) + [`session-2026-05-29-handoff.md`](docs/operacao/session-2026-05-29-handoff.md) (última sessão).
+**O que existe:** Foundation (Phases 0-1b/3a) + 40 sprints Google (3b.1→3b.40) + família Meta (M.1→M.3.1.1) + camada de acesso/segurança (Modelo B + hard-gate + CSRF/CSP, sessão 2026-05-28/29) + **sessão operacional 2026-06-19** (abaixo). Detalhe: [`sprint-history.md`](docs/operacao/sprint-history.md) + handoffs em `docs/operacao/`.
 
-**Tokens válidos:** v4-ads Bearer (procedure abaixo, NÃO inventar). Meta system-user token no secret `meta-system-user-token` (não expira). Meta OAuth pessoal do Wellington dormante (expira 26/07/2026).
+**Sessão 2026-06-19 (recuperação + hardening):** migração da conta admin `wellinton.`→`wellington.` (a antiga foi excluída → Google OAuth + linha em `managers` + grants restaurados); **portfólio Meta 12→22 contas** (fix de paginação em `/me/adaccounts` + re-sync no painel + grants Modelo B pros 4 gestores); **GAQL error UX** (`QUERY_ERROR` vira mensagem auto-corretiva); **resync Meta agendado** (piggyback no job `account_resync`); cleanup (`BOOTSTRAP_ADMIN_EMAILS`, e-mail de contato nos templates legais). Handoff: [`session-2026-06-19-handoff.md`](docs/operacao/session-2026-06-19-handoff.md).
 
-**Próximo sprint (escolha 1):** M.4 (Meta breakdowns geo+device+hourly — alta volume Caminho B+) · M.5 (Meta audience+top_creatives) · 3b.41 (refactor Fase 2: `get_performance_breakdown` consolida 9 reports). Roadmap Meta: [`specs/2026-05-24-meta-ads-incorporation-design.md`](docs/superpowers/specs/2026-05-24-meta-ads-incorporation-design.md).
+**Tokens válidos:** v4-ads Bearer (procedure abaixo, NÃO inventar). Meta system-user token no secret `meta-system-user-token` (não expira). Meta OAuth pessoal do Wellington dormante (expira 27/07/2026).
 
-**Decision gates:** 2026-06-01 feedback F1 (bucket classification) · 2026-06-25→07-10 checkpoint volume Meta Caminho B+ (500 calls/15d → re-submit Full Access) · 2026-07-25 reconectar Meta OAuth Wellington.
+**⚠️ IAM GCP (pendente):** a conta admin nova (`wellington.ribeiro@v4company.com`) tem **ZERO acesso ao projeto `v4-ads-mcp-prod`** (a antiga era owner, foi excluída). Deploys (WIF/`GCP_DEPLOY_SA`) + runtime (SAs) funcionam normal; mas ops gcloud manuais (ler secrets, Cloud Run, rollback) exigem um **Org Admin V4** conceder `roles/owner` (a deploy SA é least-privilege e NÃO se auto-concede — verificado 2026-06-19). DB direto: use **Supabase MCP** (não precisa gcloud). Detalhe no handoff 2026-06-19.
 
-**Pendente operacional:** quando os 3 colaboradores entrarem → conceder grants por gestor em `/admin/access` (Google + Meta); o hard-gate torna isso obrigatório pra eles operarem. Backlog técnico (sprint-history pra detalhe): audit_log gap em `run_gaql`/`get_my_audit_log`, `verify_campaign_state`, breakdowns Meta.
+**Próximo sprint (escolha 1):** M.4 (Meta breakdowns geo+device+hourly) · M.5 (Meta audience+top_creatives) · 3b.41 (refactor Fase 2: `get_performance_breakdown` consolida 9 reports). Roadmap Meta: [`specs/2026-05-24-meta-ads-incorporation-design.md`](docs/superpowers/specs/2026-05-24-meta-ads-incorporation-design.md).
 
-**Quando ler outros docs:** [bug suspeito → `findings-catalog.md`] [o que shipou / detalhe sprint → `sprint-history.md`] [última sessão → `session-2026-05-29-handoff.md`] [executar pendente → spec+plan em `docs/superpowers/`].
+**Decision gates:** 2026-06-25→07-10 checkpoint volume Meta Caminho B+ (500 calls/15d → re-submit Full Access) · 2026-07-25 reconectar Meta OAuth Wellington · **grant IAM GCP pra conta nova** (Org Admin V4, quando precisar de ops gcloud manuais).
+
+**Pendente operacional:** grants Meta dos 4 gestores ✅ (todos com as 22 contas, 2026-06-19); Anderson `invited` → precisa de 1 login no painel pra ativar (`invited`→`active`). Backlog técnico: `verify_campaign_state`, breakdowns Meta, audit_log gap em `get_my_audit_log`.
+
+**Quando ler outros docs:** [bug suspeito → `findings-catalog.md`] [o que shipou / detalhe sprint → `sprint-history.md`] [última sessão → `session-2026-06-19-handoff.md`] [executar pendente → spec+plan em `docs/superpowers/`].
 
 ## Read these first when continuing work
 
 ```
-docs/operacao/findings-catalog.md            # ★ Bug history (F1-F60 + A1-A6 + D1-D3) — scan antes de design mutate/query
-docs/operacao/sprint-history.md              # ★ Tabela por sprint (3b.1→3b.40 + Meta + sessão acesso/segurança)
-docs/operacao/session-2026-05-29-handoff.md  # ★ Última sessão: access matrix + hard-gate + segurança + UX
+docs/operacao/findings-catalog.md            # ★ Bug history (F1-F63 + A1-A6 + D1-D3) — scan antes de design mutate/query
+docs/operacao/sprint-history.md              # ★ Tabela por sprint (3b.1→3b.40 + Meta + sessões operacionais)
+docs/operacao/session-2026-06-19-handoff.md  # ★ Última sessão: recuperação conta + Meta 12→22 + GAQL error UX + resync
+docs/operacao/session-2026-05-29-handoff.md  # acesso/segurança (matrix + hard-gate + CSP)
 docs/superpowers/specs/2026-05-28-google-mcp-account-gate-design.md   # hard-gate de acesso por conta (Google)
 docs/superpowers/specs/2026-05-28-meta-access-matrix-design.md        # Meta Modelo B (system user)
 docs/superpowers/specs/2026-05-24-meta-ads-incorporation-design.md    # roadmap família Meta
@@ -159,6 +164,14 @@ Reads + `bulk_pause_by_query`: **preset** (`date_range: str` com `type:"string"`
 - **2 endpoints, whitelists diferentes (F53/F54/F55):** `/insights` = SÓ metrics (spend, impressions, ctr, cpc, reach, frequency, actions, action_values, purchase_roas); `/campaigns`,`/adsets`,`/ads` = metadata (effective_status, daily_budget, creative_id, …). **Antes de shippar tool Meta com fields novos: use `ads_get_field_context([fields])` do Meta MCP oficial** (configurado em `~/.claude.json`) pra confirmar endpoint + existência — teria evitado F53+F54.
 - **Long-lived token (OAuth pessoal, dormante):** Meta pode invalidar server-side antes do expiry natural; handle `to_friendly_meta_error` subcodes 458/467/460/463.
 
+### Pós sessão 2026-06-19 (paginação Meta + GAQL error UX + resync)
+
+- **`/me/adaccounts` paginado (F61):** o sync Meta DEVE seguir `paging.next` — helper `_fetch_all_adaccounts` em `src/auth/meta_oauth.py` (default 25/página; system user com 20+ ativos truncava o cache → MCP só via 12 das 22 contas). NÃO reverter pra single-page.
+- **GAQL error UX (F62):** `to_friendly` em `src/google_ads/errors.py` trata o oneof `query_error` — mantém o campo cru E anexa dica (`list_gaql_resources`/`validate_gaql` + nota que auction insights não existem na GAQL). Clientes LLM (Codex) chutam campos via `run_gaql`; a mensagem enriquecida auto-corrige no próximo turno.
+- **`get_change_history` clamp (F63):** `start_date` (preset OU custom) é clampado pro teto de 30 dias com warning em vez de deixar o Google rejeitar; janela inteira fora da retenção → `ValueError` claro.
+- **Resync Meta piggyback:** `src/jobs/account_resync.py` chama `resync_meta()` (`src/jobs/meta_resync.py`) no fim — o job diário (Cloud Run Job `v4-ads-mcp-resync` + Cloud Scheduler) atualiza `meta_ad_accounts` zero-touch. Secret `META_SYSTEM_USER_TOKEN` montado no job via `deploy.yml --update-secrets`. Grants seguem manuais (Modelo B).
+- **Migração de conta + IAM:** a conta admin antiga (owner do GCP) foi excluída → recuperação exigiu re-sync de OAuth/managers/grants. **Lição:** projeto prod sem owner humano = single point of failure (peça 2 owners). A deploy SA é least-privilege (não concede IAM — bom, mas significa sem auto-recuperação). Detalhe: handoff 2026-06-19.
+
 ### Subagent-driven development
 
 `superpowers:subagent-driven-development` — fresh subagent/task + 2-stage review (spec + quality). Model: **haiku** (mecânico 1-2 arquivos) · **sonnet** (integração multi-arquivo, dispatchers, OAuth) · **opus** (arquitetura/review cross-cutting). Implementers paralelos OK só em arquivos não-overlapping; reviewers paralelos sempre OK. Adaptações comuns: `db_pool`→`db`, `audit_log.id: UUID`→int, `rate_counters.used_today`→`operations_used`.
@@ -183,7 +196,7 @@ Tailwind CDN (no build) + tokens em `src/web/static/v4-tokens.css`. ~22 macros e
 
 ## Tools available (this Claude session)
 
-- **gcloud** authed `wellinton.ribeiro@v4company.com`, project `v4-ads-mcp-prod`. Admin bypass push OK.
+- **gcloud** authed `wellington.ribeiro@v4company.com`, project `v4-ads-mcp-prod` — mas **ZERO IAM no projeto** (conta antiga owner foi excluída): NÃO lê secrets nem Cloud Run via gcloud. Deploys vão por WIF/`GCP_DEPLOY_SA`; DB direto via **Supabase MCP** (não precisa gcloud). Grant `roles/owner` pendente (Org Admin V4). `git push` → deploy (WIF), OK.
 - **gh** authed `BadWolf1509`.
 - **Secret Manager:** `gcloud secrets versions access latest --secret=<NAME> --project=v4-ads-mcp-prod`. Secrets: `database-url`, `aes-master-key`, `session-signing-key`, `google-ads-developer-token`, `google-oauth-client-secret`, `meta-app-id`, `meta-app-secret`, `meta-system-user-token`, supabase keys.
 - **No psql no Windows** — `python+asyncpg` pra DB direto. **Docker** pode não estar rodando — testcontainers falham local, CI roda.
