@@ -83,14 +83,15 @@ def build_insights_call(
     start: date,
     end: date,
     limit: int,
+    breakdowns: list[str] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Build Graph API edge path + params dict for a /insights call.
 
     Returns: (edge, params) — caller passes both to run_meta_graph_get.
 
-    M.3.1 hotfix (F53): effective_status param removed from signature.
-    Filtering block omitted — Meta Insights API rejects `effective_status` as
-    filter field. V1 enhancement = 2-step query pra restore filter capability.
+    M.4: `breakdowns` opcional → adiciona o param `breakdowns` (CSV). None/[]
+    omite a chave (backward-compat: tools M.3 inalteradas).
+    M.3.1 hotfix (F53): effective_status param removido; filtering omitido.
     """
     fields_by_level = {
         "campaign": INSIGHTS_FIELDS_CAMPAIGN,
@@ -105,6 +106,8 @@ def build_insights_call(
         "limit": limit,
         "ad_account_id": ad_account_id,  # passed thru for BUC counter key
     }
+    if breakdowns:
+        params["breakdowns"] = ",".join(breakdowns)
     return edge, params
 
 

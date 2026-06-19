@@ -297,3 +297,44 @@ def test_breakdown_meta_param_covers_all_enum_values() -> None:
     assert BREAKDOWN_META_PARAM["device"] == ["impression_device"]
     assert BREAKDOWN_META_PARAM["geo"] == ["country"]
     assert BREAKDOWN_META_PARAM["hourly"] == ["hourly_stats_aggregated_by_advertiser_time_zone"]
+
+
+# ============================================================================
+# build_insights_call — M.4 breakdowns support
+# ============================================================================
+
+
+def test_build_insights_call_with_breakdowns() -> None:
+    _, params = build_insights_call(
+        level="campaign",
+        ad_account_id="act_1",
+        start=date(2026, 5, 1),
+        end=date(2026, 5, 7),
+        limit=100,
+        breakdowns=["publisher_platform"],
+    )
+    assert params["breakdowns"] == "publisher_platform"
+
+
+def test_build_insights_call_without_breakdowns_omits_key() -> None:
+    # Backward-compat: as tools M.3 chamam sem breakdowns → chave ausente.
+    _, params = build_insights_call(
+        level="campaign",
+        ad_account_id="act_1",
+        start=date(2026, 5, 1),
+        end=date(2026, 5, 7),
+        limit=100,
+    )
+    assert "breakdowns" not in params
+
+
+def test_build_insights_call_joins_multiple_breakdowns() -> None:
+    _, params = build_insights_call(
+        level="ad",
+        ad_account_id="act_1",
+        start=date(2026, 5, 1),
+        end=date(2026, 5, 7),
+        limit=10,
+        breakdowns=["country", "region"],
+    )
+    assert params["breakdowns"] == "country,region"
