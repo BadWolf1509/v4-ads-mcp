@@ -134,11 +134,14 @@ def _extract_purchase_roas(roas_list: list[dict[str, Any]] | None) -> float:
         return 0.0
 
 
-def parse_insights_row(row: dict[str, Any], level: Level) -> dict[str, Any]:
+def parse_insights_row(
+    row: dict[str, Any], level: Level, breakdown_keys: list[str] | None = None
+) -> dict[str, Any]:
     """Parse single Meta Insights row → flat dict for MCP response.
 
-    Level-specific fields prepended (id/name/objective/etc).
-    Common metrics + extracted actions follow.
+    Level-specific fields prepended; common metrics + extracted actions follow.
+    M.4: se `breakdown_keys` for dado, os valores da dimensão do row são
+    expostos em result["breakdown"] (ex: {"publisher_platform": "instagram"}).
     """
     spend = float(row.get("spend") or 0)
     clicks = int(row.get("clicks") or 0)
@@ -165,16 +168,16 @@ def parse_insights_row(row: dict[str, Any], level: Level) -> dict[str, Any]:
     }
 
     if level == "campaign":
-        return {
+        result: dict[str, Any] = {
             "campaign_id": row.get("campaign_id"),
             "campaign_name": row.get("campaign_name"),
             "objective": row.get("objective"),
             **common,
         }
-    if level == "adset":
+    elif level == "adset":
         daily_budget_raw = row.get("daily_budget")
         daily_budget_brl = round(float(daily_budget_raw) / 100, 2) if daily_budget_raw else None
-        return {
+        result = {
             "ad_set_id": row.get("adset_id"),
             "ad_set_name": row.get("adset_name"),
             "campaign_id": row.get("campaign_id"),
@@ -184,14 +187,19 @@ def parse_insights_row(row: dict[str, Any], level: Level) -> dict[str, Any]:
             "daily_budget_brl": daily_budget_brl,
             **common,
         }
-    # ad
-    return {
-        "ad_id": row.get("ad_id"),
-        "ad_name": row.get("ad_name"),
-        "ad_set_id": row.get("adset_id"),
-        "ad_set_name": row.get("adset_name"),
-        "campaign_id": row.get("campaign_id"),
-        "campaign_name": row.get("campaign_name"),
-        "creative_id": row.get("creative_id"),
-        **common,
-    }
+    else:  # ad
+        result = {
+            "ad_id": row.get("ad_id"),
+            "ad_name": row.get("ad_name"),
+            "ad_set_id": row.get("adset_id"),
+            "ad_set_name": row.get("adset_name"),
+            "campaign_id": row.get("campaign_id"),
+            "campaign_name": row.get("campaign_name"),
+            "creative_id": row.get("creative_id"),
+            **common,
+        }
+
+    if breakdown_keys:
+        result["breakdown"] = {key: row.get(key) for key in breakdown_keys}
+
+    return result

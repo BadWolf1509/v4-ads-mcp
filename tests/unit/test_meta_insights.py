@@ -338,3 +338,35 @@ def test_build_insights_call_joins_multiple_breakdowns() -> None:
         breakdowns=["country", "region"],
     )
     assert params["breakdowns"] == "country,region"
+
+
+# ============================================================================
+# parse_insights_row — M.4 breakdown_keys support
+# ============================================================================
+
+
+def test_parse_insights_row_surfaces_breakdown() -> None:
+    row = {
+        "campaign_id": "1",
+        "campaign_name": "T",
+        "effective_status": "ACTIVE",
+        "spend": "10",
+        "publisher_platform": "instagram",
+    }
+    out = parse_insights_row(row, "campaign", breakdown_keys=["publisher_platform"])
+    assert out["breakdown"] == {"publisher_platform": "instagram"}
+    assert out["campaign_id"] == "1"  # campos do level preservados
+    assert out["spend_brl"] == 10.0
+
+
+def test_parse_insights_row_no_breakdown_keys_omits_key() -> None:
+    # Backward-compat: as tools M.3 chamam sem breakdown_keys → chave ausente.
+    row = {"campaign_id": "1", "campaign_name": "T", "effective_status": "ACTIVE", "spend": "10"}
+    out = parse_insights_row(row, "campaign")
+    assert "breakdown" not in out
+
+
+def test_parse_insights_row_breakdown_missing_value_is_none() -> None:
+    row = {"campaign_id": "1", "campaign_name": "T", "effective_status": "ACTIVE", "spend": "10"}
+    out = parse_insights_row(row, "campaign", breakdown_keys=["publisher_platform"])
+    assert out["breakdown"] == {"publisher_platform": None}
