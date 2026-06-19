@@ -165,3 +165,68 @@ async def test_refresh_accounts_no_system_token_returns_422(app_with_db, monkeyp
     assert resp.status_code == 422
     body = resp.text
     assert "não configurado" in body.lower()
+
+
+@pytest.mark.integration
+@respx.mock
+async def test_refresh_accounts_follows_pagination(app_with_db):
+    """/me/adaccounts paginado: o sync deve seguir paging.next e upsertar TODAS as páginas.
+
+    Regressão do truncamento silencioso: sem seguir paging.next o cache parava na
+    1ª página (~25 contas) mesmo o system user tendo 50+ contas atribuídas.
+    """
+    mid = await _seed_manager()
+
+    page1 = {
+        "data": [
+            {
+                "id": "act_111",
+                "name": "Pagina 1 Conta",
+                "business": {"id": "bm_1", "name": "BM 1"},
+                "account_status": 1,
+                "currency": "BRL",
+                "timezone_name": "America/Sao_Paulo",
+            }
+        ],
+        "paging": {"next": "https://graph.facebook.com/v22.0/me/adaccounts?after=CURSOR2"},
+    }
+    page2 = {
+        "data": [
+            {
+                "id": "act_222",
+                "name": "Pagina 2 Conta",
+                "business": {"id": "bm_2", "name": "BM 2"},
+                "account_status": 1,
+                "currency": "BRL",
+                "timezone_name": "America/Sao_Paulo",
+            }
+        ]
+    }
+    respx.get("https://graph.facebook.com/v22.0/me/adaccounts").mock(
+        side_effect=[Response(200, json=page1), Response(200, json=page2)]
+    )
+
+    from src.web.deps import CurrentUser, current_manager
+
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        mgr = await managers.get_by_id(conn, mid)
+    assert mgr is not None
+
+    app_with_db.dependency_overrides[current_manager] = lambda: CurrentUser(mgr)
+
+    transport = ASGITransport(app=app_with_db)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        resp = await c.post("/oauth/meta/refresh-accounts", follow_redirects=False)
+
+    app_with_db.dependency_overrides.clear()
+
+    assert resp.status_code == 302
+
+    async with pool.acquire() as conn:
+        acc1 = await meta_ad_accounts.get_by_id(conn, "act_111")
+        acc2 = await meta_ad_accounts.get_by_id(conn, "act_222")
+    assert acc1 is not None and acc1.account_name == "Pagina 1 Conta"
+    assert acc2 is not None and acc2.account_name == "Pagina 2 Conta", (
+        "2ª página não foi sincronizada — paginação não está seguindo paging.next"
+    )
