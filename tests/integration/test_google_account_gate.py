@@ -152,3 +152,45 @@ async def test_run_report_allowed_with_grant(db) -> None:
         )
     # If we reach here, the gate passed (AccountAccessDeniedError was NOT raised)
     # and build_client_for_manager was called (proving the gate was cleared).
+
+
+@pytest.mark.integration
+async def test_validate_gaql_denied_without_grant(db) -> None:
+    """validate_gaql (tool layer) também passa pelo hard-gate: sem grant levanta
+    AccountAccessDeniedError + audita denied. Regressão pro fix F57-class —
+    antes esta tool buildava o client direto, sem checar grant."""
+    from src.auth.sessions import generate_session_token, hash_session_token
+    from src.mcp.context import McpRequestContext, clear_current, set_current
+    from src.mcp.tools.validate_gaql import validate_gaql
+
+    pool = db
+    async with pool.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="vgaql@v4.com", full_name=None)
+        token = generate_session_token()
+        sess = await mcp_sessions.create(
+            conn, manager_id=mid, token_hash=hash_session_token(token), label="vgaql-gate"
+        )
+
+    set_current(McpRequestContext(manager_id=mid, session_id=sess.id))
+    try:
+        with pytest.raises(AccountAccessDeniedError) as exc_info:
+            await validate_gaql(
+                {
+                    "customer_id": "7777777777",
+                    "query": "SELECT customer.id FROM customer LIMIT 1",
+                }
+            )
+    finally:
+        clear_current()
+
+    assert "7777777777" in exc_info.value.message
+
+    # Verify audit_log has a denied row for validate_gaql.
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT status, customer_id FROM audit_log WHERE operation = 'validate_gaql'"
+        )
+    assert len(rows) == 1
+    assert rows[0]["status"] == "denied"
+    assert rows[0]["customer_id"] == "7777777777"

@@ -3,6 +3,8 @@
 
 from typing import Any
 
+from src.db import connection
+from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
 from src.mcp.context import get_current
@@ -75,6 +77,19 @@ async def validate_gaql(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()
     customer_id = args["customer_id"]
     query = args["query"]
+
+    # Hard-gate por conta (F57 class): valida o grant ANTES de tocar o client.
+    # Sem isto, qualquer gestor validava GAQL contra qualquer conta da MCC,
+    # vazando existência/schema da conta e bypassando o rate-limit.
+    async with connection.get_pool().acquire() as conn:
+        await ensure_account_access(
+            conn,
+            manager_id=ctx.manager_id,
+            customer_id=customer_id,
+            session_id=ctx.session_id,
+            operation_name="validate_gaql",
+            level="read",
+        )
 
     client = await build_client_for_manager(manager_id=ctx.manager_id)
 

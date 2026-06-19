@@ -16,6 +16,27 @@ def bound_context():
     clear_current()
 
 
+@pytest.fixture
+def bypass_gate():
+    """validate_gaql roda ensure_account_access (hard-gate) antes de buildar o
+    client. Estes testes exercitam a lógica pós-gate, então o stub vira no-op.
+    (Convenção pré-flight: patch no namespace do TOOL, não em access/_common.)"""
+    fake_conn = MagicMock()
+    cm = MagicMock()
+    cm.__aenter__ = AsyncMock(return_value=fake_conn)
+    cm.__aexit__ = AsyncMock(return_value=False)
+    fake_pool = MagicMock()
+    fake_pool.acquire = MagicMock(return_value=cm)
+    with (
+        patch("src.mcp.tools.validate_gaql.connection.get_pool", return_value=fake_pool),
+        patch(
+            "src.mcp.tools.validate_gaql.ensure_account_access",
+            AsyncMock(return_value=None),
+        ),
+    ):
+        yield
+
+
 @pytest.mark.asyncio
 async def test_run_gaql_returns_rows_and_truncation_flag(bound_context):
     from src.mcp.tools.run_gaql import run_gaql
@@ -57,7 +78,7 @@ async def test_run_gaql_truncates_above_1000(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_validate_gaql_returns_valid_when_no_error(bound_context):
+async def test_validate_gaql_returns_valid_when_no_error(bound_context, bypass_gate):
     from src.mcp.tools.validate_gaql import validate_gaql
 
     fake_client = MagicMock()
@@ -81,7 +102,7 @@ async def test_validate_gaql_returns_valid_when_no_error(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_validate_gaql_returns_invalid_with_error(bound_context):
+async def test_validate_gaql_returns_invalid_with_error(bound_context, bypass_gate):
     from src.mcp.tools.validate_gaql import validate_gaql
 
     fake_client = MagicMock()
@@ -105,7 +126,7 @@ async def test_validate_gaql_returns_invalid_with_error(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_validate_gaql_appends_b2_hint_for_change_event_window(bound_context):
+async def test_validate_gaql_appends_b2_hint_for_change_event_window(bound_context, bypass_gate):
     """B2: error 'too old' on FROM change_event query should append window hint."""
     from src.google_ads.errors import GoogleAdsFriendlyError
     from src.mcp.tools.validate_gaql import validate_gaql
@@ -144,7 +165,9 @@ async def test_validate_gaql_appends_b2_hint_for_change_event_window(bound_conte
 
 
 @pytest.mark.asyncio
-async def test_validate_gaql_appends_b3_hint_for_conversion_action_cost_micros(bound_context):
+async def test_validate_gaql_appends_b3_hint_for_conversion_action_cost_micros(
+    bound_context, bypass_gate
+):
     """B3: 'unsupported metric' with segments.conversion_action + cost_micros should append split-query hint."""
     from src.google_ads.errors import GoogleAdsFriendlyError
     from src.mcp.tools.validate_gaql import validate_gaql
@@ -182,6 +205,40 @@ async def test_validate_gaql_appends_b3_hint_for_conversion_action_cost_micros(b
     assert result["valid"] is False
     assert "2 queries" in result["error"].lower()
     assert "cost_micros" in result["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_validate_gaql_denies_without_access(bound_context):
+    """Hard-gate (F57 class): sem grant, validate_gaql levanta
+    AccountAccessDeniedError e NUNCA chega a buildar o client — não vaza
+    existência/schema da conta nem bypassa o rate-limit."""
+    from src.google_ads.access import AccountAccessDeniedError
+    from src.mcp.tools.validate_gaql import validate_gaql
+
+    fake_conn = MagicMock()
+    cm = MagicMock()
+    cm.__aenter__ = AsyncMock(return_value=fake_conn)
+    cm.__aexit__ = AsyncMock(return_value=False)
+    fake_pool = MagicMock()
+    fake_pool.acquire = MagicMock(return_value=cm)
+
+    build_spy = AsyncMock()
+    with (
+        patch("src.mcp.tools.validate_gaql.connection.get_pool", return_value=fake_pool),
+        patch(
+            "src.mcp.tools.validate_gaql.ensure_account_access",
+            AsyncMock(side_effect=AccountAccessDeniedError("sem acesso")),
+        ),
+        patch("src.mcp.tools.validate_gaql.build_client_for_manager", build_spy),
+        pytest.raises(AccountAccessDeniedError),
+    ):
+        await validate_gaql(
+            {
+                "customer_id": "1234567890",
+                "query": "SELECT customer.id FROM customer",
+            }
+        )
+    build_spy.assert_not_awaited()  # gate bloqueou antes de tocar o client
 
 
 @pytest.mark.asyncio

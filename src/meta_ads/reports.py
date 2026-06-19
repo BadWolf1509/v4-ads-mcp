@@ -67,19 +67,23 @@ async def run_meta_graph_get(
                 conn, manager_id, ad_account_id, level="read"
             )
             if not allowed:
-                if audit_this_call:
-                    await audit_log.record(
-                        conn,
-                        manager_id=manager_id,
-                        session_id=session_id,
-                        customer_id=ad_account_id,
-                        action_type="read",
-                        operation=operation_name,
-                        params_summary=params_summary,
-                        status="denied",
-                        error_message="Gestor sem acesso à conta Meta",
-                        platform="meta",
-                    )
+                # Negação de acesso é SEMPRE auditada (evento de segurança),
+                # independente do audit_this_call opt-in — espelha o gate Google
+                # (ensure_account_access sempre grava denied). M.4/M.5 trarão tools
+                # Meta com audit_this_call=False; sem isto, suas negações ficariam
+                # invisíveis no audit_log.
+                await audit_log.record(
+                    conn,
+                    manager_id=manager_id,
+                    session_id=session_id,
+                    customer_id=ad_account_id,
+                    action_type="read",
+                    operation=operation_name,
+                    params_summary=params_summary,
+                    status="denied",
+                    error_message="Gestor sem acesso à conta Meta",
+                    platform="meta",
+                )
                 raise MetaAccessDeniedError(
                     f"Você não tem acesso à conta {ad_account_id}. "
                     f"Peça ao admin pra liberar no painel."
