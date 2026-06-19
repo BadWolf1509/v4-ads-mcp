@@ -270,8 +270,9 @@ async def _resolve_names(
         "producao — dogfood 25/05 MO-JP) e afeta multiplos campos. Pra validar "
         "estado atual (revert/incident), use `run_gaql FROM campaign` como "
         "leading indicator. Inclui summary com totais por usuario/resource/"
-        "operation. Janela maxima 30 dias (Google retention exclusivo — preset "
-        "LAST_30_DAYS auto-clamped pra today-28 com warning F23). Audited."
+        "operation. Janela maxima 30 dias (Google retention exclusivo — start_date "
+        "alem disso e auto-clampado pra today-28 com warning F23, preset OU custom; "
+        "janela inteira fora da retencao da erro claro). Audited."
     ),
     input_schema=_SCHEMA,
     bucket="always",
@@ -280,33 +281,32 @@ async def get_change_history(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()
     customer_id = args["customer_id"]
 
-    # F23 fix Sprint 3b.38: clamp APENAS quando o usuário passou preset string
-    # (LAST_30_DAYS, etc). Custom dates — seja via start_date/end_date separados
-    # OU via date_range dict {from, to} legacy — honra intent do usuário
-    # (Google rejeita explicitamente se demais antigo, OU change_history_query
-    # raise RangeTooWideError se > 30 dias).
-    raw_date_range = args.get("date_range", "LAST_7_DAYS")
-    has_custom_dates = (
-        args.get("start_date") is not None and args.get("end_date") is not None
-    ) or isinstance(raw_date_range, dict)
-
     start, end = resolve_date_window(
-        date_range=raw_date_range,
+        date_range=args.get("date_range", "LAST_7_DAYS"),
         start_date=args.get("start_date"),
         end_date=args.get("end_date"),
     )
 
+    # F23 fix Sprint 3b.38 (estendido): clampamos start_date — preset OU custom — pro
+    # teto de retenção do change_event (30 dias exclusivos), em vez de deixar o Google
+    # rejeitar com "start date too old". Devolve dados + warning. Se a janela inteira
+    # está fora da retenção (end < limite), não há o que retornar → erro claro.
     today = datetime.now(UTC).date()
     earliest_allowed = today - timedelta(days=_RETENTION_SAFETY_DAYS)
     retention_warning: str | None = None
-    if not has_custom_dates and start < earliest_allowed:
+    if end < earliest_allowed:
+        raise ValueError(
+            f"A janela pedida ({start.isoformat()}..{end.isoformat()}) está inteira fora "
+            f"da retenção de 30 dias do change_event do Google (dados só a partir de "
+            f"{earliest_allowed.isoformat()}). Peça uma janela dentro dos últimos 30 dias."
+        )
+    if start < earliest_allowed:
         original_start = start
         start = earliest_allowed
         retention_warning = (
             f"date_range coerced from {original_start.isoformat()} to "
-            f"{start.isoformat()} (F23: Google change_event retention é 30 dias "
-            "exclusivos — clamp pra today-28 evita rejeição na borda). Use "
-            "start_date+end_date custom pra window precisa dentro do limite."
+            f"{start.isoformat()} (F23: change_event do Google retém 30 dias exclusivos "
+            "— clamp pra today-28 evita rejeição na borda; vale pra preset E custom)."
         )
 
     limit = args.get("limit", 200)

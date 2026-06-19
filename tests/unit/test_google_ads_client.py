@@ -12,6 +12,7 @@ class _FakeErrorCode:
             "authorization_error",
             "quota_error",
             "internal_error",
+            "query_error",
         ):
             setattr(self, field, 1 if field == populated_field else 0)
 
@@ -58,3 +59,24 @@ def test_no_failure_attribute_returns_generic():
 def test_empty_errors_list_returns_generic():
     fe = to_friendly(_FakeException([]))
     assert "sem detalhes" in fe.message_pt
+
+
+def test_query_error_enriched_with_hint():
+    """QUERY_ERROR (campo/métrica/recurso inválido) mantém o erro cru E anexa dica
+    acionável (list_gaql_resources / validate_gaql) pro cliente LLM se autocorrigir."""
+    fe = to_friendly(
+        _FakeException(
+            [
+                _FakeError(
+                    "query_error",
+                    message="Unrecognized field in the query: 'metrics.search_overlap_rate'.",
+                )
+            ]
+        )
+    )
+    assert fe.code == "QUERY_ERROR"
+    # mantém o campo cru — o LLM precisa saber QUAL campo falhou
+    assert "search_overlap_rate" in fe.message_pt
+    # anexa a dica acionável apontando pras tools de validação
+    assert "list_gaql_resources" in fe.message_pt
+    assert "validate_gaql" in fe.message_pt

@@ -51,7 +51,10 @@ _MAX_RAW_ROWS_FOR_AGGREGATE = 10_000
         "tools curadas nao cobrem o caso. Sempre auditado. Limite: resultado "
         f"truncado em {_MAX_ROWS} linhas pra evitar respostas gigantes. Suporta "
         "aggregate_by (client-side GROUP BY+COUNT) pra queries com cardinalidade "
-        "alta — retorna groups[] ordenado por count DESC."
+        "alta — retorna groups[] ordenado por count DESC. Campos/métricas incertos: "
+        "chame list_gaql_resources (catálogo válido) ou validate_gaql (valida sem "
+        "executar) ANTES — métricas existem só em certos recursos e auction insights "
+        "(overlap/position-above/outranking share) não existem na GAQL."
     ),
     input_schema=_SCHEMA,
     bucket="defer",

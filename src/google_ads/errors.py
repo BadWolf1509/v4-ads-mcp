@@ -72,15 +72,28 @@ def to_friendly(exc: Exception) -> GoogleAdsFriendlyError:
             "authorization_error",
             "quota_error",
             "internal_error",
+            "query_error",
         ):
             if getattr(error_code, field_name, None):
                 populated = field_name.upper()
                 break
 
-    msg = _FRIENDLY_MESSAGES.get(populated or "")
-    if msg is None:
-        # Fallback: include the SDK's English message.
-        sdk_msg = getattr(first, "message", "erro desconhecido")
-        msg = f"Google Ads retornou: {sdk_msg}"
+    sdk_msg = getattr(first, "message", "erro desconhecido")
+
+    if populated == "QUERY_ERROR":
+        # GAQL field/metric/resource error. run_gaql é escape hatch: clientes LLM
+        # chutam nomes de campo. Mantém o campo cru E anexa uma dica acionável pro
+        # próximo turno se autocorrigir em vez de repetir o chute.
+        msg = (
+            f"Google Ads retornou: {sdk_msg} → Chame list_gaql_resources pros campos "
+            "válidos e validate_gaql pra validar antes de rodar. Métricas existem só em "
+            "certos recursos (ex.: impression share não sai em CUSTOMER) e auction "
+            "insights (overlap rate, position above rate, outranking share) não existem "
+            "na GAQL, só na UI do Google Ads."
+        )
+    else:
+        # Fallback to the SDK's English message when there's no curated PT-BR one.
+        friendly = _FRIENDLY_MESSAGES.get(populated or "")
+        msg = friendly if friendly is not None else f"Google Ads retornou: {sdk_msg}"
 
     return GoogleAdsFriendlyError(msg, code=populated, original=exc)

@@ -175,21 +175,54 @@ async def test_tool_returns_period_and_rows(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_tool_rejects_range_over_30_days(monkeypatch):
-    """RangeTooWideError from change_history_query propagates through the tool."""
+async def test_custom_old_start_date_clamped(monkeypatch):
+    """Custom start_date > 30 dias é CLAMPADO (não rejeitado) + warning — preset OU custom.
+
+    Antes do hardening, custom dates antigas erravam com "start date too old" do
+    Google (visto na prática nas sessões Codex do Pedro). Agora clampa pro teto.
+    """
+    from datetime import UTC, datetime, timedelta
     from unittest.mock import AsyncMock
 
-    from src.google_ads.queries.change_history import RangeTooWideError
+    from src.mcp.tools import get_change_history as mod
+    from src.mcp.tools.get_change_history import _RETENTION_SAFETY_DAYS
+
+    monkeypatch.setattr(mod, "run_report", AsyncMock(return_value=[]))
+    monkeypatch.setattr(mod, "_resolve_names", AsyncMock(return_value={}))
+
+    today = datetime.now(UTC).date()
+    result = await mod.get_change_history(
+        {
+            "customer_id": "1234567890",
+            "start_date": (today - timedelta(days=60)).isoformat(),
+            "end_date": today.isoformat(),
+        }
+    )
+
+    assert "date_range_warning" in result
+    assert "coerced" in result["date_range_warning"]
+    # start clampado pro teto de retenção (não mais o today-60 original)
+    assert result["period"]["from"] == (today - timedelta(days=_RETENTION_SAFETY_DAYS)).isoformat()
+
+
+@pytest.mark.asyncio
+async def test_custom_window_entirely_outside_retention_errors(monkeypatch):
+    """Janela custom inteiramente > 30 dias atrás → ValueError claro (sem dado a retornar)."""
+    from datetime import UTC, datetime, timedelta
+    from unittest.mock import AsyncMock
+
     from src.mcp.tools import get_change_history as mod
 
-    # No need to stub run_report — the error should fire before we call the API
     monkeypatch.setattr(mod, "run_report", AsyncMock(return_value=[]))
+    monkeypatch.setattr(mod, "_resolve_names", AsyncMock(return_value={}))
 
-    with pytest.raises(RangeTooWideError):
+    today = datetime.now(UTC).date()
+    with pytest.raises(ValueError, match="retenção"):
         await mod.get_change_history(
             {
                 "customer_id": "1234567890",
-                "date_range": {"from": "2026-01-01", "to": "2026-03-01"},  # 60 days
+                "start_date": (today - timedelta(days=90)).isoformat(),
+                "end_date": (today - timedelta(days=60)).isoformat(),
             }
         )
 
