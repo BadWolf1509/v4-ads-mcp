@@ -282,3 +282,18 @@ def test_extract_purchase_roas_first_only() -> None:
 def test_extract_purchase_roas_empty_list() -> None:
     assert _extract_purchase_roas([]) == 0.0
     assert _extract_purchase_roas(None) == 0.0
+
+
+# ============================================================================
+# Breakdown enum + BREAKDOWN_META_PARAM mapping
+# ============================================================================
+
+
+def test_breakdown_meta_param_covers_all_enum_values() -> None:
+    from src.meta_ads.insights import BREAKDOWN_META_PARAM
+
+    assert set(BREAKDOWN_META_PARAM) == {"platform", "device", "geo", "hourly"}
+    assert BREAKDOWN_META_PARAM["platform"] == ["publisher_platform"]
+    assert BREAKDOWN_META_PARAM["device"] == ["impression_device"]
+    assert BREAKDOWN_META_PARAM["geo"] == ["country"]
+    assert BREAKDOWN_META_PARAM["hourly"] == ["hourly_stats_aggregated_by_advertiser_time_zone"]

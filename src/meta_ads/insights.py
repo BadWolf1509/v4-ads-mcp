@@ -20,6 +20,19 @@ from src.mcp.tools._meta_common import META_EFFECTIVE_STATUS_LABELS
 
 Level = Literal["campaign", "adset", "ad"]
 
+Breakdown = Literal["platform", "device", "geo", "hourly"]
+
+# Tool breakdown enum → Meta Insights `breakdowns` param value(s).
+# PROVISIONAL v0 (F53/F54/F55): `device`/`geo` variants são confirmados no smoke
+# (docs/operacao/phase-M-4-bootstrap.md). ads_get_field_context NÃO valida
+# breakdowns — o smoke per-valor é o gate antes do ship.
+BREAKDOWN_META_PARAM: dict[str, list[str]] = {
+    "platform": ["publisher_platform"],
+    "device": ["impression_device"],
+    "geo": ["country"],
+    "hourly": ["hourly_stats_aggregated_by_advertiser_time_zone"],
+}
+
 # Per-level field lists (Meta Insights API field names)
 _COMMON_INSIGHTS_FIELDS = [
     "spend",
