@@ -51,6 +51,14 @@ async def ensure_account_access(
         error_message="Gestor sem acesso à conta Google",
         platform="google",
     )
+    log.warning(
+        "account_access_denied",
+        manager_id=str(manager_id),
+        customer_id=customer_id,
+        operation=operation_name,
+        level=level,
+        platform="google",
+    )
     raise AccountAccessDeniedError(
         f"Você não tem acesso à conta {customer_id}. Peça ao admin pra liberar no painel."
     )
