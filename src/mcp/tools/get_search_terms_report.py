@@ -46,6 +46,30 @@ _SCHEMA: dict[str, Any] = {
             "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
         },
         "limit": {"type": "integer", "minimum": 1, "maximum": 10000, "default": 50},
+        "min_cost_brl": {
+            "type": "number",
+            "minimum": 0,
+            "description": (
+                "Custo minimo em BRL no periodo. Filtra server-side (GAQL WHERE). "
+                "Omitir = sem filtro de custo."
+            ),
+        },
+        "min_clicks": {
+            "type": "integer",
+            "minimum": 0,
+            "description": (
+                "Clicks minimos no periodo. Filtra server-side (GAQL WHERE). "
+                "Omitir = sem filtro de clicks."
+            ),
+        },
+        "min_conversions": {
+            "type": "number",
+            "minimum": 0,
+            "description": (
+                "Conversoes minimas no periodo (exclusive: > valor). Filtra server-side (GAQL WHERE). "
+                "Use 0 pra exigir pelo menos 1 conversao. Omitir = sem filtro."
+            ),
+        },
     },
     "required": ["customer_id"],
     "additionalProperties": False,
@@ -98,7 +122,14 @@ async def get_search_terms_report(args: dict[str, Any]) -> dict[str, Any]:
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
-        query=search_terms_query(start, end, limit),
+        query=search_terms_query(
+            start,
+            end,
+            limit,
+            min_cost_brl=args.get("min_cost_brl"),
+            min_clicks=args.get("min_clicks"),
+            min_conversions=args.get("min_conversions"),
+        ),
         row_formatter=_row_formatter,
         operation_name="get_search_terms_report",
     )

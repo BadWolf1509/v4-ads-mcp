@@ -41,7 +41,16 @@ def keyword_performance_query(
     """.strip()
 
 
-def search_terms_query(start: date, end: date, limit: int) -> str:
+def search_terms_query(
+    start: date,
+    end: date,
+    limit: int,
+    *,
+    min_cost_brl: float | None = None,
+    min_clicks: int | None = None,
+    min_conversions: float | None = None,
+) -> str:
+    metric_clause = build_metric_filter_clause(min_cost_brl, min_clicks, min_conversions)
     return f"""
         SELECT
           search_term_view.search_term,
@@ -51,7 +60,7 @@ def search_terms_query(start: date, end: date, limit: int) -> str:
           metrics.impressions, metrics.clicks, metrics.cost_micros,
           metrics.conversions, metrics.conversions_value
         FROM search_term_view
-        WHERE {gaql_date_clause(start, end)}
+        WHERE {gaql_date_clause(start, end)} {metric_clause}
         ORDER BY metrics.cost_micros DESC
         LIMIT {limit}
     """.strip()
