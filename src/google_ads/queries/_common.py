@@ -187,6 +187,31 @@ def micros_to_currency(micros: int | float) -> float:
     return round(micros / 1_000_000.0, 2)
 
 
+def build_metric_filter_clause(
+    min_cost_brl: float | None = None,
+    min_clicks: int | None = None,
+    min_conversions: float | None = None,
+) -> str:
+    """Build the optional GAQL WHERE fragment for server-side metric filters.
+
+    Server-side filtering on keyword_view / search_term_view (the metric fields
+    are already in both SELECTs). cost_micros and clicks are integers and accept
+    `>=`; conversions is a double and GAQL REJECTS `>=` on it — use `>` (strictly
+    greater). Validated via validate_gaql on both resources (Onda 3).
+
+    Returns a fragment starting with "AND " (safe to append after an existing
+    WHERE clause), or "" when no filter is requested.
+    """
+    clauses: list[str] = []
+    if min_cost_brl is not None:
+        clauses.append(f"AND metrics.cost_micros >= {int(min_cost_brl * 1_000_000)}")
+    if min_clicks is not None:
+        clauses.append(f"AND metrics.clicks >= {int(min_clicks)}")
+    if min_conversions is not None:
+        clauses.append(f"AND metrics.conversions > {float(min_conversions)}")
+    return " ".join(clauses)
+
+
 def value_proxy_warning(conversions: float, conversions_value: float) -> str | None:
     """Returns warning string PT-BR if conversions_value == conversions (1:1 placeholder
     tracking), else None.
