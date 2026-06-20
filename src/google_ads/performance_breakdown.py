@@ -84,3 +84,101 @@ def build_performance_breakdown_query(
     if level == "audience":
         return audience_performance_query(start, end, limit)
     raise ValueError(f"level invalido: {level!r}")
+
+
+def parse_performance_row(row: Any, level: str, breakdown: str | None) -> dict[str, Any]:
+    """Transforma uma linha GAQL (proto) em dict com unit conversions.
+
+    Cobre os 5 entity levels (campaign/ad_group/ad/keyword/audience).
+    Task 4 cobre account+breakdown.
+    """
+    base = _common_metrics(row.metrics)
+
+    if level == "campaign":
+        return {
+            "campaign_id": str(row.campaign.id),
+            "campaign_name": row.campaign.name,
+            "status": row.campaign.status.name,
+            "type": row.campaign.advertising_channel_type.name,
+            **base,
+        }
+    if level == "ad_group":
+        return {
+            "ad_group_id": str(row.ad_group.id),
+            "ad_group_name": row.ad_group.name,
+            "status": row.ad_group.status.name,
+            "campaign_id": str(row.campaign.id),
+            "campaign_name": row.campaign.name,
+            **base,
+        }
+    if level == "ad":
+        ad = row.ad_group_ad.ad
+        rsa = ad.responsive_search_ad
+        headlines = [h.text for h in rsa.headlines] if rsa else []
+        descriptions = [d.text for d in rsa.descriptions] if rsa else []
+        final_urls = list(ad.final_urls) if ad.final_urls else []
+        return {
+            "ad_id": str(ad.id),
+            "status": row.ad_group_ad.status.name,
+            "type": ad.type.name,
+            "ad_strength": row.ad_group_ad.ad_strength.name,
+            "headlines": headlines,
+            "descriptions": descriptions,
+            "final_urls": final_urls,
+            "ad_group_id": str(row.ad_group.id),
+            "ad_group_name": row.ad_group.name,
+            "campaign_id": str(row.campaign.id),
+            "campaign_name": row.campaign.name,
+            **base,
+        }
+    if level == "keyword":
+        qi = row.ad_group_criterion.quality_info
+        pe = row.ad_group_criterion.position_estimates
+        return {
+            "criterion_id": str(row.ad_group_criterion.criterion_id),
+            "keyword_text": row.ad_group_criterion.keyword.text,
+            "match_type": row.ad_group_criterion.keyword.match_type.name,
+            "status": row.ad_group_criterion.status.name,
+            "negative": bool(row.ad_group_criterion.negative),
+            "quality_score": int(qi.quality_score) if qi.quality_score else None,
+            "quality_creative": qi.creative_quality_score.name
+            if qi.creative_quality_score
+            else None,
+            "quality_post_click": qi.post_click_quality_score.name
+            if qi.post_click_quality_score
+            else None,
+            "quality_search_predicted_ctr": qi.search_predicted_ctr.name
+            if qi.search_predicted_ctr
+            else None,
+            "first_page_cpc_brl": micros_to_currency(pe.first_page_cpc_micros)
+            if pe.first_page_cpc_micros
+            else None,
+            "top_of_page_cpc_brl": micros_to_currency(pe.top_of_page_cpc_micros)
+            if pe.top_of_page_cpc_micros
+            else None,
+            "ad_group_id": str(row.ad_group.id),
+            "ad_group_name": row.ad_group.name,
+            "campaign_id": str(row.campaign.id),
+            "campaign_name": row.campaign.name,
+            **base,
+        }
+    if level == "audience":
+        cr = row.ad_group_criterion
+        user_list = cr.user_list.user_list if cr.user_list and cr.user_list.user_list else None
+        user_interest = (
+            str(cr.user_interest.user_interest_category)
+            if cr.user_interest and cr.user_interest.user_interest_category
+            else None
+        )
+        return {
+            "resource_name": row.ad_group_audience_view.resource_name,
+            "criterion_id": str(cr.criterion_id),
+            "user_list": user_list,
+            "user_interest_category": user_interest,
+            "ad_group_id": str(row.ad_group.id),
+            "ad_group_name": row.ad_group.name,
+            "campaign_id": str(row.campaign.id),
+            "campaign_name": row.campaign.name,
+            **base,
+        }
+    raise ValueError(f"level invalido em parse: {level!r}")
