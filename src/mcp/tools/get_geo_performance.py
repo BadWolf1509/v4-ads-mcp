@@ -94,6 +94,7 @@ async def get_geo_performance(args: dict[str, Any]) -> dict[str, Any]:
         query=geo_performance_query(start, end, limit),
         row_formatter=_row_formatter,
         operation_name="get_geo_performance",
+        audit_this_call=True,
     )
     # Resolve country IDs -> human-readable names via geo_target_constant.
     # Costs ~1 extra op against the API; falls back gracefully if a name is

@@ -115,6 +115,7 @@ async def get_ad_performance(args: dict[str, Any]) -> dict[str, Any]:
         query=ad_performance_query(start, end, status, limit),
         row_formatter=_row_formatter,
         operation_name="get_ad_performance",
+        audit_this_call=True,
     )
     return {
         "customer_id": customer_id,

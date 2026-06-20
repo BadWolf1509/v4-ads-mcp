@@ -106,6 +106,7 @@ async def get_campaign_performance(args: dict[str, Any]) -> dict[str, Any]:
         query=campaign_performance_query(start, end, status, limit),
         row_formatter=_row_formatter,
         operation_name="get_campaign_performance",
+        audit_this_call=True,
     )
     return {
         "customer_id": customer_id,

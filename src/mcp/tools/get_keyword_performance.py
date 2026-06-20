@@ -129,6 +129,7 @@ async def get_keyword_performance(args: dict[str, Any]) -> dict[str, Any]:
         query=keyword_performance_query(start, end, status, limit),
         row_formatter=_row_formatter,
         operation_name="get_keyword_performance",
+        audit_this_call=True,
     )
     return {
         "customer_id": customer_id,

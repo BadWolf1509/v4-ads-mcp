@@ -92,6 +92,7 @@ async def get_device_performance(args: dict[str, Any]) -> dict[str, Any]:
         query=device_performance_query(start, end),
         row_formatter=_row_formatter,
         operation_name="get_device_performance",
+        audit_this_call=True,
     )
     return {
         "customer_id": customer_id,
