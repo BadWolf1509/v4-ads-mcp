@@ -2,11 +2,21 @@
 
 from datetime import date
 
-from src.google_ads.queries._common import gaql_date_clause
+from src.google_ads.queries._common import build_metric_filter_clause, gaql_date_clause
 
 
-def keyword_performance_query(start: date, end: date, status: str, limit: int) -> str:
+def keyword_performance_query(
+    start: date,
+    end: date,
+    status: str,
+    limit: int,
+    *,
+    min_cost_brl: float | None = None,
+    min_clicks: int | None = None,
+    min_conversions: float | None = None,
+) -> str:
     status_clause = "" if status == "all" else f"AND ad_group_criterion.status = '{status.upper()}'"
+    metric_clause = build_metric_filter_clause(min_cost_brl, min_clicks, min_conversions)
     return f"""
         SELECT
           ad_group_criterion.criterion_id,
@@ -25,7 +35,7 @@ def keyword_performance_query(start: date, end: date, status: str, limit: int) -
           metrics.impressions, metrics.clicks, metrics.cost_micros,
           metrics.conversions, metrics.conversions_value
         FROM keyword_view
-        WHERE {gaql_date_clause(start, end)} {status_clause}
+        WHERE {gaql_date_clause(start, end)} {status_clause} {metric_clause}
         ORDER BY metrics.cost_micros DESC
         LIMIT {limit}
     """.strip()
