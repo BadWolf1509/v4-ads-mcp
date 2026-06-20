@@ -188,6 +188,7 @@ def test_all_phase_2_tools_registered():
         # update patterns
         "update_rsa",
         "update_conversion_action",  # Sprint 3b.27
+        "get_performance_breakdown",  # Fase 2A Task 5
     }
     actual = {t.name for t in all_tools()}
     missing = expected - actual
@@ -260,6 +261,7 @@ def test_no_unexpected_tools():
         "meta_get_ad_set_performance",  # Sprint M.3 Task 4
         "meta_get_ad_performance",  # Sprint M.3 Task 5
         "meta_get_performance_breakdown",  # Sprint M.4
+        "get_performance_breakdown",  # Fase 2A Task 5
     }
     actual = {t.name for t in all_tools()}
     unexpected = actual - expected
