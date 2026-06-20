@@ -94,6 +94,26 @@ def parse_performance_row(row: Any, level: str, breakdown: str | None) -> dict[s
     """
     base = _common_metrics(row.metrics)
 
+    if level == "account":
+        if breakdown == "device":
+            return {"breakdown": {"device": row.segments.device.name}, **base}
+        if breakdown == "geo":
+            return {
+                "breakdown": {
+                    "country_criterion_id": str(row.geographic_view.country_criterion_id)
+                },
+                **base,
+            }
+        if breakdown == "hourly":
+            return {
+                "breakdown": {
+                    "hour": int(row.segments.hour),
+                    "day_of_week": row.segments.day_of_week.name,
+                },
+                **base,
+            }
+        raise ValueError(f"breakdown invalido pra account: {breakdown!r}")
+
     if level == "campaign":
         return {
             "campaign_id": str(row.campaign.id),

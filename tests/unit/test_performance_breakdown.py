@@ -203,3 +203,26 @@ def test_parse_audience():
     assert out["criterion_id"] == "55"
     assert out["user_list"] == "customers/1/userLists/9"
     assert out["user_interest_category"] is None
+
+
+def test_parse_account_device():
+    row = SimpleNamespace(segments=SimpleNamespace(device=_enum("MOBILE")), metrics=_metrics())
+    out = parse_performance_row(row, "account", "device")
+    assert out["breakdown"] == {"device": "MOBILE"}
+    assert out["cost_brl"] == 5.0
+
+
+def test_parse_account_geo():
+    row = SimpleNamespace(
+        geographic_view=SimpleNamespace(country_criterion_id=2076), metrics=_metrics()
+    )
+    out = parse_performance_row(row, "account", "geo")
+    assert out["breakdown"] == {"country_criterion_id": "2076"}
+
+
+def test_parse_account_hourly():
+    row = SimpleNamespace(
+        segments=SimpleNamespace(hour=11, day_of_week=_enum("MONDAY")), metrics=_metrics()
+    )
+    out = parse_performance_row(row, "account", "hourly")
+    assert out["breakdown"] == {"hour": 11, "day_of_week": "MONDAY"}
