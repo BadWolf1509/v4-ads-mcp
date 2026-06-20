@@ -396,3 +396,35 @@ def test_get_account_overview_rejects_invalid_date_format():
     invalid = {"customer_id": "1234567890", "start_date": "08/05/2026", "end_date": "2026-05-14"}
     with pytest.raises(jsonschema.exceptions.ValidationError):
         jsonschema.validate(invalid, _SCHEMA)
+
+
+def test_every_mutate_builder_has_a_builder_test():
+    """Todo @register_builder DEVE ter um test_*_builder.py que importa/referencia
+    sua função. Anti-reincidência F50/F51 (Onda 2): os 10 builders update_*/negative
+    shiparam sem teste de execução — um campo proto / FieldMask / oneof errado passava
+    a suíte e só falhava quando um gestor confirmava a mutação em produção.
+
+    Complementa test_builder_tests_use_capture_client_not_magicmock (que garante a
+    QUALIDADE do teste) com a EXISTÊNCIA do teste.
+    """
+    import pathlib
+
+    from src.google_ads.mutates._common import _BUILDERS, import_all_builders
+
+    import_all_builders()
+
+    unit_dir = pathlib.Path(__file__).resolve().parent
+    all_content = "\n".join(
+        p.read_text(encoding="utf-8") for p in unit_dir.glob("test_*_builder.py")
+    )
+
+    missing = sorted(
+        op
+        for op, fn in _BUILDERS.items()
+        if fn.__name__ not in all_content and op not in all_content
+    )
+
+    assert not missing, (
+        "Builders de mutate sem test_*_builder.py (classe F50/F51 — código de mutação "
+        "sem teste de execução):\n" + "\n".join(f"  {op}" for op in missing)
+    )
