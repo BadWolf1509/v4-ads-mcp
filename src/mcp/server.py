@@ -11,8 +11,12 @@ from mcp.server.streamable_http import StreamableHTTPServerTransport
 from mcp.types import TextContent, Tool
 
 from mcp.server import Server
+from src.google_ads.access import AccountAccessDeniedError
+from src.google_ads.errors import GoogleAdsFriendlyError
+from src.governance.rate_limit import QuotaExhausted
 from src.mcp.session import UnauthorizedError, resolve_session_to_context
 from src.mcp.tools._registry import all_tools, get_tool, import_all_tools
+from src.meta_ads.client import MetaAccessDeniedError
 
 SERVER_NAME = "v4-ads-mcp"
 SERVER_VERSION = "0.1.0"
@@ -50,6 +54,27 @@ _ASGISend = Callable[[MutableMapping[str, Any]], Awaitable[None]]
 
 # Eagerly import all tool modules so their @register_tool decorators run.
 import_all_tools()
+
+
+def _error_envelope(tool_name: str, exc: Exception) -> dict[str, Any]:
+    """Mapeia uma exceção de handler pra um envelope seguro pro cliente.
+
+    Chamada de dentro do `except` em call_tool — log.exception() captura o
+    traceback vivo no branch catch-all. Erros friendly/denied mantêm a msg
+    PT-BR (auto-corrigem clientes LLM, F62); o resto é scrubado pra uma msg
+    genérica (sem SQL/driver/internals vazando pro cliente MCP).
+    """
+    if isinstance(exc, AccountAccessDeniedError | MetaAccessDeniedError):
+        log.warning("tool_access_denied", tool=tool_name, error=str(exc))
+        return {"status": "denied", "error_message": str(exc)}
+    if isinstance(exc, GoogleAdsFriendlyError | QuotaExhausted):
+        log.info("tool_friendly_error", tool=tool_name, error=str(exc))
+        return {"status": "error", "error_message": str(exc)}
+    log.exception("tool_handler_error", tool=tool_name)
+    return {
+        "status": "error",
+        "error_message": "Erro interno ao executar a ferramenta. O time foi notificado.",
+    }
 
 
 def build_server() -> Any:
@@ -99,7 +124,10 @@ def build_server() -> Any:
                 f"Invalid arguments for tool '{name}': {e.message} "
                 f"(at path: {'/'.join(str(p) for p in e.absolute_path) or '<root>'})"
             ) from e
-        result = await tool.handler(args)
+        try:
+            result = await tool.handler(args)
+        except Exception as e:  # noqa: BLE001 — boundary: toda falha vira envelope seguro
+            result = _error_envelope(name, e)
         # MCP requires tool result to be a list of content blocks; we return
         # a single TextContent with JSON-serialized payload.
         return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, default=str))]
@@ -130,10 +158,10 @@ def mount_mcp(app: FastAPI) -> None:
                 status_code=401,
                 headers={"content-type": "application/json"},
             )
-        except Exception as e:
-            log.warning("mcp_auth_error", error=str(e))
+        except Exception:
+            log.exception("mcp_auth_error")
             return Response(
-                content=json.dumps({"error": "internal_error", "message": str(e)}),
+                content=json.dumps({"error": "internal_error", "message": "Erro interno."}),
                 status_code=500,
                 headers={"content-type": "application/json"},
             )
