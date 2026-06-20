@@ -18,35 +18,38 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 
 ## Current state
 
-**Última atualização:** 2026-06-19. Produção verde em `84024a5`, `/health` 200. **~62 MCP tools** (57 Google + 5 Meta), bucket ~22 always + 40 defer.
+**Última atualização:** 2026-06-20. Produção verde em `69a7f2d`, `/health` 200. **~64 MCP tools** (58 Google + 6 Meta), bucket ~23 always + 41 defer.
 
-**O que existe:** Foundation (Phases 0-1b/3a) + 40 sprints Google (3b.1→3b.40) + família Meta (M.1→M.3.1.1) + camada de acesso/segurança (Modelo B + hard-gate + CSRF/CSP, sessão 2026-05-28/29) + **sessão operacional 2026-06-19** (abaixo). Detalhe: [`sprint-history.md`](docs/operacao/sprint-history.md) + handoffs em `docs/operacao/`.
+**O que existe:** Foundation (Phases 0-1b/3a) + 40 sprints Google (3b.1→3b.40) + **Fase 2A** (`get_performance_breakdown` consolida 8 reports Google, aditivo) + família Meta (M.1→M.3.1.1 + **M.4** breakdowns) + camada de acesso/segurança (Modelo B + hard-gate + CSRF/CSP) + sessões operacionais 2026-06-19/20. Detalhe: [`sprint-history.md`](docs/operacao/sprint-history.md) + handoffs em `docs/operacao/`.
 
-**Sessão 2026-06-19 (recuperação + hardening):** migração da conta admin `wellinton.`→`wellington.` (a antiga foi excluída → Google OAuth + linha em `managers` + grants restaurados); **portfólio Meta 12→22 contas** (fix de paginação em `/me/adaccounts` + re-sync no painel + grants Modelo B pros 4 gestores); **GAQL error UX** (`QUERY_ERROR` vira mensagem auto-corretiva); **resync Meta agendado** (piggyback no job `account_resync`); cleanup (`BOOTSTRAP_ADMIN_EMAILS`, e-mail de contato nos templates legais). Handoff: [`session-2026-06-19-handoff.md`](docs/operacao/session-2026-06-19-handoff.md).
+**Sessão 2026-06-20 (investigação → 4 entregas em prod):** **Onda 0** hardening (gate `validate_gaql` — era o call-site de `build_client_for_manager` esquecido, classe F57; + auditoria de negação Meta sempre-on; + 3 builder tests → `make_capture_client` + guard AST); **Onda 1** observabilidade (`bind_request_context` plugado em `resolve_session_to_context` → logs com manager_id/session_id; `/health?deep=1` readiness DB); **M.4** `meta_get_performance_breakdown` (smoke green); **Fase 2A** `get_performance_breakdown` (consolida 8 reports Google, aditivo, smoke green com parity bit-a-bit). Handoff: [`session-2026-06-20-handoff.md`](docs/operacao/session-2026-06-20-handoff.md).
+
+**Sessão 2026-06-19 (recuperação):** migração admin `wellinton.`→`wellington.`, Meta 12→22 contas (F61 paginação), GAQL error UX (F62), resync Meta agendado, clamp `get_change_history` (F63). Handoff: [`session-2026-06-19-handoff.md`](docs/operacao/session-2026-06-19-handoff.md).
 
 **Tokens válidos:** v4-ads Bearer (procedure abaixo, NÃO inventar). Meta system-user token no secret `meta-system-user-token` (não expira). Meta OAuth pessoal do Wellington dormante (expira 27/07/2026).
 
-**⚠️ IAM GCP (pendente):** a conta admin nova (`wellington.ribeiro@v4company.com`) tem **ZERO acesso ao projeto `v4-ads-mcp-prod`** (a antiga era owner, foi excluída). Deploys (WIF/`GCP_DEPLOY_SA`) + runtime (SAs) funcionam normal; mas ops gcloud manuais (ler secrets, Cloud Run, rollback) exigem um **Org Admin V4** conceder `roles/owner` (a deploy SA é least-privilege e NÃO se auto-concede — verificado 2026-06-19). DB direto: use **Supabase MCP** (não precisa gcloud). Detalhe no handoff 2026-06-19.
+**⚠️ IAM GCP (pendente):** a conta admin (`wellington.ribeiro@v4company.com`) tem **ZERO acesso ao projeto `v4-ads-mcp-prod`** (a antiga era owner, foi excluída). Deploys (WIF/`GCP_DEPLOY_SA`) + runtime (SAs) funcionam; ops gcloud manuais (ler secrets, Cloud Run, rollback) exigem um **Org Admin V4** conceder `roles/owner` (deploy SA é least-privilege, não se auto-concede). DB direto: **Supabase MCP** (não precisa gcloud).
 
-**Próximo sprint (escolha 1):** M.4 (Meta breakdowns geo+device+hourly) · M.5 (Meta audience+top_creatives) · 3b.41 (refactor Fase 2: `get_performance_breakdown` consolida 9 reports). Roadmap Meta: [`specs/2026-05-24-meta-ads-incorporation-design.md`](docs/superpowers/specs/2026-05-24-meta-ads-incorporation-design.md).
+**Próximo sprint (escolha 1):** **Fase 2B** (tombstone dos 8 reports Google que a Fase 2A substituiu — §4.1 do [refactor design](docs/superpowers/specs/2026-05-25-architecture-refactor-design.md); pós-soak: gate 21d / dogfood ≥3/sem / zero-retry no `audit_log`; a tool nova já tem `audit_this_call=True` pra semear o watch) · **M.5** (Meta audience+top_creatives). Roadmap Meta: [`specs/2026-05-24-meta-ads-incorporation-design.md`](docs/superpowers/specs/2026-05-24-meta-ads-incorporation-design.md).
 
-**Decision gates:** 2026-06-25→07-10 checkpoint volume Meta Caminho B+ (500 calls/15d → re-submit Full Access) · 2026-07-25 reconectar Meta OAuth Wellington · **grant IAM GCP pra conta nova** (Org Admin V4, quando precisar de ops gcloud manuais).
+**Decision gates:** 2026-06-25→07-10 checkpoint volume Meta Caminho B+ (500 calls/15d → re-submit Full Access; M.4+M.5 alimentam) · **~2026-07-11 soak gate Fase 2A→2B** (checar zero-retry nos 8 reports antigos no `audit_log` antes de tombstonar) · 2026-07-25 reconectar Meta OAuth Wellington · **grant IAM GCP** (Org Admin V4, quando precisar de ops gcloud manuais).
 
-**Pendente operacional:** grants Meta dos 4 gestores ✅ (todos com as 22 contas, 2026-06-19); Anderson `invited` → precisa de 1 login no painel pra ativar (`invited`→`active`). Backlog técnico: `verify_campaign_state`, breakdowns Meta, audit_log gap em `get_my_audit_log`.
+**Pendente operacional:** Anderson `invited` → precisa de 1 login no painel pra ativar (`invited`→`active`). Backlog técnico: `verify_campaign_state`, audit_log gap em `get_my_audit_log` (não enriquece com o JOIN que `get_by_id` já tem).
 
-**Quando ler outros docs:** [bug suspeito → `findings-catalog.md`] [o que shipou / detalhe sprint → `sprint-history.md`] [última sessão → `session-2026-06-19-handoff.md`] [executar pendente → spec+plan em `docs/superpowers/`].
+**Quando ler outros docs:** [bug suspeito → `findings-catalog.md`] [o que shipou / detalhe sprint → `sprint-history.md`] [última sessão → `session-2026-06-20-handoff.md`] [executar pendente → spec+plan em `docs/superpowers/`].
 
 ## Read these first when continuing work
 
 ```
 docs/operacao/findings-catalog.md            # ★ Bug history (F1-F63 + A1-A6 + D1-D3) — scan antes de design mutate/query
-docs/operacao/sprint-history.md              # ★ Tabela por sprint (3b.1→3b.40 + Meta + sessões operacionais)
-docs/operacao/session-2026-06-19-handoff.md  # ★ Última sessão: recuperação conta + Meta 12→22 + GAQL error UX + resync
+docs/operacao/sprint-history.md              # ★ Tabela por sprint (3b.1→3b.40 + M.4 + Fase 2A + Meta + sessões operacionais)
+docs/operacao/session-2026-06-20-handoff.md  # ★ Última sessão: Onda 0/1 hardening+observ + M.4 + Fase 2A (consolidação Google)
+docs/operacao/session-2026-06-19-handoff.md  # recuperação conta + Meta 12→22 + GAQL error UX + resync
 docs/operacao/session-2026-05-29-handoff.md  # acesso/segurança (matrix + hard-gate + CSP)
+docs/superpowers/specs/2026-06-20-google-performance-breakdown-design.md  # Fase 2A (+ plano par em plans/) — molde pra Fase 2B
 docs/superpowers/specs/2026-05-28-google-mcp-account-gate-design.md   # hard-gate de acesso por conta (Google)
-docs/superpowers/specs/2026-05-28-meta-access-matrix-design.md        # Meta Modelo B (system user)
 docs/superpowers/specs/2026-05-24-meta-ads-incorporation-design.md    # roadmap família Meta
-docs/superpowers/specs/2026-05-25-architecture-refactor-design.md     # refactor 4 fases (Fase 1 ✅)
+docs/superpowers/specs/2026-05-25-architecture-refactor-design.md     # refactor 4 fases (Fases 1 + 2A ✅; 2B/3/4 pendentes)
 docs/operacao/tool-buckets-2026-05-25.md     # bucket classification per-tool
 docs/operacao/infra-setup.md                 # foundation setup
 docs/operacao/dogfood-*.md                   # feedback real (MO-JP, ML Antiguidades, Nutry…)
@@ -70,8 +73,8 @@ Heurísticas-teste pra reduzir erros típicos de LLM. Complementam o system prom
 
 A matriz `manager_account_access` (Google) / `manager_meta_account_access` (Meta) é **autoritativa na camada MCP**: um gestor só lê/altera contas concedidas (sem bypass por role — admin idem).
 
-- **Google:** `ensure_account_access(conn, *, manager_id, customer_id, session_id, operation_name, level)` em `src/google_ads/access.py` (raise `AccountAccessDeniedError` + audit `status="denied"`) é chamado no TOPO de TODO executor que builda o client: `run_report` (read), `run_mutation`, `run_conversion_upload`, `run_offline_user_data_job`, `run_recommendation_action` (write), e `create_pending` (build/preview). **São 6 choke points** — ao adicionar gate/pré-flight, `grep` TODA função que chama `build_client_for_manager` (F57: run_recommendation_action foi esquecido no plano inicial).
-- **Meta:** `can_manager_access` em `run_meta_graph_get` (quando `params` tem `ad_account_id`). Token de execução = system user compartilhado, então a matriz é o ÚNICO freio.
+- **Google:** `ensure_account_access(conn, *, manager_id, customer_id, session_id, operation_name, level)` em `src/google_ads/access.py` (raise `AccountAccessDeniedError` + audit `status="denied"`) é chamado no TOPO de TODO executor que builda o client: `run_report` (read), `run_mutation`, `run_conversion_upload`, `run_offline_user_data_job`, `run_recommendation_action` (write), e `create_pending` (build/preview) — **6 executores** —, mais **`validate_gaql`** (gated no nível do TOOL em 2026-06-20: chama `build_client_for_manager` direto, FORA dos executores; era o site esquecido, classe F57). Ao adicionar gate/pré-flight, `grep` TODA função que chama `build_client_for_manager`.
+- **Meta:** `can_manager_access` em `run_meta_graph_get` (quando `params` tem `ad_account_id`). Token de execução = system user compartilhado, então a matriz é o ÚNICO freio. **Negação é SEMPRE auditada** (`status="denied"` fora do `if audit_this_call` desde 2026-06-20 — evento de segurança, espelha o Google).
 
 ### Segurança web (middleware) — post sessão 2026-05-29
 
@@ -171,6 +174,12 @@ Reads + `bulk_pause_by_query`: **preset** (`date_range: str` com `type:"string"`
 - **`get_change_history` clamp (F63):** `start_date` (preset OU custom) é clampado pro teto de 30 dias com warning em vez de deixar o Google rejeitar; janela inteira fora da retenção → `ValueError` claro.
 - **Resync Meta piggyback:** `src/jobs/account_resync.py` chama `resync_meta()` (`src/jobs/meta_resync.py`) no fim — o job diário (Cloud Run Job `v4-ads-mcp-resync` + Cloud Scheduler) atualiza `meta_ad_accounts` zero-touch. Secret `META_SYSTEM_USER_TOKEN` montado no job via `deploy.yml --update-secrets`. Grants seguem manuais (Modelo B).
 - **Migração de conta + IAM:** a conta admin antiga (owner do GCP) foi excluída → recuperação exigiu re-sync de OAuth/managers/grants. **Lição:** projeto prod sem owner humano = single point of failure (peça 2 owners). A deploy SA é least-privilege (não concede IAM — bom, mas significa sem auto-recuperação). Detalhe: handoff 2026-06-19.
+
+### Pós sessão 2026-06-20 (observabilidade + performance breakdown pattern)
+
+- **Observabilidade (Onda 1):** `bind_request_context`/`clear_request_context` (em `src/logging.py`) estavam órfãos → plugados em `resolve_session_to_context` (`src/mcp/session.py`): `clear_request_context()` no início (padrão structlog) + `bind_request_context(manager_id=…, session_id=…)` após `set_current`. `merge_contextvars` já estava no pipeline → todo log do request carrega manager_id/session_id. `/health?deep=1` faz `SELECT 1` no pool (readiness: 200 db=ok / 503 degraded); shallow `/health` inalterado (smoke do deploy intacto).
+- **Performance breakdown pattern (M.4 + Fase 2A):** dois tools-**irmãos** de mesma forma `(level, breakdown)` — `get_performance_breakdown` (Google) e `meta_get_performance_breakdown` (Meta). **Google:** módulo puro `src/google_ads/performance_breakdown.py` (`_validate_combo`+`_common_metrics`+`build_performance_breakdown_query`+`parse_performance_row`) ENVOLVE os builders `*_query` de `performance.py`/`tactical.py` (não reescreve). Matriz: `{campaign,ad_group,ad,keyword,audience}`+sem-breakdown OU `account`+`{device,geo,hourly}`; `account`+null → erro apontando `get_account_overview`. bucket=always, `audit_this_call=True`. **Meta:** `src/meta_ads/insights.py` (`build_insights_call(breakdowns=)`); breakdown→param Meta confirmado no smoke (platform→`publisher_platform`, device→`impression_device`, geo→`country`, hourly→`hourly_stats_aggregated_by_advertiser_time_zone`). **Aditivo** — os 8 reports Google antigos seguem vivos até a **Fase 2B** (tombstone pós-soak). Ao consolidar, **paridade bit-a-bit** com o report antigo é requisito (cross-check no smoke). `ads_get_field_context` NÃO cobre breakdowns → validação é smoke-probe per-combo (lição F53/F54/F55).
+- **Builder test guard (Onda 0):** `test_builder_tests_use_capture_client_not_magicmock` (`tests/unit/test_tools_schemas.py`) — qualquer `test_*_builder.py` que referencie `MagicMock` SEM importar `make_capture_client` falha (anti-reincidência F16/F42/F44).
 
 ### Subagent-driven development
 
