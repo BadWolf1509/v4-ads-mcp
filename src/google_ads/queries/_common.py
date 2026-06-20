@@ -182,20 +182,6 @@ def parse_resource_path(path: str) -> tuple[str | None, str | None]:
     return _RESOURCE_PLURAL_TO_TYPE.get(resource_plural), resource_id
 
 
-# Common metric SELECT fragments — reuse across many tools
-METRIC_FIELDS = {
-    "impressions": "metrics.impressions",
-    "clicks": "metrics.clicks",
-    "cost_micros": "metrics.cost_micros",
-    "conversions": "metrics.conversions",
-    "conversions_value": "metrics.conversions_value",
-    "ctr": "metrics.ctr",
-    "average_cpc": "metrics.average_cpc",
-    "cost_per_conversion": "metrics.cost_per_conversion",
-    "value_per_conversion": "metrics.value_per_conversion",
-}
-
-
 def micros_to_currency(micros: int | float) -> float:
     """Google Ads stores money in micros (millionths). 1_500_000 micros = R$ 1.50."""
     return round(micros / 1_000_000.0, 2)
