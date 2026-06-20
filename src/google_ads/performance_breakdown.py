@@ -22,9 +22,6 @@ from src.google_ads.queries.tactical import (
     keyword_performance_query,
 )
 
-_ENTITY_LEVELS = ("campaign", "ad_group", "ad", "keyword", "audience")
-_BREAKDOWNS = ("device", "geo", "hourly")
-
 
 def _validate_combo(level: str, breakdown: str | None) -> str | None:
     """Retorna mensagem PT-BR se o combo (level, breakdown) for inválido, senão None.

@@ -103,6 +103,7 @@ async def get_performance_breakdown(args: dict[str, Any]) -> dict[str, Any]:
         row_formatter=lambda row: parse_performance_row(row, level, breakdown),
         operation_name="get_performance_breakdown",
         audit_this_call=True,
+        params_summary={"level": level, "breakdown": breakdown},
     )
 
     if breakdown == "geo":
