@@ -84,6 +84,13 @@ async def run_meta_graph_get(
                     error_message="Gestor sem acesso à conta Meta",
                     platform="meta",
                 )
+                log.warning(
+                    "meta_account_access_denied",
+                    manager_id=str(manager_id),
+                    ad_account_id=ad_account_id,
+                    operation=operation_name,
+                    platform="meta",
+                )
                 raise MetaAccessDeniedError(
                     f"Você não tem acesso à conta {ad_account_id}. "
                     f"Peça ao admin pra liberar no painel."
