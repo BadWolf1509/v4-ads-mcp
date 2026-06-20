@@ -19,6 +19,7 @@ from src.auth.meta_oauth import _fetch_all_adaccounts
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import meta_ad_accounts
+from src.jobs._audit import record_job_run
 
 log = structlog.get_logger(__name__)
 
@@ -62,6 +63,7 @@ async def resync_meta() -> int:
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         n = await meta_ad_accounts.upsert_many(conn, payload)
+        await record_job_run(conn, operation="meta_resync", platform="meta", target_count=n)
     log.info("meta_resync_complete", upserted=n)
     return n
 

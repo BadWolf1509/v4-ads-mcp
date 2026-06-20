@@ -27,6 +27,7 @@ from src.google_ads.accounts import (
     list_accessible_customer_resource_names,
 )
 from src.google_ads.client import build_client
+from src.jobs._audit import record_job_run
 
 log = structlog.get_logger(__name__)
 
@@ -100,6 +101,13 @@ async def run() -> int:
                 conn,
                 mcc_id=settings.google_ads_login_customer_id,
                 keep_customer_ids=keep_ids,
+            )
+            await record_job_run(
+                conn,
+                operation="account_resync",
+                platform="google",
+                target_count=n,
+                params_summary={"deactivated": deactivated},
             )
 
         log.info("resync_complete", upserted=n, deactivated=deactivated)
