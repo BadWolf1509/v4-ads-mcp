@@ -1,6 +1,11 @@
+from datetime import date
 from types import SimpleNamespace
 
-from src.google_ads.performance_breakdown import _common_metrics, _validate_combo
+from src.google_ads.performance_breakdown import (
+    _common_metrics,
+    _validate_combo,
+    build_performance_breakdown_query,
+)
 
 
 def test_validate_combo_entity_without_breakdown_ok():
@@ -56,3 +61,33 @@ def test_common_metrics_zero_division():
     out = _common_metrics(m)
     assert out["ctr"] == 0.0
     assert out["cpc_brl"] == 0.0
+
+
+_S, _E = date(2026, 1, 1), date(2026, 1, 31)
+
+
+def test_build_query_entity_levels_from_clause():
+    cases = {
+        "campaign": "FROM campaign",
+        "ad_group": "FROM ad_group",
+        "ad": "FROM ad_group_ad",
+        "keyword": "FROM keyword_view",
+        "audience": "FROM ad_group_audience_view",
+    }
+    for level, frm in cases.items():
+        q = build_performance_breakdown_query(level, None, "enabled", _S, _E, 100)
+        assert frm in q
+
+
+def test_build_query_account_breakdowns():
+    q_dev = build_performance_breakdown_query("account", "device", "enabled", _S, _E, 100)
+    assert "segments.device" in q_dev and "FROM customer" in q_dev
+    q_geo = build_performance_breakdown_query("account", "geo", "enabled", _S, _E, 100)
+    assert "geographic_view.country_criterion_id" in q_geo
+    q_hr = build_performance_breakdown_query("account", "hourly", "enabled", _S, _E, 100)
+    assert "segments.hour" in q_hr and "FROM customer" in q_hr
+
+
+def test_build_query_status_applied_to_entity_with_status():
+    q = build_performance_breakdown_query("campaign", None, "paused", _S, _E, 100)
+    assert "campaign.status = 'PAUSED'" in q
