@@ -72,6 +72,7 @@ def test_bidding_target_roas_sets_oneof_and_mask() -> None:
     assert ops[0].field(f"{base}.target_roas.target_roas") == 4.0
     assert list(client.copy_from.call_args_list[0].args[1].paths) == ["target_roas.target_roas"]
     assert ops[0].has(f"{base}.target_cpa.target_cpa_micros") is False
+    assert ops[0].has(f"{base}.maximize_conversions.target_cpa_micros") is False
 
 
 def test_bidding_maximize_conversions_sets_oneof_and_mask() -> None:
@@ -91,6 +92,7 @@ def test_bidding_maximize_conversions_sets_oneof_and_mask() -> None:
         "maximize_conversions.target_cpa_micros"
     ]
     assert ops[0].has(f"{base}.target_cpa.target_cpa_micros") is False
+    assert ops[0].has(f"{base}.target_roas.target_roas") is False
 
 
 def test_bidding_unsupported_strategy_raises() -> None:
