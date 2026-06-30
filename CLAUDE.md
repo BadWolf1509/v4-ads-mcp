@@ -34,16 +34,17 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 
 **Decision gates:** 2026-06-25→07-10 checkpoint volume Meta Caminho B+ (500 calls/15d → re-submit Full Access; M.4+M.5 alimentam) · **~2026-07-11 soak gate Fase 2A→2B** (checar zero-retry nos 8 reports antigos no `audit_log` antes de tombstonar) · 2026-07-25 reconectar Meta OAuth Wellington · **grant IAM GCP** (Org Admin V4, quando precisar de ops gcloud manuais).
 
-**Pendente operacional:** Anderson `invited` → precisa de 1 login no painel pra ativar (`invited`→`active`). Backlog técnico: `verify_campaign_state`, audit_log gap em `get_my_audit_log` (não enriquece com o JOIN que `get_by_id` já tem).
+**Pendente operacional:** **Token Meta de produção precisa ser regenerado all-targets** (app *V4 Ads MCP*, gravar em `meta-system-user-token`) — contas novas não aparecem com o token atual (targets fixos), **bloqueado pelo IAM GCP pendente** (F64, [handoff 2026-06-30](docs/operacao/session-2026-06-30-handoff.md)). Anderson `invited` → precisa de 1 login no painel pra ativar (`invited`→`active`). Backlog técnico: **Onda 5** (resync Meta `mark_inactive_except` — F65), `verify_campaign_state`, audit_log gap em `get_my_audit_log` (não enriquece com o JOIN que `get_by_id` já tem).
 
 **Quando ler outros docs:** [bug suspeito → `findings-catalog.md`] [o que shipou / detalhe sprint → `sprint-history.md`] [última sessão → `session-2026-06-20-handoff.md`] [executar pendente → spec+plan em `docs/superpowers/`].
 
 ## Read these first when continuing work
 
 ```
-docs/operacao/findings-catalog.md            # ★ Bug history (F1-F63 + A1-A6 + D1-D3) — scan antes de design mutate/query
+docs/operacao/findings-catalog.md            # ★ Bug history (F1-F65 + A1-A6 + D1-D3) — scan antes de design mutate/query
 docs/operacao/sprint-history.md              # ★ Tabela por sprint (3b.1→3b.40 + M.4 + Fase 2A + Meta + sessões operacionais)
-docs/operacao/session-2026-06-20-handoff.md  # ★ Última sessão: Onda 0/1 hardening+observ + M.4 + Fase 2A (consolidação Google)
+docs/operacao/session-2026-06-30-handoff.md  # ★ Última sessão: diagnóstico Meta F64/F65 (token prod targets-fixos + cache órfão) + avaliação migração GCP
+docs/operacao/session-2026-06-20-handoff.md  # Onda 0/1 hardening+observ + M.4 + Fase 2A (consolidação Google)
 docs/operacao/session-2026-06-19-handoff.md  # recuperação conta + Meta 12→22 + GAQL error UX + resync
 docs/operacao/session-2026-05-29-handoff.md  # acesso/segurança (matrix + hard-gate + CSP)
 docs/superpowers/specs/2026-06-20-google-performance-breakdown-design.md  # Fase 2A (+ plano par em plans/) — molde pra Fase 2B
