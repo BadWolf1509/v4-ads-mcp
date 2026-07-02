@@ -1,0 +1,22 @@
+# Dependabot — bumps semanais. github-actions é o de maior valor (superfície
+# supply-chain num workflow com id-token: write / WIF pra prod). pip é visibilidade
+# (o projeto não tem lockfile; prod e CI instalam "latest que satisfaz" de qualquer
+# jeito). Majors de google-ads/facebook-business removem versões de API Google
+# Ads/Graph — bump major deve ser deliberado, daí o ignore.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "google-ads"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "facebook-business"
+        update-types: ["version-update:semver-major"]
