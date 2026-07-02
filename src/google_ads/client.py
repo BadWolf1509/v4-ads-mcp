@@ -44,10 +44,15 @@ async def build_client_for_manager(*, manager_id: UUID) -> Any:
 
     Raises NoOAuthConnectionError if the manager has no active connection.
     """
-    from src.auth.tokens import decrypt_refresh_token, derive_master_key_from_settings
+    from src.auth.tokens import (
+        InvalidCiphertextError,
+        decrypt_refresh_token,
+        derive_master_key_from_settings,
+    )
     from src.config import get_settings
     from src.db import connection
     from src.db.repositories import google_oauth_connections
+    from src.google_ads.errors import to_friendly
 
     settings = get_settings()
     pool = connection.get_pool()
@@ -60,7 +65,14 @@ async def build_client_for_manager(*, manager_id: UUID) -> Any:
         )
 
     master_key = derive_master_key_from_settings(settings.aes_master_key)
-    refresh_token = decrypt_refresh_token(oc.refresh_token_enc, master_key)
+    try:
+        refresh_token = decrypt_refresh_token(oc.refresh_token_enc, master_key)
+    except InvalidCiphertextError as e:
+        # Token cifrado com uma AES master key antiga (migração GCP 2026-06-30
+        # regenerou a chave). Converte na origem — este factory é chamado por
+        # TODOS os executores FORA do wrap de to_friendly deles, então sem isto
+        # o erro vazaria cru pro dispatcher e viraria "Erro interno" (F70).
+        raise to_friendly(e) from e
 
     return build_client(
         refresh_token=refresh_token,

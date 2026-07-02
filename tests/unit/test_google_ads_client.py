@@ -1,5 +1,17 @@
 """Test friendly-error translation without importing the heavy SDK."""
 
+import contextlib
+import secrets
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
+
+import pytest
+
+from src.auth.tokens import (
+    InvalidCiphertextError,
+    derive_master_key_from_settings,
+    encrypt_refresh_token,
+)
 from src.google_ads.errors import GoogleAdsFriendlyError, to_friendly
 
 
@@ -59,6 +71,54 @@ def test_no_failure_attribute_returns_generic():
 def test_empty_errors_list_returns_generic():
     fe = to_friendly(_FakeException([]))
     assert "sem detalhes" in fe.message_pt
+
+
+def test_ciphertext_error_gives_actionable_reconnect_message():
+    """Decrypt-failure (chave AES rotacionada na migração) vira erro amigável
+    apontando pra reconexão — senão o dispatcher scruba pra 'Erro interno' (F70)."""
+    fe = to_friendly(InvalidCiphertextError("Ciphertext authentication failed"))
+    assert fe.code == "TOKEN_DECRYPT_FAILED"
+    assert "reconecte" in fe.message_pt.lower()
+    # a URL do painel é interpolada pra a mensagem ser acionável de fato
+    assert "run.app" in fe.message_pt
+
+
+async def test_build_client_for_manager_decrypt_failure_is_friendly():
+    """build_client_for_manager converte InvalidCiphertextError na ORIGEM (é chamado
+    fora do wrap de to_friendly dos executores) — cobre todos os tools de uma vez."""
+    from src.google_ads.client import build_client_for_manager
+
+    old_key = secrets.token_urlsafe(32)
+    new_key = secrets.token_urlsafe(32)
+    # Token cifrado com a chave ANTIGA (pré-migração); serviço agora tem a NOVA.
+    enc = encrypt_refresh_token("1//realtoken", derive_master_key_from_settings(old_key))
+
+    fake_oc = MagicMock()
+    fake_oc.refresh_token_enc = enc
+
+    @contextlib.asynccontextmanager
+    async def fake_acquire():
+        yield MagicMock()
+
+    fake_pool = MagicMock()
+    fake_pool.acquire = fake_acquire
+
+    fake_settings = MagicMock()
+    fake_settings.aes_master_key = new_key
+
+    with (
+        patch("src.config.get_settings", return_value=fake_settings),
+        patch("src.db.connection.get_pool", return_value=fake_pool),
+        patch(
+            "src.db.repositories.google_oauth_connections.get_active_for_manager",
+            AsyncMock(return_value=fake_oc),
+        ),
+        pytest.raises(GoogleAdsFriendlyError) as ei,
+    ):
+        await build_client_for_manager(manager_id=uuid4())
+
+    assert ei.value.code == "TOKEN_DECRYPT_FAILED"
+    assert "reconecte" in ei.value.message_pt.lower()
 
 
 def test_query_error_enriched_with_hint():

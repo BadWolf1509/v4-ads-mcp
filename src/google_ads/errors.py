@@ -4,6 +4,9 @@ Phase 1a covers only the few errors the resync + list_my_accounts paths
 can hit. Future phases extend this dict.
 """
 
+from src.auth.tokens import InvalidCiphertextError
+from src.config import get_settings
+
 
 class GoogleAdsFriendlyError(Exception):
     """User-facing error with a PT-BR message + the original exception attached."""
@@ -43,6 +46,20 @@ def to_friendly(exc: Exception) -> GoogleAdsFriendlyError:
     If the SDK exception's structure can't be parsed, returns a generic message
     with the original exception attached.
     """
+    # Token decrypt failure: o refresh token do gestor não pode ser decifrado
+    # (AES master key rotacionada — a migração GCP 2026-06-30 regenerou a chave).
+    # Mensagem PT-BR acionável apontando pra reconexão; sem isto o dispatcher
+    # scruba pra "Erro interno" genérico e o gestor fica travado no cutover (F70).
+    if isinstance(exc, InvalidCiphertextError):
+        base_url = get_settings().public_base_url
+        return GoogleAdsFriendlyError(
+            "Sua conexão Google Ads precisa ser refeita: as chaves de segurança "
+            "mudaram (migração) e o token salvo não pode mais ser lido. Acesse "
+            f"{base_url} e reconecte sua conta Google no painel.",
+            code="TOKEN_DECRYPT_FAILED",
+            original=exc,
+        )
+
     # Avoid importing the Google SDK here to keep this module testable in isolation.
     failure = getattr(exc, "failure", None)
     if failure is None:
