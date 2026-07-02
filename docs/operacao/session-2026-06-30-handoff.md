@@ -1,5 +1,7 @@
 # Sessão 2026-06-30 — Handoff (MIGRAÇÃO GCP executada)
 
+> **⚠️ ADDENDUM 2026-07-02:** vários pendentes deste handoff foram resolvidos na sessão 2026-07-02 (ver [findings-catalog.md](findings-catalog.md) F68-F72 + CLAUDE.md). Em especial: **F66 resolvido** (jobs CNB `/cnb/process/<type>` + migrations reativadas — o texto abaixo que diz "deploy.yml falha no próximo push" **não vale mais**); **scheduler resync recriado** no projeto novo (o inventário abaixo que o lista como existente estava adiantado — ele NÃO existia até 07-02, F69); **F65 (deletion-detection)** shipado; **cutover do Pedro** feito. O histórico abaixo é preservado como estava em 2026-06-30.
+
 > Investigação Meta (F64/F65) → **migração lift-and-shift** do projeto GCP pra um onde o Wellington é **owner** (o antigo ficou sem owner humano e o IAM era inacessível). Serviço novo **no ar e funcional**. Restam cutover dos outros 3 gestores + polimento.
 
 ## TL;DR

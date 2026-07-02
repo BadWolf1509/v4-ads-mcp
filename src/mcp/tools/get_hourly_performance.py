@@ -72,7 +72,8 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 @register_tool(
     name="get_hourly_performance",
     description=(
-        "[DEFER] Performance segmentada por hora (0-23) e dia da semana (MONDAY-SUNDAY). "
+        "[DEFER] Prefira get_performance_breakdown(level=account, breakdown=hourly) — este "
+        "report sera arquivado (Fase 2B). Performance segmentada por hora (0-23) e dia da semana (MONDAY-SUNDAY). "
         "Util pra encontrar janelas de melhor/pior performance e ajustar bid "
         "adjustments por horario."
     ),

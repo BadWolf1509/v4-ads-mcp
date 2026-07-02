@@ -80,7 +80,8 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 @register_tool(
     name="get_campaign_performance",
     description=(
-        "[DEFER] Performance por campanha: impressoes, clicks, custo, conversoes, valor, "
+        "[DEFER] Prefira get_performance_breakdown(level=campaign) — este report sera "
+        "arquivado (Fase 2B). Performance por campanha: impressoes, clicks, custo, conversoes, valor, "
         "CTR, CPC. Ordenado por custo desc. Filtros opcionais: status (enabled|"
         "paused|removed|all), limit (default 100). "
         "Nota: campaign.status pode lagar alguns minutos entre queries (cache Google) "

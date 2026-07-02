@@ -36,6 +36,7 @@ from src.google_ads.reports import run_report
 from src.governance.blast_radius import RiskLevel, classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
+from src.mcp.tools._common import classify_partial
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -218,16 +219,6 @@ def _build_params_summary(
     }
 
 
-def _classify_partial(error: str | None) -> str:
-    """Map a Google Ads partial-failure error message to per-row status."""
-    if error is None:
-        return "attached"
-    upper = error.upper()
-    if any(p in upper for p in _ALREADY_EXISTS_PATTERNS):
-        return "already_attached"
-    return "failed"
-
-
 @register_tool(
     name="apply_audience",
     description=(
@@ -310,7 +301,12 @@ async def apply_audience(args: dict[str, Any]) -> dict[str, Any]:
         attachments_result: list[dict[str, Any]] = []
         for idx, att in enumerate(attachments):
             per_op = next((p for p in partial_failures if p["index"] == idx), None)
-            row_status = _classify_partial(per_op["error"] if per_op else None)
+            row_status = classify_partial(
+                per_op["error"] if per_op else None,
+                ok_status="attached",
+                exists_status="already_attached",
+                exists_patterns=_ALREADY_EXISTS_PATTERNS,
+            )
             item: dict[str, Any] = {
                 "target_id": att["target_id"],
                 "audience_type": att["audience_type"],

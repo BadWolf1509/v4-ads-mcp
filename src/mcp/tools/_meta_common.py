@@ -31,3 +31,14 @@ def parse_meta_ad_account_id(raw: str) -> str:
     if raw.startswith("act_"):
         return raw
     return f"act_{raw}"
+
+
+def meta_error_message(exc: Exception) -> str:
+    """Mensagem de um erro Meta pro envelope do tool.
+
+    MetaAdsFriendlyError carrega `.message` (PT-BR curada); o resto cai no str(exc).
+    Centraliza o padrão `if hasattr(e, "message")` que estava repetido nos 5 tools
+    Meta. getattr+isinstance é mypy-clean e robusto a `.message` não-str.
+    """
+    message = getattr(exc, "message", None)
+    return message if isinstance(message, str) else str(exc)

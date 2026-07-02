@@ -72,7 +72,8 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 @register_tool(
     name="get_geo_performance",
     description=(
-        "[DEFER] Performance por pais (com nome resolvido via geo_target_constant). "
+        "[DEFER] Prefira get_performance_breakdown(level=account, breakdown=geo) — este "
+        "report sera arquivado (Fase 2B). Performance por pais (com nome resolvido via geo_target_constant). "
         "Util pra identificar regioes underperformantes."
     ),
     input_schema=_SCHEMA,

@@ -28,6 +28,7 @@ from src.google_ads.mutations import run_mutation
 from src.governance.blast_radius import RiskLevel, classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
+from src.mcp.tools._common import classify_partial
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -75,16 +76,6 @@ def _build_params_summary(ad_group_id: str, keywords: list[dict[str, Any]]) -> d
         "match_types_distribution": dict(match_types),
         "with_custom_bid_count": with_bid,
     }
-
-
-def _classify_partial(error: str | None) -> str:
-    """Map a Google Ads partial-failure error message to per-row status."""
-    if error is None:
-        return "added"
-    upper = error.upper()
-    if any(p in upper for p in _ALREADY_EXISTS_PATTERNS):
-        return "already_exists"
-    return "failed"
 
 
 @register_tool(
@@ -141,7 +132,12 @@ async def add_keywords(args: dict[str, Any]) -> dict[str, Any]:
         added: list[dict[str, Any]] = []
         for idx, kw in enumerate(keywords):
             per_op = next((p for p in partial_failures if p["index"] == idx), None)
-            row_status = _classify_partial(per_op["error"] if per_op else None)
+            row_status = classify_partial(
+                per_op["error"] if per_op else None,
+                ok_status="added",
+                exists_status="already_exists",
+                exists_patterns=_ALREADY_EXISTS_PATTERNS,
+            )
             item: dict[str, Any] = {
                 "text": kw["text"],
                 "match_type": kw["match_type"].upper(),
