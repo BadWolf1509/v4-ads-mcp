@@ -25,6 +25,7 @@ class _FakeErrorCode:
             "quota_error",
             "internal_error",
             "query_error",
+            "policy_finding_error",
         ):
             setattr(self, field, 1 if field == populated_field else 0)
 
@@ -119,6 +120,45 @@ async def test_build_client_for_manager_decrypt_failure_is_friendly():
 
     assert ei.value.code == "TOKEN_DECRYPT_FAILED"
     assert "reconecte" in ei.value.message_pt.lower()
+
+
+def test_policy_finding_error_names_the_violated_topics():
+    """C4: reprovação de política nomeia os tópicos específicos (o gestor tentava
+    às cegas — 9x no dogfood 07-02) em vez do genérico 'policy topics of type PROHIBITED'."""
+
+    class _Topic:
+        def __init__(self, topic: str) -> None:
+            self.topic = topic
+
+    class _PolicyFindingDetails:
+        def __init__(self, topics: list) -> None:
+            self.policy_topic_entries = topics
+
+    class _Details:
+        def __init__(self, pfd: object) -> None:
+            self.policy_finding_details = pfd
+
+    class _PolicyError:
+        def __init__(self) -> None:
+            self.error_code = _FakeErrorCode("policy_finding_error")
+            self.message = "The resource has been disapproved..."
+            self.details = _Details(
+                _PolicyFindingDetails([_Topic("DESTINATION_NOT_WORKING"), _Topic("TRADEMARKS")])
+            )
+
+    fe = to_friendly(_FakeException([_PolicyError()]))
+    assert fe.code == "POLICY_FINDING_ERROR"
+    assert "DESTINATION_NOT_WORKING" in fe.message_pt
+    assert "TRADEMARKS" in fe.message_pt
+
+
+def test_policy_finding_error_without_details_degrades_gracefully():
+    """Sem details parseáveis (proto diferente entre versões SDK), cai no sdk_msg."""
+    fe = to_friendly(
+        _FakeException([_FakeError("policy_finding_error", message="disapproved xyz")])
+    )
+    assert fe.code == "POLICY_FINDING_ERROR"
+    assert "disapproved xyz" in fe.message_pt
 
 
 def test_query_error_enriched_with_hint():

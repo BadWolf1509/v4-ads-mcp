@@ -4,6 +4,8 @@ Phase 1a covers only the few errors the resync + list_my_accounts paths
 can hit. Future phases extend this dict.
 """
 
+from typing import Any
+
 from src.auth.tokens import InvalidCiphertextError
 from src.config import get_settings
 
@@ -40,12 +42,32 @@ _FRIENDLY_MESSAGES: dict[str, str] = {
 }
 
 
+def _extract_policy_topics(error: Any) -> list[str]:
+    """Best-effort: nomes dos policy topics de um GoogleAdsError policy_finding_error.
+
+    Estrutura: error.details.policy_finding_details.policy_topic_entries[].topic.
+    Tudo via getattr → degrada pra [] se o proto mudar entre versões do SDK.
+    """
+    details = getattr(error, "details", None)
+    pfd = getattr(details, "policy_finding_details", None) if details is not None else None
+    entries = getattr(pfd, "policy_topic_entries", None) if pfd is not None else None
+    if not entries:
+        return []
+    return [str(getattr(e, "topic", "")) for e in entries if getattr(e, "topic", "")]
+
+
 def to_friendly(exc: Exception) -> GoogleAdsFriendlyError:
     """Convert a GoogleAdsException to a friendly PT-BR error.
 
     If the SDK exception's structure can't be parsed, returns a generic message
     with the original exception attached.
     """
+    # Idempotente: se já é um erro amigável (ex.: build_client_for_manager já
+    # converteu um decrypt-failure), devolve como está — re-embrulhar perderia a
+    # mensagem PT-BR curada num genérico "Erro inesperado".
+    if isinstance(exc, GoogleAdsFriendlyError):
+        return exc
+
     # Token decrypt failure: o refresh token do gestor não pode ser decifrado
     # (AES master key rotacionada — a migração GCP 2026-06-30 regenerou a chave).
     # Mensagem PT-BR acionável apontando pra reconexão; sem isto o dispatcher
@@ -90,6 +112,7 @@ def to_friendly(exc: Exception) -> GoogleAdsFriendlyError:
             "quota_error",
             "internal_error",
             "query_error",
+            "policy_finding_error",
         ):
             if getattr(error_code, field_name, None):
                 populated = field_name.upper()
@@ -108,6 +131,22 @@ def to_friendly(exc: Exception) -> GoogleAdsFriendlyError:
             "insights (overlap rate, position above rate, outranking share) não existem "
             "na GAQL, só na UI do Google Ads."
         )
+    elif populated == "POLICY_FINDING_ERROR":
+        # RSA/anúncio reprovado por política. O sdk_msg genérico ("policy topics of
+        # type PROHIBITED") não diz QUAL política — o gestor tentava às cegas (9x no
+        # dogfood 07-02). Extrai os tópicos específicos pra ele saber o que corrigir.
+        topics = _extract_policy_topics(first)
+        if topics:
+            msg = (
+                f"Google Ads reprovou o anúncio por política: {', '.join(topics)}. "
+                "Revise headlines/descriptions removendo o que viola essas políticas "
+                "e recrie. Detalhes: https://support.google.com/adspolicy."
+            )
+        else:
+            msg = (
+                f"Google Ads reprovou o anúncio por política: {sdk_msg} "
+                "Revise headlines/descriptions e recrie."
+            )
     else:
         # Fallback to the SDK's English message when there's no curated PT-BR one.
         friendly = _FRIENDLY_MESSAGES.get(populated or "")
