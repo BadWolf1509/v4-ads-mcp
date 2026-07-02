@@ -46,6 +46,29 @@ def _to_payload(data: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return payload
 
 
+async def _deactivate_churned(conn: Any, payload: list[dict[str, Any]]) -> int:
+    """Deletion detection (F65): conta que sumiu de um BM ainda visível vira is_active=false.
+
+    Agrupa por business_id — o system user enxerga MÚLTIPLOS BMs via /me/adaccounts;
+    sem agrupar, o keep-list de um BM marcaria as contas de OUTRO BM como churned.
+    Contas sem business_id (pessoais) são puladas: não dá pra escopar a detecção sem BM,
+    então preferimos deixá-las ativas a desativá-las por engano. Um BM que sumiu inteiro
+    (SU perdeu acesso) não aparece no payload → suas contas ficam intactas (limitação
+    conhecida: a detecção só cobre conta ausente de BM ainda visível).
+    """
+    by_business: dict[str, list[str]] = {}
+    for a in payload:
+        bid = a.get("business_id")
+        if bid:
+            by_business.setdefault(bid, []).append(a["ad_account_id"])
+    total = 0
+    for business_id, keep in by_business.items():
+        total += await meta_ad_accounts.mark_inactive_except(
+            conn, business_id=business_id, keep_ad_account_ids=keep
+        )
+    return total
+
+
 async def resync_meta() -> int:
     """Sync meta_ad_accounts from /me/adaccounts (system user). Returns count upserted.
 
@@ -63,8 +86,15 @@ async def resync_meta() -> int:
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         n = await meta_ad_accounts.upsert_many(conn, payload)
-        await record_job_run(conn, operation="meta_resync", platform="meta", target_count=n)
-    log.info("meta_resync_complete", upserted=n)
+        deactivated = await _deactivate_churned(conn, payload)
+        await record_job_run(
+            conn,
+            operation="meta_resync",
+            platform="meta",
+            target_count=n,
+            params_summary={"deactivated": deactivated} if deactivated else None,
+        )
+    log.info("meta_resync_complete", upserted=n, deactivated=deactivated)
     return n
 
 
