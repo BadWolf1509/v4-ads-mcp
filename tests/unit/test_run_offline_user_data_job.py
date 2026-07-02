@@ -81,6 +81,21 @@ def fake_ctx():
     return {"manager_id": uuid4(), "session_id": uuid4(), "customer_id": "1163862076"}
 
 
+@pytest.fixture(autouse=True)
+def gov_mocks():
+    """Neutraliza rate-limit + audit (tocam o DB) pros testes de proto-capture.
+
+    Testes que asseguram o audit/rate-limit em si pedem esta fixture por nome
+    pra acessar os mocks (record_actual, audit). Autouse porque TODO teste do
+    dispatcher agora passa por before_call/record_actual/audit_log.record."""
+    with (
+        patch("src.google_ads.customer_match.before_call", AsyncMock()) as before,
+        patch("src.google_ads.customer_match.record_actual", AsyncMock()) as rec_actual,
+        patch("src.google_ads.customer_match.audit_log.record", AsyncMock(return_value=1)) as audit,
+    ):
+        yield {"before_call": before, "record_actual": rec_actual, "audit": audit}
+
+
 @pytest.mark.asyncio
 async def test_dispatcher_creates_job_with_customer_match_metadata(fake_ctx):
     from src.google_ads.customer_match import run_offline_user_data_job
@@ -264,3 +279,74 @@ async def test_dispatcher_remove_operation_uses_remove_field(fake_ctx):
     op_zero = operations[0]
     assert op_zero.has("remove") is True
     assert op_zero.has("create") is False
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_records_audit_and_rate_limit_on_success(fake_ctx, gov_mocks):
+    """F71: sucesso grava audit_log (mutate) SEM PII + reconcilia o rate counter."""
+    from src.google_ads.customer_match import run_offline_user_data_job
+
+    client, _ = _make_capture_client_with_offline_user_data_job_service()
+
+    with (
+        patch(
+            "src.google_ads.customer_match.build_client_for_manager",
+            AsyncMock(return_value=client),
+        ),
+        patch("src.google_ads.customer_match.connection.get_pool"),
+        patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
+    ):
+        await run_offline_user_data_job(
+            manager_id=fake_ctx["manager_id"],
+            session_id=fake_ctx["session_id"],
+            customer_id=fake_ctx["customer_id"],
+            user_list_id="1234567890",
+            operation_type="add",
+            hashed_members=[{"hashed_email": "abc"}, {"hashed_phone_number": "xyz"}],
+        )
+
+    gov_mocks["record_actual"].assert_awaited_once()
+    gov_mocks["audit"].assert_awaited_once()
+    kwargs = gov_mocks["audit"].call_args.kwargs
+    assert kwargs["action_type"] == "mutate"
+    assert kwargs["operation"] == "upload_customer_match_list"
+    assert kwargs["status"] == "success"
+    assert kwargs["target_count"] == 2
+    # params_summary carrega só metadados — NUNCA os hashes (PII)
+    ps = kwargs["params_summary"]
+    assert ps == {"user_list_id": "1234567890", "operation": "add", "member_count": 2}
+    assert "abc" not in str(ps) and "xyz" not in str(ps)
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_audits_and_raises_on_api_error(fake_ctx, gov_mocks):
+    """F71: erro numa das 3 chamadas grava audit (status=error) E levanta friendly
+    (apply_change espera dict de sucesso; o raise vira envelope PT-BR pro cliente)."""
+    from src.google_ads.customer_match import run_offline_user_data_job
+    from src.google_ads.errors import GoogleAdsFriendlyError
+
+    client, service = _make_capture_client_with_offline_user_data_job_service()
+    service.create_offline_user_data_job = MagicMock(side_effect=RuntimeError("boom da API"))
+
+    with (
+        patch(
+            "src.google_ads.customer_match.build_client_for_manager",
+            AsyncMock(return_value=client),
+        ),
+        patch("src.google_ads.customer_match.connection.get_pool"),
+        patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
+        pytest.raises(GoogleAdsFriendlyError),
+    ):
+        await run_offline_user_data_job(
+            manager_id=fake_ctx["manager_id"],
+            session_id=fake_ctx["session_id"],
+            customer_id=fake_ctx["customer_id"],
+            user_list_id="1234567890",
+            operation_type="add",
+            hashed_members=[{"hashed_email": "abc"}],
+        )
+
+    gov_mocks["audit"].assert_awaited_once()
+    assert gov_mocks["audit"].call_args.kwargs["status"] == "error"
+    # rate counter reconciliado com actual_ops=0 (reserva liberada)
+    assert gov_mocks["record_actual"].call_args.kwargs["actual_ops"] == 0

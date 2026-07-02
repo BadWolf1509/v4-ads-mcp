@@ -12,15 +12,24 @@ from __future__ import annotations
 
 import hashlib
 import re
+import time
 from typing import Any
 from uuid import UUID
 
 import structlog
 
+from src.config import get_settings
 from src.db import connection
+from src.db.repositories import audit_log
 from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
+from src.google_ads.errors import to_friendly
 from src.google_ads.request_id import get_request_id, reset_request_id
+from src.governance.rate_limit import (
+    before_call,
+    hash_developer_token,
+    record_actual,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -105,6 +114,7 @@ async def run_offline_user_data_job(
     Sprint 3b.28 — segundo dispatcher non-mutate, paralelo a run_conversion_upload
     do Sprint 3b.26.
     """
+    settings = get_settings()
     async with connection.get_pool().acquire() as conn:
         await ensure_account_access(
             conn,
@@ -122,46 +132,122 @@ async def run_offline_user_data_job(
         member_count=len(hashed_members),
     )
 
-    client = await build_client_for_manager(manager_id=manager_id)
-    service = client.get_service("OfflineUserDataJobService")
+    token_id = hash_developer_token(settings.google_ads_developer_token)
+    started = time.monotonic()
+    pool = connection.get_pool()
+    member_count = len(hashed_members)
+    # 3 chamadas de API (create/add/run) OU o volume de membros, o que for maior —
+    # reserva de quota conservadora contra o cap diário do developer token.
+    estimated_ops = max(3, member_count)
+    # params_summary SEM PII: hashed_members deriva de e-mail/telefone → nunca logar.
+    audit_params = {
+        "user_list_id": user_list_id,
+        "operation": operation_type,
+        "member_count": member_count,
+    }
+    # provider_request_id acumula o último request-id bem-sucedido (útil no audit de erro
+    # pra saber em qual das 3 etapas parou).
+    provider_request_id = ""
+    status = "success"
+    error_message: str | None = None
 
-    # Step 1: Create job
-    reset_request_id()
-    job = client.get_type("OfflineUserDataJob")
-    job.type_ = client.enums.OfflineUserDataJobTypeEnum.CUSTOMER_MATCH_USER_LIST
-    job.customer_match_user_list_metadata.user_list = (
-        f"customers/{customer_id}/userLists/{user_list_id}"
-    )
-    job.customer_match_user_list_metadata.consent.ad_user_data = (
-        client.enums.ConsentStatusEnum.GRANTED
-    )
-    job.customer_match_user_list_metadata.consent.ad_personalization = (
-        client.enums.ConsentStatusEnum.GRANTED
-    )
-    create_response = service.create_offline_user_data_job(customer_id=customer_id, job=job)
-    job_resource = create_response.resource_name
-    create_req_id = get_request_id() or "unknown"
+    try:
+        async with pool.acquire() as conn:
+            await before_call(conn, token_id, estimated_ops=estimated_ops)
 
-    # Step 2: Add operations
-    reset_request_id()
-    operations = _build_user_data_operations(client, operation_type, hashed_members)
-    add_request = client.get_type("AddOfflineUserDataJobOperationsRequest")
-    add_request.resource_name = job_resource
-    add_request.operations = operations
-    add_request.enable_partial_failure = True
-    service.add_offline_user_data_job_operations(request=add_request)
-    add_req_id = get_request_id() or "unknown"
+        client = await build_client_for_manager(manager_id=manager_id)
+        service = client.get_service("OfflineUserDataJobService")
 
-    # Step 3: Run job (fire-and-forget)
-    reset_request_id()
-    service.run_offline_user_data_job(resource_name=job_resource)
-    run_req_id = get_request_id() or "unknown"
+        # Step 1: Create job
+        reset_request_id()
+        job = client.get_type("OfflineUserDataJob")
+        job.type_ = client.enums.OfflineUserDataJobTypeEnum.CUSTOMER_MATCH_USER_LIST
+        job.customer_match_user_list_metadata.user_list = (
+            f"customers/{customer_id}/userLists/{user_list_id}"
+        )
+        job.customer_match_user_list_metadata.consent.ad_user_data = (
+            client.enums.ConsentStatusEnum.GRANTED
+        )
+        job.customer_match_user_list_metadata.consent.ad_personalization = (
+            client.enums.ConsentStatusEnum.GRANTED
+        )
+        create_response = service.create_offline_user_data_job(customer_id=customer_id, job=job)
+        job_resource = create_response.resource_name
+        create_req_id = get_request_id() or "unknown"
+        provider_request_id = create_req_id
+
+        # Step 2: Add operations
+        reset_request_id()
+        operations = _build_user_data_operations(client, operation_type, hashed_members)
+        add_request = client.get_type("AddOfflineUserDataJobOperationsRequest")
+        add_request.resource_name = job_resource
+        add_request.operations = operations
+        add_request.enable_partial_failure = True
+        service.add_offline_user_data_job_operations(request=add_request)
+        add_req_id = get_request_id() or "unknown"
+        provider_request_id = add_req_id
+
+        # Step 3: Run job (fire-and-forget)
+        reset_request_id()
+        service.run_offline_user_data_job(resource_name=job_resource)
+        run_req_id = get_request_id() or "unknown"
+        provider_request_id = run_req_id
+
+    except Exception as e:
+        status = "error"
+        error_message = str(e)
+        log.exception(
+            "run_offline_user_data_job_failed",
+            customer_id=customer_id,
+            user_list_id=user_list_id,
+            operation_type=operation_type,
+        )
+        friendly = to_friendly(e)
+        duration_ms = int((time.monotonic() - started) * 1000)
+        async with pool.acquire() as conn:
+            await record_actual(conn, token_id, actual_ops=0, estimated_ops=estimated_ops)
+            await audit_log.record(
+                conn,
+                manager_id=manager_id,
+                session_id=session_id,
+                customer_id=customer_id,
+                action_type="mutate",
+                operation="upload_customer_match_list",
+                target_count=member_count,
+                params_summary=audit_params,
+                provider_request_id=provider_request_id,
+                status=status,
+                error_message=error_message,
+                duration_ms=duration_ms,
+            )
+        # Raise (não retorna dict de erro): apply_change espera dict de sucesso;
+        # o friendly propaga pro _error_envelope como mensagem PT-BR pro cliente.
+        raise friendly from e
+
+    # Success path — audit + reconcile SEMPRE (mutate PII exige rastro; LGPD).
+    duration_ms = int((time.monotonic() - started) * 1000)
+    async with pool.acquire() as conn:
+        await record_actual(conn, token_id, actual_ops=estimated_ops, estimated_ops=estimated_ops)
+        await audit_log.record(
+            conn,
+            manager_id=manager_id,
+            session_id=session_id,
+            customer_id=customer_id,
+            action_type="mutate",
+            operation="upload_customer_match_list",
+            target_count=member_count,
+            params_summary=audit_params,
+            provider_request_id=provider_request_id,
+            status=status,
+            error_message=error_message,
+            duration_ms=duration_ms,
+        )
 
     log.info(
         "run_offline_user_data_job_done",
         customer_id=customer_id,
         job_resource_name=job_resource,
-        members_submitted=len(hashed_members),
+        members_submitted=member_count,
     )
 
     return {
@@ -169,5 +255,5 @@ async def run_offline_user_data_job(
         "provider_request_id_create_job": create_req_id,
         "provider_request_id_add_ops": add_req_id,
         "provider_request_id_run_job": run_req_id,
-        "members_submitted": len(hashed_members),
+        "members_submitted": member_count,
     }
