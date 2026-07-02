@@ -6,24 +6,19 @@ on:
   push:
     branches: [main]
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   test:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_PASSWORD: postgres
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
+    timeout-minutes: 20
+    # concurrency no nível do JOB (não do workflow): cancela testes redundantes de
+    # pushes rápidos SEM matar o job `deploy` (que chama deploy.yml) no meio. A
+    # serialização de deploys fica na concurrency `deploy-prod` do deploy.yml.
+    concurrency:
+      group: ci-${{ github.ref }}
+      cancel-in-progress: true
+    # (o `services: postgres` foi removido — era peso morto: os testes DB usam
+    # testcontainers, que sobem o próprio container; o DSN localhost do conftest é
+    # dummy e nunca é discado.)
 
     steps:
       - uses: actions/checkout@v5
@@ -53,7 +48,17 @@ jobs:
 
       - name: DB integration tests
         env:
-          # testcontainers will use Docker if available; the postgres service
-          # above provides a fallback for envs where Docker-in-Docker is awkward.
           TESTCONTAINERS_RYUK_DISABLED: "true"
         run: pytest tests/integration -m integration -v
+
+  # Deploy gated: só roda em push na main, DEPOIS do `test` verde, no MESMO commit
+  # (needs → github.sha correto sem plumbing). Chama deploy.yml como reusable
+  # workflow — a lógica de deploy continua inteira lá; aqui é só o gate.
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/deploy.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write   # WIF — o called workflow não pode exceder as permissions do caller
