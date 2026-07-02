@@ -97,7 +97,12 @@ async def help_page(
     user: CurrentUser | None = Depends(optional_current_manager),  # noqa: B008
 ) -> HTMLResponse:
     """Onboarding consolidated. Accessible logged-in or out (login link is included)."""
-    return templates.TemplateResponse(request, "help.html", {"current_user": user})
+    # mcp_url injetado no contexto (não hardcoded no template) pra os snippets de
+    # conexão nunca driftarem da URL real do serviço — mesmo padrão do /sessions.
+    mcp_url = f"{get_settings().public_base_url}/mcp"
+    return templates.TemplateResponse(
+        request, "help.html", {"current_user": user, "mcp_url": mcp_url}
+    )
 
 
 @router.get("/legal/privacy", response_class=HTMLResponse)

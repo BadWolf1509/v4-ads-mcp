@@ -11,7 +11,7 @@
 {
   "mcpServers": {
     "v4-ads": {
-      "url": "https://v4-ads-mcp-jf26mmrgqa-rj.a.run.app/mcp",
+      "url": "{{ mcp_url }}",
       "headers": {
         "Authorization": "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
       }
@@ -23,13 +23,13 @@
 {%- set claude_code_snippet -%}
 claude mcp add v4-ads \
   --transport http \
-  --url https://v4-ads-mcp-jf26mmrgqa-rj.a.run.app/mcp \
+  --url {{ mcp_url }} \
   --header "Authorization: Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
 {%- endset -%}
 
 {%- set codex_snippet -%}
 [mcp_servers.v4-ads]
-url = "https://v4-ads-mcp-jf26mmrgqa-rj.a.run.app/mcp"
+url = "{{ mcp_url }}"
 
 [mcp_servers.v4-ads.headers]
 Authorization = "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
@@ -39,7 +39,7 @@ Authorization = "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
 {
   "mcpServers": {
     "v4-ads": {
-      "url": "https://v4-ads-mcp-jf26mmrgqa-rj.a.run.app/mcp",
+      "url": "{{ mcp_url }}",
       "headers": {
         "Authorization": "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
       }

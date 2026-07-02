@@ -2,8 +2,8 @@
 
 Ferramenta **interna da V4 Company** que conecta as contas **Google Ads** e **Meta Ads** que a unidade gerencia ao Claude (e outros clientes MCP — Claude Code, Codex CLI, Cursor). O gestor pede em linguagem natural — _"performance da conta X últimos 30 dias"_, _"pause keywords sem conversão"_, _"top campanhas Meta por gasto"_ — e o assistente executa via ferramentas curadas, com governança e auditoria. Substitui o Supermetrics; uso interno, sem terceiros.
 
-- **Produção:** `https://v4-ads-mcp-jf26mmrgqa-rj.a.run.app`
-- **Onboarding (como conectar seu cliente de IA):** [`/help`](https://v4-ads-mcp-jf26mmrgqa-rj.a.run.app/help)
+- **Produção:** `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`
+- **Onboarding (como conectar seu cliente de IA):** [`/help`](https://v4-ads-mcp-299432068772.southamerica-east1.run.app/help)
 - **MCC Google Ads:** `6436352492` (V4 Maceió) · **BM Meta:** V4 Lima Soares & Co
 
 ## O que faz

@@ -48,8 +48,10 @@ class Settings(BaseSettings):
     supabase_anon_key: str
     supabase_service_key: str
 
-    # Public URL for MCP endpoint (used in session detail snippets)
-    public_base_url: str = "https://v4-ads-mcp-jf26mmrgqa-rj.a.run.app"
+    # Public URL for MCP endpoint (used in /sessions + /help connection snippets).
+    # Projeto GCP novo (v4-ads-mcp, migração 2026-06-30). Override via env
+    # PUBLIC_BASE_URL no Cloud Run (deploy.yml --set-env-vars).
+    public_base_url: str = "https://v4-ads-mcp-299432068772.southamerica-east1.run.app"
 
     # Phase 2: invite-only allowlist bootstrap
     # Comma-separated emails that get auto-promoted to admin on first OAuth login,
