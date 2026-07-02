@@ -78,7 +78,13 @@ jobs:
             --region=${REGION} \
             --update-secrets="META_SYSTEM_USER_TOKEN=meta-system-user-token:latest"
 
+      # F66 (migração 2026-06-30): no projeto novo o job `migrate` (imagem
+      # Buildpacks) roda o process `web` em vez do `migrate` do Procfile e trava
+      # o `--wait`. Migrations ficam à parte (o schema já vive no Supabase
+      # compartilhado). Reativar (remover `if: false`) quando F66 for resolvido
+      # — achar o launcher CNB p/ invocar o process não-web. Ver findings-catalog.
       - name: Run database migrations
+        if: false
         env:
           REGION: ${{ secrets.GCP_REGION }}
         run: |

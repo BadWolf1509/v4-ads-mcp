@@ -1,6 +1,6 @@
 # Design — Migração do projeto GCP (lift-and-shift autônomo)
 
-> **Status:** aprovado (brainstorming 2026-06-30) → próximo: writing-plans.
+> **Status:** ✅ **EXECUTADO 2026-06-30** — serviço no ar no projeto novo `v4-ads-mcp` (owner próprio), OAuth Google e2e OK, cutover do Wellington feito. Pendências (cutover dos outros gestores, F66 job `migrate`, F67 custom domain, ML Antiguidades/Pinda) no [handoff](../../operacao/session-2026-06-30-handoff.md). Desvios do plano: URL default mantida (custom domain virou passo à parte por F67); job `migrate` não roda (F66) mas é redundante (schema no DB compartilhado); Bearers antigos seguem válidos (cutover = só trocar URL).
 > **Topo relacionado:** [session-2026-06-30-handoff.md](../../operacao/session-2026-06-30-handoff.md) · findings F64/F65 · [[meta-token-scoping-and-iam-gargalo]].
 
 ## 1. Motivação

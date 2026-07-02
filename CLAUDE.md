@@ -6,9 +6,9 @@ Auto-loaded by Claude Code. Read first.
 
 Interno only, não SaaS, sem terceiros. Substitui Supermetrics.
 
-- **Production:** `https://v4-ads-mcp-jf26mmrgqa-rj.a.run.app`
+- **Production:** `https://v4-ads-mcp-299432068772.southamerica-east1.run.app` — projeto GCP **`v4-ads-mcp`** (Wellington é **owner**; migrado 2026-06-30 do antigo `v4-ads-mcp-prod`). Custom domain `mcpv4.fluxocerto.dev.br` pendente (via LB).
 - **MCC Google Ads:** `6436352492` (V4 Maceió, 25 client accounts)
-- **BM Meta Ads:** V4 Lima Soares & Co (22 ad accounts; execução via **system-user token** compartilhado — Modelo B)
+- **BM Meta Ads:** V4 Lima Soares & Co (`619664032237208`; ~19 ad accounts + 25 páginas via **system-user token all-targets** — Modelo B)
 - **Unidade operacional:** V4 Lima Soares & Co (João Pessoa, PB) — Wellington dev + 3 colaboradores futuros
 - **Admin:** `wellington.ribeiro@v4company.com`
 
@@ -18,7 +18,9 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 
 ## Current state
 
-**Última atualização:** 2026-06-20. Produção verde em `69a7f2d`, `/health` 200. **~64 MCP tools** (58 Google + 6 Meta), bucket ~23 always + 41 defer.
+**Última atualização:** 2026-06-30. Produção verde no **projeto GCP novo** (`v4-ads-mcp`, Wellington owner), `/health?deep=1` db=ok. **~64 MCP tools** (58 Google + 6 Meta), bucket ~23 always + 41 defer.
+
+**Sessão 2026-06-30 (MIGRAÇÃO GCP + F64/F65/F66/F67):** o projeto antigo `v4-ads-mcp-prod` ficou **sem owner humano** (conta criadora `wellinton.` excluída) e o IAM era inacessível (Org Admin V4 difícil de acionar) → **migração lift-and-shift** pra projeto novo `v4-ads-mcp` (number `299432068772`, org v4company.com, **billing própria da unidade Lima Soares**, Wellington **owner**). Mesmo Supabase (senha do banco resetada), `aes-master-key`/`session-signing-key` **regeneradas** (→ gestores reconectam Google OAuth), token Meta **all-targets** (resolve F64 — `CA - MDO Goiânia` volta; 19 contas + 25 páginas). Serviço no ar, OAuth Google validado e2e, **Bearers antigos seguem válidos** (hash no DB compartilhado, não dependem da session-signing-key). Cutover do Wellington feito; **outros 3 gestores pendentes**. Handoff: [`session-2026-06-30-handoff.md`](docs/operacao/session-2026-06-30-handoff.md).
 
 **O que existe:** Foundation (Phases 0-1b/3a) + 40 sprints Google (3b.1→3b.40) + **Fase 2A** (`get_performance_breakdown` consolida 8 reports Google, aditivo) + família Meta (M.1→M.3.1.1 + **M.4** breakdowns) + camada de acesso/segurança (Modelo B + hard-gate + CSRF/CSP) + sessões operacionais 2026-06-19/20. Detalhe: [`sprint-history.md`](docs/operacao/sprint-history.md) + handoffs em `docs/operacao/`.
 
@@ -26,24 +28,29 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 
 **Sessão 2026-06-19 (recuperação):** migração admin `wellinton.`→`wellington.`, Meta 12→22 contas (F61 paginação), GAQL error UX (F62), resync Meta agendado, clamp `get_change_history` (F63). Handoff: [`session-2026-06-19-handoff.md`](docs/operacao/session-2026-06-19-handoff.md).
 
-**Tokens válidos:** v4-ads Bearer (procedure abaixo, NÃO inventar). Meta system-user token no secret `meta-system-user-token` (não expira). Meta OAuth pessoal do Wellington dormante (expira 27/07/2026).
+**Tokens válidos:** v4-ads Bearer (procedure abaixo; **Bearers antigos seguem válidos** pós-migração — validados por hash no DB compartilhado). Meta system-user token **all-targets** no secret `meta-system-user-token` (app *V4 Ads MCP* `1522411803012799`, SU `v4-ads-mcp-integracao` `61590110716028`, não expira). Meta OAuth pessoal do Wellington dormante (expira 27/07/2026).
 
-**⚠️ IAM GCP (pendente):** a conta admin (`wellington.ribeiro@v4company.com`) tem **ZERO acesso ao projeto `v4-ads-mcp-prod`** (a antiga era owner, foi excluída). Deploys (WIF/`GCP_DEPLOY_SA`) + runtime (SAs) funcionam; ops gcloud manuais (ler secrets, Cloud Run, rollback) exigem um **Org Admin V4** conceder `roles/owner` (deploy SA é least-privilege, não se auto-concede). DB direto: **Supabase MCP** (não precisa gcloud).
+**✅ IAM GCP (resolvido 2026-06-30):** o projeto novo `v4-ads-mcp` tem **Wellington como owner** — lê/grava secrets, Cloud Run, jobs, rollback direto via gcloud (`gcloud ... --project=v4-ads-mcp`, autenticado `wellington.ribeiro@v4company.com`). **Não depende mais de Org Admin V4.** (O antigo `v4-ads-mcp-prod` seguia sem owner humano — motivo da migração; a decomissionar.)
 
 **Próximo sprint (escolha 1):** **Fase 2B** (tombstone dos 8 reports Google que a Fase 2A substituiu — §4.1 do [refactor design](docs/superpowers/specs/2026-05-25-architecture-refactor-design.md); pós-soak: gate 21d / dogfood ≥3/sem / zero-retry no `audit_log`; a tool nova já tem `audit_this_call=True` pra semear o watch) · **M.5** (Meta audience+top_creatives). Roadmap Meta: [`specs/2026-05-24-meta-ads-incorporation-design.md`](docs/superpowers/specs/2026-05-24-meta-ads-incorporation-design.md).
 
-**Decision gates:** 2026-06-25→07-10 checkpoint volume Meta Caminho B+ (500 calls/15d → re-submit Full Access; M.4+M.5 alimentam) · **~2026-07-11 soak gate Fase 2A→2B** (checar zero-retry nos 8 reports antigos no `audit_log` antes de tombstonar) · 2026-07-25 reconectar Meta OAuth Wellington · **grant IAM GCP** (Org Admin V4, quando precisar de ops gcloud manuais).
+**Decision gates:** 2026-06-25→07-10 checkpoint volume Meta Caminho B+ (500 calls/15d → re-submit Full Access; M.4+M.5 alimentam) · **~2026-07-11 soak gate Fase 2A→2B** (checar zero-retry nos 8 reports antigos no `audit_log` antes de tombstonar) · 2026-07-25 reconectar Meta OAuth Wellington.
 
-**Pendente operacional:** **Token Meta de produção precisa ser regenerado all-targets** (app *V4 Ads MCP*, gravar em `meta-system-user-token`) — contas novas não aparecem com o token atual (targets fixos), **bloqueado pelo IAM GCP pendente** (F64, [handoff 2026-06-30](docs/operacao/session-2026-06-30-handoff.md)). Anderson `invited` → precisa de 1 login no painel pra ativar (`invited`→`active`). Backlog técnico: **Onda 5** (resync Meta `mark_inactive_except` — F65), `verify_campaign_state`, audit_log gap em `get_my_audit_log` (não enriquece com o JOIN que `get_by_id` já tem).
+**Pendente operacional (pós-migração 2026-06-30, ordem de prioridade):**
+1. **Cutover dos outros 3 gestores** — no `~/.claude.json` deles, trocar a URL do v4-ads `…jf26mmrgqa-rj.a.run.app/mcp` → `…299432068772.southamerica-east1.run.app/mcp` (Bearer deles **continua valendo**) + **relogar no painel novo** (Google reconecta — chaves regeneradas) + restart do cliente.
+2. **Job `migrate` quebrado** (F66): no buildpack image do Cloud Run Job, `--command`/`--args` não invocam o process `migrate`/`resync` do Procfile (entrypoint roda `web`/uvicorn). Próximo `git push` **falha no CI** no step "Run database migrations". Schema já existe (DB compartilhado) → migrate é redundante, mas o `deploy.yml` precisa de fix (achar o launcher CNB certo ou remover o step).
+3. **Custom domain** `mcpv4.fluxocerto.dev.br` via **Load Balancer** (F67 — southamerica-east1 não permite domain mapping direto). Domínio já verificado no Search Console.
+4. **ML Antiguidades + Mestre da Obra - Pinda** não aparecem no token all-targets — atribuir o SU a elas no Business Manager se ainda forem clientes ativos.
+5. **Onda 5** (resync Meta `mark_inactive_except` — F65) · **decomissionar** `v4-ads-mcp-prod` · Anderson `invited`→ 1 login · **revogar** o token BTW temporário do Wellington.
 
-**Quando ler outros docs:** [bug suspeito → `findings-catalog.md`] [o que shipou / detalhe sprint → `sprint-history.md`] [última sessão → `session-2026-06-20-handoff.md`] [executar pendente → spec+plan em `docs/superpowers/`].
+**Quando ler outros docs:** [bug suspeito → `findings-catalog.md`] [o que shipou / detalhe sprint → `sprint-history.md`] [última sessão / migração GCP → `session-2026-06-30-handoff.md`] [executar pendente → spec+plan em `docs/superpowers/`].
 
 ## Read these first when continuing work
 
 ```
-docs/operacao/findings-catalog.md            # ★ Bug history (F1-F65 + A1-A6 + D1-D3) — scan antes de design mutate/query
+docs/operacao/findings-catalog.md            # ★ Bug history (F1-F67 + A1-A6 + D1-D3) — scan antes de design mutate/query
 docs/operacao/sprint-history.md              # ★ Tabela por sprint (3b.1→3b.40 + M.4 + Fase 2A + Meta + sessões operacionais)
-docs/operacao/session-2026-06-30-handoff.md  # ★ Última sessão: diagnóstico Meta F64/F65 (token prod targets-fixos + cache órfão) + avaliação migração GCP
+docs/operacao/session-2026-06-30-handoff.md  # ★ Última sessão: MIGRAÇÃO GCP executada (projeto novo v4-ads-mcp, owner próprio) + F64/F65/F66/F67 + runbook cutover
 docs/operacao/session-2026-06-20-handoff.md  # Onda 0/1 hardening+observ + M.4 + Fase 2A (consolidação Google)
 docs/operacao/session-2026-06-19-handoff.md  # recuperação conta + Meta 12→22 + GAQL error UX + resync
 docs/operacao/session-2026-05-29-handoff.md  # acesso/segurança (matrix + hard-gate + CSP)
@@ -206,9 +213,9 @@ Tailwind CDN (no build) + tokens em `src/web/static/v4-tokens.css`. ~22 macros e
 
 ## Tools available (this Claude session)
 
-- **gcloud** authed `wellington.ribeiro@v4company.com`, project `v4-ads-mcp-prod` — mas **ZERO IAM no projeto** (conta antiga owner foi excluída): NÃO lê secrets nem Cloud Run via gcloud. Deploys vão por WIF/`GCP_DEPLOY_SA`; DB direto via **Supabase MCP** (não precisa gcloud). Grant `roles/owner` pendente (Org Admin V4). `git push` → deploy (WIF), OK.
+- **gcloud** authed `wellington.ribeiro@v4company.com`, **owner** do projeto `v4-ads-mcp` (pós-migração 2026-06-30) — lê/grava secrets, Cloud Run, jobs, rollback direto (`--project=v4-ads-mcp`). `git push` → deploy (WIF/`GCP_DEPLOY_SA`). Antigo `v4-ads-mcp-prod` ainda existe sem owner (a decomissionar).
 - **gh** authed `BadWolf1509`.
-- **Secret Manager:** `gcloud secrets versions access latest --secret=<NAME> --project=v4-ads-mcp-prod`. Secrets: `database-url`, `aes-master-key`, `session-signing-key`, `google-ads-developer-token`, `google-oauth-client-secret`, `meta-app-id`, `meta-app-secret`, `meta-system-user-token`, supabase keys.
+- **Secret Manager:** `gcloud secrets versions access latest --secret=<NAME> --project=v4-ads-mcp` (owner — funciona). 13 secrets: `database-url`, `aes-master-key`, `session-signing-key`, `google-oauth-client-id`, `google-oauth-client-secret`, `google-ads-developer-token`, `google-ads-login-customer-id`, `supabase-url`/`supabase-anon-key`/`supabase-service-key`, `meta-app-id`, `meta-app-secret`, `meta-system-user-token`.
 - **No psql no Windows** — `python+asyncpg` pra DB direto. **Docker** pode não estar rodando — testcontainers falham local, CI roda.
 - **Supabase MCP** + **Meta MCP oficial** (`ads_get_field_context` pra validar fields Meta) em config. **Claude in Chrome** disponível pra smoke visual.
 - **Hooks:** PostToolUse auto-format ruff em .py + PreToolUse guard contra editar migration commitada. PowerShell pipe converte LF→CRLF mesmo binary (F47).

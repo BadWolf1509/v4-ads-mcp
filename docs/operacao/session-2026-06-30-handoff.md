@@ -1,56 +1,59 @@
-# Sessão 2026-06-30 — Handoff
+# Sessão 2026-06-30 — Handoff (MIGRAÇÃO GCP executada)
 
-> Investigação: "por que nem todas as contas parceiras do BM `619664032237208` aparecem no MCP?" → diagnóstico fechado (F64 + F65) + avaliação de migração GCP. **Nenhum código alterado** (diagnóstico via probes read-only com token temporário). Próximo nó é operacional/infra, não código.
+> Investigação Meta (F64/F65) → **migração lift-and-shift** do projeto GCP pra um onde o Wellington é **owner** (o antigo ficou sem owner humano e o IAM era inacessível). Serviço novo **no ar e funcional**. Restam cutover dos outros 3 gestores + polimento.
 
 ## TL;DR
 
-1. **F64 — contas faltando:** o sync Meta usa `/me/adaccounts`, que é **token + app-scoped**. O token de produção (`meta-system-user-token` no GCP, app **V4 Ads MCP** `1522411803012799`) foi gerado com **lista FIXA de contas** (granular `ads_management` com `target_ids`, não `all targets`) → **contas novas não entram** até o token ser regenerado com "todas as contas atuais e futuras". A atribuição do system-user está correta; o token é que está velho.
-2. **F65 — cache inflado:** `resync_meta` nunca chama `mark_inactive_except` (o lado Google chama) → o cache `meta_ad_accounts` acumula órfãs (conta pessoal do Wellington, WJX fechada, etc.). Fix = Onda 5.
-3. **Gargalo:** regravar o token no GCP exige acesso ao **Secret Manager** = o **IAM GCP pendente**. Avaliada a migração de projeto: **não recomendada** — o grant de IAM no projeto atual resolve com 1/15 do esforço e ~zero risco (ver §Migração).
+- **Novo projeto:** `v4-ads-mcp` (number `299432068772`), org v4company.com, **billing própria da unidade**, Wellington **owner**. IAM destravado.
+- **URL produção:** `https://v4-ads-mcp-299432068772.southamerica-east1.run.app` (`/health?deep=1` db=ok, `/mcp` 401).
+- **F64 resolvido:** token Meta **all-targets** → 19 contas + 25 páginas (a `CA - MDO Goiânia` voltou).
+- **Bearers antigos seguem válidos** (hash no DB compartilhado) → cutover = só trocar a URL no `~/.claude.json`.
+- **Chaves `aes-master-key`/`session-signing-key` regeneradas** → gestores **reconectam Google OAuth** uma vez (Meta não afeta — system-user token).
 
-## Topologia Meta confirmada (empírica, via `debug_token`/`/me`)
+## Por que migrou
 
-- **1 system-user** só: `v4-ads-mcp-integracao`, ID real `61590110716028`.
-  - ⚠️ `/me` retorna **app-scoped IDs (ASIDs)** distintos por app (`122108…`, `122103…`) — *parecem* SUs diferentes mas são o mesmo. Não confiar em `/me .id` pra contar SUs; use o ID do Business Manager.
-- **3 apps Meta** (developers.facebook.com):
-  - **V4 Ads MCP** `1522411803012799` (Ativo) = **produção**. Token fresh deste app, com `ads_management`/`ads_read`/`business_management` em **all targets**, enxerga tudo (incl. `CA - MDO Goiânia`).
-  - V4 MDO Stories `4419481288293195` (Em desenvolvimento) — **sem** scopes `ads_*` (token antigo do BTW falhava com "Missing Permissions").
-  - WJX `1430576745025253` (Ativo, empresa WJX).
-- **owned_ad_accounts do BM = 0** → a V4 não tem contas próprias; tudo é parceria/cliente.
-- **Números:** `client_ad_accounts` (universo do BM) = **21**; token de produção via `/me/adaccounts` reflete **18→19** (cache MCP mostra 22, mas inflado por órfãs — ver F65).
+O projeto antigo `v4-ads-mcp-prod` foi criado pela conta `wellinton.ribeiro@` (typo), que foi **excluída** → projeto **sem owner humano**, IAM inacessível pra `wellington.ribeiro@`. Confirmado nesta sessão: o `GCP_DEPLOY_SA` não tem acesso a Secret Manager (não dá pra destravar por CI); Org Admin V4 (4000+ contas) é difícil de acionar. `wellington.ribeiro@` **consegue criar projeto + billing própria** → migração autônoma (owner desde o início).
 
-### Conta ativa que motivou tudo
-`CA - MDO Goiânia` (`act_1292624998332379`, ATIVA) — atribuída ao SU (Acesso total, confirmado no painel), mas ausente do `/me/adaccounts` de produção por causa do token com targets fixos (F64). As outras 2 faltantes (`CHUTE 07`, `Mestre da obra JP`) estão FECHADAS — irrelevantes.
+## Inventário do ambiente novo (IDs pra não re-descobrir)
 
-## Próximos passos (ordem)
+| Recurso | Valor |
+|---|---|
+| Projeto / number | `v4-ads-mcp` / `299432068772` |
+| Região | `southamerica-east1` |
+| Runtime SA | `v4-ads-mcp-runtime@v4-ads-mcp.iam.gserviceaccount.com` (roles/secretmanager.secretAccessor) |
+| Deploy SA | `v4-ads-mcp-deploy@v4-ads-mcp.iam.gserviceaccount.com` (run.admin, cloudbuild.builds.editor, artifactregistry.writer, iam.serviceAccountUser, storage.admin, serviceusage.serviceUsageConsumer) |
+| WIF provider | `projects/299432068772/locations/global/workloadIdentityPools/github/providers/github-provider` (condição repo == `BadWolf1509/v4-ads-mcp`) |
+| Artifact Registry | `southamerica-east1-docker.pkg.dev/v4-ads-mcp/v4-ads-mcp/app` |
+| Cloud Run service | `v4-ads-mcp` (allow-unauth, min0/max10, 512Mi, entrypoint buildpack = `web`) |
+| Cloud Run Jobs | `v4-ads-mcp-migrate`, `v4-ads-mcp-resync` (**F66: quebrados** — buildpack não roda o process do Procfile) |
+| Scheduler | `v4-ads-mcp-resync-daily` (0 6 * * *) |
+| DB | mesmo Supabase (ref `laiqtoisehgkwfxaezjl`, session pooler `aws-1-sa-east-1.pooler.supabase.com:5432`, **senha resetada** — está no BTW "Password") |
+| GitHub secrets (repo) | `GCP_PROJECT_ID=v4-ads-mcp`, `GCP_REGION=southamerica-east1`, `GCP_DEPLOY_SA=…deploy@…`, `GCP_WIF_PROVIDER=…` |
 
-1. **Destravar IAM GCP** — pedir ao Org Admin V4 o grant no projeto `v4-ads-mcp-prod` (pacote pronto: ver §IAM). Destrava o Secret Manager (e rollback/Cloud Run manuais).
-2. **Regenerar o token de produção** no app *V4 Ads MCP*, system-user `v4-ads-mcp-integracao`, marcando **"todas as contas, atuais e futuras"** → gravar como nova versão de `meta-system-user-token` no GCP → re-rodar o resync. Resolve F64 e qualquer cliente futuro automaticamente.
-3. **Onda 5 (código)** — plugar `mark_inactive_except` no `resync_meta`, agrupado por `business_id`. Resolve F65 (limpa as órfãs). Deploy via push (não bloqueado por IAM). Abrir com `brainstorming`.
+**13 secrets** no Secret Manager (owner lê): database-url, aes-master-key, session-signing-key, google-oauth-client-id, google-oauth-client-secret, google-ads-developer-token, google-ads-login-customer-id, supabase-url/anon-key/service-key, meta-app-id, meta-app-secret, meta-system-user-token.
 
-## Migração GCP — avaliação (não recomendada agora)
+**Meta:** SU único `v4-ads-mcp-integracao` (`61590110716028`), app **V4 Ads MCP** (`1522411803012799`), BM V4 Lima Soares (`619664032237208`). Token all-targets = secret "Meta" `7ffe144d` no BTW (⚠️ `/me` retorna **ASIDs** diferentes por app — não confundir com SUs distintos).
 
-Gatilho seria o IAM travado. Mas migrar exige o **mesmo Org Admin** que poderia simplesmente conceder owner no projeto atual (1 comando vs ~15 passos). Risco-chave: a `aes-master-key` cifra os refresh tokens OAuth no Supabase — sem extraí-la do projeto atual (o que o IAM travado impede), migrar força **reconexão OAuth em massa** dos gestores. Inventário do que migraria: Cloud Run + 2 Jobs + Scheduler + Artifact Registry + Cloud Build + SAs + WIF + 13 secrets + OAuth redirect URIs + `~/.claude.json` de cada cliente. DB (Supabase) é externo, não migra. **Migrar só se** o org atual for genuinamente inacessível ou por decisão estratégica (billing/governança próprios). Perguntas em aberto: motivação real? Org Admin acessível? Backup da `aes-master-key`/`session-signing-key` fora do GCP?
+## Runbook de cutover (pros outros 3 gestores)
 
-## IAM — pacote pro Org Admin V4
+Nas máquinas deles, `~/.claude.json` → `mcpServers.v4-ads`:
+1. `url`: `…jf26mmrgqa-rj.a.run.app/mcp` → `https://v4-ads-mcp-299432068772.southamerica-east1.run.app/mcp` (o **Bearer não muda**).
+2. Abrir `…/admin` no navegador → **login Google** (reconecta o OAuth — chaves regeneradas).
+3. Reiniciar Claude Code/Cursor.
 
-Conta a habilitar: `wellington.ribeiro@v4company.com` · Projeto: `v4-ads-mcp-prod`.
+## Pendências (ver CLAUDE.md §Pendente operacional)
 
-```bash
-# Mínimo pra ler/gravar secrets (destrava o token Meta):
-gcloud projects add-iam-policy-binding v4-ads-mcp-prod \
-  --member="user:wellington.ribeiro@v4company.com" \
-  --role="roles/secretmanager.admin"
+1. Cutover dos outros 3 gestores (runbook acima).
+2. **F66 — job `migrate`/`resync`**: o buildpack image roda `web` mesmo com `--command`/`--args`; o `deploy.yml` step "Run database migrations" **falha no próximo push**. Investigar o launcher CNB certo (`/cnb/process/<type>`?) ou remover o step (schema já existe no DB compartilhado).
+3. **F67 — custom domain** `mcpv4.fluxocerto.dev.br` via Load Balancer (região não permite domain mapping; domínio já verificado no Search Console).
+4. **ML Antiguidades + Mestre da Obra - Pinda** somem no token all-targets — re-atribuir o SU no BM se ainda forem clientes.
+5. Onda 5 (F65) · decomissionar `v4-ads-mcp-prod` · Anderson 1 login · **revogar token BTW** do Wellington.
 
-# Recomendado pra ops completas (Cloud Run, rollback, jobs, logs):
-gcloud projects add-iam-policy-binding v4-ads-mcp-prod \
-  --member="user:wellington.ribeiro@v4company.com" \
-  --role="roles/owner"
-```
+## Findings desta sessão
 
-Contexto: a conta admin original (owner) foi excluída; a atual tem ZERO IAM no projeto. Deploys (WIF/`GCP_DEPLOY_SA`) funcionam, mas ops manuais (secrets, Cloud Run, rollback) não. Detalhe histórico: [session-2026-06-19-handoff.md](session-2026-06-19-handoff.md).
+- **F64** — Meta `/me/adaccounts` é token+app-scoped; token de produção com **granular targets fixos** perdia contas novas. Fix: token all-targets (feito na migração).
+- **F65** — `resync_meta` nunca chama `mark_inactive_except` → cache Meta acumula órfãs (Onda 5).
+- **F66** — Cloud Run Job com buildpack image ignora `--command`/`--args` e roda o process `web` do Procfile; process não-web (`migrate`/`resync`) não é invocável trivialmente.
+- **F67** — `southamerica-east1` retorna `501 UNIMPLEMENTED` em `run domain-mappings create` (custom domain exige Load Balancer).
 
-## Higiene pendente
-
-- **Revogar o access token do Bitwarden Secrets Manager** que o Wellington compartilhou nesta sessão (usado só pra probes read-only; nenhum secret foi impresso).
-- Bitwarden tem **2 secrets "Meta"**: `7ffe144d…` (app V4 Ads MCP, all-targets, bom) e `e9281039…` (app V4 MDO Stories, sem `ads_*`). Considerar remover o segundo pra não confundir.
+Diagnóstico F64/F65 detalhado + o spec/plano da migração: [`specs/2026-06-30-gcp-project-migration-design.md`](../superpowers/specs/2026-06-30-gcp-project-migration-design.md) · [`plans/2026-06-30-gcp-project-migration.md`](../superpowers/plans/2026-06-30-gcp-project-migration.md).
