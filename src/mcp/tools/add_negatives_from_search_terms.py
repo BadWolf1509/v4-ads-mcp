@@ -13,6 +13,7 @@ from typing import Any
 from src.google_ads.mutations import run_mutation
 from src.governance.blast_radius import classify
 from src.mcp.context import get_current
+from src.mcp.tools._common import classify_partial
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -67,16 +68,6 @@ def _build_params_summary(negatives: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _classify_partial(error: str | None) -> str:
-    """Map a Google Ads partial-failure error message to per-row status."""
-    if error is None:
-        return "added"
-    upper = error.upper()
-    if any(p in upper for p in _ALREADY_EXISTS_PATTERNS):
-        return "already_exists"
-    return "failed"
-
-
 @register_tool(
     name="add_negatives_from_search_terms",
     description=(
@@ -120,7 +111,12 @@ async def add_negatives_from_search_terms(args: dict[str, Any]) -> dict[str, Any
     for idx, n in enumerate(negatives):
         # Default: if SDK didn't return partial-failure info for this idx, mark added
         per_op = next((p for p in partial_failures if p["index"] == idx), None)
-        row_status = _classify_partial(per_op["error"] if per_op else None)
+        row_status = classify_partial(
+            per_op["error"] if per_op else None,
+            ok_status="added",
+            exists_status="already_exists",
+            exists_patterns=_ALREADY_EXISTS_PATTERNS,
+        )
         item: dict[str, Any] = {
             "search_term": n["search_term"],
             "match_type": n.get("match_type", "EXACT"),
