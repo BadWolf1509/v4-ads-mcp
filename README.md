@@ -8,7 +8,7 @@ Ferramenta **interna da V4 Company** que conecta as contas **Google Ads** e **Me
 
 ## O que faz
 
-- **~62 ferramentas MCP** (Google Ads + Meta Ads) — leitura (performance, search terms, funil, geo/device/hora, auditorias) e mutação (status, lances, orçamento, keywords, RSAs, conversões, audiências…).
+- **~64 ferramentas MCP** (Google Ads + Meta Ads) — leitura (performance, search terms, funil, geo/device/hora, auditorias) e mutação (status, lances, orçamento, keywords, RSAs, conversões, audiências…).
 - **Governança em toda chamada:** registro no `audit_log` (quem, quando, qual conta, operação, status), rate-limit por token, e **dry-run + confirmação** (`apply_change`) para mutações de blast radius alto.
 - **Autorização por conta:** a matriz `manager_account_access` / `manager_meta_account_access` é **enforçada na camada MCP** — um gestor só lê/altera contas que o admin liberou (Google e Meta).
 - **Painel web** (FastAPI + HTMX): login Google OAuth (allowlist `@v4company.com`, invite-only), gestão de sessões/tokens MCP, visão das contas acessíveis, audit log com filtros/CSV, e área admin (convites, matriz de acesso, métricas).
