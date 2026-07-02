@@ -12,6 +12,7 @@ from uuid import UUID
 from src.db import connection
 from src.db.repositories import meta_ad_accounts
 from src.mcp.context import get_current
+from src.mcp.tools._meta_common import meta_error_message
 from src.mcp.tools._registry import register_tool
 from src.meta_ads.account_overview import resolve_meta_date_window
 from src.meta_ads.insights import build_insights_call, parse_insights_row
@@ -129,9 +130,7 @@ async def meta_get_ad_set_performance(
             },
         )
     except Exception as e:  # noqa: BLE001
-        if hasattr(e, "message"):
-            return {"status": "error", "error_message": e.message}
-        return {"status": "error", "error_message": str(e)}
+        return {"status": "error", "error_message": meta_error_message(e)}
 
     rows = [parse_insights_row(r, "adset") for r in resp.get("data", [])]
     rows.sort(key=lambda r: r["spend_brl"], reverse=True)

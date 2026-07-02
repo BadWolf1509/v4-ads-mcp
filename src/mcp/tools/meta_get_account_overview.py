@@ -14,7 +14,7 @@ import structlog
 from src.db import connection
 from src.db.repositories import meta_ad_accounts
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import META_ACCOUNT_STATUS_LABELS
+from src.mcp.tools._meta_common import META_ACCOUNT_STATUS_LABELS, meta_error_message
 from src.mcp.tools._registry import register_tool
 from src.meta_ads.account_overview import (
     build_warnings,
@@ -169,10 +169,7 @@ async def meta_get_account_overview(
             audit_this_call=False,
         )
     except Exception as e:  # noqa: BLE001
-        # MetaAdsFriendlyError has .message; fallback to str for unexpected errors
-        if hasattr(e, "message"):
-            return {"status": "error", "error_message": e.message}
-        return {"status": "error", "error_message": str(e)}
+        return {"status": "error", "error_message": meta_error_message(e)}
 
     # 4. Parse + compute
     current_metrics = parse_insights_response(current_resp)

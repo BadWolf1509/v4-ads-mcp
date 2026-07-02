@@ -14,6 +14,7 @@ from uuid import UUID
 from src.db import connection
 from src.db.repositories import meta_ad_accounts
 from src.mcp.context import get_current
+from src.mcp.tools._meta_common import meta_error_message
 from src.mcp.tools._registry import register_tool
 from src.meta_ads.account_overview import resolve_meta_date_window
 from src.meta_ads.insights import (
@@ -161,9 +162,7 @@ async def meta_get_performance_breakdown(
             },
         )
     except Exception as e:  # noqa: BLE001
-        if hasattr(e, "message"):
-            return {"status": "error", "error_message": e.message}
-        return {"status": "error", "error_message": str(e)}
+        return {"status": "error", "error_message": meta_error_message(e)}
 
     rows = [
         parse_insights_row(r, level_typed, breakdown_keys=breakdown_params)
