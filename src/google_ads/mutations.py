@@ -38,6 +38,110 @@ log = structlog.get_logger(__name__)
 import_all_builders()
 
 
+def _parse_partial_failures(
+    response: Any,
+    client: Any,
+    *,
+    operation_type: str,
+    customer_id: str,
+    target_count: int,
+) -> list[dict[str, Any]]:
+    """Classifica cada op de uma resposta partial_failure em added/failed (+ erro).
+
+    Google Ads API surface (NOT what naive readings of the SDK suggest):
+    - response.partial_failure_error is a google.rpc.Status at the TOP level (NOT a
+      per-op field). Its `.code == 0` means no partial failures.
+    - Per-op failure detection is via the response oneof: quando uma op falha, nenhum
+      result field é setado no seu MutateOperationResponse, então
+      `_pb.WhichOneof("response")` retorna None. Ops OK têm um field setado.
+    - Per-op error MESSAGES vivem em partial_failure_error.details[] como um
+      GoogleAdsFailure proto, cujo errors[].location.field_path_elements[0].index liga
+      cada erro ao índice da op em mutate_operations.
+    """
+    per_op_results: list[dict[str, Any]] = []
+    if not hasattr(response, "mutate_operation_responses"):
+        log.warning(
+            "partial_failure_response_missing_operation_responses",
+            operation=operation_type,
+            customer_id=customer_id,
+            target_count=target_count,
+        )
+        return per_op_results
+
+    # Build error-by-index map from the top-level partial_failure_error.
+    error_by_index: dict[int, str] = {}
+    pfe = getattr(response, "partial_failure_error", None)
+    pfe_code = getattr(pfe, "code", 0) if pfe is not None else 0
+    if pfe_code != 0:
+        # The details list contains Any messages — at least one is a GoogleAdsFailure
+        # with per-op locations. We unpack lazily.
+        try:
+            details = getattr(pfe, "details", []) or []
+            for detail in details:
+                # Convert proto-plus wrapper to raw pb if needed
+                raw = detail._pb if hasattr(detail, "_pb") else detail
+                # Duck-type check: must have type_url and Unpack (characteristic of
+                # google.protobuf.any_pb2.Any). Avoids version-specific isinstance import.
+                if not (hasattr(raw, "type_url") and hasattr(raw, "Unpack")):
+                    continue
+                # GoogleAdsFailure is the only detail Google sends here; check via
+                # type_url substring rather than importing the version-specific proto
+                # class (which differs across google-ads SDK versions).
+                if "GoogleAdsFailure" not in raw.type_url:
+                    continue
+                failure_type = client.get_type("GoogleAdsFailure")
+                failure_pb = failure_type._meta.pb()
+                raw.Unpack(failure_pb)
+                for gae in failure_pb.errors:
+                    if gae.location.field_path_elements:
+                        idx = gae.location.field_path_elements[0].index
+                        error_by_index[int(idx)] = str(gae.message)
+        except Exception:
+            # If detail unpacking fails (SDK version drift, unexpected shape), fall back
+            # to a generic error per failed op so the caller still sees something useful.
+            log.exception(
+                "partial_failure_detail_unpack_failed",
+                operation=operation_type,
+                customer_id=customer_id,
+            )
+
+    # Walk operation responses and classify by which oneof is set.
+    for idx, op_resp in enumerate(response.mutate_operation_responses):
+        # proto-plus wrapper exposes _pb; use raw WhichOneof
+        raw = op_resp._pb if hasattr(op_resp, "_pb") else op_resp
+        if hasattr(raw, "WhichOneof") and raw.WhichOneof("response") is not None:
+            per_op_results.append({"index": idx, "status": "added", "error": None})
+        else:
+            per_op_results.append(
+                {
+                    "index": idx,
+                    "status": "failed",
+                    "error": error_by_index.get(idx, "Unknown partial failure"),
+                }
+            )
+    return per_op_results
+
+
+def _extract_resource_names(response: Any) -> list[str | None]:
+    """resource_name de cada op bem-sucedida (None nas que falharam em partial_failure).
+
+    Cada op OK tem WhichOneof("response") apontando pra um *_result message (ex.:
+    ad_group_result) com o field resource_name (Sprint 3b.15 F13 fix). Retorna [] quando
+    o field está ausente (rede de segurança contra SDK version drift).
+    """
+    resource_names: list[str | None] = []
+    if hasattr(response, "mutate_operation_responses"):
+        for op_resp in response.mutate_operation_responses:
+            raw = op_resp._pb if hasattr(op_resp, "_pb") else op_resp
+            oneof_field = raw.WhichOneof("response") if hasattr(raw, "WhichOneof") else None
+            if oneof_field is None:
+                resource_names.append(None)
+            else:
+                result_proto = getattr(raw, oneof_field)
+                resource_names.append(getattr(result_proto, "resource_name", None) or None)
+    return resource_names
+
+
 async def run_mutation(
     *,
     manager_id: UUID,
@@ -108,93 +212,17 @@ async def run_mutation(
             response = ga_service.mutate(request=request)
             provider_request_id = get_request_id()
 
-            # Parse per-op status when partial_failure is enabled.
-            #
-            # Google Ads API surface (NOT what naive readings of the SDK suggest):
-            # - response.partial_failure_error is a google.rpc.Status at the TOP
-            #   level (NOT a per-op field). Its `.code == 0` means no partial failures.
-            # - Per-op failure detection is via the response oneof: when an op fails,
-            #   no result field is set on its MutateOperationResponse, so
-            #   `_pb.WhichOneof("response")` returns None. Successful ops have a set
-            #   field (e.g., "campaign_criterion_result").
-            # - Per-op error MESSAGES live in partial_failure_error.details[] as a
-            #   GoogleAdsFailure proto, whose errors[].location.field_path_elements[0]
-            #   .index links each error back to its op index in mutate_operations.
+            # Parse per-op status when partial_failure is enabled (helper isola o
+            # parsing do proto — ver _parse_partial_failures).
             per_op_results: list[dict[str, Any]] = []
             if partial_failure:
-                if not hasattr(response, "mutate_operation_responses"):
-                    log.warning(
-                        "partial_failure_response_missing_operation_responses",
-                        operation=operation_type,
-                        customer_id=customer_id,
-                        target_count=target_count,
-                    )
-                else:
-                    # Build error-by-index map from the top-level partial_failure_error.
-                    error_by_index: dict[int, str] = {}
-                    pfe = getattr(response, "partial_failure_error", None)
-                    pfe_code = getattr(pfe, "code", 0) if pfe is not None else 0
-                    if pfe_code != 0:
-                        # The details list contains Any messages — at least one is a
-                        # GoogleAdsFailure with per-op locations. We unpack lazily.
-                        try:
-                            details = getattr(pfe, "details", []) or []
-                            for detail in details:
-                                # Convert proto-plus wrapper to raw pb if needed
-                                raw = detail._pb if hasattr(detail, "_pb") else detail
-                                # Duck-type check: must have type_url and Unpack
-                                # (characteristic of google.protobuf.any_pb2.Any).
-                                # Avoids version-specific isinstance import.
-                                if not (hasattr(raw, "type_url") and hasattr(raw, "Unpack")):
-                                    # Unexpected detail shape; skip
-                                    continue
-                                # GoogleAdsFailure is the only detail Google sends here;
-                                # check via type_url substring rather than importing the
-                                # version-specific proto class (which differs across
-                                # google-ads SDK versions).
-                                if "GoogleAdsFailure" not in raw.type_url:
-                                    continue
-                                # Use lazy import via the SDK client; falls back to
-                                # parsing via the registered proto descriptor pool.
-                                # SDK approach: use client.get_type to fetch the
-                                # correct GoogleAdsFailure version.
-                                failure_type = client.get_type("GoogleAdsFailure")
-                                failure_pb = failure_type._meta.pb()
-                                raw.Unpack(failure_pb)
-                                for gae in failure_pb.errors:
-                                    if gae.location.field_path_elements:
-                                        idx = gae.location.field_path_elements[0].index
-                                        error_by_index[int(idx)] = str(gae.message)
-                        except Exception:
-                            # If detail unpacking fails (SDK version drift, unexpected
-                            # shape), fall back to recording a generic error per failed
-                            # op so the caller still sees something useful.
-                            log.exception(
-                                "partial_failure_detail_unpack_failed",
-                                operation=operation_type,
-                                customer_id=customer_id,
-                            )
-
-                    # Walk operation responses and classify by which oneof is set.
-                    for idx, op_resp in enumerate(response.mutate_operation_responses):
-                        # proto-plus wrapper exposes _pb; use raw WhichOneof
-                        raw = op_resp._pb if hasattr(op_resp, "_pb") else op_resp
-                        if hasattr(raw, "WhichOneof") and raw.WhichOneof("response") is not None:
-                            per_op_results.append(
-                                {
-                                    "index": idx,
-                                    "status": "added",
-                                    "error": None,
-                                }
-                            )
-                        else:
-                            per_op_results.append(
-                                {
-                                    "index": idx,
-                                    "status": "failed",
-                                    "error": error_by_index.get(idx, "Unknown partial failure"),
-                                }
-                            )
+                per_op_results = _parse_partial_failures(
+                    response,
+                    client,
+                    operation_type=operation_type,
+                    customer_id=customer_id,
+                    target_count=target_count,
+                )
         except Exception as e:
             # Log the raw exception with traceback BEFORE wrapping it in the
             # friendly PT-BR error. Without this, when to_friendly falls
@@ -215,21 +243,8 @@ async def run_mutation(
         if partial_failure and per_op_results:
             applied_count = sum(1 for r in per_op_results if r["status"] == "added")
 
-        # Extract resource_names from mutate_operation_responses (Sprint 3b.15 F13 fix).
-        # Each successful op has WhichOneof("response") set to a *_result message
-        # (e.g., ad_group_result, campaign_result) containing resource_name field.
-        # Failed ops in partial_failure have None (no result oneof set).
-        # Returns [] when the field is absent (SDK version drift safety net).
-        resource_names: list[str | None] = []
-        if hasattr(response, "mutate_operation_responses"):
-            for op_resp in response.mutate_operation_responses:
-                raw = op_resp._pb if hasattr(op_resp, "_pb") else op_resp
-                oneof_field = raw.WhichOneof("response") if hasattr(raw, "WhichOneof") else None
-                if oneof_field is None:
-                    resource_names.append(None)
-                else:
-                    result_proto = getattr(raw, oneof_field)
-                    resource_names.append(getattr(result_proto, "resource_name", None) or None)
+        # Extract resource_names from mutate_operation_responses (ver _extract_resource_names).
+        resource_names = _extract_resource_names(response)
 
         return {
             "provider_request_id": provider_request_id,
