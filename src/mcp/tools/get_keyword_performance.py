@@ -116,7 +116,8 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 @register_tool(
     name="get_keyword_performance",
     description=(
-        "[DEFER] Performance por palavra-chave com Quality Score completo (3 componentes: "
+        "[DEFER] Prefira get_performance_breakdown(level=keyword) — este report sera "
+        "arquivado (Fase 2B). Performance por palavra-chave com Quality Score completo (3 componentes: "
         "creative, post_click, search_predicted_ctr) + estimativas de first_page_cpc "
         "e top_of_page_cpc. Filtros: status (enabled|paused|removed|all), limit. "
         "ATENÇÃO (F56): retorna positive E negative ad_group_criterion indistintamente. "

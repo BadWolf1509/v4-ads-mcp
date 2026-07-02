@@ -86,7 +86,8 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 @register_tool(
     name="get_audience_performance",
     description=(
-        "[DEFER] Performance por audiencia/segmento aplicado em ad groups: listas de "
+        "[DEFER] Prefira get_performance_breakdown(level=audience) — este report sera "
+        "arquivado (Fase 2B). Performance por audiencia/segmento aplicado em ad groups: listas de "
         "remarketing (user_list) ou interesses (user_interest_category) + metricas."
     ),
     input_schema=_SCHEMA,

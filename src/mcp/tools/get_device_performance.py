@@ -71,7 +71,8 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 @register_tool(
     name="get_device_performance",
     description=(
-        "[DEFER] Performance segmentada por device (MOBILE, DESKTOP, TABLET, CONNECTED_TV, "
+        "[DEFER] Prefira get_performance_breakdown(level=account, breakdown=device) — este "
+        "report sera arquivado (Fase 2B). Performance segmentada por device (MOBILE, DESKTOP, TABLET, CONNECTED_TV, "
         "OTHER). Util pra ajustar bid adjustments por dispositivo."
     ),
     input_schema=_SCHEMA,

@@ -92,7 +92,8 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 @register_tool(
     name="get_ad_performance",
     description=(
-        "[DEFER] Performance por anuncio (RSA) com headlines, descriptions, final_urls e "
+        "[DEFER] Prefira get_performance_breakdown(level=ad) — este report sera arquivado "
+        "(Fase 2B). Performance por anuncio (RSA) com headlines, descriptions, final_urls e "
         "ad_strength (POOR|AVERAGE|GOOD|EXCELLENT). Filtros: status, limit."
     ),
     input_schema=_SCHEMA,
