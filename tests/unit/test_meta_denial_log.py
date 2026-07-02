@@ -36,6 +36,7 @@ async def test_meta_denial_emits_warning_log(monkeypatch: pytest.MonkeyPatch) ->
         await meta_reports.run_meta_graph_get(
             manager_id=uuid4(),
             session_id=uuid4(),
+            ad_account_id="act_123",
             edge="/act_123/insights",
             params={"ad_account_id": "act_123"},
             operation_name="meta_get_campaign_performance",

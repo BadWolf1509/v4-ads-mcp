@@ -33,6 +33,7 @@ async def test_run_meta_graph_get_denies_without_grant():
         await reports.run_meta_graph_get(
             manager_id=mid,
             session_id=sid,
+            ad_account_id="act_999",
             edge="/act_999/insights",
             params={"ad_account_id": "act_999"},
             operation_name="meta_get_campaign_performance",
@@ -66,6 +67,7 @@ async def test_run_meta_graph_get_deny_writes_audit_log():
         await reports.run_meta_graph_get(
             manager_id=mid,
             session_id=sid,
+            ad_account_id="act_999",
             edge="/act_999/insights",
             params={"ad_account_id": "act_999"},
             operation_name="meta_get_campaign_performance",
@@ -111,6 +113,7 @@ async def test_run_meta_graph_get_deny_audits_even_without_opt_in():
         await reports.run_meta_graph_get(
             manager_id=mid,
             session_id=sid,
+            ad_account_id="act_999",
             edge="/act_999/insights",
             params={"ad_account_id": "act_999"},
             operation_name="meta_get_campaign_performance",

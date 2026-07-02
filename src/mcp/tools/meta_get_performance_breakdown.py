@@ -146,6 +146,7 @@ async def meta_get_performance_breakdown(
         resp = await run_meta_graph_get(
             manager_id=manager_id,
             session_id=session_id,
+            ad_account_id=ad_account_id,
             edge=edge,
             params=params,
             operation_name="meta_get_performance_breakdown",
