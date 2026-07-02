@@ -24,7 +24,7 @@ jobs:
       id-token: write   # required for Workload Identity Federation
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v3
