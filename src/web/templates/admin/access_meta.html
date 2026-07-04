@@ -61,8 +61,8 @@
             {% else %}
               <span class="text-xs text-v4-red-medium">● {{ a.account_status | meta_status_label }}</span>
             {% endif %}
-            <div class="text-xs text-v4-gray-300">{{ a.business_name or "—" }}</div>
-            <div class="text-xs text-v4-gray-300 font-mono">{{ a.ad_account_id }}</div>
+            <div class="text-xs text-v4-gray-500">{{ a.business_name or "—" }}</div>
+            <div class="text-xs text-v4-gray-500 font-mono">{{ a.ad_account_id }}</div>
           </th>
           {% for m in managers_list %}
           <td class="text-center" data-manager-id="{{ m.id }}">

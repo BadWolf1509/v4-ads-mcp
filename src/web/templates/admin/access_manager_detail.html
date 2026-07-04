@@ -27,7 +27,7 @@
              hx-on::after-request="if (event.detail.successful) { showToast(this.checked ? 'Acesso liberado' : 'Acesso revogado', 'success'); } else { this.checked = !this.checked; }">
       <div class="flex-1">
         <strong>{{ a.descriptive_name }}</strong>
-        <div class="text-xs text-v4-gray-300 font-mono">{{ a.customer_id }}</div>
+        <div class="text-xs text-v4-gray-500 font-mono">{{ a.customer_id }}</div>
       </div>
     </label>
     {% endfor %}

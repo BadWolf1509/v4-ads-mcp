@@ -115,7 +115,7 @@
         <tbody>
           {% for a in meta_accounts %}
           <tr>
-            <td><strong>{{ a.account_name }}</strong><div class="text-xs font-mono text-v4-gray-300">{{ a.ad_account_id }}</div></td>
+            <td><strong>{{ a.account_name }}</strong><div class="text-xs font-mono text-v4-gray-500">{{ a.ad_account_id }}</div></td>
             <td>{{ a.business_name or "—" }}</td>
             <td>{% if a.account_status == 1 %}<span class="text-v4-green">● {{ a.account_status | meta_status_label }}</span>{% else %}<span class="text-v4-red-medium">● {{ a.account_status | meta_status_label }}</span>{% endif %}</td>
             <td>{{ a.currency or "—" }}</td>

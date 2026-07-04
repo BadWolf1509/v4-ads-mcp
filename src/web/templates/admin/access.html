@@ -56,7 +56,7 @@
         <tr data-account-name="{{ a.descriptive_name|lower }}" data-account-id="{{ a.customer_id }}">
           <th scope="row" class="sticky left-0 bg-white whitespace-nowrap">
             <strong>{{ a.descriptive_name }}</strong>
-            <div class="text-xs text-v4-gray-300 font-mono">{{ a.customer_id }}</div>
+            <div class="text-xs text-v4-gray-500 font-mono">{{ a.customer_id }}</div>
           </th>
           {% for m in managers_list %}
           <td class="text-center" data-manager-id="{{ m.id }}">

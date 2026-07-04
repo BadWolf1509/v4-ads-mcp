@@ -128,7 +128,7 @@ main {
   margin-top: var(--v4-space-12);
   text-align: center;
   font-size: var(--v4-small-size);
-  color: var(--v4-gray-300);
+  color: var(--v4-gray-500);
 }
 
 /* Admin sub-nav */
@@ -213,7 +213,7 @@ main {
 .v4-drawer__section { margin-bottom: var(--v4-space-6); }
 .v4-drawer__heading {
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
-  color: var(--v4-gray-300); font-weight: 600;
+  color: var(--v4-gray-500); font-weight: 600;
   margin-bottom: var(--v4-space-2);
 }
 .v4-drawer__link {

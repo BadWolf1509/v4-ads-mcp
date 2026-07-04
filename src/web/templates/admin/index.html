@@ -111,7 +111,7 @@
     {# Active managers: compound "X / Y" value — kept as v4-stat structure #}
     <div class="v4-stat">
       <div class="v4-stat__label">Gestores ativos</div>
-      <div class="v4-stat__value">{{ active_managers }} <span class="text-base text-v4-gray-300">/ {{ total_managers }}</span></div>
+      <div class="v4-stat__value">{{ active_managers }} <span class="text-base text-v4-gray-500">/ {{ total_managers }}</span></div>
     </div>
     {{ stat("Quota MCP hoje", quota_used, "/ " ~ quota_max ~ " ops") }}
     {# Errors 24h: conditional link + color on value — kept as v4-stat structure #}
@@ -134,7 +134,7 @@
       {% if usage_30d %}
         {{ sparkline(usage_30d, width=600, height=80, color="var(--v4-red)", aria_label="Uso dos últimos 30 dias") }}
       {% else %}
-        <p class="text-v4-gray-300 text-center py-8">Sem dados ainda.</p>
+        <p class="text-v4-gray-500 text-center py-8">Sem dados ainda.</p>
       {% endif %}
     </div>
   </div>
@@ -154,7 +154,7 @@
           </tr>
           {% endfor %}
           {% if not top_operations %}
-          <tr><td class="text-center text-v4-gray-300 py-6">Sem dados.</td></tr>
+          <tr><td class="text-center text-v4-gray-500 py-6">Sem dados.</td></tr>
           {% endif %}
         </tbody>
       </table>
@@ -173,7 +173,7 @@
           </tr>
           {% endfor %}
           {% if not top_managers %}
-          <tr><td class="text-center text-v4-gray-300 py-6">Sem dados.</td></tr>
+          <tr><td class="text-center text-v4-gray-500 py-6">Sem dados.</td></tr>
           {% endif %}
         </tbody>
       </table>
@@ -209,7 +209,7 @@
       </tbody>
     </table>
     {% else %}
-      <p class="text-v4-gray-300 text-center py-6">Nenhum onboarding recente.</p>
+      <p class="text-v4-gray-500 text-center py-6">Nenhum onboarding recente.</p>
     {% endif %}
   </div>
 </section>

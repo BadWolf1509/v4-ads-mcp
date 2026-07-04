@@ -199,7 +199,7 @@
 
 .v4-stat__sublabel {
   font-size: 12px;
-  color: var(--v4-gray-300);
+  color: var(--v4-gray-500);
   margin-top: 4px;
 }
 
@@ -362,7 +362,7 @@
 .v4-form__help {
   margin-top: var(--v4-space-1);
   font-size: 12px;
-  color: var(--v4-gray-300);
+  color: var(--v4-gray-500);
 }
 .v4-form__error {
   margin-top: var(--v4-space-1);
@@ -379,7 +379,7 @@
 }
 .v4-pagination__info {
   margin-right: auto;
-  color: var(--v4-gray-300);
+  color: var(--v4-gray-500);
 }
 .v4-pagination__btn {
   background: transparent;
@@ -452,7 +452,7 @@
 .v4-empty {
   text-align: center;
   padding: var(--v4-space-12) var(--v4-space-4);
-  color: var(--v4-gray-300);
+  color: var(--v4-gray-500);
 }
 .v4-empty__icon {
   width: 48px;
@@ -559,7 +559,7 @@
   font-size: 24px;
   line-height: 1;
   cursor: pointer;
-  color: var(--v4-gray-300);
+  color: var(--v4-gray-500);
   padding: 4px 8px;
 }
 .v4-modal__close:hover { color: var(--v4-gray-900); }
@@ -583,7 +583,7 @@
   margin-bottom: var(--v4-space-3);
 }
 .v4-breadcrumb a {
-  color: var(--v4-gray-300);
+  color: var(--v4-gray-500);
   text-decoration: none;
 }
 .v4-breadcrumb a:hover { color: var(--v4-gray-700); }
@@ -669,7 +669,7 @@
   display: inline-block;
   margin-right: 8px;
   transition: transform var(--v4-motion-fast) var(--v4-ease-out);
-  color: var(--v4-gray-300);
+  color: var(--v4-gray-500);
 }
 .v4-table tbody tr.is-expandable.is-open td:first-child::before {
   transform: rotate(90deg);
