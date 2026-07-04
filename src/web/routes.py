@@ -97,9 +97,17 @@ async def _audit_admin(
 def _toggle_checkbox_fragment(*, post_url: str, vals: dict[str, str], checked: bool) -> str:
     state = "checked" if checked else ""
     hx_vals = html.escape(json.dumps(vals), quote=True)
+    # Static string (no user input, no new XSS vector) — mirrors the hx-on::after-request
+    # baked into the 4 checkbox templates, so a swapped fragment keeps the toast + revert.
+    hx_on = (
+        "if (event.detail.successful) { "
+        "showToast(this.checked ? 'Acesso liberado' : 'Acesso revogado', 'success'); "
+        "} else { this.checked = !this.checked; }"
+    )
     return (
         f'<input type="checkbox" {state} hx-post="{post_url}" '
-        f'hx-vals=\'{hx_vals}\' hx-trigger="change" hx-swap="outerHTML">'
+        f'hx-vals=\'{hx_vals}\' hx-trigger="change" hx-swap="outerHTML" '
+        f'hx-on::after-request="{hx_on}" aria-label="Alternar acesso">'
     )
 
 

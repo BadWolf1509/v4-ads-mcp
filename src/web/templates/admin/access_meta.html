@@ -73,7 +73,7 @@
                    hx-vals='{"manager_id": "{{ m.id }}", "ad_account_id": "{{ a.ad_account_id }}"}'
                    hx-trigger="change"
                    hx-swap="outerHTML"
-                   hx-on::after-request="if (event.detail.successful) { showToast(this.checked ? 'Acesso liberado' : 'Acesso revogado', 'success'); }">
+                   hx-on::after-request="if (event.detail.successful) { showToast(this.checked ? 'Acesso liberado' : 'Acesso revogado', 'success'); } else { this.checked = !this.checked; }">
           </td>
           {% endfor %}
         </tr>

@@ -170,6 +170,9 @@
   }
   // HTMX hook: server can return HX-Trigger: {"toast": {"message": "...", "kind": "success"}}
   document.body.addEventListener('toast', (e) => showToast(e.detail.message, e.detail.kind));
+  // Global HTMX failure handling: request that fails (4xx/5xx/network) no longer dies silently.
+  document.body.addEventListener('htmx:responseError', () => showToast('Erro na requisição — a ação pode não ter sido aplicada.', 'error'));
+  document.body.addEventListener('htmx:sendError', () => showToast('Falha de rede — a ação não foi aplicada.', 'error'));
 </script>
 <script>
   function v4DropdownToggle(id) {

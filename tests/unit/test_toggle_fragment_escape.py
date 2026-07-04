@@ -15,4 +15,8 @@ def test_toggle_fragment_escapes_injection():
 def test_toggle_fragment_checked_state():
     on = _toggle_checkbox_fragment(post_url="/x", vals={"a": "b"}, checked=True)
     off = _toggle_checkbox_fragment(post_url="/x", vals={"a": "b"}, checked=False)
-    assert "checked" in on and "checked" not in off
+    # Positional check: the fragment's hx-on::after-request also contains the substring
+    # "this.checked" (JS revert-on-failure) in BOTH cases, so a naive "checked" in/not in
+    # substring check no longer distinguishes the two states.
+    assert '"checkbox" checked' in on
+    assert '"checkbox" checked' not in off

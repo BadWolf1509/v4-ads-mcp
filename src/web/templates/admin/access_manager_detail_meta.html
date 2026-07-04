@@ -24,7 +24,7 @@
              hx-vals='{"manager_id": "{{ manager.id }}", "ad_account_id": "{{ a.ad_account_id }}"}'
              hx-trigger="change"
              hx-swap="outerHTML"
-             hx-on::after-request="if (event.detail.successful) { showToast(this.checked ? 'Acesso liberado' : 'Acesso revogado', 'success'); }">
+             hx-on::after-request="if (event.detail.successful) { showToast(this.checked ? 'Acesso liberado' : 'Acesso revogado', 'success'); } else { this.checked = !this.checked; }">
       <div class="flex-1">
         <strong>{{ a.account_name }}</strong>
         {% if a.business_name %}<div class="text-xs text-v4-gray-300">{{ a.business_name }}</div>{% endif %}

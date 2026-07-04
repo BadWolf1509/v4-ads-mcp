@@ -113,7 +113,9 @@ async def test_admin_access_meta_toggle_grant_then_revoke(client: AsyncClient):
         cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
     )
     assert response1.status_code == 200
-    assert "checked" in response1.text
+    assert '"checkbox" checked' in response1.text
+    assert "hx-on::after-request" in response1.text
+    assert "aria-label" in response1.text
 
     async with pool.acquire() as conn:
         grant_row = await conn.fetchrow(
@@ -135,7 +137,7 @@ async def test_admin_access_meta_toggle_grant_then_revoke(client: AsyncClient):
         cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
     )
     assert response2.status_code == 200
-    assert "checked" not in response2.text
+    assert '"checkbox" checked' not in response2.text
 
     async with pool.acquire() as conn:
         revoke_row = await conn.fetchrow(

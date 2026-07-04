@@ -135,7 +135,9 @@ async def test_admin_access_toggle_grants_then_revokes(client: AsyncClient):
         cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
     )
     assert response.status_code == 200
-    assert "checked" in response.text
+    assert '"checkbox" checked' in response.text
+    assert "hx-on::after-request" in response.text
+    assert "aria-label" in response.text
 
     async with pool.acquire() as conn:
         accs = await manager_account_access.list_accounts_for_manager(conn, gestor_id)
@@ -158,7 +160,7 @@ async def test_admin_access_toggle_grants_then_revokes(client: AsyncClient):
         cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
     )
     assert response.status_code == 200
-    assert "checked" not in response.text or 'checked=""' not in response.text  # unchecked
+    assert '"checkbox" checked' not in response.text  # unchecked
 
     async with pool.acquire() as conn:
         accs = await manager_account_access.list_accounts_for_manager(conn, gestor_id)
