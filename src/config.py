@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     # PUBLIC_BASE_URL no Cloud Run (deploy.yml --set-env-vars).
     public_base_url: str = "https://v4-ads-mcp-299432068772.southamerica-east1.run.app"
 
+    # Governance: F73 — cap diario por gestor (rate_counters chave "mgr:<uuid>",
+    # paralelo ao cap global por developer_token_id).
+    manager_daily_quota: int = 5000
+
     # Phase 2: invite-only allowlist bootstrap
     # Comma-separated emails that get auto-promoted to admin on first OAuth login,
     # but ONLY when the managers table is empty. Once seeded, this value is dormant.

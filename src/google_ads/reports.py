@@ -75,10 +75,20 @@ async def run_report(
 
     pool = connection.get_pool()
     results: list[dict[str, Any]] = []
+    reserved = False
     try:
-        # Reserve quota
-        async with pool.acquire() as conn:
+        # Reserve quota: global (developer token) + per-manager cap. Transacao
+        # EXTERNA torna as duas reservas tudo-ou-nada (before_call's internal
+        # conn.transaction() vira SAVEPOINT; raise em qualquer uma desfaz ambas).
+        async with pool.acquire() as conn, conn.transaction():
             await before_call(conn, token_id, estimated_ops=estimated_ops)
+            await before_call(
+                conn,
+                f"mgr:{manager_id}",
+                estimated_ops=estimated_ops,
+                daily_limit=settings.manager_daily_quota,
+            )
+        reserved = True
 
         client = await build_client_for_manager(manager_id=manager_id)
 
@@ -101,14 +111,25 @@ async def run_report(
         error_message = str(e)
         raise
     finally:
-        # Reconcile counter even on failure (we made API calls before erroring)
+        # Reconcile counters even on failure (we made API calls before erroring) —
+        # SO se a reserva foi persistida (reserved=True). Sem reserva nao ha nada
+        # pra reconciliar; reconciliar mesmo assim decrementaria o contador sem
+        # contrapartida (F73 — o quota leak original).
+        if reserved:
+            async with pool.acquire() as conn, conn.transaction():
+                await record_actual(
+                    conn,
+                    token_id,
+                    actual_ops=actual_ops,
+                    estimated_ops=estimated_ops,
+                )
+                await record_actual(
+                    conn,
+                    f"mgr:{manager_id}",
+                    actual_ops=actual_ops,
+                    estimated_ops=estimated_ops,
+                )
         async with pool.acquire() as conn:
-            await record_actual(
-                conn,
-                token_id,
-                actual_ops=actual_ops,
-                estimated_ops=estimated_ops,
-            )
             if audit_this_call:
                 duration_ms = int((time.monotonic() - started) * 1000)
                 await audit_log.record(

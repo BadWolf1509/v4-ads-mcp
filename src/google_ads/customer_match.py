@@ -150,10 +150,23 @@ async def run_offline_user_data_job(
     provider_request_id = ""
     status = "success"
     error_message: str | None = None
+    friendly_error: Exception | None = None
+    original_error: Exception | None = None
+    reserved = False
 
     try:
-        async with pool.acquire() as conn:
+        # Reserve quota: global (developer token) + per-manager cap. Transacao
+        # EXTERNA torna as duas reservas tudo-ou-nada (before_call's internal
+        # conn.transaction() vira SAVEPOINT; raise em qualquer uma desfaz ambas).
+        async with pool.acquire() as conn, conn.transaction():
             await before_call(conn, token_id, estimated_ops=estimated_ops)
+            await before_call(
+                conn,
+                f"mgr:{manager_id}",
+                estimated_ops=estimated_ops,
+                daily_limit=settings.manager_daily_quota,
+            )
+        reserved = True
 
         client = await build_client_for_manager(manager_id=manager_id)
         service = client.get_service("OfflineUserDataJobService")
@@ -202,10 +215,28 @@ async def run_offline_user_data_job(
             user_list_id=user_list_id,
             operation_type=operation_type,
         )
-        friendly = to_friendly(e)
+        friendly_error = to_friendly(e)
+        original_error = e
+    finally:
         duration_ms = int((time.monotonic() - started) * 1000)
+        # Reconcile counters SO se a reserva foi persistida (reserved=True) —
+        # sem reserva nao ha nada pra reconciliar (F73 — reconciliar mesmo assim
+        # decrementaria o contador sem contrapartida).
+        actual_ops = estimated_ops if status == "success" else 0
+        if reserved:
+            async with pool.acquire() as conn, conn.transaction():
+                await record_actual(
+                    conn, token_id, actual_ops=actual_ops, estimated_ops=estimated_ops
+                )
+                await record_actual(
+                    conn,
+                    f"mgr:{manager_id}",
+                    actual_ops=actual_ops,
+                    estimated_ops=estimated_ops,
+                )
+        # Audit SEMPRE roda (mutate PII exige rastro; LGPD) — inclusive quando
+        # reserved=False (negacao por quota deve aparecer no audit).
         async with pool.acquire() as conn:
-            await record_actual(conn, token_id, actual_ops=0, estimated_ops=estimated_ops)
             await audit_log.record(
                 conn,
                 manager_id=manager_id,
@@ -220,28 +251,11 @@ async def run_offline_user_data_job(
                 error_message=error_message,
                 duration_ms=duration_ms,
             )
+
+    if friendly_error is not None:
         # Raise (não retorna dict de erro): apply_change espera dict de sucesso;
         # o friendly propaga pro _error_envelope como mensagem PT-BR pro cliente.
-        raise friendly from e
-
-    # Success path — audit + reconcile SEMPRE (mutate PII exige rastro; LGPD).
-    duration_ms = int((time.monotonic() - started) * 1000)
-    async with pool.acquire() as conn:
-        await record_actual(conn, token_id, actual_ops=estimated_ops, estimated_ops=estimated_ops)
-        await audit_log.record(
-            conn,
-            manager_id=manager_id,
-            session_id=session_id,
-            customer_id=customer_id,
-            action_type="mutate",
-            operation="upload_customer_match_list",
-            target_count=member_count,
-            params_summary=audit_params,
-            provider_request_id=provider_request_id,
-            status=status,
-            error_message=error_message,
-            duration_ms=duration_ms,
-        )
+        raise friendly_error from original_error
 
     log.info(
         "run_offline_user_data_job_done",

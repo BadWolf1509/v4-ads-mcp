@@ -127,3 +127,70 @@ async def test_concurrent_increments_serialize_via_for_update(db) -> None:
     async with pool.acquire() as conn:
         used, _, _ = await get_today_usage(conn, _TOKEN_ID)
     assert used == 500  # exactly 5 * 100, no over/under count
+
+
+# ============================================================================
+# F73 — quota leak fix: reserved-gate contra o Postgres real.
+# ============================================================================
+
+
+@pytest.mark.integration
+async def test_blocked_before_call_leaves_row_unchanged(db) -> None:
+    """F73: seed operations_used = limite (0% de folga); before_call que estoura
+    o teto levanta QuotaExhausted E a row fica EXATAMENTE como estava (nem
+    incrementada pela reserva rejeitada, nem decrementada por um record_actual
+    que nunca deveria rodar sem reserva persistida)."""
+    pool = db
+    async with pool.acquire() as conn:
+        await before_call(conn, _TOKEN_ID, estimated_ops=DAILY_QUOTA_BASIC)
+        used_before, _, _ = await get_today_usage(conn, _TOKEN_ID)
+        assert used_before == DAILY_QUOTA_BASIC
+
+        with pytest.raises(QuotaExhausted):
+            await before_call(conn, _TOKEN_ID, estimated_ops=1)
+
+        used_after, _, _ = await get_today_usage(conn, _TOKEN_ID)
+    assert used_after == used_before  # row inalterada pelo bloqueio
+
+
+@pytest.mark.integration
+async def test_manager_key_reserves_and_reconciles_independently_of_global_key(db) -> None:
+    """F73(b): a chave `mgr:<uuid>` (cap por gestor) e a chave global (developer
+    token) sao contadores INDEPENDENTES no mesmo rate_counters — reservar/
+    reconciliar uma nao afeta a outra."""
+    pool = db
+    mgr_key = "mgr:11111111-1111-1111-1111-111111111111"
+
+    async with pool.acquire() as conn:
+        await before_call(conn, _TOKEN_ID, estimated_ops=50)
+        await before_call(conn, mgr_key, estimated_ops=30, daily_limit=5000)
+
+        global_used, _, _ = await get_today_usage(conn, _TOKEN_ID)
+        mgr_used, _, _ = await get_today_usage(conn, mgr_key, daily_limit=5000)
+        assert global_used == 50
+        assert mgr_used == 30
+
+        # Reconcilia so a chave do gestor pra baixo — a global fica intacta.
+        await record_actual(conn, mgr_key, actual_ops=20, estimated_ops=30)
+
+        global_used_after, _, _ = await get_today_usage(conn, _TOKEN_ID)
+        mgr_used_after, _, _ = await get_today_usage(conn, mgr_key, daily_limit=5000)
+    assert global_used_after == 50  # nao mexeu
+    assert mgr_used_after == 20  # reconciliado pra baixo
+
+
+@pytest.mark.integration
+async def test_manager_key_blocks_at_its_own_daily_limit(db) -> None:
+    """F73: cap por gestor usa seu proprio daily_limit (independente do
+    DAILY_QUOTA_BASIC global) — QuotaExhausted dispara no teto do gestor."""
+    pool = db
+    mgr_key = "mgr:22222222-2222-2222-2222-222222222222"
+    manager_daily_quota = 100
+
+    async with pool.acquire() as conn:
+        await before_call(conn, mgr_key, estimated_ops=95, daily_limit=manager_daily_quota)
+        with pytest.raises(QuotaExhausted):
+            await before_call(conn, mgr_key, estimated_ops=10, daily_limit=manager_daily_quota)
+
+        mgr_used, _, _ = await get_today_usage(conn, mgr_key, daily_limit=manager_daily_quota)
+    assert mgr_used == 95  # bloqueio nao alterou a row

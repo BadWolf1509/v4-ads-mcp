@@ -8,6 +8,23 @@ import pytest
 from src.google_ads.mutations import run_mutation
 
 
+def _pool_with_transactable_conn() -> MagicMock:
+    """conn.transaction() precisa ser um async CM real (F73 -- run_mutation agora
+    reserva/reconcilia dentro de `async with pool.acquire() as conn, conn.transaction():`)."""
+    fake_conn = AsyncMock()
+    fake_txn_cm = MagicMock()
+    fake_txn_cm.__aenter__ = AsyncMock(return_value=None)
+    fake_txn_cm.__aexit__ = AsyncMock(return_value=None)
+    fake_conn.transaction = MagicMock(return_value=fake_txn_cm)
+
+    mock_pool = MagicMock()
+    mock_acquire_cm = MagicMock()
+    mock_acquire_cm.__aenter__ = AsyncMock(return_value=fake_conn)
+    mock_acquire_cm.__aexit__ = AsyncMock(return_value=None)
+    mock_pool.acquire.return_value = mock_acquire_cm
+    return mock_pool
+
+
 def _client_with_partial_failure(per_op_errors: list[str | None]):
     """Mock client whose .mutate() returns a response with the given per-op errors.
 
@@ -117,7 +134,7 @@ async def test_run_mutation_partial_failure_returns_per_op_status(monkeypatch):
 
     # Stub the DB hooks (before_call, record_actual, audit_log.record, access gate)
     with (
-        patch.object(mutations.connection, "get_pool"),
+        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch.object(mutations, "before_call", AsyncMock()),
         patch.object(mutations, "record_actual", AsyncMock()),
@@ -168,7 +185,7 @@ async def test_run_mutation_uses_custom_params_summary(monkeypatch):
 
     audit_mock = AsyncMock()
     with (
-        patch.object(mutations.connection, "get_pool"),
+        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch.object(mutations, "before_call", AsyncMock()),
         patch.object(mutations, "record_actual", AsyncMock()),

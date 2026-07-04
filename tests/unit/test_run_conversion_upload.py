@@ -167,10 +167,21 @@ def _common_patches(client, request_id="req-001"):
     - before_call(conn, token_id, *, estimated_ops) — positional conn + token_id
     - record_actual(conn, token_id, *, actual_ops, estimated_ops) — positional conn + token_id
     - audit_log.record(conn, *, ...) — the real function name is 'record', not 'insert_row'
+
+    F73: run_conversion_upload now reserves/reconciles inside
+    `async with pool.acquire() as conn, conn.transaction():`, so the mock conn
+    needs `.transaction()` to return a real async context manager (not a bare
+    AsyncMock, whose method calls are themselves un-awaited coroutines).
     """
+    fake_conn = AsyncMock()
+    fake_txn_cm = MagicMock()
+    fake_txn_cm.__aenter__ = AsyncMock(return_value=None)
+    fake_txn_cm.__aexit__ = AsyncMock(return_value=None)
+    fake_conn.transaction = MagicMock(return_value=fake_txn_cm)
+
     mock_pool = MagicMock()
     mock_acquire_cm = MagicMock()
-    mock_acquire_cm.__aenter__ = AsyncMock(return_value=AsyncMock())
+    mock_acquire_cm.__aenter__ = AsyncMock(return_value=fake_conn)
     mock_acquire_cm.__aexit__ = AsyncMock(return_value=None)
     mock_pool.acquire.return_value = mock_acquire_cm
 

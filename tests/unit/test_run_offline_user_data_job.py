@@ -40,6 +40,23 @@ class _OneoofCapture(CapturedOp):
             self._captured[key] = value
 
 
+def _pool_with_transactable_conn() -> MagicMock:
+    """conn.transaction() precisa ser um async CM real (F73 -- run_offline_user_data_job
+    agora reserva/reconcilia dentro de `async with pool.acquire() as conn, conn.transaction():`)."""
+    fake_conn = AsyncMock()
+    fake_txn_cm = MagicMock()
+    fake_txn_cm.__aenter__ = AsyncMock(return_value=None)
+    fake_txn_cm.__aexit__ = AsyncMock(return_value=None)
+    fake_conn.transaction = MagicMock(return_value=fake_txn_cm)
+
+    mock_pool = MagicMock()
+    mock_acquire_cm = MagicMock()
+    mock_acquire_cm.__aenter__ = AsyncMock(return_value=fake_conn)
+    mock_acquire_cm.__aexit__ = AsyncMock(return_value=None)
+    mock_pool.acquire.return_value = mock_acquire_cm
+    return mock_pool
+
+
 def _make_capture_client_with_offline_user_data_job_service():
     """Extends make_capture_client com mocks pra OfflineUserDataJobService."""
     client = make_capture_client()
@@ -107,7 +124,10 @@ async def test_dispatcher_creates_job_with_customer_match_metadata(fake_ctx):
             "src.google_ads.customer_match.build_client_for_manager",
             AsyncMock(return_value=client),
         ),
-        patch("src.google_ads.customer_match.connection.get_pool"),
+        patch(
+            "src.google_ads.customer_match.connection.get_pool",
+            return_value=_pool_with_transactable_conn(),
+        ),
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
     ):
         await run_offline_user_data_job(
@@ -142,7 +162,10 @@ async def test_dispatcher_consent_lgpd_invariants_granted(fake_ctx):
             "src.google_ads.customer_match.build_client_for_manager",
             AsyncMock(return_value=client),
         ),
-        patch("src.google_ads.customer_match.connection.get_pool"),
+        patch(
+            "src.google_ads.customer_match.connection.get_pool",
+            return_value=_pool_with_transactable_conn(),
+        ),
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
     ):
         await run_offline_user_data_job(
@@ -173,7 +196,10 @@ async def test_dispatcher_add_operations_partial_failure_true(fake_ctx):
             "src.google_ads.customer_match.build_client_for_manager",
             AsyncMock(return_value=client),
         ),
-        patch("src.google_ads.customer_match.connection.get_pool"),
+        patch(
+            "src.google_ads.customer_match.connection.get_pool",
+            return_value=_pool_with_transactable_conn(),
+        ),
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
     ):
         await run_offline_user_data_job(
@@ -203,7 +229,10 @@ async def test_dispatcher_user_data_uses_hashed_email_field(fake_ctx):
             "src.google_ads.customer_match.build_client_for_manager",
             AsyncMock(return_value=client),
         ),
-        patch("src.google_ads.customer_match.connection.get_pool"),
+        patch(
+            "src.google_ads.customer_match.connection.get_pool",
+            return_value=_pool_with_transactable_conn(),
+        ),
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
     ):
         await run_offline_user_data_job(
@@ -231,7 +260,10 @@ async def test_dispatcher_returns_job_resource_name_and_three_request_ids(fake_c
             "src.google_ads.customer_match.build_client_for_manager",
             AsyncMock(return_value=client),
         ),
-        patch("src.google_ads.customer_match.connection.get_pool"),
+        patch(
+            "src.google_ads.customer_match.connection.get_pool",
+            return_value=_pool_with_transactable_conn(),
+        ),
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
     ):
         result = await run_offline_user_data_job(
@@ -262,7 +294,10 @@ async def test_dispatcher_remove_operation_uses_remove_field(fake_ctx):
             "src.google_ads.customer_match.build_client_for_manager",
             AsyncMock(return_value=client),
         ),
-        patch("src.google_ads.customer_match.connection.get_pool"),
+        patch(
+            "src.google_ads.customer_match.connection.get_pool",
+            return_value=_pool_with_transactable_conn(),
+        ),
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
     ):
         await run_offline_user_data_job(
@@ -293,7 +328,10 @@ async def test_dispatcher_records_audit_and_rate_limit_on_success(fake_ctx, gov_
             "src.google_ads.customer_match.build_client_for_manager",
             AsyncMock(return_value=client),
         ),
-        patch("src.google_ads.customer_match.connection.get_pool"),
+        patch(
+            "src.google_ads.customer_match.connection.get_pool",
+            return_value=_pool_with_transactable_conn(),
+        ),
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
     ):
         await run_offline_user_data_job(
@@ -305,7 +343,11 @@ async def test_dispatcher_records_audit_and_rate_limit_on_success(fake_ctx, gov_
             hashed_members=[{"hashed_email": "abc"}, {"hashed_phone_number": "xyz"}],
         )
 
-    gov_mocks["record_actual"].assert_awaited_once()
+    # F73: record_actual agora reconcilia 2 chaves (global + mgr:<uuid> cap por
+    # gestor) -- antes era 1x so pra chave global.
+    assert gov_mocks["record_actual"].await_count == 2
+    reconciled_keys = {c.args[1] for c in gov_mocks["record_actual"].await_args_list}
+    assert f"mgr:{fake_ctx['manager_id']}" in reconciled_keys
     gov_mocks["audit"].assert_awaited_once()
     kwargs = gov_mocks["audit"].call_args.kwargs
     assert kwargs["action_type"] == "mutate"
@@ -333,7 +375,10 @@ async def test_dispatcher_audits_and_raises_on_api_error(fake_ctx, gov_mocks):
             "src.google_ads.customer_match.build_client_for_manager",
             AsyncMock(return_value=client),
         ),
-        patch("src.google_ads.customer_match.connection.get_pool"),
+        patch(
+            "src.google_ads.customer_match.connection.get_pool",
+            return_value=_pool_with_transactable_conn(),
+        ),
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
         pytest.raises(GoogleAdsFriendlyError),
     ):

@@ -181,10 +181,21 @@ async def run_mutation(
     provider_request_id: str | None = None
     error_message: str | None = None
     status = "success"
+    reserved = False
 
     try:
-        async with pool.acquire() as conn:
+        # Reserve quota: global (developer token) + per-manager cap. Transacao
+        # EXTERNA torna as duas reservas tudo-ou-nada (before_call's internal
+        # conn.transaction() vira SAVEPOINT; raise em qualquer uma desfaz ambas).
+        async with pool.acquire() as conn, conn.transaction():
             await before_call(conn, token_id, estimated_ops=max(1, target_count))
+            await before_call(
+                conn,
+                f"mgr:{manager_id}",
+                estimated_ops=max(1, target_count),
+                daily_limit=settings.manager_daily_quota,
+            )
+        reserved = True
 
         builder = get_builder(operation_type)
         if builder is None:
@@ -258,13 +269,24 @@ async def run_mutation(
         raise
     finally:
         duration_ms = int((time.monotonic() - started) * 1000)
+        # Reconcile counters SO se a reserva foi persistida (reserved=True) —
+        # sem reserva nao ha nada pra reconciliar (F73 — reconciliar mesmo assim
+        # decrementaria o contador sem contrapartida).
+        if reserved:
+            async with pool.acquire() as conn, conn.transaction():
+                await record_actual(
+                    conn,
+                    token_id,
+                    actual_ops=target_count,
+                    estimated_ops=max(1, target_count),
+                )
+                await record_actual(
+                    conn,
+                    f"mgr:{manager_id}",
+                    actual_ops=target_count,
+                    estimated_ops=max(1, target_count),
+                )
         async with pool.acquire() as conn:
-            await record_actual(
-                conn,
-                token_id,
-                actual_ops=target_count,
-                estimated_ops=max(1, target_count),
-            )
             # Always audit mutations (sensitive — every change is logged)
             await audit_log.record(
                 conn,

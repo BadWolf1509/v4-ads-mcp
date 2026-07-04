@@ -74,10 +74,22 @@ async def run_conversion_upload(
     failures: list[dict[str, Any]] = []
     status = "success"
     error_message: str | None = None
+    err_text: str | None = None
+    reserved = False
 
     try:
-        async with pool.acquire() as conn:
+        # Reserve quota: global (developer token) + per-manager cap. Transacao
+        # EXTERNA torna as duas reservas tudo-ou-nada (before_call's internal
+        # conn.transaction() vira SAVEPOINT; raise em qualquer uma desfaz ambas).
+        async with pool.acquire() as conn, conn.transaction():
             await before_call(conn, token_id, estimated_ops=max(1, target_count))
+            await before_call(
+                conn,
+                f"mgr:{manager_id}",
+                estimated_ops=max(1, target_count),
+                daily_limit=settings.manager_daily_quota,
+            )
+        reserved = True
 
         client = await build_client_for_manager(manager_id=manager_id)
 
@@ -126,16 +138,28 @@ async def run_conversion_upload(
             operation=operation_type,
             customer_id=customer_id,
         )
-        friendly = to_friendly(e)
-        err_text = str(friendly)
+        err_text = str(to_friendly(e))
+    finally:
         duration_ms = int((time.monotonic() - started) * 1000)
+        # Reconcile counters SO se a reserva foi persistida (reserved=True) —
+        # sem reserva nao ha nada pra reconciliar (F73 — reconciliar mesmo assim
+        # decrementaria o contador sem contrapartida).
+        actual_ops = len(payload["conversions"]) if status == "success" else 0
+        if reserved:
+            async with pool.acquire() as conn, conn.transaction():
+                await record_actual(
+                    conn,
+                    token_id,
+                    actual_ops=actual_ops,
+                    estimated_ops=max(1, target_count),
+                )
+                await record_actual(
+                    conn,
+                    f"mgr:{manager_id}",
+                    actual_ops=actual_ops,
+                    estimated_ops=max(1, target_count),
+                )
         async with pool.acquire() as conn:
-            await record_actual(
-                conn,
-                token_id,
-                actual_ops=0,
-                estimated_ops=max(1, target_count),
-            )
             await audit_log.record(
                 conn,
                 manager_id=manager_id,
@@ -150,6 +174,8 @@ async def run_conversion_upload(
                 error_message=error_message,
                 duration_ms=duration_ms,
             )
+
+    if status == "error":
         return {
             "status": "error",
             "operation": operation_type,
@@ -157,30 +183,6 @@ async def run_conversion_upload(
             "error": err_text,
             "provider_request_id": provider_request_id or "",
         }
-
-    # Success path
-    duration_ms = int((time.monotonic() - started) * 1000)
-    async with pool.acquire() as conn:
-        await record_actual(
-            conn,
-            token_id,
-            actual_ops=len(payload["conversions"]),
-            estimated_ops=max(1, target_count),
-        )
-        await audit_log.record(
-            conn,
-            manager_id=manager_id,
-            session_id=session_id,
-            customer_id=customer_id,
-            action_type="mutate",
-            operation=operation_type,
-            target_count=target_count,
-            params_summary=params_summary or {"conversion_count": target_count},
-            provider_request_id=provider_request_id or "",
-            status=status,
-            error_message=error_message,
-            duration_ms=duration_ms,
-        )
 
     log.info(
         "conversion_upload_executed",
