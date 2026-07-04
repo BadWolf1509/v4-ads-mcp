@@ -15,7 +15,8 @@
       <h3 class="v4-card__title">Criar nova sessão</h3>
     </div>
     <form method="POST" action="/sessions/new"
-          class="grid grid-cols-1 md:grid-cols-[1fr_180px_auto] gap-3 items-end">
+          class="grid grid-cols-1 md:grid-cols-[1fr_180px_auto] gap-3 items-end"
+          onsubmit="const b = this.querySelector('button[type=submit]'); setTimeout(() => b.disabled = true, 0);">
       <div class="v4-form__group" style="margin: 0;">
         <label class="v4-form__label" for="label">Nome (cliente / máquina)</label>
         <input type="text" id="label" name="label" class="v4-input"
@@ -30,7 +31,7 @@
           <option value="180">180 dias</option>
         </select>
       </div>
-      <button type="submit" class="v4-btn v4-btn--primary" onclick="setTimeout(() => this.disabled = true, 0)">Criar</button>
+      <button type="submit" class="v4-btn v4-btn--primary">Criar</button>
     </form>
     <p class="text-sm text-v4-gray-700 mt-2">⚠ O token aparece <strong>uma única vez</strong> na próxima tela, por ~60 segundos. Tenha o arquivo de config do seu cliente MCP aberto antes de criar.</p>
   </div>
@@ -45,4 +46,10 @@
 
   {% include "sessions/_table.html" %}
 </section>
+
+<script>
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) document.querySelectorAll('form button[type=submit][disabled]').forEach(b => b.disabled = false);
+  });
+</script>
 {% endblock %}
