@@ -29,13 +29,13 @@ certifi==2026.6.17
     #   httpcore
     #   httpx
     #   requests
-cffi==2.0.0
+cffi==2.0.0 ; platform_python_implementation != 'PyPy'
     # via cryptography
 charset-normalizer==3.4.7
     # via requests
 click==8.4.2
     # via uvicorn
-colorama==0.4.6
+colorama==0.4.6 ; sys_platform == 'win32'
     # via
     #   click
     #   uvicorn
@@ -149,7 +149,7 @@ pyasn1-modules==0.4.2
     # via google-auth
 pycountry==26.2.16
     # via facebook-business
-pycparser==3.0
+pycparser==3.0 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
     # via cffi
 pydantic==2.13.4
     # via
@@ -171,7 +171,7 @@ python-dotenv==1.2.2
     #   uvicorn
 python-multipart==0.0.32
     # via mcp
-pywin32==312
+pywin32==312 ; sys_platform == 'win32'
     # via mcp
 pyyaml==6.0.3
     # via
@@ -225,6 +225,8 @@ uvicorn==0.50.0
     # via
     #   v4-ads-mcp (pyproject.toml)
     #   mcp
+uvloop==0.22.1 ; platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'
+    # via uvicorn
 watchfiles==1.2.0
     # via uvicorn
 websockets==16.0
