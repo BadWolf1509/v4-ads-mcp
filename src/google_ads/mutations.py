@@ -340,6 +340,7 @@ async def run_recommendation_action(
     error_message: str | None = None
     status = "success"
     target_count = 1  # one recommendation per call
+    reserved = False
 
     try:
         async with pool.acquire() as conn:
@@ -352,8 +353,19 @@ async def run_recommendation_action(
                 level="write",
             )
 
-        async with pool.acquire() as conn:
+        # Reserve quota: global (developer token) + per-manager cap. Transacao
+        # EXTERNA torna as duas reservas tudo-ou-nada (F73 — mesmo padrao dos
+        # outros 4 executores; sem a 2a chave o cap por gestor teria um buraco
+        # por onde apply/dismiss_recommendation passariam livres).
+        async with pool.acquire() as conn, conn.transaction():
             await before_call(conn, token_id, estimated_ops=1)
+            await before_call(
+                conn,
+                f"mgr:{manager_id}",
+                estimated_ops=1,
+                daily_limit=settings.manager_daily_quota,
+            )
+        reserved = True
 
         client = await build_client_for_manager(manager_id=manager_id)
 
@@ -379,13 +391,14 @@ async def run_recommendation_action(
         raise
     finally:
         duration_ms = int((time.monotonic() - started) * 1000)
+        # Reconcile SO se reservou (F73). actual=estimated=1 da delta 0, mas o
+        # gate mantem a simetria com os outros executores e nao decrementa se a
+        # reserva falhou por QuotaExhausted.
+        if reserved:
+            async with pool.acquire() as conn, conn.transaction():
+                await record_actual(conn, token_id, actual_ops=1, estimated_ops=1)
+                await record_actual(conn, f"mgr:{manager_id}", actual_ops=1, estimated_ops=1)
         async with pool.acquire() as conn:
-            await record_actual(
-                conn,
-                token_id,
-                actual_ops=1,
-                estimated_ops=1,
-            )
             await audit_log.record(
                 conn,
                 manager_id=manager_id,

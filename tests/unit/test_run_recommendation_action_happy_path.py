@@ -4,12 +4,14 @@ tests/unit/test_recommendation_gate.py já cobre o deny path (AccountAccessDenie
 propaga antes de before_call/build_client). Este arquivo espelha
 test_run_mutation_resource_names.py / test_run_mutation_quota_reserve.py mas para o
 executor de recomendações: audit sempre-on (status=success), captura de
-provider_request_id via get_request_id(), e reconcile no finally (record_actual
-sempre chamado com actual_ops=1==estimated_ops=1).
+provider_request_id via get_request_id(), e reconcile no finally.
 
-Diferente de run_mutation, este executor NÃO usa conn.transaction() (só
-`async with pool.acquire() as conn:` simples) — o mock do pool aqui não precisa
-fornecer um transaction() CM.
+F73 (whole-branch review 2026-07-04): este executor tambem ganhou o padrao
+`reserved` + cap por gestor (chave `mgr:<uuid>`), igual aos outros 4 — antes
+ficava de fora e o cap por gestor tinha um buraco por onde apply/dismiss
+_recommendation passavam livres. Logo: 2x before_call (global + mgr:), 2x
+record_actual (gated por reserved), e a reserva usa `conn.transaction()`
+externa (o mock do pool precisa de um transaction() async CM).
 """
 
 from __future__ import annotations
@@ -21,9 +23,16 @@ import pytest
 
 
 def _mock_pool() -> MagicMock:
+    """conn.transaction() precisa ser um async CM real (reserva em txn externa)."""
+    fake_conn = AsyncMock()
+    fake_txn_cm = MagicMock()
+    fake_txn_cm.__aenter__ = AsyncMock(return_value=None)
+    fake_txn_cm.__aexit__ = AsyncMock(return_value=None)
+    fake_conn.transaction = MagicMock(return_value=fake_txn_cm)
+
     mock_pool = MagicMock()
     mock_conn_cm = MagicMock()
-    mock_conn_cm.__aenter__ = AsyncMock(return_value=AsyncMock())
+    mock_conn_cm.__aenter__ = AsyncMock(return_value=fake_conn)
     mock_conn_cm.__aexit__ = AsyncMock(return_value=None)
     mock_pool.acquire.return_value = mock_conn_cm
     return mock_pool
@@ -67,12 +76,13 @@ async def test_apply_recommendation_happy_path_audits_success_and_captures_reque
         "applied_count": 1,
     }
 
-    # Gate + quota reservation rodaram antes do builder.
+    # Gate + quota reservation rodaram antes do builder. before_call 2x:
+    # global (dev token) + cap por gestor (chave mgr:<uuid>).
     ensure_access_mock.assert_awaited_once()
     assert ensure_access_mock.call_args.kwargs["level"] == "write"
     assert ensure_access_mock.call_args.kwargs["operation_name"] == "apply_recommendation"
-    before_call_mock.assert_awaited_once()
-    assert before_call_mock.call_args.kwargs["estimated_ops"] == 1
+    assert before_call_mock.await_count == 2
+    assert before_call_mock.call_args_list[1].args[1] == f"mgr:{manager_id}"
 
     # O executor de recomendação dedicado (RecommendationService), não o
     # generic run_mutation builder path.
@@ -80,8 +90,9 @@ async def test_apply_recommendation_happy_path_audits_success_and_captures_reque
     assert execute_mock.call_args.args[0] is fake_client
     assert execute_mock.call_args.args[1] == "1234567890"
 
-    # Reconcile no finally: sempre chamado, actual_ops == estimated_ops == 1.
-    record_actual_mock.assert_awaited_once()
+    # Reconcile no finally: reserved=True → record_actual 2x (global + mgr:),
+    # actual_ops == estimated_ops == 1 (delta 0).
+    assert record_actual_mock.await_count == 2
     assert record_actual_mock.call_args.kwargs["actual_ops"] == 1
     assert record_actual_mock.call_args.kwargs["estimated_ops"] == 1
 
@@ -169,12 +180,13 @@ async def test_unknown_operation_type_raises_friendly_error_and_still_audits_err
                 payload={},
             )
 
-    # finally sempre reconcilia + audita, mesmo em erro pós-reserva. error_message
-    # carrega a mensagem GENÉRICA do to_friendly (ValueError não tem .failure,
-    # então cai no fallback "Erro inesperado... (ValueError)") -- não o texto
-    # original "Unknown recommendation operation" (comportamento intencional:
-    # to_friendly nunca vaza a exceção crua pro audit_log/usuário final).
-    record_actual_mock.assert_awaited_once()
+    # finally sempre reconcilia + audita, mesmo em erro pós-reserva. A reserva
+    # (before_call) roda ANTES do build_client/execute, então reserved=True e o
+    # record_actual roda 2x (global + mgr:). error_message carrega a mensagem
+    # GENÉRICA do to_friendly (ValueError não tem .failure, então cai no fallback
+    # "Erro inesperado... (ValueError)") -- não o texto original (comportamento
+    # intencional: to_friendly nunca vaza a exceção crua pro audit_log/usuário).
+    assert record_actual_mock.await_count == 2
     audit_mock.assert_awaited_once()
     assert audit_mock.call_args.kwargs["status"] == "error"
     assert "ValueError" in audit_mock.call_args.kwargs["error_message"]

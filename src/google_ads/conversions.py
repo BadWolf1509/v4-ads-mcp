@@ -180,7 +180,7 @@ async def run_conversion_upload(
             "status": "error",
             "operation": operation_type,
             "customer_id": customer_id,
-            "error": err_text,
+            "error_message": err_text,
             "provider_request_id": provider_request_id or "",
         }
 
