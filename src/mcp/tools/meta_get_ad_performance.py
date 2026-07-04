@@ -5,18 +5,12 @@ Paridade com Google get_ad_performance. Bucket=defer (granular, gestor
 pede após ver campaign + ad_set levels).
 """
 
-from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from src.db import connection
-from src.db.repositories import meta_ad_accounts
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import meta_error_message
+from src.mcp.tools._meta_performance import run_meta_level_performance
 from src.mcp.tools._registry import register_tool
-from src.meta_ads.account_overview import resolve_meta_date_window
-from src.meta_ads.insights import build_insights_call, parse_insights_row
-from src.meta_ads.reports import run_meta_graph_get
 
 _DESCRIPTION = (
     "[DEFER] Performance por anúncio (ad) Meta Ads: spend, impressões, clicks, "
@@ -82,68 +76,22 @@ async def meta_get_ad_performance(
     end_date: str | None = None,
     limit: int = 100,
 ) -> dict[str, Any]:
-    """Core logic — testable by integration tests."""
-    pool = connection.get_pool()
-    today = datetime.now(UTC).date()
+    """Core logic — testable by integration tests.
 
-    try:
-        start, end = resolve_meta_date_window(
-            date_range or "LAST_30_DAYS", start_date, end_date, today
-        )
-    except ValueError as e:
-        return {"status": "error", "error_message": f"Datas inválidas: {e}"}
-
-    async with pool.acquire() as conn:
-        account = await meta_ad_accounts.get_by_id(conn, ad_account_id)
-        if account is None:
-            return {
-                "status": "error",
-                "error_message": (
-                    f"Ad account {ad_account_id} não encontrada. "
-                    f"Use meta_refresh_accounts ou reconnect via /oauth/meta/start."
-                ),
-            }
-
-    edge, params = build_insights_call(
+    Wrapper fino sobre o núcleo compartilhado do trio (Task 3.3 dedup) —
+    veja src/mcp/tools/_meta_performance.py::run_meta_level_performance.
+    """
+    return await run_meta_level_performance(
         level="ad",
+        operation_name="meta_get_ad_performance",
+        manager_id=manager_id,
+        session_id=session_id,
         ad_account_id=ad_account_id,
-        start=start,
-        end=end,
+        date_range=date_range,
+        start_date=start_date,
+        end_date=end_date,
         limit=limit,
     )
-
-    try:
-        resp = await run_meta_graph_get(
-            manager_id=manager_id,
-            session_id=session_id,
-            ad_account_id=ad_account_id,
-            edge=edge,
-            params=params,
-            operation_name="meta_get_ad_performance",
-            estimated_calls=1,
-            audit_this_call=True,
-            params_summary={
-                "ad_account_id": ad_account_id,
-                "level": "ad",
-                "start": start.isoformat(),
-                "end": end.isoformat(),
-            },
-        )
-    except Exception as e:  # noqa: BLE001
-        return {"status": "error", "error_message": meta_error_message(e)}
-
-    rows = [parse_insights_row(r, "ad") for r in resp.get("data", [])]
-    rows.sort(key=lambda r: r["spend_brl"], reverse=True)
-
-    return {
-        "status": "success",
-        "ad_account_id": ad_account_id,
-        "ad_account_name": account.account_name,
-        "currency": account.currency,
-        "date_range": {"start": start.isoformat(), "end": end.isoformat()},
-        "rows": rows,
-        "total_rows": len(rows),
-    }
 
 
 @register_tool(
