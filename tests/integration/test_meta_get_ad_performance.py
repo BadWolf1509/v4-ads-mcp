@@ -87,7 +87,7 @@ async def test_happy_path_returns_ad_rows_sorted(db):
     }
 
     with patch(
-        "src.mcp.tools.meta_get_ad_performance.run_meta_graph_get",
+        "src.mcp.tools._meta_performance.run_meta_graph_get",
         new=AsyncMock(return_value=body),
     ):
         result = await meta_get_ad_performance(
@@ -129,7 +129,7 @@ async def test_ad_missing_creative_id_returns_none(db):
     }
 
     with patch(
-        "src.mcp.tools.meta_get_ad_performance.run_meta_graph_get",
+        "src.mcp.tools._meta_performance.run_meta_graph_get",
         new=AsyncMock(return_value=body),
     ):
         result = await meta_get_ad_performance(
@@ -157,7 +157,7 @@ async def test_level_ad_in_params(db):
         return {"data": []}
 
     with patch(
-        "src.mcp.tools.meta_get_ad_performance.run_meta_graph_get",
+        "src.mcp.tools._meta_performance.run_meta_graph_get",
         new=AsyncMock(side_effect=capture_call),
     ):
         await meta_get_ad_performance(

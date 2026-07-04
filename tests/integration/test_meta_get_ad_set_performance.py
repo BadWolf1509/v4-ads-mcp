@@ -84,7 +84,7 @@ async def test_happy_path_returns_adset_rows_sorted(db):
     }
 
     with patch(
-        "src.mcp.tools.meta_get_ad_set_performance.run_meta_graph_get",
+        "src.mcp.tools._meta_performance.run_meta_graph_get",
         new=AsyncMock(return_value=body),
     ):
         result = await meta_get_ad_set_performance(
@@ -123,7 +123,7 @@ async def test_cbo_adset_no_daily_budget_returns_none(db):
     }
 
     with patch(
-        "src.mcp.tools.meta_get_ad_set_performance.run_meta_graph_get",
+        "src.mcp.tools._meta_performance.run_meta_graph_get",
         new=AsyncMock(return_value=body),
     ):
         result = await meta_get_ad_set_performance(
@@ -149,7 +149,7 @@ async def test_level_adset_in_params(db):
         return {"data": []}
 
     with patch(
-        "src.mcp.tools.meta_get_ad_set_performance.run_meta_graph_get",
+        "src.mcp.tools._meta_performance.run_meta_graph_get",
         new=AsyncMock(side_effect=capture_call),
     ):
         await meta_get_ad_set_performance(

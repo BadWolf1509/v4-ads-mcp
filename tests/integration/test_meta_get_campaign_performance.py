@@ -106,7 +106,7 @@ async def test_happy_path_returns_sorted_rows(db):
     }
 
     with patch(
-        "src.mcp.tools.meta_get_campaign_performance.run_meta_graph_get",
+        "src.mcp.tools._meta_performance.run_meta_graph_get",
         new=AsyncMock(return_value=body),
     ):
         result = await meta_get_campaign_performance(
@@ -150,7 +150,7 @@ async def test_never_injects_filtering(db):
         return {"data": []}
 
     with patch(
-        "src.mcp.tools.meta_get_campaign_performance.run_meta_graph_get",
+        "src.mcp.tools._meta_performance.run_meta_graph_get",
         new=AsyncMock(side_effect=capture_call),
     ):
         await meta_get_campaign_performance(
@@ -196,7 +196,7 @@ async def test_meta_api_error_returns_friendly_pt_br(db):
     mid = await _seed_manager_with_meta_conn(db)
 
     with patch(
-        "src.mcp.tools.meta_get_campaign_performance.run_meta_graph_get",
+        "src.mcp.tools._meta_performance.run_meta_graph_get",
         new=AsyncMock(
             side_effect=MetaAdsFriendlyError(
                 "Limite Meta atingido. Tente novamente em alguns minutos.",
@@ -230,7 +230,7 @@ async def test_date_range_custom_overrides_preset(db):
         return {"data": []}
 
     with patch(
-        "src.mcp.tools.meta_get_campaign_performance.run_meta_graph_get",
+        "src.mcp.tools._meta_performance.run_meta_graph_get",
         new=AsyncMock(side_effect=capture_call),
     ):
         await meta_get_campaign_performance(
