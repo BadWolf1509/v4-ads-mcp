@@ -109,7 +109,7 @@ python scripts/check_pre_push_full.py   # opt-in: + pytest -m integration via te
 
 ### Test fixture pattern (integration)
 
-Local `pg` + `db` fixtures per file (NÃO `db_pool` — não existe). Mark `@pytest.mark.integration`. **Teste que exercita executor real precisa de grant no seed** (`manager_account_access.grant(...)`) senão o hard-gate levanta `AccountAccessDeniedError`. Generator de streaming com cursor: o teste DEVE **consumir** o output, não só disparar a rota (F58 — CSV export ficou quebrado em prod porque nenhum teste iterou).
+Consuma `pg`/`db`/`app_with_db`/`client` de `tests/integration/conftest.py`; **NÃO redeclare localmente** (NÃO `db_pool` — não existe). 1 container Postgres **session-scoped** + template database (`tpl_app`, migrations rodam uma vez) — cada teste clona um banco novo via `CREATE DATABASE ... TEMPLATE` (isolamento total, sem pagar boot+migrations por teste). Mark `@pytest.mark.integration`. **Teste que exercita executor real precisa de grant no seed** (`manager_account_access.grant(...)`) senão o hard-gate levanta `AccountAccessDeniedError`. Generator de streaming com cursor: o teste DEVE **consumir** o output, não só disparar a rota (F58 — CSV export ficou quebrado em prod porque nenhum teste iterou).
 
 ### Schema gotchas (commonly-tripped)
 
