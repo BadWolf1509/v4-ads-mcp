@@ -21,6 +21,7 @@
     </div>
 
     {% if accounts %}
+    <div class="v4-table-wrap">
     <table class="v4-table v4-table--compact" id="adm-accs-table">
       <thead>
         <tr>
@@ -47,6 +48,7 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
     <script>
       function filterAccs() {
         const q = document.getElementById('acc-search').value.toLowerCase();

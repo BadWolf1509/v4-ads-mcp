@@ -118,6 +118,11 @@
   background: var(--v4-gray-50);
 }
 
+/* Wrapper responsivo para tabelas fora das matrizes (que têm overflow próprio) */
+.v4-table-wrap { overflow-x: auto; }
+.v4-table-wrap th,
+.v4-table-wrap .col-mono { white-space: nowrap; }
+
 .v4-input, .v4-select {
   width: 100%;
   padding: 10px 14px;

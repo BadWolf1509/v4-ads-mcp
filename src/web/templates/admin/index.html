@@ -145,6 +145,7 @@
       <div class="v4-card__header">
         <h3 class="v4-card__title">Top operações (7 dias)</h3>
       </div>
+      <div class="v4-table-wrap">
       <table class="v4-table v4-table--compact">
         <tbody>
           {% for op in top_operations %}
@@ -158,12 +159,14 @@
           {% endif %}
         </tbody>
       </table>
+      </div>
     </div>
 
     <div class="v4-card">
       <div class="v4-card__header">
         <h3 class="v4-card__title">Top gestores (7 dias)</h3>
       </div>
+      <div class="v4-table-wrap">
       <table class="v4-table v4-table--compact">
         <tbody>
           {% for g in top_managers %}
@@ -177,6 +180,7 @@
           {% endif %}
         </tbody>
       </table>
+      </div>
     </div>
   </div>
 
@@ -186,6 +190,7 @@
       <h3 class="v4-card__title">Onboarding recente</h3>
     </div>
     {% if recent_onboarding %}
+    <div class="v4-table-wrap">
     <table class="v4-table v4-table--compact">
       <thead>
         <tr>
@@ -208,6 +213,7 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
     {% else %}
       <p class="text-v4-gray-500 text-center py-6">Nenhum onboarding recente.</p>
     {% endif %}

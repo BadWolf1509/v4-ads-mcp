@@ -25,6 +25,7 @@
     </div>
 
     {% if accounts %}
+    <div class="v4-table-wrap">
     <table class="v4-table v4-table--compact" id="meta-accs-table">
       <thead><tr><th scope="col">Conta</th><th scope="col">Cliente</th><th scope="col">Status</th><th scope="col">Moeda</th><th scope="col">Última sync</th></tr></thead>
       <tbody>
@@ -39,6 +40,7 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
     <script>
       function filterMetaAccs() {
         const q = document.getElementById('meta-acc-search').value.toLowerCase();

@@ -63,6 +63,7 @@
       <div class="mb-3">
         {{ search_input("acc-search", placeholder="Buscar por nome ou ID da conta...", attrs='oninput="filterAccounts()"', aria_label="Buscar conta Google Ads por nome ou ID") }}
       </div>
+      <div class="v4-table-wrap">
       <table class="v4-table v4-table--compact" id="accounts-table">
         <thead>
           <tr>
@@ -83,6 +84,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
       <script>
         function filterAccounts() {
           const q = document.getElementById('acc-search').value.toLowerCase();

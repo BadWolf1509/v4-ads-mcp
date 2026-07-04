@@ -6,6 +6,7 @@
   </div>
 
   {% if sessions %}
+  <div class="v4-table-wrap">
   <table class="v4-table v4-table--compact">
     <thead>
       <tr>
@@ -53,6 +54,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}
     {{ empty_state("Nenhuma sessão.", "Crie uma acima pra configurar Claude/Codex/Cursor.") }}
   {% endif %}
