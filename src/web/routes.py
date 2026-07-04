@@ -1364,7 +1364,7 @@ async def admin_invites(
     invites_with_age = []
     for r in invites:
         inv = dict(r)
-        inv["days_pending"] = (now - inv["invited_at"]).days
+        inv["days_pending"] = (now - inv["invited_at"]).days if inv["invited_at"] else 0
         invites_with_age.append(inv)
     return templates.TemplateResponse(
         request,
