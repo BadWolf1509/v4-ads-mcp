@@ -8,9 +8,7 @@ zero confidence in column names, constraints, or upsert behavior.
 from uuid import uuid4
 
 import pytest
-from testcontainers.postgres import PostgresContainer
 
-from src.db import connection, migrate
 from src.db.repositories import (
     audit_log,
     google_ads_accounts,
@@ -23,25 +21,6 @@ from src.db.repositories import (
     meta_oauth_connections,
     meta_rate_counters,
 )
-
-
-@pytest.fixture
-async def pg() -> PostgresContainer:
-    with PostgresContainer("postgres:16-alpine") as container:
-        yield container
-
-
-@pytest.fixture
-async def db(pg: PostgresContainer):
-    """Initialize pool + run migrations once; yield, then tear down."""
-    dsn = pg.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")
-    await connection.init_pool(dsn, min_size=1, max_size=4)
-    try:
-        await migrate.run_all()
-        yield connection.get_pool()
-    finally:
-        await connection.close_pool()
-
 
 # ---------- managers ----------
 

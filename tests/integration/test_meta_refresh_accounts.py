@@ -11,9 +11,8 @@ from uuid import uuid4
 import pytest
 import respx
 from httpx import ASGITransport, AsyncClient, Response
-from testcontainers.postgres import PostgresContainer
 
-from src.db import connection, migrate
+from src.db import connection
 from src.db.repositories import managers, meta_ad_accounts
 
 pytestmark = pytest.mark.asyncio
@@ -23,38 +22,12 @@ _AES_MASTER = "y" * 43
 _SYSTEM_TOKEN = "fake_system_user_token"
 
 
-@pytest.fixture
-async def pg() -> PostgresContainer:
-    with PostgresContainer("postgres:16-alpine") as container:
-        yield container
-
-
-@pytest.fixture
-async def app_with_db(pg, monkeypatch):
-    dsn = pg.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")
-    monkeypatch.setenv("DATABASE_URL", dsn)
-    monkeypatch.setenv("SESSION_SIGNING_KEY", _SIGNING_KEY)
-    monkeypatch.setenv("AES_MASTER_KEY", _AES_MASTER)
+@pytest.fixture(autouse=True)
+def _meta_env(monkeypatch):
+    """Env extra além do padrão do conftest (DATABASE_URL/SESSION_SIGNING_KEY/AES_MASTER_KEY)."""
     monkeypatch.setenv("META_APP_ID", "test_app_id")
     monkeypatch.setenv("META_APP_SECRET", "test_app_secret")
     monkeypatch.setenv("META_SYSTEM_USER_TOKEN", _SYSTEM_TOKEN)
-
-    from src.app import create_app
-
-    app = create_app(skip_db_init=True)
-    await connection.init_pool(dsn, min_size=1, max_size=4)
-    try:
-        await migrate.run_all()
-        yield app
-    finally:
-        await connection.close_pool()
-
-
-@pytest.fixture
-async def client(app_with_db) -> AsyncClient:
-    transport = ASGITransport(app=app_with_db)
-    async with AsyncClient(transport=transport, base_url="http://test") as c:
-        yield c
 
 
 async def _seed_manager():

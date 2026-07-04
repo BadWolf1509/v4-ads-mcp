@@ -14,18 +14,18 @@ from testcontainers.postgres import PostgresContainer
 from src.db import connection, migrate
 from src.db.repositories import managers
 from src.scripts.admin import cmd_create_manager
+from tests.integration.conftest import _clone_db
+
+# Este teste precisa do DSN cru (não do pool já aberto): cmd_create_manager faz
+# seu próprio ciclo init_pool()/close_pool() via get_settings().database_url,
+# então a fixture aqui só clona um banco do template (via helper do conftest)
+# e expõe o DSN — sem manter pool aberto entre chamadas.
 
 
 @pytest.fixture
-async def pg() -> AsyncIterator[PostgresContainer]:
-    with PostgresContainer("postgres:16-alpine") as container:
-        yield container
-
-
-@pytest.fixture
-def dsn(pg: PostgresContainer) -> str:
-    url: str = pg.get_connection_url()
-    return url.replace("postgresql+psycopg2://", "postgresql://")
+async def dsn(pg: PostgresContainer) -> AsyncIterator[str]:
+    async with _clone_db(pg) as db_dsn:
+        yield db_dsn
 
 
 @pytest.fixture(autouse=True)

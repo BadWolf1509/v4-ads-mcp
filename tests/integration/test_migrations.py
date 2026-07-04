@@ -10,12 +10,6 @@ from testcontainers.postgres import PostgresContainer
 from src.db import connection, migrate
 
 
-@pytest.fixture
-async def pg() -> PostgresContainer:
-    with PostgresContainer("postgres:16-alpine") as container:
-        yield container
-
-
 @pytest.mark.integration
 async def test_migrations_run_clean(pg: PostgresContainer) -> None:
     dsn = pg.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")

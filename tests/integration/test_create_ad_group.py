@@ -14,30 +14,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from testcontainers.postgres import PostgresContainer
 
-from src.db import connection, migrate
+from src.db import connection
 from src.db.repositories import google_ads_accounts, manager_account_access, managers, mcp_sessions
 from src.mcp.context import McpRequestContext, clear_current, set_current
 
 pytestmark = pytest.mark.integration
-
-
-@pytest.fixture
-async def pg() -> PostgresContainer:
-    with PostgresContainer("postgres:16-alpine") as container:
-        yield container
-
-
-@pytest.fixture
-async def db(pg):
-    dsn = pg.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")
-    await connection.init_pool(dsn, min_size=1, max_size=4)
-    try:
-        await migrate.run_all()
-        yield connection.get_pool()
-    finally:
-        await connection.close_pool()
 
 
 @pytest.fixture

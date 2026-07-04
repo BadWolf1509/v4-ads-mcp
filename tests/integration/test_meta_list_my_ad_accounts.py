@@ -3,9 +3,7 @@
 from uuid import uuid4
 
 import pytest
-from testcontainers.postgres import PostgresContainer
 
-from src.db import connection, migrate
 from src.db.repositories import (
     manager_meta_account_access,
     managers,
@@ -15,22 +13,14 @@ from src.mcp.context import McpRequestContext, set_current
 from src.mcp.tools._registry import get_tool, import_all_tools
 
 
-@pytest.fixture
-async def pg():
-    with PostgresContainer("postgres:16-alpine") as container:
-        yield container
-
-
-@pytest.fixture
-async def db(pg):
-    dsn = pg.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")
-    await connection.init_pool(dsn, min_size=1, max_size=4)
-    try:
-        await migrate.run_all()
-        import_all_tools()
-        yield connection.get_pool()
-    finally:
-        await connection.close_pool()
+@pytest.fixture(autouse=True)
+def _tools_registered(db):
+    """Este arquivo é o único que resolve tools via get_tool() — o registry
+    module-level só é populado por import_all_tools() (idempotente: módulos
+    já importados vêm do cache do Python), que o `db` genérico do conftest
+    não chama.
+    """
+    import_all_tools()
 
 
 @pytest.mark.integration
