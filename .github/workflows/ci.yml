@@ -32,7 +32,19 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          # requirements.txt = lockfile pinado (uv pip compile do pyproject, deps de
+          # PROD) — o MESMO arquivo que o buildpack CNB instala no deploy. Instalar
+          # ele primeiro + as dev deps constrained (-c) faz o CI testar exatamente os
+          # pins que vão pra produção (fecha a janela "CI testou v0.115.4, deploy
+          # rodou v0.115.5"). Regerar o lock: uv pip compile pyproject.toml -o requirements.txt
+          pip install -r requirements.txt
+          pip install -e ".[dev]" -c requirements.txt
+
+      - name: Security audit (pip-audit, non-blocking)
+        continue-on-error: true
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt
 
       - name: Lint (ruff)
         run: ruff check src tests

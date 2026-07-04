@@ -1,8 +1,9 @@
 # Dependabot — bumps semanais. github-actions é o de maior valor (superfície
-# supply-chain num workflow com id-token: write / WIF pra prod). pip é visibilidade
-# (o projeto não tem lockfile; prod e CI instalam "latest que satisfaz" de qualquer
-# jeito). Majors de google-ads/facebook-business removem versões de API Google
-# Ads/Graph — bump major deve ser deliberado, daí o ignore.
+# supply-chain num workflow com id-token: write / WIF pra prod). pip agora controla
+# de fato o que prod roda: existe requirements.txt pinado (uv pip compile do
+# pyproject), instalado pelo buildpack CNB e pelo CI — os PRs do dependabot movem
+# os pins, não só o range do pyproject. Majors de google-ads/facebook-business
+# removem versões de API Google Ads/Graph — bump major deve ser deliberado, daí o ignore.
 version: 2
 updates:
   - package-ecosystem: "github-actions"
