@@ -95,6 +95,20 @@ jobs:
             --region=${REGION} \
             --update-secrets="META_SYSTEM_USER_TOKEN=meta-system-user-token:latest"
 
+      # Job de backup semanal (dump csv.gz por tabela → GCS). Re-aponta imagem +
+      # process a cada deploy (self-healing contra drift, igual migrate/resync).
+      # DATABASE_URL foi setado na criação do job; o update de imagem preserva.
+      - name: Update backup job image
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          REGION: ${{ secrets.GCP_REGION }}
+        run: |
+          gcloud run jobs update v4-ads-mcp-backup \
+            --image=southamerica-east1-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
+            --command=/cnb/process/backup \
+            --args="" \
+            --region=${REGION}
+
       # F66 resolvido: com o job invocando o process `migrate` real, o execute
       # aplica migrations pendentes (idempotente — no-op se o schema já bate) e
       # a próxima 005_*.sql passa a ser aplicada de verdade (fim do skip silencioso).
@@ -176,7 +190,38 @@ jobs:
             fi
             sleep 5
           done
+
+          # MCP autenticado real: o 401 acima só prova que o gate rejeita. Este
+          # passo prova que o stack MCP FUNCIONA de ponta a ponta — session
+          # middleware resolve o Bearer, o dispatcher responde, o registry das
+          # tools está montado. Sem isso, uma regressão no handshake/tools-list
+          # passa o smoke e só aparece quando um gestor tenta usar (classe F58:
+          # quebrado em prod porque nada consumia o caminho real). O Bearer é de
+          # um manager "smoke" SEM nenhum grant (hard-gate nega toda operação de
+          # conta; pior caso de vazamento = tools/list). server é stateless →
+          # tools/list funciona sem initialize; a resposta pode vir SSE-framed
+          # (event:/data:), então o grep varre o corpo inteiro.
+          if [ -n "${SMOKE_MCP_BEARER}" ]; then
+            echo "Probing /mcp autenticado (tools/list, expect 200 + list_my_accounts)..."
+            BODY=$(curl -s --max-time 20 -X POST "${SERVICE_URL}/mcp" \
+              -H "Authorization: Bearer ${SMOKE_MCP_BEARER}" \
+              -H "Content-Type: application/json" \
+              -H "Accept: application/json, text/event-stream" \
+              -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
+            if echo "$BODY" | grep -q 'list_my_accounts'; then
+              echo "  ✓ /mcp autenticado respondeu tools/list com o registry montado"
+            else
+              echo "  ✗ /mcp autenticado NÃO retornou o registry esperado — stack MCP quebrado"
+              echo "  (primeiros 400 chars do corpo, sem o Bearer:)"
+              echo "$BODY" | head -c 400
+              exit 1
+            fi
+          else
+            echo "  ⚠ SMOKE_MCP_BEARER ausente — pulando smoke MCP autenticado (configurar o secret)."
+          fi
           echo "Smoke tests passed."
+        env:
+          SMOKE_MCP_BEARER: ${{ secrets.SMOKE_MCP_BEARER }}
 
       # Só reverte se o deploy do serviço chegou a rodar (outcome != skipped).
       # Sem este guard, uma falha ANTES do deploy (ex.: migrations, agora que o
