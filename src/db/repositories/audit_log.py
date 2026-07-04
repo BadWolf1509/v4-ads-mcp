@@ -8,6 +8,20 @@ from uuid import UUID
 
 import asyncpg
 
+# Excel/Sheets treat a leading =, +, -, @ (or tab) as a formula trigger — a
+# manager_email, operation, or error_message that happens to start with one of
+# these (e.g. a keyword/campaign name echoed into an error string) would
+# execute as a formula when the CSV is opened. Prefixing with a single quote
+# forces Excel to treat the cell as plain text (standard CSV-injection mitigation).
+_CSV_FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t")
+
+
+def _csv_safe(value: str) -> str:
+    """Prefix `'` if value starts with a formula-trigger char, else return as-is."""
+    if value.startswith(_CSV_FORMULA_TRIGGERS):
+        return "'" + value
+    return value
+
 
 async def record(
     conn: asyncpg.Connection,
@@ -98,23 +112,6 @@ async def get_by_id(
     return dict(row) if row else None
 
 
-async def summary_stats(conn: asyncpg.Connection) -> dict[str, int]:
-    """Aggregate counts over the last 24 hours."""
-    row = await conn.fetchrow(
-        """SELECT
-             count(*) AS total,
-             count(*) FILTER (WHERE status = 'success') AS success,
-             count(*) FILTER (WHERE status = 'error') AS errors
-           FROM audit_log
-           WHERE occurred_at > now() - interval '24 hours'"""
-    )
-    return {
-        "total_24h": row["total"],
-        "success_24h": row["success"],
-        "errors_24h": row["errors"],
-    }
-
-
 async def export_csv_rows(
     conn: asyncpg.Connection,
     *,
@@ -180,15 +177,15 @@ async def export_csv_rows(
             csv.writer(buf).writerow(
                 [
                     row["occurred_at"].isoformat() if row["occurred_at"] else "",
-                    row["email"] or "",
-                    row["operation"] or "",
+                    _csv_safe(row["email"] or ""),
+                    _csv_safe(row["operation"] or ""),
                     row["customer_id"] or "",
                     row["action_type"] or "",
                     row["status"] or "",
                     row["target_count"] if row["target_count"] is not None else "",
                     row["duration_ms"] if row["duration_ms"] is not None else "",
-                    row["error_message"] or "",
-                    row["provider_request_id"] or "",
+                    _csv_safe(row["error_message"] or ""),
+                    _csv_safe(row["provider_request_id"] or ""),
                 ]
             )
             yield buf.getvalue()

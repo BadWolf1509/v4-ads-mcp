@@ -85,28 +85,3 @@ async def test_get_by_id_admin_sees_any(db):
         result = await audit_log.get_by_id(conn, audit_id=aid, manager_id=None)
     assert result is not None
     assert result["operation"] == "op"
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_summary_stats_24h_window(db):
-    mid = uuid4()
-    pool = db
-    async with pool.acquire() as conn:
-        await conn.execute(
-            """INSERT INTO managers (id, email, status, role) VALUES ($1, 'a@v4company.com', 'active', 'gestor')""",
-            mid,
-        )
-        # 2 success in last hour, 1 error in last hour, 1 success 25h ago (out of window)
-        await conn.execute(
-            """INSERT INTO audit_log (manager_id, action_type, operation, status, occurred_at) VALUES
-               ($1, 'read', 'op1', 'success', now() - interval '10 minutes'),
-               ($1, 'read', 'op1', 'success', now() - interval '20 minutes'),
-               ($1, 'mutate', 'op2', 'error', now() - interval '5 minutes'),
-               ($1, 'read', 'op1', 'success', now() - interval '25 hours')""",
-            mid,
-        )
-        stats = await audit_log.summary_stats(conn)
-    assert stats["total_24h"] == 3
-    assert stats["errors_24h"] == 1
-    assert stats["success_24h"] == 2
