@@ -14,7 +14,7 @@ import structlog
 from src.db import connection
 from src.db.repositories import meta_ad_accounts
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import META_ACCOUNT_STATUS_LABELS, meta_error_message
+from src.mcp.tools._meta_common import meta_error_message
 from src.mcp.tools._registry import register_tool
 from src.meta_ads.account_overview import (
     build_warnings,
@@ -23,6 +23,7 @@ from src.meta_ads.account_overview import (
     resolve_meta_date_window,
     shift_to_previous_period,
 )
+from src.meta_ads.labels import META_ACCOUNT_STATUS_LABELS
 from src.meta_ads.reports import run_meta_graph_get
 
 log = structlog.get_logger(__name__)

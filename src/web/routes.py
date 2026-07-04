@@ -30,7 +30,7 @@ from src.db.repositories import (
     meta_oauth_connections,
 )
 from src.db.repositories.mcp_sessions import DEFAULT_TTL_DAYS
-from src.mcp.tools._meta_common import META_ACCOUNT_STATUS_LABELS
+from src.meta_ads.labels import META_ACCOUNT_STATUS_LABELS
 from src.web.deps import (
     CurrentUser,
     current_manager,

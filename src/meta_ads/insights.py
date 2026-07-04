@@ -3,7 +3,7 @@
 
 Pure module — zero SDK imports, fully unit-testable.
 
-Reusa META_EFFECTIVE_STATUS_LABELS de src.mcp.tools._meta_common.
+Reusa META_EFFECTIVE_STATUS_LABELS de src.meta_ads.labels.
 
 M.3.1 hotfix (F53): `effective_status` removed from fields lists + filtering
 block — Meta Insights API rejects it (it's Campaign/AdSet/Ad metadata, not
@@ -16,7 +16,7 @@ fallback `effective_status="UNKNOWN"` for backwards compat with response shape.
 from datetime import date
 from typing import Any, Literal
 
-from src.mcp.tools._meta_common import META_EFFECTIVE_STATUS_LABELS
+from src.meta_ads.labels import META_EFFECTIVE_STATUS_LABELS
 
 Level = Literal["campaign", "adset", "ad"]
 

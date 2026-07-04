@@ -10,8 +10,8 @@ from typing import Any
 from src.db import connection
 from src.db.repositories import manager_meta_account_access
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import META_ACCOUNT_STATUS_LABELS
 from src.mcp.tools._registry import register_tool
+from src.meta_ads.labels import META_ACCOUNT_STATUS_LABELS
 
 _DESCRIPTION = (
     "[CORE] Lista as contas de anúncio Meta às quais o gestor tem acesso. "

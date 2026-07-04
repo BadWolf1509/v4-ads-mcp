@@ -1,36 +1,14 @@
 """Helpers compartilhados pelas tools Meta MCP (Sprint M.2a Task 9 onwards)."""
 
-META_ACCOUNT_STATUS_LABELS: dict[int, str] = {
-    1: "ATIVO",
-    2: "DESABILITADO",
-    3: "PAGAMENTO_PENDENTE",
-    7: "EM_REVISÃO_DE_RISCO",
-    101: "FECHADO",
-    102: "ANY_ACTIVE",
-    201: "FECHAMENTO_PENDENTE",
-    202: "LIQUIDAÇÃO_PENDENTE",
-}
-
-
-META_EFFECTIVE_STATUS_LABELS: dict[str, str] = {
-    "ACTIVE": "ATIVO",
-    "PAUSED": "PAUSADO",
-    "ARCHIVED": "ARQUIVADO",
-    "DELETED": "REMOVIDO",
-    "PENDING_REVIEW": "EM_REVISÃO",
-    "DISAPPROVED": "REPROVADO",
-    "PREAPPROVED": "PRÉ_APROVADO",
-    "PENDING_BILLING_INFO": "COBRANÇA_PENDENTE",
-    "CAMPAIGN_PAUSED": "CAMPANHA_PAUSADA",
-    "ADSET_PAUSED": "ADSET_PAUSADO",
-}
-
-
-def parse_meta_ad_account_id(raw: str) -> str:
-    """Normalize ad_account_id to 'act_<numeric>' format."""
-    if raw.startswith("act_"):
-        return raw
-    return f"act_{raw}"
+# Labels vivem em src.meta_ads.labels (domínio, não helper de tool). Re-exportadas
+# aqui pra manter os call-sites antigos funcionando sem quebra (web routes.py +
+# src.meta_ads.insights). Import novo? Prefira `from src.meta_ads.labels import ...`.
+from src.meta_ads.labels import (  # noqa: F401
+    META_ACCOUNT_STATUS_LABELS as META_ACCOUNT_STATUS_LABELS,
+)
+from src.meta_ads.labels import (  # noqa: F401
+    META_EFFECTIVE_STATUS_LABELS as META_EFFECTIVE_STATUS_LABELS,
+)
 
 
 def meta_error_message(exc: Exception) -> str:
