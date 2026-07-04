@@ -92,6 +92,15 @@ def build_insights_call(
     M.4: `breakdowns` opcional → adiciona o param `breakdowns` (CSV). None/[]
     omite a chave (backward-compat: tools M.3 inalteradas).
     M.3.1 hotfix (F53): effective_status param removido; filtering omitido.
+
+    Task 3.4: `params` NÃO carrega mais `ad_account_id` — esse dict vai direto
+    pro Graph API como query params (`api.call("GET", [edge], params=params)`
+    em run_meta_graph_get); `ad_account_id` ali era um passthrough espúrio que
+    só existia pra alimentar o rate-counter BUC. O executor agora usa o kwarg
+    `ad_account_id` (obrigatório desde F72), então esse dict pode ficar restrito
+    a params reais do Graph sem quebrar o contador. O account do EDGE
+    (`/{ad_account_id}/insights`, acima) é outra coisa — necessário pro Graph
+    resolver a conta, e não muda.
     """
     fields_by_level = {
         "campaign": INSIGHTS_FIELDS_CAMPAIGN,
@@ -104,7 +113,6 @@ def build_insights_call(
         "fields": ",".join(fields_by_level[level]),
         "time_range": f'{{"since":"{start.isoformat()}","until":"{end.isoformat()}"}}',
         "limit": limit,
-        "ad_account_id": ad_account_id,  # passed thru for BUC counter key
     }
     if breakdowns:
         params["breakdowns"] = ",".join(breakdowns)

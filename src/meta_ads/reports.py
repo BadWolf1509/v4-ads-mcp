@@ -140,13 +140,17 @@ async def run_meta_graph_get(
 
     elapsed_ms = int((time.monotonic() - started) * 1000)
 
-    # Post-call rate counter update from BUC header
+    # Post-call rate counter update from BUC header. `ad_account_id` é o kwarg
+    # OBRIGATÓRIO desta função (pós-F72, sempre presente) — não mais lido de
+    # params.get("ad_account_id"), que era um passthrough espúrio só existindo
+    # pra alimentar este contador (Task 3.4: desacopla o BUC do dict de params
+    # do Graph, que agora pode perder essa chave sem quebrar o rate counter).
     buc_header = response.headers().get("x-business-use-case-usage")
-    if buc_header and params and "ad_account_id" in params:
+    if buc_header:
         try:
             await record_actual_meta(
                 app_id=settings.meta_app_id,
-                ad_account_id=params["ad_account_id"],
+                ad_account_id=ad_account_id,
                 buc_header=buc_header,
                 calls=estimated_calls,
             )

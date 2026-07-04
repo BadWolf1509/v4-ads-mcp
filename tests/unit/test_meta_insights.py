@@ -32,10 +32,28 @@ def test_build_insights_call_campaign_level() -> None:
     assert "objective" in params["fields"]
     assert params["time_range"] == '{"since":"2026-05-01","until":"2026-05-07"}'
     assert params["limit"] == 100
-    assert params["ad_account_id"] == "act_123"
     # M.3.1 (F53): effective_status filter removido — Meta Insights API rejeita
     assert "filtering" not in params
     assert "effective_status" not in params["fields"]
+
+
+def test_build_insights_call_does_not_inject_ad_account_id_param() -> None:
+    """Task 3.4: `ad_account_id` NÃO vai mais no dict de params do Graph.
+
+    Era um passthrough espúrio (só alimentava o BUC counter em reports.py);
+    o executor agora usa o kwarg `ad_account_id` obrigatório (F72) direto,
+    então este dict fica restrito a params reais da Insights API. O account
+    no EDGE (/{ad_account_id}/insights) é outra coisa — continua presente.
+    """
+    edge, params = build_insights_call(
+        level="campaign",
+        ad_account_id="act_123",
+        start=date(2026, 5, 1),
+        end=date(2026, 5, 7),
+        limit=100,
+    )
+    assert edge == "/act_123/insights"
+    assert "ad_account_id" not in params
 
 
 def test_build_insights_call_adset_level() -> None:
