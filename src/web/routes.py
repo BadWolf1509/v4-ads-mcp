@@ -808,7 +808,7 @@ async def admin_managers_toggle_active(
     request: Request,
     manager_id: UUID,
     user: CurrentUser = Depends(current_manager),  # noqa: B008
-) -> RedirectResponse:
+) -> Response:
     _require_admin(user)
     if manager_id == user.id:
         raise HTTPException(status_code=400, detail="Nao pode desativar voce mesmo")
@@ -825,6 +825,16 @@ async def admin_managers_toggle_active(
             target_manager_id=str(manager_id),
             target_email=row["email"] if row else None,
         )
+    if request.headers.get("HX-Request") == "true":
+        return Response(
+            status_code=204,
+            headers={
+                "HX-Redirect": "/admin/managers",
+                "HX-Trigger": (
+                    '{"toast": {"message": "Status do gestor atualizado.", "kind": "success"}}'
+                ),
+            },
+        )
     return RedirectResponse(url="/admin/managers", status_code=303)
 
 
@@ -833,7 +843,7 @@ async def admin_managers_toggle_role(
     request: Request,
     manager_id: UUID,
     user: CurrentUser = Depends(current_manager),  # noqa: B008
-) -> RedirectResponse:
+) -> Response:
     _require_admin(user)
     if manager_id == user.id:
         raise HTTPException(status_code=400, detail="Nao pode mudar seu proprio role")
@@ -854,6 +864,16 @@ async def admin_managers_toggle_role(
             operation="admin_manager_toggle_role",
             target_manager_id=str(manager_id),
             target_email=row["email"] if row else None,
+        )
+    if request.headers.get("HX-Request") == "true":
+        return Response(
+            status_code=204,
+            headers={
+                "HX-Redirect": "/admin/managers",
+                "HX-Trigger": (
+                    '{"toast": {"message": "Role do gestor atualizado.", "kind": "success"}}'
+                ),
+            },
         )
     return RedirectResponse(url="/admin/managers", status_code=303)
 

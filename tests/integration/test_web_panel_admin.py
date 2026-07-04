@@ -240,6 +240,48 @@ async def test_admin_managers_toggle_role_records_audit(client: AsyncClient):
 
 
 @pytest.mark.integration
+async def test_admin_managers_toggle_htmx_returns_hx_redirect(client: AsyncClient):
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+
+    async with pool.acquire() as conn:
+        before = await conn.fetchrow(
+            "SELECT is_active, role FROM managers WHERE id = $1", gestor_id
+        )
+    assert before is not None
+
+    response = await client.post(
+        f"/admin/managers/{gestor_id}/toggle-active",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+        headers={"HX-Request": "true"},
+    )
+    assert response.status_code == 204
+    assert response.headers["HX-Redirect"] == "/admin/managers"
+    assert "toast" in response.headers["HX-Trigger"]
+
+    async with pool.acquire() as conn:
+        after_active = await conn.fetchrow(
+            "SELECT is_active FROM managers WHERE id = $1", gestor_id
+        )
+    assert after_active is not None
+    assert after_active["is_active"] != before["is_active"]
+
+    response = await client.post(
+        f"/admin/managers/{gestor_id}/toggle-role",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+        headers={"HX-Request": "true"},
+    )
+    assert response.status_code == 204
+    assert response.headers["HX-Redirect"] == "/admin/managers"
+    assert "toast" in response.headers["HX-Trigger"]
+
+    async with pool.acquire() as conn:
+        after_role = await conn.fetchrow("SELECT role FROM managers WHERE id = $1", gestor_id)
+    assert after_role is not None
+    assert after_role["role"] != before["role"]
+
+
+@pytest.mark.integration
 async def test_admin_access_bulk_grant_records_audit(client: AsyncClient):
     pool = connection.get_pool()
     admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
