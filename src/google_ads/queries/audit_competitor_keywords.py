@@ -3,6 +3,7 @@
 from typing import Any
 
 from src.google_ads.competitor_analysis import KeywordRow, SearchTermRow
+from src.google_ads.queries._common import micros_to_currency
 
 
 def build_positive_keywords_query() -> str:
@@ -62,7 +63,7 @@ def parse_search_term_row(row: Any) -> dict[str, Any]:
         "campaign_name": row.campaign.name,
         "impressions": row.metrics.impressions,
         "clicks": row.metrics.clicks,
-        "cost_brl": row.metrics.cost_micros / 1_000_000.0,
+        "cost_brl": micros_to_currency(row.metrics.cost_micros),
     }
 
 

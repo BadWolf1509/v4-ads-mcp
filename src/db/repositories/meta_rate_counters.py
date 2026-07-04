@@ -21,16 +21,6 @@ class MetaRateCounter:
     last_throttle_pct: int
 
 
-def _row_to_counter(row: asyncpg.Record) -> MetaRateCounter:
-    return MetaRateCounter(
-        app_id=row["app_id"],
-        ad_account_id=row["ad_account_id"],
-        date=row["date"],
-        calls_used=row["calls_used"],
-        last_throttle_pct=row["last_throttle_pct"],
-    )
-
-
 async def increment_calls(
     conn: asyncpg.Connection,
     *,
@@ -78,22 +68,3 @@ async def update_throttle(
         date,
         throttle_pct,
     )
-
-
-async def get_counter(
-    conn: asyncpg.Connection,
-    *,
-    app_id: str,
-    ad_account_id: str,
-    date: date,
-) -> MetaRateCounter | None:
-    row = await conn.fetchrow(
-        """
-        SELECT * FROM meta_rate_counters
-        WHERE app_id = $1 AND ad_account_id = $2 AND date = $3
-        """,
-        app_id,
-        ad_account_id,
-        date,
-    )
-    return _row_to_counter(row) if row else None

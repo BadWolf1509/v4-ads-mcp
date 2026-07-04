@@ -76,11 +76,6 @@ async def touch_last_seen(conn: asyncpg.Connection, manager_id: UUID) -> None:
     )
 
 
-async def list_active(conn: asyncpg.Connection) -> list[Manager]:
-    rows = await conn.fetch("SELECT * FROM managers WHERE is_active = true ORDER BY email")
-    return [_row_to_manager(r) for r in rows]
-
-
 async def create_invited(
     conn: asyncpg.Connection,
     *,
@@ -121,14 +116,6 @@ async def mark_active(conn: asyncpg.Connection, *, manager_id: UUID) -> bool:
     )
     # asyncpg returns 'UPDATE n' where n is row count
     return bool(result.endswith(" 1"))
-
-
-async def list_invited(conn: asyncpg.Connection) -> list[Manager]:
-    """All managers awaiting first OAuth login (status='invited')."""
-    rows = await conn.fetch(
-        "SELECT * FROM managers WHERE status = 'invited' ORDER BY invited_at DESC"
-    )
-    return [_row_to_manager(r) for r in rows]
 
 
 async def delete_invite(conn: asyncpg.Connection, *, manager_id: UUID) -> bool:

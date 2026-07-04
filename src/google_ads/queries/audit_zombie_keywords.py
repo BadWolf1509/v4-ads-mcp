@@ -11,7 +11,7 @@ from datetime import date
 from typing import Any
 
 from src.google_ads.flag_zombie_keywords import KeywordRow
-from src.google_ads.queries._common import gaql_date_clause
+from src.google_ads.queries._common import gaql_date_clause, micros_to_currency
 
 
 def build_audit_zombie_keywords_query(
@@ -74,7 +74,7 @@ def parse_keyword_view_row(row: Any) -> dict[str, Any]:
         "match_type": row.ad_group_criterion.keyword.match_type.name,
         "impressions": int(row.metrics.impressions),
         "clicks": int(row.metrics.clicks),
-        "cost_brl": float(row.metrics.cost_micros) / 1_000_000.0,
+        "cost_brl": micros_to_currency(row.metrics.cost_micros),
         "conversions": int(row.metrics.conversions),
         "status": row.ad_group_criterion.status.name,
     }

@@ -74,34 +74,6 @@ async def test_mark_active_only_invited(db):
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_list_invited_returns_only_invited(db):
-    pool = db
-    inviter = uuid4()
-    async with pool.acquire() as conn:
-        await conn.execute(
-            """INSERT INTO managers (id, email, status, role) VALUES
-               ($1, 'admin@v4company.com', 'active', 'admin'),
-               ($2, 'pending1@v4company.com', 'invited', 'gestor'),
-               ($3, 'pending2@v4company.com', 'invited', 'gestor'),
-               ($4, 'active@v4company.com', 'active', 'gestor')""",
-            inviter,
-            uuid4(),
-            uuid4(),
-            uuid4(),
-        )
-
-    async with pool.acquire() as conn:
-        invited = await managers.list_invited(conn)
-
-    emails = {m.email for m in invited}
-    assert "pending1@v4company.com" in emails
-    assert "pending2@v4company.com" in emails
-    assert "admin@v4company.com" not in emails
-    assert "active@v4company.com" not in emails
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
 async def test_delete_invite_only_if_invited(db):
     pool = db
     inviter = uuid4()

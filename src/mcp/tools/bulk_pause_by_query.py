@@ -19,7 +19,11 @@ import hashlib
 from typing import Any
 
 from src.db import connection
-from src.google_ads.queries._common import InvalidDateRangeError, resolve_date_window
+from src.google_ads.queries._common import (
+    InvalidDateRangeError,
+    micros_to_currency,
+    resolve_date_window,
+)
 from src.google_ads.queries.bulk_pause import (
     FilterValidationError,
     bulk_pause_query,
@@ -94,7 +98,7 @@ def _row_formatter_keyword(row: Any) -> dict[str, Any]:
         "keyword_text": str(row.ad_group_criterion.keyword.text),
         "campaign_id": str(row.campaign.id),
         "campaign_name": str(row.campaign.name),
-        "cost_brl": round(int(row.metrics.cost_micros) / 1_000_000.0, 2),
+        "cost_brl": micros_to_currency(row.metrics.cost_micros),
     }
 
 
@@ -105,7 +109,7 @@ def _row_formatter_ad(row: Any) -> dict[str, Any]:
         "ad_id": str(row.ad_group_ad.ad.id),
         "campaign_id": str(row.campaign.id),
         "campaign_name": str(row.campaign.name),
-        "cost_brl": round(int(row.metrics.cost_micros) / 1_000_000.0, 2),
+        "cost_brl": micros_to_currency(row.metrics.cost_micros),
     }
 
 
@@ -113,7 +117,7 @@ def _row_formatter_campaign(row: Any) -> dict[str, Any]:
     return {
         "campaign_id": str(row.campaign.id),
         "campaign_name": str(row.campaign.name),
-        "cost_brl": round(int(row.metrics.cost_micros) / 1_000_000.0, 2),
+        "cost_brl": micros_to_currency(row.metrics.cost_micros),
     }
 
 
@@ -123,7 +127,7 @@ def _row_formatter_ad_group(row: Any) -> dict[str, Any]:
         "ad_group_name": str(row.ad_group.name),
         "campaign_id": str(row.campaign.id),
         "campaign_name": str(row.campaign.name),
-        "cost_brl": round(int(row.metrics.cost_micros) / 1_000_000.0, 2),
+        "cost_brl": micros_to_currency(row.metrics.cost_micros),
     }
 
 

@@ -3,6 +3,7 @@
 from typing import Any
 
 from src.google_ads.flag_keywords import KeywordRow
+from src.google_ads.queries._common import micros_to_currency
 
 
 def build_audit_quality_score_query(
@@ -66,7 +67,7 @@ def parse_keyword_view_row(row: Any) -> dict[str, Any]:
         "impressions": row.metrics.impressions,
         "clicks": row.metrics.clicks,
         "conversions": row.metrics.conversions,
-        "cost_brl": row.metrics.cost_micros / 1_000_000.0,
+        "cost_brl": micros_to_currency(row.metrics.cost_micros),
     }
 
 
