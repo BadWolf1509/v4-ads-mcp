@@ -1,5 +1,6 @@
 """Integration tests for /admin/access/meta routes (Meta access matrix)."""
 
+import json
 from uuid import uuid4
 
 import pytest
@@ -7,7 +8,7 @@ from httpx import AsyncClient
 
 from src.auth.panel_session import PANEL_SESSION_COOKIE_NAME, sign_panel_session
 from src.db import connection
-from src.db.repositories import managers, meta_ad_accounts
+from src.db.repositories import manager_meta_account_access, managers, meta_ad_accounts
 
 _SIGNING_KEY = "x" * 32
 
@@ -114,6 +115,19 @@ async def test_admin_access_meta_toggle_grant_then_revoke(client: AsyncClient):
     assert response1.status_code == 200
     assert "checked" in response1.text
 
+    async with pool.acquire() as conn:
+        grant_row = await conn.fetchrow(
+            """SELECT operation, action_type, manager_id, customer_id, platform, params_summary
+               FROM audit_log WHERE operation = $1 ORDER BY occurred_at DESC LIMIT 1""",
+            "admin_access_grant",
+        )
+    assert grant_row is not None
+    assert grant_row["action_type"] == "mutate"
+    assert grant_row["manager_id"] == admin_id
+    assert grant_row["customer_id"] == ad_account_id
+    assert grant_row["platform"] == "meta"
+    assert json.loads(grant_row["params_summary"])["granted"] is True
+
     # Second toggle → should revoke access → checkbox does NOT have "checked"
     response2 = await client.post(
         "/admin/access/meta/toggle",
@@ -122,6 +136,19 @@ async def test_admin_access_meta_toggle_grant_then_revoke(client: AsyncClient):
     )
     assert response2.status_code == 200
     assert "checked" not in response2.text
+
+    async with pool.acquire() as conn:
+        revoke_row = await conn.fetchrow(
+            """SELECT operation, action_type, manager_id, customer_id, platform, params_summary
+               FROM audit_log WHERE operation = $1 ORDER BY occurred_at DESC LIMIT 1""",
+            "admin_access_revoke",
+        )
+    assert revoke_row is not None
+    assert revoke_row["action_type"] == "mutate"
+    assert revoke_row["manager_id"] == admin_id
+    assert revoke_row["customer_id"] == ad_account_id
+    assert revoke_row["platform"] == "meta"
+    assert json.loads(revoke_row["params_summary"])["granted"] is False
 
 
 @pytest.mark.integration
@@ -154,3 +181,97 @@ async def test_admin_accounts_meta_renders_token_status(
     assert response.status_code == 200
     assert "Token do system user" in response.text
     assert "não configurado" in response.text
+
+
+@pytest.mark.integration
+async def test_admin_access_meta_bulk_grant_records_audit(client: AsyncClient):
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        await meta_ad_accounts.upsert_many(
+            conn,
+            [
+                {
+                    "ad_account_id": "act_987654321",
+                    "business_id": "biz_001",
+                    "business_name": "Empresa Teste",
+                    "account_name": "Outra Conta",
+                    "currency": "BRL",
+                    "timezone_name": "America/Sao_Paulo",
+                    "account_status": 1,
+                }
+            ],
+        )
+
+    response = await client.post(
+        "/admin/access/meta/bulk-grant",
+        data={
+            "manager_id": str(gestor_id),
+            "ad_account_ids": ["act_123456789", "act_987654321"],
+        },
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 303
+
+    async with pool.acquire() as conn:
+        access_rows = await conn.fetch(
+            "SELECT ad_account_id FROM manager_meta_account_access WHERE manager_id = $1",
+            gestor_id,
+        )
+        row = await conn.fetchrow(
+            """SELECT operation, action_type, manager_id, customer_id, platform, params_summary
+               FROM audit_log WHERE operation = $1 ORDER BY occurred_at DESC LIMIT 1""",
+            "admin_access_bulk_grant",
+        )
+    assert {r["ad_account_id"] for r in access_rows} == {"act_123456789", "act_987654321"}
+    assert row is not None
+    assert row["action_type"] == "mutate"
+    assert row["manager_id"] == admin_id
+    assert row["customer_id"] is None
+    assert row["platform"] == "meta"
+    summary = json.loads(row["params_summary"])
+    assert summary["target_manager_id"] == str(gestor_id)
+    assert summary["count"] == 2
+    assert set(summary["ids"]) == {"act_123456789", "act_987654321"}
+
+
+@pytest.mark.integration
+async def test_admin_access_meta_bulk_copy_records_audit(client: AsyncClient):
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        other_id = uuid4()
+        await managers.create(
+            conn,
+            manager_id=other_id,
+            email="other@v4company.com",
+            full_name="Other",
+            role="gestor",
+        )
+        await manager_meta_account_access.grant(
+            conn,
+            manager_id=gestor_id,
+            ad_account_id="act_123456789",
+        )
+
+    response = await client.post(
+        "/admin/access/meta/bulk-copy",
+        data={"from_manager_id": str(gestor_id), "to_manager_id": str(other_id)},
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 303
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """SELECT operation, action_type, manager_id, customer_id, platform, params_summary
+               FROM audit_log WHERE operation = $1 ORDER BY occurred_at DESC LIMIT 1""",
+            "admin_access_bulk_copy",
+        )
+    assert row is not None
+    assert row["action_type"] == "mutate"
+    assert row["manager_id"] == admin_id
+    assert row["customer_id"] is None
+    assert row["platform"] == "meta"
+    summary = json.loads(row["params_summary"])
+    assert summary["from_manager_id"] == str(gestor_id)
+    assert summary["to_manager_id"] == str(other_id)

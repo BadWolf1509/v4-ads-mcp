@@ -6,7 +6,7 @@ from collections import OrderedDict
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import parse_qs, urlparse
 from uuid import UUID
 
@@ -20,6 +20,7 @@ from src.auth.sessions import generate_session_token, hash_session_token
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import (
+    audit_log,
     google_ads_accounts,
     google_oauth_connections,
     manager_account_access,
@@ -45,6 +46,34 @@ router = APIRouter(tags=["web"])
 def _require_admin(user: CurrentUser) -> None:
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
+
+
+async def _audit_admin(
+    conn: Any,
+    *,
+    admin: CurrentUser,
+    operation: str,
+    customer_id: str | None = None,
+    platform: Literal["google", "meta"] = "google",
+    **summary: Any,
+) -> None:
+    """Record an audit_log row for a sensitive admin-panel mutation.
+
+    Panel actions (access matrix, roles, activation, invites) have no MCP
+    session, so session_id is always None; manager_id is the authenticated
+    admin performing the action. summary becomes params_summary (target of
+    the action — never tokens/secrets).
+    """
+    await audit_log.record(
+        conn,
+        manager_id=admin.id,
+        session_id=None,
+        customer_id=customer_id,
+        action_type="mutate",
+        operation=operation,
+        params_summary=summary or None,
+        platform=platform,
+    )
 
 
 def _toggle_checkbox_fragment(*, post_url: str, vals: dict[str, str], checked: bool) -> str:
@@ -767,9 +796,16 @@ async def admin_managers_toggle_active(
         raise HTTPException(status_code=400, detail="Nao pode desativar voce mesmo")
     pool = connection.get_pool()
     async with pool.acquire() as conn:
-        await conn.execute(
-            "UPDATE managers SET is_active = NOT is_active WHERE id = $1",
+        row = await conn.fetchrow(
+            "UPDATE managers SET is_active = NOT is_active WHERE id = $1 RETURNING email",
             manager_id,
+        )
+        await _audit_admin(
+            conn,
+            admin=user,
+            operation="admin_manager_toggle_active",
+            target_manager_id=str(manager_id),
+            target_email=row["email"] if row else None,
         )
     return RedirectResponse(url="/admin/managers", status_code=303)
 
@@ -785,13 +821,21 @@ async def admin_managers_toggle_role(
         raise HTTPException(status_code=400, detail="Nao pode mudar seu proprio role")
     pool = connection.get_pool()
     async with pool.acquire() as conn:
-        await conn.execute(
+        row = await conn.fetchrow(
             """
             UPDATE managers SET role =
               CASE WHEN role = 'admin' THEN 'gestor' ELSE 'admin' END
             WHERE id = $1
+            RETURNING email
             """,
             manager_id,
+        )
+        await _audit_admin(
+            conn,
+            admin=user,
+            operation="admin_manager_toggle_role",
+            target_manager_id=str(manager_id),
+            target_email=row["email"] if row else None,
         )
     return RedirectResponse(url="/admin/managers", status_code=303)
 
@@ -931,6 +975,15 @@ async def admin_access_meta_toggle(
                 granted_by=user.id,
             )
             granted = True
+        await _audit_admin(
+            conn,
+            admin=user,
+            operation="admin_access_grant" if granted else "admin_access_revoke",
+            customer_id=ad_account_id,
+            platform="meta",
+            target_manager_id=manager_id,
+            granted=granted,
+        )
     return HTMLResponse(
         _toggle_checkbox_fragment(
             post_url="/admin/access/meta/toggle",
@@ -956,6 +1009,15 @@ async def admin_access_meta_bulk_grant(
             ad_account_ids=ad_account_ids,
             granted_by=user.id,
         )
+        await _audit_admin(
+            conn,
+            admin=user,
+            operation="admin_access_bulk_grant",
+            platform="meta",
+            target_manager_id=manager_id,
+            count=len(ad_account_ids),
+            ids=ad_account_ids[:20],
+        )
     return RedirectResponse(url="/admin/access/meta", status_code=303)
 
 
@@ -976,6 +1038,14 @@ async def admin_access_meta_bulk_copy(
             from_manager_id=UUID(from_manager_id),
             to_manager_id=UUID(to_manager_id),
             granted_by=user.id,
+        )
+        await _audit_admin(
+            conn,
+            admin=user,
+            operation="admin_access_bulk_copy",
+            platform="meta",
+            from_manager_id=from_manager_id,
+            to_manager_id=to_manager_id,
         )
     return RedirectResponse(url="/admin/access/meta", status_code=303)
 
@@ -1065,6 +1135,14 @@ async def admin_access_bulk_grant(
             customer_ids=customer_ids,
             granted_by=user.id,
         )
+        await _audit_admin(
+            conn,
+            admin=user,
+            operation="admin_access_bulk_grant",
+            target_manager_id=manager_id,
+            count=len(customer_ids),
+            ids=customer_ids[:20],
+        )
     return RedirectResponse(url="/admin/access", status_code=303)
 
 
@@ -1085,6 +1163,13 @@ async def admin_access_bulk_copy(
             from_manager_id=UUID(from_manager_id),
             to_manager_id=UUID(to_manager_id),
             granted_by=user.id,
+        )
+        await _audit_admin(
+            conn,
+            admin=user,
+            operation="admin_access_bulk_copy",
+            from_manager_id=from_manager_id,
+            to_manager_id=to_manager_id,
         )
     return RedirectResponse(url="/admin/access", status_code=303)
 
@@ -1191,6 +1276,15 @@ async def admin_access_toggle(
             )
             granted = True
 
+        await _audit_admin(
+            conn,
+            admin=user,
+            operation="admin_access_grant" if granted else "admin_access_revoke",
+            customer_id=customer_id,
+            target_manager_id=manager_id,
+            granted=granted,
+        )
+
     # Return a tiny HTMX-friendly fragment that swaps the cell
     return HTMLResponse(
         _toggle_checkbox_fragment(
@@ -1256,6 +1350,12 @@ async def admin_invites_new(
             invited_by=user.id,
             full_name=(full_name or None),
         )
+        await _audit_admin(
+            conn,
+            admin=user,
+            operation="admin_invite_new",
+            email=email,
+        )
     return RedirectResponse(url="/admin/invites", status_code=303)
 
 
@@ -1274,7 +1374,14 @@ async def admin_invites_cancel(
     async with pool.acquire() as conn:
         from src.db.repositories import managers as managers_repo
 
+        email = await conn.fetchval("SELECT email FROM managers WHERE id = $1", parsed_invite_id)
         await managers_repo.delete_invite(conn, manager_id=parsed_invite_id)
+        await _audit_admin(
+            conn,
+            admin=user,
+            operation="admin_invite_cancel",
+            email=email,
+        )
     # HTMX swap: remove the row by returning empty content
     return HTMLResponse("")
 

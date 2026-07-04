@@ -1,5 +1,6 @@
 """Web panel admin pages tests."""
 
+import json
 from uuid import uuid4
 
 import pytest
@@ -133,7 +134,17 @@ async def test_admin_access_toggle_grants_then_revokes(client: AsyncClient):
 
     async with pool.acquire() as conn:
         accs = await manager_account_access.list_accounts_for_manager(conn, gestor_id)
+        grant_row = await conn.fetchrow(
+            """SELECT operation, action_type, manager_id, customer_id, params_summary
+               FROM audit_log WHERE operation = $1 ORDER BY occurred_at DESC LIMIT 1""",
+            "admin_access_grant",
+        )
     assert len(accs) == 1
+    assert grant_row is not None
+    assert grant_row["action_type"] == "mutate"
+    assert grant_row["manager_id"] == admin_id
+    assert grant_row["customer_id"] == "1234567890"
+    assert json.loads(grant_row["params_summary"])["granted"] is True
 
     # Second toggle: revokes
     response = await client.post(
@@ -146,7 +157,17 @@ async def test_admin_access_toggle_grants_then_revokes(client: AsyncClient):
 
     async with pool.acquire() as conn:
         accs = await manager_account_access.list_accounts_for_manager(conn, gestor_id)
+        revoke_row = await conn.fetchrow(
+            """SELECT operation, action_type, manager_id, customer_id, params_summary
+               FROM audit_log WHERE operation = $1 ORDER BY occurred_at DESC LIMIT 1""",
+            "admin_access_revoke",
+        )
     assert len(accs) == 0
+    assert revoke_row is not None
+    assert revoke_row["action_type"] == "mutate"
+    assert revoke_row["manager_id"] == admin_id
+    assert revoke_row["customer_id"] == "1234567890"
+    assert json.loads(revoke_row["params_summary"])["granted"] is False
 
 
 @pytest.mark.integration
@@ -160,3 +181,189 @@ async def test_admin_audit_renders(client: AsyncClient):
     assert response.status_code == 200
     # Phase 4 Task 4.4 redesigned the page; new template uses "Audit global" header.
     assert "Audit global" in response.text
+
+
+@pytest.mark.integration
+async def test_admin_managers_toggle_active_records_audit(client: AsyncClient):
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+
+    response = await client.post(
+        f"/admin/managers/{gestor_id}/toggle-active",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 303
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """SELECT operation, action_type, manager_id, customer_id, params_summary
+               FROM audit_log WHERE operation = $1 ORDER BY occurred_at DESC LIMIT 1""",
+            "admin_manager_toggle_active",
+        )
+    assert row is not None
+    assert row["action_type"] == "mutate"
+    assert row["manager_id"] == admin_id
+    assert row["customer_id"] is None
+    summary = json.loads(row["params_summary"])
+    assert summary["target_manager_id"] == str(gestor_id)
+    assert summary["target_email"] == "gestor@v4company.com"
+
+
+@pytest.mark.integration
+async def test_admin_managers_toggle_role_records_audit(client: AsyncClient):
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+
+    response = await client.post(
+        f"/admin/managers/{gestor_id}/toggle-role",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 303
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """SELECT operation, action_type, manager_id, customer_id, params_summary
+               FROM audit_log WHERE operation = $1 ORDER BY occurred_at DESC LIMIT 1""",
+            "admin_manager_toggle_role",
+        )
+    assert row is not None
+    assert row["action_type"] == "mutate"
+    assert row["manager_id"] == admin_id
+    summary = json.loads(row["params_summary"])
+    assert summary["target_manager_id"] == str(gestor_id)
+    assert summary["target_email"] == "gestor@v4company.com"
+
+
+@pytest.mark.integration
+async def test_admin_access_bulk_grant_records_audit(client: AsyncClient):
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        await google_ads_accounts.upsert_many(
+            conn,
+            [{"customer_id": "1111111111", "mcc_id": "M1", "descriptive_name": "Cliente B"}],
+        )
+
+    response = await client.post(
+        "/admin/access/bulk-grant",
+        data={
+            "manager_id": str(gestor_id),
+            "customer_ids": ["1234567890", "1111111111"],
+        },
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 303
+
+    async with pool.acquire() as conn:
+        accs = await manager_account_access.list_accounts_for_manager(conn, gestor_id)
+        row = await conn.fetchrow(
+            """SELECT operation, action_type, manager_id, customer_id, params_summary
+               FROM audit_log WHERE operation = $1 ORDER BY occurred_at DESC LIMIT 1""",
+            "admin_access_bulk_grant",
+        )
+    assert len(accs) == 2
+    assert row is not None
+    assert row["action_type"] == "mutate"
+    assert row["manager_id"] == admin_id
+    assert row["customer_id"] is None
+    summary = json.loads(row["params_summary"])
+    assert summary["target_manager_id"] == str(gestor_id)
+    assert summary["count"] == 2
+    assert set(summary["ids"]) == {"1234567890", "1111111111"}
+
+
+@pytest.mark.integration
+async def test_admin_access_bulk_copy_records_audit(client: AsyncClient):
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        other_id = uuid4()
+        await managers.create(
+            conn,
+            manager_id=other_id,
+            email="other@v4company.com",
+            full_name="Other",
+            role="gestor",
+        )
+        await manager_account_access.grant(
+            conn,
+            manager_id=gestor_id,
+            customer_id="1234567890",
+        )
+
+    response = await client.post(
+        "/admin/access/bulk-copy",
+        data={"from_manager_id": str(gestor_id), "to_manager_id": str(other_id)},
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 303
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """SELECT operation, action_type, manager_id, customer_id, params_summary
+               FROM audit_log WHERE operation = $1 ORDER BY occurred_at DESC LIMIT 1""",
+            "admin_access_bulk_copy",
+        )
+    assert row is not None
+    assert row["action_type"] == "mutate"
+    assert row["manager_id"] == admin_id
+    assert row["customer_id"] is None
+    summary = json.loads(row["params_summary"])
+    assert summary["from_manager_id"] == str(gestor_id)
+    assert summary["to_manager_id"] == str(other_id)
+
+
+@pytest.mark.integration
+async def test_admin_invites_new_records_audit(client: AsyncClient):
+    pool = connection.get_pool()
+    admin_id, _ = await _bootstrap_admin_and_gestor(pool)
+
+    response = await client.post(
+        "/admin/invites/new",
+        data={"email": "novo.gestor@v4company.com", "full_name": "Novo Gestor"},
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 303
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """SELECT operation, action_type, manager_id, customer_id, params_summary
+               FROM audit_log WHERE operation = $1 ORDER BY occurred_at DESC LIMIT 1""",
+            "admin_invite_new",
+        )
+    assert row is not None
+    assert row["action_type"] == "mutate"
+    assert row["manager_id"] == admin_id
+    summary = json.loads(row["params_summary"])
+    assert summary["email"] == "novo.gestor@v4company.com"
+
+
+@pytest.mark.integration
+async def test_admin_invites_cancel_records_audit(client: AsyncClient):
+    pool = connection.get_pool()
+    admin_id, _ = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        invite = await managers.create_invited(
+            conn,
+            email="cancelado@v4company.com",
+            invited_by=admin_id,
+            full_name="A Cancelar",
+        )
+
+    response = await client.post(
+        f"/admin/invites/{invite.id}/cancel",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 200
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """SELECT operation, action_type, manager_id, customer_id, params_summary
+               FROM audit_log WHERE operation = $1 ORDER BY occurred_at DESC LIMIT 1""",
+            "admin_invite_cancel",
+        )
+    assert row is not None
+    assert row["action_type"] == "mutate"
+    assert row["manager_id"] == admin_id
+    summary = json.loads(row["params_summary"])
+    assert summary["email"] == "cancelado@v4company.com"
