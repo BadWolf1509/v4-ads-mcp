@@ -13,6 +13,7 @@ from src.google_ads.conversions import run_conversion_upload
 from src.google_ads.mutations import run_mutation
 from src.governance.dry_run import InvalidTokenError, consume
 from src.mcp.context import get_current
+from src.mcp.tools._mutate_common import error_envelope
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -48,10 +49,7 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
         try:
             saved = await consume(conn, token=token, session_id=ctx.session_id)
         except InvalidTokenError as e:
-            return {
-                "status": "error",
-                "error": str(e),
-            }
+            return error_envelope("apply_change", str(e))
 
     target_count = int(saved.payload.get("__target_count__", 1))
     params_summary = saved.payload.get("__params_summary__")  # None → default in dispatchers

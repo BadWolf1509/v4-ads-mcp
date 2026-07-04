@@ -88,4 +88,5 @@ async def test_apply_change_returns_error_on_invalid_token(db, session_ctx):
 
     result = await apply_change({"confirmation_token": "ABCD1234"})
     assert result["status"] == "error"
-    assert "not found" in result["error"]
+    assert result["operation"] == "apply_change"
+    assert "not found" in result["error_message"]

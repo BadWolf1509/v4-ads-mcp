@@ -86,4 +86,5 @@ async def add_negative_keywords(args: dict[str, Any]) -> dict[str, Any]:
         "applied_count": result["applied_count"],
         "provider_request_id": result["provider_request_id"],
         "auto_applied_reason": risk.reason,
+        "resource_names": result.get("resource_names", []),
     }
