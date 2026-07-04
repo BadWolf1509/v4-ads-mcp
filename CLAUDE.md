@@ -18,10 +18,11 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 
 ## Current state
 
-**Última atualização:** 2026-07-04. Produção verde no **projeto GCP novo** (`v4-ads-mcp`, Wellington owner), `/health?deep=1` db=ok. **~64 MCP tools** (58 Google + 6 Meta), bucket ~23 always + 41 defer. Agora com **alerting** (uptime+job-failed+logs), **backup semanal→GCS**, **lockfile pinado** e **CI DB ~45-90s** (era ~8min).
+**Última atualização:** 2026-07-04 (2ª sessão). Produção verde no **projeto GCP novo** (`v4-ads-mcp`, Wellington owner), `/health?deep=1` db=ok. **~64 MCP tools** (58 Google + 6 Meta), bucket ~23 always + 41 defer. Infra com **alerting** (uptime+job-failed+logs), **backup semanal→GCS**, **lockfile pinado**, **CI DB ~45-90s** (era ~8min). Painel web passou por um **pacote de UI/UX** (2ª sessão 07-04): flash de erro nos forms, ações HTMX HX-aware, contraste AA, tabelas responsivas, fluxo de convites, idioma PT-BR, fontes via `<link>`.
 
 **Sessões recentes** (detalhe canônico nos handoffs — leia só o da sessão relevante):
-- **2026-07-04** — investigação 2026-07-03 → **3 ondas**: **O1 governança** (F73 quota leak + cap por gestor · audit ações admin do painel · run_gaql limit/query no audit · validate_gaql rate-limit · purge diário), **O2 falhar bem** (alerting GCP · lockfile `requirements.txt` universal + pip-audit · smoke MCP autenticado · backup→GCS · infra-setup), **O3 dívida** (test-infra template DB · `_mutate_common` dedup 22 mutates + `error_message` canônico · dedup trio Meta + BUC via kwarg · dead code/micros/labels/CSV-injection). 2 fix-forwards no CI (lockfile pywin32 sem marker; mock-target Meta pós-dedup). **Deferido** (follow-up): sync Meta header, GAQL escape, oauth logs, migrations guard, pool config, doc-drift. [`session-2026-07-04-handoff.md`](docs/operacao/session-2026-07-04-handoff.md).
+- **2026-07-04 (2ª sessão)** — investigação **UI/UX do painel web** → pacote de **11 commits** (`87f6346..f1b49e1`): flash de erro/sucesso nos forms admin (antes `?error=` silencioso), ações do painel **HTMX HX-aware** (204+HX-Redirect/HX-Refresh — antes o 303 injetava a página no `<tr>`), toasts globais de erro + fragmento de checkbox completo (**F74**), fluxo de convites (idade + copiar onboarding + cancel HX, **F75**), contraste AA (`--v4-gray-500`), tabelas responsivas, idioma PT-BR, fontes via `<link>`. Subagent-driven + whole-branch opus. [`session-2026-07-04-ui-ux-handoff.md`](docs/operacao/session-2026-07-04-ui-ux-handoff.md).
+- **2026-07-04 (1ª sessão)** — investigação 2026-07-03 → **3 ondas**: **O1 governança** (F73 quota leak + cap por gestor · audit ações admin do painel · run_gaql limit/query no audit · validate_gaql rate-limit · purge diário), **O2 falhar bem** (alerting GCP · lockfile `requirements.txt` universal + pip-audit · smoke MCP autenticado · backup→GCS · infra-setup), **O3 dívida** (test-infra template DB · `_mutate_common` dedup 22 mutates + `error_message` canônico · dedup trio Meta + BUC via kwarg · dead code/micros/labels/CSV-injection). 2 fix-forwards no CI (lockfile pywin32 sem marker; mock-target Meta pós-dedup). **Deferido** (follow-up): sync Meta header, GAQL escape, oauth logs, migrations guard, pool config, doc-drift. [`session-2026-07-04-handoff.md`](docs/operacao/session-2026-07-04-handoff.md).
 - **2026-07-02** — investigação → **6 ondas**: URL nova + decrypt UX no cutover (F68/F70), **F66 resolvido** (jobs CNB `/cnb/process/<type>`) + **scheduler resync recriado** (F69) + resync Meta deletion-detection (F65), Customer Match audit+rate-limit (F71) + **gate Meta `ad_account_id` obrigatório** (F72) + guards F57/F57-Meta/F58 + `create_rsa` policy topic, **deploy gated pelo CI** (`needs: test`), testes do núcleo + refactors Onda 4, **steering Fase 2B** (não tombstone). [`session-2026-07-02-handoff.md`](docs/operacao/session-2026-07-02-handoff.md).
 - **2026-06-30** — **MIGRAÇÃO GCP** lift-and-shift pro projeto novo `v4-ads-mcp` (`299432068772`, Wellington owner, billing própria); `aes-master-key`/`session-signing-key` regeneradas (→ gestores reconectam Google), token Meta all-targets. [`session-2026-06-30-handoff.md`](docs/operacao/session-2026-06-30-handoff.md).
 - **2026-06-20** — Onda 0/1 hardening + observabilidade + M.4 + Fase 2A · **2026-06-19** — recuperação conta + Meta 12→22 + GAQL error UX (F61/F62/F63). [handoffs `-06-20`/`-06-19`] · **2026-05-29** — acesso/segurança (hard-gate + CSP).
@@ -48,9 +49,11 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 ## Read these first when continuing work
 
 ```
-docs/operacao/findings-catalog.md            # ★ Bug history (F1-F72 + A1-A6 + D1-D3) — scan antes de design mutate/query
+docs/operacao/findings-catalog.md            # ★ Bug history (F1-F75 + A1-A6 + D1-D3) — scan antes de design mutate/query
 docs/operacao/sprint-history.md              # ★ Tabela por sprint (3b.1→3b.40 + M.4 + Fase 2A + Meta); F64+ só nos handoffs/catalog
-docs/operacao/session-2026-07-02-handoff.md  # ★ Última sessão: 6 ondas (F66/scheduler, gate Meta, deploy gated pelo CI, Customer Match audit, refactors) + runbook cutover
+docs/operacao/session-2026-07-04-ui-ux-handoff.md  # ★ Painel web UI/UX (flash forms, HTMX HX-aware, contraste AA, tabelas, convites, PT-BR, fontes) + F74/F75
+docs/operacao/session-2026-07-04-handoff.md  # 1ª sessão 07-04: 3 ondas (F73 quota leak+cap por gestor, audit admin, alerting/backup/lockfile, dedup mutates)
+docs/operacao/session-2026-07-02-handoff.md  # 6 ondas (F66/scheduler, gate Meta, deploy gated pelo CI, Customer Match audit, refactors) + runbook cutover
 docs/operacao/session-2026-06-30-handoff.md  # MIGRAÇÃO GCP (projeto novo v4-ads-mcp, owner próprio) + F64/F65/F66/F67
 docs/operacao/session-2026-06-20-handoff.md  # Onda 0/1 hardening+observ + M.4 + Fase 2A (consolidação Google)
 docs/operacao/session-2026-06-19-handoff.md  # recuperação conta + Meta 12→22 + GAQL error UX + resync
@@ -201,7 +204,15 @@ Reads + `bulk_pause_by_query`: **preset** (`date_range: str` com `type:"string"`
 
 ### Design system
 
-Tailwind CDN (no build) + tokens em `src/web/static/v4-tokens.css`. ~22 macros em `_components.html`. **Editorial mode** (login/access-denied/help/hero): display 36-56px, red `#e50914`. **Operational mode** (audit/matriz/admin): compact 12-14px. `button()`/`<button>` dentro de `<form>` MUST `type="submit"` (F49). Status Meta na UI via filtro Jinja `meta_status_label` (registrado em routes.py). Card por padrão: `v4-card__header`/`v4-card__title` (h3).
+Tailwind CDN (no build) + tokens em `src/web/static/v4-tokens.css`. ~22 macros em `_components.html`. **Editorial mode** (login/access-denied/help/hero): display 36-56px (use `text-4xl md:text-display` pra responsivo), red `#e50914`. **Operational mode** (audit/matriz/admin): compact 12-14px. `button()`/`<button>` dentro de `<form>` MUST `type="submit"` (F49). Status Meta na UI via filtro Jinja `meta_status_label` (registrado em routes.py). Card por padrão: `v4-card__header`/`v4-card__title` (h3).
+
+Padrões pós-pacote UI/UX 2026-07-04 (2ª sessão):
+- **Ação de mutação do painel via HTMX = HX-aware** (espelha `sessions_revoke` em routes.py): se `HX-Request` → `204` + `HX-Redirect`/`HX-Refresh` + `HX-Trigger` toast; senão `303`. NUNCA retornar `303` cru pra um `hx-post` — o XHR segue o redirect e injeta a página inteira no `hx-target` (era o bug do dropdown de Managers). `204` = no-swap por spec, então o `hx-target` legado fica inofensivo.
+- **Flash de `?error=`/`?ok`**: mapa fixo código→mensagem PT-BR no handler; o query param NUNCA é ecoado no contexto (a macro `alert` renderiza `{{ message|safe }}` → eco = XSS). Código desconhecido → sem flash.
+- **Contraste AA**: texto secundário sobre fundo claro usa `--v4-gray-500` (`#6b6b6b`, ~5.7:1); `--v4-gray-300` fica só em borders e texto sobre fundo escuro (code-block). Token novo vai no `v4-tokens.css` E no `tailwind.config` de `_base.html`.
+- **Tabela responsiva** = envolver em `.v4-table-wrap` (overflow-x + `white-space:nowrap` ESCOPADO ao wrapper em `th`/`.col-mono`). **EXCLUIR** tabelas com `v4-table--sticky-head` (o overflow mata o sticky) e com dropdown `position:absolute` (o wrapper clipa o menu) — ex.: `admin/audit.html` e `admin/managers.html`.
+- **Fragmento HTMX de reposição** (ex.: `_toggle_checkbox_fragment`): o HTML de reposição DEVE re-emitir `hx-on::after-request` + `aria-label`, senão o feedback some após o 1º swap (F74). `hx-on` é string estática (sem XSS); preserve `html.escape` nos valores dinâmicos (`hx-vals`).
+- **Fontes**: via `<link rel="preconnect">` + `<link rel="stylesheet">` no head de `_base.html` (NÃO `@import` no CSS — waterfall). Host `fonts.bunny.net` já na CSP (Montserrat + JetBrains Mono, sintaxe dual-family `family=a:...|b:...`).
 
 ### Tool bucket classification (post-3b.39 F1)
 
@@ -247,5 +258,7 @@ Tailwind CDN (no build) + tokens em `src/web/static/v4-tokens.css`. ~22 macros e
 - Don't chamar `FacebookAdsApi.init()`; don't passar `access_token`/`app_id`/`app_secret` direto pro `__init__` — use `FacebookSession` bridge / `build_facebook_ads_api()` (F48).
 - Don't aplicar `is_allowed_email` (V4 domain) no callback Meta OAuth — `fb_email` é conta FB pessoal (A6); auth é o manager_id no state HMAC.
 - Don't usar `{{ button() }}` em `<form>` sem `type="submit"` (F49).
+- Don't retornar `303` cru de um handler chamado por `hx-post` — torne HX-aware (`204`+`HX-Redirect`/`HX-Refresh`, espelha `sessions_revoke`), senão o HTMX injeta a página no `hx-target` (dropdown Managers, 2ª sessão 07-04).
+- Don't ecoar `request.query_params` no contexto da macro `alert` (`{{ message|safe }}` = XSS) — mapa fixo código→mensagem; don't envolver tabela `sticky-head`/com-dropdown em `.v4-table-wrap` (mata sticky / clipa menu).
 - Don't shippar tool Meta com fields novos sem validar via `ads_get_field_context` (F53/F54/F55 — `/insights` vs `/entities`).
 - Don't upload secret via pipe PowerShell — arquivo binary intermediário (F47); NUNCA cole secret em chat.
