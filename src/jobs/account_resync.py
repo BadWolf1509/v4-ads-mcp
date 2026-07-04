@@ -28,6 +28,7 @@ from src.google_ads.accounts import (
 )
 from src.google_ads.client import build_client
 from src.jobs._audit import record_job_run
+from src.jobs.purge import purge_expired
 
 log = structlog.get_logger(__name__)
 
@@ -69,6 +70,13 @@ async def run() -> int:
                 print(
                     "No active OAuth connection — bootstrap an admin and have them complete /oauth/google/start first.",
                     file=sys.stderr,
+                )
+                await record_job_run(
+                    conn,
+                    operation="account_resync",
+                    platform="google",
+                    status="error",
+                    error_message="no active OAuth connection",
                 )
                 return 1
 
@@ -124,6 +132,25 @@ async def run() -> int:
         except Exception as e:  # noqa: BLE001
             log.warning("resync_meta_failed", error=str(e))
             print(f"WARN: Meta resync falhou (non-fatal): {e}", file=sys.stderr)
+
+        # Purge diário de tabelas transientes (pending_confirmations, rate_counters,
+        # meta_rate_counters). Best-effort: falha de purge não derruba o resync.
+        # audit_log NUNCA é purgado (compliance) — não faz parte deste escopo.
+        try:
+            counts = await purge_expired(pool)
+            total_purged = sum(counts.values())
+            async with pool.acquire() as conn:
+                await record_job_run(
+                    conn,
+                    operation="db_purge",
+                    platform="google",
+                    target_count=total_purged,
+                    params_summary=counts,
+                )
+            print(f"OK: purged {total_purged} rows ({counts})")
+        except Exception as e:  # noqa: BLE001
+            log.warning("db_purge_failed", error=str(e))
+            print(f"WARN: purge falhou (non-fatal): {e}", file=sys.stderr)
 
         return 0
     finally:

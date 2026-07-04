@@ -2,9 +2,11 @@
 
 run() é o Cloud Run Job diário: escolhe uma OAuth connection, decifra o refresh token,
 builda o client, descobre customers, puxa detalhes, faz upsert + mark_inactive, grava
-audit (record_job_run) e faz piggyback do resync Meta. Mockamos TODAS as dependências
-(build client, repos, resync_meta, connection pool) e asseveramos a orquestração +
-exit codes: 1 sem OAuth connection, 0 no sucesso, chama record_job_run, Meta é best-effort.
+audit (record_job_run), faz piggyback do resync Meta e purga tabelas transientes
+(purge_expired). Mockamos TODAS as dependências (build client, repos, resync_meta,
+purge_expired, connection pool) e asseveramos a orquestração + exit codes: 1 sem OAuth
+connection (auditado como status='error'), 0 no sucesso, chama record_job_run, Meta e
+purge são best-effort.
 """
 
 from contextlib import asynccontextmanager
@@ -72,6 +74,16 @@ def _base_patches(
             AsyncMock(return_value=deactivated_return),
         ),
         "record": patch(f"{_M}.record_job_run", AsyncMock(return_value=1)),
+        "purge": patch(
+            f"{_M}.purge_expired",
+            AsyncMock(
+                return_value={
+                    "pending_confirmations": 0,
+                    "rate_counters": 0,
+                    "meta_rate_counters": 0,
+                }
+            ),
+        ),
     }
     return mocks
 
@@ -90,6 +102,7 @@ async def test_run_returns_1_when_no_oauth_connection() -> None:
         mocks["pick"],
         mocks["build_client"] as build_client,
         mocks["upsert"] as upsert,
+        mocks["record"] as record,
     ):
         rc = await account_resync.run()
 
@@ -98,6 +111,13 @@ async def test_run_returns_1_when_no_oauth_connection() -> None:
     upsert.assert_not_awaited()
     # pool sempre fechado no finally.
     close_pool.assert_awaited_once()
+
+    # F73: falha de OAuth deve ficar visível no /audit — status='error'.
+    record.assert_awaited_once()
+    kwargs = record.call_args.kwargs
+    assert kwargs["operation"] == "account_resync"
+    assert kwargs["status"] == "error"
+    assert kwargs["error_message"]
 
 
 @pytest.mark.asyncio
@@ -120,6 +140,7 @@ async def test_run_happy_path_returns_0_and_orchestrates() -> None:
         mocks["upsert"] as upsert,
         mocks["mark_inactive"] as mark_inactive,
         mocks["record"] as record,
+        mocks["purge"] as purge,
         patch("src.jobs.meta_resync.resync_meta", AsyncMock(return_value=7)),
     ):
         rc = await account_resync.run()
@@ -131,7 +152,9 @@ async def test_run_happy_path_returns_0_and_orchestrates() -> None:
     fetch.assert_called_once()
     upsert.assert_awaited_once()
     mark_inactive.assert_awaited_once()
-    record.assert_awaited_once()
+    # record_job_run é chamado 2x no happy path: account_resync + db_purge (F73).
+    assert record.await_count == 2
+    purge.assert_awaited_once()
     close_pool.assert_awaited_once()
 
 
@@ -155,11 +178,14 @@ async def test_run_records_job_run_with_operation_and_deactivated_count() -> Non
         mocks["upsert"],
         mocks["mark_inactive"],
         mocks["record"] as record,
+        mocks["purge"],
         patch("src.jobs.meta_resync.resync_meta", AsyncMock(return_value=0)),
     ):
         await account_resync.run()
 
-    kwargs = record.call_args.kwargs
+    # 1ª chamada é a do account_resync propriamente dito (a 2ª, db_purge, é
+    # coberta em test_run_calls_purge_expired_and_records_db_purge abaixo).
+    kwargs = record.await_args_list[0].kwargs
     assert kwargs["operation"] == "account_resync"
     assert kwargs["platform"] == "google"
     assert kwargs["target_count"] == 2
@@ -187,6 +213,7 @@ async def test_run_passes_keep_ids_to_mark_inactive() -> None:
         mocks["upsert"],
         mocks["mark_inactive"] as mark_inactive,
         mocks["record"],
+        mocks["purge"],
         patch("src.jobs.meta_resync.resync_meta", AsyncMock(return_value=0)),
     ):
         await account_resync.run()
@@ -216,7 +243,74 @@ async def test_run_meta_failure_is_non_fatal() -> None:
         mocks["upsert"],
         mocks["mark_inactive"],
         mocks["record"],
+        mocks["purge"],
         patch("src.jobs.meta_resync.resync_meta", AsyncMock(side_effect=RuntimeError("meta down"))),
+    ):
+        rc = await account_resync.run()
+
+    assert rc == 0
+    close_pool.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_run_calls_purge_expired_and_records_db_purge() -> None:
+    """purge_expired() é chamado no fim do job e o resultado é auditado como db_purge."""
+    conn = MagicMock()
+    pool = _fake_pool(conn)
+    oc = SimpleNamespace(refresh_token_enc=b"enc")
+    mocks = _base_patches(pool=pool, oc=oc)
+    counts = {"pending_confirmations": 12, "rate_counters": 3, "meta_rate_counters": 1}
+
+    with (
+        mocks["init_pool"],
+        mocks["close_pool"],
+        mocks["get_pool"],
+        mocks["pick"],
+        mocks["derive"],
+        mocks["decrypt"],
+        mocks["build_client"],
+        mocks["list_customers"],
+        mocks["fetch"],
+        mocks["upsert"],
+        mocks["mark_inactive"],
+        mocks["record"] as record,
+        patch(f"{_M}.purge_expired", AsyncMock(return_value=counts)) as purge,
+        patch("src.jobs.meta_resync.resync_meta", AsyncMock(return_value=0)),
+    ):
+        rc = await account_resync.run()
+
+    assert rc == 0
+    purge.assert_awaited_once_with(pool)
+    db_purge_kwargs = record.await_args_list[-1].kwargs
+    assert db_purge_kwargs["operation"] == "db_purge"
+    assert db_purge_kwargs["platform"] == "google"
+    assert db_purge_kwargs["target_count"] == 16
+    assert db_purge_kwargs["params_summary"] == counts
+
+
+@pytest.mark.asyncio
+async def test_run_purge_failure_is_non_fatal() -> None:
+    """purge_expired() explode → run() ainda retorna 0 (best-effort, não quebra o resync)."""
+    conn = MagicMock()
+    pool = _fake_pool(conn)
+    oc = SimpleNamespace(refresh_token_enc=b"enc")
+    mocks = _base_patches(pool=pool, oc=oc)
+
+    with (
+        mocks["init_pool"],
+        mocks["close_pool"] as close_pool,
+        mocks["get_pool"],
+        mocks["pick"],
+        mocks["derive"],
+        mocks["decrypt"],
+        mocks["build_client"],
+        mocks["list_customers"],
+        mocks["fetch"],
+        mocks["upsert"],
+        mocks["mark_inactive"],
+        mocks["record"],
+        patch(f"{_M}.purge_expired", AsyncMock(side_effect=RuntimeError("db down"))),
+        patch("src.jobs.meta_resync.resync_meta", AsyncMock(return_value=0)),
     ):
         rc = await account_resync.run()
 
