@@ -211,12 +211,15 @@ async def execute_gaql_raw(
     session_id: UUID,
     customer_id: str,
     query: str,
+    limit: int,
     estimated_ops: int = 1,
 ) -> list[dict[str, Any]]:
     """Run a GAQL query and return rows as plain dicts of field paths to values.
 
     Used by `run_gaql` utility tool; no formatter. Always audited — run_gaql is
-    a sensitive escape hatch and every successful call must appear in the audit log.
+    a sensitive escape hatch and every successful call must appear in the audit
+    log WITH the query that ran (Task 1.3: params_summary was None before,
+    leaving the audit trail empty despite audit_this_call=True).
     """
 
     def _flatten(row: Any) -> dict[str, Any]:
@@ -234,4 +237,5 @@ async def execute_gaql_raw(
         operation_name="run_gaql",
         estimated_ops=estimated_ops,
         audit_this_call=True,
+        params_summary={"query": query[:800], "limit": limit},
     )

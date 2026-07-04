@@ -1,12 +1,21 @@
 # bucket: defer
 """Tool: validate_gaql - dry-run validate a GAQL query without consuming quota for data."""
 
+import time
 from typing import Any
 
+from src.config import get_settings
 from src.db import connection
+from src.db.repositories import audit_log
 from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
+from src.governance.rate_limit import (
+    QuotaExhausted,
+    before_call,
+    hash_developer_token,
+    record_actual,
+)
 from src.mcp.context import get_current
 from src.mcp.tools._registry import register_tool
 
@@ -80,7 +89,8 @@ async def validate_gaql(args: dict[str, Any]) -> dict[str, Any]:
 
     # Hard-gate por conta (F57 class): valida o grant ANTES de tocar o client.
     # Sem isto, qualquer gestor validava GAQL contra qualquer conta da MCC,
-    # vazando existência/schema da conta e bypassando o rate-limit.
+    # vazando existência/schema da conta e bypassando o rate-limit. O denied
+    # ja e auditado dentro de ensure_account_access -- nao duplicar aqui.
     async with connection.get_pool().acquire() as conn:
         await ensure_account_access(
             conn,
@@ -91,21 +101,96 @@ async def validate_gaql(args: dict[str, Any]) -> dict[str, Any]:
             level="read",
         )
 
-    client = await build_client_for_manager(manager_id=ctx.manager_id)
+    # Rate-limit no padrao 'reserved' de run_report (src/google_ads/reports.py,
+    # commit 510cd9d): validate_only ainda conta na quota do Google, entao a
+    # reserva precisa acontecer ANTES do search() -- antes desta task o gate
+    # citava rate-limit como motivacao mas o rate-limit nao estava no caminho.
+    settings = get_settings()
+    token_id = hash_developer_token(settings.google_ads_developer_token)
+    started = time.monotonic()
+    estimated_ops = 1
+    actual_ops = 0
+    status = "success"
+    error_message: str | None = None
+    result: dict[str, Any] = {"valid": True, "error": None}
 
+    pool = connection.get_pool()
+    reserved = False
     try:
-        ga_service = client.get_service("GoogleAdsService")
-        request = client.get_type("SearchGoogleAdsRequest")
-        request.customer_id = customer_id
-        request.query = query
-        request.validate_only = True
-        ga_service.search(request=request)
-        return {"valid": True, "error": None}
-    except Exception as e:
+        # Transacao EXTERNA torna as duas reservas tudo-ou-nada (mesmo padrao
+        # de run_report: before_call's conn.transaction() interna vira SAVEPOINT).
+        async with pool.acquire() as conn, conn.transaction():
+            await before_call(conn, token_id, estimated_ops=estimated_ops)
+            await before_call(
+                conn,
+                f"mgr:{ctx.manager_id}",
+                estimated_ops=estimated_ops,
+                daily_limit=settings.manager_daily_quota,
+            )
+        reserved = True
+
+        client = await build_client_for_manager(manager_id=ctx.manager_id)
+
         try:
-            friendly = to_friendly(e)
-            hinted = _augment_error_hint(query, friendly.message_pt)
-            return {"valid": False, "error": hinted, "code": friendly.code}
-        except Exception:
-            hinted = _augment_error_hint(query, str(e))
-            return {"valid": False, "error": hinted, "code": None}
+            ga_service = client.get_service("GoogleAdsService")
+            request = client.get_type("SearchGoogleAdsRequest")
+            request.customer_id = customer_id
+            request.query = query
+            request.validate_only = True
+            ga_service.search(request=request)
+            actual_ops = 1
+            result = {"valid": True, "error": None}
+        except Exception as e:
+            actual_ops = 1
+            try:
+                friendly = to_friendly(e)
+                hinted = _augment_error_hint(query, friendly.message_pt)
+                result = {"valid": False, "error": hinted, "code": friendly.code}
+            except Exception:
+                hinted = _augment_error_hint(query, str(e))
+                result = {"valid": False, "error": hinted, "code": None}
+            error_message = hinted
+            status = "error"
+    except QuotaExhausted as e:
+        # Preserva a UX do tool (shape {valid, error}) em vez de propagar a
+        # excecao crua pro caller MCP -- a mudanca aqui e so governanca.
+        status = "error"
+        error_message = str(e)
+        result = {"valid": False, "error": str(e), "code": "QUOTA_EXHAUSTED"}
+    except Exception as e:
+        # Qualquer outra falha (ex.: build_client_for_manager sem OAuth) que nao
+        # seja QuotaExhausted nem erro de validacao GAQL (esse ja e capturado e
+        # convertido em result acima). Mesmo padrao de run_report: audita como
+        # erro e re-propaga -- aqui NAO convertemos pro shape {valid, error}
+        # porque nao e uma resposta de validacao, e uma falha de infraestrutura.
+        status = "error"
+        error_message = str(e)
+        raise
+    finally:
+        if reserved:
+            async with pool.acquire() as conn, conn.transaction():
+                await record_actual(
+                    conn, token_id, actual_ops=actual_ops, estimated_ops=estimated_ops
+                )
+                await record_actual(
+                    conn,
+                    f"mgr:{ctx.manager_id}",
+                    actual_ops=actual_ops,
+                    estimated_ops=estimated_ops,
+                )
+        duration_ms = int((time.monotonic() - started) * 1000)
+        async with pool.acquire() as conn:
+            await audit_log.record(
+                conn,
+                manager_id=ctx.manager_id,
+                session_id=ctx.session_id,
+                customer_id=customer_id,
+                action_type="read",
+                operation="validate_gaql",
+                params_summary={"query": query[:800], "valid": result["valid"]},
+                status=status,
+                error_message=error_message,
+                duration_ms=duration_ms,
+            )
+
+    return result

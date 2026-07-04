@@ -20,8 +20,18 @@ _SCHEMA: dict[str, Any] = {
             "type": "string",
             "minLength": 10,
             "description": (
-                "GAQL query string. Sempre auditado. Resultado truncado em 1000 "
-                "linhas. Use list_gaql_resources pra ver o catalogo de campos."
+                "GAQL query string. Sempre auditado. Use list_gaql_resources pra "
+                "ver o catalogo de campos."
+            ),
+        },
+        "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 100,
+            "description": (
+                "Maximo de rows retornadas (default 100, teto 1000). Resultado "
+                "truncado inclui truncated:true + hint."
             ),
         },
         "aggregate_by": {
@@ -48,10 +58,12 @@ _MAX_RAW_ROWS_FOR_AGGREGATE = 10_000
     name="run_gaql",
     description=(
         "[DEFER] Escape hatch: executa qualquer GAQL contra a conta. Use apenas quando as "
-        "tools curadas nao cobrem o caso. Sempre auditado. Limite: resultado "
-        f"truncado em {_MAX_ROWS} linhas pra evitar respostas gigantes. Suporta "
+        "tools curadas nao cobrem o caso. Sempre auditado (incl. a query). Suporta "
+        "limit (default 100, teto 1000) pra controlar o tamanho da resposta — "
+        "resultado truncado inclui truncated:true + hint. Suporta "
         "aggregate_by (client-side GROUP BY+COUNT) pra queries com cardinalidade "
-        "alta — retorna groups[] ordenado por count DESC. Campos/métricas incertos: "
+        "alta — retorna groups[] ordenado por count DESC (corte fixo em "
+        f"{_MAX_ROWS} groups, independente de limit). Campos/métricas incertos: "
         "chame list_gaql_resources (catálogo válido) ou validate_gaql (valida sem "
         "executar) ANTES — métricas existem só em certos recursos e auction insights "
         "(overlap/position-above/outranking share) não existem na GAQL."
@@ -65,11 +77,17 @@ async def run_gaql(args: dict[str, Any]) -> dict[str, Any]:
     query = args["query"]
     aggregate_by = args.get("aggregate_by")
 
+    # Clamp defensivo: schema ja limita 1..1000, mas nao confiamos so no schema
+    # (clientes MCP podem nao validar client-side antes de enviar).
+    limit = int(args.get("limit", 100))
+    limit = max(1, min(limit, _MAX_ROWS))
+
     rows = await execute_gaql_raw(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
         query=query,
+        limit=limit,
     )
 
     if aggregate_by:
@@ -88,10 +106,14 @@ async def run_gaql(args: dict[str, Any]) -> dict[str, Any]:
             "groups": groups[:_MAX_ROWS],
         }
 
-    truncated = len(rows) > _MAX_ROWS
-    return {
+    truncated = len(rows) > limit
+    result: dict[str, Any] = {
         "customer_id": customer_id,
         "row_count": len(rows),
         "truncated": truncated,
-        "rows": rows[:_MAX_ROWS],
+        "rows": rows[:limit],
+        "returned": min(len(rows), limit),
     }
+    if truncated:
+        result["hint"] = "passe limit maior (max 1000) ou refine o WHERE"
+    return result

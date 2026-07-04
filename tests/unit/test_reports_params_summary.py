@@ -109,3 +109,58 @@ async def test_run_report_default_params_summary_is_none(monkeypatch):
 
     assert audit_mock.call_count == 1
     assert audit_mock.call_args.kwargs["params_summary"] is None
+
+
+@pytest.mark.asyncio
+async def test_execute_gaql_raw_builds_params_summary_with_query_and_limit(monkeypatch):
+    """Task 1.3: execute_gaql_raw DEVE montar params_summary={'query':..., 'limit':...}
+    e repassar pro run_report -- sem isto o audit de run_gaql fica vazio (o bug
+    original: params_summary=None mesmo com audit_this_call=True)."""
+    from src.google_ads import reports
+
+    run_report_mock = AsyncMock(return_value=[{"id": "1"}])
+    monkeypatch.setattr(reports, "run_report", run_report_mock)
+
+    manager_id = uuid4()
+    session_id = uuid4()
+
+    await reports.execute_gaql_raw(
+        manager_id=manager_id,
+        session_id=session_id,
+        customer_id="1234567890",
+        query="SELECT campaign.id FROM campaign",
+        limit=42,
+    )
+
+    run_report_mock.assert_awaited_once()
+    kwargs = run_report_mock.call_args.kwargs
+    assert kwargs["params_summary"] == {
+        "query": "SELECT campaign.id FROM campaign",
+        "limit": 42,
+    }
+    assert kwargs["audit_this_call"] is True
+    assert kwargs["operation_name"] == "run_gaql"
+
+
+@pytest.mark.asyncio
+async def test_execute_gaql_raw_truncates_query_in_params_summary_at_800_chars(monkeypatch):
+    """Query longa (>800 chars) e truncada no params_summary (nao no audit inteiro,
+    so o resumo persistido -- protege contra rows gigantes no audit_log)."""
+    from src.google_ads import reports
+
+    run_report_mock = AsyncMock(return_value=[])
+    monkeypatch.setattr(reports, "run_report", run_report_mock)
+
+    long_query = "SELECT campaign.id FROM campaign WHERE " + "x" * 900
+
+    await reports.execute_gaql_raw(
+        manager_id=uuid4(),
+        session_id=uuid4(),
+        customer_id="1234567890",
+        query=long_query,
+        limit=100,
+    )
+
+    kwargs = run_report_mock.call_args.kwargs
+    assert kwargs["params_summary"]["query"] == long_query[:800]
+    assert len(kwargs["params_summary"]["query"]) == 800

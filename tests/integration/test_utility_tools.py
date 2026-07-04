@@ -19,9 +19,21 @@ def bound_context():
 @pytest.fixture
 def bypass_gate():
     """validate_gaql roda ensure_account_access (hard-gate) antes de buildar o
-    client. Estes testes exercitam a lógica pós-gate, então o stub vira no-op.
-    (Convenção pré-flight: patch no namespace do TOOL, não em access/_common.)"""
-    fake_conn = MagicMock()
+    client, e (Task 1.3) rate-limit reserved + audit_log.record em volta do
+    search(). Estes testes exercitam a lógica pós-gate/pós-rate-limit, então
+    os stubs viram no-op. (Convenção pré-flight: patch no namespace do TOOL,
+    não em access/_common/reports.)
+
+    fake_conn.transaction() precisa ser um async context manager de verdade
+    (padrão 'reserved' de reports.py: `async with pool.acquire() as conn,
+    conn.transaction():`), não um MagicMock puro.
+    """
+    fake_conn = AsyncMock()
+    fake_txn_cm = MagicMock()
+    fake_txn_cm.__aenter__ = AsyncMock(return_value=None)
+    fake_txn_cm.__aexit__ = AsyncMock(return_value=None)
+    fake_conn.transaction = MagicMock(return_value=fake_txn_cm)
+
     cm = MagicMock()
     cm.__aenter__ = AsyncMock(return_value=fake_conn)
     cm.__aexit__ = AsyncMock(return_value=False)
@@ -33,6 +45,9 @@ def bypass_gate():
             "src.mcp.tools.validate_gaql.ensure_account_access",
             AsyncMock(return_value=None),
         ),
+        patch("src.mcp.tools.validate_gaql.before_call", AsyncMock(return_value=None)),
+        patch("src.mcp.tools.validate_gaql.record_actual", AsyncMock(return_value=None)),
+        patch("src.mcp.tools.validate_gaql.audit_log.record", AsyncMock(return_value=1)),
     ):
         yield
 
@@ -59,6 +74,7 @@ async def test_run_gaql_returns_rows_and_truncation_flag(bound_context):
 
 @pytest.mark.asyncio
 async def test_run_gaql_truncates_above_1000(bound_context):
+    """limit explicito no teto (1000) -> 1500 rows corta em 1000."""
     from src.mcp.tools.run_gaql import run_gaql
 
     fake_rows = [{"customer.id": str(i)} for i in range(1500)]
@@ -70,11 +86,126 @@ async def test_run_gaql_truncates_above_1000(bound_context):
             {
                 "customer_id": "1234567890",
                 "query": "SELECT customer.id FROM customer",
+                "limit": 1000,
             }
         )
     assert result["row_count"] == 1500
     assert result["truncated"] is True
     assert len(result["rows"]) == 1000
+    assert result["returned"] == 1000
+    assert "hint" in result
+
+
+@pytest.mark.asyncio
+async def test_run_gaql_default_limit_is_100_when_absent(bound_context):
+    """Sem `limit` no args -> default 100 (nao mais o teto de 1000 - F2/F22)."""
+    from src.mcp.tools.run_gaql import run_gaql
+
+    fake_rows = [{"customer.id": str(i)} for i in range(150)]
+    with patch(
+        "src.mcp.tools.run_gaql.execute_gaql_raw",
+        AsyncMock(return_value=fake_rows),
+    ):
+        result = await run_gaql(
+            {
+                "customer_id": "1234567890",
+                "query": "SELECT customer.id FROM customer",
+            }
+        )
+    assert result["row_count"] == 150
+    assert result["truncated"] is True
+    assert len(result["rows"]) == 100
+    assert result["returned"] == 100
+    assert "hint" in result
+
+
+@pytest.mark.asyncio
+async def test_run_gaql_custom_limit_truncates(bound_context):
+    """limit customizado (10) corta corretamente + shape truncated true."""
+    from src.mcp.tools.run_gaql import run_gaql
+
+    fake_rows = [{"customer.id": str(i)} for i in range(50)]
+    with patch(
+        "src.mcp.tools.run_gaql.execute_gaql_raw",
+        AsyncMock(return_value=fake_rows),
+    ):
+        result = await run_gaql(
+            {
+                "customer_id": "1234567890",
+                "query": "SELECT customer.id FROM customer",
+                "limit": 10,
+            }
+        )
+    assert result["row_count"] == 50
+    assert result["truncated"] is True
+    assert len(result["rows"]) == 10
+    assert result["returned"] == 10
+    assert "limit maior" in result["hint"] or "1000" in result["hint"]
+
+
+@pytest.mark.asyncio
+async def test_run_gaql_limit_equal_to_row_count_not_truncated(bound_context):
+    """rows == limit -> truncated false (shape estavel, sem hint)."""
+    from src.mcp.tools.run_gaql import run_gaql
+
+    fake_rows = [{"customer.id": str(i)} for i in range(10)]
+    with patch(
+        "src.mcp.tools.run_gaql.execute_gaql_raw",
+        AsyncMock(return_value=fake_rows),
+    ):
+        result = await run_gaql(
+            {
+                "customer_id": "1234567890",
+                "query": "SELECT customer.id FROM customer",
+                "limit": 10,
+            }
+        )
+    assert result["row_count"] == 10
+    assert result["truncated"] is False
+    assert len(result["rows"]) == 10
+    assert result["returned"] == 10
+
+
+@pytest.mark.asyncio
+async def test_run_gaql_limit_clamped_above_max(bound_context):
+    """limit acima de 1000 (defensivo, mesmo com schema maximum) clampa a 1000."""
+    from src.mcp.tools.run_gaql import run_gaql
+
+    fake_rows = [{"customer.id": str(i)} for i in range(1500)]
+    with patch(
+        "src.mcp.tools.run_gaql.execute_gaql_raw",
+        AsyncMock(return_value=fake_rows),
+    ):
+        result = await run_gaql(
+            {
+                "customer_id": "1234567890",
+                "query": "SELECT customer.id FROM customer",
+                "limit": 5000,
+            }
+        )
+    assert len(result["rows"]) == 1000
+    assert result["returned"] == 1000
+    assert result["truncated"] is True
+
+
+@pytest.mark.asyncio
+async def test_run_gaql_passes_query_and_limit_to_execute_gaql_raw(bound_context):
+    """execute_gaql_raw recebe limit (pra montar params_summary do audit)."""
+    from src.mcp.tools.run_gaql import run_gaql
+
+    fake_execute = AsyncMock(return_value=[{"customer.id": "1"}])
+    with patch("src.mcp.tools.run_gaql.execute_gaql_raw", fake_execute):
+        await run_gaql(
+            {
+                "customer_id": "1234567890",
+                "query": "SELECT customer.id FROM customer",
+                "limit": 42,
+            }
+        )
+    fake_execute.assert_awaited_once()
+    call_kwargs = fake_execute.call_args.kwargs
+    assert call_kwargs["query"] == "SELECT customer.id FROM customer"
+    assert call_kwargs["limit"] == 42
 
 
 @pytest.mark.asyncio
