@@ -23,6 +23,7 @@ from src.db import connection
 from src.governance.blast_radius import classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
+from src.mcp.tools._mutate_common import preview_envelope
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -127,15 +128,12 @@ async def remove_audience(args: dict[str, Any]) -> dict[str, Any]:
             payload=payload,
             blast_summary=summary,
         )
-    return {
-        "status": "dry_run",
-        "operation": "remove_audience",
-        "customer_id": customer_id,
-        "target_type": target_type,
-        "target_id": target_id,
-        "blast_summary": summary,
-        "confirmation_token": token,
-        "expires_in_minutes": 10,
-        "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
-        "confirmation_reason": risk.reason,
-    }
+    return preview_envelope(
+        "remove_audience",
+        customer_id,
+        summary,
+        token,
+        confirmation_reason=risk.reason,
+        target_type=target_type,
+        target_id=target_id,
+    )

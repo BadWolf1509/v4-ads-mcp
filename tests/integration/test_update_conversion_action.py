@@ -54,7 +54,7 @@ async def test_layer2_rejects_no_mutable_field(db, session_ctx):
     }
     result = await update_conversion_action(args)
     assert result["status"] == "error"
-    assert "sem nenhum field mutável" in result["error"]
+    assert "sem nenhum field mutável" in result["error_message"]
 
 
 @pytest.mark.integration

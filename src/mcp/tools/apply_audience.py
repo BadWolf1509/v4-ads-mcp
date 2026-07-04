@@ -37,6 +37,7 @@ from src.governance.blast_radius import RiskLevel, classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
 from src.mcp.tools._common import classify_partial
+from src.mcp.tools._mutate_common import applied_envelope, error_envelope, preview_envelope
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -249,22 +250,12 @@ async def apply_audience(args: dict[str, Any]) -> dict[str, Any]:
     # Pre-flight validation (schema can't express conditional rules)
     preflight_error = _preflight_validate(customer_id, target_type, mode, attachments)
     if preflight_error:
-        return {
-            "status": "error",
-            "operation": "apply_audience",
-            "customer_id": customer_id,
-            "error": preflight_error,
-        }
+        return error_envelope("apply_audience", preflight_error, customer_id=customer_id)
 
     # A3: async pre-flight (GAQL taxonomy lookup) — only runs if sync passes + has user_interest
     taxonomy_error = await _validate_user_interest_taxonomies(ctx, customer_id, attachments)
     if taxonomy_error:
-        return {
-            "status": "error",
-            "operation": "apply_audience",
-            "customer_id": customer_id,
-            "error": taxonomy_error,
-        }
+        return error_envelope("apply_audience", taxonomy_error, customer_id=customer_id)
 
     risk = classify(
         operation="apply_audience",
@@ -316,18 +307,17 @@ async def apply_audience(args: dict[str, Any]) -> dict[str, Any]:
             if per_op and per_op["error"] and row_status == "failed":
                 item["error"] = per_op["error"]
             attachments_result.append(item)
-        return {
-            "status": "applied",
-            "operation": "apply_audience",
-            "customer_id": customer_id,
-            "target_type": target_type,
-            "mode": mode,
-            "blast_summary": summary,
-            "applied_count": result["applied_count"],
-            "provider_request_id": result["provider_request_id"],
-            "auto_applied_reason": risk.reason,
-            "attachments_result": attachments_result,
-        }
+        return applied_envelope(
+            "apply_audience",
+            customer_id,
+            summary,
+            applied_count=result["applied_count"],
+            provider_request_id=result["provider_request_id"],
+            auto_applied_reason=risk.reason,
+            target_type=target_type,
+            mode=mode,
+            attachments_result=attachments_result,
+        )
 
     pool = connection.get_pool()
     async with pool.acquire() as conn:
@@ -340,15 +330,12 @@ async def apply_audience(args: dict[str, Any]) -> dict[str, Any]:
             payload=payload,
             blast_summary=summary,
         )
-    return {
-        "status": "dry_run",
-        "operation": "apply_audience",
-        "customer_id": customer_id,
-        "target_type": target_type,
-        "mode": mode,
-        "blast_summary": summary,
-        "confirmation_token": token,
-        "expires_in_minutes": 10,
-        "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
-        "confirmation_reason": risk.reason,
-    }
+    return preview_envelope(
+        "apply_audience",
+        customer_id,
+        summary,
+        token,
+        confirmation_reason=risk.reason,
+        target_type=target_type,
+        mode=mode,
+    )

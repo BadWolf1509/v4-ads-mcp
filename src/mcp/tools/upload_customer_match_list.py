@@ -27,6 +27,7 @@ from src.google_ads.queries._common import validate_user_list_for_upload
 from src.governance.blast_radius import classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
+from src.mcp.tools._mutate_common import error_envelope, preview_envelope
 from src.mcp.tools._registry import register_tool
 
 _SHA256_HEX_RE = re.compile(r"^[a-f0-9]{64}$")
@@ -159,12 +160,7 @@ async def upload_customer_match_list(args: dict[str, Any]) -> dict[str, Any]:
     # Layer 2: sync validation
     shape_error = _validate_payload_shape(args)
     if shape_error:
-        return {
-            "status": "error",
-            "operation": "upload_customer_match_list",
-            "customer_id": customer_id,
-            "error": shape_error,
-        }
+        return error_envelope("upload_customer_match_list", shape_error, customer_id=customer_id)
 
     # Layer 3: async pre-flight
     preflight_error = await validate_user_list_for_upload(
@@ -174,12 +170,13 @@ async def upload_customer_match_list(args: dict[str, Any]) -> dict[str, Any]:
         user_list_id=user_list_id,
     )
     if preflight_error:
-        return {
-            "status": "error",
-            "operation": "upload_customer_match_list",
-            "customer_id": customer_id,
+        message = preflight_error.pop("error")
+        return error_envelope(
+            "upload_customer_match_list",
+            message,
+            customer_id=customer_id,
             **preflight_error,
-        }
+        )
 
     hashed_members = _hash_members(members)
 
@@ -209,22 +206,20 @@ async def upload_customer_match_list(args: dict[str, Any]) -> dict[str, Any]:
             blast_summary=summary,
         )
 
-    return {
-        "status": "dry_run",
-        "operation": "upload_customer_match_list",
-        "customer_id": customer_id,
-        "user_list_id": user_list_id,
-        "operation_type": operation_type,
-        "members_count": len(members),
-        "blast_summary": summary,
-        "confirmation_token": token,
-        "expires_in_minutes": 10,
-        "to_apply": (
+    return preview_envelope(
+        "upload_customer_match_list",
+        customer_id,
+        summary,
+        token,
+        confirmation_reason=risk.reason,
+        user_list_id=user_list_id,
+        operation_type=operation_type,
+        members_count=len(members),
+        to_apply=(
             "Chame apply_change(confirmation_token=<token>) para submeter o job. "
             "Job é assíncrono no backend Google — após apply, tool retorna "
             "job_resource_name. Pra checar status posterior, use run_gaql com "
             "query 'SELECT offline_user_data_job.status, failure_reason FROM "
             "offline_user_data_job WHERE offline_user_data_job.id = <id>'."
         ),
-        "confirmation_reason": risk.reason,
-    }
+    )

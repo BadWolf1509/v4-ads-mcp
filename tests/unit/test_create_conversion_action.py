@@ -74,7 +74,7 @@ async def test_returns_error_on_preflight_duplicate_name(_ctx) -> None:
         )
 
     assert result["status"] == "error"
-    assert "ja existe" in result["error"]
+    assert "ja existe" in result["error_message"]
     assert result["operation"] == "create_conversion_action"
     assert "confirmation_token" not in result
 

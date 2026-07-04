@@ -140,7 +140,7 @@ async def test_preflight_rejects_invalid_campaign(_ctx) -> None:
         )
 
     assert result["status"] == "error"
-    assert "999" in result["error"]
+    assert "999" in result["error_message"]
     assert "confirmation_token" not in result
 
 
@@ -175,8 +175,8 @@ async def test_preflight_rejects_non_br_geo_target(_ctx) -> None:
         )
 
     assert result["status"] == "error"
-    assert "country_code 'US'" in result["error"]
-    assert "BR" in result["error"]
+    assert "country_code 'US'" in result["error_message"]
+    assert "BR" in result["error_message"]
 
 
 @pytest.mark.asyncio
@@ -382,7 +382,7 @@ async def test_rejects_campaign_attachment_without_campaign_id(_ctx) -> None:
         )
 
     assert result["status"] == "error"
-    assert "campaign_id" in result["error"]
+    assert "campaign_id" in result["error_message"]
     assert result["operation"] == "create_conversion_value_rule_set"
     # Validation must short-circuit before pre-flight call (no live API hit)
     campaign_validator.assert_not_called()
@@ -411,7 +411,7 @@ async def test_rejects_device_condition_type_without_device_condition(_ctx) -> N
     )
 
     assert result["status"] == "error"
-    assert "device_condition" in result["error"]
+    assert "device_condition" in result["error_message"]
 
 
 @pytest.mark.asyncio
@@ -436,7 +436,7 @@ async def test_rejects_geo_condition_type_without_geo_condition(_ctx) -> None:
     )
 
     assert result["status"] == "error"
-    assert "geo_condition" in result["error"]
+    assert "geo_condition" in result["error_message"]
 
 
 @pytest.mark.asyncio

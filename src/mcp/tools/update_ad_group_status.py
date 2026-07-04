@@ -8,6 +8,7 @@ from src.google_ads.mutations import run_mutation
 from src.governance.blast_radius import RiskLevel, classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
+from src.mcp.tools._mutate_common import applied_envelope, preview_envelope
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -71,15 +72,14 @@ async def update_ad_group_status(args: dict[str, Any]) -> dict[str, Any]:
             payload=payload,
             target_count=target_count,
         )
-        return {
-            "status": "applied",
-            "operation": "update_ad_group_status",
-            "customer_id": customer_id,
-            "blast_summary": summary,
-            "applied_count": result["applied_count"],
-            "provider_request_id": result["provider_request_id"],
-            "auto_applied_reason": risk.reason,
-        }
+        return applied_envelope(
+            "update_ad_group_status",
+            customer_id,
+            summary,
+            applied_count=result["applied_count"],
+            provider_request_id=result["provider_request_id"],
+            auto_applied_reason=risk.reason,
+        )
 
     pool = connection.get_pool()
     async with pool.acquire() as conn:
@@ -92,13 +92,10 @@ async def update_ad_group_status(args: dict[str, Any]) -> dict[str, Any]:
             payload=payload,
             blast_summary=summary,
         )
-    return {
-        "status": "dry_run",
-        "operation": "update_ad_group_status",
-        "customer_id": customer_id,
-        "blast_summary": summary,
-        "confirmation_token": token,
-        "expires_in_minutes": 10,
-        "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
-        "confirmation_reason": risk.reason,
-    }
+    return preview_envelope(
+        "update_ad_group_status",
+        customer_id,
+        summary,
+        token,
+        confirmation_reason=risk.reason,
+    )

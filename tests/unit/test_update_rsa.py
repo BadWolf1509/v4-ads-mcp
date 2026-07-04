@@ -67,7 +67,7 @@ async def test_returns_error_on_preflight_rejection(_ctx) -> None:
         )
 
     assert result["status"] == "error"
-    assert "999 nao encontrado" in result["error"]
+    assert "999 nao encontrado" in result["error_message"]
     assert result["operation"] == "update_rsa"
 
 
@@ -88,10 +88,11 @@ async def test_rejects_update_without_any_mutable_field(_ctx) -> None:
 
     assert result["status"] == "error"
     assert result["operation"] == "update_rsa"
-    assert "100" in result["error"]
+    assert "100" in result["error_message"]
     # Surface at least one mutable field name to guide the gestor
     assert any(
-        f in result["error"] for f in ("headlines", "descriptions", "final_urls", "path1", "path2")
+        f in result["error_message"]
+        for f in ("headlines", "descriptions", "final_urls", "path1", "path2")
     )
 
 
@@ -112,7 +113,7 @@ async def test_rejects_when_one_of_batched_updates_is_empty(_ctx) -> None:
     )
 
     assert result["status"] == "error"
-    assert "101" in result["error"]
+    assert "101" in result["error_message"]
 
 
 @pytest.mark.asyncio

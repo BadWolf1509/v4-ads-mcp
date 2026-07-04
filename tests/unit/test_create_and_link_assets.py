@@ -89,7 +89,7 @@ def test_validate_rejects_sitelink_with_callout_text():
     asset["callout_text"] = "Atendimento 24h"
     error = _validate_payload_shape(_valid_payload(assets=[asset]))
     assert error is not None
-    assert "callout_text" in error["error"]
+    assert "callout_text" in error["error_message"]
     assert error["operation"] == "create_and_link_assets"
 
 
@@ -106,7 +106,7 @@ def test_validate_rejects_promotion_with_both_discounts():
     }
     error = _validate_payload_shape(_valid_payload(assets=[asset]))
     assert error is not None
-    assert "exatamente um" in error["error"].lower()
+    assert "exatamente um" in error["error_message"].lower()
 
 
 def test_validate_rejects_promotion_without_any_discount():
@@ -120,7 +120,7 @@ def test_validate_rejects_promotion_without_any_discount():
     }
     error = _validate_payload_shape(_valid_payload(assets=[asset]))
     assert error is not None
-    assert "exatamente um" in error["error"].lower()
+    assert "exatamente um" in error["error_message"].lower()
 
 
 def test_validate_rejects_sitelink_with_only_description1():
@@ -129,7 +129,7 @@ def test_validate_rejects_sitelink_with_only_description1():
     # Missing description2
     error = _validate_payload_shape(_valid_payload(assets=[asset]))
     assert error is not None
-    assert "ambos" in error["error"].lower()
+    assert "ambos" in error["error_message"].lower()
 
 
 def test_validate_rejects_customer_level_with_non_matching_id():
@@ -138,7 +138,7 @@ def test_validate_rejects_customer_level_with_non_matching_id():
     asset["attachment_id"] = "9999999999"  # different customer
     error = _validate_payload_shape(_valid_payload(assets=[asset]))
     assert error is not None
-    assert "customer_id" in error["error"]
+    assert "customer_id" in error["error_message"]
 
 
 def test_validate_rejects_campaign_level_with_invalid_resource_path():
@@ -146,7 +146,9 @@ def test_validate_rejects_campaign_level_with_invalid_resource_path():
     asset["attachment_id"] = "99999"  # raw id, not resource path
     error = _validate_payload_shape(_valid_payload(assets=[asset]))
     assert error is not None
-    assert "resource path" in error["error"].lower() or "customers/" in error["error"]
+    assert (
+        "resource path" in error["error_message"].lower() or "customers/" in error["error_message"]
+    )
 
 
 def test_validate_rejects_ad_group_level_with_invalid_resource_path():
@@ -155,7 +157,7 @@ def test_validate_rejects_ad_group_level_with_invalid_resource_path():
     asset["attachment_id"] = "77777"  # raw id, not resource path
     error = _validate_payload_shape(_valid_payload(assets=[asset]))
     assert error is not None
-    assert "adGroups" in error["error"] or "resource path" in error["error"].lower()
+    assert "adGroups" in error["error_message"] or "resource path" in error["error_message"].lower()
 
 
 def test_validate_rejects_promotion_end_date_before_start():
@@ -172,8 +174,8 @@ def test_validate_rejects_promotion_end_date_before_start():
     }
     error = _validate_payload_shape(_valid_payload(assets=[asset]))
     assert error is not None
-    assert "end_date" in error["error"]
-    assert "start_date" in error["error"]
+    assert "end_date" in error["error_message"]
+    assert "start_date" in error["error_message"]
 
 
 def test_validate_error_contains_asset_index():
@@ -183,7 +185,7 @@ def test_validate_error_contains_asset_index():
     payload = _valid_payload(assets=[_valid_sitelink_asset(), bad_asset])
     error = _validate_payload_shape(payload)
     assert error is not None
-    assert "assets[1]" in error["error"]
+    assert "assets[1]" in error["error_message"]
 
 
 # ============================================================================

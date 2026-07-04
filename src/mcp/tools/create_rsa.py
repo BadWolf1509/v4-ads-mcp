@@ -20,6 +20,7 @@ from src.google_ads.queries._common import (
 from src.governance.blast_radius import classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
+from src.mcp.tools._mutate_common import error_envelope, preview_envelope
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -124,7 +125,7 @@ async def create_rsa(args: dict[str, Any]) -> dict[str, Any]:
         rsas=rsas,
     )
     if error:
-        return {"status": "error", "error": error, "operation": "create_rsa"}
+        return error_envelope("create_rsa", error)
 
     risk = classify(operation="create_rsa", params={"target_count": target_count})
 
@@ -169,14 +170,11 @@ async def create_rsa(args: dict[str, Any]) -> dict[str, Any]:
         for r in rsas
     ]
 
-    return {
-        "status": "dry_run",
-        "operation": "create_rsa",
-        "customer_id": customer_id,
-        "blast_summary": summary,
-        "rsas_preview": preview,
-        "confirmation_token": token,
-        "expires_in_minutes": 10,
-        "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
-        "confirmation_reason": risk.reason,
-    }
+    return preview_envelope(
+        "create_rsa",
+        customer_id,
+        summary,
+        token,
+        confirmation_reason=risk.reason,
+        rsas_preview=preview,
+    )

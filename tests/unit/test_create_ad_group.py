@@ -73,7 +73,7 @@ async def test_returns_error_on_preflight_rejection(_ctx) -> None:
         )
 
     assert result["status"] == "error"
-    assert "100 nao encontrada" in result["error"]
+    assert "100 nao encontrada" in result["error_message"]
     assert result["operation"] == "create_ad_group"
 
 

@@ -28,6 +28,7 @@ from src.google_ads.queries._common import (
 from src.governance.blast_radius import classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
+from src.mcp.tools._mutate_common import error_envelope, preview_envelope
 from src.mcp.tools._registry import register_tool
 
 # Sprint 3b.22 (F25+F27 cleanup): removed _CATEGORY_ENUM (conversion_action_categories
@@ -177,11 +178,7 @@ async def create_conversion_value_rule_set(args: dict[str, Any]) -> dict[str, An
 
     shape_error = _validate_payload_shape(args)
     if shape_error:
-        return {
-            "status": "error",
-            "error": shape_error,
-            "operation": "create_conversion_value_rule_set",
-        }
+        return error_envelope("create_conversion_value_rule_set", shape_error)
 
     # Pre-flight 1: campaign (if CAMPAIGN attachment)
     if attachment_type == "CAMPAIGN":
@@ -192,11 +189,7 @@ async def create_conversion_value_rule_set(args: dict[str, Any]) -> dict[str, An
             campaign_id=args["campaign_id"],
         )
         if error:
-            return {
-                "status": "error",
-                "error": error,
-                "operation": "create_conversion_value_rule_set",
-            }
+            return error_envelope("create_conversion_value_rule_set", error)
 
     # Pre-flight 2: geo targets (if any GEO_LOCATION rules)
     geo_paths: list[str] = []
@@ -220,11 +213,7 @@ async def create_conversion_value_rule_set(args: dict[str, Any]) -> dict[str, An
             geo_paths=deduped,
         )
         if error:
-            return {
-                "status": "error",
-                "error": error,
-                "operation": "create_conversion_value_rule_set",
-            }
+            return error_envelope("create_conversion_value_rule_set", error)
 
     risk = classify(
         operation="create_conversion_value_rule_set",
@@ -264,14 +253,11 @@ async def create_conversion_value_rule_set(args: dict[str, Any]) -> dict[str, An
         "condition_types": list(cond_dist.keys()),
     }
 
-    return {
-        "status": "dry_run",
-        "operation": "create_conversion_value_rule_set",
-        "customer_id": customer_id,
-        "blast_summary": summary,
-        "preview": preview,
-        "confirmation_token": token,
-        "expires_in_minutes": 10,
-        "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
-        "confirmation_reason": risk.reason,
-    }
+    return preview_envelope(
+        "create_conversion_value_rule_set",
+        customer_id,
+        summary,
+        token,
+        confirmation_reason=risk.reason,
+        preview=preview,
+    )

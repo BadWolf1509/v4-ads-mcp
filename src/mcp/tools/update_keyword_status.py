@@ -10,6 +10,7 @@ from src.google_ads.queries.keyword_lookup import fetch_keyword_texts
 from src.governance.blast_radius import RiskLevel, classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
+from src.mcp.tools._mutate_common import applied_envelope, error_envelope, preview_envelope
 from src.mcp.tools._registry import register_tool
 
 _SAMPLE_SIZE = 5  # A1: top 5 fixed V0 (configurable só se demanda real)
@@ -70,12 +71,13 @@ async def update_keyword_status(args: dict[str, Any]) -> dict[str, Any]:
         keyword_pairs=keyword_pairs,
     )
     if preflight_error:
-        return {
-            "status": "error",
-            "operation": "update_keyword_status",
-            "customer_id": customer_id,
+        message = preflight_error.pop("error")
+        return error_envelope(
+            "update_keyword_status",
+            message,
+            customer_id=customer_id,
             **preflight_error,
-        }
+        )
 
     risk = classify(
         operation="update_keyword_status",
@@ -97,15 +99,14 @@ async def update_keyword_status(args: dict[str, Any]) -> dict[str, Any]:
             payload=payload,
             target_count=target_count,
         )
-        return {
-            "status": "applied",
-            "operation": "update_keyword_status",
-            "customer_id": customer_id,
-            "blast_summary": summary,
-            "applied_count": result["applied_count"],
-            "provider_request_id": result["provider_request_id"],
-            "auto_applied_reason": risk.reason,
-        }
+        return applied_envelope(
+            "update_keyword_status",
+            customer_id,
+            summary,
+            applied_count=result["applied_count"],
+            provider_request_id=result["provider_request_id"],
+            auto_applied_reason=risk.reason,
+        )
 
     pool = connection.get_pool()
     async with pool.acquire() as conn:
@@ -138,15 +139,12 @@ async def update_keyword_status(args: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    return {
-        "status": "dry_run",
-        "operation": "update_keyword_status",
-        "customer_id": customer_id,
-        "blast_summary": summary,
-        "sample_keywords": sample_keywords,
-        "sample_truncated": target_count > _SAMPLE_SIZE,
-        "confirmation_token": token,
-        "expires_in_minutes": 10,
-        "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
-        "confirmation_reason": risk.reason,
-    }
+    return preview_envelope(
+        "update_keyword_status",
+        customer_id,
+        summary,
+        token,
+        confirmation_reason=risk.reason,
+        sample_keywords=sample_keywords,
+        sample_truncated=target_count > _SAMPLE_SIZE,
+    )

@@ -29,6 +29,7 @@ from src.governance.blast_radius import RiskLevel, classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
 from src.mcp.tools._common import classify_partial
+from src.mcp.tools._mutate_common import applied_envelope, preview_envelope
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -146,17 +147,16 @@ async def add_keywords(args: dict[str, Any]) -> dict[str, Any]:
             if per_op and per_op["error"] and row_status == "failed":
                 item["error"] = per_op["error"]
             added.append(item)
-        return {
-            "status": "applied",
-            "operation": "add_keywords",
-            "customer_id": customer_id,
-            "ad_group_id": ad_group_id,
-            "blast_summary": summary,
-            "applied_count": result["applied_count"],
-            "provider_request_id": result["provider_request_id"],
-            "auto_applied_reason": risk.reason,
-            "added": added,
-        }
+        return applied_envelope(
+            "add_keywords",
+            customer_id,
+            summary,
+            applied_count=result["applied_count"],
+            provider_request_id=result["provider_request_id"],
+            auto_applied_reason=risk.reason,
+            ad_group_id=ad_group_id,
+            added=added,
+        )
 
     pool = connection.get_pool()
     async with pool.acquire() as conn:
@@ -169,14 +169,11 @@ async def add_keywords(args: dict[str, Any]) -> dict[str, Any]:
             payload=payload,
             blast_summary=summary,
         )
-    return {
-        "status": "dry_run",
-        "operation": "add_keywords",
-        "customer_id": customer_id,
-        "ad_group_id": ad_group_id,
-        "blast_summary": summary,
-        "confirmation_token": token,
-        "expires_in_minutes": 10,
-        "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
-        "confirmation_reason": risk.reason,
-    }
+    return preview_envelope(
+        "add_keywords",
+        customer_id,
+        summary,
+        token,
+        confirmation_reason=risk.reason,
+        ad_group_id=ad_group_id,
+    )

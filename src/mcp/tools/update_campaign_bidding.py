@@ -7,6 +7,7 @@ from src.db import connection
 from src.governance.blast_radius import classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
+from src.mcp.tools._mutate_common import error_envelope, preview_envelope
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -59,19 +60,21 @@ async def update_campaign_bidding(args: dict[str, Any]) -> dict[str, Any]:
     summary_parts = [f"Mudar bidding da campanha {campaign_id} para {strategy}"]
     if strategy in ("TARGET_CPA", "MAXIMIZE_CONVERSIONS"):
         if "target_cpa_brl" not in args:
-            return {
-                "status": "error",
-                "error": f"target_cpa_brl e obrigatorio para a estrategia {strategy}.",
-            }
+            return error_envelope(
+                "update_campaign_bidding",
+                f"target_cpa_brl e obrigatorio para a estrategia {strategy}.",
+                customer_id=customer_id,
+            )
         target_brl = float(args["target_cpa_brl"])
         payload["target_value_micros"] = int(target_brl * 1_000_000)
         summary_parts.append(f"com Target CPA R$ {target_brl:.2f}")
     elif strategy == "TARGET_ROAS":
         if "target_roas" not in args:
-            return {
-                "status": "error",
-                "error": "target_roas e obrigatorio para a estrategia TARGET_ROAS.",
-            }
+            return error_envelope(
+                "update_campaign_bidding",
+                "target_roas e obrigatorio para a estrategia TARGET_ROAS.",
+                customer_id=customer_id,
+            )
         target_roas = float(args["target_roas"])
         payload["target_roas"] = target_roas
         summary_parts.append(f"com Target ROAS {target_roas:.2f}")
@@ -94,13 +97,10 @@ async def update_campaign_bidding(args: dict[str, Any]) -> dict[str, Any]:
             payload=payload,
             blast_summary=summary,
         )
-    return {
-        "status": "dry_run",
-        "operation": "update_campaign_bidding",
-        "customer_id": customer_id,
-        "blast_summary": summary,
-        "confirmation_token": token,
-        "expires_in_minutes": 10,
-        "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
-        "confirmation_reason": risk.reason,
-    }
+    return preview_envelope(
+        "update_campaign_bidding",
+        customer_id,
+        summary,
+        token,
+        confirmation_reason=risk.reason,
+    )

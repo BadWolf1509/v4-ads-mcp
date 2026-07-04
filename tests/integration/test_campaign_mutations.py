@@ -140,7 +140,7 @@ async def test_update_campaign_budget_returns_error_when_campaign_not_found(db, 
             }
         )
     assert result["status"] == "error"
-    assert "nao encontrada" in result["error"]
+    assert "nao encontrada" in result["error_message"]
 
 
 @pytest.mark.integration
@@ -174,4 +174,4 @@ async def test_update_campaign_bidding_target_cpa_missing_value_returns_error(db
         }
     )
     assert result["status"] == "error"
-    assert "target_cpa_brl" in result["error"]
+    assert "target_cpa_brl" in result["error_message"]

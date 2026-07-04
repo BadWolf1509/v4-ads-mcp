@@ -234,5 +234,5 @@ async def test_pre_flight_geo_rejection_propagates():
         result = await create_campaign(_valid_payload(geo_targets=["geoTargetConstants/2124"]))
 
     assert result["status"] == "error"
-    assert "BR" in result["error"]
+    assert "BR" in result["error_message"]
     assert result["operation"] == "create_campaign"

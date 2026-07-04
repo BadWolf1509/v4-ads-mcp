@@ -33,6 +33,7 @@ from src.google_ads.queries._common import validate_conversion_action_for_upload
 from src.governance.blast_radius import classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
+from src.mcp.tools._mutate_common import error_envelope, preview_envelope
 from src.mcp.tools._registry import register_tool
 
 _BRT = timezone(timedelta(hours=-3))
@@ -100,11 +101,7 @@ _SCHEMA: dict[str, Any] = {
 
 
 def _err(idx: int, msg: str) -> dict[str, Any]:
-    return {
-        "status": "error",
-        "error": f"conversions[{idx}]: {msg}",
-        "operation": "import_offline_conversions",
-    }
+    return error_envelope("import_offline_conversions", f"conversions[{idx}]: {msg}")
 
 
 def _validate_payload_shape(payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -150,29 +147,27 @@ def _validate_payload_shape(payload: dict[str, Any]) -> dict[str, Any] | None:
     gclids = [c["gclid"] for c in conversions]
     if len(gclids) != len(set(gclids)):
         dupes = [g for g, count in Counter(gclids).items() if count > 1]
-        return {
-            "status": "error",
-            "error": (
+        return error_envelope(
+            "import_offline_conversions",
+            (
                 f"gclids duplicados no batch: {dupes[:3]}"
                 f"{' ...' if len(dupes) > 3 else ''}. "
                 "Use order_id pra dedupe se intencional."
             ),
-            "operation": "import_offline_conversions",
-        }
+        )
 
     # Check 5: order_id duplicates (se presente)
     order_ids = [c["order_id"] for c in conversions if "order_id" in c]
     if order_ids and len(order_ids) != len(set(order_ids)):
         dupes = [o for o, count in Counter(order_ids).items() if count > 1]
-        return {
-            "status": "error",
-            "error": (
+        return error_envelope(
+            "import_offline_conversions",
+            (
                 f"order_id duplicados no batch: {dupes[:3]}"
                 f"{' ...' if len(dupes) > 3 else ''}. "
                 "Cada conversão deve ter order_id único."
             ),
-            "operation": "import_offline_conversions",
-        }
+        )
 
     return None
 
@@ -240,11 +235,9 @@ async def import_offline_conversions(args: dict[str, Any]) -> dict[str, Any]:
         conversion_action_id=conversion_action_id,
     )
     if pre_flight_error is not None:
-        return {
-            "status": "error",
-            "error": pre_flight_error,
-            "operation": "import_offline_conversions",
-        }
+        return error_envelope(
+            "import_offline_conversions", pre_flight_error, customer_id=customer_id
+        )
 
     summary = _build_summary(args)
     target_count = summary["conversion_count"]
@@ -279,14 +272,11 @@ async def import_offline_conversions(args: dict[str, Any]) -> dict[str, Any]:
             blast_summary=blast_summary,
         )
 
-    return {
-        "status": "dry_run",
-        "operation": "import_offline_conversions",
-        "customer_id": customer_id,
-        "blast_summary": blast_summary,
-        "summary": summary,
-        "confirmation_token": token,
-        "expires_in_minutes": 10,
-        "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
-        "confirmation_reason": risk.reason,
-    }
+    return preview_envelope(
+        "import_offline_conversions",
+        customer_id,
+        blast_summary,
+        token,
+        confirmation_reason=risk.reason,
+        summary=summary,
+    )

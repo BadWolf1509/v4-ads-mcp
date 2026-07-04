@@ -96,5 +96,5 @@ async def test_create_campaign_pre_flight_geo_rejection(db, session_ctx):
         )
 
     assert result["status"] == "error"
-    assert "BR" in result["error"]
+    assert "BR" in result["error_message"]
     assert "confirmation_token" not in result

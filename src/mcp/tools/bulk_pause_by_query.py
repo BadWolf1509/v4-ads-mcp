@@ -28,6 +28,7 @@ from src.google_ads.queries.bulk_pause import (
 from src.google_ads.reports import run_report
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
+from src.mcp.tools._mutate_common import error_envelope, preview_envelope
 from src.mcp.tools._registry import register_tool
 
 _MAX_ENTITIES = 100
@@ -209,11 +210,7 @@ async def bulk_pause_by_query(args: dict[str, Any]) -> dict[str, Any]:
     try:
         validate_filter(filter_clause)
     except FilterValidationError as e:
-        return {
-            "status": "error",
-            "operation": "bulk_pause_by_query",
-            "error": str(e),
-        }
+        return error_envelope("bulk_pause_by_query", str(e))
 
     try:
         start, end = resolve_date_window(
@@ -222,11 +219,7 @@ async def bulk_pause_by_query(args: dict[str, Any]) -> dict[str, Any]:
             end_date=end_date_arg,
         )
     except InvalidDateRangeError as e:
-        return {
-            "status": "error",
-            "operation": "bulk_pause_by_query",
-            "error": f"periodo invalido: {e}",
-        }
+        return error_envelope("bulk_pause_by_query", f"periodo invalido: {e}")
     query = bulk_pause_query(
         target_type=target_type,
         filter_clause=filter_clause,
@@ -269,19 +262,18 @@ async def bulk_pause_by_query(args: dict[str, Any]) -> dict[str, Any]:
 
     # Branch: overflow (LIMIT 101 hit)
     if count > _MAX_ENTITIES:
-        return {
-            "status": "error",
-            "operation": "bulk_pause_by_query",
-            "customer_id": customer_id,
-            "matched_count": f"{_MAX_ENTITIES}+",
-            "error": (
+        return error_envelope(
+            "bulk_pause_by_query",
+            (
                 f"Sua query matched {_MAX_ENTITIES}+ entidades — acima do limite de "
                 f"{_MAX_ENTITIES} por chamada (decisão MVP). Refine o filtro pra "
                 f"reduzir alcance, ou divida em multiplas chamadas. Ex: adicionar "
                 f"AND segments.date DURING LAST_7_DAYS, filtrar campaign.id "
                 f"especifico, ou metricas mais restritivas."
             ),
-        }
+            customer_id=customer_id,
+            matched_count=f"{_MAX_ENTITIES}+",
+        )
 
     # Branch: valid count (1..100) — capture + create token
     total_cost = sum(r.get("cost_brl", 0.0) for r in rows)
@@ -313,18 +305,15 @@ async def bulk_pause_by_query(args: dict[str, Any]) -> dict[str, Any]:
             blast_summary=summary,
         )
 
-    return {
-        "status": "dry_run",
-        "operation": "bulk_pause_by_query",
-        "customer_id": customer_id,
-        "confirmation_token": token,
-        "expires_in_minutes": 10,
-        "blast_summary": summary,
-        "preview": {
+    return preview_envelope(
+        "bulk_pause_by_query",
+        customer_id,
+        summary,
+        token,
+        preview={
             "target_type": target_type,
             "matched_count": count,
             "total_cost_brl": round(total_cost, 2),
             "sample": sample,
         },
-        "to_apply": "Chame apply_change(confirmation_token=<token>) para pausar.",
-    }
+    )

@@ -60,7 +60,7 @@ async def test_layer2_rejects_already_hashed_email(db, session_ctx):
     }
     result = await upload_customer_match_list(args)
     assert result["status"] == "error"
-    assert "já parece SHA-256" in result["error"] or "já parece" in result["error"]
+    assert "já parece SHA-256" in result["error_message"] or "já parece" in result["error_message"]
 
 
 @pytest.mark.integration

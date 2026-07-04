@@ -13,6 +13,7 @@ from src.google_ads.reports import run_report
 from src.governance.blast_radius import RiskLevel, classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
+from src.mcp.tools._mutate_common import applied_envelope, error_envelope, preview_envelope
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -72,11 +73,7 @@ async def update_ad_group_bid(args: dict[str, Any]) -> dict[str, Any]:
         ad_group_ids=ad_group_ids_check,
     )
     if strategy_error:
-        return {
-            "status": "error",
-            "error": strategy_error,
-            "operation": "update_ad_group_bid",
-        }
+        return error_envelope("update_ad_group_bid", strategy_error)
 
     # Resolve current bids via GAQL
     ag_ids = [b["ad_group_id"] for b in bids_input]
@@ -99,10 +96,7 @@ async def update_ad_group_bid(args: dict[str, Any]) -> dict[str, Any]:
     by_id = {r["ad_group_id"]: r for r in rows}
     missing = [b["ad_group_id"] for b in bids_input if b["ad_group_id"] not in by_id]
     if missing:
-        return {
-            "status": "error",
-            "error": f"Ad groups nao encontrados: {missing}",
-        }
+        return error_envelope("update_ad_group_bid", f"Ad groups nao encontrados: {missing}")
 
     # Build per-bid changes + compute max_delta_pct
     changes: list[dict[str, Any]] = []
@@ -154,16 +148,15 @@ async def update_ad_group_bid(args: dict[str, Any]) -> dict[str, Any]:
             payload=payload,
             target_count=target_count,
         )
-        return {
-            "status": "applied",
-            "operation": "update_ad_group_bid",
-            "customer_id": customer_id,
-            "blast_summary": summary,
-            "changes": changes,
-            "applied_count": result["applied_count"],
-            "provider_request_id": result["provider_request_id"],
-            "auto_applied_reason": risk.reason,
-        }
+        return applied_envelope(
+            "update_ad_group_bid",
+            customer_id,
+            summary,
+            applied_count=result["applied_count"],
+            provider_request_id=result["provider_request_id"],
+            auto_applied_reason=risk.reason,
+            changes=changes,
+        )
 
     pool = connection.get_pool()
     async with pool.acquire() as conn:
@@ -176,15 +169,12 @@ async def update_ad_group_bid(args: dict[str, Any]) -> dict[str, Any]:
             payload=payload,
             blast_summary=summary,
         )
-    return {
-        "status": "dry_run",
-        "operation": "update_ad_group_bid",
-        "customer_id": customer_id,
-        "blast_summary": summary,
-        "changes": changes,
-        "max_delta_pct": round(max_delta_pct, 2),
-        "confirmation_token": token,
-        "expires_in_minutes": 10,
-        "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
-        "confirmation_reason": risk.reason,
-    }
+    return preview_envelope(
+        "update_ad_group_bid",
+        customer_id,
+        summary,
+        token,
+        confirmation_reason=risk.reason,
+        changes=changes,
+        max_delta_pct=round(max_delta_pct, 2),
+    )

@@ -21,6 +21,7 @@ from src.google_ads.queries._common import validate_conversion_actions_exist
 from src.governance.blast_radius import RiskLevel, classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
+from src.mcp.tools._mutate_common import applied_envelope, error_envelope, preview_envelope
 from src.mcp.tools._registry import register_tool
 
 _MUTABLE_FIELDS = ("name", "primary_for_goal")
@@ -110,12 +111,7 @@ async def update_conversion_action(args: dict[str, Any]) -> dict[str, Any]:
     # Layer 2: synchronous validation pre-Google
     shape_error = _validate_payload_shape(args)
     if shape_error:
-        return {
-            "status": "error",
-            "operation": "update_conversion_action",
-            "customer_id": customer_id,
-            "error": shape_error,
-        }
+        return error_envelope("update_conversion_action", shape_error, customer_id=customer_id)
 
     # Layer 3: async pre-flight (validate IDs exist + not REMOVED)
     conversion_action_ids = [u["conversion_action_id"] for u in updates]
@@ -126,12 +122,13 @@ async def update_conversion_action(args: dict[str, Any]) -> dict[str, Any]:
         conversion_action_ids=conversion_action_ids,
     )
     if preflight_error:
-        return {
-            "status": "error",
-            "operation": "update_conversion_action",
-            "customer_id": customer_id,
+        message = preflight_error.pop("error")
+        return error_envelope(
+            "update_conversion_action",
+            message,
+            customer_id=customer_id,
             **preflight_error,
-        }
+        )
 
     target_count = len(updates)
     risk = classify(operation="update_conversion_action", params={"updates": updates})
@@ -156,16 +153,15 @@ async def update_conversion_action(args: dict[str, Any]) -> dict[str, Any]:
             payload=payload,
             target_count=target_count,
         )
-        return {
-            "status": "applied",
-            "operation": "update_conversion_action",
-            "customer_id": customer_id,
-            "blast_summary": summary,
-            "changes": changes_preview,
-            "applied_count": result["applied_count"],
-            "provider_request_id": result["provider_request_id"],
-            "auto_applied_reason": risk.reason,
-        }
+        return applied_envelope(
+            "update_conversion_action",
+            customer_id,
+            summary,
+            applied_count=result["applied_count"],
+            provider_request_id=result["provider_request_id"],
+            auto_applied_reason=risk.reason,
+            changes=changes_preview,
+        )
 
     pool = connection.get_pool()
     async with pool.acquire() as conn:
@@ -178,14 +174,11 @@ async def update_conversion_action(args: dict[str, Any]) -> dict[str, Any]:
             payload=payload,
             blast_summary=summary,
         )
-    return {
-        "status": "dry_run",
-        "operation": "update_conversion_action",
-        "customer_id": customer_id,
-        "blast_summary": summary,
-        "changes": changes_preview,
-        "confirmation_token": token,
-        "expires_in_minutes": 10,
-        "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
-        "confirmation_reason": risk.reason,
-    }
+    return preview_envelope(
+        "update_conversion_action",
+        customer_id,
+        summary,
+        token,
+        confirmation_reason=risk.reason,
+        changes=changes_preview,
+    )

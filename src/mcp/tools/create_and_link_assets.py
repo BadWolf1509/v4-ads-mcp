@@ -22,6 +22,7 @@ from src.db import connection
 from src.governance.blast_radius import classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
+from src.mcp.tools._mutate_common import error_envelope, preview_envelope
 from src.mcp.tools._registry import register_tool
 
 _ASSET_TYPES = ["SITELINK", "CALLOUT", "STRUCTURED_SNIPPET", "CALL", "PROMOTION"]
@@ -149,11 +150,7 @@ _COMMON_KEYS = {"type", "attachment_level", "attachment_id"}
 
 
 def _err(idx: int, msg: str) -> dict[str, Any]:
-    return {
-        "status": "error",
-        "error": f"assets[{idx}]: {msg}",
-        "operation": "create_and_link_assets",
-    }
+    return error_envelope("create_and_link_assets", f"assets[{idx}]: {msg}")
 
 
 def _validate_payload_shape(payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -321,14 +318,11 @@ async def create_and_link_assets(args: dict[str, Any]) -> dict[str, Any]:
             blast_summary=blast_summary,
         )
 
-    return {
-        "status": "dry_run",
-        "operation": "create_and_link_assets",
-        "customer_id": customer_id,
-        "blast_summary": blast_summary,
-        "summary": summary,
-        "confirmation_token": token,
-        "expires_in_minutes": 10,
-        "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
-        "confirmation_reason": risk.reason,
-    }
+    return preview_envelope(
+        "create_and_link_assets",
+        customer_id,
+        blast_summary,
+        token,
+        confirmation_reason=risk.reason,
+        summary=summary,
+    )

@@ -9,6 +9,7 @@ from src.google_ads.reports import run_report
 from src.governance.blast_radius import classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
+from src.mcp.tools._mutate_common import error_envelope, preview_envelope
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -73,10 +74,11 @@ async def update_campaign_budget(args: dict[str, Any]) -> dict[str, Any]:
         operation_name="update_campaign_budget_lookup",
     )
     if not rows:
-        return {
-            "status": "error",
-            "error": f"Campanha {campaign_id} nao encontrada na conta {customer_id}.",
-        }
+        return error_envelope(
+            "update_campaign_budget",
+            f"Campanha {campaign_id} nao encontrada na conta {customer_id}.",
+            customer_id=customer_id,
+        )
 
     info = rows[0]
     current_micros = info["current_amount_micros"]
@@ -113,16 +115,13 @@ async def update_campaign_budget(args: dict[str, Any]) -> dict[str, Any]:
             payload=payload,
             blast_summary=summary,
         )
-    return {
-        "status": "dry_run",
-        "operation": "update_campaign_budget",
-        "customer_id": customer_id,
-        "blast_summary": summary,
-        "current_amount_brl": current_brl,
-        "new_amount_brl": new_amount_brl,
-        "delta_pct": round(delta_pct, 2),
-        "confirmation_token": token,
-        "expires_in_minutes": 10,
-        "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
-        "confirmation_reason": risk.reason,
-    }
+    return preview_envelope(
+        "update_campaign_budget",
+        customer_id,
+        summary,
+        token,
+        confirmation_reason=risk.reason,
+        current_amount_brl=current_brl,
+        new_amount_brl=new_amount_brl,
+        delta_pct=round(delta_pct, 2),
+    )

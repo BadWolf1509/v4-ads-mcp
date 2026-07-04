@@ -46,7 +46,7 @@ async def test_update_ad_group_bid_rejects_when_campaign_uses_target_cpa() -> No
         result = await update_ad_group_bid(_one_bid_payload())
 
     assert result["status"] == "error"
-    assert "TARGET_CPA" in result["error"]
+    assert "TARGET_CPA" in result["error_message"]
     assert result["operation"] == "update_ad_group_bid"
 
 

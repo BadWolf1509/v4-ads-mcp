@@ -75,7 +75,7 @@ async def test_returns_error_on_preflight_rejection(_ctx) -> None:
         )
 
     assert result["status"] == "error"
-    assert "999 nao encontrado" in result["error"]
+    assert "999 nao encontrado" in result["error_message"]
     assert result["operation"] == "create_rsa"
 
 

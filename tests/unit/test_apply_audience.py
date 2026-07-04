@@ -123,8 +123,8 @@ async def test_preflight_rejects_bid_modifier_with_exclusion():
         }
     )
     assert result["status"] == "error"
-    assert "bid_modifier" in result["error"].lower()
-    assert "exclusion" in result["error"].lower()
+    assert "bid_modifier" in result["error_message"].lower()
+    assert "exclusion" in result["error_message"].lower()
 
 
 @pytest.mark.asyncio
@@ -147,7 +147,9 @@ async def test_preflight_rejects_audience_type_resource_name_mismatch():
         }
     )
     assert result["status"] == "error"
-    assert "incompativel" in result["error"].lower() or "userLists" in result["error"]
+    assert (
+        "incompativel" in result["error_message"].lower() or "userLists" in result["error_message"]
+    )
 
 
 @pytest.mark.asyncio
@@ -170,7 +172,9 @@ async def test_preflight_rejects_cross_account_resource_name():
         }
     )
     assert result["status"] == "error"
-    assert "outra conta" in result["error"].lower() or "9999999999" in result["error"]
+    assert (
+        "outra conta" in result["error_message"].lower() or "9999999999" in result["error_message"]
+    )
 
 
 @pytest.mark.asyncio
@@ -196,8 +200,11 @@ async def test_preflight_rejects_campaign_user_list_exclusion():
         }
     )
     assert result["status"] == "error"
-    assert "user_list" in result["error"].lower() or "customer match" in result["error"].lower()
-    assert "ad_group" in result["error"].lower()
+    assert (
+        "user_list" in result["error_message"].lower()
+        or "customer match" in result["error_message"].lower()
+    )
+    assert "ad_group" in result["error_message"].lower()
 
 
 @pytest.mark.asyncio
@@ -490,8 +497,10 @@ async def test_taxonomy_preflight_rejects_vertical_geo():
         )
 
     assert result["status"] == "error"
-    assert "VERTICAL_GEO" in result["error"] or "taxonomy" in result["error"].lower()
-    assert "IN_MARKET" in result["error"] or "AFFINITY" in result["error"]
+    assert (
+        "VERTICAL_GEO" in result["error_message"] or "taxonomy" in result["error_message"].lower()
+    )
+    assert "IN_MARKET" in result["error_message"] or "AFFINITY" in result["error_message"]
 
 
 @pytest.mark.asyncio

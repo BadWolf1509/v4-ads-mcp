@@ -21,6 +21,7 @@ from src.google_ads.queries._common import validate_existing_rsas_for_update
 from src.governance.blast_radius import classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
+from src.mcp.tools._mutate_common import error_envelope, preview_envelope
 from src.mcp.tools._registry import register_tool
 
 _MUTABLE_FIELDS = ("headlines", "descriptions", "final_urls", "path1", "path2")
@@ -132,7 +133,7 @@ async def update_rsa(args: dict[str, Any]) -> dict[str, Any]:
 
     shape_error = _validate_updates_have_mutable_field(updates)
     if shape_error:
-        return {"status": "error", "error": shape_error, "operation": "update_rsa"}
+        return error_envelope("update_rsa", shape_error)
 
     error = await validate_existing_rsas_for_update(
         manager_id=ctx.manager_id,
@@ -141,7 +142,7 @@ async def update_rsa(args: dict[str, Any]) -> dict[str, Any]:
         updates=updates,
     )
     if error:
-        return {"status": "error", "error": error, "operation": "update_rsa"}
+        return error_envelope("update_rsa", error)
 
     risk = classify(operation="update_rsa", params={"target_count": target_count})
 
@@ -179,14 +180,11 @@ async def update_rsa(args: dict[str, Any]) -> dict[str, Any]:
         for u in updates
     ]
 
-    return {
-        "status": "dry_run",
-        "operation": "update_rsa",
-        "customer_id": customer_id,
-        "blast_summary": summary,
-        "updates_preview": preview,
-        "confirmation_token": token,
-        "expires_in_minutes": 10,
-        "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
-        "confirmation_reason": risk.reason,
-    }
+    return preview_envelope(
+        "update_rsa",
+        customer_id,
+        summary,
+        token,
+        confirmation_reason=risk.reason,
+        updates_preview=preview,
+    )

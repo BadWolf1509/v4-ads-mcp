@@ -92,7 +92,7 @@ async def test_overflow_returns_error(monkeypatch):
 
     assert result["status"] == "error"
     assert result["matched_count"] == "100+"
-    assert "100" in result["error"]
+    assert "100" in result["error_message"]
     create_pending_mock.assert_not_called()
 
 
@@ -175,7 +175,7 @@ async def test_invalid_filter_returns_error(monkeypatch):
 
     assert result["status"] == "error"
     # Verify the PT-BR message reaches the user
-    assert "ponto-e-virgula" in result["error"].lower() or ";" in result["error"]
+    assert "ponto-e-virgula" in result["error_message"].lower() or ";" in result["error_message"]
     # Critical: no API call, no token creation
     run_report_mock.assert_not_called()
     create_pending_mock.assert_not_called()
@@ -201,6 +201,6 @@ async def test_invalid_date_range_returns_error(monkeypatch):
     )
 
     assert result["status"] == "error"
-    assert "date_range" in result["error"].lower()
+    assert "date_range" in result["error_message"].lower()
     run_report_mock.assert_not_called()
     create_pending_mock.assert_not_called()

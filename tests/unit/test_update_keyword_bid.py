@@ -47,7 +47,7 @@ async def test_update_keyword_bid_rejects_when_campaign_uses_maximize_conversion
         result = await update_keyword_bid(_one_bid_payload())
 
     assert result["status"] == "error"
-    assert "MAXIMIZE_CONVERSIONS" in result["error"]
+    assert "MAXIMIZE_CONVERSIONS" in result["error_message"]
     assert result["operation"] == "update_keyword_bid"
 
 

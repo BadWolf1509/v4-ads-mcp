@@ -24,6 +24,7 @@ from src.google_ads.queries._common import (
 from src.governance.blast_radius import classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
+from src.mcp.tools._mutate_common import error_envelope, preview_envelope
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -106,7 +107,7 @@ async def create_ad_group(args: dict[str, Any]) -> dict[str, Any]:
         ad_groups=ad_groups,
     )
     if error:
-        return {"status": "error", "error": error, "operation": "create_ad_group"}
+        return error_envelope("create_ad_group", error)
 
     risk = classify(operation="create_ad_group", params={"target_count": target_count})
 
@@ -149,14 +150,11 @@ async def create_ad_group(args: dict[str, Any]) -> dict[str, Any]:
         for ag in ad_groups
     ]
 
-    return {
-        "status": "dry_run",
-        "operation": "create_ad_group",
-        "customer_id": customer_id,
-        "blast_summary": summary,
-        "ad_groups_preview": preview,
-        "confirmation_token": token,
-        "expires_in_minutes": 10,
-        "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
-        "confirmation_reason": risk.reason,
-    }
+    return preview_envelope(
+        "create_ad_group",
+        customer_id,
+        summary,
+        token,
+        confirmation_reason=risk.reason,
+        ad_groups_preview=preview,
+    )

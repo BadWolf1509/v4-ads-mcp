@@ -187,4 +187,4 @@ async def test_update_ad_group_bid_returns_error_for_missing(db, session_ctx):
             }
         )
     assert result["status"] == "error"
-    assert "999" in result["error"]
+    assert "999" in result["error_message"]

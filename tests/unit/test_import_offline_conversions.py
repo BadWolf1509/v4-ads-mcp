@@ -94,7 +94,7 @@ def test_validate_rejects_conversion_in_future():
     bad = _valid_conversion(offset_minutes=10)
     error = _validate_payload_shape(_valid_payload(conversions=[bad]))
     assert error is not None
-    assert "futuro" in error["error"].lower()
+    assert "futuro" in error["error_message"].lower()
 
 
 def test_validate_accepts_future_within_5min_clock_skew():
@@ -108,7 +108,7 @@ def test_validate_rejects_conversion_older_than_90_days():
     bad = _valid_conversion(offset_minutes=-(95 * 24 * 60))
     error = _validate_payload_shape(_valid_payload(conversions=[bad]))
     assert error is not None
-    assert "90 dias" in error["error"]
+    assert "90 dias" in error["error_message"]
 
 
 def test_validate_rejects_duplicate_gclids_in_batch():
@@ -117,7 +117,7 @@ def test_validate_rejects_duplicate_gclids_in_batch():
     c2["gclid"] = c1["gclid"]  # same gclid
     error = _validate_payload_shape(_valid_payload(conversions=[c1, c2]))
     assert error is not None
-    assert "gclids duplicados" in error["error"].lower()
+    assert "gclids duplicados" in error["error_message"].lower()
 
 
 def test_validate_rejects_duplicate_order_ids_in_batch():
@@ -128,7 +128,7 @@ def test_validate_rejects_duplicate_order_ids_in_batch():
     c2["order_id"] = "crm-001"  # duplicate order_id
     error = _validate_payload_shape(_valid_payload(conversions=[c1, c2]))
     assert error is not None
-    assert "order_id duplicados" in error["error"].lower()
+    assert "order_id duplicados" in error["error_message"].lower()
 
 
 def test_validate_accepts_distinct_order_ids():
@@ -146,7 +146,7 @@ def test_validate_error_contains_row_index():
     c2 = _valid_conversion(offset_minutes=10)  # future
     error = _validate_payload_shape(_valid_payload(conversions=[c1, c2]))
     assert error is not None
-    assert "conversions[1]" in error["error"]
+    assert "conversions[1]" in error["error_message"]
 
 
 def test_validate_accepts_exactly_5min_clock_skew():
@@ -160,7 +160,7 @@ def test_validate_rejects_conversion_at_exactly_91_days_old():
     bad = _valid_conversion(offset_minutes=-(91 * 24 * 60))
     error = _validate_payload_shape(_valid_payload(conversions=[bad]))
     assert error is not None
-    assert "90 dias" in error["error"]
+    assert "90 dias" in error["error_message"]
 
 
 # ============================================================================
@@ -335,7 +335,7 @@ async def test_tool_pre_flight_error_propagates():
             result = await import_offline_conversions(args)
 
         assert result["status"] == "error"
-        assert "não existe" in result["error"]
+        assert "não existe" in result["error_message"]
         assert "confirmation_token" not in result
     finally:
         clear_current()

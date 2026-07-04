@@ -27,6 +27,7 @@ from src.google_ads.queries._common import validate_geo_target_constants_br_only
 from src.governance.blast_radius import classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
+from src.mcp.tools._mutate_common import error_envelope, preview_envelope
 from src.mcp.tools._registry import register_tool
 
 _BIDDING_STRATEGY_ENUM = [
@@ -157,11 +158,7 @@ async def create_campaign(args: dict[str, Any]) -> dict[str, Any]:
     # Runtime payload validation (Sprint 3b.19B.1 pattern)
     shape_error = _validate_payload_shape(args)
     if shape_error:
-        return {
-            "status": "error",
-            "error": shape_error,
-            "operation": "create_campaign",
-        }
+        return error_envelope("create_campaign", shape_error)
 
     # Pre-flight: V4 BR-invariant geo validation
     error = await validate_geo_target_constants_br_only(
@@ -171,11 +168,7 @@ async def create_campaign(args: dict[str, Any]) -> dict[str, Any]:
         geo_paths=args["geo_targets"],
     )
     if error:
-        return {
-            "status": "error",
-            "error": error,
-            "operation": "create_campaign",
-        }
+        return error_envelope("create_campaign", error)
 
     # Compute target_count: 1 budget + 1 campaign + N geos + 1 language
     geo_count = len(args["geo_targets"])
@@ -221,14 +214,11 @@ async def create_campaign(args: dict[str, Any]) -> dict[str, Any]:
         "has_schedule": params_summary["has_schedule"],
     }
 
-    return {
-        "status": "dry_run",
-        "operation": "create_campaign",
-        "customer_id": customer_id,
-        "blast_summary": summary,
-        "preview": preview,
-        "confirmation_token": token,
-        "expires_in_minutes": 10,
-        "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
-        "confirmation_reason": risk.reason,
-    }
+    return preview_envelope(
+        "create_campaign",
+        customer_id,
+        summary,
+        token,
+        confirmation_reason=risk.reason,
+        preview=preview,
+    )

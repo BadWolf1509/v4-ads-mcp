@@ -31,6 +31,7 @@ from src.google_ads.queries._common import validate_conversion_action_create
 from src.governance.blast_radius import classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
+from src.mcp.tools._mutate_common import error_envelope, preview_envelope
 from src.mcp.tools._registry import register_tool
 
 _CATEGORY_ENUM = [
@@ -153,11 +154,7 @@ async def create_conversion_action(args: dict[str, Any]) -> dict[str, Any]:
         actions=actions,
     )
     if error:
-        return {
-            "status": "error",
-            "error": error,
-            "operation": "create_conversion_action",
-        }
+        return error_envelope("create_conversion_action", error)
 
     risk = classify(operation="create_conversion_action", params={"target_count": target_count})
 
@@ -197,14 +194,11 @@ async def create_conversion_action(args: dict[str, Any]) -> dict[str, Any]:
         for a in actions
     ]
 
-    return {
-        "status": "dry_run",
-        "operation": "create_conversion_action",
-        "customer_id": customer_id,
-        "blast_summary": summary,
-        "actions_preview": preview,
-        "confirmation_token": token,
-        "expires_in_minutes": 10,
-        "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
-        "confirmation_reason": risk.reason,
-    }
+    return preview_envelope(
+        "create_conversion_action",
+        customer_id,
+        summary,
+        token,
+        confirmation_reason=risk.reason,
+        actions_preview=preview,
+    )
