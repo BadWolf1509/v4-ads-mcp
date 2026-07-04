@@ -17,7 +17,10 @@ _CSRF_EXEMPT_PREFIXES = ("/oauth/", "/mcp")
 # confirmed zero CSP violations in the browser console across all panel pages):
 #   - https://cdn.tailwindcss.com  → script (Play CDN, needs 'unsafe-eval')
 #   - https://unpkg.com            → script (htmx.org@2.0.3, SRI-pinned)
-#   - https://fonts.bunny.net      → stylesheet (@import in v4-base.css) + font files
+#   - https://fonts.bunny.net      → stylesheet + font files (loaded via <link
+#                                     rel="preconnect"|"stylesheet"> in _base.html
+#                                     head since 2026-07-04 — was @import in
+#                                     v4-base.css; policy below is unchanged)
 # No Google Fonts, no image CDNs. All other assets are self-hosted under /static/.
 # Inline <script>/<style> blocks are covered by 'unsafe-inline'/'unsafe-eval'.
 _CSP_POLICY = (
