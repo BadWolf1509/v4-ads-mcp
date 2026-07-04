@@ -2,11 +2,33 @@
 
 This document records the cloud-console actions performed once to bootstrap the project. Re-doing them is only necessary in disaster recovery or to provision a new environment.
 
+---
+
+## ⚠️ ESTADO ATUAL (autoritativo) — projeto novo pós-migração 2026-06-30 + investigação 2026-07-04
+
+> **A seção "GCP project" mais abaixo descreve o projeto ANTIGO `v4-ads-mcp-prod` (a decomissionar) — é histórico. Num DR real, siga ESTA seção.** A migração 2026-06-30 lift-and-shift criou um projeto novo com Wellington como owner (o antigo estava sem owner humano — motivo da migração). Detalhe: [`session-2026-06-30-handoff.md`](session-2026-06-30-handoff.md).
+
+- **Projeto GCP:** `v4-ads-mcp` (project number **`299432068772`**), **Wellington owner**, billing própria. Região `southamerica-east1`.
+- **URL do serviço:** `https://v4-ads-mcp-299432068772.southamerica-east1.run.app` (`PUBLIC_BASE_URL` no `deploy.yml`; OAuth redirect_uri usa `request.url_for`, não deriva daqui — F68).
+- **Secret Manager (13 secrets):** `database-url`, `aes-master-key`, `session-signing-key`, `google-oauth-client-id`, `google-oauth-client-secret`, `google-ads-developer-token`, `google-ads-login-customer-id`, `supabase-url`, `supabase-anon-key`, `supabase-service-key`, `meta-app-id`, `meta-app-secret`, `meta-system-user-token`. A `aes-master-key`/`session-signing-key` foram **regeneradas** na migração (→ gestores reconectam Google; token cifrado com chave antiga cai na mensagem amigável F70).
+- **Service accounts:** `v4-ads-mcp-runtime` (identidade do Cloud Run + jobs; tem `roles/storage.objectCreator` no bucket de backup), `github-deployer` (deploy via WIF), `v4-ads-mcp-scheduler` (invoca os jobs via Scheduler, least-privilege `run.invoker`).
+- **Cloud Run Jobs** (todos com process CNB `/cnb/process/<type>` — F66; criar/atualizar com arg iniciando em `/` **em PowerShell**, Git Bash mangla o path):
+  - `v4-ads-mcp-migrate` (`/cnb/process/migrate`) — roda no deploy.
+  - `v4-ads-mcp-resync` (`/cnb/process/resync`) — Google + Meta accounts + purge diário.
+  - `v4-ads-mcp-backup` (`/cnb/process/backup`) — dump csv.gz por tabela → GCS.
+- **Cloud Scheduler:** `v4-ads-mcp-resync-daily` (`0 6 * * *` BRT) + `v4-ads-mcp-backup-weekly` (`0 5 * * 0` BRT, domingo). Ambos via SA `v4-ads-mcp-scheduler`.
+- **Backup / DR:** bucket `gs://v4-ads-mcp-backups` (southamerica-east1, UBLA, **lifecycle delete > 90d**). Runbook completo de restore: [`backup-restore-runbook.md`](backup-restore-runbook.md). **O `audit_log` NÃO é purgado** (compliance); `pending_confirmations` (>7d) e `rate_counters`/`meta_rate_counters` (>90d) são purgados no resync diário ([`src/jobs/purge.py`](../../src/jobs/purge.py)).
+- **Observabilidade / alerting** (Monitoring, criado 2026-07-04 — antes ZERO): canal e-mail `wellington.ribeiro@v4company.com`; uptime check HTTPS `/health?deep=1` (contentMatcher `"db":"ok"`, 300s) + policy; policy de **Cloud Run Job failed** (cobre resync/migrate/backup); policy log-based `severity>=ERROR` do serviço (rate-limit 1/h). Recriar via REST Monitoring API com `gcloud auth print-access-token` (o componente `gcloud alpha monitoring` não está instalado local).
+- **CI/Deploy:** deploy gated pelo CI (`ci.yml` job `test` → job `deploy` `needs: test`). **Lockfile `requirements.txt`** pinado (uv pip compile do pyproject) instalado pelo buildpack CNB e pelo CI + `pip-audit` non-blocking. Smoke do deploy inclui `/mcp` autenticado (`SMOKE_MCP_BEARER` = manager smoke sem grants).
+- **GitHub repo secrets:** `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA`, `GCP_PROJECT_ID`, `GCP_REGION`, **`SMOKE_MCP_BEARER`**.
+
+---
+
 ## GitHub
 - [x] Repo: `BadWolf1509/v4-ads-mcp` (private)
 - [ ] Branch protection on `main`: require PR + passing CI (set after Task 11)
 
-## GCP project
+## GCP project (HISTÓRICO — projeto antigo `v4-ads-mcp-prod`, a decomissionar; use a seção "ESTADO ATUAL" acima)
 - [x] Project: `v4-ads-mcp-prod` (project number `518798891402`, billing `01286F-7A67A7-226F9E`)
 - [x] APIs enabled: Cloud Run, Cloud Build, Artifact Registry, Secret Manager, Cloud Logging, Cloud Scheduler, IAM Credentials, STS, Google Ads
 - [x] Service accounts: `v4-ads-mcp-runtime` (Cloud Run identity), `github-deployer` (CI deploys via Workload Identity Federation)
