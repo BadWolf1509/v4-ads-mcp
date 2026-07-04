@@ -5,10 +5,10 @@
 
 {% block content %}
 <section class="max-w-4xl mx-auto py-6 px-4">
-  <h1>Convites</h1>
-  <p class="text-v4-gray-700 mb-6">
-    Adicione gestores pelo email <code>@v4company.com</code> antes do primeiro login deles. Sem convite, o login é rejeitado.
-  </p>
+  <header class="mb-6">
+    <h1 class="text-3xl font-extrabold tracking-tight">Convites</h1>
+    <p class="text-sm text-v4-gray-700">Adicione gestores pelo email <code>@v4company.com</code> antes do primeiro login deles. Sem convite, o login é rejeitado.</p>
+  </header>
 
   {% if flash %}{{ alert(flash.message, flash.kind) }}{% endif %}
 

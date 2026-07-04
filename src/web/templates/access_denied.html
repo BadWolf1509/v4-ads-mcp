@@ -6,21 +6,21 @@
 {% block content %}
 <div class="max-w-xl mx-auto py-16 px-4 text-center">
   {% if reason == "domain" %}
-    <h1 class="text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
+    <h1 class="text-4xl md:text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
       Domínio não permitido.
     </h1>
     <p class="mt-6 text-v4-gray-700">
       O V4 Ads MCP é restrito a contas <code>@v4company.com</code>. Use sua conta corporativa.
     </p>
   {% elif reason == "deactivated" %}
-    <h1 class="text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
+    <h1 class="text-4xl md:text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
       Conta desativada.
     </h1>
     <p class="mt-6 text-v4-gray-700">
       Sua conta foi desativada por um admin. Entre em contato com o admin V4 da sua unidade pra reativar.
     </p>
   {% elif reason == 'meta_scopes_missing' %}
-    <h1 class="text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
+    <h1 class="text-4xl md:text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
       Permissões Meta incompletas.
     </h1>
     <p class="mt-6 text-v4-gray-700">
@@ -36,27 +36,27 @@
       e marque <strong>TODAS as opções</strong> no consent screen do Facebook.
     </p>
   {% elif reason == 'meta_oauth_error' %}
-    <h1 class="text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
+    <h1 class="text-4xl md:text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
       Erro no login Meta.
     </h1>
     <p class="mt-6 text-v4-gray-700">O Facebook retornou um erro durante o consent:</p>
     <p class="mt-2 text-sm bg-v4-gray-50 p-3 rounded"><code>{{ detail }}</code></p>
     <p class="mt-4"><a href="/oauth/meta/start" class="text-v4-red hover:underline">Tentar novamente</a></p>
   {% elif reason == 'meta_token_exchange_failed' %}
-    <h1 class="text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
+    <h1 class="text-4xl md:text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
       Falha na troca do token Meta.
     </h1>
     <p class="mt-6 text-v4-gray-700">Não conseguimos completar a autenticação. Pode ser timeout temporário.</p>
     <p class="mt-4"><a href="/oauth/meta/start" class="text-v4-red hover:underline">Tentar novamente</a></p>
   {% elif reason in ('meta_oauth_incomplete', 'meta_state_invalid', 'meta_userinfo_failed', 'meta_userinfo_incomplete') %}
-    <h1 class="text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
+    <h1 class="text-4xl md:text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
       Erro inesperado no login Meta.
     </h1>
     <!-- reason: {{ reason }} -->
     <p class="mt-6 text-v4-gray-700">Ocorreu um erro inesperado durante a autenticação. Tente novamente — se persistir, avise o admin da sua unidade.</p>
     <p class="mt-4"><a href="/oauth/meta/start" class="text-v4-red hover:underline">Tentar novamente</a></p>
   {% else %}
-    <h1 class="text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
+    <h1 class="text-4xl md:text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
       Você ainda não tem acesso.
     </h1>
     <p class="mt-6 text-v4-gray-700">
