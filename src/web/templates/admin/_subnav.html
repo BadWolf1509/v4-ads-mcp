@@ -5,7 +5,7 @@
      {% if request.url.path == '/admin' %}aria-current="page"{% endif %}>Visão geral</a>
   <a href="/admin/managers"
      class="v4-subnav__link {% if request.url.path == '/admin/managers' %}is-active{% endif %}"
-     {% if request.url.path == '/admin/managers' %}aria-current="page"{% endif %}>Managers</a>
+     {% if request.url.path == '/admin/managers' %}aria-current="page"{% endif %}>Gestores</a>
   <a href="/admin/invites"
      class="v4-subnav__link {% if request.url.path == '/admin/invites' %}is-active{% endif %}"
      {% if request.url.path == '/admin/invites' %}aria-current="page"{% endif %}>
@@ -21,5 +21,5 @@
      {% if request.url.path.startswith('/admin/access') %}aria-current="page"{% endif %}>Acessos</a>
   <a href="/admin/audit"
      class="v4-subnav__link {% if request.url.path == '/admin/audit' %}is-active{% endif %}"
-     {% if request.url.path == '/admin/audit' %}aria-current="page"{% endif %}>Audit global</a>
+     {% if request.url.path == '/admin/audit' %}aria-current="page"{% endif %}>Auditoria global</a>
 </nav>

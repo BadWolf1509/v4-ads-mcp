@@ -186,8 +186,8 @@ async def test_admin_audit_renders(client: AsyncClient):
         cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
     )
     assert response.status_code == 200
-    # Phase 4 Task 4.4 redesigned the page; new template uses "Audit global" header.
-    assert "Audit global" in response.text
+    # Phase 4 Task 4.4 redesigned the page; new template uses "Auditoria global" header.
+    assert "Auditoria global" in response.text
 
 
 @pytest.mark.integration

@@ -103,6 +103,11 @@ main {
   color: var(--v4-red);
 }
 
+.v4-header__nav a[aria-current="page"] {
+  color: var(--v4-red);
+  font-weight: 600;
+}
+
 .v4-header__user {
   display: flex;
   align-items: center;

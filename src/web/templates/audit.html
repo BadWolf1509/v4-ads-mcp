@@ -1,13 +1,13 @@
 {% extends "_base.html" %}
 {% from "_components.html" import badge, empty_state, pagination, tooltip %}
 
-{% block title %}Audit log — V4 Ads MCP{% endblock %}
+{% block title %}Auditoria — V4 Ads MCP{% endblock %}
 
 {% block content %}
 <section class="max-w-6xl mx-auto py-6 px-4">
   <header class="mb-6 flex flex-wrap items-end justify-between gap-3">
     <div>
-      <h1 class="text-3xl font-extrabold tracking-tight">Audit log</h1>
+      <h1 class="text-3xl font-extrabold tracking-tight">Auditoria</h1>
       <p class="text-sm text-v4-gray-700">Suas chamadas MCP nos últimos {{ filter_days }} dias.</p>
     </div>
     <a href="/audit/export.csv?{{ query_string }}" class="v4-btn v4-btn--secondary v4-btn--small">

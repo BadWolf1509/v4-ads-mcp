@@ -54,8 +54,8 @@
       <a href="/" {% if request.url.path == "/" %}aria-current="page"{% endif %}>Dashboard</a>
       <a href="/accounts" {% if request.url.path == "/accounts" %}aria-current="page"{% endif %}>Contas</a>
       <a href="/sessions" {% if request.url.path.startswith("/sessions") %}aria-current="page"{% endif %}>Sessões</a>
-      <a href="/audit" {% if request.url.path.startswith("/audit") %}aria-current="page"{% endif %}>Audit</a>
-      <a href="/help" {% if request.url.path == "/help" %}aria-current="page"{% endif %}>Help</a>
+      <a href="/audit" {% if request.url.path.startswith("/audit") %}aria-current="page"{% endif %}>Auditoria</a>
+      <a href="/help" {% if request.url.path == "/help" %}aria-current="page"{% endif %}>Ajuda</a>
       {% if current_user.is_admin %}
       <a href="/admin" {% if request.url.path.startswith("/admin") %}aria-current="page"{% endif %}>Admin</a>
       {% endif %}
@@ -78,18 +78,18 @@
         <a href="/" class="v4-drawer__link">Dashboard</a>
         <a href="/accounts" class="v4-drawer__link">Contas</a>
         <a href="/sessions" class="v4-drawer__link">Sessões</a>
-        <a href="/audit" class="v4-drawer__link">Audit</a>
-        <a href="/help" class="v4-drawer__link">Help</a>
+        <a href="/audit" class="v4-drawer__link">Auditoria</a>
+        <a href="/help" class="v4-drawer__link">Ajuda</a>
       </div>
       {% if current_user.is_admin %}
       <div class="v4-drawer__section">
         <div class="v4-drawer__heading">Admin</div>
         <a href="/admin" class="v4-drawer__link">Visão geral</a>
-        <a href="/admin/managers" class="v4-drawer__link">Managers</a>
+        <a href="/admin/managers" class="v4-drawer__link">Gestores</a>
         <a href="/admin/invites" class="v4-drawer__link">Convites</a>
         <a href="/admin/accounts" class="v4-drawer__link">Contas</a>
         <a href="/admin/access" class="v4-drawer__link">Acessos</a>
-        <a href="/admin/audit" class="v4-drawer__link">Audit global</a>
+        <a href="/admin/audit" class="v4-drawer__link">Auditoria global</a>
       </div>
       {% endif %}
       <div class="v4-drawer__section">
