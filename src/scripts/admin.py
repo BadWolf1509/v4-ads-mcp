@@ -80,7 +80,7 @@ async def cmd_create_manager(args: argparse.Namespace) -> int:
                 return 0
             new_id = uuid4()
             m = await managers.create(
-                conn, manager_id=new_id, email=args.email, full_name=args.name, role=args.role
+                conn, manager_id=new_id, email=args.email, full_name=args.name, role="gestor"
             )
             print(f"Created manager: {m.id} ({m.email}, role={m.role}, status={m.status})")
             print("No account grants issued (zero blast radius).")
@@ -206,7 +206,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_cm.add_argument("--email", required=True)
     p_cm.add_argument("--name", default=None)
-    p_cm.add_argument("--role", default="gestor", choices=["gestor", "admin"])
 
     p_inv = sub.add_parser("invite", help="Print an OAuth invite URL")
     p_inv.add_argument("--email", required=True)

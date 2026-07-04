@@ -47,7 +47,7 @@ async def migrated(dsn: str) -> AsyncIterator[None]:
 
 
 def _args(**overrides: object) -> argparse.Namespace:
-    defaults: dict[str, object] = {"email": "smoke@v4company.com", "name": None, "role": "gestor"}
+    defaults: dict[str, object] = {"email": "smoke@v4company.com", "name": None}
     return argparse.Namespace(**{**defaults, **overrides})
 
 
