@@ -404,7 +404,8 @@ async def test_admin_invites_cancel_records_audit(client: AsyncClient):
         f"/admin/invites/{invite.id}/cancel",
         cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
     )
-    assert response.status_code == 200
+    assert response.status_code == 303
+    assert response.headers["location"] == "/admin/invites"
 
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -417,6 +418,67 @@ async def test_admin_invites_cancel_records_audit(client: AsyncClient):
     assert row["manager_id"] == admin_id
     summary = json.loads(row["params_summary"])
     assert summary["email"] == "cancelado@v4company.com"
+
+
+@pytest.mark.integration
+async def test_admin_invites_cancel_htmx_returns_refresh(client: AsyncClient):
+    pool = connection.get_pool()
+    admin_id, _ = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        invite = await managers.create_invited(
+            conn,
+            email="cancelado.htmx@v4company.com",
+            invited_by=admin_id,
+            full_name="A Cancelar Htmx",
+        )
+
+    response = await client.post(
+        f"/admin/invites/{invite.id}/cancel",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+        headers={"HX-Request": "true"},
+    )
+    assert response.status_code == 204
+    assert response.headers["HX-Refresh"] == "true"
+
+    async with pool.acquire() as conn:
+        remaining = await conn.fetchval("SELECT 1 FROM managers WHERE id = $1", invite.id)
+        row = await conn.fetchrow(
+            """SELECT operation, action_type, manager_id, params_summary
+               FROM audit_log WHERE operation = $1 ORDER BY occurred_at DESC LIMIT 1""",
+            "admin_invite_cancel",
+        )
+    assert remaining is None
+    assert row is not None
+    assert row["action_type"] == "mutate"
+    assert row["manager_id"] == admin_id
+    summary = json.loads(row["params_summary"])
+    assert summary["email"] == "cancelado.htmx@v4company.com"
+
+
+@pytest.mark.integration
+async def test_admin_invites_shows_age_and_onboarding(client: AsyncClient):
+    pool = connection.get_pool()
+    admin_id, _ = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        invite = await managers.create_invited(
+            conn,
+            email="antigo@v4company.com",
+            invited_by=admin_id,
+            full_name="Convite Antigo",
+        )
+        await conn.execute(
+            "UPDATE managers SET invited_at = now() - interval '10 days' WHERE id = $1",
+            invite.id,
+        )
+
+    response = await client.get(
+        "/admin/invites",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 200
+    assert "há 10 dias" in response.text
+    assert "/login" in response.text
+    assert "Copiar mensagem" in response.text
 
 
 @pytest.mark.integration

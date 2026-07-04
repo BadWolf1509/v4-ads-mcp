@@ -26,6 +26,9 @@
   <div class="v4-card">
     <div class="v4-card__header">
       <h3 class="v4-card__title">Pendentes ({{ invites|length }})</h3>
+      <p class="text-v4-gray-700 text-sm mt-1">
+        Nenhum email automático é enviado — copie a mensagem de onboarding e mande pro gestor.
+      </p>
     </div>
     {% if invites %}
     <table class="v4-table v4-table--compact">
@@ -40,19 +43,34 @@
       </thead>
       <tbody>
         {% for inv in invites %}
+        {% set onboarding_message -%}
+Oi{{ " " ~ inv.full_name.split(" ")[0] if inv.full_name else "" }}! Te convidei pro V4 Ads MCP (nosso painel de Google/Meta Ads via IA).
+
+1. Acessa {{ panel_url }}/login e entra com seu email @v4company.com (botão "Entrar com Google V4").
+2. Depois segue o guia de configuração: {{ panel_url }}/help
+
+Qualquer coisa me chama.
+        {%- endset %}
         <tr>
           <td><strong>{{ inv.email }}</strong></td>
           <td>{{ inv.full_name or "—" }}</td>
           <td class="col-mono">{{ inv.invited_by_email or "?" }}</td>
-          <td>{{ inv.invited_at.strftime("%d/%m/%Y %H:%M") }}</td>
+          <td>
+            <span class="col-mono">{{ inv.invited_at.strftime("%d/%m/%Y %H:%M") }}</span>
+            {% if inv.days_pending > 7 %}
+              {{ badge("há " ~ inv.days_pending ~ " dias", "warning") }}
+            {% endif %}
+          </td>
           <td class="text-right">
+            <button type="button" class="v4-btn v4-btn--small v4-btn--secondary"
+                    onclick='navigator.clipboard.writeText({{ onboarding_message|trim|tojson }}); showToast("Mensagem copiada — cola no WhatsApp/Slack do gestor.", "success");'>Copiar mensagem</button>
             <button type="button" class="v4-btn v4-btn--small v4-btn--ghost"
                     onclick='openConfirm({
                       title: "Cancelar convite?",
                       message: "Remove o convite de " + {{ inv.email|tojson }} + ". O usuário não poderá logar até ser convidado novamente.",
                       okLabel: "Cancelar convite",
                       kind: "danger",
-                      onConfirm: () => htmx.ajax("POST", "/admin/invites/{{ inv.id }}/cancel", { target: "closest tr", swap: "outerHTML" })
+                      onConfirm: () => htmx.ajax("POST", "/admin/invites/{{ inv.id }}/cancel", { swap: "none" })
                     })'>Cancelar</button>
           </td>
         </tr>

@@ -1360,13 +1360,20 @@ async def admin_invites(
                ORDER BY m.invited_at DESC"""
         )
     pending = await pending_invites_count()
+    now = datetime.now(UTC)
+    invites_with_age = []
+    for r in invites:
+        inv = dict(r)
+        inv["days_pending"] = (now - inv["invited_at"]).days
+        invites_with_age.append(inv)
     return templates.TemplateResponse(
         request,
         "admin/invites.html",
         {
             "current_user": user,
-            "invites": [dict(r) for r in invites],
+            "invites": invites_with_age,
             "pending_invites_count": pending,
+            "panel_url": get_settings().public_base_url,
             "flash": _admin_flash(request, ok_message="Convite criado."),
         },
     )
@@ -1413,7 +1420,7 @@ async def admin_invites_cancel(
     request: Request,
     invite_id: str,
     user: CurrentUser = Depends(current_manager),  # noqa: B008
-) -> HTMLResponse:
+) -> Response:
     _require_admin(user)
     try:
         parsed_invite_id = UUID(invite_id)
@@ -1431,8 +1438,11 @@ async def admin_invites_cancel(
             operation="admin_invite_cancel",
             email=email,
         )
-    # HTMX swap: remove the row by returning empty content
-    return HTMLResponse("")
+    if request.headers.get("HX-Request"):
+        # Full-page refresh (browser reload) picks up the updated pending
+        # count + subnav badge for free — cheaper than hand-updating both.
+        return Response(status_code=204, headers={"HX-Refresh": "true"})
+    return RedirectResponse(url="/admin/invites", status_code=303)
 
 
 @router.get("/admin/audit", response_class=HTMLResponse)
