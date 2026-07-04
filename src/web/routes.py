@@ -48,6 +48,24 @@ def _require_admin(user: CurrentUser) -> None:
         raise HTTPException(status_code=403, detail="Admin access required")
 
 
+_ADMIN_FLASH_ERRORS: dict[str, str] = {
+    "bad_domain": "Só emails @v4company.com podem ser convidados.",
+    "exists": "Esse email já está cadastrado (convite pendente ou conta existente). Nada foi criado.",
+    "same_manager": "Gestor de origem e destino são o mesmo — nada foi copiado.",
+}
+
+
+def _admin_flash(request: Request, *, ok_message: str | None = None) -> dict[str, str] | None:
+    """Flash message via query param. Mapa fixo — NUNCA ecoar o valor do param (XSS)."""
+    code = request.query_params.get("error")
+    if code:
+        message = _ADMIN_FLASH_ERRORS.get(code)
+        return {"kind": "error", "message": message} if message else None
+    if ok_message and request.query_params.get("ok") == "1":
+        return {"kind": "success", "message": ok_message}
+    return None
+
+
 async def _audit_admin(
     conn: Any,
     *,
@@ -911,6 +929,7 @@ async def admin_access(
             "accounts": accs,
             "access_set": access_set,
             "pending_invites_count": pending,
+            "flash": _admin_flash(request),
         },
     )
 
@@ -941,6 +960,7 @@ async def admin_access_meta(
             "accounts": accounts,
             "access_set": access_set,
             "pending_invites_count": pending,
+            "flash": _admin_flash(request),
         },
     )
 
@@ -1319,6 +1339,7 @@ async def admin_invites(
             "current_user": user,
             "invites": [dict(r) for r in invites],
             "pending_invites_count": pending,
+            "flash": _admin_flash(request, ok_message="Convite criado."),
         },
     )
 
@@ -1356,7 +1377,7 @@ async def admin_invites_new(
             operation="admin_invite_new",
             email=email,
         )
-    return RedirectResponse(url="/admin/invites", status_code=303)
+    return RedirectResponse(url="/admin/invites?ok=1", status_code=303)
 
 
 @router.post("/admin/invites/{invite_id}/cancel", response_class=HTMLResponse, response_model=None)

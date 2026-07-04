@@ -8,7 +8,12 @@ from httpx import AsyncClient
 
 from src.auth.panel_session import PANEL_SESSION_COOKIE_NAME, sign_panel_session
 from src.db import connection
-from src.db.repositories import google_ads_accounts, manager_account_access, managers
+from src.db.repositories import (
+    google_ads_accounts,
+    manager_account_access,
+    managers,
+    meta_ad_accounts,
+)
 
 _SIGNING_KEY = "x" * 32
 
@@ -324,6 +329,7 @@ async def test_admin_invites_new_records_audit(client: AsyncClient):
         cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
     )
     assert response.status_code == 303
+    assert response.headers["location"] == "/admin/invites?ok=1"
 
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -367,3 +373,73 @@ async def test_admin_invites_cancel_records_audit(client: AsyncClient):
     assert row["manager_id"] == admin_id
     summary = json.loads(row["params_summary"])
     assert summary["email"] == "cancelado@v4company.com"
+
+
+@pytest.mark.integration
+async def test_admin_invites_flash_messages(client: AsyncClient):
+    pool = connection.get_pool()
+    admin_id, _ = await _bootstrap_admin_and_gestor(pool)
+
+    response = await client.get(
+        "/admin/invites?error=bad_domain",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 200
+    assert "Só emails @v4company.com" in response.text
+
+    response = await client.get(
+        "/admin/invites?ok=1",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 200
+    assert "Convite criado." in response.text
+
+    response = await client.get(
+        "/admin/invites?error=exists",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 200
+    assert "Esse email já está cadastrado" in response.text
+
+    # Anti-XSS: unknown/malicious codes never echo the raw query param value.
+    response = await client.get(
+        "/admin/invites?error=<script>alert(1)</script>",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 200
+    assert "alert(1)" not in response.text
+
+
+@pytest.mark.integration
+async def test_admin_access_flash_same_manager(client: AsyncClient):
+    pool = connection.get_pool()
+    admin_id, _ = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        await meta_ad_accounts.upsert_many(
+            conn,
+            [
+                {
+                    "ad_account_id": "act_123456789",
+                    "business_id": "biz_001",
+                    "business_name": "Empresa Teste",
+                    "account_name": "ML Antiguidades",
+                    "currency": "BRL",
+                    "timezone_name": "America/Sao_Paulo",
+                    "account_status": 1,
+                }
+            ],
+        )
+
+    response = await client.get(
+        "/admin/access?error=same_manager",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 200
+    assert "Gestor de origem e destino são o mesmo" in response.text
+
+    response = await client.get(
+        "/admin/access/meta?error=same_manager",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 200
+    assert "Gestor de origem e destino são o mesmo" in response.text

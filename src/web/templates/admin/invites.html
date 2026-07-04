@@ -10,6 +10,8 @@
     Adicione gestores pelo email <code>@v4company.com</code> antes do primeiro login deles. Sem convite, o login é rejeitado.
   </p>
 
+  {% if flash %}{{ alert(flash.message, flash.kind) }}{% endif %}
+
   <div class="v4-card">
     <div class="v4-card__header">
       <h3 class="v4-card__title">Adicionar gestor</h3>

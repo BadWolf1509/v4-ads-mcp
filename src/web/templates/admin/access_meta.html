@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_components.html" import empty_state %}
+{% from "_components.html" import empty_state, alert %}
 
 {% block title %}Admin · Acessos Meta — V4 Ads MCP{% endblock %}
 
@@ -9,6 +9,7 @@
     <h1 class="text-3xl font-extrabold tracking-tight">Matriz de acessos</h1>
     <p class="text-sm text-v4-gray-700">Marque a célula pra dar acesso de write a um gestor numa conta. Mudanças instantâneas.</p>
   </header>
+  {% if flash %}{{ alert(flash.message, flash.kind) }}{% endif %}
   {% include "admin/_access_tabs.html" %}
 
   {% if not managers_list %}
