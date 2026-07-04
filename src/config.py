@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     # paralelo ao cap global por developer_token_id).
     manager_daily_quota: int = 5000
 
+    # Backup semanal do DB -> GCS (Cloud Run Job src/jobs/backup.py). Bucket
+    # southamerica-east1/UBLA/lifecycle delete>90d já provisionado fora deste código.
+    backup_bucket: str = "v4-ads-mcp-backups"
+
     # Phase 2: invite-only allowlist bootstrap
     # Comma-separated emails that get auto-promoted to admin on first OAuth login,
     # but ONLY when the managers table is empty. Once seeded, this value is dormant.
