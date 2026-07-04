@@ -5,6 +5,9 @@ Usage (run from project root with venv active):
   # Bootstrap admin (idempotent — uses email as upsert key)
   python -m src.scripts.admin bootstrap-admin --email wellington.ribeiro@v4company.com --name "Wellington Ribeiro"
 
+  # Create an active manager with zero grants (e.g. for authenticated smoke tests)
+  python -m src.scripts.admin create-manager --email smoke@v4company.com --name "Smoke Test"
+
   # Generate the invite URL for a manager to do OAuth
   python -m src.scripts.admin invite --email wellington.ribeiro@v4company.com [--base-url https://...]
 
@@ -57,6 +60,30 @@ async def cmd_bootstrap_admin(args: argparse.Namespace) -> int:
                 conn, manager_id=new_id, email=args.email, full_name=args.name, role="admin"
             )
             print(f"Created admin: {m.id} ({m.email})")
+            return 0
+    finally:
+        await connection.close_pool()
+
+
+async def cmd_create_manager(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    await connection.init_pool(settings.database_url)
+    try:
+        pool = connection.get_pool()
+        async with pool.acquire() as conn:
+            existing = await managers.get_by_email(conn, args.email)
+            if existing:
+                print(
+                    f"Manager already exists: {existing.id} "
+                    f"({existing.role}, status={existing.status})"
+                )
+                return 0
+            new_id = uuid4()
+            m = await managers.create(
+                conn, manager_id=new_id, email=args.email, full_name=args.name, role=args.role
+            )
+            print(f"Created manager: {m.id} ({m.email}, role={m.role}, status={m.status})")
+            print("No account grants issued (zero blast radius).")
             return 0
     finally:
         await connection.close_pool()
@@ -174,6 +201,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_boot.add_argument("--email", required=True)
     p_boot.add_argument("--name", default=None)
 
+    p_cm = sub.add_parser(
+        "create-manager", help="Create an active manager with zero account grants"
+    )
+    p_cm.add_argument("--email", required=True)
+    p_cm.add_argument("--name", default=None)
+    p_cm.add_argument("--role", default="gestor", choices=["gestor", "admin"])
+
     p_inv = sub.add_parser("invite", help="Print an OAuth invite URL")
     p_inv.add_argument("--email", required=True)
     p_inv.add_argument(
@@ -201,6 +235,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     handler = {
         "bootstrap-admin": cmd_bootstrap_admin,
+        "create-manager": cmd_create_manager,
         "invite": cmd_invite,
         "grant-all": cmd_grant_all,
         "create-session": cmd_create_session,
