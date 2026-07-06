@@ -42,6 +42,15 @@ _FRIENDLY_MESSAGES: dict[str, str] = {
 }
 
 
+# Policy topics do classificador AUTOMÁTICO de texto do Google que geram
+# falso-positivo em português legítimo com acento (investigação 2026-07-06 / A7:
+# a MESMA conta tinha anúncios acentuados APROVADOS enquanto copy quase-idêntica
+# com acento era reprovada — logo acento NÃO é o gatilho determinístico). Pra estes
+# tópicos orientamos retry/revisão manual em vez de mandar o gestor "remover o que
+# viola" (guidance que o empurra a tirar os acentos por engano).
+_CLASSIFIER_PRONE_TOPICS = ("UNACCEPTABLE_SPACING", "SYMBOLS")
+
+
 def _extract_policy_topics(error: Any) -> list[str]:
     """Best-effort: nomes dos policy topics de um GoogleAdsError policy_finding_error.
 
@@ -137,11 +146,26 @@ def to_friendly(exc: Exception) -> GoogleAdsFriendlyError:
         # dogfood 07-02). Extrai os tópicos específicos pra ele saber o que corrigir.
         topics = _extract_policy_topics(first)
         if topics:
-            msg = (
-                f"Google Ads reprovou o anúncio por política: {', '.join(topics)}. "
-                "Revise headlines/descriptions removendo o que viola essas políticas "
-                "e recrie. Detalhes: https://support.google.com/adspolicy."
-            )
+            topics_str = ", ".join(topics)
+            if any(key in t for t in topics for key in _CLASSIFIER_PRONE_TOPICS):
+                # Topics do classificador automático (spacing/symbols): frequentemente
+                # falso-positivo em texto acentuado legítimo (A7). NÃO mandar remover
+                # conteúdo — orienta retry/revisão manual pra não perder os acentos.
+                msg = (
+                    f"Google Ads reprovou o anúncio por política: {topics_str}. "
+                    "Cheque espaçamento incomum (espaços duplos, letras separadas por "
+                    "espaço) e símbolos ou pontuação repetidos (!!!, $$$). Se o texto "
+                    "estiver correto, esse classificador automático às vezes gera "
+                    "falso-positivo em português com acento: reenviar costuma resolver, "
+                    "ou peça revisão manual no painel do Google Ads. "
+                    "Detalhes: https://support.google.com/adspolicy."
+                )
+            else:
+                msg = (
+                    f"Google Ads reprovou o anúncio por política: {topics_str}. "
+                    "Revise headlines/descriptions removendo o que viola essas políticas "
+                    "e recrie. Detalhes: https://support.google.com/adspolicy."
+                )
         else:
             msg = (
                 f"Google Ads reprovou o anúncio por política: {sdk_msg} "

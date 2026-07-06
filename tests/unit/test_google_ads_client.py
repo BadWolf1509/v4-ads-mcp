@@ -150,6 +150,48 @@ def test_policy_finding_error_names_the_violated_topics():
     assert fe.code == "POLICY_FINDING_ERROR"
     assert "DESTINATION_NOT_WORKING" in fe.message_pt
     assert "TRADEMARKS" in fe.message_pt
+    # Scoping (A7): tópicos NÃO-classificador mantêm a guidance de remover/recriar,
+    # sem a dica de falso-positivo (que é só pra UNACCEPTABLE_SPACING/SYMBOLS).
+    assert "removendo o que viola" in fe.message_pt
+    assert "falso-positivo" not in fe.message_pt
+
+
+def test_policy_finding_spacing_symbols_guides_retry_not_stripping_accents():
+    """A7: UNACCEPTABLE_SPACING/SYMBOLS são falso-positivos comuns do classificador
+    automático em texto acentuado legítimo — a mensagem NÃO manda tirar acento;
+    orienta reenviar / revisão manual. (Investigação 2026-07-06: a MESMA conta tinha
+    anúncios acentuados APROVADOS enquanto copy quase-idêntica com acento reprovava.)"""
+
+    class _Topic:
+        def __init__(self, topic: str) -> None:
+            self.topic = topic
+
+    class _PolicyFindingDetails:
+        def __init__(self, topics: list) -> None:
+            self.policy_topic_entries = topics
+
+    class _Details:
+        def __init__(self, pfd: object) -> None:
+            self.policy_finding_details = pfd
+
+    class _PolicyError:
+        def __init__(self) -> None:
+            self.error_code = _FakeErrorCode("policy_finding_error")
+            self.message = "The resource has been disapproved..."
+            self.details = _Details(
+                _PolicyFindingDetails([_Topic("UNACCEPTABLE_SPACING"), _Topic("SYMBOLS")])
+            )
+
+    fe = to_friendly(_FakeException([_PolicyError()]))
+    assert fe.code == "POLICY_FINDING_ERROR"
+    # segue nomeando os tópicos específicos
+    assert "UNACCEPTABLE_SPACING" in fe.message_pt
+    assert "SYMBOLS" in fe.message_pt
+    # nova guidance: reenviar / revisão manual, e NÃO "remover o que viola"
+    assert "falso-positivo" in fe.message_pt
+    assert "reenviar" in fe.message_pt.lower()
+    assert "revisão manual" in fe.message_pt
+    assert "removendo o que viola" not in fe.message_pt
 
 
 def test_policy_finding_error_without_details_degrades_gracefully():
