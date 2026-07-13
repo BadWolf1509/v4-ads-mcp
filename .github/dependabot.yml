@@ -16,8 +16,18 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    groups:
+      # grpcio-status X exige grpcio>=X — bumps em PRs separados quebram a
+      # resolução do lockfile (PRs #6/#9, 2026-07). Grupo move a família junta.
+      grpc:
+        patterns: ["grpcio*"]
     ignore:
       - dependency-name: "google-ads"
         update-types: ["version-update:semver-major"]
       - dependency-name: "facebook-business"
         update-types: ["version-update:semver-major"]
+      # pydantic pina pydantic-core EXATO (==) — bump isolado de pydantic-core é
+      # sempre irresolvível (PR #5, 2026-07). O par sobe junto quando o pydantic
+      # bumpar; se o PR do pydantic quebrar pelo pin do core, regerar o lockfile:
+      # uv pip compile pyproject.toml -o requirements.txt --universal
+      - dependency-name: "pydantic-core"
