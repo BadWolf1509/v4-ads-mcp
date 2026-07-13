@@ -132,7 +132,7 @@ propcache==0.5.2
     # via
     #   aiohttp
     #   yarl
-proto-plus==1.28.0
+proto-plus==1.28.1
     # via
     #   google-ads
     #   google-api-core
