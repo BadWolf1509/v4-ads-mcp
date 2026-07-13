@@ -71,7 +71,7 @@ google-auth-oauthlib==1.4.0
     # via google-ads
 google-cloud-core==2.6.0
     # via google-cloud-storage
-google-cloud-storage==3.12.0
+google-cloud-storage==3.12.1
     # via v4-ads-mcp (pyproject.toml)
 google-crc32c==1.8.0
     # via
