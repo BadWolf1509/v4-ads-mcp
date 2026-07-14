@@ -78,3 +78,45 @@ def test_builder_creates_n_operations_for_batch() -> None:
         {"rsas": [_sample_rsa("100"), _sample_rsa("101"), _sample_rsa("100")]},
     )
     assert len(ops) == 3
+
+
+def test_builder_preserves_utf8_accents_across_text_fields() -> None:
+    """Accented ad copy (ç ã í á ó) is written to the proto byte-for-byte.
+
+    Proto string fields hold native Unicode and serialize as UTF-8 on the gRPC
+    wire, so accents MUST survive untouched — there is no ascii-encode /
+    accent-strip step in the text path. Guards against a future "fix" that
+    normalizes or re-encodes ad text. (2026-07: mojibake like "Loca??o" seen in
+    a client console was misread as MCP corruption; the bytes sent to Google
+    were always correct — this pins that so it never becomes a doubt again.)
+    """
+    headlines = ["Locação de Compactador", "Orçamento em Carambeí já", "Serviços Rápidos"]
+    descriptions = ["Peça sua cotação à noite.", "Atenção: promoção imperdível!"]
+    client = make_capture_client()
+    ops = build_create_rsa(
+        client,
+        "1234567890",
+        {
+            "rsas": [
+                _sample_rsa(
+                    headlines=headlines,
+                    descriptions=descriptions,
+                    path1="Promoção",
+                    path2="Serviços",
+                )
+            ]
+        },
+    )
+    op = ops[0]
+    base = "ad_group_ad_operation.create.ad.responsive_search_ad"
+
+    headline_texts = [item.field("text") for item in op._raw(f"{base}.headlines")]
+    description_texts = [item.field("text") for item in op._raw(f"{base}.descriptions")]
+    assert headline_texts == headlines
+    assert description_texts == descriptions
+    assert op.field(f"{base}.path1") == "Promoção"
+    assert op.field(f"{base}.path2") == "Serviços"
+    # ascii-'replace' would inject "?" ("Loca??o"); ascii-'ignore' would drop the
+    # char ("Locacao"). The equality asserts above catch both; this makes the
+    # "?"-injection case (the exact symptom reported) explicit.
+    assert not any("?" in t for t in headline_texts + description_texts)

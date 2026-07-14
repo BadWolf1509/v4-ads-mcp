@@ -105,3 +105,39 @@ def test_builder_updates_all_fields_at_once() -> None:
     assert op.field_count("ad_operation.update.final_urls") == 1
     assert op.field("ad_operation.update.responsive_search_ad.path1") == "abc"
     assert op.field("ad_operation.update.responsive_search_ad.path2") == "xyz"
+
+
+def test_builder_preserves_utf8_accents_across_text_fields() -> None:
+    """Accented ad copy is written byte-for-byte on update (mirror of create).
+
+    Same guard as test_create_rsa_builder: proto string → UTF-8 on the wire, no
+    accent-strip / ascii-encode in build_update_rsa's text path. update_rsa hit
+    the same UNACCEPTABLE_SPACING reports as create_rsa, so both are pinned.
+    """
+    headlines = ["Locação de Compactador", "Orçamento em Carambeí já", "Serviços Rápidos"]
+    descriptions = ["Peça sua cotação à noite.", "Atenção: promoção imperdível!"]
+    client = make_capture_client()
+    ops = build_update_rsa(
+        client,
+        "1234567890",
+        {
+            "updates": [
+                _sample_update(
+                    headlines=headlines,
+                    descriptions=descriptions,
+                    path1="Promoção",
+                    path2="Serviços",
+                )
+            ]
+        },
+    )
+    op = ops[0]
+    base = "ad_operation.update.responsive_search_ad"
+
+    headline_texts = [item.field("text") for item in op._raw(f"{base}.headlines")]
+    description_texts = [item.field("text") for item in op._raw(f"{base}.descriptions")]
+    assert headline_texts == headlines
+    assert description_texts == descriptions
+    assert op.field(f"{base}.path1") == "Promoção"
+    assert op.field(f"{base}.path2") == "Serviços"
+    assert not any("?" in t for t in headline_texts + description_texts)
