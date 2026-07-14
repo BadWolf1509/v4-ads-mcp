@@ -203,15 +203,27 @@ jobs:
           # (event:/data:), então o grep varre o corpo inteiro.
           if [ -n "${SMOKE_MCP_BEARER}" ]; then
             echo "Probing /mcp autenticado (tools/list, expect 200 + list_my_accounts)..."
-            BODY=$(curl -s --max-time 20 -X POST "${SERVICE_URL}/mcp" \
+            # -w anexa o HTTP code na última linha; separamos code do corpo (que
+            # pode vir SSE-framed, multi-linha). Distinguir a causa da falha é o
+            # ponto: bearer inválido é problema de CREDENCIAL do CI, não da revisão.
+            RESP=$(curl -s --max-time 20 -w "\n%{http_code}" -X POST "${SERVICE_URL}/mcp" \
               -H "Authorization: Bearer ${SMOKE_MCP_BEARER}" \
               -H "Content-Type: application/json" \
               -H "Accept: application/json, text/event-stream" \
               -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
+            CODE=$(printf '%s' "$RESP" | tail -n1)
+            BODY=$(printf '%s' "$RESP" | sed '$d')
             if echo "$BODY" | grep -q 'list_my_accounts'; then
               echo "  ✓ /mcp autenticado respondeu tools/list com o registry montado"
+            elif [ "$CODE" = "401" ] || echo "$BODY" | grep -qiE 'unauthorized|session not found'; then
+              # 401 aqui = Bearer inválido/expirado/revogado. O /health?deep=1 (SELECT 1
+              # no pool) e o /mcp 401-gate JÁ provaram que o stack subiu — logo isto é
+              # credencial de CI vencida, não regressão da revisão nova. NÃO bloqueia o
+              # deploy; regenerar SMOKE_MCP_BEARER re-arma o check F58 automaticamente.
+              echo "  ⚠ SMOKE_MCP_BEARER inválido/expirado (HTTP $CODE) — pulando smoke autenticado."
             else
-              echo "  ✗ /mcp autenticado NÃO retornou o registry esperado — stack MCP quebrado"
+              # 200 (ou não-401) SEM o registry = handshake/tools-list quebrado de verdade.
+              echo "  ✗ /mcp autenticado retornou HTTP $CODE SEM o registry esperado — stack MCP quebrado"
               echo "  (primeiros 400 chars do corpo, sem o Bearer:)"
               echo "$BODY" | head -c 400
               exit 1
