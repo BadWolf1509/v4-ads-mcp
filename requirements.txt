@@ -48,7 +48,7 @@ curlify==3.0.0
     # via facebook-business
 facebook-business==25.0.2
     # via v4-ads-mcp (pyproject.toml)
-fastapi==0.139.0
+fastapi==0.139.2
     # via v4-ads-mcp (pyproject.toml)
 frozenlist==1.8.0
     # via
