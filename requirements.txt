@@ -221,7 +221,7 @@ typing-inspection==0.4.2
     #   pydantic-settings
 urllib3==2.7.0
     # via requests
-uvicorn==0.50.0
+uvicorn==0.51.0
     # via
     #   v4-ads-mcp (pyproject.toml)
     #   mcp
