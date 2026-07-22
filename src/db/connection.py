@@ -1,7 +1,6 @@
 """asyncpg connection pool factory."""
 
 from collections.abc import AsyncIterator, Awaitable, Callable
-from typing import TypeVar
 
 import asyncpg
 import structlog
@@ -9,8 +8,6 @@ import structlog
 log = structlog.get_logger(__name__)
 
 _pool: asyncpg.Pool | None = None
-
-_T = TypeVar("_T")
 
 # Reap idle pooled connections BEFORE the remote (Supabase/PgBouncer) closes the
 # socket. asyncpg's default is 300s; the remote can close idle connections sooner,
@@ -66,9 +63,9 @@ async def acquire() -> AsyncIterator[asyncpg.Connection]:
         yield conn
 
 
-async def run_with_reconnect(
-    op: Callable[[asyncpg.Connection], Awaitable[_T]], *, attempts: int = 2
-) -> _T:
+async def run_with_reconnect[T](
+    op: Callable[[asyncpg.Connection], Awaitable[T]], *, attempts: int = 2
+) -> T:
     """Run ``op(conn)`` with a pooled connection, re-acquiring a FRESH connection
     if the current one was dropped/reset while idle (Cloud Run keeps connections
     idle; Supabase then closes the socket).
