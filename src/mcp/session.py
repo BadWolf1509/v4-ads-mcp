@@ -6,6 +6,7 @@ manager_id/session_id to the request context. Updates last_used_at
 asynchronously after the resolution.
 """
 
+import asyncpg
 import structlog
 
 from src.auth.sessions import hash_session_token
@@ -44,8 +45,8 @@ async def resolve_session_to_context(authorization_header: str | None) -> McpReq
         raise UnauthorizedError("Missing or malformed Authorization Bearer header")
 
     token_hash = hash_session_token(token)
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
+
+    async def _resolve(conn: asyncpg.Connection) -> mcp_sessions.McpSession:
         session = await mcp_sessions.find_by_hash(conn, token_hash)
         if session is None:
             raise UnauthorizedError("Session not found, expired, or revoked")
@@ -55,6 +56,12 @@ async def resolve_session_to_context(authorization_header: str | None) -> McpReq
         # Touch last_used_at + manager.last_seen_at in same connection.
         await mcp_sessions.touch_last_used(conn, session.id)
         await managers.touch_last_seen(conn, session.manager_id)
+        return session
+
+    # Retry on a fresh connection if the pooled one was dropped while idle
+    # (Cloud Run idle → Supabase closes the socket). The lookup is idempotent,
+    # so re-running it is safe; UnauthorizedError is NOT retried (propagates).
+    session = await connection.run_with_reconnect(_resolve)
 
     ctx = McpRequestContext(manager_id=session.manager_id, session_id=session.id)
     set_current(ctx)
