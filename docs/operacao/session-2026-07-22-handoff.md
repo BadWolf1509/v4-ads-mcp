@@ -1,6 +1,6 @@
 # Sessão 2026-07-22 — Handoff (investigação de erros de produção → 2 fixes + refutação de hipótese)
 
-> Thread contínua a partir do print da **Auditoria global** (filtro "só erros"): investigar os erros → refutar a tese "MCP corrompe acento" (do modelo que o Pedro usa) → destravar os deploys (smoke bearer morto) → **F76** (500 intermitente por conexão DB stale) → observabilidade (`level`→`severity`) → destravar o ruff local (Smart App Control). Tudo via TDD, CI+deploy verdes. Produção em **`v4-ads-mcp-00027-kmw`**, `/health?deep=1` db=ok.
+> Thread contínua a partir do print da **Auditoria global** (filtro "só erros"): investigar os erros → refutar a tese "MCP corrompe acento" (do modelo que o Pedro usa) → destravar os deploys (smoke bearer morto) → **F76** (500 intermitente por conexão DB stale) → observabilidade (`level`→`severity`) → destravar o ruff local (Smart App Control). Tudo via TDD, CI+deploy verdes. Estado ao encerrar 22/07: **`v4-ads-mcp-00027-kmw`**. **Atualização 23/07:** F76 validado positivamente e F77 corrigido; estado corrente em [`session-2026-07-23-handoff.md`](session-2026-07-23-handoff.md).
 
 ## TL;DR
 
@@ -36,15 +36,9 @@
 
 ## Pendente / follow-ups
 
-1. **[TIME-SENSITIVE] Verificar a taxa de `mcp_auth_error` em D+1/D+2 (23-24/07, após janela ociosa).** O retry está no ar desde `00026` (15:41 UTC 22/07). Em ~2h só houve tráfego quente (43×200, 0×500 nas revisões pós-fix), o gatilho (conexão **ociosa**) não ocorreu, `db_dropped_connection_retry`=0. Os 5 eventos históricos foram em **baixo tráfego** (03:31/04:26/21:xx) → o teste real é após a madrugada ociosa. **Sinais:** `db_dropped_connection_retry`>0 = prova positiva (retry recuperou); `mcp_auth_error` em `00026`+ = raro caso das 2 tentativas falharem (subir `attempts`/baixar lifetime). Queries (gcloud authed `wellington.ribeiro@`):
+1. **✅ RESOLVIDO em 23/07 — validação D+1 do F76.** Às 21:16:14 UTC, `db_dropped_connection_retry` registrou a tentativa 1 e o request MCP terminou 200 em 174,9ms; não houve `mcp_auth_error` pós-fix. A investigação também encontrou o F77 (`/health?deep=1` ainda usava acquire cru), corrigido na revisão `00028-lvc`. Detalhe e queries atualizadas: [`session-2026-07-23-handoff.md`](session-2026-07-23-handoff.md).
 
-```bash
-# taxa de 500 (baseline 5/14d, todos pré-fix em 00020/00025):
-gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="v4-ads-mcp" AND jsonPayload.event="mcp_auth_error"' --project=v4-ads-mcp --freshness=14d --format="value(timestamp,resource.labels.revision_name)"
-# prova positiva (o retry pegou uma conexão morta e recuperou):
-gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="v4-ads-mcp" AND jsonPayload.event="db_dropped_connection_retry"' --project=v4-ads-mcp --freshness=14d --format="value(timestamp,resource.labels.revision_name)"
-```
-2. **Meta #200 — atribuir o SU (`v4-ads-mcp-integracao`) à conta CA-ROL GEAN** (`act_2399051240507488`, BM "MDO - ROL GEAN") com `ads_read`/`ads_management`. Consolidar com o item 4 do CLAUDE.md (contas Meta faltantes).
+2. **Meta #200 — atribuir o SU (`v4-ads-mcp-integracao`) à conta CA-ROL GEAN** (`act_2399051240507488`, BM "MDO - ROL GEAN") com `ads_read`/`ads_management`. Consolidar com o item 4 do contexto do agente (contas Meta faltantes).
 3. **Smoke F58 dormente** — recriar gestor smoke sem grants + repor `SMOKE_MCP_BEARER` no GitHub se quiser re-armar (a lógica fail-well re-arma sozinha). Memory: `ci-smoke-bearer-dormant-2026-07`.
 4. **(Opcional) `to_friendly_meta_error` p/ `code==200`** — mensagem PT-BR "conta interna sem acesso no BM, peça pro admin" em vez do texto cru.
 

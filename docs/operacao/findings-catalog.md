@@ -4,7 +4,7 @@
 >
 > **Maintainer note:** Add a new entry here whenever a finding is documented in a smoke runbook. Keep entries scannable — link to runbook for detail.
 >
-> **Last updated:** 2026-07-22 (investigação `/mcp` 500 intermitente: **+F76** [conexão asyncpg stale no pool — Supabase fecha socket ocioso; `mcp_auth_error` no auth path; fix `run_with_reconnect` retry-com-reacquire + `max_inactive_connection_lifetime` 120s, via TDD]). Antes 2026-07-06 (investigação "anúncios com acento": **+A7** [suspeita de MCP-corrompe-acento **REFUTADA** por ground-truth — é falso-positivo do classificador automático do Google `UNACCEPTABLE_SPACING`/`SYMBOLS`; hipótese NFC-normalize descartada; mensagem de erro de política melhorada em `errors.py` pra orientar retry/revisão manual só nos tópicos do classificador]). Antes 2026-07-04 (2ª sessão — pacote UI/UX do painel web: **+F74/F75** [fragmento HTMX perde `hx-on`/`aria-label` após swap; `htmx.ajax` com `target:"closest tr"` cai no `body`]; ver seção no fim). Antes 2026-07-04 (1ª sessão — investigação 2026-07-03: **+F73** [quota leak — chamada bloqueada no teto decrementava o contador; cap diário virava soft cap; fix `reserved` + cap por gestor `mgr:<uuid>`]). Antes 2026-06-30 (sessão migração GCP: **+F64/F65/F66/F67** — Meta token targets-fixos [resolvido]; cache Meta sem deletion-detection; Cloud Run Job buildpack não roda process não-web; southamerica-east1 sem domain mapping). Antes 2026-06-20 (sessão 2026-06-20: nenhum F-number novo — Onda 0/1 + M.4 + Fase 2A shipparam via TDD limpo. Instância proativa de F57 catalogada abaixo [`validate_gaql` era o call-site esquecido de `build_client_for_manager`]. Antes 2026-06-19: **+F61/F62/F63** [paginação Meta `/me/adaccounts`; `run_gaql` QUERY_ERROR enrich; `get_change_history` custom-date clamp] — recuperação conta admin + Meta 12→22 + GAQL error UX. Detalhe: [session-2026-06-19-handoff.md](session-2026-06-19-handoff.md)). Antes 2026-05-27 (Sprint 3b.40 ship: **+F56** [get_keyword_performance retorna positive E negative ad_group_criterion sem distinção — MED severity, Opção A+C fix com field `negative:bool` + warning na description, dogfood MO-JP 27/05]. **56 unique findings** (F1-F56 + A1-A6 + D1-D3, alguns IDs skipped). Antes: Sprint M.3.1 + M.3.1.1 hotfix ship + cross-reference Meta MCP oficial 44 tools: F53 + F54 + F55 [Meta /insights vs /entities endpoints separation = root cause F53/F54 finalmente explicado via teste empírico `ads_get_field_context`].)
+> **Last updated:** 2026-07-23 — **+F77** (`/health?deep=1` fazia `pool.acquire()` cru; conexão asyncpg stale gerava 503 transitório e acionava o alerta amplo de logs). Fix: `run_with_reconnect` + deadline interno de 5s + 3 testes de regressão. A mesma investigação forneceu a prova positiva D+1 do **F76** em produção. Detalhe: [session-2026-07-23-handoff.md](session-2026-07-23-handoff.md).
 
 ---
 
@@ -151,25 +151,22 @@
 
 ---
 
-## Summary by status
+## Summary and open items
 
-| Status | Count |
+| Metric | Count |
 |---|---|
-| **Fixed** (source code change) | 38 (+F65/F68/F70/F71/F72 na investigação 2026-07-02; antes +F52 3b.38, F23 clamp+warning 3b.38) |
-| **Fixed** (CI/infra — deploy.yml, gcloud, scheduler) | 2 (F66 — jobs CNB `/cnb/process/<type>` + reativa migrations; F69 — recria scheduler resync no projeto novo) |
-| **Doc fix only** (tool description / runbook update) | 8 (added F47 — PowerShell pipe CRLF M.2a) |
-| **Not-a-bug** (Google behavior, expected) | 2 |
-| **Known limitation / workaround documented** | 2 (was 3 — F23 fixed em 3b.38) |
-| **Strategic decision** (ecosystem constraint, not code) | 3 (D1 — Meta App Review Standard Tier rejected; D2 — MCP defer_loading client-side discovery Sprint 3b.39; D3 — real mechanism server-side per-tool _meta.anthropic/alwaysLoad, D2 partially wrong) |
-| **Open** (real fix pending) | 2 (A4 — Customer Match exclusion mechanism; F67 — custom domain via Load Balancer). F64 resolvido na migração 2026-06-30 (token all-targets). |
+| **Unique catalog IDs** | **78** = 68 findings `F` + 7 hypotheses/design gaps `A` + 3 strategic decisions `D` |
+| **Open product/infra work** | **2** — A4 (mecanismo real de exclusão Customer Match) e F67 (custom domain via Load Balancer) |
+| **Strategic decisions** | **3** — D1/D2/D3 |
+| **Closed, mitigated or explicitly documented** | **73** — todos os demais IDs; inclui limitações conhecidas e hipóteses refutadas, não apenas mudanças de código |
 
-**Total findings tracked:** 57 (52 + F68-F72 da investigação 2026-07-02).
+> A contagem anterior (`57`) estava stale porque não incorporava de forma consistente F57-F76/A7. A contagem acima foi auditada por IDs únicos ao registrar F77.
 
 ---
 
 ## Cross-reference: Sprint → findings introduced
 
-(Latest 5 sprints — for older sprints see `docs/operacao/sprint-history.md`.)
+(Sprints e sessões recentes; para o histórico completo, veja `docs/operacao/sprint-history.md`.)
 
 | Sprint | Findings introduced |
 |---|---|
@@ -180,7 +177,15 @@
 | Retrospective (audit_log 2026-05-18) | F50 (produção confirma TypeError F33 — audit_log id=140), F51 (produção confirma AttributeError F37 — audit_log id=149) |
 | 3b.38 | F52 (audit_zombie_keywords não filtra ad_group.status — órfãs cosméticas em ad_group REMOVED), F23 promoted "known limitation" → "fixed" (get_change_history LAST_30_DAYS clamp + warning) |
 | M.2b App Review response | D1 (Meta App Review Full Access rejected — decisão Caminho B+ janela observação 30-45 dias, acelerar M.3+ pra volume natural, re-submit Full Access após 500 calls/15d) |
-| 3b.39 | D2 (MCP defer_loading client-side Anthropic API parameter — F1 server-metadata-only via @register_tool bucket kwarg + Tool._meta field + description prefix [CORE]/[DEFER]) |
+| 3b.39 | D2 (hipótese client-side) + D3 (mecanismo final server-side via `_meta.anthropic/alwaysLoad`) |
+| 3b.40 | F56 (keywords negativas misturadas no relatório de performance) |
+| Sessão 2026-05-28/29 | F57-F60 (hard-gate, cursor/transação, JOIN ambíguo, gestor inativo) |
+| Sessão 2026-06-19 | F61-F63 (paginação Meta, UX GAQL, clamp do change history) |
+| Sessão 2026-06-30 | F64-F67 (token Meta, deletion detection, jobs CNB, domain mapping) |
+| Sessão 2026-07-02 | F68-F72 (cutover, scheduler, governança Customer Match e gate Meta) |
+| Sessão 2026-07-04 | F73-F75 (quota/cap por gestor + UI/UX HTMX) |
+| Sessão 2026-07-22 | A7 + F76 (hipótese de acento refutada; reconnect do auth path) |
+| Sessão 2026-07-23 | F77 (deep health resiliente a conexão DB stale); F76 validado em produção |
 
 ---
 
@@ -224,4 +229,10 @@
 
 > Investigação de um `/mcp` 500 intermitente em produção (Gemini Cloud Assist deu o stack; validado firsthand nos logs por timestamp + frequência). Fix via TDD: `src/db/connection.py` (`run_with_reconnect` + lifetime) + `src/mcp/session.py` (wiring). Testes Docker-free em `tests/unit/test_db_connection.py` + `tests/unit/test_mcp_session.py`.
 
-- **F76 (MED) — `/mcp` 500 intermitente (`mcp_auth_error`) por conexão asyncpg stale no pool (Supabase fecha socket ocioso):** o Cloud Run mantém conexões do pool ociosas; o Supabase eventualmente fecha o socket; o próximo request pegava a conexão morta e a query de auth (`mcp_sessions.find_by_hash`) levantava `ConnectionResetError [Errno 104]` → `asyncpg.ConnectionDoesNotExistError` no _statement prep_ → 500. ~5 em 14 dias, TODOS no auth path, desde 2026-07-09 (antecede a revisão corrente — NÃO é regressão; código/deps inalterados). Fail em ~14ms (falha imediata, não timeout downstream). Fix: `run_with_reconnect(op, attempts=2)` readquire conexão NOVA e re-roda o op idempotente em erro de conexão dropada (`asyncpg.PostgresConnectionError` + builtin `ConnectionError`); `UnauthorizedError`/query-errors propagam sem retry. `resolve_session_to_context` envolve o lookup nele (read → seguro re-rodar). Complemento: `max_inactive_connection_lifetime` 300s (default asyncpg) → 120s pra reap idle antes do remoto matar. **Lição:** pool asyncpg NÃO faz pre-ping — conexão fechada pelo remoto só é detectada no próximo statement; com serverless + remoto que derruba idle, o par certo pra raw asyncpg é **retry-com-reacquire** (readquirir do pool, NÃO reusar a mesma `conn` — o snippet sugerido pelo Gemini reusava a conn morta e falharia nas 3 tentativas) + `max_inactive_connection_lifetime` < idle-timeout do remoto. NÃO é SQLAlchemy `pool_pre_ping` (projeto é asyncpg cru, sem ORM) nem `tenacity`. Sub-nota observabilidade: `log.exception` sai com `jsonPayload.level=error` mas o *entry severity* do Cloud Run fica DEFAULT (structlog emite `level`, não `severity`) → alertas por severidade não pegam esses 500. **Corrigido em seguida:** processor `add_cloud_logging_severity` em `logging.py` espelha `level`→`severity` (só no pipeline JSON, antes do renderer) → o Cloud Logging passa a elevar a entry; verificado end-to-end (log renderizado carrega `"severity":"ERROR"`).
+- **F76 (MED) — `/mcp` 500 intermitente (`mcp_auth_error`) por conexão asyncpg stale no pool (Supabase fecha socket ocioso):** o Cloud Run mantém conexões do pool ociosas; o Supabase eventualmente fecha o socket; o próximo request pegava a conexão morta e a query de auth (`mcp_sessions.find_by_hash`) levantava `ConnectionResetError [Errno 104]` → `asyncpg.ConnectionDoesNotExistError` no _statement prep_ → 500. ~5 em 14 dias, TODOS no auth path, desde 2026-07-09 (antecede a revisão corrente — NÃO é regressão; código/deps inalterados). Fail em ~14ms (falha imediata, não timeout downstream). Fix: `run_with_reconnect(op, attempts=2)` readquire conexão NOVA e re-roda o op idempotente em erro de conexão dropada (`asyncpg.PostgresConnectionError` + builtin `ConnectionError`); `UnauthorizedError`/query-errors propagam sem retry. `resolve_session_to_context` envolve o lookup nele (read → seguro re-rodar). Complemento: `max_inactive_connection_lifetime` 300s (default asyncpg) → 120s pra reap idle antes do remoto matar. **Validação D+1 (2026-07-23 21:16:14 UTC):** `db_dropped_connection_retry` ocorreu na tentativa 1 e o mesmo request MCP terminou 200 em 174,9ms; não houve `mcp_auth_error` pós-fix. **Lição:** pool asyncpg NÃO faz pre-ping — conexão fechada pelo remoto só é detectada no próximo statement; com serverless + remoto que derruba idle, o par certo pra raw asyncpg é **retry-com-reacquire** (readquirir do pool, NÃO reusar a mesma `conn`) + `max_inactive_connection_lifetime` < idle-timeout do remoto. NÃO é SQLAlchemy `pool_pre_ping` (projeto é asyncpg cru, sem ORM) nem `tenacity`. Sub-nota observabilidade: `log.exception` sai com `jsonPayload.level=error` mas o *entry severity* do Cloud Run fica DEFAULT (structlog emite `level`, não `severity`) → alertas por severidade não pegam esses 500. **Corrigido em seguida:** processor `add_cloud_logging_severity` em `logging.py` espelha `level`→`severity` (só no pipeline JSON, antes do renderer) → o Cloud Logging passa a elevar a entry; verificado end-to-end.
+
+## Sessão 2026-07-23 — deep health resiliente (finding F77)
+
+> Alerta de produção investigado a partir do e-mail do Cloud Monitoring. Detalhe e queries de validação: [`session-2026-07-23-handoff.md`](session-2026-07-23-handoff.md).
+
+- **F77 (MED) — `/health?deep=1` bypassava a resiliência F76 e gerava 503 transitório em conexão stale:** o handler fazia `pool.acquire()` + `SELECT 1` diretamente. Quando o Supabase já havia fechado o socket ocioso, o probe falhava em 4-5ms com `connection was closed in the middle of operation`, embora um request MCP entre os probes retornasse 200. O alerta log-based amplo (`severity>=ERROR`) disparou por dois request logs 503; a policy de uptime, que exige falha sustentada, não abriu incidente. `max_inactive_connection_lifetime=120` reduz a chance, mas **não faz pre-ping** e não eliminou o caso: três falhas do health ocorreram depois do F76. **Fix (`23fccfe`):** o deep health passou a executar o `SELECT 1` via `connection.run_with_reconnect(...)`, com deadline global de 5s — menor que o timeout externo de 10s — e mantém 503 quando as duas tentativas falham ou o prazo estoura. Três testes cobrem stale→healthy (200/2 acquires), stale→stale (503/2 acquires) e timeout (503). CI com integração DB e deploy verdes; revisão `v4-ads-mcp-00028-lvc`, 100% do tráfego, sem ERROR após o deploy. **Lição:** todo probe/read idempotente que toca o pool precisa usar o mesmo boundary de reconnect dos hot paths; lifetime do pool é mitigação, não substituto de retry. Não aplicar retry cego a mutações.

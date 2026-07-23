@@ -39,7 +39,7 @@ O sweep completo é **obrigatório** ao mexer em fluxos de mutate, helpers de `_
 
 ## Deploy
 
-`git push origin main` dispara, em paralelo, **CI** (ruff + format + mypy + pytest unit + integration) e **Deploy** (build Buildpacks → migrations via Cloud Run Job → deploy do serviço → smoke `/health` + `/mcp` 401). Confirme a conclusão real via `gh run view <id> --json conclusion` (o exit code de `gh run watch` pode enganar).
+`git push origin main` dispara o **CI** (ruff + format + mypy + pytest unit + integration); somente depois do job `test` verde, o job **Deploy** executa build Buildpacks → migrations via Cloud Run Job → deploy do serviço → smoke `/health` + `/mcp` 401. O deploy é gated por `needs: test`. Confirme a conclusão real via `gh run view <id> --json conclusion` (o exit code de `gh run watch` pode enganar).
 
 ## Estrutura
 
@@ -61,6 +61,7 @@ docs/
 ## Documentação
 
 - **Contexto do agente / convenções:** [`CLAUDE.md`](CLAUDE.md) — leia primeiro ao continuar o trabalho.
+- **Último handoff / estado de produção:** [`docs/operacao/session-2026-07-23-handoff.md`](docs/operacao/session-2026-07-23-handoff.md)
 - **Histórico de bugs/lições:** [`docs/operacao/findings-catalog.md`](docs/operacao/findings-catalog.md)
 - **Histórico de sprints:** [`docs/operacao/sprint-history.md`](docs/operacao/sprint-history.md)
 - **Setup de infra:** [`docs/operacao/infra-setup.md`](docs/operacao/infra-setup.md)

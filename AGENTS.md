@@ -1,8 +1,8 @@
 # V4 Ads MCP — agent context
 
-Auto-loaded by Claude Code. Read first.
+Auto-loaded by Codex. Read first.
 
-**V4 Ads MCP** é tool interna da V4 Company (marketing digital, BR) que conecta Google Ads + Meta Ads accounts a Claude/Codex/Cursor via Model Context Protocol. Gestores pedem em PT-BR — _"top 5 campanhas por gasto últimos 7 dias"_, _"pause keywords sem conversão"_ — e o assistente executa via tools curadas read/mutate com governança (audit_log, rate_limit, always-CONFIRM em mutates de blast radius alto, **hard-gate de acesso por conta**).
+**V4 Ads MCP** é tool interna da V4 Company (marketing digital, BR) que conecta Google Ads + Meta Ads accounts a Codex/Codex/Cursor via Model Context Protocol. Gestores pedem em PT-BR — _"top 5 campanhas por gasto últimos 7 dias"_, _"pause keywords sem conversão"_ — e o assistente executa via tools curadas read/mutate com governança (audit_log, rate_limit, always-CONFIRM em mutates de blast radius alto, **hard-gate de acesso por conta**).
 
 Interno only, não SaaS, sem terceiros. Substitui Supermetrics.
 
@@ -40,11 +40,11 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 **Decision gates:** **checkpoint volume Meta** (janela 06-25→07-10; 500 calls/15d → re-submit Full Access) — volume real 07-02 = **só 43 calls, 2,3% erro** → longe de 500; M.5 alimentaria OU estender · **soak Fase 2A→2B** → NÃO tombstonar (ver "Próximo sprint" acima) · **2026-07-25** reconectar Meta OAuth Wellington.
 
 **Pendente operacional (AÇÕES HUMANAS — runbook detalhado no handoff 2026-07-02):**
-1. **Cutover:** **lucassoares** (token com chave AES antiga → vai ver a mensagem amigável de reconexão, F70) + **anderson** (`invited` → 1º login). Runbook: trocar URL v4-ads no `~/.claude.json` deles → `…299432068772.southamerica-east1.run.app/mcp` (Bearer vale) + relogar no painel novo (`/help` já mostra a URL certa) + restart.
+1. **Cutover:** **lucassoares** (token com chave AES antiga → vai ver a mensagem amigável de reconexão, F70) + **anderson** (`invited` → 1º login). Runbook: trocar URL v4-ads no `~/.Codex.json` deles → `…299432068772.southamerica-east1.run.app/mcp` (Bearer vale) + relogar no painel novo (`/help` já mostra a URL certa) + restart.
 2. **Decomissionar `v4-ads-mcp-prod`** (só após cutovers — o scheduler antigo ainda cobre o resync até lá, agora redundante) · **revogar** o token BTW temporário do Wellington.
 3. **F67 custom domain** `mcpv4.fluxocerto.dev.br` via Load Balancer (southamerica-east1 não permite domain mapping direto; domínio já verificado).
 4. **Atribuir o SU** às contas Meta faltantes no BM (ML Antiguidades, MDO Pinda, `act_34358720650393626`, **CA-ROL GEAN `act_2399051240507488`** — erros de permissão #200, último visto 07-22).
-5. **Revisar as 4 skills `v4-trafego-google-ads`** no claude.ai (fora do repo) pra apontarem `get_performance_breakdown` · **decisões:** checkpoint Meta (só 43 calls) + soak da Fase 2B.
+5. **Revisar as 4 skills `v4-trafego-google-ads`** no Codex.ai (fora do repo) pra apontarem `get_performance_breakdown` · **decisões:** checkpoint Meta (só 43 calls) + soak da Fase 2B.
 6. **Smoke F58 dormente** (gestor smoke excluído 07-14) — deploys OK via fail-well; re-armar recriando gestor smoke sem grants + repor `SMOKE_MCP_BEARER` no GitHub se quiser a proteção ativa (memory `ci-smoke-bearer-dormant-2026-07`).
 
 **F76/F77 encerrados:** reabrir só se aparecer `mcp_auth_error` pós-`00026`, `health_deep_db_failed` persistente pós-`00028` ou incidente do uptime check.
@@ -96,7 +96,7 @@ A matriz `manager_account_access` (Google) / `manager_meta_account_access` (Meta
 
 ### Git workflow + deploy
 
-Solo dev on `main` (admin bypass). Commits: `feat(scope): …` / `fix(scope): …` / `docs(scope): …` / `chore: …`. Scopes: `web`, `admin`, `auth`, `db`, `mcp`, `meta_ads`, `ci`, `design-system`, `security`. Co-author trailer com Claude.
+Solo dev on `main` (admin bypass). Commits: `feat(scope): …` / `fix(scope): …` / `docs(scope): …` / `chore: …`. Scopes: `web`, `admin`, `auth`, `db`, `mcp`, `meta_ads`, `ci`, `design-system`, `security`. Co-author trailer com Codex.
 
 `git push origin main` → **CI roda; o Deploy é GATED** (desde 07-02): `ci.yml` job `test` → se verde, job `deploy` (`needs: test`, `uses: ./.github/workflows/deploy.yml` reusable) roda no MESMO commit (Buildpacks → **migrations Cloud Run Job** [F66 resolvido, `/cnb/process/migrate`] → deploy → route-to-latest → smoke `/health?deep=1`+`/mcp` 401 → rollback-on-failure com guard). NÃO há mais workflow "Deploy" standalone; o deploy aparece como job dentro do run do CI. Break-glass manual: `workflow_dispatch` no `deploy.yml`. **Confirme via `gh run view <id> --json conclusion` — NUNCA pelo exit code de `gh run watch` (engana).** Force secret novo: `gcloud run services update v4-ads-mcp --region=southamerica-east1 --update-secrets="<NAME>=<secret>:latest"` — mas adicione o secret também ao `--set-secrets` do `deploy.yml` (senão o próximo deploy o apaga).
 
@@ -162,7 +162,7 @@ Todo valor de enum em whitelist DEVE ser validado empiricamente em smoke runbook
 
 ### Date range conventions (post-3b.20)
 
-Reads + `bulk_pause_by_query`: **preset** (`date_range: str` com `type:"string"` + `enum`) ou **custom** (`start_date`+`end_date`, `^\d{4}-\d{2}-\d{2}$`, override). Resolve via `resolve_date_window` em `src/google_ads/queries/_common.py` (F1: schema sem `type` → Claude serializa dict como string literal). GAQL `BETWEEN end_date` é midnight-exclusive (F46) — `_format_change_date_between` aplica `+1 day`.
+Reads + `bulk_pause_by_query`: **preset** (`date_range: str` com `type:"string"` + `enum`) ou **custom** (`start_date`+`end_date`, `^\d{4}-\d{2}-\d{2}$`, override). Resolve via `resolve_date_window` em `src/google_ads/queries/_common.py` (F1: schema sem `type` → Codex serializa dict como string literal). GAQL `BETWEEN end_date` é midnight-exclusive (F46) — `_format_change_date_between` aplica `+1 day`.
 
 ### Meta SDK conventions (post-M.2a/M.2b + Modelo B)
 
@@ -174,7 +174,7 @@ Reads + `bulk_pause_by_query`: **preset** (`date_range: str` com `type:"string"`
   ```
 - **Audit Meta:** `audit_log.record(... platform="meta", provider_request_id=resp.headers().get("x-fb-trace-id"))`.
 - **BUC post-call:** `record_actual_meta()` parseia `X-Business-Use-Case-Usage` → `meta_rate_counters` + throttle warning >75%.
-- **2 endpoints, whitelists diferentes (F53/F54/F55):** `/insights` = SÓ metrics (spend, impressions, ctr, cpc, reach, frequency, actions, action_values, purchase_roas); `/campaigns`,`/adsets`,`/ads` = metadata (effective_status, daily_budget, creative_id, …). **Antes de shippar tool Meta com fields novos: use `ads_get_field_context([fields])` do Meta MCP oficial** (configurado em `~/.claude.json`) pra confirmar endpoint + existência — teria evitado F53+F54.
+- **2 endpoints, whitelists diferentes (F53/F54/F55):** `/insights` = SÓ metrics (spend, impressions, ctr, cpc, reach, frequency, actions, action_values, purchase_roas); `/campaigns`,`/adsets`,`/ads` = metadata (effective_status, daily_budget, creative_id, …). **Antes de shippar tool Meta com fields novos: use `ads_get_field_context([fields])` do Meta MCP oficial** (configurado em `~/.Codex.json`) pra confirmar endpoint + existência — teria evitado F53+F54.
 - **Long-lived token (OAuth pessoal, dormante):** Meta pode invalidar server-side antes do expiry natural; handle `to_friendly_meta_error` subcodes 458/467/460/463.
 
 ### Pós sessão 2026-06-19 (paginação Meta + GAQL error UX + resync)
@@ -214,21 +214,21 @@ Padrões pós-pacote UI/UX 2026-07-04 (2ª sessão):
 
 ### Tool bucket classification (post-3b.39 F1)
 
-`@register_tool` aceita `bucket: Literal["always","defer"]` (default `"defer"`). Cada tool: `# bucket: …` line 1 + prefix `[CORE]`/`[DEFER]` + `_meta`. **D3:** bucket="always" → `_meta` inclui `"anthropic/alwaysLoad": true` (Claude Code v2.x `ENABLE_TOOL_SEARCH=true` defere tudo por default; este field promove always-loaded). Source: [`tool-buckets-2026-05-25.md`](docs/operacao/tool-buckets-2026-05-25.md).
+`@register_tool` aceita `bucket: Literal["always","defer"]` (default `"defer"`). Cada tool: `# bucket: …` line 1 + prefix `[CORE]`/`[DEFER]` + `_meta`. **D3:** bucket="always" → `_meta` inclui `"anthropic/alwaysLoad": true` (Codex v2.x `ENABLE_TOOL_SEARCH=true` defere tudo por default; este field promove always-loaded). Source: [`tool-buckets-2026-05-25.md`](docs/operacao/tool-buckets-2026-05-25.md).
 
 ### Procedimentos operacionais (raros)
 
-- **Rotação Bearer v4-ads:** tokens SÓ válidos se issued via UI (NÃO inventar — backend valida hash, 401 se não bate). `/sessions` → Nova session → flash 60s do plaintext → cola em `~/.claude.json` `mcpServers.v4-ads.headers.Authorization` → restart → revoga antigo. NUNCA cole secret em chat.
+- **Rotação Bearer v4-ads:** tokens SÓ válidos se issued via UI (NÃO inventar — backend valida hash, 401 se não bate). `/sessions` → Nova session → flash 60s do plaintext → cola em `~/.Codex.json` `mcpServers.v4-ads.headers.Authorization` → restart → revoga antigo. NUNCA cole secret em chat.
 - **Criar secret GCP (F47):** SEMPRE arquivo binary intermediário, NUNCA pipe `echo|gcloud` no PowerShell (CRLF mangling): `python -c "open('tmp.bin','wb').write(b'<v>')"` → `gcloud secrets versions add <name> --data-file=tmp.bin` → `Remove-Item tmp.bin; Clear-History`.
 - **Remover field de `INSIGHTS_FIELDS_*`/enum whitelist:** `grep -rn "field_name" tests/` ANTES (check_pre_push não pega integration DB).
 
-## Tools available (this Claude session)
+## Tools available (this Codex session)
 
 - **gcloud** authed `wellington.ribeiro@v4company.com`, **owner** do projeto `v4-ads-mcp` (pós-migração 2026-06-30) — lê/grava secrets, Cloud Run, jobs, rollback direto (`--project=v4-ads-mcp`). `git push` → deploy (WIF/`GCP_DEPLOY_SA`). Antigo `v4-ads-mcp-prod` ainda existe sem owner (a decomissionar).
 - **gh** authed `BadWolf1509`.
 - **Secret Manager:** `gcloud secrets versions access latest --secret=<NAME> --project=v4-ads-mcp` (owner — funciona). 13 secrets: `database-url`, `aes-master-key`, `session-signing-key`, `google-oauth-client-id`, `google-oauth-client-secret`, `google-ads-developer-token`, `google-ads-login-customer-id`, `supabase-url`/`supabase-anon-key`/`supabase-service-key`, `meta-app-id`, `meta-app-secret`, `meta-system-user-token`.
 - **No psql no Windows** — `python+asyncpg` pra DB direto. **Docker** pode não estar rodando — testcontainers falham local, CI roda.
-- **Supabase MCP** + **Meta MCP oficial** (`ads_get_field_context` pra validar fields Meta) em config. **Claude in Chrome** disponível pra smoke visual.
+- **Supabase MCP** + **Meta MCP oficial** (`ads_get_field_context` pra validar fields Meta) em config. **Codex in Chrome** disponível pra smoke visual.
 - **Hooks:** PostToolUse auto-format ruff em .py + PreToolUse guard contra editar migration commitada. PowerShell pipe converte LF→CRLF mesmo binary (F47).
 
 ## When in doubt
