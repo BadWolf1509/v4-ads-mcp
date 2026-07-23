@@ -1,5 +1,6 @@
 """FastAPI application factory."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -17,6 +18,8 @@ from src.web.middleware import CSRFOriginMiddleware, SecurityHeadersMiddleware
 __version__ = "0.1.0"
 
 log = structlog.get_logger(__name__)
+
+_HEALTH_DB_TIMEOUT_SECONDS = 5.0
 
 
 def create_app(skip_db_init: bool = False) -> FastAPI:
@@ -57,11 +60,16 @@ def create_app(skip_db_init: bool = False) -> FastAPI:
         if not deep:
             return JSONResponse({"status": "ok", "version": __version__})
         try:
-            pool = connection.get_pool()
-            async with pool.acquire() as conn:
-                await conn.fetchval("SELECT 1")
+            # The external uptime check times out after 10s. Keep the whole
+            # acquire + one reconnect attempt inside half that budget.
+            async with asyncio.timeout(_HEALTH_DB_TIMEOUT_SECONDS):
+                await connection.run_with_reconnect(lambda conn: conn.fetchval("SELECT 1"))
         except Exception as e:  # noqa: BLE001 — readiness reporta qualquer falha de DB
-            log.warning("health_deep_db_failed", error=str(e))
+            log.warning(
+                "health_deep_db_failed",
+                error=str(e),
+                exc_type=type(e).__name__,
+            )
             return JSONResponse(
                 {"status": "degraded", "version": __version__, "db": "error"},
                 status_code=503,
