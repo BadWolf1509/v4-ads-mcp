@@ -15,7 +15,10 @@
 
   <form method="GET" action="/admin/audit"
         class="sticky z-[10] bg-white border-b border-v4-gray-100 py-3 mb-4 grid grid-cols-2 md:grid-cols-5 gap-3 items-end"
-        style="top: var(--v4-subnav-offset);">
+        {# Esta pagina TEM a subnav admin acima, entao a barra fica embaixo da
+           pilha header+subnav. Com --v4-subnav-offset ela grudava no mesmo
+           topo da subnav e a cobria por inteiro (mesmo z-index, DOM depois). #}
+        style="top: var(--v4-tab-bar-offset);">
     <div class="v4-form__group" style="margin: 0;">
       <label class="v4-form__label">Gestor</label>
       <select name="manager_id" class="v4-select" onchange="this.form.submit()">

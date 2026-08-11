@@ -113,18 +113,27 @@
   --v4-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
   /* Sticky offsets — derivados da altura do header. Antes eram tres literais
-     (53px / 96px / 120px) que dessincronizavam em silencio se o padding do
-     header mudasse; agora so --v4-header-h precisa ser mantido.
-       header  = 12+12 de padding + 28 de conteudo + 1 de borda
-       subnav  = 12+12 de padding + 18 de conteudo + 1 de borda
-       filtros = barra de filtros da auditoria */
-  --v4-header-h:          53px;
-  --v4-subnav-h:          43px;
-  --v4-filter-bar-h:      67px;
-  /* Barra de filtros logo abaixo do header (audit filter rows) */
+     (53/96/120px) que dessincronizavam em silencio quando o header mudasse.
+     Valores MEDIDOS no DOM de producao em 2026-08-11 (smoke autenticado):
+       header  = 65px  (o botao "Sair" do .v4-header__user tem 40px + 24 de
+                        padding + 1 de borda — nao os 53px que o codigo assumia,
+                        por isso as barras grudavam 12px alto demais)
+       subnav  = 55px
+       filtros = 88px  (barra de filtros da auditoria, desktop) */
+  --v4-header-h:          65px;
+  --v4-subnav-h:          55px;
+  --v4-filter-bar-h:      88px;
+  /* Abaixo do header apenas — paginas SEM subnav admin (ex.: /audit) */
   --v4-subnav-offset:     var(--v4-header-h);
-  /* Pilha header + subnav (platform tab bars) */
+  /* Abaixo de header + subnav admin — tab bars de plataforma E a barra de
+     filtros de /admin/audit (que fica embaixo da subnav, nao do header) */
   --v4-tab-bar-offset:    calc(var(--v4-header-h) + var(--v4-subnav-h));
-  /* Cabecalho de dia abaixo de header + barra de filtros (audit day grouping) */
+  /* Cabecalho de dia abaixo de header + barra de filtros (/audit) */
   --v4-audit-day-offset:  calc(var(--v4-header-h) + var(--v4-filter-bar-h));
+}
+
+/* No mobile o header encolhe: nav e usuario somem, sobra o hamburguer (36px)
+   contra os 40px do botao "Sair". Medido: 61px. */
+@media (max-width: 767px) {
+  :root { --v4-header-h: 61px; }
 }

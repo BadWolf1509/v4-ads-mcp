@@ -725,6 +725,14 @@
   font-size: var(--v4-small-size);               /* 12px */
 }
 
+/* O shorthand `padding` acima vem DEPOIS de .v4-input--search e com a mesma
+   especificidade, entao zerava o padding-left:36px que abre espaco pro icone
+   de lupa — o icone ficava por cima do placeholder nas matrizes de acesso.
+   Especificidade 0,2,0 resolve sem mexer no padding vertical compacto. */
+.v4-input--search.v4-input--small {
+  padding-left: 32px;
+}
+
 /* Button internal spans — icon slot and label slot */
 .v4-btn__icon {
   display: inline-flex;

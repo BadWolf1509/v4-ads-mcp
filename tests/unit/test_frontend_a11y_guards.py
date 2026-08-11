@@ -112,6 +112,30 @@ def test_offsets_sticky_sao_derivados():
     assert "top: 53px" not in base
 
 
+def test_paginas_admin_nao_usam_o_offset_de_header_puro():
+    """Toda pagina /admin tem a subnav acima, entao sticky ali parte da PILHA.
+
+    Com --v4-subnav-offset a barra de filtros de /admin/audit grudava no mesmo
+    topo da subnav e a cobria por inteiro (mesmo z-index, e ela vem depois no
+    DOM). Medido no smoke autenticado de 2026-08-11.
+    """
+    # Casa a FORMA DE USO (`var(...)`), nao o token nu — comentarios citam o
+    # nome legitimamente ao explicar por que nao se usa ele aqui.
+    for template in (_TEMPLATES / "admin").rglob("*.html"):
+        conteudo = template.read_text(encoding="utf-8")
+        assert "var(--v4-subnav-offset)" not in conteudo, (
+            f"admin/{template.name}: use --v4-tab-bar-offset (header+subnav), "
+            "nao --v4-subnav-offset (so header)"
+        )
+
+
+def test_input_busca_compacto_preserva_espaco_do_icone():
+    """O shorthand `padding` de --small zerava o padding-left de --search e o
+    icone de lupa cobria o placeholder nas matrizes de acesso."""
+    css = (_STATIC / "v4-components.css").read_text(encoding="utf-8")
+    assert ".v4-input--search.v4-input--small" in css
+
+
 def test_help_css_esta_num_arquivo_estatico():
     """~60 linhas de <style> inline saiam do cache e do alcance da CSP."""
     html = (_TEMPLATES / "help.html").read_text(encoding="utf-8")
