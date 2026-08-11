@@ -15,8 +15,13 @@
     </a>
   </header>
 
-  {# Sticky filter bar with auto-submit #}
-  <form id="audit-filters" method="GET" action="/audit"
+  {# Sticky filter bar with auto-submit.
+     data-sticky-measure: os cabecalhos de dia grudam ABAIXO desta barra, e a
+     altura dela depende de quantas linhas ela embrulha (88px >= 831px de
+     largura, 164px >= 618px, 240px abaixo disso). Nenhum literal nem media
+     query acerta sempre, entao _base.html mede em runtime e publica em
+     --v4-filter-bar-h. Ver F79. #}
+  <form id="audit-filters" method="GET" action="/audit" data-sticky-measure
         class="sticky z-[10] bg-white border-b border-v4-gray-100 py-3 mb-4 flex flex-wrap gap-3 items-end"
         style="top: var(--v4-subnav-offset);">
     <div class="v4-form__group" style="margin: 0;">

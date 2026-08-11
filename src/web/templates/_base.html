@@ -211,6 +211,28 @@
   }
 </script>
 <script>
+  // Offset sticky = altura MEDIDA, nao estimada (licao do F79).
+  // A barra de filtros da auditoria embrulha conforme a largura disponivel
+  // (medido: 88px a partir de 831px, 164px a partir de 618px, 240px abaixo),
+  // e os cabecalhos de dia grudam logo abaixo dela. Como os pontos de quebra
+  // emergem da largura do conteudo — nao de breakpoints padrao — nem literal
+  // nem media query acerta em toda janela. Aqui a altura real e publicada em
+  // --v4-filter-bar-h, que alimenta --v4-audit-day-offset.
+  // Sem JS o valor estatico de v4-tokens.css continua valendo como fallback.
+  (function () {
+    const barra = document.querySelector('[data-sticky-measure]');
+    if (!barra || typeof ResizeObserver === 'undefined') return;
+    const publicar = () => {
+      // Barra nao-sticky nao empurra nada abaixo dela.
+      const empilha = getComputedStyle(barra).position === 'sticky';
+      const altura = empilha ? Math.round(barra.getBoundingClientRect().height) : 0;
+      document.documentElement.style.setProperty('--v4-filter-bar-h', altura + 'px');
+    };
+    new ResizeObserver(publicar).observe(barra);
+    publicar();
+  })();
+</script>
+<script>
   function v4ToggleRow(rowId) {
     const row = document.getElementById(rowId);
     const detail = document.getElementById(rowId + '-detail');

@@ -119,7 +119,12 @@
                         padding + 1 de borda — nao os 53px que o codigo assumia,
                         por isso as barras grudavam 12px alto demais)
        subnav  = 55px
-       filtros = 88px  (barra de filtros da auditoria, desktop) */
+       filtros = 88px  (barra de filtros da auditoria em 1 linha)
+     ATENCAO --v4-filter-bar-h: e so o FALLBACK sem JS. A barra embrulha
+     conforme a largura (88px a partir de 831px, 164px a partir de 618px,
+     240px abaixo), e os pontos de quebra emergem da largura do conteudo, nao
+     de breakpoints padrao — nenhum literal acerta em toda janela. O script
+     [data-sticky-measure] em _base.html mede e sobrescreve em runtime. */
   --v4-header-h:          65px;
   --v4-subnav-h:          55px;
   --v4-filter-bar-h:      88px;

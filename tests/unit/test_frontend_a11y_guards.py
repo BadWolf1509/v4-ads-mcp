@@ -129,6 +129,19 @@ def test_paginas_admin_nao_usam_o_offset_de_header_puro():
         )
 
 
+def test_barra_de_filtros_da_auditoria_e_medida_em_runtime():
+    """A barra embrulha (88/164/240px) em pontos que nao sao breakpoints padrao.
+
+    Os cabecalhos de dia grudam abaixo dela, entao o offset tem que vir de
+    medicao, nao de literal. Ver F79.
+    """
+    audit = (_TEMPLATES / "audit.html").read_text(encoding="utf-8")
+    assert "data-sticky-measure" in audit, "a barra de filtros precisa ser medida"
+    base = (_TEMPLATES / "_base.html").read_text(encoding="utf-8")
+    assert "ResizeObserver" in base
+    assert "--v4-filter-bar-h" in base
+
+
 def test_input_busca_compacto_preserva_espaco_do_icone():
     """O shorthand `padding` de --small zerava o padding-left de --search e o
     icone de lupa cobria o placeholder nas matrizes de acesso."""
