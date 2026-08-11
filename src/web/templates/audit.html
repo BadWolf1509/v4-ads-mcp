@@ -31,7 +31,7 @@
     <div class="v4-form__group" style="margin: 0;">
       <label class="v4-form__label" for="action_type">Tipo</label>
       <select id="action_type" name="action_type" class="v4-select"
-              onchange="this.form.submit()">
+              data-v4-autosubmit>
         <option value="all" {% if filter_action_type == "all" %}selected{% endif %}>Todos</option>
         <option value="mutate" {% if filter_action_type == "mutate" %}selected{% endif %}>Mutações</option>
         <option value="read" {% if filter_action_type == "read" %}selected{% endif %}>Consultas sensíveis</option>
@@ -39,7 +39,7 @@
     </div>
     <div class="v4-form__group" style="margin: 0;">
       <label class="v4-form__label" for="customer_id">Conta</label>
-      <select id="customer_id" name="customer_id" class="v4-select" onchange="this.form.submit()">
+      <select id="customer_id" name="customer_id" class="v4-select" data-v4-autosubmit>
         <option value="">Todas</option>
         {% for a in accessible_accounts %}
           <option value="{{ a.customer_id }}" {% if filter_customer_id == a.customer_id %}selected{% endif %}>
@@ -50,7 +50,7 @@
     </div>
     <div class="v4-form__group" style="margin: 0;">
       <label class="v4-form__label" for="status">Status</label>
-      <select id="status" name="status" class="v4-select" onchange="this.form.submit()">
+      <select id="status" name="status" class="v4-select" data-v4-autosubmit>
         <option value="all" {% if filter_status == "all" %}selected{% endif %}>Todos</option>
         <option value="success" {% if filter_status == "success" %}selected{% endif %}>OK</option>
         <option value="error" {% if filter_status == "error" %}selected{% endif %}>Erros</option>
@@ -58,7 +58,7 @@
     </div>
     <div class="v4-form__group" style="margin: 0;">
       <label class="v4-form__label" for="days">Período</label>
-      <select id="days" name="days" class="v4-select" onchange="this.form.submit()">
+      <select id="days" name="days" class="v4-select" data-v4-autosubmit>
         {% for n in [1, 7, 14, 30, 90] %}
           <option value="{{ n }}" {% if filter_days == n %}selected{% endif %}>{{ n }} dias</option>
         {% endfor %}
@@ -90,9 +90,9 @@
         </thead>
         <tbody>
           {% for r in events %}
-          <tr id="row-{{ r.id }}" class="is-expandable" onclick="v4ToggleRow('row-{{ r.id }}')"
-              tabindex="0" role="button" aria-expanded="false"
-              onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();v4ToggleRow('row-{{ r.id }}');}">
+          <tr id="row-{{ r.id }}" class="is-expandable"
+              data-v4-action="row-toggle" data-v4-target="row-{{ r.id }}"
+              tabindex="0" role="button" aria-expanded="false">
             <td class="col-mono">{{ r.occurred_at.strftime("%H:%M:%S") }}</td>
             <td class="col-mono">{{ r.operation }}</td>
             <td>
@@ -116,8 +116,7 @@
             <td>{{ r.target_count if r.target_count is not none else "—" }}</td>
             <td class="col-mono text-v4-gray-700">{{ r.duration_ms ~ "ms" if r.duration_ms else "—" }}</td>
             <td class="text-right">
-              <a href="/audit/{{ r.id }}" class="v4-btn v4-btn--small v4-btn--ghost"
-                 onclick="event.stopPropagation();">Detalhe</a>
+              <a href="/audit/{{ r.id }}" class="v4-btn v4-btn--small v4-btn--ghost">Detalhe</a>
             </td>
           </tr>
           <tr id="row-{{ r.id }}-detail" class="v4-table__detail">

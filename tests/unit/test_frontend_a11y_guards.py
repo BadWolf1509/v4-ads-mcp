@@ -70,6 +70,49 @@ def test_sem_tailwind_play_cdn():
     assert "cdn.tailwindcss.com" not in html
 
 
+def test_sem_handler_inline_em_template():
+    """script-src sem 'unsafe-inline' bloqueia on*= e hx-on em atributo.
+
+    O comportamento vive em v4-panel.js, acionado por data-v4-*.
+    """
+    padrao = re.compile(r'\b(on[a-z]+|hx-on[^\s=]*)\s*=\s*(["\'])(.*?)\2', re.S)
+    ofensores = []
+    for template in _TEMPLATES.rglob("*.html"):
+        for attr, _, _ in padrao.findall(template.read_text(encoding="utf-8")):
+            ofensores.append(f"{template.name}:{attr}")
+    assert not ofensores, f"handler inline em template: {ofensores}"
+
+
+def test_sem_script_inline_em_template():
+    """Bloco <script> sem src também exige 'unsafe-inline'."""
+    ofensores = [
+        t.name for t in _TEMPLATES.rglob("*.html") if "<script>" in t.read_text(encoding="utf-8")
+    ]
+    assert not ofensores, f"<script> inline em: {ofensores}"
+
+
+def test_fragmento_de_toggle_nao_carrega_handler():
+    """F74: o handler do checkbox é delegado, então o fragmento não pode
+    depender de re-emitir `hx-on` pra sobreviver ao swap."""
+    rotas = (_ROOT / "src" / "web" / "routes.py").read_text(encoding="utf-8")
+    fragmento = rotas.split("def _toggle_checkbox_fragment")[1].split("\ndef ")[0]
+    assert "data-v4-access-toggle" in fragmento
+    assert 'hx-on::after-request="' not in fragmento
+
+
+def test_toda_acao_usada_existe_no_modulo():
+    """data-v4-action com nome errado falharia calado no browser."""
+    js = (_STATIC / "v4-panel.js").read_text(encoding="utf-8")
+    declaradas = set(re.findall(r"^  '?([a-z-]+)'?:", js, re.M))
+    usadas = set()
+    for template in _TEMPLATES.rglob("*.html"):
+        usadas.update(
+            re.findall(r'data-v4-action="([a-z-]+)"', template.read_text(encoding="utf-8"))
+        )
+    orfas = usadas - declaradas
+    assert not orfas, f"data-v4-action sem handler em v4-panel.js: {sorted(orfas)}"
+
+
 def test_csp_sem_unsafe_eval():
     """Assertado sobre o valor da policy, nao sobre o source (comentarios citam o termo)."""
     from src.web.middleware import _CSP_POLICY
@@ -137,9 +180,9 @@ def test_barra_de_filtros_da_auditoria_e_medida_em_runtime():
     """
     audit = (_TEMPLATES / "audit.html").read_text(encoding="utf-8")
     assert "data-sticky-measure" in audit, "a barra de filtros precisa ser medida"
-    base = (_TEMPLATES / "_base.html").read_text(encoding="utf-8")
-    assert "ResizeObserver" in base
-    assert "--v4-filter-bar-h" in base
+    js = (_STATIC / "v4-panel.js").read_text(encoding="utf-8")
+    assert "ResizeObserver" in js
+    assert "--v4-filter-bar-h" in js
 
 
 def test_barras_de_filtro_nao_grudam_no_celular():
@@ -180,4 +223,5 @@ def test_toast_de_erro_interrompe_a_leitura():
     html = (_TEMPLATES / "_base.html").read_text(encoding="utf-8")
     assert 'id="v4-toast-region"' in html
     assert "aria-atomic=" not in html
-    assert "'alert' : 'status'" in html
+    js = (_STATIC / "v4-panel.js").read_text(encoding="utf-8")
+    assert "'alert' : 'status'" in js

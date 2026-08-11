@@ -37,13 +37,12 @@
           <td class="text-right">
             {% if not c.revoked_at %}
             <button type="button" class="v4-btn v4-btn--small v4-btn--danger"
-                    onclick='openConfirm({
-                      title: "Revogar conexão?",
-                      message: "Você precisará reconectar com Google para usar Google Ads de novo.",
-                      okLabel: "Revogar",
-                      kind: "danger",
-                      onConfirm: () => htmx.ajax("POST", "/accounts/{{ c.id }}/revoke", { target: "body", swap: "innerHTML" }).then(() => window.location.reload())
-                    })'>Revogar</button>
+                    data-v4-action="confirm"
+                    data-v4-confirm-title="Revogar conexão?"
+                    data-v4-confirm-message="Você precisará reconectar com Google para usar Google Ads de novo."
+                    data-v4-confirm-ok="Revogar"
+                    data-v4-post="/accounts/{{ c.id }}/revoke"
+                    data-v4-target="body" data-v4-swap="innerHTML" data-v4-reload>Revogar</button>
             {% endif %}
           </td>
         </tr>
@@ -61,7 +60,7 @@
     </div>
     {% if accounts %}
       <div class="mb-3">
-        {{ search_input("acc-search", placeholder="Buscar por nome ou ID da conta...", attrs='oninput="filterAccounts()"', aria_label="Buscar conta Google Ads por nome ou ID") }}
+        {{ search_input("acc-search", placeholder="Buscar por nome ou ID da conta...", attrs='data-v4-filter="#accounts-table" data-v4-filter-fields="name,id"', aria_label="Buscar conta Google Ads por nome ou ID") }}
       </div>
       <div class="v4-table-wrap">
       <table class="v4-table v4-table--compact" id="accounts-table">
@@ -85,15 +84,6 @@
         </tbody>
       </table>
       </div>
-      <script>
-        function filterAccounts() {
-          const q = document.getElementById('acc-search').value.toLowerCase();
-          document.querySelectorAll('#accounts-table tbody tr').forEach(tr => {
-            const visible = !q || tr.dataset.name.includes(q) || tr.dataset.id.includes(q);
-            tr.style.display = visible ? '' : 'none';
-          });
-        }
-      </script>
     {% else %}
       {{ alert("Você não tem acesso a nenhuma conta ainda. Peça pro admin V4 da sua unidade liberar o acesso pra você.", "warning") }}
     {% endif %}

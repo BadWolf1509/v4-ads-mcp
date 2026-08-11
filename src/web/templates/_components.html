@@ -116,13 +116,9 @@
   <div class="v4-code-block__header">
     <span>{% if filename %}{{ filename }}{% elif language %}{{ language }}{% else %}snippet{% endif %}</span>
     <button class="v4-code-block__copy" type="button"
-            onclick="
-              const code = document.getElementById('{{ block_id }}').querySelector('pre').innerText;
-              navigator.clipboard.writeText(code);
-              this.innerText = 'Copiado!';
-              setTimeout(() => this.innerText = 'Copiar', 2000);
-              if (typeof showToast === 'function') showToast('Copiado!', 'success');
-            ">Copiar</button>
+            data-v4-action="copy"
+            data-v4-copy-from="#{{ block_id }} pre"
+            data-v4-copied-label="Copiado!">Copiar</button>
   </div>
   <pre><code>{{ content }}</code></pre>
 </div>
@@ -141,7 +137,7 @@
 <dialog class="v4-modal" id="{{ id }}" aria-labelledby="{{ id }}-title">
   <div class="v4-modal__header">
     <h3 class="v4-modal__title" id="{{ id }}-title">{{ title }}</h3>
-    <button type="button" class="v4-modal__close" onclick="document.getElementById('{{ id }}').close()" aria-label="Fechar">×</button>
+    <button type="button" class="v4-modal__close" data-v4-action="dialog-close" data-v4-target="{{ id }}" aria-label="Fechar">×</button>
   </div>
   <div class="v4-modal__body">{{ body|safe }}</div>
   {% if footer %}<div class="v4-modal__footer">{{ footer|safe }}</div>{% endif %}
@@ -166,7 +162,7 @@
 {# items: list of dicts with keys: label, url (optional), post_url (optional), kind (optional, 'danger'), separator (optional, true => render <hr>) #}
 <div class="v4-dropdown" id="{{ id }}">
   <button type="button" class="v4-dropdown__trigger" aria-haspopup="menu" aria-expanded="false"
-          onclick="v4DropdownToggle('{{ id }}')">{{ trigger_label }}</button>
+          data-v4-action="dropdown-toggle" data-v4-target="{{ id }}">{{ trigger_label }}</button>
   <div class="v4-dropdown__menu" role="menu">
     {% for item in items %}
       {% if item.separator %}
@@ -193,7 +189,7 @@
 {% endmacro %}
 
 {# Expandable row pattern (no macro — inline in templates):
-  <tr id="row-1" class="is-expandable" onclick="v4ToggleRow('row-1')">
+  <tr id="row-1" class="is-expandable" data-v4-action="row-toggle" data-v4-target="row-1">
     <td>cell 1</td><td>cell 2</td>
   </tr>
   <tr id="row-1-detail" class="v4-table__detail">

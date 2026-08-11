@@ -41,13 +41,12 @@
         <td class="text-right">
           {% if not s.revoked_at %}
           <button type="button" class="v4-btn v4-btn--small v4-btn--danger"
-                  onclick='openConfirm({
-                    title: "Revogar sessão?",
-                    message: "A sessão {{ s.label|tojson }} para de funcionar imediatamente. Bearer atual fica inválido. Você precisa criar uma nova sessão pra reconfigurar.",
-                    okLabel: "Revogar",
-                    kind: "danger",
-                    onConfirm: () => htmx.ajax("POST", "/sessions/{{ s.id }}/revoke", { target: "#sessions-table", swap: "outerHTML" })
-                  })'>Revogar</button>
+                  data-v4-action="confirm"
+                  data-v4-confirm-title="Revogar sessão?"
+                  data-v4-confirm-message='A sessão "{{ s.label }}" para de funcionar imediatamente. Bearer atual fica inválido. Você precisa criar uma nova sessão pra reconfigurar.'
+                  data-v4-confirm-ok="Revogar"
+                  data-v4-post="/sessions/{{ s.id }}/revoke"
+                  data-v4-target="#sessions-table" data-v4-swap="outerHTML">Revogar</button>
           {% endif %}
         </td>
       </tr>

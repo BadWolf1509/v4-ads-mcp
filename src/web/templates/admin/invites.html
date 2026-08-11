@@ -64,15 +64,15 @@ Qualquer coisa me chama.
           </td>
           <td class="text-right">
             <button type="button" class="v4-btn v4-btn--small v4-btn--secondary"
-                    onclick='navigator.clipboard.writeText({{ onboarding_message|trim|tojson }}); showToast("Mensagem copiada — cola no WhatsApp/Slack do gestor.", "success");'>Copiar mensagem</button>
+                    data-v4-action="copy"
+                    data-v4-copy-text="{{ onboarding_message|trim }}"
+                    data-v4-copy-toast="Mensagem copiada — cola no WhatsApp/Slack do gestor.">Copiar mensagem</button>
             <button type="button" class="v4-btn v4-btn--small v4-btn--ghost"
-                    onclick='openConfirm({
-                      title: "Cancelar convite?",
-                      message: "Remove o convite de " + {{ inv.email|tojson }} + ". O usuário não poderá logar até ser convidado novamente.",
-                      okLabel: "Cancelar convite",
-                      kind: "danger",
-                      onConfirm: () => htmx.ajax("POST", "/admin/invites/{{ inv.id }}/cancel", { swap: "none" })
-                    })'>Cancelar</button>
+                    data-v4-action="confirm"
+                    data-v4-confirm-title="Cancelar convite?"
+                    data-v4-confirm-message="Remove o convite de {{ inv.email }}. O usuário não poderá logar até ser convidado novamente."
+                    data-v4-confirm-ok="Cancelar convite"
+                    data-v4-post="/admin/invites/{{ inv.id }}/cancel">Cancelar</button>
           </td>
         </tr>
         {% endfor %}

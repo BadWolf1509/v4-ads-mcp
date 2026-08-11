@@ -28,6 +28,10 @@
   <link rel="stylesheet" href="/static/v4-tailwind.css?v={{ asset_version }}">
   <link rel="icon" type="image/svg+xml" href="/static/logo/logo_v4_puro_round.svg?v={{ asset_version }}">
   <script src="https://unpkg.com/htmx.org@2.0.3" integrity="sha384-0895/pl2MU10Hqc6jd4RvrthNlDiE9U1tWmX7WRESftEDRosgxNsQG/Ze9YMRzHq" crossorigin="anonymous" defer></script>
+  {# Todo o comportamento do painel. Externo, e nao inline, pra que a CSP possa
+     rodar sem script-src 'unsafe-inline'. defer garante DOM pronto e mantem a
+     ordem: htmx primeiro. #}
+  <script src="/static/v4-panel.js?v={{ asset_version }}" defer></script>
   {# CSS especifico de pagina (ex.: /help). Fica DEPOIS do v4-tailwind.css. #}
   {% block head_extra %}{% endblock %}
 </head>
@@ -53,7 +57,7 @@
   <a class="v4-skip-link" href="#conteudo">Pular para o conteúdo</a>
   <header class="v4-header">
     {% if current_user %}
-    <button class="v4-header__hamburger" type="button" aria-label="Abrir menu" aria-controls="mobile-drawer" aria-expanded="false" onclick="toggleDrawer()">
+    <button class="v4-header__hamburger" type="button" aria-label="Abrir menu" aria-controls="mobile-drawer" aria-expanded="false" data-v4-action="drawer-toggle">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
     {% endif %}
@@ -80,7 +84,7 @@
 
 {% if current_user %}
 <div id="mobile-drawer" class="v4-drawer" role="dialog" aria-hidden="true" aria-label="Menu">
-  <div class="v4-drawer__backdrop" onclick="toggleDrawer()"></div>
+  <div class="v4-drawer__backdrop" data-v4-action="drawer-toggle"></div>
   <nav class="v4-drawer__panel" aria-label="Mobile">
       <div class="v4-drawer__section">
         {% for item in nav_items %}
@@ -104,38 +108,6 @@
       </div>
   </nav>
 </div>
-<script>
-  function toggleDrawer() {
-    const drawer = document.getElementById('mobile-drawer');
-    if (!drawer) return;
-    const isOpen = drawer.classList.toggle('is-open');
-    drawer.setAttribute('aria-hidden', String(!isOpen));
-    document.querySelector('.v4-header__hamburger')?.setAttribute('aria-expanded', String(isOpen));
-    document.body.style.overflow = isOpen ? 'hidden' : '';
-    // Contem o Tab: o resto da pagina fica inerte enquanto a gaveta esta aberta.
-    for (const el of [document.querySelector('header'), document.querySelector('main'), document.querySelector('footer')]) {
-      if (el) el.inert = isOpen;
-    }
-    if (isOpen) {
-      window._v4DrawerReturnFocus = document.activeElement;
-      document.querySelector('.v4-drawer__panel a, .v4-drawer__panel button')?.focus();
-    } else {
-      window._v4DrawerReturnFocus?.focus();
-      window._v4DrawerReturnFocus = null;
-    }
-  }
-  if (!window._v4DrawerEscBound) {
-    window._v4DrawerEscBound = true;
-    document.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape') {
-        const drawer = document.getElementById('mobile-drawer');
-        if (drawer && drawer.classList.contains('is-open')) {
-          toggleDrawer();
-        }
-      }
-    });
-  }
-</script>
 {% endif %}
 
   <main id="conteudo" tabindex="-1">
@@ -155,101 +127,8 @@
     </div>
   </form>
 </dialog>
-<script>
-  // Public API: openConfirm({ title, message, okLabel, kind, onConfirm })
-  function openConfirm(opts) {
-    const dlg = document.getElementById('v4-confirm-dialog');
-    document.getElementById('v4-confirm-title').textContent = opts.title || 'Confirmar?';
-    document.getElementById('v4-confirm-message').textContent = opts.message || '';
-    const okBtn = dlg.querySelector('[data-confirm-ok]');
-    okBtn.textContent = opts.okLabel || 'Confirmar';
-    okBtn.className = 'v4-btn v4-btn--small v4-btn--' + (opts.kind || 'danger');
-    okBtn.onclick = () => { dlg.close(); opts.onConfirm && opts.onConfirm(); };
-    dlg.querySelector('[data-confirm-cancel]').onclick = () => dlg.close();
-    dlg.showModal();
-  }
-</script>
 {# aria-atomic omitido de proposito: com atomic=true o leitor de tela
    re-anuncia a fila inteira a cada toast novo. #}
 <div class="v4-toast-region" id="v4-toast-region" aria-live="polite"></div>
-<script>
-  function showToast(message, kind) {
-    kind = kind || 'success';
-    const region = document.getElementById('v4-toast-region');
-    const toast = document.createElement('div');
-    toast.className = 'v4-toast v4-toast--' + kind;
-    // Erro interrompe a leitura; sucesso entra na fila educada.
-    toast.setAttribute('role', kind === 'error' ? 'alert' : 'status');
-    toast.textContent = message;
-    region.appendChild(toast);
-    setTimeout(() => {
-      toast.classList.add('is-leaving');
-      setTimeout(() => toast.remove(), 200);
-    }, 3500);
-  }
-  // HTMX hook: server can return HX-Trigger: {"toast": {"message": "...", "kind": "success"}}
-  document.body.addEventListener('toast', (e) => showToast(e.detail.message, e.detail.kind));
-  // Global HTMX failure handling: request that fails (4xx/5xx/network) no longer dies silently.
-  document.body.addEventListener('htmx:responseError', () => showToast('Erro na requisição — a ação pode não ter sido aplicada.', 'error'));
-  document.body.addEventListener('htmx:sendError', () => showToast('Falha de rede — a ação não foi aplicada.', 'error'));
-</script>
-<script>
-  function v4DropdownToggle(id) {
-    const dd = document.getElementById(id);
-    const isOpen = dd.classList.toggle('is-open');
-    dd.querySelector('.v4-dropdown__trigger').setAttribute('aria-expanded', String(isOpen));
-    if (isOpen) {
-      const closeOnOutside = (e) => {
-        if (!dd.contains(e.target)) {
-          dd.classList.remove('is-open');
-          dd.querySelector('.v4-dropdown__trigger').setAttribute('aria-expanded', 'false');
-          document.removeEventListener('click', closeOnOutside);
-        }
-      };
-      setTimeout(() => document.addEventListener('click', closeOnOutside), 0);
-    }
-  }
-</script>
-<script>
-  // Offset sticky = altura MEDIDA, nao estimada (licao do F79).
-  // A barra de filtros da auditoria embrulha conforme a largura disponivel
-  // (medido: 88px a partir de 831px, 164px a partir de 618px, 240px abaixo),
-  // e os cabecalhos de dia grudam logo abaixo dela. Como os pontos de quebra
-  // emergem da largura do conteudo — nao de breakpoints padrao — nem literal
-  // nem media query acerta em toda janela. Aqui a altura real e publicada em
-  // --v4-filter-bar-h, que alimenta --v4-audit-day-offset.
-  // Sem JS o valor estatico de v4-tokens.css continua valendo como fallback.
-  (function () {
-    const barra = document.querySelector('[data-sticky-measure]');
-    if (!barra || typeof ResizeObserver === 'undefined') return;
-    let ultimo = null;
-    const publicar = () => {
-      // Barra nao-sticky (max-sm:static no celular) nao empurra nada abaixo.
-      const empilha = getComputedStyle(barra).position === 'sticky';
-      const altura = empilha ? Math.round(barra.getBoundingClientRect().height) : 0;
-      if (altura === ultimo) return;
-      ultimo = altura;
-      document.documentElement.style.setProperty('--v4-filter-bar-h', altura + 'px');
-    };
-    // O observer pega mudanca de ALTURA (embrulho). O listener de resize pega
-    // a mudanca de POSITION no breakpoint, que pode ocorrer sem mudar altura —
-    // e evita duplicar o valor do breakpoint aqui no JS. Ambos saem cedo
-    // quando nada mudou, entao o custo e duas leituras por evento.
-    new ResizeObserver(publicar).observe(barra);
-    window.addEventListener('resize', publicar, { passive: true });
-    publicar();
-  })();
-</script>
-<script>
-  function v4ToggleRow(rowId) {
-    const row = document.getElementById(rowId);
-    const detail = document.getElementById(rowId + '-detail');
-    if (!row || !detail) return;
-    row.classList.toggle('is-open');
-    detail.classList.toggle('is-open');
-    const isOpen = row.classList.contains('is-open');
-    row.setAttribute('aria-expanded', String(isOpen));
-  }
-</script>
 </body>
 </html>

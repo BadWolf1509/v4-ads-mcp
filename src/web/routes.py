@@ -96,19 +96,20 @@ async def _audit_admin(
 
 
 def _toggle_checkbox_fragment(*, post_url: str, vals: dict[str, str], checked: bool) -> str:
+    """Checkbox de reposição servido após o toggle de acesso.
+
+    O toast de sucesso e o revert-on-fail vivem num listener delegado em
+    v4-panel.js, acionado por `data-v4-access-toggle`. Antes o handler vinha
+    embutido num `hx-on` que o fragmento precisava re-emitir a cada swap —
+    esquecer disso foi o F74. Agora o comportamento não pode se perder: o
+    fragmento carrega só o marcador.
+    """
     state = "checked" if checked else ""
     hx_vals = html.escape(json.dumps(vals), quote=True)
-    # Static string (no user input, no new XSS vector) — mirrors the hx-on::after-request
-    # baked into the 4 checkbox templates, so a swapped fragment keeps the toast + revert.
-    hx_on = (
-        "if (event.detail.successful) { "
-        "showToast(this.checked ? 'Acesso liberado' : 'Acesso revogado', 'success'); "
-        "} else { this.checked = !this.checked; }"
-    )
     return (
         f'<input type="checkbox" {state} hx-post="{post_url}" '
         f'hx-vals=\'{hx_vals}\' hx-trigger="change" hx-swap="outerHTML" '
-        f'hx-on::after-request="{hx_on}" aria-label="Alternar acesso">'
+        f'data-v4-access-toggle aria-label="Alternar acesso">'
     )
 
 

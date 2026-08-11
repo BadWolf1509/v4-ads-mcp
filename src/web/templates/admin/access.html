@@ -24,18 +24,16 @@
 
   {# Search + bulk toolbar #}
   <div class="bg-v4-gray-50 border border-v4-gray-100 rounded-md p-3 mb-4 flex flex-wrap gap-3 items-center">
-    <input type="search" id="search-gestor" placeholder="Buscar gestor..."
-           class="v4-input v4-input--search v4-input--small" style="width: 200px;"
-           onkeyup="filterMatrix()">
-    <input type="search" id="search-account" placeholder="Buscar conta..."
-           class="v4-input v4-input--search v4-input--small" style="width: 200px;"
-           onkeyup="filterMatrix()">
+    <input type="search" id="search-gestor" data-v4-matrix-filter="manager" placeholder="Buscar gestor..."
+           class="v4-input v4-input--search v4-input--small" style="width: 200px;">
+    <input type="search" id="search-account" data-v4-matrix-filter="account" placeholder="Buscar conta..."
+           class="v4-input v4-input--search v4-input--small" style="width: 200px;">
 
     <div class="ml-auto flex gap-2">
       <button type="button" class="v4-btn v4-btn--small v4-btn--secondary"
-              onclick="openBulkGrantModal()">Selecionar todas pra gestor…</button>
+              data-v4-action="dialog-open" data-v4-target="bulk-grant-modal">Selecionar todas pra gestor…</button>
       <button type="button" class="v4-btn v4-btn--small v4-btn--secondary"
-              onclick="openCopyModal()">Copiar acessos…</button>
+              data-v4-action="dialog-open" data-v4-target="copy-modal">Copiar acessos…</button>
     </div>
   </div>
 
@@ -67,7 +65,7 @@
                    hx-vals='{"manager_id": "{{ m.id }}", "customer_id": "{{ a.customer_id }}"}'
                    hx-trigger="change"
                    hx-swap="outerHTML"
-                   hx-on::after-request="if (event.detail.successful) { showToast(this.checked ? 'Acesso liberado' : 'Acesso revogado', 'success'); } else { this.checked = !this.checked; }">
+                   data-v4-access-toggle>
           </td>
           {% endfor %}
         </tr>
@@ -84,7 +82,7 @@
   <dialog class="v4-modal" id="bulk-grant-modal" aria-labelledby="bulk-grant-title">
     <div class="v4-modal__header">
       <h3 class="v4-modal__title" id="bulk-grant-title">Selecionar todas as contas pra gestor</h3>
-      <button type="button" class="v4-modal__close" aria-label="Fechar" onclick="document.getElementById('bulk-grant-modal').close()">×</button>
+      <button type="button" class="v4-modal__close" aria-label="Fechar" data-v4-action="dialog-close" data-v4-target="bulk-grant-modal">×</button>
     </div>
     <form method="POST" action="/admin/access/bulk-grant" class="v4-modal__body grid gap-3">
       <label class="v4-form__label" for="bulk-grant-mgr">Gestor</label>
@@ -98,7 +96,7 @@
       {% endfor %}
       <div class="text-sm text-v4-gray-700">Vai liberar acesso a todas as {{ accounts|length }} contas.</div>
       <div class="flex justify-end gap-2 mt-2">
-        <button type="button" class="v4-btn v4-btn--secondary v4-btn--small" onclick="document.getElementById('bulk-grant-modal').close()">Cancelar</button>
+        <button type="button" class="v4-btn v4-btn--secondary v4-btn--small" data-v4-action="dialog-close" data-v4-target="bulk-grant-modal">Cancelar</button>
         <button type="submit" class="v4-btn v4-btn--primary v4-btn--small">Liberar todas</button>
       </div>
     </form>
@@ -108,7 +106,7 @@
   <dialog class="v4-modal" id="copy-modal" aria-labelledby="copy-title">
     <div class="v4-modal__header">
       <h3 class="v4-modal__title" id="copy-title">Copiar acessos</h3>
-      <button type="button" class="v4-modal__close" aria-label="Fechar" onclick="document.getElementById('copy-modal').close()">×</button>
+      <button type="button" class="v4-modal__close" aria-label="Fechar" data-v4-action="dialog-close" data-v4-target="copy-modal">×</button>
     </div>
     <form method="POST" action="/admin/access/bulk-copy" class="v4-modal__body grid gap-3">
       <label class="v4-form__label" for="copy-from">De</label>
@@ -123,40 +121,12 @@
       </select>
       <div class="text-sm text-v4-red-medium">⚠ Substitui todos os acessos do destino pelos do origem.</div>
       <div class="flex justify-end gap-2 mt-2">
-        <button type="button" class="v4-btn v4-btn--secondary v4-btn--small" onclick="document.getElementById('copy-modal').close()">Cancelar</button>
+        <button type="button" class="v4-btn v4-btn--secondary v4-btn--small" data-v4-action="dialog-close" data-v4-target="copy-modal">Cancelar</button>
         <button type="submit" class="v4-btn v4-btn--primary v4-btn--small">Copiar</button>
       </div>
     </form>
   </dialog>
 
-  <script>
-    function openBulkGrantModal() { document.getElementById('bulk-grant-modal').showModal(); }
-    function openCopyModal() { document.getElementById('copy-modal').showModal(); }
-
-    function filterMatrix() {
-      const gestor = document.getElementById('search-gestor').value.toLowerCase();
-      const account = document.getElementById('search-account').value.toLowerCase();
-
-      // Filter columns by gestor
-      document.querySelectorAll('th[data-manager-email]').forEach(th => {
-        const visible = !gestor || th.dataset.managerEmail.includes(gestor);
-        th.style.display = visible ? '' : 'none';
-        const colIndex = Array.from(th.parentNode.children).indexOf(th);
-        document.querySelectorAll('tbody tr').forEach(tr => {
-          const cell = tr.children[colIndex];
-          if (cell) cell.style.display = visible ? '' : 'none';
-        });
-      });
-
-      // Filter rows by account
-      document.querySelectorAll('tbody tr[data-account-name]').forEach(tr => {
-        const visible = !account
-                     || tr.dataset.accountName.includes(account)
-                     || tr.dataset.accountId.includes(account);
-        tr.style.display = visible ? '' : 'none';
-      });
-    }
-  </script>
 
   {% endif %}
 </section>

@@ -21,7 +21,7 @@
 
   <div class="v4-card">
     <div class="mb-3">
-      {{ search_input("meta-acc-search", placeholder="Buscar conta...", attrs='oninput="filterMetaAccs()"', aria_label="Buscar conta Meta por nome ou cliente") }}
+      {{ search_input("meta-acc-search", placeholder="Buscar conta...", attrs='data-v4-filter="#meta-accs-table" data-v4-filter-fields="name,business,id"', aria_label="Buscar conta Meta por nome ou cliente") }}
     </div>
 
     {% if accounts %}
@@ -41,15 +41,6 @@
       </tbody>
     </table>
     </div>
-    <script>
-      function filterMetaAccs() {
-        const q = document.getElementById('meta-acc-search').value.toLowerCase();
-        document.querySelectorAll('#meta-accs-table tbody tr').forEach(tr => {
-          const match = !q || tr.dataset.name.includes(q) || tr.dataset.business.includes(q) || tr.dataset.id.includes(q);
-          tr.style.display = match ? '' : 'none';
-        });
-      }
-    </script>
     {% else %}
       {{ empty_state("Nenhuma conta sincronizada ainda.", "Aguarde o resync ou clique em Sincronizar contas.") }}
     {% endif %}

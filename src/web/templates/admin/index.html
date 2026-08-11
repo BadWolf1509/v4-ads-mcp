@@ -64,7 +64,7 @@
               {# F49: button() macro default type="button" — explicit type="submit" required dentro de form pra submeter #}
               {{ button("Atualizar lista", variant="secondary", size="small", type="submit") }}
             </form>
-            {{ button("Revogar conexão", variant="danger", size="small", type="button", attrs='onclick="document.getElementById(\'meta-revoke-modal\').showModal()"') }}
+            {{ button("Revogar conexão", variant="danger", size="small", type="button", attrs='data-v4-action="dialog-open" data-v4-target="meta-revoke-modal"') }}
           </div>
 
           {% if meta_token_expiring_soon %}
