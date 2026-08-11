@@ -1,6 +1,6 @@
 # Sessão 2026-08-11 — Handoff (investigação de frontend → pacote shipado)
 
-> Investigação de oportunidades de melhoria no frontend do painel (templates Jinja2 + design system CSS + entrega de assets + CSP) → **7 commits na main** (`aebdb8f..<docs>`). Execução inline (sem subagentes), TDD por task, plano em [`2026-08-11-frontend-improvements.md`](../superpowers/plans/2026-08-11-frontend-improvements.md).
+> Investigação de oportunidades de melhoria no frontend do painel (templates Jinja2 + design system CSS + entrega de assets + CSP) → **6 rodadas na main** (`aebdb8f..5dc81fa`). Execução inline (sem subagentes), TDD por task, plano em [`2026-08-11-frontend-improvements.md`](../superpowers/plans/2026-08-11-frontend-improvements.md).
 >
 > Diferencial desta investigação: as hipóteses foram **medidas em produção** (DOM real via browser + curl), não deduzidas de leitura de código. Duas delas viraram bug confirmado e uma terceira quase quebrou o deploy — ver "A descoberta que salvou o pacote".
 
@@ -15,7 +15,7 @@
 | **Perf — assets** | gzip seletivo (exclui `/mcp`) · `Cache-Control: immutable` versionado por `K_REVISION` | `2503ac2` |
 | **Dívida** | offsets sticky derivados de `--v4-header-h` · CSS do help extraído · peso 300 do Montserrat removido · meta tags | `7ee974d` |
 
-**Decisões do gestor:** aposentar o CDN → **sim** (revertendo a decisão de 07-04, que foi tomada sem os números). Refatorar os 28 `onclick` inline pra remover `'unsafe-inline'` → **adiado** (só vale depois do CDN sair, e toca todo handler interativo).
+**Decisões do gestor:** aposentar o CDN → **sim** (revertendo a decisão de 07-04, que foi tomada sem os números). Refatorar os handlers inline → inicialmente **adiado**, depois **aprovado** (5ª rodada) e estendido a `style-src` (6ª).
 
 ## Medições — antes e depois
 
@@ -27,7 +27,7 @@ Baseline coletado no `/login` em produção (`00028-lvc`), via `performance.getE
 | `domContentLoaded` | 1128 ms | — verificar pós-deploy |
 | Compressão dos estáticos | nenhuma (`transferSize == decodedBodySize`) | gzip |
 | `Cache-Control` | ausente (só `etag`, revalidação a cada navegação) | `public, max-age=31536000, immutable` + `?v=K_REVISION` |
-| CSP `script-src` | `'unsafe-inline' 'unsafe-eval'` + cdn.tailwindcss.com | `'unsafe-inline'` + unpkg |
+| CSP | `script-src` com `'unsafe-inline' 'unsafe-eval'` + CDN; `style-src` com `'unsafe-inline'` | **nenhuma diretiva `unsafe-*`** (ver 5ª e 6ª rodadas) |
 | `prefers-reduced-motion` | 0 regras / 3 animações infinitas | coberto |
 
 ## A descoberta que salvou o pacote
@@ -53,7 +53,7 @@ Resultado final da regeneração: saíram só `.transform` e `.transition`, que 
 
 ## Verificação
 
-- `check_pre_push.py` **5/5 verde** em cada um dos 7 commits.
+- `check_pre_push.py` **5/5 verde** em cada commit.
 - **Docker não está instalado nesta máquina** — os testes de integração (testcontainers) só rodam no CI. Compensado com uma harness local que renderiza as templates Jinja direto (19 asserts: presença condicional do hambúrguer/drawer, `aria-current` header vs drawer, paridade das duas navs, exact vs prefix, ordem dos stylesheets, `head_extra` no head e não no corpo).
 - Build do Tailwind **determinístico** (md5 estável entre execuções) — pré-requisito do guard de diff no CI.
 - Guards novos: `tests/unit/test_frontend_a11y_guards.py` (13) + `tests/unit/test_web_static_caching.py` (4) + 2 integration (login sem hambúrguer, drawer com `aria-current`).
@@ -67,7 +67,7 @@ Verificado em prod (`00030-slz`) nas 14 telas (`/`, `/accounts`, `/sessions`, `/
 
 - **Zero classes utilitárias sem CSS em todas as 14** — a geração offline do Tailwind está completa (auditado comparando as classes do HTML de cada página contra o CSSOM carregado). Nenhum erro de console, nenhuma violação de CSP.
 - Cascata preservada em todas (`h1` sem classe = 14px), `0` `<style>` injetado em runtime, skip link e `aria-current` (header + drawer) presentes em todas.
-- `/help`: `v4-help.css` carrega por último via `head_extra`, uma vez só, e o "Voltar ao topo" está em `#6b6b6b` (correção de contraste no ar). O único `<style>` restante na página é injetado pelo **próprio HTMX** (`.htmx-indicator`) — não é nosso, e é mais um motivo pelo qual `style-src 'unsafe-inline'` continua necessário.
+- `/help`: `v4-help.css` carrega por último via `head_extra`, uma vez só, e o "Voltar ao topo" está em `#6b6b6b` (correção de contraste no ar). O único `<style>` restante na página é injetado pelo **próprio HTMX** (`.htmx-indicator`) — não é nosso — foi desligado na 6ª rodada via `htmx-config`, o que permitiu tirar o `'unsafe-inline'` de `style-src`.
 - Dropdown de Gestores abre e não é clipado (a exclusão do `.v4-table-wrap` de 07-04 segue correta).
 
 **O smoke encontrou 3 bugs pré-existentes** (F78-F80 no catálogo) — dois deles expostos justamente por eu ter nomeado os offsets como tokens. Corrigidos em `fc8c0a8`, com CI+deploy verdes e re-verificados no ar:
@@ -168,3 +168,48 @@ agora:  script-src 'self' https://unpkg.com
 ### Não verificado
 
 A cópia real pro clipboard. `clipboard-write` está `granted`, mas `navigator.clipboard.writeText` exige documento em foco e a aba de automação roda com `hasFocus() === false`. O handler roda, resolve a origem certa e cai no fallback de erro. É a mesma dependência do código antigo — só que agora tratada.
+
+## 6ª rodada — CSP sem nenhum `unsafe-*` (`384059e` + `5dc81fa`)
+
+Decisão do gestor: tirar `'unsafe-inline'` de `style-src` também.
+
+**A pergunta que decidia a viabilidade veio antes do código:** `style-src` sem `'unsafe-inline'` bloqueia atributo `style=` — e os filtros de tabela fazem `tr.style.display`, o drawer faz `body.style.overflow`, a medição sticky faz `setProperty`. Se CSP bloqueasse escrita via CSSOM, metade do painel morreria.
+
+Testei numa página isolada sob `style-src 'none'`:
+
+| | Resultado |
+|---|---|
+| `el.style.display = 'none'` | **funciona** |
+| `setProperty('--v4-filter-bar-h')` | **funciona** |
+| `body.style.overflow` | **funciona** |
+| `style="color:red"` no HTML | **bloqueado** (`style-src-attr`) |
+
+CSSOM não é afetado por CSP; só o atributo no HTML. Então o trabalho era finito: 28 atributos `style=`.
+
+Viraram utilitários (que passam a viver no CSS gerado) ou classe do design system: `m-0` (12x), `w-[200px]` (5x), `w-[140px]`, `p-0`, `flex-1 max-w-[320px]`, os 4 offsets sticky como `top-[var(--v4-*)]`, e o "Sair" da gaveta como `.v4-drawer__link--button`. O `<style>` que o htmx injetava foi desligado com `<meta name="htmx-config" content='{"includeIndicatorStyles": false}'>` — as regras já existiam em `v4-motion.css`.
+
+```
+final:  default-src 'self'; script-src 'self' https://unpkg.com;
+        style-src 'self' https://fonts.bunny.net; font-src 'self' https://fonts.bunny.net;
+        img-src 'self' data:; connect-src 'self'
+```
+
+**A CSP do painel não tem mais nenhuma diretiva `unsafe-*`.**
+
+### O erro que quase passou
+
+Trocar `style=` por `class=` num elemento que **já tinha** `class=` cria dois atributos `class` — e o browser usa só o primeiro. Os quatro offsets sticky teriam sumido em silêncio. Peguei relendo o diff, fundi no atributo existente e adicionei uma verificação de que nenhuma tag ficou com `class` duplicado.
+
+### Verificação em produção
+
+Zero violações de CSP, `0` `<style>` injetado, `.htmx-indicator` vindo do arquivo, CSSOM funcionando. E os dois regimes de largura, com o CSS de produção:
+
+| | mobile (414px real) | desktop (1280px) |
+|---|---|---|
+| `--v4-header-h` | 61px | 65px |
+| barra da `/audit` | `static` (rola junto) | `sticky` @ 65px |
+| barra do `/admin/audit` | `static` | `sticky` @ 120px |
+| cabeçalho de dia | @ 61px | `sticky` @ 153px |
+| `--v4-filter-bar-h` | `0px` | 88px |
+
+O mobile foi verificado **em viewport real de 414px** — a janela do Chrome acabou encolhendo de fato, o que fechou a lacuna que eu tinha declarado em aberto na 4ª rodada. Screenshot confirma hambúrguer à esquerda com a marca ao lado (fix do F78) e a barra de filtros rolando com a página.
