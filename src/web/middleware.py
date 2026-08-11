@@ -35,13 +35,19 @@ _CSRF_EXEMPT_PREFIXES = ("/oauth/", "/mcp")
 # tests/unit/test_frontend_a11y_guards.py impedem a volta — sem eles, um
 # handler inline novo falharia silenciosamente no browser.
 #
-# style-src MANTEM 'unsafe-inline' e nao da pra tirar hoje: o proprio htmx
-# injeta um <style> (.htmx-indicator) em runtime, e varias templates usam
-# atributo style=. Nao e o mesmo risco — CSS inline nao executa codigo.
+# style-src perdeu o 'unsafe-inline' em seguida: os 28 atributos style= viraram
+# classe (utilitario do Tailwind ou classe do design system) e o <style> que o
+# htmx injetava pro .htmx-indicator foi desligado via
+# <meta name="htmx-config" content='{"includeIndicatorStyles": false}'> — as
+# mesmas regras ja existem em v4-motion.css.
+#
+# Escrita via CSSOM (el.style.x = y, setProperty) NAO e afetada por CSP —
+# verificado empiricamente sob style-src 'none'. Por isso os filtros de tabela,
+# o overflow do drawer e a medicao sticky seguem funcionando.
 _CSP_POLICY = (
     "default-src 'self'; "
     "script-src 'self' https://unpkg.com; "
-    "style-src 'self' 'unsafe-inline' https://fonts.bunny.net; "
+    "style-src 'self' https://fonts.bunny.net; "
     "font-src 'self' https://fonts.bunny.net; "
     "img-src 'self' data:; "
     "connect-src 'self'"

@@ -133,10 +133,32 @@ def test_script_src_sem_unsafe_inline():
     """
     from src.web.middleware import _CSP_POLICY
 
-    script_src = next(d for d in _CSP_POLICY.split("; ") if d.startswith("script-src"))
-    assert "unsafe-inline" not in script_src, script_src
-    style_src = next(d for d in _CSP_POLICY.split("; ") if d.startswith("style-src"))
-    assert "unsafe-inline" in style_src, "htmx injeta <style>; remover quebraria o indicador"
+    assert "unsafe-inline" not in _CSP_POLICY, _CSP_POLICY
+
+
+def test_sem_atributo_style_em_template():
+    """style-src sem 'unsafe-inline' bloqueia atributo style= (style-src-attr).
+
+    Escrita via CSSOM (el.style.x = y) NAO e afetada — por isso os filtros e o
+    drawer seguem valendo. So o atributo no HTML precisa virar classe.
+    A aspa pode vir escapada quando o HTML e montado em string Jinja.
+    """
+    padrao = re.compile(r'\bstyle\s*=\s*\\?["\']')
+    ofensores = [
+        t.name for t in _TEMPLATES.rglob("*.html") if padrao.search(t.read_text(encoding="utf-8"))
+    ]
+    assert not ofensores, f"atributo style= em: {ofensores}"
+
+
+def test_htmx_nao_injeta_style_do_indicador():
+    """Sem esse config o htmx injeta um <style> em runtime e a CSP o bloqueia.
+
+    As regras equivalentes ja existem em v4-motion.css.
+    """
+    html = (_TEMPLATES / "_base.html").read_text(encoding="utf-8")
+    assert "includeIndicatorStyles" in html
+    css = (_STATIC / "v4-motion.css").read_text(encoding="utf-8")
+    assert ".htmx-indicator" in css
 
 
 def test_tailwind_e_o_ultimo_stylesheet():
