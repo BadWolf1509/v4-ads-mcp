@@ -3,6 +3,10 @@
 
 {% block title %}Ajuda — V4 Ads MCP{% endblock %}
 
+{% block head_extra %}
+<link rel="stylesheet" href="/static/v4-help.css?v={{ asset_version }}">
+{% endblock %}
+
 {% block content %}
 
 {# Code snippets defined via {% set %} blocks so the indentation is natural
@@ -307,65 +311,5 @@ Authorization = "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
     </main>
   </div>
 </div>
-
-<style>
-  /* FAQ <details> — clean look + hover affordance + smooth arrow rotation */
-  .v4-help__faq {
-    border: 1px solid var(--v4-gray-100);
-    border-radius: var(--v4-radius-md);
-    transition: border-color var(--v4-motion-fast) var(--v4-ease-out);
-  }
-  .v4-help__faq:hover {
-    border-color: var(--v4-gray-200);
-  }
-  .v4-help__faq > summary {
-    cursor: pointer;
-    padding: 12px 16px;
-    font-weight: 600;
-    color: var(--v4-gray-900);
-    user-select: none;
-    list-style: none;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-radius: var(--v4-radius-md);
-    transition: background var(--v4-motion-fast) var(--v4-ease-out);
-  }
-  .v4-help__faq > summary::-webkit-details-marker { display: none; }
-  .v4-help__faq > summary:hover {
-    background: var(--v4-gray-50);
-  }
-  .v4-help__faq[open] > summary {
-    border-bottom: 1px solid var(--v4-gray-100);
-    border-radius: var(--v4-radius-md) var(--v4-radius-md) 0 0;
-  }
-  .v4-help__faq-arrow {
-    color: var(--v4-gray-500);
-    transition: transform var(--v4-motion-base) var(--v4-ease-out);
-  }
-  .v4-help__faq[open] .v4-help__faq-arrow {
-    transform: rotate(90deg);
-    color: var(--v4-red);
-  }
-  .v4-help__faq-body {
-    padding: 12px 16px 16px;
-    color: var(--v4-gray-700);
-    line-height: 1.6;
-  }
-
-  /* "↑ Voltar ao topo" inline link at end of long sections */
-  .v4-help__topo {
-    display: inline-block;
-    margin-top: 24px;
-    font-size: 12px;
-    color: var(--v4-gray-500);
-    text-decoration: none;
-    transition: color var(--v4-motion-fast);
-  }
-  .v4-help__topo:hover {
-    color: var(--v4-red);
-    text-decoration: none;
-  }
-</style>
 
 {% endblock %}

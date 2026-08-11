@@ -175,7 +175,7 @@ main {
   gap: var(--v4-space-4);
   align-items: center;
   position: sticky;
-  top: 53px; /* below header — header is ~52px */
+  top: var(--v4-header-h);
   z-index: var(--v4-z-sticky);
   font-size: 13px;
   overflow-x: auto;

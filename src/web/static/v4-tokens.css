@@ -112,10 +112,19 @@
   --v4-ease-out:    cubic-bezier(0.2, 0.8, 0.2, 1);
   --v4-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
-  /* Sticky offset — header + subnav stack (used by platform tab bars) */
-  --v4-tab-bar-offset:    96px;
-  /* Sticky offset — filter bar below header only (used by audit filter rows) */
-  --v4-subnav-offset:     53px;
-  /* Sticky offset — day header below header+filter bar (audit day grouping) */
-  --v4-audit-day-offset: 120px;
+  /* Sticky offsets — derivados da altura do header. Antes eram tres literais
+     (53px / 96px / 120px) que dessincronizavam em silencio se o padding do
+     header mudasse; agora so --v4-header-h precisa ser mantido.
+       header  = 12+12 de padding + 28 de conteudo + 1 de borda
+       subnav  = 12+12 de padding + 18 de conteudo + 1 de borda
+       filtros = barra de filtros da auditoria */
+  --v4-header-h:          53px;
+  --v4-subnav-h:          43px;
+  --v4-filter-bar-h:      67px;
+  /* Barra de filtros logo abaixo do header (audit filter rows) */
+  --v4-subnav-offset:     var(--v4-header-h);
+  /* Pilha header + subnav (platform tab bars) */
+  --v4-tab-bar-offset:    calc(var(--v4-header-h) + var(--v4-subnav-h));
+  /* Cabecalho de dia abaixo de header + barra de filtros (audit day grouping) */
+  --v4-audit-day-offset:  calc(var(--v4-header-h) + var(--v4-filter-bar-h));
 }

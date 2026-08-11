@@ -103,6 +103,28 @@ def test_css_gerado_do_tailwind_esta_commitado():
     assert "var(--v4-red)" in conteudo
 
 
+def test_offsets_sticky_sao_derivados():
+    """Tres literais (53/96/120px) dessincronizavam em silencio se o header mudasse."""
+    tokens = (_STATIC / "v4-tokens.css").read_text(encoding="utf-8")
+    assert "--v4-header-h:" in tokens
+    assert "calc(var(--v4-header-h)" in tokens
+    base = (_STATIC / "v4-base.css").read_text(encoding="utf-8")
+    assert "top: 53px" not in base
+
+
+def test_help_css_esta_num_arquivo_estatico():
+    """~60 linhas de <style> inline saiam do cache e do alcance da CSP."""
+    html = (_TEMPLATES / "help.html").read_text(encoding="utf-8")
+    assert "<style>" not in html
+    assert (_STATIC / "v4-help.css").exists()
+
+
+def test_montserrat_nao_baixa_peso_sem_uso():
+    """Peso 300 era baixado em toda visita sem nenhum font-weight:300 no projeto."""
+    html = (_TEMPLATES / "_base.html").read_text(encoding="utf-8")
+    assert "montserrat:400,500,600,700,800" in html
+
+
 def test_toast_de_erro_interrompe_a_leitura():
     """aria-atomic na regiao re-anunciava a fila inteira; erro precisa de role=alert."""
     html = (_TEMPLATES / "_base.html").read_text(encoding="utf-8")
