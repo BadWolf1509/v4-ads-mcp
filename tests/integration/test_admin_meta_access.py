@@ -114,7 +114,8 @@ async def test_admin_access_meta_toggle_grant_then_revoke(client: AsyncClient):
     )
     assert response1.status_code == 200
     assert '"checkbox" checked' in response1.text
-    assert "hx-on::after-request" in response1.text
+    # F74: ver nota em test_web_panel_admin — handler agora e delegado.
+    assert "data-v4-access-toggle" in response1.text
     assert "aria-label" in response1.text
 
     async with pool.acquire() as conn:

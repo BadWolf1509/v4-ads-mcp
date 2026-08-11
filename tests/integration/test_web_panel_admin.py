@@ -136,7 +136,10 @@ async def test_admin_access_toggle_grants_then_revokes(client: AsyncClient):
     )
     assert response.status_code == 200
     assert '"checkbox" checked' in response.text
-    assert "hx-on::after-request" in response.text
+    # F74: o fragmento tem que sobreviver ao swap. Desde 2026-08-11 o toast e o
+    # revert-on-fail vivem num listener delegado em v4-panel.js, entao o que o
+    # fragmento precisa carregar e o marcador — nao mais um hx-on re-emitido.
+    assert "data-v4-access-toggle" in response.text
     assert "aria-label" in response.text
 
     async with pool.acquire() as conn:
