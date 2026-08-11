@@ -83,7 +83,7 @@ Verificado em prod (`00030-slz`) nas 14 telas (`/`, `/accounts`, `/sessions`, `/
 
 1. ~~Adiado: refatorar os `onclick` inline pra remover `'unsafe-inline'`~~ — **feito na 5ª rodada** (`bfd438d`+`9374638`). Eram 53 atributos e 13 blocos `<script>`, não 28. Ver abaixo.
 2. ~~Limitação do `--v4-audit-day-offset` no mobile~~ — **resolvido em `eab6099`** (3ª rodada). Ver abaixo.
-3. **Meta OAuth pessoal do Wellington** aparece no painel como "Expira em 27/07/2026 (0 dias)" — a data já passou (hoje é 11/08). É o OAuth dormante (Modelo B usa o system-user token), então não afeta as tools; mas o contador exibindo "0 dias" pra uma data no passado é enganoso. Fora do escopo deste pacote.
+3. ~~Meta OAuth pessoal exibindo "0 dias" pra data passada~~ — **corrigido** (`d1d0750`): o cálculo fazia `max(0, delta.days)`, achatando vencido em zero. Agora há três estados (Conectado / Expira em breve / Expirado) com plural correto e "hoje". Nota: o token foi reconectado pelo Wellington em 11/08 às 23:35 (audit `meta_oauth_connect`), então o estado expirado não reproduz mais em produção — foi verificado localmente nos 6 casos.
 
 ## 3ª rodada — o offset da barra de filtros virou medição de runtime (`eab6099`)
 
