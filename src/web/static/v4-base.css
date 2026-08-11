@@ -259,3 +259,7 @@ main {
   text-decoration: none;
 }
 .v4-drawer__link:hover { color: var(--v4-red); text-decoration: none; }
+.v4-drawer__link[aria-current="page"] {
+  color: var(--v4-red);
+  font-weight: 600;
+}

@@ -24,6 +24,25 @@ async def test_sessions_list_requires_auth(client: AsyncClient):
 
 
 @pytest.mark.integration
+async def test_drawer_marca_pagina_atual(client: AsyncClient):
+    """No mobile o unico indicador de 'onde estou' e o aria-current do drawer."""
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="nav@v4company.com", full_name=None)
+
+    cookie = sign_panel_session(
+        manager_id=str(mid),
+        email="nav@v4company.com",
+        signing_key=_SIGNING_KEY,
+    )
+    response = await client.get("/sessions", cookies={PANEL_SESSION_COOKIE_NAME: cookie})
+    assert response.status_code == 200
+    drawer = response.text.split('id="mobile-drawer"', 1)[1]
+    assert '<a href="/sessions" class="v4-drawer__link" aria-current="page">' in drawer
+
+
+@pytest.mark.integration
 async def test_sessions_create_redirects_to_detail(client: AsyncClient):
     """Task 5.2: POST /sessions/new now redirects to /sessions/{id}?token_flash=true.
     The plaintext token is no longer in the response body; it goes in a flash cookie."""

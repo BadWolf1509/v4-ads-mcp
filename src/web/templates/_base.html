@@ -42,6 +42,24 @@
   <script src="https://unpkg.com/htmx.org@2.0.3" integrity="sha384-0895/pl2MU10Hqc6jd4RvrthNlDiE9U1tWmX7WRESftEDRosgxNsQG/Ze9YMRzHq" crossorigin="anonymous" defer></script>
 </head>
 <body>
+{# Navegacao principal declarada UMA vez — consumida pelo header e pelo drawer.
+   Duplicar as duas listas fazia o drawer nao marcar a pagina atual. #}
+{% set nav_items = [
+  {"href": "/",         "label": "Dashboard", "match": "exact"},
+  {"href": "/accounts", "label": "Contas",    "match": "exact"},
+  {"href": "/sessions", "label": "Sessões",   "match": "prefix"},
+  {"href": "/audit",    "label": "Auditoria", "match": "prefix"},
+  {"href": "/help",     "label": "Ajuda",     "match": "exact"},
+] %}
+{% if current_user and current_user.is_admin %}
+  {% set nav_items = nav_items + [{"href": "/admin", "label": "Admin", "match": "prefix"}] %}
+{% endif %}
+{%- macro current_attr(item) -%}
+  {%- if (item.match == "prefix" and request.url.path.startswith(item.href))
+       or (item.match == "exact" and request.url.path == item.href) -%}
+    aria-current="page"
+  {%- endif -%}
+{%- endmacro -%}
   <a class="v4-skip-link" href="#conteudo">Pular para o conteúdo</a>
   <header class="v4-header">
     {% if current_user %}
@@ -56,14 +74,9 @@
 
     {% if current_user %}
     <nav class="v4-header__nav">
-      <a href="/" {% if request.url.path == "/" %}aria-current="page"{% endif %}>Dashboard</a>
-      <a href="/accounts" {% if request.url.path == "/accounts" %}aria-current="page"{% endif %}>Contas</a>
-      <a href="/sessions" {% if request.url.path.startswith("/sessions") %}aria-current="page"{% endif %}>Sessões</a>
-      <a href="/audit" {% if request.url.path.startswith("/audit") %}aria-current="page"{% endif %}>Auditoria</a>
-      <a href="/help" {% if request.url.path == "/help" %}aria-current="page"{% endif %}>Ajuda</a>
-      {% if current_user.is_admin %}
-      <a href="/admin" {% if request.url.path.startswith("/admin") %}aria-current="page"{% endif %}>Admin</a>
-      {% endif %}
+      {% for item in nav_items %}
+      <a href="{{ item.href }}" {{ current_attr(item) }}>{{ item.label }}</a>
+      {% endfor %}
     </nav>
     <div class="v4-header__user">
       <span>{{ current_user.email }}</span>
@@ -80,11 +93,9 @@
   <div class="v4-drawer__backdrop" onclick="toggleDrawer()"></div>
   <nav class="v4-drawer__panel" aria-label="Mobile">
       <div class="v4-drawer__section">
-        <a href="/" class="v4-drawer__link">Dashboard</a>
-        <a href="/accounts" class="v4-drawer__link">Contas</a>
-        <a href="/sessions" class="v4-drawer__link">Sessões</a>
-        <a href="/audit" class="v4-drawer__link">Auditoria</a>
-        <a href="/help" class="v4-drawer__link">Ajuda</a>
+        {% for item in nav_items %}
+        <a href="{{ item.href }}" class="v4-drawer__link" {{ current_attr(item) }}>{{ item.label }}</a>
+        {% endfor %}
       </div>
       {% if current_user.is_admin %}
       <div class="v4-drawer__section">
@@ -111,8 +122,16 @@
     drawer.setAttribute('aria-hidden', String(!isOpen));
     document.querySelector('.v4-header__hamburger')?.setAttribute('aria-expanded', String(isOpen));
     document.body.style.overflow = isOpen ? 'hidden' : '';
+    // Contem o Tab: o resto da pagina fica inerte enquanto a gaveta esta aberta.
+    for (const el of [document.querySelector('header'), document.querySelector('main'), document.querySelector('footer')]) {
+      if (el) el.inert = isOpen;
+    }
     if (isOpen) {
+      window._v4DrawerReturnFocus = document.activeElement;
       document.querySelector('.v4-drawer__panel a, .v4-drawer__panel button')?.focus();
+    } else {
+      window._v4DrawerReturnFocus?.focus();
+      window._v4DrawerReturnFocus = null;
     }
   }
   if (!window._v4DrawerEscBound) {
