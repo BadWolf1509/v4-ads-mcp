@@ -37,8 +37,10 @@
 </div>
 {% endmacro %}
 
-{% macro search_input(name, value="", placeholder="Buscar...", attrs="", aria_label="Buscar") %}
-<input type="search" name="{{ name }}" class="v4-input v4-input--search"
+{# extra_classes em vez de style= no attrs: a CSP roda sem 'unsafe-inline' em
+   style-src, entao atributo style e bloqueado pelo browser. #}
+{% macro search_input(name, value="", placeholder="Buscar...", attrs="", aria_label="Buscar", extra_classes="") %}
+<input type="search" name="{{ name }}" class="v4-input v4-input--search{% if extra_classes %} {{ extra_classes }}{% endif %}"
        value="{{ value }}" placeholder="{{ placeholder }}" aria-label="{{ aria_label }}" {{ attrs|safe }}>
 {% endmacro %}
 

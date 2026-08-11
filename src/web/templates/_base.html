@@ -6,6 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Painel interno da V4 Company para conectar contas Google Ads e Meta Ads ao Claude, Codex e Cursor via MCP.">
   <meta name="theme-color" content="#e50914">
+  {# O htmx injeta um <style> pro .htmx-indicator em runtime, o que exigiria
+     'unsafe-inline' em style-src. Desligamos: as mesmas regras já existem em
+     v4-motion.css, servido de /static. #}
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false}'>
   <title>{% block title %}V4 Ads MCP{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.bunny.net">
   {# Peso 300 removido em 2026-08-11: nada no projeto o usa (nem via utilitario
@@ -104,7 +108,7 @@
       {% endif %}
       <div class="v4-drawer__section">
         <div class="v4-drawer__heading">{{ current_user.email }}</div>
-        <form method="POST" action="/logout"><button type="submit" class="v4-drawer__link" style="background:none;border:none;padding:0;cursor:pointer;width:100%;text-align:left;">Sair</button></form>
+        <form method="POST" action="/logout"><button type="submit" class="v4-drawer__link v4-drawer__link--button">Sair</button></form>
       </div>
   </nav>
 </div>

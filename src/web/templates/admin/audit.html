@@ -16,12 +16,11 @@
   <form method="GET" action="/admin/audit"
         {# max-sm:static — no celular o grid vira 2 colunas e a barra vai a
            240px; com header + subnav isso prenderia 356px (~42%) da tela. #}
-        class="sticky max-sm:static z-[10] bg-white border-b border-v4-gray-100 py-3 mb-4 grid grid-cols-2 md:grid-cols-5 gap-3 items-end"
+        class="sticky max-sm:static top-[var(--v4-tab-bar-offset)] z-[10] bg-white border-b border-v4-gray-100 py-3 mb-4 grid grid-cols-2 md:grid-cols-5 gap-3 items-end"
         {# Esta pagina TEM a subnav admin acima, entao a barra fica embaixo da
            pilha header+subnav. Com --v4-subnav-offset ela grudava no mesmo
-           topo da subnav e a cobria por inteiro (mesmo z-index, DOM depois). #}
-        style="top: var(--v4-tab-bar-offset);">
-    <div class="v4-form__group" style="margin: 0;">
+           topo da subnav e a cobria por inteiro (mesmo z-index, DOM depois). #}>
+    <div class="v4-form__group m-0">
       <label class="v4-form__label">Gestor</label>
       <select name="manager_id" class="v4-select" data-v4-autosubmit>
         <option value="">Todos</option>
@@ -30,7 +29,7 @@
         {% endfor %}
       </select>
     </div>
-    <div class="v4-form__group" style="margin: 0;">
+    <div class="v4-form__group m-0">
       <label class="v4-form__label">Conta</label>
       <select name="customer_id" class="v4-select" data-v4-autosubmit>
         <option value="">Todas</option>
@@ -39,7 +38,7 @@
         {% endfor %}
       </select>
     </div>
-    <div class="v4-form__group" style="margin: 0;">
+    <div class="v4-form__group m-0">
       <label class="v4-form__label">Tipo</label>
       <select name="action_type" class="v4-select" data-v4-autosubmit>
         <option value="all" {% if filter_action_type == "all" %}selected{% endif %}>Todos</option>
@@ -47,7 +46,7 @@
         <option value="read" {% if filter_action_type == "read" %}selected{% endif %}>Reads</option>
       </select>
     </div>
-    <div class="v4-form__group" style="margin: 0;">
+    <div class="v4-form__group m-0">
       <label class="v4-form__label">Status</label>
       <select name="status" class="v4-select" data-v4-autosubmit>
         <option value="all" {% if filter_status == "all" %}selected{% endif %}>Todos</option>
@@ -55,7 +54,7 @@
         <option value="error" {% if filter_status == "error" %}selected{% endif %}>Erros</option>
       </select>
     </div>
-    <div class="v4-form__group" style="margin: 0;">
+    <div class="v4-form__group m-0">
       <label class="v4-form__label">Período</label>
       <select name="days" class="v4-select" data-v4-autosubmit>
         {% for n in [1, 7, 14, 30, 90] %}

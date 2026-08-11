@@ -26,9 +26,8 @@
      rola junto com a pagina; o observer publica 0 e o cabecalho de dia sobe
      pro topo sozinho. #}
   <form id="audit-filters" method="GET" action="/audit" data-sticky-measure
-        class="sticky max-sm:static z-[10] bg-white border-b border-v4-gray-100 py-3 mb-4 flex flex-wrap gap-3 items-end"
-        style="top: var(--v4-subnav-offset);">
-    <div class="v4-form__group" style="margin: 0;">
+        class="sticky max-sm:static top-[var(--v4-subnav-offset)] z-[10] bg-white border-b border-v4-gray-100 py-3 mb-4 flex flex-wrap gap-3 items-end">
+    <div class="v4-form__group m-0">
       <label class="v4-form__label" for="action_type">Tipo</label>
       <select id="action_type" name="action_type" class="v4-select"
               data-v4-autosubmit>
@@ -37,7 +36,7 @@
         <option value="read" {% if filter_action_type == "read" %}selected{% endif %}>Consultas sensíveis</option>
       </select>
     </div>
-    <div class="v4-form__group" style="margin: 0;">
+    <div class="v4-form__group m-0">
       <label class="v4-form__label" for="customer_id">Conta</label>
       <select id="customer_id" name="customer_id" class="v4-select" data-v4-autosubmit>
         <option value="">Todas</option>
@@ -48,7 +47,7 @@
         {% endfor %}
       </select>
     </div>
-    <div class="v4-form__group" style="margin: 0;">
+    <div class="v4-form__group m-0">
       <label class="v4-form__label" for="status">Status</label>
       <select id="status" name="status" class="v4-select" data-v4-autosubmit>
         <option value="all" {% if filter_status == "all" %}selected{% endif %}>Todos</option>
@@ -56,7 +55,7 @@
         <option value="error" {% if filter_status == "error" %}selected{% endif %}>Erros</option>
       </select>
     </div>
-    <div class="v4-form__group" style="margin: 0;">
+    <div class="v4-form__group m-0">
       <label class="v4-form__label" for="days">Período</label>
       <select id="days" name="days" class="v4-select" data-v4-autosubmit>
         {% for n in [1, 7, 14, 30, 90] %}
@@ -70,8 +69,7 @@
   {% if grouped %}
     {% for day, events in grouped.items() %}
     <div class="mb-6">
-      <h3 class="sticky z-[5] bg-v4-gray-50 border-y border-v4-gray-100 py-2 px-3 text-xs uppercase tracking-wider font-semibold text-v4-gray-700"
-          style="top: var(--v4-audit-day-offset);">
+      <h3 class="sticky top-[var(--v4-audit-day-offset)] z-[5] bg-v4-gray-50 border-y border-v4-gray-100 py-2 px-3 text-xs uppercase tracking-wider font-semibold text-v4-gray-700">
         {{ day }}
       </h3>
       <div class="v4-table-wrap">

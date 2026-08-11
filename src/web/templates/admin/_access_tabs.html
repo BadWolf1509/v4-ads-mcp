@@ -1,5 +1,5 @@
 {# Access matrix tab bar: Google | Meta #}
-<nav class="v4-subnav" aria-label="Plataforma de acesso" style="top: var(--v4-tab-bar-offset); gap: var(--v4-space-6); margin-bottom: var(--v4-space-4);">
+<nav class="v4-subnav top-[var(--v4-tab-bar-offset)] gap-[var(--v4-space-6)] mb-[var(--v4-space-4)]" aria-label="Plataforma de acesso">
   <a href="/admin/access"
      class="v4-subnav__link {% if '/meta' not in request.url.path %}is-active{% endif %}"
      {% if '/meta' not in request.url.path %}aria-current="page"{% endif %}>Google</a>
