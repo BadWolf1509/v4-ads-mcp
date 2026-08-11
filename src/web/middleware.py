@@ -1,9 +1,11 @@
 """Security middlewares for the web panel."""
 
 from collections.abc import Awaitable, Callable
+from typing import Any
 from urllib.parse import urlparse
 
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
@@ -85,3 +87,21 @@ class CSRFOriginMiddleware(BaseHTTPMiddleware):
                 if urlparse(source).netloc != host:
                     return JSONResponse({"detail": "CSRF: origem inválida"}, status_code=403)
         return await call_next(request)
+
+
+class SelectiveGZipMiddleware(GZipMiddleware):
+    """GZip em tudo, menos /mcp.
+
+    Medido em producao 2026-08-11: os estaticos saiam sem compressao nenhuma
+    (transferSize == decodedBodySize), 28,7 KB que gzipados viram ~7 KB.
+
+    /mcp fica de fora porque e StreamableHTTPServerTransport (SSE): comprimir
+    um corpo que fica aberto faz o gzip acumular bytes no buffer e atrasar ou
+    quebrar a entrega dos eventos.
+    """
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] == "http" and scope.get("path", "").startswith("/mcp"):
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)

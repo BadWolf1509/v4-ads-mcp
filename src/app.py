@@ -13,7 +13,11 @@ from src.config import get_settings
 from src.db import connection
 from src.logging import configure_logging
 from src.mcp.server import mount_mcp
-from src.web.middleware import CSRFOriginMiddleware, SecurityHeadersMiddleware
+from src.web.middleware import (
+    CSRFOriginMiddleware,
+    SecurityHeadersMiddleware,
+    SelectiveGZipMiddleware,
+)
 
 __version__ = "0.1.0"
 
@@ -76,6 +80,9 @@ def create_app(skip_db_init: bool = False) -> FastAPI:
             )
         return JSONResponse({"status": "ok", "version": __version__, "db": "ok"})
 
+    # Estaticos e HTML saiam sem compressao nenhuma ate 2026-08-11. /mcp fica
+    # de fora (SSE) — ver SelectiveGZipMiddleware.
+    app.add_middleware(SelectiveGZipMiddleware, minimum_size=500)
     app.add_middleware(CSRFOriginMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
 
@@ -91,11 +98,11 @@ def create_app(skip_db_init: bool = False) -> FastAPI:
 
     from pathlib import Path
 
-    from fastapi.staticfiles import StaticFiles
+    from src.web.static_files import CachedStaticFiles
 
     static_dir = Path(__file__).parent / "web" / "static"
     if static_dir.exists():
-        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+        app.mount("/static", CachedStaticFiles(directory=str(static_dir)), name="static")
 
     from src.web.routes import router as web_router
 

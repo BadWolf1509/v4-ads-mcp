@@ -37,6 +37,7 @@ from src.web.deps import (
     optional_current_manager,
     pending_invites_count,
 )
+from src.web.static_files import asset_version
 
 log = structlog.get_logger(__name__)
 
@@ -121,6 +122,10 @@ def meta_status_label(status: int | None) -> str:
 
 
 templates.env.filters["meta_status_label"] = meta_status_label
+
+# Cache-busting dos estaticos: muda a cada revisao do Cloud Run, o que torna
+# seguro o Cache-Control imutavel de CachedStaticFiles.
+templates.env.globals["asset_version"] = asset_version()
 
 
 @router.get("/login", response_class=HTMLResponse, response_model=None)

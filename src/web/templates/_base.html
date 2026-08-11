@@ -7,18 +7,20 @@
   <title>{% block title %}V4 Ads MCP{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.bunny.net">
   <link rel="stylesheet" href="https://fonts.bunny.net/css?family=montserrat:300,400,500,600,700,800|jetbrains-mono:400,700&display=swap">
-  <link rel="stylesheet" href="/static/v4-tokens.css">
-  <link rel="stylesheet" href="/static/v4-base.css">
-  <link rel="stylesheet" href="/static/v4-components.css">
-  <link rel="stylesheet" href="/static/v4-motion.css">
+  {# ?v= muda a cada revisao do Cloud Run — e o que torna seguro o
+     Cache-Control imutavel servido por CachedStaticFiles. #}
+  <link rel="stylesheet" href="/static/v4-tokens.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/v4-base.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/v4-components.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/v4-motion.css?v={{ asset_version }}">
   <!-- POR ULTIMO, e nao por acaso: o Preflight do Tailwind precisa vencer o
        v4-base.css, exatamente como fazia o <style> que o Play CDN injetava
        no fim do <head>. Hoje h1 sem classe utilitaria e 14px/400 (Preflight),
        nao os 36px/800 declarados no v4-base.css. Mover este link pra cima
        inverte a cascata e estoura todo heading do painel.
        Gerado por scripts/build_tailwind.py — nao editar a mao. -->
-  <link rel="stylesheet" href="/static/v4-tailwind.css">
-  <link rel="icon" type="image/svg+xml" href="/static/logo/logo_v4_puro_round.svg">
+  <link rel="stylesheet" href="/static/v4-tailwind.css?v={{ asset_version }}">
+  <link rel="icon" type="image/svg+xml" href="/static/logo/logo_v4_puro_round.svg?v={{ asset_version }}">
   <script src="https://unpkg.com/htmx.org@2.0.3" integrity="sha384-0895/pl2MU10Hqc6jd4RvrthNlDiE9U1tWmX7WRESftEDRosgxNsQG/Ze9YMRzHq" crossorigin="anonymous" defer></script>
 </head>
 <body>
