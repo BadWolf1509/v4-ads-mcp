@@ -108,12 +108,24 @@ Isso fecha o F79 no mecanismo, não só no valor: a lição era "offset sticky �
 
 > **Nota de método:** o `ResizeObserver` parecia não disparar nos primeiros testes (0 entregas, nem a inicial). Não era bug: a aba do Chrome estava com `visibilityState: "hidden"`, e a entrega de `ResizeObserver` — como `requestAnimationFrame` — acontece nos *rendering steps*, que não rodam em aba que não pinta. Forçar uma pintura (screenshot) entre a mudança de largura e a leitura destravou. **Ao medir layout responsivo por automação, intercale uma pintura** — senão você "confirma" um bug que não existe. Mesma família do falso negativo do skip link (`:focus` não casa sem foco no documento).
 
-## Ainda em aberto (decisão de design, não bug)
+## 4ª rodada — barras de filtro rolam junto no celular (`15903f5`)
 
-Com o offset correto, no celular a pilha fixa passa a ser header (61px) + barra de filtros (240px) = **301px**, ~36% de um viewport de 844px. Está *correto* — nada se sobrepõe — mas é muito espaço preso. Se quiser recuperá-lo, a mudança é uma linha, com o trade-off de perder o filtro fixo em telas estreitas:
+Decisão do gestor: aplicar. Com o offset já correto, o que sobrava era espaço preso — embrulhadas, as barras chegam a 240px:
 
-```css
-@media (max-width: 617px) { #audit-filters { position: static; } }
-```
+| Tela | Pilha fixa no celular | % de um viewport de 844px |
+|---|---|---|
+| `/audit` | 61 (header) + 240 (barra) = **301px** | ~36% |
+| `/admin/audit` | 61 + 55 (subnav) + 240 = **356px** | ~42% |
 
-O `ResizeObserver` já cobre esse caso: passa a publicar `0` e o cabeçalho de dia sobe automaticamente pro topo logo abaixo do header. Não aplicado — é escolha de produto.
+`max-sm:static` (< 640px) faz as duas rolarem junto com a página. **Aplicado nas duas** — `/admin/audit` é o caso pior, deixar só `/audit` seria incoerente.
+
+Usei o breakpoint `sm` padrão em vez do literal de 617px que eu tinha proposto: fica a 22px do ponto de quebra medido (618px, onde a barra vai pra 3 linhas) e o codebase já usa as escalas do Tailwind em vez de valores arbitrários.
+
+O `ResizeObserver` ganhou um listener de `resize` junto: a troca de `position` no breakpoint pode acontecer **sem** mudança de altura, que é o único gatilho do observer. Ambos saem cedo quando o valor não mudou, então o custo é duas leituras por evento.
+
+**Verificação em duas partes** (a janela do Chrome estava maximizada e o `resize_window` não encolhe o viewport, então não deu pra testar com uma tela real < 640px):
+
+1. **Estrutural, no CSS servido em produção:** `.max-sm\:static{position:static}` existe dentro de `@media not all and (min-width:640px)` (a forma como o Tailwind expressa `max-width`) e aparece na posição 10764, depois do `.sticky` na 4660 — mesma especificidade, então a regra do breakpoint vence.
+2. **Integração, end-to-end em produção:** forçando `position: static` por stylesheet, o observer publica `0px` e `--v4-audit-day-offset` colapsa pra `calc(65px + 0px)`; voltando a sticky, republica `88px`. Isso exercita exatamente o listener novo.
+
+O que **não** foi verificado com viewport real abaixo de 640px é a media query casando — mas com a regra confirmada presente e na ordem certa, isso é semântica determinística de CSS.
