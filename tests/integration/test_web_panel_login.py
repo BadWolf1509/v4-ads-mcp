@@ -31,6 +31,15 @@ async def test_login_page_renders(client: AsyncClient):
 
 
 @pytest.mark.integration
+async def test_login_nao_renderiza_hamburguer_nem_drawer(client: AsyncClient):
+    """Deslogado nao existe navegacao — o botao abria uma gaveta vazia e travava o scroll."""
+    response = await client.get("/login")
+    assert response.status_code == 200
+    assert "v4-header__hamburger" not in response.text
+    assert 'id="mobile-drawer"' not in response.text
+
+
+@pytest.mark.integration
 async def test_authenticated_dashboard_renders(client: AsyncClient):
     pool = connection.get_pool()
     async with pool.acquire() as conn:

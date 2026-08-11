@@ -176,6 +176,9 @@ main {
   .v4-header__hamburger { display: block; }
   .v4-header__nav { display: none; }
   .v4-header__user { display: none; }
+  /* Com nav e usuario ocultos sobram 2 filhos, e o space-between do header
+     jogava a marca pro canto direito. Ancora ela ao lado do hamburguer. */
+  .v4-header__brand { margin-right: auto; }
 }
 
 /* Mobile drawer */

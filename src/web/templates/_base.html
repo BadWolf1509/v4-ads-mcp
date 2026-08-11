@@ -43,9 +43,11 @@
 </head>
 <body>
   <header class="v4-header">
+    {% if current_user %}
     <button class="v4-header__hamburger" type="button" aria-label="Abrir menu" aria-controls="mobile-drawer" aria-expanded="false" onclick="toggleDrawer()">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
+    {% endif %}
     <a class="v4-header__brand" href="/">
       <img src="/static/logo/logo_v4_puro_round.svg" class="v4-header__logo" alt="V4">
       <span class="v4-header__title">Ads MCP</span>
@@ -72,10 +74,10 @@
     {% include "admin/_subnav.html" %}
   {% endif %}
 
+{% if current_user %}
 <div id="mobile-drawer" class="v4-drawer" role="dialog" aria-hidden="true" aria-label="Menu">
   <div class="v4-drawer__backdrop" onclick="toggleDrawer()"></div>
   <nav class="v4-drawer__panel" aria-label="Mobile">
-    {% if current_user %}
       <div class="v4-drawer__section">
         <a href="/" class="v4-drawer__link">Dashboard</a>
         <a href="/accounts" class="v4-drawer__link">Contas</a>
@@ -98,12 +100,12 @@
         <div class="v4-drawer__heading">{{ current_user.email }}</div>
         <form method="POST" action="/logout"><button type="submit" class="v4-drawer__link" style="background:none;border:none;padding:0;cursor:pointer;width:100%;text-align:left;">Sair</button></form>
       </div>
-    {% endif %}
   </nav>
 </div>
 <script>
   function toggleDrawer() {
     const drawer = document.getElementById('mobile-drawer');
+    if (!drawer) return;
     const isOpen = drawer.classList.toggle('is-open');
     drawer.setAttribute('aria-hidden', String(!isOpen));
     document.querySelector('.v4-header__hamburger')?.setAttribute('aria-expanded', String(isOpen));
@@ -124,6 +126,7 @@
     });
   }
 </script>
+{% endif %}
 
   <main>
     {% block content %}{% endblock %}
