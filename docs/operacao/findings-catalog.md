@@ -188,7 +188,7 @@
 | Sessão 2026-07-04 | F73-F75 (quota/cap por gestor + UI/UX HTMX) |
 | Sessão 2026-07-22 | A7 + F76 (hipótese de acento refutada; reconnect do auth path) |
 | Sessão 2026-07-23 | F77 (deep health resiliente a conexão DB stale); F76 validado em produção |
-| Sessão 2026-08-11 | F78-F80 (hambúrguer fantasma deslogado; offsets sticky não-medidos; colisão de shorthand entre modificadores CSS) |
+| Sessão 2026-08-11 | F78-F81 (hambúrguer fantasma deslogado; offsets sticky não-medidos; colisão de shorthand entre modificadores CSS; filtros de tabela mortos por id inexistente) |
 
 ---
 
@@ -252,3 +252,11 @@
 - **F80 (LOW) — shorthand `padding` de um modificador anulando o `padding-left` de outro:** `.v4-input--small` (`padding: 4px 8px`) é declarado **depois** de `.v4-input--search` (`padding-left: 36px`) com a mesma especificidade (0,1,0). Nos campos de busca das matrizes de acesso, que usam as duas classes, o shorthand zerava o espaço reservado e o ícone de lupa (18px em `left:10px`) ficava **por cima do placeholder** — renderizava "🔍scar gestor…". **Fix (`fc8c0a8`):** regra combinada `.v4-input--search.v4-input--small { padding-left: 32px }` (0,2,0), preservando o padding vertical compacto. **Lição:** modificador que usa shorthand (`padding`, `margin`, `background`, `border`) apaga as longhand de qualquer modificador irmão declarado antes. Ao criar um modificador combinável, prefira longhand — ou adicione a regra de interseção.
 
 **Nota de método (3 ocorrências nesta sessão):** guard grep-based deve casar a **forma de uso** (`var(--token)`, `aria-atomic=`, `'unsafe-eval'` no valor da policy), nunca o token nu — o comentário que *explica* a regra contém a string e dispara o próprio guard. Corolário no Tailwind: o scanner lê o arquivo inteiro, comentários incluídos — citar o nome de um utilitário num comentário **gera CSS** (aconteceu com `font-light`).
+
+## Sessão 2026-08-11 (cont.) — CSP sem script inline (finding F81)
+
+> Refatoração dos handlers inline pra permitir `script-src` sem `'unsafe-inline'`. Detalhe: [`session-2026-08-11-frontend-handoff.md`](session-2026-08-11-frontend-handoff.md).
+
+- **F81 (MED) — os 4 filtros de tabela do painel estavam mortos em produção:** `filterManagers()`, `filterAccounts()`, `filterAccs()` e `filterMetaAccs()` começavam com `document.getElementById('<id>').value`, mas o input vinha da macro `search_input`, que emite **`name=`, não `id=`**. Resultado: `getElementById` retornava `null` e a função lançava `Cannot read properties of null (reading 'value')` a cada tecla. Como os selects de role/status/MCC chamavam a MESMA função, eles caíam junto — a tela de Gestores tinha três controles de filtro e nenhum funcionava. Passou despercebido porque falha em silêncio (exceção em handler inline não quebra a página) e nenhum teste exercita JS. **Fix (`bfd438d`):** o mecanismo declarativo novo mira o controle pelo atributo `data-v4-filter`, não por id — o acoplamento que quebrava deixou de existir. Verificado em produção: buscar "wellington" filtra 4→1 linhas, o select de role idem, e limpar restaura. **Lição:** handler inline que chama função global falha mudo; e macro que gera markup precisa emitir o que o consumidor assume (aqui, `id`). Um guard grep-based não pegaria — o que pegaria é um teste que exercita o JS, que o projeto não tem.
+
+**Nota de método — a CSP como detector:** apertar `script-src` transformou "handler esquecido" de bug silencioso em erro observável. Um `onclick` sobreviveu à varredura estática porque estava dentro de uma string Jinja com aspas **escapadas** (`\"`) passada pra macro `modal()` em `admin/index.html`; o regex do guard só casava aspa normal. Foi pego varrendo as 14 telas renderizadas em produção, e o guard passou a casar `\?["']`. Quando o alvo é remover uma permissão, a varredura precisa ser no HTML **servido**, não só no source.

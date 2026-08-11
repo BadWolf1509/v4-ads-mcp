@@ -81,7 +81,7 @@ Verificado em prod (`00030-slz`) nas 14 telas (`/`, `/accounts`, `/sessions`, `/
 
 ## Pendências
 
-1. **Adiado:** refatorar os 28 `onclick` inline + 6 `hx-on` pra listeners delegados, o que permitiria remover `'unsafe-inline'` de `script-src`. (O `<style>` do HTMX mantém o `'unsafe-inline'` de `style-src` independentemente.)
+1. ~~Adiado: refatorar os `onclick` inline pra remover `'unsafe-inline'`~~ — **feito na 5ª rodada** (`bfd438d`+`9374638`). Eram 53 atributos e 13 blocos `<script>`, não 28. Ver abaixo.
 2. ~~Limitação do `--v4-audit-day-offset` no mobile~~ — **resolvido em `eab6099`** (3ª rodada). Ver abaixo.
 3. **Meta OAuth pessoal do Wellington** aparece no painel como "Expira em 27/07/2026 (0 dias)" — a data já passou (hoje é 11/08). É o OAuth dormante (Modelo B usa o system-user token), então não afeta as tools; mas o contador exibindo "0 dias" pra uma data no passado é enganoso. Fora do escopo deste pacote.
 
@@ -129,3 +129,42 @@ O `ResizeObserver` ganhou um listener de `resize` junto: a troca de `position` n
 2. **Integração, end-to-end em produção:** forçando `position: static` por stylesheet, o observer publica `0px` e `--v4-audit-day-offset` colapsa pra `calc(65px + 0px)`; voltando a sticky, republica `88px`. Isso exercita exatamente o listener novo.
 
 O que **não** foi verificado com viewport real abaixo de 640px é a media query casando — mas com a regra confirmada presente e na ordem certa, isso é semântica determinística de CSS.
+
+## 5ª rodada — CSP sem script inline (`bfd438d` + `163650f` + `9374638`)
+
+Decisão do gestor: fazer agora. A superfície era maior que os "28 onclick" que eu tinha estimado:
+
+| | Quantidade |
+|---|---|
+| Atributos inline (`on*=` + `hx-on`) | **53** em 15 arquivos |
+| Blocos `<script>` inline | **13** em 8 arquivos |
+
+Todos exigem `script-src 'unsafe-inline'`, então todos tinham que sair. Foram **dois commits de propósito**: o primeiro só realoca comportamento (inofensivo por si só) e o segundo aperta a CSP — assim o passo arriscado é um revert de uma linha, e uma quebra é atribuível sem ambiguidade.
+
+Tudo virou listener delegado em [`v4-panel.js`](../../src/web/static/v4-panel.js), acionado por `data-v4-*`: `drawer-toggle`, `dropdown-toggle`, `row-toggle`, `dialog-open`/`dialog-close`, `copy`, `confirm`, mais `data-v4-autosubmit`, `data-v4-submit-once`, `data-v4-filter` e `data-v4-matrix-filter`.
+
+```
+antes:  script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.tailwindcss.com unpkg.com
+agora:  script-src 'self' https://unpkg.com
+```
+
+`style-src` **mantém** `'unsafe-inline'` e não dá pra tirar hoje: o próprio htmx injeta um `<style>` (`.htmx-indicator`) em runtime, além dos atributos `style=` nas templates. CSS inline não executa código — não é o mesmo risco.
+
+### Ganhos além da CSP
+
+- **F74 virou impossível por construção.** O fragmento de reposição do toggle de acesso não carrega mais handler nenhum — só o marcador `data-v4-access-toggle` — então não há o que esquecer de re-emitir no swap.
+- **F81: quatro filtros de tabela que estavam mortos voltaram a funcionar** (ver catálogo). O mecanismo novo mira por atributo, não por `id`, então o acoplamento que os quebrava deixou de existir.
+- 4 filtros quase idênticos viraram um mecanismo declarativo; os 2 scripts da matriz (byte-idênticos) viraram uma função.
+- O link "Detalhe" dentro da linha expansível não precisa mais de `stopPropagation`.
+- O botão de copiar deixou de mentir: o antigo trocava o rótulo pra "Copiado!" e mostrava toast de sucesso **sem esperar** o `writeText`, então numa falha afirmava um sucesso que não houve. Agora só confirma depois que a escrita resolve, e avisa se falhar.
+
+### Verificação
+
+- CI pegou o que o gate local não pega: dois testes de integração fixavam o contrato antigo do fragmento (`hx-on::after-request`). Corrigidos em `163650f` — o contrato mudou de propósito.
+- **Um `onclick` sobreviveu à varredura estática**: estava dentro de uma string Jinja com aspas escapadas (`\"`) passada pra macro `modal()`. Pego varrendo as 14 telas **renderizadas** em produção; o guard passou a casar aspa escapada.
+- Exercitado em produção sob a CSP restrita, com listener de `securitypolicyviolation` ativo — **zero violações**: filtros de tabela e da matriz, dropdown, drawer (inclusive `inert`), toasts (`status`/`alert`), diálogo de confirmação (aberto e **cancelado**), modais, linha expansível (mouse e teclado), link que não expande, e o listener delegado do checkbox (evento simulado, sem request).
+- **Nada de controle de mutação foi clicado** — dados de produção.
+
+### Não verificado
+
+A cópia real pro clipboard. `clipboard-write` está `granted`, mas `navigator.clipboard.writeText` exige documento em foco e a aba de automação roda com `hasFocus() === false`. O handler roda, resolve a origem certa e cai no fallback de erro. É a mesma dependência do código antigo — só que agora tratada.
