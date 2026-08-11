@@ -75,10 +75,13 @@ def test_sem_handler_inline_em_template():
 
     O comportamento vive em v4-panel.js, acionado por data-v4-*.
     """
-    padrao = re.compile(r'\b(on[a-z]+|hx-on[^\s=]*)\s*=\s*(["\'])(.*?)\2', re.S)
+    # A aspa pode vir escapada (\") quando o HTML e montado dentro de uma string
+    # Jinja passada pra macro — foi assim que um onclick sobreviveu a primeira
+    # varredura, em admin/index.html.
+    padrao = re.compile(r'\b(on[a-z]+|hx-on[^\s=]*)\s*=\s*\\?["\']')
     ofensores = []
     for template in _TEMPLATES.rglob("*.html"):
-        for attr, _, _ in padrao.findall(template.read_text(encoding="utf-8")):
+        for attr in padrao.findall(template.read_text(encoding="utf-8")):
             ofensores.append(f"{template.name}:{attr}")
     assert not ofensores, f"handler inline em template: {ofensores}"
 
@@ -119,6 +122,21 @@ def test_csp_sem_unsafe_eval():
 
     assert "unsafe-eval" not in _CSP_POLICY
     assert "cdn.tailwindcss.com" not in _CSP_POLICY
+
+
+def test_script_src_sem_unsafe_inline():
+    """O comportamento vive em v4-panel.js; nada de script inline sobrou.
+
+    style-src ainda precisa de 'unsafe-inline' — o htmx injeta um <style> em
+    runtime e ha atributos style= nas templates. CSS inline nao executa codigo,
+    entao o risco nao e o mesmo.
+    """
+    from src.web.middleware import _CSP_POLICY
+
+    script_src = next(d for d in _CSP_POLICY.split("; ") if d.startswith("script-src"))
+    assert "unsafe-inline" not in script_src, script_src
+    style_src = next(d for d in _CSP_POLICY.split("; ") if d.startswith("style-src"))
+    assert "unsafe-inline" in style_src, "htmx injeta <style>; remover quebraria o indicador"
 
 
 def test_tailwind_e_o_ultimo_stylesheet():

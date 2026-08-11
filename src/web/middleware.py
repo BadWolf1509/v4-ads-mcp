@@ -27,11 +27,20 @@ _CSRF_EXEMPT_PREFIXES = ("/oauth/", "/mcp")
 # 2026-08-11: o Tailwind deixou de ser CDN. O CSS passou a ser gerado offline
 # (scripts/build_tailwind.py) e servido de /static, o que permitiu remover
 # https://cdn.tailwindcss.com E o 'unsafe-eval' — este era exigido apenas pelo
-# compilador em runtime do Play CDN. 'unsafe-inline' PERMANECE necessario: as
-# templates ainda usam ~28 handlers onclick inline (refactor adiado).
+# compilador em runtime do Play CDN.
+#
+# Em seguida, script-src perdeu o 'unsafe-inline': os 53 handlers de atributo
+# (on*=/hx-on) e os 13 blocos <script> inline viraram listeners delegados em
+# /static/v4-panel.js, acionados por data-v4-*. Guards em
+# tests/unit/test_frontend_a11y_guards.py impedem a volta — sem eles, um
+# handler inline novo falharia silenciosamente no browser.
+#
+# style-src MANTEM 'unsafe-inline' e nao da pra tirar hoje: o proprio htmx
+# injeta um <style> (.htmx-indicator) em runtime, e varias templates usam
+# atributo style=. Nao e o mesmo risco — CSS inline nao executa codigo.
 _CSP_POLICY = (
     "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline' https://unpkg.com; "
+    "script-src 'self' https://unpkg.com; "
     "style-src 'self' 'unsafe-inline' https://fonts.bunny.net; "
     "font-src 'self' https://fonts.bunny.net; "
     "img-src 'self' data:; "

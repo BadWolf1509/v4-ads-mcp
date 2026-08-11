@@ -91,7 +91,7 @@
         "Revogar conexão Meta",
         "<p>Vai desativar todas as tools Meta até reconectar via <strong>/oauth/meta/start</strong>.</p><p class=\"mt-2 text-sm text-v4-gray-700\"><strong>Confirma?</strong></p>",
         "<form method=\"post\" action=\"/oauth/meta/revoke\" style=\"display: flex; gap: 8px; justify-content: flex-end; margin: 0;\">" ~
-        "<button type=\"button\" onclick=\"this.closest('dialog').close()\" class=\"v4-btn v4-btn--small v4-btn--secondary\">Cancelar</button>" ~
+        "<button type=\"button\" data-v4-action=\"dialog-close\" data-v4-target=\"meta-revoke-modal\" class=\"v4-btn v4-btn--small v4-btn--secondary\">Cancelar</button>" ~
         "<button type=\"submit\" class=\"v4-btn v4-btn--small v4-btn--danger\">Revogar</button>" ~
         "</form>"
       ) }}
