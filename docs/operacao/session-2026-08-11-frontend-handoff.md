@@ -82,5 +82,38 @@ Verificado em prod (`00030-slz`) nas 14 telas (`/`, `/accounts`, `/sessions`, `/
 ## Pendências
 
 1. **Adiado:** refatorar os 28 `onclick` inline + 6 `hx-on` pra listeners delegados, o que permitiria remover `'unsafe-inline'` de `script-src`. (O `<style>` do HTMX mantém o `'unsafe-inline'` de `style-src` independentemente.)
-2. **Limitação conhecida do `--v4-audit-day-offset` no mobile:** a barra de filtros embrulha em telas estreitas e fica bem mais alta que os 88px medidos no desktop, então o cabeçalho de dia da `/audit` volta a tucar sob ela. Offset sticky por número mágico não sobrevive a altura responsiva — a saída definitiva é um contêiner sticky compartilhado, ou desligar o sticky do cabeçalho de dia abaixo de 768px. Não feito nesta rodada.
+2. ~~Limitação do `--v4-audit-day-offset` no mobile~~ — **resolvido em `eab6099`** (3ª rodada). Ver abaixo.
 3. **Meta OAuth pessoal do Wellington** aparece no painel como "Expira em 27/07/2026 (0 dias)" — a data já passou (hoje é 11/08). É o OAuth dormante (Modelo B usa o system-user token), então não afeta as tools; mas o contador exibindo "0 dias" pra uma data no passado é enganoso. Fora do escopo deste pacote.
+
+## 3ª rodada — o offset da barra de filtros virou medição de runtime (`eab6099`)
+
+A pendência do mobile acabou revelando que o problema era maior do que "mobile". Medindo a altura da barra de filtros da `/audit` por largura disponível:
+
+| Largura | Linhas | Altura |
+|---|---|---|
+| ≥ 831px | 1 | 88px |
+| 618–830px | 2 | **164px** |
+| < 618px | 3 | **240px** |
+
+Os pontos de quebra (**831px** e **618px**) emergem da largura do conteúdo e não coincidem com nenhum breakpoint padrão (Tailwind: 640 / 768 / 1024). Duas consequências:
+
+1. **Não era só mobile.** O offset já estava errado por 76px em qualquer janela entre 618 e 831px — faixa comum de laptop estreito ou tela dividida.
+2. **Media query com valor chutado não resolve.** Qualquer literal erra perto das bordas, e os pontos de quebra mudam se alguém adicionar um filtro ou mexer num rótulo.
+
+**Fix:** um `ResizeObserver` em `_base.html` publica a altura real da barra em `--v4-filter-bar-h`, que alimenta `--v4-audit-day-offset`. A barra é marcada com `data-sticky-measure` (só a da `/audit` — é a única cuja altura alimenta um offset). Publica `0` quando a barra não está sticky, então continua correto se alguém desligar o sticky depois. Sem JS, o literal de `v4-tokens.css` segue como fallback.
+
+Isso fecha o F79 no mecanismo, não só no valor: a lição era "offset sticky é altura medida, não estimada", e agora a medição é contínua em vez de um snapshot que apodrece.
+
+**Verificado em produção** nas três faixas — publicado bate com a altura real em 1200px (88), 800px (164) e 500px (240), com o offset resolvendo pra `calc(65px + 240px)` na mais estreita.
+
+> **Nota de método:** o `ResizeObserver` parecia não disparar nos primeiros testes (0 entregas, nem a inicial). Não era bug: a aba do Chrome estava com `visibilityState: "hidden"`, e a entrega de `ResizeObserver` — como `requestAnimationFrame` — acontece nos *rendering steps*, que não rodam em aba que não pinta. Forçar uma pintura (screenshot) entre a mudança de largura e a leitura destravou. **Ao medir layout responsivo por automação, intercale uma pintura** — senão você "confirma" um bug que não existe. Mesma família do falso negativo do skip link (`:focus` não casa sem foco no documento).
+
+## Ainda em aberto (decisão de design, não bug)
+
+Com o offset correto, no celular a pilha fixa passa a ser header (61px) + barra de filtros (240px) = **301px**, ~36% de um viewport de 844px. Está *correto* — nada se sobrepõe — mas é muito espaço preso. Se quiser recuperá-lo, a mudança é uma linha, com o trade-off de perder o filtro fixo em telas estreitas:
+
+```css
+@media (max-width: 617px) { #audit-filters { position: static; } }
+```
+
+O `ResizeObserver` já cobre esse caso: passa a publicar `0` e o cabeçalho de dia sobe automaticamente pro topo logo abaixo do header. Não aplicado — é escolha de produto.
