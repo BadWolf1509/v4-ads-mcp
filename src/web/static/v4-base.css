@@ -51,6 +51,37 @@ main {
   padding: var(--v4-space-6) var(--v4-space-4);
 }
 
+/* Skip link — fora da tela ate receber foco por teclado */
+.v4-skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: calc(var(--v4-z-modal) + 1);
+  background: var(--v4-gray-900);
+  color: var(--v4-white);
+  padding: var(--v4-space-3) var(--v4-space-4);
+  font-weight: 600;
+  border-radius: 0 0 var(--v4-radius-md) 0;
+}
+.v4-skip-link:focus {
+  left: 0;
+  color: var(--v4-white);
+  text-decoration: none;
+}
+
+/* Foco por teclado — token unico do design system. Antes so .v4-input e
+   .v4-textarea tinham anel proprio; botoes, links, dropdown e paginacao
+   ficavam no default do browser. Inputs mantem o anel vermelho do :focus. */
+:focus-visible {
+  outline: 2px solid var(--v4-focus-color);
+  outline-offset: 2px;
+}
+.v4-input:focus-visible,
+.v4-select:focus-visible,
+.v4-textarea:focus-visible {
+  outline: none;
+}
+
 /* Header */
 .v4-header {
   background: var(--v4-white);

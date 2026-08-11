@@ -88,8 +88,8 @@
   letter-spacing: 0.05em;
 }
 
-.v4-badge--success { background: rgba(82, 204, 90, 0.15); color: #2e7e3a; }
-.v4-badge--warning { background: rgba(255, 192, 42, 0.15); color: #a07700; }
+.v4-badge--success { background: rgba(82, 204, 90, 0.15); color: var(--v4-green-text); }
+.v4-badge--warning { background: rgba(255, 192, 42, 0.15); color: var(--v4-gold-text); }
 .v4-badge--error { background: rgba(229, 9, 20, 0.1); color: var(--v4-red-medium); }
 .v4-badge--neutral { background: var(--v4-gray-100); color: var(--v4-gray-700); }
 
@@ -315,7 +315,7 @@
 .v4-alert--success {
   background: var(--v4-green-soft);
   border-left-color: var(--v4-green);
-  color: #1a5b22;
+  color: var(--v4-green-text);
 }
 
 .v4-alert__title {
@@ -420,13 +420,13 @@
   background: var(--v4-gray-800);
   padding: var(--v4-space-2) var(--v4-space-3);
   font-size: 11px;
-  color: var(--v4-gray-300);
+  color: var(--v4-gray-300); /* on-dark */
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 .v4-code-block__copy {
   background: transparent;
-  color: var(--v4-gray-300);
+  color: var(--v4-gray-300); /* on-dark */
   border: 1px solid var(--v4-gray-700);
   padding: 2px 8px;
   font-size: 11px;
@@ -497,7 +497,7 @@
   animation: v4-toast-in var(--v4-motion-base) var(--v4-ease-spring) forwards;
   max-width: 360px;
 }
-.v4-toast--success { background: #1a5b22; }
+.v4-toast--success { background: var(--v4-green-text); }
 .v4-toast--error   { background: var(--v4-red-medium); }
 @keyframes v4-toast-in {
   from { opacity: 0; transform: translateX(20px); }

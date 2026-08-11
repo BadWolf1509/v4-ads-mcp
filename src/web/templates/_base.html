@@ -42,6 +42,7 @@
   <script src="https://unpkg.com/htmx.org@2.0.3" integrity="sha384-0895/pl2MU10Hqc6jd4RvrthNlDiE9U1tWmX7WRESftEDRosgxNsQG/Ze9YMRzHq" crossorigin="anonymous" defer></script>
 </head>
 <body>
+  <a class="v4-skip-link" href="#conteudo">Pular para o conteúdo</a>
   <header class="v4-header">
     {% if current_user %}
     <button class="v4-header__hamburger" type="button" aria-label="Abrir menu" aria-controls="mobile-drawer" aria-expanded="false" onclick="toggleDrawer()">
@@ -128,7 +129,7 @@
 </script>
 {% endif %}
 
-  <main>
+  <main id="conteudo" tabindex="-1">
     {% block content %}{% endblock %}
   </main>
 
@@ -159,13 +160,17 @@
     dlg.showModal();
   }
 </script>
-<div class="v4-toast-region" id="v4-toast-region" aria-live="polite" aria-atomic="true"></div>
+{# aria-atomic omitido de proposito: com atomic=true o leitor de tela
+   re-anuncia a fila inteira a cada toast novo. #}
+<div class="v4-toast-region" id="v4-toast-region" aria-live="polite"></div>
 <script>
   function showToast(message, kind) {
     kind = kind || 'success';
     const region = document.getElementById('v4-toast-region');
     const toast = document.createElement('div');
     toast.className = 'v4-toast v4-toast--' + kind;
+    // Erro interrompe a leitura; sucesso entra na fila educada.
+    toast.setAttribute('role', kind === 'error' ? 'alert' : 'status');
     toast.textContent = message;
     region.appendChild(toast);
     setTimeout(() => {

@@ -84,6 +84,15 @@
   --v4-green-soft: #e8f7ea;
   --v4-gold-soft:  #fff7e0;
 
+  /* Texto sobre os fundos soft — hex proprio porque --v4-gold/--v4-green
+     puros reprovam em contraste sobre eles (gold puro dava 3,8:1). Medido
+     sobre o fundo soft composto: gold-text 4,9:1 · green-text 7,3:1 (AA). */
+  --v4-gold-text:  #8a6500;
+  --v4-green-text: #1a5b22;
+
+  /* Foco por teclado */
+  --v4-focus-color: var(--v4-red);
+
   /* Operational density */
   --v4-row-height-compact: 36px;
   --v4-cell-pad-compact: 8px 12px;
