@@ -59,9 +59,28 @@ Resultado final da regeneração: saíram só `.transform` e `.transition`, que 
 - Guards novos: `tests/unit/test_frontend_a11y_guards.py` (13) + `tests/unit/test_web_static_caching.py` (4) + 2 integration (login sem hambúrguer, drawer com `aria-current`).
 - `tests/unit/test_security_headers.py` atualizado: agora **assere a ausência** de `unsafe-eval` e do CDN.
 
+## Smoke autenticado das telas admin (2ª rodada, mesma sessão)
+
+Feito via Claude in Chrome na sessão real do admin. **Só navegação e inspeção** — nenhum controle de mutação foi clicado (dados de produção).
+
+Verificado em prod (`00030-slz`) nas 14 telas (`/`, `/accounts`, `/sessions`, `/audit`, `/help` + as 9 de `/admin`):
+
+- **Zero classes utilitárias sem CSS em todas as 14** — a geração offline do Tailwind está completa (auditado comparando as classes do HTML de cada página contra o CSSOM carregado). Nenhum erro de console, nenhuma violação de CSP.
+- Cascata preservada em todas (`h1` sem classe = 14px), `0` `<style>` injetado em runtime, skip link e `aria-current` (header + drawer) presentes em todas.
+- `/help`: `v4-help.css` carrega por último via `head_extra`, uma vez só, e o "Voltar ao topo" está em `#6b6b6b` (correção de contraste no ar). O único `<style>` restante na página é injetado pelo **próprio HTMX** (`.htmx-indicator`) — não é nosso, e é mais um motivo pelo qual `style-src 'unsafe-inline'` continua necessário.
+- Dropdown de Gestores abre e não é clipado (a exclusão do `.v4-table-wrap` de 07-04 segue correta).
+
+**O smoke encontrou 3 bugs pré-existentes** (F78-F80 no catálogo) — dois deles expostos justamente por eu ter nomeado os offsets como tokens. Corrigidos em `fc8c0a8`, com CI+deploy verdes e re-verificados no ar:
+
+| | Antes | Depois |
+|---|---|---|
+| `/admin/audit` | filtros em `top:53` **cobrindo a subnav inteira** (subnav cortada em "Aud…") | header 0–65 · subnav 65–120 · filtros 120–208 |
+| `/admin/access` | tab bar 12px sob a subnav | subnav 65–120 · tab bar 120–175 |
+| `/audit` | cabeçalho de dia 33px sob os filtros | header 0–65 · filtros 65–153 · dia 153–183 |
+| Busca das matrizes | ícone sobre o placeholder ("🔍scar gestor…") | "🔍 Buscar gestor…" |
+
 ## Pendências
 
-1. **Verificar em produção pós-deploy** (o deploy é gated pelo CI): `content-encoding: gzip` e `cache-control` nos estáticos, 0 ocorrências de `cdn.tailwindcss.com`, `h1` sem classe ainda em 14px, e `domContentLoaded` abaixo dos 1128 ms de baseline.
-2. **Guard do Tailwind no CI é a primeira execução** — se `npx tailwindcss@3.4.17` gerar bytes diferentes no Linux, o job falha; nesse caso, regenerar no Linux e commitar.
-3. **Adiado:** refatorar os 28 `onclick` inline + 6 `hx-on` pra listeners delegados, o que permitiria remover `'unsafe-inline'` de `script-src`.
-4. **Não investigado:** as telas admin com autenticação (matriz de acessos, auditoria global) não foram vistas renderizadas — a investigação cobriu o código de todas, mas o smoke visual só alcançou o `/login` (sem credenciais na sessão).
+1. **Adiado:** refatorar os 28 `onclick` inline + 6 `hx-on` pra listeners delegados, o que permitiria remover `'unsafe-inline'` de `script-src`. (O `<style>` do HTMX mantém o `'unsafe-inline'` de `style-src` independentemente.)
+2. **Limitação conhecida do `--v4-audit-day-offset` no mobile:** a barra de filtros embrulha em telas estreitas e fica bem mais alta que os 88px medidos no desktop, então o cabeçalho de dia da `/audit` volta a tucar sob ela. Offset sticky por número mágico não sobrevive a altura responsiva — a saída definitiva é um contêiner sticky compartilhado, ou desligar o sticky do cabeçalho de dia abaixo de 768px. Não feito nesta rodada.
+3. **Meta OAuth pessoal do Wellington** aparece no painel como "Expira em 27/07/2026 (0 dias)" — a data já passou (hoje é 11/08). É o OAuth dormante (Modelo B usa o system-user token), então não afeta as tools; mas o contador exibindo "0 dias" pra uma data no passado é enganoso. Fora do escopo deste pacote.
