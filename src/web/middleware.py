@@ -15,17 +15,21 @@ _CSRF_EXEMPT_PREFIXES = ("/oauth/", "/mcp")
 # Complete inventory of external origins the panel loads (verified 2026-05-29 via
 # grep of templates + static; promoted from Report-Only to enforcing after smoke
 # confirmed zero CSP violations in the browser console across all panel pages):
-#   - https://cdn.tailwindcss.com  → script (Play CDN, needs 'unsafe-eval')
 #   - https://unpkg.com            → script (htmx.org@2.0.3, SRI-pinned)
 #   - https://fonts.bunny.net      → stylesheet + font files (loaded via <link
 #                                     rel="preconnect"|"stylesheet"> in _base.html
 #                                     head since 2026-07-04 — was @import in
 #                                     v4-base.css; policy below is unchanged)
 # No Google Fonts, no image CDNs. All other assets are self-hosted under /static/.
-# Inline <script>/<style> blocks are covered by 'unsafe-inline'/'unsafe-eval'.
+#
+# 2026-08-11: o Tailwind deixou de ser CDN. O CSS passou a ser gerado offline
+# (scripts/build_tailwind.py) e servido de /static, o que permitiu remover
+# https://cdn.tailwindcss.com E o 'unsafe-eval' — este era exigido apenas pelo
+# compilador em runtime do Play CDN. 'unsafe-inline' PERMANECE necessario: as
+# templates ainda usam ~28 handlers onclick inline (refactor adiado).
 _CSP_POLICY = (
     "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com; "
+    "script-src 'self' 'unsafe-inline' https://unpkg.com; "
     "style-src 'self' 'unsafe-inline' https://fonts.bunny.net; "
     "font-src 'self' https://fonts.bunny.net; "
     "img-src 'self' data:; "

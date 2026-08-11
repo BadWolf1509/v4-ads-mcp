@@ -1,0 +1,6 @@
+/* Entrada do CLI do Tailwind. Saida: src/web/static/v4-tailwind.css
+   Rode `python scripts/build_tailwind.py` depois de mexer em classe
+   utilitaria de template — o CI faz diff e falha se estiver desatualizado. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

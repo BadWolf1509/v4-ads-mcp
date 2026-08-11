@@ -42,9 +42,12 @@ async def test_security_headers_csp_value() -> None:
     csp = r.headers["content-security-policy"]
     assert "default-src" in csp
     assert "script-src" in csp
-    assert "https://cdn.tailwindcss.com" in csp
     assert "https://unpkg.com" in csp
     assert "https://fonts.bunny.net" in csp
+    # 2026-08-11: o Tailwind saiu do CDN (CSS gerado offline em /static), o que
+    # removeu a origem e o 'unsafe-eval' que o compilador em runtime exigia.
+    assert "https://cdn.tailwindcss.com" not in csp
+    assert "unsafe-eval" not in csp
 
 
 @pytest.mark.asyncio

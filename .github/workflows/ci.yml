@@ -52,6 +52,15 @@ jobs:
       - name: Format check (ruff)
         run: ruff format --check src tests
 
+      # O CSS do Tailwind e gerado offline e commitado (nao ha build step no
+      # runtime). Este guard regenera e falha se o artefato estiver defasado
+      # em relacao as classes usadas nas templates. ubuntu-latest ja traz Node.
+      - name: Tailwind CSS esta atualizado
+        run: |
+          python scripts/build_tailwind.py
+          git diff --exit-code src/web/static/v4-tailwind.css \
+            || (echo "::error::v4-tailwind.css desatualizado. Rode 'python scripts/build_tailwind.py' e commite." && exit 1)
+
       - name: Type check (mypy)
         run: mypy src
 

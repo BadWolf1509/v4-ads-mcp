@@ -5,6 +5,7 @@ reincidencia de classes de bug que so apareceriam num browser. Cada guard
 referencia a medicao que o motivou (investigacao de frontend 2026-08-11).
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -61,6 +62,45 @@ def test_templates_nao_usam_gray_300_como_texto():
     for template in _TEMPLATES.rglob("*.html"):
         ofensores = _gray_300_como_texto(template.read_text(encoding="utf-8"))
         assert not ofensores, f"{template.name}: gray-300 como texto -> {ofensores}"
+
+
+def test_sem_tailwind_play_cdn():
+    """O Play CDN compila em runtime (407 KB de JS) e exigia 'unsafe-eval'."""
+    html = (_TEMPLATES / "_base.html").read_text(encoding="utf-8")
+    assert "cdn.tailwindcss.com" not in html
+
+
+def test_csp_sem_unsafe_eval():
+    """Assertado sobre o valor da policy, nao sobre o source (comentarios citam o termo)."""
+    from src.web.middleware import _CSP_POLICY
+
+    assert "unsafe-eval" not in _CSP_POLICY
+    assert "cdn.tailwindcss.com" not in _CSP_POLICY
+
+
+def test_tailwind_e_o_ultimo_stylesheet():
+    """CRITICO: o Preflight tem que continuar vencendo o v4-base.css.
+
+    O Play CDN injetava seu <style> no fim do <head>, entao h1 sem classe
+    e 14px/400 (Preflight), nao os 36px/800 de v4-base.css. Carregar o CSS
+    gerado ANTES dos v4-*.css inverte isso e estoura todo heading do painel.
+    """
+    html = (_TEMPLATES / "_base.html").read_text(encoding="utf-8")
+    hrefs = re.findall(r'<link[^>]+rel="stylesheet"[^>]+href="([^"]+)"', html)
+    locais = [h for h in hrefs if h.startswith("/static/")]
+    assert locais, "nenhum stylesheet local encontrado"
+    assert "v4-tailwind.css" in locais[-1], f"v4-tailwind.css precisa ser o ultimo: {locais}"
+
+
+def test_css_gerado_do_tailwind_esta_commitado():
+    """O CI regenera e faz diff; aqui so garantimos que o artefato existe."""
+    gerado = _STATIC / "v4-tailwind.css"
+    assert gerado.exists(), "rode: python scripts/build_tailwind.py"
+    conteudo = gerado.read_text(encoding="utf-8")
+    # Preflight: e ele que domina a cascata dos headings.
+    assert "font-size:inherit;font-weight:inherit" in conteudo
+    # Cores resolvem pra custom property (fonte unica em v4-tokens.css).
+    assert "var(--v4-red)" in conteudo
 
 
 def test_toast_de_erro_interrompe_a_leitura():

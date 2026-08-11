@@ -14,6 +14,11 @@ html, body {
   background: var(--v4-white);
 }
 
+/* ATENCAO: o Preflight do Tailwind (v4-tailwind.css, carregado por ultimo)
+   reseta h1-h6 pra font-size/font-weight: inherit e zera as margens. Na
+   pratica estas quatro regras NAO valem para headings sem classe utilitaria
+   — o tamanho vem de classes como `text-4xl font-extrabold` nas templates.
+   Mantidas como fallback caso o Tailwind seja removido. */
 h1 { font-size: var(--v4-h1-size); font-weight: var(--v4-h1-weight); line-height: var(--v4-h1-line); margin: 0 0 var(--v4-space-4); }
 h2 { font-size: var(--v4-h2-size); font-weight: var(--v4-h2-weight); line-height: var(--v4-h2-line); margin: 0 0 var(--v4-space-3); }
 h3 { font-size: var(--v4-h3-size); font-weight: var(--v4-h3-weight); line-height: var(--v4-h3-line); margin: 0 0 var(--v4-space-2); }
