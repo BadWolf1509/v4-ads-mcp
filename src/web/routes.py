@@ -6,7 +6,7 @@ from collections import OrderedDict
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 from urllib.parse import parse_qs, urlparse
 from uuid import UUID
 
@@ -115,6 +115,39 @@ def _toggle_checkbox_fragment(*, post_url: str, vals: dict[str, str], checked: b
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+
+
+class MetaExpirySignals(NamedTuple):
+    """Sinais de expiração do OAuth pessoal Meta pro painel admin."""
+
+    expired: bool
+    expiring_soon: bool
+    days_until: int | None
+    days_since: int | None
+
+
+def meta_expiry_signals(
+    token_expires_at: datetime | None, *, agora: datetime | None = None
+) -> MetaExpirySignals:
+    """Traduz a data de expiração nos sinais que o template consome.
+
+    Separado da rota pra ser testável sem DB. O cálculo antigo era
+    `max(0, delta.days)`, que achatava vencido em 0 e fazia o painel dizer
+    "expira em <data passada> (0 dias)".
+
+    Os dias são contados sempre na direção positiva: `timedelta` negativo
+    arredonda pra baixo (`-15,4 dias` vira `.days == -16`), então medir
+    `agora - expiração` evita o off-by-one no "há N dias".
+    """
+    if token_expires_at is None:
+        return MetaExpirySignals(False, False, None, None)
+
+    agora = agora or datetime.now(UTC)
+    if token_expires_at <= agora:
+        return MetaExpirySignals(True, False, None, (agora - token_expires_at).days)
+
+    dias = (token_expires_at - agora).days
+    return MetaExpirySignals(False, dias < 7, dias, None)
 
 
 def meta_status_label(status: int | None) -> str:
@@ -755,13 +788,7 @@ async def admin_index(
         google_conn = await google_oauth_connections.get_active_for_manager(conn, user.id)
         meta_conn = await meta_oauth_connections.get_active_for_manager(conn, user.id)
 
-    # Compute meta token expiry signals
-    meta_token_expiring_soon = False
-    meta_days_until_expiry: int | None = None
-    if meta_conn is not None:
-        delta = meta_conn.token_expires_at - datetime.now(UTC)
-        meta_days_until_expiry = max(0, delta.days)
-        meta_token_expiring_soon = delta.days < 7
+    meta_expiry = meta_expiry_signals(meta_conn.token_expires_at if meta_conn else None)
 
     meta_connected = request.query_params.get("meta_connected") == "1"
     meta_revoked = request.query_params.get("meta_revoked") == "1"
@@ -785,8 +812,10 @@ async def admin_index(
             "recent_onboarding": [dict(r) for r in onboarding],
             "google_conn": google_conn,
             "meta_conn": meta_conn,
-            "meta_token_expiring_soon": meta_token_expiring_soon,
-            "meta_days_until_expiry": meta_days_until_expiry,
+            "meta_token_expired": meta_expiry.expired,
+            "meta_token_expiring_soon": meta_expiry.expiring_soon,
+            "meta_days_until_expiry": meta_expiry.days_until,
+            "meta_days_since_expiry": meta_expiry.days_since,
             "meta_connected": meta_connected,
             "meta_revoked": meta_revoked,
             "meta_refreshed": meta_refreshed,

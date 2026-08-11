@@ -40,7 +40,9 @@
         <div class="flex items-center justify-between mb-2">
           <span class="font-medium text-v4-gray-900">Meta Ads (OAuth pessoal — legado)</span>
           {% if meta_conn %}
-            {% if meta_token_expiring_soon %}
+            {% if meta_token_expired %}
+              {{ badge("Expirado", "error") }}
+            {% elif meta_token_expiring_soon %}
               {{ badge("Expira em breve", "warning") }}
             {% else %}
               {{ badge("Conectado", "success") }}
@@ -53,8 +55,17 @@
         {% if meta_conn %}
           <p class="text-sm text-v4-gray-700">{{ meta_conn.fb_email }}</p>
           <p class="text-xs text-v4-gray-700">
-            Expira em {{ meta_conn.token_expires_at.strftime('%d/%m/%Y') }}
-            ({{ meta_days_until_expiry }} dias)
+            {%- if meta_token_expired %}
+              Expirou em {{ meta_conn.token_expires_at.strftime('%d/%m/%Y') }}
+              {%- if meta_days_since_expiry == 0 %} (hoje)
+              {%- elif meta_days_since_expiry == 1 %} (há 1 dia)
+              {%- else %} (há {{ meta_days_since_expiry }} dias){% endif %}
+            {%- else %}
+              Expira em {{ meta_conn.token_expires_at.strftime('%d/%m/%Y') }}
+              {%- if meta_days_until_expiry == 0 %} (hoje)
+              {%- elif meta_days_until_expiry == 1 %} (em 1 dia)
+              {%- else %} (em {{ meta_days_until_expiry }} dias){% endif %}
+            {%- endif %}
           </p>
           <a href="/oauth/meta/start" class="text-xs text-v4-red hover:underline mt-2 inline-block">Reconectar</a>
 
@@ -67,7 +78,11 @@
             {{ button("Revogar conexão", variant="danger", size="small", type="button", attrs='data-v4-action="dialog-open" data-v4-target="meta-revoke-modal"') }}
           </div>
 
-          {% if meta_token_expiring_soon %}
+          {% if meta_token_expired %}
+            <div class="mt-4">
+              {{ alert("As tools Meta seguem funcionando — elas usam o token de sistema. Reconecte apenas se você precisa desta conexão pessoal.", "warning", "Conexão pessoal expirada") }}
+            </div>
+          {% elif meta_token_expiring_soon %}
             <div class="mt-4">
               {{ alert('Recomendado reconectar via "Reconectar" antes de ' ~ meta_conn.token_expires_at.strftime('%d/%m/%Y') ~ '.', "warning", "Token expira em breve") }}
             </div>
