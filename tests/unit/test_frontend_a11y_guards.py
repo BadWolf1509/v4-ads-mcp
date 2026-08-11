@@ -142,6 +142,19 @@ def test_barra_de_filtros_da_auditoria_e_medida_em_runtime():
     assert "--v4-filter-bar-h" in base
 
 
+def test_barras_de_filtro_nao_grudam_no_celular():
+    """Embrulhadas elas chegam a 240px: 301px de pilha fixa em /audit (~36% da
+    tela) e 356px em /admin/audit (~42%, por causa da subnav). Abaixo de 640px
+    rolam junto com a pagina."""
+    for caminho in ["audit.html", "admin/audit.html"]:
+        html = (_TEMPLATES / caminho).read_text(encoding="utf-8")
+        classes = re.search(r'class="((?:[^"]*\s)?sticky(?:\s[^"]*)?)"', html)
+        assert classes, f"{caminho}: barra de filtros sticky nao encontrada"
+        assert "max-sm:static" in classes.group(1), (
+            f"{caminho}: a barra sticky precisa de max-sm:static"
+        )
+
+
 def test_input_busca_compacto_preserva_espaco_do_icone():
     """O shorthand `padding` de --small zerava o padding-left de --search e o
     icone de lupa cobria o placeholder nas matrizes de acesso."""

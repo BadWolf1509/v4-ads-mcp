@@ -21,8 +21,12 @@
      largura, 164px >= 618px, 240px abaixo disso). Nenhum literal nem media
      query acerta sempre, entao _base.html mede em runtime e publica em
      --v4-filter-bar-h. Ver F79. #}
+  {# max-sm:static — abaixo de 640px a barra embrulha pra 3 linhas (240px) e,
+     somada ao header, prenderia 301px (~36%) de um viewport de 844px. Ali ela
+     rola junto com a pagina; o observer publica 0 e o cabecalho de dia sobe
+     pro topo sozinho. #}
   <form id="audit-filters" method="GET" action="/audit" data-sticky-measure
-        class="sticky z-[10] bg-white border-b border-v4-gray-100 py-3 mb-4 flex flex-wrap gap-3 items-end"
+        class="sticky max-sm:static z-[10] bg-white border-b border-v4-gray-100 py-3 mb-4 flex flex-wrap gap-3 items-end"
         style="top: var(--v4-subnav-offset);">
     <div class="v4-form__group" style="margin: 0;">
       <label class="v4-form__label" for="action_type">Tipo</label>

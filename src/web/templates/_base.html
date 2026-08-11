@@ -222,13 +222,21 @@
   (function () {
     const barra = document.querySelector('[data-sticky-measure]');
     if (!barra || typeof ResizeObserver === 'undefined') return;
+    let ultimo = null;
     const publicar = () => {
-      // Barra nao-sticky nao empurra nada abaixo dela.
+      // Barra nao-sticky (max-sm:static no celular) nao empurra nada abaixo.
       const empilha = getComputedStyle(barra).position === 'sticky';
       const altura = empilha ? Math.round(barra.getBoundingClientRect().height) : 0;
+      if (altura === ultimo) return;
+      ultimo = altura;
       document.documentElement.style.setProperty('--v4-filter-bar-h', altura + 'px');
     };
+    // O observer pega mudanca de ALTURA (embrulho). O listener de resize pega
+    // a mudanca de POSITION no breakpoint, que pode ocorrer sem mudar altura —
+    // e evita duplicar o valor do breakpoint aqui no JS. Ambos saem cedo
+    // quando nada mudou, entao o custo e duas leituras por evento.
     new ResizeObserver(publicar).observe(barra);
+    window.addEventListener('resize', publicar, { passive: true });
     publicar();
   })();
 </script>
