@@ -1,0 +1,38 @@
+{
+  "_comment": [
+    "Aponta para os MESMOS hooks de .claude/hooks/ — nao duplique os .ps1 aqui.",
+    "Havia copias byte-identicas em .codex/hooks/; qualquer correcao num lado",
+    "divergia do outro em silencio, e um deles e o guard de migration.",
+    "O caminho e resolvido por 'git rev-parse --show-toplevel' em vez de",
+    "hardcoded: o valor anterior (D:\\v4-ads-mcp\\...) so funcionava nesta",
+    "maquina, e o CLAUDE.md preve mais colaboradores."
+  ],
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& (Join-Path (git rev-parse --show-toplevel) '.claude/hooks/guard-migrations.ps1')\"",
+            "timeout": 10,
+            "statusMessage": "guard migrations"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& (Join-Path (git rev-parse --show-toplevel) '.claude/hooks/format-python.ps1')\"",
+            "timeout": 15,
+            "statusMessage": "ruff format"
+          }
+        ]
+      }
+    ]
+  }
+}

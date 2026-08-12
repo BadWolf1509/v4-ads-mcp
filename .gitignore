@@ -32,6 +32,16 @@ coverage.xml
 !.claude/agents/
 !.claude/skills/
 
+# Codex CLI: mesmo critério. Os hooks NÃO são duplicados aqui — .codex/hooks.json
+# aponta pros .ps1 de .claude/hooks/. O SKILL.md em .agents/ é cópia por
+# necessidade (o Codex lê daquele caminho); um guard mantém as duas iguais.
+.codex/*
+!.codex/config.toml
+!.codex/hooks.json
+!.codex/agents/
+.agents/*
+!.agents/skills/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -16,7 +16,13 @@ try {
     $normalized = $filePath.Replace('\', '/')
     if ($normalized -notmatch 'src/db/migrations/.+\.sql$') { exit 0 }
 
-    Set-Location $env:CLAUDE_PROJECT_DIR
+    # CLAUDE_PROJECT_DIR só existe sob o Claude Code. Este hook também é usado
+    # pelo Codex (.codex/hooks.json), que não define a variável — sem o
+    # fallback, o Set-Location falhava, o catch engolia e o guard liberava a
+    # edição em silêncio, que é o pior desfecho possível pra um guard.
+    $root = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR }
+            else { & git rev-parse --show-toplevel 2>$null }
+    if ($root) { Set-Location $root }
     $relPath = $normalized -replace '^.*src/db/migrations/', 'src/db/migrations/'
     $gitLog = & git log --all --pretty=format:"%H" -- $relPath 2>$null
     if ([string]::IsNullOrWhiteSpace($gitLog)) { exit 0 }

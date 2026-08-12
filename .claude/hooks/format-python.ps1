@@ -9,8 +9,11 @@ try {
     if (-not $filePath) { exit 0 }
     if ($filePath -notmatch '\.py$') { exit 0 }
 
-    $ruff = Join-Path $env:CLAUDE_PROJECT_DIR ".venv\Scripts\ruff.exe"
-    if (-not (Test-Path $ruff)) {
+    # Ver nota em guard-migrations.ps1: CLAUDE_PROJECT_DIR não existe sob o Codex.
+    $root = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR }
+            else { & git rev-parse --show-toplevel 2>$null }
+    $ruff = if ($root) { Join-Path $root ".venv\Scripts\ruff.exe" } else { "" }
+    if (-not $ruff -or -not (Test-Path $ruff)) {
         $cmd = Get-Command ruff -ErrorAction SilentlyContinue
         if (-not $cmd) { exit 0 }
         $ruff = $cmd.Source
