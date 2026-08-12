@@ -73,6 +73,26 @@ def test_skills_do_codex_espelham_as_do_claude():
         )
 
 
+def test_agents_md_aponta_pro_claude_md_em_vez_de_forkar():
+    """AGENTS.md era um fork do CLAUDE.md por find-replace.
+
+    Ficou 26 commits atrasado e passou a ensinar o oposto do repo (dizia
+    "Tailwind CDN" depois do CDN sair; nao conhecia a CSP sem unsafe-*), o que
+    levaria um agente a escrever onclick inline — hoje bloqueado pelo browser.
+    Um ponteiro nao tem como ficar velho.
+    """
+    agents = _ROOT / "AGENTS.md"
+    if not agents.exists():
+        return
+    conteudo = agents.read_text(encoding="utf-8")
+    assert "CLAUDE.md" in conteudo, "AGENTS.md precisa apontar pro contexto canonico"
+    linhas = len(conteudo.splitlines())
+    assert linhas < 60, (
+        f"AGENTS.md com {linhas} linhas — voltou a duplicar o CLAUDE.md? "
+        "Aponte pra ele em vez de copiar."
+    )
+
+
 def test_agentes_existem_nos_dois_clientes():
     """Um subagente definido so num cliente e uma capacidade que some quando o
     gestor troca de ferramenta."""
