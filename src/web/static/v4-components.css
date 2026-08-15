@@ -689,12 +689,25 @@
   border-bottom: 2px solid var(--v4-gray-100);
 }
 
-/* Sticky table header — opt-in via wrapper class */
+/* Sticky table header — opt-in via wrapper class.
+   F97: o offset e VARIAVEL porque a mesma regra serve paginas com pilhas de
+   chrome diferentes. O default 0 vale so pra pagina sem nada sticky acima; quem
+   tem chrome declara sua pilha com um modificador. Era `top: 0` fixo, e o unico
+   consumidor (/admin/audit) tem 208px de barras opacas em z-index 10 — o
+   cabecalho grudava embaixo delas e sumia. */
 .v4-table--sticky-head thead th {
   position: sticky;
-  top: 0;
+  top: var(--v4-sticky-head-offset, 0px);
   background: var(--v4-gray-50);
   z-index: 1;
+}
+
+/* Tabela sob header + subnav admin + barra de filtros (hoje: /admin/audit).
+   --v4-filter-bar-h e MEDIDO em runtime pelo [data-sticky-measure] (a barra
+   embrulha conforme a largura); no celular ela vira estatica e o script publica
+   0, entao o cabecalho gruda direto sob a subnav. */
+.v4-table--sticky-head-under-filters {
+  --v4-sticky-head-offset: calc(var(--v4-tab-bar-offset) + var(--v4-filter-bar-h));
 }
 
 /* Compact (Operational mode) variant */

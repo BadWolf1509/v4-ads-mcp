@@ -13,9 +13,12 @@
     </div>
   </header>
 
-  <form method="GET" action="/admin/audit"
+  <form method="GET" action="/admin/audit" data-sticky-measure
         {# max-sm:static — no celular o grid vira 2 colunas e a barra vai a
            240px; com header + subnav isso prenderia 356px (~42%) da tela. #}
+        {# F97 data-sticky-measure: o cabecalho da tabela gruda ABAIXO desta
+           barra, cuja altura muda com o embrulho. O literal de v4-tokens.css
+           foi aferido na barra de /audit (flex), nao neste grid de 5 colunas. #}
         class="sticky max-sm:static top-[var(--v4-tab-bar-offset)] z-[10] bg-white border-b border-v4-gray-100 py-3 mb-4 grid grid-cols-2 md:grid-cols-5 gap-3 items-end"
         {# Esta pagina TEM a subnav admin acima, entao a barra fica embaixo da
            pilha header+subnav. Com --v4-subnav-offset ela grudava no mesmo
@@ -65,7 +68,7 @@
   </form>
 
   {% if rows %}
-  <table class="v4-table v4-table--compact v4-table--sticky-head">
+  <table class="v4-table v4-table--compact v4-table--sticky-head v4-table--sticky-head-under-filters">
     <thead>
       <tr>
         <th scope="col">Quando</th>
