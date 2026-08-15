@@ -4,7 +4,7 @@
 >
 > **Maintainer note:** Add a new entry here whenever a finding is documented in a smoke runbook. Keep entries scannable — link to runbook for detail.
 >
-> **Last updated:** 2026-08-15 — **+F82-F100** (investigação ampla de 2026-08-14/15). **11 fechados na mesma sessão**: F83, F84, F85, F86, F87, F88, F89, F90, F92, F93, F100 — mais o **vazamento do F82**. Detalhe e lições: [`session-2026-08-14-15-handoff.md`](session-2026-08-14-15-handoff.md).
+> **Last updated:** 2026-08-15 — **+F82-F100** (investigação ampla de 2026-08-14/15). **Os 19 estão fechados**, em duas ondas: 11 na investigação (F83-F90, F92, F93, F100 + o vazamento do F82) e 8 no pedido seguinte (F91, F94-F99 + a causa raiz do F82). Resíduo único e documentado: o `input_token` do `/debug_token` segue na query (o endpoint recusa POST — verificado). Detalhe e lições: [`session-2026-08-14-15-handoff.md`](session-2026-08-14-15-handoff.md).
 >
 > **⚠️ Este catálogo deixou de ser só histórico.** Até 08-11 era quase todo registro de coisa resolvida (2 abertos em 78). Hoje há **8 itens ABERTOS** — F82 (parcial), F91, F94, F95, F96, F97, F98, F99 — além de A4 e F67. **Antes de mexer em reads quentes, backup, revoke do painel, `get_recommendations`, secrets ou design system, grep aqui pela área**: pode já haver diagnóstico pronto.
 >
