@@ -18,19 +18,27 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 
 ## Current state
 
-**Última atualização:** 2026-08-11. Produção verde em **`v4-ads-mcp-00041-qnv`** (100% do tráfego; commit `c885edc`; CI/deploy run `31545263479`), `/health?deep=1` db=ok. **~64 MCP tools** (58 Google + 6 Meta), bucket ~23 always + 41 defer — **inalteradas nesta sessão** (o pacote de 08-11 foi todo no painel web). Smoke autenticado F58 segue dormente. F76/F77 encerrados.
+**Última atualização:** 2026-08-15. **64 MCP tools** (58 Google + 6 Meta), bucket **23 always + 41 defer** — contagem verificada, não estimada. Smoke autenticado F58 segue dormente. F76/F77 encerrados.
+
+**A sessão 2026-08-14/15 foi uma investigação ampla de bugs** (19 findings catalogados, **11 fechados**, 17 commits). O núcleo mudou de comportamento em pontos que valem saber de cara:
+
+- Bookkeeping em `finally` não derruba mais a operação (`best_effort`, F83); chamada do SDK Google roda **fora do event loop** (`run_blocking`, F86); escape GAQL usa barra invertida (`_gaql.py`, F87).
+- Gates de sessão usam `Manager.is_deactivated` (F84); pool caiu pra **5** conexões/instância (F92); jobs auditam crash e inventário parcial (F93).
+- Tools Meta paginam e devolvem `truncated` (F88), e **não devolvem mais** `effective_status`/`creative_id`/`daily_budget_brl`/`billing_event` (F89).
+- httpx silenciado — as linhas `HTTP Request:` sumiram do Cloud Logging de propósito (F82).
+
+Detalhe, lições e o que ficou aberto: [`session-2026-08-14-15-handoff.md`](docs/operacao/session-2026-08-14-15-handoff.md).
 
 **Frontend pós 2026-08-11** (o que mudou de premissa): **Tailwind não é mais CDN** — CSS gerado offline e commitado, com guard de diff no CI. **A CSP não tem nenhuma diretiva `unsafe-*`**: zero JS e zero CSS inline nas templates; comportamento em `v4-panel.js` via `data-v4-*`, estilo via classe. Assets com gzip + `Cache-Control` imutável versionado por `K_REVISION`. `domContentLoaded` do `/login`: **1128 ms → 261 ms**.
 
 **Sessões recentes** (detalhe canônico nos handoffs — leia só o da sessão relevante):
-- **2026-08-11** — investigação de **frontend** com hipóteses medidas no DOM de produção → **6 rodadas** (`aebdb8f..c885edc`, 20 commits, todas com CI+deploy verdes e verificação no ar). **Perf:** Play CDN aposentado (407 KB de JS render-blocking → 12 KB de CSS estático; `unsafe-eval` fora da CSP; tokens deduplicados), gzip seletivo (exclui `/mcp`, que é SSE) e cache imutável. **Segurança:** 53 handlers inline + 13 blocos `<script>` + 28 atributos `style=` eliminados → CSP sem `unsafe-*`. **A11y:** `prefers-reduced-motion`, skip link, token de foco, contraste AA, nav única com `aria-current` no drawer. **4 bugs pré-existentes achados e corrigidos (F78-F81):** hambúrguer fantasma deslogado, offsets sticky nunca medidos (a barra de filtros cobria a subnav inteira em `/admin/audit`), colisão de shorthand entre modificadores CSS, e **os 4 filtros de tabela estavam mortos** (macro emitia `name=`, JS procurava `id=`). [`session-2026-08-11-frontend-handoff.md`](docs/operacao/session-2026-08-11-frontend-handoff.md).
-- **2026-07-23** — alerta `severity>=ERROR` investigado: dois 503 transitórios do `/health?deep=1`, enquanto MCP seguia 200; uptime policy não abriu incidente. Histórico confirmou 6 ocorrências rápidas (4-5ms) por conexão asyncpg stale. **F76 recebeu prova positiva D+1** (`db_dropped_connection_retry` + request 200) e **F77** tornou o health resiliente (`run_with_reconnect` + timeout 5s + 3 testes). Commit `23fccfe`, CI+integração DB+deploy verdes, prod `00028-lvc`. [`session-2026-07-23-handoff.md`](docs/operacao/session-2026-07-23-handoff.md).
-- **2026-07-22** — investigação do print da **Auditoria global** (erros) → **2 fixes shipados**: **F76** (500 intermitente `mcp_auth_error` por conexão asyncpg stale — Supabase fecha idle; `run_with_reconnect` retry-com-reacquire + `max_inactive_connection_lifetime` 120s) + **observabilidade** (`add_cloud_logging_severity` mapeia `level`→`severity`; alertas por severidade estavam cegos). Também: **deploy fail-well no smoke** (smoke F58 **dormente** — gestor smoke excluído; `a60af7f`), **regressão de acento** pinando A7 (tese "MCP corrompe acento" refutada byte-a-byte; `2909143`), ruff local destravado (Smart App Control desligado). Investigação: 3 categorias, **0 bug de código** (RSA policy=copy; GAQL SELECT=query; **Meta #200 SU sem acesso a CA-ROL GEAN**). Prod `00027-kmw`. [`session-2026-07-22-handoff.md`](docs/operacao/session-2026-07-22-handoff.md).
-- **2026-07-04 (2ª sessão)** — investigação **UI/UX do painel web** → pacote de **11 commits** (`87f6346..f1b49e1`): flash de erro/sucesso nos forms admin (antes `?error=` silencioso), ações do painel **HTMX HX-aware** (204+HX-Redirect/HX-Refresh — antes o 303 injetava a página no `<tr>`), toasts globais de erro + fragmento de checkbox completo (**F74**), fluxo de convites (idade + copiar onboarding + cancel HX, **F75**), contraste AA (`--v4-gray-500`), tabelas responsivas, idioma PT-BR, fontes via `<link>`. Subagent-driven + whole-branch opus. [`session-2026-07-04-ui-ux-handoff.md`](docs/operacao/session-2026-07-04-ui-ux-handoff.md).
-- **2026-07-04 (1ª sessão)** — investigação 2026-07-03 → **3 ondas**: **O1 governança** (F73 quota leak + cap por gestor · audit ações admin do painel · run_gaql limit/query no audit · validate_gaql rate-limit · purge diário), **O2 falhar bem** (alerting GCP · lockfile `requirements.txt` universal + pip-audit · smoke MCP autenticado · backup→GCS · infra-setup), **O3 dívida** (test-infra template DB · `_mutate_common` dedup 22 mutates + `error_message` canônico · dedup trio Meta + BUC via kwarg · dead code/micros/labels/CSV-injection). 2 fix-forwards no CI (lockfile pywin32 sem marker; mock-target Meta pós-dedup). **Deferido** (follow-up): sync Meta header, GAQL escape, oauth logs, migrations guard, pool config, doc-drift. [`session-2026-07-04-handoff.md`](docs/operacao/session-2026-07-04-handoff.md).
-- **2026-07-02** — investigação → **6 ondas**: URL nova + decrypt UX no cutover (F68/F70), **F66 resolvido** (jobs CNB `/cnb/process/<type>`) + **scheduler resync recriado** (F69) + resync Meta deletion-detection (F65), Customer Match audit+rate-limit (F71) + **gate Meta `ad_account_id` obrigatório** (F72) + guards F57/F57-Meta/F58 + `create_rsa` policy topic, **deploy gated pelo CI** (`needs: test`), testes do núcleo + refactors Onda 4, **steering Fase 2B** (não tombstone). [`session-2026-07-02-handoff.md`](docs/operacao/session-2026-07-02-handoff.md).
-- **2026-06-30** — **MIGRAÇÃO GCP** lift-and-shift pro projeto novo `v4-ads-mcp` (`299432068772`, Wellington owner, billing própria); `aes-master-key`/`session-signing-key` regeneradas (→ gestores reconectam Google), token Meta all-targets. [`session-2026-06-30-handoff.md`](docs/operacao/session-2026-06-30-handoff.md).
-- **2026-06-20** — Onda 0/1 hardening + observabilidade + M.4 + Fase 2A · **2026-06-19** — recuperação conta + Meta 12→22 + GAQL error UX (F61/F62/F63). [handoffs `-06-20`/`-06-19`] · **2026-05-29** — acesso/segurança (hard-gate + CSP).
+- **2026-08-14/15** — investigação ampla de bugs sem escopo prévio: 19 findings catalogados (F82-F100), **11 fechados**, 17 commits. Núcleo, auth, jobs, Meta e pool tocados. [`session-2026-08-14-15-handoff.md`](docs/operacao/session-2026-08-14-15-handoff.md).
+- **2026-08-11** — frontend medido no DOM de produção: Play CDN aposentado, CSP sem `unsafe-*`, a11y, +F78-F81. [`-08-11`](docs/operacao/session-2026-08-11-frontend-handoff.md).
+- **2026-07-22/23** — 500 e 503 intermitentes por conexão asyncpg stale → F76 (`run_with_reconnect`) + F77 (deep health resiliente) + `severity` no Cloud Logging. [`-07-22`](docs/operacao/session-2026-07-22-handoff.md) · [`-07-23`](docs/operacao/session-2026-07-23-handoff.md).
+- **2026-07-04** — 3 ondas de governança/dívida (F73 quota leak + cap por gestor; `_mutate_common`; lockfile; backup) e, na 2ª sessão, o pacote UI/UX do painel (F74/F75). [`-07-04`](docs/operacao/session-2026-07-04-handoff.md) · [`-07-04 UI`](docs/operacao/session-2026-07-04-ui-ux-handoff.md).
+- **2026-07-02** — pós-migração: cutover (F68/F70), jobs CNB (F66), scheduler (F69), gate Meta obrigatório (F72), deploy gated pelo CI. [`-07-02`](docs/operacao/session-2026-07-02-handoff.md).
+- **2026-06-30** — **migração GCP** pro projeto próprio (chaves regeneradas, token Meta all-targets). [`-06-30`](docs/operacao/session-2026-06-30-handoff.md).
+- **Anteriores:** 06-20 (observabilidade + M.4 + Fase 2A) · 06-19 (recuperação de conta, F61-F63) · 05-29 (hard-gate + CSP).
 
 **O que existe:** Foundation (Phases 0-1b/3a) + 40 sprints Google (3b.1→3b.40) + **Fase 2A** (`get_performance_breakdown` consolida 8 reports, aditivo) + família Meta (M.1→M.4 breakdowns) + camada de acesso/segurança (Modelo B + hard-gate + CSRF/CSP) + governança (audit sempre em mutates, **incl. Customer Match desde 07-02**) + **deploy gated pelo CI** + **painel web endurecido** (2026-08-11: sem CDN de CSS, sem JS/CSS inline, CSP sem `unsafe-*`, assets comprimidos e cacheados). Detalhe: [`sprint-history.md`](docs/operacao/sprint-history.md) + handoffs em `docs/operacao/`.
 
@@ -58,8 +66,13 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 
 ## Context bootstrap (minimum)
 
-1. Leia **somente** [`session-2026-08-11-frontend-handoff.md`](docs/operacao/session-2026-08-11-frontend-handoff.md) para o estado atual do painel (CSP sem `unsafe-*`, Tailwind offline, F78-F81) e próximos passos. Para o estado de infra/DB (F76/F77, encerrados), o handoff é o [`-07-23`](docs/operacao/session-2026-07-23-handoff.md).
-2. Antes de desenhar ou corrigir código, faça busca dirigida em [`findings-catalog.md`](docs/operacao/findings-catalog.md) pela área/sintoma; não carregue o catálogo inteiro sem necessidade.
+**Este arquivo já basta pra maioria das tarefas.** Carregue mais só quando a tarefa pedir:
+
+1. **Vai mexer no núcleo** (executores, jobs, auth, tools Meta, pool)? Leia [`session-2026-08-14-15-handoff.md`](docs/operacao/session-2026-08-14-15-handoff.md) — é o estado mais recente e traz os padrões de erro que se repetiram.
+2. **Vai mexer no painel web?** [`session-2026-08-11-frontend-handoff.md`](docs/operacao/session-2026-08-11-frontend-handoff.md).
+3. **Antes de desenhar ou corrigir código**, faça busca **dirigida** em [`findings-catalog.md`](docs/operacao/findings-catalog.md) pela área/sintoma. O catálogo tem ~370 linhas e **99 IDs** — grep por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`), nunca leitura integral.
+
+> **Há 8 findings ABERTOS** (F82 parcial, F91, F94-F99). Antes de tocar em reads quentes, backup, revoke do painel, `get_recommendations` ou secrets, cheque se já existe finding na área — pode ser trabalho já diagnosticado.
 
 Carregue sob demanda:
 
@@ -95,7 +108,7 @@ A matriz `manager_account_access` (Google) / `manager_meta_account_access` (Meta
 
 `src/web/middleware.py`: `CSRFOriginMiddleware` (bloqueia método unsafe com Origin/Referer presente-e-divergente de Host; ausência permitida — SameSite=Lax é a defesa primária; isenta `/oauth/` + `/mcp`) + `SecurityHeadersMiddleware` (XFO/XCTO/Referrer/HSTS + **CSP enforcing** com allowlist em `_CSP_POLICY`).
 
-- **Adicionou recurso externo** (script/style/font de novo host)? **Atualize `_CSP_POLICY`** no mesmo commit ou ele é bloqueado em produção. Allowlist atual: `cdn.tailwindcss.com`, `unpkg.com`, `fonts.bunny.net`.
+- **Adicionou recurso externo** (script/style/font de novo host)? **Atualize `_CSP_POLICY`** no mesmo commit ou ele é bloqueado em produção. Allowlist atual (verificada 08-15): `unpkg.com` (script), `fonts.bunny.net` (style+font). `cdn.tailwindcss.com` **saiu** em 08-11 e há guard assertando a ausência — não re-adicione.
 - Toda página renderiza HTML de input? Jinja autoescape cobre `{{ }}`; em f-strings/HTML manual use `html.escape` (XSS — `_error_page`, `_toggle_checkbox_fragment`).
 - Exception handler em `src/app.py` (`StarletteHTTPException`): 3xx vira redirect (preserva 302→/login), `/mcp`+`/oauth` → JSON, resto → `error.html`. Ao mexer, **preserve o branch 3xx** (senão prende usuário não-autenticado).
 
@@ -197,6 +210,18 @@ Reads + `bulk_pause_by_query`: **preset** (`date_range: str` com `type:"string"`
 - **Builder test guard (Onda 0):** `test_builder_tests_use_capture_client_not_magicmock` (`tests/unit/test_tools_schemas.py`) — qualquer `test_*_builder.py` que referencie `MagicMock` SEM importar `make_capture_client` falha (anti-reincidência F16/F42/F44).
 - **Guards estruturais (07-02):** `tests/unit/test_structural_guards.py` varre o source pra impedir reincidência: **F57** (`build_client_for_manager(` sem `ensure_account_access(`), **F57-Meta** (`build_meta_api(` fora de `reports.py`), **F58** (`.cursor(` sem `conn.transaction()`). Verificado que F57 dispara quando sabotado. Ao adicionar uma classe de bug recorrente, prefira um guard grep-based aqui em vez de "lembrar de fazer grep manual".
 
+### Núcleo pós 2026-08-15 (invariantes novos — violar quebra guard)
+
+Cinco mecanismos nasceram da investigação de 08-14/15. Cada um tem guard estrutural; o detalhe do porquê está no [handoff](docs/operacao/session-2026-08-14-15-handoff.md).
+
+- **`best_effort` ([`governance/bookkeeping.py`](src/governance/bookkeeping.py)) — todo I/O de bookkeeping em `finally`.** Exceção num `finally` DESCARTA o `return` pendente: sem isso, falha ao gravar audit transformava mutação já aplicada no Google em erro pro gestor (F83). Quota e audit são blocos **independentes** — a falha de um não pode pular o outro.
+- **`run_blocking` ([`google_ads/_blocking.py`](src/google_ads/_blocking.py)) — toda chamada do SDK Google.** É gRPC síncrono; no event loop congela a instância inteira, inclusive o `/health` (F86). **Streaming:** offloadar só a chamada não basta — o `for batch in stream` também faz I/O e precisa entrar na função offloaded. **ContextVar não volta da thread:** o `request-id` do interceptor tem que ser lido DENTRO do offload, senão some do audit em silêncio.
+- **`gaql_string_literal` ([`queries/_gaql.py`](src/google_ads/queries/_gaql.py)) — todo texto livre em GAQL.** GAQL escapa com **barra invertida**, não com doubling de SQL (`''` é rejeitado — verificado contra a API real). A barra é escapada ANTES da aspa; inverter a ordem corrompe o resultado.
+- **`Manager.is_deactivated` — todo gate de sessão.** `status` e `is_active` divergem e nada as sincroniza; ler só uma deixava Bearer MCP vivo após offboarding (F84).
+- **`record_job_crash` + completude explícita nos jobs.** `record_job_run.status` é **obrigatório** (era o default `success` que mascarava falha). Inventário parcial NÃO alimenta deletion detection — nem no Meta (F93) nem no Google (F85).
+
+**Pool:** `connection.py` NÃO lê `Settings` — primitivo de infra não depende da config da app (isso derrubou a suíte de integração inteira uma vez). Quem serve tráfego (`app.py`) injeta `settings.db_pool_*`; job e script usam o default. O orçamento é **instâncias × pool ≤ teto do banco**, e há teste que verifica a conta.
+
 ### Subagent-driven development
 
 `superpowers:subagent-driven-development` — fresh subagent/task + 2-stage review (spec + quality). Model: **haiku** (mecânico 1-2 arquivos) · **sonnet** (integração multi-arquivo, dispatchers, OAuth) · **opus** (arquitetura/review cross-cutting). Implementers paralelos OK só em arquivos não-overlapping; reviewers paralelos sempre OK. Adaptações comuns: `db_pool`→`db`, `audit_log.id: UUID`→int, `rate_counters.used_today`→`operations_used`.
@@ -207,7 +232,7 @@ Reads + `bulk_pause_by_query`: **preset** (`date_range: str` com `type:"string"`
 
 ### Design system
 
-Tailwind CDN (no build) + tokens em `src/web/static/v4-tokens.css`. ~22 macros em `_components.html`. **Editorial mode** (login/access-denied/help/hero): display 36-56px (use `text-4xl md:text-display` pra responsivo), red `#e50914`. **Operational mode** (audit/matriz/admin): compact 12-14px. `button()`/`<button>` dentro de `<form>` MUST `type="submit"` (F49). Status Meta na UI via filtro Jinja `meta_status_label` (registrado em routes.py). Card por padrão: `v4-card__header`/`v4-card__title` (h3).
+Tailwind **gerado offline e commitado** (não CDN — ver Stack) + tokens em `src/web/static/v4-tokens.css`. **16 macros** em `_components.html`. **Editorial mode** (login/access-denied/help/hero): display 36-56px (use `text-4xl md:text-display` pra responsivo), red `#e50914`. **Operational mode** (audit/matriz/admin): compact 12-14px. `button()`/`<button>` dentro de `<form>` MUST `type="submit"` (F49). Status Meta na UI via filtro Jinja `meta_status_label` (registrado em routes.py). Card por padrão: `v4-card__header`/`v4-card__title` (h3).
 
 Padrões pós-pacote UI/UX 2026-07-04 (2ª sessão):
 - **Ação de mutação do painel via HTMX = HX-aware** (espelha `sessions_revoke` em routes.py): se `HX-Request` → `204` + `HX-Redirect`/`HX-Refresh` + `HX-Trigger` toast; senão `303`. NUNCA retornar `303` cru pra um `hx-post` — o XHR segue o redirect e injeta a página inteira no `hx-target` (era o bug do dropdown de Managers). `204` = no-swap por spec, então o `hx-target` legado fica inofensivo.
@@ -258,6 +283,9 @@ Padrões pós-pacote de frontend 2026-08-11:
 
 ## Don't do
 
+- Don't fazer I/O de bookkeeping em `finally` sem `best_effort` — exceção ali descarta o `return` e transforma operação já aplicada em erro (F83). Don't chamar SDK Google fora de `run_blocking` (F86). Don't interpolar texto livre em GAQL sem `gaql_string_literal` (F87). Don't ler `Settings` dentro de primitivo de infra (pool/cliente/logger) — quem serve tráfego injeta (F92).
+- Don't confiar em guard que passou de primeira: verifique contra o código PRÉ-fix (sabotagem ou `git stash`). Aconteceu 2× nesta sessão — grep casando a própria docstring, e AST exigindo forma que o codebase não usa.
+- Don't assertar superfície de API externa por analogia. Teste que codifica a convenção errada é PIOR que teste ausente (aconteceu 3×: F87, F89, e os mocks do F84/F89 que nem conseguiam expressar o bug). Probe empírica primeiro — `validate_gaql` pro Google, `ads_get_field_context` pro Meta.
 - Don't push sem `python scripts/check_pre_push.py` antes. Full sweep MANDATORY ao mexer em pré-flight de mutate, queries com JOIN/cursor, ou migrations.
 - Don't confiar no exit code de `gh run watch` — confirme via `gh run view <id> --json conclusion`.
 - Don't adicionar gate/pré-flight "a todos os executores" sem `grep` TODA função que chama `build_client_for_manager` (F57).

@@ -4,11 +4,11 @@
 >
 > **Maintainer note:** Add a new entry here whenever a finding is documented in a smoke runbook. Keep entries scannable — link to runbook for detail.
 >
-> **Last updated:** 2026-08-14 — **+F82-F99**, de uma investigação ampla de bugs e gaps (6 auditorias paralelas: tools MCP, painel web, auth/acesso, DB/jobs/governança, núcleo Google/Meta, CI/docs). Todos os 18 foram **confirmados no código** antes de entrar aqui. Fechados na mesma sessão: **F83** (TDD + guard AST), **F93** (completude do inventário + audit de crash), **F87** (escape GAQL, com probe empírica contra a API real), **F89** (campos fantasma no parser Meta), **F85** (resync não desativa mais o MCC inteiro), **F84** (predicado único de desativação), **F86** (SDK fora do event loop), **F88** (paginação e ranking Meta), **F92** (pool e acquire aninhado), **F90** (status do ad_group pai) e o **vazamento do F82** — deste último resta só a causa raiz em 3 call-sites, cuja migração pro header ficou **deliberadamente de fora** por precisar de probe empírica contra o Graph (lição F53/F54/F55). Os outros 7 seguem abertos.
+> **Last updated:** 2026-08-15 — **+F82-F100** (investigação ampla de 2026-08-14/15). **11 fechados na mesma sessão**: F83, F84, F85, F86, F87, F88, F89, F90, F92, F93, F100 — mais o **vazamento do F82**. Detalhe e lições: [`session-2026-08-14-15-handoff.md`](session-2026-08-14-15-handoff.md).
 >
-> **2026-08-11** — **+F78-F80** (hambúrguer fantasma deslogado; offsets sticky nunca medidos, com a barra de filtros cobrindo a subnav em `/admin/audit`; shorthand `padding` de um modificador anulando o `padding-left` de outro). Achados por smoke autenticado das telas admin. Detalhe: [session-2026-08-11-frontend-handoff.md](session-2026-08-11-frontend-handoff.md).
+> **⚠️ Este catálogo deixou de ser só histórico.** Até 08-11 era quase todo registro de coisa resolvida (2 abertos em 78). Hoje há **8 itens ABERTOS** — F82 (parcial), F91, F94, F95, F96, F97, F98, F99 — além de A4 e F67. **Antes de mexer em reads quentes, backup, revoke do painel, `get_recommendations`, secrets ou design system, grep aqui pela área**: pode já haver diagnóstico pronto.
 >
-> **2026-07-23** — **+F77** (`/health?deep=1` fazia `pool.acquire()` cru; conexão asyncpg stale gerava 503 transitório e acionava o alerta amplo de logs). Fix: `run_with_reconnect` + deadline interno de 5s + 3 testes de regressão. A mesma investigação forneceu a prova positiva D+1 do **F76** em produção. Detalhe: [session-2026-07-23-handoff.md](session-2026-07-23-handoff.md).
+> **Como ler:** ~370 linhas, **99 IDs** (F1-F100 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -159,7 +159,7 @@
 
 | Metric | Count |
 |---|---|
-| **Unique catalog IDs** | **97** = 87 findings `F` + 7 hypotheses/design gaps `A` + 3 strategic decisions `D` |
+| **Unique catalog IDs** | **99** = 89 findings `F` + 7 hypotheses/design gaps `A` + 3 strategic decisions `D` (contados por regex sobre o arquivo, não estimados) |
 | **Open product/infra work** | **10** — A4 (mecanismo real de exclusão Customer Match), F67 (custom domain via Load Balancer), **F91/F94-F100** (investigação 2026-08-14/15; 7 abertos) e **F82 parcial** (vazamento fechado; restam 3 call-sites com segredo na query string, pendentes de probe empírica). Fechados: F83-F90, F92 e F93 (F82 parcial). |
 | **Strategic decisions** | **3** — D1/D2/D3 |
 | **Closed, mitigated or explicitly documented** | **73** — todos os demais IDs; inclui limitações conhecidas e hipóteses refutadas, não apenas mudanças de código |
