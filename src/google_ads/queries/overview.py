@@ -22,12 +22,17 @@ def overview_query(date_start: date, date_end: date) -> str:
     """.strip()
 
 
-def budget_pacing_query() -> str:
+def budget_pacing_query(limit: int = 100) -> str:
     """Per-campaign current budget + MTD spend.
 
     Returns one row per enabled campaign with budget amount + month-to-date metrics.
+
+    F98 — `limit + 1` (a linha extra revela o corte) **e** `ORDER BY` explícito:
+    o tool ordena por gasto DESC no fim, então cortar um conjunto não-ordenado
+    entregaria N campanhas arbitrárias reordenadas entre si, parecendo o topo de
+    gasto da conta sem ser — a classe F88 ("truncar e depois ordenar").
     """
-    return """
+    return f"""
         SELECT
           campaign.id,
           campaign.name,
@@ -38,4 +43,6 @@ def budget_pacing_query() -> str:
         FROM campaign
         WHERE campaign.status = 'ENABLED'
           AND segments.date DURING THIS_MONTH
+        ORDER BY metrics.cost_micros DESC
+        LIMIT {limit + 1}
     """.strip()

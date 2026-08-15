@@ -15,6 +15,13 @@ _SCHEMA: dict[str, Any] = {
             "type": "string",
             "pattern": "^[0-9]{10}$",
         },
+        "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 100,
+            "description": "Máximo de recomendacoes retornadas. truncated:true se exceder.",
+        },
     },
     "required": ["customer_id"],
     "additionalProperties": False,
@@ -78,7 +85,9 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         "PT-BR quando reconhecido, null caso contrario) e resource_name pra aplicar "
         "via apply_recommendation "
         "ou dispensar via dismiss_recommendation. Para ver impacto detalhado de "
-        "uma recomendacao especifica, use run_gaql filtrando por recommendation.type."
+        "uma recomendacao especifica, use run_gaql filtrando por recommendation.type. "
+        "limit (default 100, max 1000): as recomendacoes escalam com o nº de "
+        "ad_groups, entao contas grandes truncam — `truncated:true` avisa."
     ),
     input_schema=_SCHEMA,
     bucket="always",
@@ -86,17 +95,23 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 async def get_recommendations(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()
     customer_id = args["customer_id"]
+    limit = args.get("limit", 100)
     rows = await run_report(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
-        query=recommendations_query(),
+        query=recommendations_query(limit=limit),
         row_formatter=_row_formatter,
         operation_name="get_recommendations",
         audit_this_call=True,  # sensitive: lists actionable changes
     )
+    # F98 — a query pede `limit + 1`; a linha sentinela denuncia o corte e NÃO
+    # pode chegar ao gestor.
+    truncated = len(rows) > limit
+    rows = rows[:limit]
     return {
         "customer_id": customer_id,
         "count": len(rows),
+        "truncated": truncated,
         "recommendations": rows,
     }

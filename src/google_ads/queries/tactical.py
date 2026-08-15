@@ -122,8 +122,9 @@ def audience_performance_query(start: date, end: date, limit: int) -> str:
     """.strip()
 
 
-def conversion_actions_query() -> str:
-    return """
+def conversion_actions_query(limit: int = 100) -> str:
+    """F98 — `limit + 1`: a linha extra é a sentinela que revela o corte."""
+    return f"""
         SELECT
           conversion_action.id,
           conversion_action.name,
@@ -137,4 +138,5 @@ def conversion_actions_query() -> str:
           conversion_action.primary_for_goal,
           conversion_action.include_in_conversions_metric
         FROM conversion_action
+        LIMIT {limit + 1}
     """.strip()

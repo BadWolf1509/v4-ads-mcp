@@ -17,6 +17,16 @@ _SCHEMA: dict[str, Any] = {
             "type": "string",
             "pattern": "^[0-9]{10}$",
         },
+        "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 100,
+            "description": (
+                "Máximo de campanhas retornadas, das que MAIS gastaram no mes. "
+                "truncated:true se exceder."
+            ),
+        },
     },
     "required": ["customer_id"],
     "additionalProperties": False,
@@ -90,7 +100,8 @@ def _project(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     description=(
         "[DEFER] Por campanha ativa: orcamento diario, gasto MTD, projecao de fim de mes, "
         "% consumido do orcamento mensal. Util pra ver no inicio do dia se alguma "
-        "campanha esta acelerada/lenta demais."
+        "campanha esta acelerada/lenta demais. Ordenado por gasto no mes desc; "
+        "limit (default 100, max 1000) corta a cauda e `truncated:true` avisa."
     ),
     input_schema=_SCHEMA,
     bucket="defer",
@@ -98,16 +109,21 @@ def _project(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 async def get_budget_pacing(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()
     customer_id = args["customer_id"]
+    limit = args.get("limit", 100)
     rows = await run_report(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
-        query=budget_pacing_query(),
+        query=budget_pacing_query(limit=limit),
         row_formatter=_row_formatter,
         operation_name="get_budget_pacing",
     )
+    # F98 — a sentinela é uma campanha a mais e não pode entrar na projeção.
+    truncated = len(rows) > limit
+    rows = rows[:limit]
     return {
         "customer_id": customer_id,
         "as_of": datetime.now(UTC).date().isoformat(),
+        "truncated": truncated,
         "campaigns": _project(rows),
     }
