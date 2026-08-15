@@ -23,17 +23,13 @@ import structlog
 
 from src.mcp.context import clear_current
 from src.mcp.session import resolve_session_to_context
+from tests.unit.test_manager_deactivation_gate import make_manager
 
 
 @dataclass
 class _FakeSession:
     id: object
     manager_id: object
-
-
-@dataclass
-class _FakeManager:
-    is_active: bool
 
 
 def _mock_pool() -> MagicMock:
@@ -62,7 +58,7 @@ async def test_successful_resolution_binds_manager_and_session_to_log_context():
     session_id = uuid4()
     manager_id = uuid4()
     fake_session = _FakeSession(id=session_id, manager_id=manager_id)
-    fake_manager = _FakeManager(is_active=True)
+    fake_manager = make_manager()
 
     with (
         patch("src.mcp.session.connection.get_pool", return_value=_mock_pool()),
@@ -103,7 +99,7 @@ async def test_clears_stale_context_before_binding_new_one():
     session_id = uuid4()
     manager_id = uuid4()
     fake_session = _FakeSession(id=session_id, manager_id=manager_id)
-    fake_manager = _FakeManager(is_active=True)
+    fake_manager = make_manager()
 
     with (
         patch("src.mcp.session.connection.get_pool", return_value=_mock_pool()),

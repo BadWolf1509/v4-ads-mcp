@@ -20,6 +20,25 @@ class Manager:
     invited_by: UUID | None  # added in migration 002
     invited_at: datetime | None  # added in migration 002
 
+    @property
+    def is_deactivated(self) -> bool:
+        """True se QUALQUER das duas colunas disser que o gestor está desativado.
+
+        F84 — as duas divergem e nada as sincroniza: o toggle do painel escreve
+        só `is_active`, e nenhum código escreve `status='inactive'` (só
+        `mark_active`, invited→active). O gate de login já checava as duas; os de
+        sessão viva (MCP e painel) checavam só `is_active`, então um offboarding
+        feito por SQL direto — o único caminho que escreve `status` — bloqueava o
+        login mas deixava o Bearer MCP vivo até expirar (90 dias por padrão).
+
+        Predicado único de propósito: o bug foi três sites decidindo isso por
+        conta própria. Quem precisar decidir de novo, chama isto.
+
+        `invited` NÃO conta como desativado — é estado de onboarding, e o login
+        promove invited→active; bloquear aqui quebraria esse fluxo.
+        """
+        return not self.is_active or self.status == "inactive"
+
 
 def _row_to_manager(row: asyncpg.Record) -> Manager:
     return Manager(

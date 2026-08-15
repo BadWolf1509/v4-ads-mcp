@@ -73,13 +73,22 @@ async def handle_callback_decision(
         status = existing_manager.get("status", "active")
         is_active = existing_manager.get("is_active", True)
 
-        if status == "active" and is_active:
+        # F84: desativação é avaliada PRIMEIRO. Antes, o branch `invited` vinha
+        # antes desta checagem e lia só `status` — um convite desativado pelo
+        # toggle do painel (que escreve só `is_active`) era promovido a 'active'
+        # no login, pra então bater em porta fechada no primeiro page-load.
+        # Mesma regra do Manager.is_deactivated, aqui sobre os valores crus do
+        # dict (esta função recebe primitivas, não o dataclass).
+        if not is_active or status == "inactive":
+            return CallbackDecision(kind="redirect", location="/access-denied?reason=deactivated")
+
+        if status == "active":
             return CallbackDecision(kind="login")
 
         if status == "invited":
             return CallbackDecision(kind="login", action="promote_invited")
 
-        # status == "inactive" OR is_active=False
+        # status desconhecido → nega por padrão (fail-closed).
         return CallbackDecision(kind="redirect", location="/access-denied?reason=deactivated")
 
     # 3. Email NOT in managers table — bootstrap path?

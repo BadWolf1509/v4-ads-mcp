@@ -12,17 +12,13 @@ from uuid import uuid4
 import pytest
 
 from src.mcp.session import UnauthorizedError
+from tests.unit.test_manager_deactivation_gate import make_manager
 
 
 @dataclass
 class _FakeSession:
     id: object
     manager_id: object
-
-
-@dataclass
-class _FakeManager:
-    is_active: bool
 
 
 @pytest.mark.asyncio
@@ -32,7 +28,9 @@ async def test_resolve_session_raises_when_manager_inactive():
     session_id = uuid4()
     manager_id = uuid4()
     fake_session = _FakeSession(id=session_id, manager_id=manager_id)
-    fake_manager = _FakeManager(is_active=False)
+    # F84: Manager REAL — o fake so tinha `is_active` e nao conseguia sequer
+    # expressar a divergencia com `status` que abriu o buraco.
+    fake_manager = make_manager(is_active=False)
 
     mock_pool = MagicMock()
     mock_conn_cm = MagicMock()

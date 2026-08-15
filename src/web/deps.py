@@ -56,7 +56,8 @@ async def current_manager(request: Request) -> CurrentUser:
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         m = await managers.get_by_id(conn, UUID(session.manager_id))
-    if m is None or not m.is_active:
+    # F84: predicado unico (is_active E status) — ver Manager.is_deactivated.
+    if m is None or m.is_deactivated:
         raise HTTPException(
             status_code=status.HTTP_302_FOUND,
             headers={"Location": "/login"},
@@ -71,7 +72,8 @@ async def optional_current_manager(request: Request) -> CurrentUser | None:
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         m = await managers.get_by_id(conn, UUID(session.manager_id))
-    if m is None or not m.is_active:
+    # F84: predicado unico (is_active E status) — ver Manager.is_deactivated.
+    if m is None or m.is_deactivated:
         return None
     return CurrentUser(m)
 

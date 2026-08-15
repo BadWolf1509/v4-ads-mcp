@@ -51,7 +51,9 @@ async def resolve_session_to_context(authorization_header: str | None) -> McpReq
         if session is None:
             raise UnauthorizedError("Session not found, expired, or revoked")
         m = await managers.get_by_id(conn, session.manager_id)
-        if m is None or not m.is_active:
+        # F84: `is_deactivated` cobre is_active E status — antes só o primeiro,
+        # então offboarding por SQL (que escreve status) deixava o Bearer vivo.
+        if m is None or m.is_deactivated:
             raise UnauthorizedError("Manager inactive or not found")
         # Touch last_used_at + manager.last_seen_at in same connection.
         await mcp_sessions.touch_last_used(conn, session.id)
