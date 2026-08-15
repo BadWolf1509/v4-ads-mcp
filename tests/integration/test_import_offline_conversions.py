@@ -10,6 +10,7 @@ Sprint 3b.26 (operation_type-based dispatch to run_conversion_upload).
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -18,6 +19,21 @@ import pytest
 from src.db import connection
 from src.db.repositories import google_ads_accounts, manager_account_access, managers, mcp_sessions
 from src.mcp.context import McpRequestContext, clear_current, set_current
+
+_BRT = timezone(timedelta(hours=-3))
+
+
+def _conversion_date_time(days_ago: int = 7) -> str:
+    """Data RELATIVA no formato que a tool espera.
+
+    A tool rejeita conversao com mais de 90 dias (janela click-to-conversion do
+    Google). Data fixa aqui e bomba-relogio: o valor antigo (2026-05-17 14:30)
+    passou por meses e quebrou o CI em 2026-08-15 por SETE MINUTOS, quando
+    completou 90 dias e 7 min. Ancorar em `now` mantem o teste no meio da
+    janela pra sempre.
+    """
+    return (datetime.now(_BRT) - timedelta(days=days_ago)).strftime("%Y-%m-%d %H:%M:%S")
+
 
 pytestmark = pytest.mark.integration
 
@@ -88,7 +104,7 @@ async def test_import_offline_conversions_dry_run_emits_token_and_pending_row(
             "conversions": [
                 {
                     "gclid": "Cj0KCQjwTEST",
-                    "conversion_date_time": "2026-05-17 14:30:00",
+                    "conversion_date_time": _conversion_date_time(),
                     "conversion_value_brl": 150.0,
                 }
             ],
@@ -148,7 +164,7 @@ async def test_import_offline_conversions_full_cycle_returns_applied_count_and_a
         conversions = [
             {
                 "gclid": f"Cj0_{i}",
-                "conversion_date_time": "2026-05-17 14:30:00",
+                "conversion_date_time": _conversion_date_time(),
                 "conversion_value_brl": 100.0,
             }
             for i in range(5)
