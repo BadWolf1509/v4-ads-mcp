@@ -20,28 +20,44 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_init_pool_usa_os_valores_de_settings() -> None:
-    """F92: o tamanho vem de Settings, não de um literal enterrado na função."""
+async def test_init_pool_nao_depende_de_settings() -> None:
+    """F92: `init_pool` é primitivo de banco — não pode exigir a config da app.
+
+    A 1ª versão deste fix lia `get_settings()` dentro de `init_pool` e derrubou a
+    suíte INTEIRA de integração: naquele ambiente o Settings não tem as 13
+    variáveis obrigatórias, e a validação estourava antes mesmo de olhar os
+    argumentos — que a conftest passava explicitamente. O default agora é uma
+    constante do módulo.
+    """
     from src.db import connection
 
     criar = AsyncMock(return_value=object())
     with (
         patch.object(connection, "_pool", None),
         patch("asyncpg.create_pool", criar),
+        patch("src.config.get_settings", side_effect=AssertionError("nao pode ler Settings")),
     ):
         await connection.init_pool("postgres://fake")
 
     kwargs = criar.await_args.kwargs
+    assert kwargs["max_size"] == connection.DEFAULT_POOL_MAX_SIZE
+    assert kwargs["min_size"] == connection.DEFAULT_POOL_MIN_SIZE
+
+
+def test_default_do_modulo_e_de_settings_nao_divergem() -> None:
+    """F92: são duas fontes (constante pro job, Settings pro serviço) — se uma
+    mudar sozinha, a conta de conexões deixa de valer pra metade do sistema."""
     from src.config import get_settings
+    from src.db import connection
 
     settings = get_settings()
-    assert kwargs["max_size"] == settings.db_pool_max_size
-    assert kwargs["min_size"] == settings.db_pool_min_size
+    assert settings.db_pool_max_size == connection.DEFAULT_POOL_MAX_SIZE
+    assert settings.db_pool_min_size == connection.DEFAULT_POOL_MIN_SIZE
 
 
 @pytest.mark.asyncio
-async def test_chamador_ainda_pode_forcar_um_tamanho() -> None:
-    """Jobs/scripts podem querer um pool minúsculo — o override continua valendo."""
+async def test_app_dimensiona_o_pool_por_settings() -> None:
+    """F92: quem serve tráfego é quem precisa da conta instâncias × pool."""
     from src.db import connection
 
     criar = AsyncMock(return_value=object())

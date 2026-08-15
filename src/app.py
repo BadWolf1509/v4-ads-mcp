@@ -37,7 +37,13 @@ def create_app(skip_db_init: bool = False) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if not skip_db_init:
-            await connection.init_pool(settings.database_url)
+            # F92: o caminho que serve tráfego dimensiona o pool por Settings
+            # (instâncias × pool tem que caber no teto do banco).
+            await connection.init_pool(
+                settings.database_url,
+                min_size=settings.db_pool_min_size,
+                max_size=settings.db_pool_max_size,
+            )
             log.info("app_started", env=settings.app_env)
         yield
         if not skip_db_init:

@@ -23,25 +23,32 @@ _DROPPED_CONNECTION_ERRORS: tuple[type[BaseException], ...] = (
 )
 
 
+# F92 — defaults conservadores do pool. Ver docstring de init_pool pra conta
+# (instâncias × pool ≤ teto do banco). Settings espelha estes valores pro caminho
+# que serve tráfego; um teste garante que os dois não divergem.
+DEFAULT_POOL_MIN_SIZE = 1
+DEFAULT_POOL_MAX_SIZE = 5
+
+
 async def init_pool(
-    database_url: str, min_size: int | None = None, max_size: int | None = None
+    database_url: str,
+    min_size: int = DEFAULT_POOL_MIN_SIZE,
+    max_size: int = DEFAULT_POOL_MAX_SIZE,
 ) -> asyncpg.Pool:
     """Create the global pool. Call once at app startup.
 
-    F92 — o tamanho vem de Settings (`DB_POOL_MIN_SIZE`/`DB_POOL_MAX_SIZE`), não
-    de um literal enterrado aqui. O orçamento é **instâncias × pool** e precisa
-    caber no teto do banco: com `--max-instances=10` e o antigo default de 10, o
-    serviço podia abrir 100 conexões contra as 60 de um tier pequeno do Supabase
-    — e `too many connections` derruba o deep health e as tools em cascata.
-    `min_size`/`max_size` explícitos ainda vencem, pra job ou script que queira
-    um pool minúsculo.
+    F92 — o default caiu de 10 pra 5. O orçamento é **instâncias × pool** e tem
+    que caber no teto do banco: com `--max-instances=10`, o antigo default
+    permitia 100 conexões contra as 60 de um tier pequeno do Supabase, e `too
+    many connections` derruba o deep health e as tools em cascata.
+
+    Este módulo NÃO lê `Settings` de propósito: é um primitivo de banco, e
+    acoplá-lo à config completa da app quebra quem o usa sem as 13 variáveis
+    obrigatórias — foi exatamente o que derrubou a suíte de integração na 1ª
+    tentativa deste fix. Quem serve tráfego (`app.py`) passa
+    `settings.db_pool_*` explicitamente, que é onde a conta de instâncias
+    importa; job e script ficam com o default conservador.
     """
-    from src.config import get_settings
-
-    settings = get_settings()
-    min_size = settings.db_pool_min_size if min_size is None else min_size
-    max_size = settings.db_pool_max_size if max_size is None else max_size
-
     global _pool
     if _pool is not None:
         return _pool
