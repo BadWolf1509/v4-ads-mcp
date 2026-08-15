@@ -5,15 +5,13 @@ behavior (idempotency, schema correctness) and not a mock.
 """
 
 import pytest
-from testcontainers.postgres import PostgresContainer
 
 from src.db import connection, migrate
 
 
 @pytest.mark.integration
-async def test_migrations_run_clean(pg: PostgresContainer) -> None:
-    dsn = pg.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")
-    await connection.init_pool(dsn, min_size=1, max_size=2)
+async def test_migrations_run_clean(pg_dsn: str) -> None:
+    await connection.init_pool(pg_dsn, min_size=1, max_size=2)
     try:
         await migrate.run_all()
         # Verify a known table exists.
@@ -26,9 +24,8 @@ async def test_migrations_run_clean(pg: PostgresContainer) -> None:
 
 
 @pytest.mark.integration
-async def test_migrations_are_idempotent(pg: PostgresContainer) -> None:
-    dsn = pg.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")
-    await connection.init_pool(dsn, min_size=1, max_size=2)
+async def test_migrations_are_idempotent(pg_dsn: str) -> None:
+    await connection.init_pool(pg_dsn, min_size=1, max_size=2)
     try:
         await migrate.run_all()
         await migrate.run_all()  # second run must not raise

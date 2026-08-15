@@ -231,3 +231,35 @@ def test_finally_bookkeeping_is_best_effort() -> None:
         "envolva com `async with best_effort(...)` (src/governance/bookkeeping.py), "
         "senão a falha do audit derruba a mutação já aplicada."
     )
+
+
+def test_teste_de_integracao_nao_monta_dsn_do_container_a_mao() -> None:
+    """DSN montado fora do `_dsn` do conftest perde a correcao de host do Windows.
+
+    O Docker Desktop publica a porta em `[::]` e `localhost` resolve pra ::1 E
+    127.0.0.1. O listener IPv6 ACEITA o TCP mas nao entrega o payload ao
+    container, entao o asyncpg conecta, manda o startup packet e espera pra
+    sempre — TimeoutError. `_dsn` forca 127.0.0.1 no win32; quem chama
+    `get_connection_url()` direto contorna a correcao e falha SO no Windows,
+    que e o pior tipo de quebra (o CI fica verde e o dev local nao roda nada).
+
+    Aconteceu de verdade: depois de consertar o `_dsn`, os 2 testes de
+    `test_migrations.py` seguiram falhando porque montavam o DSN inline. Use a
+    fixture `pg_dsn`. E a mesma classe do F81 — dois caminhos pro mesmo dado,
+    um deles errado e silencioso.
+    """
+    integracao = Path(__file__).resolve().parents[1] / "integration"
+    conftest = integracao / "conftest.py"
+    offenders = []
+    for p in sorted(integracao.glob("*.py")):
+        if p == conftest:
+            continue
+        texto = p.read_text(encoding="utf-8")
+        for numero, linha in enumerate(texto.splitlines(), start=1):
+            if "get_connection_url(" in linha:
+                offenders.append(f"{p.name}:{numero}")
+    assert not offenders, (
+        "teste de integracao montando DSN do container a mao: "
+        f"{offenders}. Use a fixture `pg_dsn` (tests/integration/conftest.py) — "
+        "ela aplica a correcao de IPv4 que o Docker no Windows exige."
+    )

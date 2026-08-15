@@ -77,6 +77,18 @@ def pg():
         yield container
 
 
+@pytest.fixture
+def pg_dsn(pg: PostgresContainer) -> str:
+    """DSN do banco admin do container, já com o host corrigido por `_dsn`.
+
+    Existe pra que nenhum teste precise montar o DSN à mão: quem chama
+    `pg.get_connection_url()` direto perde a correção de IPv4 do Windows e
+    falha só nesta plataforma (foi o que aconteceu com `test_migrations`).
+    Há um guard em `tests/unit/test_structural_guards.py` que impede a volta.
+    """
+    return _dsn(pg)
+
+
 @asynccontextmanager
 async def _clone_db(pg: PostgresContainer) -> AsyncIterator[str]:
     """Clona um banco novo do template; yields o DSN; DROP no cleanup.
