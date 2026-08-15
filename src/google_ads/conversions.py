@@ -58,8 +58,10 @@ async def run_conversion_upload(
     Sprint 3b.26 — first dispatcher that does NOT use GoogleAdsService.mutate.
     """
     settings = get_settings()
-    async with connection.get_pool().acquire() as conn:
-        await ensure_account_access(
+    # F91 — gate roda a cada request MCP e e read pre-operacao (o audit de
+    # negacao so acontece no caminho de erro, que ja levanta e nao e retentado).
+    await connection.run_with_reconnect(
+        lambda conn: ensure_account_access(
             conn,
             manager_id=manager_id,
             customer_id=customer_id,
@@ -67,6 +69,7 @@ async def run_conversion_upload(
             operation_name=operation_type,
             level="write",
         )
+    )
     token_id = hash_developer_token(settings.google_ads_developer_token)
     started = time.monotonic()
     pool = connection.get_pool()

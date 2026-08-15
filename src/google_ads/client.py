@@ -55,9 +55,10 @@ async def build_client_for_manager(*, manager_id: UUID) -> Any:
     from src.google_ads.errors import to_friendly
 
     settings = get_settings()
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
-        oc = await google_oauth_connections.get_active_for_manager(conn, manager_id)
+    # F91 — todo executor Google passa por aqui; read puro, seguro de repetir.
+    oc = await connection.run_with_reconnect(
+        lambda conn: google_oauth_connections.get_active_for_manager(conn, manager_id)
+    )
     if oc is None:
         raise NoOAuthConnectionError(
             "Gestor nao tem conexao Google Ads ativa. Pede pra ele conectar via "

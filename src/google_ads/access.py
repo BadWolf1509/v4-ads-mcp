@@ -11,6 +11,7 @@ import asyncpg
 import structlog
 
 from src.db.repositories import audit_log, manager_account_access
+from src.governance.bookkeeping import best_effort
 
 log = structlog.get_logger(__name__)
 
@@ -40,17 +41,28 @@ async def ensure_account_access(
     )
     if allowed:
         return
-    await audit_log.record(
-        conn,
-        manager_id=manager_id,
-        session_id=session_id,
+    # F91 — o gate roda dentro de `run_with_reconnect` (read idempotente). O
+    # audit da negação, porém, é WRITE: se ele estourasse por conexão morta, a
+    # exceção subiria e o retry re-executaria o INSERT, podendo duplicar a linha.
+    # `best_effort` mantém o retry restrito ao read. Perder o registro é pior que
+    # tê-lo, mas hoje a mesma falha virava 500 — sem audit E sem negação clara.
+    async with best_effort(
+        "account_access_denial_audit_failed",
+        manager_id=str(manager_id),
         customer_id=customer_id,
-        action_type="mutate" if level == "write" else "read",
         operation=operation_name,
-        status="denied",
-        error_message="Gestor sem acesso à conta Google",
-        platform="google",
-    )
+    ):
+        await audit_log.record(
+            conn,
+            manager_id=manager_id,
+            session_id=session_id,
+            customer_id=customer_id,
+            action_type="mutate" if level == "write" else "read",
+            operation=operation_name,
+            status="denied",
+            error_message="Gestor sem acesso à conta Google",
+            platform="google",
+        )
     log.warning(
         "account_access_denied",
         manager_id=str(manager_id),

@@ -18,6 +18,7 @@ import structlog
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import audit_log, manager_meta_account_access
+from src.governance.bookkeeping import best_effort
 from src.governance.rate_limit import record_actual_meta
 from src.meta_ads.client import MetaAccessDeniedError, build_meta_api
 from src.meta_ads.errors import to_friendly_meta_error
@@ -73,16 +74,30 @@ async def run_meta_graph_get(
     # Hard-gate (Modelo B): manager precisa de grant na conta. O token é compartilhado,
     # então a matriz manager_meta_account_access é o ÚNICO freio. INCONDICIONAL —
     # ad_account_id é kwarg obrigatório, então nenhum caminho pula o gate (F72).
-    async with connection.get_pool().acquire() as conn:
-        allowed = await manager_meta_account_access.can_manager_access(
+    # F91 — a checagem é read idempotente e roda a CADA request; vai por
+    # `run_with_reconnect` (conexão ociosa que o Supabase fechou não pode
+    # derrubar o único freio do Modelo B). O audit da negação fica FORA: é
+    # write, e retry cego duplicaria a linha.
+    allowed = await connection.run_with_reconnect(
+        lambda conn: manager_meta_account_access.can_manager_access(
             conn, manager_id, ad_account_id, level="read"
         )
-        if not allowed:
-            # Negação de acesso é SEMPRE auditada (evento de segurança),
-            # independente do audit_this_call opt-in — espelha o gate Google
-            # (ensure_account_access sempre grava denied). M.4/M.5 trarão tools
-            # Meta com audit_this_call=False; sem isto, suas negações ficariam
-            # invisíveis no audit_log.
+    )
+    if not allowed:
+        # Negação de acesso é SEMPRE auditada (evento de segurança),
+        # independente do audit_this_call opt-in — espelha o gate Google
+        # (ensure_account_access sempre grava denied). M.4/M.5 trarão tools
+        # Meta com audit_this_call=False; sem isto, suas negações ficariam
+        # invisíveis no audit_log.
+        async with (
+            best_effort(
+                "meta_account_access_denial_audit_failed",
+                manager_id=str(manager_id),
+                ad_account_id=ad_account_id,
+                operation=operation_name,
+            ),
+            connection.get_pool().acquire() as conn,
+        ):
             await audit_log.record(
                 conn,
                 manager_id=manager_id,
@@ -95,16 +110,16 @@ async def run_meta_graph_get(
                 error_message="Gestor sem acesso à conta Meta",
                 platform="meta",
             )
-            log.warning(
-                "meta_account_access_denied",
-                manager_id=str(manager_id),
-                ad_account_id=ad_account_id,
-                operation=operation_name,
-                platform="meta",
-            )
-            raise MetaAccessDeniedError(
-                f"Você não tem acesso à conta {ad_account_id}. Peça ao admin pra liberar no painel."
-            )
+        log.warning(
+            "meta_account_access_denied",
+            manager_id=str(manager_id),
+            ad_account_id=ad_account_id,
+            operation=operation_name,
+            platform="meta",
+        )
+        raise MetaAccessDeniedError(
+            f"Você não tem acesso à conta {ad_account_id}. Peça ao admin pra liberar no painel."
+        )
 
     api = build_meta_api(
         system_user_token=settings.meta_system_user_token,

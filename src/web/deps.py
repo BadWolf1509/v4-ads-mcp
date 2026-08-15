@@ -53,9 +53,12 @@ async def current_manager(request: Request) -> CurrentUser:
             status_code=status.HTTP_302_FOUND,
             headers={"Location": "/login"},
         )
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
-        m = await managers.get_by_id(conn, UUID(session.manager_id))
+    # F91: read idempotente que roda a CADA page-load de um painel de baixo
+    # tráfego — o cenário exato do F76 (conexão ociosa que o Supabase fecha).
+    # Sem o reconnect, o primeiro acesso da manhã vira 500.
+    m = await connection.run_with_reconnect(
+        lambda conn: managers.get_by_id(conn, UUID(session.manager_id))
+    )
     # F84: predicado unico (is_active E status) — ver Manager.is_deactivated.
     if m is None or m.is_deactivated:
         raise HTTPException(
@@ -69,9 +72,9 @@ async def optional_current_manager(request: Request) -> CurrentUser | None:
     session = await _resolve_session(request)
     if session is None:
         return None
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
-        m = await managers.get_by_id(conn, UUID(session.manager_id))
+    m = await connection.run_with_reconnect(  # F91 — ver current_manager
+        lambda conn: managers.get_by_id(conn, UUID(session.manager_id))
+    )
     # F84: predicado unico (is_active E status) — ver Manager.is_deactivated.
     if m is None or m.is_deactivated:
         return None
@@ -83,6 +86,5 @@ async def pending_invites_count() -> int:
     from src.db import connection
     from src.db.repositories import managers
 
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
-        return await managers.count_invited(conn)
+    # F91 — 11 rotas admin chamam isto; é read puro.
+    return await connection.run_with_reconnect(managers.count_invited)

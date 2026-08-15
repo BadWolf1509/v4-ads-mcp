@@ -117,8 +117,10 @@ async def run_offline_user_data_job(
     do Sprint 3b.26.
     """
     settings = get_settings()
-    async with connection.get_pool().acquire() as conn:
-        await ensure_account_access(
+    # F91 — gate roda a cada request MCP e e read pre-operacao (o audit de
+    # negacao so acontece no caminho de erro, que ja levanta e nao e retentado).
+    await connection.run_with_reconnect(
+        lambda conn: ensure_account_access(
             conn,
             manager_id=manager_id,
             customer_id=customer_id,
@@ -126,6 +128,7 @@ async def run_offline_user_data_job(
             operation_name="upload_customer_match_list",
             level="write",
         )
+    )
     log.info(
         "run_offline_user_data_job_start",
         customer_id=customer_id,

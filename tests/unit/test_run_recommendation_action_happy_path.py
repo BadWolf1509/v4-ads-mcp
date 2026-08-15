@@ -38,6 +38,18 @@ def _mock_pool() -> MagicMock:
     return mock_pool
 
 
+async def _run_with_reconnect(op, **_kw):
+    """Emula `connection.run_with_reconnect` num modulo `connection` mockado.
+
+    F91: o gate deixou de usar `pool.acquire()` cru e passou por
+    `run_with_reconnect`. Como estes testes trocam o MODULO `connection` inteiro
+    por um MagicMock, a funcao volta MagicMock — que nao e awaitable. Anular a
+    chamada esconderia o gate (o teste asserta `ensure_access_mock`), entao o
+    stub EXECUTA a operacao, como o real faz no caminho feliz.
+    """
+    return await op(MagicMock())
+
+
 @pytest.mark.asyncio
 async def test_apply_recommendation_happy_path_audits_success_and_captures_request_id():
     from src.google_ads import mutations
@@ -48,6 +60,7 @@ async def test_apply_recommendation_happy_path_audits_success_and_captures_reque
 
     with (
         patch.object(mutations, "connection") as mock_connection,
+        patch.object(mutations.connection, "run_with_reconnect", _run_with_reconnect, create=True),
         patch.object(mutations, "ensure_account_access", AsyncMock()) as ensure_access_mock,
         patch.object(mutations, "before_call", AsyncMock()) as before_call_mock,
         patch.object(mutations, "record_actual", AsyncMock()) as record_actual_mock,
@@ -118,6 +131,7 @@ async def test_dismiss_recommendation_happy_path_dispatches_to_dismiss_executor(
 
     with (
         patch.object(mutations, "connection") as mock_connection,
+        patch.object(mutations.connection, "run_with_reconnect", _run_with_reconnect, create=True),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch.object(mutations, "before_call", AsyncMock()),
         patch.object(mutations, "record_actual", AsyncMock()),
@@ -161,6 +175,7 @@ async def test_unknown_operation_type_raises_friendly_error_and_still_audits_err
 
     with (
         patch.object(mutations, "connection") as mock_connection,
+        patch.object(mutations.connection, "run_with_reconnect", _run_with_reconnect, create=True),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch.object(mutations, "before_call", AsyncMock()),
         patch.object(mutations, "record_actual", AsyncMock()) as record_actual_mock,

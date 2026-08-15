@@ -60,8 +60,10 @@ async def run_report(
         NoOAuthConnectionError: if the manager has no OAuth connection
     """
     settings = get_settings()
-    async with connection.get_pool().acquire() as conn:
-        await ensure_account_access(
+    # F91 — gate roda a cada request MCP e e read pre-operacao (o audit de
+    # negacao so acontece no caminho de erro, que ja levanta e nao e retentado).
+    await connection.run_with_reconnect(
+        lambda conn: ensure_account_access(
             conn,
             manager_id=manager_id,
             customer_id=customer_id,
@@ -69,6 +71,7 @@ async def run_report(
             operation_name=operation_name,
             level="read",
         )
+    )
     token_id = hash_developer_token(settings.google_ads_developer_token)
     started = time.monotonic()
     actual_ops = 0

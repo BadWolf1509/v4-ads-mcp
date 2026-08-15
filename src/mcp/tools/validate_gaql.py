@@ -92,8 +92,9 @@ async def validate_gaql(args: dict[str, Any]) -> dict[str, Any]:
     # Sem isto, qualquer gestor validava GAQL contra qualquer conta da MCC,
     # vazando existência/schema da conta e bypassando o rate-limit. O denied
     # ja e auditado dentro de ensure_account_access -- nao duplicar aqui.
-    async with connection.get_pool().acquire() as conn:
-        await ensure_account_access(
+    # F91 — read pre-operacao, seguro de re-executar numa conexao nova.
+    await connection.run_with_reconnect(
+        lambda conn: ensure_account_access(
             conn,
             manager_id=ctx.manager_id,
             customer_id=customer_id,
@@ -101,6 +102,7 @@ async def validate_gaql(args: dict[str, Any]) -> dict[str, Any]:
             operation_name="validate_gaql",
             level="read",
         )
+    )
 
     # Rate-limit no padrao 'reserved' de run_report (src/google_ads/reports.py,
     # commit 510cd9d): validate_only ainda conta na quota do Google, entao a
