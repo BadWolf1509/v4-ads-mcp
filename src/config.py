@@ -51,10 +51,10 @@ class Settings(BaseSettings):
     # Token NÃO expira; vazio = feature de execução Meta indisponível (erro PT-BR amigável).
     meta_system_user_token: str = ""
 
-    # Supabase (auth + DB)
-    supabase_url: str
-    supabase_anon_key: str
-    supabase_service_key: str
+    # NOTA (F95): nao ha campos Supabase aqui. O banco e Postgres do Supabase,
+    # mas o acesso e 100% via `database_url` (asyncpg cru, sem a lib supabase).
+    # `supabase_url`/`anon_key`/`service_key` eram required e nao tinham UM
+    # leitor — removidos em 2026-08-15 junto com as montagens do deploy.
 
     # Public URL for MCP endpoint (used in /sessions + /help connection snippets).
     # Projeto GCP novo (v4-ads-mcp, migração 2026-06-30). Override via env

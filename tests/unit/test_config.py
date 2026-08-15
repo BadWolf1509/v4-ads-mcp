@@ -17,9 +17,6 @@ def test_settings_loads_required_envs():
         "GOOGLE_OAUTH_CLIENT_SECRET": "secret",
         "GOOGLE_ADS_DEVELOPER_TOKEN": "dev-token",
         "GOOGLE_ADS_LOGIN_CUSTOMER_ID": "1234567890",
-        "SUPABASE_URL": "https://abc.supabase.co",
-        "SUPABASE_ANON_KEY": "anon",
-        "SUPABASE_SERVICE_KEY": "service",
     }
     with patch.dict(os.environ, env, clear=True):
         s = Settings()
@@ -38,9 +35,6 @@ def test_settings_rejects_short_signing_key():
         "GOOGLE_OAUTH_CLIENT_SECRET": "secret",
         "GOOGLE_ADS_DEVELOPER_TOKEN": "dev-token",
         "GOOGLE_ADS_LOGIN_CUSTOMER_ID": "1234567890",
-        "SUPABASE_URL": "https://abc.supabase.co",
-        "SUPABASE_ANON_KEY": "anon",
-        "SUPABASE_SERVICE_KEY": "service",
     }
     with patch.dict(os.environ, env, clear=True), pytest.raises(ValidationError):
         Settings()
@@ -56,9 +50,6 @@ def test_login_customer_id_must_be_digits():
         "GOOGLE_OAUTH_CLIENT_SECRET": "secret",
         "GOOGLE_ADS_DEVELOPER_TOKEN": "dev-token",
         "GOOGLE_ADS_LOGIN_CUSTOMER_ID": "123-456-7890",  # has dashes
-        "SUPABASE_URL": "https://abc.supabase.co",
-        "SUPABASE_ANON_KEY": "anon",
-        "SUPABASE_SERVICE_KEY": "service",
     }
     with patch.dict(os.environ, env, clear=True), pytest.raises(ValidationError):
         Settings()
