@@ -58,6 +58,17 @@ def configure_logging(level: str = "info", json_output: bool = True) -> None:
         level=log_level,
     )
 
+    # F82: o httpx loga `request.url` INTEIRA — com query string — em INFO
+    # ("HTTP Request: %s %s ..."). As chamadas Graph carregam segredo em params:
+    # o token system-user all-targets (que NAO expira e alcanca as ~19 contas do
+    # BM), o `client_secret` e o app access token `app_id|app_secret`. Sem este
+    # setLevel a URL cai no stdout -> Cloud Logging, e quem le o log contorna a
+    # matriz de acesso do Modelo B sem passar por gate nenhum.
+    # O nivel e absoluto (nao herda do root), entao vale inclusive com
+    # LOG_LEVEL=debug; WARNING/ERROR do httpx seguem passando.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
     structlog.configure(
         processors=_build_processors(json_output),
         wrapper_class=structlog.make_filtering_bound_logger(log_level),

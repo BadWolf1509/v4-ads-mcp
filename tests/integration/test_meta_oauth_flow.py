@@ -39,11 +39,15 @@ async def test_oauth_callback_happy_path(client: AsyncClient) -> None:
 
     state = _make_state(str(mid))
 
+    # F82: a troca short→long-lived deixou de ser GET com o `client_secret` na
+    # query string e virou POST com o secret no corpo. As DUAS chamadas a
+    # /oauth/access_token são POST agora, então uma rota só com side_effect
+    # devolve as respostas na ordem em que o callback as consome.
     respx.post("https://graph.facebook.com/v22.0/oauth/access_token").mock(
-        return_value=Response(200, json={"access_token": "short_xyz", "expires_in": 3600})
-    )
-    respx.get("https://graph.facebook.com/v22.0/oauth/access_token").mock(
-        return_value=Response(200, json={"access_token": "long_60d", "expires_in": 5184000})
+        side_effect=[
+            Response(200, json={"access_token": "short_xyz", "expires_in": 3600}),
+            Response(200, json={"access_token": "long_60d", "expires_in": 5184000}),
+        ]
     )
     respx.get("https://graph.facebook.com/v22.0/me").mock(
         return_value=Response(200, json={"id": "12345", "email": "ok@v4company.com", "name": "Ok"})
@@ -110,11 +114,15 @@ async def test_oauth_callback_blocks_missing_essentials(client: AsyncClient) -> 
 
     state = _make_state(str(mid))
 
+    # F82: a troca short→long-lived deixou de ser GET com o `client_secret` na
+    # query string e virou POST com o secret no corpo. As DUAS chamadas a
+    # /oauth/access_token são POST agora, então uma rota só com side_effect
+    # devolve as respostas na ordem em que o callback as consome.
     respx.post("https://graph.facebook.com/v22.0/oauth/access_token").mock(
-        return_value=Response(200, json={"access_token": "short_xyz", "expires_in": 3600})
-    )
-    respx.get("https://graph.facebook.com/v22.0/oauth/access_token").mock(
-        return_value=Response(200, json={"access_token": "long_60d", "expires_in": 5184000})
+        side_effect=[
+            Response(200, json={"access_token": "short_xyz", "expires_in": 3600}),
+            Response(200, json={"access_token": "long_60d", "expires_in": 5184000}),
+        ]
     )
     respx.get("https://graph.facebook.com/v22.0/me").mock(
         return_value=Response(200, json={"id": "12345", "email": "ms@v4company.com", "name": "Ms"})
@@ -151,11 +159,15 @@ async def test_oauth_callback_accepts_personal_fb_email(client: AsyncClient) -> 
 
     state = _make_state(str(mid))
 
+    # F82: a troca short→long-lived deixou de ser GET com o `client_secret` na
+    # query string e virou POST com o secret no corpo. As DUAS chamadas a
+    # /oauth/access_token são POST agora, então uma rota só com side_effect
+    # devolve as respostas na ordem em que o callback as consome.
     respx.post("https://graph.facebook.com/v22.0/oauth/access_token").mock(
-        return_value=Response(200, json={"access_token": "short_xyz", "expires_in": 3600})
-    )
-    respx.get("https://graph.facebook.com/v22.0/oauth/access_token").mock(
-        return_value=Response(200, json={"access_token": "long_60d", "expires_in": 5184000})
+        side_effect=[
+            Response(200, json={"access_token": "short_xyz", "expires_in": 3600}),
+            Response(200, json={"access_token": "long_60d", "expires_in": 5184000}),
+        ]
     )
     respx.get("https://graph.facebook.com/v22.0/me").mock(
         return_value=Response(

@@ -124,6 +124,31 @@ def _build_redirect_uri(request: Request) -> str:
 _ADACCOUNT_FIELDS = "id,name,business,account_status,currency,timezone_name"
 
 
+async def _exchange_for_long_lived_token(
+    http: httpx.AsyncClient,
+    *,
+    app_id: str,
+    app_secret: str,
+    short_token: str,
+) -> httpx.Response:
+    """Troca short-lived por long-lived SEM por segredo na query string (F82).
+
+    POST com `data=` em vez de GET com `params=`: o httpx loga a URL inteira em
+    INFO, e aqui viajam o `client_secret` e o token do gestor. O metodo POST
+    neste MESMO endpoint ja e usado na troca code->short (`meta_oauth_callback`),
+    que roda em producao — nao e aposta sobre a superficie da API.
+    """
+    return await http.post(
+        f"{META_GRAPH_BASE}/oauth/access_token",
+        data={
+            "grant_type": "fb_exchange_token",
+            "client_id": app_id,
+            "client_secret": app_secret,
+            "fb_exchange_token": short_token,
+        },
+    )
+
+
 async def _fetch_all_adaccounts(http: httpx.AsyncClient, access_token: str) -> list[dict[str, Any]]:
     """GET /me/adaccounts seguindo paging.next até esgotar.
 
@@ -263,15 +288,12 @@ async def meta_oauth_callback(
                 status_code=302,
             )
 
-        # Step 3: short → long-lived
-        long_resp = await http.get(
-            f"{META_GRAPH_BASE}/oauth/access_token",
-            params={
-                "grant_type": "fb_exchange_token",
-                "client_id": settings.meta_app_id,
-                "client_secret": settings.meta_app_secret,
-                "fb_exchange_token": short_token,
-            },
+        # Step 3: short → long-lived (POST — o secret vai no corpo, F82)
+        long_resp = await _exchange_for_long_lived_token(
+            http,
+            app_id=settings.meta_app_id,
+            app_secret=settings.meta_app_secret,
+            short_token=short_token,
         )
         if long_resp.status_code != 200:
             log.warning(
