@@ -1,0 +1,137 @@
+"""F82: segredo em `params=` vai parar na query string — e na URL logada.
+
+O httpx loga `request.url` **completa** em INFO. O vazamento observado ja foi
+fechado na origem (`configure_logging` silencia os loggers `httpx`/`httpcore`),
+mas isso e uma camada: qualquer outra biblioteca que registre a URL, um proxy,
+ou um `Referer` reintroduz a exposicao. O lado Google ja faz certo — `data=` no
+corpo do POST e `Authorization` no header, nada na URL.
+
+Este guard impede call-site NOVO com segredo na query. Os 3 remanescentes estao
+na allowlist com motivo e condicao de saida explicitos — allowlist que encolhe,
+nao que cresce.
+"""
+
+from __future__ import annotations
+
+import ast
+from pathlib import Path
+
+_SRC = Path(__file__).resolve().parents[2] / "src"
+
+# Chaves que nunca deveriam viajar na query string de um GET.
+_CHAVES_SECRETAS = {
+    "access_token",
+    "client_secret",
+    "app_secret",
+    "input_token",
+    "refresh_token",
+    "password",
+}
+
+# Funcoes ainda pendentes da migracao pro header `Authorization`.
+#
+# Motivo de continuarem aqui (2026-08-15): a probe empirica so pode ser
+# concluida com um token VALIDO. Ja esta provado contra o Graph real que o
+# header e lido como fonte do token — `Authorization: Bearer <lixo>` devolve
+# code 190 "Cannot parse access token" enquanto a AUSENCIA do header devolve
+# code 2500 "An active access token must be used", ou seja, sao caminhos
+# distintos e o header foi consumido. Falta confirmar que um token valido
+# autentica igual, e `_fetch_all_adaccounts` roda no job diario de producao.
+#
+# Pra fechar: `gcloud auth login` e rodar o probe de scratchpad
+# (probe_meta_header.py) — ele imprime so status, nunca o segredo.
+_PENDENTES = {
+    "_fetch_all_adaccounts",  # token system-user; roda no resync diario
+    "meta_oauth_callback",  # /me (token pessoal) + /debug_token (app_id|app_secret)
+}
+
+
+def _funcao_que_contem(arvore: ast.Module, alvo: ast.AST) -> str | None:
+    """Nome da funcao que envolve `alvo` (o pai mais proximo)."""
+    encontrado: str | None = None
+    for no in ast.walk(arvore):
+        if isinstance(no, ast.FunctionDef | ast.AsyncFunctionDef):
+            for interno in ast.walk(no):
+                if interno is alvo:
+                    encontrado = no.name
+    return encontrado
+
+
+def _chaves_secretas(no: ast.AST) -> set[str]:
+    """Chaves sensiveis num dict literal (vazio se nao for dict literal)."""
+    if not isinstance(no, ast.Dict):
+        return set()
+    return {k.value for k in no.keys if isinstance(k, ast.Constant) and k.value in _CHAVES_SECRETAS}
+
+
+def _achados() -> list[tuple[str, int, str, str]]:
+    """(arquivo, linha, funcao, chave) pra cada segredo que vai como `params=`.
+
+    Pega as duas formas. O dict INLINE (`params={... "access_token": t}`) e o
+    obvio; o que quase escapou foi o dict montado numa VARIAVEL e passado
+    depois (`params = {...}` … `http.get(url, params=params)`) — a forma que
+    `_fetch_all_adaccounts` usa por causa da paginacao. Guard que so via a
+    forma inline daria verde no call-site mais importante dos tres.
+    """
+    fora: list[tuple[str, int, str, str]] = []
+    for caminho in _SRC.rglob("*.py"):
+        arvore = ast.parse(caminho.read_text(encoding="utf-8"))
+        rel = str(caminho.relative_to(_SRC))
+
+        # Variaveis que recebem um dict literal com chave sensivel.
+        marcadas: dict[str, set[str]] = {}
+        for no in ast.walk(arvore):
+            alvos = (
+                no.targets
+                if isinstance(no, ast.Assign)
+                else ([no.target] if isinstance(no, ast.AnnAssign) else [])
+            )
+            valor = getattr(no, "value", None)
+            if valor is None:
+                continue
+            achadas = _chaves_secretas(valor)
+            if not achadas:
+                continue
+            for alvo in alvos:
+                if isinstance(alvo, ast.Name):
+                    marcadas.setdefault(alvo.id, set()).update(achadas)
+
+        for no in ast.walk(arvore):
+            if not isinstance(no, ast.Call):
+                continue
+            for kw in no.keywords:
+                if kw.arg != "params":
+                    continue
+                achadas = _chaves_secretas(kw.value)
+                if isinstance(kw.value, ast.Name):
+                    achadas |= marcadas.get(kw.value.id, set())
+                for chave in sorted(achadas):
+                    fora.append(
+                        (rel, no.lineno, _funcao_que_contem(arvore, no) or "<modulo>", chave)
+                    )
+    return fora
+
+
+def test_nenhum_call_site_novo_poe_segredo_na_query() -> None:
+    """F82: allowlist so encolhe — call-site novo com segredo na URL quebra aqui."""
+    violacoes = [a for a in _achados() if a[2] not in _PENDENTES]
+    assert not violacoes, (
+        "segredo em `params=` (vai pra query string e pra qualquer log de URL). "
+        "Use `Authorization` no header, ou `data=` num POST — como "
+        "`src/auth/oauth.py` faz no lado Google: "
+        + "; ".join(f"{f}:{ln} em {fn}() -> {k}" for f, ln, fn, k in violacoes)
+    )
+
+
+def test_a_allowlist_descreve_a_realidade() -> None:
+    """Guard do guard: entrada obsoleta na allowlist esconde regressao futura.
+
+    Se um dos pendentes for migrado e a entrada ficar, o proximo call-site
+    dentro daquela funcao passa despercebido.
+    """
+    funcoes_com_segredo = {a[2] for a in _achados()}
+    obsoletas = _PENDENTES - funcoes_com_segredo
+    assert not obsoletas, (
+        f"na allowlist mas ja sem segredo em `params=`: {sorted(obsoletas)}. "
+        "Remova a entrada — allowlist que nao encolhe vira ponto cego."
+    )
