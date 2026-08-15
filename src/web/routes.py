@@ -566,7 +566,7 @@ async def accounts_revoke_connection(
     request: Request,
     connection_id: UUID,
     user: CurrentUser = Depends(current_manager),  # noqa: B008
-) -> HTMLResponse | RedirectResponse:
+) -> Response:
     """Revoke an OAuth connection (sets revoked_at). Manager can reconnect later."""
     pool = connection.get_pool()
     async with pool.acquire() as conn:
@@ -579,6 +579,11 @@ async def accounts_revoke_connection(
             raise HTTPException(status_code=404, detail="Connection not found")
         await google_oauth_connections.revoke(conn, connection_id)
 
+    if request.headers.get("HX-Request"):
+        # F96 — o XHR do htmx SEGUE o 303, então devolver redirect aqui entregava
+        # a página `/accounts` inteira pro swap. Full refresh do browser re-renderiza
+        # a lista de conexões (e o badge) de graça, como em `admin_invite_cancel`.
+        return Response(status_code=204, headers={"HX-Refresh": "true"})
     return RedirectResponse(url="/accounts", status_code=303)
 
 

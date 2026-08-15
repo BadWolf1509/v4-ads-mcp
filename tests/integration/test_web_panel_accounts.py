@@ -95,6 +95,47 @@ async def test_accounts_revoke_connection(client: AsyncClient):
 
 
 @pytest.mark.integration
+async def test_accounts_revoke_e_hx_aware(client: AsyncClient):
+    """F96: chamada HTMX recebe 204+HX-Refresh, nunca o 303 (que o XHR seguiria).
+
+    Seguindo o redirect, o htmx recebia a pagina `/accounts` INTEIRA e a
+    template compensava injetando em `body.innerHTML` + `location.reload()`.
+    """
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="hx@v4company.com", full_name=None)
+        oc = await google_oauth_connections.upsert(
+            conn,
+            manager_id=mid,
+            google_email="hx@gmail.com",
+            refresh_token_enc=b"enc-hx",
+            scopes=["adwords"],
+        )
+
+    cookie = sign_panel_session(
+        manager_id=str(mid),
+        email="hx@v4company.com",
+        signing_key=_SIGNING_KEY,
+    )
+    response = await client.post(
+        f"/accounts/{oc.id}/revoke",
+        cookies={PANEL_SESSION_COOKIE_NAME: cookie},
+        headers={"HX-Request": "true"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 204, "303 pra HTMX faz o XHR baixar a pagina inteira"
+    assert response.headers["HX-Refresh"] == "true"
+    assert "location" not in response.headers
+
+    # E o efeito no banco continua sendo o mesmo.
+    async with pool.acquire() as conn:
+        active = await google_oauth_connections.get_active_for_manager(conn, mid)
+    assert active is None
+
+
+@pytest.mark.integration
 async def test_accounts_cannot_revoke_others_connection(client: AsyncClient):
     """Manager A's connection can't be revoked by manager B."""
     pool = connection.get_pool()
