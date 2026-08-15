@@ -26,6 +26,7 @@ import structlog
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import audit_log
+from src.google_ads._blocking import run_blocking
 from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
@@ -99,11 +100,21 @@ async def run_report(
             request.customer_id = customer_id
             request.query = query
 
-            stream = ga_service.search_stream(request=request)
-            for batch in stream:
-                actual_ops += 1
-                for row in batch.results:
-                    results.append(row_formatter(row))
+            # F86: a chamada E o consumo do stream saem do event loop. Offloadar
+            # só o `search_stream` não adiantaria — ele devolve um iterador cuja
+            # I/O acontece no `for`, então o bloqueio só mudaria de lugar.
+            def _consumir_stream() -> tuple[int, list[dict[str, Any]]]:
+                lidos = 0
+                linhas: list[dict[str, Any]] = []
+                for batch in ga_service.search_stream(request=request):
+                    lidos += 1
+                    for row in batch.results:
+                        linhas.append(row_formatter(row))
+                return lidos, linhas
+
+            batches, linhas = await run_blocking(_consumir_stream)
+            actual_ops += batches
+            results.extend(linhas)
         except Exception as e:
             raise to_friendly(e) from e
 

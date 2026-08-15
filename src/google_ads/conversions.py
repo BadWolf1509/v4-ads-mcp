@@ -22,6 +22,7 @@ import structlog
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import audit_log
+from src.google_ads._blocking import run_blocking
 from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
@@ -123,8 +124,14 @@ async def run_conversion_upload(
 
         reset_request_id()
         service = client.get_service("ConversionUploadService")
-        response = service.upload_click_conversions(request=request)
-        provider_request_id = get_request_id()
+
+        # F86: gRPC bloqueante sai do event loop; o request-id e lido dentro da
+        # thread porque o interceptor o grava num ContextVar (ver mutations.py).
+        def _upload() -> tuple[Any, str | None]:
+            resp = service.upload_click_conversions(request=request)
+            return resp, get_request_id()
+
+        response, provider_request_id = await run_blocking(_upload)
 
         applied_count, failed_count, failures = _parse_upload_response(response, payload, client)
 

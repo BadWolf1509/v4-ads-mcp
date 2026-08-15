@@ -17,6 +17,7 @@ import structlog
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import audit_log
+from src.google_ads._blocking import run_blocking
 from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
@@ -221,8 +222,16 @@ async def run_mutation(
                 # response.partial_failure_error.details (a GoogleAdsFailure).
                 request.partial_failure = True
             reset_request_id()
-            response = ga_service.mutate(request=request)
-            provider_request_id = get_request_id()
+
+            # F86: gRPC bloqueante sai do event loop. O request-id e lido AQUI
+            # DENTRO de proposito: o interceptor o grava num ContextVar durante a
+            # chamada, e `to_thread` COPIA o contexto — um get_request_id() do
+            # lado do loop leria None e o provider_request_id sumiria do audit.
+            def _mutar() -> tuple[Any, str | None]:
+                resp = ga_service.mutate(request=request)
+                return resp, get_request_id()
+
+            response, provider_request_id = await run_blocking(_mutar)
 
             # Parse per-op status when partial_failure is enabled (helper isola o
             # parsing do proto — ver _parse_partial_failures).

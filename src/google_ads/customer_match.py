@@ -21,6 +21,7 @@ import structlog
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import audit_log
+from src.google_ads._blocking import run_blocking
 from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
@@ -185,26 +186,36 @@ async def run_offline_user_data_job(
         job.customer_match_user_list_metadata.consent.ad_personalization = (
             client.enums.ConsentStatusEnum.GRANTED
         )
-        create_response = service.create_offline_user_data_job(customer_id=customer_id, job=job)
-        job_resource = create_response.resource_name
-        create_req_id = get_request_id() or "unknown"
-        provider_request_id = create_req_id
 
-        # Step 2: Add operations
-        reset_request_id()
-        operations = _build_user_data_operations(client, operation_type, hashed_members)
-        add_request = client.get_type("AddOfflineUserDataJobOperationsRequest")
-        add_request.resource_name = job_resource
-        add_request.operations = operations
-        add_request.enable_partial_failure = True
-        service.add_offline_user_data_job_operations(request=add_request)
-        add_req_id = get_request_id() or "unknown"
-        provider_request_id = add_req_id
+        # F86: as 3 chamadas gRPC (todas bloqueantes) saem do event loop juntas —
+        # sao sequencialmente dependentes, entao um salto de thread so evita 3
+        # round-trips de scheduling. Cada request-id e lido DENTRO da thread: o
+        # interceptor o grava num ContextVar, e `to_thread` copia o contexto sem
+        # propagar de volta (ver mutations.py).
+        def _rodar_job() -> tuple[str, str, str, str]:
+            create_response = service.create_offline_user_data_job(customer_id=customer_id, job=job)
+            job_resource_local = create_response.resource_name
+            create_id = get_request_id() or "unknown"
 
-        # Step 3: Run job (fire-and-forget)
-        reset_request_id()
-        service.run_offline_user_data_job(resource_name=job_resource)
-        run_req_id = get_request_id() or "unknown"
+            # Step 2: Add operations
+            reset_request_id()
+            operations = _build_user_data_operations(client, operation_type, hashed_members)
+            add_request = client.get_type("AddOfflineUserDataJobOperationsRequest")
+            add_request.resource_name = job_resource_local
+            add_request.operations = operations
+            add_request.enable_partial_failure = True
+            service.add_offline_user_data_job_operations(request=add_request)
+            add_id = get_request_id() or "unknown"
+
+            # Step 3: Run job (fire-and-forget)
+            reset_request_id()
+            service.run_offline_user_data_job(resource_name=job_resource_local)
+            run_id = get_request_id() or "unknown"
+
+            return job_resource_local, create_id, add_id, run_id
+
+        job_resource, create_req_id, add_req_id, run_req_id = await run_blocking(_rodar_job)
+        # O audit guarda o ultimo (o do run); a resposta expoe os tres.
         provider_request_id = run_req_id
 
     except Exception as e:
