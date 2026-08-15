@@ -29,6 +29,19 @@ def _dsn(container: PostgresContainer, dbname: str | None = None) -> str:
     # rsplit, NÃO .replace("/test", ...): user/senha também são "test"
     # (postgresql://test:test@...), replace corromperia o DSN.
     url = container.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")
+    if sys.platform == "win32":
+        # Docker Desktop publica a porta em `[::]` e `localhost` resolve pra
+        # ::1 E 127.0.0.1. O listener IPv6 ACEITA o TCP mas não entrega o
+        # payload ao container: o asyncpg conecta, manda o startup packet e
+        # espera pra sempre. Como o TCP teve sucesso, ele não tenta o próximo
+        # endereço — o sintoma é TimeoutError em 100% das conexões, e a suíte
+        # inteira morre no fixture de sessão.
+        #
+        # Medido nesta máquina: TCP puro e `asyncio.open_connection` passam nos
+        # dois endereços (só abrem o socket); `asyncpg` via 127.0.0.1 funciona e
+        # via localhost expira. Só no Windows — o CI é Linux, publica em
+        # 0.0.0.0 e nunca viu isto.
+        url = url.replace("@localhost:", "@127.0.0.1:")
     return url if dbname is None else url.rsplit("/", 1)[0] + "/" + dbname
 
 
