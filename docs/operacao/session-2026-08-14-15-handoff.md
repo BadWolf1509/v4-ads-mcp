@@ -33,6 +33,7 @@
 | **F94** | Backup em snapshot único (`REPEATABLE READ`) e em stream pro GCS | ✅ |
 | **F99** | doc-drift do CLAUDE.md (fechado em `c3bc1cd`) | ✅ |
 | **F82** | probe com token válido liberou a migração pro header `Authorization` | ✅ (1 resíduo) |
+| **F88** | sort server-side no Meta — o "limite conhecido" deixou de existir | ✅ |
 
 **O padrão que dominou esta onda: quase todo fix criava um risco novo, e o trabalho estava em enxergá-lo.**
 
@@ -94,7 +95,7 @@ O **F87** foi decidido testando as duas hipóteses contra a API real via `valida
 
 Pelo mesmo princípio, **duas coisas ficaram fora da 1ª onda**: a migração dos 3 call-sites do F82 (formato do header é quirk do Meta, e a doc mostrava `OAuth`, não `Bearer`) e o sort server-side do F88 (`sort=spend_descending` não validado).
 
-O **F82 foi destravado na 2ª onda** por probe — e o resultado justificou a espera: a doc estava desatualizada (`Bearer` funciona), e o comportamento do `paging.next` mudou com o header de um jeito que **inverteu o desenho do fix**. Se eu tivesse shipado "por analogia" na 1ª onda, teria escrito código pra remover um token que o Graph já não manda. O **F88 segue pendente de probe** — é o único item da sessão nessa situação.
+O **F82 foi destravado na 2ª onda** por probe — e o resultado justificou a espera: a doc estava desatualizada (`Bearer` funciona), e o comportamento do `paging.next` mudou com o header de um jeito que **inverteu o desenho do fix**. Se eu tivesse shipado "por analogia" na 1ª onda, teria escrito código pra remover um token que o Graph já não manda. O **F88 também foi fechado**, mais tarde no mesmo dia, e pelo mesmo método: probe antes de código. O teste que sustentou a decisão foi mandar um valor **inválido** de `sort` e confirmar `HTTP 400` — sem isso, um `200 OK` não provaria que a API sequer lê o parâmetro, que é literalmente como F53/F54/F55 nasceram. **Nenhum item da investigação ficou pendente.**
 
 ## Mecanismos novos que passaram a existir
 
