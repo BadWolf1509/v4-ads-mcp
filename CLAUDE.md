@@ -20,19 +20,19 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 
 **Última atualização:** 2026-08-15. **64 MCP tools** (58 Google + 6 Meta), bucket **23 always + 41 defer** — contagem verificada, não estimada. Smoke autenticado F58 segue dormente. F76/F77 encerrados.
 
-**A sessão 2026-08-14/15 foi uma investigação ampla de bugs** (19 findings catalogados, **18 fechados** em duas ondas). O núcleo mudou de comportamento em pontos que valem saber de cara:
+**A sessão 2026-08-14/15 foi uma investigação ampla de bugs** (19 findings catalogados, **todos fechados** em duas ondas). O núcleo mudou de comportamento em pontos que valem saber de cara:
 
 - Bookkeeping em `finally` não derruba mais a operação (`best_effort`, F83); chamada do SDK Google roda **fora do event loop** (`run_blocking`, F86); escape GAQL usa barra invertida (`_gaql.py`, F87).
 - Gates de sessão usam `Manager.is_deactivated` (F84); pool caiu pra **5** conexões/instância (F92); jobs auditam crash e inventário parcial (F93).
 - Tools Meta paginam e devolvem `truncated` (F88), e **não devolvem mais** `effective_status`/`creative_id`/`daily_budget_brl`/`billing_event` (F89).
-- httpx silenciado — as linhas `HTTP Request:` sumiram do Cloud Logging de propósito (F82).
+- httpx silenciado (as linhas `HTTP Request:` sumiram do Cloud Logging de propósito) **e o token Meta saiu da query string** — vai em `Authorization: Bearer`, inclusive em cada página da paginação (F82).
 
-Detalhe, lições e o que ficou aberto: [`session-2026-08-14-15-handoff.md`](docs/operacao/session-2026-08-14-15-handoff.md).
+Detalhe e lições: [`session-2026-08-14-15-handoff.md`](docs/operacao/session-2026-08-14-15-handoff.md).
 
 **Frontend pós 2026-08-11** (o que mudou de premissa): **Tailwind não é mais CDN** — CSS gerado offline e commitado, com guard de diff no CI. **A CSP não tem nenhuma diretiva `unsafe-*`**: zero JS e zero CSS inline nas templates; comportamento em `v4-panel.js` via `data-v4-*`, estilo via classe. Assets com gzip + `Cache-Control` imutável versionado por `K_REVISION`. `domContentLoaded` do `/login`: **1128 ms → 261 ms**.
 
 **Sessões recentes** (detalhe canônico nos handoffs — leia só o da sessão relevante):
-- **2026-08-14/15** — investigação ampla de bugs sem escopo prévio: 19 findings catalogados (F82-F100), **18 fechados** em duas ondas (11 + os 7 restantes). Núcleo, auth, jobs, Meta, pool, painel e backup tocados. [`session-2026-08-14-15-handoff.md`](docs/operacao/session-2026-08-14-15-handoff.md).
+- **2026-08-14/15** — investigação ampla de bugs sem escopo prévio: 19 findings catalogados (F82-F100), **todos fechados** em duas ondas (11 + 8). Núcleo, auth, jobs, Meta, pool, painel e backup tocados. [`session-2026-08-14-15-handoff.md`](docs/operacao/session-2026-08-14-15-handoff.md).
 - **2026-08-11** — frontend medido no DOM de produção: Play CDN aposentado, CSP sem `unsafe-*`, a11y, +F78-F81. [`-08-11`](docs/operacao/session-2026-08-11-frontend-handoff.md).
 - **2026-07-22/23** — 500 e 503 intermitentes por conexão asyncpg stale → F76 (`run_with_reconnect`) + F77 (deep health resiliente) + `severity` no Cloud Logging. [`-07-22`](docs/operacao/session-2026-07-22-handoff.md) · [`-07-23`](docs/operacao/session-2026-07-23-handoff.md).
 - **2026-07-04** — 3 ondas de governança/dívida (F73 quota leak + cap por gestor; `_mutate_common`; lockfile; backup) e, na 2ª sessão, o pacote UI/UX do painel (F74/F75). [`-07-04`](docs/operacao/session-2026-07-04-handoff.md) · [`-07-04 UI`](docs/operacao/session-2026-07-04-ui-ux-handoff.md).
@@ -72,7 +72,7 @@ Detalhe, lições e o que ficou aberto: [`session-2026-08-14-15-handoff.md`](doc
 2. **Vai mexer no painel web?** [`session-2026-08-11-frontend-handoff.md`](docs/operacao/session-2026-08-11-frontend-handoff.md).
 3. **Antes de desenhar ou corrigir código**, faça busca **dirigida** em [`findings-catalog.md`](docs/operacao/findings-catalog.md) pela área/sintoma. O catálogo tem ~370 linhas e **99 IDs** — grep por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`), nunca leitura integral.
 
-> **Resta 1 finding ABERTO: o F82, e só a causa raiz** — 3 call-sites Meta ainda mandam segredo na query string (`src/auth/meta_oauth.py`). O vazamento em si está fechado (loggers httpx/httpcore silenciados) e há guard AST impedindo call-site novo. **Pra fechar de vez:** `gcloud auth login` → `python scripts/probe_meta_auth_header.py` → migrar pro header conforme o resultado. Já provado que `Authorization: Bearer` é aceito pelo Graph; falta só confirmar com token válido.
+> **Os 19 findings da investigação (F82-F100) estão FECHADOS.** Resíduo único e documentado: o `input_token` do `/debug_token` segue na query string — não é credencial do chamador e o endpoint rejeita POST (verificado). Guard AST em `test_no_secrets_in_query_params.py` impede segredo novo em `params=`, com allowlist por **(função, chave)**.
 
 Carregue sob demanda:
 

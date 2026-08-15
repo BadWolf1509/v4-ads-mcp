@@ -28,21 +28,20 @@ _CHAVES_SECRETAS = {
     "password",
 }
 
-# Funcoes ainda pendentes da migracao pro header `Authorization`.
+# Residuo conhecido, por (funcao, chave) — nao por funcao inteira, senao
+# reintroduzir `access_token` numa funcao ja allowlistada passaria batido.
 #
-# Motivo de continuarem aqui (2026-08-15): a probe empirica so pode ser
-# concluida com um token VALIDO. Ja esta provado contra o Graph real que o
-# header e lido como fonte do token — `Authorization: Bearer <lixo>` devolve
-# code 190 "Cannot parse access token" enquanto a AUSENCIA do header devolve
-# code 2500 "An active access token must be used", ou seja, sao caminhos
-# distintos e o header foi consumido. Falta confirmar que um token valido
-# autentica igual, e `_fetch_all_adaccounts` roda no job diario de producao.
+# `input_token` do `/debug_token` FICA na query porque nao ha alternativa:
+# ele nao e credencial do chamador (e o objeto sendo inspecionado, logo nao
+# cabe no header `Authorization`) e o endpoint NAO aceita POST — verificado
+# contra o Graph real: HTTP 400, code 100, subcode 33 "Unsupported post
+# request" (scripts/probe_meta_auth_header.py, item G).
 #
-# Pra fechar: `gcloud auth login` e rodar o probe de scratchpad
-# (probe_meta_header.py) — ele imprime so status, nunca o segredo.
-_PENDENTES = {
-    "_fetch_all_adaccounts",  # token system-user; roda no resync diario
-    "meta_oauth_callback",  # /me (token pessoal) + /debug_token (app_id|app_secret)
+# O que saiu da URL na mesma migracao foi o `app_id|app_secret` desse mesmo
+# request — o segredo PERMANENTE. O `input_token` e um token de gestor, que
+# expira. Sobra risco, mas de outra ordem de grandeza.
+_RESIDUO_CONHECIDO = {
+    ("meta_oauth_callback", "input_token"),
 }
 
 
@@ -112,9 +111,9 @@ def _achados() -> list[tuple[str, int, str, str]]:
     return fora
 
 
-def test_nenhum_call_site_novo_poe_segredo_na_query() -> None:
-    """F82: allowlist so encolhe — call-site novo com segredo na URL quebra aqui."""
-    violacoes = [a for a in _achados() if a[2] not in _PENDENTES]
+def test_nenhum_segredo_novo_na_query_string() -> None:
+    """F82: allowlist so encolhe — segredo novo na URL quebra aqui."""
+    violacoes = [a for a in _achados() if (a[2], a[3]) not in _RESIDUO_CONHECIDO]
     assert not violacoes, (
         "segredo em `params=` (vai pra query string e pra qualquer log de URL). "
         "Use `Authorization` no header, ou `data=` num POST — como "
@@ -126,11 +125,11 @@ def test_nenhum_call_site_novo_poe_segredo_na_query() -> None:
 def test_a_allowlist_descreve_a_realidade() -> None:
     """Guard do guard: entrada obsoleta na allowlist esconde regressao futura.
 
-    Se um dos pendentes for migrado e a entrada ficar, o proximo call-site
-    dentro daquela funcao passa despercebido.
+    Se o residuo for eliminado um dia e a entrada ficar, um segredo novo com o
+    mesmo nome naquela funcao passaria despercebido.
     """
-    funcoes_com_segredo = {a[2] for a in _achados()}
-    obsoletas = _PENDENTES - funcoes_com_segredo
+    reais = {(a[2], a[3]) for a in _achados()}
+    obsoletas = _RESIDUO_CONHECIDO - reais
     assert not obsoletas, (
         f"na allowlist mas ja sem segredo em `params=`: {sorted(obsoletas)}. "
         "Remova a entrada — allowlist que nao encolhe vira ponto cego."

@@ -1,6 +1,6 @@
-# Sessão 2026-08-14/15 — Handoff (investigação ampla → 18 findings fechados)
+# Sessão 2026-08-14/15 — Handoff (investigação ampla → 19 findings fechados)
 
-> Pedido de uma frase: *"investigue bugs e gaps no projeto"*. Sem escopo prévio. Resultado: **19 findings novos catalogados (F82-F100)** e **18 fechados** em duas ondas — 11 na investigação e os 7 restantes no pedido seguinte (*"corrija todas as restantes"*). O F82 ficou aberto **só na causa raiz**, por escolha documentada.
+> Pedido de uma frase: *"investigue bugs e gaps no projeto"*. Sem escopo prévio. Resultado: **19 findings novos catalogados (F82-F100)** e **todos fechados** em duas ondas — 11 na investigação e os 8 restantes no pedido seguinte (*"corrija todas as restantes"*).
 >
 > Detalhe por finding está no [`findings-catalog.md`](findings-catalog.md) — cada entrada corrigida tem um bloco **✅ CORRIGIDO** com o que foi feito, o que foi deixado de fora e por quê. **Este handoff é o mapa, não a enciclopédia.**
 
@@ -8,7 +8,7 @@
 
 | Finding | O que estava errado | Estado |
 |---|---|---|
-| **F82** | Segredos do Meta (token system-user, `client_secret`) na URL → Cloud Logging | **vazamento fechado**; causa raiz parcial |
+| **F82** | Segredos do Meta (token system-user, `client_secret`) na URL → Cloud Logging | ✅ (1 resíduo) |
 | **F83** | Mutação aplicada virava erro e sumia do audit se o `finally` falhasse | ✅ |
 | **F84** | `status` e `is_active` divergiam; Bearer MCP sobrevivia a offboarding | ✅ |
 | **F85** | Resposta vazia do Google desativava as 25 contas do MCC | ✅ |
@@ -21,7 +21,7 @@
 | **F93** | Job reportava `success` sobre inventário parcial; crash sem audit | ✅ |
 | **F100** | Data fixa em teste venceu a janela de 90 dias e derrubou o CI | ✅ |
 
-## 2ª onda — os 7 restantes (mesmo dia, pedido "corrija todas")
+## 2ª onda — os 8 restantes (mesmo dia, pedido "corrija todas")
 
 | Finding | O que mudou | Estado |
 |---|---|---|
@@ -32,7 +32,7 @@
 | **F91** | 9 reads quentes por `run_with_reconnect`, sem arrastar a escrita junto | ✅ |
 | **F94** | Backup em snapshot único (`REPEATABLE READ`) e em stream pro GCS | ✅ |
 | **F99** | doc-drift do CLAUDE.md (fechado em `c3bc1cd`) | ✅ |
-| **F82** | probe resolveu a dúvida do header; migração segue pendente de token válido | **guard entregue** |
+| **F82** | probe com token válido liberou a migração pro header `Authorization` | ✅ (1 resíduo) |
 
 **O padrão que dominou esta onda: quase todo fix criava um risco novo, e o trabalho estava em enxergá-lo.**
 
@@ -41,7 +41,7 @@
 - **F94** — `blob.open("wb")` abre o upload **antes** do COPY, então uma falha no meio poderia deixar um `.gz` truncado no bucket, pior que arquivo ausente. **Verificado na fonte instalada** (google-cloud-storage 3.12.0): `__exit__` chama `terminate()` na exceção e cancela o upload resumable. E a transação única propaga falha — um `PostgresError` aborta o snapshot, então o resto é marcado de uma vez em vez de gerar N erros de "current transaction is aborted".
 - **F95** — a "mudança coordenada" que o finding pedia não era necessária (`extra="ignore"`), o que importa porque os **Cloud Run Jobs** foram criados à mão e seguem montando os 3 secrets.
 
-**Probe empírica de novo decidindo um finding, e desta vez sem gastar segredo.** O F82 estava travado na dúvida `OAuth` vs `Bearer`. Mandar um token **falso** resolveu: `Bearer` → code 190 *"Cannot parse access token"*, `OAuth` → 190 idêntico, **sem header** → code 2500 *"An active access token must be used"*. O erro diferente sem header prova que o token foi lido do header nos dois casos. Falta só confirmar com token válido (`gcloud auth login` + [`scripts/probe_meta_auth_header.py`](../../scripts/probe_meta_auth_header.py)) — e como `_fetch_all_adaccounts` roda no job diário de produção, a migração **não** foi shipada com validação parcial. Foi entregue um guard AST que impede call-site novo.
+**Probe empírica decidiu o F82 duas vezes — e a segunda inverteu o desenho.** Primeiro sem gastar segredo: um token **falso** mostrou que `Bearer` e `OAuth` devolvem code 190 *"Cannot parse access token"* enquanto a ausência do header devolve code 2500, provando que o header é lido. Depois, com token válido ([`scripts/probe_meta_auth_header.py`](../../scripts/probe_meta_auth_header.py)), veio o que nenhuma leitura de doc daria: autenticando por header, **o Graph não embute mais o token no `paging.next`**. Eu ia *reescrever* a URL de paginação pra arrancar o token; o requisito real era o oposto — **reenviar o header em cada página**, senão a 2ª volta 401. O `/debug_token` recusou POST (400, code 100 sub 33), então o `input_token` ficou na query como resíduo documentado — mas o `app_id|app_secret`, o segredo **permanente**, saiu.
 
 **Guard que quase nasceu furado, 3ª vez na sessão:** o do F82 só via dict literal inline e dava verde justamente em `_fetch_all_adaccounts`, que monta o dict numa **variável** por causa da paginação. Os guards do F95 e do F91 foram provados por sabotagem antes de contar como feitos.
 
@@ -92,7 +92,9 @@ O **F87** foi decidido testando as duas hipóteses contra a API real via `valida
 | `IN ('Promo \')` | **false** — o erro mostra a string engolindo o `')` |
 | `IN ('Promo \\')` | **true** |
 
-Pelo mesmo princípio, **duas coisas ficaram deliberadamente de fora**: a migração dos 3 call-sites do F82 para o header `Authorization` (formato é quirk do Meta, doc mostra `OAuth` e não `Bearer`) e o sort server-side do F88 (`sort=spend_descending` não validado). Ambas precisam de probe antes.
+Pelo mesmo princípio, **duas coisas ficaram fora da 1ª onda**: a migração dos 3 call-sites do F82 (formato do header é quirk do Meta, e a doc mostrava `OAuth`, não `Bearer`) e o sort server-side do F88 (`sort=spend_descending` não validado).
+
+O **F82 foi destravado na 2ª onda** por probe — e o resultado justificou a espera: a doc estava desatualizada (`Bearer` funciona), e o comportamento do `paging.next` mudou com o header de um jeito que **inverteu o desenho do fix**. Se eu tivesse shipado "por analogia" na 1ª onda, teria escrito código pra remover um token que o Graph já não manda. O **F88 segue pendente de probe** — é o único item da sessão nessa situação.
 
 ## Mecanismos novos que passaram a existir
 

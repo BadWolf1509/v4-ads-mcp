@@ -177,14 +177,16 @@ async def _fetch_all_adaccounts(http: httpx.AsyncClient, access_token: str) -> A
     """
     accounts: list[dict[str, Any]] = []
     url = f"{META_GRAPH_BASE}/me/adaccounts"
-    params: dict[str, Any] | None = {
-        "fields": _ADACCOUNT_FIELDS,
-        "limit": 200,
-        "access_token": access_token,
-    }
+    params: dict[str, Any] | None = {"fields": _ADACCOUNT_FIELDS, "limit": 200}
+    # F82 — o token vai no HEADER, não na query: o system-user token não expira
+    # e dá acesso às ~19 contas do BM, e no Modelo B a matriz de acesso (que vive
+    # na camada MCP) é o único freio — quem lê a URL num log contorna tudo.
+    # Verificado contra o Graph real antes de mudar: `Bearer` devolve exatamente
+    # os mesmos dados que `?access_token=`.
+    headers = {"Authorization": f"Bearer {access_token}"}
     complete = False
     for _ in range(50):  # 50 × 200 = 10k contas — muito além de qualquer BM real
-        resp = await http.get(url, params=params)
+        resp = await http.get(url, params=params, headers=headers)
         if resp.status_code != 200:
             log.warning(
                 "meta_adaccounts_page_failed",
@@ -199,7 +201,9 @@ async def _fetch_all_adaccounts(http: httpx.AsyncClient, access_token: str) -> A
         if not next_url:
             complete = True  # única saída limpa: a paginação acabou sozinha
             break
-        # paging.next já carrega cursor + fields + access_token na própria URL
+        # F82 — autenticando por header, o Graph devolve `next` SEM o token
+        # (verificado na probe). O cursor e os fields vêm na URL; o header
+        # precisa ir de novo em CADA página, senão a 2ª volta 401.
         url = next_url
         params = None
     else:
@@ -336,7 +340,9 @@ async def meta_oauth_callback(
         # Step 4: GET /me
         me_resp = await http.get(
             f"{META_GRAPH_BASE}/me",
-            params={"fields": "id,email,name", "access_token": access_token},
+            params={"fields": "id,email,name"},
+            # F82 — token do gestor no header, fora da URL.
+            headers={"Authorization": f"Bearer {access_token}"},
         )
         if me_resp.status_code != 200:
             return RedirectResponse(
@@ -355,12 +361,16 @@ async def meta_oauth_callback(
         # Step 5: GET /debug_token → check granted scopes
         # (Skip V4 domain check: fb_email é conta Facebook PESSOAL do gestor;
         #  authoritative auth é o manager_id no state HMAC.)
+        # F82 — o app access token (`app_id|app_secret`, o segredo PERMANENTE)
+        # sai da URL e vai pro header. O `input_token` FICA na query de
+        # propósito: ele não é credencial do chamador — é o objeto sendo
+        # inspecionado — e o endpoint não aceita POST (verificado: 400, code 100
+        # subcode 33 "Unsupported post request"). É o resíduo conhecido deste
+        # finding, e o único; o token do gestor expira, o app secret não.
         debug_resp = await http.get(
             f"{META_GRAPH_BASE}/debug_token",
-            params={
-                "input_token": access_token,
-                "access_token": f"{settings.meta_app_id}|{settings.meta_app_secret}",
-            },
+            params={"input_token": access_token},
+            headers={"Authorization": f"Bearer {settings.meta_app_id}|{settings.meta_app_secret}"},
         )
         granted_scopes: set[str] = set()
         if debug_resp.status_code == 200:

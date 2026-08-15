@@ -107,3 +107,76 @@ async def test_troca_long_lived_nao_poe_client_secret_na_url() -> None:
     body = request.content.decode()
     assert _FAKE_APP_SECRET in body, "o secret precisa seguir no corpo — so mudou de lugar"
     assert "grant_type=fb_exchange_token" in body
+
+
+# ---------------------------------------------------------------------------
+# Camada 3 (2026-08-15): o token sai da URL e vai pro header `Authorization`.
+#
+# Probe empirica contra o Graph real ANTES de escrever isto (scripts/
+# probe_meta_auth_header.py) — a licao F53/F54/F55 e nao mexer em superficie da
+# API Meta por analogia. O que ela estabeleceu:
+#
+#   (B) `Authorization: Bearer <token>` devolve EXATAMENTE os mesmos dados que
+#       `?access_token=` — migracao segura.
+#   (D) autenticando por header, o Graph NAO embute mais o token no
+#       `paging.next`. Otimo pro vazamento, mas vira requisito: o header tem
+#       que ir em TODA pagina, senao a 2a volta 401.
+#   (G) `/debug_token` NAO aceita POST (400, code 100 subcode 33), entao o
+#       `input_token` continua na query — ele nao e credencial do chamador e
+#       nao cabe no header. O que sai de la e o `app_id|app_secret`, que e o
+#       segredo permanente.
+# ---------------------------------------------------------------------------
+
+_FAKE_SU_TOKEN = "system-user-token-que-nao-expira"  # noqa: S105 — valor de teste
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_adaccounts_manda_o_token_no_header_e_nao_na_url() -> None:
+    """F82: o token system-user da acesso as ~19 contas do BM e NAO expira."""
+    from src.auth.meta_oauth import META_GRAPH_BASE, _fetch_all_adaccounts
+
+    rota = respx.get(f"{META_GRAPH_BASE}/me/adaccounts").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "act_1"}], "paging": {}})
+    )
+
+    async with httpx.AsyncClient() as http:
+        resultado = await _fetch_all_adaccounts(http, _FAKE_SU_TOKEN)
+
+    assert resultado.complete is True
+    pedido = rota.calls[0].request
+    assert pedido.headers.get("Authorization") == f"Bearer {_FAKE_SU_TOKEN}"
+    assert _FAKE_SU_TOKEN not in str(pedido.url), "o token continua na query string"
+    assert "access_token" not in str(pedido.url)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_header_acompanha_a_paginacao_ate_o_fim() -> None:
+    """F82 + (D): o `next` vem SEM token; sem o header a 2a pagina daria 401.
+
+    Este e o teste que o probe tornou obrigatorio — antes dele eu ia reescrever
+    a URL do `next` pra tirar o token, que e o oposto do que o Graph faz.
+    """
+    from src.auth.meta_oauth import META_GRAPH_BASE, _fetch_all_adaccounts
+
+    proxima = f"{META_GRAPH_BASE}/me/adaccounts?after=cursor2&fields=id"
+    respx.get(f"{META_GRAPH_BASE}/me/adaccounts").mock(
+        side_effect=[
+            httpx.Response(200, json={"data": [{"id": "act_1"}], "paging": {"next": proxima}}),
+            httpx.Response(200, json={"data": [{"id": "act_2"}], "paging": {}}),
+        ]
+    )
+
+    async with httpx.AsyncClient() as http:
+        resultado = await _fetch_all_adaccounts(http, _FAKE_SU_TOKEN)
+
+    assert [c["id"] for c in resultado.accounts] == ["act_1", "act_2"]
+    assert resultado.complete is True
+    assert len(respx.calls) == 2
+    for chamada in respx.calls:
+        assert chamada.request.headers.get("Authorization") == f"Bearer {_FAKE_SU_TOKEN}", (
+            "alguma pagina foi pedida sem o header — o `next` do Graph nao "
+            "carrega mais o token quando a autenticacao vem por header"
+        )
+        assert _FAKE_SU_TOKEN not in str(chamada.request.url)
