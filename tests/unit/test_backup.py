@@ -1,13 +1,19 @@
 """Testes de orquestração do job src/jobs/backup.py (run()).
 
 run() é o Cloud Run Job semanal: descobre tabelas via information_schema,
-faz dump csv.gz de cada uma (asyncpg COPY em memória) e sobe pro bucket GCS
+faz dump csv.gz de cada uma (asyncpg COPY em stream) e sobe pro bucket GCS
 (settings.backup_bucket). Mockamos TODAS as dependências externas (pool,
 storage.Client, record_job_run) e asseveramos: iteração das tabelas
-descobertas, blob names `<data>/<tbl>.csv.gz`, 1x upload_from_string por
+descobertas, blob names `<data>/<tbl>.csv.gz`, 1x `blob.open("wb")` por
 tabela, e o audit gravado com operation="db_backup". Nada bate no GCS real.
+
+As propriedades que o F94 trouxe (snapshot único + stream) vivem em
+test_backup_snapshot_and_stream.py.
 """
 
+from __future__ import annotations
+
+import io
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -54,14 +60,47 @@ def _base_patches(*, pool: MagicMock, storage_client: MagicMock, record_return: 
     }
 
 
+class _FakeWriter:
+    """Espelha o BlobWriter real: `terminate()` (descarta) na saida com excecao.
+
+    Verificado na fonte de google-cloud-storage 3.12.0. Importa aqui porque o
+    F94 trocou `upload_from_string` (a tabela inteira em memoria) por
+    `blob.open("wb")` em stream, e a diferenca visivel e justamente o que
+    sobra no bucket quando uma tabela falha no meio.
+    """
+
+    def __init__(self, blob: MagicMock) -> None:
+        self._blob = blob
+
+    def write(self, dados: bytes) -> int:
+        return self._blob.buffer.write(dados)  # type: ignore[no-any-return]
+
+    def flush(self) -> None:
+        pass
+
+    def __enter__(self) -> _FakeWriter:
+        return self
+
+    def __exit__(self, exc_type: object, *_exc: object) -> bool:
+        if exc_type is not None:
+            self._blob.buffer = io.BytesIO()  # upload cancelado
+            self._blob.terminado = True
+        return False
+
+
 def _fake_storage_client() -> tuple[MagicMock, dict[str, MagicMock]]:
-    """storage.Client() fake: bucket() retorna um bucket mock cujo blob() retorna um
-    blob mock por blob_name (dict compartilhado pra assert em upload_from_string)."""
+    """storage.Client() fake: bucket() retorna um bucket mock cujo blob() devolve um
+    blob por blob_name, com `open("wb")` em stream (F94) e o conteudo preservado."""
     blobs: dict[str, MagicMock] = {}
 
     def _blob(name: str) -> MagicMock:
-        b = blobs.setdefault(name, MagicMock())
-        return b
+        if name not in blobs:
+            b = MagicMock()
+            b.buffer = io.BytesIO()
+            b.terminado = False
+            b.open = MagicMock(side_effect=lambda mode, **kw: _FakeWriter(b))
+            blobs[name] = b
+        return blobs[name]
 
     bucket = MagicMock()
     bucket.blob = MagicMock(side_effect=_blob)
@@ -98,10 +137,11 @@ async def test_run_uploads_one_blob_per_table_and_records_audit() -> None:
         "2026-07-04/managers.csv.gz",
     }
     for b in blobs.values():
-        b.upload_from_string.assert_called_once()
-        args, kwargs = b.upload_from_string.call_args
+        b.open.assert_called_once()
+        args, kwargs = b.open.call_args
+        assert args[0] == "wb", "F94: o dump vai em stream, nao de uma vez"
         assert kwargs["content_type"] == "application/gzip"
-        assert isinstance(args[0], bytes)
+        assert b.buffer.getvalue(), "nada chegou ao blob"
 
     record.assert_awaited_once()
     kwargs = record.call_args.kwargs
@@ -172,11 +212,14 @@ async def test_run_continues_after_one_table_fails_and_returns_1() -> None:
     assert rc == 1
     # As 3 tabelas foram tentadas (não abortou no meio).
     assert call_count["n"] == 3
-    # Só as 2 boas viraram blob.
-    assert set(blobs.keys()) == {
+    # Só as 2 boas têm conteúdo; a que falhou teve o upload cancelado
+    # (F94 — `blob.open` abre o handle antes do COPY, mas o BlobWriter real
+    # chama terminate() na exceção, então nada de .gz truncado no bucket).
+    assert {n for n, b in blobs.items() if b.buffer.getvalue()} == {
         "2026-07-04/ok_table.csv.gz",
         "2026-07-04/another_ok_table.csv.gz",
     }
+    assert blobs["2026-07-04/broken_table.csv.gz"].terminado is True
     kwargs = record.call_args.kwargs
     assert kwargs["status"] == "error"
     assert kwargs["target_count"] == 2

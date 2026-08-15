@@ -22,7 +22,11 @@ gcloud storage ls "gs://v4-ads-mcp-backups/$(Get-Date -Format yyyy-MM-dd)/"
 
 ## Restore (manual — sem psql no Windows)
 
-O restore é **manual e deliberado** (não há automação — restore automático é perigoso). Passos:
+O restore é **manual e deliberado** (não há automação — restore automático é perigoso).
+
+> **Integridade referencial (desde 2026-08-15, F94):** todas as tabelas de uma pasta de data vêm do **mesmo snapshot** — o job usa uma conexão numa transação `REPEATABLE READ` pra descobrir e dumpar tudo. Antes, cada tabela era dumpada num momento diferente, então uma linha criada no meio do run gerava FK órfã (ex.: `mcp_sessions.manager_id` sem a linha correspondente em `managers.csv`, porque `managers` vem antes na ordem alfabética) e o restore quebrava no meio. **Se a pasta tiver menos arquivos que o esperado, não complete com outra data** — o `params_summary.failed_tables` do `audit_log` diz o que faltou, e misturar datas recria justamente o problema que o snapshot resolve.
+
+Passos:
 
 1. **Baixar** o snapshot do dia desejado:
    ```powershell
