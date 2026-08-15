@@ -20,7 +20,7 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 
 **Última atualização:** 2026-08-15. **64 MCP tools** (58 Google + 6 Meta), bucket **23 always + 41 defer** — contagem verificada, não estimada. Smoke autenticado F58 segue dormente. F76/F77 encerrados.
 
-**A sessão 2026-08-14/15 foi uma investigação ampla de bugs** (19 findings catalogados, **11 fechados**, 17 commits). O núcleo mudou de comportamento em pontos que valem saber de cara:
+**A sessão 2026-08-14/15 foi uma investigação ampla de bugs** (19 findings catalogados, **18 fechados** em duas ondas). O núcleo mudou de comportamento em pontos que valem saber de cara:
 
 - Bookkeeping em `finally` não derruba mais a operação (`best_effort`, F83); chamada do SDK Google roda **fora do event loop** (`run_blocking`, F86); escape GAQL usa barra invertida (`_gaql.py`, F87).
 - Gates de sessão usam `Manager.is_deactivated` (F84); pool caiu pra **5** conexões/instância (F92); jobs auditam crash e inventário parcial (F93).
@@ -32,7 +32,7 @@ Detalhe, lições e o que ficou aberto: [`session-2026-08-14-15-handoff.md`](doc
 **Frontend pós 2026-08-11** (o que mudou de premissa): **Tailwind não é mais CDN** — CSS gerado offline e commitado, com guard de diff no CI. **A CSP não tem nenhuma diretiva `unsafe-*`**: zero JS e zero CSS inline nas templates; comportamento em `v4-panel.js` via `data-v4-*`, estilo via classe. Assets com gzip + `Cache-Control` imutável versionado por `K_REVISION`. `domContentLoaded` do `/login`: **1128 ms → 261 ms**.
 
 **Sessões recentes** (detalhe canônico nos handoffs — leia só o da sessão relevante):
-- **2026-08-14/15** — investigação ampla de bugs sem escopo prévio: 19 findings catalogados (F82-F100), **11 fechados**, 17 commits. Núcleo, auth, jobs, Meta e pool tocados. [`session-2026-08-14-15-handoff.md`](docs/operacao/session-2026-08-14-15-handoff.md).
+- **2026-08-14/15** — investigação ampla de bugs sem escopo prévio: 19 findings catalogados (F82-F100), **18 fechados** em duas ondas (11 + os 7 restantes). Núcleo, auth, jobs, Meta, pool, painel e backup tocados. [`session-2026-08-14-15-handoff.md`](docs/operacao/session-2026-08-14-15-handoff.md).
 - **2026-08-11** — frontend medido no DOM de produção: Play CDN aposentado, CSP sem `unsafe-*`, a11y, +F78-F81. [`-08-11`](docs/operacao/session-2026-08-11-frontend-handoff.md).
 - **2026-07-22/23** — 500 e 503 intermitentes por conexão asyncpg stale → F76 (`run_with_reconnect`) + F77 (deep health resiliente) + `severity` no Cloud Logging. [`-07-22`](docs/operacao/session-2026-07-22-handoff.md) · [`-07-23`](docs/operacao/session-2026-07-23-handoff.md).
 - **2026-07-04** — 3 ondas de governança/dívida (F73 quota leak + cap por gestor; `_mutate_common`; lockfile; backup) e, na 2ª sessão, o pacote UI/UX do painel (F74/F75). [`-07-04`](docs/operacao/session-2026-07-04-handoff.md) · [`-07-04 UI`](docs/operacao/session-2026-07-04-ui-ux-handoff.md).
@@ -72,7 +72,7 @@ Detalhe, lições e o que ficou aberto: [`session-2026-08-14-15-handoff.md`](doc
 2. **Vai mexer no painel web?** [`session-2026-08-11-frontend-handoff.md`](docs/operacao/session-2026-08-11-frontend-handoff.md).
 3. **Antes de desenhar ou corrigir código**, faça busca **dirigida** em [`findings-catalog.md`](docs/operacao/findings-catalog.md) pela área/sintoma. O catálogo tem ~370 linhas e **99 IDs** — grep por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`), nunca leitura integral.
 
-> **Há 8 findings ABERTOS** (F82 parcial, F91, F94-F99). Antes de tocar em reads quentes, backup, revoke do painel, `get_recommendations` ou secrets, cheque se já existe finding na área — pode ser trabalho já diagnosticado.
+> **Resta 1 finding ABERTO: o F82, e só a causa raiz** — 3 call-sites Meta ainda mandam segredo na query string (`src/auth/meta_oauth.py`). O vazamento em si está fechado (loggers httpx/httpcore silenciados) e há guard AST impedindo call-site novo. **Pra fechar de vez:** `gcloud auth login` → `python scripts/probe_meta_auth_header.py` → migrar pro header conforme o resultado. Já provado que `Authorization: Bearer` é aceito pelo Graph; falta só confirmar com token válido.
 
 Carregue sob demanda:
 
@@ -219,6 +219,9 @@ Cinco mecanismos nasceram da investigação de 08-14/15. Cada um tem guard estru
 - **`gaql_string_literal` ([`queries/_gaql.py`](src/google_ads/queries/_gaql.py)) — todo texto livre em GAQL.** GAQL escapa com **barra invertida**, não com doubling de SQL (`''` é rejeitado — verificado contra a API real). A barra é escapada ANTES da aspa; inverter a ordem corrompe o resultado.
 - **`Manager.is_deactivated` — todo gate de sessão.** `status` e `is_active` divergem e nada as sincroniza; ler só uma deixava Bearer MCP vivo após offboarding (F84).
 - **`record_job_crash` + completude explícita nos jobs.** `record_job_run.status` é **obrigatório** (era o default `success` que mascarava falha). Inventário parcial NÃO alimenta deletion detection — nem no Meta (F93) nem no Google (F85).
+- **`run_with_reconnect` em TODO read pré-operação** — os 9 sites quentes (deps do painel, os 5 gates Google, OAuth do client, gate Meta) já estão cobertos (F91). O gate **não** é read puro: a negação escreve audit, e essa escrita fica fora do retry (separada de fato no Meta; via `best_effort` no Google).
+- **Backup = 1 snapshot.** `backup.py` roda descoberta + todos os COPYs numa conexão em `REPEATABLE READ`, em stream pro GCS (F94). Tabela por tabela em conexões distintas gera FK órfã e quebra o restore.
+- **Teto em read novo:** `limit` no schema + `LIMIT limit+1` no builder (a sentinela alimenta `truncated`), e **`ORDER BY` sempre que o tool ordenar depois** — cortar antes de ordenar é a classe F88 (F98).
 
 **Pool:** `connection.py` NÃO lê `Settings` — primitivo de infra não depende da config da app (isso derrubou a suíte de integração inteira uma vez). Quem serve tráfego (`app.py`) injeta `settings.db_pool_*`; job e script usam o default. O orçamento é **instâncias × pool ≤ teto do banco**, e há teste que verifica a conta.
 
@@ -284,7 +287,8 @@ Padrões pós-pacote de frontend 2026-08-11:
 ## Don't do
 
 - Don't fazer I/O de bookkeeping em `finally` sem `best_effort` — exceção ali descarta o `return` e transforma operação já aplicada em erro (F83). Don't chamar SDK Google fora de `run_blocking` (F86). Don't interpolar texto livre em GAQL sem `gaql_string_literal` (F87). Don't ler `Settings` dentro de primitivo de infra (pool/cliente/logger) — quem serve tráfego injeta (F92).
-- Don't confiar em guard que passou de primeira: verifique contra o código PRÉ-fix (sabotagem ou `git stash`). Aconteceu 2× nesta sessão — grep casando a própria docstring, e AST exigindo forma que o codebase não usa.
+- Don't confiar em guard que passou de primeira: verifique contra o código PRÉ-fix (sabotagem ou `git stash`). Aconteceu 3× nesta sessão — grep casando a própria docstring, AST exigindo forma que o codebase não usa, e AST vendo só dict literal quando o call-site monta o dict numa variável.
+- Don't envolver em `run_with_reconnect` um bloco que ESCREVE — o retry re-executa a escrita. Separe o read, ou proteja a escrita com `best_effort` (F91). Don't pôr `LIMIT` sem `ORDER BY` num tool que ordena depois (F98/F88). Don't pôr segredo em `params=` de GET (guard AST em `test_no_secrets_in_query_params.py`; use header ou `data=` no POST).
 - Don't assertar superfície de API externa por analogia. Teste que codifica a convenção errada é PIOR que teste ausente (aconteceu 3×: F87, F89, e os mocks do F84/F89 que nem conseguiam expressar o bug). Probe empírica primeiro — `validate_gaql` pro Google, `ads_get_field_context` pro Meta.
 - Don't push sem `python scripts/check_pre_push.py` antes. Full sweep MANDATORY ao mexer em pré-flight de mutate, queries com JOIN/cursor, ou migrations.
 - Don't confiar no exit code de `gh run watch` — confirme via `gh run view <id> --json conclusion`.

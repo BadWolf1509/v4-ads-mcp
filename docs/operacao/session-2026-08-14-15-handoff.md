@@ -1,6 +1,6 @@
-# Sessão 2026-08-14/15 — Handoff (investigação ampla → 11 findings fechados)
+# Sessão 2026-08-14/15 — Handoff (investigação ampla → 18 findings fechados)
 
-> Pedido de uma frase: *"investigue bugs e gaps no projeto"*. Sem escopo prévio. Resultado: **19 findings novos catalogados (F82-F100)** e **11 fechados** na mesma sessão, em 17 commits, todos com CI verde e verificação em produção.
+> Pedido de uma frase: *"investigue bugs e gaps no projeto"*. Sem escopo prévio. Resultado: **19 findings novos catalogados (F82-F100)** e **18 fechados** em duas ondas — 11 na investigação e os 7 restantes no pedido seguinte (*"corrija todas as restantes"*). O F82 ficou aberto **só na causa raiz**, por escolha documentada.
 >
 > Detalhe por finding está no [`findings-catalog.md`](findings-catalog.md) — cada entrada corrigida tem um bloco **✅ CORRIGIDO** com o que foi feito, o que foi deixado de fora e por quê. **Este handoff é o mapa, não a enciclopédia.**
 
@@ -21,7 +21,29 @@
 | **F93** | Job reportava `success` sobre inventário parcial; crash sem audit | ✅ |
 | **F100** | Data fixa em teste venceu a janela de 90 dias e derrubou o CI | ✅ |
 
-**Abertos (7):** F91 (reincidência F76 em reads quentes), F94 (backup em memória + snapshot não-atômico), F95 (secrets Supabase mortos), F96 (`303` cru no revoke), F97 (`sticky-head` sob o chrome), F98 (`get_recommendations` sem limit), F99 (doc-drift — **corrigido nesta atualização**). Mais o **F82 parcial**.
+## 2ª onda — os 7 restantes (mesmo dia, pedido "corrija todas")
+
+| Finding | O que mudou | Estado |
+|---|---|---|
+| **F98** | `limit` + `LIMIT limit+1` nos 3 reads sem teto; `budget_pacing` ganhou `ORDER BY` | ✅ |
+| **F96** | `revoke` responde `204`+`HX-Refresh`; template perdeu a compensação | ✅ |
+| **F97** | `sticky-head` com offset variável; barra de `/admin/audit` passou a ser medida | ✅ |
+| **F95** | 3 secrets Supabase removidos + guard cruzando `deploy.yml` × `Settings` | ✅ |
+| **F91** | 9 reads quentes por `run_with_reconnect`, sem arrastar a escrita junto | ✅ |
+| **F94** | Backup em snapshot único (`REPEATABLE READ`) e em stream pro GCS | ✅ |
+| **F99** | doc-drift do CLAUDE.md (fechado em `c3bc1cd`) | ✅ |
+| **F82** | probe resolveu a dúvida do header; migração segue pendente de token válido | **guard entregue** |
+
+**O padrão que dominou esta onda: quase todo fix criava um risco novo, e o trabalho estava em enxergá-lo.**
+
+- **F98** — pôr `LIMIT` no `budget_pacing`, que ordena por gasto **depois** de receber as linhas, entregaria N campanhas arbitrárias reordenadas entre si: um "top" que não é top, a classe **F88**. Precisou de `ORDER BY` na query, com teste assertando que ele vem **antes** do `LIMIT`.
+- **F91** — envolver o gate em retry re-executaria a **escrita** do audit de negação. Resolvido diferente nos dois lados pelo custo: no Meta o read e a escrita foram separados de fato; no Google, onde a mudança de assinatura custaria ~40 arquivos de teste, a escrita foi envolvida em `best_effort` pra que a exceção não chegue ao retry.
+- **F94** — `blob.open("wb")` abre o upload **antes** do COPY, então uma falha no meio poderia deixar um `.gz` truncado no bucket, pior que arquivo ausente. **Verificado na fonte instalada** (google-cloud-storage 3.12.0): `__exit__` chama `terminate()` na exceção e cancela o upload resumable. E a transação única propaga falha — um `PostgresError` aborta o snapshot, então o resto é marcado de uma vez em vez de gerar N erros de "current transaction is aborted".
+- **F95** — a "mudança coordenada" que o finding pedia não era necessária (`extra="ignore"`), o que importa porque os **Cloud Run Jobs** foram criados à mão e seguem montando os 3 secrets.
+
+**Probe empírica de novo decidindo um finding, e desta vez sem gastar segredo.** O F82 estava travado na dúvida `OAuth` vs `Bearer`. Mandar um token **falso** resolveu: `Bearer` → code 190 *"Cannot parse access token"*, `OAuth` → 190 idêntico, **sem header** → code 2500 *"An active access token must be used"*. O erro diferente sem header prova que o token foi lido do header nos dois casos. Falta só confirmar com token válido (`gcloud auth login` + [`scripts/probe_meta_auth_header.py`](../../scripts/probe_meta_auth_header.py)) — e como `_fetch_all_adaccounts` roda no job diário de produção, a migração **não** foi shipada com validação parcial. Foi entregue um guard AST que impede call-site novo.
+
+**Guard que quase nasceu furado, 3ª vez na sessão:** o do F82 só via dict literal inline e dava verde justamente em `_fetch_all_adaccounts`, que monta o dict numa **variável** por causa da paginação. Os guards do F95 e do F91 foram provados por sabotagem antes de contar como feitos.
 
 ## Como a investigação foi conduzida
 
