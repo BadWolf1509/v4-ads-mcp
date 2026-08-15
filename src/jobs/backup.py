@@ -22,7 +22,7 @@ from google.cloud import storage  # type: ignore[import-untyped]
 
 from src.config import get_settings
 from src.db import connection
-from src.jobs._audit import record_job_run
+from src.jobs._audit import record_job_crash, record_job_run
 
 log = structlog.get_logger(__name__)
 
@@ -119,6 +119,11 @@ async def run() -> int:
             f"OK: backup de {len(uploaded)} tabelas ({total_bytes} bytes) -> {settings.backup_bucket}/{date_prefix}/"
         )
         return 0
+    except Exception as e:
+        # F93: crash antes do record_job_run (ex.: _list_tables, storage.Client())
+        # deixaria o backup — artefato de compliance — sem linha nenhuma no audit.
+        await record_job_crash(operation="db_backup", platform="google", exc=e)
+        raise
     finally:
         await connection.close_pool()
 

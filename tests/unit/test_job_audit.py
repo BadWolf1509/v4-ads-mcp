@@ -16,6 +16,7 @@ async def test_record_job_run_writes_system_audit(monkeypatch: pytest.MonkeyPatc
         MagicMock(),
         operation="account_resync",
         platform="google",
+        status="success",  # F93: obrigatorio — era o default que mascarava falha
         target_count=25,
         params_summary={"deactivated": 1},
     )

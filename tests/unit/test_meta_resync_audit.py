@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from src.auth.meta_oauth import AdAccountsFetch
 from src.jobs import meta_resync
 
 
@@ -26,7 +27,11 @@ async def test_resync_meta_records_audit(monkeypatch: pytest.MonkeyPatch) -> Non
     settings.meta_system_user_token = "tok"
     monkeypatch.setattr(meta_resync, "get_settings", lambda: settings)
     monkeypatch.setattr(
-        meta_resync, "_fetch_all_adaccounts", AsyncMock(return_value=[{"id": "act_1", "name": "X"}])
+        meta_resync,
+        "_fetch_all_adaccounts",
+        AsyncMock(
+            return_value=AdAccountsFetch(accounts=[{"id": "act_1", "name": "X"}], complete=True)
+        ),
     )
     monkeypatch.setattr(meta_resync.meta_ad_accounts, "upsert_many", AsyncMock(return_value=1))
     monkeypatch.setattr(meta_resync.connection, "get_pool", lambda: _FakePool())
@@ -56,12 +61,15 @@ async def test_resync_meta_deactivates_churned_per_business(
         meta_resync,
         "_fetch_all_adaccounts",
         AsyncMock(
-            return_value=[
-                {"id": "act_1", "name": "A", "business": {"id": "bmX", "name": "BM X"}},
-                {"id": "act_2", "name": "B", "business": {"id": "bmX", "name": "BM X"}},
-                {"id": "act_3", "name": "C", "business": {"id": "bmY", "name": "BM Y"}},
-                {"id": "act_9", "name": "pessoal"},  # sem business → pulada
-            ]
+            return_value=AdAccountsFetch(
+                accounts=[
+                    {"id": "act_1", "name": "A", "business": {"id": "bmX", "name": "BM X"}},
+                    {"id": "act_2", "name": "B", "business": {"id": "bmX", "name": "BM X"}},
+                    {"id": "act_3", "name": "C", "business": {"id": "bmY", "name": "BM Y"}},
+                    {"id": "act_9", "name": "pessoal"},  # sem business → pulada
+                ],
+                complete=True,
+            )
         ),
     )
     monkeypatch.setattr(meta_resync.meta_ad_accounts, "upsert_many", AsyncMock(return_value=4))

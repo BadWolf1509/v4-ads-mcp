@@ -19,7 +19,7 @@ import hashlib
 import hmac
 import json
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, NamedTuple
 from urllib.parse import urlencode
 from uuid import UUID, uuid4
 
@@ -149,13 +149,31 @@ async def _exchange_for_long_lived_token(
     )
 
 
-async def _fetch_all_adaccounts(http: httpx.AsyncClient, access_token: str) -> list[dict[str, Any]]:
+class AdAccountsFetch(NamedTuple):
+    """Resultado da paginação de /me/adaccounts.
+
+    `complete=False` significa inventário **truncado** — uma página falhou ou o
+    cap de páginas estourou. Quem faz deletion detection PRECISA olhar esta flag
+    (F93): sobre lista truncada, "conta ausente" significa "página que não veio",
+    não churn — desativá-la derruba conta viva, que é o sintoma do F65 entrando
+    por outra porta. Pra cache de exibição, parcial é tolerável.
+    """
+
+    accounts: list[dict[str, Any]]
+    complete: bool
+
+
+async def _fetch_all_adaccounts(http: httpx.AsyncClient, access_token: str) -> AdAccountsFetch:
     """GET /me/adaccounts seguindo paging.next até esgotar.
 
     A Graph API pagina /me/adaccounts (default 25/página). Sem seguir paging.next
     o inventário trunca silenciosamente quando o system user passa de ~25 contas
     atribuídas (caso real do BM V4: 50+ ativos). limit=200 corta round-trips; o
     cap de páginas é só um backstop contra loop infinito.
+
+    Devolve `AdAccountsFetch` em vez de uma lista nua porque o chamador não tem
+    como distinguir "o BM tem 12 contas" de "a página 2 deu 500" olhando só o
+    tamanho da lista (F93).
     """
     accounts: list[dict[str, Any]] = []
     url = f"{META_GRAPH_BASE}/me/adaccounts"
@@ -164,6 +182,7 @@ async def _fetch_all_adaccounts(http: httpx.AsyncClient, access_token: str) -> l
         "limit": 200,
         "access_token": access_token,
     }
+    complete = False
     for _ in range(50):  # 50 × 200 = 10k contas — muito além de qualquer BM real
         resp = await http.get(url, params=params)
         if resp.status_code != 200:
@@ -171,17 +190,22 @@ async def _fetch_all_adaccounts(http: httpx.AsyncClient, access_token: str) -> l
                 "meta_adaccounts_page_failed",
                 status=resp.status_code,
                 body=resp.text[:200],
+                fetched_so_far=len(accounts),
             )
-            break
+            break  # complete segue False — inventário truncado
         body = resp.json()
         accounts.extend(body.get("data", []))
         next_url = (body.get("paging") or {}).get("next")
         if not next_url:
+            complete = True  # única saída limpa: a paginação acabou sozinha
             break
         # paging.next já carrega cursor + fields + access_token na própria URL
         url = next_url
         params = None
-    return accounts
+    else:
+        # Cap de 50 páginas estourado: também é truncamento, não fim de lista.
+        log.warning("meta_adaccounts_page_cap_reached", fetched=len(accounts))
+    return AdAccountsFetch(accounts=accounts, complete=complete)
 
 
 @router.get("/start")
@@ -362,8 +386,13 @@ async def meta_oauth_callback(
         encrypted = encrypt_refresh_token(access_token, master_key)
         token_expires_at = datetime.now(UTC) + timedelta(seconds=expires_in_seconds)
 
-        # Step 8: list ad accounts (paginado — segue paging.next)
-        ad_accounts_data = await _fetch_all_adaccounts(http, access_token)
+        # Step 8: list ad accounts (paginado — segue paging.next).
+        # Cache de exibição: inventário parcial é tolerável aqui (não há deletion
+        # detection neste caminho), mas fica registrado — ver F93.
+        fetched = await _fetch_all_adaccounts(http, access_token)
+        if not fetched.complete:
+            log.warning("meta_oauth_adaccounts_partial", fetched=len(fetched.accounts))
+        ad_accounts_data = fetched.accounts
 
     # Step 7+8 persist (outside http context)
     pool = connection.get_pool()
@@ -528,7 +557,12 @@ async def meta_oauth_refresh_accounts(
     pool = connection.get_pool()
 
     async with httpx.AsyncClient(timeout=30.0) as http:
-        ad_accounts_data = await _fetch_all_adaccounts(http, token)
+        fetched = await _fetch_all_adaccounts(http, token)
+    # Refresh manual do admin: parcial é tolerável (só atualiza o cache; a
+    # deteccao de churn mora no job de resync), mas nao pode passar batido (F93).
+    if not fetched.complete:
+        log.warning("meta_refresh_accounts_partial", fetched=len(fetched.accounts))
+    ad_accounts_data = fetched.accounts
 
     accounts_payload: list[dict[str, Any]] = []
     for a in ad_accounts_data:

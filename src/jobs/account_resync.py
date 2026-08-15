@@ -27,7 +27,7 @@ from src.google_ads.accounts import (
     list_accessible_customer_resource_names,
 )
 from src.google_ads.client import build_client
-from src.jobs._audit import record_job_run
+from src.jobs._audit import record_job_crash, record_job_run
 from src.jobs.purge import purge_expired
 
 log = structlog.get_logger(__name__)
@@ -114,6 +114,7 @@ async def run() -> int:
                 conn,
                 operation="account_resync",
                 platform="google",
+                status="success",
                 target_count=n,
                 params_summary={"deactivated": deactivated},
             )
@@ -144,6 +145,7 @@ async def run() -> int:
                     conn,
                     operation="db_purge",
                     platform="google",
+                    status="success",
                     target_count=total_purged,
                     params_summary=counts,
                 )
@@ -153,6 +155,11 @@ async def run() -> int:
             print(f"WARN: purge falhou (non-fatal): {e}", file=sys.stderr)
 
         return 0
+    except Exception as e:
+        # F93: crash inesperado (build_client, fetch_account_details, upsert_many)
+        # nao pode sumir da trilha — o rastro ficaria so no Cloud Run.
+        await record_job_crash(operation="account_resync", platform="google", exc=e)
+        raise
     finally:
         await connection.close_pool()
 

@@ -19,7 +19,7 @@ from src.auth.meta_oauth import _fetch_all_adaccounts
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import meta_ad_accounts
-from src.jobs._audit import record_job_run
+from src.jobs._audit import record_job_crash, record_job_run
 
 log = structlog.get_logger(__name__)
 
@@ -81,20 +81,38 @@ async def resync_meta() -> int:
         log.warning("meta_resync_no_token")
         return 0
     async with httpx.AsyncClient(timeout=60.0) as http:
-        data = await _fetch_all_adaccounts(http, token)
-    payload = _to_payload(data)
+        fetched = await _fetch_all_adaccounts(http, token)
+    payload = _to_payload(fetched.accounts)
     pool = connection.get_pool()
     async with pool.acquire() as conn:
+        # Upsert e ADITIVO — seguro mesmo com inventario parcial.
         n = await meta_ad_accounts.upsert_many(conn, payload)
-        deactivated = await _deactivate_churned(conn, payload)
+        # F93: deletion detection SO com inventario completo. Sobre lista
+        # truncada, "conta ausente" significa "pagina que nao veio", nao churn —
+        # desativaria conta viva (sintoma do F65 entrando por outra porta).
+        deactivated = 0
+        if fetched.complete:
+            deactivated = await _deactivate_churned(conn, payload)
+        else:
+            log.warning("meta_resync_partial_skipping_churn", fetched=len(fetched.accounts))
         await record_job_run(
             conn,
             operation="meta_resync",
             platform="meta",
             target_count=n,
-            params_summary={"deactivated": deactivated} if deactivated else None,
+            # F93: inventario truncado NAO e sucesso. Antes isto gravava
+            # "success" com target_count=0 quando a 1a pagina falhava, mascarando
+            # a falha por completo.
+            status="success" if fetched.complete else "error",
+            error_message=(
+                None
+                if fetched.complete
+                else "inventario Meta truncado (pagina falhou ou cap de paginacao) — "
+                "deteccao de churn pulada nesta execucao"
+            ),
+            params_summary={"deactivated": deactivated, "complete": fetched.complete},
         )
-    log.info("meta_resync_complete", upserted=n, deactivated=deactivated)
+    log.info("meta_resync_complete", upserted=n, deactivated=deactivated, complete=fetched.complete)
     return n
 
 
@@ -105,6 +123,11 @@ async def run() -> int:
         n = await resync_meta()
         print(f"OK: upserted {n} Meta ad accounts")
         return 0
+    except Exception as e:
+        # F93: sem isto, um crash aqui nao deixa NENHUMA linha no audit — o job
+        # some da trilha e a quebra so aparece em quem for ler o Cloud Run.
+        await record_job_crash(operation="meta_resync", platform="meta", exc=e)
+        raise
     finally:
         await connection.close_pool()
 
