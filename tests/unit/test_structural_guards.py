@@ -94,6 +94,71 @@ def test_cursor_usage_is_wrapped_in_transaction() -> None:
     )
 
 
+def _funcoes_que_pegam_conexao_propria() -> set[str]:
+    """Nomes de funções em src/ que abrem conexão por conta própria."""
+    nomes: set[str] = set()
+    for p in _py_files():
+        try:
+            tree = ast.parse(p.read_text(encoding="utf-8"))
+        except SyntaxError:  # pragma: no cover
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef):
+                continue
+            # O idioma no codebase é `pool = get_pool()` + `pool.acquire()`, então
+            # o `.acquire` NÃO pende de `get_pool()` no AST — casar os dois na
+            # mesma função é o que identifica quem abre conexão sozinha.
+            if _calls(node, "get_pool") and _calls(node, "acquire"):
+                nomes.add(node.name)
+    return nomes
+
+
+def test_nao_chama_helper_que_pega_conexao_dentro_de_acquire() -> None:
+    """F92: chamar helper auto-adquirente DENTRO de um acquire é deadlock latente.
+
+    O chamador segura uma conexão e espera por outra. Com o pool esgotado, quem
+    espera nunca é servido — e `pool.acquire()` do asyncpg **não tem timeout por
+    default**, então a espera é para sempre, não um erro.
+
+    Era o caso de 4 rotas admin que chamavam `pending_invites_count()` dentro do
+    `async with pool.acquire()`, enquanto as outras 7 chamavam fora — a
+    inconsistência mostrava que não era intencional.
+    """
+    auto_adquirentes = _funcoes_que_pegam_conexao_propria()
+    offenders = []
+    for p in _py_files():
+        try:
+            tree = ast.parse(p.read_text(encoding="utf-8"))
+        except SyntaxError:  # pragma: no cover
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.AsyncWith):
+                continue
+            # É um `async with ...acquire()...`?
+            if not any(_calls(item.context_expr, "acquire") for item in node.items):
+                continue
+            for corpo in node.body:
+                for sub in ast.walk(corpo):
+                    if not isinstance(sub, ast.Call):
+                        continue
+                    alvo = sub.func
+                    nome = (
+                        alvo.id
+                        if isinstance(alvo, ast.Name)
+                        else alvo.attr
+                        if isinstance(alvo, ast.Attribute)
+                        else None
+                    )
+                    if nome and nome in auto_adquirentes:
+                        offenders.append(f"{p.relative_to(SRC)}:{sub.lineno} ({nome})")
+    assert not offenders, (
+        f"F92 — helper que abre a própria conexão chamado DENTRO de um acquire: {offenders}. "
+        "Segurar uma conexão e esperar por outra trava para sempre com o pool cheio "
+        "(asyncpg não tem timeout de acquire por default). Mova a chamada pra fora do "
+        "`async with`."
+    )
+
+
 def test_gaql_nao_usa_doubling_de_aspas() -> None:
     """F87: GAQL escapa string literal com BARRA INVERTIDA, não com doubling de SQL.
 

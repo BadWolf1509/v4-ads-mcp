@@ -23,6 +23,14 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str
+    # F92 — o orçamento de conexões é instâncias × pool, e ele TEM que caber no
+    # teto do banco. Com `--max-instances=10` no deploy e tier pequeno do
+    # Supabase (60 conexões), o antigo default de 10 permitia 100 e estourava;
+    # 5 deixa 50 pro serviço e ~10 de folga pros Cloud Run Jobs, que abrem pools
+    # próprios. Ajustável por env var (DB_POOL_MAX_SIZE) — se subir o tier ou
+    # mexer em max-instances, refaça a conta (há um teste que a verifica).
+    db_pool_min_size: int = 1
+    db_pool_max_size: int = 5
 
     # Crypto
     session_signing_key: str = Field(min_length=32)

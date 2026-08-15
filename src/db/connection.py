@@ -23,8 +23,25 @@ _DROPPED_CONNECTION_ERRORS: tuple[type[BaseException], ...] = (
 )
 
 
-async def init_pool(database_url: str, min_size: int = 1, max_size: int = 10) -> asyncpg.Pool:
-    """Create the global pool. Call once at app startup."""
+async def init_pool(
+    database_url: str, min_size: int | None = None, max_size: int | None = None
+) -> asyncpg.Pool:
+    """Create the global pool. Call once at app startup.
+
+    F92 — o tamanho vem de Settings (`DB_POOL_MIN_SIZE`/`DB_POOL_MAX_SIZE`), não
+    de um literal enterrado aqui. O orçamento é **instâncias × pool** e precisa
+    caber no teto do banco: com `--max-instances=10` e o antigo default de 10, o
+    serviço podia abrir 100 conexões contra as 60 de um tier pequeno do Supabase
+    — e `too many connections` derruba o deep health e as tools em cascata.
+    `min_size`/`max_size` explícitos ainda vencem, pra job ou script que queira
+    um pool minúsculo.
+    """
+    from src.config import get_settings
+
+    settings = get_settings()
+    min_size = settings.db_pool_min_size if min_size is None else min_size
+    max_size = settings.db_pool_max_size if max_size is None else max_size
+
     global _pool
     if _pool is not None:
         return _pool

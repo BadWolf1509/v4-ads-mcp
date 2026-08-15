@@ -1151,7 +1151,9 @@ async def admin_access_meta_by_manager(
                GROUP BY m.id ORDER BY m.email"""
         )
         total_accounts = await conn.fetchval("SELECT count(*) FROM meta_ad_accounts") or 0
-        pending = await pending_invites_count()
+    # F92: FORA do `async with` — este helper abre a propria conexao, e
+    # segurar uma e esperar por outra trava pra sempre com o pool cheio.
+    pending = await pending_invites_count()
     return templates.TemplateResponse(
         request,
         "admin/access_by_manager_meta.html",
@@ -1188,7 +1190,9 @@ async def admin_access_meta_manager_detail(
             parsed_manager_id,
         )
         access_set = {r["ad_account_id"] for r in access_rows}
-        pending = await pending_invites_count()
+    # F92: FORA do `async with` — este helper abre a propria conexao, e
+    # segurar uma e esperar por outra trava pra sempre com o pool cheio.
+    pending = await pending_invites_count()
     return templates.TemplateResponse(
         request,
         "admin/access_manager_detail_meta.html",
@@ -1274,7 +1278,9 @@ async def admin_access_by_manager(
                GROUP BY m.id ORDER BY m.email"""
         )
         total_accounts = await conn.fetchval("SELECT count(*) FROM google_ads_accounts") or 0
-        pending = await pending_invites_count()
+    # F92: FORA do `async with` — este helper abre a propria conexao, e
+    # segurar uma e esperar por outra trava pra sempre com o pool cheio.
+    pending = await pending_invites_count()
     return templates.TemplateResponse(
         request,
         "admin/access_by_manager.html",
@@ -1311,7 +1317,9 @@ async def admin_access_manager_detail(
             parsed_manager_id,
         )
         access_set = {r["customer_id"] for r in access_rows}
-        pending = await pending_invites_count()
+    # F92: FORA do `async with` — este helper abre a propria conexao, e
+    # segurar uma e esperar por outra trava pra sempre com o pool cheio.
+    pending = await pending_invites_count()
     return templates.TemplateResponse(
         request,
         "admin/access_manager_detail.html",
