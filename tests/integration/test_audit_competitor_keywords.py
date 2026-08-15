@@ -29,6 +29,9 @@ async def test_returns_full_shape_with_matched_brands(bound_context):
             "keyword_id": "K1",
             "keyword_text": "comprar projecta",
             "match_type": "BROAD",
+            # F90: o parser agora le o status do ad_group PAI — keyword
+            # ENABLED em ad_group REMOVED nao compete e nao gasta.
+            "ad_group_status": "ENABLED",
         },
     ]
     fake_st_rows = [

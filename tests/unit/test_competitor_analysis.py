@@ -16,6 +16,9 @@ def _make_kw(
     keyword_id: str = "1",
     keyword_text: str = "kw",
     match_type: str = "BROAD",
+    # F90: default ENABLED preserva a semantica dos testes existentes (todos
+    # assumiam keyword que compete); quem quiser o caso orfao passa explicito.
+    ad_group_status: str = "ENABLED",
 ) -> KeywordRow:
     return KeywordRow(
         ad_group_id=ad_group_id,
@@ -24,6 +27,7 @@ def _make_kw(
         keyword_id=keyword_id,
         keyword_text=keyword_text,
         match_type=match_type,
+        ad_group_status=ad_group_status,
     )
 
 

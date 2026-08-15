@@ -62,19 +62,28 @@ _SCHEMA: dict[str, Any] = {
 }
 
 
+# Extraída do decorator pra virar constante testável (os irmãos de família já
+# seguem esse padrão) — o aviso do F90/F52 precisa ser verificável por teste.
+_DESCRIPTION = (
+    "[CORE] Detecta gasto em concorrência: keywords positivas ENABLED com text "
+    "matching competitor brands + search terms entregues no date window que "
+    "matched brand competidora. Output: 2 listas + summary (total cost wasted "
+    "real) + suggested_negatives (EXACT + PHRASE per matched brand). Filtros: "
+    "competitor_brands[] required (3-50 chars cada, 1-20 brands), date_range "
+    "preset OR start_date+end_date custom (default LAST_7_DAYS), limit (default "
+    "200, max 1000). Match: substring case-insensitive em keyword text + search "
+    "term. Sempre auditado. Nota: cost data Google pode lagar entre queries — "
+    "re-query se decisão crítica. "
+    "ATENÇÃO (F90/F52): cada positive_keyword traz `ad_group_status`. Keyword "
+    "ENABLED dentro de ad_group PAUSED/REMOVED NÃO compete em leilão e não gasta "
+    "— filtre `ad_group_status='ENABLED'` antes de agir ou de reportar gasto em "
+    "concorrência pro cliente, senão a narrativa infla com item inerte."
+)
+
+
 @register_tool(
     name="audit_competitor_keywords",
-    description=(
-        "[CORE] Detecta gasto em concorrência: keywords positivas ENABLED com text "
-        "matching competitor brands + search terms entregues no date window que "
-        "matched brand competidora. Output: 2 listas + summary (total cost wasted "
-        "real) + suggested_negatives (EXACT + PHRASE per matched brand). Filtros: "
-        "competitor_brands[] required (3-50 chars cada, 1-20 brands), date_range "
-        "preset OR start_date+end_date custom (default LAST_7_DAYS), limit (default "
-        "200, max 1000). Match: substring case-insensitive em keyword text + search "
-        "term. Sempre auditado. Nota: cost data Google pode lagar entre queries — "
-        "re-query se decisão crítica."
-    ),
+    description=_DESCRIPTION,
     input_schema=_SCHEMA,
     bucket="always",
 )
@@ -166,6 +175,7 @@ async def audit_competitor_keywords(args: dict[str, Any]) -> dict[str, Any]:
                 "match_type": k.match_type,
                 "matched_brand": k.matched_brand,
                 "status": k.status,
+                "ad_group_status": k.ad_group_status,
             }
             for k in matched_kw
         ],

@@ -20,6 +20,9 @@ class KeywordRow:
     keyword_id: str
     keyword_text: str
     match_type: str  # "EXACT" | "PHRASE" | "BROAD"
+    # F90 (classe F52): status do AD GROUP pai. Keyword ENABLED em ad_group
+    # REMOVED nao compete em leilao — o consumidor precisa distinguir.
+    ad_group_status: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,7 +48,8 @@ class MatchedKeyword:
     keyword_text: str
     match_type: str
     matched_brand: str
-    status: str  # always "ENABLED" em V0
+    status: str  # da keyword: sempre "ENABLED" (a query filtra por isso)
+    ad_group_status: str  # F90: do PAI — "ENABLED"|"PAUSED"|"REMOVED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +136,7 @@ def match_competitor_brands(
                     match_type=row.match_type,
                     matched_brand=brand,
                     status="ENABLED",
+                    ad_group_status=row.ad_group_status,
                 )
             )
 

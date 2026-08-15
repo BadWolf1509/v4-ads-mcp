@@ -16,7 +16,10 @@ def build_positive_keywords_query() -> str:
     """
     return (
         "SELECT "
-        "ad_group.id, ad_group.name, campaign.name, "
+        # F90 (classe F52): ad_group.status revela a keyword ENABLED dentro de
+        # ad_group REMOVED — ela nao compete em leilao, entao entrava no
+        # "gasto em concorrencia" como item inerte, inflando a narrativa.
+        "ad_group.id, ad_group.name, ad_group.status, campaign.name, "
         "ad_group_criterion.criterion_id, "
         "ad_group_criterion.keyword.text, "
         "ad_group_criterion.keyword.match_type "
@@ -52,6 +55,8 @@ def parse_positive_keyword_row(row: Any) -> dict[str, Any]:
         "keyword_id": str(row.ad_group_criterion.criterion_id),
         "keyword_text": row.ad_group_criterion.keyword.text,
         "match_type": match_type_str,
+        # `.name` do enum, nao str(enum) — proto-plus repr (licao UX-2).
+        "ad_group_status": row.ad_group.status.name,
     }
 
 
@@ -76,6 +81,7 @@ def dict_to_keyword_row(d: dict[str, Any]) -> KeywordRow:
         keyword_id=d["keyword_id"],
         keyword_text=d["keyword_text"],
         match_type=d["match_type"],
+        ad_group_status=d["ad_group_status"],
     )
 
 
