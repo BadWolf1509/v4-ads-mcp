@@ -14,6 +14,8 @@ get_negative_keywords_audit (via negative_criterion_creations_query), detect_dri
 
 from datetime import date, timedelta
 
+from src.google_ads.queries._gaql import gaql_escape, gaql_in_list
+
 
 class RangeTooWideError(ValueError):
     """Raised when the requested date_range exceeds the 30-day API limit."""
@@ -45,14 +47,17 @@ def _format_change_date_between(start: date, end: date) -> str:
 
 
 def _quote_literal(s: str) -> str:
-    """Escape single quotes for GAQL string literal (double them per spec)."""
-    return s.replace("'", "''")
+    """Escape do conteúdo de um string literal GAQL (F87 — barra invertida, não doubling)."""
+    return gaql_escape(s)
 
 
 def _format_in_clause(values: list[str]) -> str:
-    """Format ('val1', 'val2', ...) for a GAQL IN clause."""
-    escaped = [f"'{_quote_literal(v)}'" for v in values]
-    return f"({', '.join(escaped)})"
+    """Format ('val1', 'val2', ...) for a GAQL IN clause.
+
+    F87: `user_emails` chega aqui como texto livre — o `format: "email"` do schema
+    NÃO é enforced, porque `jsonschema.validate` roda sem `format_checker`.
+    """
+    return gaql_in_list(values)
 
 
 def change_history_query(

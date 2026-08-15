@@ -71,8 +71,11 @@ def test_user_emails_filter_escapes_single_quote():
         client_types=None,
         limit=200,
     )
-    # Single quote inside email must be doubled per GAQL string literal rules
-    assert "change_event.user_email IN ('fulano@v4company.com', 'ana.o''brien@v4company.com')" in q
+    # F87 — CONTRATO INVERTIDO DE PROPÓSITO. Este teste afirmava que a aspa devia
+    # ser DOBRADA ("per GAQL string literal rules"), fixando o bug: GAQL escapa com
+    # barra invertida. Verificado contra a API real via validate_gaql —
+    # `IN ('O''Brien')` retorna "invalid value 'Brien'"; `IN ('O\'Brien')` valida.
+    assert r"change_event.user_email IN ('fulano@v4company.com', 'ana.o\'brien@v4company.com')" in q
 
 
 def test_client_types_filter():

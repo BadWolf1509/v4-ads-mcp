@@ -176,5 +176,7 @@ async def test_validate_geo_targets_single_quote_escape(monkeypatch) -> None:
     # critical assertion is GAQL was correctly escaped to prevent injection.
     assert result is not None
     assert len(captured_query) == 1
-    # Doubled-quote escape pattern: O''Reilly inside literal
-    assert "'geoTargetConstants/O''Reilly'" in captured_query[0]
+    # F87 — CONTRATO INVERTIDO DE PROPÓSITO: o escape correto do GAQL é barra
+    # invertida, não doubling de SQL (verificado contra a API real via
+    # validate_gaql). Este assert fixava o bug.
+    assert r"'geoTargetConstants/O\'Reilly'" in captured_query[0]

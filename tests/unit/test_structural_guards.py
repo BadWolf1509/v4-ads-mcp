@@ -94,6 +94,47 @@ def test_cursor_usage_is_wrapped_in_transaction() -> None:
     )
 
 
+def test_gaql_nao_usa_doubling_de_aspas() -> None:
+    """F87: GAQL escapa string literal com BARRA INVERTIDA, não com doubling de SQL.
+
+    Verificado empiricamente contra a API real: `IN ('O''Brien')` retorna
+    `invalid value 'Brien'`, enquanto `IN ('O\\'Brien')` valida. O padrão `''`
+    veio de reflexo de SQL e quebrava nomes legítimos (`Lead - D'Or`).
+
+    O guard é AST, não grep de texto. A primeira versão casava a linha crua e o
+    ÚNICO infrator que ela achou foi a docstring de `_gaql.py`, que cita o padrão
+    antigo justamente pra explicar por que ele é errado — a armadilha registrada
+    na nota de método de 2026-08-11: a prosa que descreve a regra dispara o guard
+    que a aplica. Casando a CHAMADA no AST, comentário e docstring ficam
+    invisíveis por construção.
+    """
+    offenders = []
+    for p in _py_files():
+        try:
+            tree = ast.parse(p.read_text(encoding="utf-8"))
+        except SyntaxError:  # pragma: no cover — src sempre parseia
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or len(node.args) != 2:
+                continue
+            func = node.func
+            if not (isinstance(func, ast.Attribute) and func.attr == "replace"):
+                continue
+            a, b = node.args
+            if (
+                isinstance(a, ast.Constant)
+                and isinstance(b, ast.Constant)
+                and a.value == "'"
+                and b.value == "''"
+            ):
+                offenders.append(f"{p.relative_to(SRC)}:{node.lineno}")
+    assert not offenders, (
+        f"F87 — doubling de aspas ('') pra escapar GAQL: {offenders}. "
+        "GAQL não é SQL nisso: use gaql_string_literal/gaql_escape de "
+        "src/google_ads/queries/_gaql.py (barra invertida, e a barra vem primeiro)."
+    )
+
+
 def test_finally_bookkeeping_is_best_effort() -> None:
     """F83: I/O de bookkeeping (audit/quota) dentro de `finally` precisa estar sob
     best_effort.

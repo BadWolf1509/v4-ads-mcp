@@ -8,6 +8,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+from src.google_ads.queries._gaql import gaql_string_literal
 from src.google_ads.reports import run_report
 
 
@@ -552,9 +553,10 @@ async def validate_conversion_action_create(
         return None
 
     names = [a["name"] for a in actions]
-    # Single-quote-escape per GAQL string literal syntax (doubled-quote pattern,
-    # same as SQL). Names may contain "'" → must be escaped to avoid injection.
-    quoted = ", ".join("'" + n.replace("'", "''") + "'" for n in names)
+    # F87: nome de ConversionAction é texto livre (≤100 chars) e GAQL escapa com
+    # BARRA INVERTIDA, não com doubling de SQL — `Lead - D'Or` virava duas strings
+    # coladas e o pré-flight falhava com erro opaco do Google num nome válido.
+    quoted = ", ".join(gaql_string_literal(n) for n in names)
     query = (
         f"SELECT conversion_action.name FROM conversion_action "
         f"WHERE conversion_action.name IN ({quoted})"
@@ -656,8 +658,10 @@ async def validate_geo_target_constants_br_only(
     if not geo_paths:
         return None
 
-    # Single-quote-escape per GAQL string literal syntax (mirror 3b.19A helper)
-    quoted = ", ".join("'" + p.replace("'", "''") + "'" for p in geo_paths)
+    # F87: os schemas que alimentam isto validam `^geoTargetConstants/[0-9]+$`,
+    # então na prática nunca chega caractere especial — mas o escape aqui estava
+    # errado do mesmo jeito, e um schema novo mais frouxo herdaria a falha.
+    quoted = ", ".join(gaql_string_literal(p) for p in geo_paths)
     query = (
         f"SELECT geo_target_constant.resource_name, "
         f"geo_target_constant.country_code, geo_target_constant.name "
