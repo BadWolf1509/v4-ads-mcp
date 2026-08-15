@@ -5,6 +5,9 @@ from datetime import datetime
 from typing import Any
 
 import asyncpg
+import structlog
+
+log = structlog.get_logger(__name__)
 
 
 @dataclass(slots=True, frozen=True)
@@ -77,10 +80,26 @@ async def mark_inactive_except(
     *,
     mcc_id: str,
     keep_customer_ids: list[str],
+    allow_full_deactivation: bool = False,
 ) -> int:
-    """Mark accounts under mcc_id as inactive if not in keep list (deletion detection)."""
+    """Mark accounts under mcc_id as inactive if not in keep list (deletion detection).
+
+    F85 — keep-list vazia é NO-OP por default. `fetch_account_details` pode
+    devolver `[]` sem levantar exceção (search com 0 linhas, mudança de semântica
+    do `customer_client`, hiccup de permissão), e antes esse caso caía num branch
+    que desativava TODO o inventário: as 25 contas do MCC sumiam do painel, de
+    `list_my_accounts` e de `grant_all_active` até o resync seguinte, 24h depois.
+    Lista vazia quase sempre significa falha de leitura, não "o MCC ficou vazio".
+
+    O lado Meta já era fail-safe (F65): payload vazio não desativa nada. Esta é a
+    mesma escolha, agora explícita — e a desativação em massa continua possível
+    via `allow_full_deactivation=True`, que exige o caller assumir a intenção.
+    """
+    if not keep_customer_ids and not allow_full_deactivation:
+        log.warning("mark_inactive_except_empty_keep_list_ignored", mcc_id=mcc_id)
+        return 0
     if not keep_customer_ids:
-        # All accounts for this MCC become inactive (no resync data).
+        # Opt-in explícito: desativa tudo sob o MCC.
         result = await conn.execute(
             "UPDATE google_ads_accounts SET is_active = false WHERE mcc_id = $1 AND is_active = true",
             mcc_id,

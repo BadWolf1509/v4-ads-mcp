@@ -217,6 +217,39 @@ async def test_accounts_mark_inactive_except(db) -> None:
         assert ids == {"111", "333"}
 
 
+@pytest.mark.integration
+async def test_accounts_mark_inactive_except_keep_list_vazia_e_no_op(db) -> None:
+    """F85: contra banco de verdade, keep-list vazia não pode tocar linha alguma.
+
+    O unit test prova que o UPDATE não é emitido; este prova o efeito — as contas
+    continuam ativas. Era o caso em que `fetch_account_details` devolvia `[]` sem
+    exceção e o MCC inteiro sumia do painel por 24h.
+    """
+    async with db.acquire() as conn:
+        await google_ads_accounts.upsert_many(
+            conn,
+            [
+                {"customer_id": "901", "mcc_id": "MCC_F85", "descriptive_name": "A"},
+                {"customer_id": "902", "mcc_id": "MCC_F85", "descriptive_name": "B"},
+            ],
+        )
+
+        deactivated = await google_ads_accounts.mark_inactive_except(
+            conn, mcc_id="MCC_F85", keep_customer_ids=[]
+        )
+        assert deactivated == 0
+        ativos = {a.customer_id for a in await google_ads_accounts.list_all(conn)}
+        assert {"901", "902"} <= ativos, "keep-list vazia desativou conta viva"
+
+        # A capacidade não sumiu — só deixou de ser o default silencioso.
+        deactivated = await google_ads_accounts.mark_inactive_except(
+            conn, mcc_id="MCC_F85", keep_customer_ids=[], allow_full_deactivation=True
+        )
+        assert deactivated == 2
+        ativos = {a.customer_id for a in await google_ads_accounts.list_all(conn)}
+        assert not ({"901", "902"} & ativos)
+
+
 # ---------- manager_account_access ----------
 
 

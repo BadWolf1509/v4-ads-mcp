@@ -102,21 +102,37 @@ async def run() -> int:
             customer_ids=[],  # empty → all
         )
 
+        # F85: `[]` sem exceção é anomalia de leitura, não "o MCC ficou vazio".
+        # Agir nisso desativaria o inventário inteiro (25 contas) por 24h. Espelha
+        # a decisão do lado Meta (F65/F93): inventário suspeito não alimenta
+        # deletion detection, e o run é auditado como erro pra não passar batido.
+        inventario_ok = bool(accounts)
+        if not inventario_ok:
+            log.error("resync_empty_account_list", mcc_id=settings.google_ads_login_customer_id)
+
         async with pool.acquire() as conn:
             n = await google_ads_accounts.upsert_many(conn, accounts)
-            keep_ids = [a["customer_id"] for a in accounts]
-            deactivated = await google_ads_accounts.mark_inactive_except(
-                conn,
-                mcc_id=settings.google_ads_login_customer_id,
-                keep_customer_ids=keep_ids,
-            )
+            deactivated = 0
+            if inventario_ok:
+                keep_ids = [a["customer_id"] for a in accounts]
+                deactivated = await google_ads_accounts.mark_inactive_except(
+                    conn,
+                    mcc_id=settings.google_ads_login_customer_id,
+                    keep_customer_ids=keep_ids,
+                )
             await record_job_run(
                 conn,
                 operation="account_resync",
                 platform="google",
-                status="success",
+                status="success" if inventario_ok else "error",
+                error_message=(
+                    None
+                    if inventario_ok
+                    else "fetch_account_details devolveu lista vazia — deteccao de "
+                    "churn pulada pra nao desativar o MCC inteiro"
+                ),
                 target_count=n,
-                params_summary={"deactivated": deactivated},
+                params_summary={"deactivated": deactivated, "inventory_ok": inventario_ok},
             )
 
         log.info("resync_complete", upserted=n, deactivated=deactivated)

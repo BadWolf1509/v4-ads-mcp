@@ -189,7 +189,10 @@ async def test_run_records_job_run_with_operation_and_deactivated_count() -> Non
     assert kwargs["operation"] == "account_resync"
     assert kwargs["platform"] == "google"
     assert kwargs["target_count"] == 2
-    assert kwargs["params_summary"] == {"deactivated": 5}
+    # F85: `inventory_ok` entrou no summary — distingue "0 desativadas porque nada
+    # sumiu" de "0 desativadas porque o inventário veio vazio e pulamos a detecção".
+    assert kwargs["params_summary"] == {"deactivated": 5, "inventory_ok": True}
+    assert kwargs["status"] == "success"
 
 
 @pytest.mark.asyncio
