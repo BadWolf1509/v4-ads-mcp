@@ -1,13 +1,12 @@
 """Helpers compartilhados pelas tools Meta MCP (Sprint M.2a Task 9 onwards)."""
 
 # Labels vivem em src.meta_ads.labels (domínio, não helper de tool). Re-exportadas
-# aqui pra manter os call-sites antigos funcionando sem quebra (web routes.py +
-# src.meta_ads.insights). Import novo? Prefira `from src.meta_ads.labels import ...`.
+# aqui pra manter os call-sites antigos funcionando sem quebra (web routes.py).
+# Import novo? Prefira `from src.meta_ads.labels import ...`.
+# F89: o re-export de META_EFFECTIVE_STATUS_LABELS saiu junto — seu unico
+# consumidor era o parser de insights, que parou de devolver o campo.
 from src.meta_ads.labels import (  # noqa: F401
     META_ACCOUNT_STATUS_LABELS as META_ACCOUNT_STATUS_LABELS,
-)
-from src.meta_ads.labels import (  # noqa: F401
-    META_EFFECTIVE_STATUS_LABELS as META_EFFECTIVE_STATUS_LABELS,
 )
 
 

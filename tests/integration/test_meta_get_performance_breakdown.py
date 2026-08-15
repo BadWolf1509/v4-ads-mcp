@@ -57,14 +57,12 @@ async def test_happy_path_platform_breakdown_sorted_and_surfaced(db):
             {
                 "campaign_id": "c1",
                 "campaign_name": "C1",
-                "effective_status": "ACTIVE",
                 "spend": "100",
                 "publisher_platform": "facebook",
             },
             {
                 "campaign_id": "c1",
                 "campaign_name": "C1",
-                "effective_status": "ACTIVE",
                 "spend": "300",
                 "publisher_platform": "instagram",
             },

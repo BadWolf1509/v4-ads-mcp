@@ -17,9 +17,11 @@ _DESCRIPTION = (
     "CPC, reach, frequency, purchases, purchases_value_brl, purchase_roas, leads. "
     "Ordenado por spend desc. Filtros: limit (max 500). "
     "Use meta_list_my_ad_accounts pra listar ad_account_ids disponíveis. "
-    "[V0 limitation M.3.1] Retorna campanhas com qualquer effective_status "
-    "(ACTIVE/PAUSED/ARCHIVED) — Meta Insights API não suporta filter por status. "
-    "Gestor pode filtrar client-side via prompt natural se necessário."
+    "[Limitação] Retorna campanhas de QUALQUER status (ACTIVE/PAUSED/ARCHIVED) e "
+    "o status NÃO vem na resposta: a Meta Insights API não aceita effective_status "
+    "nem em fields nem em filtering (é metadata de /campaigns). Portanto não dá "
+    "pra filtrar por status nem aqui nem client-side — pra saber o status, consulte "
+    "o Gerenciador de Anúncios. Campanha pausada com gasto no período APARECE aqui."
 )
 
 _INPUT_SCHEMA: dict[str, Any] = {

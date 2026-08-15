@@ -15,9 +15,11 @@ from src.mcp.tools._registry import register_tool
 _DESCRIPTION = (
     "[DEFER] Performance por anúncio (ad) Meta Ads: spend, impressões, clicks, "
     "CTR, CPC, reach, frequency, purchases, purchases_value_brl, purchase_roas, "
-    "leads. Inclui ad_set_id/name + campaign_id/name parents + creative_id. "
+    "leads. Inclui ad_set_id/name + campaign_id/name parents. "
     "Ordenado por spend desc. Filtros: limit (max 500). "
-    "[V0 limitation M.3.1] effective_status filter não suportado pela Meta Insights API."
+    "[Limitação] Metadata de entidade (effective_status, creative_id) NÃO vem: a "
+    "Meta Insights API só serve métricas — esses campos vivem em /ads. Retorna "
+    "anúncios de qualquer status; pra saber o status, consulte o Gerenciador."
 )
 
 _INPUT_SCHEMA: dict[str, Any] = {

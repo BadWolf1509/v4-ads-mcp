@@ -49,7 +49,13 @@ async def _seed_manager_with_meta_conn(db):
 
 @pytest.mark.integration
 async def test_happy_path_returns_adset_rows_sorted(db):
-    """2 ad sets retornados → ordenados por spend_brl DESC + daily_budget conversion."""
+    """2 ad sets retornados → ordenados por spend_brl DESC.
+
+    F89: os mocks não carregam mais `billing_event`/`daily_budget`/
+    `effective_status`. A Meta Insights nunca os devolve (metadata de /adsets —
+    F54), então mock que os incluía descrevia uma resposta impossível — e foi
+    parte de por que o parser seguiu lendo campo morto por sprints.
+    """
     from src.mcp.tools.meta_get_ad_set_performance import meta_get_ad_set_performance
 
     mid = await _seed_manager_with_meta_conn(db)
@@ -62,9 +68,6 @@ async def test_happy_path_returns_adset_rows_sorted(db):
                 "campaign_id": "c1",
                 "campaign_name": "Camp 1",
                 "optimization_goal": "OFFSITE_CONVERSIONS",
-                "billing_event": "IMPRESSIONS",
-                "daily_budget": "5000",  # R$ 50.00
-                "effective_status": "ACTIVE",
                 "spend": "200",
                 "actions": [{"action_type": "purchase", "value": "2"}],
             },
@@ -74,9 +77,6 @@ async def test_happy_path_returns_adset_rows_sorted(db):
                 "campaign_id": "c1",
                 "campaign_name": "Camp 1",
                 "optimization_goal": "OFFSITE_CONVERSIONS",
-                "billing_event": "IMPRESSIONS",
-                "daily_budget": "20000",  # R$ 200.00
-                "effective_status": "ACTIVE",
                 "spend": "1500",
                 "actions": [{"action_type": "purchase", "value": "30"}],
             },
@@ -97,13 +97,22 @@ async def test_happy_path_returns_adset_rows_sorted(db):
     assert result["total_rows"] == 2
     assert result["rows"][0]["ad_set_name"] == "AS High"
     assert result["rows"][0]["spend_brl"] == 1500.0
-    assert result["rows"][0]["daily_budget_brl"] == 200.00
-    assert result["rows"][1]["daily_budget_brl"] == 50.00
+    assert result["rows"][0]["optimization_goal"] == "OFFSITE_CONVERSIONS"
+    assert result["rows"][1]["ad_set_name"] == "AS Low"
+    # F89: metadata de entidade não sai na resposta — antes vinha None sempre.
+    assert "daily_budget_brl" not in result["rows"][0]
+    assert "billing_event" not in result["rows"][0]
 
 
 @pytest.mark.integration
-async def test_cbo_adset_no_daily_budget_returns_none(db):
-    """CBO campaign ad sets sem daily_budget → daily_budget_brl=None."""
+async def test_metadata_de_orcamento_nunca_vaza_pra_resposta(db):
+    """F89 — teste REESCRITO. Era `test_cbo_adset_no_daily_budget_returns_none`.
+
+    O antigo dizia cobrir o caso CBO (ad set sem orçamento próprio → None), mas a
+    F54 tirou `daily_budget` da query: TODO ad set vinha None, CBO ou não. A
+    distinção que ele supunha testar não existia. Agora garantimos que metadata
+    não pedida não é repassada, mesmo se a Meta a mandar.
+    """
     from src.mcp.tools.meta_get_ad_set_performance import meta_get_ad_set_performance
 
     mid = await _seed_manager_with_meta_conn(db)
@@ -115,9 +124,9 @@ async def test_cbo_adset_no_daily_budget_returns_none(db):
                 "adset_name": "CBO AS",
                 "campaign_id": "c1",
                 "campaign_name": "CBO Camp",
-                "effective_status": "ACTIVE",
+                "effective_status": "ACTIVE",  # não pedido — não pode sair
+                "daily_budget": "5000",  # idem
                 "spend": "100",
-                # daily_budget absent (CBO controls at campaign level)
             }
         ]
     }
@@ -132,7 +141,10 @@ async def test_cbo_adset_no_daily_budget_returns_none(db):
             ad_account_id="act_123456",
         )
 
-    assert result["rows"][0]["daily_budget_brl"] is None
+    row = result["rows"][0]
+    assert row["ad_set_name"] == "CBO AS"
+    assert "daily_budget_brl" not in row
+    assert "effective_status" not in row
 
 
 @pytest.mark.integration

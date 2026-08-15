@@ -49,7 +49,13 @@ async def _seed_manager_with_meta_conn(db):
 
 @pytest.mark.integration
 async def test_happy_path_returns_ad_rows_sorted(db):
-    """2 ads retornados → ordenados por spend DESC + creative_id presence."""
+    """2 ads retornados → ordenados por spend DESC.
+
+    F89: os mocks NÃO carregam mais `creative_id`/`effective_status`. A Meta
+    Insights nunca devolve esses campos (são metadata de /ads — F54), então
+    mock que os incluía era mock infiel: descrevia uma resposta impossível e
+    foi parte de por que o parser seguiu lendo campo morto por sprints.
+    """
     from src.mcp.tools.meta_get_ad_performance import meta_get_ad_performance
 
     mid = await _seed_manager_with_meta_conn(db)
@@ -63,8 +69,6 @@ async def test_happy_path_returns_ad_rows_sorted(db):
                 "adset_name": "AS 1",
                 "campaign_id": "c1",
                 "campaign_name": "Camp 1",
-                "creative_id": "cr1",
-                "effective_status": "ACTIVE",
                 "spend": "50",
                 "impressions": "500",
                 "clicks": "10",
@@ -76,8 +80,6 @@ async def test_happy_path_returns_ad_rows_sorted(db):
                 "adset_name": "AS 1",
                 "campaign_id": "c1",
                 "campaign_name": "Camp 1",
-                "creative_id": "cr2",
-                "effective_status": "ACTIVE",
                 "spend": "500",
                 "impressions": "5000",
                 "clicks": "120",
@@ -100,14 +102,22 @@ async def test_happy_path_returns_ad_rows_sorted(db):
     assert result["total_rows"] == 2
     assert result["rows"][0]["ad_name"] == "Ad High"
     assert result["rows"][0]["spend_brl"] == 500.0
-    assert result["rows"][0]["creative_id"] == "cr2"
     assert result["rows"][0]["ad_set_id"] == "as1"
     assert result["rows"][0]["campaign_id"] == "c1"
+    # F89: metadata de entidade não é devolvida — antes saía sempre None/DESCONHECIDO.
+    assert "creative_id" not in result["rows"][0]
+    assert "effective_status" not in result["rows"][0]
 
 
 @pytest.mark.integration
-async def test_ad_missing_creative_id_returns_none(db):
-    """Ad sem creative_id (data issue / draft) → creative_id=None acceptable."""
+async def test_metadata_de_entidade_nunca_vaza_pra_resposta(db):
+    """F89 — teste REESCRITO. Era `test_ad_missing_creative_id_returns_none`.
+
+    O antigo tratava `creative_id=None` como "ausência aceitável de um campo
+    opcional"; na verdade a ausência era UNIVERSAL, porque a query nunca pediu o
+    campo. Aqui garantimos o oposto: mesmo que a Meta mandasse metadata sem ser
+    pedida, o parser não a repassa — o contrato da resposta é o que se pediu.
+    """
     from src.mcp.tools.meta_get_ad_performance import meta_get_ad_performance
 
     mid = await _seed_manager_with_meta_conn(db)
@@ -121,9 +131,9 @@ async def test_ad_missing_creative_id_returns_none(db):
                 "adset_name": "AS 1",
                 "campaign_id": "c1",
                 "campaign_name": "C",
-                "effective_status": "PAUSED",
+                "effective_status": "PAUSED",  # não pedido — não pode sair
+                "creative_id": "cr9",  # idem
                 "spend": "0",
-                # creative_id absent
             }
         ]
     }
@@ -139,8 +149,11 @@ async def test_ad_missing_creative_id_returns_none(db):
         )
 
     assert result["status"] == "success"
-    assert result["rows"][0]["creative_id"] is None
-    assert result["rows"][0]["effective_status_label"] == "PAUSADO"
+    row = result["rows"][0]
+    assert row["ad_id"] == "ad1"
+    assert "creative_id" not in row
+    assert "effective_status" not in row
+    assert "effective_status_label" not in row
 
 
 @pytest.mark.integration

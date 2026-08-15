@@ -3,20 +3,20 @@
 
 Pure module — zero SDK imports, fully unit-testable.
 
-Reusa META_EFFECTIVE_STATUS_LABELS de src.meta_ads.labels.
+F89: nao expoe metadata de entidade (effective_status, billing_event,
+daily_budget, creative_id) — a Meta Insights API nao serve esses campos, entao
+le-los aqui produzia constante em 100% das linhas.
 
 M.3.1 hotfix (F53): `effective_status` removed from fields lists + filtering
 block — Meta Insights API rejects it (it's Campaign/AdSet/Ad metadata, not
 an Insights metric field). V0 returns all entities regardless of status;
 V1 enhancement = 2-step query (fetch /campaigns?fields=effective_status,
-then /insights?filtering=[campaign_id IN <ids>]). Parser preserves defensive
-fallback `effective_status="UNKNOWN"` for backwards compat with response shape.
+then /insights?filtering=[campaign_id IN <ids>]) — e so ai o campo volta a
+resposta, com valor de verdade.
 """
 
 from datetime import date
 from typing import Any, Literal
-
-from src.meta_ads.labels import META_EFFECTIVE_STATUS_LABELS
 
 Level = Literal["campaign", "adset", "ad"]
 
@@ -156,12 +156,12 @@ def parse_insights_row(
     actions = row.get("actions")
     action_values = row.get("action_values")
 
-    effective_status_raw = row.get("effective_status", "UNKNOWN")
+    # F89: `effective_status` NÃO é devolvido. Os F53/F54 o tiraram da query
+    # (a Meta Insights o rejeita — é metadata de entidade, vive em /campaigns),
+    # mas o parser seguia lendo, então saía "UNKNOWN"/"DESCONHECIDO" em 100% das
+    # linhas. Campo constante é pior que campo ausente pra consumidor LLM: ele
+    # relata como se fosse dado. Volta junto com o enriquecimento em 2 passos.
     common: dict[str, Any] = {
-        "effective_status": effective_status_raw,
-        "effective_status_label": META_EFFECTIVE_STATUS_LABELS.get(
-            effective_status_raw, "DESCONHECIDO"
-        ),
         "spend_brl": round(spend, 2),
         "impressions": int(row.get("impressions") or 0),
         "clicks": clicks,
@@ -183,19 +183,18 @@ def parse_insights_row(
             **common,
         }
     elif level == "adset":
-        daily_budget_raw = row.get("daily_budget")
-        daily_budget_brl = round(float(daily_budget_raw) / 100, 2) if daily_budget_raw else None
+        # F89: `billing_event` e `daily_budget_brl` saíram — a F54 os removeu da
+        # query (metadata de /adsets) e eles vinham None em toda linha.
         result = {
             "ad_set_id": row.get("adset_id"),
             "ad_set_name": row.get("adset_name"),
             "campaign_id": row.get("campaign_id"),
             "campaign_name": row.get("campaign_name"),
             "optimization_goal": row.get("optimization_goal"),
-            "billing_event": row.get("billing_event"),
-            "daily_budget_brl": daily_budget_brl,
             **common,
         }
     else:  # ad
+        # F89: `creative_id` saiu pelo mesmo motivo (metadata de /ads, F54).
         result = {
             "ad_id": row.get("ad_id"),
             "ad_name": row.get("ad_name"),
@@ -203,7 +202,6 @@ def parse_insights_row(
             "ad_set_name": row.get("adset_name"),
             "campaign_id": row.get("campaign_id"),
             "campaign_name": row.get("campaign_name"),
-            "creative_id": row.get("creative_id"),
             **common,
         }
 

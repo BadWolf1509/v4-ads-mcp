@@ -68,7 +68,6 @@ async def test_happy_path_returns_sorted_rows(db):
                 "campaign_id": "c1",
                 "campaign_name": "Low spend",
                 "objective": "OUTCOME_TRAFFIC",
-                "effective_status": "ACTIVE",
                 "spend": "100",
                 "impressions": "1000",
                 "clicks": "50",
@@ -82,7 +81,6 @@ async def test_happy_path_returns_sorted_rows(db):
                 "campaign_id": "c2",
                 "campaign_name": "High spend",
                 "objective": "OUTCOME_SALES",
-                "effective_status": "ACTIVE",
                 "spend": "1000",
                 "impressions": "10000",
                 "clicks": "300",
@@ -96,7 +94,6 @@ async def test_happy_path_returns_sorted_rows(db):
                 "campaign_id": "c3",
                 "campaign_name": "Mid spend",
                 "objective": "OUTCOME_LEADS",
-                "effective_status": "ACTIVE",
                 "spend": "500",
                 "impressions": "5000",
                 "clicks": "100",
@@ -131,7 +128,9 @@ async def test_happy_path_returns_sorted_rows(db):
     assert top["purchases"] == 20
     assert top["purchases_value_brl"] == 4000.0
     assert top["purchase_roas"] == 4.0
-    assert top["effective_status_label"] == "ATIVO"
+    # F89: metadata de entidade nao sai na resposta (era 'DESCONHECIDO' sempre).
+    assert "effective_status" not in top
+    assert "effective_status_label" not in top
 
 
 @pytest.mark.integration

@@ -111,7 +111,6 @@ def test_parse_insights_row_campaign_full() -> None:
         "campaign_id": "23842",
         "campaign_name": "Brand BR",
         "objective": "OUTCOME_SALES",
-        "effective_status": "ACTIVE",
         "spend": "1234.56",
         "impressions": "50000",
         "clicks": "800",
@@ -130,8 +129,8 @@ def test_parse_insights_row_campaign_full() -> None:
     assert out["campaign_id"] == "23842"
     assert out["campaign_name"] == "Brand BR"
     assert out["objective"] == "OUTCOME_SALES"
-    assert out["effective_status"] == "ACTIVE"
-    assert out["effective_status_label"] == "ATIVO"
+    # F89: metadata de entidade nao e devolvida (ver test_insights_no_phantom_fields).
+    assert "effective_status" not in out
     assert out["spend_brl"] == 1234.56
     assert out["impressions"] == 50000
     assert out["clicks"] == 800
@@ -150,16 +149,21 @@ def test_parse_insights_row_campaign_full() -> None:
 # ============================================================================
 
 
-def test_parse_insights_row_adset_with_daily_budget() -> None:
+def test_parse_insights_row_adset_sem_metadata_de_orcamento() -> None:
+    """F89 — CONTRATO INVERTIDO, e dois testes viraram um.
+
+    Havia `..._with_daily_budget` (afirmando que billing_event e daily_budget_brl
+    vinham preenchidos) e `..._no_daily_budget` (tratando o None como caso CBO).
+    Ambos descreviam um mundo que não existe: a F54 tirou os dois campos da query
+    por serem metadata de /adsets, então TODO ad set vinha None — CBO ou não. O
+    par de testes dava a impressão de cobrir uma distinção real.
+    """
     row = {
         "adset_id": "12345",
         "adset_name": "AS 1",
         "campaign_id": "23842",
         "campaign_name": "Brand BR",
         "optimization_goal": "OFFSITE_CONVERSIONS",
-        "billing_event": "IMPRESSIONS",
-        "daily_budget": "5000",  # cents = R$50.00
-        "effective_status": "ACTIVE",
         "spend": "100",
         "impressions": "1000",
         "clicks": "50",
@@ -169,21 +173,9 @@ def test_parse_insights_row_adset_with_daily_budget() -> None:
     assert out["ad_set_name"] == "AS 1"
     assert out["campaign_id"] == "23842"
     assert out["optimization_goal"] == "OFFSITE_CONVERSIONS"
-    assert out["billing_event"] == "IMPRESSIONS"
-    assert out["daily_budget_brl"] == 50.00
-
-
-def test_parse_insights_row_adset_no_daily_budget() -> None:
-    """CBO campaigns: ad sets sem daily_budget → None."""
-    row = {
-        "adset_id": "12345",
-        "adset_name": "AS 1",
-        "campaign_id": "23842",
-        "campaign_name": "Brand BR",
-        "effective_status": "PAUSED",
-    }
-    out = parse_insights_row(row, "adset")
-    assert out["daily_budget_brl"] is None
+    assert out["spend_brl"] == 100.0
+    assert "daily_budget_brl" not in out
+    assert "billing_event" not in out
 
 
 # ============================================================================
@@ -191,8 +183,14 @@ def test_parse_insights_row_adset_no_daily_budget() -> None:
 # ============================================================================
 
 
-def test_parse_insights_row_ad_missing_optional() -> None:
-    """Ad sem creative_id → None acceptable, não fatal."""
+def test_parse_insights_row_ad_sem_metadata_de_criativo() -> None:
+    """F89 — CONTRATO INVERTIDO: `creative_id` não é mais devolvido.
+
+    O teste antigo tratava `creative_id: None` como "ausência aceitável"; na
+    verdade era ausência UNIVERSAL (F54 tirou o campo da query, é metadata de
+    /ads). Idem `effective_status_label`, que aqui chegava a assertar 'ATIVO'
+    sobre um status que nunca vem no row real.
+    """
     row = {
         "ad_id": "99999",
         "ad_name": "Ad 1",
@@ -200,13 +198,12 @@ def test_parse_insights_row_ad_missing_optional() -> None:
         "adset_name": "AS 1",
         "campaign_id": "23842",
         "campaign_name": "Brand BR",
-        "effective_status": "ACTIVE",
-        # creative_id absent
     }
     out = parse_insights_row(row, "ad")
     assert out["ad_id"] == "99999"
-    assert out["creative_id"] is None
-    assert out["effective_status_label"] == "ATIVO"
+    assert out["ad_name"] == "Ad 1"
+    assert "creative_id" not in out
+    assert "effective_status_label" not in out
 
 
 # ============================================================================
@@ -241,16 +238,28 @@ def test_parse_insights_row_ctr_normalization() -> None:
     assert out["ctr"] == 0.025
 
 
-def test_parse_insights_row_unknown_effective_status() -> None:
-    """Status fora do mapa → label='DESCONHECIDO'."""
+def test_parse_insights_row_ignora_metadata_que_a_query_nao_pede() -> None:
+    """F89 — CONTRATO INVERTIDO DE PROPÓSITO.
+
+    Este teste era `test_parse_insights_row_unknown_effective_status` e afirmava
+    que status fora do mapa vira label 'DESCONHECIDO'. O cenário NÃO EXISTE: os
+    F53/F54 tiraram `effective_status` da query porque a Meta Insights o rejeita,
+    então ele nunca chega no row — o parser produzia 'DESCONHECIDO' em 100% das
+    linhas e o teste dava confiança num campo inventado.
+
+    Agora o parser não devolve metadata de entidade. Mesmo que a Meta passasse a
+    mandá-la sem ser pedida, não repassamos: o contrato da resposta é o que a
+    query pede.
+    """
     row = {
         "campaign_id": "1",
         "campaign_name": "T",
         "effective_status": "BIZARRE_NEW_STATUS",
     }
     out = parse_insights_row(row, "campaign")
-    assert out["effective_status"] == "BIZARRE_NEW_STATUS"
-    assert out["effective_status_label"] == "DESCONHECIDO"
+    assert "effective_status" not in out
+    assert "effective_status_label" not in out
+    assert out["campaign_name"] == "T"
 
 
 # ============================================================================
