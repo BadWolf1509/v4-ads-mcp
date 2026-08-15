@@ -113,6 +113,18 @@ def build_insights_call(
         "fields": ",".join(fields_by_level[level]),
         "time_range": f'{{"since":"{start.isoformat()}","until":"{end.isoformat()}"}}',
         "limit": limit,
+        # F88 — ordenacao SERVER-SIDE. Sem isto o `limit` corta um conjunto
+        # nao-ordenado e o "top gastadores" nao e o top; com isto o servidor
+        # ordena ANTES de cortar, entao a 1a pagina JA e o topo. Mesma forma do
+        # lado Google (`ORDER BY metrics.cost_micros DESC LIMIT n`).
+        #
+        # Nao entrou por analogia: `scripts/probe_meta_sort.py` confirmou contra
+        # a API real, e o teste que decide foi mandar um valor INVALIDO — a
+        # Graph API devolve HTTP 400 `The parameter value of "sort" is invalid`,
+        # provando que ela LE o param. Sem essa checagem, um 200 nao significaria
+        # nada (foi assim que F53/F54/F55 nasceram). A combinacao com
+        # `breakdowns` foi sondada a parte, inclusive a hourly.
+        "sort": "spend_descending",
     }
     if breakdowns:
         params["breakdowns"] = ",".join(breakdowns)

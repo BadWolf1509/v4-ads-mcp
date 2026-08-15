@@ -31,7 +31,7 @@ _DESCRIPTION = (
     "(Facebook/Instagram/Audience Network), device (iOS/Android/desktop), geo (país) "
     "ou hourly (hora do dia). level = campaign|adset|ad (default campaign). Métricas: "
     "spend, impressões, clicks, CTR, CPC, reach, frequency, purchases, purchase_roas, "
-    "leads. Cada row traz o valor da dimensão em `breakdown`. Ordenado por spend desc entre as linhas lidas — a resposta traz `truncated`: se vier true, o teto de paginacao cortou e o topo pode estar incompleto (veja `truncated_hint`). "
+    "leads. Cada row traz o valor da dimensão em `breakdown`. Ordenado por spend desc **no servidor**, entao o topo devolvido E o topo real da conta; `truncated:true` significa que ficou cauda de MENOR gasto de fora, nao que o ranking esteja incompleto. "
     "1 breakdown por chamada. Use meta_list_my_ad_accounts pros IDs."
 )
 
@@ -170,8 +170,8 @@ async def meta_get_performance_breakdown(
         parse_insights_row(r, level_typed, breakdown_keys=breakdown_params)
         for r in resp.get("data", [])
     ]
-    # F88: ordena sobre TODAS as páginas lidas e sinaliza truncamento — antes o
-    # sort rodava sobre a 1ª página e o topo podia não ser o topo.
+    # F88: ordenação SERVER-SIDE (`sort=spend_descending`); este sort é rede de
+    # segurança idempotente sobre dado já ordenado, e garante o corte abaixo.
     rows.sort(key=lambda r: r["spend_brl"], reverse=True)
     rows = rows[:limit]
     truncated = bool((resp.get("paging") or {}).get("next"))
@@ -190,8 +190,9 @@ async def meta_get_performance_breakdown(
     }
     if truncated:
         resultado["truncated_hint"] = (
-            "Há mais linhas do que as páginas lidas — o ranking pode não incluir "
-            "o maior gastador. Estreite o período ou reduza o nível de detalhe."
+            "Há mais linhas do que as páginas lidas. O ranking devolvido É o topo "
+            "real por gasto (ordenação no servidor, antes do corte) — ficou de fora "
+            "a cauda de menor gasto. Reduza o nível de detalhe pra ver tudo."
         )
     return resultado
 

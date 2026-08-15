@@ -121,15 +121,17 @@ async def run_meta_level_performance(
     except Exception as e:  # noqa: BLE001
         return {"status": "error", "error_message": meta_error_message(e)}
 
-    # F88: o sort agora roda sobre TODAS as páginas lidas, não sobre a 1ª. Antes,
-    # numa conta com mais entidades que o `limit`, o "top por gasto" era a
-    # ordenação de uma amostra arbitrária — resposta confiante e errada.
+    # F88: a ordenação é SERVER-SIDE (`sort=spend_descending` em
+    # build_insights_call), então as linhas já chegam do maior gasto pro menor e
+    # a 1ª página JÁ é o topo. O sort abaixo é rede de segurança idempotente
+    # sobre dado já ordenado — o corte (`[:limit]`) é que precisa da garantia.
     rows = [parse_insights_row(r, level) for r in resp.get("data", [])]
     rows.sort(key=lambda r: r["spend_brl"], reverse=True)
     rows = rows[:limit]
 
-    # Sobrou `paging.next` = o teto de páginas cortou antes do fim, então o
-    # ranking pode não conter o verdadeiro topo. O consumidor precisa saber.
+    # Sobrou `paging.next` = há mais linhas ABAIXO do topo. Com o sort
+    # server-side isso é completude, não risco de correção: o maior gastador
+    # está garantidamente na resposta.
     truncated = bool((resp.get("paging") or {}).get("next"))
 
     resultado: dict[str, Any] = {
@@ -144,8 +146,9 @@ async def run_meta_level_performance(
     }
     if truncated:
         resultado["truncated_hint"] = (
-            f"A conta tem mais entidades do que as {_MAX_PAGES} páginas lidas — "
-            "o ranking pode não incluir o maior gastador. Estreite o período ou "
-            "consulte o Gerenciador de Anúncios pra visão completa."
+            f"A conta tem mais entidades do que as {_MAX_PAGES} páginas lidas. "
+            "O ranking devolvido É o topo real por gasto (a ordenação acontece no "
+            "servidor, antes do corte) — o que ficou de fora é a cauda de menor "
+            "gasto. Pra visão completa, consulte o Gerenciador de Anúncios."
         )
     return resultado
