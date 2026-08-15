@@ -34,6 +34,7 @@ async def run_meta_graph_get(
     params: dict[str, Any] | None = None,
     operation_name: str,
     estimated_calls: int = 1,
+    max_pages: int = 1,
     audit_this_call: bool = False,
     params_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -50,6 +51,12 @@ async def run_meta_graph_get(
         params: query parameters dict
         operation_name: for audit log + rate limit operation field
         estimated_calls: how many API calls this counts as
+        max_pages: quantas páginas seguir via `paging.next` (F88). Default 1
+            preserva o comportamento antigo pros callers que leem 1 objeto só
+            (ex.: overview). Edges de coleção passam >1: sem isso, a resposta é a
+            1ª página e quem ordena depois ordena uma amostra enviesada — o
+            "top por gasto" deixa de ser o top. O `paging` da ÚLTIMA página é
+            preservado no retorno, então o caller sabe se ficou dado pra trás.
         audit_this_call: opt-in audit (sensitive reads, mutates)
         params_summary: optional dict embedded in audit_log.params_summary
 
@@ -109,8 +116,27 @@ async def run_meta_graph_get(
     started = time.monotonic()
 
     try:
-        response = api.call("GET", [edge.lstrip("/")], params=params or {})
-        body = cast(dict[str, Any], response.json())
+        # F88: segue `paging.next` até `max_pages`. As linhas de todas as páginas
+        # são concatenadas em `data`; o `paging` que sobrevive é o da ÚLTIMA
+        # página, então um `next` remanescente sinaliza truncamento pro caller.
+        body = cast(dict[str, Any], {})
+        linhas: list[Any] = []
+        paginas_lidas = 0
+        proxima_url: str | None = None
+        while paginas_lidas < max_pages:
+            if proxima_url is None:
+                response = api.call("GET", [edge.lstrip("/")], params=params or {})
+            else:
+                # `paging.next` já carrega cursor + fields + token na própria URL.
+                response = api.call("GET", [proxima_url], params={})
+            body = cast(dict[str, Any], response.json())
+            paginas_lidas += 1
+            linhas.extend(body.get("data") or [])
+            proxima_url = (body.get("paging") or {}).get("next")
+            if not proxima_url:
+                break
+        if "data" in body or linhas:
+            body = {**body, "data": linhas}
     except Exception as e:  # noqa: BLE001 — catch all to map to friendly
         elapsed_ms = int((time.monotonic() - started) * 1000)
         friendly = to_friendly_meta_error(e)
@@ -152,7 +178,8 @@ async def run_meta_graph_get(
                 app_id=settings.meta_app_id,
                 ad_account_id=ad_account_id,
                 buc_header=buc_header,
-                calls=estimated_calls,
+                # F88: contabiliza as chamadas REALMENTE feitas, não a estimativa.
+                calls=max(estimated_calls, paginas_lidas),
             )
         except Exception as e:  # noqa: BLE001
             log.warning("meta_rate_counter_update_failed", error=str(e))

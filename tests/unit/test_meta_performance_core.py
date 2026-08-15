@@ -144,6 +144,10 @@ async def test_run_meta_level_performance_success_shape_parity(level: str) -> No
     assert result["ad_account_id"] == "act_1"
     assert result["ad_account_name"] == "Conta Teste"
     assert result["currency"] == "BRL"
+    # F88: `truncated` entrou no envelope de propósito. A parity desta suíte é
+    # com o shape pré-dedup M.3, e a adição é aditiva — nenhum campo saiu. Sem
+    # ela, o consumidor não tem como saber que o "top por gasto" pode estar
+    # incompleto porque o teto de paginação cortou.
     assert set(result) == {
         "status",
         "ad_account_id",
@@ -152,6 +156,7 @@ async def test_run_meta_level_performance_success_shape_parity(level: str) -> No
         "date_range",
         "rows",
         "total_rows",
+        "truncated",
     }
     assert result["total_rows"] == 2
     # Ordenado por spend_brl desc — independente do level

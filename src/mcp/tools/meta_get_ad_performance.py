@@ -16,7 +16,7 @@ _DESCRIPTION = (
     "[DEFER] Performance por anúncio (ad) Meta Ads: spend, impressões, clicks, "
     "CTR, CPC, reach, frequency, purchases, purchases_value_brl, purchase_roas, "
     "leads. Inclui ad_set_id/name + campaign_id/name parents. "
-    "Ordenado por spend desc. Filtros: limit (max 500). "
+    "Ordenado por spend desc entre os anúncios lidos — a resposta traz `truncated`: se vier true, o teto de paginacao cortou e o topo pode estar incompleto (veja `truncated_hint`). Filtros: limit (max 500). "
     "[Limitação] Metadata de entidade (effective_status, creative_id) NÃO vem: a "
     "Meta Insights API só serve métricas — esses campos vivem em /ads. Retorna "
     "anúncios de qualquer status; pra saber o status, consulte o Gerenciador."

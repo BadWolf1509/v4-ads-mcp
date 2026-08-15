@@ -15,6 +15,7 @@ from src.db import connection
 from src.db.repositories import meta_ad_accounts
 from src.mcp.context import get_current
 from src.mcp.tools._meta_common import meta_error_message
+from src.mcp.tools._meta_performance import _MAX_PAGES
 from src.mcp.tools._registry import register_tool
 from src.meta_ads.account_overview import resolve_meta_date_window
 from src.meta_ads.insights import (
@@ -30,7 +31,7 @@ _DESCRIPTION = (
     "(Facebook/Instagram/Audience Network), device (iOS/Android/desktop), geo (país) "
     "ou hourly (hora do dia). level = campaign|adset|ad (default campaign). Métricas: "
     "spend, impressões, clicks, CTR, CPC, reach, frequency, purchases, purchase_roas, "
-    "leads. Cada row traz o valor da dimensão em `breakdown`. Ordenado por spend desc. "
+    "leads. Cada row traz o valor da dimensão em `breakdown`. Ordenado por spend desc entre as linhas lidas — a resposta traz `truncated`: se vier true, o teto de paginacao cortou e o topo pode estar incompleto (veja `truncated_hint`). "
     "1 breakdown por chamada. Use meta_list_my_ad_accounts pros IDs."
 )
 
@@ -152,6 +153,7 @@ async def meta_get_performance_breakdown(
             params=params,
             operation_name="meta_get_performance_breakdown",
             estimated_calls=1,
+            max_pages=_MAX_PAGES,
             audit_this_call=True,
             params_summary={
                 "ad_account_id": ad_account_id,
@@ -168,9 +170,13 @@ async def meta_get_performance_breakdown(
         parse_insights_row(r, level_typed, breakdown_keys=breakdown_params)
         for r in resp.get("data", [])
     ]
+    # F88: ordena sobre TODAS as páginas lidas e sinaliza truncamento — antes o
+    # sort rodava sobre a 1ª página e o topo podia não ser o topo.
     rows.sort(key=lambda r: r["spend_brl"], reverse=True)
+    rows = rows[:limit]
+    truncated = bool((resp.get("paging") or {}).get("next"))
 
-    return {
+    resultado: dict[str, Any] = {
         "status": "success",
         "ad_account_id": ad_account_id,
         "ad_account_name": account.account_name,
@@ -180,7 +186,14 @@ async def meta_get_performance_breakdown(
         "date_range": {"start": start.isoformat(), "end": end.isoformat()},
         "rows": rows,
         "total_rows": len(rows),
+        "truncated": truncated,
     }
+    if truncated:
+        resultado["truncated_hint"] = (
+            "Há mais linhas do que as páginas lidas — o ranking pode não incluir "
+            "o maior gastador. Estreite o período ou reduza o nível de detalhe."
+        )
+    return resultado
 
 
 @register_tool(

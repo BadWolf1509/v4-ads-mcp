@@ -28,6 +28,11 @@ from src.meta_ads.account_overview import resolve_meta_date_window
 from src.meta_ads.insights import Level, build_insights_call, parse_insights_row
 from src.meta_ads.reports import run_meta_graph_get
 
+# F88: teto de páginas por chamada. Cada página é 1 request Graph (conta no BUC),
+# então isto limita o custo; a flag `truncated` avisa quando o teto cortou e o
+# ranking pode não conter o verdadeiro topo.
+_MAX_PAGES = 5
+
 
 def meta_account_not_found_error(ad_account_id: str) -> dict[str, Any]:
     """Envelope de erro padrão quando `ad_account_id` não está em meta_ad_accounts.
@@ -104,6 +109,7 @@ async def run_meta_level_performance(
             params=params,
             operation_name=operation_name,
             estimated_calls=1,
+            max_pages=_MAX_PAGES,
             audit_this_call=True,
             params_summary={
                 "ad_account_id": ad_account_id,
@@ -115,10 +121,18 @@ async def run_meta_level_performance(
     except Exception as e:  # noqa: BLE001
         return {"status": "error", "error_message": meta_error_message(e)}
 
+    # F88: o sort agora roda sobre TODAS as páginas lidas, não sobre a 1ª. Antes,
+    # numa conta com mais entidades que o `limit`, o "top por gasto" era a
+    # ordenação de uma amostra arbitrária — resposta confiante e errada.
     rows = [parse_insights_row(r, level) for r in resp.get("data", [])]
     rows.sort(key=lambda r: r["spend_brl"], reverse=True)
+    rows = rows[:limit]
 
-    return {
+    # Sobrou `paging.next` = o teto de páginas cortou antes do fim, então o
+    # ranking pode não conter o verdadeiro topo. O consumidor precisa saber.
+    truncated = bool((resp.get("paging") or {}).get("next"))
+
+    resultado: dict[str, Any] = {
         "status": "success",
         "ad_account_id": ad_account_id,
         "ad_account_name": account.account_name,
@@ -126,4 +140,12 @@ async def run_meta_level_performance(
         "date_range": {"start": start.isoformat(), "end": end.isoformat()},
         "rows": rows,
         "total_rows": len(rows),
+        "truncated": truncated,
     }
+    if truncated:
+        resultado["truncated_hint"] = (
+            f"A conta tem mais entidades do que as {_MAX_PAGES} páginas lidas — "
+            "o ranking pode não incluir o maior gastador. Estreite o período ou "
+            "consulte o Gerenciador de Anúncios pra visão completa."
+        )
+    return resultado

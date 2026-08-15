@@ -15,7 +15,7 @@ from src.mcp.tools._registry import register_tool
 _DESCRIPTION = (
     "[DEFER] Performance por ad set Meta Ads: spend, impressões, clicks, CTR, "
     "CPC, reach, frequency, purchases, purchases_value_brl, purchase_roas, leads. "
-    "Inclui campaign_id/name parent + optimization_goal. Ordenado por spend desc. "
+    "Inclui campaign_id/name parent + optimization_goal. Ordenado por spend desc entre os ad sets lidos — a resposta traz `truncated`: se vier true, o teto de paginacao cortou e o topo pode estar incompleto (veja `truncated_hint`). "
     "Filtros: limit (max 500). "
     "[Limitação] Metadata de entidade (effective_status, billing_event, "
     "daily_budget) NÃO vem: a Meta Insights API só serve métricas — esses campos "

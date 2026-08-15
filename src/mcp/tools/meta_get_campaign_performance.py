@@ -15,7 +15,7 @@ from src.mcp.tools._registry import register_tool
 _DESCRIPTION = (
     "[CORE] Performance por campanha Meta Ads: spend, impressões, clicks, CTR, "
     "CPC, reach, frequency, purchases, purchases_value_brl, purchase_roas, leads. "
-    "Ordenado por spend desc. Filtros: limit (max 500). "
+    "Ordenado por spend desc entre as campanhas lidas — a resposta traz `truncated`: se vier true, o teto de paginacao cortou e o topo pode estar incompleto (veja `truncated_hint`). Filtros: limit (max 500). "
     "Use meta_list_my_ad_accounts pra listar ad_account_ids disponíveis. "
     "[Limitação] Retorna campanhas de QUALQUER status (ACTIVE/PAUSED/ARCHIVED) e "
     "o status NÃO vem na resposta: a Meta Insights API não aceita effective_status "
