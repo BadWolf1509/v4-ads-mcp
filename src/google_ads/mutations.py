@@ -26,6 +26,7 @@ from src.google_ads.request_id import (
     get_request_id,
     reset_request_id,
 )
+from src.governance.bookkeeping import best_effort
 from src.governance.rate_limit import (
     before_call,
     hash_developer_token,
@@ -269,11 +270,23 @@ async def run_mutation(
         raise
     finally:
         duration_ms = int((time.monotonic() - started) * 1000)
+        # F83: os dois blocos abaixo sao best-effort e INDEPENDENTES. Sem isso,
+        # falha de conexao aqui descartaria o `return` de um mutate ja aplicado
+        # no Google (e a falha da quota pularia o audit, por serem sequenciais).
+        #
         # Reconcile counters SO se a reserva foi persistida (reserved=True) —
         # sem reserva nao ha nada pra reconciliar (F73 — reconciliar mesmo assim
         # decrementaria o contador sem contrapartida).
         if reserved:
-            async with pool.acquire() as conn, conn.transaction():
+            async with (
+                best_effort(
+                    "mutation_quota_reconcile_failed",
+                    operation=operation_type,
+                    customer_id=customer_id,
+                ),
+                pool.acquire() as conn,
+                conn.transaction(),
+            ):
                 await record_actual(
                     conn,
                     token_id,
@@ -286,7 +299,15 @@ async def run_mutation(
                     actual_ops=target_count,
                     estimated_ops=max(1, target_count),
                 )
-        async with pool.acquire() as conn:
+        async with (
+            best_effort(
+                "mutation_audit_write_failed",
+                operation=operation_type,
+                customer_id=customer_id,
+                status=status,
+            ),
+            pool.acquire() as conn,
+        ):
             # Always audit mutations (sensitive — every change is logged)
             await audit_log.record(
                 conn,
@@ -391,14 +412,33 @@ async def run_recommendation_action(
         raise
     finally:
         duration_ms = int((time.monotonic() - started) * 1000)
+        # F83: best-effort e independentes — falha aqui nao pode derrubar a acao
+        # ja aplicada no Google, nem a quota pular o audit.
+        #
         # Reconcile SO se reservou (F73). actual=estimated=1 da delta 0, mas o
         # gate mantem a simetria com os outros executores e nao decrementa se a
         # reserva falhou por QuotaExhausted.
         if reserved:
-            async with pool.acquire() as conn, conn.transaction():
+            async with (
+                best_effort(
+                    "recommendation_quota_reconcile_failed",
+                    operation=operation_type,
+                    customer_id=customer_id,
+                ),
+                pool.acquire() as conn,
+                conn.transaction(),
+            ):
                 await record_actual(conn, token_id, actual_ops=1, estimated_ops=1)
                 await record_actual(conn, f"mgr:{manager_id}", actual_ops=1, estimated_ops=1)
-        async with pool.acquire() as conn:
+        async with (
+            best_effort(
+                "recommendation_audit_write_failed",
+                operation=operation_type,
+                customer_id=customer_id,
+                status=status,
+            ),
+            pool.acquire() as conn,
+        ):
             await audit_log.record(
                 conn,
                 manager_id=manager_id,

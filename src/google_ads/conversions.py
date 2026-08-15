@@ -29,6 +29,7 @@ from src.google_ads.request_id import (
     get_request_id,
     reset_request_id,
 )
+from src.governance.bookkeeping import best_effort
 from src.governance.rate_limit import (
     before_call,
     hash_developer_token,
@@ -145,8 +146,18 @@ async def run_conversion_upload(
         # sem reserva nao ha nada pra reconciliar (F73 — reconciliar mesmo assim
         # decrementaria o contador sem contrapartida).
         actual_ops = len(payload["conversions"]) if status == "success" else 0
+        # F83: best-effort e independentes — o upload ja chegou no Google quando
+        # este bloco roda; falha de conexao aqui nao pode virar erro pro gestor.
         if reserved:
-            async with pool.acquire() as conn, conn.transaction():
+            async with (
+                best_effort(
+                    "conversion_upload_quota_reconcile_failed",
+                    operation=operation_type,
+                    customer_id=customer_id,
+                ),
+                pool.acquire() as conn,
+                conn.transaction(),
+            ):
                 await record_actual(
                     conn,
                     token_id,
@@ -159,7 +170,15 @@ async def run_conversion_upload(
                     actual_ops=actual_ops,
                     estimated_ops=max(1, target_count),
                 )
-        async with pool.acquire() as conn:
+        async with (
+            best_effort(
+                "conversion_upload_audit_write_failed",
+                operation=operation_type,
+                customer_id=customer_id,
+                status=status,
+            ),
+            pool.acquire() as conn,
+        ):
             await audit_log.record(
                 conn,
                 manager_id=manager_id,

@@ -11,8 +11,12 @@ transforma a convenção num teste que falha no commit em vez de num incidente.
   (o freio do Modelo B é a matriz de acesso; o token é compartilhado).
 - F58: conn.cursor() sem async with conn.transaction() → asyncpg exige transação
   pra server-side cursor (o CSV export quebrou em prod porque nenhum teste iterou).
+- F83: I/O de bookkeeping num `finally` sem best_effort → exceção ali DESCARTA o
+  `return` pendente do `try`, virando erro numa mutação já aplicada no provider
+  (e apagando a própria linha de audit que deveria registrá-la).
 """
 
+import ast
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[2] / "src"
@@ -20,6 +24,19 @@ SRC = Path(__file__).resolve().parents[2] / "src"
 
 def _py_files() -> list[Path]:
     return [p for p in SRC.rglob("*.py") if "__pycache__" not in p.parts]
+
+
+def _calls(node: ast.AST, name: str) -> bool:
+    """True se a subárvore contém chamada a `name` (Name ou Attribute)."""
+    for sub in ast.walk(node):
+        if not isinstance(sub, ast.Call):
+            continue
+        func = sub.func
+        if isinstance(func, ast.Name) and func.id == name:
+            return True
+        if isinstance(func, ast.Attribute) and func.attr == name:
+            return True
+    return False
 
 
 def test_build_client_for_manager_callsites_have_gate() -> None:
@@ -74,4 +91,37 @@ def test_cursor_usage_is_wrapped_in_transaction() -> None:
         "F58 — .cursor() sem conn.transaction() no mesmo arquivo: "
         f"{offenders}. async for row in conn.cursor(...) PRECISA de "
         "async with conn.transaction()."
+    )
+
+
+def test_finally_bookkeeping_is_best_effort() -> None:
+    """F83: I/O de bookkeeping (audit/quota) dentro de `finally` precisa estar sob
+    best_effort.
+
+    Exceção levantada num `finally` DESCARTA o `return` pendente do `try`. Como os
+    executores adquirem conexão ali pra gravar audit e reconciliar quota, uma
+    conexão asyncpg stale (F76) fazia uma mutação JÁ APLICADA no Google voltar como
+    erro — o gestor via falha, o cliente LLM tendia a re-tentar operação
+    não-idempotente, e a linha de audit não era gravada.
+
+    O guard é por BLOCO (não por arquivo): cada statement do `finally` que adquire
+    conexão tem que estar sob best_effort no mesmo statement.
+    """
+    offenders = []
+    for p in _py_files():
+        try:
+            tree = ast.parse(p.read_text(encoding="utf-8"))
+        except SyntaxError:  # pragma: no cover — src sempre parseia
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Try) or not node.finalbody:
+                continue
+            for stmt in node.finalbody:
+                if _calls(stmt, "acquire") and not _calls(stmt, "best_effort"):
+                    offenders.append(f"{p.relative_to(SRC)}:{stmt.lineno}")
+    assert not offenders, (
+        "F83 — pool.acquire() em `finally` sem best_effort: "
+        f"{offenders}. Bookkeeping OBSERVA a operação, não decide o resultado dela: "
+        "envolva com `async with best_effort(...)` (src/governance/bookkeeping.py), "
+        "senão a falha do audit derruba a mutação já aplicada."
     )

@@ -10,6 +10,7 @@ from src.db.repositories import audit_log
 from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
+from src.governance.bookkeeping import best_effort
 from src.governance.rate_limit import (
     QuotaExhausted,
     before_call,
@@ -167,8 +168,18 @@ async def validate_gaql(args: dict[str, Any]) -> dict[str, Any]:
         error_message = str(e)
         raise
     finally:
+        # F83: best-effort e independentes — falha aqui descartaria o `result`
+        # de uma validacao que ja rodou.
         if reserved:
-            async with pool.acquire() as conn, conn.transaction():
+            async with (
+                best_effort(
+                    "validate_gaql_quota_reconcile_failed",
+                    operation="validate_gaql",
+                    customer_id=customer_id,
+                ),
+                pool.acquire() as conn,
+                conn.transaction(),
+            ):
                 await record_actual(
                     conn, token_id, actual_ops=actual_ops, estimated_ops=estimated_ops
                 )
@@ -179,7 +190,15 @@ async def validate_gaql(args: dict[str, Any]) -> dict[str, Any]:
                     estimated_ops=estimated_ops,
                 )
         duration_ms = int((time.monotonic() - started) * 1000)
-        async with pool.acquire() as conn:
+        async with (
+            best_effort(
+                "validate_gaql_audit_write_failed",
+                operation="validate_gaql",
+                customer_id=customer_id,
+                status=status,
+            ),
+            pool.acquire() as conn,
+        ):
             await audit_log.record(
                 conn,
                 manager_id=ctx.manager_id,

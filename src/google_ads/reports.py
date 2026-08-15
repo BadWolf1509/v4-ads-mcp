@@ -29,6 +29,7 @@ from src.db.repositories import audit_log
 from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
+from src.governance.bookkeeping import best_effort
 from src.governance.rate_limit import (
     before_call,
     hash_developer_token,
@@ -115,8 +116,18 @@ async def run_report(
         # SO se a reserva foi persistida (reserved=True). Sem reserva nao ha nada
         # pra reconciliar; reconciliar mesmo assim decrementaria o contador sem
         # contrapartida (F73 — o quota leak original).
+        # F83: best-effort e independentes — falha de conexao aqui descartaria o
+        # `return` de um relatorio ja lido com sucesso.
         if reserved:
-            async with pool.acquire() as conn, conn.transaction():
+            async with (
+                best_effort(
+                    "report_quota_reconcile_failed",
+                    operation=operation_name,
+                    customer_id=customer_id,
+                ),
+                pool.acquire() as conn,
+                conn.transaction(),
+            ):
                 await record_actual(
                     conn,
                     token_id,
@@ -129,8 +140,18 @@ async def run_report(
                     actual_ops=actual_ops,
                     estimated_ops=estimated_ops,
                 )
-        async with pool.acquire() as conn:
-            if audit_this_call:
+        # O `if` vem ANTES do acquire: sem opt-in de audit nao ha por que pegar
+        # conexao (era um ponto de falha gratuito dentro do finally).
+        if audit_this_call:
+            async with (
+                best_effort(
+                    "report_audit_write_failed",
+                    operation=operation_name,
+                    customer_id=customer_id,
+                    status=status,
+                ),
+                pool.acquire() as conn,
+            ):
                 duration_ms = int((time.monotonic() - started) * 1000)
                 await audit_log.record(
                     conn,

@@ -25,6 +25,7 @@ from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
 from src.google_ads.request_id import get_request_id, reset_request_id
+from src.governance.bookkeeping import best_effort
 from src.governance.rate_limit import (
     before_call,
     hash_developer_token,
@@ -223,8 +224,18 @@ async def run_offline_user_data_job(
         # sem reserva nao ha nada pra reconciliar (F73 — reconciliar mesmo assim
         # decrementaria o contador sem contrapartida).
         actual_ops = estimated_ops if status == "success" else 0
+        # F83: best-effort e independentes — os membros ja foram enviados ao
+        # Google quando este bloco roda.
         if reserved:
-            async with pool.acquire() as conn, conn.transaction():
+            async with (
+                best_effort(
+                    "customer_match_quota_reconcile_failed",
+                    operation="upload_customer_match_list",
+                    customer_id=customer_id,
+                ),
+                pool.acquire() as conn,
+                conn.transaction(),
+            ):
                 await record_actual(
                     conn, token_id, actual_ops=actual_ops, estimated_ops=estimated_ops
                 )
@@ -235,8 +246,18 @@ async def run_offline_user_data_job(
                     estimated_ops=estimated_ops,
                 )
         # Audit SEMPRE roda (mutate PII exige rastro; LGPD) — inclusive quando
-        # reserved=False (negacao por quota deve aparecer no audit).
-        async with pool.acquire() as conn:
+        # reserved=False (negacao por quota deve aparecer no audit). Se a escrita
+        # falhar, o best_effort garante rastro ERROR alertavel (F83) em vez de
+        # sumir junto com o resultado.
+        async with (
+            best_effort(
+                "customer_match_audit_write_failed",
+                operation="upload_customer_match_list",
+                customer_id=customer_id,
+                status=status,
+            ),
+            pool.acquire() as conn,
+        ):
             await audit_log.record(
                 conn,
                 manager_id=manager_id,
