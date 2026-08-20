@@ -14,7 +14,7 @@
   <div class="v4-card">
     <div class="mb-3 flex flex-wrap gap-3 items-center">
       {{ search_input("acc-search", placeholder="Buscar nome ou customer_id...", attrs='data-v4-filter="#adm-accs-table" data-v4-filter-fields="name,id"', aria_label="Buscar conta por nome ou customer_id") }}
-      <select id="mcc-filter" data-v4-filter="#adm-accs-table" data-v4-filter-field="mcc" class="v4-select w-[200px]">
+      <select id="mcc-filter" aria-label="Filtrar contas por MCC" data-v4-filter="#adm-accs-table" data-v4-filter-field="mcc" class="v4-select w-[200px]">
         <option value="all">Todos os MCCs</option>
         {% for mcc in mccs %}<option value="{{ mcc }}">{{ mcc }}</option>{% endfor %}
       </select>

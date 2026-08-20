@@ -331,3 +331,30 @@ def test_fragmento_de_toggle_rotula_pelos_mesmos_ids():
     assert 'aria-labelledby="v4-mgr-11111111-1111-1111-1111-111111111111 v4-acc-9876543210"' in frag
     assert "aria-label=" not in frag.replace("aria-labelledby=", "")
     assert '"customer_id": "9876543210"' in frag.replace("&quot;", '"')
+
+def test_todo_controle_de_formulario_tem_nome_acessivel():
+    """select/input/textarea sem <label for>, sem aria-label e sem <label> que
+    embrulha e anunciado como "caixa de combinacao" sem nome nenhum.
+
+    Os 5 filtros de /admin/audit tinham o rotulo VISUAL do lado e nenhum
+    vinculo — a pagina irma /audit faz certo com os mesmos filtros.
+    """
+    sem_nome = []
+    for template in _TEMPLATES.rglob("*.html"):
+        conteudo = template.read_text(encoding="utf-8")
+        labels_for = set(re.findall(r'<label[^>]*[ ]for="([^"]+)"', conteudo))
+        embrulhados = re.findall(r"<label[^>]*>.*?</label>", conteudo, re.S)
+        for numero, linha in enumerate(conteudo.splitlines(), 1):
+            for tag, attrs in re.findall(r"<(select|textarea|input)[ ]([^>]*)>", linha):
+                tipo = re.search(r'type="([^"]+)"', attrs)
+                if tag == "input" and tipo and tipo.group(1) in ("hidden", "submit"):
+                    continue
+                if "aria-label" in attrs:
+                    continue
+                identificador = re.search(r'id="([^"]+)"', attrs)
+                if identificador and identificador.group(1) in labels_for:
+                    continue
+                if any(f"<{tag} {attrs}>" in bloco for bloco in embrulhados):
+                    continue
+                sem_nome.append(f"{template.name}:{numero} <{tag}>")
+    assert not sem_nome, "controles sem nome acessivel: " + "; ".join(sem_nome)

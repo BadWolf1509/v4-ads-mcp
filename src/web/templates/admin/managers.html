@@ -16,12 +16,12 @@
   <div class="v4-card">
     <div class="mb-3 flex flex-wrap gap-3 items-center">
       {{ search_input("mgr-search", placeholder="Buscar email...", attrs='data-v4-filter="#managers-table" data-v4-filter-fields="email"', extra_classes="flex-1 max-w-[320px]", aria_label="Buscar gestor por email") }}
-      <select id="mgr-role" data-v4-filter="#managers-table" data-v4-filter-field="role" class="v4-select w-[140px]">
+      <select id="mgr-role" aria-label="Filtrar gestores por role" data-v4-filter="#managers-table" data-v4-filter-field="role" class="v4-select w-[140px]">
         <option value="all">Todos os roles</option>
         <option value="admin">Admin</option>
         <option value="gestor">Gestor</option>
       </select>
-      <select id="mgr-status" data-v4-filter="#managers-table" data-v4-filter-field="status" class="v4-select w-[140px]">
+      <select id="mgr-status" aria-label="Filtrar gestores por status" data-v4-filter="#managers-table" data-v4-filter-field="status" class="v4-select w-[140px]">
         <option value="all">Todos os status</option>
         <option value="active">Ativos</option>
         <option value="invited">Convidados</option>

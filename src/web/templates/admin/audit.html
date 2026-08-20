@@ -24,8 +24,8 @@
            pilha header+subnav. Com --v4-subnav-offset ela grudava no mesmo
            topo da subnav e a cobria por inteiro (mesmo z-index, DOM depois). #}>
     <div class="v4-form__group m-0">
-      <label class="v4-form__label">Gestor</label>
-      <select name="manager_id" class="v4-select" data-v4-autosubmit>
+      <label class="v4-form__label" for="manager_id">Gestor</label>
+      <select id="manager_id" name="manager_id" class="v4-select" data-v4-autosubmit>
         <option value="">Todos</option>
         {% for m in managers_list %}
           <option value="{{ m.id }}" {% if filter_manager_id == m.id|string %}selected{% endif %}>{{ m.email }}</option>
@@ -33,8 +33,8 @@
       </select>
     </div>
     <div class="v4-form__group m-0">
-      <label class="v4-form__label">Conta</label>
-      <select name="customer_id" class="v4-select" data-v4-autosubmit>
+      <label class="v4-form__label" for="customer_id">Conta</label>
+      <select id="customer_id" name="customer_id" class="v4-select" data-v4-autosubmit>
         <option value="">Todas</option>
         {% for a in accounts %}
           <option value="{{ a.customer_id }}" {% if filter_customer_id == a.customer_id %}selected{% endif %}>{{ a.descriptive_name }}</option>
@@ -42,24 +42,24 @@
       </select>
     </div>
     <div class="v4-form__group m-0">
-      <label class="v4-form__label">Tipo</label>
-      <select name="action_type" class="v4-select" data-v4-autosubmit>
+      <label class="v4-form__label" for="action_type">Tipo</label>
+      <select id="action_type" name="action_type" class="v4-select" data-v4-autosubmit>
         <option value="all" {% if filter_action_type == "all" %}selected{% endif %}>Todos</option>
         <option value="mutate" {% if filter_action_type == "mutate" %}selected{% endif %}>Mutações</option>
         <option value="read" {% if filter_action_type == "read" %}selected{% endif %}>Reads</option>
       </select>
     </div>
     <div class="v4-form__group m-0">
-      <label class="v4-form__label">Status</label>
-      <select name="status" class="v4-select" data-v4-autosubmit>
+      <label class="v4-form__label" for="status">Status</label>
+      <select id="status" name="status" class="v4-select" data-v4-autosubmit>
         <option value="all" {% if filter_status == "all" %}selected{% endif %}>Todos</option>
         <option value="success" {% if filter_status == "success" %}selected{% endif %}>OK</option>
         <option value="error" {% if filter_status == "error" %}selected{% endif %}>Erros</option>
       </select>
     </div>
     <div class="v4-form__group m-0">
-      <label class="v4-form__label">Período</label>
-      <select name="days" class="v4-select" data-v4-autosubmit>
+      <label class="v4-form__label" for="days">Período</label>
+      <select id="days" name="days" class="v4-select" data-v4-autosubmit>
         {% for n in [1, 7, 14, 30, 90] %}
           <option value="{{ n }}" {% if filter_days == n %}selected{% endif %}>{{ n }} dias</option>
         {% endfor %}
