@@ -11,6 +11,7 @@ from src.db import connection
 from src.db.repositories import (
     google_ads_accounts,
     manager_account_access,
+    manager_meta_account_access,
     managers,
     meta_ad_accounts,
 )
@@ -552,3 +553,203 @@ async def test_admin_access_flash_same_manager(client: AsyncClient):
     )
     assert response.status_code == 200
     assert "Gestor de origem e destino são o mesmo" in response.text
+
+
+# ---------- reconciliação Meta: as três filas (spec 2026-08-20) ----------
+
+
+def _conta_meta(ad_account_id: str, nome: str) -> dict:
+    return {
+        "ad_account_id": ad_account_id,
+        "business_id": "bm",
+        "business_name": "BM",
+        "account_name": nome,
+        "currency": "BRL",
+        "timezone_name": "America/Sao_Paulo",
+        "account_status": 1,
+    }
+
+
+@pytest.mark.integration
+async def test_painel_meta_separa_as_tres_filas(client: AsyncClient) -> None:
+    """Sem delegacao, sem SU e fora da parceria sao acoes DIFERENTES."""
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        await meta_ad_accounts.upsert_many(
+            conn,
+            [
+                _conta_meta("act_sem_delegacao", "Nova sem gestor"),
+                _conta_meta("act_sem_su", "Na parceria sem SU"),
+                _conta_meta("act_saiu", "Ex-cliente"),
+            ],
+        )
+        # fila 2: na parceria, mas o system user não foi atribuído
+        await meta_ad_accounts.set_reachable(conn, reachable_ids=["act_sem_delegacao", "act_saiu"])
+        # fila 3: saiu da parceria — desativada e com o grant do gestor revogado
+        await manager_meta_account_access.bulk_grant(
+            conn, manager_id=gestor_id, ad_account_ids=["act_saiu"], granted_by=admin_id
+        )
+        await meta_ad_accounts.deactivate(conn, ad_account_ids=["act_saiu"])
+        await manager_meta_account_access.revoke_for_account(
+            conn, ad_account_id="act_saiu", reason="partnership_ended"
+        )
+
+    resp = await client.get(
+        "/admin/accounts/meta",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+
+    assert resp.status_code == 200
+    assert "Aguardando delegação" in resp.text
+    assert "Sem o system user atribuído" in resp.text
+    assert "Saíram da parceria" in resp.text
+    # cada conta cai na SUA fila, e não em todas
+    assert "Nova sem gestor" in resp.text
+    assert "Ex-cliente" in resp.text
+
+
+@pytest.mark.integration
+async def test_restaurar_reconcede_os_grants_revogados(client: AsyncClient) -> None:
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        await meta_ad_accounts.upsert_many(conn, [_conta_meta("act_saiu", "Ex-cliente")])
+        await manager_meta_account_access.bulk_grant(
+            conn, manager_id=gestor_id, ad_account_ids=["act_saiu"], granted_by=admin_id
+        )
+        await manager_meta_account_access.revoke_for_account(
+            conn, ad_account_id="act_saiu", reason="partnership_ended"
+        )
+
+    resp = await client.post(
+        "/admin/accounts/meta/act_saiu/restore",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 303  # F107: POST de mutação sem HTMX é 303
+    async with pool.acquire() as conn:
+        assert (
+            await manager_meta_account_access.can_manager_access(conn, gestor_id, "act_saiu")
+        ) is True
+
+
+@pytest.mark.integration
+async def test_restaurar_grava_audit_e_redireciona_com_ok(client: AsyncClient) -> None:
+    """Location leva o `ok=restored` que o mapa fixo de flash reconhece, e o
+    audit registra quantos grants a restauração atingiu."""
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        await meta_ad_accounts.upsert_many(conn, [_conta_meta("act_saiu_audit", "Ex-cliente 2")])
+        await manager_meta_account_access.bulk_grant(
+            conn, manager_id=gestor_id, ad_account_ids=["act_saiu_audit"], granted_by=admin_id
+        )
+        await manager_meta_account_access.revoke_for_account(
+            conn, ad_account_id="act_saiu_audit", reason="partnership_ended"
+        )
+
+    resp = await client.post(
+        "/admin/accounts/meta/act_saiu_audit/restore",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/admin/accounts/meta?ok=restored"
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """SELECT operation, action_type, manager_id, customer_id, platform, params_summary
+               FROM audit_log WHERE operation = $1 ORDER BY occurred_at DESC LIMIT 1""",
+            "admin_accounts_meta_restore",
+        )
+    assert row is not None
+    assert row["action_type"] == "mutate"
+    assert row["manager_id"] == admin_id
+    assert row["customer_id"] == "act_saiu_audit"
+    assert row["platform"] == "meta"
+    assert json.loads(row["params_summary"])["restored_grants"] == 1
+
+
+@pytest.mark.integration
+async def test_restaurar_htmx_retorna_204_com_refresh(client: AsyncClient) -> None:
+    """F107 espelhado pro HTMX: HX-Request nunca recebe o 303 cru."""
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        await meta_ad_accounts.upsert_many(conn, [_conta_meta("act_saiu_htmx", "Ex-cliente 3")])
+        await manager_meta_account_access.bulk_grant(
+            conn, manager_id=gestor_id, ad_account_ids=["act_saiu_htmx"], granted_by=admin_id
+        )
+        await manager_meta_account_access.revoke_for_account(
+            conn, ad_account_id="act_saiu_htmx", reason="partnership_ended"
+        )
+
+    resp = await client.post(
+        "/admin/accounts/meta/act_saiu_htmx/restore",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+        headers={"HX-Request": "true"},
+    )
+
+    assert resp.status_code == 204
+    assert resp.headers["HX-Refresh"] == "true"
+    async with pool.acquire() as conn:
+        assert (
+            await manager_meta_account_access.can_manager_access(conn, gestor_id, "act_saiu_htmx")
+        ) is True
+
+
+@pytest.mark.integration
+async def test_restaurar_nao_reconcede_grant_revogado_por_outro_motivo(client: AsyncClient) -> None:
+    """I4 (task 5): restore_for_account filtra PARTNERSHIP_ENDED_REASON — um
+    acesso que o admin revogou manualmente não deve voltar por causa disto."""
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        await meta_ad_accounts.upsert_many(conn, [_conta_meta("act_revogado_manual", "Conta X")])
+        await manager_meta_account_access.bulk_grant(
+            conn,
+            manager_id=gestor_id,
+            ad_account_ids=["act_revogado_manual"],
+            granted_by=admin_id,
+        )
+        await manager_meta_account_access.revoke(
+            conn, manager_id=gestor_id, ad_account_id="act_revogado_manual", reason="manual"
+        )
+
+    resp = await client.post(
+        "/admin/accounts/meta/act_revogado_manual/restore",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 303
+    async with pool.acquire() as conn:
+        assert (
+            await manager_meta_account_access.can_manager_access(
+                conn, gestor_id, "act_revogado_manual"
+            )
+        ) is False
+
+
+@pytest.mark.integration
+async def test_admin_accounts_meta_flash_restored(client: AsyncClient) -> None:
+    pool = connection.get_pool()
+    admin_id, _ = await _bootstrap_admin_and_gestor(pool)
+
+    response = await client.get(
+        "/admin/accounts/meta?ok=restored",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 200
+    assert "Acesso restaurado" in response.text
+
+    # Anti-XSS: codigo ok desconhecido nunca ecoa o valor cru do query param.
+    response = await client.get(
+        "/admin/accounts/meta?ok=<script>alert(1)</script>",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 200
+    assert "alert(1)" not in response.text

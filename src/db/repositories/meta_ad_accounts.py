@@ -8,12 +8,6 @@ import asyncpg
 
 from src.meta_ads.reconcile import InventoryRow
 
-# F128: quantas execucoes COMPLETAS seguidas sem ver a conta antes de desativar.
-# O job roda diario, entao 3 ~ 3 dias. Nao e 1 de proposito: uma unica leitura
-# esquisita (resposta completa porem pobre, hiccup de permissao) nao deve
-# derrubar conta viva — a familia F65/F85 e exatamente esse modo de falha.
-MISSED_SYNCS_THRESHOLD = 3
-
 
 def _rows_affected(result: str) -> int:
     """asyncpg devolve o command tag ('UPDATE 3'); extrai a contagem."""
@@ -31,9 +25,11 @@ class MetaAdAccount:
     account_status: int | None
     is_active: bool
     synced_at: datetime
-    # F128: execucoes COMPLETAS do resync em que a conta nao veio em
-    # /me/adaccounts. Zera ao reaparecer; ao cruzar MISSED_SYNCS_THRESHOLD a
-    # conta e desativada.
+    # F128: execucoes COMPLETAS do resync em que a conta nao veio na parceria
+    # autoritativa. Zera ao reaparecer; ao cruzar o limiar (`threshold` de
+    # `build_plan`, hoje 3) a conta e desativada — a fonte do limiar mudou da
+    # constante deste modulo (removida na spec 2026-08-20) pro parametro puro
+    # de `src/meta_ads/reconcile.py`, que decide o plano sem I/O.
     missed_syncs: int = 0
     # Alcance do system user, distinto de pertencer a parceria (spec
     # 2026-08-20): conta pode estar na lista autoritativa e mesmo assim ficar
@@ -189,27 +185,52 @@ async def list_inventory_rows(conn: asyncpg.Connection) -> list[InventoryRow]:
     ]
 
 
-async def list_out_of_reach(conn: asyncpg.Connection) -> list[MetaAdAccount]:
-    """Contas que sairam (ou estao saindo) do alcance do system user — F128 (d).
+@dataclass(frozen=True, slots=True)
+class ReconcileQueues:
+    sem_delegacao: list[MetaAdAccount]
+    sem_su: list[MetaAdAccount]
+    saiu_da_parceria: list[tuple[MetaAdAccount, int]]  # conta + nº de grants revogados
 
-    Cobre as duas rotas de churn: a desativada (por BM ou por limiar) e a que
-    ainda esta ativa mas ja acumulou ausencia. O painel precisa das duas porque
-    **desativar nao revoga**: a partir da spec 2026-08-20, `can_manager_access`
-    cruza com `is_active` (defesa em profundidade — nega mesmo se o
-    reconciliador nao rodou ainda), mas as linhas de `manager_meta_account_access`
-    continuam vivas, sem `revoked_at`, ate alguem chamar `revoke_for_account`.
-    Sem esta lista, conta desativada some do admin e os grants dela ficam
-    tecnicamente bloqueados porem nunca revogados de fato — ninguem percebe
-    que precisam de limpeza.
+
+async def list_queues(conn: asyncpg.Connection) -> ReconcileQueues:
+    """As três filas do painel. Cada uma é uma AÇÃO diferente do admin.
+
+    Substitui `list_out_of_reach` (F128 (d)): aquela devolvia `is_active =
+    false OR missed_syncs > 0`, o que não distinguia as três filas — não sabia
+    se a conta tinha gestor delegado (precisa cruzar com os grants) nem se o
+    system user a alcançava (precisa de `su_reachable`).
     """
-    rows = await conn.fetch(
+    sem_delegacao = await conn.fetch(
         """
-        SELECT * FROM meta_ad_accounts
-         WHERE is_active = false OR missed_syncs > 0
-         ORDER BY is_active, missed_syncs DESC, account_name
+        SELECT a.* FROM meta_ad_accounts a
+         WHERE a.is_active = true
+           AND NOT EXISTS (
+               SELECT 1 FROM manager_meta_account_access m
+                WHERE m.ad_account_id = a.ad_account_id AND m.revoked_at IS NULL
+           )
+         ORDER BY a.account_name
         """
     )
-    return [_row_to_account(r) for r in rows]
+    sem_su = await conn.fetch(
+        "SELECT * FROM meta_ad_accounts "
+        "WHERE is_active = true AND su_reachable = false ORDER BY account_name"
+    )
+    # F59: toda coluna aliasada em query com JOIN.
+    saiu = await conn.fetch(
+        """
+        SELECT a.*, count(m.manager_id) FILTER (WHERE m.revoked_at IS NOT NULL) AS revogados
+          FROM meta_ad_accounts a
+          LEFT JOIN manager_meta_account_access m ON m.ad_account_id = a.ad_account_id
+         WHERE a.is_active = false
+         GROUP BY a.ad_account_id
+         ORDER BY a.account_name
+        """
+    )
+    return ReconcileQueues(
+        sem_delegacao=[_row_to_account(r) for r in sem_delegacao],
+        sem_su=[_row_to_account(r) for r in sem_su],
+        saiu_da_parceria=[(_row_to_account(r), r["revogados"]) for r in saiu],
+    )
 
 
 async def list_all(conn: asyncpg.Connection) -> list[MetaAdAccount]:

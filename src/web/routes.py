@@ -55,14 +55,30 @@ _ADMIN_FLASH_ERRORS: dict[str, str] = {
     "same_manager": "Gestor de origem e destino são o mesmo — nada foi copiado.",
 }
 
+# Mapa fixo pro `ok=<codigo>` da reconciliacao Meta — distinto do `ok=1` usado
+# nas demais paginas admin porque a rota de restaurar precisa de MENSAGEM
+# PROPRIA (nao so "sucesso genérico"). Mesma regra: nunca ecoar o param.
+_META_ACCOUNTS_FLASH_OK: dict[str, str] = {
+    "restored": "Acesso restaurado — os grants revogados pela saída da parceria foram reconcedidos.",
+}
 
-def _admin_flash(request: Request, *, ok_message: str | None = None) -> dict[str, str] | None:
+
+def _admin_flash(
+    request: Request,
+    *,
+    ok_message: str | None = None,
+    ok_codes: dict[str, str] | None = None,
+) -> dict[str, str] | None:
     """Flash message via query param. Mapa fixo — NUNCA ecoar o valor do param (XSS)."""
     code = request.query_params.get("error")
     if code:
         message = _ADMIN_FLASH_ERRORS.get(code)
         return {"kind": "error", "message": message} if message else None
-    if ok_message and request.query_params.get("ok") == "1":
+    ok = request.query_params.get("ok")
+    if ok_codes and ok:
+        message = ok_codes.get(ok)
+        return {"kind": "success", "message": message} if message else None
+    if ok_message and ok == "1":
         return {"kind": "success", "message": ok_message}
     return None
 
@@ -969,10 +985,11 @@ async def admin_accounts_meta(
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         accounts = await meta_ad_accounts.list_all(conn)
-        # F128 (d): `list_all` mostra só o que está ativo, então conta que o
-        # system user perdeu sumia do admin — e os grants dela ficavam vivos sem
-        # ninguém ver, porque `can_manager_access` não consulta `is_active`.
-        out_of_reach = await meta_ad_accounts.list_out_of_reach(conn)
+        # Spec 2026-08-20: substitui a secao unica "Fora do alcance" do F128 (d)
+        # por tres filas — sem-delegacao, sem-SU e saiu-da-parceria sao tres
+        # ACOES diferentes do admin, e a lista antiga nao distinguia nenhuma
+        # delas (nao cruzava grants, nao lia su_reachable).
+        queues = await meta_ad_accounts.list_queues(conn)
     pending = await pending_invites_count()
     token_configured = bool(get_settings().meta_system_user_token)
     return templates.TemplateResponse(
@@ -981,12 +998,48 @@ async def admin_accounts_meta(
         {
             "current_user": user,
             "accounts": accounts,
-            "out_of_reach": out_of_reach,
-            "missed_syncs_threshold": meta_ad_accounts.MISSED_SYNCS_THRESHOLD,
+            "sem_delegacao": queues.sem_delegacao,
+            "sem_su": queues.sem_su,
+            "saiu_da_parceria": queues.saiu_da_parceria,
             "token_configured": token_configured,
             "pending_invites_count": pending,
+            "flash": _admin_flash(request, ok_codes=_META_ACCOUNTS_FLASH_OK),
         },
     )
+
+
+@router.post(
+    "/admin/accounts/meta/{ad_account_id}/restore",
+    response_class=HTMLResponse,
+    response_model=None,
+)
+async def admin_accounts_meta_restore(
+    request: Request,
+    ad_account_id: str,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+) -> Response:
+    """Reconcede os grants que `revoke_for_account` revogou quando a conta saiu
+    da parceria — SO esses (filtra `PARTNERSHIP_ENDED_REASON`), nao qualquer
+    revogacao que a conta tenha acumulado por outro motivo."""
+    _require_admin(user)
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        restaurados = await manager_meta_account_access.restore_for_account(
+            conn, ad_account_id=ad_account_id
+        )
+        await _audit_admin(
+            conn,
+            admin=user,
+            operation="admin_accounts_meta_restore",
+            customer_id=ad_account_id,
+            platform="meta",
+            restored_grants=restaurados,
+        )
+    if request.headers.get("HX-Request"):
+        # Mesmo idioma de accounts_revoke_connection/admin_invites_cancel: full
+        # refresh do browser reconstroi as tres filas de graca, sem swap manual.
+        return Response(status_code=204, headers={"HX-Refresh": "true"})
+    return RedirectResponse(url="/admin/accounts/meta?ok=restored", status_code=303)
 
 
 @router.get("/admin/access", response_class=HTMLResponse)
