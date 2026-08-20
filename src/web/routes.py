@@ -969,6 +969,10 @@ async def admin_accounts_meta(
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         accounts = await meta_ad_accounts.list_all(conn)
+        # F128 (d): `list_all` mostra só o que está ativo, então conta que o
+        # system user perdeu sumia do admin — e os grants dela ficavam vivos sem
+        # ninguém ver, porque `can_manager_access` não consulta `is_active`.
+        out_of_reach = await meta_ad_accounts.list_out_of_reach(conn)
     pending = await pending_invites_count()
     token_configured = bool(get_settings().meta_system_user_token)
     return templates.TemplateResponse(
@@ -977,6 +981,8 @@ async def admin_accounts_meta(
         {
             "current_user": user,
             "accounts": accounts,
+            "out_of_reach": out_of_reach,
+            "missed_syncs_threshold": meta_ad_accounts.MISSED_SYNCS_THRESHOLD,
             "token_configured": token_configured,
             "pending_invites_count": pending,
         },

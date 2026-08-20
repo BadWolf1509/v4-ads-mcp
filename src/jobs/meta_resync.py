@@ -91,8 +91,19 @@ async def resync_meta() -> int:
         # truncada, "conta ausente" significa "pagina que nao veio", nao churn —
         # desativaria conta viva (sintoma do F65 entrando por outra porta).
         deactivated = 0
+        missing = 0
+        aged_out = 0
         if fetched.complete:
+            # Caminho rapido (F65): conta que sumiu de um BM AINDA VISIVEL cai
+            # ja nesta execucao, porque o keep-list daquele BM prova a ausencia.
             deactivated = await _deactivate_churned(conn, payload)
+            # Rede (F128): o caso que o de cima nao ve — parceria encerrada, SU
+            # perde acesso e o BM inteiro some do payload. Escopado por tempo,
+            # entao independe de o BM aparecer; custa MISSED_SYNCS_THRESHOLD
+            # execucoes pra agir, que e o preco de nao reabrir o F65/F85.
+            missing, aged_out = await meta_ad_accounts.bump_missing(
+                conn, seen_ad_account_ids=[a["ad_account_id"] for a in payload]
+            )
         else:
             log.warning("meta_resync_partial_skipping_churn", fetched=len(fetched.accounts))
         await record_job_run(
@@ -110,9 +121,25 @@ async def resync_meta() -> int:
                 else "inventario Meta truncado (pagina falhou ou cap de paginacao) — "
                 "deteccao de churn pulada nesta execucao"
             ),
-            params_summary={"deactivated": deactivated, "complete": fetched.complete},
+            params_summary={
+                "deactivated": deactivated,
+                # F128 na trilha: `missing` e a fila de saida (quantas contas
+                # nao apareceram nesta execucao) e `aged_out` o que de fato caiu
+                # por limiar. Sem os dois, o churn lento fica invisivel ate o dia
+                # em que a conta some do painel sem explicacao.
+                "missing": missing,
+                "aged_out": aged_out,
+                "complete": fetched.complete,
+            },
         )
-    log.info("meta_resync_complete", upserted=n, deactivated=deactivated, complete=fetched.complete)
+    log.info(
+        "meta_resync_complete",
+        upserted=n,
+        deactivated=deactivated,
+        missing=missing,
+        aged_out=aged_out,
+        complete=fetched.complete,
+    )
     return n
 
 

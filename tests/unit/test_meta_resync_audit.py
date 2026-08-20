@@ -10,7 +10,13 @@ from src.jobs import meta_resync
 
 class _FakeAcquire:
     async def __aenter__(self) -> MagicMock:
-        return MagicMock()
+        conn = MagicMock()
+        # F128: no caminho `complete=True` o job agora escreve pelo conn
+        # (contador de ausencias). Sem `execute` awaitable o fake quebra com
+        # "MagicMock can't be used in 'await' expression" — e o erro seria da
+        # dublê, nao do codigo.
+        conn.execute = AsyncMock(return_value="UPDATE 0")
+        return conn
 
     async def __aexit__(self, *exc: object) -> bool:
         return False

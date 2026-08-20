@@ -34,7 +34,11 @@ _ADACCOUNTS = "https://graph.facebook.com/v22.0/me/adaccounts"
 
 class _FakeAcquire:
     async def __aenter__(self) -> MagicMock:
-        return MagicMock()
+        conn = MagicMock()
+        # F128: o caminho `complete=True` passou a escrever pelo conn (contador
+        # de ausencias), entao a dublê precisa de um execute awaitable.
+        conn.execute = AsyncMock(return_value="UPDATE 0")
+        return conn
 
     async def __aexit__(self, *exc: object) -> bool:
         return False

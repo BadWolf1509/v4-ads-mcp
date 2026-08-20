@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_components.html" import search_input, empty_state %}
+{% from "_components.html" import search_input, empty_state, badge, alert %}
 {% block title %}Admin · Contas Meta — V4 Ads MCP{% endblock %}
 {% block content %}
 <section class="max-w-7xl mx-auto py-6 px-4">
@@ -19,6 +19,43 @@
       <button type="submit" class="v4-btn v4-btn--small v4-btn--secondary">Sincronizar contas</button>
     </form>
   </div>
+
+  {# F128 (d): o resync desativa sozinho depois de N ausências, mas desativar
+     NÃO revoga — `can_manager_access` lê só a tabela de grants. Sem esta lista
+     a conta sumia do admin e os grants ficavam vivos sem ninguém ver. #}
+  {% if out_of_reach %}
+  <div class="v4-card">
+    <div class="v4-card__header">
+      <h3 class="v4-card__title">Fora do alcance do system user ({{ out_of_reach|length }})</h3>
+    </div>
+    {{ alert(
+      "Desativar aqui <strong>não revoga acesso de gestor</strong> — o hard-gate consulta só a matriz.
+       Para offboarding completo, revogue os grants em <a href=\"/admin/access/meta\" class=\"underline\">Acessos → Meta</a>.",
+      "warning"
+    ) }}
+    <div class="v4-table-wrap" tabindex="0" role="region" aria-label="Contas fora do alcance do system user">
+    <table class="v4-table v4-table--compact">
+      <thead><tr><th scope="col">Conta</th><th scope="col">Cliente</th><th scope="col">Situação</th><th scope="col">Última sync</th></tr></thead>
+      <tbody>
+        {% for a in out_of_reach %}
+        <tr>
+          <td><strong>{{ a.account_name }}</strong><div class="text-xs font-mono text-v4-gray-500">{{ a.ad_account_id }}</div></td>
+          <td>{{ a.business_name or "—" }}</td>
+          <td>
+            {% if not a.is_active %}
+              {{ badge("Desativada", "error") }}
+            {% else %}
+              {{ badge("Ausente em " ~ a.missed_syncs ~ "/" ~ missed_syncs_threshold ~ " syncs", "warning") }}
+            {% endif %}
+          </td>
+          <td class="col-mono text-xs text-v4-gray-500">{{ a.synced_at.strftime('%d/%m %H:%M') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  {% endif %}
 
   <div class="v4-card">
     <div class="mb-3">
