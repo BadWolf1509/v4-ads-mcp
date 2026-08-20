@@ -228,3 +228,32 @@ async def test_sessions_revoke_list_page_has_hx_trigger_toast(client: AsyncClien
     assert response.status_code == 200
     hx_trigger = response.headers.get("HX-Trigger", "")
     assert "toast" in hx_trigger
+
+
+@pytest.mark.integration
+async def test_sessions_revoke_sem_htmx_redireciona(client: AsyncClient):
+    """Sem HTMX o POST tem que virar 303 pra /sessions (POST-redirect-GET).
+
+    Renderizava a lista com 200: recarregar a pagina re-executava a acao. Os
+    dois testes vizinhos so cobriam os ramos HTMX, e foi por isso que passou.
+    """
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="rvn@v4company.com", full_name=None)
+        token = generate_session_token()
+        sess = await mcp_sessions.create(
+            conn, manager_id=mid, token_hash=hash_session_token(token), label="D"
+        )
+
+    cookie = sign_panel_session(
+        manager_id=str(mid),
+        email="rvn@v4company.com",
+        signing_key=_SIGNING_KEY,
+    )
+    response = await client.post(
+        f"/sessions/{sess.id}/revoke",
+        cookies={PANEL_SESSION_COOKIE_NAME: cookie},
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/sessions"

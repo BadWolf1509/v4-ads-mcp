@@ -503,8 +503,6 @@ async def sessions_revoke(
             raise HTTPException(status_code=404, detail="Session not found")
         if target.revoked_at is None:
             await mcp_sessions.revoke(conn, session_id)
-        # Return fresh list
-        sessions = await mcp_sessions.list_for_manager(conn, user.id, include_revoked=False)
 
     _toast_trigger = '{"toast": {"message": "Sessão revogada.", "kind": "success"}}'
 
@@ -536,11 +534,9 @@ async def sessions_revoke(
         )
         resp.headers["HX-Trigger"] = _toast_trigger
         return resp
-    return templates.TemplateResponse(
-        request,
-        "sessions/list.html",
-        {"current_user": user, "sessions": sessions, "include_revoked": False},
-    )
+    # Sem HTMX: POST-redirect-GET. Renderizar a lista com 200 faria o refresh
+    # re-executar a revogacao e sujaria o historico.
+    return RedirectResponse(url="/sessions", status_code=303)
 
 
 @router.get("/accounts", response_class=HTMLResponse)
