@@ -212,6 +212,47 @@ async def test_admin_access_meta_by_manager_conta_exclui_revogados(client: Async
 
 
 @pytest.mark.integration
+async def test_admin_access_meta_by_manager_denominador_exclui_desativada(client: AsyncClient):
+    """M8: o denominador tem de ser o mesmo universo da pagina de detalhe.
+
+    A matriz por gestor usa `list_all` (so ativas). Com `count(*)` cru aqui, o
+    offboarding automatico fazia o denominador crescer pra sempre e as duas
+    telas discordavam — mesma divergencia que o I1 fechou no numerador.
+    """
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        await meta_ad_accounts.upsert_many(
+            conn,
+            [
+                {
+                    "ad_account_id": "act_saiu_denom",
+                    "business_id": "biz_001",
+                    "business_name": "Empresa Teste",
+                    "account_name": "Ex-cliente",
+                    "currency": "BRL",
+                    "timezone_name": "America/Sao_Paulo",
+                    "account_status": 1,
+                }
+            ],
+        )
+        await manager_meta_account_access.bulk_grant(
+            conn, manager_id=gestor_id, ad_account_ids=["act_123456789"], granted_by=admin_id
+        )
+        await meta_ad_accounts.deactivate(conn, ad_account_ids=["act_saiu_denom"])
+
+    response = await client.get(
+        "/admin/access/meta/by-manager",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+
+    assert response.status_code == 200
+    # 2 contas existem, 1 desativada: o denominador e 1, nao 2.
+    assert "1 / 1 contas" in response.text
+    assert "/ 2 contas" not in response.text
+
+
+@pytest.mark.integration
 async def test_admin_accounts_meta_renders_token_status(
     client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

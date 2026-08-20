@@ -124,3 +124,69 @@ def test_guard_mede_o_inventario_ativo_e_nao_so_os_ausentes() -> None:
     )
     assert sorted(plano.to_remove) == ["act_a_0", "act_a_1", "act_a_2"]
     assert plano.blocked_reason is None
+
+
+def test_teto_absoluto_e_o_vinculante_quando_a_conta_cresce() -> None:
+    """T3b: o ramo `max_removal_abs` do `min()` nao tinha teste nenhum.
+
+    Com o inventario de hoje (24 ativas) `floor(24 * 0.2) = 4 < 5`, entao a
+    RAZAO e sempre a vinculante e o cap absoluto e codigo que ninguem exercita —
+    ele so passa a valer se a conta crescer. Aqui: 50 ativas, `floor(50*0.2)=10`,
+    cap absoluto 5. Seis remocoes tem de barrar (10 passaria, 5 nao).
+    """
+    parceria = {f"act_p_{i}" for i in range(44)}
+    ausentes = [inv(f"act_a_{i}", faltas=2) for i in range(6)]
+    inventario = [inv(f"act_p_{i}") for i in range(44)] + ausentes
+
+    plano = build_plan(
+        partnership_ids=parceria,
+        reachable_ids=parceria,
+        inventory=inventario,
+        complete=True,
+        threshold=3,
+        max_removal_ratio=0.2,
+        max_removal_abs=5,
+    )
+
+    assert plano.to_remove == []
+    assert plano.blocked_reason is not None
+    assert "teto 5" in plano.blocked_reason, (
+        "o teto anunciado tem de ser o absoluto (5), nao o percentual (10) — se "
+        "vier 10, o min() foi invertido e o cap absoluto virou decorativo"
+    )
+
+    # Contraprova: cinco remocoes cabem no mesmo teto, entao o guard nao esta
+    # simplesmente barrando tudo.
+    plano_ok = build_plan(
+        partnership_ids=parceria,
+        reachable_ids=parceria,
+        inventory=[inv(f"act_p_{i}") for i in range(44)] + ausentes[:5],
+        complete=True,
+        threshold=3,
+        max_removal_ratio=0.2,
+        max_removal_abs=5,
+    )
+    assert len(plano_ok.to_remove) == 5
+    assert plano_ok.blocked_reason is None
+
+
+def test_conta_nova_e_inalcancavel_sinaliza_no_mesmo_ciclo() -> None:
+    """T3c: a conta que entra JA sem o SU atribuido precisa aparecer em
+    `unreachable` na MESMA execucao em que entra.
+
+    Sao as duas contas reais de producao (`CA - V4 Lima Soares`, `CHUTE 07`):
+    estao na parceria, nunca entraram no inventario justamente por falta do SU.
+    Com `unreachable` intersectando o inventario ativo (lido antes do upsert),
+    o audit reportaria `unreachable: 0` no dia 1 — o unico dia em que o admin
+    olharia. A §3 define o sinal como `in_partnership ∧ ¬reachable`, so isso.
+    """
+    plano = build_plan(
+        partnership_ids={"act_nova_sem_su", "act_ja_dentro"},
+        reachable_ids={"act_ja_dentro"},
+        inventory=[inv("act_ja_dentro")],
+        complete=True,
+    )
+
+    assert plano.to_add == ["act_nova_sem_su"]
+    assert plano.unreachable == ["act_nova_sem_su"]
+    assert plano.to_remove == []

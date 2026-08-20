@@ -43,7 +43,12 @@ def build_plan(
     ids_ativos = {r.ad_account_id for r in ativos}
 
     to_add = sorted(partnership_ids - ids_ativos)
-    unreachable = sorted((partnership_ids & ids_ativos) - reachable_ids)
+    # T3c (revisão de branch): o sinal da §3 é `in_partnership ∧ ¬reachable` —
+    # sem interseção com o inventário. Intersectar com `ids_ativos` (lido ANTES
+    # do upsert) apagava justamente a conta nova-e-inalcançável, que é o caso
+    # real em produção (`CA - V4 Lima Soares`, `CHUTE 07`): ela entra por
+    # `to_add` no mesmo ciclo, e o audit reportaria `unreachable: 0` no dia 1.
+    unreachable = sorted(partnership_ids - reachable_ids)
     to_reset = sorted(
         r.ad_account_id for r in ativos if r.missed_syncs and r.ad_account_id in partnership_ids
     )

@@ -1238,7 +1238,14 @@ async def admin_access_meta_by_manager(
                WHERE m.is_active = true
                GROUP BY m.id ORDER BY m.email"""
         )
-        total_accounts = await conn.fetchval("SELECT count(*) FROM meta_ad_accounts") or 0
+        # M8 (revisao de branch): so conta ATIVA. A pagina de detalhe monta a
+        # matriz por `list_all`, que ja filtra `is_active` — sem o filtro aqui o
+        # denominador crescia com cada conta desativada pelo offboarding
+        # automatico e as duas telas voltavam a discordar, que e exatamente a
+        # divergencia que o I1 da Task 5 fechou no numerador.
+        total_accounts = (
+            await conn.fetchval("SELECT count(*) FROM meta_ad_accounts WHERE is_active = true") or 0
+        )
     # F92: FORA do `async with` — este helper abre a propria conexao, e
     # segurar uma e esperar por outra trava pra sempre com o pool cheio.
     pending = await pending_invites_count()

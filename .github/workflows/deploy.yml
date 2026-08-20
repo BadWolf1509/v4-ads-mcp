@@ -159,6 +159,16 @@ jobs:
           PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           REGION: ${{ secrets.GCP_REGION }}
         run: |
+          # `--set-env-vars` / `--set-secrets` (replace) aqui e DELIBERADO, e e
+          # o oposto do que os 3 Cloud Run Jobs acima usam (`--update-*`, merge).
+          # A diferenca nao e estilo: para o SERVICO estas duas linhas sao a
+          # enumeracao COMPLETA do ambiente — este workflow e a unica fonte que
+          # escreve nele, entao replace e o que garante que env removida do
+          # arquivo tambem some da revisao. Nos jobs o estado NAO e enumeravel
+          # daqui (foram criados a mao, F95), e `--set-*` la apagaria o que este
+          # arquivo nao lista. Nao "corrija" isto pra `--update-*`: o merge
+          # deixaria PUBLIC_BASE_URL/BOOTSTRAP_ADMIN_EMAILS antigos vivos para
+          # sempre depois de qualquer troca de dominio.
           gcloud run deploy v4-ads-mcp \
             --image=southamerica-east1-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
             --region=${REGION} \

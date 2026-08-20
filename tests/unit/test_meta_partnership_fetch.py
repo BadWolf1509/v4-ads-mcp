@@ -79,3 +79,22 @@ async def test_prefixo_act_normalizado() -> None:
         snap = await fetch_partnership(http, access_token="tok", business_id="619664032237208")
 
     assert snap.accounts[0]["ad_account_id"] == "act_123"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_linha_sem_id_nao_vira_conta_fantasma() -> None:
+    """M6: sem o `continue`, `id` ausente virava `"act_"` e era upsertado como
+    conta REAL — id que nenhuma edge devolve, logo ausente da parceria em toda
+    execucao seguinte, acumulando carencia ate ser 'desativado' por churn."""
+    respx.get(f"{BASE}/client_ad_accounts").mock(
+        return_value=httpx.Response(
+            200, json={"data": [{"name": "Sem id"}, {"id": "act_ok", "name": "Boa"}]}
+        )
+    )
+    respx.get(f"{BASE}/owned_ad_accounts").mock(return_value=httpx.Response(200, json={"data": []}))
+
+    async with httpx.AsyncClient() as http:
+        snap = await fetch_partnership(http, access_token="tok", business_id="619664032237208")
+
+    assert [a["ad_account_id"] for a in snap.accounts] == ["act_ok"]

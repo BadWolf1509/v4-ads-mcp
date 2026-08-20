@@ -33,6 +33,12 @@ def to_account_payload(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     payload: list[dict[str, Any]] = []
     for a in rows:
         ad_id = a.get("id", "")
+        # M6 (revisão de branch): linha sem `id` virava `"act_"` e era upsertada
+        # como conta REAL do inventário — id fantasma que nenhuma edge devolve,
+        # logo ausente da parceria em toda execução seguinte, acumulando
+        # carência até ser "desativado" por churn. Fora, e sem inventar nada.
+        if not ad_id:
+            continue
         if not ad_id.startswith("act_"):
             ad_id = f"act_{ad_id}"
         business = a.get("business") or {}
