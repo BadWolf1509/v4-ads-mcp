@@ -440,24 +440,12 @@ async def test_meta_accounts_upsert_and_list(db) -> None:
         assert names == sorted(names)  # ORDER BY account_name
 
 
-@pytest.mark.integration
-async def test_meta_accounts_mark_inactive_except(db) -> None:
-    async with db.acquire() as conn:
-        await meta_ad_accounts.upsert_many(
-            conn,
-            [
-                {"ad_account_id": "act_1", "business_id": "bm_A", "account_name": "A"},
-                {"ad_account_id": "act_2", "business_id": "bm_A", "account_name": "B"},
-                {"ad_account_id": "act_3", "business_id": "bm_A", "account_name": "C"},
-            ],
-        )
-        deactivated = await meta_ad_accounts.mark_inactive_except(
-            conn, business_id="bm_A", keep_ad_account_ids=["act_1", "act_3"]
-        )
-        assert deactivated == 1
-        active = await meta_ad_accounts.list_all(conn)
-        ids = {a.ad_account_id for a in active}
-        assert ids == {"act_1", "act_3"}
+# M1 (revisao de branch): `test_meta_accounts_mark_inactive_except` e
+# `test_meta_accounts_mark_inactive_empty_keep_list` sairam junto com a funcao
+# que testavam. Ela ficou sem chamador quando o reconciliador passou a decidir
+# por `build_plan`, e carregava a forma do F85 (keep-list vazia = desative tudo)
+# sem o guard que o gemeo Google tem. A desativacao agora e `deactivate()`, que
+# so mexe na lista explicita e cujos testes vivem em test_meta_reconcile_repo.py.
 
 
 @pytest.mark.integration
@@ -495,26 +483,6 @@ async def test_meta_accounts_get_by_id(db) -> None:
 
         missing = await meta_ad_accounts.get_by_id(conn, "act_does_not_exist")
         assert missing is None
-
-
-@pytest.mark.integration
-async def test_meta_accounts_mark_inactive_empty_keep_list(db) -> None:
-    async with db.acquire() as conn:
-        await meta_ad_accounts.upsert_many(
-            conn,
-            [
-                {"ad_account_id": "act_z1", "business_id": "bm_Z", "account_name": "Z1"},
-                {"ad_account_id": "act_z2", "business_id": "bm_Z", "account_name": "Z2"},
-            ],
-        )
-        deactivated = await meta_ad_accounts.mark_inactive_except(
-            conn, business_id="bm_Z", keep_ad_account_ids=[]
-        )
-        assert deactivated == 2
-        active = await meta_ad_accounts.list_all(conn)
-        # bm_Z accounts deactivated; other tests may have left rows that don't match bm_Z
-        bm_z_remaining = [a for a in active if a.business_id == "bm_Z"]
-        assert bm_z_remaining == []
 
 
 # ---------- manager_meta_account_access ----------
@@ -569,9 +537,67 @@ async def test_meta_access_grant_all_active(db) -> None:
         accounts = await manager_meta_account_access.list_accounts_for_manager(conn, mid)
         assert len(accounts) == 2
 
-        # Idempotent re-run inserts 0 (ON CONFLICT DO NOTHING).
+        # I4 (revisao de branch): a re-execucao passou a tocar as 2 linhas (era
+        # `DO NOTHING`, que devolvia 0). O que importa nao e o numero e sim que
+        # reconceder RESTAURA: sob revogacao soft a linha revogada persiste, e o
+        # `DO NOTHING` pulava em silencio justo a conta em que o gestor tinha
+        # perdido acesso — "conceder tudo" dava tudo MENOS o que ele ja perdera.
         n2 = await manager_meta_account_access.grant_all_active(conn, manager_id=mid)
-        assert n2 == 0
+        assert n2 == 2
+        assert len(await manager_meta_account_access.list_accounts_for_manager(conn, mid)) == 2
+
+
+@pytest.mark.integration
+async def test_meta_access_grant_all_active_restaura_grant_revogado(db) -> None:
+    """I4: a linha revogada nao pode ser pulada pelo ON CONFLICT."""
+    async with db.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="mga2@v4.com", full_name=None)
+        await meta_ad_accounts.upsert_many(
+            conn,
+            [
+                {"ad_account_id": "act_ga1", "business_id": "bm_A", "account_name": "A"},
+                {"ad_account_id": "act_ga2", "business_id": "bm_A", "account_name": "B"},
+            ],
+        )
+        await manager_meta_account_access.grant_all_active(conn, manager_id=mid)
+        await manager_meta_account_access.revoke(
+            conn, manager_id=mid, ad_account_id="act_ga1", reason="manual"
+        )
+        assert await manager_meta_account_access.can_manager_access(conn, mid, "act_ga1") is False
+
+        await manager_meta_account_access.grant_all_active(conn, manager_id=mid)
+
+        assert await manager_meta_account_access.can_manager_access(conn, mid, "act_ga1") is True
+        linha = await conn.fetchrow(
+            "SELECT revoked_at, revoked_reason FROM manager_meta_account_access "
+            "WHERE manager_id = $1 AND ad_account_id = 'act_ga1'",
+            mid,
+        )
+        assert linha["revoked_at"] is None
+        assert linha["revoked_reason"] is None
+
+
+@pytest.mark.integration
+async def test_meta_copy_access_recusa_origem_igual_ao_destino(db) -> None:
+    """T5e: sem o guard, copiar pra si mesmo aniquila o proprio gestor — o
+    UPDATE de limpeza revoga tudo e o SELECT seguinte (`revoked_at IS NULL`) ja
+    nao acha nada pra reconceder. A rota checa, mas o repositorio tem chamador
+    potencial fora dela."""
+    async with db.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="self@v4.com", full_name=None)
+        await meta_ad_accounts.upsert_many(
+            conn, [{"ad_account_id": "act_self", "business_id": "bm_A", "account_name": "A"}]
+        )
+        await manager_meta_account_access.grant_all_active(conn, manager_id=mid)
+
+        with pytest.raises(ValueError):
+            await manager_meta_account_access.copy_access(
+                conn, from_manager_id=mid, to_manager_id=mid, granted_by=mid
+            )
+
+        assert await manager_meta_account_access.can_manager_access(conn, mid, "act_self") is True
 
 
 @pytest.mark.integration

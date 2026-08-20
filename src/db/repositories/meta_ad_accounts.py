@@ -102,33 +102,6 @@ async def upsert_many(
     return len(rows)
 
 
-async def mark_inactive_except(
-    conn: asyncpg.Connection,
-    *,
-    business_id: str,
-    keep_ad_account_ids: list[str],
-) -> int:
-    """Mark accounts under business_id as inactive if not in keep list (deletion detection)."""
-    if not keep_ad_account_ids:
-        result = await conn.execute(
-            "UPDATE meta_ad_accounts SET is_active = false "
-            "WHERE business_id = $1 AND is_active = true",
-            business_id,
-        )
-    else:
-        result = await conn.execute(
-            """
-            UPDATE meta_ad_accounts SET is_active = false
-            WHERE business_id = $1
-              AND is_active = true
-              AND ad_account_id <> ALL($2::text[])
-            """,
-            business_id,
-            keep_ad_account_ids,
-        )
-    return int(result.split()[-1]) if result.startswith("UPDATE") else 0
-
-
 async def apply_absences(conn: asyncpg.Connection, *, bump: list[str], reset: list[str]) -> None:
     """Aplica a carência decidida pelo plano. Não decide nada."""
     if bump:
@@ -148,8 +121,13 @@ async def apply_absences(conn: asyncpg.Connection, *, bump: list[str], reset: li
 async def deactivate(conn: asyncpg.Connection, *, ad_account_ids: list[str]) -> int:
     """Desativa exatamente a lista dada — nunca 'tudo que não está em X'.
 
-    A forma antiga (`mark_inactive_except`) tinha o modo de falha do F85 embutido:
-    lista vazia significava 'desative o resto'. Aqui, lista vazia é no-op.
+    A forma antiga (`mark_inactive_except`) tinha o modo de falha do F85
+    embutido: `keep_ad_account_ids` vazio significava 'desative o resto', e o
+    gêmeo Google chegou a recusar esse caso justamente por isso. Aqui, lista
+    vazia é no-op por construção. A função antiga foi APAGADA na revisão de
+    branch (M1) em vez de deixada ao lado desta: ficou sem chamador nenhum
+    quando o reconciliador passou a decidir por `build_plan`, e código morto
+    armado é convite a alguém "reaproveitar" a forma perigosa.
     """
     if not ad_account_ids:
         return 0

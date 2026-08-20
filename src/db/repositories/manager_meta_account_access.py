@@ -52,7 +52,22 @@ async def grant_all_active(
     manager_id: UUID,
     granted_by: UUID | None = None,
 ) -> int:
-    """Grant write access to every active meta_ad_accounts row for this manager."""
+    """Grant write access to every active meta_ad_accounts row for this manager.
+
+    I4 (revisão de branch): era `ON CONFLICT DO NOTHING`, a última instância da
+    classe que `grant`/`bulk_grant`/`copy_access` já tinham corrigido. Enquanto
+    `revoke` era DELETE a linha sumia e o INSERT recriava; sob revogação soft a
+    linha PERSISTE revogada, então o `DO NOTHING` pulava em silêncio exatamente
+    as contas em que o gestor já tinha perdido acesso — um "conceder tudo"
+    devolveria acesso a todas MENOS essas, sem erro nenhum. Reconceder é a forma
+    de restaurar (spec 2026-08-20), então o conflito limpa a revogação.
+
+    Sem chamador de produção hoje (o gêmeo Google, `manager_account_access.
+    grant_all_active`, é o que `src/scripts/admin.py` usa). Corrigida em vez de
+    apagada: é a direção segura (concede, nunca revoga), tem gêmeo vivo de mesma
+    forma, e a §8 do desenho da matriz de acesso já prevê o "Conceder todas" no
+    painel — apagar aqui só criaria assimetria entre os dois lados.
+    """
     result = await conn.execute(
         """
         INSERT INTO manager_meta_account_access
@@ -60,7 +75,12 @@ async def grant_all_active(
         SELECT $1, ad_account_id, 'write', $2
         FROM meta_ad_accounts
         WHERE is_active = true
-        ON CONFLICT (manager_id, ad_account_id) DO NOTHING
+        ON CONFLICT (manager_id, ad_account_id) DO UPDATE SET
+            access_level = EXCLUDED.access_level,
+            granted_at = now(),
+            granted_by = EXCLUDED.granted_by,
+            revoked_at = NULL,
+            revoked_reason = NULL
         """,
         manager_id,
         granted_by,
@@ -247,7 +267,15 @@ async def copy_access(
     revogado no destino (por outro motivo, antes desta chamada) nem é tocado,
     porque o UPDATE de limpeza só pega `revoked_at IS NULL`. O ON CONFLICT
     restaura (não recria) a linha quando ela sobrevive dos dois lados.
+
+    T5e (revisão de branch): origem == destino aniquilaria o gestor — o UPDATE
+    de limpeza revoga tudo que ele tem, e o SELECT seguinte, filtrando
+    `revoked_at IS NULL`, já não acha nada pra reconceder. A rota checa antes
+    (`routes.py`), mas a defesa não pode viver só lá: quem chamar o repositório
+    de outro lugar não herda a checagem.
     """
+    if from_manager_id == to_manager_id:
+        raise ValueError("copy_access: origem e destino sao o mesmo gestor")
     async with conn.transaction():
         # "Replace" primeiro revoga (soft) o que o destino tinha de vivo — sem
         # isso, uma conta que só a destino tinha (fora do conjunto da origem)
