@@ -247,9 +247,13 @@ async def list_out_of_reach(conn: asyncpg.Connection) -> list[MetaAdAccount]:
 
     Cobre as duas rotas de churn: a desativada (por BM ou por limiar) e a que
     ainda esta ativa mas ja acumulou ausencia. O painel precisa das duas porque
-    **desativar nao revoga**: `can_manager_access` le so a tabela de grants, sem
-    olhar `is_active`. Sem esta lista, conta desativada some do admin e os grants
-    dela ficam vivos sem ninguem ver.
+    **desativar nao revoga**: a partir da spec 2026-08-20, `can_manager_access`
+    cruza com `is_active` (defesa em profundidade — nega mesmo se o
+    reconciliador nao rodou ainda), mas as linhas de `manager_meta_account_access`
+    continuam vivas, sem `revoked_at`, ate alguem chamar `revoke_for_account`.
+    Sem esta lista, conta desativada some do admin e os grants dela ficam
+    tecnicamente bloqueados porem nunca revogados de fato — ninguem percebe
+    que precisam de limpeza.
     """
     rows = await conn.fetch(
         """

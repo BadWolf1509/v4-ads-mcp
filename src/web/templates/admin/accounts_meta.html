@@ -20,17 +20,21 @@
     </form>
   </div>
 
-  {# F128 (d): o resync desativa sozinho depois de N ausências, mas desativar
-     NÃO revoga — `can_manager_access` lê só a tabela de grants. Sem esta lista
-     a conta sumia do admin e os grants ficavam vivos sem ninguém ver. #}
+  {# F128 (d): o resync desativa sozinho depois de N ausências. Desde a spec
+     2026-08-20 desativar já BLOQUEIA no gate (`can_manager_access` cruza com
+     `is_active`), mas NÃO revoga — a linha de manager_meta_account_access
+     continua viva, sem revoked_at, e volta a valer sozinha se a conta
+     reativar. Sem esta lista a conta sumia do admin e ninguém notava que os
+     grants precisavam de limpeza. #}
   {% if out_of_reach %}
   <div class="v4-card">
     <div class="v4-card__header">
       <h3 class="v4-card__title">Fora do alcance do system user ({{ out_of_reach|length }})</h3>
     </div>
     {{ alert(
-      "Desativar aqui <strong>não revoga acesso de gestor</strong> — o hard-gate consulta só a matriz.
-       Para offboarding completo, revogue os grants em <a href=\"/admin/access/meta\" class=\"underline\">Acessos → Meta</a>.",
+      "Desativar aqui já bloqueia o acesso do gestor no gate, mas <strong>não revoga o grant</strong> —
+       a linha continua viva e volta a valer sozinha se a conta reativar. Para offboarding
+       completo, revogue os grants em <a href=\"/admin/access/meta\" class=\"underline\">Acessos → Meta</a>.",
       "warning"
     ) }}
     <div class="v4-table-wrap" tabindex="0" role="region" aria-label="Contas fora do alcance do system user">

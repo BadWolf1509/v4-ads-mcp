@@ -15,6 +15,11 @@ async def grant(
     access_level: str = "write",
     granted_by: UUID | None = None,
 ) -> None:
+    """Reconceder é a forma de restaurar (spec 2026-08-20): se a linha já existia
+    revogada (`revoke` agora é soft), o ON CONFLICT limpa `revoked_at`/
+    `revoked_reason` em vez de só atualizar `access_level` — senão o toggle do
+    painel "concede" e o gate continua negando, porque a linha segue revogada.
+    """
     await conn.execute(
         """
         INSERT INTO manager_meta_account_access
@@ -23,7 +28,9 @@ async def grant(
         ON CONFLICT (manager_id, ad_account_id) DO UPDATE SET
             access_level = EXCLUDED.access_level,
             granted_at = now(),
-            granted_by = EXCLUDED.granted_by
+            granted_by = EXCLUDED.granted_by,
+            revoked_at = NULL,
+            revoked_reason = NULL
         """,
         manager_id,
         ad_account_id,
@@ -59,12 +66,58 @@ async def revoke(
     *,
     manager_id: UUID,
     ad_account_id: str,
+    reason: str = "manual",
 ) -> None:
+    """Revogação SOFT (spec 2026-08-20): a linha fica, só marca `revoked_at`.
+
+    Era DELETE. Curadoria de acesso é trabalho humano — apagar a linha perderia
+    quem tinha acesso quando a parceria (ou o gestor) volta.
+    """
     await conn.execute(
-        "DELETE FROM manager_meta_account_access WHERE manager_id = $1 AND ad_account_id = $2",
+        """
+        UPDATE manager_meta_account_access
+           SET revoked_at = now(), revoked_reason = $3
+         WHERE manager_id = $1 AND ad_account_id = $2
+        """,
         manager_id,
         ad_account_id,
+        reason,
     )
+
+
+async def revoke_for_account(
+    conn: asyncpg.Connection, *, ad_account_id: str, reason: str
+) -> list[UUID]:
+    """Revogação SOFT de todos os grants vivos da conta; devolve os atingidos.
+
+    A linha fica: sem ela não há o que restaurar quando a parceria volta, só
+    refazer à mão — e a curadoria de quem tinha acesso é trabalho humano.
+    """
+    rows = await conn.fetch(
+        """
+        UPDATE manager_meta_account_access
+           SET revoked_at = now(), revoked_reason = $2
+         WHERE ad_account_id = $1 AND revoked_at IS NULL
+        RETURNING manager_id
+        """,
+        ad_account_id,
+        reason,
+    )
+    return [r["manager_id"] for r in rows]
+
+
+async def restore_for_account(conn: asyncpg.Connection, *, ad_account_id: str) -> int:
+    """Desfaz `revoke_for_account`: devolve exatamente quem estava revogado."""
+    rows = await conn.fetch(
+        """
+        UPDATE manager_meta_account_access
+           SET revoked_at = NULL, revoked_reason = NULL
+         WHERE ad_account_id = $1 AND revoked_at IS NOT NULL
+        RETURNING manager_id
+        """,
+        ad_account_id,
+    )
+    return len(rows)
 
 
 async def list_accounts_for_manager(
@@ -78,6 +131,7 @@ async def list_accounts_for_manager(
         INNER JOIN manager_meta_account_access m ON m.ad_account_id = a.ad_account_id
         WHERE m.manager_id = $1
           AND a.is_active = true
+          AND m.revoked_at IS NULL
         ORDER BY a.account_name
         """,
         manager_id,
@@ -92,11 +146,22 @@ async def can_manager_access(
     *,
     level: str = "read",
 ) -> bool:
-    """Return True if manager has at least `level` access to ad_account_id."""
+    """Gate do Modelo B — e a ÚNICA fronteira que sobra.
+
+    O token de system user entrega tudo que o BM alcança, então a Meta não nega
+    nada por nós (confused deputy). Por isso o gate cruza com o inventário: conta
+    fora da parceria é negada aqui mesmo que o reconciliador ainda não tenha
+    rodado, e grant revogado não vale.
+    """
     row = await conn.fetchrow(
         """
-        SELECT access_level FROM manager_meta_account_access
-        WHERE manager_id = $1 AND ad_account_id = $2
+        SELECT m.access_level
+          FROM manager_meta_account_access m
+          JOIN meta_ad_accounts a ON a.ad_account_id = m.ad_account_id
+         WHERE m.manager_id = $1
+           AND m.ad_account_id = $2
+           AND m.revoked_at IS NULL
+           AND a.is_active = true
         """,
         manager_id,
         ad_account_id,
@@ -116,10 +181,15 @@ async def bulk_grant(
     granted_by: UUID,
     access_level: str = "write",
 ) -> int:
-    """Idempotent bulk grant. Inserts rows that don't exist; ignores duplicates.
+    """Idempotent bulk grant. Inserts rows that don't exist; restores revoked ones.
 
     Returns len(ad_account_ids) — not the count of rows actually inserted.
-    executemany with ON CONFLICT DO NOTHING does not expose per-batch counts.
+    executemany with ON CONFLICT does not expose per-batch counts.
+
+    Reconceder é a forma de restaurar (spec 2026-08-20): se a linha já existia
+    revogada, o ON CONFLICT limpa `revoked_at`/`revoked_reason` em vez de
+    ignorar — senão o gestor readicionado numa bulk-grant continuaria bloqueado
+    pelo gate.
     """
     if not ad_account_ids:
         return 0
@@ -128,7 +198,9 @@ async def bulk_grant(
         """INSERT INTO manager_meta_account_access
                (manager_id, ad_account_id, access_level, granted_by)
            VALUES ($1, $2, $3, $4)
-           ON CONFLICT (manager_id, ad_account_id) DO NOTHING""",
+           ON CONFLICT (manager_id, ad_account_id) DO UPDATE SET
+               revoked_at = NULL,
+               revoked_reason = NULL""",
         rows,
     )
     return len(rows)

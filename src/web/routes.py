@@ -1032,7 +1032,8 @@ async def admin_access_meta(
         )
         accounts = await meta_ad_accounts.list_all(conn)
         access_rows = await conn.fetch(
-            "SELECT manager_id, ad_account_id FROM manager_meta_account_access"
+            "SELECT manager_id, ad_account_id FROM manager_meta_account_access "
+            "WHERE revoked_at IS NULL"
         )
     access_set = {(str(r["manager_id"]), r["ad_account_id"]) for r in access_rows}
     pending = await pending_invites_count()
@@ -1061,8 +1062,12 @@ async def admin_access_meta_toggle(
     pool = connection.get_pool()
     target_mid = UUID(manager_id)
     async with pool.acquire() as conn:
+        # revoked_at IS NULL: linha revogada não conta como "tem acesso" — senão
+        # o clique num checkbox desmarcado (grant revogado) chamaria revoke() de
+        # novo em vez de restaurar, e o toggle ficaria preso sem nunca marcar.
         exists = await conn.fetchval(
-            "SELECT 1 FROM manager_meta_account_access WHERE manager_id=$1 AND ad_account_id=$2",
+            "SELECT 1 FROM manager_meta_account_access "
+            "WHERE manager_id=$1 AND ad_account_id=$2 AND revoked_at IS NULL",
             target_mid,
             ad_account_id,
         )
@@ -1210,7 +1215,8 @@ async def admin_access_meta_manager_detail(
             raise HTTPException(status_code=404, detail="Gestor not found")
         accs = await meta_ad_accounts.list_all(conn)
         access_rows = await conn.fetch(
-            "SELECT ad_account_id FROM manager_meta_account_access WHERE manager_id = $1",
+            "SELECT ad_account_id FROM manager_meta_account_access "
+            "WHERE manager_id = $1 AND revoked_at IS NULL",
             parsed_manager_id,
         )
         access_set = {r["ad_account_id"] for r in access_rows}
