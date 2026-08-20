@@ -603,7 +603,7 @@ Semana 8-24 (M.3+):        Fase 4 demand pull Meta ship
 - [Findings catalog](../../operacao/findings-catalog.md) — 50 findings F1-F52 + A1-A6 + D1
 - [Sprint history](../../operacao/sprint-history.md) — Sprints 3b.1-3b.38 + M.1-M.2b
 - [Meta App Review decision (D1)](../../operacao/findings-catalog.md) — Caminho B+ janela observação 30-45 dias
-- [Dogfood 2026-05-25 zombies audit](../../operacao/dogfood-2026-05-25-mestre-da-obra-jp-zombies-audit.md) — F52 + lição V4 48 P4
+- [Dogfood 2026-05-25 zombies audit](../../_archive/dogfood/dogfood-2026-05-25-mestre-da-obra-jp-zombies-audit.md) — F52 + lição V4 48 P4
 - [Meta family overview](2026-05-24-meta-ads-incorporation-design.md) — spec original M.1-M.25 (será reformulado Fase 4)
 
 ---

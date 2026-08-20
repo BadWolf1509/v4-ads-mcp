@@ -3,7 +3,7 @@
 **Status:** Spec draft
 **Author:** Claude (assistant) com Wellington
 **Created:** 2026-05-27
-**Source:** [Dogfood MO-JP 2026-05-27](../../operacao/dogfood-2026-05-27-mestre-da-obra-jp-investigacao-senior.md) — 13 sugestões priorizadas ICE, top 3 selecionadas
+**Source:** [Dogfood MO-JP 2026-05-27](../../_archive/dogfood/dogfood-2026-05-27-mestre-da-obra-jp-investigacao-senior.md) — 13 sugestões priorizadas ICE, top 3 selecionadas
 **Esforço estimado:** 4-6h dev (single sequencial, 4 commits atômicos)
 
 ---
