@@ -99,3 +99,28 @@ def test_conta_ja_desativada_nao_reaparece_no_plano_destrutivo() -> None:
     )
     assert plano.to_remove == []
     assert plano.to_bump == []
+
+
+def test_guard_mede_o_inventario_ativo_e_nao_so_os_ausentes() -> None:
+    """Protege contra regressao: teto precisa de len(ativos), nao len(ausentes).
+
+    Se alguma mudanca cometeu o erro de dividir por len(ausentes), este teste
+    falharia: 25 ativas, 3 ausentes com threshold ja atingido. Com len(ativos),
+    teto=5 e remocao prossegue; com len(ausentes) bugado, teto=0, bloqueia.
+    """
+    partnership = {f"act_p_{i}" for i in range(22)}
+    ausentes = [inv(f"act_a_{i}", faltas=2) for i in range(3)]
+    parceiros = [inv(f"act_p_{i}") for i in range(22)]
+    inventario = parceiros + ausentes
+
+    plano = build_plan(
+        partnership_ids=partnership,
+        reachable_ids=partnership,
+        inventory=inventario,
+        complete=True,
+        threshold=3,
+        max_removal_ratio=0.2,
+        max_removal_abs=5,
+    )
+    assert sorted(plano.to_remove) == ["act_a_0", "act_a_1", "act_a_2"]
+    assert plano.blocked_reason is None
