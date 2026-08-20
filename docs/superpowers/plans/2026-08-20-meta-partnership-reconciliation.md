@@ -340,7 +340,11 @@ from src.meta_ads.client import META_GRAPH_API_VERSION
 from src.meta_ads.graph import fetch_paginated
 
 _GRAPH = f"https://graph.facebook.com/{META_GRAPH_API_VERSION}"
-_FIELDS = "id,name,account_status,business"
+# currency e timezone_name são OBRIGATÓRIOS aqui: `upsert_many` escreve
+# `currency = EXCLUDED.currency`, então pedir menos campos do que a tabela
+# guarda APAGA os que faltarem nas 24 contas. Verificado por probe em
+# 2026-08-20 — as duas edges devolvem os dois campos quando pedidos.
+_FIELDS = "id,name,account_status,business,currency,timezone_name"
 _EDGES = ("client_ad_accounts", "owned_ad_accounts")
 
 
@@ -634,7 +638,7 @@ git commit -m "feat(meta_ads): plano de reconciliacao como funcao pura"
 - Create: `src/db/migrations/006_meta_partnership_reconciliation.sql`
 - Modify: `src/db/repositories/meta_ad_accounts.py`
 - Modify: `tests/integration/test_migrations.py` (lista de migrations)
-- Delete: a função `bump_missing` e seus testes (`tests/unit/test_meta_churn_por_ausencia.py`, `tests/integration/test_meta_churn_por_ausencia.py`) — a decisão migrou para `build_plan()`
+- **NÃO remover `bump_missing` nesta task.** `src/jobs/meta_resync.py:104` ainda a chama, e quem reescreve o job é a Task 7 — apagar aqui deixaria a árvore vermelha entre as duas tasks, e cada task tem de terminar verde. Marque-a como obsoleta com um comentário apontando para `build_plan()`; a Task 7 remove a função e os dois arquivos de teste (`tests/unit/test_meta_churn_por_ausencia.py`, `tests/integration/test_meta_churn_por_ausencia.py`) junto com o call-site.
 - Test: `tests/integration/test_meta_reconcile_repo.py`
 
 **Interfaces:**
@@ -824,13 +828,9 @@ async def list_inventory_rows(conn: asyncpg.Connection) -> list[InventoryRow]:
     ]
 ```
 
-- [ ] **Step 6: Remover os testes do mecanismo antigo**
+- [ ] **Step 6: Marcar `bump_missing` como obsoleta, sem remover**
 
-```bash
-git rm tests/unit/test_meta_churn_por_ausencia.py tests/integration/test_meta_churn_por_ausencia.py
-```
-
-O contrato que eles cobriam (carência, no-op com lista vazia, reset ao reaparecer) está coberto por `test_meta_reconcile_plan.py` (decisão) e `test_meta_reconcile_repo.py` (efeito). Remover sem substituto seria perder cobertura; aqui a cobertura mudou de endereço.
+Acrescentar à docstring dela: `OBSOLETA (2026-08-20): a decisão migrou para build_plan(); removida junto com o call-site na Task 7.` O call-site em `src/jobs/meta_resync.py` continua funcionando até lá — remover agora deixaria a árvore vermelha no meio do plano.
 
 - [ ] **Step 7: Rodar o gate e o CI**
 
@@ -1417,8 +1417,55 @@ git commit -m "feat(jobs): resync Meta vira reconciliacao contra a parceria"
 - Test: `tests/integration/test_web_panel_admin.py` (acrescentar casos)
 
 **Interfaces:**
-- Consumes: `meta_ad_accounts.list_out_of_reach` (existente, F128) e `manager_meta_account_access.restore_for_account` (Task 5).
-- Produces: rota `POST /admin/accounts/meta/{ad_account_id}/restore`.
+- Consumes: `manager_meta_account_access.restore_for_account` (Task 5), `meta_ad_accounts.set_reachable`/`deactivate` (Task 4, usados no teste).
+- Produces: `async list_queues(conn) -> ReconcileQueues` em `meta_ad_accounts`, e a rota `POST /admin/accounts/meta/{ad_account_id}/restore`.
+
+**`list_out_of_reach` (do F128) não serve e sai nesta task.** Ela devolve `is_active = false OR missed_syncs > 0`, o que não distingue as três filas: não sabe se a conta tem gestor delegado (precisa cruzar com os grants) nem se o system user a alcança (precisa de `su_reachable`). Substituir por:
+
+```python
+@dataclass(frozen=True, slots=True)
+class ReconcileQueues:
+    sem_delegacao: list[MetaAdAccount]
+    sem_su: list[MetaAdAccount]
+    saiu_da_parceria: list[tuple[MetaAdAccount, int]]  # conta + nº de grants revogados
+
+
+async def list_queues(conn: asyncpg.Connection) -> ReconcileQueues:
+    """As três filas do painel. Cada uma é uma AÇÃO diferente do admin."""
+    sem_delegacao = await conn.fetch(
+        """
+        SELECT a.* FROM meta_ad_accounts a
+         WHERE a.is_active = true
+           AND NOT EXISTS (
+               SELECT 1 FROM manager_meta_account_access m
+                WHERE m.ad_account_id = a.ad_account_id AND m.revoked_at IS NULL
+           )
+         ORDER BY a.account_name
+        """
+    )
+    sem_su = await conn.fetch(
+        "SELECT * FROM meta_ad_accounts "
+        "WHERE is_active = true AND su_reachable = false ORDER BY account_name"
+    )
+    # F59: toda coluna aliasada em query com JOIN.
+    saiu = await conn.fetch(
+        """
+        SELECT a.*, count(m.manager_id) FILTER (WHERE m.revoked_at IS NOT NULL) AS revogados
+          FROM meta_ad_accounts a
+          LEFT JOIN manager_meta_account_access m ON m.ad_account_id = a.ad_account_id
+         WHERE a.is_active = false
+         GROUP BY a.ad_account_id
+         ORDER BY a.account_name
+        """
+    )
+    return ReconcileQueues(
+        sem_delegacao=[_row_to_account(r) for r in sem_delegacao],
+        sem_su=[_row_to_account(r) for r in sem_su],
+        saiu_da_parceria=[(_row_to_account(r), r["revogados"]) for r in saiu],
+    )
+```
+
+Remover `list_out_of_reach` e a seção de template do F128 que a consumia — as três filas a substituem por completo.
 
 - [ ] **Step 1: Write the failing test**
 
