@@ -49,6 +49,10 @@ async def run_meta_graph_get(
             o hard-gate sempre roda contra ele. Antes era lido de params.get(),
             um fail-open: um tool que montasse o edge e esquecesse o param passava
             SEM gate (classe F57 no lado Meta). Agora é impossível pular (F72).
+            O audit também sai daqui, não de `params_summary`: aquele dict é
+            opcional, então um caller que esquecesse a chave gravava a linha com
+            conta NULA — na plataforma onde o token é compartilhado e a matriz é
+            o único freio, é a última linha que pode ficar sem a conta.
         edge: Graph API edge path, e.g., "/me/adaccounts"
         params: query parameters dict
         operation_name: for audit log + rate limit operation field
@@ -173,7 +177,7 @@ async def run_meta_graph_get(
                     conn,
                     manager_id=manager_id,
                     session_id=session_id,
-                    customer_id=(params_summary or {}).get("ad_account_id"),
+                    customer_id=ad_account_id,
                     action_type="read",
                     operation=operation_name,
                     params_summary=params_summary,
@@ -217,7 +221,7 @@ async def run_meta_graph_get(
                 conn,
                 manager_id=manager_id,
                 session_id=session_id,
-                customer_id=(params_summary or {}).get("ad_account_id"),
+                customer_id=ad_account_id,
                 action_type="read",
                 operation=operation_name,
                 target_count=len(body.get("data", [])) if isinstance(body, dict) else None,
