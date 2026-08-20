@@ -1,27 +1,12 @@
-/* V4 motion utilities — apply via class for transitions/animations */
+/* V4 motion — keyframes compartilhados + indicador do htmx.
 
-.v4-fade-in {
-  animation: v4-fade-in var(--v4-motion-base) var(--v4-ease-out);
-}
+   As classes utilitarias (.v4-fade-in, .v4-slide-up, .v4-pulse, .v4-skeleton)
+   sairam em 2026-08-19: nenhuma template as aplicava. O @keyframes v4-fade-in
+   fica porque .v4-dropdown.is-open e o alert o consomem direto. */
+
 @keyframes v4-fade-in {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
-}
-
-.v4-slide-up {
-  animation: v4-slide-up var(--v4-motion-slow) var(--v4-ease-spring);
-}
-@keyframes v4-slide-up {
-  from { opacity: 0; transform: translateY(16px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-.v4-pulse {
-  animation: v4-pulse 2s var(--v4-ease-out) infinite;
-}
-@keyframes v4-pulse {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.5; }
 }
 
 /* HTMX-aware: indicate loading on htmx-request */
@@ -29,25 +14,11 @@
 .htmx-request .htmx-indicator { opacity: 1; }
 .htmx-request.htmx-indicator { opacity: 1; }
 
-/* Skeleton shimmer */
-.v4-skeleton {
-  background: linear-gradient(90deg,
-    var(--v4-gray-100) 0%,
-    var(--v4-gray-50) 50%,
-    var(--v4-gray-100) 100%);
-  background-size: 200% 100%;
-  animation: v4-skeleton-shimmer 1.4s var(--v4-ease-out) infinite;
-  border-radius: var(--v4-radius-sm);
-}
-@keyframes v4-skeleton-shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-/* Respeita "reduzir movimento" do SO (WCAG 2.3.3). Cobre as animacoes
-   infinitas (v4-pulse, v4-skeleton-shimmer, v4-btn-spin), o drawer, os
-   toasts e os utilitarios de transicao do Tailwind. O !important garante
-   que vence independente da ordem de carga do v4-tailwind.css. */
+/* Respeita "reduzir movimento" do SO (WCAG 2.3.3). O seletor universal cobre
+   TUDO — o spinner do botao, o drawer, os toasts e os utilitarios de transicao
+   do Tailwind — entao nao precisa de manutencao quando uma animacao entra ou
+   sai. O !important garante que vence independente da ordem de carga do
+   v4-tailwind.css. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -383,3 +383,33 @@ def test_linha_expansivel_nao_vira_button():
             assert 'role="button"' not in abertura, (
                 f"{template.name}: <tr role=button> achata a linha pro leitor de tela"
             )
+
+
+_CLASSES_SEM_CONSUMIDOR = [
+    ".v4-dialog",
+    ".v4-stat-grid",
+    ".v4-card--compact",
+    ".v4-alert--copyable",
+    ".v4-skeleton",
+    ".v4-slide-up",
+    ".v4-pulse",
+]
+
+
+@pytest.mark.parametrize("classe", _CLASSES_SEM_CONSUMIDOR)
+def test_classe_sem_consumidor_nao_fica_no_bundle(classe):
+    """CSS que nenhuma template aplica viaja em toda visita.
+
+    O @keyframes v4-fade-in FICA — .v4-dropdown.is-open e o alert o usam;
+    o que sai e a CLASSE .v4-fade-in, que ninguem aplica.
+    """
+    for css in ("v4-components.css", "v4-motion.css"):
+        conteudo = (_STATIC / css).read_text(encoding="utf-8")
+        assert classe + " " not in conteudo, f"{css}: {classe} nao e aplicada em template"
+
+
+def test_panel_js_nao_le_atributo_que_ninguem_emite():
+    """Ler data-v4-reload / data-v4-confirm-kind sem nenhum emissor e ramo morto."""
+    js = (_STATIC / "v4-panel.js").read_text(encoding="utf-8")
+    for atributo in ("v4Reload", "v4ConfirmKind"):
+        assert atributo not in js, f"{atributo} nao e emitido por nenhuma template"

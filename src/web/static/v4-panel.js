@@ -180,14 +180,15 @@ const ACOES = {
     title: el.dataset.v4ConfirmTitle,
     message: el.dataset.v4ConfirmMessage,
     okLabel: el.dataset.v4ConfirmOk,
-    kind: el.dataset.v4ConfirmKind || 'danger',
+    // Todo confirm do painel e destrutivo (revogar conexao, revogar sessao).
+    kind: 'danger',
     onConfirm: () => {
       // F75: o `target` do htmx.ajax resolve via querySelector — nada de
       // "closest tr" aqui. Sem alvo, swap:"none".
       const opts = { swap: el.dataset.v4Swap || 'none' };
       if (el.dataset.v4Target) opts.target = el.dataset.v4Target;
-      const req = htmx.ajax('POST', el.dataset.v4Post, opts);
-      if (el.dataset.v4Reload !== undefined) req.then(() => window.location.reload());
+      // Recarregar depois da acao e responsabilidade da ROTA, via HX-Refresh.
+      htmx.ajax('POST', el.dataset.v4Post, opts);
     },
   }),
 };
