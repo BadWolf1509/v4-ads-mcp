@@ -22,6 +22,18 @@ jobs:
     permissions:
       contents: read
       id-token: write   # required for Workload Identity Federation
+    env:
+      # Os 3 Cloud Run Jobs rodam o MESMO codebase e chamam `get_settings()`,
+      # que valida o Settings INTEIRO na subida — entao cada um precisa dos
+      # mesmos campos obrigatorios do servico, inclusive `migrate` e `backup`,
+      # que funcionalmente so usam o banco. Ate agora isso so existia na criacao
+      # manual de cada job: sem fonte de verdade e sem guard (o F95 registrou os
+      # jobs ainda montando 3 secrets ja removidos — a config manual deriva).
+      #
+      # `--update-*` e MERGE, nao replace: declarar aqui e idempotente e nao
+      # apaga env que exista no job e nao esteja nesta lista.
+      JOB_ENV_VARS: "APP_ENV=production"
+      JOB_SECRETS: "DATABASE_URL=database-url:latest,SESSION_SIGNING_KEY=session-signing-key:latest,AES_MASTER_KEY=aes-master-key:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,GOOGLE_ADS_DEVELOPER_TOKEN=google-ads-developer-token:latest,GOOGLE_ADS_LOGIN_CUSTOMER_ID=google-ads-login-customer-id:latest"
 
     steps:
       - uses: actions/checkout@v7
@@ -81,7 +93,9 @@ jobs:
             --image=southamerica-east1-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
             --command=/cnb/process/migrate \
             --args="" \
-            --region=${REGION}
+            --region=${REGION} \
+            --update-env-vars="${JOB_ENV_VARS}" \
+            --update-secrets="${JOB_SECRETS}"
 
       - name: Update resync job image
         env:
@@ -93,11 +107,14 @@ jobs:
             --command=/cnb/process/resync \
             --args="" \
             --region=${REGION} \
-            --update-secrets="META_SYSTEM_USER_TOKEN=meta-system-user-token:latest"
+            --update-env-vars="${JOB_ENV_VARS}" \
+            --update-secrets="${JOB_SECRETS},META_SYSTEM_USER_TOKEN=meta-system-user-token:latest"
 
       # Job de backup semanal (dump csv.gz por tabela → GCS). Re-aponta imagem +
       # process a cada deploy (self-healing contra drift, igual migrate/resync).
-      # DATABASE_URL foi setado na criação do job; o update de imagem preserva.
+      # Env/secrets vem de JOB_ENV_VARS/JOB_SECRETS (merge): `backup` chama
+      # get_settings() como os outros, entao NAO basta DATABASE_URL — precisa
+      # dos 8 obrigatorios. O comentario anterior dizia o contrario.
       - name: Update backup job image
         env:
           PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -107,7 +124,9 @@ jobs:
             --image=southamerica-east1-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
             --command=/cnb/process/backup \
             --args="" \
-            --region=${REGION}
+            --region=${REGION} \
+            --update-env-vars="${JOB_ENV_VARS}" \
+            --update-secrets="${JOB_SECRETS}"
 
       # F66 resolvido: com o job invocando o process `migrate` real, o execute
       # aplica migrations pendentes (idempotente — no-op se o schema já bate) e

@@ -67,3 +67,67 @@ def test_settings_sobe_sem_as_variaveis_supabase() -> None:
         assert morto not in Settings.model_fields, (
             f"`{morto}` continua declarado em Settings e nada o le"
         )
+
+
+# --------------------------------------------------------- os Cloud Run Jobs
+
+# Os 3 processos do Procfile que rodam como Cloud Run Job. Todos chamam
+# `get_settings()`, que valida o Settings INTEIRO na subida — entao cada um
+# precisa dos mesmos campos obrigatorios do servico, mesmo o `migrate` e o
+# `backup`, que funcionalmente so usam o banco.
+_JOBS = ("v4-ads-mcp-migrate", "v4-ads-mcp-resync", "v4-ads-mcp-backup")
+
+
+def _expandir_env_do_workflow(valor: str) -> str:
+    """Resolve `${VAR}` usando o bloco `env:` do proprio workflow.
+
+    A lista de secrets dos jobs vive num `env:` do job pra nao ser triplicada —
+    triplicar seria criar a fonte de divergencia que este guard existe pra
+    impedir. Sem expandir, o parser leria `${JOB_SECRETS}` e nao os nomes.
+    """
+    texto = _DEPLOY.read_text(encoding="utf-8")
+    for nome, conteudo in re.findall(r'^      (\w+): "([^"]*)"$', texto, re.M):
+        valor = valor.replace("${" + nome + "}", conteudo)
+    return valor
+
+
+def _nomes_montados_no_job(job: str) -> set[str]:
+    """Env vars que o deploy declara pro job, via `--update-*` (merge)."""
+    texto = _DEPLOY.read_text(encoding="utf-8")
+    # o bloco do job vai do `gcloud run jobs update <job>` ate o proximo step
+    inicio = texto.index(f"gcloud run jobs update {job}")
+    resto = texto[inicio:]
+    fim = resto.find(chr(10) + "      - name:")
+    bloco = resto if fim == -1 else resto[:fim]
+    nomes: set[str] = set()
+    for flag in ("--update-env-vars", "--update-secrets", "--set-env-vars", "--set-secrets"):
+        for bruto in re.findall(re.escape(flag) + r'="([^"]*)"', bloco):
+            trecho = _expandir_env_do_workflow(bruto)
+            for par in trecho.split(","):
+                if "=" in par:
+                    nomes.add(par.split("=", 1)[0].strip().lower())
+    return nomes
+
+
+def test_todo_job_recebe_os_campos_obrigatorios() -> None:
+    """Job sem os 8 campos obrigatorios nao sobe — e falha CALADO.
+
+    O deploy ja re-aponta imagem e `--command` dos 3 a cada push (self-healing
+    contra drift manual), mas o env ficava so na criacao a mao: nao havia fonte
+    de verdade nem guard. Evidencia de que a config manual deriva: o F95
+    registrou que os jobs seguem montando os 3 secrets Supabase removidos.
+
+    `migrate` roda em todo deploy, entao falharia alto. `resync` (diario) e
+    `backup` (semanal, o artefato de compliance) falhariam quietos — foi
+    exatamente essa cegueira que o F93 atacou ao auditar crash de job.
+    """
+    obrigatorios = _campos_obrigatorios(Settings)
+    problemas: list[str] = []
+    for job in _JOBS:
+        faltando = obrigatorios - _nomes_montados_no_job(job)
+        if faltando:
+            problemas.append(f"{job}: {sorted(faltando)}")
+    assert not problemas, (
+        "Cloud Run Jobs sem campo obrigatorio de Settings no deploy.yml — "
+        "`get_settings()` valida tudo na subida: " + "; ".join(problemas)
+    )
