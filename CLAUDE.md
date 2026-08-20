@@ -142,6 +142,6 @@ Solo dev on `main` (admin bypass). Commits: `feat(scope): …` / `fix(scope): �
 - Don't aplicar `is_allowed_email` (V4 domain) no callback Meta OAuth — `fb_email` é conta FB pessoal (A6); auth é o manager_id no state HMAC.
 - Don't usar `{{ button() }}` em `<form>` sem `type="submit"` (F49).
 - Don't retornar `303` cru de um handler chamado por `hx-post` — torne HX-aware (`204`+`HX-Redirect`/`HX-Refresh`, espelha `sessions_revoke`), senão o HTMX injeta a página no `hx-target` (dropdown Managers, 2ª sessão 07-04).
-- Don't ecoar `request.query_params` no contexto da macro `alert` (`{{ message|safe }}` = XSS) — mapa fixo código→mensagem; don't envolver tabela `sticky-head`/com-dropdown em `.v4-table-wrap` (mata sticky / clipa menu).
+- Don't ecoar `request.query_params` no contexto da macro `alert` (`{{ message|safe }}` = XSS) — mapa fixo código→mensagem. Don't deixar `<table>` fora de contentor de scroll: sem ele a PÁGINA rola na horizontal (F118, +751px em 375). As duas exceções antigas caíram em 08-20 — sticky-head usa `.v4-table-wrap--wide` (scroller só abaixo de 1200px) e o dropdown se desancora sozinho. Contentor novo exige `tabindex="0" role="region" aria-label` (F125); o guard derivado cobra os dois.
 - Don't shippar tool Meta com fields novos sem validar via `ads_get_field_context` (F53/F54/F55 — `/insights` vs `/entities`).
 - Don't upload secret via pipe PowerShell — arquivo binary intermediário (F47); NUNCA cole secret em chat.
