@@ -1,0 +1,81 @@
+# tests/integration/test_meta_reconcile_repo.py
+"""O repositorio APLICA o plano; nao decide nada. Contra banco real porque o
+que importa aqui e o efeito do SQL, nao a chamada (licao do F85)."""
+
+import pytest
+
+from src.db.repositories import meta_ad_accounts
+
+CONTA = {
+    "ad_account_id": "act_1",
+    "business_id": "bm",
+    "business_name": "BM",
+    "account_name": "Conta 1",
+    "currency": "BRL",
+    "timezone_name": "America/Sao_Paulo",
+    "account_status": 1,
+}
+OUTRA = {**CONTA, "ad_account_id": "act_2", "account_name": "Conta 2"}
+
+
+@pytest.mark.integration
+async def test_apply_absences_incrementa_e_zera(db) -> None:
+    async with db.acquire() as conn:
+        await meta_ad_accounts.upsert_many(conn, [CONTA, OUTRA])
+
+        await meta_ad_accounts.apply_absences(conn, bump=["act_2"], reset=[])
+        await meta_ad_accounts.apply_absences(conn, bump=["act_2"], reset=[])
+        assert (await meta_ad_accounts.get_by_id(conn, "act_2")).missed_syncs == 2
+
+        await meta_ad_accounts.apply_absences(conn, bump=[], reset=["act_2"])
+        assert (await meta_ad_accounts.get_by_id(conn, "act_2")).missed_syncs == 0
+
+
+@pytest.mark.integration
+async def test_deactivate_so_mexe_no_que_foi_pedido(db) -> None:
+    async with db.acquire() as conn:
+        await meta_ad_accounts.upsert_many(conn, [CONTA, OUTRA])
+
+        n = await meta_ad_accounts.deactivate(conn, ad_account_ids=["act_2"])
+
+        assert n == 1
+        assert (await meta_ad_accounts.get_by_id(conn, "act_1")).is_active is True
+        assert (await meta_ad_accounts.get_by_id(conn, "act_2")).is_active is False
+
+
+@pytest.mark.integration
+async def test_lista_vazia_e_noop_em_todas_as_operacoes(db) -> None:
+    """F85: lista vazia quase sempre e falha de leitura, nao 'todas sumiram'."""
+    async with db.acquire() as conn:
+        await meta_ad_accounts.upsert_many(conn, [CONTA, OUTRA])
+
+        assert await meta_ad_accounts.deactivate(conn, ad_account_ids=[]) == 0
+        await meta_ad_accounts.apply_absences(conn, bump=[], reset=[])
+        await meta_ad_accounts.set_reachable(conn, reachable_ids=[])
+
+        assert len(await meta_ad_accounts.list_all(conn)) == 2
+        assert (await meta_ad_accounts.get_by_id(conn, "act_1")).su_reachable is True
+
+
+@pytest.mark.integration
+async def test_set_reachable_marca_quem_esta_fora_do_alcance(db) -> None:
+    async with db.acquire() as conn:
+        await meta_ad_accounts.upsert_many(conn, [CONTA, OUTRA])
+
+        await meta_ad_accounts.set_reachable(conn, reachable_ids=["act_1"])
+
+        assert (await meta_ad_accounts.get_by_id(conn, "act_1")).su_reachable is True
+        assert (await meta_ad_accounts.get_by_id(conn, "act_2")).su_reachable is False
+
+
+@pytest.mark.integration
+async def test_list_inventory_rows_devolve_o_que_o_plano_consome(db) -> None:
+    async with db.acquire() as conn:
+        await meta_ad_accounts.upsert_many(conn, [CONTA, OUTRA])
+        await meta_ad_accounts.deactivate(conn, ad_account_ids=["act_2"])
+
+        linhas = {r.ad_account_id: r for r in await meta_ad_accounts.list_inventory_rows(conn)}
+
+        assert linhas["act_1"].is_active is True
+        assert linhas["act_2"].is_active is False
+        assert linhas["act_1"].missed_syncs == 0

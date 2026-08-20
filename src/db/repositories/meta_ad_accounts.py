@@ -6,6 +6,8 @@ from typing import Any
 
 import asyncpg
 
+from src.meta_ads.reconcile import InventoryRow
+
 # F128: quantas execucoes COMPLETAS seguidas sem ver a conta antes de desativar.
 # O job roda diario, entao 3 ~ 3 dias. Nao e 1 de proposito: uma unica leitura
 # esquisita (resposta completa porem pobre, hiccup de permissao) nao deve
@@ -33,6 +35,11 @@ class MetaAdAccount:
     # /me/adaccounts. Zera ao reaparecer; ao cruzar MISSED_SYNCS_THRESHOLD a
     # conta e desativada.
     missed_syncs: int = 0
+    # Alcance do system user, distinto de pertencer a parceria (spec
+    # 2026-08-20): conta pode estar na lista autoritativa e mesmo assim ficar
+    # fora do alcance do SU (acao humana pendente no Business Manager). NUNCA
+    # usar isto como sinal de desativacao — quem decide e build_plan().
+    su_reachable: bool = True
 
 
 def _row_to_account(row: asyncpg.Record) -> MetaAdAccount:
@@ -47,6 +54,7 @@ def _row_to_account(row: asyncpg.Record) -> MetaAdAccount:
         is_active=row["is_active"],
         synced_at=row["synced_at"],
         missed_syncs=row["missed_syncs"],
+        su_reachable=row["su_reachable"],
     )
 
 
@@ -131,7 +139,11 @@ async def bump_missing(
     seen_ad_account_ids: list[str],
     threshold: int = MISSED_SYNCS_THRESHOLD,
 ) -> tuple[int, int]:
-    """Conta ausencia por TEMPO, nao por BM (F128). Devolve (marcadas, desativadas).
+    """OBSOLETA (2026-08-20): a decisao migrou para build_plan(); removida junto
+    com o call-site na Task 7. Ate la, `src/jobs/meta_resync.py` continua
+    chamando-a — nao remover nem alterar o comportamento.
+
+    Conta ausencia por TEMPO, nao por BM (F128). Devolve (marcadas, desativadas).
 
     `mark_inactive_except` escopa por `business_id` e por isso nao alcanca o caso
     mais comum da operacao: parceria encerrada → system user perde o acesso → o
@@ -172,6 +184,62 @@ async def bump_missing(
         )
     )
     return marcadas, desativadas
+
+
+async def apply_absences(conn: asyncpg.Connection, *, bump: list[str], reset: list[str]) -> None:
+    """Aplica a carência decidida pelo plano. Não decide nada."""
+    if bump:
+        await conn.execute(
+            "UPDATE meta_ad_accounts SET missed_syncs = missed_syncs + 1 "
+            "WHERE ad_account_id = ANY($1::text[])",
+            bump,
+        )
+    if reset:
+        await conn.execute(
+            "UPDATE meta_ad_accounts SET missed_syncs = 0 "
+            "WHERE ad_account_id = ANY($1::text[]) AND missed_syncs <> 0",
+            reset,
+        )
+
+
+async def deactivate(conn: asyncpg.Connection, *, ad_account_ids: list[str]) -> int:
+    """Desativa exatamente a lista dada — nunca 'tudo que não está em X'.
+
+    A forma antiga (`mark_inactive_except`) tinha o modo de falha do F85 embutido:
+    lista vazia significava 'desative o resto'. Aqui, lista vazia é no-op.
+    """
+    if not ad_account_ids:
+        return 0
+    return _rows_affected(
+        await conn.execute(
+            "UPDATE meta_ad_accounts SET is_active = false "
+            "WHERE ad_account_id = ANY($1::text[]) AND is_active = true",
+            ad_account_ids,
+        )
+    )
+
+
+async def set_reachable(conn: asyncpg.Connection, *, reachable_ids: list[str]) -> None:
+    """Marca alcance do system user. NÃO desativa: alcance ≠ pertencer à parceria."""
+    if not reachable_ids:
+        return
+    await conn.execute(
+        "UPDATE meta_ad_accounts SET su_reachable = (ad_account_id = ANY($1::text[]))",
+        reachable_ids,
+    )
+
+
+async def list_inventory_rows(conn: asyncpg.Connection) -> list[InventoryRow]:
+    """Devolve o inventário no formato que `build_plan()` consome — puro dado."""
+    rows = await conn.fetch("SELECT ad_account_id, is_active, missed_syncs FROM meta_ad_accounts")
+    return [
+        InventoryRow(
+            ad_account_id=r["ad_account_id"],
+            is_active=r["is_active"],
+            missed_syncs=r["missed_syncs"],
+        )
+        for r in rows
+    ]
 
 
 async def list_out_of_reach(conn: asyncpg.Connection) -> list[MetaAdAccount]:
