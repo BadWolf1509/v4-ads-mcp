@@ -199,11 +199,22 @@ async def list_queues(conn: asyncpg.Connection) -> ReconcileQueues:
     false OR missed_syncs > 0`, o que não distinguia as três filas — não sabia
     se a conta tinha gestor delegado (precisa cruzar com os grants) nem se o
     system user a alcançava (precisa de `su_reachable`).
+
+    Fix round 1 (review): as filas são exclusivas, `sem_su` tem precedência.
+    Sem `AND a.su_reachable = true` aqui, uma conta na parceria, sem gestor E
+    sem SU (caso real em produção — `CA - V4 Lima Soares`, `CHUTE 07`) caía
+    nas DUAS filas ao mesmo tempo. Não é só duplicação visual: delegar um
+    gestor numa conta que o system user não alcança produz um grant que só
+    gera `#200` quando usado. A ordem certa do admin é atribuir o SU no
+    Business Manager primeiro, delegar depois — uma fila que convida a
+    segunda ação antes da primeira ser possível manda o admin fazer trabalho
+    inútil.
     """
     sem_delegacao = await conn.fetch(
         """
         SELECT a.* FROM meta_ad_accounts a
          WHERE a.is_active = true
+           AND a.su_reachable = true
            AND NOT EXISTS (
                SELECT 1 FROM manager_meta_account_access m
                 WHERE m.ad_account_id = a.ad_account_id AND m.revoked_at IS NULL

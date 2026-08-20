@@ -79,3 +79,26 @@ async def test_list_inventory_rows_devolve_o_que_o_plano_consome(db) -> None:
         assert linhas["act_1"].is_active is True
         assert linhas["act_2"].is_active is False
         assert linhas["act_1"].missed_syncs == 0
+
+
+@pytest.mark.integration
+async def test_list_queues_sem_su_tem_precedencia_sobre_sem_delegacao(db) -> None:
+    """Fix round 1 (review): conta sem gestor E sem SU caia nas DUAS filas
+    antes deste fix — caso real em producao (CA - V4 Lima Soares, CHUTE 07).
+    sem_su ganha: delegar um gestor numa conta que o SU nao alcanca so produz
+    #200 quando ele tenta usar; a ordem certa do admin e SU primeiro,
+    delegacao depois — por isso as filas tem que ser exclusivas."""
+    async with db.acquire() as conn:
+        await meta_ad_accounts.upsert_many(conn, [CONTA, OUTRA])
+        # act_1 fica alcancavel (cai em sem_delegacao, o caso normal); act_2
+        # fica de fora (sem SU E sem gestor — o caso que se sobrepunha).
+        await meta_ad_accounts.set_reachable(conn, reachable_ids=["act_1"])
+
+        queues = await meta_ad_accounts.list_queues(conn)
+
+        sem_delegacao_ids = {a.ad_account_id for a in queues.sem_delegacao}
+        sem_su_ids = {a.ad_account_id for a in queues.sem_su}
+
+        assert sem_delegacao_ids == {"act_1"}
+        assert sem_su_ids == {"act_2"}
+        assert not (sem_delegacao_ids & sem_su_ids), "as filas nao podem se sobrepor"

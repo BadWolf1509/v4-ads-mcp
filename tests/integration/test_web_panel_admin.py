@@ -604,7 +604,12 @@ async def test_painel_meta_separa_as_tres_filas(client: AsyncClient) -> None:
     assert "Aguardando delegação" in resp.text
     assert "Sem o system user atribuído" in resp.text
     assert "Saíram da parceria" in resp.text
-    # cada conta cai na SUA fila, e não em todas
+    # Fumaça: cada fila aparece e é possível achar uma conta dela na página.
+    # A EXCLUSIVIDADE entre sem_delegacao/sem_su (fix round 1 — uma conta não
+    # pode cair nas duas) é pinada por asserção sobre as listas de
+    # list_queues, não por slice de HTML — ver
+    # test_list_queues_sem_su_tem_precedencia_sobre_sem_delegacao em
+    # tests/integration/test_meta_reconcile_repo.py.
     assert "Nova sem gestor" in resp.text
     assert "Ex-cliente" in resp.text
 
