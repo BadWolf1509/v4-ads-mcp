@@ -50,6 +50,14 @@ class Settings(BaseSettings):
     # Meta Ads — system user token (Modelo B, Secret Manager: meta-system-user-token).
     # Token NÃO expira; vazio = feature de execução Meta indisponível (erro PT-BR amigável).
     meta_system_user_token: str = ""
+    # ID do BM da V4 Lima Soares. Não é segredo (é identificador), então env var
+    # comum. Default vazio porque `/me/businesses` devolve 0 pro system user: sem
+    # este valor não há como descobrir o BM, e o reconciliador vira no-op em vez
+    # de derrubar o job (mesma escolha de meta_system_user_token).
+    meta_business_id: str = ""
+    # Trava do rollout: o job calcula e audita o plano, mas só executa o lado
+    # destrutivo com isto ligado. Virar sem deploy de código.
+    meta_reconcile_apply: bool = False
 
     # NOTA (F95): nao ha campos Supabase aqui. O banco e Postgres do Supabase,
     # mas o acesso e 100% via `database_url` (asyncpg cru, sem a lib supabase).

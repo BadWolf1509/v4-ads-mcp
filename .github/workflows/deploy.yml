@@ -32,7 +32,7 @@ jobs:
       #
       # `--update-*` e MERGE, nao replace: declarar aqui e idempotente e nao
       # apaga env que exista no job e nao esteja nesta lista.
-      JOB_ENV_VARS: "APP_ENV=production"
+      JOB_ENV_VARS: "APP_ENV=production,META_BUSINESS_ID=619664032237208,META_RECONCILE_APPLY=false"
       JOB_SECRETS: "DATABASE_URL=database-url:latest,SESSION_SIGNING_KEY=session-signing-key:latest,AES_MASTER_KEY=aes-master-key:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,GOOGLE_ADS_DEVELOPER_TOKEN=google-ads-developer-token:latest,GOOGLE_ADS_LOGIN_CUSTOMER_ID=google-ads-login-customer-id:latest"
 
     steps:
@@ -170,7 +170,7 @@ jobs:
             --cpu=1 \
             --memory=512Mi \
             --timeout=300 \
-            --set-env-vars="APP_ENV=production,APP_TIMEZONE=America/Sao_Paulo,LOG_LEVEL=info,BOOTSTRAP_ADMIN_EMAILS=wellington.ribeiro@v4company.com,PUBLIC_BASE_URL=https://v4-ads-mcp-299432068772.southamerica-east1.run.app" \
+            --set-env-vars="APP_ENV=production,APP_TIMEZONE=America/Sao_Paulo,LOG_LEVEL=info,BOOTSTRAP_ADMIN_EMAILS=wellington.ribeiro@v4company.com,PUBLIC_BASE_URL=https://v4-ads-mcp-299432068772.southamerica-east1.run.app,META_BUSINESS_ID=619664032237208,META_RECONCILE_APPLY=false" \
             --set-secrets="DATABASE_URL=database-url:latest,SESSION_SIGNING_KEY=session-signing-key:latest,AES_MASTER_KEY=aes-master-key:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,GOOGLE_ADS_DEVELOPER_TOKEN=google-ads-developer-token:latest,GOOGLE_ADS_LOGIN_CUSTOMER_ID=google-ads-login-customer-id:latest,META_APP_ID=meta-app-id:latest,META_APP_SECRET=meta-app-secret:latest,META_SYSTEM_USER_TOKEN=meta-system-user-token:latest"
 
       - name: Route 100% traffic to latest revision
