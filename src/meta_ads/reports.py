@@ -15,6 +15,7 @@ from uuid import UUID
 
 import structlog
 
+from src.blocking import run_blocking
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import audit_log, manager_meta_account_access
@@ -134,22 +135,33 @@ async def run_meta_graph_get(
         # F88: segue `paging.next` até `max_pages`. As linhas de todas as páginas
         # são concatenadas em `data`; o `paging` que sobrevive é o da ÚLTIMA
         # página, então um `next` remanescente sinaliza truncamento pro caller.
-        body = cast(dict[str, Any], {})
-        linhas: list[Any] = []
-        paginas_lidas = 0
-        proxima_url: str | None = None
-        while paginas_lidas < max_pages:
-            if proxima_url is None:
-                response = api.call("GET", [edge.lstrip("/")], params=params or {})
-            else:
-                # `paging.next` já carrega cursor + fields + token na própria URL.
-                response = api.call("GET", [proxima_url], params={})
-            body = cast(dict[str, Any], response.json())
-            paginas_lidas += 1
-            linhas.extend(body.get("data") or [])
-            proxima_url = (body.get("paging") or {}).get("next")
-            if not proxima_url:
-                break
+        # F86: `FacebookAdsApi.call` usa `requests` por baixo — nao e coroutine
+        # (verificado na fonte instalada). A paginacao INTEIRA sai do event loop
+        # num closure so: sao ate `max_pages` round-trips SEQUENCIAIS ao
+        # graph.facebook.com, e deixa-los no loop serializa todos os requests da
+        # instancia, inclusive o /health. Offloadar so a 1a chamada nao adiantaria
+        # — o bloqueio mudaria de lugar, como no stream do lado Google.
+        def _paginar() -> tuple[dict[str, Any], list[Any], int, Any]:
+            corpo: dict[str, Any] = {}
+            colhidas: list[Any] = []
+            lidas = 0
+            proxima: str | None = None
+            resposta: Any = None
+            while lidas < max_pages:
+                if proxima is None:
+                    resposta = api.call("GET", [edge.lstrip("/")], params=params or {})
+                else:
+                    # `paging.next` já carrega cursor + fields + token na própria URL.
+                    resposta = api.call("GET", [proxima], params={})
+                corpo = cast(dict[str, Any], resposta.json())
+                lidas += 1
+                colhidas.extend(corpo.get("data") or [])
+                proxima = (corpo.get("paging") or {}).get("next")
+                if not proxima:
+                    break
+            return corpo, colhidas, lidas, resposta
+
+        body, linhas, paginas_lidas, response = await run_blocking(_paginar)
         if "data" in body or linhas:
             body = {**body, "data": linhas}
     except Exception as e:  # noqa: BLE001 — catch all to map to friendly

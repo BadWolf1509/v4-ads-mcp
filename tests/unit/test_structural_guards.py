@@ -263,3 +263,133 @@ def test_teste_de_integracao_nao_monta_dsn_do_container_a_mao() -> None:
         f"{offenders}. Use a fixture `pg_dsn` (tests/integration/conftest.py) — "
         "ela aplica a correcao de IPv4 que o Docker no Windows exige."
     )
+
+
+# ----------------------------------------------------------------- F86 (loop)
+
+# Métodos que fazem I/O de rede BLOQUEANTE e portanto não podem ser chamados de
+# dentro de um `async def` sem sair do event loop.
+#   - google-ads: cliente gRPC síncrono.
+#   - facebook_business: `FacebookAdsApi.call` usa `requests` (verificado na
+#     fonte instalada — não é coroutine).
+# `*_path()`, `get_type()` e `copy_from()` do SDK Google são locais: ficam fora.
+_METODOS_BLOQUEANTES = frozenset(
+    {
+        "search",
+        "search_stream",
+        "mutate",
+        "upload_click_conversions",
+        "upload_call_conversions",
+        "create_offline_user_data_job",
+        "add_offline_user_data_job_operations",
+        "run_offline_user_data_job",
+        "apply_recommendation",
+        "dismiss_recommendation",
+        "list_accessible_customers",
+    }
+)
+
+# `accounts.py` é síncrono DE PROPÓSITO: só o Cloud Run Job de resync o importa
+# (verificado), e ali bloquear não tira o loop de ninguém. Ver _blocking.py.
+_ARQUIVOS_FORA_DO_LOOP = frozenset({"src/jobs/account_resync.py"})
+
+
+def _chamadas_diretas(node: ast.AST) -> list[tuple[int, str, str, str]]:
+    """Chamadas no corpo de `node`, SEM descer em funções aninhadas.
+
+    Pular as funções aninhadas é o ponto: elas são exatamente os closures que
+    `run_blocking` recebe. O que sobra roda no event loop.
+    """
+    achadas: list[tuple[int, str, str, str]] = []
+    pilha: list[ast.AST] = list(ast.iter_child_nodes(node))
+    while pilha:
+        atual = pilha.pop()
+        if isinstance(atual, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        if isinstance(atual, ast.Call):
+            if isinstance(atual.func, ast.Attribute):
+                # `api.call(...)` do facebook_business: o receptor importa, senao
+                # o guard casaria qualquer metodo chamado `call` no codebase.
+                receptor = atual.func.value
+                nome_receptor = receptor.id if isinstance(receptor, ast.Name) else ""
+                achadas.append((atual.lineno, atual.func.attr, "attr", nome_receptor))
+            elif isinstance(atual.func, ast.Name):
+                achadas.append((atual.lineno, atual.func.id, "name", ""))
+        pilha.extend(ast.iter_child_nodes(atual))
+    return achadas
+
+
+def _funcoes_sync_bloqueantes() -> dict[str, str]:
+    """Funções sync de src/ que bloqueiam, direta ou transitivamente.
+
+    O fecho transitivo importa: `run_recommendation_action` não chamava o SDK,
+    chamava `execute_apply_recommendation`, que chama. Um guard que só olhasse
+    nomes de método do SDK daria verde nele.
+    """
+    corpos: dict[str, tuple[str, set[str]]] = {}
+    for p in _py_files():
+        try:
+            tree = ast.parse(p.read_text(encoding="utf-8"))
+        except SyntaxError:  # pragma: no cover
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):
+                chamados = {nome for _, nome, _forma, _r in _chamadas_diretas(node)}
+                corpos[node.name] = (p.as_posix(), chamados)
+
+    bloqueantes = {
+        nome: arq for nome, (arq, chamados) in corpos.items() if chamados & _METODOS_BLOQUEANTES
+    }
+    mudou = True
+    while mudou:
+        mudou = False
+        for nome, (arq, chamados) in corpos.items():
+            if nome not in bloqueantes and (chamados & set(bloqueantes)):
+                bloqueantes[nome] = arq
+                mudou = True
+    return bloqueantes
+
+
+def test_chamada_bloqueante_sai_do_event_loop() -> None:
+    """F86: SDK síncrono chamado de `async def` congela a INSTÂNCIA inteira.
+
+    O google-ads é gRPC bloqueante e o facebook_business usa `requests`. Com
+    `--concurrency=80` uma dessas chamadas serializa todos os requests da
+    instância — inclusive o `/health?deep=1`, cujo `asyncio.timeout(5)` nem
+    começa a contar, porque o timer só dispara quando o loop volta a girar.
+
+    O guard exige que a chamada (e o consumo do resultado) esteja dentro de uma
+    função aninhada — o closure que `run_blocking` offloada.
+
+    Nasceu depois de o F86 ser fechado SEM guard nenhum: três sites que servem
+    request ficaram para trás (`validate_gaql`, `run_recommendation_action` e o
+    executor Meta inteiro), e nada no CI notou.
+    """
+    bloqueantes = _funcoes_sync_bloqueantes()
+    ofensores: list[str] = []
+    for p in _py_files():
+        rel = p.relative_to(SRC.parent).as_posix()
+        if rel in _ARQUIVOS_FORA_DO_LOOP:
+            continue
+        try:
+            tree = ast.parse(p.read_text(encoding="utf-8"))
+        except SyntaxError:  # pragma: no cover
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.AsyncFunctionDef):
+                continue
+            for linha, nome, forma, receptor in _chamadas_diretas(node):
+                # Metodo do SDK: SEMPRE chamada de atributo (`ga_service.search`).
+                # Exigir a forma evita o falso positivo de uma FUNCAO async nossa
+                # com o mesmo nome do metodo — `run_offline_user_data_job` e as
+                # duas coisas, e o guard acusava o executor async que ja offloada.
+                sdk = forma == "attr" and nome in _METODOS_BLOQUEANTES
+                meta = forma == "attr" and nome == "call" and receptor == "api"
+                helper = forma == "name" and nome in bloqueantes
+                if sdk or meta or helper:
+                    ofensores.append(f"{rel}:{linha} async {node.name}() -> {nome}()")
+
+    assert not ofensores, (
+        "chamada bloqueante rodando no event loop — envolva num closure e passe "
+        "pra run_blocking (F86): " + "; ".join(sorted(ofensores))
+    )

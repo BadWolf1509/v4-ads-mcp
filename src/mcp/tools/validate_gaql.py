@@ -4,6 +4,7 @@
 import time
 from typing import Any
 
+from src.blocking import run_blocking
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import audit_log
@@ -140,7 +141,14 @@ async def validate_gaql(args: dict[str, Any]) -> dict[str, Any]:
             request.customer_id = customer_id
             request.query = query
             request.validate_only = True
-            ga_service.search(request=request)
+
+            # F86: gRPC bloqueante sai do event loop. Este tool nao passa pelos
+            # executores (constroi o client direto), entao ficou de fora do fix
+            # original — mesmo motivo que o deixou sem o gate do F57.
+            def _validar() -> None:
+                ga_service.search(request=request)
+
+            await run_blocking(_validar)
             actual_ops = 1
             result = {"valid": True, "error": None}
         except Exception as e:

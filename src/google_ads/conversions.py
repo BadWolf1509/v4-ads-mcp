@@ -19,10 +19,10 @@ from uuid import UUID
 
 import structlog
 
+from src.blocking import run_blocking
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import audit_log
-from src.google_ads._blocking import run_blocking
 from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly

@@ -14,10 +14,10 @@ from uuid import UUID
 
 import structlog
 
+from src.blocking import run_blocking
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import audit_log
-from src.google_ads._blocking import run_blocking
 from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
@@ -406,13 +406,22 @@ async def run_recommendation_action(
 
         try:
             reset_request_id()
-            if operation_type == "apply_recommendation":
-                execute_apply_recommendation(client, customer_id, payload)
-            elif operation_type == "dismiss_recommendation":
-                execute_dismiss_recommendation(client, customer_id, payload)
-            else:
-                raise ValueError(f"Unknown recommendation operation: {operation_type}")
-            provider_request_id = get_request_id()
+
+            # F86: RecommendationService tambem e gRPC bloqueante. O request-id
+            # e lido AQUI DENTRO pelo mesmo motivo do run_mutation acima: o
+            # interceptor o grava num ContextVar durante a chamada, e
+            # `to_thread` COPIA o contexto — ler do lado do loop daria None e o
+            # provider_request_id sumiria do audit sem ninguem notar.
+            def _executar() -> str | None:
+                if operation_type == "apply_recommendation":
+                    execute_apply_recommendation(client, customer_id, payload)
+                elif operation_type == "dismiss_recommendation":
+                    execute_dismiss_recommendation(client, customer_id, payload)
+                else:
+                    raise ValueError(f"Unknown recommendation operation: {operation_type}")
+                return get_request_id()
+
+            provider_request_id = await run_blocking(_executar)
         except Exception as e:
             raise to_friendly(e) from e
 
