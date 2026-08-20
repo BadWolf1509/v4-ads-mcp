@@ -45,6 +45,37 @@ async def record_job_crash(
         )
 
 
+async def record_access_revocation(
+    conn: asyncpg.Connection,
+    *,
+    ad_account_id: str,
+    reason: str,
+    manager_ids: list[str],
+) -> int:
+    """Grava a revogação automática de acesso de UMA conta.
+
+    Por conta e não por grant: a lista de gestores cabe no `params_summary` e
+    uma linha por grant inundaria a trilha sem acrescentar forense.
+
+    `action_type="mutate"` porque é o que é. Sob token de system user a Meta
+    registra tudo como `v4-ads-mcp-integracao`, então esta linha é o único lugar
+    onde fica registrado que um acesso humano foi retirado, e por quê.
+    """
+    return await audit_log.record(
+        conn,
+        manager_id=None,
+        session_id=None,
+        customer_id=ad_account_id,
+        action_type="mutate",
+        operation="meta_access_cleanup",
+        target_count=len(manager_ids),
+        params_summary={"reason": reason, "managers": manager_ids},
+        status="success",
+        error_message=None,
+        platform="meta",
+    )
+
+
 async def record_job_run(
     conn: asyncpg.Connection,
     *,

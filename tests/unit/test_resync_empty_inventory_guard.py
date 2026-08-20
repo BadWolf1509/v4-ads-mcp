@@ -24,6 +24,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.db.repositories import google_ads_accounts
+from src.meta_ads.reconcile import Plan
 
 
 def _conn(update_result: str = "UPDATE 25") -> MagicMock:
@@ -106,7 +107,7 @@ async def test_job_com_inventario_vazio_pula_desativacao_e_audita_erro() -> None
         mocks["mark_inactive"] as mark_inactive,
         mocks["record"] as record,
         mocks["purge"],
-        patch("src.jobs.meta_resync.resync_meta", AsyncMock(return_value=0)),
+        patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())),
     ):
         await account_resync.run()
 

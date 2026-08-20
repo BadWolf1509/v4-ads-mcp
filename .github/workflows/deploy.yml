@@ -32,7 +32,7 @@ jobs:
       #
       # `--update-*` e MERGE, nao replace: declarar aqui e idempotente e nao
       # apaga env que exista no job e nao esteja nesta lista.
-      JOB_ENV_VARS: "APP_ENV=production"
+      JOB_ENV_VARS: "APP_ENV=production,META_BUSINESS_ID=619664032237208,META_RECONCILE_APPLY=false"
       JOB_SECRETS: "DATABASE_URL=database-url:latest,SESSION_SIGNING_KEY=session-signing-key:latest,AES_MASTER_KEY=aes-master-key:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,GOOGLE_ADS_DEVELOPER_TOKEN=google-ads-developer-token:latest,GOOGLE_ADS_LOGIN_CUSTOMER_ID=google-ads-login-customer-id:latest"
 
     steps:
@@ -159,6 +159,16 @@ jobs:
           PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           REGION: ${{ secrets.GCP_REGION }}
         run: |
+          # `--set-env-vars` / `--set-secrets` (replace) aqui e DELIBERADO, e e
+          # o oposto do que os 3 Cloud Run Jobs acima usam (`--update-*`, merge).
+          # A diferenca nao e estilo: para o SERVICO estas duas linhas sao a
+          # enumeracao COMPLETA do ambiente — este workflow e a unica fonte que
+          # escreve nele, entao replace e o que garante que env removida do
+          # arquivo tambem some da revisao. Nos jobs o estado NAO e enumeravel
+          # daqui (foram criados a mao, F95), e `--set-*` la apagaria o que este
+          # arquivo nao lista. Nao "corrija" isto pra `--update-*`: o merge
+          # deixaria PUBLIC_BASE_URL/BOOTSTRAP_ADMIN_EMAILS antigos vivos para
+          # sempre depois de qualquer troca de dominio.
           gcloud run deploy v4-ads-mcp \
             --image=southamerica-east1-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
             --region=${REGION} \
@@ -170,7 +180,7 @@ jobs:
             --cpu=1 \
             --memory=512Mi \
             --timeout=300 \
-            --set-env-vars="APP_ENV=production,APP_TIMEZONE=America/Sao_Paulo,LOG_LEVEL=info,BOOTSTRAP_ADMIN_EMAILS=wellington.ribeiro@v4company.com,PUBLIC_BASE_URL=https://v4-ads-mcp-299432068772.southamerica-east1.run.app" \
+            --set-env-vars="APP_ENV=production,APP_TIMEZONE=America/Sao_Paulo,LOG_LEVEL=info,BOOTSTRAP_ADMIN_EMAILS=wellington.ribeiro@v4company.com,PUBLIC_BASE_URL=https://v4-ads-mcp-299432068772.southamerica-east1.run.app,META_BUSINESS_ID=619664032237208,META_RECONCILE_APPLY=false" \
             --set-secrets="DATABASE_URL=database-url:latest,SESSION_SIGNING_KEY=session-signing-key:latest,AES_MASTER_KEY=aes-master-key:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,GOOGLE_ADS_DEVELOPER_TOKEN=google-ads-developer-token:latest,GOOGLE_ADS_LOGIN_CUSTOMER_ID=google-ads-login-customer-id:latest,META_APP_ID=meta-app-id:latest,META_APP_SECRET=meta-app-secret:latest,META_SYSTEM_USER_TOKEN=meta-system-user-token:latest"
 
       - name: Route 100% traffic to latest revision

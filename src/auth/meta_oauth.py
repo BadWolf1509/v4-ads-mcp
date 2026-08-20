@@ -40,6 +40,7 @@ from src.db.repositories import (
     meta_ad_accounts,
     meta_oauth_connections,
 )
+from src.meta_ads.graph import fetch_paginated
 from src.web.deps import CurrentUser, current_manager
 
 log = structlog.get_logger(__name__)
@@ -166,50 +167,16 @@ class AdAccountsFetch(NamedTuple):
 async def _fetch_all_adaccounts(http: httpx.AsyncClient, access_token: str) -> AdAccountsFetch:
     """GET /me/adaccounts seguindo paging.next até esgotar.
 
-    A Graph API pagina /me/adaccounts (default 25/página). Sem seguir paging.next
-    o inventário trunca silenciosamente quando o system user passa de ~25 contas
-    atribuídas (caso real do BM V4: 50+ ativos). limit=200 corta round-trips; o
-    cap de páginas é só um backstop contra loop infinito.
-
-    Devolve `AdAccountsFetch` em vez de uma lista nua porque o chamador não tem
-    como distinguir "o BM tem 12 contas" de "a página 2 deu 500" olhando só o
-    tamanho da lista (F93).
+    A paginação em si vive em `src/meta_ads/graph.py` desde 2026-08-20 — este
+    módulo é OAuth, e o resync (que não é OAuth) reusava o helper daqui.
     """
-    accounts: list[dict[str, Any]] = []
-    url = f"{META_GRAPH_BASE}/me/adaccounts"
-    params: dict[str, Any] | None = {"fields": _ADACCOUNT_FIELDS, "limit": 200}
-    # F82 — o token vai no HEADER, não na query: o system-user token não expira
-    # e dá acesso às ~19 contas do BM, e no Modelo B a matriz de acesso (que vive
-    # na camada MCP) é o único freio — quem lê a URL num log contorna tudo.
-    # Verificado contra o Graph real antes de mudar: `Bearer` devolve exatamente
-    # os mesmos dados que `?access_token=`.
-    headers = {"Authorization": f"Bearer {access_token}"}
-    complete = False
-    for _ in range(50):  # 50 × 200 = 10k contas — muito além de qualquer BM real
-        resp = await http.get(url, params=params, headers=headers)
-        if resp.status_code != 200:
-            log.warning(
-                "meta_adaccounts_page_failed",
-                status=resp.status_code,
-                body=resp.text[:200],
-                fetched_so_far=len(accounts),
-            )
-            break  # complete segue False — inventário truncado
-        body = resp.json()
-        accounts.extend(body.get("data", []))
-        next_url = (body.get("paging") or {}).get("next")
-        if not next_url:
-            complete = True  # única saída limpa: a paginação acabou sozinha
-            break
-        # F82 — autenticando por header, o Graph devolve `next` SEM o token
-        # (verificado na probe). O cursor e os fields vêm na URL; o header
-        # precisa ir de novo em CADA página, senão a 2ª volta 401.
-        url = next_url
-        params = None
-    else:
-        # Cap de 50 páginas estourado: também é truncamento, não fim de lista.
-        log.warning("meta_adaccounts_page_cap_reached", fetched=len(accounts))
-    return AdAccountsFetch(accounts=accounts, complete=complete)
+    out = await fetch_paginated(
+        http,
+        f"{META_GRAPH_BASE}/me/adaccounts",
+        access_token=access_token,
+        params={"fields": _ADACCOUNT_FIELDS, "limit": 200},
+    )
+    return AdAccountsFetch(accounts=out.rows, complete=out.complete)
 
 
 @router.get("/start")

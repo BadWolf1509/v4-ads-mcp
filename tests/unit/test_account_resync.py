@@ -2,11 +2,15 @@
 
 run() é o Cloud Run Job diário: escolhe uma OAuth connection, decifra o refresh token,
 builda o client, descobre customers, puxa detalhes, faz upsert + mark_inactive, grava
-audit (record_job_run), faz piggyback do resync Meta e purga tabelas transientes
-(purge_expired). Mockamos TODAS as dependências (build client, repos, resync_meta,
+audit (record_job_run), faz piggyback da reconciliação Meta e purga tabelas transientes
+(purge_expired). Mockamos TODAS as dependências (build client, repos, reconcile_meta,
 purge_expired, connection pool) e asseveramos a orquestração + exit codes: 1 sem OAuth
 connection (auditado como status='error'), 0 no sucesso, chama record_job_run, Meta e
 purge são best-effort.
+
+O piggyback (`src.jobs.meta_resync.reconcile_meta`) é mockado devolvendo um `Plan`
+vazio de propósito: nenhum teste aqui inspeciona o conteúdo do plano — só que o
+piggyback foi chamado e que uma falha nele não derruba o resync do Google.
 """
 
 from contextlib import asynccontextmanager
@@ -16,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.jobs import account_resync
+from src.meta_ads.reconcile import Plan
 
 _M = "src.jobs.account_resync"
 
@@ -141,7 +146,7 @@ async def test_run_happy_path_returns_0_and_orchestrates() -> None:
         mocks["mark_inactive"] as mark_inactive,
         mocks["record"] as record,
         mocks["purge"] as purge,
-        patch("src.jobs.meta_resync.resync_meta", AsyncMock(return_value=7)),
+        patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())),
     ):
         rc = await account_resync.run()
 
@@ -179,7 +184,7 @@ async def test_run_records_job_run_with_operation_and_deactivated_count() -> Non
         mocks["mark_inactive"],
         mocks["record"] as record,
         mocks["purge"],
-        patch("src.jobs.meta_resync.resync_meta", AsyncMock(return_value=0)),
+        patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())),
     ):
         await account_resync.run()
 
@@ -217,7 +222,7 @@ async def test_run_passes_keep_ids_to_mark_inactive() -> None:
         mocks["mark_inactive"] as mark_inactive,
         mocks["record"],
         mocks["purge"],
-        patch("src.jobs.meta_resync.resync_meta", AsyncMock(return_value=0)),
+        patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())),
     ):
         await account_resync.run()
 
@@ -247,12 +252,63 @@ async def test_run_meta_failure_is_non_fatal() -> None:
         mocks["mark_inactive"],
         mocks["record"],
         mocks["purge"],
-        patch("src.jobs.meta_resync.resync_meta", AsyncMock(side_effect=RuntimeError("meta down"))),
+        patch(
+            "src.jobs.meta_resync.reconcile_meta",
+            AsyncMock(side_effect=RuntimeError("meta down")),
+        ),
     ):
         rc = await account_resync.run()
 
     assert rc == 0
     close_pool.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_falha_do_piggyback_meta_deixa_rastro_no_audit(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """I2 (revisão de branch): este é o ÚNICO caminho que roda em produção.
+
+    `record_job_crash` vivia só dentro de `meta_resync.run()`, alcançável apenas
+    por `python -m src.jobs.meta_resync`. O Cloud Run Job diário chama
+    `reconcile_meta()` daqui, e o `except` engolia tudo com um WARN — uma
+    reconciliação quebrada há dias não deixava NENHUMA linha no `audit_log`, nem
+    `status=error`. É a mesma classe do F93, na rota que de fato executa.
+    """
+    conn = MagicMock()
+    pool = _fake_pool(conn)
+    oc = SimpleNamespace(refresh_token_enc=b"enc")
+    mocks = _base_patches(pool=pool, oc=oc)
+    boom = RuntimeError("client_ad_accounts mudou de permissao")
+
+    with (
+        mocks["init_pool"],
+        mocks["close_pool"],
+        mocks["get_pool"],
+        mocks["pick"],
+        mocks["derive"],
+        mocks["decrypt"],
+        mocks["build_client"],
+        mocks["list_customers"],
+        mocks["fetch"],
+        mocks["upsert"],
+        mocks["mark_inactive"],
+        mocks["record"],
+        mocks["purge"],
+        patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(side_effect=boom)),
+        patch(f"{_M}.record_job_crash", AsyncMock()) as crash,
+    ):
+        rc = await account_resync.run()
+
+    assert rc == 0, "auditar o crash nao pode tornar o piggyback fatal"
+    crash.assert_awaited_once()
+    kwargs = crash.await_args.kwargs
+    assert kwargs["operation"] == "meta_reconcile"
+    assert kwargs["platform"] == "meta"
+    assert kwargs["exc"] is boom
+    # A falha original continua visível mesmo com a auditoria no caminho — o
+    # audit OBSERVA o crash, não o substitui.
+    assert "client_ad_accounts mudou de permissao" in capsys.readouterr().err
 
 
 @pytest.mark.asyncio
@@ -278,7 +334,7 @@ async def test_run_calls_purge_expired_and_records_db_purge() -> None:
         mocks["mark_inactive"],
         mocks["record"] as record,
         patch(f"{_M}.purge_expired", AsyncMock(return_value=counts)) as purge,
-        patch("src.jobs.meta_resync.resync_meta", AsyncMock(return_value=0)),
+        patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())),
     ):
         rc = await account_resync.run()
 
@@ -313,7 +369,7 @@ async def test_run_purge_failure_is_non_fatal() -> None:
         mocks["mark_inactive"],
         mocks["record"],
         patch(f"{_M}.purge_expired", AsyncMock(side_effect=RuntimeError("db down"))),
-        patch("src.jobs.meta_resync.resync_meta", AsyncMock(return_value=0)),
+        patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())),
     ):
         rc = await account_resync.run()
 

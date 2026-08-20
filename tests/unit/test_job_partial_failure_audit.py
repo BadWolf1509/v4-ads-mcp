@@ -3,12 +3,14 @@
 Duas falhas somadas:
 
 1. `_fetch_all_adaccounts` faz `break` em resposta non-200 e devolve a lista
-   PARCIAL. Isso e correto pro uso original (cache de exibicao do OAuth), mas o
-   `resync_meta` reusa o helper pra DELETION DETECTION — entao um 500 na pagina 2
-   entrega inventario truncado que `_deactivate_churned` interpreta como churn,
-   reintroduzindo o sintoma do F65 por outra porta. E uma falha na pagina 1 grava
-   `record_job_run(target_count=0)` com status `success` (o default), mascarando
-   a falha por completo.
+   PARCIAL. Isso e correto pro uso original (cache de exibicao do OAuth), mas
+   `reconcile_meta` tambem usa o helper pra medir o ALCANCE do system user —
+   entao um 500 na pagina 2 nao pode passar por leitura completa. Desde a Task
+   7 (2026-08-20) quem decide o que fazer com inventario truncado e
+   `build_plan()` (via o `complete` combinado de `fetch_partnership` +
+   `_fetch_all_adaccounts`), nao mais `_deactivate_churned` — mas a propriedade
+   e a mesma: leitura parcial bloqueia o lado destrutivo e o audit registra
+   `error`, nunca `success` por omissao.
 2. Crash inesperado no corpo do job (build_client, upsert_many, rede) nao grava
    NENHUMA linha: o rastro fica so no Cloud Run, entao um resync quebrado por
    dias fica invisivel na trilha de auditoria.
@@ -28,6 +30,8 @@ import respx
 from httpx import Response
 
 from src.jobs import _audit, meta_resync
+from src.meta_ads.partnership import PartnershipSnapshot
+from src.meta_ads.reconcile import InventoryRow
 
 _ADACCOUNTS = "https://graph.facebook.com/v22.0/me/adaccounts"
 
@@ -93,43 +97,82 @@ async def test_fetch_completo_quando_paginacao_termina_naturalmente() -> None:
     assert len(result.accounts) == 1
 
 
-def _patch_resync(monkeypatch: pytest.MonkeyPatch, *, accounts: list, complete: bool) -> AsyncMock:
+def _patch_resync(
+    monkeypatch: pytest.MonkeyPatch, *, parceria_accounts: list, complete: bool
+) -> tuple[AsyncMock, AsyncMock]:
+    """Troca as duas leituras (`fetch_partnership` + `_fetch_all_adaccounts`,
+    ambas com o mesmo `complete`) e o passo destrutivo do plano por dublês.
+
+    O inventário fixo (`act_ausente`, ativo, `missed_syncs=2`) nunca está na
+    parceria — cruza o limiar (`2 + 1 >= 3`) sempre que `complete=True`, o que
+    faz `build_plan()` propor remoção e exercita `deactivate`/`revoke_for_account`
+    de verdade no teste do caminho feliz.
+    """
     from src.auth.meta_oauth import AdAccountsFetch
 
     settings = MagicMock()
     settings.meta_system_user_token = "tok"
+    settings.meta_business_id = "bm"
+    settings.meta_reconcile_apply = True
     monkeypatch.setattr(meta_resync, "get_settings", lambda: settings)
     monkeypatch.setattr(
         meta_resync,
-        "_fetch_all_adaccounts",
-        AsyncMock(return_value=AdAccountsFetch(accounts=accounts, complete=complete)),
+        "fetch_partnership",
+        AsyncMock(return_value=PartnershipSnapshot(parceria_accounts, complete)),
     )
     monkeypatch.setattr(
-        meta_resync.meta_ad_accounts, "upsert_many", AsyncMock(return_value=len(accounts))
+        meta_resync,
+        "_fetch_all_adaccounts",
+        AsyncMock(
+            return_value=AdAccountsFetch(
+                accounts=[{"id": a["ad_account_id"]} for a in parceria_accounts],
+                complete=complete,
+            )
+        ),
     )
+    monkeypatch.setattr(
+        meta_resync.meta_ad_accounts,
+        "upsert_many",
+        AsyncMock(return_value=len(parceria_accounts)),
+    )
+    monkeypatch.setattr(
+        meta_resync.meta_ad_accounts,
+        "list_inventory_rows",
+        AsyncMock(return_value=[InventoryRow("act_ausente", True, 2)]),
+    )
+    monkeypatch.setattr(meta_resync.meta_ad_accounts, "apply_absences", AsyncMock())
+    monkeypatch.setattr(meta_resync.meta_ad_accounts, "set_reachable", AsyncMock())
     monkeypatch.setattr(meta_resync.connection, "get_pool", lambda: _FakePool())
-    mie = AsyncMock(return_value=0)
-    monkeypatch.setattr(meta_resync.meta_ad_accounts, "mark_inactive_except", mie)
-    return mie
+    desativa = AsyncMock(return_value=1)
+    monkeypatch.setattr(meta_resync.meta_ad_accounts, "deactivate", desativa)
+    revoga = AsyncMock(return_value=[])
+    monkeypatch.setattr(meta_resync.manager_meta_account_access, "revoke_for_account", revoga)
+    monkeypatch.setattr(meta_resync, "record_access_revocation", AsyncMock())
+    return desativa, revoga
 
 
 @pytest.mark.asyncio
 async def test_inventario_parcial_nao_desativa_nada_e_audita_erro(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """F93(1): com complete=False o upsert segue (aditivo, seguro) mas a deteccao
-    de churn NAO roda, e o audit registra `error` em vez de `success`."""
-    mie = _patch_resync(
+    """F93(1)/Req.3: com complete=False o upsert segue (aditivo, seguro) mas
+    build_plan() bloqueia o lado destrutivo (deactivate/revoke NAO rodam), e o
+    audit registra `error` em vez de `success`."""
+    desativa, revoga = _patch_resync(
         monkeypatch,
-        accounts=[{"id": "act_1", "name": "A", "business": {"id": "bmX", "name": "BM X"}}],
+        parceria_accounts=[{"ad_account_id": "act_1", "account_name": "A"}],
         complete=False,
     )
     rec = AsyncMock(return_value=1)
     monkeypatch.setattr(meta_resync, "record_job_run", rec)
 
-    await meta_resync.resync_meta()
+    await meta_resync.reconcile_meta()
 
-    mie.assert_not_awaited(), "deletion detection sobre inventario truncado desativa conta viva"
+    (
+        desativa.assert_not_awaited(),
+        "deletion detection sobre inventario truncado desativa conta viva",
+    )
+    revoga.assert_not_awaited()
     kwargs = rec.call_args.kwargs
     assert kwargs["status"] == "error"
     assert kwargs["error_message"]
@@ -139,18 +182,21 @@ async def test_inventario_parcial_nao_desativa_nada_e_audita_erro(
 async def test_inventario_completo_audita_sucesso_e_desativa(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """F93(1): o caminho feliz nao pode regredir — segue deduzindo churn e gravando success."""
-    mie = _patch_resync(
+    """F93(1): o caminho feliz nao pode regredir — segue desativando quem saiu
+    da parceria e gravando success."""
+    desativa, revoga = _patch_resync(
         monkeypatch,
-        accounts=[{"id": "act_1", "name": "A", "business": {"id": "bmX", "name": "BM X"}}],
+        parceria_accounts=[{"ad_account_id": "act_1", "account_name": "A"}],
         complete=True,
     )
     rec = AsyncMock(return_value=1)
     monkeypatch.setattr(meta_resync, "record_job_run", rec)
 
-    await meta_resync.resync_meta()
+    await meta_resync.reconcile_meta()
 
-    mie.assert_awaited_once()
+    desativa.assert_awaited_once()
+    assert desativa.await_args.kwargs["ad_account_ids"] == ["act_ausente"]
+    revoga.assert_awaited_once()
     assert rec.call_args.kwargs["status"] == "success"
 
 
@@ -164,7 +210,7 @@ async def test_crash_do_job_grava_audit_e_repropaga(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(meta_resync.connection, "close_pool", AsyncMock())
     monkeypatch.setattr(meta_resync.connection, "get_pool", lambda: _FakePool())
     monkeypatch.setattr(
-        meta_resync, "resync_meta", AsyncMock(side_effect=RuntimeError("upsert explodiu"))
+        meta_resync, "reconcile_meta", AsyncMock(side_effect=RuntimeError("upsert explodiu"))
     )
     # `record_job_crash` resolve `record_job_run` no namespace de _audit, nao no
     # de meta_resync — patchar no lugar errado nao interceptaria nada (a mesma

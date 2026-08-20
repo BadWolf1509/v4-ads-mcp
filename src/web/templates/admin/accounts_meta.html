@@ -1,9 +1,10 @@
 {% extends "_base.html" %}
-{% from "_components.html" import search_input, empty_state, badge, alert %}
+{% from "_components.html" import search_input, empty_state, alert %}
 {% block title %}Admin · Contas Meta — V4 Ads MCP{% endblock %}
 {% block content %}
 <section class="max-w-7xl mx-auto py-6 px-4">
   <header class="mb-6"><h1 class="text-3xl font-extrabold tracking-tight">Contas Meta</h1></header>
+  {% if flash %}{{ alert(flash.message, flash.kind) }}{% endif %}
   {% include "admin/_accounts_tabs.html" %}
 
   {# flex-wrap: sem ele o botao de sincronizar saia 41px pra fora em 375px. #}
@@ -20,35 +21,110 @@
     </form>
   </div>
 
-  {# F128 (d): o resync desativa sozinho depois de N ausências, mas desativar
-     NÃO revoga — `can_manager_access` lê só a tabela de grants. Sem esta lista
-     a conta sumia do admin e os grants ficavam vivos sem ninguém ver. #}
-  {% if out_of_reach %}
+  {# Reconciliacao contra a parceria autoritativa (spec 2026-08-20): tres
+     filas, tres ACOES diferentes do admin. Substitui a secao unica "Fora do
+     alcance" do F128 (d) — aquela nao cruzava grants nem lia su_reachable,
+     entao nao dava pra saber qual das tres o admin precisava fazer. #}
+  {% if sem_delegacao %}
   <div class="v4-card">
     <div class="v4-card__header">
-      <h3 class="v4-card__title">Fora do alcance do system user ({{ out_of_reach|length }})</h3>
+      <h3 class="v4-card__title">Aguardando delegação ({{ sem_delegacao|length }})</h3>
     </div>
     {{ alert(
-      "Desativar aqui <strong>não revoga acesso de gestor</strong> — o hard-gate consulta só a matriz.
-       Para offboarding completo, revogue os grants em <a href=\"/admin/access/meta\" class=\"underline\">Acessos → Meta</a>.",
+      "Já está na parceria e sincronizada, mas nenhum gestor tem acesso ainda. Delegue em
+       <a href=\"/admin/access/meta\" class=\"underline\">Acessos → Meta</a>.",
+      "info"
+    ) }}
+    <div class="v4-table-wrap" tabindex="0" role="region" aria-label="Contas aguardando delegação">
+    <table class="v4-table v4-table--compact">
+      <thead><tr><th scope="col">Conta</th><th scope="col">Cliente</th><th scope="col">Última sync</th></tr></thead>
+      <tbody>
+        {% for a in sem_delegacao %}
+        <tr>
+          <td><strong>{{ a.account_name }}</strong><div class="text-xs font-mono text-v4-gray-500">{{ a.ad_account_id }}</div></td>
+          <td>{{ a.business_name or "—" }}</td>
+          <td class="text-xs text-v4-gray-500">{{ a.synced_at.strftime('%d/%m %H:%M') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if sem_su %}
+  <div class="v4-card">
+    <div class="v4-card__header">
+      <h3 class="v4-card__title">Sem o system user atribuído ({{ sem_su|length }})</h3>
+    </div>
+    {{ alert(
+      "Na parceria, mas o system user ainda não foi adicionado à conta no Business
+       Manager — ação humana no Meta, fora deste painel. A conta segue ativa no
+       inventário; isto não é churn.",
       "warning"
     ) }}
-    <div class="v4-table-wrap" tabindex="0" role="region" aria-label="Contas fora do alcance do system user">
+    <div class="v4-table-wrap" tabindex="0" role="region" aria-label="Contas sem o system user atribuído">
     <table class="v4-table v4-table--compact">
-      <thead><tr><th scope="col">Conta</th><th scope="col">Cliente</th><th scope="col">Situação</th><th scope="col">Última sync</th></tr></thead>
+      <thead><tr><th scope="col">Conta</th><th scope="col">Cliente</th><th scope="col">Última sync</th></tr></thead>
       <tbody>
-        {% for a in out_of_reach %}
+        {% for a in sem_su %}
+        <tr>
+          <td><strong>{{ a.account_name }}</strong><div class="text-xs font-mono text-v4-gray-500">{{ a.ad_account_id }}</div></td>
+          <td>{{ a.business_name or "—" }}</td>
+          <td class="text-xs text-v4-gray-500">{{ a.synced_at.strftime('%d/%m %H:%M') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {# C1 (revisao de branch): esta fila segue a conta DEPOIS que a parceria
+     volta — e so ai o Restaurar tem efeito, porque o gate exige conta ativa.
+     Por isso a chave e "ainda tem grant revogado por churn", nao "esta
+     desativada", e cada linha diz em qual dos dois estados ela esta. #}
+  {% if saiu_da_parceria %}
+  <div class="v4-card">
+    <div class="v4-card__header">
+      <h3 class="v4-card__title">Saíram da parceria ({{ saiu_da_parceria|length }})</h3>
+    </div>
+    {{ alert(
+      "Contas cujos acessos a reconciliação revogou. Enquanto a conta estiver fora,
+       a linha é histórico. Se a parceria voltar, ela reaparece aqui ativa e o
+       botão reconcede exatamente os grants que este processo revogou — nunca um
+       acesso trocado por outro motivo. Delegar outro gestor continua em
+       <a href=\"/admin/access/meta\" class=\"underline\">Acessos → Meta</a>.",
+      "error"
+    ) }}
+    <div class="v4-table-wrap" tabindex="0" role="region" aria-label="Contas que saíram da parceria">
+    <table class="v4-table v4-table--compact">
+      <thead><tr><th scope="col">Conta</th><th scope="col">Cliente</th><th scope="col">Situação</th><th scope="col">Grants revogados</th><th scope="col"></th></tr></thead>
+      <tbody>
+        {% for a, revogados in saiu_da_parceria %}
         <tr>
           <td><strong>{{ a.account_name }}</strong><div class="text-xs font-mono text-v4-gray-500">{{ a.ad_account_id }}</div></td>
           <td>{{ a.business_name or "—" }}</td>
           <td>
-            {% if not a.is_active %}
-              {{ badge("Desativada", "error") }}
+            {% if a.is_active %}
+              <span class="v4-badge v4-badge--success">Voltou à parceria</span>
             {% else %}
-              {{ badge("Ausente em " ~ a.missed_syncs ~ "/" ~ missed_syncs_threshold ~ " syncs", "warning") }}
+              <span class="v4-badge v4-badge--error">Fora da parceria</span>
             {% endif %}
           </td>
-          <td class="col-mono text-xs text-v4-gray-500">{{ a.synced_at.strftime('%d/%m %H:%M') }}</td>
+          <td>{{ revogados }}</td>
+          <td class="text-right">
+            {% if a.is_active %}
+            <button type="button" class="v4-btn v4-btn--small v4-btn--secondary"
+                    data-v4-action="confirm"
+                    data-v4-confirm-title="Restaurar acesso?"
+                    data-v4-confirm-message="Reconcede os {{ revogados }} grant(s) que a saída da parceria revogou pra {{ a.account_name }}. Acesso revogado por outro motivo não é afetado."
+                    data-v4-confirm-ok="Restaurar"
+                    data-v4-post="/admin/accounts/meta/{{ a.ad_account_id }}/restore">Restaurar</button>
+            {% else %}
+            <span class="text-xs text-v4-gray-500">Restaurável quando a parceria voltar</span>
+            {% endif %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>

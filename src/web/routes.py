@@ -53,16 +53,37 @@ _ADMIN_FLASH_ERRORS: dict[str, str] = {
     "bad_domain": "Só emails @v4company.com podem ser convidados.",
     "exists": "Esse email já está cadastrado (convite pendente ou conta existente). Nada foi criado.",
     "same_manager": "Gestor de origem e destino são o mesmo — nada foi copiado.",
+    "conta_inativa": (
+        "Esta conta ainda está fora da parceria — restaurar agora não devolveria "
+        "acesso nenhum (o gate exige conta ativa). Espere a reconciliação "
+        "reativá-la; a linha volta com o botão."
+    ),
+}
+
+# Mapa fixo pro `ok=<codigo>` da reconciliacao Meta — distinto do `ok=1` usado
+# nas demais paginas admin porque a rota de restaurar precisa de MENSAGEM
+# PROPRIA (nao so "sucesso genérico"). Mesma regra: nunca ecoar o param.
+_META_ACCOUNTS_FLASH_OK: dict[str, str] = {
+    "restored": "Acesso restaurado — os grants revogados pela saída da parceria foram reconcedidos.",
 }
 
 
-def _admin_flash(request: Request, *, ok_message: str | None = None) -> dict[str, str] | None:
+def _admin_flash(
+    request: Request,
+    *,
+    ok_message: str | None = None,
+    ok_codes: dict[str, str] | None = None,
+) -> dict[str, str] | None:
     """Flash message via query param. Mapa fixo — NUNCA ecoar o valor do param (XSS)."""
     code = request.query_params.get("error")
     if code:
         message = _ADMIN_FLASH_ERRORS.get(code)
         return {"kind": "error", "message": message} if message else None
-    if ok_message and request.query_params.get("ok") == "1":
+    ok = request.query_params.get("ok")
+    if ok_codes and ok:
+        message = ok_codes.get(ok)
+        return {"kind": "success", "message": message} if message else None
+    if ok_message and ok == "1":
         return {"kind": "success", "message": ok_message}
     return None
 
@@ -969,10 +990,11 @@ async def admin_accounts_meta(
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         accounts = await meta_ad_accounts.list_all(conn)
-        # F128 (d): `list_all` mostra só o que está ativo, então conta que o
-        # system user perdeu sumia do admin — e os grants dela ficavam vivos sem
-        # ninguém ver, porque `can_manager_access` não consulta `is_active`.
-        out_of_reach = await meta_ad_accounts.list_out_of_reach(conn)
+        # Spec 2026-08-20: substitui a secao unica "Fora do alcance" do F128 (d)
+        # por tres filas — sem-delegacao, sem-SU e saiu-da-parceria sao tres
+        # ACOES diferentes do admin, e a lista antiga nao distinguia nenhuma
+        # delas (nao cruzava grants, nao lia su_reachable).
+        queues = await meta_ad_accounts.list_queues(conn)
     pending = await pending_invites_count()
     token_configured = bool(get_settings().meta_system_user_token)
     return templates.TemplateResponse(
@@ -981,12 +1003,65 @@ async def admin_accounts_meta(
         {
             "current_user": user,
             "accounts": accounts,
-            "out_of_reach": out_of_reach,
-            "missed_syncs_threshold": meta_ad_accounts.MISSED_SYNCS_THRESHOLD,
+            "sem_delegacao": queues.sem_delegacao,
+            "sem_su": queues.sem_su,
+            "saiu_da_parceria": queues.saiu_da_parceria,
             "token_configured": token_configured,
             "pending_invites_count": pending,
+            "flash": _admin_flash(request, ok_codes=_META_ACCOUNTS_FLASH_OK),
         },
     )
+
+
+@router.post(
+    "/admin/accounts/meta/{ad_account_id}/restore",
+    response_class=HTMLResponse,
+    response_model=None,
+)
+async def admin_accounts_meta_restore(
+    request: Request,
+    ad_account_id: str,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+) -> Response:
+    """Reconcede os grants que `revoke_for_account` revogou quando a conta saiu
+    da parceria — SO esses (filtra `PARTNERSHIP_ENDED_REASON`), nao qualquer
+    revogacao que a conta tenha acumulado por outro motivo.
+
+    So faz sentido com a conta ATIVA, isto e, depois que a parceria voltou. Sobre
+    conta inativa o restore limparia `revoked_at` sem destravar nada (o gate
+    exige conta ativa) e, pior, tiraria a linha da fila 3 — que passou a ser
+    keyed em revogacao por churn PENDENTE: a conta sumiria do painel com grants
+    vivos e inuteis, e o reconciliador nao os revogaria de novo (conta ja
+    inativa nao entra em `to_remove`). O botao nem e renderizado nesse estado; a
+    checagem aqui e pra POST direto ou aba velha reenviada.
+    """
+    _require_admin(user)
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        conta = await meta_ad_accounts.get_by_id(conn, ad_account_id)
+        if conta is None or not conta.is_active:
+            destino = "/admin/accounts/meta?error=conta_inativa"
+            if request.headers.get("HX-Request"):
+                # HX-Redirect, nao HX-Refresh: o refresh perderia o query param
+                # e o admin nao veria por que nada aconteceu.
+                return Response(status_code=204, headers={"HX-Redirect": destino})
+            return RedirectResponse(url=destino, status_code=303)
+        restaurados = await manager_meta_account_access.restore_for_account(
+            conn, ad_account_id=ad_account_id
+        )
+        await _audit_admin(
+            conn,
+            admin=user,
+            operation="admin_accounts_meta_restore",
+            customer_id=ad_account_id,
+            platform="meta",
+            restored_grants=restaurados,
+        )
+    if request.headers.get("HX-Request"):
+        # Mesmo idioma de accounts_revoke_connection/admin_invites_cancel: full
+        # refresh do browser reconstroi as tres filas de graca, sem swap manual.
+        return Response(status_code=204, headers={"HX-Refresh": "true"})
+    return RedirectResponse(url="/admin/accounts/meta?ok=restored", status_code=303)
 
 
 @router.get("/admin/access", response_class=HTMLResponse)
@@ -1032,7 +1107,8 @@ async def admin_access_meta(
         )
         accounts = await meta_ad_accounts.list_all(conn)
         access_rows = await conn.fetch(
-            "SELECT manager_id, ad_account_id FROM manager_meta_account_access"
+            "SELECT manager_id, ad_account_id FROM manager_meta_account_access "
+            "WHERE revoked_at IS NULL"
         )
     access_set = {(str(r["manager_id"]), r["ad_account_id"]) for r in access_rows}
     pending = await pending_invites_count()
@@ -1061,8 +1137,12 @@ async def admin_access_meta_toggle(
     pool = connection.get_pool()
     target_mid = UUID(manager_id)
     async with pool.acquire() as conn:
+        # revoked_at IS NULL: linha revogada não conta como "tem acesso" — senão
+        # o clique num checkbox desmarcado (grant revogado) chamaria revoke() de
+        # novo em vez de restaurar, e o toggle ficaria preso sem nunca marcar.
         exists = await conn.fetchval(
-            "SELECT 1 FROM manager_meta_account_access WHERE manager_id=$1 AND ad_account_id=$2",
+            "SELECT 1 FROM manager_meta_account_access "
+            "WHERE manager_id=$1 AND ad_account_id=$2 AND revoked_at IS NULL",
             target_mid,
             ad_account_id,
         )
@@ -1166,15 +1246,28 @@ async def admin_access_meta_by_manager(
     _require_admin(user)
     pool = connection.get_pool()
     async with pool.acquire() as conn:
+        # I1 (fix round 1): revoked_at entra na CONDICAO do LEFT JOIN, nao no
+        # WHERE — WHERE excluiria o gestor inteiro (LEFT vira INNER na pratica)
+        # quando todos os grants dele estao revogados, e ele tem que continuar
+        # aparecendo com "0 / total". Sem este filtro a contagem incluia grant
+        # revogado e contradizia a pagina de detalhe (que ja filtra).
         managers_with_counts = await conn.fetch(
             """SELECT m.id, m.email, m.full_name,
                       count(mmaa.ad_account_id) AS access_count
                FROM managers m
-               LEFT JOIN manager_meta_account_access mmaa ON mmaa.manager_id = m.id
+               LEFT JOIN manager_meta_account_access mmaa
+                      ON mmaa.manager_id = m.id AND mmaa.revoked_at IS NULL
                WHERE m.is_active = true
                GROUP BY m.id ORDER BY m.email"""
         )
-        total_accounts = await conn.fetchval("SELECT count(*) FROM meta_ad_accounts") or 0
+        # M8 (revisao de branch): so conta ATIVA. A pagina de detalhe monta a
+        # matriz por `list_all`, que ja filtra `is_active` — sem o filtro aqui o
+        # denominador crescia com cada conta desativada pelo offboarding
+        # automatico e as duas telas voltavam a discordar, que e exatamente a
+        # divergencia que o I1 da Task 5 fechou no numerador.
+        total_accounts = (
+            await conn.fetchval("SELECT count(*) FROM meta_ad_accounts WHERE is_active = true") or 0
+        )
     # F92: FORA do `async with` — este helper abre a propria conexao, e
     # segurar uma e esperar por outra trava pra sempre com o pool cheio.
     pending = await pending_invites_count()
@@ -1210,7 +1303,8 @@ async def admin_access_meta_manager_detail(
             raise HTTPException(status_code=404, detail="Gestor not found")
         accs = await meta_ad_accounts.list_all(conn)
         access_rows = await conn.fetch(
-            "SELECT ad_account_id FROM manager_meta_account_access WHERE manager_id = $1",
+            "SELECT ad_account_id FROM manager_meta_account_access "
+            "WHERE manager_id = $1 AND revoked_at IS NULL",
             parsed_manager_id,
         )
         access_set = {r["ad_account_id"] for r in access_rows}
