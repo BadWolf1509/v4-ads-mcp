@@ -10,6 +10,10 @@ import pytest
 
 from src.db.repositories import manager_meta_account_access, managers, meta_ad_accounts
 
+# M11: a razao vem da constante, nunca do literal — fixar a string aqui faz um
+# rename da constante deixar a suite verde e a producao quebrada.
+from src.db.repositories.manager_meta_account_access import PARTNERSHIP_ENDED_REASON
+
 CONTA = {
     "ad_account_id": "act_1",
     "business_id": "bm",
@@ -37,7 +41,7 @@ async def test_revogacao_preserva_a_linha_e_o_motivo(db) -> None:
         mid = await _cenario(conn)
 
         atingidos = await manager_meta_account_access.revoke_for_account(
-            conn, ad_account_id="act_1", reason="partnership_ended"
+            conn, ad_account_id="act_1", reason=PARTNERSHIP_ENDED_REASON
         )
 
         assert atingidos == [mid]
@@ -47,6 +51,11 @@ async def test_revogacao_preserva_a_linha_e_o_motivo(db) -> None:
             mid,
         )
         assert linha["revoked_at"] is not None
+        # UNICO literal que fica de proposito (M11): esta asercao pina o valor
+        # que vai pro BANCO. Trocada pela constante, ela viraria tautologia; do
+        # jeito que esta, mudar o valor da constante fica VERMELHO aqui — que e
+        # o alarme certo, porque as linhas ja gravadas em producao continuariam
+        # com a string antiga e o restore deixaria de acha-las.
         assert linha["revoked_reason"] == "partnership_ended"
 
 
@@ -55,7 +64,7 @@ async def test_grant_revogado_nao_da_acesso_nem_aparece_na_lista(db) -> None:
     async with db.acquire() as conn:
         mid = await _cenario(conn)
         await manager_meta_account_access.revoke_for_account(
-            conn, ad_account_id="act_1", reason="partnership_ended"
+            conn, ad_account_id="act_1", reason=PARTNERSHIP_ENDED_REASON
         )
 
         assert await manager_meta_account_access.can_manager_access(conn, mid, "act_1") is False
@@ -76,7 +85,7 @@ async def test_restaurar_devolve_exatamente_quem_tinha(db) -> None:
     async with db.acquire() as conn:
         mid = await _cenario(conn)
         await manager_meta_account_access.revoke_for_account(
-            conn, ad_account_id="act_1", reason="partnership_ended"
+            conn, ad_account_id="act_1", reason=PARTNERSHIP_ENDED_REASON
         )
 
         n = await manager_meta_account_access.restore_for_account(conn, ad_account_id="act_1")
@@ -183,7 +192,7 @@ async def test_restaurar_so_devolve_quem_o_churn_revogou(db) -> None:
             conn, manager_id=mid_manual, ad_account_id="act_1", reason="manual"
         )
         await manager_meta_account_access.revoke_for_account(
-            conn, ad_account_id="act_1", reason="partnership_ended"
+            conn, ad_account_id="act_1", reason=PARTNERSHIP_ENDED_REASON
         )
 
         n = await manager_meta_account_access.restore_for_account(conn, ad_account_id="act_1")

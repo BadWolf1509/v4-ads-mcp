@@ -205,7 +205,9 @@ async def list_inventory_rows(conn: asyncpg.Connection) -> list[InventoryRow]:
 class ReconcileQueues:
     sem_delegacao: list[MetaAdAccount]
     sem_su: list[MetaAdAccount]
-    saiu_da_parceria: list[tuple[MetaAdAccount, int]]  # conta + nº de grants revogados
+    # Conta + nº de grants revogados POR CHURN (exatamente o que o Restaurar
+    # devolve). A conta pode estar ativa aqui: é a que voltou à parceria.
+    saiu_da_parceria: list[tuple[MetaAdAccount, int]]
 
 
 async def list_queues(conn: asyncpg.Connection) -> ReconcileQueues:
@@ -225,7 +227,29 @@ async def list_queues(conn: asyncpg.Connection) -> ReconcileQueues:
     Business Manager primeiro, delegar depois — uma fila que convida a
     segunda ação antes da primeira ser possível manda o admin fazer trabalho
     inútil.
+
+    C1 (revisão de branch): a fila 3 NÃO pode key-ar em `is_active`. Quando a
+    parceria volta, `upsert_many` reativa a conta na mesma execução — e é aí, e
+    só aí, que restaurar faz sentido, porque `can_manager_access` exige conta
+    ativa. Com o predicado antigo (`is_active = false`) a conta sumia da fila no
+    instante em que se tornava restaurável, levando junto o único chamador de
+    `restore_for_account` em todo o `src/`; sobrava redelegar tudo à mão, o
+    trabalho manual que a revogação soft existe para eliminar. A chave passou a
+    ser ter grant revogado por churn PENDENTE, e quem voltou vem primeiro.
+
+    Pela mesma lógica de precedência da rodada anterior, `saiu_da_parceria`
+    ganha de `sem_delegacao` (o segundo `NOT EXISTS` da primeira query): a conta
+    que voltou satisfaz as duas — está ativa e sem nenhum grant vivo —, e a fila
+    de delegação aparece ANTES no painel, então sem a exclusão o admin seria
+    convidado a refazer à mão o que um clique em Restaurar devolve. Delegar
+    outro gestor continua possível pela matriz, linkada no alerta da fila 3.
     """
+    # Import local: `manager_meta_account_access` importa deste módulo
+    # (MetaAdAccount/_row_to_account), então importar de volta no topo fecharia
+    # ciclo. A razão tem de ser a MESMA que `restore_for_account` filtra — é o
+    # que faz a contagem exibida ser exatamente o que o botão devolve (I5).
+    from src.db.repositories.manager_meta_account_access import PARTNERSHIP_ENDED_REASON
+
     sem_delegacao = await conn.fetch(
         """
         SELECT a.* FROM meta_ad_accounts a
@@ -235,8 +259,15 @@ async def list_queues(conn: asyncpg.Connection) -> ReconcileQueues:
                SELECT 1 FROM manager_meta_account_access m
                 WHERE m.ad_account_id = a.ad_account_id AND m.revoked_at IS NULL
            )
+           AND NOT EXISTS (
+               SELECT 1 FROM manager_meta_account_access r
+                WHERE r.ad_account_id = a.ad_account_id
+                  AND r.revoked_at IS NOT NULL
+                  AND r.revoked_reason = $1
+           )
          ORDER BY a.account_name
-        """
+        """,
+        PARTNERSHIP_ENDED_REASON,
     )
     sem_su = await conn.fetch(
         "SELECT * FROM meta_ad_accounts "
@@ -245,13 +276,15 @@ async def list_queues(conn: asyncpg.Connection) -> ReconcileQueues:
     # F59: toda coluna aliasada em query com JOIN.
     saiu = await conn.fetch(
         """
-        SELECT a.*, count(m.manager_id) FILTER (WHERE m.revoked_at IS NOT NULL) AS revogados
+        SELECT a.*, count(m.manager_id) AS revogados
           FROM meta_ad_accounts a
-          LEFT JOIN manager_meta_account_access m ON m.ad_account_id = a.ad_account_id
-         WHERE a.is_active = false
+          JOIN manager_meta_account_access m ON m.ad_account_id = a.ad_account_id
+         WHERE m.revoked_at IS NOT NULL
+           AND m.revoked_reason = $1
          GROUP BY a.ad_account_id
-         ORDER BY a.account_name
-        """
+         ORDER BY a.is_active DESC, a.account_name
+        """,
+        PARTNERSHIP_ENDED_REASON,
     )
     return ReconcileQueues(
         sem_delegacao=[_row_to_account(r) for r in sem_delegacao],

@@ -80,33 +80,50 @@
   </div>
   {% endif %}
 
+  {# C1 (revisao de branch): esta fila segue a conta DEPOIS que a parceria
+     volta — e so ai o Restaurar tem efeito, porque o gate exige conta ativa.
+     Por isso a chave e "ainda tem grant revogado por churn", nao "esta
+     desativada", e cada linha diz em qual dos dois estados ela esta. #}
   {% if saiu_da_parceria %}
   <div class="v4-card">
     <div class="v4-card__header">
       <h3 class="v4-card__title">Saíram da parceria ({{ saiu_da_parceria|length }})</h3>
     </div>
     {{ alert(
-      "Desativadas pela reconciliação — os grants que ela revogou estão na coluna
-       abaixo. Se a parceria voltou, restaure aqui: reconcede só o que este
-       processo revogou, nunca um acesso trocado por outro motivo.",
+      "Contas cujos acessos a reconciliação revogou. Enquanto a conta estiver fora,
+       a linha é histórico. Se a parceria voltar, ela reaparece aqui ativa e o
+       botão reconcede exatamente os grants que este processo revogou — nunca um
+       acesso trocado por outro motivo. Delegar outro gestor continua em
+       <a href=\"/admin/access/meta\" class=\"underline\">Acessos → Meta</a>.",
       "error"
     ) }}
     <div class="v4-table-wrap" tabindex="0" role="region" aria-label="Contas que saíram da parceria">
     <table class="v4-table v4-table--compact">
-      <thead><tr><th scope="col">Conta</th><th scope="col">Cliente</th><th scope="col">Grants revogados</th><th scope="col"></th></tr></thead>
+      <thead><tr><th scope="col">Conta</th><th scope="col">Cliente</th><th scope="col">Situação</th><th scope="col">Grants revogados</th><th scope="col"></th></tr></thead>
       <tbody>
         {% for a, revogados in saiu_da_parceria %}
         <tr>
           <td><strong>{{ a.account_name }}</strong><div class="text-xs font-mono text-v4-gray-500">{{ a.ad_account_id }}</div></td>
           <td>{{ a.business_name or "—" }}</td>
+          <td>
+            {% if a.is_active %}
+              <span class="v4-badge v4-badge--success">Voltou à parceria</span>
+            {% else %}
+              <span class="v4-badge v4-badge--error">Fora da parceria</span>
+            {% endif %}
+          </td>
           <td>{{ revogados }}</td>
           <td class="text-right">
+            {% if a.is_active %}
             <button type="button" class="v4-btn v4-btn--small v4-btn--secondary"
                     data-v4-action="confirm"
                     data-v4-confirm-title="Restaurar acesso?"
-                    data-v4-confirm-message="Reconcede os grants que a saída da parceria revogou pra {{ a.account_name }}. Acesso revogado por outro motivo não é afetado."
+                    data-v4-confirm-message="Reconcede os {{ revogados }} grant(s) que a saída da parceria revogou pra {{ a.account_name }}. Acesso revogado por outro motivo não é afetado."
                     data-v4-confirm-ok="Restaurar"
                     data-v4-post="/admin/accounts/meta/{{ a.ad_account_id }}/restore">Restaurar</button>
+            {% else %}
+            <span class="text-xs text-v4-gray-500">Restaurável quando a parceria voltar</span>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}

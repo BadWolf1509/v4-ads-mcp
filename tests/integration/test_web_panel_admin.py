@@ -16,6 +16,11 @@ from src.db.repositories import (
     meta_ad_accounts,
 )
 
+# M11: a razao vem da constante, nunca do literal. Fixar "partnership_ended" no
+# teste faz um rename da constante deixar a suite VERDE e a producao quebrada —
+# que e exatamente o acoplamento que a constante existe pra impedir.
+from src.db.repositories.manager_meta_account_access import PARTNERSHIP_ENDED_REASON
+
 _SIGNING_KEY = "x" * 32
 
 
@@ -596,7 +601,7 @@ async def test_painel_meta_separa_as_tres_filas(client: AsyncClient) -> None:
         )
         await meta_ad_accounts.deactivate(conn, ad_account_ids=["act_saiu"])
         await manager_meta_account_access.revoke_for_account(
-            conn, ad_account_id="act_saiu", reason="partnership_ended"
+            conn, ad_account_id="act_saiu", reason=PARTNERSHIP_ENDED_REASON
         )
 
     resp = await client.get(
@@ -619,6 +624,55 @@ async def test_painel_meta_separa_as_tres_filas(client: AsyncClient) -> None:
 
 
 @pytest.mark.integration
+async def test_painel_meta_rotula_quem_voltou_e_so_nela_oferece_restaurar(
+    client: AsyncClient,
+) -> None:
+    """C1: a fila 3 acompanha a conta depois da volta, e a linha diz qual e o
+    estado dela.
+
+    Conta que voltou = convite a restaurar (o gate ja aceita). Conta ainda fora
+    = historico: restaurar ali limparia `revoked_at` sem destravar nada, porque
+    `can_manager_access` continua negando por `is_active = false` — era o outro
+    lado do C1 (botao alcancavel e inerte).
+    """
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        await meta_ad_accounts.upsert_many(
+            conn,
+            [_conta_meta("act_voltou", "Cliente Voltou"), _conta_meta("act_fora", "Cliente Fora")],
+        )
+        await manager_meta_account_access.bulk_grant(
+            conn,
+            manager_id=gestor_id,
+            ad_account_ids=["act_voltou", "act_fora"],
+            granted_by=admin_id,
+        )
+        await meta_ad_accounts.deactivate(conn, ad_account_ids=["act_voltou", "act_fora"])
+        for aid in ("act_voltou", "act_fora"):
+            await manager_meta_account_access.revoke_for_account(
+                conn, ad_account_id=aid, reason=PARTNERSHIP_ENDED_REASON
+            )
+        # A parceria de act_voltou volta: o upsert do job reativa a conta.
+        await meta_ad_accounts.upsert_many(conn, [_conta_meta("act_voltou", "Cliente Voltou")])
+
+    resp = await client.get(
+        "/admin/accounts/meta",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+
+    assert resp.status_code == 200
+    assert "Voltou à parceria" in resp.text
+    assert "Fora da parceria" in resp.text
+    # O botao existe pra quem voltou e NAO existe pra quem segue fora.
+    assert "/admin/accounts/meta/act_voltou/restore" in resp.text
+    assert "/admin/accounts/meta/act_fora/restore" not in resp.text
+    # E quem voltou nao aparece tambem na fila de delegacao, senao o painel
+    # convida a refazer a mao o que um clique devolve.
+    assert "Cliente Voltou" not in resp.text.split("Saíram da parceria")[0]
+
+
+@pytest.mark.integration
 async def test_restaurar_reconcede_os_grants_revogados(client: AsyncClient) -> None:
     pool = connection.get_pool()
     admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
@@ -628,7 +682,7 @@ async def test_restaurar_reconcede_os_grants_revogados(client: AsyncClient) -> N
             conn, manager_id=gestor_id, ad_account_ids=["act_saiu"], granted_by=admin_id
         )
         await manager_meta_account_access.revoke_for_account(
-            conn, ad_account_id="act_saiu", reason="partnership_ended"
+            conn, ad_account_id="act_saiu", reason=PARTNERSHIP_ENDED_REASON
         )
 
     resp = await client.post(
@@ -656,7 +710,7 @@ async def test_restaurar_grava_audit_e_redireciona_com_ok(client: AsyncClient) -
             conn, manager_id=gestor_id, ad_account_ids=["act_saiu_audit"], granted_by=admin_id
         )
         await manager_meta_account_access.revoke_for_account(
-            conn, ad_account_id="act_saiu_audit", reason="partnership_ended"
+            conn, ad_account_id="act_saiu_audit", reason=PARTNERSHIP_ENDED_REASON
         )
 
     resp = await client.post(
@@ -693,7 +747,7 @@ async def test_restaurar_htmx_retorna_204_com_refresh(client: AsyncClient) -> No
             conn, manager_id=gestor_id, ad_account_ids=["act_saiu_htmx"], granted_by=admin_id
         )
         await manager_meta_account_access.revoke_for_account(
-            conn, ad_account_id="act_saiu_htmx", reason="partnership_ended"
+            conn, ad_account_id="act_saiu_htmx", reason=PARTNERSHIP_ENDED_REASON
         )
 
     resp = await client.post(
