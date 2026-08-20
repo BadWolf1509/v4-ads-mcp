@@ -574,6 +574,17 @@ O contador de ausências continua existindo, mas **mudou de fonte**: deixou de c
 
 - **F130 (MED, ABERTO) — o gate do Google não consulta `is_active`, o mesmo buraco que o do Meta acabou de perder.** [`manager_account_access.can_manager_access`](../../src/db/repositories/manager_account_access.py) lê só a tabela de grants: sem join com `google_ads_accounts`, sem checagem de estado. Conta desativada no inventário segue acessível a quem tiver grant. **Deliberadamente fora do escopo de 20/08:** no Google não existe "parceria de BM" — a fonte autoritativa é o `customer_client` do MCC —, então o desenho da reconciliação Meta não se transplanta, e misturar as duas frentes aumentaria o raio sem melhorar nenhuma. Family: mesma do F128/F57 (gate que não alcança todos os estados).
 
+### Dívida deliberada que sobrou (verificada no código em 20/08, não copiada de lista)
+
+Nada disto bloqueou o merge; está aqui porque foi **decidido**, não esquecido — e porque o ledger da execução, onde vivia, é scratch e foi descartado.
+
+- **`mark_inactive_except` do Meta virou código morto.** A reconciliação usa `deactivate` (que trata lista vazia como no-op, ao contrário dela). O **homônimo do Google segue vivo e em uso** (`account_resync.py:118`) — não confundir os dois ao limpar.
+- **O guard do gate ainda passa com comentário de bloco `/* */` e com `CROSS JOIN` sem `ON`.** Ele tira só comentário de linha (`--`). Residual conhecido: fechar exige `re.sub(r"/\*.*?\*/")` e rejeitar `CROSS`/`NATURAL` no conjunto de palavras precedentes.
+- **A fila "Saíram da parceria" não tem afordância de dispensa:** conta re-delegada pela matriz continua listada. Cosmético e visível — o admin vê a conta, não perde ação.
+- **As filas 2 e 3 podem se sobrepor** (conta que voltou e ainda está sem o SU). Aqui a sobreposição é **correta**, ao contrário do caso 1-vs-2 que foi eliminado: as duas ações são reais e independentes — atribuir o SU e restaurar acessos.
+- **A rota de restore devolve `conta_inativa` também para id inexistente**, e tem TOCTOU sem transação. Rota de admin autenticado, sem enumeração útil; o TOCTOU exigiria dois admins no mesmo segundo na mesma conta.
+- **`build_plan(threshold=3)` e o limiar exato do guard percentual** seguem sem calibração com dado real — o soak é quem responde.
+
 ### O que a execução ensinou (método, não bug)
 
 Oito tarefas com implementador e revisor independentes, mais revisão da branch inteira. **Os achados mais graves foram defeitos do PLANO, não da implementação** — vale registrar porque contraria a intuição de que o risco mora no código:
