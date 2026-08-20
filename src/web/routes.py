@@ -1171,11 +1171,17 @@ async def admin_access_meta_by_manager(
     _require_admin(user)
     pool = connection.get_pool()
     async with pool.acquire() as conn:
+        # I1 (fix round 1): revoked_at entra na CONDICAO do LEFT JOIN, nao no
+        # WHERE — WHERE excluiria o gestor inteiro (LEFT vira INNER na pratica)
+        # quando todos os grants dele estao revogados, e ele tem que continuar
+        # aparecendo com "0 / total". Sem este filtro a contagem incluia grant
+        # revogado e contradizia a pagina de detalhe (que ja filtra).
         managers_with_counts = await conn.fetch(
             """SELECT m.id, m.email, m.full_name,
                       count(mmaa.ad_account_id) AS access_count
                FROM managers m
-               LEFT JOIN manager_meta_account_access mmaa ON mmaa.manager_id = m.id
+               LEFT JOIN manager_meta_account_access mmaa
+                      ON mmaa.manager_id = m.id AND mmaa.revoked_at IS NULL
                WHERE m.is_active = true
                GROUP BY m.id ORDER BY m.email"""
         )

@@ -213,18 +213,48 @@ async def copy_access(
     to_manager_id: UUID,
     granted_by: UUID,
 ) -> int:
-    """Replace destination's Meta access with source's access. Atomic."""
+    """Replace destination's Meta access with source's LIVE access. Atomic.
+
+    C1 (fix round 1, spec 2026-08-20): antes era DELETE + INSERT sem filtro —
+    dois problemas. Primeiro, o SELECT da origem não excluía grant revogado,
+    então copiar de um gestor com um grant revogado (conta ainda `is_active`,
+    então o JOIN de `can_manager_access` não salvava) ressuscitava esse grant
+    como vivo pro destino — o INSERT nem grava `revoked_at`, então o default é
+    NULL. Segundo, o DELETE do destino apagava o próprio rastro de revogação
+    que este commit inteiro existe pra preservar.
+
+    Agora: só os grants VIVOS da origem entram na cópia, e o destino é
+    soft-revogado (nunca apagado) antes de receber os novos — quem já estava
+    revogado no destino (por outro motivo, antes desta chamada) nem é tocado,
+    porque o UPDATE de limpeza só pega `revoked_at IS NULL`. O ON CONFLICT
+    restaura (não recria) a linha quando ela sobrevive dos dois lados.
+    """
     async with conn.transaction():
+        # "Replace" primeiro revoga (soft) o que o destino tinha de vivo — sem
+        # isso, uma conta que só a destino tinha (fora do conjunto da origem)
+        # ficaria viva pra sempre, e nunca seria "substituição" de verdade.
         await conn.execute(
-            "DELETE FROM manager_meta_account_access WHERE manager_id = $1",
+            """
+            UPDATE manager_meta_account_access
+               SET revoked_at = now(), revoked_reason = 'bulk_copy_replaced'
+             WHERE manager_id = $1 AND revoked_at IS NULL
+            """,
             to_manager_id,
         )
         result = await conn.execute(
-            """INSERT INTO manager_meta_account_access
+            """
+            INSERT INTO manager_meta_account_access
                    (manager_id, ad_account_id, access_level, granted_by)
-               SELECT $1, ad_account_id, access_level, $2
-               FROM manager_meta_account_access
-               WHERE manager_id = $3""",
+            SELECT $1, ad_account_id, access_level, $2
+              FROM manager_meta_account_access
+             WHERE manager_id = $3 AND revoked_at IS NULL
+            ON CONFLICT (manager_id, ad_account_id) DO UPDATE SET
+                access_level = EXCLUDED.access_level,
+                granted_at = now(),
+                granted_by = EXCLUDED.granted_by,
+                revoked_at = NULL,
+                revoked_reason = NULL
+            """,
             to_manager_id,
             granted_by,
             from_manager_id,

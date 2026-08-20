@@ -169,6 +169,49 @@ async def test_admin_access_meta_by_manager_renders(client: AsyncClient):
 
 
 @pytest.mark.integration
+async def test_admin_access_meta_by_manager_conta_exclui_revogados(client: AsyncClient):
+    """I1 (fix round 1): a contagem desta pagina nao pode incluir grant
+    revogado — senao ela contradiz a pagina de detalhe por-gestor (que ja
+    filtra revoked_at), tipo duas telas de offboarding discordando."""
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        await meta_ad_accounts.upsert_many(
+            conn,
+            [
+                {
+                    "ad_account_id": "act_222",
+                    "business_id": "biz_001",
+                    "business_name": "Empresa Teste",
+                    "account_name": "Conta 2",
+                    "currency": "BRL",
+                    "timezone_name": "America/Sao_Paulo",
+                    "account_status": 1,
+                }
+            ],
+        )
+        await manager_meta_account_access.bulk_grant(
+            conn,
+            manager_id=gestor_id,
+            ad_account_ids=["act_123456789", "act_222"],
+            granted_by=admin_id,
+        )
+        await manager_meta_account_access.revoke(
+            conn, manager_id=gestor_id, ad_account_id="act_222"
+        )
+
+    response = await client.get(
+        "/admin/access/meta/by-manager",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 200
+    # total_accounts = 2 (act_123456789 do bootstrap + act_222); so 1 dos dois
+    # grants do gestor segue vivo depois do revoke acima.
+    assert "1 / 2 contas" in response.text
+    assert "2 / 2 contas" not in response.text
+
+
+@pytest.mark.integration
 async def test_admin_accounts_meta_renders_token_status(
     client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
