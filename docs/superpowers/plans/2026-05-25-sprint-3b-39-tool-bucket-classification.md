@@ -763,7 +763,7 @@ Add new row pra Sprint 3b.39 (after 3b.38 row):
 Modify CLAUDE.md `### Pending / future`:
 
 ```markdown
-- **Refactor arquitetural Sprint 3b.39 ✅ shipped** (Fase 1 — tool bucket classification + Wellington config doc). Discovery D2: MCP defer_loading client-side, F1 reformulada server-metadata-only. **Próximo F2 Sprint 3b.40:** Caminho C consolidação `get_performance_breakdown(level, dimension)` substitui 9 reports = -9 tools permanente. Spec: [`2026-05-25-architecture-refactor-design.md`](docs/superpowers/specs/2026-05-25-architecture-refactor-design.md). Gate F1→F2: outcome-based timeout 14d.
+- **Refactor arquitetural Sprint 3b.39 ✅ shipped** (Fase 1 — tool bucket classification + Wellington config doc). Discovery D2: MCP defer_loading client-side, F1 reformulada server-metadata-only. **Próximo F2 Sprint 3b.40:** Caminho C consolidação `get_performance_breakdown(level, dimension)` substitui 9 reports = -9 tools permanente. Spec: [`2026-05-25-architecture-refactor-design.md`](../specs/2026-05-25-architecture-refactor-design.md). Gate F1→F2: outcome-based timeout 14d.
 ```
 
 Update tool count line:

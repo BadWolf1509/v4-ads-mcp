@@ -10,7 +10,7 @@
 
 ## 1. Context & Motivation
 
-V4 Ads MCP atingiu 59 tools (57 Google + 2 Meta) em Maio 2026. Tool audit completa em 2026-05-25 ([tool-audit-2026-05-25.md](../../operacao/tool-audit-2026-05-25.md)) + research arquitetural ([Agent #2 report](#11-referências)) revelaram 3 problemas estruturais:
+V4 Ads MCP atingiu 59 tools (57 Google + 2 Meta) em Maio 2026. Tool audit completa em 2026-05-25 (tool-audit-2026-05-25.md) + research arquitetural ([Agent #2 report](#11-referências)) revelaram 3 problemas estruturais:
 
 ### P1 — Tool count 3× acima do "20-tool cliff" documentado
 
@@ -20,7 +20,7 @@ V4 atual: ~25-30K tokens em descriptions Google+Meta+governance, projetado pra ~
 
 ### P2 — 22 zombies (38%) sem uso 30d + 13 reports redundantes
 
-[Tool audit 2026-05-25](../../operacao/tool-audit-2026-05-25.md) identificou Pareto 80/20:
+Tool audit 2026-05-25 identificou Pareto 80/20:
 - 8 core tools = 60% volume
 - 22 zombies = 0 uses 30d
 - 13 reports performance consolidáveis em 1-2 generic tools via `get_performance_breakdown(level, dimension, date_range)`
@@ -315,7 +315,7 @@ Abort/revert se:
 2. Smoke runbook `docs/operacao/phase-3b-40-bootstrap.md` cobrindo TODAS combinações level × dimension válidas (~15-20 combos) em conta real Wellington (MO-JP+CAB ou ML Antiguidades)
 3. 9 tools tombstoned mas registered (compatibilidade 14d fallback)
 4. findings-catalog + sprint-history updated
-5. Update [tool-audit-2026-05-25.md](../../operacao/tool-audit-2026-05-25.md) com new count
+5. Update tool-audit-2026-05-25.md com new count
 
 ### 6.5 Gate saída Fase 2 → Fase 3
 
@@ -599,7 +599,7 @@ Semana 8-24 (M.3+):        Fase 4 demand pull Meta ship
 
 ### Internal V4 Ads MCP context
 
-- [Tool audit 2026-05-25](../../operacao/tool-audit-2026-05-25.md) — Pareto 80/20 evidence + sweet spot 30-45
+- Tool audit 2026-05-25 — Pareto 80/20 evidence + sweet spot 30-45
 - [Findings catalog](../../operacao/findings-catalog.md) — 50 findings F1-F52 + A1-A6 + D1
 - [Sprint history](../../operacao/sprint-history.md) — Sprints 3b.1-3b.38 + M.1-M.2b
 - [Meta App Review decision (D1)](../../operacao/findings-catalog.md) — Caminho B+ janela observação 30-45 dias

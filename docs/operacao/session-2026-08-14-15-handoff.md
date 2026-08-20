@@ -102,7 +102,7 @@ O **F82 foi destravado na 2ª onda** por probe — e o resultado justificou a es
 | Mecanismo | Onde | Para quê |
 |---|---|---|
 | `best_effort` | [`governance/bookkeeping.py`](../../src/governance/bookkeeping.py) | Bookkeeping em `finally` não pode derrubar a operação (F83); reusado no audit de crash de job (F93) |
-| `run_blocking` | [`google_ads/_blocking.py`](../../src/google_ads/_blocking.py) | Chamada síncrona do SDK sai do event loop (F86) |
+| `run_blocking` | [`google_ads/_blocking.py`](../../src/blocking.py) | Chamada síncrona do SDK sai do event loop (F86) |
 | `gaql_string_literal` | [`queries/_gaql.py`](../../src/google_ads/queries/_gaql.py) | Escape GAQL correto, sem dependências (F87) |
 | `record_job_crash` | [`jobs/_audit.py`](../../src/jobs/_audit.py) | Crash de job deixa linha no audit (F93) |
 | `Manager.is_deactivated` | [`repositories/managers.py`](../../src/db/repositories/managers.py) | Predicado único de desativação (F84) |

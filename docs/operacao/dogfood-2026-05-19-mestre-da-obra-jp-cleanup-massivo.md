@@ -124,7 +124,7 @@ Workaround: Bash + Python pra ler arquivo + agregar com `Counter()`. Funciona ma
 
 **Severity:** LOW — workaround Python existe.
 
-**Resolução (Sprint 3b.29, 2026-05-20):** `run_gaql` agora aceita `aggregate_by: list[str]` opcional. Smoke T3 reproduziu o caso real: campaign_asset Nutry 119 rows → 7 groups ordered DESC (SITELINK:68, CALLOUT:40, etc). Output reduzido drasticamente vs raw rows. Workaround Bash+Counter() obsoleto pra queries densas via MCP. Spec: [`2026-05-20-sprint-3b-29-run-gaql-aggregate-by-design.md`](../superpowers/specs/2026-05-20-sprint-3b-29-run-gaql-aggregate-by-design.md).
+**Resolução (Sprint 3b.29, 2026-05-20):** `run_gaql` agora aceita `aggregate_by: list[str]` opcional. Smoke T3 reproduziu o caso real: campaign_asset Nutry 119 rows → 7 groups ordered DESC (SITELINK:68, CALLOUT:40, etc). Output reduzido drasticamente vs raw rows. Workaround Bash+Counter() obsoleto pra queries densas via MCP. Spec: [`2026-05-20-sprint-3b-29-run-gaql-aggregate-by-design.md`](../_archive/specs/2026-05-20-sprint-3b-29-run-gaql-aggregate-by-design.md).
 
 ## Gaps de cobertura (tools faltando)
 

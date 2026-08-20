@@ -101,7 +101,7 @@
 | upload_customer_match_list | Customer Match | CRM audience upload, low adoption |
 | validate_gaql | Helper | GAQL validation, implicit usage |
 
-**Consolidation candidate (Caminho C):** 13 performance/audit reads could collapse into 2-3 generic tools (e.g., `get_performance_breakdown(level, dimension)`) → reduce tool count 22% (59 → 45-48 range). See [`tool-audit-2026-05-25.md`](tool-audit-2026-05-25.md).
+**Consolidation candidate (Caminho C):** 13 performance/audit reads could collapse into 2-3 generic tools (e.g., `get_performance_breakdown(level, dimension)`) → reduce tool count 22% (59 → 45-48 range). Ver a secao de referencias no fim deste arquivo (o `tool-audit-2026-05-25.md` foi apagado como redundante).
 
 ---
 
@@ -139,6 +139,6 @@
 
 ## References
 
-- [`tool-audit-2026-05-25.md`](tool-audit-2026-05-25.md) — Detailed tool count analysis, zombie list, consolidation blueprint
+- `tool-audit-2026-05-25.md` — **apagado** como redundante no commit `4ab8739`; a analise que sobreviveu esta neste proprio arquivo. Recuperavel por `git show 6d821da`.
 - [`sprint-history.md`](sprint-history.md) — Sprint 3b.33→3b.37 tool shipping timeline
 - `docs/superpowers/specs/2026-05-25-architecture-refactor-design.md` §3 — 3-bucket strategy design
