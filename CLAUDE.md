@@ -18,7 +18,9 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 
 ## Current state
 
-**Última atualização:** 2026-08-15. **64 MCP tools** (58 Google + 6 Meta), bucket **23 always + 41 defer** — contagem verificada, não estimada. Smoke autenticado F58 segue dormente. F76/F77 encerrados.
+**Última atualização:** 2026-08-19. **64 MCP tools** (58 Google + 6 Meta), bucket **23 always + 41 defer** — contagem verificada, não estimada. Smoke autenticado F58 segue dormente. F76/F77 encerrados.
+
+**A sessão de 2026-08-19 foi uma investigação de frontend** (8 findings, F101-F108, todos fechados). O que mudou de premissa no painel: o rótulo acessível dos checkboxes da matriz vem por **`aria-labelledby` apontando pra fora do nó trocado** (F101); **toda** referência a `/static` carrega `?v=` (F102); a isenção de CSRF é **por rota**, não por prefixo — `/oauth/meta/revoke` e `/oauth/meta/refresh-accounts` deixaram de ser isentos (F106); `sessions_revoke` sem HTMX devolve **303** (F107). Detalhe: [`session-2026-08-19-frontend-handoff.md`](docs/operacao/session-2026-08-19-frontend-handoff.md).
 
 **A sessão 2026-08-14/15 foi uma investigação ampla de bugs** (19 findings catalogados, **todos fechados** em duas ondas). O núcleo mudou de comportamento em pontos que valem saber de cara:
 
@@ -33,6 +35,7 @@ Detalhe e lições: [`session-2026-08-14-15-handoff.md`](docs/operacao/session-2
 
 **Sessões recentes** (detalhe canônico nos handoffs — leia só o da sessão relevante):
 - **2026-08-14/15** — investigação ampla de bugs sem escopo prévio: 19 findings catalogados (F82-F100), **todos fechados** em duas ondas (11 + 8). Núcleo, auth, jobs, Meta, pool, painel e backup tocados. [`session-2026-08-14-15-handoff.md`](docs/operacao/session-2026-08-14-15-handoff.md).
+- **2026-08-19** — investigação de frontend: 8 findings (F101-F108) fechados, um commit por achado. Os três mais graves caíam cada um num ponto cego de um guard **verde**. [`-08-19`](docs/operacao/session-2026-08-19-frontend-handoff.md).
 - **2026-08-11** — frontend medido no DOM de produção: Play CDN aposentado, CSP sem `unsafe-*`, a11y, +F78-F81. [`-08-11`](docs/operacao/session-2026-08-11-frontend-handoff.md).
 - **2026-07-22/23** — 500 e 503 intermitentes por conexão asyncpg stale → F76 (`run_with_reconnect`) + F77 (deep health resiliente) + `severity` no Cloud Logging. [`-07-22`](docs/operacao/session-2026-07-22-handoff.md) · [`-07-23`](docs/operacao/session-2026-07-23-handoff.md).
 - **2026-07-04** — 3 ondas de governança/dívida (F73 quota leak + cap por gestor; `_mutate_common`; lockfile; backup) e, na 2ª sessão, o pacote UI/UX do painel (F74/F75). [`-07-04`](docs/operacao/session-2026-07-04-handoff.md) · [`-07-04 UI`](docs/operacao/session-2026-07-04-ui-ux-handoff.md).
@@ -70,15 +73,15 @@ Detalhe e lições: [`session-2026-08-14-15-handoff.md`](docs/operacao/session-2
 
 **F76/F77 encerrados:** reabrir só se aparecer `mcp_auth_error` pós-`00026`, `health_deep_db_failed` persistente pós-`00028` ou incidente do uptime check.
 
-**Quando ler outros docs:** [bug suspeito → `findings-catalog.md`] [o que shipou / detalhe sprint → `sprint-history.md`] [última sessão → `session-2026-08-11-frontend-handoff.md`] [infra/DB, sessão anterior → `session-2026-07-23-handoff.md`] [migração GCP → `session-2026-06-30-handoff.md`] [executar pendente → spec+plan em `docs/superpowers/`].
+**Quando ler outros docs:** [bug suspeito → `findings-catalog.md`] [o que shipou / detalhe sprint → `sprint-history.md`] [última sessão → `session-2026-08-19-frontend-handoff.md`] [infra/DB, sessão anterior → `session-2026-07-23-handoff.md`] [migração GCP → `session-2026-06-30-handoff.md`] [executar pendente → spec+plan em `docs/superpowers/`].
 
 ## Context bootstrap (minimum)
 
 **Este arquivo já basta pra maioria das tarefas.** Carregue mais só quando a tarefa pedir:
 
 1. **Vai mexer no núcleo** (executores, jobs, auth, tools Meta, pool)? Leia [`session-2026-08-14-15-handoff.md`](docs/operacao/session-2026-08-14-15-handoff.md) — é o estado mais recente e traz os padrões de erro que se repetiram.
-2. **Vai mexer no painel web?** [`session-2026-08-11-frontend-handoff.md`](docs/operacao/session-2026-08-11-frontend-handoff.md).
-3. **Antes de desenhar ou corrigir código**, faça busca **dirigida** em [`findings-catalog.md`](docs/operacao/findings-catalog.md) pela área/sintoma. O catálogo tem ~370 linhas e **99 IDs** — grep por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`), nunca leitura integral.
+2. **Vai mexer no painel web?** [`session-2026-08-19-frontend-handoff.md`](docs/operacao/session-2026-08-19-frontend-handoff.md) (mais recente) + [`session-2026-08-11-frontend-handoff.md`](docs/operacao/session-2026-08-11-frontend-handoff.md) (o pacote que fixou CSP/assets/Tailwind).
+3. **Antes de desenhar ou corrigir código**, faça busca **dirigida** em [`findings-catalog.md`](docs/operacao/findings-catalog.md) pela área/sintoma. O catálogo tem ~430 linhas e **107 IDs** — grep por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`), nunca leitura integral.
 
 > **Os 19 findings da investigação (F82-F100) estão FECHADOS.** Resíduo único e documentado: o `input_token` do `/debug_token` segue na query string — não é credencial do chamador e o endpoint rejeita POST (verificado). Guard AST em `test_no_secrets_in_query_params.py` impede segredo novo em `params=`, com allowlist por **(função, chave)**.
 
@@ -114,7 +117,7 @@ A matriz `manager_account_access` (Google) / `manager_meta_account_access` (Meta
 
 ### Segurança web (middleware) — post sessão 2026-05-29
 
-`src/web/middleware.py`: `CSRFOriginMiddleware` (bloqueia método unsafe com Origin/Referer presente-e-divergente de Host; ausência permitida — SameSite=Lax é a defesa primária; isenta `/oauth/` + `/mcp`) + `SecurityHeadersMiddleware` (XFO/XCTO/Referrer/HSTS + **CSP enforcing** com allowlist em `_CSP_POLICY`).
+`src/web/middleware.py`: `CSRFOriginMiddleware` (bloqueia método unsafe com Origin/Referer presente-e-divergente de Host; ausência permitida — SameSite=Lax é a defesa primária; isenta **por rota**: `/oauth/meta/data-deletion-callback` + `/mcp`. O prefixo `/oauth/` inteiro saiu em 08-19/F106 — pendurava duas mutações do painel autenticadas por cookie dentro da isenção) + `SecurityHeadersMiddleware` (XFO/XCTO/Referrer/HSTS + **CSP enforcing** com allowlist em `_CSP_POLICY`).
 
 - **Adicionou recurso externo** (script/style/font de novo host)? **Atualize `_CSP_POLICY`** no mesmo commit ou ele é bloqueado em produção. Allowlist atual (verificada 08-15): `unpkg.com` (script), `fonts.bunny.net` (style+font). `cdn.tailwindcss.com` **saiu** em 08-11 e há guard assertando a ausência — não re-adicione.
 - Toda página renderiza HTML de input? Jinja autoescape cobre `{{ }}`; em f-strings/HTML manual use `html.escape` (XSS — `_error_page`, `_toggle_checkbox_fragment`).
@@ -306,6 +309,10 @@ Padrões pós-pacote de frontend 2026-08-11:
 - Don't fazer read idempotente de disponibilidade/hot-path (ex.: resolução de sessão ou deep health) com `pool.acquire()` cru — use `connection.run_with_reconnect(op)` (asyncpg NÃO faz pre-ping; F76/F77). Probe externo deve ter deadline interno menor (`health`: 5s interno < 10s externo). Retry só em read idempotente; mutação NÃO leva retry cego (pode ter commitado). Log Cloud Logging usa `severity` (não `level`) — `add_cloud_logging_severity` já cobre no pipeline JSON.
 - Don't mexer em classe utilitária de template sem rodar `python scripts/build_tailwind.py` e commitar o CSS no MESMO commit (o CI faz `git diff --exit-code`). Don't reordenar os `<link>` do `<head>` — `v4-tailwind.css` por último, senão o Preflight perde e todo heading estoura. Don't subir o pin do Tailwind pra v4 (config CSS-first).
 - Don't usar `--v4-gray-300` como cor de texto sobre fundo claro (2,1:1) — use `--v4-gray-500`; sobre fundo escuro, marque a linha com `/* on-dark */`. Don't aplicar gzip a `/mcp` (SSE). Don't pôr `{% block head_extra %}` dentro de `{% block content %}`.
+- Don't pôr nome acessível (`aria-label`) num elemento que um swap HTMX substitui — o fragmento servido pela rota não tem o texto e o rótulo degrada calado. Aponte pra fora do nó trocado com `aria-labelledby`, derivando os ids do que a rota já recebe (F101, mesma família do F74). Don't referenciar `/static` sem `?v={{ asset_version }}`: o `Cache-Control` é `immutable` por um ano (F102).
+- Don't isentar prefixo no `_CSRF_EXEMPT_PREFIXES` — isente **rota**. Prefixo herda tudo que um `APIRouter(prefix=…)` pendurar ali depois, sem revisão (F106).
+- Don't devolver 200 de um POST de mutação sem HTMX — 303, senão o refresh re-executa a ação (F107; espelho do F96, que era 303 cru num `hx-post`).
+- Don't pôr `role="button"` num `<tr>`: pela ARIA os filhos viram presentacionais e a linha perde o vínculo com os `<th scope="col">`. `tabindex="0"` + `aria-expanded` (suportado em `role=row`) dá o teclado sem isso (F105). Don't deixar `<th>` sem `scope` (F104).
 - **Don't escrever JS nem CSS inline em template** (`onclick=`, `hx-on`, `<script>`, `style=`): a CSP não tem `unsafe-*`, então o browser bloqueia — e handler inline morre calado. Use `data-v4-*` + listener em `v4-panel.js`, e classe pro estilo. Vale também pra HTML montado dentro de string Jinja passada a macro (aspas escapadas escondem o atributo de grep).
 - Don't fazer macro emitir markup que o consumidor não pode alcançar — `search_input` emitia `name=` enquanto o JS procurava `id=`, e os 4 filtros do painel ficaram mortos sem ninguém notar (F81). Handler inline falha em silêncio.
 - Don't adicionar dependência sem checar "no build step" (HTMX via CDN; Tailwind gerado offline — sem node/Vite/React no runtime). Ao adicionar uma dep de PROD: editar `pyproject.toml` E **regenerar `requirements.txt` no MESMO commit** com `uv pip compile pyproject.toml -o requirements.txt --universal` (o `--universal` é obrigatório — sem markers de plataforma o `pywin32` win-only quebra o build Linux/CNB; o buildpack e o CI instalam desse lockfile).
