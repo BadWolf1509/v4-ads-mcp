@@ -212,17 +212,39 @@ def test_paginas_admin_nao_usam_o_offset_de_header_puro():
         )
 
 
-def test_barra_de_filtros_da_auditoria_e_medida_em_runtime():
+def test_toda_barra_que_alimenta_offset_sticky_e_medida():
     """A barra embrulha (88/164/240px) em pontos que nao sao breakpoints padrao.
 
-    Os cabecalhos de dia grudam abaixo dela, entao o offset tem que vir de
-    medicao, nao de literal. Ver F79.
+    Quem gruda embaixo dela (cabecalho de dia em /audit, thead em /admin/audit)
+    tira o offset de --v4-filter-bar-h, que so recebe valor real se o
+    ResizeObserver achar um [data-sticky-measure] NA PAGINA. Sem o atributo o
+    valor fica no fallback de v4-tokens.css, aferido em OUTRA barra. Ver F79.
+
+    A lista de paginas e DERIVADA do consumo do token — listar template a mao
+    foi o que deixou /admin/audit de fora quando o mecanismo nasceu.
     """
-    audit = (_TEMPLATES / "audit.html").read_text(encoding="utf-8")
-    assert "data-sticky-measure" in audit, "a barra de filtros precisa ser medida"
     js = (_STATIC / "v4-panel.js").read_text(encoding="utf-8")
     assert "ResizeObserver" in js
     assert "--v4-filter-bar-h" in js
+
+    css = (_STATIC / "v4-components.css").read_text(encoding="utf-8")
+    assert "var(--v4-filter-bar-h)" in css, "quem consome o token mudou de nome"
+
+    consumidores = 0
+    for template in _TEMPLATES.rglob("*.html"):
+        conteudo = template.read_text(encoding="utf-8")
+        consome = (
+            "v4-table--sticky-head-under-filters" in conteudo
+            or "var(--v4-audit-day-offset)" in conteudo
+        )
+        if not consome:
+            continue
+        consumidores += 1
+        assert "data-sticky-measure" in conteudo, (
+            f"{template.name}: usa offset derivado de --v4-filter-bar-h mas nao marca "
+            "a barra com data-sticky-measure — o valor fica no fallback"
+        )
+    assert consumidores >= 2, "esperado /audit e /admin/audit consumindo o token"
 
 
 def test_barras_de_filtro_nao_grudam_no_celular():
