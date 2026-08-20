@@ -54,41 +54,66 @@ async def reconcile_meta() -> Plan:
         for i in (a.get("id", "") for a in alcance.accounts)
     }
 
+    leitura_completa = parceria.complete and alcance.complete
+
     pool = connection.get_pool()
     async with pool.acquire() as conn:
-        # Leitura e plano ANTES do upsert (achado da revisão, round 1,
-        # 2026-08-20): upsert_many marca is_active=true e ZERA missed_syncs pra
-        # toda conta da parceria. Se rodasse primeiro, o inventário já
-        # apareceria "em dia" quando lido — to_add e to_reset sairiam vazios
-        # SEMPRE, e o audit nunca reportaria conta nova nem carência zerada.
-        inventario = await meta_ad_accounts.list_inventory_rows(conn)
-        plano = build_plan(
-            partnership_ids=ids_parceria,
-            reachable_ids=ids_alcance,
-            inventory=inventario,
-            complete=parceria.complete and alcance.complete,
-        )
-        # Aditivo e sempre seguro (mesmo com leitura parcial) — é o que faz a
-        # conta nova aparecer pro admin delegar. `to_reset` fica parcialmente
-        # redundante com o zeramento que o upsert já faz sozinho — inofensivo,
-        # o plano e a escrita continuam consistentes.
-        upserted = await meta_ad_accounts.upsert_many(conn, parceria.accounts)
+        # Uma transação só pro bloco de escrita inteiro: metade aplicada
+        # (carência somada sem desativar, ou desativada com grant ainda vivo) é
+        # exatamente a inconsistência que este recurso existe pra evitar.
+        async with conn.transaction():
+            # Leitura e plano ANTES do upsert (achado da revisão, round 1,
+            # 2026-08-20): upsert_many marca is_active=true e ZERA missed_syncs
+            # pra toda conta da parceria. Se rodasse primeiro, o inventário já
+            # apareceria "em dia" quando lido — to_add e to_reset sairiam
+            # vazios SEMPRE, e o audit nunca reportaria conta nova nem carência
+            # zerada.
+            inventario = await meta_ad_accounts.list_inventory_rows(conn)
+            plano = build_plan(
+                partnership_ids=ids_parceria,
+                reachable_ids=ids_alcance,
+                inventory=inventario,
+                complete=leitura_completa,
+            )
 
-        aplicado = settings.meta_reconcile_apply and plano.blocked_reason is None
-        revogados = 0
-        if aplicado:
-            # Uma transação só pro bloco inteiro: metade aplicada (carência
-            # somada sem desativar, ou desativada com grant ainda vivo) é
-            # exatamente a inconsistência que este recurso existe pra evitar.
-            async with conn.transaction():
-                await meta_ad_accounts.apply_absences(
-                    conn, bump=plano.to_bump, reset=plano.to_reset
+            # A trava `meta_reconcile_apply` governa DESTRUIÇÃO, não OBSERVAÇÃO
+            # (C2 da revisão de branch). Upsert, carência e alcance escrevem em
+            # toda execução, inclusive no dry-run: é o dry-run que dá sentido ao
+            # soak. Com `set_reachable` atrás da trava, `su_reachable` ficava no
+            # `DEFAULT true` da migration durante todo o soak, a fila "Sem o
+            # system user atribuído" nascia vazia e as mesmas contas apareciam
+            # em "Aguardando delegação" — convidando a delegar gestor em conta
+            # que o SU não lê. Com `apply_absences` atrás dela, `missed_syncs`
+            # ficava congelado e `to_remove` era estruturalmente inalcançável.
+            # Nada dos três desativa nem revoga: a spec §3/§5 classifica o
+            # inalcançável como "só sinaliza" e "NUNCA desativa".
+            upserted = await meta_ad_accounts.upsert_many(conn, parceria.accounts)
+            # Aditivo é seguro mesmo com leitura parcial — é o que faz a conta
+            # nova aparecer pro admin delegar. `to_reset` fica parcialmente
+            # redundante com o zeramento que o upsert já faz sozinho; e com
+            # leitura parcial `to_bump` sai vazio pelo próprio build_plan, então
+            # ausência não vira carência sobre página que não veio (F93).
+            await meta_ad_accounts.apply_absences(conn, bump=plano.to_bump, reset=plano.to_reset)
+            if leitura_completa:
+                # `leitura_completa`, NÃO `aplicado`: confundir os dois foi o
+                # C2. O que o alcance exige é a leitura inteira de
+                # /me/adaccounts — sobre página truncada, "não veio" significa
+                # "não li", e marcar su_reachable=false inventaria um sinal
+                # falso. Que a trava de rollout esteja ligada ou não é outra
+                # pergunta, e não é esta.
+                await meta_ad_accounts.set_reachable(
+                    conn,
+                    reachable_ids=sorted(ids_alcance),
+                    scope_ids=sorted(ids_parceria),
                 )
-                # Só roda aqui dentro porque `aplicado` exige blocked_reason is
-                # None, e build_plan() só devolve None com complete=True — ou
-                # seja, com as duas leituras (parceria + alcance) completas.
-                # Leitura parcial nunca chega a marcar alcance.
-                await meta_ad_accounts.set_reachable(conn, reachable_ids=sorted(ids_alcance))
+
+            # Destrutivo: exige leitura completa E a trava ligada.
+            # `blocked_reason is None` já implica leitura completa (build_plan
+            # só devolve None com complete=True) e plano dentro do teto do guard
+            # percentual.
+            aplicado = settings.meta_reconcile_apply and plano.blocked_reason is None
+            revogados = 0
+            if aplicado:
                 await meta_ad_accounts.deactivate(conn, ad_account_ids=plano.to_remove)
                 for ad_account_id in plano.to_remove:
                     atingidos = await manager_meta_account_access.revoke_for_account(
@@ -107,6 +132,9 @@ async def reconcile_meta() -> Plan:
                         manager_ids=[str(m) for m in atingidos],
                     )
 
+        # Auditoria do run FORA da transação de propósito: bookkeeping não pode
+        # desfazer reconciliação já aplicada (família do F83). Se ela mesma
+        # falhar, o crash cai no `record_job_crash` de quem chamou.
         await record_job_run(
             conn,
             operation="meta_reconcile",
@@ -120,6 +148,11 @@ async def reconcile_meta() -> Plan:
                 "bumped": len(plano.to_bump),
                 "unreachable": len(plano.unreachable),
                 "revoked_grants": revogados,
+                # M3: a §9 nomeia `complete` explicitamente. Dá pra inferir de
+                # error_message == "leitura incompleta", mas essa string colapsa
+                # duas leituras diferentes (parceria vs /me/adaccounts) num
+                # motivo só — na triagem você não saberia qual falhou.
+                "complete": leitura_completa,
                 "applied": aplicado,
             },
         )

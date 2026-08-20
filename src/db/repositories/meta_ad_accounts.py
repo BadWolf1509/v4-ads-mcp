@@ -162,13 +162,29 @@ async def deactivate(conn: asyncpg.Connection, *, ad_account_ids: list[str]) -> 
     )
 
 
-async def set_reachable(conn: asyncpg.Connection, *, reachable_ids: list[str]) -> None:
-    """Marca alcance do system user. NÃO desativa: alcance ≠ pertencer à parceria."""
-    if not reachable_ids:
+async def set_reachable(
+    conn: asyncpg.Connection, *, reachable_ids: list[str], scope_ids: list[str]
+) -> None:
+    """Marca alcance do system user. NÃO desativa: alcance ≠ pertencer à parceria.
+
+    `scope_ids` é obrigatório de propósito (M4 da revisão de branch): sem o
+    `WHERE`, o UPDATE marcava `su_reachable = false` também em conta inativa ou
+    fora da parceria — e "o SU não alcança" só é sinal acionável para quem ESTÁ
+    na parceria (spec §3). Fora dela o que importa é a carência, não o alcance.
+    Kwarg obrigatório em vez de default: quem chama tem de dizer sobre qual
+    conjunto está afirmando alcance (lição F57).
+
+    Lista de alcance vazia continua sendo no-op (F85): "o SU não lê NADA" quase
+    sempre é falha de leitura, não estado real — e apagaria o sinal da conta
+    inteira do BM de uma vez.
+    """
+    if not reachable_ids or not scope_ids:
         return
     await conn.execute(
-        "UPDATE meta_ad_accounts SET su_reachable = (ad_account_id = ANY($1::text[]))",
+        "UPDATE meta_ad_accounts SET su_reachable = (ad_account_id = ANY($1::text[])) "
+        "WHERE ad_account_id = ANY($2::text[])",
         reachable_ids,
+        scope_ids,
     )
 
 

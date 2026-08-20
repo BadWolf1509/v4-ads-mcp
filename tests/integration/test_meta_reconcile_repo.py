@@ -51,7 +51,7 @@ async def test_lista_vazia_e_noop_em_todas_as_operacoes(db) -> None:
 
         assert await meta_ad_accounts.deactivate(conn, ad_account_ids=[]) == 0
         await meta_ad_accounts.apply_absences(conn, bump=[], reset=[])
-        await meta_ad_accounts.set_reachable(conn, reachable_ids=[])
+        await meta_ad_accounts.set_reachable(conn, reachable_ids=[], scope_ids=["act_1"])
 
         assert len(await meta_ad_accounts.list_all(conn)) == 2
         assert (await meta_ad_accounts.get_by_id(conn, "act_1")).su_reachable is True
@@ -62,10 +62,35 @@ async def test_set_reachable_marca_quem_esta_fora_do_alcance(db) -> None:
     async with db.acquire() as conn:
         await meta_ad_accounts.upsert_many(conn, [CONTA, OUTRA])
 
-        await meta_ad_accounts.set_reachable(conn, reachable_ids=["act_1"])
+        await meta_ad_accounts.set_reachable(
+            conn, reachable_ids=["act_1"], scope_ids=["act_1", "act_2"]
+        )
 
         assert (await meta_ad_accounts.get_by_id(conn, "act_1")).su_reachable is True
         assert (await meta_ad_accounts.get_by_id(conn, "act_2")).su_reachable is False
+
+
+@pytest.mark.integration
+async def test_set_reachable_nao_toca_em_conta_fora_do_escopo(db) -> None:
+    """M4: o UPDATE e escopado a parceria.
+
+    Sem o WHERE, marcar alcance sobre a parceria carimbava su_reachable=false
+    em TODA conta que nao viesse em /me/adaccounts — inclusive conta ja
+    desativada ou em carencia, pra quem "o SU nao alcanca" nao e sinal
+    acionavel nenhum (spec §3: o alerta e pra conta que ESTA na parceria).
+    """
+    async with db.acquire() as conn:
+        await meta_ad_accounts.upsert_many(conn, [CONTA, OUTRA])
+        # act_2 sai da parceria: fora do escopo do proximo set_reachable.
+        await meta_ad_accounts.deactivate(conn, ad_account_ids=["act_2"])
+
+        await meta_ad_accounts.set_reachable(conn, reachable_ids=["act_1"], scope_ids=["act_1"])
+
+        assert (await meta_ad_accounts.get_by_id(conn, "act_1")).su_reachable is True
+        assert (await meta_ad_accounts.get_by_id(conn, "act_2")).su_reachable is True, (
+            "conta fora do escopo nao pode ser marcada como 'sem SU' — ela nem "
+            "esta mais na parceria, entao o sinal nao tem acao associada"
+        )
 
 
 @pytest.mark.integration
@@ -92,7 +117,9 @@ async def test_list_queues_sem_su_tem_precedencia_sobre_sem_delegacao(db) -> Non
         await meta_ad_accounts.upsert_many(conn, [CONTA, OUTRA])
         # act_1 fica alcancavel (cai em sem_delegacao, o caso normal); act_2
         # fica de fora (sem SU E sem gestor — o caso que se sobrepunha).
-        await meta_ad_accounts.set_reachable(conn, reachable_ids=["act_1"])
+        await meta_ad_accounts.set_reachable(
+            conn, reachable_ids=["act_1"], scope_ids=["act_1", "act_2"]
+        )
 
         queues = await meta_ad_accounts.list_queues(conn)
 
