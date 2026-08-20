@@ -2,16 +2,21 @@
 
 > **Purpose:** Histórico de entregas Google/Meta e das sessões operacionais que alteraram produção. Mantém o detalhe cronológico fora do contexto principal do agente.
 
-> **Last updated:** 2026-07-23. Estado corrente: 64 MCP tools (58 Google + 6 Meta), produção `v4-ads-mcp-00028-lvc`, F-series até F77. O catálogo autoritativo de bugs/lições é [findings-catalog.md](findings-catalog.md); o estado executável da sessão corrente está em [session-2026-07-23-handoff.md](session-2026-07-23-handoff.md).
+> **Last updated:** 2026-08-19. Estado corrente: 64 MCP tools (58 Google + 6 Meta), produção `v4-ads-mcp-00065-9pl`, F-series até F117. O estado vivo (decision gates, pendências, tokens) fica em [estado-atual.md](estado-atual.md) — este arquivo é **cronologia**, não estado. O catálogo autoritativo de bugs/lições é [findings-catalog.md](findings-catalog.md); o estado executável da sessão corrente está em [session-2026-07-23-handoff.md](session-2026-07-23-handoff.md).
 
 > **For findings cross-reference:** see [findings-catalog.md](findings-catalog.md).
 
 ---
 
-## Recent operational sessions (June–July 2026)
+## Recent operational sessions (June–August 2026)
 
 | Session | Status | Outcome |
 |---|---|---|
+| 2026-08-19 (3ª) — investigação de infra e CI | ✅ prod `00065-9pl` | F113-F117: `ci.yml` ensinava a regerar o lockfile sem `--universal` (quebra o build Linux); env dos 3 Cloud Run Jobs passou a ser declarado no deploy; gate local ganhou o check do Tailwind; rollback ancorou na revisão que estava servindo. [handoff](session-2026-08-19-infra-ci-handoff.md) |
+| 2026-08-19 (2ª) — investigação de backend | ✅ prod `00064-nvg` | F109-F112: 3 caminhos que servem request ainda bloqueavam o event loop (o F86 fora fechado **sem guard**); `get_my_rate_limit_status` reportava a quota que não bloqueia; audit Meta e política de blast radius amarrados por teste. [handoff](session-2026-08-19-backend-handoff.md) |
+| 2026-08-19 (1ª) — investigação de frontend | ✅ prod `00063-6bc` | F101-F108: rótulo acessível da matriz degradava no swap HTMX; logo servido `immutable` sem `?v=`; 8 controles sem nome acessível; isenção de CSRF cobria mutações do painel. Os três mais graves caíam em pontos cegos de guards **verdes**. [handoff](session-2026-08-19-frontend-handoff.md) |
+| 2026-08-14/15 — investigação ampla | ✅ | F82-F100 (19 findings) fechados em duas ondas: bookkeeping em `finally`, SDK fora do event loop, escape GAQL, paginação Meta, pool, jobs, backup em snapshot único. [handoff](session-2026-08-14-15-handoff.md) |
+| 2026-08-11 — frontend medido em produção | ✅ | Play CDN aposentado (407 KB de JS → 12 KB de CSS), CSP sem nenhum `unsafe-*`, a11y, assets comprimidos e cacheados; F78-F81. [handoff](session-2026-08-11-frontend-handoff.md) |
 | 2026-07-23 — alerta health / F76 soak / F77 | ✅ `23fccfe`, prod `00028-lvc` | Dois 503 transitórios do deep health investigados; MCP continuou 200. F76 validado positivamente por `db_dropped_connection_retry` + request 200. F77: `/health?deep=1` passou a usar reconnect com deadline 5s e 3 regressões. CI com DB + deploy + smoke verdes. [handoff](session-2026-07-23-handoff.md) |
 | 2026-07-22 — erros de produção / F76 / observabilidade | ✅ prod `00027-kmw` ao encerrar | Auditoria de 3 categorias de erro sem bug de negócio; A7 acento refutado; smoke fail-well; F76 reconnect do auth path; `level`→`severity`. O follow-up D+1 foi encerrado em 23/07. [handoff](session-2026-07-22-handoff.md) |
 | 2026-07-04 (2ª) — UI/UX do painel | ✅ | 11 commits: flashes, HTMX HX-aware, toasts, convites, contraste AA, tabelas, PT-BR e fontes; F74/F75. [handoff](session-2026-07-04-ui-ux-handoff.md) |

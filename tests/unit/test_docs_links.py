@@ -76,3 +76,34 @@ def test_tabela_de_roteamento_aponta_pras_convencoes() -> None:
             f"CLAUDE.md nao aponta pra convencoes/{area}.md — quem precisar dela nao acha"
         )
     assert "docs/operacao/estado-atual.md" in texto
+
+
+# --------------------------- os dois pontos de entrada nao podem mentir
+
+# Reivindicacoes que o codigo parou de honrar em 2026-08-11 e que sobreviveram
+# na doc: o F99 pegou no CLAUDE.md, e o README seguiu dizendo "Tailwind (CDN)"
+# por mais oito dias. Doc de entrada que mente instrui a escrever codigo que o
+# browser bloqueia — o texto so vale como narrativa historica (handoff), nunca
+# como descricao do presente. Por isso o escopo e SO README e CLAUDE.md.
+_REIVINDICACOES_MORTAS = (
+    "Tailwind (CDN)",
+    "Tailwind via CDN",
+    "Tailwind/HTMX via CDN",
+    "cdn.tailwindcss.com",
+)
+
+
+def test_pontos_de_entrada_nao_afirmam_tailwind_por_cdn() -> None:
+    """O Play CDN foi aposentado em 2026-08-11; o CSS e gerado offline."""
+    ofensores: list[str] = []
+    for nome in ("README.md", "CLAUDE.md"):
+        texto = (_RAIZ / nome).read_text(encoding="utf-8")
+        for numero, linha in enumerate(texto.splitlines(), 1):
+            for morta in _REIVINDICACOES_MORTAS:
+                if morta in linha:
+                    ofensores.append(f"{nome}:{numero} ({morta!r})")
+    assert not ofensores, (
+        "ponto de entrada afirmando que o Tailwind vem de CDN: "
+        + "; ".join(ofensores)
+        + " — o CSS e gerado offline por scripts/build_tailwind.py e commitado"
+    )
