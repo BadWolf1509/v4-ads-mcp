@@ -133,59 +133,6 @@ async def mark_inactive_except(
     return int(result.split()[-1]) if result.startswith("UPDATE") else 0
 
 
-async def bump_missing(
-    conn: asyncpg.Connection,
-    *,
-    seen_ad_account_ids: list[str],
-    threshold: int = MISSED_SYNCS_THRESHOLD,
-) -> tuple[int, int]:
-    """OBSOLETA (2026-08-20): a decisao migrou para build_plan(); removida junto
-    com o call-site na Task 7. Ate la, `src/jobs/meta_resync.py` continua
-    chamando-a — nao remover nem alterar o comportamento.
-
-    Conta ausencia por TEMPO, nao por BM (F128). Devolve (marcadas, desativadas).
-
-    `mark_inactive_except` escopa por `business_id` e por isso nao alcanca o caso
-    mais comum da operacao: parceria encerrada → system user perde o acesso → o
-    BM inteiro some de `/me/adaccounts` → nao ha keep-list pra ele. Aqui o escopo
-    e a execucao inteira: quem nao apareceu ganha +1, e quem chega ao limiar sai.
-
-    **Chame SOMENTE com inventario completo** (`AdAccountsFetch.complete`): sobre
-    lista truncada "ausente" significa "pagina que nao veio" (F93).
-
-    Lista de vistas vazia e NO-OP — e o mesmo fail-safe que o F85 instalou do
-    lado Google, e pela mesma razao: inventario vazio quase sempre e falha de
-    leitura, nao "todas as contas sumiram". Sem essa guarda, tres respostas
-    vazias seguidas apagariam o inventario inteiro.
-    """
-    if not seen_ad_account_ids:
-        return (0, 0)
-
-    marcadas = _rows_affected(
-        await conn.execute(
-            """
-            UPDATE meta_ad_accounts
-               SET missed_syncs = missed_syncs + 1
-             WHERE is_active = true
-               AND ad_account_id <> ALL($1::text[])
-            """,
-            seen_ad_account_ids,
-        )
-    )
-    desativadas = _rows_affected(
-        await conn.execute(
-            """
-            UPDATE meta_ad_accounts
-               SET is_active = false
-             WHERE is_active = true
-               AND missed_syncs >= $1
-            """,
-            threshold,
-        )
-    )
-    return marcadas, desativadas
-
-
 async def apply_absences(conn: asyncpg.Connection, *, bump: list[str], reset: list[str]) -> None:
     """Aplica a carência decidida pelo plano. Não decide nada."""
     if bump:

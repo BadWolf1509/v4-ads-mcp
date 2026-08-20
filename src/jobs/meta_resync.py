@@ -1,16 +1,20 @@
-"""Cloud Run Job tail: refresh meta_ad_accounts via the shared system-user token.
+"""Cloud Run Job tail: reconcilia meta_ad_accounts contra a parceria autoritativa do BM.
 
 Roda piggyback no fim do job diário account_resync (mesmo Cloud Run Job +
 Cloud Scheduler) pra que conta de cliente nova entre no inventário zero-touch.
-Reusa o helper paginado _fetch_all_adaccounts. Grants seguem MANUAIS (Modelo B):
-isto só atualiza o inventário (`meta_ad_accounts`), não concede acesso a gestor.
+
+Le duas fontes: `fetch_partnership` (autoritativa — a edge do BM, spec
+2026-08-20) e `_fetch_all_adaccounts` (o alcance do system user via
+/me/adaccounts). `build_plan` decide o que fazer com as duas; este módulo só
+aplica. Grants seguem MANUAIS (Modelo B): reconciliar nunca CONCEDE acesso —
+só ajusta o inventário e, quando uma conta sai da parceria, revoga o que os
+gestores tinham.
 
 Standalone: `python -m src.jobs.meta_resync`
 """
 
 import asyncio
 import sys
-from typing import Any
 
 import httpx
 import structlog
@@ -18,142 +22,120 @@ import structlog
 from src.auth.meta_oauth import _fetch_all_adaccounts
 from src.config import get_settings
 from src.db import connection
-from src.db.repositories import meta_ad_accounts
-from src.jobs._audit import record_job_crash, record_job_run
+from src.db.repositories import manager_meta_account_access, meta_ad_accounts
+from src.jobs._audit import record_access_revocation, record_job_crash, record_job_run
+from src.meta_ads.partnership import fetch_partnership
+from src.meta_ads.reconcile import Plan, build_plan
 
 log = structlog.get_logger(__name__)
 
 
-def _to_payload(data: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Map Graph /me/adaccounts rows → meta_ad_accounts upsert dicts."""
-    payload: list[dict[str, Any]] = []
-    for a in data:
-        ad_id = a.get("id", "")
-        if not ad_id.startswith("act_"):
-            ad_id = f"act_{ad_id}"
-        business = a.get("business") or {}
-        payload.append(
-            {
-                "ad_account_id": ad_id,
-                "business_id": business.get("id"),
-                "business_name": business.get("name"),
-                "account_name": a.get("name", ad_id),
-                "currency": a.get("currency"),
-                "timezone_name": a.get("timezone_name"),
-                "account_status": a.get("account_status"),
-            }
-        )
-    return payload
-
-
-async def _deactivate_churned(conn: Any, payload: list[dict[str, Any]]) -> int:
-    """Deletion detection (F65): conta que sumiu de um BM ainda visível vira is_active=false.
-
-    Agrupa por business_id — o system user enxerga MÚLTIPLOS BMs via /me/adaccounts;
-    sem agrupar, o keep-list de um BM marcaria as contas de OUTRO BM como churned.
-    Contas sem business_id (pessoais) são puladas: não dá pra escopar a detecção sem BM,
-    então preferimos deixá-las ativas a desativá-las por engano. Um BM que sumiu inteiro
-    (SU perdeu acesso) não aparece no payload → suas contas ficam intactas (limitação
-    conhecida: a detecção só cobre conta ausente de BM ainda visível).
-    """
-    by_business: dict[str, list[str]] = {}
-    for a in payload:
-        bid = a.get("business_id")
-        if bid:
-            by_business.setdefault(bid, []).append(a["ad_account_id"])
-    total = 0
-    for business_id, keep in by_business.items():
-        total += await meta_ad_accounts.mark_inactive_except(
-            conn, business_id=business_id, keep_ad_account_ids=keep
-        )
-    return total
-
-
-async def resync_meta() -> int:
-    """Sync meta_ad_accounts from /me/adaccounts (system user). Returns count upserted.
-
-    Assume que connection.init_pool() já foi chamado. No-op (retorna 0) se o token
-    do system user não estiver configurado — o caller trata Meta como best-effort.
-    """
+async def reconcile_meta() -> Plan:
+    """Lê a parceria, planeja e aplica. Assume `connection.init_pool()` feito."""
     settings = get_settings()
-    token = settings.meta_system_user_token
-    if not token:
-        log.warning("meta_resync_no_token")
-        return 0
+    if not settings.meta_system_user_token:
+        log.warning("meta_reconcile_no_token")
+        return Plan(blocked_reason="token do system user nao configurado")
+    if not settings.meta_business_id:
+        log.warning("meta_reconcile_no_business_id")
+        return Plan(blocked_reason="meta_business_id nao configurado")
+
     async with httpx.AsyncClient(timeout=60.0) as http:
-        fetched = await _fetch_all_adaccounts(http, token)
-    payload = _to_payload(fetched.accounts)
+        parceria = await fetch_partnership(
+            http,
+            access_token=settings.meta_system_user_token,
+            business_id=settings.meta_business_id,
+        )
+        alcance = await _fetch_all_adaccounts(http, settings.meta_system_user_token)
+
+    ids_parceria = {a["ad_account_id"] for a in parceria.accounts}
+    ids_alcance = {
+        i if i.startswith("act_") else f"act_{i}"
+        for i in (a.get("id", "") for a in alcance.accounts)
+    }
+
     pool = connection.get_pool()
     async with pool.acquire() as conn:
-        # Upsert e ADITIVO — seguro mesmo com inventario parcial.
-        n = await meta_ad_accounts.upsert_many(conn, payload)
-        # F93: deletion detection SO com inventario completo. Sobre lista
-        # truncada, "conta ausente" significa "pagina que nao veio", nao churn —
-        # desativaria conta viva (sintoma do F65 entrando por outra porta).
-        deactivated = 0
-        missing = 0
-        aged_out = 0
-        if fetched.complete:
-            # Caminho rapido (F65): conta que sumiu de um BM AINDA VISIVEL cai
-            # ja nesta execucao, porque o keep-list daquele BM prova a ausencia.
-            deactivated = await _deactivate_churned(conn, payload)
-            # Rede (F128): o caso que o de cima nao ve — parceria encerrada, SU
-            # perde acesso e o BM inteiro some do payload. Escopado por tempo,
-            # entao independe de o BM aparecer; custa MISSED_SYNCS_THRESHOLD
-            # execucoes pra agir, que e o preco de nao reabrir o F65/F85.
-            missing, aged_out = await meta_ad_accounts.bump_missing(
-                conn, seen_ad_account_ids=[a["ad_account_id"] for a in payload]
-            )
-        else:
-            log.warning("meta_resync_partial_skipping_churn", fetched=len(fetched.accounts))
+        # Aditivo primeiro e sempre: entrar no catálogo é seguro mesmo com
+        # leitura parcial, e é o que faz a conta nova aparecer pro admin delegar.
+        upserted = await meta_ad_accounts.upsert_many(conn, parceria.accounts)
+        inventario = await meta_ad_accounts.list_inventory_rows(conn)
+        plano = build_plan(
+            partnership_ids=ids_parceria,
+            reachable_ids=ids_alcance,
+            inventory=inventario,
+            complete=parceria.complete and alcance.complete,
+        )
+
+        aplicado = settings.meta_reconcile_apply and plano.blocked_reason is None
+        revogados = 0
+        if aplicado:
+            # Uma transação só pro bloco inteiro: metade aplicada (carência
+            # somada sem desativar, ou desativada com grant ainda vivo) é
+            # exatamente a inconsistência que este recurso existe pra evitar.
+            async with conn.transaction():
+                await meta_ad_accounts.apply_absences(
+                    conn, bump=plano.to_bump, reset=plano.to_reset
+                )
+                # Só roda aqui dentro porque `aplicado` exige blocked_reason is
+                # None, e build_plan() só devolve None com complete=True — ou
+                # seja, com as duas leituras (parceria + alcance) completas.
+                # Leitura parcial nunca chega a marcar alcance.
+                await meta_ad_accounts.set_reachable(conn, reachable_ids=sorted(ids_alcance))
+                await meta_ad_accounts.deactivate(conn, ad_account_ids=plano.to_remove)
+                for ad_account_id in plano.to_remove:
+                    atingidos = await manager_meta_account_access.revoke_for_account(
+                        conn,
+                        ad_account_id=ad_account_id,
+                        reason=manager_meta_account_access.PARTNERSHIP_ENDED_REASON,
+                    )
+                    revogados += len(atingidos)
+                    # Por conta, não por grant: forense suficiente, sem inundar
+                    # a trilha. Mesma transação da revogação — ou os dois
+                    # gravam, ou nenhum.
+                    await record_access_revocation(
+                        conn,
+                        ad_account_id=ad_account_id,
+                        reason=manager_meta_account_access.PARTNERSHIP_ENDED_REASON,
+                        manager_ids=[str(m) for m in atingidos],
+                    )
+
         await record_job_run(
             conn,
-            operation="meta_resync",
+            operation="meta_reconcile",
             platform="meta",
-            target_count=n,
-            # F93: inventario truncado NAO e sucesso. Antes isto gravava
-            # "success" com target_count=0 quando a 1a pagina falhava, mascarando
-            # a falha por completo.
-            status="success" if fetched.complete else "error",
-            error_message=(
-                None
-                if fetched.complete
-                else "inventario Meta truncado (pagina falhou ou cap de paginacao) — "
-                "deteccao de churn pulada nesta execucao"
-            ),
+            target_count=upserted,
+            status="success" if plano.blocked_reason is None else "error",
+            error_message=plano.blocked_reason,
             params_summary={
-                "deactivated": deactivated,
-                # F128 na trilha: `missing` e a fila de saida (quantas contas
-                # nao apareceram nesta execucao) e `aged_out` o que de fato caiu
-                # por limiar. Sem os dois, o churn lento fica invisivel ate o dia
-                # em que a conta some do painel sem explicacao.
-                "missing": missing,
-                "aged_out": aged_out,
-                "complete": fetched.complete,
+                "added": len(plano.to_add),
+                "removed": len(plano.to_remove),
+                "bumped": len(plano.to_bump),
+                "unreachable": len(plano.unreachable),
+                "revoked_grants": revogados,
+                "applied": aplicado,
             },
         )
-    log.info(
-        "meta_resync_complete",
-        upserted=n,
-        deactivated=deactivated,
-        missing=missing,
-        aged_out=aged_out,
-        complete=fetched.complete,
-    )
-    return n
+    log.info("meta_reconcile_complete", applied=aplicado, plan=plano)
+    return plano
 
 
 async def run() -> int:
     settings = get_settings()
     await connection.init_pool(settings.database_url)
     try:
-        n = await resync_meta()
-        print(f"OK: upserted {n} Meta ad accounts")
+        plano = await reconcile_meta()
+        print(
+            "OK: Meta reconcile — "
+            f"add={len(plano.to_add)} bump={len(plano.to_bump)} "
+            f"remove={len(plano.to_remove)} reset={len(plano.to_reset)} "
+            f"unreachable={len(plano.unreachable)} blocked={plano.blocked_reason}"
+        )
         return 0
     except Exception as e:
         # F93: sem isto, um crash aqui nao deixa NENHUMA linha no audit — o job
         # some da trilha e a quebra so aparece em quem for ler o Cloud Run.
-        await record_job_crash(operation="meta_resync", platform="meta", exc=e)
+        await record_job_crash(operation="meta_reconcile", platform="meta", exc=e)
         raise
     finally:
         await connection.close_pool()

@@ -142,13 +142,17 @@ async def run() -> int:
         # nova aparecer zero-touch. Best-effort — falha Meta não quebra o resync
         # Google (e é no-op se o system-user token não estiver no job).
         try:
-            from src.jobs.meta_resync import resync_meta
+            from src.jobs.meta_resync import reconcile_meta
 
-            n_meta = await resync_meta()
-            print(f"OK: Meta upserted {n_meta} accounts")
+            plano_meta = await reconcile_meta()
+            print(
+                "OK: Meta reconcile — "
+                f"add={len(plano_meta.to_add)} remove={len(plano_meta.to_remove)} "
+                f"blocked={plano_meta.blocked_reason}"
+            )
         except Exception as e:  # noqa: BLE001
-            log.warning("resync_meta_failed", error=str(e))
-            print(f"WARN: Meta resync falhou (non-fatal): {e}", file=sys.stderr)
+            log.warning("meta_reconcile_failed", error=str(e))
+            print(f"WARN: Meta reconcile falhou (non-fatal): {e}", file=sys.stderr)
 
         # Purge diário de tabelas transientes (pending_confirmations, rate_counters,
         # meta_rate_counters). Best-effort: falha de purge não derruba o resync.

@@ -6,6 +6,13 @@ import asyncpg
 
 from src.db.repositories.meta_ad_accounts import MetaAdAccount, _row_to_account
 
+# Motivo gravado quando o reconciliador (job) revoga acesso por a conta ter
+# saido da parceria. Constante — nao string livre — porque `restore_for_account`
+# filtra por este MESMO valor: se o caller de `revoke_for_account` passasse
+# outro texto (typo, refactor), o restore filtraria por um motivo que nenhuma
+# linha tem e devolveria zero silenciosamente, sem erro.
+PARTNERSHIP_ENDED_REASON = "partnership_ended"
+
 
 async def grant(
     conn: asyncpg.Connection,
@@ -123,10 +130,11 @@ async def restore_for_account(conn: asyncpg.Connection, *, ad_account_id: str) -
            SET revoked_at = NULL, revoked_reason = NULL
          WHERE ad_account_id = $1
            AND revoked_at IS NOT NULL
-           AND revoked_reason = 'partnership_ended'
+           AND revoked_reason = $2
         RETURNING manager_id
         """,
         ad_account_id,
+        PARTNERSHIP_ENDED_REASON,
     )
     return len(rows)
 
