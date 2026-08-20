@@ -107,12 +107,23 @@ async def revoke_for_account(
 
 
 async def restore_for_account(conn: asyncpg.Connection, *, ad_account_id: str) -> int:
-    """Desfaz `revoke_for_account`: devolve exatamente quem estava revogado."""
+    """Desfaz `revoke_for_account` — SO o que o churn revogou, nada mais.
+
+    I4 (fix round 2): restaurar sem filtrar `revoked_reason` devolveria
+    tambem um acesso que um admin tirou de proposito por outro motivo (ex.:
+    `copy_access` substituindo, ou um `revoke` manual) so porque a MESMA
+    conta reapareceu na parceria depois — confundindo "a conta voltou" com
+    "desfaça toda revogação que essa conta acumulou". Restore existe pra UMA
+    coisa: desfazer exatamente o que `revoke_for_account` revogou quando a
+    parceria saiu — por isso filtra a mesma razão que esse caminho grava.
+    """
     rows = await conn.fetch(
         """
         UPDATE manager_meta_account_access
            SET revoked_at = NULL, revoked_reason = NULL
-         WHERE ad_account_id = $1 AND revoked_at IS NOT NULL
+         WHERE ad_account_id = $1
+           AND revoked_at IS NOT NULL
+           AND revoked_reason = 'partnership_ended'
         RETURNING manager_id
         """,
         ad_account_id,
