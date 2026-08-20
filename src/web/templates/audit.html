@@ -88,9 +88,14 @@
         </thead>
         <tbody>
           {% for r in events %}
+          {# tabindex + o handler de Enter/Espaco em v4-panel.js dao o teclado.
+             SEM role=button: pela ARIA os filhos de um button sao
+             PRESENTACIONAIS, entao a linha inteira viraria um nome so e as
+             celulas perderiam o vinculo com os <th scope="col">. aria-expanded
+             e suportado em role=row, entao a expansao segue anunciada. #}
           <tr id="row-{{ r.id }}" class="is-expandable"
               data-v4-action="row-toggle" data-v4-target="row-{{ r.id }}"
-              tabindex="0" role="button" aria-expanded="false">
+              tabindex="0" aria-expanded="false">
             <td class="col-mono">{{ r.occurred_at.strftime("%H:%M:%S") }}</td>
             <td class="col-mono">{{ r.operation }}</td>
             <td>

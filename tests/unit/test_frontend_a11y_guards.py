@@ -332,6 +332,7 @@ def test_fragmento_de_toggle_rotula_pelos_mesmos_ids():
     assert "aria-label=" not in frag.replace("aria-labelledby=", "")
     assert '"customer_id": "9876543210"' in frag.replace("&quot;", '"')
 
+
 def test_todo_controle_de_formulario_tem_nome_acessivel():
     """select/input/textarea sem <label for>, sem aria-label e sem <label> que
     embrulha e anunciado como "caixa de combinacao" sem nome nenhum.
@@ -358,3 +359,27 @@ def test_todo_controle_de_formulario_tem_nome_acessivel():
                     continue
                 sem_nome.append(f"{template.name}:{numero} <{tag}>")
     assert not sem_nome, "controles sem nome acessivel: " + "; ".join(sem_nome)
+
+
+def test_todo_th_declara_scope():
+    """Sem scope o leitor de tela nao associa celula a cabecalho na tabela de dados."""
+    sem_scope = []
+    for template in _TEMPLATES.rglob("*.html"):
+        for numero, linha in enumerate(template.read_text(encoding="utf-8").splitlines(), 1):
+            for attrs in re.findall(r"<th([^a-z>][^>]*)?>", linha):
+                if "scope=" not in (attrs or ""):
+                    sem_scope.append(f"{template.name}:{numero}")
+    assert not sem_scope, "<th> sem scope: " + "; ".join(sem_scope)
+
+
+def test_linha_expansivel_nao_vira_button():
+    """role=button torna os filhos PRESENTACIONAIS (ARIA): a linha inteira vira
+    um nome so e a associacao com os <th scope="col"> some. tabindex + o
+    handler de Enter/Espaco dao o teclado; aria-expanded e suportado em
+    role=row, entao a expansao segue anunciada."""
+    for template in _TEMPLATES.rglob("*.html"):
+        conteudo = template.read_text(encoding="utf-8")
+        for abertura in re.findall(r"<tr[^>]*>", conteudo):
+            assert 'role="button"' not in abertura, (
+                f"{template.name}: <tr role=button> achata a linha pro leitor de tela"
+            )
