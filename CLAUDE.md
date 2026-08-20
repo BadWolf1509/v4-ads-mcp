@@ -20,7 +20,7 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 
 **Última atualização:** 2026-08-19. **64 MCP tools** (58 Google + 6 Meta), bucket **23 always + 41 defer** — contagem verificada, não estimada. Smoke autenticado F58 segue dormente. F76/F77 encerrados.
 
-**Em 2026-08-19 houve duas investigações**: frontend (F101-F108) e backend (F109-F112), **todos fechados**. Do backend, o que muda de premissa: **toda** chamada de SDK que atende request sai do event loop por [`src/blocking.py`](src/blocking.py) — o helper saiu de `google_ads/` porque agora serve o Meta também, e ganhou o guard que o F86 não tinha (F109); `get_my_rate_limit_status` devolve `manager` + `account` + `blocking_scope`, não mais chaves planas (F110); o audit Meta grava a conta do kwarg obrigatório (F111); e a política de blast radius, embora consultiva em 17 das 26 tools, está amarrada por teste derivado do source (F112). Detalhe: [`session-2026-08-19-backend-handoff.md`](docs/operacao/session-2026-08-19-backend-handoff.md).
+**Em 2026-08-19 houve tres investigações**: frontend (F101-F108), backend (F109-F112) e infra/CI (F113-F117), **todas fechadas**. Da infra/CI: o `ci.yml` ensinava a regenerar o lockfile **sem `--universal`**, comando que quebra o build Linux (F113); os 3 Cloud Run Jobs precisam dos 8 campos obrigatórios de `Settings` e o `deploy.yml` passou a declará-los com `--update-*` (merge), com guard (F114); o gate local ganhou o check do Tailwind que só existia no CI (F115); e o rollback ancorou na revisão que **estava servindo**, não na ordem de criação (F116). Detalhe: [`session-2026-08-19-infra-ci-handoff.md`](docs/operacao/session-2026-08-19-infra-ci-handoff.md). Do backend, o que muda de premissa: **toda** chamada de SDK que atende request sai do event loop por [`src/blocking.py`](src/blocking.py) — o helper saiu de `google_ads/` porque agora serve o Meta também, e ganhou o guard que o F86 não tinha (F109); `get_my_rate_limit_status` devolve `manager` + `account` + `blocking_scope`, não mais chaves planas (F110); o audit Meta grava a conta do kwarg obrigatório (F111); e a política de blast radius, embora consultiva em 17 das 26 tools, está amarrada por teste derivado do source (F112). Detalhe: [`session-2026-08-19-backend-handoff.md`](docs/operacao/session-2026-08-19-backend-handoff.md).
 
 Do frontend (8 findings, F101-F108, todos fechados): O que mudou de premissa no painel: o rótulo acessível dos checkboxes da matriz vem por **`aria-labelledby` apontando pra fora do nó trocado** (F101); **toda** referência a `/static` carrega `?v=` (F102); a isenção de CSRF é **por rota**, não por prefixo — `/oauth/meta/revoke` e `/oauth/meta/refresh-accounts` deixaram de ser isentos (F106); `sessions_revoke` sem HTMX devolve **303** (F107). Detalhe: [`session-2026-08-19-frontend-handoff.md`](docs/operacao/session-2026-08-19-frontend-handoff.md).
 
@@ -37,7 +37,7 @@ Detalhe e lições: [`session-2026-08-14-15-handoff.md`](docs/operacao/session-2
 
 **Sessões recentes** (detalhe canônico nos handoffs — leia só o da sessão relevante):
 - **2026-08-14/15** — investigação ampla de bugs sem escopo prévio: 19 findings catalogados (F82-F100), **todos fechados** em duas ondas (11 + 8). Núcleo, auth, jobs, Meta, pool, painel e backup tocados. [`session-2026-08-14-15-handoff.md`](docs/operacao/session-2026-08-14-15-handoff.md).
-- **2026-08-19** — duas investigações. **Frontend**: 8 findings (F101-F108), os três mais graves em pontos cegos de guards **verdes** [`-08-19 front`](docs/operacao/session-2026-08-19-frontend-handoff.md). **Backend**: 4 findings (F109-F112) — o F86 tinha sido fechado **sem guard**, e 3 caminhos que servem request seguiam bloqueando o event loop [`-08-19 back`](docs/operacao/session-2026-08-19-backend-handoff.md).
+- **2026-08-19** — três investigações. **Infra/CI**: 5 findings (F113-F117) [`-08-19 infra`](docs/operacao/session-2026-08-19-infra-ci-handoff.md). **Frontend**: 8 findings (F101-F108), os três mais graves em pontos cegos de guards **verdes** [`-08-19 front`](docs/operacao/session-2026-08-19-frontend-handoff.md). **Backend**: 4 findings (F109-F112) — o F86 tinha sido fechado **sem guard**, e 3 caminhos que servem request seguiam bloqueando o event loop [`-08-19 back`](docs/operacao/session-2026-08-19-backend-handoff.md).
 - **2026-08-11** — frontend medido no DOM de produção: Play CDN aposentado, CSP sem `unsafe-*`, a11y, +F78-F81. [`-08-11`](docs/operacao/session-2026-08-11-frontend-handoff.md).
 - **2026-07-22/23** — 500 e 503 intermitentes por conexão asyncpg stale → F76 (`run_with_reconnect`) + F77 (deep health resiliente) + `severity` no Cloud Logging. [`-07-22`](docs/operacao/session-2026-07-22-handoff.md) · [`-07-23`](docs/operacao/session-2026-07-23-handoff.md).
 - **2026-07-04** — 3 ondas de governança/dívida (F73 quota leak + cap por gestor; `_mutate_common`; lockfile; backup) e, na 2ª sessão, o pacote UI/UX do painel (F74/F75). [`-07-04`](docs/operacao/session-2026-07-04-handoff.md) · [`-07-04 UI`](docs/operacao/session-2026-07-04-ui-ux-handoff.md).
@@ -75,7 +75,7 @@ Detalhe e lições: [`session-2026-08-14-15-handoff.md`](docs/operacao/session-2
 
 **F76/F77 encerrados:** reabrir só se aparecer `mcp_auth_error` pós-`00026`, `health_deep_db_failed` persistente pós-`00028` ou incidente do uptime check.
 
-**Quando ler outros docs:** [bug suspeito → `findings-catalog.md`] [o que shipou / detalhe sprint → `sprint-history.md`] [última sessão → `session-2026-08-19-backend-handoff.md` + `-frontend-handoff.md`] [infra/DB, sessão anterior → `session-2026-07-23-handoff.md`] [migração GCP → `session-2026-06-30-handoff.md`] [executar pendente → spec+plan em `docs/superpowers/`].
+**Quando ler outros docs:** [bug suspeito → `findings-catalog.md`] [o que shipou / detalhe sprint → `sprint-history.md`] [última sessão → `session-2026-08-19-infra-ci-handoff.md` + `-backend-` + `-frontend-`] [infra/DB, sessão anterior → `session-2026-07-23-handoff.md`] [migração GCP → `session-2026-06-30-handoff.md`] [executar pendente → spec+plan em `docs/superpowers/`].
 
 ## Context bootstrap (minimum)
 
@@ -83,7 +83,7 @@ Detalhe e lições: [`session-2026-08-14-15-handoff.md`](docs/operacao/session-2
 
 1. **Vai mexer no núcleo** (executores, jobs, auth, tools Meta, pool)? Leia [`session-2026-08-14-15-handoff.md`](docs/operacao/session-2026-08-14-15-handoff.md) — é o estado mais recente e traz os padrões de erro que se repetiram.
 2. **Vai mexer no painel web?** [`session-2026-08-19-frontend-handoff.md`](docs/operacao/session-2026-08-19-frontend-handoff.md) (mais recente) + [`session-2026-08-11-frontend-handoff.md`](docs/operacao/session-2026-08-11-frontend-handoff.md) (o pacote que fixou CSP/assets/Tailwind).
-3. **Antes de desenhar ou corrigir código**, faça busca **dirigida** em [`findings-catalog.md`](docs/operacao/findings-catalog.md) pela área/sintoma. O catálogo tem ~445 linhas e **111 IDs** — grep por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`), nunca leitura integral.
+3. **Antes de desenhar ou corrigir código**, faça busca **dirigida** em [`findings-catalog.md`](docs/operacao/findings-catalog.md) pela área/sintoma. O catálogo tem ~460 linhas e **116 IDs** — grep por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`), nunca leitura integral.
 
 > **Os 19 findings da investigação (F82-F100) estão FECHADOS.** Resíduo único e documentado: o `input_token` do `/debug_token` segue na query string — não é credencial do chamador e o endpoint rejeita POST (verificado). Guard AST em `test_no_secrets_in_query_params.py` impede segredo novo em `params=`, com allowlist por **(função, chave)**.
 
@@ -134,7 +134,7 @@ Solo dev on `main` (admin bypass). Commits: `feat(scope): …` / `fix(scope): �
 ### Verification cadence (always before commit)
 
 ```bash
-python scripts/check_pre_push.py        # ~40s: ruff + format + mypy + unit + integration NÃO-DB. Sem Docker.
+python scripts/check_pre_push.py        # ~50s: ruff + format + mypy + unit + integração NÃO-DB + sync do Tailwind (pula sem Node). Sem Docker.
 python scripts/check_pre_push_full.py   # opt-in: + pytest -m integration via testcontainers (~60-90s, Docker)
 ```
 
@@ -311,6 +311,8 @@ Padrões pós-pacote de frontend 2026-08-11:
 - Don't fazer read idempotente de disponibilidade/hot-path (ex.: resolução de sessão ou deep health) com `pool.acquire()` cru — use `connection.run_with_reconnect(op)` (asyncpg NÃO faz pre-ping; F76/F77). Probe externo deve ter deadline interno menor (`health`: 5s interno < 10s externo). Retry só em read idempotente; mutação NÃO leva retry cego (pode ter commitado). Log Cloud Logging usa `severity` (não `level`) — `add_cloud_logging_severity` já cobre no pipeline JSON.
 - Don't mexer em classe utilitária de template sem rodar `python scripts/build_tailwind.py` e commitar o CSS no MESMO commit (o CI faz `git diff --exit-code`). Don't reordenar os `<link>` do `<head>` — `v4-tailwind.css` por último, senão o Preflight perde e todo heading estoura. Don't subir o pin do Tailwind pra v4 (config CSS-first).
 - Don't usar `--v4-gray-300` como cor de texto sobre fundo claro (2,1:1) — use `--v4-gray-500`; sobre fundo escuro, marque a linha com `/* on-dark */`. Don't aplicar gzip a `/mcp` (SSE). Don't pôr `{% block head_extra %}` dentro de `{% block content %}`.
+- Don't escrever `uv pip compile` sem `--universal` em lugar nenhum (doc, workflow, commit): sem a flag o `pywin32` sai sem marker e o buildpack CNB quebra no Linux (F113). Don't adicionar campo obrigatório em `Settings` sem declará-lo TAMBÉM nos 3 Cloud Run Jobs do `deploy.yml` — eles chamam `get_settings()` e validam tudo na subida (F114); use `--update-*` (merge), nunca `--set-*` (replace), em job cujo estado você não consegue enumerar.
+- Don't deduzir a revisão de rollback por ordem de criação — capture a que está servindo ANTES do deploy (F116). Don't deixar check bloqueante só no CI: o gate local tem que cobrir (F115).
 - Don't chamar SDK de ads (Google **ou** Meta) fora de um closure passado a `run_blocking` em caminho que atende request — inclui tool que constrói o client sozinho, como `validate_gaql` (F109). Ao offloadar, leia o `request-id` **dentro** do closure: `to_thread` copia o contexto e não devolve.
 - Don't reportar quota sem dizer QUAL quota: desde o F73 há duas chaves (`mgr:<uuid>` e o dev token), e a menor é a que barra (F110). Don't derivar identificador de auditoria de um dict opcional quando existe kwarg obrigatório com o mesmo dado (F111).
 - Don't computar `blast_radius.classify` e ignorar `.level` sem que o caminho fixo esteja amarrado por teste — hoje 17 das 26 tools fazem isso e o guard derivado é o que impede a divergência silenciosa (F112).
