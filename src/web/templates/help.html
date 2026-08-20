@@ -87,8 +87,14 @@ Authorization = "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
       </nav>
     </aside>
 
-    {# Main content — order-2 on mobile (after TOC), lg:order-first (left col) #}
-    <main class="order-2 lg:order-first max-w-3xl">
+    {# Main content — order-2 on mobile (after TOC), lg:order-first (left col).
+       <div>, e nao <main>: o landmark ja e o <main id="conteudo"> do _base, e
+       a regra de layout do design system casava o SEGUNDO main tambem. O
+       `margin: 0 auto` que vinha de la cancela o stretch do flex (margem auto
+       no eixo cruzado), entao esta coluna virava fit-content do bloco de
+       codigo — 618px dentro de uma coluna de 286px, 295px de scroll
+       horizontal na pagina. Medido em 375px: 655 -> 360 de scrollWidth. #}
+    <div class="order-2 lg:order-first max-w-3xl">
 
       {# 1. O que é #}
       <section id="o-que-e" class="mb-16 scroll-mt-20">
@@ -308,7 +314,7 @@ Authorization = "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
         <a href="#topo" class="v4-help__topo">↑ Voltar ao topo</a>
       </section>
 
-    </main>
+    </div>
   </div>
 </div>
 

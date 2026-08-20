@@ -11,13 +11,22 @@
   ]) }}
 
   <header class="mb-6 flex items-center gap-3 flex-wrap">
-    <h1 class="text-3xl font-extrabold tracking-tight font-mono">{{ event.operation }}</h1>
+    {# break-words + min-w-0: o nome da operacao (add_negatives_from_search_terms)
+       e uma palavra so — 468px em 375 de viewport. Aqui o h1 e ITEM FLEX, e
+       item flex nao encolhe abaixo do min-content; como `break-word` (ao
+       contrario de `anywhere`) nao reduz o min-content, sem o min-w-0 a quebra
+       nunca chega a ser necessaria e o texto vaza igual. Medido: so com
+       break-words sobravam 123px de estouro. #}
+    <h1 class="text-3xl font-extrabold tracking-tight font-mono break-words min-w-0">{{ event.operation }}</h1>
     {% if event.status == "success" %}{{ badge("✓ OK", "success") }}
     {% elif event.status == "error" %}{{ badge("✗ Erro", "error") }}
     {% else %}{{ badge(event.status, "neutral") }}{% endif %}
   </header>
 
-  <dl class="grid grid-cols-[140px_1fr] gap-y-3 gap-x-4 text-sm mb-8">
+  {# minmax(0,1fr) + break-words: com `1fr` a faixa nao encolhe abaixo do
+     min-content, e o email do gestor (uma palavra de ~33 chars) empurrava a
+     grade pra 340px de conteudo numa coluna que so tinha 195. #}
+  <dl class="grid grid-cols-[140px_minmax(0,1fr)] gap-y-3 gap-x-4 text-sm mb-8 break-words">
     <dt class="text-v4-gray-700 uppercase text-xs font-semibold pt-1">Manager</dt>
     <dd><strong>{{ event.manager_email or "—" }}</strong></dd>
 

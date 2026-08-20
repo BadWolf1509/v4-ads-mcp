@@ -13,12 +13,14 @@
   {% for m in managers_with_counts %}
   <a href="/admin/access/meta/{{ m.id }}"
      class="block border border-v4-gray-100 rounded-md p-4 mb-2 hover:bg-v4-gray-50 transition-colors">
-    <div class="flex justify-between items-center">
-      <div>
+    {# min-w-0: item flex nao encolhe abaixo do min-content por default, e o
+       email do gestor e uma palavra so (~340px) — estourava 66px em 375. #}
+    <div class="flex justify-between items-center gap-3">
+      <div class="min-w-0 break-words">
         <strong>{{ m.email }}</strong>
         {% if m.full_name %}<div class="text-xs text-v4-gray-500">{{ m.full_name }}</div>{% endif %}
       </div>
-      <div class="text-sm text-v4-gray-700">
+      <div class="text-sm text-v4-gray-700 shrink-0 whitespace-nowrap">
         {{ m.access_count }} / {{ total_accounts }} contas →
       </div>
     </div>

@@ -6,7 +6,8 @@
   <header class="mb-6"><h1 class="text-3xl font-extrabold tracking-tight">Contas Meta</h1></header>
   {% include "admin/_accounts_tabs.html" %}
 
-  <div class="v4-card mb-4 flex items-center gap-3">
+  {# flex-wrap: sem ele o botao de sincronizar saia 41px pra fora em 375px. #}
+  <div class="v4-card mb-4 flex flex-wrap items-center gap-3">
     <span class="font-semibold">Token do system user:</span>
     {% if token_configured %}
       <span class="v4-badge v4-badge--success">configurado ✓</span>
@@ -25,7 +26,7 @@
     </div>
 
     {% if accounts %}
-    <div class="v4-table-wrap">
+    <div class="v4-table-wrap" tabindex="0" role="region" aria-label="Contas Meta">
     <table class="v4-table v4-table--compact" id="meta-accs-table">
       <thead><tr><th scope="col">Conta</th><th scope="col">Cliente</th><th scope="col">Status</th><th scope="col">Moeda</th><th scope="col">Última sync</th></tr></thead>
       <tbody>

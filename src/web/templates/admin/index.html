@@ -160,7 +160,7 @@
       <div class="v4-card__header">
         <h3 class="v4-card__title">Top operações (7 dias)</h3>
       </div>
-      <div class="v4-table-wrap">
+      <div class="v4-table-wrap" tabindex="0" role="region" aria-label="Top operações (7 dias)">
       <table class="v4-table v4-table--compact">
         <tbody>
           {% for op in top_operations %}
@@ -181,7 +181,7 @@
       <div class="v4-card__header">
         <h3 class="v4-card__title">Top gestores (7 dias)</h3>
       </div>
-      <div class="v4-table-wrap">
+      <div class="v4-table-wrap" tabindex="0" role="region" aria-label="Top gestores (7 dias)">
       <table class="v4-table v4-table--compact">
         <tbody>
           {% for g in top_managers %}
@@ -205,7 +205,7 @@
       <h3 class="v4-card__title">Onboarding recente</h3>
     </div>
     {% if recent_onboarding %}
-    <div class="v4-table-wrap">
+    <div class="v4-table-wrap" tabindex="0" role="region" aria-label="Onboarding recente">
     <table class="v4-table v4-table--compact">
       <thead>
         <tr>

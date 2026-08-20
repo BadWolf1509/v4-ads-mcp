@@ -30,6 +30,13 @@
     </div>
 
     {% if managers %}
+    {# 7 colunas medem 850px: sem contentor a PAGINA rolava 545px em 375px de
+       viewport. O dropdown de acoes, que era o motivo de manter esta tabela
+       fora do padrao, agora se desancora do fluxo quando o gatilho esta
+       dentro de um scroller (v4DesancorarMenu em v4-panel.js).
+       (Sem citar o nome do utilitario de posicionamento: o scanner do Tailwind
+       le o comentario inteiro e geraria a classe morta no CSS.) #}
+    <div class="v4-table-wrap" tabindex="0" role="region" aria-label="Gestores cadastrados">
     <table class="v4-table v4-table--compact" id="managers-table">
       <thead>
         <tr>
@@ -76,6 +83,7 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
     {% else %}
       {{ empty_state("Nenhum gestor.", "Convide o primeiro pelo botão acima.") }}
     {% endif %}

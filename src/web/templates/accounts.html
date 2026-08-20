@@ -16,6 +16,7 @@
       <a href="/oauth/google/start?mode=panel_login" class="v4-btn v4-btn--primary v4-btn--small">+ Conectar nova conta</a>
     </div>
     {% if connections %}
+    <div class="v4-table-wrap" tabindex="0" role="region" aria-label="Conexões Google">
     <table class="v4-table v4-table--compact">
       <thead>
         <tr>
@@ -48,6 +49,7 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
     {% else %}
       {{ empty_state("Nenhuma conexão Google.", "Use o botão acima pra conectar sua conta.") }}
     {% endif %}
@@ -61,7 +63,7 @@
       <div class="mb-3">
         {{ search_input("acc-search", placeholder="Buscar por nome ou ID da conta...", attrs='data-v4-filter="#accounts-table" data-v4-filter-fields="name,id"', aria_label="Buscar conta Google Ads por nome ou ID") }}
       </div>
-      <div class="v4-table-wrap">
+      <div class="v4-table-wrap" tabindex="0" role="region" aria-label="Contas Google Ads acessíveis">
       <table class="v4-table v4-table--compact" id="accounts-table">
         <thead>
           <tr>
@@ -93,7 +95,7 @@
     {% if not meta_accounts %}
       {{ alert("Nenhuma conta Meta liberada ainda. Peça ao admin da sua unidade.", "info") }}
     {% else %}
-    <div class="overflow-x-auto">
+    <div class="v4-table-wrap" tabindex="0" role="region" aria-label="Contas Meta Ads acessíveis">
       <table class="v4-table v4-table--compact">
         <thead>
           <tr>

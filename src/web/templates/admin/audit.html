@@ -68,6 +68,13 @@
   </form>
 
   {% if rows %}
+  {# --wide: o scroller so vale abaixo de 1200px. As 8 colunas medem ~1080px,
+     entao ate ali a pagina inteira rolava na horizontal (+751px em 375, +102px
+     em 1024). Acima de 1200 o overflow volta a visible e o thead sticky do F97
+     — que gruda contra a PAGINA, e nao contra o wrapper — segue funcionando.
+     Abaixo, ele degrada em silencio: perder o cabecalho fixo custa menos que
+     desalinhar o layout todo. #}
+  <div class="v4-table-wrap v4-table-wrap--wide" tabindex="0" role="region" aria-label="Auditoria global">
   <table class="v4-table v4-table--compact v4-table--sticky-head v4-table--sticky-head-under-filters">
     <thead>
       <tr>
@@ -104,6 +111,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {{ pagination(current_page, total_pages, "/admin/audit", "page", query_string=query_string) }}
   {% else %}
     {{ empty_state("Nenhum evento.", "Tente um período maior ou remova filtros.") }}

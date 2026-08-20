@@ -118,10 +118,29 @@
   background: var(--v4-gray-50);
 }
 
-/* Wrapper responsivo para tabelas fora das matrizes (que têm overflow próprio) */
+/* Wrapper responsivo para tabelas fora das matrizes (que têm overflow próprio).
+   O consumidor DEVE emitir tabindex="0" + role="region" + aria-label: scroller
+   sem foco nao rola por teclado no Firefox nem no Safari, e as colunas
+   cortadas ficam inalcancaveis (WCAG 2.1.1). Guard:
+   test_contentor_de_scroll_e_alcancavel_por_teclado. */
 .v4-table-wrap { overflow-x: auto; }
 .v4-table-wrap th,
 .v4-table-wrap .col-mono { white-space: nowrap; }
+
+/* Modificador para a tabela que tambem tem thead sticky (/admin/audit).
+   `position: sticky` resolve contra o scrollport mais proximo, entao com o
+   wrapper ligado o cabecalho para de grudar na PAGINA — e o wrapper nao rola
+   na vertical (altura auto), logo ele nao gruda em lugar nenhum. A saida e
+   ligar o scroller so onde ele e necessario: a tabela mede ~1080px e a
+   secao a cabe inteira a partir de ~1140px de viewport. Acima disso o
+   overflow volta a visible e o mecanismo do F97 (offset medido em runtime)
+   segue intacto; abaixo, o sticky degrada em silencio — que e melhor do que a
+   pagina inteira rolando na horizontal (medido: +751px em 375, +102px em
+   1024). O literal aqui e um LIMIAR, nao um offset: errar por alguns px so
+   liga ou desliga o scroller um pouco antes, sem quebrar nada. */
+@media (min-width: 1200px) {
+  .v4-table-wrap--wide { overflow-x: visible; }
+}
 
 .v4-input, .v4-select {
   width: 100%;
@@ -532,12 +551,19 @@
   }
 }
 
+/* flex-wrap + min-width: o ultimo item carrega email de gestor ou label de
+   sessao — palavra unica de ~33 chars que, como item flex, nao encolhe abaixo
+   do min-content. Media a 320px: estourava a pagina em 38px em
+   /admin/access/<id>. Corrigido aqui, e nao na template, porque o breadcrumb
+   serve tambem /sessions/<id> e /audit/<id>. */
 .v4-breadcrumb {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--v4-space-2);
   align-items: center;
   font-size: 13px;
   margin-bottom: var(--v4-space-3);
+  min-width: 0;
 }
 .v4-breadcrumb a {
   color: var(--v4-gray-500);
@@ -545,7 +571,12 @@
 }
 .v4-breadcrumb a:hover { color: var(--v4-gray-700); }
 .v4-breadcrumb__separator { color: var(--v4-gray-200); }
-.v4-breadcrumb__current { color: var(--v4-gray-900); font-weight: 500; }
+.v4-breadcrumb__current {
+  color: var(--v4-gray-900);
+  font-weight: 500;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 
 .v4-dropdown {
   position: relative;
@@ -575,6 +606,19 @@
   display: none;
 }
 .v4-dropdown.is-open .v4-dropdown__menu { display: block; animation: v4-fade-in var(--v4-motion-fast); }
+
+/* Menu destacado: usado quando o gatilho esta dentro de um contentor de scroll
+   (`.v4-table-wrap`). `overflow-x:auto` obriga `overflow-y` a virar auto, entao
+   o menu absoluto era clipado pelo wrapper — medido em /admin/managers a
+   375px: o menu caia em left=711 dentro de um scroller que termina em 320, ou
+   seja, invisivel. Em fixed o bloco de contencao passa a ser o viewport; as
+   coordenadas sao escritas por CSSOM em v4-panel.js (a CSP bloqueia `style=`
+   em atributo, nao escrita via CSSOM). */
+.v4-dropdown__menu.is-detached {
+  position: fixed;
+  right: auto;
+  top: auto;
+}
 .v4-dropdown__item {
   display: block;
   width: 100%;
@@ -708,10 +752,16 @@
   display: inline;
 }
 
-/* Sparkline SVG block wrapper */
+/* Sparkline SVG block wrapper.
+   O Preflight do Tailwind da `max-width:100%; height:auto` a img e video, e
+   NAO a svg — o /admin renderiza sparkline(width=600) e media 669px de
+   scrollWidth num viewport de 375. Com o viewBox no lugar, reescalar e so
+   deixar o max-width agir (medido: 600px -> 222px em 375). */
 .v4-sparkline {
   display: block;
   overflow: visible;
+  max-width: 100%;
+  height: auto;
 }
 
 /* Modal footer row (used by admin revoke-confirmation modal) */

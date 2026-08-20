@@ -44,13 +44,28 @@ code, pre {
   border-radius: var(--v4-radius-sm);
 }
 
+/* <code> inline carrega caminho, customer_id, resource_name — palavra unica e
+   longa, sem ponto de quebra natural. `%APPDATA%\Claude\claude_desktop_config
+   .json` (43 chars) estourava o /help em 40px a 320px de viewport. `anywhere`,
+   e nao `break-word`, porque so ele reduz TAMBEM o min-content — que e o que
+   dita a largura quando o ancestral e item flex/grid.
+   O bloco <pre> fica de fora de proposito: ali a quebra destruiria a
+   indentacao do snippet, e ele ja rola sozinho (overflow-x: auto). */
+code { overflow-wrap: anywhere; }
+pre code { overflow-wrap: normal; }
+
 pre {
   padding: var(--v4-space-4);
   overflow-x: auto;
   border: 1px solid var(--v4-gray-100);
 }
 
-main {
+/* Escopado ao main de TOPO de proposito. No seletor de elemento a regra caia
+   em qualquer <main> aninhado, e o `margin: 0 auto` la dentro cancelava o
+   stretch do flex (margem auto no eixo cruzado desliga align stretch): o
+   /help virava fit-content do bloco de codigo e estourava 295px num viewport
+   de 375. Ver test_layout_de_pagina_nao_vaza_para_main_aninhado. */
+body > main {
   max-width: 1200px;
   margin: 0 auto;
   padding: var(--v4-space-6) var(--v4-space-4);
@@ -143,12 +158,35 @@ main {
   font-weight: 600;
 }
 
+/* Em 768px o modo mobile desliga (a media query abaixo para em 767) e o header
+   desktop volta inteiro. Medido: com 6 itens de nav (admin) e email de 33
+   chars ele precisa de ~800px, entao de 768 a 799 — o iPad em retrato — TODA
+   pagina ganhava scroll horizontal. O email e o unico item elastico aqui:
+   min-width:0 deixa o item flex encolher abaixo do min-content e o ellipsis
+   absorve o resto. Dos tres fixes medidos (embrulhar o header, subir o
+   breakpoint, truncar) este e o unico que nao mexe na ALTURA do header — e os
+   offsets sticky do F79 estao calibrados em 65px/61px. */
 .v4-header__user {
   display: flex;
   align-items: center;
   gap: var(--v4-space-3);
   font-size: 13px;
   color: var(--v4-gray-700);
+  min-width: 0;
+}
+
+.v4-header__user > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* A marca e a nav nao disputam o aperto: quem cede e o email. */
+.v4-header__brand,
+.v4-header__nav,
+.v4-header__user form {
+  flex-shrink: 0;
 }
 
 .v4-header__user a.logout {

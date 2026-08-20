@@ -44,21 +44,73 @@ function openConfirm(opts) {
   dlg.showModal();
 }
 
+// Contentor de scroll mais proximo (ou null). `overflow-x: auto` obriga o eixo
+// Y a virar auto tambem, entao QUALQUER scroller na linhagem clipa um menu
+// absoluto — foi o que manteve /admin/managers fora do .v4-table-wrap ate aqui.
+function v4ScrollerAncestral(el) {
+  let no = el.parentElement;
+  while (no && no !== document.body) {
+    const estilo = getComputedStyle(no);
+    if (/(auto|scroll|hidden)/.test(estilo.overflowX + estilo.overflowY)) return no;
+    no = no.parentElement;
+  }
+  return null;
+}
+
+// Solta o menu do fluxo do scroller: em `fixed` o bloco de contencao vira o
+// viewport, entao nada mais o clipa. As coordenadas saem do rect do gatilho e
+// sao grampeadas na tela (medido em 375px: o menu ia parar em left=711, fora
+// de um scroller que termina em 320; grampeado cai em 187..367).
+function v4DesancorarMenu(dd) {
+  const menu = dd.querySelector('.v4-dropdown__menu');
+  const gatilho = dd.querySelector('.v4-dropdown__trigger');
+  if (!menu || !gatilho || !v4ScrollerAncestral(gatilho)) return;
+  menu.classList.add('is-detached');
+  const r = gatilho.getBoundingClientRect();
+  const folga = 8;
+  const largura = menu.offsetWidth;
+  const esquerda = Math.min(
+    Math.max(folga, r.right - largura),
+    Math.max(folga, document.documentElement.clientWidth - largura - folga),
+  );
+  menu.style.top = r.bottom + 4 + 'px';
+  menu.style.left = esquerda + 'px';
+}
+
+function v4ReancorarMenu(dd) {
+  const menu = dd.querySelector('.v4-dropdown__menu');
+  if (!menu) return;
+  menu.classList.remove('is-detached');
+  menu.style.top = '';
+  menu.style.left = '';
+}
+
 function v4DropdownToggle(id) {
   const dd = document.getElementById(id);
   if (!dd) return;
   const isOpen = dd.classList.toggle('is-open');
   dd.querySelector('.v4-dropdown__trigger').setAttribute('aria-expanded', String(isOpen));
-  if (isOpen) {
-    const closeOnOutside = (e) => {
-      if (!dd.contains(e.target)) {
-        dd.classList.remove('is-open');
-        dd.querySelector('.v4-dropdown__trigger').setAttribute('aria-expanded', 'false');
-        document.removeEventListener('click', closeOnOutside);
-      }
-    };
-    setTimeout(() => document.addEventListener('click', closeOnOutside), 0);
+  if (!isOpen) {
+    v4ReancorarMenu(dd);
+    return;
   }
+  v4DesancorarMenu(dd);
+  const fechar = () => {
+    dd.classList.remove('is-open');
+    dd.querySelector('.v4-dropdown__trigger').setAttribute('aria-expanded', 'false');
+    v4ReancorarMenu(dd);
+    document.removeEventListener('click', closeOnOutside);
+    document.removeEventListener('scroll', fechar, true);
+  };
+  // O menu segue filho do .v4-dropdown mesmo destacado (so a posicao mudou),
+  // entao contains() continua cobrindo cliques dentro dele.
+  const closeOnOutside = (e) => {
+    if (!dd.contains(e.target)) fechar();
+  };
+  setTimeout(() => document.addEventListener('click', closeOnOutside), 0);
+  // Menu destacado nao acompanha o scroll (esta em fixed), entao fecha junto —
+  // capture:true porque `scroll` de elemento nao borbulha.
+  document.addEventListener('scroll', fechar, true);
 }
 
 function v4ToggleRow(rowId) {
