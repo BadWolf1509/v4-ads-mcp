@@ -36,6 +36,13 @@ BASE_STEPS: list[Step] = [
         "pytest non-DB integration",
         [sys.executable, "-m", "pytest", "tests/integration", "-m", "not integration", "-q"],
     ),
+    # Espelha o step homonimo do ci.yml. Fica por ULTIMO de proposito: e o unico
+    # que depende de ferramenta externa (Node) e o mais lento, entao os checks
+    # baratos falham primeiro. Pula com dica se npx nao existir.
+    Step(
+        "tailwind css sincronizado",
+        [sys.executable, str(Path(__file__).resolve().parent / "check_tailwind_sync.py")],
+    ),
 ]
 
 DB_INTEGRATION_STEP = Step(

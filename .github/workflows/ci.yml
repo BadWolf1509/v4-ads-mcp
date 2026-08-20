@@ -36,7 +36,11 @@ jobs:
           # PROD) — o MESMO arquivo que o buildpack CNB instala no deploy. Instalar
           # ele primeiro + as dev deps constrained (-c) faz o CI testar exatamente os
           # pins que vão pra produção (fecha a janela "CI testou v0.115.4, deploy
-          # rodou v0.115.5"). Regerar o lock: uv pip compile pyproject.toml -o requirements.txt
+          # rodou v0.115.5"). Regerar o lock:
+          #   uv pip compile pyproject.toml -o requirements.txt --universal
+          # O `--universal` NAO e opcional: sem ele o compile resolve pra plataforma
+          # de quem rodou (a maquina do dev e Windows) e `pywin32` sai SEM marker,
+          # entao o buildpack CNB tenta instala-lo no Linux e o build quebra.
           pip install -r requirements.txt
           pip install -e ".[dev]" -c requirements.txt
 
