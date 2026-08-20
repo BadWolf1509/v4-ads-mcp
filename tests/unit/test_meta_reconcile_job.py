@@ -220,3 +220,47 @@ async def test_leitura_parcial_bloqueia_aplicacao_mesmo_com_apply_ligado() -> No
     desativa.assert_not_awaited()
     revoga.assert_not_awaited()
     conn.transaction.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_ordem_le_inventario_antes_de_upsertar() -> None:
+    """Pina a ORDEM list_inventory_rows → upsert_many, não só o resultado.
+
+    `upsert_many` marca is_active=true e ZERA missed_syncs pra toda conta da
+    parceria (ON CONFLICT DO UPDATE). Se rodasse ANTES da leitura do
+    inventário, o inventário já apareceria "em dia" quando lido — to_add e
+    to_reset sairiam vazios SEMPRE, e o audit nunca reportaria conta nova
+    (achado da revisão, round 1, 2026-08-20). Um teste que só olha o resultado
+    (ex.: `plano.to_add == [...]`) passa nas DUAS ordens quando os mocks
+    devolvem dado fixo e desacoplado — só um assert de ordem pina a causa.
+    """
+    from src.jobs import meta_resync as job
+
+    conn, _gravar_run, ps = _patches(job, apply=False, parceria=["act_1"])
+    recorder = MagicMock()
+    listar = AsyncMock(return_value=[InventoryRow("act_2", True, 9)])
+    upsert = AsyncMock(return_value=1)
+    recorder.attach_mock(listar, "list_inventory_rows")
+    recorder.attach_mock(upsert, "upsert_many")
+
+    with ExitStack() as stack:
+        for p in [
+            *ps,
+            patch.object(job.meta_ad_accounts, "list_inventory_rows", listar),
+            patch.object(job.meta_ad_accounts, "upsert_many", upsert),
+            patch.object(job.meta_ad_accounts, "deactivate", AsyncMock(return_value=0)),
+            patch.object(
+                job.manager_meta_account_access,
+                "revoke_for_account",
+                AsyncMock(return_value=[]),
+            ),
+        ]:
+            stack.enter_context(p)
+        await job.reconcile_meta()
+
+    nomes_chamados = [c[0] for c in recorder.mock_calls]
+    assert nomes_chamados == ["list_inventory_rows", "upsert_many"], (
+        "upsert_many rodou antes (ou sem) a leitura do inventário — "
+        "is_active/missed_syncs já sairiam zerados quando build_plan() lesse, "
+        "e to_add/to_reset nunca teriam conteúdo"
+    )

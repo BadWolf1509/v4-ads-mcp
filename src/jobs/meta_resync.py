@@ -56,9 +56,11 @@ async def reconcile_meta() -> Plan:
 
     pool = connection.get_pool()
     async with pool.acquire() as conn:
-        # Aditivo primeiro e sempre: entrar no catálogo é seguro mesmo com
-        # leitura parcial, e é o que faz a conta nova aparecer pro admin delegar.
-        upserted = await meta_ad_accounts.upsert_many(conn, parceria.accounts)
+        # Leitura e plano ANTES do upsert (achado da revisão, round 1,
+        # 2026-08-20): upsert_many marca is_active=true e ZERA missed_syncs pra
+        # toda conta da parceria. Se rodasse primeiro, o inventário já
+        # apareceria "em dia" quando lido — to_add e to_reset sairiam vazios
+        # SEMPRE, e o audit nunca reportaria conta nova nem carência zerada.
         inventario = await meta_ad_accounts.list_inventory_rows(conn)
         plano = build_plan(
             partnership_ids=ids_parceria,
@@ -66,6 +68,11 @@ async def reconcile_meta() -> Plan:
             inventory=inventario,
             complete=parceria.complete and alcance.complete,
         )
+        # Aditivo e sempre seguro (mesmo com leitura parcial) — é o que faz a
+        # conta nova aparecer pro admin delegar. `to_reset` fica parcialmente
+        # redundante com o zeramento que o upsert já faz sozinho — inofensivo,
+        # o plano e a escrita continuam consistentes.
+        upserted = await meta_ad_accounts.upsert_many(conn, parceria.accounts)
 
         aplicado = settings.meta_reconcile_apply and plano.blocked_reason is None
         revogados = 0
