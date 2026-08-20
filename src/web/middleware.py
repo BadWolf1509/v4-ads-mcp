@@ -10,9 +10,17 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 _SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
-# Exempt: OAuth callbacks (GET, or Meta data-deletion POST which validates its own
-# HMAC signed_request) and the MCP endpoint (Bearer-token auth, not cookie).
-_CSRF_EXEMPT_PREFIXES = ("/oauth/", "/mcp")
+# Isento por ROTA, nao por prefixo. Dois casos, e so eles:
+#   - /oauth/meta/data-deletion-callback: POST server-to-server da Meta, que valida
+#     o proprio HMAC no signed_request;
+#   - /mcp: auth por Bearer, nao por cookie.
+# O prefixo `/oauth/` inteiro era largo demais. Os endpoints OAuth de verdade sao
+# GET (start, callback) — metodo seguro, nunca checado —, mas `/oauth/meta/revoke` e
+# `/oauth/meta/refresh-accounts` sao mutacoes do PAINEL autenticadas por cookie
+# (Depends(current_manager)), disparadas por <form method="post"> em admin/index.html.
+# Vivem ali por acidente de roteamento (o APIRouter tem prefix /oauth/meta) e ficavam
+# de fora da unica checagem de origem que existe.
+_CSRF_EXEMPT_PREFIXES = ("/oauth/meta/data-deletion-callback", "/mcp")
 
 # Complete inventory of external origins the panel loads (verified 2026-05-29 via
 # grep of templates + static; promoted from Report-Only to enforcing after smoke
