@@ -1,6 +1,6 @@
 # Findings Catalog — V4 Ads MCP
 
-> **Purpose:** Central index of all bugs/findings/lessons learned across sprints. Avoids re-introducing same bug class in future sprints. Cross-referenced from CLAUDE.md `Conventions` and individual smoke runbooks.
+> **Purpose:** Central index of all bugs/findings/lessons learned across sprints. Avoids re-introducing same bug class in future sprints. Cross-referenced from o `Don't do` do CLAUDE.md, das convencoes em [`docs/convencoes/`](../convencoes/) e dos runbooks de smoke.
 >
 > **Maintainer note:** Add a new entry here whenever a finding is documented in a smoke runbook. Keep entries scannable — link to runbook for detail.
 >
@@ -85,7 +85,7 @@
 
 **Pattern:** JSON Schema constructs that Anthropic API or MCP client doesn't support.
 
-**Mitigation convention:** see `CLAUDE.md` "No JSON Schema composition keywords" + "Date range conventions" subsections.
+**Mitigation convention:** ver [`convencoes/testes.md`](../convencoes/testes.md) (composition keywords) e [`convencoes/dados.md`](../convencoes/dados.md) (date range).
 
 | # | Severity | Discovered | Fixed | Summary |
 |---|---|---|---|---|
@@ -102,7 +102,7 @@
 
 **Pattern:** Adding a pre-flight call to an existing mutate tool — existing integration tests fail to mock the new helper because helper's `run_report` import lives in `_common.py` namespace (not tool's). Slips local fast pre-push gate but caught by CI DB integration step.
 
-**Mitigation convention:** see `CLAUDE.md` "Pre-flight test convention (post-Sprint 3b.8)" subsection.
+**Mitigation convention:** ver [`convencoes/testes.md`](../convencoes/testes.md) (pre-flight test convention).
 
 | # | Severity | Discovered | Fixed | Summary |
 |---|---|---|---|---|
