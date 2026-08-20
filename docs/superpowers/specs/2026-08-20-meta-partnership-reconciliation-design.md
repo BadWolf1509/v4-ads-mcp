@@ -245,12 +245,24 @@ F86 renasceu como F109).
 
 ## 11. Rollout
 
-1. Migration + código com `apply=false`. O job audita o plano sem executar.
-2. Observar: o plano deve mostrar **1 saída** (Petrolina) e **2 entradas**. Se mostrar
-   outra coisa, o desenho está errado e ninguém perdeu acesso.
-3. Virar `apply=true`.
+1. Migration + código com `apply=false`. O job **observa e conta**, mas não destrói:
+   entram as contas novas, o contador de ausências avança e a alcançabilidade do
+   system user é marcada. Só `deactivate` e a revogação de grants ficam atrás da trava.
+   *(Corrigido em 2026-08-20 durante a implementação: a versão original desta seção
+   punha as três escritas observacionais atrás da mesma trava, o que deixava a fila
+   "sem SU" vazia para sempre e tornava a remoção inalcançável — o soak não poderia
+   demonstrar justamente o que existe para demonstrar.)*
+2. Observar. Na **primeira** execução o plano mostra `added=2`, `bumped=1`,
+   `unreachable=2` e **`removed=0`** — a carência de 3 execuções completas é o
+   desenho, não uma falha. `removed=1` (Petrolina) aparece na **terceira**.
+   Qualquer outro número significa que o desenho está errado, e ninguém perdeu acesso.
+3. Virar `apply=true`. **Atenção operacional:** como o contador avança durante o soak,
+   se a carência já estiver cumprida a revogação acontece na **primeira** execução
+   depois de virar a chave — não há um segundo período de graça. O guard percentual
+   limita o estrago a 4 contas nesse dia.
 4. **Critério de aceite:** a Petrolina sai sozinha — inventário desativado, 4 grants
-   revogados com motivo, linha no audit — sem ninguém tocar na matriz.
+   revogados com motivo, linha no audit — sem ninguém tocar na matriz. E a fila
+   "Aguardando delegação" mostra as contas novas **sem nenhum acesso concedido**.
 
 ---
 
