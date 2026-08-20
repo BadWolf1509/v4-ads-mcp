@@ -18,11 +18,16 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 
 ## Estado atual
 
-**2026-08-20.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`,
-**64 MCP tools** (58 Google + 6 Meta), CI gated + deploy automático. Em 19/08 houve
-**três investigações** — frontend, backend e infra/CI — que fecharam **17 findings**
-(F101-F117); em 20/08, a **revisão de responsividade** do painel fechou **10** (F118-F127).
-O catálogo está em **126 IDs**, com apenas **A4** e **F67** (custom domain) abertos.
+**2026-08-20.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`
+(revisão `00071-q4v`), **64 MCP tools** (58 Google + 6 Meta), CI gated + deploy automático.
+Em 19/08, três investigações fecharam **17 findings** (F101-F117). Em 20/08: a **revisão de
+responsividade** do painel fechou 10 (F118-F127) e a **reconciliação da parceria Meta**
+(PR #21) fechou o F128 — o inventário e os acessos Meta agora se reconciliam sozinhos
+contra a parceria do BM. O catálogo está em **129 IDs**; abertos: **A4**, **F67**,
+**F129** (governança do system user — ação humana) e **F130** (gate do Google sem `is_active`).
+
+**A reconciliação sobe DESLIGADA** (`META_RECONCILE_APPLY=false`): observa e conta, não
+revoga. Ver a pendência 1c do `estado-atual.md` antes de virar a chave.
 
 **O detalhe vive em [`docs/operacao/estado-atual.md`](docs/operacao/estado-atual.md)** —
 decision gates, quem usa o quê, pendências operacionais, tokens, IAM, histórico de
