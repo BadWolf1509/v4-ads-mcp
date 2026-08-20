@@ -153,6 +153,17 @@ async def run() -> int:
         except Exception as e:  # noqa: BLE001
             log.warning("meta_reconcile_failed", error=str(e))
             print(f"WARN: Meta reconcile falhou (non-fatal): {e}", file=sys.stderr)
+            # F93 pela terceira porta (I2 da revisão de branch): `record_job_crash`
+            # vivia só dentro de `meta_resync.run()`, que SÓ o entry point
+            # `python -m src.jobs.meta_resync` alcança. O Cloud Run Job diário
+            # roda por aqui, e este `except` engolia tudo — a edge de parceria
+            # podia mudar de forma ou de permissão (risco nº 1 da §13) e a
+            # reconciliação ficaria morta por dias sem UMA linha no audit_log,
+            # nem status=error. Fica DEPOIS do log/print de propósito: o rastro
+            # da falha original é registrado primeiro, e `record_job_crash` já
+            # embrulha o próprio I/O em `best_effort` (F83), então o audit não
+            # vira um segundo crash por cima do primeiro.
+            await record_job_crash(operation="meta_reconcile", platform="meta", exc=e)
 
         # Purge diário de tabelas transientes (pending_confirmations, rate_counters,
         # meta_rate_counters). Best-effort: falha de purge não derruba o resync.

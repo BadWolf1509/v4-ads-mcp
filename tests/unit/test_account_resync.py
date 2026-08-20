@@ -264,6 +264,54 @@ async def test_run_meta_failure_is_non_fatal() -> None:
 
 
 @pytest.mark.asyncio
+async def test_falha_do_piggyback_meta_deixa_rastro_no_audit(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """I2 (revisão de branch): este é o ÚNICO caminho que roda em produção.
+
+    `record_job_crash` vivia só dentro de `meta_resync.run()`, alcançável apenas
+    por `python -m src.jobs.meta_resync`. O Cloud Run Job diário chama
+    `reconcile_meta()` daqui, e o `except` engolia tudo com um WARN — uma
+    reconciliação quebrada há dias não deixava NENHUMA linha no `audit_log`, nem
+    `status=error`. É a mesma classe do F93, na rota que de fato executa.
+    """
+    conn = MagicMock()
+    pool = _fake_pool(conn)
+    oc = SimpleNamespace(refresh_token_enc=b"enc")
+    mocks = _base_patches(pool=pool, oc=oc)
+    boom = RuntimeError("client_ad_accounts mudou de permissao")
+
+    with (
+        mocks["init_pool"],
+        mocks["close_pool"],
+        mocks["get_pool"],
+        mocks["pick"],
+        mocks["derive"],
+        mocks["decrypt"],
+        mocks["build_client"],
+        mocks["list_customers"],
+        mocks["fetch"],
+        mocks["upsert"],
+        mocks["mark_inactive"],
+        mocks["record"],
+        mocks["purge"],
+        patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(side_effect=boom)),
+        patch(f"{_M}.record_job_crash", AsyncMock()) as crash,
+    ):
+        rc = await account_resync.run()
+
+    assert rc == 0, "auditar o crash nao pode tornar o piggyback fatal"
+    crash.assert_awaited_once()
+    kwargs = crash.await_args.kwargs
+    assert kwargs["operation"] == "meta_reconcile"
+    assert kwargs["platform"] == "meta"
+    assert kwargs["exc"] is boom
+    # A falha original continua visível mesmo com a auditoria no caminho — o
+    # audit OBSERVA o crash, não o substitui.
+    assert "client_ad_accounts mudou de permissao" in capsys.readouterr().err
+
+
+@pytest.mark.asyncio
 async def test_run_calls_purge_expired_and_records_db_purge() -> None:
     """purge_expired() é chamado no fim do job e o resultado é auditado como db_purge."""
     conn = MagicMock()
