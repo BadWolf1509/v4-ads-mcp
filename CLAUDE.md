@@ -96,6 +96,21 @@ Solo dev on `main` (admin bypass). Commits: `feat(scope): …` / `fix(scope): �
 - **Supabase MCP** + **Meta MCP oficial** (`ads_get_field_context` pra validar fields Meta) em config. **Claude in Chrome** disponível pra smoke visual.
 - **Hooks:** PostToolUse auto-format ruff em .py + PreToolUse guard contra editar migration commitada. PowerShell pipe converte LF→CRLF mesmo binary (F47).
 
+## Padrão de solução
+
+
+**A solução entregue aqui é a prática consolidada do mercado para aquele problema — não a que fecha o ticket.** Antes de propor, **nomeie o padrão** que está usando (reconciliation loop, soft delete, idempotência, circuit breaker, JML/deprovisionamento, outbox…) e por que ele se aplica. Estar inventando um mecanismo novo é sinal de que o padrão conhecido não foi procurado.
+
+É gambiarra — e não entra — o que resolve o sintoma e cria trabalho novo. Cinco testes que a pegam:
+
+1. **Depende de alguém lembrar.** Processo humano no lugar de mecanismo é dívida com juros (o offboarding manual do F128 durou dois meses assim).
+2. **Duplica estado.** Mesmo dado com duas fontes de verdade diverge — a pergunta certa é qual é a autoritativa e quem reconcilia.
+3. **Só descreve o caminho feliz.** Sem resposta pra leitura parcial, retry, concorrência e ordem de eventos, o desenho não está pronto (F85, F93).
+4. **Não é reversível nem auditável.** Ação automática que destrói estado sem trilha e sem caminho de volta é pior que ação nenhuma.
+5. **Fecha sem guard.** Fix sem teste que falhe contra o código pré-fix não fica fechado (F86 → F109).
+
+Quando o padrão de mercado custar caro demais para o momento, **apresente o trade-off e deixe a decisão com o Wellington** — o que não pode é escolher a gambiarra em silêncio.
+
 ## When in doubt
 
 
