@@ -265,3 +265,47 @@ def test_toast_de_erro_interrompe_a_leitura():
     assert "aria-atomic=" not in html
     js = (_STATIC / "v4-panel.js").read_text(encoding="utf-8")
     assert "'alert' : 'status'" in js
+
+
+# --------------------------------------------------- investigacao 2026-08-19
+
+_TEMPLATES_COM_TOGGLE = [
+    "admin/access.html",
+    "admin/access_meta.html",
+    "admin/access_manager_detail.html",
+    "admin/access_manager_detail_meta.html",
+]
+
+
+@pytest.mark.parametrize("caminho", _TEMPLATES_COM_TOGGLE)
+def test_checkbox_de_acesso_referencia_rotulo_fora_do_no_trocado(caminho):
+    """O swap troca o proprio <input>, entao o nome acessivel nao pode morar nele.
+
+    Era `aria-label` com texto: o fragmento servido pela rota nao tinha como
+    reproduzi-lo e todo checkbox virava "Alternar acesso" depois do 1o toggle.
+    No detail o aria-label ainda VENCIA o <label> que embrulha, entao texto
+    visivel e nome acessivel passavam a discordar.
+    """
+    html = (_TEMPLATES / caminho).read_text(encoding="utf-8")
+    assert "data-v4-access-toggle" in html, f"{caminho}: template sem checkbox de acesso"
+    assert 'aria-labelledby="v4-mgr-' in html, (
+        f"{caminho}: o checkbox precisa referenciar o rotulo por id (aria-labelledby)"
+    )
+    assert 'id="v4-mgr-' in html, f"{caminho}: falta o id do gestor referenciado"
+    assert 'id="v4-acc-' in html, f"{caminho}: falta o id da conta referenciado"
+
+
+def test_fragmento_de_toggle_rotula_pelos_mesmos_ids():
+    """Paridade por construcao: o atributo e funcao pura dos ids que a rota recebe."""
+    from src.web.routes import _toggle_checkbox_fragment
+
+    frag = _toggle_checkbox_fragment(
+        post_url="/admin/access/toggle",
+        manager_id="11111111-1111-1111-1111-111111111111",
+        account_id="9876543210",
+        account_field="customer_id",
+        checked=True,
+    )
+    assert 'aria-labelledby="v4-mgr-11111111-1111-1111-1111-111111111111 v4-acc-9876543210"' in frag
+    assert "aria-label=" not in frag.replace("aria-labelledby=", "")
+    assert '"customer_id": "9876543210"' in frag.replace("&quot;", '"')

@@ -43,7 +43,7 @@
         <tr>
           <th scope="col" class="sticky left-0 bg-v4-gray-50 z-[2]">Conta / Gestor</th>
           {% for m in managers_list %}
-            <th scope="col" class="text-center min-w-[120px]" data-manager-email="{{ m.email|lower }}">
+            <th scope="col" class="text-center min-w-[120px]" id="v4-mgr-{{ m.id }}" data-manager-email="{{ m.email|lower }}">
               <div class="text-xs break-words">{{ m.email.split('@')[0] }}</div>
             </th>
           {% endfor %}
@@ -52,7 +52,7 @@
       <tbody>
         {% for a in accounts %}
         <tr data-account-name="{{ a.account_name|lower }}" data-account-id="{{ a.ad_account_id }}">
-          <th scope="row" class="sticky left-0 bg-white whitespace-nowrap">
+          <th scope="row" id="v4-acc-{{ a.ad_account_id }}" class="sticky left-0 bg-white whitespace-nowrap">
             <strong>{{ a.account_name }}</strong>
             {% if a.account_status == 1 %}
               <span class="text-xs text-v4-green">● {{ a.account_status | meta_status_label }}</span>
@@ -65,7 +65,7 @@
           {% for m in managers_list %}
           <td class="text-center" data-manager-id="{{ m.id }}">
             <input type="checkbox"
-                   aria-label="Acesso de {{ m.email.split('@')[0] }} à conta {{ a.account_name }}"
+                   aria-labelledby="v4-mgr-{{ m.id }} v4-acc-{{ a.ad_account_id }}"
                    {% if (m.id|string, a.ad_account_id) in access_set %}checked{% endif %}
                    hx-post="/admin/access/meta/toggle"
                    hx-vals='{"manager_id": "{{ m.id }}", "ad_account_id": "{{ a.ad_account_id }}"}'

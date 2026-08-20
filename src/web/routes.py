@@ -95,21 +95,36 @@ async def _audit_admin(
     )
 
 
-def _toggle_checkbox_fragment(*, post_url: str, vals: dict[str, str], checked: bool) -> str:
+def _toggle_checkbox_fragment(
+    *,
+    post_url: str,
+    manager_id: str,
+    account_id: str,
+    account_field: str,
+    checked: bool,
+) -> str:
     """Checkbox de reposição servido após o toggle de acesso.
 
-    O toast de sucesso e o revert-on-fail vivem num listener delegado em
-    v4-panel.js, acionado por `data-v4-access-toggle`. Antes o handler vinha
-    embutido num `hx-on` que o fragmento precisava re-emitir a cada swap —
-    esquecer disso foi o F74. Agora o comportamento não pode se perder: o
-    fragmento carrega só o marcador.
+    O comportamento (toast, revert-on-fail) vive num listener delegado em
+    v4-panel.js, acionado por `data-v4-access-toggle` — era o F74.
+
+    O NOME ACESSÍVEL segue a mesma regra. Com `aria-label` de texto, a rota
+    tinha que reproduzir o que o template escreve, e não reproduzia: todo
+    checkbox virava "Alternar acesso" depois do primeiro toggle — e nas views
+    por gestor o `aria-label` ainda vencia o `<label>` que embrulha, então o
+    texto visível e o nome anunciado passavam a discordar. Agora o nome vem
+    por `aria-labelledby`, apontando pro cabeçalho do gestor e pro da conta,
+    que ficam FORA do nó trocado. O valor é função pura dos dois ids que já
+    chegam no form, então template e fragmento não têm como divergir.
     """
-    state = "checked" if checked else ""
+    state = "checked " if checked else ""
+    vals = {"manager_id": manager_id, account_field: account_id}
     hx_vals = html.escape(json.dumps(vals), quote=True)
+    rotulo = html.escape(f"v4-mgr-{manager_id} v4-acc-{account_id}", quote=True)
     return (
-        f'<input type="checkbox" {state} hx-post="{post_url}" '
+        f'<input type="checkbox" {state}hx-post="{post_url}" '
         f'hx-vals=\'{hx_vals}\' hx-trigger="change" hx-swap="outerHTML" '
-        f'data-v4-access-toggle aria-label="Alternar acesso">'
+        f'data-v4-access-toggle aria-labelledby="{rotulo}">'
     )
 
 
@@ -1075,7 +1090,9 @@ async def admin_access_meta_toggle(
     return HTMLResponse(
         _toggle_checkbox_fragment(
             post_url="/admin/access/meta/toggle",
-            vals={"manager_id": manager_id, "ad_account_id": ad_account_id},
+            manager_id=manager_id,
+            account_id=ad_account_id,
+            account_field="ad_account_id",
             checked=granted,
         )
     )
@@ -1385,7 +1402,9 @@ async def admin_access_toggle(
     return HTMLResponse(
         _toggle_checkbox_fragment(
             post_url="/admin/access/toggle",
-            vals={"manager_id": manager_id, "customer_id": customer_id},
+            manager_id=manager_id,
+            account_id=customer_id,
+            account_field="customer_id",
             checked=granted,
         )
     )

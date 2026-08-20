@@ -11,7 +11,7 @@
   ]) }}
 
   <header class="mb-6">
-    <h1 class="text-2xl font-bold">{{ manager.email }}</h1>
+    <h1 class="text-2xl font-bold" id="v4-mgr-{{ manager.id }}">{{ manager.email }}</h1>
     <p class="text-sm text-v4-gray-700">Marque/desmarque pra liberar/revogar acesso. Mudanças instantâneas.</p>
   </header>
 
@@ -19,6 +19,7 @@
     {% for a in accounts %}
     <label class="flex items-center gap-3 p-3 border border-v4-gray-100 rounded-md hover:bg-v4-gray-50 cursor-pointer">
       <input type="checkbox"
+             aria-labelledby="v4-mgr-{{ manager.id }} v4-acc-{{ a.customer_id }}"
              {% if a.customer_id in access_set %}checked{% endif %}
              hx-post="/admin/access/toggle"
              hx-vals='{"manager_id": "{{ manager.id }}", "customer_id": "{{ a.customer_id }}"}'
@@ -26,7 +27,7 @@
              hx-swap="outerHTML"
              data-v4-access-toggle>
       <div class="flex-1">
-        <strong>{{ a.descriptive_name }}</strong>
+        <strong id="v4-acc-{{ a.customer_id }}">{{ a.descriptive_name }}</strong>
         <div class="text-xs text-v4-gray-500 font-mono">{{ a.customer_id }}</div>
       </div>
     </label>
