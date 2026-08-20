@@ -53,6 +53,11 @@ _ADMIN_FLASH_ERRORS: dict[str, str] = {
     "bad_domain": "Só emails @v4company.com podem ser convidados.",
     "exists": "Esse email já está cadastrado (convite pendente ou conta existente). Nada foi criado.",
     "same_manager": "Gestor de origem e destino são o mesmo — nada foi copiado.",
+    "conta_inativa": (
+        "Esta conta ainda está fora da parceria — restaurar agora não devolveria "
+        "acesso nenhum (o gate exige conta ativa). Espere a reconciliação "
+        "reativá-la; a linha volta com o botão."
+    ),
 }
 
 # Mapa fixo pro `ok=<codigo>` da reconciliacao Meta — distinto do `ok=1` usado
@@ -1020,10 +1025,27 @@ async def admin_accounts_meta_restore(
 ) -> Response:
     """Reconcede os grants que `revoke_for_account` revogou quando a conta saiu
     da parceria — SO esses (filtra `PARTNERSHIP_ENDED_REASON`), nao qualquer
-    revogacao que a conta tenha acumulado por outro motivo."""
+    revogacao que a conta tenha acumulado por outro motivo.
+
+    So faz sentido com a conta ATIVA, isto e, depois que a parceria voltou. Sobre
+    conta inativa o restore limparia `revoked_at` sem destravar nada (o gate
+    exige conta ativa) e, pior, tiraria a linha da fila 3 — que passou a ser
+    keyed em revogacao por churn PENDENTE: a conta sumiria do painel com grants
+    vivos e inuteis, e o reconciliador nao os revogaria de novo (conta ja
+    inativa nao entra em `to_remove`). O botao nem e renderizado nesse estado; a
+    checagem aqui e pra POST direto ou aba velha reenviada.
+    """
     _require_admin(user)
     pool = connection.get_pool()
     async with pool.acquire() as conn:
+        conta = await meta_ad_accounts.get_by_id(conn, ad_account_id)
+        if conta is None or not conta.is_active:
+            destino = "/admin/accounts/meta?error=conta_inativa"
+            if request.headers.get("HX-Request"):
+                # HX-Redirect, nao HX-Refresh: o refresh perderia o query param
+                # e o admin nao veria por que nada aconteceu.
+                return Response(status_code=204, headers={"HX-Redirect": destino})
+            return RedirectResponse(url=destino, status_code=303)
         restaurados = await manager_meta_account_access.restore_for_account(
             conn, ad_account_id=ad_account_id
         )

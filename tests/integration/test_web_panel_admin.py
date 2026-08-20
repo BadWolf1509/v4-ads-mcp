@@ -798,6 +798,51 @@ async def test_restaurar_nao_reconcede_grant_revogado_por_outro_motivo(client: A
 
 
 @pytest.mark.integration
+async def test_restaurar_recusa_conta_ainda_fora_da_parceria(client: AsyncClient) -> None:
+    """C1, outro lado: restaurar conta INATIVA nao devolve acesso nenhum (o gate
+    exige conta ativa) e ainda tiraria a linha da fila 3 — a conta sumiria do
+    painel com grants vivos e inuteis, e o reconciliador nao os revogaria de
+    novo (conta ja inativa nao entra em `to_remove`). O botao nem e renderizado
+    nesse estado; isto cobre POST direto / aba velha reenviada."""
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        await meta_ad_accounts.upsert_many(conn, [_conta_meta("act_ainda_fora", "Ex-cliente 4")])
+        await manager_meta_account_access.bulk_grant(
+            conn, manager_id=gestor_id, ad_account_ids=["act_ainda_fora"], granted_by=admin_id
+        )
+        await meta_ad_accounts.deactivate(conn, ad_account_ids=["act_ainda_fora"])
+        await manager_meta_account_access.revoke_for_account(
+            conn, ad_account_id="act_ainda_fora", reason=PARTNERSHIP_ENDED_REASON
+        )
+
+    resp = await client.post(
+        "/admin/accounts/meta/act_ainda_fora/restore",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/admin/accounts/meta?error=conta_inativa"
+    async with pool.acquire() as conn:
+        linha = await conn.fetchrow(
+            "SELECT revoked_at FROM manager_meta_account_access "
+            "WHERE manager_id = $1 AND ad_account_id = 'act_ainda_fora'",
+            gestor_id,
+        )
+        assert linha["revoked_at"] is not None, "a revogacao por churn tem de sobreviver"
+        queues = await meta_ad_accounts.list_queues(conn)
+        assert "act_ainda_fora" in {c.ad_account_id for c, _ in queues.saiu_da_parceria}
+
+    # A mensagem do mapa fixo aparece na pagina (nunca o valor cru do param).
+    pagina = await client.get(
+        "/admin/accounts/meta?error=conta_inativa",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert "ainda está fora da parceria" in pagina.text
+
+
+@pytest.mark.integration
 async def test_admin_accounts_meta_flash_restored(client: AsyncClient) -> None:
     pool = connection.get_pool()
     admin_id, _ = await _bootstrap_admin_and_gestor(pool)

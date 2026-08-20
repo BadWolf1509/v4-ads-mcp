@@ -54,6 +54,11 @@ async def reconcile_meta() -> Plan:
         for i in (a.get("id", "") for a in alcance.accounts)
     }
 
+    # M10 (registrado, não corrigido): o AND acopla as duas fontes que a §3
+    # desacopla de propósito. Falha para o lado seguro — sem as duas leituras
+    # inteiras nada é desativado —, mas o preço é real: indisponibilidade
+    # prolongada de `/me/adaccounts` (que não define mais o inventário) congela
+    # o offboarding e grava `status=error` todo dia, indefinidamente.
     leitura_completa = parceria.complete and alcance.complete
 
     pool = connection.get_pool()
