@@ -1,4 +1,10 @@
-"""Unit tests for get_my_rate_limit_status (Sprint 3b.12)."""
+"""Unit tests for get_my_rate_limit_status (Sprint 3b.12).
+
+Estes tres cobrem a ARITMETICA e a formatacao do bloco `account`. O mock
+devolve o mesmo Usage pras duas chaves, entao nao expressam a diferenca
+entre os dois niveis — isso e o que test_rate_limit_status_manager_cap.py
+faz, com side_effect por chave.
+"""
 
 from __future__ import annotations
 
@@ -44,14 +50,15 @@ async def test_returns_zero_usage_when_no_calls_today(_ctx) -> None:
 
         result = await get_my_rate_limit_status({})
 
-    assert result["used"] == 0
-    assert result["limit"] == 15000
-    assert result["remaining"] == 15000
-    assert result["pct"] == 0.0
-    assert result["pct_display"] == "0.0%"
+    conta = result["account"]
+    assert conta["used"] == 0
+    assert conta["limit"] == 15000
+    assert conta["remaining"] == 15000
+    assert conta["pct"] == 0.0
+    assert conta["pct_display"] == "0.0%"
     assert result["warning_threshold_pct"] == 80
     assert "date_utc" in result
-    assert "developer_token_id_hash" in result
+    assert "developer_token_id_hash" in conta
 
 
 @pytest.mark.asyncio
@@ -79,10 +86,11 @@ async def test_returns_partial_usage(_ctx) -> None:
 
         result = await get_my_rate_limit_status({})
 
-    assert result["used"] == 1234
-    assert result["remaining"] == 13766
-    assert result["pct"] == round(1234 / 15000, 4)
-    assert result["pct_display"] == "8.2%"
+    conta = result["account"]
+    assert conta["used"] == 1234
+    assert conta["remaining"] == 13766
+    assert conta["pct"] == round(1234 / 15000, 4)
+    assert conta["pct_display"] == "8.2%"
 
 
 @pytest.mark.asyncio
@@ -110,7 +118,8 @@ async def test_returns_high_usage_near_warning(_ctx) -> None:
 
         result = await get_my_rate_limit_status({})
 
-    assert result["used"] == 13000
-    assert result["remaining"] == 2000
-    assert result["pct_display"] == "86.7%"
+    conta = result["account"]
+    assert conta["used"] == 13000
+    assert conta["remaining"] == 2000
+    assert conta["pct_display"] == "86.7%"
     assert result["warning_threshold_pct"] == 80
