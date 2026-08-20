@@ -110,3 +110,36 @@ def test_lockfile_carrega_markers_de_plataforma() -> None:
         f"pywin32 sem marker de plataforma ({linha_pywin32!r}) — o lockfile foi "
         "gerado sem --universal e o buildpack CNB vai tentar instala-lo no Linux"
     )
+
+
+# ------------------------------------------------------------ rollback seguro
+
+_DEPLOY = _RAIZ / ".github" / "workflows" / "deploy.yml"
+
+
+def test_rollback_usa_a_revisao_que_estava_servindo() -> None:
+    """`revisions list --limit=2 | tail -1` assume que a mais nova e a que
+    acabou de ser criada.
+
+    O guard `steps.deploy.outcome != 'skipped'` cobre falha ANTES do deploy
+    (migration quebrada -> step pulado). O que sobra e um `gcloud run deploy`
+    que falhe SEM criar revisao (imagem inexistente, por exemplo): ai "a
+    anterior" esta deslocada em um, e o rollback tira o trafego da revisao
+    saudavel que esta servindo pra pousar numa mais velha.
+
+    O robusto e capturar quem serve ANTES de deployar.
+    """
+    # Ignora linha de comentario: o proprio bloco que EXPLICA o fix cita
+    # "revisions list" ao descrever o que saiu. Guard grep-based casando a
+    # propria prosa e a armadilha do F87 — 4a vez neste repo.
+    texto = _DEPLOY.read_text(encoding="utf-8")
+    codigo = chr(10).join(
+        linha for linha in texto.splitlines() if not linha.lstrip().startswith("#")
+    )
+    assert "revisions list" not in codigo, (
+        "o rollback deduz a revisao anterior por ordem de criacao; capture a "
+        "que esta servindo antes do deploy e use esse valor"
+    )
+    assert "status.traffic[0].revisionName" in texto, (
+        "esperado capturar a revisao que serve trafego antes do deploy"
+    )

@@ -26,7 +26,7 @@ This document records the cloud-console actions performed once to bootstrap the 
 
 ## GitHub
 - [x] Repo: `BadWolf1509/v4-ads-mcp` (private)
-- [ ] Branch protection on `main`: require PR + passing CI (set after Task 11)
+- [x] Branch protection on `main`: ha **required status check `test`** — o push de 2026-08-19 recebeu `remote: - Required status check "test" is expected.`, que o GitHub so emite quando a branch esta protegida. O fluxo e solo-dev com **admin bypass** (CLAUDE.md, "Git workflow"), entao o push passa mesmo com o check pendente; a protecao vale pra quem nao for admin. O checkbox ficou desmarcado por ~1 ano depois de a protecao existir.
 
 ## GCP project (HISTÓRICO — projeto antigo `v4-ads-mcp-prod`, a decomissionar; use a seção "ESTADO ATUAL" acima)
 - [x] Project: `v4-ads-mcp-prod` (project number `518798891402`, billing `01286F-7A67A7-226F9E`)
