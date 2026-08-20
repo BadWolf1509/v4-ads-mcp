@@ -5,6 +5,7 @@ nos quatro CSS (sem compressao) e nenhum Cache-Control, so etag, entao toda
 navegacao revalidava todos os assets.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from src.web.middleware import SelectiveGZipMiddleware
 from src.web.static_files import CachedStaticFiles, asset_version
 
 _STATIC = Path(__file__).resolve().parents[2] / "src" / "web" / "static"
+_TEMPLATES = Path(__file__).resolve().parents[2] / "src" / "web" / "templates"
 
 
 def _app() -> FastAPI:
@@ -65,3 +67,20 @@ def test_asset_version_muda_por_revisao(monkeypatch: pytest.MonkeyPatch) -> None
     assert asset_version() == "v4-ads-mcp-00042-abc"
     monkeypatch.delenv("K_REVISION")
     assert asset_version() == "dev"
+
+
+def test_toda_referencia_a_static_carrega_cache_buster():
+    """immutable por 1 ano sem ?v= = asset preso no browser ate a proxima era.
+
+    CachedStaticFiles marca TUDO sob /static como immutable, e o docstring do
+    modulo condiciona isso a versionar as URLs. O logo escapava em dois lugares
+    — e como o favicon usa a MESMA URL com ?v=, o arquivo era baixado duas
+    vezes, sob chaves de cache diferentes.
+    """
+    faltando = []
+    for template in _TEMPLATES.rglob("*.html"):
+        for numero, linha in enumerate(template.read_text(encoding="utf-8").splitlines(), 1):
+            for url in re.findall(r'(?:href|src)="(/static/[^"]+)"', linha):
+                if "?v=" not in url:
+                    faltando.append(f"{template.name}:{numero} {url}")
+    assert not faltando, "referencias a /static sem ?v=: " + "; ".join(faltando)
