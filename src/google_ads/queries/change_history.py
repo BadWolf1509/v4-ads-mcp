@@ -60,6 +60,28 @@ def _format_in_clause(values: list[str]) -> str:
     return gaql_in_list(values)
 
 
+def change_event_frontier_query(*, start: date, end: date) -> str:
+    """F131: GAQL da fronteira de indexacao — o evento mais NOVO da conta.
+
+    Deliberadamente SEM os filtros do usuario. Uma sonda que herdasse
+    `resource_types` responderia vazio pelo mesmo silencio que ela existe para
+    medir: conta sem historico daquele tipo pareceria "nao indexado". A sonda
+    responde "ate quando esta indexado nesta CONTA", nao "no seu recorte" — o
+    recorte sai de graca do `max` das linhas que a query principal ja devolveu.
+
+    `LIMIT` e obrigatorio: o Google recusa change_event sem ele com
+    "Change event requests must specify a LIMIT in query and LIMIT should be
+    less than or equal to 10k" (probado 2026-09-02).
+    """
+    return (
+        "SELECT change_event.change_date_time "
+        "FROM change_event "
+        f"WHERE {_format_change_date_between(start, end)} "
+        "ORDER BY change_event.change_date_time DESC "
+        "LIMIT 1"
+    )
+
+
 def change_history_query(
     *,
     start: date,

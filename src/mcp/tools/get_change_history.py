@@ -13,11 +13,13 @@ Audited as a sensitive read.
 Caveats (empirically verified against production change_event 2026-05-11,
 re-confirmado em dogfood 2026-05-21 MO-JP, e refinado em dogfood 2026-05-25
 MO-JP+CAB pós-reverts Pedro 21/05):
-- Propagation lag: change_event é AUDIT LOG LAGGING, NOT real-time. Mutações
-  via API ou UI tipicamente levam MINUTOS A **DIAS** (>4 dias já visto em
-  produção — dogfood 25/05 reconfirmou 3 dos 4 reverts Pedro de 21/05 ainda
-  não surfaceavam 4 dias depois) para surface em change_event. O lag afeta
-  MÚLTIPLOS campos, não apenas `campaign.status` — também
+- Propagation lag: change_event é AUDIT LOG LAGGING, NOT real-time. **O lag
+  não tem contrato**: medido de ~3h (conta 786-223-0676 em 2026-09-02 — writes
+  às 11:28-11:43 invisíveis às 11:50 e presentes no fim da tarde) a >4 dias
+  (dogfood 25/05, 3 dos 4 reverts Pedro de 21/05 ainda ausentes), na MESMA
+  conta. F131: é por ser variável que a fronteira passou a ser MEDIDA a cada
+  chamada e devolvida em `freshness`, em vez de prometida em prosa aqui. O lag
+  afeta MÚLTIPLOS campos, não apenas `campaign.status` — também
   `ai_max_setting.enable_ai_max`, `asset_automation_settings`,
   `text_guidelines.messaging_restrictions`, etc.
 - Padrão V4 pra validar estado ATUAL pós-mutação (revert/incident recovery):
@@ -32,13 +34,18 @@ MO-JP+CAB pós-reverts Pedro 21/05):
   cross-reference auto-apply settings se intent matters.
 """
 
+import asyncio
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+from src.google_ads.change_freshness import assess_freshness
 from src.google_ads.queries._common import parse_resource_path, resolve_date_window
-from src.google_ads.queries.change_history import change_history_query
+from src.google_ads.queries.change_history import (
+    change_event_frontier_query,
+    change_history_query,
+)
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
 from src.mcp.tools._registry import register_tool
@@ -66,19 +73,40 @@ _DATE_PRESETS = [
     "LAST_WEEK",
 ]
 
+# F135: espelha ChangeEventResourceType do SDK (v24, verificado 2026-09-02).
+# NAO edite a mao sem rodar tests/unit/test_change_event_enum_guards.py — ele
+# reconcilia esta lista com o enum do SDK e falha nas DUAS direcoes.
+#
+# A lista anterior era mantida a mao e divergiu em 13 posicoes: faltavam 10
+# (entre elas `AD`, que e o que a API emite quando um RSA e editado, enquanto
+# `AD_GROUP_AD` era o unico enum de anuncio oferecido — filtro por anuncio
+# devolvia zero com 20 edicoes no dia) e sobravam 3 que a API rejeita com
+# "Invalid enum value cannot be included in WHERE clause".
+#
+# Deliberadamente NAO derivado do SDK em runtime: o schema de uma tool MCP e
+# contrato publico, e derivar faria um bump do lockfile mudar os valores
+# aceitos sem diff nem revisao. Fonte autoritativa e o SDK; reconciliador e o
+# guard no CI.
 _RESOURCE_TYPES = [
-    "CAMPAIGN",
+    "AD",
     "AD_GROUP",
-    "AD_GROUP_CRITERION",
     "AD_GROUP_AD",
-    "CAMPAIGN_CRITERION",
-    "CAMPAIGN_BUDGET",
-    "BIDDING_STRATEGY",
-    "CONVERSION_ACTION",
-    "CUSTOMER_NEGATIVE_CRITERION",
-    "ASSET",
-    "CAMPAIGN_ASSET",
     "AD_GROUP_ASSET",
+    "AD_GROUP_BID_MODIFIER",
+    "AD_GROUP_CRITERION",
+    "AD_GROUP_FEED",
+    "ASSET",
+    "ASSET_SET",
+    "ASSET_SET_ASSET",
+    "CAMPAIGN",
+    "CAMPAIGN_ASSET",
+    "CAMPAIGN_ASSET_SET",
+    "CAMPAIGN_BUDGET",
+    "CAMPAIGN_CRITERION",
+    "CAMPAIGN_FEED",
+    "CUSTOMER_ASSET",
+    "FEED",
+    "FEED_ITEM",
 ]
 
 # ChangeClientType enum values from Google Ads API (verified empirically
@@ -189,6 +217,21 @@ def _row_formatter(row: Any) -> dict[str, Any]:
     }
 
 
+def _parse_change_dt(raw: str) -> datetime | None:
+    """Converte o `change_date_time` do Google em datetime, tolerando o formato.
+
+    O Google devolve "YYYY-MM-DD HH:MM:SS.ffffff", mas os microssegundos nem
+    sempre vem. Formato desconhecido devolve None — e a fronteira vira
+    "indeterminado", que e a resposta honesta, em vez de frescor inventado.
+    """
+    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(raw, fmt)
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
 def _build_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Aggregate counts. Auto-apply rows collapse into synthetic 'auto-apply' user bucket."""
     by_user: Counter[str] = Counter()
@@ -266,9 +309,14 @@ async def _resolve_names(
         "filtros opcionais (resource_types, operation_types, user_emails, "
         "client_types). Util pra auditoria 'CRITICO antes de tudo': detectar "
         "auto-apply Recommendations, mudancas estruturais, e quem mexeu no que. "
-        "ATENCAO: latency de indexacao pode chegar a DIAS (>4 dias ja visto em "
-        "producao — dogfood 25/05 MO-JP) e afeta multiplos campos. Pra validar "
-        "estado atual (revert/incident), use `run_gaql FROM campaign` como "
+        "ATENCAO: change_event e audit log LAGGING e o lag NAO tem contrato "
+        "— medido de ~3h a >4 dias na MESMA conta. Por isso a resposta traz "
+        "`freshness` com a fronteira MEDIDA: `account_frontier` (evento mais "
+        "recente indexado na conta, sem filtro), `slice_frontier` (das linhas "
+        "devolvidas) e `status` (confiavel|ambiguo|atrasado|indeterminado). "
+        "Leia o status antes de concluir que nada mudou: lista vazia com "
+        "status != confiavel NAO e prova de ausencia. Pra validar estado "
+        "atual (revert/incident), use `run_gaql FROM campaign` como "
         "leading indicator. Inclui summary com totais por usuario/resource/"
         "operation. Janela maxima 30 dias (Google retention exclusivo — start_date "
         "alem disso e auto-clampado pra today-28 com warning F23, preset OU custom; "
@@ -321,14 +369,29 @@ async def get_change_history(args: dict[str, Any]) -> dict[str, Any]:
         limit=limit,
     )
 
-    rows = await run_report(
-        manager_id=ctx.manager_id,
-        session_id=ctx.session_id,
-        customer_id=customer_id,
-        query=query,
-        row_formatter=_row_formatter,
-        operation_name="get_change_history",
-        audit_this_call=True,
+    # F131: a sonda de fronteira vai EM PARALELO com a query principal — mesmo
+    # padrao que o audit_competitor_keywords ja usa. Custa +1 chamada de quota
+    # e ~0 de latencia, e e o que separa "nada mudou" de "ainda nao indexou".
+    rows, frontier_rows = await asyncio.gather(
+        run_report(
+            manager_id=ctx.manager_id,
+            session_id=ctx.session_id,
+            customer_id=customer_id,
+            query=query,
+            row_formatter=_row_formatter,
+            operation_name="get_change_history",
+            audit_this_call=True,
+        ),
+        run_report(
+            manager_id=ctx.manager_id,
+            session_id=ctx.session_id,
+            customer_id=customer_id,
+            query=change_event_frontier_query(start=start, end=end),
+            row_formatter=lambda r: {"change_date_time": str(r.change_event.change_date_time)},
+            operation_name="get_change_history_frontier",
+            # Query de apoio, como o _resolve_names: nao polui a trilha do gestor.
+            audit_this_call=False,
+        ),
     )
 
     # Resolve campaign/ad_group names (0-2 extra ops)
@@ -339,7 +402,7 @@ async def get_change_history(args: dict[str, Any]) -> dict[str, Any]:
         rows=rows,
     )
     # name_map only contains ('campaign', id) and ('ad_group', id) keys —
-    # for other resource types (BIDDING_STRATEGY, CONVERSION_ACTION, ASSET, etc),
+    # for other resource types (ASSET, CUSTOMER_ASSET, FEED, ASSET_SET, etc),
     # the raw resource path is used as resource_name per spec §4.5.
     for r in rows:
         resource_path = r.pop("_resource_path")
@@ -353,11 +416,25 @@ async def get_change_history(args: dict[str, Any]) -> dict[str, Any]:
 
     summary = _build_summary(rows)
 
+    account_frontier = (
+        _parse_change_dt(frontier_rows[0]["change_date_time"]) if frontier_rows else None
+    )
+    slice_dts = [
+        dt for dt in (_parse_change_dt(r["change_date_time"]) for r in rows) if dt is not None
+    ]
+
     response: dict[str, Any] = {
         "customer_id": customer_id,
         "period": {"from": start.isoformat(), "to": end.isoformat()},
         "rows": rows,
         "summary": summary,
+        # F131: sem isto, `total_changes: 0` e a mesma resposta para "nada
+        # mudou" e para "mudou e ainda nao indexou".
+        "freshness": assess_freshness(
+            account_frontier=account_frontier,
+            slice_frontier=max(slice_dts) if slice_dts else None,
+            window_end=end,
+        ),
     }
     if retention_warning is not None:
         response["date_range_warning"] = retention_warning

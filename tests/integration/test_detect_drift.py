@@ -63,6 +63,14 @@ async def test_co_management_filter_pedro_drift(bound_context):
             },
         ],
         "summary": {},
+        # F131: detect_drift passou a propagar a fronteira de indexacao —
+        # o stub tem que espelhar o contrato real de get_change_history.
+        "freshness": {
+            "account_frontier": "2026-09-02 18:00:00",
+            "slice_frontier": "2026-09-02 11:43:39",
+            "status": "confiavel",
+            "warning": None,
+        },
     }
     with patch(
         "src.mcp.tools.detect_drift.get_change_history",
@@ -104,6 +112,14 @@ async def test_incident_mode_empty_responsible_list(bound_context):
             }
         ],
         "summary": {},
+        # F131: detect_drift passou a propagar a fronteira de indexacao —
+        # o stub tem que espelhar o contrato real de get_change_history.
+        "freshness": {
+            "account_frontier": "2026-09-02 18:00:00",
+            "slice_frontier": "2026-09-02 11:43:39",
+            "status": "confiavel",
+            "warning": None,
+        },
     }
     with patch(
         "src.mcp.tools.detect_drift.get_change_history",
@@ -137,6 +153,14 @@ async def test_structural_change_flag_emitted(bound_context):
             }
         ],
         "summary": {},
+        # F131: detect_drift passou a propagar a fronteira de indexacao —
+        # o stub tem que espelhar o contrato real de get_change_history.
+        "freshness": {
+            "account_frontier": "2026-09-02 18:00:00",
+            "slice_frontier": "2026-09-02 11:43:39",
+            "status": "confiavel",
+            "warning": None,
+        },
     }
     with patch(
         "src.mcp.tools.detect_drift.get_change_history",

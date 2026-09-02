@@ -79,9 +79,12 @@ async def test_get_change_history_aggregates_with_auto_apply(db, session_ctx):
         _make_change_event_row(
             user="ana@v4company.com",
             ct="GOOGLE_ADS_WEB_CLIENT",
-            rtype="BIDDING_STRATEGY",
+            # F135: era "BIDDING_STRATEGY", que NAO existe em
+            # ChangeEventResourceType — a API nunca emite esse valor. Fixture
+            # que codifica convencao errada e pior que fixture ausente.
+            rtype="CAMPAIGN_BUDGET",
             op="UPDATE",
-            resource_path="customers/123/biddingStrategies/400",
+            resource_path="customers/123/campaignBudgets/400",
         ),
         _make_change_event_row(
             user="google@google.com",

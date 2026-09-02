@@ -119,11 +119,15 @@ def _resolve_date_window_local(
         "co-management V4 pós-batch). Compara change_event com lista de "
         "responsible_user_emails: tudo NÃO-listado conta como drift. Auto-apply "
         "Recommendations sempre conta como drift. Output: summary (count + "
-        "by_user/resource/operation) + flags[] (auto_apply_detected, "
+        "by_user/resource/operation) + freshness (fronteira de indexacao "
+        "medida) + flags[] (auto_apply_detected, "
         "multiple_users_detected, structural_change) + changes[] (até limit, "
-        "default 100 max 500). NOTA: change_event tem lag até HORAS — pra "
-        "validar estado atual, use run_gaql FROM campaign como leading "
-        "indicator. Sempre auditado."
+        "default 100 max 500). ATENCAO: roda sobre change_event, que e audit "
+        "log LAGGING com lag SEM contrato (medido de ~3h a >4 dias na mesma "
+        "conta) — por isso a resposta traz `freshness.status`. ZERO DRIFT "
+        "COM status != confiavel NAO significa conta intacta: pode ser "
+        "mudanca de terceiro ainda nao indexada. Pra validar estado atual, "
+        "use run_gaql FROM campaign como leading indicator. Sempre auditado."
     ),
     input_schema=_SCHEMA,
     bucket="always",
@@ -207,5 +211,8 @@ async def detect_drift(args: dict[str, Any]) -> dict[str, Any]:
             for c in drift_result.drift_changes
         ],
         "truncated": drift_result.truncated,
+        # F131: `detect_drift` e tool de seguranca — nao pode dizer "zero
+        # drift" sem dizer ate quando a fonte esta indexada.
+        "freshness": history_result["freshness"],
         "returned_count": len(drift_result.drift_changes),
     }
