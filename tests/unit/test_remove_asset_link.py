@@ -167,3 +167,107 @@ def test_classify_tem_branch_proprio_e_nao_cai_no_fallback() -> None:
     assert r.level is RiskLevel.CONFIRM
     assert "unknown" not in r.reason.lower(), "caiu no fallback — falta o branch explicito"
     assert "3" in r.reason
+
+
+def _boom_get_pool() -> Any:
+    """Pre-flight tem que barrar ANTES de tocar o banco — se isto for chamado,
+    o par invalido escapou do pre-flight e chegou a mintar token."""
+    raise AssertionError("nao deveria mintar token com par level/resource_name invalido")
+
+
+@pytest.mark.asyncio
+async def test_rejeita_level_incompativel_com_resource_name(monkeypatch) -> None:
+    """`level` escolhe o campo da operacao no builder; `resource_name` e'
+    copiado verbatim. Um par que nao bate monta uma operacao valida que o
+    Google rejeita POR OPERACAO — com `__partial_failure__: True` isso nunca
+    levanta, e `apply_change` descarta `partial_failures`, entao o gestor veria
+    status: "applied" com applied_count: 0 e nenhum motivo. O pre-flight tem
+    que barrar antes de mintar o token."""
+    monkeypatch.setattr(mod.connection, "get_pool", _boom_get_pool)
+    links = [
+        {
+            "level": "CUSTOMER",
+            "resource_name": "customers/1234567890/campaignAssets/7~9~CALLOUT",
+        }
+    ]
+    r = await mod.remove_asset_link({"customer_id": "1234567890", "links": links})
+    assert r["status"] == "error"
+    assert r["operation"] == "remove_asset_link"
+    assert "links[0]" in r["error_message"]
+    assert "CUSTOMER" in r["error_message"]
+    assert "customers/1234567890/campaignAssets/7~9~CALLOUT" in r["error_message"]
+
+
+@pytest.mark.asyncio
+async def test_rejeita_resource_name_de_outra_conta(monkeypatch) -> None:
+    """resource_name com customer_id diferente do argumento — mesma familia do
+    mismatch de level, mas no segmento de conta em vez do de nivel."""
+    monkeypatch.setattr(mod.connection, "get_pool", _boom_get_pool)
+    links = [
+        {
+            "level": "CAMPAIGN",
+            "resource_name": "customers/9999999999/campaignAssets/7~9~CALLOUT",
+        }
+    ]
+    r = await mod.remove_asset_link({"customer_id": "1234567890", "links": links})
+    assert r["status"] == "error"
+    assert "links[0]" in r["error_message"]
+    assert "1234567890" in r["error_message"]
+    assert "9999999999" in r["error_message"]
+
+
+@pytest.mark.asyncio
+async def test_segundo_link_invalido_e_apontado_pelo_indice(monkeypatch) -> None:
+    """O primeiro link e' valido; so o segundo (indice 1) tem o mismatch — a
+    mensagem tem que apontar o indice certo, nao só "algum link esta errado"."""
+    monkeypatch.setattr(mod.connection, "get_pool", _boom_get_pool)
+    links = [
+        {"level": "CAMPAIGN", "resource_name": "customers/1234567890/campaignAssets/7~9~CALLOUT"},
+        {"level": "AD_GROUP", "resource_name": "customers/1234567890/campaignAssets/7~9~CALLOUT"},
+    ]
+    r = await mod.remove_asset_link({"customer_id": "1234567890", "links": links})
+    assert r["status"] == "error"
+    assert "links[1]" in r["error_message"]
+    assert "links[0]" not in r["error_message"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("nivel", "resource_name"),
+    [
+        ("CUSTOMER", "customers/1234567890/customerAssets/9~CALLOUT"),
+        ("CAMPAIGN", "customers/1234567890/campaignAssets/7~9~CALLOUT"),
+        ("AD_GROUP", "customers/1234567890/adGroupAssets/5~9~CALLOUT"),
+    ],
+)
+async def test_par_correto_ainda_minta_token_em_cada_nivel(
+    monkeypatch, nivel: str, resource_name: str
+) -> None:
+    """Guard de regressao: o pre-flight novo nao pode bloquear o caminho feliz
+    em NENHUM dos tres niveis."""
+
+    async def _create_pending(conn: Any, **kwargs: Any) -> str:
+        return "tok-ok"
+
+    class _FakeConn:
+        async def __aenter__(self) -> Any:
+            return self
+
+        async def __aexit__(self, *a: Any) -> None:
+            return None
+
+    class _FakePool:
+        def acquire(self) -> Any:
+            return _FakeConn()
+
+    monkeypatch.setattr(mod.connection, "get_pool", lambda: _FakePool())
+    monkeypatch.setattr(mod, "create_pending", _create_pending)
+
+    r = await mod.remove_asset_link(
+        {
+            "customer_id": "1234567890",
+            "links": [{"level": nivel, "resource_name": resource_name}],
+        }
+    )
+    assert r["status"] == "dry_run"
+    assert r["confirmation_token"] == "tok-ok"
