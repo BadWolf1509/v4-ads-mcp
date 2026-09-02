@@ -127,7 +127,13 @@ def _resolve_date_window_local(
         "conta) — por isso a resposta traz `freshness.status`. ZERO DRIFT "
         "COM status != confiavel NAO significa conta intacta: pode ser "
         "mudanca de terceiro ainda nao indexada. Pra validar estado atual, "
-        "use run_gaql FROM campaign como leading indicator. Sempre auditado."
+        "use run_gaql FROM campaign como leading indicator. "
+        "LIMITE DE COBERTURA (F136): a flag structural_change cobre REMOVE de "
+        "CAMPAIGN e AD_GROUP, e NAO cobre conversion action — nem o change_event "
+        "nem o change_status rastreiam esse recurso, entao remocao de conversion "
+        "action (que quebra Smart Bidding) NAO aparece aqui e nao seria detectada "
+        "por esta tool. Para o estado atual das conversion actions, use "
+        "get_conversion_actions. Sempre auditado."
     ),
     input_schema=_SCHEMA,
     bucket="always",
