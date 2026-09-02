@@ -159,8 +159,11 @@ def build_remove_asset_link(client: Any, customer_id: str, payload: dict[str, An
     }
     ops: list[Any] = []
     for link in payload["links"]:
+        alevel = link["level"]
+        if alevel not in campo_por_nivel:
+            raise ValueError(f"unexpected attachment_level: {alevel!r}")
         op = client.get_type("MutateOperation")
-        alvo = getattr(op, campo_por_nivel[link["level"]])
+        alvo = getattr(op, campo_por_nivel[alevel])
         alvo.remove = link["resource_name"]
         ops.append(op)
     return ops
