@@ -10,6 +10,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # F138: o `deploy` passa a exigir esta saida. Ver o passo `detectar_mudanca`.
+    outputs:
+      code_changed: ${{ steps.detectar_mudanca.outputs.code_changed }}
     # concurrency no nível do JOB (não do workflow): cancela testes redundantes de
     # pushes rápidos SEM matar o job `deploy` (que chama deploy.yml) no meio. A
     # serialização de deploys fica na concurrency `deploy-prod` do deploy.yml.
@@ -22,6 +25,68 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          # F138: o passo `detectar_mudanca` compara dois SHAs, e num clone raso o
+          # `git diff BASE..HEAD` nao acha a base. Repo tem 4.76 MiB / 921 commits,
+          # entao o historico completo custa desprezivel.
+          fetch-depth: 0
+
+      - name: Detectar mudanca fora de docs (F138)
+        id: detectar_mudanca
+        # F138: commit que toca SO `docs/` publicava revisao nova do servidor MCP.
+        # Este e o servidor por onde o gestor escreve nas contas dos clientes — um
+        # deploy no meio de uma sequencia de update_rsa + apply_change tiraria a
+        # ferramenta com writes parciais aplicados.
+        #
+        # A correcao NAO e `paths-ignore` no `on:` — isso foi verificado e e PIOR:
+        # `test` e required status check na protecao da `main` (e `pr_required` esta
+        # ligado), entao um PR so de documentacao nao dispararia o workflow, o check
+        # nunca reportaria, e o PR travaria em "Expected — waiting for status" sem
+        # caminho de merge que nao fosse bypass de admin. Trocaria "deploy
+        # desnecessario" por "PR de docs impossivel de mergear".
+        #
+        # Aqui o `test` roda SEMPRE (o required check reporta, o PR mergeia) e so o
+        # job `deploy` passa a exigir esta saida.
+        #
+        # Efeito colateral aceito: com o deploy pulado, o SHA em producao deixa de
+        # ser o HEAD da `main`. Verificado que e benigno — a imagem e taggeada com
+        # github.sha e os 3 Cloud Run Jobs apontam pra mesma tag, entao tudo fica
+        # coerente no ultimo commit DE CODIGO, e nada no pipeline assere a igualdade.
+        run: |
+          BASE="${{ github.event.before }}"
+          HEAD_SHA="${{ github.sha }}"
+          ZERO="0000000000000000000000000000000000000000"
+
+          # Fail-open de proposito: sem base confiavel (push inicial, force-push,
+          # evento de PR), deploya. Um deploy a mais e melhor que um deploy que
+          # devia acontecer e silenciosamente nao aconteceu, com producao parada
+          # num commit antigo e ninguem sabendo.
+          DECISAO=true
+          MOTIVO="sem base confiavel para comparar — fail-open"
+
+          if [ -n "$BASE" ] && [ "$BASE" != "$ZERO" ] && git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            ARQUIVOS=$(git diff --name-only "$BASE" "$HEAD_SHA")
+            if [ -z "$ARQUIVOS" ]; then
+              MOTIVO="diff vazio entre as bases — fail-open"
+            elif printf '%s\n' "$ARQUIVOS" | grep -qvE '^docs/|\.md$'; then
+              MOTIVO="ha mudanca fora de docs/"
+            else
+              DECISAO=false
+              MOTIVO="o push mexeu apenas em docs/ e markdown"
+            fi
+          fi
+
+          echo "code_changed=$DECISAO" >> "$GITHUB_OUTPUT"
+          echo "code_changed=$DECISAO ($MOTIVO)"
+          {
+            echo "### Deploy"
+            echo
+            if [ "$DECISAO" = "true" ]; then
+              echo "Deploy **habilitado** — $MOTIVO."
+            else
+              echo "Deploy **pulado** — $MOTIVO. A producao segue na revisao do ultimo commit de codigo (F138)."
+            fi
+          } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -117,7 +182,12 @@ jobs:
   # workflow — a lógica de deploy continua inteira lá; aqui é só o gate.
   deploy:
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # F138: `code_changed` impede que commit so de docs publique revisao nova do
+    # servidor MCP. O `test` continua rodando sempre — o required check reporta e
+    # PR de docs mergeia normalmente; so o deploy e pulado.
+    if: >-
+      github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && needs.test.outputs.code_changed == 'true'
     uses: ./.github/workflows/deploy.yml
     secrets: inherit
     permissions:
