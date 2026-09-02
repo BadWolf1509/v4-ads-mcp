@@ -27,11 +27,36 @@ def test_query_de_conta_pede_primary_status() -> None:
     assert "customer_asset.primary_status_reasons" in q
 
 
-def test_query_de_conta_nao_filtra_status() -> None:
-    """Spec section 7: filtrar por status esconde o REMOVED, que e a prova positiva."""
-    q = build_customer_asset_query(field_type=None)
-    assert "status = 'ENABLED'" not in q
-    assert "status='ENABLED'" not in q
+def test_nenhum_builder_filtra_por_status_no_where() -> None:
+    """Spec section 7: filtrar por status esconde o REMOVED, que e a prova positiva.
+
+    Fix round 2: a versao anterior deste teste so cobria o builder de conta, e
+    por match de string em duas grafias exatas (`status = 'ENABLED'` /
+    `status='ENABLED'`). Um WHERE escrito de outro jeito — outro operador,
+    outro valor, outro espacamento — passava batido, e o teste do tool
+    (`test_linha_removida_aparece_sem_filtro_explicito`) tambem nao pegava,
+    porque o fake de `run_report` la casa por `FROM <recurso>` e ignora o
+    WHERE. Este teste parte da clausula WHERE de verdade — forcada a existir
+    via field_type/campaign_ids — e procura o CAMPO `<recurso>.status`, nao um
+    literal. Reproduzido por sabotagem: injetar
+    `AND campaign_asset.status = 'ENABLED'` no builder de campanha derruba
+    este teste (ver relatorio da sessao).
+    """
+    casos = [
+        (build_customer_asset_query(field_type="CALLOUT"), "customer_asset"),
+        (
+            build_campaign_asset_query(field_type="CALLOUT", campaign_ids=["111"]),
+            "campaign_asset",
+        ),
+        (build_ad_group_asset_query(field_type="CALLOUT"), "ad_group_asset"),
+    ]
+    for query, recurso in casos:
+        partes = query.split("WHERE", 1)
+        assert len(partes) == 2, f"{recurso}: query sem WHERE nao exercita o guard"
+        clausula = partes[1]
+        assert f"{recurso}.status" not in clausula, (
+            f"{recurso}: WHERE filtra por status — esconderia REMOVED (spec secao 7)"
+        )
 
 
 def test_filtro_de_field_type_e_opcional_e_escapado() -> None:
