@@ -1,6 +1,6 @@
 # Spec — `ad_schedule`, leitura de assets e unlink de asset
 
-**Data:** 2026-09-02 · **Origem:** gaps de campo trazidos pela sessão de gestão de tráfego da MO João Pessoa (`jo-o-pessoa-db`), conta `786-223-0676` · **Findings relacionados:** F133 (custo sem conversão), F134/F135 (camada `customer_asset` invisível) · **Status:** aguardando revisão do Wellington antes de virar plano. **Revisão 2 (02/09):** a probe da §5.1 rodou e mudou o desenho — `effective`/`shadowed_by` saíram, `primary_status` entrou.
+**Data:** 2026-09-02 · **Origem:** gaps de campo trazidos pela sessão de gestão de tráfego da MO João Pessoa (`jo-o-pessoa-db`), conta `786-223-0676` · **Findings relacionados:** F133 (custo sem conversão), F134/F135 (camada `customer_asset` invisível) · **Status:** aguardando revisão do Wellington antes de virar plano. **Revisão 2 (02/09):** a probe da §5.1 rodou e mudou o desenho — `effective`/`shadowed_by` saíram, `primary_status` entrou. **Revisão 3 (02/09):** leitura crítica achou 8 defeitos — a §5 contradizia a §5.1, faltavam as convenções de mutate do repo (§2.1), faltava o `resource_name` que acopla §5 a §6, o `get_ad_schedule` não tinha teto, a §4.3 afirmava como medido o que era expectativa, e faltavam idempotência (§4.4), falha parcial (§4.5) e quatro guards — entre eles o da falha que a tool existe para impedir.
 
 ---
 
@@ -28,6 +28,18 @@ Três das cinco limitações trazidas do campo são ausência de tool, não defe
 - **Geo targeting write.** O gap que dói é da plataforma (o Google Ads não exclui por raio) e a frequência é ~1×/mês.
 - **`remove_keyword` / `remove_ad_group` / `remove_campaign`.** `PAUSED` resolve, e a fricção da UI é saudável para operação irreversível.
 
+### 2.1 Convenções do repositório que estas tools herdam
+
+A revisão 3 achou que a spec descrevia comportamento e **omitia a maquinaria** — um plano derivado dela poderia violar quatro itens do `Don't do` sem perceber. Nenhuma destas é escolha desta spec; são invariantes do codebase, e o precedente vivo é [`remove_audience.py`](../../src/mcp/tools/remove_audience.py):
+
+- **Envelope de mutate não se monta à mão.** `preview_envelope` / `applied_envelope` / `error_envelope` de [`_mutate_common.py`](../../src/mcp/tools/_mutate_common.py); erro canônico é `error_message` + `operation`; TTL vem de `DEFAULT_TTL_MINUTES`, nunca literal.
+- **Blast radius é computado, não declarado.** `classify` de [`blast_radius.py`](../../src/governance/blast_radius.py). O "always-CONFIRM" da tabela da §2 é o resultado esperado, não um `if` escrito à mão — e o F112 mostra que caminho fixo sem teste amarrando diverge em silêncio.
+- **SDK só dentro de `run_blocking`** (F109), inclusive em tool que constrói o próprio client. Ao offloadar, ler o `request-id` **dentro** do closure.
+- **Executor Google novo segue o padrão `reserved`** (F73): `before_call` global + `mgr:<uuid>` em transação externa, `record_actual` gated por `reserved`, **audit sempre**.
+- **`bucket`:** as quatro nascem `defer`. São tools de operação pontual, não do caminho quente do gestor; o `[CORE]`/`[DEFER]` da description acompanha.
+- **`limit` + `truncated`** em toda leitura que possa crescer — inclusive `get_ad_schedule`, que não tinha teto nenhum na revisão 2 (mesma classe do F98: ausência total de teto, não default alto).
+- **Mutate em lote usa `__partial_failure__`**, como o `remove_audience`, e o `audit_log` registra o resultado linha a linha.
+
 ---
 
 ## 3. `get_ad_schedule` (read)
@@ -50,7 +62,7 @@ Os campos de minuto foram probados junto (a primeira versão desta spec listava
 `start_minute`/`end_minute` na saída sem tê-los na query verificada — corrigido
 na auto-revisão).
 
-**Schema:** `customer_id` (required), `campaign_ids[]` (opcional; default = conta inteira), `status` (default `enabled`).
+**Schema:** `customer_id` (required), `campaign_ids[]` (opcional; default = conta inteira), `status` (default `enabled`), `limit` (default 200, teto 1000) com `truncated` na resposta. Uma campanha pode ter até 7×24 janelas, então conta grande estoura o cap de token sem teto — é a classe do F98.
 
 **Saída:** uma linha por janela, com `campaign_id`, `campaign_name`, `criterion_id`, `day_of_week`, `start_hour`, `end_hour`, `start_minute`, `end_minute`, `bid_modifier`, `status`. Mais, por campanha, um bloco `schedule_summary`:
 
@@ -87,11 +99,26 @@ A pergunta que o preview tem de responder é *"o que estou desligando é melhor 
 
 ### 4.3 Orçamento compartilhado: desligar não economiza, REALOCA
 
-Quando `campaign_budget.explicitly_shared` é `true`, a verba de uma janela desligada **volta no mesmo dia** pelas janelas que seguem servindo. O efeito real do corte proposto na `786-223-0676` seria mover gasto de CPA R$ 18,59 para CPA R$ 23,59 — não é neutro, é negativo.
+Quando `campaign_budget.explicitly_shared` é `true`, o orçamento é do portfólio e não da janela — então desligar uma faixa horária **não devolve dinheiro**, redistribui pressão sobre as faixas que sobram. Na `786-223-0676` isso significaria empurrar gasto de um CPA de R$ 18,59 para um de R$ 23,59.
 
-O dry-run **DEVE** ler `explicitly_shared` e declarar isso, em vez de deixar o operador supor economia. É barato: um campo, uma query.
+**Separando o que está medido do que é expectativa** (a revisão 2 afirmava as duas coisas no mesmo tom, e esta sessão perdeu sete afirmações por isso):
 
-### 4.4 Confirmação de estado
+- **Medido:** `explicitly_shared = true` nos dois orçamentos ENABLED da conta, e o ativo é o portfólio JPA+CAB a R$ 310/dia. Os CPAs por dia da semana também são medidos.
+- **Expectativa, não medição:** *em quanto tempo* e *com que completude* a verba se redistribui. Isso é pacing intradiário do Google e não temos como probar por API.
+
+O dry-run **DEVE** ler `explicitly_shared` e declarar o mecanismo — sem prometer magnitude, pela mesma razão do F132. É barato: um campo, uma query.
+
+### 4.4 Idempotência: grade igual é no-op, não remove-e-recria
+
+Se a grade desejada for idêntica à atual, a tool **não emite mutação nenhuma** — nem `remove` nem `add` — e devolve preview vazio com `no_changes: true`.
+
+Não é otimização: recriar criteria idênticos é uma mudança estrutural aos olhos do Google e pode custar os mesmos **14 dias de re-learning** que a tool existe para não desperdiçar. Uma tool que recebe a grade completa (§4.1) é exatamente aquela em que reenviar o mesmo payload é o caso comum — um retry, um script, um gestor confirmando. O diff tem de ser calculado **por conteúdo da janela** (`day_of_week` + horas + minutos), não por `criterion_id`, porque o id muda quando o Google recria.
+
+### 4.5 Lote e falha parcial
+
+`campaign_ids` aceita várias campanhas, e uma pode falhar. Segue o `remove_audience`: `__partial_failure__`, resultado linha a linha no `audit_log` e na resposta, **sem rollback automático** das que passaram — reverter schedule por conta própria seria uma segunda mutação não pedida, e o gestor precisa saber exatamente onde parou. A resposta separa `aplicadas` de `falhas`, com o motivo de cada falha.
+
+### 4.6 Confirmação de estado
 
 Pós-apply, reconsultar por GAQL e devolver a grade resultante. As duas falhas silenciosas da UI nessa conta são a razão de existir da tool; confiar no ACK da mutação repetiria o problema num canal novo.
 
@@ -99,7 +126,7 @@ Pós-apply, reconsultar por GAQL e devolver a grade resultante. As duas falhas s
 
 ## 5. `get_assets` (read)
 
-**O que resolve:** a limpeza de 02/09 previa 4 vínculos em `campaign_asset` e eram **6** — os mesmos assets existiam também em `customer_asset`, **dormentes**, e só apareceram porque o gestor foi atrás por desconfiança no `run_gaql`. Vínculo dormente não serve, não aparece, e fica armado para ressurgir quando o de campanha for mexido.
+**O que resolve:** a limpeza de 02/09 previa 4 vínculos em `campaign_asset` e eram **6** — os mesmos assets existiam também em `customer_asset`, e só apareceram porque o gestor foi atrás por desconfiança no `run_gaql`. Vínculo que ninguém enxerga não é auditável, e continua servindo (ou deixando de servir) sem entrar em nenhuma conta. **Nota:** a versão anterior deste parágrafo dizia que os vínculos de conta estavam *dormentes* — a §5.1 refuta isso, e o parágrafo ficou contradizendo a própria seção. Corrigido na revisão 3.
 
 ```
 get_assets(customer_id, field_type?, campaign_ids?, limit=200)
@@ -110,6 +137,7 @@ get_assets(customer_id, field_type?, campaign_ids?, limit=200)
 - **Todos os `field_type` por default**, com filtro opcional. Limitar à família text-extension que o `create_and_link_assets` cobre repetiria o erro do checklist: ele previu uma camada quando existiam duas.
 - **`status` por linha, e sem filtrar status no default** — pelo motivo da §7. Junto vão `primary_status` e `primary_status_reasons`, que são o veredito do Google sobre servir (§5.1).
 - **As três camadas juntas**: `customer_asset` + `campaign_asset` + `ad_group_asset`, cada linha marcando seu `level`.
+- 🔴 **Cada linha traz o `resource_name` do vínculo.** É o identificador que o `remove_asset_link` (§6) recebe. A revisão 2 pedia `resource_name` na entrada de uma tool e não o devolvia na saída da outra: o gestor não conseguiria encadear as duas sem cair no `run_gaql`. É a classe do F81 — macro que emite um atributo enquanto o consumidor procura outro, e ninguém nota porque cada lado está certo sozinho.
 - **Órfãos marcados**: asset sem nenhum vínculo. Dá inventário sem precisar de tool destrutiva.
 - 🔴 **Se algum dia entrarem métricas nesta tool, rotule-as como do ASSET, nunca do vínculo.** `customer_asset` e `campaign_asset` aceitam `metrics.*`, mas o número é atribuído ao asset e as linhas de vínculo repetem o mesmo total por outro corte (§5.1, provado em 3 de 3). Um campo chamado `impressions` numa linha de vínculo seria lido como "este vínculo serviu N vezes", que é falso.
 
@@ -186,6 +214,10 @@ Isto vale para o smoke **e** para a confirmação de estado que a própria tool 
 4. **`explicitly_shared` chega ao preview** quando o orçamento é compartilhado.
 5. **Confirmação por `status == REMOVED`**, jamais por ausência ou contagem (§7).
 6. **`get_assets` não filtra status por default** — teste que uma linha `REMOVED` aparece sem filtro explícito.
+7. 🔴 **`get_assets` consulta as TRÊS camadas** — teste que exercita uma conta com vínculo em `customer_asset` e nenhum em `campaign_asset` e exige a linha de conta na saída. **A revisão 2 não tinha este guard, que é o da falha que a tool existe para impedir:** uma implementação que consultasse só `campaign_asset` passaria em todos os outros testes e reproduziria exatamente o erro de 02/09.
+8. **`get_assets` devolve `resource_name`** e ele é aceito pelo `remove_asset_link` — guard de acoplamento entre as duas (classe F81), porque cada lado está certo sozinho.
+9. **Grade idêntica não emite mutação** (§4.4) — teste que reenviar a grade atual produz `no_changes: true` e **zero** operações. Sem ele, a implementação natural (apagar tudo e recriar) passa em todos os outros testes e queima re-learning.
+10. **Envelope e blast radius vêm do compartilhado** — guard derivado do source, no espírito do F112, que falhe se a tool montar envelope à mão ou fixar o nível sem `classify`.
 
 Todo guard deve ser verificado **contra o código pré-fix ou por sabotagem**, nunca por ter passado de primeira. Esta sessão registrou 7 ocorrências da família *guard que passou sem cobrir*, uma delas em cima do próprio mecanismo antissilêncio.
 
