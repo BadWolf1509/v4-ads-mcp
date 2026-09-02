@@ -116,7 +116,7 @@ get_assets(
   "links": [
     {
       "level": "CUSTOMER",
-      "resource_name": "customers/7862230676/assets/144113768043",
+      "resource_name": "customers/7862230676/customerAssets/144113768043~CALLOUT",
       "asset_id": "144113768043",
       "asset_name": "Atendimento Eficaz",
       "field_type": "CALLOUT",
@@ -130,7 +130,7 @@ get_assets(
     },
     {
       "level": "CUSTOMER",
-      "resource_name": "customers/7862230676/assets/144113768040",
+      "resource_name": "customers/7862230676/customerAssets/144113768040~CALLOUT",
       "asset_id": "144113768040",
       "asset_name": "Super Desconto",
       "field_type": "CALLOUT",
@@ -144,15 +144,15 @@ get_assets(
     },
     {
       "level": "CAMPAIGN",
-      "resource_name": "customers/7862230676/campaigns/XX/assets/YY",
-      "asset_id": "YY",
-      "asset_name": "...",
-      "field_type": "SITELINK",
+      "resource_name": "customers/7862230676/campaignAssets/21359547724~144113768043~CALLOUT",
+      "asset_id": "144113768043",
+      "asset_name": "Atendimento Eficaz",
+      "field_type": "CALLOUT",
       "status": "ENABLED",
       "primary_status": "ELIGIBLE",
       "primary_status_reasons": [],
-      "campaign_id": "XX",
-      "campaign_name": "Campanha Ativa",
+      "campaign_id": "21359547724",
+      "campaign_name": "[GPC][JPA][LEADS][SEG][MESTRE DA OBRA]",
       "ad_group_id": null,
       "ad_group_name": null
     }
@@ -190,9 +190,9 @@ get_assets(
 - [ ] Cada `level` está no whitelist: `"CUSTOMER" | "CAMPAIGN" | "AD_GROUP"`
 - [ ] Cada `field_type` está no whitelist de tipo de ativo (CALLOUT, SITELINK, STRUCTURED_SNIPPET, CALL, PROMOTION, etc.)
 - [ ] Cada `status` é `"ENABLED" | "REMOVED" | "UNSPECIFIED" | "UNKNOWN"`
-- [ ] `primary_status` é `"ELIGIBLE" | "PAUSED" | "REMOVED" | "PENDING" | "LIMITED" | "NOT_ELIGIBLE" | null`
+- [ ] `primary_status` é `"ELIGIBLE" | "PAUSED" | "REMOVED" | "PENDING" | "LIMITED" | "NOT_ELIGIBLE"`
 - [ ] `primary_status_reasons` é array (pode estar vazio)
-- [ ] Níveis CUSTOMER e CAMPAIGN têm `campaign_id=null, campaign_name=null` (apenas AD_GROUP os tem)
+- [ ] **Níveis (regra de campos):** CUSTOMER tem `campaign_id, campaign_name, ad_group_id, ad_group_name` todos `null`; CAMPAIGN tem `campaign_id` e `campaign_name` populados, `ad_group_id, ad_group_name` `null`; AD_GROUP tem todos os quatro populados
 - [ ] Audit_log entry criada (operação `get_assets`, plataforma `google`, status `success`)
 
 **Failure modes investigation:**
@@ -229,7 +229,7 @@ get_assets(
   "links": [
     {
       "level": "CUSTOMER",
-      "resource_name": "customers/7862230676/assets/144113768043",
+      "resource_name": "customers/7862230676/customerAssets/144113768043~CALLOUT",
       "asset_id": "144113768043",
       "asset_name": "Atendimento Eficaz",
       "field_type": "CALLOUT",
@@ -260,6 +260,7 @@ get_assets(
 - [ ] **Crítico T2:** TODOS os links em `links[]` têm `field_type: "CALLOUT"` (zero de outro tipo)
 - [ ] Links com IDs `144113768040`, `144113768046` e `144113768043` aparecem se existem (subset de T1)
 - [ ] Assets REMOVED e ENABLED ambos aparecem (filtro não filtra por status, só por field_type — spec §5 obrigatório)
+- [ ] `summary` tem a mesma estrutura que T1
 - [ ] Audit_log entry criada (mesma operação que T1 mas com parâmetro `field_type: "CALLOUT"` registrado)
 
 **Failure modes investigation:**
@@ -346,7 +347,7 @@ remove_asset_link(
   "confirmation_token": "ABC12XY9",
   "expires_in_minutes": 10,
   "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
-  "confirmation_reason": "remove_asset_link always requires CONFIRM (spec §6)"
+  "confirmation_reason": "remove_asset_link (1 vínculo(s)) — sempre confirma (spec §7.1 remove)"
 }
 ```
 
@@ -495,29 +496,16 @@ remove_asset_link(
 
 *(Substituir pelos mesmos valores de T4)*
 
-**Expected response shape (idempotência gracioso via partial_failure):**
+**Expected response shape (idempotência gracioso):**
 
-```json
-{
-  "status": "dry_run",
-  "operation": "remove_asset_link",
-  "customer_id": "7862230676",
-  "blast_summary": "Desvincular 1 asset(s) (CUSTOMER×1). A entidade Asset NÃO é removida.",
-  "confirmation_token": "XYZ98AB1",
-  "expires_in_minutes": 10,
-  "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar."
-}
-```
-
-*(Ou `apply_change` retorna `applied_count: 0` porque já foi removido, ambos são gracioso)*
+Não há contrato específico: `apply_change` não devolve breakdown de `partial_failures` ao caller. A validação é feita por re-query GAQL, não pela response.
 
 **Validação:**
 
 - [ ] Response não retorna um HTTP error (não deve ser 400, 409, 422, etc.)
-- [ ] `status` pode ser `"dry_run"` (novo token gerado, pois precisa confirmar) OU se aplicado direto `"applied"` com `applied_count: 0` (gracioso ambos)
-- [ ] **Crítico T6:** Nenhuma mensagem de erro tipo `"already_removed"` ou `"invalid"` (operação foi bem-sucedida, só não teve efeito)
-- [ ] Nenhum audit_log error entry (só success com applied_count 0 se aplicado direto)
-- [ ] Confirmação em T5 re-run deve seguir retornando `status: REMOVED` (não voltou pra ENABLED)
+- [ ] `status` é `"applied"` (se roteia pra `apply_change`) ou `"dry_run"` (se retorna preview novamente)
+- [ ] **Crítico T6:** Nenhuma mensagem de erro terminal tipo `"invalid token"` ou `"authorization failed"` 
+- [ ] Confirmação pós-aplicação: re-query GAQL (T5 query repetida) deve devolver `status: REMOVED` para o target link — prova que a idempotência funcionou (vínculo continua removido, não voltou)
 
 **Failure modes investigation:**
 
