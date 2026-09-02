@@ -266,7 +266,6 @@ get_assets(
 **Failure modes investigation:**
 
 - Aparecem assets de outro tipo (ex.: SITELINK) → filtro não foi aplicado server-side (verificar GAQL WHERE clause)
-- `filter_applied` ausente → response não declara quais filtros estão ativos (UX degradada)
 
 **Result:** ⬜ pending
 
@@ -283,15 +282,15 @@ get_assets(
 Procurar em `links[]` (T1 resultado) por DUAS linhas com `asset_id: "144113768043"`:
 
 ```
-Linha 1: asset_id="144113768043", level="CUSTOMER", status="ENABLED", primary_status="ELIGIBLE", resource_name="customers/7862230676/assets/144113768043"
-Linha 2: asset_id="144113768043", level="CAMPAIGN", status="ENABLED", primary_status="ELIGIBLE", resource_name="customers/7862230676/campaigns/XX/assets/144113768043"
+Linha 1: asset_id="144113768043", level="CUSTOMER", status="ENABLED", primary_status="ELIGIBLE", resource_name="customers/7862230676/customerAssets/144113768043~CALLOUT"
+Linha 2: asset_id="144113768043", level="CAMPAIGN", status="ENABLED", primary_status="ELIGIBLE", resource_name="customers/7862230676/campaignAssets/21359547724~144113768043~CALLOUT"
 ```
 
 **Validação:**
 
 - [ ] Ambas as linhas presentes em `links[]` (grep por `"asset_id": "144113768043"` retorna exatamente 2 linhas)
 - [ ] **Crítico T3:** Ambas têm `primary_status: "ELIGIBLE"` (não `null`, não `"PAUSED"`)
-- [ ] `resource_name` valores diferem (um é `customers/.../assets/...`, outro é `customers/.../campaigns/.../assets/...`) — confirmando níveis distintos
+- [ ] `resource_name` valores diferem por nível: o de conta é `customers/.../customerAssets/{asset_id}~{FIELD_TYPE}`, o de campanha é `customers/.../campaignAssets/{campaign_id}~{asset_id}~{FIELD_TYPE}` — confirmando vínculos distintos
 - [ ] Não existe linha "vencedora" (ambas aparecem, ambas têm o mesmo `primary_status`)
 - [ ] Documentar que a spec §2.1 diz explicitamente que não há precedência entre níveis — Google retorna o status próprio de cada vínculo, independente
 
@@ -478,7 +477,7 @@ campaign.name | campaign_asset.status | asset.id
 
 ## Teste T6 — Reaplica `remove_asset_link` idêntico — gracioso via `partial_failure`
 
-**Setup:** Validar idempotência. Chamar `remove_asset_link` novamente com os mesmos parâmetros de T4. Esperado: NOT erro, mas resposta gracioso via mecanismo `partial_failure` que a spec descreve — o link já foi removido, Google retorna parcialmente bem-sucedido (0 aplicados, 0 falhados, sem erro terminal).
+**Setup:** Validar idempotência. Chamar `remove_asset_link` novamente com os mesmos parâmetros de T4. Esperado: NOT erro, mas resposta gracioso via mecanismo `partial_failure` que a spec descreve — o link já foi removido, Google retorna parcialmente bem-sucedido. Não asserte contagens: `apply_change` não devolve `partial_failures` ao chamador, então nenhum campo da resposta as confirma. O que se verifica é a ausência de erro e, por re-query GAQL em `asset.id`, que o `status` do vínculo alvo continua `REMOVED`.
 
 **Tool call (mesmo `links` array de T4):**
 
