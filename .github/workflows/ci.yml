@@ -45,10 +45,46 @@ jobs:
           pip install -e ".[dev]" -c requirements.txt
 
       - name: Security audit (pip-audit, non-blocking)
-        continue-on-error: true
+        # `continue-on-error: true` deixava o passo sair 1 e o GitHub pintar uma
+        # annotation VERMELHA num run VERDE. O resultado ficava invisivel: em
+        # 2026-09-02 havia 4 CVEs reais (aiohttp x3, cryptography) em
+        # requirements.txt, e ninguem viu — annotation de run que passou nao e
+        # lida. Pior: treina o time a ignorar annotation, num repo cujo catalogo
+        # de findings e quase todo sobre aceitacao silenciosa.
+        #
+        # Segue non-blocking de proposito (CVE novo em dep transitiva nao deve
+        # travar deploy de hotfix), mas agora por construcao — o passo trata os
+        # proprios erros em vez de delegar ao runner — e o achado vai pro step
+        # summary, que e onde alguem de fato le. Falha de INSTALACAO tambem e
+        # reportada, em vez de virar auditoria que silenciosamente nao rodou.
         run: |
-          pip install pip-audit
-          pip-audit -r requirements.txt
+          SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
+          if ! pip install pip-audit; then
+            {
+              echo '### Security audit (pip-audit)'
+              echo
+              echo ':warning: **A auditoria nao rodou** — falha ao instalar o `pip-audit`.'
+            } >> "$SUMMARY"
+            exit 0
+          fi
+          set +e
+          OUT=$(pip-audit -r requirements.txt 2>&1)
+          RC=$?
+          set -e
+          echo "$OUT"
+          {
+            echo '### Security audit (pip-audit)'
+            echo
+            if [ "$RC" -eq 0 ]; then
+              echo 'Nenhuma vulnerabilidade conhecida em `requirements.txt`.'
+            else
+              echo ':rotating_light: **Vulnerabilidades conhecidas.** Nao bloqueia o build, mas precisa de acao:'
+              echo
+              echo '```'
+              echo "$OUT"
+              echo '```'
+            fi
+          } >> "$SUMMARY"
 
       - name: Lint (ruff)
         run: ruff check src tests

@@ -14,7 +14,13 @@ dependencies = [
     "httpx>=0.27.0",
     "google-ads>=27.0.0",
     "facebook-business>=21.0.0",
-    "cryptography>=44.0.0",
+    # Piso de seguranca (PYSEC-2026-3552). Dep direta nossa.
+    "cryptography>=50.0.0",
+    # Piso de seguranca (PYSEC-2026-3545/3546/3547). NAO importamos aiohttp: ele
+    # entra transitivo pelo facebook-business, que nao poe teto nenhum. Declarar
+    # o piso aqui e o unico lugar em que o resolver o respeita — sem isso a
+    # correcao depende de o uv sempre escolher a mais nova, que nao e garantia.
+    "aiohttp>=3.14.3",
     "jsonschema>=4.0",
     "jinja2>=3.1.0",
     "google-cloud-storage>=2.18.0",
