@@ -39,7 +39,8 @@ def build_search_terms_query(*, start_date: str, end_date: str) -> str:
         "SELECT "
         "search_term_view.search_term, "
         "ad_group.name, campaign.name, "
-        "metrics.impressions, metrics.clicks, metrics.cost_micros "
+        "metrics.impressions, metrics.clicks, metrics.cost_micros, "
+        "metrics.conversions, metrics.conversions_value "
         "FROM search_term_view "
         f"WHERE segments.date BETWEEN '{start_date}' AND '{end_date}'"
     )
@@ -69,6 +70,11 @@ def parse_search_term_row(row: Any) -> dict[str, Any]:
         "impressions": row.metrics.impressions,
         "clicks": row.metrics.clicks,
         "cost_brl": micros_to_currency(row.metrics.cost_micros),
+        # F133: `conversions` e `conversions_value` sao double no proto, NAO
+        # micros (probado contra a API 2026-09-02) — nao passar por
+        # micros_to_currency, diferente de cost_micros logo acima.
+        "conversions": float(row.metrics.conversions),
+        "conversions_value_brl": float(row.metrics.conversions_value),
     }
 
 
@@ -94,4 +100,6 @@ def dict_to_search_term_row(d: dict[str, Any]) -> SearchTermRow:
         impressions=d["impressions"],
         clicks=d["clicks"],
         cost_brl=d["cost_brl"],
+        conversions=d["conversions"],
+        conversions_value_brl=d["conversions_value_brl"],
     )

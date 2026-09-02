@@ -42,6 +42,8 @@ async def test_returns_full_shape_with_matched_brands(bound_context):
             "impressions": 142,
             "clicks": 5,
             "cost_brl": 42.30,
+            "conversions": 3.0,
+            "conversions_value_brl": 90.0,
         },
         {
             "search_term": "projecta promoção",
@@ -50,6 +52,8 @@ async def test_returns_full_shape_with_matched_brands(bound_context):
             "impressions": 50,
             "clicks": 2,
             "cost_brl": 15.00,
+            "conversions": 0.0,
+            "conversions_value_brl": 0.0,
         },
     ]
 
@@ -74,6 +78,11 @@ async def test_returns_full_shape_with_matched_brands(bound_context):
     assert len(result["search_terms"]) == 2
     assert result["search_terms"][0]["cost_brl"] == 42.30
     assert result["search_terms"][1]["cost_brl"] == 15.00
+    # F133: a conversao tem que chegar ao gestor junto do custo, senao o
+    # `total_cost_wasted_brl` volta a ser veredito sem contra-evidencia.
+    assert result["search_terms"][0]["conversions"] == 3.0
+    assert result["summary"]["total_conversions"] == 3.0
+    assert all("conversions" in n for n in result["suggested_negatives"])
     assert result["suggested_negatives"][0]["match_type"] == "EXACT"
     assert result["suggested_negatives"][1]["match_type"] == "PHRASE"
 

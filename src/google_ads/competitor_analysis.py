@@ -35,6 +35,10 @@ class SearchTermRow:
     impressions: int
     clicks: int
     cost_brl: float
+    # F133: sem conversao, `total_cost_wasted_brl` e `suggested_negatives`
+    # emitiam veredito sobre um dado que nao tinham.
+    conversions: float
+    conversions_value_brl: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +67,8 @@ class MatchedSearchTerm:
     impressions: int
     clicks: int
     cost_brl: float
+    conversions: float
+    conversions_value_brl: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +78,11 @@ class SuggestedNegative:
     text: str
     match_type: str  # "EXACT" | "PHRASE"
     reason: str
+    # F133: contra-evidencia em campo ESTRUTURADO, nao so prosa no `reason`.
+    # Sem isto, filtrar a sugestao perigosa exigiria parsear texto — e as
+    # skills `v4-trafego` consomem isto programaticamente.
+    # Agregado por brand, porque a sugestao tambem e por brand.
+    conversions: float
 
 
 def normalize_brand(brand: str) -> str:
@@ -98,7 +109,7 @@ def match_competitor_brands(
     list[MatchedKeyword],
     list[MatchedSearchTerm],
     list[SuggestedNegative],
-    dict[str, int | bool],
+    dict[str, int | bool | float],
     float,
 ]:
     """Match keywords + search terms vs brands; aggregate cost; suggest negatives.
@@ -116,7 +127,7 @@ def match_competitor_brands(
                   suggested_negatives, totals_dict, total_cost_wasted_brl).
 
         totals_dict keys: positive_count, positive_truncated, search_count,
-                          search_truncated, suggested_count.
+                          search_truncated, suggested_count, total_conversions.
     """
     # 1. Normalize brands (preserve insertion order)
     normalized = [normalize_brand(b) for b in competitor_brands]
@@ -143,6 +154,7 @@ def match_competitor_brands(
     # 3. Match search terms + aggregate cost
     matched_st: list[MatchedSearchTerm] = []
     total_cost = 0.0
+    total_conversions = 0.0
     for st_row in search_term_rows:
         brand = _find_matching_brand(st_row.search_term, normalized)
         if brand:
@@ -155,9 +167,12 @@ def match_competitor_brands(
                     impressions=st_row.impressions,
                     clicks=st_row.clicks,
                     cost_brl=st_row.cost_brl,
+                    conversions=st_row.conversions,
+                    conversions_value_brl=st_row.conversions_value_brl,
                 )
             )
             total_cost += st_row.cost_brl
+            total_conversions += st_row.conversions
 
     # 4. Sort
     matched_kw.sort(key=lambda k: (k.matched_brand, k.ad_group_name))
@@ -167,11 +182,13 @@ def match_competitor_brands(
     pos_count: dict[str, int] = {}
     st_count: dict[str, int] = {}
     st_cost: dict[str, float] = {}
+    st_conv: dict[str, float] = {}
     for k in matched_kw:
         pos_count[k.matched_brand] = pos_count.get(k.matched_brand, 0) + 1
     for s in matched_st:
         st_count[s.matched_brand] = st_count.get(s.matched_brand, 0) + 1
         st_cost[s.matched_brand] = st_cost.get(s.matched_brand, 0.0) + s.cost_brl
+        st_conv[s.matched_brand] = st_conv.get(s.matched_brand, 0.0) + s.conversions
 
     # 6. Suggested negatives — apenas pra brands com hit (alphabetical)
     suggested: list[SuggestedNegative] = []
@@ -180,33 +197,55 @@ def match_competitor_brands(
         p = pos_count.get(brand, 0)
         st = st_count.get(brand, 0)
         cost = st_cost.get(brand, 0.0)
+        conv = st_conv.get(brand, 0.0)
+
+        # F133: a sugestao NAO e suprimida quando a brand converteu — ficar
+        # mudo aqui seria o defeito espelhado. Ela sai carregando o numero que
+        # a desaconselha. Gatilho `> 0`, nao CPA relativo: a "media da conta"
+        # mistura brand com non-brand e mente com n pequeno.
+        if conv > 0:
+            alerta = (
+                f" ATENCAO: {conv:.2f} conversao(oes) neste periodo, "
+                f"CPA R$ {cost / conv:.2f} — negativar remove esse volume. "
+                f"Cheque o catalogo/ERP antes de aplicar."
+            )
+        else:
+            alerta = ""
+
         suggested.append(
             SuggestedNegative(
                 text=brand,
                 match_type="EXACT",
                 reason=(
                     f"Brand competidora encontrada em {p} keyword(s) positive "
-                    f"+ {st} search term(s) (R$ {cost:.2f} cost)"
+                    f"+ {st} search term(s) (R$ {cost:.2f} cost).{alerta}"
                 ),
+                conversions=conv,
             )
         )
         suggested.append(
             SuggestedNegative(
                 text=brand,
                 match_type="PHRASE",
-                reason="Brand competidora — PHRASE bloqueia qualquer query contendo o termo",
+                reason=(
+                    f"Brand competidora — PHRASE bloqueia qualquer query contendo o termo.{alerta}"
+                ),
+                conversions=conv,
             )
         )
 
     # 7. Truncate + build totals
     pos_total = len(matched_kw)
     st_total = len(matched_st)
-    totals: dict[str, int | bool] = {
+    totals: dict[str, int | bool | float] = {
         "positive_count": pos_total,
         "positive_truncated": pos_total > limit,
         "search_count": st_total,
         "search_truncated": st_total > limit,
         "suggested_count": len(suggested),
+        # F133: o custo mantem o nome `wasted` (contrato em producao); o
+        # desmentido vai na linha de baixo.
+        "total_conversions": total_conversions,
     }
 
     return (

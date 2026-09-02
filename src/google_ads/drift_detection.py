@@ -3,7 +3,8 @@
 3 flags V0:
 - auto_apply_detected (severity low): any drift row com client_type=GOOGLE_ADS_RECOMMENDATIONS
 - multiple_users_detected (severity medium): >1 distinct non-auto-apply user em drift set
-- structural_change (severity high): any REMOVE em CAMPAIGN/AD_GROUP/CONVERSION_ACTION
+- structural_change (severity high): any REMOVE em CAMPAIGN/AD_GROUP
+  (F136: NAO cobre conversion action — ver `_STRUCTURAL_RESOURCE_TYPES`)
 
 Pure function, zero Google SDK imports — testable standalone.
 """
@@ -14,8 +15,23 @@ from typing import Any, Literal
 
 Severity = Literal["low", "medium", "high"]
 
-# Structural-change family: REMOVE em qualquer destes resource types é high-impact
-_STRUCTURAL_RESOURCE_TYPES = frozenset({"CAMPAIGN", "AD_GROUP", "CONVERSION_ACTION"})
+# Structural-change family: REMOVE em qualquer destes resource types é high-impact.
+#
+# F136: `CONVERSION_ACTION` estava aqui e era CODIGO MORTO — o valor nao existe em
+# `ChangeEventResourceType` (ausente do enum do SDK v24; a API rejeita em `WHERE`
+# com "Invalid enum value"). A flag nunca pode ter disparado por ele, enquanto a
+# `message_pt` prometia os tres ao gestor.
+#
+# Nao ha caminho barato de cobertura: `change_status`, o recurso irmao, tem 21
+# tipos e tambem NAO inclui `CONVERSION_ACTION` — nenhum dos dois recursos de
+# rastreamento de mudanca da API enxerga conversion action. Cobertura real
+# exigiria snapshot proprio + diff, que e feature separada.
+#
+# Por isso o fix NAO foi so apagar: apagar sozinho deixaria o codigo honesto e a
+# cobertura pior, calada. O limite passou a ser declarado na description da tool,
+# onde o gestor le. Guard da classe (todo membro tem de existir no enum do SDK):
+# tests/unit/test_drift_structural_scope.py
+_STRUCTURAL_RESOURCE_TYPES = frozenset({"CAMPAIGN", "AD_GROUP"})
 
 # Auto-apply detection: client_type sentinel (already used em get_change_history)
 _AUTO_APPLY_CLIENT_TYPE = "GOOGLE_ADS_RECOMMENDATIONS"
@@ -183,7 +199,7 @@ def detect_drift(
                 severity="high",
                 message_pt=(
                     f"{len(structural_rows)} REMOVE(s) em recursos estruturais "
-                    f"(CAMPAIGN/AD_GROUP/CONVERSION_ACTION). Investigação obrigatória."
+                    f"(CAMPAIGN/AD_GROUP). Investigação obrigatória."
                 ),
                 evidence={
                     "removed_resources": [

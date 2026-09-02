@@ -74,6 +74,13 @@ _DESCRIPTION = (
     "200, max 1000). Match: substring case-insensitive em keyword text + search "
     "term. Sempre auditado. Nota: cost data Google pode lagar entre queries — "
     "re-query se decisão crítica. "
+    "ATENÇÃO (F133): `total_cost_wasted_brl` é CUSTO, não veredito — cada "
+    "search term traz `conversions`/`conversions_value_brl` e cada "
+    "`suggested_negative` traz `conversions` agregado por brand. **Sugestão "
+    "com `conversions > 0` NÃO deve ser aplicada sem cross-check de "
+    "catálogo/ERP**: termo de concorrente pode ser o melhor CPA da conta "
+    "(caso real: R$ 155,25 / 9 conv = CPA R$ 17,25 contra ~R$ 20 da média). "
+    "A tool sinaliza, não decide. "
     "ATENÇÃO (F90/F52): cada positive_keyword traz `ad_group_status`. Keyword "
     "ENABLED dentro de ad_group PAUSED/REMOVED NÃO compete em leilão e não gasta "
     "— filtre `ad_group_status='ENABLED'` antes de agir ou de reportar gasto em "
@@ -163,6 +170,9 @@ async def audit_competitor_keywords(args: dict[str, Any]) -> dict[str, Any]:
             "search_terms_count": totals["search_count"],
             "search_terms_truncated": totals["search_truncated"],
             "total_cost_wasted_brl": total_cost,
+            # F133: `wasted` mantem o nome (contrato em producao) mas nao anda
+            # mais sozinho — quem le o veredito le a contra-evidencia junto.
+            "total_conversions": totals["total_conversions"],
             "suggested_negatives_count": totals["suggested_count"],
         },
         "positive_keywords": [
@@ -188,6 +198,8 @@ async def audit_competitor_keywords(args: dict[str, Any]) -> dict[str, Any]:
                 "impressions": s.impressions,
                 "clicks": s.clicks,
                 "cost_brl": s.cost_brl,
+                "conversions": s.conversions,
+                "conversions_value_brl": s.conversions_value_brl,
             }
             for s in matched_st
         ],
@@ -196,6 +208,7 @@ async def audit_competitor_keywords(args: dict[str, Any]) -> dict[str, Any]:
                 "text": n.text,
                 "match_type": n.match_type,
                 "reason": n.reason,
+                "conversions": n.conversions,
             }
             for n in suggested
         ],

@@ -141,3 +141,29 @@ def build_create_and_link_assets(
         operations.append(link_op_wrap)
 
     return operations
+
+
+@register_builder("remove_asset_link")
+def build_remove_asset_link(client: Any, customer_id: str, payload: dict[str, Any]) -> list[Any]:
+    """Uma MutateOperation de `remove` por vinculo, no operation do nivel certo.
+
+    Remove o VINCULO (`*_asset`), nunca a entidade `Asset` — asset orfao e inerte,
+    e remover a entidade e irreversivel numa coisa que pode estar linkada onde a
+    varredura nao alcancou (spec secao 2). Por isso nao ha branch para
+    `asset_operation` aqui, e ha teste exigindo a ausencia dele.
+    """
+    campo_por_nivel = {
+        "CUSTOMER": "customer_asset_operation",
+        "CAMPAIGN": "campaign_asset_operation",
+        "AD_GROUP": "ad_group_asset_operation",
+    }
+    ops: list[Any] = []
+    for link in payload["links"]:
+        alevel = link["level"]
+        if alevel not in campo_por_nivel:
+            raise ValueError(f"unexpected attachment_level: {alevel!r}")
+        op = client.get_type("MutateOperation")
+        alvo = getattr(op, campo_por_nivel[alevel])
+        alvo.remove = link["resource_name"]
+        ops.append(op)
+    return ops

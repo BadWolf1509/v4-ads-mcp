@@ -235,6 +235,15 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
             f"remove_audience ({target_count} criteria) — sempre confirma (spec §7.1 remove)",
         )
 
+    # Unlink de asset — remove, sempre confirma (spec §7.1). O vinculo sai; a
+    # entidade Asset NAO. Fallback de unknown ja daria CONFIRM, mas a razao
+    # ficaria ilegivel pro gestor e a intencao nao ficaria registrada.
+    if operation == "remove_asset_link":
+        return RiskClassification(
+            RiskLevel.CONFIRM,
+            f"remove_asset_link ({target_count} vínculo(s)) — sempre confirma (spec §7.1 remove)",
+        )
+
     # Recommendations — Google's own suggestions; auto-apply
     if operation in ("apply_recommendation", "dismiss_recommendation"):
         return RiskClassification(

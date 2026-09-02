@@ -162,6 +162,10 @@ _RESOURCE_PLURAL_TO_TYPE: dict[str, str] = {
     "assets": "asset",
     "campaignAssets": "campaign_asset",
     "adGroupAssets": "ad_group_asset",
+    # F134: faltava a camada de conta. Hoje os 3 call sites descartam o tipo
+    # devolvido, entao nao havia defeito vivo — mas a omissao arma o bug para
+    # o dia em que alguem consumir o retorno.
+    "customerAssets": "customer_asset",
 }
 
 

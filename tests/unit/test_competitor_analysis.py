@@ -39,6 +39,11 @@ def _make_st(
     impressions: int = 100,
     clicks: int = 5,
     cost_brl: float = 10.0,
+    # F133: default 0.0 aqui preserva a semantica dos testes existentes (todos
+    # foram escritos sobre gasto sem conversao). Quem testa o caso que converte
+    # passa explicito — ver tests/unit/test_competitor_conversions.py.
+    conversions: float = 0.0,
+    conversions_value_brl: float = 0.0,
 ) -> SearchTermRow:
     return SearchTermRow(
         search_term=search_term,
@@ -47,6 +52,8 @@ def _make_st(
         impressions=impressions,
         clicks=clicks,
         cost_brl=cost_brl,
+        conversions=conversions,
+        conversions_value_brl=conversions_value_brl,
     )
 
 
@@ -66,6 +73,7 @@ def test_empty_inputs_returns_empty_everything():
         "search_count": 0,
         "search_truncated": False,
         "suggested_count": 0,
+        "total_conversions": 0.0,
     }
     assert total_cost == 0.0
 
