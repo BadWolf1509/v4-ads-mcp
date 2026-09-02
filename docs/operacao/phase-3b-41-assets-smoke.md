@@ -12,7 +12,7 @@
 
 - **`get_assets`** (Task 3): Leitura dos ativos vinculados em três níveis (CUSTOMER, CAMPAIGN, AD_GROUP) com filtro opcional por tipo de asset (`field_type`) e visualização de status (ENABLED, REMOVED, etc.). Cobre o §5 da spec com enumeração de recursos órfãos.
   
-- **`remove_asset_link`** (Task 5): Mutação de desvinculação de asset com dry-run (confirmação_token), idempotência via `partial_failure`, e validação obrigatória contra o estado de produção via query GAQL.
+- **`remove_asset_link`** (Task 5): Mutação de desvinculação de asset com dry-run (`confirmation_token`), idempotência via `partial_failure`, e validação obrigatória contra o estado de produção via query GAQL.
 
 **Operator:** wellington.ribeiro@v4company.com  
 **Account principal:** `7862230676` Mestre da Obra JP+CAB (production V4 — Cliente real com assets vinculados em múltiplos níveis)
@@ -23,7 +23,7 @@
 > **Escopo V0 confirmado:**
 > - Tool count: 64 → 66 (duas novas tools: `get_assets` + `remove_asset_link`)
 > - Nenhum breaking change (leitura pura em Task 3; mutação new-only em Task 5)
-> - 2 ferramentas novas registradas no bucket defer (não impacta o always-22)
+> - 2 ferramentas novas registradas no bucket defer (não impacta o always-23 — verificado por grep de `bucket="always"` em `src/mcp/tools/`, consistente com `docs/operacao/estado-atual.md`: baseline de produção é 23 always + 41 defer, e neste branch 23 always + 43 defer)
 > - Zero migration no banco (ativos vinculados e status são campos Google nativos, não rastreados localmente)
 > - **Não executado** — bloqueadores em 1 e 2 acima
 
@@ -49,7 +49,7 @@ https://v4-ads-mcp-299432068772.southamerica-east1.run.app
 - [x] **Tasks 3 e 5 entregues (relatórios):**
   - Task 3 `get_assets` implementação + tests (`task-3-report.md` na SDD)
   - Task 5 `remove_asset_link` implementação + tests (`task-5-report.md` na SDD)
-- [x] **CI local passaria:** `python scripts/check_pre_push.py` PASS (verificado pré-commit) — 5/5 PASS
+- [x] **CI local passaria:** `python scripts/check_pre_push.py` PASS (verificado pré-commit) — 6/6 PASS (`scripts/_runner.py` `BASE_STEPS`: ruff check, ruff format, mypy, pytest unit, pytest integração não-DB, tailwind sync)
 - [x] **Nenhum segredo ou credencial será digitado** durante este documento — confirmado
 
 ---
@@ -66,9 +66,10 @@ Preencher conforme execução **futura** (após deploy). Deixado em branco delib
 | T4 | `remove_asset_link` com `links=[{level, resource_name}]` — retorna `confirmation_token` 8 chars + `status: dry_run` | ⬜ pending | | |
 | T4b | `apply_change(confirmation_token=<T4>)` — aplica a mutação, retorna `status: applied` + `applied_count >= 1` | ⬜ pending | | |
 | T5 | Query GAQL de confirmação **obrigatória** — SELECT campaign_asset.status por resource_name alvo retorna `status: REMOVED` no registro específico | ⬜ pending | | |
-| T6 | Reaplica `remove_asset_link` idêntico — retorna gracioso (novo token ou `applied_count: 0`), não erro | ⬜ pending | | |
+| T6 | Reaplica `remove_asset_link` idêntico (mesmo `links`) — mint de um novo `confirmation_token`, `status: dry_run`, sem erro | ⬜ pending | | |
+| T6b | `apply_change(confirmation_token=<T6>)` — idempotência: `status: applied` sem erro terminal (`applied_count` pode ser 0 ou 1); prova real é o re-query GAQL `status: REMOVED` | ⬜ pending | | |
 
-**Effective result:** 0/7 PASS (não executado)
+**Effective result:** 0/8 PASS (não executado)
 
 ### F-findings emerged
 
@@ -78,7 +79,7 @@ Se zero F-findings: documentar explicitamente "Zero F-findings novos. Sprint cle
 
 ### Sign-off checklist — TODO após execução
 
-- [ ] Pre-push gate 5/5 PASS (commit final merge branch)
+- [ ] Pre-push gate 6/6 PASS (commit final merge branch)
 - [ ] Spec compliance + code quality reviewers APPROVED (2 commits sequenciais Task 3 + Task 5)
 - [ ] Production `/health` 200 (pós-deploy)
 - [ ] T1 PASS — `get_assets` retorna `links[]` com CUSTOMER + CAMPAIGN + AD_GROUP, `summary` com agregações, ≥1 REMOVED  
@@ -87,9 +88,10 @@ Se zero F-findings: documentar explicitamente "Zero F-findings novos. Sprint cle
 - [ ] T4 PASS — `remove_asset_link` retorna `confirmation_token` 8-char válido, `status: dry_run`
 - [ ] T4b PASS — `apply_change(confirmation_token)` aplica, `status: applied`, `applied_count >= 1`
 - [ ] T5 PASS — query GAQL confirma `status: REMOVED` por resource_name específico (não por contagem)
-- [ ] T6 PASS — reaplica com graciosidade (novo token ou `applied_count: 0`), não erro
+- [ ] T6 PASS — reaplica `remove_asset_link`, mint de novo token, `status: dry_run`, sem erro
+- [ ] T6b PASS — `apply_change` do token de T6 retorna `status: applied` sem erro terminal; re-query GAQL confirma `status: REMOVED` mantido
 - [ ] Tool count confirmado 66 em produção (64 → +2)
-- [ ] Bucket distribution: 22 always + 44 defer verificado
+- [ ] Bucket distribution: 23 always + 43 defer verificado
 - [ ] Zero findings criados OU todos catalogados (F### series) com cross-reference
 
 ---
@@ -186,14 +188,14 @@ get_assets(
 - [ ] `summary.total_links == len(links)` (sanidade)
 - [ ] Cada link em `links[]` tem 12 campos: `level`, `resource_name`, `asset_id`, `asset_name`, `field_type`, `status`, `primary_status`, `primary_status_reasons`, `campaign_id`, `campaign_name`, `ad_group_id`, `ad_group_name`
 - [ ] Cada `asset_id` é string numérica
-- [ ] Cada `resource_name` é string não-vazia (GCP resource naming `customers/.../assets/...`)
+- [ ] Cada `resource_name` é string não-vazia, no formato de VÍNCULO (nunca o Asset genérico `customers/.../assets/...`): CUSTOMER é `customers/{cid}/customerAssets/{asset_id}~{FIELD_TYPE}`, CAMPAIGN é `customers/{cid}/campaignAssets/{campaign_id}~{asset_id}~{FIELD_TYPE}`, AD_GROUP é `customers/{cid}/adGroupAssets/{ad_group_id}~{asset_id}~{FIELD_TYPE}` (confirmado em `tests/unit/test_remove_asset_link.py`, linhas 60/70/81)
 - [ ] Cada `level` está no whitelist: `"CUSTOMER" | "CAMPAIGN" | "AD_GROUP"`
 - [ ] Cada `field_type` está no whitelist de tipo de ativo (CALLOUT, SITELINK, STRUCTURED_SNIPPET, CALL, PROMOTION, etc.)
-- [ ] Cada `status` é `"ENABLED" | "REMOVED" | "UNSPECIFIED" | "UNKNOWN"`
-- [ ] `primary_status` é `"ELIGIBLE" | "PAUSED" | "REMOVED" | "PENDING" | "LIMITED" | "NOT_ELIGIBLE"`
+- [ ] Cada `status` observado é `"ENABLED"` ou `"REMOVED"` — os dois valores que o resto do documento depende de existir (órfãos em `asset_inventory.py`, prova de remoção no T5); se aparecer outro valor do enum `AssetLinkStatus` do Google (ex.: `PAUSED`), documente como dado de campo novo, não como falha — nenhuma fonte lida para este runbook confirma a lista completa do enum
+- [ ] `primary_status` é `"ELIGIBLE" | "PAUSED" | "REMOVED" | "PENDING" | "LIMITED" | "NOT_ELIGIBLE"` (SDK v24, spec §5.1 linha 166)
 - [ ] `primary_status_reasons` é array (pode estar vazio)
 - [ ] **Níveis (regra de campos):** CUSTOMER tem `campaign_id, campaign_name, ad_group_id, ad_group_name` todos `null`; CAMPAIGN tem `campaign_id` e `campaign_name` populados, `ad_group_id, ad_group_name` `null`; AD_GROUP tem todos os quatro populados
-- [ ] Audit_log entry criada (operação `get_assets`, plataforma `google`, status `success`)
+- [ ] **Nenhuma** entry nova em `audit_log` para esta chamada — `get_assets` passa `audit_this_call=False` nas três consultas internas (`src/mcp/tools/get_assets.py`), e `run_report` só grava audit quando esse flag é `True` (`src/google_ads/reports.py`). É deliberado (leitura de volume; audit opt-in fica pra leitura sensível tipo `run_gaql`), não bug — não procure a chamada no audit_log.
 
 **Failure modes investigation:**
 
@@ -261,7 +263,7 @@ get_assets(
 - [ ] Links com IDs `144113768040`, `144113768046` e `144113768043` aparecem se existem (subset de T1)
 - [ ] Assets REMOVED e ENABLED ambos aparecem (filtro não filtra por status, só por field_type — spec §5 obrigatório)
 - [ ] `summary` tem a mesma estrutura que T1
-- [ ] Audit_log entry criada (mesma operação que T1 mas com parâmetro `field_type: "CALLOUT"` registrado)
+- [ ] **Nenhuma** entry nova em `audit_log` — mesmo motivo do T1 (`audit_this_call=False` nas três consultas de `get_assets`); `field_type` não fica rastreado em lugar nenhum, porque o `params_summary` que o carregaria nunca chega a ser gravado
 
 **Failure modes investigation:**
 
@@ -292,7 +294,7 @@ Linha 2: asset_id="144113768043", level="CAMPAIGN", status="ENABLED", primary_st
 - [ ] **Crítico T3:** Ambas têm `primary_status: "ELIGIBLE"` (não `null`, não `"PAUSED"`)
 - [ ] `resource_name` valores diferem por nível: o de conta é `customers/.../customerAssets/{asset_id}~{FIELD_TYPE}`, o de campanha é `customers/.../campaignAssets/{campaign_id}~{asset_id}~{FIELD_TYPE}` — confirmando vínculos distintos
 - [ ] Não existe linha "vencedora" (ambas aparecem, ambas têm o mesmo `primary_status`)
-- [ ] Documentar que a spec §2.1 diz explicitamente que não há precedência entre níveis — Google retorna o status próprio de cada vínculo, independente
+- [ ] Documentar que a spec **§5.1** ("Resultado 3 — o conceito não existe na API", linha 160) diz explicitamente que não há precedência entre níveis — `AssetLinkPrimaryStatusReason` não tem nenhum valor de precedência, e Google retorna o `primary_status` próprio de cada vínculo, independente (§2.1 é só as convenções de mutate que o repo herda — não fala de precedência)
 
 **Failure modes investigation:**
 
@@ -346,20 +348,21 @@ remove_asset_link(
   "confirmation_token": "ABC12XY9",
   "expires_in_minutes": 10,
   "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
-  "confirmation_reason": "remove_asset_link (1 vínculo(s)) — sempre confirma (spec §7.1 remove)"
+  "confirmation_reason": "remove_asset_link (1 vínculo(s)) — sempre confirma (spec §7.1 remove)",
+  "target_count": 1
 }
 ```
 
 **Validação (dry_run path):**
 
-- [ ] `status == "dry_run"` (CONFIRM path acionado; mutação é sempre CONFIRM per spec §6)
-- [ ] **Crítico T4:** `confirmation_token` key presente e é string não-vazia com exatamente 8 caracteres (padrão V4 `^[A-Z0-9]{8}$`)
-- [ ] `expires_in_minutes` presente e > 0 (10 minutos padrão esperado)
+- [ ] `status == "dry_run"` (CONFIRM path acionado; mutação é sempre CONFIRM per spec §6 — `remove_asset_link` não tem branch AUTO, ver `src/mcp/tools/remove_asset_link.py`)
+- [ ] **Crítico T4:** `confirmation_token` key presente e é string não-vazia com exatamente 8 caracteres (padrão V4 `^[A-Z0-9]{8}$`, gerado por `generate_token()` em `src/governance/dry_run.py`)
+- [ ] `expires_in_minutes` presente e > 0 (10 minutos, `DEFAULT_TTL_MINUTES` em `src/governance/dry_run.py`)
 - [ ] `blast_summary` descreve a desviculação esperada em português
 - [ ] `to_apply` texto instruindo `apply_change(confirmation_token=...)`
 - [ ] `operation` == `"remove_asset_link"`
-- [ ] Audit_log entry criada com operation `remove_asset_link`, status `dry_run`, customer_id e target_count rastreados
-- [ ] Nenhum banco de dados foi modificado (operação foi apenas dry-run)
+- [ ] `target_count == 1` (tamanho do array `links` desta chamada — chega ao envelope via `**extra` de `preview_envelope`, `src/mcp/tools/_mutate_common.py`)
+- [ ] Uma linha nova aparece em `pending_confirmations` (token, customer_id, operation_type, payload, blast_summary, expires_at) — **não** em `audit_log`: dry-run só grava a tabela de preview (`create_pending`, `src/governance/dry_run.py`); o audit da mutação real só existe depois de T4b
 
 **Failure modes investigation:**
 
@@ -367,7 +370,7 @@ remove_asset_link(
 - `confirmation_token` != 8 caracteres uppercase + digits → implementação gerou formato errado (deve ser `^[A-Z0-9]{8}$`)
 - `status` != `"dry_run"` → caminho de confirmação não foi acionado (sempre CONFIRM per spec §6, verificar `classify()`)
 - `blast_summary` não menciona `links` ou nível → descrição incompleta (deveria listar impacto)
-- Audit_log não foi gravado → auditoria falhou silenciosamente (F83 pattern possível se bookkeeping em finally)
+- Chamada lança exceção em vez de devolver preview → falha na escrita de `pending_confirmations` (`create_pending` não usa `best_effort`/`finally` como o `audit_log.record` de `run_report`/`run_mutation` — aqui um erro de escrita interrompe a chamada inteira, não falha em silêncio)
 
 **Result:** ⬜ pending
 
@@ -411,14 +414,14 @@ apply_change(
 - [ ] `applied_count >= 1` (pelo menos um vínculo foi removido)
 - [ ] `provider_request_id` presente (Google Ads API internal tracking)
 - [ ] `resource_names` pode estar vazio ou ter valores — tanto faz, o importante é o `applied_count`
-- [ ] Audit_log entry criada com operation `remove_asset_link`, status `applied`, provider_request_id rastreado
+- [ ] Audit_log entry criada com `operation: "remove_asset_link"`, `action_type: "mutate"`, `status: "success"` (vocabulário do `audit_log` é `success`/`error`/`denied` — não é o mesmo `status` do envelope da tool, que usa `applied`/`dry_run`/`error`; ver `status: str = "success"` em `src/db/repositories/audit_log.py` e a gravação em `run_mutation`, `src/google_ads/mutations.py`), `provider_request_id` rastreado
 - [ ] Nenhum erro de token inválido / expirado (se expirou, erro aparece aqui)
 
 **Failure modes investigation:**
 
 - `status: "error"` com "token invalid" → token fora do padrão `^[A-Z0-9]{8}$` ou não existe
 - `status: "error"` com "token expired" → mais de 10 minutos passaram entre T4 e T4b
-- `applied_count == 0` → token consumido mas Google rejeitou (possivelmente link já removido — normal, via partial_failure)
+- `applied_count == 0` → Google recusou a operação apesar da chamada não ter levantado erro (`partial_failure=True` engole falhas por-operação). Diferente de T6b, aqui o vínculo foi confirmado `ENABLED` em T1-T3 antes do teste — `applied_count == 0` não é esperado neste passo; investigue via re-query GAQL (T5) antes de seguir
 
 **Result:** ⬜ pending
 
@@ -428,7 +431,9 @@ apply_change(
 
 **Setup:** CRÍTICO — Confirmação obrigatória per spec §7. Não confirme por ausência em lista filtrada nem por `row_count`. O padrão correto é consultar o banco Google por ID asset específico e validar que `status == "REMOVED"` na linha alvo.
 
-**Referência histórica medida 2026-09-02 na conta `7862230676`:**
+**Referência histórica medida 2026-09-02 na conta `7862230676` (spec §7, linhas 195-203) — de uma limpeza DIFERENTE e MAIOR (6 vínculos), não de uma execução deste runbook:**
+
+Os números abaixo vieram do incidente de campo que motivou a spec, não de T4/T4b aqui — que desvincula **1** link só. Se você re-medir durante a execução real, espere um delta de 1 no `row_count` filtrado (ex.: `N` → `N-1`), não o 16→12 histórico. A tabela fica porque o ponto que ela prova — nenhuma forma de contar linha distingue sucesso de falha sem depender de um baseline exato — vale em qualquer escala, e um delta de 1 é **ainda mais fácil de confundir com ruído** do que o delta de 4 medido em 02/09.
 
 | Forma de validar | Falha (estado PRÉ-aplicação) | Sucesso (estado PÓS-aplicação) | Distingue? |
 |---|---|---|---|
@@ -436,7 +441,7 @@ apply_change(
 | `row_count` filtrado por `status = 'ENABLED'` | 16 linhas | 12 linhas | Sim, **OU com baseline conhecido** — sem baseline acerta por sorte |
 | `status` pelo `asset.id` alvo via query | `status: ENABLED` | `status: REMOVED` | **SEMPRE** — verdade de fato inequívoca |
 
-Conclusão: **Apenas a terceira forma é confiável.** Partial removal (remover 2 de 4 links devolve 14 ENABLED, lê-se como "mudou, logo funcionou", mas esquece os 2 que ainda estão lá).
+Conclusão: **Apenas a terceira forma é confiável, em qualquer escala de remoção.** Partial removal ilustra o mesmo problema por outro recorte (spec §7, linha 203): tirar 2 de 4 vínculos devolve 14 linhas com `status: ENABLED`, que se lê como "mudou, logo funcionou" — mas esquece os 2 que continuam lá. Neste runbook o equivalente é tirar 1 de N: olhando só a contagem, uma mudança de 1 linha é praticamente invisível.
 
 **Query GAQL via `run_gaql` (executar APÓS `apply_change`):**
 
@@ -475,9 +480,9 @@ campaign.name | campaign_asset.status | asset.id
 
 ---
 
-## Teste T6 — Reaplica `remove_asset_link` idêntico — gracioso via `partial_failure`
+## Teste T6 — Reaplica `remove_asset_link` idêntico — mint de novo token
 
-**Setup:** Validar idempotência. Chamar `remove_asset_link` novamente com os mesmos parâmetros de T4. Esperado: NOT erro, mas resposta gracioso via mecanismo `partial_failure` que a spec descreve — o link já foi removido, Google retorna parcialmente bem-sucedido. Não asserte contagens: `apply_change` não devolve `partial_failures` ao chamador, então nenhum campo da resposta as confirma. O que se verifica é a ausência de erro e, por re-query GAQL em `asset.id`, que o `status` do vínculo alvo continua `REMOVED`.
+**Setup:** Validar idempotência. Chamar `remove_asset_link` de novo com o **mesmo** `links` array de T4 (o vínculo já foi removido em T4b). `remove_asset_link` não olha o estado atual do vínculo antes de gerar o preview — não há pré-flight nenhum sobre status em `src/mcp/tools/remove_asset_link.py`, então esta chamada por si só é sempre um dry-run limpo, igual T4. A idempotência de verdade só é exercida em **T6b**, quando o token é consumido contra o Google Ads.
 
 **Tool call (mesmo `links` array de T4):**
 
@@ -493,24 +498,54 @@ remove_asset_link(
 )
 ```
 
-*(Substituir pelos mesmos valores de T4)*
+*(Substituir pelos mesmos valores de T4 — mesmo `level` e `resource_name`)*
 
-**Expected response shape (idempotência gracioso):**
-
-Não há contrato específico: `apply_change` não devolve breakdown de `partial_failures` ao caller. A validação é feita por re-query GAQL, não pela response.
+**Expected response shape:** idêntico ao de T4 (mesmo `blast_summary`, `confirmation_reason` e `target_count`, já que os `links` de entrada são os mesmos) — só `confirmation_token` e o `expires_in_minutes`/TTL mudam, porque é um preview novo.
 
 **Validação:**
 
-- [ ] Response não retorna um HTTP error (não deve ser 400, 409, 422, etc.)
-- [ ] `status` é `"applied"` (se roteia pra `apply_change`) ou `"dry_run"` (se retorna preview novamente)
-- [ ] **Crítico T6:** Nenhuma mensagem de erro terminal tipo `"invalid token"` ou `"authorization failed"` 
-- [ ] Confirmação pós-aplicação: re-query GAQL (T5 query repetida) deve devolver `status: REMOVED` para o target link — prova que a idempotência funcionou (vínculo continua removido, não voltou)
+- [ ] `status == "dry_run"` (mesmo caminho de T4 — não existe branch que detecte "já removido" antes do preview)
+- [ ] `confirmation_token` é um valor **novo**, diferente do token de T4 (aquele já foi consumido em T4b — `consume()` marca `consumed_at`; reusar o mesmo token dá `InvalidTokenError`, ver `src/governance/dry_run.py`)
+- [ ] `blast_summary`, `confirmation_reason` e `target_count` idênticos aos de T4 (mesma entrada `links`, mesma lógica determinística)
 
 **Failure modes investigation:**
 
-- Response retorna HTTP 400 ou 409 → idempotência não foi implementada (spec §6 diz que deve ser gracioso)
-- Audit_log não documenta `already_removed` → auditoria não rastreou a tentativa idempotente
-- Realmente re-aplicou a ação (Google API retornou 200 como se algo mudasse) → implementação não verificou PRÉ-estado
+- Chamada retorna erro em vez de um novo preview → regressão: `remove_asset_link` passou a inspecionar estado prévio, o que a spec §6 não pede e este teste não cobre
+- `confirmation_token` igual ao de T4 → colisão do gerador aleatório (`36^8` de espaço — extremamente improvável) ou bug de cache
+
+**Result:** ⬜ pending
+
+---
+
+## Teste T6b — `apply_change` do token de T6 — idempotência contra o Google Ads
+
+**Setup:** Consumir o token de T6. Esta é a chamada que de fato re-executa a remoção do MESMO vínculo já removido em T4b — é aqui, não em T6, que a idempotência é exercida de verdade. `remove_asset_link` grava `__partial_failure__: True` no payload (igual T4/T4b), então `run_mutation` chama `GoogleAdsService.mutate` com `request.partial_failure = True`: uma operação individual que falhar (ex.: o vínculo não existe mais) não derruba a chamada inteira nem levanta exceção — ela só aparece como um item `"failed"` dentro de `partial_failure_error`, que `apply_change` **não repassa ao chamador**: `run_mutation` devolve `partial_failures` no seu próprio dict de retorno, mas o dict que `apply_change` de fato retorna ao MCP caller só usa `provider_request_id`, `applied_count` e `resource_names` daquele resultado — `partial_failures` é descartado nessa borda (ver `src/mcp/tools/apply_change.py` linhas 129-137). Por isso não dá para prever aqui se `applied_count` vem `0` (Google recusou a operação individual) ou `1` (Google tratou como no-op silencioso) — os dois são aceitáveis. O que não é aceitável é `status: "error"` no envelope.
+
+**Tool call:**
+
+```
+apply_change(
+  confirmation_token="<token de T6>"
+)
+```
+
+*(Substituir `<token de T6>` pelo valor exato retornado em T6 — NÃO o token de T4, que já foi consumido)*
+
+**Expected response shape:** igual ao de T4b em formato (mesmas 7 chaves), com `applied_count` podendo ser `0` ou `1` — não é previsível de antemão.
+
+**Validação:**
+
+- [ ] Response não é `{"status": "error", ...}` (essa é a única forma de erro que este domínio expõe ao chamador — não há código HTTP tipo 400/409/422 nesta camada; um erro real vem como `error_message` em português via `to_friendly`)
+- [ ] **Crítico T6b:** `status == "applied"` (o `partial_failure=True` faz o Google devolver sucesso na chamada mesmo que a operação individual tenha sido recusada — ver Setup acima)
+- [ ] `applied_count` é `0` ou `1` — qualquer um dos dois é PASS; não trate um valor específico como esperado
+- [ ] **Crítico T6b (prova real):** re-query GAQL (repetir a query de T5) devolve `status: REMOVED` para o `asset.id` alvo — o vínculo continua removido, não voltou a `ENABLED`
+- [ ] Nenhuma entry em `audit_log` documenta `already_removed` — esse rótulo só existe em `remove_audience.py` (`_classify_partial`); `remove_asset_link.py` não implementa mapeamento por-linha equivalente, então não procure por ele
+
+**Failure modes investigation:**
+
+- `status: "error"` com token inválido/expirado → mais de 10 minutos entre T6 e T6b, ou ordem de execução errada
+- Re-query GAQL mostra `status: ENABLED` → a "idempotência" na verdade recriou o vínculo (bug grave: `remove_asset_link` deveria ser puramente destrutivo, nunca recriar)
+- `status: "error"` com mensagem PT-BR do Google → `to_friendly` traduziu uma falha real da API (não confundir com sucesso parcial, que não levanta exceção)
 
 **Result:** ⬜ pending
 
@@ -519,7 +554,7 @@ Não há contrato específico: `apply_change` não devolve breakdown de `partial
 ## Resultado final (após execução futura)
 
 ```
-SMOKE 3b.41 assets: 0/6 PASS (não executado — bloqueadores 1 e 2 impedem)
+SMOKE 3b.41 assets: 0/8 PASS (não executado — bloqueadores 1 e 2 impedem)
 Data de execução: <preencher após bloqueadores removidos e aprovação Wellington>
 F-findings novos: <preencher durante execução — esperado ZERO>
 ```
