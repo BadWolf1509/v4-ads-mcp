@@ -30,10 +30,10 @@ Três das cinco limitações trazidas do campo são ausência de tool, não defe
 
 ### 2.1 Convenções do repositório que estas tools herdam
 
-A revisão 3 achou que a spec descrevia comportamento e **omitia a maquinaria** — um plano derivado dela poderia violar quatro itens do `Don't do` sem perceber. Nenhuma destas é escolha desta spec; são invariantes do codebase, e o precedente vivo é [`remove_audience.py`](../../src/mcp/tools/remove_audience.py):
+A revisão 3 achou que a spec descrevia comportamento e **omitia a maquinaria** — um plano derivado dela poderia violar quatro itens do `Don't do` sem perceber. Nenhuma destas é escolha desta spec; são invariantes do codebase, e o precedente vivo é [`remove_audience.py`](../../../src/mcp/tools/remove_audience.py):
 
-- **Envelope de mutate não se monta à mão.** `preview_envelope` / `applied_envelope` / `error_envelope` de [`_mutate_common.py`](../../src/mcp/tools/_mutate_common.py); erro canônico é `error_message` + `operation`; TTL vem de `DEFAULT_TTL_MINUTES`, nunca literal.
-- **Blast radius é computado, não declarado.** `classify` de [`blast_radius.py`](../../src/governance/blast_radius.py). O "always-CONFIRM" da tabela da §2 é o resultado esperado, não um `if` escrito à mão — e o F112 mostra que caminho fixo sem teste amarrando diverge em silêncio.
+- **Envelope de mutate não se monta à mão.** `preview_envelope` / `applied_envelope` / `error_envelope` de [`_mutate_common.py`](../../../src/mcp/tools/_mutate_common.py); erro canônico é `error_message` + `operation`; TTL vem de `DEFAULT_TTL_MINUTES`, nunca literal.
+- **Blast radius é computado, não declarado.** `classify` de [`blast_radius.py`](../../../src/governance/blast_radius.py). O "always-CONFIRM" da tabela da §2 é o resultado esperado, não um `if` escrito à mão — e o F112 mostra que caminho fixo sem teste amarrando diverge em silêncio.
 - **SDK só dentro de `run_blocking`** (F109), inclusive em tool que constrói o próprio client. Ao offloadar, ler o `request-id` **dentro** do closure.
 - **Executor Google novo segue o padrão `reserved`** (F73): `before_call` global + `mgr:<uuid>` em transação externa, `record_actual` gated por `reserved`, **audit sempre**.
 - **`bucket`:** as quatro nascem `defer`. São tools de operação pontual, não do caminho quente do gestor; o `[CORE]`/`[DEFER]` da description acompanha.
