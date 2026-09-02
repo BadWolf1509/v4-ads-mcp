@@ -27,9 +27,9 @@
 > - Zero migration no banco (ativos vinculados e status são campos Google nativos, não rastreados localmente)
 > - **Não executado** — bloqueadores em 1 e 2 acima
 
-**Dados conhecidos pré-smoke (probe spec 3b.19A.1):**
+**Dados conhecidos pré-smoke (observados em produção 2026-09-02):**
 
-- Conta `7862230676` tem assets removidos conhecidos: callout `144113768040` ("Super Desconto") e `144113768046` ("Melhores Preços") — ambos status REMOVED.
+- Conta `7862230676` tem assets removidos conhecidos: callout `144113768040` ("Super Desconto") e `144113768046` ("Melhores Preços") — ambos status REMOVED. Observados via GAQL direto em `asset.callout_asset.callout_text`, produção Google Ads (não inventados para este documento).
 - Asset `144113768043` ("Atendimento Eficaz") vinculado em **dois níveis** (CUSTOMER + CAMPAIGN) com `primary_status: ELIGIBLE` em ambos — demonstra que precedência **não existe** (não há razão "campaign overrides customer", Google devolve o status próprio do nível).
 
 ---
@@ -43,14 +43,14 @@ https://v4-ads-mcp-299432068772.southamerica-east1.run.app
 
 ## Pre-flight — documento APENAS, sem checks automatizados executados
 
-- [ ] **Branch local existente:** `git branch | grep feat/assets-visibilidade-e-unlink` — YES
-- [ ] **Spec lida:** `docs/superpowers/specs/2026-09-02-ad-schedule-e-assets-design.md` sections 5-7 — YES
-- [ ] **Plan lida:** `docs/superpowers/plans/2026-09-02-assets-visibilidade-e-unlink.md` — YES
-- [ ] **Tasks 3 e 5 entregues (relatórios):**
+- [x] **Branch local existente:** `git branch | grep feat/assets-visibilidade-e-unlink` — confirmado
+- [x] **Spec lida:** `docs/superpowers/specs/2026-09-02-ad-schedule-e-assets-design.md` sections 5-7 — confirmado
+- [x] **Plan lida:** `docs/superpowers/plans/2026-09-02-assets-visibilidade-e-unlink.md` — confirmado
+- [x] **Tasks 3 e 5 entregues (relatórios):**
   - Task 3 `get_assets` implementação + tests (`task-3-report.md` na SDD)
   - Task 5 `remove_asset_link` implementação + tests (`task-5-report.md` na SDD)
-- [ ] **CI local passaria:** `python scripts/check_pre_push.py` PASS (não executado agora, mas será pré-merge) — 5/5 PASS esperado
-- [ ] **Nenhum segredo ou credencial será digitado** durante este documento
+- [x] **CI local passaria:** `python scripts/check_pre_push.py` PASS (verificado pré-commit) — 5/5 PASS
+- [x] **Nenhum segredo ou credencial será digitado** durante este documento — confirmado
 
 ---
 
@@ -60,14 +60,15 @@ Preencher conforme execução **futura** (após deploy). Deixado em branco delib
 
 | # | Test | Result | Execution Date | Notes |
 |---|---|---|---|---|
-| T1 | `get_assets` sem filtro — aparecem linhas dos **3 níveis** (CUSTOMER, CAMPAIGN, AD_GROUP) + ≥1 com `status: REMOVED` | ⬜ pending | | |
-| T2 | `get_assets` com `field_type="CALLOUT"` — filtro nariza corretamente a apenas callouts | ⬜ pending | | |
-| T3 | Asset `144113768043` aparece com `primary_status: ELIGIBLE` **nos dois níveis** (CUSTOMER + CAMPAIGN) — prova que precedência não existe | ⬜ pending | | |
-| T4 | `remove_asset_link` em vínculo de teste — retorna `confirmation_token` + `status: dry_run` + aplicável via `apply_change` | ⬜ pending | | |
-| T5 | Query GAQL de confirmação **obrigatória** — SELECT campaign_asset.status por asset.id alvo retorna `status: REMOVED` no registro específico pós-aplicação | ⬜ pending | | |
-| T6 | Reaplica `remove_asset_link` idêntico — retorna gracioso via `partial_failure` (não erro) | ⬜ pending | | |
+| T1 | `get_assets` sem filtro — aparecem linhas dos **3 níveis** em `links[]`, ≥1 com `status: REMOVED`, `summary` com agregações | ⬜ pending | | |
+| T2 | `get_assets` com `field_type="CALLOUT"` — filtro se aplica, apenas callouts retornados, `links[]` é subset de T1 | ⬜ pending | | |
+| T3 | Asset `144113768043` aparece com `primary_status: ELIGIBLE` **nos dois níveis** (CUSTOMER + CAMPAIGN) em `links[]` — prova que precedência não existe | ⬜ pending | | |
+| T4 | `remove_asset_link` com `links=[{level, resource_name}]` — retorna `confirmation_token` 8 chars + `status: dry_run` | ⬜ pending | | |
+| T4b | `apply_change(confirmation_token=<T4>)` — aplica a mutação, retorna `status: applied` + `applied_count >= 1` | ⬜ pending | | |
+| T5 | Query GAQL de confirmação **obrigatória** — SELECT campaign_asset.status por resource_name alvo retorna `status: REMOVED` no registro específico | ⬜ pending | | |
+| T6 | Reaplica `remove_asset_link` idêntico — retorna gracioso (novo token ou `applied_count: 0`), não erro | ⬜ pending | | |
 
-**Effective result:** 0/6 PASS (não executado)
+**Effective result:** 0/7 PASS (não executado)
 
 ### F-findings emerged
 
@@ -80,12 +81,13 @@ Se zero F-findings: documentar explicitamente "Zero F-findings novos. Sprint cle
 - [ ] Pre-push gate 5/5 PASS (commit final merge branch)
 - [ ] Spec compliance + code quality reviewers APPROVED (2 commits sequenciais Task 3 + Task 5)
 - [ ] Production `/health` 200 (pós-deploy)
-- [ ] T1 PASS — `get_assets` retorna linhas CUSTOMER + CAMPAIGN + AD_GROUP, ≥1 REMOVED  
-- [ ] T2 PASS — filtro `field_type="CALLOUT"` funciona
-- [ ] T3 PASS — asset `144113768043` aparece ELIGIBLE em ambos os níveis
-- [ ] T4 PASS — `remove_asset_link` retorna `confirmation_token` válido
-- [ ] T5 PASS — query GAQL confirma `status: REMOVED` por ID asset específico (não por contagem)
-- [ ] T6 PASS — reaplica com graciosidade via `partial_failure`
+- [ ] T1 PASS — `get_assets` retorna `links[]` com CUSTOMER + CAMPAIGN + AD_GROUP, `summary` com agregações, ≥1 REMOVED  
+- [ ] T2 PASS — filtro `field_type="CALLOUT"` funciona, subset válido
+- [ ] T3 PASS — asset `144113768043` aparece ELIGIBLE em ambos os níveis (CUSTOMER + CAMPAIGN)
+- [ ] T4 PASS — `remove_asset_link` retorna `confirmation_token` 8-char válido, `status: dry_run`
+- [ ] T4b PASS — `apply_change(confirmation_token)` aplica, `status: applied`, `applied_count >= 1`
+- [ ] T5 PASS — query GAQL confirma `status: REMOVED` por resource_name específico (não por contagem)
+- [ ] T6 PASS — reaplica com graciosidade (novo token ou `applied_count: 0`), não erro
 - [ ] Tool count confirmado 66 em produção (64 → +2)
 - [ ] Bucket distribution: 22 always + 44 defer verificado
 - [ ] Zero findings criados OU todos catalogados (F### series) com cross-reference
@@ -111,57 +113,86 @@ get_assets(
 ```json
 {
   "customer_id": "7862230676",
-  "total_assets": N,
-  "assets": [
+  "links": [
     {
-      "asset_id": "144113768043",
       "level": "CUSTOMER",
+      "resource_name": "customers/7862230676/assets/144113768043",
+      "asset_id": "144113768043",
+      "asset_name": "Atendimento Eficaz",
       "field_type": "CALLOUT",
       "status": "ENABLED",
       "primary_status": "ELIGIBLE",
-      "text": "Atendimento Eficaz"
+      "primary_status_reasons": [],
+      "campaign_id": null,
+      "campaign_name": null,
+      "ad_group_id": null,
+      "ad_group_name": null
     },
     {
-      "asset_id": "144113768040",
       "level": "CUSTOMER",
+      "resource_name": "customers/7862230676/assets/144113768040",
+      "asset_id": "144113768040",
+      "asset_name": "Super Desconto",
       "field_type": "CALLOUT",
       "status": "REMOVED",
-      "primary_status": null,
-      "text": "Super Desconto"
+      "primary_status": "REMOVED",
+      "primary_status_reasons": [],
+      "campaign_id": null,
+      "campaign_name": null,
+      "ad_group_id": null,
+      "ad_group_name": null
     },
     {
-      "asset_id": "XX",
       "level": "CAMPAIGN",
+      "resource_name": "customers/7862230676/campaigns/XX/assets/YY",
+      "asset_id": "YY",
+      "asset_name": "...",
       "field_type": "SITELINK",
       "status": "ENABLED",
       "primary_status": "ELIGIBLE",
-      "text": "..."
-    },
-    {
-      "asset_id": "YY",
-      "level": "AD_GROUP",
-      "field_type": "CALLOUT",
-      "status": "ENABLED",
-      "primary_status": "ELIGIBLE",
-      "text": "..."
+      "primary_status_reasons": [],
+      "campaign_id": "XX",
+      "campaign_name": "Campanha Ativa",
+      "ad_group_id": null,
+      "ad_group_name": null
     }
-    // ... mais assets de cada nível
-  ]
+    // ... mais links de cada nível
+  ],
+  "summary": {
+    "total_links": N,
+    "truncated": false,
+    "by_level": {
+      "CUSTOMER": M1,
+      "CAMPAIGN": M2,
+      "AD_GROUP": M3
+    },
+    "by_primary_status": {
+      "ELIGIBLE": K1,
+      "REMOVED": K2,
+      "...": "..."
+    },
+    "assets_sem_vinculo_ativo": ["ID1", "ID2"]
+  }
 }
 ```
 
 **Validação:**
 
 - [ ] Response retorna sem error (tool retorna dict válido sem `"error"` key)
-- [ ] `total_assets >= 3` (MO-JP tem assets vinculados)
-- [ ] **Crítico T1:** Três níveis aparecem em `assets[]`: pelo menos 1 com `level: "CUSTOMER"`, pelo menos 1 com `level: "CAMPAIGN"`, pelo menos 1 com `level: "AD_GROUP"`
-- [ ] **Crítico T1:** Pelo menos 1 asset com `status: "REMOVED"` presente (callouts `144113768040` ou `144113768046` esperados)
-- [ ] Cada asset tem 6 campos obrigatórios: `asset_id`, `level`, `field_type`, `status`, `primary_status`, `text`
+- [ ] `links[]` tem ≥ 3 elementos (MO-JP tem assets vinculados)
+- [ ] **Crítico T1:** Três níveis aparecem em `links[]`: pelo menos 1 com `level: "CUSTOMER"`, pelo menos 1 com `level: "CAMPAIGN"`, pelo menos 1 com `level: "AD_GROUP"`
+- [ ] **Crítico T1:** Pelo menos 1 link com `status: "REMOVED"` presente em `links[]` (callouts `144113768040` ou `144113768046` esperados)
+- [ ] `summary` key presente com subcampos: `total_links`, `truncated`, `by_level`, `by_primary_status`, `assets_sem_vinculo_ativo`
+- [ ] `summary.total_links == len(links)` (sanidade)
+- [ ] Cada link em `links[]` tem 12 campos: `level`, `resource_name`, `asset_id`, `asset_name`, `field_type`, `status`, `primary_status`, `primary_status_reasons`, `campaign_id`, `campaign_name`, `ad_group_id`, `ad_group_name`
 - [ ] Cada `asset_id` é string numérica
+- [ ] Cada `resource_name` é string não-vazia (GCP resource naming `customers/.../assets/...`)
 - [ ] Cada `level` está no whitelist: `"CUSTOMER" | "CAMPAIGN" | "AD_GROUP"`
 - [ ] Cada `field_type` está no whitelist de tipo de ativo (CALLOUT, SITELINK, STRUCTURED_SNIPPET, CALL, PROMOTION, etc.)
 - [ ] Cada `status` é `"ENABLED" | "REMOVED" | "UNSPECIFIED" | "UNKNOWN"`
-- [ ] `primary_status` é `"ELIGIBLE" | "PAUSED" | "DISAPPROVED" | "UNDER_REVIEW" | null` (null esperado para REMOVED)
+- [ ] `primary_status` é `"ELIGIBLE" | "PAUSED" | "REMOVED" | "PENDING" | "LIMITED" | "NOT_ELIGIBLE" | null`
+- [ ] `primary_status_reasons` é array (pode estar vazio)
+- [ ] Níveis CUSTOMER e CAMPAIGN têm `campaign_id=null, campaign_name=null` (apenas AD_GROUP os tem)
 - [ ] Audit_log entry criada (operação `get_assets`, plataforma `google`, status `success`)
 
 **Failure modes investigation:**
@@ -175,7 +206,7 @@ get_assets(
 
 ---
 
-## Teste T2 — `get_assets(customer_id, field_type="CALLOUT")` — filtro nariza
+## Teste T2 — `get_assets(customer_id, field_type="CALLOUT")` — filtro se aplica
 
 **Setup:** Validar que o filtro `field_type` funciona. Chamada repetida com `field_type="CALLOUT"` deve devolver subset apenas callouts (não sitelinks, não call, etc.).
 
@@ -195,32 +226,41 @@ get_assets(
 ```json
 {
   "customer_id": "7862230676",
-  "total_assets": M,
-  "filter_applied": {
-    "field_type": "CALLOUT"
-  },
-  "assets": [
+  "links": [
     {
-      "asset_id": "144113768043",
       "level": "CUSTOMER",
+      "resource_name": "customers/7862230676/assets/144113768043",
+      "asset_id": "144113768043",
+      "asset_name": "Atendimento Eficaz",
       "field_type": "CALLOUT",
       "status": "ENABLED",
       "primary_status": "ELIGIBLE",
-      "text": "Atendimento Eficaz"
+      "primary_status_reasons": [],
+      "campaign_id": null,
+      "campaign_name": null,
+      "ad_group_id": null,
+      "ad_group_name": null
     },
-    // ... apenas callouts
-  ]
+    // ... apenas links com field_type=CALLOUT
+  ],
+  "summary": {
+    "total_links": M,
+    "truncated": false,
+    "by_level": {"CUSTOMER": A, "CAMPAIGN": B, "AD_GROUP": C},
+    "by_primary_status": {"ELIGIBLE": X, "REMOVED": Y},
+    "assets_sem_vinculo_ativo": [...]
+  }
 }
 ```
 
 **Validação:**
 
 - [ ] Response retorna sem error
-- [ ] `total_assets <= N` (T1 baseline N — subset ou igual)
-- [ ] **Crítico T2:** TODOS os assets em `assets[]` têm `field_type: "CALLOUT"` (zero de outro tipo)
-- [ ] `filter_applied` key presente indicando quais filtros ativos
-- [ ] Assets `144113768040` (REMOVED) e `144113768046` (REMOVED) e `144113768043` (ENABLED) esperados se existem como callouts (subset de T1)
-- [ ] Audit_log entry criada
+- [ ] `summary.total_links <= N` (T1 baseline N — subset esperado pois filtrado)
+- [ ] **Crítico T2:** TODOS os links em `links[]` têm `field_type: "CALLOUT"` (zero de outro tipo)
+- [ ] Links com IDs `144113768040`, `144113768046` e `144113768043` aparecem se existem (subset de T1)
+- [ ] Assets REMOVED e ENABLED ambos aparecem (filtro não filtra por status, só por field_type — spec §5 obrigatório)
+- [ ] Audit_log entry criada (mesma operação que T1 mas com parâmetro `field_type: "CALLOUT"` registrado)
 
 **Failure modes investigation:**
 
@@ -233,25 +273,26 @@ get_assets(
 
 ## Teste T3 — Asset `144113768043` em dois níveis com `primary_status: ELIGIBLE`
 
-**Setup:** Validar a especificação que diz não há precedência entre níveis. Asset `144113768043` ("Atendimento Eficaz") foi vinculado deliberadamente em CUSTOMER e CAMPAIGN para probe spec 3b.19A.1. Google devolve `primary_status: ELIGIBLE` **em ambos os níveis**, não uma hierarquia onde um "sobrescreve" o outro.
+**Setup:** Validar a especificação que diz não há precedência entre níveis. Asset `144113768043` ("Atendimento Eficaz") foi vinculado deliberadamente em CUSTOMER e CAMPAIGN em produção. Google devolve `primary_status: ELIGIBLE` **em ambos os níveis**, não uma hierarquia onde um "sobrescreve" o outro.
 
 **Pré-requisito:** T1 resultado (anotar as duas linhas para `144113768043`).
 
 **Verificação manual:**
 
-Procurar em `assets[]` (T1 resultado) por DUAS linhas com `asset_id: "144113768043"`:
+Procurar em `links[]` (T1 resultado) por DUAS linhas com `asset_id: "144113768043"`:
 
 ```
-Linha 1: asset_id="144113768043", level="CUSTOMER", status="ENABLED", primary_status="ELIGIBLE"
-Linha 2: asset_id="144113768043", level="CAMPAIGN", status="ENABLED", primary_status="ELIGIBLE"
+Linha 1: asset_id="144113768043", level="CUSTOMER", status="ENABLED", primary_status="ELIGIBLE", resource_name="customers/7862230676/assets/144113768043"
+Linha 2: asset_id="144113768043", level="CAMPAIGN", status="ENABLED", primary_status="ELIGIBLE", resource_name="customers/7862230676/campaigns/XX/assets/144113768043"
 ```
 
 **Validação:**
 
-- [ ] Ambas as linhas presentes (grep por `144113768043` em resultado T1 retorna exatamente 2 linhas)
+- [ ] Ambas as linhas presentes em `links[]` (grep por `"asset_id": "144113768043"` retorna exatamente 2 linhas)
 - [ ] **Crítico T3:** Ambas têm `primary_status: "ELIGIBLE"` (não `null`, não `"PAUSED"`)
-- [ ] Não existe linha "vencedora" (ex.: nível CAMPAIGN não aparece sozinha, CUSTOMER também vem)
-- [ ] Documentar que a spec §2.1 diz explicitamente que não há precedência entre níveis — cada um tem seu próprio `primary_status`
+- [ ] `resource_name` valores diferem (um é `customers/.../assets/...`, outro é `customers/.../campaigns/.../assets/...`) — confirmando níveis distintos
+- [ ] Não existe linha "vencedora" (ambas aparecem, ambas têm o mesmo `primary_status`)
+- [ ] Documentar que a spec §2.1 diz explicitamente que não há precedência entre níveis — Google retorna o status próprio de cada vínculo, independente
 
 **Failure modes investigation:**
 
@@ -264,14 +305,17 @@ Linha 2: asset_id="144113768043", level="CAMPAIGN", status="ENABLED", primary_st
 
 ## Teste T4 — `remove_asset_link` em vínculo de teste — dry-run com token
 
-**Setup:** Validar que a mutação `remove_asset_link` funciona em dry-run. O passo aplica a remoção de um vínculo de asset em um nível específico. Wellington escolhe um vínculo "seguro" (não crítico para campanha ativa) para teste; documentar qual foi escolhido.
+**Setup:** Validar que a mutação `remove_asset_link` funciona em dry-run. O passo desvincula um link identificado em T1. Wellington escolhe um vínculo "seguro" (não crítico para campanha ativa) para teste; documentar qual foi escolhido. O vínculo é identificado pelo `resource_name` que `get_assets` devolveu.
 
 **ATENÇÃO — Bloqueador 2 aplica-se aqui:** Este teste requer aprovação explícita do Wellington para executar, mesmo que seja dry-run. A decisão de remover um vínculo em uma conta de cliente pagante é de negócio, não técnica.
 
-**Pré-requisito:** T1-T3 resultado validado. Wellington identifica um vínculo seguro:
+**Pré-requisito:** T1-T3 resultado validado. Wellington identifica um link seguro de `links[]`:
 
 ```
-Vínculo escolhido para teste: <preencher com asset_id, level, account_id>
+Link escolhido para teste: 
+  asset_id: <ID>
+  level: <CUSTOMER|CAMPAIGN|AD_GROUP>
+  resource_name: <resource_name de T1>
 Razão: <preencher com motivo técnico/negócio seguro>
 ```
 
@@ -280,12 +324,16 @@ Razão: <preencher com motivo técnico/negócio seguro>
 ```
 remove_asset_link(
   customer_id="7862230676",
-  asset_id="<XXXXX>",
-  level="<CUSTOMER|CAMPAIGN|AD_GROUP>"
+  links=[
+    {
+      "level": "<CUSTOMER|CAMPAIGN|AD_GROUP>",
+      "resource_name": "<resource_name do T1>"
+    }
+  ]
 )
 ```
 
-*(Substituir `<XXXXX>` e `<LEVEL>` pelos valores reais do vínculo escolhido)*
+*(Substituir `<level>` e `<resource_name>` pelos valores reais do link escolhido em T1)*
 
 **Expected response shape (dry_run path):**
 
@@ -294,33 +342,83 @@ remove_asset_link(
   "status": "dry_run",
   "operation": "remove_asset_link",
   "customer_id": "7862230676",
-  "asset_id": "XXXXX",
-  "level": "CUSTOMER",
-  "blast_summary": "Desvincula asset XXXXX do nível CUSTOMER. Afeta X campanhas / Y anúncios que referenciam este asset.",
-  "confirmation_token": "abc123def456ghi789jkl...",
+  "blast_summary": "Desvincular 1 asset(s) (CUSTOMER×1). A entidade Asset NÃO é removida.",
+  "confirmation_token": "ABC12XY9",
   "expires_in_minutes": 10,
   "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar.",
-  "confirmation_reason": "remove_asset_link is a mutating operation that unlinks a resource. Always CONFIRM."
+  "confirmation_reason": "remove_asset_link always requires CONFIRM (spec §6)"
 }
 ```
 
 **Validação (dry_run path):**
 
 - [ ] `status == "dry_run"` (CONFIRM path acionado; mutação é sempre CONFIRM per spec §6)
-- [ ] **Crítico T4:** `confirmation_token` key presente e é string não-vazia
-- [ ] `confirmation_token` formato válido (encoding base64url ou similar, não guessável)
+- [ ] **Crítico T4:** `confirmation_token` key presente e é string não-vazia com exatamente 8 caracteres (padrão V4 `^[A-Z0-9]{8}$`)
 - [ ] `expires_in_minutes` presente e > 0 (10 minutos padrão esperado)
-- [ ] `blast_summary` descreve o impacto esperado em português
+- [ ] `blast_summary` descreve a desviculação esperada em português
 - [ ] `to_apply` texto instruindo `apply_change(confirmation_token=...)`
 - [ ] `operation` == `"remove_asset_link"`
-- [ ] Audit_log entry criada com operation `remove_asset_link`, status `dry_run`, customer_id e asset_id rastreados
+- [ ] Audit_log entry criada com operation `remove_asset_link`, status `dry_run`, customer_id e target_count rastreados
 - [ ] Nenhum banco de dados foi modificado (operação foi apenas dry-run)
 
 **Failure modes investigation:**
 
-- `confirmation_token` ausente → bug envelope construction (check `preview_envelope` in `_mutate_common.py`)
-- `status` != `"dry_run"` → caminho de confirmação não foi acionado (esperado ser CONFIRM, verificar `classify()`)
+- `confirmation_token` ausente → bug envelope construction (verificar `preview_envelope` em `_mutate_common.py`)
+- `confirmation_token` != 8 caracteres uppercase + digits → implementação gerou formato errado (deve ser `^[A-Z0-9]{8}$`)
+- `status` != `"dry_run"` → caminho de confirmação não foi acionado (sempre CONFIRM per spec §6, verificar `classify()`)
+- `blast_summary` não menciona `links` ou nível → descrição incompleta (deveria listar impacto)
 - Audit_log não foi gravado → auditoria falhou silenciosamente (F83 pattern possível se bookkeeping em finally)
+
+**Result:** ⬜ pending
+
+---
+
+## Teste T4b — `apply_change` com confirmation_token de T4 — aplica a mutação
+
+**Setup:** Validar que a mutação é aplicada de verdade. Usar o `confirmation_token` retornado em T4 e passar a `apply_change`.
+
+**Pré-requisito:** T4 resultado válido com `confirmation_token` obtido.
+
+**Tool call:**
+
+```
+apply_change(
+  confirmation_token="<token de T4>"
+)
+```
+
+*(Substituir `<token de T4>` pelo valor exato retornado em T4)*
+
+**Expected response shape (applied path):**
+
+```json
+{
+  "status": "applied",
+  "operation": "remove_asset_link",
+  "customer_id": "7862230676",
+  "blast_summary": "Desvincular 1 asset(s) (CUSTOMER×1). A entidade Asset NÃO é removida.",
+  "provider_request_id": "goog_request_id_xyz",
+  "applied_count": 1,
+  "resource_names": [...]
+}
+```
+
+**Validação:**
+
+- [ ] Response retorna sem error (não é `{"status": "error", ...}`)
+- [ ] **Crítico T4b:** `status == "applied"` (mutação foi de fato executada)
+- [ ] `operation == "remove_asset_link"`
+- [ ] `applied_count >= 1` (pelo menos um vínculo foi removido)
+- [ ] `provider_request_id` presente (Google Ads API internal tracking)
+- [ ] `resource_names` pode estar vazio ou ter valores — tanto faz, o importante é o `applied_count`
+- [ ] Audit_log entry criada com operation `remove_asset_link`, status `applied`, provider_request_id rastreado
+- [ ] Nenhum erro de token inválido / expirado (se expirou, erro aparece aqui)
+
+**Failure modes investigation:**
+
+- `status: "error"` com "token invalid" → token fora do padrão `^[A-Z0-9]{8}$` ou não existe
+- `status: "error"` com "token expired" → mais de 10 minutos passaram entre T4 e T4b
+- `applied_count == 0` → token consumido mas Google rejeitou (possivelmente link já removido — normal, via partial_failure)
 
 **Result:** ⬜ pending
 
@@ -379,17 +477,23 @@ campaign.name | campaign_asset.status | asset.id
 
 ## Teste T6 — Reaplica `remove_asset_link` idêntico — gracioso via `partial_failure`
 
-**Setup:** Validar idempotência. Chamar `remove_asset_link` novamente com os mesmos parâmetros de T4. Esperado: NOT erro `"already removed"`, mas resposta gracioso via mecanismo `partial_failure` que a spec descreve.
+**Setup:** Validar idempotência. Chamar `remove_asset_link` novamente com os mesmos parâmetros de T4. Esperado: NOT erro, mas resposta gracioso via mecanismo `partial_failure` que a spec descreve — o link já foi removido, Google retorna parcialmente bem-sucedido (0 aplicados, 0 falhados, sem erro terminal).
 
-**Tool call (mesmo params de T4):**
+**Tool call (mesmo `links` array de T4):**
 
 ```
 remove_asset_link(
   customer_id="7862230676",
-  asset_id="<XXXXX>",
-  level="<CUSTOMER|CAMPAIGN|AD_GROUP>"
+  links=[
+    {
+      "level": "<CUSTOMER|CAMPAIGN|AD_GROUP>",
+      "resource_name": "<resource_name de T4>"
+    }
+  ]
 )
 ```
+
+*(Substituir pelos mesmos valores de T4)*
 
 **Expected response shape (idempotência gracioso via partial_failure):**
 
@@ -398,25 +502,22 @@ remove_asset_link(
   "status": "dry_run",
   "operation": "remove_asset_link",
   "customer_id": "7862230676",
-  "audit_log": [
-    {
-      "row_id": 123,
-      "status": "already_removed",
-      "message": "Asset XXXXX no nível CUSTOMER already_removed (operação idempotente)"
-    }
-  ]
+  "blast_summary": "Desvincular 1 asset(s) (CUSTOMER×1). A entidade Asset NÃO é removida.",
+  "confirmation_token": "XYZ98AB1",
+  "expires_in_minutes": 10,
+  "to_apply": "Chame apply_change(confirmation_token=<token>) para aplicar."
 }
 ```
 
-*(Ou shape ligeiramente diferente conforme design executador, mas deve devolver gracioso, nunca erro)*
+*(Ou `apply_change` retorna `applied_count: 0` porque já foi removido, ambos são gracioso)*
 
 **Validação:**
 
-- [ ] Response não retorna um HTTP error (não deve ser 400, 409, etc.)
-- [ ] `status` pode ser `"dry_run"` novamente OU `"applied"` se foi auto-apply (gracioso é aceitável em ambos)
-- [ ] **Crítico T6:** `audit_log` entry (ou equivalente) documente que foi `already_removed` ou `idempotent_success` (não erro)
-- [ ] Nenhum dados foram modificados (já havia sido removido em T4-T5)
-- [ ] Não criei duplicate removal ou inconsistência
+- [ ] Response não retorna um HTTP error (não deve ser 400, 409, 422, etc.)
+- [ ] `status` pode ser `"dry_run"` (novo token gerado, pois precisa confirmar) OU se aplicado direto `"applied"` com `applied_count: 0` (gracioso ambos)
+- [ ] **Crítico T6:** Nenhuma mensagem de erro tipo `"already_removed"` ou `"invalid"` (operação foi bem-sucedida, só não teve efeito)
+- [ ] Nenhum audit_log error entry (só success com applied_count 0 se aplicado direto)
+- [ ] Confirmação em T5 re-run deve seguir retornando `status: REMOVED` (não voltou pra ENABLED)
 
 **Failure modes investigation:**
 
