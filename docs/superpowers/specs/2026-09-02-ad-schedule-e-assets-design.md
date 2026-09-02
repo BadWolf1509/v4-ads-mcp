@@ -111,6 +111,7 @@ get_assets(customer_id, field_type?, campaign_ids?, limit=200)
 - **`status` por linha, e sem filtrar status no default** — pelo motivo da §7. Junto vão `primary_status` e `primary_status_reasons`, que são o veredito do Google sobre servir (§5.1).
 - **As três camadas juntas**: `customer_asset` + `campaign_asset` + `ad_group_asset`, cada linha marcando seu `level`.
 - **Órfãos marcados**: asset sem nenhum vínculo. Dá inventário sem precisar de tool destrutiva.
+- 🔴 **Se algum dia entrarem métricas nesta tool, rotule-as como do ASSET, nunca do vínculo.** `customer_asset` e `campaign_asset` aceitam `metrics.*`, mas o número é atribuído ao asset e as linhas de vínculo repetem o mesmo total por outro corte (§5.1, provado em 3 de 3). Um campo chamado `impressions` numa linha de vínculo seria lido como "este vínculo serviu N vezes", que é falso.
 
 ### 5.1 ✅ Probe rodada (2026-09-02) — o campo `effective` sai do desenho
 
