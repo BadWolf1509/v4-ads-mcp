@@ -386,7 +386,9 @@ async def get_change_history(args: dict[str, Any]) -> dict[str, Any]:
             manager_id=ctx.manager_id,
             session_id=ctx.session_id,
             customer_id=customer_id,
-            query=change_event_frontier_query(start=start, end=end),
+            # A sonda deriva a propria janela (retencao inteira). Passar `start`/`end`
+            # aqui era o bug: a fronteira da CONTA virava fronteira do PEDIDO.
+            query=change_event_frontier_query(today=datetime.now(UTC).date()),
             row_formatter=lambda r: {"change_date_time": str(r.change_event.change_date_time)},
             operation_name="get_change_history_frontier",
             # Query de apoio, como o _resolve_names: nao polui a trilha do gestor.

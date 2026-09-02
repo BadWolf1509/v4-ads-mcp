@@ -31,6 +31,12 @@ class RangeTooWideError(ValueError):
 _MAX_DAYS = 30
 
 
+# Espelha _RETENTION_SAFETY_DAYS do get_change_history: a retencao do
+# change_event e ~30 dias e o Google recusa start alem disso, entao a sonda
+# varre 28 pra ter margem contra drift de UTC.
+_RETENTION_SAFETY_DAYS_SONDA = 28
+
+
 def _format_change_date_between(start: date, end: date) -> str:
     """Format change_event.change_date_time BETWEEN clause with F46-fix end+1 day.
 
@@ -60,7 +66,7 @@ def _format_in_clause(values: list[str]) -> str:
     return gaql_in_list(values)
 
 
-def change_event_frontier_query(*, start: date, end: date) -> str:
+def change_event_frontier_query(*, today: date) -> str:
     """F131: GAQL da fronteira de indexacao — o evento mais NOVO da conta.
 
     Deliberadamente SEM os filtros do usuario. Uma sonda que herdasse
@@ -69,14 +75,32 @@ def change_event_frontier_query(*, start: date, end: date) -> str:
     responde "ate quando esta indexado nesta CONTA", nao "no seu recorte" — o
     recorte sai de graca do `max` das linhas que a query principal ja devolveu.
 
-    `LIMIT` e obrigatorio: o Google recusa change_event sem ele com
-    "Change event requests must specify a LIMIT in query and LIMIT should be
-    less than or equal to 10k" (probado 2026-09-02).
+    **A sonda NAO aceita a janela do chamador.** Ela deriva a propria, sobre a
+    retencao inteira. A primeira versao recebia `start`/`end` e o call site
+    passava a janela do usuario — entao `account_frontier` mudava conforme o
+    que se perguntava, e uma janela terminando em dia sem write saia como
+    `atrasado` com a conta indexada em dia. Warning que dispara em condicao
+    normal treina a ignorar o warning, que e o oposto do que o F131 constroi.
+    Tirar o parametro fecha a classe: nao ha por onde herdar.
+
+    Janela propria = `today-28 .. today+1`. O 28 espelha o
+    `_RETENTION_SAFETY_DAYS` do get_change_history (retencao de 30 dias com
+    margem contra drift de UTC); o +1 e o F46, que exige end+1 porque o
+    `BETWEEN` do Google trata data como midnight start-of-day.
+
+    Predicado de data e OBRIGATORIO aqui: sem ele a API recusa com "missing
+    filters on change_event.change_date_time or is filtering with an infinite
+    range" (probado 2026-09-02). Por isso a sonda nao pode simplesmente omitir
+    a clausula — ela tem que ter uma janela propria, larga.
+
+    `LIMIT` tambem e obrigatorio: "Change event requests must specify a LIMIT
+    in query and LIMIT should be less than or equal to 10k".
     """
+    inicio = today - timedelta(days=_RETENTION_SAFETY_DAYS_SONDA)
     return (
         "SELECT change_event.change_date_time "
         "FROM change_event "
-        f"WHERE {_format_change_date_between(start, end)} "
+        f"WHERE {_format_change_date_between(inicio, today)} "
         "ORDER BY change_event.change_date_time DESC "
         "LIMIT 1"
     )

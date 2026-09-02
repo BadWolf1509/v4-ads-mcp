@@ -115,7 +115,7 @@ def test_sonda_de_fronteira_nao_herda_filtro_do_usuario() -> None:
     """
     from src.google_ads.queries.change_history import change_event_frontier_query
 
-    q = change_event_frontier_query(start=date(2026, 8, 5), end=date(2026, 9, 2))
+    q = change_event_frontier_query(today=date(2026, 9, 2))
     assert "change_resource_type" not in q
     assert "user_email" not in q
     assert "client_type" not in q
@@ -126,7 +126,7 @@ def test_sonda_de_fronteira_pede_a_linha_mais_nova_com_limit() -> None:
     """O Google RECUSA change_event sem LIMIT: "must specify a LIMIT"."""
     from src.google_ads.queries.change_history import change_event_frontier_query
 
-    q = change_event_frontier_query(start=date(2026, 8, 5), end=date(2026, 9, 2))
+    q = change_event_frontier_query(today=date(2026, 9, 2))
     assert "ORDER BY change_event.change_date_time DESC" in q
     assert q.rstrip().endswith("LIMIT 1")
 
@@ -190,3 +190,41 @@ async def test_detect_drift_propaga_a_fronteira(_ctx) -> None:
 
     assert result["freshness"]["status"] == "atrasado"
     assert result["freshness"]["warning"] is not None
+
+
+def test_sonda_de_fronteira_nao_herda_a_janela_do_usuario() -> None:
+    """F131 bis: o guard anterior enumerou filtros e perdeu o que eu passava.
+
+    O teste antigo assertava que a sonda nao carrega `resource_types`,
+    `user_email`, `client_type` nem `operation` — quatro filtros que eu
+    conseguia listar. A janela de data entrava como ARGUMENTO, entao nunca foi
+    candidata a "filtro herdado", e passou.
+
+    O efeito em producao: `account_frontier` mudava conforme a janela pedida.
+    Consultar 31/08-01/09 devolvia fronteira 31/08 e status `atrasado`, com a
+    conta indexada ate 02/09 — e o warning dispara em condicao NORMAL, porque
+    toda janela terminando em dia sem write vira "atrasado". Warning que
+    dispara sem defeito treina a ignorar o warning.
+
+    Este teste assere a PROPRIEDADE em vez de enumerar: duas janelas
+    diferentes tem de produzir a MESMA query de sonda.
+    """
+    from src.google_ads.queries.change_history import change_event_frontier_query
+
+    hoje = date(2026, 9, 2)
+    assert change_event_frontier_query(today=hoje) == change_event_frontier_query(today=hoje)
+
+    # E a sonda nao aceita mais janela do chamador — nao ha por onde herdar.
+    import inspect
+
+    params = set(inspect.signature(change_event_frontier_query).parameters)
+    assert params == {"today"}, f"a sonda voltou a aceitar janela do chamador: {params}"
+
+
+def test_sonda_cobre_a_janela_de_retencao_e_nao_o_pedido() -> None:
+    """A fronteira e da CONTA, entao varre a retencao inteira."""
+    from src.google_ads.queries.change_history import change_event_frontier_query
+
+    q = change_event_frontier_query(today=date(2026, 9, 2))
+    assert "'2026-08-05'" in q, "inicio deve ser hoje-28 (margem de retencao)"
+    assert "'2026-09-03'" in q, "fim deve ser hoje+1 (F46: BETWEEN e midnight-exclusive)"
