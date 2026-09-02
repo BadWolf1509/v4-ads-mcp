@@ -138,7 +138,7 @@ get_assets(customer_id, field_type?, campaign_ids?, limit=200)
 - **`status` por linha, e sem filtrar status no default** — pelo motivo da §7. Junto vão `primary_status` e `primary_status_reasons`, que são o veredito do Google sobre servir (§5.1).
 - **As três camadas juntas**: `customer_asset` + `campaign_asset` + `ad_group_asset`, cada linha marcando seu `level`.
 - 🔴 **Cada linha traz o `resource_name` do vínculo.** É o identificador que o `remove_asset_link` (§6) recebe. A revisão 2 pedia `resource_name` na entrada de uma tool e não o devolvia na saída da outra: o gestor não conseguiria encadear as duas sem cair no `run_gaql`. É a classe do F81 — macro que emite um atributo enquanto o consumidor procura outro, e ninguém nota porque cada lado está certo sozinho.
-- **Órfãos marcados**: asset sem nenhum vínculo. Dá inventário sem precisar de tool destrutiva.
+- **Órfãos marcados**: asset sem vínculo ENABLED em nenhuma camada — o que inclui os que só têm vínculo PAUSED ou REMOVED (não "sem nenhum vínculo": um vínculo PAUSED ainda é um vínculo, só não conta como vivo). Dá inventário sem precisar de tool destrutiva.
 - 🔴 **Se algum dia entrarem métricas nesta tool, rotule-as como do ASSET, nunca do vínculo.** `customer_asset` e `campaign_asset` aceitam `metrics.*`, mas o número é atribuído ao asset e as linhas de vínculo repetem o mesmo total por outro corte (§5.1, provado em 3 de 3). Um campo chamado `impressions` numa linha de vínculo seria lido como "este vínculo serviu N vezes", que é falso.
 
 ### 5.1 ✅ Probe rodada (2026-09-02) — o campo `effective` sai do desenho
@@ -157,7 +157,7 @@ Três de três, exato até a unidade. **A métrica é atribuída ao ASSET, não 
 
 **Resultado 2 — existe o campo certo, e ele contradiz a leitura de campo.** As três resources de vínculo expõem `primary_status`, `primary_status_reasons` e `primary_status_details` (lidos do SDK v24). É o veredito do próprio Google sobre servir ou não. Para o asset `144113768043`, presente nos dois níveis, os dois vínculos voltam **`primary_status: ELIGIBLE`**. O Google não marca o de conta como ofuscado.
 
-**Resultado 3 — o conceito não existe na API.** `AssetLinkPrimaryStatusReason` tem exatamente seis valores: `ASSET_LINK_PAUSED`, `ASSET_LINK_REMOVED`, `ASSET_DISAPPROVED`, `ASSET_UNDER_REVIEW`, `ASSET_APPROVED_LABELED`. **Nenhum é de precedência.** Não há como um vínculo declarar-se ofuscado por outro mais específico, porque o Google não modela isso como estado de vínculo.
+**Resultado 3 — o conceito não existe na API.** `AssetLinkPrimaryStatusReason` tem exatamente cinco valores: `ASSET_LINK_PAUSED`, `ASSET_LINK_REMOVED`, `ASSET_DISAPPROVED`, `ASSET_UNDER_REVIEW`, `ASSET_APPROVED_LABELED`. **Nenhum é de precedência.** Não há como um vínculo declarar-se ofuscado por outro mais específico, porque o Google não modela isso como estado de vínculo.
 
 #### Consequência para o desenho
 

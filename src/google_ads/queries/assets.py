@@ -1,7 +1,7 @@
 """GAQL das TRES camadas de vinculo de asset (F134/F135).
 
 Precedencia NAO e calculada: a probe de 2026-09-02 (spec secao 5.1) mostrou que o
-conceito nao existe na API — `AssetLinkPrimaryStatusReason` tem seis valores e
+conceito nao existe na API — `AssetLinkPrimaryStatusReason` tem cinco valores e
 nenhum e de precedencia, e dois vinculos coexistentes do mesmo asset voltam ambos
 `ELIGIBLE`. O que se devolve e o veredito do proprio Google: `primary_status`.
 
