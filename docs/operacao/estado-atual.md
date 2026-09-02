@@ -9,7 +9,7 @@
 
 ---
 
-**Última atualização:** 2026-09-02 (fim da sessão). **Sete commits locais, NENHUM pushado** — o push é do Wellington. Ver o bloco de 02/09 logo abaixo. Antes: 2026-08-20. **64 MCP tools** (58 Google + 6 Meta), bucket **23 always + 41 defer** — contagem verificada, não estimada. Smoke autenticado F58 segue dormente. F76/F77 encerrados.
+**Última atualização:** 2026-09-02 (fim da sessão). **Sete commits locais, NENHUM pushado** — o push é do Wellington. Ver o bloco de 02/09 logo abaixo. Antes: 2026-08-20. **66 MCP tools** (60 Google + 6 Meta), bucket **23 always + 43 defer** — contagem verificada por grep de `bucket="` em `src/mcp/tools/*.py`, não estimada; sobe de 64/41 porque o branch `feat/assets-visibilidade-e-unlink` soma `get_assets` + `remove_asset_link` (ambas defer). Smoke autenticado F58 segue dormente. F76/F77 encerrados.
 
 **Em 2026-09-02 entraram 8 findings (F131-F138) vindos de uma sessão de campo**, mais a spec de 3 tools novas. Nada foi pushado; produção segue na revisão de 20/08 mais os 4 commits de docs que o Wellington empurrou em 02/09.
 
