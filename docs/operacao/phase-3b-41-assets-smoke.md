@@ -195,7 +195,7 @@ get_assets(
 - [ ] `primary_status` é `"ELIGIBLE" | "PAUSED" | "REMOVED" | "PENDING" | "LIMITED" | "NOT_ELIGIBLE"` (SDK v24, spec §5.1 linha 166)
 - [ ] `primary_status_reasons` é array (pode estar vazio)
 - [ ] **Níveis (regra de campos):** CUSTOMER tem `campaign_id, campaign_name, ad_group_id, ad_group_name` todos `null`; CAMPAIGN tem `campaign_id` e `campaign_name` populados, `ad_group_id, ad_group_name` `null`; AD_GROUP tem todos os quatro populados
-- [ ] **Nenhuma** entry nova em `audit_log` para esta chamada — `get_assets` passa `audit_this_call=False` nas três consultas internas (`src/mcp/tools/get_assets.py`), e `run_report` só grava audit quando esse flag é `True` (`src/google_ads/reports.py`). É deliberado (leitura de volume; audit opt-in fica pra leitura sensível tipo `run_gaql`), não bug — não procure a chamada no audit_log.
+- [ ] **Exatamente UMA** entry nova em `audit_log` para esta chamada, com `operation_name: "get_assets"`. Das três consultas internas, só a de `customer_asset` passa `audit_this_call=True` (`src/mcp/tools/get_assets.py`) — uma chamada do gestor vira uma linha, não três. O `params_summary` dessa linha carrega os filtros aplicados: `field_type`, `campaign_ids` e `limit` (aqui, `null`/`null`/`200`). Confirme por `get_my_audit_log`.
 
 **Failure modes investigation:**
 
@@ -262,8 +262,8 @@ get_assets(
 - [ ] **Crítico T2:** TODOS os links em `links[]` têm `field_type: "CALLOUT"` (zero de outro tipo)
 - [ ] Links com IDs `144113768040`, `144113768046` e `144113768043` aparecem se existem (subset de T1)
 - [ ] Assets REMOVED e ENABLED ambos aparecem (filtro não filtra por status, só por field_type — spec §5 obrigatório)
-- [ ] `summary` tem a mesma estrutura que T1
-- [ ] **Nenhuma** entry nova em `audit_log` — mesmo motivo do T1 (`audit_this_call=False` nas três consultas de `get_assets`); `field_type` não fica rastreado em lugar nenhum, porque o `params_summary` que o carregaria nunca chega a ser gravado
+- [ ] `summary` **difere** do T1 num ponto: como esta chamada usa filtro (`field_type`), ela traz `orphan_scope: "nao_calculado_com_filtro"` e **não** traz `assets_sem_vinculo_ativo`. Detecção de órfão só é completa em chamada sem filtro — uma lista calculada sobre visão parcial marcaria como órfão um asset cujo único vínculo vivo está fora do filtro. O resto (`total_links`, `truncated`, `by_level`, `by_primary_status`) é igual.
+- [ ] **Exatamente UMA** entry nova em `audit_log`, como no T1 — e desta vez o `params_summary` dela mostra `field_type: "CALLOUT"`, que é o ponto: o filtro aplicado fica rastreado. Se a entry vier com `field_type: null`, o filtro não chegou ao audit.
 
 **Failure modes investigation:**
 
