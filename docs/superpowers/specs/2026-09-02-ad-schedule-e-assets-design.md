@@ -1,6 +1,6 @@
 # Spec — `ad_schedule`, leitura de assets e unlink de asset
 
-**Data:** 2026-09-02 · **Origem:** gaps de campo trazidos pela sessão de gestão de tráfego da MO João Pessoa (`jo-o-pessoa-db`), conta `786-223-0676` · **Findings relacionados:** F133 (custo sem conversão), F134/F135 (camada `customer_asset` invisível) · **Status:** aguardando revisão do Wellington antes de virar plano.
+**Data:** 2026-09-02 · **Origem:** gaps de campo trazidos pela sessão de gestão de tráfego da MO João Pessoa (`jo-o-pessoa-db`), conta `786-223-0676` · **Findings relacionados:** F133 (custo sem conversão), F134/F135 (camada `customer_asset` invisível) · **Status:** aguardando revisão do Wellington antes de virar plano. **Revisão 2 (02/09):** a probe da §5.1 rodou e mudou o desenho — `effective`/`shadowed_by` saíram, `primary_status` entrou.
 
 ---
 
@@ -108,23 +108,43 @@ get_assets(customer_id, field_type?, campaign_ids?, limit=200)
 **Decisões:**
 
 - **Todos os `field_type` por default**, com filtro opcional. Limitar à família text-extension que o `create_and_link_assets` cobre repetiria o erro do checklist: ele previu uma camada quando existiam duas.
-- **`status` por linha, e sem filtrar status no default** — pelo motivo da §7.
+- **`status` por linha, e sem filtrar status no default** — pelo motivo da §7. Junto vão `primary_status` e `primary_status_reasons`, que são o veredito do Google sobre servir (§5.1).
 - **As três camadas juntas**: `customer_asset` + `campaign_asset` + `ad_group_asset`, cada linha marcando seu `level`.
 - **Órfãos marcados**: asset sem nenhum vínculo. Dá inventário sem precisar de tool destrutiva.
 
-### 5.1 ⚠️ Questão aberta que BLOQUEIA o campo `effective`
+### 5.1 ✅ Probe rodada (2026-09-02) — o campo `effective` sai do desenho
 
-A tool deve devolver precedência **calculada** (`effective: bool`, `shadowed_by: level|null`) e não três listas cruas — a tool que conhece a regra deve aplicá-la; três listas devolvem ao gestor o mesmo problema com mais passos, e foi não saber a regra de cabeça que quase deixou a limpeza pela metade.
+A primeira versão desta spec pedia precedência **calculada** (`effective`, `shadowed_by`) e marcava a regra como questão aberta, com uma probe desenhada sobre métricas. **A probe rodou e derrubou as duas coisas: o método e o conceito.**
 
-**Mas a regra não está confirmada.** Consulta aos docs oficiais (via context7, 2026-09-02) devolve a estrutura de vínculo e os limites por tipo, e **não enuncia a precedência entre níveis**. A crença de campo é "o mais específico vence" (ad group > campanha > conta). Codificar isso por analogia é exatamente o `Don't do` do CLAUDE.md — e um `effective` errado é pior que nenhum, porque o gestor age sobre ele.
+**Resultado 1 — a probe que eu desenhei não podia responder.** A ideia era: se o vínculo de conta acumula zero impressões nas campanhas que têm vínculo próprio, "o mais específico vence" está confirmado. Medido na `786-223-0676`, `LAST_30_DAYS`, três assets CALLOUT:
 
-**Probe desenhada (executável — verifiquei que as duas resources aceitam métricas):**
+| asset | `customer_asset` | `campaign_asset` (JPA + CAB) | soma |
+|---|---|---|---|
+| `144113768043` (ENABLED nos dois níveis) | 300 imp / 8 cl | 178 + 122 / 4 + 4 | **300 / 8** |
+| `144113768040` | 693 / 25 | 392 + 301 / 17 + 8 | **693 / 25** |
+| `144113768046` | 850 / 41 | 520 + 330 / 31 + 10 | **850 / 41** |
 
-1. Achar um `field_type` com vínculo simultâneo em `customer_asset` e `campaign_asset` para a mesma campanha. A `786-223-0676` tinha exatamente isso em CALLOUT antes da limpeza de 02/09.
-2. `SELECT ... metrics.impressions FROM campaign_asset` e `FROM customer_asset`, segmentado por data.
-3. Se o vínculo de conta acumula **zero** impressões nas campanhas que têm vínculo próprio, e não-zero nas que não têm, a precedência "mais específico vence" está confirmada empiricamente.
+Três de três, exato até a unidade. **A métrica é atribuída ao ASSET, não ao vínculo** — a linha de `customer_asset` é a mesma veiculação vista por outro recorte. Logo impressão em vínculo de conta não prova que ele serviu, e zero também não provaria o contrário. O sinal não existe. Se a probe tivesse sido lida como planejado, o `300 ≠ 0` teria produzido a conclusão "o vínculo de conta é efetivo" — sem base nenhuma.
 
-**Enquanto a probe não rodar:** entregar as três camadas com `level` e `status`, **sem** `effective`/`shadowed_by`. Uma tool que só mostra as três camadas já teria evitado o erro de 02/09; o `effective` é a melhoria, e só entra confirmado.
+**Resultado 2 — existe o campo certo, e ele contradiz a leitura de campo.** As três resources de vínculo expõem `primary_status`, `primary_status_reasons` e `primary_status_details` (lidos do SDK v24). É o veredito do próprio Google sobre servir ou não. Para o asset `144113768043`, presente nos dois níveis, os dois vínculos voltam **`primary_status: ELIGIBLE`**. O Google não marca o de conta como ofuscado.
+
+**Resultado 3 — o conceito não existe na API.** `AssetLinkPrimaryStatusReason` tem exatamente seis valores: `ASSET_LINK_PAUSED`, `ASSET_LINK_REMOVED`, `ASSET_DISAPPROVED`, `ASSET_UNDER_REVIEW`, `ASSET_APPROVED_LABELED`. **Nenhum é de precedência.** Não há como um vínculo declarar-se ofuscado por outro mais específico, porque o Google não modela isso como estado de vínculo.
+
+#### Consequência para o desenho
+
+**`effective` e `shadowed_by` saem.** Seriam um veredito inventado por nós, sobre um conceito que a API não tem, num campo em que o gestor agiria. Em lugar deles, o `get_assets` devolve **`primary_status` + `primary_status_reasons`** — a resposta autoritativa do Google, e mais rica do que precedência: cobre reprovação de política, revisão pendente, pausa e `LIMITED`, que o `effective` nunca cobriria.
+
+Valores possíveis (SDK v24): `ELIGIBLE`, `PAUSED`, `REMOVED`, `PENDING`, `LIMITED`, `NOT_ELIGIBLE`.
+
+**Isso desbloqueia a tool inteira.** A §9 recomendava entregar `get_assets` sem `effective` e incrementar depois da probe; a probe rodou, e o incremento não existe — existe um campo melhor, que entra desde a v0. Não há mais questão aberta bloqueando.
+
+#### ⚠️ Correção de uma crença operacional
+
+O relato de campo dizia que os vínculos de conta estavam **dormentes** porque "callout de campanha tem precedência". **Nada do que a API expõe sustenta isso**, e o que ela expõe diz o contrário: os dois vínculos coexistentes estavam `ELIGIBLE`.
+
+O que segue verdadeiro é o essencial — os vínculos de conta existiam, eram invisíveis a quem só olhasse campanha, e eram 6 remoções e não 4. O que cai é a inferência de que fossem inertes: pelo veredito do Google eram elegíveis, então removê-los foi mudança real no que podia aparecer na SERP, não faxina de resto morto.
+
+**Limite declarado:** se um vínculo elegível de fato apareceu num anúncio servido é decisão de leilão, e a API não responde isso por vínculo. A afirmação aqui é sobre elegibilidade, que é o que existe para ser lido — e é justamente por não haver resposta por vínculo que a tool não deve inventar uma.
 
 ---
 
@@ -170,14 +190,13 @@ Todo guard deve ser verificado **contra o código pré-fix ou por sabotagem**, n
 
 ## 9. Ordem sugerida
 
-1. `get_assets` sem `effective` — resolve o gap de visibilidade que causou o erro de 02/09 e não depende de nada.
-2. **Probe de precedência** (§5.1). Se confirmar, `effective`/`shadowed_by` entram como incremento.
-3. `remove_asset_link` — depende do `get_assets` para o gestor saber o que remover, e do §7 para o smoke.
-4. `get_ad_schedule` — leitura barata, e a base do preview.
-5. `update_ad_schedule` — por último: é o de maior blast radius e o que mais depende do preview estar certo.
+1. `get_assets` **completo**, com `primary_status`/`primary_status_reasons` desde a v0 — resolve o gap de visibilidade que causou o erro de 02/09 e não depende de nada. A probe de precedência já rodou (§5.1) e **eliminou** o `effective` em vez de habilitá-lo, então não há etapa condicional aqui.
+2. `remove_asset_link` — depende do `get_assets` para o gestor saber o que remover, e do §7 para o smoke.
+3. `get_ad_schedule` — leitura barata, e a base do preview.
+4. `update_ad_schedule` — por último: é o de maior blast radius e o que mais depende do preview estar certo.
 
 ## 10. Questões em aberto para o Wellington
 
-- **Precedência (§5.1):** entregar `get_assets` sem `effective` agora e incrementar depois da probe, ou segurar a tool inteira até a probe rodar? A recomendação está na §9 (entregar sem).
+- ~~Precedência (§5.1)~~ — **resolvida pela probe de 02/09**: `effective` saiu do desenho e `primary_status` entrou. Não precisa mais de decisão.
 - **Janela default do preview de `update_ad_schedule`:** 30 dias cobre sazonalidade de semana; 90 dá n maior mas atravessa mudanças estruturais (esta conta teve geo e portfólio mexidos em agosto). Inclinação: 30, com override.
 - **`update_ad_schedule` em lote sobre várias campanhas** partilhando um orçamento: o efeito de realocação (§4.3) atravessa campanhas do mesmo portfólio. Vale recusar lote parcial dentro de um mesmo `campaign_budget` compartilhado, ou só avisar?
