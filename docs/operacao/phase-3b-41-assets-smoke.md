@@ -201,7 +201,7 @@ get_assets(
 
 - Nenhum asset REMOVED aparece → query Google não devolveu campos `status=REMOVED` (inesperado, Wellington confirmou que os 2 callouts existem); verificar se Google response foi parseada completa
 - Faltam um dos níveis (ex.: só CUSTOMER + CAMPAIGN, falta AD_GROUP) → filtro foi aplicado acidentalmente ou Google não devolveu AD_GROUP (verificar GAQL query e resource_names parsing)
-- `primary_status` vem como string numérica (ex.: `"4"`) em vez de nome enum → proto-plus `.name` não foi aplicado (mesmo padrão F52)
+- `primary_status` vem como string numérica (ex.: `"4"`) em vez de nome enum → proto-plus `.name` não foi aplicado (mesmo padrão UX-2 — não F52, que é sobre `audit_zombie_keywords` não filtrar `ad_group.status`)
 - Tool não resolve (404 not found) → branch ainda não foi deployado (bloqueador 1) ou MCP registry stale
 
 **Result:** ⬜ pending
@@ -443,36 +443,51 @@ Os números abaixo vieram do incidente de campo que motivou a spec, não de T4/T
 
 Conclusão: **Apenas a terceira forma é confiável, em qualquer escala de remoção.** Partial removal ilustra o mesmo problema por outro recorte (spec §7, linha 203): tirar 2 de 4 vínculos devolve 14 linhas com `status: ENABLED`, que se lê como "mudou, logo funcionou" — mas esquece os 2 que continuam lá. Neste runbook o equivalente é tirar 1 de N: olhando só a contagem, uma mudança de 1 linha é praticamente invisível.
 
-**Query GAQL via `run_gaql` (executar APÓS `apply_change`):**
+**Query GAQL via `run_gaql` (executar APÓS `apply_change`) — escolha a query pelo `level` do link escolhido em T4, não sempre `campaign_asset`:**
 
+CUSTOMER:
+```
+SELECT customer_asset.status, asset.id
+FROM customer_asset
+WHERE customer_asset.field_type = 'CALLOUT' AND asset.id IN (<asset_id_alvo>)
+```
+
+CAMPAIGN:
 ```
 SELECT campaign.name, campaign_asset.status, asset.id
 FROM campaign_asset
 WHERE campaign_asset.field_type = 'CALLOUT' AND asset.id IN (<asset_id_alvo>)
 ```
 
-*(Substituir `<asset_id_alvo>` pelo ID real aplicado em T4)*
+AD_GROUP:
+```
+SELECT ad_group.name, ad_group_asset.status, asset.id
+FROM ad_group_asset
+WHERE ad_group_asset.field_type = 'CALLOUT' AND asset.id IN (<asset_id_alvo>)
+```
 
-**Expected result:**
+*(Substituir `<asset_id_alvo>` pelo ID real aplicado em T4. A camada de conta é a que este branch inteiro existe para tornar visível — se T4 escolheu um link CUSTOMER, a query de `campaign_asset` sozinha devolve ZERO linhas, o que pareceria falha mas é só a tabela errada.)*
+
+**Expected result (exemplo para o `level` CAMPAIGN — as outras duas trocam a coluna de nome e a tabela, mesma forma):**
 
 ```
 campaign.name | campaign_asset.status | asset.id
 ----|---|----
 "Campanha X" | "REMOVED" | "<asset_id_alvo>"
-(zero ou mais linhas adicionais se o asset estava vinculado em múltiplas campanhas)
+(zero ou mais linhas adicionais se o asset estava vinculado em múltiplas entidades do mesmo nível)
 ```
 
 **Validação (crítica):**
 
-- [ ] Query executa sem erro GAQL
-- [ ] **Crítico T5:** `campaign_asset.status == "REMOVED"` para a linha com `asset.id == <asset_id_alvo>` (não null, não "PAUSED")
-- [ ] Se havia múltiplas campanhas, **TODAS** têm `status: REMOVED` (confirmação completa)
-- [ ] Nenhuma linha com `status: "ENABLED"` para o asset ID alvo (não há "link fantasma" parcial)
+- [ ] Query executa sem erro GAQL (a do `level` escolhido em T4 — CUSTOMER, CAMPAIGN ou AD_GROUP)
+- [ ] **Crítico T5:** `<nível>_asset.status == "REMOVED"` (a coluna correspondente — `customer_asset.status`, `campaign_asset.status` ou `ad_group_asset.status`) para a linha com `asset.id == <asset_id_alvo>` (não null, não "PAUSED")
+- [ ] Se o vínculo existia em múltiplas entidades do mesmo nível (várias campanhas para CAMPAIGN, vários ad_groups para AD_GROUP), **TODAS** têm `status: REMOVED` (confirmação completa); CUSTOMER tem no máximo uma linha por `asset.id`+`field_type`, então essa checagem não se aplica a ela
+- [ ] Nenhuma linha com `status: "ENABLED"` para o asset ID alvo, na tabela do nível escolhido (não há "link fantasma" parcial)
 - [ ] Documentar a medição explicitamente para prova futura
 
 **Failure modes investigation:**
 
-- Query não retorna linhas → asset nunca estava vinculado em nível CAMPAIGN (possível se estava só em CUSTOMER/AD_GROUP); tentar outra tabela (`customer_asset` ou `ad_group_asset`)
+- Query não retorna linhas → tabela errada pro `level` escolhido em T4 (ex.: rodou `campaign_asset` pra um link CUSTOMER); confira contra as três queries acima antes de tratar como falha
 - Aparece linha com `status: "ENABLED"` ainda → aplicação parcial falhou (finding crítica: mutation inconsistent)
 - `status` é `"PAUSED"` em vez de `"REMOVED"` → bug envelope não aplicou a ação correta
 
@@ -500,7 +515,7 @@ remove_asset_link(
 
 *(Substituir pelos mesmos valores de T4 — mesmo `level` e `resource_name`)*
 
-**Expected response shape:** idêntico ao de T4 (mesmo `blast_summary`, `confirmation_reason` e `target_count`, já que os `links` de entrada são os mesmos) — só `confirmation_token` e o `expires_in_minutes`/TTL mudam, porque é um preview novo.
+**Expected response shape:** idêntico ao de T4 (mesmo `blast_summary`, `confirmation_reason` e `target_count`, já que os `links` de entrada são os mesmos) — só `confirmation_token` muda, porque é um preview novo. `expires_in_minutes` **não varia**: é a constante `DEFAULT_TTL_MINUTES` (10, ver `src/mcp/tools/_mutate_common.py`), igual em T4 e T6 — a validação de T4 já afirma isso corretamente (linha 360 deste documento); esta linha só alinha com aquela.
 
 **Validação:**
 
