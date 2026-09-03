@@ -996,7 +996,7 @@ async def get_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
 
 ```
 
-- [ ] **Step 4: Rodar para ver passar** — `python -m pytest tests/unit/test_get_ad_schedule.py tests/unit/test_tools_schemas.py -q` (o segundo é o guard existente de schemas; a tool nova entra nele automaticamente). Rode também `python -m pytest tests/unit/test_no_server_clock_in_google_tools.py -q`.
+- [ ] **Step 4: Rodar para ver passar** — `python -m pytest tests/unit/test_get_ad_schedule.py tests/unit/test_tools_schemas.py -q`. **Ruling 4 (ledger):** `test_tools_schemas.py` é uma **whitelist de nomes** de tool (o plano dizia "entra automaticamente" — errado): adicione `get_ad_schedule` à lista, na posição dos vizinhos, e inclua o arquivo no commit. Rode também `python -m pytest tests/unit/test_no_server_clock_in_google_tools.py -q`.
 
 - [ ] **Step 5: Commit** — `feat(mcp): get_ad_schedule — grade por campanha, vazio e 24x7, orcamento compartilhado no resumo`
 
@@ -1597,7 +1597,7 @@ async def _blocos_de_orcamento_compartilhado(consulta: Any, orcamentos: list[dic
     return blocos
 ```
 
-- [ ] **Step 5: Rodar para ver passar** — `python -m pytest tests/unit/test_update_ad_schedule.py tests/unit/test_tools_schemas.py tests/unit/test_no_server_clock_in_google_tools.py -q`. Confira também o guard derivado do F112 (grep `classify` em `tests/unit/` por "F112"/"blast_radius" e rode-o): a tool nova usa `classify` e `preview_envelope` do compartilhado (spec §8.10) — se o guard enumerar tools, adicione `update_ad_schedule` onde ele espera.
+- [ ] **Step 5: Rodar para ver passar** — `python -m pytest tests/unit/test_update_ad_schedule.py tests/unit/test_tools_schemas.py tests/unit/test_no_server_clock_in_google_tools.py -q`. **Ruling 4:** adicione `update_ad_schedule` à whitelist de nomes em `tests/unit/test_tools_schemas.py` (como a Task 5 fez com `get_ad_schedule`) e inclua o arquivo no commit. Confira também o guard derivado do F112 (grep `classify` em `tests/unit/` por "F112"/"blast_radius" e rode-o): a tool nova usa `classify` e `preview_envelope` do compartilhado (spec §8.10) — se o guard enumerar tools, adicione `update_ad_schedule` onde ele espera.
 
 - [ ] **Step 6: Sabotagem** — em cópia de `update_ad_schedule.py`: (a) `desired` tratado como delta (`diff_schedule(current, [*[c.window for c in current], *desired], ...)`): `test_grade_completa_...` tem que falhar; (b) remover `"conversions"` do `_agrega` em `ad_schedule.py`: `test_preview_traz_cpa...` tem que falhar; (c) `if not ops:` → `if False:`: `test_grade_identica_...` tem que falhar; (d) `_blocos_...` devolvendo `[]` sempre: `test_orcamento_compartilhado_...` tem que falhar. Restaure.
 
