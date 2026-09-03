@@ -6,9 +6,10 @@ Wrapper sobre get_change_history + pure aggregator com 3 flags acionáveis.
 Use case primário: co-management (lição 46 dogfood).
 """
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any
 
+from src.google_ads.account_clock import resolve_account_today
 from src.google_ads.drift_detection import detect_drift as _detect_drift_pure
 from src.google_ads.drift_detection import dict_to_change_event_row
 from src.google_ads.queries._common import resolve_date_window
@@ -81,6 +82,8 @@ def _resolve_date_window_local(
     date_range: str | None,
     start_date: str | None,
     end_date: str | None,
+    *,
+    today: date,
 ) -> tuple[date, date]:
     """Resolve date window including LAST_2_DAYS preset (not in shared _PRESETS).
 
@@ -94,12 +97,13 @@ def _resolve_date_window_local(
             date_range=None,
             start_date=start_date,
             end_date=end_date,
+            today=today,
         )
 
     # Handle LAST_2_DAYS locally (not in shared _PRESETS)
     preset = (date_range or "LAST_2_DAYS").upper()
     if preset == "LAST_2_DAYS":
-        today = datetime.now(UTC).date()
+        # F141: `today` e o da CONTA, vindo do chamador — nao o do servidor.
         yesterday = today - timedelta(days=1)
         day_before = today - timedelta(days=2)
         return day_before, yesterday
@@ -109,6 +113,7 @@ def _resolve_date_window_local(
         date_range=date_range,
         start_date=None,
         end_date=None,
+        today=today,
     )
 
 
@@ -146,10 +151,12 @@ async def detect_drift(args: dict[str, Any]) -> dict[str, Any]:
 
     # Resolve date window LOCALLY (LAST_2_DAYS é preset detect_drift-only).
     # Passamos start_date+end_date explícitos pro get_change_history.
+    today = await resolve_account_today(customer_id)
     start_date_obj, end_date_obj = _resolve_date_window_local(
         date_range=args.get("date_range", "LAST_2_DAYS"),
         start_date=args.get("start_date"),
         end_date=args.get("end_date"),
+        today=today,
     )
     start_date = start_date_obj.isoformat()
     end_date = end_date_obj.isoformat()

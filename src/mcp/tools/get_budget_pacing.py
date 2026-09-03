@@ -1,9 +1,10 @@
 # bucket: defer
 """Tool: get_budget_pacing - per-campaign budget vs MTD spend + projection."""
 
-from datetime import UTC, datetime
+from datetime import date
 from typing import Any
 
+from src.google_ads.account_clock import resolve_account_today
 from src.google_ads.queries._common import micros_to_currency
 from src.google_ads.queries.overview import budget_pacing_query
 from src.google_ads.reports import run_report
@@ -43,9 +44,12 @@ def _row_formatter(row: Any) -> dict[str, Any]:
     }
 
 
-def _project(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Aggregate per-campaign MTD spend + project end-of-month."""
-    today = datetime.now(UTC)
+def _project(rows: list[dict[str, Any]], *, today: date) -> list[dict[str, Any]]:
+    """Aggregate per-campaign MTD spend + project end-of-month.
+
+    F141: `today` e o dia corrente NO FUSO DA CONTA, vindo do chamador. Com o
+    dia UTC, a projecao do ultimo dia do mes saia 30x entre 21h e meia-noite.
+    """
     # Days in current month
     if today.month == 12:
         next_month_first = today.replace(year=today.year + 1, month=1, day=1)
@@ -110,6 +114,7 @@ async def get_budget_pacing(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()
     customer_id = args["customer_id"]
     limit = args.get("limit", 100)
+    today = await resolve_account_today(customer_id)
     rows = await run_report(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
@@ -123,7 +128,7 @@ async def get_budget_pacing(args: dict[str, Any]) -> dict[str, Any]:
     rows = rows[:limit]
     return {
         "customer_id": customer_id,
-        "as_of": datetime.now(UTC).date().isoformat(),
+        "as_of": today.isoformat(),
         "truncated": truncated,
-        "campaigns": _project(rows),
+        "campaigns": _project(rows, today=today),
     }

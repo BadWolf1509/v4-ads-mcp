@@ -24,6 +24,8 @@ dependencies = [
     "jsonschema>=4.0",
     "jinja2>=3.1.0",
     "google-cloud-storage>=2.18.0",
+    # F141: zoneinfo precisa da base de fusos; sem isto o Windows nao acha America/Fortaleza
+    "tzdata>=2024.1",
 ]
 
 [project.optional-dependencies]

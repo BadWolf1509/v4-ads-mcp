@@ -4,9 +4,10 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any
 
+from src.google_ads.account_clock import resolve_account_today
 from src.google_ads.queries._common import parse_resource_path
 from src.google_ads.queries.change_history import negative_criterion_creations_query
 from src.google_ads.queries.tactical import negative_keywords_audit_query
@@ -125,7 +126,8 @@ async def get_negative_keywords_audit(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()
     customer_id = args["customer_id"]
     limit = args.get("limit", 100)
-    today = datetime.now(UTC).date()
+    # F141: janela `hoje-29..hoje` e os cortes 7d/30d no fuso da CONTA, nao do servidor.
+    today = await resolve_account_today(customer_id)
     creates_start = today - timedelta(days=29)
     creates_end = today
 

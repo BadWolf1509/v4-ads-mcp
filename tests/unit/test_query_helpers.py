@@ -3,7 +3,6 @@
 from datetime import date
 
 import pytest
-from freezegun import freeze_time
 
 from src.google_ads.queries._common import (
     InvalidDateRangeError,
@@ -14,67 +13,63 @@ from src.google_ads.queries._common import (
 )
 
 
-@freeze_time("2026-05-15")
 def test_parse_last_7_days() -> None:
-    start, end = parse_date_range("LAST_7_DAYS")
+    start, end = parse_date_range("LAST_7_DAYS", today=date(2026, 5, 15))
     assert start == date(2026, 5, 8)
     assert end == date(2026, 5, 14)  # excludes today (incomplete)
 
 
-@freeze_time("2026-05-15")
 def test_parse_last_30_days() -> None:
-    start, end = parse_date_range("LAST_30_DAYS")
+    start, end = parse_date_range("LAST_30_DAYS", today=date(2026, 5, 15))
     assert start == date(2026, 4, 15)
     assert end == date(2026, 5, 14)
 
 
-@freeze_time("2026-05-15")
 def test_parse_yesterday() -> None:
-    start, end = parse_date_range("YESTERDAY")
+    start, end = parse_date_range("YESTERDAY", today=date(2026, 5, 15))
     assert start == date(2026, 5, 14)
     assert end == date(2026, 5, 14)
 
 
-@freeze_time("2026-05-15")
 def test_parse_today() -> None:
-    start, end = parse_date_range("TODAY")
+    start, end = parse_date_range("TODAY", today=date(2026, 5, 15))
     assert start == date(2026, 5, 15)
     assert end == date(2026, 5, 15)
 
 
-@freeze_time("2026-05-15")
 def test_parse_this_month() -> None:
-    start, end = parse_date_range("THIS_MONTH")
+    start, end = parse_date_range("THIS_MONTH", today=date(2026, 5, 15))
     assert start == date(2026, 5, 1)
     assert end == date(2026, 5, 14)  # through yesterday
 
 
-@freeze_time("2026-05-15")
 def test_parse_last_month() -> None:
-    start, end = parse_date_range("LAST_MONTH")
+    start, end = parse_date_range("LAST_MONTH", today=date(2026, 5, 15))
     assert start == date(2026, 4, 1)
     assert end == date(2026, 4, 30)
 
 
 def test_parse_explicit_range_dict() -> None:
-    start, end = parse_date_range({"from": "2026-01-01", "to": "2026-01-31"})
+    start, end = parse_date_range(
+        {"from": "2026-01-01", "to": "2026-01-31"}, today=date(2026, 5, 15)
+    )
     assert start == date(2026, 1, 1)
     assert end == date(2026, 1, 31)
 
 
 def test_parse_inverted_range_raises() -> None:
     with pytest.raises(InvalidDateRangeError, match="from.*after.*to"):
-        parse_date_range({"from": "2026-01-31", "to": "2026-01-01"})
+        parse_date_range({"from": "2026-01-31", "to": "2026-01-01"}, today=date(2026, 5, 15))
 
 
 def test_parse_unknown_preset_raises() -> None:
     with pytest.raises(InvalidDateRangeError, match="UNKNOWN_PRESET"):
-        parse_date_range("UNKNOWN_PRESET")
+        parse_date_range("UNKNOWN_PRESET", today=date(2026, 5, 15))
 
 
 def test_parse_malformed_dict_raises() -> None:
     with pytest.raises(InvalidDateRangeError):
-        parse_date_range({"from": "not-a-date", "to": "2026-01-01"})
+        parse_date_range({"from": "not-a-date", "to": "2026-01-01"}, today=date(2026, 5, 15))
 
 
 def test_comparison_range_is_immediately_previous_period() -> None:
@@ -96,9 +91,10 @@ def test_comparison_range_handles_single_day() -> None:
 # ---------- resolve_date_window (Sprint 3b.20) ----------
 
 
-@freeze_time("2026-05-15")
 def test_resolve_date_window_preset_only() -> None:
-    start, end = resolve_date_window(date_range="LAST_7_DAYS", start_date=None, end_date=None)
+    start, end = resolve_date_window(
+        date_range="LAST_7_DAYS", start_date=None, end_date=None, today=date(2026, 5, 15)
+    )
     assert start == date(2026, 5, 8)
     assert end == date(2026, 5, 14)
 
@@ -108,6 +104,7 @@ def test_resolve_date_window_custom_range() -> None:
         date_range="LAST_30_DAYS",  # should be overridden
         start_date="2026-05-08",
         end_date="2026-05-14",
+        today=date(2026, 5, 15),
     )
     assert start == date(2026, 5, 8)
     assert end == date(2026, 5, 14)
@@ -115,25 +112,41 @@ def test_resolve_date_window_custom_range() -> None:
 
 def test_resolve_date_window_only_start_raises() -> None:
     with pytest.raises(InvalidDateRangeError, match="end_date"):
-        resolve_date_window(date_range="LAST_7_DAYS", start_date="2026-05-08", end_date=None)
+        resolve_date_window(
+            date_range="LAST_7_DAYS",
+            start_date="2026-05-08",
+            end_date=None,
+            today=date(2026, 5, 15),
+        )
 
 
 def test_resolve_date_window_only_end_raises() -> None:
     with pytest.raises(InvalidDateRangeError, match="start_date"):
-        resolve_date_window(date_range="LAST_7_DAYS", start_date=None, end_date="2026-05-14")
+        resolve_date_window(
+            date_range="LAST_7_DAYS",
+            start_date=None,
+            end_date="2026-05-14",
+            today=date(2026, 5, 15),
+        )
 
 
 def test_resolve_date_window_invalid_custom_format_raises() -> None:
     with pytest.raises(InvalidDateRangeError):
         resolve_date_window(
-            date_range="LAST_7_DAYS", start_date="not-a-date", end_date="2026-05-14"
+            date_range="LAST_7_DAYS",
+            start_date="not-a-date",
+            end_date="2026-05-14",
+            today=date(2026, 5, 15),
         )
 
 
 def test_resolve_date_window_inverted_custom_raises() -> None:
     with pytest.raises(InvalidDateRangeError, match="after"):
         resolve_date_window(
-            date_range="LAST_7_DAYS", start_date="2026-05-14", end_date="2026-05-08"
+            date_range="LAST_7_DAYS",
+            start_date="2026-05-14",
+            end_date="2026-05-08",
+            today=date(2026, 5, 15),
         )
 
 
@@ -144,7 +157,9 @@ def test_parse_date_range_recovers_from_json_string_dict() -> None:
     """Safety net: if Claude serializes dict as JSON string (root cause of relatorio
     finding #1), helper detects and parses it instead of falling through to preset
     uppercase which would corrupt the keys."""
-    start, end = parse_date_range('{"from":"2026-05-08","to":"2026-05-14"}')
+    start, end = parse_date_range(
+        '{"from":"2026-05-08","to":"2026-05-14"}', today=date(2026, 5, 15)
+    )
     assert start == date(2026, 5, 8)
     assert end == date(2026, 5, 14)
 
@@ -153,7 +168,7 @@ def test_parse_date_range_invalid_json_string_falls_through_to_preset_error() ->
     """String starting with '{' but invalid JSON should not silently succeed —
     fall through to the preset error path with original (lowercased) input visible."""
     with pytest.raises(InvalidDateRangeError, match="Unknown date_range preset"):
-        parse_date_range("{not valid json}")
+        parse_date_range("{not valid json}", today=date(2026, 5, 15))
 
 
 # ---------- parse_resource_path (Sprint 3b.21, extracted from get_change_history) ----------

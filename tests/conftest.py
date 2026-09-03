@@ -5,13 +5,19 @@ integration tests use the `pg` fixture (from individual test files)
 because not every test needs a Postgres container.
 """
 
+import importlib
 import os
+import pkgutil
 import sys
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Generator, Iterator
+from contextlib import ExitStack
+from datetime import UTC, date, datetime
 from unittest.mock import patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+
+import src.mcp.tools as _tools_pkg
 
 # Provide a complete env so `Settings()` validates everywhere.
 _TEST_ENV = {
@@ -58,3 +64,39 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
+
+
+# ---------------------------------------------------------------------------
+# F141: relogio da conta stubado para TODA tool Google que o importou.
+#
+# `resolve_account_today` le `google_ads_accounts.time_zone` no DB. Testes sem
+# pool (unit + integracao nao-DB) explodiriam em 7+12 arquivos; o stub vive
+# AQUI, em um lugar, e devolve a data UTC — o comportamento que as tools tinham
+# antes do fix, para nenhuma expectativa de data existente mudar. Teste que
+# precisa de `hoje` especifico faz `patch` por cima (o interno vence). O caminho
+# REAL e coberto por tests/integration/test_account_clock_db.py, que chama
+# `account_clock.resolve_account_today` direto (o stub so cobre os modulos de
+# tool, nao a origem).
+# ---------------------------------------------------------------------------
+
+
+async def _hoje_utc(customer_id: str, *, now: datetime | None = None) -> date:
+    return (now if now is not None else datetime.now(UTC)).date()
+
+
+def _modulos_de_tool_com_relogio() -> list[str]:
+    nomes: list[str] = []
+    for m in pkgutil.iter_modules(_tools_pkg.__path__):
+        full = f"src.mcp.tools.{m.name}"
+        mod = importlib.import_module(full)
+        if hasattr(mod, "resolve_account_today"):
+            nomes.append(full)
+    return nomes
+
+
+@pytest.fixture(autouse=True)
+def _relogio_da_conta_stubado() -> Iterator[None]:
+    with ExitStack() as stack:
+        for full in _modulos_de_tool_com_relogio():
+            stack.enter_context(patch(f"{full}.resolve_account_today", _hoje_utc))
+        yield

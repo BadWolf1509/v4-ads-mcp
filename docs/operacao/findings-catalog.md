@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** nenhum dos de 02/09 — F131-F140 estao todos fechados e em producao. ~~F138~~ (commit so de `docs/` publica revisao nova do servidor MCP; a correcao obvia — `paths-ignore` no `on:` — foi verificada e e PIOR, porque travaria PR de docs para sempre com o check `test` obrigatorio), **F136** (o `structural_change` do `detect_drift` guarda `CONVERSION_ACTION`, que a API nunca emite — flag morta e mensagem que promete cobertura inexistente; nao corrigido de proposito, porque o fix obvio deixa o codigo honesto e a cobertura pior), **A4**, **F67** (custom domain) e os dois de 08-20 que são ação humana ou sprint próprio: **F129** (system user com permissão de admin para uso 100% de leitura, token permanente, um único `business_user`) e **F130** (o gate do Google não consulta `is_active` — o buraco que o lado Meta acabou de perder). Os F118-F128 nasceram e fecharam no mesmo dia. Fora do catálogo, dois itens P2 da revisão de responsividade ficaram **deliberadamente** de fora do fix: input de 14px (dispara zoom automático no iOS ao focar — mexe na escala tipográfica inteira) e checkbox de 13×13 na matriz de acessos (abaixo do mínimo do WCAG 2.2, provavelmente salvo pela exceção de espaçamento). Os 36 findings das investigações de agosto (F82-F117) estão fechados — a linha anterior desta nota listava 8 abertos e ficou obsoleta quando a segunda onda de 08-15 fechou F91 e F94-F99; corrigida em 08-19. **Antes de mexer em reads quentes, backup, fragmento HTMX, entrega de assets, CSRF ou design system, grep aqui pela área**: pode já haver diagnóstico pronto.
 >
-> **Como ler:** ~960 linhas, **144 IDs** (F1-F145 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~1020 linhas, **145 IDs** (F1-F146 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -743,7 +743,9 @@ Somas consistentes nos dois eixos, `truncated: false`, `orphan_scope: conta_comp
 Três correções de description saíram daí, todas medidas e aplicadas em `d359c69`: `UNSPECIFIED` aparece em `primary_status` (a lista de 6 estava fechada demais — a convenção "sentinela não é valor de operador" do F135 não vale quando a API os emite); `primary_status_reasons` carrega `ASSET_DISAPPROVED` (15) e `ASSET_UNDER_REVIEW` (18), ou seja política visível sem outra query; e `asset_name` vem **vazio em 100%** de sete famílias de texto (SITELINK 71/71, CALLOUT 19/19, CALL 10/10, STRUCTURED_SNIPPET 7/7, BUSINESS_MESSAGE 8/8, BUSINESS_NAME 3/3, PROMOTION 2/2) — o Google só popula `name` em algumas famílias, e campo sempre vazio convida à conclusão errada. **`AD_IMAGE` é 598 de 735 (81%)**, então o default de 200 trunca e afoga as extensões de texto.
 
 
-## F141 (MED, ABERTO) — os presets de data resolvem em UTC, e nenhuma das 25 contas esta em UTC
+## F141 (MED, CORRIGIDO 03/09) — os presets de data resolvem em UTC, e nenhuma das 25 contas esta em UTC
+
+> **✅ CORRIGIDO em 03/09**, junto com F143 e F144 — ver *"Como o bloco F141 + F143 + F144 foi fechado"* no fim do catalogo. `hoje` passou a ser `resolve_account_today(customer_id)` em 24 tools (22 com preset + `get_budget_pacing` + `get_negative_keywords_audit`), `today` e kwarg obrigatorio nos resolvers, e um guard AST impede relogio do servidor em tool Google.
 
 > **Como apareceu:** caiu do **T7 do smoke de assets**, executado em 02/09 pra validar o refix do F131.
 > A asserção que falhou não era sobre isto — e é esse o ponto. Sem o `freshness` que o F131 acabou de
@@ -882,7 +884,9 @@ a evitar: (a) trocar um nome valido por um invalido, (b) reintroduzir o plural r
 `_build_summary`. **4/4 detectadas**, e as duas de `len` constante cairam na assercao de **igualdade de
 conjuntos** — que e a diferenca entre este guard e um que so conta.
 
-## F143 (MED, ABERTO) — `atrasado` afirma lag onde a evidencia so mostra silencio
+## F143 (MED, CORRIGIDO 03/09) — `atrasado` afirma lag onde a evidencia so mostra silencio
+
+> **✅ CORRIGIDO em 03/09:** `atrasado` → **`nao_coberto`**, com o texto admitindo as duas hipoteses (lag OU conta parada) e o lag medido (~6 min a >4 dias). A opcao (2) do campo — tolerancia de N horas — foi recusada por embutir contrato de lag que nao existe. Ver o fecho do bloco no fim do catalogo.
 
 > **Como apareceu:** a sessao de campo rodou o `freshness` em 23 contas do MCC e nao viu `confiavel`
 > em nenhuma — 15 `atrasado`, 8 `indeterminado`.
@@ -937,7 +941,9 @@ exercita sem acao manual na UI. A sessao de campo varreu 23 contas e nao achou u
 entidades dentro da retencao — a flag nunca disparou em producao ate hoje.
 
 
-## F144 (HIGH, ABERTO) — `confiavel` afirma cobertura que a fronteira nao pode provar
+## F144 (HIGH, CORRIGIDO 03/09) — `confiavel` afirma cobertura que a fronteira nao pode provar
+
+> **✅ CORRIGIDO em 03/09:** entrou o status **`em_curso`** — janela que alcanca o dia corrente DA CONTA (F141) ou passa dele nunca sai `confiavel`. Valor proprio, nao reuso de `ambiguo`. Ver o fecho do bloco no fim do catalogo, inclusive a correcao de ordem que o RED forcou (janela futura).
 
 > **Como apareceu:** a sessao de campo removeu uma campanha pela UI (conta de teste `1163862076`) e
 > foi conferir se o `structural_change` disparava. Nao disparou — e o que ela achou no caminho foi
@@ -1107,3 +1113,58 @@ sao chamadas distintas ao mesmo backend e podem pousar em replicas com estados d
 `23:44:05` → **≤ 6min30s** (limite superior). Com os anteriores, a distribuicao vai de **~6 min** a
 **~3-4 h** a **>4 dias**, na mesma familia de contas: **tres ordens de grandeza**. A afirmacao de que
 o lag nao tem contrato — que esta em description de tool — deixa de se apoiar em dois pontos.
+
+
+## Como o bloco F141 + F143 + F144 foi fechado (03/09) — e o que caiu no caminho
+
+**Um `hoje` por request, no fuso da conta, passado a tudo.** `account_today(time_zone, *, now)` e
+pura (recebe o instante — e a unica forma de o teste representar UTC e conta discordando, o que
+`freezegun` nao consegue). `parse_date_range`/`resolve_date_window` recebem `today` como kwarg
+**sem default**: dos 22 call-sites, 18 nao tem teste direto, e o guard deles e o **mypy** —
+`Missing named argument "today"` — provado por sabotagem, nao suposto. O I/O e um modulo so,
+`account_clock.resolve_account_today` (`run_with_reconnect` → `get_by_customer_id`), com o caminho
+real coberto por teste de integracao com DB (Fortaleza e Campo Grande dando 02/09 no instante do
+bug; conta sem fuso caindo em UTC sem estourar). `tzdata` virou dep de prod: sem ela o Windows nao
+acha `America/Fortaleza`, e com ela Linux e Windows ficam identicos.
+
+**O bloco cresceu duas vezes, e as duas por probe, nao por estimativa:** o grep de
+`datetime.now(UTC).date()` achou **`get_budget_pacing`** (`days_elapsed = today.day` em UTC — no
+ultimo dia do mes, das 21h a meia-noite, projeta o gasto mensal como se fosse de UM dia) e
+**`get_negative_keywords_audit`** (janela `hoje-29..hoje` em UTC). Nenhum usa preset, por isso
+escaparam da lista dos 22. Mesma classe, mesmo fix, testes proprios.
+
+**Freshness, os rotulos finais:** `confiavel` · `ambiguo` · **`nao_coberto`** (ex-`atrasado`; o
+texto admite lag OU conta parada) · **`em_curso`** (janela alcanca o dia corrente da conta) ·
+`indeterminado`. **A ordem e contrato**, e o RED corrigiu o desenho antes do codigo sair: a
+primeira versao decidia `nao_coberto` antes de `em_curso` em qualquer caso, e uma janela
+*futura* sairia rotulada como "lag ou silencio" sobre dias que nao aconteceram. Ficou: janela
+**alem** de hoje → `em_curso` primeiro; janela **ate** hoje → `nao_coberto` ganha (fronteira de
+ontem e o fato mais grave), `em_curso` so com a fronteira ja em hoje.
+
+**Guard novo, AST:** nenhum tool Google chama `datetime.now`/`date.today` — `hoje` vem da conta.
+AST e nao grep porque os comentarios destes arquivos CITAM o padrao proibido. Na primeira
+execucao ele pegou `import_offline_conversions.py` (→ F146) e o meu proprio `account_clock.py`
+(bug do guard: o leitor legitimo estava na varredura; excluido com motivo e com teste proprio).
+
+**Sabotagem, 7 variantes, 7/7 — na segunda rodada.** Na primeira foram 6/7: a variante que da
+default `None` a `today` passou verde porque meu teste asseria `pytest.raises(TypeError)`, e
+`None - timedelta` levanta TypeError **pelo motivo errado**. Tipo de excecao e o adjacente da
+invariante; a invariante e "nao ha default", e o guard passou a asserir a **assinatura** por
+`inspect`. Quarta ocorrencia do modo "assere o adjacente" neste projeto, todas minhas.
+
+**Fora, de proposito:** `governance/rate_limit._today()` (bucket de quota — UTC e o correto) e os
+3 tools Meta (fuso proprio no inventario Meta; a mesma classe la e outro finding).
+
+## F146 (LOW, ABERTO) — `import_offline_conversions` assume BRT fixo, e 2 contas sao UTC-4
+
+Achado pelo guard AST do F141 na primeira execucao. `_validate_payload_shape` compara
+`conversion_date_time` (interpretado como `-03:00`, hardcoded em `_BRT`) com `datetime.now(_BRT)`
+para rejeitar conversao "no futuro" — e o tool inteiro **anexa `-03:00`** ao que envia ao Google
+(docstring: "V4 BR-invariant"). Para `America/Campo_Grande` e `America/Boa_Vista` (UTC-4), uma
+conversao das 23:30 locais vira 00:30 BRT: se ainda sao 23:45 em BRT, e rejeitada como futura; e
+a que passa vai ao Google com offset errado em uma hora. **Erra alto (rejeita) ou erra o carimbo
+(offset), nunca em silencio sobre janela** — por isso nao e F141, e outra classe: contrato de
+upload assumindo um fuso que nem toda conta tem. O fix e usar `google_ads_accounts.time_zone`
+(ja disponivel via `account_today`) tanto na validacao quanto no offset anexado. Nao entrou no
+bloco porque muda o payload enviado ao Google e merece probe propria de importacao. Excecao
+registrada com motivo no guard.

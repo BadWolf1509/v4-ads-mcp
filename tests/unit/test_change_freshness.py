@@ -41,6 +41,7 @@ def test_conta_fresca_com_linhas_e_confiavel() -> None:
         account_frontier=datetime(2026, 9, 2, 18, 0),
         slice_frontier=datetime(2026, 9, 2, 11, 43),
         window_end=date(2026, 9, 2),
+        today=date(2026, 9, 3),
     )
     assert r["status"] == "confiavel"
     assert r["warning"] is None
@@ -52,8 +53,9 @@ def test_conta_atrasada_derruba_a_confianca_mesmo_com_linhas() -> None:
         account_frontier=datetime(2026, 8, 31, 10, 52),
         slice_frontier=datetime(2026, 8, 30, 9, 0),
         window_end=date(2026, 9, 2),
+        today=date(2026, 9, 3),
     )
-    assert r["status"] == "atrasado"
+    assert r["status"] == "nao_coberto"
     assert r["warning"] is not None
     assert "2026-08-31" in r["warning"]
 
@@ -64,6 +66,7 @@ def test_conta_fresca_com_recorte_vazio_e_ambiguo_e_declarado() -> None:
         account_frontier=datetime(2026, 9, 2, 18, 0),
         slice_frontier=None,
         window_end=date(2026, 9, 2),
+        today=date(2026, 9, 3),
     )
     assert r["status"] == "ambiguo"
     assert r["warning"] is not None
@@ -75,6 +78,7 @@ def test_sonda_vazia_nao_afirma_frescor() -> None:
         account_frontier=None,
         slice_frontier=None,
         window_end=date(2026, 9, 2),
+        today=date(2026, 9, 3),
     )
     assert r["status"] == "indeterminado"
     assert r["warning"] is not None
@@ -87,6 +91,7 @@ def test_fronteiras_saem_serializadas_para_o_payload() -> None:
         account_frontier=datetime(2026, 8, 31, 10, 52, 36),
         slice_frontier=datetime(2026, 8, 30, 9, 0, 0),
         window_end=date(2026, 9, 2),
+        today=date(2026, 9, 3),
     )
     assert r["account_frontier"] == "2026-08-31 10:52:36"
     assert r["slice_frontier"] == "2026-08-30 09:00:00"
@@ -98,6 +103,7 @@ def test_janela_terminada_antes_da_fronteira_e_confiavel_mesmo_sendo_antiga() ->
         account_frontier=datetime(2026, 9, 2, 18, 0),
         slice_frontier=datetime(2026, 8, 20, 9, 0),
         window_end=date(2026, 8, 21),
+        today=date(2026, 9, 3),
     )
     assert r["status"] == "confiavel"
     assert r["warning"] is None
@@ -167,12 +173,19 @@ async def test_zero_linhas_ainda_traz_veredito_de_frescor(_ctx) -> None:
     from src.mcp.tools.get_change_history import get_change_history
 
     run, queries = _fake_run_report(main_rows=[], frontier_dt="2026-08-31 10:52:36.708927")
-    with patch("src.mcp.tools.get_change_history.run_report", run):
+
+    async def _hoje(customer_id: str, *, now=None):
+        return date(2026, 9, 2)
+
+    with (
+        patch("src.mcp.tools.get_change_history.run_report", run),
+        patch("src.mcp.tools.get_change_history.resolve_account_today", _hoje),
+    ):
         result = await get_change_history({"customer_id": "1234567890", "date_range": "TODAY"})
 
     assert result["summary"]["total_changes"] == 0
     assert result["freshness"]["account_frontier"] == "2026-08-31 10:52:36"
-    assert result["freshness"]["status"] == "atrasado"
+    assert result["freshness"]["status"] == "nao_coberto"
     assert result["freshness"]["warning"] is not None
     assert any(q.rstrip().endswith("LIMIT 1") for q in queries), "sonda nao foi emitida"
 
@@ -185,10 +198,17 @@ async def test_detect_drift_propaga_a_fronteira(_ctx) -> None:
     from src.mcp.tools.detect_drift import detect_drift
 
     run, _q = _fake_run_report(main_rows=[], frontier_dt="2026-08-31 10:52:36.708927")
-    with patch("src.mcp.tools.get_change_history.run_report", run):
+
+    async def _hoje(customer_id: str, *, now=None):
+        return date(2026, 9, 2)
+
+    with (
+        patch("src.mcp.tools.get_change_history.run_report", run),
+        patch("src.mcp.tools.detect_drift.resolve_account_today", _hoje),
+    ):
         result = await detect_drift({"customer_id": "1234567890", "date_range": "TODAY"})
 
-    assert result["freshness"]["status"] == "atrasado"
+    assert result["freshness"]["status"] == "nao_coberto"
     assert result["freshness"]["warning"] is not None
 
 
@@ -228,3 +248,114 @@ def test_sonda_cobre_a_janela_de_retencao_e_nao_o_pedido() -> None:
     q = change_event_frontier_query(today=date(2026, 9, 2))
     assert "'2026-08-05'" in q, "inicio deve ser hoje-28 (margem de retencao)"
     assert "'2026-09-03'" in q, "fim deve ser hoje+1 (F46: BETWEEN e midnight-exclusive)"
+
+
+# --- F143 + F144: os rotulos passam a nomear o fato, nao a causa ---------------
+#
+# F143: `atrasado` afirmava "o trecho final ainda nao indexou". A evidencia so
+# sustenta o fato (fronteira anterior ao fim da janela) — e em conta de baixa
+# atividade a explicacao dominante e "nao houve o que indexar". Vira
+# `nao_coberto`, com as duas hipoteses no texto.
+#
+# F144: `confiavel` era alcancavel com a janela incluindo o dia corrente da
+# conta — comparacao em granularidade de DIA, e fronteira de 20:44 "cobria"
+# ate 23:59. Uma remocao de campanha real ficou de fora da resposta com
+# `status: confiavel`. Vira `em_curso`: o dia nao fechou, por construcao nao e
+# indexavel. E "dia corrente" e o DA CONTA (F141), nao o do servidor.
+
+
+def test_janela_que_alcanca_o_dia_corrente_da_conta_nunca_e_confiavel() -> None:
+    """O caso do campo: remocao de campanha as ~23h, fronteira das 20:44, status confiavel."""
+    r = assess_freshness(
+        account_frontier=datetime(2026, 9, 2, 20, 44, 5),
+        slice_frontier=datetime(2026, 9, 2, 20, 44, 5),
+        window_end=date(2026, 9, 2),
+        today=date(2026, 9, 2),
+    )
+    assert r["status"] == "em_curso"
+    assert r["warning"] is not None
+    assert "2026-09-02 20:44:05" in r["warning"], "o texto tem que dizer ate onde esta indexado"
+
+
+def test_janela_no_futuro_tambem_e_em_curso() -> None:
+    r = assess_freshness(
+        account_frontier=datetime(2026, 9, 2, 20, 44, 5),
+        slice_frontier=None,
+        window_end=date(2026, 9, 5),
+        today=date(2026, 9, 2),
+    )
+    assert r["status"] == "em_curso"
+
+
+def test_fronteira_anterior_ao_fim_da_janela_e_nao_coberto_e_nomeia_as_duas_hipoteses() -> None:
+    """Camacari: fronteira 01/09 00:18, janela ate 02/09. Nao afirma causa."""
+    r = assess_freshness(
+        account_frontier=datetime(2026, 9, 1, 0, 18, 46),
+        slice_frontier=None,
+        window_end=date(2026, 9, 2),
+        today=date(2026, 9, 3),
+    )
+    assert r["status"] == "nao_coberto"
+    w = r["warning"] or ""
+    assert "lag" in w.lower(), "tem que admitir a hipotese de lag"
+    assert "atividade" in w.lower(), "tem que admitir a hipotese de conta parada"
+    assert "ainda nao indexou" not in w.lower(), "afirmar causa era o F143"
+
+
+def test_fronteira_velha_vence_dia_corrente() -> None:
+    """Ordem deliberada: fronteira de ontem + janela ate hoje -> nao_coberto, nao em_curso.
+
+    `em_curso` fica sendo o caso estreito "tao fresco quanto da, mas o dia esta
+    aberto". Fronteira velha e o fato mais grave e tem que ganhar o rotulo.
+    """
+    r = assess_freshness(
+        account_frontier=datetime(2026, 9, 1, 0, 18, 46),
+        slice_frontier=datetime(2026, 9, 1, 0, 18, 46),
+        window_end=date(2026, 9, 2),
+        today=date(2026, 9, 2),
+    )
+    assert r["status"] == "nao_coberto"
+
+
+def test_janela_fechada_no_passado_com_linhas_segue_confiavel() -> None:
+    """Regressao: o caso legitimo medido na Camacari (06/08..01/09 -> confiavel)."""
+    r = assess_freshness(
+        account_frontier=datetime(2026, 9, 1, 0, 18, 46),
+        slice_frontier=datetime(2026, 9, 1, 0, 18, 46),
+        window_end=date(2026, 9, 1),
+        today=date(2026, 9, 3),
+    )
+    assert r["status"] == "confiavel"
+    assert r["warning"] is None
+
+
+def test_o_rotulo_atrasado_nao_existe_mais() -> None:
+    """Propriedade, nao grep: sobre uma grade de entradas, `atrasado` nunca sai."""
+    from itertools import product
+
+    fronteiras = [None, datetime(2026, 8, 30, 9, 0), datetime(2026, 9, 2, 20, 44)]
+    recortes = [None, datetime(2026, 8, 30, 9, 0)]
+    fins = [date(2026, 8, 29), date(2026, 9, 1), date(2026, 9, 2), date(2026, 9, 9)]
+    vistos = {
+        assess_freshness(
+            account_frontier=f, slice_frontier=s, window_end=e, today=date(2026, 9, 2)
+        )["status"]
+        for f, s, e in product(fronteiras, recortes, fins)
+    }
+    assert "atrasado" not in vistos
+    assert vistos <= {"confiavel", "ambiguo", "nao_coberto", "em_curso", "indeterminado"}
+    assert {"nao_coberto", "em_curso", "confiavel", "indeterminado"} <= vistos, (
+        "a grade tem que exercitar os quatro estados principais"
+    )
+
+
+def test_assess_freshness_exige_today() -> None:
+    """Sem `today` nao ha como saber se a janela alcanca o dia corrente da conta."""
+    import pytest
+
+    with pytest.raises(TypeError):
+        assess_freshness(  # type: ignore[call-arg]
+            account_frontier=datetime(2026, 9, 2, 18, 0),
+            slice_frontier=None,
+            window_end=date(2026, 9, 2),
+        )

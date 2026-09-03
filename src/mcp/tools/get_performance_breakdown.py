@@ -7,6 +7,7 @@ meta_get_performance_breakdown (M.4): level + breakdown opcional.
 
 from typing import Any
 
+from src.google_ads.account_clock import resolve_account_today
 from src.google_ads.performance_breakdown import (
     _validate_combo,
     build_performance_breakdown_query,
@@ -87,10 +88,12 @@ async def get_performance_breakdown(args: dict[str, Any]) -> dict[str, Any]:
     if err:
         return {"status": "error", "error_message": err}
 
+    today = await resolve_account_today(customer_id)
     start, end = resolve_date_window(
         date_range=args.get("date_range", "LAST_30_DAYS"),
         start_date=args.get("start_date"),
         end_date=args.get("end_date"),
+        today=today,
     )
     status = args.get("status", "enabled")
     limit = args.get("limit", 100)
