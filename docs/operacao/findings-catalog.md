@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** nenhum dos de 02/09 — F131-F140 estao todos fechados e em producao. ~~F138~~ (commit so de `docs/` publica revisao nova do servidor MCP; a correcao obvia — `paths-ignore` no `on:` — foi verificada e e PIOR, porque travaria PR de docs para sempre com o check `test` obrigatorio), **F136** (o `structural_change` do `detect_drift` guarda `CONVERSION_ACTION`, que a API nunca emite — flag morta e mensagem que promete cobertura inexistente; nao corrigido de proposito, porque o fix obvio deixa o codigo honesto e a cobertura pior), **A4**, **F67** (custom domain) e os dois de 08-20 que são ação humana ou sprint próprio: **F129** (system user com permissão de admin para uso 100% de leitura, token permanente, um único `business_user`) e **F130** (o gate do Google não consulta `is_active` — o buraco que o lado Meta acabou de perder). Os F118-F128 nasceram e fecharam no mesmo dia. Fora do catálogo, dois itens P2 da revisão de responsividade ficaram **deliberadamente** de fora do fix: input de 14px (dispara zoom automático no iOS ao focar — mexe na escala tipográfica inteira) e checkbox de 13×13 na matriz de acessos (abaixo do mínimo do WCAG 2.2, provavelmente salvo pela exceção de espaçamento). Os 36 findings das investigações de agosto (F82-F117) estão fechados — a linha anterior desta nota listava 8 abertos e ficou obsoleta quando a segunda onda de 08-15 fechou F91 e F94-F99; corrigida em 08-19. **Antes de mexer em reads quentes, backup, fragmento HTMX, entrega de assets, CSRF ou design system, grep aqui pela área**: pode já haver diagnóstico pronto.
 >
-> **Como ler:** ~850 linhas, **142 IDs** (F1-F143 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~900 linhas, **143 IDs** (F1-F144 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -935,3 +935,84 @@ A flag detecta `REMOVE` de CAMPAIGN/AD_GROUP — **operacao que o MCP nao sabe f
 coerente com o proposito (drift e justamente o que vem de fora) mas significa que nenhum runbook a
 exercita sem acao manual na UI. A sessao de campo varreu 23 contas e nao achou um so `REMOVE` dessas
 entidades dentro da retencao — a flag nunca disparou em producao ate hoje.
+
+
+## F144 (HIGH, ABERTO) — `confiavel` afirma cobertura que a fronteira nao pode provar
+
+> **Como apareceu:** a sessao de campo removeu uma campanha pela UI (conta de teste `1163862076`) e
+> foi conferir se o `structural_change` disparava. Nao disparou — e o que ela achou no caminho foi
+> pior: o selo de frescor dizia `confiavel` sobre uma resposta que **omitia a remocao**.
+> Reproduzido aqui de forma independente, com o estado confirmado por GAQL antes.
+
+**Medido, com controle.** Estado por GAQL, imediato: campanha `23861545627` → **`REMOVED`**. Na mesma
+conta e no mesmo minuto, `detect_drift(LAST_2_DAYS)`:
+
+```
+total_drift_changes: 2        <- so os CAMPAIGN_ASSET do smoke; a remocao NAO esta
+flags: []                     <- structural_change nao sobe (o evento nao chegou)
+freshness: { account_frontier: "2026-09-02 20:44:05",
+             status: "confiavel", warning: null }     <- a afirmacao falsa
+```
+
+O GAQL e o **controle**: ele estabelece um fato que o `change_event` ainda nao conhece, que e
+exatamente a condicao que o `freshness` existe pra detectar. Sem ele, "duas linhas e `confiavel`"
+pareceria uma resposta correta.
+
+**O mecanismo.** [`change_freshness.py`](../../src/google_ads/change_freshness.py) decide por
+`account_frontier.date() < window_end` — **granularidade de dia**. Fronteira `2026-09-02 20:44` tem
+`.date()` igual a `2026-09-02`, entao "cobre" o dia inteiro, incluindo as 3 horas seguintes em que a
+remocao aconteceu. Isolado pelo campo, mesma fronteira, so mudando o fim da janela:
+
+| janela | inclui o dia corrente? | status |
+|---|---|---|
+| 31/08 → 01/09 | nao | `ambiguo` ✅ |
+| 01/09 → **02/09** | **sim** | **`confiavel`** ❌ |
+
+🔑 **A premissa que quebra, e vale alem deste caso:** `account_frontier` diz *"o mais recente que eu
+vi"*, **nao** *"eu vi tudo ate aqui"*. Sao coisas diferentes, e o codigo tratou a primeira como se
+fosse a segunda. Para qualquer janela que inclua o dia corrente, `confiavel` e promessa impossivel —
+o dia ainda esta correndo, e sempre pode haver evento posterior a fronteira e anterior ao fim do dia.
+
+**Por que e HIGH, sendo o espelho do F143 (MED).** A assimetria de custo e o que separa os dois:
+- **falso `atrasado`** (F143) → ruido. O operador confere por GAQL e segue. Custo: atencao.
+- **falso `confiavel`** (este) → confianca indevida. O operador **nao** confere. Custo: a mudanca de
+  terceiro passa, que e precisamente o que a feature existe pra impedir.
+
+`confiavel` e a afirmacao mais forte que o campo faz, e errar para o lado permissivo derruba a razao
+de ser do mecanismo — o mesmo argumento que justificou nao deixar sonda vazia sugerir frescor.
+
+### O fix nao e isolado: F141, F143 e F144 tem a mesma dependencia
+
+**Nao corrigido, e nao deve ser corrigido sozinho.** A regra certa e *"quando a janela alcanca o dia
+corrente, `confiavel` nao e alcancavel"* — e "dia corrente" tem que ser **o da conta**, nao o do
+servidor, que e exatamente o que falta no [F141](#f141-med-aberto--os-presets-de-data-resolvem-em-utc-e-nenhuma-das-25-contas-esta-em-utc).
+Neste caso as duas pontas coincidiram **por acidente** (o preset resolveu `window_end` em 02/09 e na
+conta ainda era 02/09); com fuso diferente divergem. Os tres findings tocam a mesma superficie
+pequena e dependem do mesmo fuso da conta:
+
+| | o que muda |
+|---|---|
+| **F141** | de onde vem `window_end` (fuso da conta, nao UTC) |
+| **F143** | o rotulo `atrasado`, que afirma causa nao sustentada |
+| **F144** | o teto de `confiavel` quando a janela alcanca o dia corrente |
+
+Fazer os tres numa passada evita mexer no mesmo enum tres vezes — e enum de resposta e contrato.
+
+⚠️ **Cuidado de desenho ao escrever o fix: nao reusar `ambiguo` para este caso.** Hoje `ambiguo`
+significa *"a conta esta em dia e o teu recorte esta genuinamente vazio"*. Aqui o recorte **tem
+linhas** (2) e o problema e outro: elas podem estar incompletas. Um mesmo rotulo cobrindo
+"teu vazio talvez seja real" e "teu nao-vazio talvez esteja faltando linha" pede leituras opostas do
+leitor. Este caso merece valor proprio.
+
+**O caso de teste, que a sessao de campo desenhou e vale guardar:** (1) fazer qualquer mutacao na
+conta; (2) **confirmar por GAQL que o estado mudou**; (3) rodar com janela terminando hoje;
+(4) asserir `freshness.status != "confiavel"`. O passo 2 e o que separa este teste dos outros — sem
+ele nao ha controle, e o teste nao distingue "cobertura correta" de "cobertura afirmada por engano".
+E determinístico: nao depende de esperar o lag.
+
+### Nota: `structural_change` continua sem poder ser exercido
+
+A remocao de campanha **existe no estado e nao no `change_event`** — o smoke da flag depende de o
+evento indexar, o que nao tem contrato de prazo. Somado ao que ja estava registrado (a flag detecta
+operacao que o MCP nao sabe fazer, entao exige acao pela UI), a conclusao pratica e que essa flag
+so pode ser validada em janela de horas ou dias, nunca dentro de uma sessao.
