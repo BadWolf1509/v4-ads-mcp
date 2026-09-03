@@ -4,7 +4,10 @@
 - auto_apply_detected (severity low): any drift row com client_type em
   AUTO_APPLY_CLIENT_TYPES (GOOGLE_ADS_RECOMMENDATIONS ou ..._SUBSCRIPTION)
 - multiple_users_detected (severity medium): >1 distinct non-auto-apply user em drift set
-- structural_change (severity high): any REMOVE em CAMPAIGN/AD_GROUP
+- structural_change (severity high): REMOVE OU status->REMOVED em CAMPAIGN/AD_GROUP
+  (F145: remover campanha/grupo no Google e UPDATE de status, nao REMOVE)
+- status_change_detected (severity medium): ENABLED<->PAUSED em CAMPAIGN/AD_GROUP
+  por nao-autorizado (decisao de escopo 03/09)
   (F136: NAO cobre conversion action — ver `_STRUCTURAL_RESOURCE_TYPES`)
 
 Pure function, zero Google SDK imports — testable standalone.
@@ -62,6 +65,12 @@ class ChangeEventRow:
     changed_fields: tuple[str, ...]
     campaign_id: str | None
     ad_group_id: str | None
+    # F145: transicao de status (so CAMPAIGN/AD_GROUP; None nos demais). SEM
+    # default de proposito — default aqui seria a forma exata do F145 de volta:
+    # formatter esquece de popular, tudo vira None, o predicado nunca casa, a
+    # flag fica cega em silencio.
+    old_status: str | None
+    new_status: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +87,12 @@ class DriftChange:
     changed_fields: tuple[str, ...]
     campaign_id: str | None
     ad_group_id: str | None
+    # F145: transicao de status (so CAMPAIGN/AD_GROUP; None nos demais). SEM
+    # default de proposito — default aqui seria a forma exata do F145 de volta:
+    # formatter esquece de popular, tudo vira None, o predicado nunca casa, a
+    # flag fica cega em silencio.
+    old_status: str | None
+    new_status: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +120,15 @@ class DriftResult:
     truncated: bool
 
 
+def _transicoes(rows: list[ChangeEventRow]) -> str:
+    """'CAMPAIGN 123 PAUSED->REMOVED, AD_GROUP 456 REMOVE' — a transicao, nao o verbo."""
+    partes = []
+    for r in rows[:5]:
+        t = f"{r.old_status or '?'}->{r.new_status}" if r.new_status else r.operation
+        partes.append(f"{r.resource_type} {r.resource_id} {t}")
+    return ", ".join(partes) + (" ..." if len(rows) > 5 else "")
+
+
 def dict_to_change_event_row(d: dict[str, Any]) -> ChangeEventRow:
     """Convert get_change_history row dict to ChangeEventRow dataclass.
 
@@ -121,6 +145,8 @@ def dict_to_change_event_row(d: dict[str, Any]) -> ChangeEventRow:
         changed_fields=tuple(d.get("changed_fields") or []),
         campaign_id=d.get("campaign_id"),
         ad_group_id=d.get("ad_group_id"),
+        old_status=d.get("old_status"),
+        new_status=d.get("new_status"),
     )
 
 
@@ -197,10 +223,14 @@ def detect_drift(
             )
         )
 
+    # F145: remover campanha/grupo no Google e UPDATE de status -> REMOVED, nao
+    # REMOVE. REMOVE existe (hard-delete de vinculos/criterios) e segue coberto;
+    # a transicao e o caso que a flag nomeia e nunca tinha visto.
     structural_rows = [
         r
         for r in drift_rows
-        if r.operation == "REMOVE" and r.resource_type in _STRUCTURAL_RESOURCE_TYPES
+        if r.resource_type in _STRUCTURAL_RESOURCE_TYPES
+        and (r.operation == "REMOVE" or r.new_status == "REMOVED")
     ]
     if structural_rows:
         flags.append(
@@ -208,13 +238,56 @@ def detect_drift(
                 code="structural_change",
                 severity="high",
                 message_pt=(
-                    f"{len(structural_rows)} REMOVE(s) em recursos estruturais "
-                    f"(CAMPAIGN/AD_GROUP). Investigação obrigatória."
+                    f"{len(structural_rows)} remocao(oes) de recurso estrutural "
+                    f"(CAMPAIGN/AD_GROUP): {_transicoes(structural_rows)}. "
+                    "Investigação obrigatória."
                 ),
                 evidence={
                     "removed_resources": [
-                        {"resource_type": r.resource_type, "resource_id": r.resource_id}
+                        {
+                            "resource_type": r.resource_type,
+                            "resource_id": r.resource_id,
+                            "operation": r.operation,
+                            "old_status": r.old_status,
+                            "new_status": r.new_status,
+                        }
                         for r in structural_rows
+                    ]
+                },
+            )
+        )
+
+    # Decisao de escopo registrada (03/09): ENABLED<->PAUSED por nao-autorizado e
+    # drift que merece flag propria, MEDIA — reversivel, por isso nao e
+    # structural_change. Reativar campanha alheia comeca gasto; pausar para
+    # entrega. REMOVED ja saiu acima e nao entra aqui.
+    status_rows = [
+        r
+        for r in drift_rows
+        if r.resource_type in _STRUCTURAL_RESOURCE_TYPES
+        and r.new_status in {"ENABLED", "PAUSED"}
+        and r.old_status != r.new_status
+    ]
+    if status_rows:
+        flags.append(
+            DriftFlag(
+                code="status_change_detected",
+                severity="medium",
+                message_pt=(
+                    f"{len(status_rows)} mudanca(s) de status em CAMPAIGN/AD_GROUP por "
+                    f"usuario nao autorizado: {_transicoes(status_rows)}. Confirme se "
+                    "foi combinado."
+                ),
+                evidence={
+                    "status_changes": [
+                        {
+                            "resource_type": r.resource_type,
+                            "resource_id": r.resource_id,
+                            "old_status": r.old_status,
+                            "new_status": r.new_status,
+                            "user_email": r.user_email,
+                        }
+                        for r in status_rows
                     ]
                 },
             )
@@ -240,6 +313,8 @@ def detect_drift(
             changed_fields=r.changed_fields,
             campaign_id=r.campaign_id,
             ad_group_id=r.ad_group_id,
+            old_status=r.old_status,
+            new_status=r.new_status,
         )
         for r in truncated_drift
     )
