@@ -1024,7 +1024,9 @@ operacao que o MCP nao sabe fazer, entao exige acao pela UI), a conclusao pratic
 so pode ser validada em janela de horas ou dias, nunca dentro de uma sessao.
 
 
-## F145 (HIGH, ABERTO) — `structural_change` procura `REMOVE` numa entidade que nunca emite `REMOVE`
+## F145 (HIGH, CORRIGIDO 03/09) — `structural_change` procura `REMOVE` numa entidade que nunca emite `REMOVE`
+
+> **✅ CORRIGIDO em 03/09** — ver o bloco *"F145 CORRIGIDO"* logo abaixo da entrada. Predicado passou a cobrir `status → REMOVED`, a transicao sai na resposta, e `ENABLED↔PAUSED` por nao-autorizado ganhou `status_change_detected` (medium) por decisao registrada.
 
 > **Como apareceu:** a sessao de campo pediu ao Wellington uma remocao real de campanha pela UI pra
 > exercer a flag. O evento indexou, entrou na resposta como drift, e a flag **nao subiu**. Verificado
@@ -1091,6 +1093,46 @@ e `update_ad_group_status` do proprio MCP tambem produzem `UPDATE` de `status`. 
 remover geram o mesmo `operation`**, e so o valor em `new_resource` distingue. Fica a pergunta: um
 terceiro **pausando** a campanha de um cliente e drift estrutural? Hoje nao sobe flag nenhuma. Se
 ficar de fora, que fique por escolha registrada — e nao porque o predicado nao olhou.
+
+### ✅ F145 CORRIGIDO (03/09) — e a decisao de escopo que veio junto
+
+**Predicado:** `resource_type ∈ {CAMPAIGN, AD_GROUP}` e (`operation == REMOVE` **ou**
+`new_status == REMOVED`). O `REMOVE` fica (hard-delete de vinculo/criterio segue coberto); a
+transicao e o caso que a flag nomeava e nunca tinha visto. `changed_fields` nao entra: o Google
+nao aceita mutacao em campanha ja removida, entao `new_resource.status == REMOVED` num `UPDATE`
+**e** a transicao.
+
+**Dado:** o SELECT ganhou `old_resource`/`new_resource` (validados contra a API na propria query de
+verificacao deste finding; o Google so popula os campos que mudaram — payload pequeno, medido). O
+formatter extrai `old_status`/`new_status` **keyed pelo `resource_type`** — em proto-plus
+`new_resource.campaign` existe (vazio, `UNSPECIFIED`) mesmo numa linha de keyword; olhar pela
+presenca do atributo inventaria status. As linhas de `get_change_history` e os `changes[]` do
+`detect_drift` passam a **expor** a transicao (`PAUSED → REMOVED`): adicao de contrato.
+
+**`ChangeEventRow`/`DriftChange` ganharam os dois campos SEM default**, e ha guard por introspecao
+(`dataclasses.fields`). Default aqui seria a forma exata do F145 de volta: formatter esquece de
+popular, tudo vira `None`, o predicado nunca casa, a flag fica cega em silencio — e nenhum teste
+de comportamento pega, porque o converter segue populando. A licao do F141 (asserir "sem default"
+pela assinatura) aplicada no dia seguinte.
+
+**Decisao de escopo (Wellington, 03/09): `ENABLED↔PAUSED` por nao-autorizado ganhou flag propria,
+`status_change_detected` (medium).** Pausar e remover geram o mesmo `operation`; so o valor
+distingue. Reativar campanha alheia comeca gasto; pausar para entrega — e o cenario de co-gestao
+que a tool existe pra pegar. Reversivel, por isso **nao** e `structural_change`. `REMOVED` sai so
+como `structural_change`, nunca as duas.
+
+**Description do `detect_drift` reescrita:** a frase do F136 que prometia "cobre REMOVE de
+CAMPAIGN e AD_GROUP" saiu; entrou a verdade — remocao e `UPDATE` de status, a flag cobre as duas
+formas, e existe `status_change_detected`.
+
+**Verificacao:** RED observado (13/13 falhas antes de qualquer linha de producao); **sabotagem
+7/7 de primeira** — predicado volta ao verbo, formatter devolve `None`, converter derruba o campo,
+**tool nao serializa** (`detect_drift` monta o dict a mao — esse e o RED que eu nao tinha visto na
+ordem, porque corrigi a serializacao na mesma cadeia em que o fixture estava errado; a sabotagem
+foi a prova), SELECT perde `new_resource`, formatter keyed por atributo, e default no dataclass.
+
+**Follow-up nomeado, fora:** generalizar `old_status`/`new_status` para todo tipo com campo
+`status` (keyword, anuncio) e barato e util ("quem pausou a keyword?"), mas e outra pergunta.
 
 ## Evidencia nova sobre o residuo de 25s (sem ID proprio — fecha a lacuna do F131)
 
