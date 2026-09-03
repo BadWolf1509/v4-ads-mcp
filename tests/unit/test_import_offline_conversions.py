@@ -18,6 +18,8 @@ from src.mcp.tools.import_offline_conversions import (
     _validate_payload_shape,
 )
 
+_TZ_TESTE = timezone(timedelta(hours=-3))  # F146: o fuso agora e argumento
+
 
 def _valid_conversion(offset_minutes: int = -60):
     """Build a valid conversion entry. Default: 60 minutes ago (safe window)."""
@@ -86,13 +88,13 @@ def test_schema_accepts_minimal_valid_payload():
 
 
 def test_validate_accepts_minimal_valid_payload():
-    assert _validate_payload_shape(_valid_payload()) is None
+    assert _validate_payload_shape(_valid_payload(), tz=_TZ_TESTE) is None
 
 
 def test_validate_rejects_conversion_in_future():
     # 10 minutes in future (outside 5-min clock skew)
     bad = _valid_conversion(offset_minutes=10)
-    error = _validate_payload_shape(_valid_payload(conversions=[bad]))
+    error = _validate_payload_shape(_valid_payload(conversions=[bad]), tz=_TZ_TESTE)
     assert error is not None
     assert "futuro" in error["error_message"].lower()
 
@@ -100,13 +102,13 @@ def test_validate_rejects_conversion_in_future():
 def test_validate_accepts_future_within_5min_clock_skew():
     # 2 minutes in future — within clock skew tolerance
     ok = _valid_conversion(offset_minutes=2)
-    assert _validate_payload_shape(_valid_payload(conversions=[ok])) is None
+    assert _validate_payload_shape(_valid_payload(conversions=[ok]), tz=_TZ_TESTE) is None
 
 
 def test_validate_rejects_conversion_older_than_90_days():
     # 95 days ago (beyond Google's 90-day click-to-conversion window)
     bad = _valid_conversion(offset_minutes=-(95 * 24 * 60))
-    error = _validate_payload_shape(_valid_payload(conversions=[bad]))
+    error = _validate_payload_shape(_valid_payload(conversions=[bad]), tz=_TZ_TESTE)
     assert error is not None
     assert "90 dias" in error["error_message"]
 
@@ -115,7 +117,7 @@ def test_validate_rejects_duplicate_gclids_in_batch():
     c1 = _valid_conversion()
     c2 = _valid_conversion()
     c2["gclid"] = c1["gclid"]  # same gclid
-    error = _validate_payload_shape(_valid_payload(conversions=[c1, c2]))
+    error = _validate_payload_shape(_valid_payload(conversions=[c1, c2]), tz=_TZ_TESTE)
     assert error is not None
     assert "gclids duplicados" in error["error_message"].lower()
 
@@ -126,7 +128,7 @@ def test_validate_rejects_duplicate_order_ids_in_batch():
     c2 = _valid_conversion()
     c2["gclid"] = "Cj0KCQjwTEST_DIFFERENT_GCLID_002"
     c2["order_id"] = "crm-001"  # duplicate order_id
-    error = _validate_payload_shape(_valid_payload(conversions=[c1, c2]))
+    error = _validate_payload_shape(_valid_payload(conversions=[c1, c2]), tz=_TZ_TESTE)
     assert error is not None
     assert "order_id duplicados" in error["error_message"].lower()
 
@@ -137,14 +139,14 @@ def test_validate_accepts_distinct_order_ids():
     c2 = _valid_conversion()
     c2["gclid"] = "Cj0KCQjwTEST_DIFFERENT_GCLID_002"
     c2["order_id"] = "crm-002"
-    assert _validate_payload_shape(_valid_payload(conversions=[c1, c2])) is None
+    assert _validate_payload_shape(_valid_payload(conversions=[c1, c2]), tz=_TZ_TESTE) is None
 
 
 def test_validate_error_contains_row_index():
     # Make 2nd conversion (idx=1) invalid (future) — should report conversions[1]
     c1 = _valid_conversion()
     c2 = _valid_conversion(offset_minutes=10)  # future
-    error = _validate_payload_shape(_valid_payload(conversions=[c1, c2]))
+    error = _validate_payload_shape(_valid_payload(conversions=[c1, c2]), tz=_TZ_TESTE)
     assert error is not None
     assert "conversions[1]" in error["error_message"]
 
@@ -152,13 +154,13 @@ def test_validate_error_contains_row_index():
 def test_validate_accepts_exactly_5min_clock_skew():
     """Boundary: exactly 5 minutes in future is accepted (clock skew tolerance)."""
     ok = _valid_conversion(offset_minutes=5)
-    assert _validate_payload_shape(_valid_payload(conversions=[ok])) is None
+    assert _validate_payload_shape(_valid_payload(conversions=[ok]), tz=_TZ_TESTE) is None
 
 
 def test_validate_rejects_conversion_at_exactly_91_days_old():
     """Boundary: conversions older than 90 days rejected (Google's hard window)."""
     bad = _valid_conversion(offset_minutes=-(91 * 24 * 60))
-    error = _validate_payload_shape(_valid_payload(conversions=[bad]))
+    error = _validate_payload_shape(_valid_payload(conversions=[bad]), tz=_TZ_TESTE)
     assert error is not None
     assert "90 dias" in error["error_message"]
 

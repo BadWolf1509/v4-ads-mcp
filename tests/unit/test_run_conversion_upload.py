@@ -36,6 +36,7 @@ def _payload(conversions=None, conversion_action_id="987654321"):
         "conversions": base_conversions,
         "__target_count__": len(base_conversions),
         "__params_summary__": {"conversion_count": len(base_conversions)},
+        "__time_zone__": "America/Sao_Paulo",  # F146: -03:00 vem do fuso, nao de string fixa
     }
 
 
@@ -270,7 +271,7 @@ async def test_upload_sets_currency_brl_per_v4_invariant():
 
 @pytest.mark.asyncio
 async def test_upload_appends_minus_03_timezone_per_v4_invariant():
-    """ProtoFieldCapture: asserts conversion_date_time gets -03:00 BRT suffix (V4 invariant)."""
+    """ProtoFieldCapture: com fuso America/Sao_Paulo no payload, o offset anexado e -03:00 (F146)."""
     from src.google_ads.conversions import run_conversion_upload
 
     client, click_convs = _capture_client_with_success_response(1)

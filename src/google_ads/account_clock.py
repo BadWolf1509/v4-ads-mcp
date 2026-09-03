@@ -31,3 +31,27 @@ async def resolve_account_today(customer_id: str, *, now: datetime | None = None
     )
     time_zone = account.time_zone if account is not None else None
     return account_today(time_zone, now=now if now is not None else datetime.now(UTC))
+
+
+async def resolve_account_zone(customer_id: str) -> str | None:
+    """Nome IANA do fuso da conta (`America/Fortaleza`), ou None se ausente/invalido.
+
+    F146: devolve o NOME, nao um ZoneInfo, porque o chamador precisa guarda-lo
+    no payload pendente (JSON) para preview e upload usarem o mesmo fuso. E
+    devolve None em vez de cair em UTC — quem decide o fallback e o chamador:
+    para leitura (F141) UTC serve; para um MUTATE que grava timestamp no
+    Google, a resposta certa e recusar.
+    """
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    account = await connection.run_with_reconnect(
+        lambda conn: google_ads_accounts.get_by_customer_id(conn, customer_id)
+    )
+    name = account.time_zone if account is not None else None
+    if not name:
+        return None
+    try:
+        ZoneInfo(name)
+    except ZoneInfoNotFoundError:
+        return None
+    return name

@@ -1197,7 +1197,9 @@ invariante; a invariante e "nao ha default", e o guard passou a asserir a **assi
 **Fora, de proposito:** `governance/rate_limit._today()` (bucket de quota — UTC e o correto) e os
 3 tools Meta (fuso proprio no inventario Meta; a mesma classe la e outro finding).
 
-## F146 (LOW, ABERTO) — `import_offline_conversions` assume BRT fixo, e 2 contas sao UTC-4
+## F146 (LOW, CORRIGIDO 03/09) — `import_offline_conversions` assume BRT fixo, e 2 contas sao UTC-4
+
+> **✅ CORRIGIDO em 03/09** — ver o bloco *"F146 CORRIGIDO"* logo abaixo, que tambem **corrige o sentido do bug** descrito nesta entrada (o -03:00 fixo ADIANTAVA o carimbo em 1h, nao atrasava; o validador nunca rejeitou nada como futura).
 
 Achado pelo guard AST do F141 na primeira execucao. `_validate_payload_shape` compara
 `conversion_date_time` (interpretado como `-03:00`, hardcoded em `_BRT`) com `datetime.now(_BRT)`
@@ -1210,3 +1212,37 @@ upload assumindo um fuso que nem toda conta tem. O fix e usar `google_ads_accoun
 (ja disponivel via `account_today`) tanto na validacao quanto no offset anexado. Nao entrou no
 bloco porque muda o payload enviado ao Google e merece probe propria de importacao. Excecao
 registrada com motivo no guard.
+
+
+### ✅ F146 CORRIGIDO (03/09) — e uma correcao do proprio registro
+
+**Primeiro, o que eu tinha escrito errado acima.** A entrada dizia que uma conversao das 23:30 em
+Campo Grande "e rejeitada como futura". **E o contrario**, e foi um teste com controle que
+derrubou a afirmacao antes do codigo sair: ler a hora de parede de UTC-4 como `-03:00` torna o
+instante **1h mais cedo**, nao mais tarde. O validador nunca rejeitou nada como futura por isso;
+o unico erro dele era fechar a janela de **90 dias** 1h antes. O dano de verdade sempre foi o do
+builder: o carimbo ia ao Google **1h adiantado, em silencio** — uma conversao das 00:30 locais
+caindo no dia anterior. Afirmacao de direcao sem probe e afirmacao errada; registrado em
+[[afirmacoes-precisam-de-probe]].
+
+**O fix.** O fuso vem de `google_ads_accounts.time_zone` (`account_clock.resolve_account_zone`,
+que devolve o **nome** IANA ou `None` — sem fallback, porque quem decide e o chamador). O handler
+resolve UMA vez no dry-run, valida com `tz` (kwarg obrigatorio, guard de assinatura), guarda
+`__time_zone__` no payload pendente, e o **preview mostra `time_zone` e `utc_offset`** — o gestor
+confirma sabendo o que vai ser enviado. O builder calcula o offset **por timestamp** a partir do
+fuso (`%z`), em vez de anexar string fixa.
+
+**Decisao registrada (Wellington, 03/09): conta sem fuso → recusa com erro claro.** No F141 o
+fallback UTC valia porque era leitura; aqui e um MUTATE que grava timestamp em conta de cliente —
+offset chutado e corrupcao de dado, nao ruido. Token pendente sem `__time_zone__` (criado antes
+do deploy, TTL 10 min) → erro pedindo dry-run novo; nunca `-03:00` por baixo.
+
+**Verificacao:** RED 6/6 (o controle no sentido errado falhou e foi corrigido — ver acima);
+teste de integracao com DB pro `resolve_account_zone` (nome, `None` pra ausente/nulo/invalido);
+sabotagem 6/6: builder volta ao fixo, builder cai em Sao Paulo sem fuso, validador ignora `tz`,
+`tz` ganha default, handler cai em Sao Paulo, handler nao guarda o fuso no payload.
+
+**Nao feito, de proposito:** probe real de upload. O formato enviado e a mesma forma de string
+que `-03:00` ja usa em producao (`yyyy-mm-dd hh:mm:ss±hh:mm`), e um upload real empurraria uma
+conversao falsa numa conta de cliente. A `currency_code=BRL` continua invariante — moeda e da
+conta, nao do fuso, e as 25 sao BRL.
