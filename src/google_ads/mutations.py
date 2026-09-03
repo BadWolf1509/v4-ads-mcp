@@ -270,9 +270,23 @@ async def run_mutation(
         # Extract resource_names from mutate_operation_responses (ver _extract_resource_names).
         resource_names = _extract_resource_names(response)
 
+        # F139: `applied_count` conta o TENTADO, nao o MUDADO — com
+        # partial_failure ligado e o Google nao reportando falha (o caso do
+        # no-op, ex.: remover vinculo ja REMOVED), ele cai no target_count e a
+        # resposta diz "apliquei N" para N operacoes que nao mudaram nada.
+        # Mantido como esta por ser contrato em producao; `changed_count` entra
+        # ao lado, derivado do sinal que ja existia: o Google devolve o
+        # resource_name do recurso mutado, e um no-op nao devolve nada.
+        # Quando a resposta nao traz resource_names (drift de SDK — ver
+        # _extract_resource_names), cai em None: melhor ausente que inventado.
+        changed_count = (
+            sum(1 for rn in resource_names if rn is not None) if resource_names else None
+        )
+
         return {
             "provider_request_id": provider_request_id,
             "applied_count": applied_count,
+            "changed_count": changed_count,
             "partial_failures": per_op_results,
             "resource_names": resource_names,
         }

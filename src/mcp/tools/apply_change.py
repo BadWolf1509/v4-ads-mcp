@@ -133,5 +133,8 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
         "blast_summary": saved.blast_summary,
         "provider_request_id": result["provider_request_id"],
         "applied_count": result["applied_count"],
+        # F139: quantos de fato mudaram. `applied_count` conta o tentado, entao
+        # numa re-remocao ele diz 1 para uma operacao que nao mudou nada.
+        "changed_count": result.get("changed_count"),
         "resource_names": result.get("resource_names", []),
     }

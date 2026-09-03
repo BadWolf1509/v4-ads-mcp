@@ -240,3 +240,73 @@ def _make_client(fake_response) -> MagicMock:
         )
     )
     return client
+
+
+@pytest.mark.asyncio
+async def test_changed_count_separa_o_que_mudou_do_que_foi_tentado(monkeypatch):
+    """F139: `applied_count` conta TENTADO, nao MUDADO — e tem cara de veredito.
+
+    Achado no smoke de producao do `remove_asset_link` (02/09): re-remover um
+    vinculo ja REMOVED devolvia `status: applied` e `applied_count: 1` para uma
+    operacao que nao mudou nada. O unico vestigio era `resource_names: [null]`,
+    facil de nao olhar num JSON de sucesso.
+
+    Onde morde: batch parcial. Removendo 10 vinculos dos quais 6 ja estavam
+    REMOVED, a resposta diz 10 e o gestor registra "10 removidos"; a mudanca
+    real foi 4, codificada como "quantos elementos do array nao sao null" —
+    que ninguem conta.
+
+    E o defeito nao e da tool nova: `applied_count = target_count` vive no
+    `run_mutation` COMPARTILHADO, quando `partial_failure` esta ligado e o
+    Google nao reporta falha nenhuma (o no-op "sucede"). Atinge todo mutate
+    com `__partial_failure__`, incluindo `remove_audience`.
+
+    `changed_count` deriva do sinal que ja existia: o Google devolve o
+    resource_name do recurso mutado, e um no-op nao devolve nada.
+    """
+    from src.google_ads import mutations
+    from src.google_ads.mutations import run_mutation
+
+    # A condicao REAL do no-op, e nao a que parece: o Google NAO reporta falha.
+    # O oneof da op FICA setado (ela "sucede"), so que o resource_name volta
+    # vazio — e `_extract_resource_names` faz `or None`, virando None. Por isso
+    # `applied_count` conta 2 (as duas "sucederam") enquanto so uma mudou.
+    # Um fixture com op falhada nao reproduz isto: ali o applied_count ja
+    # acerta, porque o per_op_results classifica a falhada como 'failed'.
+    fake_response = MagicMock()
+    fake_response.mutate_operation_responses = [
+        _fake_op_resp_with_resource(
+            "campaign_asset_result", "customers/X/campaignAssets/7~9~CALLOUT"
+        ),
+        _fake_op_resp_with_resource("campaign_asset_result", ""),  # no-op
+    ]
+    fake_response.partial_failure_error = SimpleNamespace(code=0, details=[])
+
+    with (
+        patch.object(
+            mutations,
+            "build_client_for_manager",
+            AsyncMock(return_value=_make_client(fake_response)),
+        ),
+        patch.object(mutations, "get_builder", lambda _op: lambda c, cid, p: [MagicMock()]),
+        patch.object(mutations, "get_request_id", lambda: "fake-req-id"),
+        patch.object(mutations, "reset_request_id", lambda: None),
+        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(mutations, "ensure_account_access", AsyncMock()),
+        patch.object(mutations, "before_call", AsyncMock()),
+        patch.object(mutations, "record_actual", AsyncMock()),
+        patch.object(mutations.audit_log, "record", AsyncMock(return_value=1)),
+    ):
+        result = await run_mutation(
+            manager_id=uuid4(),
+            session_id=uuid4(),
+            customer_id="1234567890",
+            operation_type="remove_asset_link",
+            payload={"links": [{}, {}], "__target_count__": 2, "__partial_failure__": True},
+            target_count=2,
+            partial_failure=True,
+        )
+
+    assert result["applied_count"] == 2, "applied_count segue contando o tentado (contrato)"
+    assert result["changed_count"] == 1, "changed_count conta o que de fato mudou"
+    assert result["resource_names"] == ["customers/X/campaignAssets/7~9~CALLOUT", None]
