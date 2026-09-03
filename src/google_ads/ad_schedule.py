@@ -144,3 +144,63 @@ def diff_schedule(
             if k in desejada_por_chave and c.bid_modifier != bid_modifier:
                 to_update.append(c)
     return ScheduleDiff(to_add=to_add, to_remove=to_remove, to_update=tuple(to_update))
+
+
+@dataclass(frozen=True, slots=True)
+class MetricCell:
+    day_of_week: str
+    hour: int
+    cost_micros: int
+    conversions: float
+
+
+METRICS_GRANULARITY = "hora cheia; janelas com minutos sao aproximadas a hora cheia"
+
+
+def covers(windows: list[Window] | None, day_of_week: str, hour: int) -> bool:
+    """`None` = campanha sem AD_SCHEDULE = serve 24x7. Celula (dia, h) coberta se h:00 esta em [start, end)."""
+    if windows is None:
+        return True
+    instante = hour * 60
+    return any(
+        w.day_of_week == day_of_week and w.start_min() <= instante < w.end_min() for w in windows
+    )
+
+
+def _agrega(cells: list[MetricCell]) -> dict[str, Any]:
+    cost = sum(c.cost_micros for c in cells)
+    conv = sum(c.conversions for c in cells)
+    cost_brl = round(cost / 1_000_000, 2)
+    return {
+        "cost_brl": cost_brl,
+        "conversions": round(conv, 2),
+        "cpa_brl": round(cost_brl / conv, 2) if conv > 0 else None,
+        "cells": len(cells),
+    }
+
+
+def partition_metrics(
+    cells: list[MetricCell], before: list[Window] | None, after: list[Window]
+) -> dict[str, Any]:
+    """Spec §4.2: o preview responde 'o que estou desligando e melhor ou pior do que fica?'."""
+    leaving = [
+        c
+        for c in cells
+        if covers(before, c.day_of_week, c.hour) and not covers(after, c.day_of_week, c.hour)
+    ]
+    staying = [c for c in cells if covers(after, c.day_of_week, c.hour)]
+    return {
+        "leaving": _agrega(leaving),
+        "staying": _agrega(staying),
+        "metrics_granularity": METRICS_GRANULARITY,
+    }
+
+
+def summarize_current(current: list[CurrentWindow]) -> dict[str, Any]:
+    if not current:
+        return {"has_schedule": False, "windows": 0, "hours_per_week": 168.0}
+    return {
+        "has_schedule": True,
+        "windows": len(current),
+        "hours_per_week": hours_per_week(c.window for c in current),
+    }

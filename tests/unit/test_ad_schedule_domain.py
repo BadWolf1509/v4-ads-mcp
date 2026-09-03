@@ -12,9 +12,13 @@ from src.google_ads.ad_schedule import (
     DIAS,
     MINUTO_ENUM,
     CurrentWindow,
+    MetricCell,
     Window,
+    covers,
     diff_schedule,
     hours_per_week,
+    partition_metrics,
+    summarize_current,
     validate_windows,
     window_from_input,
 )
@@ -149,3 +153,55 @@ def test_bid_modifier_igual_ou_nao_informado_nao_gera_update() -> None:
     current = [_cur(day="MONDAY", bm=1.2)]
     assert diff_schedule(current, [Window("MONDAY", 7, 0, 17, 0)], 1.2).is_empty()
     assert diff_schedule(current, [Window("MONDAY", 7, 0, 17, 0)], None).is_empty()
+
+
+def _cell(day: str, hour: int, cost: float, conv: float) -> MetricCell:
+    return MetricCell(day, hour, int(cost * 1_000_000), conv)
+
+
+def test_sem_criterio_cobre_24x7() -> None:
+    """Spec §3: campanha sem AD_SCHEDULE serve sempre — vazio quer dizer 'tudo', nao 'nada'."""
+    assert covers(None, "SUNDAY", 3) is True
+    assert covers([], "SUNDAY", 3) is False
+
+
+def test_cobertura_e_meio_aberta_e_por_hora_cheia() -> None:
+    w = [Window("MONDAY", 7, 0, 17, 0)]
+    assert covers(w, "MONDAY", 7) and covers(w, "MONDAY", 16)
+    assert not covers(w, "MONDAY", 17) and not covers(w, "TUESDAY", 8)
+    # 07:30-08:00: a celula 07:00 NAO esta em [07:30, 08:00) -> aproximacao documentada
+    assert not covers([Window("MONDAY", 7, 30, 8, 0)], "MONDAY", 7)
+
+
+def test_preview_separa_o_que_sai_do_que_fica_com_cpa_dos_dois_lados() -> None:
+    """Spec §4.2/§8.3: custo sozinho nao responde; CPA de quem sai vs quem fica."""
+    cells = [
+        _cell("SATURDAY", 10, 100.0, 5.0),  # sai (fim de semana) — CPA 20
+        _cell("SUNDAY", 11, 50.0, 5.0),  # sai — CPA 10
+        _cell("MONDAY", 9, 300.0, 10.0),  # fica — CPA 30
+    ]
+    depois = [
+        Window(d, 0, 0, 24, 0) for d in ("MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY")
+    ]
+    r = partition_metrics(cells, None, depois)
+    assert r["leaving"]["cost_brl"] == 150.0 and r["leaving"]["conversions"] == 10.0
+    assert r["leaving"]["cpa_brl"] == 15.0
+    assert r["staying"]["cost_brl"] == 300.0 and r["staying"]["cpa_brl"] == 30.0
+    assert "conversions" in r["leaving"] and "conversions" in r["staying"]
+
+
+def test_cpa_e_none_sem_conversao_nunca_divisao_por_zero() -> None:
+    r = partition_metrics([_cell("SUNDAY", 3, 10.0, 0.0)], None, [Window("MONDAY", 0, 0, 24, 0)])
+    assert r["leaving"]["cpa_brl"] is None and r["leaving"]["cost_brl"] == 10.0
+
+
+def test_celula_que_ja_nao_era_servida_nao_entra_em_nenhum_lado() -> None:
+    antes = [Window("MONDAY", 7, 0, 17, 0)]
+    r = partition_metrics([_cell("SUNDAY", 3, 10.0, 1.0)], antes, antes)
+    assert r["leaving"]["cost_brl"] == 0.0 and r["staying"]["cost_brl"] == 0.0
+
+
+def test_summarize_current_sem_grade_e_24x7() -> None:
+    assert summarize_current([]) == {"has_schedule": False, "windows": 0, "hours_per_week": 168.0}
+    s = summarize_current([_cur(day="MONDAY"), _cur(day="TUESDAY")])
+    assert s == {"has_schedule": True, "windows": 2, "hours_per_week": 20.0}
