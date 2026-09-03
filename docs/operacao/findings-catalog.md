@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** nenhum dos de 02/09 — F131-F140 estao todos fechados e em producao. ~~F138~~ (commit so de `docs/` publica revisao nova do servidor MCP; a correcao obvia — `paths-ignore` no `on:` — foi verificada e e PIOR, porque travaria PR de docs para sempre com o check `test` obrigatorio), **F136** (o `structural_change` do `detect_drift` guarda `CONVERSION_ACTION`, que a API nunca emite — flag morta e mensagem que promete cobertura inexistente; nao corrigido de proposito, porque o fix obvio deixa o codigo honesto e a cobertura pior), **A4**, **F67** (custom domain) e os dois de 08-20 que são ação humana ou sprint próprio: **F129** (system user com permissão de admin para uso 100% de leitura, token permanente, um único `business_user`) e **F130** (o gate do Google não consulta `is_active` — o buraco que o lado Meta acabou de perder). Os F118-F128 nasceram e fecharam no mesmo dia. Fora do catálogo, dois itens P2 da revisão de responsividade ficaram **deliberadamente** de fora do fix: input de 14px (dispara zoom automático no iOS ao focar — mexe na escala tipográfica inteira) e checkbox de 13×13 na matriz de acessos (abaixo do mínimo do WCAG 2.2, provavelmente salvo pela exceção de espaçamento). Os 36 findings das investigações de agosto (F82-F117) estão fechados — a linha anterior desta nota listava 8 abertos e ficou obsoleta quando a segunda onda de 08-15 fechou F91 e F94-F99; corrigida em 08-19. **Antes de mexer em reads quentes, backup, fragmento HTMX, entrega de assets, CSRF ou design system, grep aqui pela área**: pode já haver diagnóstico pronto.
 >
-> **Como ler:** ~900 linhas, **143 IDs** (F1-F144 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~960 linhas, **144 IDs** (F1-F145 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -1016,3 +1016,94 @@ A remocao de campanha **existe no estado e nao no `change_event`** — o smoke d
 evento indexar, o que nao tem contrato de prazo. Somado ao que ja estava registrado (a flag detecta
 operacao que o MCP nao sabe fazer, entao exige acao pela UI), a conclusao pratica e que essa flag
 so pode ser validada em janela de horas ou dias, nunca dentro de uma sessao.
+
+
+## F145 (HIGH, ABERTO) — `structural_change` procura `REMOVE` numa entidade que nunca emite `REMOVE`
+
+> **Como apareceu:** a sessao de campo pediu ao Wellington uma remocao real de campanha pela UI pra
+> exercer a flag. O evento indexou, entrou na resposta como drift, e a flag **nao subiu**. Verificado
+> aqui de forma independente no `change_event` cru e depois generalizado por probe agregada.
+
+**O evento, medido** (conta `1163862076`, campanha `23861545627`):
+
+```
+change_resource_type:      CAMPAIGN
+old_resource:              {campaign: {status: "PAUSED"}}
+new_resource:              {campaign: {status: "REMOVED"}}
+resource_change_operation: UPDATE
+changed_fields:            status
+```
+
+**O codigo** ([`drift_detection.py`](../../src/google_ads/drift_detection.py)):
+`if r.operation == "REMOVE" and r.resource_type in _STRUCTURAL_RESOURCE_TYPES`.
+
+**Remover campanha no Google Ads nao e uma operacao de remocao — e um `UPDATE` do campo `status`.**
+A flag procura um verbo que essa entidade nunca emite.
+
+### A regra geral, levantada por probe agregada e nao inferida
+
+`run_gaql` com `aggregate_by` sobre 141 eventos / 28 dias na conta `7862230676` da o mapa
+(tipo × operacao) empirico:
+
+| operacao | tipos que a emitem |
+|---|---|
+| `REMOVE` | `CAMPAIGN_ASSET` (4), `CAMPAIGN_BUDGET` (3), `CUSTOMER_ASSET` (2), `CAMPAIGN_CRITERION` (2) |
+| `UPDATE` | `AD_GROUP_CRITERION` (65), `AD` (20), **`CAMPAIGN` (2)**, `CAMPAIGN_BUDGET` (2) |
+
+🔑 **A regra que isso revela vale alem do caso:** entidade que **tem campo `status` com valor
+`REMOVED`** e soft-deleted, e o `change_event` registra `UPDATE`. Entidade sem esse campo e
+hard-deleted, e registra `REMOVE`. Por isso `AD_GROUP_CRITERION` (keyword, tem status) so aparece como
+`UPDATE`, enquanto `CAMPAIGN_CRITERION` (negativa, nao tem) aparece como `REMOVE`.
+
+**Consequencia para os dois membros que sobraram no set:** `CAMPAIGN` esta medido. `AD_GROUP` nao
+aparece na amostra, mas tem `AdGroupStatus.REMOVED`, logo cai na mesma regra — **inferencia, com a
+regra medida em 6 tipos**, nao medicao direta. Vale confirmar quando surgir um evento real.
+
+### Por que isto e pior que o F136, que "fechou" hoje de manha
+
+O [F136](#f136) tirou `CONVERSION_ACTION` do set por nao existir no enum, e **declarou na description
+da tool** que a flag *"cobre REMOVE de CAMPAIGN e AD_GROUP"*. Medido agora: **nao cobre nenhum dos
+dois.** O fix daquele finding tornou a promessa mais confiante sobre uma cobertura que nao existe —
+e silencio teria sido melhor que garantia falsa, porque o gestor le a description e para de conferir.
+
+**Isto tambem explica, com causa, o que estava registrado sem causa:** a varredura de 23 contas nao
+achou um `REMOVE` de CAMPAIGN/AD_GROUP em nenhuma. Foi lido como "essas remocoes sao raras". Nao sao —
+**esse par (tipo, operacao) nao ocorre**. A ausencia era o achado, e passou por ruido.
+
+### O fix nao e um `or` a mais
+
+**Predicado sugerido:** `resource_type in {CAMPAIGN, AD_GROUP}` **e** (`operation == REMOVE` **ou**
+(`status` em `changed_fields` **e** `new_resource.<entidade>.status == "REMOVED"`)).
+
+Mas a query da tool ([`change_history.py`](../../src/google_ads/queries/change_history.py)) **nao
+seleciona `new_resource`** — so `changed_fields`. Entao o fix envolve: campo novo no SELECT (payload
+maior — `old_resource`/`new_resource` sao protos aninhados), parser novo, e o predicado. Nao e
+one-liner, e mexe no caminho de uma tool de seguranca.
+
+⚠️ **Uma decisao de escopo que precisa ser tomada de proposito, nao por omissao:** `update_campaign_status`
+e `update_ad_group_status` do proprio MCP tambem produzem `UPDATE` de `status`. Ou seja **pausar e
+remover geram o mesmo `operation`**, e so o valor em `new_resource` distingue. Fica a pergunta: um
+terceiro **pausando** a campanha de um cliente e drift estrutural? Hoje nao sobe flag nenhuma. Se
+ficar de fora, que fique por escolha registrada — e nao porque o predicado nao olhou.
+
+## Evidencia nova sobre o residuo de 25s (sem ID proprio — fecha a lacuna do F131)
+
+O campo observou, **dentro de uma unica resposta** do `detect_drift`, o `account_frontier` ja em
+`23:37:35` enquanto a query principal ainda devolvia 2 linhas (o evento das 23:37 faltando). Re-rodou
+segundos depois e vieram 3.
+
+**Isso e a mesma assinatura do `11:43:14` que ficou sem causa de manha** — e agora com as duas leituras
+**no mesmo request**, o que descarta as hipoteses de revisao diferente do deploy e de `limit`. A
+hipotese de **eventual consistency entre replicas** ganha evidencia forte: a sonda e a query principal
+sao chamadas distintas ao mesmo backend e podem pousar em replicas com estados diferentes.
+
+**Duas consequencias praticas:**
+1. **Confirma o desenho da tolerancia no runbook.** Asserir `account_frontier == MAX(GAQL)` com
+   igualdade estrita seria flaky **por natureza**, nao por acaso — o `>= MAX - 120s` estava certo.
+2. **Vale como nota de metodo:** duas leituras do mesmo endpoint com segundos de diferenca podem
+   discordar. Qualquer smoke que compare tool contra GAQL tem que tolerar isso ou reprova sem defeito.
+
+**Lag medido, terceiro ponto da distribuicao:** remocao as `2026-09-02 23:37:35`, leitura carimbada
+`23:44:05` → **≤ 6min30s** (limite superior). Com os anteriores, a distribuicao vai de **~6 min** a
+**~3-4 h** a **>4 dias**, na mesma familia de contas: **tres ordens de grandeza**. A afirmacao de que
+o lag nao tem contrato — que esta em description de tool — deixa de se apoiar em dois pontos.
