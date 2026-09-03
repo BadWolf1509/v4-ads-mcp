@@ -18,26 +18,28 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 
 ## Estado atual
 
-**2026-08-20.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`
-(revisão `00071-q4v`), **64 MCP tools** (58 Google + 6 Meta), CI gated + deploy automático.
-Em 19/08, três investigações fecharam **17 findings** (F101-F117). Em 20/08: a **revisão de
-responsividade** do painel fechou 10 (F118-F127) e a **reconciliação da parceria Meta**
-(PR #21) fechou o F128 — o inventário e os acessos Meta agora se reconciliam sozinhos
-contra a parceria do BM. O catálogo está em **129 IDs**; abertos: **A4**, **F67**,
-**F129** (governança do system user — ação humana) e **F130** (gate do Google sem `is_active`).
+**2026-09-02.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`,
+**66 MCP tools** (60 Google + 6 Meta), CI gated + deploy automático. Catálogo em **139 IDs**.
 
-**A reconciliação sobe DESLIGADA** (`META_RECONCILE_APPLY=false`): observa e conta, não
-revoga. Ver a pendência 1c do `estado-atual.md` antes de virar a chave.
+**Quantos findings fecharam em qual sprint NÃO vive aqui** — essa narrativa churna toda
+sessão e duplica o `estado-atual.md`. Este bloco tem só o que orienta qualquer sessão;
+número de tool e contagem de ID se atualizam junto com o `estado-atual.md` no fecho.
 
 **O detalhe vive em [`docs/operacao/estado-atual.md`](docs/operacao/estado-atual.md)** —
-decision gates, quem usa o quê, pendências operacionais, tokens, IAM, histórico de
-sessões. Volátil por natureza: **atualize aquele arquivo ao terminar a sessão**, não este.
+estado de produção, pendências abertas, decision gates, quem usa o quê, tokens, IAM.
+Volátil por natureza: **atualize aquele arquivo ao terminar a sessão**, não este.
 
 **Sabe de cara:**
 
-- `gcloud` está **sem credencial válida** (`gcloud auth login` antes de qualquer tarefa de infra).
+- `gcloud` pode estar **sem credencial válida** — confirme antes de qualquer tarefa de infra.
+- **A reconciliação Meta sobe DESLIGADA** (`META_RECONCILE_APPLY=false`): observa e conta,
+  não revoga. Ver a pendência 1c do `estado-atual.md` antes de virar a chave.
 - Fase 2B (tombstone dos 8 reports antigos) segue **travada** no soak — não tombstonar.
-- Próximo sprint candidato: **M.5** (`meta_get_audience_performance` + `meta_get_top_creatives`).
+- **Tool nova só aparece pra sessão nova** (F140): o catálogo é negociado no handshake do
+  MCP, e o sintoma é a tool "não existir", não um erro de versão. Reconecte antes do smoke.
+- Próximo sprint candidato: **`ad_schedule`** (spec pronta, `docs/superpowers/specs/`;
+  a §4.2 manda levantar a conjunta dia × hora **na implementação**, com janela madura) ou
+  **M.5** (`meta_get_audience_performance` + `meta_get_top_creatives`).
 
 ## Context bootstrap
 
@@ -127,10 +129,10 @@ Quando o padrão de mercado custar caro demais para o momento, **apresente o tra
 
 
 - Don't fazer I/O de bookkeeping em `finally` sem `best_effort` — exceção ali descarta o `return` e transforma operação já aplicada em erro (F83). Don't chamar SDK Google fora de `run_blocking` (F86). Don't interpolar texto livre em GAQL sem `gaql_string_literal` (F87). Don't ler `Settings` dentro de primitivo de infra (pool/cliente/logger) — quem serve tráfego injeta (F92).
-- Don't confiar em guard que passou de primeira: verifique contra o código PRÉ-fix (sabotagem ou `git stash`). Aconteceu 3× nesta sessão — grep casando a própria docstring, AST exigindo forma que o codebase não usa, e AST vendo só dict literal quando o call-site monta o dict numa variável.
+- Don't confiar em guard que passou de primeira: verifique contra o código PRÉ-fix (sabotagem ou cópia — **nunca `git checkout`**, que descarta trabalho não commitado). E don't asserir o ADJACENTE à invariante: em 02/09 três guards meus passaram verdes porque **enumeravam** filtros em vez de afirmar a propriedade (o que ficou fora da lista passou), asseriam **concordância** em vez de corretude (duas respostas erradas e iguais passam), ou eram verdadeiros **independente da implementação**. Se a asserção não distingue código bom de quebrado, ela não é guard. Aconteceu 3× nesta sessão — grep casando a própria docstring, AST exigindo forma que o codebase não usa, e AST vendo só dict literal quando o call-site monta o dict numa variável.
 - Don't envolver em `run_with_reconnect` um bloco que ESCREVE — o retry re-executa a escrita. Separe o read, ou proteja a escrita com `best_effort` (F91). Don't pôr `LIMIT` sem `ORDER BY` num tool que ordena depois (F98/F88). Don't pôr segredo em `params=` de GET (guard AST em `test_no_secrets_in_query_params.py`; use header ou `data=` no POST).
 - Don't assertar superfície de API externa por analogia. Teste que codifica a convenção errada é PIOR que teste ausente (aconteceu 3×: F87, F89, e os mocks do F84/F89 que nem conseguiam expressar o bug). Probe empírica primeiro — `validate_gaql` pro Google, `ads_get_field_context` pro Meta.
-- Don't push sem `python scripts/check_pre_push.py` antes. Full sweep MANDATORY ao mexer em pré-flight de mutate, queries com JOIN/cursor, ou migrations.
+- Don't pôr pipe entre o gate e o `&&`: o exit code de um pipeline é o do ÚLTIMO comando, então `check_pre_push.py | tail && git commit` **não é gate** e já deixou passar commit com gate vermelho (02/09; a variante com `grep` já tinha acontecido antes). Rode mudo e leia `$?`. Don't push sem `python scripts/check_pre_push.py` antes. Full sweep MANDATORY ao mexer em pré-flight de mutate, queries com JOIN/cursor, ou migrations.
 - Don't confiar no exit code de `gh run watch` — confirme via `gh run view <id> --json conclusion`.
 - Don't adicionar gate/pré-flight "a todos os executores" sem `grep` TODA função que chama `build_client_for_manager` (F57).
 - Don't adicionar recurso externo (CDN/font) sem atualizar `_CSP_POLICY` no mesmo commit (CSP enforcing bloqueia).
