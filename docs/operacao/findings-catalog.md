@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** nenhum dos de 02/09 — F131-F140 estao todos fechados e em producao. ~~F138~~ (commit so de `docs/` publica revisao nova do servidor MCP; a correcao obvia — `paths-ignore` no `on:` — foi verificada e e PIOR, porque travaria PR de docs para sempre com o check `test` obrigatorio), **F136** (o `structural_change` do `detect_drift` guarda `CONVERSION_ACTION`, que a API nunca emite — flag morta e mensagem que promete cobertura inexistente; nao corrigido de proposito, porque o fix obvio deixa o codigo honesto e a cobertura pior), **A4**, **F67** (custom domain) e os dois de 08-20 que são ação humana ou sprint próprio: **F129** (system user com permissão de admin para uso 100% de leitura, token permanente, um único `business_user`) e **F130** (o gate do Google não consulta `is_active` — o buraco que o lado Meta acabou de perder). Os F118-F128 nasceram e fecharam no mesmo dia. Fora do catálogo, dois itens P2 da revisão de responsividade ficaram **deliberadamente** de fora do fix: input de 14px (dispara zoom automático no iOS ao focar — mexe na escala tipográfica inteira) e checkbox de 13×13 na matriz de acessos (abaixo do mínimo do WCAG 2.2, provavelmente salvo pela exceção de espaçamento). Os 36 findings das investigações de agosto (F82-F117) estão fechados — a linha anterior desta nota listava 8 abertos e ficou obsoleta quando a segunda onda de 08-15 fechou F91 e F94-F99; corrigida em 08-19. **Antes de mexer em reads quentes, backup, fragmento HTMX, entrega de assets, CSRF ou design system, grep aqui pela área**: pode já haver diagnóstico pronto.
 >
-> **Como ler:** ~780 linhas, **140 IDs** (F1-F141 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~850 linhas, **142 IDs** (F1-F143 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -809,3 +809,110 @@ leitura local, sem chamada extra ao Google.
   por outro menor, e é exatamente a gambiarra que o padrão de solução deste projeto recusa.
 
 Blast radius: **todas** as tools com preset, que são quase todas. Merece sprint próprio, não remendo.
+
+
+## F142 (HIGH, ABERTO) — a whitelist de `client_type` tem um valor que nao existe e nao tem o que a API emite
+
+> **Como apareceu:** a sessao de campo varreu 23 contas atras de um `REMOVE` historico. Numa delas
+> (`4432986150`, Camacari) apareceu uma linha de auto-apply do Google — e o `auto_applied_count` da
+> mesma resposta veio **`0`**. Nao foi o objetivo de nenhuma das duas investigacoes; caiu de olhar a
+> linha inteira em vez do campo que se estava conferindo.
+
+**Tres defeitos, uma causa.** [`get_change_history.py`](../../src/mcp/tools/get_change_history.py) e
+[`drift_detection.py`](../../src/google_ads/drift_detection.py) tratam `client_type` por string
+literal. O enum `ChangeClientType` do SDK v24 tem **15** valores; a whitelist da tool tem **14**, e a
+diferenca nao e so de tamanho:
+
+| | SDK v24 | whitelist da tool | efeito |
+|---|---|---|---|
+| regra automatizada | `GOOGLE_ADS_AUTOMATED_RULE` | `GOOGLE_ADS_AUTOMATED_RULES` | **valor morto** — a API rejeita |
+| auto-apply por assinatura | `GOOGLE_ADS_RECOMMENDATIONS_SUBSCRIPTION` | *ausente* | **nao filtravel** |
+
+**1. A tool oferece um filtro que o Google recusa.** Medido, nao deduzido — chamada com
+`client_types=["GOOGLE_ADS_AUTOMATED_RULES"]` (valor **do proprio schema**) devolve:
+`Invalid enum value cannot be included in WHERE clause: 'GOOGLE_ADS_AUTOMATED_RULES'`. Plural que nao
+existe. Quem escolher essa opcao da lista leva erro duro.
+
+**2. `auto_applied_count` conta errado.** `_AUTO_APPLY_CLIENT_TYPE` e a string unica
+`"GOOGLE_ADS_RECOMMENDATIONS"`, e producao emitiu `GOOGLE_ADS_RECOMMENDATIONS_SUBSCRIPTION`. Medido na
+conta `4432986150`: uma linha `user_email: "Recommendations Auto-Apply"`,
+`client_type: GOOGLE_ADS_RECOMMENDATIONS_SUBSCRIPTION`, e `summary.auto_applied_count: 0`.
+
+**3. `detect_drift` pega a mudanca e perde o rotulo — e a pegada e por acidente.** Medido na mesma
+conta: `total_drift_changes: 1` e **`flags: []`**. A flag `auto_apply_detected` nao sobe num auto-apply
+de manual. A linha so entra em drift porque `"Recommendations Auto-Apply"` nao e e-mail valido e
+portanto nunca estara em `responsible_user_emails` — ou seja, o mecanismo **desenhado** (a flag) falha,
+e o que salva e um efeito colateral do campo ser `format: email`.
+
+🔴 **O caminho que vira falso negativo de verdade** e a pergunta natural do gestor:
+`get_change_history(client_types=["GOOGLE_ADS_RECOMMENDATIONS"])` — *"o que o Google aplicou sozinho?"*.
+Numa conta com auto-apply por assinatura isso devolve **vazio**, que le como atestado de limpeza. O
+`CLAUDE.md` classifica auditoria de auto-apply como "CRITICO antes de tudo"; e exatamente essa consulta.
+
+**A licao, e o motivo de doer:** o F136 foi fechado **no mesmo dia** com um guard que cruza o conjunto
+com o enum do SDK. Ele foi aplicado a `ChangeEventResourceType` em dois lugares
+([`test_change_event_enum_guards.py`](../../tests/unit/test_change_event_enum_guards.py),
+[`test_drift_structural_scope.py`](../../tests/unit/test_drift_structural_scope.py)) e **nao** a
+`ChangeClientType` — mesmo arquivo, mesma forma, um enum ao lado. **O guard foi aplicado a instancia,
+nao a classe do problema.** Family: `design-gap-via-API-enum-whitelist` (F17/F18/F19/F53/F136).
+
+**Fix (nao aplicado, aguardando decisao):** corrigir o plural, incluir o valor faltante, transformar
+`_AUTO_APPLY_CLIENT_TYPE` em `frozenset` com os **dois** valores de recommendations, e estender o guard
+existente pra cruzar `_CLIENT_TYPES` com `ChangeClientType` — **derivando** do enum em vez de enumerar
+a mao, senao o proximo valor que o Google adicionar repete isto. Cuidado ao escrever o guard: asserir
+`len(...) == 15` nao distingue codigo bom de quebrado (bastaria trocar dois nomes errados); a assercao
+tem que ser de **igualdade de conjuntos** contra o enum.
+
+## F143 (MED, ABERTO) — `atrasado` afirma lag onde a evidencia so mostra silencio
+
+> **Como apareceu:** a sessao de campo rodou o `freshness` em 23 contas do MCC e nao viu `confiavel`
+> em nenhuma — 15 `atrasado`, 8 `indeterminado`.
+
+**Antes do achado, uma correcao do dado.** O "zero `confiavel` em 23" e **artefato da consulta**, nao
+propriedade das contas: a varredura filtrava
+`resource_types=["CAMPAIGN","AD_GROUP"] + operation_types=["REMOVE"]` e nao existia evento desses em
+conta nenhuma, entao **todo recorte estava vazio por construcao**. Recorte vazio nunca pode ser
+`confiavel` — por desenho ele e `ambiguo` ou `atrasado`, e esse e o ponto inteiro do F131. Medido na
+mesma conta `4432986150` sem o filtro, janela `06/08 → 01/09`: **`confiavel`**. O 8 `indeterminado`
+confirma o desenho funcionando: conta sem nenhum evento na retencao se recusa a fingir frescor.
+
+**O achado que sobra, e e real:** `assess_freshness` decide por
+`account_frontier.date() < window_end`. Mas **`account_frontier` so avanca quando alguem mexe na
+conta** — conta parada ha tres dias tem fronteira de tres dias atras, e nao porque a indexacao
+atrasou, e sim porque nao houve o que indexar. Logo, toda consulta cuja janela chega ate hoje numa
+conta sem write hoje sai `atrasado`. O warning **afirma causa** — *"O trecho final da janela ainda nao
+indexou"* — e a evidencia sustenta apenas o fato. Em conta de baixa atividade, a explicacao dominante
+e a outra. **Alerta que dispara em condicao normal treina a ignorar o alerta**, que e o oposto do que
+o F131 constroi — a mesma frase que justificou a reabertura do F131 hoje de manha.
+
+⚠️ **Parte da amostra e F141, nao limiar — e isso muda o dimensionamento.** A varredura usou
+`LAST_30_DAYS`, cujo `window_end` e `yesterday`; sob o F141 esse `yesterday` (UTC) e **hoje** na conta.
+Medido na `4432986150`, so mudando o fim da janela: `→ 02/09` da `atrasado`, `→ 01/09` da
+**`confiavel`**. Ou seja, ao menos um dos dois pontos do campo vira sozinho quando o F141 for
+corrigido. **Qual fracao dos 15 e F141 e qual e limiar so da pra saber remedindo depois do F141** —
+nao dimensione este fix antes disso.
+
+**Sobre as tres opcoes propostas pelo campo:**
+- **(1) trocar o texto, manter a logica — sim, e ir um passo alem.** O rotulo `atrasado` *e* a
+  afirmacao; quem le a resposta le o `status`, nao o warning. O campo deve nomear o **fato** (a janela
+  passa do ultimo evento indexado), nao a causa. Trocar o valor do enum e mais barato **agora** do que
+  em qualquer momento futuro: ele subiu hoje e tem dois consumidores.
+- **(2) tolerancia de N horas — nao, como proposto.** Move a linha sem desfazer o erro de categoria:
+  conta parada ha 3 dias continua dizendo `atrasado`, e continua errado. Pior, embute uma constante
+  magica que finge existir um contrato de lag — quando a premissa declarada do F131, medida, e que
+  **nao ha contrato** (~3h a >4 dias). Codificar 24h contradiz o achado que motivou a feature.
+- **(3) ritmo da conta — de acordo com o campo: nao agora.** Heuristica nova com erro nos dois sentidos.
+
+**O unico desambiguador real, para registro e nao para agora:** `change_status` e um recurso distinto,
+feito pra sync incremental e com caracteristicas de lag proprias. Mudanca recente visivel nele e ausente
+do `change_event` seria evidencia **positiva** de lag, separando as duas hipoteses que hoje se
+confundem. Custa uma segunda consulta e uma dependencia nova. Nao entra sem necessidade demonstrada.
+
+### Nota de cobertura: `structural_change` nao e testavel pelo caminho que testa as outras
+
+A flag detecta `REMOVE` de CAMPAIGN/AD_GROUP — **operacao que o MCP nao sabe fazer**. Nao existe
+`remove_campaign` nem `remove_ad_group`; as descriptions de `update_campaign_status` e
+`update_ad_group_status` mandam usar a UI. O smoke dela exige evento vindo **de fora** do MCP, o que e
+coerente com o proposito (drift e justamente o que vem de fora) mas significa que nenhum runbook a
+exercita sem acao manual na UI. A sessao de campo varreu 23 contas e nao achou um so `REMOVE` dessas
+entidades dentro da retencao — a flag nunca disparou em producao ate hoje.
