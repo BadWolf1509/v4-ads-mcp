@@ -4,7 +4,7 @@
 Wraps the change_event GAQL resource with structured filters and a summary
 block. Two V4 skills (auditoria-google-ads + analise-performance-google-ads)
 call this as 'CRITICO antes de tudo' to detect:
-- Auto-apply Recommendations (client_type=GOOGLE_ADS_RECOMMENDATIONS)
+- Auto-apply Recommendations (client_type em AUTO_APPLY_CLIENT_TYPES)
 - Structural changes (geo settings, conversion actions, bidding strategy)
 - Who changed what
 
@@ -29,8 +29,8 @@ MO-JP+CAB pós-reverts Pedro 21/05):
 - 30-day window é a retenção documentada; alguns date_range presets podem
   bater limite ligeiramente menor. Nosso path usa explicit BETWEEN dates.
 - Google não distingue 'user applied via Recommendations UI' de 'Google
-  auto-apply' em change_event.client_type — ambos surface como
-  GOOGLE_ADS_RECOMMENDATIONS. summary.auto_applied_count conta a união;
+  auto-apply' em change_event.client_type. summary.auto_applied_count
+  conta a união dos dois valores de recommendations (F142);
   cross-reference auto-apply settings se intent matters.
 """
 
@@ -41,6 +41,7 @@ from typing import Any
 from uuid import UUID
 
 from src.google_ads.change_freshness import assess_freshness
+from src.google_ads.drift_detection import AUTO_APPLY_CLIENT_TYPES
 from src.google_ads.queries._common import parse_resource_path, resolve_date_window
 from src.google_ads.queries.change_history import (
     change_event_frontier_query,
@@ -109,32 +110,35 @@ _RESOURCE_TYPES = [
     "FEED_ITEM",
 ]
 
-# ChangeClientType enum values from Google Ads API (verified empirically
-# against production change_event 2026-05-11 — names DIFFER from common
-# guesses like GOOGLE_ADS_UI / GOOGLE_ADS_RECOMMENDATIONS_AUTO_APPLY).
+# ChangeClientType. Reconciliado com o enum do SDK pelo guard em
+# `tests/unit/test_change_client_type_guards.py` — nao edite a mao sem
+# rodar ele. A verificacao empirica de 2026-05-11 pegou os nomes certos
+# mas deixou passar duas divergencias por dois meses (F142): um plural
+# que nao existe e o valor de auto-apply por assinatura, que faltava.
 _CLIENT_TYPES = [
     "UNSPECIFIED",
     "UNKNOWN",
     "GOOGLE_ADS_WEB_CLIENT",  # Web UI (Google Ads website)
-    "GOOGLE_ADS_AUTOMATED_RULES",
+    "GOOGLE_ADS_AUTOMATED_RULE",  # F142: era plural; a API rejeita o plural
     "GOOGLE_ADS_SCRIPTS",
     "GOOGLE_ADS_BULK_UPLOAD",
     "GOOGLE_ADS_API",
     "GOOGLE_ADS_EDITOR",
     "GOOGLE_ADS_MOBILE_APP",
-    "GOOGLE_ADS_RECOMMENDATIONS",  # Includes auto-apply Recommendations
+    "GOOGLE_ADS_RECOMMENDATIONS",
+    "GOOGLE_ADS_RECOMMENDATIONS_SUBSCRIPTION",  # F142: auto-apply por assinatura
     "SEARCH_ADS_360_SYNC",
     "SEARCH_ADS_360_POST",
     "INTERNAL_TOOL",
     "OTHER",
 ]
 
-# Auto-apply Recommendations changes surface as GOOGLE_ADS_RECOMMENDATIONS
-# (Google does not distinguish "applied by user via Recommendations UI"
-# from "applied by Google auto-apply" in change_event.client_type). V4
-# skills using auto_applied_count should cross-reference with the auto-apply
-# Recommendations settings to confirm.
-_AUTO_APPLY_CLIENT_TYPE = "GOOGLE_ADS_RECOMMENDATIONS"
+# A constante de auto-apply vive em `drift_detection` (fonte unica). Havia
+# uma copia aqui, e copia divergente foi o vetor do F142.
+#
+# Google nao distingue "aplicado pelo gestor via UI de Recommendations" de
+# "aplicado pelo auto-apply do Google" dentro de cada valor — skills que
+# usam `auto_applied_count` devem cruzar com as settings de auto-apply.
 
 _SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -239,7 +243,7 @@ def _build_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     by_operation: Counter[str] = Counter()
     auto_applied = 0
     for r in rows:
-        if r["client_type"] == _AUTO_APPLY_CLIENT_TYPE:
+        if r["client_type"] in AUTO_APPLY_CLIENT_TYPES:
             by_user["auto-apply"] += 1
             auto_applied += 1
         else:

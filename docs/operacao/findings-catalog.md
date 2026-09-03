@@ -811,7 +811,7 @@ leitura local, sem chamada extra ao Google.
 Blast radius: **todas** as tools com preset, que são quase todas. Merece sprint próprio, não remendo.
 
 
-## F142 (HIGH, ABERTO) — a whitelist de `client_type` tem um valor que nao existe e nao tem o que a API emite
+## F142 (HIGH, CORRIGIDO) — a whitelist de `client_type` tem um valor que nao existe e nao tem o que a API emite
 
 > **Como apareceu:** a sessao de campo varreu 23 contas atras de um `REMOVE` historico. Numa delas
 > (`4432986150`, Camacari) apareceu uma linha de auto-apply do Google — e o `auto_applied_count` da
@@ -856,12 +856,31 @@ com o enum do SDK. Ele foi aplicado a `ChangeEventResourceType` em dois lugares
 `ChangeClientType` — mesmo arquivo, mesma forma, um enum ao lado. **O guard foi aplicado a instancia,
 nao a classe do problema.** Family: `design-gap-via-API-enum-whitelist` (F17/F18/F19/F53/F136).
 
-**Fix (nao aplicado, aguardando decisao):** corrigir o plural, incluir o valor faltante, transformar
-`_AUTO_APPLY_CLIENT_TYPE` em `frozenset` com os **dois** valores de recommendations, e estender o guard
-existente pra cruzar `_CLIENT_TYPES` com `ChangeClientType` — **derivando** do enum em vez de enumerar
-a mao, senao o proximo valor que o Google adicionar repete isto. Cuidado ao escrever o guard: asserir
-`len(...) == 15` nao distingue codigo bom de quebrado (bastaria trocar dois nomes errados); a assercao
-tem que ser de **igualdade de conjuntos** contra o enum.
+**✅ CORRIGIDO** em 2026-09-02, por TDD com o RED observado (7 testes falhando contra o codigo
+pre-fix antes de qualquer linha de producao mudar). Tres mudancas:
+
+1. `GOOGLE_ADS_AUTOMATED_RULES` → `GOOGLE_ADS_AUTOMATED_RULE`; entra `GOOGLE_ADS_RECOMMENDATIONS_SUBSCRIPTION`.
+2. `_AUTO_APPLY_CLIENT_TYPE` (string) vira `AUTO_APPLY_CLIENT_TYPES` (`frozenset` com os dois valores),
+   com **fonte unica** em [`drift_detection.py`](../../src/google_ads/drift_detection.py) — havia uma
+   copia da constante em cada modulo, e **copia divergente foi o vetor deste proprio finding**.
+3. Guard novo em [`test_change_client_type_guards.py`](../../tests/unit/test_change_client_type_guards.py),
+   espelhando o irmao de `ChangeEventResourceType`.
+
+🔑 **Correcao de uma recomendacao errada que eu tinha escrito aqui:** a versao anterior deste paragrafo
+mandava **derivar** `_CLIENT_TYPES` do enum do SDK em tempo de import. Isso contraria uma decisao ja
+tomada e documentada no guard irmao, que so vi ao abrir o arquivo — **producao nao deriva de proposito**,
+porque o schema de uma tool MCP e contrato publico e derivar faria um bump do `google-ads` mudar os
+valores aceitos pelo gestor **sem diff, sem revisao e sem linha de catalogo**; alem de cravar a versao
+da API num import do caminho que atende request. O padrao correto e o que ja existia: producao guarda
+snapshot revisado, e o **CI reconcilia** com a fonte autoritativa. Recomendar sem ler o vizinho e como
+se chega a "solucao" que desfaz um trade-off que ja tinha sido decidido.
+
+**O guard foi verificado contra 4 variantes quebradas, nao so contra o bug conhecido.** As duas
+primeiras mantem `len == 15` de proposito — passariam por um guard de contagem, que era o modo de falha
+a evitar: (a) trocar um nome valido por um invalido, (b) reintroduzir o plural removendo o singular,
+(c) remover o valor de `_SUBSCRIPTION`, (d) reintroduzir a comparacao por string unica no
+`_build_summary`. **4/4 detectadas**, e as duas de `len` constante cairam na assercao de **igualdade de
+conjuntos** — que e a diferenca entre este guard e um que so conta.
 
 ## F143 (MED, ABERTO) — `atrasado` afirma lag onde a evidencia so mostra silencio
 

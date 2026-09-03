@@ -1,7 +1,8 @@
 """Pure client-side drift detection for change_event rows (Sprint 3b.33).
 
 3 flags V0:
-- auto_apply_detected (severity low): any drift row com client_type=GOOGLE_ADS_RECOMMENDATIONS
+- auto_apply_detected (severity low): any drift row com client_type em
+  AUTO_APPLY_CLIENT_TYPES (GOOGLE_ADS_RECOMMENDATIONS ou ..._SUBSCRIPTION)
 - multiple_users_detected (severity medium): >1 distinct non-auto-apply user em drift set
 - structural_change (severity high): any REMOVE em CAMPAIGN/AD_GROUP
   (F136: NAO cobre conversion action — ver `_STRUCTURAL_RESOURCE_TYPES`)
@@ -33,8 +34,17 @@ Severity = Literal["low", "medium", "high"]
 # tests/unit/test_drift_structural_scope.py
 _STRUCTURAL_RESOURCE_TYPES = frozenset({"CAMPAIGN", "AD_GROUP"})
 
-# Auto-apply detection: client_type sentinel (already used em get_change_history)
-_AUTO_APPLY_CLIENT_TYPE = "GOOGLE_ADS_RECOMMENDATIONS"
+# F142: sao DOIS valores, nao um. `_SUBSCRIPTION` e o que a auto-apply por
+# assinatura emite, e era o que escapava — medido em producao na conta
+# 443-298-6150 (2026-09-01), onde `auto_applied_count` veio 0 e a flag
+# `auto_apply_detected` nao subiu num auto-apply real.
+#
+# Fonte unica de proposito: antes havia uma copia desta constante aqui e
+# outra em `get_change_history`, e copia divergente foi o vetor do proprio
+# F142. `get_change_history` importa daqui.
+AUTO_APPLY_CLIENT_TYPES = frozenset(
+    {"GOOGLE_ADS_RECOMMENDATIONS", "GOOGLE_ADS_RECOMMENDATIONS_SUBSCRIPTION"}
+)
 _AUTO_APPLY_USER_BUCKET = "auto-apply"
 
 
@@ -125,7 +135,7 @@ def detect_drift(
     Algorithm:
     1. Normalize responsible_user_emails (lowercase + strip).
     2. Partition rows: authorized (user_email in normalized set) vs drift.
-       Auto-apply (client_type=GOOGLE_ADS_RECOMMENDATIONS) ALWAYS goes to drift.
+       Auto-apply (client_type em AUTO_APPLY_CLIENT_TYPES) ALWAYS goes to drift.
     3. Aggregate drift rows: by_user (auto-apply collapsed), by_resource_type, by_operation.
     4. Detect 3 flags in order: auto_apply / multiple_users / structural_change.
     5. Stable sort drift rows DESC by change_date_time.
@@ -139,7 +149,7 @@ def detect_drift(
     # 2. Partition
     drift_rows: list[ChangeEventRow] = []
     for row in rows:
-        is_auto_apply = row.client_type == _AUTO_APPLY_CLIENT_TYPE
+        is_auto_apply = row.client_type in AUTO_APPLY_CLIENT_TYPES
         is_authorized = row.user_email.strip().lower() in authorized and not is_auto_apply
         if not is_authorized:
             drift_rows.append(row)
@@ -149,7 +159,7 @@ def detect_drift(
     by_resource_type: Counter[str] = Counter()
     by_operation: Counter[str] = Counter()
     for row in drift_rows:
-        if row.client_type == _AUTO_APPLY_CLIENT_TYPE:
+        if row.client_type in AUTO_APPLY_CLIENT_TYPES:
             by_user[_AUTO_APPLY_USER_BUCKET] += 1
         else:
             by_user[row.user_email] += 1
@@ -159,7 +169,7 @@ def detect_drift(
     # 4. Flags
     flags: list[DriftFlag] = []
 
-    auto_apply_count = sum(1 for r in drift_rows if r.client_type == _AUTO_APPLY_CLIENT_TYPE)
+    auto_apply_count = sum(1 for r in drift_rows if r.client_type in AUTO_APPLY_CLIENT_TYPES)
     if auto_apply_count > 0:
         flags.append(
             DriftFlag(
