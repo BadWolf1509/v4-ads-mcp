@@ -514,7 +514,7 @@ def summarize_current(current: list[CurrentWindow]) -> dict[str, Any]:
 - Produces:
   - `def ad_schedule_query(*, campaign_ids: list[str] | None, status: str, limit: int) -> str` — `status` ∈ `enabled|paused|removed|all` (mesmo contrato de `get_performance_breakdown`); `all` omite o filtro.
   - `def parse_ad_schedule_row(row: Any) -> dict[str, Any]` → `{campaign_id, campaign_name, criterion_id, resource_name, day_of_week, start_hour, start_minute, end_hour, end_minute, bid_modifier, status}` (minutos como **int**)
-  - `def campaign_budget_query(*, campaign_ids: list[str]) -> str` e `def parse_campaign_budget_row(row) -> dict` → `{campaign_id, campaign_name, budget_resource_name, budget_id, explicitly_shared: bool, amount_brl}`
+  - `def campaign_budget_query(*, campaign_ids: list[str] | None) -> str` (com `None`: todas as campanhas nao removidas — `WHERE campaign.status != 'REMOVED'`, sem `IN`) e `def parse_campaign_budget_row(row) -> dict` → `{campaign_id, campaign_name, budget_resource_name, budget_id, explicitly_shared: bool, amount_brl}`
   - `def campaigns_on_budgets_query(*, budget_resource_names: list[str]) -> str` e `def parse_campaign_on_budget_row(row) -> dict` → `{campaign_id, campaign_name, budget_resource_name, status}`
   - `def day_hour_metrics_query(*, campaign_ids: list[str], start: date, end: date) -> str` e `def parse_day_hour_row(row) -> dict` → `{campaign_id, day_of_week, hour: int, cost_micros: int, conversions: float}`
 
@@ -584,6 +584,12 @@ def test_campaign_budget_query_traz_explicitly_shared() -> None:
     q = campaign_budget_query(campaign_ids=["1", "2"])
     assert "campaign_budget.explicitly_shared" in q and "campaign.campaign_budget" in q
     assert "campaign.id IN (1,2)" in q
+
+
+def test_campaign_budget_query_sem_ids_pega_todas_as_nao_removidas() -> None:
+    """Ruling 1 (ledger): um builder so — sem ids, conta inteira menos REMOVED."""
+    q = campaign_budget_query(campaign_ids=None)
+    assert "campaign.id IN" not in q and "campaign.status != 'REMOVED'" in q
 
 
 def test_parse_campaign_budget_row() -> None:
@@ -689,12 +695,13 @@ def parse_ad_schedule_row(row: Any) -> dict[str, Any]:
     }
 
 
-def campaign_budget_query(*, campaign_ids: list[str]) -> str:
+def campaign_budget_query(*, campaign_ids: list[str] | None) -> str:
+    where = f"campaign.id IN ({','.join(campaign_ids)})" if campaign_ids else "campaign.status != 'REMOVED'"
     return f"""
         SELECT campaign.id, campaign.name, campaign.campaign_budget,
                campaign_budget.id, campaign_budget.explicitly_shared, campaign_budget.amount_micros
         FROM campaign
-        WHERE campaign.id IN ({','.join(campaign_ids)})
+        WHERE {where}
     """.strip()
 
 
@@ -975,7 +982,7 @@ async def get_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
 
     grade_rows, orcamentos = await asyncio.gather(
         _consulta(ad_schedule_query(campaign_ids=campaign_ids, status=status, limit=limit), parse_ad_schedule_row, audited=True),
-        _consulta(campaign_budget_query(campaign_ids=campaign_ids) if campaign_ids else _todas_as_campanhas_query(), parse_campaign_budget_row),
+        _consulta(campaign_budget_query(campaign_ids=campaign_ids), parse_campaign_budget_row),
     )
     truncated = len(grade_rows) > limit
     grade_rows = grade_rows[:limit]
@@ -987,15 +994,6 @@ async def get_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
         summary[cid] = {"campaign_name": o["campaign_name"], **summarize_current(atual.get(cid, [])), "budget_is_shared": o["explicitly_shared"]}
     return {"customer_id": customer_id, "windows": grade_rows, "schedule_summary": summary, "truncated": truncated}
 
-
-def _todas_as_campanhas_query() -> str:
-    """Sem campaign_ids: orcamento de todas as campanhas nao removidas (um SELECT so)."""
-    return """
-        SELECT campaign.id, campaign.name, campaign.campaign_budget,
-               campaign_budget.id, campaign_budget.explicitly_shared, campaign_budget.amount_micros
-        FROM campaign
-        WHERE campaign.status != 'REMOVED'
-    """.strip()
 ```
 
 - [ ] **Step 4: Rodar para ver passar** — `python -m pytest tests/unit/test_get_ad_schedule.py tests/unit/test_tools_schemas.py -q` (o segundo é o guard existente de schemas; a tool nova entra nele automaticamente). Rode também `python -m pytest tests/unit/test_no_server_clock_in_google_tools.py -q`.
