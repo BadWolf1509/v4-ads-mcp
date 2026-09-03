@@ -75,3 +75,16 @@ def test_hours_per_week_soma_as_janelas() -> None:
     ws = [window_from_input(_w(day=d, sh=7, eh=17)) for d in ("MONDAY", "TUESDAY")]
     assert hours_per_week(ws) == 20.0
     assert hours_per_week([window_from_input(_w(sh=7, sm=30, eh=8))]) == 0.5
+
+
+@pytest.mark.parametrize(
+    "malformado",
+    [
+        {"day_of_week": "MONDAY", "start_hour": "abc", "end_hour": 17},
+        {"day_of_week": "MONDAY", "end_hour": 17},
+        {"day_of_week": "MONDAY", "start_hour": None, "end_hour": 17},
+    ],
+)
+def test_dict_malformado_vira_mensagem_nao_excecao(malformado: dict) -> None:
+    err = validate_windows([malformado])
+    assert err is not None and "windows[0]" in err

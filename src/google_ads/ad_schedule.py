@@ -68,7 +68,10 @@ def validate_windows(windows: list[dict[str, Any]]) -> str | None:
     validos = ", ".join(str(m) for m in MINUTO_ENUM)
     parsed: list[Window] = []
     for i, d in enumerate(windows):
-        w = window_from_input(d)
+        try:
+            w = window_from_input(d)
+        except (KeyError, ValueError, TypeError) as e:
+            return f"windows[{i}]: janela malformada — precisa de day_of_week, start_hour e end_hour inteiros ({e.__class__.__name__}: {e})"
         if w.day_of_week not in DIAS:
             return (
                 f"windows[{i}]: day_of_week '{w.day_of_week}' invalido; use um de {', '.join(DIAS)}"
