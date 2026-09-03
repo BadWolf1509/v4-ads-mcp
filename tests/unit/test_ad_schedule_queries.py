@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import date
 from types import SimpleNamespace
 
+import pytest
+
 from src.google_ads.queries.ad_schedule import (
     ad_schedule_query,
     campaign_budget_query,
@@ -125,3 +127,20 @@ def test_parse_day_hour_row_tipa_hora_e_custo() -> None:
         "cost_micros": 314676351,
         "conversions": 13.998888,
     }
+
+
+@pytest.mark.parametrize(
+    "builder",
+    [
+        lambda: ad_schedule_query(campaign_ids=[], status="enabled", limit=10),
+        lambda: campaign_budget_query(campaign_ids=[]),
+        lambda: day_hour_metrics_query(
+            campaign_ids=[], start=date(2026, 8, 4), end=date(2026, 9, 2)
+        ),
+        lambda: campaigns_on_budgets_query(budget_resource_names=[]),
+    ],
+)
+def test_lista_vazia_e_erro_alto_nunca_sem_filtro(builder) -> None:
+    """Vazio que vira 'conta inteira' em silencio e a familia do F134. None = sem filtro; [] = bug do chamador."""
+    with pytest.raises(ValueError, match="vazio"):
+        builder()

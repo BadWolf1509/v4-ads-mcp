@@ -23,8 +23,10 @@ def _nome(x: Any) -> str:
 
 
 def ad_schedule_query(*, campaign_ids: list[str] | None, status: str, limit: int) -> str:
+    if campaign_ids is not None and len(campaign_ids) == 0:
+        raise ValueError("campaign_ids vazio: passe None para 'sem filtro' ou ao menos um id")
     filtros = ["campaign_criterion.type = 'AD_SCHEDULE'"]
-    if campaign_ids:
+    if campaign_ids is not None:
         filtros.append(
             f"campaign.id IN ({','.join(campaign_ids)})"
         )  # ids validados ^[0-9]+$ no schema
@@ -65,9 +67,11 @@ def parse_ad_schedule_row(row: Any) -> dict[str, Any]:
 
 
 def campaign_budget_query(*, campaign_ids: list[str] | None) -> str:
+    if campaign_ids is not None and len(campaign_ids) == 0:
+        raise ValueError("campaign_ids vazio: passe None para 'sem filtro' ou ao menos um id")
     where = (
         f"campaign.id IN ({','.join(campaign_ids)})"
-        if campaign_ids
+        if campaign_ids is not None
         else "campaign.status != 'REMOVED'"
     )
     return f"""
@@ -90,6 +94,8 @@ def parse_campaign_budget_row(row: Any) -> dict[str, Any]:
 
 
 def campaigns_on_budgets_query(*, budget_resource_names: list[str]) -> str:
+    if len(budget_resource_names) == 0:
+        raise ValueError("budget_resource_names vazio: ao menos um resource_name e obrigatorio")
     return f"""
         SELECT campaign.id, campaign.name, campaign.campaign_budget, campaign.status
         FROM campaign
@@ -109,6 +115,8 @@ def parse_campaign_on_budget_row(row: Any) -> dict[str, Any]:
 
 def day_hour_metrics_query(*, campaign_ids: list[str], start: date, end: date) -> str:
     """Conjunta dia x hora sobre `campaign` — probada valida em 03/09 (spec §4.2)."""
+    if len(campaign_ids) == 0:
+        raise ValueError("campaign_ids vazio: ao menos um id e obrigatorio")
     return f"""
         SELECT campaign.id, segments.day_of_week, segments.hour,
                metrics.cost_micros, metrics.conversions
