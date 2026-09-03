@@ -86,11 +86,11 @@ googleapis-common-protos==1.75.0
     #   google-ads
     #   google-api-core
     #   grpcio-status
-grpcio==1.82.1
+grpcio==1.83.1
     # via
     #   google-ads
     #   grpcio-status
-grpcio-status==1.82.1
+grpcio-status==1.83.1
     # via google-ads
 h11==0.16.0
     # via
