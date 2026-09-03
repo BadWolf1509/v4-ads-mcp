@@ -1715,8 +1715,11 @@ async def test_apply_reconsulta_a_grade_e_devolve_resulting_schedule(monkeypatch
             row_formatter=parse_ad_schedule_row, operation_name="update_ad_schedule_confirm",
         )
         atual = rows_to_current(rows)
+        # Ruling 5 (ledger): `summarize_current` tambem devolve a chave `windows` (int);
+        # o spread vem PRIMEIRO para a lista de linhas vencer. O snippet original do
+        # plano fazia o contrario e sobrescrevia a lista — o teste do proprio brief pegou.
         resulting = {
-            cid: {"windows": [r for r in rows if r["campaign_id"] == cid], **summarize_current(atual.get(cid, []))}
+            cid: {**summarize_current(atual.get(cid, [])), "windows": [r for r in rows if r["campaign_id"] == cid]}
             for cid in campaign_ids
         }
         return {
