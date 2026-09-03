@@ -56,20 +56,23 @@ https://v4-ads-mcp-299432068772.southamerica-east1.run.app
 
 ## Smoke results
 
-Preencher conforme execução **futura** (após deploy). Deixado em branco deliberadamente.
+**Legenda.** ✅ executado com a evidência transcrita aqui · ◐ executado na **sessão de campo** (par), detalhe no [`findings-catalog.md`](findings-catalog.md) e saída não transcrita · ⬜ não executado.
+
+🔴 **Por que a legenda existe.** Este runbook ficou 100% `⬜ pending` no papel enquanto a sessão de campo já tinha rodado a cadeia destrutiva inteira — os resultados foram parar só no catálogo. Runbook que diz "pending" pro que já rodou **não é conservador, é perigoso**: convida a próxima sessão a re-executar mutação numa conta real pra "completar o smoke". Marcar `◐` custa nada e fecha esse buraco.
 
 | # | Test | Result | Execution Date | Notes |
 |---|---|---|---|---|
-| T1 | `get_assets` sem filtro — aparecem linhas dos **3 níveis** em `links[]`, ≥1 com `status: REMOVED`, `summary` com agregações | ⬜ pending | | |
-| T2 | `get_assets` com `field_type="CALLOUT"` — filtro se aplica, apenas callouts retornados, `links[]` é subset de T1 | ⬜ pending | | |
-| T3 | Asset `144113768043` aparece com `primary_status: ELIGIBLE` **nos dois níveis** (CUSTOMER + CAMPAIGN) em `links[]` — prova que precedência não existe | ⬜ pending | | |
-| T4 | `remove_asset_link` com `links=[{level, resource_name}]` — retorna `confirmation_token` 8 chars + `status: dry_run` | ⬜ pending | | |
-| T4b | `apply_change(confirmation_token=<T4>)` — aplica a mutação, retorna `status: applied` + `applied_count >= 1` | ⬜ pending | | |
-| T5 | Query GAQL de confirmação **obrigatória** — SELECT campaign_asset.status por resource_name alvo retorna `status: REMOVED` no registro específico | ⬜ pending | | |
-| T6 | Reaplica `remove_asset_link` idêntico (mesmo `links`) — mint de um novo `confirmation_token`, `status: dry_run`, sem erro | ⬜ pending | | |
-| T6b | `apply_change(confirmation_token=<T6>)` — idempotência: `status: applied` sem erro terminal (`applied_count` pode ser 0 ou 1); prova real é o re-query GAQL `status: REMOVED` | ⬜ pending | | |
+| T1 | `get_assets` sem filtro — aparecem linhas dos **3 níveis** em `links[]`, ≥1 com `status: REMOVED`, `summary` com agregações | ◐ PASS | 2026-09-02 | Conta `7862230676`, `limit: 1000`. **735 vínculos** = 26 `customer_asset` + 313 `campaign_asset` + 396 `ad_group_asset` (3 níveis ✓). `truncated: false`, `orphan_scope: conta_completa`, **132 assets sem vínculo ativo** incluindo `144113768040` e `144113768046` (REMOVED ✓). |
+| T2 | `get_assets` com `field_type="CALLOUT"` — filtro se aplica, apenas callouts retornados, `links[]` é subset de T1 | ⬜ pending | | **O único não executado.** Cobre o ramo `filter_active=True`, que é onde `assets_sem_vinculo_ativo` é omitido e `orphan_scope` vira `nao_calculado_com_filtro` — ramo distinto do exercitado em T1. |
+| T3 | Asset `144113768043` aparece com `primary_status: ELIGIBLE` **nos dois níveis** (CUSTOMER + CAMPAIGN) em `links[]` — prova que precedência não existe | ◐ PASS **por outra via** | 2026-09-02 | Respondido pela **probe de precedência via `run_gaql`**, não pelo `links[]` do `get_assets`: `primary_status` veio `ELIGIBLE` nos dois níveis. A conclusão (precedência não existe) está provada; a asserção *como escrita* — via `get_assets` — não foi exercida. |
+| T4 | `remove_asset_link` com `links=[{level, resource_name}]` — retorna `confirmation_token` 8 chars + `status: dry_run` | ◐ PASS | 2026-09-02 | Conta de teste `1163862076`, alvos com `[3b.25]` no texto, campanha PAUSED. |
+| T4b | `apply_change(confirmation_token=<T4>)` — aplica a mutação, retorna `status: applied` + `applied_count >= 1` | ◐ PASS | 2026-09-02 | |
+| T5 | Query GAQL de confirmação **obrigatória** — SELECT campaign_asset.status por resource_name alvo retorna `status: REMOVED` no registro específico | ◐ PASS | 2026-09-02 | Saída não transcrita; é a evidência que sustenta o F139. |
+| T6 | Reaplica `remove_asset_link` idêntico (mesmo `links`) — mint de um novo `confirmation_token`, `status: dry_run`, sem erro | ◐ PASS | 2026-09-02 | |
+| T6b | `apply_change(confirmation_token=<T6>)` — idempotência: `status: applied` sem erro terminal (`applied_count` pode ser 0 ou 1); prova real é o re-query GAQL `status: REMOVED` | ◐ PASS **e gerou o F139** | 2026-09-02 | Devolveu `status: applied` + `applied_count: 1` pra operação que **não mudou nada**; o único vestígio era `resource_names: [null]`. Daí saiu o `changed_count`. |
+| T7 | `account_frontier` é a fronteira da CONTA, não da janela (F131) | ✅ PASS | 2026-09-02 | Evidência transcrita na seção T7. |
 
-**Effective result:** 0/8 PASS (não executado)
+**Effective result:** 8/9 executados (7 na sessão de campo, 1 aqui) · **1 pendente (T2)** · 0 falhas.
 
 ### F-findings emerged
 
@@ -581,9 +584,10 @@ get_change_history(customer_id="7862230676", date_range="TODAY", limit=1)
 get_change_history(customer_id="7862230676", start_date="2026-08-31", end_date="2026-09-01", limit=1)
 ```
 
-- [ ] `account_frontier` **idêntico** nas duas. Se variar, está filtrado pela janela.
-- [ ] `slice_frontier` **difere** entre elas — é o campo que deve acompanhar a janela, e é essa a diferença entre os dois.
-- [ ] `status: confiavel` e `warning: null` nas duas, quando a conta está em dia.
+- [x] `account_frontier` **idêntico** nas duas. Se variar, está filtrado pela janela.
+- [x] `slice_frontier` **difere** entre elas — é o campo que deve acompanhar a janela, e é essa a diferença entre os dois.
+- [ ] ~~`status: confiavel` e `warning: null` nas duas, quando a conta está em dia.~~ 🔴 **Asserção mal especificada — não use.** Ela pressupõe que a janela `TODAY` traga linhas. Num desenho em que recorte vazio sobre conta fresca é **deliberadamente `ambiguo`** (é o ponto inteiro do F131), `confiavel` **nunca** pode ser asserido para uma janela que pode vir vazia. Asserir `confiavel` ali é asserir o adjacente à invariante pela terceira vez neste projeto.
+- [x] **Substituta:** na janela 31/08–01/09 (que tem 1 linha e termina antes da fronteira) → `status: confiavel`, `warning: null`. **É esta que prova o bug original resolvido:** 01/09 é dia **sem write**, e era exatamente o caso que a versão quebrada marcava `atrasado`.
 
 **Passo 2 — a fronteira é o máximo real, com tolerância.** Rode o `MAX` por GAQL **primeiro**, a tool **depois**:
 
@@ -604,7 +608,20 @@ O que esta asserção precisa pegar é fronteira **filtrada pela janela** (erra 
 - `account_frontier` muito abaixo do `MAX` (minutos ou mais) → sonda estagnada, ou janela própria estreita demais.
 - `status: atrasado` em janela cujo último dia simplesmente não teve write → é o bug original reincidindo; confira por GAQL se o dia teve atividade antes de reportar.
 
-**Resultado:** ⬜ pending
+**Resultado:** ✅ **PASS** — executado 2026-09-02 na conta `7862230676` (`America/Fortaleza`), contra `cc5230c` em produção.
+
+| | `date_range: TODAY` | `2026-08-31 .. 2026-09-01` |
+|---|---|---|
+| `period` resolvido | `2026-09-03 .. 2026-09-03` | `2026-08-31 .. 2026-09-01` |
+| `account_frontier` | `2026-09-02 11:43:39` | `2026-09-02 11:43:39` |
+| `slice_frontier` | `null` | `2026-08-31 10:52:36` |
+| `status` | `atrasado` | `confiavel` |
+
+**Passo 1 — a invariante do F131 vale.** `account_frontier` é **idêntico** nas duas janelas, e `slice_frontier` difere. A versão quebrada devolvia fronteira `2026-08-31` na segunda janela; agora devolve a da conta nas duas. **O caso que originou a reabertura está fechado:** 01/09 foi dia sem write e a janela sai `confiavel`, não `atrasado`.
+
+**Passo 2 — a fronteira é o máximo real.** `MAX` por GAQL (rodado **antes**): `2026-09-02 11:43:39.488575`. A tool devolveu `2026-09-02 11:43:39` — o mesmo instante truncado ao segundo, folgadíssimo dentro de `>= MAX − 120s`. De passagem, é mais uma não-reprodução do resíduo de 25s relatado pelo campo; segue sem causa, e agora com mais uma medição contra.
+
+🔑 **O `atrasado` do `TODAY` NÃO é defeito do F131 — é um bug a montante que este teste revelou (F141).** `period` resolveu para `2026-09-03` num dia que, na conta, é `2026-09-02`: `_today()` em [`_common.py`](../../src/google_ads/queries/_common.py) é `datetime.now(UTC).date()`, e as 25 contas do MCC estão em UTC−3/−4. Dado o `period` que chegou, `atrasado` é a resposta **correta** — a janela termina depois da fronteira. Ver F141 no catálogo.
 
 ---
 

@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** nenhum dos de 02/09 — F131-F140 estao todos fechados e em producao. ~~F138~~ (commit so de `docs/` publica revisao nova do servidor MCP; a correcao obvia — `paths-ignore` no `on:` — foi verificada e e PIOR, porque travaria PR de docs para sempre com o check `test` obrigatorio), **F136** (o `structural_change` do `detect_drift` guarda `CONVERSION_ACTION`, que a API nunca emite — flag morta e mensagem que promete cobertura inexistente; nao corrigido de proposito, porque o fix obvio deixa o codigo honesto e a cobertura pior), **A4**, **F67** (custom domain) e os dois de 08-20 que são ação humana ou sprint próprio: **F129** (system user com permissão de admin para uso 100% de leitura, token permanente, um único `business_user`) e **F130** (o gate do Google não consulta `is_active` — o buraco que o lado Meta acabou de perder). Os F118-F128 nasceram e fecharam no mesmo dia. Fora do catálogo, dois itens P2 da revisão de responsividade ficaram **deliberadamente** de fora do fix: input de 14px (dispara zoom automático no iOS ao focar — mexe na escala tipográfica inteira) e checkbox de 13×13 na matriz de acessos (abaixo do mínimo do WCAG 2.2, provavelmente salvo pela exceção de espaçamento). Os 36 findings das investigações de agosto (F82-F117) estão fechados — a linha anterior desta nota listava 8 abertos e ficou obsoleta quando a segunda onda de 08-15 fechou F91 e F94-F99; corrigida em 08-19. **Antes de mexer em reads quentes, backup, fragmento HTMX, entrega de assets, CSRF ou design system, grep aqui pela área**: pode já haver diagnóstico pronto.
 >
-> **Como ler:** ~740 linhas, **139 IDs** (F1-F140 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~780 linhas, **140 IDs** (F1-F141 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -741,3 +741,71 @@ O catálogo de tools é negociado no **handshake** do MCP. Sessão aberta antes 
 Somas consistentes nos dois eixos, `truncated: false`, `orphan_scope: conta_completa`, e **132 assets sem vínculo ativo** — incluindo `144113768040` e `144113768046`, os dois callouts removidos em 02/09. **A tool fecha o ciclo do incidente que a originou:** os 6 vínculos que ninguém enxergava aparecem numa chamada, nos dois níveis, com `ASSET_LINK_REMOVED` explícito.
 
 Três correções de description saíram daí, todas medidas e aplicadas em `d359c69`: `UNSPECIFIED` aparece em `primary_status` (a lista de 6 estava fechada demais — a convenção "sentinela não é valor de operador" do F135 não vale quando a API os emite); `primary_status_reasons` carrega `ASSET_DISAPPROVED` (15) e `ASSET_UNDER_REVIEW` (18), ou seja política visível sem outra query; e `asset_name` vem **vazio em 100%** de sete famílias de texto (SITELINK 71/71, CALLOUT 19/19, CALL 10/10, STRUCTURED_SNIPPET 7/7, BUSINESS_MESSAGE 8/8, BUSINESS_NAME 3/3, PROMOTION 2/2) — o Google só popula `name` em algumas famílias, e campo sempre vazio convida à conclusão errada. **`AD_IMAGE` é 598 de 735 (81%)**, então o default de 200 trunca e afoga as extensões de texto.
+
+
+## F141 (MED, ABERTO) — os presets de data resolvem em UTC, e nenhuma das 25 contas esta em UTC
+
+> **Como apareceu:** caiu do **T7 do smoke de assets**, executado em 02/09 pra validar o refix do F131.
+> A asserção que falhou não era sobre isto — e é esse o ponto. Sem o `freshness` que o F131 acabou de
+> introduzir, a chamada teria devolvido zero linhas **sem sinal nenhum** e passado por "nada mudou hoje".
+
+**Medido, não deduzido.** `get_change_history(customer_id="7862230676", date_range="TODAY")` devolveu
+`period: {"from": "2026-09-03", "to": "2026-09-03"}` num instante em que, na conta, ainda era
+**2026-09-02**. A conta é `America/Fortaleza` (UTC−3).
+
+**Causa.** [`_common.py`](../../src/google_ads/queries/_common.py) resolve todo preset a partir de:
+
+```python
+def _today() -> date:
+    return datetime.now(UTC).date()
+```
+
+O Google interpreta predicado de data **no fuso da conta**. Levantado por `list_my_accounts` em 02/09,
+as 25 contas do MCC estão em **cinco fusos** — `America/Sao_Paulo`, `America/Fortaleza` e
+`America/Recife` (UTC−3, 23 contas), `America/Campo_Grande` e `America/Boa_Vista` (UTC−4, 2 contas).
+**Nenhuma em UTC.** Não existe conta para a qual o cálculo esteja certo.
+
+**Janela do defeito:** das **21:00 à meia-noite** locais (20:00 nas duas contas UTC−4) — ~3h por dia,
+**12,5% do tempo**, todo dia. Fora dela, data UTC e data local coincidem e nada acontece.
+
+**O que sai errado, por família de preset:**
+
+| Preset | Aritmética | Efeito depois das 21:00 |
+|---|---|---|
+| `TODAY` | `today..today` | Pede um dia que **ainda não começou** na conta → **zero linhas, em silêncio**. Foi o caso medido. |
+| `YESTERDAY` | `yesterday..yesterday` | Devolve o dia **corrente parcial** rotulado como "ontem". |
+| `LAST_7/14/30/90_DAYS` | `yesterday-N+1 .. yesterday` | A janela **desliza um dia**: entra o dia corrente **parcial** e sai o dia inteiro mais antigo. |
+| `THIS_MONTH` / `THIS_WEEK` | ancorados em `today` | Mesmo deslize; no dia 1º e na segunda-feira o mês/semana vira cedo demais. |
+
+**A família de `LAST_N_DAYS` é a mais perigosa, por ser a menos visível.** `TODAY` vazio pelo menos
+parece estranho. "Últimos 7 dias" com 6 dias cheios + o parcial de hoje **parece certo** e vem com um
+número menor. Em `get_account_overview` o comparativo período-a-período herda o mesmo deslize dos
+dois lados, então a variação percentual sai contaminada sem nada indicar.
+
+**Por que nenhum teste pega.** Os testes congelam o tempo com `freezegun`, e sob tempo congelado a
+data UTC e a data da conta são a mesma coisa — a diferença que constitui o bug **não é representável**
+no fixture. É a mesma classe do F87/F89: teste que codifica a convenção errada não falha, ele
+confirma o erro.
+
+**Relação com o F23.** Aquele fix já convivia com isto: o clamp da retenção usa "margem 2-day safety
+**contra UTC drift**". A margem trata o sintoma de borda; a causa nunca foi endereçada.
+
+**Não corrigido — mas o fix é mais barato do que parece, e isso foi verificado.** O conserto correto
+resolve o preset **no fuso da conta**, e a objeção esperada seria "isso custa uma query por chamada".
+**Não custa:** o fuso já está persistido em `google_ads_accounts.time_zone`
+([`repositories/google_ads_accounts.py`](../../src/db/repositories/google_ads_accounts.py)), populado
+pelo resync a partir de `customer_client.time_zone`, e é de lá que o `list_my_accounts` já lê. É
+leitura local, sem chamada extra ao Google.
+
+**O que decidir de fato, antes de mexer:**
+- **A coluna é `str | None`.** Precisa de fallback declarado para conta sem fuso sincronizado — e o
+  fallback honesto é UTC com o comportamento de hoje, não um palpite de fuso.
+- **Onde entra.** `parse_date_range` hoje é pura e não conhece conta. Passar o fuso como argumento
+  mantém a pureza; ler o DB lá dentro violaria o F92 (primitivo que lê estado próprio).
+- **`zoneinfo` precisa da base de fusos.** No Cloud Run (Linux) ela existe; no Windows local pode
+  exigir o pacote `tzdata` — se exigir, é dep de prod e o `requirements.txt` tem que ser regenerado
+  no mesmo commit com `--universal` (F113).
+- **Usar o fuso do MCC como atalho está errado** para as 2 contas UTC−4. Trocaria um bug silencioso
+  por outro menor, e é exatamente a gambiarra que o padrão de solução deste projeto recusa.
+
+Blast radius: **todas** as tools com preset, que são quase todas. Merece sprint próprio, não remendo.
