@@ -3,6 +3,7 @@
 
 from typing import Any
 
+from src.google_ads.account_clock import resolve_account_today
 from src.google_ads.queries._common import (
     micros_to_currency,
     resolve_date_window,
@@ -119,10 +120,12 @@ def _build_funnel(rows: list[dict[str, Any]]) -> dict[str, Any]:
 async def get_funnel_metrics(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()
     customer_id = args["customer_id"]
+    today = await resolve_account_today(customer_id)
     start, end = resolve_date_window(
         date_range=args.get("date_range", "LAST_30_DAYS"),
         start_date=args.get("start_date"),
         end_date=args.get("end_date"),
+        today=today,
     )
     rows = await run_report(
         manager_id=ctx.manager_id,

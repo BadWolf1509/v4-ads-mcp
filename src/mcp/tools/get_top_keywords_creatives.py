@@ -3,6 +3,7 @@
 
 from typing import Any
 
+from src.google_ads.account_clock import resolve_account_today
 from src.google_ads.queries._common import micros_to_currency, resolve_date_window
 from src.google_ads.queries.client_report import top_creatives_query, top_keywords_query
 from src.google_ads.reports import run_report
@@ -121,10 +122,12 @@ _METRIC_KEY = {
 async def get_top_keywords_creatives(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()
     customer_id = args["customer_id"]
+    today = await resolve_account_today(customer_id)
     start, end = resolve_date_window(
         date_range=args.get("date_range", "LAST_30_DAYS"),
         start_date=args.get("start_date"),
         end_date=args.get("end_date"),
+        today=today,
     )
     top_n = args.get("top_n", 10)
     metric = args.get("metric", "cost")

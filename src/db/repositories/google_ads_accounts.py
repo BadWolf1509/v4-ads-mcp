@@ -124,3 +124,15 @@ async def list_all(conn: asyncpg.Connection) -> list[GoogleAdsAccount]:
         "SELECT * FROM google_ads_accounts WHERE is_active = true ORDER BY descriptive_name"
     )
     return [_row_to_account(r) for r in rows]
+
+
+async def get_by_customer_id(conn: asyncpg.Connection, customer_id: str) -> GoogleAdsAccount | None:
+    """Uma conta pela PK. F141: e daqui que sai o `time_zone` que resolve `hoje`.
+
+    Devolve tambem conta inativa — quem decide se ela pode ser usada e o gate
+    de acesso, nao esta leitura.
+    """
+    row = await conn.fetchrow(
+        "SELECT * FROM google_ads_accounts WHERE customer_id = $1", customer_id
+    )
+    return _row_to_account(row) if row is not None else None

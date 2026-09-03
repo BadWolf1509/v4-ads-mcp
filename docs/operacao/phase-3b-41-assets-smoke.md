@@ -621,7 +621,7 @@ O que esta asserção precisa pegar é fronteira **filtrada pela janela** (erra 
 
 **Passo 2 — a fronteira é o máximo real.** `MAX` por GAQL (rodado **antes**): `2026-09-02 11:43:39.488575`. A tool devolveu `2026-09-02 11:43:39` — o mesmo instante truncado ao segundo, folgadíssimo dentro de `>= MAX − 120s`. De passagem, é mais uma não-reprodução do resíduo de 25s relatado pelo campo; segue sem causa, e agora com mais uma medição contra.
 
-🔑 **O `atrasado` do `TODAY` NÃO é defeito do F131 — é um bug a montante que este teste revelou (F141).** `period` resolveu para `2026-09-03` num dia que, na conta, é `2026-09-02`: `_today()` em [`_common.py`](../../src/google_ads/queries/_common.py) é `datetime.now(UTC).date()`, e as 25 contas do MCC estão em UTC−3/−4. Dado o `period` que chegou, `atrasado` é a resposta **correta** — a janela termina depois da fronteira. Ver F141 no catálogo.
+🔑 **O `atrasado` do `TODAY` NÃO é defeito do F131 — é um bug a montante que este teste revelou (F141).** `period` resolveu para `2026-09-03` num dia que, na conta, é `2026-09-02`: `_today()` em [`_common.py`](../../src/google_ads/queries/_common.py) é `datetime.now(UTC).date()`, e as 25 contas do MCC estão em UTC−3/−4. Dado o `period` que chegou, `atrasado` é a resposta **correta** — a janela termina depois da fronteira. Ver F141 no catálogo. **Nota 03/09:** o bloco F141+F143+F144 foi corrigido — o rótulo `atrasado` da tabela acima é histórico e hoje se chama `nao_coberto`; e uma janela `TODAY` passa a sair **`em_curso`**, nunca `confiavel` (F144). A asserção riscada no Passo 1 continua riscada pelo mesmo motivo.
 
 ---
 

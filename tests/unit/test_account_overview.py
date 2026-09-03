@@ -8,10 +8,17 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _ctx():
+    from datetime import date
+
     from src.mcp.context import McpRequestContext, clear_current, set_current
 
+    async def _hoje(customer_id: str, *, now=None):
+        return date(2026, 5, 15)
+
     set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
+    # F141: a tool resolve `hoje` no fuso da conta lendo o DB; aqui nao ha pool.
+    with patch("src.mcp.tools.get_account_overview.resolve_account_today", _hoje):
+        yield
     clear_current()
 
 

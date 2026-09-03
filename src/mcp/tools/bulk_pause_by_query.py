@@ -19,6 +19,7 @@ import hashlib
 from typing import Any
 
 from src.db import connection
+from src.google_ads.account_clock import resolve_account_today
 from src.google_ads.queries._common import (
     InvalidDateRangeError,
     micros_to_currency,
@@ -217,10 +218,12 @@ async def bulk_pause_by_query(args: dict[str, Any]) -> dict[str, Any]:
         return error_envelope("bulk_pause_by_query", str(e))
 
     try:
+        today = await resolve_account_today(customer_id)
         start, end = resolve_date_window(
             date_range=date_range_arg,
             start_date=start_date_arg,
             end_date=end_date_arg,
+            today=today,
         )
     except InvalidDateRangeError as e:
         return error_envelope("bulk_pause_by_query", f"periodo invalido: {e}")

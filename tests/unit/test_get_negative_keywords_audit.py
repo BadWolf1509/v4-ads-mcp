@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
-from freezegun import freeze_time
 
 from src.mcp.context import McpRequestContext, clear_current, set_current
 from src.mcp.tools.get_negative_keywords_audit import get_negative_keywords_audit
@@ -32,13 +31,24 @@ def _create_event(criterion_id: str, when: str, email: str, campaign_id: str = "
 
 @pytest.fixture(autouse=True)
 def _ctx():
-    """Bind a dummy manager context (handler reads ctx.manager_id + ctx.session_id)."""
+    """Bind a dummy manager context (handler reads ctx.manager_id + ctx.session_id).
+
+    F141: o tool deixou de ler o relogio — `hoje` vem de `resolve_account_today`,
+    no fuso da conta, lendo o DB. Aqui nao ha pool, entao o relogio da conta e
+    stubado em 2026-05-17 (a data que o `freeze_time` antigo congelava; o freeze
+    saiu porque nao ha mais relogio pra congelar).
+    """
+    from datetime import date
+
+    async def _hoje(customer_id: str, *, now=None):
+        return date(2026, 5, 17)
+
     set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
+    with patch("src.mcp.tools.get_negative_keywords_audit.resolve_account_today", _hoje):
+        yield
     clear_current()
 
 
-@freeze_time("2026-05-17")
 @pytest.mark.asyncio
 async def test_audit_enriches_per_criterion_when_match_exists():
     with patch(
@@ -61,7 +71,6 @@ async def test_audit_enriches_per_criterion_when_match_exists():
     assert negatives["222"]["added_by_email"] is None
 
 
-@freeze_time("2026-05-17")
 @pytest.mark.asyncio
 async def test_audit_summary_counts_three_buckets():
     with patch(
@@ -91,7 +100,6 @@ async def test_audit_summary_counts_three_buckets():
     assert s["last_7_days"] <= s["last_30_days"]
 
 
-@freeze_time("2026-05-17")
 @pytest.mark.asyncio
 async def test_audit_picks_most_recent_create_when_duplicates():
     """If change_event has 2 CREATE events for same criterion_id, pick the most recent."""
@@ -112,7 +120,6 @@ async def test_audit_picks_most_recent_create_when_duplicates():
     assert neg["added_by_email"] == "newer@v4.com"
 
 
-@freeze_time("2026-05-17")
 @pytest.mark.asyncio
 async def test_audit_handles_empty_change_event_result():
     with patch(
@@ -134,7 +141,6 @@ async def test_audit_handles_empty_change_event_result():
             assert n["added_by_email"] is None
 
 
-@freeze_time("2026-05-17")
 @pytest.mark.asyncio
 async def test_audit_handles_empty_negatives_result():
     with patch(
@@ -155,7 +161,6 @@ async def test_audit_handles_empty_negatives_result():
     }
 
 
-@freeze_time("2026-05-17")
 @pytest.mark.asyncio
 async def test_audit_ignores_create_events_for_criteria_not_in_current_state():
     """change_event may have CREATEs for criteria that were later REMOVED — those
@@ -180,7 +185,6 @@ async def test_audit_ignores_create_events_for_criteria_not_in_current_state():
 # ---------- Sprint 3b.23 (F22 fix): limit + truncation + ordering ----------
 
 
-@freeze_time("2026-05-17")
 @pytest.mark.asyncio
 async def test_audit_applies_limit_and_marks_truncated():
     """Sprint 3b.23 F22: when total > limit, by_campaign is truncated + truncated=True."""
@@ -207,7 +211,6 @@ async def test_audit_applies_limit_and_marks_truncated():
     assert result["additions_summary"]["pre_30_days_or_unknown"] == 50
 
 
-@freeze_time("2026-05-17")
 @pytest.mark.asyncio
 async def test_audit_orders_recent_first_then_unknown():
     """Sprint 3b.23 F22: with mixed recent + unknown, recent come FIRST in by_campaign
@@ -239,7 +242,6 @@ async def test_audit_orders_recent_first_then_unknown():
     assert set(returned_ids[3:]) == {"2", "4"}
 
 
-@freeze_time("2026-05-17")
 @pytest.mark.asyncio
 async def test_audit_no_truncation_when_total_within_limit():
     """Sprint 3b.23: when total <= limit, truncated=False + returned_count == total."""

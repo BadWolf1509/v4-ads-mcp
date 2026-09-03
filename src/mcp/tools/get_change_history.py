@@ -36,10 +36,11 @@ MO-JP+CAB pós-reverts Pedro 21/05):
 
 import asyncio
 from collections import Counter
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+from src.google_ads.account_clock import resolve_account_today
 from src.google_ads.change_freshness import assess_freshness
 from src.google_ads.drift_detection import AUTO_APPLY_CLIENT_TYPES
 from src.google_ads.queries._common import parse_resource_path, resolve_date_window
@@ -317,7 +318,10 @@ async def _resolve_names(
         "— medido de ~3h a >4 dias na MESMA conta. Por isso a resposta traz "
         "`freshness` com a fronteira MEDIDA: `account_frontier` (evento mais "
         "recente indexado na conta, sem filtro), `slice_frontier` (das linhas "
-        "devolvidas) e `status` (confiavel|ambiguo|atrasado|indeterminado). "
+        "devolvidas) e `status` (confiavel|ambiguo|nao_coberto|em_curso|indeterminado). "
+        "`nao_coberto` = fronteira anterior ao fim da janela (lag OU conta parada — nao afirma "
+        "qual); `em_curso` = a janela alcanca o dia corrente DA CONTA, que ainda nao fechou, "
+        "entao `confiavel` nao e alcancavel. Presets de data resolvem no fuso da conta (F141). "
         "Leia o status antes de concluir que nada mudou: lista vazia com "
         "status != confiavel NAO e prova de ausencia. Pra validar estado "
         "atual (revert/incident), use `run_gaql FROM campaign` como "
@@ -333,17 +337,19 @@ async def get_change_history(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()
     customer_id = args["customer_id"]
 
+    # F141: UM `hoje` por request, no fuso da conta, pra janela, clamp, sonda e freshness.
+    today = await resolve_account_today(customer_id)
     start, end = resolve_date_window(
         date_range=args.get("date_range", "LAST_7_DAYS"),
         start_date=args.get("start_date"),
         end_date=args.get("end_date"),
+        today=today,
     )
 
     # F23 fix Sprint 3b.38 (estendido): clampamos start_date — preset OU custom — pro
     # teto de retenção do change_event (30 dias exclusivos), em vez de deixar o Google
     # rejeitar com "start date too old". Devolve dados + warning. Se a janela inteira
     # está fora da retenção (end < limite), não há o que retornar → erro claro.
-    today = datetime.now(UTC).date()
     earliest_allowed = today - timedelta(days=_RETENTION_SAFETY_DAYS)
     retention_warning: str | None = None
     if end < earliest_allowed:
@@ -392,7 +398,7 @@ async def get_change_history(args: dict[str, Any]) -> dict[str, Any]:
             customer_id=customer_id,
             # A sonda deriva a propria janela (retencao inteira). Passar `start`/`end`
             # aqui era o bug: a fronteira da CONTA virava fronteira do PEDIDO.
-            query=change_event_frontier_query(today=datetime.now(UTC).date()),
+            query=change_event_frontier_query(today=today),
             row_formatter=lambda r: {"change_date_time": str(r.change_event.change_date_time)},
             operation_name="get_change_history_frontier",
             # Query de apoio, como o _resolve_names: nao polui a trilha do gestor.
@@ -440,6 +446,7 @@ async def get_change_history(args: dict[str, Any]) -> dict[str, Any]:
             account_frontier=account_frontier,
             slice_frontier=max(slice_dts) if slice_dts else None,
             window_end=end,
+            today=today,
         ),
     }
     if retention_warning is not None:

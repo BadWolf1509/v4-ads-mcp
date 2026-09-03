@@ -32,11 +32,23 @@ def _fmt(dt: datetime | None) -> str | None:
     return dt.strftime(_FMT) if dt is not None else None
 
 
+def _em_curso(account_frontier: datetime, today: date) -> str:
+    return (
+        f"A janela pedida alcanca o dia corrente da conta ({today.isoformat()}) ou passa "
+        f"dele, e o dia ainda nao fechou. A conta esta indexada ate {_fmt(account_frontier)}, "
+        "mas isso e o evento mais recente VISTO, nao garantia de que nada aconteceu depois "
+        "dele. Eventos posteriores podem existir e ainda nao estar indexados. Para o dia "
+        "corrente, use run_gaql como leading indicator; para um veredito fechado, consulte "
+        "uma janela que termine ontem ou antes."
+    )
+
+
 def assess_freshness(
     *,
     account_frontier: datetime | None,
     slice_frontier: datetime | None,
     window_end: date,
+    today: date,
 ) -> dict[str, Any]:
     """Classifica a confiabilidade da resposta contra a fronteira de indexacao.
 
@@ -46,11 +58,33 @@ def assess_freshness(
         slice_frontier: evento mais recente entre as linhas que a query
             principal devolveu. `None` quando o recorte veio vazio.
         window_end: fim (inclusive) da janela que o usuario pediu.
+        today: dia corrente NO FUSO DA CONTA (F141). Nao o do servidor.
 
     Returns:
-        dict com `account_frontier`/`slice_frontier` serializados, `status`
-        (`confiavel` | `ambiguo` | `atrasado` | `indeterminado`) e `warning`
-        em PT-BR (`None` so quando status e `confiavel`).
+        dict com `account_frontier`/`slice_frontier` serializados, `status` e
+        `warning` em PT-BR (`None` so quando status e `confiavel`).
+
+    Status, na ordem em que sao decididos — a ordem e parte do contrato:
+
+    - `indeterminado`: sem fronteira. A sonda nao viu evento nenhum na retencao.
+    - `nao_coberto` (F143, ex-`atrasado`): a fronteira e anterior ao fim da
+      janela. E um FATO com duas explicacoes — lag de indexacao OU conta sem
+      atividade — e o texto admite as duas em vez de afirmar a primeira. Em
+      conta de baixa atividade, a segunda domina; rotulo que afirmava lag em
+      condicao normal treinava a ignorar o rotulo.
+    - `em_curso` (F144): a janela alcanca o dia corrente da conta ou passa
+      dele. Janela ALEM de hoje e decidida ANTES de `nao_coberto` (dias que nao
+      aconteceram nao sao lag nem silencio); janela ATE hoje, DEPOIS. `account_frontier` diz "o mais recente que eu vi", NAO "vi tudo
+      ate aqui": com o dia aberto, sempre pode haver evento posterior a
+      fronteira e anterior ao fim do dia. Uma remocao de campanha real ficou
+      fora da resposta com `confiavel` por isso. Decidido DEPOIS de
+      `nao_coberto` de proposito: fronteira velha e o fato mais grave e ganha
+      o rotulo; `em_curso` fica sendo o caso estreito "tao fresco quanto da,
+      mas o dia nao fechou".
+    - `ambiguo`: conta em dia, recorte vazio. Ou nao houve mudanca com estes
+      filtros, ou este tipo de recurso especifico lagou.
+    - `confiavel`: janela fechada no passado, fronteira depois dela, recorte
+      com linhas.
     """
     base: dict[str, Any] = {
         "account_frontier": _fmt(account_frontier),
@@ -69,19 +103,32 @@ def assess_freshness(
             ),
         }
 
+    # Janela ALEM de hoje: nao e lag nem silencio, sao dias que nao aconteceram.
+    # Tem que vir antes de `nao_coberto`, senao o texto afirmaria "lag ou conta
+    # parada" sobre o futuro. (O teste do RED pegou isto antes do codigo sair.)
+    if window_end > today:
+        return {**base, "status": "em_curso", "warning": _em_curso(account_frontier, today)}
+
     if account_frontier.date() < window_end:
         return {
             **base,
-            "status": "atrasado",
+            "status": "nao_coberto",
             "warning": (
-                f"A janela pedida termina em {window_end.isoformat()}, mas o evento "
-                f"mais recente indexado nesta conta e de {_fmt(account_frontier)}. "
-                "O trecho final da janela ainda nao indexou, entao ausencia de "
-                "linhas nao prova ausencia de mudanca. O lag do change_event nao "
-                "tem contrato (ja medido de ~3h a >4 dias na mesma conta). Para "
-                "validar estado atual, use run_gaql como leading indicator."
+                f"O evento mais recente indexado nesta conta e de {_fmt(account_frontier)}, "
+                f"anterior ao fim da janela pedida ({window_end.isoformat()}). Isso e "
+                "compativel com duas coisas: lag de indexacao do change_event (sem "
+                "contrato — ja medido de ~6 min a >4 dias) OU ausencia de atividade na "
+                "conta desde entao. Em conta de baixa atividade, a segunda e a mais "
+                "provavel. Ausencia de linhas no trecho final nao prova nem uma nem "
+                "outra. Para validar estado atual, use run_gaql como leading indicator."
             ),
         }
+
+    # Janela ATE hoje, com a fronteira ja em hoje: tao fresco quanto da, mas o dia
+    # nao fechou. Decidido DEPOIS de `nao_coberto` de proposito — fronteira de
+    # ontem + janela ate hoje e o fato mais grave e ganha o rotulo.
+    if window_end == today:
+        return {**base, "status": "em_curso", "warning": _em_curso(account_frontier, today)}
 
     if slice_frontier is None:
         return {

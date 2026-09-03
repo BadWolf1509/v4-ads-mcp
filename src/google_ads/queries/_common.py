@@ -7,6 +7,9 @@ import json
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+import structlog
 
 from src.google_ads.queries._gaql import gaql_string_literal
 from src.google_ads.reports import run_report
@@ -30,15 +33,36 @@ _PRESETS = {
 }
 
 
-def _today() -> date:
-    return datetime.now(UTC).date()
+log = structlog.get_logger(__name__)
 
 
-def _yesterday() -> date:
-    return _today() - timedelta(days=1)
+def account_today(time_zone: str | None, *, now: datetime) -> date:
+    """Data corrente NO FUSO DA CONTA — o unico lugar deste modulo que sabe de fuso.
+
+    F141: o Google le predicado de data no fuso da conta, e as 25 contas do MCC
+    estao em UTC-3/UTC-4. Resolver `hoje` em UTC deslizava todo preset um dia
+    entre 21h e meia-noite locais, todo dia, em silencio.
+
+    Pura: recebe o instante em vez de ler o relogio, para o teste poder injetar
+    um `now` em que UTC e a conta discordam — a diferenca que `freezegun` nao
+    consegue representar.
+
+    Fallback DECIDIDO (nao acidental): `None` ou chave desconhecida -> data UTC
+    + warning. Todas as contas sincronizadas tem fuso; conta sem sync nao passa
+    no gate de acesso. Recusar a chamada trocaria dado faltante de inventario
+    por tool indisponivel.
+    """
+    if time_zone:
+        try:
+            return now.astimezone(ZoneInfo(time_zone)).date()
+        except ZoneInfoNotFoundError:
+            log.warning("account_time_zone_unknown", time_zone=time_zone)
+    else:
+        log.warning("account_time_zone_missing")
+    return now.astimezone(UTC).date()
 
 
-def parse_date_range(arg: str | dict[str, str]) -> tuple[date, date]:
+def parse_date_range(arg: str | dict[str, str], *, today: date) -> tuple[date, date]:
     """Resolve a date_range param into (start_date, end_date) inclusive.
 
     Accepts either a preset string (e.g., 'LAST_7_DAYS') or an explicit
@@ -72,8 +96,9 @@ def parse_date_range(arg: str | dict[str, str]) -> tuple[date, date]:
             f"Unknown date_range preset '{preset}'. Valid presets: {', '.join(sorted(_PRESETS))}"
         )
 
-    today = _today()
-    yesterday = _yesterday()
+    # F141: `today` vem do chamador, ja no fuso da conta (`account_today`).
+    # Sem default de proposito — esquecer de passar quebra alto, nao cai em UTC.
+    yesterday = today - timedelta(days=1)
 
     if preset == "TODAY":
         return today, today
@@ -110,6 +135,8 @@ def resolve_date_window(
     date_range: str | dict[str, str] | None,
     start_date: str | None,
     end_date: str | None,
+    *,
+    today: date,
 ) -> tuple[date, date]:
     """Resolve date_range preset OR explicit start_date+end_date pair into (start, end).
 
@@ -126,8 +153,8 @@ def resolve_date_window(
     if end_date is not None and start_date is None:
         raise InvalidDateRangeError("start_date e obrigatorio quando end_date e informado.")
     if start_date is not None and end_date is not None:
-        return parse_date_range({"from": start_date, "to": end_date})
-    return parse_date_range(date_range if date_range is not None else "LAST_30_DAYS")
+        return parse_date_range({"from": start_date, "to": end_date}, today=today)
+    return parse_date_range(date_range if date_range is not None else "LAST_30_DAYS", today=today)
 
 
 def get_comparison_range(start: date, end: date) -> tuple[date, date]:
