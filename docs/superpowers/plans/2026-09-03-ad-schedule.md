@@ -1705,7 +1705,10 @@ async def test_apply_reconsulta_a_grade_e_devolve_resulting_schedule(monkeypatch
             operation_type=saved.operation_type, payload=saved.payload, target_count=target_count,
             partial_failure=True, params_summary=params_summary,
         )
-        campaign_ids = list(saved.payload.get("campaign_ids", []))
+        # Ruling 3 (ledger): a lista e obrigatoria no payload (Task 7 sempre grava);
+        # `.get(..., [])` seria o fallback calado que a Task 4 acabou de proibir —
+        # com [] os builders levantam ValueError DEPOIS da mutacao ja aplicada.
+        campaign_ids = list(saved.payload["campaign_ids"])
         rows = await run_report(
             manager_id=ctx.manager_id, session_id=ctx.session_id, customer_id=saved.customer_id,
             query=ad_schedule_query(campaign_ids=campaign_ids, status="enabled", limit=1000),
