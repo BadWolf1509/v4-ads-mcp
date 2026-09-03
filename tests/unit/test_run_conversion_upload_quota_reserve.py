@@ -21,6 +21,7 @@ def _payload():
     return {
         "customer_id": "1234567890",
         "conversion_action_id": "987654321",
+        "__time_zone__": "America/Sao_Paulo",  # F146
         "conversions": [
             {
                 "gclid": "Cj0KCQjwTEST_001",

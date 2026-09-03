@@ -14,8 +14,10 @@ Parallels run_mutation but for ConversionUploadService (not GoogleAdsService.mut
 from __future__ import annotations
 
 import time
+from datetime import datetime
 from typing import Any
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import structlog
 
@@ -70,6 +72,23 @@ async def run_conversion_upload(
             level="write",
         )
     )
+    # F146: o fuso foi resolvido no dry-run e viaja no payload pendente. Sem ele
+    # (token de antes do deploy), recusa — nunca offset chutado num carimbo que
+    # vai ao Google. Antes de qualquer reserva de quota, entao o retorno e limpo.
+    tz_name = payload.get("__time_zone__")
+    if not tz_name:
+        return {
+            "status": "error",
+            "operation": operation_type,
+            "customer_id": customer_id,
+            "error_message": (
+                "Este dry-run nao carrega o fuso da conta (__time_zone__ ausente — "
+                "token criado antes da atualizacao). Refaca o import_offline_conversions "
+                "para gerar um token novo; o preview vai mostrar o offset que sera enviado."
+            ),
+            "provider_request_id": "",
+        }
+    zone = ZoneInfo(tz_name)
     token_id = hash_developer_token(settings.google_ads_developer_token)
     started = time.monotonic()
     pool = connection.get_pool()
@@ -115,8 +134,11 @@ async def run_conversion_upload(
             click_conv = client.get_type("ClickConversion")
             click_conv.conversion_action = conversion_action_path
             click_conv.gclid = conv["gclid"]
-            # V4 invariant: append -03:00 BRT timezone
-            click_conv.conversion_date_time = f"{conv['conversion_date_time']}-03:00"
+            # F146: offset do FUSO DA CONTA, calculado por timestamp (era "-03:00" fixo;
+            # em Campo Grande/Boa Vista, UTC-4, o carimbo ia 1h adiantado, em silencio).
+            click_conv.conversion_date_time = (
+                f"{conv['conversion_date_time']}{_utc_offset(conv['conversion_date_time'], zone)}"
+            )
             click_conv.conversion_value = float(conv["conversion_value_brl"])
             click_conv.currency_code = "BRL"  # V4 invariant
             if "order_id" in conv:
@@ -232,6 +254,12 @@ async def run_conversion_upload(
         "failures": failures,
         "provider_request_id": provider_request_id or "",
     }
+
+
+def _utc_offset(local_ts: str, zone: ZoneInfo) -> str:
+    """'2026-05-17 14:30:00' em America/Campo_Grande -> '-04:00' (formato que o Google exige)."""
+    z = datetime.strptime(local_ts, "%Y-%m-%d %H:%M:%S").replace(tzinfo=zone).strftime("%z")
+    return f"{z[:3]}:{z[3:]}"
 
 
 def _parse_upload_response(
