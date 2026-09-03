@@ -1709,19 +1709,31 @@ async def test_apply_reconsulta_a_grade_e_devolve_resulting_schedule(monkeypatch
         # `.get(..., [])` seria o fallback calado que a Task 4 acabou de proibir —
         # com [] os builders levantam ValueError DEPOIS da mutacao ja aplicada.
         campaign_ids = list(saved.payload["campaign_ids"])
-        rows = await run_report(
-            manager_id=ctx.manager_id, session_id=ctx.session_id, customer_id=saved.customer_id,
-            query=ad_schedule_query(campaign_ids=campaign_ids, status="enabled", limit=1000),
-            row_formatter=parse_ad_schedule_row, operation_name="update_ad_schedule_confirm",
-        )
-        atual = rows_to_current(rows)
-        # Ruling 5 (ledger): `summarize_current` tambem devolve a chave `windows` (int);
-        # o spread vem PRIMEIRO para a lista de linhas vencer. O snippet original do
-        # plano fazia o contrario e sobrescrevia a lista — o teste do proprio brief pegou.
-        resulting = {
-            cid: {**summarize_current(atual.get(cid, [])), "windows": [r for r in rows if r["campaign_id"] == cid]}
-            for cid in campaign_ids
-        }
+        # Ruling 6 (ledger): a reconsulta e I/O DEPOIS de uma escrita ja aplicada — nunca
+        # pode transformar sucesso em erro (F83/F91). Best-effort: envelope intacto,
+        # resulting_schedule None + confirmation_error quando a leitura falhar.
+        resulting: dict[str, Any] | None
+        confirmation_error: str | None = None
+        try:
+            rows = await run_report(
+                manager_id=ctx.manager_id, session_id=ctx.session_id, customer_id=saved.customer_id,
+                query=ad_schedule_query(campaign_ids=campaign_ids, status="enabled", limit=1000),
+                row_formatter=parse_ad_schedule_row, operation_name="update_ad_schedule_confirm",
+            )
+            atual = rows_to_current(rows)
+            # Ruling 5 (ledger): `summarize_current` tambem devolve a chave `windows` (int);
+            # o spread vem PRIMEIRO para a lista de linhas vencer.
+            resulting = {
+                cid: {**summarize_current(atual.get(cid, [])), "windows": [r for r in rows if r["campaign_id"] == cid]}
+                for cid in campaign_ids
+            }
+        except Exception as e:  # noqa: BLE001
+            log.warning("update_ad_schedule_confirm_failed", customer_id=saved.customer_id, error=str(e), error_type=e.__class__.__name__)
+            resulting = None
+            confirmation_error = (
+                f"A mutacao foi aplicada (veja applied_count/provider_request_id), mas a reconsulta da grade "
+                f"falhou ({e.__class__.__name__}). Confirme o estado com get_ad_schedule antes de confiar no resultado."
+            )
         return {
             "status": "applied",
             "operation": saved.operation_type,
@@ -1732,6 +1744,7 @@ async def test_apply_reconsulta_a_grade_e_devolve_resulting_schedule(monkeypatch
             "changed_count": result.get("changed_count"),
             "resource_names": result.get("resource_names", []),
             "resulting_schedule": resulting,
+            "confirmation_error": confirmation_error,
         }
 ```
 
@@ -1814,7 +1827,7 @@ def test_update_ad_schedule_usa_envelope_e_classify_do_compartilhado() -> None:
 | T1 | `get_ad_schedule(7862230676)` sem filtro | cada campanha em `schedule_summary`; as sem janela com `has_schedule: false` e `hours_per_week: 168`; `budget_is_shared: true` nas duas do portfólio |
 | T2 | `get_ad_schedule` com `status="all"` | aparece ao menos uma janela `REMOVED` se existir; contagem ≥ T1 |
 | T3 | `update_ad_schedule(1163862076, [campanha PAUSED de teste], windows=SEG-SEX 07–17)` | `status: dry_run`; `preview[cid].was_24x7` correto; `metrics.leaving` e `metrics.staying` com `conversions` e `cpa_brl` (pode ser `null`); `metrics_window.days == 30` |
-| T4 | `apply_change` do T3 | `applied_count == 5`, `changed_count == 5`, `resulting_schedule[cid].hours_per_week == 50.0` |
+| T4 | `apply_change` do T3 | `applied_count == 5`, `changed_count == 5`, `confirmation_error == null`, `resulting_schedule[cid].hours_per_week == 50.0` |
 | T5 | **Confirmação por GAQL** (§7): `SELECT campaign_criterion.criterion_id, campaign_criterion.status, campaign_criterion.ad_schedule.day_of_week FROM campaign_criterion WHERE campaign.id = <cid> AND campaign_criterion.type = 'AD_SCHEDULE'` | 5 linhas `ENABLED` seg–sex; **nunca** por `row_count` sem filtro |
 | T6 | Reenviar a MESMA grade do T3 | `status: no_changes`, sem token — e GAQL mostra os **mesmos `criterion_id`** do T5 (prova de que não recriou) |
 | T7 | `update_ad_schedule` com `bid_modifier: 1.1` e a mesma grade | preview com 5 em `bid_modifier_updated`, 0 add/remove; apply; GAQL mostra `bid_modifier = 1.1` nos mesmos `criterion_id` |
