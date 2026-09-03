@@ -100,6 +100,8 @@ Se zero F-findings: documentar explicitamente "Zero F-findings novos. Sprint cle
 
 **Setup:** Validar que a leitura não-filtrada enumera assets dos três níveis (CUSTOMER, CAMPAIGN, AD_GROUP) e que pelo menos um vem com `status: REMOVED`. Account `7862230676` tem dois callouts removidos conhecidos (IDs 144113768040 e 144113768046).
 
+🔴 **Use `limit: 1000`, não o default.** Medido em 02/09, a conta tem **735 vínculos** (26 `customer_asset` + 313 `campaign_asset` + 396 `ad_group_asset`), dos quais **598 são `AD_IMAGE`** de RSA. Com o default de 200 a resposta trunca, e a ordenação é por `asset_id` — ou seja, quais 200 sobrevivem é decidido pela ordem, não pela relevância. A asserção "aparecem os três níveis" passaria a testar a sorte da ordenação em vez do comportamento da tool. Com 1000, os 735 cabem e `truncated` deve vir `false`.
+
 **Pré-requisito:** Branch local com Task 3 implementada. MCP server em produção ainda **não** tem a tool (bloqueador 1), então este teste NÃO pode rodar até deploy.
 
 **Tool call:**
@@ -566,6 +568,46 @@ apply_change(
 
 ---
 
+## Teste T7 — `account_frontier` é a fronteira da CONTA (F131, mesmo release)
+
+**Por que está neste runbook:** o F131 shippou no mesmo PR das tools de asset. Não é sobre assets, mas é sobre o mesmo deploy, e a asserção precisa de conta real.
+
+**Setup:** `get_change_history` e `detect_drift` devolvem `freshness.account_frontier`, que deve ser o evento mais recente indexado **na conta**, independente da janela consultada. A primeira versão herdava a janela do usuário: consultar 31/08–01/09 devolvia fronteira 31/08 e `status: atrasado` com a conta indexada até 02/09, e o warning disparava em toda janela terminando em dia sem write.
+
+**Passo 1 — a fronteira não varia com a janela.** Duas chamadas, uma terminando em dia **com** atividade e outra em dia **sem**:
+
+```
+get_change_history(customer_id="7862230676", date_range="TODAY", limit=1)
+get_change_history(customer_id="7862230676", start_date="2026-08-31", end_date="2026-09-01", limit=1)
+```
+
+- [ ] `account_frontier` **idêntico** nas duas. Se variar, está filtrado pela janela.
+- [ ] `slice_frontier` **difere** entre elas — é o campo que deve acompanhar a janela, e é essa a diferença entre os dois.
+- [ ] `status: confiavel` e `warning: null` nas duas, quando a conta está em dia.
+
+**Passo 2 — a fronteira é o máximo real, com tolerância.** Rode o `MAX` por GAQL **primeiro**, a tool **depois**:
+
+```
+SELECT change_event.change_date_time FROM change_event
+WHERE change_event.change_date_time BETWEEN '<hoje-28>' AND '<hoje+1>'
+ORDER BY change_event.change_date_time DESC LIMIT 1
+```
+
+- [ ] `account_frontier` **>= (MAX − 120s)**.
+
+🔴 **Não asserte igualdade estrita.** As duas consultas não são simultâneas: qualquer write no intervalo, ou deriva de propagação do lado do Google, faz os valores discordarem por segundos **sem que haja defeito**. Igualdade estrita transforma isso em falha de teste — e asserção flaky é reprovada, investigada, não reproduzida e no fim ignorada, perdendo-se justamente a checagem de corretude. Rodar o `MAX` antes põe a deriva na direção benigna: evento novo no intervalo só faz a tool ver **mais**, nunca menos.
+
+O que esta asserção precisa pegar é fronteira **filtrada pela janela** (erra por dias) e fronteira **estagnada** (erra por sempre). Discordância de segundos não é o alvo.
+
+**Failure modes:**
+- `account_frontier` diferente entre as duas janelas → a sonda voltou a herdar filtro do chamador.
+- `account_frontier` muito abaixo do `MAX` (minutos ou mais) → sonda estagnada, ou janela própria estreita demais.
+- `status: atrasado` em janela cujo último dia simplesmente não teve write → é o bug original reincidindo; confira por GAQL se o dia teve atividade antes de reportar.
+
+**Resultado:** ⬜ pending
+
+---
+
 ## Resultado final (após execução futura)
 
 ```
@@ -577,6 +619,10 @@ F-findings novos: <preencher durante execução — esperado ZERO>
 ---
 
 ## Notas operacionais pós-execução
+
+🔴 **Antes de tentar: reconecte o MCP.** O catálogo de tools é negociado no **handshake**. Sessão aberta antes do deploy segue com a lista antiga, e o sintoma é a tool **"não existir"** — busca por nome exato e por keyword não acham —, não um erro que mencione deploy ou versão. Aconteceu com duas sessões em 02/09, com o servidor já servindo 66 tools (F140).
+
+🔴 **O passo de mutação pode barrar antes de chegar no MCP.** A primeira tentativa do `remove_asset_link` em 02/09 foi bloqueada pelo **classificador de auto mode do Claude Code**, não pelo gate do MCP nem pelo Google — e o erro não menciona nenhum dos dois. Se acontecer: pare e leve ao dono do repo em vez de contornar. Naquele caso ele confirmou que a conta era de teste dele e autorizou.
 
 1. Se qualquer T falhar: criar finding `F###` com severidade apropriada (HIGH se afeta mutação real, MED se é leitura)
 2. Se todas T passarem: atualizar `estado-atual.md` com referência a este smoke + resultado
