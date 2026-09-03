@@ -89,3 +89,51 @@ async def test_apply_reconsulta_a_grade_e_devolve_resulting_schedule(monkeypatch
     rs = out["resulting_schedule"]["1"]
     assert rs["has_schedule"] is True and rs["hours_per_week"] == 10.0
     assert rs["windows"][0]["day_of_week"] == "MONDAY"
+    assert out["confirmation_error"] is None
+
+
+@pytest.mark.asyncio
+async def test_reconsulta_que_falha_nao_apaga_o_resultado_da_mutacao(monkeypatch) -> None:
+    """F83/F91: I/O depois de escrita ja aplicada nao pode virar erro."""
+    saved = SimpleNamespace(
+        operation_type="update_ad_schedule",
+        customer_id="1234567890",
+        blast_summary="x",
+        payload={
+            "campaign_ids": ["1"],
+            "ops": [
+                {"kind": "remove", "resource_name": "customers/1234567890/campaignCriteria/1~9"}
+            ],
+            "__target_count__": 1,
+            "__partial_failure__": True,
+        },
+    )
+
+    async def _consume(conn, *, token, session_id):
+        return saved
+
+    async def _run_mutation(**kwargs):
+        assert kwargs["partial_failure"] is True
+        return {
+            "provider_request_id": "req-1",
+            "applied_count": 1,
+            "changed_count": 1,
+            "resource_names": ["customers/1234567890/campaignCriteria/1~9"],
+        }
+
+    async def _run_report(**kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(mod, "consume", _consume)
+    monkeypatch.setattr(mod, "run_mutation", _run_mutation)
+    monkeypatch.setattr(mod, "run_report", _run_report)
+    monkeypatch.setattr(mod.connection, "get_pool", lambda: _FakePool())
+
+    out = await mod.apply_change({"confirmation_token": "ABCDEFGH"})
+    assert (
+        out["status"] == "applied"
+        and out["applied_count"] == 1
+        and out["provider_request_id"] == "req-1"
+    )
+    assert out["resulting_schedule"] is None
+    assert "reconsulta" in out["confirmation_error"].lower()

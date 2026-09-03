@@ -8,6 +8,8 @@ to run_conversion_upload (ConversionUploadService); else routes to run_mutation
 
 from typing import Any
 
+import structlog
+
 from src.db import connection
 from src.google_ads.ad_schedule import summarize_current
 from src.google_ads.conversions import run_conversion_upload
@@ -19,6 +21,8 @@ from src.mcp.context import get_current
 from src.mcp.tools._mutate_common import error_envelope
 from src.mcp.tools._registry import register_tool
 from src.mcp.tools.get_ad_schedule import rows_to_current
+
+log = structlog.get_logger(__name__)
 
 _SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -135,24 +139,43 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
         # `.get(..., [])` seria o fallback calado que a Task 4 acabou de proibir —
         # com [] os builders levantam ValueError DEPOIS da mutacao ja aplicada.
         campaign_ids = list(saved.payload["campaign_ids"])
-        rows = await run_report(
-            manager_id=ctx.manager_id,
-            session_id=ctx.session_id,
-            customer_id=saved.customer_id,
-            query=ad_schedule_query(campaign_ids=campaign_ids, status="enabled", limit=1000),
-            row_formatter=parse_ad_schedule_row,
-            operation_name="update_ad_schedule_confirm",
-        )
-        atual = rows_to_current(rows)
-        # summarize_current tambem devolve uma chave "windows" (contagem) — spread
-        # primeiro e a lista de linhas por ultimo, senao o int pisa na lista.
-        resulting = {
-            cid: {
-                **summarize_current(atual.get(cid, [])),
-                "windows": [r for r in rows if r["campaign_id"] == cid],
+        # F83/F91: a mutacao ja aplicou (result acima e definitivo). A reconsulta e
+        # I/O DEPOIS da escrita — se ela falhar (rede, GoogleAdsException transiente,
+        # rate limit), isso nao pode transformar um sucesso em erro pro caller.
+        resulting: dict[str, Any] | None
+        confirmation_error: str | None = None
+        try:
+            rows = await run_report(
+                manager_id=ctx.manager_id,
+                session_id=ctx.session_id,
+                customer_id=saved.customer_id,
+                query=ad_schedule_query(campaign_ids=campaign_ids, status="enabled", limit=1000),
+                row_formatter=parse_ad_schedule_row,
+                operation_name="update_ad_schedule_confirm",
+            )
+            atual = rows_to_current(rows)
+            # summarize_current tambem devolve uma chave "windows" (contagem) — spread
+            # primeiro e a lista de linhas por ultimo, senao o int pisa na lista.
+            resulting = {
+                cid: {
+                    **summarize_current(atual.get(cid, [])),
+                    "windows": [r for r in rows if r["campaign_id"] == cid],
+                }
+                for cid in campaign_ids
             }
-            for cid in campaign_ids
-        }
+        except Exception as e:  # noqa: BLE001 — I/O apos escrita ja aplicada: nunca transformar sucesso em erro (F83/F91)
+            log.warning(
+                "update_ad_schedule_confirm_failed",
+                customer_id=saved.customer_id,
+                error=str(e),
+                error_type=e.__class__.__name__,
+            )
+            resulting = None
+            confirmation_error = (
+                f"A mutacao foi aplicada (veja applied_count/provider_request_id), mas a "
+                f"reconsulta da grade falhou ({e.__class__.__name__}). Confirme o estado "
+                f"com get_ad_schedule antes de confiar no resultado."
+            )
         return {
             "status": "applied",
             "operation": saved.operation_type,
@@ -163,6 +186,7 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
             "changed_count": result.get("changed_count"),
             "resource_names": result.get("resource_names", []),
             "resulting_schedule": resulting,
+            "confirmation_error": confirmation_error,
         }
 
     # Default path: chained mutation via GoogleAdsService.mutate (Sprint 3b.1-3b.25).
