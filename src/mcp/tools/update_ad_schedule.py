@@ -20,7 +20,7 @@ from src.google_ads.ad_schedule import (
     validate_windows,
     window_from_input,
 )
-from src.google_ads.queries._common import resolve_date_window
+from src.google_ads.queries._common import InvalidDateRangeError, resolve_date_window
 from src.google_ads.queries.ad_schedule import (
     ad_schedule_query,
     campaign_budget_query,
@@ -135,12 +135,17 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
     desired = [window_from_input(w) for w in args["windows"]]
 
     today = await resolve_account_today(customer_id)
-    start, end = resolve_date_window(
-        date_range=args.get("date_range", "LAST_30_DAYS"),
-        start_date=args.get("start_date"),
-        end_date=args.get("end_date"),
-        today=today,
-    )
+    try:
+        start, end = resolve_date_window(
+            date_range=args.get("date_range", "LAST_30_DAYS"),
+            start_date=args.get("start_date"),
+            end_date=args.get("end_date"),
+            today=today,
+        )
+    except InvalidDateRangeError as e:
+        return error_envelope(
+            "update_ad_schedule", f"periodo invalido: {e}", customer_id=customer_id
+        )
 
     async def _consulta(query: str, parser: Any, *, audited: bool = False) -> list[dict[str, Any]]:
         return await run_report(
@@ -164,6 +169,14 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
     orcamentos = await _consulta(
         campaign_budget_query(campaign_ids=campaign_ids), parse_campaign_budget_row
     )
+    faltando = [cid for cid in campaign_ids if cid not in {o["campaign_id"] for o in orcamentos}]
+    if faltando:
+        return error_envelope(
+            "update_ad_schedule",
+            f"campaign_ids nao encontradas nesta conta (ou removidas): {faltando}. "
+            "Nenhuma operacao foi montada.",
+            customer_id=customer_id,
+        )
     metricas = await _consulta(
         day_hour_metrics_query(campaign_ids=campaign_ids, start=start, end=end),
         parse_day_hour_row,
@@ -289,10 +302,16 @@ async def _blocos_de_orcamento_compartilhado(
         todas = [i for i in irmas if i["budget_resource_name"] == rn]
         dentro = sorted(i["campaign_id"] for i in todas if i["campaign_id"] in no_lote)
         fora = [
-            {"campaign_id": i["campaign_id"], "campaign_name": i["campaign_name"]}
+            {
+                "campaign_id": i["campaign_id"],
+                "campaign_name": i["campaign_name"],
+                "status": i["status"],
+            }
             for i in todas
             if i["campaign_id"] not in no_lote
         ]
+        ativas = sum(1 for i in todas if i["status"] == "ENABLED")
+        ativas_fora_do_lote = sum(1 for i in fora if i["status"] == "ENABLED")
         blocos.append(
             {
                 "budget_id": o["budget_id"],
@@ -301,13 +320,15 @@ async def _blocos_de_orcamento_compartilhado(
                 "amount_brl": o["amount_brl"],
                 "campaigns_in_batch": dentro,
                 "campaigns_outside_batch": fora,
+                "ativas_fora_do_lote": ativas_fora_do_lote,
                 "warning_pt": (
                     f"Orcamento compartilhado {o['budget_id']} (R$ {o['amount_brl']:.2f}/dia) "
-                    f"e de {len(todas)} campanha(s); {len(dentro)} no lote, {len(fora)} fora. "
-                    "Desligar faixas aqui NAO devolve dinheiro: realoca a pressao para as "
-                    "faixas e campanhas irmas que sobram, inclusive as fora do lote. Em quanto "
-                    "tempo e com que completude a verba se redistribui e pacing do Google — "
-                    "nao ha como medir por API."
+                    f"e de {len(todas)} campanha(s), {ativas} ativa(s); {len(dentro)} no lote, "
+                    f"{len(fora)} fora ({ativas_fora_do_lote} ativa(s)). Desligar faixas aqui "
+                    "NAO devolve dinheiro: realoca a pressao para as faixas e campanhas irmas "
+                    "ATIVAS que sobram, inclusive as fora do lote. Em quanto tempo e com que "
+                    "completude a verba se redistribui e pacing do Google — nao ha como medir "
+                    "por API."
                 ),
             }
         )

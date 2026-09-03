@@ -232,8 +232,9 @@ async def test_orcamento_compartilhado_chega_ao_preview_com_as_irmas_fora_do_lot
     sb = out["shared_budgets"]
     assert len(sb) == 1 and sb[0]["budget_id"] == "77" and sb[0]["explicitly_shared"] is True
     assert sb[0]["campaigns_in_batch"] == ["1"] and sb[0]["campaigns_outside_batch"] == [
-        {"campaign_id": "2", "campaign_name": "B"}
+        {"campaign_id": "2", "campaign_name": "B", "status": "ENABLED"}
     ]
+    assert sb[0]["ativas_fora_do_lote"] == 1
     assert "realoca" in sb[0]["warning_pt"].lower()
     assert out["status"] == "dry_run"
 
@@ -258,3 +259,62 @@ async def test_payload_pendente_leva_partial_failure_e_target_count_igual_ao_num
     p = captured["payload"]
     assert p["__partial_failure__"] is True and p["__target_count__"] == 5 == len(p["ops"])
     assert captured["operation_type"] == "update_ad_schedule"
+
+
+@pytest.mark.asyncio
+async def test_campaign_id_inexistente_e_recusado_antes_de_montar_preview(monkeypatch) -> None:
+    """Sem linha de orcamento a campanha nao existe na conta — nao pode virar 'servia 24x7'."""
+    captured = _wire(monkeypatch, grade=[], orcamentos=[_orc(cid="1")], metricas=[])
+    out = await mod.update_ad_schedule(
+        {"customer_id": "1234567890", "campaign_ids": ["1", "999"], "windows": SEG_SEX}
+    )
+    assert out["status"] == "error" and "999" in out["error_message"]
+    assert captured == {}
+
+
+@pytest.mark.asyncio
+async def test_irma_pausada_nao_conta_como_ativa_no_aviso(monkeypatch) -> None:
+    irmas = [
+        {
+            "campaign_id": "1",
+            "campaign_name": "A",
+            "budget_resource_name": "customers/1234567890/campaignBudgets/77",
+            "status": "ENABLED",
+        },
+        {
+            "campaign_id": "2",
+            "campaign_name": "B",
+            "budget_resource_name": "customers/1234567890/campaignBudgets/77",
+            "status": "PAUSED",
+        },
+        {
+            "campaign_id": "3",
+            "campaign_name": "C",
+            "budget_resource_name": "customers/1234567890/campaignBudgets/77",
+            "status": "ENABLED",
+        },
+    ]
+    _wire(monkeypatch, grade=[], orcamentos=[_orc(shared=True)], metricas=[], irmas=irmas)
+    out = await mod.update_ad_schedule(
+        {"customer_id": "1234567890", "campaign_ids": ["1"], "windows": SEG_SEX}
+    )
+    sb = out["shared_budgets"][0]
+    assert sb["ativas_fora_do_lote"] == 1
+    assert {(c["campaign_id"], c["status"]) for c in sb["campaigns_outside_batch"]} == {
+        ("2", "PAUSED"),
+        ("3", "ENABLED"),
+    }
+
+
+@pytest.mark.asyncio
+async def test_periodo_invalido_vira_error_envelope(monkeypatch) -> None:
+    _wire(monkeypatch, grade=[], orcamentos=[_orc()], metricas=[])
+    out = await mod.update_ad_schedule(
+        {
+            "customer_id": "1234567890",
+            "campaign_ids": ["1"],
+            "windows": SEG_SEX,
+            "start_date": "2026-08-01",
+        }
+    )
+    assert out["status"] == "error" and "periodo" in out["error_message"].lower()
