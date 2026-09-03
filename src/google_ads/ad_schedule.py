@@ -102,3 +102,45 @@ def validate_windows(windows: list[dict[str, Any]]) -> str | None:
 
 def hours_per_week(windows: Iterable[Window]) -> float:
     return round(sum((w.end_min() - w.start_min()) / 60 for w in windows), 2)
+
+
+@dataclass(frozen=True, slots=True)
+class CurrentWindow:
+    window: Window
+    resource_name: str
+    criterion_id: str
+    bid_modifier: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class ScheduleDiff:
+    to_add: tuple[Window, ...]
+    to_remove: tuple[CurrentWindow, ...]
+    to_update: tuple[CurrentWindow, ...]
+
+    def is_empty(self) -> bool:
+        return not (self.to_add or self.to_remove or self.to_update)
+
+    def op_count(self) -> int:
+        return len(self.to_add) + len(self.to_remove) + len(self.to_update)
+
+
+def diff_schedule(
+    current: list[CurrentWindow], desired: list[Window], bid_modifier: float | None
+) -> ScheduleDiff:
+    """Grade desejada e CONJUNTO (spec §4.1); diff por CONTEUDO (§4.4).
+
+    - janela desejada ausente do atual -> add
+    - janela atual ausente da desejada -> remove
+    - janela em ambos com bid_modifier informado e diferente -> update (mask), nunca recria
+    """
+    atual_por_chave = {c.window.key(): c for c in current}
+    desejada_por_chave = {w.key(): w for w in desired}
+    to_add = tuple(w for k, w in desejada_por_chave.items() if k not in atual_por_chave)
+    to_remove = tuple(c for k, c in atual_por_chave.items() if k not in desejada_por_chave)
+    to_update: list[CurrentWindow] = []
+    if bid_modifier is not None:
+        for k, c in atual_por_chave.items():
+            if k in desejada_por_chave and c.bid_modifier != bid_modifier:
+                to_update.append(c)
+    return ScheduleDiff(to_add=to_add, to_remove=to_remove, to_update=tuple(to_update))
