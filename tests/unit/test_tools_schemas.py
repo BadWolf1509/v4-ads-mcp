@@ -264,6 +264,7 @@ def test_no_unexpected_tools():
         "get_performance_breakdown",  # Fase 2A Task 5
         "get_assets",  # F134 Task 3
         "remove_asset_link",  # F134 Task 5
+        "get_ad_schedule",  # ad_schedule Task 5
     }
     actual = {t.name for t in all_tools()}
     unexpected = actual - expected
