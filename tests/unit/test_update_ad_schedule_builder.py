@@ -82,3 +82,16 @@ def test_minuto_invalido_no_payload_estoura_antes_do_google() -> None:
 def test_kind_desconhecido_estoura() -> None:
     with pytest.raises(ValueError):
         build_update_ad_schedule(make_capture_client(), CID, {"ops": [{"kind": "replace"}]})
+
+
+def test_day_of_week_invalido_estoura_antes_do_google() -> None:
+    with pytest.raises(ValueError, match="day_of_week"):
+        build_update_ad_schedule(make_capture_client(), CID, {"ops": [_add(day="MONDAI")]})
+
+
+def test_update_sem_bid_modifier_estoura_com_valueerror() -> None:
+    rn = f"customers/{CID}/campaignCriteria/22169885957~348624223154"
+    with pytest.raises(ValueError, match="bid_modifier"):
+        build_update_ad_schedule(
+            make_capture_client(), CID, {"ops": [{"kind": "update", "resource_name": rn}]}
+        )
