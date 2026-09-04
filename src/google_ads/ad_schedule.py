@@ -63,6 +63,18 @@ def window_from_input(d: dict[str, Any]) -> Window:
     )
 
 
+_UTEIS = ("MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY")
+
+# 50h + 70h + 48h = 168h. O teste cobra essa soma: bloco que nao ladrilha
+# transforma `outros` em lixeira e a comparacao entre blocos vira ruido.
+BLOCOS_PADRAO: dict[str, list[Window]] = {
+    "comercial": [Window(d, 8, 0, 18, 0) for d in _UTEIS],
+    "fora_de_hora": [Window(d, 0, 0, 8, 0) for d in _UTEIS]
+    + [Window(d, 18, 0, 24, 0) for d in _UTEIS],
+    "fim_de_semana": [Window("SATURDAY", 0, 0, 24, 0), Window("SUNDAY", 0, 0, 24, 0)],
+}
+
+
 def validate_windows(windows: list[dict[str, Any]]) -> str | None:
     """Mensagem PT-BR se algo for invalido; None se OK. Recusa ANTES do Google."""
     validos = ", ".join(str(m) for m in MINUTO_ENUM)
