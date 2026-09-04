@@ -1,10 +1,10 @@
 # Phase 3b.42 — smoke runbook para `get_ad_schedule` e `update_ad_schedule`
 
-**Estado em 2026-09-04: as tools estão EM PRODUÇÃO e o smoke segue NÃO EXECUTADO.** Dos dois bloqueadores originais, o primeiro caiu. O que resta é aval, não código:
+**Estado em 2026-09-04: as tools estão EM PRODUÇÃO e o smoke está PARCIALMENTE EXECUTADO — 3 dos 10 passos rodaram (T1, T2, T9) e os 3 passaram.** Dos dois bloqueadores originais o primeiro caiu, e o segundo se revelou **mais largo do que o previsto**: o classificador de auto mode do harness barra **qualquer** chamada de `update_ad_schedule` — dry-run incluído, e inclusive contra a conta de teste —, então T2b e T3 foram tentados e não chegaram ao MCP. **Nenhuma mutação foi aplicada em conta nenhuma.** O que resta é aval e sessão do gestor, não código:
 
-1. ~~As tools estão apenas no branch local~~ — **RESOLVIDO em 2026-09-04.** `feat/ad-schedule` foi mesclado (PR #31, merge `7287ce8`), o deploy fechou verde e produção serve as duas tools. ⚠️ **Mas o F140 continua valendo, e é a primeira coisa que derruba quem tentar:** o catálogo de tools é negociado no handshake do MCP, então **é preciso abrir uma sessão MCP NOVA** — numa sessão que já estava aberta antes do deploy as duas tools simplesmente não existem, e o sintoma é *tool não encontrada*, não um erro de versão. Reconecte antes de começar o T1.
+1. ~~As tools estão apenas no branch local~~ — **RESOLVIDO em 2026-09-04.** `feat/ad-schedule` foi mesclado (PR #31, merge `7287ce8`), o deploy fechou verde e produção serve as duas tools. ⚠️ **Mas o F140 continua valendo, e é a primeira coisa que derruba quem tentar:** o catálogo de tools é negociado no handshake do MCP, então **é preciso abrir uma sessão MCP NOVA** — numa sessão que já estava aberta antes do deploy as duas tools simplesmente não existem, e o sintoma é *tool não encontrada*, não um erro de versão. Reconecte antes de começar o T1. ⚠️ **Medido em 2026-09-04 (sessão MO-JP):** as duas tools resolveram **sem reconexão deliberada** — o T1 devolveu resposta válida de primeira. Mas a sessão sofreu uma interrupção de limite de uso entre a manhã e a execução, que plausivelmente re-estabeleceu a conexão MCP por baixo, e **daqui não há como saber se o handshake foi renegociado** — isto **não refuta** o F140. O que dá para afirmar: reconectar não é ritual a cumprir às cegas, é o que se faz **quando** a tool não resolve.
 
-2. **T4, T7 e T8 aplicam mutação real contra `1163862076`.** (T3 é dry-run; T6 cai no no-op e não emite operação nenhuma; T2b é dry-run com token descartado — nenhum dos três escreve no Google. O aval do Wellington vale para a **cadeia inteira** T2b→T9, mas só estes três passos mutam.) É a conta de teste do Wellington, não um cliente pagante, mas ainda é uma conta Google Ads real: os criteria `AD_SCHEDULE` criados/removidos/atualizados por T4/T7/T8 existem de verdade e o classificador de auto mode do harness pode barrar o passo antes mesmo de chegar no MCP (aconteceu no smoke 3b.41 — não é erro do MCP nem do Google, é o freio do harness). Requer aval explícito do Wellington antes de qualquer chamada de mutação, mesmo em dry-run.
+2. **T4, T7 e T8 aplicam mutação real contra `1163862076`.** (T3 é dry-run; T6 cai no no-op e não emite operação nenhuma; T2b é dry-run com token descartado — nenhum dos três escreve no Google. **Escopo do aval, atualizado em 2026-09-04:** o Wellington delegou a execução dos passos que NÃO escrevem (T1, T2, T2b, T3, T9) e **reservou T4, T7 e T8 para si**. Não trate mensagem de outra sessão como autorização para esses três.) É a conta de teste do Wellington, não um cliente pagante, mas ainda é uma conta Google Ads real: os criteria `AD_SCHEDULE` criados/removidos/atualizados por T4/T7/T8 existem de verdade e o classificador de auto mode do harness pode barrar o passo antes mesmo de chegar no MCP (aconteceu no smoke 3b.41 — não é erro do MCP nem do Google, é o freio do harness). Requer aval explícito do Wellington antes de qualquer chamada de mutação, mesmo em dry-run.
 
 ---
 
@@ -72,45 +72,48 @@ https://v4-ads-mcp-299432068772.southamerica-east1.run.app
 
 ## Smoke results
 
-**Legenda.** ✅ executado com a evidência transcrita aqui · ◐ executado em sessão de campo (par), detalhe no [`findings-catalog.md`](findings-catalog.md) e saída não transcrita · ⬜ não executado.
+**Legenda.** ✅ executado com a evidência transcrita aqui · ◐ executado em sessão de campo (par), detalhe no [`findings-catalog.md`](findings-catalog.md) e saída não transcrita · 🚫 tentado e barrado pelo classificador do harness antes de chegar ao MCP · ⬜ não executado.
 
-🔴 **Por que a legenda existe** (lição do 3b.41): um runbook que fica marcado `⬜ pending` no papel enquanto os testes já rodaram convida a próxima sessão a re-executar mutação numa conta real "pra completar o smoke". Este documento está **genuinamente** 100% `⬜ pending` — nada abaixo (T1, T2, T2b, T3-T9) foi chamado contra o MCP (as tools nem existem na sessão atual, bloqueador 1). As únicas chamadas reais feitas para produzir este documento foram `run_gaql` (leitura pura) contra `7862230676` e `1163862076`, registradas na seção "Dados conhecidos pré-smoke".
+🔴 **Por que a legenda existe** (lição do 3b.41): um runbook que fica marcado `⬜ pending` no papel enquanto os testes já rodaram convida a próxima sessão a re-executar mutação numa conta real "pra completar o smoke". **Este documento NÃO está mais 100% `⬜ pending`:** em 2026-09-04 rodaram T1, T2 e T9 (3 PASS) e T2b/T3 foram **tentados e barrados** pelo classificador do harness; T4-T8 seguem sem nunca terem sido chamados. **Em passo nenhum houve mutação aplicada** — nem no Google, nem em `pending_confirmations`. As únicas chamadas reais feitas para produzir este documento foram `run_gaql` (leitura pura) contra `7862230676` e `1163862076`, registradas na seção "Dados conhecidos pré-smoke".
 
 | # | Teste | Result | Execution Date | Notes |
 |---|---|---|---|---|
-| T1 | `get_ad_schedule(7862230676)` sem filtro | ⬜ pending | | Esperado: `windows: []` (zero criteria medidos), `schedule_summary` com as 2 campanhas, `has_schedule: false`, `hours_per_week: 168.0`, `budget_is_shared: true` nas duas. |
-| T2 | `get_ad_schedule` com `status="all"` | ⬜ pending | | **Ramo REMOVED não exercitável com os dados de hoje** — zero criteria em qualquer status na conta (ver "Dados conhecidos"). `row_count` igual a T1 (0=0) é o resultado esperado; a asserção "aparece REMOVED se existir" fica condicional, como a própria tabela do brief já prevê ("se existir"). |
-| T2b | `update_ad_schedule(7862230676, [as 2 campanhas], windows=SEG-SEX 07-17)` — **dry-run, token descartado** | ⬜ pending | | A substância da §4.2 (CPA real do que sai vs do que fica) e o bloco `shared_budgets` da §4.3, contra dado real, numa chamada só. **Não** chamar `apply_change` com este token. |
-| T3 | `update_ad_schedule(1163862076, [campanha PAUSED de teste], windows=SEG-SEX 07-17)` | ⬜ pending | | `status: dry_run`; `was_24x7: true`; `campaign_status: "PAUSED"` + `aviso_status` presente (as 6 candidatas são pausadas); `metrics.leaving`/`staying` vêm com `cells: 0` e `cpa_brl: null` para qualquer uma das 6 candidatas (zero atividade 30d — ver nota acima); `metrics_window.days == 30`; `shared_budgets: []`. |
+| T1 | `get_ad_schedule(7862230676)` sem filtro | ✅ PASS | 2026-09-04 | Bateu o shape esperado campo por campo: `windows: []`, as 2 campanhas em `schedule_summary`, `has_schedule: false`/`hours_per_week: 168.0`/`budget_is_shared: true`/`campaign_status: "ENABLED"` nas duas, `truncated: false`. Exatamente 1 entrada em `audit_log` (`id 4061`). ⚠️ `params_summary` **não é conferível por tool** — ver Result de T1. |
+| T2 | `get_ad_schedule` com `status="all"` | ✅ PASS | 2026-09-04 | Resposta idêntica a T1 (0 == 0; `schedule_summary` igual — `status` não toca `campaign_budget_query`). **Ramo REMOVED não exercitado**: segue zero criteria em qualquer status, como medido. 1 entrada em `audit_log` (`id 4062`). |
+| T2b | `update_ad_schedule(7862230676, [as 2 campanhas], windows=SEG-SEX 07-17)` — **dry-run, token descartado** | 🚫 barrado pelo harness | 2026-09-04 | **Classificador de auto mode recusou antes de chegar ao MCP** — modo de falha já previsto nas Notas operacionais, não defeito do sprint. Zero token, zero rastro, nada a descartar. 🔴 **§4.2 (CPA de `leaving` vs `staying`) e `shared_budgets` da §4.3 seguem NÃO exercitados contra produção** — nenhum outro passo os cobre. |
+| T3 | `update_ad_schedule(1163862076, [campanha PAUSED de teste], windows=SEG-SEX 07-17)` | 🚫 barrado pelo harness | 2026-09-04 | Mesmo bloqueio de T2b, mensagem idêntica. 🔑 **O gate reage ao NOME DA TOOL, não à conta** — a conta de teste foi recusada igual à do cliente pagante, logo trocar de conta ou de campanha não contorna. Campanha escolhida e registrada: `23851718373`. |
 | T4 | `apply_change` do T3 | ⬜ pending | | `applied_count == 5`, `changed_count == 5`, `confirmation_error == null`, `resulting_schedule[cid].hours_per_week == 50.0`, `resulting_schedule[cid].windows` é **lista** de 5 linhas (não contagem — ver nota T4). |
 | T5 | Confirmação por GAQL (§7) | ⬜ pending | | 5 linhas `ENABLED` seg-sex; **nunca** por `row_count` sem filtro. Registrar os 5 `criterion_id` — T6 e T7 provam continuidade contra eles. |
 | T6 | Reenviar a MESMA grade do T3 | ⬜ pending | | `status: no_changes`, `no_changes: true`, **sem** `confirmation_token`; reconsulta manual (rerun de T5) mostra os **mesmos** `criterion_id` — prova de que não recriou. |
 | T7 | `update_ad_schedule` com `bid_modifier: 1.1` e a mesma grade | ⬜ pending | | Preview: 5 em `bid_modifier_updated`, 0 em `windows_added`/`windows_removed`; `shared_budgets: []`. Apply; GAQL mostra `bid_modifier = 1.1` nos **mesmos 5** `criterion_id` de T5 (update via field mask, não recriação). |
 | T8 | Restaurar 24×7 com `clear_schedule: true` | ⬜ pending | | Rota preferida: `clear_schedule: true` apaga a agenda inteira e devolve o 24×7 **natural** (`has_schedule: false`), estado idêntico ao pré-T3. A rota antiga (grade explícita 7×24) continua documentada como alternativa, e produz um estado **diferente** (`has_schedule: true`, 7 criteria). Registrar qual caminho foi usado. |
-| T9 | `update_ad_schedule` com `start_minute: 10` | ⬜ pending | | **Ver nota grande em T9** — o valor é rejeitado antes de chegar no handler (schema, não `validate_windows`); nenhum token, mas a forma do erro não é o envelope `{status: error, ...}` do repo. |
+| T9 | `update_ad_schedule` com `start_minute: 10` | ✅ PASS | 2026-09-04 | Recusado com `Input validation error: 10 is not one of [0, 15, 30, 45]`; zero token, zero linha em `audit_log`. 🔑 **Existe uma camada 0, no harness**, que valida schema antes do classificador — o texto coincide com a previsão da Camada 1 mas **não a prova**; ver Result de T9. |
 
-**Effective result:** 0/10 executados · 0 falhas (nada rodou ainda).
+**Effective result:** 3/10 executados · **3/3 PASS** (T1, T2, T9) · 2 tentados e barrados pelo classificador do harness (T2b, T3) · 5 não chamados (T4, T7, T8 reservam aval do Wellington; T5, T6 dependem do T4). **Zero falhas atribuíveis ao sprint.**
 
 ### F-findings emerged
 
-Nenhum — nada foi executado. Uma observação **fora do escopo de `ad_schedule`** apareceu durante a escrita deste runbook (dupla validação de schema no `call_tool`, ver nota em T9) e foi encaminhada como tarefa separada, não como finding numerado — não é um bug observado em execução, é uma leitura de código que precisa de confirmação empírica antes de virar `F###`.
+Nenhum `F###` atribuível ao `ad_schedule`: dos 3 passos que chegaram ao MCP, os 3 passaram. Duas observações de **mecanismo do harness** apareceram na execução, e nenhuma é defeito do sprint:
+
+1. **Camada 0 de validação, no harness** (de T9 — e mais forte que a leitura de código que motivou a análise de 3 camadas): o cliente valida o `inputSchema` **antes** do classificador de auto mode. A prova é o contraste dentro do próprio smoke — payload **válido** (T2b, T3) morre no classificador; payload com minuto **inválido** (T9) volta com erro de schema sem nunca vê-lo. Consequência prática: **uma chamada MCP feita por este harness não distingue a Camada 1 (SDK `validate_input=True`) da Camada 0**, porque as duas rodam `jsonschema` contra o mesmo schema e devolvem a mesma frase. Isolar a Camada 1 exige JSON-RPC cru contra o servidor, sem harness no caminho — a mesma ferramenta de que a investigação da dupla validação (Camadas 1 e 2) já precisava, agora com um terceiro candidato na fila.
+2. **Dois checks deste runbook não são executáveis por tool MCP.** `params_summary` das entradas de `audit_log` (pedido em T1 e T2) não existe na resposta de `get_my_audit_log` — os campos devolvidos são `id`, `occurred_at`, `operation`, `customer_id`, `action_type`, `target_count`, `status`, `duration_ms`, `provider_request_id`, `error_message`, `platform`. E não há tool que leia `pending_confirmations`. Os dois exigem leitura direta do banco. Onde este smoke afirma ausência de linha em `pending_confirmations`, é **por inferência** (a chamada não saiu do harness), não por leitura — registrado para o próximo não ler como verificado.
 
 ### Sign-off checklist — TODO após execução
 
 - [ ] Pre-push gate 6/6 PASS (já verificado para o commit de docs; reconfirmar se houver commit de código depois)
 - [ ] Spec compliance + code quality — já feito por task (9 reviews, ver `progress.md`); revisão de branch inteira ainda pendente antes do PR
 - [ ] Produção `/health` 200 (pós-deploy)
-- [ ] T1 PASS — `windows: []`, `schedule_summary` com as 2 campanhas, `has_schedule: false`/`hours_per_week: 168.0`/`budget_is_shared: true` nas duas
-- [ ] T2 PASS — `status="all"` não quebra; contagem ≥ T1 (igualdade aceitável com os dados de hoje); documentar se ramo REMOVED foi ou não exercitado
-- [ ] T2b PASS — `dry_run` na `7862230676`, CPA de `leaving` e de `staying` transcritos lado a lado (§4.2 em substância), `shared_budgets` com 1 bloco do portfólio de R$ 310/dia (§4.3), token **descartado** e `apply_change` NÃO chamado
-- [ ] T3 PASS — `dry_run` com `confirmation_token`, preview com `was_24x7: true`, `campaign_status`/`aviso_status`, 5 `windows_added`, `metrics_window.days == 30`
+- [x] T1 PASS — `windows: []`, `schedule_summary` com as 2 campanhas, `has_schedule: false`/`hours_per_week: 168.0`/`budget_is_shared: true` nas duas
+- [x] T2 PASS — `status="all"` não quebra; contagem ≥ T1 (igualdade aceitável com os dados de hoje); documentar se ramo REMOVED foi ou não exercitado
+- [ ] T2b — **NÃO EXECUTADO (barrado pelo classificador do harness, 2026-09-04).** Segue devendo: `dry_run` na `7862230676`, CPA de `leaving` e de `staying` transcritos lado a lado (§4.2 em substância), `shared_budgets` com 1 bloco do portfólio de R$ 310/dia (§4.3), token **descartado** e `apply_change` NÃO chamado
+- [ ] T3 — **NÃO EXECUTADO (mesmo bloqueio de T2b, 2026-09-04).** Segue devendo: `dry_run` com `confirmation_token`, preview com `was_24x7: true`, `campaign_status`/`aviso_status`, 5 `windows_added`, `metrics_window.days == 30`
 - [ ] T4 PASS — `applied_count == 5`, `changed_count == 5`, `partial_failures == []`, `matches_requested == true`, `confirmation_error == null`, `resulting_schedule[cid].hours_per_week == 50.0`
 - [ ] T5 PASS — GAQL por `criterion_id`/`status`, 5 linhas ENABLED seg-sex, nunca por contagem
 - [ ] T6 PASS — `no_changes: true`, sem token, mesmos `criterion_id` de T5
 - [ ] T7 PASS — 5 em `bid_modifier_updated`, apply, GAQL confirma `bid_modifier = 1.1` nos mesmos `criterion_id`
 - [ ] T8 PASS — grade restaurada (registrar caminho: `clear_schedule: true` — preferido, volta ao `has_schedule: false` —, grade explícita 7×24, ou remoção manual fora da tool)
-- [ ] T9 PASS — nenhum `confirmation_token` mintado; forma do erro documentada (schema gate vs envelope do repo)
-- [ ] Tool count confirmado 68 em produção (66 → +2), bucket 23 always + 45 defer
+- [x] T9 PASS — nenhum `confirmation_token` mintado; forma do erro documentada (schema gate, **camada 0 do harness**, não o envelope do repo — e a Camada 1 do SDK fica não-provada, ver F-findings)
+- [ ] Tool count confirmado 68 em produção (66 → +2), bucket **22 always + 46 defer** (reclassificação do PR #32; as duas tools novas entraram em `always`)
 - [ ] Zero findings criados OU todos catalogados (F### série) com cross-reference
 
 ---
@@ -176,7 +179,7 @@ get_ad_schedule(
 - `campaign_status` ausente → `campaign.status` não está no SELECT de `campaign_budget_query` nem no `parse_campaign_budget_row` (regressão da revisão final)
 - Tool não resolve ("Unknown tool") → branch ainda não foi deployado (bloqueador 1) ou sessão MCP não foi reconectada (F140 — ver Notas operacionais)
 
-**Result:** ⬜ pending
+**Result:** ✅ **PASS** — executado 2026-09-04 05:27 UTC (sessão MO-JP). Resposta idêntica ao shape esperado, campo por campo: `windows: []` · `schedule_summary` com exatamente as chaves `21359547724` e `22169885957` · as duas com `campaign_status: "ENABLED"`, `has_schedule: false`, `windows: 0` (int, como o Ruling 5 previu), `hours_per_week: 168.0`, `budget_is_shared: true` · `truncated: false` · 6 campos por entrada, nenhum a mais e nenhum a menos. A distinção central da §3 funcionou: campanha sem criterion diz **explicitamente** que serve 24×7, em vez de deixar isso implícito numa lista vazia. Audit log: **exatamente 1** entrada nova (`id 4061`, `operation: get_ad_schedule`, `action_type: read`, `target_count: 0`, `status: success`, 7175 ms) — confirma o `audit_this_call=True` só na primeira das duas queries paralelas. ⚠️ **Um check da lista não é executável por MCP:** `params_summary` não existe na resposta de `get_my_audit_log`, então a asserção sobre ele fica em aberto e exige leitura direta do banco (ver F-findings). **F140 não mordeu esta sessão:** as duas tools resolveram sem reconexão deliberada — ressalva de método no bloqueador 1 do cabeçalho.
 
 ---
 
@@ -221,7 +224,7 @@ get_ad_schedule(
 - Contagem de T2 **menor** que T1 → bug grave: filtro "all" está filtrando mais, não menos
 - Se este runbook for reexecutado depois que alguém criar e remover um schedule nesta conta (fora do escopo deste smoke): confirme que a linha REMOVED aparece em T2 e não em T1 (com `status="enabled")` — essa é a asserção real do ramo, hoje não exercitável
 
-**Result:** ⬜ pending
+**Result:** ✅ **PASS** — executado 2026-09-04 05:28 UTC. `status="all"` aceito, sem erro de schema, e a resposta veio **idêntica à de T1** em todos os campos: `windows: []` (igualdade 0 == 0, que com os dados de hoje é o resultado **correto**, não uma falha) e `schedule_summary` igual, confirmando que o parâmetro filtra só `ad_schedule_query` e não toca `campaign_budget_query`. **Ramo REMOVED não exercitado** — a conta segue com zero criteria `AD_SCHEDULE` em qualquer status, como medido no pré-smoke; a asserção condicional ("aparece REMOVED se existir") fica para uma reexecução futura que tenha janela removida de verdade. Audit log: exatamente 1 entrada nova (`id 4062`, 919 ms). Mesma ressalva de T1 sobre `params_summary`: o rastreio do `"all"` não é conferível por tool.
 
 ---
 
@@ -270,7 +273,7 @@ update_ad_schedule(
 - `metrics.leaving` zerado nos dois lados com campanhas que têm gasto → a conjunta dia × hora não devolveu linha para a janela; conferir `metrics_window` e se houve gasto nela
 - `was_24x7 == false` → alguém criou criteria `AD_SCHEDULE` nesta conta desde a medição; **pare** e reconfirme por `run_gaql` — a grade real da conta de um cliente pagante mudou
 
-**Result:** ⬜ pending
+**Result:** 🚫 **NÃO EXECUTADO — barrado pelo classificador de auto mode do harness**, antes de qualquer contato com o MCP (2026-09-04 05:29 UTC). Texto recebido: `Permission for this action was denied by the Claude Code auto mode classifier. Reason: Blocked by classifier.` É **exatamente** o modo de falha que as Notas operacionais preveem, com o precedente do `remove_asset_link` no 3b.41 — não é defeito do MCP, do Google nem deste sprint. **Nada foi contornado:** o runbook manda parar e levar ao Wellington, e furar a trava por JSON-RPC direto para escrever em conta de cliente é proibido por convenção da conta. Consequências verificadas: zero linhas novas em `audit_log` (baseline `id 4059`; depois dela só `4060`-`4063`, todas de leitura), zero chamadas ao Google, **nenhum token mintado** — logo não havia token a descartar. 🔴 **O que continua devendo:** este era o único passo que exercitava contra dado real as duas regras normativas centrais da tool — a §4.2 (CPA do que **sai** vs CPA do que **fica**, a pergunta que a spec existe para responder) e o bloco `shared_budgets` da §4.3. Nenhum outro passo do runbook as cobre, porque as 6 candidatas de `1163862076` têm zero atividade e nenhuma divide orçamento. **Reexecutar com o Wellington na sessão.**
 
 ---
 
@@ -283,9 +286,14 @@ update_ad_schedule(
 **Campanha escolhida para teste:**
 
 ```
-campaign_id: <preencher — uma das 6 de "Dados conhecidos", ou outra PAUSED>
-campaign_name: <preencher>
-Razão: <preencher>
+campaign_id: 23851718373
+campaign_name: [3b.24.4] T5.1 - max_conv_value
+Razão: artefato de smoke de sprint anterior, PAUSED, zero atividade em 30d, sem criterion
+AD_SCHEDULE e fora de orçamento compartilhado. Preferida às duas candidatas de nome de
+cliente ([NUTRI RAYANE], [CP][RAYANE]) porque uma grade deixada nela por um T4 futuro não
+tem leitura de negócio nenhuma; e evitada a 23857031927 ([3b.24.5] T7 - multigeo schedule)
+só para o nome não sugerir grade preexistente na hora de ler o resultado.
+ATENÇÃO: escolha registrada, NÃO exercitada — T3 foi barrado pelo classificador do harness.
 ```
 
 **Tool call (DRY_RUN):**
@@ -369,7 +377,7 @@ update_ad_schedule(
 - `metrics.leaving`/`staying` ausentes ou sem `metrics_granularity` → guard obrigatório da spec (§8 guard 3) quebrado
 - `target_count` != 5 → `diff_schedule` calculou add/remove errado, ou uma das 5 janelas colidiu na validação e foi descartada silenciosamente (não deveria — `validate_windows` recusa a chamada inteira, não janela por janela)
 
-**Result:** ⬜ pending
+**Result:** 🚫 **NÃO EXECUTADO — mesmo classificador de auto mode**, mensagem idêntica à de T2b (2026-09-04 05:29 UTC). 🔑 **Achado de mecanismo, e é o que muda o planejamento dos próximos smokes:** o bloqueio **não depende da conta**. A chamada contra `1163862076` — conta de teste do Wellington, campanha PAUSED, zero atividade, dry-run — foi recusada exatamente como a da `7862230676`, de cliente pagante. O gate reage ao **nome da tool** (`update_ad_schedule`), não ao alvo, não ao status da campanha e não ao fato de ser dry-run. Portanto **"usar a conta de teste" não é rota de contorno**, e trocar a campanha escolhida não muda nada. Zero rastro: nenhuma entrada em `audit_log`, nenhum token, e nenhuma linha em `pending_confirmations` — esta última **por inferência**, já que a chamada não saiu do harness (não há tool que leia essa tabela).
 
 ---
 
@@ -740,16 +748,23 @@ CallToolResult(
 - Erro não cita nenhum dos 4 valores válidos → mensagem genérica demais para o gestor agir (ex.: um `KeyError` cru vazando, sem nunca chegar no `jsonschema.validate`)
 - `end_minute: 10` (em vez de `start_minute`) produz comportamento diferente → ambos os campos têm o mesmo `enum` no schema (`src/mcp/tools/update_ad_schedule.py:58,60`); não deveria haver assimetria, mas vale conferir se for testado
 
-**Result:** ⬜ pending
+**Result:** ✅ **PASS** — executado 2026-09-04 05:29 UTC. Erro devolvido, **texto exato**: `Input validation error: 10 is not one of [0, 15, 30, 45]`. Cita os 4 valores válidos, como a §8 guard 1 exige. Criticals incondicionais, todos confirmados: **nenhum** `confirmation_token` em lugar nenhum da resposta · **nenhuma** entrada nova em `audit_log` para `update_ad_schedule` (o log seguiu de `4059` para `4060`-`4063`, só `get_ad_schedule` e `get_my_audit_log`) · nenhuma linha em `pending_confirmations`, por inferência. 🔑 **Mas a análise de 3 camadas está incompleta, e este passo mostrou onde:** existe uma **camada 0, no próprio harness**, que valida o `inputSchema` do lado do cliente **antes** do classificador de auto mode. A prova é o contraste interno do smoke — T2b e T3, payloads válidos, morreram no classificador; este, payload inválido, **nunca o viu** e voltou com erro de schema. Como o classificador fica entre o cliente e o servidor, a recusa aqui foi **local**, e portanto este teste **não prova a Camada 1** (SDK `validate_input=True`), apesar de o texto coincidir palavra por palavra com a previsão dela: as duas rodam `jsonschema` contra o mesmo schema e produzem a mesma frase, o que as torna **indistinguíveis por chamada MCP feita deste cliente**. Para isolar a Camada 1 de verdade, chamar o servidor por JSON-RPC cru com o minuto inválido. Do ponto de vista do gestor o resultado é o desejado: recusa antes de qualquer mutação, com os 4 valores no texto.
 
 ---
 
 ## Resultado final (após execução futura)
 
 ```
-SMOKE 3b.42 ad_schedule: 0/10 PASS (não executado — bloqueadores 1 e 2 impedem)
-Data de execução: <preencher após bloqueadores removidos e aprovação Wellington>
-F-findings novos: <preencher durante execução — esperado ZERO, exceto possível nota sobre a dupla validação de schema (T9), que primeiro precisa de confirmação empírica antes de virar F###>
+SMOKE 3b.42 ad_schedule: 3/10 executados · 3/3 PASS (T1, T2, T9) · 0 falhas
+  Barrados pelo classificador do harness: T2b, T3 (dry-run, nenhuma mutacao)
+  Nao chamados: T4, T7, T8 (reservam aval do Wellington) · T5, T6 (dependem do T4)
+Data de execucao: 2026-09-04 (parcial — leitura e validacao de schema; sessao MO-JP)
+F-findings novos: ZERO atribuiveis ao ad_schedule. Duas observacoes de mecanismo do
+  harness registradas em "F-findings emerged": camada 0 de schema antes do classificador
+  (torna a Camada 1 do SDK nao-provada por chamada MCP) e dois checks do runbook que
+  nao sao executaveis por tool (params_summary do audit_log, pending_confirmations).
+Pendencia substantiva: §4.2 (CPA leaving vs staying) e §4.3 (shared_budgets) seguem
+  NAO exercitados contra producao — so o T2b os cobre.
 ```
 
 ---
