@@ -51,7 +51,13 @@ _INPUT_SCHEMA: dict[str, Any] = {
     description=(
         "[DEFER] Historico das proprias operacoes do gestor via MCP (mutations + audited "
         "reads), com filtros por janela de tempo, conta, e tipo de acao. Retorna "
-        "ordenado por occurred_at DESC. Scoped automaticamente ao gestor logado."
+        "ordenado por occurred_at DESC. Scoped automaticamente ao gestor logado. "
+        "**`dry_run` separa TENTATIVA de APLICACAO** (F148): `true` = preview que mintou "
+        "token e pode nunca ter sido aplicado; `false`/ausente = mutacao real ou linha "
+        "anterior ao fix. Sem esse campo os dois casos sao identicos, porque ambos gravam "
+        "`action_type: mutate` com o `target_count` planejado — nao tente distinguir por "
+        "`duration_ms`. Um mesmo preview tambem deixa uma linha `read` ao lado, que e a "
+        "consulta GAQL que ele fez, nao o preview."
     ),
     input_schema=_INPUT_SCHEMA,
     bucket="defer",

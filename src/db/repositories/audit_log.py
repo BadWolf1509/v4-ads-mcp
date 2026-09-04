@@ -230,7 +230,7 @@ async def list_for_manager(
     params.append(limit)
     sql = f"""SELECT id, occurred_at, operation, customer_id, action_type,
                      target_count, status, duration_ms, provider_request_id,
-                     error_message, platform
+                     error_message, platform, dry_run
               FROM audit_log
               WHERE {" AND ".join(where)}
               ORDER BY occurred_at DESC
@@ -249,6 +249,12 @@ async def list_for_manager(
             "provider_request_id": r["provider_request_id"],
             "error_message": r["error_message"],
             "platform": r["platform"],
+            # F148: sem esta chave, uma mutacao APLICADA e um preview sao
+            # indistinguiveis pela tool — os dois gravam action_type "mutate" com
+            # o target_count planejado. O unico diferenciador acidental seria
+            # duration_ms NULL, que nao e sinal desenhado e nem e exclusivo
+            # (admin_access_grant tambem grava mutate com duracao nula).
+            "dry_run": r["dry_run"],
         }
         for r in rows
     ]
