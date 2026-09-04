@@ -808,3 +808,26 @@ async def test_preview_windows_added_mostra_bid_modifier_efetivo_por_janela(monk
     # Segunda janela: herda o escalar da chamada
     assert windows_added[1]["day_of_week"] == "TUESDAY"
     assert windows_added[1]["bid_modifier"] == 0.9
+
+
+# --- Task 5 (F149 fechado): a rota perigosa deixa de ser a unica -----------------
+
+
+@pytest.mark.asyncio
+async def test_muda_uma_faixa_sem_desligar_as_outras_em_UMA_chamada(monkeypatch) -> None:  # noqa: N802
+    """A regressao que o F149 descreve: antes, a unica rota exigia duas chamadas
+    e passava por um estado com a campanha servindo ~50 de 168 horas."""
+    grade = [
+        _janela_row(day=d, sh=7, eh=17, crit=str(i), bm=1.0)
+        for i, d in enumerate(("MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"))
+    ]
+    cap = _wire(monkeypatch, grade=grade, orcamentos=[_orc()], metricas=[])
+    janelas = [dict(w) for w in SEG_SEX]
+    janelas[0]["bid_modifier"] = 1.4
+    out = await mod.update_ad_schedule(
+        {"customer_id": "1234567890", "campaign_ids": ["1"], "windows": janelas}
+    )
+    ops = cap["payload"]["ops"]
+    assert not [o for o in ops if o["kind"] == "remove"], "nenhuma faixa sai de servico"
+    assert len(ops) == 1 and ops[0]["kind"] == "update"
+    assert out["preview"]["1"]["cobertura"]["reduz"] is False

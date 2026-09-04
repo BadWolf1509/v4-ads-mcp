@@ -253,3 +253,22 @@ async def test_grade_mudada_desde_o_preview_nao_muta(monkeypatch) -> None:
     assert visto["mutacoes"] == [], "nada pode ter sido mutado"
     assert out["status"] == "error" and "grade mudou" in out["error_message"].lower()
     assert "update_ad_schedule" in out["error_message"] or out["operation"] == "update_ad_schedule"
+
+
+@pytest.mark.asyncio
+async def test_apply_recusa_quando_so_o_bid_modifier_mudou_no_baseline(monkeypatch) -> None:
+    """A pre-checagem da Ruling 10 passa a cobrir o modificador. Sem isto, alguem
+    muda o lance dentro dos 10 min do TTL e o delta e aplicado as cegas."""
+    # baseline do token: modificador 1.0; a reconsulta devolve 1.3 (mesma faixa,
+    # mesmas 5 posicoes de identidade — so o bid_modifier diverge).
+    saved = _saved(current_keys={"1": [["MONDAY", 7, 0, 17, 0, 1.0]]})
+    visto = _wire(
+        monkeypatch,
+        saved=saved,
+        antes=[_row(day="MONDAY", crit="9", bm=1.3)],
+        depois=[_row(crit="10")],
+    )
+    out = await mod.apply_change({"confirmation_token": "ABCDEFGH"})
+    assert visto["mutacoes"] == [], "nada pode ter sido mutado"
+    assert out["status"] == "error"
+    assert "mudou desde o preview" in out["error_message"]
