@@ -19,7 +19,7 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 ## Estado atual
 
 **2026-09-04.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`,
-**68 MCP tools** (62 Google + 6 Meta), CI gated + deploy automático. Catálogo em **149 IDs**.
+**68 MCP tools** (62 Google + 6 Meta), CI gated + deploy automático. Catálogo em **151 IDs**.
 
 **Quantos findings fecharam em qual sprint NÃO vive aqui** — essa narrativa churna toda
 sessão e duplica o `estado-atual.md`. Este bloco tem só o que orienta qualquer sessão;
@@ -141,9 +141,10 @@ Quando o padrão de mercado custar caro demais para o momento, **apresente o tra
 - Don't assertar superfície de API externa por analogia. Teste que codifica a convenção errada é PIOR que teste ausente (aconteceu 3×: F87, F89, e os mocks do F84/F89 que nem conseguiam expressar o bug). Probe empírica primeiro — `validate_gaql` pro Google, `ads_get_field_context` pro Meta.
 - Don't pôr pipe entre o gate e o `&&`: o exit code de um pipeline é o do ÚLTIMO comando, então `check_pre_push.py | tail && git commit` **não é gate** e já deixou passar commit com gate vermelho (02/09; a variante com `grep` já tinha acontecido antes). Rode mudo e leia `$?`. Don't push sem `python scripts/check_pre_push.py` antes. Full sweep MANDATORY ao mexer em pré-flight de mutate, queries com JOIN/cursor, ou migrations.
 - Don't confiar no exit code de `gh run watch` — confirme via `gh run view <id> --json conclusion`.
-- **Don't fechar sprint de tool mutante com o APPLY em `⬜ pending`** — o F150 foi para
-  produção prevendo e não aplicando, e **três revisões passaram por cima**: revisão lê o
-  código ESCRITO, e o defeito era código AUSENTE fora do diff.
+- **Don't fechar sprint de tool mutante com o APPLY ou a RESTAURAÇÃO em `⬜ pending`** —
+  em 04/09 os dois morderam: o F150 foi para produção prevendo e não aplicando, e o F151
+  dizia que restaurar entrega a zerava. Os dois são **ausência de tratamento de um
+  caminho**, e **três revisões passaram por cima**: revisão lê o código ESCRITO.
 - **Don't agendar smoke de tool que muta sem o gestor presente:** o classificador de auto mode recusa a chamada, e a alavanca e **autorizacao humana explicita na sessao dele** — aval relayado por outra sessao Claude nao passa. Nem dry-run nem conta de teste isentam: medido em 04/09, T2b (conta de cliente) e T3 (conta de teste, campanha PAUSED, dry-run) foram recusados identicamente, e os dois passaram na segunda tentativa depois do Wellington autorizar com as proprias palavras. A leitura "o freio reage ao nome da tool" foi levantada e **RETIRADA** — se fosse o nome, a segunda tentativa teria sido barrada igual.
 - **Don't tomar "sem checks" de PR empilhado por CI verde:** o `ci.yml` só dispara em `pull_request` contra `main`, então PR cuja base é outra branch **não roda CI nenhum** — e a ausência se parece com "ainda enfileirado". Reapontar a base depois também não dispara: isso é evento `edited`, e os tipos padrão são `opened`/`synchronize`/`reopened`. O que dispara é `git merge origin/main` dentro da branch e push (conta como `synchronize`) — nunca force-push, que descarta o histórico do outro. Medido em 04/09 no #32, empilhado sobre o #31.
 - Don't adicionar gate/pré-flight "a todos os executores" sem `grep` TODA função que chama `build_client_for_manager` (F57).

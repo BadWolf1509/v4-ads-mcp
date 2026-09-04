@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain), F129 (governanca do system user — acao humana) e F130 (gate do Google sem `is_active`).
 >
-> **Como ler:** ~1440 linhas, **149 IDs** (F1-F150 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~1490 linhas, **151 IDs** (F1-F152 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -1465,3 +1465,65 @@ exercite e shippar sem saber se ele funciona.* Revisao de codigo nao substitui e
 smoke achou em uma tarde o que tres camadas de revisao nao acharam, porque ele **roda** em vez
 de ler. O corolario pratico: nenhum sprint de tool mutante deveria fechar com o passo de apply
 em `⬜ pending`.
+
+
+## F151 (HIGH, CORRIGIDO) — o preview dizia que `clear_schedule` ZERA a entrega, e ele a RESTAURA
+
+> **Como apareceu:** no **T8 do smoke 3b.42**, o ultimo passo — e o que quase ninguem testa
+> porque "e so desfazer". A mutacao estava correta; o preview e que mentia. Bug introduzido
+> pelo PR #34, do mesmo dia.
+
+Com `clear_schedule: true` a grade desejada e vazia, e o bloco `cobertura` calculava
+`hours_per_week([])` = **0**. Mas grade vazia significa **SEM AGENDA, logo 24x7, logo 168** —
+a semantica em que a tool inteira se apoia (`summarize_current([])` devolve `168.0`;
+`covers(None, ...)` e sempre verdadeiro). O `cobertura` era o **unico lugar** onde ela nao
+estava aplicada.
+
+**A resposta se contradizia sozinha:** o preview dizia `50.0 -> 0, reduz: true` enquanto o
+`resulting_schedule` **da mesma resposta** trazia `hours_per_week: 168.0`.
+
+**Por que HIGH e nao cosmetico — e inversao de proposito.** O `cobertura` existe para que
+ninguem desligue entrega sem ver. Na **UNICA operacao que RESTAURA entrega**, ele anunciava
+perda total. Um gestor leria "vai para 0 horas/semana" e concluiria que `clear_schedule`
+desliga a campanha — o oposto do que a descricao da tool diz —, e o efeito pratico e afastar
+da rota de restauracao eleita como preferida (Ruling 11).
+
+**Era pior que o relato:** o terceiro teste do fix mostrou que a rota de restauracao tambem
+disparava o `aviso_cobertura`, o destaque que fala em **REALOCACAO de gasto** para as
+campanhas irmas. Descrevia o contrario do que o passo faz.
+
+> **✅ CORRIGIDO em 04/09 (PR #37).** No caminho `clear_schedule`, `horas_depois` e `168.0` e
+> `reduz` e falso. Condicao **explicita** (`limpar`), nao inferencia pelo vazio: `windows` tem
+> `minItems: 1` e o pre-flight exige um dos dois, entao `desired == []` so acontece via
+> `clear_schedule` — e inferir pelo vazio e justamente a ambiguidade que gerou o bug. Tres
+> testes, RED observado nos tres.
+
+🔑 **Simetria com o F150, achado no mesmo dia, horas antes:** os dois sao **ausencia de
+tratamento de um caminho**. La o `ad_schedule` fora da lista de imports; aqui o
+`clear_schedule` fora do calculo de cobertura. E os dois passaram por revisao, porque
+**revisao le o que esta escrito**. O corolario ficou no `Don't do`: sprint de tool mutante nao
+fecha sem exercitar o caminho de APPLY **e** o de RESTAURACAO.
+
+---
+
+## F152 (LOW, ABERTO) — `partial_failures` carrega sucessos, e o rotulo por item e fixo em "added"
+
+> **Como apareceu:** observado no T7 e T8 do smoke 3b.42.
+
+`mutations.py:115` grava `{"index": idx, "status": "added", "error": None}` para **toda**
+operacao bem-sucedida, seja ela `add`, `update` ou `remove`. No T7 (update via field mask) e
+no T8 (remove) os itens vieram todos como `"added"`.
+
+**Nao ha bug de numero:** `applied_count` e `sum(... if r["status"] == "added")`, e como todo
+sucesso recebe esse rotulo, a contagem esta certa. O defeito e de **nome**, em dois eixos: o
+rotulo por item nao descreve a operacao, e o campo se chama `partial_failures` mas carrega
+tambem os sucessos — a familia do rotulo que embute veredito (F133).
+
+**Por que NAO foi corrigido junto do F151:** o caminho e **compartilhado pelos 25 builders**, e
+mudar o rotulo exigiria mexer tambem no calculo de `applied_count`. Isso muda a forma da
+resposta de **toda** tool de mutacao — contrato de consumidor. Nao entra de carona num fix
+pontual; precisa de decisao propria.
+
+**Nota vizinha, sem ID (comportamento do Google, nao defeito nosso):** `bid_modifier` volta do
+Google em precisao **float32** — pedir `1.1` devolve `1.100000023841858`. Quem comparar
+`== 1.1` falha. Vale virar frase na description da tool; comparacao deve ser por tolerancia.
