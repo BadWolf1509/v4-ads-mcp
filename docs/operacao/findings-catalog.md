@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain), F129 (governanca do system user — acao humana) e F130 (gate do Google sem `is_active`).
 >
-> **Como ler:** ~1250 linhas, **145 IDs** (F1-F146 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~1290 linhas, **146 IDs** (F1-F147 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -1246,3 +1246,38 @@ sabotagem 6/6: builder volta ao fixo, builder cai em Sao Paulo sem fuso, validad
 que `-03:00` ja usa em producao (`yyyy-mm-dd hh:mm:ss±hh:mm`), e um upload real empurraria uma
 conversao falsa numa conta de cliente. A `currency_code=BRL` continua invariante — moeda e da
 conta, nao do fuso, e as 25 sao BRL.
+
+
+## F147 (MINOR, ABERTO) — a reconsulta pos-apply nao tem sentinela de truncamento, e agora precisa de uma
+
+> **Como apareceu:** introduzido pelo proprio fix do Important 2 da revisao final (04/09), e
+> pego pela re-revisao escopada no mesmo dia. Adjudicado como residuo: direcao fail-safe,
+> arquivado em vez de virar um quinto commit de codigo na branch.
+
+O §7 da spec exige confirmar remocao por `status == REMOVED` no registro alvo, nunca por
+ausencia. O fix trocou a reconsulta de `apply_change` para `status="all"` — correto — mas
+**criterios REMOVED persistem e continuam consultaveis**, que e a premissa do proprio §7.
+Eles acumulam a cada reescrita da grade.
+
+**A conta:** um lote de 20 campanhas cuja grade de 7 dias foi reescrita ~7 vezes chega a
+~980 linhas. Em 1001 a leitura e cortada por `LIMIT`, e o `ORDER BY campaign.id, day_of_week,
+start_hour` **nao agrupa por status** — entao linhas ENABLED podem ser descartadas.
+
+**O sintoma:** `matches_requested: false` e `hours_per_week` subestimado, **sem nenhum sinal
+de truncamento**. O T4 do proprio runbook classifica essa combinacao como achado HIGH.
+
+**Por que e MINOR mesmo assim:** a direcao e fail-safe — produz alarme falso, nunca sucesso
+falso —, nenhuma mutacao e afetada (a leitura e posterior a escrita), e o resultado aparece
+na resposta em vez de ficar silencioso. O caminho de mutacao ja recusa grade truncada
+(Important 4, `update_ad_schedule.py`); e so a confirmacao que ficou sem.
+
+**Fix (uma ramificacao, espelhando o que ja existe):** em `apply_change.py`, na leitura de
+confirmacao, `if len(rows) > GRADE_LIMIT:` preencha `confirmation_error` em vez de computar
+`resulting` — mesma forma do guard em `update_ad_schedule.py:210`.
+
+**Segundo item, do mesmo lugar:** `resulting_schedule[cid].windows` passou a carregar o
+conjunto REMOVED historico inteiro da campanha, nao so as janelas que este apply removeu —
+inchaco de resposta alem do que o §7 pede. Filtrar por `campaign_criterion.status IN
+('ENABLED', 'REMOVED')` nao resolve (REMOVED antigo tambem casa); o corte util seria por
+data de modificacao, que o `campaign_criterion` nao expoe. Fica registrado como custo
+conhecido do §7, nao como fix pendente.
