@@ -82,16 +82,24 @@ https://v4-ads-mcp-299432068772.southamerica-east1.run.app
 | T2 | `get_ad_schedule` com `status="all"` | ✅ PASS | 2026-09-04 | Resposta idêntica a T1 (0 == 0; `schedule_summary` igual — `status` não toca `campaign_budget_query`). **Ramo REMOVED não exercitado**: segue zero criteria em qualquer status, como medido. 1 entrada em `audit_log` (`id 4062`). |
 | T2b | `update_ad_schedule(7862230676, [as 2 campanhas], windows=SEG-SEX 07-17)` — **dry-run, token descartado** | ✅ PASS | 2026-09-04 | **§4.2 exercitada em substância, e o veredito divergiu por campanha:** em JPA o que **sai** tem CPA **melhor** (R$ 18,96 contra R$ 19,87 do que fica); em CAB o que sai é **pior** (R$ 21,06 contra R$ 19,10). §4.3: 1 bloco `shared_budgets`, `15803241252`, R$ 310,00/dia, 2 no lote, 0 fora, `warning_pt` com "realoca". Token `PSGZQWYC` **descartado**, `apply_change` NÃO chamado. |
 | T3 | `update_ad_schedule(1163862076, [campanha PAUSED de teste], windows=SEG-SEX 07-17)` | ✅ PASS | 2026-09-04 | Campanha `23851718373`. `status: dry_run`, `target_count: 5`, `was_24x7: true`, `campaign_status: "PAUSED"` **com** `aviso_status` (F52/F90 confirmado), `metrics` dos dois lados com `cells: 0`/`cpa_brl: null` (formato certo para zero atividade), `shared_budgets: []`, `metrics_window.days: 30`. Token `7WS8I221` **descartado**. |
-| T4 | `apply_change` do T3 | ⬜ pending | | `applied_count == 5`, `changed_count == 5`, `confirmation_error == null`, `resulting_schedule[cid].hours_per_week == 50.0`, `resulting_schedule[cid].windows` é **lista** de 5 linhas (não contagem — ver nota T4). |
-| T5 | Confirmação por GAQL (§7) | ⬜ pending | | 5 linhas `ENABLED` seg-sex; **nunca** por `row_count` sem filtro. Registrar os 5 `criterion_id` — T6 e T7 provam continuidade contra eles. |
-| T6 | Reenviar a MESMA grade do T3 | ⬜ pending | | `status: no_changes`, `no_changes: true`, **sem** `confirmation_token`; reconsulta manual (rerun de T5) mostra os **mesmos** `criterion_id` — prova de que não recriou. |
-| T7 | `update_ad_schedule` com `bid_modifier: 1.1` e a mesma grade | ⬜ pending | | Preview: 5 em `bid_modifier_updated`, 0 em `windows_added`/`windows_removed`; `shared_budgets: []`. Apply; GAQL mostra `bid_modifier = 1.1` nos **mesmos 5** `criterion_id` de T5 (update via field mask, não recriação). |
-| T8 | Restaurar 24×7 com `clear_schedule: true` | ⬜ pending | | Rota preferida: `clear_schedule: true` apaga a agenda inteira e devolve o 24×7 **natural** (`has_schedule: false`), estado idêntico ao pré-T3. A rota antiga (grade explícita 7×24) continua documentada como alternativa, e produz um estado **diferente** (`has_schedule: true`, 7 criteria). Registrar qual caminho foi usado. |
+| T4 | `apply_change` do T3 | ✅ PASS | 2026-09-04 | **2ª tentativa** — a 1ª falhou e virou o **F150**. Agora: `applied_count: 5`, `changed_count: 5`, `confirmation_error: null`, `matches_requested: true`, `provider_request_id: UL-Oxzm9Xqk-6cFrDM7b3A` (a falhada não tinha), `resulting_schedule.hours_per_week: 50.0` e `windows` como **lista** de 5. |
+| T5 | Confirmação por GAQL (§7) | ✅ PASS | 2026-09-04 | 5 linhas `ENABLED` seg-sex 07-17, conferidas por `criterion_id` **e** `status`, nunca por contagem. Ids: `302868` · `312868` · `322868` · `332868` · `342868`. |
+| T6 | Reenviar a MESMA grade do T3 | ✅ PASS | 2026-09-04 | `status: no_changes`, `no_changes: true`, **sem `confirmation_token`**, zero operações emitidas. `current_schedule` inalterado (5 janelas, 50.0 h). |
+| T7 | `update_ad_schedule` com `bid_modifier: 1.1` | ✅ PASS | 2026-09-04 | Preview: 5 em `bid_modifier_updated` com **`bid_modifier_antigo: null` / `bid_modifier_novo: 1.1`** (1º exercício real do PR #34), 0 em added/removed. Apply nos **MESMOS 5 ids** → update via field mask, não recriação. |
+| T8 | Restaurar 24×7 com `clear_schedule: true` | ⚠️ PASS com bug no preview | 2026-09-04 | Mutação **correta**: `has_schedule: false`, `windows: []`, `hours_per_week: 168.0`, `matches_requested: true`. 🔴 **Mas o preview MENTE**: diz `50.0 -> 0 horas/semana` e `reduz: true`, quando o resultado é **168** e é AUMENTO. Ver F151. |
 | T9 | `update_ad_schedule` com `start_minute: 10` | ✅ PASS | 2026-09-04 | Recusado com `Input validation error: 10 is not one of [0, 15, 30, 45]`; zero token, zero linha em `audit_log`. 🔑 **Existe uma camada 0, no harness**, que valida schema antes do classificador — o texto coincide com a previsão da Camada 1 mas **não a prova**; ver Result de T9. |
 
-**Effective result:** 5/10 executados · **5/5 PASS** (T1, T2, T2b, T3, T9) · 5 não chamados (T4, T7, T8 reservam aval do Wellington; T5, T6 dependem do T4). **Zero falhas, zero mutação aplicada, 2 tokens descartados.** Cobertura: as duas regras normativas centrais (§4.2 e §4.3) **foram** exercitadas contra dado real de produção, no T2b.
+**Effective result:** **10/10 executados** · 10 PASS · **2 findings de produção achados pela execução** — `F150` (o T4 falhou: `update_ad_schedule` não conseguia aplicar) e `F151` (o `cobertura` mente no `clear_schedule`). §4.2 e §4.3 exercitadas contra dado real no T2b; `bid_modifier_antigo/novo` exercitados no T7; a conta de mutação ficou **sem resíduo**, verificado.
 
 ### F-findings emerged
+
+🔴 **A execução achou DOIS bugs de produção que 10 reviews por task, uma revisão de branch inteira e uma re-revisão escopada não acharam.** É o argumento do smoke em uma frase: ele **executa**, a revisão **lê**.
+
+- **F150 — `update_ad_schedule` conseguia prever mas NÃO conseguia aplicar** (achado no T4, corrigido no mesmo dia). `import_all_builders()` mantinha uma lista de imports à mão com 11 dos 12 módulos de `mutates/`; `ad_schedule` era o único fora, então o `@register_builder` dele nunca rodava. **Por que nenhuma revisão pegou:** revisão olha código **escrito**, e o defeito era código **ausente** num arquivo que o diff não tocava. Agravante de desenho: cada import estava sob `contextlib.suppress(ImportError)`, ou seja o padrão era falhar em silêncio. Fix adotado varre o pacote em vez de listar.
+- **F151 — o `cobertura` mente no caminho `clear_schedule`** (achado no T8, aberto). Diz `horas_depois: 0` e `reduz: true` quando o resultado real é `168.0` e é aumento; a **mesma resposta do apply** se contradiz. Grave por inversão de propósito: o campo existe para não deixar ninguém desligar entrega sem ver, e na única operação que **restaura** entrega ele anuncia perda total.
+
+**Menores, de forma:** `partial_failures[].status` vem `"added"` mesmo em update e remove · `bid_modifier` volta como `1.100000023841858` (comparar com tolerância) · a linha de apply no audit log traz `dry_run: null` e não `false`, então a coluna não separa apply de outros mutates.
+
 
 Nenhum `F###` atribuível ao `ad_schedule`: dos 5 passos que chegaram ao MCP, os 5 passaram. Três observações de **mecanismo do harness** apareceram na execução, e nenhuma é defeito do sprint:
 
@@ -110,11 +118,11 @@ Nenhum `F###` atribuível ao `ad_schedule`: dos 5 passos que chegaram ao MCP, os
 - [x] T2 PASS — `status="all"` não quebra; contagem ≥ T1 (igualdade aceitável com os dados de hoje); documentar se ramo REMOVED foi ou não exercitado
 - [x] T2b PASS — `dry_run` na `7862230676`; CPA de `leaving` e `staying` transcritos lado a lado nas 2 campanhas (§4.2 em substância, **com veredito oposto por campanha**); `shared_budgets` com 1 bloco do portfólio de R$ 310/dia (§4.3); token `PSGZQWYC` **descartado** e `apply_change` NÃO chamado
 - [x] T3 PASS — `dry_run` com `confirmation_token` (`7WS8I221`, descartado), preview com `was_24x7: true`, `campaign_status: PAUSED` + `aviso_status` presente, 5 `windows_added`, `metrics_window.days == 30`
-- [ ] T4 PASS — `applied_count == 5`, `changed_count == 5`, `partial_failures == []`, `matches_requested == true`, `confirmation_error == null`, `resulting_schedule[cid].hours_per_week == 50.0`
-- [ ] T5 PASS — GAQL por `criterion_id`/`status`, 5 linhas ENABLED seg-sex, nunca por contagem
-- [ ] T6 PASS — `no_changes: true`, sem token, mesmos `criterion_id` de T5
-- [ ] T7 PASS — 5 em `bid_modifier_updated`, apply, GAQL confirma `bid_modifier = 1.1` nos mesmos `criterion_id`
-- [ ] T8 PASS — grade restaurada (registrar caminho: `clear_schedule: true` — preferido, volta ao `has_schedule: false` —, grade explícita 7×24, ou remoção manual fora da tool)
+- [x] T4 PASS — `applied_count == 5`, `changed_count == 5`, `matches_requested == true`, `confirmation_error == null`, `hours_per_week == 50.0` · **2ª tentativa; a 1ª virou o F150**
+- [x] T5 PASS — GAQL por `criterion_id`/`status`, 5 linhas ENABLED seg-sex, nunca por contagem
+- [x] T6 PASS — `no_changes: true`, sem token, mesmos `criterion_id` de T5
+- [x] T7 PASS — 5 em `bid_modifier_updated` com antigo/novo, apply nos **mesmos** ids (field mask)
+- [x] T8 PASS na mutação, via `clear_schedule: true`, com `has_schedule: false` e 168.0 h · 🔴 **preview errado → F151**
 - [x] T9 PASS — nenhum `confirmation_token` mintado; forma do erro documentada (schema gate, **camada 0 do harness**, não o envelope do repo — e a Camada 1 do SDK fica não-provada, ver F-findings)
 - [ ] Tool count confirmado 68 em produção (66 → +2), bucket **22 always + 46 defer** (reclassificação do PR #32; as duas tools novas entraram em `always`)
 - [ ] Zero findings criados OU todos catalogados (F### série) com cross-reference
@@ -471,7 +479,13 @@ apply_change(
 - `status: "error"` com "A grade mudou desde o preview" → o pré-flight de concorrência otimista disparou: alguém (ou outra sessão) mexeu na agenda dessa campanha entre T3 e T4. **Nada foi mutado** e o token foi consumido — refaça T3 para gerar um token novo sobre o estado atual. Numa conta de teste parada isso não deveria acontecer; se acontecer, descubra quem mexeu antes de repetir
 - `matches_requested == false` com `partial_failures == []` → a mutação diz que aplicou tudo e a grade resultante ainda não é a pedida; é o cenário de falha silenciosa que a §4.6 existe para pegar. Finding HIGH
 
-**Result:** ⬜ pending
+**Result:** ✅ **PASS na 2ª tentativa** — executado 2026-09-04 08:25 UTC, com aval do Wellington. 🔴 **A 1ª tentativa, às 08:03, FALHOU e virou o [F150](findings-catalog.md)**: `apply_change` devolveu ao usuário apenas `"Erro interno ao executar a ferramenta. O time foi notificado."`, e a causa só existia no audit log — `No mutate builder registered for 'update_ad_schedule'`. Causa raiz: `import_all_builders()` em `mutates/_common.py` tinha lista de imports **escrita à mão** com 11 dos 12 módulos, e `ad_schedule` era o único fora; o `@register_builder("update_ad_schedule")` do módulo nunca rodava. **A conta ficou intacta** (verificado com `status="all"`: zero criteria), porque a chamada falhou em 100 ms sem `provider_request_id` — nunca chegou no Google.
+
+**Depois do fix (revisão `v4-ads-mcp-00088-c9x`), tudo bateu:** `status: applied` · `applied_count: 5` · `changed_count: 5` · `confirmation_error: null` · **`matches_requested: true`** (§4.6 exercitada pela 1ª vez) · `provider_request_id: "UL-Oxzm9Xqk-6cFrDM7b3A"` — **a presença dele é a prova de que desta vez chegou no Google**, contra a ausência na tentativa falhada · `resulting_schedule[cid].hours_per_week == 50.0` · `windows` como **lista** de 5 (a divergência do Ruling 5 contra o `int` do `get_ad_schedule`, confirmada em campo).
+
+Criteria criados: `302868` · `312868` · `322868` · `332868` · `342868`.
+
+**Audit log, os 3 registros que o F148 tornou legíveis** (`4097`/`4098`/`4099`): a `read` da consulta GAQL (6943 ms) · o preview `mutate` com `dry_run: true`, sem duração e sem request id · o apply `mutate` com **871 ms e `provider_request_id`**. Contraste com o T4 falhado: 100 ms, sem request id. ⚠️ **A linha do apply vem com `dry_run: null`, não `false`** — como `null` também é o valor de outros mutates (ex. `admin_access_grant`), a coluna separa preview de tudo-o-mais, mas **não separa apply de outros mutates**.
 
 ---
 
@@ -517,7 +531,7 @@ criterion_id | status  | campaign_criterion.ad_schedule.day_of_week
 - Linhas em dias fora de MONDAY-FRIDAY → bug no builder (`day_of_week` mapeado errado, `src/google_ads/mutates/ad_schedule.py:36`)
 - Zero linhas → tabela certa mas `campaign.id` errado (confira contra o ID escolhido em T3), ou a mutação não aplicou de verdade apesar do `status: "applied"` de T4 (finding crítico)
 
-**Result:** ⬜ pending
+**Result:** ✅ **PASS** — executado 2026-09-04 08:25 UTC. `run_gaql` em `campaign_criterion` **sem filtro de status** (para ver qualquer estado), `type = 'AD_SCHEDULE'`, `campaign.id = 23851718373`: **5 linhas, todas `ENABLED`**, seg a sex, `start_hour: 7` / `end_hour: 17`. Confirmado por **`criterion_id` e `status`**, nunca por contagem, como a §7 exige. Os 5 ids — `302868` · `312868` · `322868` · `332868` · `342868` — batem com os `resource_names` que o T4 devolveu, e são a âncora que T6 e T7 usam para provar continuidade.
 
 ---
 
@@ -570,7 +584,7 @@ update_ad_schedule(
 - `status` != `"no_changes"` → o diff por conteúdo não bateu; possíveis causas: minutos default divergindo (`start_minute`/`end_minute` omitidos aqui viram `0` via `window_from_input`, igual T3), ou `Window.key()` comparando campo a mais
 - `criterion_id` mudou entre T5 e o rerun → bug grave: a tool está recriando os criteria mesmo com grade idêntica (queima re-learning, exatamente o que a spec §4.4 existe para evitar)
 
-**Result:** ⬜ pending
+**Result:** ✅ **PASS** — executado 2026-09-04 08:26 UTC. Reenviada a **mesma** grade: `status: "no_changes"`, `no_changes: true`, **nenhum `confirmation_token`**, e a mensagem explícita — *"A grade desejada e identica a atual em todas as campanhas: nenhuma operacao emitida (recriar criterios identicos custaria re-learning)"*. `current_schedule` inalterado: `has_schedule: true`, `windows: 5`, `hours_per_week: 50.0`. **Zero operações emitidas** é o ponto: recriar criteria idênticos custaria ~14 dias de re-learning, e o no-op evita isso. (Nota de forma: aqui `windows` é `int`; no `resulting_schedule` do apply é **lista** — Ruling 5.)
 
 ---
 
@@ -646,7 +660,13 @@ WHERE campaign.id = <campaign_id> AND campaign_criterion.type = 'AD_SCHEDULE'
 - Os `criterion_id` pós-T7 são **diferentes** dos de T5/T6 → bug grave: o `update` recriou o criterion em vez de aplicar a mask (contradiz `src/google_ads/mutates/ad_schedule.py:45-54`, que só toca `bid_modifier` via `cco.update` + `FieldMask`)
 - `bid_modifier` no GAQL vem `null` mesmo após `apply_change` reportar sucesso → mutação não aplicou de verdade; ver `changed_count` de perto
 
-**Result:** ⬜ pending
+**Result:** ✅ **PASS** — executado 2026-09-04 08:26 UTC, e é **o único passo do smoke que exercita os campos novos do PR #34 contra dado real** (na MO-JP a lista vem vazia, porque lá não há grade).
+
+**Preview:** `windows_added: []` · `windows_removed: []` · **5 entradas em `bid_modifier_updated`, cada uma com `bid_modifier_antigo: null` e `bid_modifier_novo: 1.1`** · `was_24x7: false` (já havia grade) · `blast_summary` = *"0 janela(s) entram, 0 saem, 5 mudam bid_modifier"*, **sem** citar queda de cobertura, corretamente. ✅ **E o `cobertura` veio presente mesmo SEM mudança** — `{horas_antes: 50.0, horas_depois: 50.0, reduz: false}`: é a regra "sempre presente" funcionando, que existe porque chave que some é ambígua.
+
+**Apply:** `provider_request_id: "e0i3sRwGyhuD4TGgqaGbNA"`, `applied_count: 5`, e **os MESMOS 5 `criterion_id` do T5** — prova de que foi **update via field mask e não recriação**, que é a asserção central deste teste.
+
+⚠️ **Nota de tipo:** o `bid_modifier` volta como **`1.100000023841858`** (float32 do Google), não `1.1`. Consumidor que compare `== 1.1` falha; comparar com tolerância.
 
 ---
 
@@ -716,7 +736,17 @@ update_ad_schedule(
 - `hours_per_week` != `168.0` na rota (a) → uma das 7 janelas ficou com hora errada (`end_hour: 24` só é válido com `end_minute: 0` — `validate_windows` recusaria a chamada inteira antes de chegar aqui se estivesse errado, então isso indicaria bug na validação, não só no resultado)
 - Rota (a): `criterion_id` dos 5 antigos não aparecem mais na query (nem ENABLED nem REMOVED) → Google apagou o registro em vez de marcar REMOVED (comportamento inesperado; teria implicação para T5/T6/T7 de qualquer sprint futura que confie em REMOVED ficar visível)
 
-**Result:** ⬜ pending
+**Result:** ⚠️ **PASS na mutação, com BUG no preview — vira o F151.** Executado 2026-09-04 08:27 UTC pela rota preferida, **`clear_schedule: true`** (registrado: foi esta, não a grade 7×24 explícita).
+
+✅ **A mutação está correta e restaurou o estado inicial:** `applied_count: 5`, `provider_request_id: "0vHVOXSjoWPzOdcP7DrJfg"`, e `resulting_schedule[cid]` = **`has_schedule: false`, `windows: []`, `hours_per_week: 168.0`, `matches_requested: true`** — o 24×7 **natural**, idêntico ao pré-T3, não a grade explícita de 7×24.
+
+🔴 **Mas o preview e o `blast_summary` MENTEM, e a própria resposta do apply os desmente:** ambos dizem **`cobertura: {horas_antes: 50.0, horas_depois: 0, reduz: true}`** e *"1 reduz(em) cobertura (50.0 -> 0 horas/semana)"* — enquanto o `resulting_schedule` da **mesma resposta** devolve `hours_per_week: 168.0`. A cobertura vai de 50 para **168**: é AUMENTO, não redução.
+
+**Por que isso é grave e não cosmético:** o campo `cobertura` foi criado exatamente para impedir que alguém desligue entrega sem ver. Na única operação que **restaura** entrega, ele anuncia perda total — um gestor lê *"vai para 0 horas/semana"* e conclui que `clear_schedule` desliga a campanha, quando a doc da tool diz o oposto (*"apagar a agenda NAO desliga a campanha: ela volta a servir o tempo todo"*). O efeito prático é afastar o gestor da rota de restauração recomendada. **Fix provável:** no caminho `clear_schedule`, `horas_depois` é `168.0` e `reduz` é `false`.
+
+⚠️ **Segundo achado, menor, visível em T7 e T8:** `partial_failures[].status` vem **`"added"` em todos os itens**, inclusive quando a operação foi `update` (T7) ou `remove` (T8). O rótulo por item parece fixo — não descreve a operação real.
+
+✅ **Resíduo: ZERO, verificado por dois instrumentos.** `run_gaql` em `campaign_criterion` **sem filtro de status** → `row_count: 0` (ou seja, criterion de campanha é removido de fato, não vira `REMOVED`). E `get_ad_schedule(status="all")` na conta inteira → as **6** campanhas com `has_schedule: false` e `hours_per_week: 168.0`. O smoke não deixou rastro.
 
 ---
 
@@ -777,7 +807,7 @@ CallToolResult(
 ## Resultado final (após execução futura)
 
 ```
-SMOKE 3b.42 ad_schedule: 5/10 executados · 5/5 PASS (T1, T2, T2b, T3, T9) · 0 falhas
+SMOKE 3b.42 ad_schedule: 10/10 executados · 10 PASS · 2 findings de producao (F150, F151)
   Nao chamados: T4, T7, T8 (reservam aval do Wellington) · T5, T6 (dependem do T4)
   Zero mutacao aplicada: os 2 tokens de dry-run (PSGZQWYC, 7WS8I221) foram descartados
 Data de execucao: 2026-09-04 (parcial — leitura, dry-run e validacao de schema; sessao MO-JP)

@@ -668,3 +668,65 @@ async def test_resumo_nao_fala_de_cobertura_quando_nenhuma_campanha_reduz(monkey
         {"customer_id": "1234567890", "campaign_ids": ["1"], "windows": SEG_SEX}
     )
     assert "cobertura" not in out["blast_summary"]
+
+
+# --- F151: `clear_schedule` RESTAURA entrega, e o preview dizia o contrario ------
+
+
+@pytest.mark.asyncio
+async def test_clear_schedule_declara_aumento_de_cobertura_nao_perda(monkeypatch) -> None:
+    """Grade vazia significa SEM AGENDA, logo 24x7, logo 168 — nunca zero.
+
+    E a mesma semantica em que a tool inteira se apoia: `summarize_current([])`
+    devolve `hours_per_week: 168.0` e `covers(None, ...)` e sempre verdadeiro.
+    O bloco `cobertura` calculava `hours_per_week([])` e obtinha 0, entao na
+    UNICA operacao que RESTAURA entrega o preview anunciava perda total —
+    afastando o gestor da rota de restauracao que a propria doc da tool
+    recomenda ("apagar a agenda NAO desliga a campanha").
+    """
+    grade = [
+        _janela_row(day=d, sh=7, eh=17, crit=str(i))
+        for i, d in enumerate(("MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"))
+    ]
+    _wire(monkeypatch, grade=grade, orcamentos=[_orc()], metricas=[])
+    out = await mod.update_ad_schedule(
+        {"customer_id": "1234567890", "campaign_ids": ["1"], "clear_schedule": True}
+    )
+    cob = out["preview"]["1"]["cobertura"]
+    assert cob["horas_antes"] == 50.0
+    assert cob["horas_depois"] == 168.0, "apagar a agenda devolve o 24x7 natural"
+    assert cob["reduz"] is False, "e AUMENTO de cobertura, nao perda"
+
+
+@pytest.mark.asyncio
+async def test_clear_schedule_nao_diz_que_reduz_cobertura_no_resumo(monkeypatch) -> None:
+    """O `blast_summary` e a primeira coisa lida; dizer '-> 0 horas/semana' e mentira.
+
+    Ele deriva de `cobertura.reduz`, entao o mesmo defeito vazava para a frase que
+    o gestor le antes de confirmar.
+    """
+    grade = [
+        _janela_row(day=d, sh=7, eh=17, crit=str(i))
+        for i, d in enumerate(("MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"))
+    ]
+    _wire(monkeypatch, grade=grade, orcamentos=[_orc()], metricas=[])
+    out = await mod.update_ad_schedule(
+        {"customer_id": "1234567890", "campaign_ids": ["1"], "clear_schedule": True}
+    )
+    assert "cobertura" not in out["blast_summary"], out["blast_summary"]
+    assert "0 horas/semana" not in out["blast_summary"]
+
+
+@pytest.mark.asyncio
+async def test_clear_schedule_nao_dispara_aviso_de_orcamento_compartilhado(monkeypatch) -> None:
+    """O destaque existe para queda de cobertura; restaurar 24x7 nao e queda.
+
+    Sem isto, a rota de restauracao levaria o aviso de realocacao de gasto —
+    que descreve o oposto do que ela faz.
+    """
+    grade = [_janela_row(day="MONDAY", sh=7, eh=17)]
+    _wire(monkeypatch, grade=grade, orcamentos=[_orc(shared=True)], metricas=[])
+    out = await mod.update_ad_schedule(
+        {"customer_id": "1234567890", "campaign_ids": ["1"], "clear_schedule": True}
+    )
+    assert out["preview"]["1"]["aviso_cobertura"] is None

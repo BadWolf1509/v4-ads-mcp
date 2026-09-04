@@ -263,10 +263,17 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
             if m["campaign_id"] == cid
         ]
         resumo_atual = summarize_current(current)
+        # F151: grade vazia significa SEM AGENDA, logo 24x7, logo 168 — nunca zero.
+        # E a semantica em que a tool inteira se apoia (`summarize_current([])` devolve
+        # 168.0; `covers(None, ...)` e sempre verdadeiro), e era o unico lugar onde ela
+        # nao estava aplicada. O efeito era inverter o proposito do bloco: na UNICA
+        # operacao que RESTAURA entrega, o preview anunciava perda total, afastando o
+        # gestor da rota de restauracao que a propria descricao da tool recomenda.
+        horas_depois = 168.0 if limpar else hours_per_week(desired)
         cobertura = {
             "horas_antes": resumo_atual["hours_per_week"],
-            "horas_depois": hours_per_week(desired),
-            "reduz": hours_per_week(desired) < resumo_atual["hours_per_week"],
+            "horas_depois": horas_depois,
+            "reduz": horas_depois < resumo_atual["hours_per_week"],
         }
         preview[cid] = {
             "was_24x7": not current,
