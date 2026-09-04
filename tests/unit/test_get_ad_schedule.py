@@ -63,9 +63,9 @@ def _orcamento(cid="1", nome="A", shared=False, status="ENABLED") -> dict[str, A
     }
 
 
-def test_tool_registrada_como_defer() -> None:
+def test_tool_registrada_como_always() -> None:
     t = get_tool("get_ad_schedule")
-    assert t is not None and t.bucket == "defer"
+    assert t is not None and t.bucket == "always"
 
 
 def test_schema_sem_composicao() -> None:

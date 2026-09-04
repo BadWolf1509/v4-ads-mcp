@@ -19,7 +19,7 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 ## Estado atual
 
 **2026-09-03.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`,
-**66 MCP tools** (60 Google + 6 Meta), CI gated + deploy automático. Catálogo em **145 IDs**.
+**68 MCP tools** (62 Google + 6 Meta), CI gated + deploy automático. Catálogo em **146 IDs**.
 
 **Quantos findings fecharam em qual sprint NÃO vive aqui** — essa narrativa churna toda
 sessão e duplica o `estado-atual.md`. Este bloco tem só o que orienta qualquer sessão;

@@ -1,4 +1,4 @@
-# bucket: always
+# bucket: defer
 """Tool: update_keyword_status - pause/enable/remove keywords."""
 
 from typing import Any
@@ -45,13 +45,13 @@ _SCHEMA: dict[str, Any] = {
 @register_tool(
     name="update_keyword_status",
     description=(
-        "[CORE] Pausa ou ativa uma ou mais palavras-chave. Cada keyword e identificada por "
+        "[DEFER] Pausa ou ativa uma ou mais palavras-chave. Cada keyword e identificada por "
         "(ad_group_id, criterion_id). Ate 5 keywords auto-aplica; >5 retorna preview "
         "com confirmation_token. Para REMOVER keywords, use Google Ads UI (tool dedicada "
         "`remove_keyword` pode ser adicionada em sprint futura se demanda real surgir)."
     ),
     input_schema=_SCHEMA,
-    bucket="always",
+    bucket="defer",
 )
 async def update_keyword_status(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

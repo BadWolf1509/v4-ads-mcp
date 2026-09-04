@@ -1,4 +1,4 @@
-# bucket: defer
+# bucket: always
 """Tool: get_ad_schedule — grade de veiculacao (dia x hora) por campanha (spec §3).
 
 Campanha SEM criterio de AD_SCHEDULE serve 24x7. Essa distincao nao pode
@@ -44,7 +44,7 @@ _SCHEMA: dict[str, Any] = {
 }
 
 _DESCRIPTION = (
-    "[DEFER] Grade de veiculacao (ad schedule) por campanha: uma linha por janela "
+    "[CORE] Grade de veiculacao (ad schedule) por campanha: uma linha por janela "
     "(day_of_week, start_hour/minute, end_hour/minute, bid_modifier, status, "
     "criterion_id, resource_name) e um `schedule_summary` por campanha com "
     "`has_schedule`, `hours_per_week`, `budget_is_shared` e `campaign_status` "
@@ -78,7 +78,7 @@ def rows_to_current(rows: list[dict[str, Any]]) -> dict[str, list[CurrentWindow]
 
 
 @register_tool(
-    name="get_ad_schedule", description=_DESCRIPTION, input_schema=_SCHEMA, bucket="defer"
+    name="get_ad_schedule", description=_DESCRIPTION, input_schema=_SCHEMA, bucket="always"
 )
 async def get_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

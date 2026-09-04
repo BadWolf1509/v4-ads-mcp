@@ -1,4 +1,4 @@
-# bucket: defer
+# bucket: always
 """Tool: run_gaql - escape hatch to execute arbitrary GAQL queries.
 
 V0 (Sprint 3b.29): adiciona aggregate_by opcional pra client-side
@@ -57,7 +57,7 @@ _MAX_RAW_ROWS_FOR_AGGREGATE = 10_000
 @register_tool(
     name="run_gaql",
     description=(
-        "[DEFER] Escape hatch: executa qualquer GAQL contra a conta. Use apenas quando as "
+        "[CORE] Escape hatch: executa qualquer GAQL contra a conta. Use apenas quando as "
         "tools curadas nao cobrem o caso. Sempre auditado (incl. a query). Suporta "
         "limit (default 100, teto 1000) pra controlar o tamanho da resposta — "
         "resultado truncado inclui truncated:true + hint. Suporta "
@@ -69,7 +69,7 @@ _MAX_RAW_ROWS_FOR_AGGREGATE = 10_000
         "(overlap/position-above/outranking share) não existem na GAQL."
     ),
     input_schema=_SCHEMA,
-    bucket="defer",
+    bucket="always",
 )
 async def run_gaql(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()
