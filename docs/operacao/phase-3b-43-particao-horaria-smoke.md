@@ -92,7 +92,9 @@ Cada balde é `{cost_brl, conversions, cpa_brl, cells}` — `cpa_brl` é `None` 
 
 - [ ] Pre-push gate 6/6 PASS para o commit deste documento
 - [ ] Branch mesclado em `main`, CI verde, deploy fechado (`ci.yml` job `deploy`, gated)
-- [ ] Sessão MCP reconectada DEPOIS do deploy (F140 — ver nuance no cabeçalho)
+- [ ] Sessão MCP capaz de ver os campos novos (F140 — ver a MEDIÇÃO abaixo antes de reconectar à toa)
+
+> 📌 **F140, medido em 04/09 e ainda NÃO conclusivo.** A sessão que executou este smoke estava aberta desde antes do deploy e **enxergou** `include_metrics`, `raw_grid` e `uniqueItems` sem reconexão deliberada. A leitura natural é que *tool nova* exige sessão nova enquanto *schema de tool existente* atualiza sozinho — e ela é plausível, porque o catálogo é negociado no handshake mas o cliente pode re-listar. **Mas a mesma sessão registrou hoje, no smoke 3b.42, uma interrupção de limite de uso que *plausivelmente re-estabeleceu a conexão por baixo*** — então esta observação **não distingue** "schema flui sem reconectar" de "a sessão reconectou sem ninguém notar". Uma medição com esse confundidor não vira mecanismo. **O que decidiria:** uma sessão com continuidade de conexão verificada, ou um cliente que registre handshakes. Até lá, reconectar continua sendo o conselho barato — o custo é uma reconexão, e o custo de errar é um smoke inteiro perseguindo um sintoma fantasma.
 - [ ] Produção `/health?deep=1` 200 pós-deploy
 - [ ] T1 PASS — `metrics_por_bloco` presente nas 2 campanhas, 4 baldes cada, soma bate com o cruzamento (tolerância ≤ R$0,10 por arredondamento independente)
 - [ ] T2 PASS — `metrics_por_bloco` ausente, resto idêntico a T1
@@ -183,7 +185,22 @@ get_performance_breakdown(
 - `cpa_brl` não-null com `conversions == 0` → divisão por zero não guardada (contradiz `_agrega`: `cpa_brl = cost/conv if conv > 0 else None`)
 - `windows` não-vazio → grade mudou desde o baseline do 3b.42; reconfirme por `run_gaql`, não é falha do sprint
 
-**Result:** ⬜ pending
+**Result:** ✅ **PASS — e o crítico fecha AO CENTAVO, não dentro da tolerância.** Executado 2026-09-04, janela `2026-08-05→2026-09-03` passada **explicitamente nas duas chamadas** (a ressalva de timing do setup: preferi eliminar a suspeita de janela desalinhada de saída, em vez de depender de o dia civil não virar entre as duas).
+
+**O cruzamento, que é o que este teste existe para provar:**
+
+| campanha | soma dos 4 baldes (chamada A) | total independente (chamada B) | diferença |
+|---|---|---|---|
+| `21359547724` JPA | R$ 6.831,28 · 353,84 conv | R$ 6.831,28 · 353,84 conv | **R$ 0,00** |
+| `22169885957` CAB | R$ 2.651,80 · 135,76 conv | R$ 2.651,80 · 135,76 conv | **R$ 0,00** |
+
+Nenhum balde some, nenhuma célula é contada duas vezes. E o `outros` veio **zerado nas duas** (`cost_brl: 0.0`, `conversions: 0`, `cpa_brl: null`, `cells: 0`) — o ladrilhamento de `BLOCOS_PADRAO` se sustenta contra dado real, não só no guard de unidade.
+
+**Números medidos** (JPA / CAB): `comercial` R$ 4.986,29 · 262,17 conv · CPA **19,02** / R$ 1.928,14 · 106,01 · CPA **18,19** · `fora_de_hora` R$ 998,63 · 48,17 · CPA **20,73** / R$ 402,82 · 12,5 · CPA **32,22** · `fim_de_semana` R$ 846,36 · 43,5 · CPA **19,46** / R$ 320,84 · 17,25 · CPA **18,60**.
+
+Demais asserções: `windows == []` (baseline de pé) · `schedule_summary` com exatamente as 2 chaves · **7 campos** por entrada · `metrics_por_bloco` com as 4 chaves na ordem `comercial`→`fora_de_hora`→`fim_de_semana`→`outros` · 4 campos por balde · `truncated: false`. ✅ **Nota de tipo confirmada em campo:** `conversions` do `outros` vem `0` (int) enquanto os demais vêm float — exatamente o `sum()` sobre gerador vazio que o setup previu.
+
+📌 **Correção ao runbook:** o setup diz que *"`get_ad_schedule` não devolve a janela resolvida em nenhum campo"* e sugere isso como primeira suspeita se a comparação divergir. **Não é mais verdade:** com `include_metrics` a resposta traz `period: {from, to}`, e aqui veio `2026-08-05`/`2026-09-03`, batendo com o pedido. A suspeita sugerida já não se aplica.
 
 ---
 
@@ -234,7 +251,7 @@ get_ad_schedule(
 - `metrics_por_bloco` presente mesmo sem a flag → `args.get("include_metrics", False)` tratando `None`/ausência como truthy (bug de default)
 - Resposta diverge de T1 em algum campo além de `metrics_por_bloco` → as duas queries baratas não deveriam ser afetadas pela flag; investigar se `include_metrics` está sendo lido antes de montar `summary` (não deveria — o código lê a flag DEPOIS de montar `summary`, ver Task 3 report)
 
-**Result:** ⬜ pending
+**Result:** ✅ **PASS** — a mesma chamada sem `include_metrics` devolveu `schedule_summary` com os **6** campos de sempre e **nenhum `metrics_por_bloco`**, além de **nenhum `period`**. A flag é genuinamente opt-in nos dois sentidos: não acrescenta métrica e não acrescenta a janela. Confirma que o custo da conjunta dia × hora só é pago quando pedido.
 
 ---
 
@@ -280,7 +297,7 @@ get_performance_breakdown(
 - [ ] Response retorna sem `"error"` — **nota:** este envelope de sucesso NÃO tem chave `"status"` (foi removida no fix round 1 da Task 5 para uniformizar com o caminho genérico da mesma tool — `status` só aparece na resposta de erro)
 - [ ] **Crítico T3:** `len(rows) == 8` — exatamente 2 campanhas × 4 baldes
 - [ ] **Crítico T3 (ordem determinística):** `rows` vem na ordem `campaign_ids` (loop externo) × ordem de `BLOCOS_PADRAO` + `outros` (loop interno) — ou seja, as 4 linhas de `21359547724` (comercial, fora_de_hora, fim_de_semana, outros) vêm antes das 4 de `22169885957`, nesta ordem de bloco em cada grupo. Se vier em outra ordem, documente — não é necessariamente bug, mas contradiz o código lido nesta sessão
-- [ ] `period.from`/`period.to` presentes, formato `YYYY-MM-DD` — **note os dois valores**: são a única forma de saber a janela real usada (ao contrário de `get_ad_schedule`, que não expõe isso em T1/T2)
+- [ ] `period.from`/`period.to` presentes, formato `YYYY-MM-DD` — **note os dois valores**: dizem a janela real usada. ⚠️ Corrigido em 04/09 — `get_ad_schedule` **também** passou a expor `period`, mas só com `include_metrics`; sem a flag a chave continua ausente, e é isso que o T2 assere
 - [ ] `truncated == false`
 - [ ] Cada linha tem exatamente 6 campos: `campaign_id`, `bloco`, `cost_brl`, `conversions`, `cpa_brl`, `cells`
 - [ ] **Nota de forma (não é bug):** `status` do schema (default `"enabled"`) é **ignorado** neste combo — `day_hour_metrics_query` não filtra por status de campanha nenhum, só por `campaign_ids` e data. Não afeta este teste (as 2 campanhas já são `ENABLED`), mas se um dia alguém passar um `campaign_id` `PAUSED`/`REMOVED` aqui esperando que `status="enabled"` o exclua, vai se surpreender — ele aparece igual, com o custo real que teve no período
@@ -295,7 +312,7 @@ get_performance_breakdown(
 - Alguma linha com `cost_brl: 0.0` e `cells: 0` numa campanha que sabidamente tem gasto → não é bug por si (ver nota abaixo), mas confira se É a campanha errada por engano
 - **(Não-bug, mas vale saber):** se `campaign_ids` incluir um id que não existe ou é de outra conta, `day_hour_metrics_query` simplesmente não devolve linha nenhuma para ele — os 4 baldes daquele `campaign_id` vêm inteiramente zerados (`cost_brl: 0.0, conversions: 0/0.0, cpa_brl: null, cells: 0`), sem erro. Não deveria acontecer aqui (os 2 ids foram confirmados por `run_gaql` no 3b.42), mas se acontecer não é a mesma classe de bug que "balde que some" — é campanha errada no input
 
-**Result:** ⬜ pending
+**Result:** ✅ **PASS** — 8 linhas (4 blocos × 2 campanhas), com `campaign_id` e `bloco` por linha, `truncated: false`. **Os números são idênticos, dígito a dígito, aos `metrics_por_bloco` do T1** — mesma `partition_by_blocks` alcançada por dois pontos de entrada diferentes (`get_ad_schedule` com flag vs `get_performance_breakdown` com `breakdown=hourly`), e as duas concordam. É o cruzamento entre caminhos que o sprint prometia. `period` idêntico ao do T1.
 
 ---
 
@@ -348,7 +365,16 @@ get_performance_breakdown(
 - Soma de T4 diverge muito da soma de T3 para a mesma campanha → bug no loop `for cid in campaign_ids: do_cid = [... if m["campaign_id"] == cid]` (vazamento de células entre campanhas — mesma classe de bug que o teste `test_campaign_hourly_duas_campanhas_teto_multiplica_e_celulas_nao_vazam` da Task 5 já cobre com dado sintético; aqui é a confirmação com dado real)
 - `len(rows) > 336` → teto não está sendo aplicado (`celulas[:teto]` ausente ou com o `teto` errado)
 
-**Result:** ⬜ pending
+**Result:** ✅ **PASS** — **243 linhas**, bem abaixo do teto matemático de 336 (168 × 2), `truncated: false`. Cada linha com `campaign_id`, `day_of_week`, `hour`, `cost_micros`, `conversions` — **sem** `bloco`, `cost_brl` ou `cpa_brl`, confirmando que `raw_grid` pula `_agrega` e `partition_by_blocks`. `period` idêntico ao de T3.
+
+**Crítico T4 (cruzamento com T3), e ele fecha em duas dimensões:**
+
+| campanha | células cruas | soma T4 (`cost_micros`/1e6) | soma dos 4 baldes T3 | diferença |
+|---|---|---|---|---|
+| JPA | **138** | R$ 6.831,28 · 353,84 conv | R$ 6.831,28 · 353,84 conv | **R$ 0,00** |
+| CAB | **105** | R$ 2.651,80 · 135,76 conv | R$ 2.651,80 · 135,76 conv | **R$ 0,00** |
+
+138 + 105 = **243**, exatamente o `len(rows)`, e cada um bate com o `cells` somado dos baldes do T1 (50+52+36 e 47+32+26). **Zero vazamento de célula entre campanhas** — o que o teste sintético da Task 5 cobria, agora confirmado com dado real. (Conversões diferem por ~0,003, arredondamento de float ao longo de 243 somas.)
 
 ---
 
@@ -373,7 +399,7 @@ get_performance_breakdown(
 ```json
 {
   "status": "error",
-  "error_message": "breakdown só é suportado em level='account' no v0 (você pediu level='campaign'). Use level='account' + breakdown, ou remova o breakdown."
+  "error_message": "breakdown só é suportado em level='account' (device/geo/hourly) ou em level='campaign' com breakdown='hourly' (exige campaign_ids) — você pediu level='campaign'+breakdown='geo'. Use uma dessas combinações, ou remova o breakdown."
 }
 ```
 
@@ -390,7 +416,15 @@ get_performance_breakdown(
 - Mensagem com texto diferente do citado → `_validate_combo` foi editado depois da leitura desta sessão; concatene a mensagem real acima deste bullet para o próximo runbook citar
 - Alguma entrada aparece em `audit_log` → a recusa deixou de ser o primeiro passo da função (regressão de ordem — reintroduziria custo de quota para uma chamada que deveria ser grátis)
 
-**Result:** ⬜ pending
+**Result:** ✅ **PASS na recusa, com o texto ATUALIZADO pelo próprio sprint.** `status: "error"`, zero I/O, nenhuma entrada em `audit_log`.
+
+⚠️ **A mensagem NÃO é a que o runbook cita** — e o próprio runbook prevê isso ("`_validate_combo` foi editado depois da leitura desta sessão; concatene a mensagem real"). Texto real, verbatim:
+
+> `breakdown só é suportado em level='account' (device/geo/hourly) ou em level='campaign' com breakdown='hourly' (exige campaign_ids) — você pediu level='campaign'+breakdown='geo'. Use uma dessas combinações, ou remova o breakdown.`
+
+Faz sentido: a mensagem antiga dizia *"só em level='account' no v0"*, o que **este sprint tornou falso** ao abrir `campaign`+`hourly`. A nova nomeia as duas combinações válidas e ecoa o que foi pedido. Acentuação normal preservada (`só`, `é`, `você`) — sem substituição ASCII no transporte.
+
+✅ **Checagem adjacente:** `level='ad_group'` + `breakdown='hourly'` **também recusado**, com a mesma mensagem ecoando `level='ad_group'+breakdown='hourly'`. Só `campaign`+`hourly` abriu; nenhum outro nível herdou o combo.
 
 ---
 
@@ -430,7 +464,7 @@ get_ad_schedule(
 - Zero entradas em `audit_log` → as duas queries baratas deixaram de rodar antes do check (mudança de ordem em relação ao código lido nesta sessão — não é bug por si, mas contradiz a Nota de forma acima e vale reconfirmar contra o código antes de aceitar)
 - **Nota, não achado:** este é o análogo, em `get_ad_schedule`, do guard que `get_performance_breakdown` já tem para `campaign`+`hourly` sem `campaign_ids` (mensagem irmã: `"level='campaign' + breakdown='hourly' exige campaign_ids: ..."`, coberta por `tests/unit/test_performance_breakdown.py::test_campaign_hourly_exige_campaign_ids`). Não repetido aqui como teste separado — mesma forma de guard, já coberto por unidade, smoke não precisa duplicar
 
-**Result:** ⬜ pending
+**Result:** ✅ **PASS** — `status: "error"` com o texto **exatamente** como o runbook cita: `include_metrics exige campaign_ids: a conjunta dia x hora e cara e nao roda sobre a conta inteira.` Sem `windows`, sem `schedule_summary`, sem `truncated` — coerente com o setup, que documenta que as duas queries baratas já rodaram e o resultado é descartado.
 
 ---
 
