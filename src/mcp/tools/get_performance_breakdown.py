@@ -143,7 +143,14 @@ async def get_performance_breakdown(args: dict[str, Any]) -> dict[str, Any]:
         )
         truncado = len(celulas) > teto
         if args.get("raw_grid", False):
-            return {"status": "ok", "rows": celulas[:teto], "truncated": truncado}
+            return {
+                "customer_id": customer_id,
+                "level": level,
+                "breakdown": breakdown,
+                "period": {"from": start.isoformat(), "to": end.isoformat()},
+                "rows": celulas[:teto],
+                "truncated": truncado,
+            }
         linhas: list[dict[str, Any]] = []
         for cid in campaign_ids:
             do_cid = [
@@ -153,7 +160,14 @@ async def get_performance_breakdown(args: dict[str, Any]) -> dict[str, Any]:
             ]
             for nome, agg in partition_by_blocks(do_cid, BLOCOS_PADRAO).items():
                 linhas.append({"campaign_id": cid, "bloco": nome, **agg})
-        return {"status": "ok", "rows": linhas, "truncated": truncado}
+        return {
+            "customer_id": customer_id,
+            "level": level,
+            "breakdown": breakdown,
+            "period": {"from": start.isoformat(), "to": end.isoformat()},
+            "rows": linhas,
+            "truncated": truncado,
+        }
 
     rows = await run_report(
         manager_id=ctx.manager_id,

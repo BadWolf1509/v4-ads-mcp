@@ -316,6 +316,16 @@ async def test_campaign_hourly_devolve_particao_e_nao_168_celulas(monkeypatch):
     assert blocos == {"comercial", "fora_de_hora", "fim_de_semana", "outros"}
     assert len(out["rows"]) == 4
     assert out["truncated"] is False
+    # Achado 1 (fix round 1): o caminho novo passa a devolver o mesmo envelope
+    # do caminho generico da tool (customer_id/level/breakdown/period), aditivo
+    # ao truncated que so este caminho tem — sem isso, o consumidor recebe
+    # formas diferentes conforme o combo, e period e a unica forma de saber a
+    # janela concreta que o preset resolveu (no fuso da conta).
+    assert out["customer_id"] == "1234567890"
+    assert out["level"] == "campaign"
+    assert out["breakdown"] == "hourly"
+    assert set(out["period"]) == {"from", "to"}
+    assert date.fromisoformat(out["period"]["from"]) <= date.fromisoformat(out["period"]["to"])
 
 
 @pytest.mark.asyncio
@@ -363,6 +373,12 @@ async def test_raw_grid_devolve_celulas_cruas_sem_particao(monkeypatch):
     assert out["rows"] == celulas, "raw_grid devolve as celulas como vieram, sem passar por bloco"
     assert all("bloco" not in r for r in out["rows"])
     assert out["truncated"] is False
+    # Achado 1 (fix round 1): envelope aditivo tambem no ramo raw_grid.
+    assert out["customer_id"] == "1234567890"
+    assert out["level"] == "campaign"
+    assert out["breakdown"] == "hourly"
+    assert set(out["period"]) == {"from", "to"}
+    assert date.fromisoformat(out["period"]["from"]) <= date.fromisoformat(out["period"]["to"])
 
 
 @pytest.mark.asyncio
@@ -390,3 +406,68 @@ async def test_raw_grid_trunca_no_teto_168_por_campanha(monkeypatch):
     )
     assert len(out["rows"]) == 168
     assert out["truncated"] is True
+    # Achado 1 (fix round 1): envelope aditivo tambem quando trunca.
+    assert out["customer_id"] == "1234567890"
+    assert out["level"] == "campaign"
+    assert out["breakdown"] == "hourly"
+    assert set(out["period"]) == {"from", "to"}
+    assert date.fromisoformat(out["period"]["from"]) <= date.fromisoformat(out["period"]["to"])
+
+
+# --- Fix round 1, Achado 2: teto e filtro nunca exercitados com >1 campanha ---
+#
+# Os 4 testes acima usam todos campaign_ids=["1"]. Com N=1, teto=168*len(...)
+# e um 168 cravado sao indistinguiveis, e "filtra celulas por campanha" e "usa
+# todas as celulas pra cada campanha" tambem — as duas regressoes passariam
+# verdes. So a segunda campanha separa os dois pares.
+
+
+@pytest.mark.asyncio
+async def test_campaign_hourly_duas_campanhas_teto_multiplica_e_celulas_nao_vazam(monkeypatch):
+    """2 campanhas x 100 celulas (200 < 336 = 168*2 -> so falso se o teto
+    multiplicar; um 168 cravado daria truncated=True aqui) com custo por
+    celula diferente entre elas: se celulas vazassem entre campanhas (bug
+    'usa todas pra cada'), a soma por campanha nao bateria com as 100 dela."""
+    celulas_1 = [
+        {
+            "campaign_id": "1",
+            "day_of_week": "MONDAY",
+            "hour": i % 24,
+            "cost_micros": 1_000_000,  # R$1,00 por celula
+            "conversions": 0.0,
+        }
+        for i in range(100)
+    ]
+    celulas_2 = [
+        {
+            "campaign_id": "2",
+            "day_of_week": "MONDAY",
+            "hour": i % 24,
+            "cost_micros": 5_000_000,  # R$5,00 por celula
+            "conversions": 0.0,
+        }
+        for i in range(100)
+    ]
+    _wire_bd(monkeypatch, celulas=celulas_1 + celulas_2)
+    out = await mod.get_performance_breakdown(
+        {
+            "customer_id": "1234567890",
+            "level": "campaign",
+            "breakdown": "hourly",
+            "campaign_ids": ["1", "2"],
+        }
+    )
+    assert out["truncated"] is False
+
+    rows_1 = [r for r in out["rows"] if r["campaign_id"] == "1"]
+    rows_2 = [r for r in out["rows"] if r["campaign_id"] == "2"]
+    assert len(rows_1) == 4
+    assert len(rows_2) == 4
+
+    # partition_by_blocks e TOTAL por construcao (todo celula cai em exatamente
+    # um balde) — a soma dos 4 blocos de cada campanha tem que bater exatamente
+    # com as 100 celulas dela, nem uma a mais vazada da outra campanha.
+    assert sum(r["cost_brl"] for r in rows_1) == pytest.approx(100.0)
+    assert sum(r["cost_brl"] for r in rows_2) == pytest.approx(500.0)
+    assert sum(r["cells"] for r in rows_1) == 100
+    assert sum(r["cells"] for r in rows_2) == 100
