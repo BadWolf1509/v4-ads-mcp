@@ -1,8 +1,8 @@
 # Phase 3b.42 — smoke runbook para `get_ad_schedule` e `update_ad_schedule`
 
-**ATENÇÃO: Este documento é uma ESPECIFICAÇÃO APENAS, não foi executado. Dois bloqueadores impedem a execução:**
+**Estado em 2026-09-04: as tools estão EM PRODUÇÃO e o smoke segue NÃO EXECUTADO.** Dos dois bloqueadores originais, o primeiro caiu. O que resta é aval, não código:
 
-1. **As tools estão apenas no branch local `feat/ad-schedule`.** `main` está em `4cb94d7` (só o plano de implementação, docs) e produção serve essa revisão — sem `get_ad_schedule` nem `update_ad_schedule`. O MCP server que atende a sessão atual **não tem essas duas tools**: confirmado nesta própria sessão, elas não aparecem na lista de tools carregáveis. A execução só é possível depois de `feat/ad-schedule` (22 commits, Tasks 1-9) ser mesclado em `main` e deployado.
+1. ~~As tools estão apenas no branch local~~ — **RESOLVIDO em 2026-09-04.** `feat/ad-schedule` foi mesclado (PR #31, merge `7287ce8`), o deploy fechou verde e produção serve as duas tools. ⚠️ **Mas o F140 continua valendo, e é a primeira coisa que derruba quem tentar:** o catálogo de tools é negociado no handshake do MCP, então **é preciso abrir uma sessão MCP NOVA** — numa sessão que já estava aberta antes do deploy as duas tools simplesmente não existem, e o sintoma é *tool não encontrada*, não um erro de versão. Reconecte antes de começar o T1.
 
 2. **T4, T7 e T8 aplicam mutação real contra `1163862076`.** (T3 é dry-run; T6 cai no no-op e não emite operação nenhuma; T2b é dry-run com token descartado — nenhum dos três escreve no Google. O aval do Wellington vale para a **cadeia inteira** T2b→T9, mas só estes três passos mutam.) É a conta de teste do Wellington, não um cliente pagante, mas ainda é uma conta Google Ads real: os criteria `AD_SCHEDULE` criados/removidos/atualizados por T4/T7/T8 existem de verdade e o classificador de auto mode do harness pode barrar o passo antes mesmo de chegar no MCP (aconteceu no smoke 3b.41 — não é erro do MCP nem do Google, é o freio do harness). Requer aval explícito do Wellington antes de qualquer chamada de mutação, mesmo em dry-run.
 
@@ -17,7 +17,7 @@
   2. **Falha parcial reportada (§4.5).** `partial_failures[]` (por-op `{index, status, error}`) chega na resposta ao lado de `applied_count`/`changed_count`.
   3. **Confirmação por GAQL pós-apply (§4.6), com `status="all"`.** A UI do Google já falhou em silêncio duas vezes nessa conta, então o ACK da mutação sozinho não basta — e a §7 proíbe confirmar remoção por **ausência**: a reconsulta não filtra `ENABLED`, então a linha removida aparece com `status: REMOVED`, positivamente visível. `resulting_schedule[cid].matches_requested` diz se o conjunto de janelas `ENABLED` resultante é igual ao pedido (comparado por conteúdo, nunca por `criterion_id`). A reconsulta é *best-effort* (F83/F91): se ela falhar, a mutação **já aplicada** não vira erro — `resulting_schedule: null` + `confirmation_error` com o motivo, `applied_count`/`provider_request_id` intactos.
 
-**Operator:** wellington.ribeiro@v4company.com
+**Operator:** wellington.ribeiro@v4company.com — **se quem executar for outra pessoa, confira antes se ela tem grant nas DUAS contas abaixo em `/admin/access`.** O gate de acesso é por gestor: sem grant, a tool recusa a conta e o smoke morre no T1 por um motivo que não é defeito do sprint.
 **Conta de leitura (T1-T2b):** `7862230676` — Mestre da Obra João Pessoa (produção V4, cliente real; **nenhuma mutação neste smoke** — T2b é dry-run e o token é descartado)
 **Conta de mutação (T3-T9):** `1163862076` — Rayane Ribeiro / Nutry (`America/Recife`), conta de teste do Wellington
 
@@ -25,10 +25,10 @@
 **Plan:** `docs/superpowers/plans/2026-09-03-ad-schedule.md` (Tasks 1-10, com 8 Rulings registradas durante a implementação)
 
 > **Escopo V0 confirmado:**
-> - Tool count: **66 → 68** (duas tools novas: `get_ad_schedule` + `update_ad_schedule`) — medido por `grep -ho 'bucket="[a-z]*"' src/mcp/tools/*.py | sort | uniq -c` no branch `feat/ad-schedule`: **23 `bucket="always"` + 45 `bucket="defer"`** (era 23+43 antes deste branch). As duas novas entram em `defer`.
+> - Tool count: **66 → 68** (duas tools novas: `get_ad_schedule` + `update_ad_schedule`). ⚠️ **Corrigido em 04/09:** a reclassificação de buckets (PR #32) deixou a conta em **22 `bucket="always"` + 46 `bucket="defer"`**, e as duas novas entraram em **`always`**, não em `defer` como este runbook dizia antes do merge — ficam no always por janela de descoberta, com reavaliação em 04/10 (`tool-buckets-2026-09-04.md`). Medido por `grep -ho 'bucket="[a-z]*"' src/mcp/tools/*.py | sort | uniq -c` em `main`.
 > - Nenhum breaking change: `get_ad_schedule` é leitura pura nova; `update_ad_schedule` é mutação nova; `apply_change` ganhou um `if saved.operation_type == "update_ad_schedule"` a mais (com pré-flight, mutação e reconsulta) — os branches existentes (`import_offline_conversions`, `upload_customer_match_list`, o default de `GoogleAdsService.mutate`) não mudam de contrato.
 > - Zero migration no banco — reusa `pending_confirmations` e `audit_log` existentes; nenhuma tabela nova.
-> - **Não executado** — bloqueadores 1 e 2 acima.
+> - **Não executado** — resta só o bloqueador 2 acima (aval das mutações T4/T7/T8).
 
 **Dados conhecidos pré-smoke (medidos nesta sessão via `run_gaql`, 2026-09-03/04 — não inventados para este documento):**
 
@@ -55,7 +55,7 @@
 
 ```
 https://v4-ads-mcp-299432068772.southamerica-east1.run.app
-(main HEAD 4cb94d7 — docs-only, sem código deste branch; deploy do 3b.42 ainda não aconteceu)
+(main HEAD 7ad45c6 — 3b.42 deployado em 04/09; /health?deep=1 devolveu 200 com db: ok apos o deploy)
 ```
 
 ## Pre-flight — documento APENAS, sem checks automatizados executados
