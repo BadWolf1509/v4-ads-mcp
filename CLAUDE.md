@@ -19,7 +19,7 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 ## Estado atual
 
 **2026-09-04.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`,
-**68 MCP tools** (62 Google + 6 Meta), CI gated + deploy automático. Catálogo em **147 IDs**.
+**68 MCP tools** (62 Google + 6 Meta), CI gated + deploy automático. Catálogo em **148 IDs**.
 
 **Quantos findings fecharam em qual sprint NÃO vive aqui** — essa narrativa churna toda
 sessão e duplica o `estado-atual.md`. Este bloco tem só o que orienta qualquer sessão;
@@ -40,8 +40,10 @@ Volátil por natureza: **atualize aquele arquivo ao terminar a sessão**, não e
 - `ad_schedule` em **produção** (PR #31); smoke **5 de 10**, T4-T8 pendentes porque
   mutam conta real —
   [`phase-3b-42-ad-schedule-smoke.md`](docs/operacao/phase-3b-42-ad-schedule-smoke.md).
-- **F148 (HIGH, aberto):** dry-run de mutate não deixa rastro na trilha, e a auditoria
-  de escrita está **invertida**. Fix no `create_pending`, ponto único.
+- **F148 fechado** (#33, #35): dry-run de mutate deixa rastro, e `dry_run` no
+  `get_my_audit_log` separa TENTATIVA de APLICAÇÃO — sem ele são idênticos.
+- **F149 (MEDIUM, aberto):** `bid_modifier` é por chamada, não por janela; mudar UMA
+  faixa exige duas chamadas e o estado entre elas **interrompe entrega**.
 - **Buckets reclassificados em 04/09** (PR #32): 22 always + 46 defer, remedição mensal
   marcada para 04/10 em
   [`tool-buckets-2026-09-04.md`](docs/operacao/tool-buckets-2026-09-04.md). A medição

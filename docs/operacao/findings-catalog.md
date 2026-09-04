@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain), F129 (governanca do system user — acao humana) e F130 (gate do Google sem `is_active`).
 >
-> **Como ler:** ~1340 linhas, **147 IDs** (F1-F148 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~1400 linhas, **148 IDs** (F1-F149 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -1283,7 +1283,7 @@ data de modificacao, que o `campaign_criterion` nao expoe. Fica registrado como 
 conhecido do §7, nao como fix pendente.
 
 
-## F148 (HIGH, ABERTO) — o dry-run de todo mutate always-CONFIRM e invisivel na trilha
+## F148 (HIGH, CORRIGIDO) — o dry-run de todo mutate always-CONFIRM e invisivel na trilha
 
 > **Como apareceu:** medido em 04/09 durante o smoke 3b.42, quando a sessao MO-JP notou
 > que os dois dry-runs de `update_ad_schedule` que planejavam 10 e 5 operacoes apareciam no
@@ -1329,3 +1329,96 @@ a auditoria nao. Espalhar a gravacao pelas 24 seria o padrao que o F57 pune.
 `__target_count__`. Hoje as 24 preenchem, mas default silencioso e o que deixa a 25a passar
 sem ninguem notar — ausente deve gravar NULL ou estourar, nunca "1 operacao" que ninguem
 planejou. Migration aditiva, e o `CLAUDE.md` obriga full sweep com Docker.
+
+
+> **✅ CORRIGIDO em 04/09, em duas partes — e a segunda so apareceu porque a primeira foi
+> VERIFICADA EM PRODUCAO.**
+>
+> **Parte 1 (PR #33) — o registro.** `create_pending` passou a gravar a propria linha:
+> `action_type: "mutate"`, `dry_run: true`, `target_count` **planejado** (lido do
+> `__target_count__` que as 24 tools ja escreviam no payload). Fix em **sitio unico**, nao
+> nas 24: `generate_token` e o `INSERT INTO pending_confirmations` existem so em
+> `dry_run.py`, entao espalhar seria o padrao que o F57 pune. **Mesma transacao** que o
+> INSERT da pendencia — pendencia sem trilha e o proprio defeito, entao as duas escritas
+> vivem ou morrem juntas, e em colisao de token o savepoint desfaz as duas. Migration `007`
+> aditiva: coluna **nullable**, nunca valor novo em `action_type`, porque aquele enum e
+> filtro publico de `get_my_audit_log`. Sem default silencioso: `__target_count__` ausente
+> grava NULL, jamais o `1` do `apply_change` — registrar uma operacao que ninguem planejou e
+> pior que registrar que nao se sabe.
+>
+> **Medido em producao (7862230676, aval do Wellington):** antes, os dois dry-runs deixavam
+> so `4065`/`4066`, `read` com `target_count: 0`, enquanto a resposta reportava 10 e 5.
+> Depois, `4085` e `4087` com `mutate` e `target_count` 10 e 5. Perguntado "quantas mutacoes
+> foram tentadas nesta conta", o log responde **2** em vez de zero.
+>
+> **Parte 2 (PR #35) — a leitura, que a Parte 1 deixou ambigua.** Uma mutacao **aplicada**
+> grava os MESMOS valores que um preview em `action_type` e `target_count`. O
+> `list_for_manager` seleciona 11 colunas fixas e a nova nao entrava nelas, entao pela tool
+> os dois casos eram identicos. O unico diferenciador acidental era `duration_ms` NULL — que
+> nao e sinal desenhado **e nao e exclusivo**: `admin_access_grant` tambem grava `mutate` com
+> duracao nula, medido na mesma conta no mesmo dia. Num incidente a pergunta e exatamente
+> "isso foi tentativa ou foi aplicado?". `dry_run` entrou no SELECT e no dict de retorno, e a
+> description da tool passou a dizer o que o campo distingue, com o aviso de **nao** tentar
+> distinguir por `duration_ms`.
+>
+> **Guards:** `test_create_pending_audita_dry_run.py` (4, com o guard do 25o call-site
+> verificado por sabotagem contra diretorio sintetico), 2 de integracao no `test_dry_run.py`
+> (round-trip da coluna e atomicidade, falhando a auditoria de proposito), e **os 8 testes de
+> ciclo completo que o CI reprovou com `assert 2 == 1`** — eles codificavam a AUSENCIA da
+> linha como se fosse contrato. Em vez de trocar 1 por 2, foram separados: o SELECT antigo
+> ganhou `AND dry_run IS NOT TRUE` e cada um ganhou assercao sobre a linha de preview. Viraram
+> guards do F148 em 8 fluxos de tool.
+>
+> **Licao de metodo:** o primeiro push saiu sem full sweep (Docker parado) e o CI achou as 8.
+> A falha estava certa e era a prova do fix; mas foi o CI, nao eu, que a encontrou.
+
+
+## F149 (MEDIUM, ABERTO) — o unico jeito de mudar o bid_modifier de UMA faixa passa por um estado que interrompe a entrega
+
+> **Como apareceu:** a analise da MO-JP em 04/09 concluiu lance por faixa horaria (JPA fora
+> de hora com CPA 18,47 contra 19,87 no comercial; CAB fora de hora 24,46 contra 18,60 no
+> fim de semana — sinal OPOSTO por campanha). A execucao esbarrou na superficie da tool.
+
+**A assimetria e nossa, nao do Google.** Cada janela e um `campaign_criterion` proprio com
+seu proprio campo `bid_modifier`, e o `get_ad_schedule` **le** modificador por linha. Mas no
+`update_ad_schedule` o `bid_modifier` e **escalar no nivel da chamada**, e os itens de
+`windows[]` so carregam dia e hora. A tool le um estado que nao consegue reproduzir.
+
+**Os dois caminhos, medidos no codigo** (`diff_schedule`, `ad_schedule.py:142-145`):
+
+- **Omitido** → a guarda `if bid_modifier is not None` deixa `to_update` vazio: **preserva
+  todos**, nao permite mudar nenhum.
+- **Informado** → toda janela presente nos dois conjuntos cujo valor difira entra em
+  `to_update`: **muda todos**, inclusive os que nao eram alvo. Nao existe nocao de "janela
+  que o chamador quis tocar" na assinatura.
+
+**A armadilha: o caminho EXISTE, em duas chamadas — e e pior que ser inexprimivel.** Chamada
+1 com so a faixa alvo e o modificador (a grade vira **so** essa faixa); chamada 2 com as 168
+horas e o modificador **omitido** (a faixa alvo conserva o valor, as outras entram sem —
+confirmado em `mutates/ad_schedule.py:41`, que so seta o campo quando nao e None). O
+resultado liquido e o desejado. **Mas entre as duas a campanha serve ~50 de 168 horas**, e
+as duas sao always-CONFIRM com token de 10 min e aval humano proprio. Se a segunda travar
+— aval nao vindo, token expirado, sessao interrompida —, a campanha fica degradada; com
+orcamento **compartilhado**, isso nao so corta a entrega dela como **inunda a irma**.
+
+**E nao ha ordenacao segura.** Grade cheia primeiro faz o modificador cair nas 168; remover
+e re-adicionar achata as 167. A unica sequencia que chega ao estado certo passa pelo
+degradado.
+
+> **✅ A METADE DE BUG FOI CORRIGIDA em 04/09 (PR #34) — o achatamento deixou de ser
+> silencioso.** O preview nao dizia o que estava sendo perdido: `bid_modifier_updated` listava
+> so dia e hora, e o resumo dizia "5 mudam bid_modifier". Agora cada entrada traz
+> `bid_modifier_antigo` ao lado do `novo`, e o preview declara `cobertura`
+> (`horas_antes`/`horas_depois`/`reduz`) **sem limiar** — qualquer % estaria errado em alguma
+> conta. O destaque (`aviso_cobertura`) fica so para queda **com** orcamento compartilhado,
+> porque queda sozinha aparece em quase todo primeiro uso (campanha sem grade serve 168 horas
+> naturais) e alarme que aparece sempre ensina a ser ignorado. Nenhuma das partes precisou de
+> query nova: `hours_per_week` ja saia do `summarize_current`, o modificador antigo ja estava
+> no `CurrentWindow` que o proprio diff compara, e o `shared_budgets` ja vinha no preview —
+> ninguem tinha escrito a frase que os soma.
+
+**O que FICA aberto:** `bid_modifier` por janela em `windows[]`. Enquanto nao existir, o
+unico caminho expressavel e o inseguro, e uma tool que so oferece a rota perigosa treina o
+operador nela. Vai junto do sprint de particao horaria
+([`2026-09-04-particao-horaria-design.md`](../superpowers/specs/2026-09-04-particao-horaria-design.md)),
+porque mexe na mesma forma de `windows[]`.
