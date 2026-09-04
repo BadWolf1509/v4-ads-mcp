@@ -80,7 +80,12 @@ _SCHEMA: dict[str, Any] = {
             "items": _JANELA,
             "minItems": 1,
             "maxItems": 168,
-            "description": "A GRADE COMPLETA desejada. O que nao estiver aqui deixa de servir.",
+            "description": "A GRADE COMPLETA desejada. O que nao estiver aqui deixa de servir. Exclusivo com clear_schedule.",
+        },
+        "clear_schedule": {
+            "type": "boolean",
+            "default": False,
+            "description": "Apaga a agenda inteira e devolve a campanha ao 24x7 natural (has_schedule: false). Exclusivo com windows; um dos dois e obrigatorio.",
         },
         "bid_modifier": {
             "type": "number",
@@ -97,7 +102,10 @@ _SCHEMA: dict[str, Any] = {
         "start_date": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
         "end_date": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
     },
-    "required": ["customer_id", "campaign_ids", "windows"],
+    # `windows` sai de `required` porque a exclusao mutua com `clear_schedule` e
+    # cross-field e o repo proibe oneOf/anyOf no input_schema (3b.19B.1) — a regra
+    # vive no pre-flight Python, com as DUAS direcoes cobertas.
+    "required": ["customer_id", "campaign_ids"],
     "additionalProperties": False,
 }
 
@@ -120,7 +128,11 @@ _DESCRIPTION = (
     "e campanhas irmas do mesmo orcamento (inclusive as fora do lote) — o preview lista "
     "`shared_budgets` com as irmas; nao recusa. Minutos so 0/15/30/45 (API); `end_hour: 24` "
     "= ate o fim do dia. Lote com partial_failure: cada campanha reportada; sem rollback. "
-    "Pos-apply, apply_change reconsulta a grade por GAQL e devolve `resulting_schedule`."
+    "Pos-apply, apply_change reconsulta a grade por GAQL e devolve `resulting_schedule`. "
+    "Para DESFAZER: `clear_schedule: true` (exclusivo com windows) apaga a agenda inteira "
+    "e devolve a campanha ao 24x7 natural (`has_schedule: false`) — a grade 7x24 explicita "
+    "cobre as mesmas 168h mas deixa 7 criterios existindo, estado diferente. Apagar a "
+    "agenda NAO desliga a campanha: ela volta a servir o tempo todo."
 )
 
 
@@ -133,10 +145,35 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
     campaign_ids: list[str] = args["campaign_ids"]
     bid_modifier = args.get("bid_modifier")
 
-    erro = validate_windows(args["windows"])
+    # Ruling 11: `clear_schedule` e a unica forma de devolver a campanha ao 24x7
+    # natural (`has_schedule: false`) — a grade 7x24 explicita cobre as mesmas 168h
+    # mas deixa 7 criterios existindo, estado diferente. Exclusivo com `windows`, e
+    # `minItems: 1` fica de pe: `[]` acidental nunca apaga agenda, apagar exige a
+    # palavra. Vale reafirmar: apagar a agenda NAO desliga a campanha — ela volta a
+    # servir 24x7.
+    janelas_pedidas = args.get("windows")
+    limpar = bool(args.get("clear_schedule", False))
+    if limpar and janelas_pedidas is not None:
+        return error_envelope(
+            "update_ad_schedule",
+            "clear_schedule e windows sao exclusivos: clear_schedule apaga a agenda "
+            "inteira (volta ao 24x7 natural), windows define a grade desejada. "
+            "Mande um dos dois.",
+            customer_id=customer_id,
+        )
+    if not limpar and janelas_pedidas is None:
+        return error_envelope(
+            "update_ad_schedule",
+            "informe windows (a grade completa desejada) ou clear_schedule: true "
+            "(apagar a agenda e voltar ao 24x7 natural). Nenhum dos dois foi passado.",
+            customer_id=customer_id,
+        )
+    janelas_pedidas = janelas_pedidas or []
+
+    erro = validate_windows(janelas_pedidas)
     if erro:
         return error_envelope("update_ad_schedule", erro, customer_id=customer_id)
-    desired = [window_from_input(w) for w in args["windows"]]
+    desired = [window_from_input(w) for w in janelas_pedidas]
 
     today = await resolve_account_today(customer_id)
     try:

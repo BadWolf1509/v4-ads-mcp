@@ -305,6 +305,73 @@ async def test_campaign_id_inexistente_e_recusado_antes_de_montar_preview(monkey
     assert captured == {}
 
 
+def test_schema_pede_windows_ou_clear_schedule_sem_composicao() -> None:
+    """Ruling 11: exclusao mutua e cross-field, e o repo proibe oneOf/anyOf (3b.19B.1) —
+    entao `windows` sai de `required` e a exclusao vive no pre-flight Python. `minItems: 1`
+    FICA: `[]` acidental nunca pode apagar a agenda; apagar exige a palavra explicita."""
+    schema = get_tool("update_ad_schedule").input_schema
+    assert "windows" not in schema["required"]
+    assert schema["properties"]["windows"]["minItems"] == 1
+    assert schema["properties"]["clear_schedule"]["type"] == "boolean"
+    assert schema["properties"]["clear_schedule"]["default"] is False
+
+
+@pytest.mark.asyncio
+async def test_clear_schedule_remove_a_grade_inteira(monkeypatch) -> None:
+    """Important 6: sem isto a tool nao desfaz a propria acao — o contorno (grade 7x24
+    explicita) produz `has_schedule: true` com 7 criterios, estado DIFERENTE do 24x7
+    natural, e voltar de verdade so pela UI do Google (falha o 4o teste de gambiarra)."""
+    grade = [
+        _janela_row(day=d, crit=str(i))
+        for i, d in enumerate(("MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"))
+    ]
+    captured = _wire(monkeypatch, grade=grade, orcamentos=[_orc()], metricas=[])
+    out = await mod.update_ad_schedule(
+        {"customer_id": "1234567890", "campaign_ids": ["1"], "clear_schedule": True}
+    )
+    assert out["status"] == "dry_run"
+    p = out["preview"]["1"]
+    assert len(p["windows_removed"]) == 5 and p["windows_added"] == []
+    ops = captured["payload"]["ops"]
+    assert len(ops) == 5 and {o["kind"] for o in ops} == {"remove"}
+    assert captured["payload"]["windows"] == [], "a grade pedida e o conjunto vazio"
+
+
+@pytest.mark.asyncio
+async def test_clear_schedule_com_windows_e_recusado(monkeypatch) -> None:
+    captured = _wire(monkeypatch, grade=[], orcamentos=[_orc()], metricas=[])
+    out = await mod.update_ad_schedule(
+        {
+            "customer_id": "1234567890",
+            "campaign_ids": ["1"],
+            "windows": SEG_SEX,
+            "clear_schedule": True,
+        }
+    )
+    assert out["status"] == "error"
+    assert "clear_schedule" in out["error_message"] and "windows" in out["error_message"]
+    assert captured == {}
+
+
+@pytest.mark.asyncio
+async def test_sem_windows_e_sem_clear_schedule_e_recusado(monkeypatch) -> None:
+    captured = _wire(monkeypatch, grade=[], orcamentos=[_orc()], metricas=[])
+    out = await mod.update_ad_schedule({"customer_id": "1234567890", "campaign_ids": ["1"]})
+    assert out["status"] == "error"
+    assert "clear_schedule" in out["error_message"] and "windows" in out["error_message"]
+    assert captured == {}
+
+
+@pytest.mark.asyncio
+async def test_clear_schedule_em_campanha_ja_24x7_e_no_changes(monkeypatch) -> None:
+    """Limpar quem ja nao tem grade nao emite operacao nenhuma (§4.4)."""
+    captured = _wire(monkeypatch, grade=[], orcamentos=[_orc()], metricas=[])
+    out = await mod.update_ad_schedule(
+        {"customer_id": "1234567890", "campaign_ids": ["1"], "clear_schedule": True}
+    )
+    assert out["status"] == "no_changes" and captured == {}
+
+
 @pytest.mark.asyncio
 async def test_grade_atual_truncada_nao_e_diffada(monkeypatch) -> None:
     """Important 4: `ad_schedule_query` pede limit+1 como sentinela e o caminho de
