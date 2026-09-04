@@ -1,7 +1,9 @@
 from src.google_ads.ad_schedule import (
     BLOCOS_PADRAO,
+    DIAS,
     MetricCell,
     Window,
+    covers,
     hours_per_week,
     partition_by_blocks,
 )
@@ -32,3 +34,15 @@ def test_os_blocos_padrao_ladrilham_a_semana_exatamente():
     total = sum(hours_per_week(janelas) for janelas in BLOCOS_PADRAO.values())
     assert total == 168.0
     assert set(BLOCOS_PADRAO) == {"comercial", "fora_de_hora", "fim_de_semana"}
+
+
+def test_os_blocos_padrao_cobrem_cada_celula_exatamente_uma_vez():
+    """Sobreposicao real + buraco real do mesmo tamanho tambem somam 168h; so a
+    soma nao prova ladrilhamento. Esta cobre celula a celula: lista vazia pega
+    buraco, lista com 2+ pega sobreposicao."""
+    for dia in DIAS:
+        for hora in range(24):
+            cobrindo = [
+                nome for nome, janelas in BLOCOS_PADRAO.items() if covers(janelas, dia, hora)
+            ]
+            assert len(cobrindo) == 1, f"{dia} {hora}h coberta por {cobrindo}, esperado 1"
