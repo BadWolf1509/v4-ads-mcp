@@ -228,3 +228,32 @@ def test_window_from_input_le_o_modificador_quando_vem() -> None:
         window_from_input({"day_of_week": "MONDAY", "start_hour": 7, "end_hour": 17}).bid_modifier
         is None
     )
+
+
+def test_modificador_por_janela_atualiza_so_a_faixa_alvo() -> None:
+    """O ponto do F149: mudar UMA faixa sem achatar as outras, numa chamada."""
+    atual = [
+        CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.3),
+        CurrentWindow(Window("TUESDAY", 7, 0, 17, 0), "rn/2", "2", 0.8),
+    ]
+    desejada = [
+        Window("MONDAY", 7, 0, 17, 0, 1.5),
+        Window("TUESDAY", 7, 0, 17, 0),  # sem modificador proprio
+    ]
+    d = diff_schedule(atual, desejada, None)
+    assert d.to_add == () and d.to_remove == ()
+    assert [c.criterion_id for c in d.to_update] == ["1"], "so a alvo muda"
+
+
+def test_escalar_continua_valendo_como_default_das_janelas_sem_modificador() -> None:
+    """Compatibilidade: quem so passa o escalar ve o comportamento de hoje."""
+    atual = [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.0)]
+    d = diff_schedule(atual, [Window("MONDAY", 7, 0, 17, 0)], 1.1)
+    assert [c.criterion_id for c in d.to_update] == ["1"]
+
+
+def test_janela_com_modificador_igual_ao_atual_nao_vira_update() -> None:
+    """Idempotencia: mandar o valor que ja esta la nao emite operacao."""
+    atual = [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.3)]
+    d = diff_schedule(atual, [Window("MONDAY", 7, 0, 17, 0, 1.3)], None)
+    assert d.to_update == ()

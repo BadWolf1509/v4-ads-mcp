@@ -149,16 +149,24 @@ def diff_schedule(
     - janela desejada ausente do atual -> add
     - janela atual ausente da desejada -> remove
     - janela em ambos com bid_modifier informado e diferente -> update (mask), nunca recria
+
+    F149: o modificador da JANELA vence; o escalar da chamada e o default
+    de quem nao trouxe o seu. Ambos ausentes = preserva (comportamento de hoje).
     """
     atual_por_chave = {c.window.key(): c for c in current}
     desejada_por_chave = {w.key(): w for w in desired}
     to_add = tuple(w for k, w in desejada_por_chave.items() if k not in atual_por_chave)
     to_remove = tuple(c for k, c in atual_por_chave.items() if k not in desejada_por_chave)
     to_update: list[CurrentWindow] = []
-    if bid_modifier is not None:
-        for k, c in atual_por_chave.items():
-            if k in desejada_por_chave and c.bid_modifier != bid_modifier:
-                to_update.append(c)
+    for k, c in atual_por_chave.items():
+        desejada = desejada_por_chave.get(k)
+        if desejada is None:
+            continue
+        # F149: o modificador da JANELA vence; o escalar da chamada e o default
+        # de quem nao trouxe o seu. Ambos ausentes = preserva (comportamento de hoje).
+        efetivo = desejada.bid_modifier if desejada.bid_modifier is not None else bid_modifier
+        if efetivo is not None and c.bid_modifier != efetivo:
+            to_update.append(c)
     return ScheduleDiff(to_add=to_add, to_remove=to_remove, to_update=tuple(to_update))
 
 
