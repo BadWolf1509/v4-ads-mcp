@@ -153,14 +153,14 @@ async def test_run_mutation_partial_failure_returns_per_op_status(monkeypatch):
     assert result["provider_request_id"] == "req-pf"
     assert "partial_failures" in result
     assert len(result["partial_failures"]) == 3
-    assert result["partial_failures"][0] == {"index": 0, "status": "added", "error": None}
+    assert result["partial_failures"][0] == {"index": 0, "status": "success", "error": None}
     assert result["partial_failures"][1] == {
         "index": 1,
         "status": "failed",
         "error": "CRITERION_EXISTS",
     }
-    assert result["partial_failures"][2] == {"index": 2, "status": "added", "error": None}
-    assert result["applied_count"] == 2  # 2 added, 1 failed
+    assert result["partial_failures"][2] == {"index": 2, "status": "success", "error": None}
+    assert result["applied_count"] == 2  # 2 success, 1 failed
 
 
 @pytest.mark.asyncio
@@ -206,3 +206,60 @@ async def test_run_mutation_uses_custom_params_summary(monkeypatch):
     assert audit_mock.call_count == 1
     kwargs = audit_mock.call_args.kwargs
     assert kwargs["params_summary"] == custom
+
+
+@pytest.mark.asyncio
+async def test_status_por_op_nao_afirma_o_verbo_da_operacao(monkeypatch) -> None:
+    """F152 — `run_mutation` nao sabe se a op foi add, update ou remove.
+
+    O rotulo era fixo em "added" para TODA operacao bem-sucedida, entao um
+    `remove` (T8 do smoke 3b.42) e um `update` via field mask (T7) voltavam
+    dizendo que tinham sido ADICIONADOS. O `oneof` da resposta do Google diz
+    sucesso/falha e o TIPO DO RECURSO — nunca o verbo, que so existe do lado da
+    requisicao.
+
+    O rotulo neutro nao perde nada: as tools que querem verbo de dominio
+    (add_keywords, add_negatives_from_search_terms, apply_audience) ja remapeiam
+    por conta propria via `classify_partial`, e elas leem o campo `error`, nunca
+    este `status`.
+    """
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from uuid import uuid4
+
+    from src.google_ads import mutations
+    from src.google_ads.mutations import run_mutation
+
+    monkeypatch.setattr(mutations, "import_all_builders", lambda: None)
+    monkeypatch.setattr(
+        mutations, "get_builder", lambda _op: lambda c, cid, p: [MagicMock(), MagicMock()]
+    )
+    monkeypatch.setattr(
+        mutations,
+        "build_client_for_manager",
+        AsyncMock(return_value=_client_with_partial_failure([None, "X"])),
+    )
+    monkeypatch.setattr(mutations, "get_request_id", lambda: "req-verbo")
+
+    with (
+        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(mutations, "ensure_account_access", AsyncMock()),
+        patch.object(mutations, "before_call", AsyncMock()),
+        patch.object(mutations, "record_actual", AsyncMock()),
+        patch.object(mutations.audit_log, "record", AsyncMock()),
+    ):
+        result = await run_mutation(
+            manager_id=uuid4(),
+            session_id=uuid4(),
+            customer_id="1234567890",
+            operation_type="update_ad_schedule",  # remove + update, jamais "add"
+            payload={"ops": [{}, {}]},
+            target_count=2,
+            partial_failure=True,
+        )
+
+    ok = result["partial_failures"][0]
+    assert ok["status"] == "success", "rotulo neutro: a camada generica nao conhece o verbo"
+    assert ok["status"] != "added", "afirmar 'added' num remove e mentira sobre o que ocorreu"
+    assert result["partial_failures"][1]["status"] == "failed", "falha continua explicita"
+    # applied_count nao pode depender do verbo antigo.
+    assert result["applied_count"] == 1
