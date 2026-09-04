@@ -1,4 +1,4 @@
-# bucket: always
+# bucket: defer
 """Tool: audit_competitor_keywords — detect competitor brand spending.
 
 Sprint 3b.31 — #6 fila ICE 432 do dogfood MO-JP 2026-05-19.
@@ -66,7 +66,7 @@ _SCHEMA: dict[str, Any] = {
 # Extraída do decorator pra virar constante testável (os irmãos de família já
 # seguem esse padrão) — o aviso do F90/F52 precisa ser verificável por teste.
 _DESCRIPTION = (
-    "[CORE] Detecta gasto em concorrência: keywords positivas ENABLED com text "
+    "[DEFER] Detecta gasto em concorrência: keywords positivas ENABLED com text "
     "matching competitor brands + search terms entregues no date window que "
     "matched brand competidora. Output: 2 listas + summary (total cost wasted "
     "real) + suggested_negatives (EXACT + PHRASE per matched brand). Filtros: "
@@ -93,7 +93,7 @@ _DESCRIPTION = (
     name="audit_competitor_keywords",
     description=_DESCRIPTION,
     input_schema=_SCHEMA,
-    bucket="always",
+    bucket="defer",
 )
 async def audit_competitor_keywords(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

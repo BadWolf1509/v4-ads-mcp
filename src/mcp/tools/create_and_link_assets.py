@@ -1,4 +1,4 @@
-# bucket: always
+# bucket: defer
 """Tool: create_and_link_assets — create N text-assets + link to scope in chained mutation.
 
 Always-CONFIRM (creates assets — sensitive per spec §7.1). Chained mutation
@@ -256,7 +256,7 @@ def _build_summary(payload: dict[str, Any]) -> dict[str, Any]:
 @register_tool(
     name="create_and_link_assets",
     description=(
-        "[CORE] Cria N text-assets novos (1-20 por call) e linka cada um ao escopo "
+        "[DEFER] Cria N text-assets novos (1-20 por call) e linka cada um ao escopo "
         "solicitado (CUSTOMER/CAMPAIGN/AD_GROUP) em chained mutation atomic. "
         "Always-CONFIRM. Tipos suportados v0: SITELINK, CALLOUT, "
         "STRUCTURED_SNIPPET, CALL, PROMOTION (text-extension family, "
@@ -272,7 +272,7 @@ def _build_summary(payload: dict[str, Any]) -> dict[str, Any]:
         "money_amount_off_brl."
     ),
     input_schema=_SCHEMA,
-    bucket="always",
+    bucket="defer",
 )
 async def create_and_link_assets(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

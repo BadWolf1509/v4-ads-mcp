@@ -114,11 +114,11 @@ SEG_SEX = [
 ]
 
 
-def test_tool_registrada_como_defer_e_schema_sem_composicao() -> None:
+def test_tool_registrada_como_always_e_schema_sem_composicao() -> None:
     import json
 
     t = get_tool("update_ad_schedule")
-    assert t is not None and t.bucket == "defer"
+    assert t is not None and t.bucket == "always"
     assert not any(k in json.dumps(t.input_schema) for k in ("oneOf", "allOf", "anyOf"))
 
 
