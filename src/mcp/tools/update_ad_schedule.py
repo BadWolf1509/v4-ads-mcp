@@ -302,7 +302,9 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
             "aviso_cobertura": _aviso_cobertura(
                 cobertura["reduz"], orcamento_compartilhado.get(cid, False)
             ),
-            "windows_added": [_w(w) for w in diff.to_add],
+            "windows_added": [
+                {**_w(w), "bid_modifier": modificador_efetivo(w, bid_modifier)} for w in diff.to_add
+            ],
             "windows_removed": [_w(c.window) for c in diff.to_remove],
             # O valor SOBRESCRITO ao lado do novo, como a §4.2 faz com o CPA do
             # que sai. F149: `bid_modifier_novo` e o EFETIVO da janela (o dela

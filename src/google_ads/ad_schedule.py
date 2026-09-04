@@ -163,7 +163,7 @@ def diff_schedule(
             continue
         # F149: o modificador da JANELA vence; o escalar da chamada e o default
         # de quem nao trouxe o seu. Ambos ausentes = preserva (comportamento de hoje).
-        efetivo = desejada.bid_modifier if desejada.bid_modifier is not None else bid_modifier
+        efetivo = modificador_efetivo(desejada, bid_modifier)
         if efetivo is not None and c.bid_modifier != efetivo:
             to_update.append(c)
     return ScheduleDiff(to_add=to_add, to_remove=to_remove, to_update=tuple(to_update))
@@ -173,11 +173,10 @@ def modificador_efetivo(janela: Window, escalar: float | None) -> float | None:
     """F149: o modificador da JANELA vence; o escalar da chamada e o default de
     quem nao trouxe o seu; ambos ausentes preserva o valor atual (None).
 
-    Mesma regra que `diff_schedule` aplica internamente para decidir o `to_update`
-    (linha acima). Este helper existe para os call-sites da TOOL (ops de add/update,
-    bid_modifier_novo do preview) nao reimplementarem a mesma expressao cada um por
-    conta propria — a alternativa e a familia do F81, cada lado certo sozinho e o
-    conjunto errado junto.
+    Mesma regra que `diff_schedule` aplica em `to_update` via esta chamada.
+    Este helper centraliza a regra pra evitar a familia do F81: cada lado certo
+    sozinho e o conjunto errado junto. Usada em 4 call-sites (diff_schedule +
+    3 da tool: op add, op update, bid_modifier_novo do preview).
     """
     return janela.bid_modifier if janela.bid_modifier is not None else escalar
 

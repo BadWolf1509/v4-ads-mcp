@@ -774,3 +774,37 @@ async def test_clear_schedule_nao_dispara_aviso_de_orcamento_compartilhado(monke
         {"customer_id": "1234567890", "campaign_ids": ["1"], "clear_schedule": True}
     )
     assert out["preview"]["1"]["aviso_cobertura"] is None
+
+
+# --- ACHADO 2 (Fix 1): preview de `windows_added` mostra o bid_modifier efetivo ------
+
+
+@pytest.mark.asyncio
+async def test_preview_windows_added_mostra_bid_modifier_efetivo_por_janela(monkeypatch) -> None:
+    """Duas janelas novas: uma com override proprio, outra herdando o escalar.
+
+    O preview e o que o gestor confirma, entao cada linha deve mostrar o valor
+    EFETIVO que sera aplicado — nao o valor raw da input (que pode ser None
+    mesmo quando o efetivo e o escalar).
+    """
+    grade = []  # Campanha sem agenda, 24x7
+    _wire(monkeypatch, grade=grade, orcamentos=[_orc()], metricas=[])
+    out = await mod.update_ad_schedule(
+        {
+            "customer_id": "1234567890",
+            "campaign_ids": ["1"],
+            "bid_modifier": 0.9,
+            "windows": [
+                {"day_of_week": "MONDAY", "start_hour": 7, "end_hour": 17, "bid_modifier": 1.2},
+                {"day_of_week": "TUESDAY", "start_hour": 7, "end_hour": 17},  # Sem override
+            ],
+        }
+    )
+    windows_added = out["preview"]["1"]["windows_added"]
+    assert len(windows_added) == 2
+    # Primeira janela: traz seu proprio modificador
+    assert windows_added[0]["day_of_week"] == "MONDAY"
+    assert windows_added[0]["bid_modifier"] == 1.2
+    # Segunda janela: herda o escalar da chamada
+    assert windows_added[1]["day_of_week"] == "TUESDAY"
+    assert windows_added[1]["bid_modifier"] == 0.9
