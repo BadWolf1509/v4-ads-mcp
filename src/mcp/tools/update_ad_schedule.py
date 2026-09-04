@@ -16,12 +16,14 @@ from src.google_ads.ad_schedule import (
     Window,
     diff_schedule,
     partition_metrics,
+    schedule_fingerprint,
     summarize_current,
     validate_windows,
     window_from_input,
 )
 from src.google_ads.queries._common import InvalidDateRangeError, resolve_date_window
 from src.google_ads.queries.ad_schedule import (
+    GRADE_LIMIT,
     ad_schedule_query,
     campaign_budget_query,
     campaigns_on_budgets_query,
@@ -162,7 +164,7 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
         )
 
     grade_rows = await _consulta(
-        ad_schedule_query(campaign_ids=campaign_ids, status="enabled", limit=1000),
+        ad_schedule_query(campaign_ids=campaign_ids, status="enabled", limit=GRADE_LIMIT),
         parse_ad_schedule_row,
         audited=True,
     )
@@ -238,6 +240,12 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
     )
     payload = {
         "campaign_ids": campaign_ids,
+        # A grade PEDIDA e o baseline OBSERVADO viajam com o delta. Sem a primeira,
+        # apply_change nao tem contra o que comparar a grade resultante (§4.6 + §7);
+        # sem o segundo, ele aplica resource_names de ate 10 min atras contra um
+        # estado que ninguem verificou (Ruling 10 — concorrencia otimista).
+        "windows": [_w(w) for w in desired],
+        "current_keys": schedule_fingerprint(atual, campaign_ids),
         "ops": ops,
         "__target_count__": target_count,
         "__partial_failure__": True,

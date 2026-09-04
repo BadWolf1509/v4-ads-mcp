@@ -17,6 +17,12 @@ from src.google_ads.queries._gaql import gaql_in_list
 
 _STATUS_FILTER = {"enabled": "ENABLED", "paused": "PAUSED", "removed": "REMOVED"}
 
+# Teto de leitura da grade no caminho de MUTACAO (dry-run e apply). 7x24 = 168
+# janelas por campanha x 20 campanhas = 3360 no pior caso teorico, entao o teto
+# corta; quem corta tem que perceber (F98) — os dois lados checam a sentinela
+# `len(rows) > GRADE_LIMIT` em vez de diffar grade truncada.
+GRADE_LIMIT = 1000
+
 
 def _nome(x: Any) -> str:
     return x.name if hasattr(x, "name") else str(x)

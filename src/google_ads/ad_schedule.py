@@ -196,6 +196,23 @@ def partition_metrics(
     }
 
 
+def schedule_fingerprint(
+    atual: dict[str, list[CurrentWindow]], campaign_ids: list[str]
+) -> dict[str, list[list[Any]]]:
+    """Impressao do baseline observado, por campanha — comparavel apos ida e volta por JSON.
+
+    Ruling 10 (concorrencia otimista): o dry-run guarda isto no token e o apply
+    recomputa antes de mutar. Listas, nunca tuplas: o payload atravessa JSONB, e
+    tupla volta lista — comparar tupla com lista daria divergencia em TODO apply.
+    Campanha sem janela entra como `[]`, para "sem grade" nao se confundir com
+    "campanha ausente do fingerprint" (familia do F131).
+
+    As duas pontas chamam ESTA funcao: fingerprint calculado de dois jeitos
+    diferentes e a classe do F81 — cada lado certo sozinho, o par errado.
+    """
+    return {cid: sorted(list(c.window.key()) for c in atual.get(cid, [])) for cid in campaign_ids}
+
+
 def summarize_current(current: list[CurrentWindow]) -> dict[str, Any]:
     if not current:
         return {"has_schedule": False, "windows": 0, "hours_per_week": 168.0}

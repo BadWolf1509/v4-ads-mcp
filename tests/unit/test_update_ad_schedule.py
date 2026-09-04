@@ -262,6 +262,35 @@ async def test_payload_pendente_leva_partial_failure_e_target_count_igual_ao_num
 
 
 @pytest.mark.asyncio
+async def test_payload_leva_a_grade_pedida_e_o_fingerprint_do_baseline(monkeypatch) -> None:
+    """Important 2/3: sem a grade PEDIDA no payload, apply_change nao tem contra o que
+    comparar a resultante; sem o fingerprint do baseline OBSERVADO, ele aplica um delta
+    de ate 10 min atras contra um estado que ninguem verificou (Ruling 10)."""
+    grade = [_janela_row(day="MONDAY", crit="9"), _janela_row(day="SATURDAY", crit="10")]
+    captured = _wire(monkeypatch, grade=grade, orcamentos=[_orc()], metricas=[])
+    await mod.update_ad_schedule(
+        {
+            "customer_id": "1234567890",
+            "campaign_ids": ["1"],
+            "windows": [{"day_of_week": "MONDAY", "start_hour": 7, "end_hour": 17}],
+        }
+    )
+    p = captured["payload"]
+    assert p["windows"] == [
+        {
+            "day_of_week": "MONDAY",
+            "start_hour": 7,
+            "start_minute": 0,
+            "end_hour": 17,
+            "end_minute": 0,
+        }
+    ]
+    assert p["current_keys"] == {"1": [["MONDAY", 7, 0, 17, 0], ["SATURDAY", 7, 0, 17, 0]]}, (
+        "listas, nao tuplas: o payload atravessa JSON"
+    )
+
+
+@pytest.mark.asyncio
 async def test_campaign_id_inexistente_e_recusado_antes_de_montar_preview(monkeypatch) -> None:
     """Sem linha de orcamento a campanha nao existe na conta — nao pode virar 'servia 24x7'."""
     captured = _wire(monkeypatch, grade=[], orcamentos=[_orc(cid="1")], metricas=[])

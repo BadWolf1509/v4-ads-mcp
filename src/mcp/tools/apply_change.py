@@ -11,10 +11,18 @@ from typing import Any
 import structlog
 
 from src.db import connection
-from src.google_ads.ad_schedule import summarize_current
+from src.google_ads.ad_schedule import (
+    schedule_fingerprint,
+    summarize_current,
+    window_from_input,
+)
 from src.google_ads.conversions import run_conversion_upload
 from src.google_ads.mutations import run_mutation
-from src.google_ads.queries.ad_schedule import ad_schedule_query, parse_ad_schedule_row
+from src.google_ads.queries.ad_schedule import (
+    GRADE_LIMIT,
+    ad_schedule_query,
+    parse_ad_schedule_row,
+)
 from src.google_ads.reports import run_report
 from src.governance.dry_run import InvalidTokenError, consume
 from src.mcp.context import get_current
@@ -125,6 +133,40 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
     # ad_schedule §4.6: confirmacao de estado por GAQL. A UI falhou em silencio duas
     # vezes nessa conta; confiar no ACK da mutacao repetiria o problema num canal novo.
     if saved.operation_type == "update_ad_schedule":
+        # Ruling 3 (ledger): estas chaves sao obrigatorias no payload (a tool sempre
+        # grava); `.get(..., <default>)` seria o fallback calado que a Task 4 proibiu.
+        campaign_ids = list(saved.payload["campaign_ids"])
+        pedidas = {window_from_input(w).key() for w in saved.payload["windows"]}
+
+        # Ruling 10 — concorrencia otimista. O que viaja no token e um DELTA calculado
+        # ate 10 min antes, carregando resource_names observados naquele instante. Se a
+        # grade mudou nesse meio tempo, aplicar o delta produz uma grade que nao e nem a
+        # antiga nem a pedida — em silencio, porque partial_failure engole o erro por-op.
+        # Este read e ANTES da escrita: se ele falhar, propagar e o lado seguro (nada
+        # mutou ainda) — o tratamento best-effort do F83/F91 vale so depois da mutacao.
+        rows_antes = await run_report(
+            manager_id=ctx.manager_id,
+            session_id=ctx.session_id,
+            customer_id=saved.customer_id,
+            query=ad_schedule_query(campaign_ids=campaign_ids, status="enabled", limit=GRADE_LIMIT),
+            row_formatter=parse_ad_schedule_row,
+            operation_name="update_ad_schedule_precheck",
+        )
+        # Grade truncada aqui nao precisa de ramo proprio: o dry-run RECUSA acima de
+        # GRADE_LIMIT, entao um fingerprint de 1001 linhas nunca bate com o guardado —
+        # cai na divergencia abaixo, que e o lado seguro.
+        if (
+            schedule_fingerprint(rows_to_current(rows_antes), campaign_ids)
+            != saved.payload["current_keys"]
+        ):
+            return error_envelope(
+                "update_ad_schedule",
+                "A grade mudou desde o preview (alguem alterou a agenda destas campanhas "
+                "nos ultimos minutos). Nenhuma operacao foi aplicada. Refaca o "
+                "update_ad_schedule para gerar um token novo sobre o estado atual.",
+                customer_id=saved.customer_id,
+            )
+
         result = await run_mutation(
             manager_id=ctx.manager_id,
             session_id=ctx.session_id,
@@ -135,31 +177,34 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
             partial_failure=True,
             params_summary=params_summary,
         )
-        # Ruling 3 (ledger): a lista e obrigatoria no payload (Task 7 sempre grava);
-        # `.get(..., [])` seria o fallback calado que a Task 4 acabou de proibir —
-        # com [] os builders levantam ValueError DEPOIS da mutacao ja aplicada.
-        campaign_ids = list(saved.payload["campaign_ids"])
         # F83/F91: a mutacao ja aplicou (result acima e definitivo). A reconsulta e
         # I/O DEPOIS da escrita — se ela falhar (rede, GoogleAdsException transiente,
         # rate limit), isso nao pode transformar um sucesso em erro pro caller.
         resulting: dict[str, Any] | None
         confirmation_error: str | None = None
         try:
+            # status="all" de proposito (spec §7): janela removida tem que ser
+            # confirmada por PRESENCA de status REMOVED. Filtrar ENABLED confirmaria
+            # a remocao por a linha NAO aparecer — exatamente o que a §7 proibe, e o
+            # que a propria §7 estende "para a confirmacao que a tool faz pos-apply".
             rows = await run_report(
                 manager_id=ctx.manager_id,
                 session_id=ctx.session_id,
                 customer_id=saved.customer_id,
-                query=ad_schedule_query(campaign_ids=campaign_ids, status="enabled", limit=1000),
+                query=ad_schedule_query(campaign_ids=campaign_ids, status="all", limit=GRADE_LIMIT),
                 row_formatter=parse_ad_schedule_row,
                 operation_name="update_ad_schedule_confirm",
             )
-            atual = rows_to_current(rows)
+            # O resumo (has_schedule/hours_per_week) conta so o que esta SERVINDO;
+            # com status="all" nas linhas, somar REMOVED inflaria as horas.
+            servindo = rows_to_current([r for r in rows if r["status"] == "ENABLED"])
             # summarize_current tambem devolve uma chave "windows" (contagem) — spread
             # primeiro e a lista de linhas por ultimo, senao o int pisa na lista.
             resulting = {
                 cid: {
-                    **summarize_current(atual.get(cid, [])),
+                    **summarize_current(servindo.get(cid, [])),
                     "windows": [r for r in rows if r["campaign_id"] == cid],
+                    "matches_requested": {c.window.key() for c in servindo.get(cid, [])} == pedidas,
                 }
                 for cid in campaign_ids
             }
@@ -184,6 +229,9 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
             "provider_request_id": result["provider_request_id"],
             "applied_count": result["applied_count"],
             "changed_count": result.get("changed_count"),
+            # Spec §4.5: "a resposta separa aplicadas de falhas, com o motivo de cada
+            # falha". Lote com partial_failure=True e onde isso acontece.
+            "partial_failures": result.get("partial_failures", []),
             "resource_names": result.get("resource_names", []),
             "resulting_schedule": resulting,
             "confirmation_error": confirmation_error,
