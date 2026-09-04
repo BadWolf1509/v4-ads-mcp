@@ -1804,9 +1804,38 @@ def test_update_ad_schedule_usa_envelope_e_classify_do_compartilhado() -> None:
     assert _chamadas(src, "classify") >= 1
     assert _chamadas(src, "preview_envelope") >= 1 and _chamadas(src, "error_envelope") >= 1
     assert "DEFAULT_TTL_MINUTES" not in src and "expires_in_minutes" not in src, "TTL vem do envelope, nao da tool"
+
+
+# Ruling 7 (ledger): contar chamadas e PRESENCA, nao uso — um dict a mao no `return`
+# com uma chamada morta a preview_envelope em outro lugar passaria. O guard que vale
+# olha os RETURNS da funcao: cada um e Call a preview_envelope/error_envelope, ou o
+# dict sancionado de `no_changes` (§4.4). E o proprio "adjacente a invariante" que a
+# docstring deste arquivo denuncia — o revisor da Task 9 pegou.
+def _returns_da_funcao(src: str, nome: str) -> list[ast.expr]:
+    tree = ast.parse(src)
+    fn = next(n for n in ast.walk(tree) if isinstance(n, (ast.AsyncFunctionDef, ast.FunctionDef)) and n.name == nome)
+    return [n.value for n in ast.walk(fn) if isinstance(n, ast.Return) and n.value is not None]
+
+
+def _e_chamada_a(expr: ast.expr, nomes: set[str]) -> bool:
+    return isinstance(expr, ast.Call) and isinstance(expr.func, ast.Name) and expr.func.id in nomes
+
+
+def _e_dict_de_no_changes(expr: ast.expr) -> bool:
+    return isinstance(expr, ast.Dict) and any(
+        isinstance(k, ast.Constant) and k.value == "no_changes" for k in expr.keys
+    )
+
+
+def test_todo_return_de_update_ad_schedule_e_envelope_do_compartilhado_ou_o_no_changes() -> None:
+    src = Path("src/mcp/tools/update_ad_schedule.py").read_text(encoding="utf-8")
+    returns = _returns_da_funcao(src, "update_ad_schedule")
+    assert returns
+    ruins = [ast.dump(r)[:80] for r in returns if not (_e_chamada_a(r, {"preview_envelope", "error_envelope"}) or _e_dict_de_no_changes(r))]
+    assert ruins == [], f"return fora do envelope compartilhado (e nao e o no_changes): {ruins}"
 ```
 
-- [ ] **Step 2: Rodar** — PASS de primeira é esperado aqui (são guards sobre código já escrito). **Verifique-os por sabotagem**: troque `preview_envelope(` por um dict literal em cópia → o último teste falha; dê default `None` a `bid_modifier` em `diff_schedule` → o primeiro falha. Restaure.
+- [ ] **Step 2: Rodar** — PASS de primeira é esperado aqui (são guards sobre código já escrito). **Verifique-os por sabotagem**: em cópia, troque o `return preview_envelope(...)` final por `_x = preview_envelope(...)` + `return {"status": "dry_run", "confirmation_token": token}` (dict à mão com a chamada morta mantida) → o teste de **returns** falha e a contagem **não** (é o ponto); dê default `None` a `bid_modifier` em `diff_schedule` → o primeiro falha. Restaure de cópia.
 
 - [ ] **Step 3: Gate completo** — `python scripts/check_pre_push.py > /dev/null 2>&1; echo $?` → `0`. Se Docker estiver de pé, rode também `python -m pytest -m integration tests/integration -q -k "apply_change or dry_run"` (o `create_pending` real com DB).
 
