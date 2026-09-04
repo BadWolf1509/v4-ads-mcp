@@ -128,7 +128,21 @@ async def test_create_and_link_assets_dry_run_emits_token_and_audit_pending(
             "SELECT operation_type, customer_id FROM pending_confirmations WHERE token = $1",
             result["confirmation_token"],
         )
-    assert len(rows) == 1
+    assert len(rows) == 1, "a consulta filtra dry_run; so a linha APLICADA conta"
+
+    # F148: o preview tambem deixa rastro, com a contagem PLANEJADA e
+    # `dry_run=true`. Antes do fix esta linha nao existia e o fluxo inteiro
+    # aparecia na trilha como uma unica escrita, a aplicada.
+    async with pool.acquire() as conn:
+        previews = await conn.fetch(
+            "SELECT action_type, target_count, dry_run FROM audit_log "
+            "WHERE operation = 'create_and_link_assets' AND dry_run IS TRUE"
+        )
+    assert len(previews) == 1, "o dry-run tem que deixar exatamente uma linha"
+    assert previews[0]["action_type"] == "mutate"
+    assert previews[0]["target_count"] is not None, (
+        "target_count NULL significa que a tool nao declarou __target_count__"
+    )
     assert rows[0]["operation_type"] == "create_and_link_assets"
     assert rows[0]["customer_id"] == "1234567890"
 
@@ -203,7 +217,7 @@ async def test_create_and_link_assets_full_cycle_returns_interleaved_resource_na
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             "SELECT operation, target_count, params_summary, provider_request_id "
-            "FROM audit_log WHERE operation = 'create_and_link_assets'"
+            "FROM audit_log WHERE operation = 'create_and_link_assets' AND dry_run IS NOT TRUE"
         )
     assert len(rows) == 1
     assert rows[0]["target_count"] == two_n
