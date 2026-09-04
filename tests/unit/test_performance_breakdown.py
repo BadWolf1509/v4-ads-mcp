@@ -226,3 +226,13 @@ def test_parse_account_hourly():
     )
     out = parse_performance_row(row, "account", "hourly")
     assert out["breakdown"] == {"hour": 11, "day_of_week": "MONDAY"}
+
+
+def test_campaign_mais_hourly_deixa_de_ser_recusado():
+    assert _validate_combo("campaign", "hourly") is None
+
+
+def test_outros_breakdowns_seguem_recusados_em_entity_level():
+    """Só `hourly` abriu. `geo` continua fora: é regra de merge, não nível."""
+    assert _validate_combo("campaign", "geo") is not None
+    assert _validate_combo("ad_group", "hourly") is not None
