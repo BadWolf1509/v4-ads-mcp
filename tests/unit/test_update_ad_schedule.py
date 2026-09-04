@@ -547,3 +547,124 @@ async def test_periodo_invalido_vira_error_envelope(monkeypatch) -> None:
         }
     )
     assert out["status"] == "error" and "periodo" in out["error_message"].lower()
+
+
+# --- Preview honesto (item 13, discutido com a sessao MO-JP em 04/09) ----------
+#
+# O preview dizia "5 janelas entram, 3 saem, 5 mudam bid_modifier" e parava ai.
+# Duas informacoes materiais ficavam de fora, e as duas ja estavam calculadas:
+# quantas HORAS por semana a campanha passa a servir, e QUAL valor de
+# bid_modifier esta sendo sobrescrito. Sem elas o gestor confirma no escuro.
+
+
+@pytest.mark.asyncio
+async def test_cobertura_declara_antes_e_depois_quando_a_grade_encolhe(monkeypatch) -> None:
+    """Campanha 24x7 recebendo grade comercial: 168 -> 50 horas/semana.
+
+    Sem limiar de propósito. Qualquer % escolhido estaria errado em alguma conta,
+    e a primeira grade de qualquer campanha sempre reduz — o numero e que informa,
+    nao o alarme.
+    """
+    _wire(monkeypatch, grade=[], orcamentos=[_orc()], metricas=[])
+    out = await mod.update_ad_schedule(
+        {"customer_id": "1234567890", "campaign_ids": ["1"], "windows": SEG_SEX}
+    )
+    cob = out["preview"]["1"]["cobertura"]
+    assert cob["horas_antes"] == 168.0, "sem grade = 24x7 natural"
+    assert cob["horas_depois"] == 50.0, "5 dias x 10 horas"
+    assert cob["reduz"] is True
+
+
+@pytest.mark.asyncio
+async def test_cobertura_existe_mesmo_quando_a_grade_cresce(monkeypatch) -> None:
+    """O bloco nunca some: chave ausente e ambigua (mesma classe do F131)."""
+    grade = [_janela_row(day="MONDAY", sh=7, eh=17)]
+    _wire(monkeypatch, grade=grade, orcamentos=[_orc()], metricas=[])
+    out = await mod.update_ad_schedule(
+        {"customer_id": "1234567890", "campaign_ids": ["1"], "windows": SEG_SEX}
+    )
+    cob = out["preview"]["1"]["cobertura"]
+    assert cob["horas_antes"] == 10.0
+    assert cob["horas_depois"] == 50.0
+    assert cob["reduz"] is False
+
+
+@pytest.mark.asyncio
+async def test_bid_modifier_updated_mostra_o_valor_antigo_ao_lado_do_novo(monkeypatch) -> None:
+    """O que esta sendo SOBRESCRITO tem que aparecer, como a §4.2 faz com o CPA.
+
+    O valor antigo ja esta materializado no `CurrentWindow` — e o que o
+    `diff_schedule` compara para decidir o update. Nao custa query nova.
+    """
+    grade = [_janela_row(day="MONDAY", sh=7, eh=17, bm=1.3)]
+    _wire(monkeypatch, grade=grade, orcamentos=[_orc()], metricas=[])
+    out = await mod.update_ad_schedule(
+        {
+            "customer_id": "1234567890",
+            "campaign_ids": ["1"],
+            "windows": [{"day_of_week": "MONDAY", "start_hour": 7, "end_hour": 17}],
+            "bid_modifier": 0.8,
+        }
+    )
+    atualizadas = out["preview"]["1"]["bid_modifier_updated"]
+    assert len(atualizadas) == 1
+    assert atualizadas[0]["bid_modifier_antigo"] == 1.3
+    assert atualizadas[0]["bid_modifier_novo"] == 0.8
+    assert atualizadas[0]["day_of_week"] == "MONDAY", "os campos da janela seguem ali"
+
+
+@pytest.mark.asyncio
+async def test_destaque_so_quando_a_cobertura_cai_e_o_orcamento_e_compartilhado(
+    monkeypatch,
+) -> None:
+    """As duas metades do estrago juntas numa frase.
+
+    Desligar faixa em orcamento compartilhado nao economiza, REALOCA — entao
+    cobertura caindo com orcamento compartilhado e o caso em que a campanha irma
+    e inundada. O preview tinha os dois fatos e nao os somava.
+    """
+    _wire(monkeypatch, grade=[], orcamentos=[_orc(shared=True)], metricas=[])
+    out = await mod.update_ad_schedule(
+        {"customer_id": "1234567890", "campaign_ids": ["1"], "windows": SEG_SEX}
+    )
+    aviso = out["preview"]["1"]["aviso_cobertura"]
+    assert aviso is not None
+    assert "realoca" in aviso.lower() or "irm" in aviso.lower()
+
+
+@pytest.mark.asyncio
+async def test_sem_orcamento_compartilhado_a_queda_e_medicao_neutra_sem_destaque(
+    monkeypatch,
+) -> None:
+    """Se o destaque aparecesse em toda primeira grade, as pessoas aprenderiam a ignora-lo."""
+    _wire(monkeypatch, grade=[], orcamentos=[_orc(shared=False)], metricas=[])
+    out = await mod.update_ad_schedule(
+        {"customer_id": "1234567890", "campaign_ids": ["1"], "windows": SEG_SEX}
+    )
+    assert out["preview"]["1"]["cobertura"]["reduz"] is True, "a medicao continua la"
+    assert out["preview"]["1"]["aviso_cobertura"] is None, "o destaque, nao"
+
+
+@pytest.mark.asyncio
+async def test_resumo_diz_quantas_campanhas_reduzem_cobertura(monkeypatch) -> None:
+    """O blast_summary e a primeira coisa que o gestor le; contagem de janela nao basta.
+
+    Agregado por CAMPANHA, nao soma de horas: somar horas de um lote de 20 nao
+    quer dizer nada. "1 reduz cobertura" quer.
+    """
+    _wire(monkeypatch, grade=[], orcamentos=[_orc()], metricas=[])
+    out = await mod.update_ad_schedule(
+        {"customer_id": "1234567890", "campaign_ids": ["1"], "windows": SEG_SEX}
+    )
+    assert "cobertura" in out["confirmation_reason"] or "cobertura" in out["blast_summary"]
+
+
+@pytest.mark.asyncio
+async def test_resumo_nao_fala_de_cobertura_quando_nenhuma_campanha_reduz(monkeypatch) -> None:
+    """Frase que aparece sempre para de ser lida."""
+    grade = [_janela_row(day="MONDAY", sh=7, eh=17)]
+    _wire(monkeypatch, grade=grade, orcamentos=[_orc()], metricas=[])
+    out = await mod.update_ad_schedule(
+        {"customer_id": "1234567890", "campaign_ids": ["1"], "windows": SEG_SEX}
+    )
+    assert "cobertura" not in out["blast_summary"]
