@@ -36,6 +36,9 @@ class Window:
     start_minute: int
     end_hour: int
     end_minute: int
+    # F149: ATRIBUTO, nao identidade. `key()` deliberadamente nao o inclui —
+    # ver o teste que cobra isso e o custo de recriar criterion.
+    bid_modifier: float | None = None
 
     def key(self) -> tuple[str, int, int, int, int]:
         return (
@@ -60,6 +63,7 @@ def window_from_input(d: dict[str, Any]) -> Window:
         start_minute=int(d.get("start_minute", 0)),
         end_hour=int(d["end_hour"]),
         end_minute=int(d.get("end_minute", 0)),
+        bid_modifier=(float(d["bid_modifier"]) if d.get("bid_modifier") is not None else None),
     )
 
 

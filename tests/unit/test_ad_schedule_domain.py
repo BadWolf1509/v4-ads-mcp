@@ -205,3 +205,26 @@ def test_summarize_current_sem_grade_e_24x7() -> None:
     assert summarize_current([]) == {"has_schedule": False, "windows": 0, "hours_per_week": 168.0}
     s = summarize_current([_cur(day="MONDAY"), _cur(day="TUESDAY")])
     assert s == {"has_schedule": True, "windows": 2, "hours_per_week": 20.0}
+
+
+def test_a_chave_da_janela_ignora_o_bid_modifier() -> None:
+    """Identidade e a FAIXA HORARIA. Se o modificador entrasse na chave, muda-lo
+    viraria remove+add: o criterion seria RECRIADO, e recriar custa ~14 dias de
+    re-learning — o mesmo custo que o caminho `no_changes` existe para evitar."""
+    a = Window("MONDAY", 7, 0, 17, 0, None)
+    b = Window("MONDAY", 7, 0, 17, 0, 1.3)
+    assert a.key() == b.key()
+    assert len(a.key()) == 5
+
+
+def test_window_from_input_le_o_modificador_quando_vem() -> None:
+    assert (
+        window_from_input(
+            {"day_of_week": "MONDAY", "start_hour": 7, "end_hour": 17, "bid_modifier": 1.3}
+        ).bid_modifier
+        == 1.3
+    )
+    assert (
+        window_from_input({"day_of_week": "MONDAY", "start_hour": 7, "end_hour": 17}).bid_modifier
+        is None
+    )
