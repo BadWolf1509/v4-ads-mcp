@@ -1812,9 +1812,22 @@ def test_update_ad_schedule_usa_envelope_e_classify_do_compartilhado() -> None:
 # dict sancionado de `no_changes` (§4.4). E o proprio "adjacente a invariante" que a
 # docstring deste arquivo denuncia — o revisor da Task 9 pegou.
 def _returns_da_funcao(src: str, nome: str) -> list[ast.expr]:
+    """Ruling 8 (ledger): EXCLUI returns de funcao aninhada.
+
+    `update_ad_schedule` tem um `_consulta` interno cujo `return await run_report(...)`
+    nao e — nem deve ser — um envelope. A versao anterior deste helper varria
+    `ast.walk(fn)` inteiro e reprovaria o codigo CORRETO. Guard que falha no
+    codigo bom e tao inutil quanto guard que passa no ruim.
+    """
     tree = ast.parse(src)
     fn = next(n for n in ast.walk(tree) if isinstance(n, (ast.AsyncFunctionDef, ast.FunctionDef)) and n.name == nome)
-    return [n.value for n in ast.walk(fn) if isinstance(n, ast.Return) and n.value is not None]
+    aninhadas = [n for n in ast.walk(fn) if isinstance(n, (ast.AsyncFunctionDef, ast.FunctionDef)) and n is not fn]
+    de_aninhadas = {id(r) for a in aninhadas for r in ast.walk(a) if isinstance(r, ast.Return)}
+    return [
+        n.value
+        for n in ast.walk(fn)
+        if isinstance(n, ast.Return) and n.value is not None and id(n) not in de_aninhadas
+    ]
 
 
 def _e_chamada_a(expr: ast.expr, nomes: set[str]) -> bool:
