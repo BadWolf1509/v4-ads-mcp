@@ -257,3 +257,16 @@ def test_janela_com_modificador_igual_ao_atual_nao_vira_update() -> None:
     atual = [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.3)]
     d = diff_schedule(atual, [Window("MONDAY", 7, 0, 17, 0, 1.3)], None)
     assert d.to_update == ()
+
+
+def test_modificador_da_janela_vence_mesmo_com_escalar_diferente_tambem_presente() -> None:
+    """Tabela do brief, coluna 'qualquer': o escalar e SO default, nunca compete.
+
+    Cenario construido para que as duas hipoteses previssem resultados OPOSTOS:
+    a janela ja esta em 1.5 e pede 1.5 (zero op), enquanto o escalar pede 2.0
+    (viraria update). `diff_schedule` so expoe `to_update`, entao a distincao tem
+    de vir da PRESENCA na tupla, nao do valor.
+    """
+    atual = [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.5)]
+    d = diff_schedule(atual, [Window("MONDAY", 7, 0, 17, 0, 1.5)], 2.0)
+    assert d.to_update == ()

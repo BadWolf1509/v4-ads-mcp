@@ -150,8 +150,7 @@ def diff_schedule(
     - janela atual ausente da desejada -> remove
     - janela em ambos com bid_modifier informado e diferente -> update (mask), nunca recria
 
-    F149: o modificador da JANELA vence; o escalar da chamada e o default
-    de quem nao trouxe o seu. Ambos ausentes = preserva (comportamento de hoje).
+    F149: cada janela pode trazer seu proprio modificador; o escalar so e default.
     """
     atual_por_chave = {c.window.key(): c for c in current}
     desejada_por_chave = {w.key(): w for w in desired}
