@@ -15,6 +15,7 @@ from src.google_ads.ad_schedule import (
     MetricCell,
     Window,
     diff_schedule,
+    hours_per_week,
     partition_metrics,
     schedule_fingerprint,
     summarize_current,
@@ -222,6 +223,10 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
         campaign_budget_query(campaign_ids=campaign_ids), parse_campaign_budget_row
     )
     status_da_campanha = {o["campaign_id"]: o["status"] for o in orcamentos}
+    # Desligar faixa em orcamento compartilhado NAO economiza, REALOCA (§4.3) —
+    # entao cobertura caindo e o unico caso em que a irma e inundada. Os dois
+    # fatos ja vinham no preview, separados; este mapa e o que permite soma-los.
+    orcamento_compartilhado = {o["campaign_id"]: o["explicitly_shared"] for o in orcamentos}
     faltando = [cid for cid in campaign_ids if cid not in status_da_campanha]
     if faltando:
         # A mensagem antiga dizia "(ou removidas)" — mas com `campaign_ids` a query NAO
@@ -257,14 +262,39 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
             for m in metricas
             if m["campaign_id"] == cid
         ]
+        resumo_atual = summarize_current(current)
+        cobertura = {
+            "horas_antes": resumo_atual["hours_per_week"],
+            "horas_depois": hours_per_week(desired),
+            "reduz": hours_per_week(desired) < resumo_atual["hours_per_week"],
+        }
         preview[cid] = {
             "was_24x7": not current,
             "campaign_status": status_da_campanha[cid],
             "aviso_status": _aviso_status(status_da_campanha[cid]),
-            "current": summarize_current(current),
+            "current": resumo_atual,
+            # "5 janelas entram" e "a campanha passa a servir 50 de 168 horas" sao
+            # a mesma informacao, e so a segunda e acionavel. Sem limiar: qualquer
+            # % estaria errado em alguma conta, e a PRIMEIRA grade de qualquer
+            # campanha sempre reduz — o numero informa, o alarme nao.
+            "cobertura": cobertura,
+            "aviso_cobertura": _aviso_cobertura(
+                cobertura["reduz"], orcamento_compartilhado.get(cid, False)
+            ),
             "windows_added": [_w(w) for w in diff.to_add],
             "windows_removed": [_w(c.window) for c in diff.to_remove],
-            "bid_modifier_updated": [_w(c.window) for c in diff.to_update],
+            # O valor SOBRESCRITO ao lado do novo, como a §4.2 faz com o CPA do
+            # que sai. `bid_modifier` e escalar por chamada, entao informa-lo
+            # achata TODAS as janelas do conjunto — quem nao ver o antigo aqui so
+            # descobre o que perdeu depois do apply_change.
+            "bid_modifier_updated": [
+                {
+                    **_w(c.window),
+                    "bid_modifier_antigo": c.bid_modifier,
+                    "bid_modifier_novo": bid_modifier,
+                }
+                for c in diff.to_update
+            ],
             "metrics": partition_metrics(cells, before, desired),
         }
         ops += [
@@ -294,12 +324,26 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
 
     target_count = len(ops)
     risk = classify(operation="update_ad_schedule", params={"target_count": target_count})
+    # Contagem de janela nao comunica entrega. "5 janelas entram" e "a campanha
+    # passa a servir 50 de 168 horas" sao o mesmo fato, e so o segundo e acionavel.
+    # Agregado por CAMPANHA porque somar horas de um lote de 20 nao quer dizer nada.
+    reduzem = [cid for cid, p in preview.items() if p["cobertura"]["reduz"]]
+    frase_cobertura = ""
+    if reduzem:
+        detalhe = (
+            f" ({preview[reduzem[0]]['cobertura']['horas_antes']} -> "
+            f"{preview[reduzem[0]]['cobertura']['horas_depois']} horas/semana)"
+            if len(reduzem) == 1
+            else ""
+        )
+        frase_cobertura = f" {len(reduzem)} reduz(em) cobertura{detalhe}."
     resumo = (
         f"Redefinir a grade de {len(campaign_ids)} campanha(s): "
         f"{sum(len(p['windows_added']) for p in preview.values())} janela(s) entram, "
         f"{sum(len(p['windows_removed']) for p in preview.values())} saem, "
         f"{sum(len(p['bid_modifier_updated']) for p in preview.values())} mudam bid_modifier "
         f"({target_count} operacoes). Janelas fora da grade DEIXAM de servir."
+        f"{frase_cobertura}"
     )
     payload = {
         "campaign_ids": campaign_ids,
@@ -359,6 +403,23 @@ def _aviso_status(status: str) -> str | None:
     return (
         f"campanha {status}: nao esta servindo, entao as metricas abaixo sao historicas "
         "e a grade nova nao afeta entrega enquanto o status nao voltar a ENABLED"
+    )
+
+
+def _aviso_cobertura(reduz: bool, orcamento_compartilhado: bool) -> str | None:
+    """Destaque so na combinacao em que o estrago tem duas metades.
+
+    A queda de cobertura sozinha e medicao neutra: ela aparece em quase todo
+    primeiro uso da tool, porque campanha sem grade serve 168 horas naturais.
+    Se essa linha soasse como alarme, as pessoas aprenderiam a passar por cima
+    dela — e ela deixaria de proteger justamente no dia em que fosse grave.
+    """
+    if not (reduz and orcamento_compartilhado):
+        return None
+    return (
+        "a campanha passa a servir menos horas E divide orcamento: as horas "
+        "desligadas nao viram economia, o gasto REALOCA para as campanhas irmas "
+        "do mesmo orcamento (ver shared_budgets)"
     )
 
 
