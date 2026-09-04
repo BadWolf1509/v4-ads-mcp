@@ -37,9 +37,11 @@ Volátil por natureza: **atualize aquele arquivo ao terminar a sessão**, não e
 - Fase 2B (tombstone dos 8 reports antigos) segue **travada** no soak — não tombstonar.
 - **Tool nova só aparece pra sessão nova** (F140): o catálogo é negociado no handshake do
   MCP, e o sintoma é a tool "não existir", não um erro de versão. Reconecte antes do smoke.
-- Próximo sprint candidato: **`ad_schedule`** (spec pronta, `docs/superpowers/specs/`;
-  a §4.2 manda levantar a conjunta dia × hora **na implementação**, com janela madura) ou
-  **M.5** (`meta_get_audience_performance` + `meta_get_top_creatives`).
+- `ad_schedule` está **entregue** (branch `feat/ad-schedule`: `get_ad_schedule` +
+  `update_ad_schedule`), smoke **pendente** — ver
+  [`phase-3b-42-ad-schedule-smoke.md`](docs/operacao/phase-3b-42-ad-schedule-smoke.md).
+- Próximo sprint candidato: **M.5** (`meta_get_audience_performance` +
+  `meta_get_top_creatives`).
 
 ## Context bootstrap
 
