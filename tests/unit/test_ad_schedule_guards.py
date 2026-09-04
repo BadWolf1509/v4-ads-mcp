@@ -49,3 +49,58 @@ def test_update_ad_schedule_usa_envelope_e_classify_do_compartilhado() -> None:
     assert "DEFAULT_TTL_MINUTES" not in src and "expires_in_minutes" not in src, (
         "TTL vem do envelope, nao da tool"
     )
+
+
+def _returns_da_funcao(src: str, nome: str) -> list[ast.expr]:
+    tree = ast.parse(src)
+    fn = next(
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, (ast.AsyncFunctionDef, ast.FunctionDef)) and n.name == nome
+    )
+    # Only direct returns in the function body, not in nested functions
+    returns = []
+    for node in fn.body:
+        for n in ast.walk(node):
+            if isinstance(n, ast.Return) and n.value is not None and not _in_nested_function(n, fn):
+                returns.append(n.value)
+    return returns
+
+
+def _in_nested_function(
+    ret_node: ast.Return, parent_fn: ast.FunctionDef | ast.AsyncFunctionDef
+) -> bool:
+    """Check if a return node is inside a nested function within parent_fn."""
+    for node in ast.walk(parent_fn):
+        if (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node is not parent_fn
+            and any(n is ret_node for n in ast.walk(node))
+        ):
+            return True
+    return False
+
+
+def _e_chamada_a(expr: ast.expr, nomes: set[str]) -> bool:
+    return isinstance(expr, ast.Call) and isinstance(expr.func, ast.Name) and expr.func.id in nomes
+
+
+def _e_dict_de_no_changes(expr: ast.expr) -> bool:
+    """A unica resposta montada a mao que a spec sanciona (§4.4): o no-op sem token."""
+    return isinstance(expr, ast.Dict) and any(
+        isinstance(k, ast.Constant) and k.value == "no_changes" for k in expr.keys
+    )
+
+
+def test_todo_return_de_update_ad_schedule_e_envelope_do_compartilhado_ou_o_no_changes() -> None:
+    """Spec §8.10 pelo USO, nao pela presenca: um dict a mao no return com uma chamada morta
+    a preview_envelope em outro lugar passaria pela contagem — e exatamente o adjacente."""
+    src = Path("src/mcp/tools/update_ad_schedule.py").read_text(encoding="utf-8")
+    returns = _returns_da_funcao(src, "update_ad_schedule")
+    assert returns, "a funcao tem que ter returns"
+    ruins = [
+        ast.dump(r)[:80]
+        for r in returns
+        if not (_e_chamada_a(r, {"preview_envelope", "error_envelope"}) or _e_dict_de_no_changes(r))
+    ]
+    assert ruins == [], f"return fora do envelope compartilhado (e nao e o no_changes): {ruins}"
