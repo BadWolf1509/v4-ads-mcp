@@ -16,6 +16,7 @@ from src.google_ads.ad_schedule import (
     Window,
     diff_schedule,
     hours_per_week,
+    modificador_efetivo,
     partition_metrics,
     schedule_fingerprint,
     summarize_current,
@@ -61,6 +62,13 @@ _JANELA = {
         "start_minute": {"type": "integer", "enum": [0, 15, 30, 45], "default": 0},
         "end_hour": {"type": "integer", "minimum": 0, "maximum": 24},
         "end_minute": {"type": "integer", "enum": [0, 15, 30, 45], "default": 0},
+        "bid_modifier": {
+            "type": "number",
+            "minimum": 0.1,
+            "maximum": 10.0,
+            "description": "Opcional, POR JANELA. Vence o bid_modifier da chamada, que vale "
+            "como default das janelas sem o seu. Ausente nos dois = preserva o valor atual.",
+        },
     },
     "required": ["day_of_week", "start_hour", "end_hour"],
     "additionalProperties": False,
@@ -251,6 +259,12 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
     )
 
     atual = rows_to_current(grade_rows)
+    # `desired` e a MESMA lista para todas as campanhas do lote (o parametro `windows`
+    # nao varia por campanha) — construir o indice uma vez fora do loop evita refazer
+    # o dict a cada `cid`. Chave por `.key()` (identidade de 5 posicoes, sem o
+    # modificador): e exatamente o que `c.window.key()` devolve para localizar de
+    # volta a janela DESEJADA correspondente a uma `CurrentWindow` do `to_update`.
+    desejada_por_chave = {w.key(): w for w in desired}
     ops: list[dict[str, Any]] = []
     preview: dict[str, Any] = {}
     for cid in campaign_ids:
@@ -291,26 +305,39 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
             "windows_added": [_w(w) for w in diff.to_add],
             "windows_removed": [_w(c.window) for c in diff.to_remove],
             # O valor SOBRESCRITO ao lado do novo, como a §4.2 faz com o CPA do
-            # que sai. `bid_modifier` e escalar por chamada, entao informa-lo
-            # achata TODAS as janelas do conjunto — quem nao ver o antigo aqui so
-            # descobre o que perdeu depois do apply_change.
+            # que sai. F149: `bid_modifier_novo` e o EFETIVO da janela (o dela
+            # mesma, se trouxe; senao o escalar da chamada como default) — quem
+            # nao ver o antigo aqui so descobre o que perdeu depois do apply_change.
             "bid_modifier_updated": [
                 {
                     **_w(c.window),
                     "bid_modifier_antigo": c.bid_modifier,
-                    "bid_modifier_novo": bid_modifier,
+                    "bid_modifier_novo": modificador_efetivo(
+                        desejada_por_chave[c.window.key()], bid_modifier
+                    ),
                 }
                 for c in diff.to_update
             ],
             "metrics": partition_metrics(cells, before, desired),
         }
         ops += [
-            {"kind": "add", "campaign_id": cid, "window": _w(w), "bid_modifier": bid_modifier}
+            {
+                "kind": "add",
+                "campaign_id": cid,
+                "window": _w(w),
+                "bid_modifier": modificador_efetivo(w, bid_modifier),
+            }
             for w in diff.to_add
         ]
         ops += [{"kind": "remove", "resource_name": c.resource_name} for c in diff.to_remove]
         ops += [
-            {"kind": "update", "resource_name": c.resource_name, "bid_modifier": bid_modifier}
+            {
+                "kind": "update",
+                "resource_name": c.resource_name,
+                "bid_modifier": modificador_efetivo(
+                    desejada_por_chave[c.window.key()], bid_modifier
+                ),
+            }
             for c in diff.to_update
         ]
 

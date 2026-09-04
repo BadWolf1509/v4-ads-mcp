@@ -613,6 +613,50 @@ async def test_bid_modifier_updated_mostra_o_valor_antigo_ao_lado_do_novo(monkey
     assert atualizadas[0]["day_of_week"] == "MONDAY", "os campos da janela seguem ali"
 
 
+# --- F149 (task 4): bid_modifier POR JANELA vence o escalar da chamada ----------
+
+
+@pytest.mark.asyncio
+async def test_modificador_por_janela_chega_nas_ops(monkeypatch) -> None:
+    grade = [
+        _janela_row(day="MONDAY", sh=7, eh=17, crit="1", bm=1.3),
+        _janela_row(day="TUESDAY", sh=7, eh=17, crit="2", bm=0.8),
+    ]
+    cap = _wire(monkeypatch, grade=grade, orcamentos=[_orc()], metricas=[])
+    await mod.update_ad_schedule(
+        {
+            "customer_id": "1234567890",
+            "campaign_ids": ["1"],
+            "windows": [
+                {"day_of_week": "MONDAY", "start_hour": 7, "end_hour": 17, "bid_modifier": 1.5},
+                {"day_of_week": "TUESDAY", "start_hour": 7, "end_hour": 17},
+            ],
+        }
+    )
+    ops = cap["payload"]["ops"]
+    updates = [o for o in ops if o["kind"] == "update"]
+    assert len(updates) == 1, "so a faixa alvo muda; a outra e preservada"
+    assert updates[0]["bid_modifier"] == 1.5
+
+
+@pytest.mark.asyncio
+async def test_preview_mostra_o_novo_por_janela_e_nao_o_escalar(monkeypatch) -> None:
+    grade = [_janela_row(day="MONDAY", sh=7, eh=17, crit="1", bm=1.3)]
+    _wire(monkeypatch, grade=grade, orcamentos=[_orc()], metricas=[])
+    out = await mod.update_ad_schedule(
+        {
+            "customer_id": "1234567890",
+            "campaign_ids": ["1"],
+            "windows": [
+                {"day_of_week": "MONDAY", "start_hour": 7, "end_hour": 17, "bid_modifier": 1.5}
+            ],
+        }
+    )
+    linha = out["preview"]["1"]["bid_modifier_updated"][0]
+    assert linha["bid_modifier_antigo"] == 1.3
+    assert linha["bid_modifier_novo"] == 1.5
+
+
 @pytest.mark.asyncio
 async def test_destaque_so_quando_a_cobertura_cai_e_o_orcamento_e_compartilhado(
     monkeypatch,
