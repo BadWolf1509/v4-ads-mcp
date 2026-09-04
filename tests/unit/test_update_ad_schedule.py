@@ -7,6 +7,7 @@ from uuid import uuid4
 
 import pytest
 
+from src.google_ads.queries.ad_schedule import GRADE_LIMIT
 from src.governance.blast_radius import RiskLevel, classify
 from src.mcp.tools import update_ad_schedule as mod
 from src.mcp.tools._registry import get_tool
@@ -57,7 +58,9 @@ def _janela_row(cid="1", day="MONDAY", sh=7, eh=17, crit="9", bm=None) -> dict[s
     }
 
 
-def _orc(cid="1", shared=False, rn="customers/1234567890/campaignBudgets/77") -> dict[str, Any]:
+def _orc(
+    cid="1", shared=False, rn="customers/1234567890/campaignBudgets/77", status="ENABLED"
+) -> dict[str, Any]:
     return {
         "campaign_id": cid,
         "campaign_name": "A",
@@ -65,6 +68,7 @@ def _orc(cid="1", shared=False, rn="customers/1234567890/campaignBudgets/77") ->
         "budget_id": "77",
         "explicitly_shared": shared,
         "amount_brl": 310.0,
+        "status": status,
     }
 
 
@@ -299,6 +303,77 @@ async def test_campaign_id_inexistente_e_recusado_antes_de_montar_preview(monkey
     )
     assert out["status"] == "error" and "999" in out["error_message"]
     assert captured == {}
+
+
+@pytest.mark.asyncio
+async def test_grade_atual_truncada_nao_e_diffada(monkeypatch) -> None:
+    """Important 4: `ad_schedule_query` pede limit+1 como sentinela e o caminho de
+    MUTACAO nunca checava. Grade parcial gera `add` de janela que ja existe E omite
+    `remove` de janela nunca vista — o diff erra nas duas direcoes, numa escrita."""
+    grade = [_janela_row(day="MONDAY", crit=str(i)) for i in range(GRADE_LIMIT + 1)]
+    captured = _wire(monkeypatch, grade=grade, orcamentos=[_orc()], metricas=[])
+    out = await mod.update_ad_schedule(
+        {"customer_id": "1234567890", "campaign_ids": ["1"], "windows": SEG_SEX}
+    )
+    assert out["status"] == "error"
+    assert str(GRADE_LIMIT) in out["error_message"]
+    assert captured == {}, "nenhum token pode ser mintado sobre grade truncada"
+
+
+@pytest.mark.asyncio
+async def test_campanha_removed_e_recusada_citando_o_id(monkeypatch) -> None:
+    """Important 5(a): com `campaign_ids`, campaign_budget_query NAO derruba REMOVED —
+    a campanha e encontrada e passava direto, enquanto a mensagem de recusa afirmava
+    checar remocao. Agora a checagem existe e a mensagem e verdadeira."""
+    captured = _wire(
+        monkeypatch,
+        grade=[],
+        orcamentos=[_orc(cid="1"), _orc(cid="2", status="REMOVED")],
+        metricas=[],
+    )
+    out = await mod.update_ad_schedule(
+        {"customer_id": "1234567890", "campaign_ids": ["1", "2"], "windows": SEG_SEX}
+    )
+    assert out["status"] == "error" and "2" in out["error_message"]
+    assert "REMOVED" in out["error_message"]
+    assert captured == {}
+
+
+@pytest.mark.asyncio
+async def test_mensagem_de_id_ausente_nao_afirma_checagem_que_nao_faz(monkeypatch) -> None:
+    """Important 5(a): a mensagem antiga dizia 'nao encontradas nesta conta (ou
+    removidas)' — mas removida E encontrada por essa query. Nao afirmar o que nao checa."""
+    _wire(monkeypatch, grade=[], orcamentos=[_orc(cid="1")], metricas=[])
+    out = await mod.update_ad_schedule(
+        {"customer_id": "1234567890", "campaign_ids": ["1", "999"], "windows": SEG_SEX}
+    )
+    assert out["status"] == "error" and "999" in out["error_message"]
+    assert "removidas" not in out["error_message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_campanha_pausada_avisa_mas_nao_recusa(monkeypatch) -> None:
+    """Important 5(b), familia F52/F90: toda a narrativa de CPA da §4.2 pode ser sobre
+    campanha inerte. As irmas ja tinham `ativas_fora_do_lote`; a ALVO ficou cega."""
+    _wire(monkeypatch, grade=[], orcamentos=[_orc(status="PAUSED")], metricas=[])
+    out = await mod.update_ad_schedule(
+        {"customer_id": "1234567890", "campaign_ids": ["1"], "windows": SEG_SEX}
+    )
+    assert out["status"] == "dry_run"
+    p = out["preview"]["1"]
+    assert p["campaign_status"] == "PAUSED"
+    assert p["aviso_status"] is not None and "PAUSED" in p["aviso_status"]
+    assert "historicas" in p["aviso_status"]
+
+
+@pytest.mark.asyncio
+async def test_campanha_ativa_nao_ganha_aviso_de_status(monkeypatch) -> None:
+    _wire(monkeypatch, grade=[], orcamentos=[_orc(status="ENABLED")], metricas=[])
+    out = await mod.update_ad_schedule(
+        {"customer_id": "1234567890", "campaign_ids": ["1"], "windows": SEG_SEX}
+    )
+    p = out["preview"]["1"]
+    assert p["campaign_status"] == "ENABLED" and p["aviso_status"] is None
 
 
 @pytest.mark.asyncio

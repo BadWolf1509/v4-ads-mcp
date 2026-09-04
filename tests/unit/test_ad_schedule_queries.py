@@ -68,10 +68,14 @@ def test_parse_ad_schedule_row_converte_minuto_enum_em_int() -> None:
     assert d["resource_name"].endswith("~348624223154")
 
 
-def test_campaign_budget_query_traz_explicitly_shared() -> None:
+def test_campaign_budget_query_traz_explicitly_shared_e_o_status_da_campanha() -> None:
     q = campaign_budget_query(campaign_ids=["1", "2"])
     assert "campaign_budget.explicitly_shared" in q and "campaign.campaign_budget" in q
     assert "campaign.id IN (1,2)" in q
+    assert "campaign.status" in q, (
+        "com ids a query NAO derruba REMOVED — sem o status a tool nao sabe se a "
+        "campanha alvo esta removida ou pausada (F52/F90)"
+    )
 
 
 def test_campaign_budget_query_sem_ids_pega_todas_as_nao_removidas() -> None:
@@ -82,7 +86,12 @@ def test_campaign_budget_query_sem_ids_pega_todas_as_nao_removidas() -> None:
 
 def test_parse_campaign_budget_row() -> None:
     row = SimpleNamespace(
-        campaign=SimpleNamespace(id=1, name="A", campaign_budget="customers/1/campaignBudgets/77"),
+        campaign=SimpleNamespace(
+            id=1,
+            name="A",
+            campaign_budget="customers/1/campaignBudgets/77",
+            status=SimpleNamespace(name="PAUSED"),
+        ),
         campaign_budget=SimpleNamespace(id=77, explicitly_shared=True, amount_micros=310000000),
     )
     d = parse_campaign_budget_row(row)
@@ -93,6 +102,7 @@ def test_parse_campaign_budget_row() -> None:
         "budget_id": "77",
         "explicitly_shared": True,
         "amount_brl": 310.0,
+        "status": "PAUSED",
     }
 
 

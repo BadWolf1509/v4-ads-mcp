@@ -51,7 +51,7 @@ def _janela(cid="1", nome="A", day="MONDAY", sh=7, eh=17, bm=None, crit="9") -> 
     }
 
 
-def _orcamento(cid="1", nome="A", shared=False) -> dict[str, Any]:
+def _orcamento(cid="1", nome="A", shared=False, status="ENABLED") -> dict[str, Any]:
     return {
         "campaign_id": cid,
         "campaign_name": nome,
@@ -59,6 +59,7 @@ def _orcamento(cid="1", nome="A", shared=False) -> dict[str, Any]:
         "budget_id": "77",
         "explicitly_shared": shared,
         "amount_brl": 310.0,
+        "status": status,
     }
 
 
@@ -91,7 +92,7 @@ async def test_resumo_por_campanha_com_horas_e_orcamento_compartilhado(monkeypat
     run, _ = _fake_run_report(
         {
             "campaign_criterion": [_janela(day="MONDAY"), _janela(day="TUESDAY", crit="10")],
-            "campaign": [_orcamento(shared=True)],
+            "campaign": [_orcamento(shared=True, status="PAUSED")],
         }
     )
     monkeypatch.setattr("src.mcp.tools.get_ad_schedule.run_report", run)
@@ -99,11 +100,12 @@ async def test_resumo_por_campanha_com_horas_e_orcamento_compartilhado(monkeypat
     s = out["schedule_summary"]["1"]
     assert s == {
         "campaign_name": "A",
+        "campaign_status": "PAUSED",
         "has_schedule": True,
         "windows": 2,
         "hours_per_week": 20.0,
         "budget_is_shared": True,
-    }
+    }, "grade de campanha PAUSED nao afeta entrega — o resumo tem que dizer isso (F52/F90)"
     assert len(out["windows"]) == 2 and out["truncated"] is False
 
 

@@ -110,6 +110,8 @@ _DESCRIPTION = (
     "que saem e — regra normativa — cost_brl, conversions e CPA do que SAI lado a lado "
     "com o CPA do que FICA (custo sozinho nao responde 'o que estou desligando e melhor "
     "ou pior do que fica?'; na MO-JP o fim de semana tinha CPA R$18,59 contra R$23,59). "
+    "Campanha REMOVED e recusada; PAUSED passa com `aviso_status` (metricas historicas, "
+    "grade sem efeito em entrega enquanto pausada). "
     "Metricas por hora cheia (janelas com minutos sao aproximadas), janela default de 30 "
     "dias com override por date_range/start_date+end_date. Grade identica a atual = "
     "`status: no_changes`, ZERO operacoes, sem token (recriar criterios identicos custa "
@@ -168,15 +170,37 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
         parse_ad_schedule_row,
         audited=True,
     )
+    if len(grade_rows) > GRADE_LIMIT:
+        # F98: a query pede limit+1 justamente para o corte ser visivel. Diffar grade
+        # truncada erra nas DUAS direcoes — `add` de janela que ja existe e `remove`
+        # omitido de janela nunca lida — e isto e caminho de escrita.
+        return error_envelope(
+            "update_ad_schedule",
+            f"a grade atual destas campanhas passa de {GRADE_LIMIT} janelas e nao coube "
+            "na leitura: o diff sairia parcial e apagaria janelas que nao foram lidas. "
+            "Nenhuma operacao foi montada — reduza campaign_ids e refaca por lotes.",
+            customer_id=customer_id,
+        )
     orcamentos = await _consulta(
         campaign_budget_query(campaign_ids=campaign_ids), parse_campaign_budget_row
     )
-    faltando = [cid for cid in campaign_ids if cid not in {o["campaign_id"] for o in orcamentos}]
+    status_da_campanha = {o["campaign_id"]: o["status"] for o in orcamentos}
+    faltando = [cid for cid in campaign_ids if cid not in status_da_campanha]
     if faltando:
+        # A mensagem antiga dizia "(ou removidas)" — mas com `campaign_ids` a query NAO
+        # derruba REMOVED, entao removida e ENCONTRADA. Afirmar checagem que nao existe
+        # e o defeito; a checagem de REMOVED vem logo abaixo, agora de verdade.
         return error_envelope(
             "update_ad_schedule",
-            f"campaign_ids nao encontradas nesta conta (ou removidas): {faltando}. "
-            "Nenhuma operacao foi montada.",
+            f"campaign_ids nao encontradas nesta conta: {faltando}. Nenhuma operacao foi montada.",
+            customer_id=customer_id,
+        )
+    removidas = [cid for cid in campaign_ids if status_da_campanha[cid] == "REMOVED"]
+    if removidas:
+        return error_envelope(
+            "update_ad_schedule",
+            f"campaign_ids com status REMOVED: {removidas}. Campanha removida nao volta "
+            "a servir e nao aceita mudanca de grade. Nenhuma operacao foi montada.",
             customer_id=customer_id,
         )
     metricas = await _consulta(
@@ -198,6 +222,8 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
         ]
         preview[cid] = {
             "was_24x7": not current,
+            "campaign_status": status_da_campanha[cid],
+            "aviso_status": _aviso_status(status_da_campanha[cid]),
             "current": summarize_current(current),
             "windows_added": [_w(w) for w in diff.to_add],
             "windows_removed": [_w(c.window) for c in diff.to_remove],
@@ -280,6 +306,22 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
             "end": end.isoformat(),
             "days": (end - start).days + 1,
         },
+    )
+
+
+def _aviso_status(status: str) -> str | None:
+    """PAUSED nao recusa — avisa (F52/F90). Toda a narrativa de CPA da §4.2 pode estar
+    descrevendo campanha inerte, e a grade nova nao muda entrega enquanto ela nao voltar."""
+    if status == "ENABLED":
+        return None
+    if status == "PAUSED":
+        return (
+            "campanha PAUSED: as metricas abaixo sao historicas e a grade nao afeta "
+            "entrega enquanto ela estiver pausada"
+        )
+    return (
+        f"campanha {status}: nao esta servindo, entao as metricas abaixo sao historicas "
+        "e a grade nova nao afeta entrega enquanto o status nao voltar a ENABLED"
     )
 
 

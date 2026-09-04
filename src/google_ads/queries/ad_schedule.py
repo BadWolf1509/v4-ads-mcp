@@ -81,7 +81,7 @@ def campaign_budget_query(*, campaign_ids: list[str] | None) -> str:
         else "campaign.status != 'REMOVED'"
     )
     return f"""
-        SELECT campaign.id, campaign.name, campaign.campaign_budget,
+        SELECT campaign.id, campaign.name, campaign.status, campaign.campaign_budget,
                campaign_budget.id, campaign_budget.explicitly_shared, campaign_budget.amount_micros
         FROM campaign
         WHERE {where}
@@ -96,6 +96,10 @@ def parse_campaign_budget_row(row: Any) -> dict[str, Any]:
         "budget_id": str(row.campaign_budget.id),
         "explicitly_shared": bool(row.campaign_budget.explicitly_shared),
         "amount_brl": round(int(row.campaign_budget.amount_micros) / 1_000_000, 2),
+        # Com `campaign_ids` o WHERE nao derruba REMOVED: sem este campo o chamador
+        # nao distingue campanha viva de removida, nem sabe que a alvo esta PAUSED
+        # (F52/F90 — keyword ENABLED em ad_group PAUSED e a mesma familia).
+        "status": _nome(row.campaign.status),
     }
 
 

@@ -47,7 +47,8 @@ _DESCRIPTION = (
     "[DEFER] Grade de veiculacao (ad schedule) por campanha: uma linha por janela "
     "(day_of_week, start_hour/minute, end_hour/minute, bid_modifier, status, "
     "criterion_id, resource_name) e um `schedule_summary` por campanha com "
-    "`has_schedule`, `hours_per_week` e `budget_is_shared`. ATENCAO: campanha "
+    "`has_schedule`, `hours_per_week`, `budget_is_shared` e `campaign_status` "
+    "(grade de campanha PAUSED nao afeta entrega). ATENCAO: campanha "
     "SEM nenhuma janela serve 24x7 — `has_schedule: false` e `hours_per_week: 168` "
     "dizem isso explicitamente; nao leia lista vazia como 'nao serve'. Janela cobre "
     "[inicio, fim); `end_hour: 24` = ate o fim do dia; minutos so 0/15/30/45 (API). "
@@ -119,6 +120,9 @@ async def get_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
         cid = o["campaign_id"]
         summary[cid] = {
             "campaign_name": o["campaign_name"],
+            # F52/F90: grade de campanha PAUSED nao afeta entrega. Sem o status, o
+            # resumo descreve horas servidas de uma campanha que nao serve nenhuma.
+            "campaign_status": o["status"],
             **summarize_current(atual.get(cid, [])),
             "budget_is_shared": o["explicitly_shared"],
         }
