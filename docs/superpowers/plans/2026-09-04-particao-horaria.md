@@ -480,7 +480,7 @@ git commit -m "docs(operacao): smoke 3b.43 da particao horaria"
 
 ## Self-review
 
-**Cobertura do spec.** Item 1 do spec → Tasks 4-5. Item 2 → Task 3. Cardinalidade e teto → Task 5. Blocos parametrizáveis: **parcialmente** — `BLOCOS_PADRAO` é constante nesta versão, e a parametrização por chamada ficou de fora por YAGNI; o spec pede "parametrizáveis", então isto é uma redução consciente e vale confirmar com o Wellington antes de executar a Task 2.
+**Cobertura do spec.** Item 1 do spec → Tasks 4-5. Item 2 → Task 3. Cardinalidade e teto → Task 5. Blocos parametrizáveis: **reduzido por decisão do Wellington (04/09)** — `BLOCOS_PADRAO` fica **constante** nesta versão, e a parametrização por chamada sai do escopo. Não reabrir: a pergunta foi feita e respondida antes da execução. Se um caso real pedir blocos diferentes, é sprint próprio com o caso em mãos.
 
 **Limitação do Google** (`segments.hour` incompatível com `geographic_view`): já está documentada no spec e não vira código aqui, porque geo saiu do escopo.
 
