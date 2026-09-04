@@ -232,8 +232,20 @@ def schedule_fingerprint(
 
     As duas pontas chamam ESTA funcao: fingerprint calculado de dois jeitos
     diferentes e a classe do F81 — cada lado certo sozinho, o par errado.
+
+    Agora inclui o bid_modifier como a 6a posicao para fechar a concorrencia otimista:
+    Ruling 1 do scan: NUNCA comparar a 6a posicao diretamente — ela pode ser None
+    num registro e float noutro, e `sorted` estouraria com TypeError. Duas criterias
+    com a MESMA faixa e modificadores diferentes existem se criadas pela UI ou por
+    outra API, e o fingerprint le o ATUAL do Google, nao a entrada validada.
     """
-    return {cid: sorted(list(c.window.key()) for c in atual.get(cid, [])) for cid in campaign_ids}
+    return {
+        cid: sorted(
+            ([*c.window.key(), c.bid_modifier] for c in atual.get(cid, [])),
+            key=lambda linha: (linha[:5], linha[5] is None, linha[5] or 0.0),
+        )
+        for cid in campaign_ids
+    }
 
 
 def partition_by_blocks(

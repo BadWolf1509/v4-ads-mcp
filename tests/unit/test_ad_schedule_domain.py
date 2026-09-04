@@ -18,6 +18,7 @@ from src.google_ads.ad_schedule import (
     diff_schedule,
     hours_per_week,
     partition_metrics,
+    schedule_fingerprint,
     summarize_current,
     validate_windows,
     window_from_input,
@@ -270,3 +271,46 @@ def test_modificador_da_janela_vence_mesmo_com_escalar_diferente_tambem_presente
     atual = [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.5)]
     d = diff_schedule(atual, [Window("MONDAY", 7, 0, 17, 0, 1.5)], 2.0)
     assert d.to_update == ()
+
+
+def test_fingerprint_detecta_mudanca_so_de_bid_modifier() -> None:
+    """Sem isto, alguem muda o modificador dentro do TTL e o apply nao percebe —
+    a concorrencia otimista da Ruling 10 ficaria cega justamente no campo que
+    este sprint promove a primeira classe."""
+    antes = {"1": [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.0)]}
+    depois = {"1": [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.3)]}
+    assert schedule_fingerprint(antes, ["1"]) != schedule_fingerprint(depois, ["1"])
+
+
+def test_fingerprint_continua_sobrevivendo_ao_json() -> None:
+    """Ruling 10: listas, nunca tuplas — o payload atravessa JSONB e tupla volta lista."""
+    import json
+
+    fp = schedule_fingerprint(
+        {"1": [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.3)]}, ["1"]
+    )
+    assert json.loads(json.dumps(fp)) == fp
+
+
+def test_fingerprint_nao_estourra_com_modificadores_mistos_na_mesma_faixa() -> None:
+    """Ruling 1 do scan: NUNCA comparar a 6a posicao diretamente — ela pode
+    ser None num registro e float noutro, e `sorted` estouraria com TypeError.
+    Duas criterias com a MESMA faixa e modificadores diferentes existem se criadas
+    pela UI ou por outra API, e o fingerprint le o ATUAL do Google, nao a entrada validada.
+
+    Este teste assere que nao ha excecao e que e determinístico."""
+    # Duas criterias com faixa idêntica, uma com modificador, outra sem
+    misto = {
+        "1": [
+            CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.0),
+            CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/2", "2", None),
+        ]
+    }
+    # Nao deve estourar TypeError
+    fp1 = schedule_fingerprint(misto, ["1"])
+    fp2 = schedule_fingerprint(misto, ["1"])
+    # Determinístico
+    assert fp1 == fp2
+    # E deve ser uma lista (JSONB-safe)
+    assert isinstance(fp1["1"], list)
+    assert len(fp1["1"]) == 2

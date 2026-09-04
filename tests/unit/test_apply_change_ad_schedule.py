@@ -194,7 +194,9 @@ async def test_falha_por_operacao_chega_na_resposta_com_o_motivo(monkeypatch) ->
 async def test_confirmacao_ve_a_linha_removed_e_bate_a_grade_pedida(monkeypatch) -> None:
     """Important 2 / spec §7: a reconsulta NAO pode filtrar ENABLED — janela removida
     tem que ser confirmada por PRESENCA de status REMOVED, nunca por nao aparecer."""
-    saved = _saved(windows=[_janela("MONDAY")], current_keys={"1": [["SATURDAY", 7, 0, 17, 0]]})
+    saved = _saved(
+        windows=[_janela("MONDAY")], current_keys={"1": [["SATURDAY", 7, 0, 17, 0, None]]}
+    )
     _wire(
         monkeypatch,
         saved=saved,
@@ -223,7 +225,7 @@ async def test_grade_resultante_diferente_da_pedida_e_reportada(monkeypatch) -> 
 @pytest.mark.asyncio
 async def test_baseline_intacto_deixa_aplicar(monkeypatch) -> None:
     """Ruling 10: mesma grade do preview -> a mutacao sai normalmente."""
-    saved = _saved(current_keys={"1": [["SATURDAY", 7, 0, 17, 0]]})
+    saved = _saved(current_keys={"1": [["SATURDAY", 7, 0, 17, 0, None]]})
     visto = _wire(
         monkeypatch,
         saved=saved,
@@ -240,7 +242,7 @@ async def test_grade_mudada_desde_o_preview_nao_muta(monkeypatch) -> None:
     """Ruling 10 (concorrencia otimista): o delta guardado carrega resource_names de ate
     10 min atras. Baseline mudado + partial_failure produz uma grade que nao e nem a
     antiga nem a pedida, em silencio. Asserto por CAPTURA da mutacao, nao por status."""
-    saved = _saved(current_keys={"1": [["SATURDAY", 7, 0, 17, 0]]})
+    saved = _saved(current_keys={"1": [["SATURDAY", 7, 0, 17, 0, None]]})
     visto = _wire(
         monkeypatch,
         saved=saved,

@@ -289,9 +289,9 @@ async def test_payload_leva_a_grade_pedida_e_o_fingerprint_do_baseline(monkeypat
             "end_minute": 0,
         }
     ]
-    assert p["current_keys"] == {"1": [["MONDAY", 7, 0, 17, 0], ["SATURDAY", 7, 0, 17, 0]]}, (
-        "listas, nao tuplas: o payload atravessa JSON"
-    )
+    assert p["current_keys"] == {
+        "1": [["MONDAY", 7, 0, 17, 0, None], ["SATURDAY", 7, 0, 17, 0, None]]
+    }, "listas, nao tuplas: o payload atravessa JSON"
 
 
 @pytest.mark.asyncio
@@ -358,8 +358,8 @@ async def test_lote_de_duas_campanhas_com_grades_diferentes(monkeypatch) -> None
         "customers/1234567890/campaignCriteria/2~20",
     ]
     assert captured["payload"]["current_keys"] == {
-        "1": [["SATURDAY", 7, 0, 17, 0]],
-        "2": [["SUNDAY", 7, 0, 17, 0]],
+        "1": [["SATURDAY", 7, 0, 17, 0, None]],
+        "2": [["SUNDAY", 7, 0, 17, 0, None]],
     }
 
 
