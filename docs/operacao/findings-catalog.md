@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain), F129 (governanca do system user — acao humana) e F130 (gate do Google sem `is_active`).
 >
-> **Como ler:** ~1400 linhas, **148 IDs** (F1-F149 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~1440 linhas, **149 IDs** (F1-F150 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -1422,3 +1422,46 @@ unico caminho expressavel e o inseguro, e uma tool que so oferece a rota perigos
 operador nela. Vai junto do sprint de particao horaria
 ([`2026-09-04-particao-horaria-design.md`](../superpowers/specs/2026-09-04-particao-horaria-design.md)),
 porque mexe na mesma forma de `windows[]`.
+
+
+## F150 (HIGH, CORRIGIDO) — `update_ad_schedule` previa e nao aplicava: o builder nunca registrou
+
+> **Como apareceu:** no **T4 do smoke 3b.42**, em conta real, com a tool **ja em producao**
+> desde o PR #31. A sessao MO-JP parou a cadeia ali em vez de seguir para T5-T8.
+
+`apply_change` devolvia ao gestor **apenas** `"Erro interno ao executar a ferramenta. O time
+foi notificado."`. A mensagem real so existia no audit log: `No mutate builder registered for
+'update_ad_schedule'`. Falhou em **100 ms**, sem `provider_request_id` — nunca chegou na API
+do Google. **A conta ficou intacta**, sem mutacao parcial, verificado por `get_ad_schedule`
+com `status="all"`.
+
+**Causa: uma lista paralela mantida a mao divergiu.** `import_all_builders` tinha 11 imports
+escritos um a um, e `mutates/ad_schedule.py` nao estava entre eles. O modulo existe e declara
+`@register_builder("update_ad_schedule")` corretamente — mas ninguem o importava, entao o
+decorator nunca rodava e a chave nunca entrava no `_BUILDERS`. Diferenca de conjuntos: **12
+modulos no pacote, 11 na lista, e o unico de fora era o unico sem builder**.
+
+🔴 **Por que passou por TUDO — e esta e a parte que importa.** O sprint teve 10 tasks com
+review por task, uma revisao final da branch inteira e uma re-revisao escopada. **As tres
+passaram por cima disto.** Nenhum teste exercitava o caminho de apply desta tool, e T1, T2,
+T2b, T3 e T9 passam inteiros sem toca-lo. A razao e estrutural: **toda revisao olha o codigo
+ESCRITO, e o defeito era codigo AUSENTE num arquivo que ninguem estava revisando.** Diff-based
+review nao ve a linha que nao existe em arquivo que o diff nao toca.
+
+**Fix no padrao, nao na instancia (PR #36).** Acrescentar a linha faltante resolveria hoje e
+reabriria no proximo builder. `import_all_builders` passa a **varrer o pacote** com `pkgutil`:
+lista paralela mantida por memoria humana diverge, e a unica fonte que nao diverge do pacote e
+o proprio pacote. E o `contextlib.suppress(ImportError)` — que engolia falha de import **sem
+rastro**, a outra metade do problema — virou `log.exception`, alertavel. Falha de um modulo
+continua nao derrubando os outros.
+
+**Guard de propriedade:** `test_builders_todos_registrados.py` le o PACOTE por AST, extrai
+toda chave de `@register_builder("x")` e exige que cada uma chegue ao `_BUILDERS`. Le do
+**fonte** de proposito: comparar o registry consigo mesmo nao provaria nada. Builder novo
+nasce coberto sem ninguem lembrar de inscrever. Verificado por sabotagem. 25 builders (eram 24).
+
+**Licao transferivel, e vale alem desta tool:** *shippar caminho de escrita sem smoke que o
+exercite e shippar sem saber se ele funciona.* Revisao de codigo nao substitui execucao — o
+smoke achou em uma tarde o que tres camadas de revisao nao acharam, porque ele **roda** em vez
+de ler. O corolario pratico: nenhum sprint de tool mutante deveria fechar com o passo de apply
+em `⬜ pending`.
