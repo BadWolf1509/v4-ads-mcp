@@ -9,12 +9,23 @@ duas coisas). Por isso `schedule_summary` existe por campanha, mesmo sem janela.
 import asyncio
 from typing import Any
 
-from src.google_ads.ad_schedule import CurrentWindow, Window, summarize_current
+from src.google_ads.account_clock import resolve_account_today
+from src.google_ads.ad_schedule import (
+    BLOCOS_PADRAO,
+    CurrentWindow,
+    MetricCell,
+    Window,
+    partition_by_blocks,
+    summarize_current,
+)
+from src.google_ads.queries._common import resolve_date_window
 from src.google_ads.queries.ad_schedule import (
     ad_schedule_query,
     campaign_budget_query,
+    day_hour_metrics_query,
     parse_ad_schedule_row,
     parse_campaign_budget_row,
+    parse_day_hour_row,
 )
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
@@ -38,6 +49,19 @@ _SCHEMA: dict[str, Any] = {
             "description": "Status dos CRITERIOS de agenda (nao da campanha).",
         },
         "limit": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 200},
+        "include_metrics": {
+            "type": "boolean",
+            "default": False,
+            "description": "Traz CPA por bloco horario (comercial / fora de hora / fim de semana) por campanha. Custa uma consulta conjunta dia x hora a mais.",
+        },
+        "date_range": {
+            "type": "string",
+            "enum": ["LAST_7_DAYS", "LAST_14_DAYS", "LAST_30_DAYS", "LAST_90_DAYS"],
+            "default": "LAST_30_DAYS",
+            "description": "Janela das metricas de include_metrics (ignorado sem a flag); override por start_date+end_date.",
+        },
+        "start_date": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+        "end_date": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
     },
     "required": ["customer_id"],
     "additionalProperties": False,
@@ -55,7 +79,16 @@ _DESCRIPTION = (
     "Uma campanha pode ter ate 7x24 janelas: `limit` (default 200, teto 1000) corta e "
     "`truncated: true` avisa. `budget_is_shared` vem de campaign_budget.explicitly_shared "
     "— importa porque desligar faixa em orcamento compartilhado REALOCA gasto, nao "
-    "economiza (ver update_ad_schedule)."
+    "economiza (ver update_ad_schedule). `include_metrics: true` acrescenta "
+    "`metrics_por_bloco` por campanha — custo/conversoes/CPA particionados em comercial "
+    "(seg-sex 08-18h), fora_de_hora e fim_de_semana (BLOCOS_PADRAO) mais um balde `outros` "
+    "— a mesma conjunta cara dia x hora que antes so aparecia no dry-run do "
+    "update_ad_schedule, agora sem exigir intencao de mutar. Exige `campaign_ids` (a "
+    "conjunta nao roda sobre a conta inteira); janela default 30 dias, override por "
+    "date_range/start_date+end_date. Com a flag, o retorno tambem traz `period` "
+    "(from/to) com a janela concreta que o preset resolveu no fuso da conta. SEM a "
+    "flag nenhuma consulta dia x hora sai, e `period` tambem fica de fora — metade "
+    "do valor da flag e essa ausencia."
 )
 
 
@@ -126,9 +159,48 @@ async def get_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
             **summarize_current(atual.get(cid, [])),
             "budget_is_shared": o["explicitly_shared"],
         }
-    return {
+
+    # Fix Important 2 (revisao final): period so existe quando include_metrics
+    # pede a janela — aditivo, senao muda o contrato de quem so le a grade.
+    period: dict[str, str] | None = None
+    if args.get("include_metrics", False):
+        if not campaign_ids:
+            # `day_hour_metrics_query` recusa lista vazia (ValueError), e varrer a
+            # conta inteira nesta conjunta dia x hora e caro sem necessidade — metade
+            # do valor desta task e a consulta cara NAO sair sem campaign_ids
+            # explicito (nota do brief). As duas consultas baratas de cima ja
+            # rodaram; o que fica de fora e so a conjunta cara.
+            return {
+                "status": "error",
+                "error_message": "include_metrics exige campaign_ids: a conjunta dia x hora "
+                "e cara e nao roda sobre a conta inteira.",
+            }
+        today = await resolve_account_today(customer_id)
+        start, end = resolve_date_window(
+            date_range=args.get("date_range", "LAST_30_DAYS"),
+            start_date=args.get("start_date"),
+            end_date=args.get("end_date"),
+            today=today,
+        )
+        period = {"from": start.isoformat(), "to": end.isoformat()}
+        celulas = await _consulta(
+            day_hour_metrics_query(campaign_ids=campaign_ids, start=start, end=end),
+            parse_day_hour_row,
+        )
+        for cid, resumo in summary.items():
+            do_cid = [
+                MetricCell(m["day_of_week"], m["hour"], m["cost_micros"], m["conversions"])
+                for m in celulas
+                if m["campaign_id"] == cid
+            ]
+            resumo["metrics_por_bloco"] = partition_by_blocks(do_cid, BLOCOS_PADRAO)
+
+    result: dict[str, Any] = {
         "customer_id": customer_id,
         "windows": grade_rows,
         "schedule_summary": summary,
         "truncated": truncated,
     }
+    if period is not None:
+        result["period"] = period
+    return result

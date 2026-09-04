@@ -63,6 +63,18 @@ def window_from_input(d: dict[str, Any]) -> Window:
     )
 
 
+_UTEIS = ("MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY")
+
+# 50h + 70h + 48h = 168h. O teste cobra essa soma: bloco que nao ladrilha
+# transforma `outros` em lixeira e a comparacao entre blocos vira ruido.
+BLOCOS_PADRAO: dict[str, list[Window]] = {
+    "comercial": [Window(d, 8, 0, 18, 0) for d in _UTEIS],
+    "fora_de_hora": [Window(d, 0, 0, 8, 0) for d in _UTEIS]
+    + [Window(d, 18, 0, 24, 0) for d in _UTEIS],
+    "fim_de_semana": [Window("SATURDAY", 0, 0, 24, 0), Window("SUNDAY", 0, 0, 24, 0)],
+}
+
+
 def validate_windows(windows: list[dict[str, Any]]) -> str | None:
     """Mensagem PT-BR se algo for invalido; None se OK. Recusa ANTES do Google."""
     validos = ", ".join(str(m) for m in MINUTO_ENUM)
@@ -211,6 +223,26 @@ def schedule_fingerprint(
     diferentes e a classe do F81 — cada lado certo sozinho, o par errado.
     """
     return {cid: sorted(list(c.window.key()) for c in atual.get(cid, [])) for cid in campaign_ids}
+
+
+def partition_by_blocks(
+    cells: list[MetricCell], blocos: dict[str, list[Window]]
+) -> dict[str, dict[str, Any]]:
+    """Particiona celulas dia x hora em blocos nomeados. TOTAL por construcao.
+
+    Toda celula cai em exatamente um balde: o primeiro bloco que a cobre, ou
+    `outros`. Sem isso a soma dos blocos nao bate com o total da conta, e o
+    gestor compara CPA de blocos que juntos nao explicam o gasto.
+    """
+    baldes: dict[str, list[MetricCell]] = {nome: [] for nome in blocos}
+    baldes["outros"] = []
+    for c in cells:
+        destino = next(
+            (nome for nome, janelas in blocos.items() if covers(janelas, c.day_of_week, c.hour)),
+            "outros",
+        )
+        baldes[destino].append(c)
+    return {nome: _agrega(cs) for nome, cs in baldes.items()}
 
 
 def summarize_current(current: list[CurrentWindow]) -> dict[str, Any]:
