@@ -43,6 +43,20 @@ def test_validate_combo_entity_with_breakdown_rejected():
     msg = _validate_combo("campaign", "device")
     assert msg is not None
     assert "account" in msg.lower()
+    # Fix Minor 3 (revisao final): a mensagem tinha ficado falsa depois que
+    # campaign+hourly passou a ser aceito — so mandava pro agregado de conta,
+    # escondendo que o combo novo existe. "hourly"/"campaign_ids" so aparecem
+    # aqui se o texto documentar de verdade a combinacao nova (o input desta
+    # chamada e level="campaign"+breakdown="device", entao nao vazam por eco).
+    assert "hourly" in msg.lower()
+    assert "campaign_ids" in msg
+
+
+def test_campaign_ids_schema_recusa_id_repetido_na_borda():
+    """Fix Important 1 (revisao final): uniqueItems e a metade 'recusa na
+    borda' do fix — a dedup em runtime (test_campaign_hourly_campaign_ids_
+    repetido_nao_dobra_linhas_nem_soma) e a outra metade, defesa em profundidade."""
+    assert mod._SCHEMA["properties"]["campaign_ids"]["uniqueItems"] is True
 
 
 def test_common_metrics_happy():
@@ -471,3 +485,43 @@ async def test_campaign_hourly_duas_campanhas_teto_multiplica_e_celulas_nao_vaza
     assert sum(r["cost_brl"] for r in rows_2) == pytest.approx(500.0)
     assert sum(r["cells"] for r in rows_1) == 100
     assert sum(r["cells"] for r in rows_2) == 100
+
+
+# --- Fix Important 1 (revisao final): campaign_ids com id repetido dobrava --
+#
+# O schema tem uniqueItems agora, mas o loop (`for cid in campaign_ids`) tinha
+# que deduplicar por conta propria — defesa em profundidade caso o schema mude
+# ou seja contornado. Chamando a funcao direto (sem passar pela validacao de
+# schema do MCP) para provar que a PROPRIA funcao nao confia somente no schema.
+
+
+@pytest.mark.asyncio
+async def test_campaign_hourly_campaign_ids_repetido_nao_dobra_linhas_nem_soma(monkeypatch):
+    """Medido pela revisao: campanha com R$170,00, campaign_ids=["1","1"]
+    devolvia 8 linhas (2 blocos de 4 identicos) somando R$340,00 — o dobro do
+    gasto real, sem nenhum sinal pro chamador. Com o fix, tem que devolver as
+    MESMAS 4 linhas de campaign_ids=["1"], somando R$170,00."""
+    _wire_bd(
+        monkeypatch,
+        celulas=[
+            {
+                "campaign_id": "1",
+                "day_of_week": "MONDAY",
+                "hour": 9,
+                "cost_micros": 170_000_000,  # R$170,00
+                "conversions": 4.0,
+            },
+        ],
+    )
+    out = await mod.get_performance_breakdown(
+        {
+            "customer_id": "1234567890",
+            "level": "campaign",
+            "breakdown": "hourly",
+            "campaign_ids": ["1", "1"],
+        }
+    )
+    assert len(out["rows"]) == 4, "id repetido nao pode multiplicar os blocos (8 seria o bug)"
+    assert sum(r["cost_brl"] for r in out["rows"]) == pytest.approx(170.0)
+    assert sum(r["conversions"] for r in out["rows"]) == pytest.approx(4.0)
+    assert out["truncated"] is False

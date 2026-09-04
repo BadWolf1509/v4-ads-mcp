@@ -42,11 +42,13 @@ def _validate_combo(level: str, breakdown: str | None) -> str | None:
     # merge (geoTargetConstant duplicado), nao nivel.
     if level == "campaign" and breakdown == "hourly":
         return None
-    # entity level
+    # entity level (exceto campaign+hourly, tratado acima)
     if breakdown is not None:
         return (
-            f"breakdown só é suportado em level='account' no v0 (você pediu level='{level}'). "
-            "Use level='account' + breakdown, ou remova o breakdown."
+            f"breakdown só é suportado em level='account' (device/geo/hourly) ou em "
+            f"level='campaign' com breakdown='hourly' (exige campaign_ids) — você pediu "
+            f"level='{level}'+breakdown='{breakdown}'. Use uma dessas combinações, ou "
+            "remova o breakdown."
         )
     return None
 

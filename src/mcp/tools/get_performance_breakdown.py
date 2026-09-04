@@ -51,6 +51,7 @@ _SCHEMA: dict[str, Any] = {
             "type": "array",
             "items": {"type": "string", "pattern": "^[0-9]+$"},
             "maxItems": 20,
+            "uniqueItems": True,
             "description": "Obrigatorio so pra level='campaign'+breakdown='hourly': a conjunta dia x hora e cara e nao roda sobre a conta inteira. Ignorado nos demais levels.",
         },
         "date_range": {
@@ -130,6 +131,11 @@ async def get_performance_breakdown(args: dict[str, Any]) -> dict[str, Any]:
                 "error_message": "level='campaign' + breakdown='hourly' exige campaign_ids: "
                 "a conjunta dia x hora e cara e nao roda sobre a conta inteira.",
             }
+        # Fix Important 1 (revisao final): id repetido no input dobrava linhas e
+        # custo (loop abaixo itera campaign_ids cru). O schema ja recusa na borda
+        # (uniqueItems); isto protege o caminho caso o schema mude. dict.fromkeys
+        # dedupe preservando ordem — teto e loop usam a MESMA lista deduplicada.
+        campaign_ids = list(dict.fromkeys(campaign_ids))
         teto = 168 * len(campaign_ids)
         celulas = await run_report(
             manager_id=ctx.manager_id,

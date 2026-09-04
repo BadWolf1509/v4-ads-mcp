@@ -85,8 +85,10 @@ _DESCRIPTION = (
     "— a mesma conjunta cara dia x hora que antes so aparecia no dry-run do "
     "update_ad_schedule, agora sem exigir intencao de mutar. Exige `campaign_ids` (a "
     "conjunta nao roda sobre a conta inteira); janela default 30 dias, override por "
-    "date_range/start_date+end_date. SEM a flag nenhuma consulta dia x hora sai — "
-    "metade do valor da flag e essa ausencia."
+    "date_range/start_date+end_date. Com a flag, o retorno tambem traz `period` "
+    "(from/to) com a janela concreta que o preset resolveu no fuso da conta. SEM a "
+    "flag nenhuma consulta dia x hora sai, e `period` tambem fica de fora — metade "
+    "do valor da flag e essa ausencia."
 )
 
 
@@ -158,6 +160,9 @@ async def get_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
             "budget_is_shared": o["explicitly_shared"],
         }
 
+    # Fix Important 2 (revisao final): period so existe quando include_metrics
+    # pede a janela — aditivo, senao muda o contrato de quem so le a grade.
+    period: dict[str, str] | None = None
     if args.get("include_metrics", False):
         if not campaign_ids:
             # `day_hour_metrics_query` recusa lista vazia (ValueError), e varrer a
@@ -177,6 +182,7 @@ async def get_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
             end_date=args.get("end_date"),
             today=today,
         )
+        period = {"from": start.isoformat(), "to": end.isoformat()}
         celulas = await _consulta(
             day_hour_metrics_query(campaign_ids=campaign_ids, start=start, end=end),
             parse_day_hour_row,
@@ -189,9 +195,12 @@ async def get_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
             ]
             resumo["metrics_por_bloco"] = partition_by_blocks(do_cid, BLOCOS_PADRAO)
 
-    return {
+    result: dict[str, Any] = {
         "customer_id": customer_id,
         "windows": grade_rows,
         "schedule_summary": summary,
         "truncated": truncated,
     }
+    if period is not None:
+        result["period"] = period
+    return result

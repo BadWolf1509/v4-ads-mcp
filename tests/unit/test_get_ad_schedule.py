@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 from uuid import uuid4
 
@@ -172,6 +173,11 @@ async def test_include_metrics_traz_cpa_por_bloco_sem_exigir_mutacao(monkeypatch
     assert blocos["comercial"]["cost_brl"] == 100.0
     assert blocos["comercial"]["cpa_brl"] == 20.0
     assert blocos["fim_de_semana"]["cells"] == 0
+    # Fix Important 2 (revisao final): sem `period`, o gestor nao sabe de fora
+    # qual janela concreta o preset resolveu (no fuso da conta) — so aparece
+    # quando include_metrics de fato pediu a janela.
+    assert set(out["period"]) == {"from", "to"}
+    assert date.fromisoformat(out["period"]["from"]) <= date.fromisoformat(out["period"]["to"])
 
 
 @pytest.mark.asyncio
@@ -184,6 +190,9 @@ async def test_sem_a_flag_nao_ha_consulta_de_metricas(monkeypatch) -> None:
     out = await mod.get_ad_schedule({"customer_id": "1234567890", "campaign_ids": ["1"]})
     assert not any("segments.hour" in q for q in chamadas)
     assert "metrics_por_bloco" not in out["schedule_summary"]["1"]
+    # Fix Important 2 (revisao final): aditivo — sem a flag, `period` tambem
+    # fica de fora (nao muda o contrato de quem so le a grade).
+    assert "period" not in out
 
 
 @pytest.mark.asyncio
