@@ -305,6 +305,64 @@ async def test_campaign_id_inexistente_e_recusado_antes_de_montar_preview(monkey
     assert captured == {}
 
 
+@pytest.mark.asyncio
+async def test_lote_de_duas_campanhas_com_grades_diferentes(monkeypatch) -> None:
+    """M-B: todos os outros testes usam campaign_ids=["1"], entao a selecao de `before`
+    por campanha e o filtro de metricas por campaign_id nunca foram exercitados com
+    duas. Lote e justamente onde falha parcial acontece (§4.5)."""
+    grade = [
+        _janela_row(cid="1", day="SATURDAY", crit="9"),
+        _janela_row(cid="2", day="SUNDAY", crit="20"),
+    ]
+    metricas = [
+        _cell(cid="1", day="SATURDAY", hour=10, cost=100.0, conv=5.0),
+        _cell(cid="1", day="MONDAY", hour=9, cost=300.0, conv=10.0),
+        _cell(cid="2", day="SUNDAY", hour=10, cost=60.0, conv=2.0),
+        _cell(cid="2", day="MONDAY", hour=9, cost=90.0, conv=1.0),
+    ]
+    captured = _wire(
+        monkeypatch,
+        grade=grade,
+        orcamentos=[_orc(cid="1"), _orc(cid="2")],
+        metricas=metricas,
+    )
+    out = await mod.update_ad_schedule(
+        {"customer_id": "1234567890", "campaign_ids": ["1", "2"], "windows": SEG_SEX}
+    )
+    assert set(out["preview"]) == {"1", "2"}
+    # `before` por campanha: a de fora de cada uma e um dia diferente.
+    assert [w["day_of_week"] for w in out["preview"]["1"]["windows_removed"]] == ["SATURDAY"]
+    assert [w["day_of_week"] for w in out["preview"]["2"]["windows_removed"]] == ["SUNDAY"]
+    # Metricas filtradas por campanha: sem o filtro, `staying` de cada uma somaria a
+    # segunda-feira da outra (390/11 = CPA 35.45 em 2 celulas, em vez de 1 celula).
+    assert out["preview"]["1"]["metrics"]["leaving"]["cost_brl"] == 100.0
+    assert out["preview"]["1"]["metrics"]["staying"] == {
+        "cost_brl": 300.0,
+        "conversions": 10.0,
+        "cpa_brl": 30.0,
+        "cells": 1,
+    }
+    assert out["preview"]["2"]["metrics"]["leaving"]["cost_brl"] == 60.0
+    assert out["preview"]["2"]["metrics"]["staying"] == {
+        "cost_brl": 90.0,
+        "conversions": 1.0,
+        "cpa_brl": 90.0,
+        "cells": 1,
+    }
+    ops = captured["payload"]["ops"]
+    adds = [o for o in ops if o["kind"] == "add"]
+    assert sorted(o["campaign_id"] for o in adds) == ["1"] * 5 + ["2"] * 5
+    removes = sorted(o["resource_name"] for o in ops if o["kind"] == "remove")
+    assert removes == [
+        "customers/1234567890/campaignCriteria/1~9",
+        "customers/1234567890/campaignCriteria/2~20",
+    ]
+    assert captured["payload"]["current_keys"] == {
+        "1": [["SATURDAY", 7, 0, 17, 0]],
+        "2": [["SUNDAY", 7, 0, 17, 0]],
+    }
+
+
 def test_schema_pede_windows_ou_clear_schedule_sem_composicao() -> None:
     """Ruling 11: exclusao mutua e cross-field, e o repo proibe oneOf/anyOf (3b.19B.1) —
     entao `windows` sai de `required` e a exclusao vive no pre-flight Python. `minItems: 1`

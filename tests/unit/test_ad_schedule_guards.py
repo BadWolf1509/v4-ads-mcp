@@ -27,10 +27,13 @@ def test_partition_metrics_exige_before_e_after() -> None:
 
 
 def test_validate_windows_menciona_os_quatro_minutos_validos() -> None:
+    """M-A: as quatro checagens `in` separadas NAO cobriam — "windows[0]" contem "0",
+    entao uma mensagem listando so "15, 30, 45" passava. Medido por sabotagem em 04/09.
+    A substring exata e o que distingue codigo bom de quebrado."""
     err = validate_windows(
         [{"day_of_week": "MONDAY", "start_hour": 7, "start_minute": 10, "end_hour": 17}]
     )
-    assert err is not None and all(m in err for m in ("0", "15", "30", "45"))
+    assert err is not None and "0, 15, 30, 45" in err
 
 
 def _chamadas(src: str, nome: str) -> int:
