@@ -1,10 +1,10 @@
 # Phase 3b.43 — smoke runbook para partição horária (`get_ad_schedule` + `get_performance_breakdown`)
 
-**Estado em 2026-09-04: as tools ganharam os campos desta sprint SÓ no branch `feat/particao-horaria` (5 commits, HEAD `36cb532`) — `main` segue em `701e35c`, sem nenhum deles. Nada foi mesclado, nada foi deployado, e o smoke abaixo NÃO foi executado.** Este documento é prospectivo: escreve o roteiro antes da execução, não um relato depois dela.
+**Estado em 2026-09-04: as tools ganharam os campos desta sprint SÓ no branch `feat/particao-horaria` — `main` segue em `ede7557`, sem nenhum deles. A branch segue recebendo commits (implementação original das Tasks 1-5 + a onda de correções da revisão final) — não copie um HEAD ou uma contagem fixa daqui; confira `git rev-parse HEAD` para o HEAD atual no momento da execução, e `git log --oneline main..feat/particao-horaria` para a lista completa. Nada foi mesclado, nada foi deployado, e o smoke abaixo NÃO foi executado.** Este documento é prospectivo: escreve o roteiro antes da execução, não um relato depois dela.
 
 > ⚠️ **Nenhum passo deste smoke muta.** As duas tools (`get_ad_schedule`, `get_performance_breakdown`) são 100% leitura — nenhuma tem `blast_radius`, nenhuma emite `confirmation_token`, nenhuma toca `campaign_criterion` nem qualquer outro recurso do Google. Diferente do 3b.42 (que tinha dois bloqueadores, um deles reservando 3 dos 10 passos para aval humano por mutação real), este runbook tem **um único bloqueador**, e é de deploy — não de autorização.
 
-**Por que este documento não tem número nenhum "medido agora":** mesmo que o cliente MCP desta sessão exponha `get_ad_schedule`/`get_performance_breakdown`, ele fala com a produção atual (`main` `701e35c`), que **ainda não tem** `include_metrics`, `campaign_ids`+`raw_grid` em `get_performance_breakdown`, nem o combo `campaign`+`hourly` aberto. Uma chamada com esses campos contra o schema antigo seria recusada por `additionalProperties: false` antes mesmo de chegar no handler. Por isso este runbook foi escrito por leitura direta do código-fonte (`src/google_ads/ad_schedule.py`, `src/mcp/tools/get_ad_schedule.py`, `src/google_ads/performance_breakdown.py`, `src/mcp/tools/get_performance_breakdown.py`, `src/google_ads/queries/ad_schedule.py`) e por citação explícita do runbook 3b.42 (já executado, mesma conta) — nunca por chamada MCP nem por número inventado. Onde um valor é citado, a origem vem entre parênteses; onde não há origem, o campo diz explicitamente "medir na execução".
+**Por que este documento não tem número nenhum "medido agora":** mesmo que o cliente MCP desta sessão exponha `get_ad_schedule`/`get_performance_breakdown`, ele fala com a produção atual (`main` `ede7557`), que **ainda não tem** `include_metrics`, `campaign_ids`+`raw_grid` em `get_performance_breakdown`, nem o combo `campaign`+`hourly` aberto. Uma chamada com esses campos contra o schema antigo seria recusada por `additionalProperties: false` antes mesmo de chegar no handler. Por isso este runbook foi escrito por leitura direta do código-fonte (`src/google_ads/ad_schedule.py`, `src/mcp/tools/get_ad_schedule.py`, `src/google_ads/performance_breakdown.py`, `src/mcp/tools/get_performance_breakdown.py`, `src/google_ads/queries/ad_schedule.py`) e por citação explícita do runbook 3b.42 (já executado, mesma conta) — nunca por chamada MCP nem por número inventado. Onde um valor é citado, a origem vem entre parênteses; onde não há origem, o campo diz explicitamente "medir na execução".
 
 ---
 
@@ -16,7 +16,7 @@
 
 **Operator:** wellington.ribeiro@v4company.com — confirme grant nas duas contas abaixo em `/admin/access` se quem executar for outra pessoa.
 
-**Conta de substância (T1, T3, T4):** `7862230676` — Mestre da Obra João Pessoa, produção V4, cliente real. Gasto real e orçamento compartilhado — é onde a soma dos baldes tem alguma coisa para errar.
+**Conta de substância (T1, T2, T3, T4):** `7862230676` — Mestre da Obra João Pessoa, produção V4, cliente real. Gasto real e orçamento compartilhado — é onde a soma dos baldes tem alguma coisa para errar. (T2 usa a mesma chamada de T1, só sem `include_metrics` — ficava órfão deste crosswalk.)
 **Conta de forma (T5, T6):** `1163862076` — conta de teste do Wellington, campanhas pausadas, gasto zero. Usada só nos dois testes cuja asserção é sobre o CONTRATO (mensagem de erro, envelope), não sobre o número — poupa a conta de cliente de duas chamadas que não precisam dela.
 
 **Spec:** `docs/superpowers/specs/2026-09-04-particao-horaria-design.md` ("O problema, em um número"; "A decisão de desenho"; "Escopo"; "Limitação do Google")
@@ -61,8 +61,8 @@ Cada balde é `{cost_brl, conversions, cpa_brl, cells}` — `cpa_brl` é `None` 
 ## Pre-flight — documento APENAS, sem checks automatizados executados
 
 - [x] **Branch local existente:** `git branch --show-current` = `feat/particao-horaria` — confirmado nesta sessão
-- [x] **HEAD do branch:** `36cb532` (5 commits desde `main`: `4085ccb`, `0116e4f`/`99f2d5c`, `43f674e`, `5319727`, `aa80746`/`36cb532`) — confirmado por `git log --oneline -5`
-- [x] **`main` não tem nenhum destes commits:** HEAD de `main` é `701e35c` — confirmado por `git log main --oneline -3`
+- [x] **HEAD do branch:** avança a cada commit novo (implementação original das Tasks 1-5 + a onda de correções da revisão final) — confirme o valor atual com `git rev-parse HEAD`, e a lista completa desde `main` com `git log --oneline main..feat/particao-horaria`; não trate um hash copiado aqui como o HEAD de agora
+- [x] **`main` não tem nenhum destes commits:** HEAD de `main` é `ede7557` — confirmado por `git log main --oneline -3`
 - [x] **Spec lida:** `docs/superpowers/specs/2026-09-04-particao-horaria-design.md` — confirmado
 - [x] **Plan + ledger lidos:** `docs/superpowers/plans/2026-09-04-particao-horaria.md` + `.superpowers/sdd/2026-09-04-particao-horaria/progress.md` (9 Rulings) — confirmado
 - [x] **Tasks 1-5 entregues**, cada uma com gate `check_pre_push.py` 6/6 e review limpo (Task 2 e Task 5 precisaram de 1 fix round cada; Task 4 não tem relatório escrito — falha de processo registrada no próprio `progress.md`, não de código: o RED foi reconstruído por git pelo revisor) — confirmado via os 5 `task-N-report.md` + `progress.md`
@@ -290,7 +290,7 @@ get_performance_breakdown(
 **Failure modes investigation:**
 
 - `len(rows) != 8` → `_validate_combo`/builder rejeitando o combo (schema antigo — reconecte, F140) ou algum `campaign_id` não encontrado (célula zerada silenciosamente, não erro — ver nota abaixo)
-- Envelope antigo (`{"status": "ok", "rows": [...], "truncated": ...}` sem `customer_id`/`level`/`breakdown`/`period`) → branch desatualizado; o fix round 1 da Task 5 (commit `36cb532`) uniformizou isso, confirme que está rodando o HEAD certo (`36cb532`, não `aa80746`)
+- Envelope antigo (`{"status": "ok", "rows": [...], "truncated": ...}` sem `customer_id`/`level`/`breakdown`/`period`) → branch desatualizado; o fix round 1 da Task 5 (commit `36cb532`) uniformizou isso — qualquer commit anterior a ele (ex.: `aa80746`) ainda tem o envelope antigo. Confirme que está rodando o HEAD ATUAL da branch `feat/particao-horaria` (`git rev-parse HEAD`), não um commit congelado citado num documento: `36cb532` já deixou de ser HEAD (a branch ganhou a onda de correções da revisão final depois dele) e vai continuar avançando
 - `period` ausente → mesmo sintoma acima
 - Alguma linha com `cost_brl: 0.0` e `cells: 0` numa campanha que sabidamente tem gasto → não é bug por si (ver nota abaixo), mas confira se É a campanha errada por engano
 - **(Não-bug, mas vale saber):** se `campaign_ids` incluir um id que não existe ou é de outra conta, `day_hour_metrics_query` simplesmente não devolve linha nenhuma para ele — os 4 baldes daquele `campaign_id` vêm inteiramente zerados (`cost_brl: 0.0, conversions: 0/0.0, cpa_brl: null, cells: 0`), sem erro. Não deveria acontecer aqui (os 2 ids foram confirmados por `run_gaql` no 3b.42), mas se acontecer não é a mesma classe de bug que "balde que some" — é campanha errada no input
