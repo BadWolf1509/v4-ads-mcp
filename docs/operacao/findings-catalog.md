@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain), F129 (governanca do system user — acao humana) e F130 (gate do Google sem `is_active`).
 >
-> **Como ler:** ~1290 linhas, **146 IDs** (F1-F147 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~1340 linhas, **147 IDs** (F1-F148 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -1281,3 +1281,51 @@ inchaco de resposta alem do que o §7 pede. Filtrar por `campaign_criterion.stat
 ('ENABLED', 'REMOVED')` nao resolve (REMOVED antigo tambem casa); o corte util seria por
 data de modificacao, que o `campaign_criterion` nao expoe. Fica registrado como custo
 conhecido do §7, nao como fix pendente.
+
+
+## F148 (HIGH, ABERTO) — o dry-run de todo mutate always-CONFIRM e invisivel na trilha
+
+> **Como apareceu:** medido em 04/09 durante o smoke 3b.42, quando a sessao MO-JP notou
+> que os dois dry-runs de `update_ad_schedule` que planejavam 10 e 5 operacoes apareciam no
+> `get_my_audit_log` como `action_type: read`, `target_count: 0`. A varredura seguinte
+> mostrou que o buraco nao e da tool: e das 24.
+
+**Escopo medido, nao estimado:** 24 tools em `src/mcp/tools/` chamam `create_pending`.
+**Nenhuma delas grava linha de auditoria propria no caminho de dry-run**, e o
+`create_pending` tambem nao. `create_pending` e ponto unico comprovado — `generate_token` e
+chamado de um lugar so em todo o `src/` (`dry_run.py:73`) e o `INSERT INTO
+pending_confirmations` existe so em `dry_run.py:77`.
+
+**O que aparece hoje, quando aparece:** a linha da consulta GAQL que o preview fez, emitida
+por `reports.py:177` com `action_type="read"` e `target_count=len(results)` — a contagem de
+linhas **lidas**, nao de operacoes planejadas. Tool cujo dry-run nao le GAQL nao deixa linha
+nenhuma.
+
+**A inversao, que e o que faz disto HIGH.** `create_pending` chama `ensure_account_access`
+com `level="write"`, e esse gate **audita so quando NEGA**: em `access.py` o `if allowed:
+return` vem antes do bloco de audit, e o `action_type="mutate" if level == "write"` vive
+dentro do ramo de negacao, com `status="denied"`. Resultado: a trilha guarda os previews que
+**foram recusados** e perde todos os que **funcionaram**. A auditoria de tentativa de escrita
+esta exatamente ao contrario — registra o que nao aconteceu, perde o que aconteceu.
+
+**Cenario que fecha o argumento:** alguem gera 50 previews de `bulk_pause_by_query` numa
+conta de cliente, todos autorizados, nenhum aplicado. A trilha tem **zero linhas**. Se o
+acesso dessa pessoa tivesse sido revogado, teria 50. Token mintado e nunca aplicado nao
+deixa rastro nenhum.
+
+**Fix, em duas partes e nesta ordem — no `create_pending`, nao nas 24 tools.** O
+`create_pending` ja tem o numero em escopo: **as 24 escrevem `__target_count__` no payload**,
+sem excecao, e ja existe precedente de leitura assim em `apply_change.py:70`. Ele tambem ja
+e `async` com `conn` na mao e ja faz um write no mesmo escopo, entao a linha de auditoria
+cabe **na mesma transacao** — o que de quebra cobre o caso de o INSERT da pendencia passar e
+a auditoria nao. Espalhar a gravacao pelas 24 seria o padrao que o F57 pune.
+
+1. `create_pending` grava a propria linha, com o `target_count` **planejado**.
+2. So entao uma coluna nova **nullable** `dry_run` distingue. Coluna nova, **nunca** valor
+   novo em `action_type`: o enum e filtro publico de `get_my_audit_log`
+   (`mutate|read|auth|system`) e mexer nele quebra consumidor.
+
+**Cuidado na implementacao:** nao repita o default `1` do `apply_change` ao ler
+`__target_count__`. Hoje as 24 preenchem, mas default silencioso e o que deixa a 25a passar
+sem ninguem notar — ausente deve gravar NULL ou estourar, nunca "1 operacao" que ninguem
+planejou. Migration aditiva, e o `CLAUDE.md` obriga full sweep com Docker.
