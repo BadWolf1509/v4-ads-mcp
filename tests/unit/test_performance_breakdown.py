@@ -1,5 +1,9 @@
 from datetime import date
 from types import SimpleNamespace
+from typing import Any
+from uuid import uuid4
+
+import pytest
 
 from src.google_ads.performance_breakdown import (
     _common_metrics,
@@ -7,6 +11,16 @@ from src.google_ads.performance_breakdown import (
     build_performance_breakdown_query,
     parse_performance_row,
 )
+from src.mcp.tools import get_performance_breakdown as mod
+
+
+@pytest.fixture(autouse=True)
+def _ctx():
+    from src.mcp.context import McpRequestContext, clear_current, set_current
+
+    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
+    yield
+    clear_current()
 
 
 def test_validate_combo_entity_without_breakdown_ok():
@@ -236,3 +250,143 @@ def test_outros_breakdowns_seguem_recusados_em_entity_level():
     """Só `hourly` abriu. `geo` continua fora: é regra de merge, não nível."""
     assert _validate_combo("campaign", "geo") is not None
     assert _validate_combo("ad_group", "hourly") is not None
+
+
+# --- Task 5: campaign+hourly na TOOL (particao default, raw_grid opt-in) -------
+#
+# Nao existia harness async de tool neste arquivo (so testes puros de
+# _validate_combo/parse_performance_row) — _wire_bd e a fixture _ctx acima
+# seguem o mesmo padrao de _fake_run_report (test_get_ad_schedule.py) e _wire
+# (test_update_ad_schedule.py).
+
+
+def _wire_bd(monkeypatch, *, celulas: list[dict[str, Any]]) -> list[str]:
+    """run_report falso: devolve `celulas` pra query com segments.hour, [] no resto.
+
+    day_hour_metrics_query e as demais queries de campaign (build_performance_
+    breakdown_query) comecam todas com `FROM campaign` — o despacho tem que casar
+    `segments.hour`, a marca exclusiva da conjunta dia x hora, ANTES de qualquer
+    despacho generico por `FROM <recurso>` (mesmo cuidado do _fake_run_report).
+    """
+    chamadas: list[str] = []
+
+    async def _run(**kwargs: Any) -> list[dict[str, Any]]:
+        q = kwargs["query"]
+        chamadas.append(q)
+        if "segments.hour" in q:
+            return celulas
+        return []
+
+    monkeypatch.setattr("src.mcp.tools.get_performance_breakdown.run_report", _run)
+    return chamadas
+
+
+@pytest.mark.asyncio
+async def test_campaign_hourly_devolve_particao_e_nao_168_celulas(monkeypatch):
+    """3 linhas por campanha, nao 168. O default de limit=100 truncaria antes
+    de terminar UMA campanha, e tool que trunca em uso normal nasce quebrada."""
+    _wire_bd(
+        monkeypatch,
+        celulas=[
+            {
+                "campaign_id": "1",
+                "day_of_week": "MONDAY",
+                "hour": 9,
+                "cost_micros": 100_000_000,
+                "conversions": 5.0,
+            },
+            {
+                "campaign_id": "1",
+                "day_of_week": "SUNDAY",
+                "hour": 3,
+                "cost_micros": 40_000_000,
+                "conversions": 1.0,
+            },
+        ],
+    )
+    out = await mod.get_performance_breakdown(
+        {
+            "customer_id": "1234567890",
+            "level": "campaign",
+            "breakdown": "hourly",
+            "campaign_ids": ["1"],
+        }
+    )
+    blocos = {r["bloco"] for r in out["rows"]}
+    assert blocos == {"comercial", "fora_de_hora", "fim_de_semana", "outros"}
+    assert len(out["rows"]) == 4
+    assert out["truncated"] is False
+
+
+@pytest.mark.asyncio
+async def test_campaign_hourly_exige_campaign_ids(monkeypatch):
+    out = await mod.get_performance_breakdown(
+        {"customer_id": "1234567890", "level": "campaign", "breakdown": "hourly"}
+    )
+    assert out["status"] == "error"
+    assert "campaign_ids" in out["error_message"]
+
+
+# raw_grid nao vem no Step 1 do brief, mas o proprio brief documenta o contrato
+# ("Interfaces": sem a flag particao, com ela grade crua + teto) — sem estes dois
+# testes o ramo raw_grid ia pra producao com zero cobertura.
+
+
+@pytest.mark.asyncio
+async def test_raw_grid_devolve_celulas_cruas_sem_particao(monkeypatch):
+    celulas = [
+        {
+            "campaign_id": "1",
+            "day_of_week": "MONDAY",
+            "hour": 9,
+            "cost_micros": 100_000_000,
+            "conversions": 5.0,
+        },
+        {
+            "campaign_id": "1",
+            "day_of_week": "SUNDAY",
+            "hour": 3,
+            "cost_micros": 40_000_000,
+            "conversions": 1.0,
+        },
+    ]
+    _wire_bd(monkeypatch, celulas=celulas)
+    out = await mod.get_performance_breakdown(
+        {
+            "customer_id": "1234567890",
+            "level": "campaign",
+            "breakdown": "hourly",
+            "campaign_ids": ["1"],
+            "raw_grid": True,
+        }
+    )
+    assert out["rows"] == celulas, "raw_grid devolve as celulas como vieram, sem passar por bloco"
+    assert all("bloco" not in r for r in out["rows"])
+    assert out["truncated"] is False
+
+
+@pytest.mark.asyncio
+async def test_raw_grid_trunca_no_teto_168_por_campanha(monkeypatch):
+    """teto = 168 x len(campaign_ids); acima disso `truncated` tem que avisar."""
+    celulas = [
+        {
+            "campaign_id": "1",
+            "day_of_week": "MONDAY",
+            "hour": i % 24,
+            "cost_micros": 1_000_000,
+            "conversions": 1.0,
+        }
+        for i in range(170)
+    ]
+    _wire_bd(monkeypatch, celulas=celulas)
+    out = await mod.get_performance_breakdown(
+        {
+            "customer_id": "1234567890",
+            "level": "campaign",
+            "breakdown": "hourly",
+            "campaign_ids": ["1"],
+            "raw_grid": True,
+        }
+    )
+    assert len(out["rows"]) == 168
+    assert out["truncated"] is True
