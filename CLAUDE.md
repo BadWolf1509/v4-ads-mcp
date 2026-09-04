@@ -37,9 +37,15 @@ Volátil por natureza: **atualize aquele arquivo ao terminar a sessão**, não e
 - Fase 2B (tombstone dos 8 reports antigos) segue **travada** no soak — não tombstonar.
 - **Tool nova só aparece pra sessão nova** (F140): o catálogo é negociado no handshake do
   MCP, e o sintoma é a tool "não existir", não um erro de versão. Reconecte antes do smoke.
-- `ad_schedule` está **entregue** (branch `feat/ad-schedule`: `get_ad_schedule` +
-  `update_ad_schedule`), smoke **pendente** — ver
+- `ad_schedule` está **em produção** (`get_ad_schedule` + `update_ad_schedule`, PR #31),
+  com o smoke **inteiro pendente** — ver
   [`phase-3b-42-ad-schedule-smoke.md`](docs/operacao/phase-3b-42-ad-schedule-smoke.md).
+  T4, T7 e T8 mutam conta real e esperam aval do Wellington.
+- **Buckets reclassificados em 04/09** (PR #32): 22 always + 46 defer, remedição mensal
+  marcada para 04/10 em
+  [`tool-buckets-2026-09-04.md`](docs/operacao/tool-buckets-2026-09-04.md). A medição
+  precisa de coluna de controle e match por prefixo de operation — sem as duas os
+  números saem errados nos dois sentidos.
 - Próximo sprint candidato: **M.5** (`meta_get_audience_performance` +
   `meta_get_top_creatives`).
 
