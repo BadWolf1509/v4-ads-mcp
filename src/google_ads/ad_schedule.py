@@ -213,6 +213,26 @@ def schedule_fingerprint(
     return {cid: sorted(list(c.window.key()) for c in atual.get(cid, [])) for cid in campaign_ids}
 
 
+def partition_by_blocks(
+    cells: list[MetricCell], blocos: dict[str, list[Window]]
+) -> dict[str, dict[str, Any]]:
+    """Particiona celulas dia x hora em blocos nomeados. TOTAL por construcao.
+
+    Toda celula cai em exatamente um balde: o primeiro bloco que a cobre, ou
+    `outros`. Sem isso a soma dos blocos nao bate com o total da conta, e o
+    gestor compara CPA de blocos que juntos nao explicam o gasto.
+    """
+    baldes: dict[str, list[MetricCell]] = {nome: [] for nome in blocos}
+    baldes["outros"] = []
+    for c in cells:
+        destino = next(
+            (nome for nome, janelas in blocos.items() if covers(janelas, c.day_of_week, c.hour)),
+            "outros",
+        )
+        baldes[destino].append(c)
+    return {nome: _agrega(cs) for nome, cs in baldes.items()}
+
+
 def summarize_current(current: list[CurrentWindow]) -> dict[str, Any]:
     if not current:
         return {"has_schedule": False, "windows": 0, "hours_per_week": 168.0}
