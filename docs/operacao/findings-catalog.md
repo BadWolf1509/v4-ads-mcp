@@ -1506,7 +1506,7 @@ fecha sem exercitar o caminho de APPLY **e** o de RESTAURACAO.
 
 ---
 
-## F152 (LOW, ABERTO) — `partial_failures` carrega sucessos, e o rotulo por item e fixo em "added"
+## F152 (LOW, CORRIGIDO EM PARTE) — o rotulo por-op afirmava um verbo que a camada nao conhece
 
 > **Como apareceu:** observado no T7 e T8 do smoke 3b.42.
 
@@ -1524,6 +1524,32 @@ mudar o rotulo exigiria mexer tambem no calculo de `applied_count`. Isso muda a 
 resposta de **toda** tool de mutacao — contrato de consumidor. Nao entra de carona num fix
 pontual; precisa de decisao propria.
 
-**Nota vizinha, sem ID (comportamento do Google, nao defeito nosso):** `bid_modifier` volta do
-Google em precisao **float32** — pedir `1.1` devolve `1.100000023841858`. Quem comparar
-`== 1.1` falha. Vale virar frase na description da tool; comparacao deve ser por tolerancia.
+> **✅ CORRIGIDO em 04/09 (PR #38), em produção na revisao `v4-ads-mcp-00090-qst`.** O rotulo
+> por-op passou a ser **`"success"`**, neutro, e o `applied_count` passou a contar *"nao
+> falhou"* em vez de casar o verbo antigo — chavear no verbo amarrava a contagem a um rotulo
+> que nao descrevia metade das operacoes.
+>
+> **Por que NEUTRO e nao o verbo certo (`added`/`updated`/`removed`).** O `oneof` da RESPOSTA
+> do Google diz sucesso/falha e o tipo do recurso — **nunca o verbo**. Create, update e remove
+> so se distinguem do lado da REQUISICAO. Emitir o verbo aqui exigiria correlacionar resposta
+> com request op a op, e a camada generica passaria a **afirmar algo que nao observa**. Rotulo
+> neutro e o que esta camada sustenta.
+>
+> **Nada se perdeu.** As tools que querem verbo de dominio ja remapeiam sozinhas via
+> `classify_partial` (`add_keywords`, `add_negatives_from_search_terms`, `apply_audience`), e
+> elas leem o campo **`error`**, nunca este `status` — verificado nos call-sites ANTES de
+> mexer. O unico consumidor real do rotulo era o `applied_count`, dentro do proprio
+> `mutations.py`. Full sweep 7/7: nenhuma das 25 tools de mutacao quebrou, que era a pergunta.
+
+> 🔴 **RENOMEACAO DO CAMPO: considerada e RECUSADA em 04/09 — nao reabrir sem argumento novo.**
+> A outra metade do finding era que o campo se chama `partial_failures` e carrega sucessos.
+> Custo medido: **40 referencias em 14 arquivos**, num caminho compartilhado pelos **25
+> builders**, e a mudanca altera a forma da resposta de **toda** tool de mutacao — contrato de
+> consumidor. Ganho: trocar um nome ambiguo por outro. O nome tem leitura defensavel: ele
+> nomeia o **MODO** (o relatorio por-op do partial-failure mode), nao o conteudo. O que
+> faltava era o docstring dizer isso, e agora diz. Se a renomeacao voltar a mesa, e PR
+> proprio, com o objetivo escrito antes.
+
+**Nota vizinha, sem ID (comportamento do Google, nao defeito nosso):** `bid_modifier` volta em
+precisao **float32** — pedir `1.1` devolve `1.100000023841858`. Quem comparar `== 1.1` falha.
+Segue como candidata a frase na description da tool; e doc, nao codigo.
