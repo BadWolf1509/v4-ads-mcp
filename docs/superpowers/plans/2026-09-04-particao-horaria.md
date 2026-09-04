@@ -47,7 +47,7 @@
 
 **Interfaces:**
 - Consumes: `Window`, `MetricCell`, `covers` — já existem neste módulo.
-- Produces: `partition_by_blocks(cells: list[MetricCell], blocos: dict[str, list[Window]]) -> dict[str, dict[str, Any]]`. Cada valor tem as chaves `cost_brl: float`, `conversions: float`, `cpa_brl: float | None`, `cells: int`, `horas: float`. Toda célula não coberta por bloco nenhum cai em `"outros"`.
+- Produces: `partition_by_blocks(cells: list[MetricCell], blocos: dict[str, list[Window]]) -> dict[str, dict[str, Any]]`. Cada valor tem as chaves `cost_brl: float`, `conversions: float`, `cpa_brl: float | None`, `cells: int`. **Ruling 3 do scan de pre-voo: a chave `horas` foi REMOVIDA** — `float(len(cs))` contava celulas COM DADO, nao a extensao do bloco, entao um bloco de 50h sem gasto apareceria com `horas: 0`. Era duplicata de `cells` com nome que prometia outra coisa. Toda célula não coberta por bloco nenhum cai em `"outros"`.
 
 - [ ] **Step 1: escrever o teste que falha — a partição tem que ser TOTAL**
 
@@ -101,9 +101,7 @@ def partition_by_blocks(
             "outros",
         )
         baldes[destino].append(c)
-    return {
-        nome: {**_agrega(cs), "horas": float(len(cs))} for nome, cs in baldes.items()
-    }
+    return {nome: _agrega(cs) for nome, cs in baldes.items()}
 ```
 
 - [ ] **Step 4: rodar e ver passar**
@@ -343,6 +341,8 @@ git commit -m "feat(google_ads): campaign+hourly deixa de ser combo recusado"
 ---
 
 ### Task 5: o caminho `campaign`+`hourly` na tool, com teto próprio
+
+> ⚠️ **Ordem obrigatoria (Ruling 1 do scan):** esta task vem DEPOIS da Task 4. Invertida, a validacao recusa o combo antes de a tool interceptar. E a Task 4 sozinha deixa um commit em que o combo e aceito na validacao e levanta `ValueError` no builder — aceito dentro da branch porque nao ha deploy entre tasks, e esta task fecha antes do merge.
 
 **Files:**
 - Modify: `src/mcp/tools/get_performance_breakdown.py`
