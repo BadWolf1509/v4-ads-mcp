@@ -205,16 +205,36 @@ soak: **34 na primeira execução com a trava ligada**, se nada mudar até lá.
 
 ### 5.4 Revogação soft
 
-`manager_account_access.revoke` deixa de ser `DELETE` nos **dois** call-sites,
-incluindo o `DELETE ... WHERE manager_id = $1` do offboarding. Passam a gravar
-`revoked_at` + `revoked_reason`.
+⚠️ **Corrigido em 05/09, contra o código pós-implementação** (o texto abaixo já
+é a versão corrigida). Não existe `DELETE` de offboarding — nunca existiu
+call-site de offboarding aqui. O único `DELETE ... WHERE manager_id = $1` cru
+vivia dentro de `copy_access` (substituição de conjunto no destino), e **são
+cinco** funções que passam a tratar `revoked_at`, não duas: `grant`,
+`grant_all_active`, `bulk_grant`, `copy_access` e `list_accounts_for_manager`
+(que não filtrava revogado) — mais o próprio `can_manager_access` (§4), que já
+lê a coluna.
+
+`manager_account_access.revoke` (o toggle do painel) deixa de ser `DELETE` e
+passa a gravar `revoked_at` + `revoked_reason`.
 
 Razões distintas, porque a restauração depende delas: `left_mcc` (churn,
 restaurável com um clique) e `admin_revoked` (deliberada, **não** volta).
 
-`bulk_grant` precisa limpar `revoked_at`/`revoked_reason` no `ON CONFLICT` — hoje
-é `DO NOTHING`, e com soft revoke isso deixaria o gestor readicionado bloqueado
-para sempre. Foi exatamente o que o Meta corrigiu.
+`bulk_grant`, `grant` e `grant_all_active` precisam limpar
+`revoked_at`/`revoked_reason` no `ON CONFLICT` — hoje é `DO NOTHING`, e com soft
+revoke isso deixaria o gestor readicionado bloqueado para sempre. Foi
+exatamente o que o Meta corrigiu.
+
+`copy_access` **também não fica com `DELETE` cru**, ao contrário do que esta
+spec dizia: a justificativa original — "o INSERT abaixo não tem ON CONFLICT,
+uma linha soft-revogada sobrevivente bateria na PK" — descrevia o código
+daquele momento, não uma restrição real, e foi resolvida assim (espelhando o
+achado C1 já em produção no gêmeo Meta): o destino é soft-revogado com razão
+própria (`bulk_copy_replaced`, só sobre `revoked_at IS NULL` — não toca
+revogação anterior por outro motivo) e o `INSERT` ganha `ON CONFLICT ... DO
+UPDATE` pra restaurar em vez de recriar. Sem isso, copiar acesso apagaria a
+trilha `left_mcc` que o destino já tinha, e uma conta que depois voltasse ao
+MCC restauraria só metade dos gestores certos, em silêncio.
 
 ### 5.5 Trava de rollout
 
@@ -234,8 +254,15 @@ seguinte, porque o workflow reescreve a chave nos três jobs a cada deploy.
 `admin_accounts_meta`. Duas raias:
 
 - **Aguardando delegação** — conta ativa com zero grants vivos. Hoje: 0 linhas.
-- **Saíram do MCC** — cruzou a carência, ainda com grants vivos. Um clique
-  restaura, e **só** o que tem `revoked_reason = 'left_mcc'`.
+- **Voltaram ao MCC** (`voltaram_ao_mcc`) — ⚠️ **corrigido em 05/09**: esta
+  linha dizia que a fila chaveava em ter "cruzado a carência, ainda com grants
+  vivos", ou seja `is_active = false`. Errado: chavear em `is_active = false`
+  faria a conta **sumir** da fila no instante em que ela volta a ser
+  restaurável, porque `upsert_many` a reativa (`is_active = true`) na MESMA
+  execução em que ela reaparece no MCC. A chave real é ter **grant revogado
+  por churn PENDENTE** — conta **ativa** (já voltou) **e**
+  `revoked_reason = 'left_mcc'` (ainda não restaurado); só entram contas JÁ
+  acionáveis. Um clique restaura exatamente esses grants.
 
 Contas em carência (`missed_syncs > 0`) **não** viram raia: são coluna de estado
 na tabela que já existe. Fila é ação pendente; carência é estado em trânsito, e
