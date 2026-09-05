@@ -5,8 +5,9 @@ behavior against real SQL. We don't mock asyncpg — that yields
 zero confidence in column names, constraints, or upsert behavior.
 """
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
+import asyncpg
 import pytest
 
 from src.db.repositories import (
@@ -21,6 +22,14 @@ from src.db.repositories import (
     meta_oauth_connections,
     meta_rate_counters,
 )
+
+
+async def _make_manager(conn: asyncpg.Connection, email: str) -> UUID:
+    """Shared helper: create a manager row with a fresh id, return the id."""
+    mid = uuid4()
+    await managers.create(conn, manager_id=mid, email=email, full_name=None)
+    return mid
+
 
 # ---------- managers ----------
 
@@ -296,6 +305,32 @@ async def test_access_grant_all_active(db) -> None:
         # Idempotent re-run inserts 0 (ON CONFLICT DO NOTHING).
         n2 = await manager_account_access.grant_all_active(conn, manager_id=mid)
         assert n2 == 0
+
+
+@pytest.mark.integration
+async def test_gate_nega_conta_inativa_com_grant_vivo(db) -> None:
+    """F-gate: 34 grants vivos em 9 contas fora do MCC (medido 2026-09-05).
+
+    O gate antigo aprovava os 34 — quem os negava era o Google, não nós.
+    """
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "gate@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn,
+            [{"customer_id": "555", "mcc_id": "6436352492", "descriptive_name": "Ex-cliente"}],
+        )
+        await manager_account_access.grant(conn, manager_id=mid, customer_id="555")
+        assert await manager_account_access.can_manager_access(conn, mid, "555") is True
+
+        # A conta sai do MCC.
+        await conn.execute(
+            "UPDATE google_ads_accounts SET is_active = false WHERE customer_id = '555'"
+        )
+        assert await manager_account_access.can_manager_access(conn, mid, "555") is False
+        assert (
+            await manager_account_access.can_manager_access(conn, mid, "555", level="write")
+            is False
+        )
 
 
 # ---------- audit_log ----------

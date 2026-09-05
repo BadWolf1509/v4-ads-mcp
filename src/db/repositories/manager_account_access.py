@@ -97,11 +97,26 @@ async def list_accounts_for_manager(
 async def can_manager_access(
     conn: asyncpg.Connection, manager_id: UUID, customer_id: str, *, level: str = "read"
 ) -> bool:
-    """Return True if manager has at least `level` access to customer_id."""
+    """Gate por conta — e, como no Meta, é a ÚNICA fronteira que sobra.
+
+    `build_client_for_manager` usa o token do próprio gestor, mas com
+    `login_customer_id` = o MCC, e as identidades dos gestores são usuárias do
+    MCC (confirmado 2026-09-05). Logo o token alcança as 26 contas de cliente e
+    quem os limita às atribuídas é esta função.
+
+    O JOIN com o inventário é o fix da pendência 10: em 2026-09-05 havia 34
+    grants `write` vivos em 9 contas que saíram do MCC, e este predicado
+    aprovava os 34. Quem os negava era o Google — delegar ao provedor a
+    aplicação de uma regra nossa.
+    """
     row = await conn.fetchrow(
         """
-        SELECT access_level FROM manager_account_access
-        WHERE manager_id = $1 AND customer_id = $2
+        SELECT m.access_level
+          FROM manager_account_access m
+          JOIN google_ads_accounts a ON a.customer_id = m.customer_id
+         WHERE m.manager_id = $1
+           AND m.customer_id = $2
+           AND a.is_active = true
         """,
         manager_id,
         customer_id,
