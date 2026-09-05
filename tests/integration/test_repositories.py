@@ -22,6 +22,7 @@ from src.db.repositories import (
     meta_oauth_connections,
     meta_rate_counters,
 )
+from src.jobs import account_resync
 
 
 async def _make_manager(conn: asyncpg.Connection, email: str) -> UUID:
@@ -490,6 +491,127 @@ async def test_count_grants_on_inactive_accounts(db) -> None:
         # Revogado (mesmo em conta inativa) não é mais "grant VIVO" — some da contagem.
         await manager_account_access.revoke(conn, manager_id=mid, customer_id="605")
         assert await manager_account_access.count_grants_on_inactive_accounts(conn) == 0
+
+
+# ---------- account_resync.reconcile_google (Task 5) ----------
+
+
+@pytest.mark.integration
+async def test_conta_nova_aparece_em_added(db) -> None:
+    """Se o upsert rodasse ANTES da leitura, `added` sairia sempre 0.
+
+    `upsert_many` marca is_active=true e zera missed_syncs pra toda conta do
+    MCC — lido depois dele, o inventário já parece "em dia" e a auditoria nunca
+    reporta conta nova. Achado da revisão do sprint Meta, round 1.
+    """
+    async with db.acquire() as conn:
+        resumo = await account_resync.reconcile_google(
+            conn,
+            accounts=[{"customer_id": "801", "mcc_id": "1", "descriptive_name": "Nova"}],
+            complete=True,
+            apply=False,
+        )
+        assert resumo["added"] == 1
+
+        # Segunda execução: a conta já está no inventário, não é mais "nova".
+        resumo = await account_resync.reconcile_google(
+            conn,
+            accounts=[{"customer_id": "801", "mcc_id": "1", "descriptive_name": "Nova"}],
+            complete=True,
+            apply=False,
+        )
+        assert resumo["added"] == 0
+
+
+@pytest.mark.integration
+async def test_trava_desligada_nao_revoga_mas_reporta(db) -> None:
+    """O dry-run tem de OBSERVAR o que a virada fará, senão o soak não serve."""
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "dry@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "802", "mcc_id": "1", "descriptive_name": "Sai"}]
+        )
+        await manager_account_access.grant(conn, manager_id=mid, customer_id="802")
+        await conn.execute(
+            "UPDATE google_ads_accounts SET is_active = false WHERE customer_id = '802'"
+        )
+
+        resumo = await account_resync.reconcile_google(
+            conn, accounts=[], complete=True, apply=False
+        )
+        assert resumo["applied"] is False
+        assert resumo["revoked_grants"] == 0
+        # ...MAS o dry-run tem de OBSERVAR o que a virada fará. Sem este
+        # contador, o soak inteiro reporta zero e não distingue "não há o que
+        # revogar" de "há 34 e a trava está segurando".
+        assert resumo["revoke_candidates"] == 1
+        # A linha continua VIVA — a trava governa destruição, não observação.
+        assert await conn.fetchval(
+            "SELECT revoked_at IS NULL FROM manager_account_access WHERE customer_id = '802'"
+        )
+
+
+@pytest.mark.integration
+async def test_inventario_vazio_nao_desativa_nem_revoga_mesmo_com_trava_ligada(db) -> None:
+    """A proteção do F85 mudou de lugar — este é o guard do lugar NOVO.
+
+    Até aqui `mark_inactive_except` era o único guardião (keep-list vazia virava
+    no-op). O job diário parou de chamar essa função; quem protege agora é o
+    `complete=inventario_ok` que alimenta `build_plan()` dentro de
+    `reconcile_google`. Prova a propriedade contra banco real, com a trava
+    (`apply`) LIGADA de propósito — o pior caso é leitura vazia no mesmo dia em
+    que `google_reconcile_apply` está true, e mesmo assim tem de sair zero.
+
+    "701" está deliberadamente a 1 ausência do limiar (a próxima ausência
+    cruzaria `threshold=3`): se `complete` fosse True aqui (em vez de False),
+    esta MESMA chamada removeria "701" e revogaria os dois grants. É a
+    verificação por sabotagem que a task pediu — feita à parte (não commitada),
+    forçando complete=True numa cópia deste teste: `removed` foi de 0 para 1,
+    `applied` de False para True, `revoked_grants` de 0 para 2, e a leitura de
+    `revoked_at IS NULL` de ambos os grants virou False. O teste como está aqui
+    (complete=False) fica VERDE; a variante sabotada fica VERMELHA.
+    """
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "sabotagem@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn,
+            [
+                {"customer_id": "701", "mcc_id": "1", "descriptive_name": "Sobrevive"},
+                {"customer_id": "702", "mcc_id": "1", "descriptive_name": "Ja_Saiu"},
+            ],
+        )
+        await conn.execute(
+            "UPDATE google_ads_accounts SET missed_syncs = 2 WHERE customer_id = '701'"
+        )
+        # "702" já tinha saído do MCC num resync anterior — grant vivo em conta
+        # inativa, exatamente o estado que motivou `revoke_candidates` (34
+        # grants em produção em 2026-09-05).
+        await conn.execute(
+            "UPDATE google_ads_accounts SET is_active = false WHERE customer_id = '702'"
+        )
+        await manager_account_access.grant(conn, manager_id=mid, customer_id="701")
+        await manager_account_access.grant(conn, manager_id=mid, customer_id="702")
+
+        resumo = await account_resync.reconcile_google(
+            conn, accounts=[], complete=False, apply=True
+        )
+
+        assert resumo["blocked_reason"] is not None
+        assert resumo["applied"] is False
+        assert resumo["removed"] == 0
+        assert resumo["revoked_grants"] == 0
+        # Observabilidade não pode morrer com a trava: "702" segue contando.
+        assert resumo["revoke_candidates"] == 1
+
+        ativos = {a.customer_id for a in await google_ads_accounts.list_all(conn)}
+        assert "701" in ativos, "inventário vazio não pode desativar conta viva"
+        for cid in ("701", "702"):
+            assert await conn.fetchval(
+                "SELECT revoked_at IS NULL FROM manager_account_access "
+                "WHERE manager_id = $1 AND customer_id = $2",
+                mid,
+                cid,
+            ), f"grant de {cid} não pode ser revogado com leitura incompleta"
 
 
 @pytest.mark.integration

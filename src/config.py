@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     # Trava do rollout: o job calcula e audita o plano, mas só executa o lado
     # destrutivo com isto ligado. Virar sem deploy de código.
     meta_reconcile_apply: bool = False
+    # Trava do rollout do lado Google, espelhando `meta_reconcile_apply`. O job
+    # calcula e audita o plano sempre; só o lado destrutivo (deactivate +
+    # revoke_for_inactive_accounts, em src/jobs/account_resync.py) depende disto.
+    google_reconcile_apply: bool = False
 
     # NOTA (F95): nao ha campos Supabase aqui. O banco e Postgres do Supabase,
     # mas o acesso e 100% via `database_url` (asyncpg cru, sem a lib supabase).

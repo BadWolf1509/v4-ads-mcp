@@ -1,12 +1,21 @@
 """Testes de orquestração do job src/jobs/account_resync.py (run()/main()).
 
 run() é o Cloud Run Job diário: escolhe uma OAuth connection, decifra o refresh token,
-builda o client, descobre customers, puxa detalhes, faz upsert + mark_inactive, grava
-audit (record_job_run), faz piggyback da reconciliação Meta e purga tabelas transientes
-(purge_expired). Mockamos TODAS as dependências (build client, repos, reconcile_meta,
-purge_expired, connection pool) e asseveramos a orquestração + exit codes: 1 sem OAuth
-connection (auditado como status='error'), 0 no sucesso, chama record_job_run, Meta e
-purge são best-effort.
+builda o client, descobre customers, puxa detalhes, chama reconcile_google (upsert +
+carência + deactivate/revoke atrás da trava), grava audit (record_job_run), faz
+piggyback da reconciliação Meta e purga tabelas transientes (purge_expired). Mockamos
+TODAS as dependências (build client, reconcile_google, reconcile_meta, purge_expired,
+connection pool) e asseveramos a orquestração + exit codes: 1 sem OAuth connection
+(auditado como status='error'), 0 no sucesso, chama record_job_run, Meta e purge são
+best-effort.
+
+`reconcile_google` (Task 5) é mockado por INTEIRO, igual `reconcile_meta` — este
+arquivo prova a ORQUESTRAÇÃO de `run()` (accounts/complete/apply chegam certos,
+resumo vira params_summary certo), não a lógica de reconciliação em si. Essa lógica
+(carência, build_plan, o guard de inventário vazio) tem cobertura própria contra
+banco real em tests/integration/test_repositories.py — mockar `reconcile_google`
+aqui e reler `test_repositories.py` lá é o que evita um teste "verde" que não prova
+mais nada depois que o job parou de chamar `mark_inactive_except` diretamente.
 
 O piggyback (`src.jobs.meta_resync.reconcile_meta`) é mockado devolvendo um `Plan`
 vazio de propósito: nenhum teste aqui inspeciona o conteúdo do plano — só que o
@@ -15,6 +24,7 @@ piggyback foi chamado e que uma falha nele não derruba o resync do Google.
 
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -23,6 +33,24 @@ from src.jobs import account_resync
 from src.meta_ads.reconcile import Plan
 
 _M = "src.jobs.account_resync"
+
+
+def _reconcile_result(**overrides: Any) -> dict[str, Any]:
+    """Formato devolvido por `reconcile_google` (Task 5) — default 'nada mudou'."""
+    base: dict[str, Any] = {
+        "added": 0,
+        "bumped": 0,
+        "removed": 0,
+        "reset": 0,
+        "revoke_candidates": 0,
+        "revoked_grants": 0,
+        "applied": False,
+        "complete": True,
+        "upserted": 0,
+        "blocked_reason": None,
+    }
+    base.update(overrides)
+    return base
 
 
 def _fake_pool(conn: MagicMock) -> MagicMock:
@@ -44,8 +72,7 @@ def _base_patches(
     manager: object = None,
     accounts: list | None = None,
     resource_names: list | None = None,
-    upsert_return: int = 3,
-    deactivated_return: int = 1,
+    reconcile_result: dict[str, Any] | None = None,
 ):
     """Contextmanager-stack comum dos testes. Retorna dict de mocks pra assert."""
     accounts = (
@@ -57,6 +84,11 @@ def _base_patches(
         ]
     )
     resource_names = resource_names if resource_names is not None else ["customers/6436352492"]
+    reconcile_result = (
+        reconcile_result
+        if reconcile_result is not None
+        else _reconcile_result(upserted=len(accounts))
+    )
 
     mocks = {
         "init_pool": patch(f"{_M}.connection.init_pool", AsyncMock()),
@@ -71,12 +103,12 @@ def _base_patches(
             MagicMock(return_value=resource_names),
         ),
         "fetch": patch(f"{_M}.fetch_account_details", MagicMock(return_value=accounts)),
-        "upsert": patch(
-            f"{_M}.google_ads_accounts.upsert_many", AsyncMock(return_value=upsert_return)
-        ),
-        "mark_inactive": patch(
-            f"{_M}.google_ads_accounts.mark_inactive_except",
-            AsyncMock(return_value=deactivated_return),
+        # Task 5: substitui os antigos mocks de `upsert_many`/`mark_inactive_except`
+        # — o job não chama mais nenhum dos dois diretamente, e continuar mockando
+        # funções que a produção não invoca mais provaria zero (era exatamente o
+        # risco apontado na revisão: guard vácuo).
+        "reconcile_google": patch(
+            f"{_M}.reconcile_google", AsyncMock(return_value=reconcile_result)
         ),
         "record": patch(f"{_M}.record_job_run", AsyncMock(return_value=1)),
         "purge": patch(
@@ -106,14 +138,14 @@ async def test_run_returns_1_when_no_oauth_connection() -> None:
         mocks["get_pool"],
         mocks["pick"],
         mocks["build_client"] as build_client,
-        mocks["upsert"] as upsert,
+        mocks["reconcile_google"] as reconcile_google,
         mocks["record"] as record,
     ):
         rc = await account_resync.run()
 
     assert rc == 1
     build_client.assert_not_called()
-    upsert.assert_not_awaited()
+    reconcile_google.assert_not_awaited()
     # pool sempre fechado no finally.
     close_pool.assert_awaited_once()
 
@@ -130,7 +162,9 @@ async def test_run_happy_path_returns_0_and_orchestrates() -> None:
     conn = MagicMock()
     pool = _fake_pool(conn)
     oc = SimpleNamespace(refresh_token_enc=b"enc")
-    mocks = _base_patches(pool=pool, oc=oc, upsert_return=2, deactivated_return=1)
+    mocks = _base_patches(
+        pool=pool, oc=oc, reconcile_result=_reconcile_result(upserted=2, removed=1)
+    )
 
     with (
         mocks["init_pool"],
@@ -142,8 +176,7 @@ async def test_run_happy_path_returns_0_and_orchestrates() -> None:
         mocks["build_client"] as build_client,
         mocks["list_customers"] as list_customers,
         mocks["fetch"] as fetch,
-        mocks["upsert"] as upsert,
-        mocks["mark_inactive"] as mark_inactive,
+        mocks["reconcile_google"] as reconcile_google,
         mocks["record"] as record,
         mocks["purge"] as purge,
         patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())),
@@ -155,20 +188,32 @@ async def test_run_happy_path_returns_0_and_orchestrates() -> None:
     build_client.assert_called_once()
     list_customers.assert_called_once()
     fetch.assert_called_once()
-    upsert.assert_awaited_once()
-    mark_inactive.assert_awaited_once()
-    # record_job_run é chamado 2x no happy path: account_resync + db_purge (F73).
+    reconcile_google.assert_awaited_once()
+    # record_job_run é chamado 2x no happy path: google_reconcile + db_purge (F73).
     assert record.await_count == 2
     purge.assert_awaited_once()
     close_pool.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_run_records_job_run_with_operation_and_deactivated_count() -> None:
+async def test_run_records_job_run_with_operation_and_reconcile_summary() -> None:
+    """O resumo de `reconcile_google` vira `params_summary`; upserted/blocked_reason
+    saem de lá porque já viram target_count/status/error_message — duplicá-los
+    dentro do summary não acrescentaria nada pra quem lê o audit.
+    """
     conn = MagicMock()
     pool = _fake_pool(conn)
     oc = SimpleNamespace(refresh_token_enc=b"enc")
-    mocks = _base_patches(pool=pool, oc=oc, upsert_return=2, deactivated_return=5)
+    resumo = _reconcile_result(
+        added=1,
+        removed=2,
+        reset=1,
+        revoke_candidates=3,
+        revoked_grants=2,
+        applied=True,
+        upserted=2,
+    )
+    mocks = _base_patches(pool=pool, oc=oc, reconcile_result=resumo)
 
     with (
         mocks["init_pool"],
@@ -180,28 +225,40 @@ async def test_run_records_job_run_with_operation_and_deactivated_count() -> Non
         mocks["build_client"],
         mocks["list_customers"],
         mocks["fetch"],
-        mocks["upsert"],
-        mocks["mark_inactive"],
+        mocks["reconcile_google"],
         mocks["record"] as record,
         mocks["purge"],
         patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())),
     ):
         await account_resync.run()
 
-    # 1ª chamada é a do account_resync propriamente dito (a 2ª, db_purge, é
+    # 1ª chamada é a do reconcile propriamente dito (a 2ª, db_purge, é
     # coberta em test_run_calls_purge_expired_and_records_db_purge abaixo).
     kwargs = record.await_args_list[0].kwargs
-    assert kwargs["operation"] == "account_resync"
+    assert kwargs["operation"] == "google_reconcile"
     assert kwargs["platform"] == "google"
     assert kwargs["target_count"] == 2
-    # F85: `inventory_ok` entrou no summary — distingue "0 desativadas porque nada
-    # sumiu" de "0 desativadas porque o inventário veio vazio e pulamos a detecção".
-    assert kwargs["params_summary"] == {"deactivated": 5, "inventory_ok": True}
     assert kwargs["status"] == "success"
+    assert kwargs["error_message"] is None
+    assert kwargs["params_summary"] == {
+        "added": 1,
+        "bumped": 0,
+        "removed": 2,
+        "reset": 1,
+        "revoke_candidates": 3,
+        "revoked_grants": 2,
+        "applied": True,
+        "complete": True,
+    }
 
 
 @pytest.mark.asyncio
-async def test_run_passes_keep_ids_to_mark_inactive() -> None:
+async def test_run_passes_fetched_accounts_and_inventory_ok_to_reconcile_google() -> None:
+    """`run()` repassa os `accounts` que buscou e `complete=inventario_ok` —
+    é esta fiação que faz inventário vazio virar `complete=False` dentro de
+    `reconcile_google` (o guard em si é testado contra banco real em
+    tests/integration/test_repositories.py).
+    """
     conn = MagicMock()
     pool = _fake_pool(conn)
     oc = SimpleNamespace(refresh_token_enc=b"enc")
@@ -218,16 +275,69 @@ async def test_run_passes_keep_ids_to_mark_inactive() -> None:
         mocks["build_client"],
         mocks["list_customers"],
         mocks["fetch"],
-        mocks["upsert"],
-        mocks["mark_inactive"] as mark_inactive,
+        mocks["reconcile_google"] as reconcile_google,
         mocks["record"],
         mocks["purge"],
         patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())),
     ):
         await account_resync.run()
 
-    kwargs = mark_inactive.call_args.kwargs
-    assert kwargs["keep_customer_ids"] == ["111", "222", "333"]
+    kwargs = reconcile_google.call_args.kwargs
+    assert kwargs["accounts"] == accounts
+    assert kwargs["complete"] is True  # inventario_ok = bool(accounts)
+
+
+@pytest.mark.asyncio
+async def test_run_passes_google_reconcile_apply_setting_through() -> None:
+    """A trava de rollout chega em `reconcile_google` como `apply=` — sem
+    override de env ela é `False` (default de `Settings.google_reconcile_apply`).
+    """
+    conn = MagicMock()
+    pool = _fake_pool(conn)
+    oc = SimpleNamespace(refresh_token_enc=b"enc")
+    mocks = _base_patches(pool=pool, oc=oc)
+
+    with (
+        mocks["init_pool"],
+        mocks["close_pool"],
+        mocks["get_pool"],
+        mocks["pick"],
+        mocks["derive"],
+        mocks["decrypt"],
+        mocks["build_client"],
+        mocks["list_customers"],
+        mocks["fetch"],
+        mocks["reconcile_google"] as reconcile_google,
+        mocks["record"],
+        mocks["purge"],
+        patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())),
+    ):
+        await account_resync.run()
+
+    assert reconcile_google.call_args.kwargs["apply"] is False
+
+    conn2 = MagicMock()
+    pool2 = _fake_pool(conn2)
+    mocks2 = _base_patches(pool=pool2, oc=oc)
+    with (
+        patch.dict("os.environ", {"GOOGLE_RECONCILE_APPLY": "true"}),
+        mocks2["init_pool"],
+        mocks2["close_pool"],
+        mocks2["get_pool"],
+        mocks2["pick"],
+        mocks2["derive"],
+        mocks2["decrypt"],
+        mocks2["build_client"],
+        mocks2["list_customers"],
+        mocks2["fetch"],
+        mocks2["reconcile_google"] as reconcile_google2,
+        mocks2["record"],
+        mocks2["purge"],
+        patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())),
+    ):
+        await account_resync.run()
+
+    assert reconcile_google2.call_args.kwargs["apply"] is True
 
 
 @pytest.mark.asyncio
@@ -248,8 +358,7 @@ async def test_run_meta_failure_is_non_fatal() -> None:
         mocks["build_client"],
         mocks["list_customers"],
         mocks["fetch"],
-        mocks["upsert"],
-        mocks["mark_inactive"],
+        mocks["reconcile_google"],
         mocks["record"],
         mocks["purge"],
         patch(
@@ -291,8 +400,7 @@ async def test_falha_do_piggyback_meta_deixa_rastro_no_audit(
         mocks["build_client"],
         mocks["list_customers"],
         mocks["fetch"],
-        mocks["upsert"],
-        mocks["mark_inactive"],
+        mocks["reconcile_google"],
         mocks["record"],
         mocks["purge"],
         patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(side_effect=boom)),
@@ -330,8 +438,7 @@ async def test_run_calls_purge_expired_and_records_db_purge() -> None:
         mocks["build_client"],
         mocks["list_customers"],
         mocks["fetch"],
-        mocks["upsert"],
-        mocks["mark_inactive"],
+        mocks["reconcile_google"],
         mocks["record"] as record,
         patch(f"{_M}.purge_expired", AsyncMock(return_value=counts)) as purge,
         patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())),
@@ -365,8 +472,7 @@ async def test_run_purge_failure_is_non_fatal() -> None:
         mocks["build_client"],
         mocks["list_customers"],
         mocks["fetch"],
-        mocks["upsert"],
-        mocks["mark_inactive"],
+        mocks["reconcile_google"],
         mocks["record"],
         patch(f"{_M}.purge_expired", AsyncMock(side_effect=RuntimeError("db down"))),
         patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())),

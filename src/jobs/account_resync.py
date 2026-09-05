@@ -20,6 +20,7 @@ from src.db import connection
 from src.db.repositories import (
     google_ads_accounts,
     google_oauth_connections,
+    manager_account_access,
     managers,
 )
 from src.google_ads.accounts import (
@@ -27,6 +28,7 @@ from src.google_ads.accounts import (
     list_accessible_customer_resource_names,
 )
 from src.google_ads.client import build_client
+from src.google_ads.reconcile import build_plan
 from src.jobs._audit import record_job_crash, record_job_run
 from src.jobs.purge import purge_expired
 
@@ -56,6 +58,70 @@ async def _pick_oauth_connection(conn: asyncpg.Connection) -> tuple[Any, Any]:
     oc = await google_oauth_connections.get_active_for_manager(conn, row["manager_id"])
     m = await managers.get_by_id(conn, row["manager_id"])
     return m, oc
+
+
+async def reconcile_google(
+    conn: asyncpg.Connection,
+    *,
+    accounts: list[dict[str, Any]],
+    complete: bool,
+    apply: bool,
+) -> dict[str, Any]:
+    """Reconcilia o inventário Google contra o MCC. Devolve o params_summary.
+
+    Função própria (não código inline em `run()`) pra ser testável contra um
+    banco real sem subir o job inteiro — espelha `meta_resync.reconcile_meta`.
+
+    Uma transação só pro bloco de escrita inteiro: metade aplicada — carência
+    somada sem desativar, ou desativada com grant vivo — é exatamente a
+    inconsistência que este recurso existe pra evitar.
+    """
+    async with conn.transaction():
+        # Ler ANTES do upsert. `upsert_many` marca is_active=true e zera
+        # missed_syncs pra toda conta do MCC; lido depois dele, o inventário já
+        # parece "em dia" e `to_add` sai vazio SEMPRE (revisão Meta, round 1).
+        inventario = await google_ads_accounts.list_inventory_rows(conn)
+        plano = build_plan(
+            mcc_ids={a["customer_id"] for a in accounts},
+            inventory=inventario,
+            complete=complete,
+        )
+        n = await google_ads_accounts.upsert_many(conn, accounts)
+        await google_ads_accounts.apply_absences(conn, bump=plano.to_bump, reset=plano.to_reset)
+
+        # Contado SEMPRE, inclusive no dry-run: a trava governa DESTRUIÇÃO, não
+        # observação. Sem isto o soak inteiro reporta zero e não distingue "não
+        # há o que revogar" de "há 34 e a trava está segurando".
+        candidatos = await manager_account_access.count_grants_on_inactive_accounts(conn)
+
+        # Destrutivo: exige leitura completa E a trava ligada.
+        # `blocked_reason is None` já implica leitura completa (`build_plan`
+        # com `complete=False` sempre devolve blocked_reason preenchido e
+        # to_remove vazio — é o que faz inventário vazio ser zero desativação
+        # E zero revogação, mesmo que `apply` esteja True).
+        aplicado = apply and plano.blocked_reason is None
+        revogados = 0
+        if aplicado:
+            await google_ads_accounts.deactivate(conn, customer_ids=plano.to_remove)
+            # Sobre o ESTADO, não sobre o delta desta execução: é o que cobre as
+            # contas que JÁ estavam inativas (34 grants em 9 contas em
+            # 2026-09-05), que nenhum `to_remove` calculado a partir de `ativos`
+            # alcançaria.
+            atingidos = await manager_account_access.revoke_for_inactive_accounts(conn)
+            revogados = sum(len(v) for v in atingidos.values())
+
+    return {
+        "added": len(plano.to_add),
+        "bumped": len(plano.to_bump),
+        "removed": len(plano.to_remove),
+        "reset": len(plano.to_reset),
+        "revoke_candidates": candidatos,
+        "revoked_grants": revogados,
+        "applied": aplicado,
+        "complete": complete,
+        "upserted": n,
+        "blocked_reason": plano.blocked_reason,
+    }
 
 
 async def run() -> int:
@@ -106,37 +172,38 @@ async def run() -> int:
         # Agir nisso desativaria o inventário inteiro (25 contas) por 24h. Espelha
         # a decisão do lado Meta (F65/F93): inventário suspeito não alimenta
         # deletion detection, e o run é auditado como erro pra não passar batido.
+        #
+        # Task 5: a proteção mudou de forma, não de intenção. Antes era um branch
+        # aqui mesmo (`if inventario_ok: mark_inactive_except(...)`); agora
+        # `inventario_ok` vira o `complete=` de `reconcile_google` → `build_plan`,
+        # que com `complete=False` devolve `to_remove` vazio e `blocked_reason`
+        # preenchido — zero desativação E zero revogação, mesmo com a trava
+        # (`google_reconcile_apply`) ligada.
         inventario_ok = bool(accounts)
         if not inventario_ok:
             log.error("resync_empty_account_list", mcc_id=settings.google_ads_login_customer_id)
 
         async with pool.acquire() as conn:
-            n = await google_ads_accounts.upsert_many(conn, accounts)
-            deactivated = 0
-            if inventario_ok:
-                keep_ids = [a["customer_id"] for a in accounts]
-                deactivated = await google_ads_accounts.mark_inactive_except(
-                    conn,
-                    mcc_id=settings.google_ads_login_customer_id,
-                    keep_customer_ids=keep_ids,
-                )
+            resumo = await reconcile_google(
+                conn,
+                accounts=accounts,
+                complete=inventario_ok,
+                apply=settings.google_reconcile_apply,
+            )
             await record_job_run(
                 conn,
-                operation="account_resync",
+                operation="google_reconcile",
                 platform="google",
-                status="success" if inventario_ok else "error",
-                error_message=(
-                    None
-                    if inventario_ok
-                    else "fetch_account_details devolveu lista vazia — deteccao de "
-                    "churn pulada pra nao desativar o MCC inteiro"
-                ),
-                target_count=n,
-                params_summary={"deactivated": deactivated, "inventory_ok": inventario_ok},
+                target_count=resumo["upserted"],
+                status="success" if resumo["blocked_reason"] is None else "error",
+                error_message=resumo["blocked_reason"],
+                params_summary={
+                    k: v for k, v in resumo.items() if k not in ("upserted", "blocked_reason")
+                },
             )
 
-        log.info("resync_complete", upserted=n, deactivated=deactivated)
-        print(f"OK: upserted {n} accounts, deactivated {deactivated}")
+        log.info("resync_complete", **resumo)
+        print(f"OK: google reconcile — {resumo}")
 
         # Piggyback: refresh do inventário Meta no MESMO job/scheduler, pra conta
         # nova aparecer zero-touch. Best-effort — falha Meta não quebra o resync

@@ -7,6 +7,8 @@ from typing import Any
 import asyncpg
 import structlog
 
+from src.google_ads.reconcile import InventoryRow
+
 log = structlog.get_logger(__name__)
 
 
@@ -75,6 +77,54 @@ async def upsert_many(
     return len(rows)
 
 
+async def apply_absences(conn: asyncpg.Connection, *, bump: list[str], reset: list[str]) -> None:
+    """Aplica a carência decidida por `build_plan()`. Não decide nada — só escreve."""
+    if bump:
+        await conn.execute(
+            "UPDATE google_ads_accounts SET missed_syncs = missed_syncs + 1 "
+            "WHERE customer_id = ANY($1::text[])",
+            bump,
+        )
+    if reset:
+        await conn.execute(
+            "UPDATE google_ads_accounts SET missed_syncs = 0 WHERE customer_id = ANY($1::text[])",
+            reset,
+        )
+
+
+async def deactivate(conn: asyncpg.Connection, *, customer_ids: list[str]) -> int:
+    """Desativa exatamente a lista dada — nunca 'tudo que não está em X'.
+
+    Espelha `meta_ad_accounts.deactivate`. `mark_inactive_except` (abaixo) carrega
+    o modo de falha do F85 na própria forma — keep-list vazia significa "desative
+    o resto" —, então quem decide a lista de remoção passou a ser `build_plan()`
+    (via `reconcile_google`, `src/jobs/account_resync.py`), e esta função só
+    aplica: lista vazia é no-op por construção, sem branch de opt-in nenhum.
+    `mark_inactive_except` não foi apagada — segue como caminho de emergência.
+    """
+    if not customer_ids:
+        return 0
+    result = await conn.execute(
+        "UPDATE google_ads_accounts SET is_active = false "
+        "WHERE customer_id = ANY($1::text[]) AND is_active = true",
+        customer_ids,
+    )
+    return int(result.split()[-1]) if result.startswith("UPDATE") else 0
+
+
+async def list_inventory_rows(conn: asyncpg.Connection) -> list[InventoryRow]:
+    """Devolve o inventário no formato que `build_plan()` consome — puro dado."""
+    rows = await conn.fetch("SELECT customer_id, is_active, missed_syncs FROM google_ads_accounts")
+    return [
+        InventoryRow(
+            customer_id=r["customer_id"],
+            is_active=r["is_active"],
+            missed_syncs=r["missed_syncs"],
+        )
+        for r in rows
+    ]
+
+
 async def mark_inactive_except(
     conn: asyncpg.Connection,
     *,
@@ -83,6 +133,13 @@ async def mark_inactive_except(
     allow_full_deactivation: bool = False,
 ) -> int:
     """Mark accounts under mcc_id as inactive if not in keep list (deletion detection).
+
+    Task 5 (2026-09-05): o job diário (`src/jobs/account_resync.py`) PAROU de
+    chamar esta função — a decisão de quem remover passou para `build_plan()` +
+    `deactivate()` acima, com carência por conta em vez de "primeira ausência já
+    desativa". Ela continua existindo, coberta pelos testes abaixo, como caminho
+    de emergência (`allow_full_deactivation=True`) para quem precisar zerar o
+    inventário de um MCC à mão.
 
     F85 — keep-list vazia é NO-OP por default. `fetch_account_details` pode
     devolver `[]` sem levantar exceção (search com 0 linhas, mudança de semântica

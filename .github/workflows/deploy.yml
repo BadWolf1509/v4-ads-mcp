@@ -43,7 +43,13 @@ jobs:
       # da parceria desde 08-19, que e a pendencia 1b do estado-atual. Para
       # desligar, volte para `false`: a revogacao e soft (`revoked_at`) e o painel
       # restaura com um clique.
-      JOB_ENV_VARS: "APP_ENV=production,META_BUSINESS_ID=619664032237208,META_RECONCILE_APPLY=true"
+      #
+      # `GOOGLE_RECONCILE_APPLY` espelha `META_RECONCILE_APPLY` acima: lida só
+      # por `src/jobs/account_resync.py` (reconcile_google), so o JOB. Comeca
+      # em `false` (Task 5, 2026-09-05) — sobe depois de um soak com
+      # `applied: false` observando `revoke_candidates`, mesmo criterio usado
+      # pro lado Meta.
+      JOB_ENV_VARS: "APP_ENV=production,META_BUSINESS_ID=619664032237208,META_RECONCILE_APPLY=true,GOOGLE_RECONCILE_APPLY=false"
       JOB_SECRETS: "DATABASE_URL=database-url:latest,SESSION_SIGNING_KEY=session-signing-key:latest,AES_MASTER_KEY=aes-master-key:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,GOOGLE_ADS_DEVELOPER_TOKEN=google-ads-developer-token:latest,GOOGLE_ADS_LOGIN_CUSTOMER_ID=google-ads-login-customer-id:latest"
 
     steps:
@@ -170,9 +176,10 @@ jobs:
           PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           REGION: ${{ secrets.GCP_REGION }}
         run: |
-          # `META_RECONCILE_APPLY` aqui e INERTE: nenhum caminho que atende
-          # request chama o reconciliador — so src/jobs/meta_resync.py le a
-          # flag, e ela so tem efeito nos JOBS. Acompanha o valor de
+          # `META_RECONCILE_APPLY`/`GOOGLE_RECONCILE_APPLY` aqui sao INERTES:
+          # nenhum caminho que atende request chama os reconciliadores — so
+          # src/jobs/meta_resync.py e src/jobs/account_resync.py leem as flags,
+          # e as duas so tem efeito nos JOBS. Acompanham o valor de
           # JOB_ENV_VARS de proposito: dois valores diferentes com o mesmo
           # nome custam tempo de quem le, e ja custaram.
           #
@@ -197,7 +204,7 @@ jobs:
             --cpu=1 \
             --memory=512Mi \
             --timeout=300 \
-            --set-env-vars="APP_ENV=production,APP_TIMEZONE=America/Sao_Paulo,LOG_LEVEL=info,BOOTSTRAP_ADMIN_EMAILS=wellington.ribeiro@v4company.com,PUBLIC_BASE_URL=https://v4-ads-mcp-299432068772.southamerica-east1.run.app,META_BUSINESS_ID=619664032237208,META_RECONCILE_APPLY=true" \
+            --set-env-vars="APP_ENV=production,APP_TIMEZONE=America/Sao_Paulo,LOG_LEVEL=info,BOOTSTRAP_ADMIN_EMAILS=wellington.ribeiro@v4company.com,PUBLIC_BASE_URL=https://v4-ads-mcp-299432068772.southamerica-east1.run.app,META_BUSINESS_ID=619664032237208,META_RECONCILE_APPLY=true,GOOGLE_RECONCILE_APPLY=false" \
             --set-secrets="DATABASE_URL=database-url:latest,SESSION_SIGNING_KEY=session-signing-key:latest,AES_MASTER_KEY=aes-master-key:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,GOOGLE_ADS_DEVELOPER_TOKEN=google-ads-developer-token:latest,GOOGLE_ADS_LOGIN_CUSTOMER_ID=google-ads-login-customer-id:latest,META_APP_ID=meta-app-id:latest,META_APP_SECRET=meta-app-secret:latest,META_SYSTEM_USER_TOKEN=meta-system-user-token:latest"
 
       - name: Route 100% traffic to latest revision
