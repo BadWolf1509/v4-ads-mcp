@@ -172,8 +172,8 @@ Meta:
   reconciliação já aplicada (família do F83).
 
 Linha `google_reconcile` no `audit_log`, com `params_summary` espelhando o Meta:
-`added`, `bumped`, `removed`, `to_reset`, `revoked_grants`, `applied`,
-`complete`.
+`added`, `bumped`, `removed`, `reset`, `revoke_candidates`, `revoked_grants`,
+`applied`, `complete`.
 
 #### A carência governa a DESATIVAÇÃO; a revogação segue de `is_active`
 
@@ -200,8 +200,17 @@ cruzar. Um `revoke_for_inactive_accounts(conn, reason='left_mcc')` sob a mesma
 trava, na mesma transação, cobre o legado e o fluxo novo com um caminho só, sem
 script de migração de dados à parte.
 
-`revoked_grants` no `audit_log` passa a contar isso, e é o número a observar no
-soak: **34 na primeira execução com a trava ligada**, se nada mudar até lá.
+`revoked_grants` no `audit_log` passa a contar isso — mas ele conta revogação
+**real**, e por isso fica em **zero** o tempo todo enquanto
+`GOOGLE_RECONCILE_APPLY` está `false`, que é exatamente o estado do soak
+inteiro: vigiar `revoked_grants` não distingue "nada a revogar" de "a trava está
+segurando 34". **O campo que soakar é `revoke_candidates`**, contado SEMPRE —
+inclusive no dry-run — via `count_grants_on_inactive_accounts` (backlog: grants
+vivos em conta já inativa) somado a `count_grants_on_accounts` sobre
+`plano.to_remove` (grants vivos nas contas que ESTA execução desativaria). Hoje
+vale **34**, medido em 05/09 (138 grants, 34 vivos em 9 contas inativas). A
+primeira versão somava só o backlog e reportava zero na véspera de uma conta
+cruzar a carência — achado e corrigido nesta mesma branch.
 
 ### 5.4 Revogação soft
 
@@ -344,11 +353,11 @@ supomos em `customer_manager_link`. Isso é a Task 0, e é medição, não teste
    previsão bater.
    **Previsão a registrar ANTES da primeira execução**, para que o soak possa
    falhar: as 26 contas ativas estão todas no MCC e todas com grant, então
-   `added=0`, `bumped=0`, `removed=0`, `to_reset=0`, `complete=true`,
+   `added=0`, `bumped=0`, `removed=0`, `reset=0`, `complete=true`,
    `applied=false`. Com a trava desligada, `revoked_grants=0` — mas o plano deve
-   **reportar** os 34 candidatos, senão o dry-run não observa o que a virada
-   fará. Qualquer outro número significa que o desenho está errado **e ninguém
-   perdeu acesso**: é para isso que a trava existe.
+   **reportar** `revoke_candidates=34`, senão o dry-run não observa o que a
+   virada fará. Qualquer outro número significa que o desenho está errado **e
+   ninguém perdeu acesso**: é para isso que a trava existe.
 5. **PR 3 — fila + log estruturado + runbook da policy.**
 6. **Virar `GOOGLE_RECONCILE_APPLY`** no `deploy.yml`, com o raio medido no dia —
    como foi feito com a trava Meta em 05/09.
