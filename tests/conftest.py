@@ -84,12 +84,18 @@ async def _hoje_utc(customer_id: str, *, now: datetime | None = None) -> date:
     return (now if now is not None else datetime.now(UTC)).date()
 
 
+async def _fuso_sp(customer_id: str) -> str | None:
+    # F146: fuso da conta stubado em Sao Paulo (-03:00, o que o codigo antigo
+    # assumia), para nenhuma expectativa de offset dos testes existentes mudar.
+    return "America/Sao_Paulo"
+
+
 def _modulos_de_tool_com_relogio() -> list[str]:
     nomes: list[str] = []
     for m in pkgutil.iter_modules(_tools_pkg.__path__):
         full = f"src.mcp.tools.{m.name}"
         mod = importlib.import_module(full)
-        if hasattr(mod, "resolve_account_today"):
+        if hasattr(mod, "resolve_account_today") or hasattr(mod, "resolve_account_zone"):
             nomes.append(full)
     return nomes
 
@@ -98,5 +104,9 @@ def _modulos_de_tool_com_relogio() -> list[str]:
 def _relogio_da_conta_stubado() -> Iterator[None]:
     with ExitStack() as stack:
         for full in _modulos_de_tool_com_relogio():
-            stack.enter_context(patch(f"{full}.resolve_account_today", _hoje_utc))
+            mod = importlib.import_module(full)
+            if hasattr(mod, "resolve_account_today"):
+                stack.enter_context(patch(f"{full}.resolve_account_today", _hoje_utc))
+            if hasattr(mod, "resolve_account_zone"):
+                stack.enter_context(patch(f"{full}.resolve_account_zone", _fuso_sp))
         yield

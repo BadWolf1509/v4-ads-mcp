@@ -1,4 +1,4 @@
-# bucket: defer
+# bucket: always
 """Tool: get_assets — vinculos de asset nas TRES camadas, num lugar so.
 
 F134: a limpeza de 02/09 previa 4 vinculos em `campaign_asset` e eram 6 — os
@@ -57,7 +57,7 @@ _SCHEMA: dict[str, Any] = {
 }
 
 _DESCRIPTION = (
-    "[DEFER] Lista vínculos de asset nas TRÊS camadas — customer_asset, "
+    "[CORE] Lista vínculos de asset nas TRÊS camadas — customer_asset, "
     "campaign_asset e ad_group_asset — numa resposta só, cada linha com `level` e "
     "`resource_name` (o mesmo que `remove_asset_link` recebe). Traz "
     "`primary_status` + `primary_status_reasons`, que é o veredito do Google "
@@ -101,7 +101,7 @@ _DESCRIPTION = (
     name="get_assets",
     description=_DESCRIPTION,
     input_schema=_SCHEMA,
-    bucket="defer",
+    bucket="always",
 )
 async def get_assets(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

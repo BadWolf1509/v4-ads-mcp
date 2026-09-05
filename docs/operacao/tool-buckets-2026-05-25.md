@@ -1,5 +1,7 @@
 # Tool Bucket Classification — 2026-05-25 (Sprint 3b.39)
 
+> **SUPERSEDED em 2026-09-04** por [`tool-buckets-2026-09-04.md`](tool-buckets-2026-09-04.md). Os numeros abaixo eram reais em maio; a remedicao de setembro mostrou a classificacao invertida nos dois sentidos (10 das 23 always com zero uso; as 7 mais usadas em defer). Mantido como registro da medicao de maio — nao classifique por ele.
+
 **Source:** audit_log query uses_30d window 2026-04-25→2026-05-25 + semantic overrides.
 **Query date:** 2026-05-25
 **Total tools:** 59 (57 Google + 2 Meta)

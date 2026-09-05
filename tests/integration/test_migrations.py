@@ -41,6 +41,7 @@ async def test_migrations_are_idempotent(pg_dsn: str) -> None:
                 "004_audit_log_provider_id.sql",
                 "005_meta_missed_syncs.sql",
                 "006_meta_partnership_reconciliation.sql",
+                "007_audit_log_dry_run.sql",
             ]
     finally:
         await connection.close_pool()

@@ -126,15 +126,20 @@ def _resolve_date_window_local(
         "Recommendations sempre conta como drift. Output: summary (count + "
         "by_user/resource/operation) + freshness (fronteira de indexacao "
         "medida) + flags[] (auto_apply_detected, "
-        "multiple_users_detected, structural_change) + changes[] (até limit, "
+        "multiple_users_detected, structural_change, status_change_detected) + "
+        "changes[] (até limit, "
         "default 100 max 500). ATENCAO: roda sobre change_event, que e audit "
         "log LAGGING com lag SEM contrato (medido de ~3h a >4 dias na mesma "
         "conta) — por isso a resposta traz `freshness.status`. ZERO DRIFT "
         "COM status != confiavel NAO significa conta intacta: pode ser "
         "mudanca de terceiro ainda nao indexada. Pra validar estado atual, "
         "use run_gaql FROM campaign como leading indicator. "
-        "LIMITE DE COBERTURA (F136): a flag structural_change cobre REMOVE de "
-        "CAMPAIGN e AD_GROUP, e NAO cobre conversion action — nem o change_event "
+        "COBERTURA (F136/F145): remover campanha ou grupo no Google NAO e uma "
+        "operacao REMOVE — e UPDATE de status para REMOVED; a flag "
+        "structural_change (high) cobre as duas formas em CAMPAIGN e AD_GROUP, e "
+        "cada change traz old_status/new_status. status_change_detected (medium) "
+        "levanta em ENABLED<->PAUSED por nao-autorizado — reativar campanha alheia "
+        "comeca gasto, pausar para entrega. NAO cobre conversion action — nem o change_event "
         "nem o change_status rastreiam esse recurso, entao remocao de conversion "
         "action (que quebra Smart Bidding) NAO aparece aqui e nao seria detectada "
         "por esta tool. Para o estado atual das conversion actions, use "
@@ -220,6 +225,8 @@ async def detect_drift(args: dict[str, Any]) -> dict[str, Any]:
                 "changed_fields": list(c.changed_fields),
                 "campaign_id": c.campaign_id,
                 "ad_group_id": c.ad_group_id,
+                "old_status": c.old_status,
+                "new_status": c.new_status,
             }
             for c in drift_result.drift_changes
         ],

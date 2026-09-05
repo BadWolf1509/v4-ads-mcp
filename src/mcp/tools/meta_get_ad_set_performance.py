@@ -1,4 +1,4 @@
-# bucket: defer
+# bucket: always
 """meta_get_ad_set_performance — Performance por ad set Meta (Sprint M.3).
 
 Paridade com Google get_ad_group_performance. Bucket=defer (granular,
@@ -13,7 +13,7 @@ from src.mcp.tools._meta_performance import run_meta_level_performance
 from src.mcp.tools._registry import register_tool
 
 _DESCRIPTION = (
-    "[DEFER] Performance por ad set Meta Ads: spend, impressões, clicks, CTR, "
+    "[CORE] Performance por ad set Meta Ads: spend, impressões, clicks, CTR, "
     "CPC, reach, frequency, purchases, purchases_value_brl, purchase_roas, leads. "
     "Inclui campaign_id/name parent + optimization_goal. Ordenado por spend desc **no servidor**, entao o topo devolvido E o topo real da conta; `truncated:true` significa que ficou cauda de MENOR gasto de fora, nao que o ranking esteja incompleto. "
     "Filtros: limit (max 500). "
@@ -101,7 +101,7 @@ async def meta_get_ad_set_performance(
     name="meta_get_ad_set_performance",
     description=_DESCRIPTION,
     input_schema=_INPUT_SCHEMA,
-    bucket="defer",
+    bucket="always",
 )
 async def handler(args: dict[str, Any]) -> dict[str, Any]:
     """MCP tool handler — pulls context from contextvars, delegates to core."""

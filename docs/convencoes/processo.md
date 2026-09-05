@@ -29,7 +29,7 @@ Heurísticas-teste pra reduzir erros típicos de LLM. Complementam o system prom
 ### Tool bucket classification (post-3b.39 F1)
 
 
-`@register_tool` aceita `bucket: Literal["always","defer"]` (default `"defer"`). Cada tool: `# bucket: …` line 1 + prefix `[CORE]`/`[DEFER]` + `_meta`. **D3:** bucket="always" → `_meta` inclui `"anthropic/alwaysLoad": true` (Claude Code v2.x `ENABLE_TOOL_SEARCH=true` defere tudo por default; este field promove always-loaded). Source: [`tool-buckets-2026-05-25.md`](../operacao/tool-buckets-2026-05-25.md).
+`@register_tool` aceita `bucket: Literal["always","defer"]` (default `"defer"`). Cada tool: `# bucket: …` line 1 + prefix `[CORE]`/`[DEFER]` + `_meta`. **D3:** bucket="always" → `_meta` inclui `"anthropic/alwaysLoad": true` (Claude Code v2.x `ENABLE_TOOL_SEARCH=true` defere tudo por default; este field promove always-loaded). O prefixo e o kwarg sao a MESMA afirmacao em dois lugares e `test_prefixo_da_descricao_concorda_com_o_bucket` (`tests/unit/test_registry_bucket.py`) cobra os dois de toda tool registrada — reclassificar so no kwarg deixa a descricao mentindo sem quebrar nada. Source: [`tool-buckets-2026-09-04.md`](../operacao/tool-buckets-2026-09-04.md) (reclassificacao mensal; a de maio esta superseded).
 
 ### Procedimentos operacionais (raros)
 

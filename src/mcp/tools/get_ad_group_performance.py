@@ -1,4 +1,4 @@
-# bucket: defer
+# bucket: always
 """Tool: get_ad_group_performance - metrics per ad group."""
 
 from typing import Any
@@ -82,12 +82,12 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 @register_tool(
     name="get_ad_group_performance",
     description=(
-        "[DEFER] Prefira get_performance_breakdown(level=ad_group) — este report sera "
+        "[CORE] Prefira get_performance_breakdown(level=ad_group) — este report sera "
         "arquivado (Fase 2B). Performance por grupo de anuncios: impressoes, clicks, custo, conversoes. "
         "Ordenado por custo desc. Filtros: status, limit."
     ),
     input_schema=_SCHEMA,
-    bucket="defer",
+    bucket="always",
 )
 async def get_ad_group_performance(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

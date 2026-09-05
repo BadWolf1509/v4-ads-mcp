@@ -63,6 +63,8 @@ def _row(*, resource_type: str, operation: str = "REMOVE") -> ChangeEventRow:
         changed_fields=["status"],
         campaign_id=None,
         ad_group_id=None,
+        old_status=None,
+        new_status=None,
     )
 
 
