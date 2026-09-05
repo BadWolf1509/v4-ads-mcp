@@ -187,6 +187,109 @@ async def test_admin_access_toggle_grants_then_revokes(client: AsyncClient):
 
 
 @pytest.mark.integration
+async def test_admin_access_toggle_reconcede_apos_revogar(client: AsyncClient):
+    """Task 3, decisão 1: com revogação soft a linha do grant FICA depois do
+    revoke — é o que dá trilha e caminho de volta. Mas o handler decidia
+    grant-vs-revoke checando só "a linha existe" (sem olhar `revoked_at`), e
+    sem a correção o 3o clique (reconceder) acha a linha revogada, `exists`
+    dá true de novo, e revoga PELA SEGUNDA VEZ em vez de conceder — nunca mais
+    dá pra reconceder pelo painel.
+    """
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    cookie = _admin_cookie(admin_id)
+
+    # 1) concede
+    await client.post(
+        "/admin/access/toggle",
+        data={"manager_id": str(gestor_id), "customer_id": "1234567890"},
+        cookies={PANEL_SESSION_COOKIE_NAME: cookie},
+    )
+    # 2) revoga (soft — a linha fica, com revoked_at preenchido)
+    await client.post(
+        "/admin/access/toggle",
+        data={"manager_id": str(gestor_id), "customer_id": "1234567890"},
+        cookies={PANEL_SESSION_COOKIE_NAME: cookie},
+    )
+    # 3) reconcede — sem o fix, o SELECT do handler acha a linha revogada
+    # (`exists` = true) e revoga de novo em vez de conceder.
+    response = await client.post(
+        "/admin/access/toggle",
+        data={"manager_id": str(gestor_id), "customer_id": "1234567890"},
+        cookies={PANEL_SESSION_COOKIE_NAME: cookie},
+    )
+    assert response.status_code == 200
+    assert '"checkbox" checked' in response.text  # reconcedido, não revogado de novo
+
+    async with pool.acquire() as conn:
+        allowed = await manager_account_access.can_manager_access(conn, gestor_id, "1234567890")
+        accs = await manager_account_access.list_accounts_for_manager(conn, gestor_id)
+    assert allowed is True
+    assert len(accs) == 1
+
+
+@pytest.mark.integration
+async def test_admin_access_matrix_esconde_grant_revogado(client: AsyncClient):
+    """Achado extra (Task 3, fora das 4 decisões): mesma classe de bug de
+    leitura da decisão 1, só que na matriz (GET /admin/access) em vez do
+    toggle — o SELECT que monta `access_set` não filtrava `revoked_at IS
+    NULL`, então a célula continuava marcada mesmo depois do admin revogar.
+    """
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        await manager_account_access.grant(conn, manager_id=gestor_id, customer_id="1234567890")
+        await manager_account_access.revoke(conn, manager_id=gestor_id, customer_id="1234567890")
+
+    response = await client.get(
+        "/admin/access",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 200
+    assert "checked" not in response.text
+
+
+@pytest.mark.integration
+async def test_admin_access_manager_detail_esconde_grant_revogado(client: AsyncClient):
+    """Achado extra (Task 3, fora das 4 decisões): mesma classe de bug na
+    página de detalhe por gestor (GET /admin/access/{manager_id})."""
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        await manager_account_access.grant(conn, manager_id=gestor_id, customer_id="1234567890")
+        await manager_account_access.revoke(conn, manager_id=gestor_id, customer_id="1234567890")
+
+    response = await client.get(
+        f"/admin/access/{gestor_id}",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 200
+    assert "checked" not in response.text
+
+
+@pytest.mark.integration
+async def test_admin_access_by_manager_count_exclui_revogado(client: AsyncClient):
+    """Achado extra (Task 3, fora das 4 decisões): a contagem por gestor (GET
+    /admin/access/by-manager, a visão mobile) vem de um LEFT JOIN sem filtro
+    de `revoked_at` — sem o fix, um grant revogado continuava contando como
+    acesso. Duas linhas mostram "0 / 1 contas" (admin, que nunca teve grant, e
+    o gestor, cujo único grant foi revogado); sem o fix o gestor mostraria
+    "1 / 1 contas"."""
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        await manager_account_access.grant(conn, manager_id=gestor_id, customer_id="1234567890")
+        await manager_account_access.revoke(conn, manager_id=gestor_id, customer_id="1234567890")
+
+    response = await client.get(
+        "/admin/access/by-manager",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 200
+    assert response.text.count("0 / 1 contas") == 2
+
+
+@pytest.mark.integration
 async def test_admin_audit_renders(client: AsyncClient):
     pool = connection.get_pool()
     admin_id, _ = await _bootstrap_admin_and_gestor(pool)

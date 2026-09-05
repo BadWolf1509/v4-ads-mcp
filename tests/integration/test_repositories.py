@@ -279,6 +279,13 @@ async def test_access_grant_list_revoke(db) -> None:
 
         assert await manager_account_access.can_manager_access(conn, mid, "111") is True
         assert await manager_account_access.can_manager_access(conn, mid, "999") is False
+        # Task 3, decisão 3: faltava o caminho True do nível "write" — só o
+        # False (conta inativa) era coberto em test_gate_nega_conta_inativa_com_
+        # grant_vivo. O gêmeo Meta (test_meta_access_grant_list_revoke) já tinha
+        # este assert; o lado Google não.
+        assert (
+            await manager_account_access.can_manager_access(conn, mid, "111", level="write") is True
+        )
 
         await manager_account_access.revoke(conn, manager_id=mid, customer_id="111")
         accounts2 = await manager_account_access.list_accounts_for_manager(conn, mid)
@@ -302,9 +309,46 @@ async def test_access_grant_all_active(db) -> None:
         accounts = await manager_account_access.list_accounts_for_manager(conn, mid)
         assert len(accounts) == 2
 
-        # Idempotent re-run inserts 0 (ON CONFLICT DO NOTHING).
+        # Task 3: a re-execução passou a TOCAR as 2 linhas (era `DO NOTHING`,
+        # que devolvia 0). Sob revogação soft a linha revogada persiste, e o
+        # `DO NOTHING` pulava em silêncio justo a conta que o gestor tinha
+        # perdido — reconceder tem que RESTAURAR, não ignorar (espelha o gêmeo
+        # Meta, test_meta_access_grant_all_active).
         n2 = await manager_account_access.grant_all_active(conn, manager_id=mid)
-        assert n2 == 0
+        assert n2 == 2
+        assert len(await manager_account_access.list_accounts_for_manager(conn, mid)) == 2
+
+
+@pytest.mark.integration
+async def test_grant_all_active_restaura_grant_revogado(db) -> None:
+    """A razão de trocar DO NOTHING por DO UPDATE: sem isso, `grant_all_active`
+    reconcede tudo MENOS a conta que o gestor já tinha perdido por revogação —
+    um "conceder tudo" que silenciosamente pula justo o caso que motivou o
+    clique (espelha test_meta_access_grant_all_active_restaura_grant_revogado).
+    """
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "restaura-all@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn,
+            [
+                {"customer_id": "606", "mcc_id": "M1", "descriptive_name": "A"},
+                {"customer_id": "607", "mcc_id": "M1", "descriptive_name": "B"},
+            ],
+        )
+        await manager_account_access.grant_all_active(conn, manager_id=mid)
+        await manager_account_access.revoke(conn, manager_id=mid, customer_id="606")
+        assert await manager_account_access.can_manager_access(conn, mid, "606") is False
+
+        await manager_account_access.grant_all_active(conn, manager_id=mid)
+
+        assert await manager_account_access.can_manager_access(conn, mid, "606") is True
+        linha = await conn.fetchrow(
+            "SELECT revoked_at, revoked_reason FROM manager_account_access "
+            "WHERE manager_id = $1 AND customer_id = '606'",
+            mid,
+        )
+        assert linha["revoked_at"] is None
+        assert linha["revoked_reason"] is None
 
 
 @pytest.mark.integration
@@ -331,6 +375,150 @@ async def test_gate_nega_conta_inativa_com_grant_vivo(db) -> None:
             await manager_account_access.can_manager_access(conn, mid, "555", level="write")
             is False
         )
+
+
+@pytest.mark.integration
+async def test_revoke_e_soft_e_o_gate_nega(db) -> None:
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "soft@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "601", "mcc_id": "1", "descriptive_name": "X"}]
+        )
+        await manager_account_access.grant(conn, manager_id=mid, customer_id="601")
+        await manager_account_access.revoke(conn, manager_id=mid, customer_id="601")
+
+        # A LINHA FICA — é o que distingue soft de DELETE.
+        row = await conn.fetchrow(
+            "SELECT revoked_at, revoked_reason FROM manager_account_access "
+            "WHERE manager_id = $1 AND customer_id = '601'",
+            mid,
+        )
+        assert row is not None
+        assert row["revoked_at"] is not None
+        assert row["revoked_reason"] == manager_account_access.ADMIN_REVOKED_REASON
+        assert await manager_account_access.can_manager_access(conn, mid, "601") is False
+
+
+@pytest.mark.integration
+async def test_reconceder_limpa_a_revogacao(db) -> None:
+    """Sem isto, o `ON CONFLICT DO NOTHING` deixa o gestor bloqueado pra sempre."""
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "regrant@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "602", "mcc_id": "1", "descriptive_name": "Y"}]
+        )
+        await manager_account_access.grant(conn, manager_id=mid, customer_id="602")
+        await manager_account_access.revoke(conn, manager_id=mid, customer_id="602")
+        assert await manager_account_access.can_manager_access(conn, mid, "602") is False
+
+        await manager_account_access.bulk_grant(
+            conn, manager_id=mid, customer_ids=["602"], granted_by=mid
+        )
+        assert await manager_account_access.can_manager_access(conn, mid, "602") is True
+
+
+@pytest.mark.integration
+async def test_revoke_for_inactive_pega_o_legado_nao_so_o_novo(db) -> None:
+    """Os 34 grants de 2026-09-05 estavam em contas JA inativas.
+
+    Um plano que parte de `ativos` nunca os alcançaria.
+    """
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "legado@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "603", "mcc_id": "1", "descriptive_name": "Ex"}]
+        )
+        await manager_account_access.grant(conn, manager_id=mid, customer_id="603")
+        await conn.execute(
+            "UPDATE google_ads_accounts SET is_active = false WHERE customer_id = '603'"
+        )
+
+        atingidos = await manager_account_access.revoke_for_inactive_accounts(conn)
+        assert atingidos == {"603": [str(mid)]}
+        row = await conn.fetchrow(
+            "SELECT revoked_reason FROM manager_account_access WHERE customer_id = '603'"
+        )
+        assert row["revoked_reason"] == manager_account_access.LEFT_MCC_REASON
+
+
+@pytest.mark.integration
+async def test_restore_devolve_so_o_churn(db) -> None:
+    async with db.acquire() as conn:
+        a = await _make_manager(conn, "churn@v4company.com")
+        b = await _make_manager(conn, "punido@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "604", "mcc_id": "1", "descriptive_name": "Z"}]
+        )
+        await manager_account_access.grant(conn, manager_id=a, customer_id="604")
+        await manager_account_access.grant(conn, manager_id=b, customer_id="604")
+        # b perdeu acesso de propósito; a perdeu por churn.
+        await manager_account_access.revoke(conn, manager_id=b, customer_id="604")
+        await conn.execute(
+            "UPDATE google_ads_accounts SET is_active = false WHERE customer_id = '604'"
+        )
+        await manager_account_access.revoke_for_inactive_accounts(conn)
+        await conn.execute(
+            "UPDATE google_ads_accounts SET is_active = true WHERE customer_id = '604'"
+        )
+
+        restaurados = await manager_account_access.restore_for_account(conn, customer_id="604")
+        assert restaurados == [str(a)]
+        assert await manager_account_access.can_manager_access(conn, a, "604") is True
+        assert await manager_account_access.can_manager_access(conn, b, "604") is False
+
+
+@pytest.mark.integration
+async def test_count_grants_on_inactive_accounts(db) -> None:
+    """O número que o dry-run da Task 5 vai reportar como `revoke_candidates`.
+
+    Leitura pura — não muta nada. Task 5 não roda nesta leva; a função entra
+    aqui porque o brief a declarava como interface sem dono.
+    """
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "contagem@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "605", "mcc_id": "1", "descriptive_name": "W"}]
+        )
+        await manager_account_access.grant(conn, manager_id=mid, customer_id="605")
+        assert await manager_account_access.count_grants_on_inactive_accounts(conn) == 0
+
+        await conn.execute(
+            "UPDATE google_ads_accounts SET is_active = false WHERE customer_id = '605'"
+        )
+        assert await manager_account_access.count_grants_on_inactive_accounts(conn) == 1
+
+        # Revogado (mesmo em conta inativa) não é mais "grant VIVO" — some da contagem.
+        await manager_account_access.revoke(conn, manager_id=mid, customer_id="605")
+        assert await manager_account_access.count_grants_on_inactive_accounts(conn) == 0
+
+
+@pytest.mark.integration
+async def test_copy_access_nao_ressuscita_grant_revogado(db) -> None:
+    """Achado extra (Task 3, fora das 4 decisões): `copy_access` mantém o
+    DELETE no destino (decisão do brief), mas o SELECT da origem não excluía
+    grant revogado — copiar de um gestor com um grant revogado de propósito
+    ressuscitava esse grant como vivo pro destino, porque o INSERT não grava
+    `revoked_at` (fica NULL por default). Mesmo bug que o gêmeo Meta documentou
+    e fechou como C1 (test_copy_access_nao_ressuscita_grant_revogado); antes
+    desta task o Google nunca tinha linha revogada pra ressuscitar, porque
+    `revoke` era DELETE.
+    """
+    async with db.acquire() as conn:
+        origem = await _make_manager(conn, "copia-origem@v4company.com")
+        destino = await _make_manager(conn, "copia-destino@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "608", "mcc_id": "1", "descriptive_name": "Copiada"}]
+        )
+        await manager_account_access.grant(conn, manager_id=origem, customer_id="608")
+        await manager_account_access.revoke(conn, manager_id=origem, customer_id="608")
+
+        n = await manager_account_access.copy_access(
+            conn, from_manager_id=origem, to_manager_id=destino, granted_by=origem
+        )
+
+        assert n == 0
+        assert await manager_account_access.can_manager_access(conn, destino, "608") is False
+        assert await manager_account_access.list_accounts_for_manager(conn, destino) == []
 
 
 # ---------- audit_log ----------

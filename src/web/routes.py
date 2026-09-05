@@ -1076,7 +1076,12 @@ async def admin_access(
             "SELECT id, email, full_name, role FROM managers WHERE is_active = true ORDER BY email"
         )
         accs = await google_ads_accounts.list_all(conn)
-        access_rows = await conn.fetch("SELECT manager_id, customer_id FROM manager_account_access")
+        # Task 3 (achado extra): revogação virou soft, então a linha do grant
+        # revogado FICA — sem o filtro, a célula continuaria marcada mesmo
+        # depois do admin revogar (espelha o gêmeo Meta, admin_access_meta).
+        access_rows = await conn.fetch(
+            "SELECT manager_id, customer_id FROM manager_account_access WHERE revoked_at IS NULL"
+        )
     # Build set of (manager_id, customer_id) for quick lookup
     access_set = {(str(r["manager_id"]), r["customer_id"]) for r in access_rows}
     pending = await pending_invites_count()
@@ -1391,7 +1396,8 @@ async def admin_access_by_manager(
             """SELECT m.id, m.email, m.full_name,
                       count(maa.customer_id) AS access_count
                FROM managers m
-               LEFT JOIN manager_account_access maa ON maa.manager_id = m.id
+               LEFT JOIN manager_account_access maa
+                      ON maa.manager_id = m.id AND maa.revoked_at IS NULL
                WHERE m.is_active = true
                GROUP BY m.id ORDER BY m.email"""
         )
@@ -1430,8 +1436,13 @@ async def admin_access_manager_detail(
         if mgr_row is None:
             raise HTTPException(status_code=404, detail="Gestor not found")
         accs = await google_ads_accounts.list_all(conn)
+        # Task 3 (achado extra): mesmo raciocínio do admin_access — grant
+        # revogado é soft, a linha fica, então sem o filtro o checkbox
+        # continuaria marcado (espelha o gêmeo Meta, admin_access_manager_
+        # detail_meta, linha ~1307).
         access_rows = await conn.fetch(
-            "SELECT customer_id FROM manager_account_access WHERE manager_id = $1",
+            "SELECT customer_id FROM manager_account_access "
+            "WHERE manager_id = $1 AND revoked_at IS NULL",
             parsed_manager_id,
         )
         access_set = {r["customer_id"] for r in access_rows}
@@ -1462,9 +1473,14 @@ async def admin_access_toggle(
     pool = connection.get_pool()
     target_mid = UUID(manager_id)
     async with pool.acquire() as conn:
-        # Toggle: if exists, delete; else grant write
+        # Task 3, decisão 1: revogação virou soft — a linha FICA depois do
+        # revoke. Sem `revoked_at IS NULL` aqui, `exists` continuaria true numa
+        # linha revogada, e o clique seguinte (reconceder) chamaria revoke()
+        # de novo em vez de grant() — nunca mais daria pra reconceder pelo
+        # painel (espelha o gêmeo Meta, admin_access_meta_toggle).
         exists = await conn.fetchval(
-            "SELECT 1 FROM manager_account_access WHERE manager_id = $1 AND customer_id = $2",
+            "SELECT 1 FROM manager_account_access "
+            "WHERE manager_id = $1 AND customer_id = $2 AND revoked_at IS NULL",
             target_mid,
             customer_id,
         )
