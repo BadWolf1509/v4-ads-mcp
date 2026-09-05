@@ -590,6 +590,33 @@ async def test_copy_access_nao_apaga_a_trilha_de_left_mcc_do_destino(db) -> None
         assert await manager_account_access.can_manager_access(conn, destino, "609") is True
 
 
+@pytest.mark.integration
+async def test_copy_access_recusa_origem_igual_ao_destino(db) -> None:
+    """Item 4 da revisão final (mesmo achado T5e do gêmeo Meta,
+    test_meta_copy_access_recusa_origem_igual_ao_destino): sem o guard,
+    copiar pra si mesmo aniquila o próprio gestor — o UPDATE de limpeza
+    revoga (soft) tudo que ele tem de vivo, e o SELECT seguinte, filtrando
+    `manager_id = origem AND revoked_at IS NULL`, já não acha nada pra
+    reconceder (a origem É o destino, que acabou de ficar todo revogado). A
+    rota (`routes.py:1367`) já recusa antes de chamar `copy_access`, mas a
+    defesa não pode viver só lá — quem chamar o repositório de outro lugar
+    não herda a checagem da rota.
+    """
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "self-copy@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "611", "mcc_id": "1", "descriptive_name": "Self"}]
+        )
+        await manager_account_access.grant_all_active(conn, manager_id=mid)
+
+        with pytest.raises(ValueError):
+            await manager_account_access.copy_access(
+                conn, from_manager_id=mid, to_manager_id=mid, granted_by=mid
+            )
+
+        assert await manager_account_access.can_manager_access(conn, mid, "611") is True
+
+
 # ---------- audit_log ----------
 
 

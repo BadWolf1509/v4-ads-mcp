@@ -97,9 +97,24 @@ async def revoke(
 ) -> None:
     """Revogação SOFT. A linha fica; o gate nega.
 
-    Era DELETE. Sem a linha não há trilha de quem perdeu o quê e quando, e não
-    há caminho de volta — e o caminho de volta é o que distingue churn
-    (restaurável) de decisão do admin (não volta).
+    Era DELETE. Item 5 (revisão final): esta docstring dizia que a soft-revoke
+    dá "trilha de quem perdeu o quê e quando" — impreciso em dois pontos, sem
+    mudar o comportamento (que é o mesmo do gêmeo Meta em produção). O que a
+    troca de DELETE por UPDATE de fato entrega é ESTADO CORRENTE, não um log
+    append-only: `revoked_reason` (`left_mcc` vs `admin_revoked`) é o que
+    distingue churn — restaurável por `restore_for_account` — de decisão do
+    admin, que não volta sozinha; é essa distinção que sustenta o desenho.
+    Mas reconceder por QUALQUER caminho (`grant`, `bulk_grant`,
+    `grant_all_active`, `copy_access`) zera `revoked_at`/`revoked_reason` de
+    volta pra NULL — a partir daí não sobra na tabela nenhum registro de que a
+    revogação aconteceu. Não existe coluna `revoked_by`: quem revogou só fica
+    em `audit_log`, e só nos caminhos que passam por `_audit_admin` (o painel;
+    `revoke_for_inactive_accounts`, chamada por job, não audita nada ainda).
+    E `bulk_grant`/`grant_all_active` reconcedem sem tocar `granted_at`/
+    `granted_by` — a linha restaurada por esses dois caminhos lê "concedida
+    há muito tempo, nunca revogada", indistinguível de uma que nunca saiu do
+    ar; só `grant()` (o toggle do painel) e `copy_access` atualizam os dois
+    campos ao reconceder.
     """
     await conn.execute(
         """
@@ -235,7 +250,18 @@ async def copy_access(
     (fora das 4 decisões): mesmo bug que o gêmeo Meta já documentou e fechou
     como C1; no Google ele nunca tinha se manifestado porque `revoke` era
     DELETE — não sobrava linha revogada pra ressuscitar.
+
+    Item 4 (revisão final, mesmo achado T5e do gêmeo Meta): origem == destino
+    aniquilaria o gestor — o UPDATE de limpeza revoga (soft) tudo que ele tem
+    de vivo, e o SELECT seguinte, filtrando `manager_id = origem AND
+    revoked_at IS NULL`, já não acha nada pra reconceder (a origem é o
+    próprio destino, que acabou de ficar todo revogado). A rota
+    (`routes.py:1367`) já recusa antes de chamar, mas a defesa não pode viver
+    só lá: esta branch acabou de acrescentar funções de repositório que
+    outro código pode chamar direto, sem herdar a checagem da rota.
     """
+    if from_manager_id == to_manager_id:
+        raise ValueError("copy_access: origem e destino sao o mesmo gestor")
     async with conn.transaction():
         # "Replace" primeiro revoga (soft) o que o destino tinha de VIVO — sem
         # isso, uma conta que só o destino tinha (fora do conjunto da origem)
