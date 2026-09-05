@@ -1373,7 +1373,7 @@ planejou. Migration aditiva, e o `CLAUDE.md` obriga full sweep com Docker.
 > A falha estava certa e era a prova do fix; mas foi o CI, nao eu, que a encontrou.
 
 
-## F149 (MEDIUM, ABERTO) — o unico jeito de mudar o bid_modifier de UMA faixa passa por um estado que interrompe a entrega
+## F149 (MEDIUM, CORRIGIDO — smoke 3b.44 pendente) — o unico jeito de mudar o bid_modifier de UMA faixa passa por um estado que interrompe a entrega
 
 > **Como apareceu:** a analise da MO-JP em 04/09 concluiu lance por faixa horaria (JPA fora
 > de hora com CPA 18,47 contra 19,87 no comercial; CAB fora de hora 24,46 contra 18,60 no
@@ -1417,11 +1417,55 @@ degradado.
 > no `CurrentWindow` que o proprio diff compara, e o `shared_budgets` ja vinha no preview —
 > ninguem tinha escrito a frase que os soma.
 
-**O que FICA aberto:** `bid_modifier` por janela em `windows[]`. Enquanto nao existir, o
-unico caminho expressavel e o inseguro, e uma tool que so oferece a rota perigosa treina o
-operador nela. Vai junto do sprint de particao horaria
-([`2026-09-04-particao-horaria-design.md`](../superpowers/specs/2026-09-04-particao-horaria-design.md)),
-porque mexe na mesma forma de `windows[]`.
+> **✅ CORRIGIDO em 2026-09-04 (branch `feat/bid-modifier-por-janela`) — a rota
+> segura passou a existir.** `bid_modifier` por janela chegou em `windows[]`
+> (Tasks 1-6, `.superpowers/sdd/2026-09-04-bid-modifier-por-janela/progress.md`):
+> `Window` ganhou o campo como ATRIBUTO, nunca identidade (`key()` continua com
+> 5 posicoes — se o modificador entrasse na chave, muda-lo recriaria o
+> criterion e queimaria ~14 dias de re-learning, o mesmo custo que o
+> `no_changes` existe para evitar); `diff_schedule` decide por janela, com o
+> modificador DA JANELA vencendo o escalar da chamada (que vira default de
+> quem nao trouxer o seu), regra centralizada em `modificador_efetivo` para
+> nao repetir a familia do F81; `schedule_fingerprint` passa a cobrir o
+> modificador (6a posicao) para a concorrencia otimista (Ruling 10) nao ficar
+> cega justamente para uma mudanca so de lance. Uma UNICA chamada agora
+> resolve o que antes exigia duas com o estado degradado (~50 de 168 horas)
+> no meio — prova por teste em
+> `test_muda_uma_faixa_sem_desligar_as_outras_em_UMA_chamada`
+> (`tests/unit/test_update_ad_schedule.py`).
+>
+> **A revisao final da branch achou um Critical que a propria feature nova
+> expunha, corrigido no mesmo commit desta entrada:** `bid_modifier` e
+> `proto.FLOAT` (32 bits) no SDK v24 — o gestor grava `1.4` e o Google devolve
+> `1.399999976158142` na proxima leitura. `diff_schedule` comparava por `==`,
+> entao TODA chamada repetida pela rota nova nunca convergia — medido contra
+> os proprios cenarios do runbook 3b.44 (T4, reenviar a mesma grade, e T5,
+> janela com valor igual ao atual, falhavam). Fix: `bid_modifier_diverge`
+> (`math.isclose(rel_tol=1e-6)`, `src/google_ads/ad_schedule.py`) — NAO
+> aplicado em `schedule_fingerprint`, onde as duas pontas leem do Google pelo
+> MESMO parser e igualdade exata e mais estrita e correta. Um Important junto:
+> `matches_requested` (a confirmacao pos-apply que existe porque a UI do
+> Google ja falhou em silencio duas vezes nesta conta) comparava so a
+> IDENTIDADE da faixa, nunca o bid_modifier — a UNICA coisa que este sprint
+> acrescentou nao entrava na checagem que prova que a mutacao bateu com o
+> pedido. Fix: `windows_bid_modifiers`, chave paralela a `windows` no payload
+> pendente, e `matches_requested` passa a comparar os dois, com a MESMA
+> tolerancia.
+>
+> **Guards:** 10 testes novos entre `test_ad_schedule_domain.py`,
+> `test_update_ad_schedule.py`, `test_apply_change_ad_schedule.py` e
+> `test_get_ad_schedule.py` (1621 no total da suite unitaria, verde) — inclui
+> o par que prova a tolerancia nos dois sentidos (float32 nao reabre update;
+> diferenca real >= 0,01 continua abrindo) e o par que prova
+> `matches_requested` nos dois sentidos (mismatch vira `false`; ruido de
+> float32 continua `true`).
+>
+> **O que FICA de fora:** o **smoke 3b.44 contra conta real**
+> (`docs/operacao/phase-3b-44-bid-modifier-smoke.md`, T1-T7) segue `⬜ pending`
+> — precisa do Wellington autorizando cada rodada de mutacao NA PROPRIA SESSAO
+> que executa (medido em 04/09 no 3b.42/3b.43: aval relayado por sessao-par
+> nao passa no classificador de auto mode). A cobertura acima e SO unitaria;
+> nao leia esta entrada como "verificado em producao" ate o smoke rodar.
 
 
 ## F150 (HIGH, CORRIGIDO) — `update_ad_schedule` previa e nao aplicava: o builder nunca registrou

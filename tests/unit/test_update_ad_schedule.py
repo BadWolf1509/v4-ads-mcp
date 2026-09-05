@@ -295,6 +295,33 @@ async def test_payload_leva_a_grade_pedida_e_o_fingerprint_do_baseline(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_payload_leva_o_bid_modifier_efetivo_por_janela_em_chave_paralela(
+    monkeypatch,
+) -> None:
+    """Fix I2 (revisao final): sem isto, `apply_change` nao tinha como confirmar
+    `matches_requested` contra o bid_modifier pedido — so a identidade da faixa
+    viajava no payload. Chave PARALELA a `windows`, mesma ordem — nao dentro de
+    `_w()`, que o builder tambem consome."""
+    captured = _wire(monkeypatch, grade=[], orcamentos=[_orc()], metricas=[])
+    await mod.update_ad_schedule(
+        {
+            "customer_id": "1234567890",
+            "campaign_ids": ["1"],
+            "bid_modifier": 0.9,
+            "windows": [
+                {"day_of_week": "MONDAY", "start_hour": 7, "end_hour": 17, "bid_modifier": 1.5},
+                {"day_of_week": "TUESDAY", "start_hour": 7, "end_hour": 17},
+            ],
+        }
+    )
+    p = captured["payload"]
+    assert len(p["windows"]) == 2 == len(p["windows_bid_modifiers"])
+    assert p["windows_bid_modifiers"] == [1.5, 0.9], (
+        "MONDAY traz o proprio; TUESDAY herda o escalar"
+    )
+
+
+@pytest.mark.asyncio
 async def test_campaign_id_inexistente_e_recusado_antes_de_montar_preview(monkeypatch) -> None:
     """Sem linha de orcamento a campanha nao existe na conta — nao pode virar 'servia 24x7'."""
     captured = _wire(monkeypatch, grade=[], orcamentos=[_orc(cid="1")], metricas=[])
@@ -610,6 +637,32 @@ async def test_bid_modifier_updated_mostra_o_valor_antigo_ao_lado_do_novo(monkey
     assert len(atualizadas) == 1
     assert atualizadas[0]["bid_modifier_antigo"] == 1.3
     assert atualizadas[0]["bid_modifier_novo"] == 0.8
+
+
+@pytest.mark.asyncio
+async def test_bid_modifier_antigo_e_arredondado_no_preview(monkeypatch) -> None:
+    """Fix C1 (revisao final): o Google devolve bid_modifier em proto.FLOAT (32
+    bits) — 1.4 volta 1.399999976158142. 17 digitos numa resposta que o gestor
+    le e ruido; a exibicao arredonda. A COMPARACAO que decide se isto e um
+    update (`diff_schedule`, dominio) usa o valor cru com tolerancia — este
+    teste ve os dois efeitos juntos: o update foi detectado (a diferenca de
+    1.399999976158142 pra 1.5 e real) e o antigo aparece arredondado.
+    """
+    grade = [_janela_row(day="MONDAY", sh=7, eh=17, bm=1.399999976158142)]
+    _wire(monkeypatch, grade=grade, orcamentos=[_orc()], metricas=[])
+    out = await mod.update_ad_schedule(
+        {
+            "customer_id": "1234567890",
+            "campaign_ids": ["1"],
+            "windows": [
+                {"day_of_week": "MONDAY", "start_hour": 7, "end_hour": 17, "bid_modifier": 1.5}
+            ],
+        }
+    )
+    atualizadas = out["preview"]["1"]["bid_modifier_updated"]
+    assert len(atualizadas) == 1
+    assert atualizadas[0]["bid_modifier_antigo"] == 1.4
+    assert atualizadas[0]["bid_modifier_novo"] == 1.5
     assert atualizadas[0]["day_of_week"] == "MONDAY", "os campos da janela seguem ali"
 
 

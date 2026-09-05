@@ -257,16 +257,21 @@ Expected: FAIL no primeiro — os dois fingerprints saem iguais, porque a chave 
             ([*c.window.key(), c.bid_modifier] for c in atual.get(cid, [])),
             # Ruling 1 do scan: NUNCA comparar a 6a posicao diretamente — ela pode
             # ser None num registro e float noutro, e `sorted` estouraria com
-            # TypeError no caminho de APPLY. Duas criterias com a MESMA faixa e
-            # modificadores diferentes existem se criadas fora desta tool (UI, outra
-            # API), e o fingerprint le o ATUAL do Google, nao a entrada validada.
+            # TypeError no caminho de APPLY. Defesa contra estado NAO PROVADO
+            # alcancavel (duas criterias com a MESMA faixa e modificadores
+            # diferentes) — o SDK v24 recusa faixas sobrepostas
+            # (CriterionError.AD_SCHEDULE_TIME_INTERVALS_OVERLAP, revisao final
+            # da branch, Fix M5), mas o `key=` fica: e barato e o fingerprint le
+            # o ATUAL do Google, nao a entrada validada.
             key=lambda linha: (linha[:5], linha[5] is None, linha[5] or 0.0),
         )
         for cid in campaign_ids
     }
 ```
 
-> ⚠️ **Ruling 1 do scan de pré-voo — o `sorted` ingênuo estouraria.** Eu havia argumentado que as 5 primeiras posições são sempre distintas porque `validate_windows` recusa sobreposição. **O argumento não vale aqui:** o fingerprint é construído do **atual lido do Google**, não da entrada validada. Duas criterias com a mesma faixa e modificadores diferentes existem se alguém as criou pela UI ou por outra API — e aí `sorted` levanta `TypeError: '<' not supported between NoneType and float`, **no caminho de apply**. Daí a `key=` acima. **Escreva o teste do caso degenerado**: duas `CurrentWindow` com faixa idêntica, uma com modificador e outra sem, e assere que o fingerprint sai sem exceção e é determinístico entre duas chamadas.
+> ⚠️ **Ruling 1 do scan de pré-voo — o `sorted` ingênuo estouraria.** Eu havia argumentado que as 5 primeiras posições são sempre distintas porque `validate_windows` recusa sobreposição. **O argumento não vale aqui:** o fingerprint é construído do **atual lido do Google**, não da entrada validada. Duas criterias com a mesma faixa e modificadores diferentes **poderiam** existir se alguém as criasse pela UI ou por outra API — e aí `sorted` levantaria `TypeError: '<' not supported between NoneType and float`, **no caminho de apply**. Daí a `key=` acima. **Escreva o teste do caso degenerado**: duas `CurrentWindow` com faixa idêntica, uma com modificador e outra sem, e assere que o fingerprint sai sem exceção e é determinístico entre duas chamadas.
+>
+> **Correção (revisão final da branch, Fix M5):** a frase acima afirmava que esse estado **existe** sem probe — e o SDK v24 contradiz: `CriterionError.AD_SCHEDULE_TIME_INTERVALS_OVERLAP` (=56) mostra que o Google **recusa** janelas sobrepostas, então duas criterias com a mesma faixa não foram provadas alcançáveis por nenhuma via. O `key=` continua — é defesa barata contra um estado não provado inalcançável, não prova de que ele exista —, mas a afirmação correta é essa, não a de cima. Afirmar superfície de API externa por analogia, sem probe, é o tripwire escrito do repo (CLAUDE.md).
 
 - [ ] **Step 4: rodar e ver passar**
 

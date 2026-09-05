@@ -9,6 +9,7 @@ minutos so 0/15/30/45; dias MONDAY..SUNDAY.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
@@ -164,7 +165,12 @@ def diff_schedule(
         # F149: o modificador da JANELA vence; o escalar da chamada e o default
         # de quem nao trouxe o seu. Ambos ausentes = preserva (comportamento de hoje).
         efetivo = modificador_efetivo(desejada, bid_modifier)
-        if efetivo is not None and c.bid_modifier != efetivo:
+        # Fix C1 (revisao final): comparar por `!=` compara o float64 que o gestor
+        # pediu com o float32 (proto.FLOAT, SDK v24) que o Google devolve — 1.4
+        # volta 1.399999976158142, e a feature nunca convergia (T4/T5 do runbook
+        # 3b.44 falhavam: reenviar a MESMA grade emitia update e mintava token).
+        # `bid_modifier_diverge` absorve o arredondamento com tolerancia.
+        if efetivo is not None and bid_modifier_diverge(c.bid_modifier, efetivo):
             to_update.append(c)
     return ScheduleDiff(to_add=to_add, to_remove=to_remove, to_update=tuple(to_update))
 
@@ -175,10 +181,42 @@ def modificador_efetivo(janela: Window, escalar: float | None) -> float | None:
 
     Mesma regra que `diff_schedule` aplica em `to_update` via esta chamada.
     Este helper centraliza a regra pra evitar a familia do F81: cada lado certo
-    sozinho e o conjunto errado junto. Usada em 4 call-sites (diff_schedule +
-    3 da tool: op add, op update, bid_modifier_novo do preview).
+    sozinho e o conjunto errado junto. Usada em 5 call-sites (conferido por
+    grep, nao de memoria — foi assim que o numero anterior, "4", errou):
+    `diff_schedule` + 4 na tool (`windows_added` do preview, `bid_modifier_novo`
+    do preview, op `add`, op `update`).
     """
     return janela.bid_modifier if janela.bid_modifier is not None else escalar
+
+
+def bid_modifier_diverge(atual: float | None, esperado: float) -> bool:
+    """Fix C1 (revisao final): True se o ATUAL (lido do Google) diverge do
+    ESPERADO (pedido pelo gestor OU efetivo calculado por `modificador_efetivo`).
+
+    O SDK v24 declara `bid_modifier` como `proto.FLOAT` — 32 bits. O gestor
+    grava 1.4 (float64 exato) e o Google devolve 1.399999976158142 na proxima
+    leitura. Comparar por `==` nunca converge: toda chamada repetida veria
+    diferenca onde nao ha — media contra o dominio real, T4 do runbook 3b.44
+    (reenviar a MESMA grade) e T5 (janela com valor igual ao atual) falhavam.
+
+    `math.isclose(rel_tol=1e-6)` absorve o erro de arredondamento do float32
+    (~1e-7) sem mascarar mudanca de verdade: a granularidade real que o Google
+    aceita e 0.01, ordens de grandeza acima do rel_tol escolhido. `atual is
+    None` sempre diverge (nao ha "None isclose float" — `math.isclose` nao
+    aceita `None`, e semanticamente "nunca teve modificador" e sempre diferente
+    de um valor pedido).
+
+    Usada em dois call-sites com a MESMA tolerancia — `diff_schedule` (decidir
+    `to_update`) e `apply_change` (confirmar `matches_requested` contra o que
+    foi de fato pedido por janela) — pra nao repetir a familia do F81. NAO use
+    isto em `schedule_fingerprint`: as duas pontas la leem do Google pelo MESMO
+    parser, entao igualdade exata e correta e MAIS estrita, e o round-trip
+    JSONB preserva os bits (comparar com tolerancia ali esconderia divergencia
+    real entre preview e apply).
+    """
+    if atual is None:
+        return True
+    return not math.isclose(atual, esperado, rel_tol=1e-6)
 
 
 @dataclass(frozen=True, slots=True)
@@ -247,9 +285,14 @@ def schedule_fingerprint(
 
     Agora inclui o bid_modifier como a 6a posicao para fechar a concorrencia otimista:
     Ruling 1 do scan: NUNCA comparar a 6a posicao diretamente — ela pode ser None
-    num registro e float noutro, e `sorted` estouraria com TypeError. Duas criterias
-    com a MESMA faixa e modificadores diferentes existem se criadas pela UI ou por
-    outra API, e o fingerprint le o ATUAL do Google, nao a entrada validada.
+    num registro e float noutro, e `sorted` estouraria com TypeError. O `key=`
+    abaixo e defesa contra um estado que este scan NAO PROVOU alcancavel — duas
+    criterias com a MESMA faixa e modificadores diferentes — nao afirmacao de
+    que ele exista: o SDK v24 traz `CriterionError.AD_SCHEDULE_TIME_INTERVALS_
+    OVERLAP` (=56) e o Google RECUSA janelas sobrepostas (Fix M5/revisao final
+    da branch — a premissa anterior, "existem se criadas pela UI ou por outra
+    API", nao tinha probe e o enum a contradiz). Mantida porque a defesa e
+    barata e o fingerprint le o ATUAL do Google, nao a entrada validada.
     """
     return {
         cid: sorted(

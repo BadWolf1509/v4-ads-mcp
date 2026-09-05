@@ -100,7 +100,10 @@ _SCHEMA: dict[str, Any] = {
             "type": "number",
             "minimum": 0.1,
             "maximum": 10.0,
-            "description": "Opcional; aplica as janelas novas e ATUALIZA (sem recriar) as existentes que tenham valor diferente.",
+            "description": "Opcional; serve de DEFAULT para as janelas que nao trouxerem seu "
+            "proprio bid_modifier em windows[].bid_modifier, que VENCE quando presente. "
+            "Aplica as janelas novas e ATUALIZA (sem recriar) as existentes cujo valor "
+            "efetivo (o da janela, ou este default) divirja do atual.",
         },
         "date_range": {
             "type": "string",
@@ -315,7 +318,15 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
             "bid_modifier_updated": [
                 {
                     **_w(c.window),
-                    "bid_modifier_antigo": c.bid_modifier,
+                    # Fix C1 (revisao final): o Google guarda bid_modifier em
+                    # proto.FLOAT (32 bits) e devolve 1.4 como 1.399999976158142
+                    # — 17 digitos numa resposta que o gestor le e ruido puro.
+                    # Arredondar SO na exibicao; a comparacao que decide
+                    # `to_update` (`diff_schedule`) usa o valor cru com
+                    # tolerancia via `bid_modifier_diverge`, nunca o arredondado.
+                    "bid_modifier_antigo": (
+                        round(c.bid_modifier, 2) if c.bid_modifier is not None else None
+                    ),
                     "bid_modifier_novo": modificador_efetivo(
                         desejada_por_chave[c.window.key()], bid_modifier
                     ),
@@ -390,6 +401,15 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
         # sem o segundo, ele aplica resource_names de ate 10 min atras contra um
         # estado que ninguem verificou (Ruling 10 — concorrencia otimista).
         "windows": [_w(w) for w in desired],
+        # Fix I2 (revisao final): chave PARALELA a `windows`, mesma ordem — nao
+        # dentro de `_w()`, que o builder tambem consome (`ops[*]["window"]` usa
+        # a MESMA funcao, e ganhar um campo que o builder ignora e risco a toa).
+        # Sem isto, `matches_requested` do apply_change so comparava a
+        # IDENTIDADE da faixa, nunca conferia se o bid_modifier efetivamente
+        # aplicado bateu com o pedido — a UNICA coisa que este sprint
+        # acrescentou nunca entrava na confirmacao pos-apply (a mesma familia
+        # do F150: a UI do Google ja falhou em silencio duas vezes nesta conta).
+        "windows_bid_modifiers": [modificador_efetivo(w, bid_modifier) for w in desired],
         "current_keys": schedule_fingerprint(atual, campaign_ids),
         "ops": ops,
         "__target_count__": target_count,

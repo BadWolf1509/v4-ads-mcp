@@ -436,7 +436,16 @@ ORDER BY campaign_criterion.ad_schedule.day_of_week
 - [ ] **Crítico T2:** 5 linhas, todas `status: ENABLED`
 - [ ] **Crítico T2:** o `criterion_id` da linha `MONDAY` é **idêntico** ao `criterion_id` de
       MONDAY em `BASELINE_IDS` (do Setup) — **não** um id novo
-- [ ] **Crítico T2:** `bid_modifier` da linha `MONDAY` é `1.4` (o novo valor)
+- [ ] **Crítico T2 (fix C1 da revisão final — leia antes de marcar falha):**
+      `bid_modifier` da linha `MONDAY` **não sai `1.4` exato** — o SDK v24 declara
+      o campo como `proto.FLOAT` (32 bits), e o Google devolve algo como
+      `1.399999976158142`. Valide com tolerância (`abs(valor - 1.4) < 1e-6`, a
+      mesma que `bid_modifier_diverge` usa em `diff_schedule`/`matches_requested`),
+      **não** por igualdade exata. Ver `bid_modifier_diverge` em
+      `src/google_ads/ad_schedule.py`. Isto **não é regressão** — é o
+      comportamento correto do fix; o preview (`bid_modifier_antigo`/`novo`) já
+      arredonda para 2 casas na exibição, mas o GAQL cru aqui não passa por
+      essa camada
 - [ ] **Crítico T2 — "os outros quatro ficaram intactos":** os `criterion_id` de TUESDAY,
       WEDNESDAY, THURSDAY, FRIDAY são **idênticos**, um a um, aos de `BASELINE_IDS`, **e**
       `bid_modifier` de cada um continua `1.0` — comparação por `criterion_id`, nunca por
@@ -547,9 +556,18 @@ update_ad_schedule(
 
 **Failure modes investigation:**
 
-- `status != "no_changes"` (alguma operação é emitida) → `diff_schedule` não está
-  comparando o efetivo de MONDAY (`1.4`) contra o atual (`1.4`, pós-T2) corretamente —
-  verificar se T2 realmente aplicou antes de tratar como bug aqui
+- 🔴 **Histórico medido (fix C1 da revisão final, já corrigido no código — cite
+  isto se T4 falhar de novo):** antes do fix, este teste **falhava sempre** —
+  `diff_schedule` comparava o `1.4` (float64, pedido) com o que o Google
+  devolve (`1.399999976158142`, float32/`proto.FLOAT` do SDK v24) usando `==`,
+  então a comparação nunca batia e `to_update` saía não-vazio com token
+  mintado. O fix trocou a comparação por `bid_modifier_diverge`
+  (`math.isclose(rel_tol=1e-6)`, `src/google_ads/ad_schedule.py`). Se T4
+  falhar aqui, a PRIMEIRA hipótese é essa tolerância ter regredido — confira
+  se `diff_schedule` voltou a comparar por `!=`/`==` direto — e só DEPOIS
+  verifique se T2 realmente aplicou
+- `status != "no_changes"` (alguma operação é emitida), mas a tolerância acima
+  está intacta → verificar se T2 realmente aplicou antes de tratar como bug novo
 - `confirmation_token` presente → a tool está tratando este caminho como `dry_run` comum;
   regressão da spec §4.4 (grade idêntica não deveria gerar token)
 
@@ -638,9 +656,13 @@ update_ad_schedule(
   central do sprint está invertida**: o escalar está vencendo a janela. É exatamente o
   buraco que a Ruling 3 do ledger descreve ter sido achado por mutação na Task 2 (antes do
   fix) — se reaparecer aqui, algo regrediu depois da Task 2/4
-- MONDAY aparece com `novo: 1.4` → não é o bug crítico acima, mas é ruído: o código está
-  comparando e decidindo "sem mudança" via um caminho que ainda assim entra na lista com o
-  mesmo valor — vale registrar como achado menor de forma
+- MONDAY aparece com `novo: 1.4` (e `antigo` algo como `1.399999976158142`, não
+  `1.4` exato) → **ESTE TAMBÉM É ACHADO CRÍTICO, não nota de forma** — é o Fix
+  C1 da revisão final (float32 do Google comparado por `==` com o float64 do
+  gestor nunca converge) regredindo: `diff_schedule` voltou a comparar sem a
+  tolerância de `bid_modifier_diverge`. Trate com a MESMA severidade do bullet
+  acima — a causa é diferente (arredondamento, não prioridade invertida), mas
+  o efeito observável é o mesmo (MONDAY muda quando não deveria)
 - Menos de 4 entradas para TUESDAY-FRIDAY → o escalar não está sendo aplicado como default
   em algum deles — conferir `modificador_efetivo(w, 2.0)` para o item específico que faltou
 
@@ -916,8 +938,11 @@ e T6 não usam o campo novo e não seriam afetados por um schema desatualizado.
 - [ ] Setup PASS — 5 criteria criados com `bid_modifier: 1.0`, `BASELINE_IDS` anotado
 - [ ] T1 PASS — 1 `update`, zero `add`/`remove`, `cobertura.reduz: false`,
       `bid_modifier_antigo`/`novo` corretos na entrada de MONDAY
-- [ ] T2 PASS — GAQL por `criterion_id` confirma MONDAY em `1.4` e as outras 4 intactas em
-      `1.0`, todos os 5 ids iguais a `BASELINE_IDS`
+- [ ] T2 PASS — GAQL por `criterion_id` confirma MONDAY em `~1.4` (float32 do
+      Google, ex. `1.399999976158142` — tolerância, não igualdade exata; ver
+      nota do fix C1 na validação detalhada de T2) e as outras 4 intactas em
+      `1.0` (exato — 1.0 não sofre arredondamento de float32), todos os 5 ids
+      iguais a `BASELINE_IDS`
 - [ ] T3 PASS — conjunto de `criterion_id` pós-apply idêntico a `BASELINE_IDS` (nenhuma
       recriação)
 - [ ] T4 PASS — `no_changes: true`, sem `confirmation_token`
