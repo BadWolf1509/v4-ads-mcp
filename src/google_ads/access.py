@@ -10,6 +10,7 @@ from uuid import UUID
 import asyncpg
 import structlog
 
+from src.db.connection import _DROPPED_CONNECTION_ERRORS
 from src.db.repositories import audit_log, google_ads_accounts, manager_account_access
 from src.governance.bookkeeping import best_effort
 
@@ -91,9 +92,17 @@ async def ensure_account_access(
     # `AccountAccessDeniedError`. O `else:` só escolhe a mensagem específica
     # quando a leitura de fato respondeu; sem resposta, cai pra genérica —
     # negar com menos detalhe é infinitamente melhor que quebrar.
+    #
+    # O `except` IMPORTA `_DROPPED_CONNECTION_ERRORS` em vez de repetir a tupla:
+    # a propriedade que precisa valer não é "estas duas classes", é "exatamente
+    # o que `run_with_reconnect` retenta". Como literais separados, as duas
+    # listas eram duas fontes de verdade do mesmo dado — a constante ganha um
+    # membro, este `except` fica para trás em silêncio, e o F91 reabre sem
+    # nenhum teste ficar vermelho. Nome privado atravessando módulo é o preço,
+    # e é o menor: o acoplamento com a semântica de retry do pool é deliberado.
     try:
         account = await google_ads_accounts.get_by_customer_id(conn, customer_id)
-    except (asyncpg.PostgresConnectionError, ConnectionError) as exc:
+    except _DROPPED_CONNECTION_ERRORS as exc:
         log.warning(
             "account_access_lookup_failed",
             manager_id=str(manager_id),

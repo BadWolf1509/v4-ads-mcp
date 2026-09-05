@@ -393,3 +393,50 @@ def test_chamada_bloqueante_sai_do_event_loop() -> None:
         "chamada bloqueante rodando no event loop — envolva num closure e passe "
         "pra run_blocking (F86): " + "; ".join(sorted(ofensores))
     )
+
+
+def test_retentaveis_de_conexao_tem_uma_fonte_de_verdade_so() -> None:
+    """F91 (3ª vez) — quem captura exceção de conexão IMPORTA a constante.
+
+    `run_with_reconnect` retenta o que estiver em `_DROPPED_CONNECTION_ERRORS`.
+    Um `except` que repete essa tupla como literal cria duas fontes de verdade
+    do mesmo dado: no dia em que a constante ganhar um membro, o `except` fica
+    para trás EM SILÊNCIO — a exceção nova escapa, o retry re-executa o closure
+    inteiro e o F91 reabre sem nenhum teste ficar vermelho.
+
+    Guard estrutural de propósito: as duas formas são hoje semanticamente
+    idênticas, então nenhum teste de comportamento distingue uma da outra. O
+    que distingue é se a lista está escrita duas vezes.
+    """
+    from src.db import connection
+
+    nomes_retentaveis = {e.__name__ for e in connection._DROPPED_CONNECTION_ERRORS}
+    ofensores: list[str] = []
+
+    for path in _py_files():
+        if path.name == "connection.py":  # quem DEFINE a constante (allowlist)
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Try):
+                continue
+            for handler in node.handlers:
+                if handler.type is None:
+                    continue
+                capturadas = (
+                    handler.type.elts if isinstance(handler.type, ast.Tuple) else [handler.type]
+                )
+                # Nome de exceção mencionado literalmente, sem passar pela constante.
+                mencionados = {
+                    e.attr if isinstance(e, ast.Attribute) else e.id
+                    for e in capturadas
+                    if isinstance(e, ast.Attribute | ast.Name)
+                }
+                if mencionados & nomes_retentaveis:
+                    ofensores.append(f"{path.relative_to(SRC.parent)}:{handler.lineno}")
+
+    assert not ofensores, (
+        "except repetindo as exceções retentáveis como literal em vez de importar "
+        f"`_DROPPED_CONNECTION_ERRORS`: {ofensores}. Duas fontes de verdade do mesmo "
+        "dado divergem — e a divergência aqui reabre o F91 sem teste vermelho."
+    )
