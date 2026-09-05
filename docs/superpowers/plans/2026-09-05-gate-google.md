@@ -71,7 +71,37 @@ spec é corrigida na Task 8.
 
 ---
 
-## Task 0: Sonda do `customer_manager_link` — medição, não código
+## Task 0: Sonda do `customer_manager_link` — ✅ EXECUTADA em 2026-09-05
+
+> **RESULTADO: o `Plan` fica SEM `unreachable`, e a Task 6 fica com DUAS raias.**
+>
+> `customer_manager_link.status` é GAQL válida e devolve estados reais — não é
+> campo morto. Amostra de 3 das 26 contas ativas:
+>
+> | conta | vínculo | status |
+> |---|---|---|
+> | `7862230676` MDO João Pessoa | `6436352492` (nosso MCC) | **ACTIVE** |
+> | `7862230676` MDO João Pessoa | `5971862342` (MCC alheio) | `INACTIVE` |
+> | `9485459729` Hust App | `6436352492` | **ACTIVE** |
+> | `4432986150` MDO Camaçari | `6436352492` | **ACTIVE** |
+>
+> **Achado lateral que vale para qualquer uso futuro deste recurso:** uma conta
+> carrega vínculos com **vários** MCCs, e a `7862230676` tem um `INACTIVE` com um
+> MCC antigo. Query que leia `customer_manager_link` sem filtrar
+> `manager_customer = 'customers/6436352492'` vai ler status de vínculo alheio e
+> concluir errado.
+>
+> ⚠️ **O limite desta medição, dito de propósito:** 3 de 26 contas, e **nenhum
+> `PENDING` observado não é prova de que `PENDING` não apareça**. O que decidiria
+> em definitivo é consultar `customer_client` a partir do MCC — e a conta MCC
+> `6436352492` **não está na matriz de grants**, então a própria tool nega
+> (`run_gaql` em 05/09: *"Você não tem acesso à conta 6436352492"*). O job tem
+> esse alcance; esta sessão não.
+>
+> **Decisão:** seguir sem `unreachable`, que é a saída barata e reversível — se
+> um dia aparecer conta no inventário que ninguém consegue ler, o campo entra
+> então, com a evidência na mão. Registrar a ausência no código **com a data e a
+> saída observada**, nunca como afirmação sobre o Google.
 
 **Files:** nenhum. O produto é uma resposta escrita no relatório da task.
 
@@ -683,10 +713,15 @@ Espelha `src/meta_ads/reconcile.py`, com uma diferença deliberada: aqui não h�
 `unreachable`. No Meta, `su_reachable` separa "saiu da parceria" de "SU não
 atribuído" — duas ações humanas diferentes.
 
-Substitua a linha abaixo pelo resultado literal da Task 0, com a data:
+Sondado em 2026-09-05 (Task 0): `customer_manager_link.status` é GAQL válida e
+devolve estados reais — em 3 das 26 contas ativas, o vínculo com o nosso MCC
+(`6436352492`) saiu `ACTIVE` nas três. O único `INACTIVE` observado é vínculo com
+um MCC ALHEIO (`5971862342`), que não nos diz nada. Nenhum `PENDING` apareceu.
 
-    Sondado em 2026-09-__: `customer_manager_link.status` devolveu <saída>, logo
-    <não há / há> análogo do `su_reachable` no lado Google.
+Isto NÃO prova que `PENDING` não exista: são 3 de 26, e o que decidiria é
+consultar `customer_client` a partir do MCC, alcance que o job tem e a sessão
+não. Se algum dia entrar no inventário conta que ninguém consegue ler, o campo
+`unreachable` entra aqui — com a evidência na mão, não por analogia com o Meta.
 """
 
 import math
