@@ -123,7 +123,12 @@ async def cmd_grant_all(args: argparse.Namespace) -> int:
             n = await manager_account_access.grant_all_active(
                 conn, manager_id=m.id, granted_by=m.id
             )
-        print(f"Granted access to {n} new accounts (existing grants kept).")
+        # I3 (revisão de branch): `n` é linhas TOCADAS pelo `ON CONFLICT DO
+        # UPDATE` (Task 3) — inclui contas já concedidas e restauradas, não só
+        # as genuinamente novas. Rodar grant-all duas vezes num gestor com
+        # tudo concedido tocava 0 linhas novas e ainda imprimia "N new
+        # accounts". Mensagem não afirma mais "new".
+        print(f"Access granted for {n} active accounts (includes accounts already granted).")
         return 0
     finally:
         await connection.close_pool()

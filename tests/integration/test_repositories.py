@@ -494,14 +494,17 @@ async def test_count_grants_on_inactive_accounts(db) -> None:
 
 @pytest.mark.integration
 async def test_copy_access_nao_ressuscita_grant_revogado(db) -> None:
-    """Achado extra (Task 3, fora das 4 decisões): `copy_access` mantém o
-    DELETE no destino (decisão do brief), mas o SELECT da origem não excluía
-    grant revogado — copiar de um gestor com um grant revogado de propósito
-    ressuscitava esse grant como vivo pro destino, porque o INSERT não grava
-    `revoked_at` (fica NULL por default). Mesmo bug que o gêmeo Meta documentou
-    e fechou como C1 (test_copy_access_nao_ressuscita_grant_revogado); antes
-    desta task o Google nunca tinha linha revogada pra ressuscitar, porque
-    `revoke` era DELETE.
+    """Achado extra (Task 3, fora das 4 decisões originais, E4): o SELECT da
+    origem não excluía grant revogado — copiar de um gestor com um grant
+    revogado de propósito ressuscitava esse grant como vivo pro destino,
+    porque o INSERT não gravava `revoked_at` (ficava NULL por default). Mesmo
+    bug que o gêmeo Meta documentou e fechou como C1; antes desta task o
+    Google nunca tinha linha revogada pra ressuscitar, porque `revoke` era
+    DELETE.
+
+    Não testa a forma do destino (soft-revoke desde o I2) porque `destino`
+    aqui começa sem nenhuma linha — ver
+    `test_copy_access_nao_apaga_a_trilha_de_left_mcc_do_destino` pra isso.
     """
     async with db.acquire() as conn:
         origem = await _make_manager(conn, "copia-origem@v4company.com")
@@ -519,6 +522,72 @@ async def test_copy_access_nao_ressuscita_grant_revogado(db) -> None:
         assert n == 0
         assert await manager_account_access.can_manager_access(conn, destino, "608") is False
         assert await manager_account_access.list_accounts_for_manager(conn, destino) == []
+
+
+@pytest.mark.integration
+async def test_copy_access_nao_apaga_a_trilha_de_left_mcc_do_destino(db) -> None:
+    """I2 (revisão de branch, reverte a decisão original do brief): `copy_access`
+    soft-revoga o destino (razão própria `bulk_copy_replaced`) em vez de
+    apagar — a linha `left_mcc` que o destino já tinha sobrevive à cópia e
+    continua restaurável quando a conta volta ao MCC.
+
+    Cenário do achado: conta 609 sai do MCC -> `revoke_for_inactive_accounts`
+    marca `destino` como `left_mcc` -> admin copia o acesso de `origem` pra
+    `destino` -> sob o DELETE cru do brief original, a linha `left_mcc` de
+    `destino` seria apagada aqui -> 609 volta ao MCC -> `restore_for_account`
+    devolveria só quem sobrou, nunca mais `destino`, em silêncio e
+    permanentemente.
+    """
+    async with db.acquire() as conn:
+        origem = await _make_manager(conn, "trilha-origem@v4company.com")
+        destino = await _make_manager(conn, "trilha-destino@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn,
+            [
+                {"customer_id": "609", "mcc_id": "1", "descriptive_name": "Churn"},
+                {"customer_id": "610", "mcc_id": "1", "descriptive_name": "Nova"},
+            ],
+        )
+
+        # destino tinha acesso a 609, que saiu do MCC (churn) antes da cópia.
+        await manager_account_access.grant(conn, manager_id=destino, customer_id="609")
+        await conn.execute(
+            "UPDATE google_ads_accounts SET is_active = false WHERE customer_id = '609'"
+        )
+        await manager_account_access.revoke_for_inactive_accounts(conn)
+        antes = await conn.fetchrow(
+            "SELECT revoked_reason FROM manager_account_access "
+            "WHERE manager_id = $1 AND customer_id = '609'",
+            destino,
+        )
+        assert antes["revoked_reason"] == manager_account_access.LEFT_MCC_REASON
+
+        # admin copia o acesso (vivo) de outro gestor pro destino.
+        await manager_account_access.grant(conn, manager_id=origem, customer_id="610")
+        n = await manager_account_access.copy_access(
+            conn, from_manager_id=origem, to_manager_id=destino, granted_by=origem
+        )
+        assert n == 1
+
+        # a trilha left_mcc de 609 sobrevive à cópia — não foi apagada.
+        depois = await conn.fetchrow(
+            "SELECT revoked_reason FROM manager_account_access "
+            "WHERE manager_id = $1 AND customer_id = '609'",
+            destino,
+        )
+        assert depois is not None, "DELETE apagou a trilha left_mcc do destino"
+        assert depois["revoked_reason"] == manager_account_access.LEFT_MCC_REASON
+
+        # a cópia funcionou: destino recebeu 610 (vivo, copiado de origem).
+        assert await manager_account_access.can_manager_access(conn, destino, "610") is True
+
+        # 609 volta ao MCC — restore_for_account tem que devolver o destino.
+        await conn.execute(
+            "UPDATE google_ads_accounts SET is_active = true WHERE customer_id = '609'"
+        )
+        restaurados = await manager_account_access.restore_for_account(conn, customer_id="609")
+        assert str(destino) in restaurados
+        assert await manager_account_access.can_manager_access(conn, destino, "609") is True
 
 
 # ---------- audit_log ----------

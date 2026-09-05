@@ -212,31 +212,59 @@ async def copy_access(
 ) -> int:
     """Replace destination's access with source's LIVE access. Atomic.
 
+    I2 (revisão de branch, revertendo a decisão original do brief): o brief
+    mandava manter o DELETE cru no destino, com a justificativa de que o
+    INSERT abaixo não tinha ON CONFLICT. Essa justificativa descrevia o
+    código daquele momento, não uma restrição real — e o DELETE apaga junto a
+    TRILHA de revogação que o destino já tinha antes desta chamada. Dano
+    concreto: conta X sai do MCC → `revoke_for_inactive_accounts` marca A e B
+    como `left_mcc` → admin copia acesso de A pra B → a linha `left_mcc` de B
+    é apagada aqui → X volta ao MCC → `restore_for_account(X)` devolve A e
+    nunca mais B, em silêncio e permanentemente.
+
+    O gêmeo Meta já tinha resolvido isto em produção como achado "C1": o
+    destino é soft-revogado (razão própria, não apaga o que já estava
+    revogado por outro motivo) e o INSERT ganha `ON CONFLICT ... DO UPDATE`
+    pra restaurar — não recriar — a linha que sobrevive dos dois lados. Forma
+    copiada aqui.
+
     Só os grants VIVOS da origem são copiados (`revoked_at IS NULL`) — sem o
     filtro, copiar de um gestor com um grant revogado de propósito ressuscitava
-    esse grant como vivo pro destino, porque o INSERT abaixo não grava
-    `revoked_at` (fica NULL por default). Achado extra desta task (fora das 4
-    decisões): mesmo bug que o gêmeo Meta já documentou e fechou como C1; no
-    Google ele nunca tinha se manifestado porque `revoke` era DELETE — não
-    sobrava linha revogada pra ressuscitar.
-
-    O destino, porém, NÃO vira soft — ver comentário no DELETE abaixo.
+    esse grant como vivo pro destino, porque o INSERT não gravava
+    `revoked_at` (ficava NULL por default). Achado extra da task original
+    (fora das 4 decisões): mesmo bug que o gêmeo Meta já documentou e fechou
+    como C1; no Google ele nunca tinha se manifestado porque `revoke` era
+    DELETE — não sobrava linha revogada pra ressuscitar.
     """
     async with conn.transaction():
-        # DELETE (não soft) de propósito: `copy_access` REESCREVE o conjunto do
-        # destino, e o INSERT abaixo não tem ON CONFLICT — linha soft-revogada
-        # sobrevivente bateria na PK. Revogação soft existe para churn e para a
-        # decisão pontual do admin, que são remoções de UMA linha; esta é uma
-        # substituição de conjunto e tem semântica própria.
+        # "Replace" primeiro revoga (soft) o que o destino tinha de VIVO — sem
+        # isso, uma conta que só o destino tinha (fora do conjunto da origem)
+        # ficaria viva pra sempre, e nunca seria "substituição" de verdade. Só
+        # pega `revoked_at IS NULL`: quem já estava revogado no destino (por
+        # `left_mcc`, `admin_revoked`, ou uma cópia anterior) não é tocado, e
+        # é exatamente essa trilha que sobrevive à cópia.
         await conn.execute(
-            "DELETE FROM manager_account_access WHERE manager_id = $1",
+            """
+            UPDATE manager_account_access
+               SET revoked_at = now(), revoked_reason = 'bulk_copy_replaced'
+             WHERE manager_id = $1 AND revoked_at IS NULL
+            """,
             to_manager_id,
         )
         result = await conn.execute(
-            """INSERT INTO manager_account_access (manager_id, customer_id, access_level, granted_by)
-               SELECT $1, customer_id, access_level, $2
-               FROM manager_account_access
-               WHERE manager_id = $3 AND revoked_at IS NULL""",
+            """
+            INSERT INTO manager_account_access
+                   (manager_id, customer_id, access_level, granted_by)
+            SELECT $1, customer_id, access_level, $2
+              FROM manager_account_access
+             WHERE manager_id = $3 AND revoked_at IS NULL
+            ON CONFLICT (manager_id, customer_id) DO UPDATE SET
+                access_level = EXCLUDED.access_level,
+                granted_at = now(),
+                granted_by = EXCLUDED.granted_by,
+                revoked_at = NULL,
+                revoked_reason = NULL
+            """,
             to_manager_id,
             granted_by,
             from_manager_id,
