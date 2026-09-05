@@ -7,7 +7,7 @@ Auto-loaded by Claude Code. Read first.
 Interno only, não SaaS, sem terceiros. Substitui Supermetrics.
 
 - **Production:** `https://v4-ads-mcp-299432068772.southamerica-east1.run.app` — projeto GCP **`v4-ads-mcp`** (Wellington é **owner**; migrado 2026-06-30 do antigo `v4-ads-mcp-prod`). Custom domain `mcpv4.fluxocerto.dev.br` pendente (via LB).
-- **MCC Google Ads:** `6436352492` (V4 Maceió, 25 client accounts)
+- **MCC Google Ads:** `6436352492` (V4 Maceió, 26 client accounts em 04/09)
 - **BM Meta Ads:** V4 Lima Soares & Co (`619664032237208`; **24 ad accounts alcançáveis pelo SU** em 19 BMs, verificado 15/08 — via **system-user token all-targets**, Modelo B)
 - **Unidade operacional:** V4 Lima Soares & Co (João Pessoa, PB) — Wellington dev + 3 colaboradores futuros
 - **Admin:** `wellington.ribeiro@v4company.com`
@@ -18,8 +18,8 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 
 ## Estado atual
 
-**2026-09-02.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`,
-**66 MCP tools** (60 Google + 6 Meta), CI gated + deploy automático. Catálogo em **145 IDs**.
+**2026-09-04.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`,
+**68 MCP tools** (62 Google + 6 Meta), CI gated + deploy automático. Catálogo em **152 IDs**.
 
 **Quantos findings fecharam em qual sprint NÃO vive aqui** — essa narrativa churna toda
 sessão e duplica o `estado-atual.md`. Este bloco tem só o que orienta qualquer sessão;
@@ -37,9 +37,16 @@ Volátil por natureza: **atualize aquele arquivo ao terminar a sessão**, não e
 - Fase 2B (tombstone dos 8 reports antigos) segue **travada** no soak — não tombstonar.
 - **Tool nova só aparece pra sessão nova** (F140): o catálogo é negociado no handshake do
   MCP, e o sintoma é a tool "não existir", não um erro de versão. Reconecte antes do smoke.
-- Próximo sprint candidato: **`ad_schedule`** (spec pronta, `docs/superpowers/specs/`;
-  a §4.2 manda levantar a conjunta dia × hora **na implementação**, com janela madura) ou
-  **M.5** (`meta_get_audience_performance` + `meta_get_top_creatives`).
+- `ad_schedule` em produção; smoke 3b.42 **10/10**. Pendente: **3b.44** (#40) — 7 testes,
+  **todos mutantes** —
+  [`phase-3b-44-bid-modifier-smoke.md`](docs/operacao/phase-3b-44-bid-modifier-smoke.md).
+- **Buckets reclassificados em 04/09** (PR #32): 22 always + 46 defer, remedição mensal
+  marcada para 04/10 em
+  [`tool-buckets-2026-09-04.md`](docs/operacao/tool-buckets-2026-09-04.md). A medição
+  precisa de coluna de controle e match por prefixo de operation — sem as duas os
+  números saem errados nos dois sentidos.
+- Próximo sprint candidato: **M.5** (`meta_get_audience_performance` +
+  `meta_get_top_creatives`).
 
 ## Context bootstrap
 
@@ -134,6 +141,12 @@ Quando o padrão de mercado custar caro demais para o momento, **apresente o tra
 - Don't assertar superfície de API externa por analogia. Teste que codifica a convenção errada é PIOR que teste ausente (aconteceu 3×: F87, F89, e os mocks do F84/F89 que nem conseguiam expressar o bug). Probe empírica primeiro — `validate_gaql` pro Google, `ads_get_field_context` pro Meta.
 - Don't pôr pipe entre o gate e o `&&`: o exit code de um pipeline é o do ÚLTIMO comando, então `check_pre_push.py | tail && git commit` **não é gate** e já deixou passar commit com gate vermelho (02/09; a variante com `grep` já tinha acontecido antes). Rode mudo e leia `$?`. Don't push sem `python scripts/check_pre_push.py` antes. Full sweep MANDATORY ao mexer em pré-flight de mutate, queries com JOIN/cursor, ou migrations.
 - Don't confiar no exit code de `gh run watch` — confirme via `gh run view <id> --json conclusion`.
+- **Don't fechar sprint de tool mutante com o APPLY ou a RESTAURAÇÃO em `⬜ pending`** —
+  em 04/09 os dois morderam: o F150 foi para produção prevendo e não aplicando, e o F151
+  dizia que restaurar entrega a zerava. Os dois são **ausência de tratamento de um
+  caminho**, e **três revisões passaram por cima**: revisão lê o código ESCRITO.
+- **Don't agendar smoke de tool que muta sem o gestor presente:** o classificador de auto mode recusa a chamada, e a alavanca e **autorizacao humana explicita na sessao dele** — aval relayado por outra sessao Claude nao passa. Nem dry-run nem conta de teste isentam: medido em 04/09, T2b (conta de cliente) e T3 (conta de teste, campanha PAUSED, dry-run) foram recusados identicamente, e os dois passaram na segunda tentativa depois do Wellington autorizar com as proprias palavras. A leitura "o freio reage ao nome da tool" foi levantada e **RETIRADA** — se fosse o nome, a segunda tentativa teria sido barrada igual.
+- **Don't tomar "sem checks" de PR empilhado por CI verde:** o `ci.yml` só dispara em `pull_request` contra `main`, então PR cuja base é outra branch **não roda CI nenhum** — e a ausência se parece com "ainda enfileirado". Reapontar a base depois também não dispara: isso é evento `edited`, e os tipos padrão são `opened`/`synchronize`/`reopened`. O que dispara é `git merge origin/main` dentro da branch e push (conta como `synchronize`) — nunca force-push, que descarta o histórico do outro. Medido em 04/09 no #32, empilhado sobre o #31.
 - Don't adicionar gate/pré-flight "a todos os executores" sem `grep` TODA função que chama `build_client_for_manager` (F57).
 - Don't adicionar recurso externo (CDN/font) sem atualizar `_CSP_POLICY` no mesmo commit (CSP enforcing bloqueia).
 - Don't usar `conn.cursor(...)` sem `async with conn.transaction()` (F58); don't deixar coluna sem alias em query com JOIN (F59).
@@ -143,7 +156,9 @@ Quando o padrão de mercado custar caro demais para o momento, **apresente o tra
 - Don't escrever `uv pip compile` sem `--universal` em lugar nenhum (doc, workflow, commit): sem a flag o `pywin32` sai sem marker e o buildpack CNB quebra no Linux (F113). Don't adicionar campo obrigatório em `Settings` sem declará-lo TAMBÉM nos 3 Cloud Run Jobs do `deploy.yml` — eles chamam `get_settings()` e validam tudo na subida (F114); use `--update-*` (merge), nunca `--set-*` (replace), em job cujo estado você não consegue enumerar.
 - Don't deduzir a revisão de rollback por ordem de criação — capture a que está servindo ANTES do deploy (F116). Don't deixar check bloqueante só no CI: o gate local tem que cobrir (F115).
 - Don't chamar SDK de ads (Google **ou** Meta) fora de um closure passado a `run_blocking` em caminho que atende request — inclui tool que constrói o client sozinho, como `validate_gaql` (F109). Ao offloadar, leia o `request-id` **dentro** do closure: `to_thread` copia o contexto e não devolve.
-- **Don't ler o relógio do servidor em tool Google** (`datetime.now`/`date.today`): `hoje` é `await resolve_account_today(customer_id)`, no fuso da conta, UMA vez por request e passado a tudo (janela, clamp, sonda, freshness). As 25 contas são UTC−3/−4; em UTC todo preset deslizava um dia das 21h à meia-noite (F141). Guard AST em `test_no_server_clock_in_google_tools.py`; exceção só com motivo escrito.
+- **Don't hardcodar fuso ou offset em mutate que grava timestamp no Google** (`-03:00`, `_BRT`): o fuso é `await resolve_account_zone(customer_id)` no dry-run, guardado no payload pendente e mostrado no preview; **sem fuso, recuse** — em escrita, offset chutado é corrupção de dado, não ruído (F146; contraste com o fallback UTC do F141, que é leitura).
+- **Don't procurar `REMOVE` no `change_event` para entidade que tem campo `status`** (campanha, grupo, keyword, anúncio): no Google, remover essas entidades é **`UPDATE` de `status → REMOVED`**; `REMOVE` só aparece em vínculos/critérios/orçamentos, que não têm status. Medido por `aggregate_by` em 141 eventos (F145). Predicado de flag olha `new_resource.<entidade>.status`, keyed pelo `resource_type` — não pela presença do atributo, que em proto-plus existe sempre.
+- **Don't ler o relógio do servidor em tool Google** (`datetime.now`/`date.today`): `hoje` é `await resolve_account_today(customer_id)`, no fuso da conta, UMA vez por request e passado a tudo (janela, clamp, sonda, freshness). As contas do MCC são todas UTC−3/−4 (26 em 04/09, seis fusos — a contagem muda; a regra não); em UTC todo preset deslizava um dia das 21h à meia-noite (F141). Guard AST em `test_no_server_clock_in_google_tools.py`; exceção só com motivo escrito.
 - Don't reportar quota sem dizer QUAL quota: desde o F73 há duas chaves (`mgr:<uuid>` e o dev token), e a menor é a que barra (F110). Don't derivar identificador de auditoria de um dict opcional quando existe kwarg obrigatório com o mesmo dado (F111).
 - Don't computar `blast_radius.classify` e ignorar `.level` sem que o caminho fixo esteja amarrado por teste — hoje 17 das 26 tools fazem isso e o guard derivado é o que impede a divergência silenciosa (F112).
 - Don't pôr nome acessível (`aria-label`) num elemento que um swap HTMX substitui — o fragmento servido pela rota não tem o texto e o rótulo degrada calado. Aponte pra fora do nó trocado com `aria-labelledby`, derivando os ids do que a rota já recebe (F101, mesma família do F74). Don't referenciar `/static` sem `?v={{ asset_version }}`: o `Cache-Control` é `immutable` por um ano (F102).

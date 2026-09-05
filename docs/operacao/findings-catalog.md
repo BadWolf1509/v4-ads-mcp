@@ -4,11 +4,11 @@
 >
 > **Maintainer note:** Add a new entry here whenever a finding is documented in a smoke runbook. Keep entries scannable — link to runbook for detail.
 >
-> **Last updated:** 2026-09-02 — **+F139/F140** do smoke em producao das tools novas (`applied_count` conta o TENTADO e tem cara de veredito — vive no `run_mutation` compartilhado e atinge todo mutate com partial_failure; e tool nova so aparece pra sessao nova, porque o catalogo e negociado no handshake do MCP), mais a **reabertura e refechamento do F131** no mesmo dia (a sonda de fronteira herdava a JANELA do usuario — o guard enumerava filtros e o que estava fora da lista passou). Antes, no mesmo dia, **+F137/F138** (pipeline: 4 CVEs reais que o CI reportava e ninguem lia porque o passo era continue-on-error — fechado em `84c8720`; e commit so de docs deployando producao, aberto). Antes, no mesmo dia, **+F131-F136**: os cinco defeitos do bloco MO-JP (F131-F135) **fechados em `38d890c`** com guards verificados por sabotagem, mais o **F136** aberto (detect_drift promete vigiar remocao de conversion action e nao consegue ver nenhuma). Cinco defeitos trazidos pela sessao de gestao de trafego da MO-JP com evidencia de producao e verificados por probe empirica contra a conta (nenhum fix shippado; desenho de F131/F133 em discussao com o campo). Antes, em 2026-08-20 (fim da sessao) — **+F129/F130 e a reconciliacao da parceria Meta**, que superou o proprio F128 no mesmo dia: o MCP passou a CONSULTAR a lista autoritativa da parceria em vez de INFERIR churn por ausencia. Antes, no mesmo dia, **+F128** (conta Meta que sai da parceria ficava ativa e concedida pra sempre: a deteccao de churn e escopada por BM e nao ve BM que some inteiro; confirmado ao vivo com `#200` do Graph enquanto a conta seguia listada). Antes, no mesmo dia, **+F118-F127** (revisao de responsividade do painel, todos fechados no commit `79e67d9`): 9 telas rolavam na horizontal em 375px e o header estourava todas elas em 768px. Medicao em 8 larguras, 192/192 limpas depois do fix. Antes, em 2026-08-19, tres investigacoes no mesmo dia: **+F101-F108** (frontend), **+F109-F112** (backend) e **+F113-F117** (infra/CI), **todos fechados**. Antes: **+F82-F100** (investigação ampla de 2026-08-14/15), também todos fechados em duas ondas — 11 na investigação (F83-F90, F92, F93, F100 + o vazamento do F82) e 8 no pedido seguinte (F91, F94-F99 + a causa raiz do F82). Resíduo único e documentado: o `input_token` do `/debug_token` segue na query (o endpoint recusa POST — verificado). Detalhe e lições: [`session-2026-08-19-frontend-handoff.md`](session-2026-08-19-frontend-handoff.md) e [`session-2026-08-14-15-handoff.md`](session-2026-08-14-15-handoff.md).
+> **Last updated:** 2026-09-03 — **F141–F146 fechados** em tres PRs (#28 bloco fuso+freshness; #29 structural_change; #30 fuso do upload offline) mais o F142 (whitelist de client_type) direto na main. Ontem, 02/09: **+F131–F140** da sessao de campo MO-JP, fechados no PR #27 e nos fixes seguintes. Narrativa completa e licoes de metodo no handoff [`session-2026-09-02-03-handoff.md`](session-2026-09-02-03-handoff.md); o historico anterior (F82–F130, 08/14 a 08/20) esta nos handoffs de 08-14-15 e 08-19.
 >
-> **Abertos hoje:** nenhum dos de 02/09 — F131-F140 estao todos fechados e em producao. ~~F138~~ (commit so de `docs/` publica revisao nova do servidor MCP; a correcao obvia — `paths-ignore` no `on:` — foi verificada e e PIOR, porque travaria PR de docs para sempre com o check `test` obrigatorio), **F136** (o `structural_change` do `detect_drift` guarda `CONVERSION_ACTION`, que a API nunca emite — flag morta e mensagem que promete cobertura inexistente; nao corrigido de proposito, porque o fix obvio deixa o codigo honesto e a cobertura pior), **A4**, **F67** (custom domain) e os dois de 08-20 que são ação humana ou sprint próprio: **F129** (system user com permissão de admin para uso 100% de leitura, token permanente, um único `business_user`) e **F130** (o gate do Google não consulta `is_active` — o buraco que o lado Meta acabou de perder). Os F118-F128 nasceram e fecharam no mesmo dia. Fora do catálogo, dois itens P2 da revisão de responsividade ficaram **deliberadamente** de fora do fix: input de 14px (dispara zoom automático no iOS ao focar — mexe na escala tipográfica inteira) e checkbox de 13×13 na matriz de acessos (abaixo do mínimo do WCAG 2.2, provavelmente salvo pela exceção de espaçamento). Os 36 findings das investigações de agosto (F82-F117) estão fechados — a linha anterior desta nota listava 8 abertos e ficou obsoleta quando a segunda onda de 08-15 fechou F91 e F94-F99; corrigida em 08-19. **Antes de mexer em reads quentes, backup, fragmento HTMX, entrega de assets, CSRF ou design system, grep aqui pela área**: pode já haver diagnóstico pronto.
+> **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain), F129 (governanca do system user — acao humana) e F130 (gate do Google sem `is_active`).
 >
-> **Como ler:** ~1020 linhas, **145 IDs** (F1-F146 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~1490 linhas, **151 IDs** (F1-F152 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -1024,7 +1024,9 @@ operacao que o MCP nao sabe fazer, entao exige acao pela UI), a conclusao pratic
 so pode ser validada em janela de horas ou dias, nunca dentro de uma sessao.
 
 
-## F145 (HIGH, ABERTO) — `structural_change` procura `REMOVE` numa entidade que nunca emite `REMOVE`
+## F145 (HIGH, CORRIGIDO 03/09) — `structural_change` procura `REMOVE` numa entidade que nunca emite `REMOVE`
+
+> **✅ CORRIGIDO em 03/09** — ver o bloco *"F145 CORRIGIDO"* logo abaixo da entrada. Predicado passou a cobrir `status → REMOVED`, a transicao sai na resposta, e `ENABLED↔PAUSED` por nao-autorizado ganhou `status_change_detected` (medium) por decisao registrada.
 
 > **Como apareceu:** a sessao de campo pediu ao Wellington uma remocao real de campanha pela UI pra
 > exercer a flag. O evento indexou, entrou na resposta como drift, e a flag **nao subiu**. Verificado
@@ -1092,6 +1094,46 @@ remover geram o mesmo `operation`**, e so o valor em `new_resource` distingue. F
 terceiro **pausando** a campanha de um cliente e drift estrutural? Hoje nao sobe flag nenhuma. Se
 ficar de fora, que fique por escolha registrada — e nao porque o predicado nao olhou.
 
+### ✅ F145 CORRIGIDO (03/09) — e a decisao de escopo que veio junto
+
+**Predicado:** `resource_type ∈ {CAMPAIGN, AD_GROUP}` e (`operation == REMOVE` **ou**
+`new_status == REMOVED`). O `REMOVE` fica (hard-delete de vinculo/criterio segue coberto); a
+transicao e o caso que a flag nomeava e nunca tinha visto. `changed_fields` nao entra: o Google
+nao aceita mutacao em campanha ja removida, entao `new_resource.status == REMOVED` num `UPDATE`
+**e** a transicao.
+
+**Dado:** o SELECT ganhou `old_resource`/`new_resource` (validados contra a API na propria query de
+verificacao deste finding; o Google so popula os campos que mudaram — payload pequeno, medido). O
+formatter extrai `old_status`/`new_status` **keyed pelo `resource_type`** — em proto-plus
+`new_resource.campaign` existe (vazio, `UNSPECIFIED`) mesmo numa linha de keyword; olhar pela
+presenca do atributo inventaria status. As linhas de `get_change_history` e os `changes[]` do
+`detect_drift` passam a **expor** a transicao (`PAUSED → REMOVED`): adicao de contrato.
+
+**`ChangeEventRow`/`DriftChange` ganharam os dois campos SEM default**, e ha guard por introspecao
+(`dataclasses.fields`). Default aqui seria a forma exata do F145 de volta: formatter esquece de
+popular, tudo vira `None`, o predicado nunca casa, a flag fica cega em silencio — e nenhum teste
+de comportamento pega, porque o converter segue populando. A licao do F141 (asserir "sem default"
+pela assinatura) aplicada no dia seguinte.
+
+**Decisao de escopo (Wellington, 03/09): `ENABLED↔PAUSED` por nao-autorizado ganhou flag propria,
+`status_change_detected` (medium).** Pausar e remover geram o mesmo `operation`; so o valor
+distingue. Reativar campanha alheia comeca gasto; pausar para entrega — e o cenario de co-gestao
+que a tool existe pra pegar. Reversivel, por isso **nao** e `structural_change`. `REMOVED` sai so
+como `structural_change`, nunca as duas.
+
+**Description do `detect_drift` reescrita:** a frase do F136 que prometia "cobre REMOVE de
+CAMPAIGN e AD_GROUP" saiu; entrou a verdade — remocao e `UPDATE` de status, a flag cobre as duas
+formas, e existe `status_change_detected`.
+
+**Verificacao:** RED observado (13/13 falhas antes de qualquer linha de producao); **sabotagem
+7/7 de primeira** — predicado volta ao verbo, formatter devolve `None`, converter derruba o campo,
+**tool nao serializa** (`detect_drift` monta o dict a mao — esse e o RED que eu nao tinha visto na
+ordem, porque corrigi a serializacao na mesma cadeia em que o fixture estava errado; a sabotagem
+foi a prova), SELECT perde `new_resource`, formatter keyed por atributo, e default no dataclass.
+
+**Follow-up nomeado, fora:** generalizar `old_status`/`new_status` para todo tipo com campo
+`status` (keyword, anuncio) e barato e util ("quem pausou a keyword?"), mas e outra pergunta.
+
 ## Evidencia nova sobre o residuo de 25s (sem ID proprio — fecha a lacuna do F131)
 
 O campo observou, **dentro de uma unica resposta** do `detect_drift`, o `account_frontier` ja em
@@ -1155,7 +1197,9 @@ invariante; a invariante e "nao ha default", e o guard passou a asserir a **assi
 **Fora, de proposito:** `governance/rate_limit._today()` (bucket de quota — UTC e o correto) e os
 3 tools Meta (fuso proprio no inventario Meta; a mesma classe la e outro finding).
 
-## F146 (LOW, ABERTO) — `import_offline_conversions` assume BRT fixo, e 2 contas sao UTC-4
+## F146 (LOW, CORRIGIDO 03/09) — `import_offline_conversions` assume BRT fixo, e 2 contas sao UTC-4
+
+> **✅ CORRIGIDO em 03/09** — ver o bloco *"F146 CORRIGIDO"* logo abaixo, que tambem **corrige o sentido do bug** descrito nesta entrada (o -03:00 fixo ADIANTAVA o carimbo em 1h, nao atrasava; o validador nunca rejeitou nada como futura).
 
 Achado pelo guard AST do F141 na primeira execucao. `_validate_payload_shape` compara
 `conversion_date_time` (interpretado como `-03:00`, hardcoded em `_BRT`) com `datetime.now(_BRT)`
@@ -1168,3 +1212,388 @@ upload assumindo um fuso que nem toda conta tem. O fix e usar `google_ads_accoun
 (ja disponivel via `account_today`) tanto na validacao quanto no offset anexado. Nao entrou no
 bloco porque muda o payload enviado ao Google e merece probe propria de importacao. Excecao
 registrada com motivo no guard.
+
+
+### ✅ F146 CORRIGIDO (03/09) — e uma correcao do proprio registro
+
+**Primeiro, o que eu tinha escrito errado acima.** A entrada dizia que uma conversao das 23:30 em
+Campo Grande "e rejeitada como futura". **E o contrario**, e foi um teste com controle que
+derrubou a afirmacao antes do codigo sair: ler a hora de parede de UTC-4 como `-03:00` torna o
+instante **1h mais cedo**, nao mais tarde. O validador nunca rejeitou nada como futura por isso;
+o unico erro dele era fechar a janela de **90 dias** 1h antes. O dano de verdade sempre foi o do
+builder: o carimbo ia ao Google **1h adiantado, em silencio** — uma conversao das 00:30 locais
+caindo no dia anterior. Afirmacao de direcao sem probe e afirmacao errada; registrado em
+[[afirmacoes-precisam-de-probe]].
+
+**O fix.** O fuso vem de `google_ads_accounts.time_zone` (`account_clock.resolve_account_zone`,
+que devolve o **nome** IANA ou `None` — sem fallback, porque quem decide e o chamador). O handler
+resolve UMA vez no dry-run, valida com `tz` (kwarg obrigatorio, guard de assinatura), guarda
+`__time_zone__` no payload pendente, e o **preview mostra `time_zone` e `utc_offset`** — o gestor
+confirma sabendo o que vai ser enviado. O builder calcula o offset **por timestamp** a partir do
+fuso (`%z`), em vez de anexar string fixa.
+
+**Decisao registrada (Wellington, 03/09): conta sem fuso → recusa com erro claro.** No F141 o
+fallback UTC valia porque era leitura; aqui e um MUTATE que grava timestamp em conta de cliente —
+offset chutado e corrupcao de dado, nao ruido. Token pendente sem `__time_zone__` (criado antes
+do deploy, TTL 10 min) → erro pedindo dry-run novo; nunca `-03:00` por baixo.
+
+**Verificacao:** RED 6/6 (o controle no sentido errado falhou e foi corrigido — ver acima);
+teste de integracao com DB pro `resolve_account_zone` (nome, `None` pra ausente/nulo/invalido);
+sabotagem 6/6: builder volta ao fixo, builder cai em Sao Paulo sem fuso, validador ignora `tz`,
+`tz` ganha default, handler cai em Sao Paulo, handler nao guarda o fuso no payload.
+
+**Nao feito, de proposito:** probe real de upload. O formato enviado e a mesma forma de string
+que `-03:00` ja usa em producao (`yyyy-mm-dd hh:mm:ss±hh:mm`), e um upload real empurraria uma
+conversao falsa numa conta de cliente. A `currency_code=BRL` continua invariante — moeda e da
+conta, nao do fuso, e as 25 sao BRL.
+
+
+## F147 (MINOR, ABERTO) — a reconsulta pos-apply nao tem sentinela de truncamento, e agora precisa de uma
+
+> **Como apareceu:** introduzido pelo proprio fix do Important 2 da revisao final (04/09), e
+> pego pela re-revisao escopada no mesmo dia. Adjudicado como residuo: direcao fail-safe,
+> arquivado em vez de virar um quinto commit de codigo na branch.
+
+O §7 da spec exige confirmar remocao por `status == REMOVED` no registro alvo, nunca por
+ausencia. O fix trocou a reconsulta de `apply_change` para `status="all"` — correto — mas
+**criterios REMOVED persistem e continuam consultaveis**, que e a premissa do proprio §7.
+Eles acumulam a cada reescrita da grade.
+
+**A conta:** um lote de 20 campanhas cuja grade de 7 dias foi reescrita ~7 vezes chega a
+~980 linhas. Em 1001 a leitura e cortada por `LIMIT`, e o `ORDER BY campaign.id, day_of_week,
+start_hour` **nao agrupa por status** — entao linhas ENABLED podem ser descartadas.
+
+**O sintoma:** `matches_requested: false` e `hours_per_week` subestimado, **sem nenhum sinal
+de truncamento**. O T4 do proprio runbook classifica essa combinacao como achado HIGH.
+
+**Por que e MINOR mesmo assim:** a direcao e fail-safe — produz alarme falso, nunca sucesso
+falso —, nenhuma mutacao e afetada (a leitura e posterior a escrita), e o resultado aparece
+na resposta em vez de ficar silencioso. O caminho de mutacao ja recusa grade truncada
+(Important 4, `update_ad_schedule.py`); e so a confirmacao que ficou sem.
+
+**Fix (uma ramificacao, espelhando o que ja existe):** em `apply_change.py`, na leitura de
+confirmacao, `if len(rows) > GRADE_LIMIT:` preencha `confirmation_error` em vez de computar
+`resulting` — mesma forma do guard em `update_ad_schedule.py:210`.
+
+**Segundo item, do mesmo lugar:** `resulting_schedule[cid].windows` passou a carregar o
+conjunto REMOVED historico inteiro da campanha, nao so as janelas que este apply removeu —
+inchaco de resposta alem do que o §7 pede. Filtrar por `campaign_criterion.status IN
+('ENABLED', 'REMOVED')` nao resolve (REMOVED antigo tambem casa); o corte util seria por
+data de modificacao, que o `campaign_criterion` nao expoe. Fica registrado como custo
+conhecido do §7, nao como fix pendente.
+
+
+## F148 (HIGH, CORRIGIDO) — o dry-run de todo mutate always-CONFIRM e invisivel na trilha
+
+> **Como apareceu:** medido em 04/09 durante o smoke 3b.42, quando a sessao MO-JP notou
+> que os dois dry-runs de `update_ad_schedule` que planejavam 10 e 5 operacoes apareciam no
+> `get_my_audit_log` como `action_type: read`, `target_count: 0`. A varredura seguinte
+> mostrou que o buraco nao e da tool: e das 24.
+
+**Escopo medido, nao estimado:** 24 tools em `src/mcp/tools/` chamam `create_pending`.
+**Nenhuma delas grava linha de auditoria propria no caminho de dry-run**, e o
+`create_pending` tambem nao. `create_pending` e ponto unico comprovado — `generate_token` e
+chamado de um lugar so em todo o `src/` (`dry_run.py:73`) e o `INSERT INTO
+pending_confirmations` existe so em `dry_run.py:77`.
+
+**O que aparece hoje, quando aparece:** a linha da consulta GAQL que o preview fez, emitida
+por `reports.py:177` com `action_type="read"` e `target_count=len(results)` — a contagem de
+linhas **lidas**, nao de operacoes planejadas. Tool cujo dry-run nao le GAQL nao deixa linha
+nenhuma.
+
+**A inversao, que e o que faz disto HIGH.** `create_pending` chama `ensure_account_access`
+com `level="write"`, e esse gate **audita so quando NEGA**: em `access.py` o `if allowed:
+return` vem antes do bloco de audit, e o `action_type="mutate" if level == "write"` vive
+dentro do ramo de negacao, com `status="denied"`. Resultado: a trilha guarda os previews que
+**foram recusados** e perde todos os que **funcionaram**. A auditoria de tentativa de escrita
+esta exatamente ao contrario — registra o que nao aconteceu, perde o que aconteceu.
+
+**Cenario que fecha o argumento:** alguem gera 50 previews de `bulk_pause_by_query` numa
+conta de cliente, todos autorizados, nenhum aplicado. A trilha tem **zero linhas**. Se o
+acesso dessa pessoa tivesse sido revogado, teria 50. Token mintado e nunca aplicado nao
+deixa rastro nenhum.
+
+**Fix, em duas partes e nesta ordem — no `create_pending`, nao nas 24 tools.** O
+`create_pending` ja tem o numero em escopo: **as 24 escrevem `__target_count__` no payload**,
+sem excecao, e ja existe precedente de leitura assim em `apply_change.py:70`. Ele tambem ja
+e `async` com `conn` na mao e ja faz um write no mesmo escopo, entao a linha de auditoria
+cabe **na mesma transacao** — o que de quebra cobre o caso de o INSERT da pendencia passar e
+a auditoria nao. Espalhar a gravacao pelas 24 seria o padrao que o F57 pune.
+
+1. `create_pending` grava a propria linha, com o `target_count` **planejado**.
+2. So entao uma coluna nova **nullable** `dry_run` distingue. Coluna nova, **nunca** valor
+   novo em `action_type`: o enum e filtro publico de `get_my_audit_log`
+   (`mutate|read|auth|system`) e mexer nele quebra consumidor.
+
+**Cuidado na implementacao:** nao repita o default `1` do `apply_change` ao ler
+`__target_count__`. Hoje as 24 preenchem, mas default silencioso e o que deixa a 25a passar
+sem ninguem notar — ausente deve gravar NULL ou estourar, nunca "1 operacao" que ninguem
+planejou. Migration aditiva, e o `CLAUDE.md` obriga full sweep com Docker.
+
+
+> **✅ CORRIGIDO em 04/09, em duas partes — e a segunda so apareceu porque a primeira foi
+> VERIFICADA EM PRODUCAO.**
+>
+> **Parte 1 (PR #33) — o registro.** `create_pending` passou a gravar a propria linha:
+> `action_type: "mutate"`, `dry_run: true`, `target_count` **planejado** (lido do
+> `__target_count__` que as 24 tools ja escreviam no payload). Fix em **sitio unico**, nao
+> nas 24: `generate_token` e o `INSERT INTO pending_confirmations` existem so em
+> `dry_run.py`, entao espalhar seria o padrao que o F57 pune. **Mesma transacao** que o
+> INSERT da pendencia — pendencia sem trilha e o proprio defeito, entao as duas escritas
+> vivem ou morrem juntas, e em colisao de token o savepoint desfaz as duas. Migration `007`
+> aditiva: coluna **nullable**, nunca valor novo em `action_type`, porque aquele enum e
+> filtro publico de `get_my_audit_log`. Sem default silencioso: `__target_count__` ausente
+> grava NULL, jamais o `1` do `apply_change` — registrar uma operacao que ninguem planejou e
+> pior que registrar que nao se sabe.
+>
+> **Medido em producao (7862230676, aval do Wellington):** antes, os dois dry-runs deixavam
+> so `4065`/`4066`, `read` com `target_count: 0`, enquanto a resposta reportava 10 e 5.
+> Depois, `4085` e `4087` com `mutate` e `target_count` 10 e 5. Perguntado "quantas mutacoes
+> foram tentadas nesta conta", o log responde **2** em vez de zero.
+>
+> **Parte 2 (PR #35) — a leitura, que a Parte 1 deixou ambigua.** Uma mutacao **aplicada**
+> grava os MESMOS valores que um preview em `action_type` e `target_count`. O
+> `list_for_manager` seleciona 11 colunas fixas e a nova nao entrava nelas, entao pela tool
+> os dois casos eram identicos. O unico diferenciador acidental era `duration_ms` NULL — que
+> nao e sinal desenhado **e nao e exclusivo**: `admin_access_grant` tambem grava `mutate` com
+> duracao nula, medido na mesma conta no mesmo dia. Num incidente a pergunta e exatamente
+> "isso foi tentativa ou foi aplicado?". `dry_run` entrou no SELECT e no dict de retorno, e a
+> description da tool passou a dizer o que o campo distingue, com o aviso de **nao** tentar
+> distinguir por `duration_ms`.
+>
+> **Guards:** `test_create_pending_audita_dry_run.py` (4, com o guard do 25o call-site
+> verificado por sabotagem contra diretorio sintetico), 2 de integracao no `test_dry_run.py`
+> (round-trip da coluna e atomicidade, falhando a auditoria de proposito), e **os 8 testes de
+> ciclo completo que o CI reprovou com `assert 2 == 1`** — eles codificavam a AUSENCIA da
+> linha como se fosse contrato. Em vez de trocar 1 por 2, foram separados: o SELECT antigo
+> ganhou `AND dry_run IS NOT TRUE` e cada um ganhou assercao sobre a linha de preview. Viraram
+> guards do F148 em 8 fluxos de tool.
+>
+> **Licao de metodo:** o primeiro push saiu sem full sweep (Docker parado) e o CI achou as 8.
+> A falha estava certa e era a prova do fix; mas foi o CI, nao eu, que a encontrou.
+
+
+## F149 (MEDIUM, EM PRODUCAO — smoke 3b.44 pendente) — o unico jeito de mudar o bid_modifier de UMA faixa passa por um estado que interrompe a entrega
+
+> **Como apareceu:** a analise da MO-JP em 04/09 concluiu lance por faixa horaria (JPA fora
+> de hora com CPA 18,47 contra 19,87 no comercial; CAB fora de hora 24,46 contra 18,60 no
+> fim de semana — sinal OPOSTO por campanha). A execucao esbarrou na superficie da tool.
+
+**A assimetria e nossa, nao do Google.** Cada janela e um `campaign_criterion` proprio com
+seu proprio campo `bid_modifier`, e o `get_ad_schedule` **le** modificador por linha. Mas no
+`update_ad_schedule` o `bid_modifier` e **escalar no nivel da chamada**, e os itens de
+`windows[]` so carregam dia e hora. A tool le um estado que nao consegue reproduzir.
+
+**Os dois caminhos, medidos no codigo** (`diff_schedule`, `ad_schedule.py:142-145`):
+
+- **Omitido** → a guarda `if bid_modifier is not None` deixa `to_update` vazio: **preserva
+  todos**, nao permite mudar nenhum.
+- **Informado** → toda janela presente nos dois conjuntos cujo valor difira entra em
+  `to_update`: **muda todos**, inclusive os que nao eram alvo. Nao existe nocao de "janela
+  que o chamador quis tocar" na assinatura.
+
+**A armadilha: o caminho EXISTE, em duas chamadas — e e pior que ser inexprimivel.** Chamada
+1 com so a faixa alvo e o modificador (a grade vira **so** essa faixa); chamada 2 com as 168
+horas e o modificador **omitido** (a faixa alvo conserva o valor, as outras entram sem —
+confirmado em `mutates/ad_schedule.py:41`, que so seta o campo quando nao e None). O
+resultado liquido e o desejado. **Mas entre as duas a campanha serve ~50 de 168 horas**, e
+as duas sao always-CONFIRM com token de 10 min e aval humano proprio. Se a segunda travar
+— aval nao vindo, token expirado, sessao interrompida —, a campanha fica degradada; com
+orcamento **compartilhado**, isso nao so corta a entrega dela como **inunda a irma**.
+
+**E nao ha ordenacao segura.** Grade cheia primeiro faz o modificador cair nas 168; remover
+e re-adicionar achata as 167. A unica sequencia que chega ao estado certo passa pelo
+degradado.
+
+> **✅ A METADE DE BUG FOI CORRIGIDA em 04/09 (PR #34) — o achatamento deixou de ser
+> silencioso.** O preview nao dizia o que estava sendo perdido: `bid_modifier_updated` listava
+> so dia e hora, e o resumo dizia "5 mudam bid_modifier". Agora cada entrada traz
+> `bid_modifier_antigo` ao lado do `novo`, e o preview declara `cobertura`
+> (`horas_antes`/`horas_depois`/`reduz`) **sem limiar** — qualquer % estaria errado em alguma
+> conta. O destaque (`aviso_cobertura`) fica so para queda **com** orcamento compartilhado,
+> porque queda sozinha aparece em quase todo primeiro uso (campanha sem grade serve 168 horas
+> naturais) e alarme que aparece sempre ensina a ser ignorado. Nenhuma das partes precisou de
+> query nova: `hours_per_week` ja saia do `summarize_current`, o modificador antigo ja estava
+> no `CurrentWindow` que o proprio diff compara, e o `shared_budgets` ja vinha no preview —
+> ninguem tinha escrito a frase que os soma.
+
+> **✅ EM PRODUCAO em 2026-09-05 (PR [#40](https://github.com/BadWolf1509/v4-ads-mcp/pull/40), merge `0162017`, revisao `v4-ads-mcp-00092-sl2`) — a rota
+> segura passou a existir.** `bid_modifier` por janela chegou em `windows[]`
+> (Tasks 1-6, `.superpowers/sdd/2026-09-04-bid-modifier-por-janela/progress.md`):
+> `Window` ganhou o campo como ATRIBUTO, nunca identidade (`key()` continua com
+> 5 posicoes — se o modificador entrasse na chave, muda-lo recriaria o
+> criterion e queimaria ~14 dias de re-learning, o mesmo custo que o
+> `no_changes` existe para evitar); `diff_schedule` decide por janela, com o
+> modificador DA JANELA vencendo o escalar da chamada (que vira default de
+> quem nao trouxer o seu), regra centralizada em `modificador_efetivo` para
+> nao repetir a familia do F81; `schedule_fingerprint` passa a cobrir o
+> modificador (6a posicao) para a concorrencia otimista (Ruling 10) nao ficar
+> cega justamente para uma mudanca so de lance. Uma UNICA chamada agora
+> resolve o que antes exigia duas com o estado degradado (~50 de 168 horas)
+> no meio — prova por teste em
+> `test_muda_uma_faixa_sem_desligar_as_outras_em_UMA_chamada`
+> (`tests/unit/test_update_ad_schedule.py`).
+>
+> **A revisao final da branch achou um Critical que a propria feature nova
+> expunha, corrigido no mesmo commit desta entrada:** `bid_modifier` e
+> `proto.FLOAT` (32 bits) no SDK v24 — o gestor grava `1.4` e o Google devolve
+> `1.399999976158142` na proxima leitura. `diff_schedule` comparava por `==`,
+> entao TODA chamada repetida pela rota nova nunca convergia — medido contra
+> os proprios cenarios do runbook 3b.44 (T4, reenviar a mesma grade, e T5,
+> janela com valor igual ao atual, falhavam). Fix: `bid_modifier_diverge`
+> (`math.isclose(rel_tol=1e-6)`, `src/google_ads/ad_schedule.py`) — NAO
+> aplicado em `schedule_fingerprint`, onde as duas pontas leem do Google pelo
+> MESMO parser e igualdade exata e mais estrita e correta. Um Important junto:
+> `matches_requested` (a confirmacao pos-apply que existe porque a UI do
+> Google ja falhou em silencio duas vezes nesta conta) comparava so a
+> IDENTIDADE da faixa, nunca o bid_modifier — a UNICA coisa que este sprint
+> acrescentou nao entrava na checagem que prova que a mutacao bateu com o
+> pedido. Fix: `windows_bid_modifiers`, chave paralela a `windows` no payload
+> pendente, e `matches_requested` passa a comparar os dois, com a MESMA
+> tolerancia.
+>
+> **Guards:** 10 testes novos entre `test_ad_schedule_domain.py`,
+> `test_update_ad_schedule.py`, `test_apply_change_ad_schedule.py` e
+> `test_get_ad_schedule.py` (1621 no total da suite unitaria, verde) — inclui
+> o par que prova a tolerancia nos dois sentidos (float32 nao reabre update;
+> diferenca real >= 0,01 continua abrindo) e o par que prova
+> `matches_requested` nos dois sentidos (mismatch vira `false`; ruido de
+> float32 continua `true`).
+>
+> **O que FICA de fora:** o **smoke 3b.44 contra conta real**
+> (`docs/operacao/phase-3b-44-bid-modifier-smoke.md`, T1-T7) segue `⬜ pending`
+> — precisa do Wellington autorizando cada rodada de mutacao NA PROPRIA SESSAO
+> que executa (medido em 04/09 no 3b.42/3b.43: aval relayado por sessao-par
+> nao passa no classificador de auto mode). A cobertura acima e SO unitaria;
+> nao leia esta entrada como "verificado em producao" ate o smoke rodar.
+
+
+## F150 (HIGH, CORRIGIDO) — `update_ad_schedule` previa e nao aplicava: o builder nunca registrou
+
+> **Como apareceu:** no **T4 do smoke 3b.42**, em conta real, com a tool **ja em producao**
+> desde o PR #31. A sessao MO-JP parou a cadeia ali em vez de seguir para T5-T8.
+
+`apply_change` devolvia ao gestor **apenas** `"Erro interno ao executar a ferramenta. O time
+foi notificado."`. A mensagem real so existia no audit log: `No mutate builder registered for
+'update_ad_schedule'`. Falhou em **100 ms**, sem `provider_request_id` — nunca chegou na API
+do Google. **A conta ficou intacta**, sem mutacao parcial, verificado por `get_ad_schedule`
+com `status="all"`.
+
+**Causa: uma lista paralela mantida a mao divergiu.** `import_all_builders` tinha 11 imports
+escritos um a um, e `mutates/ad_schedule.py` nao estava entre eles. O modulo existe e declara
+`@register_builder("update_ad_schedule")` corretamente — mas ninguem o importava, entao o
+decorator nunca rodava e a chave nunca entrava no `_BUILDERS`. Diferenca de conjuntos: **12
+modulos no pacote, 11 na lista, e o unico de fora era o unico sem builder**.
+
+🔴 **Por que passou por TUDO — e esta e a parte que importa.** O sprint teve 10 tasks com
+review por task, uma revisao final da branch inteira e uma re-revisao escopada. **As tres
+passaram por cima disto.** Nenhum teste exercitava o caminho de apply desta tool, e T1, T2,
+T2b, T3 e T9 passam inteiros sem toca-lo. A razao e estrutural: **toda revisao olha o codigo
+ESCRITO, e o defeito era codigo AUSENTE num arquivo que ninguem estava revisando.** Diff-based
+review nao ve a linha que nao existe em arquivo que o diff nao toca.
+
+**Fix no padrao, nao na instancia (PR #36).** Acrescentar a linha faltante resolveria hoje e
+reabriria no proximo builder. `import_all_builders` passa a **varrer o pacote** com `pkgutil`:
+lista paralela mantida por memoria humana diverge, e a unica fonte que nao diverge do pacote e
+o proprio pacote. E o `contextlib.suppress(ImportError)` — que engolia falha de import **sem
+rastro**, a outra metade do problema — virou `log.exception`, alertavel. Falha de um modulo
+continua nao derrubando os outros.
+
+**Guard de propriedade:** `test_builders_todos_registrados.py` le o PACOTE por AST, extrai
+toda chave de `@register_builder("x")` e exige que cada uma chegue ao `_BUILDERS`. Le do
+**fonte** de proposito: comparar o registry consigo mesmo nao provaria nada. Builder novo
+nasce coberto sem ninguem lembrar de inscrever. Verificado por sabotagem. 25 builders (eram 24).
+
+**Licao transferivel, e vale alem desta tool:** *shippar caminho de escrita sem smoke que o
+exercite e shippar sem saber se ele funciona.* Revisao de codigo nao substitui execucao — o
+smoke achou em uma tarde o que tres camadas de revisao nao acharam, porque ele **roda** em vez
+de ler. O corolario pratico: nenhum sprint de tool mutante deveria fechar com o passo de apply
+em `⬜ pending`.
+
+
+## F151 (HIGH, CORRIGIDO) — o preview dizia que `clear_schedule` ZERA a entrega, e ele a RESTAURA
+
+> **Como apareceu:** no **T8 do smoke 3b.42**, o ultimo passo — e o que quase ninguem testa
+> porque "e so desfazer". A mutacao estava correta; o preview e que mentia. Bug introduzido
+> pelo PR #34, do mesmo dia.
+
+Com `clear_schedule: true` a grade desejada e vazia, e o bloco `cobertura` calculava
+`hours_per_week([])` = **0**. Mas grade vazia significa **SEM AGENDA, logo 24x7, logo 168** —
+a semantica em que a tool inteira se apoia (`summarize_current([])` devolve `168.0`;
+`covers(None, ...)` e sempre verdadeiro). O `cobertura` era o **unico lugar** onde ela nao
+estava aplicada.
+
+**A resposta se contradizia sozinha:** o preview dizia `50.0 -> 0, reduz: true` enquanto o
+`resulting_schedule` **da mesma resposta** trazia `hours_per_week: 168.0`.
+
+**Por que HIGH e nao cosmetico — e inversao de proposito.** O `cobertura` existe para que
+ninguem desligue entrega sem ver. Na **UNICA operacao que RESTAURA entrega**, ele anunciava
+perda total. Um gestor leria "vai para 0 horas/semana" e concluiria que `clear_schedule`
+desliga a campanha — o oposto do que a descricao da tool diz —, e o efeito pratico e afastar
+da rota de restauracao eleita como preferida (Ruling 11).
+
+**Era pior que o relato:** o terceiro teste do fix mostrou que a rota de restauracao tambem
+disparava o `aviso_cobertura`, o destaque que fala em **REALOCACAO de gasto** para as
+campanhas irmas. Descrevia o contrario do que o passo faz.
+
+> **✅ CORRIGIDO em 04/09 (PR #37).** No caminho `clear_schedule`, `horas_depois` e `168.0` e
+> `reduz` e falso. Condicao **explicita** (`limpar`), nao inferencia pelo vazio: `windows` tem
+> `minItems: 1` e o pre-flight exige um dos dois, entao `desired == []` so acontece via
+> `clear_schedule` — e inferir pelo vazio e justamente a ambiguidade que gerou o bug. Tres
+> testes, RED observado nos tres.
+
+🔑 **Simetria com o F150, achado no mesmo dia, horas antes:** os dois sao **ausencia de
+tratamento de um caminho**. La o `ad_schedule` fora da lista de imports; aqui o
+`clear_schedule` fora do calculo de cobertura. E os dois passaram por revisao, porque
+**revisao le o que esta escrito**. O corolario ficou no `Don't do`: sprint de tool mutante nao
+fecha sem exercitar o caminho de APPLY **e** o de RESTAURACAO.
+
+---
+
+## F152 (LOW, CORRIGIDO EM PARTE) — o rotulo por-op afirmava um verbo que a camada nao conhece
+
+> **Como apareceu:** observado no T7 e T8 do smoke 3b.42.
+
+`mutations.py:115` grava `{"index": idx, "status": "added", "error": None}` para **toda**
+operacao bem-sucedida, seja ela `add`, `update` ou `remove`. No T7 (update via field mask) e
+no T8 (remove) os itens vieram todos como `"added"`.
+
+**Nao ha bug de numero:** `applied_count` e `sum(... if r["status"] == "added")`, e como todo
+sucesso recebe esse rotulo, a contagem esta certa. O defeito e de **nome**, em dois eixos: o
+rotulo por item nao descreve a operacao, e o campo se chama `partial_failures` mas carrega
+tambem os sucessos — a familia do rotulo que embute veredito (F133).
+
+**Por que NAO foi corrigido junto do F151:** o caminho e **compartilhado pelos 25 builders**, e
+mudar o rotulo exigiria mexer tambem no calculo de `applied_count`. Isso muda a forma da
+resposta de **toda** tool de mutacao — contrato de consumidor. Nao entra de carona num fix
+pontual; precisa de decisao propria.
+
+> **✅ CORRIGIDO em 04/09 (PR #38), em produção na revisao `v4-ads-mcp-00090-qst`.** O rotulo
+> por-op passou a ser **`"success"`**, neutro, e o `applied_count` passou a contar *"nao
+> falhou"* em vez de casar o verbo antigo — chavear no verbo amarrava a contagem a um rotulo
+> que nao descrevia metade das operacoes.
+>
+> **Por que NEUTRO e nao o verbo certo (`added`/`updated`/`removed`).** O `oneof` da RESPOSTA
+> do Google diz sucesso/falha e o tipo do recurso — **nunca o verbo**. Create, update e remove
+> so se distinguem do lado da REQUISICAO. Emitir o verbo aqui exigiria correlacionar resposta
+> com request op a op, e a camada generica passaria a **afirmar algo que nao observa**. Rotulo
+> neutro e o que esta camada sustenta.
+>
+> **Nada se perdeu.** As tools que querem verbo de dominio ja remapeiam sozinhas via
+> `classify_partial` (`add_keywords`, `add_negatives_from_search_terms`, `apply_audience`), e
+> elas leem o campo **`error`**, nunca este `status` — verificado nos call-sites ANTES de
+> mexer. O unico consumidor real do rotulo era o `applied_count`, dentro do proprio
+> `mutations.py`. Full sweep 7/7: nenhuma das 25 tools de mutacao quebrou, que era a pergunta.
+
+> 🔴 **RENOMEACAO DO CAMPO: considerada e RECUSADA em 04/09 — nao reabrir sem argumento novo.**
+> A outra metade do finding era que o campo se chama `partial_failures` e carrega sucessos.
+> Custo medido: **40 referencias em 14 arquivos**, num caminho compartilhado pelos **25
+> builders**, e a mudanca altera a forma da resposta de **toda** tool de mutacao — contrato de
+> consumidor. Ganho: trocar um nome ambiguo por outro. O nome tem leitura defensavel: ele
+> nomeia o **MODO** (o relatorio por-op do partial-failure mode), nao o conteudo. O que
+> faltava era o docstring dizer isso, e agora diz. Se a renomeacao voltar a mesa, e PR
+> proprio, com o objetivo escrito antes.
+
+**Nota vizinha, sem ID (comportamento do Google, nao defeito nosso):** `bid_modifier` volta em
+precisao **float32** — pedir `1.1` devolve `1.100000023841858`. Quem comparar `== 1.1` falha.
+Segue como candidata a frase na description da tool; e doc, nao codigo.

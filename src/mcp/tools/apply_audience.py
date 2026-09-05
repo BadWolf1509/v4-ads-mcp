@@ -1,4 +1,4 @@
-# bucket: always
+# bucket: defer
 """Tool: apply_audience - attach user_list or user_interest audience criteria
 to existing ad_group or campaign.
 
@@ -223,7 +223,7 @@ def _build_params_summary(
 @register_tool(
     name="apply_audience",
     description=(
-        "[CORE] Anexa audience criteria (user_list ou user_interest) a 1+ ad_groups OU "
+        "[DEFER] Anexa audience criteria (user_list ou user_interest) a 1+ ad_groups OU "
         "campaigns existentes. target_type top-level (ad_group|campaign) + mode "
         "top-level (observation|exclusion) + ate 100 attachments. "
         "Observation = positive attach (negative=False, bid_modifier opcional 0.1-10.0). "
@@ -237,7 +237,7 @@ def _build_params_summary(
         "user_list ou user_interest resource_names existentes."
     ),
     input_schema=_SCHEMA,
-    bucket="always",
+    bucket="defer",
 )
 async def apply_audience(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

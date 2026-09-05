@@ -58,8 +58,16 @@ _ORCAMENTO_CLAUDE_MD = 24_000
 
 
 def test_claude_md_cabe_no_orcamento() -> None:
-    """CLAUDE.md entra inteiro em toda sessao — cada byte e imposto de contexto."""
-    tamanho = (_RAIZ / "CLAUDE.md").stat().st_size
+    """CLAUDE.md entra inteiro em toda sessao — cada byte e imposto de contexto.
+
+    Mede o CONTEUDO com fim de linha normalizado, nao `st_size`. O repo tem
+    conversao automatica de fim de linha, entao no Windows o arquivo fica com
+    CRLF e no CI (Linux) com LF: 185 linhas viram 185 bytes de diferenca, e o
+    MESMO conteudo passava no CI e reprovava localmente. Guard que responde
+    diferente por plataforma nao mede o que diz medir. O teto nao mudou.
+    """
+    conteudo = (_RAIZ / "CLAUDE.md").read_bytes().replace(b"\r\n", b"\n")
+    tamanho = len(conteudo)
     assert tamanho <= _ORCAMENTO_CLAUDE_MD, (
         f"CLAUDE.md tem {tamanho} bytes (teto {_ORCAMENTO_CLAUDE_MD}). O conteudo novo "
         "provavelmente pertence a docs/convencoes/<area>.md (convencao estavel) ou a "

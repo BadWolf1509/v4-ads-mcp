@@ -19,6 +19,8 @@ def _make_row(
     changed_fields: tuple[str, ...] = ("campaign.ai_max_setting.enable_ai_max",),
     campaign_id: str | None = "22169885957",
     ad_group_id: str | None = None,
+    old_status: str | None = None,
+    new_status: str | None = None,
 ) -> ChangeEventRow:
     return ChangeEventRow(
         change_date_time=change_date_time,
@@ -31,6 +33,8 @@ def _make_row(
         changed_fields=changed_fields,
         campaign_id=campaign_id,
         ad_group_id=ad_group_id,
+        old_status=old_status,
+        new_status=new_status,
     )
 
 

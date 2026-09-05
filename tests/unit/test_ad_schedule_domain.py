@@ -1,0 +1,379 @@
+"""Dominio puro do ad_schedule (spec §4.1, §8.1): janela, validacao, cobertura.
+
+Restricoes lidas do SDK v24 por import, nao por analogia: `MinuteOfHour` so
+aceita ZERO|FIFTEEN|THIRTY|FORTY_FIVE; `DayOfWeek` e MONDAY..SUNDAY.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from src.google_ads.ad_schedule import (
+    DIAS,
+    MINUTO_ENUM,
+    CurrentWindow,
+    MetricCell,
+    Window,
+    bid_modifier_diverge,
+    covers,
+    diff_schedule,
+    hours_per_week,
+    partition_metrics,
+    schedule_fingerprint,
+    summarize_current,
+    validate_windows,
+    window_from_input,
+)
+
+
+def _w(day="MONDAY", sh=7, sm=0, eh=17, em=0) -> dict:
+    return {
+        "day_of_week": day,
+        "start_hour": sh,
+        "start_minute": sm,
+        "end_hour": eh,
+        "end_minute": em,
+    }
+
+
+def test_dias_e_minutos_espelham_o_sdk() -> None:
+    assert DIAS == ("MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY")
+    assert MINUTO_ENUM == {0: "ZERO", 15: "FIFTEEN", 30: "THIRTY", 45: "FORTY_FIVE"}
+
+
+def test_window_from_input_default_de_minuto_e_zero() -> None:
+    w = window_from_input({"day_of_week": "MONDAY", "start_hour": 7, "end_hour": 17})
+    assert w == Window("MONDAY", 7, 0, 17, 0)
+    assert w.key() == ("MONDAY", 7, 0, 17, 0)
+
+
+def test_minuto_fora_do_quarto_de_hora_e_recusado_citando_os_quatro_validos() -> None:
+    """Spec §8.1: 07:10 nao existe na API; recusar na entrada, nao deixar o Google recusar."""
+    err = validate_windows([_w(sm=10)])
+    assert err is not None
+    for v in ("0", "15", "30", "45"):
+        assert v in err
+
+
+@pytest.mark.parametrize(
+    "bad", [_w(sh=-1), _w(eh=25), _w(sh=17, eh=7), _w(sh=7, eh=7), _w(day="MONDAI")]
+)
+def test_hora_invertida_fora_de_faixa_ou_dia_invalido_e_recusado(bad: dict) -> None:
+    assert validate_windows([bad]) is not None
+
+
+def test_fim_as_24_00_e_valido() -> None:
+    """24:00 e o unico jeito de dizer 'ate o fim do dia' — o Google aceita end_hour=24."""
+    assert validate_windows([_w(sh=18, eh=24)]) is None
+
+
+def test_janelas_sobrepostas_no_mesmo_dia_sao_recusadas() -> None:
+    assert validate_windows([_w(sh=7, eh=12), _w(sh=11, eh=17)]) is not None
+
+
+def test_janelas_adjacentes_no_mesmo_dia_sao_aceitas() -> None:
+    assert validate_windows([_w(sh=7, eh=12), _w(sh=12, eh=17)]) is None
+
+
+def test_mesma_faixa_em_dias_diferentes_nao_e_sobreposicao() -> None:
+    assert validate_windows([_w(day="MONDAY"), _w(day="TUESDAY")]) is None
+
+
+def test_hours_per_week_soma_as_janelas() -> None:
+    ws = [window_from_input(_w(day=d, sh=7, eh=17)) for d in ("MONDAY", "TUESDAY")]
+    assert hours_per_week(ws) == 20.0
+    assert hours_per_week([window_from_input(_w(sh=7, sm=30, eh=8))]) == 0.5
+
+
+@pytest.mark.parametrize(
+    "malformado",
+    [
+        {"day_of_week": "MONDAY", "start_hour": "abc", "end_hour": 17},
+        {"day_of_week": "MONDAY", "end_hour": 17},
+        {"day_of_week": "MONDAY", "start_hour": None, "end_hour": 17},
+    ],
+)
+def test_dict_malformado_vira_mensagem_nao_excecao(malformado: dict) -> None:
+    err = validate_windows([malformado])
+    assert err is not None and "windows[0]" in err
+
+
+def _cur(day="MONDAY", sh=7, eh=17, bm=None, rn=None) -> CurrentWindow:
+    w = Window(day, sh, 0, eh, 0)
+    return CurrentWindow(
+        window=w,
+        resource_name=rn or f"customers/1/campaignCriteria/9~{day}{sh}",
+        criterion_id="1",
+        bid_modifier=bm,
+    )
+
+
+def test_grade_completa_e_conjunto_uma_janela_remove_as_outras_quatro() -> None:
+    """Spec §8.2 — a guarda do erro conjunto-vs-incremento. Falha contra qualquer
+    implementacao que trate a entrada como delta."""
+    current = [_cur(day=d) for d in ("MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY")]
+    diff = diff_schedule(current, [Window("MONDAY", 7, 0, 17, 0)], None)
+    assert diff.to_add == ()
+    assert {c.window.day_of_week for c in diff.to_remove} == {
+        "TUESDAY",
+        "WEDNESDAY",
+        "THURSDAY",
+        "FRIDAY",
+    }
+
+
+def test_grade_identica_nao_emite_operacao_nenhuma() -> None:
+    """Spec §8.9 — reenviar a grade atual e no-op; recriar identicos queima re-learning."""
+    current = [_cur(day="MONDAY"), _cur(day="TUESDAY")]
+    diff = diff_schedule(current, [c.window for c in current], None)
+    assert diff.is_empty() and diff.op_count() == 0
+
+
+def test_diff_e_por_conteudo_nao_por_criterion_id() -> None:
+    """O id muda quando o Google recria; a chave e (dia, horas, minutos)."""
+    current = [_cur(day="MONDAY", rn="customers/1/campaignCriteria/9~111")]
+    diff = diff_schedule(current, [Window("MONDAY", 7, 0, 17, 0)], None)
+    assert diff.is_empty()
+
+
+def test_janela_nova_entra_e_janela_ausente_sai() -> None:
+    current = [_cur(day="MONDAY")]
+    diff = diff_schedule(current, [Window("TUESDAY", 8, 0, 12, 0)], None)
+    assert diff.to_add == (Window("TUESDAY", 8, 0, 12, 0),)
+    assert [c.window.day_of_week for c in diff.to_remove] == ["MONDAY"]
+
+
+def test_bid_modifier_diferente_vira_update_nao_recria() -> None:
+    """Mudar so o bid_modifier de uma janela existente e `update` com mask — nao remove+create."""
+    current = [_cur(day="MONDAY", bm=1.0)]
+    diff = diff_schedule(current, [Window("MONDAY", 7, 0, 17, 0)], 1.2)
+    assert diff.to_add == () and diff.to_remove == ()
+    assert [c.window.day_of_week for c in diff.to_update] == ["MONDAY"]
+
+
+def test_bid_modifier_igual_ou_nao_informado_nao_gera_update() -> None:
+    current = [_cur(day="MONDAY", bm=1.2)]
+    assert diff_schedule(current, [Window("MONDAY", 7, 0, 17, 0)], 1.2).is_empty()
+    assert diff_schedule(current, [Window("MONDAY", 7, 0, 17, 0)], None).is_empty()
+
+
+def _cell(day: str, hour: int, cost: float, conv: float) -> MetricCell:
+    return MetricCell(day, hour, int(cost * 1_000_000), conv)
+
+
+def test_sem_criterio_cobre_24x7() -> None:
+    """Spec §3: campanha sem AD_SCHEDULE serve sempre — vazio quer dizer 'tudo', nao 'nada'."""
+    assert covers(None, "SUNDAY", 3) is True
+    assert covers([], "SUNDAY", 3) is False
+
+
+def test_cobertura_e_meio_aberta_e_por_hora_cheia() -> None:
+    w = [Window("MONDAY", 7, 0, 17, 0)]
+    assert covers(w, "MONDAY", 7) and covers(w, "MONDAY", 16)
+    assert not covers(w, "MONDAY", 17) and not covers(w, "TUESDAY", 8)
+    # 07:30-08:00: a celula 07:00 NAO esta em [07:30, 08:00) -> aproximacao documentada
+    assert not covers([Window("MONDAY", 7, 30, 8, 0)], "MONDAY", 7)
+
+
+def test_preview_separa_o_que_sai_do_que_fica_com_cpa_dos_dois_lados() -> None:
+    """Spec §4.2/§8.3: custo sozinho nao responde; CPA de quem sai vs quem fica."""
+    cells = [
+        _cell("SATURDAY", 10, 100.0, 5.0),  # sai (fim de semana) — CPA 20
+        _cell("SUNDAY", 11, 50.0, 5.0),  # sai — CPA 10
+        _cell("MONDAY", 9, 300.0, 10.0),  # fica — CPA 30
+    ]
+    depois = [
+        Window(d, 0, 0, 24, 0) for d in ("MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY")
+    ]
+    r = partition_metrics(cells, None, depois)
+    assert r["leaving"]["cost_brl"] == 150.0 and r["leaving"]["conversions"] == 10.0
+    assert r["leaving"]["cpa_brl"] == 15.0
+    assert r["staying"]["cost_brl"] == 300.0 and r["staying"]["cpa_brl"] == 30.0
+    assert "conversions" in r["leaving"] and "conversions" in r["staying"]
+
+
+def test_cpa_e_none_sem_conversao_nunca_divisao_por_zero() -> None:
+    r = partition_metrics([_cell("SUNDAY", 3, 10.0, 0.0)], None, [Window("MONDAY", 0, 0, 24, 0)])
+    assert r["leaving"]["cpa_brl"] is None and r["leaving"]["cost_brl"] == 10.0
+
+
+def test_celula_que_ja_nao_era_servida_nao_entra_em_nenhum_lado() -> None:
+    antes = [Window("MONDAY", 7, 0, 17, 0)]
+    r = partition_metrics([_cell("SUNDAY", 3, 10.0, 1.0)], antes, antes)
+    assert r["leaving"]["cost_brl"] == 0.0 and r["staying"]["cost_brl"] == 0.0
+
+
+def test_summarize_current_sem_grade_e_24x7() -> None:
+    assert summarize_current([]) == {"has_schedule": False, "windows": 0, "hours_per_week": 168.0}
+    s = summarize_current([_cur(day="MONDAY"), _cur(day="TUESDAY")])
+    assert s == {"has_schedule": True, "windows": 2, "hours_per_week": 20.0}
+
+
+def test_a_chave_da_janela_ignora_o_bid_modifier() -> None:
+    """Identidade e a FAIXA HORARIA. Se o modificador entrasse na chave, muda-lo
+    viraria remove+add: o criterion seria RECRIADO, e recriar custa ~14 dias de
+    re-learning — o mesmo custo que o caminho `no_changes` existe para evitar."""
+    a = Window("MONDAY", 7, 0, 17, 0, None)
+    b = Window("MONDAY", 7, 0, 17, 0, 1.3)
+    assert a.key() == b.key()
+    assert len(a.key()) == 5
+
+
+def test_window_from_input_le_o_modificador_quando_vem() -> None:
+    assert (
+        window_from_input(
+            {"day_of_week": "MONDAY", "start_hour": 7, "end_hour": 17, "bid_modifier": 1.3}
+        ).bid_modifier
+        == 1.3
+    )
+    assert (
+        window_from_input({"day_of_week": "MONDAY", "start_hour": 7, "end_hour": 17}).bid_modifier
+        is None
+    )
+
+
+def test_window_from_input_com_bid_modifier_null_explicito_preserva_none() -> None:
+    """Minor da Task 1 (deferido, revisao final): o comportamento ja estava certo
+    (`d.get("bid_modifier") is not None`, nao truthiness), so faltava cobertura.
+    `null` explicito e shape plausivel de chamador MCP dizendo "sem override" —
+    diferente de simplesmente OMITIR a chave, que e o caso ja coberto acima."""
+    assert (
+        window_from_input(
+            {"day_of_week": "MONDAY", "start_hour": 7, "end_hour": 17, "bid_modifier": None}
+        ).bid_modifier
+        is None
+    )
+
+
+def test_modificador_por_janela_atualiza_so_a_faixa_alvo() -> None:
+    """O ponto do F149: mudar UMA faixa sem achatar as outras, numa chamada."""
+    atual = [
+        CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.3),
+        CurrentWindow(Window("TUESDAY", 7, 0, 17, 0), "rn/2", "2", 0.8),
+    ]
+    desejada = [
+        Window("MONDAY", 7, 0, 17, 0, 1.5),
+        Window("TUESDAY", 7, 0, 17, 0),  # sem modificador proprio
+    ]
+    d = diff_schedule(atual, desejada, None)
+    assert d.to_add == () and d.to_remove == ()
+    assert [c.criterion_id for c in d.to_update] == ["1"], "so a alvo muda"
+
+
+def test_escalar_continua_valendo_como_default_das_janelas_sem_modificador() -> None:
+    """Compatibilidade: quem so passa o escalar ve o comportamento de hoje."""
+    atual = [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.0)]
+    d = diff_schedule(atual, [Window("MONDAY", 7, 0, 17, 0)], 1.1)
+    assert [c.criterion_id for c in d.to_update] == ["1"]
+
+
+def test_janela_com_modificador_igual_ao_atual_nao_vira_update() -> None:
+    """Idempotencia: mandar o valor que ja esta la nao emite operacao."""
+    atual = [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.3)]
+    d = diff_schedule(atual, [Window("MONDAY", 7, 0, 17, 0, 1.3)], None)
+    assert d.to_update == ()
+
+
+# --- Fix C1 (revisao final): float32 do Google vs. float64 do gestor -----------
+#
+# `bid_modifier` e `proto.FLOAT` (32 bits) no SDK v24. O gestor pede 1.4 (float64
+# exato); o Google devolve 1.399999976158142 na proxima leitura. Comparar por
+# `==` nunca converge: T4 do runbook 3b.44 (reenviar a MESMA grade -> no_changes)
+# e T5 (janela com valor igual ao atual) falhavam medido contra o dominio real.
+
+
+def test_bid_modifier_float32_do_google_nao_reabre_update_por_arredondamento() -> None:
+    """Sem esse teste o bug volta: 1.4 pedido, 1.399999976158142 lido de volta —
+    tem que ser idempotente, nao gerar update."""
+    atual = [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.399999976158142)]
+    d = diff_schedule(atual, [Window("MONDAY", 7, 0, 17, 0, 1.4)], None)
+    assert d.to_update == ()
+
+
+def test_bid_modifier_com_diferenca_real_ainda_vira_update() -> None:
+    """A tolerancia nao pode mascarar mudanca de verdade: 1.4 -> 1.5 e diferenca
+    real (>= 0.01, a granularidade que o Google aceita), muito acima do erro de
+    arredondamento do float32 (~1e-7). Sem este teste, um rel_tol frouxo demais
+    passaria calado."""
+    atual = [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.399999976158142)]
+    d = diff_schedule(atual, [Window("MONDAY", 7, 0, 17, 0, 1.5)], None)
+    assert [c.criterion_id for c in d.to_update] == ["1"]
+
+
+def test_bid_modifier_none_atual_com_efetivo_novo_vira_update_sem_estourar() -> None:
+    """`math.isclose` nao aceita `None` — o atual pode ser `None` quando a janela
+    nunca teve bid_modifier. Tem que virar update (o efetivo diverge de "nada"),
+    nao estourar TypeError."""
+    atual = [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", None)]
+    d = diff_schedule(atual, [Window("MONDAY", 7, 0, 17, 0, 1.4)], None)
+    assert [c.criterion_id for c in d.to_update] == ["1"]
+
+
+def test_bid_modifier_diverge_tolera_float32_mas_nao_diferenca_real() -> None:
+    """O helper isolado, testado diretamente — mesma tolerancia que `diff_schedule`
+    e `apply_change` (`matches_requested`) compartilham."""
+    assert bid_modifier_diverge(1.399999976158142, 1.4) is False
+    assert bid_modifier_diverge(1.0, 1.5) is True
+    assert bid_modifier_diverge(None, 1.4) is True
+
+
+def test_modificador_da_janela_vence_mesmo_com_escalar_diferente_tambem_presente() -> None:
+    """Tabela do brief, coluna 'qualquer': o escalar e SO default, nunca compete.
+
+    Cenario construido para que as duas hipoteses previssem resultados OPOSTOS:
+    a janela ja esta em 1.5 e pede 1.5 (zero op), enquanto o escalar pede 2.0
+    (viraria update). `diff_schedule` so expoe `to_update`, entao a distincao tem
+    de vir da PRESENCA na tupla, nao do valor.
+    """
+    atual = [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.5)]
+    d = diff_schedule(atual, [Window("MONDAY", 7, 0, 17, 0, 1.5)], 2.0)
+    assert d.to_update == ()
+
+
+def test_fingerprint_detecta_mudanca_so_de_bid_modifier() -> None:
+    """Sem isto, alguem muda o modificador dentro do TTL e o apply nao percebe —
+    a concorrencia otimista da Ruling 10 ficaria cega justamente no campo que
+    este sprint promove a primeira classe."""
+    antes = {"1": [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.0)]}
+    depois = {"1": [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.3)]}
+    assert schedule_fingerprint(antes, ["1"]) != schedule_fingerprint(depois, ["1"])
+
+
+def test_fingerprint_continua_sobrevivendo_ao_json() -> None:
+    """Ruling 10: listas, nunca tuplas — o payload atravessa JSONB e tupla volta lista."""
+    import json
+
+    fp = schedule_fingerprint(
+        {"1": [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.3)]}, ["1"]
+    )
+    assert json.loads(json.dumps(fp)) == fp
+
+
+def test_fingerprint_nao_estourra_com_modificadores_mistos_na_mesma_faixa() -> None:
+    """Ruling 1 do scan: NUNCA comparar a 6a posicao diretamente — ela pode
+    ser None num registro e float noutro, e `sorted` estouraria com TypeError.
+
+    Fix M5 (revisao final): o `key=` abaixo e defesa contra um estado que NAO
+    FOI PROVADO alcancavel (duas criterias com a MESMA faixa e modificadores
+    diferentes) — nao afirmacao de que ele exista. O SDK v24 traz
+    `CriterionError.AD_SCHEDULE_TIME_INTERVALS_OVERLAP` e o Google RECUSA
+    janelas sobrepostas; a premissa anterior ("existem se criadas pela UI ou
+    por outra API") nao tinha probe. A defesa fica porque e barata e o
+    fingerprint le o ATUAL do Google, nao a entrada validada.
+
+    Este teste assere que nao ha excecao e que e determinístico."""
+    # Duas criterias com faixa idêntica, uma com modificador, outra sem
+    misto = {
+        "1": [
+            CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.0),
+            CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/2", "2", None),
+        ]
+    }
+    # Nao deve estourar TypeError
+    fp1 = schedule_fingerprint(misto, ["1"])
+    fp2 = schedule_fingerprint(misto, ["1"])
+    # Determinístico
+    assert fp1 == fp2
+    # E deve ser uma lista (JSONB-safe)
+    assert isinstance(fp1["1"], list)
+    assert len(fp1["1"]) == 2

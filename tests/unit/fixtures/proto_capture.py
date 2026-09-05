@@ -321,4 +321,8 @@ def make_capture_client() -> MagicMock:
     # acesso por subscript match_type_enum[mt] → retorna a key ("EXACT"/"PHRASE"/"BROAD").
     client.enums.KeywordMatchTypeEnum = _BareEnumDict()
 
+    # AdSchedule enums (build_update_ad_schedule): return the key as-is.
+    client.enums.DayOfWeekEnum = _BareEnumDict()
+    client.enums.MinuteOfHourEnum = _BareEnumDict()
+
     return client
