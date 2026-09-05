@@ -1401,7 +1401,15 @@ async def admin_access_by_manager(
                WHERE m.is_active = true
                GROUP BY m.id ORDER BY m.email"""
         )
-        total_accounts = await conn.fetchval("SELECT count(*) FROM google_ads_accounts") or 0
+        # I4 (revisao de branch): so conta ATIVA. A pagina de detalhe monta a
+        # matriz por `list_all`, que ja filtra `is_active` — sem o filtro aqui
+        # o denominador crescia com cada conta desativada pelo offboarding
+        # automatico e as duas telas voltavam a discordar. Mesmo fix do M8
+        # (gemeo Meta, routes.py:1274).
+        total_accounts = (
+            await conn.fetchval("SELECT count(*) FROM google_ads_accounts WHERE is_active = true")
+            or 0
+        )
     # F92: FORA do `async with` — este helper abre a propria conexao, e
     # segurar uma e esperar por outra trava pra sempre com o pool cheio.
     pending = await pending_invites_count()

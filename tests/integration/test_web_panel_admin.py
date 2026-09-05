@@ -290,6 +290,39 @@ async def test_admin_access_by_manager_count_exclui_revogado(client: AsyncClient
 
 
 @pytest.mark.integration
+async def test_admin_access_by_manager_denominador_exclui_desativada(client: AsyncClient):
+    """I4: o denominador tem de ser o mesmo universo da página de detalhe.
+
+    A matriz por gestor usa `google_ads_accounts.list_all` (só ativas). Com
+    `count(*)` cru no denominador, o offboarding automático
+    (`revoke_for_inactive_accounts`) fazia o denominador crescer pra sempre e
+    as duas telas discordavam — mesmo fix documentado como M8 no gêmeo Meta
+    (`test_admin_access_meta_by_manager_denominador_exclui_desativada`).
+    """
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        await google_ads_accounts.upsert_many(
+            conn,
+            [{"customer_id": "9998887770", "mcc_id": "M1", "descriptive_name": "Ex-cliente"}],
+        )
+        await manager_account_access.grant(conn, manager_id=gestor_id, customer_id="1234567890")
+        await conn.execute(
+            "UPDATE google_ads_accounts SET is_active = false WHERE customer_id = '9998887770'"
+        )
+
+    response = await client.get(
+        "/admin/access/by-manager",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+
+    assert response.status_code == 200
+    # 2 contas existem, 1 desativada: o denominador e 1, nao 2.
+    assert "1 / 1 contas" in response.text
+    assert "/ 2 contas" not in response.text
+
+
+@pytest.mark.integration
 async def test_admin_audit_renders(client: AsyncClient):
     pool = connection.get_pool()
     admin_id, _ = await _bootstrap_admin_and_gestor(pool)
