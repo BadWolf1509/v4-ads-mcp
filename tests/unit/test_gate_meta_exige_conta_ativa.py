@@ -33,6 +33,30 @@ ler — achou dois furos novos na propria correcao do round 1):
    substring. Fix: remove `-- até fim de linha` de dentro de cada literal
    antes de procurar os predicados — mesma logica do `#`, aplicada ao
    comentario que o `ast` NAO enxerga.
+
+Fix round 3 (revisão final da branch feat/gate-google, item 3 — verificação
+por sabotagem em vez de leitura achou três variantes que passam pelos dois
+rounds acima, e as três quebram o gate de verdade; confirmado empiricamente
+que o guard passava — verde — nas três ANTES deste round):
+
+1. Inverter o valor (`is_active = false`) — a substring solta "is_active"
+   sobrevive intacta, só o valor virou o oposto do exigido.
+2. Trocar `AND` por `OR` antes do predicado (`OR revoked_at IS NULL`) — a
+   substring "revoked_at IS NULL" sobrevive IDÊNTICA; só a precedência do
+   WHERE muda pra "(...) OR (revoked_at IS NULL)", que libera geral.
+3. Neutralizar com disjunção sempre-verdadeira (`is_active = true OR TRUE`)
+   — a frase exata "is_active = true" continua lá, intocada.
+
+Os três batem checagem por substring solta e só morrem nos testes de
+integração (nunca no gate local, que não sobe Docker). Fix:
+`_tem_predicado_bem_formado` para de casar substring e exige a FORMA — `AND
+[alias.]coluna valor` colado, sem NADA (parêntese incluso) entre o `AND` e a
+coluna. Mata as três: (1) o valor exigido é literal (`true`/`NULL`), não
+"qualquer coisa depois do ="; (2) o `AND` tem que ser o token imediatamente
+anterior — um `OR` ali não bate o padrão, e não sobra outra ocorrência da
+coluna pra casar; (3) o parêntese que a sabotagem 3 precisa pra caber o `OR
+TRUE` quebra a adjacência `AND coluna` exigida, então a forma estrita já
+rejeita sem precisar olhar o que vem depois do valor.
 """
 
 import ast
@@ -108,6 +132,21 @@ def _tem_join_puro_para(sql: str, tabela: str) -> bool:
     return False
 
 
+def _tem_predicado_bem_formado(sql: str, coluna: str, comparacao: str) -> bool:
+    r"""True se existir `AND [alias.]<coluna><comparacao>` como AND de topo,
+    sem NADA (parenteses incluso) entre o `AND` e a coluna.
+
+    Round 3: ver o docstring do módulo pra história completa das três
+    sabotagens que substring solta deixava passar (inverter o valor, trocar
+    `AND` por `OR`, neutralizar com `OR TRUE`). A forma exigida — `AND`
+    imediatamente seguido (só espaço no meio) por `[alias.]coluna`, e a
+    coluna imediatamente seguida (só espaço no meio) pelo valor exato — mata
+    as três de uma vez: nenhuma delas produz essa forma.
+    """
+    padrao = r"\bAND\s+(?:\w+\.)?" + re.escape(coluna) + r"\s*" + comparacao + r"\b"
+    return re.search(padrao, sql, re.IGNORECASE) is not None
+
+
 def test_can_manager_access_meta_consulta_estado_da_conta() -> None:
     fonte = _ARQUIVO.read_text(encoding="utf-8")
     arvore = ast.parse(fonte)
@@ -115,8 +154,15 @@ def test_can_manager_access_meta_consulta_estado_da_conta() -> None:
     sql = _sem_comentario_sql(_sql_sem_docstring(funcao))
 
     assert "meta_ad_accounts" in sql, "o gate precisa cruzar com o inventario"
-    assert "is_active" in sql, "conta fora da parceria tem que ser negada aqui tambem"
-    assert "revoked_at IS NULL" in sql, "grant revogado nao pode dar acesso"
+    assert _tem_predicado_bem_formado(sql, "is_active", r"=\s*true"), (
+        "conta fora da parceria tem que ser negada aqui tambem — como AND de "
+        "topo colado na coluna, nao so a substring solta (que sobrevive "
+        "intacta a `is_active = false`, a `OR is_active = true`, e a "
+        "`is_active = true OR TRUE`)"
+    )
+    assert _tem_predicado_bem_formado(sql, "revoked_at", r"IS\s*NULL"), (
+        "grant revogado nao pode dar acesso — mesma forma estrita"
+    )
     assert _tem_join_puro_para(sql, "meta_ad_accounts"), (
         "so JOIN puro (sem LEFT/RIGHT/FULL/OUTER logo antes) garante que a "
         "condicao do ON exclui a linha de verdade — qualquer sabor de outer "
