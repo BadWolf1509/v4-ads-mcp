@@ -19,9 +19,45 @@
 branch no momento desta escrita: `9a718b3` (Task 5 completa); este commit da documentação
 avança mais um. Confira `git rev-parse HEAD` para o HEAD atual no momento da execução, e
 `git log --oneline main..feat/bid-modifier-por-janela` para a lista completa de commits.
-Nada foi mesclado, nada foi deployado, e **o smoke abaixo NÃO foi executado**. Este documento
-é prospectivo: escreve o roteiro antes da execução, não um relato depois dela — todo
-`Result` está `⬜ pending`.
+> ## ✅ EXECUTADO EM 2026-09-05 — 8 de 8, zero falhas
+>
+> O código está **em produção** (PR [#40](https://github.com/BadWolf1509/v4-ads-mcp/pull/40),
+> merge `0162017`). Executado na conta `1163862076`, campanha `23851718373` (PAUSED,
+> orçamento próprio), **com autorização explícita do Wellington na própria sessão**. A conta
+> foi devolvida ao estado inicial pelo T6 e verificada limpa por **dois instrumentos**
+> (`get_ad_schedule` e `run_gaql` sem filtro de status → 0 linhas).
+>
+> **O que o smoke provou e o unit test não podia:**
+>
+> - **O Critical do float32, contra um número que o Google devolveu.** Pedi `1.4`; o eco do
+>   `apply_change` trouxe `1.399999976158142`. O T4 reenviou `1.4` contra esse valor e deu
+>   `no_changes` — com a comparação por `==`, seria update infinito, e `matches_requested`
+>   teria vindo `false`. A tolerância foi exercitada contra dado real, não fixture.
+> - **Update por field mask, não recriação:** os 5 `criterion_id` do Setup
+>   (302868/312868/322868/332868/342868) sobreviveram idênticos ao T2 e ao T7. O
+>   re-learning de ~14 dias ficou de pé.
+> - **A rota nova resolve em UMA chamada** o que antes exigia duas com um estado degradado
+>   no meio: T1 saiu `target_count: 1`, `windows_added: []`, `windows_removed: []`.
+> - **O F151:** o T6 declarou `cobertura: 50.0 → 168.0, reduz: false`. Antes do fix, a
+>   única operação que RELIGA entrega anunciava perda total.
+>
+> ### 🔑 Dois achados que o roteiro não previa
+>
+> **1. O artefato float32 é visível num caminho de código e invisível no outro.** O eco do
+> `apply_change` devolve `1.399999976158142`; o `run_gaql` sobre o MESMO criterion, segundos
+> depois, devolve `1.4`. Quem verificasse a feature só por leitura GAQL **nunca veria o
+> problema** e concluiria que a tolerância é desnecessária. Isto muda como se testa a classe:
+> para bug de precisão, o instrumento de leitura escolhe o que você é capaz de ver.
+>
+> **2. A caracterização desta conta neste runbook estava ERRADA.** Todo o texto abaixo a
+> chama de "conta de teste do Wellington". Medido em 05/09 pela própria GAQL:
+> `descriptive_name: "Rayane Ribeiro - Nutry"`, **`test_account: false`**, `status: ENABLED`.
+> Não é conta de teste do Google — é conta normal, ativa, com nome de pessoa, que abriga uma
+> campanha resíduo de smoke (`[3b.24.4] T5.1 - max_conv_value`, PAUSED). **A proteção real
+> nunca foi "é conta de teste"; é "a campanha está pausada e o orçamento não é
+> compartilhado".** São coisas diferentes, e apoiar a decisão na primeira é apoiá-la numa
+> premissa falsa. Quem for escrever o próximo runbook de mutação: verifique `test_account`
+> na conta, não confie no adjetivo herdado do runbook anterior.
 
 **Por que este documento não inventa número nenhum "medido agora":** esta sessão de escrita
 **não chamou nenhuma tool MCP `v4-ads` e não consultou nenhuma conta**. Todo número técnico
@@ -148,14 +184,14 @@ classificador de auto mode antes de chegar ao MCP · ⬜ não executado.
 
 | # | Teste | Muta? | Result | Execution Date | Notes |
 |---|---|---|---|---|---|
-| Setup | `update_ad_schedule` (5 `add`, escalar 1.0) + `apply_change` | **sim** | ⬜ pending | — | Pré-requisito do T1 — NÃO é um dos 6 do brief; estabelece a grade baseline |
-| T1 | `update_ad_schedule` (5 janelas, `bid_modifier` só em MONDAY) — dry-run | não (preview) | ⬜ pending | — | Crítico: 1 `update`, zero `remove`, `cobertura.reduz: false` |
-| T2 | `apply_change` do token de T1 | **sim** | ⬜ pending | — | Crítico: GAQL por `criterion_id` — MONDAY novo, outras 4 intactas |
-| T3 | Comparação de `criterion_id`: Setup vs. pós-T2 | não (leitura) | ⬜ pending | — | Crítico: mesmos 5 ids — update via field mask, não recriação |
-| T4 | Reenviar a mesma grade de T1 | não (preview) | ⬜ pending | — | `no_changes`, sem token |
-| T5 | Janela com `bid_modifier` + chamada com escalar diferente — dry-run | não (preview, descartado) | ⬜ pending | — | MONDAY ausente de `bid_modifier_updated` — a janela vence |
-| T7 (opcional) | Concorrência otimista: dois tokens, o segundo aplicado primeiro | **sim** | ⬜ pending | — | `apply_change` do token A recusado citando "mudou desde o preview" |
-| T6 | `clear_schedule: true` — restauração | **sim** | ⬜ pending | — | `has_schedule: false`; `run_gaql` sem filtro de status devolve 0 linhas |
+| Setup | `update_ad_schedule` (5 `add`, escalar 1.0) + `apply_change` | **sim** | ✅ PASS | `X0HM3YY5` → 5 criterios: 302868/312868/322868/332868/342868, todos bm 1.0, 168→50h | Pré-requisito do T1 — NÃO é um dos 6 do brief; estabelece a grade baseline |
+| T1 | `update_ad_schedule` (5 janelas, `bid_modifier` só em MONDAY) — dry-run | não (preview) | ✅ PASS | `target_count: 1`, `windows_added: []`, `bid_modifier_updated` MONDAY 1.0→1.4, cobertura 50→50 `reduz: false` | Crítico: 1 `update`, zero `remove`, `cobertura.reduz: false` |
+| T2 | `apply_change` do token de T1 | **sim** | ✅ PASS | `9A38BHTH` aplicado, `resource_names` com UMA entrada (~302868), `provider_request_id: U1bh4UgJ...` | Crítico: GAQL por `criterion_id` — MONDAY novo, outras 4 intactas |
+| T3 | Comparação de `criterion_id`: Setup vs. pós-T2 | não (leitura) | ✅ PASS | os 5 ids IDENTICOS ao Setup — update via field mask, re-learning preservado | Crítico: mesmos 5 ids — update via field mask, não recriação |
+| T4 | Reenviar a mesma grade de T1 | não (preview) | ✅ PASS | `no_changes`, zero operacoes, sem token — **o Critical float32 provado em conta real** | `no_changes`, sem token |
+| T5 | Janela com `bid_modifier` + chamada com escalar diferente — dry-run | não (preview, descartado) | ✅ PASS | `target_count: 4`; MONDAY AUSENTE da lista; TUE-FRI herdam o escalar 1.0→2 | MONDAY ausente de `bid_modifier_updated` — a janela vence |
+| T7 (opcional) | Concorrência otimista: dois tokens, o segundo aplicado primeiro | **sim** | ✅ PASS | token A recusado: "A grade mudou desde o preview"; GAQL confirma WED em 1.8 (de B), nao 1.2 | `apply_change` do token A recusado citando "mudou desde o preview" |
+| T6 | `clear_schedule: true` — restauração | **sim** | ✅ PASS | `has_schedule: false`, 168.0 h/semana; GAQL sem filtro de status devolve **0 linhas** | `has_schedule: false`; `run_gaql` sem filtro de status devolve 0 linhas |
 
 **Effective result:** 0/7 obrigatórios executados (+ T7 opcional). Nenhuma tool chamada nesta
 sessão de escrita — branch não mesclada, sem autorização de mutação nesta sessão.
@@ -286,7 +322,7 @@ ORDER BY campaign_criterion.ad_schedule.day_of_week
   a campanha já tinha algum criterion — o "Dados conhecidos" mudou; **pare** e reconfirme
   por `get_ad_schedule` antes de prosseguir
 
-**Result:** ⬜ pending
+**Result:** ✅ PASS (2026-09-05)
 
 ---
 
@@ -373,7 +409,7 @@ update_ad_schedule(
 - `cobertura.reduz == true` → bug na lógica de `hours_per_week`, ou a identidade das janelas
   mudou (5 → menos de 5) entre Setup e T1
 
-**Result:** ⬜ pending
+**Result:** ✅ PASS (2026-09-05)
 
 ---
 
@@ -466,7 +502,7 @@ ORDER BY campaign_criterion.ad_schedule.day_of_week
 - `partial_failures` não-vazio → alguma operação falhou; `applied_count`/`changed_count`
   sozinhos não dizem onde — transcreva cada `{index, status, error}`
 
-**Result:** ⬜ pending
+**Result:** ✅ PASS (2026-09-05)
 
 ---
 
@@ -499,7 +535,7 @@ contra a API real, não só contra `diff_schedule` em memória.
 - 6ª linha aparece (qualquer status) → algum `add` ou `remove` extra foi emitido; cruze
   com `ops` do payload de T1 (deveria ter só 1 `update`, nada mais)
 
-**Result:** ⬜ pending
+**Result:** ✅ PASS (2026-09-05)
 
 ---
 
@@ -571,7 +607,7 @@ update_ad_schedule(
 - `confirmation_token` presente → a tool está tratando este caminho como `dry_run` comum;
   regressão da spec §4.4 (grade idêntica não deveria gerar token)
 
-**Result:** ⬜ pending
+**Result:** ✅ PASS (2026-09-05)
 
 ---
 
@@ -666,7 +702,7 @@ update_ad_schedule(
 - Menos de 4 entradas para TUESDAY-FRIDAY → o escalar não está sendo aplicado como default
   em algum deles — conferir `modificador_efetivo(w, 2.0)` para o item específico que faltou
 
-**Result:** ⬜ pending
+**Result:** ✅ PASS (2026-09-05)
 
 ---
 
@@ -797,7 +833,7 @@ apply_change(confirmation_token="<token_A>")
 - `token_A` expirado (mais de 10 min entre a Chamada A e esta tentativa) → refaça a
   coreografia inteira mais rápido; não é falha do F149, é o TTL normal
 
-**Result:** ⬜ pending
+**Result:** ✅ PASS (2026-09-05)
 
 ---
 
@@ -891,7 +927,7 @@ WHERE campaign.id = 23851718373 AND campaign_criterion.type = 'AD_SCHEDULE'
 - `has_schedule` volta `true` após o apply → alguma das 5 (ou mais, se T7 rodou e deixou
   WEDNESDAY em outro estado) não foi removida — cruzar `partial_failures` com a query acima
 
-**Result:** ⬜ pending
+**Result:** ✅ PASS (2026-09-05)
 
 ---
 
