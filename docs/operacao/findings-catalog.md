@@ -6,7 +6,7 @@
 >
 > **Last updated:** 2026-09-03 — **F141–F146 fechados** em tres PRs (#28 bloco fuso+freshness; #29 structural_change; #30 fuso do upload offline) mais o F142 (whitelist de client_type) direto na main. Ontem, 02/09: **+F131–F140** da sessao de campo MO-JP, fechados no PR #27 e nos fixes seguintes. Narrativa completa e licoes de metodo no handoff [`session-2026-09-02-03-handoff.md`](session-2026-09-02-03-handoff.md); o historico anterior (F82–F130, 08/14 a 08/20) esta nos handoffs de 08-14-15 e 08-19.
 >
-> **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** (branch `feat/gate-google`).
+> **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova.
 >
 > **Como ler:** ~1490 linhas, **151 IDs** (F1-F152 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
@@ -1600,3 +1600,71 @@ pontual; precisa de decisao propria.
 **Nota vizinha, sem ID (comportamento do Google, nao defeito nosso):** `bid_modifier` volta em
 precisao **float32** — pedir `1.1` devolve `1.100000023841858`. Quem comparar `== 1.1` falha.
 Segue como candidata a frase na description da tool; e doc, nao codigo.
+
+---
+
+## F153 (HIGH, CORRIGIDO em 2026-09-05) — a correcao do F91 reabriu o F91, e o guard do F91 continuou verde
+
+> **Como apareceu:** na re-revisao da onda de fix da branch `feat/gate-google`, medido com
+> probe (`_FakePool`), nao deduzido. Nenhuma das tres revisoes anteriores da mesma branch
+> pegou — porque o defeito **nao existia** quando elas rodaram: ele foi introduzido pela
+> correcao de um achado delas.
+
+**O que aconteceu.** Uma revisao apontou que a mensagem de negacao do gate Google
+(*"peca ao admin pra liberar no painel"*) e conselho impossivel quando a causa e
+`is_active = false` — a conta nem aparece na matriz do painel. A correcao acrescentou, no
+caminho de negacao, uma leitura para escolher a mensagem certa:
+
+```python
+account = await google_ads_accounts.get_by_customer_id(conn, customer_id)
+```
+
+Ela ficou **depois** do audit protegido por `best_effort`, mas **dentro** do mesmo closure
+que os seis call-sites passam a `connection.run_with_reconnect(...)`. Como
+`asyncpg.PostgresConnectionError` esta em `_DROPPED_CONNECTION_ERRORS`, uma conexao morta ali
+faz o retry **re-executar o closure inteiro** — inclusive o `INSERT` do audit que ja tinha
+tido sucesso.
+
+**Medido, nao inferido:** `audit_log.record` chamado **2x** numa unica negacao; e se a leitura
+continuasse falhando, escapava `ConnectionDoesNotExistError` em vez de
+`AccountAccessDeniedError` — **negacao limpa virando 500**. Exatamente o que o comentario tres
+linhas acima afirma impedir (*"`best_effort` mantem o retry restrito ao read"*).
+
+**🔑 O que faz isto merecer ID proprio, e nao e o bug.** Sao tres coisas, e a terceira e a que
+vale para alem deste caso:
+
+1. **A regressao foi introduzida por uma correcao.** As revisoes do codigo original passaram
+   — corretamente. O defeito nasceu na onda de fix, que e a fase em que a atencao ja
+   afrouxou porque "so estamos fechando achados".
+2. **O guard do F91 continuou VERDE.** `test_audit_de_negacao_nao_e_retentado` existe
+   justamente para provar que a negacao nao e retentada. Ele nao ficou vermelho porque a
+   mesma onda de fix **lhe acrescentou um mock de `get_by_customer_id`** — ou seja, o guard
+   foi contornado pela propria mudanca que quebrou a invariante dele. Guard nao e barreira
+   quando quem passa por ele pode ajusta-lo no mesmo commit.
+3. **A causa raiz era duplicacao de estado.** O `except` repetia
+   `_DROPPED_CONNECTION_ERRORS` como tupla literal. Duas fontes de verdade do mesmo dado: no
+   dia em que a constante ganhasse um membro, o `except` ficaria para tras **em silencio** e o
+   F91 reabriria sem nenhum teste vermelho. E o teste 2 do "padrao de solucao" do `CLAUDE.md`.
+
+**A regra que sai disto, e e mais estreita que "cuidado com retry":** codigo acrescentado
+**depois** de um bloco `best_effort`, dentro de um closure que sera retentado, e tao perigoso
+quanto codigo dentro dele. O `best_effort` protege o que esta *nele*, nao o que vem *depois*.
+
+> **✅ CORRIGIDO** ([PR #45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge
+> `8ad7689`, revisao `v4-ads-mcp-00098-tgs`). A leitura ficou em `try/except`, com `else:`
+> escolhendo a mensagem especifica so quando ela de fato respondeu — sem resposta, cai na
+> mensagem generica, porque **negar com menos detalhe e infinitamente melhor que quebrar**. O
+> `except` passou a **importar** a constante em vez de repetir a tupla.
+>
+> **Guards, e sao dois porque um so nao fecharia:**
+> `test_leitura_de_conta_apos_negacao_nao_e_retentada` cobre o comportamento (verificado
+> vermelho contra o pre-fix: `audits=2` e `ConnectionDoesNotExistError` escapando); e
+> `test_retentaveis_de_conexao_tem_uma_fonte_de_verdade_so` cobre a estrutura, varrendo **todo
+> `src/`** — nenhum `except` fora do `connection.py` pode mencionar por nome uma classe que
+> esta na constante. O estrutural existe porque **nenhum teste de comportamento distingue as
+> duas formas**: as tuplas eram identicas, entao a unica propriedade afirmavel e "a lista nao
+> esta escrita duas vezes". Verificado por sabotagem: com o `except` de volta a tupla literal
+> ele aponta `src/google_ads/access.py:105`.
+>
+> **O que fica de fora:** o guard estrutural nao alcanca `except Exception` generico nem
+> captura montada dinamicamente. Cobre a forma que causou este bug, nao a classe inteira.
