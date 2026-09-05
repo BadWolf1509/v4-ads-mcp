@@ -48,18 +48,30 @@ async def record_job_crash(
 async def record_access_revocation(
     conn: asyncpg.Connection,
     *,
+    platform: Literal["google", "meta"],
     ad_account_id: str,
     reason: str,
     manager_ids: list[str],
 ) -> int:
-    """Grava a revogação automática de acesso de UMA conta.
+    """Grava a revogação automática de acesso de UMA conta (Google ou Meta).
 
     Por conta e não por grant: a lista de gestores cabe no `params_summary` e
     uma linha por grant inundaria a trilha sem acrescentar forense.
 
-    `action_type="mutate"` porque é o que é. Sob token de system user a Meta
-    registra tudo como `v4-ads-mcp-integracao`, então esta linha é o único lugar
-    onde fica registrado que um acesso humano foi retirado, e por quê.
+    `ad_account_id` é o identificador da conta na respectiva plataforma —
+    `customer_id` no Google, `ad_account_id` no Meta (o nome do parâmetro
+    ficou do gêmeo Meta, que existia primeiro); nos dois casos vira
+    `customer_id` na mesma coluna do audit_log. `platform` é obrigatório de
+    propósito (mesma razão do F93 pra `status` em `record_job_run`): sem
+    default, quem chama é forçado a decidir, e `operation` sai dele
+    (`f"{platform}_access_cleanup"`) — generalizado na revisão de branch
+    Google (C2, 2026-09-05); o comportamento pro Meta é bit-a-bit o mesmo de
+    antes, só com `platform="meta"` explícito no call site.
+
+    `action_type="mutate"` porque é o que é. Sob token de system user (Meta) ou
+    OAuth de admin (Google) a auditoria do próprio provedor não distingue
+    gestor, então esta linha é o único lugar onde fica registrado que um
+    acesso humano foi retirado, e por quê — nos dois lados.
     """
     return await audit_log.record(
         conn,
@@ -67,12 +79,12 @@ async def record_access_revocation(
         session_id=None,
         customer_id=ad_account_id,
         action_type="mutate",
-        operation="meta_access_cleanup",
+        operation=f"{platform}_access_cleanup",
         target_count=len(manager_ids),
         params_summary={"reason": reason, "managers": manager_ids},
         status="success",
         error_message=None,
-        platform="meta",
+        platform=platform,
     )
 
 

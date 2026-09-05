@@ -29,7 +29,7 @@ from src.google_ads.accounts import (
 )
 from src.google_ads.client import build_client
 from src.google_ads.reconcile import build_plan
-from src.jobs._audit import record_job_crash, record_job_run
+from src.jobs._audit import record_access_revocation, record_job_crash, record_job_run
 from src.jobs.purge import purge_expired
 
 log = structlog.get_logger(__name__)
@@ -92,7 +92,19 @@ async def reconcile_google(
         # Contado SEMPRE, inclusive no dry-run: a trava governa DESTRUIÇÃO, não
         # observação. Sem isto o soak inteiro reporta zero e não distingue "não
         # há o que revogar" de "há 34 e a trava está segurando".
-        candidatos = await manager_account_access.count_grants_on_inactive_accounts(conn)
+        #
+        # I1 (revisão de branch, 2026-09-05): backlog (`is_active=false` já
+        # gravado) SOMADO aos grants vivos nas contas que ESTA execução vai
+        # desativar (`plano.to_remove`, ainda ativas agora — a contagem roda
+        # antes do `deactivate()` abaixo). Só o backlog deixava o dry-run cego
+        # justamente pra véspera da revogação: conta a 1 ausência do limiar
+        # media revoke_candidates=0 nos dois modos (dry-run e apply), quando o
+        # apply de verdade ia revogar 1 grant no dia seguinte.
+        candidatos_backlog = await manager_account_access.count_grants_on_inactive_accounts(conn)
+        candidatos_a_sair = await manager_account_access.count_grants_on_accounts(
+            conn, customer_ids=plano.to_remove
+        )
+        candidatos = candidatos_backlog + candidatos_a_sair
 
         # Destrutivo: exige leitura completa E a trava ligada.
         # `blocked_reason is None` já implica leitura completa (`build_plan`
@@ -109,6 +121,22 @@ async def reconcile_google(
             # alcançaria.
             atingidos = await manager_account_access.revoke_for_inactive_accounts(conn)
             revogados = sum(len(v) for v in atingidos.values())
+            # C2 (revisão de branch): por conta, não por grant (forense
+            # suficiente sem inundar a trilha), na MESMA transação da
+            # revogação — ou os dois gravam, ou nenhum. Espelha
+            # `meta_resync.reconcile_meta`; sem isto o estado da tabela era a
+            # única prova de que a revogação aconteceu, e reconceder por
+            # qualquer caminho (`grant`/`bulk_grant`/`grant_all_active`/
+            # `copy_access`) zera `revoked_at`/`revoked_reason` — depois disso
+            # não sobra registro nenhum de que um acesso humano foi retirado.
+            for customer_id, manager_ids in atingidos.items():
+                await record_access_revocation(
+                    conn,
+                    platform="google",
+                    ad_account_id=customer_id,
+                    reason=manager_account_access.LEFT_MCC_REASON,
+                    manager_ids=manager_ids,
+                )
 
     return {
         "added": len(plano.to_add),
@@ -139,7 +167,7 @@ async def run() -> int:
                 )
                 await record_job_run(
                     conn,
-                    operation="account_resync",
+                    operation="google_reconcile",
                     platform="google",
                     status="error",
                     error_message="no active OAuth connection",
@@ -256,7 +284,17 @@ async def run() -> int:
     except Exception as e:
         # F93: crash inesperado (build_client, fetch_account_details, upsert_many)
         # nao pode sumir da trilha — o rastro ficaria so no Cloud Run.
-        await record_job_crash(operation="account_resync", platform="google", exc=e)
+        #
+        # I2 (revisão de branch, 2026-09-05): `operation` unificado com o
+        # caminho de sucesso/bloqueio (`google_reconcile`, espelhando
+        # `meta_reconcile` dos dois lados no gêmeo) — era `account_resync`
+        # aqui e no "sem OAuth connection" acima, string DIFERENTE da que o
+        # run bem-sucedido grava. Pra job diário atrás de trava, é o dia em
+        # que o job MORREU que interessa: com operação diferente por caminho,
+        # a query de triagem do soak (`WHERE operation='google_reconcile'`) só
+        # mostrava os dias em que o job chegava ao fim, e o dia ausente da
+        # série ficava indistinguível de "rodou e não achou nada".
+        await record_job_crash(operation="google_reconcile", platform="google", exc=e)
         raise
     finally:
         await connection.close_pool()

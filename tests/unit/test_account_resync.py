@@ -152,7 +152,11 @@ async def test_run_returns_1_when_no_oauth_connection() -> None:
     # F73: falha de OAuth deve ficar visível no /audit — status='error'.
     record.assert_awaited_once()
     kwargs = record.call_args.kwargs
-    assert kwargs["operation"] == "account_resync"
+    # I2 (revisão de branch, 2026-09-05): unificado com o caminho de
+    # sucesso/bloqueio e com o crash do except externo — os três gravavam
+    # `operation` diferente ("account_resync" aqui e no crash, "google_reconcile"
+    # no sucesso), e a query de triagem do soak filtra por UMA string só.
+    assert kwargs["operation"] == "google_reconcile"
     assert kwargs["status"] == "error"
     assert kwargs["error_message"]
 
@@ -417,6 +421,49 @@ async def test_falha_do_piggyback_meta_deixa_rastro_no_audit(
     # A falha original continua visível mesmo com a auditoria no caminho — o
     # audit OBSERVA o crash, não o substitui.
     assert "client_ad_accounts mudou de permissao" in capsys.readouterr().err
+
+
+@pytest.mark.asyncio
+async def test_crash_inesperado_no_corpo_do_job_audita_como_google_reconcile() -> None:
+    """I2 (revisão de branch): o `except` EXTERNO — que cobre build_client,
+    fetch_account_details, reconcile_google e qualquer outra explosão no corpo
+    do job — gravava `operation="account_resync"`, string DIFERENTE da que o
+    caminho de sucesso/bloqueio grava (`google_reconcile`, ~:223). Igual ao
+    "sem OAuth connection" (teste acima): pra job diário atrás de trava, é o
+    dia em que o job MORREU que interessa, e uma query de triagem que filtra
+    por `operation='google_reconcile'` fazia esse dia sumir da série — ausência
+    virava indistinguível de "rodou e não achou nada". Unificado com o gêmeo
+    Meta, que usa `meta_reconcile` nos dois casos (sucesso e crash).
+
+    Diferente do teste do piggyback Meta (best-effort, `rc == 0`): este crash é
+    no corpo do PRÓPRIO job Google — `run()` re-levanta depois de auditar.
+    """
+    conn = MagicMock()
+    pool = _fake_pool(conn)
+    oc = SimpleNamespace(refresh_token_enc=b"enc")
+    mocks = _base_patches(pool=pool, oc=oc)
+    boom = RuntimeError("build_client explodiu")
+
+    with (
+        mocks["init_pool"],
+        mocks["close_pool"] as close_pool,
+        mocks["get_pool"],
+        mocks["pick"],
+        mocks["derive"],
+        mocks["decrypt"],
+        patch(f"{_M}.build_client", MagicMock(side_effect=boom)),
+        patch(f"{_M}.record_job_crash", AsyncMock()) as crash,
+        pytest.raises(RuntimeError, match="build_client explodiu"),
+    ):
+        await account_resync.run()
+
+    crash.assert_awaited_once()
+    kwargs = crash.await_args.kwargs
+    assert kwargs["operation"] == "google_reconcile"
+    assert kwargs["platform"] == "google"
+    assert kwargs["exc"] is boom
+    # finally fecha o pool mesmo quando o except externo re-levanta.
+    close_pool.assert_awaited_once()
 
 
 @pytest.mark.asyncio
