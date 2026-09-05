@@ -1373,7 +1373,7 @@ planejou. Migration aditiva, e o `CLAUDE.md` obriga full sweep com Docker.
 > A falha estava certa e era a prova do fix; mas foi o CI, nao eu, que a encontrou.
 
 
-## F149 (MEDIUM, CORRIGIDO — smoke 3b.44 pendente) — o unico jeito de mudar o bid_modifier de UMA faixa passa por um estado que interrompe a entrega
+## F149 (MEDIUM, EM PRODUCAO — smoke 3b.44 pendente) — o unico jeito de mudar o bid_modifier de UMA faixa passa por um estado que interrompe a entrega
 
 > **Como apareceu:** a analise da MO-JP em 04/09 concluiu lance por faixa horaria (JPA fora
 > de hora com CPA 18,47 contra 19,87 no comercial; CAB fora de hora 24,46 contra 18,60 no
@@ -1417,7 +1417,7 @@ degradado.
 > no `CurrentWindow` que o proprio diff compara, e o `shared_budgets` ja vinha no preview —
 > ninguem tinha escrito a frase que os soma.
 
-> **✅ CORRIGIDO em 2026-09-04 (branch `feat/bid-modifier-por-janela`) — a rota
+> **✅ EM PRODUCAO em 2026-09-05 (PR [#40](https://github.com/BadWolf1509/v4-ads-mcp/pull/40), merge `0162017`, revisao `v4-ads-mcp-00092-sl2`) — a rota
 > segura passou a existir.** `bid_modifier` por janela chegou em `windows[]`
 > (Tasks 1-6, `.superpowers/sdd/2026-09-04-bid-modifier-por-janela/progress.md`):
 > `Window` ganhou o campo como ATRIBUTO, nunca identidade (`key()` continua com

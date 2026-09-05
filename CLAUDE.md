@@ -19,7 +19,7 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 ## Estado atual
 
 **2026-09-04.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`,
-**68 MCP tools** (62 Google + 6 Meta), CI gated + deploy automático. Catálogo em **151 IDs**.
+**68 MCP tools** (62 Google + 6 Meta), CI gated + deploy automático. Catálogo em **152 IDs**.
 
 **Quantos findings fecharam em qual sprint NÃO vive aqui** — essa narrativa churna toda
 sessão e duplica o `estado-atual.md`. Este bloco tem só o que orienta qualquer sessão;
@@ -37,9 +37,9 @@ Volátil por natureza: **atualize aquele arquivo ao terminar a sessão**, não e
 - Fase 2B (tombstone dos 8 reports antigos) segue **travada** no soak — não tombstonar.
 - **Tool nova só aparece pra sessão nova** (F140): o catálogo é negociado no handshake do
   MCP, e o sintoma é a tool "não existir", não um erro de versão. Reconecte antes do smoke.
-- `ad_schedule` em **produção** (PR #31); smoke **5 de 10**, T4-T8 pendentes porque
-  mutam conta real —
-  [`phase-3b-42-ad-schedule-smoke.md`](docs/operacao/phase-3b-42-ad-schedule-smoke.md).
+- `ad_schedule` em produção; smoke 3b.42 **10/10**. Pendente: **3b.44** (#40) — 7 testes,
+  **todos mutantes** —
+  [`phase-3b-44-bid-modifier-smoke.md`](docs/operacao/phase-3b-44-bid-modifier-smoke.md).
 - **Buckets reclassificados em 04/09** (PR #32): 22 always + 46 defer, remedição mensal
   marcada para 04/10 em
   [`tool-buckets-2026-09-04.md`](docs/operacao/tool-buckets-2026-09-04.md). A medição
