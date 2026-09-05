@@ -181,10 +181,14 @@ def modificador_efetivo(janela: Window, escalar: float | None) -> float | None:
 
     Mesma regra que `diff_schedule` aplica em `to_update` via esta chamada.
     Este helper centraliza a regra pra evitar a familia do F81: cada lado certo
-    sozinho e o conjunto errado junto. Usada em 5 call-sites (conferido por
-    grep, nao de memoria — foi assim que o numero anterior, "4", errou):
-    `diff_schedule` + 4 na tool (`windows_added` do preview, `bid_modifier_novo`
-    do preview, op `add`, op `update`).
+    sozinho e o conjunto errado junto.
+
+    NAO CONTE OS CALL-SITES AQUI. Este numero ja errou DUAS vezes: entrou como
+    "4", foi corrigido para "5", e o MESMO commit que o corrigiu criou o sexto
+    (`windows_bid_modifiers` no payload) — porque quem contou olhou o codigo de
+    antes da propria mudanca. Um numero que so envelhece nao vale a manutencao
+    que pede: se precisar da lista, rode
+    `grep -rn "modificador_efetivo(" src/`.
     """
     return janela.bid_modifier if janela.bid_modifier is not None else escalar
 
