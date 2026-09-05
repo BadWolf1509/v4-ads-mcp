@@ -22,7 +22,7 @@ que conta acquires pra provar que a conexao nova e de fato NOVA.
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import asyncpg
@@ -248,7 +248,7 @@ async def test_audit_de_negacao_nao_e_retentado(monkeypatch: pytest.MonkeyPatch)
     `best_effort` mantem o retry restrito ao read: a falha do audit vira log,
     nao excecao, e a negacao segue chegando ao gestor.
     """
-    from src.db.repositories import audit_log, manager_account_access
+    from src.db.repositories import audit_log, google_ads_accounts, manager_account_access
     from src.google_ads import access
 
     monkeypatch.setattr(connection, "_pool", _FakePool())
@@ -262,6 +262,21 @@ async def test_audit_de_negacao_nao_e_retentado(monkeypatch: pytest.MonkeyPatch)
     with (
         patch.object(manager_account_access, "can_manager_access", AsyncMock(return_value=False)),
         patch.object(audit_log, "record", audit_que_cai),
+        # Item 2 (revisão final): a escolha de mensagem no caminho de negação
+        # faz mais uma leitura (`get_by_customer_id`) depois do audit. ESTE
+        # teste isola a falha do INSERT do audit — por isso a leitura aqui é
+        # mockada pra sempre SUCEDER (`conn` é um `object()` propositalmente
+        # vazio, só prova que o retry não chama nada nele). A falha DESSA
+        # OUTRA leitura — que escapava sem proteção própria e é a recidiva do
+        # F91 — tem teste dedicado logo abaixo,
+        # `test_leitura_de_conta_apos_negacao_nao_e_retentada`; mockar as duas
+        # falhas no mesmo teste esconderia qual delas o retry realmente
+        # re-executa.
+        patch.object(
+            google_ads_accounts,
+            "get_by_customer_id",
+            AsyncMock(return_value=MagicMock(is_active=True)),
+        ),
         pytest.raises(access.AccountAccessDeniedError),
     ):
         await connection.run_with_reconnect(
@@ -275,6 +290,60 @@ async def test_audit_de_negacao_nao_e_retentado(monkeypatch: pytest.MonkeyPatch)
         )
 
     assert escritas["n"] == 1, "o INSERT de audit foi re-executado pelo retry"
+
+
+@pytest.mark.asyncio
+async def test_leitura_de_conta_apos_negacao_nao_e_retentada(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """F91 (recidiva): mesma garantia do teste acima, pro OUTRO read do
+    caminho de negação — `get_by_customer_id`, que escolhe entre a mensagem
+    especifica ("conta fora do MCC") e a generica.
+
+    Essa leitura roda DEPOIS do audit (aqui bem-sucedido) mas, antes deste
+    fix, fora de qualquer proteção — ainda dentro do mesmo closure que
+    `run_with_reconnect` pode reexecutar. Uma conexão morta ali escapava de
+    `ensure_account_access`, o retry reexecutava o closure INTEIRO —
+    duplicando o INSERT do audit que já tinha sucesso — e, se a conexão
+    seguisse morta na 2ª tentativa, quem escapava era o
+    `ConnectionDoesNotExistError` cru, não `AccountAccessDeniedError`: negação
+    limpa virando 500.
+    """
+    from src.db.repositories import audit_log, google_ads_accounts, manager_account_access
+    from src.google_ads import access
+
+    monkeypatch.setattr(connection, "_pool", _FakePool())
+    conn = object()
+    escritas = {"n": 0}
+
+    async def audit_ok(*a: Any, **k: Any) -> None:
+        escritas["n"] += 1
+
+    with (
+        patch.object(manager_account_access, "can_manager_access", AsyncMock(return_value=False)),
+        patch.object(audit_log, "record", audit_ok),
+        patch.object(
+            google_ads_accounts,
+            "get_by_customer_id",
+            AsyncMock(side_effect=asyncpg.exceptions.ConnectionDoesNotExistError("dead")),
+        ),
+        pytest.raises(access.AccountAccessDeniedError) as exc_info,
+    ):
+        await connection.run_with_reconnect(
+            lambda _c: access.ensure_account_access(
+                conn,  # type: ignore[arg-type]
+                manager_id=uuid4(),
+                customer_id="9999999999",
+                session_id=uuid4(),
+                operation_name="op",
+            )
+        )
+
+    assert escritas["n"] == 1, "o INSERT de audit foi re-executado pelo retry"
+    assert "não está no MCC" not in str(exc_info.value), (
+        "sem saber se a leitura respondeu, a mensagem tem que ser a GENERICA — "
+        "a especifica so pode sair quando get_by_customer_id de fato respondeu"
+    )
 
 
 @pytest.mark.asyncio

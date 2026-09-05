@@ -10,7 +10,8 @@ from uuid import UUID
 import asyncpg
 import structlog
 
-from src.db.repositories import audit_log, manager_account_access
+from src.db.connection import _DROPPED_CONNECTION_ERRORS
+from src.db.repositories import audit_log, google_ads_accounts, manager_account_access
 from src.governance.bookkeeping import best_effort
 
 log = structlog.get_logger(__name__)
@@ -71,6 +72,51 @@ async def ensure_account_access(
         level=level,
         platform="google",
     )
+    # Item 2 (revisão final): "peça ao admin pra liberar no painel" é conselho
+    # que só funciona quando a causa é falta de grant numa conta ATIVA. Se a
+    # conta está fora do inventário (nunca sincronizada) ou saiu do MCC
+    # (`is_active = false`), esse conselho não pode funcionar — ela nem
+    # aparece na matriz do painel (`google_ads_accounts.list_all` só lista
+    # ativas), e mesmo um grant novo não ajuda, porque o gate nega por
+    # `is_active` antes de olhar o grant. Só no caminho de negação (raro) vale
+    # a leitura extra pra escolher a mensagem certa; audit_log acima já
+    # gravou o motivo genérico e não muda.
+    #
+    # F91 (recidiva) — esta leitura roda DEPOIS do audit acima (que já está
+    # protegido por `best_effort`), mas continua dentro do mesmo closure que
+    # todo call-site passa a `run_with_reconnect`. Sem proteção própria, uma
+    # conexão morta aqui escaparia como `asyncpg.PostgresConnectionError` (ou
+    # `ConnectionError`), o retry re-executaria o closure INTEIRO — duplicando
+    # o INSERT do audit que já teve sucesso — e, se a conexão continuasse
+    # morta na 2ª tentativa, a negação limpa viraria um 500 cru em vez de
+    # `AccountAccessDeniedError`. O `else:` só escolhe a mensagem específica
+    # quando a leitura de fato respondeu; sem resposta, cai pra genérica —
+    # negar com menos detalhe é infinitamente melhor que quebrar.
+    #
+    # O `except` IMPORTA `_DROPPED_CONNECTION_ERRORS` em vez de repetir a tupla:
+    # a propriedade que precisa valer não é "estas duas classes", é "exatamente
+    # o que `run_with_reconnect` retenta". Como literais separados, as duas
+    # listas eram duas fontes de verdade do mesmo dado — a constante ganha um
+    # membro, este `except` fica para trás em silêncio, e o F91 reabre sem
+    # nenhum teste ficar vermelho. Nome privado atravessando módulo é o preço,
+    # e é o menor: o acoplamento com a semântica de retry do pool é deliberado.
+    try:
+        account = await google_ads_accounts.get_by_customer_id(conn, customer_id)
+    except _DROPPED_CONNECTION_ERRORS as exc:
+        log.warning(
+            "account_access_lookup_failed",
+            manager_id=str(manager_id),
+            customer_id=customer_id,
+            operation=operation_name,
+            error=str(exc),
+        )
+    else:
+        if account is None or not account.is_active:
+            raise AccountAccessDeniedError(
+                f"A conta {customer_id} não está no MCC (ou já saiu dele) — liberar "
+                "acesso no painel não resolve. O caminho é a conta voltar ao MCC e "
+                "o resync rodar."
+            )
     raise AccountAccessDeniedError(
         f"Você não tem acesso à conta {customer_id}. Peça ao admin pra liberar no painel."
     )

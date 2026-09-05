@@ -216,8 +216,16 @@ async def test_copy_access_replaces_destination(db):
             to_manager_id=dst,
             granted_by=src,
         )
-        # After copy: dst should have 1+2 (replaced 3)
+        # I2 (revisão de branch): "replace" deixou de ser DELETE — o destino é
+        # soft-revogado (razão própria `bulk_copy_replaced`), não apagado. A
+        # linha de '3333333333' sobrevive à cópia (fica revogada, não some);
+        # o conjunto VIVO passa a ser 1+2.
         rows = await conn.fetch(
-            "SELECT customer_id FROM manager_account_access WHERE manager_id = $1", dst
+            "SELECT customer_id, revoked_at, revoked_reason FROM manager_account_access "
+            "WHERE manager_id = $1",
+            dst,
         )
-    assert sorted([r["customer_id"] for r in rows]) == ["1111111111", "2222222222"]
+    vivos = sorted(r["customer_id"] for r in rows if r["revoked_at"] is None)
+    revogados = {r["customer_id"]: r["revoked_reason"] for r in rows if r["revoked_at"] is not None}
+    assert vivos == ["1111111111", "2222222222"]
+    assert revogados == {"3333333333": "bulk_copy_replaced"}
