@@ -156,9 +156,13 @@ async def reconcile_google(
 async def avisar_contas_sem_grant(conn: asyncpg.Connection) -> int:
     """Emite o evento que a policy de alerta observa. Devolve quantas achou.
 
-    `warning`, não `error`: o job fez o trabalho certo — a anomalia é do
-    inventário, não da execução. Marcar como erro faria a policy de "Cloud Run
-    Job failed" disparar e mascararia falha real.
+    `warning`, não `error`: a anomalia é do inventário, não da execução — o
+    job fez o trabalho certo. Não é pra evitar a policy de "Cloud Run Job
+    failed": verificado ao vivo no Cloud Monitoring, ela é keyed em
+    `completed_execution_count{result="failed"}` — resultado/exit code da
+    execução, não severidade de log; um `log.error` isolado que não derruba o
+    job não a dispara, e hoje não existe policy de severidade cobrindo
+    `cloud_run_job`.
 
     Só emite quando há o que avisar: alarme que aparece sempre ensina a ser
     ignorado (mesma razão do `aviso_cobertura` do F151).
@@ -260,9 +264,27 @@ async def run() -> int:
                 },
             )
             # Task 7: depois do record_job_run, na MESMA conexão — lê o
-            # inventário já reconciliado por esta execução. Best-effort não se
-            # aplica aqui: é só um SELECT + log, nada a proteger.
-            await avisar_contas_sem_grant(conn)
+            # inventário já reconciliado por esta execução.
+            #
+            # Best-effort SIM se aplica aqui — ao contrário do que este
+            # comentário dizia antes (revisão de branch, 2026-09-05: "é só um
+            # SELECT + log, nada a proteger"). Verdade só sobre escrita
+            # parcial, não sobre o que importa: sem isolar, uma falha
+            # transitória em `list_queues` (i) escapa do `async with
+            # pool.acquire()` acima e pula INTEIRAMENTE o piggyback Meta e o
+            # purge diário abaixo — que já são best-effort próprios —, e (ii)
+            # cai no `except` externo, que grava um SEGUNDO record_job_run
+            # como crash logo depois do sucesso já commitado linhas acima:
+            # duas linhas de auditoria contraditórias pra mesma execução.
+            # Isolado no mesmo padrão dos dois vizinhos (Meta/purge).
+            try:
+                await avisar_contas_sem_grant(conn)
+            except Exception as e:  # noqa: BLE001
+                log.warning("avisar_contas_sem_grant_failed", error=str(e))
+                print(
+                    f"WARN: avisar_contas_sem_grant falhou (non-fatal): {e}",
+                    file=sys.stderr,
+                )
 
         log.info("resync_complete", **resumo)
         print(f"OK: google reconcile — {resumo}")

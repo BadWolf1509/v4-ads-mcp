@@ -549,6 +549,58 @@ async def test_run_purge_failure_is_non_fatal() -> None:
     close_pool.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_run_avisar_sem_grant_failure_is_non_fatal() -> None:
+    """avisar_contas_sem_grant() explode → run() ainda retorna 0, e o piggyback
+    Meta + o purge diário (que vêm DEPOIS no código) continuam rodando —
+    isolado no mesmo padrão dos dois vizinhos. Espelha
+    `test_run_meta_failure_is_non_fatal` e `test_run_purge_failure_is_non_fatal`.
+
+    Antes do isolamento (revisão de branch, 2026-09-05), esta falha escapava
+    do `async with pool.acquire()` e pulava INTEIRAMENTE o piggyback Meta e o
+    purge — os dois asserts de `assert_awaited_once()` abaixo são o que
+    fica vermelho sem o try/except novo. `crash.assert_not_awaited()` cobre
+    a outra metade do achado: sem isolar, a exceção caía no `except` externo
+    e gravava um SEGUNDO `record_job_run` como crash logo depois do sucesso
+    já commitado — duas linhas de auditoria contraditórias pra mesma
+    execução.
+    """
+    conn = MagicMock()
+    pool = _fake_pool(conn)
+    oc = SimpleNamespace(refresh_token_enc=b"enc")
+    mocks = _base_patches(pool=pool, oc=oc)
+
+    with (
+        mocks["init_pool"],
+        mocks["close_pool"] as close_pool,
+        mocks["get_pool"],
+        mocks["pick"],
+        mocks["derive"],
+        mocks["decrypt"],
+        mocks["build_client"],
+        mocks["list_customers"],
+        mocks["fetch"],
+        mocks["reconcile_google"],
+        patch(
+            f"{_M}.avisar_contas_sem_grant",
+            AsyncMock(side_effect=RuntimeError("list_queues down")),
+        ),
+        mocks["record"],
+        mocks["purge"] as purge,
+        patch(f"{_M}.record_job_crash", AsyncMock()) as crash,
+        patch(
+            "src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())
+        ) as reconcile_meta,
+    ):
+        rc = await account_resync.run()
+
+    assert rc == 0
+    close_pool.assert_awaited_once()
+    reconcile_meta.assert_awaited_once()
+    purge.assert_awaited_once()
+    crash.assert_not_awaited()
+
+
 def test_main_wraps_run_in_asyncio_run() -> None:
     """main() delega pra asyncio.run(run()) e propaga o exit code.
 
