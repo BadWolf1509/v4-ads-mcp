@@ -6,7 +6,7 @@
 >
 > **Last updated:** 2026-09-03 — **F141–F146 fechados** em tres PRs (#28 bloco fuso+freshness; #29 structural_change; #30 fuso do upload offline) mais o F142 (whitelist de client_type) direto na main. Ontem, 02/09: **+F131–F140** da sessao de campo MO-JP, fechados no PR #27 e nos fixes seguintes. Narrativa completa e licoes de metodo no handoff [`session-2026-09-02-03-handoff.md`](session-2026-09-02-03-handoff.md); o historico anterior (F82–F130, 08/14 a 08/20) esta nos handoffs de 08-14-15 e 08-19.
 >
-> **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova.
+> **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova.
 >
 > **Como ler:** ~1490 linhas, **151 IDs** (F1-F152 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
@@ -1668,3 +1668,48 @@ quanto codigo dentro dele. O `best_effort` protege o que esta *nele*, nao o que 
 >
 > **O que fica de fora:** o guard estrutural nao alcanca `except Exception` generico nem
 > captura montada dinamicamente. Cobre a forma que causou este bug, nao a classe inteira.
+
+---
+
+## F154 (MEDIUM, ABERTO) — `/me/adaccounts` nao e prova de alcance, e a fila do painel trata como se fosse
+
+> **Como apareceu:** em 2026-09-05, ao conferir a revogacao das 09:00Z, usei a
+> `CA - V4 Lima Soares` como **controle** — ela devia estar intacta, e estava. Mas a
+> chamada devolveu `success` **com dados reais** (R$ 11,55 de gasto, 955 impressoes),
+> enquanto o inventario marcava `su_reachable: false`, sincronizado no mesmo dia as 09:00.
+
+**A contradicao, medida em duas contas:** `act_1903626271072552` (CA - V4 Lima Soares) e
+`act_1428319651342125` (CHUTE 07) estao as duas com `su_reachable = false` — e as duas
+devolvem `meta_get_account_overview` com `status: success`. O system user **le as duas**.
+
+**De onde vem cada lado.** `su_reachable` e escrito por `set_reachable`
+(`src/jobs/meta_resync.py`) a partir de `reachable_ids`, que sao os ids devolvidos por
+**`/me/adaccounts`**. A leitura de insights, por outro lado, usa o token do SU direto contra
+a conta. Ou seja: o sinal responde *"esta conta aparece no inventario proprio do SU?"* e o
+painel o apresenta como *"o SU alcanca esta conta?"*. **Nao sao a mesma pergunta**, e estas
+duas contas provam que a primeira pode ser `nao` com a segunda sendo `sim`.
+
+**A consequencia e concreta:** a fila **"Sem o system user atribuido"** de
+`/admin/accounts/meta` existe para dizer ao admin *"va no Business Manager e atribua o SU"*.
+Para estas duas contas esse conselho **nao tem o que fazer** — o SU ja le. O admin vai ao BM,
+nao encontra nada errado, e a fila continua acusando. Alarme que pede acao impossivel ensina
+a ignorar a fila inteira, que e o oposto do que ela existe para fazer.
+
+🔑 **E isto reinterpreta uma medicao de 20/08 que fundou o desenho.** O registro daquele dia
+diz: *"a edge do BM devolveu 25 contas e `/me/adaccounts` 23"*, e a diferenca foi lida como
+**duas contas sem o SU atribuido**. Se `/me/adaccounts` simplesmente sub-reporta, a leitura
+foi errada desde o inicio — nao eram duas contas sem atribuicao, eram duas contas que aquela
+edge nao lista. O numero `2` de `unreachable` que o reconciliador reporta todo dia desde
+08-21 e, com grande probabilidade, o mesmo artefato.
+
+**O que NAO foi descartado, e e o confundidor honesto:** nao da pra provar que ninguem
+atribuiu o SU as duas contas entre 09:00 e 17:50 de 05/09. O que enfraquece essa hipotese e
+serem **duas ao mesmo tempo**, e a diferenca de 20/08 apontar na mesma direcao ha duas
+semanas. Uma re-sincronizacao manual seguida de nova leitura resolveria de vez: se
+`su_reachable` continuar `false` com a leitura funcionando, o confundidor cai.
+
+**Fix candidato, nao decidido:** trocar a fonte do sinal de *"aparece em `/me/adaccounts`"*
+para *"uma leitura minima contra a conta responde"* — mais caro (uma chamada por conta), mais
+verdadeiro, e alinhado ao que o painel promete. Alternativa barata: manter o sinal e mudar o
+texto da fila, de *"Sem o system user atribuido"* para *"Fora do inventario proprio do SU"*,
+que e o que ele de fato mede. **A escolha muda o contrato do painel e e do Wellington.**
