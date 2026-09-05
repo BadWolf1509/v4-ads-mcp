@@ -109,8 +109,8 @@ async def revoke(
     volta pra NULL — a partir daí não sobra na tabela nenhum registro de que a
     revogação aconteceu. Não existe coluna `revoked_by`: quem revogou só fica
     em `audit_log`, e só nos caminhos que passam por `_audit_admin` (o painel;
-    `revoke_for_inactive_accounts`, chamada por job, não audita nada ainda).
-    E `bulk_grant`/`grant_all_active` reconcedem sem tocar `granted_at`/
+    `revoke_for_inactive_accounts`, sem chamador em produção ainda, não
+    audita nada). E `bulk_grant`/`grant_all_active` reconcedem sem tocar `granted_at`/
     `granted_by` — a linha restaurada por esses dois caminhos lê "concedida
     há muito tempo, nunca revogada", indistinguível de uma que nunca saiu do
     ar; só `grant()` (o toggle do painel) e `copy_access` atualizam os dois
