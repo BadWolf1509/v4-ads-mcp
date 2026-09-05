@@ -202,6 +202,8 @@ async def test_com_apply_ligado_desativa_e_revoga_e_audita_a_conta() -> None:
     assert audita.await_args.kwargs["reason"] == PARTNERSHIP_ENDED_REASON
     assert audita.await_args.kwargs["ad_account_id"] == "act_2"
     assert audita.await_args.kwargs["manager_ids"] == ["mgr-1"]
+    # Gate: a plataforma é obrigatória e FIXADA no call-site (sabotagem 2).
+    assert audita.await_args.kwargs["platform"] == "meta"
     # Req. 3: alcance só é marcado com a leitura completa (aqui, complete=True
     # nos dois lados) — reachable_ids reflete exatamente o que foi lido.
     assert marca_alcance.await_args.kwargs["reachable_ids"] == ["act_1"]

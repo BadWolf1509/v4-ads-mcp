@@ -902,6 +902,63 @@ async def test_copy_access_recusa_origem_igual_ao_destino(db) -> None:
         assert await manager_account_access.can_manager_access(conn, mid, "611") is True
 
 
+# ---------- meta_resync.reconcile_meta (Task 5) ----------
+
+
+@pytest.mark.integration
+async def test_meta_reconcile_grava_meta_access_cleanup_no_audit(db) -> None:
+    """Espelha o teste de Google: revogação automática de acesso Meta grava
+    trilha com a operation CORRETA (`meta_access_cleanup`, não `google_access_cleanup`).
+
+    Este teste vai direto na função `record_access_revocation` com `platform="meta"`,
+    pois o fluxo completo de `reconcile_meta()` exige mocking complexo de network
+    (partnership, adaccounts). O que importa é que a string da operation seja fixada.
+    Sabotagem 1: hardcodar `operation="google_access_cleanup"` no helper ficaria vermelha.
+    """
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "trilha-meta@v4company.com")
+        await meta_ad_accounts.upsert_many(
+            conn,
+            [
+                {
+                    "ad_account_id": "act_meta_revoke",
+                    "business_id": "bm_test",
+                    "account_name": "Test Meta",
+                }
+            ],
+        )
+        await manager_meta_account_access.grant(
+            conn, manager_id=mid, ad_account_id="act_meta_revoke"
+        )
+
+        # Chama record_access_revocation diretamente como faria meta_resync
+        # após revogar grants.
+        from src.jobs._audit import record_access_revocation
+
+        await record_access_revocation(
+            conn,
+            platform="meta",
+            ad_account_id="act_meta_revoke",
+            reason=manager_meta_account_access.PARTNERSHIP_ENDED_REASON,
+            manager_ids=[str(mid)],
+        )
+
+        # Verifica que a operation gravada é `meta_access_cleanup` (não `google_access_cleanup`).
+        row = await conn.fetchrow(
+            """SELECT operation, platform, action_type, status, customer_id, params_summary
+                 FROM audit_log WHERE operation = 'meta_access_cleanup'
+                ORDER BY occurred_at DESC LIMIT 1"""
+        )
+        assert row is not None, "revogacao meta sem NENHUMA trilha no audit_log"
+        assert row["platform"] == "meta"
+        assert row["action_type"] == "mutate"
+        assert row["status"] == "success"
+        assert row["customer_id"] == "act_meta_revoke"
+        params = json.loads(row["params_summary"])
+        assert params["reason"] == manager_meta_account_access.PARTNERSHIP_ENDED_REASON
+        assert params["managers"] == [str(mid)]
+
+
 # ---------- audit_log ----------
 
 
