@@ -323,6 +323,45 @@ async def test_admin_access_by_manager_denominador_exclui_desativada(client: Asy
 
 
 @pytest.mark.integration
+async def test_admin_access_by_manager_numerador_exclui_conta_inativa(client: AsyncClient):
+    """Item 1 da revisão final: numerador e denominador viviam em universos
+    diferentes. O I4 corrigiu só o denominador (`count(*) FROM
+    google_ads_accounts WHERE is_active = true`); o numerador
+    (`count(maa.customer_id)`) continuava contando grant VIVO (nunca
+    revogado) apontando pra conta que já saiu do MCC. Medido: antes desta
+    branch, 2/2; só com o I4, 2/1 — razão impossível (numerador > total).
+
+    Cenário: gestor recebe grant pras 2 contas e NENHUM é revogado; uma das
+    contas sai do MCC depois. Numerador e denominador têm que cair pra 1
+    juntos — nunca "2 / 1".
+    """
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        await google_ads_accounts.upsert_many(
+            conn,
+            [{"customer_id": "9998887770", "mcc_id": "M1", "descriptive_name": "Ex-cliente"}],
+        )
+        await manager_account_access.grant(conn, manager_id=gestor_id, customer_id="1234567890")
+        await manager_account_access.grant(conn, manager_id=gestor_id, customer_id="9998887770")
+        # A conta sai do MCC, mas o grant NUNCA é revogado — é a janela ANTES
+        # de `revoke_for_inactive_accounts` rodar (sem chamador em produção
+        # ainda).
+        await conn.execute(
+            "UPDATE google_ads_accounts SET is_active = false WHERE customer_id = '9998887770'"
+        )
+
+    response = await client.get(
+        "/admin/access/by-manager",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+
+    assert response.status_code == 200
+    assert "1 / 1 contas" in response.text
+    assert "2 / 1 contas" not in response.text  # razão impossível que o bug produzia
+
+
+@pytest.mark.integration
 async def test_admin_audit_renders(client: AsyncClient):
     pool = connection.get_pool()
     admin_id, _ = await _bootstrap_admin_and_gestor(pool)

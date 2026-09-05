@@ -1392,12 +1392,25 @@ async def admin_access_by_manager(
     _require_admin(user)
     pool = connection.get_pool()
     async with pool.acquire() as conn:
+        # Revisão final (item 1): numerador e denominador tem que viver no
+        # MESMO universo. O I4 abaixo corrigiu só o denominador — o numerador
+        # cru (`count(maa.customer_id)`) continuava contando grant vivo em
+        # conta que já saiu do MCC (is_active=false, nunca revogada), e a
+        # tela chegou a mostrar razão impossível (2/1, numerador > denominador
+        # — medido em container). O segundo LEFT JOIN faz o mesmo que o
+        # denominador faz sozinho: só conta grant vivo cuja conta AINDA está
+        # em `google_ads_accounts.is_active = true`. É LEFT (não JOIN puro)
+        # de propósito — um gestor cujos únicos grants apontam pra conta
+        # inativa tem que continuar aparecendo com "0 / total", não sumir da
+        # lista.
         managers_with_counts = await conn.fetch(
             """SELECT m.id, m.email, m.full_name,
-                      count(maa.customer_id) AS access_count
+                      count(a.customer_id) AS access_count
                FROM managers m
                LEFT JOIN manager_account_access maa
                       ON maa.manager_id = m.id AND maa.revoked_at IS NULL
+               LEFT JOIN google_ads_accounts a
+                      ON a.customer_id = maa.customer_id AND a.is_active = true
                WHERE m.is_active = true
                GROUP BY m.id ORDER BY m.email"""
         )
