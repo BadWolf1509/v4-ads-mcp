@@ -4,10 +4,12 @@ Espelha `tests/unit/test_gate_meta_exige_conta_ativa.py` — mesma logica de
 deteccao (AST, ignorando docstring e comentario `--`), aplicada a
 `can_manager_access` de `manager_account_access.py` / `google_ads_accounts`.
 `_achar_funcao`, `_sql_sem_docstring`, `_sem_comentario_sql`,
-`_tem_join_puro_para` e `_tem_predicado_bem_formado` sao copia literal das do
-gemeo Meta: a logica de deteccao nao muda entre os dois lados, só o
-arquivo/tabela alvo. Ver aquele arquivo pro histórico completo (tres rodadas
-de fix) que a chegou nesta forma — aqui ela já nasce corrigida.
+`_tem_join_puro_para`, `_tem_predicado_bem_formado` e `_e_conjuncao_pura` sao
+copia literal das do gemeo Meta: a logica de deteccao nao muda entre os dois
+lados, só o arquivo/tabela alvo. Ver aquele arquivo pro histórico completo
+(quatro rodadas de fix, a última fechando uma sabotagem por `OR TRUE` solto
+que as três primeiras deixavam passar) que chegou nesta forma — aqui ela já
+nasce corrigida.
 
 Fecha o F130: o gate do Google não cruzava com `is_active` nem com
 `revoked_at`, o mesmo buraco que o do Meta tinha acabado de perder (F128/F129).
@@ -109,13 +111,56 @@ def _tem_predicado_bem_formado(sql: str, coluna: str, comparacao: str) -> bool:
     3. Neutralizar com disjuncao sempre-verdadeira (`is_active = true OR
        TRUE`) — a frase exata "is_active = true" continua la, intocada. Fix:
        nao tolerar NADA (nem parentese) entre o `AND` e o nome da coluna — a
-       forma exigida e `AND [alias.]coluna`, colada. Como a sabotagem 3
-       precisa de um `(` logo apos o `AND` pra caber o `OR TRUE` dentro do
-       mesmo parentese, a forma estrita ja rejeita sem precisar olhar o que
-       vem DEPOIS do valor.
+       forma exigida e `AND [alias.]coluna`, colada. Mata a variante que cola
+       o `(` logo apos o `AND` (`AND (is_active = true OR TRUE)`), onde a
+       adjacencia exigida quebra.
+
+    Round 4 (revisão final da branch feat/gate-google, item 2 — a conclusão
+    do round 3 pro caso 3 era falsa, e o guard seguia verde com a variante
+    REAL da sabotagem, mais simples de escrever — sem nenhum parentese):
+    ninguem precisa colar o `(` junto do `AND` pra neutralizar o predicado.
+    `AND revoked_at IS NULL OR TRUE`, sem NENHUM parentese, ja basta — `AND`
+    liga mais forte que `OR`, entao o WHERE inteiro vira `(...) OR TRUE` do
+    mesmo jeito, e a substring "AND revoked_at IS NULL" exigida aqui
+    sobrevive INTACTA como prefixo do que foi escrito, porque esta funcao e
+    `re.search` — nunca olha o que vem DEPOIS do match. Confirmado
+    empiricamente que este guard passava — verde — com essa variante ANTES
+    deste round. Fix: `_e_conjuncao_pura`, abaixo, para de olhar a forma de
+    CADA predicado isolado e afirma a propriedade que faltava — nenhum `OR`
+    pode sobrar fora de parenteses (top-level) no SQL inteiro da funcao.
     """
     padrao = r"\bAND\s+(?:\w+\.)?" + re.escape(coluna) + r"\s*" + comparacao + r"\b"
     return re.search(padrao, sql, re.IGNORECASE) is not None
+
+
+def _e_conjuncao_pura(sql: str) -> bool:
+    r"""True se o SQL NAO tiver nenhum `OR` fora de parenteses (top-level).
+
+    Round 4 (ver docstring de `_tem_predicado_bem_formado` acima pra história
+    completa): aquela função prova que cada predicado exigido aparece bem
+    formado, mas é checagem por `re.search` — nunca olha o que vem DEPOIS do
+    match. Um `OR TRUE` (ou qualquer outra coisa) colado sem parêntese ao
+    final do WHERE sobrevive: `AND` liga mais forte que `OR`, então `x AND y
+    OR TRUE` já é `(x AND y) OR TRUE`, e a substring "AND y" continua lá,
+    intocada.
+
+    Esta função afirma a propriedade que falta, direto: nenhum `OR` pode
+    sobrar FORA de parênteses em NENHUM ponto do SQL. As duas queries de
+    hoje (Google e Meta) são cadeias puras de AND sem nenhum parêntese, então
+    qualquer `OR` de topo aqui já é sabotagem — nunca reformatação inócua. Um
+    `OR` genuinamente necessário no futuro teria que vir DENTRO de
+    parênteses (profundidade > 0), o que esta função já tolera.
+    """
+    profundidade = 0
+    for m in re.finditer(r"[()]|\bOR\b", sql, re.IGNORECASE):
+        token = m.group()
+        if token == "(":
+            profundidade += 1
+        elif token == ")":
+            profundidade -= 1
+        elif profundidade == 0:
+            return False
+    return True
 
 
 def test_can_manager_access_google_consulta_estado_da_conta() -> None:
@@ -139,4 +184,11 @@ def test_can_manager_access_google_consulta_estado_da_conta() -> None:
         "condicao do ON exclui a linha de verdade — qualquer sabor de outer "
         "join preserva o lado esquerdo com colunas NULL da direita, deixando "
         "conta inativa (ou revogada) passar mesmo com o predicado escrito"
+    )
+    assert _e_conjuncao_pura(sql), (
+        "um OR fora de parenteses no fim do WHERE reescreve o predicado "
+        "inteiro pra `(...) OR <resto>` (AND liga mais forte que OR) — "
+        "`AND revoked_at IS NULL OR TRUE` sobrevive intacta a "
+        "`_tem_predicado_bem_formado`, que so olha o que vem ANTES do "
+        "match, nunca o que vem depois"
     )
