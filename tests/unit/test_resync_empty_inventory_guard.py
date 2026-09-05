@@ -137,6 +137,7 @@ async def test_job_com_inventario_vazio_pula_desativacao_e_audita_erro() -> None
         mocks["list_customers"],
         mocks["fetch"],
         mocks["reconcile_google"] as reconcile_google,
+        mocks["avisar_sem_grant"],
         mocks["record"] as record,
         mocks["purge"],
         patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())),

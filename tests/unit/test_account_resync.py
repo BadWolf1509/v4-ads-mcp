@@ -111,6 +111,11 @@ def _base_patches(
             f"{_M}.reconcile_google", AsyncMock(return_value=reconcile_result)
         ),
         "record": patch(f"{_M}.record_job_run", AsyncMock(return_value=1)),
+        # Task 7: mockado por INTEIRO, igual `reconcile_google` — a lógica
+        # própria (lê `list_queues`, só loga quando há o que avisar) tem
+        # cobertura contra banco real em tests/integration/test_repositories.py.
+        # Sem este mock, `conn` (MagicMock puro) faz `list_queues` explodir.
+        "avisar_sem_grant": patch(f"{_M}.avisar_contas_sem_grant", AsyncMock(return_value=0)),
         "purge": patch(
             f"{_M}.purge_expired",
             AsyncMock(
@@ -181,6 +186,7 @@ async def test_run_happy_path_returns_0_and_orchestrates() -> None:
         mocks["list_customers"] as list_customers,
         mocks["fetch"] as fetch,
         mocks["reconcile_google"] as reconcile_google,
+        mocks["avisar_sem_grant"] as avisar_sem_grant,
         mocks["record"] as record,
         mocks["purge"] as purge,
         patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())),
@@ -196,6 +202,11 @@ async def test_run_happy_path_returns_0_and_orchestrates() -> None:
     # record_job_run é chamado 2x no happy path: google_reconcile + db_purge (F73).
     assert record.await_count == 2
     purge.assert_awaited_once()
+    # Task 7: chamado na MESMA conexão do reconcile (reusa o `conn` já
+    # reconciliado nesta execução, não um acquire novo) — se `run()` parasse
+    # de chamar `avisar_contas_sem_grant`, este mock ficaria sem uso e só esta
+    # asserção pegaria (o mock em si não quebra nada quando não-chamado).
+    avisar_sem_grant.assert_awaited_once_with(conn)
     close_pool.assert_awaited_once()
 
 
@@ -230,6 +241,7 @@ async def test_run_records_job_run_with_operation_and_reconcile_summary() -> Non
         mocks["list_customers"],
         mocks["fetch"],
         mocks["reconcile_google"],
+        mocks["avisar_sem_grant"],
         mocks["record"] as record,
         mocks["purge"],
         patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())),
@@ -280,6 +292,7 @@ async def test_run_passes_fetched_accounts_and_inventory_ok_to_reconcile_google(
         mocks["list_customers"],
         mocks["fetch"],
         mocks["reconcile_google"] as reconcile_google,
+        mocks["avisar_sem_grant"],
         mocks["record"],
         mocks["purge"],
         patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())),
@@ -312,6 +325,7 @@ async def test_run_passes_google_reconcile_apply_setting_through() -> None:
         mocks["list_customers"],
         mocks["fetch"],
         mocks["reconcile_google"] as reconcile_google,
+        mocks["avisar_sem_grant"],
         mocks["record"],
         mocks["purge"],
         patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())),
@@ -335,6 +349,7 @@ async def test_run_passes_google_reconcile_apply_setting_through() -> None:
         mocks2["list_customers"],
         mocks2["fetch"],
         mocks2["reconcile_google"] as reconcile_google2,
+        mocks2["avisar_sem_grant"],
         mocks2["record"],
         mocks2["purge"],
         patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())),
@@ -363,6 +378,7 @@ async def test_run_meta_failure_is_non_fatal() -> None:
         mocks["list_customers"],
         mocks["fetch"],
         mocks["reconcile_google"],
+        mocks["avisar_sem_grant"],
         mocks["record"],
         mocks["purge"],
         patch(
@@ -405,6 +421,7 @@ async def test_falha_do_piggyback_meta_deixa_rastro_no_audit(
         mocks["list_customers"],
         mocks["fetch"],
         mocks["reconcile_google"],
+        mocks["avisar_sem_grant"],
         mocks["record"],
         mocks["purge"],
         patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(side_effect=boom)),
@@ -486,6 +503,7 @@ async def test_run_calls_purge_expired_and_records_db_purge() -> None:
         mocks["list_customers"],
         mocks["fetch"],
         mocks["reconcile_google"],
+        mocks["avisar_sem_grant"],
         mocks["record"] as record,
         patch(f"{_M}.purge_expired", AsyncMock(return_value=counts)) as purge,
         patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())),
@@ -520,6 +538,7 @@ async def test_run_purge_failure_is_non_fatal() -> None:
         mocks["list_customers"],
         mocks["fetch"],
         mocks["reconcile_google"],
+        mocks["avisar_sem_grant"],
         mocks["record"],
         patch(f"{_M}.purge_expired", AsyncMock(side_effect=RuntimeError("db down"))),
         patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())),

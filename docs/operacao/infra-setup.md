@@ -21,6 +21,136 @@ This document records the cloud-console actions performed once to bootstrap the 
 - **Observabilidade / alerting** (Monitoring, criado 2026-07-04; validado 2026-07-23): canal e-mail `wellington.ribeiro@v4company.com`; uptime check HTTPS `/health?deep=1` (contentMatcher `"db":"ok"`, período 300s, timeout 10s, `STATIC_IP_CHECKERS`) + policy que exige falha sustentada; policy de **Cloud Run Job failed** (resync/migrate/backup); policy log-based do serviço `severity>=ERROR` (ID `6765708543993578761`, rate-limit 1/h, auto-close 24h). “No severity” no e-mail é severidade não configurada na policy, não ausência de severity no log. O deep health usa `run_with_reconnect` + deadline interno 5s desde F77; `max_inactive_connection_lifetime=120` sozinho não é pre-ping. Recriar policies via REST Monitoring API com `gcloud auth print-access-token` (o componente `gcloud alpha monitoring` não está instalado local).
 - **CI/Deploy:** deploy gated pelo CI (`ci.yml` job `test` → job `deploy` `needs: test`). **Lockfile `requirements.txt`** pinado (uv pip compile do pyproject) instalado pelo buildpack CNB e pelo CI + `pip-audit` non-blocking. Smoke sempre valida health + `/mcp` 401; o smoke MCP autenticado é fail-well e está **dormente** porque o gestor/bearer smoke foi removido (F58 operacional). Re-armar exige recriar o gestor smoke sem grants e atualizar o secret.
 - **GitHub repo secrets:** `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA`, `GCP_PROJECT_ID`, `GCP_REGION`; `SMOKE_MCP_BEARER` pode existir, mas está operacionalmente dormente até recriar o gestor smoke.
+- **Alerta de conta Google sem grant (Task 7, 2026-09-05):** o job `v4-ads-mcp-resync` emite `log.warning("google_accounts_sem_grant", total=N, customer_ids=[...])` quando a fila `sem_delegacao` (`google_ads_accounts.list_queues`) não está vazia — conta ativa no MCC sem NENHUM gestor com grant vivo. Métrica log-based e policy ainda **não existem** no Monitoring — ver a seção *"Runbook: alerta de conta Google sem grant"* abaixo pros comandos REST completos. **🔴 Até alguém rodar aqueles comandos, o evento fica só no log — ninguém recebe e-mail.**
+
+---
+
+## Runbook: alerta de conta Google sem grant (Task 7)
+
+> Contexto: conta nova que entra no MCC sem gestor delegado hoje não avisa ninguém — a `Hust App` ficou dias assim e só foi achada por acaso, olhando o seletor de contas do Google. O job diário (`src/jobs/account_resync.py`, `avisar_contas_sem_grant`) agora **detecta** isso e **loga** — `log.warning`, não `error`: o job fez o trabalho certo, a anomalia é do inventário, não da execução, e marcar como erro faria a policy de "Cloud Run Job failed" disparar e mascarar falha real. E só loga quando há o que avisar — hoje, em produção, `sem_delegacao` está **vazia** (as 26 contas ativas têm grant), então o caminho normal é silêncio; alarme que aparece sempre ensina a ser ignorado.
+>
+> **🔴 Esta task entrega o sinal (o log estruturado acima) e ESTE runbook — não entrega o alerta.** Criar a métrica log-based e a policy no Cloud Monitoring é ação humana, fora do repositório, e foi decidido assim de propósito (não dá pra fazer isso passar no CI). **Enquanto os dois comandos abaixo não forem executados, o evento `google_accounts_sem_grant` só existe no log do Cloud Run — nenhum e-mail sai, pra ninguém, mesmo com uma conta sem grant há dias.** Pendência de execução: ver `docs/operacao/estado-atual.md` (Task 8 deste sprint abre o item formal).
+>
+> **Pré-requisito silencioso, já corrigido nesta task:** até este commit, `python -m src.jobs.account_resync` nunca chamava `configure_logging()` — só `src/app.py` (o serviço web) chamava. Sem isso o job loga em texto puro (o renderer default do structlog não-configurado — confirmado lendo logs reais de produção, ex. `2026-09-05 09:00:24 [info] resync_complete ...`), e o filtro `jsonPayload.event=...` abaixo NUNCA acharia nada — a métrica ficaria criada e sempre vazia, calada, sem ninguém notar. Se um dia este alerta parar de disparar quando deveria, o primeiro lugar a olhar é se o job voltou a logar texto puro (`gcloud logging read` sem `jsonPayload`, só `textPayload`).
+>
+> Comandos abaixo em **PowerShell**, com `curl.exe` **explícito** — `curl` sozinho é alias de `Invoke-WebRequest` no PowerShell 5.1 (confirmado nesta máquina: `Get-Command curl` resolve pro alias), que não entende `-H`/`-d` do jeito que estes comandos esperam. Rode como o Wellington (`gcloud auth print-access-token`, já autenticado como owner do projeto `v4-ads-mcp`).
+
+### (a) Criar a métrica log-based
+
+Conta a distribuição de `jsonPayload.total` toda vez que o evento aparece — não só "aconteceu", mas "quantas contas".
+
+> ⚠️ **Não passe o JSON direto como `-d $body`.** Confirmado nesta máquina (PowerShell 5.1): ao montar a linha de comando pro processo nativo, o PowerShell **engole as aspas internas** de qualquer argumento que contenha `"` — sobra `{name: test, filter: resource.type=cloud_run_job` sem nenhuma aspa, e o `AND` vira um argv separado (quebra no espaço que a aspa deveria ter protegido). O sintoma no Google é `400 INVALID_ARGUMENT` / `Unexpected token`. O fix comprovado é gravar o JSON num arquivo e usar `curl.exe -d "@arquivo"` — variável nenhuma cruza a linha de comando. Use `-Encoding ascii` (os JSONs abaixo são texto puro, sem acento) porque `-Encoding utf8` do `Set-Content` grava BOM, e um BOM na frente de `{` é `400` de novo, agora por JSON inválido de verdade (RFC 8259 proíbe BOM).
+
+```powershell
+$body = @'
+{
+  "name": "google_accounts_sem_grant_total",
+  "description": "Quantas contas Google Ads ativas estao sem nenhum gestor com grant vivo (evento google_accounts_sem_grant do job v4-ads-mcp-resync, src/jobs/account_resync.py:avisar_contas_sem_grant).",
+  "filter": "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"v4-ads-mcp-resync\" AND jsonPayload.event=\"google_accounts_sem_grant\"",
+  "metricDescriptor": {
+    "metricKind": "DELTA",
+    "valueType": "DISTRIBUTION",
+    "unit": "1",
+    "displayName": "Contas Google sem grant (resync)"
+  },
+  "valueExtractor": "EXTRACT(jsonPayload.total)",
+  "bucketOptions": {
+    "linearBuckets": { "numFiniteBuckets": 64, "width": 1, "offset": 0 }
+  }
+}
+'@
+$arquivo = "$env:TEMP\google_accounts_sem_grant_metric.json"
+$body | Set-Content -Encoding ascii -Path $arquivo
+$token = gcloud auth print-access-token
+curl.exe -s -X POST -H "Authorization: Bearer $token" -H "Content-Type: application/json" "https://logging.googleapis.com/v2/projects/v4-ads-mcp/metrics" -d "@$arquivo"
+```
+
+Verificar que foi criada:
+
+```powershell
+$token = gcloud auth print-access-token
+curl.exe -s -H "Authorization: Bearer $token" "https://logging.googleapis.com/v2/projects/v4-ads-mcp/metrics/google_accounts_sem_grant_total"
+```
+
+### (b) Criar a policy, no canal de e-mail que já existe
+
+Canal e-mail existente (Wellington, criado 2026-07-04 — **não crie outro**): `projects/v4-ads-mcp/notificationChannels/15226380074599878362`. Confirmar antes de usar (o ID não muda, mas é barato conferir):
+
+```powershell
+$token = gcloud auth print-access-token
+curl.exe -s -H "Authorization: Bearer $token" "https://monitoring.googleapis.com/v3/projects/v4-ads-mcp/notificationChannels"
+```
+
+Criar a policy (referencia a métrica do passo (a) — rode DEPOIS dela):
+
+```powershell
+$body = @'
+{
+  "displayName": "Google Ads: conta sem grant apos resync",
+  "documentation": {
+    "content": "Uma ou mais contas Google Ads ativas no MCC nao tem NENHUM gestor com grant vivo (fila sem_delegacao). Delegue em /admin/access (ou manager_account_access.grant) assim que possivel -- e o mesmo buraco que deixou a Hust App dias sem ninguem responsavel. Ver docs/operacao/infra-setup.md, secao Runbook: alerta de conta Google sem grant.",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "google_accounts_sem_grant_total > 0",
+      "conditionThreshold": {
+        "filter": "metric.type=\"logging.googleapis.com/user/google_accounts_sem_grant_total\" AND resource.type=\"cloud_run_job\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 0,
+        "duration": "0s",
+        "trigger": { "count": 1 },
+        "aggregations": [
+          { "alignmentPeriod": "300s", "perSeriesAligner": "ALIGN_COUNT" }
+        ]
+      }
+    }
+  ],
+  "notificationChannels": [
+    "projects/v4-ads-mcp/notificationChannels/15226380074599878362"
+  ],
+  "alertStrategy": {
+    "notificationRateLimit": { "period": "3600s" },
+    "autoClose": "86400s"
+  }
+}
+'@
+$arquivo = "$env:TEMP\google_accounts_sem_grant_policy.json"
+$body | Set-Content -Encoding ascii -Path $arquivo
+$token = gcloud auth print-access-token
+curl.exe -s -X POST -H "Authorization: Bearer $token" -H "Content-Type: application/json" "https://monitoring.googleapis.com/v3/projects/v4-ads-mcp/alertPolicies" -d "@$arquivo"
+```
+
+Verificar que foi criada (a resposta do POST já traz o `name` gerado, mas dá pra reconferir por listagem):
+
+```powershell
+$token = gcloud auth print-access-token
+(curl.exe -s -H "Authorization: Bearer $token" "https://monitoring.googleapis.com/v3/projects/v4-ads-mcp/alertPolicies" | ConvertFrom-Json).alertPolicies | Where-Object { $_.displayName -like "*sem grant*" }
+```
+
+### Testar de ponta a ponta
+
+Hoje `sem_delegacao` está vazia (26/26 contas ativas com grant) — rodar o job agora não gera o evento, e isso é o comportamento CORRETO, não uma falha do teste. Pra validar o caminho de alerta sem esperar uma conta órfã de verdade aparecer: revogue o grant de UMA conta de teste (`/admin/access`, ou `manager_account_access.revoke` direto), rode o job sob demanda, confirme o `jsonPayload.event=google_accounts_sem_grant` no log e o e-mail chegando, e **reconceda o grant em seguida** (a revogação manual não é o estado desejado da conta).
+
+```powershell
+gcloud run jobs execute v4-ads-mcp-resync --project=v4-ads-mcp --region=southamerica-east1 --wait
+```
+
+```powershell
+$body = @'
+{
+  "resourceNames": ["projects/v4-ads-mcp"],
+  "filter": "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"v4-ads-mcp-resync\" AND jsonPayload.event=\"google_accounts_sem_grant\"",
+  "orderBy": "timestamp desc",
+  "pageSize": 5
+}
+'@
+$arquivo = "$env:TEMP\google_accounts_sem_grant_query.json"
+$body | Set-Content -Encoding ascii -Path $arquivo
+$token = gcloud auth print-access-token
+curl.exe -s -H "Authorization: Bearer $token" -H "Content-Type: application/json" "https://logging.googleapis.com/v2/entries:list" -d "@$arquivo"
+```
 
 ---
 

@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 
 import asyncpg
 import pytest
+from structlog.testing import capture_logs
 
 from src.db.repositories import (
     audit_log,
@@ -970,6 +971,53 @@ async def test_copy_access_recusa_origem_igual_ao_destino(db) -> None:
             )
 
         assert await manager_account_access.can_manager_access(conn, mid, "611") is True
+
+
+# ---------- account_resync.avisar_contas_sem_grant (Task 7) ----------
+
+
+@pytest.mark.integration
+async def test_avisa_quando_ha_conta_sem_grant(db) -> None:
+    """A Hust App ficou dias sem grant e foi achada por ACASO, no seletor de
+    contas do Google. Este log é o que a policy transforma em e-mail."""
+    async with db.acquire() as conn:
+        await google_ads_accounts.upsert_many(
+            conn,
+            [
+                {"customer_id": "901", "mcc_id": "1", "descriptive_name": "Sem gestor"},
+                {"customer_id": "902", "mcc_id": "1", "descriptive_name": "Tambem sem"},
+            ],
+        )
+        with capture_logs() as logs:
+            await account_resync.avisar_contas_sem_grant(conn)
+
+    evento = [e for e in logs if e["event"] == "google_accounts_sem_grant"]
+    assert len(evento) == 1
+    assert evento[0]["total"] == 2
+    assert sorted(evento[0]["customer_ids"]) == ["901", "902"]
+
+
+@pytest.mark.integration
+async def test_nao_avisa_quando_todas_tem_grant(db) -> None:
+    """Alarme que aparece sempre ensina a ser ignorado.
+
+    Verificado por sabotagem (2026-09-05): fazendo `avisar_contas_sem_grant`
+    emitir o `log.warning` incondicionalmente (ignorando `queues.sem_delegacao`
+    vazio), esta asserção — lista vazia — passa a FALHAR, porque a única conta
+    do teste tem grant vivo e não deveria gerar nenhum evento. O teste como
+    está aqui (guardado pelo `if not queues.sem_delegacao: return 0`) fica
+    VERDE; a variante sabotada (sempre emite) fica VERMELHA.
+    """
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "tem@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "903", "mcc_id": "1", "descriptive_name": "Com gestor"}]
+        )
+        await manager_account_access.grant(conn, manager_id=mid, customer_id="903")
+        with capture_logs() as logs:
+            await account_resync.avisar_contas_sem_grant(conn)
+
+    assert [e for e in logs if e["event"] == "google_accounts_sem_grant"] == []
 
 
 # ---------- meta_resync.reconcile_meta (Task 5) ----------

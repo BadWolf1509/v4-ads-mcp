@@ -31,6 +31,7 @@ from src.google_ads.client import build_client
 from src.google_ads.reconcile import build_plan
 from src.jobs._audit import record_access_revocation, record_job_crash, record_job_run
 from src.jobs.purge import purge_expired
+from src.logging import configure_logging
 
 log = structlog.get_logger(__name__)
 
@@ -152,8 +153,37 @@ async def reconcile_google(
     }
 
 
+async def avisar_contas_sem_grant(conn: asyncpg.Connection) -> int:
+    """Emite o evento que a policy de alerta observa. Devolve quantas achou.
+
+    `warning`, não `error`: o job fez o trabalho certo — a anomalia é do
+    inventário, não da execução. Marcar como erro faria a policy de "Cloud Run
+    Job failed" disparar e mascararia falha real.
+
+    Só emite quando há o que avisar: alarme que aparece sempre ensina a ser
+    ignorado (mesma razão do `aviso_cobertura` do F151).
+    """
+    queues = await google_ads_accounts.list_queues(conn)
+    if not queues.sem_delegacao:
+        return 0
+    log.warning(
+        "google_accounts_sem_grant",
+        total=len(queues.sem_delegacao),
+        customer_ids=[r["customer_id"] for r in queues.sem_delegacao],
+    )
+    return len(queues.sem_delegacao)
+
+
 async def run() -> int:
     settings = get_settings()
+    # Task 7: sem isto, o job loga em texto puro (o renderer default do
+    # structlog não-configurado) — `configure_logging` só era chamado em
+    # `src/app.py` (o serviço web). `avisar_contas_sem_grant` abaixo depende de
+    # `jsonPayload.event` pra alimentar a métrica log-based do alerta; achado
+    # ao inspecionar logs reais do job em produção (linhas em texto puro tipo
+    # "2026-09-05 09:00:24 [info] resync_complete ..."), não só por leitura —
+    # sem este fix a métrica nunca teria uma entrada JSON pra casar.
+    configure_logging(level=settings.log_level, json_output=settings.app_env != "development")
     await connection.init_pool(settings.database_url)
     try:
         pool = connection.get_pool()
@@ -229,6 +259,10 @@ async def run() -> int:
                     k: v for k, v in resumo.items() if k not in ("upserted", "blocked_reason")
                 },
             )
+            # Task 7: depois do record_job_run, na MESMA conexão — lê o
+            # inventário já reconciliado por esta execução. Best-effort não se
+            # aplica aqui: é só um SELECT + log, nada a proteger.
+            await avisar_contas_sem_grant(conn)
 
         log.info("resync_complete", **resumo)
         print(f"OK: google reconcile — {resumo}")
