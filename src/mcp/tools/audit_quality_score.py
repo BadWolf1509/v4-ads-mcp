@@ -1,4 +1,4 @@
-# bucket: always
+# bucket: defer
 """Tool: audit_quality_score — flag keywords for pause/promote/duplicate intent.
 
 Sprint 3b.30 — #1 fila ICE 504 do dogfood MO-JP 2026-05-19.
@@ -75,7 +75,7 @@ _SCHEMA: dict[str, Any] = {
 @register_tool(
     name="audit_quality_score",
     description=(
-        "[CORE] Identifica keywords problemáticas com 3 flags acionáveis: "
+        "[DEFER] Identifica keywords problemáticas com 3 flags acionáveis: "
         "candidate_pause (QS<=2 + impressions>=threshold + clicks=0 = waste), "
         "candidate_promote_exact (QS>=7 + BROAD + conv>=1 = promote pra EXACT "
         "reduz CPC), duplicate_intent (mesma keyword text em multi ad_groups, "
@@ -91,7 +91,7 @@ _SCHEMA: dict[str, Any] = {
         "técnico real, OU mantenha tudo pra inventário cosmético."
     ),
     input_schema=_SCHEMA,
-    bucket="always",
+    bucket="defer",
 )
 async def audit_quality_score(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

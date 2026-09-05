@@ -1,4 +1,4 @@
-# bucket: always
+# bucket: defer
 """Tool: update_keyword_bid - update CPC bids on one or more keywords."""
 
 from typing import Any
@@ -53,12 +53,12 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 @register_tool(
     name="update_keyword_bid",
     description=(
-        "[CORE] Atualiza CPC bid de uma ou mais palavras-chave. Cada keyword "
+        "[DEFER] Atualiza CPC bid de uma ou mais palavras-chave. Cada keyword "
         "identificada por (ad_group_id, criterion_id). Ate 5 keywords com "
         "variacao maxima <=20% auto-aplica; senao retorna preview com token."
     ),
     input_schema=_SCHEMA,
-    bucket="always",
+    bucket="defer",
 )
 async def update_keyword_bid(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

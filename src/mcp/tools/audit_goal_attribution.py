@@ -1,4 +1,4 @@
-# bucket: always
+# bucket: defer
 """Tool: audit_goal_attribution — pre-flight check antes de mexer em primary_for_goal.
 
 Sprint 3b.35 — W3 do dogfood 2026-05-21 MO-JP+CAB (ICE 360).
@@ -67,7 +67,7 @@ _SCHEMA: dict[str, Any] = {
 @register_tool(
     name="audit_goal_attribution",
     description=(
-        "[CORE] Pre-flight check antes de mexer em ConversionAction.primary_for_goal. "
+        "[DEFER] Pre-flight check antes de mexer em ConversionAction.primary_for_goal. "
         "Cruza conversion_action com customer_conversion_goal pra revelar "
         "biddable flag por (category, origin). Output: origin_summary dict com "
         "biddable + warning PT-BR (null se biddable=false) + primary/secondary "
@@ -78,7 +78,7 @@ _SCHEMA: dict[str, Any] = {
         "Sempre auditado."
     ),
     input_schema=_SCHEMA,
-    bucket="always",
+    bucket="defer",
 )
 async def audit_goal_attribution(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

@@ -206,6 +206,7 @@ def _row_formatter(row: Any) -> dict[str, Any]:
     rtype_str = rtype_enum.name if hasattr(rtype_enum, "name") else str(rtype_enum)
     ct_enum = ce.client_type
     ct_str = ct_enum.name if hasattr(ct_enum, "name") else str(ct_enum)
+    old_status, new_status = _status_transition(ce, rtype_str)
 
     return {
         "change_date_time": str(ce.change_date_time),
@@ -219,7 +220,31 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         "changed_fields": changed,
         "campaign_id": campaign_id,
         "ad_group_id": ad_group_id,
+        # F145: remover campanha/grupo no Google e UPDATE de status -> REMOVED. A
+        # transicao sai na resposta e alimenta as flags do detect_drift.
+        "old_status": old_status,
+        "new_status": new_status,
     }
+
+
+# Tipos cujo `status` e mudanca estrutural. Keyed pelo resource_type de proposito:
+# em proto-plus `new_resource.campaign` EXISTE (vazio, UNSPECIFIED) mesmo numa
+# linha de keyword — olhar pela presenca do atributo inventaria status.
+_STATUS_ATTR_BY_TYPE = {"CAMPAIGN": "campaign", "AD_GROUP": "ad_group"}
+
+
+def _status_transition(ce: Any, rtype: str) -> tuple[str | None, str | None]:
+    attr = _STATUS_ATTR_BY_TYPE.get(rtype)
+    if attr is None:
+        return None, None
+
+    def _status(res: Any) -> str | None:
+        sub = getattr(res, attr, None)
+        st = getattr(sub, "status", None) if sub is not None else None
+        name = getattr(st, "name", None)
+        return None if not name or name == "UNSPECIFIED" else str(name)
+
+    return _status(getattr(ce, "old_resource", None)), _status(getattr(ce, "new_resource", None))
 
 
 def _parse_change_dt(raw: str) -> datetime | None:

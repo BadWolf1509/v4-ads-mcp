@@ -127,3 +127,75 @@ async def test_consume_rejects_expired_token(db, session_id) -> None:
     async with pool.acquire() as conn:
         with pytest.raises(InvalidTokenError, match="expired"):
             await consume(conn, token=token, session_id=sid)
+
+
+@pytest.mark.integration
+async def test_dry_run_deixa_linha_propria_na_trilha(db, session_id) -> None:
+    """F148: o preview grava `mutate` + `dry_run=true` com o target_count PLANEJADO.
+
+    Contra Postgres real, porque o que se quer provar aqui e que a coluna nova
+    existe e faz round-trip — o teste unitario so ve o kwarg saindo.
+    """
+    sid, mid = session_id
+    pool = db
+    with patch("src.governance.dry_run.ensure_account_access", AsyncMock(return_value=None)):
+        async with pool.acquire() as conn:
+            await create_pending(
+                conn,
+                manager_id=mid,
+                session_id=sid,
+                customer_id="1234567890",
+                operation_type="update_ad_schedule",
+                payload={"__target_count__": 7, "campaign_ids": ["1"]},
+                blast_summary="7 operacoes",
+            )
+
+    async with pool.acquire() as conn:
+        linhas = await conn.fetch(
+            "SELECT action_type, operation, target_count, dry_run, status "
+            "FROM audit_log WHERE manager_id = $1 ORDER BY id DESC",
+            mid,
+        )
+
+    previews = [r for r in linhas if r["dry_run"] is True]
+    assert len(previews) == 1, "o preview tem que deixar exatamente uma linha"
+    linha = previews[0]
+    assert linha["action_type"] == "mutate"
+    assert linha["operation"] == "update_ad_schedule"
+    assert linha["target_count"] == 7
+    assert linha["status"] == "success"
+
+
+@pytest.mark.integration
+async def test_pendencia_e_trilha_vivem_ou_morrem_juntas(db, session_id) -> None:
+    """Se a auditoria falhar, a pendencia NAO fica de pe.
+
+    E o defeito do F148 ao contrario: token mintado sem rastro. As duas escritas
+    estao na mesma transacao, entao uma sem a outra nao e um estado alcancavel.
+    """
+    sid, mid = session_id
+    pool = db
+    with (
+        patch("src.governance.dry_run.ensure_account_access", AsyncMock(return_value=None)),
+        patch(
+            "src.governance.dry_run.audit_log.record",
+            AsyncMock(side_effect=RuntimeError("trilha fora do ar")),
+        ),
+        pytest.raises(RuntimeError, match="trilha fora do ar"),
+    ):
+        async with pool.acquire() as conn:
+            await create_pending(
+                conn,
+                manager_id=mid,
+                session_id=sid,
+                customer_id="1234567890",
+                operation_type="update_ad_schedule",
+                payload={"__target_count__": 3},
+                blast_summary="3 operacoes",
+            )
+
+    async with pool.acquire() as conn:
+        pendentes = await conn.fetchval(
+            "SELECT count(*) FROM pending_confirmations WHERE session_id = $1", sid
+        )
+    assert pendentes == 0, "token ficou de pe sem linha de auditoria — e o proprio F148"

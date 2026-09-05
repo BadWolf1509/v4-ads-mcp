@@ -1,4 +1,4 @@
-# bucket: always
+# bucket: defer
 """Tool: audit_zombie_keywords — detectar keywords waste (impressions=0 + clicks=0).
 
 Sprint 3b.36 — ICE 315 (#11 backlog dogfood 2026-05-19 cleanup massivo MO-JP).
@@ -66,7 +66,7 @@ _SCHEMA: dict[str, Any] = {
 @register_tool(
     name="audit_zombie_keywords",
     description=(
-        "[CORE] Detecta keywords zumbis: ENABLED com zero activity (impressions=0 AND "
+        "[DEFER] Detecta keywords zumbis: ENABLED com zero activity (impressions=0 AND "
         "clicks=0) em window LAST_30_DAYS (default). Pre-cleanup decision tool — "
         "use pra identificar waste antes de pausar/remover em massa. Output flat "
         "list ordenada por ad_group_name ASC + keyword_text ASC pra agrupar "
@@ -79,7 +79,7 @@ _SCHEMA: dict[str, Any] = {
         "técnico real, OU mantenha tudo pra inventário cosmético."
     ),
     input_schema=_SCHEMA,
-    bucket="always",
+    bucket="defer",
 )
 async def audit_zombie_keywords(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

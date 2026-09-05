@@ -27,6 +27,7 @@ def _validate_combo(level: str, breakdown: str | None) -> str | None:
     """Retorna mensagem PT-BR se o combo (level, breakdown) for inválido, senão None.
 
     Matriz válida (8 = os 8 reports atuais): entity+sem-breakdown; account+breakdown.
+    Exceção: campaign+hourly (Task 4).
     """
     if level == "account":
         if breakdown is None:
@@ -35,11 +36,19 @@ def _validate_combo(level: str, breakdown: str | None) -> str | None:
                 "Pra visão geral da conta com comparativo de período use get_account_overview."
             )
         return None
-    # entity level
+    # campaign + hourly e o unico combo entity+breakdown aberto: o agregado de
+    # conta esconde o que decide (medido na MO-JP: 18,47 numa campanha contra
+    # 24,46 na outra, mesma faixa). `geo` segue fora — la o problema e regra de
+    # merge (geoTargetConstant duplicado), nao nivel.
+    if level == "campaign" and breakdown == "hourly":
+        return None
+    # entity level (exceto campaign+hourly, tratado acima)
     if breakdown is not None:
         return (
-            f"breakdown só é suportado em level='account' no v0 (você pediu level='{level}'). "
-            "Use level='account' + breakdown, ou remova o breakdown."
+            f"breakdown só é suportado em level='account' (device/geo/hourly) ou em "
+            f"level='campaign' com breakdown='hourly' (exige campaign_ids) — você pediu "
+            f"level='{level}'+breakdown='{breakdown}'. Use uma dessas combinações, ou "
+            "remova o breakdown."
         )
     return None
 
@@ -70,6 +79,11 @@ def build_performance_breakdown_query(
         if breakdown == "hourly":
             return hourly_performance_query(start, end)
         raise ValueError(f"breakdown invalido pra account: {breakdown!r}")
+    if level == "campaign" and breakdown == "hourly":
+        raise ValueError(
+            "campaign+hourly nao passa por este builder: a tool monta a conjunta "
+            "com day_hour_metrics_query, que exige campaign_ids explicitos."
+        )
     if level == "campaign":
         return campaign_performance_query(start, end, status, limit)
     if level == "ad_group":
