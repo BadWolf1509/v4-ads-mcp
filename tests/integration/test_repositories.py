@@ -494,6 +494,76 @@ async def test_count_grants_on_inactive_accounts(db) -> None:
         assert await manager_account_access.count_grants_on_inactive_accounts(conn) == 0
 
 
+# ---------- google_ads_accounts.list_queues (Task 6) ----------
+
+
+@pytest.mark.integration
+async def test_fila_delegacao_lista_conta_ativa_sem_grant(db) -> None:
+    async with db.acquire() as conn:
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "701", "mcc_id": "1", "descriptive_name": "Nova"}]
+        )
+        q = await google_ads_accounts.list_queues(conn)
+        assert [r["customer_id"] for r in q.sem_delegacao] == ["701"]
+
+
+@pytest.mark.integration
+async def test_fila_de_restauracao_aparece_quando_a_conta_volta(db) -> None:
+    """C1 da revisão Meta: chavear em is_active=false faz a conta sumir da fila
+    exatamente quando ela se torna restaurável.
+
+    Verificado por sabotagem (2026-09-05): trocando `a.is_active = true` por
+    `a.is_active = false` no predicado de `voltaram` em `list_queues`, a
+    primeira asserção abaixo (fila vazia enquanto a conta está fora do MCC)
+    passa a FALHAR — a conta aparece na fila justamente enquanto está
+    inativa, o oposto do que a fila existe para garantir. Ver task-6-report.md
+    pela saída literal do pytest com a sabotagem aplicada.
+    """
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "volta@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "702", "mcc_id": "1", "descriptive_name": "Voltou"}]
+        )
+        await manager_account_access.grant(conn, manager_id=mid, customer_id="702")
+        await conn.execute(
+            "UPDATE google_ads_accounts SET is_active = false WHERE customer_id = '702'"
+        )
+        await manager_account_access.revoke_for_inactive_accounts(conn)
+
+        # Enquanto FORA do MCC: não é restaurável, o gate exige conta ativa.
+        q = await google_ads_accounts.list_queues(conn)
+        assert [r["customer_id"] for r in q.voltaram_ao_mcc] == []
+
+        # Voltou ao MCC — agora sim.
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "702", "mcc_id": "1", "descriptive_name": "Voltou"}]
+        )
+        q = await google_ads_accounts.list_queues(conn)
+        assert [r["customer_id"] for r in q.voltaram_ao_mcc] == ["702"]
+        assert [r["customer_id"] for r in q.sem_delegacao] == []  # exclusiva
+
+
+@pytest.mark.integration
+async def test_fila_de_restauracao_ignora_revogacao_administrativa(db) -> None:
+    """Revogação por decisão do admin não é churn — não pode aparecer em
+    `voltaram_ao_mcc` (só `restore_for_account` lida com isso, e ele também
+    ignora `ADMIN_REVOKED_REASON` de propósito) nem sumir de `sem_delegacao`.
+
+    Espelha `test_fila_saiu_ignora_conta_sem_revogacao_por_churn` do gêmeo Meta.
+    """
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "admin-revoke@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "703", "mcc_id": "1", "descriptive_name": "Punida"}]
+        )
+        await manager_account_access.grant(conn, manager_id=mid, customer_id="703")
+        await manager_account_access.revoke(conn, manager_id=mid, customer_id="703")
+
+        q = await google_ads_accounts.list_queues(conn)
+        assert q.voltaram_ao_mcc == []
+        assert [r["customer_id"] for r in q.sem_delegacao] == ["703"]
+
+
 # ---------- account_resync.reconcile_google (Task 5) ----------
 
 

@@ -58,6 +58,20 @@ _ADMIN_FLASH_ERRORS: dict[str, str] = {
         "acesso nenhum (o gate exige conta ativa). Espere a reconciliação "
         "reativá-la; a linha volta com o botão."
     ),
+    # Codigo PROPRIO — nao reaproveita "conta_inativa": aquela mensagem fala em
+    # "parceria" (vocabulario Meta); o lado Google saiu/voltou do MCC.
+    "conta_inativa_google": (
+        "Esta conta ainda está fora do MCC — restaurar agora não devolveria "
+        "acesso nenhum (o gate exige conta ativa). Espere a reconciliação "
+        "reativá-la; a linha volta com o botão."
+    ),
+}
+
+# Mapa fixo pro `ok=<codigo>` da reconciliacao Google — distinto do `ok=1` usado
+# nas demais paginas admin porque a rota de restaurar precisa de MENSAGEM
+# PROPRIA (nao so "sucesso genérico"). Mesma regra: nunca ecoar o param.
+_GOOGLE_ACCOUNTS_FLASH_OK: dict[str, str] = {
+    "restored": "Acesso restaurado — os grants revogados pela saída do MCC foram reconcedidos.",
 }
 
 # Mapa fixo pro `ok=<codigo>` da reconciliacao Meta — distinto do `ok=1` usado
@@ -967,6 +981,10 @@ async def admin_accounts(
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         accs = await google_ads_accounts.list_all(conn)
+        # Espelha admin_accounts_meta: as duas filas do lado Google (conta
+        # ativa sem gestor delegado, conta que voltou ao MCC com restauração
+        # pendente) — ver google_ads_accounts.list_queues.
+        queues = await google_ads_accounts.list_queues(conn)
     mccs = sorted({a.mcc_id for a in accs if a.mcc_id})
     pending = await pending_invites_count()
     return templates.TemplateResponse(
@@ -976,9 +994,54 @@ async def admin_accounts(
             "current_user": user,
             "accounts": accs,
             "mccs": mccs,
+            "sem_delegacao": queues.sem_delegacao,
+            "voltaram_ao_mcc": queues.voltaram_ao_mcc,
             "pending_invites_count": pending,
+            "flash": _admin_flash(request, ok_codes=_GOOGLE_ACCOUNTS_FLASH_OK),
         },
     )
+
+
+@router.post("/admin/accounts/{customer_id}/restore", response_class=HTMLResponse)
+async def admin_accounts_google_restore(
+    request: Request,
+    customer_id: str,
+    user: CurrentUser = Depends(current_manager),  # noqa: B008
+) -> Response:
+    """Reconcede os grants que `revoke_for_inactive_accounts` revogou quando a
+    conta saiu do MCC — SÓ esses (filtra `LEFT_MCC_REASON`), não qualquer
+    revogação que a conta tenha acumulado por outro motivo. Espelha
+    `admin_accounts_meta_restore`.
+
+    Só faz sentido com a conta ATIVA, isto é, depois que ela voltou ao MCC.
+    Sobre conta inativa o restore limparia `revoked_at` sem destravar nada (o
+    gate exige conta ativa) e, pior, produziria um grant vivo que o painel não
+    tem como mostrar de volta — a fila `voltaram_ao_mcc` já exige `is_active =
+    true` por construção, então essa conta não reaparece em lugar nenhum até
+    a reconciliação reativá-la de verdade. O botão nem é renderizado nesse
+    estado; a checagem aqui é pra POST direto ou aba velha reenviada.
+    """
+    _require_admin(user)
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        conta = await google_ads_accounts.get_by_customer_id(conn, customer_id)
+        if conta is None or not conta.is_active:
+            # Restaurar em conta inativa produz grant que o gate nega —
+            # trabalho inútil apresentado como sucesso.
+            return RedirectResponse(
+                url="/admin/accounts?error=conta_inativa_google", status_code=303
+            )
+        restaurados = await manager_account_access.restore_for_account(
+            conn, customer_id=customer_id
+        )
+        await _audit_admin(
+            conn,
+            admin=user,
+            operation="admin_accounts_google_restore",
+            customer_id=customer_id,
+            restored_grants=len(restaurados),
+        )
+    return RedirectResponse(url="/admin/accounts?ok=restored", status_code=303)
 
 
 @router.get("/admin/accounts/meta", response_class=HTMLResponse)

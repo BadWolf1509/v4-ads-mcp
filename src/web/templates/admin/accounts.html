@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_components.html" import badge, search_input, empty_state %}
+{% from "_components.html" import badge, search_input, empty_state, alert, button %}
 
 {% block title %}Admin · Contas Google Ads — V4 Ads MCP{% endblock %}
 
@@ -9,7 +9,73 @@
     <h1 class="text-3xl font-extrabold tracking-tight">Contas Google Ads</h1>
     <p class="text-sm text-v4-gray-700">Sincronizadas diariamente via Cloud Scheduler. Use <a href="/admin/access" class="underline">/admin/access</a> pra atribuir gestores.</p>
   </header>
+  {% if flash %}{{ alert(flash.message, flash.kind) }}{% endif %}
   {% include "admin/_accounts_tabs.html" %}
+
+  {# Reconciliacao contra o MCC autoritativo (Task 6, espelha admin_accounts_meta):
+     duas filas, duas ACOES diferentes do admin. C1 (licao do gemeo Meta): a
+     fila de restauracao NAO chaveia em is_active — so entram contas JA
+     acionaveis (voltaram ao MCC e tem grant revogado por churn pendente). #}
+  {% if sem_delegacao %}
+  <div class="v4-card">
+    <div class="v4-card__header">
+      <h3 class="v4-card__title">Aguardando delegação ({{ sem_delegacao|length }})</h3>
+    </div>
+    {{ alert(
+      "Já está no MCC e sincronizada, mas nenhum gestor tem acesso ainda. Delegue em
+       <a href=\"/admin/access\" class=\"underline\">Acessos → Google</a>.",
+      "info"
+    ) }}
+    <div class="v4-table-wrap" tabindex="0" role="region" aria-label="Contas aguardando delegação">
+    <table class="v4-table v4-table--compact">
+      <thead><tr><th scope="col">Customer ID</th><th scope="col">Nome</th><th scope="col">Última sync</th></tr></thead>
+      <tbody>
+        {% for a in sem_delegacao %}
+        <tr>
+          <td class="col-mono">{{ a.customer_id }}</td>
+          <td><strong>{{ a.descriptive_name }}</strong></td>
+          <td class="text-xs text-v4-gray-500">{{ a.synced_at.strftime('%d/%m %H:%M') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if voltaram_ao_mcc %}
+  <div class="v4-card">
+    <div class="v4-card__header">
+      <h3 class="v4-card__title">Voltaram ao MCC ({{ voltaram_ao_mcc|length }})</h3>
+    </div>
+    {{ alert(
+      "Contas que voltaram ao MCC com grants ainda revogados pela saída anterior.
+       O botão reconcede exatamente os grants que a saída revogou — nunca um acesso
+       trocado por outro motivo. Delegar outro gestor continua em
+       <a href=\"/admin/access\" class=\"underline\">Acessos → Google</a>.",
+      "warning"
+    ) }}
+    <div class="v4-table-wrap" tabindex="0" role="region" aria-label="Contas que voltaram ao MCC">
+    <table class="v4-table v4-table--compact">
+      <thead><tr><th scope="col">Customer ID</th><th scope="col">Nome</th><th scope="col">Grants restauráveis</th><th scope="col"></th></tr></thead>
+      <tbody>
+        {% for a in voltaram_ao_mcc %}
+        <tr>
+          <td class="col-mono">{{ a.customer_id }}</td>
+          <td><strong>{{ a.descriptive_name }}</strong></td>
+          <td>{{ a.grants_restauraveis }}</td>
+          <td class="text-right">
+            <form method="post" action="/admin/accounts/{{ a.customer_id }}/restore">
+              {{ button("Restaurar", type="submit", variant="secondary", size="small") }}
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  {% endif %}
 
   <div class="v4-card">
     <div class="mb-3 flex flex-wrap gap-3 items-center">

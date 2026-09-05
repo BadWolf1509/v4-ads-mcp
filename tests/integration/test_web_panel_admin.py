@@ -110,6 +110,130 @@ async def test_admin_accounts_lists_synced(client: AsyncClient):
 
 
 @pytest.mark.integration
+async def test_admin_accounts_google_separa_as_duas_filas(client: AsyncClient) -> None:
+    """Sem delegação e voltaram ao MCC são ações DIFERENTES (Task 6, espelha
+    test_painel_meta_separa_as_tres_filas)."""
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        await google_ads_accounts.upsert_many(
+            conn,
+            [
+                {"customer_id": "9001", "mcc_id": "M1", "descriptive_name": "Nova sem gestor"},
+                {"customer_id": "9002", "mcc_id": "M1", "descriptive_name": "Voltou pro MCC"},
+            ],
+        )
+        # fila voltaram_ao_mcc: grant revogado por churn, e a conta JA voltou
+        # (upsert_many reativa antes da revogação simular um estado antigo).
+        await manager_account_access.grant(conn, manager_id=gestor_id, customer_id="9002")
+        await conn.execute(
+            "UPDATE google_ads_accounts SET is_active = false WHERE customer_id = '9002'"
+        )
+        await manager_account_access.revoke_for_inactive_accounts(conn)
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "9002", "mcc_id": "M1", "descriptive_name": "Voltou pro MCC"}]
+        )
+
+    resp = await client.get(
+        "/admin/accounts",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+
+    assert resp.status_code == 200
+    assert "Aguardando delegação" in resp.text
+    assert "Voltaram ao MCC" in resp.text
+    assert "Nova sem gestor" in resp.text
+    assert "Voltou pro MCC" in resp.text
+    assert "/admin/accounts/9002/restore" in resp.text
+    # Exclusividade: quem voltou não aparece TAMBÉM na fila de delegação,
+    # senão o painel convida a refazer à mão o que o botão devolve.
+    assert "Voltou pro MCC" not in resp.text.split("Voltaram ao MCC")[0]
+
+
+@pytest.mark.integration
+async def test_restaurar_google_reconcede_grants_e_grava_audit(client: AsyncClient) -> None:
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "9003", "mcc_id": "M1", "descriptive_name": "Ex-cliente"}]
+        )
+        await manager_account_access.grant(conn, manager_id=gestor_id, customer_id="9003")
+        await conn.execute(
+            "UPDATE google_ads_accounts SET is_active = false WHERE customer_id = '9003'"
+        )
+        await manager_account_access.revoke_for_inactive_accounts(conn)
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "9003", "mcc_id": "M1", "descriptive_name": "Ex-cliente"}]
+        )
+
+    resp = await client.post(
+        "/admin/accounts/9003/restore",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 303  # F107: POST de mutação sem HTMX é 303
+    assert resp.headers["location"] == "/admin/accounts?ok=restored"
+    async with pool.acquire() as conn:
+        assert (await manager_account_access.can_manager_access(conn, gestor_id, "9003")) is True
+        row = await conn.fetchrow(
+            """SELECT operation, action_type, manager_id, customer_id, platform, params_summary
+               FROM audit_log WHERE operation = $1 ORDER BY occurred_at DESC LIMIT 1""",
+            "admin_accounts_google_restore",
+        )
+    assert row is not None
+    assert row["action_type"] == "mutate"
+    assert row["manager_id"] == admin_id
+    assert row["customer_id"] == "9003"
+    assert row["platform"] == "google"
+    assert json.loads(row["params_summary"])["restored_grants"] == 1
+
+
+@pytest.mark.integration
+async def test_restaurar_google_recusa_conta_ainda_fora_do_mcc(client: AsyncClient) -> None:
+    """C1, outro lado: restaurar conta INATIVA não devolve acesso nenhum (o gate
+    exige conta ativa). O botão nem é renderizado nesse estado (a fila
+    voltaram_ao_mcc exige is_active=true por construção) — isto cobre POST
+    direto / aba velha reenviada, espelha test_restaurar_recusa_conta_ainda_
+    fora_da_parceria do gêmeo Meta."""
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "9004", "mcc_id": "M1", "descriptive_name": "Ainda fora"}]
+        )
+        await manager_account_access.grant(conn, manager_id=gestor_id, customer_id="9004")
+        await conn.execute(
+            "UPDATE google_ads_accounts SET is_active = false WHERE customer_id = '9004'"
+        )
+        await manager_account_access.revoke_for_inactive_accounts(conn)
+
+    resp = await client.post(
+        "/admin/accounts/9004/restore",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/admin/accounts?error=conta_inativa_google"
+    async with pool.acquire() as conn:
+        linha = await conn.fetchrow(
+            "SELECT revoked_at FROM manager_account_access "
+            "WHERE manager_id = $1 AND customer_id = '9004'",
+            gestor_id,
+        )
+        assert linha["revoked_at"] is not None, "a revogacao por churn tem de sobreviver"
+
+    # A mensagem do mapa fixo aparece na página (nunca o valor cru do param).
+    pagina = await client.get(
+        "/admin/accounts?error=conta_inativa_google",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert "ainda está fora do MCC" in pagina.text
+
+
+@pytest.mark.integration
 async def test_admin_access_matrix_renders(client: AsyncClient):
     pool = connection.get_pool()
     admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)

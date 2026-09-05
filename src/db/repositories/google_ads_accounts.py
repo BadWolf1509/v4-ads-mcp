@@ -199,3 +199,64 @@ async def get_by_customer_id(conn: asyncpg.Connection, customer_id: str) -> Goog
         "SELECT * FROM google_ads_accounts WHERE customer_id = $1", customer_id
     )
     return _row_to_account(row) if row is not None else None
+
+
+@dataclass(slots=True, frozen=True)
+class ReconcileQueues:
+    sem_delegacao: list[asyncpg.Record]
+    voltaram_ao_mcc: list[asyncpg.Record]
+
+
+async def list_queues(conn: asyncpg.Connection) -> ReconcileQueues:
+    """As duas filas do painel. Cada uma é uma AÇÃO diferente do admin.
+
+    C1 (lição do sprint Meta, `meta_ad_accounts.list_queues`): a fila 2 NÃO
+    chaveia em `is_active`. Quando a conta volta ao MCC, `upsert_many` a
+    reativa na MESMA execução — e é aí, e só aí, que restaurar faz sentido,
+    porque `can_manager_access` exige conta ativa. Com o predicado
+    `is_active = false`, a conta sumiria da fila no instante em que se
+    tornasse restaurável, e sobraria redelegar tudo à mão — o trabalho manual
+    que a revogação soft existe para eliminar. A chave é ter grant revogado
+    por churn PENDENTE (`revoked_reason = LEFT_MCC_REASON`); por isso o nome
+    é `voltaram_ao_mcc`, não `sairam_do_mcc` — ao contrário da fila 3 do
+    gêmeo Meta, esta não mistura histórico de quem segue fora: `is_active =
+    true` aqui é uma exigência real da query, não um bug — só entram contas
+    JÁ acionáveis.
+
+    As filas são exclusivas e `voltaram_ao_mcc` tem precedência: a conta que
+    voltou satisfaz as duas (está ativa e sem grant VIVO), e sem a exclusão o
+    admin seria convidado a refazer à mão o que um clique devolve.
+    """
+    from src.db.repositories.manager_account_access import LEFT_MCC_REASON
+
+    voltaram = await conn.fetch(
+        """
+        SELECT a.customer_id, a.descriptive_name,
+               count(m.manager_id) AS grants_restauraveis
+          FROM google_ads_accounts a
+          JOIN manager_account_access m ON m.customer_id = a.customer_id
+         WHERE a.is_active = true
+           AND m.revoked_at IS NOT NULL
+           AND m.revoked_reason = $1
+         GROUP BY a.customer_id, a.descriptive_name
+         ORDER BY a.descriptive_name
+        """,
+        LEFT_MCC_REASON,
+    )
+    sem_delegacao = await conn.fetch(
+        """
+        SELECT a.customer_id, a.descriptive_name, a.synced_at
+          FROM google_ads_accounts a
+         WHERE a.is_active = true
+           AND NOT EXISTS (
+                 SELECT 1 FROM manager_account_access m
+                  WHERE m.customer_id = a.customer_id AND m.revoked_at IS NULL)
+           AND NOT EXISTS (
+                 SELECT 1 FROM manager_account_access m
+                  WHERE m.customer_id = a.customer_id
+                    AND m.revoked_reason = $1)
+         ORDER BY a.descriptive_name
+        """,
+        LEFT_MCC_REASON,
+    )
+    return ReconcileQueues(sem_delegacao=list(sem_delegacao), voltaram_ao_mcc=list(voltaram))
