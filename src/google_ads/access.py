@@ -10,7 +10,7 @@ from uuid import UUID
 import asyncpg
 import structlog
 
-from src.db.repositories import audit_log, manager_account_access
+from src.db.repositories import audit_log, google_ads_accounts, manager_account_access
 from src.governance.bookkeeping import best_effort
 
 log = structlog.get_logger(__name__)
@@ -71,6 +71,22 @@ async def ensure_account_access(
         level=level,
         platform="google",
     )
+    # Item 2 (revisão final): "peça ao admin pra liberar no painel" é conselho
+    # que só funciona quando a causa é falta de grant numa conta ATIVA. Se a
+    # conta está fora do inventário (nunca sincronizada) ou saiu do MCC
+    # (`is_active = false`), esse conselho não pode funcionar — ela nem
+    # aparece na matriz do painel (`google_ads_accounts.list_all` só lista
+    # ativas), e mesmo um grant novo não ajuda, porque o gate nega por
+    # `is_active` antes de olhar o grant. Só no caminho de negação (raro) vale
+    # a leitura extra pra escolher a mensagem certa; audit_log acima já
+    # gravou o motivo genérico e não muda.
+    account = await google_ads_accounts.get_by_customer_id(conn, customer_id)
+    if account is None or not account.is_active:
+        raise AccountAccessDeniedError(
+            f"A conta {customer_id} não está no MCC (ou já saiu dele) — liberar "
+            "acesso no painel não resolve. O caminho é a conta voltar ao MCC e "
+            "o resync rodar."
+        )
     raise AccountAccessDeniedError(
         f"Você não tem acesso à conta {customer_id}. Peça ao admin pra liberar no painel."
     )

@@ -15,6 +15,16 @@ async def test_denial_emits_warning_log(monkeypatch: pytest.MonkeyPatch) -> None
         access.manager_account_access, "can_manager_access", AsyncMock(return_value=False)
     )
     monkeypatch.setattr(access.audit_log, "record", AsyncMock(return_value=1))
+    # Item 2 (revisão final) faz mais uma leitura no caminho de negação pra
+    # escolher a mensagem — `conn` aqui é um MagicMock puro (sem spec async),
+    # então sem este patch `await conn.fetchrow(...)` estoura TypeError. O
+    # valor (conta ativa) preserva o comportamento antigo: este teste cobre
+    # o log, não a mensagem.
+    monkeypatch.setattr(
+        access.google_ads_accounts,
+        "get_by_customer_id",
+        AsyncMock(return_value=MagicMock(is_active=True)),
+    )
 
     with capture_logs() as logs, pytest.raises(access.AccountAccessDeniedError):
         await access.ensure_account_access(

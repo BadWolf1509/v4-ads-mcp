@@ -22,7 +22,7 @@ que conta acquires pra provar que a conexao nova e de fato NOVA.
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import asyncpg
@@ -248,7 +248,7 @@ async def test_audit_de_negacao_nao_e_retentado(monkeypatch: pytest.MonkeyPatch)
     `best_effort` mantem o retry restrito ao read: a falha do audit vira log,
     nao excecao, e a negacao segue chegando ao gestor.
     """
-    from src.db.repositories import audit_log, manager_account_access
+    from src.db.repositories import audit_log, google_ads_accounts, manager_account_access
     from src.google_ads import access
 
     monkeypatch.setattr(connection, "_pool", _FakePool())
@@ -262,6 +262,16 @@ async def test_audit_de_negacao_nao_e_retentado(monkeypatch: pytest.MonkeyPatch)
     with (
         patch.object(manager_account_access, "can_manager_access", AsyncMock(return_value=False)),
         patch.object(audit_log, "record", audit_que_cai),
+        # Item 2 (revisão final): a escolha de mensagem no caminho de negação
+        # faz mais uma leitura (`get_by_customer_id`) — `conn` aqui é um
+        # `object()` propositalmente vazio (só prova que o retry não chama
+        # nada nele), então sem este patch a leitura estouraria AttributeError
+        # em vez do AccountAccessDeniedError que o teste espera.
+        patch.object(
+            google_ads_accounts,
+            "get_by_customer_id",
+            AsyncMock(return_value=MagicMock(is_active=True)),
+        ),
         pytest.raises(access.AccountAccessDeniedError),
     ):
         await connection.run_with_reconnect(

@@ -77,6 +77,55 @@ async def test_run_report_denied_without_grant(db) -> None:
 
 
 @pytest.mark.integration
+async def test_run_report_denied_conta_inativa_mensagem_nao_aponta_pro_painel(db) -> None:
+    """Item 2 da revisão final: conta que saiu do MCC (`is_active = false`)
+    não pode ser resolvida "liberando no painel" — ela nem aparece na matriz
+    (`list_all` só lista ativas) e o gate nega por `is_active` antes de olhar
+    o grant. Fim a fim contra DB real: a mensagem tem que apontar o caminho
+    que de fato funciona (a conta voltar ao MCC + o resync rodar), não o
+    painel.
+    """
+    from src.google_ads import reports
+
+    pool = db
+    async with pool.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="gate-inativa@v4.com", full_name=None)
+        from src.auth.sessions import generate_session_token, hash_session_token
+
+        token = generate_session_token()
+        sess = await mcp_sessions.create(
+            conn, manager_id=mid, token_hash=hash_session_token(token), label="gate-test-inativa"
+        )
+        await google_ads_accounts.upsert_many(
+            conn,
+            [
+                {
+                    "customer_id": "6666666666",
+                    "mcc_id": "0000000000",
+                    "descriptive_name": "Saiu do MCC",
+                }
+            ],
+        )
+        await conn.execute(
+            "UPDATE google_ads_accounts SET is_active = false WHERE customer_id = '6666666666'"
+        )
+
+    with pytest.raises(AccountAccessDeniedError) as exc_info:
+        await reports.run_report(
+            manager_id=mid,
+            session_id=sess.id,
+            customer_id="6666666666",
+            query="SELECT customer.id FROM customer LIMIT 1",
+            row_formatter=lambda row: {},
+            operation_name="test_gate_denied_inativa",
+        )
+
+    assert "não está no MCC" in exc_info.value.message
+    assert "Peça ao admin pra liberar no painel" not in exc_info.value.message
+
+
+@pytest.mark.integration
 async def test_run_report_allowed_with_grant(db) -> None:
     """run_report passes the gate when a write grant exists.
 
