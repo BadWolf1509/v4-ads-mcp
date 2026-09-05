@@ -116,11 +116,11 @@ async def test_saida_traz_resource_name(monkeypatch) -> None:
     assert r["links"][0]["resource_name"].startswith("customers/")
 
 
-def test_tool_registrada_como_defer_com_prefixo() -> None:
+def test_tool_registrada_como_always_com_prefixo() -> None:
     t = get_tool("get_assets")
     assert t is not None
-    assert t.bucket == "defer"
-    assert t.description.startswith("[DEFER]")
+    assert t.bucket == "always"
+    assert t.description.startswith("[CORE]")
 
 
 def test_schema_tem_limit_com_teto() -> None:

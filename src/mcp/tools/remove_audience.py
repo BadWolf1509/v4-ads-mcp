@@ -1,4 +1,4 @@
-# bucket: always
+# bucket: defer
 """Tool: remove_audience - detach audience criteria (user_list or user_interest)
 previamente anexadas a 1 ad_group ou campaign.
 
@@ -82,7 +82,7 @@ def _classify_partial(error: str | None) -> str:
 @register_tool(
     name="remove_audience",
     description=(
-        "[CORE] Remove audience criteria (user_list ou user_interest) previamente anexadas "
+        "[DEFER] Remove audience criteria (user_list ou user_interest) previamente anexadas "
         "a 1 ad_group ou campaign. Aceita target_type (ad_group|campaign) + "
         "target_id singular + criterion_ids array com ate 100 criteria do mesmo "
         "target. Sempre CONFIRM (spec §7.1 remove). Idempotente: criteria ja "
@@ -91,7 +91,7 @@ def _classify_partial(error: str | None) -> str:
         "get_audience_performance ou Google Ads UI."
     ),
     input_schema=_SCHEMA,
-    bucket="always",
+    bucket="defer",
 )
 async def remove_audience(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

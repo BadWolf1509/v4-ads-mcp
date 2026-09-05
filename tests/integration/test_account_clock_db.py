@@ -60,3 +60,48 @@ async def test_conta_com_fuso_nulo_cai_em_utc(db):
             [{"customer_id": "5555555555", "mcc_id": "0000000000", "descriptive_name": "sem tz"}],
         )
     assert await resolve_account_today("5555555555", now=INSTANTE_DO_BUG) == date(2026, 9, 3)
+
+
+# --- F146: resolve_account_zone — nome do fuso ou None, sem fallback ----------
+
+
+@pytest.mark.integration
+async def test_zone_devolve_o_nome_iana_do_inventario(db):
+    from src.google_ads.account_clock import resolve_account_zone
+
+    async with db.acquire() as conn:
+        await google_ads_accounts.upsert_many(
+            conn,
+            [
+                {
+                    "customer_id": "3237459217",
+                    "mcc_id": "0000000000",
+                    "descriptive_name": "Campo Grande",
+                    "time_zone": "America/Campo_Grande",
+                }
+            ],
+        )
+    assert await resolve_account_zone("3237459217") == "America/Campo_Grande"
+
+
+@pytest.mark.integration
+async def test_zone_e_none_para_conta_ausente_e_para_fuso_nulo_ou_invalido(db):
+    """None, nao UTC: o chamador (um MUTATE) decide recusar."""
+    from src.google_ads.account_clock import resolve_account_zone
+
+    async with db.acquire() as conn:
+        await google_ads_accounts.upsert_many(
+            conn,
+            [
+                {"customer_id": "5555555555", "mcc_id": "0000000000", "descriptive_name": "sem tz"},
+                {
+                    "customer_id": "6666666666",
+                    "mcc_id": "0000000000",
+                    "descriptive_name": "tz invalido",
+                    "time_zone": "Nao/Existe",
+                },
+            ],
+        )
+    assert await resolve_account_zone("9999999999") is None
+    assert await resolve_account_zone("5555555555") is None
+    assert await resolve_account_zone("6666666666") is None

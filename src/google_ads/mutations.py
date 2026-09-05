@@ -48,7 +48,7 @@ def _parse_partial_failures(
     customer_id: str,
     target_count: int,
 ) -> list[dict[str, Any]]:
-    """Classifica cada op de uma resposta partial_failure em added/failed (+ erro).
+    """Classifica cada op de uma resposta partial_failure em success/failed (+ erro).
 
     Google Ads API surface (NOT what naive readings of the SDK suggest):
     - response.partial_failure_error is a google.rpc.Status at the TOP level (NOT a
@@ -112,7 +112,12 @@ def _parse_partial_failures(
         # proto-plus wrapper exposes _pb; use raw WhichOneof
         raw = op_resp._pb if hasattr(op_resp, "_pb") else op_resp
         if hasattr(raw, "WhichOneof") and raw.WhichOneof("response") is not None:
-            per_op_results.append({"index": idx, "status": "added", "error": None})
+            # F152: rotulo NEUTRO. Esta camada nao sabe se a op foi create, update
+            # ou remove — o `oneof` da RESPOSTA diz sucesso/falha e o tipo do
+            # recurso, nunca o verbo, que so existe do lado da requisicao. Dizer
+            # "added" num remove era mentira sobre o que ocorreu. Tool que quer
+            # verbo de dominio remapeia com `classify_partial`, que le `error`.
+            per_op_results.append({"index": idx, "status": "success", "error": None})
         else:
             per_op_results.append(
                 {
@@ -160,7 +165,9 @@ async def run_mutation(
     Args:
         partial_failure: When True, sets request.partial_failure_mode = PARTIAL_FAILURE.
             Individual op failures don't abort the request; per-op status is returned
-            in `partial_failures` list (each entry: {index, status: 'added'|'failed', error}).
+            in `partial_failures` list (each entry: {index, status: 'success'|'failed', error}).
+            O nome do campo nomeia o MODO (relatorio por-op do partial-failure mode),
+            nao o conteudo: ele carrega sucessos tambem.
             Callers are responsible for re-mapping specific error codes (e.g. CRITERION_EXISTS
             or DUPLICATE_KEYWORD → status='already_exists') in their tool-layer response.
             When False (default), any error aborts.
@@ -265,7 +272,9 @@ async def run_mutation(
 
         applied_count = target_count
         if partial_failure and per_op_results:
-            applied_count = sum(1 for r in per_op_results if r["status"] == "added")
+            # "aplicada" = NAO falhou. Chavear no verbo antigo amarrava a contagem
+            # a um rotulo que nao descrevia metade das operacoes.
+            applied_count = sum(1 for r in per_op_results if r["status"] != "failed")
 
         # Extract resource_names from mutate_operation_responses (ver _extract_resource_names).
         resource_names = _extract_resource_names(response)

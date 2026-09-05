@@ -251,6 +251,14 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
             f"{operation} — auto, recommendation flow do Google",
         )
 
+    # update_ad_schedule — always CONFIRM (spec ad_schedule §4: define as janelas
+    # em que a campanha serve; o que fica de fora PARA de servir)
+    elif operation == "update_ad_schedule":
+        return RiskClassification(
+            RiskLevel.CONFIRM,
+            "update_ad_schedule: redefine a grade de veiculacao (conjunto, nao incremento) — sempre CONFIRM",
+        )
+
     # Unknown operation — default safe to confirm
     return RiskClassification(
         RiskLevel.CONFIRM,

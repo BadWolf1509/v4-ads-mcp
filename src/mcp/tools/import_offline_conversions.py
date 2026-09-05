@@ -10,7 +10,8 @@ partial_failure=True per Google docs: individual conversion failures don't block
 
 V4 invariants hardcoded (no schema fields):
 - currency_code = "BRL"
-- conversion_date_time gets "-03:00" appended (BRT timezone, V4 BR-invariant)
+- conversion_date_time e interpretado no FUSO DA CONTA (google_ads_accounts.time_zone) e o
+  builder anexa o offset desse fuso (F146: era "-03:00" fixo; 2 contas sao UTC-4)
 - consent.ad_user_data = GRANTED (LGPD V4-aligned — gestor confirma consent antes CRM)
 - partial_failure = True (Google's recommendation)
 - debug_enabled = False
@@ -25,18 +26,18 @@ Proto field names verified via context7 on 2026-05-18:
 from __future__ import annotations
 
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, tzinfo
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from src.db import connection
+from src.google_ads.account_clock import resolve_account_zone
 from src.google_ads.queries._common import validate_conversion_action_for_upload
 from src.governance.blast_radius import classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
 from src.mcp.tools._mutate_common import error_envelope, preview_envelope
 from src.mcp.tools._registry import register_tool
-
-_BRT = timezone(timedelta(hours=-3))
 
 _SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -74,7 +75,7 @@ _SCHEMA: dict[str, Any] = {
                         "type": "string",
                         "pattern": r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$",
                         "description": (
-                            "Timestamp BRT (V4 invariant -03:00 anexado pelo builder). "
+                            "Timestamp no relogio LOCAL da conta (fuso do inventario; o builder anexa o offset — F146). "
                             "Format: YYYY-MM-DD HH:MM:SS"
                         ),
                     },
@@ -104,20 +105,24 @@ def _err(idx: int, msg: str) -> dict[str, Any]:
     return error_envelope("import_offline_conversions", f"conversions[{idx}]: {msg}")
 
 
-def _validate_payload_shape(payload: dict[str, Any]) -> dict[str, Any] | None:
+def _validate_payload_shape(payload: dict[str, Any], *, tz: tzinfo) -> dict[str, Any] | None:
     """Cross-field validation Layer 2 (Sprint 3b.19B.1 convention).
 
     5 checks (per-conversion loop + batch-level).
     Returns None if valid, error dict if invalid.
+
+    F146: `tz` e o fuso da CONTA, obrigatorio e sem default. O gestor digita o
+    relogio da parede; interpreta-lo em -03:00 fixo rejeitava como "futura" uma
+    conversao das 23:30 numa conta UTC-4.
     """
     conversions = payload["conversions"]
-    now_brt = datetime.now(_BRT)
+    now_brt = datetime.now(tz)
 
     for idx, conv in enumerate(conversions):
         # Check 1: conversion_date_time parseability (defense-in-depth vs Layer 1 regex)
         try:
             dt = datetime.strptime(conv["conversion_date_time"], "%Y-%m-%d %H:%M:%S")
-            dt = dt.replace(tzinfo=_BRT)
+            dt = dt.replace(tzinfo=tz)
         except ValueError:
             return _err(
                 idx,
@@ -205,7 +210,7 @@ def _build_summary(payload: dict[str, Any]) -> dict[str, Any]:
         "Workflow V4 lead-gen: gestor captura gclid no URL da landing → salva "
         "no CRM → quando lead converte (WhatsApp confirmation, contrato assinado, "
         "pagamento) → chama tool com batch de gclids + datas + valores. V4 "
-        "invariants hardcoded: currency_code=BRL, timezone=-03:00 (São Paulo), "
+        "invariants hardcoded: currency_code=BRL; timezone = o da CONTA no inventario (F146: era -03:00 fixo), "
         "consent.ad_user_data=GRANTED (LGPD V4-aligned). Pre-flight valida "
         "conversion_action_id existe + tem type=UPLOAD_CLICKS. partial_failure=True: "
         "conversões individuais com erro (gclid expirado, data inválida) são "
@@ -223,7 +228,23 @@ async def import_offline_conversions(args: dict[str, Any]) -> dict[str, Any]:
     # Layer 2: Runtime payload validation (Sprint 3b.19B.1 convention).
     # IMPORTANT: _validate_payload_shape returns the FULL error dict
     # (NOT just a string like Sprint 3b.24 create_campaign).
-    shape_error = _validate_payload_shape(args)
+    # F146: o fuso vem do inventario e e resolvido UMA vez. Sem fuso, recusa —
+    # e um MUTATE que grava timestamp no Google; offset chutado e corrupcao de
+    # dado em conta de cliente, nao ruido (decisao registrada 03/09).
+    tz_name = await resolve_account_zone(customer_id)
+    if tz_name is None:
+        return error_envelope(
+            "import_offline_conversions",
+            (
+                f"A conta {customer_id} nao tem fuso horario no inventario "
+                "(google_ads_accounts.time_zone). Sem ele o timestamp das conversoes "
+                "iria ao Google com offset chutado. Rode o resync de contas e tente de novo."
+            ),
+            customer_id=customer_id,
+        )
+    zone = ZoneInfo(tz_name)
+
+    shape_error = _validate_payload_shape(args, tz=zone)
     if shape_error is not None:
         return shape_error
 
@@ -240,6 +261,11 @@ async def import_offline_conversions(args: dict[str, Any]) -> dict[str, Any]:
         )
 
     summary = _build_summary(args)
+    # O preview MOSTRA o fuso e o offset que vao ser enviados — o gestor confirma sabendo.
+    summary["time_zone"] = tz_name
+    summary["utc_offset"] = (
+        datetime.now(zone).strftime("%z")[:3] + ":" + datetime.now(zone).strftime("%z")[3:]
+    )
     target_count = summary["conversion_count"]
 
     risk = classify(
@@ -258,6 +284,7 @@ async def import_offline_conversions(args: dict[str, Any]) -> dict[str, Any]:
         **args,
         "__target_count__": target_count,
         "__params_summary__": summary,
+        "__time_zone__": tz_name,  # F146: preview e upload usam o MESMO fuso
     }
 
     pool = connection.get_pool()

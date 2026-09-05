@@ -108,6 +108,8 @@ def _linha(client_type: str, *, user_email: str = "Recommendations Auto-Apply") 
         changed_fields=["keyword.text"],
         campaign_id="22958589284",
         ad_group_id="184539552373",
+        old_status=None,
+        new_status=None,
     )
 
 

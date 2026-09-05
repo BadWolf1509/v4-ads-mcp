@@ -153,6 +153,8 @@ def change_history_query(
           change_event.change_resource_name,
           change_event.resource_change_operation,
           change_event.changed_fields,
+          change_event.old_resource,
+          change_event.new_resource,
           change_event.campaign,
           change_event.ad_group
         FROM change_event

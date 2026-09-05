@@ -19,6 +19,7 @@ from uuid import UUID
 
 import asyncpg
 
+from src.db.repositories import audit_log
 from src.google_ads.access import ensure_account_access
 
 DEFAULT_TTL_MINUTES = 10
@@ -68,24 +69,52 @@ async def create_pending(
         operation_name=operation_type,
         level="write",
     )
+    # F148: o preview e uma TENTATIVA DE ESCRITA e tem que deixar rastro proprio.
+    # Sem esta linha, a unica coisa que a trilha registrava do dry-run era a
+    # consulta GAQL que ele fez (`action_type="read"`, contagem de linhas LIDAS)
+    # — e o gate de acesso acima audita so quando NEGA, entao a trilha guardava
+    # os previews recusados e perdia todos os que funcionavam.
+    #
+    # `__target_count__` e escrito por todas as tools que criam pendencia (guard
+    # em test_create_pending_audita_dry_run.py). Ausente grava NULL de proposito:
+    # o default `1` do apply_change registraria uma operacao que ninguem planejou.
+    target_count = payload.get("__target_count__")
+    if not isinstance(target_count, int) or isinstance(target_count, bool):
+        target_count = None
+
     # Loop on collision (extremely unlikely with 36^8 space + 10min TTL).
     for _ in range(5):
         token = generate_token()
         try:
-            await conn.execute(
-                """
-                INSERT INTO pending_confirmations
-                  (token, session_id, customer_id, operation_type, payload, blast_summary, expires_at)
-                VALUES ($1, $2, $3, $4, $5::jsonb, $6, now() + ($7 || ' minutes')::interval)
-                """,
-                token,
-                session_id,
-                customer_id,
-                operation_type,
-                json.dumps(payload),
-                blast_summary,
-                str(ttl_minutes),
-            )
+            # Mesma transacao: pendencia sem trilha e exatamente o defeito que o
+            # F148 descreve, entao as duas escritas vivem ou morrem juntas. Em
+            # colisao de token o savepoint desfaz as duas e o retry recomeca limpo.
+            async with conn.transaction():
+                await conn.execute(
+                    """
+                    INSERT INTO pending_confirmations
+                      (token, session_id, customer_id, operation_type, payload, blast_summary, expires_at)
+                    VALUES ($1, $2, $3, $4, $5::jsonb, $6, now() + ($7 || ' minutes')::interval)
+                    """,
+                    token,
+                    session_id,
+                    customer_id,
+                    operation_type,
+                    json.dumps(payload),
+                    blast_summary,
+                    str(ttl_minutes),
+                )
+                await audit_log.record(
+                    conn,
+                    manager_id=manager_id,
+                    session_id=session_id,
+                    customer_id=customer_id,
+                    action_type="mutate",
+                    operation=operation_type,
+                    target_count=target_count,
+                    status="success",
+                    dry_run=True,
+                )
             return token
         except asyncpg.UniqueViolationError:
             continue

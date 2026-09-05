@@ -7,9 +7,15 @@ Tools register their builders here at import time so the apply_change
 tool can dispatch by operation_type without coupling to specific tools.
 """
 
-import contextlib
+import importlib
+import pathlib
+import pkgutil
 from collections.abc import Callable
 from typing import Any
+
+import structlog
+
+log = structlog.get_logger(__name__)
 
 # Builder signature: (client, customer_id, payload) -> list of MutateOperations
 MutateBuilder = Callable[[Any, str, dict[str, Any]], list[Any]]
@@ -39,30 +45,24 @@ def reset() -> None:
 
 
 def import_all_builders() -> None:
-    """Eagerly import every mutate module so its register_builder runs.
+    """Importa TODO modulo do pacote para que seus `register_builder` rodem.
 
-    Imports are wrapped in contextlib.suppress(ImportError) defensively
-    so a missing builder module doesn't crash apply_change at startup.
+    Varre o pacote em vez de listar (F150). A versao anterior mantinha uma lista
+    de imports escrita a mao, e ela DIVERGIU: `mutates/ad_schedule.py` declarava
+    `@register_builder("update_ad_schedule")` mas nao estava na lista, entao o
+    decorator nunca rodava. A tool foi para producao capaz de PREVER e incapaz de
+    APLICAR — `apply_change` respondia "No mutate builder registered", e o gestor
+    via so "Erro interno". Lista paralela mantida por memoria humana diverge; a
+    unica fonte que nao diverge do pacote e o proprio pacote.
+
+    Falha de import de UM modulo nao derruba os outros — mas tambem nao passa em
+    silencio, que era a outra metade do problema: `contextlib.suppress` engolia
+    tudo sem deixar rastro. Agora vira `log.exception`, alertavel.
     """
-    with contextlib.suppress(ImportError):
-        from src.google_ads.mutates import campaigns  # noqa: F401
-    with contextlib.suppress(ImportError):
-        from src.google_ads.mutates import ad_groups  # noqa: F401
-    with contextlib.suppress(ImportError):
-        from src.google_ads.mutates import ads  # noqa: F401
-    with contextlib.suppress(ImportError):
-        from src.google_ads.mutates import bulk  # noqa: F401
-    with contextlib.suppress(ImportError):
-        from src.google_ads.mutates import keywords  # noqa: F401
-    with contextlib.suppress(ImportError):
-        from src.google_ads.mutates import negatives  # noqa: F401
-    with contextlib.suppress(ImportError):
-        from src.google_ads.mutates import recommendations  # noqa: F401
-    with contextlib.suppress(ImportError):
-        from src.google_ads.mutates import audiences  # noqa: F401
-    with contextlib.suppress(ImportError):
-        from src.google_ads.mutates import conversion_actions  # noqa: F401
-    with contextlib.suppress(ImportError):
-        from src.google_ads.mutates import conversion_value_rules  # noqa: F401
-    with contextlib.suppress(ImportError):
-        from src.google_ads.mutates import assets  # noqa: F401
+    for info in pkgutil.iter_modules([str(pathlib.Path(__file__).parent)]):
+        if info.name.startswith("_"):
+            continue
+        try:
+            importlib.import_module(f"{__package__}.{info.name}")
+        except Exception:
+            log.exception("mutate_builder_import_failed", modulo=info.name)

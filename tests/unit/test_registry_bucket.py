@@ -10,7 +10,9 @@ import pytest
 
 from src.mcp.tools._registry import (
     _TOOLS,
+    all_tools,
     get_tool,
+    import_all_tools,
     register_tool,
 )
 
@@ -73,3 +75,30 @@ def test_register_tool_bucket_invalid_raises():
     finally:
         # Defensive cleanup — should never be in registry due to ValueError before insertion
         _TOOLS.pop(name, None)
+
+
+def test_prefixo_da_descricao_concorda_com_o_bucket() -> None:
+    """O prefixo e o bucket sao a MESMA afirmacao dita em dois lugares.
+
+    O `bucket` decide se a tool entra no handshake (`anthropic/alwaysLoad`); o
+    prefixo `[CORE]`/`[DEFER]` e o que o modelo LE na descricao. Reclassificar
+    mexendo so no kwarg deixa a descricao mentindo, e nada quebra — o servidor
+    sobe, os testes passam, e a tool se anuncia como o oposto do que e.
+
+    Guard de PROPRIEDADE, nao de lista: vale para toda tool registrada, entao
+    tool nova nasce coberta sem ninguem lembrar de inscreve-la aqui.
+    """
+    import_all_tools()
+
+    divergentes = [
+        (t.name, t.bucket, t.description[:20])
+        for t in all_tools()
+        if not (
+            (t.bucket == "always" and t.description.startswith("[CORE] "))
+            or (t.bucket == "defer" and t.description.startswith("[DEFER] "))
+        )
+    ]
+
+    assert not divergentes, "prefixo da descricao diverge do bucket (ou falta): " + "; ".join(
+        f"{n}: bucket={b} descricao={d!r}" for n, b, d in divergentes
+    )

@@ -1,5 +1,9 @@
 from datetime import date
 from types import SimpleNamespace
+from typing import Any
+from uuid import uuid4
+
+import pytest
 
 from src.google_ads.performance_breakdown import (
     _common_metrics,
@@ -7,6 +11,16 @@ from src.google_ads.performance_breakdown import (
     build_performance_breakdown_query,
     parse_performance_row,
 )
+from src.mcp.tools import get_performance_breakdown as mod
+
+
+@pytest.fixture(autouse=True)
+def _ctx():
+    from src.mcp.context import McpRequestContext, clear_current, set_current
+
+    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
+    yield
+    clear_current()
 
 
 def test_validate_combo_entity_without_breakdown_ok():
@@ -29,6 +43,20 @@ def test_validate_combo_entity_with_breakdown_rejected():
     msg = _validate_combo("campaign", "device")
     assert msg is not None
     assert "account" in msg.lower()
+    # Fix Minor 3 (revisao final): a mensagem tinha ficado falsa depois que
+    # campaign+hourly passou a ser aceito — so mandava pro agregado de conta,
+    # escondendo que o combo novo existe. "hourly"/"campaign_ids" so aparecem
+    # aqui se o texto documentar de verdade a combinacao nova (o input desta
+    # chamada e level="campaign"+breakdown="device", entao nao vazam por eco).
+    assert "hourly" in msg.lower()
+    assert "campaign_ids" in msg
+
+
+def test_campaign_ids_schema_recusa_id_repetido_na_borda():
+    """Fix Important 1 (revisao final): uniqueItems e a metade 'recusa na
+    borda' do fix — a dedup em runtime (test_campaign_hourly_campaign_ids_
+    repetido_nao_dobra_linhas_nem_soma) e a outra metade, defesa em profundidade."""
+    assert mod._SCHEMA["properties"]["campaign_ids"]["uniqueItems"] is True
 
 
 def test_common_metrics_happy():
@@ -226,3 +254,274 @@ def test_parse_account_hourly():
     )
     out = parse_performance_row(row, "account", "hourly")
     assert out["breakdown"] == {"hour": 11, "day_of_week": "MONDAY"}
+
+
+def test_campaign_mais_hourly_deixa_de_ser_recusado():
+    assert _validate_combo("campaign", "hourly") is None
+
+
+def test_outros_breakdowns_seguem_recusados_em_entity_level():
+    """Só `hourly` abriu. `geo` continua fora: é regra de merge, não nível."""
+    assert _validate_combo("campaign", "geo") is not None
+    assert _validate_combo("ad_group", "hourly") is not None
+
+
+# --- Task 5: campaign+hourly na TOOL (particao default, raw_grid opt-in) -------
+#
+# Nao existia harness async de tool neste arquivo (so testes puros de
+# _validate_combo/parse_performance_row) — _wire_bd e a fixture _ctx acima
+# seguem o mesmo padrao de _fake_run_report (test_get_ad_schedule.py) e _wire
+# (test_update_ad_schedule.py).
+
+
+def _wire_bd(monkeypatch, *, celulas: list[dict[str, Any]]) -> list[str]:
+    """run_report falso: devolve `celulas` pra query com segments.hour, [] no resto.
+
+    day_hour_metrics_query e as demais queries de campaign (build_performance_
+    breakdown_query) comecam todas com `FROM campaign` — o despacho tem que casar
+    `segments.hour`, a marca exclusiva da conjunta dia x hora, ANTES de qualquer
+    despacho generico por `FROM <recurso>` (mesmo cuidado do _fake_run_report).
+    """
+    chamadas: list[str] = []
+
+    async def _run(**kwargs: Any) -> list[dict[str, Any]]:
+        q = kwargs["query"]
+        chamadas.append(q)
+        if "segments.hour" in q:
+            return celulas
+        return []
+
+    monkeypatch.setattr("src.mcp.tools.get_performance_breakdown.run_report", _run)
+    return chamadas
+
+
+@pytest.mark.asyncio
+async def test_campaign_hourly_devolve_particao_e_nao_168_celulas(monkeypatch):
+    """3 linhas por campanha, nao 168. O default de limit=100 truncaria antes
+    de terminar UMA campanha, e tool que trunca em uso normal nasce quebrada."""
+    _wire_bd(
+        monkeypatch,
+        celulas=[
+            {
+                "campaign_id": "1",
+                "day_of_week": "MONDAY",
+                "hour": 9,
+                "cost_micros": 100_000_000,
+                "conversions": 5.0,
+            },
+            {
+                "campaign_id": "1",
+                "day_of_week": "SUNDAY",
+                "hour": 3,
+                "cost_micros": 40_000_000,
+                "conversions": 1.0,
+            },
+        ],
+    )
+    out = await mod.get_performance_breakdown(
+        {
+            "customer_id": "1234567890",
+            "level": "campaign",
+            "breakdown": "hourly",
+            "campaign_ids": ["1"],
+        }
+    )
+    blocos = {r["bloco"] for r in out["rows"]}
+    assert blocos == {"comercial", "fora_de_hora", "fim_de_semana", "outros"}
+    assert len(out["rows"]) == 4
+    assert out["truncated"] is False
+    # Achado 1 (fix round 1): o caminho novo passa a devolver o mesmo envelope
+    # do caminho generico da tool (customer_id/level/breakdown/period), aditivo
+    # ao truncated que so este caminho tem — sem isso, o consumidor recebe
+    # formas diferentes conforme o combo, e period e a unica forma de saber a
+    # janela concreta que o preset resolveu (no fuso da conta).
+    assert out["customer_id"] == "1234567890"
+    assert out["level"] == "campaign"
+    assert out["breakdown"] == "hourly"
+    assert set(out["period"]) == {"from", "to"}
+    assert date.fromisoformat(out["period"]["from"]) <= date.fromisoformat(out["period"]["to"])
+
+
+@pytest.mark.asyncio
+async def test_campaign_hourly_exige_campaign_ids(monkeypatch):
+    out = await mod.get_performance_breakdown(
+        {"customer_id": "1234567890", "level": "campaign", "breakdown": "hourly"}
+    )
+    assert out["status"] == "error"
+    assert "campaign_ids" in out["error_message"]
+
+
+# raw_grid nao vem no Step 1 do brief, mas o proprio brief documenta o contrato
+# ("Interfaces": sem a flag particao, com ela grade crua + teto) — sem estes dois
+# testes o ramo raw_grid ia pra producao com zero cobertura.
+
+
+@pytest.mark.asyncio
+async def test_raw_grid_devolve_celulas_cruas_sem_particao(monkeypatch):
+    celulas = [
+        {
+            "campaign_id": "1",
+            "day_of_week": "MONDAY",
+            "hour": 9,
+            "cost_micros": 100_000_000,
+            "conversions": 5.0,
+        },
+        {
+            "campaign_id": "1",
+            "day_of_week": "SUNDAY",
+            "hour": 3,
+            "cost_micros": 40_000_000,
+            "conversions": 1.0,
+        },
+    ]
+    _wire_bd(monkeypatch, celulas=celulas)
+    out = await mod.get_performance_breakdown(
+        {
+            "customer_id": "1234567890",
+            "level": "campaign",
+            "breakdown": "hourly",
+            "campaign_ids": ["1"],
+            "raw_grid": True,
+        }
+    )
+    assert out["rows"] == celulas, "raw_grid devolve as celulas como vieram, sem passar por bloco"
+    assert all("bloco" not in r for r in out["rows"])
+    assert out["truncated"] is False
+    # Achado 1 (fix round 1): envelope aditivo tambem no ramo raw_grid.
+    assert out["customer_id"] == "1234567890"
+    assert out["level"] == "campaign"
+    assert out["breakdown"] == "hourly"
+    assert set(out["period"]) == {"from", "to"}
+    assert date.fromisoformat(out["period"]["from"]) <= date.fromisoformat(out["period"]["to"])
+
+
+@pytest.mark.asyncio
+async def test_raw_grid_trunca_no_teto_168_por_campanha(monkeypatch):
+    """teto = 168 x len(campaign_ids); acima disso `truncated` tem que avisar."""
+    celulas = [
+        {
+            "campaign_id": "1",
+            "day_of_week": "MONDAY",
+            "hour": i % 24,
+            "cost_micros": 1_000_000,
+            "conversions": 1.0,
+        }
+        for i in range(170)
+    ]
+    _wire_bd(monkeypatch, celulas=celulas)
+    out = await mod.get_performance_breakdown(
+        {
+            "customer_id": "1234567890",
+            "level": "campaign",
+            "breakdown": "hourly",
+            "campaign_ids": ["1"],
+            "raw_grid": True,
+        }
+    )
+    assert len(out["rows"]) == 168
+    assert out["truncated"] is True
+    # Achado 1 (fix round 1): envelope aditivo tambem quando trunca.
+    assert out["customer_id"] == "1234567890"
+    assert out["level"] == "campaign"
+    assert out["breakdown"] == "hourly"
+    assert set(out["period"]) == {"from", "to"}
+    assert date.fromisoformat(out["period"]["from"]) <= date.fromisoformat(out["period"]["to"])
+
+
+# --- Fix round 1, Achado 2: teto e filtro nunca exercitados com >1 campanha ---
+#
+# Os 4 testes acima usam todos campaign_ids=["1"]. Com N=1, teto=168*len(...)
+# e um 168 cravado sao indistinguiveis, e "filtra celulas por campanha" e "usa
+# todas as celulas pra cada campanha" tambem — as duas regressoes passariam
+# verdes. So a segunda campanha separa os dois pares.
+
+
+@pytest.mark.asyncio
+async def test_campaign_hourly_duas_campanhas_teto_multiplica_e_celulas_nao_vazam(monkeypatch):
+    """2 campanhas x 100 celulas (200 < 336 = 168*2 -> so falso se o teto
+    multiplicar; um 168 cravado daria truncated=True aqui) com custo por
+    celula diferente entre elas: se celulas vazassem entre campanhas (bug
+    'usa todas pra cada'), a soma por campanha nao bateria com as 100 dela."""
+    celulas_1 = [
+        {
+            "campaign_id": "1",
+            "day_of_week": "MONDAY",
+            "hour": i % 24,
+            "cost_micros": 1_000_000,  # R$1,00 por celula
+            "conversions": 0.0,
+        }
+        for i in range(100)
+    ]
+    celulas_2 = [
+        {
+            "campaign_id": "2",
+            "day_of_week": "MONDAY",
+            "hour": i % 24,
+            "cost_micros": 5_000_000,  # R$5,00 por celula
+            "conversions": 0.0,
+        }
+        for i in range(100)
+    ]
+    _wire_bd(monkeypatch, celulas=celulas_1 + celulas_2)
+    out = await mod.get_performance_breakdown(
+        {
+            "customer_id": "1234567890",
+            "level": "campaign",
+            "breakdown": "hourly",
+            "campaign_ids": ["1", "2"],
+        }
+    )
+    assert out["truncated"] is False
+
+    rows_1 = [r for r in out["rows"] if r["campaign_id"] == "1"]
+    rows_2 = [r for r in out["rows"] if r["campaign_id"] == "2"]
+    assert len(rows_1) == 4
+    assert len(rows_2) == 4
+
+    # partition_by_blocks e TOTAL por construcao (todo celula cai em exatamente
+    # um balde) — a soma dos 4 blocos de cada campanha tem que bater exatamente
+    # com as 100 celulas dela, nem uma a mais vazada da outra campanha.
+    assert sum(r["cost_brl"] for r in rows_1) == pytest.approx(100.0)
+    assert sum(r["cost_brl"] for r in rows_2) == pytest.approx(500.0)
+    assert sum(r["cells"] for r in rows_1) == 100
+    assert sum(r["cells"] for r in rows_2) == 100
+
+
+# --- Fix Important 1 (revisao final): campaign_ids com id repetido dobrava --
+#
+# O schema tem uniqueItems agora, mas o loop (`for cid in campaign_ids`) tinha
+# que deduplicar por conta propria — defesa em profundidade caso o schema mude
+# ou seja contornado. Chamando a funcao direto (sem passar pela validacao de
+# schema do MCP) para provar que a PROPRIA funcao nao confia somente no schema.
+
+
+@pytest.mark.asyncio
+async def test_campaign_hourly_campaign_ids_repetido_nao_dobra_linhas_nem_soma(monkeypatch):
+    """Medido pela revisao: campanha com R$170,00, campaign_ids=["1","1"]
+    devolvia 8 linhas (2 blocos de 4 identicos) somando R$340,00 — o dobro do
+    gasto real, sem nenhum sinal pro chamador. Com o fix, tem que devolver as
+    MESMAS 4 linhas de campaign_ids=["1"], somando R$170,00."""
+    _wire_bd(
+        monkeypatch,
+        celulas=[
+            {
+                "campaign_id": "1",
+                "day_of_week": "MONDAY",
+                "hour": 9,
+                "cost_micros": 170_000_000,  # R$170,00
+                "conversions": 4.0,
+            },
+        ],
+    )
+    out = await mod.get_performance_breakdown(
+        {
+            "customer_id": "1234567890",
+            "level": "campaign",
+            "breakdown": "hourly",
+            "campaign_ids": ["1", "1"],
+        }
+    )
+    assert len(out["rows"]) == 4, "id repetido nao pode multiplicar os blocos (8 seria o bug)"
+    assert sum(r["cost_brl"] for r in out["rows"]) == pytest.approx(170.0)
+    assert sum(r["conversions"] for r in out["rows"]) == pytest.approx(4.0)
+    assert out["truncated"] is False
