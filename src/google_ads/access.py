@@ -80,13 +80,34 @@ async def ensure_account_access(
     # `is_active` antes de olhar o grant. Só no caminho de negação (raro) vale
     # a leitura extra pra escolher a mensagem certa; audit_log acima já
     # gravou o motivo genérico e não muda.
-    account = await google_ads_accounts.get_by_customer_id(conn, customer_id)
-    if account is None or not account.is_active:
-        raise AccountAccessDeniedError(
-            f"A conta {customer_id} não está no MCC (ou já saiu dele) — liberar "
-            "acesso no painel não resolve. O caminho é a conta voltar ao MCC e "
-            "o resync rodar."
+    #
+    # F91 (recidiva) — esta leitura roda DEPOIS do audit acima (que já está
+    # protegido por `best_effort`), mas continua dentro do mesmo closure que
+    # todo call-site passa a `run_with_reconnect`. Sem proteção própria, uma
+    # conexão morta aqui escaparia como `asyncpg.PostgresConnectionError` (ou
+    # `ConnectionError`), o retry re-executaria o closure INTEIRO — duplicando
+    # o INSERT do audit que já teve sucesso — e, se a conexão continuasse
+    # morta na 2ª tentativa, a negação limpa viraria um 500 cru em vez de
+    # `AccountAccessDeniedError`. O `else:` só escolhe a mensagem específica
+    # quando a leitura de fato respondeu; sem resposta, cai pra genérica —
+    # negar com menos detalhe é infinitamente melhor que quebrar.
+    try:
+        account = await google_ads_accounts.get_by_customer_id(conn, customer_id)
+    except (asyncpg.PostgresConnectionError, ConnectionError) as exc:
+        log.warning(
+            "account_access_lookup_failed",
+            manager_id=str(manager_id),
+            customer_id=customer_id,
+            operation=operation_name,
+            error=str(exc),
         )
+    else:
+        if account is None or not account.is_active:
+            raise AccountAccessDeniedError(
+                f"A conta {customer_id} não está no MCC (ou já saiu dele) — liberar "
+                "acesso no painel não resolve. O caminho é a conta voltar ao MCC e "
+                "o resync rodar."
+            )
     raise AccountAccessDeniedError(
         f"Você não tem acesso à conta {customer_id}. Peça ao admin pra liberar no painel."
     )
