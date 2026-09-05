@@ -70,6 +70,12 @@ async def upsert_many(
             time_zone = EXCLUDED.time_zone,
             is_test_account = EXCLUDED.is_test_account,
             is_active = true,
+            -- F128: a conta reapareceu, entao a serie de ausencias morre aqui.
+            -- Sem isto, cliente que volta chegaria ao limiar com ausencias
+            -- antigas e seria desativado logo apos ser reativado. Espelha
+            -- meta_ad_accounts.upsert_many (C1 da revisao de branch, 2026-09-05:
+            -- a clausula tinha ficado de fora do lado Google).
+            missed_syncs = 0,
             synced_at = now()
         """,
         rows,
