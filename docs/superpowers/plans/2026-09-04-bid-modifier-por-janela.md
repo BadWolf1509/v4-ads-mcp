@@ -254,13 +254,24 @@ Expected: FAIL no primeiro — os dois fingerprints saem iguais, porque a chave 
 ```python
     return {
         cid: sorted(
-            [*c.window.key(), c.bid_modifier] for c in atual.get(cid, [])
+            ([*c.window.key(), c.bid_modifier] for c in atual.get(cid, [])),
+            # Ruling 1 do scan: NUNCA comparar a 6a posicao diretamente — ela pode
+            # ser None num registro e float noutro, e `sorted` estouraria com
+            # TypeError no caminho de APPLY. Defesa contra estado NAO PROVADO
+            # alcancavel (duas criterias com a MESMA faixa e modificadores
+            # diferentes) — o SDK v24 recusa faixas sobrepostas
+            # (CriterionError.AD_SCHEDULE_TIME_INTERVALS_OVERLAP, revisao final
+            # da branch, Fix M5), mas o `key=` fica: e barato e o fingerprint le
+            # o ATUAL do Google, nao a entrada validada.
+            key=lambda linha: (linha[:5], linha[5] is None, linha[5] or 0.0),
         )
         for cid in campaign_ids
     }
 ```
 
-> ⚠️ `sorted` sobre listas que misturam `str`/`int`/`None` na última posição: como as 5 primeiras posições são sempre comparáveis e distintas por janela, a comparação nunca chega a comparar `None` com `float` — duas janelas com a mesma faixa não existem no mesmo dia (`validate_windows` recusa sobreposição). **Escreva um teste que prove isso** com duas janelas de modificadores diferentes em dias diferentes.
+> ⚠️ **Ruling 1 do scan de pré-voo — o `sorted` ingênuo estouraria.** Eu havia argumentado que as 5 primeiras posições são sempre distintas porque `validate_windows` recusa sobreposição. **O argumento não vale aqui:** o fingerprint é construído do **atual lido do Google**, não da entrada validada. Duas criterias com a mesma faixa e modificadores diferentes **poderiam** existir se alguém as criasse pela UI ou por outra API — e aí `sorted` levantaria `TypeError: '<' not supported between NoneType and float`, **no caminho de apply**. Daí a `key=` acima. **Escreva o teste do caso degenerado**: duas `CurrentWindow` com faixa idêntica, uma com modificador e outra sem, e assere que o fingerprint sai sem exceção e é determinístico entre duas chamadas.
+>
+> **Correção (revisão final da branch, Fix M5):** a frase acima afirmava que esse estado **existe** sem probe — e o SDK v24 contradiz: `CriterionError.AD_SCHEDULE_TIME_INTERVALS_OVERLAP` (=56) mostra que o Google **recusa** janelas sobrepostas, então duas criterias com a mesma faixa não foram provadas alcançáveis por nenhuma via. O `key=` continua — é defesa barata contra um estado não provado inalcançável, não prova de que ele exista —, mas a afirmação correta é essa, não a de cima. Afirmar superfície de API externa por analogia, sem probe, é o tripwire escrito do repo (CLAUDE.md).
 
 - [ ] **Step 4: rodar e ver passar**
 
@@ -356,7 +367,24 @@ Na construção das ops, troque o escalar pelo efetivo. Para o `add`:
         ]
 ```
 
-Para o `update`, o efetivo vem da janela **desejada** de mesma chave:
+**Ruling 2 do scan de pré-voo: a regra do efetivo vira helper, não expressão inline.**
+A versão que eu havia escrito usava walrus dentro de uma comprehension — válida, mas ilegível,
+e quem editasse depois quebraria sem perceber. Pior: a mesma regra aparece em **três**
+call-sites (op de `add`, op de `update`, e `bid_modifier_novo` do preview), e é exatamente o
+caso em que ela tem que morar num lugar só — a alternativa é a família do F81, cada lado certo
+sozinho e o trio errado junto.
+
+Em `src/google_ads/ad_schedule.py`, junto do domínio:
+
+```python
+def modificador_efetivo(janela: Window, escalar: float | None) -> float | None:
+    """F149: o modificador da JANELA vence; o escalar da chamada e o default de
+    quem nao trouxe o seu; ambos ausentes preserva o valor atual (None)."""
+    return janela.bid_modifier if janela.bid_modifier is not None else escalar
+```
+
+E na tool, os três call-sites passam a chamá-lo. Para o `update`, a janela desejada vem por
+chave:
 
 ```python
         desejada_por_chave = {w.key(): w for w in desired}
@@ -364,17 +392,15 @@ Para o `update`, o efetivo vem da janela **desejada** de mesma chave:
             {
                 "kind": "update",
                 "resource_name": c.resource_name,
-                "bid_modifier": (
-                    dw.bid_modifier
-                    if (dw := desejada_por_chave[c.window.key()]).bid_modifier is not None
-                    else bid_modifier
+                "bid_modifier": modificador_efetivo(
+                    desejada_por_chave[c.window.key()], bid_modifier
                 ),
             }
             for c in diff.to_update
         ]
 ```
 
-E no preview, `bid_modifier_novo` passa a ser esse mesmo efetivo, não o escalar.
+E no preview, `bid_modifier_novo` sai do **mesmo helper**, nunca do escalar direto.
 
 - [ ] **Step 4: rodar e ver passar**
 

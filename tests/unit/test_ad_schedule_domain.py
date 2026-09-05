@@ -14,10 +14,12 @@ from src.google_ads.ad_schedule import (
     CurrentWindow,
     MetricCell,
     Window,
+    bid_modifier_diverge,
     covers,
     diff_schedule,
     hours_per_week,
     partition_metrics,
+    schedule_fingerprint,
     summarize_current,
     validate_windows,
     window_from_input,
@@ -205,3 +207,173 @@ def test_summarize_current_sem_grade_e_24x7() -> None:
     assert summarize_current([]) == {"has_schedule": False, "windows": 0, "hours_per_week": 168.0}
     s = summarize_current([_cur(day="MONDAY"), _cur(day="TUESDAY")])
     assert s == {"has_schedule": True, "windows": 2, "hours_per_week": 20.0}
+
+
+def test_a_chave_da_janela_ignora_o_bid_modifier() -> None:
+    """Identidade e a FAIXA HORARIA. Se o modificador entrasse na chave, muda-lo
+    viraria remove+add: o criterion seria RECRIADO, e recriar custa ~14 dias de
+    re-learning — o mesmo custo que o caminho `no_changes` existe para evitar."""
+    a = Window("MONDAY", 7, 0, 17, 0, None)
+    b = Window("MONDAY", 7, 0, 17, 0, 1.3)
+    assert a.key() == b.key()
+    assert len(a.key()) == 5
+
+
+def test_window_from_input_le_o_modificador_quando_vem() -> None:
+    assert (
+        window_from_input(
+            {"day_of_week": "MONDAY", "start_hour": 7, "end_hour": 17, "bid_modifier": 1.3}
+        ).bid_modifier
+        == 1.3
+    )
+    assert (
+        window_from_input({"day_of_week": "MONDAY", "start_hour": 7, "end_hour": 17}).bid_modifier
+        is None
+    )
+
+
+def test_window_from_input_com_bid_modifier_null_explicito_preserva_none() -> None:
+    """Minor da Task 1 (deferido, revisao final): o comportamento ja estava certo
+    (`d.get("bid_modifier") is not None`, nao truthiness), so faltava cobertura.
+    `null` explicito e shape plausivel de chamador MCP dizendo "sem override" —
+    diferente de simplesmente OMITIR a chave, que e o caso ja coberto acima."""
+    assert (
+        window_from_input(
+            {"day_of_week": "MONDAY", "start_hour": 7, "end_hour": 17, "bid_modifier": None}
+        ).bid_modifier
+        is None
+    )
+
+
+def test_modificador_por_janela_atualiza_so_a_faixa_alvo() -> None:
+    """O ponto do F149: mudar UMA faixa sem achatar as outras, numa chamada."""
+    atual = [
+        CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.3),
+        CurrentWindow(Window("TUESDAY", 7, 0, 17, 0), "rn/2", "2", 0.8),
+    ]
+    desejada = [
+        Window("MONDAY", 7, 0, 17, 0, 1.5),
+        Window("TUESDAY", 7, 0, 17, 0),  # sem modificador proprio
+    ]
+    d = diff_schedule(atual, desejada, None)
+    assert d.to_add == () and d.to_remove == ()
+    assert [c.criterion_id for c in d.to_update] == ["1"], "so a alvo muda"
+
+
+def test_escalar_continua_valendo_como_default_das_janelas_sem_modificador() -> None:
+    """Compatibilidade: quem so passa o escalar ve o comportamento de hoje."""
+    atual = [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.0)]
+    d = diff_schedule(atual, [Window("MONDAY", 7, 0, 17, 0)], 1.1)
+    assert [c.criterion_id for c in d.to_update] == ["1"]
+
+
+def test_janela_com_modificador_igual_ao_atual_nao_vira_update() -> None:
+    """Idempotencia: mandar o valor que ja esta la nao emite operacao."""
+    atual = [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.3)]
+    d = diff_schedule(atual, [Window("MONDAY", 7, 0, 17, 0, 1.3)], None)
+    assert d.to_update == ()
+
+
+# --- Fix C1 (revisao final): float32 do Google vs. float64 do gestor -----------
+#
+# `bid_modifier` e `proto.FLOAT` (32 bits) no SDK v24. O gestor pede 1.4 (float64
+# exato); o Google devolve 1.399999976158142 na proxima leitura. Comparar por
+# `==` nunca converge: T4 do runbook 3b.44 (reenviar a MESMA grade -> no_changes)
+# e T5 (janela com valor igual ao atual) falhavam medido contra o dominio real.
+
+
+def test_bid_modifier_float32_do_google_nao_reabre_update_por_arredondamento() -> None:
+    """Sem esse teste o bug volta: 1.4 pedido, 1.399999976158142 lido de volta —
+    tem que ser idempotente, nao gerar update."""
+    atual = [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.399999976158142)]
+    d = diff_schedule(atual, [Window("MONDAY", 7, 0, 17, 0, 1.4)], None)
+    assert d.to_update == ()
+
+
+def test_bid_modifier_com_diferenca_real_ainda_vira_update() -> None:
+    """A tolerancia nao pode mascarar mudanca de verdade: 1.4 -> 1.5 e diferenca
+    real (>= 0.01, a granularidade que o Google aceita), muito acima do erro de
+    arredondamento do float32 (~1e-7). Sem este teste, um rel_tol frouxo demais
+    passaria calado."""
+    atual = [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.399999976158142)]
+    d = diff_schedule(atual, [Window("MONDAY", 7, 0, 17, 0, 1.5)], None)
+    assert [c.criterion_id for c in d.to_update] == ["1"]
+
+
+def test_bid_modifier_none_atual_com_efetivo_novo_vira_update_sem_estourar() -> None:
+    """`math.isclose` nao aceita `None` — o atual pode ser `None` quando a janela
+    nunca teve bid_modifier. Tem que virar update (o efetivo diverge de "nada"),
+    nao estourar TypeError."""
+    atual = [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", None)]
+    d = diff_schedule(atual, [Window("MONDAY", 7, 0, 17, 0, 1.4)], None)
+    assert [c.criterion_id for c in d.to_update] == ["1"]
+
+
+def test_bid_modifier_diverge_tolera_float32_mas_nao_diferenca_real() -> None:
+    """O helper isolado, testado diretamente — mesma tolerancia que `diff_schedule`
+    e `apply_change` (`matches_requested`) compartilham."""
+    assert bid_modifier_diverge(1.399999976158142, 1.4) is False
+    assert bid_modifier_diverge(1.0, 1.5) is True
+    assert bid_modifier_diverge(None, 1.4) is True
+
+
+def test_modificador_da_janela_vence_mesmo_com_escalar_diferente_tambem_presente() -> None:
+    """Tabela do brief, coluna 'qualquer': o escalar e SO default, nunca compete.
+
+    Cenario construido para que as duas hipoteses previssem resultados OPOSTOS:
+    a janela ja esta em 1.5 e pede 1.5 (zero op), enquanto o escalar pede 2.0
+    (viraria update). `diff_schedule` so expoe `to_update`, entao a distincao tem
+    de vir da PRESENCA na tupla, nao do valor.
+    """
+    atual = [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.5)]
+    d = diff_schedule(atual, [Window("MONDAY", 7, 0, 17, 0, 1.5)], 2.0)
+    assert d.to_update == ()
+
+
+def test_fingerprint_detecta_mudanca_so_de_bid_modifier() -> None:
+    """Sem isto, alguem muda o modificador dentro do TTL e o apply nao percebe —
+    a concorrencia otimista da Ruling 10 ficaria cega justamente no campo que
+    este sprint promove a primeira classe."""
+    antes = {"1": [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.0)]}
+    depois = {"1": [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.3)]}
+    assert schedule_fingerprint(antes, ["1"]) != schedule_fingerprint(depois, ["1"])
+
+
+def test_fingerprint_continua_sobrevivendo_ao_json() -> None:
+    """Ruling 10: listas, nunca tuplas — o payload atravessa JSONB e tupla volta lista."""
+    import json
+
+    fp = schedule_fingerprint(
+        {"1": [CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.3)]}, ["1"]
+    )
+    assert json.loads(json.dumps(fp)) == fp
+
+
+def test_fingerprint_nao_estourra_com_modificadores_mistos_na_mesma_faixa() -> None:
+    """Ruling 1 do scan: NUNCA comparar a 6a posicao diretamente — ela pode
+    ser None num registro e float noutro, e `sorted` estouraria com TypeError.
+
+    Fix M5 (revisao final): o `key=` abaixo e defesa contra um estado que NAO
+    FOI PROVADO alcancavel (duas criterias com a MESMA faixa e modificadores
+    diferentes) — nao afirmacao de que ele exista. O SDK v24 traz
+    `CriterionError.AD_SCHEDULE_TIME_INTERVALS_OVERLAP` e o Google RECUSA
+    janelas sobrepostas; a premissa anterior ("existem se criadas pela UI ou
+    por outra API") nao tinha probe. A defesa fica porque e barata e o
+    fingerprint le o ATUAL do Google, nao a entrada validada.
+
+    Este teste assere que nao ha excecao e que e determinístico."""
+    # Duas criterias com faixa idêntica, uma com modificador, outra sem
+    misto = {
+        "1": [
+            CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/1", "1", 1.0),
+            CurrentWindow(Window("MONDAY", 7, 0, 17, 0), "rn/2", "2", None),
+        ]
+    }
+    # Nao deve estourar TypeError
+    fp1 = schedule_fingerprint(misto, ["1"])
+    fp2 = schedule_fingerprint(misto, ["1"])
+    # Determinístico
+    assert fp1 == fp2
+    # E deve ser uma lista (JSONB-safe)
+    assert isinstance(fp1["1"], list)
+    assert len(fp1["1"]) == 2

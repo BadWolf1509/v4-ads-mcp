@@ -16,6 +16,7 @@ from src.google_ads.ad_schedule import (
     Window,
     diff_schedule,
     hours_per_week,
+    modificador_efetivo,
     partition_metrics,
     schedule_fingerprint,
     summarize_current,
@@ -61,6 +62,13 @@ _JANELA = {
         "start_minute": {"type": "integer", "enum": [0, 15, 30, 45], "default": 0},
         "end_hour": {"type": "integer", "minimum": 0, "maximum": 24},
         "end_minute": {"type": "integer", "enum": [0, 15, 30, 45], "default": 0},
+        "bid_modifier": {
+            "type": "number",
+            "minimum": 0.1,
+            "maximum": 10.0,
+            "description": "Opcional, POR JANELA. Vence o bid_modifier da chamada, que vale "
+            "como default das janelas sem o seu. Ausente nos dois = preserva o valor atual.",
+        },
     },
     "required": ["day_of_week", "start_hour", "end_hour"],
     "additionalProperties": False,
@@ -92,7 +100,10 @@ _SCHEMA: dict[str, Any] = {
             "type": "number",
             "minimum": 0.1,
             "maximum": 10.0,
-            "description": "Opcional; aplica as janelas novas e ATUALIZA (sem recriar) as existentes que tenham valor diferente.",
+            "description": "Opcional; serve de DEFAULT para as janelas que nao trouxerem seu "
+            "proprio bid_modifier em windows[].bid_modifier, que VENCE quando presente. "
+            "Aplica as janelas novas e ATUALIZA (sem recriar) as existentes cujo valor "
+            "efetivo (o da janela, ou este default) divirja do atual.",
         },
         "date_range": {
             "type": "string",
@@ -124,7 +135,9 @@ _DESCRIPTION = (
     "Metricas por hora cheia (janelas com minutos sao aproximadas), janela default de 30 "
     "dias com override por date_range/start_date+end_date. Grade identica a atual = "
     "`status: no_changes`, ZERO operacoes, sem token (recriar criterios identicos custa "
-    "~14 dias de re-learning). Mudar so bid_modifier faz UPDATE do criterio, nao recria. "
+    "~14 dias de re-learning). Mudar so bid_modifier faz UPDATE do criterio, nao recria "
+    "— o modificador tambem pode vir POR JANELA em `windows[].bid_modifier`, que vence "
+    "o bid_modifier da chamada; este ultimo vale como default para quem nao trouxer o seu. "
     "Orcamento compartilhado: desligar faixa NAO economiza, REALOCA gasto para as faixas "
     "e campanhas irmas do mesmo orcamento (inclusive as fora do lote) — o preview lista "
     "`shared_budgets` com as irmas; nao recusa. Minutos so 0/15/30/45 (API); `end_hour: 24` "
@@ -251,6 +264,12 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
     )
 
     atual = rows_to_current(grade_rows)
+    # `desired` e a MESMA lista para todas as campanhas do lote (o parametro `windows`
+    # nao varia por campanha) — construir o indice uma vez fora do loop evita refazer
+    # o dict a cada `cid`. Chave por `.key()` (identidade de 5 posicoes, sem o
+    # modificador): e exatamente o que `c.window.key()` devolve para localizar de
+    # volta a janela DESEJADA correspondente a uma `CurrentWindow` do `to_update`.
+    desejada_por_chave = {w.key(): w for w in desired}
     ops: list[dict[str, Any]] = []
     preview: dict[str, Any] = {}
     for cid in campaign_ids:
@@ -288,29 +307,52 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
             "aviso_cobertura": _aviso_cobertura(
                 cobertura["reduz"], orcamento_compartilhado.get(cid, False)
             ),
-            "windows_added": [_w(w) for w in diff.to_add],
+            "windows_added": [
+                {**_w(w), "bid_modifier": modificador_efetivo(w, bid_modifier)} for w in diff.to_add
+            ],
             "windows_removed": [_w(c.window) for c in diff.to_remove],
             # O valor SOBRESCRITO ao lado do novo, como a §4.2 faz com o CPA do
-            # que sai. `bid_modifier` e escalar por chamada, entao informa-lo
-            # achata TODAS as janelas do conjunto — quem nao ver o antigo aqui so
-            # descobre o que perdeu depois do apply_change.
+            # que sai. F149: `bid_modifier_novo` e o EFETIVO da janela (o dela
+            # mesma, se trouxe; senao o escalar da chamada como default) — quem
+            # nao ver o antigo aqui so descobre o que perdeu depois do apply_change.
             "bid_modifier_updated": [
                 {
                     **_w(c.window),
-                    "bid_modifier_antigo": c.bid_modifier,
-                    "bid_modifier_novo": bid_modifier,
+                    # Fix C1 (revisao final): o Google guarda bid_modifier em
+                    # proto.FLOAT (32 bits) e devolve 1.4 como 1.399999976158142
+                    # — 17 digitos numa resposta que o gestor le e ruido puro.
+                    # Arredondar SO na exibicao; a comparacao que decide
+                    # `to_update` (`diff_schedule`) usa o valor cru com
+                    # tolerancia via `bid_modifier_diverge`, nunca o arredondado.
+                    "bid_modifier_antigo": (
+                        round(c.bid_modifier, 2) if c.bid_modifier is not None else None
+                    ),
+                    "bid_modifier_novo": modificador_efetivo(
+                        desejada_por_chave[c.window.key()], bid_modifier
+                    ),
                 }
                 for c in diff.to_update
             ],
             "metrics": partition_metrics(cells, before, desired),
         }
         ops += [
-            {"kind": "add", "campaign_id": cid, "window": _w(w), "bid_modifier": bid_modifier}
+            {
+                "kind": "add",
+                "campaign_id": cid,
+                "window": _w(w),
+                "bid_modifier": modificador_efetivo(w, bid_modifier),
+            }
             for w in diff.to_add
         ]
         ops += [{"kind": "remove", "resource_name": c.resource_name} for c in diff.to_remove]
         ops += [
-            {"kind": "update", "resource_name": c.resource_name, "bid_modifier": bid_modifier}
+            {
+                "kind": "update",
+                "resource_name": c.resource_name,
+                "bid_modifier": modificador_efetivo(
+                    desejada_por_chave[c.window.key()], bid_modifier
+                ),
+            }
             for c in diff.to_update
         ]
 
@@ -359,6 +401,15 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
         # sem o segundo, ele aplica resource_names de ate 10 min atras contra um
         # estado que ninguem verificou (Ruling 10 — concorrencia otimista).
         "windows": [_w(w) for w in desired],
+        # Fix I2 (revisao final): chave PARALELA a `windows`, mesma ordem — nao
+        # dentro de `_w()`, que o builder tambem consome (`ops[*]["window"]` usa
+        # a MESMA funcao, e ganhar um campo que o builder ignora e risco a toa).
+        # Sem isto, `matches_requested` do apply_change so comparava a
+        # IDENTIDADE da faixa, nunca conferia se o bid_modifier efetivamente
+        # aplicado bateu com o pedido — a UNICA coisa que este sprint
+        # acrescentou nunca entrava na confirmacao pos-apply (a mesma familia
+        # do F150: a UI do Google ja falhou em silencio duas vezes nesta conta).
+        "windows_bid_modifiers": [modificador_efetivo(w, bid_modifier) for w in desired],
         "current_keys": schedule_fingerprint(atual, campaign_ids),
         "ops": ops,
         "__target_count__": target_count,

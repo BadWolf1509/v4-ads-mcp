@@ -12,6 +12,8 @@ import structlog
 
 from src.db import connection
 from src.google_ads.ad_schedule import (
+    CurrentWindow,
+    bid_modifier_diverge,
     schedule_fingerprint,
     summarize_current,
     window_from_input,
@@ -44,6 +46,40 @@ _SCHEMA: dict[str, Any] = {
     "required": ["confirmation_token"],
     "additionalProperties": False,
 }
+
+
+def _bid_modifier_bate(atual: float | None, esperado: float | None) -> bool:
+    """Fix I2 (revisao final): `esperado` vem de `windows_bid_modifiers` (payload
+    do update_ad_schedule) — o efetivo POR JANELA que a Task 4 ja calculava, so
+    que nunca guardado pra confirmacao. `esperado is None` quer dizer "esta
+    janela nao pediu bid_modifier nenhum" (nem por ela, nem pelo escalar da
+    chamada) — nesse caso so a IDENTIDADE importa, e a comparacao passa por
+    definicao. Com tolerancia (`bid_modifier_diverge`), a MESMA do item C1 —
+    e a mesma comparacao Google-contra-pedido, so que na confirmacao pos-apply
+    em vez do dry-run."""
+    if esperado is None:
+        return True
+    return not bid_modifier_diverge(atual, esperado)
+
+
+def _matches_requested(
+    servindo: list[CurrentWindow],
+    pedidas_com_modificador: dict[tuple[str, int, int, int, int], float | None],
+) -> bool:
+    """Fix I2 (revisao final): antes, `matches_requested` comparava SO o conjunto
+    de identidades de janela (`{c.window.key()} == pedidas`) — a unica coisa que
+    esta sprint acrescentou, o bid_modifier por janela, nunca entrava na
+    confirmacao. O Google podia aceitar a operacao e aplicar um valor diferente
+    do pedido (clamp, arredondamento, no-op) e `matches_requested` diria `true`
+    do mesmo jeito. Agora confirma as DUAS coisas: identidade (chaves iguais) E
+    o bid_modifier efetivo de cada janela pedida."""
+    atual = {c.window.key(): c.bid_modifier for c in servindo}
+    if set(atual) != set(pedidas_com_modificador):
+        return False
+    return all(
+        _bid_modifier_bate(atual[chave], esperado)
+        for chave, esperado in pedidas_com_modificador.items()
+    )
 
 
 @register_tool(
@@ -136,7 +172,15 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
         # Ruling 3 (ledger): estas chaves sao obrigatorias no payload (a tool sempre
         # grava); `.get(..., <default>)` seria o fallback calado que a Task 4 proibiu.
         campaign_ids = list(saved.payload["campaign_ids"])
-        pedidas = {window_from_input(w).key() for w in saved.payload["windows"]}
+        # Fix I2 (revisao final): `windows_bid_modifiers` e chave PARALELA a
+        # `windows` (mesma ordem, gravada pelo update_ad_schedule) — dict por
+        # chave de janela, nao lista, pra `_matches_requested` comparar direto.
+        pedidas_com_modificador = {
+            window_from_input(w).key(): m
+            for w, m in zip(
+                saved.payload["windows"], saved.payload["windows_bid_modifiers"], strict=True
+            )
+        }
 
         # Ruling 10 — concorrencia otimista. O que viaja no token e um DELTA calculado
         # ate 10 min antes, carregando resource_names observados naquele instante. Se a
@@ -204,7 +248,9 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
                 cid: {
                     **summarize_current(servindo.get(cid, [])),
                     "windows": [r for r in rows if r["campaign_id"] == cid],
-                    "matches_requested": {c.window.key() for c in servindo.get(cid, [])} == pedidas,
+                    "matches_requested": _matches_requested(
+                        servindo.get(cid, []), pedidas_com_modificador
+                    ),
                 }
                 for cid in campaign_ids
             }

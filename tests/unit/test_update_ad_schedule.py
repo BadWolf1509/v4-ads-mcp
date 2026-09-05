@@ -289,8 +289,35 @@ async def test_payload_leva_a_grade_pedida_e_o_fingerprint_do_baseline(monkeypat
             "end_minute": 0,
         }
     ]
-    assert p["current_keys"] == {"1": [["MONDAY", 7, 0, 17, 0], ["SATURDAY", 7, 0, 17, 0]]}, (
-        "listas, nao tuplas: o payload atravessa JSON"
+    assert p["current_keys"] == {
+        "1": [["MONDAY", 7, 0, 17, 0, None], ["SATURDAY", 7, 0, 17, 0, None]]
+    }, "listas, nao tuplas: o payload atravessa JSON"
+
+
+@pytest.mark.asyncio
+async def test_payload_leva_o_bid_modifier_efetivo_por_janela_em_chave_paralela(
+    monkeypatch,
+) -> None:
+    """Fix I2 (revisao final): sem isto, `apply_change` nao tinha como confirmar
+    `matches_requested` contra o bid_modifier pedido — so a identidade da faixa
+    viajava no payload. Chave PARALELA a `windows`, mesma ordem — nao dentro de
+    `_w()`, que o builder tambem consome."""
+    captured = _wire(monkeypatch, grade=[], orcamentos=[_orc()], metricas=[])
+    await mod.update_ad_schedule(
+        {
+            "customer_id": "1234567890",
+            "campaign_ids": ["1"],
+            "bid_modifier": 0.9,
+            "windows": [
+                {"day_of_week": "MONDAY", "start_hour": 7, "end_hour": 17, "bid_modifier": 1.5},
+                {"day_of_week": "TUESDAY", "start_hour": 7, "end_hour": 17},
+            ],
+        }
+    )
+    p = captured["payload"]
+    assert len(p["windows"]) == 2 == len(p["windows_bid_modifiers"])
+    assert p["windows_bid_modifiers"] == [1.5, 0.9], (
+        "MONDAY traz o proprio; TUESDAY herda o escalar"
     )
 
 
@@ -358,8 +385,8 @@ async def test_lote_de_duas_campanhas_com_grades_diferentes(monkeypatch) -> None
         "customers/1234567890/campaignCriteria/2~20",
     ]
     assert captured["payload"]["current_keys"] == {
-        "1": [["SATURDAY", 7, 0, 17, 0]],
-        "2": [["SUNDAY", 7, 0, 17, 0]],
+        "1": [["SATURDAY", 7, 0, 17, 0, None]],
+        "2": [["SUNDAY", 7, 0, 17, 0, None]],
     }
 
 
@@ -610,7 +637,77 @@ async def test_bid_modifier_updated_mostra_o_valor_antigo_ao_lado_do_novo(monkey
     assert len(atualizadas) == 1
     assert atualizadas[0]["bid_modifier_antigo"] == 1.3
     assert atualizadas[0]["bid_modifier_novo"] == 0.8
+
+
+@pytest.mark.asyncio
+async def test_bid_modifier_antigo_e_arredondado_no_preview(monkeypatch) -> None:
+    """Fix C1 (revisao final): o Google devolve bid_modifier em proto.FLOAT (32
+    bits) — 1.4 volta 1.399999976158142. 17 digitos numa resposta que o gestor
+    le e ruido; a exibicao arredonda. A COMPARACAO que decide se isto e um
+    update (`diff_schedule`, dominio) usa o valor cru com tolerancia — este
+    teste ve os dois efeitos juntos: o update foi detectado (a diferenca de
+    1.399999976158142 pra 1.5 e real) e o antigo aparece arredondado.
+    """
+    grade = [_janela_row(day="MONDAY", sh=7, eh=17, bm=1.399999976158142)]
+    _wire(monkeypatch, grade=grade, orcamentos=[_orc()], metricas=[])
+    out = await mod.update_ad_schedule(
+        {
+            "customer_id": "1234567890",
+            "campaign_ids": ["1"],
+            "windows": [
+                {"day_of_week": "MONDAY", "start_hour": 7, "end_hour": 17, "bid_modifier": 1.5}
+            ],
+        }
+    )
+    atualizadas = out["preview"]["1"]["bid_modifier_updated"]
+    assert len(atualizadas) == 1
+    assert atualizadas[0]["bid_modifier_antigo"] == 1.4
+    assert atualizadas[0]["bid_modifier_novo"] == 1.5
     assert atualizadas[0]["day_of_week"] == "MONDAY", "os campos da janela seguem ali"
+
+
+# --- F149 (task 4): bid_modifier POR JANELA vence o escalar da chamada ----------
+
+
+@pytest.mark.asyncio
+async def test_modificador_por_janela_chega_nas_ops(monkeypatch) -> None:
+    grade = [
+        _janela_row(day="MONDAY", sh=7, eh=17, crit="1", bm=1.3),
+        _janela_row(day="TUESDAY", sh=7, eh=17, crit="2", bm=0.8),
+    ]
+    cap = _wire(monkeypatch, grade=grade, orcamentos=[_orc()], metricas=[])
+    await mod.update_ad_schedule(
+        {
+            "customer_id": "1234567890",
+            "campaign_ids": ["1"],
+            "windows": [
+                {"day_of_week": "MONDAY", "start_hour": 7, "end_hour": 17, "bid_modifier": 1.5},
+                {"day_of_week": "TUESDAY", "start_hour": 7, "end_hour": 17},
+            ],
+        }
+    )
+    ops = cap["payload"]["ops"]
+    updates = [o for o in ops if o["kind"] == "update"]
+    assert len(updates) == 1, "so a faixa alvo muda; a outra e preservada"
+    assert updates[0]["bid_modifier"] == 1.5
+
+
+@pytest.mark.asyncio
+async def test_preview_mostra_o_novo_por_janela_e_nao_o_escalar(monkeypatch) -> None:
+    grade = [_janela_row(day="MONDAY", sh=7, eh=17, crit="1", bm=1.3)]
+    _wire(monkeypatch, grade=grade, orcamentos=[_orc()], metricas=[])
+    out = await mod.update_ad_schedule(
+        {
+            "customer_id": "1234567890",
+            "campaign_ids": ["1"],
+            "windows": [
+                {"day_of_week": "MONDAY", "start_hour": 7, "end_hour": 17, "bid_modifier": 1.5}
+            ],
+        }
+    )
+    linha = out["preview"]["1"]["bid_modifier_updated"][0]
+    assert linha["bid_modifier_antigo"] == 1.3
+    assert linha["bid_modifier_novo"] == 1.5
 
 
 @pytest.mark.asyncio
@@ -730,3 +827,60 @@ async def test_clear_schedule_nao_dispara_aviso_de_orcamento_compartilhado(monke
         {"customer_id": "1234567890", "campaign_ids": ["1"], "clear_schedule": True}
     )
     assert out["preview"]["1"]["aviso_cobertura"] is None
+
+
+# --- ACHADO 2 (Fix 1): preview de `windows_added` mostra o bid_modifier efetivo ------
+
+
+@pytest.mark.asyncio
+async def test_preview_windows_added_mostra_bid_modifier_efetivo_por_janela(monkeypatch) -> None:
+    """Duas janelas novas: uma com override proprio, outra herdando o escalar.
+
+    O preview e o que o gestor confirma, entao cada linha deve mostrar o valor
+    EFETIVO que sera aplicado — nao o valor raw da input (que pode ser None
+    mesmo quando o efetivo e o escalar).
+    """
+    grade = []  # Campanha sem agenda, 24x7
+    _wire(monkeypatch, grade=grade, orcamentos=[_orc()], metricas=[])
+    out = await mod.update_ad_schedule(
+        {
+            "customer_id": "1234567890",
+            "campaign_ids": ["1"],
+            "bid_modifier": 0.9,
+            "windows": [
+                {"day_of_week": "MONDAY", "start_hour": 7, "end_hour": 17, "bid_modifier": 1.2},
+                {"day_of_week": "TUESDAY", "start_hour": 7, "end_hour": 17},  # Sem override
+            ],
+        }
+    )
+    windows_added = out["preview"]["1"]["windows_added"]
+    assert len(windows_added) == 2
+    # Primeira janela: traz seu proprio modificador
+    assert windows_added[0]["day_of_week"] == "MONDAY"
+    assert windows_added[0]["bid_modifier"] == 1.2
+    # Segunda janela: herda o escalar da chamada
+    assert windows_added[1]["day_of_week"] == "TUESDAY"
+    assert windows_added[1]["bid_modifier"] == 0.9
+
+
+# --- Task 5 (F149 fechado): a rota perigosa deixa de ser a unica -----------------
+
+
+@pytest.mark.asyncio
+async def test_muda_uma_faixa_sem_desligar_as_outras_em_UMA_chamada(monkeypatch) -> None:  # noqa: N802
+    """A regressao que o F149 descreve: antes, a unica rota exigia duas chamadas
+    e passava por um estado com a campanha servindo ~50 de 168 horas."""
+    grade = [
+        _janela_row(day=d, sh=7, eh=17, crit=str(i), bm=1.0)
+        for i, d in enumerate(("MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"))
+    ]
+    cap = _wire(monkeypatch, grade=grade, orcamentos=[_orc()], metricas=[])
+    janelas = [dict(w) for w in SEG_SEX]
+    janelas[0]["bid_modifier"] = 1.4
+    out = await mod.update_ad_schedule(
+        {"customer_id": "1234567890", "campaign_ids": ["1"], "windows": janelas}
+    )
+    ops = cap["payload"]["ops"]
+    assert not [o for o in ops if o["kind"] == "remove"], "nenhuma faixa sai de servico"
+    assert len(ops) == 1 and ops[0]["kind"] == "update"
+    assert out["preview"]["1"]["cobertura"]["reduz"] is False

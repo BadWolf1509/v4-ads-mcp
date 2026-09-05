@@ -99,6 +99,18 @@ def test_schema_sem_composicao() -> None:
     assert not any(k in s for k in ("oneOf", "allOf", "anyOf"))
 
 
+def test_rows_to_current_popula_bid_modifier_no_window_e_no_currentwindow() -> None:
+    """Fix M6 (revisao final): `Window` dentro do `CurrentWindow` ficava SEMPRE
+    com `bid_modifier: None`, enquanto `CurrentWindow.bid_modifier` tinha o
+    valor real — estado duplicado que convida ao erro. `modificador_efetivo`
+    aceita qualquer `Window`; passar `c.window` por engano em vez de `c`
+    devolveria o escalar em silencio, sem TypeError e sem teste vermelho."""
+    atual = mod.rows_to_current([_janela(day="MONDAY", bm=1.3)])
+    c = atual["1"][0]
+    assert c.bid_modifier == 1.3
+    assert c.window.bid_modifier == 1.3
+
+
 @pytest.mark.asyncio
 async def test_campanha_sem_criterio_aparece_no_resumo_como_24x7(monkeypatch) -> None:
     """A distincao central da §3: lista vazia NAO pode ficar implicita."""

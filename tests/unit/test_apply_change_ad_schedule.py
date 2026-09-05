@@ -74,16 +74,31 @@ def _saved(
     *,
     campaign_ids: tuple[str, ...] = ("1",),
     windows: list[dict[str, Any]] | None = None,
+    windows_bid_modifiers: list[float | None] | None = None,
     current_keys: dict[str, list[list[Any]]] | None = None,
 ) -> SimpleNamespace:
-    """Payload como ele volta do banco: JSON, entao tupla nenhuma — so listas."""
+    """Payload como ele volta do banco: JSON, entao tupla nenhuma — so listas.
+
+    Fix I2 (revisao final): `windows_bid_modifiers` e a chave PARALELA a
+    `windows` que o `update_ad_schedule` passou a gravar (mesma ordem) pra
+    `apply_change` confirmar o bid_modifier, nao so a identidade da faixa. O
+    default (`None` por janela) preserva o comportamento de TODOS os testes
+    que nao mencionam bid_modifier: "nada foi pedido pro modificador desta
+    janela" sempre passa a checagem, entao so a comparacao de CHAVES importa
+    — exatamente como antes desta chave existir.
+    """
+    janelas = [_janela()] if windows is None else windows
+    modificadores = (
+        [None] * len(janelas) if windows_bid_modifiers is None else windows_bid_modifiers
+    )
     return SimpleNamespace(
         operation_type="update_ad_schedule",
         customer_id="1234567890",
         blast_summary="x",
         payload={
             "campaign_ids": list(campaign_ids),
-            "windows": [_janela()] if windows is None else windows,
+            "windows": janelas,
+            "windows_bid_modifiers": modificadores,
             "current_keys": {"1": []} if current_keys is None else current_keys,
             "ops": [
                 {
@@ -194,7 +209,9 @@ async def test_falha_por_operacao_chega_na_resposta_com_o_motivo(monkeypatch) ->
 async def test_confirmacao_ve_a_linha_removed_e_bate_a_grade_pedida(monkeypatch) -> None:
     """Important 2 / spec §7: a reconsulta NAO pode filtrar ENABLED — janela removida
     tem que ser confirmada por PRESENCA de status REMOVED, nunca por nao aparecer."""
-    saved = _saved(windows=[_janela("MONDAY")], current_keys={"1": [["SATURDAY", 7, 0, 17, 0]]})
+    saved = _saved(
+        windows=[_janela("MONDAY")], current_keys={"1": [["SATURDAY", 7, 0, 17, 0, None]]}
+    )
     _wire(
         monkeypatch,
         saved=saved,
@@ -223,7 +240,7 @@ async def test_grade_resultante_diferente_da_pedida_e_reportada(monkeypatch) -> 
 @pytest.mark.asyncio
 async def test_baseline_intacto_deixa_aplicar(monkeypatch) -> None:
     """Ruling 10: mesma grade do preview -> a mutacao sai normalmente."""
-    saved = _saved(current_keys={"1": [["SATURDAY", 7, 0, 17, 0]]})
+    saved = _saved(current_keys={"1": [["SATURDAY", 7, 0, 17, 0, None]]})
     visto = _wire(
         monkeypatch,
         saved=saved,
@@ -240,7 +257,7 @@ async def test_grade_mudada_desde_o_preview_nao_muta(monkeypatch) -> None:
     """Ruling 10 (concorrencia otimista): o delta guardado carrega resource_names de ate
     10 min atras. Baseline mudado + partial_failure produz uma grade que nao e nem a
     antiga nem a pedida, em silencio. Asserto por CAPTURA da mutacao, nao por status."""
-    saved = _saved(current_keys={"1": [["SATURDAY", 7, 0, 17, 0]]})
+    saved = _saved(current_keys={"1": [["SATURDAY", 7, 0, 17, 0, None]]})
     visto = _wire(
         monkeypatch,
         saved=saved,
@@ -251,3 +268,72 @@ async def test_grade_mudada_desde_o_preview_nao_muta(monkeypatch) -> None:
     assert visto["mutacoes"] == [], "nada pode ter sido mutado"
     assert out["status"] == "error" and "grade mudou" in out["error_message"].lower()
     assert "update_ad_schedule" in out["error_message"] or out["operation"] == "update_ad_schedule"
+
+
+@pytest.mark.asyncio
+async def test_apply_recusa_quando_so_o_bid_modifier_mudou_no_baseline(monkeypatch) -> None:
+    """A pre-checagem da Ruling 10 passa a cobrir o modificador. Sem isto, alguem
+    muda o lance dentro dos 10 min do TTL e o delta e aplicado as cegas."""
+    # baseline do token: modificador 1.0; a reconsulta devolve 1.3 (mesma faixa,
+    # mesmas 5 posicoes de identidade — so o bid_modifier diverge).
+    saved = _saved(current_keys={"1": [["MONDAY", 7, 0, 17, 0, 1.0]]})
+    visto = _wire(
+        monkeypatch,
+        saved=saved,
+        antes=[_row(day="MONDAY", crit="9", bm=1.3)],
+        depois=[_row(crit="10")],
+    )
+    out = await mod.apply_change({"confirmation_token": "ABCDEFGH"})
+    assert visto["mutacoes"] == [], "nada pode ter sido mutado"
+    assert out["status"] == "error"
+    assert "mudou desde o preview" in out["error_message"]
+
+
+# --- Fix I2 (revisao final): matches_requested agora confirma o bid_modifier ----
+#
+# Antes, `matches_requested` comparava SO o conjunto de identidades de janela —
+# a unica coisa que o sprint acrescentou (bid_modifier por janela) podia
+# divergir do pedido (clamp, arredondamento, no-op do Google) e a resposta
+# dizia `true` do mesmo jeito. `partial_failures` vem vazio nesse cenario: o
+# Google ACEITA a operacao, so nao aplica o valor pedido.
+
+
+@pytest.mark.asyncio
+async def test_matches_requested_e_falso_quando_o_bid_modifier_nao_bate(monkeypatch) -> None:
+    """O ponto cego que o F150 documenta: apply_change nunca entrava no diff do
+    bid_modifier. Google aceita a mutacao mas o valor efetivo (1.0) nao e o
+    pedido (1.4) — sem esta checagem, `matches_requested` diria True."""
+    saved = _saved(
+        windows=[_janela("MONDAY")],
+        windows_bid_modifiers=[1.4],
+        current_keys={"1": [["MONDAY", 7, 0, 17, 0, 1.0]]},
+    )
+    _wire(
+        monkeypatch,
+        saved=saved,
+        antes=[_row(day="MONDAY", crit="9", bm=1.0)],
+        depois=[_row(day="MONDAY", crit="10", bm=1.0)],  # Google nao aplicou o 1.4 pedido
+    )
+    out = await mod.apply_change({"confirmation_token": "ABCDEFGH"})
+    assert out["resulting_schedule"]["1"]["matches_requested"] is False
+
+
+@pytest.mark.asyncio
+async def test_matches_requested_tolera_arredondamento_float32_do_google(monkeypatch) -> None:
+    """Mesma tolerancia do Fix C1: o Google devolve 1.4 como 1.399999976158142
+    (proto.FLOAT, 32 bits). Comparar por `==` aqui reproduziria o MESMO bug de
+    nao-convergencia, agora em `matches_requested` — toda confirmacao pos-apply
+    de um bid_modifier nao-inteiro diria `false` mesmo quando aplicou certo."""
+    saved = _saved(
+        windows=[_janela("MONDAY")],
+        windows_bid_modifiers=[1.4],
+        current_keys={"1": [["MONDAY", 7, 0, 17, 0, 1.0]]},
+    )
+    _wire(
+        monkeypatch,
+        saved=saved,
+        antes=[_row(day="MONDAY", crit="9", bm=1.0)],
+        depois=[_row(day="MONDAY", crit="10", bm=1.399999976158142)],
+    )
+    out = await mod.apply_change({"confirmation_token": "ABCDEFGH"})
+    assert out["resulting_schedule"]["1"]["matches_requested"] is True

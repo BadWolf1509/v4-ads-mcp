@@ -96,8 +96,19 @@ def rows_to_current(rows: list[dict[str, Any]]) -> dict[str, list[CurrentWindow]
     """Linhas do parser -> CurrentWindow por campanha (reusado pelo update_ad_schedule)."""
     por_campanha: dict[str, list[CurrentWindow]] = {}
     for r in rows:
+        # Fix M6 (revisao final): popular o bid_modifier tambem no `Window`, nao
+        # so no `CurrentWindow` que o envolve — antes ficava sempre `None` aqui
+        # enquanto `CurrentWindow.bid_modifier` tinha o valor real. Nenhum
+        # call-site le `c.window.bid_modifier` hoje, mas `modificador_efetivo`
+        # aceita qualquer `Window` e devolveria o escalar em silencio se algum
+        # dia alguem passasse `c.window` por engano em vez de `c`.
         w = Window(
-            r["day_of_week"], r["start_hour"], r["start_minute"], r["end_hour"], r["end_minute"]
+            r["day_of_week"],
+            r["start_hour"],
+            r["start_minute"],
+            r["end_hour"],
+            r["end_minute"],
+            r["bid_modifier"],
         )
         por_campanha.setdefault(r["campaign_id"], []).append(
             CurrentWindow(
