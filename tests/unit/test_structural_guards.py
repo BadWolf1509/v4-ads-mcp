@@ -19,24 +19,9 @@ transforma a convenção num teste que falha no commit em vez de num incidente.
 import ast
 from pathlib import Path
 
-SRC = Path(__file__).resolve().parents[2] / "src"
+from tests.unit import _guard_harness as h
 
-
-def _py_files() -> list[Path]:
-    return [p for p in SRC.rglob("*.py") if "__pycache__" not in p.parts]
-
-
-def _calls(node: ast.AST, name: str) -> bool:
-    """True se a subárvore contém chamada a `name` (Name ou Attribute)."""
-    for sub in ast.walk(node):
-        if not isinstance(sub, ast.Call):
-            continue
-        func = sub.func
-        if isinstance(func, ast.Name) and func.id == name:
-            return True
-        if isinstance(func, ast.Attribute) and func.attr == name:
-            return True
-    return False
+SRC = h.SRC  # mantido: guards usam `p.relative_to(SRC)` na mensagem
 
 
 def test_build_client_for_manager_callsites_have_gate() -> None:
@@ -44,7 +29,7 @@ def test_build_client_for_manager_callsites_have_gate() -> None:
     ensure_account_access. client.py o DEFINE (allowlist)."""
     definer = SRC / "google_ads" / "client.py"
     offenders = []
-    for p in _py_files():
+    for p in h.fontes_py():
         if p == definer:
             continue
         text = p.read_text(encoding="utf-8")
@@ -66,7 +51,7 @@ def test_meta_graph_execution_is_contained() -> None:
         SRC / "meta_ads" / "reports.py",  # run_meta_graph_get — único executor
     }
     offenders = []
-    for p in _py_files():
+    for p in h.fontes_py():
         if p in allowed:
             continue
         if "build_meta_api(" in p.read_text(encoding="utf-8"):
@@ -83,7 +68,7 @@ def test_cursor_usage_is_wrapped_in_transaction() -> None:
     de conn.transaction() — asyncpg exige transação explícita, senão o generator
     quebra no primeiro fetch (o CSV export foi pra prod quebrado assim)."""
     offenders = []
-    for p in _py_files():
+    for p in h.fontes_py():
         text = p.read_text(encoding="utf-8")
         if ".cursor(" in text and "conn.transaction()" not in text:
             offenders.append(str(p.relative_to(SRC)))
@@ -97,7 +82,7 @@ def test_cursor_usage_is_wrapped_in_transaction() -> None:
 def _funcoes_que_pegam_conexao_propria() -> set[str]:
     """Nomes de funções em src/ que abrem conexão por conta própria."""
     nomes: set[str] = set()
-    for p in _py_files():
+    for p in h.fontes_py():
         try:
             tree = ast.parse(p.read_text(encoding="utf-8"))
         except SyntaxError:  # pragma: no cover
@@ -108,7 +93,7 @@ def _funcoes_que_pegam_conexao_propria() -> set[str]:
             # O idioma no codebase é `pool = get_pool()` + `pool.acquire()`, então
             # o `.acquire` NÃO pende de `get_pool()` no AST — casar os dois na
             # mesma função é o que identifica quem abre conexão sozinha.
-            if _calls(node, "get_pool") and _calls(node, "acquire"):
+            if h.chama(node, "get_pool", arv=tree) and h.chama(node, "acquire", arv=tree):
                 nomes.add(node.name)
     return nomes
 
@@ -126,7 +111,7 @@ def test_nao_chama_helper_que_pega_conexao_dentro_de_acquire() -> None:
     """
     auto_adquirentes = _funcoes_que_pegam_conexao_propria()
     offenders = []
-    for p in _py_files():
+    for p in h.fontes_py():
         try:
             tree = ast.parse(p.read_text(encoding="utf-8"))
         except SyntaxError:  # pragma: no cover
@@ -135,7 +120,7 @@ def test_nao_chama_helper_que_pega_conexao_dentro_de_acquire() -> None:
             if not isinstance(node, ast.AsyncWith):
                 continue
             # É um `async with ...acquire()...`?
-            if not any(_calls(item.context_expr, "acquire") for item in node.items):
+            if not any(h.chama(item.context_expr, "acquire", arv=tree) for item in node.items):
                 continue
             for corpo in node.body:
                 for sub in ast.walk(corpo):
@@ -174,7 +159,7 @@ def test_gaql_nao_usa_doubling_de_aspas() -> None:
     invisíveis por construção.
     """
     offenders = []
-    for p in _py_files():
+    for p in h.fontes_py():
         try:
             tree = ast.parse(p.read_text(encoding="utf-8"))
         except SyntaxError:  # pragma: no cover — src sempre parseia
@@ -214,7 +199,7 @@ def test_finally_bookkeeping_is_best_effort() -> None:
     conexão tem que estar sob best_effort no mesmo statement.
     """
     offenders = []
-    for p in _py_files():
+    for p in h.fontes_py():
         try:
             tree = ast.parse(p.read_text(encoding="utf-8"))
         except SyntaxError:  # pragma: no cover — src sempre parseia
@@ -223,7 +208,9 @@ def test_finally_bookkeeping_is_best_effort() -> None:
             if not isinstance(node, ast.Try) or not node.finalbody:
                 continue
             for stmt in node.finalbody:
-                if _calls(stmt, "acquire") and not _calls(stmt, "best_effort"):
+                if h.chama(stmt, "acquire", arv=tree) and not h.chama(
+                    stmt, "best_effort", arv=tree
+                ):
                     offenders.append(f"{p.relative_to(SRC)}:{stmt.lineno}")
     assert not offenders, (
         "F83 — pool.acquire() em `finally` sem best_effort: "
@@ -251,7 +238,7 @@ def test_teste_de_integracao_nao_monta_dsn_do_container_a_mao() -> None:
     integracao = Path(__file__).resolve().parents[1] / "integration"
     conftest = integracao / "conftest.py"
     offenders = []
-    for p in sorted(integracao.glob("*.py")):
+    for p in h.testes_py(integracao):
         if p == conftest:
             continue
         texto = p.read_text(encoding="utf-8")
@@ -327,7 +314,7 @@ def _funcoes_sync_bloqueantes() -> dict[str, str]:
     nomes de método do SDK daria verde nele.
     """
     corpos: dict[str, tuple[str, set[str]]] = {}
-    for p in _py_files():
+    for p in h.fontes_py():
         try:
             tree = ast.parse(p.read_text(encoding="utf-8"))
         except SyntaxError:  # pragma: no cover
@@ -367,7 +354,7 @@ def test_chamada_bloqueante_sai_do_event_loop() -> None:
     """
     bloqueantes = _funcoes_sync_bloqueantes()
     ofensores: list[str] = []
-    for p in _py_files():
+    for p in h.fontes_py():
         rel = p.relative_to(SRC.parent).as_posix()
         if rel in _ARQUIVOS_FORA_DO_LOOP:
             continue
@@ -413,7 +400,7 @@ def test_retentaveis_de_conexao_tem_uma_fonte_de_verdade_so() -> None:
     nomes_retentaveis = {e.__name__ for e in connection._DROPPED_CONNECTION_ERRORS}
     ofensores: list[str] = []
 
-    for path in _py_files():
+    for path in h.fontes_py():
         if path.name == "connection.py":  # quem DEFINE a constante (allowlist)
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
