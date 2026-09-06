@@ -187,8 +187,9 @@ async def meta_oauth_start(
     """Redirect manager to Meta consent screen."""
     settings = get_settings()
     callback_state = sign_state(
-        {"manager_id": str(user.id), "aud": "meta_oauth"},
+        {"manager_id": str(user.id)},
         settings.session_signing_key,
+        aud="meta_oauth",
     )
     params = {
         "client_id": settings.meta_app_id,
@@ -239,13 +240,9 @@ async def meta_oauth_callback(
 
     settings = get_settings()
     try:
-        payload = verify_state(state, settings.session_signing_key)
+        payload = verify_state(state, settings.session_signing_key, aud="meta_oauth")
     except InvalidStateError as e:
         log.warning("meta_oauth_invalid_state", error=str(e))
-        return RedirectResponse("/access-denied?reason=meta_state_invalid", status_code=302)
-
-    if payload.get("aud") != "meta_oauth":
-        log.warning("meta_oauth_wrong_aud", aud=payload.get("aud"))
         return RedirectResponse("/access-denied?reason=meta_state_invalid", status_code=302)
 
     manager_id_str = payload.get("manager_id")

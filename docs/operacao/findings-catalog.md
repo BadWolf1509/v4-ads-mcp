@@ -6,7 +6,7 @@
 >
 > **Last updated:** 2026-09-03 — **F141–F146 fechados** em tres PRs (#28 bloco fuso+freshness; #29 structural_change; #30 fuso do upload offline) mais o F142 (whitelist de client_type) direto na main. Ontem, 02/09: **+F131–F140** da sessao de campo MO-JP, fechados no PR #27 e nos fixes seguintes. Narrativa completa e licoes de metodo no handoff [`session-2026-09-02-03-handoff.md`](session-2026-09-02-03-handoff.md); o historico anterior (F82–F130, 08/14 a 08/20) esta nos handoffs de 08-14-15 e 08-19.
 >
-> **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva.
+> **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica.
 >
 > **Como ler:** ~1490 linhas, **151 IDs** (F1-F152 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
@@ -1946,3 +1946,174 @@ tambem tem motivo, so que mais tecnico que "e a mesma familia de PR":**
 > funcao-alvo (nao o comportamento dela, que fica identico rodando da raiz) e fica vermelho se
 > ela parar de chamar `h.fontes_py` — verificado contra o codigo pre-fix (`git show
 > add570b:tests/unit/test_create_pending_audita_dry_run.py`), onde a mesma assercao da `False`.
+
+---
+
+## F156 (HIGH, CORRIGIDO em 2026-09-06) — confusão de tipo de token entre state de OAuth e cookie de painel
+
+> **Como apareceu:** registrado como C3 no PR 1 da varredura de 8 revisores paralelos sobre
+> todo o repositório (05/09), em
+> [`2026-09-06-correcoes-varredura-design.md`](../superpowers/specs/2026-09-06-correcoes-varredura-design.md).
+> Plano e ledger de execução em
+> [`2026-09-06-pr1-audiencia-de-token.md`](../superpowers/plans/2026-09-06-pr1-audiencia-de-token.md),
+> branch `pr1/audiencia-de-token`.
+
+**O projeto assina quatro tipos de token com a mesma chave (`settings.session_signing_key`)
+e o mesmo formato (`b64url(json).b64url(hmac_sha256)`), e só um deles carregava claim de
+audiência.** Sem `aud`, qualquer token que passe no HMAC vale para qualquer finalidade — o
+`state` de um fluxo OAuth serve como cookie de sessão do painel.
+
+| token | onde é assinado (pré-fix, commit `f864ac6`) | tinha `aud`? |
+|---|---|---|
+| `state` do Google (OAuth) | `oauth.py:157` (modo `panel_login`) e `oauth.py:184` (fluxo de convite) | não |
+| convite de CLI | `admin.py:102` (`cmd_invite`) | não |
+| `state` do Meta (OAuth) | `meta_oauth.py:189` (assina) / `meta_oauth.py:247` (confere, à mão) | **sim** — mas embutido à mão no payload (`{"aud": "meta_oauth", ...}`), não como parâmetro de `sign_state`/`verify_state` |
+| cookie de painel | `oauth.py:363` (`sign_panel_session`) | não |
+
+**A prova por execução, contra o código pré-fix** (rodado no commit `f864ac6`, antes de
+qualquer edição desta branch):
+
+```
+$ python -c "
+from src.auth.oauth_state import sign_state
+from src.auth.panel_session import verify_panel_session
+C='chave-de-teste-com-no-minimo-32-caracteres-ok'
+t=sign_state({'manager_id':'11111111-2222-3333-4444-555555555555'}, C)
+print('verify_panel_session aceitou o convite ->', verify_panel_session(t, C))
+"
+verify_panel_session aceitou o convite -> PanelSession(manager_id='11111111-2222-3333-4444-555555555555', email='')
+```
+
+O convite emitido por `admin.py:102` — pensado para abrir a tela de consentimento do Google,
+uso único, TTL de 10 minutos — vira sessão de painel válida daquele gestor, verbatim, sem
+tocar em `/oauth/google/callback`.
+
+**A inversão de TTL, medida no mesmo commit, é o que alarga a janela de exposição.** O mesmo
+token de convite, com 1 hora de idade, contra as duas funções:
+
+```
+verify_state          RECUSOU -> State expired
+verify_panel_session  ACEITOU -> PanelSession(manager_id='11111111-2222-3333-4444-555555555555', email='')
+```
+
+`verify_state` aplicava `STATE_TTL_SECONDS` (10 minutos); `verify_panel_session` aplicava
+`PANEL_SESSION_TTL_SECONDS` (24 horas). Um token morto para a finalidade que o desenho lhe
+deu — convite de uso único, consumido em segundos — seguia vivo como sessão de painel por
+**144× mais tempo** (24h ÷ 10min).
+
+**O vetor mais exposto não é o convite, é o `state` do Google — e é uma questão de onde cada
+um viaja.** O convite de CLI é gerado por `cmd_invite` e entregue mão a mão: quem o lê é quem
+o gestor mandou olhar. O `state` do Google, ao contrário, viaja como querystring
+(`state=...`) na URL de redirecionamento para a tela de consentimento do Google e de volta
+para `GET /oauth/google/callback` — passa por histórico de navegador, cabeçalho `Referer` de
+qualquer recurso de terceiro carregado a partir daquela página, logs do próprio Google, e
+logs de request do Cloud Run (URL completa, com query string). Cada um desses é uma
+superfície onde o texto do `state` pode ficar retido bem depois do fluxo terminar — e,
+pré-fix, aquele mesmo texto também validava como cookie de painel, sem o TTL de 10 minutos,
+por 24 horas.
+
+**A escalada medida.** O cookie de painel autentica `current_manager`
+(`src/web/deps.py:48`), a dependência por trás de toda rota do painel — inclusive
+`POST /sessions/new` (`routes.py:484-495`), que emite uma sessão MCP. `ttl_days` vem do
+formulário e só passa por uma whitelist (`routes.py:494`, `(30, 60, 90, 180)`), sem nenhuma
+outra checagem contra o papel do gestor. Ou seja: quem tivesse em mãos qualquer um dos
+quatro tokens — um `state` visto num dos logs acima, um convite de CLI ainda dentro da
+janela de uso — podia colar esse valor como cookie `v4_panel_session` diretamente (o HMAC já
+era válido, só tinha sido emitido para outro fim), abrir `/sessions/new` e pedir
+`ttl_days=180`: um Bearer MCP válido por até 180 dias, alcançando todo grant daquele
+gestor — Google e Meta.
+
+**A correção.** As quatro funções (`sign_state`/`verify_state` em
+[`src/auth/oauth_state.py`](../../src/auth/oauth_state.py),
+`sign_panel_session`/`verify_panel_session` em
+[`src/auth/panel_session.py`](../../src/auth/panel_session.py)) ganharam `aud` como
+keyword-only **sem default** — default silenciaria exatamente o erro que a claim existe
+para impedir. **O tipo é dividido por família**, e essa divisão é o segundo nível do mesmo
+bug: `StateAudience = Literal["google_oauth", "cli_invite", "meta_oauth"]` para
+`sign_state`/`verify_state`, `PanelAudience = Literal["panel"]` para
+`sign_panel_session`/`verify_panel_session`. Com um `Literal` plano nas quatro — como a
+branch shippou até a revisão final —, `sign_state(..., aud="panel")` cunhava um cookie de
+painel **byte-idêntico** ao de `sign_panel_session` e o `mypy --strict` aprovava: o tipo
+continuava permitindo que a função ERRADA emitisse o token CERTO, e a separação entre as
+duas famílias dependia da disciplina de quem escrevesse o próximo call-site (teste nº 1 de
+gambiarra do `CLAUDE.md`). `Audience = Literal[StateAudience, PanelAudience]` segue existindo
+para quem precisa das quatro de uma vez — `Literal` aninhado **achata**, em tempo de tipo
+(PEP 586) e de execução, então `get_args` continua devolvendo as quatro strings. Efeito em
+runtime da divisão: **zero**, medido por diff dos tokens contra a árvore pré-divisão. As três
+definições vivem em `oauth_state.py` e `panel_session.py` importa a sua, para o
+`mypy --strict` do gate pegar typo nos **9 call-sites de `src/`** — e só neles: o gate roda
+`mypy src` (`scripts/_runner.py:26`, `ci.yml:170`) e **nunca** `tests/`, então lá o typo não é
+erro de tipo, e nem sempre é teste vermelho (medido em 2026-09-06: de dois `aud="pannel"`
+plantados em `tests/`, o `mypy src` ficou limpo nos dois e o pytest só pegou aquele cuja
+asserção dependia do valor). O que prende as audiências que de fato viajam são os cinco
+testes de assinatura, que leem a claim do corpo do token vindo do caminho real. A conferência mora
+**dentro** de `verify_*`, nunca no chamador — chamador que confere é chamador que pode
+esquecer, e foi exatamente o que aconteceu em três dos quatro tokens. Ordem: HMAC →
+audiência → TTL (nada do payload é confiável antes do HMAC). O padrão já existia, parcial,
+num dos quatro: `meta_oauth.py:189` já embutia `"aud": "meta_oauth"` no payload, conferido à
+mão em `meta_oauth.py:247` — essa conferência manual saiu, porque mantê-la ao lado da nova,
+dentro de `verify_state`, seria duas fontes de verdade da mesma regra.
+
+**O que ficou deliberadamente de fora.** A chave (`settings.session_signing_key`) continua
+**única** para os quatro tipos — este PR resolve a confusão de audiência, não a partilha de
+chave; separação de domínio via HKDF (subchave derivada por audiência) não entrou, nem
+rotação da chave. E o Bearer MCP de até 180 dias (`routes.py:494`) segue existindo do jeito
+que é — deixou de ser alcançável por este caminho (replay de state/convite como cookie), mas
+o prazo em si não foi revisto; merece conversa própria com o Wellington.
+
+**Os achados de método, que valem mais que o bug:**
+
+1. **Os testes do plano original não cobriam a checagem de audiência do painel.** Os 5
+   testes do brief da Task 1 ficavam **inteiramente verdes** removendo a checagem de `aud`
+   de `verify_panel_session` — a recusa vinha do ramo "Missing email" (os payloads de outra
+   audiência também carecem de `email`), não do de audiência. É o modo *"asserir o
+   ADJACENTE à invariante"* já catalogado. Corrigido fixando a **mensagem** em cada
+   `pytest.raises` (não só o tipo da exceção) e somando um caso com cookie **completo** e
+   válido em tudo — HMAC, `manager_id`, `email`, TTL — menos a audiência: só aí a checagem
+   de audiência sozinha pode recusar.
+2. **O `Literal` protege contra typo, não contra troca entre dois valores válidos.** Os 4
+   lados de `verify_*` ficaram presos por teste desde a Task 1; os 5 lados de `sign_*`
+   (todos os que existem em `src/`, confirmado por grep) não — trocar `aud="panel"` por
+   `aud="meta_oauth"` num call-site passava no `mypy --strict` e na suíte inteira, porque os
+   dois são membros igualmente válidos do mesmo `Literal`. Só apareceu na revisão final da
+   Task 4. Fechado com 15 mutações (5 call-sites × 3 outros valores válidos cada), 15
+   mortas, sem arrastar teste pré-existente.
+3. **O full sweep revelou 78 vermelhos que o gate local não via.** `pytest tests/integration
+   -m integration -q` no commit `8a7034f` (Tasks 2+3 já aplicadas, Task 4 ainda não) devolveu
+   **78 FAILED de 317 coletados** (239 passed), em 11 arquivos — nenhum deles visível ao
+   `check_pre_push.py`, que roda só com `-m "not integration"`. Somado a `pytest tests/unit -m
+   "not integration" -q` (**15 FAILED de 1700 coletados**, 1685 passed, 3 arquivos), **78 dos
+   93 vermelhos deste PR inteiro** eram invisíveis ao gate local. É a medição que tornou o
+   full sweep obrigatório (não opcional) para a Task 4. *Números originais (76/91) vinham do
+   relatório da Task 4 e nunca foram reconferidos; remedido em 2026-09-06 medindo em worktree
+   isolado no commit `8a7034f` (`git worktree add <dir> 8a7034f`, fora da árvore de trabalho),
+   contando `FAILED` via `grep -c "^FAILED "` na seção `short test summary info` de cada
+   comando acima — refaça a conta em vez de confiar.*
+
+> **✅ CORRIGIDO em 2026-09-06** (branch `pr1/audiencia-de-token`, commits
+> `890df70..38dc4a0`, Tasks 1-5 + a onda de correção da revisão final; aguardando PR e
+> merge, decisão do Wellington). `aud` obrigatório e sem default nas quatro funções, **tipado
+> pela família** (`StateAudience`/`PanelAudience`), conferência dentro do `verify_*`,
+> conferência manual do Meta removida. 69 call-sites atualizados (9 em `src/`, 60 em
+> `tests/`), aplicados por script AST que reparseia e falha se sobrar alvo — regex erraria
+> calado numa chamada multi-linha.
+>
+> **Guards que garantem a classe:** `tests/unit/test_confusao_de_token.py` — as combinações
+> cruzadas de audiência recusadas nos dois sentidos, a inversão de TTL, o payload sem
+> `manager_id` recusado, a ordem `audiência → TTL`, a precedência `kwarg vence payload` do
+> `sign_state`, a partição das duas famílias de audiência (disjuntas e cobrindo as quatro),
+> e `test_state_sem_a_claim_aud_e_recusado` — token no formato antigo,
+> sem a claim, falha fechado; é a exceção de compatibilidade que qualquer rollout tenta
+> escrever ("tolerar durante a transição"), e existe justamente para impedir que alguém a
+> implemente. Verificado contra o código pré-fix (`f864ac6`): o script acima, rodado ali,
+> imprime o `PanelSession` aceito; hoje o mesmo script recusa com `TypeError: missing
+> keyword-only argument 'aud'` antes do fix, e com `InvalidPanelSessionError` depois.
+>
+> **O que ficou de fora:** chave única sem separação de domínio (HKDF) nem rotação; TTL de
+> 180 dias do Bearer MCP (`routes.py:494`) não revisto. Ficou de fora também a razão escrita
+> na docstring de `tests/integration/_audiencia.py:5-8` (repetida em `test_admin_script.py:411`
+> e `test_meta_oauth_flow.py:232`): ela justifica ler o corpo do token dizendo que `verify_*`
+> "não distingue X de qualquer outro valor", o que é falso — a comparação é igualdade exata e
+> tem guard dedicado. A **escolha** de ler o corpo continua certa, e por um motivo melhor (não
+> depende da implementação do verificador, então segue mordendo se a comparação regredir); é
+> só a razão que está errada, e não muda comportamento nem cobertura.

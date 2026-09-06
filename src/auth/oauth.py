@@ -157,6 +157,7 @@ async def oauth_start(
         callback_state = sign_state(
             {"mode": "panel_login"},
             settings.session_signing_key,
+            aud="google_oauth",
         )
     else:
         # CLI invite flow: requires a signed invite carrying manager_id.
@@ -166,7 +167,11 @@ async def oauth_start(
                 detail="Either 'invite' (CLI flow) or 'mode=panel_login' is required",
             )
         try:
-            invite_payload = verify_state(invite, settings.session_signing_key)
+            invite_payload = verify_state(
+                invite,
+                settings.session_signing_key,
+                aud="cli_invite",
+            )
         except InvalidStateError as e:
             raise HTTPException(status_code=400, detail=f"invalid invite: {e}") from e
 
@@ -184,6 +189,7 @@ async def oauth_start(
         callback_state = sign_state(
             {"manager_id": manager_id_str},
             settings.session_signing_key,
+            aud="google_oauth",
         )
 
     params = {
@@ -216,7 +222,7 @@ async def oauth_callback(
 
     settings = get_settings()
     try:
-        payload = verify_state(state, settings.session_signing_key)
+        payload = verify_state(state, settings.session_signing_key, aud="google_oauth")
     except InvalidStateError as e:
         return _error_page(f"State inválido ou expirado: {e}", status=400)
 
@@ -364,6 +370,7 @@ async def oauth_callback(
             manager_id=str(manager_id),
             email=google_email,
             signing_key=settings.session_signing_key,
+            aud="panel",
         )
         response = RedirectResponse(url="/", status_code=302)
         response.set_cookie(

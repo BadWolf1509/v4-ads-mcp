@@ -56,6 +56,7 @@ async def test_audit_lists_managers_own_events(client: AsyncClient):
         manager_id=str(mid),
         email="au@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     response = await client.get(
         "/audit",
@@ -100,6 +101,7 @@ async def test_audit_filters_by_action_type(client: AsyncClient):
         manager_id=str(mid),
         email="afilt@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     # Filter to mutate only
     response = await client.get(
@@ -136,6 +138,7 @@ async def test_audit_does_not_show_other_managers_events(client: AsyncClient):
         manager_id=str(mid_a),
         email="a@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     response = await client.get(
         "/audit",
@@ -182,6 +185,7 @@ async def test_audit_export_csv_filters_by_status(client: AsyncClient):
         manager_id=str(mid),
         email="csv_status@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     response = await client.get(
         "/audit/export.csv?status=error",

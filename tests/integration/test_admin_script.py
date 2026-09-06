@@ -12,12 +12,14 @@ só roda "quando tudo mais já quebrou".
 
 import argparse
 from collections.abc import AsyncIterator
+from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
 from testcontainers.postgres import PostgresContainer
 
+from src.auth.oauth_state import verify_state
 from src.auth.sessions import hash_session_token
 from src.db import connection, migrate
 from src.db.repositories import google_ads_accounts, manager_account_access, managers, mcp_sessions
@@ -26,9 +28,13 @@ from src.scripts.admin import (
     cmd_create_manager,
     cmd_create_session,
     cmd_grant_all,
+    cmd_invite,
     cmd_list_sessions,
 )
+from tests.integration._audiencia import audiencia_crua
 from tests.integration.conftest import _clone_db
+
+_SIGNING_KEY = "x" * 32
 
 # Este teste precisa do DSN cru (não do pool já aberto): cmd_create_manager faz
 # seu próprio ciclo init_pool()/close_pool() via get_settings().database_url,
@@ -380,3 +386,50 @@ async def test_list_sessions_no_sessions_prints_placeholder(
     assert rc == 0
     out = capsys.readouterr().out
     assert "(no sessions)" in out
+
+
+def _convite_da_saida(saida: str) -> str:
+    """Extrai o `?invite=` da URL que o comando imprime."""
+    for linha in saida.splitlines():
+        if "invite=" in linha:
+            convites = parse_qs(urlparse(linha.strip()).query).get("invite") or []
+            assert len(convites) == 1, f"esperava um `invite` na URL, achei {convites!r}"
+            return convites[0]
+    raise AssertionError(f"nenhuma URL com `invite=` na saída: {saida!r}")
+
+
+@pytest.mark.integration
+async def test_invite_assina_convite_com_audiencia_cli_invite(
+    migrated: None, dsn: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`invite` assina o token conferido pelo `/oauth/google/start` (`admin.py:102`).
+
+    Nada prendia este lado — não havia teste de `cmd_invite`. Uma troca entre
+    dois valores VÁLIDOS do `Literal` aqui (`"panel"` ou `"google_oauth"` no
+    lugar de `"cli_invite"`) passa no `mypy --strict` e passava na suíte
+    inteira: o convite só falharia na mão do gestor, no primeiro clique.
+
+    A claim é lida do CORPO do token porque `verify_state` a remove do payload
+    devolvido — ela só responde "casa com a que pedi", não diz o que foi escrito.
+    """
+    rc_criar = await cmd_create_manager(_args(email="convidado@v4company.com"))
+    assert rc_criar == 0
+
+    rc = await cmd_invite(
+        argparse.Namespace(email="convidado@v4company.com", base_url="https://painel.exemplo/")
+    )
+    assert rc == 0
+
+    convite = _convite_da_saida(capsys.readouterr().out)
+    assert audiencia_crua(convite) == "cli_invite"
+
+    # E o par fecha: o `/start` (único consumidor) aceita o que este lado assinou.
+    await connection.init_pool(dsn, min_size=1, max_size=4)
+    try:
+        pool = connection.get_pool()
+        async with pool.acquire() as conn:
+            m = await managers.get_by_email(conn, "convidado@v4company.com")
+    finally:
+        await connection.close_pool()
+    assert m is not None
+    assert verify_state(convite, _SIGNING_KEY, aud="cli_invite") == {"manager_id": str(m.id)}

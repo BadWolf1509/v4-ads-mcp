@@ -6,9 +6,11 @@ import pytest
 import respx
 from httpx import AsyncClient, Response
 
-from src.auth.oauth_state import sign_state
+from src.auth.oauth_state import sign_state, verify_state
+from src.auth.panel_session import PANEL_SESSION_COOKIE_NAME, sign_panel_session
 from src.db import connection
 from src.db.repositories import manager_meta_account_access, managers, meta_oauth_connections
+from tests.integration._audiencia import audiencia_crua, state_da_url
 
 _SIGNING_KEY = "x" * 32
 _AES_MASTER = "y" * 43  # urlsafe base64 source for 32 bytes
@@ -23,8 +25,9 @@ def _meta_env(monkeypatch):
 
 def _make_state(manager_id: str) -> str:
     return sign_state(
-        {"manager_id": manager_id, "aud": "meta_oauth"},
+        {"manager_id": manager_id},
         _SIGNING_KEY,
+        aud="meta_oauth",
     )
 
 
@@ -214,3 +217,42 @@ async def test_oauth_callback_handles_error_param(client: AsyncClient) -> None:
     )
     assert resp.status_code == 302
     assert "meta_oauth_error" in resp.headers["location"]
+
+
+@pytest.mark.integration
+async def test_start_assina_state_com_audiencia_meta_oauth(client: AsyncClient) -> None:
+    """`/oauth/meta/start` assina o state do callback do Meta (`meta_oauth.py:189`).
+
+    Nada prendia este lado: os quatro testes acima cunham o state por
+    `_make_state`, que é o teste escrevendo a audiência — não a rota. Uma troca
+    entre dois valores VÁLIDOS do `Literal` aqui (`"google_oauth"` no lugar de
+    `"meta_oauth"`) passa no `mypy --strict` e passava na suíte inteira,
+    aparecendo só em produção como callback do Meta que sempre nega.
+
+    A claim é lida do CORPO do token porque `verify_state` remove `aud` do
+    payload devolvido — ela só responde "casa com a que pedi".
+    """
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="ms@v4company.com", full_name="Ms")
+
+    # A rota exige sessão de painel (Depends(current_manager)).
+    cookie = sign_panel_session(
+        manager_id=str(mid),
+        email="ms@v4company.com",
+        signing_key=_SIGNING_KEY,
+        aud="panel",
+    )
+    resp = await client.get(
+        "/oauth/meta/start",
+        cookies={PANEL_SESSION_COOKIE_NAME: cookie},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+
+    state = state_da_url(resp.headers["location"])
+    assert audiencia_crua(state) == "meta_oauth"
+    assert state != cookie, "o cookie de painel não pode virar state do Meta"
+    # E o par fecha: o callback do Meta aceita o que este lado assinou.
+    assert verify_state(state, _SIGNING_KEY, aud="meta_oauth") == {"manager_id": str(mid)}

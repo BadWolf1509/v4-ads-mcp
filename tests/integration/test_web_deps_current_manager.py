@@ -30,6 +30,7 @@ def _cookie_for(manager_id: UUID, email: str) -> str:
         manager_id=str(manager_id),
         email=email,
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
 
 

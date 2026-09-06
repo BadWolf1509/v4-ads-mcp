@@ -99,7 +99,11 @@ async def cmd_invite(args: argparse.Namespace) -> int:
             if m is None:
                 print(f"Manager not found: {args.email}", file=sys.stderr)
                 return 1
-        invite = sign_state({"manager_id": str(m.id)}, settings.session_signing_key)
+        invite = sign_state(
+            {"manager_id": str(m.id)},
+            settings.session_signing_key,
+            aud="cli_invite",
+        )
         url = f"{args.base_url.rstrip('/')}/oauth/google/start?invite={invite}"
         print("Open this URL in a browser (logged into the desired Google account):")
         print(url)

@@ -49,6 +49,7 @@ async def test_accounts_lists_oauth_connections_and_accounts(client: AsyncClient
         manager_id=str(mid),
         email="ac@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     response = await client.get(
         "/accounts",
@@ -78,6 +79,7 @@ async def test_accounts_revoke_connection(client: AsyncClient):
         manager_id=str(mid),
         email="rv@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     response = await client.post(
         f"/accounts/{oc.id}/revoke",
@@ -117,6 +119,7 @@ async def test_accounts_revoke_e_hx_aware(client: AsyncClient):
         manager_id=str(mid),
         email="hx@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     response = await client.post(
         f"/accounts/{oc.id}/revoke",
@@ -156,6 +159,7 @@ async def test_accounts_cannot_revoke_others_connection(client: AsyncClient):
         manager_id=str(mid_b),
         email="b@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     response = await client.post(
         f"/accounts/{oc_a.id}/revoke",
@@ -182,6 +186,7 @@ async def test_accounts_shows_meta_accounts_when_granted(client: AsyncClient):
         manager_id=str(mid),
         email="meta@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     response = await client.get(
         "/accounts",
@@ -205,6 +210,7 @@ async def test_accounts_shows_meta_empty_state_when_no_grant(client: AsyncClient
         manager_id=str(mid),
         email="nometa@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     response = await client.get(
         "/accounts",

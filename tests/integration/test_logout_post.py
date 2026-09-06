@@ -39,6 +39,7 @@ async def test_logout_post_same_origin_clears_cookie_and_redirects(client: Async
         manager_id=str(mid),
         email="logout_post@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     # The CSRF middleware compares urlparse(origin).netloc to the Host header.
     # AsyncClient base_url="http://test" → Host: test; origin must match.

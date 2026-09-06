@@ -81,6 +81,7 @@ def _cookie_valido(manager_id: Any) -> dict[str, str]:
             manager_id=str(manager_id),
             email="gestor@v4company.com",
             signing_key=get_settings().session_signing_key,
+            aud="panel",
         )
     }
 
