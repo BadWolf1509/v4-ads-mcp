@@ -39,7 +39,7 @@ async def _resolve_session(request: Request) -> PanelSession | None:
         return None
     settings = get_settings()
     try:
-        return verify_panel_session(cookie, settings.session_signing_key)
+        return verify_panel_session(cookie, settings.session_signing_key, aud="panel")
     except InvalidPanelSessionError as e:
         log.info("panel_session_invalid", reason=str(e))
         return None
