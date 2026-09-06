@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.unit import _guard_harness as h
+
 _ROOT = Path(__file__).resolve().parents[2]
 _STATIC = _ROOT / "src" / "web" / "static"
 _TEMPLATES = _ROOT / "src" / "web" / "templates"
@@ -24,7 +26,7 @@ _MARCADORES_SCROLL = ("v4-table-wrap", "overflow-x-auto")
 
 
 def _templates() -> list[Path]:
-    return sorted(_TEMPLATES.rglob("*.html"))
+    return h.templates_html()
 
 
 def _mascara_comentarios(texto: str) -> str:
