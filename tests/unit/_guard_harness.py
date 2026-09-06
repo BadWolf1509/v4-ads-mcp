@@ -42,44 +42,57 @@ class EscopoVazioError(AssertionError):
 
 
 def _coletar(caminhos: Iterable[Path], *, raiz: Path, padrao: str) -> list[Path]:
-    achados = sorted(p for p in caminhos if not (set(p.parts) & _IGNORADOS))
+    """Filtra `_IGNORADOS`, ordena e resolve para absoluto.
+
+    O `.resolve()` mora AQUI — não em cada função pública que monta `raiz` —
+    porque `_coletar` é o único ponto por onde toda varredura passa. Uma
+    função de escopo nova, que ainda nem existe, herda a garantia de caminho
+    absoluto sem copiar nada: basta chamar `_coletar` (achado da rodada 2 de
+    revisão — antes, `.resolve()` vivia copiado nas 4 funções que aceitam
+    `raiz`, e uma função futura não herdaria a garantia sem lembrar de
+    repetir a cópia).
+    """
+    achados = sorted(p.resolve() for p in caminhos if not (set(p.parts) & _IGNORADOS))
     if not achados:
         raise EscopoVazioError(
-            f"escopo vazio: nenhum {padrao} sob {raiz}. Um guard que varre zero "
-            "arquivos passa por vacuidade — foi assim que o guard do relógio "
-            "ficou verde ao rodar de fora da raiz do repo (2026-09-06). "
-            "Confira o caminho: ele precisa ser absoluto, derivado de __file__."
+            f"escopo vazio: nenhum {padrao} sob {raiz.resolve()}. Um guard que "
+            "varre zero arquivos passa por vacuidade — foi assim que o guard "
+            "do relógio ficou verde ao rodar de fora da raiz do repo "
+            "(2026-09-06). Confira o caminho: ele precisa ser absoluto, "
+            "derivado de __file__."
         )
     return achados
 
 
 def fontes_py(raiz: Path | None = None) -> list[Path]:
     """Todo .py sob `raiz` (default: src/). Recursivo, absoluto, ordenado."""
-    raiz = (raiz if raiz is not None else SRC).resolve()
+    raiz = raiz if raiz is not None else SRC
     return _coletar(raiz.rglob("*.py"), raiz=raiz, padrao="*.py")
 
 
 def testes_py(raiz: Path | None = None) -> list[Path]:
     """Todo .py sob tests/. Recursivo — subpacote novo não escapa."""
-    raiz = (raiz if raiz is not None else TESTES).resolve()
+    raiz = raiz if raiz is not None else TESTES
     return _coletar(raiz.rglob("*.py"), raiz=raiz, padrao="*.py")
 
 
 def templates_html(raiz: Path | None = None) -> list[Path]:
-    raiz = (raiz if raiz is not None else TEMPLATES).resolve()
+    raiz = raiz if raiz is not None else TEMPLATES
     return _coletar(raiz.rglob("*.html"), raiz=raiz, padrao="*.html")
 
 
 def markdown(raiz: Path | None = None) -> list[Path]:
     """Todo .md do repositório, RECURSIVO — inclui docs/, que o guard do F113
     não enxergava (`_RAIZ.glob("*.md")` só pega a raiz)."""
-    raiz = (raiz if raiz is not None else RAIZ).resolve()
+    raiz = raiz if raiz is not None else RAIZ
     return _coletar(raiz.rglob("*.md"), raiz=raiz, padrao="*.md")
 
 
-def workflows() -> list[Path]:
-    d = RAIZ / ".github" / "workflows"
-    return _coletar(d.glob("*.yml"), raiz=d, padrao="*.yml")
+def workflows(raiz: Path | None = None) -> list[Path]:
+    """Todo .yml sob `raiz` (default: .github/workflows). Não-recursivo —
+    workflow do GitHub Actions não vive em subdiretório."""
+    raiz = raiz if raiz is not None else (RAIZ / ".github" / "workflows")
+    return _coletar(raiz.glob("*.yml"), raiz=raiz, padrao="*.yml")
 
 
 def arvore(caminho: Path) -> ast.Module:
