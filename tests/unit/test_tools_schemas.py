@@ -444,15 +444,25 @@ def test_every_mutate_builder_has_a_builder_test():
     Complementa test_builder_tests_use_capture_client_not_magicmock (que garante a
     QUALIDADE do teste) com a EXISTÊNCIA do teste.
 
-    Escopo via `h.testes_py(unit_dir)` filtrado só por `startswith("test_")` —
-    SEM o sufixo `_builder.py`: o guard passa a ver todo teste (recursivo) que
-    mencione o nome do builder ou da op, não só quem lembrou de nomear o
-    arquivo `_builder.py`. Ao contrário do guard de MagicMock acima, alargar
-    aqui não introduz ruído — o pior caso é uma referência incidental ao nome
-    em outro teste contando como cobertura, nunca um builder real cobrado sem
-    motivo. `p.name.startswith("test_")` também é o que mantém
-    `tests/unit/fixtures_guards/**/modulo.py` (árvore sintética do harness)
-    fora do corpo lido — nenhum arquivo lá começa com `test_`.
+    Escopo via `h.testes_py(unit_dir)` (recursivo — pega builder test que algum
+    dia mude de subpasta), com o MESMO filtro de nome de antes:
+    `test_*_builder.py`, **21** arquivos hoje. O harness entra pela dimensão de
+    escopo (recursivo, absoluto, com `EscopoVazioError`); a lógica de casamento
+    fica idêntica à pré-conversão, que é o que "preservando a semântica" quer
+    dizer.
+
+    **Por que o sufixo fica.** Este guard afirma EXISTÊNCIA ("todo builder tem
+    teste"), e o predicado é `fn.__name__ not in all_content`: alargar o
+    conjunto de arquivos lidos só pode fazer `missing` encolher, ou seja, torna
+    o guard mais PERMISSIVO. Uma conversão que tirou o `endswith` chegou a
+    varrer 212 arquivos em vez de 21 (medido em 2026-09-06); `missing` era
+    vazio nos dois escopos, então não houve perda viva, mas a mensagem do
+    assert passou a prometer o que o código não verificava mais, e afrouxar não
+    estava autorizado em spec, plano nem ledger. Restaurado na onda de correção
+    da revisão final. O aperto legítimo deste guard — trocar nome de arquivo
+    por predicado AST ("todo teste que chama um `build_*`") — está atribuído ao
+    PR 6 pela tabela 3.1.1 da spec, e é a mesma disciplina que a Ruling 8
+    aplicou ao guard irmão de MagicMock.
     """
     import pathlib
 
@@ -462,7 +472,9 @@ def test_every_mutate_builder_has_a_builder_test():
 
     unit_dir = pathlib.Path(__file__).resolve().parent
     all_content = "\n".join(
-        p.read_text(encoding="utf-8") for p in h.testes_py(unit_dir) if p.name.startswith("test_")
+        p.read_text(encoding="utf-8")
+        for p in h.testes_py(unit_dir)
+        if p.name.startswith("test_") and p.name.endswith("_builder.py")
     )
 
     missing = sorted(
