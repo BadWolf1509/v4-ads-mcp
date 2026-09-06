@@ -151,6 +151,38 @@ def test_templates_html_ignora_node_modules(tmp_path: Path) -> None:
     assert [p.name for p in h.templates_html(tmp_path)] == ["pagina.html"]
 
 
+def test_templates_html_desce_em_subdiretorio(tmp_path: Path) -> None:
+    """A única propriedade do harness que sobrevivia a ser quebrada.
+
+    Mutação-teste da revisão final: das 13 mutações aplicadas ao harness, 12
+    ficaram vermelhas e UMA passou — trocar o `rglob` desta função por `glob`.
+    Os dois testes que já existiam não distinguem: o do caminho default ancora
+    em `dashboard.html`, que está na RAIZ de `templates/`, e o de
+    `node_modules` põe os dois arquivos no topo de `tmp_path`.
+
+    Não é hipótese: **21 dos 31 templates vivem em subdiretório** (`admin/`,
+    `legal/`, `sessions/`). Com a mutação aplicada, dos ~11 guards de frontend
+    que dependem desta função só um fica vermelho — e mesmo esse só porque
+    afirma uma CONTAGEM de consumidores. CSP, handler inline, `style=`, `th
+    scope`, nome acessível e `role="button"` seguiriam verdes varrendo 10 de
+    31 arquivos, com `admin/` inteiro invisível. É a forma 3 da entrada F155
+    (`glob` não-recursivo) reintroduzida um nível acima, dentro do módulo cuja
+    razão de existir é fechá-la.
+
+    `fontes_py` e `testes_py` já estão protegidos, mas por acidente de layout:
+    os fixtures deles vivem um nível abaixo, então de-recursar qualquer um dos
+    dois dispara `EscopoVazioError`. Aqui a recursão é afirmada de propósito.
+    """
+    (tmp_path / "admin").mkdir()
+    (tmp_path / "admin" / "aninhada.html").write_text("x", encoding="utf-8")
+    (tmp_path / "raiz.html").write_text("y", encoding="utf-8")
+
+    achados = h.templates_html(tmp_path)
+
+    assert [p.name for p in achados] == ["aninhada.html", "raiz.html"]
+    assert (tmp_path / "admin" / "aninhada.html").resolve() in achados
+
+
 def test_markdown_default_encontra_claude_md() -> None:
     """Caminho default (sem argumento) — ancora `RAIZ`, não só `SRC`."""
     achados = h.markdown()
