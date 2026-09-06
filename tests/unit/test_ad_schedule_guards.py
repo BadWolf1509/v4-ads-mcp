@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import ast
 import inspect
-from pathlib import Path
 
 from src.google_ads.ad_schedule import diff_schedule, partition_metrics, validate_windows
+from tests.unit import _guard_harness as h
 
 
 def test_diff_recebe_grade_completa_e_bid_modifier_explicito() -> None:
@@ -46,7 +46,7 @@ def _chamadas(src: str, nome: str) -> int:
 
 def test_update_ad_schedule_usa_envelope_e_classify_do_compartilhado() -> None:
     """Spec §8.10 (espirito do F112): nem envelope a mao, nem nivel fixado sem classify."""
-    src = Path("src/mcp/tools/update_ad_schedule.py").read_text(encoding="utf-8")
+    src = (h.SRC / "mcp" / "tools" / "update_ad_schedule.py").read_text(encoding="utf-8")
     assert _chamadas(src, "classify") >= 1
     assert _chamadas(src, "preview_envelope") >= 1 and _chamadas(src, "error_envelope") >= 1
     assert "DEFAULT_TTL_MINUTES" not in src and "expires_in_minutes" not in src, (
@@ -98,7 +98,7 @@ def _e_dict_de_no_changes(expr: ast.expr) -> bool:
 def test_todo_return_de_update_ad_schedule_e_envelope_do_compartilhado_ou_o_no_changes() -> None:
     """Spec §8.10 pelo USO, nao pela presenca: um dict a mao no return com uma chamada morta
     a preview_envelope em outro lugar passaria pela contagem — e exatamente o adjacente."""
-    src = Path("src/mcp/tools/update_ad_schedule.py").read_text(encoding="utf-8")
+    src = (h.SRC / "mcp" / "tools" / "update_ad_schedule.py").read_text(encoding="utf-8")
     returns = _returns_da_funcao(src, "update_ad_schedule")
     assert returns, "a funcao tem que ter returns"
     ruins = [

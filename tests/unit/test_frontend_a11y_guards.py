@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.unit import _guard_harness as h
+
 _ROOT = Path(__file__).resolve().parents[2]
 _STATIC = _ROOT / "src" / "web" / "static"
 _TEMPLATES = _ROOT / "src" / "web" / "templates"
@@ -59,7 +61,7 @@ def test_gray_300_nunca_usado_como_cor_de_texto(arquivo):
 
 
 def test_templates_nao_usam_gray_300_como_texto():
-    for template in _TEMPLATES.rglob("*.html"):
+    for template in h.templates_html():
         ofensores = _gray_300_como_texto(template.read_text(encoding="utf-8"))
         assert not ofensores, f"{template.name}: gray-300 como texto -> {ofensores}"
 
@@ -80,7 +82,7 @@ def test_sem_handler_inline_em_template():
     # varredura, em admin/index.html.
     padrao = re.compile(r'\b(on[a-z]+|hx-on[^\s=]*)\s*=\s*\\?["\']')
     ofensores = []
-    for template in _TEMPLATES.rglob("*.html"):
+    for template in h.templates_html():
         for attr in padrao.findall(template.read_text(encoding="utf-8")):
             ofensores.append(f"{template.name}:{attr}")
     assert not ofensores, f"handler inline em template: {ofensores}"
@@ -88,9 +90,7 @@ def test_sem_handler_inline_em_template():
 
 def test_sem_script_inline_em_template():
     """Bloco <script> sem src também exige 'unsafe-inline'."""
-    ofensores = [
-        t.name for t in _TEMPLATES.rglob("*.html") if "<script>" in t.read_text(encoding="utf-8")
-    ]
+    ofensores = [t.name for t in h.templates_html() if "<script>" in t.read_text(encoding="utf-8")]
     assert not ofensores, f"<script> inline em: {ofensores}"
 
 
@@ -108,7 +108,7 @@ def test_toda_acao_usada_existe_no_modulo():
     js = (_STATIC / "v4-panel.js").read_text(encoding="utf-8")
     declaradas = set(re.findall(r"^  '?([a-z-]+)'?:", js, re.M))
     usadas = set()
-    for template in _TEMPLATES.rglob("*.html"):
+    for template in h.templates_html():
         usadas.update(
             re.findall(r'data-v4-action="([a-z-]+)"', template.read_text(encoding="utf-8"))
         )
@@ -144,9 +144,7 @@ def test_sem_atributo_style_em_template():
     A aspa pode vir escapada quando o HTML e montado em string Jinja.
     """
     padrao = re.compile(r'\bstyle\s*=\s*\\?["\']')
-    ofensores = [
-        t.name for t in _TEMPLATES.rglob("*.html") if padrao.search(t.read_text(encoding="utf-8"))
-    ]
+    ofensores = [t.name for t in h.templates_html() if padrao.search(t.read_text(encoding="utf-8"))]
     assert not ofensores, f"atributo style= em: {ofensores}"
 
 
@@ -204,7 +202,7 @@ def test_paginas_admin_nao_usam_o_offset_de_header_puro():
     """
     # Casa a FORMA DE USO (`var(...)`), nao o token nu — comentarios citam o
     # nome legitimamente ao explicar por que nao se usa ele aqui.
-    for template in (_TEMPLATES / "admin").rglob("*.html"):
+    for template in h.templates_html(_TEMPLATES / "admin"):
         conteudo = template.read_text(encoding="utf-8")
         assert "var(--v4-subnav-offset)" not in conteudo, (
             f"admin/{template.name}: use --v4-tab-bar-offset (header+subnav), "
@@ -231,7 +229,7 @@ def test_toda_barra_que_alimenta_offset_sticky_e_medida():
     assert "var(--v4-filter-bar-h)" in css, "quem consome o token mudou de nome"
 
     consumidores = 0
-    for template in _TEMPLATES.rglob("*.html"):
+    for template in h.templates_html():
         conteudo = template.read_text(encoding="utf-8")
         consome = (
             "v4-table--sticky-head-under-filters" in conteudo
@@ -341,7 +339,7 @@ def test_todo_controle_de_formulario_tem_nome_acessivel():
     vinculo — a pagina irma /audit faz certo com os mesmos filtros.
     """
     sem_nome = []
-    for template in _TEMPLATES.rglob("*.html"):
+    for template in h.templates_html():
         conteudo = template.read_text(encoding="utf-8")
         labels_for = set(re.findall(r'<label[^>]*[ ]for="([^"]+)"', conteudo))
         embrulhados = re.findall(r"<label[^>]*>.*?</label>", conteudo, re.S)
@@ -364,7 +362,7 @@ def test_todo_controle_de_formulario_tem_nome_acessivel():
 def test_todo_th_declara_scope():
     """Sem scope o leitor de tela nao associa celula a cabecalho na tabela de dados."""
     sem_scope = []
-    for template in _TEMPLATES.rglob("*.html"):
+    for template in h.templates_html():
         for numero, linha in enumerate(template.read_text(encoding="utf-8").splitlines(), 1):
             for attrs in re.findall(r"<th([^a-z>][^>]*)?>", linha):
                 if "scope=" not in (attrs or ""):
@@ -377,7 +375,7 @@ def test_linha_expansivel_nao_vira_button():
     um nome so e a associacao com os <th scope="col"> some. tabindex + o
     handler de Enter/Espaco dao o teclado; aria-expanded e suportado em
     role=row, entao a expansao segue anunciada."""
-    for template in _TEMPLATES.rglob("*.html"):
+    for template in h.templates_html():
         conteudo = template.read_text(encoding="utf-8")
         for abertura in re.findall(r"<tr[^>]*>", conteudo):
             assert 'role="button"' not in abertura, (

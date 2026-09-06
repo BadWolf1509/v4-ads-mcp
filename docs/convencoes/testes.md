@@ -50,6 +50,30 @@ Patches em `src.mcp.tools.<tool>.run_report` NÃO cobrem o site de pré-flight. 
 
 Todo valor de enum em whitelist DEVE ser validado empiricamente em smoke runbook (criar entidade real por valor — SDK descriptors contêm valores que o runtime rejeita). Família: F17/F18/F19/F25/F27/F31/F32/F34/F36/F44. Smoke runbook inclui per-value probe (batch 5/call). Rejeitado → remove do schema + documenta out-of-scope.
 
+### Guard estrutural: use o harness, não abra travessia própria (F155)
+
+Guard estrutural é o teste que varre o source pra impedir a reincidência de uma classe de bug (`test_structural_guards.py`, `test_frontend_a11y_guards.py`, `test_ci_local_parity.py`…). **Todos passam por [`tests/unit/_guard_harness.py`](../../tests/unit/_guard_harness.py), e um guard novo também tem que passar.**
+
+O harness existe porque 17 guards reimplementaram cada um a própria varredura, e cada reimplementação trouxe o próprio defeito de cobertura — `glob` não-recursivo, substring no texto do arquivo, leitura linha a linha, igualdade de nome de classe em vez de subclasse, caminho relativo que vê zero arquivos fora da raiz. Nenhum era erro de raciocínio sobre a invariante; eram todos erros de varredura, e o 18º apareceu exatamente porque quem o escreveu não sabia dos outros 17. Taxonomia completa: **F155** no [`findings-catalog.md`](../operacao/findings-catalog.md).
+
+**Do que ele é dono — as duas dimensões que o guard não deve reimplementar:**
+
+- **Escopo de arquivos:** `fontes_py()` (src/), `testes_py()` (tests/), `templates_html()`, `markdown()`, `workflows()`. Recursivos, absolutos (ancorados em `__file__`, nunca no cwd), ordenados, com `_IGNORADOS` aplicado. Âncoras prontas: `h.SRC`, `h.TESTES`, `h.TEMPLATES`, `h.RAIZ`.
+- **Casamento por AST:** `arvore()`, `chama()`, `nomes_locais()` (desfaz alias de import), `funcoes()`, `lambdas()`, `excecoes_do_handler()`, `classe_de_excecao()`. Mais `rel()` pra mensagem de erro legível.
+
+**A invariante que mata a vacuidade: escopo vazio levanta `EscopoVazioError`, nunca devolve `[]`.** Guard que varreu zero arquivos passa verde sem afirmar nada, e foi assim que o guard do relógio ficou verde ao rodar de fora da raiz do repo — 74 arquivos viravam 0, em silêncio. Nunca capture essa exceção pra "ser tolerante": ela é o sinal de que o caminho está errado.
+
+**Limites conhecidos — não presuma cobertura que não existe:**
+
+- `chama()` não vê despacho dinâmico (`getattr(mod, "alvo")()`), subscript, decorator bare, nome ligado por atribuição (`g = alvo; g()`) nem `functools.partial(alvo)`. Limitação de qualquer matcher sintático.
+- `funcoes()` devolve só `def`/`async def`. **Lambda vem de `lambdas()`** — somar as duas é o que dá "todo escopo executável" (a promessa a mais na docstring de `funcoes()` já custou cobertura no guard do F58).
+- `classe_de_excecao()` resolve só `builtins` e `asyncpg` (allowlist); nome que não resolve devolve `None` e **o guard decide** — o padrão seguro é tratar desconhecido como ofensor, nunca como isento.
+- `markdown()` enraíza na RAIZ e se defende por denylist de nomes. Entra em `_IGNORADOS` o diretório que é TODO ele scratch de ferramenta; nome parcialmente versionado (ex.: `.claude`) não entra.
+- `workflows()` casa só `*.yml`, não-recursivo.
+- O `EscopoVazioError` protege a TRAVESSIA, não o predicado: se o guard filtra depois (`if p.name.startswith("test_")`, `_arquivos_google()`…), o conjunto pós-filtro pode ficar vazio em silêncio. Quem filtra afirma a própria população — piso ou contagem exata.
+
+**Ao escrever ou apertar um guard:** a asserção tem que distinguir código bom de quebrado, então prove a mordida contra o código PRÉ-fix (sabotagem ou cópia — **nunca `git checkout`**) e acompanhe cada sabotagem de um controle positivo, senão um `assert False` também ficaria vermelho. Enumerar formas ofensoras não é afirmar a propriedade; e um falso positivo é pior que guard ausente, porque ensina a contorná-lo.
+
 ### No JSON Schema composition keywords (post-3b.19B.1)
 
 

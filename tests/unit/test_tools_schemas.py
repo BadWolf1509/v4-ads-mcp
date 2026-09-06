@@ -6,6 +6,7 @@ import pytest
 from src.mcp.tools._registry import all_tools, import_all_tools
 from src.mcp.tools.update_ad_group_bid import _SCHEMA as AD_GROUP_BID_SCHEMA
 from src.mcp.tools.update_keyword_bid import _SCHEMA as KEYWORD_BID_SCHEMA
+from tests.unit import _guard_harness as h
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -68,12 +69,44 @@ def test_builder_tests_use_capture_client_not_magicmock():
     make_capture_client (rolou o próprio mock em vez da fixture). Arquivos que
     usam make_capture_client e ainda importam MagicMock pra uso ancilar (ex:
     override pontual de path helper) são legítimos e ficam de fora.
+
+    Escopo via `h.testes_py(unit_dir)` (recursivo — pega builder test que
+    algum dia mude de subpasta), mas o filtro MANTÉM o sufixo `_builder.py`
+    de propósito, em vez de só `startswith("test_")` como o resto da Task 4:
+    a regra "MagicMock cru no client mascara bug de proto field" só faz
+    sentido pra teste QUE EXERCITA UM BUILDER.
+
+    Dois números, medidos e conferidos por dois caminhos independentes cada
+    (revisão de Task 4, 2026-09-06 — a versão anterior deste docstring dizia
+    "39" e não citava o segundo número abaixo; os dois estavam errados, e
+    docstring com número errado é pior que sem número, porque quem confia não
+    remede):
+
+    - **21** arquivos `test_*_builder.py` hoje em `tests/unit/` (diretos,
+      nenhum aninhado) — a população que o filtro de sufixo abaixo preserva;
+      nenhum deles é offender hoje (por isso este guard passa). Reproduza com
+      `len(list(unit_dir.glob("test_*_builder.py")))` (glob puro,
+      não-recursivo) — bate com `len([p for p in h.testes_py(unit_dir) if
+      p.name.startswith("test_") and p.name.endswith("_builder.py")])`
+      (harness, recursivo).
+    - **42** arquivos que este guard passaria a acusar se o filtro abaixo
+      soltasse o sufixo (só `startswith("test_")`, sem o `endswith`) —
+      test_backup, test_session_is_active, test_logging_context, etc. — que
+      usam MagicMock pra mockar pool/conexão/job e nunca tocam
+      `_BUILDERS`/`register_builder`; zero desses 42 é builder test sem o
+      nome certo, é o guard perguntando a arquivo errado uma pergunta que não
+      se aplica a ele. Reproduza tirando o `and path.name.endswith(...)` da
+      condição abaixo — bate trocando `h.testes_py(unit_dir)` por
+      `unit_dir.rglob("*.py")` cru (mesmos `_IGNORADOS` de
+      `_guard_harness.py`).
     """
     import pathlib
 
     unit_dir = pathlib.Path(__file__).resolve().parent
     offenders: list[str] = []
-    for path in sorted(unit_dir.glob("test_*_builder.py")):
+    for path in h.testes_py(unit_dir):
+        if not (path.name.startswith("test_") and path.name.endswith("_builder.py")):
+            continue
         src = path.read_text(encoding="utf-8")
         if "MagicMock" in src and "make_capture_client" not in src:
             offenders.append(path.name)
@@ -410,6 +443,26 @@ def test_every_mutate_builder_has_a_builder_test():
 
     Complementa test_builder_tests_use_capture_client_not_magicmock (que garante a
     QUALIDADE do teste) com a EXISTÊNCIA do teste.
+
+    Escopo via `h.testes_py(unit_dir)` (recursivo — pega builder test que algum
+    dia mude de subpasta), com o MESMO filtro de nome de antes:
+    `test_*_builder.py`, **21** arquivos hoje. O harness entra pela dimensão de
+    escopo (recursivo, absoluto, com `EscopoVazioError`); a lógica de casamento
+    fica idêntica à pré-conversão, que é o que "preservando a semântica" quer
+    dizer.
+
+    **Por que o sufixo fica.** Este guard afirma EXISTÊNCIA ("todo builder tem
+    teste"), e o predicado é `fn.__name__ not in all_content`: alargar o
+    conjunto de arquivos lidos só pode fazer `missing` encolher, ou seja, torna
+    o guard mais PERMISSIVO. Uma conversão que tirou o `endswith` chegou a
+    varrer 212 arquivos em vez de 21 (medido em 2026-09-06); `missing` era
+    vazio nos dois escopos, então não houve perda viva, mas a mensagem do
+    assert passou a prometer o que o código não verificava mais, e afrouxar não
+    estava autorizado em spec, plano nem ledger. Restaurado na onda de correção
+    da revisão final. O aperto legítimo deste guard — trocar nome de arquivo
+    por predicado AST ("todo teste que chama um `build_*`") — está atribuído ao
+    PR 6 pela tabela 3.1.1 da spec, e é a mesma disciplina que a Ruling 8
+    aplicou ao guard irmão de MagicMock.
     """
     import pathlib
 
@@ -419,7 +472,9 @@ def test_every_mutate_builder_has_a_builder_test():
 
     unit_dir = pathlib.Path(__file__).resolve().parent
     all_content = "\n".join(
-        p.read_text(encoding="utf-8") for p in unit_dir.glob("test_*_builder.py")
+        p.read_text(encoding="utf-8")
+        for p in h.testes_py(unit_dir)
+        if p.name.startswith("test_") and p.name.endswith("_builder.py")
     )
 
     missing = sorted(
