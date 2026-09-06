@@ -173,12 +173,32 @@ def chama(no: ast.AST, alvo: str, *, arv: ast.Module) -> bool:
 
 
 def funcoes(arv: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
-    """Toda função do módulo — aninhada e método inclusive.
+    """Todo `def`/`async def` do módulo — aninhado e método inclusive.
 
     A função é a unidade do F57: o guard antigo perguntava do ARQUIVO, então
     um executor novo num arquivo que já gateia noutra função passava verde.
+
+    **Não devolve `lambda`** — para isso existe `lambdas()`, separada porque o
+    `ast.Lambda` não tem `.name` nem `.body` como lista, e quem itera daqui
+    espera as duas coisas. A versão anterior desta docstring prometia "toda
+    função do módulo", e a promessa custou cobertura: o guard do F58 confiava
+    nela, pulava `ast.Lambda` no laço de filhos por ser "escopo próprio", e o
+    corpo do lambda acabava não sendo visitado por ninguém — `g = lambda:
+    conn.cursor('q')` passava verde (revisão final, 2026-09-06). Guard que
+    precisa de TODO escopo executável soma as duas listas; docstring que
+    promete mais do que entrega é o mecanismo que produz o buraco.
     """
     return [n for n in ast.walk(arv) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]
+
+
+def lambdas(arv: ast.Module) -> list[ast.Lambda]:
+    """Todo `lambda` do módulo — o escopo executável que `funcoes()` não vê.
+
+    Um lambda é escopo próprio (o corpo dele não roda quando a linha que o
+    define roda) e é a forma mais curta de produzir consumo preguiçoso, que
+    é justamente o que o F58 existe para impedir.
+    """
+    return [n for n in ast.walk(arv) if isinstance(n, ast.Lambda)]
 
 
 def _caminho_pontilhado(no: ast.expr) -> str | None:

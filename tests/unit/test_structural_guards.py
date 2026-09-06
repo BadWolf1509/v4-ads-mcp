@@ -19,6 +19,8 @@ transforma a convenção num teste que falha no commit em vez de num incidente.
 import ast
 from pathlib import Path
 
+import pytest
+
 from tests.unit import _guard_harness as h
 
 SRC = h.SRC  # mantido: guards usam `p.relative_to(SRC)` na mensagem
@@ -71,16 +73,27 @@ def _cursores_fora_de_transacao(escopo: ast.AST, arv: ast.Module) -> list[int]:
     o que impede que uma transação escrita na função de fora isente um closure
     que pode ser chamado de qualquer outro lugar.
 
-    `desce` testa o nó que RECEBE e só então desce nos filhos. A ordem importa:
-    enquanto o teste vivia no laço dos filhos, um `.cursor(` que É o
-    `context_expr` de um `with` (`async with conn.cursor('q') as c:`) nunca era
-    testado — ele chega a `desce` como o próprio `no`, nunca como filho de
-    alguém. O guard por ARQUIVO pegava essa forma por substring e a conversão
-    para AST a perdeu: a única regressão da reescrita, medida e fechada em
-    2026-09-06. A forma é rara (o `CursorFactory` do asyncpg não é async
-    context manager, então ela quebraria em runtime de qualquer jeito), mas
-    guard reescrito pra ser mais estrito não pode ficar mais frouxo em canto
-    nenhum.
+    `desce` testa o nó que RECEBE e só então desce nos filhos, e trata o `with`
+    que RECEBE — não o `with` que encontra entre os filhos. As duas coisas são a
+    mesma lição, aprendida em duas rodadas:
+
+    1. Enquanto o teste do `.cursor(` vivia no laço dos filhos, um `.cursor(`
+       que É o `context_expr` de um `with` (`async with conn.cursor('q') as c:`)
+       nunca era testado — ele chega a `desce` como o próprio `no`, nunca como
+       filho de alguém. O guard por ARQUIVO pegava essa forma por substring e a
+       conversão para AST a perdeu (medido e fechado em 2026-09-06).
+    2. Enquanto o tratamento do `with` vivia no laço dos filhos, um `with`
+       ANINHADO — que chega a `desce` como `no`, pela recursão da linha do corpo
+       — tinha os `items` ignorados, e a transação declarada nele não protegia
+       nada. Isso acusava o idioma padrão do asyncpg (`async with
+       pool.acquire() as conn:` por fora, `async with conn.transaction():` por
+       dentro), que é CÓDIGO CORRETO. Falso positivo é pior que guard ausente:
+       ensina a contornar o guard. Achado na revisão final, 2026-09-06.
+
+    A transação vale para todo o corpo léxico do `with`, aninhamento adentro —
+    mas só dentro da MESMA função: `desce` não entra em `def`/`async def`/
+    `lambda`, cada um é escopo próprio visitado em separado. Transação aberta
+    pelo CHAMADOR continua não isentando (ver a docstring do teste).
     """
     nus: list[int] = []
 
@@ -92,25 +105,48 @@ def _cursores_fora_de_transacao(escopo: ast.AST, arv: ast.Module) -> list[int]:
             and no.func.attr in h.nomes_locais(arv, "cursor")
         ):
             nus.append(no.lineno)
+        if isinstance(no, ast.With | ast.AsyncWith):
+            # Os itens são avaliados em ordem, então o que vem DEPOIS de
+            # `conn.transaction()` no mesmo `async with` já está dentro dela
+            # (`async with pool.acquire() as conn, conn.transaction():`).
+            aqui = protegido
+            for item in no.items:
+                desce(item.context_expr, aqui)
+                if item.optional_vars is not None:
+                    desce(item.optional_vars, aqui)  # `as d[algo()]` é sintaxe válida
+                if h.chama(item.context_expr, "transaction", arv=arv):
+                    aqui = True
+            for stmt in no.body:
+                desce(stmt, aqui)
+            return  # items + body são TODOS os filhos de um With; nada sobra
         for filho in ast.iter_child_nodes(no):
             if isinstance(filho, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
-                continue  # escopo próprio — `h.funcoes()` o visita sozinho
-            if isinstance(filho, ast.With | ast.AsyncWith):
-                # Os itens são avaliados em ordem, então o que vem DEPOIS de
-                # `conn.transaction()` no mesmo `async with` já está dentro dela
-                # (`async with pool.acquire() as conn, conn.transaction():`).
-                aqui = protegido
-                for item in filho.items:
-                    desce(item.context_expr, aqui)
-                    if h.chama(item.context_expr, "transaction", arv=arv):
-                        aqui = True
-                for stmt in filho.body:
-                    desce(stmt, aqui)
-                continue
+                continue  # escopo próprio — `h.funcoes()`/`h.lambdas()` o visitam sozinhos
             desce(filho, protegido)
 
     desce(escopo, False)
     return nus
+
+
+def _ofensores_f58(arv: ast.Module) -> list[tuple[str, int]]:
+    """(escopo, linha) de cada `.cursor(` fora de transação num módulo.
+
+    Fonte única do laço de escopos: o teste que varre `src/` e o que exercita as
+    quatro formas sintéticas chamam esta mesma função. Duas travessias com a
+    mesma intenção seriam duas fontes de verdade — o F91 ao pé da letra.
+    """
+    achados: list[tuple[str, int]] = []
+    # O módulo entra como escopo: `.cursor(` fora de qualquer função (corpo de
+    # módulo ou de classe) não pode escapar por não ter função dona. O `lambda`
+    # entra pelo mesmo motivo que a função aninhada — é escopo próprio, `desce`
+    # o pula no laço de filhos, e sem ele aqui o corpo não seria visitado por
+    # NINGUÉM (I1 da revisão final: `g = lambda: conn.cursor('q')` passava).
+    for escopo in (arv, *h.funcoes(arv), *h.lambdas(arv)):
+        if not h.chama(escopo, "cursor", arv=arv):
+            continue
+        onde = "<lambda>" if isinstance(escopo, ast.Lambda) else getattr(escopo, "name", "<módulo>")
+        achados.extend((onde, linha) for linha in _cursores_fora_de_transacao(escopo, arv))
+    return achados
 
 
 def test_cursor_usage_is_wrapped_in_transaction() -> None:
@@ -152,15 +188,8 @@ def test_cursor_usage_is_wrapped_in_transaction() -> None:
     """
     ofensores: list[str] = []
     for path in h.fontes_py():
-        arv = h.arvore(path)
-        # O módulo entra como escopo: `.cursor(` fora de qualquer função (corpo
-        # de módulo ou de classe) não pode escapar por não ter função dona.
-        for escopo in (arv, *h.funcoes(arv)):
-            if not h.chama(escopo, "cursor", arv=arv):
-                continue
-            onde = getattr(escopo, "name", "<módulo>")
-            for linha in _cursores_fora_de_transacao(escopo, arv):
-                ofensores.append(f"{h.rel(path)}:{linha} (em {onde})")
+        for onde, linha in _ofensores_f58(h.arvore(path)):
+            ofensores.append(f"{h.rel(path)}:{linha} (em {onde})")
 
     assert not ofensores, (
         f"F58 — `.cursor(` fora de `async with conn.transaction()`: {ofensores}. "
@@ -169,6 +198,112 @@ def test_cursor_usage_is_wrapped_in_transaction() -> None:
         "transação precisa estar na PRÓPRIA função, envolvendo a chamada — "
         "transação aberta pelo chamador NÃO conta (o generator é lazy e pode ser "
         "consumido fora dela), e aninhar vira SAVEPOINT, que é barato."
+    )
+
+
+# Cada entrada é (id, fonte, acusa?). A tabela é o contrato do guard do F58:
+# quais formas ele PRECISA acusar e quais ele NÃO PODE acusar. As duas metades
+# importam igual — um guard que reprova código correto é pior que um guard
+# ausente, porque ensina a contorná-lo (revisão final, 2026-09-06).
+_FORMAS_F58 = [
+    (
+        "aninhado_acquire_fora_transacao_dentro",
+        # Idioma padrão do asyncpg, e o que o único `.cursor(` vivo do projeto
+        # usa em espírito. Acusar isto era o falso positivo do I2.
+        "async def f(pool):\n"
+        "    async with pool.acquire() as conn:\n"
+        "        async with conn.transaction():\n"
+        "            async for r in conn.cursor('q'):\n"
+        "                pass\n",
+        False,
+    ),
+    (
+        "clausula_unica_acquire_e_transacao",
+        "async def f(pool):\n"
+        "    async with pool.acquire() as conn, conn.transaction():\n"
+        "        async for r in conn.cursor('q'):\n"
+        "            pass\n",
+        False,
+    ),
+    (
+        "cursor_nu",
+        "async def f(conn):\n    c = conn.cursor('q')\n    return c\n",
+        True,
+    ),
+    (
+        "cursor_dentro_de_lambda",
+        # Lambda é escopo próprio e o corpo dele só roda depois — a forma mais
+        # curta de produzir o consumo preguiçoso que o F58 existe pra impedir.
+        "async def f(conn):\n    g = lambda: conn.cursor('q')\n    return g\n",
+        True,
+    ),
+    (
+        "lambda_dentro_de_transacao_tambem_acusa",
+        # Deliberado, não descuido: o lambda pode ser chamado depois que o
+        # `async with` fechou. É a mesma razão pela qual transação do CHAMADOR
+        # não isenta.
+        "async def f(conn):\n"
+        "    async with conn.transaction():\n"
+        "        g = lambda: conn.cursor('q')\n"
+        "    return g\n",
+        True,
+    ),
+    (
+        "cursor_como_context_expr_sem_transacao",
+        "async def f(conn):\n    async with conn.cursor('q') as c:\n        pass\n",
+        True,
+    ),
+    (
+        "cursor_como_context_expr_protegido_na_mesma_clausula",
+        "async def f(conn):\n"
+        "    async with conn.transaction(), conn.cursor('q') as c:\n"
+        "        pass\n",
+        False,
+    ),
+    (
+        "cursor_depois_de_a_transacao_fechar",
+        "async def f(conn):\n"
+        "    async with conn.transaction():\n"
+        "        pass\n"
+        "    c = conn.cursor('q')\n"
+        "    return c\n",
+        True,
+    ),
+    (
+        "transacao_apenas_no_chamador",
+        # Decisão registrada em 2026-09-06 e NÃO desfeita pelo fix do `with`
+        # ancestral: só o aninhamento léxico DENTRO da mesma função isenta.
+        "async def chamador(conn):\n"
+        "    async with conn.transaction():\n"
+        "        async for r in stream(conn):\n"
+        "            pass\n"
+        "async def stream(conn):\n"
+        "    async for r in conn.cursor('q'):\n"
+        "        yield r\n",
+        True,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("fonte", "acusa"),
+    [(fonte, acusa) for _, fonte, acusa in _FORMAS_F58],
+    ids=[ident for ident, _, _ in _FORMAS_F58],
+)
+def test_f58_acusa_a_violacao_e_so_ela(fonte: str, acusa: bool) -> None:
+    """Contrato do guard do F58, forma a forma, contra fonte sintética.
+
+    Roda contra `_ofensores_f58` — a MESMA travessia que o teste de `src/` usa,
+    não uma reimplementação. Sem esta tabela, as duas metades do contrato
+    dependiam de haver um ocupante vivo de cada forma em `src/`, e hoje há
+    exatamente um `.cursor(` no projeto inteiro: o guard poderia ganhar ou
+    perder qualquer uma das outras oito sem nada ficar vermelho.
+    """
+    achados = _ofensores_f58(ast.parse(fonte))
+
+    assert bool(achados) is acusa, (
+        f"veredito errado: esperado {'ACUSA' if acusa else 'passa'}, "
+        f"obtido {achados or 'passa'} para:\n{fonte}"
     )
 
 

@@ -286,6 +286,32 @@ def test_funcoes_inclui_aninhada_metodo_e_async() -> None:
     assert {f.name for f in h.funcoes(arv)} == {"topo", "aninhada", "metodo"}
 
 
+def test_funcoes_nao_devolve_lambda_e_lambdas_devolve() -> None:
+    """O par que faltava, e o buraco que a falta produziu.
+
+    `funcoes()` prometia "toda função do módulo" e entregava só `def`/`async
+    def`. O guard do F58 confiava na promessa, pulava `ast.Lambda` no laço de
+    filhos por ser "escopo próprio", e o corpo do lambda acabava sem dono:
+    `g = lambda: conn.cursor('q')` passava verde (revisão final, 2026-09-06).
+    O par negativo (`funcoes` NÃO vê) importa tanto quanto o positivo
+    (`lambdas` vê): é a metade que documenta por que as duas listas existem.
+    """
+    arv = _arv("def topo():\n    g = lambda: 1\n    return g\nh = lambda x: x + 1\n")
+
+    assert {f.name for f in h.funcoes(arv)} == {"topo"}
+    assert len(h.lambdas(arv)) == 2
+    assert all(isinstance(n, ast.Lambda) for n in h.lambdas(arv))
+
+
+def test_lambdas_vazio_quando_nao_ha_lambda() -> None:
+    """Par negativo de `lambdas()`: módulo só com `def` devolve lista vazia.
+
+    Sem ele, um `lambdas()` que devolvesse `ast.walk` inteiro (toda expressão)
+    passaria no teste positivo acima — que só conta 2 — mas não aqui.
+    """
+    assert h.lambdas(_arv("def topo():\n    return 1\n")) == []
+
+
 def test_classe_de_excecao_resolve_builtin_e_asyncpg() -> None:
     import asyncpg
 
