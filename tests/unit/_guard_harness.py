@@ -26,6 +26,15 @@ SRC = RAIZ / "src"
 TEMPLATES = SRC / "web" / "templates"
 TESTES = RAIZ / "tests"
 
+# Critério de pertencimento (nenhum destes nomes tinha essa regra escrita —
+# foi por isso que `.superpowers` ficou de fora): entra aqui o diretório que é
+# TODO ele scratch de ferramenta — gerado por processo (venv, cache de
+# lint/tipo/teste, bundler, editor ou agente), não versionado, cujo conteúdo
+# não é fonte nem documentação do projeto. Um nome só PARCIALMENTE ignorado
+# (ex.: `.claude`, que versiona `settings.json` e `agents/*.md` ao lado de
+# `worktrees/` efêmero) NÃO entra: como o filtro casa pelo NOME em qualquer
+# posição do caminho (`set(p.parts) & _IGNORADOS`), excluir esse nome
+# apagaria também o conteúdo versionado que mora ao lado do estado efêmero.
 _IGNORADOS = frozenset(
     {
         "__pycache__",
@@ -35,6 +44,14 @@ _IGNORADOS = frozenset(
         ".ruff_cache",
         ".pytest_cache",
         "node_modules",
+        # Diretório de trabalho dos agentes (briefs, relatórios, notas de
+        # revisão) — git-ignored (.gitignore). Sem esta entrada, `markdown()`
+        # varria o texto que um REVISOR escreveu descrevendo este mesmo
+        # achado (citando o padrão proibido do F113 como exemplo), e o guard
+        # ficava vermelho ou verde conforme o que estivesse ali naquele
+        # minuto — um gate não-determinístico deixa de ser gate (medido
+        # 2026-09-06: `.superpowers/sdd/.../task-4-review.md` acusado).
+        ".superpowers",
     }
 )
 

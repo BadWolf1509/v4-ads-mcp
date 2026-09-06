@@ -173,6 +173,27 @@ def test_markdown_ignora_pytest_cache(tmp_path: Path) -> None:
     assert [p.name for p in h.markdown(tmp_path)] == ["real.md"]
 
 
+def test_markdown_ignora_superpowers(tmp_path: Path) -> None:
+    """`.superpowers/` é o scratch dos agentes deste fluxo (briefs, relatórios,
+    notas de revisão) — git-ignored (`.gitignore:25`), mas fisicamente
+    presente no disco. Sem a exclusão, `markdown()` varria o texto que um
+    REVISOR escreveu descrevendo este mesmo achado — citando o padrão
+    proibido do F113 como exemplo — e o guard ficava vermelho ou verde
+    conforme o que estivesse ali naquele minuto: um gate não-determinístico
+    deixa de ser gate (medido 2026-09-06:
+    `.superpowers/sdd/2026-09-06-pr0-harness-de-guards/task-4-review.md:36`
+    e `:92`, acusados antes desta correção).
+    """
+    scratch = tmp_path / ".superpowers"
+    scratch.mkdir()
+    (scratch / "relatorio-de-revisao.md").write_text(
+        "nota do revisor citando o padrao do F113", encoding="utf-8"
+    )
+    (tmp_path / "real.md").write_text("# real", encoding="utf-8")
+
+    assert [p.name for p in h.markdown(tmp_path)] == ["real.md"]
+
+
 def test_workflows_default_encontra_ci_yml() -> None:
     """Caminho default (sem argumento) — ancora `.github/workflows` real.
 
