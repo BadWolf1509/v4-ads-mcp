@@ -35,6 +35,7 @@ async def test_drawer_marca_pagina_atual(client: AsyncClient):
         manager_id=str(mid),
         email="nav@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     response = await client.get("/sessions", cookies={PANEL_SESSION_COOKIE_NAME: cookie})
     assert response.status_code == 200
@@ -55,6 +56,7 @@ async def test_sessions_create_redirects_to_detail(client: AsyncClient):
         manager_id=str(mid),
         email="cs@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     response = await client.post(
         "/sessions/new",
@@ -90,6 +92,7 @@ async def test_sessions_revoke_list_page_returns_fragment(client: AsyncClient):
         manager_id=str(mid),
         email="rv@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     response = await client.post(
         f"/sessions/{sess1.id}/revoke",
@@ -121,6 +124,7 @@ async def test_sessions_revoke_detail_page_returns_hx_redirect(client: AsyncClie
         manager_id=str(mid),
         email="rvd@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     response = await client.post(
         f"/sessions/{sess1.id}/revoke",
@@ -151,6 +155,7 @@ async def test_sessions_list_include_revoked_shows_revoked(client: AsyncClient):
         manager_id=str(mid),
         email="ir@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     response = await client.get(
         "/sessions?include_revoked=1",
@@ -183,6 +188,7 @@ async def test_sessions_revoke_with_include_revoked_preserves_context(client: As
         manager_id=str(mid),
         email="rvir@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     response = await client.post(
         f"/sessions/{sess1.id}/revoke",
@@ -216,6 +222,7 @@ async def test_sessions_revoke_list_page_has_hx_trigger_toast(client: AsyncClien
         manager_id=str(mid),
         email="rth@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     response = await client.post(
         f"/sessions/{sess1.id}/revoke",
@@ -250,6 +257,7 @@ async def test_sessions_revoke_sem_htmx_redireciona(client: AsyncClient):
         manager_id=str(mid),
         email="rvn@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     response = await client.post(
         f"/sessions/{sess.id}/revoke",

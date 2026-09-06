@@ -52,6 +52,7 @@ async def test_authenticated_dashboard_renders(client: AsyncClient):
         manager_id=str(mid),
         email="x@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     response = await client.get("/", cookies={PANEL_SESSION_COOKIE_NAME: cookie})
     assert response.status_code == 200
@@ -70,6 +71,7 @@ async def test_logout_clears_cookie(client: AsyncClient):
         manager_id=str(mid),
         email="lo@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     response = await client.post(
         "/logout",
@@ -95,6 +97,7 @@ async def test_dashboard_redirects_logged_in_user_from_login(client: AsyncClient
         manager_id=str(mid),
         email="lo2@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     response = await client.get(
         "/login",

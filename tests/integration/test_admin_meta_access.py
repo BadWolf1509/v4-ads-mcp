@@ -53,6 +53,7 @@ def _admin_cookie(admin_id):
         manager_id=str(admin_id),
         email="admin@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
 
 
@@ -61,6 +62,7 @@ def _gestor_cookie(gestor_id):
         manager_id=str(gestor_id),
         email="gestor@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
 
 

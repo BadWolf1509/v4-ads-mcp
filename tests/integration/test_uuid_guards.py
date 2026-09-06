@@ -35,6 +35,7 @@ async def test_session_detail_invalid_uuid_returns_404(client: AsyncClient) -> N
         manager_id=str(mid),
         email="uuid-guard-sess@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     response = await client.get(
         "/sessions/not-a-uuid",
@@ -55,6 +56,7 @@ async def test_admin_access_manager_detail_invalid_uuid_returns_404(client: Asyn
         manager_id=str(admin_id),
         email="uuid-guard-admin@v4company.com",
         signing_key=_SIGNING_KEY,
+        aud="panel",
     )
     response = await client.get(
         "/admin/access/not-a-uuid",

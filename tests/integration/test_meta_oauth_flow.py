@@ -23,8 +23,9 @@ def _meta_env(monkeypatch):
 
 def _make_state(manager_id: str) -> str:
     return sign_state(
-        {"manager_id": manager_id, "aud": "meta_oauth"},
+        {"manager_id": manager_id},
         _SIGNING_KEY,
+        aud="meta_oauth",
     )
 
 

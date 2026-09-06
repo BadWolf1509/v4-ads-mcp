@@ -22,7 +22,7 @@ async def test_start_redirects_to_google(client: AsyncClient) -> None:
     async with pool.acquire() as conn:
         mid = uuid4()
         await managers.create(conn, manager_id=mid, email="boot@v4.com", full_name="Boot")
-    invite = sign_state({"manager_id": str(mid)}, _SIGNING_KEY)
+    invite = sign_state({"manager_id": str(mid)}, _SIGNING_KEY, aud="cli_invite")
 
     response = await client.get(f"/oauth/google/start?invite={invite}", follow_redirects=False)
     assert response.status_code == 302
@@ -51,7 +51,7 @@ async def test_callback_persists_encrypted_refresh_token(client: AsyncClient) ->
         mid = uuid4()
         await managers.create(conn, manager_id=mid, email="cb@v4.com", full_name=None)
 
-    state = sign_state({"manager_id": str(mid)}, _SIGNING_KEY)
+    state = sign_state({"manager_id": str(mid)}, _SIGNING_KEY, aud="google_oauth")
 
     # Mock Google's token + userinfo endpoints.
     respx.post("https://oauth2.googleapis.com/token").mock(
@@ -92,7 +92,7 @@ async def test_callback_rejects_missing_refresh_token(client: AsyncClient) -> No
     async with pool.acquire() as conn:
         mid = uuid4()
         await managers.create(conn, manager_id=mid, email="nr@v4.com", full_name=None)
-    state = sign_state({"manager_id": str(mid)}, _SIGNING_KEY)
+    state = sign_state({"manager_id": str(mid)}, _SIGNING_KEY, aud="google_oauth")
 
     with respx.mock:
         respx.post("https://oauth2.googleapis.com/token").mock(
@@ -124,7 +124,7 @@ async def test_callback_rejects_non_v4_email(client: AsyncClient) -> None:
     async with pool.acquire() as conn:
         mid = uuid4()
         await managers.create(conn, manager_id=mid, email="d@v4.com", full_name=None)
-    state = sign_state({"manager_id": str(mid)}, _SIGNING_KEY)
+    state = sign_state({"manager_id": str(mid)}, _SIGNING_KEY, aud="google_oauth")
 
     respx.post("https://oauth2.googleapis.com/token").mock(
         return_value=Response(
