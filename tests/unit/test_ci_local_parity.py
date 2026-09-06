@@ -113,7 +113,9 @@ def test_toda_instrucao_de_regerar_o_lock_usa_universal() -> None:
         + ". Se for citacao de registro historico (nao instrucao viva), marque a "
         "LINHA SEGUINTE com um comentario contendo `guard-f113:` pra isentar "
         "(ex.: `<!-- guard-f113: motivo -->` em markdown, `# guard-f113: motivo` "
-        "em codigo)."
+        "em codigo). O marcador isenta APENAS aquela linha (a imediatamente "
+        "anterior a ele) — nunca o arquivo inteiro; repita o marcador em cada "
+        "ocorrencia que precisar de isencao."
     )
 
 

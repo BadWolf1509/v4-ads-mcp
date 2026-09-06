@@ -74,12 +74,31 @@ def test_builder_tests_use_capture_client_not_magicmock():
     algum dia mude de subpasta), mas o filtro MANTÉM o sufixo `_builder.py`
     de propósito, em vez de só `startswith("test_")` como o resto da Task 4:
     a regra "MagicMock cru no client mascara bug de proto field" só faz
-    sentido pra teste QUE EXERCITA UM BUILDER. Medido: soltar o sufixo (só
-    `startswith("test_")`) faz esta suíte acusar 39 arquivos — test_backup,
-    test_session_is_active, test_logging_context, etc. — que usam MagicMock
-    pra mockar pool/conexão/job e nunca tocam `_BUILDERS`/`register_builder`;
-    zero desses 39 é builder test sem o nome certo, é o guard perguntando a
-    arquivo errado uma pergunta que não se aplica a ele.
+    sentido pra teste QUE EXERCITA UM BUILDER.
+
+    Dois números, medidos e conferidos por dois caminhos independentes cada
+    (revisão de Task 4, 2026-09-06 — a versão anterior deste docstring dizia
+    "39" e não citava o segundo número abaixo; os dois estavam errados, e
+    docstring com número errado é pior que sem número, porque quem confia não
+    remede):
+
+    - **21** arquivos `test_*_builder.py` hoje em `tests/unit/` (diretos,
+      nenhum aninhado) — a população que o filtro de sufixo abaixo preserva;
+      nenhum deles é offender hoje (por isso este guard passa). Reproduza com
+      `len(list(unit_dir.glob("test_*_builder.py")))` (glob puro,
+      não-recursivo) — bate com `len([p for p in h.testes_py(unit_dir) if
+      p.name.startswith("test_") and p.name.endswith("_builder.py")])`
+      (harness, recursivo).
+    - **42** arquivos que este guard passaria a acusar se o filtro abaixo
+      soltasse o sufixo (só `startswith("test_")`, sem o `endswith`) —
+      test_backup, test_session_is_active, test_logging_context, etc. — que
+      usam MagicMock pra mockar pool/conexão/job e nunca tocam
+      `_BUILDERS`/`register_builder`; zero desses 42 é builder test sem o
+      nome certo, é o guard perguntando a arquivo errado uma pergunta que não
+      se aplica a ele. Reproduza tirando o `and path.name.endswith(...)` da
+      condição abaixo — bate trocando `h.testes_py(unit_dir)` por
+      `unit_dir.rglob("*.py")` cru (mesmos `_IGNORADOS` de
+      `_guard_harness.py`).
     """
     import pathlib
 
