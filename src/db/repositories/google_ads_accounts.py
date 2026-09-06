@@ -7,6 +7,8 @@ from typing import Any
 import asyncpg
 import structlog
 
+from src.google_ads.reconcile import InventoryRow
+
 log = structlog.get_logger(__name__)
 
 
@@ -68,11 +70,65 @@ async def upsert_many(
             time_zone = EXCLUDED.time_zone,
             is_test_account = EXCLUDED.is_test_account,
             is_active = true,
+            -- F128: a conta reapareceu, entao a serie de ausencias morre aqui.
+            -- Sem isto, cliente que volta chegaria ao limiar com ausencias
+            -- antigas e seria desativado logo apos ser reativado. Espelha
+            -- meta_ad_accounts.upsert_many (C1 da revisao de branch, 2026-09-05:
+            -- a clausula tinha ficado de fora do lado Google).
+            missed_syncs = 0,
             synced_at = now()
         """,
         rows,
     )
     return len(rows)
+
+
+async def apply_absences(conn: asyncpg.Connection, *, bump: list[str], reset: list[str]) -> None:
+    """Aplica a carência decidida por `build_plan()`. Não decide nada — só escreve."""
+    if bump:
+        await conn.execute(
+            "UPDATE google_ads_accounts SET missed_syncs = missed_syncs + 1 "
+            "WHERE customer_id = ANY($1::text[])",
+            bump,
+        )
+    if reset:
+        await conn.execute(
+            "UPDATE google_ads_accounts SET missed_syncs = 0 WHERE customer_id = ANY($1::text[])",
+            reset,
+        )
+
+
+async def deactivate(conn: asyncpg.Connection, *, customer_ids: list[str]) -> int:
+    """Desativa exatamente a lista dada — nunca 'tudo que não está em X'.
+
+    Espelha `meta_ad_accounts.deactivate`. `mark_inactive_except` (abaixo) carrega
+    o modo de falha do F85 na própria forma — keep-list vazia significa "desative
+    o resto" —, então quem decide a lista de remoção passou a ser `build_plan()`
+    (via `reconcile_google`, `src/jobs/account_resync.py`), e esta função só
+    aplica: lista vazia é no-op por construção, sem branch de opt-in nenhum.
+    `mark_inactive_except` não foi apagada — segue como caminho de emergência.
+    """
+    if not customer_ids:
+        return 0
+    result = await conn.execute(
+        "UPDATE google_ads_accounts SET is_active = false "
+        "WHERE customer_id = ANY($1::text[]) AND is_active = true",
+        customer_ids,
+    )
+    return int(result.split()[-1]) if result.startswith("UPDATE") else 0
+
+
+async def list_inventory_rows(conn: asyncpg.Connection) -> list[InventoryRow]:
+    """Devolve o inventário no formato que `build_plan()` consome — puro dado."""
+    rows = await conn.fetch("SELECT customer_id, is_active, missed_syncs FROM google_ads_accounts")
+    return [
+        InventoryRow(
+            customer_id=r["customer_id"],
+            is_active=r["is_active"],
+            missed_syncs=r["missed_syncs"],
+        )
+        for r in rows
+    ]
 
 
 async def mark_inactive_except(
@@ -83,6 +139,13 @@ async def mark_inactive_except(
     allow_full_deactivation: bool = False,
 ) -> int:
     """Mark accounts under mcc_id as inactive if not in keep list (deletion detection).
+
+    Task 5 (2026-09-05): o job diário (`src/jobs/account_resync.py`) PAROU de
+    chamar esta função — a decisão de quem remover passou para `build_plan()` +
+    `deactivate()` acima, com carência por conta em vez de "primeira ausência já
+    desativa". Ela continua existindo, coberta pelos testes abaixo, como caminho
+    de emergência (`allow_full_deactivation=True`) para quem precisar zerar o
+    inventário de um MCC à mão.
 
     F85 — keep-list vazia é NO-OP por default. `fetch_account_details` pode
     devolver `[]` sem levantar exceção (search com 0 linhas, mudança de semântica
@@ -136,3 +199,64 @@ async def get_by_customer_id(conn: asyncpg.Connection, customer_id: str) -> Goog
         "SELECT * FROM google_ads_accounts WHERE customer_id = $1", customer_id
     )
     return _row_to_account(row) if row is not None else None
+
+
+@dataclass(slots=True, frozen=True)
+class ReconcileQueues:
+    sem_delegacao: list[asyncpg.Record]
+    voltaram_ao_mcc: list[asyncpg.Record]
+
+
+async def list_queues(conn: asyncpg.Connection) -> ReconcileQueues:
+    """As duas filas do painel. Cada uma é uma AÇÃO diferente do admin.
+
+    C1 (lição do sprint Meta, `meta_ad_accounts.list_queues`): a fila 2 NÃO
+    chaveia em `is_active`. Quando a conta volta ao MCC, `upsert_many` a
+    reativa na MESMA execução — e é aí, e só aí, que restaurar faz sentido,
+    porque `can_manager_access` exige conta ativa. Com o predicado
+    `is_active = false`, a conta sumiria da fila no instante em que se
+    tornasse restaurável, e sobraria redelegar tudo à mão — o trabalho manual
+    que a revogação soft existe para eliminar. A chave é ter grant revogado
+    por churn PENDENTE (`revoked_reason = LEFT_MCC_REASON`); por isso o nome
+    é `voltaram_ao_mcc`, não `sairam_do_mcc` — ao contrário da fila 3 do
+    gêmeo Meta, esta não mistura histórico de quem segue fora: `is_active =
+    true` aqui é uma exigência real da query, não um bug — só entram contas
+    JÁ acionáveis.
+
+    As filas são exclusivas e `voltaram_ao_mcc` tem precedência: a conta que
+    voltou satisfaz as duas (está ativa e sem grant VIVO), e sem a exclusão o
+    admin seria convidado a refazer à mão o que um clique devolve.
+    """
+    from src.db.repositories.manager_account_access import LEFT_MCC_REASON
+
+    voltaram = await conn.fetch(
+        """
+        SELECT a.customer_id, a.descriptive_name,
+               count(m.manager_id) AS grants_restauraveis
+          FROM google_ads_accounts a
+          JOIN manager_account_access m ON m.customer_id = a.customer_id
+         WHERE a.is_active = true
+           AND m.revoked_at IS NOT NULL
+           AND m.revoked_reason = $1
+         GROUP BY a.customer_id, a.descriptive_name
+         ORDER BY a.descriptive_name
+        """,
+        LEFT_MCC_REASON,
+    )
+    sem_delegacao = await conn.fetch(
+        """
+        SELECT a.customer_id, a.descriptive_name, a.synced_at
+          FROM google_ads_accounts a
+         WHERE a.is_active = true
+           AND NOT EXISTS (
+                 SELECT 1 FROM manager_account_access m
+                  WHERE m.customer_id = a.customer_id AND m.revoked_at IS NULL)
+           AND NOT EXISTS (
+                 SELECT 1 FROM manager_account_access m
+                  WHERE m.customer_id = a.customer_id
+                    AND m.revoked_reason = $1)
+         ORDER BY a.descriptive_name
+        """,
+        LEFT_MCC_REASON,
+    )
+    return ReconcileQueues(sem_delegacao=list(sem_delegacao), voltaram_ao_mcc=list(voltaram))

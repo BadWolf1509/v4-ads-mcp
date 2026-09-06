@@ -108,9 +108,13 @@ async def revoke(
     `grant_all_active`, `copy_access`) zera `revoked_at`/`revoked_reason` de
     volta pra NULL — a partir daí não sobra na tabela nenhum registro de que a
     revogação aconteceu. Não existe coluna `revoked_by`: quem revogou só fica
-    em `audit_log`, e só nos caminhos que passam por `_audit_admin` (o painel;
-    `revoke_for_inactive_accounts`, sem chamador em produção ainda, não
-    audita nada). E `bulk_grant`/`grant_all_active` reconcedem sem tocar `granted_at`/
+    em `audit_log`, e só nos caminhos que passam por `_audit_admin` (o painel)
+    ou por `record_access_revocation` (`src/jobs/_audit.py`). Esta última é
+    quem cobre `revoke_for_inactive_accounts`: desde a Task 5 (2026-09-05) o
+    job diário (`src/jobs/account_resync.py`) chama as duas, na MESMA
+    transação — antes disso a função não tinha chamador em produção e a
+    revogação automática não deixava trilha nenhuma (C2 da revisão de branch).
+    E `bulk_grant`/`grant_all_active` reconcedem sem tocar `granted_at`/
     `granted_by` — a linha restaurada por esses dois caminhos lê "concedida
     há muito tempo, nunca revogada", indistinguível de uma que nunca saiu do
     ar; só `grant()` (o toggle do painel) e `copy_access` atualizam os dois
@@ -349,6 +353,11 @@ async def count_grants_on_inactive_accounts(conn: asyncpg.Connection) -> int:
 
     O número que o dry-run reporta como `revoke_candidates` (Task 5, fora
     desta leva — a função entra aqui porque o brief a declarava sem dono).
+
+    Só enxerga o BACKLOG (`is_active = false` já gravado) — nunca as contas que
+    a execução CORRENTE vai desativar, porque `reconcile_google` conta antes de
+    chamar `deactivate()`. `count_grants_on_accounts` abaixo cobre a outra
+    metade (I1 da revisão de branch, 2026-09-05).
     """
     return int(
         await conn.fetchval(
@@ -358,5 +367,37 @@ async def count_grants_on_inactive_accounts(conn: asyncpg.Connection) -> int:
               JOIN google_ads_accounts a ON a.customer_id = m.customer_id
              WHERE a.is_active = false AND m.revoked_at IS NULL
             """
+        )
+    )
+
+
+async def count_grants_on_accounts(conn: asyncpg.Connection, *, customer_ids: list[str]) -> int:
+    """Quantos grants VIVOS existem nas contas dadas. Leitura pura.
+
+    I1 (revisão de branch, 2026-09-05): `revoke_candidates` somava só o backlog
+    de `count_grants_on_inactive_accounts` (contas JÁ `is_active = false`) — às
+    cegas para os grants das contas que O PLANO DESTA EXECUÇÃO (`plano.to_remove`,
+    ainda `is_active = true` no momento da contagem, porque é lida ANTES do
+    `deactivate()`) está prestes a desativar. Medido: conta com 1 ausência do
+    limiar e 1 grant vivo reportava `revoke_candidates=0` tanto no dry-run
+    quanto no apply — exatamente a indistinguibilidade que o contador existe
+    para eliminar. Somando esta função ao backlog, o dry-run passa a PREVER o
+    que a virada vai fazer, não só narrar o que já tinha acontecido antes dela.
+
+    Não filtra por `is_active`: os customer_ids vêm de `plano.to_remove`, que
+    por construção (`build_plan`) só contém contas ainda ativas no inventário —
+    filtrar de novo aqui seria redundante, e a função fica reutilizável para
+    qualquer lista de contas, não só as que já viraram backlog.
+    """
+    if not customer_ids:
+        return 0
+    return int(
+        await conn.fetchval(
+            """
+            SELECT count(*)
+              FROM manager_account_access
+             WHERE customer_id = ANY($1::text[]) AND revoked_at IS NULL
+            """,
+            customer_ids,
         )
     )

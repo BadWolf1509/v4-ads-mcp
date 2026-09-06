@@ -5,10 +5,12 @@ behavior against real SQL. We don't mock asyncpg — that yields
 zero confidence in column names, constraints, or upsert behavior.
 """
 
+import json
 from uuid import UUID, uuid4
 
 import asyncpg
 import pytest
+from structlog.testing import capture_logs
 
 from src.db.repositories import (
     audit_log,
@@ -22,6 +24,7 @@ from src.db.repositories import (
     meta_oauth_connections,
     meta_rate_counters,
 )
+from src.jobs import account_resync
 
 
 async def _make_manager(conn: asyncpg.Connection, email: str) -> UUID:
@@ -492,6 +495,399 @@ async def test_count_grants_on_inactive_accounts(db) -> None:
         assert await manager_account_access.count_grants_on_inactive_accounts(conn) == 0
 
 
+# ---------- google_ads_accounts.list_queues (Task 6) ----------
+
+
+@pytest.mark.integration
+async def test_fila_delegacao_lista_conta_ativa_sem_grant(db) -> None:
+    async with db.acquire() as conn:
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "701", "mcc_id": "1", "descriptive_name": "Nova"}]
+        )
+        q = await google_ads_accounts.list_queues(conn)
+        assert [r["customer_id"] for r in q.sem_delegacao] == ["701"]
+
+
+@pytest.mark.integration
+async def test_fila_de_restauracao_aparece_quando_a_conta_volta(db) -> None:
+    """C1 da revisão Meta: chavear em is_active=false faz a conta sumir da fila
+    exatamente quando ela se torna restaurável.
+
+    Verificado por sabotagem (2026-09-05): trocando `a.is_active = true` por
+    `a.is_active = false` no predicado de `voltaram` em `list_queues`, a
+    primeira asserção abaixo (fila vazia enquanto a conta está fora do MCC)
+    passa a FALHAR — a conta aparece na fila justamente enquanto está
+    inativa, o oposto do que a fila existe para garantir. Ver task-6-report.md
+    pela saída literal do pytest com a sabotagem aplicada.
+    """
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "volta@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "702", "mcc_id": "1", "descriptive_name": "Voltou"}]
+        )
+        await manager_account_access.grant(conn, manager_id=mid, customer_id="702")
+        await conn.execute(
+            "UPDATE google_ads_accounts SET is_active = false WHERE customer_id = '702'"
+        )
+        await manager_account_access.revoke_for_inactive_accounts(conn)
+
+        # Enquanto FORA do MCC: não é restaurável, o gate exige conta ativa.
+        q = await google_ads_accounts.list_queues(conn)
+        assert [r["customer_id"] for r in q.voltaram_ao_mcc] == []
+
+        # Voltou ao MCC — agora sim.
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "702", "mcc_id": "1", "descriptive_name": "Voltou"}]
+        )
+        q = await google_ads_accounts.list_queues(conn)
+        assert [r["customer_id"] for r in q.voltaram_ao_mcc] == ["702"]
+        assert [r["customer_id"] for r in q.sem_delegacao] == []  # exclusiva
+
+
+@pytest.mark.integration
+async def test_fila_de_restauracao_ignora_revogacao_administrativa(db) -> None:
+    """Revogação por decisão do admin não é churn — não pode aparecer em
+    `voltaram_ao_mcc` (só `restore_for_account` lida com isso, e ele também
+    ignora `ADMIN_REVOKED_REASON` de propósito) nem sumir de `sem_delegacao`.
+
+    Espelha `test_fila_saiu_ignora_conta_sem_revogacao_por_churn` do gêmeo Meta.
+    """
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "admin-revoke@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "703", "mcc_id": "1", "descriptive_name": "Punida"}]
+        )
+        await manager_account_access.grant(conn, manager_id=mid, customer_id="703")
+        await manager_account_access.revoke(conn, manager_id=mid, customer_id="703")
+
+        q = await google_ads_accounts.list_queues(conn)
+        assert q.voltaram_ao_mcc == []
+        assert [r["customer_id"] for r in q.sem_delegacao] == ["703"]
+
+
+@pytest.mark.integration
+async def test_fila_delegacao_ignora_conta_inativa(db) -> None:
+    """I-2 da revisão final (feat/gate-google-reconcile): `a.is_active = true`
+    em `sem_delegacao` não tinha NENHUM teste.
+
+    Sabotagem medida (2026-09-05): trocando o predicado para `(a.is_active =
+    true OR a.is_active = false)`, este arquivo e `test_web_panel_admin.py`
+    INTEIROS continuavam verdes, e as duas contas abaixo entravam na fila.
+    Isso importa porque `sem_delegacao` alimenta `avisar_contas_sem_grant` — o
+    sinal do alerta —, então sem o predicado toda conta fora do MCC sem grant
+    vivo dispararia o e-mail todo dia, e o botão convidaria o admin a delegar
+    numa conta que `can_manager_access` nega. Ver task-8-report.md pela saída
+    literal do pytest com a sabotagem aplicada.
+    """
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "inativa@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn,
+            [
+                {"customer_id": "704", "mcc_id": "1", "descriptive_name": "Inativa sem grant"},
+                {
+                    "customer_id": "705",
+                    "mcc_id": "1",
+                    "descriptive_name": "Inativa admin-revoked",
+                },
+            ],
+        )
+        # 705 tem um grant, mas revogado por decisão do admin (não churn) —
+        # nenhum dos dois NOT EXISTS de `sem_delegacao` o exclui sozinho.
+        await manager_account_access.grant(conn, manager_id=mid, customer_id="705")
+        await manager_account_access.revoke(conn, manager_id=mid, customer_id="705")
+        await conn.execute(
+            "UPDATE google_ads_accounts SET is_active = false WHERE customer_id = ANY($1::text[])",
+            ["704", "705"],
+        )
+
+        q = await google_ads_accounts.list_queues(conn)
+        assert [r["customer_id"] for r in q.sem_delegacao] == []
+
+
+# ---------- account_resync.reconcile_google (Task 5) ----------
+
+
+@pytest.mark.integration
+async def test_conta_nova_aparece_em_added(db) -> None:
+    """Se o upsert rodasse ANTES da leitura, `added` sairia sempre 0.
+
+    `upsert_many` marca is_active=true e zera missed_syncs pra toda conta do
+    MCC — lido depois dele, o inventário já parece "em dia" e a auditoria nunca
+    reporta conta nova. Achado da revisão do sprint Meta, round 1.
+    """
+    async with db.acquire() as conn:
+        resumo = await account_resync.reconcile_google(
+            conn,
+            accounts=[{"customer_id": "801", "mcc_id": "1", "descriptive_name": "Nova"}],
+            complete=True,
+            apply=False,
+        )
+        assert resumo["added"] == 1
+
+        # Segunda execução: a conta já está no inventário, não é mais "nova".
+        resumo = await account_resync.reconcile_google(
+            conn,
+            accounts=[{"customer_id": "801", "mcc_id": "1", "descriptive_name": "Nova"}],
+            complete=True,
+            apply=False,
+        )
+        assert resumo["added"] == 0
+
+
+@pytest.mark.integration
+async def test_conta_reativada_zera_missed_syncs_e_sobrevive_a_ausencia_seguinte(db) -> None:
+    """C1 (revisão de branch, 2026-09-05): o F128 do lado Meta tinha voltado no
+    Google — faltava `missed_syncs = 0` no `ON CONFLICT DO UPDATE` de
+    `upsert_many` (`google_ads_accounts.py`).
+
+    Cenário medido: conta desativada por churn com `missed_syncs=3` (o limiar)
+    volta ao MCC. `to_reset` não a alcança — é calculado a partir de `ativos`
+    no inventário lido ANTES do upsert, onde ela ainda estava inativa
+    (`build_plan` só considera contas ativas pra decidir reset). Sem a
+    cláusula no upsert, `missed_syncs` continuava 3 depois de reativada, e
+    bastava UMA ausência seguinte (`3 + 1 >= 3`) pra removê-la de novo no
+    mesmo dia, levando o grant do gestor junto — carência zero justamente
+    para as contas que mais oscilam.
+    """
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "reativada@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "901", "mcc_id": "1", "descriptive_name": "Oscila"}]
+        )
+        await manager_account_access.grant(conn, manager_id=mid, customer_id="901")
+        # Simula o estado de uma conta já desativada por churn, no limiar.
+        await conn.execute(
+            "UPDATE google_ads_accounts SET is_active = false, missed_syncs = 3 "
+            "WHERE customer_id = '901'"
+        )
+
+        # A conta volta a aparecer no MCC.
+        resumo = await account_resync.reconcile_google(
+            conn,
+            accounts=[{"customer_id": "901", "mcc_id": "1", "descriptive_name": "Oscila"}],
+            complete=True,
+            apply=True,
+        )
+        assert resumo["removed"] == 0
+        row = await conn.fetchrow(
+            "SELECT is_active, missed_syncs FROM google_ads_accounts WHERE customer_id = '901'"
+        )
+        assert row["is_active"] is True
+        assert row["missed_syncs"] == 0, (
+            "F128 voltou: upsert_many nao zerou missed_syncs de quem reapareceu"
+        )
+
+        # A ausência SEGUINTE não pode remover quem acabou de voltar.
+        resumo2 = await account_resync.reconcile_google(
+            conn, accounts=[], complete=True, apply=True
+        )
+        assert resumo2["removed"] == 0, (
+            "carencia zero: uma unica ausencia removeu quem acabou de ser reativado"
+        )
+        ativos = {a.customer_id for a in await google_ads_accounts.list_all(conn)}
+        assert "901" in ativos
+        assert await manager_account_access.can_manager_access(conn, mid, "901") is True
+
+
+@pytest.mark.integration
+async def test_trava_desligada_nao_revoga_mas_reporta(db) -> None:
+    """O dry-run tem de OBSERVAR o que a virada fará, senão o soak não serve."""
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "dry@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "802", "mcc_id": "1", "descriptive_name": "Sai"}]
+        )
+        await manager_account_access.grant(conn, manager_id=mid, customer_id="802")
+        await conn.execute(
+            "UPDATE google_ads_accounts SET is_active = false WHERE customer_id = '802'"
+        )
+
+        resumo = await account_resync.reconcile_google(
+            conn, accounts=[], complete=True, apply=False
+        )
+        assert resumo["applied"] is False
+        assert resumo["revoked_grants"] == 0
+        # ...MAS o dry-run tem de OBSERVAR o que a virada fará. Sem este
+        # contador, o soak inteiro reporta zero e não distingue "não há o que
+        # revogar" de "há 34 e a trava está segurando".
+        assert resumo["revoke_candidates"] == 1
+        # A linha continua VIVA — a trava governa destruição, não observação.
+        assert await conn.fetchval(
+            "SELECT revoked_at IS NULL FROM manager_account_access WHERE customer_id = '802'"
+        )
+
+
+@pytest.mark.integration
+async def test_revoke_candidates_preve_o_que_esta_execucao_vai_revogar(db) -> None:
+    """I1 (revisão de branch, 2026-09-05): `revoke_candidates` só somava o
+    backlog (`count_grants_on_inactive_accounts`, contas JÁ `is_active=false`)
+    — cego para os grants das contas que O PLANO DESTA EXECUÇÃO vai desativar
+    (`plano.to_remove`), porque a contagem roda antes do `deactivate()`.
+
+    Diferença para `test_trava_desligada_nao_revoga_mas_reporta` acima: lá
+    "802" já estava inativa ANTES da chamada (puro backlog). Aqui "903" está
+    ATIVA a 1 ausência do limiar — é o plano desta MESMA execução que decide
+    removê-la, e é exatamente esse caso que o backlog sozinho não alcança.
+
+    Medido (pré-fix): `revoke_candidates=0` nos dois modos (dry-run e apply) —
+    o soak reportava zero na véspera de revogar.
+    """
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "candidato@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "903", "mcc_id": "1", "descriptive_name": "Vai_Sair"}]
+        )
+        await conn.execute(
+            "UPDATE google_ads_accounts SET missed_syncs = 2 WHERE customer_id = '903'"
+        )
+        await manager_account_access.grant(conn, manager_id=mid, customer_id="903")
+
+        # Dry-run: nada é revogado de fato, mas o contador tem que PREVER.
+        resumo = await account_resync.reconcile_google(
+            conn, accounts=[], complete=True, apply=False
+        )
+        assert resumo["removed"] == 1, "missed_syncs 2+1 >= limiar 3: o plano remove a conta"
+        assert resumo["revoked_grants"] == 0
+        assert resumo["revoke_candidates"] == 1, (
+            "dry-run as cegas pra propria execucao — reporta zero na vespera de revogar"
+        )
+        assert await manager_account_access.can_manager_access(conn, mid, "903") is True
+
+        # Mesmo estado, agora com apply=True: a MESMA previsão, de fato aplicada.
+        resumo2 = await account_resync.reconcile_google(
+            conn, accounts=[], complete=True, apply=True
+        )
+        assert resumo2["removed"] == 1
+        assert resumo2["revoke_candidates"] == 1
+        assert resumo2["revoked_grants"] == 1
+        assert await manager_account_access.can_manager_access(conn, mid, "903") is False
+
+
+@pytest.mark.integration
+async def test_revogacao_automatica_grava_trilha_por_conta(db) -> None:
+    """C2 (revisão de branch, 2026-09-05): `revoke_for_inactive_accounts` devolve
+    customer_id -> manager_ids — quem perdeu o quê —, mas o job só somava um
+    inteiro (`revogados`) e descartava o resto. O ESTADO da tabela não é
+    trilha: reconceder por qualquer caminho (`grant`/`bulk_grant`/
+    `grant_all_active`/`copy_access`) zera `revoked_at`/`revoked_reason` de
+    volta pra NULL, e depois disso não sobra registro nenhum de que um acesso
+    humano foi retirado, e por quê. Espelha `meta_resync` (`meta_access_cleanup`).
+    """
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "trilha-google@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "904", "mcc_id": "1", "descriptive_name": "Sai_Google"}]
+        )
+        await conn.execute(
+            "UPDATE google_ads_accounts SET missed_syncs = 2 WHERE customer_id = '904'"
+        )
+        await manager_account_access.grant(conn, manager_id=mid, customer_id="904")
+
+        await account_resync.reconcile_google(conn, accounts=[], complete=True, apply=True)
+
+        row = await conn.fetchrow(
+            """SELECT operation, platform, action_type, status, customer_id, params_summary
+                 FROM audit_log WHERE operation = 'google_access_cleanup'
+                ORDER BY occurred_at DESC LIMIT 1"""
+        )
+        assert row is not None, "revogacao automatica sem NENHUMA trilha no audit_log"
+        assert row["platform"] == "google"
+        assert row["action_type"] == "mutate"
+        assert row["status"] == "success"
+        assert row["customer_id"] == "904"
+        params = json.loads(row["params_summary"])
+        assert params["reason"] == manager_account_access.LEFT_MCC_REASON
+        assert params["managers"] == [str(mid)]
+
+
+@pytest.mark.integration
+async def test_dry_run_nao_revoga_e_nao_audita_revogacao(db) -> None:
+    """Contraparte do teste acima: sem `apply`, nada é revogado — e a trilha de
+    revogação (`google_access_cleanup`) não pode aparecer vazia de propósito,
+    senão o audit mentiria sobre uma revogação que não aconteceu."""
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "dry-trilha@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "905", "mcc_id": "1", "descriptive_name": "Sai_Dry"}]
+        )
+        await conn.execute(
+            "UPDATE google_ads_accounts SET missed_syncs = 2 WHERE customer_id = '905'"
+        )
+        await manager_account_access.grant(conn, manager_id=mid, customer_id="905")
+
+        await account_resync.reconcile_google(conn, accounts=[], complete=True, apply=False)
+
+        row = await conn.fetchrow(
+            "SELECT 1 FROM audit_log WHERE operation = 'google_access_cleanup' "
+            "AND customer_id = '905'"
+        )
+        assert row is None, "dry-run nao pode gravar trilha de uma revogacao que nao aconteceu"
+
+
+@pytest.mark.integration
+async def test_inventario_vazio_nao_desativa_nem_revoga_mesmo_com_trava_ligada(db) -> None:
+    """A proteção do F85 mudou de lugar — este é o guard do lugar NOVO.
+
+    Até aqui `mark_inactive_except` era o único guardião (keep-list vazia virava
+    no-op). O job diário parou de chamar essa função; quem protege agora é o
+    `complete=inventario_ok` que alimenta `build_plan()` dentro de
+    `reconcile_google`. Prova a propriedade contra banco real, com a trava
+    (`apply`) LIGADA de propósito — o pior caso é leitura vazia no mesmo dia em
+    que `google_reconcile_apply` está true, e mesmo assim tem de sair zero.
+
+    "701" está deliberadamente a 1 ausência do limiar (a próxima ausência
+    cruzaria `threshold=3`): se `complete` fosse True aqui (em vez de False),
+    esta MESMA chamada removeria "701" e revogaria os dois grants. É a
+    verificação por sabotagem que a task pediu — feita à parte (não commitada),
+    forçando complete=True numa cópia deste teste: `removed` foi de 0 para 1,
+    `applied` de False para True, `revoked_grants` de 0 para 2, e a leitura de
+    `revoked_at IS NULL` de ambos os grants virou False. O teste como está aqui
+    (complete=False) fica VERDE; a variante sabotada fica VERMELHA.
+    """
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "sabotagem@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn,
+            [
+                {"customer_id": "701", "mcc_id": "1", "descriptive_name": "Sobrevive"},
+                {"customer_id": "702", "mcc_id": "1", "descriptive_name": "Ja_Saiu"},
+            ],
+        )
+        await conn.execute(
+            "UPDATE google_ads_accounts SET missed_syncs = 2 WHERE customer_id = '701'"
+        )
+        # "702" já tinha saído do MCC num resync anterior — grant vivo em conta
+        # inativa, exatamente o estado que motivou `revoke_candidates` (34
+        # grants em produção em 2026-09-05).
+        await conn.execute(
+            "UPDATE google_ads_accounts SET is_active = false WHERE customer_id = '702'"
+        )
+        await manager_account_access.grant(conn, manager_id=mid, customer_id="701")
+        await manager_account_access.grant(conn, manager_id=mid, customer_id="702")
+
+        resumo = await account_resync.reconcile_google(
+            conn, accounts=[], complete=False, apply=True
+        )
+
+        assert resumo["blocked_reason"] is not None
+        assert resumo["applied"] is False
+        assert resumo["removed"] == 0
+        assert resumo["revoked_grants"] == 0
+        # Observabilidade não pode morrer com a trava: "702" segue contando.
+        assert resumo["revoke_candidates"] == 1
+
+        ativos = {a.customer_id for a in await google_ads_accounts.list_all(conn)}
+        assert "701" in ativos, "inventário vazio não pode desativar conta viva"
+        for cid in ("701", "702"):
+            assert await conn.fetchval(
+                "SELECT revoked_at IS NULL FROM manager_account_access "
+                "WHERE manager_id = $1 AND customer_id = $2",
+                mid,
+                cid,
+            ), f"grant de {cid} não pode ser revogado com leitura incompleta"
+
+
 @pytest.mark.integration
 async def test_copy_access_nao_ressuscita_grant_revogado(db) -> None:
     """Achado extra (Task 3, fora das 4 decisões originais, E4): o SELECT da
@@ -615,6 +1011,110 @@ async def test_copy_access_recusa_origem_igual_ao_destino(db) -> None:
             )
 
         assert await manager_account_access.can_manager_access(conn, mid, "611") is True
+
+
+# ---------- account_resync.avisar_contas_sem_grant (Task 7) ----------
+
+
+@pytest.mark.integration
+async def test_avisa_quando_ha_conta_sem_grant(db) -> None:
+    """A Hust App ficou dias sem grant e foi achada por ACASO, no seletor de
+    contas do Google. Este log é o que a policy transforma em e-mail."""
+    async with db.acquire() as conn:
+        await google_ads_accounts.upsert_many(
+            conn,
+            [
+                {"customer_id": "901", "mcc_id": "1", "descriptive_name": "Sem gestor"},
+                {"customer_id": "902", "mcc_id": "1", "descriptive_name": "Tambem sem"},
+            ],
+        )
+        with capture_logs() as logs:
+            await account_resync.avisar_contas_sem_grant(conn)
+
+    evento = [e for e in logs if e["event"] == "google_accounts_sem_grant"]
+    assert len(evento) == 1
+    assert evento[0]["total"] == 2
+    assert sorted(evento[0]["customer_ids"]) == ["901", "902"]
+
+
+@pytest.mark.integration
+async def test_nao_avisa_quando_todas_tem_grant(db) -> None:
+    """Alarme que aparece sempre ensina a ser ignorado.
+
+    Verificado por sabotagem (2026-09-05): fazendo `avisar_contas_sem_grant`
+    emitir o `log.warning` incondicionalmente (ignorando `queues.sem_delegacao`
+    vazio), esta asserção — lista vazia — passa a FALHAR, porque a única conta
+    do teste tem grant vivo e não deveria gerar nenhum evento. O teste como
+    está aqui (guardado pelo `if not queues.sem_delegacao: return 0`) fica
+    VERDE; a variante sabotada (sempre emite) fica VERMELHA.
+    """
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "tem@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn, [{"customer_id": "903", "mcc_id": "1", "descriptive_name": "Com gestor"}]
+        )
+        await manager_account_access.grant(conn, manager_id=mid, customer_id="903")
+        with capture_logs() as logs:
+            await account_resync.avisar_contas_sem_grant(conn)
+
+    assert [e for e in logs if e["event"] == "google_accounts_sem_grant"] == []
+
+
+# ---------- meta_resync.reconcile_meta (Task 5) ----------
+
+
+@pytest.mark.integration
+async def test_meta_reconcile_grava_meta_access_cleanup_no_audit(db) -> None:
+    """Espelha o teste de Google: revogação automática de acesso Meta grava
+    trilha com a operation CORRETA (`meta_access_cleanup`, não `google_access_cleanup`).
+
+    Este teste vai direto na função `record_access_revocation` com `platform="meta"`,
+    pois o fluxo completo de `reconcile_meta()` exige mocking complexo de network
+    (partnership, adaccounts). O que importa é que a string da operation seja fixada.
+    Sabotagem 1: hardcodar `operation="google_access_cleanup"` no helper ficaria vermelha.
+    """
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "trilha-meta@v4company.com")
+        await meta_ad_accounts.upsert_many(
+            conn,
+            [
+                {
+                    "ad_account_id": "act_meta_revoke",
+                    "business_id": "bm_test",
+                    "account_name": "Test Meta",
+                }
+            ],
+        )
+        await manager_meta_account_access.grant(
+            conn, manager_id=mid, ad_account_id="act_meta_revoke"
+        )
+
+        # Chama record_access_revocation diretamente como faria meta_resync
+        # após revogar grants.
+        from src.jobs._audit import record_access_revocation
+
+        await record_access_revocation(
+            conn,
+            platform="meta",
+            ad_account_id="act_meta_revoke",
+            reason=manager_meta_account_access.PARTNERSHIP_ENDED_REASON,
+            manager_ids=[str(mid)],
+        )
+
+        # Verifica que a operation gravada é `meta_access_cleanup` (não `google_access_cleanup`).
+        row = await conn.fetchrow(
+            """SELECT operation, platform, action_type, status, customer_id, params_summary
+                 FROM audit_log WHERE operation = 'meta_access_cleanup'
+                ORDER BY occurred_at DESC LIMIT 1"""
+        )
+        assert row is not None, "revogacao meta sem NENHUMA trilha no audit_log"
+        assert row["platform"] == "meta"
+        assert row["action_type"] == "mutate"
+        assert row["status"] == "success"
+        assert row["customer_id"] == "act_meta_revoke"
+        params = json.loads(row["params_summary"])
+        assert params["reason"] == manager_meta_account_access.PARTNERSHIP_ENDED_REASON
+        assert params["managers"] == [str(mid)]
 
 
 # ---------- audit_log ----------

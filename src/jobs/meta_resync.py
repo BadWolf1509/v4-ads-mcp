@@ -132,6 +132,7 @@ async def reconcile_meta() -> Plan:
                     # gravam, ou nenhum.
                     await record_access_revocation(
                         conn,
+                        platform="meta",
                         ad_account_id=ad_account_id,
                         reason=manager_meta_account_access.PARTNERSHIP_ENDED_REASON,
                         manager_ids=[str(m) for m in atingidos],
