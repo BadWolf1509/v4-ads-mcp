@@ -63,19 +63,101 @@ def test_meta_graph_execution_is_contained() -> None:
     )
 
 
+def _cursores_fora_de_transacao(escopo: ast.AST, arv: ast.Module) -> list[int]:
+    """Linhas de `.cursor(` no corpo PRÓPRIO de `escopo`, fora de transação.
+
+    Não desce em função aninhada: cada função é um escopo próprio e é visitada
+    em separado por `h.funcoes()`. Atribuir a chamada ao escopo MAIS INTERNO é
+    o que impede que uma transação escrita na função de fora isente um closure
+    que pode ser chamado de qualquer outro lugar.
+    """
+    nus: list[int] = []
+
+    def desce(no: ast.AST, protegido: bool) -> None:
+        for filho in ast.iter_child_nodes(no):
+            if isinstance(filho, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
+                continue  # escopo próprio — `h.funcoes()` o visita sozinho
+            if isinstance(filho, ast.With | ast.AsyncWith):
+                # Os itens são avaliados em ordem, então o que vem DEPOIS de
+                # `conn.transaction()` no mesmo `async with` já está dentro dela
+                # (`async with pool.acquire() as conn, conn.transaction():`).
+                aqui = protegido
+                for item in filho.items:
+                    desce(item.context_expr, aqui)
+                    if h.chama(item.context_expr, "transaction", arv=arv):
+                        aqui = True
+                for stmt in filho.body:
+                    desce(stmt, aqui)
+                continue
+            if (
+                not protegido
+                and isinstance(filho, ast.Call)
+                and isinstance(filho.func, ast.Attribute)
+                and filho.func.attr in h.nomes_locais(arv, "cursor")
+            ):
+                nus.append(filho.lineno)
+            desce(filho, protegido)
+
+    desce(escopo, False)
+    return nus
+
+
 def test_cursor_usage_is_wrapped_in_transaction() -> None:
-    """F58: arquivo que usa conn.cursor() (server-side cursor) precisa também
-    de conn.transaction() — asyncpg exige transação explícita, senão o generator
-    quebra no primeiro fetch (o CSV export foi pra prod quebrado assim)."""
-    offenders = []
-    for p in h.fontes_py():
-        text = p.read_text(encoding="utf-8")
-        if ".cursor(" in text and "conn.transaction()" not in text:
-            offenders.append(str(p.relative_to(SRC)))
-    assert not offenders, (
-        "F58 — .cursor() sem conn.transaction() no mesmo arquivo: "
-        f"{offenders}. async for row in conn.cursor(...) PRECISA de "
-        "async with conn.transaction()."
+    """F58: `.cursor(` só roda dentro de `async with conn.transaction()`.
+
+    asyncpg exige transação explícita pro server-side cursor; sem ela o
+    generator quebra com `NoActiveSQLTransactionError` no primeiro fetch — foi
+    assim que o CSV export foi pra produção quebrado.
+
+    A versão anterior era `".cursor(" in text and "conn.transaction()" not in
+    text`, por ARQUIVO e por substring. Medido em 2026-09-06, ela deixava
+    passar duas coisas:
+
+    1. **Unidade errada.** Um segundo generator com `conn.cursor(` sem
+       transação, num arquivo que já abre transação NOUTRA função, passava
+       verde — uma transação em qualquer lugar do arquivo isentava o arquivo
+       inteiro. É o mesmo defeito de unidade do F57, e é por isso que
+       `h.funcoes()` existe.
+    2. **Prosa contando como código.** `conn.transaction()` escrito em
+       comentário ou docstring satisfazia o `not in text`. Não é hipótese:
+       cinco arquivos citam a chamada em COMENTÁRIO (`conversions.py:107`,
+       `customer_match.py:165`, `mutations.py:201`, `reports.py:87`,
+       `validate_gaql.py:125`); num arquivo onde só o comentário existisse, o
+       guard ficava verde sem nenhuma transação real — sabotagem F58-C.
+
+    **Decisão sobre transação aberta pelo CHAMADOR (2026-09-06): não isenta.**
+    A transação tem que estar na própria função, envolvendo lexicalmente a
+    chamada. Três razões. (a) Confiar no chamador é exatamente o que produziu o
+    F58: o generator é lazy, e num streaming CSV quem o consome é o iterador de
+    resposta do Starlette, fora de qualquer transação que a rota tenha aberto —
+    o `async with` do chamador só protege se ele consumir o generator inteiro
+    lá dentro, o que nenhum guard estático verifica. (b) Isentar pelo chamador
+    exigiria call graph, e o grafo seria inevitavelmente incompleto (despacho
+    dinâmico, injeção, consumo dirigido por framework) — uma isenção que não
+    distingue código bom de quebrado não é guard. (c) O remédio é barato e já é
+    o idioma da casa: transação aninhada no asyncpg vira SAVEPOINT (ver o
+    comentário em `validate_gaql.py:125`), então declarar a transação dentro da
+    própria função nunca custa correção.
+    """
+    ofensores: list[str] = []
+    for path in h.fontes_py():
+        arv = h.arvore(path)
+        # O módulo entra como escopo: `.cursor(` fora de qualquer função (corpo
+        # de módulo ou de classe) não pode escapar por não ter função dona.
+        for escopo in (arv, *h.funcoes(arv)):
+            if not h.chama(escopo, "cursor", arv=arv):
+                continue
+            onde = getattr(escopo, "name", "<módulo>")
+            for linha in _cursores_fora_de_transacao(escopo, arv):
+                ofensores.append(f"{h.rel(path)}:{linha} (em {onde})")
+
+    assert not ofensores, (
+        f"F58 — `.cursor(` fora de `async with conn.transaction()`: {ofensores}. "
+        "asyncpg exige transação explícita pro server-side cursor, senão o "
+        "generator quebra com NoActiveSQLTransactionError no primeiro fetch. A "
+        "transação precisa estar na PRÓPRIA função, envolvendo a chamada — "
+        "transação aberta pelo chamador NÃO conta (o generator é lazy e pode ser "
+        "consumido fora dela), e aninhar vira SAVEPOINT, que é barato."
     )
 
 
@@ -382,8 +464,43 @@ def test_chamada_bloqueante_sai_do_event_loop() -> None:
     )
 
 
+def _tabela_de_imports(arv: ast.Module) -> dict[str, str]:
+    """Nome local → caminho canônico, lido dos `import` do módulo.
+
+    `h.classe_de_excecao` resolve o nome LITERAL contra `builtins`/`asyncpg`, e
+    por isso devolve `None` pra qualquer alias — `except PCE` e
+    `except pg.ConnectionDoesNotExistError` passavam verdes mesmo com o
+    `issubclass` no lugar (medido 2026-09-06). Desfazer o alias ANTES de
+    resolver é o que fecha o buraco; sem isto, renomear no import desarma o
+    guard inteiro.
+
+    Import relativo fica de fora de propósito: não dá caminho absoluto pra
+    resolver, e nenhuma exceção retentável entra por ele.
+    """
+    tabela: dict[str, str] = {}
+    for no in ast.walk(arv):
+        if isinstance(no, ast.Import):
+            for a in no.names:
+                tabela[a.asname or a.name] = a.name
+        elif isinstance(no, ast.ImportFrom):
+            if no.module is None or no.level:
+                continue
+            for a in no.names:
+                tabela[a.asname or a.name] = f"{no.module}.{a.name}"
+    return tabela
+
+
+def _canonizar(nome: str, tabela: dict[str, str]) -> str:
+    """Troca o primeiro segmento do nome pelo caminho por onde ele foi importado."""
+    cabeca, ponto, resto = nome.partition(".")
+    destino = tabela.get(cabeca)
+    if destino is None:
+        return nome
+    return f"{destino}{ponto}{resto}" if ponto else destino
+
+
 def test_retentaveis_de_conexao_tem_uma_fonte_de_verdade_so() -> None:
-    """F91 (3ª vez) — quem captura exceção de conexão IMPORTA a constante.
+    """F91 (4ª vez) — quem captura exceção de conexão IMPORTA a constante.
 
     `run_with_reconnect` retenta o que estiver em `_DROPPED_CONNECTION_ERRORS`.
     Um `except` que repete essa tupla como literal cria duas fontes de verdade
@@ -391,39 +508,67 @@ def test_retentaveis_de_conexao_tem_uma_fonte_de_verdade_so() -> None:
     para trás EM SILÊNCIO — a exceção nova escapa, o retry re-executa o closure
     inteiro e o F91 reabre sem nenhum teste ficar vermelho.
 
+    A versão anterior comparava NOME (`{e.__name__ for e in ...}`) contra o
+    texto do `except`, e por isso só pegava a grafia que ninguém escreve.
+    Medido em 2026-09-06, 4 das 5 grafias ofensoras passavam verdes:
+
+        PEGA   except asyncpg.PostgresConnectionError
+        PASSA  except asyncpg.ConnectionDoesNotExistError   <- connection.py:21
+        PASSA  except ConnectionResetError                  <- connection.py:22
+        PASSA  except (asyncpg.ConnectionFailureError, BrokenPipeError)
+        PASSA  except PCE                                   <- alias de import
+
+    As quatro que passavam são `issubclass` de verdade dos membros da
+    constante — logo `run_with_reconnect` as retenta, que é a condição exata do
+    F91 — e são justamente as que o comentário de `connection.py:21-22` nomeia
+    como as reais. A propriedade só se afirma resolvendo a classe e perguntando
+    `issubclass`; comparar string afirma o ADJACENTE à invariante.
+
+    Trocar nome por `issubclass` sozinho ainda deixava as DUAS formas de alias
+    passarem (`except PCE` e `except pg.ConnectionDoesNotExistError`), porque
+    `h.classe_de_excecao` resolve o nome literal e alias nenhum existe em
+    `builtins`/`asyncpg` — medido 2026-09-06, com o `issubclass` já no lugar.
+    Por isso o nome passa antes por `_canonizar`: sem isso, um `as` no import
+    desarmava o guard inteiro.
+
     Guard estrutural de propósito: as duas formas são hoje semanticamente
     idênticas, então nenhum teste de comportamento distingue uma da outra. O
     que distingue é se a lista está escrita duas vezes.
+
+    Limite conhecido e deliberado: `h.classe_de_excecao` só resolve `builtins`
+    e `asyncpg` (a allowlist existe pra que o texto de um `except` lido de
+    fonte arbitrária não decida qual módulo este processo importa), então uma
+    subclasse de retentável DEFINIDA no próprio `src/` devolveria `None` e
+    passaria. Verificado em 2026-09-06: nenhuma classe de `src/` herda de
+    `ConnectionError` nem de exceção do asyncpg. `None` conta como isento aqui
+    — e não como ofensor — porque o conjunto retentável está inteiro dentro dos
+    dois namespaces cobertos; tratar desconhecido como ofensor acusaria todo
+    `except` de exceção própria do projeto.
     """
     from src.db import connection
 
-    nomes_retentaveis = {e.__name__ for e in connection._DROPPED_CONNECTION_ERRORS}
+    definidor = h.SRC / "db" / "connection.py"  # quem DEFINE a constante
+    retentaveis = connection._DROPPED_CONNECTION_ERRORS
     ofensores: list[str] = []
 
     for path in h.fontes_py():
-        if path.name == "connection.py":  # quem DEFINE a constante (allowlist)
+        if path == definidor:
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Try):
+        arv = h.arvore(path)
+        tabela = _tabela_de_imports(arv)
+        for no in ast.walk(arv):
+            if not isinstance(no, ast.ExceptHandler):
                 continue
-            for handler in node.handlers:
-                if handler.type is None:
-                    continue
-                capturadas = (
-                    handler.type.elts if isinstance(handler.type, ast.Tuple) else [handler.type]
-                )
-                # Nome de exceção mencionado literalmente, sem passar pela constante.
-                mencionados = {
-                    e.attr if isinstance(e, ast.Attribute) else e.id
-                    for e in capturadas
-                    if isinstance(e, ast.Attribute | ast.Name)
-                }
-                if mencionados & nomes_retentaveis:
-                    ofensores.append(f"{path.relative_to(SRC.parent)}:{handler.lineno}")
+            for nome in h.excecoes_do_handler(no):
+                canonico = _canonizar(nome, tabela)
+                if canonico.endswith("_DROPPED_CONNECTION_ERRORS"):
+                    continue  # importou a constante: é exatamente o que se quer
+                classe = h.classe_de_excecao(canonico)
+                if classe is not None and issubclass(classe, retentaveis):
+                    ofensores.append(f"{h.rel(path)}:{no.lineno} ({nome})")
 
     assert not ofensores, (
-        "except repetindo as exceções retentáveis como literal em vez de importar "
-        f"`_DROPPED_CONNECTION_ERRORS`: {ofensores}. Duas fontes de verdade do mesmo "
-        "dado divergem — e a divergência aqui reabre o F91 sem teste vermelho."
+        "except capturando exceção que `run_with_reconnect` RETENTA, sem importar "
+        f"`_DROPPED_CONNECTION_ERRORS`: {ofensores}. Duas fontes de verdade do "
+        "mesmo dado divergem — e a divergência aqui reabre o F91 sem teste vermelho."
     )
