@@ -20,6 +20,11 @@ A terceira leva (2026-09-06, Task 4) fecha dois mutantes medidos sobrevivendo à
 suíte inteira com 0 vermelhos: a audiência comparada por contingência em vez de
 igualdade, e o ramo `email` do cookie, que nenhum payload da suíte alcançava
 porque `manager_id` é conferido antes e abocanhava todos os casos.
+
+A quarta leva (2026-09-06, onda de correção da revisão final) fecha as duas
+metades da ordem declarada que ainda não tinham asserção: `audiência → TTL`
+(M1) e a precedência `kwarg vence payload` do `sign_state` (M2). As duas
+sobreviviam à suíte inteira com 0 vermelhos.
 """
 
 from __future__ import annotations
@@ -36,6 +41,7 @@ from typing import Any, get_args, get_type_hints
 import pytest
 
 from src.auth.oauth_state import (
+    STATE_TTL_SECONDS,
     Audience,
     InvalidStateError,
     PanelAudience,
@@ -44,6 +50,7 @@ from src.auth.oauth_state import (
     verify_state,
 )
 from src.auth.panel_session import (
+    PANEL_SESSION_TTL_SECONDS,
     InvalidPanelSessionError,
     sign_panel_session,
     verify_panel_session,
@@ -456,3 +463,74 @@ def test_cookie_com_manager_id_e_sem_email_e_recusado() -> None:
     )
     with pytest.raises(InvalidPanelSessionError, match="Missing email"):
         verify_panel_session(sem_email, CHAVE, aud="panel")
+
+
+# ---------------------------------------------------------------------------
+# Quarta leva (onda de correção da revisão final): a segunda metade da ordem
+# declarada, e a precedência do kwarg sobre o payload. Ambas medidas
+# sobrevivendo à suíte inteira, 43/43 verdes, antes destas asserções.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("verificar", "excecao", "esperada", "audiencia_no_corpo", "ttl", "erro_de_ttl"),
+    [
+        pytest.param(
+            verify_state,
+            InvalidStateError,
+            "google_oauth",
+            "panel",
+            STATE_TTL_SECONDS,
+            "State expired",
+            id="verify_state",
+        ),
+        pytest.param(
+            verify_panel_session,
+            InvalidPanelSessionError,
+            "panel",
+            "cli_invite",
+            PANEL_SESSION_TTL_SECONDS,
+            "Cookie expired",
+            id="verify_panel_session",
+        ),
+    ],
+)
+def test_audiencia_e_conferida_antes_do_ttl(
+    verificar: Callable[..., object],
+    excecao: type[Exception],
+    esperada: str,
+    audiencia_no_corpo: str,
+    ttl: int,
+    erro_de_ttl: str,
+) -> None:
+    """A outra metade da ordem HMAC → audiência → TTL, que ficou sem guard.
+
+    Mutação que derruba: mover o bloco de `aud` para DEPOIS do bloco de TTL, nos
+    dois módulos. Medida em 2026-09-06: ela sobrevive à suíte inteira, 43/43
+    verdes — `test_hmac_e_conferido_antes_da_audiencia` prende só a primeira
+    metade, e o teste que chega perto
+    (`test_ttl_do_state_nao_e_estendido_por_verificacao_de_outra_audiencia`) usa
+    um token de 1 h contra o TTL de 24 h do painel, que as duas ordens
+    concordam em não expirar.
+
+    O único par que discrimina viola as DUAS regras ao mesmo tempo: audiência
+    de outra família **e** `iat` além do TTL. Na ordem declarada a resposta é
+    `Audiência inválida`; sob o mutante, o erro de TTL. Sem impacto de
+    segurança — nas duas o token é recusado —, mas "ler `iat` é usar o payload",
+    e a Global Constraint manda comparar a audiência antes de qualquer uso dele.
+
+    O controle no fim é o que impede a asserção de ser verdadeira por acidente:
+    com o MESMO `iat` e a audiência CERTA, a recusa tem de ser por TTL. Sem ele,
+    um `iat` que não estivesse de fato expirado deixaria o teste verde nas duas
+    ordens, provando nada.
+    """
+    iat_expirado = int(time.time() - ttl - 60)
+    corpo = {"manager_id": GESTOR, "email": "a@v4company.com", "iat": iat_expirado}
+
+    viola_as_duas = _cunha({**corpo, "aud": audiencia_no_corpo}, CHAVE)
+    with pytest.raises(excecao, match=AUD_INVALIDA):
+        verificar(viola_as_duas, CHAVE, aud=esperada)
+
+    so_viola_o_ttl = _cunha({**corpo, "aud": esperada}, CHAVE)
+    with pytest.raises(excecao, match=erro_de_ttl):
+        verificar(so_viola_o_ttl, CHAVE, aud=esperada)
