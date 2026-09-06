@@ -25,7 +25,15 @@ TEMPLATES = SRC / "web" / "templates"
 TESTES = RAIZ / "tests"
 
 _IGNORADOS = frozenset(
-    {"__pycache__", ".venv", ".git", ".mypy_cache", ".ruff_cache", "node_modules"}
+    {
+        "__pycache__",
+        ".venv",
+        ".git",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".pytest_cache",
+        "node_modules",
+    }
 )
 
 
@@ -47,25 +55,25 @@ def _coletar(caminhos: Iterable[Path], *, raiz: Path, padrao: str) -> list[Path]
 
 def fontes_py(raiz: Path | None = None) -> list[Path]:
     """Todo .py sob `raiz` (default: src/). Recursivo, absoluto, ordenado."""
-    raiz = raiz if raiz is not None else SRC
+    raiz = (raiz if raiz is not None else SRC).resolve()
     return _coletar(raiz.rglob("*.py"), raiz=raiz, padrao="*.py")
 
 
 def testes_py(raiz: Path | None = None) -> list[Path]:
     """Todo .py sob tests/. Recursivo — subpacote novo não escapa."""
-    raiz = raiz if raiz is not None else TESTES
+    raiz = (raiz if raiz is not None else TESTES).resolve()
     return _coletar(raiz.rglob("*.py"), raiz=raiz, padrao="*.py")
 
 
 def templates_html(raiz: Path | None = None) -> list[Path]:
-    raiz = raiz if raiz is not None else TEMPLATES
+    raiz = (raiz if raiz is not None else TEMPLATES).resolve()
     return _coletar(raiz.rglob("*.html"), raiz=raiz, padrao="*.html")
 
 
 def markdown(raiz: Path | None = None) -> list[Path]:
     """Todo .md do repositório, RECURSIVO — inclui docs/, que o guard do F113
     não enxergava (`_RAIZ.glob("*.md")` só pega a raiz)."""
-    raiz = raiz if raiz is not None else RAIZ
+    raiz = (raiz if raiz is not None else RAIZ).resolve()
     return _coletar(raiz.rglob("*.md"), raiz=raiz, padrao="*.md")
 
 
