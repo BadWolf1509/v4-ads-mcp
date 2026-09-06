@@ -21,7 +21,7 @@ This document records the cloud-console actions performed once to bootstrap the 
 - **Observabilidade / alerting** (Monitoring, criado 2026-07-04; validado 2026-07-23): canal e-mail `wellington.ribeiro@v4company.com`; uptime check HTTPS `/health?deep=1` (contentMatcher `"db":"ok"`, período 300s, timeout 10s, `STATIC_IP_CHECKERS`) + policy que exige falha sustentada; policy de **Cloud Run Job failed** (resync/migrate/backup); policy log-based do serviço `severity>=ERROR` (ID `6765708543993578761`, rate-limit 1/h, auto-close 24h). “No severity” no e-mail é severidade não configurada na policy, não ausência de severity no log. O deep health usa `run_with_reconnect` + deadline interno 5s desde F77; `max_inactive_connection_lifetime=120` sozinho não é pre-ping. Recriar policies via REST Monitoring API com `gcloud auth print-access-token` (o componente `gcloud alpha monitoring` não está instalado local).
 - **CI/Deploy:** deploy gated pelo CI (`ci.yml` job `test` → job `deploy` `needs: test`). **Lockfile `requirements.txt`** pinado (uv pip compile do pyproject) instalado pelo buildpack CNB e pelo CI + `pip-audit` non-blocking. Smoke sempre valida health + `/mcp` 401; o smoke MCP autenticado é fail-well e está **dormente** porque o gestor/bearer smoke foi removido (F58 operacional). Re-armar exige recriar o gestor smoke sem grants e atualizar o secret.
 - **GitHub repo secrets:** `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA`, `GCP_PROJECT_ID`, `GCP_REGION`; `SMOKE_MCP_BEARER` pode existir, mas está operacionalmente dormente até recriar o gestor smoke.
-- **Alerta de conta Google sem grant (Task 7, 2026-09-05):** o job `v4-ads-mcp-resync` emite `log.warning("google_accounts_sem_grant", total=N, customer_ids=[...])` quando a fila `sem_delegacao` (`google_ads_accounts.list_queues`) não está vazia — conta ativa no MCC sem NENHUM gestor com grant vivo. Métrica log-based e policy ainda **não existem** no Monitoring — ver a seção *"Runbook: alerta de conta Google sem grant"* abaixo pros comandos REST completos. **🔴 Até alguém rodar aqueles comandos, o evento fica só no log — ninguém recebe e-mail.**
+- **Alerta de conta Google sem grant (Task 7, 2026-09-05):** o job `v4-ads-mcp-resync` emite `log.warning("google_accounts_sem_grant", total=N, customer_ids=[...])` quando a fila `sem_delegacao` (`google_ads_accounts.list_queues`) não está vazia — conta ativa no MCC sem NENHUM gestor com grant vivo. ✅ **Métrica e policy CRIADAS em 2026-09-05** — métrica `logging.googleapis.com/user/google_accounts_sem_grant_total`, policy `alertPolicies/13901405017880842242` (*"Google Ads: conta sem grant apos resync"*), `enabled: true`, apontando o canal de e-mail `15226380074599878362` (Wellington). O projeto passou de 3 para 4 policies. Runbook na seção *"Runbook: alerta de conta Google sem grant"* abaixo — **corrigido em 05/09 depois de a execução real recusá-lo duas vezes**; ver a nota 🔴 lá.
 
 ---
 
@@ -29,7 +29,7 @@ This document records the cloud-console actions performed once to bootstrap the 
 
 > Contexto: conta nova que entra no MCC sem gestor delegado hoje não avisa ninguém — a `Hust App` ficou dias assim e só foi achada por acaso, olhando o seletor de contas do Google. O job diário (`src/jobs/account_resync.py`, `avisar_contas_sem_grant`) agora **detecta** isso e **loga** — `log.warning`, não `error`: o job fez o trabalho certo, a anomalia é do inventário, não da execução, e marcar como erro faria a policy de "Cloud Run Job failed" disparar e mascarar falha real. E só loga quando há o que avisar — hoje, em produção, `sem_delegacao` está **vazia** (as 26 contas ativas têm grant), então o caminho normal é silêncio; alarme que aparece sempre ensina a ser ignorado.
 >
-> **🔴 Esta task entrega o sinal (o log estruturado acima) e ESTE runbook — não entrega o alerta.** Criar a métrica log-based e a policy no Cloud Monitoring é ação humana, fora do repositório, e foi decidido assim de propósito (não dá pra fazer isso passar no CI). **Enquanto os dois comandos abaixo não forem executados, o evento `google_accounts_sem_grant` só existe no log do Cloud Run — nenhum e-mail sai, pra ninguém, mesmo com uma conta sem grant há dias.** Pendência de execução: ver `docs/operacao/estado-atual.md` (Task 8 deste sprint abre o item formal).
+> ✅ **EXECUTADO em 2026-09-05 — a métrica e a policy existem.** O texto abaixo fica como registro do procedimento (e para recriar em outro projeto), já corrigido pelos dois erros que só a execução revelou. Aviso original: *esta task entrega o sinal e este runbook — não entrega o alerta.* Criar a métrica log-based e a policy no Cloud Monitoring é ação humana, fora do repositório, e foi decidido assim de propósito (não dá pra fazer isso passar no CI). **Enquanto os dois comandos abaixo não forem executados, o evento `google_accounts_sem_grant` só existe no log do Cloud Run — nenhum e-mail sai, pra ninguém, mesmo com uma conta sem grant há dias.** Pendência de execução: ver `docs/operacao/estado-atual.md` (Task 8 deste sprint abre o item formal).
 >
 > **Pré-requisito silencioso, já corrigido nesta task:** até este commit, `python -m src.jobs.account_resync` nunca chamava `configure_logging()` — só `src/app.py` (o serviço web) chamava. Sem isso o job loga em texto puro (o renderer default do structlog não-configurado — confirmado lendo logs reais de produção, ex. `2026-09-05 09:00:24 [info] resync_complete ...`), e o filtro `jsonPayload.event=...` abaixo NUNCA acharia nada — a métrica ficaria criada e sempre vazia, calada, sem ninguém notar. Se um dia este alerta parar de disparar quando deveria, o primeiro lugar a olhar é se o job voltou a logar texto puro (`gcloud logging read` sem `jsonPayload`, só `textPayload`).
 >
@@ -102,7 +102,7 @@ $body = @'
         "duration": "0s",
         "trigger": { "count": 1 },
         "aggregations": [
-          { "alignmentPeriod": "300s", "perSeriesAligner": "ALIGN_COUNT" }
+          { "alignmentPeriod": "300s", "perSeriesAligner": "ALIGN_PERCENTILE_99" }
         ]
       }
     }
@@ -111,7 +111,6 @@ $body = @'
     "projects/v4-ads-mcp/notificationChannels/15226380074599878362"
   ],
   "alertStrategy": {
-    "notificationRateLimit": { "period": "3600s" },
     "autoClose": "86400s"
   }
 }
@@ -146,6 +145,30 @@ $body = @'
   "pageSize": 5
 }
 '@
+
+🔴 **DOIS ERROS DESTE RUNBOOK QUE SÓ A EXECUÇÃO REVELOU (corrigidos acima em 2026-09-05).**
+Ele foi escrito para ser executado por um humano e nunca tinha sido rodado — as verificações
+da task que o escreveu foram chamadas de leitura e POSTs com token inválido, que falham na
+**autenticação antes da validação do corpo**. Os dois só aparecem com token bom:
+
+1. **`alertStrategy.notificationRateLimit` foi REMOVIDO.** A API recusa:
+   *"only log-based alert policies may specify a notification rate limit"* — ele vale para
+   policy do tipo `conditionMatchedLog`, não para limiar de métrica. Custo de perdê-lo é
+   baixo: o job roda **uma vez por dia**, então o teto de 1/hora era quase inócuo, e o
+   `autoClose: 86400s` continua.
+2. **`ALIGN_COUNT` virou `ALIGN_PERCENTILE_99`.** A API recusa:
+   *"The aligner cannot be applied to metrics with kind DELTA and value type DISTRIBUTION"*.
+   `ALIGN_MAX`, `ALIGN_MEAN` e `ALIGN_SUM` são recusados pelo mesmo motivo — os alinhadores
+   que produzem escalar a partir de distribuição são os de percentil. Como a função só emite
+   o evento com a fila **não vazia**, `total` é sempre ≥ 1 quando ele aparece, então
+   `PERCENTILE_99 > 0` dispara em qualquer ocorrência. ⚠️ **A revisão final tinha marcado
+   exatamente essa incerteza** (*"plausível e é padrão comum, mas não tenho como confirmar
+   sem criar a policy de verdade"*) — e estava certa em não afirmar.
+
+**Nota sobre `thresholdValue: 0`:** a resposta da API **omite** o campo, porque em proto3
+zero é o default e não é serializado. Não é bug: `COMPARISON_GT` com threshold ausente é
+`> 0`, que é o que se quer.
+
 $arquivo = "$env:TEMP\google_accounts_sem_grant_query.json"
 $body | Set-Content -Encoding ascii -Path $arquivo
 $token = gcloud auth print-access-token
