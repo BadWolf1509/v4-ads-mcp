@@ -19,9 +19,20 @@ import hmac
 import json
 import time
 from hashlib import sha256
-from typing import Any
+from typing import Any, Literal
 
 STATE_TTL_SECONDS = 10 * 60  # 10 minutes
+
+Audience = Literal["google_oauth", "cli_invite", "meta_oauth", "panel"]
+"""As quatro audiências do projeto — tipo fechado, definido num lugar só.
+
+`panel_session` importa daqui, e os call-sites também devem: audiência com duas
+definições é audiência com duas verdades. Fechar em `Literal` existe porque a
+claim só vale enquanto as duas pontas escrevem a MESMA string — como `str`
+livre, um typo casado entre quem assina e quem confere (`"pannel"` dos dois
+lados) funciona, passa em todo teste e grava a audiência errada nos tokens.
+Com o `Literal`, o `mypy --strict` do gate pega o typo em cada call-site.
+"""
 
 
 class InvalidStateError(Exception):
@@ -41,7 +52,7 @@ def sign_state(
     payload: dict[str, Any],
     signing_key: str,
     *,
-    aud: str,
+    aud: Audience,
     issued_at: float | None = None,
 ) -> str:
     """Build a signed state string from a JSON-serializable payload.
@@ -60,7 +71,7 @@ def sign_state(
     return f"{_b64url(body)}.{_b64url(tag)}"
 
 
-def verify_state(state: str, signing_key: str, *, aud: str) -> dict[str, Any]:
+def verify_state(state: str, signing_key: str, *, aud: Audience) -> dict[str, Any]:
     """Verify HMAC + audiência + TTL, return decoded payload. Raises on failure.
 
     A ordem importa: HMAC primeiro (nada do payload é confiável antes disso),

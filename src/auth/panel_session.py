@@ -20,6 +20,9 @@ from dataclasses import dataclass
 from hashlib import sha256
 from typing import Any
 
+# Audiência tem UMA definição no projeto, e ela mora em `oauth_state`.
+from src.auth.oauth_state import Audience
+
 PANEL_SESSION_TTL_SECONDS = 24 * 60 * 60  # 24 hours
 PANEL_SESSION_COOKIE_NAME = "v4_panel_session"
 
@@ -48,7 +51,7 @@ def sign_panel_session(
     manager_id: str,
     email: str,
     signing_key: str,
-    aud: str,
+    aud: Audience,
     issued_at: float | None = None,
 ) -> str:
     """Build a signed cookie value. `aud` obrigatório — ver oauth_state."""
@@ -63,7 +66,7 @@ def sign_panel_session(
     return f"{_b64url(body)}.{_b64url(tag)}"
 
 
-def verify_panel_session(cookie: str, signing_key: str, *, aud: str) -> PanelSession:
+def verify_panel_session(cookie: str, signing_key: str, *, aud: Audience) -> PanelSession:
     """Verify HMAC + audiência + TTL, return the decoded PanelSession.
 
     A ordem importa: HMAC primeiro (nada do payload é confiável antes disso),
