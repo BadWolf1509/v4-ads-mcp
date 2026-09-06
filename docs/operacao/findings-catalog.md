@@ -2030,7 +2030,12 @@ gestor — Google e Meta.
 como keyword-only **sem default** — default silenciaria exatamente o erro que a claim existe
 para impedir. `Audience = Literal["google_oauth", "cli_invite", "meta_oauth", "panel"]`,
 definida uma vez em `oauth_state.py` e importada por `panel_session.py`, para o
-`mypy --strict` do gate pegar typo em cada call-site (~70 no projeto). A conferência mora
+`mypy --strict` do gate pegar typo nos **9 call-sites de `src/`** — e só neles: o gate roda
+`mypy src` (`scripts/_runner.py:26`, `ci.yml:170`) e **nunca** `tests/`, então lá o typo não é
+erro de tipo, e nem sempre é teste vermelho (medido em 2026-09-06: de dois `aud="pannel"`
+plantados em `tests/`, o `mypy src` ficou limpo nos dois e o pytest só pegou aquele cuja
+asserção dependia do valor). O que prende as audiências que de fato viajam são os cinco
+testes de assinatura, que leem a claim do corpo do token vindo do caminho real. A conferência mora
 **dentro** de `verify_*`, nunca no chamador — chamador que confere é chamador que pode
 esquecer, e foi exatamente o que aconteceu em três dos quatro tokens. Ordem: HMAC →
 audiência → TTL (nada do payload é confiável antes do HMAC). O padrão já existia, parcial,

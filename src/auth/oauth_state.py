@@ -56,7 +56,12 @@ definições é audiência com duas verdades. Fechar em `Literal` existe porque 
 claim só vale enquanto as duas pontas escrevem a MESMA string — como `str`
 livre, um typo casado entre quem assina e quem confere (`"pannel"` dos dois
 lados) funciona, passa em todo teste e grava a audiência errada nos tokens.
-Com o `Literal`, o `mypy --strict` do gate pega o typo em cada call-site.
+Com o `Literal`, o `mypy --strict` do gate pega esse typo nos **9 call-sites
+de `src/`** — que são os que ele olha. O gate roda `mypy src`
+(`scripts/_runner.py:26`, `ci.yml:170`) e **nunca** `tests/`; lá o typo não é
+erro de tipo, e nem sempre vira teste vermelho. Medido em 2026-09-06 com dois
+`aud="pannel"` plantados em `tests/`: `mypy src` ficou limpo nos dois, e o
+pytest só pegou aquele cuja asserção dependia do valor.
 """
 
 

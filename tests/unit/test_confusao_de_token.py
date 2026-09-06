@@ -236,8 +236,16 @@ def test_aud_e_keyword_only_sem_default_e_tipado_pela_familia(
     Task 4 vai apagá-lo ao escrever `aud=` em cada call-site.
 
     O tipo fechado entra aqui pelo mesmo motivo: voltar para `str` não quebra
-    nada em lugar nenhum, e o `mypy --strict` deixa de pegar o typo casado nos
-    ~70 literais que a Task 4 vai escrever à mão.
+    nada em lugar nenhum, e o `mypy --strict` deixa de pegar o typo casado nos 9
+    call-sites de `src/` — os únicos que o gate type-checa, porque ele roda
+    `mypy src` (`scripts/_runner.py:26`) e nunca `tests/`. Os call-sites daqui
+    de dentro não são cobertos pelo `Literal` em gate nenhum: medido em
+    2026-09-06, um `aud="pannel"` plantado neste arquivo passou VERDE no
+    `mypy src` e no pytest, porque a asserção daquele teste não dependia do
+    valor. O que prende as audiências que de fato viajam são os cinco testes de
+    assinatura (`test_oauth_flow.py`, `test_meta_oauth_flow.py`,
+    `test_admin_script.py`), que leem a claim do corpo do token vindo do
+    caminho real.
     """
     parametro = inspect.signature(funcao).parameters["aud"]
     assert parametro.kind is inspect.Parameter.KEYWORD_ONLY
