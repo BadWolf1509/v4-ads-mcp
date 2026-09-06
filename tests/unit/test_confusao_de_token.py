@@ -56,6 +56,11 @@ from src.auth.panel_session import (
     verify_panel_session,
 )
 
+# Um leitor só do formato de rede no repositório inteiro. Mora em
+# `tests/integration/` porque é lá que nasceu, mas é stdlib pura — sem fixture,
+# sem DB —, então o import não acopla a suíte unitária a nada.
+from tests.integration._audiencia import audiencia_crua
+
 CHAVE = "chave-de-teste-com-no-minimo-32-caracteres-ok"
 OUTRA_CHAVE = "outra-chave-de-teste-com-no-minimo-32-caracteres"
 GESTOR = "11111111-2222-3333-4444-555555555555"
@@ -534,3 +539,40 @@ def test_audiencia_e_conferida_antes_do_ttl(
     so_viola_o_ttl = _cunha({**corpo, "aud": esperada}, CHAVE)
     with pytest.raises(excecao, match=erro_de_ttl):
         verificar(so_viola_o_ttl, CHAVE, aud=esperada)
+
+
+def test_o_kwarg_aud_vence_o_que_vier_no_payload() -> None:
+    """Quem manda na audiência é o kwarg, nunca o dict do chamador.
+
+    Mutação que derruba: trocar `full["aud"] = aud` por
+    `full.setdefault("aud", aud)` em `sign_state`. Medida em 2026-09-06: ela
+    sobrevive à suíte inteira, 42/42 verdes.
+
+    Importa porque a forma antiga é a que alguém copiaria: `meta_oauth.py:189`
+    passava `{"aud": "meta_oauth", ...}` DENTRO do dict até esta branch, e a
+    tabela do F156 exibe aquela forma como prática anterior. Sob o mutante, um
+    chamador que mande `aud` no payload sobrescreve o kwarg em silêncio — e o
+    kwarg é justamente o que o tipo protege (`StateAudience`); o dict é
+    `dict[str, Any]`, onde `"panel"` passa sem o `mypy` reclamar.
+
+    A asserção vai além do valor da claim e cobra a CONSEQUÊNCIA: com o dict
+    vencendo, este token vira um cookie de painel completo e válido — tem
+    `manager_id`, `email`, `iat` fresco e `aud="panel"` —, que é exatamente o
+    dano que este PR existe para impedir. E o controle no fim mostra que o token
+    não é lixo: ele vale, e vale como a audiência do KWARG.
+    """
+    token = sign_state(
+        {"aud": "panel", "manager_id": GESTOR, "email": "a@v4company.com"},
+        CHAVE,
+        aud="cli_invite",
+    )
+
+    assert audiencia_crua(token) == "cli_invite"
+
+    with pytest.raises(InvalidPanelSessionError, match=AUD_INVALIDA):
+        verify_panel_session(token, CHAVE, aud="panel")
+
+    assert verify_state(token, CHAVE, aud="cli_invite") == {
+        "manager_id": GESTOR,
+        "email": "a@v4company.com",
+    }
