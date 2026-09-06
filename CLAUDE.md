@@ -18,8 +18,8 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 
 ## Estado atual
 
-**2026-09-04.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`,
-**68 MCP tools** (62 Google + 6 Meta), CI gated + deploy automático. Catálogo em **152 IDs**.
+**2026-09-05.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`,
+**68 MCP tools** (62 Google + 6 Meta), CI gated + deploy automático. Catálogo em **154 IDs**.
 
 **Quantos findings fecharam em qual sprint NÃO vive aqui** — essa narrativa churna toda
 sessão e duplica o `estado-atual.md`. Este bloco tem só o que orienta qualquer sessão;
@@ -32,14 +32,15 @@ Volátil por natureza: **atualize aquele arquivo ao terminar a sessão**, não e
 **Sabe de cara:**
 
 - `gcloud` pode estar **sem credencial válida** — confirme antes de qualquer tarefa de infra.
-- **A reconciliação Meta sobe DESLIGADA** (`META_RECONCILE_APPLY=false`): observa e conta,
-  não revoga. Ver a pendência 1c do `estado-atual.md` antes de virar a chave.
+- **Reconciliação Meta LIGADA desde 05/09 — ela REVOGA** (4 grants na 1ª execução). A do
+  Google está em soak com `GOOGLE_RECONCILE_APPLY=false`, e enquanto isso churn novo não
+  desativa conta: quem barra é o Google, não nosso gate. Pendência 7 antes de virar.
 - Fase 2B (tombstone dos 8 reports antigos) segue **travada** no soak — não tombstonar.
-- **Tool nova só aparece pra sessão nova** (F140): o catálogo é negociado no handshake do
-  MCP, e o sintoma é a tool "não existir", não um erro de versão. Reconecte antes do smoke.
-- `ad_schedule` em produção; smoke 3b.42 **10/10**. Pendente: **3b.44** (#40) — 7 testes,
-  **todos mutantes** —
-  [`phase-3b-44-bid-modifier-smoke.md`](docs/operacao/phase-3b-44-bid-modifier-smoke.md).
+- **F140 — reconecte antes do smoke, mas é mais estreito que parecia:** em 05/09 sessão
+  velha mandou campo NOVO de tool existente e o servidor aceitou. Tool nova exige sessão
+  nova; campo novo, não. Sintoma é a tool "não existir", nunca erro de versão.
+- **Nenhum smoke de tool mutante pendente** — 3b.42 10/10, 3b.43 6/6, 3b.44 8/8.
+  Smoke que muta exige aval do gestor **na sessão que executa**.
 - **Buckets reclassificados em 04/09** (PR #32): 22 always + 46 defer, remedição mensal
   marcada para 04/10 em
   [`tool-buckets-2026-09-04.md`](docs/operacao/tool-buckets-2026-09-04.md). A medição
@@ -158,7 +159,7 @@ Quando o padrão de mercado custar caro demais para o momento, **apresente o tra
 - Don't chamar SDK de ads (Google **ou** Meta) fora de um closure passado a `run_blocking` em caminho que atende request — inclui tool que constrói o client sozinho, como `validate_gaql` (F109). Ao offloadar, leia o `request-id` **dentro** do closure: `to_thread` copia o contexto e não devolve.
 - **Don't hardcodar fuso ou offset em mutate que grava timestamp no Google** (`-03:00`, `_BRT`): o fuso é `await resolve_account_zone(customer_id)` no dry-run, guardado no payload pendente e mostrado no preview; **sem fuso, recuse** — em escrita, offset chutado é corrupção de dado, não ruído (F146; contraste com o fallback UTC do F141, que é leitura).
 - **Don't procurar `REMOVE` no `change_event` para entidade que tem campo `status`** (campanha, grupo, keyword, anúncio): no Google, remover essas entidades é **`UPDATE` de `status → REMOVED`**; `REMOVE` só aparece em vínculos/critérios/orçamentos, que não têm status. Medido por `aggregate_by` em 141 eventos (F145). Predicado de flag olha `new_resource.<entidade>.status`, keyed pelo `resource_type` — não pela presença do atributo, que em proto-plus existe sempre.
-- **Don't ler o relógio do servidor em tool Google** (`datetime.now`/`date.today`): `hoje` é `await resolve_account_today(customer_id)`, no fuso da conta, UMA vez por request e passado a tudo (janela, clamp, sonda, freshness). As contas do MCC são todas UTC−3/−4 (26 em 04/09, seis fusos — a contagem muda; a regra não); em UTC todo preset deslizava um dia das 21h à meia-noite (F141). Guard AST em `test_no_server_clock_in_google_tools.py`; exceção só com motivo escrito.
+- **Don't ler o relógio do servidor em tool Google** (`datetime.now`/`date.today`): `hoje` é `await resolve_account_today(customer_id)`, no fuso da conta, UMA vez por request e passado a tudo. Em UTC todo preset deslizava um dia das 21h à meia-noite (F141). Guard AST em `test_no_server_clock_in_google_tools.py`.
 - Don't reportar quota sem dizer QUAL quota: desde o F73 há duas chaves (`mgr:<uuid>` e o dev token), e a menor é a que barra (F110). Don't derivar identificador de auditoria de um dict opcional quando existe kwarg obrigatório com o mesmo dado (F111).
 - Don't computar `blast_radius.classify` e ignorar `.level` sem que o caminho fixo esteja amarrado por teste — hoje 17 das 26 tools fazem isso e o guard derivado é o que impede a divergência silenciosa (F112).
 - Don't pôr nome acessível (`aria-label`) num elemento que um swap HTMX substitui — o fragmento servido pela rota não tem o texto e o rótulo degrada calado. Aponte pra fora do nó trocado com `aria-labelledby`, derivando os ids do que a rota já recebe (F101, mesma família do F74). Don't referenciar `/static` sem `?v={{ asset_version }}`: o `Cache-Control` é `immutable` por um ano (F102).
@@ -180,6 +181,6 @@ Quando o padrão de mercado custar caro demais para o momento, **apresente o tra
 - Don't aplicar `is_allowed_email` (V4 domain) no callback Meta OAuth — `fb_email` é conta FB pessoal (A6); auth é o manager_id no state HMAC.
 - Don't usar `{{ button() }}` em `<form>` sem `type="submit"` (F49).
 - Don't retornar `303` cru de um handler chamado por `hx-post` — torne HX-aware (`204`+`HX-Redirect`/`HX-Refresh`, espelha `sessions_revoke`), senão o HTMX injeta a página no `hx-target` (dropdown Managers, 2ª sessão 07-04).
-- Don't ecoar `request.query_params` no contexto da macro `alert` (`{{ message|safe }}` = XSS) — mapa fixo código→mensagem. Don't deixar `<table>` fora de contentor de scroll: sem ele a PÁGINA rola na horizontal (F118, +751px em 375). As duas exceções antigas caíram em 08-20 — sticky-head usa `.v4-table-wrap--wide` (scroller só abaixo de 1200px) e o dropdown se desancora sozinho. Contentor novo exige `tabindex="0" role="region" aria-label` (F125); o guard derivado cobra os dois.
+- Don't ecoar `request.query_params` na macro `alert` (`|safe` = XSS) — mapa fixo código→mensagem. Don't deixar `<table>` fora de contentor de scroll: sem ele a PÁGINA rola na horizontal (F118, +751px em 375). As duas exceções antigas caíram em 08-20 — sticky-head usa `.v4-table-wrap--wide` (scroller só abaixo de 1200px) e o dropdown se desancora sozinho. Contentor novo exige `tabindex="0" role="region" aria-label` (F125); o guard derivado cobra os dois.
 - Don't shippar tool Meta com fields novos sem validar via `ads_get_field_context` (F53/F54/F55 — `/insights` vs `/entities`).
 - Don't upload secret via pipe PowerShell — arquivo binary intermediário (F47); NUNCA cole secret em chat.
