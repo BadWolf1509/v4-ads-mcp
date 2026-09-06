@@ -565,6 +565,46 @@ async def test_fila_de_restauracao_ignora_revogacao_administrativa(db) -> None:
         assert [r["customer_id"] for r in q.sem_delegacao] == ["703"]
 
 
+@pytest.mark.integration
+async def test_fila_delegacao_ignora_conta_inativa(db) -> None:
+    """I-2 da revisão final (feat/gate-google-reconcile): `a.is_active = true`
+    em `sem_delegacao` não tinha NENHUM teste.
+
+    Sabotagem medida (2026-09-05): trocando o predicado para `(a.is_active =
+    true OR a.is_active = false)`, este arquivo e `test_web_panel_admin.py`
+    INTEIROS continuavam verdes, e as duas contas abaixo entravam na fila.
+    Isso importa porque `sem_delegacao` alimenta `avisar_contas_sem_grant` — o
+    sinal do alerta —, então sem o predicado toda conta fora do MCC sem grant
+    vivo dispararia o e-mail todo dia, e o botão convidaria o admin a delegar
+    numa conta que `can_manager_access` nega. Ver task-8-report.md pela saída
+    literal do pytest com a sabotagem aplicada.
+    """
+    async with db.acquire() as conn:
+        mid = await _make_manager(conn, "inativa@v4company.com")
+        await google_ads_accounts.upsert_many(
+            conn,
+            [
+                {"customer_id": "704", "mcc_id": "1", "descriptive_name": "Inativa sem grant"},
+                {
+                    "customer_id": "705",
+                    "mcc_id": "1",
+                    "descriptive_name": "Inativa admin-revoked",
+                },
+            ],
+        )
+        # 705 tem um grant, mas revogado por decisão do admin (não churn) —
+        # nenhum dos dois NOT EXISTS de `sem_delegacao` o exclui sozinho.
+        await manager_account_access.grant(conn, manager_id=mid, customer_id="705")
+        await manager_account_access.revoke(conn, manager_id=mid, customer_id="705")
+        await conn.execute(
+            "UPDATE google_ads_accounts SET is_active = false WHERE customer_id = ANY($1::text[])",
+            ["704", "705"],
+        )
+
+        q = await google_ads_accounts.list_queues(conn)
+        assert [r["customer_id"] for r in q.sem_delegacao] == []
+
+
 # ---------- account_resync.reconcile_google (Task 5) ----------
 
 
