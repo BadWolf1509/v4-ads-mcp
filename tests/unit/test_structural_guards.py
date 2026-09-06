@@ -70,10 +70,28 @@ def _cursores_fora_de_transacao(escopo: ast.AST, arv: ast.Module) -> list[int]:
     em separado por `h.funcoes()`. Atribuir a chamada ao escopo MAIS INTERNO é
     o que impede que uma transação escrita na função de fora isente um closure
     que pode ser chamado de qualquer outro lugar.
+
+    `desce` testa o nó que RECEBE e só então desce nos filhos. A ordem importa:
+    enquanto o teste vivia no laço dos filhos, um `.cursor(` que É o
+    `context_expr` de um `with` (`async with conn.cursor('q') as c:`) nunca era
+    testado — ele chega a `desce` como o próprio `no`, nunca como filho de
+    alguém. O guard por ARQUIVO pegava essa forma por substring e a conversão
+    para AST a perdeu: a única regressão da reescrita, medida e fechada em
+    2026-09-06. A forma é rara (o `CursorFactory` do asyncpg não é async
+    context manager, então ela quebraria em runtime de qualquer jeito), mas
+    guard reescrito pra ser mais estrito não pode ficar mais frouxo em canto
+    nenhum.
     """
     nus: list[int] = []
 
     def desce(no: ast.AST, protegido: bool) -> None:
+        if (
+            not protegido
+            and isinstance(no, ast.Call)
+            and isinstance(no.func, ast.Attribute)
+            and no.func.attr in h.nomes_locais(arv, "cursor")
+        ):
+            nus.append(no.lineno)
         for filho in ast.iter_child_nodes(no):
             if isinstance(filho, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
                 continue  # escopo próprio — `h.funcoes()` o visita sozinho
@@ -89,13 +107,6 @@ def _cursores_fora_de_transacao(escopo: ast.AST, arv: ast.Module) -> list[int]:
                 for stmt in filho.body:
                     desce(stmt, aqui)
                 continue
-            if (
-                not protegido
-                and isinstance(filho, ast.Call)
-                and isinstance(filho.func, ast.Attribute)
-                and filho.func.attr in h.nomes_locais(arv, "cursor")
-            ):
-                nus.append(filho.lineno)
             desce(filho, protegido)
 
     desce(escopo, False)
@@ -510,15 +521,16 @@ def test_retentaveis_de_conexao_tem_uma_fonte_de_verdade_so() -> None:
 
     A versão anterior comparava NOME (`{e.__name__ for e in ...}`) contra o
     texto do `except`, e por isso só pegava a grafia que ninguém escreve.
-    Medido em 2026-09-06, 4 das 5 grafias ofensoras passavam verdes:
+    Medido em 2026-09-06, 5 das 6 grafias ofensoras passavam verdes:
 
         PEGA   except asyncpg.PostgresConnectionError
         PASSA  except asyncpg.ConnectionDoesNotExistError   <- connection.py:21
         PASSA  except ConnectionResetError                  <- connection.py:22
         PASSA  except (asyncpg.ConnectionFailureError, BrokenPipeError)
-        PASSA  except PCE                                   <- alias de import
+        PASSA  except PCE                       <- from asyncpg import X as PCE
+        PASSA  except pg.ConnectionDoesNotExistError   <- import asyncpg as pg
 
-    As quatro que passavam são `issubclass` de verdade dos membros da
+    As cinco que passavam são `issubclass` de verdade dos membros da
     constante — logo `run_with_reconnect` as retenta, que é a condição exata do
     F91 — e são justamente as que o comentário de `connection.py:21-22` nomeia
     como as reais. A propriedade só se afirma resolvendo a classe e perguntando
@@ -544,6 +556,18 @@ def test_retentaveis_de_conexao_tem_uma_fonte_de_verdade_so() -> None:
     — e não como ofensor — porque o conjunto retentável está inteiro dentro dos
     dois namespaces cobertos; tratar desconhecido como ofensor acusaria todo
     `except` de exceção própria do projeto.
+
+    Segundo limite conhecido, e o que mais importa estar escrito: nome ligado
+    por ATRIBUIÇÃO escapa. `RETRY = (asyncpg.ConnectionDoesNotExistError,
+    ConnectionResetError)` seguido de `except RETRY:` fica VERDE, porque
+    `_canonizar` lê só a tabela de `import` — `RETRY` não resolve estaticamente
+    para nenhuma classe, `h.classe_de_excecao` devolve `None`, e o desconhecido
+    conta como isento (mesma escolha do parágrafo acima). Isto é o F91 ao pé da
+    letra: a tupla copiada, duas fontes de verdade do mesmo dado — a forma que
+    o guard existe para impedir é justamente a que ele não vê. Não é regressão
+    (o guard antigo também passava) e não há ocupante vivo, mas fechá-la
+    exigiria rastrear atribuição, e fica registrado aqui para que a próxima
+    leitura não tome a asserção por completa e a afrouxe achando que sobra.
     """
     from src.db import connection
 
