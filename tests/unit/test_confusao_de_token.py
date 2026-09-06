@@ -15,6 +15,11 @@ A segunda leva (2026-09-06, pós-revisão) guarda o que o código já fazia cert
 nada afirmava: a assinatura sem default, a recusa do token sem a claim, a ordem
 HMAC → audiência e a remoção de `aud`/`iat`. Cada uma nomeia, na própria
 docstring, a mutação de produção que a deixa vermelha.
+
+A terceira leva (2026-09-06, Task 4) fecha dois mutantes medidos sobrevivendo à
+suíte inteira com 0 vermelhos: a audiência comparada por contingência em vez de
+igualdade, e o ramo `email` do cookie, que nenhum payload da suíte alcançava
+porque `manager_id` é conferido antes e abocanhava todos os casos.
 """
 
 from __future__ import annotations
@@ -295,10 +300,11 @@ def test_verify_state_nao_devolve_aud_nem_iat() -> None:
 
     Mutação que derruba: parar de fazer o `pop` das duas antes do `return`.
 
-    É interface declarada e é load-bearing: `meta_oauth.py:247` ainda confere
-    `payload.get("aud")` à mão, e a Task 4 remove aquela linha PORQUE `aud` não
-    vem mais no payload. Contrato do qual outra task depende para raciocinar
-    precisa de asserção. A igualdade é exata de propósito: pega tanto a claim
+    É interface declarada e é load-bearing: `meta_oauth.py:247` conferia
+    `payload.get("aud")` à mão, e a Task 4 removeu aquela linha PORQUE `aud`
+    não vem mais no payload — mantida, ela leria `None` e mandaria TODO
+    callback do Meta para /access-denied. Contrato do qual outra task depende
+    para raciocinar precisa de asserção. A igualdade é exata de propósito: pega tanto a claim
     que sobra quanto a que sumiria.
     """
     token = sign_state({"manager_id": GESTOR, "kind": "panel_login"}, CHAVE, aud="google_oauth")
@@ -323,3 +329,93 @@ def test_manager_id_presente_e_vazio_e_recusado() -> None:
     )
     with pytest.raises(InvalidPanelSessionError, match="Missing manager_id"):
         verify_panel_session(vazio, CHAVE, aud="panel")
+
+
+# ---------------------------------------------------------------------------
+# Terceira leva (Task 4): dois mutantes que a revisão mediu sobrevivendo à
+# suíte inteira — os dois com 0 testes vermelhos antes destas asserções.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("verificar", "excecao", "esperada"),
+    [
+        pytest.param(verify_state, InvalidStateError, "google_oauth", id="verify_state"),
+        pytest.param(
+            verify_panel_session,
+            InvalidPanelSessionError,
+            "panel",
+            id="verify_panel_session",
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    ("forjar", "rotulo"),
+    [
+        pytest.param(
+            lambda esperada: f"{esperada}-forjada", "sufixo", id="recebida_contem_a_esperada"
+        ),
+        pytest.param(lambda esperada: esperada[:-1], "prefixo", id="esperada_contem_a_recebida"),
+    ],
+)
+def test_audiencia_exige_igualdade_e_nao_continencia(
+    verificar: Callable[..., object],
+    excecao: type[Exception],
+    esperada: str,
+    forjar: Callable[[str], str],
+    rotulo: str,
+) -> None:
+    """A comparação de audiência é igualdade EXATA — nada de `in` nem `startswith`.
+
+    Mutação que derruba: trocar `payload.get("aud") != aud` por uma checagem de
+    contingência, `aud not in str(payload.get("aud"))`. Medida em 2026-09-06:
+    ela sobrevive à suíte inteira, 0 testes vermelhos, nos DOIS módulos — todo
+    teste de audiência existente usa pares disjuntos (`cli_invite` contra
+    `panel`), e nenhum par disjunto distingue igualdade de contingência.
+
+    Sob aquele mutante, `aud="panelXYZ"` vira cookie de painel válido: o
+    forjador não precisa adivinhar chave nenhuma para escolher a audiência, só
+    pendurar um sufixo. As duas direções entram porque matam mutantes
+    diferentes — o sufixo mata `esperada in recebida` (e `startswith`), o
+    prefixo mata a contingência invertida, `recebida in esperada`.
+
+    O payload é completo para os dois verificadores (`manager_id`, `email`,
+    `iat` fresco): só o ramo da audiência pode recusá-lo.
+    """
+    forjada = forjar(esperada)
+    assert forjada != esperada, rotulo
+    token = _cunha(
+        {
+            "manager_id": GESTOR,
+            "email": "a@v4company.com",
+            "aud": forjada,
+            "iat": int(time.time()),
+        },
+        CHAVE,
+    )
+    with pytest.raises(excecao, match=AUD_INVALIDA):
+        verificar(token, CHAVE, aud=esperada)
+
+
+def test_cookie_com_manager_id_e_sem_email_e_recusado() -> None:
+    """O ramo `email` do `verify_panel_session` — o único sem guard no repo.
+
+    Mutação que derruba: apagar as duas linhas do `if not isinstance(email, str)`.
+    Medida em 2026-09-06: apagá-las deixa 0 testes vermelhos, porque nenhum
+    payload da suíte tem `manager_id` presente **e** `email` ausente — e
+    `manager_id` é conferido primeiro, então ele abocanha todos os casos.
+
+    Sem a guarda, `PanelSession(email=None)` é construído sem erro: a dataclass
+    tem `slots=True` e `frozen=True`, mas nenhuma das duas valida tipo em
+    runtime. A sessão sai com `email` nulo e o `None` viaja para dentro de
+    template e log, quebrando longe daqui.
+
+    Audiência e `manager_id` corretos de propósito: aqui o que está sob teste
+    é o `email`, e todo ramo anterior tem que passar limpo.
+    """
+    sem_email = _cunha(
+        {"manager_id": GESTOR, "aud": "panel", "iat": int(time.time())},
+        CHAVE,
+    )
+    with pytest.raises(InvalidPanelSessionError, match="Missing email"):
+        verify_panel_session(sem_email, CHAVE, aud="panel")
