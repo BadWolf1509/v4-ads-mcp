@@ -24,7 +24,6 @@ na lista que a query pede.
 from __future__ import annotations
 
 import ast
-from pathlib import Path
 
 import pytest
 
@@ -34,6 +33,7 @@ from src.meta_ads.insights import (
     INSIGHTS_FIELDS_CAMPAIGN,
     parse_insights_row,
 )
+from tests.unit import _guard_harness as h
 
 _ROW_CAMPAIGN = {
     "campaign_id": "23851",
@@ -98,7 +98,7 @@ def test_parser_nao_le_campo_que_a_query_nao_pede() -> None:
     """
     pedidos = set(INSIGHTS_FIELDS_CAMPAIGN) | set(INSIGHTS_FIELDS_ADSET) | set(INSIGHTS_FIELDS_AD)
 
-    fonte = Path("src/meta_ads/insights.py").read_text(encoding="utf-8")
+    fonte = (h.SRC / "meta_ads" / "insights.py").read_text(encoding="utf-8")
     tree = ast.parse(fonte)
     alvo = next(
         n

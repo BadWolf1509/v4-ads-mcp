@@ -8,13 +8,15 @@ chama com `level="write"` audita SO QUANDO NEGA — entao a trilha guardava os
 previews recusados e perdia todos os que funcionavam.
 """
 
-import pathlib
+import ast
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
 from src.governance import dry_run
+from tests.unit import _guard_harness as h
 
 
 def _conn() -> AsyncMock:
@@ -130,14 +132,52 @@ def test_toda_tool_que_cria_pendencia_declara_o_target_count_planejado():
     passar, e um guard que so enxerga dict literal reprovaria codigo correto —
     ja aconteceu neste repo. Em troca, este guard nao pega o caso de a chave ser
     escrita num payload que nao e o passado ao `create_pending`.
+
+    F155 forma 5 (18o guard, achado pela revisao da propria Task 9, antes do
+    merge): ate aqui o escopo era `pathlib.Path("src/mcp/tools")` RELATIVO,
+    seguido de `.glob("*.py")` direto — identico ao padrao que derrubou o guard
+    do relogio (F141). Medido: da raiz do repo o glob via 74 arquivos; de
+    `src/` ou de `tests/unit/`, ZERO — e o `assert not faltando` passava vazio,
+    sem ter olhado nenhuma tool. `h.fontes_py` fecha isso: escopo absoluto
+    (derivado de `__file__` via `h.SRC`) e `EscopoVazioError` se o resultado
+    vier vazio, em vez de lista vazia silenciosa.
     """
-    tools = pathlib.Path("src/mcp/tools")
     faltando = [
         p.name
-        for p in sorted(tools.glob("*.py"))
+        for p in h.fontes_py(h.SRC / "mcp" / "tools")
         if "create_pending" in (texto := p.read_text(encoding="utf-8"))
         and "__target_count__" not in texto
     ]
     assert not faltando, (
         "tools que criam pendencia sem declarar __target_count__ no payload: " + ", ".join(faltando)
+    )
+
+
+def test_guard_do_target_count_deriva_escopo_do_harness_nao_de_path_relativo() -> None:
+    """Prova de mordida do F155 (18o guard, forma 5).
+
+    Comportamento sozinho NAO prova nada aqui: rodando da raiz do repo — como o
+    gate roda — `pathlib.Path("src/mcp/tools")` relativo acha os MESMOS 74
+    arquivos que `h.fontes_py(h.SRC / "mcp" / "tools")` acha. A vacuidade so
+    aparece de outro cwd, e o gate nunca roda de outro cwd. Quem fecha o caso e
+    o CODIGO usar caminho absoluto, nao o resultado em runtime — por isso este
+    teste le a ARVORE da funcao acima (nao o comportamento dela): fica vermelho
+    se ela parar de chamar `h.fontes_py`, mesmo rodando da raiz.
+
+    Verificado contra o conteudo pre-fix deste mesmo arquivo (`git show
+    add570b:tests/unit/test_create_pending_audita_dry_run.py`, o HEAD anterior
+    a esta correcao): a mesma asserção, rodada contra aquela arvore, da False —
+    o guard antigo nao chamava `h.fontes_py` em lugar nenhum.
+    """
+    arv = h.arvore(Path(__file__))
+    alvo = next(
+        n
+        for n in ast.walk(arv)
+        if isinstance(n, ast.FunctionDef)
+        and n.name == "test_toda_tool_que_cria_pendencia_declara_o_target_count_planejado"
+    )
+    assert h.chama(alvo, "fontes_py", arv=arv), (
+        "o guard do F148 (25o call-site de create_pending) parou de derivar o "
+        "escopo de h.fontes_py — se voltou a montar Path relativo, reabriu o "
+        "F155 forma 5 (vacuidade silenciosa fora da raiz do repo)."
     )

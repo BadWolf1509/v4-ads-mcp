@@ -30,8 +30,8 @@ TOOLS = (
     h.SRC / "mcp" / "tools"
 )  # absoluto, derivado de __file__ (harness); relativo via cwd zerava o glob
 PRIMITIVOS = [
-    Path("src/google_ads/queries/_common.py"),
-    Path("src/google_ads/change_freshness.py"),
+    h.SRC / "google_ads" / "queries" / "_common.py",
+    h.SRC / "google_ads" / "change_freshness.py",
     # `account_clock.py` fica FORA desta lista de proposito: e o unico leitor
     # legitimo do relogio (como default injetavel), e tem teste proprio abaixo.
 ]
@@ -89,7 +89,7 @@ def test_account_clock_e_o_unico_que_le_o_relogio_e_so_como_default() -> None:
     teste falhar porque o modulo deixou de ler o relogio, tudo bem — ajuste o
     guard; se falhar porque outro modulo passou a ler, e o F141 voltando.
     """
-    src = Path("src/google_ads/account_clock.py").read_text(encoding="utf-8")
+    src = (h.SRC / "google_ads" / "account_clock.py").read_text(encoding="utf-8")
     assert _chamadas_de_relogio(src) == [] or "now if now is not None else datetime.now" in src
 
 

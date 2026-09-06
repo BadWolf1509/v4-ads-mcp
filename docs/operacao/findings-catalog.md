@@ -1716,7 +1716,7 @@ que e o que ele de fato mede. **A escolha muda o contrato do painel e e do Welli
 
 ---
 
-## F155 (HIGH, CORRIGIDO em 2026-09-06) — guards sem primitivo comum: 17 varreduras artesanais, cada uma com o proprio defeito de cobertura
+## F155 (HIGH, CORRIGIDO em 2026-09-06) — guards sem primitivo comum: 18 varreduras artesanais, cada uma com o proprio defeito de cobertura
 
 > **Como apareceu:** na varredura de 8 revisores paralelos sobre todo o repositorio (05/09,
 > 86 achados brutos — 9 Criticos, 33 Importantes, 44 Menores), registrada em
@@ -1760,7 +1760,13 @@ sabia dos outros 17, erraria de novo por um dos mesmos sete jeitos.
 5. **Caminho relativo que devolve zero arquivos fora da raiz.** O guard do relogio (F141)
    tinha `TOOLS = Path("src/mcp/tools")`. Medido nesta sessao: da raiz do repo o glob ve
    **74** arquivos; rodando de `src/` ou de `tests/unit/`, **zero** — e zero arquivos varridos
-   nao e "sem violacao", e o guard inteiro nao tendo rodado.
+   nao e "sem violacao", e o guard inteiro nao tendo rodado. **Segundo ocupante da mesma
+   forma, achado so na revisao final desta Task 9 (antes do merge), nao pela varredura
+   original:** `test_create_pending_audita_dry_run.py::test_toda_tool_que_cria_pendencia_declara_o_target_count_planejado`
+   (F148, guard do 25o call-site de `create_pending`) tinha o identico
+   `pathlib.Path("src/mcp/tools")` relativo seguido de `.glob("*.py")` direto, com a mesma
+   medicao (74 arquivos da raiz, zero de `src/` ou de `tests/unit/`). Ver a nota logo apos a
+   tabela abaixo.
 6. **Tautologia `f(x) == f(x)`.** `test_change_freshness.py` afirma
    `change_event_frontier_query(today=hoje) == change_event_frontier_query(today=hoje)` — a
    MESMA chamada, com o MESMO argumento, comparada consigo mesma. A docstring promete que
@@ -1785,13 +1791,16 @@ Toda funcao de escopo (`fontes_py`, `testes_py`, `templates_html`, `markdown`, `
 passa por `_coletar()` — entao nenhuma delas, nem nenhuma que vier a existir depois, pode
 reintroduzir o defeito do item 5 ou escapar do `EscopoVazioError`.
 
-**Os 17, listados pela secao 3.1.1 da spec (autoridade vinculante).** A coluna **defeito**
-abaixo e a logica de CASAMENTO que sobra em cada guard depois da conversao — a dimensao de
-ESCOPO (recursivo, absoluto, com `EscopoVazioError`) ja esta corrigida nos 17, uniformemente,
-desde este PR: e exatamente o que adotar o harness compartilhado entrega de graca, e nao
-precisou esperar a frente de cada guard. O que resta, guard a guard, e a logica de casamento
-especifica de cada um, e e essa logica que viaja marcada em **aperta em**. Os dois `PR 0`
-abaixo foram fechados nesta propria rodada (Task 8), depois de provar ausencia de violacao viva:
+**Os 17 da secao 3.1.1 da spec (autoridade vinculante), mais um 18o que a spec nao lista
+(linha 18 abaixo — achado so nesta revisao, ver a nota logo apos a tabela).** A coluna
+**defeito** abaixo e a logica de CASAMENTO que sobra em cada guard depois da conversao — a
+dimensao de ESCOPO (recursivo, absoluto, com `EscopoVazioError`) ja esta corrigida nos 18,
+uniformemente, desde este PR: e exatamente o que adotar o harness compartilhado entrega de
+graca, e nao precisou esperar a frente de cada guard. O que resta, guard a guard, e a logica
+de casamento especifica de cada um, e e essa logica que viaja marcada em **aperta em**. Os
+tres `PR 0` abaixo foram fechados nesta propria rodada: F58 e F91 na Task 8, depois de provar
+ausencia de violacao viva; a linha 18, na Task 9, por ser vacuidade de escopo (nao casamento) —
+nao precisou da mesma prova, porque nao ha "aperto" de logica ali, so a correcao do caminho:
 
 | # | guard | defeito (logica de casamento que resta) | aperta em |
 |---|---|---|---|
@@ -1812,6 +1821,26 @@ abaixo foram fechados nesta propria rodada (Task 8), depois de provar ausencia d
 | 15 | `test_frontend_a11y_guards.py::test_todo_controle_de_formulario_tem_nome_acessivel` | linha a linha; `<input>` multi-linha e invisivel ao guard | PR 5 |
 | 16 | `test_frontend_a11y_guards.py::test_todo_th_declara_scope` | mesma tecnica linha a linha do anterior | PR 5 |
 | 17 | `test_frontend_responsive_guards.py::test_email_longo_quebra_em_vez_de_estourar` | lista fixa de 5 templates; vizinhos que derivam do source escapam | PR 5 |
+| 18 | `test_create_pending_audita_dry_run.py::test_toda_tool_que_cria_pendencia_declara_o_target_count_planejado` (F148) | caminho relativo com vacuidade silenciosa — mesma forma 5 da linha 5; ausente da tabela da spec, achado so nesta revisao | **PR 0 — fechado aqui** |
+
+**A 18a linha, e o que ela confirma.** As primeiras 17 linhas sao as que a spec listou em
+05/09, com 8 revisores paralelos. A 18a apareceu do lado de dentro: a revisao desta propria
+Task 9, ainda antes do merge, achou que
+`test_create_pending_audita_dry_run.py:134` (guard do F148, o 25o call-site de
+`create_pending`) tinha o mesmissimo `pathlib.Path("src/mcp/tools")` relativo seguido de
+`.glob("*.py")` direto do guard do relogio (item 5 da lista de formas, acima) — e a mesma
+medicao: 74 arquivos da raiz do repo, zero de `src/` ou de `tests/unit/`. A forma 5 tem agora
+**dois ocupantes** conhecidos, nao um. Convertido nesta mesma rodada para
+`h.fontes_py(h.SRC / "mcp" / "tools")`, com uma prova de mordida propria: um teste novo
+(`test_guard_do_target_count_deriva_escopo_do_harness_nao_de_path_relativo`) que le a ARVORE
+da funcao-alvo — nao o comportamento dela, que fica identico rodando da raiz — e fica vermelho
+se ela parar de chamar `h.fontes_py`. Verificado contra o codigo pre-fix
+(`git show add570b:tests/unit/test_create_pending_audita_dry_run.py`, o commit anterior a esta
+correcao): a mesma assercao, rodada contra aquela arvore, da `False`. Isto e a tese do
+paragrafo de abertura desta entrada — "corrigir os 17 um a um... garantiria o 18" — confirmada
+empiricamente e por dentro do proprio PR que fecha a classe: o 18o apareceu exatamente como
+previsto, porque quem escreveu aquele guard (sessao do F148, anterior a este PR) nao sabia dos
+outros 17. Deixa-lo de fora teria tornado falsa a tese desta mesma entrada.
 
 **O que ficou deliberadamente de fora, e por que a violacao viva mora na frente
 correspondente:** o aperto do F57 e do F112 (linhas 1 e 10, mais o piso da linha 11) vao com
@@ -1825,6 +1854,55 @@ a11y (linha 14), nome acessivel (linha 15), `th scope` (linha 16) e a lista fixa
 E na sua replica `admin/access_meta.html` — verificado nesta sessao, nao inferido). A
 tautologia do `change_freshness` (linha 12) e o `make_capture_client` restrito a
 `test_*_builder.py` (linha 13) vao para a frente de cauda (PR 6).
+
+**As cinco linhas que a tabela marca com um PR mas o paragrafo acima nao explica — F92 (linha
+3), F83 (linha 4), DSN (linha 5), F113 (linha 8) e o guard sem nome de finding da linha 9 —
+tambem tem motivo, so que mais tecnico que "e a mesma familia de PR":**
+
+- **F92 (linha 3) vai com o painel (PR 5) porque a funcao que motivou o achado ja mudou de
+  forma.** `pending_invites_count()` (`src/web/deps.py:84`) nao chama mais `get_pool`+`acquire`
+  diretamente — foi migrada pra `connection.run_with_reconnect` (comentario `# F91 — 11 rotas
+  admin chamam isto` no proprio arquivo), que e o padrao que o guard de hoje NAO reconhece como
+  "auto-adquirente" (`_funcoes_que_pegam_conexao_propria` casa literalmente `get_pool` +
+  `acquire` no corpo da funcao). Ou seja: se uma rota chamasse `pending_invites_count()` de
+  dentro de um `async with pool.acquire()` hoje — o mesmo bug que originou o F92 — o guard
+  atual NAO acusaria. PR 5 e onde `routes.py` e dividido em 10 modulos e as ~35 queries do
+  corpo das rotas (as 11 chamadas a `pending_invites_count` inclusive) passam a usar
+  `run_with_reconnect` de proposito — e exatamente ali que faz sentido ensinar o guard a
+  reconhecer o novo idioma, porque e ali que o codigo ao redor dele muda de qualquer jeito.
+- **F83 (linha 4) vai com C4/reconciliacao idempotente (PR 2) porque o `finally` que
+  expoe o limite ainda nao existe.** O guard e por STATEMENT de topo do `finally`
+  (`h.chama(stmt, "acquire") e nao h.chama(stmt, "best_effort")`), e um `if` de topo cujo corpo
+  tenha um acquire protegido E outro desprotegido passaria verde — o `best_effort` de QUALQUER
+  lugar dentro do `if` conta pro `stmt` inteiro (mesma familia "unidade errada" do F57/F58). O
+  padrao real do projeto ja existe hoje (`mutations.py:315`, `if reserved: async with
+  (best_effort(...), pool.acquire()...)`), mas so tem UM acquire por `if`, entao nao ha
+  violacao viva pra apertar agora. PR 2 e onde `record_job_run` de `account_resync.py:252`
+  ganha `best_effort` pela PRIMEIRA vez dentro de um `finally` — e o lugar natural pra apertar a
+  precisao do guard e provar a ausencia de violacao, junto do proprio codigo novo que exercita a
+  forma, nao isolado numa frente que nao mexe em bookkeeping nenhum.
+- **DSN (linha 5) vai pra cauda (PR 6) porque o que a tabela nomeia ("`glob` nao-recursivo") ja
+  foi corrigido nesta propria rodada** (Task 3, via `h.testes_py(integracao)` — recursivo,
+  confirmado por sabotagem em subpacote novo). O que resta e o casamento: `"get_connection_url("
+  in linha`, linha a linha, a mesma fragilidade de prosa-conta-como-codigo do F58-C (um
+  comentario citando a chamada bateria a mesma substring). Nenhuma das cinco frentes tematicas
+  (PR 1-5) mexe em `tests/integration/`, entao nao ha PR natural pra essa precisao — e disso que
+  a cauda existe.
+- **F113 (linha 8) vai pra cauda (PR 6) pelo mesmo motivo, com a mesma pegadinha.** As duas
+  coisas que a tabela nomeia — escopo recursivo e a violacao viva historica — ja foram
+  entregues nesta rodada (Task 4: escopo via `h.markdown()`, e a citacao antiga em
+  `session-2026-08-19-infra-ci-handoff.md:28` isenta com o marcador `guard-f113:` na linha
+  seguinte, verificado no arquivo). O que resta e a mesma fragilidade de casamento por linha
+  (as duas substrings do comando quebrado tem que estar na MESMA linha; uma quebra de linha
+  escapa) e a fragilidade POSICIONAL do proprio marcador de isencao (a docstring do guard ja
+  admite: mover a citacao um numero de linha adiante reabre a violacao em silencio — risco
+  aceito, nao corrigido). Nenhuma frente tematica mexe em documentacao; cauda e onde sobra.
+- **A linha 9 (`test_ci_realmente_tem_checks`, sem finding numerado) vai pra cauda (PR 6)
+  porque hoje ela so prova que o NOME da ferramenta aparece como substring dentro de um bloco
+  de step nao-`continue-on-error`** (`_steps_de_check_do_ci()`), nunca que o STEP de fato
+  executa o check — um `run:` que so imprimisse um comentario mencionando "ruff check" bateria
+  a mesma condicao. Reescrever pra afirmar existencia real de step (nao mencao de nome) nao
+  bloqueia nenhuma das cinco frentes tematicas, entao nao ha PR temático que a reivindique.
 
 **Os limites conhecidos do que foi entregue aqui, que a revisao mediu e nao escondeu:**
 
@@ -1843,21 +1921,28 @@ tautologia do `change_freshness` (linha 12) e o `make_capture_client` restrito a
 - Nenhum dos dois limites tem ocupante vivo em `src/` hoje. Ficam registrados aqui pra que a
   proxima leitura nao tome a assercao por completa e a afrouxe achando que sobra.
 
-> **✅ CORRIGIDO** (branch `pr0/harness-de-guards`, commits `69afb35..5fb038c` — Tasks 1 a 8;
+> **✅ CORRIGIDO** (branch `pr0/harness-de-guards`, commits `69afb35..5fb038c` — Tasks 1 a 8,
+> mais o fix loop da Task 9 que fecha esta entrada e converte o 18o guard (ver acima);
 > aguardando PR e merge em `main`, decisao do Wellington). Novo modulo
 > `tests/unit/_guard_harness.py`: escopo de arquivos recursivo com `EscopoVazioError`
 > (`fontes_py`, `testes_py`, `templates_html`, `markdown`, `workflows`), casamento por AST que
 > resolve alias de import (`chama`, `nomes_locais`) e resolve o nome escrito no `except` pra
 > classe de verdade (`excecoes_do_handler`, `classe_de_excecao`) — cada primitivo com um par de
 > fixture sintetico (contem a violacao / nao contem), porque harness sem os proprios testes e
-> so um lugar novo pro mesmo erro morar. Os 17 guards foram convertidos preservando semantica
-> (zero guard mais estrito, pra nenhuma outra frente travar) — **exceto os dois do proprio PR
-> 0** (F58, F91), apertados so depois de provar ausencia de violacao viva (Task 8, Step 1: zero
-> linhas nos dois). 7 sabotagens vermelhas e 6 controles positivos verdes confirmaram o aperto
-> sem regressao de cobertura — a unica regressao encontrada no processo (`.cursor(` como
-> `context_expr` do proprio `with`, que a conversao pra AST deixou de ver por um instante) foi
-> medida e fechada no mesmo fix loop.
+> so um lugar novo pro mesmo erro morar. Os 18 guards (17 da varredura original de 05/09 + 1
+> achado so na revisao final desta Task 9, antes do merge) foram convertidos preservando
+> semantica (zero guard mais estrito, pra nenhuma outra frente travar) — **exceto os dois do
+> proprio PR 0** (F58, F91), apertados so depois de provar ausencia de violacao viva (Task 8,
+> Step 1: zero linhas nos dois). 7 sabotagens vermelhas e 6 controles positivos verdes
+> confirmaram o aperto sem regressao de cobertura — a unica regressao encontrada no processo
+> (`.cursor(` como `context_expr` do proprio `with`, que a conversao pra AST deixou de ver por
+> um instante) foi medida e fechada no mesmo fix loop.
 >
 > **Guard que garante a classe:** `tests/unit/test_guard_harness.py` — dois fixtures por
 > primitivo, e o teste de vacuidade (`test_escopo_vazio_levanta_em_vez_de_passar`) que prova
-> que `EscopoVazioError` dispara quando o scanner nao acha nada.
+> que `EscopoVazioError` dispara quando o scanner nao acha nada. O 18o guard tem prova de
+> mordida propria, mais direta: `test_create_pending_audita_dry_run.py::
+> test_guard_do_target_count_deriva_escopo_do_harness_nao_de_path_relativo` le a ARVORE da
+> funcao-alvo (nao o comportamento dela, que fica identico rodando da raiz) e fica vermelho se
+> ela parar de chamar `h.fontes_py` — verificado contra o codigo pre-fix (`git show
+> add570b:tests/unit/test_create_pending_audita_dry_run.py`), onde a mesma assercao da `False`.
