@@ -2062,12 +2062,17 @@ o prazo em si não foi revisto; merece conversa própria com o Wellington.
    dois são membros igualmente válidos do mesmo `Literal`. Só apareceu na revisão final da
    Task 4. Fechado com 15 mutações (5 call-sites × 3 outros valores válidos cada), 15
    mortas, sem arrastar teste pré-existente.
-3. **O full sweep revelou 76 vermelhos que o gate local não via.** `pytest tests/integration
-   -m integration` no commit `8a7034f` (Tasks 2+3 já aplicadas, Task 4 ainda não) devolveu
-   **76 FAILED de 317 coletados**, em 11 arquivos — nenhum deles visível ao
-   `check_pre_push.py`, que roda só com `-m "not integration"`. **76 dos 91 vermelhos deste
-   PR inteiro eram invisíveis ao gate local.** É a medição que tornou o full sweep
-   obrigatório (não opcional) para a Task 4.
+3. **O full sweep revelou 78 vermelhos que o gate local não via.** `pytest tests/integration
+   -m integration -q` no commit `8a7034f` (Tasks 2+3 já aplicadas, Task 4 ainda não) devolveu
+   **78 FAILED de 317 coletados** (239 passed), em 11 arquivos — nenhum deles visível ao
+   `check_pre_push.py`, que roda só com `-m "not integration"`. Somado a `pytest tests/unit -m
+   "not integration" -q` (**15 FAILED de 1700 coletados**, 1685 passed, 3 arquivos), **78 dos
+   93 vermelhos deste PR inteiro** eram invisíveis ao gate local. É a medição que tornou o
+   full sweep obrigatório (não opcional) para a Task 4. *Números originais (76/91) vinham do
+   relatório da Task 4 e nunca foram reconferidos; remedido em 2026-09-06 medindo em worktree
+   isolado no commit `8a7034f` (`git worktree add <dir> 8a7034f`, fora da árvore de trabalho),
+   contando `FAILED` via `grep -c "^FAILED "` na seção `short test summary info` de cada
+   comando acima — refaça a conta em vez de confiar.*
 
 > **✅ CORRIGIDO em 2026-09-06** (branch `pr1/audiencia-de-token`, commits
 > `890df70..966b913`, Tasks 1-4; aguardando PR e merge, decisão do Wellington). `aud:
