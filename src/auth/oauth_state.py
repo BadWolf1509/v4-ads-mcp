@@ -23,8 +23,33 @@ from typing import Any, Literal
 
 STATE_TTL_SECONDS = 10 * 60  # 10 minutes
 
-Audience = Literal["google_oauth", "cli_invite", "meta_oauth", "panel"]
-"""As quatro audiências do projeto — tipo fechado, definido num lugar só.
+StateAudience = Literal["google_oauth", "cli_invite", "meta_oauth"]
+"""As audiências da família `state` — as únicas que `sign_state`/`verify_state` aceitam.
+
+O tipo é dividido por família porque o conjunto plano ainda deixava a função
+ERRADA emitir o token CERTO: com uma união só, `sign_state(..., aud="panel")`
+cunhava um cookie de painel byte-idêntico ao de `sign_panel_session` (mesmo
+formato, mesma chave, mesmo corpo), e o `mypy --strict` aprovava. É a mesma
+confusão que a claim `aud` fecha, um nível acima — a separação entre as duas
+famílias passa a ser do tipo, e não da disciplina de quem escrever o próximo
+call-site.
+"""
+
+PanelAudience = Literal["panel"]
+"""A audiência da família `cookie de painel`.
+
+Só `sign_panel_session`/`verify_panel_session` a aceitam, e elas não aceitam
+mais nada.
+"""
+
+Audience = Literal[StateAudience, PanelAudience]
+"""A união das duas famílias — as quatro audiências do projeto, num lugar só.
+
+`Literal` aninhado ACHATA, em tempo de tipo (PEP 586) e em tempo de execução:
+isto é literalmente `Literal["google_oauth", "cli_invite", "meta_oauth",
+"panel"]`, e não um `Union` de dois `Literal` (que quebraria `get_args`). Serve
+a quem precisa falar das quatro de uma vez; nenhuma das quatro funções a usa
+como parâmetro, de propósito.
 
 `panel_session` importa daqui, e os call-sites também devem: audiência com duas
 definições é audiência com duas verdades. Fechar em `Literal` existe porque a
@@ -52,7 +77,7 @@ def sign_state(
     payload: dict[str, Any],
     signing_key: str,
     *,
-    aud: Audience,
+    aud: StateAudience,
     issued_at: float | None = None,
 ) -> str:
     """Build a signed state string from a JSON-serializable payload.
@@ -71,7 +96,7 @@ def sign_state(
     return f"{_b64url(body)}.{_b64url(tag)}"
 
 
-def verify_state(state: str, signing_key: str, *, aud: Audience) -> dict[str, Any]:
+def verify_state(state: str, signing_key: str, *, aud: StateAudience) -> dict[str, Any]:
     """Verify HMAC + audiência + TTL, return decoded payload. Raises on failure.
 
     A ordem importa: HMAC primeiro (nada do payload é confiável antes disso),

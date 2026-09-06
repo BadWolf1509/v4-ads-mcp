@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from src.auth.oauth_state import Audience
+from src.auth.oauth_state import PanelAudience
 from src.auth.panel_session import (
     InvalidPanelSessionError,
     PanelSession,
@@ -19,13 +19,16 @@ _SIGNING_KEY = "x" * 32
 # com a MESMA mantém cada teste falhando pelo motivo de sempre. A ordem de
 # `verify_panel_session` é HMAC → audiência → TTL, então divergir aqui abortaria
 # antes do ramo sob teste e o `match="expired"` deixaria de morder.
-_AUD: Audience = "panel"
+_AUD: PanelAudience = "panel"
 
-_TODAS_AS_AUDIENCIAS: list[Audience] = ["google_oauth", "cli_invite", "meta_oauth", "panel"]
+# A família do painel tem UMA audiência. A lista fica parametrizada mesmo
+# assim porque é ela que documenta o conjunto: se um dia crescer, o
+# round-trip cresce junto sem ninguém reescrever o teste.
+_AUDIENCIAS_DE_PAINEL: list[PanelAudience] = ["panel"]
 
 
-@pytest.mark.parametrize("aud", _TODAS_AS_AUDIENCIAS)
-def test_round_trip_recovers_payload(aud: Audience) -> None:
+@pytest.mark.parametrize("aud", _AUDIENCIAS_DE_PAINEL)
+def test_round_trip_recovers_payload(aud: PanelAudience) -> None:
     cookie = sign_panel_session(
         manager_id="abc123",
         email="t@v4company.com",

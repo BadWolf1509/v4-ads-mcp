@@ -35,7 +35,14 @@ from typing import Any, get_args, get_type_hints
 
 import pytest
 
-from src.auth.oauth_state import Audience, InvalidStateError, sign_state, verify_state
+from src.auth.oauth_state import (
+    Audience,
+    InvalidStateError,
+    PanelAudience,
+    StateAudience,
+    sign_state,
+    verify_state,
+)
 from src.auth.panel_session import (
     InvalidPanelSessionError,
     sign_panel_session,
@@ -186,19 +193,28 @@ def test_payload_sem_manager_id_e_recusado() -> None:
 # ---------------------------------------------------------------------------
 
 _FUNCOES_COM_AUDIENCIA = [
-    pytest.param(sign_state, id="sign_state"),
-    pytest.param(verify_state, id="verify_state"),
-    pytest.param(sign_panel_session, id="sign_panel_session"),
-    pytest.param(verify_panel_session, id="verify_panel_session"),
+    pytest.param(sign_state, StateAudience, id="sign_state"),
+    pytest.param(verify_state, StateAudience, id="verify_state"),
+    pytest.param(sign_panel_session, PanelAudience, id="sign_panel_session"),
+    pytest.param(verify_panel_session, PanelAudience, id="verify_panel_session"),
 ]
 
 
-@pytest.mark.parametrize("funcao", _FUNCOES_COM_AUDIENCIA)
-def test_aud_e_keyword_only_sem_default_e_tipado(funcao: Callable[..., object]) -> None:
-    """`aud` não pode ganhar default — é o que torna "esquecer" impossível.
+@pytest.mark.parametrize(("funcao", "familia"), _FUNCOES_COM_AUDIENCIA)
+def test_aud_e_keyword_only_sem_default_e_tipado_pela_familia(
+    funcao: Callable[..., object], familia: object
+) -> None:
+    """`aud` não pode ganhar default — é o que torna "esquecer" impossível —, e
+    o tipo de cada função é o da SUA família, nunca a união.
 
     Mutação que derruba: `aud: Audience = "panel"` em qualquer uma das quatro,
-    ou afrouxar o tipo de volta para `str`.
+    afrouxar o tipo de volta para `str`, **ou alargar qualquer uma das quatro de
+    volta para `Audience`**. Esta última é o achado I1: com a união nas quatro,
+    `sign_state(..., aud="panel")` cunha um cookie de painel byte-idêntico ao de
+    `sign_panel_session` e o `mypy --strict` aprova — a função errada emitindo o
+    token certo. A asserção é de igualdade contra a família, e não "está contido
+    em `Audience`", porque a união satisfaria a contingência e o alargamento
+    passaria batido.
 
     Um default reabre o furo inteiro, porque a chamada que esquecer o `aud`
     volta a funcionar em silêncio com a audiência de outra família. E a mutação
@@ -214,7 +230,28 @@ def test_aud_e_keyword_only_sem_default_e_tipado(funcao: Callable[..., object]) 
     parametro = inspect.signature(funcao).parameters["aud"]
     assert parametro.kind is inspect.Parameter.KEYWORD_ONLY
     assert parametro.default is inspect.Parameter.empty
-    assert get_type_hints(funcao)["aud"] == Audience
+    assert get_type_hints(funcao)["aud"] == familia
+    assert get_type_hints(funcao)["aud"] != Audience
+
+
+def test_familias_de_audiencia_sao_disjuntas_e_cobrem_as_quatro() -> None:
+    """As duas famílias particionam `Audience`: nada em comum, nada de fora.
+
+    Mutação que derruba: pôr `"panel"` de volta em `StateAudience` (ou qualquer
+    audiência de state em `PanelAudience`) — a interseção deixa de ser vazia e o
+    cruzamento entre famílias volta a passar no `mypy`. Também derruba tirar uma
+    audiência de uma família sem pôr em outra, que a deixaria inalcançável.
+
+    O teste irmão (`test_audiencias_sao_exatamente_quatro`) afirma o total; este
+    afirma a PARTIÇÃO, e os dois juntos são o que impede a divisão de virar
+    decorativa. Sozinho, o total sobrevive a `StateAudience` com as quatro.
+    """
+    de_state = set(get_args(StateAudience))
+    de_painel = set(get_args(PanelAudience))
+    assert de_state == {"google_oauth", "cli_invite", "meta_oauth"}
+    assert de_painel == {"panel"}
+    assert de_state & de_painel == set()
+    assert de_state | de_painel == set(get_args(Audience))
 
 
 def test_audiencias_sao_exatamente_quatro() -> None:

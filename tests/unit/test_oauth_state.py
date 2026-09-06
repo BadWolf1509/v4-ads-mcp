@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from src.auth.oauth_state import Audience, InvalidStateError, sign_state, verify_state
+from src.auth.oauth_state import InvalidStateError, StateAudience, sign_state, verify_state
 
 _SIGNING_KEY = "x" * 32
 
@@ -14,13 +14,16 @@ _SIGNING_KEY = "x" * 32
 # MESMA audiência mantém cada teste falhando pelo motivo de sempre. A ordem de
 # `verify_state` é HMAC → audiência → TTL: audiência divergente aqui abortaria
 # antes do ramo sob teste e o `match="expired"` deixaria de morder.
-_AUD: Audience = "google_oauth"
+_AUD: StateAudience = "google_oauth"
 
-_TODAS_AS_AUDIENCIAS: list[Audience] = ["google_oauth", "cli_invite", "meta_oauth", "panel"]
+# Só a família `state`. `sign_state`/`verify_state` não aceitam mais `"panel"`:
+# varrer as quatro aqui afirmaria como comportamento suportado justamente o
+# cruzamento entre famílias que o tipo passou a proibir.
+_AUDIENCIAS_DE_STATE: list[StateAudience] = ["google_oauth", "cli_invite", "meta_oauth"]
 
 
-@pytest.mark.parametrize("aud", _TODAS_AS_AUDIENCIAS)
-def test_round_trip_recovers_payload(aud: Audience) -> None:
+@pytest.mark.parametrize("aud", _AUDIENCIAS_DE_STATE)
+def test_round_trip_recovers_payload(aud: StateAudience) -> None:
     state = sign_state({"manager_id": "uuid-1", "kind": "google"}, _SIGNING_KEY, aud=aud)
     payload = verify_state(state, _SIGNING_KEY, aud=aud)
     assert payload["manager_id"] == "uuid-1"
