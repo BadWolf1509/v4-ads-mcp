@@ -2026,10 +2026,21 @@ gestor — Google e Meta.
 **A correção.** As quatro funções (`sign_state`/`verify_state` em
 [`src/auth/oauth_state.py`](../../src/auth/oauth_state.py),
 `sign_panel_session`/`verify_panel_session` em
-[`src/auth/panel_session.py`](../../src/auth/panel_session.py)) ganharam `aud: Audience`
-como keyword-only **sem default** — default silenciaria exatamente o erro que a claim existe
-para impedir. `Audience = Literal["google_oauth", "cli_invite", "meta_oauth", "panel"]`,
-definida uma vez em `oauth_state.py` e importada por `panel_session.py`, para o
+[`src/auth/panel_session.py`](../../src/auth/panel_session.py)) ganharam `aud` como
+keyword-only **sem default** — default silenciaria exatamente o erro que a claim existe
+para impedir. **O tipo é dividido por família**, e essa divisão é o segundo nível do mesmo
+bug: `StateAudience = Literal["google_oauth", "cli_invite", "meta_oauth"]` para
+`sign_state`/`verify_state`, `PanelAudience = Literal["panel"]` para
+`sign_panel_session`/`verify_panel_session`. Com um `Literal` plano nas quatro — como a
+branch shippou até a revisão final —, `sign_state(..., aud="panel")` cunhava um cookie de
+painel **byte-idêntico** ao de `sign_panel_session` e o `mypy --strict` aprovava: o tipo
+continuava permitindo que a função ERRADA emitisse o token CERTO, e a separação entre as
+duas famílias dependia da disciplina de quem escrevesse o próximo call-site (teste nº 1 de
+gambiarra do `CLAUDE.md`). `Audience = Literal[StateAudience, PanelAudience]` segue existindo
+para quem precisa das quatro de uma vez — `Literal` aninhado **achata**, em tempo de tipo
+(PEP 586) e de execução, então `get_args` continua devolvendo as quatro strings. Efeito em
+runtime da divisão: **zero**, medido por diff dos tokens contra a árvore pré-divisão. As três
+definições vivem em `oauth_state.py` e `panel_session.py` importa a sua, para o
 `mypy --strict` do gate pegar typo nos **9 call-sites de `src/`** — e só neles: o gate roda
 `mypy src` (`scripts/_runner.py:26`, `ci.yml:170`) e **nunca** `tests/`, então lá o typo não é
 erro de tipo, e nem sempre é teste vermelho (medido em 2026-09-06: de dois `aud="pannel"`
@@ -2080,15 +2091,18 @@ o prazo em si não foi revisto; merece conversa própria com o Wellington.
    comando acima — refaça a conta em vez de confiar.*
 
 > **✅ CORRIGIDO em 2026-09-06** (branch `pr1/audiencia-de-token`, commits
-> `890df70..966b913`, Tasks 1-4; aguardando PR e merge, decisão do Wellington). `aud:
-> Audience` obrigatório e sem default nas quatro funções, conferência dentro do `verify_*`,
+> `890df70..38dc4a0`, Tasks 1-5 + a onda de correção da revisão final; aguardando PR e
+> merge, decisão do Wellington). `aud` obrigatório e sem default nas quatro funções, **tipado
+> pela família** (`StateAudience`/`PanelAudience`), conferência dentro do `verify_*`,
 > conferência manual do Meta removida. 69 call-sites atualizados (9 em `src/`, 60 em
 > `tests/`), aplicados por script AST que reparseia e falha se sobrar alvo — regex erraria
 > calado numa chamada multi-linha.
 >
 > **Guards que garantem a classe:** `tests/unit/test_confusao_de_token.py` — as combinações
 > cruzadas de audiência recusadas nos dois sentidos, a inversão de TTL, o payload sem
-> `manager_id` recusado, e `test_state_sem_a_claim_aud_e_recusado` — token no formato antigo,
+> `manager_id` recusado, a ordem `audiência → TTL`, a precedência `kwarg vence payload` do
+> `sign_state`, a partição das duas famílias de audiência (disjuntas e cobrindo as quatro),
+> e `test_state_sem_a_claim_aud_e_recusado` — token no formato antigo,
 > sem a claim, falha fechado; é a exceção de compatibilidade que qualquer rollout tenta
 > escrever ("tolerar durante a transição"), e existe justamente para impedir que alguém a
 > implemente. Verificado contra o código pré-fix (`f864ac6`): o script acima, rodado ali,
@@ -2096,4 +2110,10 @@ o prazo em si não foi revisto; merece conversa própria com o Wellington.
 > keyword-only argument 'aud'` antes do fix, e com `InvalidPanelSessionError` depois.
 >
 > **O que ficou de fora:** chave única sem separação de domínio (HKDF) nem rotação; TTL de
-> 180 dias do Bearer MCP (`routes.py:494`) não revisto.
+> 180 dias do Bearer MCP (`routes.py:494`) não revisto. Ficou de fora também a razão escrita
+> na docstring de `tests/integration/_audiencia.py:5-8` (repetida em `test_admin_script.py:411`
+> e `test_meta_oauth_flow.py:232`): ela justifica ler o corpo do token dizendo que `verify_*`
+> "não distingue X de qualquer outro valor", o que é falso — a comparação é igualdade exata e
+> tem guard dedicado. A **escolha** de ler o corpo continua certa, e por um motivo melhor (não
+> depende da implementação do verificador, então segue mordendo se a comparação regredir); é
+> só a razão que está errada, e não muda comportamento nem cobertura.
