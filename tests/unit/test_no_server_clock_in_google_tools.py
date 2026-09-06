@@ -24,7 +24,11 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-TOOLS = Path("src/mcp/tools")
+from tests.unit import _guard_harness as h
+
+TOOLS = (
+    h.SRC / "mcp" / "tools"
+)  # absoluto, derivado de __file__ (harness); relativo via cwd zerava o glob
 PRIMITIVOS = [
     Path("src/google_ads/queries/_common.py"),
     Path("src/google_ads/change_freshness.py"),
@@ -45,7 +49,7 @@ FORA_COM_MOTIVO = {
 def _arquivos_google() -> list[Path]:
     return [
         p
-        for p in sorted(TOOLS.glob("*.py"))
+        for p in h.fontes_py(TOOLS)
         if not p.name.startswith(("meta_", "_meta_")) and p.name not in FORA_COM_MOTIVO
     ] + PRIMITIVOS
 
@@ -94,3 +98,12 @@ def test_o_guard_enxerga_uma_chamada_de_verdade() -> None:
     assert _chamadas_de_relogio("x = datetime.now(UTC).date()") == [1]
     assert _chamadas_de_relogio("# datetime.now(UTC).date() so no comentario") == []
     assert _chamadas_de_relogio('"""datetime.now(UTC) so na docstring"""') == []
+
+
+def test_o_guard_do_relogio_recusa_escopo_vazio() -> None:
+    """Antes do harness, `Path("src/mcp/tools")` relativo devolvia 0 arquivos de
+    qualquer cwd que nao fosse a raiz, e o guard passava sem olhar nada."""
+    import pytest
+
+    with pytest.raises(h.EscopoVazioError):
+        h.fontes_py(h.SRC / "mcp" / "tools" / "nao_existe")
