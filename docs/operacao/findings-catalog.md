@@ -1811,7 +1811,7 @@ nao precisou da mesma prova, porque nao ha "aperto" de logica ali, so a correcao
 | 5 | `test_structural_guards.py::test_teste_de_integracao_nao_monta_dsn_do_container_a_mao` (DSN) | `glob` nao-recursivo em `tests/integration/` | PR 6 |
 | 6 | `test_structural_guards.py::test_retentaveis_de_conexao_tem_uma_fonte_de_verdade_so` (F91) | igualdade de NOME; errava toda subclasse e todo alias | **PR 0 — fechado aqui** |
 | 7 | `test_no_server_clock_in_google_tools.py` (F141) | nao pega `utcnow()`, `time.time()` nem alias de import | PR 4 |
-| 8 | `test_ci_local_parity.py::test_gate_local_cobre_todo_check_bloqueante_do_ci` (F113) | `glob("*.md")` so na raiz; `docs/` inteiro fora, com violacao viva | PR 6 |
+| 8 | `test_ci_local_parity.py::test_toda_instrucao_de_regerar_o_lock_usa_universal` (F113) | `glob("*.md")` so na raiz; `docs/` inteiro fora, com violacao viva | PR 6 |
 | 9 | `test_ci_local_parity.py::test_ci_realmente_tem_checks` | afirma que o NOME da ferramenta aparece, nao que os steps existem | PR 6 |
 | 10 | `test_blast_radius_bate_com_as_tools.py::test_politica_bate_com_o_caminho_fixo_da_tool` (F112) | casa qualquer atributo `.level`, nao so o do retorno de `classify()` | PR 3 |
 | 11 | `test_blast_radius_bate_com_as_tools.py::test_derivou_as_tools_de_caminho_fixo` | piso `>= 15` em vez de contagem exata derivada | PR 3 |
