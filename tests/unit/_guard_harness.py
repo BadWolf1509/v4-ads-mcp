@@ -133,6 +133,15 @@ def chama(no: ast.AST, alvo: str, *, arv: ast.Module) -> bool:
     """True se a subárvore `no` contém chamada a `alvo`.
 
     Resolve `Name` (`alvo()`), `Attribute` (`mod.alvo()`) e alias.
+
+    NÃO enxerga despacho dinâmico: `getattr(mod, "alvo")()`, subscript
+    (`funcs["alvo"]()`, `locals()["alvo"]()`) ou decorator bare sem
+    parênteses (`@alvo` sobre uma função — o Python chama `alvo(f)`, mas o
+    AST não materializa nenhum `ast.Call` ali). Limitação estrutural de
+    qualquer matcher que opera só sobre sintaxe, não bug desta implementação
+    — não há como resolver isso estaticamente sem executar o código.
+    Confirmado rodando: `chama()` devolve False pra `getattr(mod, "alvo")()`.
+    Nenhum guard deve presumir cobertura aqui.
     """
     nomes = nomes_locais(arv, alvo)
     for sub in ast.walk(no):
@@ -155,8 +164,32 @@ def funcoes(arv: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
     return [n for n in ast.walk(arv) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]
 
 
+def _caminho_pontilhado(no: ast.expr) -> str | None:
+    """Desembrulha uma cadeia de `ast.Attribute` até a raiz, montando o
+    caminho pontilhado inteiro (`mod.sub.Erro`, `mod.sub.aninhado.Erro`...).
+
+    Devolve `None` quando a cadeia não termina num `ast.Name` (ex.: atributo
+    de uma chamada, `foo().Erro`) — caso em que não existe caminho estático
+    pra resolver, e o alvo é descartado por quem chama em vez de contribuir
+    um nome truncado que poderia, por coincidência, resolver pra outra classe.
+    """
+    if isinstance(no, ast.Name):
+        return no.id
+    if isinstance(no, ast.Attribute):
+        base = _caminho_pontilhado(no.value)
+        return f"{base}.{no.attr}" if base is not None else None
+    return None
+
+
 def excecoes_do_handler(handler: ast.ExceptHandler) -> list[str]:
-    """Nomes escritos no `except`, achatando tupla. `except:` puro devolve []."""
+    """Nomes escritos no `except`, achatando tupla. `except:` puro devolve [].
+
+    Atributo encadeado (`mod.sub.Erro`) é desembrulhado recursivamente até a
+    raiz — tratar só um nível truncava pro último segmento (`mod.sub.Erro`
+    virava só "Erro"), e `classe_de_excecao` então resolvia esse nome curto
+    contra builtins/asyncpg com sucesso e silenciosamente: uma classe real,
+    só que ERRADA, nunca o None seguro que a função promete pro desconhecido.
+    """
     if handler.type is None:
         return []
     alvos = handler.type.elts if isinstance(handler.type, ast.Tuple) else [handler.type]
@@ -164,10 +197,10 @@ def excecoes_do_handler(handler: ast.ExceptHandler) -> list[str]:
     for a in alvos:
         if isinstance(a, ast.Name):
             nomes.append(a.id)
-        elif isinstance(a, ast.Attribute) and isinstance(a.value, ast.Name):
-            nomes.append(f"{a.value.id}.{a.attr}")
         elif isinstance(a, ast.Attribute):
-            nomes.append(a.attr)
+            caminho = _caminho_pontilhado(a)
+            if caminho is not None:
+                nomes.append(caminho)
     return nomes
 
 
@@ -179,8 +212,18 @@ def classe_de_excecao(nome: str) -> type[BaseException] | None:
     as exceções retentáveis deste projeto. Nome que não resolve devolve None, e
     **o guard decide**: o padrão seguro é tratar o desconhecido como ofensor,
     nunca como isento.
+
+    O ramo dotted usa a MESMA allowlist do ramo sem ponto
+    (`_NAMESPACES_DE_EXCECAO`): só importa o módulo se a raiz do caminho
+    pontilhado estiver na lista. Sem essa checagem, o texto de um `except`
+    lido de arquivo-fonte arbitrário (Task 3+ varrendo `src/`) decidiria
+    sozinho qual módulo este processo importa — com ela, raiz fora da lista
+    devolve None sem nunca chamar `importlib.import_module`.
     """
     if "." in nome:
+        raiz = nome.split(".", 1)[0]
+        if raiz not in _NAMESPACES_DE_EXCECAO:
+            return None
         mod, _, attr = nome.rpartition(".")
         try:
             obj = getattr(importlib.import_module(mod), attr)

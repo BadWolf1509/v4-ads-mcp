@@ -8,7 +8,9 @@ contra DOIS fixtures — um que contém a violação e um que não contém.
 from __future__ import annotations
 
 import ast
+import importlib
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -297,3 +299,49 @@ def test_excecoes_do_handler_achata_tupla() -> None:
     arv = _arv("try:\n    pass\nexcept (ValueError, os.error):\n    pass\n")
     handler = next(n for n in ast.walk(arv) if isinstance(n, ast.ExceptHandler))
     assert h.excecoes_do_handler(handler) == ["ValueError", "os.error"]
+
+
+def test_excecoes_do_handler_desembrulha_atributo_de_dois_e_tres_niveis() -> None:
+    """C1: atributo de 2+ niveis nao pode truncar pro ultimo segmento.
+
+    Pre-fix, `except mod.sub.TimeoutError:` virava `["TimeoutError"]` —
+    perdendo o prefixo `mod.sub` inteiro. `classe_de_excecao("TimeoutError")`
+    entao resolvia contra builtins com SUCESSO, entregando o `TimeoutError`
+    embutido do Python: uma resposta afirmativa plausivel e ERRADA sobre um
+    `except` que na verdade nomeia outra classe qualquer.
+    """
+    dois_niveis = _arv("try:\n    pass\nexcept mod.sub.TimeoutError:\n    pass\n")
+    tres_niveis = _arv("try:\n    pass\nexcept mod.sub.aninhado.TimeoutError:\n    pass\n")
+    handler_2 = next(n for n in ast.walk(dois_niveis) if isinstance(n, ast.ExceptHandler))
+    handler_3 = next(n for n in ast.walk(tres_niveis) if isinstance(n, ast.ExceptHandler))
+
+    assert h.excecoes_do_handler(handler_2) == ["mod.sub.TimeoutError"]
+    assert h.excecoes_do_handler(handler_3) == ["mod.sub.aninhado.TimeoutError"]
+
+
+def test_classe_de_excecao_dotted_respeita_allowlist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """I2: o ramo dotted não pode importar módulo fora de `_NAMESPACES_DE_EXCECAO`.
+
+    `os.error` é uma classe real (alias de `OSError`, subclasse de
+    `BaseException`) — pre-fix isso resolvia com sucesso porque o ramo
+    dotted importava QUALQUER módulo escrito no `except`, sem allowlist.
+    Prova as duas metades da propriedade: o retorno é None (rejeitado) E o
+    import nunca é tentado (espião em `importlib.import_module` registra as
+    chamadas reais, em vez de só inferir a partir do retorno).
+    """
+    chamadas: list[str] = []
+    original = importlib.import_module
+
+    def espiao(nome_mod: str) -> ModuleType:
+        chamadas.append(nome_mod)
+        return original(nome_mod)
+
+    monkeypatch.setattr(h.importlib, "import_module", espiao)
+
+    assert h.classe_de_excecao("os.error") is None
+    assert chamadas == []  # raiz "os" fora da allowlist: nunca tentou importar
+
+    assert h.classe_de_excecao("asyncpg.ConnectionDoesNotExistError") is not None
+    assert chamadas == ["asyncpg"]  # allowlist nao virou bloqueio geral
