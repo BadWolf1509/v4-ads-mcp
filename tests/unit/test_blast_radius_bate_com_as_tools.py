@@ -23,6 +23,7 @@ from pathlib import Path
 import pytest
 
 from src.governance.blast_radius import RiskLevel, classify
+from tests.unit import _guard_harness as h
 
 _TOOLS = Path(__file__).resolve().parents[2] / "src" / "mcp" / "tools"
 
@@ -35,18 +36,6 @@ _EXECUTORES = {
 
 # Varia o bastante pra atravessar todos os limiares do modulo (1, 5, 20).
 _CONTAGENS = (0, 1, 5, 20, 100, 500)
-
-
-def _chama(arvore: ast.AST, nome: str) -> bool:
-    for no in ast.walk(arvore):
-        if not isinstance(no, ast.Call):
-            continue
-        f = no.func
-        if isinstance(f, ast.Name) and f.id == nome:
-            return True
-        if isinstance(f, ast.Attribute) and f.attr == nome:
-            return True
-    return False
 
 
 def _operacao_classificada(arvore: ast.AST) -> str | None:
@@ -65,7 +54,7 @@ def _operacao_classificada(arvore: ast.AST) -> str | None:
 def _tools_com_caminho_fixo() -> list[tuple[str, str, RiskLevel]]:
     """(arquivo, operation, nivel esperado) das tools que NAO leem `.level`."""
     achados: list[tuple[str, str, RiskLevel]] = []
-    for p in sorted(_TOOLS.glob("*.py")):
+    for p in h.fontes_py(_TOOLS):
         if p.name.startswith("_"):
             continue
         arvore = ast.parse(p.read_text(encoding="utf-8"))
@@ -77,8 +66,8 @@ def _tools_com_caminho_fixo() -> list[tuple[str, str, RiskLevel]]:
         )
         if le_level:
             continue  # honra a politica em runtime — nada a garantir aqui
-        emite_token = _chama(arvore, "create_pending")
-        aplica_direto = any(_chama(arvore, e) for e in _EXECUTORES)
+        emite_token = h.chama(arvore, "create_pending", arv=arvore)
+        aplica_direto = any(h.chama(arvore, e, arv=arvore) for e in _EXECUTORES)
         if emite_token and not aplica_direto:
             achados.append((p.name, operacao, RiskLevel.CONFIRM))
         elif aplica_direto and not emite_token:
