@@ -236,3 +236,64 @@ def test_src_ancora_o_calculo_de_parents_2() -> None:
     assert h.SRC.name == "src"
     assert h.SRC.is_absolute()
     assert (h.SRC / "db" / "connection.py").is_file()
+
+
+def _arv(src: str) -> ast.Module:
+    return ast.parse(src)
+
+
+def test_chama_resolve_name_attribute_e_alias() -> None:
+    direto = _arv("from m import alvo\ndef f():\n    alvo()\n")
+    atributo = _arv("import m\ndef f():\n    m.alvo()\n")
+    apelidado = _arv("from m import alvo as outro\ndef f():\n    outro()\n")
+    for arv in (direto, atributo, apelidado):
+        assert h.chama(arv, "alvo", arv=arv), ast.dump(arv)[:60]
+
+    nao_chama = _arv("def f():\n    alvo_parecido()\n")
+    assert not h.chama(nao_chama, "alvo", arv=nao_chama)
+
+
+def test_funcoes_inclui_aninhada_metodo_e_async() -> None:
+    arv = _arv(
+        "def topo():\n"
+        "    def aninhada():\n        pass\n"
+        "class C:\n"
+        "    async def metodo(self):\n        pass\n"
+    )
+    assert {f.name for f in h.funcoes(arv)} == {"topo", "aninhada", "metodo"}
+
+
+def test_classe_de_excecao_resolve_builtin_e_asyncpg() -> None:
+    import asyncpg
+
+    assert h.classe_de_excecao("ConnectionResetError") is ConnectionResetError
+    assert h.classe_de_excecao("asyncpg.ConnectionDoesNotExistError") is (
+        asyncpg.ConnectionDoesNotExistError
+    )
+    assert h.classe_de_excecao("NaoExisteEmLugarNenhum") is None
+
+
+def test_subclasse_e_o_que_importa_nao_o_nome() -> None:
+    """A propriedade que o guard do F91 falhou em afirmar.
+
+    Medido em 2026-09-06: as 4 grafias abaixo passavam verdes pelo guard, e as
+    4 são subclasses reais do que `run_with_reconnect` retenta.
+    """
+    import asyncpg
+
+    retentaveis = (asyncpg.PostgresConnectionError, ConnectionError)
+    for grafia in (
+        "asyncpg.ConnectionDoesNotExistError",
+        "asyncpg.ConnectionFailureError",
+        "ConnectionResetError",
+        "BrokenPipeError",
+    ):
+        classe = h.classe_de_excecao(grafia)
+        assert classe is not None, grafia
+        assert issubclass(classe, retentaveis), grafia
+
+
+def test_excecoes_do_handler_achata_tupla() -> None:
+    arv = _arv("try:\n    pass\nexcept (ValueError, os.error):\n    pass\n")
+    handler = next(n for n in ast.walk(arv) if isinstance(n, ast.ExceptHandler))
+    assert h.excecoes_do_handler(handler) == ["ValueError", "os.error"]
