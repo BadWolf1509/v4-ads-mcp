@@ -1,7 +1,7 @@
 """CRUD for `google_ads_accounts`. Populated by the resync job."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 import asyncpg
@@ -75,7 +75,13 @@ async def upsert_many(
             -- antigas e seria desativado logo apos ser reativado. Espelha
             -- meta_ad_accounts.upsert_many (C1 da revisao de branch, 2026-09-05:
             -- a clausula tinha ficado de fora do lado Google).
+            --
+            -- C4: a serie e (missed_syncs, last_missed_on) — as DUAS. Zerar so o
+            -- contador deixaria a data velha na linha, e a conta que volta e
+            -- falta de novo no MESMO dia teria a ausencia pulada pelo
+            -- `IS DISTINCT FROM` de `apply_absences`.
             missed_syncs = 0,
+            last_missed_on = NULL,
             synced_at = now()
         """,
         rows,
@@ -83,17 +89,44 @@ async def upsert_many(
     return len(rows)
 
 
-async def apply_absences(conn: asyncpg.Connection, *, bump: list[str], reset: list[str]) -> None:
-    """Aplica a carência decidida por `build_plan()`. Não decide nada — só escreve."""
+async def apply_absences(
+    conn: asyncpg.Connection, *, bump: list[tuple[str, date]], reset: list[str]
+) -> None:
+    """Aplica a carência decidida por `build_plan()`. Não decide nada — só escreve.
+
+    C4: o incremento é condicional ao DIA. `missed_syncs = missed_syncs + 1` puro
+    contava uma ausência por EXECUÇÃO, e o job tem `maxRetries: 3` — um retry
+    depois do commit da reconciliação contava a mesma ausência de novo. A
+    carência de 3 dias caía em 2 execuções, e do lado Meta isso é revogação de
+    acesso de gestor a conta de cliente.
+
+    `IS DISTINCT FROM` e não `<>`: `last_missed_on` é NULL em toda linha hoje, e
+    `NULL <> $2` avalia para NULL, que não satisfaz o WHERE — com `<>` a
+    primeira ausência de cada conta nunca seria contada.
+
+    O dia vem do fuso da CONTA (F141), calculado por `account_today` sobre o fuso
+    que `list_inventory_rows` traz — sem I/O extra. `resolve_account_today` faria
+    uma leitura por conta e adquiriria uma segunda conexão do pool dentro da
+    transação já aberta da reconciliação.
+
+    O `reset` zera as duas colunas: conta que reapareceu não pode carregar a data
+    velha, senão a próxima ausência dela seria pulada se caísse no mesmo dia. E
+    leva `AND missed_syncs <> 0`, que o lado Meta já tem — simetria entre os dois
+    laços é requisito, não estética (o F128 nasceu de uma cláusula que ficou de
+    fora de um dos lados).
+    """
     if bump:
-        await conn.execute(
-            "UPDATE google_ads_accounts SET missed_syncs = missed_syncs + 1 "
-            "WHERE customer_id = ANY($1::text[])",
+        await conn.executemany(
+            "UPDATE google_ads_accounts "
+            "   SET missed_syncs = missed_syncs + 1, last_missed_on = $2 "
+            " WHERE customer_id = $1 "
+            "   AND last_missed_on IS DISTINCT FROM $2",
             bump,
         )
     if reset:
         await conn.execute(
-            "UPDATE google_ads_accounts SET missed_syncs = 0 WHERE customer_id = ANY($1::text[])",
+            "UPDATE google_ads_accounts SET missed_syncs = 0, last_missed_on = NULL "
+            "WHERE customer_id = ANY($1::text[]) AND missed_syncs <> 0",
             reset,
         )
 
@@ -119,13 +152,21 @@ async def deactivate(conn: asyncpg.Connection, *, customer_ids: list[str]) -> in
 
 
 async def list_inventory_rows(conn: asyncpg.Connection) -> list[InventoryRow]:
-    """Devolve o inventário no formato que `build_plan()` consome — puro dado."""
-    rows = await conn.fetch("SELECT customer_id, is_active, missed_syncs FROM google_ads_accounts")
+    """Devolve o inventário no formato que `build_plan()` consome — puro dado.
+
+    `time_zone` vem junto por causa do C4: quem aplica a ausência precisa do dia
+    NO FUSO DA CONTA (F141), e resolvê-lo depois seria uma leitura por conta
+    dentro da transação aberta da reconciliação. `build_plan` ignora o campo.
+    """
+    rows = await conn.fetch(
+        "SELECT customer_id, is_active, missed_syncs, time_zone FROM google_ads_accounts"
+    )
     return [
         InventoryRow(
             customer_id=r["customer_id"],
             is_active=r["is_active"],
             missed_syncs=r["missed_syncs"],
+            time_zone=r["time_zone"],
         )
         for r in rows
     ]

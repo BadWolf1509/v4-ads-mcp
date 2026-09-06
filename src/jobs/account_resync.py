@@ -9,6 +9,7 @@ Entry point: `python -m src.jobs.account_resync`
 
 import asyncio
 import sys
+from datetime import UTC, datetime
 from typing import Any
 
 import asyncpg
@@ -28,6 +29,7 @@ from src.google_ads.accounts import (
     list_accessible_customer_resource_names,
 )
 from src.google_ads.client import build_client
+from src.google_ads.queries._common import account_today
 from src.google_ads.reconcile import build_plan
 from src.jobs._audit import record_access_revocation, record_job_crash, record_job_run
 from src.jobs.purge import purge_expired
@@ -67,6 +69,7 @@ async def reconcile_google(
     accounts: list[dict[str, Any]],
     complete: bool,
     apply: bool,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     """Reconcilia o inventário Google contra o MCC. Devolve o params_summary.
 
@@ -76,7 +79,16 @@ async def reconcile_google(
     Uma transação só pro bloco de escrita inteiro: metade aplicada — carência
     somada sem desativar, ou desativada com grant vivo — é exatamente a
     inconsistência que este recurso existe pra evitar.
+
+    `now` é o instante da EXECUÇÃO, lido UMA vez e passado adiante (C4/F141):
+    todas as ausências deste run são carimbadas com o mesmo instante, cada uma
+    convertida para o dia do fuso da SUA conta. Ler o relógio por conta faria o
+    resultado depender de quanto tempo o laço levou — e um run que atravessasse
+    a meia-noite de alguma conta carimbaria dias diferentes na mesma passagem.
+    Injetável porque só assim o teste consegue um instante em que UTC e a conta
+    discordam (a diferença que `freezegun` não representa).
     """
+    agora = now if now is not None else datetime.now(UTC)
     async with conn.transaction():
         # Ler ANTES do upsert. `upsert_many` marca is_active=true e zera
         # missed_syncs pra toda conta do MCC; lido depois dele, o inventário já
@@ -88,7 +100,14 @@ async def reconcile_google(
             complete=complete,
         )
         n = await google_ads_accounts.upsert_many(conn, accounts)
-        await google_ads_accounts.apply_absences(conn, bump=plano.to_bump, reset=plano.to_reset)
+        # C4/F141: o plano devolve ids; a ausência precisa do DIA em que caiu, no
+        # fuso da conta. O fuso vem do inventário lido acima (indexação direta,
+        # não `.get()`: `to_bump` é derivado de `inventario`, então a chave existe
+        # por construção — e se um dia deixar de existir, quebrar alto é melhor
+        # que carimbar o inventário inteiro em UTC calado).
+        fusos = {r.customer_id: r.time_zone for r in inventario}
+        bump = [(cid, account_today(fusos[cid], now=agora)) for cid in plano.to_bump]
+        await google_ads_accounts.apply_absences(conn, bump=bump, reset=plano.to_reset)
 
         # Contado SEMPRE, inclusive no dry-run: a trava governa DESTRUIÇÃO, não
         # observação. Sem isto o soak inteiro reporta zero e não distingue "não

@@ -27,6 +27,14 @@ class InventoryRow:
     customer_id: str
     is_active: bool
     missed_syncs: int
+    # C4/F141: `build_plan` NÃO lê este campo — ele viaja junto do inventário
+    # porque quem aplica a ausência precisa saber em que dia ela caiu, e o dia é
+    # propriedade da CONTA. Resolvê-lo por `resolve_account_today` seria uma
+    # leitura por conta, cada uma adquirindo uma segunda conexão do pool
+    # (`run_with_reconnect`) DENTRO da transação já aberta da reconciliação.
+    # Default nulo porque o plano é indiferente a ele; que o produtor real
+    # (`list_inventory_rows`) sempre o preencha é o que o teste prende.
+    time_zone: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
