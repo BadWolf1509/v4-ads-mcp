@@ -6,6 +6,7 @@ import pytest
 from src.mcp.tools._registry import all_tools, import_all_tools
 from src.mcp.tools.update_ad_group_bid import _SCHEMA as AD_GROUP_BID_SCHEMA
 from src.mcp.tools.update_keyword_bid import _SCHEMA as KEYWORD_BID_SCHEMA
+from tests.unit import _guard_harness as h
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -68,12 +69,25 @@ def test_builder_tests_use_capture_client_not_magicmock():
     make_capture_client (rolou o próprio mock em vez da fixture). Arquivos que
     usam make_capture_client e ainda importam MagicMock pra uso ancilar (ex:
     override pontual de path helper) são legítimos e ficam de fora.
+
+    Escopo via `h.testes_py(unit_dir)` (recursivo — pega builder test que
+    algum dia mude de subpasta), mas o filtro MANTÉM o sufixo `_builder.py`
+    de propósito, em vez de só `startswith("test_")` como o resto da Task 4:
+    a regra "MagicMock cru no client mascara bug de proto field" só faz
+    sentido pra teste QUE EXERCITA UM BUILDER. Medido: soltar o sufixo (só
+    `startswith("test_")`) faz esta suíte acusar 39 arquivos — test_backup,
+    test_session_is_active, test_logging_context, etc. — que usam MagicMock
+    pra mockar pool/conexão/job e nunca tocam `_BUILDERS`/`register_builder`;
+    zero desses 39 é builder test sem o nome certo, é o guard perguntando a
+    arquivo errado uma pergunta que não se aplica a ele.
     """
     import pathlib
 
     unit_dir = pathlib.Path(__file__).resolve().parent
     offenders: list[str] = []
-    for path in sorted(unit_dir.glob("test_*_builder.py")):
+    for path in h.testes_py(unit_dir):
+        if not (path.name.startswith("test_") and path.name.endswith("_builder.py")):
+            continue
         src = path.read_text(encoding="utf-8")
         if "MagicMock" in src and "make_capture_client" not in src:
             offenders.append(path.name)
@@ -410,6 +424,16 @@ def test_every_mutate_builder_has_a_builder_test():
 
     Complementa test_builder_tests_use_capture_client_not_magicmock (que garante a
     QUALIDADE do teste) com a EXISTÊNCIA do teste.
+
+    Escopo via `h.testes_py(unit_dir)` filtrado só por `startswith("test_")` —
+    SEM o sufixo `_builder.py`: o guard passa a ver todo teste (recursivo) que
+    mencione o nome do builder ou da op, não só quem lembrou de nomear o
+    arquivo `_builder.py`. Ao contrário do guard de MagicMock acima, alargar
+    aqui não introduz ruído — o pior caso é uma referência incidental ao nome
+    em outro teste contando como cobertura, nunca um builder real cobrado sem
+    motivo. `p.name.startswith("test_")` também é o que mantém
+    `tests/unit/fixtures_guards/**/modulo.py` (árvore sintética do harness)
+    fora do corpo lido — nenhum arquivo lá começa com `test_`.
     """
     import pathlib
 
@@ -419,7 +443,7 @@ def test_every_mutate_builder_has_a_builder_test():
 
     unit_dir = pathlib.Path(__file__).resolve().parent
     all_content = "\n".join(
-        p.read_text(encoding="utf-8") for p in unit_dir.glob("test_*_builder.py")
+        p.read_text(encoding="utf-8") for p in h.testes_py(unit_dir) if p.name.startswith("test_")
     )
 
     missing = sorted(

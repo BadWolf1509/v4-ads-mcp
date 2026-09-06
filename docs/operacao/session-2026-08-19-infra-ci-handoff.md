@@ -26,6 +26,7 @@ Consequência: auditei a **configuração declarativa do repo**. Estado vivo —
 
 ```
 Regerar o lock: uv pip compile pyproject.toml -o requirements.txt
+<!-- guard-f113: citação do comando QUEBRADO que o F113 corrigiu; o correto leva --universal -->
 ```
 
 Falta o `--universal`. Rodei os dois em vez de deduzir:

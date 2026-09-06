@@ -13,6 +13,8 @@ Duas classes de atrito que nao aparecem em teste nenhum hoje:
 import re
 from pathlib import Path
 
+from tests.unit import _guard_harness as h
+
 _RAIZ = Path(__file__).resolve().parents[2]
 _CI = _RAIZ / ".github" / "workflows" / "ci.yml"
 _RUNNER = _RAIZ / "scripts" / "_runner.py"
@@ -83,18 +85,35 @@ def test_toda_instrucao_de_regerar_o_lock_usa_universal() -> None:
     A maquina do dev e Windows, entao o comando sem a flag resolve pra aquela
     plataforma e o buildpack CNB quebra ao instalar no Linux. Verificado
     rodando os dois: com a flag sai `pywin32==312 ; sys_platform == 'win32'`.
+
+    Escopo via `h.markdown()` (RECURSIVO a partir da raiz do repo) em vez de
+    `_RAIZ.glob("*.md")` (so a raiz) — o guard antigo nao enxergava docs/, e
+    era la que morava a violacao viva do proprio F113.
     """
     ofensores: list[str] = []
-    for caminho in (*_RAIZ.glob("*.md"), *(_RAIZ / ".github" / "workflows").glob("*.yml")):
-        for numero, linha in enumerate(caminho.read_text(encoding="utf-8").splitlines(), 1):
+    for caminho in (*h.markdown(), *h.workflows()):
+        linhas = caminho.read_text(encoding="utf-8").splitlines()
+        for numero, linha in enumerate(linhas, 1):
             # exige `pyproject.toml` pra casar COMANDO copiavel, nao mencao
             # em prosa ("o lockfile sai de um uv pip compile do pyproject").
             comando = "uv pip compile" in linha and "pyproject.toml" in linha
-            if comando and "--universal" not in linha:
-                ofensores.append(f"{caminho.name}:{numero}")
+            if not comando or "--universal" in linha:
+                continue
+            # Isencao explicita e por LINHA: o marcador tem que estar na linha
+            # SEGUINTE (mover a citacao um numero de linha pra baixo reabre a
+            # violacao em silencio — risco aceito). Citar o comando quebrado e
+            # legitimo em registro historico; instruir com ele nao e.
+            proxima = linhas[numero] if numero < len(linhas) else ""
+            if "guard-f113:" in proxima:
+                continue
+            ofensores.append(f"{h.rel(caminho)}:{numero}")
     assert not ofensores, (
         "instrucao de regerar o lockfile sem --universal (quebra o build Linux): "
         + "; ".join(ofensores)
+        + ". Se for citacao de registro historico (nao instrucao viva), marque a "
+        "LINHA SEGUINTE com um comentario contendo `guard-f113:` pra isentar "
+        "(ex.: `<!-- guard-f113: motivo -->` em markdown, `# guard-f113: motivo` "
+        "em codigo)."
     )
 
 

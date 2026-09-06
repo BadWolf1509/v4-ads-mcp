@@ -586,6 +586,9 @@ Aplicar a nota acima no handoff, e no guard:
         linhas = caminho.read_text(encoding="utf-8").splitlines()
         for numero, linha in enumerate(linhas, 1):
             comando = "uv pip compile" in linha and "pyproject.toml" in linha
+            # guard-f113: citação do código do próprio guard (string literal),
+            # não uma instrução de regen — sem o marcador, o guard convertido
+            # se auto-acusa ao ler este bloco (medido na Task 4).
             if not comando or "--universal" in linha:
                 continue
             # Isenção explícita e por LINHA: o marcador tem que estar na linha
