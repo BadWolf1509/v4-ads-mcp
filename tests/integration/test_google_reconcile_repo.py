@@ -218,6 +218,66 @@ async def test_conta_que_volta_e_falta_no_mesmo_dia_tem_a_ausencia_contada(db) -
 
 
 @pytest.mark.integration
+async def test_bump_nao_vaza_para_conta_vizinha(db) -> None:
+    """A blast radius do `bump` é só quem está na lista — nunca o inventário inteiro.
+
+    Achado I1 da revisão da Task 2: todo teste acima roda com UMA conta só, e
+    nenhum consegue distinguir "soma a carência da conta certa" de "soma a
+    carência de todo mundo" — tirar `WHERE customer_id = $1` do UPDATE (e só
+    ele) passava verde nos dez. Em produção isso é `missed_syncs + 1` no
+    inventário inteiro, todo dia: as 26 contas cruzam o limiar de desativação
+    em 3 dias, e `revoke_for_inactive_accounts` revoga todos os grants. É o
+    predicado que este PR reescreveu (`ANY($1::text[])` → uma linha por
+    `executemany`).
+    """
+    async with db.acquire() as conn:
+        await _semear_conta(conn, "1234567890")
+        await _semear_conta(conn, "9876543210")  # vizinha, não citada no bump
+
+        await google_ads_accounts.apply_absences(
+            conn, bump=[("1234567890", DIA_DA_CONTA)], reset=[]
+        )
+
+        alvo = await _linha(conn, "1234567890")
+        vizinha = await _linha(conn, "9876543210")
+
+    assert alvo["missed_syncs"] == 1
+    assert alvo["last_missed_on"] == DIA_DA_CONTA
+    assert vizinha["missed_syncs"] == 0, "bump vazou para conta que nao estava na lista"
+    assert vizinha["last_missed_on"] is None, "bump carimbou last_missed_on da vizinha"
+
+
+@pytest.mark.integration
+async def test_reset_nao_vaza_para_conta_vizinha(db) -> None:
+    """Idem para o `reset`: só quem está na lista perde a carência.
+
+    Mesmo achado I1, segunda metade — sem `WHERE customer_id = ANY($1::text[])`
+    o UPDATE zeraria QUALQUER conta com `missed_syncs <> 0`, não só quem
+    reapareceu no MCC. A vizinha entra com carência e `last_missed_on`
+    diferentes dos da conta-alvo pós-reset, para nenhum dos dois campos
+    coincidir por acidente com o valor que o reset grava.
+    """
+    async with db.acquire() as conn:
+        await _semear_conta(conn, "1234567890", missed_syncs=2)
+        await _semear_conta(conn, "9876543210", missed_syncs=3)  # vizinha, fora do reset
+        await conn.execute(
+            "UPDATE google_ads_accounts SET last_missed_on = $2 WHERE customer_id = $1",
+            "9876543210",
+            DIA_DA_CONTA,
+        )
+
+        await google_ads_accounts.apply_absences(conn, bump=[], reset=["1234567890"])
+
+        alvo = await _linha(conn, "1234567890")
+        vizinha = await _linha(conn, "9876543210")
+
+    assert alvo["missed_syncs"] == 0
+    assert alvo["last_missed_on"] is None
+    assert vizinha["missed_syncs"] == 3, "reset vazou para conta que nao estava na lista"
+    assert vizinha["last_missed_on"] == DIA_DA_CONTA, "reset vazou last_missed_on da vizinha"
+
+
+@pytest.mark.integration
 async def test_lista_vazia_continua_sendo_noop(db) -> None:
     """F85: lista vazia quase sempre é falha de leitura, não 'todas sumiram'."""
     async with db.acquire() as conn:
