@@ -111,11 +111,25 @@ async def apply_absences(
 
     Conta sem fuso cai no fallback UTC decidido do `account_today` (há caminho
     para isso: `upsert_many` grava `a.get("time_zone")`). Aqui isso é ESCRITA, e
-    o F146 diz que escrita não herda o fallback da leitura — a análise: para
-    conta a oeste de UTC o carimbo sai um dia à frente, e o efeito é a ausência
-    do dia seguinte ser PULADA. Carência mais lenta, nunca mais rápida; erra
-    para o lado que não revoga. (m1 da revisão da Task 2; o gêmeo Meta leva a
-    mesma frase.)
+    o F146 diz que escrita não herda o fallback da leitura — então o que o
+    fallback muda é a CHAVE da idempotência: sem fuso, "uma ausência por dia"
+    passa a valer por dia UTC, e não por dia da CONTA. Não é uma garantia
+    direcional — o erro cai para os dois lados, conforme a hora do run:
+
+    - um dia local de conta a oeste de UTC mapeia em DUAS datas UTC, então duas
+      execuções no mesmo dia da conta que atravessem a meia-noite UTC (ex.: 20h
+      e 22h locais em UTC-3) carimbam datas diferentes e contam DUAS ausências
+      no mesmo dia — que é exatamente o defeito que este C4 fecha, e erra para o
+      lado que revoga CEDO;
+    - e a ausência das 21h à meia-noite locais sai carimbada com o dia seguinte,
+      fazendo a ausência real do dia seguinte ser PULADA — carência mais lenta.
+
+    Não alcançável hoje, e isto é medido e não suposto: o job roda uma vez por
+    dia, os retries são em minutos, e as 26 contas do MCC estão em seis fusos,
+    todos UTC-3 ou UTC-4 (medição do F141). Mas quem sustenta a idempotência nesse
+    caso é a AGENDA do job, não este fallback. (m1 da revisão da Task 2 dizia
+    "erra sempre para o lado que não revoga"; corrigido pelo M3 da revisão
+    final — o código não dá essa garantia. O gêmeo Meta leva a mesma frase.)
 
     O `reset` zera as duas colunas: conta que reapareceu não pode carregar a data
     velha, senão a próxima ausência dela seria pulada se caísse no mesmo dia. E
