@@ -455,7 +455,7 @@
 - **F111 (LOW, latente) — audit Meta derivava a conta de um dict opcional:** [`run_meta_graph_get`](../../src/meta_ads/reports.py) gravava `customer_id=(params_summary or {}).get("ad_account_id")` nos caminhos de sucesso e de erro, tendo `ad_account_id` como kwarg **obrigatório** desde o F72. Os 3 callers de hoje passam a chave (verificado um a um), então estava correto — o risco é o próximo, e **M.5 é o próximo sprint**: um tool Meta novo que esqueça a chave grava linha de auditoria **sem conta**, na plataforma onde o token é compartilhado e a matriz de acesso é o único freio. É a mesma forma que o F72 corrigiu no gate e o F88-era corrigiu no contador BUC, deixada no audit. O caminho de negação já usava o kwarg — a inconsistência estava dentro do mesmo arquivo.
   **✅ CORRIGIDO (2026-08-19).** Os 2 sites passaram a usar `ad_account_id`. Guard AST assertando que as 3 chamadas de `audit_log.record` do executor derivam `customer_id` do kwarg.
 
-- **F112 (LOW, latente) — a política de blast radius é consultiva na maioria das tools de mutação:** [`blast_radius.classify`](../../src/governance/blast_radius.py) se descreve como quem "decide auto-apply vs require-confirmation", mas só parte das tools lê `.level`. Eram **9 de 26** em 2026-08-19; **10 de 28** na remedição de 2026-09-07 (o `apply_recommendation` passou a ler o veredito quando o gate por tipo entrou — C2 do PR 3). As outras **18** computam o veredito e usam apenas `.reason` como texto, com o caminho (auto-aplicar ou emitir token) fixo no código. **Verifiquei os dois lados: não há divergência hoje** — as always-CONFIRM chamam `create_pending` incondicionalmente e as 5 auto-apply caem em ramos que retornam AUTO constante. O risco é apertar a política no módulo — por exemplo passar `remove_negative_keywords` a CONFIRM, defensável já que remover negativa **alarga** o targeting — e as 18 seguirem o caminho antigo em silêncio.
+- **F112 (LOW, latente) — a política de blast radius é consultiva na maioria das tools de mutação:** [`blast_radius.classify`](../../src/governance/blast_radius.py) se descreve como quem "decide auto-apply vs require-confirmation", mas só parte das tools lê `.level`. Eram **9 de 26** em 2026-08-19; **10 de 28** na remedição de 2026-09-07 (o `apply_recommendation` passou a ler o veredito quando o gate por tipo entrou — C2 do PR 3). As outras **18** computam o veredito e usam apenas `.reason` como texto, com o caminho (auto-aplicar ou emitir token) fixo no código. **Verifiquei os dois lados: não há divergência hoje** — as always-CONFIRM chamam `create_pending` incondicionalmente e as 5 auto-apply caem em ramos que retornam AUTO constante. O risco é apertar a política no módulo — por exemplo passar `remove_negative_keywords` a CONFIRM, defensável já que remover negativa **alarga** o targeting — e as 18 seguirem o caminho antigo em silêncio. O `apply_recommendation` foi exatamente esse caso até 07/09: o **F158** cataloga o bug vivo que isso permitiu — governança oposta entre duas portas do mesmo efeito (orçamento).
   **✅ CORRIGIDO (2026-08-19) — e a decisão de desenho importa mais que o fix.** Reescrever as 18 pra consultarem `.level` era a outra saída; não vale o tamanho. **O risco não é a tool errar, é a política e a tool DIVERGIREM**, e isso um teste pega por uma fração do custo. O guard **deriva** a lista do source (quem lê `.level` é pulado; quem só emite token tem que ser CONFIRM; quem só chama executor tem que ser AUTO) e falha alto se uma tool não couber em nenhum caso — então tool nova entra sozinha, sem lista à mão pra envelhecer. **Provado por sabotagem**, porque passou de primeira: apertar a política deixa o guard RED exatamente na tool divergente; revertido, verde.
   **✅ APERTADO (2026-09-07, PR 3 Task 3) — o guard de 08-19 enunciava mais do que conferia.** Duas frouxidões, as duas fechadas. (a) `le_level` era `any(no.attr == "level" for no in walk(arvore))`: casava **qualquer** atributo chamado `level`, de qualquer objeto — uma tool com um `janela.level` no corpo saía da cobrança inteira, calada, e a divergência que ela escondesse ficava invisível. Agora só conta o `.level` do **resultado de `classify`** (nome ligado à chamada, chamada direta ou walrus; alias de import e `mod.classify` inclusive). (b) O piso `len(_CASOS) >= 15` virou derivação **exata** contra um universo derivado por outro casador (`h.chama(..., "classify")`, largo) — e as duas saídas do meio que antes eram `continue` silencioso (`operation=` não-literal) ou `pytest.fail` no import (caminho ambíguo) viraram baldes de ofensor com nome. **Frouxo e apertado dão a MESMA resposta nas 28 tools de hoje** — o aperto é contra a tool que ainda vai ser escrita, então a prova é sintética: uma tabela de 8 formas roda o casador contra fonte de mentira. **Sabotagem em cópia fora do repo:** tool que ignora `risk.level`, tem um `janela.level` e auto-aplica uma operação que `classify` diz CONFIRM → guard novo VERMELHO nomeando a tool, guard antigo VERDE. Idem para `operation=` não-literal: novo VERMELHO, antigo VERDE (o piso de 15 seguia satisfeito com 18).
 
@@ -2280,3 +2280,181 @@ registrados nos respectivos `task-N-review.md`.
 > primeira). Medição de produção em 2026-09-07 (acima): nada precisou ser
 > corrigido — a correção é preventiva, e o soak do Google passa a medir o que
 > promete a partir deste PR.
+
+---
+
+## F158 (HIGH, CORRIGIDO em 2026-09-07) — o orçamento mudava por duas portas com governança oposta
+
+> **Como apareceu:** planejado como PR 3 da varredura de 8 revisores (spec
+> [`2026-09-06-correcoes-varredura-design.md`](../superpowers/specs/2026-09-06-correcoes-varredura-design.md),
+> seção 4; plano completo em
+> [`2026-09-07-pr3-governanca-de-orcamento.md`](../superpowers/plans/2026-09-07-pr3-governanca-de-orcamento.md)),
+> não achado em incidente — mas a probe que abriu a Task 2 mediu o efeito vivo
+> numa conta real antes de qualquer linha de código mudar.
+
+**A assimetria.** [`blast_radius.py`](../../src/governance/blast_radius.py) classificava
+o MESMO efeito de duas formas opostas, conforme a porta usada para chegar nele. Medido
+no commit-base desta PR (`8caa926`, antes da Task 2 mexer em qualquer coisa): mudança
+direta de orçamento, linha **90**,
+
+```python
+if operation == "update_campaign_budget":
+    return RiskClassification(
+        RiskLevel.CONFIRM,
+        "Mudanca de orcamento de campanha — confirmar sempre (budget)",
+    )
+```
+
+e aplicar a SUGESTÃO do Google de mudar esse mesmo orçamento, linha **247**,
+
+```python
+if operation in ("apply_recommendation", "dismiss_recommendation"):
+    return RiskClassification(
+        RiskLevel.AUTO,
+        f"{operation} — auto, recommendation flow do Google",
+    )
+```
+
+Mesmo efeito (o teto diário de gasto sobe), duas portas, governança oposta: uma sempre
+pede confirmação, a outra sempre aplica sem perguntar nada.
+
+**A causa é o F112 — classificar e descartar.** `apply_recommendation` computava
+`classify(operation="apply_recommendation", params=...)` e nunca lia `risk.level` — o
+caminho de aplicação era fixo (sempre `run_recommendation_action` na linha seguinte,
+nunca `create_pending`), e a razão que `classify` devolvia virava só o campo cosmético
+`auto_applied_reason` no envelope de resposta, sem poder nenhum de gate (o próprio
+código documenta isso na abertura de
+[`apply_recommendation.py`](../../src/mcp/tools/apply_recommendation.py) e de
+`tests/unit/test_apply_recommendation.py`). A porta existia porque o veredito era
+CALCULADO e jogado fora — não porque a política tivesse decidido, em algum lugar, que
+recomendação é sempre segura.
+
+**A evidência viva, medida em 07/09 — não hipotética.** Na conta `1171969590`
+("Montes Claros"), uma recomendação `CAMPAIGN_BUDGET` (campanha `22922100363`) com
+`current_budget_amount_micros: 50000000` e `recommended_budget_amount_micros:
+180000000` — **R$ 50,00/dia para R$ 180,00/dia, 3,6×, com uma chamada só, sem token,
+sem preview e sem nunca mostrar o número**. Também `MARGINAL_ROI_CAMPAIGN_BUDGET` na
+conta `7621086021` (R$ 40,30 → R$ 78,00).
+
+**A armadilha da superfície GAQL, classe F87/F89.** O proto do SDK v24 declara as
+FOLHAS do detalhe (`recommendation.campaign_budget_recommendation.current_budget_amount_micros`
+e afins), mas a GAQL **não as expõe individualmente** — probado por `validate_gaql` em
+07/09: `recommendation.campaign_budget_recommendation` (a MENSAGEM inteira) é válido,
+e a folha dentro dela é `Unrecognized fields`. Seleciona-se a mensagem, o SDK a popula,
+e o Python lê a folha no objeto. Quem escreve a query olhando o proto — em vez de
+provar contra a API — erra.
+
+**O erro de método na whitelist, e ele é meu.** A lista original dos tipos que mexem em
+orçamento ou lance saiu de um `grep` do enum por
+`BUDGET|BID|TARGET_CPA|TARGET_ROAS|MAXIMIZE|ENHANCED_CPC|ROI|CPC` — 17 tipos. O
+`USE_BROAD_MATCH_KEYWORD` não casa NENHUM desses padrões (ele converte keywords para
+correspondência ampla), e mesmo assim declara o MESMO campo
+(`required_campaign_budget_amount_micros`) que já classificava `TARGET_ROAS_OPT_IN`
+dentro da lista. Campo idêntico decidindo o oposto é a prova de que o critério era o
+NOME do tipo, não o efeito dele. A whitelist virou **18**, derivada do PROTO campo a
+campo ([`CAMPOS_DE_DETALHE`](../../src/google_ads/queries/recommendations.py)), com
+guard (`tests/unit/test_whitelist_de_recomendacao_bate_com_o_proto.py`) que refaz essa
+varredura no descriptor do v24 a cada run — tipo novo que o Google acrescentar com
+campo de orçamento ou lance derruba o teste em vez de entrar calado. A única exceção
+escrita é `KEYWORD`: declara `recommended_cpc_bid_micros`, mas é CPC de uma
+palavra-chave que ainda NÃO existe — não é mudança de uma alavanca que já está
+gastando —, e a porta equivalente deste MCP (`add_keywords` de 1 entidade) já é AUTO
+por spec §7.1.
+
+**O outro lado, o C1.** `update_campaign_budget` nomeava só a campanha pedida no
+preview e escrevia no recurso ORÇAMENTO, que pode ser do portfólio
+(`campaign_budget.explicitly_shared`). Medido na conta `7862230676`: as duas
+campanhas ativas dividem o orçamento `15803241252` a R$ 310,00/dia. A spec de 02/09
+(`ad_schedule`) já mandava ler `explicitly_shared`, e duas tools cumpriam
+(`get_ad_schedule` e `update_ad_schedule`) — a única que muda orçamento e não lia era
+exatamente essa. Fix: o preview ganhou `shared_budget` (dict, não lista — esta tool
+escreve em UM recurso só) com as campanhas de fora do lote e um aviso; o texto avisa
+que mudar o VALOR **ATINGE** direto o teto diário de todas as irmãs — mecanismo
+diferente do `update_ad_schedule`, onde desligar uma faixa horária **REALOCA** gasto
+entre elas; mesmas 8 chaves, aviso distinto por desenho.
+
+**Os guards que deveriam ter impedido isto — e o que estava errado em cada um.** O
+F155 cataloga a família inteira (18 guards com o mesmo defeito de cobertura); os dois
+que tocam esta entrada diretamente:
+- **F57** media por ARQUIVO inteiro (`"build_client_for_manager(" in text and
+  "ensure_account_access(" not in text`): um segundo executor no MESMO arquivo sem
+  gate passava verde porque ALGUMA função do arquivo chamava `ensure_account_access`,
+  em qualquer lugar. Apertado nesta PR (Task 3) para a unidade FUNÇÃO — com a cadeia
+  de escopos léxicos e `lambda` transparente, para não reprovar os 6 call-sites que já
+  gateiam corretamente dentro de `run_with_reconnect(lambda conn: ...)`.
+- **F112** aceitava QUALQUER atributo `.level` no arquivo inteiro
+  (`any(isinstance(no, ast.Attribute) and no.attr == "level" for no in ast.walk(arvore))`),
+  não especificamente o `.level` do RETORNO de `classify()`. Apertado para só contar o
+  `.level` do resultado de `classify`.
+
+Nenhum dos dois teria acusado `apply_recommendation`: o F57 porque o problema não era
+falta de gate de ACESSO à conta, era falta de gate de CONFIRMAÇÃO; o F112 porque
+`risk.level` nunca era lido em lugar nenhum do arquivo — nem certo, nem errado.
+
+**A contagem real é 18 das 28, não 17 das 26.** A medição do F112 era 9 de 26 em
+19/08; passa a 10 de 28 com esta PR — a 10ª leitora de `.level` é o próprio
+`apply_recommendation`, depois do gate por tipo (Task 2). As outras 18 continuam
+computando o veredito e usando só `.reason` como texto, caminho fixo no código; é essa
+contagem que o `CLAUDE.md` cita agora, no lugar do antigo "17 das 26" (Task 3, troca
+byte-neutra: mesma contagem de caracteres, dentro do orçamento de 24.000 bytes do
+arquivo).
+
+**O que ficou deliberadamente de fora — este catálogo cobra isso.**
+- `_ALAVANCA` (`tests/unit/test_whitelist_de_recomendacao_bate_com_o_proto.py:42`) é
+  regex de SUFIXO de nome de campo do proto. Tipo futuro com alavanca de orçamento sob
+  um nome fora desses sufixos passaria calado — e a checagem de "tipo desconhecido
+  sempre confirma" não cobre esse caso, porque depois de um bump do SDK esse tipo já
+  seria "conhecido".
+- [`server.py:121`](../../src/mcp/server.py) (`jsonschema.validate(args,
+  tool.input_schema)`) está SOMBREADA pela validação do próprio SDK `mcp`:
+  `call_tool(validate_input=True)` é o default e retorna erro ANTES de chamar o nosso
+  handler (medido lendo `mcp/server/lowlevel/server.py:498-536` no `.venv`). Decisão em
+  aberto para o Wellington: manter as duas camadas redundantes, ou passar
+  `validate_input=False` pra mensagem de erro (com nome da tool e `at path`) ficar sob
+  o nosso controle.
+- O ponto único proposto — um `ResultadoDeMutacao` comum, classificador registrável
+  por-linha, `outcome` como coluna do `audit_log` — não foi feito. I1/I2/I3 das Tasks
+  5+6 (tool de Customer Match) seguem sendo três correções separadas hoje, em vez de
+  uma.
+
+**Os achados de método, que valem mais que o bug:**
+
+1. **Fakes de `run_report` que devolvem dicts prontos não pegam campo removido do
+   SELECT.** Medido nas duas formas: o fake da Task 1 (C1) passava verde mesmo
+   removendo `explicitly_shared` da query; o fake da Task 2 (sabotagem D) idem para o
+   campo de detalhe da recomendação. O padrão certo monta a row a partir do proto de
+   verdade, populado só com o que o SELECT pediu — o zero-value do que falta (F145)
+   vira o próprio sinal de que o campo saiu da query.
+2. **`mypy src` nunca cobre `tests/`, e isso mordeu três vezes nesta sequência de
+   PRs** — Task 1 (3 erros pré-existentes no arquivo de teste do C1), Task 3 (2 erros
+   no próprio arquivo de guard que a Task 3 reescreveu) e Tasks 5+6 (20 erros de
+   `mypy --strict` nos 3 arquivos de teste tocados, eram 21 antes do fix — nenhum
+   novo). Todos pré-existentes, nenhum corrigido aqui: o gate local e o CI só rodam
+   `mypy src`.
+3. **Lista literal em teste parametrizado é deliberada, não preguiça.**
+   `TIPOS_QUE_CONFIRMAM` no teste (Task 2) fica hardcoded de propósito — parametrizar
+   sobre a própria constante apagaria o caso quando um tipo saísse dela, em vez de
+   reprová-lo.
+4. **`==` versus `<=` numa asserção de audit não é estilo.** Nas Tasks 5+6, a MESMA
+   chave (`members_submitted`) passa verde com `<=` e vermelha com `==` — só a
+   igualdade exata pega o audit gravando contagem alta com PII que na verdade falhou
+   no passo 1/2 e nunca chegou a subir.
+
+> **✅ CORRIGIDO** (branch `pr3/governanca-de-orcamento`: `6fdcb53` C1, shared budget no
+> `update_campaign_budget`; `8caa926` guard de simetria derivado; `20f71e6`+`23baa48`
+> C2, `apply_recommendation` gateia por tipo, whitelist 17→18; `4857c56`+`1ff2430` F57
+> e F112 passam a conferir o que enunciam; `5a97477`..`c2607ff` Tasks 4-6, mesma
+> varredura). Full sweep 7/7 exit 0 em cada task; revisão independente por task, com
+> uma rodada de fix nas que acharam Importante (T1, T2, T3 no código; T4 só no
+> relatório). `update_campaign_budget` avisa portfólio antes de escrever no orçamento
+> compartilhado; `apply_recommendation` só aplica sozinho tipo que não mexe em
+> orçamento nem lance, e recusa aplicar (não muta com o valor errado) se o Google
+> tiver revisado o número entre o preview e a confirmação.
+>
+> **Guard que garante a classe:** `tests/unit/test_apply_recommendation.py` (o gate
+> por tipo, com matriz de sabotagens incluindo tipo fora da whitelist, `risk.level`
+> ignorado, e divergência entre preview e apply) +
+> `tests/unit/test_update_campaign_budget.py` (o aviso de orçamento compartilhado,
+> derivado, não hardcoded) + `tests/unit/test_whitelist_de_recomendacao_bate_com_o_proto.py`
+> (a whitelist proto-derivada) + `tests/unit/test_blast_radius_bate_com_as_tools.py` e
+> `tests/unit/test_structural_guards.py` (F112 e F57 apertados).
