@@ -59,6 +59,37 @@ _CASES: list[tuple[str, dict, RiskLevel, str]] = [
         RiskLevel.AUTO,
         "KEYWORD",
     ),
+    # I2: converte TODAS as keywords da campanha para ampla e declara o mesmo
+    # `required_campaign_budget_amount_micros` do TARGET_ROAS_OPT_IN. Aplicava
+    # direto ate 07/09 porque o nome nao casava o grep que montou a lista.
+    (
+        "apply_recommendation",
+        {"target_count": 1, "recommendation_type": "USE_BROAD_MATCH_KEYWORD"},
+        RiskLevel.CONFIRM,
+        "orcamento",
+    ),
+    # I1: numero de enum que o v24 nao conhece (o tipo que o Google lancar
+    # amanha). Caia no else e virava AUTO, contra o default declarado na linha 3
+    # deste modulo — "unknown operations always require confirmation".
+    (
+        "apply_recommendation",
+        {"target_count": 1, "recommendation_type": "999"},
+        RiskLevel.CONFIRM,
+        "nao conhece",
+    ),
+    (
+        "apply_recommendation",
+        {"target_count": 1, "recommendation_type": "SOME_TYPE_GOOGLE_ADDED_IN_V25"},
+        RiskLevel.CONFIRM,
+        "nao conhece",
+    ),
+    # `UNKNOWN` e `UNSPECIFIED` sao o proprio proto dizendo "nao sei o que e isto".
+    (
+        "apply_recommendation",
+        {"target_count": 1, "recommendation_type": "UNKNOWN"},
+        RiskLevel.CONFIRM,
+        "nao conhece",
+    ),
     ("apply_recommendation", {"target_count": 1}, RiskLevel.CONFIRM, "desconhecido"),
     # Dismiss so descarta a sugestao — segue auto, independente do tipo.
     ("dismiss_recommendation", {"target_count": 1}, RiskLevel.AUTO, "dismiss_recommendation"),

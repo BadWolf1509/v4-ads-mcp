@@ -15,13 +15,48 @@ mas a GAQL **nao** as expoe individualmente. Probado em 07/09 na conta
 Seleciona-se a MENSAGEM; o SDK a popula; o Python le a folha do objeto. Quem
 escrever a query olhando o proto erra.
 
-`CAMPOS_DE_DETALHE` tem os 17 tipos que mexem em ORCAMENTO ou LANCE, extraidos do
-enum (`google/ads/googleads/v24/enums/types/recommendation_type.py`, 55 tipos no
-total) e nao de memoria. Os 17 campos de detalhe foram validados por
-`validate_gaql` em 07/09, um a um e todos juntos; a linha viva da 1171969590
-(`CAMPAIGN_BUDGET`, campanha 22922100363) devolveu
+`CAMPOS_DE_DETALHE` tem os 18 tipos que mexem em ORCAMENTO ou LANCE. Os campos de
+detalhe foram validados por `validate_gaql` em 07/09, um a um e todos juntos; a
+linha viva da 1171969590 (`CAMPAIGN_BUDGET`, campanha 22922100363) devolveu
 `current_budget_amount_micros: 50000000` e `recommended_budget_amount_micros:
 180000000` — o aumento de 3,6x que ate 07/09 se aplicava sem preview nenhum.
+
+**Como os 18 foram escolhidos — e por que a primeira lista tinha 17.** A lista
+original saiu de um `grep` do enum por `BUDGET|BID|TARGET_CPA|TARGET_ROAS|
+MAXIMIZE|ENHANCED_CPC|ROI|CPC`, e filtro por NOME nao e probe: o
+`USE_BROAD_MATCH_KEYWORD` nao casa nenhum daqueles padroes, converte **todas** as
+keywords da campanha para correspondencia ampla, e declara no proto o MESMO campo
+(`required_campaign_budget_amount_micros`) que ja punha o `TARGET_ROAS_OPT_IN`
+dentro da lista. Um campo identico decidindo o oposto e a prova de que o criterio
+era o nome, nao o efeito.
+
+O criterio agora e o PROTO (`v24/resources/types/recommendation.py`), lido campo a
+campo. Entra na tabela o tipo cuja mensagem de detalhe:
+
+1. declara um campo de **alavanca de gasto ja existente** — orcamento
+   (`*budget*amount_micros`), alvo de lance (`*target_cpa_micros`,
+   `*target_roas`, `*target_multiplier`, `*average_target_micros`) ou o flag de
+   orcamento compartilhado (`*uses_shared_budget`); **ou**
+2. e **vazia** e o nome do tipo, sem o sufixo `_OPT_IN`, e um valor de
+   `BiddingStrategyTypeEnum` — `ENHANCED_CPC_OPT_IN` e
+   `MAXIMIZE_CONVERSION_VALUE_OPT_IN`. Mensagem vazia ali e ausencia de
+   PARAMETRO (a troca de estrategia nao tem numero a escolher), nao ausencia de
+   efeito sobre o lance. Nenhum dos outros 10 tipos de mensagem vazia passa nesse
+   teste: `SEARCH_PARTNERS_OPT_IN` e rede, `PERFORMANCE_MAX_OPT_IN` e tipo de
+   campanha, e assim por diante.
+
+A UNICA excecao escrita e o `KEYWORD`, que passa em (1) por
+`recommended_cpc_bid_micros` e mesmo assim fica de FORA: aquele CPC e atributo de
+uma palavra-chave que ainda **nao existe**, nao mudanca de uma alavanca que ja
+esta gastando — nem o orcamento diario nem nenhum lance vigente se movem. A porta
+equivalente deste MCP, `add_keywords` com 1 entidade, e AUTO (spec §7.1); por-la
+sob confirmacao aqui repetiria, espelhada, a incoerencia que o C2 veio fechar. E
+`KEYWORD` e o tipo mais numeroso de uma conta real (uma recomendacao por
+ad_group): confirmar o que nao precisa treina o gestor a clicar sem ler.
+
+O guard `tests/unit/test_whitelist_de_recomendacao_bate_com_o_proto.py` refaz essa
+varredura no descriptor a cada run — tipo novo que o Google adicionar com campo de
+orcamento ou lance derruba o teste em vez de entrar calado.
 """
 
 from __future__ import annotations
@@ -29,15 +64,19 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from google.ads.googleads.v24.enums.types.recommendation_type import RecommendationTypeEnum
+
 from src.google_ads.queries._common import micros_to_currency
 from src.google_ads.queries._gaql import gaql_string_literal
 
 # Unidade de cada valor lido do detalhe:
-#   brl    — campo `*_micros` de DINHEIRO; vira reais (micros / 1e6, 2 casas)
-#   razao  — campo `*_micros` de RAZAO (ROAS); vira o numero puro, nunca "R$"
-#   numero — ja e um numero direto (multiplicador)
-#   texto  — resource name / string
-Unidade = Literal["brl", "razao", "numero", "texto"]
+#   brl      — campo `*_micros` de DINHEIRO; vira reais (micros / 1e6, 2 casas)
+#   razao    — campo `*_micros` de RAZAO (ROAS); vira o numero puro, nunca "R$"
+#   numero   — ja e um numero direto (multiplicador)
+#   inteiro  — contagem (`*_count`); int, nunca float — "120 keywords", nao "120.0"
+#   booleano — flag do proto; sai True/False, nao 1.0/0.0 nem "True"
+#   texto    — resource name / string
+Unidade = Literal["brl", "razao", "numero", "inteiro", "booleano", "texto"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,6 +182,33 @@ CAMPOS_DE_DETALHE: dict[str, DetalheDoTipo] = {
             ),
         ),
     ),
+    # --- converte TODAS as keywords da campanha para ampla ---
+    # Ficou fora da primeira lista porque o nome nao casava o grep (`BUDGET|BID|
+    # ...`) — e declara o MESMO `required_campaign_budget_amount_micros` que ja
+    # punha o TARGET_ROAS_OPT_IN dentro dela: "the budget recommended to avoid
+    # becoming budget constrained after applying the recommendation". O preview
+    # mostra os tres fatos decisorios: quantas das quantas keywords viram ampla,
+    # quanto orcamento isso vai exigir, e se o orcamento e COMPARTILHADO (nesse
+    # caso subir o valor realoca gasto das campanhas irmas, nao acrescenta — C1).
+    #
+    # Probe (07/09): `recommendation.use_broad_match_keyword_recommendation` e
+    # selecionavel — `validate_gaql` valida sozinho e junto com os outros 17, e o
+    # SELECT completo de 21 campos devolveu linha viva de OUTRO tipo sem quebrar
+    # (`MARGINAL_ROI_CAMPAIGN_BUDGET` na 5894449831). O que NAO foi medido em
+    # linha viva sao as folhas: nenhuma das 26 contas do MCC tinha uma
+    # recomendacao deste tipo pendente em 07/09. Os caminhos vem do descriptor do
+    # v24 e o guard do proto os reconfere a cada run.
+    "USE_BROAD_MATCH_KEYWORD": DetalheDoTipo(
+        "use_broad_match_keyword_recommendation",
+        None,
+        None,
+        (
+            ("orcamento_exigido_brl", "required_campaign_budget_amount_micros", "brl"),
+            ("keywords_que_viram_ampla", "suggested_keywords_count", "inteiro"),
+            ("keywords_na_campanha", "campaign_keywords_count", "inteiro"),
+            ("orcamento_compartilhado", "campaign_uses_shared_budget", "booleano"),
+        ),
+    ),
     # --- os dois sem numero nenhum: a mensagem e VAZIA no v24 ---
     # Nao e omissao: `EnhancedCpcOptInRecommendation` e
     # `MaximizeConversionValueOptInRecommendation` nao declaram campo algum no
@@ -154,9 +220,27 @@ CAMPOS_DE_DETALHE: dict[str, DetalheDoTipo] = {
     ),
 }
 
-# DERIVADO, nao enumerado de novo: a lista dos 17 vive num lugar so. Acrescentar
+# DERIVADO, nao enumerado de novo: a lista dos 18 vive num lugar so. Acrescentar
 # um tipo a tabela acima ja o poe sob confirmacao.
 TIPOS_QUE_CONFIRMAM: frozenset[str] = frozenset(CAMPOS_DE_DETALHE)
+
+# Todo tipo que o SDK v24 sabe nomear. `UNSPECIFIED` e `UNKNOWN` ficam de FORA de
+# proposito: sao os dois valores com que o proprio proto diz "nao sei o que isto
+# e" — o mesmo estado epistemico de um numero de enum que o v24 nao conhece.
+#
+# Serve ao `blast_radius`: tipo ausente daqui NUNCA e auto. O modulo declara na
+# linha 3 que "unknown operations always require confirmation", e ate 07/09 o
+# ramo de recomendacao fazia o contrario — um `type_` que o v24 nao conhece
+# parseava como a string crua ("999"), caia no else e APLICAVA, com o resumo
+# "Aplicar recomendacao 999". Desconhecido nao e "provavelmente inofensivo": e
+# "nao sei o que isto faz com o dinheiro do cliente", e as duas leituras so
+# coincidem enquanto o Google nao lanca um tipo novo de gasto — que e exatamente
+# o que ele lanca (os UPGRADE_*_TO_PERFORMANCE_MAX entraram assim).
+TIPOS_CONHECIDOS: frozenset[str] = frozenset(
+    nome
+    for nome in RecommendationTypeEnum.RecommendationType.__members__
+    if nome not in ("UNSPECIFIED", "UNKNOWN")
+)
 
 
 TYPE_PT = {
@@ -229,12 +313,12 @@ def recommendations_query(limit: int = 100) -> str:
 
 
 def _campos_de_detalhe_selecionados() -> list[str]:
-    """Os 17 campos de detalhe, ordenados — a lista sai da tabela, nao de uma copia."""
+    """Os 18 campos de detalhe, ordenados — a lista sai da tabela, nao de uma copia."""
     return sorted({f"recommendation.{d.campo}" for d in CAMPOS_DE_DETALHE.values()})
 
 
 def recommendation_detail_query(resource_name: str) -> str:
-    """Uma recomendacao pelo resource_name, com tipo + o detalhe de todos os 17 tipos.
+    """Uma recomendacao pelo resource_name, com tipo + o detalhe de todos os 18 tipos.
 
     **Sem join com `campaign` de proposito.** Selecionar `campaign.*` daqui faria
     um join implicito, e nao ha como medir (em 07/09 nenhuma conta do MCC tinha
@@ -301,6 +385,10 @@ def _converter(bruto: Any, unidade: Unidade) -> Any:
         return round(int(bruto) / 1_000_000.0, 4)
     if unidade == "numero":
         return float(bruto)
+    if unidade == "inteiro":
+        return int(bruto)
+    if unidade == "booleano":
+        return bool(bruto)
     return str(bruto)
 
 
@@ -357,3 +445,50 @@ def parse_campaign_context_row(row: Any) -> dict[str, Any]:
         "bidding_strategy_type": _nome_do_enum(row.campaign.bidding_strategy_type),
         "daily_budget_brl": micros_to_currency(int(row.campaign_budget.amount_micros)),
     }
+
+
+# --------------------------------------------------------------------------- #
+# Concorrencia otimista entre o preview e o apply (mesmo padrao do
+# `schedule_fingerprint`, Ruling 10 do ad_schedule).
+# --------------------------------------------------------------------------- #
+def recommendation_fingerprint(info: dict[str, Any]) -> dict[str, Any]:
+    """Impressao dos NUMEROS que o preview prometeu — recomputada antes de aplicar.
+
+    Quem resolve o valor de uma recomendacao e o Google, **na hora do apply**: a
+    operacao viaja so com o `resource_name`, sem parametro nenhum. Entre o preview
+    e a confirmacao passam ate 10 minutos (o TTL), e nesse intervalo o Google pode
+    revisar a recomendacao — o `blast_summary` continuaria dizendo
+    "R$ 50,00 -> R$ 180,00" enquanto outro numero aterrissa. Mostrar o numero e o
+    ponto inteiro do gate C2; um numero que pode nao valer mais nao gateia nada.
+
+    Listas e dicts simples, nunca tuplas: isto atravessa JSONB no
+    `pending_confirmations`, e tupla volta lista — comparar tupla com lista daria
+    divergencia em TODO apply (a mesma armadilha do `schedule_fingerprint`).
+
+    As duas pontas chamam ESTA funcao: fingerprint calculado de dois jeitos
+    diferentes e a classe do F81 — cada lado certo sozinho, o par errado.
+    """
+    return {
+        "type": info["type"],
+        "current_amount_brl": info["current_amount_brl"],
+        "recommended_amount_brl": info["recommended_amount_brl"],
+        "valores": dict(info["valores"]),
+    }
+
+
+def descrever_divergencia(esperado: dict[str, Any], agora: dict[str, Any]) -> str:
+    """O que mudou entre o preview e o apply, em PT-BR e com os dois valores.
+
+    "A recomendacao mudou" sem dizer o que mudou obriga o gestor a refazer o
+    preview so pra descobrir se a mudanca importa.
+    """
+    mudou: list[str] = []
+    for chave in ("type", "current_amount_brl", "recommended_amount_brl"):
+        if esperado.get(chave) != agora.get(chave):
+            mudou.append(f"{chave}: {esperado.get(chave)} -> {agora.get(chave)}")
+    antes: dict[str, Any] = esperado.get("valores") or {}
+    depois: dict[str, Any] = agora.get("valores") or {}
+    for chave in sorted(set(antes) | set(depois)):
+        if antes.get(chave) != depois.get(chave):
+            mudou.append(f"{chave}: {antes.get(chave)} -> {depois.get(chave)}")
+    return "; ".join(mudou) if mudou else "o detalhe da recomendacao mudou"

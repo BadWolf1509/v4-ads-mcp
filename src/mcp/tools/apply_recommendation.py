@@ -12,9 +12,15 @@ enquanto o `update_campaign_budget`, que produz o MESMO efeito, sempre confirmou
 Agora a tool le o tipo (e o detalhe daquele tipo) por GAQL ANTES de decidir, e
 ramifica em `risk.level`:
 
-* tipo dos 17 que mexem em orcamento ou lance -> `create_pending` +
+* tipo dos 18 que mexem em orcamento ou lance -> `create_pending` +
   `preview_envelope`, com os valores em BRL e com o contexto da campanha;
-* qualquer outro tipo -> o caminho de antes (auto-aplica).
+* tipo que o SDK v24 nao conhece -> tambem confirma (ver `blast_radius`);
+* qualquer outro tipo conhecido -> o caminho de antes (auto-aplica).
+
+O payload guardado leva a IMPRESSAO dos numeros previstos
+(`recommendation_fingerprint`): quem resolve o valor de uma recomendacao e o
+Google na hora do apply, entao sem esse recheck o `apply_change` poderia
+reexibir "R$ 50,00 -> R$ 180,00" e aterrissar outro numero.
 """
 
 from typing import Any
@@ -22,10 +28,12 @@ from typing import Any
 from src.db import connection
 from src.google_ads.mutations import run_recommendation_action
 from src.google_ads.queries.recommendations import (
+    TIPOS_CONHECIDOS,
     campaign_context_query,
     parse_campaign_context_row,
     parse_recommendation_detail_row,
     recommendation_detail_query,
+    recommendation_fingerprint,
 )
 from src.google_ads.reports import run_report
 from src.governance.blast_radius import RiskLevel, classify
@@ -88,6 +96,24 @@ def _trecho_dos_valores(info: dict[str, Any], campanha: dict[str, Any] | None) -
 
     if partes:
         return "; ".join(partes)
+
+    # Tipo que o SDK v24 nao sabe nomear (o Google lancou depois desta versao).
+    # NAO da pra dizer "ela troca a estrategia de lance" como nos dois opt-ins
+    # vazios: aqui nao se sabe o que ela faz, e afirmar o contrario e pior do que
+    # nao dizer nada — o gestor confirmaria uma frase inventada.
+    if info["type"] not in TIPOS_CONHECIDOS:
+        aviso = (
+            "tipo de recomendacao que esta versao do SDK (v24) nao conhece — nao da "
+            "pra dizer o que ela muda nem quanto custa; confira no painel do Google "
+            "Ads antes de confirmar"
+        )
+        if campanha is not None:
+            aviso += (
+                f". A campanha hoje usa {campanha['bidding_strategy_type']} com orcamento "
+                f"de R$ {campanha['daily_budget_brl']:.2f}/dia"
+            )
+        return aviso
+
     if campanha is not None:
         return (
             "a recomendacao nao traz valor numerico — ela TROCA a estrategia de lance, "
@@ -115,12 +141,14 @@ def _resumo(customer_id: str, info: dict[str, Any], campanha: dict[str, Any] | N
     description=(
         "[DEFER] Aplica uma recomendacao pendente do Google Ads. O caminho depende do "
         "TIPO: recomendacao que mexe em ORCAMENTO ou LANCE (CAMPAIGN_BUDGET, "
-        "FORECASTING_CAMPAIGN_BUDGET, TARGET_CPA_OPT_IN, SET_TARGET_ROAS e mais 13) "
-        "devolve preview com confirmation_token — valor atual, valor recomendado e a "
-        "campanha atingida — e so aplica via apply_change; mesma regra do "
-        "update_campaign_budget, que produz o mesmo efeito. Os demais tipos "
-        "(keyword, sitelink, RSA...) seguem auto-aplicando. Use get_recommendations "
-        "primeiro para listar as disponiveis."
+        "FORECASTING_CAMPAIGN_BUDGET, TARGET_CPA_OPT_IN, SET_TARGET_ROAS, "
+        "USE_BROAD_MATCH_KEYWORD e mais 13) devolve preview com confirmation_token — "
+        "valor atual, valor recomendado e a campanha atingida — e so aplica via "
+        "apply_change; mesma regra do update_campaign_budget, que produz o mesmo "
+        "efeito. Tipo que o SDK v24 nao conhece tambem confirma. Os demais tipos "
+        "(keyword, sitelink, RSA...) seguem auto-aplicando. O apply_change recusa se "
+        "o Google tiver revisado o valor entre o preview e a confirmacao. Use "
+        "get_recommendations primeiro para listar as disponiveis."
     ),
     input_schema=_SCHEMA,
     bucket="defer",
@@ -194,6 +222,11 @@ async def apply_recommendation(args: dict[str, Any]) -> dict[str, Any]:
         campanha = contexto[0] if contexto else None
 
     summary = _resumo(customer_id, info, campanha)
+    # `valores_do_preview` e a metade do token que o `apply_change` compara antes
+    # de mutar (concorrencia otimista, mesmo papel do `current_keys` do
+    # update_ad_schedule). So o caminho de confirmacao a grava: no caminho auto a
+    # leitura e a escrita acontecem na mesma chamada, sem TTL no meio.
+    payload_pendente = {**payload, "valores_do_preview": recommendation_fingerprint(info)}
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         token = await create_pending(
@@ -202,7 +235,7 @@ async def apply_recommendation(args: dict[str, Any]) -> dict[str, Any]:
             session_id=ctx.session_id,
             customer_id=customer_id,
             operation_type="apply_recommendation",
-            payload=payload,
+            payload=payload_pendente,
             blast_summary=summary,
         )
     return preview_envelope(

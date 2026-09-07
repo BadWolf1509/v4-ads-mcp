@@ -51,12 +51,16 @@ def _fake_client_with_response():
 _REC_RN = "customers/1234567890/recommendations/abc"
 
 
-def _fake_lookup(tipo: str):
+def _fake_lookup(tipo: str, *, recomendado_micros: int = 180_000_000):
     """`run_report` falso pro lookup de tipo/detalhe do apply_recommendation (C2).
 
     A row e um `Recommendation()` de verdade — proto-plus devolve o zero-value do
     campo que a GAQL nao pediu (F145), entao um dict pronto aqui esconderia campo
     removido do SELECT.
+
+    `recomendado_micros` existe para o recheck do I3: o `apply_change` refaz este
+    MESMO lookup antes de mutar, entao mudar o valor entre as duas chamadas
+    simula o Google revisando a recomendacao dentro do TTL.
     """
     from google.ads.googleads.v24.enums.types.recommendation_type import RecommendationTypeEnum
     from google.ads.googleads.v24.resources.types.recommendation import Recommendation
@@ -84,7 +88,7 @@ def _fake_lookup(tipo: str):
         rec.campaign = "customers/1234567890/campaigns/99"
         if tipo == "CAMPAIGN_BUDGET":
             rec.campaign_budget_recommendation.current_budget_amount_micros = 50_000_000
-            rec.campaign_budget_recommendation.recommended_budget_amount_micros = 180_000_000
+            rec.campaign_budget_recommendation.recommended_budget_amount_micros = recomendado_micros
         return [fmt(SimpleNamespace(recommendation=rec))]
 
     return _run
@@ -140,6 +144,9 @@ async def test_apply_recommendation_de_orcamento_so_aplica_via_apply_change(db, 
 
     fake_client = _fake_client_with_response()
     with (
+        # I3: o ramo do apply_change relê a recomendacao antes de mutar. Mesmo
+        # valor -> segue em frente (o caso de divergencia esta no teste abaixo).
+        patch("src.mcp.tools.apply_change.run_report", _fake_lookup("CAMPAIGN_BUDGET")),
         patch(
             "src.google_ads.mutations.build_client_for_manager",
             AsyncMock(return_value=fake_client),
@@ -157,6 +164,41 @@ async def test_apply_recommendation_de_orcamento_so_aplica_via_apply_change(db, 
     assert "50" in aplicado["blast_summary"] and "180" in aplicado["blast_summary"]
     # Foi pelo RecommendationService, nao pelo GoogleAdsService.mutate.
     fake_client.get_service.assert_called_with("RecommendationService", interceptors=ANY)
+
+
+@pytest.mark.integration
+async def test_valor_revisado_no_ttl_recusa_com_o_token_do_banco(db, session_ctx):
+    """I3 ponta a ponta: token real no banco, valor diferente na hora do apply.
+
+    O preview gravou "R$ 50,00 -> R$ 180,00" no `blast_summary`. Dez minutos
+    depois o Google quer R$ 300 — e o gestor confirmaria lendo 180. O token e
+    consumido (uso unico), a mutacao NAO sai, e a mensagem diz o que mudou.
+    """
+    from src.mcp.tools import apply_recommendation as mod
+    from src.mcp.tools.apply_change import apply_change
+
+    with patch.object(mod, "run_report", _fake_lookup("CAMPAIGN_BUDGET")):
+        preview = await mod.apply_recommendation(
+            {"customer_id": "1234567890", "recommendation_resource_name": _REC_RN}
+        )
+    token = preview["confirmation_token"]
+
+    fake_client = _fake_client_with_response()
+    with (
+        patch(
+            "src.mcp.tools.apply_change.run_report",
+            _fake_lookup("CAMPAIGN_BUDGET", recomendado_micros=300_000_000),
+        ),
+        patch(
+            "src.google_ads.mutations.build_client_for_manager",
+            AsyncMock(return_value=fake_client),
+        ),
+    ):
+        recusado = await apply_change({"confirmation_token": token})
+
+    assert recusado["status"] == "error", "aplicou um valor que o gestor nunca leu"
+    assert "180.0 -> 300.0" in recusado["error_message"]
+    fake_client.get_service.assert_not_called()
 
 
 @pytest.mark.integration

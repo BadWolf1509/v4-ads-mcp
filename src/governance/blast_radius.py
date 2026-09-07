@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
-from src.google_ads.queries.recommendations import TIPOS_QUE_CONFIRMAM
+from src.google_ads.queries.recommendations import TIPOS_CONHECIDOS, TIPOS_QUE_CONFIRMAM
 
 
 class RiskLevel(StrEnum):
@@ -251,8 +251,8 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
     # "Sugestao do Google" nao e uma categoria de risco: `CAMPAIGN_BUDGET` medida
     # em 07/09 propunha R$ 50,00 -> R$ 180,00 (3,6x) numa campanha viva. O MESMO
     # efeito pelo `update_campaign_budget` sempre foi CONFIRM logo acima nesta
-    # funcao — duas portas com governanca oposta. Os 17 tipos que mexem em
-    # orcamento ou lance saem de `CAMPOS_DE_DETALHE`, extraida do enum do v24.
+    # funcao — duas portas com governanca oposta. Os 18 tipos que mexem em
+    # orcamento ou lance saem de `CAMPOS_DE_DETALHE`, lida do proto do v24.
     if operation == "apply_recommendation":
         tipo = str(params.get("recommendation_type") or "").upper()
         if not tipo:
@@ -266,6 +266,24 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
                 RiskLevel.CONFIRM,
                 f"apply_recommendation ({tipo}): mexe em orcamento ou lance — "
                 "confirmar sempre, mesma regra do update_campaign_budget (spec §7.1 budget)",
+            )
+        # Tipo que o SDK v24 nao sabe nomear. Ate 07/09 ele caia no AUTO abaixo:
+        # `type_ = 999` parseava como a string "999", `type_pt` vinha None, e a
+        # tool aplicava com o resumo "Aplicar recomendacao 999" — sem gate e sem
+        # rotulo. Este modulo declara na linha 3 que "unknown operations always
+        # require confirmation", e o fallback final desta funcao honra isso; o
+        # ramo de recomendacao era a unica contradicao viva da propria politica.
+        #
+        # A checagem e de PERTINENCIA ao enum do SDK, nao contra uma lista nova:
+        # nao ha o que manter. E desconhecido aqui nao quer dizer "provavelmente
+        # inofensivo" — quer dizer "nao sei o que isto faz com o dinheiro do
+        # cliente", e tipo novo de gasto e justamente o que o Google acrescenta
+        # entre uma versao do SDK e a seguinte.
+        if tipo not in TIPOS_CONHECIDOS:
+            return RiskClassification(
+                RiskLevel.CONFIRM,
+                f"apply_recommendation ({tipo}): tipo que o SDK v24 nao conhece — "
+                "nao da pra afirmar que nao mexe em orcamento nem lance, entao confirmar",
             )
         return RiskClassification(
             RiskLevel.AUTO,

@@ -41,12 +41,19 @@ _CAMPANHA_ID = "22922100363"
 _CAMPANHA_RN = f"customers/{_CUSTOMER}/campaigns/{_CAMPANHA_ID}"
 _REC_RN = f"customers/{_CUSTOMER}/recommendations/NzMyNjkxNjcxNC0xMDAtMTc4ODcxMDQ2NDg4My0"
 
-# A lista dos 17 e LITERAL de proposito. Parametrizar sobre
+# A lista dos 18 e LITERAL de proposito. Parametrizar sobre
 # `TIPOS_QUE_CONFIRMAM` faria a sabotagem "tirar um tipo da whitelist" APAGAR o
 # caso de teste em vez de deixa-lo vermelho — o modo de falha que o CLAUDE.md
-# chama de "asserir o adjacente". Estes nomes vieram do enum
-# `recommendation_type.py` (55 tipos no total), lidos em 07/09.
-_OS_DEZESSETE = (
+# chama de "asserir o adjacente".
+#
+# Estes nomes vieram do PROTO (`v24/resources/types/recommendation.py`), campo a
+# campo, e nao de um grep do enum — o I2 da revisao da Task 2 mostrou que o grep
+# por nome (`BUDGET|BID|TARGET_CPA|...`) deixava o `USE_BROAD_MATCH_KEYWORD` de
+# fora, que converte TODAS as keywords da campanha para ampla e declara o mesmo
+# `required_campaign_budget_amount_micros` do `TARGET_ROAS_OPT_IN`. O criterio
+# completo e a varredura que o refaz vivem em
+# `test_whitelist_de_recomendacao_bate_com_o_proto.py`.
+_OS_DEZOITO = (
     "CAMPAIGN_BUDGET",
     "FORECASTING_CAMPAIGN_BUDGET",
     "MARGINAL_ROI_CAMPAIGN_BUDGET",
@@ -64,7 +71,13 @@ _OS_DEZESSETE = (
     "LOWER_TARGET_ROAS",
     "FORECASTING_SET_TARGET_CPA",
     "FORECASTING_SET_TARGET_ROAS",
+    "USE_BROAD_MATCH_KEYWORD",
 )
+
+# Numero de enum que o v24 nao conhece — o tipo que o Google lancar amanha.
+# proto-plus aceita o int, avisa por `UserWarning`, e `_nome_do_enum` devolve a
+# string crua "999".
+_TIPO_QUE_O_SDK_NAO_CONHECE = "999"
 
 
 # --------------------------------------------------------------------------- #
@@ -86,14 +99,22 @@ def _setar(msg: Any, caminho: str, valor: Any) -> None:
 # Valores-sentinela por unidade. Nao sao "o valor real do Google" — sao valores
 # distinguiveis do zero-value, que e o ponto: se o campo sair do SELECT, o que
 # chega e 0 e a asserção cai.
-_SENTINELA = {"brl": 77_000_000, "razao": 4_500_000, "numero": 1.35, "texto": "customers/1/x"}
+_SENTINELA = {
+    "brl": 77_000_000,
+    "razao": 4_500_000,
+    "numero": 1.35,
+    "inteiro": 120,
+    "booleano": True,
+    "texto": "customers/1/x",
+}
 
 
 def _linha_de_recomendacao(query: str, tipo: str, *, atual: int, recomendado: int) -> Any:
     pedidos = _campos_do_select(query)
     rec = Recommendation()
     if "recommendation.type" in pedidos:
-        rec.type_ = RecommendationTypeEnum.RecommendationType[tipo]
+        membros = RecommendationTypeEnum.RecommendationType.__members__
+        rec.type_ = membros[tipo] if tipo in membros else int(tipo)
     if "recommendation.resource_name" in pedidos:
         rec.resource_name = _REC_RN
     if "recommendation.campaign" in pedidos:
@@ -248,11 +269,54 @@ async def test_a_pendencia_guarda_o_resource_name_e_o_target_count(
     assert capturado["aplicou"] is False, "criou pendencia E aplicou"
 
 
+async def test_a_pendencia_guarda_os_valores_que_o_preview_prometeu(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """I3: sem esta chave o `apply_change` nao tem contra o que comparar.
+
+    Quem resolve o valor de uma recomendacao e o Google na hora do apply — a
+    operacao viaja so com o resource_name. Entre o preview e a confirmacao passam
+    ate 10 minutos, e o summary reexibido diria "R$ 50,00 -> R$ 180,00" com outro
+    numero aterrissando.
+    """
+    capturado = _wire(monkeypatch, tipo="CAMPAIGN_BUDGET")
+    env = await mod.apply_recommendation(
+        {"customer_id": _CUSTOMER, "recommendation_resource_name": _REC_RN}
+    )
+    impressao = capturado["payload"]["valores_do_preview"]
+    assert impressao["type"] == "CAMPAIGN_BUDGET"
+    assert impressao["current_amount_brl"] == env["current_amount_brl"] == 50.0
+    assert impressao["recommended_amount_brl"] == env["recommended_amount_brl"] == 180.0
+
+
+async def test_o_caminho_auto_nao_grava_a_impressao(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Contraprova do I3: sem TTL no meio nao ha o que reconferir.
+
+    No caminho auto a leitura e a escrita acontecem na mesma chamada. Gravar a
+    impressao ali seria estado sem leitor — e mudaria o `params_summary` da
+    trilha de auditoria sem motivo.
+    """
+    capturado = _wire(monkeypatch, tipo="KEYWORD")
+    await mod.apply_recommendation(
+        {"customer_id": _CUSTOMER, "recommendation_resource_name": _REC_RN}
+    )
+    assert capturado["aplicou"] is True
+    assert "valores_do_preview" not in capturado["payload"]
+
+
 # --------------------------------------------------------------------------- #
 # 2. Contraprova: fora da familia, segue auto.
 # --------------------------------------------------------------------------- #
 async def test_recomendacao_de_keyword_segue_auto(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Sem esta, "tudo confirma" passaria e o gate seria inutil."""
+    """Sem esta, "tudo confirma" passaria e o gate seria inutil.
+
+    `KEYWORD` e a excecao ESCRITA do criterio do proto (I2): ele declara
+    `recommended_cpc_bid_micros`, mas aquele CPC e de uma palavra-chave que ainda
+    nao existe — nenhuma alavanca vigente se move, e a porta equivalente deste MCP
+    (`add_keywords` com 1 entidade) e AUTO pela spec §7.1. A excecao esta presa
+    em `test_whitelist_de_recomendacao_bate_com_o_proto.py`, que a derruba se o
+    Google tirar o campo do proto.
+    """
     capturado = _wire(monkeypatch, tipo="KEYWORD")
     env = await mod.apply_recommendation(
         {"customer_id": _CUSTOMER, "recommendation_resource_name": _REC_RN}
@@ -274,31 +338,31 @@ async def test_tipos_fora_da_familia_seguem_auto(
 
 
 # --------------------------------------------------------------------------- #
-# 3. Os 17 da probe.
+# 3. Os 18 da probe do proto.
 # --------------------------------------------------------------------------- #
-def test_a_whitelist_e_exatamente_os_dezessete() -> None:
+def test_a_whitelist_e_exatamente_os_dezoito() -> None:
     """A lista literal acima contra a tabela de producao — nos dois sentidos."""
-    assert frozenset(_OS_DEZESSETE) == TIPOS_QUE_CONFIRMAM
-    assert len(_OS_DEZESSETE) == 17
+    assert frozenset(_OS_DEZOITO) == TIPOS_QUE_CONFIRMAM
+    assert len(_OS_DEZOITO) == 18
 
 
-def test_os_dezessete_existem_no_enum_do_google() -> None:
+def test_os_dezoito_existem_no_enum_do_google() -> None:
     """Nome digitado errado (ou renomeado pelo Google) viraria buraco silencioso."""
     enum = RecommendationTypeEnum.RecommendationType
-    for tipo in _OS_DEZESSETE:
+    for tipo in _OS_DEZOITO:
         assert tipo in enum.__members__, f"{tipo} nao existe no enum do v24"
 
 
-@pytest.mark.parametrize("tipo", sorted(_OS_DEZESSETE))
+@pytest.mark.parametrize("tipo", sorted(_OS_DEZOITO))
 async def test_todo_tipo_da_familia_confirma(monkeypatch: pytest.MonkeyPatch, tipo: str) -> None:
-    """Os 17 vem da probe do enum, nao de memoria."""
+    """Os 18 vem da leitura do proto, nao de memoria nem de grep no enum."""
     env = await _aplicar(monkeypatch, tipo=tipo)
     assert env["status"] == "dry_run", f"{tipo} aplicado sem confirmacao"
     assert env["confirmation_token"]
     assert env["recommendation_type"] == tipo
 
 
-@pytest.mark.parametrize("tipo", sorted(_OS_DEZESSETE))
+@pytest.mark.parametrize("tipo", sorted(_OS_DEZOITO))
 def test_todo_tipo_da_familia_tem_traducao_pt(tipo: str) -> None:
     """Confirmar mudanca de lance lendo so o enum em ingles nao e confirmar."""
     from src.google_ads.queries.recommendations import TYPE_PT
@@ -344,6 +408,65 @@ async def test_target_cpa_mostra_o_cpa_recomendado(monkeypatch: pytest.MonkeyPat
     assert env["current_amount_brl"] is None
     assert env["recommended_amount_brl"] == 180.0
     assert env["delta_pct"] is None
+
+
+async def test_broad_match_mostra_quantas_keywords_e_o_orcamento_que_vai_exigir(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """I2: o 18o tipo, que o grep por nome deixava aplicar direto.
+
+    Ele converte TODAS as keywords da campanha para ampla. Os tres fatos que
+    decidem: quantas de quantas viram ampla, quanto orcamento isso vai exigir, e
+    se o orcamento e COMPARTILHADO — nesse caso subir o valor REALOCA gasto das
+    campanhas irmas em vez de acrescentar (C1).
+    """
+    env = await _aplicar(monkeypatch, tipo="USE_BROAD_MATCH_KEYWORD")
+    assert env["status"] == "dry_run", "correspondencia ampla aplicada sem confirmacao"
+    valores = env["valores"]
+    assert valores["orcamento_exigido_brl"] == 77.0
+    assert valores["keywords_que_viram_ampla"] == 120
+    assert valores["keywords_na_campanha"] == 120
+    assert valores["orcamento_compartilhado"] is True, "bool virou numero ou string"
+    assert "orcamento_exigido_brl=77.0" in env["blast_summary"]
+
+
+# --------------------------------------------------------------------------- #
+# 4b. I1 — tipo que o SDK v24 nao conhece.
+# --------------------------------------------------------------------------- #
+async def test_tipo_que_o_sdk_nao_conhece_confirma(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ate 07/09 este caminho APLICAVA, com o resumo "Aplicar recomendacao 999".
+
+    O `blast_radius` declara na linha 3 que operacao desconhecida sempre confirma;
+    o ramo de recomendacao era a unica contradicao viva dessa politica. Tipo novo
+    de gasto e justamente o que o Google acrescenta entre uma versao do SDK e a
+    seguinte.
+    """
+    capturado = _wire(monkeypatch, tipo=_TIPO_QUE_O_SDK_NAO_CONHECE)
+    env = await mod.apply_recommendation(
+        {"customer_id": _CUSTOMER, "recommendation_resource_name": _REC_RN}
+    )
+    assert env["status"] == "dry_run", "tipo desconhecido aplicado sem confirmacao"
+    assert env["confirmation_token"]
+    assert capturado["aplicou"] is False
+    assert env["recommendation_type"] == _TIPO_QUE_O_SDK_NAO_CONHECE
+    assert env["type_pt"] is None
+
+
+async def test_tipo_desconhecido_nao_inventa_o_que_a_recomendacao_faz(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O preview dos dois opt-ins vazios afirma "ela TROCA a estrategia de lance".
+
+    Para um tipo desconhecido essa frase seria invencao: nao se sabe o que ele
+    faz. O gestor confirmaria lendo uma afirmacao que ninguem pode sustentar —
+    pior do que nao dizer nada.
+    """
+    env = await _aplicar(monkeypatch, tipo=_TIPO_QUE_O_SDK_NAO_CONHECE)
+    resumo = env["blast_summary"]
+    assert "TROCA a estrategia de lance" not in resumo
+    assert "nao conhece" in resumo
+    # O contexto da campanha continua saindo — e o unico fato verificavel que ha.
+    assert "MAXIMIZE_CONVERSIONS" in resumo
 
 
 # --------------------------------------------------------------------------- #
