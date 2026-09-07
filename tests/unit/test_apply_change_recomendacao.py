@@ -25,6 +25,7 @@ from uuid import uuid4
 
 import pytest
 
+from src.db import connection
 from src.mcp.tools import apply_change as mod
 
 _CUSTOMER = "1234567890"
@@ -124,7 +125,11 @@ def _wire(
     monkeypatch.setattr(mod, "consume", _consume)
     monkeypatch.setattr(mod, "run_report", _run_report)
     monkeypatch.setattr(mod, "run_recommendation_action", _executar)
-    monkeypatch.setattr(mod.connection, "get_pool", lambda: _FakePool())
+    # `connection` importado direto, nao `mod.connection`: e o MESMO objeto de
+    # modulo (o `apply_change` faz `from src.db import connection`), e o acesso
+    # via atributo do modulo importador e o unico erro de `mypy --strict` que este
+    # PR acrescentou num arquivo seu.
+    monkeypatch.setattr(connection, "get_pool", lambda: _FakePool())
     return visto
 
 

@@ -2351,8 +2351,9 @@ orçamento ou lance saiu de um `grep` do enum por
 correspondência ampla), e mesmo assim declara o MESMO campo
 (`required_campaign_budget_amount_micros`) que já classificava `TARGET_ROAS_OPT_IN`
 dentro da lista. Campo idêntico decidindo o oposto é a prova de que o critério era o
-NOME do tipo, não o efeito dele. A whitelist virou **18**, derivada do PROTO campo a
-campo ([`CAMPOS_DE_DETALHE`](../../src/google_ads/queries/recommendations.py)), com
+NOME do tipo, não o efeito dele. A whitelist virou **18** (e depois **23** — ver "a
+onda de correção final" abaixo, onde o critério ganha um segundo eixo), derivada do
+PROTO campo a campo ([`CAMPOS_DE_DETALHE`](../../src/google_ads/queries/recommendations.py)), com
 guard (`tests/unit/test_whitelist_de_recomendacao_bate_com_o_proto.py`) que refaz essa
 varredura no descriptor do v24 a cada run — tipo novo que o Google acrescentar com
 campo de orçamento ou lance derruba o teste em vez de entrar calado. A única exceção
@@ -2399,6 +2400,72 @@ contagem que o `CLAUDE.md` cita agora, no lugar do antigo "17 das 26" (Task 3, t
 byte-neutra: mesma contagem de caracteres, dentro do orçamento de 24.000 bytes do
 arquivo).
 
+**A onda de correção final (revisão de 07/09) — e o achado grave era um EIXO faltando
+no critério, não um tipo faltando na lista.** O critério que fechou a Task 2 dizia
+"a mensagem de detalhe declara alavanca de gasto já existente". Migração **não declara
+alavanca: ela substitui a campanha** — três das cinco mensagens de migração para
+Performance Max são VAZIAS no v24 e as outras duas só trazem identificador de Merchant
+Center, então os cinco passavam por baixo do critério inteiro e caíam no ramo AUTO. Uma
+chamada, sem token e sem preview, convertia o tipo da campanha **sem caminho de volta**,
+enquanto `update_campaign_bidding` — que produz um efeito menor e reversível — é sempre
+CONFIRM. É a mesma assimetria que esta entrada cataloga, um nível acima, e a causa é a
+mesma classe: um critério que responde "quanto muda" e nunca "dá pra desfazer".
+
+O critério passou a ter dois eixos escritos por extenso no módulo: **eixo 1** (alavanca
+de gasto já existente, o de antes) e **eixo 2** (irreversível porque MIGRA a campanha:
+o nome declara a migração e o DESTINO é um valor de `AdvertisingChannelTypeEnum`). O
+eixo 2 é ancorado num enum que o Google mantém pelo mesmo motivo que o 1.2 é ancorado
+no `BiddingStrategyTypeEnum` — e é o ancoramento que separa os quase-casos:
+`PERFORMANCE_MAX_FINAL_URL_OPT_IN` (liga expansão de URL numa PMax existente, e desliga
+de volta), `IMPROVE_PERFORMANCE_MAX_AD_STRENGTH` e `SHOPPING_ADD_PRODUCTS_TO_CAMPAIGN`
+ficam de fora. **Varrido o enum inteiro sob o eixo novo, ele pega CINCO tipos, não os
+três que a revisão nomeou:** entram também
+`MIGRATE_DYNAMIC_SEARCH_ADS_CAMPAIGN_TO_PERFORMANCE_MAX` e
+`SHOPPING_MIGRATE_REGULAR_SHOPPING_CAMPAIGN_OFFERS_TO_PERFORMANCE_MAX`, que a revisão
+não viu por ter partido de "mensagem vazia" — emptiness é **ortogonal** a
+irreversibilidade, e essas duas mensagens não são vazias. Whitelist 18 → **23**.
+
+Os outros três achados são todos da mesma família — o gate certo e o **conteúdo do
+preview** errado:
+
+- **o preview não lia valores que estavam na própria mensagem.** `SET_TARGET_CPA`,
+  `SET_TARGET_ROAS` e as DUAS variantes `FORECASTING_*` (quatro tipos, não os três da
+  revisão) declaram um `campaign_budget` — orçamento atual e novo — e o preview mostrava
+  só o alvo de CPA/ROAS: o gestor confirmava "Definir Target CPA R$ 77,00" e aplicava
+  junto uma mudança de orçamento diário que nunca lhe foi mostrada, enquanto o irmão
+  `TARGET_ROAS_OPT_IN` já lia o campo equivalente. **A conferência campo a campo derrubou
+  a correção sugerida:** `TARGET_CPA_OPT_IN.options` é **REPEATED** no v24, então
+  `options.required_campaign_budget_amount_micros` levantaria `AttributeError` em
+  produção — e o guard de existência passaria verde, porque a folha existe no descriptor.
+  A tabela ganhou o marcador `[]` e um guard de **cardinalidade**, além de um de
+  **completude** (toda folha de alavanca de um tipo da whitelist é lida, ou tem exceção
+  escrita), que é o achado mecanizado.
+- **`target_adjustment.shared_set` não era lido:** é o portfólio de estratégia de lance,
+  irmão exato do `explicitly_shared` do C1. O preview dizia "na campanha X" enquanto
+  aplicar mudava o alvo de TODAS as campanhas da estratégia. Agora há bloco `portfolio`
+  espelhando o `shared_budget`, com uma divergência que vale registrar:
+  `campaigns_outside_batch` pode ser **None**, não lista vazia — não havia recomendação
+  de nível portfólio em nenhuma das 26 contas do MCC em 07/09 para medir o formato do
+  resource name, e "atinge mais 0 campanhas" derivado de uma query no formato errado
+  passaria por fato medido (F145). Enumera quando dá; avisa sem contagem quando não dá.
+- **âncora e multiplicador, nunca o produto.** `RAISE_TARGET_CPA`,
+  `RAISE_TARGET_CPA_BID_TOO_LOW` e `LOWER_TARGET_ROAS` declaram os dois fatores e não o
+  alvo resultante; o resumo deixava a multiplicação para o gestor. O produto passou a
+  sair **marcado como derivado**, com a unidade certa — nos dois CPA é dinheiro (2 casas,
+  "R$"), no ROAS é razão (até 4 casas, nunca "R$").
+
+**Ausência deixou de virar zero, e isso é o F145 pela porta dos fundos.** proto-plus
+nunca omite atributo: mensagem aninhada não preenchida devolve o zero-value, então ler
+`campaign_budget.*` de uma recomendação que não propõe orçamento daria "R$ 0,00 → R$
+0,00" no preview — número inventado com cara de medido. A leitura passa pela presença de
+cada segmento, com UMA exceção escrita: `booleano`, onde `False` é resposta
+(`orcamento_compartilhado=False` diz "é exclusivo") e o `in` do proto-plus não distingue
+"False" de "não declarado".
+
+**Prova.** Matriz de sabotagem por item em cópia fora do repositório, cada uma com
+controle positivo; e a árvore inteira em `fea9c3e` — o estado pré-fix, com os quatro
+defeitos vivos — roda **VERDE**: nenhum guard de lá cobria nenhum deles.
+
 **O que ficou deliberadamente de fora — este catálogo cobra isso.**
 - `_ALAVANCA` (`tests/unit/test_whitelist_de_recomendacao_bate_com_o_proto.py:42`) é
   regex de SUFIXO de nome de campo do proto. Tipo futuro com alavanca de orçamento sob
@@ -2420,16 +2487,30 @@ arquivo).
 **Os achados de método, que valem mais que o bug:**
 
 1. **Fakes de `run_report` que devolvem dicts prontos não pegam campo removido do
-   SELECT.** Medido nas duas formas: o fake da Task 1 (C1) passava verde mesmo
-   removendo `explicitly_shared` da query; o fake da Task 2 (sabotagem D) idem para o
-   campo de detalhe da recomendação. O padrão certo monta a row a partir do proto de
-   verdade, populado só com o que o SELECT pediu — o zero-value do que falta (F145)
-   vira o próprio sinal de que o campo saiu da query.
+   SELECT.** **Medido por execução em UMA das duas tools, e a distinção importa:** na
+   Task 1 (C1) o revisor escreveu o fake no padrão antigo — dicts prontos —, rodou o
+   mesmo assert sob a sabotagem que remove `explicitly_shared` da query e o **viu
+   passar verde**, enquanto o fake novo vai a 4 vermelhos. Na Task 2 há a sabotagem D
+   (tirar o campo de detalhe do SELECT com o fake NOVO, que fica vermelho); que o fake
+   ANTIGO passaria verde ali é **julgamento de revisor por leitura**, não execução — o
+   mecanismo é o mesmo, mas ninguém rodou aquela variante. Escrever "medido nas duas
+   formas" era a classe de afirmação que este catálogo persegue, e a frase ficou aqui
+   por uma revisão inteira. O padrão certo monta a row a partir do proto de verdade,
+   populado só com o que o SELECT pediu — o zero-value do que falta (F145) vira o
+   próprio sinal de que o campo saiu da query.
 2. **`mypy src` nunca cobre `tests/`, e isso mordeu três vezes nesta sequência de
    PRs** — Task 1 (3 erros pré-existentes no arquivo de teste do C1), Task 3 (2 erros
-   no próprio arquivo de guard que a Task 3 reescreveu) e Tasks 5+6 (20 erros de
-   `mypy --strict` nos 3 arquivos de teste tocados, eram 21 antes do fix — nenhum
-   novo). Todos pré-existentes, nenhum corrigido aqui: o gate local e o CI só rodam
+   no próprio arquivo de guard que a Task 3 reescreveu) e Tasks 5+6 (erros de
+   `mypy --strict` nos arquivos de teste tocados). **A contagem certa é 20
+   pré-existentes MAIS 2 novos**, não 20 no total: medido por arquivo,
+   `test_run_offline_user_data_job.py` 11 e `test_mutations_partial_failure.py` 9 —
+   esses são os 20, em arquivos que o PR modificou mas não criou —, **e** 1 em
+   `test_apply_change_recomendacao.py` e 1 em `test_apply_recommendation.py`, os dois
+   **arquivos novos deste PR**. A frase "o diff não acrescentou nenhum erro de mypy"
+   valia para os 3 arquivos da Task 5/6, não para o PR. Os **2 novos fecharam** na
+   onda de correção final (`cast` com motivo escrito no `int` cru do tipo 999; import
+   direto de `connection` em vez de `mod.connection`, que é o mesmo objeto); os 20
+   pré-existentes seguem abertos, e seguem invisíveis ao gate, que só roda
    `mypy src`.
 3. **Lista literal em teste parametrizado é deliberada, não preguiça.**
    `TIPOS_QUE_CONFIRMAM` no teste (Task 2) fica hardcoded de propósito — parametrizar
@@ -2444,12 +2525,17 @@ arquivo).
 > `update_campaign_budget`; `8caa926` guard de simetria derivado; `20f71e6`+`23baa48`
 > C2, `apply_recommendation` gateia por tipo, whitelist 17→18; `4857c56`+`1ff2430` F57
 > e F112 passam a conferir o que enunciam; `5a97477`..`c2607ff` Tasks 4-6, mesma
-> varredura). Full sweep 7/7 exit 0 em cada task; revisão independente por task, com
-> uma rodada de fix nas que acharam Importante (T1, T2, T3 no código; T4 só no
-> relatório). `update_campaign_budget` avisa portfólio antes de escrever no orçamento
-> compartilhado; `apply_recommendation` só aplica sozinho tipo que não mexe em
-> orçamento nem lance, e recusa aplicar (não muta com o valor errado) se o Google
-> tiver revisado o número entre o preview e a confirmação.
+> varredura; e a onda de correção final da revisão de 07/09: `7ba1e2f` C1 — o eixo da
+> irreversibilidade e whitelist 18→23 —, `cc1cedf` I2 — o preview lê o orçamento que a
+> mensagem já declarava, mais os guards de completude e cardinalidade —, `c9791ba` I3 —
+> bloco `portfolio` para alvo de estratégia compartilhada — e `3097b29` I4 — o produto
+> âncora × multiplicador, com a unidade certa). Full sweep 7/7 exit 0 em cada task;
+> revisão independente por task, com uma rodada de fix nas que acharam Importante (T1,
+> T2, T3 no código; T4 só no relatório). `update_campaign_budget` avisa portfólio antes
+> de escrever no orçamento compartilhado; `apply_recommendation` só aplica sozinho tipo
+> que não mexe em orçamento nem lance **e não migra a campanha**, e recusa aplicar (não
+> muta com o valor errado) se o Google tiver revisado o número entre o preview e a
+> confirmação.
 >
 > **Guard que garante a classe:** `tests/unit/test_apply_recommendation.py` (o gate
 > por tipo, com matriz de sabotagens incluindo tipo fora da whitelist, `risk.level`
