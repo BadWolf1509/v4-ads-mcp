@@ -30,8 +30,8 @@ from __future__ import annotations
 import inspect
 from datetime import UTC, date, datetime
 
+from src.clock import account_today
 from src.google_ads.queries._common import (
-    account_today,
     parse_date_range,
     resolve_date_window,
 )

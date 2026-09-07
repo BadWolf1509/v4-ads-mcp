@@ -601,6 +601,68 @@ async def test_run_avisar_sem_grant_failure_is_non_fatal() -> None:
     crash.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_run_record_job_run_failure_after_reconcile_is_non_fatal() -> None:
+    """Task 4/F83: `record_job_run` roda DEPOIS de `reconcile_google` retornar —
+    a transação da reconciliação já commitou (fecha no `return` dentro dela,
+    antes desta chamada), então uma exceção aqui é falha de BOOKKEEPING sobre
+    uma operação que já aconteceu. Sem `best_effort`, ela subia inteira pro
+    `except` externo (~:373), que grava `record_job_crash` e RE-LEVANTA — o
+    Cloud Run Job (`maxRetries: 3`) reexecutava a reconciliação inteira só
+    porque o AUDIT da vez anterior não gravou. Prova de mordida: contra o
+    código pré-fix este teste falha, porque `run()` propaga em vez de voltar
+    normalmente.
+
+    `record_job_run` é forçado a explodir em TODA chamada (não só a do
+    `google_reconcile`) de propósito: a do `db_purge`, mais abaixo no código,
+    já é um dos "três vizinhos protegidos" (try/except manual existente) —
+    continuar vermelha ali também prova que o isolamento novo não depende de
+    nenhum estado deixado pela primeira falha.
+    """
+    conn = MagicMock()
+    pool = _fake_pool(conn)
+    oc = SimpleNamespace(refresh_token_enc=b"enc")
+    mocks = _base_patches(pool=pool, oc=oc)
+
+    with (
+        mocks["init_pool"],
+        mocks["close_pool"] as close_pool,
+        mocks["get_pool"],
+        mocks["pick"],
+        mocks["derive"],
+        mocks["decrypt"],
+        mocks["build_client"],
+        mocks["list_customers"],
+        mocks["fetch"],
+        mocks["reconcile_google"],
+        mocks["avisar_sem_grant"],
+        patch(f"{_M}.record_job_run", AsyncMock(side_effect=RuntimeError("audit_log down"))),
+        mocks["purge"] as purge,
+        patch(f"{_M}.record_job_crash", AsyncMock()) as crash,
+        patch(
+            "src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())
+        ) as reconcile_meta,
+    ):
+        rc = await account_resync.run()
+
+    assert rc == 0, (
+        "reconcile_google já commitou — falha do bookkeeping pós-commit não pode "
+        "derrubar o job nem disparar o retry (maxRetries: 3) do que já foi aplicado"
+    )
+    close_pool.assert_awaited_once()
+    # O piggyback Meta e o purge diário (que vêm DEPOIS no código) continuam
+    # rodando — a falha do record_job_run do google_reconcile não pode
+    # escapar do bloco onde está isolada e pular o resto do job.
+    reconcile_meta.assert_awaited_once()
+    purge.assert_awaited_once()
+    # Isolado na PRÓPRIA chamada, não no `except` externo: sem isto o teste
+    # passaria também numa "correção" que só movesse a captura pro nível
+    # errado (ex.: um try/except grosso em volta do bloco inteiro do
+    # `pool.acquire()`, que reintroduziria o defeito do F150/F151 — duas
+    # linhas de audit contraditórias pra mesma execução).
+    crash.assert_not_awaited()
+
+
 def test_main_wraps_run_in_asyncio_run() -> None:
     """main() delega pra asyncio.run(run()) e propaga o exit code.
 

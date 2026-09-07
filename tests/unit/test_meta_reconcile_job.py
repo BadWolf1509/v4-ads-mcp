@@ -14,7 +14,9 @@ precisam de asserção depois são pré-criados como AsyncMock e passados como
 sem depender de `as` nem do atributo interno `_patch.new`).
 """
 
+import inspect
 from contextlib import ExitStack
+from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -24,19 +26,17 @@ from src.meta_ads.partnership import PartnershipSnapshot
 from src.meta_ads.reconcile import InventoryRow
 
 
-def _pool(conn: MagicMock) -> MagicMock:
-    ctx = MagicMock()
-    ctx.__aenter__ = AsyncMock(return_value=conn)
-    ctx.__aexit__ = AsyncMock(return_value=False)
-    pool = MagicMock()
-    pool.acquire = MagicMock(return_value=ctx)
-    return pool
-
-
 def _patches(job, *, apply: bool, parceria: list[str]):
     """Setup comum: settings + as duas leituras (parceria completa, alcance
-    completo) + pool/conn. `record_job_run` vem à parte (`gravar_run`) porque
-    alguns testes precisam inspecionar a chamada depois do `with`."""
+    completo) + o `conn` que os testes passam a `reconcile_meta`.
+    `record_job_run` vem à parte (`gravar_run`) porque alguns testes precisam
+    inspecionar a chamada depois do `with`.
+
+    O pool NÃO é mockado aqui de propósito (revisão da Task 3): `conn` virou
+    parâmetro obrigatório e `reconcile_meta` não adquire conexão nenhuma. Um
+    `patch` sobrando em `connection.get_pool` desarmaria justamente essa
+    invariante — se alguém reintroduzisse o `pool.acquire()` interno, o mock o
+    faria passar verde."""
     from src.auth.meta_oauth import AdAccountsFetch
 
     conn = MagicMock()
@@ -68,7 +68,6 @@ def _patches(job, *, apply: bool, parceria: list[str]):
                 return_value=AdAccountsFetch(accounts=[{"id": i} for i in parceria], complete=True)
             ),
         ),
-        patch.object(job.connection, "get_pool", MagicMock(return_value=_pool(conn))),
         patch.object(job, "record_job_run", gravar_run),
     ]
     return conn, gravar_run, ps
@@ -92,7 +91,7 @@ async def test_dry_run_calcula_e_audita_sem_aplicar() -> None:
             patch.object(job.manager_meta_account_access, "revoke_for_account", revoga),
         ]:
             stack.enter_context(p)
-        plano = await job.reconcile_meta()
+        plano = await job.reconcile_meta(conn)
 
     assert plano.to_remove == ["act_2"]
     desativa.assert_not_awaited()
@@ -143,15 +142,20 @@ async def test_dry_run_observa_tudo_e_so_deixa_de_destruir() -> None:
             patch.object(job.manager_meta_account_access, "revoke_for_account", revoga),
         ]:
             stack.enter_context(p)
-        plano = await job.reconcile_meta()
+        plano = await job.reconcile_meta(conn)
 
     # Observação: os três rodam com o flag DESLIGADO.
     upsert.assert_awaited_once()
     absencias.assert_awaited_once()
-    assert absencias.await_args.kwargs["bump"] == ["act_2"], (
+    # C4: `bump` passou a ser `(ad_account_id, dia)`. A invariante deste teste
+    # continua sendo "a carência avança no dry-run"; o par é afirmado à parte,
+    # e nessa ORDEM — invertê-lo mapeia o id em `$2` e o dia em `$1`, e o
+    # UPDATE deixa de casar qualquer linha em silêncio.
+    assert [aid for aid, _dia in absencias.await_args.kwargs["bump"]] == ["act_2"], (
         "a carência precisa avançar no dry-run — senão missed_syncs fica "
         "congelado e to_remove nunca chega ao limiar durante o soak inteiro"
     )
+    assert all(isinstance(dia, date) for _aid, dia in absencias.await_args.kwargs["bump"])
     marca_alcance.assert_awaited_once()
     assert marca_alcance.await_args.kwargs["reachable_ids"] == ["act_1"]
     # M4: o UPDATE é escopado à parceria — sem WHERE ele marcava su_reachable
@@ -192,7 +196,7 @@ async def test_com_apply_ligado_desativa_e_revoga_e_audita_a_conta() -> None:
             patch.object(job, "record_access_revocation", audita),
         ]:
             stack.enter_context(p)
-        plano = await job.reconcile_meta()
+        plano = await job.reconcile_meta(conn)
 
     desativa.assert_awaited_once()
     assert desativa.await_args.kwargs["ad_account_ids"] == ["act_2"]
@@ -232,7 +236,10 @@ async def test_sem_business_id_o_job_nao_reconcilia() -> None:
             )
         ),
     ):
-        plano = await job.reconcile_meta()
+        # O `conn` chega e nao e tocado: a guarda de config devolve antes de
+        # qualquer leitura. `MagicMock` sem `execute` awaitable e de proposito
+        # — se algum dia o no-op passar a escrever, o teste quebra alto.
+        plano = await job.reconcile_meta(MagicMock())
 
     assert plano.blocked_reason == "meta_business_id nao configurado"
 
@@ -274,7 +281,6 @@ async def test_leitura_parcial_bloqueia_aplicacao_mesmo_com_apply_ligado() -> No
             "_fetch_all_adaccounts",
             AsyncMock(return_value=AdAccountsFetch(accounts=[{"id": "act_1"}], complete=True)),
         ),
-        patch.object(job.connection, "get_pool", MagicMock(return_value=_pool(conn))),
         patch.object(
             job.meta_ad_accounts,
             "list_inventory_rows",
@@ -286,7 +292,7 @@ async def test_leitura_parcial_bloqueia_aplicacao_mesmo_com_apply_ligado() -> No
         patch.object(job.manager_meta_account_access, "revoke_for_account", revoga),
         patch.object(job, "record_job_run", AsyncMock()),
     ):
-        plano = await job.reconcile_meta()
+        plano = await job.reconcile_meta(conn)
 
     assert plano.blocked_reason == "leitura incompleta"
     marca_alcance.assert_not_awaited()
@@ -331,7 +337,7 @@ async def test_ordem_le_inventario_antes_de_upsertar() -> None:
             ),
         ]:
             stack.enter_context(p)
-        await job.reconcile_meta()
+        await job.reconcile_meta(conn)
 
     nomes_chamados = [c[0] for c in recorder.mock_calls]
     assert nomes_chamados == ["list_inventory_rows", "upsert_many"], (
@@ -339,3 +345,38 @@ async def test_ordem_le_inventario_antes_de_upsertar() -> None:
         "is_active/missed_syncs já sairiam zerados quando build_plan() lesse, "
         "e to_add/to_reset nunca teriam conteúdo"
     )
+
+
+@pytest.mark.asyncio
+async def test_reconcile_dos_dois_lados_exige_a_conexao_de_quem_chama() -> None:
+    """Simetria pinada: `conn` é obrigatório no Google E no Meta.
+
+    `reconcile_meta` tinha `conn: … | None = None` e, sem conexão, adquiria uma
+    do pool. Medido na revisão da Task 3: chamado assim de DENTRO de uma
+    transação já aberta, ele pega OUTRA conexão — decide `to_bump`/`to_remove`
+    sobre um inventário que não é o que o chamador acabou de gravar (0 vs 1
+    linha visível) e trava no lock até o `command_timeout`, sem deadlock
+    detectado (a sessão externa fica *idle in transaction*). Nenhum chamador
+    fazia isso; nada impedia.
+
+    O guard é sobre a PROPRIEDADE — "o primeiro parâmetro é a conexão e não tem
+    default" — nos dois lados, não sobre uma lista de nomes: repor o default
+    em qualquer um deles derruba este teste. Não dá para provar estaticamente
+    que um call-site futuro não está dentro de uma transação, então a defesa é
+    obrigar o call-site a dizer de onde a conexão vem (o F128 nasceu de uma
+    cláusula que ficou de fora de UM dos lados).
+
+    `inspect`, não `grep`: as docstrings dos dois módulos CITAM a forma antiga
+    para explicar o fix, e um guard textual casaria a própria prosa.
+    """
+    from src.jobs import account_resync, meta_resync
+
+    for fn in (account_resync.reconcile_google, meta_resync.reconcile_meta):
+        primeiro = next(iter(inspect.signature(fn).parameters.values()))
+        assert primeiro.name == "conn", (
+            f"{fn.__qualname__}: o primeiro parâmetro deixou de ser a conexão"
+        )
+        assert primeiro.default is inspect.Parameter.empty, (
+            f"{fn.__qualname__}: `conn` voltou a ter default — quem chama pode "
+            "omitir a conexão e abrir uma segunda transação por baixo da dele"
+        )

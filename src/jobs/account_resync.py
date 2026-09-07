@@ -9,12 +9,14 @@ Entry point: `python -m src.jobs.account_resync`
 
 import asyncio
 import sys
+from datetime import UTC, datetime
 from typing import Any
 
 import asyncpg
 import structlog
 
 from src.auth.tokens import decrypt_refresh_token, derive_master_key_from_settings
+from src.clock import account_today
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import (
@@ -29,6 +31,7 @@ from src.google_ads.accounts import (
 )
 from src.google_ads.client import build_client
 from src.google_ads.reconcile import build_plan
+from src.governance.bookkeeping import best_effort
 from src.jobs._audit import record_access_revocation, record_job_crash, record_job_run
 from src.jobs.purge import purge_expired
 from src.logging import configure_logging
@@ -67,6 +70,7 @@ async def reconcile_google(
     accounts: list[dict[str, Any]],
     complete: bool,
     apply: bool,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     """Reconcilia o inventário Google contra o MCC. Devolve o params_summary.
 
@@ -76,7 +80,20 @@ async def reconcile_google(
     Uma transação só pro bloco de escrita inteiro: metade aplicada — carência
     somada sem desativar, ou desativada com grant vivo — é exatamente a
     inconsistência que este recurso existe pra evitar.
+
+    `now` é o instante da EXECUÇÃO, lido UMA vez e passado adiante (C4/F141):
+    todas as ausências deste run são carimbadas com o mesmo instante, cada uma
+    convertida para o dia do fuso da SUA conta. Ler o relógio por conta faria o
+    resultado depender de quanto tempo o laço levou — e se esse laço um dia
+    ganhar I/O, um run atravessando a meia-noite de alguma conta carimbaria
+    dias diferentes na mesma passagem. Hoje ele é uma comprehension sem
+    `await`, então a invariante "um relógio por execução" é sustentada pela
+    FORMA do código, não por teste (m2 da revisão da Task 2 — a frase antiga
+    descrevia um cenário que o laço atual não consegue produzir).
+    Injetável porque só assim o teste consegue um instante em que UTC e a conta
+    discordam (a diferença que `freezegun` não representa).
     """
+    agora = now if now is not None else datetime.now(UTC)
     async with conn.transaction():
         # Ler ANTES do upsert. `upsert_many` marca is_active=true e zera
         # missed_syncs pra toda conta do MCC; lido depois dele, o inventário já
@@ -86,9 +103,43 @@ async def reconcile_google(
             mcc_ids={a["customer_id"] for a in accounts},
             inventory=inventario,
             complete=complete,
+            # O MESMO instante que carimba as ausências abaixo. `build_plan`
+            # precisa dele para saber se a ausência desta execução já está no
+            # contador (retry do mesmo dia) — se os dois divergissem, plano e
+            # carimbo falariam de dias diferentes.
+            now=agora,
         )
         n = await google_ads_accounts.upsert_many(conn, accounts)
-        await google_ads_accounts.apply_absences(conn, bump=plano.to_bump, reset=plano.to_reset)
+        # C4/F141: o plano devolve ids; a ausência precisa do DIA em que caiu, no
+        # fuso da conta. O fuso vem do inventário lido acima (indexação direta,
+        # não `.get()`: `to_bump` é derivado de `inventario`, então a chave existe
+        # por construção — e se um dia deixar de existir, quebrar alto é melhor
+        # que carimbar o inventário inteiro em UTC calado).
+        fusos = {r.customer_id: r.time_zone for r in inventario}
+        bump = [(cid, account_today(fusos[cid], now=agora)) for cid in plano.to_bump]
+        # Task 4/Step 5: `reset=[]`, não `plano.to_reset`. `upsert_many`
+        # (duas linhas acima, MESMA transação, sem I/O entre os dois) já zera
+        # `missed_syncs`/`last_missed_on` para toda conta em `accounts` — e
+        # `to_reset` é subconjunto de `mcc_ids` por construção (`build_plan`:
+        # `r.customer_id in mcc_ids`), com `mcc_ids` derivado do próprio
+        # `accounts` (linha ~102, `{a["customer_id"] for a in accounts}`).
+        # Ou seja: toda vez que este UPDATE chegasse a rodar pra um id de
+        # `to_reset`, `missed_syncs` já estaria em 0 — e a cláusula `AND
+        # missed_syncs <> 0` de `apply_absences` barra a linha antes de
+        # reescrevê-la. Provado (não só argumentado) em
+        # `test_reset_e_redundante_apos_upsert_many_no_mesmo_run`
+        # (tests/integration/test_google_reconcile_repo.py): mesmo `xmin`
+        # antes/depois do reset explícito, na mesma sequência que este
+        # `reconcile_google` usa. `plano.to_reset` continua computado — quem
+        # o lê é só `resumo["reset"]` (a contagem pro audit; ~linha 172), não
+        # mais este call site.
+        #
+        # Deliberadamente NÃO espelhado no lado Meta
+        # (`src/jobs/meta_resync.py`): lá `meta_reconcile_apply` já está
+        # ligada em produção (revoga acesso de verdade desde 05/09), e a
+        # mesma equivalência não foi provada contra ESSE código — só contra
+        # este. CLAUDE.md: "Don't assertar superfície... por analogia."
+        await google_ads_accounts.apply_absences(conn, bump=bump, reset=[])
 
         # Contado SEMPRE, inclusive no dry-run: a trava governa DESTRUIÇÃO, não
         # observação. Sem isto o soak inteiro reporta zero e não distingue "não
@@ -252,17 +303,32 @@ async def run() -> int:
                 complete=inventario_ok,
                 apply=settings.google_reconcile_apply,
             )
-            await record_job_run(
-                conn,
-                operation="google_reconcile",
-                platform="google",
-                target_count=resumo["upserted"],
-                status="success" if resumo["blocked_reason"] is None else "error",
-                error_message=resumo["blocked_reason"],
-                params_summary={
-                    k: v for k, v in resumo.items() if k not in ("upserted", "blocked_reason")
-                },
-            )
+            # Task 4/F83: `record_job_run` roda DEPOIS do `return` de
+            # `reconcile_google` — a transação da reconciliação já fechou
+            # (commitou) antes desta linha, então uma exceção aqui é falha de
+            # BOOKKEEPING sobre uma operação que já aconteceu, não da
+            # reconciliação em si. Sem `best_effort` ela subia pro `except`
+            # externo (~:373+), que grava um `record_job_crash` e RE-LEVANTA —
+            # o Cloud Run Job (`maxRetries: 3`) reexecutava a reconciliação
+            # INTEIRA só porque o audit da vez anterior não gravou. Com as
+            # Tasks 2/3 esse retry já não corrompe nada; isto fecha a causa do
+            # retry. Mesma classe do F83 dos executores de mutação
+            # (src/google_ads/mutations.py), só que aqui o bookkeeping roda
+            # numa chamada solta, não num `finally` — por isso o guard
+            # estrutural do F83 (test_finally_bookkeeping_is_best_effort) não
+            # alcança este ponto (ver task-4-report.md).
+            async with best_effort("job_run_audit_failed", operation="google_reconcile"):
+                await record_job_run(
+                    conn,
+                    operation="google_reconcile",
+                    platform="google",
+                    target_count=resumo["upserted"],
+                    status="success" if resumo["blocked_reason"] is None else "error",
+                    error_message=resumo["blocked_reason"],
+                    params_summary={
+                        k: v for k, v in resumo.items() if k not in ("upserted", "blocked_reason")
+                    },
+                )
             # Task 7: depois do record_job_run, na MESMA conexão — lê o
             # inventário já reconciliado por esta execução.
             #
@@ -295,7 +361,12 @@ async def run() -> int:
         try:
             from src.jobs.meta_resync import reconcile_meta
 
-            plano_meta = await reconcile_meta()
+            # `conn` explícito (revisão da Task 3): `reconcile_meta` deixou de
+            # aceitar `None` e adquirir a própria conexão. Este `acquire` está
+            # FORA de qualquer transação aberta — que é justamente a garantia
+            # que o default `None` não conseguia dar a call-site nenhum.
+            async with pool.acquire() as conn_meta:
+                plano_meta = await reconcile_meta(conn_meta)
             print(
                 "OK: Meta reconcile — "
                 f"add={len(plano_meta.to_add)} remove={len(plano_meta.to_remove)} "

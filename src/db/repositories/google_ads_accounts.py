@@ -1,7 +1,7 @@
 """CRUD for `google_ads_accounts`. Populated by the resync job."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 import asyncpg
@@ -75,7 +75,13 @@ async def upsert_many(
             -- antigas e seria desativado logo apos ser reativado. Espelha
             -- meta_ad_accounts.upsert_many (C1 da revisao de branch, 2026-09-05:
             -- a clausula tinha ficado de fora do lado Google).
+            --
+            -- C4: a serie e (missed_syncs, last_missed_on) — as DUAS. Zerar so o
+            -- contador deixaria a data velha na linha, e a conta que volta e
+            -- falta de novo no MESMO dia teria a ausencia pulada pelo
+            -- `IS DISTINCT FROM` de `apply_absences`.
             missed_syncs = 0,
+            last_missed_on = NULL,
             synced_at = now()
         """,
         rows,
@@ -83,17 +89,66 @@ async def upsert_many(
     return len(rows)
 
 
-async def apply_absences(conn: asyncpg.Connection, *, bump: list[str], reset: list[str]) -> None:
-    """Aplica a carência decidida por `build_plan()`. Não decide nada — só escreve."""
+async def apply_absences(
+    conn: asyncpg.Connection, *, bump: list[tuple[str, date]], reset: list[str]
+) -> None:
+    """Aplica a carência decidida por `build_plan()`. Não decide nada — só escreve.
+
+    C4: o incremento é condicional ao DIA. `missed_syncs = missed_syncs + 1` puro
+    contava uma ausência por EXECUÇÃO, e o job tem `maxRetries: 3` — um retry
+    depois do commit da reconciliação contava a mesma ausência de novo. A
+    carência de 3 dias caía em 2 execuções, e do lado Meta isso é revogação de
+    acesso de gestor a conta de cliente.
+
+    `IS DISTINCT FROM` e não `<>`: `last_missed_on` é NULL em toda linha hoje, e
+    `NULL <> $2` avalia para NULL, que não satisfaz o WHERE — com `<>` a
+    primeira ausência de cada conta nunca seria contada.
+
+    O dia vem do fuso da CONTA (F141), calculado por `account_today` sobre o fuso
+    que `list_inventory_rows` traz — sem I/O extra. `resolve_account_today` faria
+    uma leitura por conta e adquiriria uma segunda conexão do pool dentro da
+    transação já aberta da reconciliação.
+
+    Conta sem fuso cai no fallback UTC decidido do `account_today` (há caminho
+    para isso: `upsert_many` grava `a.get("time_zone")`). Aqui isso é ESCRITA, e
+    o F146 diz que escrita não herda o fallback da leitura — então o que o
+    fallback muda é a CHAVE da idempotência: sem fuso, "uma ausência por dia"
+    passa a valer por dia UTC, e não por dia da CONTA. Não é uma garantia
+    direcional — o erro cai para os dois lados, conforme a hora do run:
+
+    - um dia local de conta a oeste de UTC mapeia em DUAS datas UTC, então duas
+      execuções no mesmo dia da conta que atravessem a meia-noite UTC (ex.: 20h
+      e 22h locais em UTC-3) carimbam datas diferentes e contam DUAS ausências
+      no mesmo dia — que é exatamente o defeito que este C4 fecha, e erra para o
+      lado que revoga CEDO;
+    - e a ausência das 21h à meia-noite locais sai carimbada com o dia seguinte,
+      fazendo a ausência real do dia seguinte ser PULADA — carência mais lenta.
+
+    Não alcançável hoje, e isto é medido e não suposto: o job roda uma vez por
+    dia, os retries são em minutos, e as 26 contas do MCC estão em seis fusos,
+    todos UTC-3 ou UTC-4 (medição do F141). Mas quem sustenta a idempotência nesse
+    caso é a AGENDA do job, não este fallback. (m1 da revisão da Task 2 dizia
+    "erra sempre para o lado que não revoga"; corrigido pelo M3 da revisão
+    final — o código não dá essa garantia. O gêmeo Meta leva a mesma frase.)
+
+    O `reset` zera as duas colunas: conta que reapareceu não pode carregar a data
+    velha, senão a próxima ausência dela seria pulada se caísse no mesmo dia. E
+    leva `AND missed_syncs <> 0`, que o lado Meta já tem — simetria entre os dois
+    laços é requisito, não estética (o F128 nasceu de uma cláusula que ficou de
+    fora de um dos lados).
+    """
     if bump:
-        await conn.execute(
-            "UPDATE google_ads_accounts SET missed_syncs = missed_syncs + 1 "
-            "WHERE customer_id = ANY($1::text[])",
+        await conn.executemany(
+            "UPDATE google_ads_accounts "
+            "   SET missed_syncs = missed_syncs + 1, last_missed_on = $2 "
+            " WHERE customer_id = $1 "
+            "   AND last_missed_on IS DISTINCT FROM $2",
             bump,
         )
     if reset:
         await conn.execute(
-            "UPDATE google_ads_accounts SET missed_syncs = 0 WHERE customer_id = ANY($1::text[])",
+            "UPDATE google_ads_accounts SET missed_syncs = 0, last_missed_on = NULL "
+            "WHERE customer_id = ANY($1::text[]) AND missed_syncs <> 0",
             reset,
         )
 
@@ -119,13 +174,28 @@ async def deactivate(conn: asyncpg.Connection, *, customer_ids: list[str]) -> in
 
 
 async def list_inventory_rows(conn: asyncpg.Connection) -> list[InventoryRow]:
-    """Devolve o inventário no formato que `build_plan()` consome — puro dado."""
-    rows = await conn.fetch("SELECT customer_id, is_active, missed_syncs FROM google_ads_accounts")
+    """Devolve o inventário no formato que `build_plan()` consome — puro dado.
+
+    `time_zone` vem junto por causa do C4: quem aplica a ausência precisa do dia
+    NO FUSO DA CONTA (F141), e resolvê-lo depois seria uma leitura por conta
+    dentro da transação aberta da reconciliação. `build_plan` ignora o campo.
+
+    `last_missed_on`, ao contrário, `build_plan` LÊ: é o que diz se a ausência
+    desta execução já está em `missed_syncs` (retry do mesmo dia) ou não. Sem
+    ela na linha o planejador soma `+1` sempre e queima um dia de carência a
+    cada retry — o contador fica certo e a DECISÃO sai um dia adiantada.
+    """
+    rows = await conn.fetch(
+        "SELECT customer_id, is_active, missed_syncs, time_zone, last_missed_on "
+        "FROM google_ads_accounts"
+    )
     return [
         InventoryRow(
             customer_id=r["customer_id"],
             is_active=r["is_active"],
             missed_syncs=r["missed_syncs"],
+            time_zone=r["time_zone"],
+            last_missed_on=r["last_missed_on"],
         )
         for r in rows
     ]

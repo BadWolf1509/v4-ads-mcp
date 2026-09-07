@@ -6,7 +6,7 @@
 >
 > **Last updated:** 2026-09-03 — **F141–F146 fechados** em tres PRs (#28 bloco fuso+freshness; #29 structural_change; #30 fuso do upload offline) mais o F142 (whitelist de client_type) direto na main. Ontem, 02/09: **+F131–F140** da sessao de campo MO-JP, fechados no PR #27 e nos fixes seguintes. Narrativa completa e licoes de metodo no handoff [`session-2026-09-02-03-handoff.md`](session-2026-09-02-03-handoff.md); o historico anterior (F82–F130, 08/14 a 08/20) esta nos handoffs de 08-14-15 e 08-19.
 >
-> **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica.
+> **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
 > **Como ler:** ~1490 linhas, **151 IDs** (F1-F152 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
@@ -2117,3 +2117,158 @@ o prazo em si não foi revisto; merece conversa própria com o Wellington.
 > tem guard dedicado. A **escolha** de ler o corpo continua certa, e por um motivo melhor (não
 > depende da implementação do verificador, então segue mordendo se a comparação regredir); é
 > só a razão que está errada, e não muda comportamento nem cobertura.
+
+---
+
+## F157 (HIGH, CORRIGIDO em 2026-09-06/07) — a ausência contava por execução, não por dia
+
+> **Como apareceu:** planejado como PR 2 da varredura de 8 revisores (spec
+> [`2026-09-06-correcoes-varredura-design.md`](../superpowers/specs/2026-09-06-correcoes-varredura-design.md),
+> seção 4; plano completo em
+> [`2026-09-06-pr2-reconciliacao-idempotente.md`](../superpowers/plans/2026-09-06-pr2-reconciliacao-idempotente.md)),
+> não achado em incidente. O segundo defeito abaixo — o mais grave dos dois —
+> só apareceu porque a revisão da Task 3 mediu contra Postgres real em vez de
+> aceitar que "o contador ficou idempotente" implicava "a operação ficou
+> idempotente".
+
+**O mecanismo.** `missed_syncs = missed_syncs + 1` (Google e Meta) contava uma
+ausência por **execução** do job de resync, não por dia. O job roda em Cloud
+Run Jobs, que reexecuta automaticamente uma execução que termina com código de
+saída diferente de zero — medido por `gcloud run jobs describe`: o job
+`migrate` recebeu `--max-retries=1` explícito (uma migration reexecutada é
+sempre segura, mas nunca é o que se quer duas vezes); o `resync` **nunca
+recebeu** o mesmo tratamento e segue no default da plataforma (`maxRetries: 3`).
+Um retry no mesmo dia calendário somava `+1` de novo, sem nenhuma ausência
+real nova — a carência de 3 dias que protege a conta do cliente podia ser
+consumida em **2 execuções**. Do lado Meta isso não é abstrato: é revogação de
+acesso de gestor a conta de cliente, e a reconciliação está em produção
+(`META_RECONCILE_APPLY=true`) desde 05/09.
+
+**A escolha de desenho: tornar a operação idempotente, não capar o retry.**
+Cortar `maxRetries` para 1 (como o `migrate`) esconderia o sintoma sem
+corrigi-lo — continuaria contando qualquer OUTRA fonte de reexecução (rerun
+manual, mudança futura de scheduler) como ausência nova. Retry é mecanismo
+útil (falha transitória não devia exigir intervenção humana); operação
+não-idempotente sob retry é que é o defeito. A migration `009`
+([`009_last_missed_on.sql`](../../src/db/migrations/009_last_missed_on.sql))
+abre `last_missed_on DATE` nos dois inventários — aditiva, `IF NOT EXISTS`,
+nullable, sem backfill (`NULL` = "nunca contada"; um default de data faria a
+primeira execução pós-deploy pular a ausência real do dia). `apply_absences`
+(`src/db/repositories/google_ads_accounts.py:92-137`, espelho em
+`meta_ad_accounts.py`) passou a gravar a data da ausência junto do incremento,
+condicionando o `UPDATE` a essa data ainda não ter sido contada — um retry no
+mesmo dia vira no-op sobre a coluna.
+
+**O segundo defeito, que só a revisão achou — e é o mais instrutivo dos
+dois.** O contador virou idempotente; a **decisão** de remover, não.
+`build_plan` (`src/google_ads/reconcile.py`, espelho em
+`src/meta_ads/reconcile.py`) seguia calculando `missed_syncs + 1 >= threshold`
+incondicionalmente, com um comentário ao lado nomeando a suposição que a
+própria correção acabara de quebrar: *"esta execução é a próxima"*. Era
+verdade enquanto o contador subia por execução; deixou de ser verdade quando
+ele passou a subir por dia. A revisão da Task 3 mediu contra Postgres real,
+com `apply=True` (o estado de produção do lado Meta desde 05/09):
+
+```
+conta semeada com missed_syncs=1 (1 ausência anterior)
+run1  : to_bump=['act_1']  to_remove=[]         missed=2
+RETRY : to_bump=[]         to_remove=['act_1']  missed=2
+is_active depois do retry = False
+```
+
+Um retry no dia 2 calculava `2 + 1 = 3` e removia: a conta saiu do ar e os
+grants dos gestores foram revogados com **dois** dias de ausência real, não
+três — e o sintoma fica invisível para quem audita só a coluna, que continua
+parada em 2. O fix (`_faltas_com_esta_execucao`, `src/google_ads/reconcile.py:60-80`
+e `src/meta_ads/reconcile.py:57-77`, commit `47310fc`) faz o `+1` condicional
+ao mesmo teste que já valia para o contador: `last_missed_on ==
+account_today(...)` → a ausência de hoje já está computada, não soma de novo.
+
+**A armadilha do SQL.** O `UPDATE` usa `last_missed_on IS DISTINCT FROM $2`,
+não `<>`. A coluna é `NULL` em toda linha da produção hoje (a `009` nunca
+rodou — não foi deployada), e `NULL <> $2` avalia `NULL`, que não satisfaz
+nenhum `WHERE`. Com `<>` no lugar de `IS DISTINCT FROM`, a **primeira**
+ausência de cada conta nunca seria contada, calado.
+
+**A medição de produção (2026-09-07), e por que não corrigiu nada.**
+`google_ads_accounts`: 35 linhas, 26 ativas, todas com `missed_syncs = 0`.
+`meta_ad_accounts`: 30 linhas, 25 ativas, 29 em 0 e **uma em 2**:
+`act_468463369497370` ("Mestre da Obra Petrolina"), já `is_active=false`,
+`synced_at` de 19/08. `last_missed_on` não existe em produção — a `009` não
+foi deployada, então não há linha para migrar. **A linha em 2 não é
+inflação.** `remover` e `marcar` são disjuntos no planejador (uma conta ou
+sai, ou soma carência — nunca as duas): a conta sai na execução em que
+`missed_syncs + 1` atinge o limiar, e por isso **não é bumpada** nessa mesma
+execução — `threshold - 1` é o valor final e esperado de uma remoção
+legítima, não o resíduo de uma contagem dobrada. Confirmado contra a fonte
+autoritativa, não só contra o contador: `meta_list_my_ad_accounts` devolve 25
+contas e `act_468463369497370` **não está entre elas** — a conta saiu de
+verdade da parceria. A trilha bate: `meta_access_cleanup` (mutate, success)
+em 05/09 09:00:27 UTC é a primeira revogação real da automação, e um gestor
+bateu em `denied` tentando `meta_get_account_overview` na mesma conta às
+17:45 do mesmo dia — o gate funcionou e alguém notou na hora.
+
+**O que ficou deliberadamente de fora.** O guard do F83
+(`test_finally_bookkeeping_is_best_effort`) só caminha `ast.Try` com
+`finalbody` não vazio; as duas chamadas de `record_job_run` que a Task 4
+corrigiu (`src/jobs/account_resync.py:320`, `src/jobs/meta_resync.py:198`) são
+statements soltos depois da transação já commitada, fora de qualquer
+`finally`, e por isso invisíveis ao guard nos dois sentidos (não acusava
+antes do fix, não confirma depois). **Alargar o guard foi avaliado e
+recusado**: exigiria distinguir dataflow (I/O antes vs. depois do commit), e
+um guard ingênuo por nome de função acusaria falsamente
+`record_access_revocation`, que corretamente roda **dentro** da transação nos
+dois arquivos (`account_resync.py:185`, `meta_resync.py:178`). As duas
+asserções comportamentais que a Task 4 escreveu (`record_job_run` levanta →
+a função que o envolve retorna normalmente, não "chamou best_effort") são o
+guard certo para esta classe — a estrutural seria alargada às cegas. Também
+ficou de fora, deliberadamente: a assimetria do `reset` redundante
+pós-`upsert_many` — a Task 4 removeu a chamada no lado Google, provada por
+dois testes de equivalência (`xmin` idêntico antes/depois da chamada
+redundante), e manteve a chamada no lado Meta porque a mesma prova **não**
+foi feita lá, e o lado que revoga em produção merece o conservador (pior caso
+é um `UPDATE` a mais por execução, não um bug). E os menores do ledger das
+Tasks 2/3 seguem abertos — teste de "lista vazia" mais fraco no lado Meta,
+dead code de `_FakeAcquire`/`_FakePool` em `test_meta_resync_audit.py`,
+docstring ligeiramente largo sobre "nenhuma I/O" em `meta_ads/reconcile.py` —
+registrados nos respectivos `task-N-review.md`.
+
+**Os achados de método, que valem mais que o bug:**
+
+1. **Os testes de retry originais paravam em 2 ausências — longe do
+   limiar 3.** `test_duas_execucoes_no_mesmo_dia_contam_uma_ausencia` e
+   `test_retry_do_job_no_mesmo_dia_nao_consome_a_carencia` (e os pares Meta)
+   provam que o **contador** é idempotente; nenhum chega na única execução em
+   que o retry de fato importa — a da fronteira do limiar, onde a decisão de
+   remover é tomada. Provar o mecanismo sem provar o caso em que ele decide
+   deixou o Crítico passar pela Task 3 original.
+2. **A blast radius de `apply_absences` não era afirmada por teste nenhum.**
+   Os 10 testes originais (Google) e os testes espelho (Meta) rodavam com
+   **uma conta só** no banco — tirar o predicado de id do `WHERE`
+   (`customer_id = $1` → `$1::text IS NOT NULL`) passava verde nos dez. Em
+   produção isso é carência somada no inventário **inteiro** a cada execução:
+   as 26 contas ativas cruzariam o limiar juntas, e `deactivate` +
+   `revoke_for_inactive_accounts` disparariam para todas. Fechado com uma
+   conta vizinha semeada e não citada no `bump`/`reset`, afirmando que ela
+   sai com o contador intacto.
+3. **Mutação que quebra por outro motivo não prova guard.** A primeira
+   tentativa de mutar a blast radius — apagar a cláusula `WHERE` inteira —
+   só produz `asyncpg.InterfaceError: the server expects 0 arguments`, um
+   crash de protocolo, não o vazamento silencioso que o teste precisa
+   distinguir. Corrigida para manter `$1` dentro de um predicado
+   sempre-verdadeiro (`$1::text IS NOT NULL`), a falha sai como uma asserção
+   limpa — a forma real do defeito que este teste existe para pegar.
+
+> **✅ CORRIGIDO** (branch `pr2/reconciliacao-idempotente`: `1d6ecd8` migration
+> `009`; `aa2660a`+`6a723f7` incremento idempotente do lado Google;
+> `61b5608` gêmeo Meta; `47310fc` decisão de remoção condicional ao dia
+> (o Crítico); `fc682b8` `record_job_run` sob `best_effort`). `apply_absences`
+> conta uma ausência por dia, no fuso da conta, nos dois lados;
+> `build_plan` decide sobre o mesmo dia que o contador usa; `record_job_run`
+> pós-commit não derruba mais uma reconciliação já aplicada. Full sweep 7/7
+> exit 0 nas quatro tasks de código; revisão independente por task, com uma
+> rodada de fix em cada uma das que a acharam com problema (T1: contradição de
+> fuso no comentário da migration; T3: o Crítico da decisão; T4: aprovada de
+> primeira). Medição de produção em 2026-09-07 (acima): nada precisou ser
+> corrigido — a correção é preventiva, e o soak do Google passa a medir o que
+> promete a partir deste PR.

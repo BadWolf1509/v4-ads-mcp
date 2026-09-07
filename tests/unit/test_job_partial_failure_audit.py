@@ -99,7 +99,7 @@ async def test_fetch_completo_quando_paginacao_termina_naturalmente() -> None:
 
 def _patch_resync(
     monkeypatch: pytest.MonkeyPatch, *, parceria_accounts: list, complete: bool
-) -> tuple[AsyncMock, AsyncMock]:
+) -> tuple[AsyncMock, AsyncMock, MagicMock]:
     """Troca as duas leituras (`fetch_partnership` + `_fetch_all_adaccounts`,
     ambas com o mesmo `complete`) e o passo destrutivo do plano por dublês.
 
@@ -142,13 +142,17 @@ def _patch_resync(
     )
     monkeypatch.setattr(meta_resync.meta_ad_accounts, "apply_absences", AsyncMock())
     monkeypatch.setattr(meta_resync.meta_ad_accounts, "set_reachable", AsyncMock())
-    monkeypatch.setattr(meta_resync.connection, "get_pool", lambda: _FakePool())
     desativa = AsyncMock(return_value=1)
     monkeypatch.setattr(meta_resync.meta_ad_accounts, "deactivate", desativa)
     revoga = AsyncMock(return_value=[])
     monkeypatch.setattr(meta_resync.manager_meta_account_access, "revoke_for_account", revoga)
     monkeypatch.setattr(meta_resync, "record_access_revocation", AsyncMock())
-    return desativa, revoga
+    # `conn` virou parametro obrigatorio de `reconcile_meta` (revisao da Task
+    # 3): o job nao adquire mais conexao do pool, entao a dube vem daqui e o
+    # pool NAO e mockado — mock sobrando desarmaria essa invariante.
+    conn = MagicMock()
+    conn.execute = AsyncMock(return_value="UPDATE 0")
+    return desativa, revoga, conn
 
 
 @pytest.mark.asyncio
@@ -158,7 +162,7 @@ async def test_inventario_parcial_nao_desativa_nada_e_audita_erro(
     """F93(1)/Req.3: com complete=False o upsert segue (aditivo, seguro) mas
     build_plan() bloqueia o lado destrutivo (deactivate/revoke NAO rodam), e o
     audit registra `error` em vez de `success`."""
-    desativa, revoga = _patch_resync(
+    desativa, revoga, conn = _patch_resync(
         monkeypatch,
         parceria_accounts=[{"ad_account_id": "act_1", "account_name": "A"}],
         complete=False,
@@ -166,7 +170,7 @@ async def test_inventario_parcial_nao_desativa_nada_e_audita_erro(
     rec = AsyncMock(return_value=1)
     monkeypatch.setattr(meta_resync, "record_job_run", rec)
 
-    await meta_resync.reconcile_meta()
+    await meta_resync.reconcile_meta(conn)
 
     (
         desativa.assert_not_awaited(),
@@ -184,7 +188,7 @@ async def test_inventario_completo_audita_sucesso_e_desativa(
 ) -> None:
     """F93(1): o caminho feliz nao pode regredir — segue desativando quem saiu
     da parceria e gravando success."""
-    desativa, revoga = _patch_resync(
+    desativa, revoga, conn = _patch_resync(
         monkeypatch,
         parceria_accounts=[{"ad_account_id": "act_1", "account_name": "A"}],
         complete=True,
@@ -192,7 +196,7 @@ async def test_inventario_completo_audita_sucesso_e_desativa(
     rec = AsyncMock(return_value=1)
     monkeypatch.setattr(meta_resync, "record_job_run", rec)
 
-    await meta_resync.reconcile_meta()
+    await meta_resync.reconcile_meta(conn)
 
     desativa.assert_awaited_once()
     assert desativa.await_args.kwargs["ad_account_ids"] == ["act_ausente"]
@@ -206,6 +210,17 @@ async def test_crash_do_job_grava_audit_e_repropaga(monkeypatch: pytest.MonkeyPa
     settings = MagicMock()
     settings.database_url = "postgres://fake"
     monkeypatch.setattr(meta_resync, "get_settings", lambda: settings)
+    # Task 4: `run()` passou a chamar `configure_logging(...)` antes do
+    # `init_pool` (espelha o gêmeo Google). Mockado aqui como todo o resto
+    # desta função — `structlog.configure(...)` é estado GLOBAL do processo
+    # pytest inteiro, não por-teste: rodá-lo de verdade aqui vazava pra
+    # OUTROS arquivos de teste (`test_meta_denial_log.py`, que usa
+    # `capture_logs()` pra afirmar o log de negação de acesso Meta),
+    # dependendo da ordem alfabética de coleta — achado por bisseção, não
+    # deduzido. Este teste prova a orquestração de `run()`, não o
+    # `configure_logging` em si (isso já tem cobertura própria em
+    # test_logging_context.py/test_logging_severity.py).
+    monkeypatch.setattr(meta_resync, "configure_logging", MagicMock())
     monkeypatch.setattr(meta_resync.connection, "init_pool", AsyncMock())
     monkeypatch.setattr(meta_resync.connection, "close_pool", AsyncMock())
     monkeypatch.setattr(meta_resync.connection, "get_pool", lambda: _FakePool())
