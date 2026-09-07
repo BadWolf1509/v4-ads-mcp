@@ -12,10 +12,17 @@ enquanto o `update_campaign_budget`, que produz o MESMO efeito, sempre confirmou
 Agora a tool le o tipo (e o detalhe daquele tipo) por GAQL ANTES de decidir, e
 ramifica em `risk.level`:
 
-* tipo dos 18 que mexem em orcamento ou lance -> `create_pending` +
-  `preview_envelope`, com os valores em BRL e com o contexto da campanha;
+* tipo dos 23 que mexem em orcamento ou lance, ou que MIGRAM a campanha ->
+  `create_pending` + `preview_envelope`, com os valores em BRL e com o contexto
+  da campanha;
 * tipo que o SDK v24 nao conhece -> tambem confirma (ver `blast_radius`);
 * qualquer outro tipo conhecido -> o caminho de antes (auto-aplica).
+
+**C1 (07/09) — irreversibilidade e um eixo proprio.** A primeira versao deste gate
+so olhava alavanca de gasto declarada na mensagem, e migracao nao declara alavanca:
+ela substitui a campanha. Os cinco `*_TO_PERFORMANCE_MAX` / `PERFORMANCE_MAX_OPT_IN`
+seguiam auto-aplicando uma conversao de tipo de campanha SEM CAMINHO DE VOLTA,
+enquanto `update_campaign_bidding` — que produz um efeito menor — e sempre CONFIRM.
 
 O payload guardado leva a IMPRESSAO dos numeros previstos
 (`recommendation_fingerprint`): quem resolve o valor de uma recomendacao e o
@@ -29,6 +36,7 @@ from src.db import connection
 from src.google_ads.mutations import run_recommendation_action
 from src.google_ads.queries.recommendations import (
     TIPOS_CONHECIDOS,
+    TIPOS_DE_MIGRACAO,
     campaign_context_query,
     parse_campaign_context_row,
     parse_recommendation_detail_row,
@@ -72,6 +80,36 @@ def _delta_pct(atual: float | None, recomendado: float | None) -> float | None:
     return round((recomendado - atual) / atual * 100, 2)
 
 
+def _aviso_de_migracao(tipo: str, campanha: dict[str, Any] | None) -> str | None:
+    """C1: o unico fato decisorio de uma migracao e que ela NAO TEM VOLTA.
+
+    Os cinco tipos do eixo 2 (`TIPOS_DE_MIGRACAO`) nao declaram numero nenhum —
+    tres tem mensagem vazia e os outros dois so trazem identificador de Merchant
+    Center. Ate 07/09 isso os punha no ramo AUTO: uma chamada convertia o tipo da
+    campanha sem token e sem preview.
+
+    O texto NAO reaproveita o dos opt-ins de estrategia ("ela TROCA a estrategia
+    de lance"), que seria verdadeiro pela metade e enganoso pela outra: a
+    estrategia muda de fato, mas como CONSEQUENCIA de a campanha deixar de ser o
+    que era. Dizer so a consequencia menor esconde a maior.
+    """
+    if tipo not in TIPOS_DE_MIGRACAO:
+        return None
+    aviso = (
+        "MIGRACAO IRREVERSIVEL: esta recomendacao converte a campanha para "
+        "Performance Max, e o Google nao expoe operacao de volta. Uma campanha "
+        "Performance Max opera apenas sob Smart Bidding, entao a estrategia de "
+        "lance de hoje e substituida junto e o orcamento passa a ser gasto por "
+        "outro mecanismo de entrega"
+    )
+    if campanha is not None:
+        aviso += (
+            f". Hoje a campanha usa {campanha['bidding_strategy_type']} com orcamento "
+            f"de R$ {campanha['daily_budget_brl']:.2f}/dia"
+        )
+    return aviso
+
+
 def _trecho_dos_valores(info: dict[str, Any], campanha: dict[str, Any] | None) -> str:
     """A parte do resumo que carrega os NUMEROS — ou, sem numero, o que sera trocado.
 
@@ -80,6 +118,9 @@ def _trecho_dos_valores(info: dict[str, Any], campanha: dict[str, Any] | None) -
     nenhum a mostrar. Confirmar sem ver nada util e quase tao ruim quanto nao
     confirmar, entao o preview mostra o que a recomendacao TROCA: a estrategia
     de lance e o orcamento diario que a campanha tem hoje.
+
+    Migracao (eixo 2) vem SEMPRE na frente do que houver: o que decide ali nao e
+    um numero, e o fato de a conversao nao ter volta.
     """
     atual = info["current_amount_brl"]
     recomendado = info["recommended_amount_brl"]
@@ -93,6 +134,10 @@ def _trecho_dos_valores(info: dict[str, Any], campanha: dict[str, Any] | None) -
     elif atual is not None:
         partes.append(f"valor atual R$ {atual:.2f}")
     partes += [f"{chave}={valor}" for chave, valor in sorted(info["valores"].items())]
+
+    migracao = _aviso_de_migracao(info["type"], campanha)
+    if migracao is not None:
+        partes.insert(0, migracao)
 
     if partes:
         return "; ".join(partes)
@@ -145,10 +190,13 @@ def _resumo(customer_id: str, info: dict[str, Any], campanha: dict[str, Any] | N
         "USE_BROAD_MATCH_KEYWORD e mais 13) devolve preview com confirmation_token — "
         "valor atual, valor recomendado e a campanha atingida — e so aplica via "
         "apply_change; mesma regra do update_campaign_budget, que produz o mesmo "
-        "efeito. Tipo que o SDK v24 nao conhece tambem confirma. Os demais tipos "
-        "(keyword, sitelink, RSA...) seguem auto-aplicando. O apply_change recusa se "
-        "o Google tiver revisado o valor entre o preview e a confirmacao. Use "
-        "get_recommendations primeiro para listar as disponiveis."
+        "efeito. Os 5 tipos que MIGRAM a campanha para Performance Max "
+        "(PERFORMANCE_MAX_OPT_IN, UPGRADE_*_TO_PERFORMANCE_MAX, MIGRATE_*, "
+        "SHOPPING_MIGRATE_*) tambem confirmam, com aviso de que a conversao e "
+        "IRREVERSIVEL. Tipo que o SDK v24 nao conhece tambem confirma. Os demais "
+        "tipos (keyword, sitelink, RSA...) seguem auto-aplicando. O apply_change "
+        "recusa se o Google tiver revisado o valor entre o preview e a confirmacao. "
+        "Use get_recommendations primeiro para listar as disponiveis."
     ),
     input_schema=_SCHEMA,
     bucket="defer",

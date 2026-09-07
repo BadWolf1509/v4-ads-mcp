@@ -251,8 +251,11 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
     # "Sugestao do Google" nao e uma categoria de risco: `CAMPAIGN_BUDGET` medida
     # em 07/09 propunha R$ 50,00 -> R$ 180,00 (3,6x) numa campanha viva. O MESMO
     # efeito pelo `update_campaign_budget` sempre foi CONFIRM logo acima nesta
-    # funcao — duas portas com governanca oposta. Os 18 tipos que mexem em
-    # orcamento ou lance saem de `CAMPOS_DE_DETALHE`, lida do proto do v24.
+    # funcao — duas portas com governanca oposta. Os 23 tipos saem de
+    # `CAMPOS_DE_DETALHE`, lida do proto do v24 por DOIS eixos: mexer numa
+    # alavanca de gasto ja existente, ou MIGRAR a campanha (C1, 07/09). O eixo da
+    # irreversibilidade faltava, e por isso os cinco `*_TO_PERFORMANCE_MAX` /
+    # `PERFORMANCE_MAX_OPT_IN` auto-aplicavam uma conversao sem volta.
     if operation == "apply_recommendation":
         tipo = str(params.get("recommendation_type") or "").upper()
         if not tipo:

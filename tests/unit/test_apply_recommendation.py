@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import re
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -33,7 +33,11 @@ from google.ads.googleads.v24.enums.types.recommendation_type import Recommendat
 from google.ads.googleads.v24.resources.types.recommendation import Recommendation
 
 from src.db import connection
-from src.google_ads.queries.recommendations import CAMPOS_DE_DETALHE, TIPOS_QUE_CONFIRMAM
+from src.google_ads.queries.recommendations import (
+    CAMPOS_DE_DETALHE,
+    TIPOS_DE_MIGRACAO,
+    TIPOS_QUE_CONFIRMAM,
+)
 from src.mcp.tools import apply_recommendation as mod
 
 _CUSTOMER = "1171969590"
@@ -41,7 +45,7 @@ _CAMPANHA_ID = "22922100363"
 _CAMPANHA_RN = f"customers/{_CUSTOMER}/campaigns/{_CAMPANHA_ID}"
 _REC_RN = f"customers/{_CUSTOMER}/recommendations/NzMyNjkxNjcxNC0xMDAtMTc4ODcxMDQ2NDg4My0"
 
-# A lista dos 18 e LITERAL de proposito. Parametrizar sobre
+# A lista dos 23 e LITERAL de proposito. Parametrizar sobre
 # `TIPOS_QUE_CONFIRMAM` faria a sabotagem "tirar um tipo da whitelist" APAGAR o
 # caso de teste em vez de deixa-lo vermelho — o modo de falha que o CLAUDE.md
 # chama de "asserir o adjacente".
@@ -51,9 +55,13 @@ _REC_RN = f"customers/{_CUSTOMER}/recommendations/NzMyNjkxNjcxNC0xMDAtMTc4ODcxMD
 # por nome (`BUDGET|BID|TARGET_CPA|...`) deixava o `USE_BROAD_MATCH_KEYWORD` de
 # fora, que converte TODAS as keywords da campanha para ampla e declara o mesmo
 # `required_campaign_budget_amount_micros` do `TARGET_ROAS_OPT_IN`. O criterio
-# completo e a varredura que o refaz vivem em
+# completo (dois eixos) e a varredura que o refaz vivem em
 # `test_whitelist_de_recomendacao_bate_com_o_proto.py`.
-_OS_DEZOITO = (
+#
+# Os 5 ultimos entraram pelo EIXO 2 (C1 da revisao final): nao declaram alavanca
+# nenhuma — tres tem mensagem vazia — mas MIGRAM a campanha para Performance Max,
+# e migracao nao tem volta.
+_OS_VINTE_E_TRES = (
     "CAMPAIGN_BUDGET",
     "FORECASTING_CAMPAIGN_BUDGET",
     "MARGINAL_ROI_CAMPAIGN_BUDGET",
@@ -72,6 +80,21 @@ _OS_DEZOITO = (
     "FORECASTING_SET_TARGET_CPA",
     "FORECASTING_SET_TARGET_ROAS",
     "USE_BROAD_MATCH_KEYWORD",
+    "PERFORMANCE_MAX_OPT_IN",
+    "UPGRADE_LOCAL_CAMPAIGN_TO_PERFORMANCE_MAX",
+    "UPGRADE_SMART_SHOPPING_CAMPAIGN_TO_PERFORMANCE_MAX",
+    "MIGRATE_DYNAMIC_SEARCH_ADS_CAMPAIGN_TO_PERFORMANCE_MAX",
+    "SHOPPING_MIGRATE_REGULAR_SHOPPING_CAMPAIGN_OFFERS_TO_PERFORMANCE_MAX",
+)
+
+# As 5 do eixo 2, tambem literais — o preview delas nao pode dizer so
+# "troca a estrategia de lance".
+_AS_CINCO_MIGRACOES = (
+    "PERFORMANCE_MAX_OPT_IN",
+    "UPGRADE_LOCAL_CAMPAIGN_TO_PERFORMANCE_MAX",
+    "UPGRADE_SMART_SHOPPING_CAMPAIGN_TO_PERFORMANCE_MAX",
+    "MIGRATE_DYNAMIC_SEARCH_ADS_CAMPAIGN_TO_PERFORMANCE_MAX",
+    "SHOPPING_MIGRATE_REGULAR_SHOPPING_CAMPAIGN_OFFERS_TO_PERFORMANCE_MAX",
 )
 
 # Numero de enum que o v24 nao conhece — o tipo que o Google lancar amanha.
@@ -114,7 +137,14 @@ def _linha_de_recomendacao(query: str, tipo: str, *, atual: int, recomendado: in
     rec = Recommendation()
     if "recommendation.type" in pedidos:
         membros = RecommendationTypeEnum.RecommendationType.__members__
-        rec.type_ = membros[tipo] if tipo in membros else int(tipo)
+        # O `int` cru e DELIBERADO e nao cabe na anotacao do proto-plus: e assim
+        # que se representa o tipo que o Google lancar depois do v24 (o caso do
+        # `999`). proto-plus aceita, avisa por `UserWarning`, e `_nome_do_enum`
+        # devolve a string crua — que e exatamente o estado que o gate precisa
+        # tratar. `cast` em vez de `type: ignore` porque a incompatibilidade e do
+        # STUB, nao do runtime, e um ignore mudo esconderia um erro de verdade.
+        bruto = membros[tipo] if tipo in membros else int(tipo)
+        rec.type_ = cast(RecommendationTypeEnum.RecommendationType, bruto)
     if "recommendation.resource_name" in pedidos:
         rec.resource_name = _REC_RN
     if "recommendation.campaign" in pedidos:
@@ -338,31 +368,37 @@ async def test_tipos_fora_da_familia_seguem_auto(
 
 
 # --------------------------------------------------------------------------- #
-# 3. Os 18 da probe do proto.
+# 3. Os 23 da probe do proto.
 # --------------------------------------------------------------------------- #
-def test_a_whitelist_e_exatamente_os_dezoito() -> None:
+def test_a_whitelist_e_exatamente_os_vinte_e_tres() -> None:
     """A lista literal acima contra a tabela de producao — nos dois sentidos."""
-    assert frozenset(_OS_DEZOITO) == TIPOS_QUE_CONFIRMAM
-    assert len(_OS_DEZOITO) == 18
+    assert frozenset(_OS_VINTE_E_TRES) == TIPOS_QUE_CONFIRMAM
+    assert len(_OS_VINTE_E_TRES) == 23
 
 
-def test_os_dezoito_existem_no_enum_do_google() -> None:
+def test_as_cinco_migracoes_estao_na_whitelist() -> None:
+    """C1: ate 07/09 os cinco auto-aplicavam uma conversao de campanha sem volta."""
+    assert frozenset(_AS_CINCO_MIGRACOES) == TIPOS_DE_MIGRACAO
+    assert frozenset(_AS_CINCO_MIGRACOES) <= TIPOS_QUE_CONFIRMAM
+
+
+def test_os_vinte_e_tres_existem_no_enum_do_google() -> None:
     """Nome digitado errado (ou renomeado pelo Google) viraria buraco silencioso."""
     enum = RecommendationTypeEnum.RecommendationType
-    for tipo in _OS_DEZOITO:
+    for tipo in _OS_VINTE_E_TRES:
         assert tipo in enum.__members__, f"{tipo} nao existe no enum do v24"
 
 
-@pytest.mark.parametrize("tipo", sorted(_OS_DEZOITO))
+@pytest.mark.parametrize("tipo", sorted(_OS_VINTE_E_TRES))
 async def test_todo_tipo_da_familia_confirma(monkeypatch: pytest.MonkeyPatch, tipo: str) -> None:
-    """Os 18 vem da leitura do proto, nao de memoria nem de grep no enum."""
+    """Os 23 vem da leitura do proto, nao de memoria nem de grep no enum."""
     env = await _aplicar(monkeypatch, tipo=tipo)
     assert env["status"] == "dry_run", f"{tipo} aplicado sem confirmacao"
     assert env["confirmation_token"]
     assert env["recommendation_type"] == tipo
 
 
-@pytest.mark.parametrize("tipo", sorted(_OS_DEZOITO))
+@pytest.mark.parametrize("tipo", sorted(_OS_VINTE_E_TRES))
 def test_todo_tipo_da_familia_tem_traducao_pt(tipo: str) -> None:
     """Confirmar mudanca de lance lendo so o enum em ingles nao e confirmar."""
     from src.google_ads.queries.recommendations import TYPE_PT
@@ -391,6 +427,28 @@ async def test_tipo_sem_numero_mostra_a_estrategia_que_vai_ser_trocada(
     assert env["campanha"]["bidding_strategy_type"] == "MAXIMIZE_CONVERSIONS"
     assert env["campanha"]["daily_budget_brl"] == 50.0
     assert "MAXIMIZE_CONVERSIONS" in env["blast_summary"]
+
+
+@pytest.mark.parametrize("tipo", sorted(_AS_CINCO_MIGRACOES))
+async def test_migracao_avisa_que_nao_tem_volta(monkeypatch: pytest.MonkeyPatch, tipo: str) -> None:
+    """C1: o gate sozinho nao basta — o preview tem que dizer o que decide.
+
+    Estes cinco nao tem numero nenhum a mostrar, entao antes do C1 caiam no texto
+    dos opt-ins de estrategia ("ela TROCA a estrategia de lance"), que descreve a
+    consequencia menor e esconde a maior. O aviso vai tambem no `blast_summary`,
+    que e o que o `apply_change` reexibe dez minutos depois (achado da Task 1).
+    """
+    capturado = _wire(monkeypatch, tipo=tipo)
+    env = await mod.apply_recommendation(
+        {"customer_id": _CUSTOMER, "recommendation_resource_name": _REC_RN}
+    )
+    assert env["status"] == "dry_run", f"{tipo} aplicado sem confirmacao"
+    for texto in (env["blast_summary"], capturado["blast_summary"]):
+        assert "IRREVERSIVEL" in texto, f"{tipo}: summary sem o aviso de migracao: {texto}"
+        assert "Performance Max" in texto
+        assert "TROCA a estrategia de lance" not in texto, (
+            f"{tipo}: caiu no texto dos opt-ins de estrategia"
+        )
 
 
 async def test_tipo_de_razao_nao_vira_reais(monkeypatch: pytest.MonkeyPatch) -> None:

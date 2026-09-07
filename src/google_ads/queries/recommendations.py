@@ -15,37 +15,75 @@ mas a GAQL **nao** as expoe individualmente. Probado em 07/09 na conta
 Seleciona-se a MENSAGEM; o SDK a popula; o Python le a folha do objeto. Quem
 escrever a query olhando o proto erra.
 
-`CAMPOS_DE_DETALHE` tem os 18 tipos que mexem em ORCAMENTO ou LANCE. Os campos de
-detalhe foram validados por `validate_gaql` em 07/09, um a um e todos juntos; a
-linha viva da 1171969590 (`CAMPAIGN_BUDGET`, campanha 22922100363) devolveu
-`current_budget_amount_micros: 50000000` e `recommended_budget_amount_micros:
-180000000` — o aumento de 3,6x que ate 07/09 se aplicava sem preview nenhum.
+`CAMPOS_DE_DETALHE` tem os 23 tipos que mexem em ORCAMENTO ou LANCE, ou que
+MIGRAM a campanha. Os campos de detalhe foram validados por `validate_gaql` em
+07/09, um a um e todos juntos; a linha viva da 1171969590 (`CAMPAIGN_BUDGET`,
+campanha 22922100363) devolveu `current_budget_amount_micros: 50000000` e
+`recommended_budget_amount_micros: 180000000` — o aumento de 3,6x que ate 07/09
+se aplicava sem preview nenhum.
 
-**Como os 18 foram escolhidos — e por que a primeira lista tinha 17.** A lista
-original saiu de um `grep` do enum por `BUDGET|BID|TARGET_CPA|TARGET_ROAS|
-MAXIMIZE|ENHANCED_CPC|ROI|CPC`, e filtro por NOME nao e probe: o
+**Como a lista foi escolhida — e as duas vezes que o criterio estava errado.** A
+primeira versao saiu de um `grep` do enum por `BUDGET|BID|TARGET_CPA|TARGET_ROAS|
+MAXIMIZE|ENHANCED_CPC|ROI|CPC` (17 tipos), e filtro por NOME nao e probe: o
 `USE_BROAD_MATCH_KEYWORD` nao casa nenhum daqueles padroes, converte **todas** as
 keywords da campanha para correspondencia ampla, e declara no proto o MESMO campo
 (`required_campaign_budget_amount_micros`) que ja punha o `TARGET_ROAS_OPT_IN`
 dentro da lista. Um campo identico decidindo o oposto e a prova de que o criterio
-era o nome, nao o efeito.
+era o nome, nao o efeito. Com o proto no lugar do grep, 18.
 
-O criterio agora e o PROTO (`v24/resources/types/recommendation.py`), lido campo a
-campo. Entra na tabela o tipo cuja mensagem de detalhe:
+A segunda versao (18) tinha um eixo faltando, nao um tipo. O criterio dizia
+"a mensagem de detalhe declara alavanca de gasto ja existente" — e **migracao nao
+declara alavanca: ela substitui a campanha**. Os cinco tipos que convertem a
+campanha para Performance Max caiam no ramo AUTO, isto e, uma chamada sem token e
+sem preview trocava o tipo da campanha **sem caminho de volta**, enquanto a porta
+direta equivalente (`update_campaign_bidding`) e sempre CONFIRM. Irreversibilidade
+e um eixo proprio: "quanto muda" e "da pra desfazer" sao perguntas diferentes, e a
+segunda nao se responde olhando os campos da mensagem.
+
+**O criterio, por extenso.** O criterio e o PROTO
+(`v24/resources/types/recommendation.py`) lido campo a campo, mais o enum de tipos
+de campanha do mesmo SDK. Entra na tabela o tipo que satisfaz **qualquer** um dos
+dois eixos:
+
+**Eixo 1 — a recomendacao mexe numa alavanca de gasto que JA existe.** Vale se a
+mensagem de detalhe do tipo:
 
 1. declara um campo de **alavanca de gasto ja existente** — orcamento
-   (`*budget*amount_micros`), alvo de lance (`*target_cpa_micros`,
-   `*target_roas`, `*target_multiplier`, `*average_target_micros`) ou o flag de
-   orcamento compartilhado (`*uses_shared_budget`); **ou**
+   (`*budget*amount_micros`, `*budget.current_amount_micros`,
+   `*budget.recommended_new_amount_micros`), alvo de lance
+   (`*target_cpa_micros`, `*target_roas`, `*target_multiplier`,
+   `*average_target_micros`), CPC (`*cpc_bid_micros`) ou o flag de orcamento
+   compartilhado (`*uses_shared_budget`); **ou**
 2. e **vazia** e o nome do tipo, sem o sufixo `_OPT_IN`, e um valor de
    `BiddingStrategyTypeEnum` — `ENHANCED_CPC_OPT_IN` e
    `MAXIMIZE_CONVERSION_VALUE_OPT_IN`. Mensagem vazia ali e ausencia de
    PARAMETRO (a troca de estrategia nao tem numero a escolher), nao ausencia de
-   efeito sobre o lance. Nenhum dos outros 10 tipos de mensagem vazia passa nesse
-   teste: `SEARCH_PARTNERS_OPT_IN` e rede, `PERFORMANCE_MAX_OPT_IN` e tipo de
-   campanha, e assim por diante.
+   efeito sobre o lance.
 
-A UNICA excecao escrita e o `KEYWORD`, que passa em (1) por
+**Eixo 2 — a recomendacao e IRREVERSIVEL porque MIGRA a campanha para outro tipo
+de campanha.** Vale se o nome do tipo declara a migracao e o **destino** e um
+valor de `AdvertisingChannelTypeEnum` — ou seja `<CANAL>_OPT_IN`, ou
+`..._TO_<CANAL>` (com `_CAMPAIGN`/`_CAMPAIGNS` opcional no fim). Sao cinco:
+`PERFORMANCE_MAX_OPT_IN`, `UPGRADE_LOCAL_CAMPAIGN_TO_PERFORMANCE_MAX`,
+`UPGRADE_SMART_SHOPPING_CAMPAIGN_TO_PERFORMANCE_MAX`,
+`MIGRATE_DYNAMIC_SEARCH_ADS_CAMPAIGN_TO_PERFORMANCE_MAX` e
+`SHOPPING_MIGRATE_REGULAR_SHOPPING_CAMPAIGN_OFFERS_TO_PERFORMANCE_MAX` (ver
+`TIPOS_DE_MIGRACAO`). Os campos da mensagem nao decidem nada aqui: tres delas sao
+vazias e as outras duas so trazem identificadores do Merchant Center — o que
+decide e que a campanha **deixa de ser o que era**. Uma campanha Performance Max
+opera apenas sob Smart Bidding, entao a migracao troca junto a estrategia de
+lance, e o Google nao expoe operacao inversa.
+
+O eixo 2 e ancorado no enum de canal pelo mesmo motivo que o eixo 1.2 e ancorado
+no de estrategia de lance: e uma lista que o Google mantem, nao um padrao que
+alguem aqui inventou. E ele separa os quase-casos sozinho —
+`PERFORMANCE_MAX_FINAL_URL_OPT_IN` (raiz `PERFORMANCE_MAX_FINAL_URL`, que nao e
+canal: liga expansao de URL numa PMax que ja existe, e desliga de volta),
+`IMPROVE_PERFORMANCE_MAX_AD_STRENGTH` (nem `_TO_` nem `_OPT_IN`) e
+`SHOPPING_ADD_PRODUCTS_TO_CAMPAIGN` (destino `CAMPAIGN`, que nao e canal) ficam
+todos de fora.
+
+A UNICA excecao escrita e o `KEYWORD`, que passa no eixo 1 por
 `recommended_cpc_bid_micros` e mesmo assim fica de FORA: aquele CPC e atributo de
 uma palavra-chave que ainda **nao existe**, nao mudanca de uma alavanca que ja
 esta gastando — nem o orcamento diario nem nenhum lance vigente se movem. A porta
@@ -218,11 +256,49 @@ CAMPOS_DE_DETALHE: dict[str, DetalheDoTipo] = {
     "MAXIMIZE_CONVERSION_VALUE_OPT_IN": DetalheDoTipo(
         "maximize_conversion_value_opt_in_recommendation"
     ),
+    # --- eixo 2: MIGRAM a campanha, e migracao nao tem volta ---
+    # Nenhum destes declara alavanca de gasto — tres tem mensagem VAZIA e os
+    # outros dois so trazem identificador de Merchant Center. Era exatamente por
+    # isso que caiam no ramo AUTO ate 07/09: o criterio antigo perguntava so
+    # "quanto muda", e a resposta aqui e "nada que a mensagem saiba dizer". O que
+    # muda e o QUE a campanha e. Os cinco campos de detalhe foram validados por
+    # `validate_gaql` na 1171969590 (07/09), um a um e junto com os outros 18.
+    "PERFORMANCE_MAX_OPT_IN": DetalheDoTipo("performance_max_opt_in_recommendation"),
+    "UPGRADE_LOCAL_CAMPAIGN_TO_PERFORMANCE_MAX": DetalheDoTipo(
+        "upgrade_local_campaign_to_performance_max_recommendation"
+    ),
+    "UPGRADE_SMART_SHOPPING_CAMPAIGN_TO_PERFORMANCE_MAX": DetalheDoTipo(
+        "upgrade_smart_shopping_campaign_to_performance_max_recommendation"
+    ),
+    "MIGRATE_DYNAMIC_SEARCH_ADS_CAMPAIGN_TO_PERFORMANCE_MAX": DetalheDoTipo(
+        "migrate_dynamic_search_ads_campaign_to_performance_max_recommendation"
+    ),
+    "SHOPPING_MIGRATE_REGULAR_SHOPPING_CAMPAIGN_OFFERS_TO_PERFORMANCE_MAX": DetalheDoTipo(
+        "shopping_migrate_regular_shopping_campaign_offers_to_performance_max_recommendation"
+    ),
 }
 
-# DERIVADO, nao enumerado de novo: a lista dos 18 vive num lugar so. Acrescentar
+# DERIVADO, nao enumerado de novo: a lista dos 23 vive num lugar so. Acrescentar
 # um tipo a tabela acima ja o poe sob confirmacao.
 TIPOS_QUE_CONFIRMAM: frozenset[str] = frozenset(CAMPOS_DE_DETALHE)
+
+# Os do EIXO 2. Escrita a mao aqui de proposito: o guard
+# `test_whitelist_de_recomendacao_bate_com_o_proto.py` refaz a derivacao a partir
+# do `AdvertisingChannelTypeEnum` e compara nos dois sentidos — duas fontes
+# independentes. Derivar as duas do mesmo lugar daria um teste verdadeiro
+# independente da implementacao.
+#
+# Quem le isto e o preview: migracao nao tem numero a mostrar, entao o que o
+# gestor precisa ver antes de confirmar e que a conversao NAO TEM VOLTA.
+TIPOS_DE_MIGRACAO: frozenset[str] = frozenset(
+    {
+        "PERFORMANCE_MAX_OPT_IN",
+        "UPGRADE_LOCAL_CAMPAIGN_TO_PERFORMANCE_MAX",
+        "UPGRADE_SMART_SHOPPING_CAMPAIGN_TO_PERFORMANCE_MAX",
+        "MIGRATE_DYNAMIC_SEARCH_ADS_CAMPAIGN_TO_PERFORMANCE_MAX",
+        "SHOPPING_MIGRATE_REGULAR_SHOPPING_CAMPAIGN_OFFERS_TO_PERFORMANCE_MAX",
+    }
+)
 
 # Todo tipo que o SDK v24 sabe nomear. `UNSPECIFIED` e `UNKNOWN` ficam de FORA de
 # proposito: sao os dois valores com que o proprio proto diz "nao sei o que isto
@@ -276,6 +352,12 @@ TYPE_PT = {
     # Performance Max upgrades (Google pushes these aggressively in 2024+)
     "UPGRADE_LOCAL_CAMPAIGN_TO_PERFORMANCE_MAX": "Migrar Local pra Performance Max",
     "UPGRADE_SMART_SHOPPING_CAMPAIGN_TO_PERFORMANCE_MAX": "Migrar Smart Shopping pra Performance Max",
+    "MIGRATE_DYNAMIC_SEARCH_ADS_CAMPAIGN_TO_PERFORMANCE_MAX": (
+        "Migrar Dynamic Search Ads pra Performance Max"
+    ),
+    "SHOPPING_MIGRATE_REGULAR_SHOPPING_CAMPAIGN_OFFERS_TO_PERFORMANCE_MAX": (
+        "Migrar ofertas do Shopping comum pra Performance Max"
+    ),
     "IMPROVE_PERFORMANCE_MAX_AD_STRENGTH": "Melhorar forca do Performance Max",
     # C2 — os que faltavam da familia de orcamento/lance. Sem traducao, o gestor
     # confirmaria uma mudanca de lance lendo so o enum em ingles.
@@ -313,12 +395,12 @@ def recommendations_query(limit: int = 100) -> str:
 
 
 def _campos_de_detalhe_selecionados() -> list[str]:
-    """Os 18 campos de detalhe, ordenados — a lista sai da tabela, nao de uma copia."""
+    """Os 23 campos de detalhe, ordenados — a lista sai da tabela, nao de uma copia."""
     return sorted({f"recommendation.{d.campo}" for d in CAMPOS_DE_DETALHE.values()})
 
 
 def recommendation_detail_query(resource_name: str) -> str:
-    """Uma recomendacao pelo resource_name, com tipo + o detalhe de todos os 18 tipos.
+    """Uma recomendacao pelo resource_name, com tipo + o detalhe de todos os 23 tipos.
 
     **Sem join com `campaign` de proposito.** Selecionar `campaign.*` daqui faria
     um join implicito, e nao ha como medir (em 07/09 nenhuma conta do MCC tinha
