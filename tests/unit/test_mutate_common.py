@@ -7,8 +7,12 @@ que estava copiado em cada tool. Cobre shape, DEFAULT_TTL_MINUTES usado
 passando por-tool fields sem colidir com os campos canônicos.
 """
 
+import ast
+import re
+
 from src.governance.dry_run import DEFAULT_TTL_MINUTES
 from src.mcp.tools._mutate_common import applied_envelope, error_envelope, preview_envelope
+from tests.unit import _guard_harness as h
 
 # ---------------------------------------------------------------------------
 # error_envelope
@@ -196,3 +200,91 @@ def test_preview_envelope_extra_does_not_override_canonical_fields_order():
         "to_apply",
     ):
         assert key in result
+
+
+# ---------------------------------------------------------------------------
+# TTL nas DESCRIPTIONS: o numero nunca escrito a mao
+# ---------------------------------------------------------------------------
+#
+# `preview_envelope` ja derivava `expires_in_minutes` de DEFAULT_TTL_MINUTES
+# (teste acima). A description do `apply_change` — o texto que o cliente MCP
+# le, e sobre o qual o gestor planeja — continuava dizendo "expira em 10
+# minutos" como literal. Sao duas fontes de verdade para o mesmo numero: mudar
+# a constante deixaria a description mentindo, sem nada ficar vermelho.
+#
+# Duas asserções, e as duas fazem falta:
+#  - a ESTRUTURAL proibe escrever o numero a mao (o que morde hoje);
+#  - a de VALOR confere que o texto renderizado bate com a constante (o que
+#    morderia se a constante mudasse e a description nao acompanhasse).
+
+
+def _descriptions_registradas() -> dict[str, str]:
+    from src.mcp.tools._registry import all_tools, import_all_tools
+
+    import_all_tools()
+    return {t.name: t.description for t in all_tools()}
+
+
+_MINUTOS_LITERAL = re.compile(r"\d+\s*minuto")
+
+
+def _descriptions_com_minuto_literal() -> list[str]:
+    """(arquivo:linha) de cada `description=` que escreve o numero de minutos.
+
+    Le a ARVORE, nao o texto do arquivo: comentario e docstring destes modulos
+    citam o TTL em prosa ("ate 10 minutos atras") para explicar a concorrencia
+    otimista, e um grep casaria a propria explicacao. O AST so ve o argumento
+    `description` do `register_tool`.
+
+    Uma f-string (`ast.JoinedStr`) tem os pedacos constantes separados do
+    `{DEFAULT_TTL_MINUTES}` — entao o numero derivado NAO aparece aqui, que e
+    exatamente a distincao que este guard existe pra fazer.
+    """
+    ofensores: list[str] = []
+    for p in h.fontes_py(h.SRC / "mcp" / "tools"):
+        arv = h.arvore(p)
+        for no in ast.walk(arv):
+            if not isinstance(no, ast.Call):
+                continue
+            f = no.func
+            nome = (
+                f.id
+                if isinstance(f, ast.Name)
+                else (f.attr if isinstance(f, ast.Attribute) else "")
+            )
+            if nome != "register_tool":
+                continue
+            for kw in no.keywords:
+                if kw.arg != "description":
+                    continue
+                for sub in ast.walk(kw.value):
+                    if (
+                        isinstance(sub, ast.Constant)
+                        and isinstance(sub.value, str)
+                        and _MINUTOS_LITERAL.search(sub.value)
+                    ):
+                        ofensores.append(f"{h.rel(p)}:{sub.lineno}")
+    return ofensores
+
+
+def test_nenhuma_description_escreve_o_ttl_a_mao() -> None:
+    """O numero de minutos numa description tem que vir de DEFAULT_TTL_MINUTES."""
+    ofensores = _descriptions_com_minuto_literal()
+    assert not ofensores, (
+        f"description com o TTL escrito a mao: {ofensores}. Use uma f-string com "
+        "DEFAULT_TTL_MINUTES (src/governance/dry_run.py) — o literal e' uma "
+        "segunda fonte de verdade, e quando a constante mudar a description "
+        "passa a mentir para o gestor sem nenhum teste ficar vermelho."
+    )
+
+
+def test_a_description_do_apply_change_diz_o_ttl_que_vale() -> None:
+    """Contra-parte de VALOR: o texto renderizado bate com a constante.
+
+    O guard estrutural sozinho aceitaria uma f-string sobre a variavel errada.
+    """
+    descricao = _descriptions_registradas()["apply_change"]
+    assert f"{DEFAULT_TTL_MINUTES} minutos" in descricao, (
+        f"a description do apply_change nao anuncia o TTL real "
+        f"({DEFAULT_TTL_MINUTES} min): {descricao!r}"
+    )

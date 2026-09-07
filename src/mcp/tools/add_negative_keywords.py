@@ -6,6 +6,7 @@ from typing import Any
 from src.google_ads.mutations import run_mutation
 from src.governance.blast_radius import classify
 from src.mcp.context import get_current
+from src.mcp.tools._mutate_common import applied_envelope
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -77,14 +78,13 @@ async def add_negative_keywords(args: dict[str, Any]) -> dict[str, Any]:
         payload=payload,
         target_count=target_count,
     )
-    return {
-        "status": "applied",
-        "operation": "add_negative_keywords",
-        "customer_id": customer_id,
-        "campaign_id": campaign_id,
-        "blast_summary": summary,
-        "applied_count": result["applied_count"],
-        "provider_request_id": result["provider_request_id"],
-        "auto_applied_reason": risk.reason,
-        "resource_names": result.get("resource_names", []),
-    }
+    return applied_envelope(
+        "add_negative_keywords",
+        customer_id,
+        summary,
+        applied_count=result["applied_count"],
+        provider_request_id=result["provider_request_id"],
+        auto_applied_reason=risk.reason,
+        campaign_id=campaign_id,
+        resource_names=result.get("resource_names", []),
+    )

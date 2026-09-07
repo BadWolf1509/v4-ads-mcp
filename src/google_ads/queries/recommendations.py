@@ -456,7 +456,7 @@ def recommendation_fingerprint(info: dict[str, Any]) -> dict[str, Any]:
 
     Quem resolve o valor de uma recomendacao e o Google, **na hora do apply**: a
     operacao viaja so com o `resource_name`, sem parametro nenhum. Entre o preview
-    e a confirmacao passam ate 10 minutos (o TTL), e nesse intervalo o Google pode
+    e a confirmacao passa o TTL inteiro (`DEFAULT_TTL_MINUTES`), e nele o Google pode
     revisar a recomendacao — o `blast_summary` continuaria dizendo
     "R$ 50,00 -> R$ 180,00" enquanto outro numero aterrissa. Mostrar o numero e o
     ponto inteiro do gate C2; um numero que pode nao valer mais nao gateia nada.
