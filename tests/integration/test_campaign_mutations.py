@@ -103,6 +103,12 @@ async def test_update_campaign_budget_dry_runs_with_delta(db, session_ctx):
             "campaign_budget_resource_name": "customers/1234567890/campaignBudgets/9999",
             "current_amount_micros": 100_000_000,  # R$ 100
             "campaign_name": "Test Campaign",
+            # C1: a mutacao e no recurso ORCAMENTO. `explicitly_shared` False mantem
+            # este caso no orcamento exclusivo — o portfolio tem cobertura propria em
+            # tests/unit/test_update_campaign_budget.py, que aplica o row_formatter
+            # de verdade sobre o SELECT da GAQL.
+            "budget_id": "9999",
+            "explicitly_shared": False,
         }
     ]
     with patch(
@@ -121,6 +127,7 @@ async def test_update_campaign_budget_dry_runs_with_delta(db, session_ctx):
     assert result["current_amount_brl"] == 100.0
     assert result["new_amount_brl"] == 150.0
     assert result["delta_pct"] == 50.0
+    assert result["shared_budget"] is None
     assert "confirmation_token" in result
 
 
