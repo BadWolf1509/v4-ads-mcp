@@ -37,6 +37,7 @@ from src.google_ads.queries.recommendations import (
     CAMPOS_DE_DETALHE,
     TIPOS_DE_MIGRACAO,
     TIPOS_QUE_CONFIRMAM,
+    parse_recommendation_detail_row,
 )
 from src.mcp.tools import apply_recommendation as mod
 
@@ -113,8 +114,21 @@ def _campos_do_select(query: str) -> set[str]:
 
 
 def _setar(msg: Any, caminho: str, valor: Any) -> None:
+    """Popula a folha, criando UM item quando o segmento e repetido (`[]`).
+
+    Um item basta e e o pior caso util: a leitura tem que devolver LISTA mesmo
+    com um elemento so, senao o consumidor trata lista como escalar.
+    """
     partes = caminho.split(".")
-    for parte in partes[:-1]:
+    for i, parte in enumerate(partes[:-1]):
+        if parte.endswith("[]"):
+            repetido = getattr(msg, parte[:-2])
+            if not repetido:
+                # proto-plus marshala o dict vazio no tipo certo do repeated.
+                repetido.append({})
+            msg = repetido[0]
+            _setar(msg, ".".join(partes[i + 1 :]), valor)
+            return
         msg = getattr(msg, parte)
     setattr(msg, partes[-1], valor)
 
@@ -562,3 +576,121 @@ async def test_o_resource_name_entra_escapado_na_gaql() -> None:
     q = recommendation_detail_query("customers/1/recommendations/O'Brien\\x")
     assert "O\\'Brien" in q
     assert "\\\\x" in q
+
+
+# --------------------------------------------------------------------------- #
+# 5. I2 — o preview le o que a mensagem declara, e ausencia nao vira zero.
+# --------------------------------------------------------------------------- #
+_OS_QUATRO_COM_ORCAMENTO = (
+    "SET_TARGET_CPA",
+    "SET_TARGET_ROAS",
+    "FORECASTING_SET_TARGET_CPA",
+    "FORECASTING_SET_TARGET_ROAS",
+)
+
+
+def _row(tipo: str) -> Any:
+    """Uma linha crua do proto, para exercitar o PARSER sem passar pela tool."""
+    rec = Recommendation()
+    rec.type_ = RecommendationTypeEnum.RecommendationType.__members__[tipo]
+    rec.resource_name = _REC_RN
+    return SimpleNamespace(recommendation=rec)
+
+
+@pytest.mark.parametrize("tipo", sorted(_OS_QUATRO_COM_ORCAMENTO))
+async def test_alvo_de_cpa_e_roas_mostra_o_orcamento_que_vem_junto(
+    monkeypatch: pytest.MonkeyPatch, tipo: str
+) -> None:
+    """I2: os quatro declaram `campaign_budget` na PROPRIA mensagem.
+
+    Ate 07/09 o preview mostrava so o alvo: o gestor confirmava "Definir Target
+    CPA R$ 77,00" e aplicava junto uma mudanca do orcamento diario que nunca lhe
+    foi mostrada. E o irmao `TARGET_ROAS_OPT_IN` ja lia o campo equivalente — a
+    tabela se contradizia. Vale tambem no `blast_summary`, que e o que o
+    `apply_change` reexibe.
+    """
+    capturado = _wire(monkeypatch, tipo=tipo)
+    env = await mod.apply_recommendation(
+        {"customer_id": _CUSTOMER, "recommendation_resource_name": _REC_RN}
+    )
+    assert env["status"] == "dry_run"
+    assert env["valores"]["orcamento_atual_brl"] == 77.0, f"{tipo}: orcamento atual nao aparece"
+    assert env["valores"]["orcamento_novo_brl"] == 77.0, f"{tipo}: orcamento novo nao aparece"
+    assert "orcamento_novo_brl" in capturado["blast_summary"], (
+        f"{tipo}: o orcamento nao chega ao summary que o apply_change reexibe"
+    )
+
+
+def test_orcamento_ausente_nao_vira_r_zero_no_preview() -> None:
+    """F145 pela porta dos fundos: proto-plus nunca omite atributo.
+
+    Uma `SET_TARGET_CPA` que nao propoe orcamento devolve `campaign_budget`
+    ZERADO, nao ausente. Emitir a chave assim mesmo poria "orcamento_atual_brl=0.0"
+    num preview — numero inventado com cara de medido. Par com o controle positivo
+    abaixo: sem ele, um parser que nunca emitisse a chave passaria neste teste.
+    """
+    linha = _row("SET_TARGET_CPA")
+    linha.recommendation.set_target_cpa_recommendation.recommended_target_cpa_micros = 77_000_000
+    info = parse_recommendation_detail_row(linha)
+    assert info["recommended_amount_brl"] == 77.0
+    assert "orcamento_atual_brl" not in info["valores"], "zero-value virou orcamento no preview"
+    assert "orcamento_novo_brl" not in info["valores"]
+
+
+def test_orcamento_presente_aparece__controle_positivo() -> None:
+    """O par do teste acima: com o campo preenchido, as duas chaves saem."""
+    linha = _row("SET_TARGET_CPA")
+    detalhe = linha.recommendation.set_target_cpa_recommendation
+    detalhe.recommended_target_cpa_micros = 77_000_000
+    detalhe.campaign_budget.current_amount_micros = 50_000_000
+    detalhe.campaign_budget.recommended_new_amount_micros = 180_000_000
+    info = parse_recommendation_detail_row(linha)
+    assert info["valores"]["orcamento_atual_brl"] == 50.0
+    assert info["valores"]["orcamento_novo_brl"] == 180.0
+
+
+def test_target_cpa_opt_in_le_a_lista_de_opcoes_e_nao_quebra() -> None:
+    """`options` e REPEATED: `getattr` nele levanta AttributeError (medido no v24).
+
+    A correcao "obvia" que a revisao sugeriu
+    (`options.required_campaign_budget_amount_micros`, sem `[]`) derrubaria a tool
+    em producao — e o guard de existencia do proto passaria verde, porque a folha
+    existe no descriptor. Nao ha UM orcamento a mostrar: ha a faixa das metas
+    disponiveis, e e a faixa que sai.
+    """
+    linha = _row("TARGET_CPA_OPT_IN")
+    detalhe = linha.recommendation.target_cpa_opt_in_recommendation
+    detalhe.recommended_target_cpa_micros = 77_000_000
+    detalhe.options.append(
+        {"target_cpa_micros": 60_000_000, "required_campaign_budget_amount_micros": 150_000_000}
+    )
+    detalhe.options.append(
+        {"target_cpa_micros": 90_000_000, "required_campaign_budget_amount_micros": 300_000_000}
+    )
+    info = parse_recommendation_detail_row(linha)
+    assert info["valores"]["target_cpa_por_opcao_brl"] == [60.0, 90.0]
+    assert info["valores"]["orcamento_exigido_por_opcao_brl"] == [150.0, 300.0]
+
+
+def test_lista_vazia_de_opcoes_nao_emite_chave__controle_positivo() -> None:
+    """Contraprova do repeated: sem opcao nenhuma, a chave nao aparece vazia."""
+    linha = _row("TARGET_CPA_OPT_IN")
+    linha.recommendation.target_cpa_opt_in_recommendation.recommended_target_cpa_micros = 77_000_000
+    info = parse_recommendation_detail_row(linha)
+    assert "orcamento_exigido_por_opcao_brl" not in info["valores"]
+
+
+@pytest.mark.parametrize("compartilhado", [False, True])
+def test_flag_booleano_aparece_mesmo_quando_e_false(compartilhado: bool) -> None:
+    """A UNICA excecao a regra de presenca, e ela e necessaria.
+
+    O `in` do proto-plus devolve False tanto para "nao declarado" quanto para
+    "declarado como False". Em `campaign_uses_shared_budget`, `False` e RESPOSTA —
+    diz "o orcamento e exclusivo", que muda a decisao de subir o valor. Aplicar a
+    regra de presenca aqui apagaria a metade negativa da informacao.
+    """
+    linha = _row("USE_BROAD_MATCH_KEYWORD")
+    detalhe = linha.recommendation.use_broad_match_keyword_recommendation
+    detalhe.campaign_uses_shared_budget = compartilhado
+    info = parse_recommendation_detail_row(linha)
+    assert info["valores"]["orcamento_compartilhado"] is compartilhado

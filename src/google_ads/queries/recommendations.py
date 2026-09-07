@@ -92,9 +92,48 @@ sob confirmacao aqui repetiria, espelhada, a incoerencia que o C2 veio fechar. E
 `KEYWORD` e o tipo mais numeroso de uma conta real (uma recomendacao por
 ad_group): confirmar o que nao precisa treina o gestor a clicar sem ler.
 
+**O que a tabela LE de cada mensagem (I2 da revisao final).** Entrar na whitelist
+e mostrar o numero sao coisas diferentes, e a versao de 07/09 acertava a primeira
+e errava a segunda: `SET_TARGET_CPA`, `SET_TARGET_ROAS` e as duas variantes
+`FORECASTING_*` declaram um `campaign_budget` — orcamento atual e novo — na
+PROPRIA mensagem, e o preview so mostrava o alvo de CPA/ROAS. O gestor confirmava
+"Definir Target CPA R$ 77,00" e aplicava junto uma mudanca de orcamento diario que
+nunca lhe foi mostrada. Pior: o irmao `TARGET_ROAS_OPT_IN` ja lia o campo
+equivalente, entao a tabela se contradizia.
+
+Conferido tipo a tipo contra o descriptor, nao por amostragem. O que fica de FORA
+tem motivo escrito, porque omissao sem motivo e a mesma classe de bug:
+
+* `*_recommendation.budget_options[]` (nos 3 tipos de orcamento e dentro do
+  `MOVE_UNUSED_BUDGET`) — e a GRADE de opcoes com projecao de impacto, nao o valor
+  recomendado; este ja e lido do campo singular ao lado. Mostrar a grade inteira
+  num resumo de uma linha e ruido, e escolher uma opcao dela seria inventar
+  decisao;
+* `use_broad_match_keyword_recommendation.keyword[]` — `KeywordInfo` de amostra,
+  fora da raiz `Recommendation` (o guard nem desce ali); quantas keywords viram
+  ampla ja e dito pelas duas contagens;
+* `raise_target_cpa_recommendation.app_bidding_goal` — enum, e so popula em
+  campanha de APP; nao e alavanca nem valor, e emitir
+  `APP_BIDDING_GOAL_UNSPECIFIED` em todo preview de conta de Search seria ruido;
+* `merchant.id` / `merchant.multi_client` e `campaign_budget.new_start_date` dos
+  dois `SET_TARGET_*` nao-forecasting — o proto diz, verbatim, que `new_start_date`
+  so e preenchido em `FORECASTING_SET_TARGET_ROAS` e `FORECASTING_SET_TARGET_CPA`,
+  e e nesses dois que a tabela o le.
+
+**Ausencia nao e zero (F145 pela porta dos fundos).** proto-plus nunca omite
+atributo: `campaign_budget` nao preenchido devolve o zero-value, e ler dali daria
+"R$ 0,00 -> R$ 0,00" no preview — numero inventado com cara de medido. Por isso
+`_valor_de` consulta a PRESENCA de cada segmento antes de emitir a chave, e chave
+ausente simplesmente nao aparece em `valores`.
+
 O guard `tests/unit/test_whitelist_de_recomendacao_bate_com_o_proto.py` refaz essa
 varredura no descriptor a cada run — tipo novo que o Google adicionar com campo de
-orcamento ou lance derruba o teste em vez de entrar calado.
+orcamento ou lance derruba o teste em vez de entrar calado. Ele tambem cobra a
+COMPLETUDE (toda folha de alavanca de um tipo da whitelist e lida, ou tem excecao
+escrita) e a CARDINALIDADE (segmento repetido leva `[]`, singular nao leva) — foi
+a cardinalidade que mostrou que `TARGET_CPA_OPT_IN.options` e REPEATED, e que a
+correcao "obvia" (`options.required_campaign_budget_amount_micros`) levantaria
+`AttributeError` em producao.
 """
 
 from __future__ import annotations
@@ -116,6 +155,10 @@ from src.google_ads.queries._gaql import gaql_string_literal
 #   texto    — resource name / string
 Unidade = Literal["brl", "razao", "numero", "inteiro", "booleano", "texto"]
 
+# Sentinela de "o proto nao declarou nada neste caminho" — distinta de `None`,
+# que e um valor legitimo, e de `0`, que e o zero-value do F145.
+_AUSENTE: Any = object()
+
 
 @dataclass(frozen=True, slots=True)
 class DetalheDoTipo:
@@ -127,6 +170,13 @@ class DetalheDoTipo:
     `current_amount_brl` / `recommended_amount_brl` no preview. Tipo que nao tem
     a dimensao (ou cujo valor e razao, nao dinheiro) deixa `None` e poe o que
     tiver em `outros`, cada item `(chave_de_saida, caminho_dotted, unidade)`.
+
+    Segmento do caminho terminado em `[]` e campo REPEATED do proto, e a leitura
+    devolve LISTA. Nao e conveniencia de sintaxe: `getattr` num `RepeatedComposite`
+    levanta `AttributeError`, entao `options.required_campaign_budget_amount_micros`
+    (a forma que a revisao sugeriu para o `TARGET_CPA_OPT_IN`) quebraria em
+    producao — e o guard do proto passaria verde, porque a folha existe no
+    descriptor. O `[]` e o que torna a cardinalidade verificavel.
     """
 
     campo: str
@@ -139,6 +189,22 @@ class DetalheDoTipo:
 _ORCAMENTO = ("current_budget_amount_micros", "recommended_budget_amount_micros")
 _ROAS_RECOMENDADO: tuple[tuple[str, str, Unidade], ...] = (
     ("target_roas_recomendado", "recommended_target_roas", "numero"),
+)
+# `SET_TARGET_CPA`, `SET_TARGET_ROAS` e as duas variantes FORECASTING_* declaram
+# a mesma mensagem `CampaignBudget` aninhada: o alvo novo vem acompanhado do
+# ORCAMENTO que ele exige. E outra dimensao que o alvo, entao vai em `outros` — e
+# ate 07/09 nao ia a lugar nenhum (I2). Presenca gateia as duas chaves: quando a
+# recomendacao nao propoe orcamento, `campaign_budget` chega zerado e o preview
+# diria "R$ 0,00 -> R$ 0,00".
+_ORCAMENTO_DO_ALVO: tuple[tuple[str, str, Unidade], ...] = (
+    ("orcamento_atual_brl", "campaign_budget.current_amount_micros", "brl"),
+    ("orcamento_novo_brl", "campaign_budget.recommended_new_amount_micros", "brl"),
+)
+# So os dois FORECASTING_*: o proto diz, verbatim, que `new_start_date` "will be
+# set for the following recommendation types: FORECASTING_SET_TARGET_ROAS,
+# FORECASTING_SET_TARGET_CPA".
+_INICIO_DO_ORCAMENTO: tuple[tuple[str, str, Unidade], ...] = (
+    ("orcamento_novo_a_partir_de", "campaign_budget.new_start_date", "texto"),
 )
 
 CAMPOS_DE_DETALHE: dict[str, DetalheDoTipo] = {
@@ -164,14 +230,35 @@ CAMPOS_DE_DETALHE: dict[str, DetalheDoTipo] = {
         "maximize_conversions_opt_in_recommendation", None, "recommended_budget_amount_micros"
     ),
     # --- alvos de CPA (dinheiro) ---
+    # `options` e REPEATED (`TargetCpaOptInRecommendationOption`): sao as metas
+    # disponiveis, cada uma com o CPA e o orcamento que ela exigiria. Nao ha UM
+    # orcamento a mostrar, ha a faixa — entao saem as duas listas, pareadas por
+    # posicao. `options[]` com o marcador: sem ele, `getattr` no
+    # `RepeatedComposite` levanta `AttributeError` (medido no v24).
     "TARGET_CPA_OPT_IN": DetalheDoTipo(
-        "target_cpa_opt_in_recommendation", None, "recommended_target_cpa_micros"
+        "target_cpa_opt_in_recommendation",
+        None,
+        "recommended_target_cpa_micros",
+        (
+            ("target_cpa_por_opcao_brl", "options[].target_cpa_micros", "brl"),
+            (
+                "orcamento_exigido_por_opcao_brl",
+                "options[].required_campaign_budget_amount_micros",
+                "brl",
+            ),
+        ),
     ),
     "SET_TARGET_CPA": DetalheDoTipo(
-        "set_target_cpa_recommendation", None, "recommended_target_cpa_micros"
+        "set_target_cpa_recommendation",
+        None,
+        "recommended_target_cpa_micros",
+        _ORCAMENTO_DO_ALVO,
     ),
     "FORECASTING_SET_TARGET_CPA": DetalheDoTipo(
-        "forecasting_set_target_cpa_recommendation", None, "recommended_target_cpa_micros"
+        "forecasting_set_target_cpa_recommendation",
+        None,
+        "recommended_target_cpa_micros",
+        _ORCAMENTO_DO_ALVO + _INICIO_DO_ORCAMENTO,
     ),
     "RAISE_TARGET_CPA": DetalheDoTipo(
         "raise_target_cpa_recommendation",
@@ -202,10 +289,13 @@ CAMPOS_DE_DETALHE: dict[str, DetalheDoTipo] = {
         ),
     ),
     "SET_TARGET_ROAS": DetalheDoTipo(
-        "set_target_roas_recommendation", None, None, _ROAS_RECOMENDADO
+        "set_target_roas_recommendation", None, None, _ROAS_RECOMENDADO + _ORCAMENTO_DO_ALVO
     ),
     "FORECASTING_SET_TARGET_ROAS": DetalheDoTipo(
-        "forecasting_set_target_roas_recommendation", None, None, _ROAS_RECOMENDADO
+        "forecasting_set_target_roas_recommendation",
+        None,
+        None,
+        _ROAS_RECOMENDADO + _ORCAMENTO_DO_ALVO + _INICIO_DO_ORCAMENTO,
     ),
     "LOWER_TARGET_ROAS": DetalheDoTipo(
         "lower_target_roas_recommendation",
@@ -268,13 +358,30 @@ CAMPOS_DE_DETALHE: dict[str, DetalheDoTipo] = {
         "upgrade_local_campaign_to_performance_max_recommendation"
     ),
     "UPGRADE_SMART_SHOPPING_CAMPAIGN_TO_PERFORMANCE_MAX": DetalheDoTipo(
-        "upgrade_smart_shopping_campaign_to_performance_max_recommendation"
+        "upgrade_smart_shopping_campaign_to_performance_max_recommendation",
+        None,
+        None,
+        (
+            ("merchant_center_id", "merchant_id", "inteiro"),
+            ("pais_das_ofertas", "sales_country_code", "texto"),
+        ),
     ),
+    # `apply_link` e o unico campo desta mensagem, e e util de verdade: leva ao
+    # painel onde o Google mostra o que a migracao faz. Nao substitui o aviso.
     "MIGRATE_DYNAMIC_SEARCH_ADS_CAMPAIGN_TO_PERFORMANCE_MAX": DetalheDoTipo(
-        "migrate_dynamic_search_ads_campaign_to_performance_max_recommendation"
+        "migrate_dynamic_search_ads_campaign_to_performance_max_recommendation",
+        None,
+        None,
+        (("link_do_painel", "apply_link", "texto"),),
     ),
     "SHOPPING_MIGRATE_REGULAR_SHOPPING_CAMPAIGN_OFFERS_TO_PERFORMANCE_MAX": DetalheDoTipo(
-        "shopping_migrate_regular_shopping_campaign_offers_to_performance_max_recommendation"
+        "shopping_migrate_regular_shopping_campaign_offers_to_performance_max_recommendation",
+        None,
+        None,
+        (
+            ("merchant_center", "merchant.name", "texto"),
+            ("feed_label", "feed_label", "texto"),
+        ),
     ),
 }
 
@@ -454,10 +561,55 @@ def _nome_do_enum(valor: Any) -> str:
 
 
 def _ler(msg: Any, caminho: str) -> Any:
-    """Le uma folha dotted DENTRO da mensagem de detalhe."""
+    """Le uma folha dotted DENTRO da mensagem de detalhe.
+
+    Sem checagem de presenca: os dois usos (`atual_brl`/`recomendado_brl`) sao o
+    valor PRIMARIO do tipo, que a mensagem daquele tipo sempre declara. Ausencia
+    ali nao e "o Google nao propos isso", e sinal de que o campo saiu do SELECT —
+    e o 0.0 resultante e justamente o que os fakes dirigidos pelo SELECT pegam.
+    """
     for parte in caminho.split("."):
         msg = getattr(msg, parte)
     return msg
+
+
+def _declarado(msg: Any, campo: str) -> bool:
+    """O proto preencheu este campo?
+
+    `in` do proto-plus e `HasField` pra campo com presenca declarada
+    (`optional`/mensagem aninhada), "diferente do default" pros escalares e
+    "nao vazio" pros repetidos. As tres leituras servem: em todas, `False`
+    significa "nao ha nada aqui pra mostrar".
+    """
+    return bool(campo in msg)
+
+
+def _valor_de(msg: Any, caminho: str, unidade: Unidade) -> Any:
+    """O valor convertido, ou `_AUSENTE` quando o proto nao declarou nada ali.
+
+    **Ausencia nao e zero (F145 pela porta dos fundos).** proto-plus nunca omite
+    atributo: uma `SET_TARGET_CPA` que nao propoe orcamento devolve
+    `campaign_budget` zerado, e emitir a chave assim mesmo poria
+    "orcamento_atual_brl=0.0" num preview — numero inventado com cara de medido,
+    exatamente o modo de falha que o F145 cataloga.
+
+    A UNICA excecao e `booleano`: ali `False` e RESPOSTA, nao ausencia
+    (`orcamento_compartilhado=False` diz "e exclusivo", que muda a decisao), e o
+    `in` do proto-plus nao distingue as duas.
+    """
+    partes = caminho.split(".")
+    for i, parte in enumerate(partes):
+        repetido = parte.endswith("[]")
+        nome = parte[:-2] if repetido else parte
+        e_folha = i == len(partes) - 1
+        if not (e_folha and unidade == "booleano") and not _declarado(msg, nome):
+            return _AUSENTE
+        msg = getattr(msg, nome)
+        if repetido:
+            resto = ".".join(partes[i + 1 :])
+            itens = [_valor_de(item, resto, unidade) for item in msg]
+            return [v for v in itens if v is not _AUSENTE] or _AUSENTE
+    return _converter(msg, unidade)
 
 
 def _converter(bruto: Any, unidade: Unidade) -> Any:
@@ -504,7 +656,9 @@ def parse_recommendation_detail_row(row: Any) -> dict[str, Any]:
         if spec.recomendado_brl is not None:
             recomendado = micros_to_currency(int(_ler(detalhe, spec.recomendado_brl)))
         for chave, caminho, unidade in spec.outros:
-            valores[chave] = _converter(_ler(detalhe, caminho), unidade)
+            valor = _valor_de(detalhe, caminho, unidade)
+            if valor is not _AUSENTE:
+                valores[chave] = valor
 
     campanha_rn = str(rec.campaign or "")
     return {

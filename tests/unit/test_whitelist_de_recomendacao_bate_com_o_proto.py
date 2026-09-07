@@ -78,6 +78,21 @@ _FORA_POR_ESCRITO = {
     "KEYWORD": "o CPC e de uma keyword que ainda nao existe; add_keywords de 1 entidade e AUTO",
 }
 
+# Alavanca que a tabela NAO le, com o motivo — o espelho do `_FORA_POR_ESCRITO`,
+# um nivel abaixo: la o tipo fica fora da whitelist, aqui o CAMPO fica fora do
+# preview. Sem esta lista o guard de completude nao teria como distinguir omissao
+# deliberada de omissao esquecida, que foi exatamente o I2.
+_ALAVANCA_FORA_POR_ESCRITO = {
+    # `budget_options` e REPEATED: a grade de opcoes com projecao de impacto, nao
+    # o valor recomendado — este e lido do campo singular ao lado. Escolher uma
+    # opcao da grade seria inventar decisao; mostrar a grade inteira num resumo
+    # de uma linha e ruido.
+    "budget_options.budget_amount_micros": "grade de opcoes com projecao, nao o valor recomendado",
+    "budget_recommendation.budget_options.budget_amount_micros": (
+        "mesma grade, um nivel abaixo, dentro do MOVE_UNUSED_BUDGET"
+    ),
+}
+
 _DESC = Recommendation.pb(Recommendation()).DESCRIPTOR
 _RAIZ = _DESC.full_name
 _DETALHES = {
@@ -120,6 +135,25 @@ def _folhas(md: Any, prefixo: str = "", nivel: int = 0) -> list[str]:
 
 def _campos_do_tipo(tipo: str) -> list[str]:
     return _folhas(_DETALHES[tipo.lower() + "_recommendation"])
+
+
+def _caminhos_da_tabela(tipo: str) -> list[str]:
+    """Todo caminho dotted que `CAMPOS_DE_DETALHE` le daquele tipo, com o `[]`."""
+    spec = CAMPOS_DE_DETALHE[tipo]
+    caminhos = [c for c in (spec.atual_brl, spec.recomendado_brl) if c is not None]
+    caminhos += [caminho for _chave, caminho, _unidade in spec.outros]
+    return caminhos
+
+
+def _cardinalidade(tipo: str, caminho: str) -> list[tuple[str, bool]]:
+    """Por segmento do caminho: `(segmento_como_escrito, o proto diz REPEATED?)`."""
+    md: Any = _DETALHES[tipo.lower() + "_recommendation"]
+    saida: list[tuple[str, bool]] = []
+    for parte in caminho.split("."):
+        campo = md.fields_by_name[parte.removesuffix("[]")]
+        saida.append((parte, bool(campo.is_repeated)))
+        md = campo.message_type
+    return saida
 
 
 def _migra_a_campanha(tipo: str) -> bool:
@@ -250,7 +284,70 @@ def test_todo_caminho_da_tabela_resolve_no_proto(tipo: str) -> None:
     spec = CAMPOS_DE_DETALHE[tipo]
     assert spec.campo in _DETALHES, f"{tipo}: campo de detalhe {spec.campo} nao existe"
     campos = set(_campos_do_tipo(tipo))
-    caminhos = [c for c in (spec.atual_brl, spec.recomendado_brl) if c is not None]
-    caminhos += [caminho for _chave, caminho, _unidade in spec.outros]
-    for caminho in caminhos:
-        assert caminho in campos, f"{tipo}: {spec.campo}.{caminho} nao existe no proto do v24"
+    for caminho in _caminhos_da_tabela(tipo):
+        nu = caminho.replace("[]", "")
+        assert nu in campos, f"{tipo}: {spec.campo}.{nu} nao existe no proto do v24"
+
+
+@pytest.mark.parametrize("tipo", sorted(CAMPOS_DE_DETALHE))
+def test_a_cardinalidade_de_cada_segmento_bate_com_o_proto(tipo: str) -> None:
+    """Existir no descriptor NAO basta: campo REPEATED se le diferente (I2).
+
+    `getattr` num `RepeatedComposite` levanta `AttributeError`, entao a tabela
+    marca segmento repetido com `[]`. Sem esta asserção o teste acima passaria
+    verde com `options.required_campaign_budget_amount_micros` — a forma que a
+    revisao sugeriu para o `TARGET_CPA_OPT_IN` — e a tool quebraria em producao,
+    porque `options` e REPEATED no v24. O contrario tambem morde: `[]` num campo
+    singular faria a leitura iterar sobre o que nao e lista.
+    """
+    for caminho in _caminhos_da_tabela(tipo):
+        for segmento, repetido_no_proto in _cardinalidade(tipo, caminho):
+            marcado = segmento.endswith("[]")
+            assert marcado == repetido_no_proto, (
+                f"{tipo}: segmento {segmento!r} de {caminho!r} "
+                f"{'esta marcado []' if marcado else 'nao esta marcado []'} e o proto diz "
+                f"{'REPEATED' if repetido_no_proto else 'singular'}"
+            )
+
+
+@pytest.mark.parametrize("tipo", sorted(CAMPOS_DE_DETALHE))
+def test_toda_alavanca_do_tipo_e_lida_ou_tem_excecao_escrita(tipo: str) -> None:
+    """O I2 mecanizado: acertar o GATE e errar o CONTEUDO do preview e um bug.
+
+    Ate 07/09 `SET_TARGET_CPA` entrava na whitelist POR CAUSA do
+    `campaign_budget.*` que declara — e o preview mostrava so o alvo de CPA. O
+    guard sabia que a alavanca estava la (e por isso o tipo confirmava); o preview
+    nao a mostrava. Aqui as duas coisas passam a ser a mesma pergunta.
+    """
+    alavancas = {c for c in _campos_do_tipo(tipo) if _ALAVANCA.search(c)}
+    lidas = {c.replace("[]", "") for c in _caminhos_da_tabela(tipo)}
+    faltando = sorted(alavancas - lidas - set(_ALAVANCA_FORA_POR_ESCRITO))
+    assert not faltando, (
+        f"{tipo}: o proto declara alavanca que o preview nao mostra: {faltando} "
+        f"(leia em CAMPOS_DE_DETALHE, ou escreva a excecao em _ALAVANCA_FORA_POR_ESCRITO)"
+    )
+
+
+def test_as_excecoes_de_alavanca_nao_lida_continuam_valendo() -> None:
+    """Excecao apodrece calada: campo que o Google tirou vira letra morta."""
+    todas = {c for tipo in CAMPOS_DE_DETALHE for c in _campos_do_tipo(tipo)}
+    for caminho, motivo in _ALAVANCA_FORA_POR_ESCRITO.items():
+        assert caminho in todas, f"{caminho} sumiu do proto — remova a excecao ({motivo})"
+        assert _ALAVANCA.search(caminho), f"{caminho} nao e alavanca — excecao sem objeto"
+
+
+def test_o_orcamento_dos_alvos_de_cpa_e_roas_e_lido() -> None:
+    """O caso concreto do I2, nomeado — os quatro tipos e as duas chaves.
+
+    Parametrizar sobre a tabela apagaria o caso se alguem tirasse a leitura de
+    volta; a lista literal o deixa vermelho (mesmo raciocinio dos 23 literais).
+    """
+    for tipo in (
+        "SET_TARGET_CPA",
+        "SET_TARGET_ROAS",
+        "FORECASTING_SET_TARGET_CPA",
+        "FORECASTING_SET_TARGET_ROAS",
+    ):
+        lidas = set(_caminhos_da_tabela(tipo))
+        assert "campaign_budget.current_amount_micros" in lidas, tipo
+        assert "campaign_budget.recommended_new_amount_micros" in lidas, tipo
