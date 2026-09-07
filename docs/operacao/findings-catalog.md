@@ -455,8 +455,9 @@
 - **F111 (LOW, latente) — audit Meta derivava a conta de um dict opcional:** [`run_meta_graph_get`](../../src/meta_ads/reports.py) gravava `customer_id=(params_summary or {}).get("ad_account_id")` nos caminhos de sucesso e de erro, tendo `ad_account_id` como kwarg **obrigatório** desde o F72. Os 3 callers de hoje passam a chave (verificado um a um), então estava correto — o risco é o próximo, e **M.5 é o próximo sprint**: um tool Meta novo que esqueça a chave grava linha de auditoria **sem conta**, na plataforma onde o token é compartilhado e a matriz de acesso é o único freio. É a mesma forma que o F72 corrigiu no gate e o F88-era corrigiu no contador BUC, deixada no audit. O caminho de negação já usava o kwarg — a inconsistência estava dentro do mesmo arquivo.
   **✅ CORRIGIDO (2026-08-19).** Os 2 sites passaram a usar `ad_account_id`. Guard AST assertando que as 3 chamadas de `audit_log.record` do executor derivam `customer_id` do kwarg.
 
-- **F112 (LOW, latente) — a política de blast radius é consultiva em 17 das 26 tools de mutação:** [`blast_radius.classify`](../../src/governance/blast_radius.py) se descreve como quem "decide auto-apply vs require-confirmation", mas só **9** tools leem `.level`. As outras 17 computam o veredito e usam apenas `.reason` como texto, com o caminho (auto-aplicar ou emitir token) fixo no código. **Verifiquei os dois lados: não há divergência hoje** — as always-CONFIRM chamam `create_pending` incondicionalmente e as 5 auto-apply caem em ramos que retornam AUTO constante. O risco é apertar a política no módulo — por exemplo passar `remove_negative_keywords` a CONFIRM, defensável já que remover negativa **alarga** o targeting — e as 17 seguirem o caminho antigo em silêncio.
-  **✅ CORRIGIDO (2026-08-19) — e a decisão de desenho importa mais que o fix.** Reescrever as 17 pra consultarem `.level` era a outra saída; não vale o tamanho. **O risco não é a tool errar, é a política e a tool DIVERGIREM**, e isso um teste pega por uma fração do custo. O guard **deriva** a lista do source (quem lê `.level` é pulado; quem só emite token tem que ser CONFIRM; quem só chama executor tem que ser AUTO) e falha alto se uma tool não couber em nenhum caso — então tool nova entra sozinha, sem lista à mão pra envelhecer. **Provado por sabotagem**, porque passou de primeira: apertar a política deixa o guard RED exatamente na tool divergente; revertido, verde.
+- **F112 (LOW, latente) — a política de blast radius é consultiva na maioria das tools de mutação:** [`blast_radius.classify`](../../src/governance/blast_radius.py) se descreve como quem "decide auto-apply vs require-confirmation", mas só parte das tools lê `.level`. Eram **9 de 26** em 2026-08-19; **10 de 28** na remedição de 2026-09-07 (o `apply_recommendation` passou a ler o veredito quando o gate por tipo entrou — C2 do PR 3). As outras **18** computam o veredito e usam apenas `.reason` como texto, com o caminho (auto-aplicar ou emitir token) fixo no código. **Verifiquei os dois lados: não há divergência hoje** — as always-CONFIRM chamam `create_pending` incondicionalmente e as 5 auto-apply caem em ramos que retornam AUTO constante. O risco é apertar a política no módulo — por exemplo passar `remove_negative_keywords` a CONFIRM, defensável já que remover negativa **alarga** o targeting — e as 18 seguirem o caminho antigo em silêncio.
+  **✅ CORRIGIDO (2026-08-19) — e a decisão de desenho importa mais que o fix.** Reescrever as 18 pra consultarem `.level` era a outra saída; não vale o tamanho. **O risco não é a tool errar, é a política e a tool DIVERGIREM**, e isso um teste pega por uma fração do custo. O guard **deriva** a lista do source (quem lê `.level` é pulado; quem só emite token tem que ser CONFIRM; quem só chama executor tem que ser AUTO) e falha alto se uma tool não couber em nenhum caso — então tool nova entra sozinha, sem lista à mão pra envelhecer. **Provado por sabotagem**, porque passou de primeira: apertar a política deixa o guard RED exatamente na tool divergente; revertido, verde.
+  **✅ APERTADO (2026-09-07, PR 3 Task 3) — o guard de 08-19 enunciava mais do que conferia.** Duas frouxidões, as duas fechadas. (a) `le_level` era `any(no.attr == "level" for no in walk(arvore))`: casava **qualquer** atributo chamado `level`, de qualquer objeto — uma tool com um `janela.level` no corpo saía da cobrança inteira, calada, e a divergência que ela escondesse ficava invisível. Agora só conta o `.level` do **resultado de `classify`** (nome ligado à chamada, chamada direta ou walrus; alias de import e `mod.classify` inclusive). (b) O piso `len(_CASOS) >= 15` virou derivação **exata** contra um universo derivado por outro casador (`h.chama(..., "classify")`, largo) — e as duas saídas do meio que antes eram `continue` silencioso (`operation=` não-literal) ou `pytest.fail` no import (caminho ambíguo) viraram baldes de ofensor com nome. **Frouxo e apertado dão a MESMA resposta nas 28 tools de hoje** — o aperto é contra a tool que ainda vai ser escrita, então a prova é sintética: uma tabela de 8 formas roda o casador contra fonte de mentira. **Sabotagem em cópia fora do repo:** tool que ignora `risk.level`, tem um `janela.level` e auto-aplica uma operação que `classify` diz CONFIRM → guard novo VERMELHO nomeando a tool, guard antigo VERDE. Idem para `operation=` não-literal: novo VERMELHO, antigo VERDE (o piso de 15 seguia satisfeito com 18).
 
 **O que foi verificado e estava limpo** — a maior parte da varredura: nenhum `datetime.now()`/`utcnow()` sem timezone em `src/`; nenhuma SQL montada com dado de usuário (todas parametrizadas por `$N`, com o `WHERE` montado de literais); os 7 call-sites de `ensure_account_access` usam o nível certo (`write` nas mutações, `read` nas leituras) e `can_manager_access` é simétrico entre Google e Meta; `dry_run.consume` é race-safe (`SELECT ... FOR UPDATE` + `consumed_at`), amarrado à sessão e com TTL checado; a aritmética do rate limit está correta sob o `FOR UPDATE`, e o `pct` como fração (0–1) é deliberado — o consumidor renderiza `pct * 100`; os 28 `except` que "engolem" são todos envelope de erro ou observabilidade defensiva documentada; OAuth e resync usam `httpx` async; `accounts.py` ser síncrono é exceção documentada e confirmei que **só** o job de resync o importa.
 
@@ -1742,6 +1743,7 @@ sabia dos outros 17, erraria de novo por um dos mesmos sete jeitos.
    `".cursor(" in text and "conn.transaction()" not in text`. Medido: a propria docstring do
    teste **cita** `conn.transaction()` em prosa — na sabotagem da Task 3 deste PR, o guard
    casou a propria docstring e nao mordeu na primeira tentativa.
+   **Fechada em 2026-09-07 (PR 3 Task 3) para o F57**, como o F58 ja tinha sido em 06/09: a unidade agora e a FUNCAO (`h.funcoes()` + `h.chama()`), com a cadeia de escopos lexicais isentando o closure — e nao o arquivo. A allowlist de `client.py` caiu junto: isentar arquivo era o proprio defeito, e a isencao nunca foi necessaria (a factory nao chama a si mesma).
 2. **Leitura linha a linha.** O guard de nome acessivel casa `<(select|textarea|input)...>`
    dentro de uma UNICA `linha` do arquivo. `admin/access.html:27,29` e
    `admin/access_meta.html:27,29` tem exatamente essa forma hoje — `<input type="search"
@@ -1775,6 +1777,8 @@ sabia dos outros 17, erraria de novo por um dos mesmos sete jeitos.
    `any(isinstance(no, ast.Attribute) and no.attr == "level" for no in ast.walk(arvore))` —
    qualquer `.level` no arquivo inteiro conta como "a tool consultou a politica de blast
    radius", nao especificamente o `.level` do retorno de `classify()`.
+   **Fechada em 2026-09-07 (PR 3 Task 3):** so conta o `.level` do resultado de
+   `classify` — ver a nota de remedicao na entrada do F112.
 
 **A invariante que fecha a classe inteira, e que nenhum guard antigo tinha:** um scanner que
 devolve zero arquivos levanta `EscopoVazioError` em vez de devolver lista vazia e deixar o
@@ -1804,7 +1808,7 @@ nao precisou da mesma prova, porque nao ha "aperto" de logica ali, so a correcao
 
 | # | guard | defeito (logica de casamento que resta) | aperta em |
 |---|---|---|---|
-| 1 | `test_structural_guards.py::test_build_client_for_manager_callsites_have_gate` (F57) | substring no arquivo inteiro, nao por funcao | PR 3 |
+| 1 | `test_structural_guards.py::test_build_client_for_manager_callsites_have_gate` (F57) | substring no arquivo inteiro, nao por funcao | **PR 3 — fechado** |
 | 2 | `test_structural_guards.py::test_cursor_usage_is_wrapped_in_transaction` (F58) | por arquivo, e casava `conn.transaction()` escrito em comentario/docstring | **PR 0 — fechado aqui** |
 | 3 | `test_structural_guards.py::test_nao_chama_helper_que_pega_conexao_dentro_de_acquire` (F92) | nao enxerga mais `pending_invites_count`, a funcao que a motivou | PR 5 |
 | 4 | `test_structural_guards.py::test_finally_bookkeeping_is_best_effort` (F83) | so o statement de topo do `finally`; todo `finally` do projeto aninha o acquire num `if` | PR 2 |
@@ -1813,8 +1817,8 @@ nao precisou da mesma prova, porque nao ha "aperto" de logica ali, so a correcao
 | 7 | `test_no_server_clock_in_google_tools.py` (F141) | nao pega `utcnow()`, `time.time()` nem alias de import | PR 4 |
 | 8 | `test_ci_local_parity.py::test_toda_instrucao_de_regerar_o_lock_usa_universal` (F113) | `glob("*.md")` so na raiz; `docs/` inteiro fora, com violacao viva | PR 6 |
 | 9 | `test_ci_local_parity.py::test_ci_realmente_tem_checks` | afirma que o NOME da ferramenta aparece, nao que os steps existem | PR 6 |
-| 10 | `test_blast_radius_bate_com_as_tools.py::test_politica_bate_com_o_caminho_fixo_da_tool` (F112) | casa qualquer atributo `.level`, nao so o do retorno de `classify()` | PR 3 |
-| 11 | `test_blast_radius_bate_com_as_tools.py::test_derivou_as_tools_de_caminho_fixo` | piso `>= 15` em vez de contagem exata derivada | PR 3 |
+| 10 | `test_blast_radius_bate_com_as_tools.py::test_politica_bate_com_o_caminho_fixo_da_tool` (F112) | casa qualquer atributo `.level`, nao so o do retorno de `classify()` | **PR 3 — fechado** |
+| 11 | `test_blast_radius_bate_com_as_tools.py::test_particao_das_tools_e_exata` (era `test_derivou_as_tools_de_caminho_fixo`) | piso `>= 15` em vez de contagem exata derivada | **PR 3 — fechado** |
 | 12 | `test_change_freshness.py::test_sonda_de_fronteira_nao_herda_a_janela_do_usuario` | tautologia `f(x) == f(x)`, docstring promete janelas diferentes | PR 6 |
 | 13 | `test_tools_schemas.py::test_builder_tests_use_capture_client_not_magicmock` | varre so `test_*_builder.py`, nao todo teste que chama um `build_*` | PR 6 |
 | 14 | `test_frontend_a11y_guards.py` (CSP / handler inline) | so `.html`; o fragmento montado em `routes.py` escapa | PR 5 |
@@ -1843,9 +1847,13 @@ previsto, porque quem escreveu aquele guard (sessao do F148, anterior a este PR)
 outros 17. Deixa-lo de fora teria tornado falsa a tese desta mesma entrada.
 
 **O que ficou deliberadamente de fora, e por que a violacao viva mora na frente
-correspondente:** o aperto do F57 e do F112 (linhas 1 e 10, mais o piso da linha 11) vao com
-a governanca de orcamento (PR 3) — apertar o F57 pode revelar executor sem gate que hoje
-ninguem ve, e e la que esse risco tem dono. O aperto do relogio (linha 7) vai com a camada de
+correspondente:** o aperto do F57 e do F112 (linhas 1 e 10, mais o piso da linha 11) foram
+com a governanca de orcamento (PR 3) — apertar o F57 podia revelar executor sem gate que
+ninguem via, e e la que esse risco tinha dono. **Nao revelou:** rodado por funcao contra a
+arvore de 07/09, sao **6 funcoes** chamando `build_client_for_manager` e as 6 gateiam
+(`conversions.py:45`, `customer_match.py:99`, `mutations.py:152` e `:372`, `reports.py:43`,
+`validate_gaql.py:87`) — a prova de ausencia foi feita ANTES de commitar o aperto, que e a
+unica ordem que distingue "nao ha violacao" de "o guard novo tambem nao morde". O aperto do relogio (linha 7) vai com a camada de
 leitura (PR 4) — o mesmo PR que troca `top_keywords`/`top_creatives` pra ordenar no servidor e
 quem tambem faz esse guard pegar `utcnow()`, `time.time()` e alias de import. Os de frontend —
 a11y (linha 14), nome acessivel (linha 15), `th scope` (linha 16) e a lista fixa de templates
