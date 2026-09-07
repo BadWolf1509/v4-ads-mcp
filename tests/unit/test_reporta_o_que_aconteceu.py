@@ -445,6 +445,168 @@ async def test_customer_match_audit_de_erro_nunca_carrega_hash() -> None:
     assert "h0" not in str(audit.call_args.kwargs["params_summary"])
 
 
+@pytest.mark.parametrize(
+    ("rpc", "etapa"),
+    [
+        ("create_offline_user_data_job", "create_job"),
+        ("add_offline_user_data_job_operations", "add_operations"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_customer_match_audit_nao_conta_como_submetido_o_que_nao_saiu(
+    rpc: str, etapa: str
+) -> None:
+    """A familia R1-I2/R1-I3 tinha sobrevivido na unica tool que carrega PII.
+
+    `members_submitted` era `member_count - recusados`, calculado
+    INCONDICIONALMENTE — inclusive quando a sequencia parou ANTES do passo 2 e
+    nada saiu daqui. Num lote de 500, a trilha de uma falha no `create_job`
+    gravava `members_submitted: 500, members_failed: 0` e `status: error`: o
+    numero que alguem soma dizendo o oposto do que aconteceu, no rastro que
+    existe justamente para responder quanta PII foi parar no Google.
+
+    `etapa`/`pii_anexada` desambiguavam para quem lesse com cuidado, mas nao
+    corrigem uma soma — e sao eles, aqui, que provam que o zero e o zero certo
+    (parou antes do add) e nao um zero de lote vazio.
+    """
+    _, audit, erro = await _rodar_job(falha_em=rpc, membros=500)
+
+    assert erro is not None
+    ps = audit.call_args.kwargs["params_summary"]
+    assert ps["etapa"] == etapa
+    assert ps["pii_anexada"] is False
+    assert ps["members_submitted"] == 0, (
+        "a sequencia parou antes de o Google receber membro nenhum — reportar o "
+        "lote como submetido e o defeito que esta task foi fechar"
+    )
+    assert ps["members_failed"] == 0
+    # O TENTADO continua na trilha, na chave que sempre significou isso.
+    assert ps["member_count"] == 500
+    assert audit.call_args.kwargs["target_count"] == 500
+
+
+@pytest.mark.asyncio
+async def test_customer_match_audit_conta_o_aceito_quando_a_pii_ja_subiu() -> None:
+    """Controle: o zero acima nao pode ser "zero sempre que der erro".
+
+    Falha no passo 3 com 1 de 5 membros recusado pelo Google: a PII JA esta la,
+    e o numero certo e o que o Google aceitou (4) — nem o lote (5, o defeito
+    antigo) nem zero (o defeito que a correcao poderia introduzir).
+    """
+    _, audit, erro = await _rodar_job(
+        recusados={1: "INVALID_SHA256_FORMAT"},
+        falha_em="run_offline_user_data_job",
+        membros=5,
+    )
+
+    assert erro is not None
+    ps = audit.call_args.kwargs["params_summary"]
+    assert ps["etapa"] == "run_job"
+    assert ps["pii_anexada"] is True
+    assert ps["members_submitted"] == 4
+    assert ps["members_failed"] == 1
+    assert ps["member_count"] == 5
+
+
+@pytest.mark.asyncio
+async def test_customer_match_erro_diz_o_numero_certo_e_a_saida() -> None:
+    """R1-I4 (razao) + M1 (numero): a orientacao ao gestor tem que levar a algum lugar.
+
+    Tres coisas na mesma frase, e nenhuma delas estava certa:
+
+    1. **O numero.** A mensagem usava `member_count` (o tentado), entao com 1 de
+       5 recusados ela dizia "os 5 membros JA foram enviados" enquanto o audit,
+       corretamente, dizia 4.
+    2. **A razao do "NAO repita".** O motivo escrito era duplicacao de membro —
+       e uma user list de Customer Match e um CONJUNTO de identificadores
+       hasheados, entao reenviar os mesmos nao duplica ninguem. O custo real e um
+       SEGUNDO OfflineUserDataJob com a mesma PII, que o Google nao apaga.
+    3. **A saida.** Numa falha de `run_job` o job JA existe com a PII anexada e
+       so nao foi disparado; o conserto e rodar o job que existe, nao criar
+       outro. Nenhuma tool deste MCP faz isso hoje — e o gestor precisa ler
+       isso, senao fica com um job PENDING e nenhum caminho adiante.
+    """
+    _, _, erro = await _rodar_job(
+        recusados={1: "INVALID_SHA256_FORMAT"},
+        falha_em="run_offline_user_data_job",
+        membros=5,
+    )
+
+    assert erro is not None
+    msg = str(erro)
+    assert "4 membro" in msg, "a mensagem tem que dizer o ACEITO, nao o tentado"
+    assert "5 membro" not in msg
+    assert "JOB123" in msg, "sem o identificador o gestor nao acha o job que ficou la"
+    assert "RunOfflineUserDataJob" in msg, (
+        "a saida e rodar o job que ja existe — sem nomea-la a mensagem so proibe "
+        "o retry e nao oferece nada no lugar"
+    )
+    assert "nenhuma tool deste MCP faz isso hoje" in msg, (
+        "a saida nao esta disponivel aqui, e omitir isso deixa o gestor procurando "
+        "uma tool que nao existe"
+    )
+    assert "conjunto de identificadores hasheados" in msg, (
+        "a razao do 'NAO repita' e o segundo job com a mesma PII, nao membro duplicado"
+    )
+    # A mensagem carrega contagem e identificador de job — nunca o hash.
+    assert "h0" not in msg
+
+
+@pytest.mark.asyncio
+async def test_apply_change_do_customer_match_devolve_o_envelope_inteiro(_ctx: Any) -> None:
+    """A forma da resposta do ramo `upload_customer_match_list`, que ninguem afirmava.
+
+    O ramo montava o envelope a mao e **nao devolvia `blast_summary`** — o eco do
+    resumo que o gestor confirmou no token. Passou a usar `submitted_envelope`,
+    e sem este teste a unica coisa que prendia isso era um guard estrutural que
+    so pergunta "alguem monta o dict a mao?": apagar o campo DENTRO do helper
+    deixava tudo verde.
+
+    `submitted` e nao `applied` porque o Google processa o job em horas — dizer
+    aplicado afirmaria um resultado que ninguem tem ainda.
+    """
+    from src.mcp.tools import apply_change as mod
+
+    saved = _saved(
+        "upload_customer_match_list",
+        {"user_list_id": "999", "operation": "add", "hashed_members": [{"hashed_email": "h0"}]},
+    )
+    saved.blast_summary = "Enviar 3 membros para a user list 999."
+    resultado = {
+        "job_resource_name": "customers/1234567890/offlineUserDataJobs/JOB123",
+        "provider_request_id_create_job": "req-c",
+        "provider_request_id_add_ops": "req-a",
+        "provider_request_id_run_job": "req-r",
+        "members_submitted": 2,
+        "members_failed": 1,
+        "failures": [{"index": 1, "error_code": "INVALID_SHA256_FORMAT", "error_message": "x"}],
+    }
+    with (
+        patch.object(mod, "connection") as mock_conn,
+        patch.object(mod, "consume", AsyncMock(return_value=saved)),
+        patch(
+            "src.google_ads.customer_match.run_offline_user_data_job",
+            AsyncMock(return_value=resultado),
+        ),
+    ):
+        pool = MagicMock()
+        mock_conn.get_pool.return_value = pool
+        pool.acquire.return_value.__aenter__ = AsyncMock(return_value=None)
+        pool.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
+        out: dict[str, Any] = await mod.apply_change({"confirmation_token": "ABCD1234"})
+
+    assert out["status"] == "submitted"
+    assert out["operation"] == "upload_customer_match_list"
+    assert out["customer_id"] == "1234567890"
+    assert out["blast_summary"] == "Enviar 3 membros para a user list 999."
+    assert out["members_submitted"] == 2
+    assert out["members_failed"] == 1
+    assert out["failures"] == resultado["failures"]
+    assert out["job_resource_name"].endswith("/JOB123")
+    # LGPD: a resposta ecoa contagem e indice — nunca o hash que subiu.
+    assert "h0" not in str(out)
+
+
 # ---------------------------------------------------------------------------
 # O leitor compartilhado nao pode tornar o caminho de mutate mais fragil
 # ---------------------------------------------------------------------------

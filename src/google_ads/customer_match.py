@@ -105,6 +105,29 @@ class _Progresso:
     def ultimo_request_id(self) -> str:
         return self.run_id or self.add_id or self.create_id
 
+    def submetidos(self, member_count: int) -> int:
+        """Quantos membros o Google reconhecidamente RECEBEU — nunca o tentado.
+
+        Zero enquanto o passo 2 nao devolveu: parada no `create_job` nao
+        submeteu nada, e parada no `add_operations` nao devolveu resposta que
+        diga quantos entraram. O numero so passa a existir quando ha resposta do
+        add — e ai e o lote menos o que o Google recusou.
+
+        O calculo estava escrito solto em tres lugares (audit, mensagem de erro,
+        retorno) e so o retorno era alcancado pelo caminho feliz; nos outros dois
+        ele reportava o lote INTEIRO como submetido mesmo quando a sequencia
+        parou antes de qualquer PII sair — a mesma familia R1-I2/R1-I3, na unica
+        tool que carrega PII. Fica um metodo so, e as tres pontas o chamam.
+
+        Como `pii_anexada`, e um LIMITE INFERIOR: timeout na resposta do passo 2
+        deixa a PII no Google com `add_id` vazio, e aqui isso vira 0. Subestimar
+        e o lado seguro — a trilha carrega `etapa` e `job_resource_name` para
+        quem precisa investigar o caso ambiguo.
+        """
+        if not self.pii_anexada:
+            return 0
+        return member_count - len(self.membros_recusados)
+
 
 def _build_user_data_operations(
     client: Any,
@@ -166,7 +189,9 @@ async def run_offline_user_data_job(
     passo 2 deixa a lista de PII anexada la. O tratamento e o de uma saga sem
     compensacao: `_Progresso` registra onde parou, o audit guarda o
     `job_resource_name` e o `pii_anexada`, e o erro PT-BR diz ao gestor que os
-    membros ja subiram — para ele nao repetir o upload e duplicar a lista.
+    membros ja subiram, por que nao repetir o upload (um segundo job com a mesma
+    PII — nao membro duplicado, que a lista e conjunto) e qual e a saida (rodar o
+    job que ja existe, que nenhuma tool deste MCP faz hoje).
 
     Sprint 3b.28 — segundo dispatcher non-mutate, paralelo a run_conversion_upload
     do Sprint 3b.26.
@@ -368,7 +393,11 @@ async def run_offline_user_data_job(
                     "etapa": progresso.etapa,
                     "job_resource_name": progresso.job_resource_name,
                     "pii_anexada": progresso.pii_anexada,
-                    "members_submitted": member_count - len(progresso.membros_recusados),
+                    # `submetidos()` e nao `member_count - recusados`: parada no
+                    # passo 1 ou 2 nao submeteu nada, e o calculo solto gravava
+                    # o lote inteiro como submetido nos dois casos. `member_count`
+                    # (o tentado) continua ao lado, em `audit_params`.
+                    "members_submitted": progresso.submetidos(member_count),
                     "members_failed": len(progresso.membros_recusados),
                 },
                 provider_request_id=progresso.ultimo_request_id,
@@ -381,20 +410,35 @@ async def run_offline_user_data_job(
         # Raise (não retorna dict de erro): apply_change espera dict de sucesso;
         # o friendly propaga pro _error_envelope como mensagem PT-BR pro cliente.
         #
-        # R1-I4: quando a PII ja subiu, a mensagem PT-BR precisa DIZER isso. Nao
-        # ha rollback possivel (o Google nao apaga OfflineUserDataJob), e um
-        # erro que omite o estado do outro lado convida o gestor a repetir a
-        # chamada — anexando a mesma lista duas vezes.
+        # R1-I4: quando a PII ja subiu, a mensagem PT-BR precisa DIZER isso, e
+        # dizer o que fazer. Nao ha rollback possivel (o Google nao apaga
+        # OfflineUserDataJob), e um erro que omite o estado do outro lado
+        # convida o gestor a repetir a chamada.
+        #
+        # O CUSTO do retry nao e membro duplicado: a user list de Customer Match
+        # e um conjunto de identificadores hasheados, entao reenviar os mesmos
+        # membros nao duplica ninguem. O custo e um SEGUNDO OfflineUserDataJob
+        # carregando a mesma PII, que o Google nao apaga — a lista fica igual e a
+        # exposicao dobra. Por isso a saida certa e rodar o job que JA existe
+        # (RunOfflineUserDataJob), e nao criar outro; nenhuma tool deste MCP faz
+        # isso hoje, e o gestor precisa saber disso em vez de ficar sem caminho.
         if progresso.pii_anexada:
             raise type(friendly_error)(
-                f"{friendly_error} Atencao: os {member_count} membros JA foram enviados ao "
-                f"Google (job {progresso.job_resource_name}); o que falhou foi o passo "
-                f"'{progresso.etapa}'. NAO repita o upload — confira o status do job com "
-                "run_gaql em offline_user_data_job antes de qualquer nova tentativa."
+                f"{friendly_error} Atencao: {progresso.submetidos(member_count)} membro(s) JA "
+                f"foram enviados ao Google e estao anexados ao job "
+                f"{progresso.job_resource_name}; o que falhou foi o passo "
+                f"'{progresso.etapa}'. NAO repita o upload: reenviar nao duplicaria membros "
+                "(a lista de Customer Match e um conjunto de identificadores hasheados), mas "
+                "criaria um SEGUNDO job com a mesma PII, e o Google nao apaga "
+                "OfflineUserDataJob. O conserto e RODAR o job que ja existe "
+                "(RunOfflineUserDataJob) — nenhuma tool deste MCP faz isso hoje, entao ele "
+                "precisa ser disparado direto pela API do Google Ads. Confira antes o estado "
+                "com run_gaql em offline_user_data_job: PENDING confirma que a lista nao foi "
+                "atualizada e que e esse job, e nao um novo, que precisa rodar."
             ) from original_error
         raise friendly_error from original_error
 
-    members_submitted = member_count - len(progresso.membros_recusados)
+    members_submitted = progresso.submetidos(member_count)
     log.info(
         "run_offline_user_data_job_done",
         customer_id=customer_id,

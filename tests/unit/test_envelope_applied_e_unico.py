@@ -88,17 +88,25 @@ def test_nenhum_tool_monta_o_envelope_applied_a_mao() -> None:
     )
 
 
-def test_o_helper_ainda_e_o_dono_do_literal() -> None:
+def test_o_helper_ainda_e_o_dono_dos_dois_literais() -> None:
     """Controle: o guard acima seria vacuo se o proprio helper tivesse mudado.
 
     Se `_mutate_common.py` deixasse de conter o literal `"status": "applied"`
     (renomeado, movido, reescrito), o teste de cima passaria verde varrendo um
     codebase onde o envelope nao existe mais em lugar nenhum.
+
+    Vale para os DOIS status de sucesso, nao so para `applied`: o scanner
+    recusa `submitted` montado a mao com a mesma regra, entao um helper que
+    perdesse o `submitted_envelope` deixaria essa metade do guard sem
+    referencia — vacua exatamente do jeito que este controle existe pra
+    impedir.
     """
     arv = h.arvore(TOOLS / DONO_DO_ENVELOPE)
-    assert [s for _, s in _envelopes_a_mao(arv) if s == "applied"], (
-        f"{DONO_DO_ENVELOPE} nao contem mais o envelope `applied` — o guard de "
-        "cima ficou sem referencia e passaria por vacuidade."
+    presentes = {s for _, s in _envelopes_a_mao(arv)}
+    faltando = _STATUS_DE_SUCESSO - presentes
+    assert not faltando, (
+        f"{DONO_DO_ENVELOPE} nao contem mais o(s) envelope(s) {sorted(faltando)} — "
+        "o guard de cima ficou sem referencia nessa metade e passaria por vacuidade."
     )
 
 
@@ -124,6 +132,39 @@ def test_applied_envelope_garante_o_blast_summary() -> None:
     assert env["customer_id"] == "1234567890"
     assert env["applied_count"] == 2
     assert env["provider_request_id"] == "req-1"
+
+
+def test_submitted_envelope_garante_o_blast_summary() -> None:
+    """A mesma propriedade, no envelope que nasceu com uma camada so.
+
+    `submitted_envelope` entrou junto com o guard estrutural e ficou sem a
+    assercao de propriedade que o `applied_envelope` tem ao lado — apagar
+    `blast_summary` deste helper deixava a suite unitaria INTEIRA verde. E o
+    contrato aqui e novo: o envelope a mao que ele substituiu (o ramo
+    `upload_customer_match_list` do `apply_change`) nao devolvia o campo, entao
+    nao havia nem cobertura herdada para cair em cima.
+
+    Nao e detalhe de forma: `submitted` e o unico caminho de sucesso da unica
+    tool que sobe PII, e `blast_summary` e o eco do resumo que o gestor
+    confirmou no token — sem ele a resposta nao diz o que a chamada fez com a
+    lista de clientes.
+    """
+    from src.mcp.tools._mutate_common import submitted_envelope
+
+    env = submitted_envelope(
+        "upload_customer_match_list",
+        "1234567890",
+        "Enviar 500 membros para a user list 999.",
+        members_submitted=498,
+        members_failed=2,
+    )
+    assert env["status"] == "submitted"
+    assert env["blast_summary"] == "Enviar 500 membros para a user list 999."
+    assert env["operation"] == "upload_customer_match_list"
+    assert env["customer_id"] == "1234567890"
+    # `**extra` por-tool continua chegando inteiro ao lado do nucleo garantido.
+    assert env["members_submitted"] == 498
+    assert env["members_failed"] == 2
 
 
 def test_auto_applied_reason_so_aparece_quando_ha_um() -> None:
