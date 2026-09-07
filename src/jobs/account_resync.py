@@ -31,6 +31,7 @@ from src.google_ads.accounts import (
 )
 from src.google_ads.client import build_client
 from src.google_ads.reconcile import build_plan
+from src.governance.bookkeeping import best_effort
 from src.jobs._audit import record_access_revocation, record_job_crash, record_job_run
 from src.jobs.purge import purge_expired
 from src.logging import configure_logging
@@ -116,7 +117,29 @@ async def reconcile_google(
         # que carimbar o inventário inteiro em UTC calado).
         fusos = {r.customer_id: r.time_zone for r in inventario}
         bump = [(cid, account_today(fusos[cid], now=agora)) for cid in plano.to_bump]
-        await google_ads_accounts.apply_absences(conn, bump=bump, reset=plano.to_reset)
+        # Task 4/Step 5: `reset=[]`, não `plano.to_reset`. `upsert_many`
+        # (duas linhas acima, MESMA transação, sem I/O entre os dois) já zera
+        # `missed_syncs`/`last_missed_on` para toda conta em `accounts` — e
+        # `to_reset` é subconjunto de `mcc_ids` por construção (`build_plan`:
+        # `r.customer_id in mcc_ids`), com `mcc_ids` derivado do próprio
+        # `accounts` (linha ~102, `{a["customer_id"] for a in accounts}`).
+        # Ou seja: toda vez que este UPDATE chegasse a rodar pra um id de
+        # `to_reset`, `missed_syncs` já estaria em 0 — e a cláusula `AND
+        # missed_syncs <> 0` de `apply_absences` barra a linha antes de
+        # reescrevê-la. Provado (não só argumentado) em
+        # `test_reset_e_redundante_apos_upsert_many_no_mesmo_run`
+        # (tests/integration/test_google_reconcile_repo.py): mesmo `xmin`
+        # antes/depois do reset explícito, na mesma sequência que este
+        # `reconcile_google` usa. `plano.to_reset` continua computado — quem
+        # o lê é só `resumo["reset"]` (a contagem pro audit; ~linha 172), não
+        # mais este call site.
+        #
+        # Deliberadamente NÃO espelhado no lado Meta
+        # (`src/jobs/meta_resync.py`): lá `meta_reconcile_apply` já está
+        # ligada em produção (revoga acesso de verdade desde 05/09), e a
+        # mesma equivalência não foi provada contra ESSE código — só contra
+        # este. CLAUDE.md: "Don't assertar superfície... por analogia."
+        await google_ads_accounts.apply_absences(conn, bump=bump, reset=[])
 
         # Contado SEMPRE, inclusive no dry-run: a trava governa DESTRUIÇÃO, não
         # observação. Sem isto o soak inteiro reporta zero e não distingue "não
@@ -280,17 +303,32 @@ async def run() -> int:
                 complete=inventario_ok,
                 apply=settings.google_reconcile_apply,
             )
-            await record_job_run(
-                conn,
-                operation="google_reconcile",
-                platform="google",
-                target_count=resumo["upserted"],
-                status="success" if resumo["blocked_reason"] is None else "error",
-                error_message=resumo["blocked_reason"],
-                params_summary={
-                    k: v for k, v in resumo.items() if k not in ("upserted", "blocked_reason")
-                },
-            )
+            # Task 4/F83: `record_job_run` roda DEPOIS do `return` de
+            # `reconcile_google` — a transação da reconciliação já fechou
+            # (commitou) antes desta linha, então uma exceção aqui é falha de
+            # BOOKKEEPING sobre uma operação que já aconteceu, não da
+            # reconciliação em si. Sem `best_effort` ela subia pro `except`
+            # externo (~:373+), que grava um `record_job_crash` e RE-LEVANTA —
+            # o Cloud Run Job (`maxRetries: 3`) reexecutava a reconciliação
+            # INTEIRA só porque o audit da vez anterior não gravou. Com as
+            # Tasks 2/3 esse retry já não corrompe nada; isto fecha a causa do
+            # retry. Mesma classe do F83 dos executores de mutação
+            # (src/google_ads/mutations.py), só que aqui o bookkeeping roda
+            # numa chamada solta, não num `finally` — por isso o guard
+            # estrutural do F83 (test_finally_bookkeeping_is_best_effort) não
+            # alcança este ponto (ver task-4-report.md).
+            async with best_effort("job_run_audit_failed", operation="google_reconcile"):
+                await record_job_run(
+                    conn,
+                    operation="google_reconcile",
+                    platform="google",
+                    target_count=resumo["upserted"],
+                    status="success" if resumo["blocked_reason"] is None else "error",
+                    error_message=resumo["blocked_reason"],
+                    params_summary={
+                        k: v for k, v in resumo.items() if k not in ("upserted", "blocked_reason")
+                    },
+                )
             # Task 7: depois do record_job_run, na MESMA conexão — lê o
             # inventário já reconciliado por esta execução.
             #

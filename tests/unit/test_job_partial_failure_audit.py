@@ -210,6 +210,17 @@ async def test_crash_do_job_grava_audit_e_repropaga(monkeypatch: pytest.MonkeyPa
     settings = MagicMock()
     settings.database_url = "postgres://fake"
     monkeypatch.setattr(meta_resync, "get_settings", lambda: settings)
+    # Task 4: `run()` passou a chamar `configure_logging(...)` antes do
+    # `init_pool` (espelha o gêmeo Google). Mockado aqui como todo o resto
+    # desta função — `structlog.configure(...)` é estado GLOBAL do processo
+    # pytest inteiro, não por-teste: rodá-lo de verdade aqui vazava pra
+    # OUTROS arquivos de teste (`test_meta_denial_log.py`, que usa
+    # `capture_logs()` pra afirmar o log de negação de acesso Meta),
+    # dependendo da ordem alfabética de coleta — achado por bisseção, não
+    # deduzido. Este teste prova a orquestração de `run()`, não o
+    # `configure_logging` em si (isso já tem cobertura própria em
+    # test_logging_context.py/test_logging_severity.py).
+    monkeypatch.setattr(meta_resync, "configure_logging", MagicMock())
     monkeypatch.setattr(meta_resync.connection, "init_pool", AsyncMock())
     monkeypatch.setattr(meta_resync.connection, "close_pool", AsyncMock())
     monkeypatch.setattr(meta_resync.connection, "get_pool", lambda: _FakePool())

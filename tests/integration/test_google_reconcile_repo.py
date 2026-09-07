@@ -185,6 +185,46 @@ async def test_reset_nao_reescreve_linha_ja_limpa(db) -> None:
 
 
 @pytest.mark.integration
+async def test_reset_e_redundante_apos_upsert_many_no_mesmo_run(db) -> None:
+    """Task 4/Step 5: prova que `reset=plano.to_reset` era sempre no-op no
+    call site de `reconcile_google` — não só por argumento (`to_reset` é
+    subconjunto de `mcc_ids` por construção), mas no SQL de verdade.
+
+    `reconcile_google` chama `upsert_many` (zera `missed_syncs`/
+    `last_missed_on` pra TODA conta em `accounts`) e só DEPOIS
+    `apply_absences(reset=...)`, na MESMA transação, sem I/O entre os dois.
+    Uma conta com carência antiga que REAPARECE nesta execução (está de novo
+    em `accounts`, e por isso em `to_reset` se `missed_syncs` era > 0) já sai
+    do `upsert_many` limpa — pelo momento em que o reset explícito rodaria, a
+    cláusula `AND missed_syncs <> 0` (mesmo mecanismo de
+    `test_reset_nao_reescreve_linha_ja_limpa`, agora na sequência REAL do
+    job) barra o UPDATE antes de reescrever a linha.
+    """
+    async with db.acquire() as conn:
+        await _semear_conta(conn, "1234567890", missed_syncs=2)
+
+        # A conta reaparece no MCC nesta execução — `reconcile_google` faz
+        # isto SEMPRE, antes de qualquer reset.
+        await google_ads_accounts.upsert_many(conn, [CONTA])
+        depois_do_upsert = await _linha(conn, "1234567890")
+        assert depois_do_upsert["missed_syncs"] == 0, (
+            "premissa do teste: upsert_many sozinho já zera a série de ausências"
+        )
+
+        # O reset que o call site de `reconcile_google` deixou de passar
+        # (Step 5) — isolado aqui pra provar que rodá-lo não mudaria nada.
+        await google_ads_accounts.apply_absences(conn, bump=[], reset=["1234567890"])
+        depois_do_reset = await _linha(conn, "1234567890")
+
+    assert depois_do_reset["versao"] == depois_do_upsert["versao"], (
+        "reset reescreveu a linha depois do upsert_many — a equivalência que "
+        "justifica reset=[] no call site de reconcile_google não se sustenta"
+    )
+    assert depois_do_reset["missed_syncs"] == 0
+    assert depois_do_reset["last_missed_on"] is None
+
+
+@pytest.mark.integration
 async def test_conta_que_volta_e_falta_no_mesmo_dia_tem_a_ausencia_contada(db) -> None:
     """`upsert_many` zera `last_missed_on` junto com `missed_syncs` (F128).
 
@@ -449,3 +489,25 @@ async def test_retry_na_vespera_do_limiar_nao_remove_a_conta(db) -> None:
     assert depois_do_retry["missed_syncs"] == 2, "o contador tem de seguir idempotente por dia"
     assert resumo_amanha["removed"] == 1, "a remocao no dia certo parou de acontecer"
     assert ativa_amanha is False, "no terceiro dia a conta tem de sair de verdade"
+
+
+@pytest.mark.integration
+async def test_conta_com_carencia_que_reaparece_sai_zerada_com_reset_vazio(db) -> None:
+    """Task 4/Step 5, ponta a ponta: `reconcile_google` passou a chamar
+    `apply_absences(..., reset=[])` — este teste prova que a conta que
+    reaparece com carência antiga ainda sai zerada (via `upsert_many`
+    sozinho) e que `resumo["reset"]` continua reportando a contagem certa,
+    mesmo sem mais ALIMENTAR o UPDATE de reset.
+    """
+    async with db.acquire() as conn:
+        await _semear_conta(conn, "1234567890", missed_syncs=2)
+
+        resumo = await account_resync.reconcile_google(
+            conn, accounts=[CONTA], complete=True, apply=True, now=INSTANTE_DO_BUG
+        )
+
+        linha = await _linha(conn, "1234567890")
+
+    assert resumo["reset"] == 1, "to_reset continua contando a conta pro audit"
+    assert linha["missed_syncs"] == 0, "conta reaparecida tem que sair com a serie zerada"
+    assert linha["last_missed_on"] is None

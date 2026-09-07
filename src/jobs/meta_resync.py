@@ -26,7 +26,9 @@ from src.clock import account_today
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import manager_meta_account_access, meta_ad_accounts
+from src.governance.bookkeeping import best_effort
 from src.jobs._audit import record_access_revocation, record_job_crash, record_job_run
+from src.logging import configure_logging
 from src.meta_ads.partnership import fetch_partnership
 from src.meta_ads.reconcile import Plan, build_plan
 
@@ -182,35 +184,53 @@ async def reconcile_meta(conn: asyncpg.Connection, *, now: datetime | None = Non
                 )
 
     # Auditoria do run FORA da transação de propósito: bookkeeping não pode
-    # desfazer reconciliação já aplicada (família do F83). Se ela mesma
-    # falhar, o crash cai no `record_job_crash` de quem chamou.
-    await record_job_run(
-        conn,
-        operation="meta_reconcile",
-        platform="meta",
-        target_count=upserted,
-        status="success" if plano.blocked_reason is None else "error",
-        error_message=plano.blocked_reason,
-        params_summary={
-            "added": len(plano.to_add),
-            "removed": len(plano.to_remove),
-            "bumped": len(plano.to_bump),
-            "unreachable": len(plano.unreachable),
-            "revoked_grants": revogados,
-            # M3: a §9 nomeia `complete` explicitamente. Dá pra inferir de
-            # error_message == "leitura incompleta", mas essa string colapsa
-            # duas leituras diferentes (parceria vs /me/adaccounts) num
-            # motivo só — na triagem você não saberia qual falhou.
-            "complete": leitura_completa,
-            "applied": aplicado,
-        },
-    )
+    # desfazer reconciliação já aplicada (família do F83).
+    #
+    # Task 4: "se ela mesma falhar, o crash cai no record_job_crash de quem
+    # chamou" descrevia a INTENÇÃO, mas nada aqui protegia a falha em si. Sem
+    # `best_effort`, a exceção subia INTEIRA — via `run()` standalone (`python
+    # -m src.jobs.meta_resync`) ou via o try/except do piggyback em
+    # `account_resync.run()` — e o chamador tratava uma reconciliação
+    # BEM-SUCEDIDA (já commitada, `meta_reconcile_apply` ligada em produção
+    # desde 05/09) como se tivesse falhado, gravando um `record_job_crash`
+    # logo depois do `record_job_run` que já tinha tentado (e falhado) marcar
+    # sucesso — duas linhas de audit contraditórias pra mesma execução.
+    async with best_effort("job_run_audit_failed", operation="meta_reconcile"):
+        await record_job_run(
+            conn,
+            operation="meta_reconcile",
+            platform="meta",
+            target_count=upserted,
+            status="success" if plano.blocked_reason is None else "error",
+            error_message=plano.blocked_reason,
+            params_summary={
+                "added": len(plano.to_add),
+                "removed": len(plano.to_remove),
+                "bumped": len(plano.to_bump),
+                "unreachable": len(plano.unreachable),
+                "revoked_grants": revogados,
+                # M3: a §9 nomeia `complete` explicitamente. Dá pra inferir de
+                # error_message == "leitura incompleta", mas essa string
+                # colapsa duas leituras diferentes (parceria vs
+                # /me/adaccounts) num motivo só — na triagem você não saberia
+                # qual falhou.
+                "complete": leitura_completa,
+                "applied": aplicado,
+            },
+        )
     log.info("meta_reconcile_complete", applied=aplicado, plan=plano)
     return plano
 
 
 async def run() -> int:
     settings = get_settings()
+    # Task 4: só o gêmeo Google chamava isto (Task 7 de um sprint anterior).
+    # Sem `configure_logging`, este job loga em texto puro (o renderer
+    # default do structlog não-configurado) — sem `jsonPayload.severity`, o
+    # Cloud Logging classifica tudo como DEFAULT, e nada aqui casa com uma
+    # métrica log-based por severidade. O lado que faltava era o que revoga
+    # de verdade em produção desde 05/09.
+    configure_logging(level=settings.log_level, json_output=settings.app_env != "development")
     await connection.init_pool(settings.database_url)
     try:
         # A conexão nasce AQUI, no topo do job, e não dentro de
