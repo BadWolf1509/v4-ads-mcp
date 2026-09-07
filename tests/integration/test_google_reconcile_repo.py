@@ -31,6 +31,17 @@ INSTANTE_DO_BUG = datetime(2026, 9, 3, 0, 30, tzinfo=UTC)
 DIA_DA_CONTA = date(2026, 9, 2)
 DIA_DO_SERVIDOR = date(2026, 9, 3)
 
+# I1 (revisão final da branch): DOIS fusos que caem em DIAS DIFERENTES no MESMO
+# instante. Às 03:30 UTC do dia 3, em `America/Fortaleza` (UTC-3) já é 00:30 do
+# dia 3, e em `America/Manaus` (UTC-4) ainda são 23:30 do dia 2. A escolha do
+# instante é o teste: com dois fusos que caíssem no mesmo dia, "cada conta no seu
+# fuso" e "um fuso para o lote inteiro" produziriam o mesmo resultado, e a
+# mutação passaria verde. Os dois fusos são reais no MCC — as 26 contas estão em
+# seis fusos, todos UTC-3 ou UTC-4 (F141).
+INSTANTE_ENTRE_FUSOS = datetime(2026, 9, 3, 3, 30, tzinfo=UTC)
+DIA_EM_FORTALEZA = date(2026, 9, 3)  # UTC-3: 00:30 do dia 3
+DIA_EM_MANAUS = date(2026, 9, 2)  # UTC-4: 23:30 do dia 2
+
 CONTA: dict[str, Any] = {
     "customer_id": "1234567890",
     "mcc_id": "6436352492",
@@ -511,3 +522,68 @@ async def test_conta_com_carencia_que_reaparece_sai_zerada_com_reset_vazio(db) -
     assert resumo["reset"] == 1, "to_reset continua contando a conta pro audit"
     assert linha["missed_syncs"] == 0, "conta reaparecida tem que sair com a serie zerada"
     assert linha["last_missed_on"] is None
+
+
+@pytest.mark.integration
+async def test_lote_com_duas_contas_carimba_cada_uma_no_seu_fuso(db) -> None:
+    """I1 (revisão final): o caminho MULTI-CONTA do `bump`, que nenhum teste tocava.
+
+    As 24 chamadas de `apply_absences` da suíte passavam `bump` com **um** par
+    `(id, data)`. Duas mutações atravessavam isso verdes, e as duas erram para o
+    lado que não revoga — que é o lado invisível:
+
+    - `bump[:1]` no `executemany`: duas contas saem do MCC no mesmo dia e só a
+      primeira acumula carência. A segunda fica congelada em 0 para sempre e
+      NUNCA é desativada — o offboarding morre em silêncio, com o contador
+      parecendo saudável.
+    - `account_today` içado para fora da comprehension (um fuso para o lote
+      inteiro): o fuso de uma conta carimba a data de todas. É o F141 de volta,
+      dentro do laço que revoga acesso, e só na janela noturna.
+
+    O instante é escolhido para que os dois fusos estejam em DIAS DIFERENTES
+    (ver `INSTANTE_ENTRE_FUSOS`): é isso que dá ao teste poder de distinguir as
+    duas hipóteses. Com dois fusos no mesmo dia, o hoist passaria.
+
+    A terceira asserção — o retry no mesmo instante — prende a idempotência por
+    dia nas DUAS linhas ao mesmo tempo: um `WHERE` que perdesse o predicado de
+    data levaria as duas a 2.
+    """
+    async with db.acquire() as conn:
+        await _semear_conta(conn, "1234567890", time_zone="America/Fortaleza")
+        await _semear_conta(conn, "9876543210", time_zone="America/Manaus")
+
+        resumo = await account_resync.reconcile_google(
+            conn, accounts=[], complete=True, apply=False, now=INSTANTE_ENTRE_FUSOS
+        )
+        fortaleza = await _linha(conn, "1234567890")
+        manaus = await _linha(conn, "9876543210")
+
+        # Retry do mesmo run (maxRetries: 3), MESMO instante: nenhuma das duas
+        # pode contar de novo.
+        await account_resync.reconcile_google(
+            conn, accounts=[], complete=True, apply=False, now=INSTANTE_ENTRE_FUSOS
+        )
+        fortaleza_retry = await _linha(conn, "1234567890")
+        manaus_retry = await _linha(conn, "9876543210")
+
+    assert resumo["bumped"] == 2, "o plano tem que marcar as DUAS contas ausentes"
+    assert fortaleza["missed_syncs"] == 1
+    assert manaus["missed_syncs"] == 1, (
+        "a segunda conta do lote nao acumulou carencia — o `executemany` aplicou "
+        "so o primeiro par, e essa conta nunca seria desativada"
+    )
+    assert fortaleza["last_missed_on"] == DIA_EM_FORTALEZA, (
+        f"conta em America/Fortaleza (UTC-3) devia ser carimbada com {DIA_EM_FORTALEZA}, "
+        f"veio {fortaleza['last_missed_on']} — um fuso so para o lote inteiro"
+    )
+    assert manaus["last_missed_on"] == DIA_EM_MANAUS, (
+        f"conta em America/Manaus (UTC-4) devia ser carimbada com {DIA_EM_MANAUS}, "
+        f"veio {manaus['last_missed_on']} — um fuso so para o lote inteiro"
+    )
+    assert fortaleza["last_missed_on"] != manaus["last_missed_on"], (
+        "as duas contas cairam no MESMO dia: o instante deixou de discriminar os "
+        "fusos e o teste perdeu o poder de matar a mutacao do hoist"
+    )
+    assert (fortaleza_retry["missed_syncs"], manaus_retry["missed_syncs"]) == (1, 1), (
+        "o retry no mesmo dia contou de novo em alguma das duas linhas"
+    )

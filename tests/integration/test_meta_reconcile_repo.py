@@ -34,6 +34,17 @@ INSTANTE_DO_BUG = datetime(2026, 9, 3, 0, 30, tzinfo=UTC)
 DIA_DA_CONTA = date(2026, 9, 2)
 DIA_DO_SERVIDOR = date(2026, 9, 3)
 
+# I1 (revisao final da branch): DOIS fusos que caem em DIAS DIFERENTES no MESMO
+# instante. As 02:30 UTC do dia 3, em `America/Noronha` (UTC-2) ja e 00:30 do dia
+# 3, e em `America/Sao_Paulo` (UTC-3) ainda sao 23:30 do dia 2. A escolha do
+# instante E o teste: com dois fusos que caissem no mesmo dia, "cada conta no seu
+# fuso" e "um fuso para o lote inteiro" produziriam o mesmo resultado, e a
+# mutacao passaria verde. Os dois fusos sao MEDIDOS na producao Meta (probe
+# 2026-09-06: `America/Sao_Paulo` 22, `America/Noronha` 2, `America/Manaus` 1).
+INSTANTE_ENTRE_FUSOS = datetime(2026, 9, 3, 2, 30, tzinfo=UTC)
+DIA_EM_NORONHA = date(2026, 9, 3)  # UTC-2: 00:30 do dia 3
+DIA_EM_SAO_PAULO = date(2026, 9, 2)  # UTC-3: 23:30 do dia 2
+
 CONTA = {
     "ad_account_id": "act_1",
     "business_id": "bm",
@@ -533,6 +544,71 @@ async def test_retry_na_vespera_do_limiar_nao_remove_a_conta_meta(db) -> None:
     assert depois_do_retry["missed_syncs"] == 2, "o contador tem de seguir idempotente por dia"
     assert plano_amanha.to_remove == ["act_1"], "a remocao no dia certo parou de acontecer"
     assert ativa_amanha is False, "no terceiro dia a conta tem de sair de verdade"
+
+
+@pytest.mark.integration
+async def test_lote_com_duas_contas_carimba_cada_uma_no_seu_fuso_meta(db) -> None:
+    """I1 (revisao final): o caminho MULTI-CONTA do `bump`, que nenhum teste tocava.
+
+    As 24 chamadas de `apply_absences` da suite passavam `bump` com **um** par
+    `(id, data)`. Duas mutacoes atravessavam isso verdes, e as duas erram para o
+    lado que nao revoga — que e o lado invisivel. Deste lado o laco REVOGA em
+    producao desde 05/09, entao o offboarding que elas paralisam e real:
+
+    - `bump[:1]` no `executemany`: duas contas saem da parceria no mesmo dia e so
+      a primeira acumula carencia. A segunda fica congelada em 0 para sempre e
+      NUNCA e desativada — o offboarding morre em silencio, com o contador
+      parecendo saudavel.
+    - `account_today` icado para fora da comprehension (um fuso para o lote
+      inteiro): o fuso de uma conta carimba a data de todas. E o F141 de volta,
+      dentro do laco que revoga acesso, e so na janela noturna.
+
+    O instante e escolhido para que os dois fusos estejam em DIAS DIFERENTES
+    (ver `INSTANTE_ENTRE_FUSOS`): e isso que da ao teste poder de distinguir as
+    duas hipoteses. Com dois fusos no mesmo dia, o hoist passaria.
+
+    A ultima assercao — o retry no mesmo instante — prende a idempotencia por dia
+    nas DUAS linhas ao mesmo tempo: um `WHERE` que perdesse o predicado de data
+    levaria as duas a 2.
+    """
+    async with db.acquire() as conn:
+        await _semear_conta(conn, "act_1", timezone_name="America/Noronha")
+        await _semear_conta(conn, "act_2", timezone_name="America/Sao_Paulo")
+
+        with ExitStack() as stack:
+            for p in _patches_do_job(apply=True):
+                stack.enter_context(p)
+            plano = await meta_resync.reconcile_meta(conn, now=INSTANTE_ENTRE_FUSOS)
+            noronha = await _linha(conn, "act_1")
+            sao_paulo = await _linha(conn, "act_2")
+
+            # Retry do mesmo run (maxRetries: 3), MESMO instante: nenhuma das
+            # duas pode contar de novo.
+            await meta_resync.reconcile_meta(conn, now=INSTANTE_ENTRE_FUSOS)
+            noronha_retry = await _linha(conn, "act_1")
+            sao_paulo_retry = await _linha(conn, "act_2")
+
+    assert plano.to_bump == ["act_1", "act_2"], "o plano tem que marcar as DUAS contas ausentes"
+    assert noronha["missed_syncs"] == 1
+    assert sao_paulo["missed_syncs"] == 1, (
+        "a segunda conta do lote nao acumulou carencia — o `executemany` aplicou "
+        "so o primeiro par, e essa conta nunca seria desativada"
+    )
+    assert noronha["last_missed_on"] == DIA_EM_NORONHA, (
+        f"conta em America/Noronha (UTC-2) devia ser carimbada com {DIA_EM_NORONHA}, "
+        f"veio {noronha['last_missed_on']} — um fuso so para o lote inteiro"
+    )
+    assert sao_paulo["last_missed_on"] == DIA_EM_SAO_PAULO, (
+        f"conta em America/Sao_Paulo (UTC-3) devia ser carimbada com {DIA_EM_SAO_PAULO}, "
+        f"veio {sao_paulo['last_missed_on']} — um fuso so para o lote inteiro"
+    )
+    assert noronha["last_missed_on"] != sao_paulo["last_missed_on"], (
+        "as duas contas cairam no MESMO dia: o instante deixou de discriminar os "
+        "fusos e o teste perdeu o poder de matar a mutacao do hoist"
+    )
+    assert (noronha_retry["missed_syncs"], sao_paulo_retry["missed_syncs"]) == (1, 1), (
+        "o retry no mesmo dia contou de novo em alguma das duas linhas"
+    )
 
 
 # ---------- filas do painel ----------
