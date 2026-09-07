@@ -32,6 +32,12 @@ TOOLS = (
 PRIMITIVOS = [
     h.SRC / "google_ads" / "queries" / "_common.py",
     h.SRC / "google_ads" / "change_freshness.py",
+    # `account_today` SAIU do `_common.py` em 2026-09-06 (mora em `src/clock.py`,
+    # neutro entre os dois provedores). O guard segue o CODIGO, nao o caminho:
+    # sem esta linha, a funcao que resolve `hoje` sairia do escopo do guard so
+    # por ter mudado de arquivo — e o guard passaria verde olhando o lugar de
+    # onde ela saiu. Cobre tambem o consumo Meta, que herda o mesmo primitivo.
+    h.SRC / "clock.py",
     # `account_clock.py` fica FORA desta lista de proposito: e o unico leitor
     # legitimo do relogio (como default injetavel), e tem teste proprio abaixo.
 ]

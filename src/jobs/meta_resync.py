@@ -15,11 +15,16 @@ Standalone: `python -m src.jobs.meta_resync`
 
 import asyncio
 import sys
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 
+import asyncpg
 import httpx
 import structlog
 
 from src.auth.meta_oauth import _fetch_all_adaccounts
+from src.clock import account_today
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import manager_meta_account_access, meta_ad_accounts
@@ -30,8 +35,39 @@ from src.meta_ads.reconcile import Plan, build_plan
 log = structlog.get_logger(__name__)
 
 
-async def reconcile_meta() -> Plan:
-    """Lê a parceria, planeja e aplica. Assume `connection.init_pool()` feito."""
+@asynccontextmanager
+async def _conexao(conn: asyncpg.Connection | None) -> AsyncIterator[asyncpg.Connection]:
+    """A conexão injetada, ou uma do pool (o caminho de produção).
+
+    Espelha `reconcile_google`, que recebe a conexão de quem chama. Aqui ela é
+    OPCIONAL e não obrigatória porque este módulo também faz a leitura da
+    parceria: `run()` e o piggyback do `account_resync` chamam sem conexão
+    nenhuma, e é esse o caminho que roda no Cloud Run Job.
+
+    Existe porque sem ela o teste do retry no mesmo dia não é escrevível — ele
+    precisa semear a conta e ler o resultado na MESMA conexão que a
+    reconciliação usa.
+    """
+    if conn is not None:
+        yield conn
+        return
+    pool = connection.get_pool()
+    async with pool.acquire() as adquirida:
+        yield adquirida
+
+
+async def reconcile_meta(
+    conn: asyncpg.Connection | None = None, *, now: datetime | None = None
+) -> Plan:
+    """Lê a parceria, planeja e aplica. Assume `connection.init_pool()` feito.
+
+    `now` é o instante da EXECUÇÃO, lido UMA vez e passado adiante (C4/F141):
+    todas as ausências deste run são carimbadas com o mesmo instante, cada uma
+    convertida para o dia do fuso da SUA conta. Ler o relógio por conta faria o
+    resultado depender de quanto tempo o laço levou. Injetável porque só assim
+    o teste consegue um instante em que UTC e a conta discordam (a diferença
+    que `freezegun` não representa).
+    """
     settings = get_settings()
     if not settings.meta_system_user_token:
         log.warning("meta_reconcile_no_token")
@@ -61,8 +97,8 @@ async def reconcile_meta() -> Plan:
     # o offboarding e grava `status=error` todo dia, indefinidamente.
     leitura_completa = parceria.complete and alcance.complete
 
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
+    agora = now if now is not None else datetime.now(UTC)
+    async with _conexao(conn) as conn:
         # Uma transação só pro bloco de escrita inteiro: metade aplicada
         # (carência somada sem desativar, ou desativada com grant ainda vivo) é
         # exatamente a inconsistência que este recurso existe pra evitar.
@@ -98,7 +134,16 @@ async def reconcile_meta() -> Plan:
             # redundante com o zeramento que o upsert já faz sozinho; e com
             # leitura parcial `to_bump` sai vazio pelo próprio build_plan, então
             # ausência não vira carência sobre página que não veio (F93).
-            await meta_ad_accounts.apply_absences(conn, bump=plano.to_bump, reset=plano.to_reset)
+            #
+            # C4/F141: o plano devolve ids; a ausência precisa do DIA em que
+            # caiu, no fuso da conta. O fuso vem do inventário lido acima
+            # (indexação direta, não `.get()`: `to_bump` é derivado de
+            # `inventario` por construção — `build_plan` só o preenche a partir
+            # de `ativos` —, e se um dia deixar de ser, quebrar alto é melhor
+            # que carimbar o inventário inteiro em UTC calado).
+            fusos = {r.ad_account_id: r.timezone_name for r in inventario}
+            bump = [(aid, account_today(fusos[aid], now=agora)) for aid in plano.to_bump]
+            await meta_ad_accounts.apply_absences(conn, bump=bump, reset=plano.to_reset)
             if leitura_completa:
                 # `leitura_completa`, NÃO `aplicado`: confundir os dois foi o
                 # C2. O que o alcance exige é a leitura inteira de

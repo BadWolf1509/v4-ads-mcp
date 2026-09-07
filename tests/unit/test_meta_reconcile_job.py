@@ -15,6 +15,7 @@ sem depender de `as` nem do atributo interno `_patch.new`).
 """
 
 from contextlib import ExitStack
+from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -148,10 +149,15 @@ async def test_dry_run_observa_tudo_e_so_deixa_de_destruir() -> None:
     # Observação: os três rodam com o flag DESLIGADO.
     upsert.assert_awaited_once()
     absencias.assert_awaited_once()
-    assert absencias.await_args.kwargs["bump"] == ["act_2"], (
+    # C4: `bump` passou a ser `(ad_account_id, dia)`. A invariante deste teste
+    # continua sendo "a carência avança no dry-run"; o par é afirmado à parte,
+    # e nessa ORDEM — invertê-lo mapeia o id em `$2` e o dia em `$1`, e o
+    # UPDATE deixa de casar qualquer linha em silêncio.
+    assert [aid for aid, _dia in absencias.await_args.kwargs["bump"]] == ["act_2"], (
         "a carência precisa avançar no dry-run — senão missed_syncs fica "
         "congelado e to_remove nunca chega ao limiar durante o soak inteiro"
     )
+    assert all(isinstance(dia, date) for _aid, dia in absencias.await_args.kwargs["bump"])
     marca_alcance.assert_awaited_once()
     assert marca_alcance.await_args.kwargs["reachable_ids"] == ["act_1"]
     # M4: o UPDATE é escopado à parceria — sem WHERE ele marcava su_reachable

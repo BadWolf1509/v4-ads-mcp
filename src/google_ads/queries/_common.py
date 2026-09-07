@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import contextlib
 import json
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any
 from uuid import UUID
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
 
@@ -35,31 +34,10 @@ _PRESETS = {
 
 log = structlog.get_logger(__name__)
 
-
-def account_today(time_zone: str | None, *, now: datetime) -> date:
-    """Data corrente NO FUSO DA CONTA — o unico lugar deste modulo que sabe de fuso.
-
-    F141: o Google le predicado de data no fuso da conta, e as 25 contas do MCC
-    estao em UTC-3/UTC-4. Resolver `hoje` em UTC deslizava todo preset um dia
-    entre 21h e meia-noite locais, todo dia, em silencio.
-
-    Pura: recebe o instante em vez de ler o relogio, para o teste poder injetar
-    um `now` em que UTC e a conta discordam — a diferenca que `freezegun` nao
-    consegue representar.
-
-    Fallback DECIDIDO (nao acidental): `None` ou chave desconhecida -> data UTC
-    + warning. Todas as contas sincronizadas tem fuso; conta sem sync nao passa
-    no gate de acesso. Recusar a chamada trocaria dado faltante de inventario
-    por tool indisponivel.
-    """
-    if time_zone:
-        try:
-            return now.astimezone(ZoneInfo(time_zone)).date()
-        except ZoneInfoNotFoundError:
-            log.warning("account_time_zone_unknown", time_zone=time_zone)
-    else:
-        log.warning("account_time_zone_missing")
-    return now.astimezone(UTC).date()
+# `account_today` MUDOU DE CASA em 2026-09-06: vive em `src/clock.py`.
+# Ele nunca foi Google-specific — e o gemeo Meta do F141 precisa dele sem
+# importar `src.google_ads.*`. Reexportar daqui deixaria dois caminhos de
+# import pro mesmo corpo; quem precisa, importa de `src.clock`.
 
 
 def parse_date_range(arg: str | dict[str, str], *, today: date) -> tuple[date, date]:

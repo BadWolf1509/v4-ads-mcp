@@ -19,9 +19,9 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
+from src.clock import account_today
 from src.db import connection
 from src.db.repositories import google_ads_accounts
-from src.google_ads.queries._common import account_today
 
 
 async def resolve_account_today(customer_id: str, *, now: datetime | None = None) -> date:

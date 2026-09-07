@@ -13,6 +13,22 @@ class InventoryRow:
     ad_account_id: str
     is_active: bool
     missed_syncs: int
+    # C4/F141: `build_plan` NÃO lê este campo — ele viaja junto do inventário
+    # porque quem aplica a ausência precisa saber em que dia ela caiu, e o dia é
+    # propriedade da CONTA. Resolvê-lo por leitura separada seria uma consulta
+    # por conta, cada uma adquirindo uma segunda conexão do pool DENTRO da
+    # transação já aberta da reconciliação.
+    #
+    # Nome diferente do gêmeo Google (`InventoryRow.time_zone`) porque a COLUNA
+    # é outra: `meta_ad_accounts.timezone_name` vs `google_ads_accounts.time_zone`.
+    # A linha espelha a tabela dela; renomear aqui esconderia de onde o dado vem.
+    #
+    # O default existe por compatibilidade com os construtores POSICIONAIS dos
+    # testes unitários do job (`InventoryRow("act_2", True, 9)`) — não porque o
+    # campo seja opcional de verdade. O preço: um produtor novo que o esqueça
+    # carimba o inventário inteiro em UTC em silêncio, e o que segura isso é
+    # `test_list_inventory_rows_traz_o_fuso_da_conta_meta`.
+    timezone_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

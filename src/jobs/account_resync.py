@@ -16,6 +16,7 @@ import asyncpg
 import structlog
 
 from src.auth.tokens import decrypt_refresh_token, derive_master_key_from_settings
+from src.clock import account_today
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import (
@@ -29,7 +30,6 @@ from src.google_ads.accounts import (
     list_accessible_customer_resource_names,
 )
 from src.google_ads.client import build_client
-from src.google_ads.queries._common import account_today
 from src.google_ads.reconcile import build_plan
 from src.jobs._audit import record_access_revocation, record_job_crash, record_job_run
 from src.jobs.purge import purge_expired
@@ -83,8 +83,12 @@ async def reconcile_google(
     `now` é o instante da EXECUÇÃO, lido UMA vez e passado adiante (C4/F141):
     todas as ausências deste run são carimbadas com o mesmo instante, cada uma
     convertida para o dia do fuso da SUA conta. Ler o relógio por conta faria o
-    resultado depender de quanto tempo o laço levou — e um run que atravessasse
-    a meia-noite de alguma conta carimbaria dias diferentes na mesma passagem.
+    resultado depender de quanto tempo o laço levou — e se esse laço um dia
+    ganhar I/O, um run atravessando a meia-noite de alguma conta carimbaria
+    dias diferentes na mesma passagem. Hoje ele é uma comprehension sem
+    `await`, então a invariante "um relógio por execução" é sustentada pela
+    FORMA do código, não por teste (m2 da revisão da Task 2 — a frase antiga
+    descrevia um cenário que o laço atual não consegue produzir).
     Injetável porque só assim o teste consegue um instante em que UTC e a conta
     discordam (a diferença que `freezegun` não representa).
     """

@@ -1,7 +1,7 @@
 """CRUD for `meta_ad_accounts`. Populated by Meta sync job (M.2+)."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 import asyncpg
@@ -94,7 +94,13 @@ async def upsert_many(
             -- F128: a conta reapareceu, entao a serie de ausencias morre aqui.
             -- Sem isto, cliente que volta chegaria ao limiar com ausencias
             -- antigas e seria desativado logo apos ser reativado.
+            --
+            -- C4: a serie e (missed_syncs, last_missed_on) — as DUAS. Zerar so o
+            -- contador deixaria a data velha na linha, e a conta que volta e
+            -- falta de novo no MESMO dia teria a ausencia pulada pelo
+            -- `IS DISTINCT FROM` de `apply_absences`.
             missed_syncs = 0,
+            last_missed_on = NULL,
             synced_at = now()
         """,
         rows,
@@ -102,17 +108,51 @@ async def upsert_many(
     return len(rows)
 
 
-async def apply_absences(conn: asyncpg.Connection, *, bump: list[str], reset: list[str]) -> None:
-    """Aplica a carência decidida pelo plano. Não decide nada."""
+async def apply_absences(
+    conn: asyncpg.Connection, *, bump: list[tuple[str, date]], reset: list[str]
+) -> None:
+    """Aplica a carência decidida pelo plano. Não decide nada — só escreve.
+
+    C4: o incremento é condicional ao DIA. `missed_syncs = missed_syncs + 1`
+    puro contava uma ausência por EXECUÇÃO, e o job tem `maxRetries: 3` — um
+    retry depois do commit da reconciliação contava a mesma ausência de novo. A
+    carência de 3 dias caía em 2 execuções, e deste lado isso é revogação REAL
+    de acesso de gestor a conta de cliente: `meta_reconcile_apply` está ligada
+    em produção desde 05/09 (o gêmeo Google segue em soak, não aplica).
+
+    `IS DISTINCT FROM` e não `<>`: `last_missed_on` é NULL em toda linha hoje
+    (a 009 subiu sem backfill), e `NULL <> $2` avalia para NULL, que não
+    satisfaz o WHERE — com `<>` a primeira ausência de cada conta nunca seria
+    contada, e o contador ficaria congelado em 0 no inventário inteiro.
+
+    O dia vem do fuso da CONTA (F141), calculado por `src.clock.account_today`
+    sobre o `timezone_name` que `list_inventory_rows` traz — sem I/O extra.
+    Resolvê-lo por conta adquiriria uma segunda conexão do pool dentro da
+    transação já aberta da reconciliação.
+
+    Conta sem fuso cai no fallback UTC decidido do `account_today`. Aqui isso é
+    ESCRITA, e o F146 diz que escrita não herda o fallback da leitura — a
+    análise: para conta a oeste de UTC o carimbo sai um dia à frente, e o
+    efeito é a ausência do dia seguinte ser PULADA. Carência mais lenta, nunca
+    mais rápida; erra para o lado que não revoga.
+
+    O `reset` zera as duas colunas: conta que reapareceu não pode carregar a
+    data velha, senão a próxima ausência dela seria pulada se caísse no mesmo
+    dia. E mantém `AND missed_syncs <> 0`, que o lado Google copiou daqui —
+    simetria entre os dois laços é requisito, não estética (o F128 nasceu de
+    uma cláusula que ficou de fora de um dos lados).
+    """
     if bump:
-        await conn.execute(
-            "UPDATE meta_ad_accounts SET missed_syncs = missed_syncs + 1 "
-            "WHERE ad_account_id = ANY($1::text[])",
+        await conn.executemany(
+            "UPDATE meta_ad_accounts "
+            "   SET missed_syncs = missed_syncs + 1, last_missed_on = $2 "
+            " WHERE ad_account_id = $1 "
+            "   AND last_missed_on IS DISTINCT FROM $2",
             bump,
         )
     if reset:
         await conn.execute(
-            "UPDATE meta_ad_accounts SET missed_syncs = 0 "
+            "UPDATE meta_ad_accounts SET missed_syncs = 0, last_missed_on = NULL "
             "WHERE ad_account_id = ANY($1::text[]) AND missed_syncs <> 0",
             reset,
         )
@@ -167,13 +207,22 @@ async def set_reachable(
 
 
 async def list_inventory_rows(conn: asyncpg.Connection) -> list[InventoryRow]:
-    """Devolve o inventário no formato que `build_plan()` consome — puro dado."""
-    rows = await conn.fetch("SELECT ad_account_id, is_active, missed_syncs FROM meta_ad_accounts")
+    """Devolve o inventário no formato que `build_plan()` consome — puro dado.
+
+    `timezone_name` vem junto por causa do C4: quem aplica a ausência precisa
+    do dia NO FUSO DA CONTA (F141), e resolvê-lo depois seria uma leitura por
+    conta dentro da transação aberta da reconciliação. `build_plan` ignora o
+    campo.
+    """
+    rows = await conn.fetch(
+        "SELECT ad_account_id, is_active, missed_syncs, timezone_name FROM meta_ad_accounts"
+    )
     return [
         InventoryRow(
             ad_account_id=r["ad_account_id"],
             is_active=r["is_active"],
             missed_syncs=r["missed_syncs"],
+            timezone_name=r["timezone_name"],
         )
         for r in rows
     ]
