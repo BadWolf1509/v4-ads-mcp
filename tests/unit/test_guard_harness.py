@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import importlib
+from collections.abc import Iterable
 from pathlib import Path
 from types import ModuleType
 
@@ -417,10 +418,259 @@ def test_classe_de_excecao_dotted_respeita_allowlist(
         chamadas.append(nome_mod)
         return original(nome_mod)
 
-    monkeypatch.setattr(h.importlib, "import_module", espiao)
+    # `h.importlib` e `importlib` são o MESMO objeto-módulo, então patchar
+    # aqui é idêntico em efeito — só que sem esbarrar no `no_implicit_reexport`
+    # do mypy strict, que recusa alcançar um import de outro módulo por
+    # atributo (o gate roda `mypy src`, então este erro nunca aparecia).
+    monkeypatch.setattr(importlib, "import_module", espiao)
 
     assert h.classe_de_excecao("os.error") is None
     assert chamadas == []  # raiz "os" fora da allowlist: nunca tentou importar
 
     assert h.classe_de_excecao("asyncpg.ConnectionDoesNotExistError") is not None
     assert chamadas == ["asyncpg"]  # allowlist nao virou bloqueio geral
+
+
+# --------------------------------------------------------------------------
+# escopos_pais / nos_do_corpo_proprio / chama_no_corpo_proprio
+#
+# As três chegaram ao harness com cobertura só INDIRETA, pelos dois
+# consumidores (o F57 em `test_structural_guards.py` e o F112 em
+# `test_blast_radius_bate_com_as_tools.py`). Cobertura indireta num harness é
+# o defeito um nível acima: um bug aqui não erra num guard, erra em TODOS os
+# que usam a função — e o vermelho aparece longe da causa, com a mensagem
+# falando de uma tool qualquer. Daí o par sintético por função, e a mutação
+# nomeada em cada docstring.
+# --------------------------------------------------------------------------
+
+
+def _nome_do_escopo(no: ast.AST | None) -> str | None:
+    """Nome legível de um nó de escopo, pra comparação sair como dict de strings.
+
+    Um `ast.Lambda` que vazasse pra dentro de `escopos_pais` viraria a string
+    `"Lambda"` — visível no diff do assert — em vez de sumir num `is None`.
+    """
+    if isinstance(no, ast.FunctionDef | ast.AsyncFunctionDef):
+        return no.name
+    return None if no is None else type(no).__name__
+
+
+def _chamadas_por_nome(nos: Iterable[ast.AST]) -> set[str]:
+    """Nomes das funções chamadas nos nós dados (só `Name`, que basta aqui)."""
+    return {no.func.id for no in nos if isinstance(no, ast.Call) and isinstance(no.func, ast.Name)}
+
+
+_FONTE_ESCOPOS = (
+    "def topo():\n"
+    "    def aninhada():\n"
+    "        pass\n"
+    "    class Interna:\n"
+    "        async def metodo(self):\n"
+    "            pass\n"
+    "    if True:\n"
+    "        def sob_if():\n"
+    "            pass\n"
+    "    g = lambda: (lambda: 1)\n"
+    "    return g\n"
+    "async def topo_async():\n"
+    "    pass\n"
+)
+
+
+def test_escopos_pais_mapeia_todo_def_para_a_funcao_que_o_envolve() -> None:
+    """Fixture COM aninhamento: a função-mãe de cada `def`, e só ela.
+
+    Uma comparação de dicionário inteiro em vez de cinco asserts soltos porque
+    a propriedade tem duas metades e as duas importam: o pai certo (valor) e
+    **nenhum escopo a mais nem a menos** (conjunto de chaves). Enumerar
+    ancoraria só a metade positiva, que é como um guard passa verde tendo
+    perdido metade do escopo.
+
+    Mutações que derrubam, medidas:
+    - `visita(filho, filho)` -> `visita(filho, atual)`: `aninhada`, `metodo` e
+      `sob_if` passam a apontar pra `None` — a cadeia inteira vira "topo de
+      módulo", e "envolve" volta a ser indistinguível de "está no arquivo".
+    - `ast.FunctionDef | ast.AsyncFunctionDef` -> só `ast.FunctionDef`:
+      `metodo` e `topo_async` somem do mapa, e um guard que percorra
+      `funcoes()` levanta `KeyError` ou trata `async def` como sem mãe.
+    - `else: visita(filho, atual)` -> `else: pass`: `metodo` (dentro de
+      `class`) e `sob_if` (dentro de `if`) somem — os dois nós que provam que
+      classe e bloco são TRANSPARENTES, não escopos.
+    """
+    arv = _arv(_FONTE_ESCOPOS)
+
+    pais = h.escopos_pais(arv)
+
+    assert {_nome_do_escopo(k): _nome_do_escopo(v) for k, v in pais.items()} == {
+        "topo": None,
+        "topo_async": None,
+        "aninhada": "topo",
+        "metodo": "topo",  # `class` é transparente: a mãe é a FUNÇÃO
+        "sob_if": "topo",  # `if` idem — inclusive `if False:`
+    }
+
+
+def test_escopos_pais_devolve_o_no_em_si_nao_um_homonimo() -> None:
+    """O valor tem que ser o OBJETO da função-mãe, não um nome igual.
+
+    Sem esta identidade, `escopos_pais` poderia devolver qualquer `def`
+    chamado `topo` (um segundo, definido noutro ponto do módulo) e a
+    comparação por nome acima não notaria.
+
+    Mutação que derruba: devolver `arv` (o Module) como pai de todo `def`
+    top-level em vez de `None` — a comparação por nome dá `"Module"`, mas é
+    esta aqui que diz por que isso quebraria um `is`.
+    """
+    arv = _arv(_FONTE_ESCOPOS)
+    por_nome = {f.name: f for f in h.funcoes(arv)}
+
+    pais = h.escopos_pais(arv)
+
+    assert pais[por_nome["aninhada"]] is por_nome["topo"]
+    assert pais[por_nome["metodo"]] is por_nome["topo"]
+    assert pais[por_nome["topo"]] is None
+
+
+def test_escopos_pais_nao_trata_lambda_como_escopo() -> None:
+    """Fixture SEM violação pra metade negativa: `lambda` fora do mapa.
+
+    É o contrato que `nos_do_corpo_proprio` documenta ("lambda é
+    transparente") escrito do outro lado: se `lambda` virasse escopo aqui, os
+    dois módulos passariam a discordar sobre o que é um escopo, e o guard do
+    F57 — cujos 6 call-sites vivos gateiam DENTRO de
+    `run_with_reconnect(lambda conn: ...)` — perderia o chão.
+
+    Mutação que derruba: incluir `ast.Lambda` no `isinstance` de `visita`. Os
+    dois lambdas de `_FONTE_ESCOPOS` (um aninhado no outro) entram como chave,
+    e um deles vira valor do outro.
+    """
+    arv = _arv(_FONTE_ESCOPOS)
+    assert len(h.lambdas(arv)) == 2, "fixture sem lambda invalidaria o teste"
+
+    pais = h.escopos_pais(arv)
+
+    assert not any(isinstance(k, ast.Lambda) for k in pais)
+    assert not any(isinstance(v, ast.Lambda) for v in pais.values())
+
+
+_FONTE_CORPO = (
+    "def alvo():\n"
+    "    marca_no_corpo()\n"
+    "    lazy(lambda: marca_no_lambda())\n"
+    "    def irma():\n"
+    "        marca_na_irma()\n"
+    "    return irma\n"
+)
+
+
+def test_nos_do_corpo_proprio_ve_corpo_e_lambda_mas_nao_a_funcao_irma() -> None:
+    """As três metades da função numa asserção só.
+
+    `marca_no_corpo` prova que o corpo é visitado; `marca_no_lambda` prova a
+    transparência do `lambda`; a AUSÊNCIA de `marca_na_irma` é a razão de a
+    função existir — `ast.walk` devolveria as três, e é justamente ali que
+    mora o bug que ela evita (uma closure irmã, um método de classe aninhada,
+    um `def` dentro de `if False:`: nenhum ENVOLVE nada, todos moram na
+    subárvore).
+
+    Mutações que derrubam, medidas:
+    - tirar o `return` do `desce` pra `FunctionDef|AsyncFunctionDef`:
+      `marca_na_irma` entra, e a unidade volta a ser o arquivo.
+    - incluir `ast.Lambda` nesse mesmo `return` (tornar o lambda OPACO):
+      `marca_no_lambda` sai — e essa é a mutação que PARECE um conserto. Ela
+      acusaria como falso positivo as 6 funções CORRETAS do F57, que gateiam
+      dentro de `run_with_reconnect(lambda conn: ensure_account_access(...))`
+      (6 de 6 call-sites, medido em 2026-09-07). Este teste existe pra que
+      quem "consertar" isso veja o vermelho aqui, com o motivo escrito, em vez
+      de descobrir pelo guard do F57 acusando código bom.
+    """
+    arv = _arv(_FONTE_CORPO)
+    alvo = next(f for f in h.funcoes(arv) if f.name == "alvo")
+
+    nos = list(h.nos_do_corpo_proprio(alvo))
+
+    assert _chamadas_por_nome(nos) == {"marca_no_corpo", "lazy", "marca_no_lambda"}
+    assert not any(isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef) for n in nos)
+
+
+def test_nos_do_corpo_proprio_aceita_o_proprio_lambda_como_escopo() -> None:
+    """`ast.Lambda` tem `.body` EXPRESSÃO, não lista — daí o ramo `[escopo.body]`.
+
+    Mutação que derruba: trocar o ternário de `inicio` pelo
+    `list(getattr(escopo, "body", []))` sozinho. Um nó `ast.AST` não é
+    iterável, então a chamada morre em `TypeError` — e um guard que quisesse
+    perguntar "o que este lambda faz?" não teria como.
+    """
+    arv = _arv(_FONTE_CORPO)
+    (lam,) = h.lambdas(arv)
+
+    assert _chamadas_por_nome(h.nos_do_corpo_proprio(lam)) == {"marca_no_lambda"}
+
+
+def test_nos_do_corpo_proprio_vazio_para_funcao_sem_corpo_util() -> None:
+    """Par negativo: corpo com um `pass` não inventa nó de chamada nenhum."""
+    arv = _arv("def vazia():\n    pass\n")
+    vazia = next(f for f in h.funcoes(arv) if f.name == "vazia")
+
+    nos = list(h.nos_do_corpo_proprio(vazia))
+
+    assert _chamadas_por_nome(nos) == set()
+    assert [type(n).__name__ for n in nos] == ["Pass"]
+
+
+_FONTE_CHAMA = (
+    "from m import gate as portao\n"  # 1
+    "def com_gate(conn):\n"  # 2
+    "    portao(conn)\n"  # 3 — alias de import
+    "    mod.gate(conn)\n"  # 4 — atributo
+    "    run(lambda c: gate(c))\n"  # 5 — dentro de lambda (idioma vivo do F57)
+    "    def irma():\n"  # 6
+    "        gate(irma)\n"  # 7 — escopo IRMÃO: não conta pra com_gate
+    "def sem_gate():\n"  # 8
+    "    outra_coisa()\n"  # 9
+)
+
+
+def test_chama_no_corpo_proprio_da_as_linhas_do_corpo_e_ignora_a_irma() -> None:
+    """Fixture COM as três formas de escrever a chamada, e a irmã que não conta.
+
+    Linhas, não booleano: é o número que aparece na mensagem do guard, e um
+    guard que só diz "tem" ou "não tem" manda o leitor caçar o call-site à mão.
+
+    Mutações que derrubam, medidas:
+    - `nos_do_corpo_proprio(escopo)` -> `ast.walk(escopo)`: entra o `7` da
+      `irma`, e "envolve" vira "está em algum lugar da subárvore" — o defeito
+      original do F57, uma casa abaixo.
+    - `nomes_locais(arv, alvo)` -> `{alvo}`: some o `3`, porque
+      `from m import gate as portao` faz o nome ESCRITO na chamada ser outro.
+    - tirar o ramo `ast.Attribute`: some o `4` (`mod.gate(...)`).
+    - tornar o `lambda` opaco em `nos_do_corpo_proprio`: some o `5` — as 6
+      funções corretas do F57 seriam acusadas.
+    """
+    arv = _arv(_FONTE_CHAMA)
+    com_gate = next(f for f in h.funcoes(arv) if f.name == "com_gate")
+
+    assert h.chama_no_corpo_proprio(com_gate, "gate", arv=arv) == [3, 4, 5]
+
+
+def test_chama_no_corpo_proprio_acha_a_chamada_quando_a_pergunta_e_sobre_a_irma() -> None:
+    """A chamada da irmã não é invisível — ela é de OUTRO dono.
+
+    Sem este par, "a irmã não conta" seria satisfeito por uma função que
+    simplesmente não enxerga nada aninhado em lugar nenhum.
+    """
+    arv = _arv(_FONTE_CHAMA)
+    irma = next(f for f in h.funcoes(arv) if f.name == "irma")
+
+    assert h.chama_no_corpo_proprio(irma, "gate", arv=arv) == [7]
+
+
+def test_chama_no_corpo_proprio_vazio_para_funcao_que_nao_chama() -> None:
+    """Fixture SEM violação. `sem_gate` chama outra coisa, no MESMO módulo em
+    que o alias existe — o par que pega um matcher que respondesse por arquivo
+    em vez de por escopo.
+    """
+    arv = _arv(_FONTE_CHAMA)
+    sem_gate = next(f for f in h.funcoes(arv) if f.name == "sem_gate")
+
+    assert h.chama_no_corpo_proprio(sem_gate, "gate", arv=arv) == []
