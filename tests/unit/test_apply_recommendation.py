@@ -146,7 +146,14 @@ _SENTINELA = {
 }
 
 
-def _linha_de_recomendacao(query: str, tipo: str, *, atual: int, recomendado: int) -> Any:
+def _linha_de_recomendacao(
+    query: str,
+    tipo: str,
+    *,
+    atual: int,
+    recomendado: int,
+    sobrescreve: dict[str, Any] | None = None,
+) -> Any:
     pedidos = _campos_do_select(query)
     rec = Recommendation()
     if "recommendation.type" in pedidos:
@@ -173,6 +180,10 @@ def _linha_de_recomendacao(query: str, tipo: str, *, atual: int, recomendado: in
             _setar(detalhe, spec.recomendado_brl, recomendado)
         for _chave, caminho, unidade in spec.outros:
             _setar(detalhe, caminho, _SENTINELA[unidade])
+        # Depois das sentinelas, para cobrir folha cujo VALOR muda o caminho de
+        # codigo (o `shared_set` do I3 decide se ha segunda campanha a consultar).
+        for caminho, valor in (sobrescreve or {}).items():
+            _setar(detalhe, caminho, valor)
     return SimpleNamespace(recommendation=rec)
 
 
@@ -190,6 +201,10 @@ def _linha_de_campanha(query: str) -> Any:
         amount_micros=50_000_000 if "campaign_budget.amount_micros" in pedidos else 0
     )
     return SimpleNamespace(campaign=campaign, campaign_budget=budget)
+
+
+def _linha_de_irma(campaign_id: str, nome: str, status: str) -> Any:
+    return SimpleNamespace(campaign=SimpleNamespace(id=int(campaign_id), name=nome, status=status))
 
 
 class _FakeConn:
@@ -212,6 +227,8 @@ def _wire(
     atual: int = 50_000_000,
     recomendado: int = 180_000_000,
     sem_recomendacao: bool = False,
+    sobrescreve: dict[str, Any] | None = None,
+    irmas: list[tuple[str, str, str]] | None = None,
 ) -> dict[str, Any]:
     capturado: dict[str, Any] = {"queries": [], "aplicou": False}
 
@@ -219,11 +236,22 @@ def _wire(
         q: str = kwargs["query"]
         fmt = kwargs["row_formatter"]
         capturado["queries"].append(q)
+        # As duas consultas de campanha partem de `FROM campaign`; o que as separa
+        # e o SELECT. Rotear pelo `FROM` mandaria a query das irmas (I3) para o
+        # parser do contexto, e o teste "passaria" medindo a coisa errada.
+        if "campaign.bidding_strategy\n" in q:
+            return [fmt(_linha_de_irma(*linha)) for linha in (irmas or [])]
         if "FROM campaign" in q:
             return [fmt(_linha_de_campanha(q))]
         if sem_recomendacao:
             return []
-        return [fmt(_linha_de_recomendacao(q, tipo, atual=atual, recomendado=recomendado))]
+        return [
+            fmt(
+                _linha_de_recomendacao(
+                    q, tipo, atual=atual, recomendado=recomendado, sobrescreve=sobrescreve
+                )
+            )
+        ]
 
     async def _executar(**kwargs: Any) -> dict[str, Any]:
         capturado["aplicou"] = True
@@ -694,3 +722,119 @@ def test_flag_booleano_aparece_mesmo_quando_e_false(compartilhado: bool) -> None
     detalhe.campaign_uses_shared_budget = compartilhado
     info = parse_recommendation_detail_row(linha)
     assert info["valores"]["orcamento_compartilhado"] is compartilhado
+
+
+# --------------------------------------------------------------------------- #
+# 6. I3 — o alvo pode ser da estrategia de PORTFOLIO, nao da campanha.
+# --------------------------------------------------------------------------- #
+_ESTRATEGIA_RN = f"customers/{_CUSTOMER}/biddingStrategies/987654321"
+
+
+@pytest.mark.parametrize("tipo", ["RAISE_TARGET_CPA", "LOWER_TARGET_ROAS"])
+async def test_alvo_de_portfolio_enumera_as_irmas_e_avisa(
+    monkeypatch: pytest.MonkeyPatch, tipo: str
+) -> None:
+    """I3: o irmao do C1, um nivel acima — recurso compartilhado, preview de UMA campanha.
+
+    `target_adjustment.shared_set` so popula quando a recomendacao e de nivel
+    portfolio, e nesse caso mudar o alvo atinge TODAS as campanhas da estrategia.
+    O preview dizia `na campanha 'X' (id N)` e nao mencionava as irmas.
+    """
+    capturado = _wire(
+        monkeypatch,
+        tipo=tipo,
+        sobrescreve={"target_adjustment.shared_set": _ESTRATEGIA_RN},
+        irmas=[
+            (_CAMPANHA_ID, "[CP] MDO MONTES CLAROS", "ENABLED"),
+            ("33333333333", "[CP] MDO IRMA ATIVA", "ENABLED"),
+            ("44444444444", "[CP] MDO IRMA PAUSADA", "PAUSED"),
+        ],
+    )
+    env = await mod.apply_recommendation(
+        {"customer_id": _CUSTOMER, "recommendation_resource_name": _REC_RN}
+    )
+    bloco = env["portfolio"]
+    assert bloco is not None, f"{tipo}: alvo de portfolio sem bloco no preview"
+    assert bloco["bidding_strategy_resource_name"] == _ESTRATEGIA_RN
+    assert [c["campaign_id"] for c in bloco["campaigns_outside_batch"]] == [
+        "33333333333",
+        "44444444444",
+    ]
+    assert bloco["ativas_fora_do_lote"] == 1
+    # No `blast_summary` tambem: e ele que o `apply_change` reexibe dez minutos
+    # depois, e um aviso que vive so no envelope some na hora de confirmar.
+    for texto in (env["blast_summary"], capturado["blast_summary"]):
+        assert "PORTFOLIO" in texto, f"{tipo}: summary sem o aviso de portfolio: {texto}"
+        assert _ESTRATEGIA_RN in texto
+
+
+@pytest.mark.parametrize("tipo", ["RAISE_TARGET_CPA", "LOWER_TARGET_ROAS"])
+async def test_alvo_de_campanha_nao_tem_bloco_nem_gasta_consulta(
+    monkeypatch: pytest.MonkeyPatch, tipo: str
+) -> None:
+    """Contraprova: sem `shared_set`, nada de portfolio — e nada de terceira ida a API.
+
+    Sem esta, um bloco emitido incondicionalmente passaria no teste acima e o
+    preview de toda recomendacao de nivel campanha ganharia um aviso falso.
+    """
+    capturado = _wire(monkeypatch, tipo=tipo, sobrescreve={"target_adjustment.shared_set": ""})
+    env = await mod.apply_recommendation(
+        {"customer_id": _CUSTOMER, "recommendation_resource_name": _REC_RN}
+    )
+    assert env["portfolio"] is None
+    assert "PORTFOLIO" not in env["blast_summary"]
+    assert not [q for q in capturado["queries"] if "campaign.bidding_strategy\n" in q]
+
+
+async def test_shared_set_em_formato_desconhecido_avisa_sem_inventar_contagem(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`campaigns_outside_batch` e None, nao [] — "zero irmas" seria pior que nao medir.
+
+    O campo se chama `shared_set` e a docstring do proto diz que carrega a
+    estrategia de portfolio; os dois formatos de resource name sao diferentes e em
+    07/09 nao havia recomendacao de nivel portfolio em conta nenhuma do MCC para
+    medir qual deles o Google manda. Disparar a GAQL no formato errado devolveria
+    zero linhas, e "atinge mais 0 campanhas" passaria por fato medido (F145).
+    """
+    outro = f"customers/{_CUSTOMER}/sharedSets/555"
+    capturado = _wire(
+        monkeypatch,
+        tipo="RAISE_TARGET_CPA",
+        sobrescreve={"target_adjustment.shared_set": outro},
+    )
+    env = await mod.apply_recommendation(
+        {"customer_id": _CUSTOMER, "recommendation_resource_name": _REC_RN}
+    )
+    bloco = env["portfolio"]
+    assert bloco is not None
+    assert bloco["campaigns_outside_batch"] is None, "lista vazia leria como zero irmas"
+    assert bloco["ativas_fora_do_lote"] is None
+    assert "PORTFOLIO" in env["blast_summary"]
+    assert not [q for q in capturado["queries"] if "campaign.bidding_strategy\n" in q]
+
+
+async def test_o_bloco_de_portfolio_nao_entra_no_fingerprint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """As irmas mudam por motivo alheio a recomendacao; o recheck e sobre o VALOR.
+
+    Se o bloco entrasse na impressao, pausar uma campanha irma entre o preview e a
+    confirmacao faria o `apply_change` recusar por "o Google revisou" — recusa
+    correta na forma e errada no motivo, que treina o gestor a ignorar o aviso.
+    """
+    capturado = _wire(
+        monkeypatch,
+        tipo="RAISE_TARGET_CPA",
+        sobrescreve={"target_adjustment.shared_set": _ESTRATEGIA_RN},
+        irmas=[("33333333333", "[CP] IRMA", "ENABLED")],
+    )
+    await mod.apply_recommendation(
+        {"customer_id": _CUSTOMER, "recommendation_resource_name": _REC_RN}
+    )
+    impressao = capturado["payload"]["valores_do_preview"]
+    assert "portfolio" not in impressao
+    assert "campaigns_outside_batch" not in str(impressao)
+    # A estrategia em si ENTRA, porque e a mensagem da recomendacao mudando de
+    # nivel — isso sim invalida o consentimento.
+    assert impressao["valores"]["estrategia_de_portfolio"] == _ESTRATEGIA_RN

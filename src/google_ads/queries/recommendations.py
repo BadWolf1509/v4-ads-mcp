@@ -260,6 +260,13 @@ CAMPOS_DE_DETALHE: dict[str, DetalheDoTipo] = {
         "recommended_target_cpa_micros",
         _ORCAMENTO_DO_ALVO + _INICIO_DO_ORCAMENTO,
     ),
+    # `target_adjustment.shared_set` (I3): o proto diz, verbatim, "the shared set
+    # resource name of the portfolio bidding strategy where the target is defined.
+    # Only populated if the recommendation is portfolio level". E o irmao exato do
+    # `campaign_budget.explicitly_shared` que o C1 fechou no `update_campaign_budget`:
+    # sem ele o preview nomeia UMA campanha enquanto a mutacao atinge todas as que
+    # compartilham a estrategia. `optional` no proto, entao a presenca decide — em
+    # recomendacao de nivel campanha a chave simplesmente nao aparece.
     "RAISE_TARGET_CPA": DetalheDoTipo(
         "raise_target_cpa_recommendation",
         "target_adjustment.current_average_target_micros",
@@ -270,6 +277,7 @@ CAMPOS_DE_DETALHE: dict[str, DetalheDoTipo] = {
                 "target_adjustment.recommended_target_multiplier",
                 "numero",
             ),
+            ("estrategia_de_portfolio", "target_adjustment.shared_set", "texto"),
         ),
     ),
     "RAISE_TARGET_CPA_BID_TOO_LOW": DetalheDoTipo(
@@ -308,6 +316,7 @@ CAMPOS_DE_DETALHE: dict[str, DetalheDoTipo] = {
                 "target_adjustment.recommended_target_multiplier",
                 "numero",
             ),
+            ("estrategia_de_portfolio", "target_adjustment.shared_set", "texto"),
         ),
     ),
     # --- converte TODAS as keywords da campanha para ampla ---
@@ -553,6 +562,36 @@ def campaign_context_query(campaign_id: str) -> str:
         WHERE campaign.id = {campaign_id}
         LIMIT 1
     """.strip()
+
+
+def campaigns_on_bidding_strategy_query(resource_name: str) -> str:
+    """Campanhas VIVAS que compartilham uma estrategia de lance de portfolio (I3).
+
+    Espelha o papel de `campaigns_on_budgets_query` no `update_campaign_budget`:
+    quando o recurso mutado e compartilhado, o preview tem que dizer QUEM MAIS a
+    mudanca atinge. Aqui o recurso e a estrategia, e o alvo (CPA/ROAS) vive nela.
+
+    `campaign.bidding_strategy = '<resource>'` foi validado por `validate_gaql` na
+    1171969590 em 07/09. Filtra `REMOVED` server-side, como a irma faz.
+    """
+    return f"""
+        SELECT
+          campaign.id,
+          campaign.name,
+          campaign.status,
+          campaign.bidding_strategy
+        FROM campaign
+        WHERE campaign.bidding_strategy = {gaql_string_literal(resource_name)}
+          AND campaign.status != 'REMOVED'
+    """.strip()
+
+
+def parse_campaign_on_bidding_strategy_row(row: Any) -> dict[str, Any]:
+    return {
+        "campaign_id": str(row.campaign.id),
+        "campaign_name": str(row.campaign.name),
+        "status": _nome_do_enum(row.campaign.status),
+    }
 
 
 def _nome_do_enum(valor: Any) -> str:

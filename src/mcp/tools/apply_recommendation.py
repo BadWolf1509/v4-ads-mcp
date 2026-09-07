@@ -38,7 +38,9 @@ from src.google_ads.queries.recommendations import (
     TIPOS_CONHECIDOS,
     TIPOS_DE_MIGRACAO,
     campaign_context_query,
+    campaigns_on_bidding_strategy_query,
     parse_campaign_context_row,
+    parse_campaign_on_bidding_strategy_row,
     parse_recommendation_detail_row,
     recommendation_detail_query,
     recommendation_fingerprint,
@@ -108,6 +110,83 @@ def _aviso_de_migracao(tipo: str, campanha: dict[str, Any] | None) -> str | None
             f"de R$ {campanha['daily_budget_brl']:.2f}/dia"
         )
     return aviso
+
+
+# O `shared_set` vem como resource name; so da pra enumerar as irmas se ele for
+# mesmo uma estrategia de lance. Ver `_bloco_de_portfolio` para o porque de a
+# checagem existir em vez de a query ser disparada as cegas.
+_PREFIXO_DE_ESTRATEGIA = "/biddingStrategies/"
+
+
+async def _bloco_de_portfolio(
+    consulta: Any, info: dict[str, Any], campanha: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """I3: o alvo pode ser do PORTFOLIO — avisa, e enumera as irmas quando da.
+
+    Espelha `update_campaign_budget._bloco_de_orcamento_compartilhado`, que e o
+    molde da familia: recurso compartilhado, preview que nomeia UMA campanha,
+    mutacao que atinge todas. Aqui o recurso e a estrategia de lance de portfolio,
+    e `RAISE_TARGET_CPA` / `LOWER_TARGET_ROAS` mudam o alvo DELA.
+
+    **Tres divergencias do molde, e so estas:**
+
+    * a chave e `portfolio`, nao `shared_budget`, e nao ha `amount_brl`: o "valor"
+      aqui e o alvo, que ja sai nos campos proprios do preview;
+    * `campaigns_outside_batch` pode ser **None**, e nao lista vazia. `[]` leria
+      como "zero irmas" — falso negativo pior que nao enumerar, porque um numero
+      errado passa por medido (a familia do F145). `None` diz "nao medido";
+    * a enumeracao e CONDICIONAL. O campo se chama `shared_set` no proto e a
+      docstring dele diz que carrega a estrategia de portfolio; os dois formatos
+      de resource name sao diferentes (`sharedSets/` x `biddingStrategies/`), e em
+      07/09 nenhuma das 26 contas do MCC tinha recomendacao de nivel portfolio
+      pendente — nao houve como medir qual dos dois o Google manda. Disparar a
+      GAQL as cegas devolveria zero linhas no formato errado, e o preview diria
+      "atinge mais 0 campanhas" com cara de fato. Entao a query so roda quando o
+      valor E uma estrategia; nos demais casos o aviso sai sem contagem.
+
+    O bloco NAO entra no `recommendation_fingerprint`: as irmas podem mudar entre
+    o preview e o apply por motivo alheio a recomendacao, e o fingerprint existe
+    pra pegar o Google revisando o VALOR, nao a conta mudando de forma.
+    """
+    rn = str(info["valores"].get("estrategia_de_portfolio") or "")
+    if not rn:
+        return None
+
+    irmas: list[dict[str, Any]] | None = None
+    fora: list[dict[str, Any]] | None = None
+    ativas_fora: int | None = None
+    id_alvo = campanha["campaign_id"] if campanha is not None else info["campaign_id"]
+    if _PREFIXO_DE_ESTRATEGIA in rn:
+        irmas = await consulta(
+            campaigns_on_bidding_strategy_query(rn), parse_campaign_on_bidding_strategy_row
+        )
+        fora = [c for c in irmas if c["campaign_id"] != id_alvo]
+        ativas_fora = sum(1 for c in fora if c["status"] == "ENABLED")
+
+    if fora is None:
+        aviso = (
+            f"O alvo desta recomendacao pertence a estrategia de lance de PORTFOLIO "
+            f"{rn}, nao a esta campanha: aplicar muda o alvo de TODAS as campanhas "
+            "que a compartilham. Nao foi possivel enumera-las — o resource name nao "
+            f"tem o formato de estrategia de lance ({_PREFIXO_DE_ESTRATEGIA}), entao "
+            "confira no painel do Google Ads quantas campanhas usam esta estrategia "
+            "antes de confirmar."
+        )
+    else:
+        aviso = (
+            f"Alvo da estrategia de PORTFOLIO {rn}: {len(irmas or [])} campanha(s) a "
+            f"compartilham, {len(fora)} alem desta ({ativas_fora} ativa(s)). Aplicar "
+            "muda o alvo de TODAS elas — a mudanca e na ESTRATEGIA, nao na campanha "
+            "nomeada no resumo."
+        )
+
+    return {
+        "bidding_strategy_resource_name": rn,
+        "campaigns_in_batch": [id_alvo] if id_alvo is not None else [],
+        "campaigns_outside_batch": fora,
+        "ativas_fora_do_lote": ativas_fora,
+        "warning_pt": aviso,
+    }
 
 
 def _trecho_dos_valores(info: dict[str, Any], campanha: dict[str, Any] | None) -> str:
@@ -196,6 +275,9 @@ def _resumo(customer_id: str, info: dict[str, Any], campanha: dict[str, Any] | N
         "IRREVERSIVEL. Tipo que o SDK v24 nao conhece tambem confirma. Os demais "
         "tipos (keyword, sitelink, RSA...) seguem auto-aplicando. O apply_change "
         "recusa se o Google tiver revisado o valor entre o preview e a confirmacao. "
+        "Quando o alvo e de uma estrategia de lance de PORTFOLIO (RAISE_TARGET_CPA e "
+        "LOWER_TARGET_ROAS de nivel portfolio), o preview traz `portfolio` com as "
+        "campanhas irmas que a mudanca ATINGE alem da nomeada — avisa, nao recusa. "
         "Use get_recommendations primeiro para listar as disponiveis."
     ),
     input_schema=_SCHEMA,
@@ -269,7 +351,15 @@ async def apply_recommendation(args: dict[str, Any]) -> dict[str, Any]:
         )
         campanha = contexto[0] if contexto else None
 
+    # A terceira ida a API so acontece quando ha portfolio a declarar (I3).
+    portfolio = await _bloco_de_portfolio(_consulta, info, campanha)
+
     summary = _resumo(customer_id, info, campanha)
+    if portfolio is not None:
+        # Mesmo motivo do `update_campaign_budget`: o `apply_change` reexibe o
+        # `blast_summary`, nao o envelope do dry-run. Aviso que vive so no bloco
+        # some justamente na hora de confirmar.
+        summary += f" ATENCAO: {portfolio['warning_pt']}"
     # `valores_do_preview` e a metade do token que o `apply_change` compara antes
     # de mutar (concorrencia otimista, mesmo papel do `current_keys` do
     # update_ad_schedule). So o caminho de confirmacao a grava: no caminho auto a
@@ -299,4 +389,5 @@ async def apply_recommendation(args: dict[str, Any]) -> dict[str, Any]:
         delta_pct=_delta_pct(info["current_amount_brl"], info["recommended_amount_brl"]),
         valores=info["valores"],
         campanha=campanha,
+        portfolio=portfolio,
     )
