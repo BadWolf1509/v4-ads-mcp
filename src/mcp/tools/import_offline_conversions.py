@@ -32,6 +32,7 @@ from zoneinfo import ZoneInfo
 
 from src.db import connection
 from src.google_ads.account_clock import resolve_account_zone
+from src.google_ads.conversions import utc_offset
 from src.google_ads.queries._common import validate_conversion_action_for_upload
 from src.governance.blast_radius import classify
 from src.governance.dry_run import create_pending
@@ -263,8 +264,18 @@ async def import_offline_conversions(args: dict[str, Any]) -> dict[str, Any]:
     summary = _build_summary(args)
     # O preview MOSTRA o fuso e o offset que vao ser enviados — o gestor confirma sabendo.
     summary["time_zone"] = tz_name
-    summary["utc_offset"] = (
-        datetime.now(zone).strftime("%z")[:3] + ":" + datetime.now(zone).strftime("%z")[3:]
+    # R1-I6: o offset vem do MESMO calculo do upload (`utc_offset`, por
+    # timestamp), nao de `datetime.now(zone)`. Com `datetime.now` o preview
+    # anunciava o offset de HOJE enquanto o builder anexava o da DATA da
+    # conversao — divergem na virada do horario de verao (Sao Paulo, 10/02/2018:
+    # o carimbo e -02:00 e o relogio de 20/02 diz -03:00). Familia do F146,
+    # num caminho de escrita.
+    #
+    # Um lote pode atravessar a virada e ter mais de um offset. Escolher um
+    # deles seria o mesmo defeito, so que mais dificil de ver: lista os
+    # distintos, na ordem em que aparecem.
+    summary["utc_offset"] = ", ".join(
+        dict.fromkeys(utc_offset(c["conversion_date_time"], zone) for c in args["conversions"])
     )
     target_count = summary["conversion_count"]
 

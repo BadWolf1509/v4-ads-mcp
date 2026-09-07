@@ -57,7 +57,7 @@ def _pool_with_transactable_conn() -> MagicMock:
     return mock_pool
 
 
-def _make_capture_client_with_offline_user_data_job_service():
+def _make_capture_client_with_offline_user_data_job_service() -> tuple[Any, MagicMock]:
     """Extends make_capture_client com mocks pra OfflineUserDataJobService."""
     client = make_capture_client()
 
@@ -356,7 +356,15 @@ async def test_dispatcher_records_audit_and_rate_limit_on_success(fake_ctx, gov_
     assert kwargs["target_count"] == 2
     # params_summary carrega só metadados — NUNCA os hashes (PII)
     ps = kwargs["params_summary"]
-    assert ps == {"user_list_id": "1234567890", "operation": "add", "member_count": 2}
+    assert {"user_list_id": "1234567890", "operation": "add", "member_count": 2}.items() <= (
+        ps.items()
+    )
+    # R1-I3/I4: o resumo passou a dizer o que ACONTECEU (onde parou, qual job,
+    # se a PII subiu, quantos o Google aceitou). Nenhum desses campos e PII —
+    # a asserção abaixo continua sendo a que segura essa linha.
+    assert ps["etapa"] == "concluido"
+    assert ps["pii_anexada"] is True
+    assert ps["members_submitted"] == 2 and ps["members_failed"] == 0
     assert "abc" not in str(ps) and "xyz" not in str(ps)
 
 

@@ -90,10 +90,14 @@ LEITORES_LEGITIMOS = [
 FORA_COM_MOTIVO = {
     # bucket de quota em UTC por desenho (mesma chave de governance/rate_limit)
     "get_my_rate_limit_status.py",
-    # `datetime.now(_BRT)` numa checagem "conversao nao esta no futuro", com -03:00
-    # HARDCODED — o tool inteiro assume BRT e anexa "-03:00" ao que envia ao
-    # Google. Nao e predicado de janela (F141); e outra classe: contrato de upload
-    # assumindo um fuso que 2 das 25 contas nao tem. Finding proprio (F146).
+    # `datetime.now(tz)` numa checagem "a conversao nao esta no futuro / nao
+    # passou de 90 dias", com `tz` = o FUSO DA CONTA, resolvido por
+    # `resolve_account_zone` (F146, fechado). Nao e predicado de janela de
+    # relatorio (F141): e a comparacao entre AGORA e um instante que o gestor
+    # digitou, e ela precisa de um agora. O que o F146 tirou daqui foi o offset
+    # HARDCODADO; o R1-I6 (2026-09-07) tirou o segundo uso, que anunciava no
+    # preview o offset de HOJE em vez do offset da DATA de cada conversao —
+    # agora as duas pontas chamam `conversions.utc_offset`.
     "import_offline_conversions.py",
     # `datetime.now(UTC).date()` compoe o PREFIXO do objeto no GCS
     # (`<prefixo>/<data>/<tabela>.csv.gz`). Nao e predicado de janela de conta:

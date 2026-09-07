@@ -25,7 +25,7 @@ def _pool_with_transactable_conn() -> MagicMock:
     return mock_pool
 
 
-def _client_with_partial_failure(per_op_errors: list[str | None]):
+def _client_with_partial_failure(per_op_errors: list[str | None]) -> MagicMock:
     """Mock client whose .mutate() returns a response with the given per-op errors.
 
     per_op_errors[i] = None means op i succeeded; a string is the error message.
@@ -62,8 +62,15 @@ def _client_with_partial_failure(per_op_errors: list[str | None]):
         # for hasattr(raw, "type_url") and hasattr(raw, "Unpack") — MagicMock
         # satisfies both automatically. We just set type_url and stub Unpack.
         class _FakeError:
+            # `error_code` entrou em 2026-09-07 junto com `partial_failure.py`:
+            # o `GoogleAdsError` real SEMPRE tem esse campo (o leitor do
+            # `run_conversion_upload` ja o lia em producao desde o 3b.26), e o
+            # fake nao o tinha. Nao e o mock afrouxando a asserção — as
+            # asserções sobre `error` seguem exatamente as mesmas; e o fake
+            # ficando fiel ao proto que ele imita.
             def __init__(self, idx: int, msg: str) -> None:
                 self.message = msg
+                self.error_code = f"criterion_error: {msg}"
                 self.location = MagicMock()
                 self.location.field_path_elements = [MagicMock(index=idx)]
 
@@ -205,7 +212,12 @@ async def test_run_mutation_uses_custom_params_summary(monkeypatch):
     # audit_log.record was called with params_summary=custom
     assert audit_mock.call_count == 1
     kwargs = audit_mock.call_args.kwargs
-    assert kwargs["params_summary"] == custom
+    ps = kwargs["params_summary"]
+    # R1-I2 acrescentou a chave reservada `resultado` AO LADO do resumo da
+    # tool. A invariante deste teste nao mudou — o resumo da tool chega
+    # inteiro, e o default `{keys: ...}` continua fora.
+    assert {k: v for k, v in ps.items() if k != "resultado"} == custom
+    assert "keys" not in ps
 
 
 @pytest.mark.asyncio

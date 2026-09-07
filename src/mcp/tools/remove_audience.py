@@ -8,13 +8,20 @@ Always CONFIRM (spec §7.1 "Remove qualquer coisa = sempre confirma") — fricti
 trivial vs valor de prevenir accidental delivery restoration (exclusion removal
 restaura audience à pool de delivery).
 
-Per-row error mapping (defensive guard from Sprint 3b.3 A1 silent dedupe lesson):
-- Sucesso (None) → "removed"
-- RESOURCE_NOT_FOUND family → "already_removed" (idempotent retry safe)
-- Outros → "failed"
+Visibilidade por linha (R1-I5, 2026-09-07): quem responde ao gestor e o
+`apply_change`, e ele e GENERICO — nao conhece o vocabulario de dominio de tool
+nenhuma. A tool manda `__partial_failure__=True` no payload, e o que volta e a
+lista `partial_failures` com `{index, status, error}`: o `status` ali e
+`success`/`failed` (o rotulo neutro do F152), e o motivo e a mensagem crua do
+Google.
 
-Per-row visibility is at audit_log level only (apply_change não surface per-row
-response — future enhancement if real demand).
+Ate 2026-09-07 este modulo tinha um `_classify_partial` que traduzia
+RESOURCE_NOT_FOUND para `already_removed`, e a description anunciava esse
+status per-row. **Ninguem chamava a funcao**, e nenhum caminho produzia o
+status: a promessa era falsa nas duas pontas. Removidos os dois. Criterio ja
+removido continua sendo idempotente na pratica (o lote nao cai por causa dele),
+mas aparece como `failed` com a mensagem NOT_FOUND do Google — que e o que de
+fato acontece.
 """
 
 from typing import Any
@@ -44,17 +51,6 @@ _SCHEMA: dict[str, Any] = {
 }
 
 
-# Defensive guard: Google may return NOT_FOUND error when removing already-removed
-# criterion, OR may silently succeed. Mapping handles both cases for idempotent
-# cleanup retries (Sprint 3b.3 A1 lesson on silent-vs-explicit handling).
-_ALREADY_REMOVED_PATTERNS = (
-    "RESOURCE_NOT_FOUND",
-    "NOT_FOUND",
-    "DOES_NOT_EXIST",
-    "CRITERION_NOT_FOUND",
-)
-
-
 def _build_params_summary(target_type: str, target_id: str, criterion_count: int) -> dict[str, Any]:
     """Audit-safe summary: aggregate counts only.
 
@@ -69,25 +65,18 @@ def _build_params_summary(target_type: str, target_id: str, criterion_count: int
     }
 
 
-def _classify_partial(error: str | None) -> str:
-    """Map a Google Ads partial-failure error to per-row status."""
-    if error is None:
-        return "removed"
-    upper = error.upper()
-    if any(p in upper for p in _ALREADY_REMOVED_PATTERNS):
-        return "already_removed"
-    return "failed"
-
-
 @register_tool(
     name="remove_audience",
     description=(
         "[DEFER] Remove audience criteria (user_list ou user_interest) previamente anexadas "
         "a 1 ad_group ou campaign. Aceita target_type (ad_group|campaign) + "
         "target_id singular + criterion_ids array com ate 100 criteria do mesmo "
-        "target. Sempre CONFIRM (spec §7.1 remove). Idempotente: criteria ja "
-        "removidas retornam graciosamente via partial_failure mode (audit_log mostra "
-        "'already_removed' per-row). Pega criterion_id da response de "
+        "target. Sempre CONFIRM (spec §7.1 remove). Roda em partial_failure mode: "
+        "criterion que o Google recusar (ja removido, id inexistente) NAO derruba o "
+        "lote, e o apply_change devolve `partial_failures` com {index, status, error} "
+        "por linha, `applied_count` e `failed_count`. Nao existe status "
+        "por-linha de dominio: criterion ja removido volta como `failed` com a "
+        "mensagem NOT_FOUND do Google. Pega criterion_id da response de "
         "get_audience_performance ou Google Ads UI."
     ),
     input_schema=_SCHEMA,
@@ -101,8 +90,9 @@ async def remove_audience(args: dict[str, Any]) -> dict[str, Any]:
     criterion_ids = args["criterion_ids"]
     target_count = len(criterion_ids)
 
-    # No pre-flight validation needed (criterion_ids são digit strings — partial_failure
-    # handles missing criteria graciously via _classify_partial mapping)
+    # Sem pre-flight (criterion_ids sao strings de digitos): o partial_failure mode
+    # cuida de id inexistente sem derrubar o resto do lote, e o motivo por linha
+    # sai em `partial_failures` na resposta do apply_change.
 
     risk = classify(operation="remove_audience", params={"target_count": target_count})
     # Always CONFIRM path — no AUTO branch

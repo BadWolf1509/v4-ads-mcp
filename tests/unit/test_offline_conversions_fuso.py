@@ -37,6 +37,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import pytest
+from freezegun import freeze_time
 
 from src.mcp.tools.import_offline_conversions import _validate_payload_shape
 from tests.unit.test_run_conversion_upload import (
@@ -230,3 +231,118 @@ async def test_dry_run_guarda_o_fuso_no_payload_e_mostra_o_offset_no_preview() -
     assert pending["payload"]["__time_zone__"] == "America/Campo_Grande"
     assert out["summary"]["time_zone"] == "America/Campo_Grande"
     assert out["summary"]["utc_offset"] == "-04:00"
+
+
+# --- R1-I6: o offset do preview e o offset que o upload envia -----------------
+#
+# O preview calculava `utc_offset` com `datetime.now(zone)` — o offset de HOJE.
+# O upload calcula por TIMESTAMP (`_utc_offset(conv, zone)`). Duas contas do
+# mesmo fuso, feitas de jeitos diferentes: quando o horario de verao separa as
+# duas datas, o preview mostra um offset e o Google recebe outro. Familia do
+# F146 (offset chutado num caminho de ESCRITA), e o gestor confirma vendo o
+# numero errado.
+#
+# O caso e brasileiro e real: o horario de verao 2017/2018 terminou em
+# 18/02/2018. Uma conversao de 10/02 em Sao Paulo tem offset -02:00; o relogio
+# de 20/02 diz -03:00.
+
+VERAO_2018 = "2018-02-10 14:30:00"  # dentro do horario de verao -> -02:00
+DEPOIS_DO_VERAO = "2018-02-20 12:00:00"  # UTC; em Sao Paulo ja e -03:00
+
+
+async def _dry_run_com(
+    tz_name: str, conversions: list[dict[str, Any]]
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    from unittest.mock import AsyncMock, patch
+
+    from src.mcp.context import McpRequestContext, clear_current, set_current
+    from src.mcp.tools import import_offline_conversions as mod
+
+    captured: dict[str, Any] = {}
+
+    async def _zone(customer_id: str) -> str | None:
+        return tz_name
+
+    async def _create_pending(conn: Any, **kwargs: Any) -> str:
+        captured.update(kwargs)
+        return "TOKEN123"
+
+    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
+    try:
+        with (
+            patch.object(mod, "resolve_account_zone", _zone),
+            patch.object(
+                mod, "validate_conversion_action_for_upload", AsyncMock(return_value=None)
+            ),
+            patch.object(mod, "create_pending", _create_pending),
+            patch("src.mcp.tools.import_offline_conversions.connection.get_pool", _FakePool),
+        ):
+            out: dict[str, Any] = await mod.import_offline_conversions(
+                {
+                    "customer_id": "3237459217",
+                    "conversion_action_id": "1",
+                    "conversions": conversions,
+                }
+            )
+    finally:
+        clear_current()
+    return out, (captured or None)
+
+
+@pytest.mark.asyncio
+@freeze_time(DEPOIS_DO_VERAO)
+async def test_preview_mostra_o_offset_do_timestamp_nao_o_de_hoje() -> None:
+    """R1-I6: o `utc_offset` do preview e o que o builder vai anexar."""
+    conv = {
+        "gclid": "Cj0KCQjwR1I6",
+        "conversion_date_time": VERAO_2018,
+        "conversion_value_brl": 10.0,
+    }
+    out, _ = await _dry_run_com("America/Sao_Paulo", [conv])
+    assert out["status"] == "dry_run"
+    assert out["summary"]["utc_offset"] == "-02:00", (
+        "o preview mostrava -03:00 (relogio de hoje) enquanto o upload envia -02:00"
+    )
+
+
+@pytest.mark.asyncio
+@freeze_time(DEPOIS_DO_VERAO)
+async def test_preview_e_builder_concordam_pelo_mesmo_calculo() -> None:
+    """Cruza as duas pontas: a string que o preview anuncia e a que o Google recebe.
+
+    Nao e concordancia entre duas respostas nossas — o lado direito e o que o
+    `run_conversion_upload` de fato monta no `ClickConversion`.
+    """
+    conv = {
+        "gclid": "Cj0KCQjwR1I6",
+        "conversion_date_time": VERAO_2018,
+        "conversion_value_brl": 10.0,
+    }
+    out, pending = await _dry_run_com("America/Sao_Paulo", [conv])
+    assert pending is not None
+
+    _, click_convs = await _upload(
+        {
+            "conversion_action_id": "1",
+            "conversions": [conv],
+            "__time_zone__": "America/Sao_Paulo",
+        }
+    )
+    enviado = str(click_convs[0].field("conversion_date_time"))
+    assert enviado == f"{VERAO_2018}{out['summary']['utc_offset']}"
+
+
+@pytest.mark.asyncio
+@freeze_time(DEPOIS_DO_VERAO)
+async def test_preview_com_offsets_divergentes_nao_esconde_a_divergencia() -> None:
+    """Lote que atravessa a virada: uma string so nao pode afirmar as duas.
+
+    O preview lista os offsets distintos, na ordem em que aparecem — mentir
+    escolhendo um deles e o mesmo defeito, so que mais dificil de ver.
+    """
+    convs = [
+        {"gclid": "a", "conversion_date_time": VERAO_2018, "conversion_value_brl": 10.0},
+        {"gclid": "b", "conversion_date_time": "2018-02-19 10:00:00", "conversion_value_brl": 5.0},
+    ]
+    out, _ = await _dry_run_com("America/Sao_Paulo", convs)
+    assert out["summary"]["utc_offset"] == "-02:00, -03:00"

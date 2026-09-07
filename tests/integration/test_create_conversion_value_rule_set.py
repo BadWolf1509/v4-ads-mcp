@@ -241,4 +241,7 @@ async def test_create_conversion_value_rule_set_full_cycle_returns_3_resource_na
         "campaign_scoped": False,
         "operations": {"ADD": 2},
         "condition_types": {"DEVICE": 1, "GEO_LOCATION": 1},
+        # R1-I2: o executor acrescenta a chave reservada `resultado`
+        # (o que ACONTECEU) ao lado do resumo que a tool monta.
+        "resultado": {"tentadas": 3, "aplicadas": 3, "mudaram": 3},
     }

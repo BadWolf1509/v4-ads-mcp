@@ -246,7 +246,13 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
             "customer_id": saved.customer_id,
             "user_list_id": saved.payload["user_list_id"],
             "operation_type": saved.payload["operation"],
+            # R1-I3: `members_submitted` e o que o Google ACEITOU. O que ele
+            # recusou (hash mal formado, identificador nao suportado) aparece
+            # ao lado, com o motivo por linha — antes o lote inteiro era
+            # reportado como submetido.
             "members_submitted": result["members_submitted"],
+            "members_failed": result["members_failed"],
+            "failures": result["failures"],
             "job_resource_name": result["job_resource_name"],
             "provider_request_id_create_job": result["provider_request_id_create_job"],
             "provider_request_id_add_ops": result["provider_request_id_add_ops"],
@@ -389,6 +395,13 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
         partial_failure=partial_failure,
         params_summary=params_summary,
     )
+    # R1-I1: cinco tools chegam aqui com `__partial_failure__` ligado —
+    # `add_keywords`, `apply_audience`, `bulk_pause_by_query`,
+    # `remove_asset_link` e `remove_audience` (a sexta, `update_ad_schedule`,
+    # tem ramo proprio acima e ja devolvia isto). Quando o Google aceita parte,
+    # o motivo de cada recusa vinha no `result` e morria nesta linha: o gestor
+    # lia "applied" com `applied_count` menor que o pedido e nenhum porque.
+    partial_failures = result.get("partial_failures", [])
     return {
         "status": "applied",
         "operation": saved.operation_type,
@@ -399,5 +412,7 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
         # F139: quantos de fato mudaram. `applied_count` conta o tentado, entao
         # numa re-remocao ele diz 1 para uma operacao que nao mudou nada.
         "changed_count": result.get("changed_count"),
+        "partial_failures": partial_failures,
+        "failed_count": sum(1 for r in partial_failures if r["status"] == "failed"),
         "resource_names": result.get("resource_names", []),
     }

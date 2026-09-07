@@ -160,6 +160,15 @@ async def test_add_keywords_full_cycle_audits(db, session_ctx):
         "ad_group_id": "111",
         "match_types_distribution": {"EXACT": 2, "PHRASE": 1},
         "with_custom_bid_count": 1,
+        # R1-I2: o executor acrescenta a chave reservada `resultado`
+        # (o que ACONTECEU) ao lado do resumo que a tool monta.
+        "resultado": {
+            "tentadas": 3,
+            "aplicadas": 2,
+            "mudaram": 2,
+            "falharam": 1,
+            "indices_com_falha": [1],
+        },
     }
     # Critical: raw keyword texts NOT in audit
     assert "alpha" not in json.dumps(summary_d)

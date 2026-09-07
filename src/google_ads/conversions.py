@@ -28,6 +28,7 @@ from src.db.repositories import audit_log
 from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
+from src.google_ads.partial_failure import erros_por_indice
 from src.google_ads.request_id import (
     get_request_id,
     reset_request_id,
@@ -137,7 +138,7 @@ async def run_conversion_upload(
             # F146: offset do FUSO DA CONTA, calculado por timestamp (era "-03:00" fixo;
             # em Campo Grande/Boa Vista, UTC-4, o carimbo ia 1h adiantado, em silencio).
             click_conv.conversion_date_time = (
-                f"{conv['conversion_date_time']}{_utc_offset(conv['conversion_date_time'], zone)}"
+                f"{conv['conversion_date_time']}{utc_offset(conv['conversion_date_time'], zone)}"
             )
             click_conv.conversion_value = float(conv["conversion_value_brl"])
             click_conv.currency_code = "BRL"  # V4 invariant
@@ -256,8 +257,16 @@ async def run_conversion_upload(
     }
 
 
-def _utc_offset(local_ts: str, zone: ZoneInfo) -> str:
-    """'2026-05-17 14:30:00' em America/Campo_Grande -> '-04:00' (formato que o Google exige)."""
+def utc_offset(local_ts: str, zone: ZoneInfo) -> str:
+    """'2026-05-17 14:30:00' em America/Campo_Grande -> '-04:00' (formato que o Google exige).
+
+    Publica desde 2026-09-07 (R1-I6): o PREVIEW do `import_offline_conversions`
+    anunciava o offset via `datetime.now(zone)` — o de HOJE — enquanto o upload
+    o calcula por TIMESTAMP, aqui. Duas contas do mesmo fuso feitas de jeitos
+    diferentes divergem sempre que o horario de verao separa as duas datas, e o
+    gestor confirma vendo o numero que nao sera enviado. Uma funcao so,
+    chamada pelos dois lados.
+    """
     z = datetime.strptime(local_ts, "%Y-%m-%d %H:%M:%S").replace(tzinfo=zone).strftime("%z")
     return f"{z[:3]}:{z[3:]}"
 
@@ -276,30 +285,12 @@ def _parse_upload_response(
     failures: list[dict[str, Any]] = []
 
     # Build row -> error_code/message mapping from partial_failure_error.details.
-    row_errors: dict[int, dict[str, str]] = {}
-    pfe = getattr(response, "partial_failure_error", None)
-    pfe_code = getattr(pfe, "code", 0) if pfe is not None else 0
-    if pfe_code != 0:
-        try:
-            details = getattr(pfe, "details", []) or []
-            for detail in details:
-                raw = detail._pb if hasattr(detail, "_pb") else detail
-                if not (hasattr(raw, "type_url") and hasattr(raw, "Unpack")):
-                    continue
-                if "GoogleAdsFailure" not in raw.type_url:
-                    continue
-                failure_type = client.get_type("GoogleAdsFailure")
-                failure_pb = failure_type._meta.pb()
-                raw.Unpack(failure_pb)
-                for gae in failure_pb.errors:
-                    if gae.location.field_path_elements:
-                        idx = int(gae.location.field_path_elements[0].index)
-                        row_errors[idx] = {
-                            "error_code": str(gae.error_code).split(":")[-1].strip() or "UNKNOWN",
-                            "error_message": str(gae.message),
-                        }
-        except Exception:
-            log.warning("partial_failure_detail_parse_failed", exc_info=True)
+    # O desempacotamento do proto vive em `partial_failure.py` (compartilhado com
+    # `run_mutation` e o Customer Match — ver a docstring de la).
+    row_errors = {
+        idx: {"error_code": e.error_code, "error_message": e.error_message}
+        for idx, e in erros_por_indice(response, client, origem="run_conversion_upload").items()
+    }
 
     # Walk results — empty conversion_action = failed row.
     for idx, result in enumerate(response.results):
