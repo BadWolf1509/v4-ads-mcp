@@ -39,9 +39,29 @@ _CASES: list[tuple[str, dict, RiskLevel, str]] = [
     # add_negatives_from_search_terms — same rule as other negatives (AUTO)
     ("add_negatives_from_search_terms", {"target_count": 50}, RiskLevel.AUTO, "negatives"),
     ("add_negatives_from_search_terms", {"target_count": 500}, RiskLevel.AUTO, "negatives"),
-    # Recommendations always auto
-    ("apply_recommendation", {"target_count": 1}, RiskLevel.AUTO, "recommendation"),
-    ("dismiss_recommendation", {"target_count": 1}, RiskLevel.AUTO, "recommendation"),
+    # C2 — apply_recommendation depende do TIPO: orcamento/lance confirma, o resto
+    # segue auto. Sem tipo resolvido, o lado seguro e confirmar.
+    (
+        "apply_recommendation",
+        {"target_count": 1, "recommendation_type": "CAMPAIGN_BUDGET"},
+        RiskLevel.CONFIRM,
+        "orcamento",
+    ),
+    (
+        "apply_recommendation",
+        {"target_count": 1, "recommendation_type": "TARGET_ROAS_OPT_IN"},
+        RiskLevel.CONFIRM,
+        "lance",
+    ),
+    (
+        "apply_recommendation",
+        {"target_count": 1, "recommendation_type": "KEYWORD"},
+        RiskLevel.AUTO,
+        "KEYWORD",
+    ),
+    ("apply_recommendation", {"target_count": 1}, RiskLevel.CONFIRM, "desconhecido"),
+    # Dismiss so descarta a sugestao — segue auto, independente do tipo.
+    ("dismiss_recommendation", {"target_count": 1}, RiskLevel.AUTO, "dismiss_recommendation"),
     # Sanity check: PAUSED still works
     ("update_ad_status", {"target_count": 1, "new_status": "PAUSED"}, RiskLevel.AUTO, "single"),
     # add_keywords — AUTO threshold is 20 per spec §7.1 (Add KWs ≤20 em 1 ad_group)

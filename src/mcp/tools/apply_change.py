@@ -19,7 +19,7 @@ from src.google_ads.ad_schedule import (
     window_from_input,
 )
 from src.google_ads.conversions import run_conversion_upload
-from src.google_ads.mutations import run_mutation
+from src.google_ads.mutations import run_mutation, run_recommendation_action
 from src.google_ads.queries.ad_schedule import (
     GRADE_LIMIT,
     ad_schedule_query,
@@ -131,6 +131,28 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
             "applied_count": result["applied_count"],
             "failed_count": result["failed_count"],
             "failures": result["failures"],
+        }
+
+    # C2: RecommendationService path. Sem este ramo o token que o
+    # `apply_recommendation` passou a emitir cairia no `run_mutation` la embaixo,
+    # que so sabe montar operacoes do GoogleAdsService.mutate — a tool preveria
+    # sem nunca aplicar (F150). O gate por conta e a quota vivem dentro do
+    # `run_recommendation_action`, iguais aos do caminho auto.
+    if saved.operation_type == "apply_recommendation":
+        result = await run_recommendation_action(
+            manager_id=ctx.manager_id,
+            session_id=ctx.session_id,
+            customer_id=saved.customer_id,
+            operation_type=saved.operation_type,
+            payload=saved.payload,
+        )
+        return {
+            "status": "applied",
+            "operation": saved.operation_type,
+            "customer_id": saved.customer_id,
+            "blast_summary": saved.blast_summary,
+            "provider_request_id": result["provider_request_id"],
+            "applied_count": result["applied_count"],
         }
 
     # Sprint 3b.28: OfflineUserDataJobService path (Customer Match upload).
