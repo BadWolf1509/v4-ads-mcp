@@ -24,6 +24,8 @@ from uuid import uuid4
 
 import pytest
 
+from src.db import connection
+from src.mcp.tools import update_ad_schedule as ad_schedule_mod
 from src.mcp.tools import update_campaign_budget as mod
 
 _CUSTOMER = "7862230676"
@@ -130,7 +132,7 @@ def _wire(
 
     monkeypatch.setattr(mod, "run_report", _run)
     monkeypatch.setattr(mod, "create_pending", _create_pending)
-    monkeypatch.setattr(mod.connection, "get_pool", lambda: _FakePool())
+    monkeypatch.setattr(connection, "get_pool", lambda: _FakePool())
     return captured
 
 
@@ -151,13 +153,18 @@ async def _preview_com(
     novo_brl: float = 100.0,
 ) -> dict[str, Any]:
     _wire(monkeypatch, explicitly_shared=explicitly_shared, irmas=irmas)
-    return await mod.update_campaign_budget(
+    # Anotacao explicita (nao so o `-> dict[str, Any]:` da funcao) porque
+    # `ToolHandler = Callable[[dict[str, Any]], Awaitable[Any]]` (src/mcp/tools/
+    # _registry.py) devolve `Any`: sem o local tipado, mypy recusa o `return` direto
+    # (no-any-return). Mesmo valor, so reafirmando o tipo que o registry apaga.
+    envelope: dict[str, Any] = await mod.update_campaign_budget(
         {
             "customer_id": _CUSTOMER,
             "campaign_id": _ALVO_ID,
             "new_daily_budget_brl": novo_brl,
         }
     )
+    return envelope
 
 
 _IRMA_CAB = {"campaign_id": _IRMA_ID, "campaign_name": "[GPC][CAB]", "status": "ENABLED"}
@@ -198,9 +205,22 @@ async def test_bloco_espelha_as_chaves_do_update_ad_schedule(
 ) -> None:
     """Simetria e requisito: quem aprendeu a ler o aviso numa tool reconhece na outra.
 
-    A unica divergencia deliberada e `shared_budget` (dict|None) contra
-    `shared_budgets` (lista): esta tool escreve em UM recurso orcamento, entao
-    lista de no maximo um elemento seria ruido.
+    Achado da revisao da Task 1: um `set` LITERAL aqui nao guarda simetria nenhuma —
+    e uma lista, nao uma comparacao — e cobre so a direcao errada (esta tool nao e a
+    que muda; `update_ad_schedule`, em producao, e). Medido: acrescentar uma 9a chave
+    ao bloco de `update_ad_schedule` deixava o arquivo inteiro 8 passed.
+    Por isso o conjunto esperado e DERIVADO chamando
+    `update_ad_schedule._blocos_de_orcamento_compartilhado` de verdade — a mesma
+    funcao que a tool em producao usa para montar `shared_budgets`. Com isso a
+    asserção quebra nos dois sentidos: uma chave nova la, ou uma chave nova aqui, os
+    dois lados descasam.
+
+    As duas divergencias deliberadas ficam FORA desta comparacao porque nenhuma das
+    duas e divergencia de CHAVE: `shared_budget` (dict|None) contra `shared_budgets`
+    (lista) e o formato do ENVELOPE que guarda o(s) bloco(s), nao do bloco em si —
+    aqui comparamos um bloco contra outro bloco, dict com dict; e o texto do
+    `warning_pt` diverge no VALOR (ATINGE vs REALOCA), nunca na chave —
+    `set(dict)` compara nomes de chave, nao conteudo.
     """
     sb = (
         await _preview_com(
@@ -213,16 +233,33 @@ async def test_bloco_espelha_as_chaves_do_update_ad_schedule(
             ],
         )
     )["shared_budget"]
-    assert set(sb) == {
-        "budget_id",
-        "budget_resource_name",
-        "explicitly_shared",
-        "amount_brl",
-        "campaigns_in_batch",
-        "campaigns_outside_batch",
-        "ativas_fora_do_lote",
-        "warning_pt",
-    }
+
+    async def _consulta_irmas(*_args: Any) -> list[dict[str, Any]]:
+        """Fake de `consulta` para `_blocos_de_orcamento_compartilhado`: so a FORMA
+        da row importa aqui — o teste de chaves nao olha valor nenhum dela."""
+        return [
+            {
+                "campaign_id": _ALVO_ID,
+                "campaign_name": "[GPC][JPA]",
+                "budget_resource_name": _BUDGET_RN,
+                "status": "ENABLED",
+            }
+        ]
+
+    blocos_do_ad_schedule = await ad_schedule_mod._blocos_de_orcamento_compartilhado(
+        _consulta_irmas,
+        [
+            {
+                "budget_resource_name": _BUDGET_RN,
+                "budget_id": _BUDGET_ID,
+                "explicitly_shared": True,
+                "amount_brl": 310.0,
+            }
+        ],
+        [_ALVO_ID],
+    )
+    assert set(sb) == set(blocos_do_ad_schedule[0])
+
     assert sb["budget_id"] == _BUDGET_ID
     assert sb["budget_resource_name"] == _BUDGET_RN
     assert sb["explicitly_shared"] is True
@@ -310,7 +347,7 @@ async def test_a_query_das_irmas_nao_sai_quando_o_orcamento_e_exclusivo(
         return "TOKEN123"
 
     monkeypatch.setattr(mod, "create_pending", _create_pending)
-    monkeypatch.setattr(mod.connection, "get_pool", lambda: _FakePool())
+    monkeypatch.setattr(connection, "get_pool", lambda: _FakePool())
     await mod.update_campaign_budget(
         {"customer_id": _CUSTOMER, "campaign_id": _ALVO_ID, "new_daily_budget_brl": 100.0}
     )
