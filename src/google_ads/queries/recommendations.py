@@ -183,6 +183,34 @@ class DetalheDoTipo:
     atual_brl: str | None = None
     recomendado_brl: str | None = None
     outros: tuple[tuple[str, str, Unidade], ...] = field(default=())
+    derivado: ProdutoDerivado | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ProdutoDerivado:
+    """O valor NOVO de um alvo que o proto declara por FATORES (I4).
+
+    `RAISE_TARGET_CPA`, `RAISE_TARGET_CPA_BID_TOO_LOW` e `LOWER_TARGET_ROAS` nao
+    trazem o alvo resultante: trazem a ancora ("the current average target") e o
+    multiplicador ("the factor by which we recommend the target to be adjusted
+    by"). O preview mostrava os dois fatores e nunca o produto, entao quem
+    confirmava fazia a multiplicacao de cabeca — ou nao fazia. E a Global
+    Constraint do PR ("confirmar sem ver o numero nao e confirmar") aplicada a um
+    alvo de lance em vez de a um orcamento.
+
+    `unidade` NAO e detalhe: nos dois CPA o produto e DINHEIRO (2 casas, com
+    "R$"), no ROAS e RAZAO (4 casas, nunca "R$"). Somar ou formatar os dois igual
+    seria erro de unidade num numero que o gestor usa pra decidir.
+
+    `ancora` e `multiplicador` sao chaves da SAIDA ja convertida — nao caminhos do
+    proto. Multiplicar micros por fator e depois converter daria o mesmo numero,
+    mas duplicaria a regra de unidade, que e justamente o que se quer num lugar so.
+    """
+
+    chave: str
+    ancora: str
+    multiplicador: str
+    unidade: Unidade
 
 
 # Os tres tipos de orcamento compartilham a mesma mensagem (CampaignBudgetRecommendation).
@@ -279,12 +307,18 @@ CAMPOS_DE_DETALHE: dict[str, DetalheDoTipo] = {
             ),
             ("estrategia_de_portfolio", "target_adjustment.shared_set", "texto"),
         ),
+        ProdutoDerivado(
+            "target_cpa_novo_brl", "current_amount_brl", "multiplicador_recomendado", "brl"
+        ),
     ),
     "RAISE_TARGET_CPA_BID_TOO_LOW": DetalheDoTipo(
         "raise_target_cpa_bid_too_low_recommendation",
         "average_target_cpa_micros",
         None,
         (("multiplicador_recomendado", "recommended_target_multiplier", "numero"),),
+        ProdutoDerivado(
+            "target_cpa_novo_brl", "current_amount_brl", "multiplicador_recomendado", "brl"
+        ),
     ),
     # --- alvos de ROAS (razao: nunca vira "R$") ---
     "TARGET_ROAS_OPT_IN": DetalheDoTipo(
@@ -317,6 +351,10 @@ CAMPOS_DE_DETALHE: dict[str, DetalheDoTipo] = {
                 "numero",
             ),
             ("estrategia_de_portfolio", "target_adjustment.shared_set", "texto"),
+        ),
+        # ROAS e RAZAO: o produto sai como 3.6, nunca como "R$ 3,60".
+        ProdutoDerivado(
+            "target_roas_novo", "target_roas_atual", "multiplicador_recomendado", "razao"
         ),
     ),
     # --- converte TODAS as keywords da campanha para ampla ---
@@ -674,6 +712,63 @@ def id_da_campanha(resource_name: str) -> str | None:
     return cid if cid.isdigit() else None
 
 
+def _produto(
+    derivado: ProdutoDerivado, atual: float | None, valores: dict[str, Any]
+) -> float | None:
+    """ancora x multiplicador, na unidade do alvo — ou `None` se faltar um fator.
+
+    Fator zerado NAO vira produto zero: seria "R$ 0.00" com cara de valor medido
+    (a familia do F145). Zero em ancora ou em multiplicador significa que o Google
+    nao declarou aquele lado, e sem os dois nao ha o que derivar.
+    """
+    bruto = atual if derivado.ancora == "current_amount_brl" else valores.get(derivado.ancora)
+    fator = valores.get(derivado.multiplicador)
+    if not isinstance(bruto, (int, float)) or not isinstance(fator, (int, float)):
+        return None
+    if not bruto or not fator:
+        return None
+    casas = 2 if derivado.unidade == "brl" else 4
+    return round(float(bruto) * float(fator), casas)
+
+
+def chave_do_produto_derivado(tipo: str) -> str | None:
+    """A chave que `frase_do_produto_derivado` ja renderiza — o consumidor a pula.
+
+    Sem isto o produto sairia duas vezes no resumo: uma na frase que diz de onde
+    ele veio, outra na listagem crua `chave=valor`.
+    """
+    spec = CAMPOS_DE_DETALHE.get(tipo)
+    return spec.derivado.chave if spec is not None and spec.derivado is not None else None
+
+
+def frase_do_produto_derivado(info: dict[str, Any]) -> str | None:
+    """ "R$ 77.00 -> R$ 103.95 (derivado: atual x 1.35)", com a unidade certa.
+
+    Marcado como DERIVADO de proposito: o Google nao declara este numero, e um
+    valor calculado por nos exibido como se fosse dele apagaria a diferenca entre
+    "o Google propoe" e "isto e o que dá". Os dois fatores continuam saindo em
+    `valores` — mostrar o produto e ALEM deles, nao no lugar deles.
+
+    Vive aqui, e nao na tool, porque a regra de unidade vive aqui: BRL leva "R$" e
+    2 casas, RAZAO nao leva "R$" e vale ate 4.
+    """
+    spec = CAMPOS_DE_DETALHE.get(info["type"])
+    if spec is None or spec.derivado is None:
+        return None
+    d = spec.derivado
+    valores = info["valores"]
+    produto = valores.get(d.chave)
+    ancora = (
+        info["current_amount_brl"] if d.ancora == "current_amount_brl" else valores.get(d.ancora)
+    )
+    fator = valores.get(d.multiplicador)
+    if produto is None or ancora is None or fator is None:
+        return None
+    if d.unidade == "brl":
+        return f"R$ {ancora:.2f} -> R$ {produto:.2f} (derivado: atual x {fator})"
+    return f"alvo {ancora} -> {produto} (derivado: atual x {fator})"
+
+
 def parse_recommendation_detail_row(row: Any) -> dict[str, Any]:
     """Tipo + os numeros do detalhe daquele tipo, ja em BRL onde e dinheiro.
 
@@ -698,6 +793,10 @@ def parse_recommendation_detail_row(row: Any) -> dict[str, Any]:
             valor = _valor_de(detalhe, caminho, unidade)
             if valor is not _AUSENTE:
                 valores[chave] = valor
+        if spec.derivado is not None:
+            produto = _produto(spec.derivado, atual, valores)
+            if produto is not None:
+                valores[spec.derivado.chave] = produto
 
     campanha_rn = str(rec.campaign or "")
     return {

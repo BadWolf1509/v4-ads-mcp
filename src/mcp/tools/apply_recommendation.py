@@ -39,6 +39,8 @@ from src.google_ads.queries.recommendations import (
     TIPOS_DE_MIGRACAO,
     campaign_context_query,
     campaigns_on_bidding_strategy_query,
+    chave_do_produto_derivado,
+    frase_do_produto_derivado,
     parse_campaign_context_row,
     parse_campaign_on_bidding_strategy_row,
     parse_recommendation_detail_row,
@@ -205,14 +207,27 @@ def _trecho_dos_valores(info: dict[str, Any], campanha: dict[str, Any] | None) -
     recomendado = info["recommended_amount_brl"]
     delta = _delta_pct(atual, recomendado)
     partes: list[str] = []
+    # I4: nos tres tipos que declaram ancora + multiplicador, o valor NOVO e o
+    # produto — e ate 07/09 o resumo saia "valor atual R$ 77.00;
+    # multiplicador_recomendado=1.35", deixando a multiplicacao pro gestor. A
+    # frase substitui a linha da ancora crua (nao a do par atual->recomendado, que
+    # esses tipos nao tem) e diz de onde o numero veio.
+    derivada = frase_do_produto_derivado(info)
     if atual is not None and recomendado is not None:
         variacao = f" (delta {delta:+.1f}%)" if delta is not None else ""
         partes.append(f"R$ {atual:.2f} -> R$ {recomendado:.2f}{variacao}")
     elif recomendado is not None:
         partes.append(f"valor proposto R$ {recomendado:.2f}")
+    elif derivada is not None:
+        partes.append(derivada)
     elif atual is not None:
         partes.append(f"valor atual R$ {atual:.2f}")
-    partes += [f"{chave}={valor}" for chave, valor in sorted(info["valores"].items())]
+    # O produto ja saiu na frase acima, com a procedencia; repeti-lo na listagem
+    # crua seria o mesmo numero duas vezes. Os FATORES continuam na listagem.
+    ja_dito = chave_do_produto_derivado(info["type"]) if derivada is not None else None
+    partes += [
+        f"{chave}={valor}" for chave, valor in sorted(info["valores"].items()) if chave != ja_dito
+    ]
 
     migracao = _aviso_de_migracao(info["type"], campanha)
     if migracao is not None:

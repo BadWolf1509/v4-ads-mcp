@@ -37,6 +37,7 @@ from src.google_ads.queries.recommendations import (
     CAMPOS_DE_DETALHE,
     TIPOS_DE_MIGRACAO,
     TIPOS_QUE_CONFIRMAM,
+    frase_do_produto_derivado,
     parse_recommendation_detail_row,
 )
 from src.mcp.tools import apply_recommendation as mod
@@ -838,3 +839,118 @@ async def test_o_bloco_de_portfolio_nao_entra_no_fingerprint(
     # A estrategia em si ENTRA, porque e a mensagem da recomendacao mudando de
     # nivel — isso sim invalida o consentimento.
     assert impressao["valores"]["estrategia_de_portfolio"] == _ESTRATEGIA_RN
+
+
+# --------------------------------------------------------------------------- #
+# 7. I4 — ancora e multiplicador, e agora tambem o PRODUTO.
+# --------------------------------------------------------------------------- #
+# (tipo, chave do produto, valor esperado com as sentinelas do fake)
+#
+# Literal de proposito, como os 23: derivar de `CAMPOS_DE_DETALHE.derivado`
+# apagaria o caso quando alguem tirasse a derivacao da tabela, em vez de
+# reprova-la. As contas: CPA 50.00 x 1.35 = 67.50 (dinheiro, 2 casas);
+# ROAS 4.5 x 1.35 = 6.075 (razao, ate 4 casas — e sem "R$").
+_OS_TRES_COM_PRODUTO = (
+    ("RAISE_TARGET_CPA", "target_cpa_novo_brl", 67.5),
+    ("RAISE_TARGET_CPA_BID_TOO_LOW", "target_cpa_novo_brl", 67.5),
+    ("LOWER_TARGET_ROAS", "target_roas_novo", 6.075),
+)
+
+
+@pytest.mark.parametrize(("tipo", "chave", "esperado"), _OS_TRES_COM_PRODUTO)
+async def test_o_alvo_novo_aparece_alem_dos_fatores(
+    monkeypatch: pytest.MonkeyPatch, tipo: str, chave: str, esperado: float
+) -> None:
+    """I4: o proto declara ancora + multiplicador, e o valor NOVO e o produto.
+
+    Ate 07/09 o resumo saia "valor atual R$ 50.00; multiplicador_recomendado=1.35"
+    e quem confirmava fazia a multiplicacao de cabeca — ou nao fazia. E a Global
+    Constraint do PR ("confirmar sem ver o numero nao e confirmar") aplicada a um
+    alvo de lance em vez de a um orcamento. Os FATORES continuam saindo: o produto
+    e alem deles, nao no lugar deles.
+    """
+    capturado = _wire(monkeypatch, tipo=tipo)
+    env = await mod.apply_recommendation(
+        {"customer_id": _CUSTOMER, "recommendation_resource_name": _REC_RN}
+    )
+    assert env["valores"][chave] == esperado, f"{tipo}: produto errado ou ausente"
+    assert env["valores"]["multiplicador_recomendado"] == 1.35, f"{tipo}: o fator sumiu"
+    for texto in (env["blast_summary"], capturado["blast_summary"]):
+        assert str(esperado) in texto, f"{tipo}: o produto nao chega ao summary: {texto}"
+        assert "derivado" in texto, f"{tipo}: o produto sai sem dizer que e derivado"
+
+
+async def test_o_produto_de_roas_nao_vira_reais(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unidade: ROAS e RAZAO. O produto sai 6.075, nunca "R$ 6.08".
+
+    Micros e razao nao se somam nem se formatam igual — e os dois tipos de CPA ao
+    lado usam a MESMA maquinaria com a outra unidade, entao um bug de unidade aqui
+    seria invisivel se so o CPA fosse testado.
+    """
+    env = await _aplicar(monkeypatch, tipo="LOWER_TARGET_ROAS")
+    resumo = env["blast_summary"]
+    assert "6.075" in resumo
+    assert "R$ 6" not in resumo, f"ROAS formatado como dinheiro: {resumo}"
+    assert env["current_amount_brl"] is None
+    assert env["recommended_amount_brl"] is None
+
+
+async def test_o_produto_sai_uma_vez_so(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A frase ja diz o numero E a procedencia; repeti-lo cru seria ruido.
+
+    Contraprova do lado oposto: `multiplicador_recomendado` (um FATOR) continua na
+    listagem crua, entao o filtro nao esta apagando o que deveria ficar.
+    """
+    env = await _aplicar(monkeypatch, tipo="RAISE_TARGET_CPA")
+    resumo = env["blast_summary"]
+    assert resumo.count("67.5") == 1, f"produto repetido no resumo: {resumo}"
+    assert "target_cpa_novo_brl=" not in resumo
+    assert "multiplicador_recomendado=1.35" in resumo
+
+
+@pytest.mark.parametrize(
+    ("descricao", "ancora", "fator"),
+    [
+        ("sem multiplicador", 77_000_000, None),
+        ("sem ancora", None, 1.35),
+        ("multiplicador zerado", 77_000_000, 0.0),
+    ],
+)
+def test_fator_faltando_nao_vira_produto_zero(
+    descricao: str, ancora: int | None, fator: float | None
+) -> None:
+    """F145 de novo: meio produto e zero, e "R$ 0.00" passa por valor medido.
+
+    Par com `test_os_dois_fatores_presentes_derivam__controle_positivo`: sem ele,
+    uma derivacao que nunca emitisse nada passaria neste teste.
+    """
+    linha = _row("RAISE_TARGET_CPA")
+    detalhe = linha.recommendation.raise_target_cpa_recommendation
+    if ancora is not None:
+        detalhe.target_adjustment.current_average_target_micros = ancora
+    if fator is not None:
+        detalhe.target_adjustment.recommended_target_multiplier = fator
+    info = parse_recommendation_detail_row(linha)
+    assert "target_cpa_novo_brl" not in info["valores"], descricao
+    assert frase_do_produto_derivado(info) is None, descricao
+
+
+def test_os_dois_fatores_presentes_derivam__controle_positivo() -> None:
+    """O par do teste acima, com os numeros da probe do proto."""
+    linha = _row("RAISE_TARGET_CPA")
+    detalhe = linha.recommendation.raise_target_cpa_recommendation
+    detalhe.target_adjustment.current_average_target_micros = 77_000_000
+    detalhe.target_adjustment.recommended_target_multiplier = 1.35
+    info = parse_recommendation_detail_row(linha)
+    assert info["valores"]["target_cpa_novo_brl"] == 103.95
+    assert frase_do_produto_derivado(info) == "R$ 77.00 -> R$ 103.95 (derivado: atual x 1.35)"
+
+
+def test_tipo_sem_derivacao_nao_ganha_frase() -> None:
+    """Contraprova: a maquinaria so age onde a tabela declara `derivado`."""
+    linha = _row("CAMPAIGN_BUDGET")
+    detalhe = linha.recommendation.campaign_budget_recommendation
+    detalhe.current_budget_amount_micros = 50_000_000
+    detalhe.recommended_budget_amount_micros = 180_000_000
+    info = parse_recommendation_detail_row(linha)
+    assert frase_do_produto_derivado(info) is None
