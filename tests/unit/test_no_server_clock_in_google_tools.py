@@ -38,6 +38,17 @@ PRIMITIVOS = [
     # por ter mudado de arquivo — e o guard passaria verde olhando o lugar de
     # onde ela saiu. Cobre tambem o consumo Meta, que herda o mesmo primitivo.
     h.SRC / "clock.py",
+    # Os DOIS planejadores entraram em 2026-09-06: desde o C4 eles resolvem
+    # `hoje` no fuso da conta para decidir se a ausencia desta execucao ja esta
+    # em `missed_syncs`. Recebem o instante (`now`) e nao leem relogio — e e
+    # justamente isso que esta lista prende: um `now: datetime | None = None`
+    # com `datetime.now(UTC)` de default poria o F141 DENTRO da decisao que
+    # desativa conta e revoga grant, na janela das 21h a meia-noite locais. O
+    # gemeo Meta entra pela mesma razao que `clock.py` (o consumo Meta herda o
+    # mesmo primitivo), apesar da excecao geral a arquivos `meta_*`, que vale
+    # para os tools de `src/mcp/tools/`.
+    h.SRC / "google_ads" / "reconcile.py",
+    h.SRC / "meta_ads" / "reconcile.py",
     # `account_clock.py` fica FORA desta lista de proposito: e o unico leitor
     # legitimo do relogio (como default injetavel), e tem teste proprio abaixo.
 ]

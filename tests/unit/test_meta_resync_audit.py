@@ -61,11 +61,14 @@ async def test_reconcile_meta_records_audit(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(
         meta_resync.meta_ad_accounts, "list_inventory_rows", AsyncMock(return_value=[])
     )
-    monkeypatch.setattr(meta_resync.connection, "get_pool", lambda: _FakePool())
     rec = AsyncMock(return_value=7)
     monkeypatch.setattr(meta_resync, "record_job_run", rec)
+    # `conn` virou parametro obrigatorio (revisao da Task 3): quem chama e dono
+    # da unidade de trabalho, e `reconcile_meta` nao toca mais no pool.
+    conn = MagicMock()
+    conn.execute = AsyncMock(return_value="UPDATE 0")
 
-    plano = await meta_resync.reconcile_meta()
+    plano = await meta_resync.reconcile_meta(conn)
 
     # Inventario vazio + parceria com act_1 → build_plan() propoe adicionar.
     assert plano.to_add == ["act_1"]

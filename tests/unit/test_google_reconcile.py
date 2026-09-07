@@ -1,4 +1,15 @@
+from datetime import UTC, datetime, timedelta
+
+from src.clock import account_today
 from src.google_ads.reconcile import InventoryRow, build_plan
+
+# `build_plan` passou a receber o instante da EXECUCAO (C4, segunda metade): a
+# ausencia de hoje so entra na conta se ainda nao estiver em `missed_syncs`, e
+# isso se decide comparando `last_missed_on` com o dia da CONTA. Nos casos
+# abaixo `last_missed_on` e None, entao o instante nao muda o resultado — o
+# parametro e obrigatorio para que nenhum call-site volte a somar +1 por
+# execucao em silencio.
+AGORA = datetime(2026, 9, 3, 0, 30, tzinfo=UTC)
 
 
 def _inv(cid: str, *, ativo: bool = True, miss: int = 0) -> InventoryRow:
@@ -6,33 +17,39 @@ def _inv(cid: str, *, ativo: bool = True, miss: int = 0) -> InventoryRow:
 
 
 def test_ausencia_dentro_da_carencia_nao_remove():
-    p = build_plan(mcc_ids={"a"}, inventory=[_inv("a"), _inv("b", miss=0)], complete=True)
+    p = build_plan(
+        mcc_ids={"a"}, inventory=[_inv("a"), _inv("b", miss=0)], complete=True, now=AGORA
+    )
     assert p.to_remove == []
     assert p.to_bump == ["b"]
 
 
 def test_ausencia_que_cruza_a_carencia_remove():
-    p = build_plan(mcc_ids={"a"}, inventory=[_inv("a"), _inv("b", miss=2)], complete=True)
+    p = build_plan(
+        mcc_ids={"a"}, inventory=[_inv("a"), _inv("b", miss=2)], complete=True, now=AGORA
+    )
     assert p.to_remove == ["b"]
     assert p.to_bump == []
 
 
 def test_leitura_incompleta_bloqueia_destrutivo_mas_ainda_adiciona():
-    p = build_plan(mcc_ids={"a", "novo"}, inventory=[_inv("a"), _inv("b", miss=9)], complete=False)
+    p = build_plan(
+        mcc_ids={"a", "novo"}, inventory=[_inv("a"), _inv("b", miss=9)], complete=False, now=AGORA
+    )
     assert p.to_remove == []
     assert p.blocked_reason == "leitura incompleta"
     assert p.to_add == ["novo"]
 
 
 def test_conta_que_voltou_zera_o_contador():
-    p = build_plan(mcc_ids={"a"}, inventory=[_inv("a", miss=2)], complete=True)
+    p = build_plan(mcc_ids={"a"}, inventory=[_inv("a", miss=2)], complete=True, now=AGORA)
     assert p.to_reset == ["a"]
     assert p.to_remove == []
 
 
 def test_teto_percentual_barra_remocao_em_massa():
     inv = [_inv(str(i), miss=5) for i in range(20)]
-    p = build_plan(mcc_ids=set(), inventory=inv, complete=True)
+    p = build_plan(mcc_ids=set(), inventory=inv, complete=True, now=AGORA)
     assert p.to_remove == []
     assert p.blocked_reason is not None
     assert "remocao em massa" in p.blocked_reason
@@ -40,7 +57,9 @@ def test_teto_percentual_barra_remocao_em_massa():
 
 def test_piso_do_teto_deixa_passar_a_saida_de_uma_conta_so():
     """Sem `max(1, ...)`, 2 ativas -> floor(0.4) = 0 e o guard barraria ATE uma."""
-    p = build_plan(mcc_ids={"a"}, inventory=[_inv("a"), _inv("b", miss=5)], complete=True)
+    p = build_plan(
+        mcc_ids={"a"}, inventory=[_inv("a"), _inv("b", miss=5)], complete=True, now=AGORA
+    )
     assert p.to_remove == ["b"]
     assert p.blocked_reason is None
 
@@ -50,7 +69,9 @@ def test_conta_ja_inativa_nao_entra_em_plano_nenhum():
 
     Quem os cobre e `revoke_for_inactive_accounts`, que opera sobre o estado.
     """
-    p = build_plan(mcc_ids=set(), inventory=[_inv("velha", ativo=False, miss=9)], complete=True)
+    p = build_plan(
+        mcc_ids=set(), inventory=[_inv("velha", ativo=False, miss=9)], complete=True, now=AGORA
+    )
     assert p.to_remove == []
     assert p.to_bump == []
 
@@ -71,6 +92,7 @@ def test_guard_mede_o_inventario_ativo_e_nao_so_os_ausentes():
         mcc_ids=mcc,
         inventory=presentes + ausentes,
         complete=True,
+        now=AGORA,
         threshold=3,
         max_removal_ratio=0.2,
         max_removal_abs=5,
@@ -95,6 +117,7 @@ def test_teto_absoluto_e_o_vinculante_quando_a_conta_cresce():
         mcc_ids=mcc,
         inventory=presentes + ausentes,
         complete=True,
+        now=AGORA,
         threshold=3,
         max_removal_ratio=0.2,
         max_removal_abs=5,
@@ -114,6 +137,7 @@ def test_teto_absoluto_e_o_vinculante_quando_a_conta_cresce():
         mcc_ids=mcc,
         inventory=presentes + ausentes[:5],
         complete=True,
+        now=AGORA,
         threshold=3,
         max_removal_ratio=0.2,
         max_removal_abs=5,
@@ -137,5 +161,53 @@ def test_conta_inativa_que_volta_ao_mcc_entra_em_to_add():
         mcc_ids={"velha", "nova"},
         inventory=[_inv("velha", ativo=False, miss=9), _inv("outra")],
         complete=True,
+        now=AGORA,
     )
     assert p.to_add == ["nova", "velha"]
+
+
+def test_retry_no_mesmo_dia_nao_soma_a_ausencia_ja_contada():
+    """O `+1` virou condicional — e este e o caso em que isso decide a remocao.
+
+    O C4 tornou `apply_absences` idempotente por dia, mas a DECISAO continuava
+    somando `+1` por EXECUCAO. Num retry do mesmo dia a ausencia de hoje ja
+    esta em `missed_syncs`, e o `+1` a contava de novo: na vespera do limiar o
+    retry desativava a conta e revogava os grants com dois dias de ausencia.
+
+    Tambem prende o F141 DENTRO da decisao: neste instante o dia da conta
+    (02/09 em `America/Fortaleza`) nao e o dia UTC (03/09), entao comparar
+    `last_missed_on` com o dia do servidor nao casaria e o `+1` voltaria.
+    """
+    hoje_na_conta = account_today("America/Fortaleza", now=AGORA)
+    assert hoje_na_conta != AGORA.date(), "premissa: dia da conta != dia do servidor"
+
+    ja_contada = InventoryRow(
+        customer_id="b",
+        is_active=True,
+        missed_syncs=2,
+        time_zone="America/Fortaleza",
+        last_missed_on=hoje_na_conta,
+    )
+    p = build_plan(mcc_ids={"a"}, inventory=[_inv("a"), ja_contada], complete=True, now=AGORA)
+    assert p.to_remove == [], "a ausencia de hoje foi contada duas vezes"
+    assert p.to_bump == ["b"]
+
+
+def test_ausencia_carimbada_em_outro_dia_continua_somando():
+    """Contraparte obrigatoria: so o dia de HOJE suprime o `+1`.
+
+    Sem esta, `if last_missed_on is not None: return missed_syncs` — ignorando
+    a comparacao de data — passaria verde, e a carencia nunca mais avancaria:
+    conta que saiu do MCC ficaria viva para sempre.
+    """
+    ontem = account_today("America/Fortaleza", now=AGORA) - timedelta(days=1)
+    de_ontem = InventoryRow(
+        customer_id="b",
+        is_active=True,
+        missed_syncs=2,
+        time_zone="America/Fortaleza",
+        last_missed_on=ontem,
+    )
+    p = build_plan(mcc_ids={"a"}, inventory=[_inv("a"), de_ontem], complete=True, now=AGORA)
+    assert p.to_remove == ["b"], "carencia parou de avancar em dia novo"
+    assert p.to_bump == []

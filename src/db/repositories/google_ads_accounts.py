@@ -165,9 +165,15 @@ async def list_inventory_rows(conn: asyncpg.Connection) -> list[InventoryRow]:
     `time_zone` vem junto por causa do C4: quem aplica a ausência precisa do dia
     NO FUSO DA CONTA (F141), e resolvê-lo depois seria uma leitura por conta
     dentro da transação aberta da reconciliação. `build_plan` ignora o campo.
+
+    `last_missed_on`, ao contrário, `build_plan` LÊ: é o que diz se a ausência
+    desta execução já está em `missed_syncs` (retry do mesmo dia) ou não. Sem
+    ela na linha o planejador soma `+1` sempre e queima um dia de carência a
+    cada retry — o contador fica certo e a DECISÃO sai um dia adiantada.
     """
     rows = await conn.fetch(
-        "SELECT customer_id, is_active, missed_syncs, time_zone FROM google_ads_accounts"
+        "SELECT customer_id, is_active, missed_syncs, time_zone, last_missed_on "
+        "FROM google_ads_accounts"
     )
     return [
         InventoryRow(
@@ -175,6 +181,7 @@ async def list_inventory_rows(conn: asyncpg.Connection) -> list[InventoryRow]:
             is_active=r["is_active"],
             missed_syncs=r["missed_syncs"],
             time_zone=r["time_zone"],
+            last_missed_on=r["last_missed_on"],
         )
         for r in rows
     ]

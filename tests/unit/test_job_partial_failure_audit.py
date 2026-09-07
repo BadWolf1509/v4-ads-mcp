@@ -99,7 +99,7 @@ async def test_fetch_completo_quando_paginacao_termina_naturalmente() -> None:
 
 def _patch_resync(
     monkeypatch: pytest.MonkeyPatch, *, parceria_accounts: list, complete: bool
-) -> tuple[AsyncMock, AsyncMock]:
+) -> tuple[AsyncMock, AsyncMock, MagicMock]:
     """Troca as duas leituras (`fetch_partnership` + `_fetch_all_adaccounts`,
     ambas com o mesmo `complete`) e o passo destrutivo do plano por dublês.
 
@@ -142,13 +142,17 @@ def _patch_resync(
     )
     monkeypatch.setattr(meta_resync.meta_ad_accounts, "apply_absences", AsyncMock())
     monkeypatch.setattr(meta_resync.meta_ad_accounts, "set_reachable", AsyncMock())
-    monkeypatch.setattr(meta_resync.connection, "get_pool", lambda: _FakePool())
     desativa = AsyncMock(return_value=1)
     monkeypatch.setattr(meta_resync.meta_ad_accounts, "deactivate", desativa)
     revoga = AsyncMock(return_value=[])
     monkeypatch.setattr(meta_resync.manager_meta_account_access, "revoke_for_account", revoga)
     monkeypatch.setattr(meta_resync, "record_access_revocation", AsyncMock())
-    return desativa, revoga
+    # `conn` virou parametro obrigatorio de `reconcile_meta` (revisao da Task
+    # 3): o job nao adquire mais conexao do pool, entao a dube vem daqui e o
+    # pool NAO e mockado — mock sobrando desarmaria essa invariante.
+    conn = MagicMock()
+    conn.execute = AsyncMock(return_value="UPDATE 0")
+    return desativa, revoga, conn
 
 
 @pytest.mark.asyncio
@@ -158,7 +162,7 @@ async def test_inventario_parcial_nao_desativa_nada_e_audita_erro(
     """F93(1)/Req.3: com complete=False o upsert segue (aditivo, seguro) mas
     build_plan() bloqueia o lado destrutivo (deactivate/revoke NAO rodam), e o
     audit registra `error` em vez de `success`."""
-    desativa, revoga = _patch_resync(
+    desativa, revoga, conn = _patch_resync(
         monkeypatch,
         parceria_accounts=[{"ad_account_id": "act_1", "account_name": "A"}],
         complete=False,
@@ -166,7 +170,7 @@ async def test_inventario_parcial_nao_desativa_nada_e_audita_erro(
     rec = AsyncMock(return_value=1)
     monkeypatch.setattr(meta_resync, "record_job_run", rec)
 
-    await meta_resync.reconcile_meta()
+    await meta_resync.reconcile_meta(conn)
 
     (
         desativa.assert_not_awaited(),
@@ -184,7 +188,7 @@ async def test_inventario_completo_audita_sucesso_e_desativa(
 ) -> None:
     """F93(1): o caminho feliz nao pode regredir — segue desativando quem saiu
     da parceria e gravando success."""
-    desativa, revoga = _patch_resync(
+    desativa, revoga, conn = _patch_resync(
         monkeypatch,
         parceria_accounts=[{"ad_account_id": "act_1", "account_name": "A"}],
         complete=True,
@@ -192,7 +196,7 @@ async def test_inventario_completo_audita_sucesso_e_desativa(
     rec = AsyncMock(return_value=1)
     monkeypatch.setattr(meta_resync, "record_job_run", rec)
 
-    await meta_resync.reconcile_meta()
+    await meta_resync.reconcile_meta(conn)
 
     desativa.assert_awaited_once()
     assert desativa.await_args.kwargs["ad_account_ids"] == ["act_ausente"]

@@ -363,6 +363,31 @@ async def test_list_inventory_rows_traz_o_fuso_da_conta_meta(db) -> None:
     assert linhas["act_2"].timezone_name is None, "conta sem fuso tem que chegar como None"
 
 
+@pytest.mark.integration
+async def test_list_inventory_rows_traz_a_data_da_ultima_ausencia_meta(db) -> None:
+    """`last_missed_on` viaja no inventario porque `build_plan` DECIDE com ela.
+
+    Diferente do fuso, que o plano ignora: esta coluna e o que distingue "a
+    ausencia de hoje ja esta no contador" (retry) de "ainda nao esta". Sem ela
+    na linha o planejador soma `+1` sempre, e o retry do mesmo dia queima um
+    dia de carencia — o contador fica certo e a DECISAO sai um dia adiantada,
+    que deste lado e revogacao de acesso de gestor.
+    """
+    async with db.acquire() as conn:
+        await _semear_conta(conn, "act_1")
+        await _semear_conta(conn, "act_2")  # sem ausencia nenhuma
+        await meta_ad_accounts.apply_absences(conn, bump=[("act_1", DIA_DA_CONTA)], reset=[])
+
+        linhas = {r.ad_account_id: r for r in await meta_ad_accounts.list_inventory_rows(conn)}
+
+    assert linhas["act_1"].last_missed_on == DIA_DA_CONTA, (
+        "a data da ultima ausencia nao chegou ao planejador"
+    )
+    assert linhas["act_2"].last_missed_on is None, (
+        "conta sem serie de ausencias tem que chegar como None"
+    )
+
+
 # ---------- nivel de job: `reconcile_meta` ----------
 
 
@@ -457,6 +482,57 @@ async def test_retry_do_job_no_mesmo_dia_nao_consome_a_carencia_meta(db) -> None
     )
     assert linha["missed_syncs"] == 2, "dia novo tem que voltar a contar"
     assert linha["last_missed_on"] == date(2026, 9, 3)
+
+
+@pytest.mark.integration
+async def test_retry_na_vespera_do_limiar_nao_remove_a_conta_meta(db) -> None:
+    """A DECISAO tambem tem de ser idempotente por dia — nao so o contador.
+
+    O teste de retry acima para em 2 ausencias, longe do limiar 3: prova que
+    `apply_absences` nao conta duas vezes, e nao toca a unica execucao em que o
+    retry importa, que e a que REMOVE. `build_plan` somava `missed_syncs + 1`
+    por EXECUCAO — a suposicao que o C4 quebrou —, entao o retry da vespera lia
+    o contador JA bumpado por esta mesma execucao e decidia remover com dois
+    dias de ausencia em vez de tres. Neste lado isso e producao viva: desde
+    05/09 o laco desativa a conta e REVOGA os grants dos gestores. E
+    `missed_syncs` ficava parado em 2, o que torna o sintoma invisivel para
+    quem auditar so o contador.
+
+    Cobre tambem o F141 na decisao: com `INSTANTE_DO_BUG` o dia da conta (02/09
+    em `America/Noronha`) difere do dia UTC (03/09), entao comparar
+    `last_missed_on` com o dia do SERVIDOR nao casaria e o `+1` voltaria.
+
+    A contraprova esta no fim: no dia SEGUINTE a conta tem de sair. Sem ela, um
+    planejador que nunca remove passaria verde.
+    """
+    dia_seguinte = INSTANTE_DO_BUG.replace(day=4)
+    async with db.acquire() as conn:
+        # Uma ausencia anterior: o run de hoje leva a duas, e o limiar e tres.
+        await _semear_conta(conn, "act_1", missed_syncs=1)
+
+        with ExitStack() as stack:
+            for p in _patches_do_job(apply=True):
+                stack.enter_context(p)
+            await meta_resync.reconcile_meta(conn, now=INSTANTE_DO_BUG)
+            plano_retry = await meta_resync.reconcile_meta(conn, now=INSTANTE_DO_BUG)
+            depois_do_retry = await _linha(conn, "act_1")
+            ativa_no_retry = await conn.fetchval(
+                "SELECT is_active FROM meta_ad_accounts WHERE ad_account_id = $1", "act_1"
+            )
+
+            plano_amanha = await meta_resync.reconcile_meta(conn, now=dia_seguinte)
+            ativa_amanha = await conn.fetchval(
+                "SELECT is_active FROM meta_ad_accounts WHERE ad_account_id = $1", "act_1"
+            )
+
+    assert plano_retry.to_remove == [], (
+        "retry no mesmo dia removeu a conta com DOIS dias de ausencia — a decisao "
+        "somou +1 sobre um contador que ESTA execucao ja tinha bumpado"
+    )
+    assert ativa_no_retry is True, "conta desativada (e grants revogados) um dia antes da hora"
+    assert depois_do_retry["missed_syncs"] == 2, "o contador tem de seguir idempotente por dia"
+    assert plano_amanha.to_remove == ["act_1"], "a remocao no dia certo parou de acontecer"
+    assert ativa_amanha is False, "no terceiro dia a conta tem de sair de verdade"
 
 
 # ---------- filas do painel ----------

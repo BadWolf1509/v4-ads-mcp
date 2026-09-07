@@ -102,6 +102,11 @@ async def reconcile_google(
             mcc_ids={a["customer_id"] for a in accounts},
             inventory=inventario,
             complete=complete,
+            # O MESMO instante que carimba as ausências abaixo. `build_plan`
+            # precisa dele para saber se a ausência desta execução já está no
+            # contador (retry do mesmo dia) — se os dois divergissem, plano e
+            # carimbo falariam de dias diferentes.
+            now=agora,
         )
         n = await google_ads_accounts.upsert_many(conn, accounts)
         # C4/F141: o plano devolve ids; a ausência precisa do DIA em que caiu, no
@@ -318,7 +323,12 @@ async def run() -> int:
         try:
             from src.jobs.meta_resync import reconcile_meta
 
-            plano_meta = await reconcile_meta()
+            # `conn` explícito (revisão da Task 3): `reconcile_meta` deixou de
+            # aceitar `None` e adquirir a própria conexão. Este `acquire` está
+            # FORA de qualquer transação aberta — que é justamente a garantia
+            # que o default `None` não conseguia dar a call-site nenhum.
+            async with pool.acquire() as conn_meta:
+                plano_meta = await reconcile_meta(conn_meta)
             print(
                 "OK: Meta reconcile — "
                 f"add={len(plano_meta.to_add)} remove={len(plano_meta.to_remove)} "
