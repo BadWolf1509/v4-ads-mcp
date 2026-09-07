@@ -58,51 +58,101 @@ _EXECUTORES = {
 _CONTAGENS = (0, 1, 5, 20, 100, 500)
 
 
-def _e_chamada_ao_classify(no: ast.expr, nomes: set[str]) -> bool:
-    """True se `no` e uma chamada a `classify` (nome local, alias ou `mod.classify`).
+def _chamada_ao_classify(no: ast.AST, nomes: set[str]) -> ast.Call | None:
+    """A `ast.Call` a `classify` que `no` representa — `None` se não for uma.
 
-    Desembrulha o walrus antes de olhar: em `(r := classify(...)).level` o dono
-    do atributo e o `ast.NamedExpr`, nao o `ast.Call` — sem isso a forma passava
-    como "nao le `.level`". Achado pela propria tabela sintetica deste modulo.
+    Desembrulha o walrus ANTES de olhar: em `(r := classify(...)).level` o dono
+    do atributo é o `ast.NamedExpr`, não o `ast.Call` — sem isso a forma passava
+    como "não lê `.level`". Achado pela própria tabela sintética deste módulo.
+
+    **Devolve o nó DESEMBRULHADO, não um booleano.** A primeira versão do
+    desembrulho devolvia `True` e deixava o chamador com o nó original: quem
+    precisava de `.keywords` (`_operacao_classificada`) o pedia a um
+    `ast.NamedExpr`, que não tem esse atributo. Uma tool com walrus que NÃO
+    lesse `.level` derrubava `_particionar()` — e como `_PARTICAO` é montada no
+    import, o módulo inteiro morria na COLEÇÃO, com `AttributeError` e rc=2, em
+    vez de dar um teste vermelho legível (revisão de 2026-09-07). O tipo de
+    retorno é o que impede a reincidência: não há mais nó original para o
+    chamador usar por engano, e o `mypy` cobra o `is None`.
     """
     if isinstance(no, ast.NamedExpr):
         no = no.value
     if not isinstance(no, ast.Call):
-        return False
+        return None
     f = no.func
     if isinstance(f, ast.Name):
-        return f.id in nomes
-    return isinstance(f, ast.Attribute) and f.attr in nomes
+        return no if f.id in nomes else None
+    if isinstance(f, ast.Attribute):
+        return no if f.attr in nomes else None
+    return None
 
 
-def _nomes_ligados_ao_classify(arvore: ast.Module, nomes: set[str]) -> set[str]:
-    """Nomes que RECEBEM o resultado de `classify(...)` no modulo.
+def _ligados_por_escopo(arvore: ast.Module) -> dict[ast.AST, tuple[set[str], set[str]]]:
+    """Por escopo: (nomes ligados a `classify`, todos os nomes ligados ali).
 
-    Cobre `risk = classify(...)`, `risk: RiskClassification = classify(...)` e o
-    walrus. Nao tenta desempacotar tupla nem seguir reatribuicao: quem escrever
-    uma forma dessas cai no balde `caminho_ambiguo` e o teste da particao cobra
-    explicitamente, em vez de sumir calado.
+    O segundo conjunto existe para modelar SOMBREAMENTO. `x` lido num escopo
+    resolve no escopo mais interno que liga `x` — se esse escopo liga `x` a
+    outra coisa, a ligação de fora não vale mais. Sem isso, `risk = janela`
+    dentro de um closure herdaria o `risk = classify(...)` do pai.
+
+    Entram como ligação: `=`, `:=`, atribuição anotada, `for` alvo, `with ...
+    as`, `except ... as` e os PARÂMETROS da função. Não tenta desempacotar
+    tupla (`a, b = ...`) nem seguir reatribuição encadeada — quem escrever
+    isso cai em `caminho_ambiguo` e é cobrado lá, em vez de sumir calado.
+
+    `lambda` é transparente aqui pela mesma razão de `h.nos_do_corpo_proprio`:
+    é expressão escrita inline no corpo que a contém.
     """
-    ligados: set[str] = set()
-    for no in ast.walk(arvore):
-        valor: ast.expr
-        alvos: list[ast.expr]
-        if isinstance(no, ast.Assign):
-            valor, alvos = no.value, list(no.targets)
-        elif isinstance(no, ast.AnnAssign | ast.NamedExpr):
-            if no.value is None:  # `r: RiskClassification` sem valor
+    nomes = h.nomes_locais(arvore, "classify")
+    tabela: dict[ast.AST, tuple[set[str], set[str]]] = {}
+    for escopo in (arvore, *h.funcoes(arvore)):
+        do_classify: set[str] = set()
+        todos: set[str] = set()
+        args = getattr(escopo, "args", None)
+        if args is not None:  # parâmetro é ligação, e sombreia
+            todos.update(
+                a.arg
+                for a in (*args.posonlyargs, *args.args, *args.kwonlyargs)
+                if isinstance(a, ast.arg)
+            )
+            todos.update(a.arg for a in (args.vararg, args.kwarg) if a is not None)
+        for no in h.nos_do_corpo_proprio(escopo):
+            valor: ast.expr | None
+            alvos: list[ast.expr]
+            if isinstance(no, ast.Assign):
+                valor, alvos = no.value, list(no.targets)
+            elif isinstance(no, ast.AnnAssign | ast.NamedExpr):
+                valor, alvos = no.value, [no.target]
+            elif isinstance(no, ast.For | ast.AsyncFor):
+                valor, alvos = None, [no.target]
+            elif isinstance(no, ast.withitem):
+                valor = None
+                alvos = [no.optional_vars] if no.optional_vars is not None else []
+            elif isinstance(no, ast.ExceptHandler):
+                valor, alvos = None, []
+                if no.name is not None:
+                    todos.add(no.name)
+            else:
                 continue
-            valor, alvos = no.value, [no.target]
-        else:
-            continue
-        if not _e_chamada_ao_classify(valor, nomes):
-            continue
-        ligados.update(a.id for a in alvos if isinstance(a, ast.Name))
-    return ligados
+            ligados_aqui = {a.id for a in alvos if isinstance(a, ast.Name)}
+            todos |= ligados_aqui
+            if valor is not None and _chamada_ao_classify(valor, nomes) is not None:
+                do_classify |= ligados_aqui
+        tabela[escopo] = (do_classify, todos)
+    return tabela
+
+
+def _escopo_de_cada_no(arvore: ast.Module) -> dict[ast.AST, ast.AST]:
+    """O escopo (módulo ou função) a que cada nó pertence, sem contar `lambda`."""
+    dono: dict[ast.AST, ast.AST] = {}
+    for escopo in (arvore, *h.funcoes(arvore)):
+        for no in h.nos_do_corpo_proprio(escopo):
+            dono[no] = escopo
+    return dono
 
 
 def _le_level_do_classify(arvore: ast.Module) -> bool:
-    """True se a tool le `.level` DO RESULTADO de `classify` — nao de outra coisa.
+    """True se a tool lê `.level` DO RESULTADO de `classify` — nao de outra coisa.
 
     Ate 2026-09-07 a pergunta era `any(no.attr == "level" for no in walk)`, que
     casa QUALQUER atributo chamado `level`: um `log.bind(level=...)`, um
@@ -111,16 +161,36 @@ def _le_level_do_classify(arvore: ast.Module) -> bool:
     corpo, saia da cobranca inteira — e sairia calada, porque a lista de casos e
     derivada e ninguem conta quantos deveriam estar nela. Era o guard eximindo
     justamente quem ele existe pra cobrar.
+
+    **A ligação do nome tem ESCOPO.** O primeiro aperto ligou os nomes no
+    módulo inteiro, e isso reabria o buraco por outra porta: bastava OUTRA
+    função do mesmo arquivo ter uma variável de mesmo nome lendo `.level`
+    (`def _formata(janela): risk = janela; return risk.level`) para a tool que
+    ignora o veredito e auto-aplica uma operação CONFIRM sair da cobrança
+    inteira. Medido em 2026-09-07: guard VERDE sob essa sabotagem. A leitura
+    agora resolve como o Python resolve — no escopo do próprio nó, subindo a
+    cadeia léxica e PARANDO no primeiro escopo que sombreia o nome.
     """
     nomes = h.nomes_locais(arvore, "classify")
-    ligados = _nomes_ligados_ao_classify(arvore, nomes)
+    ligados = _ligados_por_escopo(arvore)
+    dono = _escopo_de_cada_no(arvore)
+    pai = h.escopos_pais(arvore)
+
     for no in ast.walk(arvore):
         if not (isinstance(no, ast.Attribute) and no.attr == "level"):
             continue
-        if isinstance(no.value, ast.Name) and no.value.id in ligados:
+        if _chamada_ao_classify(no.value, nomes) is not None:  # `classify(...).level` direto
             return True
-        if _e_chamada_ao_classify(no.value, nomes):  # `classify(...).level` direto
-            return True
+        if not isinstance(no.value, ast.Name):
+            continue
+        escopo: ast.AST | None = dono.get(no)
+        while escopo is not None:
+            do_classify, todos = ligados.get(escopo, (set(), set()))
+            if no.value.id in do_classify:
+                return True
+            if no.value.id in todos:
+                break  # sombreado por outra ligação: a de fora nao vale mais
+            escopo = pai.get(escopo)
     return False
 
 
@@ -133,9 +203,10 @@ def _operacao_classificada(arvore: ast.Module) -> str | None:
     """
     nomes = h.nomes_locais(arvore, "classify")
     for no in ast.walk(arvore):
-        if not _e_chamada_ao_classify(no, nomes):
+        chamada = _chamada_ao_classify(no, nomes)
+        if chamada is None:
             continue
-        for kw in no.keywords:
+        for kw in chamada.keywords:
             if kw.arg == "operation" and isinstance(kw.value, ast.Constant):
                 return str(kw.value.value)
     return None
@@ -310,7 +381,109 @@ _FORMAS_LEVEL = [
         "y = janela.level\n",
         False,
     ),
+    (
+        "nome_igual_noutra_funcao_nao_conta",
+        # A SABOTAGEM DO I2: verde ate 2026-09-07 porque a ligacao do nome nao
+        # tinha escopo. A tool ignora o veredito e auto-aplica uma operacao que
+        # o modulo classifica como CONFIRM; quem le `risk.level` e OUTRA funcao,
+        # sobre OUTRO objeto. Com a ligacao no modulo inteiro, o arquivo saia da
+        # cobranca por colisao de nome — o mesmo buraco que a task fechou, um
+        # nivel abaixo.
+        "def _formata(janela):\n"
+        "    risk = janela\n"
+        "    return risk.level\n"
+        "async def zz(args):\n"
+        "    risk = classify(operation='update_campaign_budget', params={})\n"
+        "    await run_mutation(args)\n"
+        "    return risk.reason\n",
+        False,
+    ),
+    (
+        "parametro_de_outra_funcao_nao_conta",
+        # Variante da mesma familia: o nome colide com um PARAMETRO alheio.
+        "def _formata(risk):\n"
+        "    return risk.level\n"
+        "async def zz(args):\n"
+        "    risk = classify(operation='x', params={})\n"
+        "    return risk.reason\n",
+        False,
+    ),
+    (
+        "sombreado_no_closure_nao_conta",
+        # Sombreamento: o closure religa `risk` a outra coisa antes de ler
+        # `.level`, entao a ligacao do pai nao alcanca essa leitura.
+        "async def zz(args, janela):\n"
+        "    risk = classify(operation='x', params={})\n"
+        "    def _f():\n"
+        "        risk = janela\n"
+        "        return risk.level\n"
+        "    return _f()\n",
+        False,
+    ),
+    (
+        "closure_le_o_nome_do_pai_conta",
+        # A outra metade: closure que CAPTURA o nome do pai le, sim, o veredito.
+        # Sem esta linha, o aperto de escopo viraria falso negativo ao contrario.
+        "async def zz(args):\n"
+        "    risk = classify(operation='x', params={})\n"
+        "    def _f():\n"
+        "        return risk.level is RiskLevel.AUTO\n"
+        "    return _f()\n",
+        True,
+    ),
+    (
+        "walrus_sem_level",
+        # A forma que derrubava a COLECAO do modulo (I1): walrus no classify sem
+        # ler `.level`. Aqui a tabela so cobra o veredito; que ela nao ESTOURE
+        # mais e o que `test_walrus_sem_level_da_teste_vermelho...` prova.
+        "motivo = (r := classify(operation='x', params={})).reason\n",
+        False,
+    ),
 ]
+
+
+# Tool sintetica com a forma do I1: walrus no `classify`, sem ler `.level`, e
+# com caminho fixo AUTO contra uma operacao que a politica diz ser CONFIRM.
+_TOOL_WALRUS_SEM_LEVEL = (
+    "from src.governance.blast_radius import classify\n"
+    "async def zz_walrus(args):\n"
+    "    motivo = (r := classify(operation='update_campaign_budget', params={})).reason\n"
+    "    await run_mutation(args)\n"
+    "    return {'reason': motivo}\n"
+)
+
+
+def test_walrus_sem_level_da_teste_vermelho_e_nao_erro_de_colecao(tmp_path: Path) -> None:
+    """Tool com walrus que NAO le `.level` tem que ser COBRADA, nao estourar.
+
+    Ate a revisao de 2026-09-07, `_operacao_classificada` pedia `.keywords` ao
+    no que `_e_chamada_ao_classify` recebia — um `ast.NamedExpr` nessa forma.
+    Como `_PARTICAO` e montada no import, o efeito nao era um teste vermelho: o
+    modulo inteiro morria na COLECAO (`AttributeError`, rc=2), que e exatamente
+    o modo de falha que a Task 3 declarou ter removido. Um guard que nao coleta
+    nao cobra ninguem — inclusive as outras 27 tools.
+
+    O teste roda a MESMA `_particionar` do scanner sobre uma raiz sintetica.
+    Contra o codigo pre-fix ele fica VERMELHO no `_particionar`; contra o codigo
+    corrigido ele mostra a tool caindo em `caminho_fixo` com AUTO, divergindo da
+    politica — que e a cobranca certa, legivel e localizada.
+    """
+    (tmp_path / "zz_walrus.py").write_text(_TOOL_WALRUS_SEM_LEVEL, encoding="utf-8")
+
+    particao = _particionar(tmp_path)  # pre-fix: AttributeError aqui
+
+    assert particao.leem_level == [], "a tool usa so `.reason` — nao pode contar como leitora"
+    assert particao.caminho_fixo == [("zz_walrus.py", "update_campaign_budget", RiskLevel.AUTO)], (
+        f"a tool tinha que entrar na cobranca de caminho fixo: {particao}"
+    )
+
+    _, operacao, esperado = particao.caminho_fixo[0]
+    assert classify(operation=operacao, params={"target_count": 1}).level is not esperado, (
+        "esta forma so prova o que precisa provar se a politica DISCORDAR do "
+        "caminho fixo: e a discordancia que vira teste vermelho parametrizado. "
+        "Se `update_campaign_budget` passar a classificar AUTO, troque a "
+        "operacao da fonte sintetica por outra que o modulo mande confirmar."
+    )
 
 
 @pytest.mark.parametrize(
