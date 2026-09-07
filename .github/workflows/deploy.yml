@@ -114,6 +114,38 @@ jobs:
             --update-env-vars="${JOB_ENV_VARS}" \
             --update-secrets="${JOB_SECRETS}"
 
+      # F66 resolvido: com o job invocando o process `migrate` real, o execute
+      # aplica migrations pendentes (idempotente — no-op se o schema já bate) e
+      # a próxima 005_*.sql passa a ser aplicada de verdade (fim do skip silencioso).
+      - name: Run database migrations
+        env:
+          REGION: ${{ secrets.GCP_REGION }}
+        run: |
+          gcloud run jobs execute v4-ads-mcp-migrate --region=${REGION} --wait
+
+      # A ORDEM daqui pra baixo e load-bearing, nao arrumacao (M2 da revisao
+      # final da branch pr2/reconciliacao-idempotente):
+      #
+      # 1. `Update migration job image` vem ANTES do execute acima porque e o
+      #    job `v4-ads-mcp-migrate` que aquele step roda: com a imagem velha,
+      #    as migrations do commit novo nem existem no container, e o step
+      #    passa verde sem aplicar nada.
+      # 2. `resync` e `backup` vem DEPOIS porque nenhum dos dois e executado
+      #    aqui — quem os dispara e o Cloud Scheduler, sozinho. Atualiza-los
+      #    antes abria uma janela (1-3 min por deploy) em que o job diario ja
+      #    rodava codigo NOVO contra o schema VELHO: a 009 estreou
+      #    `SELECT ... last_missed_on` em `list_inventory_rows`, que le com
+      #    lista EXPLICITA de colunas e falha alto se a coluna nao existe.
+      #    Pior que a janela: se o execute FALHAR, a imagem nova fica no job
+      #    para sempre com o schema velho — `Rollback on failure` reverte o
+      #    TRAFEGO do servico, nunca a imagem de um Cloud Run Job.
+      # 3. O sentido inverso (schema novo + codigo velho) e seguro, e foi
+      #    verificado: nenhum leitor de `last_missed_on` existe no codigo
+      #    anterior, e os demais reads sao `SELECT *` mapeados por NOME
+      #    (`_row_to_account`), imunes a coluna nova.
+      #
+      # Preso por `tests/unit/test_deploy_job_image_order.py`.
+
       - name: Update resync job image
         env:
           PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -144,15 +176,6 @@ jobs:
             --region=${REGION} \
             --update-env-vars="${JOB_ENV_VARS}" \
             --update-secrets="${JOB_SECRETS}"
-
-      # F66 resolvido: com o job invocando o process `migrate` real, o execute
-      # aplica migrations pendentes (idempotente — no-op se o schema já bate) e
-      # a próxima 005_*.sql passa a ser aplicada de verdade (fim do skip silencioso).
-      - name: Run database migrations
-        env:
-          REGION: ${{ secrets.GCP_REGION }}
-        run: |
-          gcloud run jobs execute v4-ads-mcp-migrate --region=${REGION} --wait
 
       - name: Capture serving revision (para rollback)
         env:
