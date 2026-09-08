@@ -218,6 +218,74 @@ async def test_teto_total_para_a_varredura_e_declara_o_numero(
 
 
 @pytest.mark.asyncio
+async def test_janela_efetiva_nao_declara_dia_que_nunca_foi_consultado(
+    _ctx: McpRequestContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A3 (revisao final): o campo que diz QUANTO ficou de fora nao pode
+    anunciar cobertura que nao houve.
+
+    A description define `cobertura.janela_efetiva` como "a janela realmente
+    lida". Quando o teto total interrompia a particao, o `_Varredura` continuava
+    sendo construido com a janela INTEIRA: numa janela de 21 dias varrida por 2,
+    `janela_efetiva` dizia `2026-08-18..2026-09-07`, `dias_no_teto_da_api`
+    nomeava so os 2 lidos, e os 19 nao varridos nao apareciam em campo nenhum.
+    Numa tool cujo trabalho inteiro e dizer o que NAO viu, e o mesmo defeito um
+    nivel acima.
+
+    O teste vizinho ja assere que `2026-09-05` nunca foi consultado, mas nao
+    olha `janela_efetiva` — a contradicao passava verde entre os dois. Aqui as
+    duas afirmacoes sao CRUZADAS: o dia que a varredura pulou nao pode estar
+    dentro da janela que ela declara ter lido.
+    """
+    monkeypatch.setattr("src.mcp.tools.detect_drift._TETO_POR_JANELA", 10)
+    monkeypatch.setattr("src.mcp.tools.detect_drift._TETO_EXAMINADO", 15)
+    historico = _HistoricoFalso({date(2026, 9, 7): 8, date(2026, 9, 6): 8, date(2026, 9, 5): 8})
+
+    resultado = await _rodar(
+        historico,
+        {"customer_id": "7862230676", "start_date": "2026-09-05", "end_date": "2026-09-07"},
+    )
+
+    cobertura = resultado["cobertura"]
+    assert cobertura["varredura_truncada"] is True
+    # O dia que ficou de fora — nenhuma chamada o consultou.
+    nao_varrido = date(2026, 9, 5)
+    assert (nao_varrido.isoformat(), nao_varrido.isoformat(), 10) not in historico.chamadas
+    # ... e a janela declarada nao pode conte-lo.
+    efetiva_de = date.fromisoformat(cobertura["janela_efetiva"]["from"])
+    assert efetiva_de > nao_varrido, (
+        "janela_efetiva anunciou um dia que a varredura nunca consultou"
+    )
+    assert cobertura["janela_efetiva"] == {"from": "2026-09-06", "to": "2026-09-07"}
+    # A janela PEDIDA continua inteira em `period`: e a diferenca entre os dois
+    # que diz o que ficou sem varrer. Anular um dos lados perderia a conta.
+    assert resultado["period"] == {"from": "2026-09-05", "to": "2026-09-07", "days": 3}
+
+
+@pytest.mark.asyncio
+async def test_janela_que_coube_declara_a_janela_inteira(
+    _ctx: McpRequestContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Controle positivo do A3: sem teto atingido, `janela_efetiva == period`.
+
+    Estreitar sempre seria a mentira simetrica — `janela_efetiva` menor que a
+    lida faria o gestor pedir de novo o que ja tem. O campo tem que se mover
+    SO quando a varredura de fato parou antes.
+    """
+    monkeypatch.setattr("src.mcp.tools.detect_drift._TETO_POR_JANELA", 10)
+    monkeypatch.setattr("src.mcp.tools.detect_drift._TETO_EXAMINADO", 100)
+    historico = _HistoricoFalso({date(2026, 9, 7): 8, date(2026, 9, 6): 8, date(2026, 9, 5): 8})
+
+    resultado = await _rodar(
+        historico,
+        {"customer_id": "7862230676", "start_date": "2026-09-05", "end_date": "2026-09-07"},
+    )
+
+    assert resultado["cobertura"]["varredura_truncada"] is False
+    assert resultado["cobertura"]["janela_efetiva"] == {"from": "2026-09-05", "to": "2026-09-07"}
+
+
+@pytest.mark.asyncio
 async def test_dia_que_sozinho_estoura_o_cap_e_declarado(
     _ctx: McpRequestContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:

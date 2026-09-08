@@ -164,6 +164,11 @@ class _Varredura:
     # ao fim da granularidade disponivel (a tool so alcanca o DIA).
     dias_no_cap: list[str]
     teto_total_atingido: bool
+    # A janela DE FATO varrida, que e o que `cobertura.janela_efetiva` promete
+    # — nao a pedida (essa fica em `period`). Duas coisas a encurtam: o clamp de
+    # retencao do F23 na ponta antiga, e o teto total parando a particao antes
+    # de chegar la. A segunda faltava (A3 da revisao final): a janela inteira
+    # continuava anunciada com a varredura parada no segundo de 21 dias.
     janela: tuple[date, date]
     freshness: dict[str, Any]
     # O aviso de clamp de retencao (F23) que `get_change_history` emite quando
@@ -251,6 +256,15 @@ async def _varrer(customer_id: str, *, inicio: date, fim: date) -> _Varredura:
     dias_no_cap: list[str] = []
     janelas = 0
     teto_total_atingido = False
+    # A3 (revisao final): o dia mais ANTIGO que a varredura chegou a consultar.
+    # `dias` vem do mais recente para o mais antigo, entao ele so anda para tras
+    # — e quando o teto total interrompe o laco, e ele que fecha a janela de
+    # fato varrida. Ate aqui `janela_efetiva` anunciava a janela inteira mesmo
+    # com a varredura parada no segundo dia de 21: o campo que o gestor le para
+    # saber QUANTO ficou de fora afirmava justamente o que nao foi lido, e os
+    # dias nao varridos nao apareciam em campo nenhum (`dias_no_teto_da_api`
+    # nomeia so os que FORAM lidos e estouraram).
+    mais_antigo_lido = efetiva_ate
     for dia in dias:
         if len(linhas) >= _TETO_EXAMINADO:
             # Sobrou dia que nem chegou a ser consultado — e o teto total, nao
@@ -259,6 +273,7 @@ async def _varrer(customer_id: str, *, inicio: date, fim: date) -> _Varredura:
             break
         parcial = await _ler(customer_id, inicio=dia, fim=dia, teto=_TETO_POR_JANELA)
         janelas += 1
+        mais_antigo_lido = dia
         # Costura das sub-janelas, dita em voz alta: o `BETWEEN` do Google e
         # inclusivo nas duas pontas e o builder soma +1 dia no fim (F46), entao
         # dois dias vizinhos se sobrepoem em UM instante — `d+1 00:00:00`
@@ -282,7 +297,11 @@ async def _varrer(customer_id: str, *, inicio: date, fim: date) -> _Varredura:
         janelas=janelas,
         dias_no_cap=dias_no_cap,
         teto_total_atingido=teto_total_atingido or estourou_o_teto,
-        janela=(efetiva_de, efetiva_ate),
+        # A janela DE FATO varrida, nao a pedida — a pedida continua em
+        # `period`. Sem teto atingido `mais_antigo_lido == efetiva_de` e as
+        # duas coincidem; com teto, a diferenca entre os dois campos e o que
+        # ficou sem varrer.
+        janela=(mais_antigo_lido, efetiva_ate),
         freshness=primeira["freshness"],
         aviso_de_janela=primeira.get("date_range_warning"),
     )
@@ -324,8 +343,11 @@ async def _varrer(customer_id: str, *, inicio: date, fim: date) -> _Varredura:
         "caiu fora dos 30 dias — `null` quando nao houve clamp): "
         "`eventos_examinados` (quantos entraram na classificacao), "
         "`janelas_consultadas` (1 quando a janela coube; uma por dia quando "
-        "nao), `janela_efetiva` (a janela realmente lida — o clamp de retencao "
-        "pode te-la encurtado) e `dias_no_teto_da_api` (dias que sozinhos "
+        "nao), `janela_efetiva` (a janela realmente VARRIDA, que pode ser menor "
+        "que a pedida em `period` por dois motivos: o clamp de retencao F23 na "
+        "ponta antiga, e o teto total parando a particao antes de chegar la — "
+        "com `varredura_truncada: true`, o que esta em `period` e nao esta aqui "
+        "e exatamente o que NUNCA foi consultado) e `dias_no_teto_da_api` (dias que sozinhos "
         "bateram nos 10k: ali a particao chegou ao fim da granularidade "
         "disponivel e o que ficou de fora e limite da API — estreite a janela "
         "ou filtre por resource_type). "
