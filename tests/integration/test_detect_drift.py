@@ -63,6 +63,11 @@ async def test_co_management_filter_pedro_drift(bound_context):
             },
         ],
         "summary": {},
+        # Task 5: `truncated` e o sinal que a varredura le pra decidir se
+        # particiona a janela por dia. Faz parte do contrato de
+        # get_change_history desde a Task 2 — stub sem ele mentiria "coube"
+        # por omissao, entao a leitura no codigo e estrita de proposito.
+        "truncated": False,
         # F131: detect_drift passou a propagar a fronteira de indexacao —
         # o stub tem que espelhar o contrato real de get_change_history.
         "freshness": {
@@ -112,6 +117,11 @@ async def test_incident_mode_empty_responsible_list(bound_context):
             }
         ],
         "summary": {},
+        # Task 5: `truncated` e o sinal que a varredura le pra decidir se
+        # particiona a janela por dia. Faz parte do contrato de
+        # get_change_history desde a Task 2 — stub sem ele mentiria "coube"
+        # por omissao, entao a leitura no codigo e estrita de proposito.
+        "truncated": False,
         # F131: detect_drift passou a propagar a fronteira de indexacao —
         # o stub tem que espelhar o contrato real de get_change_history.
         "freshness": {
@@ -153,6 +163,11 @@ async def test_structural_change_flag_emitted(bound_context):
             }
         ],
         "summary": {},
+        # Task 5: `truncated` e o sinal que a varredura le pra decidir se
+        # particiona a janela por dia. Faz parte do contrato de
+        # get_change_history desde a Task 2 — stub sem ele mentiria "coube"
+        # por omissao, entao a leitura no codigo e estrita de proposito.
+        "truncated": False,
         # F131: detect_drift passou a propagar a fronteira de indexacao —
         # o stub tem que espelhar o contrato real de get_change_history.
         "freshness": {
