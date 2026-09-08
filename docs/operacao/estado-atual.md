@@ -11,18 +11,36 @@
 
 ## Frente "correções da varredura" (spec de 2026-09-06) — onde está
 
-Sete PRs, um por frente, cada um com CI próprio e merge próprio. **Quatro fechados
-e em produção**, um aberto, dois por fazer:
+Sete PRs, um por frente, cada um com CI próprio e merge próprio. **Cinco fechados e em
+produção**, dois por fazer:
 
 | PR | Frente | Estado |
 |---|---|---|
 | 0 | harness de guards | ✅ merged `f864ac6` |
 | 1 | audiência de token (C3) | ✅ merged `80c06ab` |
 | 2 | reconciliação idempotente (C4) | ✅ merged `a46e139`, migration 009 confirmada em produção |
-| 3 | governança de orçamento (C1+C2) | 🟡 [#62](https://github.com/BadWolf1509/v4-ads-mcp/pull/62), CI verde, aguardando merge |
-| 4 | honestidade dos números (C5 + truncamento) | 🟡 branch `pr4/honestidade-dos-numeros` — F159–F164 |
+| 3 | governança de orçamento (C1+C2) | ✅ merged `fc11503` ([#62](https://github.com/BadWolf1509/v4-ads-mcp/pull/62)) — F155–F158 |
+| 4 | honestidade dos números (C5 + truncamento) | ✅ merged `eb52668` ([#63](https://github.com/BadWolf1509/v4-ads-mcp/pull/63)) — F159–F164 |
 | 5 | painel (`routes.py` → 10 módulos) | ⬜ |
 | 6 | cauda (gêmeo Meta do F141, índices, keyset) | ⬜ |
+
+**Em 2026-09-08 os dois foram mesclados e verificados em produção**, mais a
+consolidação do Dependabot ([#64](https://github.com/BadWolf1509/v4-ads-mcp/pull/64)).
+Revisão servindo **`v4-ads-mcp-00105-rx2`**; `/health?deep=1` `{"status":"ok","db":"ok"}`
+e `POST /mcp` sem auth e com token inválido → **401** nos dois (sonda própria, porque o
+`sse-starlette` — transporte SSE do `/mcp` — foi um dos cinco bumps). Zero PR aberta.
+
+⚠️ **Medição que muda uma instrução do repo:** o `uv pip compile … --universal` é o
+caminho certo ao **adicionar** dependência, mas num lockfile que já derivou ele varre
+para dentro **todo** upgrade disponível. Medido em 08/09 sobre o `requirements.txt`
+daquele dia: **66 mudanças de versão**, entre elas **`mcp` 1.28.1 → 2.2.0** (major da
+SDK que serve o `/mcp` inteiro), `facebook-business` 25 → 26, `starlette` 1.3 → 1.6,
+`fastapi` 0.139 → 0.141 e quatro pacotes novos (`httpx2`, `mcp-types`,
+`opentelemetry-api`, `truststore`). Ou seja: exatamente o que a política de ignorar
+major em `mcp`/`google-ads`/`facebook-business` existe para impedir — e entraria em
+silêncio dentro de uma PR rotulada "bump de dependência". **Para bump de transitivo,
+edite a linha; recompile só ao mexer no `pyproject.toml`.** O ignore de major em `mcp`
+segue pendente no `dependabot.yml` (PR 6 da varredura).
 
 **O que o PR 4 muda de contrato para quem consome as tools** (aditivo — pelo F140,
 campo novo em tool existente não exige sessão nova):
