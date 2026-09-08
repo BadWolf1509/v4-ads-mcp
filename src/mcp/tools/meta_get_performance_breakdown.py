@@ -7,7 +7,6 @@ build_insights_call/parse_insights_row estendidos. 1 breakdown por chamada (Meta
 restringe combos). bucket=defer (deep-dive, não a 1ª pergunta do gestor).
 """
 
-from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import UUID
 
@@ -17,6 +16,7 @@ from src.mcp.context import get_current
 from src.mcp.tools._meta_common import meta_error_message
 from src.mcp.tools._meta_performance import _MAX_PAGES
 from src.mcp.tools._registry import register_tool
+from src.meta_ads.account_clock import resolve_meta_account_today
 from src.meta_ads.account_overview import resolve_meta_date_window
 from src.meta_ads.insights import (
     BREAKDOWN_META_PARAM,
@@ -105,7 +105,7 @@ async def meta_get_performance_breakdown(
 ) -> dict[str, Any]:
     """Core logic — testable by integration tests."""
     pool = connection.get_pool()
-    today = datetime.now(UTC).date()
+    today = await resolve_meta_account_today(ad_account_id)
 
     breakdown_params = BREAKDOWN_META_PARAM.get(breakdown)
     if breakdown_params is None:

@@ -43,22 +43,26 @@ O escopo se divide em dois, e a diferenca e o que este guard afirma:
 
 Excecoes, cada uma com motivo — NAO e lista de alvos, e lista do que fica de
 fora e por que:
-- `meta_*` / `_meta_*` **em `src/mcp/tools/`**: contas Meta tem fuso proprio no
-  inventario Meta; a mesma classe de bug la e outro finding, com outro fix. O
-  filtro vale so para o diretorio de tools — em `src/jobs/` um arquivo
-  `meta_*` entra normalmente, senao um job Meta novo escaparia pelo NOME.
 - `get_my_rate_limit_status`: o bucket de quota E em UTC por desenho (mesma
   chave que `governance/rate_limit._today`); o campo se chama `date_utc`.
 - `import_offline_conversions`: ver F146 abaixo.
 - `backup.py`: ver o comentario na propria entrada.
+- `meta_get_account_overview.py`: le o relogio UMA vez para carimbar o
+  INSTANTE do aviso de `build_warnings`, nao a data da conta — ver o
+  comentario na propria entrada e a secao abaixo (PR 6 pagou o resto da
+  divida do gemeo Meta e a isencao por NOME que existia aqui **caiu**).
 
 ## O escopo ainda e listado a mao, e isso e uma folga MEDIDA
 
 O casador foi apertado em 2026-09-08 (utcnow, time.time, alias de import), mas o
-ESCOPO continua sendo uma lista de diretorios e arquivos. Medi o que fica de
-fora: 13 arquivos de `src/` leem relogio sem estar sob nenhum dos dois regimes.
+ESCOPO continua sendo uma lista de diretorios e arquivos. Medi de novo apos a
+PR 6, com `h.fontes_py(h.SRC)` sobre o `src/` inteiro (nao so TOOLS+JOBS, que e
+o que os dois regimes realmente cobrem): **11** arquivos leem relogio sem
+estar sob nenhum dos dois regimes — eram 13 antes desta PR; os dois sitios
+Meta que pararam de ler o relogio saem da contagem (nao migram para outro
+bucket, porque nao leem mais nada).
 
-Tres ja tem motivo escrito (`FORA_COM_MOTIVO`). Dos dez restantes:
+Quatro ja tem motivo escrito (`FORA_COM_MOTIVO`). Dos sete restantes:
 
 - `src/auth/oauth_state.py`, `panel_session.py`, `meta_oauth.py` e
   `src/governance/rate_limit.py`: `time.time()`/epoch para TTL e bucket de
@@ -66,19 +70,31 @@ Tres ja tem motivo escrito (`FORA_COM_MOTIVO`). Dos dez restantes:
   nenhuma, entao nao sao F141.
 - `src/db/repositories/managers.py`, `src/governance/dry_run.py`,
   `src/web/routes.py`: carimbo de registro e de sessao, idem.
-- **`src/mcp/tools/_meta_performance.py`, `meta_get_account_overview.py` e
-  `meta_get_performance_breakdown.py`: estes SAO a mesma classe.** Sao os
-  quatro sitios do gemeo Meta do F141, que a spec da varredura atribui ao PR 6
-  (o inventario Meta ja tem `timezone_name` no banco e ninguem le). Nao foram
-  antecipados aqui de proposito — sao trabalho de outra frente, e a excecao
-  `meta_*` no topo deste arquivo existe justamente para isso.
 
-**A correcao estrutural e inverter o guard**: varrer `src/` inteiro e exigir que
-todo leitor de relogio esteja em `LEITORES_LEGITIMOS` ou em `FORA_COM_MOTIVO`.
-Isso troca uma lista de ESCOPO (que esquece o diretorio novo em silencio) por
-uma lista de EXCECAO (que obriga a escrever o motivo). Fica para o PR 6, junto
-com os quatro sitios Meta — inverter antes de corrigi-los so encheria a lista de
-excecao com trabalho ja planejado.
+**A divida do gemeo Meta foi paga na PR 6.** Eram tres sitios (nao quatro: o
+primeiro serve sozinho o trio campaign/ad_set/ad_performance — tres sitios
+para cinco tools) — `src/mcp/tools/_meta_performance.py`,
+`meta_get_account_overview.py` e `meta_get_performance_breakdown.py` — que a
+spec da varredura atribuia ao PR 6 (o inventario Meta ja tinha
+`timezone_name` no banco e ninguem lia). `_meta_performance.py` e
+`meta_get_performance_breakdown.py` pararam de ler o relogio: chamam
+`resolve_meta_account_today(ad_account_id)` e amarram o retorno a `today`,
+igual ao lado Google — saem da contagem do topo desta secao porque nao leem
+mais nada. `meta_get_account_overview.py` continua lendo — a linha do
+`build_warnings`, que carimba o INSTANTE do aviso, nao a data da conta — e por
+isso entrou em `FORA_COM_MOTIVO`, com o motivo escrito ao lado da entrada.
+
+A isencao por NOME que cobria os tres (`meta_*` / `_meta_*` em
+`src/mcp/tools/`) **caiu**: o que sobra e isencao por ARQUIVO, com motivo,
+igual ao resto desta lista. Isencao por nome cobre arquivo Meta novo em
+silencio; isencao por arquivo obriga quem adicionar o proximo a escrever por
+que.
+
+**A correcao estrutural foi inverter o guard**: varrer `src/` inteiro e exigir
+que todo leitor de relogio esteja em `LEITORES_LEGITIMOS` ou em
+`FORA_COM_MOTIVO`. Isso troca uma lista de ESCOPO (que esquece o diretorio novo
+em silencio) por uma lista de EXCECAO (que obriga a escrever o motivo) — feito
+nesta PR, junto com os tres sitios Meta.
 """
 
 from __future__ import annotations
@@ -124,6 +140,13 @@ PRIMITIVOS = [
 LEITORES_LEGITIMOS = [
     # O ponto de I/O do fix do F141 no caminho de request.
     h.SRC / "google_ads" / "account_clock.py",
+    # Gemeo Meta do ponto acima (PR 6, Task 1): mesmo formato, mesmo fallback,
+    # delega ao mesmo corpo unico em `src.clock.account_today` — so a fonte do
+    # fuso muda (`meta_ad_accounts.timezone_name`). Ate entrar aqui, este
+    # arquivo nao estava sob NENHUM dos dois regimes — nao mora em
+    # `src/mcp/tools/` nem `src/jobs/`, entao nem `_arquivos_sem_relogio()` o
+    # via — e um `date.today()` acrescentado nele depois passaria verde.
+    h.SRC / "meta_ads" / "account_clock.py",
     # Os dois jobs de resync (C4, 2026-09-06): o relogio aqui da um INSTANTE,
     # lido uma vez por execucao; toda derivacao de DATA passa por
     # `src.clock.account_today` com o fuso de cada conta. Injetavel porque so
@@ -153,6 +176,13 @@ FORA_COM_MOTIVO = {
     # UTC aqui e a escolha certa — nome de objeto de storage precisa ser estavel
     # e comparavel entre runs, nao relativo ao fuso de um cliente.
     "backup.py",
+    # le o relogio UMA vez, na linha do `build_warnings`, para carimbar o
+    # INSTANTE em que o aviso foi gerado — timestamp de registro, nao data de
+    # conta. A janela do mesmo arquivo passou a usar
+    # `resolve_meta_account_today` (PR 6). Contraste com o F146: em MUTATE que
+    # grava timestamp no provedor, fuso chutado e corrupcao; aqui o carimbo e
+    # do servidor por definicao.
+    "meta_get_account_overview.py",
 }
 
 # O par `(objeto, atributo)` que fecha o caminho, DEPOIS de resolver alias.
@@ -178,11 +208,7 @@ _RELOGIO = {
 def _arquivos_sem_relogio() -> list[Path]:
     """Escopo do regime estrito: nem uma leitura de relogio e admitida."""
     legitimos = set(LEITORES_LEGITIMOS)
-    tools = [
-        p
-        for p in h.fontes_py(TOOLS)
-        if not p.name.startswith(("meta_", "_meta_")) and p.name not in FORA_COM_MOTIVO
-    ]
+    tools = [p for p in h.fontes_py(TOOLS) if p.name not in FORA_COM_MOTIVO]
     jobs = [p for p in h.fontes_py(JOBS) if p.name not in FORA_COM_MOTIVO and p not in legitimos]
     return tools + jobs + PRIMITIVOS
 
@@ -284,10 +310,11 @@ def test_nenhum_caminho_de_conta_le_o_relogio_do_servidor() -> None:
 
 
 def test_os_leitores_legitimos_so_leem_o_relogio_como_default_injetavel() -> None:
-    """Os TRES que podem ler: `account_clock` e os dois jobs de resync.
+    """Os QUATRO que podem ler: os dois `account_clock` (Google e Meta) e os dois jobs de resync.
 
-    Sao tres desde o C4 (2026-09-06); a prosa deste arquivo dizia "o unico" ate
-    07/09. Cada um pode ler o relogio uma vez, e SO no `else` de
+    Eram tres desde o C4 (2026-09-06) ate a PR 6 acrescentar o gemeo Meta de
+    `account_clock`; a prosa deste arquivo dizia "o unico" ate 07/09. Cada um
+    pode ler o relogio uma vez, e SO no `else` de
     `now if now is not None else ...` — o instante ainda entra por parametro em
     todo caminho testado, e toda DATA derivada dele passa por `account_today`
     com o fuso da conta.

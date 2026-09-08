@@ -16,6 +16,7 @@ from src.db.repositories import meta_ad_accounts
 from src.mcp.context import get_current
 from src.mcp.tools._meta_common import meta_error_message
 from src.mcp.tools._registry import register_tool
+from src.meta_ads.account_clock import resolve_meta_account_today
 from src.meta_ads.account_overview import (
     build_warnings,
     compute_deltas,
@@ -99,7 +100,7 @@ async def meta_get_account_overview(
     pool = connection.get_pool()
 
     # 1. Resolve date window
-    today = datetime.now(UTC).date()
+    today = await resolve_meta_account_today(ad_account_id)
     try:
         current_start, current_end = resolve_meta_date_window(
             date_range, start_date, end_date, today
@@ -177,6 +178,11 @@ async def meta_get_account_overview(
     previous_metrics = parse_insights_response(previous_resp)
     deltas = compute_deltas(current_metrics, previous_metrics)
     # Modelo B: acesso via system-user token — sem personal token expiry warning.
+    # NAO e data de conta: e o instante em que o aviso foi gerado (timestamp de
+    # registro). O fuso da conta nao se aplica — trocar por
+    # `resolve_meta_account_today` aqui seria carimbar um evento do servidor com
+    # o calendario do anunciante. Contraste com a linha 103, que resolve a
+    # JANELA e por isso e da conta (F141).
     warnings = build_warnings(account_status_label, None, datetime.now(UTC))
 
     return {

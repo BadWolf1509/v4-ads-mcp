@@ -17,13 +17,13 @@ repetida em 5 sites (os 3 deste trio + meta_get_account_overview +
 meta_get_performance_breakdown) — uma fonte única.
 """
 
-from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
 from src.db import connection
 from src.db.repositories import meta_ad_accounts
 from src.mcp.tools._meta_common import meta_error_message
+from src.meta_ads.account_clock import resolve_meta_account_today
 from src.meta_ads.account_overview import resolve_meta_date_window
 from src.meta_ads.insights import Level, build_insights_call, parse_insights_row
 from src.meta_ads.reports import run_meta_graph_get
@@ -78,7 +78,7 @@ async def run_meta_level_performance(
         tool retornava antes da dedup (paridade bit-a-bit).
     """
     pool = connection.get_pool()
-    today = datetime.now(UTC).date()
+    today = await resolve_meta_account_today(ad_account_id)
 
     try:
         start, end = resolve_meta_date_window(

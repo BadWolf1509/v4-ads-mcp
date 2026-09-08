@@ -19,6 +19,7 @@ das Meta emitia.
 from __future__ import annotations
 
 from contextlib import ExitStack
+from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -144,7 +145,13 @@ def _pool() -> MagicMock:
 
 
 def _rodar_tool(corpo: dict[str, Any]):
-    """Contexto com o Graph e o lookup de conta mockados."""
+    """Contexto com o Graph, o lookup de conta e a resolucao de `hoje` mockados.
+
+    `resolve_meta_account_today` e mockado no ponto de import de
+    `_meta_performance` (mesmo padrao de `run_meta_graph_get` abaixo) — sem
+    isso, a conta fake sem `timezone_name` real quebraria dentro do
+    `ZoneInfo` real que o resolvedor chama (F141 gemeo Meta, PR 6).
+    """
     from src.mcp.tools import _meta_performance
 
     conta = MagicMock(account_name="Conta X", currency="BRL")
@@ -157,6 +164,13 @@ def _rodar_tool(corpo: dict[str, Any]):
     )
     stack.enter_context(
         patch.object(_meta_performance.meta_ad_accounts, "get_by_id", AsyncMock(return_value=conta))
+    )
+    stack.enter_context(
+        patch.object(
+            _meta_performance,
+            "resolve_meta_account_today",
+            AsyncMock(return_value=date(2026, 6, 30)),
+        )
     )
     return stack
 
