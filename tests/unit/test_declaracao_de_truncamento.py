@@ -252,7 +252,7 @@ def _retornos_mudos(
             if _eh_envelope_de_erro(r.value):
                 continue
             dicts += 1
-            if not _declara_truncamento(_chaves_de_dicts(r) | dos_saltos):
+            if not _declara_truncamento(_chaves_de_dicts(r)):
                 ofensores.append(f"{_onde(arquivo)}::{handler}:{r.lineno} (dict literal)")
         elif not _declara_truncamento(do_modulo | dos_saltos):
             ofensores.append(f"{_onde(arquivo)}::{handler}:{r.lineno}")

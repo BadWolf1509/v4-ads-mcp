@@ -265,12 +265,15 @@ _NIVEIS_DO_BREAKDOWN: list[tuple[str, str | None, bool]] = [
     ("keyword", None, True),
     ("audience", None, True),
     ("account", "geo", True),
-    # `device_performance_query` e `hourly_performance_query` nao tem clausula
-    # LIMIT nenhuma — a API devolve tudo. A sentinela nao vaza por aqui; o que
-    # se cobra e a outra metade da mesma honestidade: honrar o `limit` que o
-    # schema declara, em vez de ignora-lo calado.
+    # `device_performance_query` nao tem clausula LIMIT nenhuma — a API devolve
+    # tudo. A sentinela nao vaza por aqui; o que se cobra e a outra metade da
+    # mesma honestidade: honrar o `limit` que o schema declara, em vez de
+    # ignora-lo calado.
     ("account", "device", False),
-    ("account", "hourly", False),
+    # `account+hourly` NAO entra: o teto dela e ESTRUTURAL (168 celulas), nao o
+    # `limit` do gestor — mesmo idioma de `campaign+hourly`. Tem testes proprios
+    # logo abaixo, e eles cobram justamente o contrario: que a grade venha
+    # INTEIRA mesmo com `limit` pequeno.
 ]
 
 _IDS_NIVEIS = [f"{lv}+{bd}" if bd else lv for lv, bd, _ in _NIVEIS_DO_BREAKDOWN]
@@ -382,20 +385,17 @@ async def test_breakdown_geo_nao_resolve_o_pais_da_sentinela() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_grade_horaria_e_cortada_em_ordem_cronologica() -> None:
-    """A grade `hourly` chega SEM `ORDER BY` — cortar por `limit` sem ordenar
-    devolve um pedaco ARBITRARIO das 168 celulas, e duas chamadas iguais podem
-    trazer conjuntos diferentes (F98/F88).
+async def test_a_grade_horaria_vem_em_ordem_cronologica() -> None:
+    """A grade `hourly` chega SEM `ORDER BY` — o builder nao tem clausula
+    nenhuma, entao a ordem em que a API mandou e a ordem que o gestor via, e
+    duas chamadas iguais podiam trazer a mesma grade embaralhada de formas
+    diferentes (F98/F88).
 
-    Antes do fix o `aplicar_limite` pegava as `limit` primeiras linhas na ordem
-    em que a API mandou. A fabrica emite a grade ao contrario, entao sem o
-    `sort` as linhas devolvidas seriam as de DOMINGO — este teste fica vermelho
-    contra o codigo pre-fix pela ordem, nao por KeyError.
+    A fabrica emite a grade ao CONTRARIO; sem o `sort` este teste cai na
+    assercao de ordem, nao por `KeyError` — provado por sabotagem.
 
-    Cronologica e nao "maior custo" porque uma grade cortada so continua
-    legivel em ordem de tempo: "segunda 00h ate quinta 03h" e uma frase; "as
-    100 horas mais caras" perde a estrutura de grade que o gestor pediu ao
-    escolher `breakdown=hourly`.
+    Cronologica e nao "maior custo" porque uma grade so e legivel em ordem de
+    tempo: o gestor que escolhe `breakdown=hourly` pediu a estrutura da semana.
     """
     from src.mcp.tools.get_performance_breakdown import _ORDEM_DO_DIA
 
@@ -404,8 +404,41 @@ async def test_a_grade_horaria_e_cortada_em_ordem_cronologica() -> None:
     chaves = [
         (_ORDEM_DO_DIA[r["breakdown"]["day_of_week"]], r["breakdown"]["hour"]) for r in fora["rows"]
     ]
-    assert chaves == sorted(chaves), f"grade cortada fora de ordem: {chaves}"
-    assert chaves[0][0] == _ORDEM_DO_DIA["MONDAY"], (
-        f"o corte comecou fora do inicio da grade — sinal de que o `sort` nao rodou: {chaves}"
+    assert chaves == sorted(chaves), f"grade fora de ordem: {chaves}"
+
+
+@pytest.mark.asyncio
+async def test_a_grade_horaria_vem_inteira_apesar_do_limit_pequeno() -> None:
+    """O teto de `account+hourly` e a GRADE (7 x 24), nao o `limit` do gestor.
+
+    Aplicar o default de 100 a um conjunto de 168 celulas devolvia 100 — e,
+    depois que a ordem virou cronologica, as 68 ausentes eram SEMPRE sabado e
+    domingo, na tool que `get_hourly_performance` manda preferir. Antes deste PR
+    a tool devolvia as 168 (o builder nao tem LIMIT), entao cortar aqui seria
+    perder dado que ja existia, de forma sistematica.
+
+    O mesmo idioma ja estava no arquivo para `campaign+hourly`:
+    `teto = 168 * len(campaign_ids)`. Este teste prende os dois lados — a grade
+    inteira chega, e `truncated` nao mente dizendo que cortou.
+    """
+    fora = await _chamar_breakdown("account", "hourly", limite=5, quantas=14)
+
+    assert len(fora["rows"]) == 14, (
+        "a grade foi cortada pelo `limit` do gestor: o teto de `hourly` e "
+        f"estrutural (168), nao {5}"
     )
+    assert fora["truncated"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_grade_horaria_avisa_se_passar_das_168() -> None:
+    """Contraprova do teste acima: o teto estrutural nao e "sem teto".
+
+    Sem esta assercao, `teto = 168` seria indistinguivel de nao cortar nunca — e
+    um `truncated` que responde `false` sempre e a mesma mentira que o `false`
+    por construcao que este PR existe para matar.
+    """
+    fora = await _chamar_breakdown("account", "hourly", limite=5, quantas=7 * 24 + 1)
+
+    assert len(fora["rows"]) == 7 * 24
     assert fora["truncated"] is True

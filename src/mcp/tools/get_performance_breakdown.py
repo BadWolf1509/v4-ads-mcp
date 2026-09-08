@@ -8,7 +8,7 @@ meta_get_performance_breakdown (M.4): level + breakdown opcional.
 from typing import Any
 
 from src.google_ads.account_clock import resolve_account_today
-from src.google_ads.ad_schedule import BLOCOS_PADRAO, MetricCell, partition_by_blocks
+from src.google_ads.ad_schedule import BLOCOS_PADRAO, DIAS, MetricCell, partition_by_blocks
 from src.google_ads.performance_breakdown import (
     _validate_combo,
     build_performance_breakdown_query,
@@ -81,19 +81,23 @@ _SCHEMA: dict[str, Any] = {
 }
 
 
-# Ordem dos dias como o Google os nomeia em `segments.day_of_week`. Existe
-# porque a grade `hourly` chega SEM ordem da API e o corte por `limit` sobre um
-# conjunto sem ordem devolve pedaco arbitrario — dict fixo em vez de ordenar
-# pela string, que poria FRIDAY antes de MONDAY.
-_ORDEM_DO_DIA = {
-    "MONDAY": 0,
-    "TUESDAY": 1,
-    "WEDNESDAY": 2,
-    "THURSDAY": 3,
-    "FRIDAY": 4,
-    "SATURDAY": 5,
-    "SUNDAY": 6,
-}
+# Ordem dos dias derivada de `DIAS` (`src/google_ads/ad_schedule.py`), modulo do
+# qual esta tool JA importa — duplicar a tupla criaria duas fontes para o mesmo
+# enum do Google. O `.get(..., len(DIAS))` manda `UNSPECIFIED`/`UNKNOWN` para o
+# fim em vez de estourar `KeyError`: `ENUM_MINUTO` ja trata esses dois valores
+# explicitamente para o enum irmao, e ordenacao nao e lugar de descobrir enum
+# novo do Google em producao.
+_ORDEM_DO_DIA: dict[str, int] = {dia: i for i, dia in enumerate(DIAS)}
+
+# A grade `hourly` da conta tem teto ESTRUTURAL de 168 celulas (7 dias x 24h) —
+# nao e uma lista aberta que o `limit` do gestor precise conter. Aplicar o
+# default de 100 aqui devolvia 100 das 168, e com a ordem cronologica as 68
+# ausentes eram SEMPRE sabado e domingo. Antes deste PR a tool devolvia as 168
+# (o builder do `hourly` nao tem clausula LIMIT), entao cortar seria perder dado
+# que ja existia, de forma sistematica, na tool que `get_hourly_performance`
+# manda preferir. O mesmo idioma ja esta em `campaign+hourly` mais acima:
+# `teto = 168 * len(campaign_ids)`, teto da grade, nao do gestor.
+_CELULAS_DA_GRADE = 7 * 24
 
 
 @register_tool(
@@ -110,9 +114,11 @@ _ORDEM_DO_DIA = {
         "bloco x campanha com cost_brl/conversions/cpa_brl/cells: a grade crua tem 168 "
         "celulas por campanha e o `limit` default (100) truncaria antes de terminar "
         "UMA campanha. `raw_grid: true` troca pela grade crua, com teto "
-        "168 x len(campaign_ids) e `truncated` avisando corte. `truncated: true` em "
-        "qualquer nivel diz que havia MAIS linhas do que o `limit` e a lista foi "
-        "cortada no topo de gasto — peca um `limit` maior ou filtre. Para visao geral da "
+        "168 x len(campaign_ids) e `truncated` avisando corte. `truncated: true` diz "
+        "que havia MAIS linhas do que o teto e a lista foi cortada no topo de gasto — "
+        "peca um `limit` maior ou filtre. EXCECAO: em `account+hourly` o teto e "
+        "ESTRUTURAL (168 celulas, 7 dias x 24h) e o `limit` NAO se aplica — a grade vem "
+        "inteira, em ordem cronologica. Para visao geral da "
         "conta com comparativo use get_account_overview."
     ),
     input_schema=_SCHEMA,
@@ -212,17 +218,20 @@ async def get_performance_breakdown(args: dict[str, Any]) -> dict[str, Any]:
     # LIMIT (`device`, `hourly`), a API devolve tudo e este corte e o unico lugar
     # onde o `limit` declarado no schema e honrado.
     # `hourly` sai da API sem ORDER BY (o builder nao tem clausula nenhuma), e
-    # cortar 168 celulas por 100 sem ordem devolve um pedaco ARBITRARIO da grade
-    # — duas chamadas iguais podem trazer conjuntos diferentes (F98/F88). A
-    # ordem cronologica e a unica em que uma grade cortada continua legivel
-    # ("segunda 00h ate quinta 03h"), e nao mexe em GAQL nenhum, entao nao
-    # muda a ordem de nenhuma outra tool que compartilhe o builder.
+    # devolver a grade em ordem arbitraria faz duas chamadas iguais trazerem a
+    # mesma grade em ordens diferentes. Cronologica e a unica em que uma grade
+    # e legivel, e ordenar aqui nao mexe em GAQL, entao nao muda a ordem de
+    # nenhuma outra tool que compartilhe o builder.
     if breakdown == "hourly":
         rows.sort(
-            key=lambda r: (_ORDEM_DO_DIA[r["breakdown"]["day_of_week"]], r["breakdown"]["hour"])
+            key=lambda r: (
+                _ORDEM_DO_DIA.get(r["breakdown"]["day_of_week"], len(DIAS)),
+                r["breakdown"]["hour"],
+            )
         )
 
-    rows, truncado = aplicar_limite(rows, limit)
+    teto = _CELULAS_DA_GRADE if breakdown == "hourly" else limit
+    rows, truncado = aplicar_limite(rows, teto)
 
     if breakdown == "geo":
         country_ids = {r["breakdown"]["country_criterion_id"] for r in rows}
