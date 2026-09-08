@@ -8,7 +8,11 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
-from src.google_ads.queries.recommendations import TIPOS_CONHECIDOS, TIPOS_QUE_CONFIRMAM
+from src.google_ads.queries.recommendations import (
+    TIPOS_CONHECIDOS,
+    TIPOS_DE_MIGRACAO,
+    TIPOS_QUE_CONFIRMAM,
+)
 
 
 class RiskLevel(StrEnum):
@@ -263,6 +267,20 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
             return RiskClassification(
                 RiskLevel.CONFIRM,
                 "apply_recommendation: tipo da recomendacao desconhecido — confirmar por seguranca",
+            )
+        # O EIXO 2 vem primeiro, e a ordem e o ponto: os cinco de migracao sao
+        # SUBCONJUNTO de `TIPOS_QUE_CONFIRMAM`, entao cair no ramo de baixo os
+        # rotulava "mexe em orcamento ou lance" — que nao e o que eles fazem.
+        # Eles MIGRAM a campanha, e e por isso que confirmam. `confirmation_reason`
+        # e o campo que o gestor le no preview: quem aprova uma conversao sem
+        # volta lendo "mexe em orcamento" esta sendo informado errado sobre a
+        # NATUREZA do que aprova, nao so sobre o tamanho.
+        if tipo in TIPOS_DE_MIGRACAO:
+            return RiskClassification(
+                RiskLevel.CONFIRM,
+                f"apply_recommendation ({tipo}): MIGRA a campanha para outro tipo de "
+                "campanha e o Google nao expoe operacao de volta — confirmar sempre "
+                "(eixo da irreversibilidade, spec §7.1)",
             )
         if tipo in TIPOS_QUE_CONFIRMAM:
             return RiskClassification(

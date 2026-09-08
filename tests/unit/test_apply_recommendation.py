@@ -40,6 +40,7 @@ from src.google_ads.queries.recommendations import (
     frase_do_produto_derivado,
     parse_recommendation_detail_row,
 )
+from src.governance.blast_radius import RiskLevel, classify
 from src.mcp.tools import apply_recommendation as mod
 
 _CUSTOMER = "1171969590"
@@ -430,6 +431,65 @@ def test_as_cinco_migracoes_estao_na_whitelist() -> None:
     """C1: ate 07/09 os cinco auto-aplicavam uma conversao de campanha sem volta."""
     assert frozenset(_AS_CINCO_MIGRACOES) == TIPOS_DE_MIGRACAO
     assert frozenset(_AS_CINCO_MIGRACOES) <= TIPOS_QUE_CONFIRMAM
+
+
+@pytest.mark.parametrize("tipo", sorted(_AS_CINCO_MIGRACOES))
+def test_a_razao_da_confirmacao_de_migracao_nao_fala_em_orcamento_nem_lance(tipo: str) -> None:
+    """D2: os cinco confirmam pelo EIXO 2, e a razao tem que dizer isso.
+
+    Os cinco sao subconjunto de `TIPOS_QUE_CONFIRMAM`, entao ate 07/09 caiam no
+    ramo do eixo 1 e recebiam `confirmation_reason` dizendo "mexe em orcamento ou
+    lance". Nenhum deles mexe: tres tem mensagem de detalhe VAZIA e os outros dois
+    so trazem identificador de Merchant Center — o que eles fazem e MIGRAR a
+    campanha, sem operacao de volta. O `blast_summary` ja acertava; a razao nao.
+
+    A metade negativa da asserção e o defeito em si: a frase antiga era falsa, e
+    um gestor que aprova uma conversao irreversivel lendo "mexe em orcamento" foi
+    informado errado sobre a NATUREZA do que aprova.
+    """
+    r = classify(
+        operation="apply_recommendation",
+        params={"target_count": 1, "recommendation_type": tipo},
+    )
+    assert r.level is RiskLevel.CONFIRM
+    assert "MIGRA" in r.reason, f"{tipo}: razao nao nomeia a migracao — {r.reason}"
+    assert "volta" in r.reason, f"{tipo}: razao nao diz que nao tem volta — {r.reason}"
+    assert "orcamento" not in r.reason.lower(), f"{tipo}: razao afirma orcamento — {r.reason}"
+    assert "lance" not in r.reason.lower(), f"{tipo}: razao afirma lance — {r.reason}"
+
+
+@pytest.mark.parametrize(
+    "tipo", ["CAMPAIGN_BUDGET", "TARGET_ROAS_OPT_IN", "USE_BROAD_MATCH_KEYWORD"]
+)
+def test_a_razao_do_eixo_1_continua_dizendo_orcamento_ou_lance__controle_positivo(
+    tipo: str,
+) -> None:
+    """O par do teste acima: quem confirma por ALAVANCA segue dizendo alavanca.
+
+    Sem este controle, "a razao nunca fala em orcamento" passaria — e a correcao
+    teria trocado uma razao falsa por outra.
+    """
+    r = classify(
+        operation="apply_recommendation",
+        params={"target_count": 1, "recommendation_type": tipo},
+    )
+    assert r.level is RiskLevel.CONFIRM
+    assert "mexe em orcamento ou lance" in r.reason
+    assert "MIGRA" not in r.reason
+
+
+async def test_a_razao_da_migracao_chega_ao_preview_do_gestor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Razao certa em `classify` e razao errada no envelope seriam o mesmo bug.
+
+    `confirmation_reason` e o campo que o gestor le junto com o token — a ponta
+    onde a frase falsa era entregue.
+    """
+    env = await _aplicar(monkeypatch, tipo="PERFORMANCE_MAX_OPT_IN")
+    assert env["status"] == "dry_run"
+    assert "MIGRA" in env["confirmation_reason"]
+    assert "orcamento" not in env["confirmation_reason"].lower()
 
 
 def test_os_vinte_e_tres_existem_no_enum_do_google() -> None:
