@@ -228,8 +228,8 @@ def _retornos_mudos(
     variavel) e `return await helper(...)` nao sao dict literal, entao caem no
     criterio antigo — "a chave existe em algum dict do modulo ou de uma funcao
     saltada". Sao 2 tools que montam o retorno em variavel
-    (`run_gaql`, `get_ad_schedule`) e 6 que delegam por chamada (as 4 Meta,
-    `get_assets` no segundo retorno dela, e `get_change_history`, que desde a
+    (`run_gaql`, `get_ad_schedule`) e 5 que delegam por chamada (as 4 Meta
+    e `get_change_history`, que desde a
     onda A4 e um wrapper de 3 linhas sobre `consultar_change_history` — o corpo
     saiu do handler para receber o `hoje` da conta injetado). Fechar essa
     metade exigiria seguir a variavel ate a atribuicao (dataflow); a versao

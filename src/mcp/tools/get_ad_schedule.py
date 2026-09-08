@@ -7,7 +7,7 @@ duas coisas). Por isso `schedule_summary` existe por campanha, mesmo sem janela.
 """
 
 import asyncio
-from collections.abc import Iterable
+from collections.abc import Collection
 from typing import Any
 
 from src.google_ads.account_clock import resolve_account_today
@@ -136,7 +136,12 @@ def campanhas_com_grade_incerta(
     rows: list[dict[str, Any]],
     *,
     truncated: bool,
-    campanhas: Iterable[str],
+    # `Collection`, nao `Iterable`: o corpo le `campanhas` DUAS vezes, e um
+    # gerador viria vazio na segunda — a intersecao zeraria e a regra da borda
+    # se desligaria em silencio, sem teste vermelho e sem excecao. Nenhum
+    # call-site de hoje passa gerador (um manda dict, outro manda lista), mas
+    # `Iterable` CONVIDA a isso e o mypy aceita.
+    campanhas: Collection[str],
 ) -> set[str]:
     """Campanhas cuja grade NAO pode ser afirmada depois de uma leitura cortada.
 
