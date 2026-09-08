@@ -583,3 +583,34 @@ def test_change_history_query_pede_uma_linha_a_mais() -> None:
     )
     assert "LIMIT 101" in q
     assert "LIMIT 100" not in q
+
+
+def test_o_top_n_tem_desempate_estavel() -> None:
+    """`LIMIT` sobre `ORDER BY` que empata nao ordena — escolhe ao acaso.
+
+    "Top 10 por conversoes" numa conta de cauda longa e quase todo empate em
+    ZERO, e o Google nao garante ordem estavel entre linhas de mesmo valor:
+    duas chamadas iguais devolvem keywords diferentes, e o gestor nao tem como
+    saber que a lista mudou por acaso (F98/F88).
+
+    Custo desc como criterio secundario: entre empatadas na metrica pedida, a
+    mais cara e a que precisa ser vista. A mudanca de producao que deixa este
+    teste vermelho e apagar o segundo campo do `ORDER BY`.
+    """
+    for metric in ("conversions", "clicks", "impressions"):
+        for q in (
+            top_keywords_query(_S, _E, 10, metric=metric),
+            top_creatives_query(_S, _E, 10, metric=metric),
+        ):
+            assert "DESC, metrics.cost_micros DESC" in q, f"{metric}: sem desempate"
+
+
+def test_ordenar_por_custo_nao_repete_o_campo_no_desempate() -> None:
+    """`ORDER BY metrics.cost_micros DESC, metrics.cost_micros DESC` seria
+    aceito pelo Google e diria a mesma coisa duas vezes — ruido que faz o
+    proximo leitor procurar um significado que nao existe."""
+    for q in (
+        top_keywords_query(_S, _E, 10, metric="cost"),
+        top_creatives_query(_S, _E, 10, metric="cost"),
+    ):
+        assert q.count("metrics.cost_micros DESC") == 1
