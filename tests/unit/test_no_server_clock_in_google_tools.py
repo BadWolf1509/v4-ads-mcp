@@ -51,6 +51,34 @@ fora e por que:
   chave que `governance/rate_limit._today`); o campo se chama `date_utc`.
 - `import_offline_conversions`: ver F146 abaixo.
 - `backup.py`: ver o comentario na propria entrada.
+
+## O escopo ainda e listado a mao, e isso e uma folga MEDIDA
+
+O casador foi apertado em 2026-09-08 (utcnow, time.time, alias de import), mas o
+ESCOPO continua sendo uma lista de diretorios e arquivos. Medi o que fica de
+fora: 13 arquivos de `src/` leem relogio sem estar sob nenhum dos dois regimes.
+
+Tres ja tem motivo escrito (`FORA_COM_MOTIVO`). Dos dez restantes:
+
+- `src/auth/oauth_state.py`, `panel_session.py`, `meta_oauth.py` e
+  `src/governance/rate_limit.py`: `time.time()`/epoch para TTL e bucket de
+  quota. Comparam AGORA com um instante absoluto — nao derivam DATA de conta
+  nenhuma, entao nao sao F141.
+- `src/db/repositories/managers.py`, `src/governance/dry_run.py`,
+  `src/web/routes.py`: carimbo de registro e de sessao, idem.
+- **`src/mcp/tools/_meta_performance.py`, `meta_get_account_overview.py` e
+  `meta_get_performance_breakdown.py`: estes SAO a mesma classe.** Sao os
+  quatro sitios do gemeo Meta do F141, que a spec da varredura atribui ao PR 6
+  (o inventario Meta ja tem `timezone_name` no banco e ninguem le). Nao foram
+  antecipados aqui de proposito — sao trabalho de outra frente, e a excecao
+  `meta_*` no topo deste arquivo existe justamente para isso.
+
+**A correcao estrutural e inverter o guard**: varrer `src/` inteiro e exigir que
+todo leitor de relogio esteja em `LEITORES_LEGITIMOS` ou em `FORA_COM_MOTIVO`.
+Isso troca uma lista de ESCOPO (que esquece o diretorio novo em silencio) por
+uma lista de EXCECAO (que obriga a escrever o motivo). Fica para o PR 6, junto
+com os quatro sitios Meta — inverter antes de corrigi-los so encheria a lista de
+excecao com trabalho ja planejado.
 """
 
 from __future__ import annotations
