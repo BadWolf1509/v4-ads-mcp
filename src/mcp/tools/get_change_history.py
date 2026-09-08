@@ -63,6 +63,14 @@ from src.mcp.tools._registry import register_tool
 # Non-breaking: existing callers receive valid data + new field they can ignore.
 _RETENTION_SAFETY_DAYS = 28
 
+# Cap DURO do recurso `change_event`, medido em 2026-09-07 via `validate_gaql`
+# na 786-223-0676: `LIMIT 10001` volta "Change event requests must specify a
+# LIMIT less than or equal to 10k" e `LIMIT 10000` passa. E DESTE recurso, nao
+# da GAQL — `FROM campaign|search_term_view|geographic_view|keyword_view|
+# ad_group_audience_view ... LIMIT 10001` foi validado OK na mesma sonda, entao
+# os outros builders desta frente nao tem nada a ajustar.
+_CAP_CHANGE_EVENT = 10_000
+
 _DATE_PRESETS = [
     "TODAY",
     "YESTERDAY",
@@ -181,18 +189,14 @@ _SCHEMA: dict[str, Any] = {
             "type": "array",
             "items": {"type": "string", "enum": _CLIENT_TYPES},
         },
-        # 9999, nao 10000: o builder pede `limit + 1` (a linha sentinela que
-        # revela o corte) e o change_event tem cap DURO de 10k. Medido em
-        # 2026-09-07 via `validate_gaql` na 786-223-0676: `LIMIT 10001` volta
-        # "Change event requests must specify a LIMIT less than or equal to
-        # 10k" e `LIMIT 10000` passa. Sem baixar o teto, o gestor que pedisse
-        # o maximo do proprio schema receberia erro do Google — e a
-        # alternativa (cortar a sentinela so na borda) devolveria
-        # `truncated: false` justamente onde o corte e mais provavel.
-        # O cap e do change_event, nao da GAQL: `FROM campaign LIMIT 10001`
-        # foi validado OK na mesma sonda, entao os outros builders desta
-        # frente seguem com `maximum: 10000`.
-        "limit": {"type": "integer", "minimum": 1, "maximum": 9999, "default": 200},
+        # 10000, nao 9999: `maximum` e contrato publico ja negociado no
+        # handshake do MCP (F140), entao estreita-lo NAO chega na sessao
+        # aberta — ela segue anunciando 10000 e passaria a levar erro duro de
+        # `jsonschema` (src/mcp/server.py) onde antes funcionava. O cap de 10k
+        # do change_event (`_CAP_CHANGE_EVENT`) se resolve DENTRO da tool, pelo
+        # idioma `fetch n+1` com teto de API: pede-se `min(limit + 1, CAP)` e,
+        # na borda onde a sentinela nao cabe, le-se `len == CAP` como corte.
+        "limit": {"type": "integer", "minimum": 1, "maximum": 10000, "default": 200},
     },
     "required": ["customer_id"],
     "additionalProperties": False,
@@ -368,6 +372,9 @@ async def _resolve_names(
         "ficaram de fora, entao suba o limit ou estreite o periodo antes de concluir "
         "que uma mudanca nao existiu. E ortogonal ao `freshness`: `truncated` fala do "
         "que o limit cortou, `freshness` do que o Google ainda nao indexou. "
+        "No teto (`limit: 10000`, cap duro do change_event) nao ha linha sentinela "
+        "para comparar, entao `truncated: true` ali le-se 'pode haver mais' e pode "
+        "significar que coube exato — estreite a janela pra ter certeza. "
         "Janela maxima 30 dias (Google retention exclusivo — start_date "
         "alem disso e auto-clampado pra today-28 com warning F23, preset OU custom; "
         "janela inteira fora da retencao da erro claro). Audited."
@@ -410,6 +417,11 @@ async def get_change_history(args: dict[str, Any]) -> dict[str, Any]:
         )
 
     limit = args.get("limit", 200)
+    # O builder soma a sentinela (`LIMIT {limit + 1}`), e no teto do schema
+    # isso pediria `LIMIT 10001` — que o change_event RECUSA. Pedir
+    # `min(limit + 1, CAP)` e o idioma padrao de `fetch n+1` com teto de API:
+    # preserva o `maximum` publico e paga o preco so na borda.
+    limit_pedido = min(limit, _CAP_CHANGE_EVENT - 1)
 
     query = change_history_query(
         start=start,
@@ -418,7 +430,7 @@ async def get_change_history(args: dict[str, Any]) -> dict[str, Any]:
         operation_types=args.get("operation_types"),
         user_emails=args.get("user_emails"),
         client_types=args.get("client_types"),
-        limit=limit,
+        limit=limit_pedido,
     )
 
     # F131: a sonda de fronteira vai EM PARALELO com a query principal — mesmo
@@ -448,11 +460,20 @@ async def get_change_history(args: dict[str, Any]) -> dict[str, Any]:
         ),
     )
 
+    # A UNICA borda em que a sentinela nao existe: com `limit == CAP` a
+    # consulta pediu exatamente `CAP`, entao `len(linhas) > limit` e falso por
+    # construcao e o detector morreria calado justamente onde o corte e mais
+    # provavel. Ler `len == CAP` como corte degrada na direcao segura — num
+    # universo de exatamente 10000 mudancas avisa um corte que nao houve, o
+    # que e estritamente melhor que esconder um que houve.
+    atingiu_o_cap = len(rows) == _CAP_CHANGE_EVENT
+
     # ANTES do resolve e do summary: a consulta pediu `limit + 1`, e a linha
     # sentinela nao pode entrar em nenhum dos dois. Se o corte viesse depois da
     # agregacao, `summary.total_changes` nao bateria com `rows` — dois numeros
     # para a mesma pergunta.
     rows, truncado = aplicar_limite(rows, limit)
+    truncado = truncado or atingiu_o_cap
 
     # Resolve campaign/ad_group names (0-2 extra ops)
     name_map = await _resolve_names(
