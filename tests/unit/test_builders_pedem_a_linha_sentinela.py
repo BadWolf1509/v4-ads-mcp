@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import ast
 import re
-import tempfile
 from pathlib import Path
 
 from tests.unit import _guard_harness as h
@@ -198,15 +197,44 @@ def test_mordida_interpolacao_fora_do_limit_nao_entra() -> None:
 
 
 def test_mordida_o_escopo_ignora_o_que_nao_e_query() -> None:
-    """Falha contra: **escopo que varresse `src/` inteiro** em vez de
-    `src/google_ads/queries/`. O filtro e por diretorio; um helper com
-    `LIMIT {n}` fora dele (SQL do Postgres em `src/db/`, por exemplo) nao e
-    GAQL e nao tem nada a ver com esta invariante.
+    """Falha contra: **escopo que varresse TODO salto da tool** em vez so dos
+    de `src/google_ads/queries/`. Medido em 2026-09-08: 33 funcoes com o
+    filtro, 65 sem ele — o dobro da superficie, alcancando `reports.py`,
+    `queries/_common.py` e `src/db/repositories/`, cujas clausulas `LIMIT` sao
+    SQL do Postgres e nao tem nada a ver com esta invariante.
+
+    A versao anterior desta mordida escrevia um arquivo em `tempfile` e
+    afirmava `_QUERIES not in fora.resolve().parents` — tautologia de
+    `pathlib` que nao chamava funcao nenhuma do guard. A revisao apagou o
+    filtro de diretorio inteiro e ela continuou VERDE; mordida que nao morde e
+    pior que mordida ausente, porque conta como prova.
+
+    A primeira assercao e o controle: sem salto para fora de `queries/` nao
+    haveria filtro a provar, e a mordida passaria por vacuidade. A ultima e a
+    propriedade em forma geral (subconjunto PROPRIO), nao uma enumeracao: ela
+    fica vermelha para qualquer filtro removido, nao so para o do `reports.py`.
     """
-    with tempfile.TemporaryDirectory() as d:
-        fora = Path(d) / "fora.py"
-        fora.write_text('def q(n):\n    return f"LIMIT {n}"\n', encoding="utf-8")
-        assert _QUERIES not in fora.resolve().parents
+    reports = (h.SRC / "google_ads" / "reports.py").resolve()
+    saltos = {
+        (helper.resolve(), fn.name)
+        for _, arquivo, _handler in h.tools_com_limite()
+        for helper, fn in h.funcoes_chamadas_de_src(arquivo)
+    }
+    assert (reports, "run_report") in saltos, (
+        "controle: tool com `limit` TEM que saltar para reports.py::run_report — "
+        "sem isso nao ha nada fora de queries/ para o filtro excluir"
+    )
+    escopo = {
+        (arquivo.resolve(), getattr(fn, "name", ""))
+        for arquivo, fn in _funcoes_de_query_de_tool_com_limite()
+    }
+    assert (reports, "run_report") not in escopo, (
+        "o guard cobra a sentinela de `run_report`, que nao monta GAQL nenhuma"
+    )
+    assert escopo < saltos, (
+        "o escopo do guard tem que ser subconjunto PROPRIO dos saltos: igual "
+        "significa que o filtro por diretorio sumiu"
+    )
 
 
 def test_mordida_o_escopo_alcanca_de_fato_os_builders() -> None:
