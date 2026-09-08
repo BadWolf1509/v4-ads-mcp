@@ -191,6 +191,48 @@ def funcoes(arv: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
     return [n for n in ast.walk(arv) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]
 
 
+def modulos_importados_de_src(arquivo: Path, *, raiz: Path | None = None) -> list[Path]:
+    """Arquivos `.py` sob `src.` importados por `arquivo`, um salto — NÃO segue
+    os imports desses módulos por sua vez (não é travessia transitiva).
+
+    Existe para o guard que precisa decidir se uma propriedade vale "no módulo
+    do handler OU no módulo que ele importa", quando o handler delega a
+    montagem do retorno pra um helper compartilhado (`tools/foo.py` chama
+    `google_ads/helper.py::montar()` e é lá que a chave realmente mora).
+
+    `raiz` é onde `src.<resto>` resolve para `<raiz>/src/<resto>.py` — default
+    é a raiz real do repo (`RAIZ`). Parametrizável para um teste de mordida
+    montar um `src.` falso sob `tempfile`, sem tocar a árvore real nem
+    precisar que o módulo fake seja importável de verdade.
+
+    Cobre `from src.a.b import c` e `import src.a.b` (e `as` neles, embora o
+    nome do alias não importe aqui — é o `.module`/`.name` que vira caminho).
+    Não cobre import relativo (`from .b import c`): checado que não existe
+    esse padrão em `src/` neste repo (grep 2026-09-07); se aparecer, este
+    scanner precisa crescer, não silenciosamente absolver.
+    """
+    raiz = raiz if raiz is not None else RAIZ
+    arv = arvore(arquivo)
+    modulos: set[str] = set()
+    for no in ast.walk(arv):
+        if (
+            isinstance(no, ast.ImportFrom)
+            and no.module
+            and (no.module == "src" or no.module.startswith("src."))
+        ):
+            modulos.add(no.module)
+        elif isinstance(no, ast.Import):
+            for a in no.names:
+                if a.name == "src" or a.name.startswith("src."):
+                    modulos.add(a.name)
+    caminhos = []
+    for modulo in sorted(modulos):
+        candidato = raiz.joinpath(*modulo.split(".")).with_suffix(".py")
+        if candidato.is_file():
+            caminhos.append(candidato)
+    return caminhos
+
+
 def lambdas(arv: ast.Module) -> list[ast.Lambda]:
     """Todo `lambda` do módulo — o escopo executável que `funcoes()` não vê.
 
