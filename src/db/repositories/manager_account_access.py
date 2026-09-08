@@ -207,6 +207,11 @@ async def bulk_grant(
     Reconceder é a forma de restaurar: se a linha já existia revogada, o ON
     CONFLICT limpa `revoked_at`/`revoked_reason` em vez de ignorar — senão o
     gestor readicionado numa bulk-grant continuaria bloqueado pelo gate.
+
+    F128: o ON CONFLICT também seta `access_level = EXCLUDED.access_level`,
+    espelhando o que `grant` (linha única) já fazia. Sem isso, quem já tinha
+    'read' numa conta continuava com 'read' depois de um "conceder tudo" —
+    a chamada devolve sucesso, mas o nível antigo sobrevive em silêncio.
     """
     if not customer_ids:
         return 0
@@ -215,6 +220,7 @@ async def bulk_grant(
         """INSERT INTO manager_account_access (manager_id, customer_id, access_level, granted_by)
            VALUES ($1, $2, $3, $4)
            ON CONFLICT (manager_id, customer_id) DO UPDATE SET
+               access_level = EXCLUDED.access_level,
                revoked_at = NULL,
                revoked_reason = NULL""",
         rows,
