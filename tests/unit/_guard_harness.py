@@ -19,7 +19,7 @@ import ast
 import builtins
 import importlib
 import sys
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[2]
@@ -212,6 +212,81 @@ def nomes_locais(arv: ast.Module, alvo: str) -> set[str]:
                 if a.name.rpartition(".")[2] == alvo and a.asname:
                     nomes.add(a.asname)
     return nomes
+
+
+def origens_de_import(arv: ast.Module) -> dict[str, str]:
+    """Nome local -> caminho pontilhado do que o `import` ligou a ele.
+
+        import datetime                     -> {"datetime": "datetime"}
+        import datetime as dt               -> {"dt": "datetime"}
+        import os.path                      -> {"os": "os"}
+        from datetime import datetime       -> {"datetime": "datetime.datetime"}
+        from datetime import datetime as dt -> {"dt": "datetime.datetime"}
+        from time import time               -> {"time": "time.time"}
+
+    Existe ao LADO de `nomes_locais`, não no lugar dela: as duas respondem
+    perguntas diferentes, e a diferença é exatamente o que separa acusar de
+    absolver num guard de sintaxe.
+
+    - `nomes_locais(arv, alvo)` devolve um conjunto plano e **inclui `alvo`
+      sempre**, com import ou sem — então não distingue "nome ligado por um
+      import" de "nome local que por acaso se chama assim". A forma
+      `from time import time` + `time()` precisa dessa distinção: sem ela, um
+      `def f(time)` chamado como `time()` viraria ofensor.
+    - `nomes_locais` colapsa `import datetime as dt` (liga o MÓDULO) e
+      `from datetime import datetime as dt` (liga a CLASSE) no mesmo conjunto
+      de nomes, então não resolve `dt.datetime.now()`, cuja leitura depende de
+      qual das duas o alias é.
+
+    Fica de fora, e o vazio é o resultado honesto nos dois casos: import
+    relativo (`from .b import f`) não tem caminho absoluto estático pra dar — e
+    `src/` não tem nenhum (grep 2026-09-07, mesma nota de
+    `funcoes_chamadas_de_src`) —, e `from x import *` não diz que nomes ligou.
+    """
+    origens: dict[str, str] = {}
+    for no in ast.walk(arv):
+        if isinstance(no, ast.Import):
+            for a in no.names:
+                if a.asname:
+                    origens[a.asname] = a.name
+                else:
+                    # `import a.b` liga só `a` no namespace local; o resto do
+                    # caminho vem escrito no call-site (`a.b.f()`).
+                    raiz = a.name.split(".")[0]
+                    origens[raiz] = raiz
+        elif isinstance(no, ast.ImportFrom):
+            if no.level or not no.module:
+                continue
+            for a in no.names:
+                if a.name == "*":
+                    continue
+                origens[a.asname or a.name] = f"{no.module}.{a.name}"
+    return origens
+
+
+def caminho_canonico(no: ast.expr, origens: Mapping[str, str]) -> str | None:
+    """Caminho pontilhado de `no` com a RAIZ reescrita pelo que o import ligou.
+
+    `dt.now` sob `{"dt": "datetime.datetime"}` vira `datetime.datetime.now`;
+    `dt.datetime.now` sob `{"dt": "datetime"}` vira a MESMA string — que é o
+    ponto. As duas formas escrevem o mesmo símbolo, e um guard não deveria
+    precisar saber qual delas o autor (ou o autocomplete) escolheu.
+
+    Raiz sem import que a ligue volta como está escrita: `datetime.utcnow` num
+    trecho sem imports continua `datetime.utcnow`. O resolvedor não inventa uma
+    origem que não viu — e quem consome tem que aceitar a forma curta, senão
+    passa a depender de o arquivo ter o import à vista.
+
+    Cadeia que não termina num `ast.Name` devolve `None`, pelo motivo escrito
+    em `_caminho_pontilhado`: `foo().now` não tem caminho estático, e um nome
+    truncado poderia resolver por coincidência pra outra coisa.
+    """
+    caminho = _caminho_pontilhado(no)
+    if caminho is None:
+        return None
+    raiz, _, resto = caminho.partition(".")
+    origem = origens.get(raiz, raiz)
+    return f"{origem}.{resto}" if resto else origem
 
 
 def chama(no: ast.AST, alvo: str, *, arv: ast.Module) -> bool:

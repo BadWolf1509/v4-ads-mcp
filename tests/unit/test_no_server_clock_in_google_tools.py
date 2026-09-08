@@ -11,6 +11,26 @@ Por que AST e nao grep: comentarios e docstrings destes arquivos CITAM o
 padrao proibido para explicar o fix (modo de falha 1 de guards-que-nao-cobrem:
 o guard casa a propria prosa). O AST ve so chamadas.
 
+## O que conta como "ler o relogio" (apertado em 2026-09-08)
+
+Ate 07/09 o casador via TRES formas — `datetime.now`, `date.today` e
+`datetime.today` — e so quando o objeto era um `ast.Name` com esse nome
+literal. Cinco escapavam, todas verdes:
+
+| Forma | Por que escapava |
+|---|---|
+| `datetime.utcnow()` | `utcnow` nao estava no conjunto |
+| `time.time()` | idem |
+| `from time import time` -> `time()` | e `ast.Name`, nao `ast.Attribute` |
+| `from datetime import datetime as dt` -> `dt.now()` | o nome escrito era `dt` |
+| `import datetime as dt` -> `dt.datetime.now()` | `f.value` era `Attribute` |
+
+Nenhuma e hipotetica: `utcnow()` e o que quase todo Python anterior ao 3.12
+escreve, `time.time()` e o relogio sem fuso nenhum, e alias de import e o que um
+formatador ou um autocomplete produz sozinho. O casador resolve os imports do
+modulo antes de perguntar (`h.origens_de_import` + `h.caminho_canonico`) e
+compara o par `(objeto, atributo)` do caminho ja canonico.
+
 ## Os dois regimes
 
 O escopo se divide em dois, e a diferenca e o que este guard afirma:
@@ -103,7 +123,24 @@ FORA_COM_MOTIVO = {
     "backup.py",
 }
 
-_RELOGIO = {("datetime", "now"), ("date", "today"), ("datetime", "today")}
+# O par `(objeto, atributo)` que fecha o caminho, DEPOIS de resolver alias.
+# Cinco formas escapavam do conjunto antigo — nenhuma hipotetica: `utcnow()` e o
+# que quase todo Python anterior a 3.12 escreve, `time.time()` e o relogio sem
+# fuso nenhum, e alias de import e o que um autocomplete produz sozinho.
+#
+# `time.monotonic` e `time.perf_counter` NAO entram, e a ausencia e deliberada:
+# nao respondem "que dia e hoje" — sao contador de duracao, e o escopo deste
+# guard tem QUATRO tools vivas que os usam pra medir `duration_ms`
+# (`get_my_audit_log`, `list_my_accounts`, `validate_gaql`,
+# `get_my_rate_limit_status`). Poe-los aqui trocaria o guard por uma lista de
+# excecao com quatro nomes no dia seguinte.
+_RELOGIO = {
+    ("datetime", "now"),
+    ("datetime", "today"),
+    ("datetime", "utcnow"),
+    ("date", "today"),
+    ("time", "time"),
+}
 
 
 def _arquivos_sem_relogio() -> list[Path]:
@@ -118,24 +155,44 @@ def _arquivos_sem_relogio() -> list[Path]:
     return tools + jobs + PRIMITIVOS
 
 
-def _nos_de_relogio(arvore: ast.AST) -> list[ast.Call]:
-    """Nos `datetime.now(...)`, `date.today()` ou `datetime.today()` — so chamadas.
+def _nos_de_relogio(arvore: ast.Module) -> list[ast.Call]:
+    """Chamadas de relogio de parede, com o alias do import ja resolvido.
 
     Recebe a ARVORE, nao o texto: os dois consumidores abaixo precisam falar da
     MESMA arvore para poderem comparar nos por identidade (reparsear devolveria
     objetos novos, e o cruzamento sairia vazio em silencio — foi o primeiro
-    defeito desta implementacao, pego pelo proprio teste de mordida).
+    defeito desta implementacao, pego pelo proprio teste de mordida). Agora ha
+    uma segunda razao: os imports do MODULO decidem o que cada nome significa,
+    entao a unidade tem que ser o modulo inteiro, nunca um no solto.
+
+    **Por que o casamento e o SUFIXO de dois segmentos, e nao o caminho inteiro.**
+    O mesmo simbolo se escreve com 1, 2 ou 3 segmentos conforme o import:
+    `datetime.utcnow()` (com `from datetime import datetime`),
+    `datetime.datetime.utcnow()` (com `import datetime`), `dt.utcnow()` (com
+    alias). Exigir o caminho canonico completo obrigaria o casador a ter visto o
+    import — e um trecho sem import nenhum, que e como as mordidas exercitam a
+    forma, ficaria de fora. O par `(objeto, atributo)` e o que sobrevive a todas
+    as formas.
+
+    **Erra ACUSANDO, e isso e escolhido.** O sufixo faz `qualquer.date.today()`
+    entrar, mesmo que `qualquer` nao seja o modulo `datetime`. Este guard e
+    POSITIVO — procura o que NAO pode existir —, e a nota de
+    `funcoes_chamadas_de_src` no harness diz que nesse sentido a folga erra
+    ABSOLVENDO CALADO, que e o modo de falha caro. Falso positivo aqui aparece
+    vermelho e alguem le; falso negativo e um `hoje` de servidor em producao que
+    so mente das 21h a meia-noite locais. Nao ha nenhum hoje no escopo (medido
+    2026-09-08), e se aparecer a resposta e nomea-lo, nao afrouxar o sufixo.
     """
     achados: list[ast.Call] = []
+    origens = h.origens_de_import(arvore)
     for node in ast.walk(arvore):
         if not isinstance(node, ast.Call):
             continue
-        f = node.func
-        if (
-            isinstance(f, ast.Attribute)
-            and isinstance(f.value, ast.Name)
-            and (f.value.id, f.attr) in _RELOGIO
-        ):
+        caminho = h.caminho_canonico(node.func, origens)
+        if caminho is None:
+            continue
+        partes = caminho.split(".")
+        if len(partes) >= 2 and (partes[-2], partes[-1]) in _RELOGIO:
             achados.append(node)
     return achados
 
@@ -241,6 +298,71 @@ def test_o_guard_enxerga_uma_chamada_de_verdade() -> None:
     assert _chamadas_de_relogio("x = datetime.now(UTC).date()") == [1]
     assert _chamadas_de_relogio("# datetime.now(UTC).date() so no comentario") == []
     assert _chamadas_de_relogio('"""datetime.now(UTC) so na docstring"""') == []
+
+
+def test_o_guard_ve_utcnow_time_e_alias_de_import() -> None:
+    """As cinco formas que o casador antigo deixava passar.
+
+    Cada uma e um `hoje` do SERVIDOR entrando em caminho de conta pela porta que
+    ninguem fechou — e o sintoma e o mesmo do F141: erra so das 21h a meia-noite
+    locais, que e quando ninguem esta testando.
+
+    Falha contra: **o casador anterior a 2026-09-08** (`ast.Attribute` com
+    `.value` `ast.Name`, sobre `{("datetime","now"), ("date","today"),
+    ("datetime","today")}`). Medido naquele dia, com aquele casador copiado
+    verbatim: as CINCO devolviam `[]` — verde, sem uma palavra.
+    """
+    # `utcnow` nao estava no conjunto proibido
+    assert _chamadas_de_relogio("x = datetime.utcnow()") == [1]
+    # `time.time` idem — relogio de parede, e sem fuso nenhum
+    assert _chamadas_de_relogio("import time\nx = time.time()") == [2]
+    # `ast.Name`: o casador antigo so olhava `ast.Attribute`
+    assert _chamadas_de_relogio("from time import time\nx = time()") == [2]
+    # alias da CLASSE: `f.value.id` era "dt", que nao estava no conjunto
+    assert _chamadas_de_relogio("from datetime import datetime as dt\nx = dt.now(UTC)") == [2]
+    # alias do MODULO: `f.value` e `Attribute`, e o casador antigo exigia `Name`
+    assert _chamadas_de_relogio("import datetime as dt\nx = dt.datetime.now()") == [2]
+
+
+def test_o_guard_apertado_nao_passa_a_acusar_o_inocente() -> None:
+    """Controle das duas metades que o aperto poderia ter atropelado.
+
+    Falha contra: **casador que perguntasse so pelo atributo** (`.time`,
+    `.now`), e contra **quem tratasse `h.nomes_locais` como prova de vinculo** —
+    aquela funcao devolve o alvo mesmo sem import nenhum, entao um parametro
+    `def f(time)` chamado como `time()` viraria ofensor. E por isso que este
+    guard usa `origens_de_import`, que so liga nome que um `import` de fato
+    ligou; o motivo esta escrito na docstring dela, no harness.
+
+    A segunda metade e viva, nao hipotetica: `time.monotonic()` esta em QUATRO
+    tools dentro do escopo estrito (`get_my_audit_log`, `list_my_accounts`,
+    `validate_gaql`, `get_my_rate_limit_status`) medindo `duration_ms`. Se
+    contasse como relogio, o guard nasceria vermelho e o conserto seria uma
+    lista de excecao com quatro nomes — guard virando lista, de novo.
+    """
+    assert _chamadas_de_relogio("def f(time):\n    return time.strftime('%Y')") == []
+    assert _chamadas_de_relogio("def f(time):\n    return time()") == []
+    assert _chamadas_de_relogio("import time\nx = time.monotonic()") == []
+    assert _chamadas_de_relogio("import time\nx = time.perf_counter()") == []
+    # construtor de data, nao leitura de relogio
+    assert _chamadas_de_relogio("from datetime import date\nx = date(2026, 9, 8)") == []
+
+
+def test_o_aperto_nao_perdeu_as_formas_que_o_casador_antigo_ja_via() -> None:
+    """As tres originais seguem pegas — com o import a vista e sem ele.
+
+    Falha contra: **resolvedor que exigisse import** para canonizar o caminho.
+    Essa e a tentacao natural depois de resolver alias (comparar o caminho
+    canonico inteiro, `datetime.datetime.now`), e ela absolveria calada todo
+    trecho onde o import nao esta no pedaco lido — inclusive as mordidas acima,
+    que e como o aperto se autoenganaria.
+    """
+    com_import = "from datetime import UTC, date, datetime\n"
+    assert _chamadas_de_relogio(com_import + "x = datetime.now(UTC)") == [2]
+    assert _chamadas_de_relogio(com_import + "x = date.today()") == [2]
+    assert _chamadas_de_relogio(com_import + "x = datetime.today()") == [2]
+    assert _chamadas_de_relogio("x = date.today()") == [1]
+    assert _chamadas_de_relogio("import datetime\nx = datetime.datetime.today()") == [2]
 
 
 def test_o_guard_do_default_injetavel_distingue_as_duas_formas() -> None:
