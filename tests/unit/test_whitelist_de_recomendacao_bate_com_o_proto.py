@@ -138,10 +138,20 @@ def _campos_do_tipo(tipo: str) -> list[str]:
 
 
 def _caminhos_da_tabela(tipo: str) -> list[str]:
-    """Todo caminho dotted que `CAMPOS_DE_DETALHE` le daquele tipo, com o `[]`."""
+    """Todo caminho dotted que `CAMPOS_DE_DETALHE` le daquele tipo, com o `[]`.
+
+    A grade de opcoes (`ListaDeOpcoes`) conta como leitura igual ao resto: os
+    caminhos dela sao o segmento repetido mais o campo dentro do item, e e por
+    aqui que as duas folhas do `TARGET_CPA_OPT_IN` seguem cobradas pelo guard de
+    completude e pelo de cardinalidade depois que sairam de `outros`.
+    """
     spec = CAMPOS_DE_DETALHE[tipo]
     caminhos = [c for c in (spec.atual_brl, spec.recomendado_brl) if c is not None]
     caminhos += [caminho for _chave, caminho, _unidade in spec.outros]
+    if spec.opcoes is not None:
+        caminhos += [
+            f"{spec.opcoes.caminho}.{caminho}" for _chave, caminho, _unidade in spec.opcoes.campos
+        ]
     return caminhos
 
 

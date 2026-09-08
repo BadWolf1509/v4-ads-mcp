@@ -181,6 +181,13 @@ def _linha_de_recomendacao(
             _setar(detalhe, spec.recomendado_brl, recomendado)
         for _chave, caminho, unidade in spec.outros:
             _setar(detalhe, caminho, _SENTINELA[unidade])
+        if spec.opcoes is not None:
+            # UMA opcao com TODOS os campos: e o caso denso, e o que interessa
+            # aqui e que a grade chegue ao preview. O caso ESPARSO — a opcao que
+            # nao declara um dos campos — e o do defeito, e vive no teste que o
+            # nomeia, montado a mao com duas opcoes.
+            for _chave, caminho, unidade in spec.opcoes.campos:
+                _setar(detalhe, f"{spec.opcoes.caminho}.{caminho}", _SENTINELA[unidade])
         # Depois das sentinelas, para cobrir folha cujo VALOR muda o caminho de
         # codigo (o `shared_set` do I3 decide se ha segunda campanha a consultar).
         for caminho, valor in (sobrescreve or {}).items():
@@ -684,8 +691,13 @@ def test_target_cpa_opt_in_le_a_lista_de_opcoes_e_nao_quebra() -> None:
     A correcao "obvia" que a revisao sugeriu
     (`options.required_campaign_budget_amount_micros`, sem `[]`) derrubaria a tool
     em producao — e o guard de existencia do proto passaria verde, porque a folha
-    existe no descriptor. Nao ha UM orcamento a mostrar: ha a faixa das metas
-    disponiveis, e e a faixa que sai.
+    existe no descriptor. Nao ha UM orcamento a mostrar: ha a grade das metas
+    disponiveis, e e a grade que sai — um REGISTRO por meta, com o CPA e o
+    orcamento DAQUELA meta juntos.
+
+    Este e o caso DENSO (toda opcao declara tudo). Ele passava verde tambem com
+    as duas listas paralelas de antes; e por isso que ele sozinho nao bastava —
+    ver o caso esparso logo abaixo.
     """
     linha = _row("TARGET_CPA_OPT_IN")
     detalhe = linha.recommendation.target_cpa_opt_in_recommendation
@@ -697,8 +709,76 @@ def test_target_cpa_opt_in_le_a_lista_de_opcoes_e_nao_quebra() -> None:
         {"target_cpa_micros": 90_000_000, "required_campaign_budget_amount_micros": 300_000_000}
     )
     info = parse_recommendation_detail_row(linha)
-    assert info["valores"]["target_cpa_por_opcao_brl"] == [60.0, 90.0]
-    assert info["valores"]["orcamento_exigido_por_opcao_brl"] == [150.0, 300.0]
+    assert info["valores"]["opcoes_de_target_cpa"] == [
+        {"target_cpa_brl": 60.0, "orcamento_exigido_brl": 150.0},
+        {"target_cpa_brl": 90.0, "orcamento_exigido_brl": 300.0},
+    ]
+
+
+def test_opcao_sem_orcamento_nao_desloca_o_orcamento_da_opcao_seguinte() -> None:
+    """O caso ESPARSO — o defeito, e o que o teste denso acima nao cobria.
+
+    As duas folhas de `TargetCpaOptInRecommendationOption` sao `optional` no v24,
+    entao a leitura antiga descartava a ausente DENTRO do ramo repetido e as duas
+    listas irmas encurtavam em pontos diferentes. Com a opcao 1 sem orcamento e a
+    opcao 2 exigindo R$ 200,00, o preview devolvia
+
+        target_cpa_por_opcao_brl        = [50.0, 70.0]
+        orcamento_exigido_por_opcao_brl = [200.0]
+
+    e quem pareasse por posicao — que era a instrucao escrita ao lado da tabela —
+    lia os R$ 200,00 como exigencia do CPA de R$ 50,00, que e justamente o da
+    opcao SEM orcamento. Numero errado no exato momento em que o gestor confirma
+    dinheiro.
+
+    A asserção e sobre o REGISTRO inteiro: o orcamento so existe dentro da opcao
+    que o declarou, e a que nao declarou nao ganha o do vizinho.
+    """
+    linha = _row("TARGET_CPA_OPT_IN")
+    detalhe = linha.recommendation.target_cpa_opt_in_recommendation
+    detalhe.recommended_target_cpa_micros = 77_000_000
+    detalhe.options.append({"target_cpa_micros": 50_000_000})
+    detalhe.options.append(
+        {"target_cpa_micros": 70_000_000, "required_campaign_budget_amount_micros": 200_000_000}
+    )
+    info = parse_recommendation_detail_row(linha)
+    assert info["valores"]["opcoes_de_target_cpa"] == [
+        {"target_cpa_brl": 50.0},
+        {"target_cpa_brl": 70.0, "orcamento_exigido_brl": 200.0},
+    ]
+
+
+def test_opcao_que_nao_declara_nada_continua_contando() -> None:
+    """A grade tem o tamanho que o Google mandou — registro vazio nao some.
+
+    Descartar a opcao que nao declara campo nenhum encolheria a grade calada, que
+    e a mesma familia do defeito acima (sumir com o que falta em vez de mostrar
+    que falta). Registro vazio diz "esta opcao existe e nao traz numero"; opcao
+    ausente diria "sao duas opcoes" quando sao tres.
+    """
+    linha = _row("TARGET_CPA_OPT_IN")
+    detalhe = linha.recommendation.target_cpa_opt_in_recommendation
+    detalhe.options.append({"target_cpa_micros": 50_000_000})
+    detalhe.options.append({})
+    info = parse_recommendation_detail_row(linha)
+    assert info["valores"]["opcoes_de_target_cpa"] == [{"target_cpa_brl": 50.0}, {}]
+
+
+def test_nenhuma_folha_repetida_sai_como_lista_paralela() -> None:
+    """A CLASSE do defeito, presa na tabela — nao so a instancia do TARGET_CPA.
+
+    Duas listas irmas pareadas por posicao so estao certas enquanto todo item
+    declarar todos os campos, e o proto nao promete isso em lugar nenhum. Campo
+    REPEATED se le por `ListaDeOpcoes`, que devolve registro; `outros` so carrega
+    caminho singular. Sem esta asserção, o proximo tipo com grade repetiria o
+    mesmo desalinhamento em outro lugar.
+    """
+    for tipo, spec in CAMPOS_DE_DETALHE.items():
+        for chave, caminho, _unidade in spec.outros:
+            assert "[]" not in caminho, (
+                f"{tipo}.{chave} le um campo REPEATED como lista paralela ({caminho}) — "
+                "mova para `opcoes=ListaDeOpcoes(...)`, que pareia por registro"
+            )
 
 
 def test_lista_vazia_de_opcoes_nao_emite_chave__controle_positivo() -> None:
@@ -706,7 +786,7 @@ def test_lista_vazia_de_opcoes_nao_emite_chave__controle_positivo() -> None:
     linha = _row("TARGET_CPA_OPT_IN")
     linha.recommendation.target_cpa_opt_in_recommendation.recommended_target_cpa_micros = 77_000_000
     info = parse_recommendation_detail_row(linha)
-    assert "orcamento_exigido_por_opcao_brl" not in info["valores"]
+    assert "opcoes_de_target_cpa" not in info["valores"]
 
 
 @pytest.mark.parametrize("compartilhado", [False, True])

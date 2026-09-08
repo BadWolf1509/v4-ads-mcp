@@ -126,6 +126,13 @@ atributo: `campaign_budget` nao preenchido devolve o zero-value, e ler dali dari
 `_valor_de` consulta a PRESENCA de cada segmento antes de emitir a chave, e chave
 ausente simplesmente nao aparece em `valores`.
 
+**E ausencia tambem nao pode DESLOCAR o vizinho.** O `TARGET_CPA_OPT_IN` traz uma
+GRADE de metas (`options`, REPEATED), cada uma com o seu CPA e o orcamento que ELA
+exigiria. Ler as duas folhas como duas listas irmas, pareadas por posicao, era
+correto so enquanto toda opcao declarasse as duas: com uma opcao sem orcamento as
+listas encurtavam em pontos diferentes e o preview dava o orcamento de uma opcao
+ao CPA de outra. A grade sai como UM REGISTRO POR OPCAO — ver `ListaDeOpcoes`.
+
 O guard `tests/unit/test_whitelist_de_recomendacao_bate_com_o_proto.py` refaz essa
 varredura no descriptor a cada run — tipo novo que o Google adicionar com campo de
 orcamento ou lance derruba o teste em vez de entrar calado. Ele tambem cobra a
@@ -171,12 +178,9 @@ class DetalheDoTipo:
     a dimensao (ou cujo valor e razao, nao dinheiro) deixa `None` e poe o que
     tiver em `outros`, cada item `(chave_de_saida, caminho_dotted, unidade)`.
 
-    Segmento do caminho terminado em `[]` e campo REPEATED do proto, e a leitura
-    devolve LISTA. Nao e conveniencia de sintaxe: `getattr` num `RepeatedComposite`
-    levanta `AttributeError`, entao `options.required_campaign_budget_amount_micros`
-    (a forma que a revisao sugeriu para o `TARGET_CPA_OPT_IN`) quebraria em
-    producao — e o guard do proto passaria verde, porque a folha existe no
-    descriptor. O `[]` e o que torna a cardinalidade verificavel.
+    Todo caminho de `outros` e SINGULAR. Campo REPEATED nao entra ali: ele vai em
+    `opcoes` e sai como LISTA DE REGISTROS — ver `ListaDeOpcoes` para o preview
+    errado que a forma anterior produzia.
     """
 
     campo: str
@@ -184,6 +188,7 @@ class DetalheDoTipo:
     recomendado_brl: str | None = None
     outros: tuple[tuple[str, str, Unidade], ...] = field(default=())
     derivado: ProdutoDerivado | None = None
+    opcoes: ListaDeOpcoes | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -211,6 +216,48 @@ class ProdutoDerivado:
     ancora: str
     multiplicador: str
     unidade: Unidade
+
+
+@dataclass(frozen=True, slots=True)
+class ListaDeOpcoes:
+    """Campo REPEATED lido como LISTA DE REGISTROS — nao como listas paralelas.
+
+    `TargetCpaOptInRecommendation.options` e a grade de metas disponiveis: cada
+    item traz o CPA daquela meta E o orcamento que ELA exigiria. Ate 07/09 a
+    tabela lia os dois como duas listas irmas (`options[].target_cpa_micros` e
+    `options[].required_campaign_budget_amount_micros`), pareadas por POSICAO — e
+    as duas folhas sao `optional` no v24, entao a leitura descartava o item
+    ausente e as listas encurtavam em pontos diferentes. Medido: opcao 1 sem
+    orcamento, opcao 2 exigindo R$ 200,00 devolvia
+
+        target_cpa_por_opcao_brl        = [50.0, 70.0]
+        orcamento_exigido_por_opcao_brl = [200.0]
+
+    e o gestor lia os R$ 200,00 como exigencia do CPA de 50 — que e o CPA da
+    opcao SEM orcamento. O preview mentia exatamente no momento em que ele
+    confirma dinheiro, que e a tese inteira deste gate.
+
+    **Por que REGISTRO e nao lista realinhada.** Enfileirar `None` no buraco
+    tambem realinha, mas mantem o pareamento como INVARIANTE que alguem tem que
+    preservar: quem le faz o zip de cabeca, e o proximo consumidor que filtrar,
+    ordenar ou compactar uma das listas reintroduz o mesmo bug calado. Registro
+    nao tem posicao a errar — e o passo classico de *parallel arrays* para
+    *array of records*. Opcao que nao declara um dos campos simplesmente nao traz
+    aquela chave, e a ausencia fica presa DENTRO da opcao a que pertence.
+
+    `caminho` e o segmento repetido COM o marcador `[]`; `campos` sao os caminhos
+    dotted dentro de CADA item. O `[]` nao e acucar sintatico: `getattr` num
+    `RepeatedComposite` levanta `AttributeError`, entao
+    `options.required_campaign_budget_amount_micros` (a forma que a revisao da
+    Task 2 sugeriu) quebraria em producao — e o guard de EXISTENCIA passaria
+    verde, porque a folha existe no descriptor. E o marcador e o que deixa a
+    cardinalidade verificavel pelo guard do proto, que continua cobrando as duas
+    folhas por aqui.
+    """
+
+    chave: str
+    caminho: str
+    campos: tuple[tuple[str, str, Unidade], ...]
 
 
 # Os tres tipos de orcamento compartilham a mesma mensagem (CampaignBudgetRecommendation).
@@ -259,20 +306,21 @@ CAMPOS_DE_DETALHE: dict[str, DetalheDoTipo] = {
     ),
     # --- alvos de CPA (dinheiro) ---
     # `options` e REPEATED (`TargetCpaOptInRecommendationOption`): sao as metas
-    # disponiveis, cada uma com o CPA e o orcamento que ela exigiria. Nao ha UM
-    # orcamento a mostrar, ha a faixa — entao saem as duas listas, pareadas por
-    # posicao. `options[]` com o marcador: sem ele, `getattr` no
-    # `RepeatedComposite` levanta `AttributeError` (medido no v24).
+    # disponiveis, cada uma com o CPA e o orcamento que ELA exigiria. Nao ha UM
+    # orcamento a mostrar, ha a grade — e ela sai como UM REGISTRO POR OPCAO, com
+    # os dois numeros da MESMA opcao juntos. Duas listas pareadas por posicao (a
+    # forma ate 07/09) davam o orcamento de uma opcao ao CPA de outra assim que
+    # uma delas nao declarasse o campo; ver `ListaDeOpcoes`.
     "TARGET_CPA_OPT_IN": DetalheDoTipo(
         "target_cpa_opt_in_recommendation",
         None,
         "recommended_target_cpa_micros",
-        (
-            ("target_cpa_por_opcao_brl", "options[].target_cpa_micros", "brl"),
+        opcoes=ListaDeOpcoes(
+            "opcoes_de_target_cpa",
+            "options[]",
             (
-                "orcamento_exigido_por_opcao_brl",
-                "options[].required_campaign_budget_amount_micros",
-                "brl",
+                ("target_cpa_brl", "target_cpa_micros", "brl"),
+                ("orcamento_exigido_brl", "required_campaign_budget_amount_micros", "brl"),
             ),
         ),
     ),
@@ -673,20 +721,45 @@ def _valor_de(msg: Any, caminho: str, unidade: Unidade) -> Any:
     A UNICA excecao e `booleano`: ali `False` e RESPOSTA, nao ausencia
     (`orcamento_compartilhado=False` diz "e exclusivo", que muda a decisao), e o
     `in` do proto-plus nao distingue as duas.
+
+    **Caminho SINGULAR, sempre.** Campo REPEATED se le por `_opcoes`, que devolve
+    um registro por item. Ate 07/09 esta funcao tambem descia no repetido e
+    filtrava o ausente DENTRO da lista — e duas listas irmas encurtavam em pontos
+    diferentes, pareando o orcamento de uma opcao com o CPA de outra
+    (`ListaDeOpcoes`).
     """
     partes = caminho.split(".")
     for i, parte in enumerate(partes):
-        repetido = parte.endswith("[]")
-        nome = parte[:-2] if repetido else parte
         e_folha = i == len(partes) - 1
-        if not (e_folha and unidade == "booleano") and not _declarado(msg, nome):
+        if not (e_folha and unidade == "booleano") and not _declarado(msg, parte):
             return _AUSENTE
-        msg = getattr(msg, nome)
-        if repetido:
-            resto = ".".join(partes[i + 1 :])
-            itens = [_valor_de(item, resto, unidade) for item in msg]
-            return [v for v in itens if v is not _AUSENTE] or _AUSENTE
+        msg = getattr(msg, parte)
     return _converter(msg, unidade)
+
+
+def _opcoes(msg: Any, spec: ListaDeOpcoes) -> list[dict[str, Any]]:
+    """Um REGISTRO por opcao, na ordem e na quantidade em que o Google as mandou.
+
+    Registro que sai sem chave nenhuma **nao e descartado**: a opcao existe, e
+    some-la encolheria a grade sem dizer — a mesma familia de erro que o defeito
+    corrigido aqui. O que falta no registro e o que AQUELA opcao nao declarou, e a
+    ausencia fica presa na opcao a que pertence, nunca deslocando a vizinha.
+
+    Repetido vazio (nenhuma opcao) devolve `[]`, e o chamador nao emite a chave —
+    "sem opcao" nao vira lista vazia no preview.
+    """
+    nome = spec.caminho.removesuffix("[]")
+    if not _declarado(msg, nome):
+        return []
+    registros: list[dict[str, Any]] = []
+    for item in getattr(msg, nome):
+        registro: dict[str, Any] = {}
+        for chave, caminho, unidade in spec.campos:
+            valor = _valor_de(item, caminho, unidade)
+            if valor is not _AUSENTE:
+                registro[chave] = valor
+        registros.append(registro)
+    return registros
 
 
 def _converter(bruto: Any, unidade: Unidade) -> Any:
@@ -793,6 +866,10 @@ def parse_recommendation_detail_row(row: Any) -> dict[str, Any]:
             valor = _valor_de(detalhe, caminho, unidade)
             if valor is not _AUSENTE:
                 valores[chave] = valor
+        if spec.opcoes is not None:
+            grade = _opcoes(detalhe, spec.opcoes)
+            if grade:
+                valores[spec.opcoes.chave] = grade
         if spec.derivado is not None:
             produto = _produto(spec.derivado, atual, valores)
             if produto is not None:
