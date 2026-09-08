@@ -81,6 +81,21 @@ _SCHEMA: dict[str, Any] = {
 }
 
 
+# Ordem dos dias como o Google os nomeia em `segments.day_of_week`. Existe
+# porque a grade `hourly` chega SEM ordem da API e o corte por `limit` sobre um
+# conjunto sem ordem devolve pedaco arbitrario — dict fixo em vez de ordenar
+# pela string, que poria FRIDAY antes de MONDAY.
+_ORDEM_DO_DIA = {
+    "MONDAY": 0,
+    "TUESDAY": 1,
+    "WEDNESDAY": 2,
+    "THURSDAY": 3,
+    "FRIDAY": 4,
+    "SATURDAY": 5,
+    "SUNDAY": 6,
+}
+
+
 @register_tool(
     name="get_performance_breakdown",
     description=(
@@ -196,6 +211,17 @@ async def get_performance_breakdown(args: dict[str, Any]) -> dict[str, Any]:
     # foi reordenado pra evitar. Nos dois breakdowns cujo builder nao tem clausula
     # LIMIT (`device`, `hourly`), a API devolve tudo e este corte e o unico lugar
     # onde o `limit` declarado no schema e honrado.
+    # `hourly` sai da API sem ORDER BY (o builder nao tem clausula nenhuma), e
+    # cortar 168 celulas por 100 sem ordem devolve um pedaco ARBITRARIO da grade
+    # — duas chamadas iguais podem trazer conjuntos diferentes (F98/F88). A
+    # ordem cronologica e a unica em que uma grade cortada continua legivel
+    # ("segunda 00h ate quinta 03h"), e nao mexe em GAQL nenhum, entao nao
+    # muda a ordem de nenhuma outra tool que compartilhe o builder.
+    if breakdown == "hourly":
+        rows.sort(
+            key=lambda r: (_ORDEM_DO_DIA[r["breakdown"]["day_of_week"]], r["breakdown"]["hour"])
+        )
+
     rows, truncado = aplicar_limite(rows, limit)
 
     if breakdown == "geo":

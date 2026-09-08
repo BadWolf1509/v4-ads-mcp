@@ -277,10 +277,25 @@ _IDS_NIVEIS = [f"{lv}+{bd}" if bd else lv for lv, bd, _ in _NIVEIS_DO_BREAKDOWN]
 
 
 def _linha_do_breakdown(breakdown: str | None) -> Callable[[int], dict[str, Any]]:
-    """So o ramo `geo` toca a linha depois do `run_report` (resolve o pais)."""
+    """Os ramos `geo` e `hourly` tocam a linha depois do `run_report`.
+
+    `hourly` chega da API SEM ordem (o builder nao tem clausula nenhuma), entao
+    a fabrica emite a grade ao CONTRARIO de proposito: uma linha generica
+    passaria pelo `sort` sem exercita-lo, e o mock que nao consegue expressar a
+    forma real nao consegue expressar o bug (a grade cortada arbitrariamente).
+    """
     if breakdown == "geo":
         return lambda i: {
             "breakdown": {"country_criterion_id": str(2000 + i)},
+            "cost_brl": float(i),
+        }
+    if breakdown == "hourly":
+        dias = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]
+        return lambda i: {
+            "breakdown": {
+                "day_of_week": dias[(6 - i) % 7],
+                "hour": 23 - (i % 24),
+            },
             "cost_brl": float(i),
         }
     return _linha_simples
@@ -364,3 +379,33 @@ async def test_breakdown_geo_nao_resolve_o_pais_da_sentinela() -> None:
     pedidos = lookup.call_args.kwargs["country_ids"]
     assert len(pedidos) == 3
     assert str(2000 + 3) not in pedidos
+
+
+@pytest.mark.asyncio
+async def test_a_grade_horaria_e_cortada_em_ordem_cronologica() -> None:
+    """A grade `hourly` chega SEM `ORDER BY` — cortar por `limit` sem ordenar
+    devolve um pedaco ARBITRARIO das 168 celulas, e duas chamadas iguais podem
+    trazer conjuntos diferentes (F98/F88).
+
+    Antes do fix o `aplicar_limite` pegava as `limit` primeiras linhas na ordem
+    em que a API mandou. A fabrica emite a grade ao contrario, entao sem o
+    `sort` as linhas devolvidas seriam as de DOMINGO — este teste fica vermelho
+    contra o codigo pre-fix pela ordem, nao por KeyError.
+
+    Cronologica e nao "maior custo" porque uma grade cortada so continua
+    legivel em ordem de tempo: "segunda 00h ate quinta 03h" e uma frase; "as
+    100 horas mais caras" perde a estrutura de grade que o gestor pediu ao
+    escolher `breakdown=hourly`.
+    """
+    from src.mcp.tools.get_performance_breakdown import _ORDEM_DO_DIA
+
+    fora = await _chamar_breakdown("account", "hourly", limite=5, quantas=14)
+
+    chaves = [
+        (_ORDEM_DO_DIA[r["breakdown"]["day_of_week"]], r["breakdown"]["hour"]) for r in fora["rows"]
+    ]
+    assert chaves == sorted(chaves), f"grade cortada fora de ordem: {chaves}"
+    assert chaves[0][0] == _ORDEM_DO_DIA["MONDAY"], (
+        f"o corte comecou fora do inicio da grade — sinal de que o `sort` nao rodou: {chaves}"
+    )
+    assert fora["truncated"] is True
