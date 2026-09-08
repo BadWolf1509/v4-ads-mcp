@@ -120,8 +120,9 @@ def testes_py(raiz: Path | None = None) -> list[Path]:
 _PISO_DE_TOOLS_COM_LIMITE = 20
 
 
-def tools_com_limite() -> list[tuple[str, Path]]:
-    """`(nome, arquivo do handler)` de toda tool cujo schema declara `limit`.
+def tools_com_limite() -> list[tuple[str, Path, str]]:
+    """`(nome, arquivo do handler, nome da função handler)` de toda tool cujo
+    schema declara `limit`.
 
     Mora aqui, e não em um dos guards, porque DOIS guards da mesma invariante
     dependem dela e precisam enxergar o MESMO conjunto: o da declaração
@@ -130,6 +131,14 @@ def tools_com_limite() -> list[tuple[str, Path]]:
     pedir `limit + 1`"). Duas cópias divergiriam, e a divergência absolveria
     exatamente a tool que estivesse só numa das listas.
 
+    **O terceiro campo entrou na rodada de correção 1 do PR 4** e não é
+    conveniência: a unidade do guard da declaração deixou de ser o módulo e
+    passou a ser o CAMINHO DE RETORNO, que só existe dentro de uma função. Sem
+    saber qual das funções do arquivo é o handler, o guard teria que varrer
+    todas — e passaria a cobrar `truncated` do `_row_formatter`, que devolve
+    uma linha, não uma resposta. `register_tool` devolve a função sem
+    embrulhar, então `handler.__name__` é o nome escrito no `def`.
+
     O import do registry é local de propósito: este módulo é importado por ~17
     guards estruturais, a maioria dos quais não toca em `src.mcp`, e um import
     de topo faria todos pagarem a carga do registry.
@@ -137,13 +146,13 @@ def tools_com_limite() -> list[tuple[str, Path]]:
     from src.mcp.tools._registry import all_tools, import_all_tools
 
     import_all_tools()
-    achados: list[tuple[str, Path]] = []
+    achados: list[tuple[str, Path, str]] = []
     for t in all_tools():
         props = (t.input_schema or {}).get("properties", {})
         if "limit" not in props:
             continue
         arquivo = Path(sys.modules[t.handler.__module__].__file__ or "")
-        achados.append((t.name, arquivo))
+        achados.append((t.name, arquivo, t.handler.__name__))
     if len(achados) < _PISO_DE_TOOLS_COM_LIMITE:
         raise EscopoVazioError(
             f"só {len(achados)} tools declaram `limit` (piso: "

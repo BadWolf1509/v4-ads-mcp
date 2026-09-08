@@ -5,6 +5,16 @@ Por que propriedade e nao lista: a versao "lista de tools que precisam de
 exatamente como as 9 desta frente chegaram a producao. O escopo aqui e derivado
 do registry — tool nova com `limit` entra sozinha.
 
+**A unidade da COBRANCA e o CAMINHO DE RETORNO, nao o modulo** (rodada de
+correcao 1 do PR 4). A versao anterior coletava toda chave de todo dict
+alcancavel a partir do modulo da tool: bastava UM `return` declarar para
+absolver todos os outros. Foi assim que o `get_performance_breakdown` —
+`truncated` nos dois retornos do ramo `hourly`, nenhum no generico — passou
+verde no MESMO commit em que a regressao entrou, devolvendo `limit + 1` linhas
+ao gestor. O guard estava la e nao viu, porque afirmava o ADJACENTE ("o modulo
+menciona `truncated`") em vez da invariante ("todo retorno que carrega lista
+cortavel a declara").
+
 **A unidade do salto e a FUNCAO, nao o modulo** (rodada de correcao 2). A
 versao anterior varria o modulo inteiro do helper, e qualquer mencao a
 `truncated` em qualquer canto daquele arquivo absolvia a tool. O raio disso,
@@ -28,6 +38,14 @@ import pytest
 from tests.unit import _guard_harness as h
 
 DEVEDORAS_ATE_A_TASK_2: list[str] = []
+
+# Piso de nao-vacuidade da COBRANCA (nao do escopo): quantos retornos de dict
+# literal o guard tem que ter mesmo examinado. Observados 23 em 2026-09-08.
+# `_PISO_DE_TOOLS_COM_LIMITE` protege o denominador (26 tools); este protege o
+# numerador — um `_retornos_do_handler` que parasse de casar devolveria zero
+# ofensor sobre zero retornos e ficaria verde para sempre, que e a forma mais
+# silenciosa de um guard morrer.
+_PISO_DE_RETORNOS_DE_DICT = 15
 
 # O escopo (tools com `limit`) e o piso dele vivem em `_guard_harness`: este
 # guard e o irmao da sentinela (`test_builders_pedem_a_linha_sentinela`)
@@ -114,6 +132,133 @@ def _declara_truncamento(chaves: set[str]) -> bool:
     return "truncated" in chaves or any(c.endswith("_truncated") for c in chaves)
 
 
+def _chaves_dos_saltos(arquivo: Path, *, raiz: Path | None = None) -> set[str]:
+    """So as chaves das FUNCOES `src.*` que a tool chama — sem o modulo dela.
+
+    E o que absolve quem delega a montagem do retorno em vez de repetir a
+    chave: `get_assets` devolve `{"customer_id": …, "links": …, "summary":
+    summary}`, um dict literal SEM `truncated` no topo, e o campo mora dentro
+    do `summary` que `asset_inventory.py::build_inventory` montou. Medido: e a
+    unica das 26 cujo retorno de dict literal depende deste salto.
+    """
+    chaves: set[str] = set()
+    for _, funcao, no in _escopo_da_tool(arquivo, raiz=raiz):
+        if funcao is not None:
+            chaves |= _chaves_de_dicts(no)
+    return chaves
+
+
+def _retornos_do_handler(arv: ast.Module, handler: str) -> list[ast.Return] | None:
+    """Os `ast.Return` do corpo do handler — sem descer em `def`/`lambda`
+    aninhado. `None` quando o nome nao existe no modulo.
+
+    Nome ausente e tratado pelo chamador como OFENSOR, nunca como absolvicao:
+    um scanner que nao acha o alvo tem que falhar fechado, senao renomear o
+    handler desliga o guard em silencio.
+
+    Nao descer em funcao aninhada e deliberado — os `return` de um helper
+    interno nao sao resposta de tool. `get_ad_schedule` define um `_consulta`
+    cujo `return await run_report(...)` nao promete `truncated` a ninguem, e um
+    `_fmt` aninhado que devolvesse a linha crua seria acusado por um dict que
+    nunca chega ao gestor como resposta.
+    """
+    alvos = [
+        n
+        for n in ast.walk(arv)
+        if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef) and n.name == handler
+    ]
+    if not alvos:
+        return None
+    achados: list[ast.Return] = []
+
+    def visita(no: ast.AST) -> None:
+        for filho in ast.iter_child_nodes(no):
+            if isinstance(filho, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
+                continue
+            if isinstance(filho, ast.Return):
+                achados.append(filho)
+            visita(filho)
+
+    visita(alvos[-1])
+    return achados
+
+
+def _eh_envelope_de_erro(d: ast.Dict) -> bool:
+    """`{"status": "error", …}` — a forma literal E a que `error_envelope`
+    monta (`_mutate_common.py`, mesmo dict com as mesmas chaves).
+
+    Envelope de erro nao carrega lista: nao ha corte que declarar, e cobrar
+    `truncated` dele seria ruido que empurraria o proximo autor a decorar o
+    erro com um campo falso. O casamento e pelo VALOR constante `"error"`, nao
+    pela presenca da chave `status` — `{"status": "ok", "rows": …}` continua
+    sendo resposta de dados e continua sendo cobrado.
+    """
+    return any(
+        isinstance(k, ast.Constant)
+        and k.value == "status"
+        and isinstance(v, ast.Constant)
+        and v.value == "error"
+        for k, v in zip(d.keys, d.values, strict=True)
+    )
+
+
+def _onde(arquivo: Path) -> str:
+    """`h.rel` quando o arquivo mora no repo; o nome nu quando nao mora.
+
+    As mordidas montam um `src.` falso sob `tempfile`, e `Path.relative_to`
+    levanta `ValueError` fora da raiz — sem esta ponte, o guard so seria
+    executavel contra a arvore real e as mordidas nao poderiam exercita-lo.
+    """
+    try:
+        return h.rel(arquivo)
+    except ValueError:
+        return arquivo.name
+
+
+def _retornos_mudos(
+    arquivo: Path, handler: str, *, raiz: Path | None = None
+) -> tuple[list[str], int]:
+    """`(ofensores, quantos retornos de dict foram examinados)`.
+
+    Ofensor = caminho de retorno do handler que entrega um dict literal sem
+    `truncated`/`*_truncated` — nem no proprio dict (aninhados inclusive) nem
+    numa funcao `src.*` que a tool chame.
+
+    **A folga que fica, dita de proposito:** `return response` (nome de
+    variavel) e `return await helper(...)` nao sao dict literal, entao caem no
+    criterio antigo — "a chave existe em algum dict do modulo ou de uma funcao
+    saltada". Sao 3 tools que montam o retorno em variavel
+    (`get_change_history`, `run_gaql`, `get_ad_schedule`) e 5 que delegam por
+    chamada (as 4 Meta e `get_assets`, no segundo retorno dela). Fechar essa
+    metade exigiria seguir a variavel ate a atribuicao (dataflow); a versao
+    ingenua — varrer o modulo — e exatamente a que deixou o
+    `get_performance_breakdown` passar com a regressao dentro, entao afrouxar
+    aqui seria desandar o aperto. Enquanto nao houver dataflow, quem cobre
+    esses caminhos e o par por-tool de `test_tools_declaram_truncamento`, que
+    chama o handler de verdade e le o valor.
+    """
+    arv = h.arvore(arquivo)
+    retornos = _retornos_do_handler(arv, handler)
+    if retornos is None:
+        return ([f"{_onde(arquivo)}: handler `{handler}` nao existe no modulo"], 0)
+    do_modulo = _chaves_de_dicts(arv)
+    dos_saltos = _chaves_dos_saltos(arquivo, raiz=raiz)
+    ofensores: list[str] = []
+    dicts = 0
+    for r in retornos:
+        if r.value is None:
+            continue
+        if isinstance(r.value, ast.Dict):
+            if _eh_envelope_de_erro(r.value):
+                continue
+            dicts += 1
+            if not _declara_truncamento(_chaves_de_dicts(r) | dos_saltos):
+                ofensores.append(f"{_onde(arquivo)}::{handler}:{r.lineno} (dict literal)")
+        elif not _declara_truncamento(do_modulo | dos_saltos):
+            ofensores.append(f"{_onde(arquivo)}::{handler}:{r.lineno}")
+    return ofensores, dicts
+
+
 def _literais_de_truncamento(
     arquivo: Path, *, raiz: Path | None = None
 ) -> list[tuple[Path, str | None, int]]:
@@ -138,10 +283,15 @@ def _literais_de_truncamento(
 def test_toda_tool_com_limite_declara_truncated() -> None:
     """Ratchet de baseline, nao `xfail`. Baseline ZERADA na Task 2.
 
-    A propriedade e "existe chave `truncated` OU `*_truncated`, no modulo do
-    handler OU no corpo de uma funcao `src.*` que ele CHAME (um salto)". As 9
-    devedoras de 2026-09-07 fecharam na Task 2 deste PR, e a lista encolheu
-    no mesmo commit — que era a metade que o `xfail` nao cobrava.
+    A propriedade e, POR CAMINHO DE RETORNO do handler: todo `return` de dict
+    literal carrega `truncated` OU `*_truncated` — no proprio dict (aninhados
+    inclusive) ou no corpo de uma funcao `src.*` que a tool CHAME (um salto).
+    Envelope de erro (`{"status": "error", …}`) e isento: nao carrega lista.
+    Retorno que nao e dict literal (`return response`, `return await
+    helper(...)`) cai no criterio antigo — a folga esta escrita em
+    `_retornos_mudos`, com o motivo. As 9 devedoras de 2026-09-07 fecharam na
+    Task 2 deste PR, e a lista encolheu no mesmo commit — que era a metade que
+    o `xfail` nao cobrava.
 
     A lista fica: `== []` puro perderia a mensagem que ensina as duas leituras
     do vermelho, e um debito futuro (tool nova que chegue cortando calada e
@@ -154,18 +304,29 @@ def test_toda_tool_com_limite_declara_truncated() -> None:
     sempre — e `test_builders_pedem_a_linha_sentinela`, o irmao que compartilha
     este mesmo escopo via `h.tools_com_limite()`.
     """
-    sem = [
-        nome
-        for nome, arq in _tools_com_limite()
-        if not _declara_truncamento(_chaves_alcancaveis(arq))
-    ]
+    detalhe: dict[str, list[str]] = {}
+    dicts_examinados = 0
+    for nome, arq, handler in _tools_com_limite():
+        mudos, quantos = _retornos_mudos(arq, handler)
+        dicts_examinados += quantos
+        if mudos:
+            detalhe[nome] = mudos
+    if dicts_examinados < _PISO_DE_RETORNOS_DE_DICT:
+        raise h.EscopoVazioError(
+            f"so {dicts_examinados} retornos de dict literal examinados (piso: "
+            f"{_PISO_DE_RETORNOS_DE_DICT}, observados 23 em 2026-09-08). O "
+            "localizador de handler ou o de `ast.Return` parou de casar, e o "
+            "guard estaria absolvendo por nao ter olhado nada."
+        )
+    sem = sorted(detalhe)
     assert sem == DEVEDORAS_ATE_A_TASK_2, (
         "o conjunto de tools que cortam e nao dizem que cortaram (spec 3.2) "
         f"mudou.\n  medido : {sem}\n  baseline: {DEVEDORAS_ATE_A_TASK_2}\n"
-        "Duas leituras: (a) entrou ofensor novo — uma tool passou a cortar sem "
-        "declarar, e o lugar de consertar e a tool, nao esta lista; (b) uma "
-        "devedora anotada foi fechada — entao ENCOLHA DEVEDORAS_ATE_A_TASK_2 "
-        "no mesmo commit."
+        f"  caminhos: {detalhe}\n"
+        "Duas leituras: (a) entrou ofensor novo — um caminho de retorno passou "
+        "a entregar lista sem declarar corte, e o lugar de consertar e aquele "
+        "`return`, nao esta lista; (b) uma devedora anotada foi fechada — entao "
+        "ENCOLHA DEVEDORAS_ATE_A_TASK_2 no mesmo commit."
     )
 
 
@@ -182,7 +343,7 @@ def test_nenhuma_tool_devolve_truncated_constante() -> None:
     derivam de `_escopo_da_tool`).
     """
     ofensores: list[str] = []
-    for nome, arq in _tools_com_limite():
+    for nome, arq, _handler in _tools_com_limite():
         for origem, funcao, linha in _literais_de_truncamento(arq):
             onde = h.rel(origem) + (f"::{funcao}" if funcao else "")
             ofensores.append(f"{nome} -> {onde}:{linha}")
@@ -353,3 +514,119 @@ def test_o_guard_enxerga_as_duas_formas_erradas() -> None:
         mudo = Path(d) / "mudo.py"
         mudo.write_text('def f():\n    return {"rows": []}\n', encoding="utf-8")
         assert "truncated" not in _chaves_do_modulo(mudo)
+
+
+# --------------------------------------------------------------------------
+# Mordidas do APERTO desta rodada (por caminho de retorno).
+# --------------------------------------------------------------------------
+
+
+@contextmanager
+def _modulo_sintetico(fonte: str) -> Iterator[Path]:
+    """Um arquivo `.py` avulso sob tempfile — sem `src.` nenhum, porque estas
+    mordidas falam do RETORNO, nao do salto."""
+    with tempfile.TemporaryDirectory() as d:
+        arquivo = Path(d) / "tool_falsa.py"
+        arquivo.write_text(fonte, encoding="utf-8")
+        yield arquivo
+
+
+_DOIS_RETORNOS_UM_MUDO = (
+    "def roda(linhas, teto):\n"
+    "    if teto:\n"
+    '        return {"rows": linhas[:teto], "truncated": len(linhas) > teto}\n'
+    '    return {"rows": linhas}\n'
+)
+
+_DOIS_RETORNOS_DECLARANDO = (
+    "def roda(linhas, teto):\n"
+    "    if teto:\n"
+    '        return {"rows": linhas[:teto], "truncated": len(linhas) > teto}\n'
+    '    return {"rows": linhas, "truncated": len(linhas) > 0}\n'
+)
+
+
+def test_mordida_5_um_retorno_declara_e_o_outro_nao_e_acusado() -> None:
+    """A mordida DESTA rodada, e a unica que a implementacao anterior nao passa.
+
+    Handler com DOIS `return` de dict: o primeiro declara `truncated`, o
+    segundo nao. O criterio antigo coletava as chaves de TODO dict do modulo,
+    via a do primeiro e absolvia — foi exatamente assim que o
+    `get_performance_breakdown` (declarando nos dois retornos do ramo `hourly`
+    e em nenhum do generico) ficou verde no commit em que a regressao entrou.
+
+    A primeira assercao e o controle positivo do aperto: ela AFIRMA que o
+    criterio antigo absolve este modulo. Sem ela, a mordida poderia ficar
+    vermelha por outro motivo qualquer e nao provaria que o guard ficou mais
+    forte. A segunda metade (os dois declarando => zero ofensor) impede o
+    guard trivial que acusasse todo mundo.
+    """
+    with _modulo_sintetico(_DOIS_RETORNOS_UM_MUDO) as arquivo:
+        assert _declara_truncamento(_chaves_alcancaveis(arquivo)), (
+            "controle: o criterio ANTIGO (chave em qualquer dict do modulo) "
+            "ABSOLVE este modulo — e por isso que a acusacao abaixo prova o aperto"
+        )
+        ofensores, dicts = _retornos_mudos(arquivo, "roda")
+        assert dicts == 2, "controle: os dois retornos de dict tem que ser examinados"
+        assert ofensores == ["tool_falsa.py::roda:4 (dict literal)"], ofensores
+
+    with _modulo_sintetico(_DOIS_RETORNOS_DECLARANDO) as arquivo:
+        assert _retornos_mudos(arquivo, "roda") == ([], 2)
+
+
+def test_mordida_6_envelope_de_erro_e_isento_mas_status_ok_nao_e() -> None:
+    """A isencao casa o VALOR `"error"`, nao a chave `status`.
+
+    Falha contra: **isencao larga** que absolvesse todo dict com `status`
+    (`{"status": "ok", "rows": …}` e resposta de dados e tem que ser cobrada)
+    e contra **isencao nenhuma**, que cobraria `truncated` de um envelope de
+    erro — que nao carrega lista — e empurraria o proximo autor a decorar o
+    erro com um campo falso.
+    """
+    erro = (
+        "def roda(x):\n"
+        "    if not x:\n"
+        '        return {"status": "error", "error_message": "vazio"}\n'
+        '    return {"rows": x, "truncated": len(x) > 1}\n'
+    )
+    with _modulo_sintetico(erro) as arquivo:
+        ofensores, dicts = _retornos_mudos(arquivo, "roda")
+        assert ofensores == []
+        assert dicts == 1, "o envelope de erro nao entra na contagem de cobrados"
+
+    ok = 'def roda(x):\n    return {"status": "ok", "rows": x}\n'
+    with _modulo_sintetico(ok) as arquivo:
+        assert _retornos_mudos(arquivo, "roda")[0] == ["tool_falsa.py::roda:2 (dict literal)"]
+
+
+def test_mordida_7_handler_que_nao_existe_e_ofensor_nao_absolvido() -> None:
+    """Falhar FECHADO: renomear o handler nao pode desligar o guard calado.
+
+    Falha contra: **implementacao que devolvesse lista vazia** quando o nome
+    nao casa — o conjunto inteiro passaria a ser absolvido por vacuidade, e o
+    sintoma seria um guard verde, nao um erro.
+    """
+    with _modulo_sintetico('def roda(x):\n    return {"rows": x}\n') as arquivo:
+        ofensores, dicts = _retornos_mudos(arquivo, "nome_que_nao_existe")
+        assert dicts == 0
+        assert len(ofensores) == 1 and "nao existe no modulo" in ofensores[0]
+
+
+def test_mordida_8_retorno_de_funcao_aninhada_nao_e_cobrado() -> None:
+    """`def` interno tem escopo proprio: o `return` dele nao e resposta de tool.
+
+    Falha contra: **varredura por `ast.walk`** do corpo do handler, que
+    desceria no helper aninhado e cobraria `truncated` de um dict que nunca
+    chega ao gestor como resposta. Vivo hoje em `get_ad_schedule`, que define
+    um `_consulta` dentro do proprio handler.
+    """
+    fonte = (
+        "def roda(x):\n"
+        "    def _linha(r):\n"
+        '        return {"id": r}\n'
+        '    return {"rows": [_linha(r) for r in x], "truncated": len(x) > 1}\n'
+    )
+    with _modulo_sintetico(fonte) as arquivo:
+        ofensores, dicts = _retornos_mudos(arquivo, "roda")
+        assert dicts == 1, "so o retorno do handler conta"
+        assert ofensores == []

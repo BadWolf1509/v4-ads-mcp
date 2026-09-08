@@ -49,7 +49,7 @@ def _funcoes_de_query_de_tool_com_limite() -> list[tuple[Path, ast.AST]]:
     trazem uma vez so (`dict` keyed por arquivo+nome).
     """
     achadas: dict[tuple[str, str], tuple[Path, ast.AST]] = {}
-    for _, arquivo in h.tools_com_limite():
+    for _, arquivo, _handler in h.tools_com_limite():
         for helper, fn in h.funcoes_chamadas_de_src(arquivo):
             resolvido = helper.resolve()
             if _QUERIES not in resolvido.parents:
