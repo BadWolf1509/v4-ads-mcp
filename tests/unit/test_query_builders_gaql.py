@@ -14,6 +14,7 @@ até a Fase 2B (soak) — typo aqui é prod quebrada.
 
 from datetime import date
 
+from src.google_ads.queries.change_history import change_history_query
 from src.google_ads.queries.client_report import (
     funnel_query,
     top_creatives_query,
@@ -190,7 +191,7 @@ def test_campaign_performance_query_shape_status_filter_and_order() -> None:
     assert _DATE_CLAUSE in q
     assert "campaign.status = 'ENABLED'" in q
     assert "ORDER BY metrics.cost_micros DESC" in q
-    assert "LIMIT 10" in q
+    assert "LIMIT 11" in q  # +1: a linha sentinela
 
 
 def test_campaign_performance_query_status_all_omits_status_clause() -> None:
@@ -217,7 +218,7 @@ def test_ad_group_performance_query_shape_status_filter_and_order() -> None:
     assert _DATE_CLAUSE in q
     assert "ad_group.status = 'PAUSED'" in q
     assert "ORDER BY metrics.cost_micros DESC" in q
-    assert "LIMIT 20" in q
+    assert "LIMIT 21" in q  # +1: a linha sentinela
 
 
 def test_ad_group_performance_query_status_all_omits_status_clause() -> None:
@@ -254,7 +255,7 @@ def test_geo_performance_query_shape_and_order() -> None:
         assert field in q, f"faltou {field} no SELECT do geo_performance_query"
     assert _DATE_CLAUSE in q
     assert "ORDER BY metrics.cost_micros DESC" in q
-    assert "LIMIT 15" in q
+    assert "LIMIT 16" in q  # +1: a linha sentinela
 
 
 def test_hourly_performance_query_shape() -> None:
@@ -307,7 +308,7 @@ def test_keyword_performance_query_shape_status_filter_and_order() -> None:
     assert _DATE_CLAUSE in q
     assert "ad_group_criterion.status = 'ENABLED'" in q
     assert "ORDER BY metrics.cost_micros DESC" in q
-    assert "LIMIT 25" in q
+    assert "LIMIT 26" in q  # +1: a linha sentinela
 
 
 def test_keyword_performance_query_status_all_omits_status_clause() -> None:
@@ -343,7 +344,7 @@ def test_search_terms_query_shape_and_order() -> None:
         assert field in q, f"faltou {field} no SELECT do search_terms_query"
     assert _DATE_CLAUSE in q
     assert "ORDER BY metrics.cost_micros DESC" in q
-    assert "LIMIT 30" in q
+    assert "LIMIT 31" in q  # +1: a linha sentinela
 
 
 def test_search_terms_query_metric_filters_appended() -> None:
@@ -398,7 +399,7 @@ def test_ad_performance_query_shape_status_filter_and_order() -> None:
     assert _DATE_CLAUSE in q
     assert "ad_group_ad.status = 'ENABLED'" in q
     assert "ORDER BY metrics.cost_micros DESC" in q
-    assert "LIMIT 12" in q
+    assert "LIMIT 13" in q  # +1: a linha sentinela
 
 
 def test_ad_performance_query_status_all_omits_status_clause() -> None:
@@ -427,7 +428,7 @@ def test_audience_performance_query_shape_and_order() -> None:
         assert field in q, f"faltou {field} no SELECT do audience_performance_query"
     assert _DATE_CLAUSE in q
     assert "ORDER BY metrics.cost_micros DESC" in q
-    assert "LIMIT 8" in q
+    assert "LIMIT 9" in q  # +1: a linha sentinela
 
 
 def test_conversion_actions_query_shape() -> None:
@@ -449,3 +450,77 @@ def test_conversion_actions_query_shape() -> None:
         assert field in q, f"faltou {field} no SELECT do conversion_actions_query"
     # Sem filtro de data/status — lista todas as conversion actions da conta.
     assert "WHERE" not in q
+
+
+# ---------------------------------------------------------------------------
+# A linha sentinela (PR 4, §3.2)
+#
+# Todo builder aqui serve uma tool que declara `limit` no schema e devolve
+# `truncated`. `aplicar_limite` decide o corte comparando `len(linhas) >
+# limite` — comparacao que so distingue "vieram exatamente `limite`" de
+# "havia mais" se a consulta pediu `limite + 1`. Com `LIMIT {limit}` o
+# `truncated` responde `false` para sempre, e o gestor le "nao cortei" de uma
+# resposta cortada.
+#
+# O par de assercoes e deliberado: a primeira prende o `+1`, a segunda prende
+# que o teto exato NAO ficou (um builder que emitisse as duas clausulas, ou
+# que somasse em outro lugar, passaria so com a primeira).
+# ---------------------------------------------------------------------------
+
+
+def test_campaign_performance_query_pede_uma_linha_a_mais() -> None:
+    q = campaign_performance_query(_S, _E, "ENABLED", 100)
+    assert "LIMIT 101" in q
+    assert "LIMIT 100" not in q
+
+
+def test_ad_group_performance_query_pede_uma_linha_a_mais() -> None:
+    q = ad_group_performance_query(_S, _E, "ENABLED", 100)
+    assert "LIMIT 101" in q
+    assert "LIMIT 100" not in q
+
+
+def test_geo_performance_query_pede_uma_linha_a_mais() -> None:
+    q = geo_performance_query(_S, _E, 100)
+    assert "LIMIT 101" in q
+    assert "LIMIT 100" not in q
+
+
+def test_keyword_performance_query_pede_uma_linha_a_mais() -> None:
+    q = keyword_performance_query(_S, _E, "ENABLED", 100)
+    assert "LIMIT 101" in q
+    assert "LIMIT 100" not in q
+
+
+def test_search_terms_query_pede_uma_linha_a_mais() -> None:
+    q = search_terms_query(_S, _E, 100)
+    assert "LIMIT 101" in q
+    assert "LIMIT 100" not in q
+
+
+def test_ad_performance_query_pede_uma_linha_a_mais() -> None:
+    q = ad_performance_query(_S, _E, "ENABLED", 100)
+    assert "LIMIT 101" in q
+    assert "LIMIT 100" not in q
+
+
+def test_audience_performance_query_pede_uma_linha_a_mais() -> None:
+    q = audience_performance_query(_S, _E, 100)
+    assert "LIMIT 101" in q
+    assert "LIMIT 100" not in q
+
+
+def test_change_history_query_pede_uma_linha_a_mais() -> None:
+    """Janela propria de 7 dias: `_S.._E` sao 31 dias e o builder recusa
+    acima de 30 (`RangeTooWideError`)."""
+    q = change_history_query(
+        start=date(2026, 1, 1),
+        end=date(2026, 1, 7),
+        resource_types=None,
+        operation_types=None,
+        user_emails=None,
+        client_types=None,
+        limit=100,
+    )
+    assert "LIMIT 101" in q
+    assert "LIMIT 100" not in q

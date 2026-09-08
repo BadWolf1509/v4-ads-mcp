@@ -180,7 +180,18 @@ _SCHEMA: dict[str, Any] = {
             "type": "array",
             "items": {"type": "string", "enum": _CLIENT_TYPES},
         },
-        "limit": {"type": "integer", "minimum": 1, "maximum": 10000, "default": 200},
+        # 9999, nao 10000: o builder pede `limit + 1` (a linha sentinela que
+        # revela o corte) e o change_event tem cap DURO de 10k. Medido em
+        # 2026-09-07 via `validate_gaql` na 786-223-0676: `LIMIT 10001` volta
+        # "Change event requests must specify a LIMIT less than or equal to
+        # 10k" e `LIMIT 10000` passa. Sem baixar o teto, o gestor que pedisse
+        # o maximo do proprio schema receberia erro do Google — e a
+        # alternativa (cortar a sentinela so na borda) devolveria
+        # `truncated: false` justamente onde o corte e mais provavel.
+        # O cap e do change_event, nao da GAQL: `FROM campaign LIMIT 10001`
+        # foi validado OK na mesma sonda, entao os outros builders desta
+        # frente seguem com `maximum: 10000`.
+        "limit": {"type": "integer", "minimum": 1, "maximum": 9999, "default": 200},
     },
     "required": ["customer_id"],
     "additionalProperties": False,

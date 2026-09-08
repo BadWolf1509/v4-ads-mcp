@@ -17,7 +17,7 @@ def test_query_without_filters_omits_metric_clauses() -> None:
     assert "metrics.conversions >" not in q
     # backward-compat: ORDER BY + LIMIT preservados
     assert "ORDER BY metrics.cost_micros DESC" in q
-    assert "LIMIT 200" in q
+    assert "LIMIT 201" in q  # +1: a linha sentinela do `truncated`
 
 
 def test_query_with_filters_injects_clauses() -> None:

@@ -16,7 +16,7 @@ def campaign_performance_query(start: date, end: date, status: str, limit: int) 
         FROM campaign
         WHERE {gaql_date_clause(start, end)} {status_clause}
         ORDER BY metrics.cost_micros DESC
-        LIMIT {limit}
+        LIMIT {limit + 1}
     """.strip()
 
 
@@ -31,7 +31,7 @@ def ad_group_performance_query(start: date, end: date, status: str, limit: int) 
         FROM ad_group
         WHERE {gaql_date_clause(start, end)} {status_clause}
         ORDER BY metrics.cost_micros DESC
-        LIMIT {limit}
+        LIMIT {limit + 1}
     """.strip()
 
 
@@ -56,7 +56,7 @@ def geo_performance_query(start: date, end: date, limit: int) -> str:
         FROM geographic_view
         WHERE {gaql_date_clause(start, end)}
         ORDER BY metrics.cost_micros DESC
-        LIMIT {limit}
+        LIMIT {limit + 1}
     """.strip()
 
 

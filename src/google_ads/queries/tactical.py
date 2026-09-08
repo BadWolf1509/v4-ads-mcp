@@ -37,7 +37,7 @@ def keyword_performance_query(
         FROM keyword_view
         WHERE {gaql_date_clause(start, end)} {status_clause} {metric_clause}
         ORDER BY metrics.cost_micros DESC
-        LIMIT {limit}
+        LIMIT {limit + 1}
     """.strip()
 
 
@@ -62,7 +62,7 @@ def search_terms_query(
         FROM search_term_view
         WHERE {gaql_date_clause(start, end)} {metric_clause}
         ORDER BY metrics.cost_micros DESC
-        LIMIT {limit}
+        LIMIT {limit + 1}
     """.strip()
 
 
@@ -100,7 +100,7 @@ def ad_performance_query(start: date, end: date, status: str, limit: int) -> str
         FROM ad_group_ad
         WHERE {gaql_date_clause(start, end)} {status_clause}
         ORDER BY metrics.cost_micros DESC
-        LIMIT {limit}
+        LIMIT {limit + 1}
     """.strip()
 
 
@@ -118,7 +118,7 @@ def audience_performance_query(start: date, end: date, limit: int) -> str:
         FROM ad_group_audience_view
         WHERE {gaql_date_clause(start, end)}
         ORDER BY metrics.cost_micros DESC
-        LIMIT {limit}
+        LIMIT {limit + 1}
     """.strip()
 
 
