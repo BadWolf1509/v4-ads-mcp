@@ -8,6 +8,7 @@ from src.google_ads.queries._common import micros_to_currency, resolve_date_wind
 from src.google_ads.queries.performance import ad_group_performance_query
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
+from src.mcp.tools._common import aplicar_limite
 from src.mcp.tools._registry import register_tool
 
 _DATE_PRESETS = [
@@ -84,7 +85,9 @@ def _row_formatter(row: Any) -> dict[str, Any]:
     description=(
         "[CORE] Prefira get_performance_breakdown(level=ad_group) — este report sera "
         "arquivado (Fase 2B). Performance por grupo de anuncios: impressoes, clicks, custo, conversoes. "
-        "Ordenado por custo desc. Filtros: status, limit."
+        "Ordenado por custo desc. Filtros: status, limit. `truncated: true` avisa "
+        "que a conta tinha MAIS grupos do que o limit e a lista foi cortada no topo "
+        "de gasto — peca um limit maior ou filtre."
     ),
     input_schema=_SCHEMA,
     bucket="always",
@@ -110,8 +113,12 @@ async def get_ad_group_performance(args: dict[str, Any]) -> dict[str, Any]:
         operation_name="get_ad_group_performance",
         audit_this_call=True,
     )
+    # A consulta pediu `limit + 1`; a linha extra e a sentinela que revela o
+    # corte e nao pode chegar ao gestor.
+    rows, truncado = aplicar_limite(rows, limit)
     return {
         "customer_id": customer_id,
         "period": {"from": start.isoformat(), "to": end.isoformat()},
         "rows": rows,
+        "truncated": truncado,
     }

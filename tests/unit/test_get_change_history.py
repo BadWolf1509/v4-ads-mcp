@@ -290,3 +290,122 @@ async def test_f23_no_warning_when_within_retention_window(monkeypatch):
     assert "date_range_warning" not in result
     assert "period" in result
     assert result["summary"]["total_changes"] == 0
+
+
+# ---------------------------------------------------------------------------
+# O cap DURO do change_event (10k) contra o contrato publico do schema.
+#
+# Medido em 2026-09-07 via `validate_gaql` na 786-223-0676: `LIMIT 10001` em
+# `FROM change_event` volta "Change event requests must specify a LIMIT less
+# than or equal to 10k", `LIMIT 10000` passa, e `FROM campaign ... LIMIT 10001`
+# passa — o cap e DESTE recurso, nao da GAQL.
+#
+# A saida NAO e estreitar `maximum` pra 9999: `src/mcp/server.py` valida o
+# schema server-side e, por F140, a sessao ja aberta continua com o catalogo
+# antigo em maos — o gestor pediria o maximo que o schema DELE anuncia e
+# levaria erro duro de validacao. Acrescentar campo e aditivo; estreitar
+# dominio de entrada nao e. O idioma e `fetch n+1` com teto de API: pedir
+# `min(limit + 1, CAP)` e ler `len == CAP` como corte na borda.
+# ---------------------------------------------------------------------------
+
+_CONTA = "1234567890"
+
+
+def _linha_de_mudanca(i: int) -> dict:
+    """`campaign_id`/`ad_group_id` None: `_resolve_names` nao consulta nada."""
+    return {
+        "change_date_time": "2026-09-05 10:00:00",
+        "user_email": "fulano@v4company.com",
+        "client_type": "GOOGLE_ADS_WEB_CLIENT",
+        "resource_type": "CAMPAIGN",
+        "resource_id": str(i),
+        "resource_name": "",
+        "_resource_path": f"customers/{_CONTA}/campaigns/{i}",
+        "operation": "UPDATE",
+        "changed_fields": [],
+        "campaign_id": None,
+        "ad_group_id": None,
+        "old_status": None,
+        "new_status": None,
+    }
+
+
+def _mock_run_report(monkeypatch, linhas: list[dict], capturadas: list[str]) -> None:
+    from src.mcp.tools import get_change_history as mod
+
+    async def fake_run_report(**kwargs):
+        capturadas.append(kwargs["query"])
+        if kwargs["operation_name"] == "get_change_history":
+            return linhas
+        return []  # a sonda de fronteira
+
+    monkeypatch.setattr(mod, "run_report", fake_run_report)
+
+
+def test_limit_maximo_do_schema_continua_10000():
+    """F140: `maximum` e contrato publico ja negociado no handshake.
+
+    Estreitar pra 9999 nao chega na sessao aberta — ela segue anunciando
+    10000 e passa a receber erro duro de validacao onde antes funcionava. O
+    cap da API se resolve DENTRO da tool, nao no dominio de entrada.
+    """
+    from src.mcp.tools.get_change_history import _SCHEMA
+
+    assert _SCHEMA["properties"]["limit"]["maximum"] == 10000
+    validate({"customer_id": _CONTA, "limit": 10000}, _SCHEMA)
+
+
+@pytest.mark.asyncio
+async def test_no_teto_a_query_nao_ultrapassa_o_cap_do_change_event(monkeypatch):
+    """`limit: 10000` + sentinela daria `LIMIT 10001`, que o Google RECUSA.
+
+    O pedido e `min(limit + 1, CAP)` — no teto, exatamente o cap.
+    """
+    from src.mcp.tools import get_change_history as mod
+
+    capturadas: list[str] = []
+    _mock_run_report(monkeypatch, [], capturadas)
+
+    await mod.get_change_history({"customer_id": _CONTA, "limit": 10000})
+
+    principal = capturadas[0]
+    assert "LIMIT 10000" in principal
+    assert "LIMIT 10001" not in principal
+
+
+@pytest.mark.asyncio
+async def test_abaixo_do_teto_a_sentinela_continua_sendo_pedida(monkeypatch):
+    """O cap so morde no teto: com `limit` folgado, `limit + 1` inteiro.
+
+    Sem esta metade, um `min` escrito errado (que pedisse sempre o cap, ou
+    sempre `limit`) passaria no teste de cima.
+    """
+    from src.mcp.tools import get_change_history as mod
+
+    capturadas: list[str] = []
+    _mock_run_report(monkeypatch, [], capturadas)
+
+    await mod.get_change_history({"customer_id": _CONTA, "limit": 200})
+
+    assert "LIMIT 201" in capturadas[0]
+
+
+@pytest.mark.asyncio
+async def test_no_teto_o_cap_do_google_e_lido_como_corte(monkeypatch):
+    """A borda que o `min` cria: no teto nao ha sentinela para comparar.
+
+    Com `limit == CAP`, `len(linhas) > limit` e falso por construcao — e um
+    `truncated: false` ali seria a mentira exata que este PR existe pra
+    matar. `len(linhas) == CAP` fecha o buraco, degradando na direcao segura
+    (num universo de exatamente 10000 mudancas, avisa corte que nao houve).
+    """
+    from src.mcp.tools import get_change_history as mod
+
+    linhas = [_linha_de_mudanca(i) for i in range(10_000)]
+    _mock_run_report(monkeypatch, linhas, [])
+
+    fora = await mod.get_change_history({"customer_id": _CONTA, "limit": 10000})
+
+    assert fora["truncated"] is True
+    assert len(fora["rows"]) == 10_000
+    assert fora["summary"]["total_changes"] == 10_000

@@ -79,7 +79,7 @@ async def update_keyword_bid(args: dict[str, Any]) -> dict[str, Any]:
         return error_envelope("update_keyword_bid", strategy_error)
 
     crit_ids = [b["criterion_id"] for b in bids_input]
-    ids_clause = ", ".join(crit_ids)
+    ids_clause = ", ".join(str(int(x)) for x in crit_ids)
     query = f"""
         SELECT
           ad_group.id,

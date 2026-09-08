@@ -160,7 +160,7 @@ def change_history_query(
         FROM change_event
         WHERE {where_clause}
         ORDER BY change_event.change_date_time DESC
-        LIMIT {limit}
+        LIMIT {limit + 1}
     """.strip()
 
 

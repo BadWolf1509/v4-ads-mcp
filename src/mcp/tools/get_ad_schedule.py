@@ -7,6 +7,7 @@ duas coisas). Por isso `schedule_summary` existe por campanha, mesmo sem janela.
 """
 
 import asyncio
+from collections.abc import Collection
 from typing import Any
 
 from src.google_ads.account_clock import resolve_account_today
@@ -29,6 +30,7 @@ from src.google_ads.queries.ad_schedule import (
 )
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
+from src.mcp.tools._common import aplicar_limite
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -74,7 +76,16 @@ _DESCRIPTION = (
     "`has_schedule`, `hours_per_week`, `budget_is_shared` e `campaign_status` "
     "(grade de campanha PAUSED nao afeta entrega). ATENCAO: campanha "
     "SEM nenhuma janela serve 24x7 — `has_schedule: false` e `hours_per_week: 168` "
-    "dizem isso explicitamente; nao leia lista vazia como 'nao serve'. Janela cobre "
+    "dizem isso explicitamente; nao leia lista vazia como 'nao serve'. Isso vale SO "
+    "quando a resposta nao veio cortada: sob `truncated: true`, tem `has_schedule: "
+    "null`, `hours_per_week: null`, `windows: null` e "
+    "`schedule_desconhecida_por_truncamento: true` no resumo (1) toda campanha cuja "
+    "grade caiu inteira alem do corte do `limit` e (2) a campanha da BORDA do corte "
+    "— a ultima que ainda tem linha na resposta, cuja grade pode ter sido cortada no "
+    "meio; as linhas vem ordenadas por campanha, entao havendo corte existe sempre "
+    "exatamente uma nessa posicao, e nao da para saber se ela veio inteira. "
+    "`null` significa 'nao sei se tem grade ou nao, aumente o `limit`', "
+    "nunca leia `null` como false nem como 24x7. Janela cobre "
     "[inicio, fim); `end_hour: 24` = ate o fim do dia; minutos so 0/15/30/45 (API). "
     "Uma campanha pode ter ate 7x24 janelas: `limit` (default 200, teto 1000) corta e "
     "`truncated: true` avisa. `budget_is_shared` vem de campaign_budget.explicitly_shared "
@@ -121,6 +132,48 @@ def rows_to_current(rows: list[dict[str, Any]]) -> dict[str, list[CurrentWindow]
     return por_campanha
 
 
+def campanhas_com_grade_incerta(
+    rows: list[dict[str, Any]],
+    *,
+    truncated: bool,
+    # `Collection`, nao `Iterable`: o corpo le `campanhas` DUAS vezes, e um
+    # gerador viria vazio na segunda — a intersecao zeraria e a regra da borda
+    # se desligaria em silencio, sem teste vermelho e sem excecao. Nenhum
+    # call-site de hoje passa gerador (um manda dict, outro manda lista), mas
+    # `Iterable` CONVIDA a isso e o mypy aceita.
+    campanhas: Collection[str],
+) -> set[str]:
+    """Campanhas cuja grade NAO pode ser afirmada depois de uma leitura cortada.
+
+    `rows` sao as linhas que SOBREVIVERAM ao corte (pos-`aplicar_limite`).
+    Duas familias, e a segunda e a que faltava (residuo do F147):
+
+    - a **ausente**: nenhuma linha dela sobreviveu, entao `summarize_current([])`
+      a chamaria de "sem grade" — que na §3 quer dizer 24x7, o oposto do que a
+      grade dela pode dizer;
+    - a da **borda**: a dona da ULTIMA linha lida. `ad_schedule_query` ordena por
+      `campaign.id`, entao as linhas chegam agrupadas e o corte cai DENTRO da
+      grade de exatamente uma campanha — sempre existe uma nessa posicao quando
+      houve corte. O resumo dela sairia calculado sobre a PARTE lida:
+      `hours_per_week` subestimado, sem `null` e sem sinal nenhum.
+
+    Nao ha como saber se o corte caiu no fim da grade da campanha da borda ou no
+    meio dela — a resposta so tem as linhas que couberam. Adivinhar "esta
+    completa" e o defeito original com outra roupa, entao a borda entra SEMPRE
+    que houve corte.
+
+    Fora de truncamento devolve conjunto vazio: nada aqui muda a leitura
+    completa.
+    """
+    if not truncated:
+        return set()
+    lidas = {r["campaign_id"] for r in rows}
+    incertas = {cid for cid in campanhas if cid not in lidas}
+    if rows:
+        incertas.add(rows[-1]["campaign_id"])
+    return incertas & set(campanhas)
+
+
 @register_tool(
     name="get_ad_schedule", description=_DESCRIPTION, input_schema=_SCHEMA, bucket="always"
 )
@@ -155,8 +208,7 @@ async def get_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
         ),
         _consulta(campaign_budget_query(campaign_ids=campaign_ids), parse_campaign_budget_row),
     )
-    truncated = len(grade_rows) > limit
-    grade_rows = grade_rows[:limit]
+    grade_rows, truncated = aplicar_limite(grade_rows, limit)
 
     atual = rows_to_current(grade_rows)
     summary: dict[str, dict[str, Any]] = {}
@@ -170,6 +222,34 @@ async def get_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
             **summarize_current(atual.get(cid, [])),
             "budget_is_shared": o["explicitly_shared"],
         }
+
+    # Task 4 (PR 4): `atual.get(cid, [])` acima nao distingue "campanha sem
+    # nenhuma janela" de "campanha com janelas que cairam alem do corte do
+    # `limit`" — as duas chegam como lista vazia, e `summarize_current([])`
+    # sempre le a primeira. Sob `truncated`, toda campanha AUSENTE de `atual`
+    # cai nesse limbo: nao sabemos se ela serve 24x7 ou se so nao coube na
+    # pagina. `false`/`168` aqui e uma afirmacao sobre ENTREGA — nao se chuta
+    # isso a partir de uma leitura parcial (mesma familia do F131: vazio que
+    # quer dizer duas coisas).
+    #
+    # A2 (revisao final, residuo do F147): a campanha da BORDA cai no mesmo
+    # limbo por outro caminho — parte da grade dela sobreviveu ao corte e o
+    # resto nao, e o resumo sairia calculado sobre a parte, com
+    # `hours_per_week` subestimado e nenhum sinal. As duas familias vivem em
+    # `campanhas_com_grade_incerta`, que os DOIS gemeos chamam: separar as
+    # clausulas de novo e como o F128 nasceu.
+    incertas = campanhas_com_grade_incerta(grade_rows, truncated=truncated, campanhas=summary)
+    for cid, resumo in summary.items():
+        if cid in incertas:
+            resumo["has_schedule"] = None
+            resumo["hours_per_week"] = None
+            # `windows` tambem, senao o resumo se contradiz: `has_schedule: null`
+            # ao lado de `windows: 0` le como "zero janelas", que e justamente a
+            # afirmacao que este bloco existe para nao fazer. Tres campos que
+            # descrevem a mesma coisa desconhecida tem que dizer desconhecido
+            # juntos.
+            resumo["windows"] = None
+            resumo["schedule_desconhecida_por_truncamento"] = True
 
     # Fix Important 2 (revisao final): period so existe quando include_metrics
     # pede a janela — aditivo, senao muda o contrato de quem so le a grade.

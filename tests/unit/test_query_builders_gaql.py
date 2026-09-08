@@ -12,8 +12,12 @@ Modelo: tests/unit/test_performance_breakdown.py (asserção de `FROM customer`,
 até a Fase 2B (soak) — typo aqui é prod quebrada.
 """
 
+import re
 from datetime import date
 
+import pytest
+
+from src.google_ads.queries.change_history import change_history_query
 from src.google_ads.queries.client_report import (
     funnel_query,
     top_creatives_query,
@@ -105,8 +109,19 @@ def test_funnel_query_shape() -> None:
     assert _DATE_CLAUSE in q
 
 
+# C5: o `ORDER BY` e a metrica que o gestor pediu, porque o corte (`LIMIT top_n`)
+# acontece NO GOOGLE. Ordenar por custo e reordenar depois no cliente devolve o
+# top-N por custo reordenado — a keyword barata que converte muito nunca chega.
+_ORDEM = {
+    "cost": "metrics.cost_micros",
+    "conversions": "metrics.conversions",
+    "clicks": "metrics.clicks",
+    "impressions": "metrics.impressions",
+}
+
+
 def test_top_keywords_query_shape_and_order() -> None:
-    q = top_keywords_query(_S, _E, 5)
+    q = top_keywords_query(_S, _E, 5, metric="cost")
     assert "FROM keyword_view" in q
     for field in (
         "ad_group_criterion.criterion_id",
@@ -124,12 +139,12 @@ def test_top_keywords_query_shape_and_order() -> None:
 
 
 def test_top_keywords_query_limit_is_parameterized() -> None:
-    assert "LIMIT 25" in top_keywords_query(_S, _E, 25)
-    assert "LIMIT 5" not in top_keywords_query(_S, _E, 25)
+    assert "LIMIT 25" in top_keywords_query(_S, _E, 25, metric="cost")
+    assert "LIMIT 5" not in top_keywords_query(_S, _E, 25, metric="cost")
 
 
 def test_top_creatives_query_shape_and_order() -> None:
-    q = top_creatives_query(_S, _E, 3)
+    q = top_creatives_query(_S, _E, 3, metric="cost")
     assert "FROM ad_group_ad" in q
     for field in (
         "ad_group_ad.ad.id",
@@ -144,6 +159,51 @@ def test_top_creatives_query_shape_and_order() -> None:
     assert "ad_group_ad.status = 'ENABLED'" in q
     assert "ORDER BY metrics.cost_micros DESC" in q
     assert "LIMIT 3" in q
+
+
+def test_top_keywords_ordena_pela_metrica_pedida() -> None:
+    for metric, campo in _ORDEM.items():
+        q = top_keywords_query(_S, _E, 10, metric=metric)
+        assert f"ORDER BY {campo} DESC" in q, metric
+
+
+def test_top_creatives_ordena_pela_metrica_pedida() -> None:
+    for metric, campo in _ORDEM.items():
+        q = top_creatives_query(_S, _E, 10, metric=metric)
+        assert f"ORDER BY {campo} DESC" in q, metric
+
+
+def test_o_campo_do_order_by_esta_no_select() -> None:
+    """Sondado em 07/09 via `validate_gaql`: o Google recusa `ORDER BY` de campo
+    fora do SELECT — "The following field must be present in SELECT clause:
+    'metrics.conversions'". As duas queries ja selecionam as quatro metricas,
+    entao o fix do C5 nao mexeu no SELECT; esta assercao e o que impede alguem
+    de "enxugar" o SELECT depois e quebrar o `ORDER BY` em producao.
+
+    Casa por token (`(?![\\w.])`) e nao por substring porque
+    `metrics.conversions_value` CONTEM `metrics.conversions`: um `in` cru
+    passaria verde num SELECT que tivesse perdido a metrica de conversao e
+    guardado so a de valor.
+    """
+    for metric, campo in _ORDEM.items():
+        for nome, q in (
+            ("top_keywords_query", top_keywords_query(_S, _E, 10, metric=metric)),
+            ("top_creatives_query", top_creatives_query(_S, _E, 10, metric=metric)),
+        ):
+            select = q.split("FROM")[0]
+            assert re.search(rf"{re.escape(campo)}(?![\w.])", select), (
+                f"{nome}/{metric}: {campo} fora do SELECT — o Google recusa a query"
+            )
+
+
+def test_metrica_desconhecida_e_recusada_no_builder() -> None:
+    """O `enum` do schema valida a montante, mas o builder NAO depende dele
+    (F87: nao assumir a superficie de quem chama). Metrica fora do mapa tem
+    que estourar aqui, e nao virar `ORDER BY` silenciosamente errado.
+    """
+    for builder in (top_keywords_query, top_creatives_query):
+        with pytest.raises(KeyError):
+            builder(_S, _E, 10, metric="conversions_value")
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +250,7 @@ def test_campaign_performance_query_shape_status_filter_and_order() -> None:
     assert _DATE_CLAUSE in q
     assert "campaign.status = 'ENABLED'" in q
     assert "ORDER BY metrics.cost_micros DESC" in q
-    assert "LIMIT 10" in q
+    assert "LIMIT 11" in q  # +1: a linha sentinela
 
 
 def test_campaign_performance_query_status_all_omits_status_clause() -> None:
@@ -217,7 +277,7 @@ def test_ad_group_performance_query_shape_status_filter_and_order() -> None:
     assert _DATE_CLAUSE in q
     assert "ad_group.status = 'PAUSED'" in q
     assert "ORDER BY metrics.cost_micros DESC" in q
-    assert "LIMIT 20" in q
+    assert "LIMIT 21" in q  # +1: a linha sentinela
 
 
 def test_ad_group_performance_query_status_all_omits_status_clause() -> None:
@@ -254,7 +314,7 @@ def test_geo_performance_query_shape_and_order() -> None:
         assert field in q, f"faltou {field} no SELECT do geo_performance_query"
     assert _DATE_CLAUSE in q
     assert "ORDER BY metrics.cost_micros DESC" in q
-    assert "LIMIT 15" in q
+    assert "LIMIT 16" in q  # +1: a linha sentinela
 
 
 def test_hourly_performance_query_shape() -> None:
@@ -307,7 +367,7 @@ def test_keyword_performance_query_shape_status_filter_and_order() -> None:
     assert _DATE_CLAUSE in q
     assert "ad_group_criterion.status = 'ENABLED'" in q
     assert "ORDER BY metrics.cost_micros DESC" in q
-    assert "LIMIT 25" in q
+    assert "LIMIT 26" in q  # +1: a linha sentinela
 
 
 def test_keyword_performance_query_status_all_omits_status_clause() -> None:
@@ -343,7 +403,7 @@ def test_search_terms_query_shape_and_order() -> None:
         assert field in q, f"faltou {field} no SELECT do search_terms_query"
     assert _DATE_CLAUSE in q
     assert "ORDER BY metrics.cost_micros DESC" in q
-    assert "LIMIT 30" in q
+    assert "LIMIT 31" in q  # +1: a linha sentinela
 
 
 def test_search_terms_query_metric_filters_appended() -> None:
@@ -398,7 +458,7 @@ def test_ad_performance_query_shape_status_filter_and_order() -> None:
     assert _DATE_CLAUSE in q
     assert "ad_group_ad.status = 'ENABLED'" in q
     assert "ORDER BY metrics.cost_micros DESC" in q
-    assert "LIMIT 12" in q
+    assert "LIMIT 13" in q  # +1: a linha sentinela
 
 
 def test_ad_performance_query_status_all_omits_status_clause() -> None:
@@ -427,7 +487,7 @@ def test_audience_performance_query_shape_and_order() -> None:
         assert field in q, f"faltou {field} no SELECT do audience_performance_query"
     assert _DATE_CLAUSE in q
     assert "ORDER BY metrics.cost_micros DESC" in q
-    assert "LIMIT 8" in q
+    assert "LIMIT 9" in q  # +1: a linha sentinela
 
 
 def test_conversion_actions_query_shape() -> None:
@@ -449,3 +509,134 @@ def test_conversion_actions_query_shape() -> None:
         assert field in q, f"faltou {field} no SELECT do conversion_actions_query"
     # Sem filtro de data/status — lista todas as conversion actions da conta.
     assert "WHERE" not in q
+
+
+# ---------------------------------------------------------------------------
+# A linha sentinela (PR 4, §3.2)
+#
+# Todo builder aqui serve uma tool que declara `limit` no schema e devolve
+# `truncated`. `aplicar_limite` decide o corte comparando `len(linhas) >
+# limite` — comparacao que so distingue "vieram exatamente `limite`" de
+# "havia mais" se a consulta pediu `limite + 1`. Com `LIMIT {limit}` o
+# `truncated` responde `false` para sempre, e o gestor le "nao cortei" de uma
+# resposta cortada.
+#
+# O par de assercoes e deliberado: a primeira prende o `+1`, a segunda prende
+# que o teto exato NAO ficou (um builder que emitisse as duas clausulas, ou
+# que somasse em outro lugar, passaria so com a primeira).
+# ---------------------------------------------------------------------------
+
+
+def test_campaign_performance_query_pede_uma_linha_a_mais() -> None:
+    q = campaign_performance_query(_S, _E, "ENABLED", 100)
+    assert "LIMIT 101" in q
+    assert "LIMIT 100" not in q
+
+
+def test_ad_group_performance_query_pede_uma_linha_a_mais() -> None:
+    q = ad_group_performance_query(_S, _E, "ENABLED", 100)
+    assert "LIMIT 101" in q
+    assert "LIMIT 100" not in q
+
+
+def test_geo_performance_query_pede_uma_linha_a_mais() -> None:
+    q = geo_performance_query(_S, _E, 100)
+    assert "LIMIT 101" in q
+    assert "LIMIT 100" not in q
+
+
+def test_keyword_performance_query_pede_uma_linha_a_mais() -> None:
+    q = keyword_performance_query(_S, _E, "ENABLED", 100)
+    assert "LIMIT 101" in q
+    assert "LIMIT 100" not in q
+
+
+def test_search_terms_query_pede_uma_linha_a_mais() -> None:
+    q = search_terms_query(_S, _E, 100)
+    assert "LIMIT 101" in q
+    assert "LIMIT 100" not in q
+
+
+def test_ad_performance_query_pede_uma_linha_a_mais() -> None:
+    q = ad_performance_query(_S, _E, "ENABLED", 100)
+    assert "LIMIT 101" in q
+    assert "LIMIT 100" not in q
+
+
+def test_audience_performance_query_pede_uma_linha_a_mais() -> None:
+    q = audience_performance_query(_S, _E, 100)
+    assert "LIMIT 101" in q
+    assert "LIMIT 100" not in q
+
+
+def test_change_history_query_pede_uma_linha_a_mais() -> None:
+    """Janela propria de 7 dias: `_S.._E` sao 31 dias e o builder recusa
+    acima de 30 (`RangeTooWideError`)."""
+    q = change_history_query(
+        start=date(2026, 1, 1),
+        end=date(2026, 1, 7),
+        resource_types=None,
+        operation_types=None,
+        user_emails=None,
+        client_types=None,
+        limit=100,
+    )
+    assert "LIMIT 101" in q
+    assert "LIMIT 100" not in q
+
+
+def test_o_top_n_tem_desempate_estavel() -> None:
+    """`LIMIT` sobre `ORDER BY` que empata nao ordena — escolhe ao acaso.
+
+    "Top 10 por conversoes" numa conta de cauda longa e quase todo empate em
+    ZERO, e o Google nao garante ordem estavel entre linhas de mesmo valor:
+    duas chamadas iguais devolvem keywords diferentes, e o gestor nao tem como
+    saber que a lista mudou por acaso (F98/F88).
+
+    Custo desc como criterio secundario: entre empatadas na metrica pedida, a
+    mais cara e a que precisa ser vista. A mudanca de producao que deixa este
+    teste vermelho e apagar o segundo campo do `ORDER BY`.
+    """
+    for metric in ("conversions", "clicks", "impressions"):
+        for q in (
+            top_keywords_query(_S, _E, 10, metric=metric),
+            top_creatives_query(_S, _E, 10, metric=metric),
+        ):
+            assert "DESC, metrics.cost_micros DESC" in q, f"{metric}: sem desempate"
+
+
+def test_ordenar_por_custo_nao_repete_o_campo_no_desempate() -> None:
+    """`ORDER BY metrics.cost_micros DESC, metrics.cost_micros DESC` seria
+    aceito pelo Google e diria a mesma coisa duas vezes — ruido que faz o
+    proximo leitor procurar um significado que nao existe."""
+    for q in (
+        top_keywords_query(_S, _E, 10, metric="cost"),
+        top_creatives_query(_S, _E, 10, metric="cost"),
+    ):
+        assert q.count("metrics.cost_micros DESC") == 1
+
+
+def test_a_grade_vem_agrupada_por_campanha_e_a_regra_da_borda_depende_disso() -> None:
+    """`campanhas_com_grade_incerta` marca como desconhecida a campanha da
+    ULTIMA linha lida — e isso so e correto porque as linhas chegam agrupadas
+    por campanha.
+
+    Sem `ORDER BY campaign.id`, as janelas de varias campanhas viriam
+    intercaladas e o corte cairia no meio de VARIAS ao mesmo tempo; a regra
+    marcaria uma e deixaria as outras reportando grade parcial como se fosse
+    completa — exatamente o defeito (F147) que a regra existe para fechar, de
+    volta em silencio.
+
+    O acoplamento existia e nao estava preso por nada. Esta assercao e o unico
+    lugar onde ele fica escrito: a mudanca de producao que a derruba e trocar a
+    ordenacao do builder, que hoje ninguem associaria ao resumo da outra ponta.
+    """
+    from src.google_ads.queries.ad_schedule import ad_schedule_query
+
+    q = ad_schedule_query(campaign_ids=None, status="enabled", limit=10)
+    ordem = q[q.index("ORDER BY") :]
+    assert ordem.split("ORDER BY")[1].strip().startswith("campaign.id"), (
+        "a grade deixou de vir agrupada por campanha; a regra da borda em "
+        "`campanhas_com_grade_incerta` depende disso e passa a marcar a "
+        f"campanha errada. ORDER BY atual: {ordem!r}"
+    )

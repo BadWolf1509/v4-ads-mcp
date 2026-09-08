@@ -39,13 +39,14 @@ from src.google_ads.queries.recommendations import (
 from src.google_ads.reports import run_report
 from src.governance.dry_run import DEFAULT_TTL_MINUTES, InvalidTokenError, consume
 from src.mcp.context import get_current
+from src.mcp.tools._common import aplicar_limite
 from src.mcp.tools._mutate_common import (
     applied_envelope,
     error_envelope,
     submitted_envelope,
 )
 from src.mcp.tools._registry import register_tool
-from src.mcp.tools.get_ad_schedule import rows_to_current
+from src.mcp.tools.get_ad_schedule import campanhas_com_grade_incerta, rows_to_current
 
 log = structlog.get_logger(__name__)
 
@@ -346,18 +347,63 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
                 row_formatter=parse_ad_schedule_row,
                 operation_name="update_ad_schedule_confirm",
             )
+            # `ad_schedule_query` pede `GRADE_LIMIT + 1`: a sobra e a prova de que a
+            # leitura foi PARCIAL. Sem esta checagem, campanha cujas linhas cairam
+            # alem do corte chega em `summarize_current([])`, que devolve
+            # `has_schedule: false` + `hours_per_week: 168` — a frase "serve 24x7".
+            # Aqui isso e pior do que no `get_ad_schedule`: e o resumo que o gestor
+            # le DEPOIS de ter mudado a grade, e ele diria que a campanha que acabou
+            # de ser restringida passou a servir o tempo todo. Mesmo defeito, pior
+            # lugar (F128: a clausula ficou de fora de um dos gemeos).
+            #
+            # A1 (revisao final): o CORTE vem antes de qualquer derivacao. Ate aqui
+            # `servindo` era montado sobre a lista NAO-cortada, entao a linha
+            # sentinela — a `GRADE_LIMIT + 1`-esima, cuja unica funcao e provar que
+            # havia mais — entrava no resumo: `windows_count: 2` ao lado de
+            # `len(windows) == 1`, e um `matches_requested` decidido com uma janela
+            # que a propria resposta declara nao ter lido. A gemea
+            # (`get_ad_schedule`) sempre cortou primeiro; a ordem aqui e a mesma.
+            rows, leitura_parcial = aplicar_limite(rows, GRADE_LIMIT)
             # O resumo (has_schedule/hours_per_week) conta so o que esta SERVINDO;
             # com status="all" nas linhas, somar REMOVED inflaria as horas.
             servindo = rows_to_current([r for r in rows if r["status"] == "ENABLED"])
-            # summarize_current tambem devolve uma chave "windows" (contagem) — spread
-            # primeiro e a lista de linhas por ultimo, senao o int pisa na lista.
+            # A2 (revisao final, residuo do F147): "incerta" nao e so a campanha
+            # AUSENTE do corte — e tambem a da BORDA, dona da ultima linha lida,
+            # cuja grade pode ter sido cortada no meio. Mesma funcao que o gemeo
+            # `get_ad_schedule` chama; duas copias da regra e como o F128 nasceu.
+            incertas = campanhas_com_grade_incerta(
+                rows, truncated=leitura_parcial, campanhas=campaign_ids
+            )
+
+            def _resumo(cid: str) -> dict[str, Any]:
+                if cid in incertas:
+                    return {
+                        "has_schedule": None,
+                        "windows_count": None,
+                        "hours_per_week": None,
+                        "schedule_desconhecida_por_truncamento": True,
+                    }
+                r = summarize_current(servindo.get(cid, []))
+                return {
+                    "has_schedule": r["has_schedule"],
+                    "windows_count": r["windows"],
+                    "hours_per_week": r["hours_per_week"],
+                }
+
+            # `windows` e a LISTA de linhas; `summarize_current` devolve um `windows`
+            # que e CONTAGEM. Renomear a contagem para `windows_count` tira a colisao
+            # que antes so nao mordia por ordem de spread — e ordem de spread e uma
+            # garantia que some no primeiro refactor.
             resulting = {
                 cid: {
-                    **summarize_current(servindo.get(cid, [])),
+                    **_resumo(cid),
                     "windows": [r for r in rows if r["campaign_id"] == cid],
-                    "matches_requested": _matches_requested(
-                        servindo.get(cid, []), pedidas_com_modificador
+                    "matches_requested": (
+                        None
+                        if cid in incertas
+                        else _matches_requested(servindo.get(cid, []), pedidas_com_modificador)
                     ),
+                    "truncated": leitura_parcial,
                 }
                 for cid in campaign_ids
             }

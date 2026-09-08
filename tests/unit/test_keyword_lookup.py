@@ -11,22 +11,22 @@ from src.google_ads.queries.keyword_lookup import (
 def test_build_query_dedups_and_sorts_ids():
     """Pairs com duplicates → IN clause dedupes, output ordered ASC."""
     pairs = [
-        ("1001", "K2"),
-        ("1002", "K1"),
-        ("1001", "K3"),
-        ("1001", "K2"),  # duplicate
+        ("1001", "5002"),
+        ("1002", "5001"),
+        ("1001", "5003"),
+        ("1001", "5002"),  # duplicate
     ]
     query = build_keyword_text_lookup_query(pairs)
     assert "FROM ad_group_criterion" in query
     # Dedup + sort
     assert "ad_group.id IN (1001, 1002)" in query
-    assert "ad_group_criterion.criterion_id IN (K1, K2, K3)" in query
+    assert "ad_group_criterion.criterion_id IN (5001, 5002, 5003)" in query
     # No date filter (resource is absolute state)
     assert "segments.date" not in query
 
 
 def test_build_query_selects_required_fields():
-    pairs = [("1001", "K1")]
+    pairs = [("1001", "5001")]
     query = build_keyword_text_lookup_query(pairs)
     expected_fields = [
         "ad_group.id",

@@ -33,8 +33,10 @@ def build_keyword_text_lookup_query(
         raise ValueError("keyword_pairs cannot be empty")
     ad_group_ids = sorted({pair[0] for pair in keyword_pairs})
     criterion_ids = sorted({pair[1] for pair in keyword_pairs})
-    ad_group_clause = ", ".join(ad_group_ids)
-    criterion_clause = ", ".join(criterion_ids)
+    # `str(int(x))` e a defesa, nao o `pattern` do schema a montante (F87):
+    # o builder e publico e o proximo chamador pode nao ter schema nenhum.
+    ad_group_clause = ", ".join(str(int(x)) for x in ad_group_ids)
+    criterion_clause = ", ".join(str(int(x)) for x in criterion_ids)
     return (
         "SELECT "
         "ad_group.id, "

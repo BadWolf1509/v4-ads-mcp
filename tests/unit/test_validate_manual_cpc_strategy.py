@@ -114,6 +114,32 @@ async def test_rejects_mixed_batch_with_first_offender(
 
 
 @pytest.mark.asyncio
+async def test_recusa_ad_group_id_nao_numerico(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`", ".join(ad_group_ids)` interpolava texto livre direto no GAQL.
+
+    O `pattern` do schema a montante nao e defesa: helper e chamado de mais de
+    um lugar, e o proximo chamador pode nao ter schema nenhum (F87). A funcao
+    tem que recusar o id invalido ANTES de montar a query — run_report nao
+    pode chegar a ser chamado.
+    """
+
+    async def _run_report_nao_deveria_ser_chamado(**kwargs: Any) -> list[dict[str, str]]:
+        raise AssertionError("run_report chamado com ad_group_id nao-numerico")
+
+    monkeypatch.setattr(
+        "src.google_ads.queries._common.run_report",
+        _run_report_nao_deveria_ser_chamado,
+    )
+    with pytest.raises(ValueError):
+        await validate_manual_cpc_strategy(
+            manager_id=uuid4(),
+            session_id=uuid4(),
+            customer_id="1234567890",
+            ad_group_ids=["123", "1) OR ad_group.id > 0 --"],
+        )
+
+
+@pytest.mark.asyncio
 async def test_rejects_when_target_cpa(monkeypatch: pytest.MonkeyPatch) -> None:
     """TARGET_CPA → rejection with strategy name + 'ignorados' or 'silenciosamente' in error."""
 

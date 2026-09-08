@@ -9,6 +9,7 @@ import structlog
 from src.db import connection
 from src.db.repositories import audit_log
 from src.mcp.context import get_current
+from src.mcp.tools._common import aplicar_limite
 from src.mcp.tools._registry import register_tool
 
 log = structlog.get_logger(__name__)
@@ -52,6 +53,10 @@ _INPUT_SCHEMA: dict[str, Any] = {
         "[DEFER] Historico das proprias operacoes do gestor via MCP (mutations + audited "
         "reads), com filtros por janela de tempo, conta, e tipo de acao. Retorna "
         "ordenado por occurred_at DESC. Scoped automaticamente ao gestor logado. "
+        "`truncated: true` avisa que a janela tinha MAIS eventos do que o limit e a "
+        "lista foi cortada pelos mais RECENTES — os mais antigos ficaram de fora, "
+        "entao suba o limit ou estreite `days` antes de concluir que uma operacao "
+        "nao aconteceu. "
         "**`dry_run` separa TENTATIVA de APLICACAO** (F148): `true` = preview que mintou "
         "token e pode nunca ter sido aplicado; `false`/ausente = mutacao real ou linha "
         "anterior ao fix. Sem esse campo os dois casos sao identicos, porque ambos gravam "
@@ -77,10 +82,15 @@ async def get_my_audit_log(args: dict[str, Any]) -> dict[str, Any]:
             conn,
             manager_id=ctx.manager_id,
             days=days,
-            limit=limit,
+            # `limit + 1` e a linha sentinela: sem ela `len(eventos) > limit` e
+            # falso por construcao e o `truncated` responde `false` para sempre.
+            # Aqui o teto e argumento do repositorio, nao clausula GAQL — o
+            # guard que varre `queries/` nao alcanca este caminho.
+            limit=limit + 1,
             customer_id=customer_id,
             action_type=action_type,
         )
+    events, truncado = aplicar_limite(events, limit)
 
     duration_ms = int((time.monotonic() - started) * 1000)
 
@@ -120,4 +130,5 @@ async def get_my_audit_log(args: dict[str, Any]) -> dict[str, Any]:
         },
         "count": len(events),
         "events": events,
+        "truncated": truncado,
     }

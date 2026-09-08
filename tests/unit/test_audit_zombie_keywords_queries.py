@@ -2,6 +2,8 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from src.google_ads.queries.audit_zombie_keywords import (
     build_audit_zombie_keywords_query,
     dict_to_keyword_row,
@@ -50,7 +52,19 @@ def test_build_query_ad_group_ids_filter():
         end_date="2026-05-21",
         ad_group_ids=["123", "456"],
     )
-    assert "ad_group.id IN (123,456)" in q
+    assert "ad_group.id IN (123, 456)" in q
+
+
+def test_recusa_ad_group_id_nao_numerico():
+    """`",".join(ad_group_ids)` interpolava texto livre direto no GAQL. O
+    `pattern` do schema a montante nao e defesa: helper e chamado de mais de
+    um lugar, e o proximo chamador pode nao ter schema nenhum (F87)."""
+    with pytest.raises(ValueError):
+        build_audit_zombie_keywords_query(
+            start_date="2026-04-21",
+            end_date="2026-05-21",
+            ad_group_ids=["123", "1) OR 1=1 --"],
+        )
 
 
 def test_dict_to_keyword_row_handles_missing_fields():
@@ -136,3 +150,30 @@ def test_parse_keyword_view_row_orphan_ad_group_removed():
     assert result["ad_group_status"] == "REMOVED"
     assert result["status"] == "ENABLED"  # keyword ENABLED mas ad_group REMOVED
     assert result["ad_group_name"] == "DELL"
+
+
+def test_parse_keyword_view_row_conversoes_fracionadas_nao_viram_zero():
+    """`int(0.9)` == 0. Numa tool que define zumbi como "zero atividade",
+    truncar conversao fracionada INVENTA zumbi: a keyword converteu, e o
+    relatorio diz que nao. Atribuicao fracionada e o caso normal do Google,
+    nao a borda."""
+    fake_row = SimpleNamespace(
+        ad_group_criterion=SimpleNamespace(
+            criterion_id=1,
+            keyword=SimpleNamespace(text="kw", match_type=SimpleNamespace(name="BROAD")),
+            status=SimpleNamespace(name="ENABLED"),
+        ),
+        ad_group=SimpleNamespace(id=1, name="AG1", status=SimpleNamespace(name="ENABLED")),
+        campaign=SimpleNamespace(name="C1"),
+        metrics=SimpleNamespace(impressions=0, clicks=0, cost_micros=0, conversions=0.9),
+    )
+    result = parse_keyword_view_row(fake_row)
+    assert result["conversions"] == 0.9
+
+
+def test_dict_to_keyword_row_conversoes_fracionadas_nao_viram_zero():
+    """Segundo andar do mesmo truncamento: `int(d.get("conversions", 0))` no
+    boundary parser apaga a fracao de novo, mesmo se o GAQL row parser acima
+    ja preservar."""
+    row = dict_to_keyword_row({"conversions": 0.9})
+    assert row.conversions == 0.9

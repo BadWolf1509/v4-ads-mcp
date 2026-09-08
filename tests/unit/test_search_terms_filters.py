@@ -15,7 +15,7 @@ def test_query_without_filters_omits_metric_clauses() -> None:
     assert "metrics.cost_micros >=" not in q
     assert "metrics.clicks >=" not in q
     assert "metrics.conversions >" not in q
-    assert "LIMIT 50" in q
+    assert "LIMIT 51" in q  # +1: a linha sentinela do `truncated`
 
 
 def test_query_with_filters_injects_clauses() -> None:

@@ -157,6 +157,96 @@ async def test_limit_trunca_e_avisa(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_campanha_cortada_nao_e_reportada_como_24x7(monkeypatch) -> None:
+    """Tres campanhas, `limit=2`: a terceira perde as janelas para o corte.
+
+    Antes do fix o resumo dela dizia has_schedule=false / hours_per_week=168 —
+    "serve o tempo todo" — que e o oposto do que a grade dela diz. `atual.get(cid,
+    [])` nao distingue "campanha sem grade" de "grade cortada pelo limit", e
+    `summarize_current([])` sempre le a primeira leitura.
+
+    A campanha "2" e a da BORDA (dona da ultima linha lida) e cai no `null` por
+    OUTRA razao — o A2 tem teste proprio logo abaixo. Aqui ela existe para que
+    a campanha "1", a de controle, nao seja a da borda: o controle positivo
+    deste teste e "quem foi lida INTEIRA continua com leitura normal", e sem
+    uma terceira campanha nao existe campanha lida inteira sob truncamento.
+    """
+    run, _ = _fake_run_report(
+        {
+            "campaign_criterion": [
+                _janela(cid="1", nome="A", crit="9"),
+                _janela(cid="2", nome="B", crit="10"),
+                _janela(cid="3", nome="C", crit="11"),
+            ],
+            "campaign": [
+                _orcamento(cid="1", nome="A"),
+                _orcamento(cid="2", nome="B"),
+                _orcamento(cid="3", nome="C"),
+            ],
+        }
+    )
+    monkeypatch.setattr("src.mcp.tools.get_ad_schedule.run_report", run)
+    out = await mod.get_ad_schedule({"customer_id": "1234567890", "limit": 2})
+    assert out["truncated"] is True
+    # A campanha lida INTEIRA (nem cortada, nem na borda) segue com leitura normal.
+    lida = out["schedule_summary"]["1"]
+    assert lida["has_schedule"] is True
+    assert "schedule_desconhecida_por_truncamento" not in lida
+    # A campanha cortada nao pode ser lida como "sem grade" / 24x7.
+    cortada = out["schedule_summary"]["3"]
+    assert cortada["has_schedule"] is None
+    assert cortada["hours_per_week"] is None
+    assert cortada["schedule_desconhecida_por_truncamento"] is True
+
+
+@pytest.mark.asyncio
+async def test_campanha_na_borda_do_corte_nao_afirma_horas_da_parte_lida(monkeypatch) -> None:
+    """A2 (revisao final, residuo do F147): o corte cai DENTRO de uma campanha.
+
+    O ramo de `null` da Task 4 cobria a campanha AUSENTE do corte. A que fica
+    na BORDA — parte da grade dentro, o resto fora — escapava: recebia
+    `has_schedule: true` e um `hours_per_week` calculado sobre a parte lida,
+    sem `null` e sem `schedule_desconhecida_por_truncamento`. Como as linhas
+    vem ordenadas por `campaign.id`, existe SEMPRE exatamente uma campanha
+    nessa posicao quando houve corte, e e justamente sobre ela que o resumo
+    mentia — no default (`limit` 200, ate 168 janelas por campanha).
+
+    Cenario medido pela revisao: duas campanhas de 2 janelas cada, `limit=3`.
+    A "2" reportava `has_schedule: true, windows: 1, hours_per_week: 10.0`
+    quando a verdade dela e 2 janelas e 20.0 h/semana.
+    """
+    run, _ = _fake_run_report(
+        {
+            "campaign_criterion": [
+                _janela(cid="1", nome="A", day="MONDAY", crit="9"),
+                _janela(cid="1", nome="A", day="TUESDAY", crit="10"),
+                _janela(cid="2", nome="B", day="MONDAY", crit="11"),
+                _janela(cid="2", nome="B", day="TUESDAY", crit="12"),
+            ],
+            "campaign": [_orcamento(cid="1", nome="A"), _orcamento(cid="2", nome="B")],
+        }
+    )
+    monkeypatch.setattr("src.mcp.tools.get_ad_schedule.run_report", run)
+    out = await mod.get_ad_schedule({"customer_id": "1234567890", "limit": 3})
+    assert out["truncated"] is True
+    # Controle positivo: a campanha lida INTEIRA continua afirmando os numeros.
+    inteira = out["schedule_summary"]["1"]
+    assert inteira["has_schedule"] is True
+    assert inteira["windows"] == 2
+    assert inteira["hours_per_week"] == 20.0
+    assert "schedule_desconhecida_por_truncamento" not in inteira
+    # A da borda: 1 das 2 janelas dela coube. Nao da para saber se o corte caiu
+    # no fim da grade ou no meio — entao os tres campos dizem desconhecido.
+    borda = out["schedule_summary"]["2"]
+    assert borda["has_schedule"] is None, (
+        "a campanha da borda afirmou entrega a partir de leitura parcial"
+    )
+    assert borda["windows"] is None
+    assert borda["hours_per_week"] is None, "10.0 h/semana quando a verdade e 20.0"
+    assert borda["schedule_desconhecida_por_truncamento"] is True
+
+
+@pytest.mark.asyncio
 async def test_a_consulta_da_grade_e_auditada_e_a_de_orcamento_nao(monkeypatch) -> None:
     """Padrao de get_assets/get_change_history: UMA linha de audit por chamada do gestor."""
     vistos: list[bool] = []

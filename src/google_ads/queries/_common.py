@@ -258,7 +258,7 @@ async def validate_manual_cpc_strategy(
     if not ad_group_ids:
         return None
 
-    ids_clause = ", ".join(ad_group_ids)
+    ids_clause = ", ".join(str(int(x)) for x in ad_group_ids)
     query = (
         f"SELECT ad_group.id, campaign.id, campaign.name, "
         f"campaign.bidding_strategy_type "
@@ -318,7 +318,7 @@ async def validate_parent_campaigns_for_ad_group_create(
     if not campaign_ids:
         return None
 
-    ids_clause = ", ".join(campaign_ids)
+    ids_clause = ", ".join(str(int(x)) for x in campaign_ids)
     query = (
         f"SELECT campaign.id, campaign.name, campaign.status, "
         f"campaign.advertising_channel_type, campaign.bidding_strategy_type "
@@ -405,7 +405,7 @@ async def validate_parent_ad_groups_for_rsa_create(
     if not ad_group_ids:
         return None
 
-    ids_clause = ", ".join(ad_group_ids)
+    ids_clause = ", ".join(str(int(x)) for x in ad_group_ids)
     query = (
         f"SELECT ad_group.id, ad_group.name, ad_group.status, "
         f"campaign.id, campaign.name, campaign.advertising_channel_type "
@@ -479,7 +479,7 @@ async def validate_existing_rsas_for_update(
     if not ad_ids:
         return None
 
-    ids_clause = ", ".join(ad_ids)
+    ids_clause = ", ".join(str(int(x)) for x in ad_ids)
     query = (
         f"SELECT ad_group_ad.ad.id, ad_group_ad.ad.type, "
         f"ad_group.id, ad_group.name, ad_group.status, "

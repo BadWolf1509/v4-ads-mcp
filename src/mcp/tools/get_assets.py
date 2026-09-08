@@ -83,7 +83,8 @@ _DESCRIPTION = (
     "dos quais 598 (81%) são AD_IMAGE de RSA — a família de imagem domina a "
     "contagem e afoga as extensões de texto. Para inventário de conta use "
     "`limit: 1000`; para trabalhar extensões use `field_type`. Truncado traz "
-    "`summary.truncated: true`, e a ordem é por `asset_id`, não por "
+    "`truncated: true` na raiz (espelhado em `summary.truncated`), e a ordem é "
+    "por `asset_id`, não por "
     "relevância. **Detecção de "
     "órfão exige chamada SEM filtro**: numa chamada sem field_type e sem "
     "campaign_ids, `summary.assets_sem_vinculo_ativo` lista os assets sem "
@@ -160,4 +161,13 @@ async def get_assets(args: dict[str, Any]) -> dict[str, Any]:
     links, summary = build_inventory(
         rows=[*conta, *campanha, *grupo], limit=limit, filter_active=filter_active
     )
-    return {"customer_id": customer_id, "links": links, "summary": summary}
+    # `truncated` tambem no topo, espelhando `summary["truncated"]`: as outras 25
+    # tools com `limit` declaram o corte na raiz da resposta, e enterrar o unico
+    # sinal de corte um nivel abaixo obriga o leitor a saber que este caso e
+    # diferente. Aditivo (F140) — `summary.truncated` continua onde estava.
+    return {
+        "customer_id": customer_id,
+        "links": links,
+        "summary": summary,
+        "truncated": summary["truncated"],
+    }

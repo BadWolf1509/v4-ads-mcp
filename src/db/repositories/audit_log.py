@@ -213,8 +213,14 @@ async def list_for_manager(
     - customer_id: filter by account
     - action_type: filter by 'mutate'/'read'/'auth'/'system'; None or 'all' → no filter
 
-    Returns rows ORDER BY occurred_at DESC, with subset of columns (omits
-    params_summary to keep response compact; use get_by_id() for full detail).
+    Returns rows ORDER BY occurred_at DESC, id DESC — o desempate por `id` nao
+    e enfeite: `occurred_at` e `DEFAULT now()`, hora de TRANSACAO no Postgres,
+    entao linhas gravadas na mesma transacao empatam por construcao e o corte
+    do `LIMIT` cairia num ponto arbitrario do empate (medido: com 5 linhas
+    empatadas e `limit=3` vinham as 3 MAIS ANTIGAS). F98/F88.
+
+    Subset of columns (omits params_summary to keep response compact; use
+    get_by_id() for full detail).
     """
     where = ["manager_id = $1", "occurred_at > now() - ($2 || ' days')::interval"]
     params: list[Any] = [manager_id, str(days)]
@@ -233,7 +239,7 @@ async def list_for_manager(
                      error_message, platform, dry_run
               FROM audit_log
               WHERE {" AND ".join(where)}
-              ORDER BY occurred_at DESC
+              ORDER BY occurred_at DESC, id DESC
               LIMIT ${idx}"""
     rows = await conn.fetch(sql, *params)
     return [

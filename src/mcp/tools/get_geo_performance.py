@@ -8,6 +8,7 @@ from src.google_ads.queries._common import micros_to_currency, resolve_date_wind
 from src.google_ads.queries.performance import geo_performance_query
 from src.google_ads.reports import lookup_country_names, run_report
 from src.mcp.context import get_current
+from src.mcp.tools._common import aplicar_limite
 from src.mcp.tools._registry import register_tool
 
 _DATE_PRESETS = [
@@ -75,7 +76,9 @@ def _row_formatter(row: Any) -> dict[str, Any]:
     description=(
         "[DEFER] Prefira get_performance_breakdown(level=account, breakdown=geo) — este "
         "report sera arquivado (Fase 2B). Performance por pais (com nome resolvido via geo_target_constant). "
-        "Util pra identificar regioes underperformantes."
+        "Util pra identificar regioes underperformantes. `truncated: true` avisa que a "
+        "conta tinha MAIS paises do que o limit e a lista foi cortada no topo de gasto "
+        "— peca um limit maior."
     ),
     input_schema=_SCHEMA,
     bucket="defer",
@@ -100,6 +103,9 @@ async def get_geo_performance(args: dict[str, Any]) -> dict[str, Any]:
         operation_name="get_geo_performance",
         audit_this_call=True,
     )
+    # ANTES do lookup: a consulta pediu `limit + 1`, e a linha sentinela nao
+    # pode nem chegar ao gestor nem custar um pais a mais pra resolver.
+    rows, truncado = aplicar_limite(rows, limit)
     # Resolve country IDs -> human-readable names via geo_target_constant.
     # Costs ~1 extra op against the API; falls back gracefully if a name is
     # missing (None) so the tool stays usable even on partial lookups.
@@ -118,4 +124,5 @@ async def get_geo_performance(args: dict[str, Any]) -> dict[str, Any]:
         "customer_id": customer_id,
         "period": {"from": start.isoformat(), "to": end.isoformat()},
         "rows": rows,
+        "truncated": truncado,
     }

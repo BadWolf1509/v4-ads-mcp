@@ -8,6 +8,7 @@ from src.google_ads.queries._common import micros_to_currency, resolve_date_wind
 from src.google_ads.queries.tactical import search_terms_query
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
+from src.mcp.tools._common import aplicar_limite
 from src.mcp.tools._registry import register_tool
 
 _DATE_PRESETS = [
@@ -105,7 +106,11 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         "[DEFER] Termos de busca reais que dispararam anuncios. Status indica se ja foi "
         "adicionado como palavra-chave (ADDED) ou negativa (EXCLUDED) ou nem um "
         "nem outro (NONE). Util pra encontrar negativas pra adicionar e termos "
-        "performantes pra promover."
+        "performantes pra promover. `truncated: true` avisa que a conta tinha MAIS "
+        "termos do que o limit (default 50, baixo) e a lista foi cortada no topo de "
+        "gasto — a cauda de termos ruins costuma estar ABAIXO do corte, entao suba o "
+        "limit ou use min_cost_brl/min_clicks antes de concluir que nao ha o que "
+        "negativar."
     ),
     input_schema=_SCHEMA,
     bucket="defer",
@@ -136,8 +141,12 @@ async def get_search_terms_report(args: dict[str, Any]) -> dict[str, Any]:
         row_formatter=_row_formatter,
         operation_name="get_search_terms_report",
     )
+    # A consulta pediu `limit + 1`; a linha extra e a sentinela que revela o
+    # corte e nao pode chegar ao gestor.
+    rows, truncado = aplicar_limite(rows, limit)
     return {
         "customer_id": customer_id,
         "period": {"from": start.isoformat(), "to": end.isoformat()},
         "rows": rows,
+        "truncated": truncado,
     }

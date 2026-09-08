@@ -31,7 +31,13 @@ class KeywordRow:
     quality_score: int  # 1-10
     impressions: int
     clicks: int
-    conversions: int
+    # F163 (gemea): `conversions` do Google e `double` — atribuicao fracionada e
+    # o caso NORMAL (uma conversao dividida entre varios cliques), nao a borda.
+    # `queries/audit_quality_score.py` passa `row.metrics.conversions` sem cast,
+    # entao a anotacao `int` mentia sobre o valor que o campo carrega — e e
+    # exatamente o convite para o proximo autor "consertar o tipo" com um
+    # `int()`, que foi o bug corrigido na gemea `flag_zombie_keywords`.
+    conversions: float
     cost_brl: float
 
 
@@ -49,7 +55,7 @@ class FlaggedKeyword:
     quality_score: int
     impressions: int
     clicks: int
-    conversions: int
+    conversions: float  # F163 (gemea): `double` no proto, ver KeywordRow acima
     cost_brl: float
     flags: tuple[str, ...]
 

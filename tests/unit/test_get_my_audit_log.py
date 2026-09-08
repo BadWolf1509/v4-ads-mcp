@@ -130,3 +130,31 @@ async def test_empty_result_when_no_events(_ctx) -> None:
 
     assert result["count"] == 0
     assert result["events"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_pagina_do_repositorio_sai_de_uma_ordem_total() -> None:
+    """F98/F88: `LIMIT` sobre `ORDER BY` que empata e corte nao determinista.
+
+    `occurred_at` e `TIMESTAMPTZ DEFAULT now()`, e `now()` no Postgres e hora
+    de TRANSACAO — linhas gravadas na mesma transacao empatam por construcao.
+    Com `ORDER BY occurred_at DESC` sozinho, QUAL linha cai fora da borda do
+    `limit` nao esta definido, e duas chamadas iguais podem devolver conjuntos
+    diferentes. O `truncated` continua correto (e contagem), mas a lista nao.
+
+    Mora aqui, e nao so na integracao, por F115: o gate local nao roda os
+    testes de banco, e um check que so existe no CI nao protege quem commita.
+    O par comportamental (com Postgres de verdade, provando que a pagina traz
+    os `id` mais altos entre os empatados) esta em
+    `tests/integration/test_audit_log_repo.py`.
+    """
+    from src.db.repositories import audit_log
+
+    conn = AsyncMock()
+    conn.fetch.return_value = []
+    await audit_log.list_for_manager(conn, manager_id=uuid4(), limit=5)
+
+    sql = " ".join(conn.fetch.call_args.args[0].split())
+    assert "ORDER BY occurred_at DESC, id DESC LIMIT" in sql, (
+        f"a clausula de ordem precisa de desempate unico antes do LIMIT: {sql}"
+    )

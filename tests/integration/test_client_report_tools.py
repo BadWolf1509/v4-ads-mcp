@@ -1,5 +1,6 @@
 """Integration tests for client report tools."""
 
+import re
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -102,11 +103,17 @@ async def test_top_keywords_creatives_default_metric_cost(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_top_keywords_creatives_custom_metric_resorts(bound_context):
+async def test_top_keywords_creatives_custom_metric_ordena_no_google(bound_context):
+    """C5: com `metric=conversions`, e o GOOGLE que ordena e corta.
+
+    A versao anterior deste teste devolvia uma lista FIXA (`side_effect=[kws,
+    ads]`) e afirmava que a tool a reordenava no cliente. Esse duble nao
+    conseguia expressar o defeito — o corte real acontece no `LIMIT` do Google,
+    e uma lista fixa chega inteira das duas formas. Aqui o duble le a query e
+    obedece ao `ORDER BY` dela, como o Google faz.
+    """
     from src.mcp.tools.get_top_keywords_creatives import get_top_keywords_creatives
 
-    # Returned ORDER BY cost: high-cost first. With metric=conversions, low-cost
-    # high-conversion entry should rank above.
     fake_kws = [
         {
             "criterion_id": "k1",
@@ -133,10 +140,25 @@ async def test_top_keywords_creatives_custom_metric_resorts(bound_context):
             "conversions_value_brl": 1000.0,
         },
     ]
-    fake_ads = []
+    chave_da_ordem = {
+        "metrics.cost_micros": "cost_brl",
+        "metrics.conversions": "conversions",
+        "metrics.clicks": "clicks",
+        "metrics.impressions": "impressions",
+    }
+    queries = []
+
+    def _google(*_args, **kwargs):
+        query = kwargs["query"]
+        queries.append(query)
+        chave = chave_da_ordem[re.search(r"ORDER BY (\S+) DESC", query).group(1)]
+        universo = fake_kws if "FROM keyword_view" in query else []
+        limite = int(re.search(r"LIMIT (\d+)", query).group(1))
+        return sorted(universo, key=lambda linha: -linha[chave])[:limite]
+
     with patch(
         "src.mcp.tools.get_top_keywords_creatives.run_report",
-        AsyncMock(side_effect=[fake_kws, fake_ads]),
+        AsyncMock(side_effect=_google),
     ):
         result = await get_top_keywords_creatives(
             {
@@ -144,5 +166,7 @@ async def test_top_keywords_creatives_custom_metric_resorts(bound_context):
                 "metric": "conversions",
             }
         )
-    # Should be re-sorted so cheap_high_conv is first
+    assert all("ORDER BY metrics.conversions DESC" in q for q in queries), (
+        f"a tool nao pediu a ordenacao por conversoes ao Google: {queries}"
+    )
     assert result["top_keywords"][0]["keyword_text"] == "cheap_high_conv"

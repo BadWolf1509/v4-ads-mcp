@@ -101,14 +101,6 @@ def _ad_formatter(row: Any) -> dict[str, Any]:
     }
 
 
-_METRIC_KEY = {
-    "cost": "cost_brl",
-    "conversions": "conversions",
-    "clicks": "clicks",
-    "impressions": "impressions",
-}
-
-
 @register_tool(
     name="get_top_keywords_creatives",
     description=(
@@ -131,13 +123,15 @@ async def get_top_keywords_creatives(args: dict[str, Any]) -> dict[str, Any]:
     )
     top_n = args.get("top_n", 10)
     metric = args.get("metric", "cost")
-    metric_key = _METRIC_KEY[metric]
 
+    # C5: `metric` vai no ORDER BY porque o LIMIT e do lado do Google. Ordenar
+    # por custo e reordenar aqui devolveria o top-N POR CUSTO reordenado — a
+    # keyword barata que converte muito nunca chegaria para ser reordenada.
     keywords = await run_report(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
-        query=top_keywords_query(start, end, top_n),
+        query=top_keywords_query(start, end, top_n, metric=metric),
         row_formatter=_kw_formatter,
         operation_name="get_top_keywords_creatives",
     )
@@ -145,16 +139,10 @@ async def get_top_keywords_creatives(args: dict[str, Any]) -> dict[str, Any]:
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
-        query=top_creatives_query(start, end, top_n),
+        query=top_creatives_query(start, end, top_n, metric=metric),
         row_formatter=_ad_formatter,
         operation_name="get_top_keywords_creatives",
     )
-
-    # GAQL ORDER BY is fixed to cost_micros; if user wants a different metric,
-    # re-sort client-side and truncate.
-    if metric != "cost":
-        keywords = sorted(keywords, key=lambda r: -r[metric_key])[:top_n]
-        creatives = sorted(creatives, key=lambda r: -r[metric_key])[:top_n]
 
     return {
         "customer_id": customer_id,

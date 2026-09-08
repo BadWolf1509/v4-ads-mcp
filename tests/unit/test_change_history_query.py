@@ -26,7 +26,7 @@ def test_no_filters_only_date_range():
     assert "change_event.resource_change_operation IN" not in q
     assert "change_event.user_email IN" not in q
     assert "change_event.client_type IN" not in q
-    assert "LIMIT 200" in q
+    assert "LIMIT 201" in q  # +1: a linha sentinela do `truncated`
 
 
 def test_resource_types_filter():
@@ -113,7 +113,7 @@ def test_all_filters_combined():
     assert "change_event.resource_change_operation IN ('UPDATE', 'REMOVE')" in q
     assert "change_event.user_email IN ('x@v4company.com')" in q
     assert "change_event.client_type IN ('GOOGLE_ADS_WEB_CLIENT')" in q
-    assert "LIMIT 50" in q
+    assert "LIMIT 51" in q  # +1: a linha sentinela do `truncated`
 
 
 def test_range_over_30_days_raises():

@@ -337,3 +337,150 @@ async def test_matches_requested_tolera_arredondamento_float32_do_google(monkeyp
     )
     out = await mod.apply_change({"confirmation_token": "ABCDEFGH"})
     assert out["resulting_schedule"]["1"]["matches_requested"] is True
+
+
+@pytest.mark.asyncio
+async def test_resulting_nao_afirma_24x7_a_partir_de_leitura_parcial(monkeypatch) -> None:
+    """F128, gemeo do `get_ad_schedule`: a mesma mentira, no lugar pior.
+
+    A reconsulta pos-apply pede `GRADE_LIMIT + 1` linhas com `status="all"` —
+    e 20 campanhas x 168 janelas, mais os criterios REMOVED que se acumulam a
+    cada edicao, passam de 1000 sem esforco. Antes do fix, a campanha cujas
+    linhas caiam alem do corte chegava em `summarize_current([])`, que devolve
+    `has_schedule: False` + `hours_per_week: 168.0`.
+
+    Ou seja: o gestor acabava de RESTRINGIR a grade e o resumo pos-apply dizia
+    que a campanha passou a servir 24x7. `get_ad_schedule` pelo menos so
+    informa; aqui o texto vem colado a uma escrita que ja aconteceu.
+
+    A mudanca de producao que deixa este teste vermelho: devolver
+    `summarize_current(servindo.get(cid, []))` sem olhar `len(rows) >
+    GRADE_LIMIT` — que e exatamente o codigo pre-fix.
+    """
+    saved = _saved()
+    # `GRADE_LIMIT + 1` linhas de uma campanha que NAO esta em `campaign_ids`:
+    # a sobra prova o corte, e a campanha "1" fica sem nenhuma linha lida.
+    demais = [_row(cid="99", crit=str(1000 + i)) for i in range(mod.GRADE_LIMIT + 1)]
+    _wire(monkeypatch, saved=saved, antes=[], depois=demais)
+    out = await mod.apply_change({"confirmation_token": "ABCDEFGH"})
+
+    assert out["status"] == "applied"
+    rs = out["resulting_schedule"]["1"]
+    assert rs["has_schedule"] is None, (
+        "leitura parcial virou a afirmacao 'serve 24x7' logo depois de uma escrita na grade"
+    )
+    assert rs["hours_per_week"] is None
+    assert rs["schedule_desconhecida_por_truncamento"] is True
+    assert rs["truncated"] is True
+    assert rs["matches_requested"] is None, (
+        "sem ler a grade da campanha nao da para afirmar que ela bate com o "
+        "pedido — `False` ali seria um veredito inventado"
+    )
+
+
+@pytest.mark.asyncio
+async def test_resulting_completo_nao_se_declara_truncado(monkeypatch) -> None:
+    """A mentira simetrica: `truncated: true` sempre vale tanto quanto `false`
+    sempre — o gestor perde a distincao nos dois casos."""
+    saved = _saved()
+    _wire(monkeypatch, saved=saved, antes=[], depois=[_row(crit="10")])
+    out = await mod.apply_change({"confirmation_token": "ABCDEFGH"})
+
+    rs = out["resulting_schedule"]["1"]
+    assert rs["truncated"] is False
+    assert rs["has_schedule"] is True
+    assert "schedule_desconhecida_por_truncamento" not in rs
+
+
+@pytest.mark.asyncio
+async def test_o_resumo_pos_apply_sai_das_linhas_devolvidas(monkeypatch) -> None:
+    """A1 (revisao final): a linha SENTINELA nao pode entrar no resumo.
+
+    `ad_schedule_query` pede `GRADE_LIMIT + 1`. A ultima linha existe para uma
+    coisa so — provar que havia mais — e nunca e devolvida. Ate este fix,
+    `rows_to_current` rodava ANTES do corte, entao ela entrava em
+    `has_schedule`/`windows_count`/`hours_per_week` e no veredito
+    `matches_requested`: a resposta dizia `windows_count: 2` ao lado de uma
+    lista `windows` com UMA janela, e reprovava a grade por causa de uma janela
+    que a propria resposta declara nao ter lido — depois de a escrita ja ter
+    sido aplicada. A gemea (`get_ad_schedule`) sempre cortou primeiro.
+
+    **Por que o duble INTERCALA as campanhas.** Em producao o `ORDER BY
+    campaign.id` agrupa as linhas por campanha, e e disso que a regra da borda
+    (a campanha da ultima linha lida e suspeita) tira o direito de nomear UMA
+    campanha. A invariante deste teste e outra e nao depende da ordenacao: esta
+    funcao recebe linhas e nao as ordena — o `ORDER BY` vive num builder que
+    ela nao possui. Intercalar separa as duas clausulas: com o corte no lugar
+    errado E a campanha da borda anulada, a contradicao sairia mascarada por
+    `null` e o teste nao distinguiria qual das duas quebrou.
+    """
+    saved = _saved()
+    # 1 linha da campanha "1" + 999 de uma campanha fora do lote (as 1000 que
+    # sobrevivem, com a ULTIMA sendo da "99") + a sentinela, da "1".
+    depois = [
+        _row(cid="1", day="MONDAY", sh=7, eh=17, crit="10"),
+        *[_row(cid="99", crit=str(1000 + i)) for i in range(mod.GRADE_LIMIT - 1)],
+        _row(cid="1", day="TUESDAY", sh=8, eh=18, crit="11"),
+    ]
+    assert len(depois) == mod.GRADE_LIMIT + 1
+
+    _wire(monkeypatch, saved=saved, antes=[], depois=depois)
+    out = await mod.apply_change({"confirmation_token": "ABCDEFGH"})
+
+    rs = out["resulting_schedule"]["1"]
+    assert rs["truncated"] is True
+    assert rs["windows_count"] == len(rs["windows"]), (
+        "o resumo contou uma janela que a resposta nao devolve — a sentinela "
+        "entrou por `rows_to_current` rodar antes do corte"
+    )
+    assert rs["windows_count"] == 1
+    assert rs["hours_per_week"] == 10.0, "a sentinela somou as horas da janela nao lida"
+    assert rs["matches_requested"] is True, (
+        "veredito sobre escrita ja aplicada decidido com uma janela fora do corte declarado"
+    )
+
+
+@pytest.mark.asyncio
+async def test_campanha_na_borda_do_corte_nao_afirma_a_grade_pos_apply(monkeypatch) -> None:
+    """A2, o gemeo: a mesma borda, no resumo que vem colado a uma escrita.
+
+    `campanhas_com_grade_incerta` e chamada nos DOIS sitios de proposito. O
+    F128 nasceu de a clausula existir num gemeo e faltar no outro, e este e o
+    lado pior: o gestor acabou de mudar a grade e le o numero como resultado da
+    propria mutacao.
+
+    Aqui a campanha "2" tem 2 janelas, so 1 cabe no `GRADE_LIMIT`, e ela e a
+    dona da ultima linha lida. Antes do A2 ela vinha `has_schedule: true` com
+    `hours_per_week: 10.0` (a metade que coube) e um `matches_requested`
+    decidido sobre essa metade.
+    """
+    saved = _saved(campaign_ids=("1", "2"), current_keys={"1": [], "2": []})
+    # 999 linhas da "1" (lida inteira, controle positivo) + 2 da "2", das quais
+    # so a primeira cabe: 1001 linhas para um GRADE_LIMIT de 1000.
+    depois = [
+        *[_row(cid="1", crit=str(1000 + i)) for i in range(mod.GRADE_LIMIT - 1)],
+        _row(cid="2", day="MONDAY", sh=7, eh=17, crit="20"),
+        _row(cid="2", day="TUESDAY", sh=8, eh=18, crit="21"),
+    ]
+    assert len(depois) == mod.GRADE_LIMIT + 1
+
+    _wire(monkeypatch, saved=saved, antes=[], depois=depois)
+    out = await mod.apply_change({"confirmation_token": "ABCDEFGH"})
+
+    assert out["status"] == "applied"
+    # Controle positivo: a campanha lida INTEIRA segue afirmando os numeros.
+    inteira = out["resulting_schedule"]["1"]
+    assert inteira["has_schedule"] is True
+    assert inteira["windows_count"] == mod.GRADE_LIMIT - 1
+    assert "schedule_desconhecida_por_truncamento" not in inteira
+    # A da borda: parte da grade ficou fora do corte e nao ha como saber quanto.
+    borda = out["resulting_schedule"]["2"]
+    assert borda["has_schedule"] is None, (
+        "a campanha da borda afirmou entrega a partir de leitura parcial, "
+        "logo depois de uma escrita na grade"
+    )
+    assert borda["windows_count"] is None
+    assert borda["hours_per_week"] is None, "10.0 h/semana com a outra janela fora do corte"
+    assert borda["schedule_desconhecida_por_truncamento"] is True
+    assert borda["matches_requested"] is None
+    assert borda["truncated"] is True

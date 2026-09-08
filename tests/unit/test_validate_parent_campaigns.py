@@ -109,6 +109,29 @@ async def test_rejects_channel_mismatch(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_recusa_campaign_id_nao_numerico(monkeypatch) -> None:
+    """`", ".join(campaign_ids)` interpolava texto livre direto no GAQL.
+
+    O `pattern` do schema a montante nao e defesa: helper e chamado de mais de
+    um lugar, e o proximo chamador pode nao ter schema nenhum (F87). A funcao
+    tem que recusar o id invalido ANTES de montar a query — run_report nao
+    pode chegar a ser chamado.
+    """
+
+    async def fake_run_report(**kwargs: Any) -> list[dict[str, str]]:
+        raise AssertionError("run_report chamado com campaign_id nao-numerico")
+
+    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    with pytest.raises(ValueError):
+        await validate_parent_campaigns_for_ad_group_create(
+            manager_id=uuid4(),
+            session_id=uuid4(),
+            customer_id="1234567890",
+            ad_groups=[{"campaign_id": "1) OR 1=1 --", "name": "AG1"}],
+        )
+
+
+@pytest.mark.asyncio
 async def test_rejects_cpc_bid_in_auto_bidding(monkeypatch) -> None:
     """F12 lesson: cpc_bid_micros in auto-bidding campaign → error."""
 

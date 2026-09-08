@@ -112,6 +112,29 @@ async def test_rejects_non_search_channel(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_recusa_ad_group_id_nao_numerico(monkeypatch) -> None:
+    """`", ".join(ad_group_ids)` interpolava texto livre direto no GAQL.
+
+    O `pattern` do schema a montante nao e defesa: helper e chamado de mais de
+    um lugar, e o proximo chamador pode nao ter schema nenhum (F87). A funcao
+    tem que recusar o id invalido ANTES de montar a query — run_report nao
+    pode chegar a ser chamado.
+    """
+
+    async def fake_run_report(**kwargs: Any) -> list[dict[str, str]]:
+        raise AssertionError("run_report chamado com ad_group_id nao-numerico")
+
+    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    with pytest.raises(ValueError):
+        await validate_parent_ad_groups_for_rsa_create(
+            manager_id=uuid4(),
+            session_id=uuid4(),
+            customer_id="1234567890",
+            rsas=[{"ad_group_id": "1) OR 1=1 --"}],
+        )
+
+
+@pytest.mark.asyncio
 async def test_handles_batch_with_multiple_ad_groups(monkeypatch) -> None:
     """3 RSAs across 2 ad_groups (one bad) → first offender returned."""
 

@@ -163,7 +163,8 @@ async def _validate_user_interest_taxonomies(
     if not user_interest_ids:
         return None  # No user_interest attachments; skip GAQL lookup
 
-    ids_clause = ", ".join(user_interest_ids)
+    # `ui_id` sai de `audience_resource_name.rsplit("/")` — texto do gestor.
+    ids_clause = ", ".join(str(int(x)) for x in user_interest_ids)
     query = (
         f"SELECT user_interest.user_interest_id, user_interest.taxonomy_type "
         f"FROM user_interest "

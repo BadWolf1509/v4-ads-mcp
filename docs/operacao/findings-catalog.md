@@ -1252,7 +1252,7 @@ conversao falsa numa conta de cliente. A `currency_code=BRL` continua invariante
 conta, nao do fuso, e as 25 sao BRL.
 
 
-## F147 (MINOR, ABERTO) — a reconsulta pos-apply nao tem sentinela de truncamento, e agora precisa de uma
+## F147 (MINOR, CORRIGIDO em 2026-09-08) — a reconsulta pos-apply nao tem sentinela de truncamento, e agora precisa de uma
 
 > **Como apareceu:** introduzido pelo proprio fix do Important 2 da revisao final (04/09), e
 > pego pela re-revisao escopada no mesmo dia. Adjudicado como residuo: direcao fail-safe,
@@ -1285,6 +1285,29 @@ inchaco de resposta alem do que o §7 pede. Filtrar por `campaign_criterion.stat
 ('ENABLED', 'REMOVED')` nao resolve (REMOVED antigo tambem casa); o corte util seria por
 data de modificacao, que o `campaign_criterion` nao expoe. Fica registrado como custo
 conhecido do §7, nao como fix pendente.
+
+> **✅ CORRIGIDO** (branch `pr4/honestidade-dos-numeros`), por um caminho melhor que o
+> sugerido acima: em vez de recusar a confirmacao inteira, `apply_change` DECLARA por
+> campanha — `has_schedule`/`windows_count`/`hours_per_week`/`matches_requested` viram
+> `null`, com `schedule_desconhecida_por_truncamento: true` e `truncated: true`. Recusar a
+> resposta inteira perderia as campanhas que FORAM lidas, e a escrita ja aconteceu: o
+> gestor precisa do que da para confirmar, com o resto marcado como desconhecido.
+>
+> **Fechou em duas etapas, e a segunda e o sintoma que esta entrada nomeia.** A primeira
+> (Task 4 da branch) cobriu a campanha AUSENTE do corte. O `hours_per_week` subestimado —
+> literalmente o sintoma escrito acima — sobrevivia na campanha da BORDA: parte da grade
+> dentro do corte, o resto fora, e o resumo calculado sobre a parte. Como o `ORDER BY
+> campaign.id` agrupa as linhas, havendo corte existe SEMPRE exatamente uma campanha nessa
+> posicao. A regra final e "a campanha da ultima linha sobrevivente e suspeita, sempre que
+> `truncated`" — nao se tenta adivinhar quando ela veio inteira, porque a resposta so tem
+> as linhas que couberam, e chutar ali e o defeito original com outra roupa.
+>
+> A clausula vive numa funcao so (`campanhas_com_grade_incerta`), chamada pelos DOIS
+> gemeos (`get_ad_schedule` e `apply_change`): duas copias da regra e como o F128 nasceu.
+>
+> **O que ficou de fora:** o segundo item acima (o `windows` carregando o REMOVED
+> historico) segue como custo conhecido do §7 — nao ha corte por data de modificacao no
+> `campaign_criterion`.
 
 
 ## F148 (HIGH, CORRIGIDO) — o dry-run de todo mutate always-CONFIRM e invisivel na trilha
@@ -2544,3 +2567,239 @@ defeitos vivos — roda **VERDE**: nenhum guard de lá cobria nenhum deles.
 > derivado, não hardcoded) + `tests/unit/test_whitelist_de_recomendacao_bate_com_o_proto.py`
 > (a whitelist proto-derivada) + `tests/unit/test_blast_radius_bate_com_as_tools.py` e
 > `tests/unit/test_structural_guards.py` (F112 e F57 apertados).
+
+---
+
+## F159 (HIGH, CORRIGIDO em 2026-09-08) — onze tools cortavam o resultado e não diziam
+
+**Sintoma.** `get_campaign_performance(limit=100)` numa conta com 300 campanhas
+devolvia 100 linhas e mais nada. O gestor lia a lista como se fosse a conta
+inteira. Onze tools faziam isso; nenhuma mentia por bug, todas mentiam por
+**ausência de um lugar único que decidisse o corte**.
+
+**A causa não é "faltou um campo".** Cada tool decidia o corte sozinha, e o
+idioma correto — pedir `LIMIT {limit + 1}` e comparar — já existia no repo em
+quatro tools (`ad_schedule`, `overview`, `recommendations`,
+`conversion_actions`). As outras oito pediam `LIMIT {limit}`, e sobre uma lista
+que nunca excede o teto, `len(linhas) > limite` é **falso por construção**: o
+detector nasce morto e nunca fica vermelho.
+
+**Fix.** `aplicar_limite(linhas, limite) -> (linhas, truncated)` em
+`src/mcp/tools/_common.py`, um lugar só, com o contrato do `+1` escrito na
+docstring. Os oito builders GAQL passaram a pedir a linha sentinela; as nove
+tools consomem o primitivo; `get_performance_breakdown` e `detect_drift`
+fecharam os caminhos que faltavam.
+
+**Dois guards, porque um não alcança o outro lado:**
+
+1. `test_declaracao_de_truncamento.py` — *"toda tool cujo `input_schema` declara
+   `limit` declara `truncated` em todo caminho de retorno"*. Escopo derivado do
+   registry: tool nova entra sozinha.
+2. `test_builders_pedem_a_linha_sentinela.py` — *"todo builder com teto pede
+   `limit + 1`"*. O primeiro guard **não vê a query**, então uma tool com
+   `LIMIT {limit}` e `truncated` computado corretamente passaria verde mentindo
+   `false` para sempre.
+
+🔑 **O guard nasceu com o escopo um andar errado, três vezes seguidas.** Primeiro
+varria o **módulo do handler** — e acusava cinco tools que já faziam a coisa
+certa num helper. Depois seguia o import e varria o **módulo do helper** — e
+`src/google_ads/reports.py` está a um salto de **20 das 26** tools com `limit`,
+então uma chave `truncated` em qualquer função dele absolveria oito devedoras de
+uma vez. Só na terceira versão o salto passou a resolver para a **FUNÇÃO
+chamada**. É a família do F57 (guard escopado por arquivo em vez de por função),
+reencenada dentro do próprio PR que a documenta.
+
+🔑 **`xfail(strict=True)` esconde três coisas.** Foi usado para segurar a branch
+verde entre a criação do guard e o fechamento das nove. Medido: o pytest
+reportava `xfailed` — **suíte verde** — com 9 ofensores, com 13 (salto removido)
+e com 26 (scanner cego por inteiro). Regressão de tool honesta, quebra total do
+scanner e progresso parcial eram indistinguíveis. Trocado por **ratchet de
+baseline** (`assert ofensores == DEVEDORAS`), que fica vermelho nas duas direções.
+
+**O que ficou de fora, de propósito.** `get_top_keywords_creatives` corta por
+`top_n` e não declara `truncated`: `limit` é um **teto** (o gestor não sabe que
+havia mais, esconder é mentira); `top_n` é um **contrato** (quem pede o top 10
+recebe 10, e `truncated: true` seria ruído em toda chamada).
+
+> **✅ CORRIGIDO** (branch `pr4/honestidade-dos-numeros`).
+
+---
+
+## F160 (HIGH, CORRIGIDO em 2026-09-08) — o top-N era cortado pela coluna errada
+
+**Sintoma.** `get_top_keywords_creatives(metric="conversions")` nunca mostrava a
+keyword barata que converte muito.
+
+**Causa.** A query ordenava por `metrics.cost_micros DESC LIMIT top_n`
+**sempre**, e a tool reordenava **as N linhas que já tinham vindo cortadas por
+custo**. O corte é no Google; o re-sort é no cliente. Tudo que estivesse fora do
+top-N por custo simplesmente **não existia na resposta** — e a docstring do
+builder prometia *"caller decides via ORDER BY at fetch"*, o que era falso.
+
+**Fix.** `metric` entra nos dois builders e vira o `ORDER BY`; o bloco de re-sort
+e o `_METRIC_KEY` saíram. Sondado antes por `validate_gaql` (2026-09-07): o
+Google **recusa** `ORDER BY` de campo fora do `SELECT` — as duas queries já
+selecionam as quatro métricas, então o `SELECT` não muda, e há teste travando
+isso contra um "enxugamento" futuro.
+
+**Desempate estável junto** (F98/F88): sem `, metrics.cost_micros DESC`, "top 10
+por conversões" numa conta de cauda longa é quase todo empate em ZERO, e o Google
+não garante ordem entre linhas de mesmo valor — duas chamadas iguais devolviam
+keywords diferentes. O corte por custo tinha o mesmo problema; o fix só o tornou
+visível.
+
+🔑 **Havia um teste afirmando o bug.** `test_top_keywords_creatives_custom_metric_resorts`
+usava `AsyncMock(side_effect=[lista_fixa, lista_fixa])` — um dublê **incapaz de
+expressar o defeito**, porque devolvia as mesmas linhas independentemente do
+`ORDER BY` da query — e asseverava o re-sort cliente como comportamento correto.
+Passou verde durante toda a vida da tool. Teste que codifica a convenção errada é
+pior que teste ausente: ele **defende** o defeito na revisão seguinte.
+
+> **✅ CORRIGIDO** (branch `pr4/honestidade-dos-numeros`).
+
+---
+
+## F161 (MEDIUM, CORRIGIDO em 2026-09-08) — "serve 24x7" afirmado a partir de leitura parcial
+
+**Sintoma.** `get_ad_schedule` com a grade truncada dizia, para a campanha cujas
+janelas caíram além do corte, `has_schedule: false` + `hours_per_week: 168` — que
+a própria descrição da tool ensina a ler como **"serve o tempo todo"**. É o
+oposto da verdade para uma campanha que tem grade restrita.
+
+`summarize_current([])` não distingue *"não tem grade"* de *"não li a grade"* — a
+mesma classe do F131 (vazio que quer dizer duas coisas).
+
+**Fix.** Sob `truncated`, campanha sem nenhuma linha lida recebe `has_schedule`,
+`hours_per_week` e `windows` **`null`**, mais
+`schedule_desconhecida_por_truncamento: true`. Os três juntos: `has_schedule:
+null` ao lado de `windows: 0` continuaria lendo como "zero janelas".
+
+🔑 **O gêmeo pior estava em `apply_change`** e só apareceu porque o implementer da
+task o mencionou como fora de escopo. A reconsulta **pós-apply** usa o mesmo
+`summarize_current`, com `GRADE_LIMIT = 1000` e `status="all"` — e 20 campanhas ×
+168 janelas, mais os critérios `REMOVED` que se acumulam a cada edição, passam
+disso sem esforço. Ali o gestor **acabou de restringir a grade** e o resumo dizia
+que a campanha passou a servir 24x7. `matches_requested` virou `null` junto: sem
+ler a grade, `False` seria veredito inventado. F128 — a cláusula ficou de fora de
+um dos gêmeos.
+
+> **✅ CORRIGIDO** (branch `pr4/honestidade-dos-numeros`).
+
+---
+
+## F162 (HIGH, CORRIGIDO em 2026-09-08) — `detect_drift` perdia evento num teto interno de 500
+
+**Sintoma.** A tool cujo trabalho inteiro é responder *"mudou algo que não
+devia?"* pedia `limit: 500` a `get_change_history` e não dizia. Numa janela com
+mais de 500 eventos, o excedente sumia **antes de qualquer classificação** — e o
+gestor lia "zero drift" sobre uma amostra.
+
+**Sonda antes do desenho** (`validate_gaql`, 2026-09-07): o `change_event`
+**exige** `LIMIT` e recusa acima de 10k (*"Change event requests must specify a
+LIMIT in query and LIMIT should be less than or equal to 10k"*), e **não oferece
+OFFSET nem cursor**. A única dimensão por onde passar do teto é o **tempo**.
+
+**Fix — particionamento de janela temporal, adaptativo.** Lê a janela inteira
+pedindo o cap de 10k; só relê dia a dia quando aquela leitura voltou truncada. O
+caso comum (janela típica de ~141 eventos) segue custando **uma** leitura. Como
+`get_change_history` recebe data em granularidade de dia, o piso da partição é o
+dia, e dia que estoura sozinho sai declarado em `cobertura.dias_no_teto_da_api` —
+**limite de API declarado não é mentira; teto escondido é.**
+
+O bloco `cobertura` diz quantos eventos foram examinados e quantas janelas foram
+consultadas: contagem sem número seria a mesma opacidade de antes.
+
+🔑 **O aviso do clamp F23 também era descartado.** `cobertura.janela_efetiva` já
+dizia QUE a janela mudou; faltava POR QUE. O motivo alegado para não propagar era
+que o retorno precisaria virar variável e sair do ramo estrito do guard de
+truncamento — **guard não dita contrato de resposta**. `None` explícito mantém as
+duas coisas.
+
+> **✅ CORRIGIDO** (branch `pr4/honestidade-dos-numeros`).
+
+---
+
+## F163 (HIGH, CORRIGIDO em 2026-09-08) — id cru na cláusula `IN` do GAQL: a classe, não os sítios
+
+**Sintoma.** `", ".join(ad_group_ids)` interpolado direto num `IN (...)` de GAQL,
+sem `int()` nem `gaql_string_literal`. O `pattern` do schema a montante não é
+defesa (F87): helper é chamado de mais de um lugar, e o próximo chamador pode não
+ter schema nenhum.
+
+🔑 **A contagem estava errada nos dois sentidos, três vezes.** A varredura disse
+**4** sítios. Meu brief disse **6** (achou um que a varredura perdeu). Um scan AST
+depois da primeira rodada mediu **12 restantes**. E o meu próprio scan estava
+errado: resolvia nome→última atribuição, e `_resolve_names` reusa o **mesmo nome
+de variável** para dois `IN` diferentes na mesma função — as duas colapsavam numa
+só, e a tabela tinha 11 linhas para 12 sítios.
+
+**Duas formas, e a segunda foi a que todas as contagens manuais perderam:**
+
+- **A:** `ids = ", ".join(...)` e depois `f"... IN ({ids})"`.
+- **B:** `f"... IN ({','.join(...)})"` — inline, sem nome intermediário. Quatro
+  sítios (`ad_schedule.py` ×3, `assets.py`) só aparecem nesta forma.
+
+**Fix.** Os 12 adotaram `", ".join(str(int(x)) for x in ids)`, o idioma que
+`queries/_common.py` já usava. E — o que fecha a classe — um **guard estrutural**
+que varre `src/google_ads/` e `src/mcp/tools/` inteiros, vê as duas formas, e
+classifica seguro (`int(` ou `gaql_string_literal`) contra cru. Sem ele, o 13º
+sítio nasce amanhã.
+
+🔑 **Um refactor "limpo" quase apagou o guard.** A primeira versão do fix de
+`ad_schedule.py` extraiu um helper `_ids(campaign_ids)` para não repetir o idioma
+três vezes — e isso tirava os três sítios do campo de visão do casador. Foi
+desfeito, e o guard passou a **falhar fechado** em interpolação que não resolve
+para um `join`.
+
+**Junto:** `int(row.metrics.conversions)` truncava atribuição fracionada em
+`audit_zombie_keywords`. **A frase original desta entrada dizia que isso "inventa
+zumbi", e a revisão final mediu que não:** o predicado é `impressions == 0 and
+clicks == 0` (`flag_zombie_keywords.py:88`) e `conversions` não entra nele, então o
+CONJUNTO de zumbis é idêntico antes e depois — o próprio teste novo confirma
+(`total_zombies == 1` nos dois mundos). O que muda é o valor REPORTADO: numa tool que
+define zumbi como *"zero atividade"*, a linha saía dizendo `conversions: 0` onde a
+keyword converteu 0,9. O fix está certo; a justificativa era do tipo que este repo
+cobra medição. Corrigido nas três camadas (parser, fronteira dict→dataclass, e o tipo
+do campo), e a gêmea `flag_keywords` (`KeywordRow`/`FlaggedKeyword`, que recebem o
+`double` sem cast e continuavam anotadas `int`) fechou na mesma branch.
+
+> **✅ CORRIGIDO** (branch `pr4/honestidade-dos-numeros`).
+
+---
+
+## F164 (MEDIUM, CORRIGIDO em 2026-09-08) — o guard do F141 só via três formas de ler o relógio
+
+**Sintoma.** O casador do F141 exigia `ast.Attribute` sobre um `ast.Name` com o
+nome literal `datetime`/`date`. Cinco formas passavam verdes, **sem uma palavra**:
+
+| Forma | Antigo | Novo |
+|---|---|---|
+| `datetime.utcnow()` | `[]` | acusa |
+| `import time` → `time.time()` | `[]` | acusa |
+| `from time import time` → `time()` | `[]` | acusa |
+| `from datetime import datetime as dt` → `dt.now(UTC)` | `[]` | acusa |
+| `import datetime as dt` → `dt.datetime.now()` | `[]` | acusa |
+
+Nenhuma é hipotética: `utcnow()` é o que a maior parte do Python antigo escreve,
+e alias de import é o que um autocomplete produz sozinho.
+
+**Fix.** Resolução de alias no harness (`origens_de_import`, `caminho_canonico`),
+casando por **sufixo de dois segmentos** do caminho canônico — exigir o canônico
+inteiro absolveria calado todo trecho sem o import à vista, e num guard
+**positivo** (procura o que não pode existir) a folga tem que errar acusando.
+
+**O aperto não achou dívida, achou ausência:** zero violação viva em `src/`. A
+única prova de que o guard morde é a sabotagem — as cinco formas plantadas num
+arquivo real do escopo, as cinco acusadas.
+
+🔑 **A folga que sobra é de ESCOPO, e está medida.** 13 arquivos de `src/` leem
+relógio fora dos dois regimes. Três já têm motivo escrito; sete são epoch para
+TTL/bucket de quota (comparam AGORA com instante absoluto, não derivam data de
+conta); e **três são o gêmeo Meta do F141** — os quatro sítios que a spec da
+varredura atribui ao PR 6. A correção estrutural é **inverter** o guard (varrer
+`src/` inteiro e exigir motivo escrito de todo leitor), o que troca lista de
+escopo por lista de exceção. Fica para o PR 6, junto com os sítios Meta: inverter
+antes de corrigi-los só encheria a lista com trabalho já planejado.
+
+> **✅ CORRIGIDO** (branch `pr4/honestidade-dos-numeros`) — casador apertado;
+> escopo medido e o resto encaminhado.

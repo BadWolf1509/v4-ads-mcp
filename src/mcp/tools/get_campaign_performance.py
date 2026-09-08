@@ -8,6 +8,7 @@ from src.google_ads.queries._common import micros_to_currency, resolve_date_wind
 from src.google_ads.queries.performance import campaign_performance_query
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
+from src.mcp.tools._common import aplicar_limite
 from src.mcp.tools._registry import register_tool
 
 _DATE_PRESETS = [
@@ -84,7 +85,9 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         "[CORE] Prefira get_performance_breakdown(level=campaign) — este report sera "
         "arquivado (Fase 2B). Performance por campanha: impressoes, clicks, custo, conversoes, valor, "
         "CTR, CPC. Ordenado por custo desc. Filtros opcionais: status (enabled|"
-        "paused|removed|all), limit (default 100). "
+        "paused|removed|all), limit (default 100). `truncated: true` avisa que a "
+        "conta tinha MAIS campanhas do que o limit e a lista foi cortada no topo "
+        "de gasto — peca um limit maior ou filtre. "
         "Nota: campaign.status pode lagar alguns minutos entre queries (cache Google) "
         "— se decisao critica baseada em status, re-query antes de agir."
     ),
@@ -112,8 +115,12 @@ async def get_campaign_performance(args: dict[str, Any]) -> dict[str, Any]:
         operation_name="get_campaign_performance",
         audit_this_call=True,
     )
+    # A consulta pediu `limit + 1`; a linha extra e a sentinela que revela o
+    # corte e nao pode chegar ao gestor.
+    rows, truncado = aplicar_limite(rows, limit)
     return {
         "customer_id": customer_id,
         "period": {"from": start.isoformat(), "to": end.isoformat()},
         "rows": rows,
+        "truncated": truncado,
     }

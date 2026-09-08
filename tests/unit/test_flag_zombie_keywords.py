@@ -18,7 +18,7 @@ def _make_kw(
     impressions: int = 0,
     clicks: int = 0,
     cost_brl: float = 0.0,
-    conversions: int = 0,
+    conversions: float = 0.0,
     status: str = "ENABLED",
 ) -> KeywordRow:
     return KeywordRow(
@@ -126,6 +126,17 @@ def test_total_count_pre_truncate_preserved():
     zombies, total = flag_zombie_keywords(rows, limit=10)
     assert len(zombies) == 2
     assert total == 2  # only the 2 zombies count
+
+
+def test_conversoes_fracionadas_propagam_para_zombie():
+    """Terceiro andar do truncamento: se `KeywordRow.conversions`/
+    `ZombieKeyword.conversions` seguissem `int`, 0.9 arredondaria pra 0 aqui
+    mesmo que os dois parsers acima (GAQL row + dict boundary) ja
+    preservassem a fracao. Atribuicao fracionada e o caso normal do Google,
+    nao a borda — truncar INVENTA zumbi onde a keyword converteu."""
+    rows = [_make_kw(impressions=0, clicks=0, conversions=0.9)]
+    zombies, _ = flag_zombie_keywords(rows, limit=10)
+    assert zombies[0].conversions == 0.9
 
 
 def test_ad_group_status_propagated_to_zombie():

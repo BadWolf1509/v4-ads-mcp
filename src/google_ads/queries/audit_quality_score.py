@@ -40,7 +40,7 @@ def build_audit_quality_score_query(
         "AND ad_group_criterion.quality_info.quality_score IS NOT NULL"
     )
     if ad_group_ids:
-        ids_clause = ", ".join(f"'{id_}'" for id_ in ad_group_ids)
+        ids_clause = ", ".join(str(int(id_)) for id_ in ad_group_ids)
         query += f" AND ad_group.id IN ({ids_clause})"
     return query
 

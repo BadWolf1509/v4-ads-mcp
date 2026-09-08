@@ -122,8 +122,8 @@ async def test_apply_audience_full_cycle_audits(db, session_ctx):
     )
 
     fake_taxonomy_rows = [
-        {"id": "BBB", "taxonomy_type": "IN_MARKET"},
-        {"id": "CCC", "taxonomy_type": "IN_MARKET"},
+        {"id": "918811", "taxonomy_type": "IN_MARKET"},
+        {"id": "918822", "taxonomy_type": "IN_MARKET"},
     ]
 
     with (
@@ -159,12 +159,12 @@ async def test_apply_audience_full_cycle_audits(db, session_ctx):
                     {
                         "target_id": "111",
                         "audience_type": "user_interest",
-                        "audience_resource_name": "customers/1234567890/userInterests/BBB",
+                        "audience_resource_name": "customers/1234567890/userInterests/918811",
                     },
                     {
                         "target_id": "222",
                         "audience_type": "user_interest",
-                        "audience_resource_name": "customers/1234567890/userInterests/CCC",
+                        "audience_resource_name": "customers/1234567890/userInterests/918822",
                     },
                 ],
             }
@@ -205,5 +205,5 @@ async def test_apply_audience_full_cycle_audits(db, session_ctx):
         },
     }
     # Critical privacy gate: raw resource_name fragments NOT in audit
-    for fragment in ("AAA", "BBB", "CCC", "userLists/A", "userInterests/B"):
+    for fragment in ("AAA", "918811", "918822", "userLists/A", "userInterests/9"):
         assert fragment not in json.dumps(summary_d)

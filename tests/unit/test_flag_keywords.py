@@ -19,7 +19,7 @@ def _make_row(
     quality_score: int = 5,
     impressions: int = 100,
     clicks: int = 5,
-    conversions: int = 0,
+    conversions: float = 0,
     cost_brl: float = 0.0,
 ) -> KeywordRow:
     return KeywordRow(
@@ -236,3 +236,21 @@ def test_candidate_promote_exact_flagged_at_qs_boundary_7():
     assert len(flagged) == 1
     assert flagged[0].flags == ("candidate_promote_exact",)
     assert total == 1
+
+
+def test_conversoes_fracionadas_propagam_para_flagged():
+    """F163 (gemea): `conversions` e `double` no proto e chega SEM cast.
+
+    `KeywordRow.conversions`/`FlaggedKeyword.conversions` ficaram anotados `int`
+    quando a gemea (`flag_zombie_keywords`) virou `float` — anotacao que mente
+    sobre o valor que carrega e o convite para o proximo autor "consertar o
+    tipo" com um `int()`, que e o bug que o F163 corrigiu do outro lado.
+
+    O predicado consumidor e `row.conversions >= 1` (candidate_promote_exact),
+    entao 1.4 tem que promover E chegar inteiro na saida: um `int()` no
+    caminho deixaria a promocao de pe e reportaria 1 no lugar de 1.4.
+    """
+    row = _make_row(quality_score=8, match_type="BROAD", conversions=1.4)
+    flagged, _ = flag_keywords([row], min_impressions=10, limit=10)
+    assert flagged[0].flags == ("candidate_promote_exact",)
+    assert flagged[0].conversions == 1.4

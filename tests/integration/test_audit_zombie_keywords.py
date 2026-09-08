@@ -86,7 +86,42 @@ async def test_ad_group_ids_filter_passthrough(bound_context):
     ):
         await audit_zombie_keywords({"customer_id": "1234567890", "ad_group_ids": ["123", "456"]})
 
-    assert "ad_group.id IN (123,456)" in captured_query["query"]
+    assert "ad_group.id IN (123, 456)" in captured_query["query"]
+
+
+@pytest.mark.asyncio
+async def test_conversoes_fracionadas_nao_viram_zero(bound_context):
+    """Guard fim-a-fim: `int(0.9)` == 0. Numa tool que define zumbi como
+    "zero atividade", truncar conversao fracionada em QUALQUER um dos andares
+    (parser da linha GAQL, boundary dict->dataclass, ou o proprio campo do
+    dataclass) inventa zumbi — a keyword converteu e o relatorio diz que nao.
+    Atribuicao fracionada e o caso normal do Google, nao a borda."""
+    from src.mcp.tools.audit_zombie_keywords import audit_zombie_keywords
+
+    fake_rows = [
+        {
+            "ad_group_id": "1001",
+            "ad_group_name": "AG1",
+            "ad_group_status": "ENABLED",
+            "campaign_name": "C1",
+            "keyword_id": "K1",
+            "keyword_text": "kw fracionada",
+            "match_type": "BROAD",
+            "impressions": 0,
+            "clicks": 0,
+            "cost_brl": 0.0,
+            "conversions": 0.9,
+            "status": "ENABLED",
+        },
+    ]
+    with patch(
+        "src.mcp.tools.audit_zombie_keywords.run_report",
+        AsyncMock(return_value=fake_rows),
+    ):
+        result = await audit_zombie_keywords({"customer_id": "1234567890"})
+
+    assert result["total_zombies"] == 1
+    assert result["zombies"][0]["conversions"] == 0.9
 
 
 @pytest.mark.asyncio
