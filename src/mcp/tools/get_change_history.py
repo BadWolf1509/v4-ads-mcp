@@ -316,7 +316,7 @@ async def _resolve_names(
     ad_group_ids = sorted({r["ad_group_id"] for r in rows if r["ad_group_id"]})
 
     if campaign_ids:
-        ids_clause = ",".join(campaign_ids)
+        ids_clause = ",".join(str(int(c)) for c in campaign_ids)
         q = f"SELECT campaign.id, campaign.name FROM campaign WHERE campaign.id IN ({ids_clause})"
         rows_c = await run_report(
             manager_id=manager_id,
@@ -331,7 +331,7 @@ async def _resolve_names(
             name_map[("campaign", c["id"])] = c["name"]
 
     if ad_group_ids:
-        ids_clause = ",".join(ad_group_ids)
+        ids_clause = ",".join(str(int(a)) for a in ad_group_ids)
         q = f"SELECT ad_group.id, ad_group.name FROM ad_group WHERE ad_group.id IN ({ids_clause})"
         rows_a = await run_report(
             manager_id=manager_id,

@@ -412,9 +412,9 @@ async def test_custom_params_summary_aggregates_without_raw_resource_names():
 
     fake_run_report = AsyncMock(
         return_value=[
-            {"id": "BBB", "taxonomy_type": "IN_MARKET"},
-            {"id": "CCC", "taxonomy_type": "IN_MARKET"},
-            {"id": "DDD", "taxonomy_type": "AFFINITY"},
+            {"id": "918811", "taxonomy_type": "IN_MARKET"},
+            {"id": "918822", "taxonomy_type": "IN_MARKET"},
+            {"id": "918833", "taxonomy_type": "AFFINITY"},
         ]
     )
     with (
@@ -438,17 +438,17 @@ async def test_custom_params_summary_aggregates_without_raw_resource_names():
                     {
                         "target_id": "111",
                         "audience_type": "user_interest",
-                        "audience_resource_name": "customers/1234567890/userInterests/BBB",
+                        "audience_resource_name": "customers/1234567890/userInterests/918811",
                     },
                     {
                         "target_id": "222",
                         "audience_type": "user_interest",
-                        "audience_resource_name": "customers/1234567890/userInterests/CCC",
+                        "audience_resource_name": "customers/1234567890/userInterests/918822",
                     },
                     {
                         "target_id": "222",
                         "audience_type": "user_interest",
-                        "audience_resource_name": "customers/1234567890/userInterests/DDD",
+                        "audience_resource_name": "customers/1234567890/userInterests/918833",
                     },
                 ],
             }
@@ -462,7 +462,7 @@ async def test_custom_params_summary_aggregates_without_raw_resource_names():
     assert summary["unique_targets_count"] == 2
     # Critical: raw resource_name fragments NOT in summary
     serialized = str(summary)
-    for fragment in ("AAA", "BBB", "CCC", "DDD"):
+    for fragment in ("AAA", "918811", "918822", "918833"):
         assert fragment not in serialized
 
 

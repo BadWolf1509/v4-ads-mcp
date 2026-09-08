@@ -33,9 +33,9 @@ def ad_schedule_query(*, campaign_ids: list[str] | None, status: str, limit: int
         raise ValueError("campaign_ids vazio: passe None para 'sem filtro' ou ao menos um id")
     filtros = ["campaign_criterion.type = 'AD_SCHEDULE'"]
     if campaign_ids is not None:
-        filtros.append(
-            f"campaign.id IN ({','.join(campaign_ids)})"
-        )  # ids validados ^[0-9]+$ no schema
+        # `str(int(c))` e a defesa, nao o `pattern` do schema (F87): o
+        # builder e publico e o proximo chamador pode nao ter schema nenhum.
+        filtros.append(f"campaign.id IN ({','.join(str(int(c)) for c in campaign_ids)})")
     if status in _STATUS_FILTER:
         filtros.append(f"campaign_criterion.status = '{_STATUS_FILTER[status]}'")
     return f"""
@@ -76,7 +76,7 @@ def campaign_budget_query(*, campaign_ids: list[str] | None) -> str:
     if campaign_ids is not None and len(campaign_ids) == 0:
         raise ValueError("campaign_ids vazio: passe None para 'sem filtro' ou ao menos um id")
     where = (
-        f"campaign.id IN ({','.join(campaign_ids)})"
+        f"campaign.id IN ({','.join(str(int(c)) for c in campaign_ids)})"
         if campaign_ids is not None
         else "campaign.status != 'REMOVED'"
     )
@@ -132,7 +132,7 @@ def day_hour_metrics_query(*, campaign_ids: list[str], start: date, end: date) -
                metrics.cost_micros, metrics.conversions
         FROM campaign
         WHERE {gaql_date_clause(start, end)}
-          AND campaign.id IN ({",".join(campaign_ids)})
+          AND campaign.id IN ({",".join(str(int(c)) for c in campaign_ids)})
     """.strip()
 
 

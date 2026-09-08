@@ -77,7 +77,7 @@ async def update_ad_group_bid(args: dict[str, Any]) -> dict[str, Any]:
 
     # Resolve current bids via GAQL
     ag_ids = [b["ad_group_id"] for b in bids_input]
-    ids_clause = ", ".join(ag_ids)
+    ids_clause = ", ".join(str(int(x)) for x in ag_ids)
     query = f"""
         SELECT ad_group.id, ad_group.name, ad_group.cpc_bid_micros
         FROM ad_group

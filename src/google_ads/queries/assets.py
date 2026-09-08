@@ -36,8 +36,9 @@ def build_campaign_asset_query(*, field_type: str | None, campaign_ids: list[str
     if field_type is not None:
         filtros.append(f"campaign_asset.field_type = '{gaql_escape(field_type)}'")
     if campaign_ids:
-        # ids sao validados como digit-string no schema da tool
-        filtros.append(f"campaign.id IN ({','.join(campaign_ids)})")
+        # `str(int(c))` e a defesa, nao o `pattern` do schema (F87): o
+        # builder e publico e o proximo chamador pode nao ter schema nenhum.
+        filtros.append(f"campaign.id IN ({','.join(str(int(c)) for c in campaign_ids)})")
     return q + (" WHERE " + " AND ".join(filtros) if filtros else "")
 
 

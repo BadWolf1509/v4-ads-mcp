@@ -212,7 +212,7 @@ async def lookup_country_names(
     # Country IDs come from row formatters as digit strings. Sort for query
     # stability (helps caching/debugging). Embed directly as integers in the
     # IN clause; geo_target_constant.id is int64 in GAQL.
-    ids_clause = ",".join(sorted(country_ids))
+    ids_clause = ",".join(str(int(c)) for c in sorted(country_ids))
     query = (
         "SELECT geo_target_constant.id, geo_target_constant.name, "
         "geo_target_constant.country_code "
