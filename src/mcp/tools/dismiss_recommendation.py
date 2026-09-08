@@ -6,6 +6,7 @@ from typing import Any
 from src.google_ads.mutations import run_recommendation_action
 from src.governance.blast_radius import classify
 from src.mcp.context import get_current
+from src.mcp.tools._mutate_common import applied_envelope
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -50,12 +51,11 @@ async def dismiss_recommendation(args: dict[str, Any]) -> dict[str, Any]:
         operation_type="dismiss_recommendation",
         payload=payload,
     )
-    return {
-        "status": "applied",
-        "operation": "dismiss_recommendation",
-        "customer_id": customer_id,
-        "blast_summary": summary,
-        "applied_count": result["applied_count"],
-        "provider_request_id": result["provider_request_id"],
-        "auto_applied_reason": risk.reason,
-    }
+    return applied_envelope(
+        "dismiss_recommendation",
+        customer_id,
+        summary,
+        applied_count=result["applied_count"],
+        provider_request_id=result["provider_request_id"],
+        auto_applied_reason=risk.reason,
+    )

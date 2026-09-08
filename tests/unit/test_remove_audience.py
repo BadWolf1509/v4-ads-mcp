@@ -165,16 +165,46 @@ async def test_confirm_path_payload_includes_partial_failure_flag():
     assert captured_payload["criterion_ids"] == ["52988066042"]
 
 
-# Per-row mapping test (1)
+# R1-I5: o teste que existia aqui exercitava `_classify_partial` — codigo morto
+# que ninguem chamava. Um teste verde sobre uma funcao sem chamador nao prova
+# nada sobre o que a tool entrega; ele era, na verdade, o que fazia a promessa
+# falsa da description parecer coberta. Saiu junto com a funcao.
 
 
-def test_classify_partial_already_removed_mapping():
-    """_classify_partial maps RESOURCE_NOT_FOUND family → 'already_removed'."""
-    from src.mcp.tools.remove_audience import _classify_partial
+# R1-I5: a description descreve o que a tool ENTREGA
 
-    assert _classify_partial(None) == "removed"
-    assert _classify_partial("RESOURCE_NOT_FOUND: criterion does not exist") == "already_removed"
-    assert _classify_partial("Error: NOT_FOUND") == "already_removed"
-    assert _classify_partial("CRITERION_NOT_FOUND") == "already_removed"
-    assert _classify_partial("DOES_NOT_EXIST") == "already_removed"
-    assert _classify_partial("Some other error") == "failed"
+
+def _description() -> str:
+    """A description REGISTRADA — a que o cliente MCP ve, nao a docstring."""
+    from src.mcp.tools._registry import get_tool, import_all_tools
+
+    import_all_tools()
+    tool = get_tool("remove_audience")
+    assert tool is not None
+    return tool.description
+
+
+def test_description_nao_promete_status_por_linha_que_ninguem_produz() -> None:
+    """R1-I5: `already_removed` per-row nunca aconteceu.
+
+    `_classify_partial` era codigo morto — nenhum caminho o chamava, e o
+    `apply_change` (por onde a resposta desta tool sai) e generico: ele nao
+    conhece o vocabulario de dominio de tool nenhuma. A description anunciava
+    "audit_log mostra 'already_removed' per-row", e o gestor planeja em cima
+    disso: ele espera distinguir "ja estava removida" de "falhou". Description
+    que mente e pior que description ausente.
+    """
+    assert "already_removed" not in _description()
+
+
+def test_description_nomeia_a_chave_que_a_resposta_de_fato_traz() -> None:
+    """O substituto honesto: `partial_failures`, que o apply_change devolve (R1-I1)."""
+    assert "partial_failures" in _description()
+
+
+def test_classify_partial_saiu_do_modulo() -> None:
+    """Codigo morto que sustentava a promessa. Sem chamador, ele so validava a mentira."""
+    from src.mcp.tools import remove_audience as mod
+
+    assert not hasattr(mod, "_classify_partial")
+    assert not hasattr(mod, "_ALREADY_REMOVED_PATTERNS")

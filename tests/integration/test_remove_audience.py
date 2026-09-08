@@ -197,4 +197,13 @@ async def test_remove_audience_full_cycle_audits(db, session_ctx):
         "target_type": "ad_group",
         "target_id": "111",
         "criterion_count": 3,
+        # R1-I2: o executor acrescenta a chave reservada `resultado`
+        # (o que ACONTECEU) ao lado do resumo que a tool monta.
+        "resultado": {
+            "tentadas": 3,
+            "aplicadas": 2,
+            "mudaram": 2,
+            "falharam": 1,
+            "indices_com_falha": [1],
+        },
     }

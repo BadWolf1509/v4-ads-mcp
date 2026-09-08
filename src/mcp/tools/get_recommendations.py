@@ -3,7 +3,7 @@
 
 from typing import Any
 
-from src.google_ads.queries.recommendations import recommendations_query
+from src.google_ads.queries.recommendations import TYPE_PT, recommendations_query
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
 from src.mcp.tools._registry import register_tool
@@ -28,41 +28,11 @@ _SCHEMA: dict[str, Any] = {
 }
 
 
-_TYPE_PT = {
-    "KEYWORD": "Adicionar palavra-chave",
-    "ADD_AGE_GROUP_CRITERION": "Adicionar criterio de faixa etaria",
-    "TEXT_AD": "Criar texto de anuncio",
-    "CALLOUT_EXTENSION": "Adicionar extensao de chamada",
-    "CALLOUT_ASSET": "Adicionar asset de chamada",
-    "SITELINK_EXTENSION": "Adicionar extensao de sitelink",
-    "SITELINK_ASSET": "Adicionar asset de sitelink",
-    "ENHANCED_CPC_OPT_IN": "Ativar lance otimizado",
-    "SEARCH_PARTNERS_OPT_IN": "Ativar parceiros de pesquisa",
-    "MAXIMIZE_CONVERSIONS_OPT_IN": "Migrar pra Maximizar conversoes",
-    "MAXIMIZE_CLICKS_OPT_IN": "Migrar pra Maximizar clicks",
-    "TARGET_CPA_OPT_IN": "Migrar pra Target CPA",
-    "TARGET_ROAS_OPT_IN": "Migrar pra Target ROAS",
-    "MAXIMIZE_CONVERSION_VALUE_OPT_IN": "Migrar pra Maximizar valor",
-    "PERFORMANCE_MAX_OPT_IN": "Migrar pra Performance Max",
-    "MOVE_UNUSED_BUDGET": "Mover orcamento nao usado",
-    "FORECASTING_CAMPAIGN_BUDGET": "Aumentar orcamento da campanha",
-    "CAMPAIGN_BUDGET": "Ajustar orcamento da campanha",
-    "RESPONSIVE_SEARCH_AD": "Criar anuncio responsivo",
-    "RESPONSIVE_SEARCH_AD_ASSET": "Adicionar asset em RSA",
-    "RESPONSIVE_SEARCH_AD_IMPROVE_AD_STRENGTH": "Melhorar forca do RSA",
-    "DYNAMIC_IMAGE_EXTENSION_OPT_IN": "Ativar imagens dinamicas",
-    "USE_BROAD_MATCH_KEYWORD": "Usar correspondencia ampla",
-    "DISPLAY_EXPANSION_OPT_IN": "Ativar expansao display",
-    "LEAD_FORM_ASSET": "Adicionar formulario de leads",
-    "IMPROVE_GOOGLE_TAG_COVERAGE": "Melhorar cobertura da Google Tag",
-    # Forecasting variants (P3 dogfood F7 finding — FORECASTING_SET_TARGET_CPA missing)
-    "FORECASTING_SET_TARGET_CPA": "Definir Target CPA previsto",
-    "FORECASTING_SET_TARGET_ROAS": "Definir Target ROAS previsto",
-    # Performance Max upgrades (Google pushes these aggressively in 2024+)
-    "UPGRADE_LOCAL_CAMPAIGN_TO_PERFORMANCE_MAX": "Migrar Local pra Performance Max",
-    "UPGRADE_SMART_SHOPPING_CAMPAIGN_TO_PERFORMANCE_MAX": "Migrar Smart Shopping pra Performance Max",
-    "IMPROVE_PERFORMANCE_MAX_AD_STRENGTH": "Melhorar forca do Performance Max",
-}
+# C2: a tabela PT-BR mudou de casa (src/google_ads/queries/recommendations.py)
+# porque o `apply_recommendation` passou a mostrar o MESMO rotulo no preview de
+# confirmacao. Duas copias divergiriam: o gestor leria um nome ao listar e outro
+# ao confirmar. O alias local existe so pra nao mexer nos call sites.
+_TYPE_PT = TYPE_PT
 
 
 def _row_formatter(row: Any) -> dict[str, Any]:

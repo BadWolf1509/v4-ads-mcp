@@ -3,7 +3,7 @@
 Tokens are 8 alphanumeric chars (uppercase + digits) — short enough for
 a human to type from chat if needed, long enough to be unguessable
 (36^8 ~ 2.8 trillion). Always tied to (session_id, customer_id) and a
-TTL of 10 minutes.
+TTL de DEFAULT_TTL_MINUTES (abaixo) — o numero mora la, nunca no texto.
 
 Concurrent consumes are race-safe via `SELECT ... FOR UPDATE` + immediate
 update of consumed_at.

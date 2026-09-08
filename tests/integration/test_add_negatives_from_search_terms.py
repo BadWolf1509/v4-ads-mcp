@@ -184,4 +184,13 @@ async def test_add_negatives_from_search_terms_full_cycle_audits(db, session_ctx
         "scopes_distribution": {"campaign": 2, "ad_group": 1},
         "match_types_distribution": {"EXACT": 2, "PHRASE": 1},
         "scope_ids_count": 2,
+        # R1-I2: o executor acrescenta a chave reservada `resultado`
+        # (o que ACONTECEU) ao lado do resumo que a tool monta.
+        "resultado": {
+            "tentadas": 3,
+            "aplicadas": 2,
+            "mudaram": 2,
+            "falharam": 1,
+            "indices_com_falha": [2],
+        },
     }

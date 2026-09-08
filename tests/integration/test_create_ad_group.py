@@ -182,6 +182,9 @@ async def test_create_ad_group_full_cycle_audits(db, session_ctx) -> None:
         "status_distribution": {"PAUSED": 1},
         "with_custom_bid_count": 0,
         "unique_parent_campaigns": 1,
+        # R1-I2: o executor acrescenta a chave reservada `resultado`
+        # (o que ACONTECEU) ao lado do resumo que a tool monta.
+        "resultado": {"tentadas": 1, "aplicadas": 1, "mudaram": 1},
     }
     # Critical: ad_group names NOT in audit (privacy-safe summary).
     assert "Test AG" not in json.dumps(summary_d)

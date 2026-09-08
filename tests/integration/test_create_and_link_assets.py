@@ -232,4 +232,7 @@ async def test_create_and_link_assets_full_cycle_returns_interleaved_resource_na
         "by_level": {"CAMPAIGN": asset_count},
         "attachment_ids_distinct": 1,
         "total_ops_chained": two_n,
+        # R1-I2: o executor acrescenta a chave reservada `resultado`
+        # (o que ACONTECEU) ao lado do resumo que a tool monta.
+        "resultado": {"tentadas": 6, "aplicadas": 6, "mudaram": 6},
     }

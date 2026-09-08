@@ -208,6 +208,9 @@ async def test_update_rsa_full_cycle_audits(db, session_ctx) -> None:
         "count": 1,
         "fields_updated_distribution": {"headlines": 1},
         "unique_ads": 1,
+        # R1-I2: o executor acrescenta a chave reservada `resultado`
+        # (o que ACONTECEU) ao lado do resumo que a tool monta.
+        "resultado": {"tentadas": 1, "aplicadas": 1, "mudaram": 1},
     }
     # Critical: ad copy text NOT in audit (privacy-safe summary per spec §3.6).
     assert "Headline One" not in json.dumps(summary_d)

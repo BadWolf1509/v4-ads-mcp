@@ -4,6 +4,11 @@
 Sprint 3b.26 introduces branching: operation_type=="import_offline_conversions" routes
 to run_conversion_upload (ConversionUploadService); else routes to run_mutation
 (GoogleAdsService.mutate).
+
+Dois ramos releem o estado ANTES de mutar e recusam na divergencia
+(concorrencia otimista): `update_ad_schedule` compara o fingerprint da grade, e
+`apply_recommendation` compara os valores que o preview prometeu — nos dois, o
+que viaja no token e um retrato de ate `DEFAULT_TTL_MINUTES` atras.
 """
 
 from typing import Any
@@ -19,16 +24,26 @@ from src.google_ads.ad_schedule import (
     window_from_input,
 )
 from src.google_ads.conversions import run_conversion_upload
-from src.google_ads.mutations import run_mutation
+from src.google_ads.mutations import run_mutation, run_recommendation_action
 from src.google_ads.queries.ad_schedule import (
     GRADE_LIMIT,
     ad_schedule_query,
     parse_ad_schedule_row,
 )
+from src.google_ads.queries.recommendations import (
+    descrever_divergencia,
+    parse_recommendation_detail_row,
+    recommendation_detail_query,
+    recommendation_fingerprint,
+)
 from src.google_ads.reports import run_report
-from src.governance.dry_run import InvalidTokenError, consume
+from src.governance.dry_run import DEFAULT_TTL_MINUTES, InvalidTokenError, consume
 from src.mcp.context import get_current
-from src.mcp.tools._mutate_common import error_envelope
+from src.mcp.tools._mutate_common import (
+    applied_envelope,
+    error_envelope,
+    submitted_envelope,
+)
 from src.mcp.tools._registry import register_tool
 from src.mcp.tools.get_ad_schedule import rows_to_current
 
@@ -86,8 +101,12 @@ def _matches_requested(
     name="apply_change",
     description=(
         "[CORE] Confirma e aplica uma mutacao previamente previewed via dry-run. Token "
-        "expira em 10 minutos. Cada token e consumivel apenas 1 vez e amarrado "
-        "a sessao MCP que o gerou."
+        # O numero vem de DEFAULT_TTL_MINUTES: escrito a mao, ele e uma segunda
+        # fonte de verdade e a description passa a mentir quando o TTL mudar.
+        f"expira em {DEFAULT_TTL_MINUTES} minutos. Cada token e consumivel apenas 1 vez "
+        "e amarrado a sessao MCP que o gerou. Lote com partial_failure devolve "
+        "`partial_failures` (motivo por linha) e `failed_count` ao lado de "
+        "`applied_count`."
     ),
     input_schema=_SCHEMA,
     bucket="always",
@@ -122,16 +141,97 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
         if result.get("status") == "error":
             return result
         # Conversion upload response — different shape from mutation response.
-        return {
-            "status": "applied",
-            "operation": saved.operation_type,
-            "customer_id": saved.customer_id,
-            "blast_summary": saved.blast_summary,
-            "provider_request_id": result["provider_request_id"],
-            "applied_count": result["applied_count"],
-            "failed_count": result["failed_count"],
-            "failures": result["failures"],
-        }
+        return applied_envelope(
+            saved.operation_type,
+            saved.customer_id,
+            saved.blast_summary,
+            applied_count=result["applied_count"],
+            provider_request_id=result["provider_request_id"],
+            failed_count=result["failed_count"],
+            failures=result["failures"],
+        )
+
+    # C2: RecommendationService path. Sem este ramo o token que o
+    # `apply_recommendation` passou a emitir cairia no `run_mutation` la embaixo,
+    # que so sabe montar operacoes do GoogleAdsService.mutate — a tool preveria
+    # sem nunca aplicar (F150). O gate por conta e a quota vivem dentro do
+    # `run_recommendation_action`, iguais aos do caminho auto.
+    if saved.operation_type == "apply_recommendation":
+        # I3 — concorrencia otimista, o mesmo padrao do ramo update_ad_schedule
+        # 40 linhas abaixo (Ruling 10). Aqui e ainda mais necessario: a operacao
+        # do RecommendationService viaja SO com o resource_name, sem parametro
+        # nenhum — quem resolve o valor e o Google, no instante do apply. Entre o
+        # preview e a confirmacao passa o TTL inteiro (DEFAULT_TTL_MINUTES), e nele
+        # o Google pode revisar a recomendacao. Sem este recheck, o
+        # `blast_summary` reexibido aqui diria "R$ 50,00 -> R$ 180,00" enquanto
+        # outro numero aterrissa — o que anula o motivo de mostrar o numero.
+        #
+        # RECUSA, nao "aplica avisando": este e o caminho que o gestor percorre
+        # DEPOIS de ter lido e aceito um numero. Consentimento dado a R$ 180 nao
+        # cobre R$ 300, e um aviso emitido junto com a resposta chega quando a
+        # escrita ja aconteceu — nao e decisao, e notificacao. O caminho de volta
+        # custa uma chamada: a recomendacao continua pendente, o
+        # `apply_recommendation` gera token novo sobre o valor novo, e o gestor
+        # decide vendo o numero que vale.
+        #
+        # O read e ANTES da escrita, entao propagar excecao e o lado seguro (nada
+        # mutou) — o tratamento best-effort do F83/F91 vale so depois da mutacao.
+        esperado = saved.payload.get("valores_do_preview")
+        rec_rn = saved.payload["recommendation_resource_name"]
+        if esperado is None:
+            # Token emitido por uma revisao anterior a este recheck. Nao e
+            # fallback calado: sem a impressao guardada nao ha o que comparar, e
+            # aplicar assim mesmo seria exatamente o buraco que este ramo fecha.
+            return error_envelope(
+                "apply_recommendation",
+                "Este token foi emitido por uma versao anterior da tool e nao carrega "
+                "os valores previstos, entao nao da pra conferir se a recomendacao "
+                "mudou. Nada foi aplicado. Refaca o apply_recommendation para gerar "
+                "um token novo.",
+                customer_id=saved.customer_id,
+            )
+        linhas = await run_report(
+            manager_id=ctx.manager_id,
+            session_id=ctx.session_id,
+            customer_id=saved.customer_id,
+            query=recommendation_detail_query(rec_rn),
+            row_formatter=parse_recommendation_detail_row,
+            operation_name="apply_recommendation_precheck",
+        )
+        if not linhas:
+            return error_envelope(
+                "apply_recommendation",
+                f"A recomendacao {rec_rn} nao esta mais pendente na conta "
+                f"{saved.customer_id} (aplicada, dispensada ou expirada desde o "
+                "preview). Nada foi aplicado. Use get_recommendations para ver o que "
+                "resta.",
+                customer_id=saved.customer_id,
+            )
+        agora = recommendation_fingerprint(linhas[0])
+        if agora != esperado:
+            return error_envelope(
+                "apply_recommendation",
+                "O Google revisou esta recomendacao desde o preview — o valor que voce "
+                "confirmou nao e mais o que seria aplicado ("
+                f"{descrever_divergencia(esperado, agora)}). Nada foi aplicado. Refaca "
+                "o apply_recommendation para ver o valor atual e gerar um token novo.",
+                customer_id=saved.customer_id,
+            )
+
+        result = await run_recommendation_action(
+            manager_id=ctx.manager_id,
+            session_id=ctx.session_id,
+            customer_id=saved.customer_id,
+            operation_type=saved.operation_type,
+            payload=saved.payload,
+        )
+        return applied_envelope(
+            saved.operation_type,
+            saved.customer_id,
+            saved.blast_summary,
+            applied_count=result["applied_count"],
+            provider_request_id=result["provider_request_id"],
+        )
 
     # Sprint 3b.28: OfflineUserDataJobService path (Customer Match upload).
     if saved.operation_type == "upload_customer_match_list":
@@ -146,25 +246,32 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
             hashed_members=saved.payload["hashed_members"],
         )
         job_id = result["job_resource_name"].rsplit("/", 1)[-1]
-        return {
-            "status": "submitted",
-            "operation": "upload_customer_match_list",
-            "customer_id": saved.customer_id,
-            "user_list_id": saved.payload["user_list_id"],
-            "operation_type": saved.payload["operation"],
-            "members_submitted": result["members_submitted"],
-            "job_resource_name": result["job_resource_name"],
-            "provider_request_id_create_job": result["provider_request_id_create_job"],
-            "provider_request_id_add_ops": result["provider_request_id_add_ops"],
-            "provider_request_id_run_job": result["provider_request_id_run_job"],
-            "to_check_status": (
+        # `submitted`, nao `applied`: o job roda no backend do Google por horas.
+        return submitted_envelope(
+            "upload_customer_match_list",
+            saved.customer_id,
+            saved.blast_summary,
+            user_list_id=saved.payload["user_list_id"],
+            operation_type=saved.payload["operation"],
+            # R1-I3: `members_submitted` e o que o Google ACEITOU. O que ele
+            # recusou (hash mal formado, identificador nao suportado) aparece
+            # ao lado, com o motivo por linha — antes o lote inteiro era
+            # reportado como submetido.
+            members_submitted=result["members_submitted"],
+            members_failed=result["members_failed"],
+            failures=result["failures"],
+            job_resource_name=result["job_resource_name"],
+            provider_request_id_create_job=result["provider_request_id_create_job"],
+            provider_request_id_add_ops=result["provider_request_id_add_ops"],
+            provider_request_id_run_job=result["provider_request_id_run_job"],
+            to_check_status=(
                 f"Job é assíncrono no backend Google (processa em horas). "
                 f"Pra verificar status, use run_gaql com query 'SELECT "
                 f"offline_user_data_job.status, offline_user_data_job."
                 f"failure_reason FROM offline_user_data_job WHERE "
                 f"offline_user_data_job.id = {job_id}'."
             ),
-        }
+        )
 
     # ad_schedule §4.6: confirmacao de estado por GAQL. A UI falhou em silencio duas
     # vezes nessa conta; confiar no ACK da mutacao repetiria o problema num canal novo.
@@ -267,21 +374,20 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
                 f"reconsulta da grade falhou ({e.__class__.__name__}). Confirme o estado "
                 f"com get_ad_schedule antes de confiar no resultado."
             )
-        return {
-            "status": "applied",
-            "operation": saved.operation_type,
-            "customer_id": saved.customer_id,
-            "blast_summary": saved.blast_summary,
-            "provider_request_id": result["provider_request_id"],
-            "applied_count": result["applied_count"],
-            "changed_count": result.get("changed_count"),
+        return applied_envelope(
+            saved.operation_type,
+            saved.customer_id,
+            saved.blast_summary,
+            applied_count=result["applied_count"],
+            provider_request_id=result["provider_request_id"],
+            changed_count=result.get("changed_count"),
             # Spec §4.5: "a resposta separa aplicadas de falhas, com o motivo de cada
             # falha". Lote com partial_failure=True e onde isso acontece.
-            "partial_failures": result.get("partial_failures", []),
-            "resource_names": result.get("resource_names", []),
-            "resulting_schedule": resulting,
-            "confirmation_error": confirmation_error,
-        }
+            partial_failures=result.get("partial_failures", []),
+            resource_names=result.get("resource_names", []),
+            resulting_schedule=resulting,
+            confirmation_error=confirmation_error,
+        )
 
     # Default path: chained mutation via GoogleAdsService.mutate (Sprint 3b.1-3b.25).
     partial_failure = bool(saved.payload.get("__partial_failure__", False))
@@ -295,15 +401,23 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
         partial_failure=partial_failure,
         params_summary=params_summary,
     )
-    return {
-        "status": "applied",
-        "operation": saved.operation_type,
-        "customer_id": saved.customer_id,
-        "blast_summary": saved.blast_summary,
-        "provider_request_id": result["provider_request_id"],
-        "applied_count": result["applied_count"],
+    # R1-I1: cinco tools chegam aqui com `__partial_failure__` ligado —
+    # `add_keywords`, `apply_audience`, `bulk_pause_by_query`,
+    # `remove_asset_link` e `remove_audience` (a sexta, `update_ad_schedule`,
+    # tem ramo proprio acima e ja devolvia isto). Quando o Google aceita parte,
+    # o motivo de cada recusa vinha no `result` e morria nesta linha: o gestor
+    # lia "applied" com `applied_count` menor que o pedido e nenhum porque.
+    partial_failures = result.get("partial_failures", [])
+    return applied_envelope(
+        saved.operation_type,
+        saved.customer_id,
+        saved.blast_summary,
+        applied_count=result["applied_count"],
+        provider_request_id=result["provider_request_id"],
         # F139: quantos de fato mudaram. `applied_count` conta o tentado, entao
         # numa re-remocao ele diz 1 para uma operacao que nao mudou nada.
-        "changed_count": result.get("changed_count"),
-        "resource_names": result.get("resource_names", []),
-    }
+        changed_count=result.get("changed_count"),
+        partial_failures=partial_failures,
+        failed_count=sum(1 for r in partial_failures if r["status"] == "failed"),
+        resource_names=result.get("resource_names", []),
+    )

@@ -57,7 +57,7 @@ def _pool_with_transactable_conn() -> MagicMock:
     return mock_pool
 
 
-def _make_capture_client_with_offline_user_data_job_service():
+def _make_capture_client_with_offline_user_data_job_service() -> tuple[Any, MagicMock]:
     """Extends make_capture_client com mocks pra OfflineUserDataJobService."""
     client = make_capture_client()
 
@@ -317,7 +317,9 @@ async def test_dispatcher_remove_operation_uses_remove_field(fake_ctx):
 
 
 @pytest.mark.asyncio
-async def test_dispatcher_records_audit_and_rate_limit_on_success(fake_ctx, gov_mocks):
+async def test_dispatcher_records_audit_and_rate_limit_on_success(
+    fake_ctx: dict[str, Any], gov_mocks: dict[str, Any]
+) -> None:
     """F71: sucesso grava audit_log (mutate) SEM PII + reconcilia o rate counter."""
     from src.google_ads.customer_match import run_offline_user_data_job
 
@@ -354,9 +356,29 @@ async def test_dispatcher_records_audit_and_rate_limit_on_success(fake_ctx, gov_
     assert kwargs["operation"] == "upload_customer_match_list"
     assert kwargs["status"] == "success"
     assert kwargs["target_count"] == 2
-    # params_summary carrega só metadados — NUNCA os hashes (PII)
+    # params_summary carrega só metadados — NUNCA os hashes (PII).
+    #
+    # Igualdade EXATA, e não subconjunto: esta é a única tool do projeto cujo
+    # payload é PII, e a exatidão é o que obriga uma chave NOVA a passar por
+    # revisão antes de entrar no audit. Com `<=`, um campo acrescentado ao
+    # `params_summary` — inclusive um que carregasse hash — entra sem deixar
+    # nada vermelho, e o `"abc" not in str(ps)` abaixo só pega os dois valores
+    # que este teste conhece, não a propriedade. Os 10 testes de integração do
+    # mesmo lote mantiveram `==` por esse motivo; aqui ele vale em dobro.
+    # As 4 chaves de R1-I3/I4 (onde parou, qual job, se a PII subiu, quantos o
+    # Google aceitou) são determinísticas neste cenário — nenhuma precisou de
+    # afrouxamento para caber.
     ps = kwargs["params_summary"]
-    assert ps == {"user_list_id": "1234567890", "operation": "add", "member_count": 2}
+    assert ps == {
+        "user_list_id": "1234567890",
+        "operation": "add",
+        "member_count": 2,
+        "etapa": "concluido",
+        "job_resource_name": "customers/1163862076/offlineUserDataJobs/JOB123",
+        "pii_anexada": True,
+        "members_submitted": 2,
+        "members_failed": 0,
+    }
     assert "abc" not in str(ps) and "xyz" not in str(ps)
 
 
