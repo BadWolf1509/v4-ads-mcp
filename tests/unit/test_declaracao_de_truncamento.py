@@ -27,24 +27,7 @@ import pytest
 
 from tests.unit import _guard_harness as h
 
-# Debito conhecido em 2026-09-07, fechado pela Task 2 deste mesmo PR. NAO e
-# lista de escopo — o escopo sai do registry. E baseline de ratchet: fica
-# vermelho nas DUAS direcoes (ofensor novo entra, ofensor antigo sai) em vez
-# de esconder as duas como o `xfail` fazia. Medido: com `xfail(strict=True)` o
-# pytest reportava `xfailed` (suite VERDE) com 9 ofensores, com 13 (salto
-# removido) e com 26 (scanner cego) — regressao de producao, quebra total do
-# scanner e progresso parcial eram todos indistinguiveis.
-DEVEDORAS_ATE_A_TASK_2 = [
-    "get_ad_group_performance",
-    "get_ad_performance",
-    "get_audience_performance",
-    "get_campaign_performance",
-    "get_change_history",
-    "get_geo_performance",
-    "get_keyword_performance",
-    "get_my_audit_log",
-    "get_search_terms_report",
-]
+DEVEDORAS_ATE_A_TASK_2: list[str] = []
 
 # O escopo (tools com `limit`) e o piso dele vivem em `_guard_harness`: este
 # guard e o irmao da sentinela (`test_builders_pedem_a_linha_sentinela`)
@@ -153,18 +136,23 @@ def _literais_de_truncamento(
 
 
 def test_toda_tool_com_limite_declara_truncated() -> None:
-    """Ratchet de baseline, nao `xfail`.
+    """Ratchet de baseline, nao `xfail`. Baseline ZERADA na Task 2.
 
     A propriedade e "existe chave `truncated` OU `*_truncated`, no modulo do
     handler OU no corpo de uma funcao `src.*` que ele CHAME (um salto)". As 9
-    de `DEVEDORAS_ATE_A_TASK_2` nao declaram truncamento em nenhum desses
-    lugares; a Task 2 fecha cada uma e ENCOLHE a lista no mesmo commit.
+    devedoras de 2026-09-07 fecharam na Task 2 deste PR, e a lista encolheu
+    no mesmo commit — que era a metade que o `xfail` nao cobrava.
 
-    Escrever `== DEVEDORAS_ATE_A_TASK_2` em vez de `== []` sob `xfail` e o que
-    torna o sinal continuo: fica vermelho quando entra ofensor novo
-    (regressao) E quando um antigo sai (a lista precisa acompanhar). O escopo
-    varrido continua derivado do registry — a enumeracao aqui e da baseline de
-    ofensores, nao do que se varre.
+    A lista fica: `== []` puro perderia a mensagem que ensina as duas leituras
+    do vermelho, e um debito futuro (tool nova que chegue cortando calada e
+    nao possa ser fechada no mesmo PR) volta a ter onde ser anotado sem
+    reintroduzir `xfail`. Com ela vazia, o ratchet e simplesmente "nenhuma
+    tool com `limit` corta sem dizer".
+
+    Vale so metade da invariante: este guard le o RETORNO, nao a QUERY. Quem
+    cobra o `LIMIT {limit + 1}` — sem o qual `truncated` responde `false` para
+    sempre — e `test_builders_pedem_a_linha_sentinela`, o irmao que compartilha
+    este mesmo escopo via `h.tools_com_limite()`.
     """
     sem = [
         nome
@@ -175,8 +163,9 @@ def test_toda_tool_com_limite_declara_truncated() -> None:
         "o conjunto de tools que cortam e nao dizem que cortaram (spec 3.2) "
         f"mudou.\n  medido : {sem}\n  baseline: {DEVEDORAS_ATE_A_TASK_2}\n"
         "Duas leituras: (a) entrou ofensor novo — uma tool passou a cortar sem "
-        "declarar, e o lugar de consertar e a tool; (b) a Task 2 fechou uma das "
-        "devedoras — entao ENCOLHA DEVEDORAS_ATE_A_TASK_2 no mesmo commit."
+        "declarar, e o lugar de consertar e a tool, nao esta lista; (b) uma "
+        "devedora anotada foi fechada — entao ENCOLHA DEVEDORAS_ATE_A_TASK_2 "
+        "no mesmo commit."
     )
 
 

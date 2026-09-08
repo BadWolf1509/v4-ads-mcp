@@ -50,6 +50,7 @@ from src.google_ads.queries.change_history import (
 )
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
+from src.mcp.tools._common import aplicar_limite
 from src.mcp.tools._registry import register_tool
 
 # F23 fix Sprint 3b.38: Google's change_event retention is 30 days exclusive
@@ -362,7 +363,12 @@ async def _resolve_names(
         "status != confiavel NAO e prova de ausencia. Pra validar estado "
         "atual (revert/incident), use `run_gaql FROM campaign` como "
         "leading indicator. Inclui summary com totais por usuario/resource/"
-        "operation. Janela maxima 30 dias (Google retention exclusivo — start_date "
+        "operation. `truncated: true` avisa que a janela tinha MAIS mudancas do que "
+        "o limit e a lista foi cortada pelas mais RECENTES — as mais antigas da janela "
+        "ficaram de fora, entao suba o limit ou estreite o periodo antes de concluir "
+        "que uma mudanca nao existiu. E ortogonal ao `freshness`: `truncated` fala do "
+        "que o limit cortou, `freshness` do que o Google ainda nao indexou. "
+        "Janela maxima 30 dias (Google retention exclusivo — start_date "
         "alem disso e auto-clampado pra today-28 com warning F23, preset OU custom; "
         "janela inteira fora da retencao da erro claro). Audited."
     ),
@@ -442,6 +448,12 @@ async def get_change_history(args: dict[str, Any]) -> dict[str, Any]:
         ),
     )
 
+    # ANTES do resolve e do summary: a consulta pediu `limit + 1`, e a linha
+    # sentinela nao pode entrar em nenhum dos dois. Se o corte viesse depois da
+    # agregacao, `summary.total_changes` nao bateria com `rows` — dois numeros
+    # para a mesma pergunta.
+    rows, truncado = aplicar_limite(rows, limit)
+
     # Resolve campaign/ad_group names (0-2 extra ops)
     name_map = await _resolve_names(
         manager_id=ctx.manager_id,
@@ -475,6 +487,11 @@ async def get_change_history(args: dict[str, Any]) -> dict[str, Any]:
         "customer_id": customer_id,
         "period": {"from": start.isoformat(), "to": end.isoformat()},
         "rows": rows,
+        # Ortogonal ao `freshness`: `truncated` diz que HAVIA mais dentro da
+        # janela e o `limit` cortou; `freshness` diz se o que existe ja foi
+        # indexado. Ler um pelo outro inverte a conclusao — `truncated: true`
+        # com `status: confiavel` e "peca mais", nao "espere".
+        "truncated": truncado,
         "summary": summary,
         # F131: sem isto, `total_changes: 0` e a mesma resposta para "nada
         # mudou" e para "mudou e ainda nao indexou".

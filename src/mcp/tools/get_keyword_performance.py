@@ -8,6 +8,7 @@ from src.google_ads.queries._common import micros_to_currency, resolve_date_wind
 from src.google_ads.queries.tactical import keyword_performance_query
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
+from src.mcp.tools._common import aplicar_limite
 from src.mcp.tools._registry import register_tool
 
 _DATE_PRESETS = [
@@ -121,6 +122,9 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         "arquivado (Fase 2B). Performance por palavra-chave com Quality Score completo (3 componentes: "
         "creative, post_click, search_predicted_ctr) + estimativas de first_page_cpc "
         "e top_of_page_cpc. Filtros: status (enabled|paused|removed|all), limit. "
+        "`truncated: true` avisa que a conta tinha MAIS palavras-chave do que o "
+        "limit e a lista foi cortada no topo de gasto — peca um limit maior ou "
+        "use os filtros de metrica (min_cost_brl/min_clicks/min_conversions). "
         "ATENÇÃO (F56): retorna positive E negative ad_group_criterion indistintamente. "
         "Cada row tem field `negative: bool` — filtre `negative=false` no consumer pra "
         "workflows de PAUSE/análise QS, OU use `audit_zombie_keywords`/`audit_quality_score` "
@@ -158,8 +162,12 @@ async def get_keyword_performance(args: dict[str, Any]) -> dict[str, Any]:
         operation_name="get_keyword_performance",
         audit_this_call=True,
     )
+    # A consulta pediu `limit + 1`; a linha extra e a sentinela que revela o
+    # corte e nao pode chegar ao gestor.
+    rows, truncado = aplicar_limite(rows, limit)
     return {
         "customer_id": customer_id,
         "period": {"from": start.isoformat(), "to": end.isoformat()},
         "rows": rows,
+        "truncated": truncado,
     }
