@@ -1251,7 +1251,7 @@ conversao falsa numa conta de cliente. A `currency_code=BRL` continua invariante
 conta, nao do fuso, e as 25 sao BRL.
 
 
-## F147 (MINOR, ABERTO) — a reconsulta pos-apply nao tem sentinela de truncamento, e agora precisa de uma
+## F147 (MINOR, CORRIGIDO em 2026-09-08) — a reconsulta pos-apply nao tem sentinela de truncamento, e agora precisa de uma
 
 > **Como apareceu:** introduzido pelo proprio fix do Important 2 da revisao final (04/09), e
 > pego pela re-revisao escopada no mesmo dia. Adjudicado como residuo: direcao fail-safe,
@@ -1284,6 +1284,29 @@ inchaco de resposta alem do que o §7 pede. Filtrar por `campaign_criterion.stat
 ('ENABLED', 'REMOVED')` nao resolve (REMOVED antigo tambem casa); o corte util seria por
 data de modificacao, que o `campaign_criterion` nao expoe. Fica registrado como custo
 conhecido do §7, nao como fix pendente.
+
+> **✅ CORRIGIDO** (branch `pr4/honestidade-dos-numeros`), por um caminho melhor que o
+> sugerido acima: em vez de recusar a confirmacao inteira, `apply_change` DECLARA por
+> campanha — `has_schedule`/`windows_count`/`hours_per_week`/`matches_requested` viram
+> `null`, com `schedule_desconhecida_por_truncamento: true` e `truncated: true`. Recusar a
+> resposta inteira perderia as campanhas que FORAM lidas, e a escrita ja aconteceu: o
+> gestor precisa do que da para confirmar, com o resto marcado como desconhecido.
+>
+> **Fechou em duas etapas, e a segunda e o sintoma que esta entrada nomeia.** A primeira
+> (Task 4 da branch) cobriu a campanha AUSENTE do corte. O `hours_per_week` subestimado —
+> literalmente o sintoma escrito acima — sobrevivia na campanha da BORDA: parte da grade
+> dentro do corte, o resto fora, e o resumo calculado sobre a parte. Como o `ORDER BY
+> campaign.id` agrupa as linhas, havendo corte existe SEMPRE exatamente uma campanha nessa
+> posicao. A regra final e "a campanha da ultima linha sobrevivente e suspeita, sempre que
+> `truncated`" — nao se tenta adivinhar quando ela veio inteira, porque a resposta so tem
+> as linhas que couberam, e chutar ali e o defeito original com outra roupa.
+>
+> A clausula vive numa funcao so (`campanhas_com_grade_incerta`), chamada pelos DOIS
+> gemeos (`get_ad_schedule` e `apply_change`): duas copias da regra e como o F128 nasceu.
+>
+> **O que ficou de fora:** o segundo item acima (o `windows` carregando o REMOVED
+> historico) segue como custo conhecido do §7 — nao ha corte por data de modificacao no
+> `campaign_criterion`.
 
 
 ## F148 (HIGH, CORRIGIDO) — o dry-run de todo mutate always-CONFIRM e invisivel na trilha
@@ -2458,9 +2481,16 @@ desfeito, e o guard passou a **falhar fechado** em interpolação que não resol
 para um `join`.
 
 **Junto:** `int(row.metrics.conversions)` truncava atribuição fracionada em
-`audit_zombie_keywords` — numa tool que define zumbi como *"zero atividade"*,
-`int(0.9) == 0` **inventa zumbi**: a keyword converteu e o relatório diz que não.
-Corrigido nas três camadas (parser, fronteira dict→dataclass, e o tipo do campo).
+`audit_zombie_keywords`. **A frase original desta entrada dizia que isso "inventa
+zumbi", e a revisão final mediu que não:** o predicado é `impressions == 0 and
+clicks == 0` (`flag_zombie_keywords.py:88`) e `conversions` não entra nele, então o
+CONJUNTO de zumbis é idêntico antes e depois — o próprio teste novo confirma
+(`total_zombies == 1` nos dois mundos). O que muda é o valor REPORTADO: numa tool que
+define zumbi como *"zero atividade"*, a linha saía dizendo `conversions: 0` onde a
+keyword converteu 0,9. O fix está certo; a justificativa era do tipo que este repo
+cobra medição. Corrigido nas três camadas (parser, fronteira dict→dataclass, e o tipo
+do campo), e a gêmea `flag_keywords` (`KeywordRow`/`FlaggedKeyword`, que recebem o
+`double` sem cast e continuavam anotadas `int`) fechou na mesma branch.
 
 > **✅ CORRIGIDO** (branch `pr4/honestidade-dos-numeros`).
 
