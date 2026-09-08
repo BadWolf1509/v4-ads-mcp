@@ -9,6 +9,51 @@
 
 ---
 
+## Frente "correções da varredura" (spec de 2026-09-06) — onde está
+
+Sete PRs, um por frente, cada um com CI próprio e merge próprio. **Quatro fechados
+e em produção**, um aberto, dois por fazer:
+
+| PR | Frente | Estado |
+|---|---|---|
+| 0 | harness de guards | ✅ merged `f864ac6` |
+| 1 | audiência de token (C3) | ✅ merged `80c06ab` |
+| 2 | reconciliação idempotente (C4) | ✅ merged `a46e139`, migration 009 confirmada em produção |
+| 3 | governança de orçamento (C1+C2) | 🟡 [#62](https://github.com/BadWolf1509/v4-ads-mcp/pull/62), CI verde, aguardando merge |
+| 4 | honestidade dos números (C5 + truncamento) | 🟡 branch `pr4/honestidade-dos-numeros` — F159–F164 |
+| 5 | painel (`routes.py` → 10 módulos) | ⬜ |
+| 6 | cauda (gêmeo Meta do F141, índices, keyset) | ⬜ |
+
+**O que o PR 4 muda de contrato para quem consome as tools** (aditivo — pelo F140,
+campo novo em tool existente não exige sessão nova):
+
+1. **`truncated` em 11 tools** que cortavam calado. `true` significa "havia mais
+   linhas do que o teto"; peça `limit` maior ou filtre.
+2. **`account+hourly` do `get_performance_breakdown` ignora o `limit`** de
+   propósito: o teto ali é **estrutural** (168 células, 7 × 24), a grade vem
+   inteira e em ordem cronológica. `truncated` só subiria se a API devolvesse
+   mais de 168.
+3. **`get_top_keywords_creatives` mudou de resultado**, não só de forma: o
+   top-N por `conversions`/`clicks`/`impressions` agora é cortado **pela métrica
+   pedida**, no servidor. Listas anteriores estavam erradas — eram o top por
+   custo reordenado.
+4. **`get_ad_schedule` e o `resulting_schedule` do `apply_change`** devolvem
+   `has_schedule`/`hours_per_week`/`windows` **`null`** sob leitura parcial, com
+   `schedule_desconhecida_por_truncamento: true`. **Nunca leia `null` como
+   `false`** — `false` continua significando "serve 24x7".
+5. **`detect_drift` ganhou o bloco `cobertura`**: `eventos_examinados`,
+   `janelas_consultadas`, `varredura_truncada`, `dias_no_teto_da_api`,
+   `janela_efetiva` e `aviso_de_janela`. O `truncated` da raiz continua falando
+   do `limit` de `changes[]`; o de `cobertura` fala da **leitura**.
+6. **`get_assets`** espelha `truncated` na raiz (além de `summary.truncated`).
+
+**Três guards novos** fecham as classes em vez das instâncias: declaração de
+truncamento por caminho de retorno, `LIMIT {limit + 1}` nos builders, e id que
+não entra cru na cláusula `IN` do GAQL. O do F141 foi apertado para ver
+`utcnow`, `time.time` e alias de import.
+
+---
+
 **Última atualização:** 2026-09-05. **Tudo mesclado e em produção** — catorze PRs ([#27](https://github.com/BadWolf1509/v4-ads-mcp/pull/27), [#28](https://github.com/BadWolf1509/v4-ads-mcp/pull/28), [#29](https://github.com/BadWolf1509/v4-ads-mcp/pull/29), [#30](https://github.com/BadWolf1509/v4-ads-mcp/pull/30), [#31](https://github.com/BadWolf1509/v4-ads-mcp/pull/31), [#32](https://github.com/BadWolf1509/v4-ads-mcp/pull/32), [#33](https://github.com/BadWolf1509/v4-ads-mcp/pull/33), [#34](https://github.com/BadWolf1509/v4-ads-mcp/pull/34), [#35](https://github.com/BadWolf1509/v4-ads-mcp/pull/35), [#36](https://github.com/BadWolf1509/v4-ads-mcp/pull/36), [#37](https://github.com/BadWolf1509/v4-ads-mcp/pull/37), [#38](https://github.com/BadWolf1509/v4-ads-mcp/pull/38), [#39](https://github.com/BadWolf1509/v4-ads-mcp/pull/39), [#40](https://github.com/BadWolf1509/v4-ads-mcp/pull/40)) mesclados **sem `--admin`**, cada deploy verificado; `/health` 200 com `db: ok`. Mais, em 05/09: os **quatro do Dependabot** ([#22](https://github.com/BadWolf1509/v4-ads-mcp/pull/22), [#23](https://github.com/BadWolf1509/v4-ads-mcp/pull/23), [#25](https://github.com/BadWolf1509/v4-ads-mcp/pull/25), [#26](https://github.com/BadWolf1509/v4-ads-mcp/pull/26)), a **chave da reconciliação Meta** ([#41](https://github.com/BadWolf1509/v4-ads-mcp/pull/41)) e o **gate de acesso Google** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45)) — revisão servindo `v4-ads-mcp-00098-tgs`. Antes: 2026-08-20. **68 MCP tools em produção** (62 Google + 6 Meta), bucket **22 always + 46 defer** — contagem por grep de `bucket="` em `src/mcp/tools/*.py`. As duas mais novas são `get_ad_schedule` e `update_ad_schedule` (#31, sprint 3b.42), e o **smoke delas fechou 10/10 em 04/09** — foi ele que achou o F150 e o F151, os dois em código que três camadas de revisão tinham aprovado. E o **3b.44** ([#40](https://github.com/BadWolf1509/v4-ads-mcp/pull/40), `bid_modifier` por janela) **fechou 8/8 em 05/09** — todos mutantes, na `1163862076`. **Nenhum smoke de tool mutante segue pendente.** A reclassificação de buckets de 04/09 (#32) moveu 13 para cima e 14 para baixo, com `detect_drift` mantido no always **por decisão do Wellington, contra a medição**; método, tabela e a data da próxima remedição (04/10) em [`tool-buckets-2026-09-04.md`](tool-buckets-2026-09-04.md). Smoke autenticado F58 segue dormente. F76/F77 encerrados. **Catálogo em 154 IDs**, com o **F147 aberto** (minor fail-safe: a reconsulta de confirmação do `apply_change` não tem sentinela de truncamento). **Mapa da sessão:** [`session-2026-09-02-03-handoff.md`](session-2026-09-02-03-handoff.md).
 
 **Em 2026-09-02/03 entraram 16 findings (F131–F146), e os 16 estão fechados e em produção.** Vieram de uma sessão de campo (MO-JP) com evidência real, mais duas tools novas e a spec de `ad_schedule`. O que **muda de contrato** para quem consome as tools: (1) `freshness.status` em `get_change_history`/`detect_drift` é `confiavel | ambiguo | nao_coberto | em_curso | indeterminado` — `atrasado` não existe mais, e janela que alcança o dia corrente da conta nunca sai `confiavel`; (2) cada change traz `old_status`/`new_status` (CAMPAIGN/AD_GROUP), e `detect_drift` ganhou a flag `status_change_detected` (medium) — remover campanha no Google é `UPDATE` de status, não `REMOVE`; (3) `hoje` é o **da conta** em 24 tools Google (presets, clamp, freshness, `get_budget_pacing`, `get_negative_keywords_audit`); (4) `import_offline_conversions` usa o fuso da conta, o preview traz `summary.time_zone`/`utc_offset`, e conta sem fuso **recusa**; (5) `auto_applied_count` e `auto_apply_detected` passaram a ver `GOOGLE_ADS_RECOMMENDATIONS_SUBSCRIPTION`. ⚠️ **F140 vale para tudo isso:** schema e description novos só aparecem para sessão MCP reconectada; o comportamento é do servidor. Verificações vivas: Camaçari (`auto_applied_count` 0→1; `nao_coberto`), campanha `23861545627` removida (`structural_change` `PAUSED->REMOVED`, ontem `flags: []`), dry-run offline na `1163862076` (`America/Recife`, `-03:00`, token não aplicado — confirmado também pela sessão MO-JP). **Nota sem ID:** o classificador de blast radius não conhece `import_offline_conversions` e cai no *default seguro: confirmar* — correto, texto feio; entra junto se o F112 for revisitado.
