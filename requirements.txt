@@ -69,7 +69,7 @@ google-auth==2.55.2
     #   google-auth-oauthlib
     #   google-cloud-core
     #   google-cloud-storage
-google-auth-oauthlib==1.4.0
+google-auth-oauthlib==1.4.1
     # via google-ads
 google-cloud-core==2.7.0
     # via google-cloud-storage
