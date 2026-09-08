@@ -142,3 +142,55 @@ async def test_list_for_manager_expoe_dry_run_para_distinguir_tentativa_de_aplic
     # A prova de que a coluna e necessaria: sem ela, as duas sao iguais.
     assert previews[0]["action_type"] == aplicadas[0]["action_type"] == "mutate"
     assert previews[0]["target_count"] == aplicadas[0]["target_count"] == 10
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_list_for_manager_corta_a_borda_por_ordem_total(db):
+    """F98/F88: com `occurred_at` empatado, QUAL linha cai fora do `limit`?
+
+    `now()` no Postgres e hora de TRANSACAO: as cinco linhas abaixo nascem com
+    o MESMO `occurred_at` por construcao — nao e cenario forcado, e o que
+    acontece sempre que duas operacoes sao auditadas na mesma transacao. Sem
+    desempate, a ordem entre elas nao esta definida e a pagina de `limit`
+    linhas e arbitraria; com `, id DESC`, a pagina e sempre as mais recentes
+    por `id`, que e a unica leitura que casa com a promessa de "as N ultimas".
+
+    A assercao e comportamental de proposito — o par que le o TEXTO do SQL
+    esta em `tests/unit/test_get_my_audit_log.py`, porque o gate local nao
+    roda banco (F115) e a metade rapida tem que existir la.
+    """
+    mid = uuid4()
+    pool = db
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO managers (id, email, status, role) "
+            "VALUES ($1, 'ordem@v4company.com', 'active', 'gestor')",
+            mid,
+        )
+        # UMA transacao => um unico now() => cinco `occurred_at` identicos.
+        async with conn.transaction():
+            ids = [
+                await conn.fetchval(
+                    "INSERT INTO audit_log (manager_id, action_type, operation, status, occurred_at) "
+                    "VALUES ($1, 'read', $2, 'success', now()) RETURNING id",
+                    mid,
+                    f"op{i}",
+                )
+                for i in range(5)
+            ]
+
+        instantes = await conn.fetch(
+            "SELECT DISTINCT occurred_at FROM audit_log WHERE manager_id = $1", mid
+        )
+        assert len(instantes) == 1, "controle: as cinco linhas TEM que empatar em occurred_at"
+
+        pagina = await audit_log.list_for_manager(conn, manager_id=mid, days=7, limit=3)
+        de_novo = await audit_log.list_for_manager(conn, manager_id=mid, days=7, limit=3)
+
+    assert [r["id"] for r in pagina] == sorted(ids, reverse=True)[:3], (
+        "com empate em occurred_at, a pagina tem que ser as 3 de maior id"
+    )
+    assert [r["id"] for r in pagina] == [r["id"] for r in de_novo], (
+        "duas chamadas identicas devolvendo conjuntos diferentes e corte nao determinista"
+    )
