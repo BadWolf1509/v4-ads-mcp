@@ -85,12 +85,17 @@ class _HistoricoFalso:
     def __init__(self, universo: dict[date, int]) -> None:
         self._por_dia = {d: [_evento(d, i) for i in range(n)] for d, n in universo.items()}
         self.chamadas: list[tuple[str, str, int]] = []
+        # O `today` de cada leitura. Faz parte do contrato desde que o `hoje`
+        # passou a ser resolvido UMA vez por request e passado adiante — duble
+        # que aceitasse a chamada sem ele deixaria o defeito indistinguivel.
+        self.hojes: list[date] = []
 
-    async def __call__(self, args: dict[str, Any]) -> dict[str, Any]:
+    async def __call__(self, args: dict[str, Any], *, today: date) -> dict[str, Any]:
         inicio = date.fromisoformat(args["start_date"])
         fim = date.fromisoformat(args["end_date"])
         limite = args["limit"]
         self.chamadas.append((args["start_date"], args["end_date"], limite))
+        self.hojes.append(today)
         linhas = [
             linha
             for dia in sorted(self._por_dia, reverse=True)
@@ -119,7 +124,7 @@ async def _rodar(historico: _HistoricoFalso, args: dict[str, Any]) -> dict[str, 
     from src.mcp.tools.detect_drift import detect_drift
 
     with (
-        patch("src.mcp.tools.detect_drift.get_change_history", historico),
+        patch("src.mcp.tools.detect_drift.consultar_change_history", historico),
         patch("src.mcp.tools.detect_drift.resolve_account_today", _hoje_fixo),
     ):
         return await detect_drift(args)
@@ -337,10 +342,10 @@ async def test_a_varredura_segue_a_janela_efetiva_nao_a_pedida(
     monkeypatch.setattr("src.mcp.tools.detect_drift._TETO_POR_JANELA", 10)
 
     class _ComClamp(_HistoricoFalso):
-        async def __call__(self, args: dict[str, Any]) -> dict[str, Any]:
+        async def __call__(self, args: dict[str, Any], *, today: date) -> dict[str, Any]:
             if args["start_date"] < "2026-09-06":
                 args = {**args, "start_date": "2026-09-06"}
-            return await super().__call__(args)
+            return await super().__call__(args, today=today)
 
     clampado = _ComClamp({date(2026, 9, 7): 8, date(2026, 9, 6): 8})
 
@@ -354,6 +359,55 @@ async def test_a_varredura_segue_a_janela_efetiva_nao_a_pedida(
     # Os dias varridos sao os da janela EFETIVA — nenhuma consulta a 01..05,
     # que estao fora da retencao e levantariam ValueError na tool real.
     assert [c[0] for c in clampado.chamadas[1:]] == ["2026-09-07", "2026-09-06"]
+
+
+@pytest.mark.asyncio
+async def test_a_varredura_inteira_usa_um_hoje_so(
+    _ctx: McpRequestContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A4 (revisao final): `hoje` e resolvido uma vez por request e passado.
+
+    `account_clock.py` escreve a regra na propria docstring — "Cada tool chama
+    UMA vez por request e passa o mesmo `today` a tudo que precisa dele... Um
+    `hoje` por request; nunca dois relogios na mesma resposta". A particao da
+    Task 5 quebrou isso sem querer: cada sub-janela chamava o handler
+    registrado, que resolvia o proprio `hoje` — ate 31 leituras de banco num
+    request, e um request que atravessasse a meia-noite da conta trocaria de
+    `hoje` no meio da varredura. E a familia do F141 dentro do fix do F141.
+
+    A assercao e sobre a propriedade, nao sobre a contagem de chamadas: TODA
+    leitura tem que ter recebido o MESMO `hoje`, e ele tem que ser o da conta.
+    """
+    monkeypatch.setattr("src.mcp.tools.detect_drift._TETO_POR_JANELA", 10)
+    monkeypatch.setattr("src.mcp.tools.detect_drift._TETO_EXAMINADO", 100)
+    historico = _HistoricoFalso({date(2026, 9, 7): 8, date(2026, 9, 6): 8, date(2026, 9, 5): 8})
+
+    # Relogio proprio (nao o `_rodar`) porque aqui a CONTAGEM importa: as duas
+    # formas do defeito sao "nao passa o `hoje` adiante" e "passa, mas resolve
+    # de novo a cada sub-janela", e so a segunda aparece no contador.
+    relogio: list[str] = []
+
+    async def _hoje_contado(customer_id: str, *, now: Any = None) -> date:
+        relogio.append(customer_id)
+        return _HOJE
+
+    from src.mcp.tools.detect_drift import detect_drift
+
+    with (
+        patch("src.mcp.tools.detect_drift.consultar_change_history", historico),
+        patch("src.mcp.tools.detect_drift.resolve_account_today", _hoje_contado),
+    ):
+        await detect_drift(
+            {"customer_id": "7862230676", "start_date": "2026-09-05", "end_date": "2026-09-07"}
+        )
+
+    # Nao-vacuidade: a particao de fato rodou (1 sonda + 3 dias).
+    assert len(historico.hojes) == 4
+    assert set(historico.hojes) == {_HOJE}, "sub-janelas viram `hoje` diferentes"
+    assert len(relogio) == 1, (
+        f"o relogio da conta foi lido {len(relogio)}x num request; a regra do "
+        "account_clock e UMA leitura por request, passada adiante"
+    )
 
 
 def test_os_tetos_sao_constantes_nomeadas_e_maiores_que_o_defeito() -> None:
@@ -405,7 +459,7 @@ async def test_o_aviso_do_clamp_de_retencao_chega_ao_gestor(monkeypatch, _ctx) -
     """
     aviso = "start_date fora da retencao de 30 dias; ajustado para 2026-08-11"
 
-    async def _fake(args):
+    async def _fake(args, *, today):
         return {
             "rows": [],
             "truncated": False,
@@ -416,7 +470,7 @@ async def test_o_aviso_do_clamp_de_retencao_chega_ao_gestor(monkeypatch, _ctx) -
 
     import src.mcp.tools.detect_drift as mod
 
-    monkeypatch.setattr(mod, "get_change_history", _fake)
+    monkeypatch.setattr(mod, "consultar_change_history", _fake)
     monkeypatch.setattr(mod, "resolve_account_today", _hoje_fixo)
 
     out = await mod.detect_drift(
@@ -431,7 +485,7 @@ async def test_sem_clamp_o_aviso_vem_null_e_nao_ausente(monkeypatch, _ctx) -> No
     por ela — e tira o retorno da forma de dict literal, que e a unica que o
     guard do truncamento consegue conferir."""
 
-    async def _fake(args):
+    async def _fake(args, *, today):
         return {
             "rows": [],
             "truncated": False,
@@ -441,7 +495,7 @@ async def test_sem_clamp_o_aviso_vem_null_e_nao_ausente(monkeypatch, _ctx) -> No
 
     import src.mcp.tools.detect_drift as mod
 
-    monkeypatch.setattr(mod, "get_change_history", _fake)
+    monkeypatch.setattr(mod, "consultar_change_history", _fake)
     monkeypatch.setattr(mod, "resolve_account_today", _hoje_fixo)
 
     out = await mod.detect_drift({"customer_id": "1234567890"})

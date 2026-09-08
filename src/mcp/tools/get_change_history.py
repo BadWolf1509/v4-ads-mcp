@@ -36,7 +36,7 @@ MO-JP+CAB pós-reverts Pedro 21/05):
 
 import asyncio
 from collections import Counter
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -383,11 +383,29 @@ async def _resolve_names(
     bucket="always",
 )
 async def get_change_history(args: dict[str, Any]) -> dict[str, Any]:
+    # F141: UM `hoje` por request, no fuso da conta, pra janela, clamp, sonda e
+    # freshness. A resolucao fica AQUI, no handler registrado, e o corpo recebe
+    # o `today` pronto: `detect_drift` chama `consultar_change_history` ate 30
+    # vezes numa varredura particionada, e cada uma delas re-resolvendo o
+    # relogio seria uma leitura de banco por sub-janela E — pior — um `hoje`
+    # diferente no meio de uma varredura que atravessasse a meia-noite da
+    # conta. Isso e a familia do F141 dentro do proprio fix do F141.
+    return await consultar_change_history(
+        args, today=await resolve_account_today(args["customer_id"])
+    )
+
+
+async def consultar_change_history(args: dict[str, Any], *, today: date) -> dict[str, Any]:
+    """O corpo do `get_change_history`, com o `hoje` da conta INJETADO.
+
+    Existe separado do handler registrado por um motivo so: quem ja resolveu
+    `today` nesta request (hoje, `detect_drift`) precisa passar o MESMO valor
+    adiante, e `register_tool` devolve o handler tipado como `ToolHandler`
+    (`(dict) -> Awaitable[Any]`), que nao carrega kwarg nenhum.
+    """
     ctx = get_current()
     customer_id = args["customer_id"]
 
-    # F141: UM `hoje` por request, no fuso da conta, pra janela, clamp, sonda e freshness.
-    today = await resolve_account_today(customer_id)
     start, end = resolve_date_window(
         date_range=args.get("date_range", "LAST_7_DAYS"),
         start_date=args.get("start_date"),

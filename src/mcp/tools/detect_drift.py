@@ -17,7 +17,7 @@ from src.google_ads.queries._common import resolve_date_window
 from src.mcp.context import get_current
 from src.mcp.tools._common import aplicar_limite
 from src.mcp.tools._registry import register_tool
-from src.mcp.tools.get_change_history import _CAP_CHANGE_EVENT, get_change_history
+from src.mcp.tools.get_change_history import _CAP_CHANGE_EVENT, consultar_change_history
 
 # Teto de eventos POR sub-janela. E o cap DURO do recurso `change_event`, nao
 # uma escolha nossa: `LIMIT` e obrigatorio e acima de 10k a API recusa com
@@ -189,25 +189,30 @@ class _Varredura:
         return self.teto_total_atingido or bool(self.dias_no_cap)
 
 
-async def _ler(customer_id: str, *, inicio: date, fim: date, teto: int) -> dict[str, Any]:
+async def _ler(
+    customer_id: str, *, inicio: date, fim: date, teto: int, hoje: date
+) -> dict[str, Any]:
     """Uma leitura de `get_change_history` (audit_this_call=True herdado).
 
-    A anotacao no meio do caminho e necessaria: `register_tool` devolve o
-    handler como `ToolHandler`, cujo retorno e `Awaitable[Any]`, entao sem ela
-    o mypy strict acusa `no-any-return` aqui.
+    `hoje` vem de fora, resolvido UMA vez por request no fuso da conta: uma
+    varredura particionada faz ate 30 destas, e deixar cada uma resolver o
+    proprio relogio custaria uma leitura de banco por sub-janela e — pior —
+    poderia trocar de `hoje` no meio de um request que atravessasse a
+    meia-noite da conta. `account_clock.py` escreve essa regra na propria
+    docstring: "Um `hoje` por request; nunca dois relogios na mesma resposta".
     """
-    resposta: dict[str, Any] = await get_change_history(
+    return await consultar_change_history(
         {
             "customer_id": customer_id,
             "start_date": inicio.isoformat(),
             "end_date": fim.isoformat(),
             "limit": teto,
-        }
+        },
+        today=hoje,
     )
-    return resposta
 
 
-async def _varrer(customer_id: str, *, inicio: date, fim: date) -> _Varredura:
+async def _varrer(customer_id: str, *, inicio: date, fim: date, hoje: date) -> _Varredura:
     """Le a janela inteira; se ela nao couber no cap do `change_event`, re-le dia a dia.
 
     Padrao: **particionamento de janela temporal** (range splitting), que e a
@@ -229,7 +234,7 @@ async def _varrer(customer_id: str, *, inicio: date, fim: date) -> _Varredura:
     multiplicaria por ate 30 a quota de toda chamada de uma tool que roda em
     D+1 de todo batch.
     """
-    primeira = await _ler(customer_id, inicio=inicio, fim=fim, teto=_TETO_POR_JANELA)
+    primeira = await _ler(customer_id, inicio=inicio, fim=fim, teto=_TETO_POR_JANELA, hoje=hoje)
 
     # A janela EFETIVA e a que a leitura devolveu, nao a que pedimos: o clamp
     # de retencao (F23) pode ter movido o inicio, e varrer dia a dia a partir
@@ -271,7 +276,7 @@ async def _varrer(customer_id: str, *, inicio: date, fim: date) -> _Varredura:
             # o da API, que parou a varredura.
             teto_total_atingido = True
             break
-        parcial = await _ler(customer_id, inicio=dia, fim=dia, teto=_TETO_POR_JANELA)
+        parcial = await _ler(customer_id, inicio=dia, fim=dia, teto=_TETO_POR_JANELA, hoje=hoje)
         janelas += 1
         mais_antigo_lido = dia
         # Costura das sub-janelas, dita em voz alta: o `BETWEEN` do Google e
@@ -383,7 +388,7 @@ async def detect_drift(args: dict[str, Any]) -> dict[str, Any]:
     # enum do schema de lá. O teto interno de 500 morreu aqui: quem decide
     # quanto se le e `_TETO_POR_JANELA`/`_TETO_EXAMINADO`, e o que ficou de
     # fora sai declarado em `cobertura`.
-    varredura = await _varrer(customer_id, inicio=start_date_obj, fim=end_date_obj)
+    varredura = await _varrer(customer_id, inicio=start_date_obj, fim=end_date_obj, hoje=today)
 
     # Boundary conversion: dict → dataclass
     rows = [dict_to_change_event_row(d) for d in varredura.linhas]

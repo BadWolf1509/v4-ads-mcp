@@ -227,9 +227,11 @@ def _retornos_mudos(
     **A folga que fica, dita de proposito:** `return response` (nome de
     variavel) e `return await helper(...)` nao sao dict literal, entao caem no
     criterio antigo — "a chave existe em algum dict do modulo ou de uma funcao
-    saltada". Sao 3 tools que montam o retorno em variavel
-    (`get_change_history`, `run_gaql`, `get_ad_schedule`) e 5 que delegam por
-    chamada (as 4 Meta e `get_assets`, no segundo retorno dela). Fechar essa
+    saltada". Sao 2 tools que montam o retorno em variavel
+    (`run_gaql`, `get_ad_schedule`) e 6 que delegam por chamada (as 4 Meta,
+    `get_assets` no segundo retorno dela, e `get_change_history`, que desde a
+    onda A4 e um wrapper de 3 linhas sobre `consultar_change_history` — o corpo
+    saiu do handler para receber o `hoje` da conta injetado). Fechar essa
     metade exigiria seguir a variavel ate a atribuicao (dataflow); a versao
     ingenua — varrer o modulo — e exatamente a que deixou o
     `get_performance_breakdown` passar com a regressao dentro, entao afrouxar

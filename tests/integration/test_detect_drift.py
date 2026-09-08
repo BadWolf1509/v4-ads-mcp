@@ -78,7 +78,7 @@ async def test_co_management_filter_pedro_drift(bound_context):
         },
     }
     with patch(
-        "src.mcp.tools.detect_drift.get_change_history",
+        "src.mcp.tools.detect_drift.consultar_change_history",
         AsyncMock(return_value=fake_history_result),
     ):
         result = await detect_drift(
@@ -132,7 +132,7 @@ async def test_incident_mode_empty_responsible_list(bound_context):
         },
     }
     with patch(
-        "src.mcp.tools.detect_drift.get_change_history",
+        "src.mcp.tools.detect_drift.consultar_change_history",
         AsyncMock(return_value=fake_history_result),
     ):
         result = await detect_drift({"customer_id": "7862230676"})
@@ -178,7 +178,7 @@ async def test_structural_change_flag_emitted(bound_context):
         },
     }
     with patch(
-        "src.mcp.tools.detect_drift.get_change_history",
+        "src.mcp.tools.detect_drift.consultar_change_history",
         AsyncMock(return_value=fake_history_result),
     ):
         result = await detect_drift({"customer_id": "7862230676"})
