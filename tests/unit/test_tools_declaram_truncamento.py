@@ -1,13 +1,16 @@
-"""As 9 tools da frente PR 4: cortam e DIZEM que cortaram.
+"""As 9 tools da frente PR 4 — MAIS o decimo consumidor dos mesmos builders:
+cortam e DIZEM que cortaram.
 
 Uma metade so nao basta: `truncated: true` com a lista inteira devolvida engana
 igual, so na direcao oposta. Por isso cada caso afirma as DUAS — o campo e o
 tamanho da lista — e existe o par simetrico (`nao_cortou`) que prende a
 segunda mentira possivel, a do `truncated` que responde `true` sempre.
 
-O guard estrutural (`test_declaracao_de_truncamento`) so ve que a chave
-EXISTE em algum dict alcancavel; quem verifica que ela chega ao gestor com o
-valor certo, por tool, e este arquivo.
+O guard estrutural (`test_declaracao_de_truncamento`) le CAMINHO DE RETORNO, e
+por modulo da tool; quem verifica que a chave chega ao gestor com o VALOR certo,
+por tool e por nivel, e este arquivo. Foi um caso escrito aqui a mao que pegou a
+regressao do `get_performance_breakdown` — o guard estrutural, na versao que
+absolvia por existencia da chave, nao pegou.
 """
 
 from __future__ import annotations
@@ -236,3 +239,128 @@ async def test_get_change_history_conta_o_summary_sobre_as_linhas_cortadas() -> 
     assert fora["truncated"] is True
     assert len(fora["rows"]) == 5
     assert fora["summary"]["total_changes"] == 5
+
+
+# ---------------------------------------------------------------------------
+# O DECIMO consumidor dos mesmos builders: get_performance_breakdown.
+#
+# Os seis builders que ganharam `+ 1` tem DOIS chamadores. O segundo e
+# `performance_breakdown.py::build_performance_breakdown_query`, e a tool que o
+# consome devolvia `rows` cru — sem corte e sem `truncated`. Medido: `level=
+# "keyword", limit=100` numa conta com 130 keywords devolvia 101 linhas, contra
+# um schema que promete no maximo `limit`. F128 (clausula aplicada a um gemeo e
+# nao ao outro), agravado por ser a tool que a `description` das outras nove
+# manda preferir.
+#
+# UM CASO POR NIVEL, nao um so. O retorno generico e unico hoje; o dia em que
+# um nivel ganhar caminho proprio, o vermelho tem que apontar aquele nivel em
+# vez de o teste ter olhado outro e passado.
+# ---------------------------------------------------------------------------
+
+# (level, breakdown, a query daquele nivel pede a sentinela?)
+_NIVEIS_DO_BREAKDOWN: list[tuple[str, str | None, bool]] = [
+    ("campaign", None, True),
+    ("ad_group", None, True),
+    ("ad", None, True),
+    ("keyword", None, True),
+    ("audience", None, True),
+    ("account", "geo", True),
+    # `device_performance_query` e `hourly_performance_query` nao tem clausula
+    # LIMIT nenhuma — a API devolve tudo. A sentinela nao vaza por aqui; o que
+    # se cobra e a outra metade da mesma honestidade: honrar o `limit` que o
+    # schema declara, em vez de ignora-lo calado.
+    ("account", "device", False),
+    ("account", "hourly", False),
+]
+
+_IDS_NIVEIS = [f"{lv}+{bd}" if bd else lv for lv, bd, _ in _NIVEIS_DO_BREAKDOWN]
+
+
+def _linha_do_breakdown(breakdown: str | None) -> Callable[[int], dict[str, Any]]:
+    """So o ramo `geo` toca a linha depois do `run_report` (resolve o pais)."""
+    if breakdown == "geo":
+        return lambda i: {
+            "breakdown": {"country_criterion_id": str(2000 + i)},
+            "cost_brl": float(i),
+        }
+    return _linha_simples
+
+
+@contextmanager
+def _mock_breakdown(linhas: list[dict[str, Any]]) -> Iterator[Any]:
+    with ExitStack() as pilha:
+        pilha.enter_context(_mock_run_report("get_performance_breakdown", linhas))
+        lookup = pilha.enter_context(
+            patch(
+                "src.mcp.tools.get_performance_breakdown.lookup_country_names",
+                new_callable=AsyncMock,
+                return_value={},
+            )
+        )
+        yield lookup
+
+
+async def _chamar_breakdown(
+    level: str, breakdown: str | None, *, limite: int, quantas: int
+) -> dict[str, Any]:
+    from src.mcp.tools.get_performance_breakdown import get_performance_breakdown
+
+    linhas = [_linha_do_breakdown(breakdown)(i) for i in range(quantas)]
+    args: dict[str, Any] = {"customer_id": _CONTA, "level": level, "limit": limite}
+    if breakdown is not None:
+        args["breakdown"] = breakdown
+    with _mock_breakdown(linhas):
+        return await get_performance_breakdown(args)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("level", "breakdown", "_sentinela"), _NIVEIS_DO_BREAKDOWN, ids=_IDS_NIVEIS
+)
+async def test_breakdown_corta_no_teto_e_avisa(
+    level: str, breakdown: str | None, _sentinela: bool
+) -> None:
+    """As duas metades, por nivel: devolve `limite` linhas E avisa do corte."""
+    limite = 3
+    fora = await _chamar_breakdown(level, breakdown, limite=limite, quantas=limite + 1)
+
+    assert fora["truncated"] is True, f"level={level}/{breakdown} cortou e nao disse"
+    assert len(fora["rows"]) == limite, (
+        f"level={level}/{breakdown} vazou a sentinela: {len(fora['rows'])} linhas "
+        f"para limit={limite}"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("level", "breakdown", "_sentinela"), _NIVEIS_DO_BREAKDOWN, ids=_IDS_NIVEIS
+)
+async def test_breakdown_nao_mente_quando_coube(
+    level: str, breakdown: str | None, _sentinela: bool
+) -> None:
+    """A mentira simetrica, por nivel: coube inteiro, entao `truncated: false`."""
+    limite = 3
+    fora = await _chamar_breakdown(level, breakdown, limite=limite, quantas=limite)
+
+    assert fora["truncated"] is False, f"level={level}/{breakdown} diz que cortou sem ter cortado"
+    assert len(fora["rows"]) == limite
+
+
+@pytest.mark.asyncio
+async def test_breakdown_geo_nao_resolve_o_pais_da_sentinela() -> None:
+    """O corte vem ANTES do `lookup_country_names`, como no `get_geo_performance`.
+
+    Corte depois do lookup resolveria um `geo_target_constant` a mais — o custo
+    que a irma foi reordenada para evitar, reaberto aqui pelo mesmo `+ 1`.
+    """
+    linhas = [_linha_do_breakdown("geo")(i) for i in range(4)]
+    with _mock_breakdown(linhas) as lookup:
+        from src.mcp.tools.get_performance_breakdown import get_performance_breakdown
+
+        await get_performance_breakdown(
+            {"customer_id": _CONTA, "level": "account", "breakdown": "geo", "limit": 3}
+        )
+
+    pedidos = lookup.call_args.kwargs["country_ids"]
+    assert len(pedidos) == 3
+    assert str(2000 + 3) not in pedidos

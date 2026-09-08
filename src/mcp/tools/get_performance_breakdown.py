@@ -18,6 +18,7 @@ from src.google_ads.queries._common import resolve_date_window
 from src.google_ads.queries.ad_schedule import day_hour_metrics_query, parse_day_hour_row
 from src.google_ads.reports import lookup_country_names, run_report
 from src.mcp.context import get_current
+from src.mcp.tools._common import aplicar_limite
 from src.mcp.tools._registry import register_tool
 
 _DATE_PRESETS = [
@@ -94,7 +95,9 @@ _SCHEMA: dict[str, Any] = {
         "bloco x campanha com cost_brl/conversions/cpa_brl/cells: a grade crua tem 168 "
         "celulas por campanha e o `limit` default (100) truncaria antes de terminar "
         "UMA campanha. `raw_grid: true` troca pela grade crua, com teto "
-        "168 x len(campaign_ids) e `truncated` avisando corte. Para visao geral da "
+        "168 x len(campaign_ids) e `truncated` avisando corte. `truncated: true` em "
+        "qualquer nivel diz que havia MAIS linhas do que o `limit` e a lista foi "
+        "cortada no topo de gasto — peca um `limit` maior ou filtre. Para visao geral da "
         "conta com comparativo use get_account_overview."
     ),
     input_schema=_SCHEMA,
@@ -186,6 +189,15 @@ async def get_performance_breakdown(args: dict[str, Any]) -> dict[str, Any]:
         params_summary={"level": level, "breakdown": breakdown},
     )
 
+    # ANTES do bloco `geo`, nao so antes do `return`: os builders desta tool sao
+    # os MESMOS das nove irmas e pedem `limit + 1`, entao a sentinela chegaria ao
+    # gestor (`level="keyword", limit=100` -> 101 linhas) e ainda custaria um
+    # `geo_target_constant` a mais pra resolver — o custo que `get_geo_performance`
+    # foi reordenado pra evitar. Nos dois breakdowns cujo builder nao tem clausula
+    # LIMIT (`device`, `hourly`), a API devolve tudo e este corte e o unico lugar
+    # onde o `limit` declarado no schema e honrado.
+    rows, truncado = aplicar_limite(rows, limit)
+
     if breakdown == "geo":
         country_ids = {r["breakdown"]["country_criterion_id"] for r in rows}
         country_map = await lookup_country_names(
@@ -205,4 +217,5 @@ async def get_performance_breakdown(args: dict[str, Any]) -> dict[str, Any]:
         "breakdown": breakdown,
         "period": {"from": start.isoformat(), "to": end.isoformat()},
         "rows": rows,
+        "truncated": truncado,
     }
