@@ -390,3 +390,51 @@ async def test_resulting_completo_nao_se_declara_truncado(monkeypatch) -> None:
     assert rs["truncated"] is False
     assert rs["has_schedule"] is True
     assert "schedule_desconhecida_por_truncamento" not in rs
+
+
+@pytest.mark.asyncio
+async def test_o_resumo_pos_apply_sai_das_linhas_devolvidas(monkeypatch) -> None:
+    """A1 (revisao final): a linha SENTINELA nao pode entrar no resumo.
+
+    `ad_schedule_query` pede `GRADE_LIMIT + 1`. A ultima linha existe para uma
+    coisa so — provar que havia mais — e nunca e devolvida. Ate este fix,
+    `rows_to_current` rodava ANTES do corte, entao ela entrava em
+    `has_schedule`/`windows_count`/`hours_per_week` e no veredito
+    `matches_requested`: a resposta dizia `windows_count: 2` ao lado de uma
+    lista `windows` com UMA janela, e reprovava a grade por causa de uma janela
+    que a propria resposta declara nao ter lido — depois de a escrita ja ter
+    sido aplicada. A gemea (`get_ad_schedule`) sempre cortou primeiro.
+
+    **Por que o duble INTERCALA as campanhas.** Em producao o `ORDER BY
+    campaign.id` agrupa as linhas por campanha, e e disso que a regra da borda
+    (a campanha da ultima linha lida e suspeita) tira o direito de nomear UMA
+    campanha. A invariante deste teste e outra e nao depende da ordenacao: esta
+    funcao recebe linhas e nao as ordena — o `ORDER BY` vive num builder que
+    ela nao possui. Intercalar separa as duas clausulas: com o corte no lugar
+    errado E a campanha da borda anulada, a contradicao sairia mascarada por
+    `null` e o teste nao distinguiria qual das duas quebrou.
+    """
+    saved = _saved()
+    # 1 linha da campanha "1" + 999 de uma campanha fora do lote (as 1000 que
+    # sobrevivem, com a ULTIMA sendo da "99") + a sentinela, da "1".
+    depois = [
+        _row(cid="1", day="MONDAY", sh=7, eh=17, crit="10"),
+        *[_row(cid="99", crit=str(1000 + i)) for i in range(mod.GRADE_LIMIT - 1)],
+        _row(cid="1", day="TUESDAY", sh=8, eh=18, crit="11"),
+    ]
+    assert len(depois) == mod.GRADE_LIMIT + 1
+
+    _wire(monkeypatch, saved=saved, antes=[], depois=depois)
+    out = await mod.apply_change({"confirmation_token": "ABCDEFGH"})
+
+    rs = out["resulting_schedule"]["1"]
+    assert rs["truncated"] is True
+    assert rs["windows_count"] == len(rs["windows"]), (
+        "o resumo contou uma janela que a resposta nao devolve — a sentinela "
+        "entrou por `rows_to_current` rodar antes do corte"
+    )
+    assert rs["windows_count"] == 1
+    assert rs["hours_per_week"] == 10.0, "a sentinela somou as horas da janela nao lida"
+    assert rs["matches_requested"] is True, (
+        "veredito sobre escrita ja aplicada decidido com uma janela fora do corte declarado"
+    )

@@ -28,6 +28,7 @@ from src.google_ads.queries.ad_schedule import (
 from src.google_ads.reports import run_report
 from src.governance.dry_run import InvalidTokenError, consume
 from src.mcp.context import get_current
+from src.mcp.tools._common import aplicar_limite
 from src.mcp.tools._mutate_common import error_envelope
 from src.mcp.tools._registry import register_tool
 from src.mcp.tools.get_ad_schedule import rows_to_current
@@ -239,9 +240,6 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
                 row_formatter=parse_ad_schedule_row,
                 operation_name="update_ad_schedule_confirm",
             )
-            # O resumo (has_schedule/hours_per_week) conta so o que esta SERVINDO;
-            # com status="all" nas linhas, somar REMOVED inflaria as horas.
-            servindo = rows_to_current([r for r in rows if r["status"] == "ENABLED"])
             # `ad_schedule_query` pede `GRADE_LIMIT + 1`: a sobra e a prova de que a
             # leitura foi PARCIAL. Sem esta checagem, campanha cujas linhas cairam
             # alem do corte chega em `summarize_current([])`, que devolve
@@ -250,8 +248,18 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
             # le DEPOIS de ter mudado a grade, e ele diria que a campanha que acabou
             # de ser restringida passou a servir o tempo todo. Mesmo defeito, pior
             # lugar (F128: a clausula ficou de fora de um dos gemeos).
-            leitura_parcial = len(rows) > GRADE_LIMIT
-            rows = rows[:GRADE_LIMIT]
+            #
+            # A1 (revisao final): o CORTE vem antes de qualquer derivacao. Ate aqui
+            # `servindo` era montado sobre a lista NAO-cortada, entao a linha
+            # sentinela — a `GRADE_LIMIT + 1`-esima, cuja unica funcao e provar que
+            # havia mais — entrava no resumo: `windows_count: 2` ao lado de
+            # `len(windows) == 1`, e um `matches_requested` decidido com uma janela
+            # que a propria resposta declara nao ter lido. A gemea
+            # (`get_ad_schedule`) sempre cortou primeiro; a ordem aqui e a mesma.
+            rows, leitura_parcial = aplicar_limite(rows, GRADE_LIMIT)
+            # O resumo (has_schedule/hours_per_week) conta so o que esta SERVINDO;
+            # com status="all" nas linhas, somar REMOVED inflaria as horas.
+            servindo = rows_to_current([r for r in rows if r["status"] == "ENABLED"])
             lidas = {r["campaign_id"] for r in rows}
 
             def _resumo(cid: str) -> dict[str, Any]:
