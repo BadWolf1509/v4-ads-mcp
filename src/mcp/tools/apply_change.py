@@ -31,7 +31,7 @@ from src.mcp.context import get_current
 from src.mcp.tools._common import aplicar_limite
 from src.mcp.tools._mutate_common import error_envelope
 from src.mcp.tools._registry import register_tool
-from src.mcp.tools.get_ad_schedule import rows_to_current
+from src.mcp.tools.get_ad_schedule import campanhas_com_grade_incerta, rows_to_current
 
 log = structlog.get_logger(__name__)
 
@@ -260,10 +260,16 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
             # O resumo (has_schedule/hours_per_week) conta so o que esta SERVINDO;
             # com status="all" nas linhas, somar REMOVED inflaria as horas.
             servindo = rows_to_current([r for r in rows if r["status"] == "ENABLED"])
-            lidas = {r["campaign_id"] for r in rows}
+            # A2 (revisao final, residuo do F147): "incerta" nao e so a campanha
+            # AUSENTE do corte — e tambem a da BORDA, dona da ultima linha lida,
+            # cuja grade pode ter sido cortada no meio. Mesma funcao que o gemeo
+            # `get_ad_schedule` chama; duas copias da regra e como o F128 nasceu.
+            incertas = campanhas_com_grade_incerta(
+                rows, truncated=leitura_parcial, campanhas=campaign_ids
+            )
 
             def _resumo(cid: str) -> dict[str, Any]:
-                if leitura_parcial and cid not in lidas:
+                if cid in incertas:
                     return {
                         "has_schedule": None,
                         "windows_count": None,
@@ -287,7 +293,7 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
                     "windows": [r for r in rows if r["campaign_id"] == cid],
                     "matches_requested": (
                         None
-                        if leitura_parcial and cid not in lidas
+                        if cid in incertas
                         else _matches_requested(servindo.get(cid, []), pedidas_com_modificador)
                     ),
                     "truncated": leitura_parcial,

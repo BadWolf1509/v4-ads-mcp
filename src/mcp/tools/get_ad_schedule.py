@@ -7,6 +7,7 @@ duas coisas). Por isso `schedule_summary` existe por campanha, mesmo sem janela.
 """
 
 import asyncio
+from collections.abc import Iterable
 from typing import Any
 
 from src.google_ads.account_clock import resolve_account_today
@@ -76,11 +77,14 @@ _DESCRIPTION = (
     "(grade de campanha PAUSED nao afeta entrega). ATENCAO: campanha "
     "SEM nenhuma janela serve 24x7 — `has_schedule: false` e `hours_per_week: 168` "
     "dizem isso explicitamente; nao leia lista vazia como 'nao serve'. Isso vale SO "
-    "quando a resposta nao veio cortada: sob `truncated: true`, toda campanha cuja "
-    "grade caiu alem do corte do `limit` tem `has_schedule: null`, "
-    "`hours_per_week: null`, `windows: null` e "
-    "`schedule_desconhecida_por_truncamento: true` no "
-    "resumo — `null` significa 'nao sei se tem grade ou nao, aumente o `limit`', "
+    "quando a resposta nao veio cortada: sob `truncated: true`, tem `has_schedule: "
+    "null`, `hours_per_week: null`, `windows: null` e "
+    "`schedule_desconhecida_por_truncamento: true` no resumo (1) toda campanha cuja "
+    "grade caiu inteira alem do corte do `limit` e (2) a campanha da BORDA do corte "
+    "— a ultima que ainda tem linha na resposta, cuja grade pode ter sido cortada no "
+    "meio; as linhas vem ordenadas por campanha, entao havendo corte existe sempre "
+    "exatamente uma nessa posicao, e nao da para saber se ela veio inteira. "
+    "`null` significa 'nao sei se tem grade ou nao, aumente o `limit`', "
     "nunca leia `null` como false nem como 24x7. Janela cobre "
     "[inicio, fim); `end_hour: 24` = ate o fim do dia; minutos so 0/15/30/45 (API). "
     "Uma campanha pode ter ate 7x24 janelas: `limit` (default 200, teto 1000) corta e "
@@ -126,6 +130,43 @@ def rows_to_current(rows: list[dict[str, Any]]) -> dict[str, list[CurrentWindow]
             )
         )
     return por_campanha
+
+
+def campanhas_com_grade_incerta(
+    rows: list[dict[str, Any]],
+    *,
+    truncated: bool,
+    campanhas: Iterable[str],
+) -> set[str]:
+    """Campanhas cuja grade NAO pode ser afirmada depois de uma leitura cortada.
+
+    `rows` sao as linhas que SOBREVIVERAM ao corte (pos-`aplicar_limite`).
+    Duas familias, e a segunda e a que faltava (residuo do F147):
+
+    - a **ausente**: nenhuma linha dela sobreviveu, entao `summarize_current([])`
+      a chamaria de "sem grade" — que na §3 quer dizer 24x7, o oposto do que a
+      grade dela pode dizer;
+    - a da **borda**: a dona da ULTIMA linha lida. `ad_schedule_query` ordena por
+      `campaign.id`, entao as linhas chegam agrupadas e o corte cai DENTRO da
+      grade de exatamente uma campanha — sempre existe uma nessa posicao quando
+      houve corte. O resumo dela sairia calculado sobre a PARTE lida:
+      `hours_per_week` subestimado, sem `null` e sem sinal nenhum.
+
+    Nao ha como saber se o corte caiu no fim da grade da campanha da borda ou no
+    meio dela — a resposta so tem as linhas que couberam. Adivinhar "esta
+    completa" e o defeito original com outra roupa, entao a borda entra SEMPRE
+    que houve corte.
+
+    Fora de truncamento devolve conjunto vazio: nada aqui muda a leitura
+    completa.
+    """
+    if not truncated:
+        return set()
+    lidas = {r["campaign_id"] for r in rows}
+    incertas = {cid for cid in campanhas if cid not in lidas}
+    if rows:
+        incertas.add(rows[-1]["campaign_id"])
+    return incertas & set(campanhas)
 
 
 @register_tool(
@@ -185,9 +226,16 @@ async def get_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
     # pagina. `false`/`168` aqui e uma afirmacao sobre ENTREGA — nao se chuta
     # isso a partir de uma leitura parcial (mesma familia do F131: vazio que
     # quer dizer duas coisas).
-    tem_janela_lida = set(atual)
+    #
+    # A2 (revisao final, residuo do F147): a campanha da BORDA cai no mesmo
+    # limbo por outro caminho — parte da grade dela sobreviveu ao corte e o
+    # resto nao, e o resumo sairia calculado sobre a parte, com
+    # `hours_per_week` subestimado e nenhum sinal. As duas familias vivem em
+    # `campanhas_com_grade_incerta`, que os DOIS gemeos chamam: separar as
+    # clausulas de novo e como o F128 nasceu.
+    incertas = campanhas_com_grade_incerta(grade_rows, truncated=truncated, campanhas=summary)
     for cid, resumo in summary.items():
-        if truncated and cid not in tem_janela_lida:
+        if cid in incertas:
             resumo["has_schedule"] = None
             resumo["hours_per_week"] = None
             # `windows` tambem, senao o resumo se contradiz: `has_schedule: null`

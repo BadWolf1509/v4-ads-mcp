@@ -438,3 +438,49 @@ async def test_o_resumo_pos_apply_sai_das_linhas_devolvidas(monkeypatch) -> None
     assert rs["matches_requested"] is True, (
         "veredito sobre escrita ja aplicada decidido com uma janela fora do corte declarado"
     )
+
+
+@pytest.mark.asyncio
+async def test_campanha_na_borda_do_corte_nao_afirma_a_grade_pos_apply(monkeypatch) -> None:
+    """A2, o gemeo: a mesma borda, no resumo que vem colado a uma escrita.
+
+    `campanhas_com_grade_incerta` e chamada nos DOIS sitios de proposito. O
+    F128 nasceu de a clausula existir num gemeo e faltar no outro, e este e o
+    lado pior: o gestor acabou de mudar a grade e le o numero como resultado da
+    propria mutacao.
+
+    Aqui a campanha "2" tem 2 janelas, so 1 cabe no `GRADE_LIMIT`, e ela e a
+    dona da ultima linha lida. Antes do A2 ela vinha `has_schedule: true` com
+    `hours_per_week: 10.0` (a metade que coube) e um `matches_requested`
+    decidido sobre essa metade.
+    """
+    saved = _saved(campaign_ids=("1", "2"), current_keys={"1": [], "2": []})
+    # 999 linhas da "1" (lida inteira, controle positivo) + 2 da "2", das quais
+    # so a primeira cabe: 1001 linhas para um GRADE_LIMIT de 1000.
+    depois = [
+        *[_row(cid="1", crit=str(1000 + i)) for i in range(mod.GRADE_LIMIT - 1)],
+        _row(cid="2", day="MONDAY", sh=7, eh=17, crit="20"),
+        _row(cid="2", day="TUESDAY", sh=8, eh=18, crit="21"),
+    ]
+    assert len(depois) == mod.GRADE_LIMIT + 1
+
+    _wire(monkeypatch, saved=saved, antes=[], depois=depois)
+    out = await mod.apply_change({"confirmation_token": "ABCDEFGH"})
+
+    assert out["status"] == "applied"
+    # Controle positivo: a campanha lida INTEIRA segue afirmando os numeros.
+    inteira = out["resulting_schedule"]["1"]
+    assert inteira["has_schedule"] is True
+    assert inteira["windows_count"] == mod.GRADE_LIMIT - 1
+    assert "schedule_desconhecida_por_truncamento" not in inteira
+    # A da borda: parte da grade ficou fora do corte e nao ha como saber quanto.
+    borda = out["resulting_schedule"]["2"]
+    assert borda["has_schedule"] is None, (
+        "a campanha da borda afirmou entrega a partir de leitura parcial, "
+        "logo depois de uma escrita na grade"
+    )
+    assert borda["windows_count"] is None
+    assert borda["hours_per_week"] is None, "10.0 h/semana com a outra janela fora do corte"
+    assert borda["schedule_desconhecida_por_truncamento"] is True
+    assert borda["matches_requested"] is None
+    assert borda["truncated"] is True
