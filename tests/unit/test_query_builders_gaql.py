@@ -12,7 +12,10 @@ Modelo: tests/unit/test_performance_breakdown.py (asserção de `FROM customer`,
 até a Fase 2B (soak) — typo aqui é prod quebrada.
 """
 
+import re
 from datetime import date
+
+import pytest
 
 from src.google_ads.queries.change_history import change_history_query
 from src.google_ads.queries.client_report import (
@@ -106,8 +109,19 @@ def test_funnel_query_shape() -> None:
     assert _DATE_CLAUSE in q
 
 
+# C5: o `ORDER BY` e a metrica que o gestor pediu, porque o corte (`LIMIT top_n`)
+# acontece NO GOOGLE. Ordenar por custo e reordenar depois no cliente devolve o
+# top-N por custo reordenado — a keyword barata que converte muito nunca chega.
+_ORDEM = {
+    "cost": "metrics.cost_micros",
+    "conversions": "metrics.conversions",
+    "clicks": "metrics.clicks",
+    "impressions": "metrics.impressions",
+}
+
+
 def test_top_keywords_query_shape_and_order() -> None:
-    q = top_keywords_query(_S, _E, 5)
+    q = top_keywords_query(_S, _E, 5, metric="cost")
     assert "FROM keyword_view" in q
     for field in (
         "ad_group_criterion.criterion_id",
@@ -125,12 +139,12 @@ def test_top_keywords_query_shape_and_order() -> None:
 
 
 def test_top_keywords_query_limit_is_parameterized() -> None:
-    assert "LIMIT 25" in top_keywords_query(_S, _E, 25)
-    assert "LIMIT 5" not in top_keywords_query(_S, _E, 25)
+    assert "LIMIT 25" in top_keywords_query(_S, _E, 25, metric="cost")
+    assert "LIMIT 5" not in top_keywords_query(_S, _E, 25, metric="cost")
 
 
 def test_top_creatives_query_shape_and_order() -> None:
-    q = top_creatives_query(_S, _E, 3)
+    q = top_creatives_query(_S, _E, 3, metric="cost")
     assert "FROM ad_group_ad" in q
     for field in (
         "ad_group_ad.ad.id",
@@ -145,6 +159,51 @@ def test_top_creatives_query_shape_and_order() -> None:
     assert "ad_group_ad.status = 'ENABLED'" in q
     assert "ORDER BY metrics.cost_micros DESC" in q
     assert "LIMIT 3" in q
+
+
+def test_top_keywords_ordena_pela_metrica_pedida() -> None:
+    for metric, campo in _ORDEM.items():
+        q = top_keywords_query(_S, _E, 10, metric=metric)
+        assert f"ORDER BY {campo} DESC" in q, metric
+
+
+def test_top_creatives_ordena_pela_metrica_pedida() -> None:
+    for metric, campo in _ORDEM.items():
+        q = top_creatives_query(_S, _E, 10, metric=metric)
+        assert f"ORDER BY {campo} DESC" in q, metric
+
+
+def test_o_campo_do_order_by_esta_no_select() -> None:
+    """Sondado em 07/09 via `validate_gaql`: o Google recusa `ORDER BY` de campo
+    fora do SELECT — "The following field must be present in SELECT clause:
+    'metrics.conversions'". As duas queries ja selecionam as quatro metricas,
+    entao o fix do C5 nao mexeu no SELECT; esta assercao e o que impede alguem
+    de "enxugar" o SELECT depois e quebrar o `ORDER BY` em producao.
+
+    Casa por token (`(?![\\w.])`) e nao por substring porque
+    `metrics.conversions_value` CONTEM `metrics.conversions`: um `in` cru
+    passaria verde num SELECT que tivesse perdido a metrica de conversao e
+    guardado so a de valor.
+    """
+    for metric, campo in _ORDEM.items():
+        for nome, q in (
+            ("top_keywords_query", top_keywords_query(_S, _E, 10, metric=metric)),
+            ("top_creatives_query", top_creatives_query(_S, _E, 10, metric=metric)),
+        ):
+            select = q.split("FROM")[0]
+            assert re.search(rf"{re.escape(campo)}(?![\w.])", select), (
+                f"{nome}/{metric}: {campo} fora do SELECT — o Google recusa a query"
+            )
+
+
+def test_metrica_desconhecida_e_recusada_no_builder() -> None:
+    """O `enum` do schema valida a montante, mas o builder NAO depende dele
+    (F87: nao assumir a superficie de quem chama). Metrica fora do mapa tem
+    que estourar aqui, e nao virar `ORDER BY` silenciosamente errado.
+    """
+    for builder in (top_keywords_query, top_creatives_query):
+        with pytest.raises(KeyError):
+            builder(_S, _E, 10, metric="conversions_value")
 
 
 # ---------------------------------------------------------------------------

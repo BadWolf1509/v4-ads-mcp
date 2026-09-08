@@ -15,10 +15,12 @@ uma tool com `limit` passar a chama-lo.
 
 Derivar do CONSUMIDOR, e nao varrer o diretorio inteiro, e o que mantem a
 invariante colada ao que ela afirma: `client_report.py` pede `LIMIT {top_n}`
-para `get_top_keywords_creatives`, que declara `top_n` (nao `limit`),
-reordena no cliente e nao promete `truncated` nenhum. Exigir a sentinela la
-seria cobrar a invariante de quem nao a tem — e, pior, faria a linha extra
-vazar pro gestor no caminho `metric == "cost"`, que nao corta depois.
+para `get_top_keywords_creatives`, que declara `top_n` (nao `limit`) e nao
+promete `truncated` nenhum. `top_n` e CONTRATO, nao teto: quem pede o top 10
+recebe 10, e a tool nao esconde do gestor que havia mais. Exigir a sentinela
+la seria cobrar a invariante de quem nao a tem — e, pior, faria a linha extra
+vazar direto pro gestor, porque desde o fix do C5 (07/09) a tool devolve o que
+o Google cortou, sem `aplicar_limite` nem re-sort aparando depois.
 """
 
 from __future__ import annotations

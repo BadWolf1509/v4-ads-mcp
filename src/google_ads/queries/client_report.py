@@ -4,6 +4,34 @@ from datetime import date
 
 from src.google_ads.queries._common import gaql_date_clause
 
+# C5: o corte (`LIMIT top_n`) acontece NO GOOGLE, entao o `ORDER BY` tem que ser
+# a metrica que o gestor pediu. Um mapa so, compartilhado pelos dois builders:
+# copia em cada funcao e como as duas divergem sem ninguem notar.
+_ORDER_FIELD = {
+    "cost": "metrics.cost_micros",
+    "conversions": "metrics.conversions",
+    "clicks": "metrics.clicks",
+    "impressions": "metrics.impressions",
+}
+
+
+def _order_by(metric: str) -> str:
+    """Campo GAQL do `ORDER BY` para `metric`.
+
+    O `enum` do schema da tool valida a montante, mas o builder nao depende
+    disso (F87): metrica desconhecida estoura aqui, em vez de virar um
+    `ORDER BY` silenciosamente errado — que e o proprio defeito C5 por outra
+    porta. Os quatro campos ja estao no SELECT das duas queries, e precisam
+    continuar: sondado em 07/09 via `validate_gaql`, o Google recusa
+    `ORDER BY` de campo fora do SELECT.
+    """
+    try:
+        return _ORDER_FIELD[metric]
+    except KeyError:
+        raise KeyError(
+            f"metrica {metric!r} nao e ordenavel; use uma de {sorted(_ORDER_FIELD)}"
+        ) from None
+
 
 def funnel_query(start: date, end: date) -> str:
     """Aggregate funnel metrics from customer-level for the period."""
@@ -19,8 +47,13 @@ def funnel_query(start: date, end: date) -> str:
     """.strip()
 
 
-def top_keywords_query(start: date, end: date, top_n: int) -> str:
-    """Top N keywords ordered by metric (caller decides via ORDER BY at fetch)."""
+def top_keywords_query(start: date, end: date, top_n: int, *, metric: str) -> str:
+    """Top N keywords by `metric`: o Google ordena e corta, nesta ordem.
+
+    `metric` entra no `ORDER BY` porque o `LIMIT` e do lado do Google — se a
+    ordenacao nao for a pedida, o top-N devolvido e o top-N de OUTRA coluna, e
+    nenhum re-sort no cliente traz de volta a linha que nao veio (C5).
+    """
     return f"""
         SELECT
           ad_group_criterion.criterion_id,
@@ -33,13 +66,13 @@ def top_keywords_query(start: date, end: date, top_n: int) -> str:
         FROM keyword_view
         WHERE {gaql_date_clause(start, end)}
           AND ad_group_criterion.status = 'ENABLED'
-        ORDER BY metrics.cost_micros DESC
+        ORDER BY {_order_by(metric)} DESC
         LIMIT {top_n}
     """.strip()
 
 
-def top_creatives_query(start: date, end: date, top_n: int) -> str:
-    """Top N RSAs ordered by metric."""
+def top_creatives_query(start: date, end: date, top_n: int, *, metric: str) -> str:
+    """Top N RSAs by `metric`: o Google ordena e corta, nesta ordem (ver C5)."""
     return f"""
         SELECT
           ad_group_ad.ad.id,
@@ -53,6 +86,6 @@ def top_creatives_query(start: date, end: date, top_n: int) -> str:
         FROM ad_group_ad
         WHERE {gaql_date_clause(start, end)}
           AND ad_group_ad.status = 'ENABLED'
-        ORDER BY metrics.cost_micros DESC
+        ORDER BY {_order_by(metric)} DESC
         LIMIT {top_n}
     """.strip()
