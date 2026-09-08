@@ -284,8 +284,7 @@ def funcoes_chamadas_de_src(
     montar um `src.` falso sob `tempfile`, sem tocar a árvore real nem
     precisar que o módulo fake seja importável de verdade.
 
-    Limites conhecidos, todos na direção de ACUSAR (nunca de absolver calado),
-    que é a direção segura para o guard que consome isto:
+    Limites conhecidos — o salto simplesmente não acontece nestes casos:
 
     - import relativo (`from .b import f`) — checado que não existe em `src/`
       neste repo (grep 2026-09-07); se aparecer, este scanner cresce.
@@ -293,6 +292,17 @@ def funcoes_chamadas_de_src(
     - `f` que é classe, não função: `funcoes()` não a devolve, então o salto
       simplesmente não acontece.
     - travessia transitiva: se a chave mora dois saltos adiante, não é vista.
+
+    **A direção do erro depende do consumidor, e não é uniforme.** Num guard
+    que procura o que TEM que existir, salto perdido erra ACUSANDO — seguro.
+    Num guard que procura o que NÃO pode existir (uma constante mentirosa, por
+    exemplo), o mesmo salto perdido erra ABSOLVENDO calado. Medido em
+    2026-09-07 contra `test_declaracao_de_truncamento`: os quatro casos acima
+    fazem uma `"truncated": False` literal num helper passar despercebida.
+    Exposição real hoje é zero (nenhum dos módulos alcançados pelas 26 tools
+    com `limit` cai nestas formas, e não há literal `truncated` em `src/`), mas
+    quem consumir isto num guard negativo tem que fechar a folga por outro
+    caminho — não herdar uma garantia que este resolvedor não dá.
     """
     raiz = raiz if raiz is not None else RAIZ
     arv = arvore(arquivo)
