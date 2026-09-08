@@ -26,42 +26,422 @@ from tests.unit import _guard_harness as h
 SRC = h.SRC  # mantido: guards usam `p.relative_to(SRC)` na mensagem
 
 
+def _sites_que_buildam(arv: ast.Module) -> list[tuple[ast.AST, str, int]]:
+    """(escopo, nome, linha) de cada chamada a `build_client_for_manager`.
+
+    A chamada é atribuída ao escopo MAIS INTERNO que a contém — a mesma
+    decisão do `_cursores_fora_de_transacao` (F58), pela mesma razão: quem
+    responde pelo call-site é quem o escreve, não quem por acaso o envolve.
+
+    O MÓDULO entra como escopo. Chamada no corpo de módulo (ou de classe) não
+    tem função dona e, sem esta linha, escaparia por não ter a quem ser
+    atribuída — o mesmo buraco que o F58 fechou incluindo `arv` na lista.
+
+    Separada de `_ofensores_f57` para o teste de `src/` poder CONTAR os
+    call-sites vistos: zero call-site não é conta limpa, é scanner quebrado
+    (renomearam a factory e o guard passaria vazio).
+    """
+    achados: list[tuple[ast.AST, str, int]] = []
+    for escopo in (arv, *h.funcoes(arv)):
+        nome = getattr(escopo, "name", "<módulo>")
+        achados.extend(
+            (escopo, nome, linha)
+            for linha in h.chama_no_corpo_proprio(escopo, "build_client_for_manager", arv=arv)
+        )
+    return achados
+
+
+def _tem_gate_f57(escopo: ast.AST, pai: dict[ast.AST, ast.AST | None], arv: ast.Module) -> bool:
+    """O hard-gate está no corpo próprio de `escopo` ou no da função que o define.
+
+    **Alcance: o corpo próprio, mais UM nível de subida.** Nem mais nem menos,
+    e os dois lados foram medidos.
+
+    *Menos* não dá: o idioma que o F109 obriga é `await run_blocking(_closure)`
+    com o SDK dentro do closure, enquanto o gate é I/O async no DB e só pode
+    viver na função de fora. Julgar o closure isolado reprovaria o formato que
+    outra convenção do projeto exige, e falso positivo ensina a contornar o
+    guard.
+
+    *Mais* também não. Até 2026-09-07 a subida era ILIMITADA e o teste do
+    ancestral varria a SUBÁRVORE inteira dele — então o gate escrito numa
+    closure IRMÃ, num método de classe aninhada, ou dentro de um `if False:`
+    isentava a função que builda (medido). Irmã não envolve ninguém: a
+    docstring prometia "função que a ENVOLVA" e a implementação conferia
+    "qualquer coisa em algum lugar do ancestral". A unidade não tinha deixado
+    de ser frouxa — tinha mudado de "arquivo" para "função mais externa".
+
+    Um nível é exatamente o que o F109 exige (o closure é definido DIRETO na
+    função gateada; as 6 funções vivas têm um `def` aninhado cada uma). Duas
+    camadas de aninhamento entre o gate e o `build` não têm ocupante vivo: se
+    aparecer, o remédio é escrever o gate na função que define o closure — não
+    alargar o alcance de volta.
+    """
+    if h.chama_no_corpo_proprio(escopo, "ensure_account_access", arv=arv):
+        return True
+    mae = pai.get(escopo)
+    return mae is not None and bool(h.chama_no_corpo_proprio(mae, "ensure_account_access", arv=arv))
+
+
+def _ofensores_f57(arv: ast.Module) -> list[tuple[str, int]]:
+    """(escopo, linha) de cada `build_client_for_manager` sem gate no fluxo.
+
+    A unidade é a FUNÇÃO. Até 2026-09-07 este guard perguntava do ARQUIVO —
+    `"build_client_for_manager(" in text and "ensure_account_access(" not in
+    text` — então uma função nova, escrita num arquivo que já gateia NOUTRA
+    função, passava verde. A mensagem do próprio guard já mandava "grep TODA
+    função que chama": ele enunciava a propriedade e conferia outra. É o mesmo
+    defeito de unidade do F58.
+
+    Gate do CHAMADOR não isenta, pela mesma razão registrada no F58: exigiria
+    call graph, e o grafo seria incompleto por construção (despacho dinâmico,
+    injeção, framework). O alcance do que ISENTA está em `_tem_gate_f57`.
+    """
+    pai = h.escopos_pais(arv)
+    return [
+        (nome, linha)
+        for escopo, nome, linha in _sites_que_buildam(arv)
+        if not _tem_gate_f57(escopo, pai, arv)
+    ]
+
+
 def test_build_client_for_manager_callsites_have_gate() -> None:
-    """F57: todo arquivo que CHAMA build_client_for_manager também chama
-    ensure_account_access. client.py o DEFINE (allowlist)."""
-    definer = SRC / "google_ads" / "client.py"
-    offenders = []
+    """F57: toda chamada a build_client_for_manager tem o hard-gate no mesmo
+    fluxo (no corpo próprio de quem a escreve, ou no da função que a define).
+
+    Sem o gate, o executor fala com QUALQUER conta da MCC: foi assim que o
+    `validate_gaql` vazou existência e schema de conta alheia até a auditoria de
+    2026-06-20.
+
+    Não há mais allowlist por arquivo. `client.py` era isento inteiro por
+    DEFINIR a factory — mas isentar o arquivo é o próprio defeito que este guard
+    deixou de ter, e a isenção nunca foi necessária: a definição não chama a si
+    mesma (medido em 2026-09-07 — `client.py` tem duas funções e nenhuma delas
+    aparece aqui). Com a allowlist fora, um helper novo escrito ao lado da
+    factory fica coberto.
+    """
+    ofensores: list[str] = []
+    vistas = 0
     for p in h.fontes_py():
-        if p == definer:
-            continue
-        text = p.read_text(encoding="utf-8")
-        if "build_client_for_manager(" in text and "ensure_account_access(" not in text:
-            offenders.append(str(p.relative_to(SRC)))
-    assert not offenders, (
-        "F57 — call-site de build_client_for_manager SEM ensure_account_access: "
-        f"{offenders}. Todo caminho que builda o client Google precisa do hard-gate "
-        "no mesmo fluxo (grep TODA função que chama build_client_for_manager)."
+        arv = h.arvore(p)
+        vistas += len(_sites_que_buildam(arv))
+        ofensores.extend(f"{h.rel(p)}:{linha} (em {nome})" for nome, linha in _ofensores_f57(arv))
+
+    assert vistas, (
+        "F57 — o scanner não achou NENHUMA chamada a build_client_for_manager. "
+        "Guard que varre zero call-sites passa por vacuidade: ou a factory foi "
+        "renomeada (atualize o alvo) ou o casamento quebrou."
     )
+    assert not ofensores, (
+        "F57 — build_client_for_manager sem ensure_account_access no fluxo: "
+        f"{ofensores}. Todo caminho que builda o client Google precisa do hard-gate "
+        "no corpo da própria função, ou no corpo da função que a define (um nível "
+        "— é o que o formato `run_blocking(_closure)` do F109 exige). Gate em "
+        "função IRMÃ não conta: irmã não envolve ninguém."
+    )
+
+
+# (id, fonte, acusa?) — o contrato do guard do F57, forma a forma. As duas
+# metades importam igual: `irma_em_arquivo_que_gateia` é o buraco que o guard
+# por arquivo deixava passar, e `closure_dentro_de_funcao_gateada` é o formato
+# que o F109 obriga e que este guard não pode reprovar.
+_FORMAS_F57 = [
+    (
+        "irma_em_arquivo_que_gateia",
+        # O BURACO: função nova num arquivo que já gateia noutra função. Por
+        # arquivo passava verde — o `ensure_account_access(` de `gateada`
+        # isentava o arquivo inteiro, `nova` inclusive.
+        "async def gateada(cid):\n"
+        "    await ensure_account_access(cid)\n"
+        "    return build_client_for_manager(cid)\n"
+        "async def nova(cid):\n"
+        "    return build_client_for_manager(cid)\n",
+        True,
+    ),
+    (
+        "funcao_unica_com_gate",
+        "async def f(cid):\n"
+        "    await ensure_account_access(cid)\n"
+        "    return build_client_for_manager(cid)\n",
+        False,
+    ),
+    (
+        "funcao_unica_sem_gate",
+        "async def f(cid):\n    return build_client_for_manager(cid)\n",
+        True,
+    ),
+    (
+        "closure_dentro_de_funcao_gateada",
+        # Formato exigido pelo F109: o SDK só é tocado dentro do closure passado
+        # a `run_blocking`, e o gate é I/O async que não cabe lá. É o único
+        # motivo de existir subida nenhuma — e por isso ela para em 1 nível.
+        "async def f(cid):\n"
+        "    await ensure_account_access(cid)\n"
+        "    def _executar():\n"
+        "        return build_client_for_manager(cid)\n"
+        "    return await run_blocking(_executar)\n",
+        False,
+    ),
+    (
+        "closure_dentro_de_funcao_sem_gate",
+        "async def f(cid):\n"
+        "    def _executar():\n"
+        "        return build_client_for_manager(cid)\n"
+        "    return await run_blocking(_executar)\n",
+        True,
+    ),
+    (
+        "gate_apenas_no_chamador",
+        # Mesma decisão do F58: isentar pelo chamador exigiria call graph, e o
+        # grafo é incompleto por construção.
+        "async def chamador(cid):\n"
+        "    await ensure_account_access(cid)\n"
+        "    return await executor(cid)\n"
+        "async def executor(cid):\n"
+        "    return build_client_for_manager(cid)\n",
+        True,
+    ),
+    (
+        "alias_de_import_nao_escapa",
+        "from src.google_ads.client import build_client_for_manager as _mk\n"
+        "async def f(cid):\n    return _mk(cid)\n",
+        True,
+    ),
+    (
+        "metodo_de_classe_sem_gate",
+        # Método é função: `h.funcoes()` desce em classe, e um executor escrito
+        # como método não pode escapar por isso.
+        "class Executor:\n"
+        "    async def rodar(self, cid):\n"
+        "        return build_client_for_manager(cid)\n",
+        True,
+    ),
+    (
+        "gate_em_lambda_do_corpo_proprio",
+        # O IDIOMA VIVO: 6 dos 6 call-sites do F57 gateiam assim (medido em
+        # 2026-09-07). `lambda` é transparente em `nos_do_corpo_proprio`
+        # justamente para esta forma não virar falso positivo.
+        "async def f(cid):\n"
+        "    await run_with_reconnect(lambda conn: ensure_account_access(conn, cid))\n"
+        "    return build_client_for_manager(cid)\n",
+        False,
+    ),
+    (
+        "gate_em_closure_irma",
+        # A SABOTAGEM DO I3: verde até 2026-09-07 porque o teste do ancestral
+        # varria a subárvore INTEIRA de `f`, e o gate de `_gate` morava lá.
+        # Uma irmã não envolve ninguém — e pode nunca ser chamada.
+        "async def f(cid):\n"
+        "    async def _gate():\n"
+        "        await ensure_account_access(cid)\n"
+        "    def _executar():\n"
+        "        return build_client_for_manager(cid)\n"
+        "    return await run_blocking(_executar)\n",
+        True,
+    ),
+    (
+        "gate_em_closure_irma_morta",
+        # Pior ainda: a irmã está sob `if False:` e nem existe em runtime.
+        "async def f(cid):\n"
+        "    if False:\n"
+        "        async def _gate():\n"
+        "            await ensure_account_access(cid)\n"
+        "    return build_client_for_manager(cid)\n",
+        True,
+    ),
+    (
+        "gate_em_metodo_de_classe_aninhada",
+        # Mesma família: o método é subárvore de `f`, mas não envolve nada.
+        "async def f(cid):\n"
+        "    class _Aux:\n"
+        "        async def gatear(self):\n"
+        "            await ensure_account_access(cid)\n"
+        "    return build_client_for_manager(cid)\n",
+        True,
+    ),
+    (
+        "gate_na_bisavo",
+        # Subida limitada a 1 nível: o gate está duas camadas acima do build.
+        # Não tem ocupante vivo; o remédio é gatear em `mae`, não realargar.
+        "async def bisavo(cid):\n"
+        "    await ensure_account_access(cid)\n"
+        "    def mae():\n"
+        "        def neta():\n"
+        "            return build_client_for_manager(cid)\n"
+        "        return neta\n"
+        "    return mae\n",
+        True,
+    ),
+    (
+        "build_no_corpo_do_modulo",
+        # Sem função dona: antes de 2026-09-07 o laço só olhava funções, então
+        # a chamada no corpo do módulo não era atribuída a ninguém.
+        "CLIENT = build_client_for_manager(MANAGER_ID)\n",
+        True,
+    ),
+    (
+        "build_em_lambda_sem_gate",
+        # `lambda` transparente corta nos dois sentidos: o build escrito dentro
+        # de um é atribuído a `f`, em vez de sumir por não ter escopo dono.
+        "async def f(cid):\n    return await run_blocking(lambda: build_client_for_manager(cid))\n",
+        True,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("fonte", "acusa"),
+    [(fonte, acusa) for _, fonte, acusa in _FORMAS_F57],
+    ids=[ident for ident, _, _ in _FORMAS_F57],
+)
+def test_f57_acusa_a_violacao_e_so_ela(fonte: str, acusa: bool) -> None:
+    """Contrato do guard do F57 contra fonte sintética, pela MESMA travessia.
+
+    Sem esta tabela, as duas metades do contrato dependeriam de existir um
+    ocupante vivo de cada forma em `src/` — e as seis funções vivas são todas da
+    mesma forma (gate na própria função, dentro de um `lambda`). O guard poderia
+    ganhar ou perder qualquer uma das outras sem nada ficar vermelho.
+    """
+    achados = _ofensores_f57(ast.parse(fonte))
+
+    assert bool(achados) is acusa, (
+        f"veredito errado: esperado {'ACUSA' if acusa else 'passa'}, "
+        f"obtido {achados or 'passa'} para:\n{fonte}"
+    )
+
+
+# `src/meta_ads/reports.py` é o arquivo do executor; `run_meta_graph_get`, a
+# única função que pode construir a API de execução. Exceção por FUNÇÃO (par
+# arquivo+nome), não por arquivo: era a allowlist por ARQUIVO deste guard que
+# deixava qualquer função nova de `reports.py` tocar a Graph API sem o gate.
+_EXECUTOR_META = ("src/meta_ads/reports.py", "run_meta_graph_get")
+
+
+def _ofensores_f57_meta(
+    arv: ast.Module, *, executor_autorizado: str | None
+) -> list[tuple[str, int]]:
+    """(escopo, linha) de cada `build_meta_api(...)` fora do executor autorizado.
+
+    Até 2026-09-07 este guard era `"build_meta_api(" in p.read_text()` com
+    allowlist por ARQUIVO — a forma exata que o F57 acabara de perder. Duas
+    consequências, as duas medidas: uma função nova em `reports.py` chamando a
+    factory direto passava verde (o arquivo inteiro era isento), e o substring
+    contava o `def build_meta_api(` de `client.py` como chamada — por isso
+    `client.py` precisava estar na allowlist.
+
+    Com AST, definição não é chamada: `client.py` não precisa de isenção
+    nenhuma, e a única exceção que resta é a FUNÇÃO executora. Medido antes do
+    aperto: há **1** call-site vivo em `src/`, `run_meta_graph_get`
+    (`src/meta_ads/reports.py:129`) — nenhuma violação viva foi revelada.
+    """
+    return [
+        (nome, linha)
+        for escopo in (arv, *h.funcoes(arv))
+        if (nome := getattr(escopo, "name", "<módulo>")) != executor_autorizado
+        for linha in h.chama_no_corpo_proprio(escopo, "build_meta_api", arv=arv)
+    ]
 
 
 def test_meta_graph_execution_is_contained() -> None:
     """F57-Meta: build_meta_api (o factory de execução com o system-user token) só
     pode ser chamado dentro de run_meta_graph_get (reports.py), que aplica o gate.
-    client.py o DEFINE. Um tool que chame direto pularia o hard-gate incondicional."""
-    allowed = {
-        SRC / "meta_ads" / "client.py",  # define build_meta_api
-        SRC / "meta_ads" / "reports.py",  # run_meta_graph_get — único executor
-    }
-    offenders = []
+    Uma tool que chame direto pularia o hard-gate incondicional."""
+    arquivo_do_executor, nome_do_executor = _EXECUTOR_META
+    ofensores: list[str] = []
+    vistas = 0
     for p in h.fontes_py():
-        if p in allowed:
-            continue
-        if "build_meta_api(" in p.read_text(encoding="utf-8"):
-            offenders.append(str(p.relative_to(SRC)))
-    assert not offenders, (
-        "F57-Meta — build_meta_api chamado fora de reports.py: "
-        f"{offenders}. Toda leitura Meta deve passar por run_meta_graph_get "
-        "(gate can_manager_access + audit + BUC)."
+        arv = h.arvore(p)
+        autorizado = nome_do_executor if h.rel(p) == arquivo_do_executor else None
+        vistas += sum(
+            len(h.chama_no_corpo_proprio(e, "build_meta_api", arv=arv))
+            for e in (arv, *h.funcoes(arv))
+        )
+        ofensores.extend(
+            f"{h.rel(p)}:{linha} (em {nome})"
+            for nome, linha in _ofensores_f57_meta(arv, executor_autorizado=autorizado)
+        )
+
+    assert vistas, (
+        "F57-Meta — nenhuma chamada a build_meta_api em src/. Guard que varre "
+        "zero call-sites passa por vacuidade: a factory foi renomeada, ou o "
+        "casamento quebrou."
+    )
+    assert not ofensores, (
+        f"F57-Meta — build_meta_api chamado fora de {nome_do_executor}: {ofensores}. "
+        "Toda leitura Meta deve passar por run_meta_graph_get (gate "
+        "can_manager_access + audit + BUC)."
+    )
+
+
+# (id, fonte, autorizado_neste_arquivo, acusa?) — contrato do guard F57-Meta.
+_FORMAS_F57_META = [
+    (
+        "no_proprio_executor",
+        "async def run_meta_graph_get(mid, path):\n    api = build_meta_api()\n    return api\n",
+        "run_meta_graph_get",
+        False,
+    ),
+    (
+        "irma_no_arquivo_do_executor",
+        # A SABOTAGEM: verde até 2026-09-07 porque a allowlist era por ARQUIVO.
+        "async def run_meta_graph_get(mid, path):\n"
+        "    return build_meta_api()\n"
+        "async def zz_atalho(path):\n"
+        "    return build_meta_api()\n",
+        "run_meta_graph_get",
+        True,
+    ),
+    (
+        "em_arquivo_qualquer",
+        "async def ler(path):\n    return build_meta_api()\n",
+        None,
+        True,
+    ),
+    (
+        "definicao_nao_e_chamada",
+        # `client.py` DEFINE a factory. O substring `build_meta_api(` casava a
+        # linha do `def` — era só por isso que ele precisava de allowlist.
+        "def build_meta_api(token):\n    return FacebookAdsApi(token)\n",
+        None,
+        False,
+    ),
+    (
+        "alias_de_import_nao_escapa",
+        "from src.meta_ads.client import build_meta_api as _mk\nasync def ler(path):\n    return _mk()\n",
+        None,
+        True,
+    ),
+    (
+        "chamada_em_lambda_de_funcao_irma",
+        "async def run_meta_graph_get(mid, path):\n"
+        "    return build_meta_api()\n"
+        "async def zz(path):\n"
+        "    return await run_blocking(lambda: build_meta_api())\n",
+        "run_meta_graph_get",
+        True,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("fonte", "autorizado", "acusa"),
+    [(fonte, aut, acusa) for _, fonte, aut, acusa in _FORMAS_F57_META],
+    ids=[ident for ident, _, _, _ in _FORMAS_F57_META],
+)
+def test_f57_meta_acusa_a_violacao_e_so_ela(
+    fonte: str, autorizado: str | None, acusa: bool
+) -> None:
+    """Contrato do guard F57-Meta, forma a forma, pela MESMA travessia.
+
+    O único ocupante vivo é o próprio executor, então sem esta tabela o aperto
+    (substring+arquivo → AST+função) não teria nada que o distinguisse do guard
+    frouxo: os dois são verdes contra `src/` de hoje.
+    """
+    achados = _ofensores_f57_meta(ast.parse(fonte), executor_autorizado=autorizado)
+
+    assert bool(achados) is acusa, (
+        f"veredito errado: esperado {'ACUSA' if acusa else 'passa'}, "
+        f"obtido {achados or 'passa'} para:\n{fonte}"
     )
 
 

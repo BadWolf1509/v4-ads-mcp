@@ -71,12 +71,15 @@ def _preflight_validate(customer_id: str, links: list[dict[str, Any]]) -> str | 
     bate — ex.: `level=CUSTOMER` com um `resource_name` de campaignAssets —
     monta uma operacao VALIDA (proto bem formado) que o Google rejeita
     POR OPERACAO em runtime. Como o payload leva `__partial_failure__: True`,
-    essa rejeicao nunca levanta excecao, e `apply_change` descarta
-    `partial_failures` do resultado — o gestor veria `status: "applied"` com
-    `applied_count: 0` e nenhum motivo. Pre-flight local (sem GAQL: e' pura
-    checagem de string, os dois valores ja' vieram no payload) pega isso antes
-    de mintar o token, no mesmo espirito do `_preflight_validate` de
-    `apply_audience.py` (audience_type vs segmento do resource_name).
+    essa rejeicao nunca levanta excecao — ela volta em `partial_failures` na
+    resposta do `apply_change` (desde o R1-I1, 2026-09-07; antes o dispatcher
+    descartava a lista e o gestor via `status: "applied"` com `applied_count: 0`
+    e nenhum motivo). O pre-flight continua valendo, e por outro motivo: ele
+    reprova ANTES de mintar o token, entao o gestor corrige o par sem gastar
+    uma confirmacao nem uma chamada ao Google. Pura checagem de string, sem
+    GAQL — os dois valores ja' vieram no payload. Mesmo espirito do
+    `_preflight_validate` de `apply_audience.py` (audience_type vs segmento do
+    resource_name).
     """
     for i, link in enumerate(links):
         nivel = link["level"]

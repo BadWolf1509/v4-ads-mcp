@@ -22,6 +22,7 @@ from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
 from src.google_ads.mutates._common import get_builder, import_all_builders
+from src.google_ads.partial_failure import erros_por_indice
 from src.google_ads.request_id import (
     get_capture_interceptor,
     get_request_id,
@@ -70,42 +71,20 @@ def _parse_partial_failures(
         )
         return per_op_results
 
-    # Build error-by-index map from the top-level partial_failure_error.
-    error_by_index: dict[int, str] = {}
-    pfe = getattr(response, "partial_failure_error", None)
-    pfe_code = getattr(pfe, "code", 0) if pfe is not None else 0
-    if pfe_code != 0:
-        # The details list contains Any messages — at least one is a GoogleAdsFailure
-        # with per-op locations. We unpack lazily.
-        try:
-            details = getattr(pfe, "details", []) or []
-            for detail in details:
-                # Convert proto-plus wrapper to raw pb if needed
-                raw = detail._pb if hasattr(detail, "_pb") else detail
-                # Duck-type check: must have type_url and Unpack (characteristic of
-                # google.protobuf.any_pb2.Any). Avoids version-specific isinstance import.
-                if not (hasattr(raw, "type_url") and hasattr(raw, "Unpack")):
-                    continue
-                # GoogleAdsFailure is the only detail Google sends here; check via
-                # type_url substring rather than importing the version-specific proto
-                # class (which differs across google-ads SDK versions).
-                if "GoogleAdsFailure" not in raw.type_url:
-                    continue
-                failure_type = client.get_type("GoogleAdsFailure")
-                failure_pb = failure_type._meta.pb()
-                raw.Unpack(failure_pb)
-                for gae in failure_pb.errors:
-                    if gae.location.field_path_elements:
-                        idx = gae.location.field_path_elements[0].index
-                        error_by_index[int(idx)] = str(gae.message)
-        except Exception:
-            # If detail unpacking fails (SDK version drift, unexpected shape), fall back
-            # to a generic error per failed op so the caller still sees something useful.
-            log.exception(
-                "partial_failure_detail_unpack_failed",
-                operation=operation_type,
-                customer_id=customer_id,
-            )
+    # Build error-by-index map from the top-level partial_failure_error. O
+    # desempacotamento do proto vive em `partial_failure.py` — as tres APIs de
+    # escrita reportam falha por-linha do mesmo jeito, e a terceira leitora
+    # (Customer Match, R1-I3) teria sido a terceira copia.
+    error_by_index = {
+        idx: e.error_message
+        for idx, e in erros_por_indice(
+            response,
+            client,
+            origem="run_mutation",
+            operation=operation_type,
+            customer_id=customer_id,
+        ).items()
+    }
 
     # Walk operation responses and classify by which oneof is set.
     for idx, op_resp in enumerate(response.mutate_operation_responses):
@@ -127,6 +106,39 @@ def _parse_partial_failures(
                 }
             )
     return per_op_results
+
+
+def resultado_para_audit(
+    *,
+    target_count: int,
+    applied_count: int,
+    changed_count: int | None,
+    per_op_results: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """O que de fato ACONTECEU, no formato que vai pro `params_summary` (R1-I2).
+
+    `target_count` sozinho e o TENTADO: numa aplicacao parcial ele afirma que
+    tudo passou. Cinco tools operam em lote com `partial_failure=True`, o Google
+    aceita parte, e a trilha — que e quem responde "por que essa conta mudou" —
+    ficava dizendo o que se PEDIU.
+
+    **Sem o texto do erro, de proposito.** A mensagem do Google ecoa o operando
+    (o termo de negativa, o nome do criterio), e o `params_summary` das tools de
+    lote exclui esses textos por spec §3.5/§3.6 — deixar o erro entrar aqui
+    reporia pela porta dos fundos o que a tool tirou pela frente. Indice e
+    contagem bastam pra trilha; o motivo por linha vai na RESPOSTA ao gestor,
+    que e quem digitou os termos (R1-I1).
+    """
+    resultado: dict[str, Any] = {"tentadas": target_count, "aplicadas": applied_count}
+    if changed_count is not None:
+        # F139: o Google devolve resource_name so do que mudou — um no-op
+        # (remover vinculo ja REMOVED) conta como aplicado e nao como mudado.
+        resultado["mudaram"] = changed_count
+    if per_op_results:
+        falhas = [r["index"] for r in per_op_results if r["status"] == "failed"]
+        resultado["falharam"] = len(falhas)
+        resultado["indices_com_falha"] = falhas
+    return resultado
 
 
 def _extract_resource_names(response: Any) -> list[str | None]:
@@ -194,6 +206,12 @@ async def run_mutation(
     error_message: str | None = None
     status = "success"
     reserved = False
+    # R1-I2: o `finally` la embaixo grava a trilha, e precisa enxergar o
+    # RESULTADO. Estes tres nascem aqui fora porque uma excecao antes da
+    # resposta deixaria os nomes sem ligacao — e `finally` roda de todo jeito.
+    # `None` significa "a mutacao nao chegou a responder", que e diferente de
+    # "respondeu zero": o audit omite o resultado nesse caso em vez de inventar.
+    resultado_audit: dict[str, Any] | None = None
 
     try:
         # Reserve quota: global (developer token) + per-manager cap. Transacao
@@ -292,6 +310,15 @@ async def run_mutation(
             sum(1 for rn in resource_names if rn is not None) if resource_names else None
         )
 
+        # R1-I2 — a trilha passa a carregar o resultado. Atribuido ANTES do
+        # `return` porque o `finally` que grava o audit roda depois dele.
+        resultado_audit = resultado_para_audit(
+            target_count=target_count,
+            applied_count=applied_count,
+            changed_count=changed_count,
+            per_op_results=per_op_results,
+        )
+
         return {
             "provider_request_id": provider_request_id,
             "applied_count": applied_count,
@@ -344,6 +371,9 @@ async def run_mutation(
             pool.acquire() as conn,
         ):
             # Always audit mutations (sensitive — every change is logged)
+            base_summary = (
+                params_summary if params_summary is not None else {"keys": sorted(payload.keys())}
+            )
             await audit_log.record(
                 conn,
                 manager_id=manager_id,
@@ -352,9 +382,13 @@ async def run_mutation(
                 action_type="mutate",
                 operation=operation_type,
                 target_count=target_count,
-                params_summary=params_summary
-                if params_summary is not None
-                else {"keys": sorted(payload.keys())},
+                # R1-I2: o resultado entra AO LADO do resumo da tool, nunca no
+                # lugar dele — `resultado` e chave reservada deste executor.
+                params_summary=(
+                    base_summary
+                    if resultado_audit is None
+                    else {**base_summary, "resultado": resultado_audit}
+                ),
                 provider_request_id=provider_request_id,
                 status=status,
                 error_message=error_message,

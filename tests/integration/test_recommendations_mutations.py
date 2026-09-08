@@ -1,6 +1,7 @@
 """Integration tests for recommendation mutation tools."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -47,11 +48,59 @@ def _fake_client_with_response():
     return fc
 
 
+_REC_RN = "customers/1234567890/recommendations/abc"
+
+
+def _fake_lookup(tipo: str, *, recomendado_micros: int = 180_000_000):
+    """`run_report` falso pro lookup de tipo/detalhe do apply_recommendation (C2).
+
+    A row e um `Recommendation()` de verdade — proto-plus devolve o zero-value do
+    campo que a GAQL nao pediu (F145), entao um dict pronto aqui esconderia campo
+    removido do SELECT.
+
+    `recomendado_micros` existe para o recheck do I3: o `apply_change` refaz este
+    MESMO lookup antes de mutar, entao mudar o valor entre as duas chamadas
+    simula o Google revisando a recomendacao dentro do TTL.
+    """
+    from google.ads.googleads.v24.enums.types.recommendation_type import RecommendationTypeEnum
+    from google.ads.googleads.v24.resources.types.recommendation import Recommendation
+
+    async def _run(**kwargs):
+        query = kwargs["query"]
+        fmt = kwargs["row_formatter"]
+        if "FROM campaign" in query:
+            campaign = SimpleNamespace(
+                id=99,
+                name="Campanha de teste",
+                status="ENABLED",
+                bidding_strategy_type="MAXIMIZE_CONVERSIONS",
+            )
+            return [
+                fmt(
+                    SimpleNamespace(
+                        campaign=campaign, campaign_budget=SimpleNamespace(amount_micros=50_000_000)
+                    )
+                )
+            ]
+        rec = Recommendation()
+        rec.type_ = RecommendationTypeEnum.RecommendationType[tipo]
+        rec.resource_name = _REC_RN
+        rec.campaign = "customers/1234567890/campaigns/99"
+        if tipo == "CAMPAIGN_BUDGET":
+            rec.campaign_budget_recommendation.current_budget_amount_micros = 50_000_000
+            rec.campaign_budget_recommendation.recommended_budget_amount_micros = recomendado_micros
+        return [fmt(SimpleNamespace(recommendation=rec))]
+
+    return _run
+
+
 @pytest.mark.integration
-async def test_apply_recommendation_auto_applies(db, session_ctx):
-    from src.mcp.tools.apply_recommendation import apply_recommendation
+async def test_apply_recommendation_de_keyword_auto_aplica(db, session_ctx):
+    """Contraprova do gate C2: tipo fora da familia orcamento/lance segue auto."""
+    from src.mcp.tools import apply_recommendation as mod
 
     with (
+        patch.object(mod, "run_report", _fake_lookup("KEYWORD")),
         patch(
             "src.google_ads.mutations.build_client_for_manager",
             AsyncMock(return_value=_fake_client_with_response()),
@@ -61,16 +110,95 @@ async def test_apply_recommendation_auto_applies(db, session_ctx):
             return_value="req-apply",
         ),
     ):
-        result = await apply_recommendation(
-            {
-                "customer_id": "1234567890",
-                "recommendation_resource_name": "customers/1234567890/recommendations/abc",
-            }
+        result = await mod.apply_recommendation(
+            {"customer_id": "1234567890", "recommendation_resource_name": _REC_RN}
         )
 
     assert result["status"] == "applied"
     assert result["operation"] == "apply_recommendation"
     assert result["provider_request_id"] == "req-apply"
+
+
+@pytest.mark.integration
+async def test_apply_recommendation_de_orcamento_so_aplica_via_apply_change(db, session_ctx):
+    """C2 ponta a ponta: orcamento vira token no banco, e o token de fato aplica.
+
+    Fecha as DUAS metades. A primeira: a recomendacao de orcamento nao toca o
+    RecommendationService sem confirmacao. A segunda (F150): o token emitido
+    precisa ter um executor do outro lado — sem o ramo no `apply_change`, ele
+    cairia no `run_mutation`, que so sabe montar operacoes do
+    GoogleAdsService.mutate, e a tool preveria sem nunca aplicar.
+    """
+    from src.mcp.tools import apply_recommendation as mod
+    from src.mcp.tools.apply_change import apply_change
+
+    with patch.object(mod, "run_report", _fake_lookup("CAMPAIGN_BUDGET")):
+        preview = await mod.apply_recommendation(
+            {"customer_id": "1234567890", "recommendation_resource_name": _REC_RN}
+        )
+
+    assert preview["status"] == "dry_run"
+    assert preview["current_amount_brl"] == 50.0
+    assert preview["recommended_amount_brl"] == 180.0
+    token = preview["confirmation_token"]
+
+    fake_client = _fake_client_with_response()
+    with (
+        # I3: o ramo do apply_change relê a recomendacao antes de mutar. Mesmo
+        # valor -> segue em frente (o caso de divergencia esta no teste abaixo).
+        patch("src.mcp.tools.apply_change.run_report", _fake_lookup("CAMPAIGN_BUDGET")),
+        patch(
+            "src.google_ads.mutations.build_client_for_manager",
+            AsyncMock(return_value=fake_client),
+        ),
+        patch("src.google_ads.mutations.get_request_id", return_value="req-confirmado"),
+    ):
+        aplicado = await apply_change({"confirmation_token": token})
+
+    assert aplicado["status"] == "applied"
+    assert aplicado["operation"] == "apply_recommendation"
+    assert aplicado["provider_request_id"] == "req-confirmado"
+    assert aplicado["applied_count"] == 1
+    # O blast_summary reexibido tem que carregar os numeros (e o que o gestor le
+    # dez minutos depois, na hora de confirmar).
+    assert "50" in aplicado["blast_summary"] and "180" in aplicado["blast_summary"]
+    # Foi pelo RecommendationService, nao pelo GoogleAdsService.mutate.
+    fake_client.get_service.assert_called_with("RecommendationService", interceptors=ANY)
+
+
+@pytest.mark.integration
+async def test_valor_revisado_no_ttl_recusa_com_o_token_do_banco(db, session_ctx):
+    """I3 ponta a ponta: token real no banco, valor diferente na hora do apply.
+
+    O preview gravou "R$ 50,00 -> R$ 180,00" no `blast_summary`. Dez minutos
+    depois o Google quer R$ 300 — e o gestor confirmaria lendo 180. O token e
+    consumido (uso unico), a mutacao NAO sai, e a mensagem diz o que mudou.
+    """
+    from src.mcp.tools import apply_recommendation as mod
+    from src.mcp.tools.apply_change import apply_change
+
+    with patch.object(mod, "run_report", _fake_lookup("CAMPAIGN_BUDGET")):
+        preview = await mod.apply_recommendation(
+            {"customer_id": "1234567890", "recommendation_resource_name": _REC_RN}
+        )
+    token = preview["confirmation_token"]
+
+    fake_client = _fake_client_with_response()
+    with (
+        patch(
+            "src.mcp.tools.apply_change.run_report",
+            _fake_lookup("CAMPAIGN_BUDGET", recomendado_micros=300_000_000),
+        ),
+        patch(
+            "src.google_ads.mutations.build_client_for_manager",
+            AsyncMock(return_value=fake_client),
+        ),
+    ):
+        recusado = await apply_change({"confirmation_token": token})
+
+    assert recusado["status"] == "error", "aplicou um valor que o gestor nunca leu"
+    assert "180.0 -> 300.0" in recusado["error_message"]
+    fake_client.get_service.assert_not_called()
 
 
 @pytest.mark.integration

@@ -14,6 +14,7 @@ from src.google_ads.mutations import run_mutation
 from src.governance.blast_radius import classify
 from src.mcp.context import get_current
 from src.mcp.tools._common import classify_partial
+from src.mcp.tools._mutate_common import applied_envelope
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -128,12 +129,17 @@ async def add_negatives_from_search_terms(args: dict[str, Any]) -> dict[str, Any
             item["error"] = per_op["error"]
         added.append(item)
 
-    return {
-        "status": "applied",
-        "operation": "add_negatives_from_search_terms",
-        "customer_id": customer_id,
-        "applied_count": result["applied_count"],
-        "provider_request_id": result["provider_request_id"],
-        "auto_applied_reason": risk.reason,
-        "added": added,
-    }
+    # O envelope a mao daqui NAO devolvia `blast_summary` — o unico dos cinco
+    # em que faltava, e ninguem notou porque cada envelope a mao e' um contrato
+    # proprio. O helper garante o campo; o resumo abaixo e' o texto que faltava.
+    aplicadas = sum(1 for a in added if a["status"] != "failed")
+    return applied_envelope(
+        "add_negatives_from_search_terms",
+        customer_id,
+        f"Adicionar {target_count} negativa(s) derivada(s) do search_terms_report "
+        f"({aplicadas} aceita(s) pelo Google).",
+        applied_count=result["applied_count"],
+        provider_request_id=result["provider_request_id"],
+        auto_applied_reason=risk.reason,
+        added=added,
+    )

@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import re
 import time
+from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
@@ -25,6 +26,7 @@ from src.db.repositories import audit_log
 from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
+from src.google_ads.partial_failure import erros_por_indice
 from src.google_ads.request_id import get_request_id, reset_request_id
 from src.governance.bookkeeping import best_effort
 from src.governance.rate_limit import (
@@ -57,6 +59,74 @@ def _normalize_and_hash_phone(plaintext: str) -> str:
     if not digits.startswith("+"):
         digits = "+55" + digits.lstrip("0")
     return hashlib.sha256(digits.encode()).hexdigest()
+
+
+@dataclass
+class _Progresso:
+    """Onde a sequencia de 3 passos parou, visivel de FORA da thread (R1-I4).
+
+    Os 3 RPCs rodam num closure entregue ao `run_blocking`. Quando um deles
+    levanta, o closure morre sem devolver nada — e era por isso que o audit de
+    erro gravava `provider_request_id=""`, contradizendo o comentario ao lado
+    que prometia "o ultimo request-id bem-sucedido, util pra saber em qual das
+    3 etapas parou". Este objeto e criado do lado de fora e preenchido a cada
+    passo concluido, entao o `finally` le o progresso real.
+
+    Nao ha atomicidade possivel aqui: sao 3 RPCs, e o Google nao oferece delete
+    de `OfflineUserDataJob`. Falha no passo 3 deixa o job criado COM os membros
+    anexados. O que da pra fazer — e o que se faz — e o padrao de saga sem
+    compensacao: registrar o ponto de parada e o identificador do job, para que
+    a trilha aponte para a PII que ficou la e a mensagem diga o estado real.
+    """
+
+    job_resource_name: str | None = None
+    create_id: str = ""
+    add_id: str = ""
+    run_id: str = ""
+    membros_recusados: list[dict[str, Any]] = field(default_factory=list)
+
+    @property
+    def etapa(self) -> str:
+        """O passo que faltou concluir — `concluido` quando os 3 passaram."""
+        if not self.create_id:
+            return "create_job"
+        if not self.add_id:
+            return "add_operations"
+        if not self.run_id:
+            return "run_job"
+        return "concluido"
+
+    @property
+    def pii_anexada(self) -> bool:
+        """True quando o passo 2 concluiu: os membros JA estao no Google."""
+        return bool(self.add_id)
+
+    @property
+    def ultimo_request_id(self) -> str:
+        return self.run_id or self.add_id or self.create_id
+
+    def submetidos(self, member_count: int) -> int:
+        """Quantos membros o Google reconhecidamente RECEBEU — nunca o tentado.
+
+        Zero enquanto o passo 2 nao devolveu: parada no `create_job` nao
+        submeteu nada, e parada no `add_operations` nao devolveu resposta que
+        diga quantos entraram. O numero so passa a existir quando ha resposta do
+        add — e ai e o lote menos o que o Google recusou.
+
+        O calculo estava escrito solto em tres lugares (audit, mensagem de erro,
+        retorno) e so o retorno era alcancado pelo caminho feliz; nos outros dois
+        ele reportava o lote INTEIRO como submetido mesmo quando a sequencia
+        parou antes de qualquer PII sair — a mesma familia R1-I2/R1-I3, na unica
+        tool que carrega PII. Fica um metodo so, e as tres pontas o chamam.
+
+        Como `pii_anexada`, e um LIMITE INFERIOR: timeout na resposta do passo 2
+        deixa a PII no Google com `add_id` vazio, e aqui isso vira 0. Subestimar
+        e o lado seguro — a trilha carrega `etapa` e `job_resource_name` para
+        quem precisa investigar o caso ambiguo.
+        """
+        if not self.pii_anexada:
+            return 0
+        return member_count - len(self.membros_recusados)
 
 
 def _build_user_data_operations(
@@ -111,7 +181,17 @@ async def run_offline_user_data_job(
     2. add_offline_user_data_job_operations (operations[], enable_partial_failure=True)
     3. run_offline_user_data_job (fire-and-forget; backend processa em horas)
 
-    Returns dict com job_resource_name + 3 provider_request_ids + members_submitted.
+    Returns dict com job_resource_name + 3 provider_request_ids + members_submitted
+    (o que o Google ACEITOU) + members_failed + failures[].
+
+    **Os 3 passos nao sao atomicos, e nao ha como torna-los** (R1-I4): sao 3
+    RPCs e o Google nao oferece delete de `OfflineUserDataJob`. Falha depois do
+    passo 2 deixa a lista de PII anexada la. O tratamento e o de uma saga sem
+    compensacao: `_Progresso` registra onde parou, o audit guarda o
+    `job_resource_name` e o `pii_anexada`, e o erro PT-BR diz ao gestor que os
+    membros ja subiram, por que nao repetir o upload (um segundo job com a mesma
+    PII — nao membro duplicado, que a lista e conjunto) e qual e a saida (rodar o
+    job que ja existe, que nenhuma tool deste MCP faz hoje).
 
     Sprint 3b.28 — segundo dispatcher non-mutate, paralelo a run_conversion_upload
     do Sprint 3b.26.
@@ -150,9 +230,12 @@ async def run_offline_user_data_job(
         "operation": operation_type,
         "member_count": member_count,
     }
-    # provider_request_id acumula o último request-id bem-sucedido (útil no audit de erro
-    # pra saber em qual das 3 etapas parou).
-    provider_request_id = ""
+    # R1-I4: o progresso nasce AQUI, fora do closure que roda na thread — era a
+    # unica forma de o `finally` enxergar o ultimo request-id quando um dos 3
+    # passos levanta. Antes, `provider_request_id` so era atribuido DEPOIS dos
+    # tres, e o audit de erro gravava "" — exatamente o oposto do que o
+    # comentario nesta linha prometia.
+    progresso = _Progresso()
     status = "success"
     error_message: str | None = None
     friendly_error: Exception | None = None
@@ -195,31 +278,49 @@ async def run_offline_user_data_job(
         # round-trips de scheduling. Cada request-id e lido DENTRO da thread: o
         # interceptor o grava num ContextVar, e `to_thread` copia o contexto sem
         # propagar de volta (ver mutations.py).
-        def _rodar_job() -> tuple[str, str, str, str]:
+        def _rodar_job() -> None:
+            # Cada passo grava seu request-id em `progresso` ANTES do proximo
+            # comecar (R1-I4): se o passo seguinte levantar, o que ja concluiu
+            # continua legivel de fora — inclusive `job_resource_name`, que e o
+            # unico ponteiro para a PII que ficou no Google.
             create_response = service.create_offline_user_data_job(customer_id=customer_id, job=job)
-            job_resource_local = create_response.resource_name
-            create_id = get_request_id() or "unknown"
+            progresso.job_resource_name = create_response.resource_name
+            progresso.create_id = get_request_id() or "unknown"
 
             # Step 2: Add operations
             reset_request_id()
             operations = _build_user_data_operations(client, operation_type, hashed_members)
             add_request = client.get_type("AddOfflineUserDataJobOperationsRequest")
-            add_request.resource_name = job_resource_local
+            add_request.resource_name = progresso.job_resource_name
             add_request.operations = operations
             add_request.enable_partial_failure = True
-            service.add_offline_user_data_job_operations(request=add_request)
-            add_id = get_request_id() or "unknown"
+            add_response = service.add_offline_user_data_job_operations(request=add_request)
+            progresso.add_id = get_request_id() or "unknown"
+            # R1-I3: `enable_partial_failure=True` pede ao Google que recuse
+            # membro a membro em vez de derrubar o lote — e a resposta ia pro
+            # lixo. Sem ler isto, `members_submitted` reportava o lote INTEIRO,
+            # incluindo os hashes que o Google recusou (formato invalido,
+            # identificador nao suportado). A resposta deste RPC nao tem lista
+            # por-op: quem falhou so aparece pelo indice dentro do
+            # `partial_failure_error`.
+            progresso.membros_recusados = [
+                {"index": idx, "error_code": e.error_code, "error_message": e.error_message}
+                for idx, e in sorted(
+                    erros_por_indice(
+                        add_response,
+                        client,
+                        origem="run_offline_user_data_job",
+                        customer_id=customer_id,
+                    ).items()
+                )
+            ]
 
             # Step 3: Run job (fire-and-forget)
             reset_request_id()
-            service.run_offline_user_data_job(resource_name=job_resource_local)
-            run_id = get_request_id() or "unknown"
+            service.run_offline_user_data_job(resource_name=progresso.job_resource_name)
+            progresso.run_id = get_request_id() or "unknown"
 
-            return job_resource_local, create_id, add_id, run_id
-
-        job_resource, create_req_id, add_req_id, run_req_id = await run_blocking(_rodar_job)
-        # O audit guarda o ultimo (o do run); a resposta expoe os tres.
-        provider_request_id = run_req_id
+        await run_blocking(_rodar_job)
 
     except Exception as e:
         status = "error"
@@ -229,6 +330,9 @@ async def run_offline_user_data_job(
             customer_id=customer_id,
             user_list_id=user_list_id,
             operation_type=operation_type,
+            etapa=progresso.etapa,
+            job_resource_name=progresso.job_resource_name,
+            pii_anexada=progresso.pii_anexada,
         )
         friendly_error = to_friendly(e)
         original_error = e
@@ -280,8 +384,23 @@ async def run_offline_user_data_job(
                 action_type="mutate",
                 operation="upload_customer_match_list",
                 target_count=member_count,
-                params_summary=audit_params,
-                provider_request_id=provider_request_id,
+                # R1-I3/I4: o resumo passa a dizer o que ACONTECEU — onde a
+                # sequencia parou, qual job ficou no Google, se a PII ja tinha
+                # sido anexada quando parou, e quantos membros o Google
+                # recusou. Segue sem PII: indice e codigo de erro, nunca hash.
+                params_summary={
+                    **audit_params,
+                    "etapa": progresso.etapa,
+                    "job_resource_name": progresso.job_resource_name,
+                    "pii_anexada": progresso.pii_anexada,
+                    # `submetidos()` e nao `member_count - recusados`: parada no
+                    # passo 1 ou 2 nao submeteu nada, e o calculo solto gravava
+                    # o lote inteiro como submetido nos dois casos. `member_count`
+                    # (o tentado) continua ao lado, em `audit_params`.
+                    "members_submitted": progresso.submetidos(member_count),
+                    "members_failed": len(progresso.membros_recusados),
+                },
+                provider_request_id=progresso.ultimo_request_id,
                 status=status,
                 error_message=error_message,
                 duration_ms=duration_ms,
@@ -290,19 +409,52 @@ async def run_offline_user_data_job(
     if friendly_error is not None:
         # Raise (não retorna dict de erro): apply_change espera dict de sucesso;
         # o friendly propaga pro _error_envelope como mensagem PT-BR pro cliente.
+        #
+        # R1-I4: quando a PII ja subiu, a mensagem PT-BR precisa DIZER isso, e
+        # dizer o que fazer. Nao ha rollback possivel (o Google nao apaga
+        # OfflineUserDataJob), e um erro que omite o estado do outro lado
+        # convida o gestor a repetir a chamada.
+        #
+        # O CUSTO do retry nao e membro duplicado: a user list de Customer Match
+        # e um conjunto de identificadores hasheados, entao reenviar os mesmos
+        # membros nao duplica ninguem. O custo e um SEGUNDO OfflineUserDataJob
+        # carregando a mesma PII, que o Google nao apaga — a lista fica igual e a
+        # exposicao dobra. Por isso a saida certa e rodar o job que JA existe
+        # (RunOfflineUserDataJob), e nao criar outro; nenhuma tool deste MCP faz
+        # isso hoje, e o gestor precisa saber disso em vez de ficar sem caminho.
+        if progresso.pii_anexada:
+            raise type(friendly_error)(
+                f"{friendly_error} Atencao: {progresso.submetidos(member_count)} membro(s) JA "
+                f"foram enviados ao Google e estao anexados ao job "
+                f"{progresso.job_resource_name}; o que falhou foi o passo "
+                f"'{progresso.etapa}'. NAO repita o upload: reenviar nao duplicaria membros "
+                "(a lista de Customer Match e um conjunto de identificadores hasheados), mas "
+                "criaria um SEGUNDO job com a mesma PII, e o Google nao apaga "
+                "OfflineUserDataJob. O conserto e RODAR o job que ja existe "
+                "(RunOfflineUserDataJob) — nenhuma tool deste MCP faz isso hoje, entao ele "
+                "precisa ser disparado direto pela API do Google Ads. Confira antes o estado "
+                "com run_gaql em offline_user_data_job: PENDING confirma que a lista nao foi "
+                "atualizada e que e esse job, e nao um novo, que precisa rodar."
+            ) from original_error
         raise friendly_error from original_error
 
+    members_submitted = progresso.submetidos(member_count)
     log.info(
         "run_offline_user_data_job_done",
         customer_id=customer_id,
-        job_resource_name=job_resource,
-        members_submitted=member_count,
+        job_resource_name=progresso.job_resource_name,
+        members_submitted=members_submitted,
+        members_failed=len(progresso.membros_recusados),
     )
 
     return {
-        "job_resource_name": job_resource,
-        "provider_request_id_create_job": create_req_id,
-        "provider_request_id_add_ops": add_req_id,
-        "provider_request_id_run_job": run_req_id,
-        "members_submitted": member_count,
+        "job_resource_name": progresso.job_resource_name,
+        "provider_request_id_create_job": progresso.create_id,
+        "provider_request_id_add_ops": progresso.add_id,
+        "provider_request_id_run_job": progresso.run_id,
+        # R1-I3: o que o Google ACEITOU. Antes era `member_count` cru — o lote
+        # inteiro, recusados inclusive.
+        "members_submitted": members_submitted,
+        "members_failed": len(progresso.membros_recusados),
+        "failures": progresso.membros_recusados,
     }

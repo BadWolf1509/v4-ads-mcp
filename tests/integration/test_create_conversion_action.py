@@ -202,6 +202,9 @@ async def test_create_conversion_action_full_cycle_audits(db, session_ctx) -> No
         "types": {"WEBPAGE": 1},
         "with_default_value": 0,
         "with_always_use_default": 0,
+        # R1-I2: o executor acrescenta a chave reservada `resultado`
+        # (o que ACONTECEU) ao lado do resumo que a tool monta.
+        "resultado": {"tentadas": 1, "aplicadas": 1, "mudaram": 1},
     }
     # Critical: action names NOT in audit (privacy-safe summary per spec §3.6).
     assert "Test Lead Int" not in json.dumps(summary_d)

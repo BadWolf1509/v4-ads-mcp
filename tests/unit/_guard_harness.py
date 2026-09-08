@@ -19,7 +19,7 @@ import ast
 import builtins
 import importlib
 import sys
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[2]
@@ -566,3 +566,83 @@ def classe_de_excecao(nome: str) -> type[BaseException] | None:
                 if obj is not None:
                     break
     return obj if isinstance(obj, type) and issubclass(obj, BaseException) else None
+
+
+def escopos_pais(arv: ast.Module) -> dict[ast.AST, ast.AST | None]:
+    """Função-mãe de cada `def`/`async def` do módulo (None quando não há uma).
+
+    O `ast` não guarda ponteiro pro pai, e todo guard que precise distinguir
+    "escopo que ENVOLVE" de "escopo IRMÃO" depende dessa cadeia: sem ela, o
+    único vocabulário disponível é "está em algum lugar da subárvore", que é o
+    defeito de unidade uma casa abaixo do "está em algum lugar do arquivo".
+
+    `lambda` NÃO é escopo aqui: ele é transparente em `nos_do_corpo_proprio`
+    (ver a docstring de lá), então nunca aparece como chave nem como valor.
+    """
+    pai: dict[ast.AST, ast.AST | None] = {}
+
+    def visita(no: ast.AST, atual: ast.AST | None) -> None:
+        for filho in ast.iter_child_nodes(no):
+            if isinstance(filho, ast.FunctionDef | ast.AsyncFunctionDef):
+                pai[filho] = atual
+                visita(filho, filho)
+            else:
+                visita(filho, atual)
+
+    visita(arv, None)
+    return pai
+
+
+def nos_do_corpo_proprio(escopo: ast.AST) -> Iterator[ast.AST]:
+    """Todo nó do corpo PRÓPRIO de `escopo` — sem entrar em `def`/`async def`.
+
+    É `ast.walk` menos os escopos filhos. Existe porque a pergunta "esta
+    função faz X?" respondida pela subárvore inteira responde na verdade
+    "esta função, ou QUALQUER coisa definida dentro dela, faz X?" — e as duas
+    divergem exatamente onde mora o bug: uma closure IRMÃ da que interessa, um
+    método de classe aninhada, um `def` dentro de `if False:`. Nenhum desses
+    envolve nada, mas todos moram na subárvore. Mesma lição do
+    `_cursores_fora_de_transacao` (F58), generalizada.
+
+    **`lambda` é transparente** — o corpo dele é visitado como parte deste
+    escopo. Não é descuido: um `lambda` é expressão escrita inline no corpo
+    que o contém, e o idioma vivo do projeto põe o hard-gate exatamente aí
+    (`run_with_reconnect(lambda conn: ensure_account_access(...))`, em 6 dos 6
+    call-sites do F57 — medido em 2026-09-07). Pulá-lo tornaria o guard do F57
+    um falso positivo contra as seis funções corretas. Guard cuja pergunta é
+    "este corpo é lazy?" (F58) precisa do oposto e continua pulando `lambda`
+    por conta própria.
+    """
+    inicio: list[ast.AST] = (
+        [escopo.body] if isinstance(escopo, ast.Lambda) else list(getattr(escopo, "body", []))
+    )
+
+    def desce(no: ast.AST) -> Iterator[ast.AST]:
+        if isinstance(no, ast.FunctionDef | ast.AsyncFunctionDef):
+            return  # escopo próprio: `funcoes()` o visita em separado
+        yield no
+        for filho in ast.iter_child_nodes(no):
+            yield from desce(filho)
+
+    for no in inicio:
+        yield from desce(no)
+
+
+def chama_no_corpo_proprio(escopo: ast.AST, alvo: str, *, arv: ast.Module) -> list[int]:
+    """Linhas em que o corpo PRÓPRIO de `escopo` chama `alvo`.
+
+    Mesma resolução de nome de `chama()` (Name, Attribute e alias de import),
+    mesma cegueira a despacho dinâmico — a diferença é só o alcance, e é a
+    diferença que separa "envolve" de "é irmão".
+    """
+    nomes = nomes_locais(arv, alvo)
+    linhas: list[int] = []
+    for no in nos_do_corpo_proprio(escopo):
+        if not isinstance(no, ast.Call):
+            continue
+        f = no.func
+        if (isinstance(f, ast.Name) and f.id in nomes) or (
+            isinstance(f, ast.Attribute) and f.attr in nomes
+        ):
+            linhas.append(no.lineno)
+    return linhas

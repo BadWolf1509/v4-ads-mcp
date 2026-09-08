@@ -194,6 +194,15 @@ async def test_apply_audience_full_cycle_audits(db, session_ctx):
         "audience_types_distribution": {"user_list": 1, "user_interest": 2},
         "with_bid_modifier_count": 1,
         "unique_targets_count": 2,
+        # R1-I2: o executor acrescenta a chave reservada `resultado`
+        # (o que ACONTECEU) ao lado do resumo que a tool monta.
+        "resultado": {
+            "tentadas": 3,
+            "aplicadas": 2,
+            "mudaram": 2,
+            "falharam": 1,
+            "indices_com_falha": [1],
+        },
     }
     # Critical privacy gate: raw resource_name fragments NOT in audit
     for fragment in ("AAA", "918811", "918822", "userLists/A", "userInterests/9"):

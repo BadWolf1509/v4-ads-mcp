@@ -8,6 +8,12 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+from src.google_ads.queries.recommendations import (
+    TIPOS_CONHECIDOS,
+    TIPOS_DE_MIGRACAO,
+    TIPOS_QUE_CONFIRMAM,
+)
+
 
 class RiskLevel(StrEnum):
     AUTO = "auto"
@@ -244,11 +250,72 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
             f"remove_asset_link ({target_count} vínculo(s)) — sempre confirma (spec §7.1 remove)",
         )
 
-    # Recommendations — Google's own suggestions; auto-apply
-    if operation in ("apply_recommendation", "dismiss_recommendation"):
+    # Recommendations — o veredito depende do TIPO da recomendacao (C2).
+    #
+    # "Sugestao do Google" nao e uma categoria de risco: `CAMPAIGN_BUDGET` medida
+    # em 07/09 propunha R$ 50,00 -> R$ 180,00 (3,6x) numa campanha viva. O MESMO
+    # efeito pelo `update_campaign_budget` sempre foi CONFIRM logo acima nesta
+    # funcao — duas portas com governanca oposta. Os 23 tipos saem de
+    # `CAMPOS_DE_DETALHE`, lida do proto do v24 por DOIS eixos: mexer numa
+    # alavanca de gasto ja existente, ou MIGRAR a campanha (C1, 07/09). O eixo da
+    # irreversibilidade faltava, e por isso os cinco `*_TO_PERFORMANCE_MAX` /
+    # `PERFORMANCE_MAX_OPT_IN` auto-aplicavam uma conversao sem volta.
+    if operation == "apply_recommendation":
+        tipo = str(params.get("recommendation_type") or "").upper()
+        if not tipo:
+            # Tipo nao resolvido (lookup falhou / caller antigo): lado seguro.
+            return RiskClassification(
+                RiskLevel.CONFIRM,
+                "apply_recommendation: tipo da recomendacao desconhecido — confirmar por seguranca",
+            )
+        # O EIXO 2 vem primeiro, e a ordem e o ponto: os cinco de migracao sao
+        # SUBCONJUNTO de `TIPOS_QUE_CONFIRMAM`, entao cair no ramo de baixo os
+        # rotulava "mexe em orcamento ou lance" — que nao e o que eles fazem.
+        # Eles MIGRAM a campanha, e e por isso que confirmam. `confirmation_reason`
+        # e o campo que o gestor le no preview: quem aprova uma conversao sem
+        # volta lendo "mexe em orcamento" esta sendo informado errado sobre a
+        # NATUREZA do que aprova, nao so sobre o tamanho.
+        if tipo in TIPOS_DE_MIGRACAO:
+            return RiskClassification(
+                RiskLevel.CONFIRM,
+                f"apply_recommendation ({tipo}): MIGRA a campanha para outro tipo de "
+                "campanha e o Google nao expoe operacao de volta — confirmar sempre "
+                "(eixo da irreversibilidade, spec §7.1)",
+            )
+        if tipo in TIPOS_QUE_CONFIRMAM:
+            return RiskClassification(
+                RiskLevel.CONFIRM,
+                f"apply_recommendation ({tipo}): mexe em orcamento ou lance — "
+                "confirmar sempre, mesma regra do update_campaign_budget (spec §7.1 budget)",
+            )
+        # Tipo que o SDK v24 nao sabe nomear. Ate 07/09 ele caia no AUTO abaixo:
+        # `type_ = 999` parseava como a string "999", `type_pt` vinha None, e a
+        # tool aplicava com o resumo "Aplicar recomendacao 999" — sem gate e sem
+        # rotulo. Este modulo declara na linha 3 que "unknown operations always
+        # require confirmation", e o fallback final desta funcao honra isso; o
+        # ramo de recomendacao era a unica contradicao viva da propria politica.
+        #
+        # A checagem e de PERTINENCIA ao enum do SDK, nao contra uma lista nova:
+        # nao ha o que manter. E desconhecido aqui nao quer dizer "provavelmente
+        # inofensivo" — quer dizer "nao sei o que isto faz com o dinheiro do
+        # cliente", e tipo novo de gasto e justamente o que o Google acrescenta
+        # entre uma versao do SDK e a seguinte.
+        if tipo not in TIPOS_CONHECIDOS:
+            return RiskClassification(
+                RiskLevel.CONFIRM,
+                f"apply_recommendation ({tipo}): tipo que o SDK v24 nao conhece — "
+                "nao da pra afirmar que nao mexe em orcamento nem lance, entao confirmar",
+            )
         return RiskClassification(
             RiskLevel.AUTO,
-            f"{operation} — auto, recommendation flow do Google",
+            f"apply_recommendation ({tipo}): nao mexe em orcamento nem lance — auto",
+        )
+
+    # Dismiss so descarta a sugestao: nao muda entrega nem gasto.
+    if operation == "dismiss_recommendation":
+        return RiskClassification(
+            RiskLevel.AUTO,
+            "dismiss_recommendation — auto, so descarta a sugestao do Google",
         )
 
     # update_ad_schedule — always CONFIRM (spec ad_schedule §4: define as janelas
