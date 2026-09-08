@@ -320,3 +320,62 @@ def test_a_description_distingue_os_dois_truncados() -> None:
         "dias_no_teto_da_api",
     ):
         assert termo in tool.description, termo
+
+
+@pytest.mark.asyncio
+async def test_o_aviso_do_clamp_de_retencao_chega_ao_gestor(monkeypatch, _ctx) -> None:
+    """`cobertura.janela_efetiva` ja dizia QUE a janela mudou; faltava POR QUE.
+
+    `get_change_history` move o inicio da janela quando o pedido cai fora da
+    retencao de 30 dias do `change_event` (F23) e emite `date_range_warning`
+    explicando. `detect_drift` descartava esse texto: o gestor via duas datas
+    diferentes entre `period` e `cobertura.janela_efetiva` e nenhuma explicacao.
+
+    Numa frente sobre honestidade dos numeros, descartar a explicacao do numero
+    e o mesmo defeito um nivel acima. A mudanca de producao que deixa este teste
+    vermelho: parar de propagar `date_range_warning` — que e o codigo pre-fix.
+    """
+    aviso = "start_date fora da retencao de 30 dias; ajustado para 2026-08-11"
+
+    async def _fake(args):
+        return {
+            "rows": [],
+            "truncated": False,
+            "period": {"from": "2026-08-11", "to": "2026-09-08"},
+            "freshness": {"status": "confiavel"},
+            "date_range_warning": aviso,
+        }
+
+    import src.mcp.tools.detect_drift as mod
+
+    monkeypatch.setattr(mod, "get_change_history", _fake)
+    monkeypatch.setattr(mod, "resolve_account_today", _hoje_fixo)
+
+    out = await mod.detect_drift(
+        {"customer_id": "1234567890", "start_date": "2026-07-01", "end_date": "2026-09-08"}
+    )
+    assert out["cobertura"]["aviso_de_janela"] == aviso
+
+
+@pytest.mark.asyncio
+async def test_sem_clamp_o_aviso_vem_null_e_nao_ausente(monkeypatch, _ctx) -> None:
+    """Chave que so aparece quando ha problema treina o leitor a nao procurar
+    por ela — e tira o retorno da forma de dict literal, que e a unica que o
+    guard do truncamento consegue conferir."""
+
+    async def _fake(args):
+        return {
+            "rows": [],
+            "truncated": False,
+            "period": {"from": "2026-09-06", "to": "2026-09-08"},
+            "freshness": {"status": "confiavel"},
+        }
+
+    import src.mcp.tools.detect_drift as mod
+
+    monkeypatch.setattr(mod, "get_change_history", _fake)
+    monkeypatch.setattr(mod, "resolve_account_today", _hoje_fixo)
+
+    out = await mod.detect_drift({"customer_id": "1234567890"})
+    assert "aviso_de_janela" in out["cobertura"]
+    assert out["cobertura"]["aviso_de_janela"] is None

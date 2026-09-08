@@ -166,6 +166,12 @@ class _Varredura:
     teto_total_atingido: bool
     janela: tuple[date, date]
     freshness: dict[str, Any]
+    # O aviso de clamp de retencao (F23) que `get_change_history` emite quando
+    # move o inicio da janela. `cobertura.janela_efetiva` ja mostra QUE a janela
+    # mudou; sem este texto o gestor ve as duas datas diferentes e nao sabe por
+    # que. Numa frente sobre honestidade dos numeros, descartar a explicacao do
+    # numero e o mesmo defeito, um nivel acima.
+    aviso_de_janela: str | None = None
 
     @property
     def truncada(self) -> bool:
@@ -238,6 +244,7 @@ async def _varrer(customer_id: str, *, inicio: date, fim: date) -> _Varredura:
             teto_total_atingido=False,
             janela=(efetiva_de, efetiva_ate),
             freshness=primeira["freshness"],
+            aviso_de_janela=primeira.get("date_range_warning"),
         )
 
     linhas: list[dict[str, Any]] = []
@@ -277,6 +284,7 @@ async def _varrer(customer_id: str, *, inicio: date, fim: date) -> _Varredura:
         teto_total_atingido=teto_total_atingido or estourou_o_teto,
         janela=(efetiva_de, efetiva_ate),
         freshness=primeira["freshness"],
+        aviso_de_janela=primeira.get("date_range_warning"),
     )
 
 
@@ -311,7 +319,9 @@ async def _varrer(customer_id: str, *, inicio: date, fim: date) -> _Varredura:
         "ela nao couber no cap de 10k do change_event, RE-LE dia a dia — o "
         "recurso nao tem OFFSET nem cursor (sondado 2026-09-07), entao a unica "
         "particao possivel e a do tempo, e a mais fina alcancavel aqui e UM DIA. "
-        "O bloco `cobertura` diz o que a leitura de fato viu: "
+        "O bloco `cobertura` diz o que a leitura de fato viu (inclusive "
+        "`aviso_de_janela`, o texto do clamp de retencao F23 quando a janela pedida "
+        "caiu fora dos 30 dias — `null` quando nao houve clamp): "
         "`eventos_examinados` (quantos entraram na classificacao), "
         "`janelas_consultadas` (1 quando a janela coube; uma por dia quando "
         "nao), `janela_efetiva` (a janela realmente lida — o clamp de retencao "
@@ -423,6 +433,11 @@ async def detect_drift(args: dict[str, Any]) -> dict[str, Any]:
                 "from": varredura.janela[0].isoformat(),
                 "to": varredura.janela[1].isoformat(),
             },
+            # `None` explicito, nunca chave ausente: chave que so aparece quando
+            # ha problema treina o leitor a nao procurar por ela, e mantem este
+            # retorno como dict LITERAL, que e o que o guard do truncamento
+            # consegue conferir.
+            "aviso_de_janela": varredura.aviso_de_janela,
             "teto_por_janela": _TETO_POR_JANELA,
             "teto_examinado": _TETO_EXAMINADO,
         },
