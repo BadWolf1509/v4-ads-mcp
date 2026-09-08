@@ -44,6 +44,7 @@ async def test_migrations_are_idempotent(pg_dsn: str) -> None:
                 "007_audit_log_dry_run.sql",
                 "008_google_reconciliation.sql",
                 "009_last_missed_on.sql",
+                "010_indices_audit_e_acesso.sql",
             ]
     finally:
         await connection.close_pool()
@@ -81,3 +82,20 @@ async def test_migration_009_statement_is_rerunnable(pg_dsn: str) -> None:
                 assert coluna["column_default"] is None
     finally:
         await connection.close_pool()
+
+
+@pytest.mark.integration
+async def test_indices_da_010_existem_apos_migrar(db) -> None:
+    """Os dois indices da 010 estao no schema depois de aplicar as migrations."""
+    async with db.acquire() as conn:
+        nomes = {
+            r["indexname"]
+            for r in await conn.fetch(
+                "SELECT indexname FROM pg_indexes "
+                " WHERE tablename IN ('audit_log', 'manager_account_access')"
+            )
+        }
+    assert "idx_audit_occurred_at" in nomes, (
+        f"idx_audit_occurred_at ausente. Indices vistos: {sorted(nomes)}"
+    )
+    assert "idx_mac_customer" in nomes, f"idx_mac_customer ausente. Indices vistos: {sorted(nomes)}"
