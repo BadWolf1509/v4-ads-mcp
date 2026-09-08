@@ -1,5 +1,7 @@
 """Unit tests for src.google_ads.queries.audit_quality_score (Sprint 3b.30)."""
 
+import pytest
+
 from src.google_ads.queries.audit_quality_score import build_audit_quality_score_query
 
 
@@ -22,7 +24,20 @@ def test_query_with_ad_group_filter_three_ids():
         end_date="2026-05-20",
         ad_group_ids=["1001", "1002", "1003"],
     )
-    assert "ad_group.id IN ('1001', '1002', '1003')" in query
+    assert "ad_group.id IN (1001, 1002, 1003)" in query
+
+
+def test_recusa_ad_group_id_nao_numerico() -> None:
+    """`", ".join(f"'{id_}'" for id_ in ad_group_ids)` interpolava texto livre
+    direto no GAQL (so que entre aspas). O `pattern` do schema a montante nao
+    e defesa: helper e chamado de mais de um lugar, e o proximo chamador pode
+    nao ter schema nenhum (F87)."""
+    with pytest.raises(ValueError):
+        build_audit_quality_score_query(
+            start_date="2026-04-20",
+            end_date="2026-05-20",
+            ad_group_ids=["1001", "1) OR 1=1 --"],
+        )
 
 
 def test_query_includes_status_enabled_and_qs_not_null():

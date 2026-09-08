@@ -24,7 +24,7 @@ class KeywordRow:
     impressions: int
     clicks: int
     cost_brl: float
-    conversions: int
+    conversions: float
     status: str  # "ENABLED" expected (server-side filter)
 
 
@@ -42,7 +42,7 @@ class ZombieKeyword:
     impressions: int
     clicks: int
     cost_brl: float
-    conversions: int
+    conversions: float
     status: str
 
 

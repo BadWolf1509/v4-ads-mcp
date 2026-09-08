@@ -31,7 +31,7 @@ def build_audit_zombie_keywords_query(
 
     ad_group_clause = ""
     if ad_group_ids:
-        ids = ",".join(ad_group_ids)
+        ids = ", ".join(str(int(x)) for x in ad_group_ids)
         ad_group_clause = f" AND ad_group.id IN ({ids})"
 
     return f"""
@@ -75,7 +75,7 @@ def parse_keyword_view_row(row: Any) -> dict[str, Any]:
         "impressions": int(row.metrics.impressions),
         "clicks": int(row.metrics.clicks),
         "cost_brl": micros_to_currency(row.metrics.cost_micros),
-        "conversions": int(row.metrics.conversions),
+        "conversions": float(row.metrics.conversions),
         "status": row.ad_group_criterion.status.name,
     }
 
@@ -93,6 +93,6 @@ def dict_to_keyword_row(d: dict[str, Any]) -> KeywordRow:
         impressions=int(d.get("impressions", 0)),
         clicks=int(d.get("clicks", 0)),
         cost_brl=float(d.get("cost_brl", 0.0)),
-        conversions=int(d.get("conversions", 0)),
+        conversions=float(d.get("conversions", 0.0)),
         status=str(d.get("status", "")),
     )
