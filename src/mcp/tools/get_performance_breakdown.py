@@ -118,7 +118,10 @@ _CELULAS_DA_GRADE = 7 * 24
         "que havia MAIS linhas do que o teto e a lista foi cortada no topo de gasto — "
         "peca um `limit` maior ou filtre. EXCECAO: em `account+hourly` o teto e "
         "ESTRUTURAL (168 celulas, 7 dias x 24h) e o `limit` NAO se aplica — a grade vem "
-        "inteira, em ordem cronologica. Para visao geral da "
+        "inteira, em ordem cronologica. ATENCAO (F56): em `level='keyword'` a resposta "
+        "traz keyword POSITIVA e NEGATIVA indistintamente — cada row tem `negative: "
+        "bool`, filtre `negative=false` no consumer, ou use audit_zombie_keywords/"
+        "audit_quality_score, que filtram server-side. Para visao geral da "
         "conta com comparativo use get_account_overview."
     ),
     input_schema=_SCHEMA,
