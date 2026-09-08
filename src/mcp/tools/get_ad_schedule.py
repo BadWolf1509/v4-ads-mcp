@@ -78,7 +78,8 @@ _DESCRIPTION = (
     "dizem isso explicitamente; nao leia lista vazia como 'nao serve'. Isso vale SO "
     "quando a resposta nao veio cortada: sob `truncated: true`, toda campanha cuja "
     "grade caiu alem do corte do `limit` tem `has_schedule: null`, "
-    "`hours_per_week: null` e `schedule_desconhecida_por_truncamento: true` no "
+    "`hours_per_week: null`, `windows: null` e "
+    "`schedule_desconhecida_por_truncamento: true` no "
     "resumo — `null` significa 'nao sei se tem grade ou nao, aumente o `limit`', "
     "nunca leia `null` como false nem como 24x7. Janela cobre "
     "[inicio, fim); `end_hour: 24` = ate o fim do dia; minutos so 0/15/30/45 (API). "
@@ -189,6 +190,12 @@ async def get_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
         if truncated and cid not in tem_janela_lida:
             resumo["has_schedule"] = None
             resumo["hours_per_week"] = None
+            # `windows` tambem, senao o resumo se contradiz: `has_schedule: null`
+            # ao lado de `windows: 0` le como "zero janelas", que e justamente a
+            # afirmacao que este bloco existe para nao fazer. Tres campos que
+            # descrevem a mesma coisa desconhecida tem que dizer desconhecido
+            # juntos.
+            resumo["windows"] = None
             resumo["schedule_desconhecida_por_truncamento"] = True
 
     # Fix Important 2 (revisao final): period so existe quando include_metrics
