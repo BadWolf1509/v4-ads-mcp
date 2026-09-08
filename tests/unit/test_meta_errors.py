@@ -1,8 +1,22 @@
-"""Unit tests for Meta error → PT-BR friendly mapping (Sprint M.2a Task 6)."""
+"""Unit tests for Meta error → PT-BR friendly mapping (Sprint M.2a Task 6).
+
+A familia de throttle do Graph e maior que o code 4.
+
+Antes: 4 e subcode 2635 eram retryable; 17, 613 e 80004 caiam no ramo generico
+com retryable=False. Throttle transitorio virava falha permanente na cara do
+gestor, e nenhum caminho de retry disparava.
+"""
+
+from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from src.meta_ads.errors import MetaAdsFriendlyError, to_friendly_meta_error
+
+facebook_business = pytest.importorskip("facebook_business")
+from facebook_business.exceptions import FacebookRequestError  # noqa: E402
 
 
 def _build_fb_error(*, code=None, subcode=None, message="error msg"):
@@ -15,6 +29,19 @@ def _build_fb_error(*, code=None, subcode=None, message="error msg"):
 
     err.__class__ = FacebookRequestError
     return err
+
+
+def _erro(code: int, subcode: int | None = None, msg: str = "limite") -> FacebookRequestError:
+    corpo = {"error": {"code": code, "message": msg}}
+    if subcode is not None:
+        corpo["error"]["error_subcode"] = subcode
+    return FacebookRequestError(
+        message=msg,
+        request_context={},
+        http_status=400,
+        http_headers={},
+        body=corpo,
+    )
 
 
 def test_expired_token_subcode_458():
@@ -70,3 +97,24 @@ def test_non_facebook_exception_falls_back():
     result = to_friendly_meta_error(e)
     assert "inesperado" in result.message.lower() or "generic error" in result.message
     assert result.retryable is False
+
+
+@pytest.mark.parametrize("code", [4, 17, 613, 80004])
+def test_toda_a_familia_de_throttle_e_retryable(code: int) -> None:
+    r = to_friendly_meta_error(_erro(code))
+    assert r.retryable is True, f"code {code} deveria ser retryable"
+    assert "limite" in r.message.lower(), f"code {code}: mensagem nao fala de limite"
+
+
+def test_subcode_2635_continua_retryable() -> None:
+    assert to_friendly_meta_error(_erro(1, subcode=2635)).retryable is True
+
+
+@pytest.mark.parametrize("code", [190, 100, 200, 3018])
+def test_o_que_nao_e_throttle_continua_nao_retryable(code: int) -> None:
+    """Contraprova: sem ela, `retryable=True` incondicional passaria verde.
+
+    Um guard que so afirma o lado positivo nao distingue "classifica throttle"
+    de "diz sim para tudo".
+    """
+    assert to_friendly_meta_error(_erro(code)).retryable is False
