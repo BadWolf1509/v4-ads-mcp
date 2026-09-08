@@ -139,21 +139,30 @@ def test_nenhuma_tool_devolve_truncated_constante() -> None:
     "asserir o adjacente a invariante". Cobre o sufixo tambem: uma
     `"search_terms_truncated": False` fixa mentiria exatamente igual a uma
     `"truncated": False` fixa.
+
+    Varre o MESMO escopo que `_chaves_alcancaveis` — modulo do handler mais os
+    modulos `src.*` que ele importa. A versao anterior olhava so o modulo
+    proprio, e a assimetria era um buraco de par: um helper que hardcodasse
+    `"truncated": False` satisfazia o teste de cima (a chave existe, alcancavel
+    pelo salto) e escapava deste (o literal mora no helper, fora do escopo).
+    Dois testes que existem em par tem que enxergar o mesmo codigo, senao o par
+    nao fecha nada.
     """
     ofensores: list[str] = []
     for nome, arq in _tools_com_limite():
-        arvore = ast.parse(arq.read_text(encoding="utf-8"))
-        for node in ast.walk(arvore):
-            if not isinstance(node, ast.Dict):
-                continue
-            for k, v in zip(node.keys, node.values, strict=True):
-                if (
-                    isinstance(k, ast.Constant)
-                    and isinstance(k.value, str)
-                    and (k.value == "truncated" or k.value.endswith("_truncated"))
-                    and isinstance(v, ast.Constant)
-                ):
-                    ofensores.append(f"{nome}:{k.lineno}")
+        for modulo in [arq, *h.modulos_importados_de_src(arq)]:
+            arvore = ast.parse(modulo.read_text(encoding="utf-8"))
+            for node in ast.walk(arvore):
+                if not isinstance(node, ast.Dict):
+                    continue
+                for k, v in zip(node.keys, node.values, strict=True):
+                    if (
+                        isinstance(k, ast.Constant)
+                        and isinstance(k.value, str)
+                        and (k.value == "truncated" or k.value.endswith("_truncated"))
+                        and isinstance(v, ast.Constant)
+                    ):
+                        ofensores.append(f"{nome} -> {h.rel(modulo)}:{k.lineno}")
     assert ofensores == [], (
         f"`truncated`/`*_truncated` como literal nao e deteccao, e decoracao: {ofensores}"
     )
