@@ -242,15 +242,47 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
             # O resumo (has_schedule/hours_per_week) conta so o que esta SERVINDO;
             # com status="all" nas linhas, somar REMOVED inflaria as horas.
             servindo = rows_to_current([r for r in rows if r["status"] == "ENABLED"])
-            # summarize_current tambem devolve uma chave "windows" (contagem) — spread
-            # primeiro e a lista de linhas por ultimo, senao o int pisa na lista.
+            # `ad_schedule_query` pede `GRADE_LIMIT + 1`: a sobra e a prova de que a
+            # leitura foi PARCIAL. Sem esta checagem, campanha cujas linhas cairam
+            # alem do corte chega em `summarize_current([])`, que devolve
+            # `has_schedule: false` + `hours_per_week: 168` — a frase "serve 24x7".
+            # Aqui isso e pior do que no `get_ad_schedule`: e o resumo que o gestor
+            # le DEPOIS de ter mudado a grade, e ele diria que a campanha que acabou
+            # de ser restringida passou a servir o tempo todo. Mesmo defeito, pior
+            # lugar (F128: a clausula ficou de fora de um dos gemeos).
+            leitura_parcial = len(rows) > GRADE_LIMIT
+            rows = rows[:GRADE_LIMIT]
+            lidas = {r["campaign_id"] for r in rows}
+
+            def _resumo(cid: str) -> dict[str, Any]:
+                if leitura_parcial and cid not in lidas:
+                    return {
+                        "has_schedule": None,
+                        "windows_count": None,
+                        "hours_per_week": None,
+                        "schedule_desconhecida_por_truncamento": True,
+                    }
+                r = summarize_current(servindo.get(cid, []))
+                return {
+                    "has_schedule": r["has_schedule"],
+                    "windows_count": r["windows"],
+                    "hours_per_week": r["hours_per_week"],
+                }
+
+            # `windows` e a LISTA de linhas; `summarize_current` devolve um `windows`
+            # que e CONTAGEM. Renomear a contagem para `windows_count` tira a colisao
+            # que antes so nao mordia por ordem de spread — e ordem de spread e uma
+            # garantia que some no primeiro refactor.
             resulting = {
                 cid: {
-                    **summarize_current(servindo.get(cid, [])),
+                    **_resumo(cid),
                     "windows": [r for r in rows if r["campaign_id"] == cid],
-                    "matches_requested": _matches_requested(
-                        servindo.get(cid, []), pedidas_com_modificador
+                    "matches_requested": (
+                        None
+                        if leitura_parcial and cid not in lidas
+                        else _matches_requested(servindo.get(cid, []), pedidas_com_modificador)
                     ),
+                    "truncated": leitura_parcial,
                 }
                 for cid in campaign_ids
             }

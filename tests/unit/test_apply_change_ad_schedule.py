@@ -337,3 +337,56 @@ async def test_matches_requested_tolera_arredondamento_float32_do_google(monkeyp
     )
     out = await mod.apply_change({"confirmation_token": "ABCDEFGH"})
     assert out["resulting_schedule"]["1"]["matches_requested"] is True
+
+
+@pytest.mark.asyncio
+async def test_resulting_nao_afirma_24x7_a_partir_de_leitura_parcial(monkeypatch) -> None:
+    """F128, gemeo do `get_ad_schedule`: a mesma mentira, no lugar pior.
+
+    A reconsulta pos-apply pede `GRADE_LIMIT + 1` linhas com `status="all"` —
+    e 20 campanhas x 168 janelas, mais os criterios REMOVED que se acumulam a
+    cada edicao, passam de 1000 sem esforco. Antes do fix, a campanha cujas
+    linhas caiam alem do corte chegava em `summarize_current([])`, que devolve
+    `has_schedule: False` + `hours_per_week: 168.0`.
+
+    Ou seja: o gestor acabava de RESTRINGIR a grade e o resumo pos-apply dizia
+    que a campanha passou a servir 24x7. `get_ad_schedule` pelo menos so
+    informa; aqui o texto vem colado a uma escrita que ja aconteceu.
+
+    A mudanca de producao que deixa este teste vermelho: devolver
+    `summarize_current(servindo.get(cid, []))` sem olhar `len(rows) >
+    GRADE_LIMIT` — que e exatamente o codigo pre-fix.
+    """
+    saved = _saved()
+    # `GRADE_LIMIT + 1` linhas de uma campanha que NAO esta em `campaign_ids`:
+    # a sobra prova o corte, e a campanha "1" fica sem nenhuma linha lida.
+    demais = [_row(cid="99", crit=str(1000 + i)) for i in range(mod.GRADE_LIMIT + 1)]
+    _wire(monkeypatch, saved=saved, antes=[], depois=demais)
+    out = await mod.apply_change({"confirmation_token": "ABCDEFGH"})
+
+    assert out["status"] == "applied"
+    rs = out["resulting_schedule"]["1"]
+    assert rs["has_schedule"] is None, (
+        "leitura parcial virou a afirmacao 'serve 24x7' logo depois de uma escrita na grade"
+    )
+    assert rs["hours_per_week"] is None
+    assert rs["schedule_desconhecida_por_truncamento"] is True
+    assert rs["truncated"] is True
+    assert rs["matches_requested"] is None, (
+        "sem ler a grade da campanha nao da para afirmar que ela bate com o "
+        "pedido — `False` ali seria um veredito inventado"
+    )
+
+
+@pytest.mark.asyncio
+async def test_resulting_completo_nao_se_declara_truncado(monkeypatch) -> None:
+    """A mentira simetrica: `truncated: true` sempre vale tanto quanto `false`
+    sempre — o gestor perde a distincao nos dois casos."""
+    saved = _saved()
+    _wire(monkeypatch, saved=saved, antes=[], depois=[_row(crit="10")])
+    out = await mod.apply_change({"confirmation_token": "ABCDEFGH"})
+
+    rs = out["resulting_schedule"]["1"]
+    assert rs["truncated"] is False
+    assert rs["has_schedule"] is True
+    assert "schedule_desconhecida_por_truncamento" not in rs
