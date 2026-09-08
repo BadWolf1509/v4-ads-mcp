@@ -18,6 +18,7 @@ from __future__ import annotations
 import ast
 import builtins
 import importlib
+import sys
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -107,6 +108,50 @@ def testes_py(raiz: Path | None = None) -> list[Path]:
     """Todo .py sob tests/. Recursivo — subpacote novo não escapa."""
     raiz = raiz if raiz is not None else TESTES
     return _coletar(raiz.rglob("*.py"), raiz=raiz, padrao="*.py")
+
+
+# Piso de tamanho do escopo das tools com `limit`. Em 2026-09-07 são 26 de 68
+# no registry — o número é OBSERVAÇÃO daquele dia, não teto: tool nova com
+# `limit` só faz subir. O piso existe porque `EscopoVazioError` só dispara com
+# ZERO: um refactor que tornasse `import_all_tools()` preguiçoso e carregasse
+# um punhado de tools deixaria o guard varrer uma fração da superfície sem uma
+# palavra — "varreu pouco" é a mesma doença de "varreu nada", só mais difícil
+# de ver.
+_PISO_DE_TOOLS_COM_LIMITE = 20
+
+
+def tools_com_limite() -> list[tuple[str, Path]]:
+    """`(nome, arquivo do handler)` de toda tool cujo schema declara `limit`.
+
+    Mora aqui, e não em um dos guards, porque DOIS guards da mesma invariante
+    dependem dela e precisam enxergar o MESMO conjunto: o da declaração
+    (`test_declaracao_de_truncamento`, "quem corta tem que dizer") e o da
+    sentinela (`test_builders_pedem_a_linha_sentinela`, "quem diz tem que
+    pedir `limit + 1`"). Duas cópias divergiriam, e a divergência absolveria
+    exatamente a tool que estivesse só numa das listas.
+
+    O import do registry é local de propósito: este módulo é importado por ~17
+    guards estruturais, a maioria dos quais não toca em `src.mcp`, e um import
+    de topo faria todos pagarem a carga do registry.
+    """
+    from src.mcp.tools._registry import all_tools, import_all_tools
+
+    import_all_tools()
+    achados: list[tuple[str, Path]] = []
+    for t in all_tools():
+        props = (t.input_schema or {}).get("properties", {})
+        if "limit" not in props:
+            continue
+        arquivo = Path(sys.modules[t.handler.__module__].__file__ or "")
+        achados.append((t.name, arquivo))
+    if len(achados) < _PISO_DE_TOOLS_COM_LIMITE:
+        raise EscopoVazioError(
+            f"só {len(achados)} tools declaram `limit` (piso: "
+            f"{_PISO_DE_TOOLS_COM_LIMITE}, observados 26 em 2026-09-07). O "
+            "registry não carregou por inteiro, e o guard estaria passando "
+            "sobre uma fração da superfície."
+        )
+    return sorted(achados)
 
 
 def templates_html(raiz: Path | None = None) -> list[Path]:

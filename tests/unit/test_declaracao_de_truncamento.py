@@ -18,7 +18,6 @@ familia do F57.
 from __future__ import annotations
 
 import ast
-import sys
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -26,10 +25,7 @@ from pathlib import Path
 
 import pytest
 
-from src.mcp.tools._registry import all_tools, import_all_tools
 from tests.unit import _guard_harness as h
-
-import_all_tools()
 
 # Debito conhecido em 2026-09-07, fechado pela Task 2 deste mesmo PR. NAO e
 # lista de escopo — o escopo sai do registry. E baseline de ratchet: fica
@@ -50,31 +46,11 @@ DEVEDORAS_ATE_A_TASK_2 = [
     "get_search_terms_report",
 ]
 
-# Piso de tamanho do escopo. Em 2026-09-07 sao 26 tools com `limit` de 68 no
-# registry — o numero e OBSERVACAO daquele dia, nao teto: tool nova com
-# `limit` so faz subir. O piso existe porque `EscopoVazioError` so dispara com
-# ZERO: um refactor que tornasse `import_all_tools()` preguicoso e carregasse
-# um punhado de tools deixaria o guard varrer uma fracao da superficie sem uma
-# palavra — "varreu pouco" e a mesma doenca de "varreu nada", so mais dificil
-# de ver.
-_PISO_DO_ESCOPO = 20
-
-
-def _tools_com_limite() -> list[tuple[str, Path]]:
-    achados = []
-    for t in all_tools():
-        props = (t.input_schema or {}).get("properties", {})
-        if "limit" not in props:
-            continue
-        arquivo = Path(sys.modules[t.handler.__module__].__file__ or "")
-        achados.append((t.name, arquivo))
-    if len(achados) < _PISO_DO_ESCOPO:
-        raise h.EscopoVazioError(
-            f"so {len(achados)} tools declaram `limit` (piso: {_PISO_DO_ESCOPO}, "
-            f"observados 26 em 2026-09-07). O registry nao carregou por inteiro, "
-            "e o guard estaria passando sobre uma fracao da superficie."
-        )
-    return sorted(achados)
+# O escopo (tools com `limit`) e o piso dele vivem em `_guard_harness`: este
+# guard e o irmao da sentinela (`test_builders_pedem_a_linha_sentinela`)
+# dependem do MESMO conjunto, e duas copias divergiriam — a divergencia
+# absolveria exatamente a tool que estivesse so numa das listas.
+_tools_com_limite = h.tools_com_limite
 
 
 def _chaves_de_dicts(no: ast.AST) -> set[str]:
