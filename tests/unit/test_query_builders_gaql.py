@@ -614,3 +614,29 @@ def test_ordenar_por_custo_nao_repete_o_campo_no_desempate() -> None:
         top_creatives_query(_S, _E, 10, metric="cost"),
     ):
         assert q.count("metrics.cost_micros DESC") == 1
+
+
+def test_a_grade_vem_agrupada_por_campanha_e_a_regra_da_borda_depende_disso() -> None:
+    """`campanhas_com_grade_incerta` marca como desconhecida a campanha da
+    ULTIMA linha lida — e isso so e correto porque as linhas chegam agrupadas
+    por campanha.
+
+    Sem `ORDER BY campaign.id`, as janelas de varias campanhas viriam
+    intercaladas e o corte cairia no meio de VARIAS ao mesmo tempo; a regra
+    marcaria uma e deixaria as outras reportando grade parcial como se fosse
+    completa — exatamente o defeito (F147) que a regra existe para fechar, de
+    volta em silencio.
+
+    O acoplamento existia e nao estava preso por nada. Esta assercao e o unico
+    lugar onde ele fica escrito: a mudanca de producao que a derruba e trocar a
+    ordenacao do builder, que hoje ninguem associaria ao resumo da outra ponta.
+    """
+    from src.google_ads.queries.ad_schedule import ad_schedule_query
+
+    q = ad_schedule_query(campaign_ids=None, status="enabled", limit=10)
+    ordem = q[q.index("ORDER BY") :]
+    assert ordem.split("ORDER BY")[1].strip().startswith("campaign.id"), (
+        "a grade deixou de vir agrupada por campanha; a regra da borda em "
+        "`campanhas_com_grade_incerta` depende disso e passa a marcar a "
+        f"campanha errada. ORDER BY atual: {ordem!r}"
+    )
