@@ -223,12 +223,19 @@ async def bulk_grant(
     """Idempotent bulk grant. Inserts rows that don't exist; restores revoked ones.
 
     Returns len(ad_account_ids) — not the count of rows actually inserted.
-    executemany with ON CONFLICT does not expose per-batch counts.
+    executemany with ON CONFLICT does not expose per-batch counts (espelha o
+    gêmeo Google).
 
     Reconceder é a forma de restaurar (spec 2026-08-20): se a linha já existia
     revogada, o ON CONFLICT limpa `revoked_at`/`revoked_reason` em vez de
     ignorar — senão o gestor readicionado numa bulk-grant continuaria bloqueado
     pelo gate.
+
+    F128: o ON CONFLICT também seta `access_level = EXCLUDED.access_level`,
+    espelhando o que `grant` (linha única) já fazia e o gêmeo Google
+    (`manager_account_access.bulk_grant`) já corrigiu. Sem isso, quem já tinha
+    'read' numa conta continuava com 'read' depois de um "conceder tudo" — a
+    chamada devolve sucesso, mas o nível antigo sobrevive em silêncio.
     """
     if not ad_account_ids:
         return 0
@@ -238,6 +245,7 @@ async def bulk_grant(
                (manager_id, ad_account_id, access_level, granted_by)
            VALUES ($1, $2, $3, $4)
            ON CONFLICT (manager_id, ad_account_id) DO UPDATE SET
+               access_level = EXCLUDED.access_level,
                revoked_at = NULL,
                revoked_reason = NULL""",
         rows,

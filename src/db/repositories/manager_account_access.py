@@ -71,6 +71,15 @@ async def grant_all_active(
     isso o conflito limpa a revogação em vez de ignorar (espelha o gêmeo Meta).
     Efeito colateral aceito: a contagem devolvida passa a incluir toda linha
     TOCADA pelo INSERT (nova OU restaurada), não só a genuinamente nova.
+
+    F128: o ON CONFLICT também seta `access_level = EXCLUDED.access_level`,
+    espelhando o que `grant` (linha única) e `bulk_grant` já faziam. Sem isso,
+    quem já tinha 'read' numa conta continuava com 'read' depois de um
+    "conceder tudo" — a chamada devolve sucesso, mas o nível antigo sobrevive
+    em silêncio. O INSERT grava 'write' como literal (não parâmetro), e
+    `EXCLUDED` resolve para o valor da linha PROPOSTA pelo INSERT/SELECT
+    independente de vir de parâmetro ou literal — por isso a cláusula também
+    promove aqui, não só no `bulk_grant` (que recebe `access_level` de fora).
     """
     result = await conn.execute(
         """
@@ -79,6 +88,7 @@ async def grant_all_active(
         FROM google_ads_accounts
         WHERE is_active = true
         ON CONFLICT (manager_id, customer_id) DO UPDATE SET
+            access_level = EXCLUDED.access_level,
             revoked_at = NULL,
             revoked_reason = NULL
         """,
