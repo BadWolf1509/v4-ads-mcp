@@ -127,8 +127,10 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         "use os filtros de metrica (min_cost_brl/min_clicks/min_conversions). "
         "ATENÇÃO (F56): retorna positive E negative ad_group_criterion indistintamente. "
         "Cada row tem field `negative: bool` — filtre `negative=false` no consumer pra "
-        "workflows de PAUSE/análise QS, OU use `audit_zombie_keywords`/`audit_quality_score` "
-        "(filtram `negative=FALSE` server-side)."
+        "workflows de PAUSE/análise QS, OU use `audit_zombie_keywords` (filtra "
+        "`negative = FALSE` server-side). `audit_quality_score` também não devolve "
+        "negativa, mas por outro mecanismo: exige `quality_score IS NOT NULL`, e "
+        "critério negativo não tem índice de qualidade."
     ),
     input_schema=_SCHEMA,
     bucket="always",
