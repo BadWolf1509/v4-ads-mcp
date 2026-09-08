@@ -157,6 +157,38 @@ async def test_limit_trunca_e_avisa(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_campanha_cortada_nao_e_reportada_como_24x7(monkeypatch) -> None:
+    """Duas campanhas, `limit=1`: a segunda perde as janelas para o corte.
+
+    Antes do fix o resumo dela dizia has_schedule=false / hours_per_week=168 —
+    "serve o tempo todo" — que e o oposto do que a grade dela diz. `atual.get(cid,
+    [])` nao distingue "campanha sem grade" de "grade cortada pelo limit", e
+    `summarize_current([])` sempre le a primeira leitura.
+    """
+    run, _ = _fake_run_report(
+        {
+            "campaign_criterion": [
+                _janela(cid="1", nome="A", crit="9"),
+                _janela(cid="2", nome="B", crit="10"),
+            ],
+            "campaign": [_orcamento(cid="1", nome="A"), _orcamento(cid="2", nome="B")],
+        }
+    )
+    monkeypatch.setattr("src.mcp.tools.get_ad_schedule.run_report", run)
+    out = await mod.get_ad_schedule({"customer_id": "1234567890", "limit": 1})
+    assert out["truncated"] is True
+    # A campanha cuja janela sobreviveu ao corte continua com leitura normal.
+    lida = out["schedule_summary"]["1"]
+    assert lida["has_schedule"] is True
+    assert "schedule_desconhecida_por_truncamento" not in lida
+    # A campanha cortada nao pode ser lida como "sem grade" / 24x7.
+    cortada = out["schedule_summary"]["2"]
+    assert cortada["has_schedule"] is None
+    assert cortada["hours_per_week"] is None
+    assert cortada["schedule_desconhecida_por_truncamento"] is True
+
+
+@pytest.mark.asyncio
 async def test_a_consulta_da_grade_e_auditada_e_a_de_orcamento_nao(monkeypatch) -> None:
     """Padrao de get_assets/get_change_history: UMA linha de audit por chamada do gestor."""
     vistos: list[bool] = []

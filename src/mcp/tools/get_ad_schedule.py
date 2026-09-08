@@ -29,6 +29,7 @@ from src.google_ads.queries.ad_schedule import (
 )
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
+from src.mcp.tools._common import aplicar_limite
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -74,7 +75,12 @@ _DESCRIPTION = (
     "`has_schedule`, `hours_per_week`, `budget_is_shared` e `campaign_status` "
     "(grade de campanha PAUSED nao afeta entrega). ATENCAO: campanha "
     "SEM nenhuma janela serve 24x7 — `has_schedule: false` e `hours_per_week: 168` "
-    "dizem isso explicitamente; nao leia lista vazia como 'nao serve'. Janela cobre "
+    "dizem isso explicitamente; nao leia lista vazia como 'nao serve'. Isso vale SO "
+    "quando a resposta nao veio cortada: sob `truncated: true`, toda campanha cuja "
+    "grade caiu alem do corte do `limit` tem `has_schedule: null`, "
+    "`hours_per_week: null` e `schedule_desconhecida_por_truncamento: true` no "
+    "resumo — `null` significa 'nao sei se tem grade ou nao, aumente o `limit`', "
+    "nunca leia `null` como false nem como 24x7. Janela cobre "
     "[inicio, fim); `end_hour: 24` = ate o fim do dia; minutos so 0/15/30/45 (API). "
     "Uma campanha pode ter ate 7x24 janelas: `limit` (default 200, teto 1000) corta e "
     "`truncated: true` avisa. `budget_is_shared` vem de campaign_budget.explicitly_shared "
@@ -155,8 +161,7 @@ async def get_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
         ),
         _consulta(campaign_budget_query(campaign_ids=campaign_ids), parse_campaign_budget_row),
     )
-    truncated = len(grade_rows) > limit
-    grade_rows = grade_rows[:limit]
+    grade_rows, truncated = aplicar_limite(grade_rows, limit)
 
     atual = rows_to_current(grade_rows)
     summary: dict[str, dict[str, Any]] = {}
@@ -170,6 +175,21 @@ async def get_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
             **summarize_current(atual.get(cid, [])),
             "budget_is_shared": o["explicitly_shared"],
         }
+
+    # Task 4 (PR 4): `atual.get(cid, [])` acima nao distingue "campanha sem
+    # nenhuma janela" de "campanha com janelas que cairam alem do corte do
+    # `limit`" — as duas chegam como lista vazia, e `summarize_current([])`
+    # sempre le a primeira. Sob `truncated`, toda campanha AUSENTE de `atual`
+    # cai nesse limbo: nao sabemos se ela serve 24x7 ou se so nao coube na
+    # pagina. `false`/`168` aqui e uma afirmacao sobre ENTREGA — nao se chuta
+    # isso a partir de uma leitura parcial (mesma familia do F131: vazio que
+    # quer dizer duas coisas).
+    tem_janela_lida = set(atual)
+    for cid, resumo in summary.items():
+        if truncated and cid not in tem_janela_lida:
+            resumo["has_schedule"] = None
+            resumo["hours_per_week"] = None
+            resumo["schedule_desconhecida_por_truncamento"] = True
 
     # Fix Important 2 (revisao final): period so existe quando include_metrics
     # pede a janela — aditivo, senao muda o contrato de quem so le a grade.
