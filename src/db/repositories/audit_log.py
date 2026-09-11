@@ -154,7 +154,7 @@ async def export_csv_rows(
                      al.error_message, al.provider_request_id
               FROM audit_log al LEFT JOIN managers m ON m.id = al.manager_id
               WHERE {" AND ".join(where)}
-              ORDER BY al.occurred_at DESC"""
+              ORDER BY al.occurred_at DESC, al.id DESC"""
 
     # Header
     header = [
