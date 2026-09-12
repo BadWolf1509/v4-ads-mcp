@@ -67,6 +67,11 @@ async def grant_all_active(
     apagada: é a direção segura (concede, nunca revoga), tem gêmeo vivo de mesma
     forma, e a §8 do desenho da matriz de acesso já prevê o "Conceder todas" no
     painel — apagar aqui só criaria assimetria entre os dois lados.
+
+    F167: esta cláusula atualiza `granted_at`/`granted_by`; o gêmeo Google
+    (`manager_account_access.grant_all_active`) não atualiza os dois — só
+    `access_level`/`revoked_at`/`revoked_reason`. Assimetria conhecida, não
+    corrigida (as duas direções se defendem); ver F167 no catálogo.
     """
     result = await conn.execute(
         """

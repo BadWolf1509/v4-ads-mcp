@@ -80,6 +80,11 @@ async def grant_all_active(
     `EXCLUDED` resolve para o valor da linha PROPOSTA pelo INSERT/SELECT
     independente de vir de parâmetro ou literal — por isso a cláusula também
     promove aqui, não só no `bulk_grant` (que recebe `access_level` de fora).
+
+    F167: esta cláusula NÃO atualiza `granted_at`/`granted_by` — o gêmeo Meta
+    (`manager_meta_account_access.grant_all_active`) atualiza os dois. As duas
+    direções se defendem (nenhuma promete procedência num "conceder tudo" em
+    lote), então a assimetria fica; ver F167 no catálogo pro resto da família.
     """
     result = await conn.execute(
         """

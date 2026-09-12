@@ -90,11 +90,16 @@ igual ao resto desta lista. Isencao por nome cobre arquivo Meta novo em
 silencio; isencao por arquivo obriga quem adicionar o proximo a escrever por
 que.
 
-**A correcao estrutural foi inverter o guard**: varrer `src/` inteiro e exigir
-que todo leitor de relogio esteja em `LEITORES_LEGITIMOS` ou em
-`FORA_COM_MOTIVO`. Isso troca uma lista de ESCOPO (que esquece o diretorio novo
-em silencio) por uma lista de EXCECAO (que obriga a escrever o motivo) — feito
-nesta PR, junto com os tres sitios Meta.
+**A correcao estrutural foi inverter a ISENCAO, nao o escopo.** O escopo
+continua sendo a lista de diretorios e arquivos da secao anterior — varrer
+`src/` inteiro foi só a MEDICAO da folga, feita uma vez pra prosa, e nao o que
+`_arquivos_sem_relogio()` faz a cada run (ela devolve `TOOLS + JOBS +
+PRIMITIVOS`, nao `h.fontes_py(h.SRC)`). O que de fato mudou foi o mecanismo de
+excecao: a isencao geral por NOME (`meta_*`/`_meta_*` em `src/mcp/tools/`)
+virou isencao por ARQUIVO em `FORA_COM_MOTIVO`, cada entrada com o motivo
+escrito ao lado. Isso troca uma lista que esquece o arquivo novo em silencio
+por uma que obriga quem adicionar o proximo a escrever por que — feito nesta
+PR, junto com os tres sitios Meta.
 """
 
 from __future__ import annotations
@@ -129,10 +134,22 @@ PRIMITIVOS = [
     # com `datetime.now(UTC)` de default poria o F141 DENTRO da decisao que
     # desativa conta e revoga grant, na janela das 21h a meia-noite locais. O
     # gemeo Meta entra pela mesma razao que `clock.py` (o consumo Meta herda o
-    # mesmo primitivo), apesar da excecao geral a arquivos `meta_*`, que vale
-    # para os tools de `src/mcp/tools/`.
+    # mesmo primitivo). Ate esta PR havia uma excecao geral POR NOME a
+    # arquivos `meta_*`/`_meta_*` em `src/mcp/tools/`; esta PR a remove (ver a
+    # secao do docstring sobre a isencao invertida) — o que sobra e isencao
+    # por ARQUIVO, com motivo, igual ao resto desta lista.
     h.SRC / "google_ads" / "reconcile.py",
     h.SRC / "meta_ads" / "reconcile.py",
+    # Gemeo Meta de `queries/_common.py` (primeira linha desta lista): mora
+    # `resolve_meta_date_window`, que recebe `today: date` OBRIGATORIO — igual
+    # ao `resolve_date_window` do lado Google — mas so o lado Google estava
+    # nesta lista. Achado na revisao final da pr6/cauda: um `today: date | None
+    # = None` com fallback `date.today()` aqui reabriria o F141 nas 5 tools
+    # Meta que dependem deste modulo, com todos os guards desta branch verdes
+    # (nem TOOLS nem JOBS nem os outros PRIMITIVOS cobrem `src/meta_ads/` como
+    # arquivo solto). Restaura a simetria com o par Google, que e a tese desta
+    # PR.
+    h.SRC / "meta_ads" / "account_overview.py",
 ]
 
 # Podem ler o relogio, e SO como default injetavel. Nao sao excecao ao guard:
