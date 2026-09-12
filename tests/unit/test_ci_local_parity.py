@@ -10,8 +10,9 @@ Duas classes de atrito que nao aparecem em teste nenhum hoje:
    Doc que instrui a quebrar producao e pior que doc desatualizada (F99).
 """
 
-import re
 from pathlib import Path
+
+import yaml
 
 from tests.unit import _guard_harness as h
 
@@ -24,21 +25,36 @@ _FERRAMENTAS = ("ruff check", "ruff format", "mypy", "pytest", "build_tailwind.p
 
 
 def _steps_de_check_do_ci() -> set[str]:
-    """Ferramentas invocadas por steps BLOQUEANTES do job `test`.
+    """Ferramentas invocadas por STEPS BLOQUEANTES que de fato existem no job `test`.
+
+    Parseia o YAML — nao o texto. Um step so conta se sobreviver como elemento
+    de `jobs.*.steps[]`, e o casamento e contra os campos ESTRUTURADOS
+    `name`/`run` DAQUELE step. A versao anterior dividia o arquivo por regex
+    (`- name:`/`- uses:`) e casava substring no bloco de texto resultante —
+    verdadeiro mesmo se o step tivesse sido REMOVIDO e o nome da ferramenta
+    sobrevivesse em qualquer lugar do arquivo (um comentario, o `name` de um
+    step vizinho, prosa de outro job): o YAML nunca foi de fato consultado
+    sobre quais steps existem, so o texto bruto. `yaml.safe_load` descarta
+    comentario no parse — o texto bruto, nao.
 
     `continue-on-error: true` (o pip-audit) nao conta: nao segura merge nenhum,
-    entao exigi-lo no gate local so tornaria o gate mais lento.
+    entao exigi-lo no gate local so tornaria o gate mais lento. Hoje nenhum
+    step do job `test` tem essa chave (o pip-audit passou a se auto-tratar —
+    ver o step "Security audit"), mas o filtro fica pronto pro dia em que outro
+    step non-blocking aparecer.
     """
-    texto = _CI.read_text(encoding="utf-8")
-    # o job `deploy` nao tem `run:`, entao varrer o arquivo inteiro e seguro
-    blocos = re.split(r"^      - (?:name|uses):", texto, flags=re.M)
+    workflow = yaml.safe_load(_CI.read_text(encoding="utf-8"))
     achadas: set[str] = set()
-    for bloco in blocos:
-        if "continue-on-error: true" in bloco:
-            continue
-        for ferramenta in _FERRAMENTAS:
-            if ferramenta in bloco:
-                achadas.add(ferramenta)
+    for job in workflow.get("jobs", {}).values():
+        # o job `deploy` nao tem `steps` (chama outro workflow via `uses:` no
+        # NIVEL DO JOB) — `.get(...) or []` pula ele sem precisar saber disso.
+        for step in job.get("steps") or []:
+            if step.get("continue-on-error") is True:
+                continue
+            alvo = f"{step.get('name', '')} {step.get('run', '')}"
+            for ferramenta in _FERRAMENTAS:
+                if ferramenta in alvo:
+                    achadas.add(ferramenta)
     return achadas
 
 
@@ -64,8 +80,17 @@ def _ferramentas_do_gate_local() -> set[str]:
 
 
 def test_ci_realmente_tem_checks() -> None:
-    """Se o parser parar de casar, o teste abaixo passaria vazio."""
-    assert len(_steps_de_check_do_ci()) >= 4, "esperado ruff/mypy/pytest/tailwind no CI"
+    """Se o parser parar de casar OU um step sumir, este teste denuncia.
+
+    Era `>= 4` — um piso frouxo o bastante pra sobreviver a remocao de
+    QUALQUER UM dos cinco `_FERRAMENTAS` (so acusaria com dois faltando).
+    Comparar contra o conjunto INTEIRO fecha essa folga: e o teste que prova
+    que `_steps_de_check_do_ci()` afirma "o step existe", nao so "o nome
+    aparece" — remova um step de verdade do `ci.yml` e este assert acusa.
+    """
+    esperado = set(_FERRAMENTAS)
+    achadas = _steps_de_check_do_ci()
+    assert achadas == esperado, f"esperado {sorted(esperado)} no CI, achei {sorted(achadas)}"
 
 
 def test_gate_local_cobre_todo_check_bloqueante_do_ci() -> None:

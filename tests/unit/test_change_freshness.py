@@ -212,13 +212,15 @@ async def test_detect_drift_propaga_a_fronteira(_ctx) -> None:
     assert result["freshness"]["warning"] is not None
 
 
-def test_sonda_de_fronteira_nao_herda_a_janela_do_usuario() -> None:
+@pytest.mark.asyncio
+async def test_sonda_de_fronteira_nao_herda_a_janela_do_usuario(_ctx) -> None:
     """F131 bis: o guard anterior enumerou filtros e perdeu o que eu passava.
 
-    O teste antigo assertava que a sonda nao carrega `resource_types`,
-    `user_email`, `client_type` nem `operation` — quatro filtros que eu
-    conseguia listar. A janela de data entrava como ARGUMENTO, entao nunca foi
-    candidata a "filtro herdado", e passou.
+    O teste antigo (`test_sonda_de_fronteira_nao_herda_filtro_do_usuario`)
+    assertava que a sonda nao carrega `resource_types`, `user_email`,
+    `client_type` nem `operation` — quatro filtros que eu conseguia listar. A
+    janela de data entrava como ARGUMENTO, entao nunca foi candidata a "filtro
+    herdado", e passou.
 
     O efeito em producao: `account_frontier` mudava conforme a janela pedida.
     Consultar 31/08-01/09 devolvia fronteira 31/08 e status `atrasado`, com a
@@ -226,16 +228,45 @@ def test_sonda_de_fronteira_nao_herda_a_janela_do_usuario() -> None:
     toda janela terminando em dia sem write vira "atrasado". Warning que
     dispara sem defeito treina a ignorar o warning.
 
-    Este teste assere a PROPRIEDADE em vez de enumerar: duas janelas
-    diferentes tem de produzir a MESMA query de sonda.
+    **Isto era tautologia** (tabela 3.1.1 #12 da spec de 2026-09-06): a versao anterior comparava
+    `change_event_frontier_query(today=hoje) == change_event_frontier_query(today=hoje)`
+    — os dois lados do `==` sao a MESMA chamada com o MESMO argumento, logo
+    iguais em qualquer implementacao, inclusive uma que reintroduzisse a
+    janela do usuario na sonda. A PROPRIEDADE que a docstring anterior
+    prometia ("duas janelas diferentes tem de produzir a MESMA query de
+    sonda") exige variar a janela de VERDADE — e nao ha window param em
+    `change_event_frontier_query` pra variar (ela so aceita `today`, ver o
+    assert de assinatura abaixo). Quem ainda tem uma janela pra variar e o
+    CHAMADOR: chama `get_change_history` duas vezes, com `date_range`
+    diferente, e compara a query de sonda (a que termina em `LIMIT 1`)
+    capturada em cada chamada.
     """
-    from src.google_ads.queries.change_history import change_event_frontier_query
+    from unittest.mock import patch
 
-    hoje = date(2026, 9, 2)
-    assert change_event_frontier_query(today=hoje) == change_event_frontier_query(today=hoje)
+    from src.mcp.tools.get_change_history import get_change_history
+
+    async def _hoje(customer_id: str, *, now=None):
+        return date(2026, 9, 2)
+
+    async def _sonda_para(date_range: str) -> str:
+        run, queries = _fake_run_report(main_rows=[], frontier_dt="2026-08-31 10:52:36.708927")
+        with (
+            patch("src.mcp.tools.get_change_history.run_report", run),
+            patch("src.mcp.tools.get_change_history.resolve_account_today", _hoje),
+        ):
+            await get_change_history({"customer_id": "1234567890", "date_range": date_range})
+        sondas = [q for q in queries if q.rstrip().endswith("LIMIT 1")]
+        assert len(sondas) == 1, f"esperada 1 sonda emitida, achei {len(sondas)}"
+        return sondas[0]
+
+    assert await _sonda_para("TODAY") == await _sonda_para("LAST_30_DAYS"), (
+        "a sonda variou com a janela do usuario — herdou o `date_range` de novo"
+    )
 
     # E a sonda nao aceita mais janela do chamador — nao ha por onde herdar.
     import inspect
+
+    from src.google_ads.queries.change_history import change_event_frontier_query
 
     params = set(inspect.signature(change_event_frontier_query).parameters)
     assert params == {"today"}, f"a sonda voltou a aceitar janela do chamador: {params}"

@@ -24,6 +24,13 @@ coverage.xml
 .cursor/
 .superpowers/
 
+# Diretorio orfao: `D:\v4-ads-mcp\.superpowers\sdd` montado por alguma
+# ferramenta como caminho Windows literal (barras perdidas), virou um
+# subdiretorio de verdade na raiz do repo. Sempre vazio; volta se a mesma
+# ferramenta rodar de novo. O ":" que aparece em `ls`/Git Bash e artefato do
+# MSYS — o nome de verdade na NTFS (confirmado via PowerShell) nao tem ":".
+Dv4-ads-mcp.superpowerssdd/
+
 # Claude Code: versionar hooks/agents/skills/settings compartilháveis;
 # manter local-only o que tem allowlist pessoal ou estado efêmero.
 .claude/*
