@@ -184,6 +184,96 @@ def test_templates_html_desce_em_subdiretorio(tmp_path: Path) -> None:
     assert (tmp_path / "admin" / "aninhada.html").resolve() in achados
 
 
+def test_html_em_python_default_encontra_os_tres_alvos_conhecidos() -> None:
+    """Ancora nos 3 pontos medidos pro Task 8 (2026-09-17): o fragmento de
+    toggle em `_shared.py` e as duas páginas inteiras em `oauth.py`. Contagem
+    exata (não só "não vazio"): sobe se alguém montar HTML novo em Python sem
+    dar cobertura a11y a ele, desce se um destes 3 virar template — as duas
+    direções são informação, então o teste fixa o número em vez de só `>= 1`.
+    """
+    achados = h.html_em_python()
+
+    assert {a.name for a in achados} == {
+        "_shared.py:140",
+        "oauth.py:394",
+        "oauth.py:409",
+    }
+
+
+def test_html_em_python_ignora_docstring(tmp_path: Path) -> None:
+    """Auto-casamento do lado de `src/`: um docstring que CITA uma tag pra
+    explicar o código (`"<label>"`, prosa) não é HTML de verdade. Sem esta
+    exclusão, `_shared.py:129` (que explica "o `<label>` que embrulha") e
+    `oauth.py:4`/`:150` (que documentam `invite=<token>`) apareceriam como
+    achado — mesmo defeito que o brief avisa pra não reintroduzir do lado de
+    `tests/`.
+    """
+    (tmp_path / "modulo.py").write_text(
+        '"""Docstring que cita <label> e <div> só pra explicar, não é HTML."""\n'
+        "\n"
+        "def f():\n"
+        '    """Outro docstring: <p>ainda não é HTML</p>."""\n'
+        "    return 1\n",
+        encoding="utf-8",
+    )
+
+    assert h.html_em_python([tmp_path]) == []
+
+
+def test_html_em_python_junta_fstring_partido_em_varias_linhas(tmp_path: Path) -> None:
+    """O mesmo padrão de `_toggle_checkbox_fragment`: um `<input>` escrito
+    como 3 literais f-string adjacentes, um por linha de código-fonte. O
+    texto lógico reconstruído precisa vir JUNTO — sem isso, um guard que
+    procura o atributo inteiro (`scope="col"`, `aria-labelledby="..."`)
+    nunca o veria, porque nenhuma das 3 linhas de código-fonte contém a tag
+    inteira.
+    """
+    (tmp_path / "modulo.py").write_text(
+        "def frag(valor):\n"
+        "    return (\n"
+        '        f"<input type=\\"checkbox\\" "\n'
+        '        f"{valor}"\n'
+        '        f"data-marcado>"\n'
+        "    )\n",
+        encoding="utf-8",
+    )
+
+    achados = h.html_em_python([tmp_path])
+
+    assert len(achados) == 1
+    assert achados[0].texto == '<input type="checkbox" Xdata-marcado>'
+
+
+def test_html_em_python_ignora_string_sem_tag(tmp_path: Path) -> None:
+    """Par negativo: literal com `<` que não é tag (comparação, prosa livre)
+    não deveria aparecer — o padrão exige letra (ou `!`) logo depois do `<`.
+    """
+    (tmp_path / "modulo.py").write_text(
+        'MSG = "custo < limite, e 2 < 3 também"\n',
+        encoding="utf-8",
+    )
+
+    assert h.html_em_python([tmp_path]) == []
+
+
+def test_html_em_python_default_usa_web_e_auth() -> None:
+    """Caminho default (sem argumento) — ancora `SRC/web` e `SRC/auth`, não
+    `SRC` inteiro (que incluiria `src/mcp/tools`, muito maior, sem nenhum
+    literal HTML pra achar)."""
+    achados = h.html_em_python()
+
+    assert achados
+    assert all(a.name for a in achados)
+
+
+def test_html_em_python_escopo_vazio_levanta() -> None:
+    """Mesma garantia de `fontes_py` — herdada, não reimplementada: uma raiz
+    sem nenhum `.py` levanta `EscopoVazioError` em vez de devolver lista
+    vazia (que um guard leria como "sem violação", não "não rodei")."""
+    with pytest.raises(h.EscopoVazioError):
+        h.html_em_python([FIXTURES / "diretorio_que_nao_existe"])
+
+
 def test_markdown_default_encontra_claude_md() -> None:
     """Caminho default (sem argumento) — ancora `RAIZ`, não só `SRC`."""
     achados = h.markdown()

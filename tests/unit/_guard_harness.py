@@ -18,9 +18,11 @@ from __future__ import annotations
 import ast
 import builtins
 import importlib
+import re
 import sys
 from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
+from typing import NamedTuple
 
 RAIZ = Path(__file__).resolve().parents[2]
 SRC = RAIZ / "src"
@@ -166,6 +168,148 @@ def tools_com_limite() -> list[tuple[str, Path, str]]:
 def templates_html(raiz: Path | None = None) -> list[Path]:
     raiz = raiz if raiz is not None else TEMPLATES
     return _coletar(raiz.rglob("*.html"), raiz=raiz, padrao="*.html")
+
+
+class FragmentoHTML(NamedTuple):
+    """HTML encontrado dentro de um literal Python — mesma superfície mínima
+    que os guards já consomem de `Path` (`.name`, `.read_text()`), pra caber
+    na MESMA lista que `templates_html()` devolve sem que cada guard precise
+    de um ramo próprio só pra Python.
+
+    `name` já sai como `arquivo.py:N` (N = linha do literal no arquivo-fonte)
+    — é o que aparece direto na mensagem de falha do guard, sem que o guard
+    precise saber que a origem não é um `.html` de verdade.
+    """
+
+    name: str
+    texto: str
+
+    def read_text(self, encoding: str = "utf-8") -> str:
+        """Mesma assinatura de `Path.read_text` — o conteúdo já é texto
+        puro (reconstruído em `html_em_python`), não há arquivo pra reabrir.
+        """
+        return self.texto
+
+
+_TAG_ABERTURA = re.compile(r"<[a-zA-Z!]")
+
+
+def _nos_de_docstring(arv: ast.Module) -> set[int]:
+    """`id()` de todo `Constant` que É literalmente um docstring — o
+    PRIMEIRO statement do corpo do módulo, de uma classe ou de uma função, a
+    forma exata que o compilador reconhece pra popular `__doc__`.
+
+    Existe pra separar prosa que CITA uma tag pra EXPLICAR o código (ex.: "o
+    `<label>` que embrulha", no docstring de `_toggle_checkbox_fragment`, ou
+    "?v=<asset_version>" em `static_files.py`) do HTML de verdade que
+    `html_em_python` procura — o mesmo auto-casamento contra o qual o brief
+    desta task avisa, só que do lado de `src/`, não de `tests/` (medido:
+    5 docstrings em `src/web/` e `src/auth/` citam `<algo>` hoje). F-string
+    NUNCA é docstring — o compilador só reconhece `Constant` puro nessa
+    posição — então as ocorrências reais (todas `JoinedStr`, ver
+    `_literais_de_string`) nunca caem aqui por construção; não é um filtro
+    que por sorte deixa o alvo passar, é estrutural.
+    """
+    ids: set[int] = set()
+    escopos: list[ast.AST] = [arv]
+    escopos.extend(
+        n
+        for n in ast.walk(arv)
+        if isinstance(n, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef)
+    )
+    for escopo in escopos:
+        corpo = getattr(escopo, "body", [])
+        if not corpo:
+            continue
+        primeiro = corpo[0]
+        if (
+            isinstance(primeiro, ast.Expr)
+            and isinstance(primeiro.value, ast.Constant)
+            and isinstance(primeiro.value.value, str)
+        ):
+            ids.add(id(primeiro.value))
+    return ids
+
+
+def _literais_de_string(no: ast.AST) -> Iterator[ast.JoinedStr | ast.Constant]:
+    """Todo literal string do módulo, um por vez — `JoinedStr` (f-string, já
+    com as partes adjacentes que o parser funde num só nó) OU `Constant`
+    texto puro, nunca os dois nomeando o mesmo literal.
+
+    Não é `ast.walk` com um `isinstance` no filtro: `walk` desceria também
+    nos `Constant`/`FormattedValue` que são PARTE de um `JoinedStr` já
+    encontrado, e cada f-string apareceria de novo, picada em pedaços, além
+    de inteira. Descer manualmente e PARAR ao achar um literal (sem entrar
+    nos filhos dele) é o que garante um nó por literal.
+    """
+    if isinstance(no, ast.JoinedStr):
+        yield no
+        return
+    if isinstance(no, ast.Constant) and isinstance(no.value, str):
+        yield no
+        return
+    for filho in ast.iter_child_nodes(no):
+        yield from _literais_de_string(filho)
+
+
+def _texto_logico(no: ast.JoinedStr | ast.Constant) -> str:
+    """O texto que o literal produz em runtime, com os `{expr}` de f-string
+    trocados por um placeholder neutro ("X").
+
+    A alternativa óbvia — ler o RECORTE de código-fonte do nó — devolveria o
+    wrap de linha que o formatador escolheu pra caber no limite de coluna, e
+    é exatamente esse recorte que quebra um casador linha-a-linha (a mesma
+    doença que o Step 5 desta task corrige nos guards que já existiam):
+    `_toggle_checkbox_fragment` hoje é um `<input>` partido em TRÊS literais
+    adjacentes, um por linha de código-fonte. Reconstruir a partir das PARTES
+    do `JoinedStr` dá o texto lógico — o que o runtime produz —, imune a como
+    o autor (ou o `ruff format`) quebrou as linhas.
+    """
+    if isinstance(no, ast.Constant):
+        assert isinstance(no.value, str)
+        return no.value
+    partes: list[str] = []
+    for valor in no.values:
+        if isinstance(valor, ast.Constant):
+            partes.append(str(valor.value))
+        else:
+            partes.append("X")  # FormattedValue: só a FORMA da tag importa
+    return "".join(partes)
+
+
+def html_em_python(raizes: Iterable[Path] | None = None) -> list[FragmentoHTML]:
+    """Literais Python (f-string ou string pura) que contêm HTML — `<`
+    seguido de nome de tag —, sob `raizes` (default: `src/web` e `src/auth`,
+    onde o painel e o OAuth montam resposta fora de qualquer template).
+
+    A varredura de ARQUIVOS passa por `fontes_py`, que já levanta
+    `EscopoVazioError` se uma das raízes não tiver nenhum `.py` — a mesma
+    garantia que `templates_html()` dá pro lado dos templates, sem escrever
+    `glob` de novo aqui. Zero LITERAIS batendo o padrão, com arquivos
+    encontrados, NÃO é vacuidade: é a leitura honesta de "o repo não tem HTML
+    solto em Python agora" — um estado válido (inclusive o estado ALVO, se
+    cada achado de hoje for corrigido). Por isso só a lista de ARQUIVOS passa
+    pelo `EscopoVazioError` de `_coletar`; a lista de literais não tem piso.
+
+    Docstring (o PRIMEIRO statement de módulo/classe/função) fica de fora —
+    `_nos_de_docstring` explica o porquê.
+    """
+    raizes = list(raizes) if raizes is not None else [SRC / "web", SRC / "auth"]
+    arquivos: list[Path] = []
+    for raiz in raizes:
+        arquivos.extend(fontes_py(raiz))
+
+    achados: list[FragmentoHTML] = []
+    for arquivo in sorted(set(arquivos)):
+        arv = arvore(arquivo)
+        ids_docstring = _nos_de_docstring(arv)
+        for no in _literais_de_string(arv):
+            if isinstance(no, ast.Constant) and id(no) in ids_docstring:
+                continue
+            texto = _texto_logico(no)
+            if _TAG_ABERTURA.search(texto):
+                achados.append(FragmentoHTML(f"{arquivo.name}:{no.lineno}", texto))
+    return sorted(achados)
 
 
 def markdown(raiz: Path | None = None) -> list[Path]:
