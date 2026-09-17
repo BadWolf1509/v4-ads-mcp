@@ -36,11 +36,13 @@ das duas dentro do escopo dela:
    com a convenção append-only do `CLAUDE.md` **e** com o hook
    `guard-migrations.ps1`, que bloqueia a edição. Decisão do Wellington, não
    ruling de executor.
-2. **Reescrita de `OFFSET` por keyset em `src/web/routes.py`** — as duas
-   rotas paginadas vivem no arquivo de 1839 linhas que a frente 5 vai partir
-   em dez módulos; fazer aqui garantiria conflito no maior arquivo do repo.
-   Esta PR entrega o desempate estável (o lado de corretude — ver F168) e os
-   dois índices; o keyset (o lado de desempenho) vai para a frente 5.
+2. **Reescrita de `OFFSET` por keyset em `src/web/routes/audit.py` e
+   `admin_audit.py`** (Task 7 do plano da frente 5) — as duas rotas
+   paginadas viviam no arquivo de 1839 linhas que a frente 5 partiu em nove
+   módulos (Task 2, `372ae41`); fazer aqui garantiria conflito no maior
+   arquivo do repo. Esta PR entrega o desempate estável (o lado de
+   corretude — ver F168) e os dois índices; o keyset (o lado de desempenho)
+   segue pendente na frente 5.
 
 **Em 2026-09-08 os dois foram mesclados e verificados em produção**, mais a
 consolidação do Dependabot ([#64](https://github.com/BadWolf1509/v4-ads-mcp/pull/64)).
