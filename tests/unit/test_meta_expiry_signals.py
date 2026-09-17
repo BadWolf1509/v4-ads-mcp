@@ -7,7 +7,7 @@ como "0 dias" — indistinguível de "expira hoje". O do Wellington venceu em
 
 from datetime import UTC, datetime, timedelta
 
-from src.web.routes import meta_expiry_signals
+from src.web.routes._shared import meta_expiry_signals
 
 AGORA = datetime(2026, 8, 11, 12, 0, tzinfo=UTC)
 

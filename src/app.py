@@ -126,7 +126,11 @@ def create_app(skip_db_init: bool = False) -> FastAPI:
             return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
 
         # Browser panel: friendly error page.
-        from src.web.routes import templates  # noqa: PLC0415
+        # `templates` mora em src/web/routes/_shared.py desde o split da PR 5
+        # (Task 2) — não é mais reexportado por src/web/routes (só `router` é,
+        # via __init__.py, e propositalmente: no_implicit_reexport é mypy
+        # strict gate e o __init__.py só declara `router` em __all__).
+        from src.web.routes._shared import templates  # noqa: PLC0415
 
         # Starlette's default details are English ("Not Found", "Method Not Allowed",
         # "Internal Server Error"). Replace those generic strings with PT-BR; keep our

@@ -97,7 +97,9 @@ def test_sem_script_inline_em_template():
 def test_fragmento_de_toggle_nao_carrega_handler():
     """F74: o handler do checkbox é delegado, então o fragmento não pode
     depender de re-emitir `hx-on` pra sobreviver ao swap."""
-    rotas = (_ROOT / "src" / "web" / "routes.py").read_text(encoding="utf-8")
+    # _toggle_checkbox_fragment mora em src/web/routes/_shared.py desde o
+    # split da PR 5 (Task 2) — routes.py deixou de existir como arquivo.
+    rotas = (_ROOT / "src" / "web" / "routes" / "_shared.py").read_text(encoding="utf-8")
     fragmento = rotas.split("def _toggle_checkbox_fragment")[1].split("\ndef ")[0]
     assert "data-v4-access-toggle" in fragmento
     assert 'hx-on::after-request="' not in fragmento
@@ -317,7 +319,7 @@ def test_checkbox_de_acesso_referencia_rotulo_fora_do_no_trocado(caminho):
 
 def test_fragmento_de_toggle_rotula_pelos_mesmos_ids():
     """Paridade por construcao: o atributo e funcao pura dos ids que a rota recebe."""
-    from src.web.routes import _toggle_checkbox_fragment
+    from src.web.routes._shared import _toggle_checkbox_fragment
 
     frag = _toggle_checkbox_fragment(
         post_url="/admin/access/toggle",

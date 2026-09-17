@@ -1,4 +1,4 @@
-from src.web.routes import _toggle_checkbox_fragment
+from src.web.routes._shared import _toggle_checkbox_fragment
 
 
 def test_toggle_fragment_escapes_injection():

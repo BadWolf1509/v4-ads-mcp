@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from fastapi.routing import APIRoute
 
@@ -24,9 +25,48 @@ from src.web.routes import router
 _SNAPSHOT = Path(__file__).resolve().parent / "fixtures" / "tabela_de_rotas.json"
 
 
+def _flatten(routes: list[Any]) -> list[APIRoute]:
+    """Resolve `router.include_router(...)` até achar os `APIRoute` de verdade.
+
+    Achado na Task 2 (split de `routes.py`), não hipotético: nesta versão do
+    FastAPI, `include_router` NUNCA copia os `APIRoute` do sub-router pro pai —
+    ele sempre acrescenta um `_IncludedRouter` (resolução tardia, ver
+    `fastapi.routing`), mesmo sem prefix/tags/dependencies. Isso não existia
+    quando este guard foi escrito (Task 1): o `router` de `routes.py`, arquivo
+    único, nunca chamava `include_router` sobre si mesmo, então `.routes` já
+    saía achatado. O split (Task 2) introduz `__init__.py` agregando nove
+    módulos via `include_router` — e a partir daí `router.routes` passa a
+    conter só wrappers, nenhum `APIRoute` direto, e o filtro original
+    (`isinstance(r, APIRoute)`) devolve `[]` sempre, não porque uma rota
+    sumiu, mas porque nenhuma rota nunca chega a essa checagem.
+
+    Dispatch real (`app(scope, receive, send)`) resolve os wrappers sozinho —
+    confirmado com um `TestClient` de dois níveis de `include_router` batendo
+    200 — então isto é só um problema de INTROSPECÇÃO deste teste, não de
+    comportamento da aplicação. A busca é pelo nome do atributo
+    (`original_router`), não pela classe `_IncludedRouter` (privada, prefixo
+    `_`, em `fastapi.routing`): mais resiliente a mudança de versão, e o
+    dataclass que a FastAPI usa hoje expõe exatamente esse atributo.
+
+    Continua achatando um `APIRouter` comum sem nenhum `_IncludedRouter` do
+    jeito que sempre achatou — `getattr(r, "original_router", None)` é `None`
+    pra um `APIRoute` puro, então o ramo novo nunca dispara nesse caso e o
+    comportamento pré-split é subconjunto exato deste.
+    """
+    achados: list[APIRoute] = []
+    for r in routes:
+        if isinstance(r, APIRoute):
+            achados.append(r)
+            continue
+        sub_router = getattr(r, "original_router", None)
+        if sub_router is not None:
+            achados.extend(_flatten(sub_router.routes))
+    return achados
+
+
 def _tabela() -> list[dict[str, object]]:
     linhas: list[dict[str, object]] = []
-    for r in router.routes:
+    for r in _flatten(router.routes):
         if not isinstance(r, APIRoute):
             continue
         deps = sorted(
