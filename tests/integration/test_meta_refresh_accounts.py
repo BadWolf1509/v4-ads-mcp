@@ -30,20 +30,24 @@ def _meta_env(monkeypatch):
     monkeypatch.setenv("META_SYSTEM_USER_TOKEN", _SYSTEM_TOKEN)
 
 
-async def _seed_manager():
-    """Seed an admin manager (no Meta OAuth connection required in Modelo B).
+async def _seed_manager(role: str = "admin"):
+    """Seed a manager (default admin — no Meta OAuth connection required in Modelo B).
 
-    `role="admin"` — desde a Task 3 (fix `_require_admin` ausente),
-    `/oauth/meta/refresh-accounts` 403 pra gestor comum. Estes testes cobrem o
-    comportamento do refresh (paginação, upsert, no-auto-grant, 422 sem
-    token), não o guard de autorização — esse tem teste próprio em
-    `tests/unit/test_rotas_de_mutacao_tem_guard.py`.
+    `role="admin"` por padrão — desde a Task 3 (fix `_require_admin`
+    ausente), `/oauth/meta/refresh-accounts` 403 pra gestor comum. Os 3
+    testes de comportamento do refresh (paginação, upsert, no-auto-grant,
+    422 sem token) chamam sem argumento e continuam admin.
+    `role="gestor"` é só pra `test_refresh_accounts_requires_admin` abaixo,
+    que cobre o EFEITO HTTP do guard — o teste estrutural em
+    `tests/unit/test_rotas_de_mutacao_tem_guard.py` confere que a chamada a
+    `_require_admin` existe no corpo, não que o caminho do gestor comum é de
+    fato alcançado e barrado.
     """
     mid = uuid4()
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         await managers.create(
-            conn, manager_id=mid, email="t@v4company.com", full_name="Tester", role="admin"
+            conn, manager_id=mid, email="t@v4company.com", full_name="Tester", role=role
         )
     return mid
 
@@ -212,3 +216,47 @@ async def test_refresh_accounts_follows_pagination(app_with_db):
     assert acc2 is not None and acc2.account_name == "Pagina 2 Conta", (
         "2ª página não foi sincronizada — paginação não está seguindo paging.next"
     )
+
+
+@pytest.mark.integration
+async def test_refresh_accounts_requires_admin(app_with_db):
+    """Gestor comum recebe 403 — prova o EFEITO do guard, não só sua presença.
+
+    Fecha o achado da rodada 1 (Task 3): os 3 testes acima semeiam admin
+    (correto, pós-fix), e nenhum outro teste no repo batia nesta rota como
+    gestor comum afirmando 403. A única rede que sobrava era o guard
+    estrutural (`tests/unit/test_rotas_de_mutacao_tem_guard.py`), que confere
+    que a CHAMADA a `_require_admin` existe no corpo — não que o caminho do
+    gestor comum é de fato alcançado e barrado; um `if flag:
+    _require_admin(user)` colado por engano passaria o guard sem proteger
+    ninguém.
+
+    Sem `@respx.mock`, pelo mesmo motivo de
+    test_refresh_accounts_no_system_token_returns_422 acima: `_require_admin`
+    levanta antes de qualquer `httpx.AsyncClient` ser criado, então não há
+    chamada ao Graph pra mockar neste caminho.
+    """
+    mid = await _seed_manager(role="gestor")
+
+    from src.web.deps import CurrentUser, current_manager
+
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        mgr = await managers.get_by_id(conn, mid)
+    assert mgr is not None
+
+    def _fake_current_manager():
+        return CurrentUser(mgr)
+
+    app_with_db.dependency_overrides[current_manager] = _fake_current_manager
+
+    transport = ASGITransport(app=app_with_db)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        resp = await c.post(
+            "/oauth/meta/refresh-accounts",
+            follow_redirects=False,
+        )
+
+    app_with_db.dependency_overrides.clear()
+
+    assert resp.status_code == 403
