@@ -10,7 +10,11 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 _SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
-# Isento por ROTA, nao por prefixo. Dois casos, e so eles:
+# Isento por ROTA, nao por prefixo (F106 aplicado ao MECANISMO agora, nao so a
+# lista: `path.startswith(prefixo)` isentava qualquer coisa pendurada por
+# baixo dele — um `APIRouter(prefix=...)` novo herdaria a isencao sem passar
+# por revisao nenhuma). Conjunto de caminhos LITERAIS, comparados por
+# igualdade em `_rota_isenta_de_csrf`. Dois casos, e so eles:
 #   - /oauth/meta/data-deletion-callback: POST server-to-server da Meta, que valida
 #     o proprio HMAC no signed_request;
 #   - /mcp: auth por Bearer, nao por cookie.
@@ -20,7 +24,29 @@ _SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 # (Depends(current_manager)), disparadas por <form method="post"> em admin/index.html.
 # Vivem ali por acidente de roteamento (o APIRouter tem prefix /oauth/meta) e ficavam
 # de fora da unica checagem de origem que existe.
-_CSRF_EXEMPT_PREFIXES = ("/oauth/meta/data-deletion-callback", "/mcp")
+#
+# /mcp como caminho LITERAL (nao prefixo) e decisao MEDIDA, nao suposta —
+# rodar `create_app()` e listar `app.routes` (task-4-report.md, Step 1) mostra
+# um unico `APIRoute` sob /mcp: `POST /mcp` (`mcp_endpoint`, definido em
+# src/mcp/server.py:150 via `@app.post("/mcp")`), sem nenhum
+# `APIRouter(prefix=...)` por baixo e sem GET/DELETE — o transporte roda
+# stateless (`mcp_session_id=None`, `stateless=True`), entao nao ha sessao
+# server-side pra um GET de resume ou um DELETE de encerramento acessarem. Nao
+# existe hoje nenhum `/mcp/<algo>`. Se o transporte um dia passar a servir
+# sub-caminhos, esta premissa muda e a medicao tem que rodar de novo — ate la,
+# tratar /mcp como prefixo isentaria caminho que nao existe.
+_CSRF_EXEMPT_ROUTES = frozenset({"/oauth/meta/data-deletion-callback", "/mcp"})
+
+
+def _rota_isenta_de_csrf(path: str) -> bool:
+    """True só para os caminhos LITERAIS em `_CSRF_EXEMPT_ROUTES`.
+
+    Comparação por igualdade, nunca por prefixo (F106): um
+    `APIRouter(prefix=…)` pendurado sob um destes caminhos depois não herda a
+    isenção — precisa ser adicionado aqui explicitamente, o que força revisão.
+    """
+    return path in _CSRF_EXEMPT_ROUTES
+
 
 # Complete inventory of external origins the panel loads (verified 2026-05-29 via
 # grep of templates + static; promoted from Report-Only to enforcing after smoke
@@ -103,7 +129,7 @@ class CSRFOriginMiddleware(BaseHTTPMiddleware):
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         path = request.url.path
-        if request.method not in _SAFE_METHODS and not path.startswith(_CSRF_EXEMPT_PREFIXES):
+        if request.method not in _SAFE_METHODS and not _rota_isenta_de_csrf(path):
             source = request.headers.get("origin") or request.headers.get("referer")
             if source is not None:
                 host = request.headers.get("host")
