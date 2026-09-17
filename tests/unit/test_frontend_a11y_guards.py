@@ -414,23 +414,6 @@ def test_fragmento_de_toggle_rotula_pelos_mesmos_ids():
     assert '"customer_id": "9876543210"' in frag.replace("&quot;", '"')
 
 
-# Achado REAL do Task 8 (2026-09-17), nao fabricado pra provar o guard: os 2
-# inputs de busca do toolbar (#search-gestor, #search-account) em
-# access.html E access_meta.html nao tem <label>, aria-label nem embrulho —
-# o casador linha-a-linha antigo nunca via a tag inteira (atributos
-# quebrados em 2 linhas pelo formatador) e nunca rodava o cheque nelas.
-# Corrigir e trivial (aria-label, igual ao padrao que /admin/audit ja usa)
-# mas MEXE EM TEMPLATE, fora do escopo declarado desta task (Files: só este
-# arquivo de teste) — decisao e texto do aria-label ficam com o Wellington,
-# reportados em task-8-report.md.
-_CONHECIDOS_SEM_NOME_ACESSIVEL = {
-    "access.html:27 <input>",
-    "access.html:29 <input>",
-    "access_meta.html:27 <input>",
-    "access_meta.html:29 <input>",
-}
-
-
 def test_todo_controle_de_formulario_tem_nome_acessivel():
     """select/input/textarea sem <label for>, sem aria-label e sem <label> que
     embrulha e anunciado como "caixa de combinacao" sem nome nenhum.
@@ -469,16 +452,7 @@ def test_todo_controle_de_formulario_tem_nome_acessivel():
                 continue
             numero = conteudo.count("\n", 0, match.start()) + 1
             sem_nome.append(f"{template.name}:{numero} <{tag}>")
-    # Igualdade estrita (nao filtro silencioso): se o conjunto MUDAR — uma
-    # violacao nova aparecer, ou uma destas for corrigida — o teste tem que
-    # falhar e forcar quem mexeu a atualizar a allowlist acima, nunca passar
-    # calado.
-    assert set(sem_nome) == _CONHECIDOS_SEM_NOME_ACESSIVEL, (
-        "controles sem nome acessivel mudou desde o achado do Task 8 (2026-09-17) — "
-        f"atual: {sorted(sem_nome)}; conhecido: {sorted(_CONHECIDOS_SEM_NOME_ACESSIVEL)}. "
-        "Se sumiu, corrigido — encolha a allowlist. Se cresceu, o novo tambem precisa "
-        "ir pro relatorio, nao so ser ignorado."
-    )
+    assert not sem_nome, f"controles sem nome acessivel: {sem_nome}"
 
 
 def test_todo_th_declara_scope():

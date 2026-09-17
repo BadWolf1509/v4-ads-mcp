@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_components.html" import empty_state, alert %}
+{% from "_components.html" import empty_state, alert, search_input %}
 
 {% block title %}Admin · Acessos — V4 Ads MCP{% endblock %}
 
@@ -24,10 +24,8 @@
 
   {# Search + bulk toolbar #}
   <div class="bg-v4-gray-50 border border-v4-gray-100 rounded-md p-3 mb-4 flex flex-wrap gap-3 items-center">
-    <input type="search" id="search-gestor" data-v4-matrix-filter="manager" placeholder="Buscar gestor..."
-           class="v4-input v4-input--search v4-input--small w-[200px]">
-    <input type="search" id="search-account" data-v4-matrix-filter="account" placeholder="Buscar conta..."
-           class="v4-input v4-input--search v4-input--small w-[200px]">
+    {{ search_input("search-gestor", placeholder="Buscar gestor...", attrs='id="search-gestor" data-v4-matrix-filter="manager"', aria_label="Buscar gestor", extra_classes="v4-input--small w-[200px]") }}
+    {{ search_input("search-account", placeholder="Buscar conta...", attrs='id="search-account" data-v4-matrix-filter="account"', aria_label="Buscar conta", extra_classes="v4-input--small w-[200px]") }}
 
     <div class="ml-auto flex gap-2">
       <button type="button" class="v4-btn v4-btn--small v4-btn--secondary"
