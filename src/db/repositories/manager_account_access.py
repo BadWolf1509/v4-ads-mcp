@@ -71,6 +71,20 @@ async def grant_all_active(
     isso o conflito limpa a revogação em vez de ignorar (espelha o gêmeo Meta).
     Efeito colateral aceito: a contagem devolvida passa a incluir toda linha
     TOCADA pelo INSERT (nova OU restaurada), não só a genuinamente nova.
+
+    F128: o ON CONFLICT também seta `access_level = EXCLUDED.access_level`,
+    espelhando o que `grant` (linha única) e `bulk_grant` já faziam. Sem isso,
+    quem já tinha 'read' numa conta continuava com 'read' depois de um
+    "conceder tudo" — a chamada devolve sucesso, mas o nível antigo sobrevive
+    em silêncio. O INSERT grava 'write' como literal (não parâmetro), e
+    `EXCLUDED` resolve para o valor da linha PROPOSTA pelo INSERT/SELECT
+    independente de vir de parâmetro ou literal — por isso a cláusula também
+    promove aqui, não só no `bulk_grant` (que recebe `access_level` de fora).
+
+    F167: esta cláusula NÃO atualiza `granted_at`/`granted_by` — o gêmeo Meta
+    (`manager_meta_account_access.grant_all_active`) atualiza os dois. As duas
+    direções se defendem (nenhuma promete procedência num "conceder tudo" em
+    lote), então a assimetria fica; ver F167 no catálogo pro resto da família.
     """
     result = await conn.execute(
         """
@@ -79,6 +93,7 @@ async def grant_all_active(
         FROM google_ads_accounts
         WHERE is_active = true
         ON CONFLICT (manager_id, customer_id) DO UPDATE SET
+            access_level = EXCLUDED.access_level,
             revoked_at = NULL,
             revoked_reason = NULL
         """,
@@ -207,6 +222,11 @@ async def bulk_grant(
     Reconceder é a forma de restaurar: se a linha já existia revogada, o ON
     CONFLICT limpa `revoked_at`/`revoked_reason` em vez de ignorar — senão o
     gestor readicionado numa bulk-grant continuaria bloqueado pelo gate.
+
+    F128: o ON CONFLICT também seta `access_level = EXCLUDED.access_level`,
+    espelhando o que `grant` (linha única) já fazia. Sem isso, quem já tinha
+    'read' numa conta continuava com 'read' depois de um "conceder tudo" —
+    a chamada devolve sucesso, mas o nível antigo sobrevive em silêncio.
     """
     if not customer_ids:
         return 0
@@ -215,6 +235,7 @@ async def bulk_grant(
         """INSERT INTO manager_account_access (manager_id, customer_id, access_level, granted_by)
            VALUES ($1, $2, $3, $4)
            ON CONFLICT (manager_id, customer_id) DO UPDATE SET
+               access_level = EXCLUDED.access_level,
                revoked_at = NULL,
                revoked_reason = NULL""",
         rows,

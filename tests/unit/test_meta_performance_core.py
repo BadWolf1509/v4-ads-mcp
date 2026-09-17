@@ -64,6 +64,10 @@ async def test_run_meta_level_performance_account_not_found() -> None:
             "src.mcp.tools._meta_performance.meta_ad_accounts.get_by_id",
             AsyncMock(return_value=None),
         ),
+        patch(
+            "src.mcp.tools._meta_performance.resolve_meta_account_today",
+            AsyncMock(return_value=date(2026, 6, 30)),
+        ),
     ):
         result = await run_meta_level_performance(
             level="campaign",
@@ -88,7 +92,13 @@ async def test_run_meta_level_performance_invalid_dates() -> None:
     validação falhe depois) → precisa de um pool fake mesmo neste caminho."""
     fake_pool = _FakePool(MagicMock())
 
-    with patch("src.mcp.tools._meta_performance.connection.get_pool", return_value=fake_pool):
+    with (
+        patch("src.mcp.tools._meta_performance.connection.get_pool", return_value=fake_pool),
+        patch(
+            "src.mcp.tools._meta_performance.resolve_meta_account_today",
+            AsyncMock(return_value=date(2026, 6, 30)),
+        ),
+    ):
         result = await run_meta_level_performance(
             level="campaign",
             operation_name="meta_get_campaign_performance",
@@ -126,6 +136,10 @@ async def test_run_meta_level_performance_success_shape_parity(level: str) -> No
             AsyncMock(return_value=_FakeAccount()),
         ),
         patch("src.mcp.tools._meta_performance.run_meta_graph_get", mock_run_graph_get),
+        patch(
+            "src.mcp.tools._meta_performance.resolve_meta_account_today",
+            AsyncMock(return_value=date(2026, 6, 30)),
+        ),
     ):
         result = await run_meta_level_performance(
             level=level,  # type: ignore[arg-type]
@@ -189,6 +203,10 @@ async def test_run_meta_level_performance_maps_graph_error_to_friendly_message()
             "src.mcp.tools._meta_performance.run_meta_graph_get",
             AsyncMock(side_effect=_BoomError()),
         ),
+        patch(
+            "src.mcp.tools._meta_performance.resolve_meta_account_today",
+            AsyncMock(return_value=date(2026, 6, 30)),
+        ),
     ):
         result = await run_meta_level_performance(
             level="ad",
@@ -220,10 +238,10 @@ async def test_run_meta_level_performance_defaults_to_last_30_days() -> None:
         ),
         patch("src.mcp.tools._meta_performance.run_meta_graph_get", mock_run_graph_get),
         patch(
-            "src.mcp.tools._meta_performance.datetime",
-        ) as mock_datetime,
+            "src.mcp.tools._meta_performance.resolve_meta_account_today",
+            AsyncMock(return_value=date(2026, 6, 30)),
+        ),
     ):
-        mock_datetime.now.return_value.date.return_value = date(2026, 6, 30)
         result = await run_meta_level_performance(
             level="campaign",
             operation_name="meta_get_campaign_performance",

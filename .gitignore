@@ -24,6 +24,29 @@ coverage.xml
 .cursor/
 .superpowers/
 
+# Diretorio orfao: `D:\v4-ads-mcp\.superpowers\sdd` montado por alguma
+# ferramenta como caminho Windows literal (barras perdidas), virou um
+# subdiretorio de verdade na raiz do repo. Sempre vazio; volta se a mesma
+# ferramenta rodar de novo.
+#
+# CORRECAO (rodada 1, Task 7): o padrao anterior (`Dv4-ads-mcp.superpowerssdd/`,
+# ASCII puro) NAO CASAVA NADA — provado recriando o diretorio com os bytes
+# reais e rodando `git status --ignored=matching -uall`: saiu `??`
+# (nao-rastreado), nunca `!!` (ignorado). A nota anterior ("nao tem ':'") era
+# enganosa: o nome de verdade, na posicao do ":", TEM um caractere — só não é
+# o ASCII 0x3A. É U+F03A (Private Use Area, 3 bytes em UTF-8), o escape que
+# MSYS/WSL usa pra representar um caractere ilegal em NTFS — e o padrao
+# commitado nao tinha absolutamente nada naquela posicao, nem um `?`.
+# Escolhido `*` de sufixo, e nao `D???v4-ads-mcp.superpowerssdd/` (as duas
+# formas casam, medido): o `*` nao depende de saber quantos bytes o escape
+# ocupa. Se a ferramenta que gera o orfao um dia escapar o caractere ilegal de
+# outro jeito (outro codepoint, outra contagem de bytes), o sufixo estavel
+# (".superpowers"+"sdd", sem a barra e o ponto que a mesma ferramenta tambem
+# perde) continua casando — o `???` exato quebraria de novo, do mesmo jeito
+# que o padrao original quebrou. Reprovado com o diretorio real recriado
+# (mesmo metodo acima): `!!` confirmado.
+*superpowerssdd/
+
 # Claude Code: versionar hooks/agents/skills/settings compartilháveis;
 # manter local-only o que tem allowlist pessoal ou estado efêmero.
 .claude/*

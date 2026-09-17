@@ -1447,8 +1447,11 @@ async def test_meta_access_bulk_grant_idempotent(db) -> None:
         ids = {a.ad_account_id for a in accounts}
         assert ids == {"act_bg1", "act_bg2"}
 
-        # Idempotent re-run with same ids returns 2 (per documented semantics)
-        # but actually inserts 0 rows (ON CONFLICT DO NOTHING)
+        # Idempotent re-run with same ids returns 2 (per documented semantics).
+        # The clause is ON CONFLICT DO UPDATE SET access_level=EXCLUDED...,
+        # revoked_at=NULL, revoked_reason=NULL (F128/F167) — this re-run DOES
+        # write (rewrites those columns on both rows), it just inserts 0 NEW
+        # rows; "DO NOTHING" would be a no-op, and this clause is not one.
         n2 = await manager_meta_account_access.bulk_grant(
             conn,
             manager_id=mid,

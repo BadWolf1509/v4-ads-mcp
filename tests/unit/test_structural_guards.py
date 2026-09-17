@@ -828,6 +828,61 @@ def test_finally_bookkeeping_is_best_effort() -> None:
     )
 
 
+# Metodos de `DockerContainer` (testcontainers) que, JUNTOS, dao os dois
+# ingredientes pra montar um DSN a mao sem passar por
+# `PostgresContainer.get_connection_url()` — e portanto sem passar pela
+# correcao de IPv4 do `_dsn`. Confirmado por introspecao da classe instalada
+# (2026-09-11, `PostgresContainer.__mro__`): as duas moram na base
+# `DockerContainer`, nao em `PostgresContainer` — por isso chamar SO uma delas
+# e comum (ex.: afirmar que a porta foi publicada) e nao significa montagem de
+# DSN; so o PAR conta.
+_METODOS_DSN_A_MAO = frozenset({"get_container_host_ip", "get_exposed_port"})
+
+
+def _ofensores_dsn_a_mao(arv: ast.Module) -> list[tuple[int, str]]:
+    """(linha, motivo) de cada jeito de montar DSN sem passar pela fixture `_dsn`.
+
+    Duas formas, as duas por AST — nunca substring de linha crua:
+
+    1. Chamada a `get_connection_url`, em QUALQUER forma (`Name`, `Attribute`
+       ou alias de import — mesma resolucao de `h.nomes_locais`, que os outros
+       guards deste arquivo usam pra F57/F58). E o metodo que `_dsn` embrulha
+       pra forcar 127.0.0.1 no win32.
+    2. Host E porta obtidos direto do container (`get_container_host_ip` +
+       `get_exposed_port` — ver `_METODOS_DSN_A_MAO`). Os dois JUNTOS sao os
+       unicos ingredientes que essa API oferece pra montar uma URL de conexao
+       sem nunca escrever o nome `get_connection_url` — o "outro caminho" da
+       mesma familia do F81 que a docstring do teste ja cita. Exigir o PAR
+       evita acusar um teste que so confirme que a porta foi publicada, sem
+       compor DSN nenhum.
+
+    Limite conhecido, documentado em vez de perseguido: um `get_exposed_port`
+    de um lado do arquivo e um `get_container_host_ip` do outro, sem relacao
+    entre si, ainda acusam — a unidade aqui e o ARQUIVO, nao a funcao nem o
+    f-string que de fato junta os dois. Mais estreito exigiria rastrear se as
+    duas chamadas alimentam a mesma string, e nenhum ocupante (vivo ou de
+    sabotagem) precisa dessa precisao: hoje NENHUM teste de integracao chama
+    qualquer um dos dois metodos (grep 2026-09-11), entao o falso positivo e
+    hipotetico, nao medido.
+    """
+    nomes_gcu = h.nomes_locais(arv, "get_connection_url")
+    achados: list[tuple[int, str]] = []
+    linha_por_metodo: dict[str, int] = {}
+    for no in ast.walk(arv):
+        if not isinstance(no, ast.Call):
+            continue
+        f = no.func
+        if (isinstance(f, ast.Name) and f.id in nomes_gcu) or (
+            isinstance(f, ast.Attribute) and f.attr in nomes_gcu
+        ):
+            achados.append((no.lineno, "get_connection_url"))
+        elif isinstance(f, ast.Attribute) and f.attr in _METODOS_DSN_A_MAO:
+            linha_por_metodo.setdefault(f.attr, no.lineno)
+    if linha_por_metodo.keys() >= _METODOS_DSN_A_MAO:
+        achados.append((max(linha_por_metodo.values()), "host+porta do container formatados a mao"))
+    return achados
+
+
 def test_teste_de_integracao_nao_monta_dsn_do_container_a_mao() -> None:
     """DSN montado fora do `_dsn` do conftest perde a correcao de host do Windows.
 
@@ -842,6 +897,17 @@ def test_teste_de_integracao_nao_monta_dsn_do_container_a_mao() -> None:
     `test_migrations.py` seguiram falhando porque montavam o DSN inline. Use a
     fixture `pg_dsn`. E a mesma classe do F81 — dois caminhos pro mesmo dado,
     um deles errado e silencioso.
+
+    **Aperto (rodada 1, Task 7 — tabela 3.1.1 #5 da spec de 2026-09-06).** O
+    escopo ja era recursivo (`h.testes_py(integracao)`, resolvido de graca pela
+    conversao pro harness no PR0) — o que faltava era o CASADOR: substring de
+    `"get_connection_url(" in linha`, linha a linha. Verdadeiro so pra essa
+    grafia exata; cego a `get_connection_url` chamado via alias de import; e
+    cego por construcao a quem nunca escreve o nome `get_connection_url` — quem
+    monta o DSN pegando host e porta direto do container
+    (`get_container_host_ip`/`get_exposed_port`) e formatando a URL a mao passa
+    reto. `_ofensores_dsn_a_mao` resolve por AST (Name/Attribute/alias, igual
+    aos outros guards deste arquivo) e cobre as duas formas.
     """
     integracao = Path(__file__).resolve().parents[1] / "integration"
     conftest = integracao / "conftest.py"
@@ -849,10 +915,8 @@ def test_teste_de_integracao_nao_monta_dsn_do_container_a_mao() -> None:
     for p in h.testes_py(integracao):
         if p == conftest:
             continue
-        texto = p.read_text(encoding="utf-8")
-        for numero, linha in enumerate(texto.splitlines(), start=1):
-            if "get_connection_url(" in linha:
-                offenders.append(f"{p.name}:{numero}")
+        for numero, motivo in _ofensores_dsn_a_mao(h.arvore(p)):
+            offenders.append(f"{p.name}:{numero} ({motivo})")
     assert not offenders, (
         "teste de integracao montando DSN do container a mao: "
         f"{offenders}. Use a fixture `pg_dsn` (tests/integration/conftest.py) — "

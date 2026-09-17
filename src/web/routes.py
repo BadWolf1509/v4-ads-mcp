@@ -339,7 +339,7 @@ async def dashboard(
                        WHERE a.customer_id = al.customer_id LIMIT 1) AS account_name
                FROM audit_log al
                WHERE manager_id = $1
-               ORDER BY occurred_at DESC LIMIT 5""",
+               ORDER BY occurred_at DESC, id DESC LIMIT 5""",
             user.id,
         )
 
@@ -675,7 +675,7 @@ async def audit(
                        FROM audit_log al LEFT JOIN google_ads_accounts a
                          ON a.customer_id = al.customer_id
                        WHERE {" AND ".join(where)}
-                       ORDER BY al.occurred_at DESC LIMIT ${idx} OFFSET ${idx + 1}"""
+                       ORDER BY al.occurred_at DESC, al.id DESC LIMIT ${idx} OFFSET ${idx + 1}"""
         params_with_pagination = params + [page_size, offset]
         rows = await conn.fetch(rows_sql, *params_with_pagination)
 
@@ -1758,7 +1758,7 @@ async def admin_audit(
                        LEFT JOIN managers m ON m.id = al.manager_id
                        LEFT JOIN google_ads_accounts gaa ON gaa.customer_id = al.customer_id
                        WHERE {" AND ".join(where)}
-                       ORDER BY al.occurred_at DESC LIMIT ${idx} OFFSET ${idx + 1}"""
+                       ORDER BY al.occurred_at DESC, al.id DESC LIMIT ${idx} OFFSET ${idx + 1}"""
         params_with_pagination = params + [page_size, offset]
         rows = await conn.fetch(rows_sql, *params_with_pagination)
 

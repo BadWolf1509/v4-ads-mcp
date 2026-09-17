@@ -12,7 +12,7 @@
 ## Frente "correções da varredura" (spec de 2026-09-06) — onde está
 
 Sete PRs, um por frente, cada um com CI próprio e merge próprio. **Cinco fechados e em
-produção**, dois por fazer:
+produção, um com a revisão final fechada e pronto pra merge**, um por fazer:
 
 | PR | Frente | Estado |
 |---|---|---|
@@ -22,7 +22,25 @@ produção**, dois por fazer:
 | 3 | governança de orçamento (C1+C2) | ✅ merged `fc11503` ([#62](https://github.com/BadWolf1509/v4-ads-mcp/pull/62)) — F155–F158 |
 | 4 | honestidade dos números (C5 + truncamento) | ✅ merged `eb52668` ([#63](https://github.com/BadWolf1509/v4-ads-mcp/pull/63)) — F159–F164 |
 | 5 | painel (`routes.py` → 10 módulos) | ⬜ |
-| 6 | cauda (gêmeo Meta do F141, índices, keyset) | ⬜ |
+| 6 | cauda (gêmeo Meta do F141, índices, keyset) | ✅ revisão final fechada, branch `pr6/cauda` pronta pra merge — F165–F170 |
+
+**Frente 6 fechou a revisão final em 11/09** (onda única, seis achados da
+revisão de branch inteira — F165–F170 no catálogo); falta só o merge em si,
+reservado ao Wellington. Duas pendências que esta PR deixa nomeadas, nenhuma
+das duas dentro do escopo dela:
+
+1. **Migrations `002` e `004` idempotentes** — a spec de 2026-09-06 pedia,
+   o plano da PR não incluiu. As duas já rodaram em produção; o tracker
+   `_migrations` não re-aplica arquivo editado, então editá-las agora não
+   mudaria nada em produção e mudaria o que um restore faz. Colide de frente
+   com a convenção append-only do `CLAUDE.md` **e** com o hook
+   `guard-migrations.ps1`, que bloqueia a edição. Decisão do Wellington, não
+   ruling de executor.
+2. **Reescrita de `OFFSET` por keyset em `src/web/routes.py`** — as duas
+   rotas paginadas vivem no arquivo de 1839 linhas que a frente 5 vai partir
+   em dez módulos; fazer aqui garantiria conflito no maior arquivo do repo.
+   Esta PR entrega o desempate estável (o lado de corretude — ver F168) e os
+   dois índices; o keyset (o lado de desempenho) vai para a frente 5.
 
 **Em 2026-09-08 os dois foram mesclados e verificados em produção**, mais a
 consolidação do Dependabot ([#64](https://github.com/BadWolf1509/v4-ads-mcp/pull/64)).
@@ -40,7 +58,8 @@ SDK que serve o `/mcp` inteiro), `facebook-business` 25 → 26, `starlette` 1.3 
 major em `mcp`/`google-ads`/`facebook-business` existe para impedir — e entraria em
 silêncio dentro de uma PR rotulada "bump de dependência". **Para bump de transitivo,
 edite a linha; recompile só ao mexer no `pyproject.toml`.** O ignore de major em `mcp`
-segue pendente no `dependabot.yml` (PR 6 da varredura).
+**já está** no `dependabot.yml` — entrou na consolidação do Dependabot ([#64](https://github.com/BadWolf1509/v4-ads-mcp/pull/64), 08/09), com a mesma medição desta
+seção como justificativa. Esta linha ficou desatualizada por três dias; corrigida em 11/09.
 
 **O que o PR 4 muda de contrato para quem consome as tools** (aditivo — pelo F140,
 campo novo em tool existente não exige sessão nova):

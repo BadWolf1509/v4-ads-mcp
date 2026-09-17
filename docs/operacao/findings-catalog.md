@@ -2803,3 +2803,244 @@ antes de corrigi-los só encheria a lista com trabalho já planejado.
 
 > **✅ CORRIGIDO** (branch `pr4/honestidade-dos-numeros`) — casador apertado;
 > escopo medido e o resto encaminhado.
+
+---
+
+## F165 (MEDIUM, CORRIGIDO em 2026-09-11) — gêmeo Meta do F141: 3 sítios liam o relógio do servidor, 5 tools
+
+**Sintoma.** `src/mcp/tools/_meta_performance.py` (núcleo comum de
+`meta_get_campaign_performance`/`meta_get_ad_set_performance`/
+`meta_get_ad_performance` — 3 tools, 1 sítio), `meta_get_account_overview.py` e
+`meta_get_performance_breakdown.py` resolviam a janela de datas
+(`TODAY`/`YESTERDAY`/`LAST_N_DAYS`) com `datetime.now(UTC).date()` — o relógio
+do SERVIDOR, não o da CONTA. Mesma classe do F141 (lado Google, fechado em
+02-03/09): o preset desliza um dia entre 21h e meia-noite locais, na janela em
+que ninguém está testando. `meta_ad_accounts.timezone_name` já estava no banco
+desde a reconciliação da parceria Meta (2026-08-20) — alimentado pelo resync —
+e nenhuma das 5 tools de performance/overview o lia.
+
+**Fix.** `src/meta_ads/account_clock.py` (novo) espelha
+`src/google_ads/account_clock.py` na casca de I/O:
+`resolve_meta_account_today(ad_account_id, *, now=None) -> date` lê
+`timezone_name` via `run_with_reconnect` e delega o cálculo a
+`src.clock.account_today` — o MESMO primitivo que o lado Google já usava, não
+um cálculo paralelo. Os 3 sítios passam a chamar essa função e amarrar o
+retorno a `today`.
+
+🔑 **A isenção por NOME do guard do F141 caiu no mesmo commit.**
+`tests/unit/test_no_server_clock_in_google_tools.py` isentava em bloco
+qualquer arquivo `meta_*`/`_meta_*` sob `src/mcp/tools/` — cobria os 3 sítios
+em silêncio, e cobriria do mesmo jeito qualquer tool Meta futura. Virou
+isenção por ARQUIVO (`FORA_COM_MOTIVO`), com motivo escrito por entrada: dois
+dos três sítios saem da lista (pararam de ler o relógio); o terceiro
+(`meta_get_account_overview.py`) continua, só que para carimbar o INSTANTE do
+aviso em `build_warnings` — timestamp de registro, não data de conta — e por
+isso entrou em `FORA_COM_MOTIVO` com o motivo ao lado, não como exceção muda.
+
+> **✅ CORRIGIDO** (branch `pr6/cauda`).
+
+---
+
+## F166 (MEDIUM, CORRIGIDO em 2026-09-11) — família de throttle do Graph: 17, 613 e 80004 chegavam como falha permanente
+
+**Sintoma.** `to_friendly_meta_error` (`src/meta_ads/errors.py`) só reconhecia
+como limite o `code == 4` (app-level) e o `subcode == 2635`. Os codes **17**
+(limite do usuário), **613** (limite de chamadas do endpoint) e **80004**
+(limite específico de ads management) caíam no ramo genérico
+(`retryable=False`, mensagem `"Erro Meta API (code/subcode): message"`) — um
+throttle de minutos chegava ao gestor com a MESMA forma de uma falha
+definitiva.
+
+**Fix.** Os quatro codes viram uma constante nomeada,
+`CODIGOS_DE_THROTTLE = frozenset({4, 17, 613, 80004})`, com o significado de
+cada um documentado ao lado — em vez de uma condição com números soltos.
+`subcode == 2635 or code in CODIGOS_DE_THROTTLE` substitui
+`subcode == 2635 or code == 4`. Contraprova: 190 (permissão), 100 (campo
+inválido) e o ramo genérico continuam `retryable=False` — um guard que só
+afirma o lado positivo não distingue "classifica throttle" de "diz sim para
+tudo".
+
+🔑 **Diga honestamente o que o fix muda de fato: só a MENSAGEM.**
+`MetaAdsFriendlyError.retryable` não tem nenhum leitor em `src/` hoje (grep no
+repo inteiro: as únicas ocorrências de `retryable` ficam dentro do próprio
+`errors.py`, onde o campo é escrito — nunca lido por quem chama
+`to_friendly_meta_error`). O efeito real deste fix é o gestor ler "Limite Meta
+atingido. Tente novamente em alguns minutos." em vez de "Erro Meta API
+(17/None): ...", em PT-BR e sem soar definitivo — não um retry automático, que
+exigiria um chamador lendo `.retryable`, e esse chamador ainda não existe.
+
+> **✅ CORRIGIDO** (branch `pr6/cauda`) — mensagem certa; retry automático
+> segue sem chamador.
+
+---
+
+## F167 (MEDIUM, CORRIGIDO em 2026-09-11) — `access_level` ausente no `ON CONFLICT`: três instâncias, não uma
+
+**Sintoma.** Um fix anterior já tinha corrigido `grant` e `bulk_grant`
+(`manager_account_access`, Google) para que o `ON CONFLICT` também
+promovesse `access_level = EXCLUDED.access_level` — sem isso, quem já tinha
+`'read'` numa conta continuava com `'read'` depois de um "conceder tudo", com
+a chamada devolvendo sucesso e o nível antigo sobrevivendo em silêncio. A
+varredura desta PR (AST, nos dois repositórios de acesso) achou **duas
+instâncias que sobreviveram**: `manager_account_access.grant_all_active`
+(Google) e `manager_meta_account_access.bulk_grant` (Meta) — a segunda
+estava com `ON CONFLICT DO NOTHING` puro, nem chegava a tentar promover.
+(As docstrings do código e os commits desta branch chamam a classe de
+"F128" — numeração informal reaproveitada; o F128 do catálogo é outro
+achado, sobre churn de conta Meta em 2026-08-20, sem relação com
+`ON CONFLICT`.)
+
+**Fix.** As duas ganharam a mesma cláusula que os gêmeos já tinham:
+`access_level = EXCLUDED.access_level` junto de `revoked_at = NULL,
+revoked_reason = NULL` (reconceder é a forma de restaurar). Auditadas por AST
+depois do fix: **as 8 funções com `ON CONFLICT` nos dois repositórios**
+(`grant`, `grant_all_active`, `bulk_grant`, `copy_access` × 2 provedores) têm
+a cláusula. Zero instância aberta da classe `access_level`.
+
+🔑 **O que ficou de fora, e é assimetria viva, não bug:** `grant_all_active`
+(Google) não atualiza `granted_at`/`granted_by` no `ON CONFLICT`; o gêmeo Meta
+(`manager_meta_account_access.grant_all_active`) atualiza os dois. Fora do
+escopo desta classe (que é só sobre `access_level`) — as duas direções se
+defendem (nenhum dos dois `bulk_grant` grava procedência; os dois `grant` de
+linha única e os dois `copy_access` gravam), então não foi corrigida, só
+nomeada nas duas docstrings pra não ficar invisível numa PR cuja tese é
+exatamente "cláusula presente num gêmeo e ausente no outro".
+
+> **✅ CORRIGIDO** (branch `pr6/cauda`).
+
+---
+
+## F168 (LOW, CORRIGIDO em 2026-09-11) — desempate estável nos quatro `ORDER BY occurred_at DESC` + os dois índices que faltavam
+
+**Sintoma.** Quatro sítios ordenavam só por `occurred_at DESC`, sem
+desempate: `audit_log.py:157` (export CSV, sem paginação) e três em
+`routes.py` — `:342` (top-5 do dashboard, `LIMIT 5` sem `OFFSET`), `:678` e
+`:1761` (as duas rotas de auditoria paginadas por `LIMIT`/`OFFSET`). Um
+quinto sítio, `audit_log.py:242`, já tinha o desempate desde antes desta
+branch. `occurred_at` empata de verdade — auditoria de lote grava várias
+linhas no mesmo instante —, e sem segunda chave o Postgres não promete ordem
+estável entre duas execuções do plano: a página 2 podia repetir uma linha da
+página 1 e omitir outra. É o F98/F88 na forma de empate.
+
+**Fix.** Os quatro passam a `ORDER BY occurred_at DESC, id DESC` — `id` é
+`BIGSERIAL PRIMARY KEY` (`001_initial_schema.sql:71`): única, estável,
+não-nula, e monotônica com a ordem de inserção. A migration `010` adiciona
+`idx_audit_occurred_at` **em `(occurred_at DESC, id DESC)`** — cobrindo o
+`ORDER BY` completo, não só a primeira coluna — e `idx_mac_customer` em
+`manager_account_access(customer_id)`, pra "quem tem acesso a esta conta?"
+(painel de admin e revogação), que hoje varre a tabela porque a PK
+`(manager_id, customer_id)` só serve busca por gestor. Um guard novo
+(`test_order_by_tem_desempate.py`) varre `occurred_at` no repo inteiro e
+exige o desempate, em vez de enumerar os sítios conhecidos.
+
+🔑 **Duas ressalvas que ficaram de fora, e precisam estar escritas.** (1) A
+troca do `OFFSET` por keyset (cursor) nas duas rotas paginadas do painel
+NÃO entra aqui — vai para a frente 5, onde `routes.py` (1839 linhas) já está
+sendo partido em dez módulos, e fazer a reescrita de paginação no mesmo
+commit do split garantiria conflito no maior arquivo do repo. (2) o
+desempate resolve **determinismo dentro de um snapshot**: com o mesmo estado
+da tabela, a mesma consulta devolve sempre a mesma ordem. Ele **não**
+estabiliza paginação por `OFFSET` contra linha inserida **durante** a
+navegação — um `INSERT` novo entre a página 1 e a página 2 ainda desloca o
+`OFFSET` da página 2, porque `OFFSET` conta posição, não identidade. Esse é
+exatamente o problema que o keyset resolve; o desempate sozinho não o
+substitui.
+
+> **✅ CORRIGIDO** (branch `pr6/cauda`) — desempate + índices; keyset
+> explicitamente diferido pra frente 5 do painel.
+
+---
+
+## F169 (MEDIUM, CORRIGIDO em 2026-09-11) — três guards que não conferiam o que enunciavam
+
+**Sintoma, em três formas independentes da mesma classe (guard que casa a
+prosa, não a propriedade):**
+
+- **`test_ci_local_parity`** afirmava que uma ferramenta (`ruff`, `mypy`,
+  `pytest`...) "está no CI" quando o NOME dela aparecia em QUALQUER lugar do
+  texto do workflow — um comentário, o `name` de um step vizinho.
+  `_steps_de_check_do_ci()` dividia o YAML por regex e casava substring no
+  bloco resultante: removeria o STEP de verdade e o nome sobrevivendo num
+  comentário passava igual.
+- **`test_change_freshness` (linha 235)** era uma tautologia:
+  `change_event_frontier_query(today=hoje) == change_event_frontier_query(today=hoje)`
+  — os dois lados a MESMA chamada com o MESMO argumento, verdadeira em
+  qualquer implementação, contando como cobertura sem cobrir nada.
+- **`test_every_mutate_builder_has_a_builder_test` (`test_tools_schemas.py`)**
+  varria só `test_*_builder.py` e casava por substring
+  (`fn.__name__ not in all_content`): um teste real do builder num arquivo
+  com outro nome nunca contava, e o nome da função bastava aparecer numa
+  docstring ou comentário pra contar como cobertura.
+
+**Fix.** `test_ci_local_parity` passa a `yaml.safe_load` o workflow e afirmar
+que o STEP existe em `jobs.*.steps[].name`/`.run` — texto bruto nunca mais é
+consultado; `test_ci_realmente_tem_checks` apertou de piso (`>= 4`) pra
+conjunto exato, porque um piso frouxo sobrevive à remoção de qualquer UMA
+ferramenta. `test_change_freshness` passa a variar a janela de verdade no
+CHAMADOR (`get_change_history` com dois `date_range` diferentes) e afirmar
+que os dois emitem a MESMA query de sonda — a função só aceita `today`, não
+há janela pra variar nesse nível. `test_every_mutate_builder_has_a_builder_test`
+passa a varrer TODO `tests/unit/*.py` (`h.testes_py`, recursivo, sem filtro
+de nome) perguntando por AST (`h.chama`) se algum teste CHAMA a função de
+verdade — não se o nome aparece. Os três provados por mutação, com a segunda
+metade (guard ANTIGO fica verde com a MESMA mutação) medida onde o guard foi
+apertado, não reescrito.
+
+🔑 **O que ficou de fora, e precisa estar escrito: os dois guards de builder
+agora têm escopos DIVERGENTES.** O de existência
+(`test_every_mutate_builder_has_a_builder_test`) varre `tests/unit` inteiro
+desde este fix. O de MagicMock (`test_builder_tests_use_capture_client_not_magicmock`,
+mesmo arquivo) continua filtrando por sufixo `test_*_builder.py` — DE
+PROPÓSITO, e o próprio docstring dele argumenta por quê ("a regra... só faz
+sentido pra teste QUE EXERCITA UM BUILDER"). O efeito prático: um builder
+novo cujo teste de execução exista mas resida num arquivo que não termine em
+`_builder.py` passa o guard de existência (que o vê, sem filtro de nome) e
+ESCAPA do guard de MagicMock (que só olha arquivos com aquele sufixo) —
+reabrindo a classe F16/F42/F44 em silêncio, sem nenhum teste vermelho pra
+avisar.
+
+> **✅ CORRIGIDO** (branch `pr6/cauda`) — os três guards apertados; a
+> divergência de escopo entre os dois guards de builder fica registrada, não
+> fechada.
+
+---
+
+## F170 (MEDIUM, ABERTO) — as tools Meta leem a mesma linha de `meta_ad_accounts` duas vezes por request
+
+**Sintoma.** Os 3 sítios que o F165 ligou ao resolvedor de fuso —
+`_meta_performance.py`, `meta_get_account_overview.py`,
+`meta_get_performance_breakdown.py` — fazem DUAS leituras da MESMA linha por
+request:
+
+1. `today = await resolve_meta_account_today(ad_account_id)` — que por
+   dentro usa `connection.run_with_reconnect(op)` (F76/F77: sobrevive a
+   conexão asyncpg stale).
+2. Poucas linhas abaixo, pra pegar o metadado da conta:
+   `async with pool.acquire() as conn: account = await
+   meta_ad_accounts.get_by_id(conn, ad_account_id)` — `pool.acquire()` CRU,
+   sem `run_with_reconnect`.
+
+(`_meta_performance.py:81`+`90-91`; `meta_get_account_overview.py:103`+`113-114`;
+`meta_get_performance_breakdown.py:108`+`126-127`.)
+
+Metade do caminho resiste a reconexão, metade não: se o pool devolver uma
+conexão morta na segunda leitura, o request falha com um erro de infra não
+mapeado, no MESMO request em que a primeira leitura, um instante antes,
+resolveu sem problema. Mesma classe do F91 (reincidência de `pool.acquire()`
+cru em read quente e idempotente).
+
+**Não é regressão desta PR — é uma assimetria que ela tornou mais visível.**
+O `pool.acquire()` cru já existia (é como a tool sempre buscou o metadado da
+conta); o F165 acrescentou a PRIMEIRA leitura (`resolve_meta_account_today`)
+sem fundir as duas. O conserto óbvio — ler a conta UMA vez (via
+`run_with_reconnect`) e derivar `today` do mesmo objeto — muda a interface de
+`resolve_meta_account_today` e os três sítios de uma vez, e a decisão desta
+PR foi deliberada: mudança de interface numa onda de correção final não tem
+mais revisão de tarefa pra pegá-la. Fica registrado como ABERTO, não
+corrigido; pertence a uma tarefa própria, com sua própria revisão.
+
+**Fix candidato, não decidido:** `resolve_meta_account_today` (ou uma nova
+função ao lado dela) passaria a devolver a linha inteira (ou uma tupla
+`(account, today)`), lida uma vez via `run_with_reconnect`; os três sítios
+parariam de fazer o segundo `pool.acquire()`. Custa mudar a assinatura que o
+F165 acabou de estabelecer e os três call-sites que a consomem.

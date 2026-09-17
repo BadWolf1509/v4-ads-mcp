@@ -436,33 +436,26 @@ def test_get_account_overview_rejects_invalid_date_format():
 
 
 def test_every_mutate_builder_has_a_builder_test():
-    """Todo @register_builder DEVE ter um test_*_builder.py que importa/referencia
-    sua função. Anti-reincidência F50/F51 (Onda 2): os 10 builders update_*/negative
-    shiparam sem teste de execução — um campo proto / FieldMask / oneof errado passava
+    """Todo @register_builder DEVE ter um teste que o CHAME de verdade. Anti-
+    reincidência F50/F51 (Onda 2): os 10 builders update_*/negative shiparam
+    sem teste de execução — um campo proto / FieldMask / oneof errado passava
     a suíte e só falhava quando um gestor confirmava a mutação em produção.
 
     Complementa test_builder_tests_use_capture_client_not_magicmock (que garante a
     QUALIDADE do teste) com a EXISTÊNCIA do teste.
 
-    Escopo via `h.testes_py(unit_dir)` (recursivo — pega builder test que algum
-    dia mude de subpasta), com o MESMO filtro de nome de antes:
-    `test_*_builder.py`, **21** arquivos hoje. O harness entra pela dimensão de
-    escopo (recursivo, absoluto, com `EscopoVazioError`); a lógica de casamento
-    fica idêntica à pré-conversão, que é o que "preservando a semântica" quer
-    dizer.
-
-    **Por que o sufixo fica.** Este guard afirma EXISTÊNCIA ("todo builder tem
-    teste"), e o predicado é `fn.__name__ not in all_content`: alargar o
-    conjunto de arquivos lidos só pode fazer `missing` encolher, ou seja, torna
-    o guard mais PERMISSIVO. Uma conversão que tirou o `endswith` chegou a
-    varrer 212 arquivos em vez de 21 (medido em 2026-09-06); `missing` era
-    vazio nos dois escopos, então não houve perda viva, mas a mensagem do
-    assert passou a prometer o que o código não verificava mais, e afrouxar não
-    estava autorizado em spec, plano nem ledger. Restaurado na onda de correção
-    da revisão final. O aperto legítimo deste guard — trocar nome de arquivo
-    por predicado AST ("todo teste que chama um `build_*`") — está atribuído ao
-    PR 6 pela tabela 3.1.1 da spec, e é a mesma disciplina que a Ruling 8
-    aplicou ao guard irmão de MagicMock.
+    **O aperto (PR 6, tabela 3.1.1 #13 — mesma disciplina da Ruling 8 do guard
+    irmão de MagicMock).** A versão anterior varria só `test_*_builder.py` e
+    casava por SUBSTRING (`fn.__name__ not in all_content`, sobre o texto
+    concatenado desses arquivos): um teste real de um builder num arquivo com
+    outro nome nunca contava, E o nome da função bastava aparecer em QUALQUER
+    lugar do texto — um comentário, uma docstring, uma citação — sem chamada
+    nenhuma, pra contar como cobertura. As duas direções erram do mesmo jeito
+    que os outros 16 guards da tabela 3.1.1: a pergunta certa não é "o nome
+    aparece no arquivo certo", é "algum teste CHAMA a função" — casamento por
+    AST (`h.chama`, que resolve `Name`/`Attribute`/alias de import, nunca
+    substring), sobre TODO `tests/unit/*.py` (`h.testes_py`, recursivo, sem
+    filtro de nome).
     """
     import pathlib
 
@@ -471,19 +464,15 @@ def test_every_mutate_builder_has_a_builder_test():
     import_all_builders()
 
     unit_dir = pathlib.Path(__file__).resolve().parent
-    all_content = "\n".join(
-        p.read_text(encoding="utf-8")
-        for p in h.testes_py(unit_dir)
-        if p.name.startswith("test_") and p.name.endswith("_builder.py")
-    )
+    arvores = [h.arvore(p) for p in h.testes_py(unit_dir)]
 
     missing = sorted(
         op
         for op, fn in _BUILDERS.items()
-        if fn.__name__ not in all_content and op not in all_content
+        if not any(h.chama(arv, fn.__name__, arv=arv) for arv in arvores)
     )
 
     assert not missing, (
-        "Builders de mutate sem test_*_builder.py (classe F50/F51 — código de mutação "
-        "sem teste de execução):\n" + "\n".join(f"  {op}" for op in missing)
+        "Builders de mutate sem teste que os CHAME de verdade (classe F50/F51 — código "
+        "de mutação sem teste de execução):\n" + "\n".join(f"  {op}" for op in missing)
     )

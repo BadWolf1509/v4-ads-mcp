@@ -2,6 +2,16 @@
 
 from dataclasses import dataclass
 
+# Familia de throttle do Graph. Cada um e um limite DIFERENTE, e todos passam:
+#   4     — limite da aplicacao (app-level rate limit)
+#   17    — limite do usuario (user-level rate limit)
+#   613   — limite de chamadas do endpoint ("calls to this api have exceeded")
+#   80004 — limite especifico de ads management
+# Ate a PR 6 so o 4 (e o subcode 2635) eram reconhecidos; os outros tres caiam
+# no ramo generico com retryable=False, e um throttle de minutos chegava ao
+# gestor como falha permanente.
+CODIGOS_DE_THROTTLE = frozenset({4, 17, 613, 80004})
+
 
 @dataclass(slots=True, frozen=True)
 class MetaAdsFriendlyError(Exception):
@@ -30,7 +40,7 @@ def to_friendly_meta_error(e: Exception) -> MetaAdsFriendlyError:
                 "Sua conexão Meta expirou ou foi revogada. Reconecte via painel admin.",
                 retryable=False,
             )
-        if subcode == 2635 or code == 4:
+        if subcode == 2635 or code in CODIGOS_DE_THROTTLE:
             return MetaAdsFriendlyError(
                 "Limite Meta atingido. Tente novamente em alguns minutos.",
                 retryable=True,
