@@ -31,11 +31,20 @@ def _meta_env(monkeypatch):
 
 
 async def _seed_manager():
-    """Seed a bare manager (no Meta OAuth connection required in Modelo B)."""
+    """Seed an admin manager (no Meta OAuth connection required in Modelo B).
+
+    `role="admin"` — desde a Task 3 (fix `_require_admin` ausente),
+    `/oauth/meta/refresh-accounts` 403 pra gestor comum. Estes testes cobrem o
+    comportamento do refresh (paginação, upsert, no-auto-grant, 422 sem
+    token), não o guard de autorização — esse tem teste próprio em
+    `tests/unit/test_rotas_de_mutacao_tem_guard.py`.
+    """
     mid = uuid4()
     pool = connection.get_pool()
     async with pool.acquire() as conn:
-        await managers.create(conn, manager_id=mid, email="t@v4company.com", full_name="Tester")
+        await managers.create(
+            conn, manager_id=mid, email="t@v4company.com", full_name="Tester", role="admin"
+        )
     return mid
 
 
