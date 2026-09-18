@@ -69,7 +69,11 @@ Quatro ja tem motivo escrito (`FORA_COM_MOTIVO`). Dos sete restantes:
   quota. Comparam AGORA com um instante absoluto — nao derivam DATA de conta
   nenhuma, entao nao sao F141.
 - `src/db/repositories/managers.py`, `src/governance/dry_run.py`,
-  `src/web/routes.py`: carimbo de registro e de sessao, idem.
+  `src/web/routes/admin_invites.py` (carimbo de registro — idade do convite) e
+  `src/web/routes/sessions.py` (carimbo de sessao — "chamadas hoje" do
+  dashboard): idem. `src/web/routes.py` virou pacote na PR 5 (F171); os dois
+  arquivos acima sao os que de fato leem o relogio hoje — grep por
+  `datetime.now` ou `date.today` em `src/web/routes/` confirma.
 
 **A divida do gemeo Meta foi paga na PR 6.** Eram tres sitios (nao quatro: o
 primeiro serve sozinho o trio campaign/ad_set/ad_performance — tres sitios

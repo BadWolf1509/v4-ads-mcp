@@ -178,7 +178,7 @@ def test_pares_sombreados_tem_literal_antes_do_parametrico() -> None:
     qualquer troca de ordem que mude o casamento" — era falso enquanto só
     existia o teste de snapshot, porque `_tabela()` termina em
     `sorted(linhas, key=...)`: uma inversão completa da ordem de inclusão dos
-    9 módulos passa por ali em silêncio (medido na revisão: guard verde).
+    8 módulos passa por ali em silêncio (medido na revisão: guard verde).
     Este teste é o que torna a frase verdadeira — é o único que lê
     `_flatten` SEM ordenar.
 

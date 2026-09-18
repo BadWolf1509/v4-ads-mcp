@@ -17,8 +17,11 @@ Duas decisões medidas antes de escrever o casador (não assumidas):
    sugeria) falha com `ImportError` antes de examinar rota nenhuma.
 
 2. **O casador precisa olhar dependências E corpo da função — corpo não é
-   opcional.** `_require_admin` tem 25 call sites hoje e NENHUM é
-   `Depends(_require_admin)`: todas as rotas admin do painel chamam
+   opcional.** `_require_admin` tem 26 call sites hoje (25 em
+   `src/web/routes/admin_*.py` + 1 em `src/auth/meta_oauth.py`, que ganhou o
+   seu depois desta frase ter sido escrita — ver F172 em
+   `docs/operacao/findings-catalog.md`) e NENHUM é `Depends(_require_admin)`:
+   todas as rotas admin do painel chamam
    `_require_admin(user)` como primeira linha do corpo (padrão visível em
    `src/web/routes/admin_*.py`). Um casador que olha só
    `r.dependant.dependencies` (a lista de injeção do FastAPI) nunca vê essas
@@ -32,7 +35,7 @@ Duas decisões medidas antes de escrever o casador (não assumidas):
 
 Também medido: `app.routes` no nível superior expõe só `/mcp`, `/health`,
 `/docs` etc. como `APIRoute` puro — os três routers de verdade (`oauth`,
-`meta_oauth`, o `web_router` de 9 módulos) chegam envolvidos em
+`meta_oauth`, o `web_router` de 8 módulos) chegam envolvidos em
 `_IncludedRouter`, mesmo sem nenhum `prefix`/`dependencies` explícito nesta
 versão do FastAPI. `test_tabela_de_rotas_e_estavel.py` já resolveu esse
 problema (`_flatten`, via `effective_candidates()`) para `src.web.routes.router`
@@ -133,7 +136,12 @@ def test_toda_rota_post_do_painel_exige_admin_ou_tem_motivo() -> None:
             continue
         if "POST" not in r.methods:
             continue
-        if r.path.startswith("/mcp"):
+        # D4 (revisão da branch): igualdade literal, não prefixo — a PR que
+        # aboliu isenção de CSRF por prefixo (F106, F173) não pode reincidir
+        # no próprio guard que a protege. Task 4 mediu que só existe
+        # `POST /mcp`; um `POST /mcp/<algo>` futuro tem que ser examinado, não
+        # sair da varredura calado.
+        if r.path == "/mcp":
             continue
         examinadas += 1
         deps = {

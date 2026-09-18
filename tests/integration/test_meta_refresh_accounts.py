@@ -260,3 +260,7 @@ async def test_refresh_accounts_requires_admin(app_with_db):
     app_with_db.dependency_overrides.clear()
 
     assert resp.status_code == 403
+    # C (revisão da branch): CSRFOriginMiddleware também devolve 403 (hoje
+    # inerte aqui — httpx não manda Origin/Referer — mas o teste cuja função é
+    # provar o guard de admin precisa dizer QUAL 403 chegou.
+    assert resp.json()["detail"] == "Admin access required"

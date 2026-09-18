@@ -2,7 +2,7 @@
 
 Era um arquivo de 1839 linhas. O `router` agregado continua importável do mesmo
 lugar (`from src.web.routes import router`), então nenhum call-site externo
-mudou — o split é interno ao pacote. Nove módulos de rota mais `_shared.py`
+mudou — o split é interno ao pacote. Oito módulos de rota mais `_shared.py`
 pros helpers comuns (`oauth_panel.py` saiu na rodada 1 da Task 2: zero das 42
 rotas de `routes.py` era tela de conexão OAuth — as duas páginas OAuth do
 painel vivem em `src/auth/oauth.py`, fora do escopo deste split; ver o
