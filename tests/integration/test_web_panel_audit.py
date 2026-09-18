@@ -1,5 +1,7 @@
 """Web panel audit page tests."""
 
+import html
+import re
 from uuid import uuid4
 
 import pytest
@@ -203,6 +205,18 @@ async def test_audit_pagination_follows_cursor_across_pages(client: AsyncClient)
     FastAPI parsing `cursor_at`/`cursor_id` off a real querystring (datetime
     included) and the `cursor_pagination` macro emitting a working "Próxima"
     href — end to end, through the actual route.
+
+    Rodada 1 da Task 7, Achado 2: a versao anterior so conferia que a
+    substring `cursor_at=` aparecia em algum lugar do HTML — isso passa
+    mesmo com `| urlencode` quebrado ou ausente na macro, porque o literal
+    `cursor_at=` vem do texto fixo dela, ANTES do valor. E a pagina 2 era
+    buscada com um cursor obtido por chamada direta ao repositorio, nao pelo
+    `href` renderizado — a unica coisa que so ESTE teste (e nao
+    `test_audit_keyset.py`) poderia cobrir ficava sem asserção nenhuma.
+    Corrigido extraindo o `href` real do link "Próxima" via regex (mesmo
+    padrao de `tests/unit/test_web_static_caching.py`) e usando ESSE href
+    pra buscar a pagina 2 — fecha o caminho macro -> href -> querystring ->
+    parse (FastAPI) -> cursor.
     """
     pool = connection.get_pool()
     async with pool.acquire() as conn:
@@ -231,7 +245,13 @@ async def test_audit_pagination_follows_cursor_across_pages(client: AsyncClient)
     page1 = await client.get("/audit", cookies={PANEL_SESSION_COOKIE_NAME: cookie})
     assert page1.status_code == 200
     assert "Próxima" in page1.text
-    assert "cursor_at=" in page1.text, "o link real (nao so o texto) tem que estar no HTML"
+    # Extrai o href DE VERDADE do link "Proxima" — nao so confere que a
+    # substring "cursor_at=" aparece em algum lugar (isso passaria mesmo
+    # quebrado, ver docstring acima).
+    href_match = re.search(r'href="(/audit\?cursor_at=[^"]+)"', page1.text)
+    assert href_match is not None, "href do link 'Proxima' nao encontrado no HTML da pagina 1"
+    proxima_href = html.unescape(href_match.group(1))
+    assert "cursor_id=" in proxima_href, f"href sem cursor_id: {proxima_href}"
     # op_http_50 foi a ULTIMA inserida (maior id) -> primeira na ordenacao
     # DESC -> topo da pagina 1.
     assert "op_http_50" in page1.text
@@ -239,19 +259,11 @@ async def test_audit_pagination_follows_cursor_across_pages(client: AsyncClient)
     # unica linha que sobra pra pagina 2 (51 linhas, limite 50).
     assert "op_http_00" not in page1.text
 
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
-        _, next_cursor = await audit_log.list_page_for_manager(
-            conn, manager_id=mid, days=7, limit=50
-        )
-    assert next_cursor is not None, "51 linhas > limit 50: tem que sobrar cursor pra pagina 2"
-    cursor_occurred_at, cursor_id = next_cursor
-
-    page2 = await client.get(
-        "/audit",
-        params={"cursor_at": cursor_occurred_at.isoformat(), "cursor_id": cursor_id},
-        cookies={PANEL_SESSION_COOKIE_NAME: cookie},
-    )
+    # Busca a pagina 2 pelo href REAL extraido da pagina 1 — nao remontando a
+    # URL com um cursor obtido por fora (repositorio direto). So assim o
+    # teste cobre o caminho inteiro que so ele pode cobrir: macro -> href ->
+    # querystring -> parse -> cursor.
+    page2 = await client.get(proxima_href, cookies={PANEL_SESSION_COOKIE_NAME: cookie})
     assert page2.status_code == 200
     assert "op_http_00" in page2.text
     assert "op_http_50" not in page2.text

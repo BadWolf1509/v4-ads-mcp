@@ -174,8 +174,16 @@ async def test_keyset_query_usa_indice_nao_seq_scan(db):
     que substituiu — e isso so aparece medindo. Semeia volume realista (tabela
     pequena demais faz o Postgres preferir Seq Scan mesmo com indice
     disponivel, por ser mais barato de fato nesse tamanho) e roda EXPLAIN
-    ANALYZE na MESMA forma de WHERE que list_page_admin/list_page_for_manager
+    ANALYZE sobre a query REAL que list_page_admin/list_page_for_manager
     emitem — cursor preenchido (pagina >= 2 de verdade, nao a primeira).
+
+    Rodada 1 da Task 7, Achado 1: a primeira versao deste teste montava o
+    SELECT a mao, sem os JOINs que as duas funcoes de fato fazem
+    (`google_ads_accounts`, e no admin tambem `managers`) — o EXPLAIN media
+    uma query mais barata do que a que roda em producao. Corrigido puxando a
+    SQL de `_build_admin_page_sql`/`_build_manager_page_sql`, os MESMOS
+    helpers que `list_page_admin`/`list_page_for_manager` chamam — uma SQL
+    so, sem segunda copia pra divergir de novo.
     """
     pool = db
     async with pool.acquire() as conn:
@@ -221,41 +229,39 @@ async def test_keyset_query_usa_indice_nao_seq_scan(db):
 
         # list_page_admin: SEM filtro de manager_id — o caso que a migration
         # 010 nomeia explicitamente ("listagem geral do audit... sem filtrar
-        # por nenhuma das tres [manager_id, customer_id, platform]").
-        plano_admin = await conn.fetch(
-            """EXPLAIN (ANALYZE, BUFFERS)
-               SELECT al.id, al.occurred_at, al.action_type, al.operation,
-                      al.customer_id, al.target_count, al.status, al.duration_ms
-               FROM audit_log al
-               WHERE al.occurred_at > now() - ($1 || ' days')::interval
-                 AND ($2::timestamptz IS NULL OR (al.occurred_at, al.id) < ($2, $3))
-               ORDER BY al.occurred_at DESC, al.id DESC
-               LIMIT $4""",
-            "7",
-            cursor_row["occurred_at"],
-            cursor_row["id"],
-            51,
+        # por nenhuma das tres [manager_id, customer_id, platform]"). `limit=50`
+        # e o mesmo valor que src/web/routes/admin_audit.py passa de verdade;
+        # o builder converte pra LIMIT 51 internamente (peek-ahead).
+        sql_admin, params_admin = audit_log._build_admin_page_sql(
+            days=7,
+            manager_id=None,
+            customer_id=None,
+            action_type=None,
+            status=None,
+            cursor_occurred_at=cursor_row["occurred_at"],
+            cursor_id=cursor_row["id"],
+            limit=50,
         )
+        plano_admin = await conn.fetch(f"EXPLAIN (ANALYZE, BUFFERS) {sql_admin}", *params_admin)
         texto_admin = "\n".join(r["QUERY PLAN"] for r in plano_admin)
 
         # Mesma query, cursor NULL — a PRIMEIRA pagina (o caminho mais comum
         # na pratica: todo load de /audit ou /admin/audit sem clicar em
-        # "Proxima" cai aqui). O `$2 IS NULL OR` muda o formato da expressao;
+        # "Proxima" cai aqui). O `IS NULL OR` muda o formato da expressao;
         # confirma que o ramo NULL tambem usa o indice, nao só o ramo com
         # cursor preenchido testado acima.
+        sql_admin_p1, params_admin_p1 = audit_log._build_admin_page_sql(
+            days=7,
+            manager_id=None,
+            customer_id=None,
+            action_type=None,
+            status=None,
+            cursor_occurred_at=None,
+            cursor_id=None,
+            limit=50,
+        )
         plano_admin_pagina1 = await conn.fetch(
-            """EXPLAIN (ANALYZE, BUFFERS)
-               SELECT al.id, al.occurred_at, al.action_type, al.operation,
-                      al.customer_id, al.target_count, al.status, al.duration_ms
-               FROM audit_log al
-               WHERE al.occurred_at > now() - ($1 || ' days')::interval
-                 AND ($2::timestamptz IS NULL OR (al.occurred_at, al.id) < ($2, $3))
-               ORDER BY al.occurred_at DESC, al.id DESC
-               LIMIT $4""",
-            "7",
-            None,
-            None,
-            51,
+            f"EXPLAIN (ANALYZE, BUFFERS) {sql_admin_p1}", *params_admin_p1
         )
         texto_admin_pagina1 = "\n".join(r["QUERY PLAN"] for r in plano_admin_pagina1)
 
@@ -263,29 +269,27 @@ async def test_keyset_query_usa_indice_nao_seq_scan(db):
         # preferir idx_audit_manager_time (manager_id, occurred_at DESC), que
         # JA EXISTIA antes da migration 010 (001_initial_schema.sql) e tambem
         # cobre o filtro. O que importa pra este teste e NAO cair pra Seq Scan.
+        sql_manager, params_manager = audit_log._build_manager_page_sql(
+            manager_id=m1,
+            days=7,
+            customer_id=None,
+            action_type=None,
+            status=None,
+            cursor_occurred_at=cursor_row["occurred_at"],
+            cursor_id=cursor_row["id"],
+            limit=50,
+        )
         plano_manager = await conn.fetch(
-            """EXPLAIN (ANALYZE, BUFFERS)
-               SELECT al.id, al.occurred_at, al.action_type, al.operation,
-                      al.customer_id, al.target_count, al.status, al.duration_ms
-               FROM audit_log al
-               WHERE al.manager_id = $1
-                 AND al.occurred_at > now() - ($2 || ' days')::interval
-                 AND ($3::timestamptz IS NULL OR (al.occurred_at, al.id) < ($3, $4))
-               ORDER BY al.occurred_at DESC, al.id DESC
-               LIMIT $5""",
-            m1,
-            "7",
-            cursor_row["occurred_at"],
-            cursor_row["id"],
-            51,
+            f"EXPLAIN (ANALYZE, BUFFERS) {sql_manager}", *params_manager
         )
         texto_manager = "\n".join(r["QUERY PLAN"] for r in plano_manager)
 
     # Os 3 planos (mensagem de falha de cada assert abaixo carrega o texto
     # inteiro) tambem foram colados no relatorio da Task 7 — rodado uma vez,
-    # manualmente, contra este mesmo teste. Nao grava em disco daqui: caminho
-    # de scratchpad e por sessao, gravar um literal aqui quebraria em CI
-    # (Linux) e em qualquer outra maquina/sessao.
+    # manualmente, contra este mesmo teste, com os JOINs reais (rodada 1,
+    # Achado 1). Nao grava em disco daqui: caminho de scratchpad e por
+    # sessao, gravar um literal aqui quebraria em CI (Linux) e em qualquer
+    # outra maquina/sessao.
     assert "Seq Scan" not in texto_admin, f"scan sequencial na query global:\n{texto_admin}"
     assert "idx_audit_occurred_at" in texto_admin, (
         f"a query global (sem filtro de manager) tem que usar o indice que a "

@@ -267,6 +267,58 @@ async def list_for_manager(
     ]
 
 
+def _build_manager_page_sql(
+    *,
+    manager_id: UUID,
+    days: int,
+    customer_id: str | None,
+    action_type: str | None,
+    status: str | None,
+    cursor_occurred_at: datetime | None,
+    cursor_id: int | None,
+    limit: int,
+) -> tuple[str, list[Any]]:
+    """Builds the parameterized SELECT that `list_page_for_manager` runs.
+
+    Split out (Task 7, rodada 1, Achado 1) so a test can `EXPLAIN` the query
+    the route ACTUALLY executes — join with `google_ads_accounts` included —
+    instead of a hand-copied approximation that can silently drift from this
+    function. `list_page_for_manager` is the only other caller; there is no
+    second copy of this SQL to diverge from it.
+    """
+    where = ["al.manager_id = $1", "al.occurred_at > now() - ($2 || ' days')::interval"]
+    params: list[Any] = [manager_id, str(days)]
+    idx = 3
+    if action_type and action_type != "all":
+        where.append(f"al.action_type = ${idx}")
+        params.append(action_type)
+        idx += 1
+    if customer_id:
+        where.append(f"al.customer_id = ${idx}")
+        params.append(customer_id)
+        idx += 1
+    if status and status != "all":
+        where.append(f"al.status = ${idx}")
+        params.append(status)
+        idx += 1
+
+    cursor_at_idx = idx
+    where.append(
+        f"(${cursor_at_idx}::timestamptz IS NULL OR "
+        f"(al.occurred_at, al.id) < (${cursor_at_idx}, ${cursor_at_idx + 1}))"
+    )
+    params.extend([cursor_occurred_at, cursor_id, limit + 1])
+    limit_idx = cursor_at_idx + 2
+
+    sql = f"""SELECT al.*, a.descriptive_name AS account_name
+              FROM audit_log al LEFT JOIN google_ads_accounts a
+                ON a.customer_id = al.customer_id
+              WHERE {" AND ".join(where)}
+              ORDER BY al.occurred_at DESC, al.id DESC
+              LIMIT ${limit_idx}"""
+    return sql, params
+
+
 async def list_page_for_manager(
     conn: asyncpg.Connection,
     *,
@@ -304,63 +356,41 @@ async def list_page_for_manager(
     idiom `aplicar_limite()` (`src/mcp/tools/_common.py`) already uses for
     `ad_schedule`/`overview`/`recommendations`/`get_my_audit_log` — inlined
     here rather than imported, since a repository must not depend on the MCP
-    tools layer.
+    tools layer. The SQL itself lives in `_build_manager_page_sql` — see its
+    docstring for why it isn't inlined here anymore.
     """
-    where = ["al.manager_id = $1", "al.occurred_at > now() - ($2 || ' days')::interval"]
-    params: list[Any] = [manager_id, str(days)]
-    idx = 3
-    if action_type and action_type != "all":
-        where.append(f"al.action_type = ${idx}")
-        params.append(action_type)
-        idx += 1
-    if customer_id:
-        where.append(f"al.customer_id = ${idx}")
-        params.append(customer_id)
-        idx += 1
-    if status and status != "all":
-        where.append(f"al.status = ${idx}")
-        params.append(status)
-        idx += 1
-
-    cursor_at_idx = idx
-    where.append(
-        f"(${cursor_at_idx}::timestamptz IS NULL OR "
-        f"(al.occurred_at, al.id) < (${cursor_at_idx}, ${cursor_at_idx + 1}))"
+    sql, params = _build_manager_page_sql(
+        manager_id=manager_id,
+        days=days,
+        customer_id=customer_id,
+        action_type=action_type,
+        status=status,
+        cursor_occurred_at=cursor_occurred_at,
+        cursor_id=cursor_id,
+        limit=limit,
     )
-    params.extend([cursor_occurred_at, cursor_id, limit + 1])
-    limit_idx = cursor_at_idx + 2
-
-    sql = f"""SELECT al.*, a.descriptive_name AS account_name
-              FROM audit_log al LEFT JOIN google_ads_accounts a
-                ON a.customer_id = al.customer_id
-              WHERE {" AND ".join(where)}
-              ORDER BY al.occurred_at DESC, al.id DESC
-              LIMIT ${limit_idx}"""
     fetched = await conn.fetch(sql, *params)
     page = fetched[:limit]
     next_cursor = (page[-1]["occurred_at"], int(page[-1]["id"])) if len(fetched) > limit else None
     return [dict(r) for r in page], next_cursor
 
 
-async def list_page_admin(
-    conn: asyncpg.Connection,
+def _build_admin_page_sql(
     *,
-    days: int = 7,
-    manager_id: UUID | None = None,
-    customer_id: str | None = None,
-    action_type: str | None = None,
-    status: str | None = None,
-    cursor_occurred_at: datetime | None = None,
-    cursor_id: int | None = None,
-    limit: int = 50,
-) -> tuple[list[dict[str, Any]], tuple[datetime, int] | None]:
-    """Keyset page of the GLOBAL audit log (every gestor), for `GET /admin/audit`.
+    days: int,
+    manager_id: UUID | None,
+    customer_id: str | None,
+    action_type: str | None,
+    status: str | None,
+    cursor_occurred_at: datetime | None,
+    cursor_id: int | None,
+    limit: int,
+) -> tuple[str, list[Any]]:
+    """Builds the parameterized SELECT that `list_page_admin` runs.
 
-    Same seek strategy as `list_page_for_manager` — see its docstring for why
-    keyset replaces OFFSET. The difference here is shape, not mechanism:
-    `manager_id` is an optional FILTER (an admin may look at any gestor's
-    rows, or all of them), not a scope, and the SELECT/JOIN mirror what the
-    admin table shows (gestor e-mail, no per-row dry_run/params_summary).
+    Split out for the same reason as `_build_manager_page_sql` (Task 7,
+    rodada 1, Achado 1) — see its docstring. `list_page_admin` is the only
+    other caller.
     """
     where = ["al.occurred_at > now() - ($1 || ' days')::interval"]
     params: list[Any] = [str(days)]
@@ -400,6 +430,40 @@ async def list_page_admin(
               WHERE {" AND ".join(where)}
               ORDER BY al.occurred_at DESC, al.id DESC
               LIMIT ${limit_idx}"""
+    return sql, params
+
+
+async def list_page_admin(
+    conn: asyncpg.Connection,
+    *,
+    days: int = 7,
+    manager_id: UUID | None = None,
+    customer_id: str | None = None,
+    action_type: str | None = None,
+    status: str | None = None,
+    cursor_occurred_at: datetime | None = None,
+    cursor_id: int | None = None,
+    limit: int = 50,
+) -> tuple[list[dict[str, Any]], tuple[datetime, int] | None]:
+    """Keyset page of the GLOBAL audit log (every gestor), for `GET /admin/audit`.
+
+    Same seek strategy as `list_page_for_manager` — see its docstring for why
+    keyset replaces OFFSET. The difference here is shape, not mechanism:
+    `manager_id` is an optional FILTER (an admin may look at any gestor's
+    rows, or all of them), not a scope, and the SELECT/JOIN mirror what the
+    admin table shows (gestor e-mail, no per-row dry_run/params_summary). The
+    SQL itself lives in `_build_admin_page_sql`.
+    """
+    sql, params = _build_admin_page_sql(
+        days=days,
+        manager_id=manager_id,
+        customer_id=customer_id,
+        action_type=action_type,
+        status=status,
+        cursor_occurred_at=cursor_occurred_at,
+        cursor_id=cursor_id,
+        limit=limit,
+    )
     fetched = await conn.fetch(sql, *params)
     page = fetched[:limit]
     next_cursor = (page[-1]["occurred_at"], int(page[-1]["id"])) if len(fetched) > limit else None
