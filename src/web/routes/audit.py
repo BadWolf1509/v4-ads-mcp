@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 
 from src.db import connection
-from src.db.repositories import manager_account_access
+from src.db.repositories import audit_log, manager_account_access
 from src.web.deps import CurrentUser, current_manager
 from src.web.routes._shared import templates
 
@@ -25,46 +25,39 @@ async def audit(
     customer_id: str | None = None,
     status: str = "all",
     days: int = 7,
-    page: int = 1,
+    cursor_at: datetime | None = None,
+    cursor_id: int | None = None,
 ) -> HTMLResponse:
-    page_size = 50
-    offset = (page - 1) * page_size
+    limit = 50
+    # Um cursor so faz sentido inteiro — metade dele nao ancora a tupla
+    # (WHERE ($1 IS NULL OR (occurred_at, id) < ($1, $2)) com $2 NULL nao
+    # bate nenhuma linha, silenciosamente). Normaliza pra "sem cursor" em vez
+    # de propagar um estado que o SQL nao consegue expressar.
+    if cursor_at is None or cursor_id is None:
+        cursor_at = None
+        cursor_id = None
+    is_first_page = cursor_at is None
 
     # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
-    async def _load(conn: asyncpg.Connection) -> tuple[list[Any], int, list[asyncpg.Record]]:
+    async def _load(
+        conn: asyncpg.Connection,
+    ) -> tuple[list[Any], list[dict[str, Any]], tuple[datetime, int] | None]:
         accounts = await manager_account_access.list_accounts_for_manager(conn, user.id)
+        rows, next_cursor = await audit_log.list_page_for_manager(
+            conn,
+            manager_id=user.id,
+            days=days,
+            customer_id=customer_id,
+            action_type=action_type,
+            status=status,
+            cursor_occurred_at=cursor_at,
+            cursor_id=cursor_id,
+            limit=limit,
+        )
+        return accounts, rows, next_cursor
 
-        # Build dynamic WHERE
-        where = ["al.manager_id = $1", "al.occurred_at > now() - ($2 || ' days')::interval"]
-        params: list[Any] = [user.id, str(days)]
-        idx = 3
-        if action_type != "all":
-            where.append(f"al.action_type = ${idx}")
-            params.append(action_type)
-            idx += 1
-        if customer_id:
-            where.append(f"al.customer_id = ${idx}")
-            params.append(customer_id)
-            idx += 1
-        if status != "all":
-            where.append(f"al.status = ${idx}")
-            params.append(status)
-            idx += 1
-
-        count_sql = f"SELECT count(*) FROM audit_log al WHERE {' AND '.join(where)}"
-        total = await conn.fetchval(count_sql, *params) or 0
-        total_pages = max(1, (total + page_size - 1) // page_size)
-
-        rows_sql = f"""SELECT al.*, a.descriptive_name AS account_name
-                       FROM audit_log al LEFT JOIN google_ads_accounts a
-                         ON a.customer_id = al.customer_id
-                       WHERE {" AND ".join(where)}
-                       ORDER BY al.occurred_at DESC, al.id DESC LIMIT ${idx} OFFSET ${idx + 1}"""
-        params_with_pagination = params + [page_size, offset]
-        rows = await conn.fetch(rows_sql, *params_with_pagination)
-        return accounts, total_pages, rows
-
-    accounts, total_pages, rows = await connection.run_with_reconnect(_load)
+    accounts, rows, next_cursor = await connection.run_with_reconnect(_load)
+    next_cursor_at, next_cursor_id = next_cursor if next_cursor else (None, None)
 
     # Group by day for sticky day headers
     grouped: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
@@ -77,7 +70,7 @@ async def audit(
             label = "Ontem"
         else:
             label = d.strftime("%d/%m/%Y")
-        grouped.setdefault(label, []).append(dict(r))
+        grouped.setdefault(label, []).append(r)
 
     # Preserve query string for CSV export link
     qparts = []
@@ -101,8 +94,9 @@ async def audit(
             "filter_customer_id": customer_id,
             "filter_status": status,
             "filter_days": days,
-            "current_page": page,
-            "total_pages": total_pages,
+            "next_cursor_at": next_cursor_at.isoformat() if next_cursor_at else None,
+            "next_cursor_id": next_cursor_id,
+            "is_first_page": is_first_page,
             "query_string": query_string,
         },
     )

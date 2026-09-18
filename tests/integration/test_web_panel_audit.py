@@ -194,3 +194,67 @@ async def test_audit_export_csv_filters_by_status(client: AsyncClient):
     assert response.status_code == 200
     assert "op_error_one" in response.text
     assert "op_success_one" not in response.text
+
+
+@pytest.mark.integration
+async def test_audit_pagination_follows_cursor_across_pages(client: AsyncClient):
+    """Task 7 (PR 5): HTTP round-trip of the keyset cursor, not just the repo
+    call in isolation. Exercises the part `test_audit_keyset.py` doesn't —
+    FastAPI parsing `cursor_at`/`cursor_id` off a real querystring (datetime
+    included) and the `cursor_pagination` macro emitting a working "Próxima"
+    href — end to end, through the actual route.
+    """
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        mid = uuid4()
+        await managers.create(
+            conn, manager_id=mid, email="cursor-http@v4company.com", full_name=None
+        )
+        # 51 > limit (50) da rota: so assim existe uma pagina 2 de verdade e o
+        # link "Proxima" aparece. Uma unica transacao -> occurred_at empatado
+        # nas 51 (F98/F88); a ordem fica so por id.
+        async with conn.transaction():
+            for i in range(51):
+                await conn.execute(
+                    "INSERT INTO audit_log (manager_id, action_type, operation, status, occurred_at) "
+                    "VALUES ($1, 'read', $2, 'success', now())",
+                    mid,
+                    f"op_http_{i:02d}",
+                )
+
+    cookie = sign_panel_session(
+        manager_id=str(mid),
+        email="cursor-http@v4company.com",
+        signing_key=_SIGNING_KEY,
+        aud="panel",
+    )
+    page1 = await client.get("/audit", cookies={PANEL_SESSION_COOKIE_NAME: cookie})
+    assert page1.status_code == 200
+    assert "Próxima" in page1.text
+    assert "cursor_at=" in page1.text, "o link real (nao so o texto) tem que estar no HTML"
+    # op_http_50 foi a ULTIMA inserida (maior id) -> primeira na ordenacao
+    # DESC -> topo da pagina 1.
+    assert "op_http_50" in page1.text
+    # op_http_00 foi a PRIMEIRA inserida (menor id) -> ultima na ordenacao ->
+    # unica linha que sobra pra pagina 2 (51 linhas, limite 50).
+    assert "op_http_00" not in page1.text
+
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        _, next_cursor = await audit_log.list_page_for_manager(
+            conn, manager_id=mid, days=7, limit=50
+        )
+    assert next_cursor is not None, "51 linhas > limit 50: tem que sobrar cursor pra pagina 2"
+    cursor_occurred_at, cursor_id = next_cursor
+
+    page2 = await client.get(
+        "/audit",
+        params={"cursor_at": cursor_occurred_at.isoformat(), "cursor_id": cursor_id},
+        cookies={PANEL_SESSION_COOKIE_NAME: cookie},
+    )
+    assert page2.status_code == 200
+    assert "op_http_00" in page2.text
+    assert "op_http_50" not in page2.text
+    # Ultima pagina: sem mais linhas, o botao "Proxima" deve vir desabilitado
+    # (sem href), nao um link pra um cursor que nao existe.
+    assert "cursor_at=" not in page2.text

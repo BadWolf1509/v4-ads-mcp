@@ -3,6 +3,7 @@
 import csv
 import io
 from collections.abc import AsyncIterator
+from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -264,3 +265,142 @@ async def list_for_manager(
         }
         for r in rows
     ]
+
+
+async def list_page_for_manager(
+    conn: asyncpg.Connection,
+    *,
+    manager_id: UUID,
+    days: int = 7,
+    customer_id: str | None = None,
+    action_type: str | None = None,
+    status: str | None = None,
+    cursor_occurred_at: datetime | None = None,
+    cursor_id: int | None = None,
+    limit: int = 50,
+) -> tuple[list[dict[str, Any]], tuple[datetime, int] | None]:
+    """Keyset ("seek") page of one manager's own audit rows, for `GET /audit`.
+
+    Task 7 (PR 5): replaces `LIMIT/OFFSET`. Frente 6 already shipped the
+    stable tie-break this seeks on (`ORDER BY occurred_at DESC, id DESC`,
+    covered end-to-end by migration 010's `idx_audit_occurred_at`). `OFFSET n`
+    makes Postgres scan-and-discard the first n rows on every page — cost
+    that grows with depth — and it SLIDES when a row is inserted mid-
+    navigation: page 2 silently repeats whatever page 1 already showed,
+    because the n-th row from the top moved. Seeking off `(occurred_at, id)
+    < (cursor_occurred_at, cursor_id)` anchors on the last row the caller
+    actually saw, so it neither scans the skipped rows nor slides.
+
+    cursor_occurred_at/cursor_id: the `(occurred_at, id)` of the last row on
+    the PREVIOUS page, or both None for the first page. Pass both or neither —
+    a lone cursor_id can't anchor a tuple seek and is treated as "no cursor"
+    by the caller (the two route call-sites normalize this before calling in).
+
+    Returns (rows, next_cursor). `rows` has at most `limit` items, newest
+    first. `next_cursor` is `(occurred_at, id)` of the last row, to pass back
+    for the next page — or None when this page reached the end. Detecting
+    "reached the end" without a separate COUNT(*) needs a sentinel row: this
+    asks the DB for `limit + 1` and trims to `limit`, the same peek-ahead
+    idiom `aplicar_limite()` (`src/mcp/tools/_common.py`) already uses for
+    `ad_schedule`/`overview`/`recommendations`/`get_my_audit_log` — inlined
+    here rather than imported, since a repository must not depend on the MCP
+    tools layer.
+    """
+    where = ["al.manager_id = $1", "al.occurred_at > now() - ($2 || ' days')::interval"]
+    params: list[Any] = [manager_id, str(days)]
+    idx = 3
+    if action_type and action_type != "all":
+        where.append(f"al.action_type = ${idx}")
+        params.append(action_type)
+        idx += 1
+    if customer_id:
+        where.append(f"al.customer_id = ${idx}")
+        params.append(customer_id)
+        idx += 1
+    if status and status != "all":
+        where.append(f"al.status = ${idx}")
+        params.append(status)
+        idx += 1
+
+    cursor_at_idx = idx
+    where.append(
+        f"(${cursor_at_idx}::timestamptz IS NULL OR "
+        f"(al.occurred_at, al.id) < (${cursor_at_idx}, ${cursor_at_idx + 1}))"
+    )
+    params.extend([cursor_occurred_at, cursor_id, limit + 1])
+    limit_idx = cursor_at_idx + 2
+
+    sql = f"""SELECT al.*, a.descriptive_name AS account_name
+              FROM audit_log al LEFT JOIN google_ads_accounts a
+                ON a.customer_id = al.customer_id
+              WHERE {" AND ".join(where)}
+              ORDER BY al.occurred_at DESC, al.id DESC
+              LIMIT ${limit_idx}"""
+    fetched = await conn.fetch(sql, *params)
+    page = fetched[:limit]
+    next_cursor = (page[-1]["occurred_at"], int(page[-1]["id"])) if len(fetched) > limit else None
+    return [dict(r) for r in page], next_cursor
+
+
+async def list_page_admin(
+    conn: asyncpg.Connection,
+    *,
+    days: int = 7,
+    manager_id: UUID | None = None,
+    customer_id: str | None = None,
+    action_type: str | None = None,
+    status: str | None = None,
+    cursor_occurred_at: datetime | None = None,
+    cursor_id: int | None = None,
+    limit: int = 50,
+) -> tuple[list[dict[str, Any]], tuple[datetime, int] | None]:
+    """Keyset page of the GLOBAL audit log (every gestor), for `GET /admin/audit`.
+
+    Same seek strategy as `list_page_for_manager` — see its docstring for why
+    keyset replaces OFFSET. The difference here is shape, not mechanism:
+    `manager_id` is an optional FILTER (an admin may look at any gestor's
+    rows, or all of them), not a scope, and the SELECT/JOIN mirror what the
+    admin table shows (gestor e-mail, no per-row dry_run/params_summary).
+    """
+    where = ["al.occurred_at > now() - ($1 || ' days')::interval"]
+    params: list[Any] = [str(days)]
+    idx = 2
+    if manager_id:
+        where.append(f"al.manager_id = ${idx}")
+        params.append(manager_id)
+        idx += 1
+    if customer_id:
+        where.append(f"al.customer_id = ${idx}")
+        params.append(customer_id)
+        idx += 1
+    if action_type and action_type != "all":
+        where.append(f"al.action_type = ${idx}")
+        params.append(action_type)
+        idx += 1
+    if status and status != "all":
+        where.append(f"al.status = ${idx}")
+        params.append(status)
+        idx += 1
+
+    cursor_at_idx = idx
+    where.append(
+        f"(${cursor_at_idx}::timestamptz IS NULL OR "
+        f"(al.occurred_at, al.id) < (${cursor_at_idx}, ${cursor_at_idx + 1}))"
+    )
+    params.extend([cursor_occurred_at, cursor_id, limit + 1])
+    limit_idx = cursor_at_idx + 2
+
+    sql = f"""SELECT al.id, al.occurred_at, al.action_type, al.operation,
+                     al.customer_id, al.target_count, al.status, al.duration_ms,
+                     m.email AS manager_email,
+                     gaa.descriptive_name AS account_name
+              FROM audit_log al
+              LEFT JOIN managers m ON m.id = al.manager_id
+              LEFT JOIN google_ads_accounts gaa ON gaa.customer_id = al.customer_id
+              WHERE {" AND ".join(where)}
+              ORDER BY al.occurred_at DESC, al.id DESC
+              LIMIT ${limit_idx}"""
+    fetched = await conn.fetch(sql, *params)
+    page = fetched[:limit]
+    next_cursor = (page[-1]["occurred_at"], int(page[-1]["id"])) if len(fetched) > limit else None
+    return [dict(r) for r in page], next_cursor

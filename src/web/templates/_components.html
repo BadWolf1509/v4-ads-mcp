@@ -92,19 +92,23 @@
   {%- endif -%}
 {% endmacro %}
 
-{% macro pagination(current, total, base_url, query_param="page", query_string="") %}
-  {%- if total > 1 -%}
+{% macro cursor_pagination(base_url, next_cursor_at, next_cursor_id, is_first_page, query_string="") %}
+{#
+  Keyset ("seek") pagination — ver src/db/repositories/audit_log.py e a Task 7
+  em docs/superpowers/plans/2026-09-17-pr5-painel.md. Sem OFFSET nao ha como
+  pular pra uma pagina arbitraria, entao so existe "proxima" de verdade: o
+  cursor e a ultima linha vista, nao um numero. "Inicio" reseta o cursor;
+  paginas ja vistas ficam a um "voltar" do navegador — cada "Proxima" e uma
+  navegacao real, com URL propria, o navegador guarda o historico.
+#}
+  {%- if next_cursor_at is not none or not is_first_page -%}
   <nav class="v4-pagination" aria-label="Paginação">
-    <span class="v4-pagination__info">Página {{ current }} de {{ total }}</span>
-    {% set prev = current - 1 %}
-    {% set next = current + 1 %}
-    {%- if prev >= 1 -%}
-      <a class="v4-pagination__btn" href="{{ base_url }}?{{ query_param }}={{ prev }}{% if query_string %}&{{ query_string }}{% endif %}">‹ Anterior</a>
-    {%- else -%}
-      <button class="v4-pagination__btn" disabled>‹ Anterior</button>
+    <span class="v4-pagination__info">Mais recentes primeiro</span>
+    {%- if not is_first_page -%}
+      <a class="v4-pagination__btn" href="{{ base_url }}{% if query_string %}?{{ query_string }}{% endif %}">‹ Início</a>
     {%- endif -%}
-    {%- if next <= total -%}
-      <a class="v4-pagination__btn" href="{{ base_url }}?{{ query_param }}={{ next }}{% if query_string %}&{{ query_string }}{% endif %}">Próxima ›</a>
+    {%- if next_cursor_at is not none -%}
+      <a class="v4-pagination__btn" href="{{ base_url }}?cursor_at={{ next_cursor_at | urlencode }}&cursor_id={{ next_cursor_id }}{% if query_string %}&{{ query_string }}{% endif %}">Próxima ›</a>
     {%- else -%}
       <button class="v4-pagination__btn" disabled>Próxima ›</button>
     {%- endif -%}

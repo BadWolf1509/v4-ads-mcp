@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 
 from src.db import connection
-from src.db.repositories import google_ads_accounts
+from src.db.repositories import audit_log, google_ads_accounts
 from src.web.deps import CurrentUser, current_manager, pending_invites_count
 from src.web.routes._shared import _require_admin, templates
 
@@ -26,62 +26,48 @@ async def admin_audit(
     action_type: str = "all",
     status: str = "all",
     days: int = 7,
-    page: int = 1,
+    cursor_at: datetime | None = None,
+    cursor_id: int | None = None,
 ) -> HTMLResponse:
     _require_admin(user)
 
-    page_size = 50
-    offset = (page - 1) * page_size
+    limit = 50
+    # Um cursor so faz sentido inteiro (ver mesma nota em routes/audit.py) —
+    # metade dele nao ancora a tupla, so faz o WHERE nao bater linha nenhuma.
+    if cursor_at is None or cursor_id is None:
+        cursor_at = None
+        cursor_id = None
+    is_first_page = cursor_at is None
 
     # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
     async def _load(
         conn: asyncpg.Connection,
     ) -> tuple[
-        int, list[asyncpg.Record], list[asyncpg.Record], list[google_ads_accounts.GoogleAdsAccount]
+        list[dict[str, Any]],
+        tuple[datetime, int] | None,
+        list[asyncpg.Record],
+        list[google_ads_accounts.GoogleAdsAccount],
     ]:
-        where = ["al.occurred_at > now() - ($1 || ' days')::interval"]
-        params: list[Any] = [str(days)]
-        idx = 2
-        if manager_id:
-            where.append(f"al.manager_id = ${idx}")
-            params.append(UUID(manager_id))
-            idx += 1
-        if customer_id:
-            where.append(f"al.customer_id = ${idx}")
-            params.append(customer_id)
-            idx += 1
-        if action_type != "all":
-            where.append(f"al.action_type = ${idx}")
-            params.append(action_type)
-            idx += 1
-        if status != "all":
-            where.append(f"al.status = ${idx}")
-            params.append(status)
-            idx += 1
-
-        count_sql = f"SELECT count(*) FROM audit_log al WHERE {' AND '.join(where)}"
-        total = await conn.fetchval(count_sql, *params) or 0
-        total_pages = max(1, (total + page_size - 1) // page_size)
-
-        rows_sql = f"""SELECT al.id, al.occurred_at, al.action_type, al.operation,
-                              al.customer_id, al.target_count, al.status, al.duration_ms,
-                              m.email AS manager_email,
-                              gaa.descriptive_name AS account_name
-                       FROM audit_log al
-                       LEFT JOIN managers m ON m.id = al.manager_id
-                       LEFT JOIN google_ads_accounts gaa ON gaa.customer_id = al.customer_id
-                       WHERE {" AND ".join(where)}
-                       ORDER BY al.occurred_at DESC, al.id DESC LIMIT ${idx} OFFSET ${idx + 1}"""
-        params_with_pagination = params + [page_size, offset]
-        rows = await conn.fetch(rows_sql, *params_with_pagination)
+        rows, next_cursor = await audit_log.list_page_admin(
+            conn,
+            days=days,
+            manager_id=UUID(manager_id) if manager_id else None,
+            customer_id=customer_id,
+            action_type=action_type,
+            status=status,
+            cursor_occurred_at=cursor_at,
+            cursor_id=cursor_id,
+            limit=limit,
+        )
 
         managers_rows = await conn.fetch(
             "SELECT id, email FROM managers WHERE is_active = true ORDER BY email"
         )
         accs = await google_ads_accounts.list_all(conn)
-        return total_pages, rows, managers_rows, accs
+        return rows, next_cursor, managers_rows, accs
 
-    total_pages, rows, managers_rows, accs = await connection.run_with_reconnect(_load)
+    rows, next_cursor, managers_rows, accs = await connection.run_with_reconnect(_load)
+    next_cursor_at, next_cursor_id = next_cursor if next_cursor else (None, None)
 
     # Build query_string for CSV export link
     qparts = []
@@ -102,7 +88,7 @@ async def admin_audit(
         "admin/audit.html",
         {
             "current_user": user,
-            "rows": [dict(r) for r in rows],
+            "rows": rows,
             "managers_list": [dict(r) for r in managers_rows],
             "accounts": accs,
             "filter_manager_id": manager_id or "",
@@ -110,8 +96,9 @@ async def admin_audit(
             "filter_action_type": action_type,
             "filter_status": status,
             "filter_days": days,
-            "current_page": page,
-            "total_pages": total_pages,
+            "next_cursor_at": next_cursor_at.isoformat() if next_cursor_at else None,
+            "next_cursor_id": next_cursor_id,
+            "is_first_page": is_first_page,
             "query_string": query_string,
             "pending_invites_count": pending,
         },
