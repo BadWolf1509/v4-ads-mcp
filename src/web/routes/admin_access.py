@@ -2,6 +2,7 @@
 
 from uuid import UUID
 
+import asyncpg
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
@@ -30,8 +31,13 @@ async def admin_access(
     user: CurrentUser = Depends(current_manager),  # noqa: B008
 ) -> HTMLResponse:
     _require_admin(user)
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
+
+    # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
+    async def _load(
+        conn: asyncpg.Connection,
+    ) -> tuple[
+        list[asyncpg.Record], list[google_ads_accounts.GoogleAdsAccount], list[asyncpg.Record]
+    ]:
         managers_rows = await conn.fetch(
             "SELECT id, email, full_name, role FROM managers WHERE is_active = true ORDER BY email"
         )
@@ -42,6 +48,9 @@ async def admin_access(
         access_rows = await conn.fetch(
             "SELECT manager_id, customer_id FROM manager_account_access WHERE revoked_at IS NULL"
         )
+        return managers_rows, accs, access_rows
+
+    managers_rows, accs, access_rows = await connection.run_with_reconnect(_load)
     # Build set of (manager_id, customer_id) for quick lookup
     access_set = {(str(r["manager_id"]), r["customer_id"]) for r in access_rows}
     pending = await pending_invites_count()
@@ -65,8 +74,11 @@ async def admin_access_meta(
     user: CurrentUser = Depends(current_manager),  # noqa: B008
 ) -> HTMLResponse:
     _require_admin(user)
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
+
+    # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
+    async def _load(
+        conn: asyncpg.Connection,
+    ) -> tuple[list[asyncpg.Record], list[meta_ad_accounts.MetaAdAccount], list[asyncpg.Record]]:
         managers_rows = await conn.fetch(
             "SELECT id, email, full_name, role FROM managers WHERE is_active = true ORDER BY email"
         )
@@ -75,6 +87,9 @@ async def admin_access_meta(
             "SELECT manager_id, ad_account_id FROM manager_meta_account_access "
             "WHERE revoked_at IS NULL"
         )
+        return managers_rows, accounts, access_rows
+
+    managers_rows, accounts, access_rows = await connection.run_with_reconnect(_load)
     access_set = {(str(r["manager_id"]), r["ad_account_id"]) for r in access_rows}
     pending = await pending_invites_count()
     return templates.TemplateResponse(
@@ -217,8 +232,9 @@ async def admin_access_meta_by_manager(
     user: CurrentUser = Depends(current_manager),  # noqa: B008
 ) -> HTMLResponse:
     _require_admin(user)
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
+
+    # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
+    async def _load(conn: asyncpg.Connection) -> tuple[list[asyncpg.Record], int]:
         # I1 (fix round 1): revoked_at entra na CONDICAO do LEFT JOIN, nao no
         # WHERE — WHERE excluiria o gestor inteiro (LEFT vira INNER na pratica)
         # quando todos os grants dele estao revogados, e ele tem que continuar
@@ -241,7 +257,10 @@ async def admin_access_meta_by_manager(
         total_accounts = (
             await conn.fetchval("SELECT count(*) FROM meta_ad_accounts WHERE is_active = true") or 0
         )
-    # F92: FORA do `async with` — este helper abre a propria conexao, e
+        return managers_with_counts, total_accounts
+
+    managers_with_counts, total_accounts = await connection.run_with_reconnect(_load)
+    # F92: fora do bloco de conexão — este helper abre a propria conexao, e
     # segurar uma e esperar por outra trava pra sempre com o pool cheio.
     pending = await pending_invites_count()
     return templates.TemplateResponse(
@@ -267,8 +286,13 @@ async def admin_access_meta_manager_detail(
         parsed_manager_id = UUID(manager_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="Gestor not found") from None
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
+
+    # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
+    # `HTTPException` (mgr_row ausente) propaga direto: run_with_reconnect só
+    # retenta erro de conexão morta, nunca erro de aplicação.
+    async def _load(
+        conn: asyncpg.Connection,
+    ) -> tuple[asyncpg.Record, list[meta_ad_accounts.MetaAdAccount], set[str]]:
         mgr_row = await conn.fetchrow(
             "SELECT id, email, full_name FROM managers WHERE id = $1", parsed_manager_id
         )
@@ -281,7 +305,10 @@ async def admin_access_meta_manager_detail(
             parsed_manager_id,
         )
         access_set = {r["ad_account_id"] for r in access_rows}
-    # F92: FORA do `async with` — este helper abre a propria conexao, e
+        return mgr_row, accs, access_set
+
+    mgr_row, accs, access_set = await connection.run_with_reconnect(_load)
+    # F92: fora do bloco de conexão — este helper abre a propria conexao, e
     # segurar uma e esperar por outra trava pra sempre com o pool cheio.
     pending = await pending_invites_count()
     return templates.TemplateResponse(
@@ -362,8 +389,9 @@ async def admin_access_by_manager(
     user: CurrentUser = Depends(current_manager),  # noqa: B008
 ) -> HTMLResponse:
     _require_admin(user)
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
+
+    # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
+    async def _load(conn: asyncpg.Connection) -> tuple[list[asyncpg.Record], int]:
         # Revisão final (item 1): numerador e denominador tem que viver no
         # MESMO universo. O I4 abaixo corrigiu só o denominador — o numerador
         # cru (`count(maa.customer_id)`) continuava contando grant vivo em
@@ -395,7 +423,10 @@ async def admin_access_by_manager(
             await conn.fetchval("SELECT count(*) FROM google_ads_accounts WHERE is_active = true")
             or 0
         )
-    # F92: FORA do `async with` — este helper abre a propria conexao, e
+        return managers_with_counts, total_accounts
+
+    managers_with_counts, total_accounts = await connection.run_with_reconnect(_load)
+    # F92: fora do bloco de conexão — este helper abre a propria conexao, e
     # segurar uma e esperar por outra trava pra sempre com o pool cheio.
     pending = await pending_invites_count()
     return templates.TemplateResponse(
@@ -421,8 +452,13 @@ async def admin_access_manager_detail(
         parsed_manager_id = UUID(manager_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="Gestor not found") from None
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
+
+    # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
+    # `HTTPException` (mgr_row ausente) propaga direto: run_with_reconnect só
+    # retenta erro de conexão morta, nunca erro de aplicação.
+    async def _load(
+        conn: asyncpg.Connection,
+    ) -> tuple[asyncpg.Record, list[google_ads_accounts.GoogleAdsAccount], set[str]]:
         mgr_row = await conn.fetchrow(
             "SELECT id, email, full_name FROM managers WHERE id = $1", parsed_manager_id
         )
@@ -439,7 +475,10 @@ async def admin_access_manager_detail(
             parsed_manager_id,
         )
         access_set = {r["customer_id"] for r in access_rows}
-    # F92: FORA do `async with` — este helper abre a propria conexao, e
+        return mgr_row, accs, access_set
+
+    mgr_row, accs, access_set = await connection.run_with_reconnect(_load)
+    # F92: fora do bloco de conexão — este helper abre a propria conexao, e
     # segurar uma e esperar por outra trava pra sempre com o pool cheio.
     pending = await pending_invites_count()
     return templates.TemplateResponse(

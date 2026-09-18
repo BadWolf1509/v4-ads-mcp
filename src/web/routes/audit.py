@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 
@@ -29,8 +30,8 @@ async def audit(
     page_size = 50
     offset = (page - 1) * page_size
 
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
+    # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
+    async def _load(conn: asyncpg.Connection) -> tuple[list[Any], int, list[asyncpg.Record]]:
         accounts = await manager_account_access.list_accounts_for_manager(conn, user.id)
 
         # Build dynamic WHERE
@@ -61,6 +62,9 @@ async def audit(
                        ORDER BY al.occurred_at DESC, al.id DESC LIMIT ${idx} OFFSET ${idx + 1}"""
         params_with_pagination = params + [page_size, offset]
         rows = await conn.fetch(rows_sql, *params_with_pagination)
+        return accounts, total_pages, rows
+
+    accounts, total_pages, rows = await connection.run_with_reconnect(_load)
 
     # Group by day for sticky day headers
     grouped: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
@@ -145,13 +149,16 @@ async def audit_detail(
     user: CurrentUser = Depends(current_manager),  # noqa: B008
 ) -> HTMLResponse:
     """Audit event detail. audit_log.id is BIGSERIAL (int), not UUID."""
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
+
+    # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
+    async def _load(conn: asyncpg.Connection) -> dict[str, Any] | None:
         from src.db.repositories import audit_log
 
         # Gestores see only their own; admins see any
         scope_id = None if user.is_admin else user.id
-        event = await audit_log.get_by_id(conn, audit_id=audit_id, manager_id=scope_id)
+        return await audit_log.get_by_id(conn, audit_id=audit_id, manager_id=scope_id)
+
+    event = await connection.run_with_reconnect(_load)
     if event is None:
         raise HTTPException(status_code=404, detail="Audit event not found or out of scope")
     return templates.TemplateResponse(

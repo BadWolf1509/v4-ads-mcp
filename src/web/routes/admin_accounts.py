@@ -1,5 +1,6 @@
 """`/admin/accounts` (Google + Meta) e as rotas de restauração de acesso pós-churn."""
 
+import asyncpg
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
@@ -30,13 +31,19 @@ async def admin_accounts(
     user: CurrentUser = Depends(current_manager),  # noqa: B008
 ) -> HTMLResponse:
     _require_admin(user)
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
+
+    # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
+    async def _load(
+        conn: asyncpg.Connection,
+    ) -> tuple[list[google_ads_accounts.GoogleAdsAccount], google_ads_accounts.ReconcileQueues]:
         accs = await google_ads_accounts.list_all(conn)
         # Espelha admin_accounts_meta: as duas filas do lado Google (conta
         # ativa sem gestor delegado, conta que voltou ao MCC com restauração
         # pendente) — ver google_ads_accounts.list_queues.
         queues = await google_ads_accounts.list_queues(conn)
+        return accs, queues
+
+    accs, queues = await connection.run_with_reconnect(_load)
     mccs = sorted({a.mcc_id for a in accs if a.mcc_id})
     pending = await pending_invites_count()
     return templates.TemplateResponse(
@@ -106,14 +113,20 @@ async def admin_accounts_meta(
     user: CurrentUser = Depends(current_manager),  # noqa: B008
 ) -> HTMLResponse:
     _require_admin(user)
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
+
+    # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
+    async def _load(
+        conn: asyncpg.Connection,
+    ) -> tuple[list[meta_ad_accounts.MetaAdAccount], meta_ad_accounts.ReconcileQueues]:
         accounts = await meta_ad_accounts.list_all(conn)
         # Spec 2026-08-20: substitui a secao unica "Fora do alcance" do F128 (d)
         # por tres filas — sem-delegacao, sem-SU e saiu-da-parceria sao tres
         # ACOES diferentes do admin, e a lista antiga nao distinguia nenhuma
         # delas (nao cruzava grants, nao lia su_reachable).
         queues = await meta_ad_accounts.list_queues(conn)
+        return accounts, queues
+
+    accounts, queues = await connection.run_with_reconnect(_load)
     pending = await pending_invites_count()
     token_configured = bool(get_settings().meta_system_user_token)
     return templates.TemplateResponse(

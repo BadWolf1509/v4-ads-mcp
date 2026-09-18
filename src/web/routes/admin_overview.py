@@ -8,6 +8,7 @@ relatório da Task 2 para a decisão.
 
 from uuid import UUID
 
+import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
@@ -26,8 +27,23 @@ async def admin_index(
 ) -> HTMLResponse:
     """Admin overview: operational metrics, usage sparkline, tops, onboarding."""
     _require_admin(user)
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
+
+    # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
+    async def _load(
+        conn: asyncpg.Connection,
+    ) -> tuple[
+        int,
+        int,
+        int,
+        int,
+        int,
+        list[asyncpg.Record],
+        list[asyncpg.Record],
+        list[asyncpg.Record],
+        list[asyncpg.Record],
+        google_oauth_connections.OAuthConnection | None,
+        meta_oauth_connections.MetaOAuthConnection | None,
+    ]:
         from src.db.repositories import managers as managers_repo
 
         pending = await managers_repo.count_invited(conn)
@@ -55,7 +71,6 @@ async def admin_index(
                WHERE occurred_at > now() - interval '30 days'
                GROUP BY 1 ORDER BY 1"""
         )
-        usage_30d = [r["c"] for r in rows_30]
 
         # Top operations 7d
         top_ops = await conn.fetch(
@@ -79,6 +94,35 @@ async def admin_index(
         # Load OAuth connections
         google_conn = await google_oauth_connections.get_active_for_manager(conn, user.id)
         meta_conn = await meta_oauth_connections.get_active_for_manager(conn, user.id)
+
+        return (
+            pending,
+            active_mgrs,
+            total_mgrs,
+            quota_used,
+            errors_24h,
+            rows_30,
+            top_ops,
+            top_mgrs,
+            onboarding,
+            google_conn,
+            meta_conn,
+        )
+
+    (
+        pending,
+        active_mgrs,
+        total_mgrs,
+        quota_used,
+        errors_24h,
+        rows_30,
+        top_ops,
+        top_mgrs,
+        onboarding,
+        google_conn,
+        meta_conn,
+    ) = await connection.run_with_reconnect(_load)
+    usage_30d = [r["c"] for r in rows_30]
 
     meta_expiry = meta_expiry_signals(meta_conn.token_expires_at if meta_conn else None)
 
@@ -121,11 +165,12 @@ async def admin_managers(
     user: CurrentUser = Depends(current_manager),  # noqa: B008
 ) -> HTMLResponse:
     _require_admin(user)
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
-        rows = await conn.fetch(
+    # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
+    rows = await connection.run_with_reconnect(
+        lambda conn: conn.fetch(
             "SELECT id, email, full_name, role, is_active, status, created_at, last_seen_at FROM managers ORDER BY email"
         )
+    )
     pending = await pending_invites_count()
     return templates.TemplateResponse(
         request,

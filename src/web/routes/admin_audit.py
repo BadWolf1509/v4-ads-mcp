@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+import asyncpg
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 
@@ -32,8 +33,12 @@ async def admin_audit(
     page_size = 50
     offset = (page - 1) * page_size
 
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
+    # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
+    async def _load(
+        conn: asyncpg.Connection,
+    ) -> tuple[
+        int, list[asyncpg.Record], list[asyncpg.Record], list[google_ads_accounts.GoogleAdsAccount]
+    ]:
         where = ["al.occurred_at > now() - ($1 || ' days')::interval"]
         params: list[Any] = [str(days)]
         idx = 2
@@ -74,6 +79,9 @@ async def admin_audit(
             "SELECT id, email FROM managers WHERE is_active = true ORDER BY email"
         )
         accs = await google_ads_accounts.list_all(conn)
+        return total_pages, rows, managers_rows, accs
+
+    total_pages, rows, managers_rows, accs = await connection.run_with_reconnect(_load)
 
     # Build query_string for CSV export link
     qparts = []

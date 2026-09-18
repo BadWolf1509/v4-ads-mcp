@@ -7,9 +7,11 @@ painel / auth, sem escopo admin). Ver o relatório da Task 2 para a decisão.
 """
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 from uuid import UUID
 
+import asyncpg
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
@@ -139,8 +141,19 @@ async def dashboard(
     user: CurrentUser = Depends(current_manager),  # noqa: B008
 ) -> HTMLResponse:
     """Dashboard: editorial hero + operational stats + admin extras."""
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
+
+    # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
+    async def _load(
+        conn: asyncpg.Connection,
+    ) -> tuple[
+        list[Any],
+        list[mcp_sessions.McpSession],
+        google_oauth_connections.OAuthConnection | None,
+        list[asyncpg.Record],
+        int,
+        list[int],
+        dict[str, Any] | None,
+    ]:
         accounts = await manager_account_access.list_accounts_for_manager(conn, user.id)
         active_sessions = await mcp_sessions.list_for_manager(conn, user.id, include_revoked=False)
         oauth_conn = await google_oauth_connections.get_active_for_manager(conn, user.id)
@@ -209,6 +222,26 @@ async def dashboard(
                 "total_managers": total_mgrs,
             }
 
+        return (
+            accounts,
+            active_sessions,
+            oauth_conn,
+            recent,
+            calls_today,
+            sparkline_values,
+            admin_ops,
+        )
+
+    (
+        accounts,
+        active_sessions,
+        oauth_conn,
+        recent,
+        calls_today,
+        sparkline_values,
+        admin_ops,
+    ) = await connection.run_with_reconnect(_load)
+
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -233,11 +266,10 @@ async def sessions_list(
     include_revoked: bool = False,
 ) -> HTMLResponse:
     """List manager's MCP sessions."""
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
-        sessions = await mcp_sessions.list_for_manager(
-            conn, user.id, include_revoked=include_revoked
-        )
+    # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
+    sessions = await connection.run_with_reconnect(
+        lambda conn: mcp_sessions.list_for_manager(conn, user.id, include_revoked=include_revoked)
+    )
 
     return templates.TemplateResponse(
         request,
@@ -262,13 +294,14 @@ async def session_detail(
         parsed_session_id = UUID(session_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="Sessão não encontrada") from None
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
-        session = await mcp_sessions.get_by_id(
+    # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
+    session = await connection.run_with_reconnect(
+        lambda conn: mcp_sessions.get_by_id(
             conn,
             session_id=parsed_session_id,
             manager_id=user.id,
         )
+    )
     if session is None:
         raise HTTPException(status_code=404, detail="Sessão não encontrada")
 
@@ -371,10 +404,14 @@ async def sessions_revoke(
         # Preserve include_revoked from the originating page's query string.
         qs = parse_qs(urlparse(current_url).query)
         include_revoked = qs.get("include_revoked", ["0"])[0] in ("1", "true", "True")
-        async with pool.acquire() as conn:
-            sessions = await mcp_sessions.list_for_manager(
+        # F76/F77/F91 — leitura idempotente e independente da revogação acima
+        # (já commitada quando o bloco de acquire dela fechou): sobrevive a
+        # reconexão (Task 6, PR 5).
+        sessions = await connection.run_with_reconnect(
+            lambda conn: mcp_sessions.list_for_manager(
                 conn, user.id, include_revoked=include_revoked
             )
+        )
         resp = templates.TemplateResponse(
             request,
             "sessions/_table.html",

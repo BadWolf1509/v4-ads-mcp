@@ -1,7 +1,9 @@
 """Contas visíveis ao gestor (não-admin): conexões OAuth Google + contas Google/Meta."""
 
+from typing import Any
 from uuid import UUID
 
+import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
@@ -23,8 +25,9 @@ async def accounts_page(
     user: CurrentUser = Depends(current_manager),  # noqa: B008
 ) -> HTMLResponse:
     """List Google OAuth connections + accessible Google Ads accounts."""
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
+
+    # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
+    async def _load(conn: asyncpg.Connection) -> tuple[list[asyncpg.Record], list[Any], list[Any]]:
         # All connections (including revoked, sorted most-recent first)
         all_conns = await conn.fetch(
             """
@@ -37,6 +40,9 @@ async def accounts_page(
         )
         accounts = await manager_account_access.list_accounts_for_manager(conn, user.id)
         meta_accounts = await manager_meta_account_access.list_accounts_for_manager(conn, user.id)
+        return all_conns, accounts, meta_accounts
+
+    all_conns, accounts, meta_accounts = await connection.run_with_reconnect(_load)
 
     return templates.TemplateResponse(
         request,

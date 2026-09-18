@@ -20,9 +20,9 @@ async def admin_invites(
     user: CurrentUser = Depends(current_manager),  # noqa: B008
 ) -> HTMLResponse:
     _require_admin(user)
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
-        invites = await conn.fetch(
+    # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
+    invites = await connection.run_with_reconnect(
+        lambda conn: conn.fetch(
             """SELECT m.id, m.email, m.full_name, m.invited_at,
                       inviter.email AS invited_by_email
                FROM managers m
@@ -30,6 +30,7 @@ async def admin_invites(
                WHERE m.status = 'invited'
                ORDER BY m.invited_at DESC"""
         )
+    )
     pending = await pending_invites_count()
     now = datetime.now(UTC)
     invites_with_age = []
