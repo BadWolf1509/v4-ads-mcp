@@ -1177,32 +1177,42 @@ def test_retentaveis_de_conexao_tem_uma_fonte_de_verdade_so() -> None:
     )
 
 
-def _abre_transacao_no_corpo_proprio(escopo: ast.AST, arv: ast.Module) -> bool:
+def _audit_admin_esta_na_transacao(escopo: ast.AST, arv: ast.Module) -> bool:
     """True se o corpo PRÓPRIO de `escopo` (sem descer em def/lambda aninhados,
-    ver `h.nos_do_corpo_proprio`) tem um `with`/`async with` cujo item de
-    contexto chama `.transaction()` — em qualquer profundidade léxica (dentro
-    de `if`/`else`, `try`, etc.), não só no nível mais externo.
+    ver `h.nos_do_corpo_proprio`) tem um `with`/`async with` de `.transaction()`
+    cujo PRÓPRIO NÓ — não o corpo inteiro da função — contém uma chamada a
+    `_audit_admin`.
 
-    Mesma resolução de nome de `h.chama` (casa `Attribute.attr`, com alias via
-    `nomes_locais` — não importa se a variável de conexão se chama `conn`,
-    `connection` ou outra coisa). Não afirma ORDEM relativa a nenhuma outra
-    chamada — ao contrário do `_cursores_fora_de_transacao` do F58, que precisa
-    saber se o `.cursor(` está DENTRO da transação. Aqui a pergunta é mais
-    simples ("a função abre uma transação em algum lugar do próprio corpo?"),
-    então presença basta.
+    Revisão da branch (item A): a versão anterior desta função (chamada
+    `_abre_transacao_no_corpo_proprio`) só perguntava "a função abre uma
+    transação em algum lugar do próprio corpo?" — presença bastava. Isso
+    responde o adjacente, não a invariante da Task 5: um `_audit_admin`
+    desindentado para DEPOIS do `async with conn.transaction():` deixa a
+    função "abrindo uma transação em algum lugar" (a pergunta antiga continua
+    True) mas quebra a atomicidade que o teste existe pra proteger. Provado
+    por AST sintético na revisão: `BOM` (audit dentro) e `QUEBRADO` (audit
+    desindentado pra fora) davam os DOIS `True` na versão antiga.
+
+    Acha o nó `AsyncWith`/`With` do `.transaction()` (mesma resolução de nome
+    de `h.chama`, casando `Attribute.attr` com alias via `h.nomes_locais` —
+    não importa se a variável de conexão se chama `conn`, `connection` ou
+    outra coisa) e roda `h.chama` NELE — que faz `ast.walk` do NÓ da
+    transação, não do corpo inteiro da função — perguntando por `_audit_admin`
+    dentro. Se houver mais de um bloco de transação no corpo, basta um conter
+    o audit.
     """
-    nomes = h.nomes_locais(arv, "transaction")
+    nomes_transaction = h.nomes_locais(arv, "transaction")
     for no in h.nos_do_corpo_proprio(escopo):
         if not isinstance(no, ast.AsyncWith | ast.With):
             continue
-        for item in no.items:
-            ctx = item.context_expr
-            if (
-                isinstance(ctx, ast.Call)
-                and isinstance(ctx.func, ast.Attribute)
-                and ctx.func.attr in nomes
-            ):
-                return True
+        eh_transacao = any(
+            isinstance(item.context_expr, ast.Call)
+            and isinstance(item.context_expr.func, ast.Attribute)
+            and item.context_expr.func.attr in nomes_transaction
+            for item in no.items
+        )
+        if eh_transacao and h.chama(no, "_audit_admin", arv=arv):
+            return True
     return False
 
 
@@ -1254,9 +1264,14 @@ def test_acesso_e_audit_abrem_a_mesma_transacao_nas_12_rotas() -> None:
     ou movida pra outro módulo tem que acusar por sumir da lista, não sair
     silenciosamente da cobertura — é o modo de falha nº1 catalogado neste repo
     (CLAUDE.md, "Don't fechar sprint..."; findings-catalog.md).
+
+    Revisão da branch (item A): o casador é `_audit_admin_esta_na_transacao`,
+    não só "abre uma transação em algum lugar" — ver o docstring dela pra
+    prova de que a versão antiga não discriminava `_audit_admin` DENTRO de
+    FORA do bloco.
     """
     faltando: list[str] = []
-    sem_transacao: list[str] = []
+    audit_fora_da_transacao: list[str] = []
 
     for caminho, nomes in _ROTAS_ACESSO_E_AUDIT_ATOMICOS.items():
         arv = h.arvore(caminho)
@@ -1270,17 +1285,18 @@ def test_acesso_e_audit_abrem_a_mesma_transacao_nas_12_rotas() -> None:
             if func is None:
                 faltando.append(f"{h.rel(caminho)}::{nome}")
                 continue
-            if not _abre_transacao_no_corpo_proprio(func, arv):
-                sem_transacao.append(f"{h.rel(caminho)}::{nome}")
+            if not _audit_admin_esta_na_transacao(func, arv):
+                audit_fora_da_transacao.append(f"{h.rel(caminho)}::{nome}")
 
     assert not faltando, (
         f"rota da Task 5 sumiu do código: {faltando}. Rename ou move tira a "
         "cobertura deste guard em silêncio — enumerar os 12 nomes só vale "
         "enquanto o guard acusa quando um deles some."
     )
-    assert not sem_transacao, (
-        "rota muda acesso e grava audit_log como DUAS operações independentes "
-        f"(sem `async with conn.transaction()` no corpo próprio): {sem_transacao}. "
-        "Se a segunda escrita (audit) falhar depois da primeira já commitada, o "
-        "acesso muda sem registro de quem mudou."
+    assert not audit_fora_da_transacao, (
+        "rota muda acesso mas `_audit_admin` não está DENTRO do "
+        f"`async with conn.transaction():` que protege a escrita: {audit_fora_da_transacao}. "
+        "Se a função abre a transação e audita depois de sair dela (ou não audita "
+        "nesse bloco nenhum), a segunda escrita (audit) falhando depois da primeira "
+        "já commitada deixa o acesso mudado sem registro de quem mudou."
     )
