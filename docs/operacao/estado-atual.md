@@ -12,7 +12,10 @@
 ## Frente "correções da varredura" (spec de 2026-09-06) — onde está
 
 Sete PRs, um por frente, cada um com CI próprio e merge próprio. **Cinco fechados e em
-produção, um com a revisão final fechada e pronto pra merge**, um por fazer:
+produção; as duas últimas — 5 e 6 — com a revisão final fechada, prontas pra merge.**
+Frente 5 fechou em 17/09 e é a **última das sete**: a varredura inteira da spec de
+2026-09-06 tem agora as sete frentes com revisão encerrada — falta só o merge de cada
+uma, reservado ao Wellington.
 
 | PR | Frente | Estado |
 |---|---|---|
@@ -21,7 +24,7 @@ produção, um com a revisão final fechada e pronto pra merge**, um por fazer:
 | 2 | reconciliação idempotente (C4) | ✅ merged `a46e139`, migration 009 confirmada em produção |
 | 3 | governança de orçamento (C1+C2) | ✅ merged `fc11503` ([#62](https://github.com/BadWolf1509/v4-ads-mcp/pull/62)) — F155–F158 |
 | 4 | honestidade dos números (C5 + truncamento) | ✅ merged `eb52668` ([#63](https://github.com/BadWolf1509/v4-ads-mcp/pull/63)) — F159–F164 |
-| 5 | painel (`routes.py` → 10 módulos) | ⬜ |
+| 5 | painel (`routes.py` → 8 módulos + `_shared.py`) | ✅ revisão final fechada, branch `pr5/painel` pronta pra merge — F171–F179 |
 | 6 | cauda (gêmeo Meta do F141, índices, keyset) | ✅ revisão final fechada, branch `pr6/cauda` pronta pra merge — F165–F170 |
 
 **Frente 6 fechou a revisão final em 11/09** (onda única, seis achados da
@@ -38,11 +41,72 @@ das duas dentro do escopo dela:
    ruling de executor.
 2. **Reescrita de `OFFSET` por keyset em `src/web/routes/audit.py` e
    `admin_audit.py`** (Task 7 do plano da frente 5) — as duas rotas
-   paginadas viviam no arquivo de 1839 linhas que a frente 5 partiu em nove
+   paginadas viviam no arquivo de 1839 linhas que a frente 5 partiu em oito
    módulos (Task 2, `372ae41`); fazer aqui garantiria conflito no maior
    arquivo do repo. Esta PR entrega o desempate estável (o lado de
    corretude — ver F168) e os dois índices; o keyset (o lado de desempenho)
-   segue pendente na frente 5.
+   ficava pendente na frente 5. **Resolvido (D3, revisão de 17/09): esta
+   frase ficou desatualizada por dois commits — a frente 5 entregou o keyset
+   na sua Task 7** (`8d480d6`+`4ed1ce2`): `list_page_for_manager` e
+   `list_page_admin` (`src/db/repositories/audit_log.py:322`/`:436`)
+   substituem `LIMIT/OFFSET` por cursor `(occurred_at, id)`; o `COUNT(*)` de
+   "Página X de Y" saiu (uma query a menos por carregamento) e a UI virou
+   "‹ Início" / "Próxima ›" (macro `cursor_pagination` em
+   `_components.html`). Ver F176.
+
+**Frente 5 fechou a revisão final em 17/09** (onda única, nove achados da
+revisão de branch inteira — F171–F179 no catálogo — mais o guard da
+transação de acesso/audit, que afirmava "a função abre alguma transação" e
+não "`_audit_admin` está DENTRO dela", e um teste de 403 que não
+discriminava sua própria causa); falta só o merge em si, reservado ao
+Wellington. **É a última das sete frentes** — a varredura da spec de
+2026-09-06 fecha aqui.
+
+Três itens que a spec atribuía à frente 5 e nenhuma das oito tasks dispôs —
+critério de aceitação nº 5 ("corrigido, refutado, ou fora de escopo com
+motivo"), medido nesta revisão em vez de repetir a suposição de quem achou:
+
+1. **Guard #3** (`test_structural_guards.py:709`, F92) — o descobridor
+   `_funcoes_que_pegam_conexao_propria()` casa quem chama `get_pool` **e**
+   `acquire` no PRÓPRIO corpo; `pending_invites_count` (`src/web/deps.py:84`)
+   hoje só chama `run_with_reconnect`, que por dentro faz o get_pool+acquire
+   NUM ARQUIVO DIFERENTE (`src/db/connection.py`) — saiu do alcance textual
+   do casador. **Medido:** 11 call-sites de `pending_invites_count()` no
+   painel, todos fora de qualquer bloco `acquire()` (4 com comentário
+   `# F92:` explícito marcando a posição de propósito) — zero instância viva
+   do bug que o guard existe pra pegar. **Fora de escopo, com motivo:** é
+   buraco real do casador — um futuro helper que só use `run_with_reconnect`
+   internamente, chamado de dentro do `acquire()` de outra função, reabriria
+   o F92 e este guard continuaria verde — mas fechá-lo exige ensinar o
+   descobridor a reconhecer auto-aquisição INDIRETA, não é uma linha; é
+   tarefa própria.
+2. **Guard #17** (`test_frontend_responsive_guards.py:183-191`) —
+   `test_email_longo_quebra_em_vez_de_estourar` segue com lista fixa de 5
+   templates, onde os vizinhos do mesmo arquivo já derivam o alvo do source.
+   **Medido:** a Task 8 desta PR (commit `3df8c05`) apertou os guards de
+   a11y/CSP, mas com escopo próprio declarado no commit ("Files: só este
+   arquivo de teste") — `test_frontend_a11y_guards.py`, nunca
+   `test_frontend_responsive_guards.py`, arquivo de guard diferente. E o alvo
+   real não é mecanicamente derivável do jeito que o a11y virou marcador
+   (`data-v4-access-toggle`): 12 templates interpolam `.email` hoje contra os
+   5 da lista, e nem todos precisam de `break-words` — alguns truncam (F124,
+   header), o que pede julgamento de design, não grep. **Fora de escopo, com
+   motivo:** nenhuma das 8 tasks tocou este arquivo; fechar direito é
+   desenhar a convenção de marcador (como a Task 8 fez pro a11y), não esta
+   onda.
+3. **Menores do R6** — os dois verificados de novo, não repetida a suposição:
+   - `admin/index.html`: as três mini-tabelas **já têm** `v4-table-wrap` +
+     `tabindex="0"` + `role="region"` + `aria-label` (linhas 163, 184, 208).
+     **Corrigido** — por uma frente anterior (revisão de responsividade de
+     2026-08-20, F118-F127). Nenhuma ação necessária.
+   - `tojson` em `audit.html:137` (mesmo padrão em `audit_detail.html:69`):
+     **refutado**. Jinja2 3.1.6 (a versão deste projeto) registra `tojson`
+     como filtro CORE (`jinja2/filters.py`, `do_tojson` →
+     `htmlsafe_json_dumps`) — não depende de Flask nem de registro próprio da
+     app — e `htmlsafe_json_dumps` escapa `<`, `>`, `&`, `'`; a própria
+     docstring do Jinja2 declara o resultado "safe to render in HTML
+     documents" (a única exceção documentada é atributo HTML com aspas
+     duplas — não é o caso aqui, é conteúdo de `<pre>`). Sem ação.
 
 **Em 2026-09-08 os dois foram mesclados e verificados em produção**, mais a
 consolidação do Dependabot ([#64](https://github.com/BadWolf1509/v4-ads-mcp/pull/64)).
