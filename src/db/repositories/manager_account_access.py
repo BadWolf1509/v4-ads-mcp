@@ -281,9 +281,10 @@ async def copy_access(
     de vivo, e o SELECT seguinte, filtrando `manager_id = origem AND
     revoked_at IS NULL`, já não acha nada pra reconceder (a origem é o
     próprio destino, que acabou de ficar todo revogado). A rota
-    (`routes.py:1367`) já recusa antes de chamar, mas a defesa não pode viver
-    só lá: esta branch acabou de acrescentar funções de repositório que
-    outro código pode chamar direto, sem herdar a checagem da rota.
+    (`src/web/routes/admin_access.py:363`, `admin_access_bulk_copy`) já
+    recusa antes de chamar, mas a defesa não pode viver só lá: esta branch
+    acabou de acrescentar funções de repositório que outro código pode
+    chamar direto, sem herdar a checagem da rota.
     """
     if from_manager_id == to_manager_id:
         raise ValueError("copy_access: origem e destino sao o mesmo gestor")

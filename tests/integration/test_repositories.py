@@ -994,9 +994,9 @@ async def test_copy_access_recusa_origem_igual_ao_destino(db) -> None:
     revoga (soft) tudo que ele tem de vivo, e o SELECT seguinte, filtrando
     `manager_id = origem AND revoked_at IS NULL`, já não acha nada pra
     reconceder (a origem É o destino, que acabou de ficar todo revogado). A
-    rota (`routes.py:1367`) já recusa antes de chamar `copy_access`, mas a
-    defesa não pode viver só lá — quem chamar o repositório de outro lugar
-    não herda a checagem da rota.
+    rota (`src/web/routes/admin_access.py:363`, `admin_access_bulk_copy`) já
+    recusa antes de chamar `copy_access`, mas a defesa não pode viver só lá —
+    quem chamar o repositório de outro lugar não herda a checagem da rota.
     """
     async with db.acquire() as conn:
         mid = await _make_manager(conn, "self-copy@v4company.com")

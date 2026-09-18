@@ -42,6 +42,7 @@ from src.db.repositories import (
 )
 from src.meta_ads.graph import fetch_paginated
 from src.web.deps import CurrentUser, current_manager
+from src.web.routes._shared import _require_admin
 
 log = structlog.get_logger(__name__)
 
@@ -520,6 +521,7 @@ async def meta_oauth_refresh_accounts(
     Grants de acesso são controlados exclusivamente pela matriz admin (Modelo B):
     nenhum manager_meta_account_access é criado automaticamente.
     """
+    _require_admin(user)
     settings = get_settings()
     token = settings.meta_system_user_token
     if not token:

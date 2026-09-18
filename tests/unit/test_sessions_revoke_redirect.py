@@ -7,7 +7,9 @@ resposta no ramo nao-HTMX, e ela e estatica no source.
 import ast
 from pathlib import Path
 
-_ROTAS = Path(__file__).resolve().parents[2] / "src" / "web" / "routes.py"
+# sessions_revoke mora em src/web/routes/sessions.py desde o split da PR 5
+# (Task 2) — routes.py deixou de existir como arquivo.
+_ROTAS = Path(__file__).resolve().parents[2] / "src" / "web" / "routes" / "sessions.py"
 
 
 def _funcao(nome: str) -> ast.AsyncFunctionDef:
@@ -15,7 +17,7 @@ def _funcao(nome: str) -> ast.AsyncFunctionDef:
     for no in ast.walk(arvore):
         if isinstance(no, ast.AsyncFunctionDef) and no.name == nome:
             return no
-    raise AssertionError(f"{nome} nao encontrada em routes.py")
+    raise AssertionError(f"{nome} nao encontrada em {_ROTAS}")
 
 
 def test_revoke_sem_htmx_redireciona_em_vez_de_renderizar() -> None:

@@ -1,6 +1,6 @@
 """Tests for meta_status_label Jinja filter helper."""
 
-from src.web.routes import meta_status_label
+from src.web.routes._shared import meta_status_label
 
 
 def test_meta_status_label_known() -> None:

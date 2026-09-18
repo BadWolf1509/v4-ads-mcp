@@ -305,7 +305,7 @@
 - **F83 (HIGH) — mutação aplicada com sucesso pode ser reportada como erro e sumir do audit:** em [`mutations.py:270-306`](../../src/google_ads/mutations.py) o `finally` faz `pool.acquire()` **cru** duas vezes (reconciliação de quota + `audit_log.record`), e roda **depois** de `ga_service.mutate()` já ter aplicado a mudança no Google, com um `return` pendente. Se a conexão estiver stale — o modo de falha do **F76**, com 6 ocorrências reais em produção — a exceção nasce no `finally` e, por semântica do Python, **descarta o `return` pendente** e se propaga. Três consequências simultâneas: (1) o gestor vê erro numa mutação que **foi aplicada**; (2) o cliente LLM tende a re-tentar, e `add_keywords`/`create_campaign`/`update_campaign_budget` **não são idempotentes** → risco de aplicação dupla; (3) a linha de audit **nunca é gravada**, quebrando o invariante "audit SEMPRE em mutates" exatamente no caso em que ele mais importa (mudança aplicada sem rastro). Se a falha for no `record_actual`, a reserva de quota ainda fica órfã. Mesmo shape em [`conversions.py:142`](../../src/google_ads/conversions.py), [`customer_match.py:220`](../../src/google_ads/customer_match.py), [`mutations.py:392`](../../src/google_ads/mutations.py) (`run_recommendation_action`), [`reports.py:113`](../../src/google_ads/reports.py) e [`validate_gaql.py:169`](../../src/mcp/tools/validate_gaql.py) — **6 sites**. **Lição:** bookkeeping em `finally` tem poder de veto sobre o resultado do `try` — todo `finally` que faz I/O precisa do próprio `except`, senão a observabilidade derruba a operação que deveria apenas observar. Family: F76 aplicada ao lado write + governança-ausente (irmã de F71/F73).
   **✅ CORRIGIDO (2026-08-14, mesma sessão).** Helper `best_effort` em [`src/governance/bookkeeping.py`](../../src/governance/bookkeeping.py) — async context manager que engole a exceção do bookkeeping e a converte em `log.exception` (alertável, porque `add_cloud_logging_severity` mapeia `level`→`severity`). Aplicado nos 6 sites, com os blocos de quota e audit tornados **independentes**: antes eram sequenciais no mesmo `finally`, então a falha da reconciliação de quota pulava o audit inteiro. Em `reports.py` o `if audit_this_call` subiu pra ANTES do `pool.acquire()` — sem opt-in de audit não havia por que pegar conexão, e era um ponto de falha gratuito dentro do `finally`. **Deliberadamente SEM retry:** re-executar um INSERT que pode ter commitado duplicaria a linha de audit (CLAUDE.md, "mutação NÃO leva retry cego") — o ganho é trocar "erro opaco + audit perdido em silêncio" por "resultado correto + falha registrada", não garantir a escrita. **Guard:** `test_finally_bookkeeping_is_best_effort` em `tests/unit/test_structural_guards.py` é **AST-based e por BLOCO** (não grep por arquivo, como os guards F57/F58): cada statement de um `finally` que chama `.acquire()` tem que chamar `best_effort` no mesmo statement. Isso importa porque `mutations.py` tem dois executores — quando só `run_mutation` estava corrigido, o guard continuou acusando `mutations.py:413` (`run_recommendation_action`), o que um guard file-level não pegaria. **Testes:** 4 comportamentais em `tests/unit/test_executor_bookkeeping_never_masks.py`, todos verificados falhando contra o código pré-fix (via `git stash` do executor) — incluindo o caso em que a conexão morre **no próprio `acquire()`**, e não no corpo, que é o modo de falha real do F76 e o que exercita a forma `async with best_effort(...), pool.acquire()` que o ruff colapsou.
 
-- **F84 (MED) — `managers.status` e `managers.is_active` divergem, e os gates de sessão só leem `is_active`:** os dois campos podem divergir e nada os sincroniza — o toggle do painel faz `UPDATE managers SET is_active = NOT is_active` ([`routes.py:861`](../../src/web/routes.py)) e **nunca toca em `status`**; nenhum código escreve `status='inactive'`. O gate de **login** nega nas duas condições (`status == "active" and is_active`, com fallthrough explícito pra `status == "inactive" OR is_active=False` → `/access-denied`, [`oauth.py:76-83`](../../src/auth/oauth.py)), mas os gates de **sessão viva** olham só `is_active`: [`session.py:54`](../../src/mcp/session.py) (MCP) e [`deps.py:59,74`](../../src/web/deps.py) (painel). **Cenário concreto:** offboarding feito via SQL direto marcando `status='inactive'` — o único caminho existente, já que a UI não escreve essa coluna — bloqueia o login mas deixa **todo Bearer MCP do gestor funcionando até expirar** (TTL padrão 90 dias). A coluna que a UI de admin exibe não é a que o gate do MCP lê. Family: hard-gate-bypass (irmã de F60, que fechou o `is_active` e não viu o `status`).
+- **F84 (MED) — `managers.status` e `managers.is_active` divergem, e os gates de sessão só leem `is_active`:** os dois campos podem divergir e nada os sincroniza — o toggle do painel faz `UPDATE managers SET is_active = NOT is_active` ([`routes.py:861` — hoje `routes/admin_overview.py`, split PR 5](../../src/web/routes/admin_overview.py)) e **nunca toca em `status`**; nenhum código escreve `status='inactive'`. O gate de **login** nega nas duas condições (`status == "active" and is_active`, com fallthrough explícito pra `status == "inactive" OR is_active=False` → `/access-denied`, [`oauth.py:76-83`](../../src/auth/oauth.py)), mas os gates de **sessão viva** olham só `is_active`: [`session.py:54`](../../src/mcp/session.py) (MCP) e [`deps.py:59,74`](../../src/web/deps.py) (painel). **Cenário concreto:** offboarding feito via SQL direto marcando `status='inactive'` — o único caminho existente, já que a UI não escreve essa coluna — bloqueia o login mas deixa **todo Bearer MCP do gestor funcionando até expirar** (TTL padrão 90 dias). A coluna que a UI de admin exibe não é a que o gate do MCP lê. Family: hard-gate-bypass (irmã de F60, que fechou o `is_active` e não viu o `status`).
   **✅ CORRIGIDO (2026-08-15).** Predicado único `Manager.is_deactivated` (`not is_active or status == "inactive"`) no dataclass, usado pelos 3 gates — `session.py` (MCP) e `deps.py` (painel, 2 sites). O bug foi **três sites decidindo isso por conta própria**, então a correção é ter um lugar só onde a regra mora. `invited` NÃO conta como desativado: é estado de onboarding e o login promove invited→active; bloqueá-lo quebraria o fluxo.
   **Um 4º site apareceu durante o fix, no gate de LOGIN:** o branch `status == "invited"` vinha ANTES da checagem de desativação e lia só `status`. Como `create_invited` grava `is_active=true` mas o toggle do painel funciona em qualquer gestor — inclusive num convite pendente —, um convite desativado era **promovido a 'active' no login** e só então batia em porta fechada no primeiro page-load. Reordenado: desativação primeiro, e status desconhecido passou a negar por padrão (fail-closed).
   **Decisão deliberada — NÃO sincronizar as colunas no toggle:** parecia a correção óbvia ("escreve as duas"), mas re-ativar um gestor gravaria `status='active'` e **destruiria o estado `invited`** de quem nunca logou, atropelando o `mark_active`. Tornar os gates autoritativos fecha o buraco sem tocar no modelo de dados.
@@ -364,7 +364,7 @@
   **Verificação:** os 8 testes ficaram RED pelo motivo certo (`ConnectionDoesNotExistError` escapando). Os 2 que cobrem o não-retry da escrita foram provados por **sabotagem** — removido o `best_effort` dos dois gates, o erro de conexão volta a escapar. Técnica: 1ª chamada levanta o erro de produção, 2ª devolve o resultado; no gate, a 2ª levanta `AccountAccessDeniedError`, o que prova o retry sem precisar mockar o executor inteiro.
   **Efeito colateral em teste:** 3 testes de `run_recommendation_action` trocam o **módulo** `connection` inteiro por MagicMock, e `run_with_reconnect` passou a voltar um MagicMock não-awaitable. Anular a chamada esconderia o gate (eles assertam `ensure_access_mock`), então ganharam um stub que **executa** a operação, como o real faz no caminho feliz.
 
-- **F92 (MED) — dimensionamento do pool e `acquire` aninhado sem timeout:** `max_size=10` é default hardcoded de `init_pool` ([`connection.py:26`](../../src/db/connection.py), sem knob em Settings) contra `--max-instances=10` + `--concurrency=80` ([`deploy.yml:133`](../../.github/workflows/deploy.yml)) → até **100 conexões**, mais o overlap de revisões durante o deploy e os pools próprios dos Cloud Run Jobs; tiers pequenos do Supabase têm `max_connections=60`. Nenhum `pool.acquire()` do projeto usa `timeout=`, e **4 rotas admin chamam `pending_invites_count()` DENTRO de um `acquire` já aberto** ([`routes.py:1154,1191,1277,1314`](../../src/web/routes.py)) enquanto as outras 7 chamam fora — a inconsistência mostra que não é intencional. Com o pool esgotado, quem segura a 1ª conexão e espera a 2ª espera **para sempre** (asyncpg não tem timeout default). Improvável com 1 admin; é hazard estrutural gratuito. Family: deadlock latente + orçamento de conexões não coordenado.
+- **F92 (MED) — dimensionamento do pool e `acquire` aninhado sem timeout:** `max_size=10` é default hardcoded de `init_pool` ([`connection.py:26`](../../src/db/connection.py), sem knob em Settings) contra `--max-instances=10` + `--concurrency=80` ([`deploy.yml:133`](../../.github/workflows/deploy.yml)) → até **100 conexões**, mais o overlap de revisões durante o deploy e os pools próprios dos Cloud Run Jobs; tiers pequenos do Supabase têm `max_connections=60`. Nenhum `pool.acquire()` do projeto usa `timeout=`, e **4 rotas admin chamam `pending_invites_count()` DENTRO de um `acquire` já aberto** ([`routes.py:1154,1191,1277,1314` — hoje `routes/admin_access.py`, split PR 5](../../src/web/routes/admin_access.py)) enquanto as outras 7 chamam fora — a inconsistência mostra que não é intencional. Com o pool esgotado, quem segura a 1ª conexão e espera a 2ª espera **para sempre** (asyncpg não tem timeout default). Improvável com 1 admin; é hazard estrutural gratuito. Family: deadlock latente + orçamento de conexões não coordenado.
   **✅ CORRIGIDO (2026-08-15).** **(1) Aninhamento:** as 4 chamadas saíram do `async with` — nenhuma usava `conn`, eram a última instrução do bloco. **(2) Dimensionamento:** default caiu de 10 pra **5** (constantes `DEFAULT_POOL_*` em `connection.py`) — 10 instâncias × 5 = 50, com ~10 de folga pros Cloud Run Jobs dentro das 60 do tier pequeno. `db_pool_min_size`/`db_pool_max_size` em Settings alimentam o caminho que **serve tráfego** (`app.py` passa explícito), que é onde a conta de instâncias importa; job e script ficam no default conservador.
   **⚠️ A 1ª tentativa derrubou a suíte INTEIRA de integração no CI.** Eu tinha posto `get_settings()` dentro de `init_pool` pra ler o default — e pior, carregava o Settings ANTES de checar se os tamanhos vieram por argumento, então quebrava até pra conftest que passava os dois. No ambiente de integração o Settings não tem as 13 variáveis obrigatórias: `ValidationError: 11 validation errors`. **Lição:** primitivo de infraestrutura (pool, cliente HTTP, logger) não pode depender da config completa da app — quem serve tráfego injeta o valor, o primitivo carrega um default sensato. Um teste agora falha se `get_settings` voltar a ser chamado ali, e outro garante que a constante e o default de Settings não divergem.
   **Guard:** `test_nao_chama_helper_que_pega_conexao_dentro_de_acquire` é AST e **descobre sozinho** quais funções abrem conexão própria (as que casam `get_pool` **e** `acquire` no corpo) antes de procurar chamadas a elas dentro de um `async with ...acquire()`. Não é allowlist de nomes: helper auto-adquirente novo entra no radar automaticamente. Na 1ª versão eu exigia que o `.acquire` pendesse de `get_pool()` no AST e o guard passou vazio — o idioma do codebase é `pool = get_pool()` e depois `pool.acquire()`, com os dois nós separados. Corrigido, o RED apontou os 4 sites com linha e nome do helper.
@@ -384,7 +384,7 @@
 - **F95 (LOW) — 3 secrets Supabase são obrigatórios e não têm nenhum consumidor:** `supabase_url`, `supabase_anon_key` e `supabase_service_key` são campos **required** em Settings ([`config.py:47-49`](../../src/config.py)) e 3 dos 13 secrets montados no `--set-secrets` do deploy, mas grep confirma **zero leituras** em `src/` — as demais ocorrências são comentário. O DB é acessado só via `DATABASE_URL` (asyncpg cru, sem lib supabase no `pyproject.toml`). Todo ambiente (CI, testes, `.env`, Cloud Run) carrega 3 valores que nada lê, e testes mantêm fixtures só pra satisfazer o `required`. Fix: remover de Settings + deploy + atualizar a contagem "13 secrets" do CLAUDE.md em mudança coordenada.
   **✅ CORRIGIDO (2026-08-15).** Removidos de `Settings`, do `--set-secrets` do deploy, do `.env.example`, do `conftest` e dos 3 blocos de `test_config`. **A "mudança coordenada" não era necessária:** `Settings` usa `extra="ignore"`, então env var montado sem campo é inerte — os dois lados podiam mudar em qualquer ordem. Isso importa porque **os Cloud Run Jobs foram criados à mão** e seguem montando os 3; ficam inofensivos até alguém recriá-los. Os secrets continuam existindo no Secret Manager (apagar é decisão à parte, não código). **O guard vale mais que a remoção:** `test_deploy_env_matches_settings.py` cruza `deploy.yml` com `Settings.model_fields` nas **duas direções** — env montado que nenhum campo lê (este finding) **e campo obrigatório que o deploy não fornece**, que é o footgun já documentado no CLAUDE.md ("adicione o secret também ao `--set-secrets`, senão o próximo deploy o apaga") e cuja falha só apareceria no boot da revisão nova, depois do build. **Verificação:** o guard de campo-sem-montagem foi provado por sabotagem (removi `DATABASE_URL` do deploy → RED); o de env-órfão ficou RED naturalmente na janela entre remover de `Settings` e remover do deploy, nomeando os 3.
 
-- **F96 (LOW) — `/accounts/{id}/revoke` devolve `303` cru pra chamada HTMX:** é o **único** dos 7 endpoints acionados por HTMX que não é HX-aware ([`routes.py:582`](../../src/web/routes.py)); os outros respondem `204`+`HX-Redirect`/`HX-Refresh` ou fragmento. O XHR segue o redirect e o htmx injeta o **documento inteiro** dentro do `body.innerHTML`, e só então o `data-v4-reload` da template dispara `location.reload()` — funciona porque o reload mascara, ao custo de 2 round-trips, um flash de página aninhada, e a compensação morando na template em vez do handler. Fix: espelhar `sessions_revoke` e remover `data-v4-target`/`swap`/`reload` da template. Family: classe do 2º pacote de 07-04 (303 cru em `hx-post`), instância remanescente.
+- **F96 (LOW) — `/accounts/{id}/revoke` devolve `303` cru pra chamada HTMX:** é o **único** dos 7 endpoints acionados por HTMX que não é HX-aware ([`routes.py:582` — hoje `routes/accounts.py`, split PR 5](../../src/web/routes/accounts.py)); os outros respondem `204`+`HX-Redirect`/`HX-Refresh` ou fragmento. O XHR segue o redirect e o htmx injeta o **documento inteiro** dentro do `body.innerHTML`, e só então o `data-v4-reload` da template dispara `location.reload()` — funciona porque o reload mascara, ao custo de 2 round-trips, um flash de página aninhada, e a compensação morando na template em vez do handler. Fix: espelhar `sessions_revoke` e remover `data-v4-target`/`swap`/`reload` da template. Family: classe do 2º pacote de 07-04 (303 cru em `hx-post`), instância remanescente.
   **✅ CORRIGIDO (2026-08-15).** Handler devolve `204` + `HX-Refresh: true` quando `HX-Request` está presente, e segue com `303` no POST sem JS — espelhando `admin_invite_cancel` (mesmo arquivo), que já usava esse par. Sem toast de propósito: o refresh do browser destruiria o `HX-Trigger` antes de ele renderizar, e a mudança de badge para "Revogada" já é o feedback. A template perdeu as 3 compensações e ficou idêntica ao botão de `/sessions`. **O guard é genérico, não pontual:** em vez de proibir este botão específico, ele varre TODA template atrás de swap no `<body>` (`data-v4-target="body"` ou `hx-target="body"`) — a assinatura do problema, que nunca é legítima: se o htmx precisa trocar o documento inteiro, quem deveria ter mandado navegar é o handler. Instância futura da classe cai no guard sozinha.
 
 - **F97 (LOW) — `v4-table--sticky-head` gruda em `top: 0` sob ~208px de chrome sticky opaco:** a regra ([`v4-components.css:693`](../../src/web/static/v4-components.css)) usa `top: 0; z-index: 1`, e seu **único consumidor** é [`admin/audit.html:68`](../../src/web/templates/admin/audit.html) — justamente a página com a pilha mais profunda (header 65 + subnav 55 + barra de filtros 88), toda em `z-index: 10` e fundo opaco. Ao rolar, o cabeçalho de colunas encosta em 0 e **desaparece atrás do chrome**. É a classe **F79** sobrevivendo na regra CSS: o fix de 08-11 mediu e corrigiu os offsets nas templates, mas não alcançou este, que estava no design system. Complicador pro fix: a barra de filtros de `/admin/audit` **não** tem `data-sticky-measure` (só a de `/audit` tem), então o offset correto exige estender a medição ou expor um token dedicado. **Lição:** ao corrigir uma classe de bug por varredura, varra também as regras do design system — não só os call-sites.
@@ -408,7 +408,7 @@
 >
 > **O padrão que une os mais graves: cada um caía num ponto cego de um guard que existia e estava VERDE.** O guard do fragmento de toggle checava só a ausência de `hx-on`; o de caching assertava o header da resposta e nunca a cobertura do `?v=`; o de offset sticky citava uma página pelo nome. Guard que passa não é guard que cobre — a pergunta certa é "o que este guard NÃO olha".
 
-- **F101 (HIGH, a11y) — o nome acessível da matriz de acessos degrada no primeiro swap HTMX:** `_toggle_checkbox_fragment` ([`routes.py`](../../src/web/routes.py)) servia `aria-label="Alternar acesso"` e atendia **quatro** templates com duas estratégias de rótulo diferentes: nas matrizes (`access.html`, `access_meta.html`) o HTML inicial dizia "Acesso de {gestor} à conta {conta}"; nas views por gestor (`access_manager_detail*.html`) o nome vinha de um `<label>` que embrulha o input. Depois do primeiro toggle todos viravam "Alternar acesso" — e no detail o `aria-label` **vence** o `<label>` na computação do nome acessível, então o texto visível e o anunciado passavam a discordar (território do WCAG 2.5.3 *Label in Name*). Numa grade N×M de checkboxes idênticos o rótulo é a única coisa que os distingue, e a view por gestor é justamente a que a matriz recomenda no celular. Family: **F74** (fragmento que não sobrevive ao swap), agora na acessibilidade em vez do handler.
+- **F101 (HIGH, a11y) — o nome acessível da matriz de acessos degrada no primeiro swap HTMX:** `_toggle_checkbox_fragment` ([`routes.py` — hoje `routes/_shared.py`, split PR 5](../../src/web/routes/_shared.py)) servia `aria-label="Alternar acesso"` e atendia **quatro** templates com duas estratégias de rótulo diferentes: nas matrizes (`access.html`, `access_meta.html`) o HTML inicial dizia "Acesso de {gestor} à conta {conta}"; nas views por gestor (`access_manager_detail*.html`) o nome vinha de um `<label>` que embrulha o input. Depois do primeiro toggle todos viravam "Alternar acesso" — e no detail o `aria-label` **vence** o `<label>` na computação do nome acessível, então o texto visível e o anunciado passavam a discordar (território do WCAG 2.5.3 *Label in Name*). Numa grade N×M de checkboxes idênticos o rótulo é a única coisa que os distingue, e a view por gestor é justamente a que a matriz recomenda no celular. Family: **F74** (fragmento que não sobrevive ao swap), agora na acessibilidade em vez do handler.
   **✅ CORRIGIDO (2026-08-19).** O fragmento **deixou de carregar texto**: emite `aria-labelledby="v4-mgr-<manager_id> v4-acc-<account_id>"`, apontando pro cabeçalho do gestor e pro da conta, que ficam **fora do nó trocado**. O valor é **função pura dos dois ids que já chegam no form**, então template e fragmento não têm como divergir — sem leitura extra de banco e sem texto duplicado. É a mesma estratégia do F74 (tornar a perda impossível por construção) aplicada ao rótulo, em vez de exigir paridade e confiar num teste pra lembrar. A assinatura mudou de `vals: dict` pra `manager_id`/`account_id`/`account_field`, eliminando a redundância entre o dict e os ids. **Armadilha:** havia um `tests/unit/test_toggle_fragment_escape.py` usando a assinatura antiga — o CLAUDE.md já avisa ("grep TODOS os patch-sites em `tests/`") e mesmo assim escapou na primeira passada; pego pelo `check_pre_push`. O teste ficou **mais forte** depois: o id injetado agora alimenta dois atributos, então o escape é assertado nos dois.
 
 - **F102 (MED) — logo servido `immutable` por 1 ano sem cache-buster:** `CachedStaticFiles` ([`static_files.py`](../../src/web/static_files.py)) marca **todo** `/static` com `public, max-age=31536000, immutable`, e o docstring do próprio módulo condiciona a segurança disso a versionar as URLs. Duas escapavam: o logo do header ([`_base.html`](../../src/web/templates/_base.html), toda página autenticada) e o do hero de login. Efeito duplo — trocar o arquivo nunca chegaria em quem já visitou (`immutable` suprime até a revalidação no refresh, por spec), e como o favicon aponta pra **mesma URL com `?v=`**, o mesmo SVG era baixado **duas vezes**, sob duas chaves de cache.
@@ -3044,3 +3044,323 @@ função ao lado dela) passaria a devolver a linha inteira (ou uma tupla
 `(account, today)`), lida uma vez via `run_with_reconnect`; os três sítios
 parariam de fazer o segundo `pool.acquire()`. Custa mudar a assinatura que o
 F165 acabou de estabelecer e os três call-sites que a consomem.
+
+---
+
+## F171 (LOW, CORRIGIDO em 2026-09-17) — o split de `routes.py` só ficou provado porque o guard-canário foi escrito ANTES dele
+
+**Sintoma.** A Task 1 da frente 5 fixou um snapshot da tabela de 42 rotas
+(`tests/unit/test_tabela_de_rotas_e_estavel.py`) — método, caminho, nome do
+endpoint, nomes das dependências — ANTES da Task 2 partir `routes.py` (1839
+linhas) em 8 módulos + `_shared.py`. O split só foi aceito com esse guard
+passando sem uma linha do snapshot mudar.
+
+O guard por pouco nasceu vazio. A primeira versão de `_flatten()` (escrita
+durante a própria Task 2, quando o guard nunca achava nenhuma das 42 rotas)
+descia por `getattr(r, "original_router", None).routes` — o router CRU do
+submódulo, do jeito que existe ANTES de qualquer `include_router` aplicar
+prefix/dependencies/tags. Isso fazia `router.routes` (nível superior)
+devolver `[]` pras 42 rotas: **o teste ficava VERMELHO, não verde vacuoso**
+— porque nesta versão do FastAPI, `include_router` nunca copia os `APIRoute`
+do submódulo pro pai; ele os envolve num wrapper (`_IncludedRouter`) que só
+expõe as rotas mescladas com o `include_context` (prefix+dependencies+tags
+de toda a cadeia) sob demanda, via `effective_candidates()`. Repro medido na
+Task 2: um router `sub` sem `Depends` próprio, incluído via
+`mid.include_router(sub, prefix="/admin", dependencies=[Depends(algo)])` — a
+travessia por `original_router.routes` cru devolvia `path=/x name=x deps=[]`
+(errado: dispatch real serve `/admin/x` com `algo` aplicado); a travessia
+por `effective_candidates()` devolve `path=/admin/x name=x deps=['algo']`
+(correto).
+
+`_flatten()` (`test_tabela_de_rotas_e_estavel.py:34`) passou a resolver por
+`effective_candidates()`, buscando pelo NOME do atributo (não por
+`isinstance` contra as classes privadas `_IncludedRouter`/
+`_EffectiveRouteContext`, prefixo `_` em `fastapi.routing`) — resiliente a
+mudança de versão do FastAPI. `test_rotas_de_mutacao_tem_guard.py` reusa a
+MESMA função contra `app.routes` inteiro (não só `src.web.routes.router`),
+porque `refresh-accounts` mora em `src.auth.meta_oauth`, fora daquele
+router.
+
+**Por que registrar um guard que funcionou.** O modo de falha aqui não foi
+"guard errado passou verde" (a família de F58/F91/F92/F169) — foi o oposto:
+o guard corretamente RECUSOU aceitar a primeira implementação de si mesmo.
+Fica catalogado porque é o único jeito de a próxima sessão que mexer em
+`_flatten()` (usado por DOIS guards agora) saber que a escolha de
+`effective_candidates()` sobre `original_router.routes` não é estética — é
+a diferença entre ver o dispatch real e ver uma fachada pré-merge.
+
+> **✅ CORRIGIDO** (branch `pr5/painel`, Task 1+2) — `_flatten()` resolve
+> por `effective_candidates()`; guard prova as 42 rotas sem alterar uma
+> linha durante o split.
+
+---
+
+## F172 (HIGH, CORRIGIDO em 2026-09-17) — `POST /oauth/meta/refresh-accounts` sem guard de admin
+
+**Sintoma.** A rota re-sincroniza o inventário INTEIRO de contas Meta contra
+o Graph, usando o token de system user — mesmo mecanismo de qualquer outra
+ação administrativa do painel — mas só exigia `current_manager` (`Depends`).
+`current_manager` responde "quem é você"; nenhuma outra checagem respondia
+"você pode". Qualquer gestor comum autenticado (não só admin) podia
+disparar o resync.
+
+**Fix.** `_require_admin(user)` como primeira linha do corpo
+(`src/auth/meta_oauth.py:524`), mesmo idioma das outras 25 rotas admin do
+painel (`src/web/routes/admin_*.py`). `test_toda_rota_post_do_painel_exige_admin_ou_tem_motivo`
+(`tests/unit/test_rotas_de_mutacao_tem_guard.py`) generaliza a proteção pra
+TODA rota POST fora `/mcp` — dependência OU chamada no corpo, ou uma
+entrada com motivo escrito em `_SEM_ADMIN_COM_MOTIVO` — então a próxima
+rota administrativa sem guard acusa por padrão, não por exceção lembrada.
+`test_refresh_accounts_requires_admin`
+(`tests/integration/test_meta_refresh_accounts.py`) prova o EFEITO (403
+real pra gestor comum), não só a presença da chamada.
+
+> **✅ CORRIGIDO** (branch `pr5/painel`, Task 3) — `_require_admin` na
+> rota; guard estrutural cobre o resto das rotas POST do painel.
+
+---
+
+## F173 (MEDIUM, CORRIGIDO em 2026-09-17) — isenção de CSRF por prefixo (F106 no mecanismo, não só na lista)
+
+**Sintoma.** O F106 (2026-08-19) já tinha corrigido a LISTA de isenções de
+CSRF — `/oauth/meta/revoke` e `/oauth/meta/refresh-accounts` deixaram de
+estar isentas. Mas o MECANISMO de isenção continuava por prefixo
+(`path.startswith(...)`), e prefixo herda tudo que um
+`APIRouter(prefix=…)` pendurar ali depois, sem revisão — a mesma classe de
+furo, um nível abaixo de onde o F106 mexeu.
+
+**Medido.** O app tem **exatamente uma** rota MCP: `POST /mcp`. A isenção
+literal cobre a superfície inteira hoje — não é um fix preventivo sem
+sintoma vivo, mas o mecanismo por prefixo continuava pronto pra herdar
+silenciosamente qualquer `POST /mcp/<algo>` futuro sem revisão nenhuma.
+
+**Fix.** Isenção por igualdade de rota, não prefixo
+(`src/web/middleware.py`, `CSRFOriginMiddleware`).
+
+> **✅ CORRIGIDO** (branch `pr5/painel`, Task 4) — isenção por rota exata
+> em `CSRFOriginMiddleware`. O mesmo padrão por prefixo apareceu no guard
+> que varre rotas POST do painel (`r.path.startswith("/mcp")` em
+> `test_rotas_de_mutacao_tem_guard.py`) e foi trocado por igualdade literal
+> na revisão final desta PR — o mecanismo que este finding fecha não podia
+> reincidir no próprio guard que o protege.
+
+---
+
+## F174 (HIGH, CORRIGIDO em 2026-09-17) — mudança de acesso e sua auditoria em transações separadas, 12 rotas
+
+**Sintoma.** As 12 rotas admin que mudam acesso (grant/revoke/copy/bulk),
+gestor (toggle active/role) ou convite (novo/cancelar) faziam a escrita de
+domínio e a linha de `audit_log` como DUAS operações independentes. Se a
+segunda (audit) falhasse depois da primeira já commitada, o acesso mudava
+SEM registro de quem mudou — numa ferramenta cuja governança inteira se
+apoia no `audit_log`, o pior desfecho possível (pior que a mudança falhar
+de vez: falha visível alguém conserta; mudança sem trilha ninguém percebe).
+
+**Três formas de escrita**, cada uma precisando do MESMO tratamento: 8
+rotas via função de repositório (`grant`/`revoke`/`bulk_grant`/
+`copy_access`/`restore_for_account`, Google e Meta), 2 via `UPDATE` SQL cru
+(`admin_managers_toggle_active`/`toggle_role`), 2 via `managers_repo`
+(`create_invited`/`delete_invite`).
+
+**Fix.** As 12 rotas passam a abrir `async with conn.transaction():`
+envolvendo a escrita E a chamada a `_audit_admin` — se o audit falhar, a
+escrita desfaz junto (rollback), não fica pra trás. Comportamento de
+transação/rollback provado com Postgres real em
+`tests/integration/test_acesso_e_audit_sao_atomicos.py` — **3 das 12**, uma
+por forma de escrita.
+
+**O que ficou de fora, registrado — não descoberto por acidente depois.**
+As outras 9 rotas dependem só do guard estrutural
+(`test_acesso_e_audit_abrem_a_mesma_transacao_nas_12_rotas`,
+`tests/unit/test_structural_guards.py`) pra manter a invariante — sem teste
+comportamental próprio contra Postgres real. Esse guard foi ele mesmo
+apertado na revisão final desta PR: a versão original só perguntava "a
+função abre uma transação em algum lugar do corpo?" (presença bastava, não
+discriminava `_audit_admin` DENTRO de FORA do bloco); passou a localizar o
+nó da transação e exigir que `_audit_admin` esteja DENTRO dele
+(`_audit_admin_esta_na_transacao`), provado por mutação real contra uma das
+12 rotas (dedent do audit, guard vermelho nomeando a rota exata, revert,
+guard verde de novo).
+
+> **✅ CORRIGIDO** (branch `pr5/painel`, Task 5) — escrita e audit atômicos
+> nas 12 rotas; guard estrutural que protege as 9 sem teste comportamental
+> apertado na mesma revisão pra checar a invariante certa, não a adjacente.
+
+---
+
+## F175 (MEDIUM, CORRIGIDO em 2026-09-17) — 36 `pool.acquire()` crus no painel, zero `run_with_reconnect`
+
+**Sintoma.** Nenhuma leitura do painel (`src/web/routes/`) sobrevivia a uma
+conexão asyncpg stale (F76/F77) — todo `pool.acquire()` era cru. 36 sítios
+medidos.
+
+**Fix.** 19 convertidos pra `connection.run_with_reconnect(...)` — toda
+leitura idempotente que não escreve e não faz streaming.
+
+**17 deliberadamente NÃO convertidos, cada grupo por um motivo distinto:**
+
+- **12 transacionais** (as mesmas 12 rotas do F174) — `run_with_reconnect`
+  NÃO pode envolver escrita (retentar reexecutaria a escrita já aplicada);
+  ficam em `pool.acquire()` + `conn.transaction()` explícitos.
+- **3 de escrita/lê-e-escreve, pelo F91** — `accounts_revoke_connection`
+  (`accounts.py`, revoga conexão OAuth), `sessions_new` (`sessions.py`,
+  cria sessão MCP), `sessions_revoke` (`sessions.py`, lê a posse e revoga).
+  Mesma razão dos 12: retry cego numa escrita pode reexecutá-la.
+- **2 geradores de streaming** — `admin_audit_export_csv`
+  (`admin_audit.py:108`) e o export equivalente em `audit.py` — cada um
+  `StreamingResponse(stream(), ...)` com `stream()` um
+  `async def ... -> AsyncIterator[bytes]:` que abre `pool.acquire()` e
+  itera `audit_log.export_csv_rows(...)`.
+
+**O que ficou descoberto, não só decidido.** `run_with_reconnect` espera um
+retorno único (`await op(conn)`), e os dois exports CSV são
+async-generators — não têm como ENTRAR nesse contrato sem deixar de ser
+generator (ou reinventar retry pra streaming, o que não faz sentido depois
+que a resposta já começou a sair pro cliente: um reconnect no meio do
+stream exigiria reiniciar a resposta HTTP inteira, não só a query). **Os
+dois exports CSV não sobrevivem a reconexão no meio do streaming** — fica
+registrado como propriedade conhecida do desenho, não como lacuna
+esquecida.
+
+> **✅ CORRIGIDO** (branch `pr5/painel`, Task 6) — 19/36 convertidos; os 17
+> restantes classificados e cada grupo com seu motivo escrito, incluindo o
+> limite estrutural do streaming.
+
+---
+
+## F176 (LOW, CORRIGIDO em 2026-09-17) — paginação do audit por `OFFSET`
+
+**Sintoma.** `/audit` e `/admin/audit` paginavam por `LIMIT/OFFSET`: varre e
+descarta N linhas por página — custo crescente com a página — e DESLIZA
+quando linhas são inseridas durante a navegação (uma linha nova de
+`audit_log` empurra tudo, e a "página 2" que o gestor abre não é mais a
+mesma janela que era quando ele viu o link).
+
+**Fix.** `list_page_for_manager` e `list_page_admin`
+(`src/db/repositories/audit_log.py:322`/`:436`) substituem por keyset
+("seek"): o cursor é `(occurred_at, id)` da ÚLTIMA linha vista, não um
+número de página — ancora na linha, não desliza com insert concorrente.
+Migration 010 (frente 6, F168) já tinha entregue o desempate estável em
+`ORDER BY occurred_at DESC` e o índice; esta frente troca o MECANISMO.
+
+**O que muda de UI.** Sem `OFFSET` não há como pular pra uma página
+arbitrária — só existe "próxima" de verdade. O `COUNT(*)` que sustentava
+"Página X de Y" saiu (uma query a menos por carregamento); a paginação virou
+"‹ Início" / "Próxima ›" (macro `cursor_pagination`,
+`src/web/templates/_components.html:95`). Páginas já vistas ficam a um
+"voltar" do navegador — cada "Próxima" é uma navegação real, com URL
+própria.
+
+> **✅ CORRIGIDO** (branch `pr5/painel`, Task 7) — keyset nas duas rotas de
+> audit; UI e contrato de paginação mudam de "página N" pra "próxima".
+
+---
+
+## F177 (MEDIUM, CORRIGIDO em 2026-09-17) — guards de a11y/CSP não alcançavam o HTML montado em Python
+
+**Sintoma.** Os 8 guards de a11y/CSP varriam só `.html`
+(`h.templates_html()`). HTML montado em Python — string concatenada,
+f-string — não era olhado por NENHUM deles. Três alvos reais medidos por
+grep antes de escrever qualquer casador: `_toggle_checkbox_fragment` (serve
+fragmento HTMX, `src/web/routes/_shared.py`) e duas páginas INTEIRAS em
+f-string, `src/auth/oauth.py:394` e `:409` (`_success_page`/`_error_page`,
+callback OAuth).
+
+**Fix.** `html_em_python()`, novo no harness (`tests/unit/_guard_harness.py`)
+— acha os 3 alvos via AST (`Constant`/`JoinedStr`), reconstrói o texto
+LÓGICO trocando `{expr}` por um placeholder (imune a como o autor ou o
+`ruff format` quebrou as linhas) e exclui docstring (5 docstrings em
+`src/web/`+`src/auth/` citam tag entre `<>` em prosa pra EXPLICAR código e
+cairiam como falso positivo sem a exclusão). Resultado no escopo novo: ZERO
+violações — o HTML montado em Python já estava limpo; prova de que "zero" é
+limpeza e não alcance quebrado veio de mutação (onclick injetado em
+`oauth.py` derruba o guard novo e ficava verde no antigo).
+
+**Dois guards que casavam linha a linha também apertados na mesma task**
+(`_gray_300_como_texto`, `test_todo_controle_de_formulario_tem_nome_acessivel`,
+`test_todo_th_declara_scope`): um atributo que o formatador quebrasse em
+duas linhas escapava, porque as duas metades da condição nunca estavam na
+MESMA linha em lugar nenhum. Passaram a casar sobre o texto inteiro.
+
+**A correção do form-control achou um bug REAL, não fabricado:**
+`#search-gestor`/`#search-account` em `access.html`/`access_meta.html` sem
+`<label>`, `aria-label` nem embrulho — 2 templates, 4 ocorrências. A Task 8
+registrou os 4 numa allowlist em vez de corrigir (fora do `Files:` que a
+task declarava) e reportou pro Wellington decidir; o commit seguinte
+(`f2d0c1f`) fechou de fato — trocou pra macro `search_input()` de
+`_components.html` (mesmo padrão já usado em `accounts.html`/
+`accounts_meta.html`/`managers.html`), removeu a allowlist, e
+`test_todo_controle_de_formulario_tem_nome_acessivel` voltou a ser
+`assert not sem_nome` puro, igual aos guards irmãos. Prova nas duas
+direções: `access.html:27` revertido pro markup pré-fix, guard vermelho
+nomeando exatamente `access.html:27 <input>`; restaurado, verde (43/43).
+
+> **✅ CORRIGIDO** (branch `pr5/painel`, Task 8 + `f2d0c1f`) — 3 alvos de
+> HTML-em-Python cobertos, 2 guards linha-a-linha apertados pra casar texto
+> inteiro, achado real (aria-label) corrigido no commit seguinte.
+
+---
+
+## F178 (MEDIUM, ABERTO) — as páginas de callback OAuth renderizam sem estilo em produção
+
+**Sintoma.** `_success_page`/`_error_page` (`src/auth/oauth.py:392`/`:407`,
+com o `<style>` inline nos f-strings que abrem em `:394`/`:409`) montam a
+página de sucesso/erro do OAuth Google inteira como HTML com
+`<style>body{...}</style>` embutido. `_CSP_POLICY`
+(`src/web/middleware.py:81`) é `style-src 'self' https://fonts.bunny.net`
+(diretiva na linha 84) — **sem `unsafe-inline`**. O browser bloqueia o
+`<style>` inline; as duas páginas renderizam sem CSS nenhum em produção.
+
+**Achado durante o trabalho de a11y desta PR, ainda não corrigido.** A
+Task 8 (F177) puxou esses dois arquivos pro escopo dos guards
+(`html_em_python()` os varre desde então) sem tocar o `<style>` em si —
+`Files:` declarado ali era só o teste de guard. O commit seguinte
+(`f2d0c1f`) já registrou o achado em prosa, sem código. **Agravante medido
+nesta revisão: nenhum guard cobre `<style>` como ELEMENTO** — só como
+atributo (`style\s*=`, que F101/F125 já cobrem). Um `<style>` inteiro
+dentro do HTML montado em Python passa por baixo dos 8 guards de a11y/CSP
+hoje, exatamente o tipo de página que o F177 acabou de trazer pro escopo.
+
+**Fix não decidido:** mover o CSS das duas páginas pra uma folha externa
+servida por `/static`. Como `_success_page`/`_error_page` são strings
+Python puras (fora do `Jinja2Templates` do resto do painel), o fix precisa
+decidir entre um `<link rel="stylesheet">` pro estático certo (mínimo) ou
+migrar as duas pro sistema de templates do painel (mais consistente, mais
+mudança).
+
+---
+
+## F179 (HIGH, ABERTO) — `admin_invites_cancel` audita um cancelamento que pode não ter acontecido
+
+**Sintoma.** `src/web/routes/admin_invites.py:113`: dentro do
+`async with conn.transaction():` que esta mesma PR introduziu (Task 5,
+F174), `managers_repo.delete_invite(conn, manager_id=parsed_invite_id)` —
+que só deleta a linha `WHERE status = 'invited'`
+(`src/db/repositories/managers.py:140`, devolve `bool`) — tem seu retorno
+DESCARTADO, e a chamada seguinte a `_audit_admin` grava
+`operation="admin_invite_cancel"` INCONDICIONALMENTE.
+
+**Cenário concreto.** Convidado loga (status vira `active`) no instante
+entre o `SELECT email FROM managers WHERE id = $1` (linha 109) e o
+`DELETE` (agora dentro da MESMA transação — mas o `DELETE` continua não
+deletando NADA, porque `status` já não é `'invited'`). `delete_invite`
+devolve `False`. `_audit_admin` grava do mesmo jeito: o `audit_log` afirma
+que um admin cancelou um convite que, na verdade, virou uma conta ativa.
+
+**Por que a Task 5 não fechou isto por acidente.** A transação (F174) faz o
+PAR escrita+audit ATÔMICO — os dois commitam juntos ou nenhum commita. Mas
+atômico não é verdadeiro: os DOIS acontecem "juntos" mesmo quando o
+`DELETE` não afetou nenhuma linha. A transação garante que o audit não
+sobrevive a uma escrita que falhou (exceção); não garante que o audit só
+aconteça quando a escrita TEVE EFEITO.
+
+**Fix não decidido:** checar o retorno de `delete_invite` (já é `bool`,
+desenhado exatamente pra isso — `managers.py:141`: "Returns True if
+deleted") antes de chamar `_audit_admin`. Sobre `False`, decidir entre (a)
+não auditar e devolver um erro visível ao admin ("convite já foi aceito"),
+ou (b) auditar com um `operation` que diga a verdade
+(`admin_invite_cancel_noop`, ou um campo `effective=false`). (a) segue o
+padrão que `admin_accounts_google_restore` (`admin_accounts.py:86-92`) já
+usa — recusa cedo com uma flash message quando a ação não faria sentido —
+mas aqui a checagem só é possível DEPOIS do `DELETE` (o "não faria sentido"
+não dá pra ver antes, é o resultado do próprio `DELETE` que revela).

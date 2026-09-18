@@ -284,8 +284,9 @@ async def copy_access(
     T5e (revisão de branch): origem == destino aniquilaria o gestor — o UPDATE
     de limpeza revoga tudo que ele tem, e o SELECT seguinte, filtrando
     `revoked_at IS NULL`, já não acha nada pra reconceder. A rota checa antes
-    (`routes.py`), mas a defesa não pode viver só lá: quem chamar o repositório
-    de outro lugar não herda a checagem.
+    (`src/web/routes/admin_access.py:204`, `admin_access_meta_bulk_copy`),
+    mas a defesa não pode viver só lá: quem chamar o repositório de outro
+    lugar não herda a checagem.
     """
     if from_manager_id == to_manager_id:
         raise ValueError("copy_access: origem e destino sao o mesmo gestor")

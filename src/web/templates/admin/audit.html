@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_components.html" import badge, empty_state, pagination %}
+{% from "_components.html" import badge, cursor_pagination, empty_state %}
 
 {% block title %}Admin · Auditoria global — V4 Ads MCP{% endblock %}
 
@@ -112,7 +112,7 @@
     </tbody>
   </table>
   </div>
-  {{ pagination(current_page, total_pages, "/admin/audit", "page", query_string=query_string) }}
+  {{ cursor_pagination("/admin/audit", next_cursor_at, next_cursor_id, is_first_page, query_string=query_string) }}
   {% else %}
     {{ empty_state("Nenhum evento.", "Tente um período maior ou remova filtros.") }}
   {% endif %}

@@ -1,0 +1,418 @@
+[
+  {
+    "path": "/",
+    "methods": [
+      "GET"
+    ],
+    "name": "dashboard",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/access-denied",
+    "methods": [
+      "GET"
+    ],
+    "name": "access_denied",
+    "deps": []
+  },
+  {
+    "path": "/accounts",
+    "methods": [
+      "GET"
+    ],
+    "name": "accounts_page",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/accounts/{connection_id}/revoke",
+    "methods": [
+      "POST"
+    ],
+    "name": "accounts_revoke_connection",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin",
+    "methods": [
+      "GET"
+    ],
+    "name": "admin_index",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/access",
+    "methods": [
+      "GET"
+    ],
+    "name": "admin_access",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/access/bulk-copy",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_access_bulk_copy",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/access/bulk-grant",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_access_bulk_grant",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/access/by-manager",
+    "methods": [
+      "GET"
+    ],
+    "name": "admin_access_by_manager",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/access/meta",
+    "methods": [
+      "GET"
+    ],
+    "name": "admin_access_meta",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/access/meta/bulk-copy",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_access_meta_bulk_copy",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/access/meta/bulk-grant",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_access_meta_bulk_grant",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/access/meta/by-manager",
+    "methods": [
+      "GET"
+    ],
+    "name": "admin_access_meta_by_manager",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/access/meta/toggle",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_access_meta_toggle",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/access/meta/{manager_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "admin_access_meta_manager_detail",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/access/toggle",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_access_toggle",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/access/{manager_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "admin_access_manager_detail",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/accounts",
+    "methods": [
+      "GET"
+    ],
+    "name": "admin_accounts",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/accounts/meta",
+    "methods": [
+      "GET"
+    ],
+    "name": "admin_accounts_meta",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/accounts/meta/{ad_account_id}/restore",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_accounts_meta_restore",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/accounts/{customer_id}/restore",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_accounts_google_restore",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/audit",
+    "methods": [
+      "GET"
+    ],
+    "name": "admin_audit",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/audit/export.csv",
+    "methods": [
+      "GET"
+    ],
+    "name": "admin_audit_export_csv",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/invites",
+    "methods": [
+      "GET"
+    ],
+    "name": "admin_invites",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/invites/new",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_invites_new",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/invites/{invite_id}/cancel",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_invites_cancel",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/managers",
+    "methods": [
+      "GET"
+    ],
+    "name": "admin_managers",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/managers/{manager_id}/toggle-active",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_managers_toggle_active",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/admin/managers/{manager_id}/toggle-role",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_managers_toggle_role",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/audit",
+    "methods": [
+      "GET"
+    ],
+    "name": "audit",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/audit/export.csv",
+    "methods": [
+      "GET"
+    ],
+    "name": "audit_export_csv",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/audit/{audit_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "audit_detail",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/help",
+    "methods": [
+      "GET"
+    ],
+    "name": "help_page",
+    "deps": [
+      "optional_current_manager"
+    ]
+  },
+  {
+    "path": "/legal/data-deletion-status/{code}",
+    "methods": [
+      "GET"
+    ],
+    "name": "data_deletion_status",
+    "deps": [
+      "optional_current_manager"
+    ]
+  },
+  {
+    "path": "/legal/privacy",
+    "methods": [
+      "GET"
+    ],
+    "name": "legal_privacy",
+    "deps": [
+      "optional_current_manager"
+    ]
+  },
+  {
+    "path": "/legal/terms",
+    "methods": [
+      "GET"
+    ],
+    "name": "legal_terms",
+    "deps": [
+      "optional_current_manager"
+    ]
+  },
+  {
+    "path": "/login",
+    "methods": [
+      "GET"
+    ],
+    "name": "login_page",
+    "deps": [
+      "optional_current_manager"
+    ]
+  },
+  {
+    "path": "/logout",
+    "methods": [
+      "POST"
+    ],
+    "name": "logout",
+    "deps": []
+  },
+  {
+    "path": "/sessions",
+    "methods": [
+      "GET"
+    ],
+    "name": "sessions_list",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/sessions/new",
+    "methods": [
+      "POST"
+    ],
+    "name": "sessions_create",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/sessions/{session_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "session_detail",
+    "deps": [
+      "current_manager"
+    ]
+  },
+  {
+    "path": "/sessions/{session_id}/revoke",
+    "methods": [
+      "POST"
+    ],
+    "name": "sessions_revoke",
+    "deps": [
+      "current_manager"
+    ]
+  }
+]

@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_components.html" import badge, empty_state, pagination, tooltip %}
+{% from "_components.html" import badge, cursor_pagination, empty_state, tooltip %}
 
 {% block title %}Auditoria — V4 Ads MCP{% endblock %}
 
@@ -153,7 +153,7 @@
     </div>
     {% endfor %}
 
-    {{ pagination(current_page, total_pages, "/audit", "page", query_string=query_string) }}
+    {{ cursor_pagination("/audit", next_cursor_at, next_cursor_id, is_first_page, query_string=query_string) }}
   {% else %}
     {{ empty_state("Nenhum evento no período selecionado.", "Tente um período maior ou remova filtros.") }}
   {% endif %}

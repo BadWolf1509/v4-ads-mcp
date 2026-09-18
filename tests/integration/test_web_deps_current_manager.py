@@ -8,7 +8,8 @@ cookie VÁLIDO (HMAC íntegro, TTL ok) cujo manager foi desativado
 (is_active=False) DEPOIS de logar — current_manager consulta o DB a cada
 request (não confia só no cookie) e deve negar mesmo assim.
 
-Usa a rota real /admin/managers/{id}/toggle-active (src/web/routes.py:788) pra
+Usa a rota real /admin/managers/{id}/toggle-active
+(src/web/routes/admin_overview.py:186, `admin_managers_toggle_active`) pra
 desativar — mais realista que UPDATE cru: exercita o mesmo caminho que um admin
 usaria em produção pra revogar acesso de um gestor.
 """
