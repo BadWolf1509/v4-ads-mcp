@@ -18,35 +18,31 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 
 ## Estado atual
 
-**2026-09-04.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`,
-**68 MCP tools** (62 Google + 6 Meta), CI gated + deploy automático. Catálogo em **152 IDs**.
-
-**Quantos findings fecharam em qual sprint NÃO vive aqui** — essa narrativa churna toda
-sessão e duplica o `estado-atual.md`. Este bloco tem só o que orienta qualquer sessão;
-número de tool e contagem de ID se atualizam junto com o `estado-atual.md` no fecho.
-
-**O detalhe vive em [`docs/operacao/estado-atual.md`](docs/operacao/estado-atual.md)** —
-estado de produção, pendências abertas, decision gates, quem usa o quê, tokens, IAM.
-Volátil por natureza: **atualize aquele arquivo ao terminar a sessão**, não este.
+**2026-09-18.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`,
+**68 MCP tools** (62 Google + 6 Meta), CI gated + deploy automático. Catálogo em **170 IDs**
+(F1–F179). **Detalhe, pendências e decision gates vivem em
+[`estado-atual.md`](docs/operacao/estado-atual.md)** — atualize AQUELE no fecho, não este.
 
 **Sabe de cara:**
 
-- `gcloud` pode estar **sem credencial válida** — confirme antes de qualquer tarefa de infra.
-- **A reconciliação Meta sobe DESLIGADA** (`META_RECONCILE_APPLY=false`): observa e conta,
-  não revoga. Ver a pendência 1c do `estado-atual.md` antes de virar a chave.
+- `gcloud` pode estar **sem credencial válida** — confirme antes de tarefa de infra, e
+  **nunca com `2>/dev/null`**: ele tenta pedir reautenticação e pendura em silêncio.
+- **A reconciliação Meta REVOGA** (`META_RECONCILE_APPLY=true` desde 09/09; já revogou em
+  produção). O lado **Google** é que segue em soak (`GOOGLE_RECONCILE_APPLY=false`) —
+  observa e conta, não revoga. Ver a pendência do `estado-atual.md` antes de virar.
 - Fase 2B (tombstone dos 8 reports antigos) segue **travada** no soak — não tombstonar.
 - **Tool nova só aparece pra sessão nova** (F140): o catálogo é negociado no handshake do
   MCP, e o sintoma é a tool "não existir", não um erro de versão. Reconecte antes do smoke.
-- `ad_schedule` em produção; smoke 3b.42 **10/10**. Pendente: **3b.44** (#40) — 7 testes,
-  **todos mutantes** —
-  [`phase-3b-44-bid-modifier-smoke.md`](docs/operacao/phase-3b-44-bid-modifier-smoke.md).
-- **Buckets reclassificados em 04/09** (PR #32): 22 always + 46 defer, remedição mensal
-  marcada para 04/10 em
+- **Buckets reclassificados em 04/09** (PR #32): 22 always + 46 defer; **remedição mensal
+  vencida desde 04/10** em
   [`tool-buckets-2026-09-04.md`](docs/operacao/tool-buckets-2026-09-04.md). A medição
   precisa de coluna de controle e match por prefixo de operation — sem as duas os
   números saem errados nos dois sentidos.
-- Próximo sprint candidato: **M.5** (`meta_get_audience_performance` +
-  `meta_get_top_creatives`).
+- **Docker parado ≠ Docker travado:** os processos do Desktop sobem e ainda assim não há
+  engine se o serviço `com.docker.service` estiver `Stopped` (exige elevação).
+- Varredura fechada em 18/09: **7 frentes, F155–F179**. Abertos: **F178** (callback OAuth
+  sem CSS — `<style>` inline barrado pela CSP) e **F179** (`admin_invites_cancel` audita
+  cancelamento que pode não ter ocorrido).
 
 ## Context bootstrap
 
@@ -66,9 +62,9 @@ tripwires do `Don't do`. O resto é roteado — carregue sob demanda:
 | roadmap Meta / Fase 2B | [`specs/`](docs/superpowers/specs/) |
 
 **Antes de desenhar ou corrigir código**, faça busca **dirigida** em
-[`findings-catalog.md`](docs/operacao/findings-catalog.md) pela área ou sintoma — 116 IDs,
-~460 linhas. Grep por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `CSP`), nunca leitura
-integral. Cada entrada corrigida traz o que foi feito **e o que ficou deliberadamente de fora**.
+[`findings-catalog.md`](docs/operacao/findings-catalog.md) pela área ou sintoma — **170 IDs,
+~3400 linhas, 415 KB**. Grep por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `CSP`); ler
+integral não cabe em contexto nenhum. Cada entrada corrigida traz o que foi feito **e o que ficou deliberadamente de fora**.
 
 A última sessão de cada frente está em `docs/operacao/session-*-handoff.md`; o handoff é o
 mapa da sessão, o catálogo é a enciclopédia dos bugs.
@@ -162,7 +158,7 @@ Quando o padrão de mercado custar caro demais para o momento, **apresente o tra
 - Don't reportar quota sem dizer QUAL quota: desde o F73 há duas chaves (`mgr:<uuid>` e o dev token), e a menor é a que barra (F110). Don't derivar identificador de auditoria de um dict opcional quando existe kwarg obrigatório com o mesmo dado (F111).
 - Don't computar `blast_radius.classify` e ignorar `.level` sem que o caminho fixo esteja amarrado por teste — hoje 18 das 28 tools fazem isso e o guard derivado é o que impede a divergência silenciosa (F112).
 - Don't pôr nome acessível (`aria-label`) num elemento que um swap HTMX substitui — o fragmento servido pela rota não tem o texto e o rótulo degrada calado. Aponte pra fora do nó trocado com `aria-labelledby`, derivando os ids do que a rota já recebe (F101, mesma família do F74). Don't referenciar `/static` sem `?v={{ asset_version }}`: o `Cache-Control` é `immutable` por um ano (F102).
-- Don't isentar prefixo no `_CSRF_EXEMPT_PREFIXES` — isente **rota**. Prefixo herda tudo que um `APIRouter(prefix=…)` pendurar ali depois, sem revisão (F106).
+- Don't isentar prefixo de CSRF — isente **rota**, por igualdade literal em `_CSRF_EXEMPT_ROUTES`/`_rota_isenta_de_csrf`. Prefixo herda tudo que um `APIRouter(prefix=…)` pendurar ali depois, sem revisão (F106/F173).
 - Don't devolver 200 de um POST de mutação sem HTMX — 303, senão o refresh re-executa a ação (F107; espelho do F96, que era 303 cru num `hx-post`).
 - Don't pôr `role="button"` num `<tr>`: pela ARIA os filhos viram presentacionais e a linha perde o vínculo com os `<th scope="col">`. `tabindex="0"` + `aria-expanded` (suportado em `role=row`) dá o teclado sem isso (F105). Don't deixar `<th>` sem `scope` (F104).
 - **Don't escrever JS nem CSS inline em template** (`onclick=`, `hx-on`, `<script>`, `style=`): a CSP não tem `unsafe-*`, então o browser bloqueia — e handler inline morre calado. Use `data-v4-*` + listener em `v4-panel.js`, e classe pro estilo. Vale também pra HTML montado dentro de string Jinja passada a macro (aspas escapadas escondem o atributo de grep).
