@@ -71,18 +71,22 @@ async def admin_invites_new(
 
         from src.db.repositories import managers as managers_repo
 
-        await managers_repo.create_invited(
-            conn,
-            email=email,
-            invited_by=user.id,
-            full_name=(full_name or None),
-        )
-        await _audit_admin(
-            conn,
-            admin=user,
-            operation="admin_invite_new",
-            email=email,
-        )
+        # Task 5: criação do convite e audit na mesma transação — se
+        # _audit_admin falhar depois do INSERT já commitado, o convite existe
+        # sem registro de quem convidou (F91: isto é transação, não retry).
+        async with conn.transaction():
+            await managers_repo.create_invited(
+                conn,
+                email=email,
+                invited_by=user.id,
+                full_name=(full_name or None),
+            )
+            await _audit_admin(
+                conn,
+                admin=user,
+                operation="admin_invite_new",
+                email=email,
+            )
     return RedirectResponse(url="/admin/invites?ok=1", status_code=303)
 
 
@@ -102,13 +106,16 @@ async def admin_invites_cancel(
         from src.db.repositories import managers as managers_repo
 
         email = await conn.fetchval("SELECT email FROM managers WHERE id = $1", parsed_invite_id)
-        await managers_repo.delete_invite(conn, manager_id=parsed_invite_id)
-        await _audit_admin(
-            conn,
-            admin=user,
-            operation="admin_invite_cancel",
-            email=email,
-        )
+        # Task 5: cancelamento do convite e audit na mesma transação (ver
+        # admin_invites_new).
+        async with conn.transaction():
+            await managers_repo.delete_invite(conn, manager_id=parsed_invite_id)
+            await _audit_admin(
+                conn,
+                admin=user,
+                operation="admin_invite_cancel",
+                email=email,
+            )
     if request.headers.get("HX-Request"):
         # Full-page refresh (browser reload) picks up the updated pending
         # count + subnav badge for free — cheaper than hand-updating both.

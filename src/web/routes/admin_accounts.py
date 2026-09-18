@@ -83,16 +83,20 @@ async def admin_accounts_google_restore(
             return RedirectResponse(
                 url="/admin/accounts?error=conta_inativa_google", status_code=303
             )
-        restaurados = await manager_account_access.restore_for_account(
-            conn, customer_id=customer_id
-        )
-        await _audit_admin(
-            conn,
-            admin=user,
-            operation="admin_accounts_google_restore",
-            customer_id=customer_id,
-            restored_grants=len(restaurados),
-        )
+        # Task 5: restauração e audit na mesma transação — se _audit_admin
+        # falhar depois do restore, os grants reconcedidos e a linha de audit
+        # desfazem juntos (F91: isto é transação, não retry).
+        async with conn.transaction():
+            restaurados = await manager_account_access.restore_for_account(
+                conn, customer_id=customer_id
+            )
+            await _audit_admin(
+                conn,
+                admin=user,
+                operation="admin_accounts_google_restore",
+                customer_id=customer_id,
+                restored_grants=len(restaurados),
+            )
     return RedirectResponse(url="/admin/accounts?ok=restored", status_code=303)
 
 
@@ -161,17 +165,20 @@ async def admin_accounts_meta_restore(
                 # e o admin nao veria por que nada aconteceu.
                 return Response(status_code=204, headers={"HX-Redirect": destino})
             return RedirectResponse(url=destino, status_code=303)
-        restaurados = await manager_meta_account_access.restore_for_account(
-            conn, ad_account_id=ad_account_id
-        )
-        await _audit_admin(
-            conn,
-            admin=user,
-            operation="admin_accounts_meta_restore",
-            customer_id=ad_account_id,
-            platform="meta",
-            restored_grants=restaurados,
-        )
+        # Task 5: restauração e audit na mesma transação (ver
+        # admin_accounts_google_restore).
+        async with conn.transaction():
+            restaurados = await manager_meta_account_access.restore_for_account(
+                conn, ad_account_id=ad_account_id
+            )
+            await _audit_admin(
+                conn,
+                admin=user,
+                operation="admin_accounts_meta_restore",
+                customer_id=ad_account_id,
+                platform="meta",
+                restored_grants=restaurados,
+            )
     if request.headers.get("HX-Request"):
         # Mesmo idioma de accounts_revoke_connection/admin_invites_cancel: full
         # refresh do browser reconstroi as tres filas de graca, sem swap manual.

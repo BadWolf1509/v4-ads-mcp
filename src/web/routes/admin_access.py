@@ -111,29 +111,33 @@ async def admin_access_meta_toggle(
             target_mid,
             ad_account_id,
         )
-        if exists:
-            await manager_meta_account_access.revoke(
-                conn, manager_id=target_mid, ad_account_id=ad_account_id
-            )
-            granted = False
-        else:
-            await manager_meta_account_access.grant(
+        # Task 5: acesso e audit na mesma transação — se _audit_admin falhar
+        # depois do grant/revoke, os dois desfazem juntos (F91: isto não é
+        # retry, é transação; run_with_reconnect NÃO pode envolver escrita).
+        async with conn.transaction():
+            if exists:
+                await manager_meta_account_access.revoke(
+                    conn, manager_id=target_mid, ad_account_id=ad_account_id
+                )
+                granted = False
+            else:
+                await manager_meta_account_access.grant(
+                    conn,
+                    manager_id=target_mid,
+                    ad_account_id=ad_account_id,
+                    access_level="write",
+                    granted_by=user.id,
+                )
+                granted = True
+            await _audit_admin(
                 conn,
-                manager_id=target_mid,
-                ad_account_id=ad_account_id,
-                access_level="write",
-                granted_by=user.id,
+                admin=user,
+                operation="admin_access_grant" if granted else "admin_access_revoke",
+                customer_id=ad_account_id,
+                platform="meta",
+                target_manager_id=manager_id,
+                granted=granted,
             )
-            granted = True
-        await _audit_admin(
-            conn,
-            admin=user,
-            operation="admin_access_grant" if granted else "admin_access_revoke",
-            customer_id=ad_account_id,
-            platform="meta",
-            target_manager_id=manager_id,
-            granted=granted,
-        )
     return HTMLResponse(
         _toggle_checkbox_fragment(
             post_url="/admin/access/meta/toggle",
@@ -154,7 +158,8 @@ async def admin_access_meta_bulk_grant(
 ) -> RedirectResponse:
     _require_admin(user)
     pool = connection.get_pool()
-    async with pool.acquire() as conn:
+    # Task 5: acesso e audit na mesma transação (ver admin_access_meta_toggle).
+    async with pool.acquire() as conn, conn.transaction():
         await manager_meta_account_access.bulk_grant(
             conn,
             manager_id=UUID(manager_id),
@@ -184,7 +189,10 @@ async def admin_access_meta_bulk_copy(
     if from_manager_id == to_manager_id:
         return RedirectResponse(url="/admin/access/meta?error=same_manager", status_code=303)
     pool = connection.get_pool()
-    async with pool.acquire() as conn:
+    # Task 5: acesso e audit na mesma transação (ver admin_access_meta_toggle).
+    # `copy_access` já abre a própria `conn.transaction()` — aninhar vira
+    # SAVEPOINT (idioma padrão asyncpg), não conflita com esta.
+    async with pool.acquire() as conn, conn.transaction():
         await manager_meta_account_access.copy_access(
             conn,
             from_manager_id=UUID(from_manager_id),
@@ -298,7 +306,8 @@ async def admin_access_bulk_grant(
 ) -> RedirectResponse:
     _require_admin(user)
     pool = connection.get_pool()
-    async with pool.acquire() as conn:
+    # Task 5: acesso e audit na mesma transação (ver admin_access_meta_toggle).
+    async with pool.acquire() as conn, conn.transaction():
         await manager_account_access.bulk_grant(
             conn,
             manager_id=UUID(manager_id),
@@ -327,7 +336,10 @@ async def admin_access_bulk_copy(
     if from_manager_id == to_manager_id:
         return RedirectResponse(url="/admin/access?error=same_manager", status_code=303)
     pool = connection.get_pool()
-    async with pool.acquire() as conn:
+    # Task 5: acesso e audit na mesma transação (ver admin_access_meta_toggle).
+    # `copy_access` já abre a própria `conn.transaction()` — aninhar vira
+    # SAVEPOINT (idioma padrão asyncpg), não conflita com esta.
+    async with pool.acquire() as conn, conn.transaction():
         await manager_account_access.copy_access(
             conn,
             from_manager_id=UUID(from_manager_id),
@@ -465,31 +477,33 @@ async def admin_access_toggle(
             target_mid,
             customer_id,
         )
-        if exists:
-            await manager_account_access.revoke(
-                conn,
-                manager_id=target_mid,
-                customer_id=customer_id,
-            )
-            granted = False
-        else:
-            await manager_account_access.grant(
-                conn,
-                manager_id=target_mid,
-                customer_id=customer_id,
-                access_level="write",
-                granted_by=user.id,
-            )
-            granted = True
+        # Task 5: acesso e audit na mesma transação (ver admin_access_meta_toggle).
+        async with conn.transaction():
+            if exists:
+                await manager_account_access.revoke(
+                    conn,
+                    manager_id=target_mid,
+                    customer_id=customer_id,
+                )
+                granted = False
+            else:
+                await manager_account_access.grant(
+                    conn,
+                    manager_id=target_mid,
+                    customer_id=customer_id,
+                    access_level="write",
+                    granted_by=user.id,
+                )
+                granted = True
 
-        await _audit_admin(
-            conn,
-            admin=user,
-            operation="admin_access_grant" if granted else "admin_access_revoke",
-            customer_id=customer_id,
-            target_manager_id=manager_id,
-            granted=granted,
-        )
+            await _audit_admin(
+                conn,
+                admin=user,
+                operation="admin_access_grant" if granted else "admin_access_revoke",
+                customer_id=customer_id,
+                target_manager_id=manager_id,
+                granted=granted,
+            )
 
     # Return a tiny HTMX-friendly fragment that swaps the cell
     return HTMLResponse(

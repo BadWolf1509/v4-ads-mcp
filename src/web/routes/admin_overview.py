@@ -148,7 +148,10 @@ async def admin_managers_toggle_active(
     if manager_id == user.id:
         raise HTTPException(status_code=400, detail="Nao pode desativar voce mesmo")
     pool = connection.get_pool()
-    async with pool.acquire() as conn:
+    # Task 5: UPDATE cru e audit na mesma transação — se _audit_admin falhar
+    # depois do UPDATE já commitado, o gestor muda de status sem registro de
+    # quem mudou (F91: isto é transação, não retry).
+    async with pool.acquire() as conn, conn.transaction():
         row = await conn.fetchrow(
             "UPDATE managers SET is_active = NOT is_active WHERE id = $1 RETURNING email",
             manager_id,
@@ -183,7 +186,8 @@ async def admin_managers_toggle_role(
     if manager_id == user.id:
         raise HTTPException(status_code=400, detail="Nao pode mudar seu proprio role")
     pool = connection.get_pool()
-    async with pool.acquire() as conn:
+    # Task 5: UPDATE cru e audit na mesma transação (ver admin_managers_toggle_active).
+    async with pool.acquire() as conn, conn.transaction():
         row = await conn.fetchrow(
             """
             UPDATE managers SET role =

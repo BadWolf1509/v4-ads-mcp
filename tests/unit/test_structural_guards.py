@@ -1175,3 +1175,112 @@ def test_retentaveis_de_conexao_tem_uma_fonte_de_verdade_so() -> None:
         f"`_DROPPED_CONNECTION_ERRORS`: {ofensores}. Duas fontes de verdade do "
         "mesmo dado divergem — e a divergência aqui reabre o F91 sem teste vermelho."
     )
+
+
+def _abre_transacao_no_corpo_proprio(escopo: ast.AST, arv: ast.Module) -> bool:
+    """True se o corpo PRÓPRIO de `escopo` (sem descer em def/lambda aninhados,
+    ver `h.nos_do_corpo_proprio`) tem um `with`/`async with` cujo item de
+    contexto chama `.transaction()` — em qualquer profundidade léxica (dentro
+    de `if`/`else`, `try`, etc.), não só no nível mais externo.
+
+    Mesma resolução de nome de `h.chama` (casa `Attribute.attr`, com alias via
+    `nomes_locais` — não importa se a variável de conexão se chama `conn`,
+    `connection` ou outra coisa). Não afirma ORDEM relativa a nenhuma outra
+    chamada — ao contrário do `_cursores_fora_de_transacao` do F58, que precisa
+    saber se o `.cursor(` está DENTRO da transação. Aqui a pergunta é mais
+    simples ("a função abre uma transação em algum lugar do próprio corpo?"),
+    então presença basta.
+    """
+    nomes = h.nomes_locais(arv, "transaction")
+    for no in h.nos_do_corpo_proprio(escopo):
+        if not isinstance(no, ast.AsyncWith | ast.With):
+            continue
+        for item in no.items:
+            ctx = item.context_expr
+            if (
+                isinstance(ctx, ast.Call)
+                and isinstance(ctx.func, ast.Attribute)
+                and ctx.func.attr in nomes
+            ):
+                return True
+    return False
+
+
+# As 12 rotas da Task 5 (2026-09-17): mudança de acesso (ou de gestor, ou de
+# convite) e a linha de audit_log que a documenta gravadas como uma escrita
+# só. Path -> nomes é a forma que o brief autoriza enumerar — o conjunto é
+# conhecido e fechado, e só chegou a 12 depois de duas medições erradas (uma
+# casava por palavra-chave e perdia `admin_managers_toggle_active`, cujo corpo
+# diz `is_active`, não `access`; a outra exigia chamada de repositório e
+# perdia as duas de SQL cru). O que o guard não aceita calado é um desses 12
+# nomes sumir do código — ver a asserção de `faltando` no teste abaixo.
+_ROTAS_ACESSO_E_AUDIT_ATOMICOS: dict[Path, frozenset[str]] = {
+    h.SRC / "web" / "routes" / "admin_access.py": frozenset(
+        {
+            "admin_access_meta_toggle",
+            "admin_access_meta_bulk_grant",
+            "admin_access_meta_bulk_copy",
+            "admin_access_bulk_grant",
+            "admin_access_bulk_copy",
+            "admin_access_toggle",
+        }
+    ),
+    h.SRC / "web" / "routes" / "admin_accounts.py": frozenset(
+        {"admin_accounts_google_restore", "admin_accounts_meta_restore"}
+    ),
+    h.SRC / "web" / "routes" / "admin_overview.py": frozenset(
+        {"admin_managers_toggle_active", "admin_managers_toggle_role"}
+    ),
+    h.SRC / "web" / "routes" / "admin_invites.py": frozenset(
+        {"admin_invites_new", "admin_invites_cancel"}
+    ),
+}
+
+
+def test_acesso_e_audit_abrem_a_mesma_transacao_nas_12_rotas() -> None:
+    """Task 5 (2026-09-17): as 12 rotas admin que mudam acesso (ou gestor, ou
+    convite) e gravam `audit_log` fazem as duas escritas como UMA transação.
+
+    Sem isso, audit falhando depois da escrita já commitada deixa o estado
+    mudado sem registro de quem mudou — numa ferramenta cuja governança
+    inteira se apoia no `audit_log`, o pior desfecho possível (pior que a
+    mudança falhar: falha visível alguém conserta). O comportamento de
+    transação/rollback é provado com Postgres real em
+    `tests/integration/test_acesso_e_audit_sao_atomicos.py` (3 das 12, uma por
+    forma de escrita); este guard prova a INVARIANTE ESTRUTURAL nas 12, não só
+    nas 3 exercitadas ali — sem ele, nada impede as outras 9 de reincidir.
+
+    `faltando` dispara ANTES de perguntar sobre transação: uma rota renomeada
+    ou movida pra outro módulo tem que acusar por sumir da lista, não sair
+    silenciosamente da cobertura — é o modo de falha nº1 catalogado neste repo
+    (CLAUDE.md, "Don't fechar sprint..."; findings-catalog.md).
+    """
+    faltando: list[str] = []
+    sem_transacao: list[str] = []
+
+    for caminho, nomes in _ROTAS_ACESSO_E_AUDIT_ATOMICOS.items():
+        arv = h.arvore(caminho)
+        achadas = {
+            no.name: no
+            for no in arv.body
+            if isinstance(no, ast.AsyncFunctionDef | ast.FunctionDef) and no.name in nomes
+        }
+        for nome in sorted(nomes):
+            func = achadas.get(nome)
+            if func is None:
+                faltando.append(f"{h.rel(caminho)}::{nome}")
+                continue
+            if not _abre_transacao_no_corpo_proprio(func, arv):
+                sem_transacao.append(f"{h.rel(caminho)}::{nome}")
+
+    assert not faltando, (
+        f"rota da Task 5 sumiu do código: {faltando}. Rename ou move tira a "
+        "cobertura deste guard em silêncio — enumerar os 12 nomes só vale "
+        "enquanto o guard acusa quando um deles some."
+    )
+    assert not sem_transacao, (
+        "rota muda acesso e grava audit_log como DUAS operações independentes "
+        f"(sem `async with conn.transaction()` no corpo próprio): {sem_transacao}. "
+        "Se a segunda escrita (audit) falhar depois da primeira já commitada, o "
+        "acesso muda sem registro de quem mudou."
+    )
