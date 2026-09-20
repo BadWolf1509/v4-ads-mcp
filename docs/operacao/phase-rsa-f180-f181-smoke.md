@@ -182,6 +182,44 @@ deste runbook não é burocracia.
 **Os demais casos seguem ⬜ pendentes.** T2 e T3 não mutam; **T4 e T5 mutam anúncio
 servindo** e exigem o Setup de captura e a Restauração desta página.
 
-### T2–T5 — ⬜ pendentes
+### T2–T5 — executados em 2026-09-20, autorizados pelo Wellington nesta sessão
 
-_(preencher na execução: data, quem autorizou, caso a caso, e os achados que o roteiro não previa)_
+Revisão em produção `v4-ads-mcp-00110-5nd`. **O classificador de auto mode recusou o
+primeiro `apply_change`** (`Real-World Transactions`) mesmo com a autorização já dada, e
+passou depois de ele autorizar o apply **explicitamente** — exatamente o padrão medido em
+04/09 e descrito no topo deste arquivo.
+
+| Caso | Resultado |
+|---|---|
+| **Setup** | ✅ 33 RSAs capturados |
+| **T2** | ✅ token `HCN0JN45` emitido e **não aplicado** (expirou) |
+| **T3** | ✅ lote misto recusado inteiro, sem token |
+| **T4** | ⚠️ **inconclusivo** — ver abaixo |
+| **T5** | ✅ `applied_count: 2`, `failed_count: 0`, `changed_count: 2`, `resource_names` para os dois |
+| **Restauração** | ✅ verificada por dois instrumentos |
+
+**Dois desvios do roteiro, feitos de propósito:**
+
+1. **Alvos trocados.** O roteiro mandava usar RSAs comuns do grupo CONTAINER — que estão
+   **servindo e dentro do experimento**. O Setup revelou alvos melhores: os dois anúncios
+   de ROÇADEIRA (`814964022612`, `814964022615`) vivem em ad_groups **PAUSED**, logo não
+   servem, e ficam fora dos três grupos do experimento. Mesma cobertura, zero impacto no
+   cliente, zero contaminação do A/B.
+2. **T4 sem UI.** Remover anúncio pela UI não é coisa que sessão Claude faça. Tentei duas
+   substituições, e **as duas falharam em produzir a falha**: anúncio em campanha `REMOVED`
+   foi aceito normalmente, e URL inválida virou o **F184**. T4 segue devendo uma falha
+   por-linha real, e o caminho da UI continua sendo o único conhecido.
+
+🔑 **Caso extra que o Setup tornou possível, e que vale mais que o T2:** a variação
+`825281476308` vive num grupo com DOIS RSAs não-variação. A recusa apontou o ad_group e
+**não nomeou id nenhum** — era o ramo ambíguo, que até então só tinha prova por sabotagem
+em unit test.
+
+🔴 **Achado novo: [F184](findings-catalog.md).** Op com `final_urls` inválida devolveu
+`status: "success"`, `failed_count: 0` e `applied_count: 2` — e não mudou nada. Só
+`changed_count: 1` e `resource_names[1] == null` denunciam. Silent-acceptance, classe 1 do
+catálogo.
+
+**Resíduo declarado:** os dois anúncios restaurados ficaram em `REVIEW_IN_PROGRESS`, porque
+restaurar também é edição. Ambos em ad_groups PAUSED — nada deixou de servir. O
+`811361679009` nunca mudou.
