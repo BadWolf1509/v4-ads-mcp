@@ -118,7 +118,9 @@ def _build_params_summary(updates: list[dict[str, Any]]) -> dict[str, Any]:
         "chars), final_urls (1+), path1/path2 (15 chars cada). Listas fornecidas "
         "SUBSTITUEM as existentes (semantics proto-plus + field_mask). Sempre "
         "CONFIRM. Pre-flight rejeita ad inexistente, type != RESPONSIVE_SEARCH_AD, "
-        "ad_group REMOVED, ou campaign non-SEARCH. Para mudar status, use "
+        "ad_group REMOVED, campaign non-SEARCH, ou anuncio que e variacao de Ad "
+        "Variation (gerenciado pelo Google — edite o anuncio base, que a variacao "
+        "herda em minutos). Para mudar status, use "
         "update_ad_status. Atualizacoes afetam serving immediately mas Google "
         "pode re-aprovar (geralmente minutos)."
     ),
