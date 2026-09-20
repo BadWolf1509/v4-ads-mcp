@@ -59,7 +59,9 @@ duas afirmações falsas sobre o breakdown; o **0.4.1 corrigiu e está instalado
 | **F180** | **em parte** — ver abaixo |
 | **F154** | `/me/adaccounts` não é prova de alcance |
 
-Fechados em 20/09: **F181, F182, F183, F184** (sprint de RSA, abaixo).
+Fechados em 20/09: **F181, F182, F183, F184** (sprint de RSA, abaixo) — mais a
+**2ª instância do F182**, que fechou a *classe*: só o `apply_change` descreve a
+contagem do lote, agora com guard. O F182 consertara a instância e deixara a classe.
 
 ---
 
@@ -72,7 +74,7 @@ Nasceu de um backlog da sessão de gestão de tráfego, em uso real na MO-JP
 |---|---|---|
 | **F181** | pre-flight não via `system_managed_resource_source = AD_VARIATIONS`; dry-run emitia token para operação impossível | ✅ verificado em produção |
 | **F184** | `partial_failures` dizia `success` em operação que o Google não executou | ✅ verificado em produção |
-| **F182** | resposta não declarava o regime; `failed_count: 0` afirmava "nenhuma falhou" sem ter medido | ✅ **sem verificação em produção** |
+| **F182** | resposta não declarava o regime; `failed_count: 0` afirmava "nenhuma falhou" sem ter medido | ✅ artefato servido **conferido** em 20/09 (handshake novo contra a produção); envelope ainda não exercitado em lote real |
 | **F183** | 8 arrays de tool sem teto (o finding dizia 2; metade em tool de leitura) | ✅ sem verificação em produção |
 | **F180** | lote de RSA morria inteiro por uma linha | ⚠️ **em parte** |
 

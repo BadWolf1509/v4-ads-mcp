@@ -123,7 +123,9 @@ def _build_params_summary(updates: list[dict[str, Any]]) -> dict[str, Any]:
         "herda em minutos). Para mudar status, use "
         "update_ad_status. Lote PARCIAL: se o Google recusar um ad_id, os demais "
         "sao aplicados e o apply_change devolve partial_failures com o motivo por "
-        "linha. Atualizacoes afetam serving immediately mas Google "
+        "linha — mas recusar e o caso RARO: o padrao medido e o Google ACEITAR e nao "
+        "executar (F180/F184), entao confirme pelo `efeito` de cada linha, nunca por "
+        "ausencia de falha. Atualizacoes afetam serving immediately mas Google "
         "pode re-aprovar (geralmente minutos)."
     ),
     input_schema=_SCHEMA,
