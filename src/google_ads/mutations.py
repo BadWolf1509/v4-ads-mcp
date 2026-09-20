@@ -161,6 +161,41 @@ def _extract_resource_names(response: Any) -> list[str | None]:
     return resource_names
 
 
+def anotar_efeito_por_operacao(
+    per_op_results: list[dict[str, Any]],
+    resource_names: list[str | None],
+) -> list[dict[str, Any]]:
+    """Acrescenta `efeito` a cada op — o que ela MUDOU, ao lado do veredito do Google.
+
+    F184: o Google responde `success` para operacao que ele aceitou e NAO executou.
+    Medido em producao (MO-JP, 20/09): `update_rsa` com `final_urls` invalida devolveu
+    `status: "success"` e `failed_count: 0`, e o anuncio ficou intocado. O unico sinal
+    vivia em `resource_names[i]`, num campo separado da linha que afirmava o sucesso —
+    dois campos diziam "deu certo" e um terceiro, mais discreto, contradizia.
+
+    A resposta espremia TRES realidades em duas palavras: aplicou-e-mudou,
+    aplicou-sem-mudar, e recusou. `status` continua sendo o veredito do Google
+    (success/failed); `efeito` responde a pergunta que faltava:
+
+    - `"mudou"` — o Google devolveu resource_name pra essa linha.
+    - `"sem_efeito"` — a op passou e nao mudou nada. Inclui o no-op LEGITIMO do F139
+      (remover vinculo ja REMOVED), que segue sendo `status: "success"` — o F139
+      decidiu que aquilo e sucesso, e esta anotacao nao reabre a decisao: ela diz o
+      que houve, nao troca o veredito.
+    - `None` — desconhecido. Op que falhou (o efeito nao e pergunta, o `status` ja
+      responde), ou resposta sem `resource_names` (`_extract_resource_names` devolve
+      [] sob drift de SDK). Nao saber e diferente de nao ter mudado, e afirmar
+      `sem_efeito` a partir de uma ausencia seria cometer o F184 do nosso lado.
+    """
+    anotadas: list[dict[str, Any]] = []
+    for op in per_op_results:
+        efeito: str | None = None
+        if op["status"] == "success" and op["index"] < len(resource_names):
+            efeito = "mudou" if resource_names[op["index"]] else "sem_efeito"
+        anotadas.append({**op, "efeito": efeito})
+    return anotadas
+
+
 async def run_mutation(
     *,
     manager_id: UUID,
@@ -296,6 +331,11 @@ async def run_mutation(
 
         # Extract resource_names from mutate_operation_responses (ver _extract_resource_names).
         resource_names = _extract_resource_names(response)
+
+        # F184: junta o EFEITO ao veredito, na mesma linha. O sinal ja existia por
+        # indice em `resource_names`, mas vivia num campo separado daquele que afirmava
+        # o sucesso — e quem le `status: success` nao vai conferir outro campo.
+        per_op_results = anotar_efeito_por_operacao(per_op_results, resource_names)
 
         # F139: `applied_count` conta o TENTADO, nao o MUDADO — com
         # partial_failure ligado e o Google nao reportando falha (o caso do

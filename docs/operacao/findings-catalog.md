@@ -3592,7 +3592,7 @@ sobre API externa, inclusive quando o terceiro é quem está com o repo aberto.
 
 ---
 
-## F184 (MEDIUM, ABERTO) — `partial_failures` diz `success` numa operação que o Google não executou
+## F184 (MEDIUM, CORRIGIDO em 2026-09-20) — `partial_failures` dizia `success` numa operação que o Google não executou
 
 **Medido no smoke do F180+F181, em 2026-09-20, conta MO-JP `7862230676`**, com o código
 já em produção (revisão `v4-ads-mcp-00110-5nd`).
@@ -3641,3 +3641,46 @@ verdade, com `error` preenchido. Duas tentativas de provocá-la falharam — an�
 campanha `REMOVED` foi aceito normalmente, e a URL inválida virou este finding. O caminho
 original do runbook (remover um anúncio pela UI entre o preview e o apply) segue sendo o
 único conhecido, e exige mão humana.
+
+✅ **CORRIGIDO no mesmo dia.** Escolhido o caminho **(c)**: cada linha de
+`partial_failures` passa a carregar `efeito` ao lado de `status`.
+`anotar_efeito_por_operacao` (`mutations.py`) cruza o veredito do Google com
+`resource_names[i]`, que já era calculado por índice e vivia em outro campo da resposta.
+
+| valor | significa |
+|---|---|
+| `"mudou"` | o Google devolveu `resource_name` para a linha |
+| `"sem_efeito"` | a op passou e não mudou nada — inclui o no-op legítimo do F139 |
+| `null` | desconhecido: a linha falhou (o `status` já responde), ou a resposta veio sem `resource_names` (drift de SDK) |
+
+**Por que (c) e não (b).** Derivar o `status` de `resource_name is not None` cobriria a
+classe inteira, mas passaria a chamar de **falha** o no-op legítimo que o **F139
+deliberadamente chamou de sucesso** — trocaria um finding fechado por outro. `efeito`
+**acrescenta** informação sem reescrever o veredito: remover um vínculo já `REMOVED`
+segue sendo `status: "success"`, agora com `efeito: "sem_efeito"`, que é a descrição
+exata do que houve.
+
+**Por que não (a).** Validar formato de URL no pre-flight conserta **uma causa** e deixa
+a classe de pé — a mesma mentira apareceria no próximo campo que o Google aceitasse e
+ignorasse. Fica **deliberadamente de fora**, e vale registrar que a entrada malformada
+continua entrando: o Google segue aceitando `final_urls` inválida sem erro. O que mudou
+é que a resposta **para de afirmar** que ela pegou.
+
+**`null` é a parte que mais importa.** `_extract_resource_names` devolve `[]` sob drift
+de SDK. Marcar tudo como `sem_efeito` ali seria inventar afirmação a partir de ausência
+— o próprio F184 cometido do nosso lado. O teste
+`test_sem_resource_names_o_efeito_e_desconhecido_e_nao_sem_efeito` existe só para isso.
+
+**Sem contador agregado novo**, de propósito: `changed_count` (F139) já é o agregado, e
+`applied_count > changed_count` já denunciava no nível do lote. O defeito era **por
+linha**, e é lá que a correção foi.
+
+**Guards:** 4 unit puros sobre a função + 1 sobre o `run_mutation` que reproduz a forma
+medida em produção (duas ops `success`, a segunda sem `resource_name`). O teste antigo
+que comparava a linha por igualdade exata quebrou e foi atualizado no mesmo commit — de
+novo o padrão do F180: **asserção de dict por igualdade exata trava a melhoria que
+valia.**
+
+⚠️ **Não verificado em produção.** A correção é de leitura da resposta, coberta por
+unit test contra a forma medida — mas o caso real (URL inválida devolvendo `success`) não
+foi reexecutado contra o Google depois do fix.

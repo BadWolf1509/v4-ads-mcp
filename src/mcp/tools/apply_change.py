@@ -107,7 +107,11 @@ def _matches_requested(
         f"expira em {DEFAULT_TTL_MINUTES} minutos. Cada token e consumivel apenas 1 vez "
         "e amarrado a sessao MCP que o gerou. Lote com partial_failure devolve "
         "`partial_failures` (motivo por linha) e `failed_count` ao lado de "
-        "`applied_count`."
+        "`applied_count`. ATENCAO (F184): `status: success` numa linha NAO prova que "
+        "ela mudou algo — o Google aceita operacao e nao a executa. Cada linha traz "
+        "`efeito`: 'mudou', 'sem_efeito' (passou sem mudar nada), ou null "
+        "(desconhecido, ou a linha falhou). Para 'aplicou de verdade', leia `efeito` "
+        "e `changed_count`, nao `applied_count`."
     ),
     input_schema=_SCHEMA,
     bucket="always",
