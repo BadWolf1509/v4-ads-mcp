@@ -3762,3 +3762,21 @@ agravante de o nome ser a única coisa que alguém lê ao decidir se o caso est�
 **Verificação:** 2 testes novos no caminho real do `apply_change` (flag ligada → conta;
 flag desligada → `null`), ambos vistos falhar antes (`KeyError: 'partial_failure'`).
 **Não verificado em produção** — é mudança de forma da resposta, coberta por unit test.
+
+**Contador agregado de `sem_efeito`: considerado e RECUSADO.** A sessão de campo propôs
+um `sem_efeito_count` ao lado do `failed_count`, com o argumento — correto — de que o
+`failed_count: 0` das 8 tools COM a flag fica honesto **e** enganoso: literalmente
+verdadeiro, praticamente constante, e agora com um `partial_failure: true` ao lado que
+faz o zero soar mais confiável, não menos. *"Perguntei e a resposta foi nenhuma"* quando
+o que houve foi *"perguntei e ele não respondeu"*.
+
+O diagnóstico procede; o remédio não. O número já está na resposta:
+**`applied_count` − `changed_count`**. Um contador novo seria segunda fonte de verdade
+para o mesmo fato — o teste 2 de gambiarra do `CLAUDE.md` ("duplica estado") — e
+divergiria do `changed_count` no primeiro refactor que tocasse um dos dois.
+
+O defeito real era **ordem de leitura**, não informação ausente, e foi lá que a correção
+foi: a description agora diz `NUNCA applied_count nem failed_count`, com o motivo
+empírico (três modos de falha medidos, `failed_count: 0` nos três) e a conta explícita
+para quem quiser o agregado. Registrado aqui porque "já foi considerado e por quê" é o
+que impede a próxima sessão de reabrir.

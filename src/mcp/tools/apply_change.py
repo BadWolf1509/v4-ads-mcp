@@ -113,8 +113,14 @@ def _matches_requested(
         "ATENCAO (F184): `status: success` numa linha NAO prova que "
         "ela mudou algo — o Google aceita operacao e nao a executa. Cada linha traz "
         "`efeito`: 'mudou', 'sem_efeito' (passou sem mudar nada), ou null "
-        "(desconhecido, ou a linha falhou). Para 'aplicou de verdade', leia `efeito` "
-        "e `changed_count`, nao `applied_count`."
+        "(desconhecido, ou a linha falhou). Para 'aplicou de verdade', leia `efeito` e "
+        "`changed_count` — NUNCA `applied_count` nem `failed_count`. Os dois medem "
+        "ACEITACAO, nao execucao: em tres modos de falha medidos em producao (campanha "
+        "removida, URL invalida, anuncio apagado entre o preview e o apply) o Google "
+        "aceitou tudo, e `failed_count` veio 0 nos tres. Zero ali costuma significar "
+        "'ele nao reportou', nao 'nada falhou' — e o `partial_failure: true` ao lado "
+        "so diz que a pergunta foi feita, nao que houve resposta. Quantas linhas "
+        "passaram sem efeito = `applied_count` - `changed_count`."
     ),
     input_schema=_SCHEMA,
     bucket="always",
