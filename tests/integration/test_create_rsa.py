@@ -223,7 +223,20 @@ async def test_create_rsa_full_cycle_audits(db, session_ctx) -> None:
         "unique_parent_ad_groups": 1,
         # R1-I2: o executor acrescenta a chave reservada `resultado`
         # (o que ACONTECEU) ao lado do resumo que a tool monta.
-        "resultado": {"tentadas": 1, "aplicadas": 1, "mudaram": 1},
+        #
+        # F180: `falharam` e `indices_com_falha` entraram quando a tool passou a
+        # pedir partial_failure — `resultado_para_audit` so os grava quando ha
+        # resultado POR OPERACAO, que e o que a flag produz. Num lote que passou
+        # inteiro eles sao 0 e [], e essa e a melhoria: a trilha passa a AFIRMAR
+        # que nenhuma falhou, em vez de ficar calada sobre falhas. Mesmo formato
+        # que as outras tools de lote ja gravavam.
+        "resultado": {
+            "tentadas": 1,
+            "aplicadas": 1,
+            "mudaram": 1,
+            "falharam": 0,
+            "indices_com_falha": [],
+        },
     }
     # Critical: ad copy text NOT in audit (privacy-safe summary per spec §3.6).
     assert "Headline One" not in json.dumps(summary_d)
