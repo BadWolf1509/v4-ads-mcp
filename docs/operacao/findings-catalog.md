@@ -3546,7 +3546,7 @@ mostrou o alcance real do experimento.
 
 ---
 
-## F182 (MEDIUM, ABERTO) — a descrição do `apply_change` promete `partial_failures` para 22 operações; vale para 6
+## F182 (MEDIUM, CORRIGIDO em 2026-09-20) — a descrição do `apply_change` prometia `partial_failures` para 22 operações; valia para 8
 
 **Sintoma.** A description do `apply_change` (`apply_change.py:108-110`) afirma,
 sem qualificar: *"Lote com partial_failure devolve `partial_failures` (motivo por
@@ -3721,3 +3721,44 @@ GAQL confirmou: o anúncio removido seguia com a URL **antiga**. **Sem o `efeito
 resposta diria "2 aplicadas, 0 falhas" e o gestor acreditaria que as duas pegaram.** O
 caso não foi construído para testar o F184 — ele era a tentativa de fechar o F180, e o
 F184 é que capturou o que aconteceu.
+
+✅ **CORRIGIDO em 2026-09-20.** Escolhido o caminho **(b)**: a resposta passa a declarar
+o regime. `apply_change` devolve `partial_failure: true|false` — derivado do que
+`run_mutation` de fato recebeu — nos dois ramos que fazem mutação encadeada.
+
+**O defeito, dito com precisão.** A frase *"Lote com partial_failure devolve…"* já era
+condicional; o problema é que **a condição não era avaliável por quem lê**. Ligar a flag
+é decisão interna da tool de origem (`__partial_failure__` no payload), invisível de
+fora. O caller não tinha como saber em qual regime estava.
+
+🔑 **E havia um segundo defeito, pior, que só apareceu ao consertar o primeiro:** com a
+flag desligada o Google não reporta nada por linha, `partial_failures` volta vazia, e
+`failed_count` era derivado dela — **`0`**. Isso afirmava *"nenhuma operação falhou"*
+onde o correto é *"não perguntei"*. Agora vem `null`. Mesma família do `efeito: null` do
+F184: **não saber é diferente de saber que é zero**, e as duas coisas não podem
+compartilhar representação.
+
+**Por que (b) e não (a).** Enumerar as operações na descrição envelhece na primeira tool
+que ligar ou desligar a flag — e envelhece em silêncio, porque nada cobra a lista contra
+o código. O regime na resposta é derivado do valor real a cada chamada; não há o que
+envelhecer.
+
+🔴 **O achado de método, que vale mais que o fix.** Existia um teste chamado
+`test_apply_change_default_sem_partial_failure_nao_inventa_falha`, com a docstring
+*"Mutacao sem partial_failure mode: lista vazia e zero, nunca None/ausente"*. Ele
+**nunca montou esse cenário**: o helper `_apply` hardcoda `__partial_failure__: True` no
+payload, e o que variava entre os dois testes era apenas a lista devolvida pelo mock.
+
+Três consequências, e a terceira é a que assusta:
+1. O caso da flag desligada **nunca teve cobertura**.
+2. Um teste **anunciava** cobri-lo, então ninguém foi procurar.
+3. A asserção `"nunca None/ausente"` teria servido de **argumento contra este fix** —
+   um teste mentindo sobre o próprio escopo defendendo o bug que ele não cobria.
+
+Renomeado para `test_flag_ligada_com_lista_vazia_da_zero_e_nao_none`, com a docstring
+dizendo o que ele faz. Família do F155/F169 (guard que não cobre o que enuncia), com o
+agravante de o nome ser a única coisa que alguém lê ao decidir se o caso está coberto.
+
+**Verificação:** 2 testes novos no caminho real do `apply_change` (flag ligada → conta;
+flag desligada → `null`), ambos vistos falhar antes (`KeyError: 'partial_failure'`).
+**Não verificado em produção** — é mudança de forma da resposta, coberta por unit test.
