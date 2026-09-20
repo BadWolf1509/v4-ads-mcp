@@ -3426,11 +3426,36 @@ passou a trazer `partial_failures` (status por operação), `failed_count` e `ch
 `resource_names` para ambos.
 
 ⚠️ **O que o smoke NÃO provou, e por isso "em parte":** uma falha por linha de verdade, com
-`error` preenchido e as demais operações aplicadas. **Duas tentativas de provocá-la
-falharam** — anúncio em campanha `REMOVED` foi aceito normalmente pelo Google, e a URL
-inválida virou o **F184** em vez de erro. O caminho original do runbook (remover um anúncio
-pela UI entre o preview e o apply) continua sendo o único conhecido, e exige mão humana. O
-comportamento está coberto por teste de integração contra mock; **em produção, não**.
+`error` preenchido e as demais operações aplicadas. **Três tentativas falharam**, e a
+terceira é a que ensina:
+
+1. Anúncio em campanha `REMOVED` → aceito normalmente.
+2. `final_urls` inválida → aceita, sem erro. Virou o **F184**.
+3. **Anúncio removido pela UI entre o preview e o apply** — o caminho que o runbook
+   prescrevia, executado em 20/09 com o Wellington removendo o anúncio à mão. Resultado:
+   `status: "success"`, `failed_count: 0`, `efeito: "sem_efeito"`. **O Google não erra:
+   ele engole.**
+
+🔑 **A conclusão que inverte a leitura deste finding.** O único erro por-linha que já
+vimos o Google devolver é o `"Mutates are not allowed for the requested resource"` da
+variação de experimento — que foi o que ORIGINOU este finding. E o **F181 agora bloqueia
+esse caso no pre-flight**, antes de chegar ao Google.
+
+**Corroborado pelo `audit_log`**, e não por memória: numa varredura de 3 dias de
+`mutate` na conta, o evento **5091** (2026-09-20T01:56:52Z, `target_count: 4`) é a
+**única** linha com `status: "error"` — `provider_request_id` nulo, lote inteiro morto,
+exatamente o comportamento pré-fix. Todas as outras 21 mutações da janela vieram
+`success`. O gatilho existe, é raro, e hoje é interceptado antes do Google. Ou seja: a máquina de reportar erro
+por linha que o F180 ligou **pode não ter gatilho alcançável** via `update_rsa`. Todo
+modo de falha observado nesta conta é silêncio, não erro.
+
+Isso não torna o F180 inútil — reportar o erro quando ele vier continua certo, e o
+`partial_failure` é o que impede o lote inteiro de morrer quando vier. Mas **a peça que
+carrega o peso na prática é o `efeito` (F184)**, não o `partial_failures[].error`. Quem
+for auditar um lote lê `efeito` e `changed_count`; `failed_count` tende a ser sempre zero.
+
+**Segue coberto por teste de integração contra mock; em produção, o caminho de erro
+por-linha permanece não exercitado — e agora sabemos que pode não ser exercitável.**
 
 🔑 **E o F184 qualifica esta correção:** `status: "success"` por linha não é prova de que a
 linha foi aplicada. A entrega do F180 é "motivo por linha", e o F184 mostra o caso em que a
@@ -3681,6 +3706,18 @@ que comparava a linha por igualdade exata quebrou e foi atualizado no mesmo comm
 novo o padrão do F180: **asserção de dict por igualdade exata trava a melhoria que
 valia.**
 
-⚠️ **Não verificado em produção.** A correção é de leitura da resposta, coberta por
-unit test contra a forma medida — mas o caso real (URL inválida devolvendo `success`) não
-foi reexecutado contra o Google depois do fix.
+✅ **VERIFICADO EM PRODUÇÃO em 2026-09-20**, revisão `v4-ads-mcp-00111-g4q`, e na
+primeira saída real já pagou o próprio custo. Lote de 2 `update_rsa` onde a segunda op
+apontava para um anúncio **removido pela UI entre o preview e o apply**:
+
+```json
+{"applied_count": 2, "failed_count": 0, "changed_count": 1,
+ "partial_failures": [{"index": 0, "status": "success", "efeito": "mudou"},
+                      {"index": 1, "status": "success", "efeito": "sem_efeito"}],
+ "resource_names": ["customers/.../814964022612", null]}
+```
+
+GAQL confirmou: o anúncio removido seguia com a URL **antiga**. **Sem o `efeito`, esta
+resposta diria "2 aplicadas, 0 falhas" e o gestor acreditaria que as duas pegaram.** O
+caso não foi construído para testar o F184 — ele era a tentativa de fechar o F180, e o
+F184 é que capturou o que aconteceu.
