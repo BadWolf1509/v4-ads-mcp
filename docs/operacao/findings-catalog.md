@@ -4,11 +4,11 @@
 >
 > **Maintainer note:** Add a new entry here whenever a finding is documented in a smoke runbook. Keep entries scannable — link to runbook for detail.
 >
-> **Last updated:** 2026-09-20 — **F180–F185**: sprint de RSA (F180 em parte; F181/F182/F183/F184 corrigidos), a 2ª instância do F182, e **F185 ABERTO** (limitação da API, sem correção possível deste lado). O resto deste parágrafo é de **2026-09-03** e não foi atualizado desde então — leia como de época: **F141–F146 fechados** em tres PRs (#28 bloco fuso+freshness; #29 structural_change; #30 fuso do upload offline) mais o F142 (whitelist de client_type) direto na main. Ontem, 02/09: **+F131–F140** da sessao de campo MO-JP, fechados no PR #27 e nos fixes seguintes. Narrativa completa e licoes de metodo no handoff [`session-2026-09-02-03-handoff.md`](session-2026-09-02-03-handoff.md); o historico anterior (F82–F130, 08/14 a 08/20) esta nos handoffs de 08-14-15 e 08-19.
+> **Last updated:** 2026-09-20 — **F180–F185**: sprint de RSA (F180 em parte; F181/F182/F183/F184 corrigidos), a 2ª instância do F182, e dois ABERTOS: **F185** (limitação da API, sem correção possível deste lado) e **F186** (o smoke autenticado do `/mcp` está desarmado por token vencido). O resto deste parágrafo é de **2026-09-03** e não foi atualizado desde então — leia como de época: **F141–F146 fechados** em tres PRs (#28 bloco fuso+freshness; #29 structural_change; #30 fuso do upload offline) mais o F142 (whitelist de client_type) direto na main. Ontem, 02/09: **+F131–F140** da sessao de campo MO-JP, fechados no PR #27 e nos fixes seguintes. Narrativa completa e licoes de metodo no handoff [`session-2026-09-02-03-handoff.md`](session-2026-09-02-03-handoff.md); o historico anterior (F82–F130, 08/14 a 08/20) esta nos handoffs de 08-14-15 e 08-19.
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~3990 linhas, 452 KB, IDs de **F1 a F185** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** só 44 findings têm cabeçalho `## F<n>` próprio e os demais vivem dentro de outras entradas, então toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~4080 linhas, 458 KB, IDs de **F1 a F186** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** só 44 findings têm cabeçalho `## F<n>` próprio e os demais vivem dentro de outras entradas, então toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -3991,3 +3991,93 @@ próprio atestado depois de ele já ter soado bem, que é a parte difícil.
 **Sem guard**, de propósito: não há código nosso a proteger. O que protege é esta entrada
 — e a regra prática, para quem for desenhar a tool: **a varredura tem de contar os
 opacos, não descartá-los**, senão ela reproduz o "0 de 21" que originou o problema.
+
+---
+
+## F186 (HIGH, ABERTO) — o smoke autenticado do `/mcp` está DESARMADO há pelo menos três dias, e o jeito como ele avisa é uma linha de log dentro de um deploy verde
+
+**Correção de um diagnóstico errado, primeiro.** Este finding nasceu de uma afirmação
+**minha, falsa**: eu disse — e escrevi nos PRs [#89](https://github.com/BadWolf1509/v4-ads-mcp/pull/89) e [#90](https://github.com/BadWolf1509/v4-ads-mcp/pull/90) — que *"o smoke do deploy faz `curl`
+esperando 401"* e que o caminho SSE não tinha cobertura nenhuma. **Falso.** O
+`deploy.yml` tem um smoke autenticado que faz `tools/list` de verdade, trata resposta
+SSE-framed, e `exit 1` se o registry não vier. Ele é **bem desenhado**.
+
+Eu havia procurado `401` e `/mcp` no workflow e parado no primeiro bloco — auditoria com
+instrumento mais grosseiro que o alvo, a mesma família do F113 (declarei um guard cego
+com base num `grep`; ele já era recursivo). **Antes de declarar um check ausente, leia o
+check inteiro.** O efeito que descrevi estava certo por acidente; a causa que dei estava
+errada, e a causa real é pior.
+
+### O defeito
+
+O smoke autenticado **não roda**. Nos dois deploys de hoje, saída literal:
+
+```
+Probing /mcp autenticado (tools/list, expect 200 + list_my_accounts)...
+  ⚠ SMOKE_MCP_BEARER inválido/expirado (HTTP 401) — pulando smoke autenticado.
+```
+
+O secret **existe** (`SMOKE_MCP_BEARER: ***` aparece no ambiente do step); o **token está
+vencido**. O step imprime o aviso, não falha, e o deploy é reportado como **success**.
+
+**Amostra: 8 de 8 deploys bem-sucedidos, o mais antigo em 2026-09-18 — nenhum `✓`.** Não
+medi quando começou; medi que é sistemático, não um caso isolado.
+
+### Por que HIGH
+
+O `deploy.yml` tem `rollback-on-failure`. Ele está armado para um modo de falha que o
+smoke **não consegue mais detectar**: uma regressão no handshake/tools-list passa o smoke
+(porque o smoke pulou), o deploy fecha verde, o rollback não dispara, e o defeito só
+aparece quando um gestor tenta conectar. **A rede de segurança do endpoint mais
+importante do produto está recolhida, e o aviso disso é uma linha dentro de um run
+verde** — que é exatamente o lugar onde ninguém olha.
+
+O comentário do próprio workflow antecipa o cenário: *"sem isso, uma regressão no
+handshake/tools-list passa o smoke e só aparece quando um gestor tenta usar (classe
+F58)"*. **O ponto cego está documentado no código e mesmo assim ninguém sabia que estava
+ativo** — é o modo 6 do caderno de guards ("ponto cego declarado"), agravado: aqui o
+declarante e a vítima são o mesmo arquivo.
+
+### A decisão de desenho que produziu isto é defensável — falta a contraparte
+
+Não bloquear o deploy por credencial de CI vencida é **correto**: o comentário distingue
+com cuidado "Bearer inválido = problema do CI" de "registry ausente = revisão quebrada", e
+só o segundo derruba. Isso evita que um token vencido trave entregas legítimas.
+
+**O que falta é o outro lado: nada percebe que o check está desligado.** Degradar em
+silêncio é aceitável para a *entrega*; não é aceitável para a *observabilidade do próprio
+check*. Um mecanismo que pode se auto-desarmar precisa declarar o próprio estado.
+
+### Remédio proposto — padrão: *dead man's switch*
+
+Não é invenção: é o padrão de heartbeat/liveness, onde **a ausência de sinal é ela
+própria um sinal**. Em três camadas, da mais barata à mais completa:
+
+1. **Tornar o desarme visível agora.** Trocar `echo "  ⚠ ..."` por
+   `echo "::warning::..."`, que o GitHub Actions sobe para o **resumo do run** em vez de
+   enterrar no log. Uma linha, e o estado para de ser invisível.
+2. **Reemitir o `SMOKE_MCP_BEARER`** — re-arma o check imediatamente, como o próprio
+   comentário do workflow diz. **Ação do Wellington:** é credencial, e credencial não se
+   cria nem se cola por aqui.
+3. **Checagem de vivacidade separada.** Um job barato (agendado ou no CI) que afirme
+   *"o token do smoke é válido"* e falhe alto quando não for. É o que fecha o laço: o
+   passo 1 mostra, o passo 3 **cobra**.
+
+**Deliberadamente fora:** fazer o desarme derrubar o deploy. Isso troca um ponto cego por
+uma trava — token vencido passaria a bloquear entrega legítima, que é justamente o que o
+desenho atual evitou de propósito e com razão.
+
+### A evidência de que isto importa é de hoje
+
+Nos dois deploys de hoje (lotes A e B de dependências, incluindo `starlette` 1.3.1 →
+1.6.0 — três minors de uma lib que importamos direto em quatro módulos), **o caminho SSE
+foi verificado à mão**, por probe manual, duas vezes, **porque eu estava olhando**.
+
+Isso é o teste 1 da lista de gambiarra do `CLAUDE.md`: **"depende de alguém lembrar"**.
+Funcionou hoje. Não é mecanismo.
+
+🔑 **A lição de método, que é a parte transferível:** o `⚠` é um estado, não um recado.
+Quando um check pode se desligar sozinho, **"desligado" tem de ser tão visível quanto
+"falhou"** — senão o verde do deploy passa a afirmar mais do que foi medido, que é a
+mesma família do `failed_count: 0` do F182 e do `efeito: null` do F184. **Não medir e
+medir zero não podem compartilhar aparência.**
