@@ -17,6 +17,13 @@
 > de começar. (O mesmo efeito foi observado em 19/09 no `empsis-mcp` após deploy: servidor
 > respondendo o formato novo e recusando parâmetros novos na sessão velha.)
 
+> 🔁 **A ORDEM AQUI É INVERTIDA, e de propósito.** As tools deste smoke são servidas pelo
+> Cloud Run de **produção** — não existe instância local no caminho. Logo **não dá para
+> testar a branch**: o roteiro só exerce o código novo **depois** de `merge na main → CI →
+> deploy`. A sequência é **merge → deploy → reconectar → smoke → fix-forward**, e o caminho
+> de volta, se algum caso reprovar, é rollback da revisão do Cloud Run (capture a revisão
+> que está servindo **antes** do deploy — F116).
+
 **Branch:** `fix/rsa-lote-parcial-e-preflight-de-variacao` · **HEAD ao escrever:** `ff78792`
 (confira com `git rev-parse HEAD`). Commits: `git log --oneline main..HEAD`.
 
