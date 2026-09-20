@@ -80,7 +80,9 @@ def _client_with_ad_response(resource_name: str) -> MagicMock:
     response = MagicMock()
     response.mutate_operation_responses = [op_resp]
 
-    # update_rsa does NOT use partial_failure — always all-or-nothing.
+    # F180: update_rsa passou a pedir partial_failure. Este mock representa o caso
+    # em que o Google aceitou TUDO (code=0, sem details), que e o caminho feliz
+    # exercitado aqui. O caso de recusa por linha tem teste proprio.
     response.partial_failure_error.code = 0
     response.partial_failure_error.details = []
 
@@ -214,3 +216,44 @@ async def test_update_rsa_full_cycle_audits(db, session_ctx) -> None:
     }
     # Critical: ad copy text NOT in audit (privacy-safe summary per spec §3.6).
     assert "Headline One" not in json.dumps(summary_d)
+
+
+@pytest.mark.integration
+async def test_update_rsa_pede_partial_failure_ao_google(db, session_ctx) -> None:
+    """F180: o lote deixa de ser atomico — `run_mutation` recebe partial_failure=True.
+
+    Guard de PROPRIEDADE, nao de chave. Assertar `"__partial_failure__" in payload`
+    passaria mesmo se `apply_change` parasse de repassar a flag — o que importa e o
+    que chega em `run_mutation`, que e quem fala com o Google.
+    """
+    from src.mcp.tools.apply_change import apply_change
+    from src.mcp.tools.update_rsa import update_rsa
+
+    capturado: dict[str, object] = {}
+
+    async def fake_run_mutation(**kwargs: object) -> dict[str, object]:
+        capturado.update(kwargs)
+        return {
+            "provider_request_id": "req-f180",
+            "applied_count": 1,
+            "changed_count": 1,
+            "partial_failures": [],
+            "resource_names": ["customers/1234567890/ads/100"],
+        }
+
+    with (
+        patch(
+            "src.mcp.tools.update_rsa.validate_existing_rsas_for_update",
+            AsyncMock(return_value=None),
+        ),
+        patch("src.mcp.tools.apply_change.run_mutation", fake_run_mutation),
+    ):
+        dry_run = await update_rsa(
+            {
+                "customer_id": "1234567890",
+                "updates": [{"ad_id": "100", "final_urls": ["https://exemplo.com.br"]}],
+            }
+        )
+        await apply_change({"confirmation_token": dry_run["confirmation_token"]})
+
+    assert capturado["partial_failure"] is True

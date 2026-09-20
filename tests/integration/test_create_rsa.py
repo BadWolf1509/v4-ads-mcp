@@ -77,7 +77,9 @@ def _client_with_rsa_response(resource_name: str) -> MagicMock:
     response = MagicMock()
     response.mutate_operation_responses = [op_resp]
 
-    # create_rsa does NOT use partial_failure — always all-or-nothing.
+    # F180: create_rsa passou a pedir partial_failure. Este mock representa o caso
+    # em que o Google aceitou TUDO (code=0, sem details), que e o caminho feliz
+    # exercitado aqui. O caso de recusa por linha tem teste proprio.
     response.partial_failure_error.code = 0
     response.partial_failure_error.details = []
 
@@ -226,3 +228,46 @@ async def test_create_rsa_full_cycle_audits(db, session_ctx) -> None:
     # Critical: ad copy text NOT in audit (privacy-safe summary per spec §3.6).
     assert "Headline One" not in json.dumps(summary_d)
     assert "Description one" not in json.dumps(summary_d)
+
+
+@pytest.mark.integration
+async def test_create_rsa_pede_partial_failure_ao_google(db, session_ctx) -> None:
+    """F180: gemeo do guard do update_rsa, no caminho de criacao."""
+    from src.mcp.tools.apply_change import apply_change
+    from src.mcp.tools.create_rsa import create_rsa
+
+    capturado: dict[str, object] = {}
+
+    async def fake_run_mutation(**kwargs: object) -> dict[str, object]:
+        capturado.update(kwargs)
+        return {
+            "provider_request_id": "req-f180-create",
+            "applied_count": 1,
+            "changed_count": 1,
+            "partial_failures": [],
+            "resource_names": ["customers/1234567890/adGroupAds/1~100"],
+        }
+
+    with (
+        patch(
+            "src.mcp.tools.create_rsa.validate_parent_ad_groups_for_rsa_create",
+            AsyncMock(return_value=None),
+        ),
+        patch("src.mcp.tools.apply_change.run_mutation", fake_run_mutation),
+    ):
+        dry_run = await create_rsa(
+            {
+                "customer_id": "1234567890",
+                "rsas": [
+                    {
+                        "ad_group_id": "1",
+                        "headlines": ["Um titulo", "Outro titulo", "Terceiro"],
+                        "descriptions": ["Uma descricao aqui", "Outra descricao aqui"],
+                        "final_urls": ["https://exemplo.com.br"],
+                    }
+                ],
+            }
+        )
+        await apply_change({"confirmation_token": dry_run["confirmation_token"]})
+
+    assert capturado["partial_failure"] is True

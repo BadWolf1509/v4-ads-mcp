@@ -105,7 +105,9 @@ def _build_params_summary(rsas: list[dict[str, Any]]) -> dict[str, Any]:
         "path1/path2 opcionais (display URL paths, max 15 chars cada) + status opcional "
         "(PAUSED default | ENABLED). Sempre CONFIRM (creates sensitive). Pre-flight "
         "rejeita ad_group inexistente, REMOVED, ou em campaign non-SEARCH. NOT "
-        "idempotente — Google permite multiple RSAs com mesmo content. RSAs aparecem "
+        "idempotente — Google permite multiple RSAs com mesmo content. Lote PARCIAL: "
+        "se o Google recusar um anuncio, os demais sao criados e o apply_change "
+        "devolve partial_failures com o motivo por linha. RSAs aparecem "
         "no Google Ads UI imediatamente apos apply mas serving so comeca apos approval "
         "(geralmente minutos)."
     ),
@@ -143,6 +145,8 @@ async def create_rsa(args: dict[str, Any]) -> dict[str, Any]:
         "rsas": rsas,
         "__target_count__": target_count,
         "__params_summary__": params_summary,
+        # F180: lote parcial — ver update_rsa.py e o F180 no catalogo.
+        "__partial_failure__": True,
     }
 
     pool = connection.get_pool()

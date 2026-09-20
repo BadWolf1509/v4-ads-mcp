@@ -121,7 +121,9 @@ def _build_params_summary(updates: list[dict[str, Any]]) -> dict[str, Any]:
         "ad_group REMOVED, campaign non-SEARCH, ou anuncio que e variacao de Ad "
         "Variation (gerenciado pelo Google — edite o anuncio base, que a variacao "
         "herda em minutos). Para mudar status, use "
-        "update_ad_status. Atualizacoes afetam serving immediately mas Google "
+        "update_ad_status. Lote PARCIAL: se o Google recusar um ad_id, os demais "
+        "sao aplicados e o apply_change devolve partial_failures com o motivo por "
+        "linha. Atualizacoes afetam serving immediately mas Google "
         "pode re-aprovar (geralmente minutos)."
     ),
     input_schema=_SCHEMA,
@@ -160,6 +162,13 @@ async def update_rsa(args: dict[str, Any]) -> dict[str, Any]:
         "updates": updates,
         "__target_count__": target_count,
         "__params_summary__": params_summary,
+        # F180: o lote deixa de ser atomico. Um ad_id que o Google recusa (variacao
+        # de experimento, anuncio removido entre o preview e o apply) para de levar
+        # junto os outros — `apply_change` devolve `partial_failures` com o motivo
+        # por linha e `failed_count`. O custo e real e esta assumido: nao ha
+        # invariante que o lote de RSA preserve (anuncios sao independentes), entao
+        # aplicar parte e melhor que perder tudo. Ver F180 no catalogo.
+        "__partial_failure__": True,
     }
 
     pool = connection.get_pool()
