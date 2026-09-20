@@ -3367,7 +3367,7 @@ não dá pra ver antes, é o resultado do próprio `DELETE` que revela).
 
 ---
 
-## F180 (MEDIUM, ABERTO) — `update_rsa` e `create_rsa` perdem o lote inteiro por uma linha, e o erro não diz qual
+## F180 (MEDIUM, CORRIGIDO EM PARTE em 2026-09-20) — `update_rsa` e `create_rsa` perdiam o lote inteiro por uma linha, e o erro não dizia qual
 
 **Sintoma medido (19/09/2026, conta MO-JP `7862230676`, sessão de gestão de
 tráfego).** Lote de 4 updates de `final_urls` numa chamada de `update_rsa`. O 4º
@@ -3416,7 +3416,34 @@ causa: F181, que é o que tornou este lote impossível.
 
 ---
 
-## F181 (MEDIUM, ABERTO) — o pre-flight do `update_rsa` não vê anúncio system-managed, e o dry-run afirma aplicável o que o Google recusa
+✅ **CORRIGIDO EM PARTE** no PR [#75](https://github.com/BadWolf1509/v4-ads-mcp/pull/75)
+(merge `36d27c5`, revisão `v4-ads-mcp-00110-5nd`). As duas tools passaram a mandar
+`__partial_failure__` no payload; tudo a jusante já era genérico.
+
+**O que o smoke de 20/09 PROVOU em produção:** a resposta do `apply_change` do `update_rsa`
+passou a trazer `partial_failures` (status por operação), `failed_count` e `changed_count`
+— campos que **não existiam** nessa tool antes do fix. Lote de 2 aplicou 2, com
+`resource_names` para ambos.
+
+⚠️ **O que o smoke NÃO provou, e por isso "em parte":** uma falha por linha de verdade, com
+`error` preenchido e as demais operações aplicadas. **Duas tentativas de provocá-la
+falharam** — anúncio em campanha `REMOVED` foi aceito normalmente pelo Google, e a URL
+inválida virou o **F184** em vez de erro. O caminho original do runbook (remover um anúncio
+pela UI entre o preview e o apply) continua sendo o único conhecido, e exige mão humana. O
+comportamento está coberto por teste de integração contra mock; **em produção, não**.
+
+🔑 **E o F184 qualifica esta correção:** `status: "success"` por linha não é prova de que a
+linha foi aplicada. A entrega do F180 é "motivo por linha", e o F184 mostra o caso em que a
+linha afirma sucesso sem ter mudado nada.
+
+**Fora de escopo, como declarado no plano:** o F182 (a descrição do `apply_change` segue
+falsa para as outras 14 operações — este PR mudou o número de 6 para 8, não o consertou), o
+índice da operação em `errors.py:to_friendly`, que segue descartado, e subir o teto de lote
+de 5.
+
+---
+
+## F181 (MEDIUM, CORRIGIDO em 2026-09-20) — o pre-flight do `update_rsa` não via anúncio system-managed, e o dry-run afirmava aplicável o que o Google recusa
 
 **Sintoma.** Anúncio que é variação de uma Ad Variation passa no pre-flight,
 passa no dry-run — token emitido com `"Atualizar 4 RSA(s) (4 unicos). Campos:
@@ -3464,6 +3491,33 @@ RSA do mesmo ad_group **sem** o campo — testado no grupo `204135195030`, sai
 limpo). Ambas só no caminho de falha, que é raro. A herança base→variação foi
 verificada pelo reporter: a variação herda a mudança do base em minutos, e ler
 cedo demais devolve o estado antigo **sem erro**.
+
+---
+
+✅ **CORRIGIDO** no PR [#75](https://github.com/BadWolf1509/v4-ads-mcp/pull/75) (merge
+`36d27c5`, revisão `v4-ads-mcp-00110-5nd`). O campo entrou na GAQL que o pre-flight já
+rodava — zero round-trip novo — e a recusa nomeia a variação e o anúncio base, achado por
+uma segunda query que só roda no caminho de falha.
+
+**Verificado em produção em 20/09, com o par real da MO-JP:**
+
+- Variação `825281476311` → erro no pre-flight, **sem token**, nomeando o base
+  `825140457725` correto, mais o aviso da latência de herança.
+- **Ramo ambíguo exercitado contra dado real:** a variação `825281476308` vive num grupo
+  com DOIS RSAs não-variação. A mensagem apontou o ad_group e **não nomeou id nenhum** —
+  nem `814995701002` nem `825014253567` aparecem. Era o ramo que só tinha prova por
+  sabotagem em unit test.
+- Lote misto (2 comuns + 1 variação) → recusado inteiro, sem token para ninguém.
+
+**O que ficou deliberadamente de fora:** nomear o **experimento** na mensagem (medido: o
+`experiment_arm` não expõe os anúncios que materializa, então a ligação só seria correta
+havendo exatamente um `AD_VARIATION` ativo — seria chute); e qualquer cobertura de
+`experiment` como tool, que segue inexistente.
+
+🔑 **Achado do campo que o desenho não previa: a conta tinha TRÊS variações, não uma.**
+Além da `825281476311`, existiam `825281476308` e `825321842371`, em outros dois grupos. O
+backlog que originou o finding falava de um par; a varredura do Setup do smoke é que
+mostrou o alcance real do experimento.
 
 ---
 
@@ -3535,3 +3589,55 @@ teto **estava no resultado do `ToolSearch` daquela mesma sessão, minutos antes*
 Ter o contra-exemplo em contexto não basta; sem o cruzamento explícito, ele não
 é lido. Afirmação de terceiro sobre o código merece o mesmo probe que afirmação
 sobre API externa, inclusive quando o terceiro é quem está com o repo aberto.
+
+---
+
+## F184 (MEDIUM, ABERTO) — `partial_failures` diz `success` numa operação que o Google não executou
+
+**Medido no smoke do F180+F181, em 2026-09-20, conta MO-JP `7862230676`**, com o código
+já em produção (revisão `v4-ads-mcp-00110-5nd`).
+
+Lote de 2 `update_rsa`: uma op com URL válida, outra com `final_urls:
+["nao-e-uma-url-valida"]`. A resposta do `apply_change`:
+
+```json
+{"applied_count": 2, "failed_count": 0, "changed_count": 1,
+ "partial_failures": [{"index": 0, "status": "success", "error": null},
+                      {"index": 1, "status": "success", "error": null}],
+ "resource_names": ["customers/7862230676/ads/814964022615", null]}
+```
+
+GAQL depois: o anúncio da op 1 seguia com a URL **antiga**, `REVIEWED`/`APPROVED`, intocado.
+
+**O Google aceitou a operação, reportou sucesso e não mudou nada.** Não houve
+`partial_failure_error` para parsear — não é defeito da nossa leitura do proto, é o
+comportamento do Google. Família da **classe 1 do catálogo** (silent-acceptance), irmã de
+A1/A3/A4/F12.
+
+**Por que isto qualifica o F180, que acabou de shipar.** A promessa que o F180 entregou é
+"motivo por linha". Este caso mostra que **`status: "success"` por linha NÃO é prova de que
+a linha foi aplicada** — o único sinal de que a op 1 não pegou é `resource_names[1] ==
+null` (e o `changed_count` derivado dele, que o F139 introduziu). Quem ler `failed_count:
+0` e concluir "tudo certo" erra, e a resposta convida a esse erro: dois campos afirmam
+sucesso e um terceiro, mais discreto, contradiz.
+
+**Diferença para o F139, que é o parente mais próximo.** O F139 tratava do no-op
+*legítimo* — remover um vínculo já `REMOVED` — onde "aplicado sem mudar" é a descrição
+correta. Aqui a entrada era **malformada**, e a leitura correta seria recusa. O F139 criou
+o instrumento (`changed_count`); este finding é sobre a **entrada inválida entrar no balde
+de sucesso**.
+
+**Fix não decidido**, três caminhos com custos diferentes:
+(a) validar formato de URL no schema ou no pre-flight do `update_rsa`/`create_rsa` —
+barato, mas só cobre `final_urls`, e a classe é maior que esse campo;
+(b) derivar o status por-op de `resource_name is not None` em vez de confiar no veredito do
+Google — cobre a classe inteira, mas passa a chamar de falha o no-op legítimo do F139, que
+é justamente o caso que o F139 disse ser sucesso;
+(c) acrescentar à resposta um terceiro estado explícito (`aplicada_sem_efeito`) em vez de
+espremer três realidades em duas palavras.
+
+**O que este smoke NÃO conseguiu provar, e continua em aberto:** uma falha por linha de
+verdade, com `error` preenchido. Duas tentativas de provocá-la falharam — anúncio em
+campanha `REMOVED` foi aceito normalmente, e a URL inválida virou este finding. O caminho
+original do runbook (remover um anúncio pela UI entre o preview e o apply) segue sendo o
+único conhecido, e exige mão humana.
