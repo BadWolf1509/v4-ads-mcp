@@ -19,6 +19,9 @@ _SCHEMA: dict[str, Any] = {
             "type": "array",
             "items": {"type": "string", "pattern": "^[0-9]+$"},
             "minItems": 1,
+            # F183: campanha e a entidade de maior raio — cada item mexe em todos os
+            # grupos e anuncios abaixo dela. Teto menor que o dos irmaos de propósito.
+            "maxItems": 50,
         },
         "new_status": {
             "type": "string",

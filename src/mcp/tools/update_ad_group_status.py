@@ -19,6 +19,8 @@ _SCHEMA: dict[str, Any] = {
             "type": "array",
             "items": {"type": "string", "pattern": "^[0-9]+$"},
             "minItems": 1,
+            # F183: raio intermediario — cada item carrega os anuncios do grupo.
+            "maxItems": 100,
         },
         "new_status": {
             "type": "string",
