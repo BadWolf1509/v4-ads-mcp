@@ -114,13 +114,15 @@ def _matches_requested(
         "ela mudou algo — o Google aceita operacao e nao a executa. Cada linha traz "
         "`efeito`: 'mudou', 'sem_efeito' (passou sem mudar nada), ou null "
         "(desconhecido, ou a linha falhou). Para 'aplicou de verdade', leia `efeito` e "
-        "`changed_count` — NUNCA `applied_count` nem `failed_count`. Os dois medem "
-        "ACEITACAO, nao execucao: em tres modos de falha medidos em producao (campanha "
-        "removida, URL invalida, anuncio apagado entre o preview e o apply) o Google "
-        "aceitou tudo, e `failed_count` veio 0 nos tres. Zero ali costuma significar "
-        "'ele nao reportou', nao 'nada falhou' — e o `partial_failure: true` ao lado "
-        "so diz que a pergunta foi feita, nao que houve resposta. Quantas linhas "
-        "passaram sem efeito = `applied_count` - `changed_count`."
+        "`changed_count`. NUNCA leia `failed_count` — ele mede ACEITACAO, nao "
+        "execucao: em tres modos de falha medidos em producao (campanha removida, URL "
+        "invalida, anuncio apagado entre o preview e o apply) o Google aceitou tudo, e "
+        "`failed_count` veio 0 nos tres. Zero ali costuma significar 'ele nao "
+        "reportou', nao 'nada falhou', e o `partial_failure: true` ao lado so diz que "
+        "a pergunta foi feita, nao que houve resposta. `applied_count` tem UMA "
+        "leitura legitima, a subtracao: `applied_count` - `changed_count` = quantas "
+        "linhas passaram sem efeito. Isolado ele afirma aceitacao como se fosse "
+        "execucao, e engana igual ao `failed_count`."
     ),
     input_schema=_SCHEMA,
     bucket="always",
