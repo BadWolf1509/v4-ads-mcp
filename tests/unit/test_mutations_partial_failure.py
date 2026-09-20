@@ -160,13 +160,27 @@ async def test_run_mutation_partial_failure_returns_per_op_status(monkeypatch):
     assert result["provider_request_id"] == "req-pf"
     assert "partial_failures" in result
     assert len(result["partial_failures"]) == 3
-    assert result["partial_failures"][0] == {"index": 0, "status": "success", "error": None}
+    # F184: `efeito` entrou ao lado do veredito. As ops de sucesso deste mock devolvem
+    # resource_name (o `oneof` aponta pra um result message), entao "mudou"; a que
+    # falhou nao recebe efeito, porque o `status` ja responde.
+    assert result["partial_failures"][0] == {
+        "index": 0,
+        "status": "success",
+        "error": None,
+        "efeito": "mudou",
+    }
     assert result["partial_failures"][1] == {
         "index": 1,
         "status": "failed",
         "error": "CRITERION_EXISTS",
+        "efeito": None,
     }
-    assert result["partial_failures"][2] == {"index": 2, "status": "success", "error": None}
+    assert result["partial_failures"][2] == {
+        "index": 2,
+        "status": "success",
+        "error": None,
+        "efeito": "mudou",
+    }
     assert result["applied_count"] == 2  # 2 success, 1 failed
 
 
@@ -275,3 +289,88 @@ async def test_status_por_op_nao_afirma_o_verbo_da_operacao(monkeypatch) -> None
     assert result["partial_failures"][1]["status"] == "failed", "falha continua explicita"
     # applied_count nao pode depender do verbo antigo.
     assert result["applied_count"] == 1
+
+
+def _client_com_resource_names(resource_names: list[str]) -> MagicMock:
+    """Client cujo mutate() devolve N ops de SUCESSO com os resource_names dados.
+
+    String vazia = o caso do F184: o Google poe o result message (entao o oneof esta
+    setado e a op conta como sucesso) mas nao devolve resource_name, porque nada mudou.
+    """
+    client = MagicMock()
+
+    responses = []
+    for rn in resource_names:
+        r = MagicMock()
+        r._pb.WhichOneof = MagicMock(return_value="ad_result")
+        result_proto = MagicMock()
+        result_proto.resource_name = rn
+        r._pb.ad_result = result_proto
+        responses.append(r)
+
+    fake_response = MagicMock()
+    fake_response.mutate_operation_responses = responses
+    fake_response.partial_failure_error.code = 0
+    fake_response.partial_failure_error.details = []
+
+    failure_type_stub = MagicMock()
+    failure_type_stub._meta.pb = lambda: MagicMock(errors=[])
+
+    fake_service = MagicMock()
+    fake_service.mutate = MagicMock(return_value=fake_response)
+    client.get_service = MagicMock(return_value=fake_service)
+
+    def get_type(name: str) -> MagicMock:
+        if name == "GoogleAdsFailure":
+            return failure_type_stub
+        return MagicMock(mutate_operations=[], partial_failure_mode=MagicMock())
+
+    client.get_type = MagicMock(side_effect=get_type)
+    client.enums.PartialFailureModeEnum.PARTIAL_FAILURE = "PARTIAL_FAILURE"
+    return client
+
+
+@pytest.mark.asyncio
+async def test_run_mutation_marca_op_que_o_google_aceitou_e_nao_executou(monkeypatch):
+    """F184: a linha que afirma sucesso passa a dizer se mudou alguma coisa.
+
+    Reproduz o medido em producao em 20/09: duas ops, as duas com status success, e a
+    segunda sem resource_name porque o Google nao executou nada. Antes desta mudanca a
+    resposta dizia `failed_count: 0` e `status: success` nas duas, e a unica denuncia
+    vivia num campo separado.
+    """
+    from src.google_ads import mutations
+
+    monkeypatch.setattr(mutations, "import_all_builders", lambda: None)
+    monkeypatch.setattr(
+        mutations, "get_builder", lambda _op: lambda c, cid, p: [MagicMock(), MagicMock()]
+    )
+    monkeypatch.setattr(
+        mutations,
+        "build_client_for_manager",
+        AsyncMock(return_value=_client_com_resource_names(["customers/1/ads/2", ""])),
+    )
+    monkeypatch.setattr(mutations, "get_request_id", lambda: "req-f184")
+
+    with (
+        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(mutations, "ensure_account_access", AsyncMock()),
+        patch.object(mutations, "before_call", AsyncMock()),
+        patch.object(mutations, "record_actual", AsyncMock()),
+        patch.object(mutations.audit_log, "record", AsyncMock()),
+    ):
+        result = await run_mutation(
+            manager_id=uuid4(),
+            session_id=uuid4(),
+            customer_id="1234567890",
+            operation_type="update_rsa",
+            payload={"updates": [{}, {}]},
+            target_count=2,
+            partial_failure=True,
+        )
+
+    assert result["partial_failures"][0]["efeito"] == "mudou"
+    assert result["partial_failures"][1]["efeito"] == "sem_efeito"
+    # O veredito do Google segue intacto — `efeito` acrescenta, nao reescreve.
+    assert result["partial_failures"][1]["status"] == "success"
+    assert result["changed_count"] == 1
