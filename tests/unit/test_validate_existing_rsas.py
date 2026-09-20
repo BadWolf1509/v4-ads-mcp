@@ -292,3 +292,86 @@ def test_formatter_le_o_campo_pelo_caminho_certo_do_proto() -> None:
         ),
     )
     assert _format_rsa_preflight_row(row)["system_managed_source"] == "AD_VARIATIONS"
+
+
+@pytest.mark.asyncio
+async def test_mensagem_nomeia_o_ad_base_quando_ele_e_unico(monkeypatch) -> None:
+    """F181: a mensagem que teria poupado a investigacao nomeia o anuncio a editar."""
+    chamadas: list[str] = []
+
+    async def fake_run_report(**kwargs: Any) -> list[dict[str, str]]:
+        chamadas.append(kwargs["query"])
+        if len(chamadas) == 1:
+            return [
+                {
+                    "ad_id": "825281476311",
+                    "ad_type": "RESPONSIVE_SEARCH_AD",
+                    "system_managed_source": "AD_VARIATIONS",
+                    "ad_group_id": "204135195030",
+                    "ad_group_name": "AG1",
+                    "ad_group_status": "ENABLED",
+                    "campaign_id": "21359547724",
+                    "campaign_name": "C1",
+                    "channel_type": "SEARCH",
+                }
+            ]
+        return [
+            {"ad_id": "825140457725", "system_managed_source": "UNSPECIFIED"},
+            {"ad_id": "825281476311", "system_managed_source": "AD_VARIATIONS"},
+        ]
+
+    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    result = await validate_existing_rsas_for_update(
+        manager_id=uuid4(),
+        session_id=uuid4(),
+        customer_id="1234567890",
+        updates=[{"ad_id": "825281476311", "final_urls": ["https://exemplo.com.br"]}],
+    )
+    assert result is not None
+    assert "825140457725" in result
+    # A 2a query so acontece no caminho de falha.
+    assert len(chamadas) == 2
+
+
+@pytest.mark.asyncio
+async def test_sem_base_unico_a_mensagem_nao_inventa_id(monkeypatch) -> None:
+    """Dois nao-variacao no grupo: a mensagem cai pro generico em vez de chutar.
+
+    Este e o teste que impede a correcao de virar afirmacao falsa: nomear o
+    anuncio errado e pior que nao nomear nenhum.
+    """
+
+    async def fake_run_report(**kwargs: Any) -> list[dict[str, str]]:
+        # O pre-flight TAMBEM pede system_managed_resource_source desde o F181,
+        # entao o discriminador e o `ad_group.id =`, que so a busca do base tem.
+        if "ad_group.id =" in kwargs["query"]:
+            return [
+                {"ad_id": "111", "system_managed_source": "UNSPECIFIED"},
+                {"ad_id": "222", "system_managed_source": "UNSPECIFIED"},
+                {"ad_id": "825281476311", "system_managed_source": "AD_VARIATIONS"},
+            ]
+        return [
+            {
+                "ad_id": "825281476311",
+                "ad_type": "RESPONSIVE_SEARCH_AD",
+                "system_managed_source": "AD_VARIATIONS",
+                "ad_group_id": "204135195030",
+                "ad_group_name": "AG1",
+                "ad_group_status": "ENABLED",
+                "campaign_id": "21359547724",
+                "campaign_name": "C1",
+                "channel_type": "SEARCH",
+            }
+        ]
+
+    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    result = await validate_existing_rsas_for_update(
+        manager_id=uuid4(),
+        session_id=uuid4(),
+        customer_id="1234567890",
+        updates=[{"ad_id": "825281476311", "final_urls": ["https://exemplo.com.br"]}],
+    )
+    assert result is not None
+    assert "111" not in result
+    assert "222" not in result
+    assert "base" in result.lower()

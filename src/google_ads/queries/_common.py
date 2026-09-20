@@ -481,6 +481,45 @@ def _format_rsa_preflight_row(row: Any) -> dict[str, str]:
     }
 
 
+async def _buscar_ad_base_do_grupo(
+    manager_id: UUID,
+    session_id: UUID,
+    customer_id: str,
+    ad_group_id: str,
+) -> str | None:
+    """`ad_id` do unico RSA nao-variacao do grupo, ou None se ambiguo.
+
+    So roda no caminho de falha do pre-flight (anuncio system-managed detectado),
+    entao o custo nao entra no caminho feliz. Devolve None — em vez de chutar o
+    primeiro — quando ha zero ou mais de um candidato: nomear o anuncio errado e
+    pior que nao nomear nenhum.
+    """
+    query = (
+        f"SELECT ad_group_ad.ad.id, "
+        f"ad_group_ad.ad.system_managed_resource_source "
+        f"FROM ad_group_ad "
+        f"WHERE ad_group.id = {int(ad_group_id)} "
+        f"AND ad_group_ad.status != 'REMOVED'"
+    )
+
+    def _format(row: Any) -> dict[str, str]:
+        return {
+            "ad_id": str(row.ad_group_ad.ad.id),
+            "system_managed_source": row.ad_group_ad.ad.system_managed_resource_source.name,
+        }
+
+    rows = await run_report(
+        manager_id=manager_id,
+        session_id=session_id,
+        customer_id=customer_id,
+        query=query,
+        row_formatter=_format,
+        operation_name="buscar_ad_base_do_grupo",
+    )
+    candidatos = [r["ad_id"] for r in rows if r["system_managed_source"] != "AD_VARIATIONS"]
+    return candidatos[0] if len(candidatos) == 1 else None
+
+
 async def validate_existing_rsas_for_update(
     manager_id: UUID,
     session_id: UUID,
@@ -539,12 +578,25 @@ async def validate_existing_rsas_for_update(
         # formatter que deixe de trazer a chave tem que falhar alto, nao pular a
         # checagem em silencio.
         if ad["system_managed_source"] == "AD_VARIATIONS":
+            base_id = await _buscar_ad_base_do_grupo(
+                manager_id=manager_id,
+                session_id=session_id,
+                customer_id=customer_id,
+                ad_group_id=ad["ad_group_id"],
+            )
+            alvo = (
+                f"o anuncio BASE {base_id}"
+                if base_id is not None
+                else (
+                    f"o anuncio BASE do ad_group '{ad['ad_group_name']}' "
+                    f"(id {ad['ad_group_id']}) — o RSA que nao e variacao"
+                )
+            )
             return (
                 f"Ad {aid} e uma variacao de Ad Variation (gerenciada pelo Google) "
-                f"e nao aceita mutate. Edite o anuncio BASE do mesmo ad_group "
-                f"('{ad['ad_group_name']}', id {ad['ad_group_id']}) — a variacao "
-                f"herda a mudanca em minutos. Atencao: reler a variacao logo apos "
-                f"editar o base devolve o estado ANTIGO sem erro nenhum."
+                f"e nao aceita mutate. Edite {alvo}: a variacao herda a mudanca em "
+                f"minutos. Atencao: reler a variacao logo apos editar o base "
+                f"devolve o estado ANTIGO sem erro nenhum."
             )
 
         if ad["ad_type"] != "RESPONSIVE_SEARCH_AD":
