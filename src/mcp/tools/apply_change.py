@@ -105,13 +105,24 @@ def _matches_requested(
         # O numero vem de DEFAULT_TTL_MINUTES: escrito a mao, ele e uma segunda
         # fonte de verdade e a description passa a mentir quando o TTL mudar.
         f"expira em {DEFAULT_TTL_MINUTES} minutos. Cada token e consumivel apenas 1 vez "
-        "e amarrado a sessao MCP que o gerou. Lote com partial_failure devolve "
-        "`partial_failures` (motivo por linha) e `failed_count` ao lado de "
-        "`applied_count`. ATENCAO (F184): `status: success` numa linha NAO prova que "
+        "e amarrado a sessao MCP que o gerou. A RESPOSTA DIZ sob qual regime rodou: "
+        "`partial_failure: true` traz `partial_failures` (motivo por linha) e "
+        "`failed_count` medido; `partial_failure: false` traz `partial_failures` VAZIA "
+        "e `failed_count: null` — null significa NAO MEDIDO, nao 'nenhuma falhou' "
+        "(F182). O regime e decisao da tool de origem, nao um parametro seu. "
+        "ATENCAO (F184): `status: success` numa linha NAO prova que "
         "ela mudou algo — o Google aceita operacao e nao a executa. Cada linha traz "
         "`efeito`: 'mudou', 'sem_efeito' (passou sem mudar nada), ou null "
-        "(desconhecido, ou a linha falhou). Para 'aplicou de verdade', leia `efeito` "
-        "e `changed_count`, nao `applied_count`."
+        "(desconhecido, ou a linha falhou). Para 'aplicou de verdade', leia `efeito` e "
+        "`changed_count`. NUNCA leia `failed_count` — ele mede ACEITACAO, nao "
+        "execucao: em tres modos de falha medidos em producao (campanha removida, URL "
+        "invalida, anuncio apagado entre o preview e o apply) o Google aceitou tudo, e "
+        "`failed_count` veio 0 nos tres. Zero ali costuma significar 'ele nao "
+        "reportou', nao 'nada falhou', e o `partial_failure: true` ao lado so diz que "
+        "a pergunta foi feita, nao que houve resposta. `applied_count` tem UMA "
+        "leitura legitima, a subtracao: `applied_count` - `changed_count` = quantas "
+        "linhas passaram sem efeito. Isolado ele afirma aceitacao como se fosse "
+        "execucao, e engana igual ao `failed_count`."
     ),
     input_schema=_SCHEMA,
     bucket="always",
@@ -433,6 +444,15 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
             changed_count=result.get("changed_count"),
             # Spec §4.5: "a resposta separa aplicadas de falhas, com o motivo de cada
             # falha". Lote com partial_failure=True e onde isso acontece.
+            #
+            # F182: este ramo SEMPRE roda com a flag ligada (ver o `partial_failure=True`
+            # na chamada de `run_mutation` acima), e declara isso em vez de deixar o
+            # caller adivinhar. Sem os dois campos aqui, o contrato ficaria uniforme
+            # "exceto neste ramo", que e uma inconsistencia nova no lugar da antiga.
+            partial_failure=True,
+            failed_count=sum(
+                1 for r in result.get("partial_failures", []) if r["status"] == "failed"
+            ),
             partial_failures=result.get("partial_failures", []),
             resource_names=result.get("resource_names", []),
             resulting_schedule=resulting,
@@ -467,7 +487,18 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
         # F139: quantos de fato mudaram. `applied_count` conta o tentado, entao
         # numa re-remocao ele diz 1 para uma operacao que nao mudou nada.
         changed_count=result.get("changed_count"),
+        # F182: o REGIME vem na resposta. A frase "lote com partial_failure" descrevia
+        # uma condicao que o caller nao consegue avaliar — a flag e decisao interna da
+        # tool de origem (`__partial_failure__` no payload), invisivel de fora. Agora a
+        # propria resposta diz sob qual regime rodou.
+        partial_failure=partial_failure,
         partial_failures=partial_failures,
-        failed_count=sum(1 for r in partial_failures if r["status"] == "failed"),
+        # F182: com a flag DESLIGADA o Google nao reporta nada por linha, a lista vem
+        # vazia, e derivar 0 dela afirma "nenhuma falhou" onde o correto e "nao
+        # perguntei". `None` diz "nao medido" — mesma familia do `efeito: null` do
+        # F184: nao saber e diferente de saber que e zero.
+        failed_count=(
+            sum(1 for r in partial_failures if r["status"] == "failed") if partial_failure else None
+        ),
         resource_names=result.get("resource_names", []),
     )

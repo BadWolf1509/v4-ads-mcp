@@ -207,3 +207,83 @@ async def test_apply_change_routes_other_operations_to_run_mutation():
         assert result["operation"] == "create_campaign"
     finally:
         clear_current()
+
+
+def _pending(operation: str, payload: dict) -> MagicMock:
+    saved = MagicMock()
+    saved.operation_type = operation
+    saved.customer_id = "1234567890"
+    saved.blast_summary = "resumo"
+    saved.payload = payload
+    return saved
+
+
+def _pool() -> MagicMock:
+    mock_pool = MagicMock()
+    mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=None)
+    mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
+    return mock_pool
+
+
+@pytest.mark.asyncio
+async def test_lote_sem_partial_failure_nao_afirma_zero_falhas(_ctx) -> None:
+    """F182: `failed_count: 0` com a flag DESLIGADA seria afirmar o que nao se mediu.
+
+    Sem partial_failure o Google nao reporta nada por linha, entao `partial_failures`
+    volta vazia — e derivar 0 dela diz "nenhuma falhou" quando o certo e "nao
+    perguntei". A resposta passa a declarar qual regime usou.
+    """
+    from src.mcp.tools import apply_change as mod
+    from src.mcp.tools.apply_change import apply_change
+
+    saved = _pending("create_ad_group", {"ad_groups": [{}, {}], "__target_count__": 2})
+    resultado = {
+        "provider_request_id": "req-sem-flag",
+        "applied_count": 2,
+        "partial_failures": [],
+        "resource_names": ["customers/1/adGroups/1", "customers/1/adGroups/2"],
+    }
+
+    with (
+        patch.object(mod, "connection") as mock_conn,
+        patch("src.mcp.tools.apply_change.consume", AsyncMock(return_value=saved)),
+        patch("src.mcp.tools.apply_change.run_mutation", AsyncMock(return_value=resultado)),
+    ):
+        mock_conn.get_pool.return_value = _pool()
+        result = await apply_change({"confirmation_token": "TOKEN001"})
+
+    assert result["partial_failure"] is False
+    assert result["failed_count"] is None
+
+
+@pytest.mark.asyncio
+async def test_lote_com_partial_failure_conta_as_falhas(_ctx) -> None:
+    """Com a flag ligada o numero e medido, e a resposta diz que foi."""
+    from src.mcp.tools import apply_change as mod
+    from src.mcp.tools.apply_change import apply_change
+
+    saved = _pending(
+        "update_rsa",
+        {"updates": [{}, {}], "__target_count__": 2, "__partial_failure__": True},
+    )
+    resultado = {
+        "provider_request_id": "req-com-flag",
+        "applied_count": 1,
+        "changed_count": 1,
+        "partial_failures": [
+            {"index": 0, "status": "success", "error": None, "efeito": "mudou"},
+            {"index": 1, "status": "failed", "error": "BOOM", "efeito": None},
+        ],
+        "resource_names": ["customers/1/ads/1", None],
+    }
+
+    with (
+        patch.object(mod, "connection") as mock_conn,
+        patch("src.mcp.tools.apply_change.consume", AsyncMock(return_value=saved)),
+        patch("src.mcp.tools.apply_change.run_mutation", AsyncMock(return_value=resultado)),
+    ):
+        mock_conn.get_pool.return_value = _pool()
+        result = await apply_change({"confirmation_token": "TOKEN002"})
+
+    assert result["partial_failure"] is True
+    assert result["failed_count"] == 1

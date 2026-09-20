@@ -117,8 +117,19 @@ async def test_apply_change_default_devolve_o_motivo_de_cada_falha(_ctx: Any) ->
 
 
 @pytest.mark.asyncio
-async def test_apply_change_default_sem_partial_failure_nao_inventa_falha(_ctx: Any) -> None:
-    """Mutacao sem partial_failure mode: lista vazia e zero, nunca None/ausente."""
+async def test_flag_ligada_com_lista_vazia_da_zero_e_nao_none(_ctx: Any) -> None:
+    """Com a flag LIGADA e nenhuma falha reportada, `failed_count` e 0 — medido e zero.
+
+    F182 — o nome antigo (`..._sem_partial_failure_...`) e a docstring ("mutacao sem
+    partial_failure mode") descreviam um cenario que este teste NUNCA montou: o helper
+    `_apply` hardcoda `__partial_failure__: True` no payload, e o que variava era so a
+    lista devolvida pelo mock. O caso da flag DESLIGADA ficou sem cobertura nenhuma
+    enquanto um teste anunciava cobri-lo — e a afirmacao "nunca None/ausente" virou
+    argumento contra o proprio fix do F182, que e devolver `null` justamente ali.
+
+    A cobertura real do caso desligado vive em
+    `test_apply_change.py::test_lote_sem_partial_failure_nao_afirma_zero_falhas`.
+    """
     out = await _apply(
         {
             "provider_request_id": "req-2",
