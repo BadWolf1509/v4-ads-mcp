@@ -31,6 +31,10 @@ _SCHEMA: dict[str, Any] = {
                 "additionalProperties": False,
             },
             "minItems": 1,
+            # F183: mesma especie e mesmo teto que `update_ad_status.ads` — keyword e a
+            # entidade de menor raio, e o lote grande aqui e uso legitimo (pausar a
+            # cauda de zumbis de uma conta inteira).
+            "maxItems": 500,
         },
         "new_status": {
             "type": "string",

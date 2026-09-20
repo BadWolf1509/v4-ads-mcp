@@ -69,6 +69,9 @@ _SCHEMA: dict[str, Any] = {
         "geo_targets": {
             "type": "array",
             "minItems": 1,
+            # F183: alvos de UMA campanha. 100 cobre qualquer segmentacao municipal
+            # real do Brasil com folga e impede payload absurdo.
+            "maxItems": 100,
             "uniqueItems": True,
             "items": {
                 "type": "string",

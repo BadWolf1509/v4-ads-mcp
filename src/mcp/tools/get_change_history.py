@@ -98,6 +98,8 @@ _DATE_PRESETS = [
 # contrato publico, e derivar faria um bump do lockfile mudar os valores
 # aceitos sem diff nem revisao. Fonte autoritativa e o SDK; reconciliador e o
 # guard no CI.
+_OPERATION_TYPES = ["CREATE", "UPDATE", "REMOVE"]
+
 _RESOURCE_TYPES = [
     "AD",
     "AD_GROUP",
@@ -173,21 +175,30 @@ _SCHEMA: dict[str, Any] = {
             "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
             "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
         },
+        # F183: array sem teto vira clausula IN de GAQL sem teto. Nos tres que sao
+        # enum o teto e DERIVADO da propria lista (`len(...)`) — numero escrito a mao
+        # seria segunda fonte de verdade e passaria a mentir quando o enum mudasse.
         "resource_types": {
             "type": "array",
             "items": {"type": "string", "enum": _RESOURCE_TYPES},
+            "maxItems": len(_RESOURCE_TYPES),
         },
         "operation_types": {
             "type": "array",
-            "items": {"type": "string", "enum": ["CREATE", "UPDATE", "REMOVE"]},
+            "items": {"type": "string", "enum": _OPERATION_TYPES},
+            "maxItems": len(_OPERATION_TYPES),
         },
         "user_emails": {
             "type": "array",
             "items": {"type": "string", "format": "email"},
+            # Sem enum pra derivar: 20 acompanha `detect_drift.responsible_user_emails`,
+            # que filtra a mesma especie de lista (gestores de uma conta).
+            "maxItems": 20,
         },
         "client_types": {
             "type": "array",
             "items": {"type": "string", "enum": _CLIENT_TYPES},
+            "maxItems": len(_CLIENT_TYPES),
         },
         # 10000, nao 9999: `maximum` e contrato publico ja negociado no
         # handshake do MCP (F140), entao estreita-lo NAO chega na sessao

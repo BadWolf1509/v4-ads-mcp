@@ -3573,7 +3573,7 @@ primeira peça.
 
 ---
 
-## F183 (LOW, ABERTO) — dois mutates de lote aceitam array sem teto
+## F183 (LOW, CORRIGIDO em 2026-09-20) — oito arrays de tool aceitavam tamanho ilimitado (o finding dizia dois)
 
 **Medição (19/09/2026).** `update_keyword_status` (`:32`, schema `keywords`) e
 `update_ad_group_status` (`:21`, schema `ad_group_ids`) declaram `minItems: 1` e
@@ -3780,3 +3780,52 @@ foi: a description agora diz `NUNCA applied_count nem failed_count`, com o motiv
 empírico (três modos de falha medidos, `failed_count: 0` nos três) e a conta explícita
 para quem quiser o agregado. Registrado aqui porque "já foi considerado e por quê" é o
 que impede a próxima sessão de reabrir.
+
+✅ **CORRIGIDO em 2026-09-20 — e a contagem estava errada pela TERCEIRA vez.** O scan
+sobre o schema **registrado** (o que o cliente MCP recebe no handshake) achou **37
+arrays, 8 sem teto**:
+
+| array | teto aplicado | critério |
+|---|---|---|
+| `update_campaign_status.campaign_ids` | 50 | campanha é o maior raio — cada item carrega tudo abaixo |
+| `update_ad_group_status.ad_group_ids` | 100 | raio intermediário |
+| `update_keyword_status.keywords` | 500 | menor raio; lote grande é uso legítimo (cauda de zumbis) |
+| `create_campaign.geo_targets` | 100 | alvos de UMA campanha |
+| `get_change_history.resource_types` | `len(_RESOURCE_TYPES)` | enum |
+| `get_change_history.operation_types` | `len(_OPERATION_TYPES)` | enum |
+| `get_change_history.client_types` | `len(_CLIENT_TYPES)` | enum |
+| `get_change_history.user_emails` | 20 | sem enum; acompanha `detect_drift` |
+
+**A classe não era "lote de mutate sem teto".** Metade das violações está em tool de
+LEITURA, onde o array vira cláusula `IN` de GAQL. Recortar por "tool mutante" teria
+deixado 4 de pé — e teria exigido classificar, o que exige lista, que é exatamente o que
+absolve quem ficou de fora dela.
+
+**Teto de enum é DERIVADO (`len(...)`), não escrito à mão.** Número literal ao lado de
+uma lista é segunda fonte de verdade: passa a mentir na primeira vez que o enum mudar.
+O enum inline de `operation_types` virou constante para poder ser derivado.
+
+🔑 **As três contagens erradas, e por que cada uma errou — é a parte reaproveitável.**
+
+| # | instrumento | resposta | o que ele media de verdade |
+|---|---|---|---|
+| 1 | `grep maxItems` em 3 tools escolhidas a dedo | "três sem teto" | presença da chave em arquivos que eu já suspeitava |
+| 2 | leitura manual dessas mesmas 3 | "duas" (certa para as 3, cega para o resto) | as 3, corretamente |
+| 3 | `ast.literal_eval(_SCHEMA)` sobre todas | **zero** | dicts que são literais puros — e nenhum é, porque referenciam constantes |
+| ✅ | schema **registrado** via `import_all_tools()` | **oito** | o que o cliente MCP de fato recebe |
+
+A terceira é a mais instrutiva: **devolveu zero e zero parecia "nada a fazer"**. Foi a
+mesma armadilha do F145 (ausência que parece ruído) com outro disfarce — e só não colou
+porque a medição anterior já tinha dito "dois", então zero era impossível. **Sem uma
+medição anterior conflitante, o scan quebrado teria fechado o finding sozinho.**
+
+**Guard:** `tests/unit/test_arrays_de_tool_tem_teto.py`, **sem lista de exceção** — não
+existe tool com teto só em runtime (`bulk_pause_by_query` não tem array no schema; o
+`_MAX_ENTITIES` dele cobre lote vindo de query). Dois testes, ambos verificados por
+sabotagem: remover um teto faz o primeiro falhar nomeando a tool; pôr `maxItems: 500`
+sobre um enum de 3 faz o segundo falhar. Piso anti-vacuidade de 30 arrays via
+`EscopoVazioError`, porque guard que varre 3 passa por vacuidade.
+
+**Não verificado em produção** — é restrição de schema, rejeitada antes de qualquer
+chamada ao Google. O que muda para quem consome: payload acima do teto passa a ser
+recusado na validação, com a mensagem do próprio JSONSchema.
