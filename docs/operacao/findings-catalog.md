@@ -4,11 +4,11 @@
 >
 > **Maintainer note:** Add a new entry here whenever a finding is documented in a smoke runbook. Keep entries scannable — link to runbook for detail.
 >
-> **Last updated:** 2026-09-03 — **F141–F146 fechados** em tres PRs (#28 bloco fuso+freshness; #29 structural_change; #30 fuso do upload offline) mais o F142 (whitelist de client_type) direto na main. Ontem, 02/09: **+F131–F140** da sessao de campo MO-JP, fechados no PR #27 e nos fixes seguintes. Narrativa completa e licoes de metodo no handoff [`session-2026-09-02-03-handoff.md`](session-2026-09-02-03-handoff.md); o historico anterior (F82–F130, 08/14 a 08/20) esta nos handoffs de 08-14-15 e 08-19.
+> **Last updated:** 2026-09-20 — **F180–F185**: sprint de RSA (F180 em parte; F181/F182/F183/F184 corrigidos), a 2ª instância do F182, e **F185 ABERTO** (limitação da API, sem correção possível deste lado). O resto deste parágrafo é de **2026-09-03** e não foi atualizado desde então — leia como de época: **F141–F146 fechados** em tres PRs (#28 bloco fuso+freshness; #29 structural_change; #30 fuso do upload offline) mais o F142 (whitelist de client_type) direto na main. Ontem, 02/09: **+F131–F140** da sessao de campo MO-JP, fechados no PR #27 e nos fixes seguintes. Narrativa completa e licoes de metodo no handoff [`session-2026-09-02-03-handoff.md`](session-2026-09-02-03-handoff.md); o historico anterior (F82–F130, 08/14 a 08/20) esta nos handoffs de 08-14-15 e 08-19.
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~1490 linhas, **151 IDs** (F1-F152 com lacunas, A1-A7, D1-D3). Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~3990 linhas, 452 KB, IDs de **F1 a F185** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** só 44 findings têm cabeçalho `## F<n>` próprio e os demais vivem dentro de outras entradas, então toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -3901,3 +3901,93 @@ código, incluindo `changed_count` — confirmou `apply_change` como única.
 **Não verificado em produção** — é texto de description, entregue no handshake. O que
 muda para quem consome: sessão nova deixa de ver, em três tools, um convite a ler a
 contagem que o produtor manda não ler.
+
+---
+
+## F185 (MEDIUM, ABERTO — limitação da API, sem correção possível do nosso lado) — `recommendation_subscription` devolve `resource_name` degenerado, e quatro assinaturas distintas compartilham um nome que por contrato é único
+
+**Procedência das medições:** as da conta são da sessão de gestão de tráfego, na MO-JP
+(`7862230676`), em 20/09. A verificação no nível do código é deste lado. Está separado
+de propósito — o achado inteiro depende de quem mediu o quê.
+
+**Como apareceu.** Alguém foi conferir *"Auto-Apply OFF"*, que estava escrito num
+documento **como fato**. `FROM recommendation_subscription` devolveu **11 tipos: 10
+`PAUSED` e 1 `ENABLED`** — `RESPONSIVE_SEARCH_AD`, criado em 06/06/2024 com
+`modify_date_time` = criação **+ 3 segundos**, ou seja **nunca tocado**, enquanto os
+outros 10 foram pausados em 28/04 e 06/05/2026. Alguém desligou o auto-apply e **deixou
+um passar**.
+
+🔴 **E a UI não consegue desligá-lo.** A tela de aplicação automática lista **21 tipos,
+zero marcados — e não inclui a criação de RSA.** Só há *"Melhorar seus anúncios
+responsivos"* (`RESPONSIVE_SEARCH_AD_IMPROVE_AD_STRENGTH`), que está off nos dois canais.
+**O contador "0 de 21" é mudo sobre o que a tela não lista.**
+
+### O defeito
+
+**4 dos 11 vêm com `type` = `UNKNOWN`** — tipos que o enum do cliente não conhece — **e
+com `resource_name` terminando em `/UNKNOWN`, idêntico nos quatro:**
+
+```
+customers/7862230676/recommendationSubscriptions/UNKNOWN   ×4
+```
+
+O formato é `customers/{cid}/recommendationSubscriptions/{tipo}` — **o tipo é a chave.**
+Quatro linhas distintas compartilhando um `resource_name` viola a unicidade que resource
+name tem por contrato.
+
+### A investigação, em dois degraus e com os limites ditos
+
+**Degrau 1 — a sessão de campo.** Rodou `SELECT recommendation_subscription.resource_name`
+**sem pedir o campo `type` na query**. Os quatro voltaram idênticos. Como o `type` nem foi
+solicitado, ele não podia estar contaminando a formatação: **a degeneração vem de antes do
+consumo.** Isso ainda deixava duas hipóteses de pé — servidor manda assim, ou a cadeia
+cliente/MCP reconstrói o nome a partir do enum — e a sessão declarou explicitamente não
+alcançar a segunda.
+
+**Degrau 2 — daqui, no código.** A cadeia nossa **não toca** o `resource_name`:
+
+1. No proto, `RecommendationSubscription.resource_name` é `proto_type=9` — **string pura,
+   `enum=None`**. Quem é enum são `type_` e `status` (`proto_type=14`), campos
+   independentes no wire; proto-plus não deriva um do outro.
+2. O `run_gaql` serializa com
+   `MessageToDict(row._pb, preserving_proto_field_name=True)` (`src/google_ads/reports.py:264`)
+   — cópia direta do protobuf cru para dict. **Campo string passa verbatim.**
+
+⚠️ **O limite honesto desta prova:** é leitura de código, não captura do wire. Ela prova
+que a NOSSA cadeia não degrada, o que deixa o servidor **por eliminação**. Uma captura
+HTTP crua seria o degrau acima e **não mudaria nenhum veredito de desenho** — por isso
+não foi feita, e isso está dito em vez de subentendido.
+
+### A consequência, que é pior que "a chave é outra"
+
+**Os quatro não são endereçáveis por chave nenhuma:** `type` vem `UNKNOWN`,
+`resource_name` vem degenerado. Se algum dia um deles estiver `ENABLED`, **não haverá
+caminho programático para pausá-lo**, e a UI já não lista o tipo. Não é limitação de
+desenho de tool — é limitação da API, e é por isso que esta entrada nasce **ABERTA sem
+plano de correção**: não há o que corrigir deste lado.
+
+**O que muda é o que se pode prometer.** Uma tool de escrita sobre este recurso
+alcançaria 7 de 11 nesta conta e seria obrigada a dizer isso. Uma tool de **leitura**
+sobre o MCC não só encontraria contas expostas — mediria **quanto do MCC é ilegível**,
+que é um número que hoje ninguém tem. Ver a recomendação em `estado-atual.md`.
+
+### Duas lições de método, e as duas são transferíveis
+
+🔑 **1. Dois canais de ESTADO discordando? Vá ao EFEITO.** A subscrição dizia `ENABLED`;
+a UI dizia que o controle nem existe. Em vez de escolher um, a sessão foi ao resultado:
+`ad_group_ad.ad.added_by_google_ads = TRUE` → **zero linhas**, com positivo-controle (sem
+filtro vêm 35 anúncios, 3 com `AD_VARIATIONS`, provando que o campo popula). **Nada passou
+pela porta: risco não realizado.** Sem o controle, zero não distinguiria "não aconteceu"
+de "o campo não popula" — a armadilha do F145 e do scan do F183.
+
+🔑 **2. Não saber precisa de representação própria.** O atestado inicial era *"10 pausados
+e 1 ligado"*, que soa limpo. O correto é **"1 ligado, 6 pausados e identificados, 4
+pausados e desconhecidos"**: os quatro estão `PAUSED`, então não há exposição hoje, mas
+**não se sabe o que eles são**, e isso é diferente de saber que são inócuos. Mesma família
+do `efeito: null` (F184) e do `failed_count: null` (F182) — **ausência de conhecimento não
+pode compartilhar representação com conhecimento de ausência.** A sessão reescreveu o
+próprio atestado depois de ele já ter soado bem, que é a parte difícil.
+
+**Sem guard**, de propósito: não há código nosso a proteger. O que protege é esta entrada
+— e a regra prática, para quem for desenhar a tool: **a varredura tem de contar os
+opacos, não descartá-los**, senão ela reproduz o "0 de 21" que originou o problema.
