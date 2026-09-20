@@ -63,7 +63,7 @@ google-api-core==2.36.0
     #   google-ads
     #   google-cloud-core
     #   google-cloud-storage
-google-auth==2.55.2
+google-auth==2.58.0
     # via
     #   google-api-core
     #   google-auth-oauthlib
