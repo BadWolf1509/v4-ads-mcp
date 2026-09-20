@@ -107,7 +107,9 @@ def _build_params_summary(rsas: list[dict[str, Any]]) -> dict[str, Any]:
         "rejeita ad_group inexistente, REMOVED, ou em campaign non-SEARCH. NOT "
         "idempotente — Google permite multiple RSAs com mesmo content. Lote PARCIAL: "
         "se o Google recusar um anuncio, os demais sao criados e o apply_change "
-        "devolve partial_failures com o motivo por linha. RSAs aparecem "
+        "devolve partial_failures com o motivo por linha — mas recusar e o caso RARO: "
+        "o padrao medido e o Google ACEITAR e nao executar (F180/F184), entao confirme "
+        "pelo `efeito` de cada linha, nunca por ausencia de falha. RSAs aparecem "
         "no Google Ads UI imediatamente apos apply mas serving so comeca apos approval "
         "(geralmente minutos)."
     ),

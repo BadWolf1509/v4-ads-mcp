@@ -3829,3 +3829,75 @@ sobre um enum de 3 faz o segundo falhar. Piso anti-vacuidade de 30 arrays via
 **Não verificado em produção** — é restrição de schema, rejeitada antes de qualquer
 chamada ao Google. O que muda para quem consome: payload acima do teto passa a ser
 recusado na validação, com a mensagem do próprio JSONSchema.
+
+---
+
+## F182, 2ª instância (LOW, CORRIGIDO em 2026-09-20) — a contagem do lote seguia descrita por três tools que não a produzem
+
+**Como apareceu, e vale registrar a rota.** Uma sessão-par usando as tools em conta real
+reportou que, num handshake novo, ela via o `maxItems: 500` do F183 **mas não** a
+description nova do F182 — e levantou a pergunta certa: *se a description não subiu,
+subiu o envelope?* As duas vieram no mesmo PR.
+
+**A afirmação foi REFUTADA, com medição.** Handshake MCP novo contra a produção
+(`tools/list` no `/mcp`, revisão `v4-ads-mcp-00113-qv2` com 100% do tráfego):
+`apply_change.description` vem com 1406 chars contendo `A RESPOSTA DIZ sob qual regime
+rodou`, `failed_count: null`, `NUNCA leia \`failed_count\`` e `ATENCAO (F184)`, e **sem**
+a frase antiga — na **mesma** resposta em que `update_keyword_status.keywords.maxItems`
+vem `500`. Não havia estado misto no artefato.
+
+E a pergunta do envelope se responde **sem lote nenhum**: `de26fbb` alterou a string da
+description e o envelope (`partial_failure=`, `failed_count=(… if … else None)`) no mesmo
+arquivo, no mesmo commit. Módulo implantado não carrega metade de commit. Reforço
+estrutural: #79 (F182) mesclou **antes** de #80 (F183) numa main linear, então build com
+F183 tem F182 por construção — a hipótese "um subiu e o outro não" era impossível.
+Registrado aqui para que a próxima sessão não reabra "o F182 não subiu".
+
+🔑 **Mas o instinto estava certo, e o endereço errado.** Varrendo as **68 descriptions
+registradas** atrás da afirmação que o F182 mata, ela estava viva em `remove_audience`:
+
+> "o apply_change devolve `partial_failures` com {index, status, error} por linha,
+> `applied_count` e `failed_count`."
+
+Sem qualificação nenhuma, numa tool cuja description **descreve a saída do
+`apply_change`**. O docstring desse mesmo módulo já registra que até 07/09 ele anunciava
+um status per-row que nenhum caminho produzia — **mesma família, segunda vez**.
+
+Mais duas, de outra natureza: `create_rsa` e `update_rsa` prometiam *"se o Google recusar
+um anúncio, os demais são aplicados"* — o caminho feliz do F180, que foi medido **não
+disparar** (campanha removida, `final_urls` inválida e anúncio apagado entre preview e
+apply: aceitos os três). Não é falso; é condicional com antecedente que quase nunca
+ocorre. As duas ganharam a ressalva medida e o ponteiro para o `efeito`.
+
+**O erro de método, que é o reaproveitável:** o F182 consertou **a instância** e deixou
+**a classe**. É o modo 9 do caderno de guards ("aplicado à instância, não à classe") e é
+a mesma aritmética do F183, onde "dois arrays" eram oito. Ao fechar um defeito de
+*redação de contrato*, a pergunta não é "consertei esta frase?" e sim **"quem mais afirma
+isto?"** — e a resposta se mede no registry, não por memória.
+
+**A invariante escolhida, e por que não a óbvia.** A tentação era "nenhuma description
+mente sobre `failed_count`", que é prosa e exigiria um casador de palavras — o modo 2,
+que erra sempre pelo que ficou fora da lista. A que entrou é **estrutural**, e sai da
+arquitetura que o próprio `remove_audience` documenta: quem responde ao gestor é o
+`apply_change`, e ele é genérico; nenhuma outra tool sabe sob qual regime o lote rodou.
+Logo **só o produtor descreve `failed_count`/`applied_count`**.
+
+**Deliberadamente fora:** `partial_failure`/`partial_failures` (uma tool dizer que roda
+nesse modo descreve o que ela mesma faz, e é verdade); `changed_count` (é o campo que se
+*deve* ler); a prosa do `apply_change` (asserir as frases dele travaria qualquer
+reescrita legítima — o conteúdo é garantido pelos testes de comportamento do envelope);
+e a promessa condicional do F180 em `create_rsa`/`update_rsa`, corrigida à mão e **não
+guardada**, porque não sei escrever asserção que separe essa redação de uma honesta.
+Dizer isso vale mais que um guard que finge cobri-la.
+
+**Guard:** `tests/unit/test_so_o_produtor_descreve_a_contagem_do_lote.py`, dois testes,
+piso anti-vacuidade de 60 descriptions via `EscopoVazioError`. **Validado sem sabotagem
+sintética:** escrito e rodado ANTES do fix, ficou vermelho contra o código de produção
+nomeando `remove_audience`, enquanto o controle positivo (o `apply_change` de fato cita
+os campos) passava verde — as duas metades, e o controle é permanente, não descartável.
+Depois do fix, verde, e uma varredura independente pelo registry — outro caminho de
+código, incluindo `changed_count` — confirmou `apply_change` como única.
+
+**Não verificado em produção** — é texto de description, entregue no handshake. O que
+muda para quem consome: sessão nova deixa de ver, em três tools, um convite a ler a
+contagem que o produtor manda não ler.
