@@ -9,6 +9,50 @@
 
 ---
 
+## Sprint RSA — F180+F181 (aberto em 19/09, em execução)
+
+Sessão de campo na MO-JP (`7862230676`) em 19/09 abriu **F180–F183**, todos em torno das
+tools de RSA. Dois entraram em sprint, dois ficaram de fora com motivo.
+
+| ID | Sev | O quê | Neste sprint? |
+|---|---|---|---|
+| **F180** | MED | `update_rsa`/`create_rsa` perdem o lote inteiro por uma linha recusada, e o erro não diz qual. `partial_failure` é opt-in por payload (`apply_change.py:439`) e só 6 de 22 operações ligam | ✅ Task 1 |
+| **F181** | MED | Pre-flight não vê `ad_group_ad.ad.system_managed_resource_source = AD_VARIATIONS`; o dry-run emite token para uma operação que o Google recusa | ✅ Tasks 2 e 3 |
+| **F182** | MED | A descrição do `apply_change` promete `partial_failures` sem qualificar — vale para 6 das 22 operações | ❌ fix não decidido (duas opções, custos diferentes) |
+| **F183** | LOW | `update_keyword_status` e `update_ad_group_status` aceitam array sem teto | ❌ família dos tetos |
+
+**Plano:** [`plans/2026-09-19-rsa-lote-parcial-e-preflight-de-variacao.md`](../superpowers/plans/2026-09-19-rsa-lote-parcial-e-preflight-de-variacao.md)
+— 5 tasks, branch `fix/rsa-lote-parcial-e-preflight-de-variacao`.
+
+**O que a correção do F181 custa: nada.** O campo entra na GAQL que o pre-flight já roda
+(`queries/_common.py:483-488`), zero round-trip novo. Só a mensagem que nomeia o anúncio
+base custa uma query, e só no caminho de falha.
+
+**O que a correção do F180 custa: a atomicidade.** Hoje o lote que falha não deixa estado
+parcial, e isso foi medido e elogiado como seguro por quem reportou. Ligar a flag troca
+isso por aplicação parcial — certo para RSA (anúncios são independentes), mas é troca, não
+ganho puro. É também pré-requisito de subir o teto de lote de 5 (item M2 do backlog de
+campo), que fica para sprint separado.
+
+🔴 **Decision gate — o smoke (Task 4) não roda sem o Wellington.** O sprint muda o
+comportamento de tool mutante, e o `Don't do` proíbe as duas pontas: fechar sprint de tool
+mutante com o apply em pending (foi assim que F150 e F151 chegaram à produção), e agendar
+smoke de mutate sem autorização humana explícita na sessão dele — aval relayado por outra
+sessão Claude não passa. O caso T4 (lote parcial de verdade) exige coordenação manual:
+remover um anúncio pela UI entre o preview e o apply. Sem ele, o sprint fecharia afirmando
+aplicação parcial sem nunca ter visto uma.
+
+**Consumo fora do repo:** a premissa falsa que gerou o item G3 daquele backlog (*"o
+`get_performance_breakdown(level='ad')` devolve só métrica"*) vinha do plugin
+`v4-trafego-google-ads` 0.4.0, em 7 linhas de 5 arquivos, junto de uma segunda afirmação
+falsa sobre Quality Score. Medido: `level='ad'` devolve headlines/descriptions/final_urls/
+ad_strength e `level='keyword'` devolve `quality_score` mais os 3 componentes. O **0.4.1
+corrige e está entregue ao Wellington, aguardando instalação pela interface do app** —
+enquanto não instalar, as skills seguem empurrando análise, auditoria e relatório para uma
+tool marcada para arquivar.
+
+---
+
 ## Frente "correções da varredura" (spec de 2026-09-06) — onde está
 
 Sete PRs, um por frente, cada um com CI próprio e merge próprio. **Cinco fechados e em
