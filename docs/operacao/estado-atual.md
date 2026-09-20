@@ -9,6 +9,50 @@
 
 ---
 
+## Sprint RSA — F180+F181 (aberto em 19/09, em execução)
+
+Sessão de campo na MO-JP (`7862230676`) em 19/09 abriu **F180–F183**, todos em torno das
+tools de RSA. Dois entraram em sprint, dois ficaram de fora com motivo.
+
+| ID | Sev | O quê | Neste sprint? |
+|---|---|---|---|
+| **F180** | MED | `update_rsa`/`create_rsa` perdem o lote inteiro por uma linha recusada, e o erro não diz qual. `partial_failure` é opt-in por payload (`apply_change.py:439`) e só 6 de 22 operações ligam | ✅ Task 1 |
+| **F181** | MED | Pre-flight não vê `ad_group_ad.ad.system_managed_resource_source = AD_VARIATIONS`; o dry-run emite token para uma operação que o Google recusa | ✅ Tasks 2 e 3 |
+| **F182** | MED | A descrição do `apply_change` promete `partial_failures` sem qualificar — vale para 6 das 22 operações | ❌ fix não decidido (duas opções, custos diferentes) |
+| **F183** | LOW | `update_keyword_status` e `update_ad_group_status` aceitam array sem teto | ❌ família dos tetos |
+
+**Plano:** [`plans/2026-09-19-rsa-lote-parcial-e-preflight-de-variacao.md`](../superpowers/plans/2026-09-19-rsa-lote-parcial-e-preflight-de-variacao.md)
+— 5 tasks, branch `fix/rsa-lote-parcial-e-preflight-de-variacao`.
+
+**O que a correção do F181 custa: nada.** O campo entra na GAQL que o pre-flight já roda
+(`queries/_common.py:483-488`), zero round-trip novo. Só a mensagem que nomeia o anúncio
+base custa uma query, e só no caminho de falha.
+
+**O que a correção do F180 custa: a atomicidade.** Hoje o lote que falha não deixa estado
+parcial, e isso foi medido e elogiado como seguro por quem reportou. Ligar a flag troca
+isso por aplicação parcial — certo para RSA (anúncios são independentes), mas é troca, não
+ganho puro. É também pré-requisito de subir o teto de lote de 5 (item M2 do backlog de
+campo), que fica para sprint separado.
+
+🔴 **Decision gate — o smoke (Task 4) não roda sem o Wellington.** O sprint muda o
+comportamento de tool mutante, e o `Don't do` proíbe as duas pontas: fechar sprint de tool
+mutante com o apply em pending (foi assim que F150 e F151 chegaram à produção), e agendar
+smoke de mutate sem autorização humana explícita na sessão dele — aval relayado por outra
+sessão Claude não passa. O caso T4 (lote parcial de verdade) exige coordenação manual:
+remover um anúncio pela UI entre o preview e o apply. Sem ele, o sprint fecharia afirmando
+aplicação parcial sem nunca ter visto uma.
+
+**Consumo fora do repo:** a premissa falsa que gerou o item G3 daquele backlog (*"o
+`get_performance_breakdown(level='ad')` devolve só métrica"*) vinha do plugin
+`v4-trafego-google-ads` 0.4.0, em 7 linhas de 5 arquivos, junto de uma segunda afirmação
+falsa sobre Quality Score. Medido: `level='ad'` devolve headlines/descriptions/final_urls/
+ad_strength e `level='keyword'` devolve `quality_score` mais os 3 componentes. O **0.4.1
+corrige e está entregue ao Wellington, aguardando instalação pela interface do app** —
+enquanto não instalar, as skills seguem empurrando análise, auditoria e relatório para uma
+tool marcada para arquivar.
+
+---
+
 ## Frente "correções da varredura" (spec de 2026-09-06) — onde está
 
 Sete PRs, um por frente, cada um com CI próprio e merge próprio. **Cinco fechados e em
@@ -165,7 +209,7 @@ não entra cru na cláusula `IN` do GAQL. O do F141 foi apertado para ver
 
 ---
 
-**Última atualização:** 2026-09-05. **Tudo mesclado e em produção** — catorze PRs ([#27](https://github.com/BadWolf1509/v4-ads-mcp/pull/27), [#28](https://github.com/BadWolf1509/v4-ads-mcp/pull/28), [#29](https://github.com/BadWolf1509/v4-ads-mcp/pull/29), [#30](https://github.com/BadWolf1509/v4-ads-mcp/pull/30), [#31](https://github.com/BadWolf1509/v4-ads-mcp/pull/31), [#32](https://github.com/BadWolf1509/v4-ads-mcp/pull/32), [#33](https://github.com/BadWolf1509/v4-ads-mcp/pull/33), [#34](https://github.com/BadWolf1509/v4-ads-mcp/pull/34), [#35](https://github.com/BadWolf1509/v4-ads-mcp/pull/35), [#36](https://github.com/BadWolf1509/v4-ads-mcp/pull/36), [#37](https://github.com/BadWolf1509/v4-ads-mcp/pull/37), [#38](https://github.com/BadWolf1509/v4-ads-mcp/pull/38), [#39](https://github.com/BadWolf1509/v4-ads-mcp/pull/39), [#40](https://github.com/BadWolf1509/v4-ads-mcp/pull/40)) mesclados **sem `--admin`**, cada deploy verificado; `/health` 200 com `db: ok`. Mais, em 05/09: os **quatro do Dependabot** ([#22](https://github.com/BadWolf1509/v4-ads-mcp/pull/22), [#23](https://github.com/BadWolf1509/v4-ads-mcp/pull/23), [#25](https://github.com/BadWolf1509/v4-ads-mcp/pull/25), [#26](https://github.com/BadWolf1509/v4-ads-mcp/pull/26)), a **chave da reconciliação Meta** ([#41](https://github.com/BadWolf1509/v4-ads-mcp/pull/41)) e o **gate de acesso Google** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45)) — revisão servindo `v4-ads-mcp-00098-tgs`. Antes: 2026-08-20. **68 MCP tools em produção** (62 Google + 6 Meta), bucket **22 always + 46 defer** — contagem por grep de `bucket="` em `src/mcp/tools/*.py`. As duas mais novas são `get_ad_schedule` e `update_ad_schedule` (#31, sprint 3b.42), e o **smoke delas fechou 10/10 em 04/09** — foi ele que achou o F150 e o F151, os dois em código que três camadas de revisão tinham aprovado. E o **3b.44** ([#40](https://github.com/BadWolf1509/v4-ads-mcp/pull/40), `bid_modifier` por janela) **fechou 8/8 em 05/09** — todos mutantes, na `1163862076`. **Nenhum smoke de tool mutante segue pendente.** A reclassificação de buckets de 04/09 (#32) moveu 13 para cima e 14 para baixo, com `detect_drift` mantido no always **por decisão do Wellington, contra a medição**; método, tabela e a data da próxima remedição (04/10) em [`tool-buckets-2026-09-04.md`](tool-buckets-2026-09-04.md). Smoke autenticado F58 segue dormente. F76/F77 encerrados. **Catálogo em 154 IDs**. O **F147 fechou** na `pr4/honestidade-dos-numeros`: a reconsulta de confirmação do `apply_change` ganhou sentinela de truncamento e passou a declarar `null` por campanha — inclusive na campanha da BORDA do corte, que era o `hours_per_week` subestimado que a entrada nomeava. **Mapa da sessão:** [`session-2026-09-02-03-handoff.md`](session-2026-09-02-03-handoff.md).
+**Última atualização:** 2026-09-05. **Tudo mesclado e em produção** — catorze PRs ([#27](https://github.com/BadWolf1509/v4-ads-mcp/pull/27), [#28](https://github.com/BadWolf1509/v4-ads-mcp/pull/28), [#29](https://github.com/BadWolf1509/v4-ads-mcp/pull/29), [#30](https://github.com/BadWolf1509/v4-ads-mcp/pull/30), [#31](https://github.com/BadWolf1509/v4-ads-mcp/pull/31), [#32](https://github.com/BadWolf1509/v4-ads-mcp/pull/32), [#33](https://github.com/BadWolf1509/v4-ads-mcp/pull/33), [#34](https://github.com/BadWolf1509/v4-ads-mcp/pull/34), [#35](https://github.com/BadWolf1509/v4-ads-mcp/pull/35), [#36](https://github.com/BadWolf1509/v4-ads-mcp/pull/36), [#37](https://github.com/BadWolf1509/v4-ads-mcp/pull/37), [#38](https://github.com/BadWolf1509/v4-ads-mcp/pull/38), [#39](https://github.com/BadWolf1509/v4-ads-mcp/pull/39), [#40](https://github.com/BadWolf1509/v4-ads-mcp/pull/40)) mesclados **sem `--admin`**, cada deploy verificado; `/health` 200 com `db: ok`. Mais, em 05/09: os **quatro do Dependabot** ([#22](https://github.com/BadWolf1509/v4-ads-mcp/pull/22), [#23](https://github.com/BadWolf1509/v4-ads-mcp/pull/23), [#25](https://github.com/BadWolf1509/v4-ads-mcp/pull/25), [#26](https://github.com/BadWolf1509/v4-ads-mcp/pull/26)), a **chave da reconciliação Meta** ([#41](https://github.com/BadWolf1509/v4-ads-mcp/pull/41)) e o **gate de acesso Google** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45)) — revisão servindo `v4-ads-mcp-00098-tgs`. Antes: 2026-08-20. **68 MCP tools em produção** (62 Google + 6 Meta), bucket **22 always + 46 defer** — contagem por grep de `bucket="` em `src/mcp/tools/*.py`. As duas mais novas são `get_ad_schedule` e `update_ad_schedule` (#31, sprint 3b.42), e o **smoke delas parou em 5 de 10 em 04/09** (T1, T2, T2b, T3, T9 PASS; T4/T7/T8 mutam e aguardam aval do Wellington, T5/T6 dependem do T4) — foi ele que achou o F150 e o F151, os dois em código que três camadas de revisão tinham aprovado. E o **3b.44** ([#40](https://github.com/BadWolf1509/v4-ads-mcp/pull/40), `bid_modifier` por janela) **fechou 8/8 em 05/09** — todos mutantes, na `1163862076`. **Três passos mutantes do 3b.42 seguem pendentes de aval** (T4/T7/T8); o 3b.44 fechou 8/8. A reclassificação de buckets de 04/09 (#32) moveu 13 para cima e 14 para baixo, com `detect_drift` mantido no always **por decisão do Wellington, contra a medição**; método, tabela e a data da próxima remedição (04/10) em [`tool-buckets-2026-09-04.md`](tool-buckets-2026-09-04.md). Smoke autenticado F58 segue dormente. F76/F77 encerrados. **Catálogo em 170 IDs** (F1–F179). O **F147 fechou** na `pr4/honestidade-dos-numeros`: a reconsulta de confirmação do `apply_change` ganhou sentinela de truncamento e passou a declarar `null` por campanha — inclusive na campanha da BORDA do corte, que era o `hours_per_week` subestimado que a entrada nomeava. **Mapa da sessão:** [`session-2026-09-02-03-handoff.md`](session-2026-09-02-03-handoff.md).
 
 **Em 2026-09-02/03 entraram 16 findings (F131–F146), e os 16 estão fechados e em produção.** Vieram de uma sessão de campo (MO-JP) com evidência real, mais duas tools novas e a spec de `ad_schedule`. O que **muda de contrato** para quem consome as tools: (1) `freshness.status` em `get_change_history`/`detect_drift` é `confiavel | ambiguo | nao_coberto | em_curso | indeterminado` — `atrasado` não existe mais, e janela que alcança o dia corrente da conta nunca sai `confiavel`; (2) cada change traz `old_status`/`new_status` (CAMPAIGN/AD_GROUP), e `detect_drift` ganhou a flag `status_change_detected` (medium) — remover campanha no Google é `UPDATE` de status, não `REMOVE`; (3) `hoje` é o **da conta** em 24 tools Google (presets, clamp, freshness, `get_budget_pacing`, `get_negative_keywords_audit`); (4) `import_offline_conversions` usa o fuso da conta, o preview traz `summary.time_zone`/`utc_offset`, e conta sem fuso **recusa**; (5) `auto_applied_count` e `auto_apply_detected` passaram a ver `GOOGLE_ADS_RECOMMENDATIONS_SUBSCRIPTION`. ⚠️ **F140 vale para tudo isso:** schema e description novos só aparecem para sessão MCP reconectada; o comportamento é do servidor. Verificações vivas: Camaçari (`auto_applied_count` 0→1; `nao_coberto`), campanha `23861545627` removida (`structural_change` `PAUSED->REMOVED`, ontem `flags: []`), dry-run offline na `1163862076` (`America/Recife`, `-03:00`, token não aplicado — confirmado também pela sessão MO-JP). **Nota sem ID:** o classificador de blast radius não conhece `import_offline_conversions` e cai no *default seguro: confirmar* — correto, texto feio; entra junto se o F112 for revisitado.
 

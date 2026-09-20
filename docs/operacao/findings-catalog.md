@@ -3364,3 +3364,174 @@ padrão que `admin_accounts_google_restore` (`admin_accounts.py:86-92`) já
 usa — recusa cedo com uma flash message quando a ação não faria sentido —
 mas aqui a checagem só é possível DEPOIS do `DELETE` (o "não faria sentido"
 não dá pra ver antes, é o resultado do próprio `DELETE` que revela).
+
+---
+
+## F180 (MEDIUM, ABERTO) — `update_rsa` e `create_rsa` perdem o lote inteiro por uma linha, e o erro não diz qual
+
+**Sintoma medido (19/09/2026, conta MO-JP `7862230676`, sessão de gestão de
+tráfego).** Lote de 4 updates de `final_urls` numa chamada de `update_rsa`. O 4º
+`ad_id` era uma variação de Ad Variation, que o Google não deixa mutar. O
+`apply_change` devolveu `{"status":"error","error_message":"Google Ads retornou:
+Mutates are not allowed for the requested resource."}` — **sem `applied_count`,
+sem `partial_failures`, sem `failed_count`, e sem dizer QUAL dos 4 foi recusado**.
+GAQL depois confirmou os 4 intactos: os 2 legítimos não passaram.
+
+**Mecanismo.** `partial_failure` é opt-in POR TOOL, via flag no payload:
+`apply_change.py:439` lê `saved.payload.get("__partial_failure__", False)` e
+repassa a `run_mutation`. Seis operações ligam a flag — `add_keywords`,
+`apply_audience`, `bulk_pause_by_query`, `remove_asset_link`, `remove_audience`
+(payload) e `update_ad_schedule` (`:416`, com ramo próprio em `:279`). O payload
+do `update_rsa` (`update_rsa.py:157-161`) e o do `create_rsa` não ligam, então o
+Google recebe a mutação em modo atômico e recusa o lote.
+
+**É omissão, não decisão de atomicidade.** A infra
+(`run_mutation(partial_failure=...)`, `_parse_partial_failures`) entrou em
+2026-05-11 (`f156d99`); o `update_rsa` shippou em 13/05 (sprint 3b.18) sem usá-la.
+Não há comentário no código, nota de sprint nem spec que mencione atomicidade
+para RSA — o 3b.18 registra só "Batch up to 5 updates". A correção R1-I1
+(setembro, [plano PR3](../superpowers/plans/2026-09-07-pr3-governanca-de-orcamento.md))
+foi de RELATO — "`apply_change` descarta `partial_failures` no caminho default, 5
+tools perdem o motivo de cada falha" — e consertou quem já tinha a flag; nunca
+revisitou **quem deveria ter**.
+
+**O que o fix custa, e não é nada.** Ligar a flag troca a atomicidade por
+aplicação parcial. Para conteúdo de RSA a troca é certa (anúncios são
+independentes entre si, não há invariante que o lote preserve), mas ela É uma
+troca: hoje o lote que falha não deixa estado parcial, e isso foi medido e
+registrado como comportamento seguro por quem reportou. Quem ligar a flag assume
+esse custo explicitamente — e ele é pré-requisito de qualquer aumento do teto de
+lote (hoje 5 em ambas; ver F183 para a família dos tetos).
+
+**Segundo defeito, independente do primeiro.** Mesmo sem `partial_failure`, o
+índice da operação recusada VEM na exceção e é descartado: `errors.py:to_friendly`
+lê só `errors[0].message` e nunca toca `errors[0].location.field_path_elements`,
+que é onde o Google carrega o `{field_name, index}` da operação. **Não
+confirmado empiricamente** que `location` venha populado neste erro específico —
+confirmar exige rodar um mutate real, que a regra do `CLAUDE.md` não deixa
+agendar sem o gestor presente. Tratar como candidato, não como fato.
+
+Família: F182 (a descrição que promete isto para todas as tools). Irmão de
+causa: F181, que é o que tornou este lote impossível.
+
+---
+
+## F181 (MEDIUM, ABERTO) — o pre-flight do `update_rsa` não vê anúncio system-managed, e o dry-run afirma aplicável o que o Google recusa
+
+**Sintoma.** Anúncio que é variação de uma Ad Variation passa no pre-flight,
+passa no dry-run — token emitido com `"Atualizar 4 RSA(s) (4 unicos). Campos:
+final_urls(4)"` — e só explode no `apply_change`. A description da tool lista o
+que o pre-flight rejeita ("ad inexistente, type != RESPONSIVE_SEARCH_AD,
+ad_group REMOVED, ou campaign non-SEARCH"); variação não está na lista porque
+não é detectada.
+
+**O que torna isto pior que um erro tardio:** o preview do dry-run é uma
+AFIRMAÇÃO de que a operação é aplicável, e ela era falsa. O gestor pagou o custo
+do lote (F180) em cima de uma confirmação que o próprio MCP deu.
+
+**Campo que discrimina — medido, com controle (19/09/2026, MO-JP).**
+`ad_group_ad.ad.system_managed_resource_source`:
+
+| ad_id | papel | valor |
+|---|---|---|
+| `825281476311` | variação | `AD_VARIATIONS` |
+| `825140457725` | base | campo ausente na resposta |
+
+Controle rodado na mesma sessão: `ad_group_ad.ad.campo_que_nao_existe` →
+`valid:false`, então o `valid:true` do campo real significa alguma coisa.
+
+**A hipótese natural NÃO funciona.** Cruzar com `experiment_arm` foi tentado e
+medido: os 2 braços do experimento `10061636855` devolveram **só**
+`resource_name` e `experiment`. `name`, `control`, `campaigns`,
+`in_design_campaigns` e `traffic_split` voltaram vazios — os campos existem
+(`validate_gaql` aprova), mas proto-plus omite default, então "o Google não
+popula" e "veio o default" serializam igual e não dá para distinguir. **O braço
+não expõe os anúncios que materializa.**
+
+**Custo do fix: zero round-trip novo.** O pre-flight
+(`queries/_common.py:483-488`) já roda exatamente UMA GAQL sobre `ad_group_ad`
+filtrada pelos `ad_id`. Detectar é um campo a mais nessa query.
+
+⚠️ **Armadilha de implementação (F145 no mecanismo).** Em proto-plus o atributo
+do enum **existe sempre**; o que varia é o VALOR. Predicado por presença de
+atributo (`hasattr`, ou `getattr(...) is not None`) passa tudo. Tem que comparar
+o valor (`.name == "AD_VARIATIONS"`).
+
+**Mensagem acionável, e o que cada pedaço custa.** Nomear o experimento é uma 2ª
+query (`FROM experiment` funciona: devolveu `10061636855`, `AD_VARIATION`,
+`ENABLED`, 2026-09-19→2026-11-14, completo). Nomear o anúncio base é uma 3ª (o
+RSA do mesmo ad_group **sem** o campo — testado no grupo `204135195030`, sai
+limpo). Ambas só no caminho de falha, que é raro. A herança base→variação foi
+verificada pelo reporter: a variação herda a mudança do base em minutos, e ler
+cedo demais devolve o estado antigo **sem erro**.
+
+---
+
+## F182 (MEDIUM, ABERTO) — a descrição do `apply_change` promete `partial_failures` para 22 operações; vale para 6
+
+**Sintoma.** A description do `apply_change` (`apply_change.py:108-110`) afirma,
+sem qualificar: *"Lote com partial_failure devolve `partial_failures` (motivo por
+linha) e `failed_count` ao lado de `applied_count`."* A entrega depende de a tool
+de origem ter ligado `__partial_failure__` no payload (`:439`), e só 6 das 22
+operações de mutate ligam. Para as outras 16 — `update_rsa`, `create_rsa`,
+`update_keyword_status`, `update_ad_status` e companhia — a frase é falsa, e o
+gestor descobre isso no lote que perdeu.
+
+**Por que isto é finding separado do F180.** Ligar a flag no `update_rsa`
+conserta o `update_rsa` e **deixa a descrição igualmente falsa para as outras
+15**. Uma afirmação incondicional sobre um comportamento condicional só fica
+verdadeira de dois jeitos: a condição vira universal, ou a frase passa a
+enumerar. Família das descrições que afirmam o que a tool não faz (F150/F151 no
+`Don't do` do `CLAUDE.md`).
+
+**Fix não decidido.** (a) A frase passa a nomear as operações que entregam
+`partial_failures` — barato, e envelhece a cada tool nova que ligar ou não a
+flag. (b) A resposta passa a carregar o próprio veredito (`partial_failure:
+true|false` no envelope, derivado do que `run_mutation` de fato recebeu), e a
+descrição aponta para ele — mais caro, não envelhece, e é o único dos dois que um
+guard consegue cobrar contra o código. Decidir junto do F180, que é quem move a
+primeira peça.
+
+---
+
+## F183 (LOW, ABERTO) — dois mutates de lote aceitam array sem teto
+
+**Medição (19/09/2026).** `update_keyword_status` (`:32`, schema `keywords`) e
+`update_ad_group_status` (`:21`, schema `ad_group_ids`) declaram `minItems: 1` e
+**nenhum `maxItems`**, e não têm teto em runtime. Comparar com os vizinhos:
+`update_ad_status` 500, `add_keywords` 500, `add_negative_keywords` 500,
+`update_ad_group_bid` 50, `update_rsa`/`create_rsa` 5.
+
+**Mitigação que já existe, e por que não fecha.** Acima de 5
+(`blast_radius._BULK_THRESHOLD`) as duas caem em CONFIRM, então um lote grande é
+visto por humano, e o `sample_keywords` do dry-run (sprint 3b.40) mostra as
+primeiras 5. O que falta é o TETO: nada impede um payload de milhares de itens
+ser montado, e — como nenhuma das duas liga `__partial_failure__` (F180) — ele
+vai ao Google atômico. Daí LOW e não MEDIUM: o caminho tem freio humano, só não
+tem limite.
+
+🔑 **Lição de método, que é a parte reaproveitável.** A varredura inicial deste
+finding disse "três tools sem teto" e incluiu `bulk_pause_by_query`. Errado:
+essa tool TEM teto — `_MAX_ENTITIES = 100`, cobrado em runtime
+(`bulk_pause_by_query.py:271`) com recusa em PT-BR que manda refinar o filtro. O
+grep procurava `maxItems` no schema, uma ferramenta mais grosseira que a
+invariante ("o lote tem limite"), e por isso classificou como violação a tool que
+resolve o problema em outra camada. **Guard que procure isto tem que afirmar a
+propriedade — existe teto, em qualquer camada — e não a presença da chave de
+schema.**
+
+**E o contra-exemplo estava no MESMO ARQUIVO, em português.** A description da
+tool (`bulk_pause_by_query.py:193`) diz com todas as letras *"Limite hard: 100
+entidades por chamada (se exceder, rejeita pedindo refinar)"*. A varredura leu
+uma representação da invariante (a chave `maxItems`) e passou por cima de outras
+duas no mesmo arquivo — a prosa da description e a checagem em runtime. Não é só
+"o grep era grosseiro": é que **a invariante tinha três formas e a varredura
+conhecia uma**. Quando uma propriedade pode ser cumprida de várias maneiras,
+enumerar uma delas produz falso positivo com a mesma confiança de um verdadeiro.
+
+**Segundo tempo, do lado de quem consumiu.** A afirmação errada foi repassada a
+outra sessão, que a escreveu num documento de backlog — e a description com o
+teto **estava no resultado do `ToolSearch` daquela mesma sessão, minutos antes**.
+Ter o contra-exemplo em contexto não basta; sem o cruzamento explícito, ele não
+é lido. Afirmação de terceiro sobre o código merece o mesmo probe que afirmação
+sobre API externa, inclusive quando o terceiro é quem está com o repo aberto.

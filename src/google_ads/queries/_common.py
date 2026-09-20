@@ -458,6 +458,68 @@ async def validate_parent_ad_groups_for_rsa_create(
     return None
 
 
+def _format_rsa_preflight_row(row: Any) -> dict[str, str]:
+    """Uma linha de `ad_group_ad` -> dict do pre-flight de RSA.
+
+    Nivel de modulo (nao aninhada) pra ser testavel com row proto-like: o
+    caminho `.system_managed_resource_source.name` e o que separa variacao de
+    anuncio comum, e caminho de proto so se confere olhando.
+    """
+    return {
+        "ad_id": str(row.ad_group_ad.ad.id),
+        "ad_type": row.ad_group_ad.ad.type.name,
+        # F181: em proto-plus este atributo EXISTE SEMPRE — o que varia e o valor
+        # (UNSPECIFIED no anuncio comum, AD_VARIATIONS na variacao). Por isso a
+        # comparacao no laco de validacao e por valor, nunca por presenca (F145).
+        "system_managed_source": row.ad_group_ad.ad.system_managed_resource_source.name,
+        "ad_group_id": str(row.ad_group.id),
+        "ad_group_name": row.ad_group.name,
+        "ad_group_status": row.ad_group.status.name,
+        "campaign_id": str(row.campaign.id),
+        "campaign_name": row.campaign.name,
+        "channel_type": row.campaign.advertising_channel_type.name,
+    }
+
+
+async def _buscar_ad_base_do_grupo(
+    manager_id: UUID,
+    session_id: UUID,
+    customer_id: str,
+    ad_group_id: str,
+) -> str | None:
+    """`ad_id` do unico RSA nao-variacao do grupo, ou None se ambiguo.
+
+    So roda no caminho de falha do pre-flight (anuncio system-managed detectado),
+    entao o custo nao entra no caminho feliz. Devolve None — em vez de chutar o
+    primeiro — quando ha zero ou mais de um candidato: nomear o anuncio errado e
+    pior que nao nomear nenhum.
+    """
+    query = (
+        f"SELECT ad_group_ad.ad.id, "
+        f"ad_group_ad.ad.system_managed_resource_source "
+        f"FROM ad_group_ad "
+        f"WHERE ad_group.id = {int(ad_group_id)} "
+        f"AND ad_group_ad.status != 'REMOVED'"
+    )
+
+    def _format(row: Any) -> dict[str, str]:
+        return {
+            "ad_id": str(row.ad_group_ad.ad.id),
+            "system_managed_source": row.ad_group_ad.ad.system_managed_resource_source.name,
+        }
+
+    rows = await run_report(
+        manager_id=manager_id,
+        session_id=session_id,
+        customer_id=customer_id,
+        query=query,
+        row_formatter=_format,
+        operation_name="buscar_ad_base_do_grupo",
+    )
+    candidatos = [r["ad_id"] for r in rows if r["system_managed_source"] != "AD_VARIATIONS"]
+    return candidatos[0] if len(candidatos) == 1 else None
+
+
 async def validate_existing_rsas_for_update(
     manager_id: UUID,
     session_id: UUID,
@@ -471,6 +533,7 @@ async def validate_existing_rsas_for_update(
     2. ad.type == RESPONSIVE_SEARCH_AD (cannot update other types via this tool)
     3. Parent ad_group.status != REMOVED
     4. Parent campaign.advertising_channel_type IN {SEARCH, SEARCH_PARTNERS}
+    5. Ad nao e system-managed (variacao de Ad Variation nao aceita mutate — F181)
 
     Performs 1 GAQL batch lookup for unique ad_ids.
     Returns first-found offender error message.
@@ -482,29 +545,19 @@ async def validate_existing_rsas_for_update(
     ids_clause = ", ".join(str(int(x)) for x in ad_ids)
     query = (
         f"SELECT ad_group_ad.ad.id, ad_group_ad.ad.type, "
+        # F181: custo zero — o campo entra na query que o pre-flight ja rodava.
+        f"ad_group_ad.ad.system_managed_resource_source, "
         f"ad_group.id, ad_group.name, ad_group.status, "
         f"campaign.id, campaign.name, campaign.advertising_channel_type "
         f"FROM ad_group_ad WHERE ad_group_ad.ad.id IN ({ids_clause})"
     )
-
-    def _format(row: Any) -> dict[str, str]:
-        return {
-            "ad_id": str(row.ad_group_ad.ad.id),
-            "ad_type": row.ad_group_ad.ad.type.name,
-            "ad_group_id": str(row.ad_group.id),
-            "ad_group_name": row.ad_group.name,
-            "ad_group_status": row.ad_group.status.name,
-            "campaign_id": str(row.campaign.id),
-            "campaign_name": row.campaign.name,
-            "channel_type": row.campaign.advertising_channel_type.name,
-        }
 
     rows = await run_report(
         manager_id=manager_id,
         session_id=session_id,
         customer_id=customer_id,
         query=query,
-        row_formatter=_format,
+        row_formatter=_format_rsa_preflight_row,
         operation_name="validate_existing_rsas_for_update",
     )
 
@@ -517,6 +570,34 @@ async def validate_existing_rsas_for_update(
 
         if ad is None:
             return f"Ad {aid} nao encontrado na conta. Verifique o ad_id."
+
+        # F181: variacao de Ad Variation E um RESPONSIVE_SEARCH_AD, fica em ad_group
+        # ENABLED e em campanha SEARCH — atravessa os tres filtros abaixo. So este
+        # campo a separa do anuncio base. Comparacao por VALOR: em proto-plus o
+        # atributo existe sempre (F145). Acesso por chave, nao `.get()`: fixture ou
+        # formatter que deixe de trazer a chave tem que falhar alto, nao pular a
+        # checagem em silencio.
+        if ad["system_managed_source"] == "AD_VARIATIONS":
+            base_id = await _buscar_ad_base_do_grupo(
+                manager_id=manager_id,
+                session_id=session_id,
+                customer_id=customer_id,
+                ad_group_id=ad["ad_group_id"],
+            )
+            alvo = (
+                f"o anuncio BASE {base_id}"
+                if base_id is not None
+                else (
+                    f"o anuncio BASE do ad_group '{ad['ad_group_name']}' "
+                    f"(id {ad['ad_group_id']}) — o RSA que nao e variacao"
+                )
+            )
+            return (
+                f"Ad {aid} e uma variacao de Ad Variation (gerenciada pelo Google) "
+                f"e nao aceita mutate. Edite {alvo}: a variacao herda a mudanca em "
+                f"minutos. Atencao: reler a variacao logo apos editar o base "
+                f"devolve o estado ANTIGO sem erro nenhum."
+            )
 
         if ad["ad_type"] != "RESPONSIVE_SEARCH_AD":
             return (
