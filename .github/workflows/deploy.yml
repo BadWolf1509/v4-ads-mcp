@@ -312,7 +312,12 @@ jobs:
               # no pool) e o /mcp 401-gate JÁ provaram que o stack subiu — logo isto é
               # credencial de CI vencida, não regressão da revisão nova. NÃO bloqueia o
               # deploy; regenerar SMOKE_MCP_BEARER re-arma o check F58 automaticamente.
-              echo "  ⚠ SMOKE_MCP_BEARER inválido/expirado (HTTP $CODE) — pulando smoke autenticado."
+              # F186: `echo` simples fica enterrado no log de um run VERDE, e foi
+              # assim que este check passou 8 de 8 deploys desarmado sem ninguém
+              # saber. `::warning::` sobe ao RESUMO do run. Continua nao-fatal de
+              # proposito: travar a entrega por credencial de CI vencida trocaria
+              # um ponto cego por uma trava.
+              echo "::warning title=Smoke MCP autenticado DESARMADO::SMOKE_MCP_BEARER inválido/expirado (HTTP $CODE). O deploy segue, mas o check do handshake NÃO rodou — reemita o secret para re-armar (F186)."
             else
               # 200 (ou não-401) SEM o registry = handshake/tools-list quebrado de verdade.
               echo "  ✗ /mcp autenticado retornou HTTP $CODE SEM o registry esperado — stack MCP quebrado"
@@ -321,7 +326,7 @@ jobs:
               exit 1
             fi
           else
-            echo "  ⚠ SMOKE_MCP_BEARER ausente — pulando smoke MCP autenticado (configurar o secret)."
+            echo "::warning title=Smoke MCP autenticado DESARMADO::SMOKE_MCP_BEARER ausente. O deploy segue, mas o check do handshake NÃO rodou — configure o secret para armar (F186)."
           fi
           echo "Smoke tests passed."
         env:

@@ -1,0 +1,115 @@
+name: Liveness do smoke autenticado
+
+# F186, passo 3. O smoke autenticado do /mcp (no deploy.yml) pode se desarmar
+# sozinho: token vencido ou secret ausente fazem o step avisar e SEGUIR, de
+# proposito — travar a entrega por credencial de CI vencida trocaria um ponto
+# cego por uma trava. Essa decisao fica.
+#
+# O que faltava era a contraparte. Medido em 2026-09-20: 8 de 8 deploys
+# bem-sucedidos, o mais antigo em 18/09, rodaram com o check desarmado, e
+# ninguem soube. O passo 1 (`::warning::` no deploy) faz o desarme APARECER;
+# este workflow e quem COBRA — ele falha alto, sozinho, sem depender de haver
+# um deploy acontecendo nem de alguem ler o resumo de um run verde.
+#
+# Padrao: dead man's switch. A ausencia de sinal e ela propria um sinal.
+#
+# LIMITE CONHECIDO, dito em vez de subentendido: o GitHub desativa workflows
+# agendados em repositorio sem commits por 60 dias. Ou seja, este vigia tem o
+# proprio problema que ele vigia — ele pode parar em silencio. Hoje o repo e
+# ativo e isso nao morde; se um dia ficar parado, o `workflow_dispatch` abaixo
+# permite rodar a mao, e o desarme volta a aparecer no proximo deploy pelo
+# passo 1. Fechar esse ultimo furo exigiria vigia FORA do GitHub, que e
+# desproporcional para uma ferramenta interna com um dev.
+
+on:
+  schedule:
+    # 11:17 UTC = 08:17 BRT. Minuto quebrado de proposito: cron no topo da hora
+    # entra na fila mais concorrida do GitHub e atrasa sem avisar.
+    - cron: "17 11 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: smoke-liveness
+  cancel-in-progress: true
+
+jobs:
+  liveness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # Workload Identity Federation
+
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: O token do smoke ainda vale?
+        env:
+          SMOKE_MCP_BEARER: ${{ secrets.SMOKE_MCP_BEARER }}
+        run: |
+          # A URL sai do proprio Cloud Run, nao de um literal aqui: hardcodar
+          # seria segunda fonte de verdade pro mesmo fato, e divergiria no dia
+          # em que o custom domain (F67) entrar.
+          SERVICE_URL=$(gcloud run services describe v4-ads-mcp \
+            --region=${{ secrets.GCP_REGION }} --format='value(status.url)')
+          echo "Service URL: $SERVICE_URL"
+
+          # ETAPA 1 — o servico esta de pe? Sem isso nao da pra julgar o token:
+          # um 401 com o servico fora do ar nao diz nada sobre a credencial.
+          # Distinguir a causa e o ponto (mesma disciplina do smoke do deploy).
+          HEALTHY=0
+          for i in 1 2 3; do
+            if curl -fsS --max-time 15 "${SERVICE_URL}/health?deep=1" | grep -q '"db":"ok"'; then
+              HEALTHY=1
+              break
+            fi
+            echo "  /health ainda nao respondeu ok (tentativa $i/3), aguardando..."
+            sleep 10
+          done
+          if [ "$HEALTHY" != "1" ]; then
+            echo "::error title=Producao nao respondeu::/health?deep=1 falhou 3x. Isto NAO e diagnostico do SMOKE_MCP_BEARER — o servico e que nao respondeu. Verifique o Cloud Run antes de mexer no secret."
+            exit 1
+          fi
+          echo "  ✓ servico de pe — o veredito abaixo e sobre a CREDENCIAL"
+
+          # ETAPA 2 — o secret existe?
+          if [ -z "${SMOKE_MCP_BEARER}" ]; then
+            echo "::error title=SMOKE_MCP_BEARER ausente::O secret nao esta configurado, entao o smoke autenticado do /mcp NUNCA roda e todo deploy fecha verde sem ter medido o handshake (F186)."
+            exit 1
+          fi
+
+          # ETAPA 3 — o token vale? Mesma chamada que o smoke do deploy faria.
+          # server stateless: tools/list funciona sem initialize, e a resposta
+          # pode vir SSE-framed (event:/data:), entao o grep varre o corpo todo.
+          RESP=$(curl -s --max-time 20 -w "\n%{http_code}" -X POST "${SERVICE_URL}/mcp" \
+            -H "Authorization: Bearer ${SMOKE_MCP_BEARER}" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json, text/event-stream" \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
+          CODE=$(printf '%s' "$RESP" | tail -n1)
+          BODY=$(printf '%s' "$RESP" | sed '$d')
+
+          if echo "$BODY" | grep -q 'list_my_accounts'; then
+            echo "  ✓ token valido e registry montado — o smoke do deploy esta ARMADO"
+            exit 0
+          fi
+
+          if [ "$CODE" = "401" ] || echo "$BODY" | grep -qiE 'unauthorized|session not found'; then
+            echo "::error title=Smoke do deploy DESARMADO::SMOKE_MCP_BEARER invalido/expirado (HTTP $CODE). Enquanto isso durar, todo deploy fecha verde SEM ter exercitado o handshake do /mcp, e o rollback-on-failure cobre um modo de falha que o smoke nao detecta. Reemita o secret (F186)."
+            exit 1
+          fi
+
+          # Nem registry, nem 401: o servico esta de pe (etapa 1) mas o /mcp nao
+          # respondeu o esperado — isto e suspeita de stack MCP quebrado, nao de
+          # credencial, e merece investigacao diferente.
+          echo "::error title=/mcp respondeu fora do esperado::HTTP $CODE sem o registry e sem 401, com o servico saudavel. Suspeita de stack MCP quebrado, NAO de credencial."
+          echo "(primeiros 400 chars do corpo, sem o Bearer:)"
+          echo "$BODY" | head -c 400
+          exit 1
