@@ -155,4 +155,33 @@ _(cole aqui a saída do Setup antes de rodar qualquer caso)_
 
 ## Resultado
 
+### T1 — ✅ verificado em produção em 2026-09-20 (relato da sessão de gestão de tráfego)
+
+**Atribuição, porque importa:** não foi medido nesta sessão. Veio da sessão que abriu o
+backlog, rodando o caso real na MO-JP logo após o deploy da revisão
+`v4-ads-mcp-00110-5nd`. Trate como relato de terceiro verificável, não como medição própria
+— quem for assinar o smoke pode refazer em 30 segundos, porque T1 **não muta nada**.
+
+`update_rsa` no `ad_id` `825281476311` devolveu:
+
+> "Ad 825281476311 e uma variacao de Ad Variation (gerenciada pelo Google) e nao aceita
+> mutate. Edite o anuncio BASE 825140457725: a variacao herda a mudanca em minutos.
+> Atencao: reler a variacao logo apos editar o base devolve o estado ANTIGO sem erro nenhum."
+
+- ✅ Erro no pre-flight, **sem token emitido**.
+- ✅ Os dois ids nomeados, e o base (`825140457725`) **correto** — o caminho do
+      `_buscar_ad_base_do_grupo` resolveu para candidato único, como no grupo real.
+- ✅ **Sem prompt de permissão**, porque a recusa acontece antes de qualquer write.
+
+🔑 **Rodado SEM reconectar, de propósito e com o resultado certo.** A sessão tinha o
+catálogo antigo (F140) e sabia disso: a descrição velha não lista variação entre as
+rejeições, então a recusa **parece** contradizer a tool. Saber de antemão que a recusa era o
+resultado esperado foi o que evitou o diagnóstico errado. É a prova de que o aviso no topo
+deste runbook não é burocracia.
+
+**Os demais casos seguem ⬜ pendentes.** T2 e T3 não mutam; **T4 e T5 mutam anúncio
+servindo** e exigem o Setup de captura e a Restauração desta página.
+
+### T2–T5 — ⬜ pendentes
+
 _(preencher na execução: data, quem autorizou, caso a caso, e os achados que o roteiro não previa)_
