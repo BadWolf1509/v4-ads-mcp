@@ -3439,7 +3439,13 @@ terceira é a que ensina:
 🔑 **A conclusão que inverte a leitura deste finding.** O único erro por-linha que já
 vimos o Google devolver é o `"Mutates are not allowed for the requested resource"` da
 variação de experimento — que foi o que ORIGINOU este finding. E o **F181 agora bloqueia
-esse caso no pre-flight**, antes de chegar ao Google. Ou seja: a máquina de reportar erro
+esse caso no pre-flight**, antes de chegar ao Google.
+
+**Corroborado pelo `audit_log`**, e não por memória: numa varredura de 3 dias de
+`mutate` na conta, o evento **5091** (2026-09-20T01:56:52Z, `target_count: 4`) é a
+**única** linha com `status: "error"` — `provider_request_id` nulo, lote inteiro morto,
+exatamente o comportamento pré-fix. Todas as outras 21 mutações da janela vieram
+`success`. O gatilho existe, é raro, e hoje é interceptado antes do Google. Ou seja: a máquina de reportar erro
 por linha que o F180 ligou **pode não ter gatilho alcançável** via `update_rsa`. Todo
 modo de falha observado nesta conta é silêncio, não erro.
 
