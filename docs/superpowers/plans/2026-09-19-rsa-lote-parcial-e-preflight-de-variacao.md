@@ -684,11 +684,21 @@ git commit -m "fix(mcp): F181 — a recusa de variacao nomeia o anuncio base a e
 ### Task 4: Smoke em conta real — o passo que não pode ficar pendente
 
 **Files:**
-- Create: `docs/operacao/phase-rsa-f180-f181-bootstrap.md`
+- Create: `docs/operacao/phase-rsa-f180-f181-smoke.md` ✅ **escrito** (Step 1 feito)
+
+> **Correção ao plano, achada ao escrever o runbook:** a tabela de casos abaixo não previa
+> **captura do estado antes** nem **restauração depois**, e T4/T5 trocam `final_urls` de
+> anúncios que estão servindo. Sem os valores originais capturados no Setup não há
+> restauração possível — e fechar sprint de tool mutante com a restauração pendente é
+> exatamente o F151. O runbook tem as duas seções; esta tabela ficou como estava para
+> preservar o que o plano dizia antes.
 
 > 🔴 **Este sprint muda o comportamento de uma tool MUTANTE.** O `CLAUDE.md` é explícito em dois pontos que se cruzam aqui: *"Don't fechar sprint de tool mutante com o APPLY em ⬜ pending"* (foi assim que F150 e F151 chegaram à produção, depois de três revisões) e *"Don't agendar smoke de tool que muta sem o gestor presente"* — o classificador de auto mode recusa a chamada, e **aval relayado por outra sessão não passa**. Nem dry-run nem conta de teste isentam: medido em 04/09, os dois foram recusados identicamente e só passaram após o Wellington autorizar com as próprias palavras.
 
-- [ ] **Step 1: Escreva o runbook com os casos abaixo**
+- [x] **Step 1: Escreva o runbook com os casos abaixo** — feito em
+      [`phase-rsa-f180-f181-smoke.md`](../../operacao/phase-rsa-f180-f181-smoke.md), com
+      Setup de captura e Restauração acrescentados, mais o aviso de F140 (sessão aberta
+      antes do deploy segue com a descrição antiga da tool e o skew parece bug do servidor).
 
 | # | Cenário | Como | Esperado |
 |---|---|---|---|
