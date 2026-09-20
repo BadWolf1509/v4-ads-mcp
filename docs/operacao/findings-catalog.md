@@ -4081,3 +4081,52 @@ Quando um check pode se desligar sozinho, **"desligado" tem de ser tão visível
 "falhou"** — senão o verde do deploy passa a afirmar mais do que foi medido, que é a
 mesma família do `failed_count: 0` do F182 e do `efeito: null` do F184. **Não medir e
 medir zero não podem compartilhar aparência.**
+
+### ✅ Passos 1 e 3 IMPLEMENTADOS em 2026-09-20 — o passo 2 segue ABERTO e é do gestor
+
+**Passo 1 — o desarme deixou de ser invisível.** As duas saídas de escape do smoke
+autenticado (`token inválido/expirado` e `secret ausente`) passaram de
+`echo "  ⚠ ..."` para `echo "::warning title=Smoke MCP autenticado DESARMADO::..."`,
+que o GitHub Actions sobe para o **resumo do run**. Continua **não-fatal de propósito**.
+
+**Guard:** `tests/unit/test_aviso_de_workflow_e_visivel.py`, dois testes, piso
+anti-vacuidade de 2 workflows. A invariante é sobre **visibilidade, não sobre o texto**:
+linha que emite ⚠ e **não** derruba o run tem de ser anotação, porque num run verde
+`echo` simples é indistinguível de silêncio. ✗ fica de fora — aquelas linhas vêm com
+`exit 1`, e vermelho já é visível por si.
+
+**Validado sem sabotagem sintética:** escrito e rodado ANTES do fix, ficou vermelho
+nomeando `deploy.yml:315` e `:324`, com o controle positivo verde (o `ci.yml` já usava
+`::error::` e `$GITHUB_STEP_SUMMARY`, então anotação já era convenção da casa e aquelas
+duas eram as exceções).
+
+**Passo 3 — `.github/workflows/smoke-liveness.yml`.** Diário (11:17 UTC = 08:17 BRT,
+minuto quebrado porque cron no topo da hora entra na fila mais concorrida do GitHub) mais
+`workflow_dispatch`. Falha **alto e sozinho**, sem depender de haver deploy acontecendo
+nem de alguém ler o resumo de um run verde.
+
+Ele **distingue a causa** em três etapas, que é a disciplina do smoke original:
+
+1. `/health?deep=1` com 3 tentativas. Falhou → `::error::` dizendo explicitamente que
+   **não é diagnóstico da credencial** — 401 com serviço fora do ar não prova nada sobre
+   o token.
+2. Secret ausente → erro próprio.
+3. `tools/list` autenticado. Registry montado → ✓. `401`/`unauthorized` → **token morto,
+   reemita**. Nem um nem outro, com serviço saudável → **suspeita de stack MCP quebrado,
+   não de credencial**, e merece investigação diferente.
+
+⚠️ **O limite deste desenho, dito em vez de subentendido: o vigia tem o próprio problema
+que ele vigia.** O GitHub desativa workflows agendados em repositório sem commits por 60
+dias — ou seja, este dead man's switch pode parar em silêncio. Hoje o repo é ativo e isso
+não morde; se ficar parado, o `workflow_dispatch` roda à mão e o desarme volta a aparecer
+no próximo deploy pelo passo 1. Fechar esse último furo exigiria vigia **fora do GitHub**,
+desproporcional para ferramenta interna com um dev. Está escrito no cabeçalho do workflow.
+
+🔴 **O passo 2 continua aberto, e é o único que resolve de fato.** Os passos 1 e 3 tornam
+o desarme **visível** e **cobrado**; quem o torna **ausente** é o token novo. Reemitir o
+`SMOKE_MCP_BEARER` re-arma o check imediatamente, sem mudança de código nenhuma — e **é
+credencial: criação e instalação são do gestor, não da sessão.**
+
+Enquanto isso não acontecer, o efeito prático permanece: o smoke autenticado não roda, e
+todo deploy fecha verde tendo medido menos do que parece. A diferença é que agora **isso
+aparece** no resumo de cada deploy e **falha** todo dia às 08:17.

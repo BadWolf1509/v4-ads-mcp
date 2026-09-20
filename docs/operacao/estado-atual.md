@@ -61,7 +61,7 @@ duas afirmações falsas sobre o breakdown; o **0.4.1 corrigiu e está instalado
 | **F180** | **em parte** — ver abaixo |
 | **F154** | `/me/adaccounts` não é prova de alcance |
 | **F185** | `recommendation_subscription`: 4 de 11 opacos e **sem chave nenhuma** — limitação da API, sem correção possível deste lado |
-| **F186** | 🔴 o smoke autenticado do `/mcp` **está desarmado** (token vencido) — 8 de 8 deploys amostrados desde 18/09; o `rollback-on-failure` cobre um modo de falha que o smoke não detecta mais |
+| **F186** | 🔴 o smoke autenticado do `/mcp` **está desarmado** (token vencido) — 8 de 8 deploys amostrados desde 18/09. Passos 1 e 3 **feitos** (o desarme vira `::warning::` e um workflow diário cobra); **falta o passo 2, que é credencial e é do gestor** |
 
 Fechados em 20/09: **F181, F182, F183, F184** (sprint de RSA, abaixo) — mais a
 **2ª instância do F182**, que fechou a *classe*: só o `apply_change` descreve a
