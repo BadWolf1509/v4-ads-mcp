@@ -66,8 +66,11 @@ async def _falha_de_transporte_carregando_o_token() -> tuple[str, list[Any], lis
     log_falso.warning = _warning
     log_falso.info = MagicMock()
 
+    api_falso = MagicMock()
+    api_falso.call = MagicMock(side_effect=erro)
+
     with (  # noqa: SIM117
-        patch.object(reports, "build_meta_api", MagicMock(side_effect=erro)),
+        patch.object(reports, "build_meta_api", MagicMock(return_value=api_falso)),
         patch.object(
             reports.manager_meta_account_access,
             "can_manager_access",
