@@ -39,8 +39,10 @@ _TEST_ENV = {
     # SDK), qualquer teste que NÃO mocka isso individualmente precisa de um
     # valor não-vazio aqui, senão `MetaSystemUserTokenMissingError` dispara
     # antes de qualquer requisição — mesmo em testes que só querem exercitar o
-    # transporte. Dummy, nunca um token real (ver `test_meta_client.py` pra o
-    # caso "vazio" — ele passa `""` direto pro construtor, não por aqui).
+    # transporte. Dummy, nunca um token real (ver
+    # test_meta_reports_executor.py::test_run_meta_graph_get_raises_when_system_user_token_missing
+    # pro caso "vazio" — ele mocka `get_settings()` com token="" direto,
+    # não por aqui — F190/Task 6, depois que build_meta_api saiu de client.py).
     "META_SYSTEM_USER_TOKEN": "test_meta_system_user_token_dummy",
 }
 

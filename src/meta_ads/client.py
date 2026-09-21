@@ -52,28 +52,3 @@ def build_facebook_ads_api(
 
     session = FacebookSession(app_id=app_id, app_secret=app_secret, access_token=access_token)
     return FacebookAdsApi(session=session, api_version=api_version)
-
-
-def build_meta_api(
-    *,
-    system_user_token: str,
-    app_id: str,
-    app_secret: str,
-    api_version: str = META_GRAPH_API_VERSION,
-) -> Any:
-    """Build a FacebookAdsApi from the shared system-user token (Modelo B).
-
-    System-user tokens don't expire (unlike per-manager OAuth tokens).
-    Raises MetaSystemUserTokenMissingError if the secret is empty.
-    """
-    if not system_user_token:
-        raise MetaSystemUserTokenMissingError(
-            "Token do system user Meta não configurado. "
-            "O admin precisa subir o secret meta-system-user-token."
-        )
-    return build_facebook_ads_api(
-        app_id=app_id,
-        app_secret=app_secret,
-        access_token=system_user_token,
-        api_version=api_version,
-    )

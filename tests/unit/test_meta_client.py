@@ -18,7 +18,6 @@ from src.meta_ads.client import (
     MetaAccessDeniedError,
     MetaSystemUserTokenMissingError,
     build_facebook_ads_api,
-    build_meta_api,
 )
 
 
@@ -126,40 +125,6 @@ def test_facebook_ads_api_signature_accepts_session_kwarg():
     """Sanity: FacebookAdsApi(session=...) signature didn't regress to F48 state."""
     session = FacebookSession(app_id="a", app_secret="b", access_token="c")
     api = FacebookAdsApi(session=session, api_version="v22.0")
-    assert isinstance(api, FacebookAdsApi)
-
-
-# Tests for build_meta_api (Modelo B — system-user token, no per-manager DB lookup)
-
-
-def test_build_meta_api_raises_when_system_user_token_empty():
-    """Empty system_user_token deve raise MetaSystemUserTokenMissingError."""
-    with pytest.raises(MetaSystemUserTokenMissingError):
-        build_meta_api(
-            system_user_token="",
-            app_id="111",
-            app_secret="sec",
-        )
-
-
-def test_build_meta_api_returns_facebook_ads_api_instance():
-    """Token válido deve retornar FacebookAdsApi instance (mirrors build_facebook_ads_api tests)."""
-    api = build_meta_api(
-        system_user_token="TKN",
-        app_id="111",
-        app_secret="sec",
-    )
-    assert isinstance(api, FacebookAdsApi)
-
-
-def test_build_meta_api_accepts_custom_api_version():
-    """Allow override pra future SDK upgrades — api_version must be forwarded (bug fix)."""
-    api = build_meta_api(
-        system_user_token="TKN",
-        app_id="111",
-        app_secret="sec",
-        api_version="v23.0",
-    )
     assert isinstance(api, FacebookAdsApi)
 
 

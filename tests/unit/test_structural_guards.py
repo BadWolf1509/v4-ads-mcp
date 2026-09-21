@@ -7,8 +7,12 @@ transforma a convenção num teste que falha no commit em vez de num incidente.
 - F57 (Google): call-site de build_client_for_manager sem ensure_account_access
   → vazou existência/schema de qualquer conta da MCC (o validate_gaql ficou
   desguarnecido até a auditoria de 2026-06-20).
-- F57-Meta: chamada à Graph API fora de run_meta_graph_get → pula o hard-gate
-  (o freio do Modelo B é a matriz de acesso; o token é compartilhado).
+- F57-Meta: URL da Graph API (literal `graph.facebook.com`) escrita fora de
+  quem já gateia → pula o hard-gate (o freio do Modelo B é a matriz de acesso;
+  o token é compartilhado). Retargetado em F190/Task 6 (21/09, ruling R10):
+  o sujeito original (chamada a `build_meta_api`) sumiu quando o transporte
+  virou httpx; a invariante — só o executor gateado fala com a Graph API —
+  não sumiu, só trocou de forma.
 - F58: conn.cursor() sem async with conn.transaction() → asyncpg exige transação
   pra server-side cursor (o CSV export quebrou em prod porque nenhum teste iterou).
 - F83: I/O de bookkeeping num `finally` sem best_effort → exceção ali DESCARTA o
@@ -310,147 +314,248 @@ def test_f57_acusa_a_violacao_e_so_ela(fonte: str, acusa: bool) -> None:
     )
 
 
-# `src/meta_ads/reports.py` é o arquivo do executor; `run_meta_graph_get`, a
-# única função que pode construir a API de execução. Exceção por FUNÇÃO (par
-# arquivo+nome), não por arquivo: era a allowlist por ARQUIVO deste guard que
-# deixava qualquer função nova de `reports.py` tocar a Graph API sem o gate.
-_EXECUTOR_META = ("src/meta_ads/reports.py", "run_meta_graph_get")
+# F57-Meta RETARGETADO (F190/Task 6, 21/09 — ruling R10 do ledger da SDD). Até
+# aqui o guard vigiava toda CHAMADA a `build_meta_api`. A Task 3 desta mesma
+# SDD trocou o transporte Meta pra httpx com auth em header — `build_meta_api`
+# perdeu o único call-site vivo que o guard conhecia — e esta task apaga a
+# função de `client.py` de vez (código morto com teste verde é pior que código
+# morto). O brief original mandava apagar o guard inteiro junto. Errado: o
+# guard nunca vigiou "a chamada em si" — vigiava CONTENÇÃO, "só o executor
+# gateado fala com a Graph API". A função era só o SUJEITO de 2026-09-07; o
+# mecanismo que precisa ficar contido — a construção da URL — não sumiu, só
+# trocou de forma: do argumento de uma factory pro literal `graph.facebook.com`
+# escrito direto em `reports.py:233`. Apagar o guard junto do sujeito antigo
+# deixaria a varredura permanentemente vazia, e nada impediria uma tool Meta
+# nova de montar a URL e falar `httpx` direto, pulando `can_manager_access` —
+# o único freio do Modelo B (token compartilhado, ~24 contas).
+#
+# Retargetado: o guard varre `src/` pelo LITERAL `graph.facebook.com` (não
+# mais por chamada) e afirma que ele só aparece em (arquivo, escopo)
+# autorizados. "Escopo" é o nome da função dona do literal, ou `<módulo>`
+# quando o literal vive fora de qualquer função — as duas formas REAIS medidas
+# hoje (`grep -rn "graph\.facebook\.com" src/ --include=*.py`, 2026-09-21):
+#
+#   src/meta_ads/reports.py:233     (dentro de run_meta_graph_get)
+#   src/meta_ads/partnership.py:17  (nível de módulo — `_GRAPH = f"..."`)
+#   src/auth/meta_oauth.py:50       (nível de módulo — `META_GRAPH_BASE = "..."`)
+#
+# `src/meta_ads/graph.py::fetch_paginated` NÃO entra — era candidato na leitura
+# inicial do brief ("chamado por quem já gateia"), mas a leitura mostra que ele
+# NUNCA escreve o literal: recebe `url` já pronta por parâmetro (é
+# `partnership.py`/`meta_oauth.py` quem monta a URL e a passa pra dentro).
+# Incluí-lo seria uma entrada que o scanner nunca bateria — o oposto do que a
+# allowlist existe pra fazer (cada entrada tem que ter motivo E ocorrência
+# real; ver `_PISO_GRAPH_HOST`). Se um dia `fetch_paginated` passar a
+# hardcodar o host Meta em vez de receber a URL, isso É uma mudança que vale
+# pegar — é paginação genérica, reusada por dois callers, e não deveria saber
+# o nome de nenhum provider — e sem a entrada na allowlist o guard pega.
+#
+# A allowlist é a invariante deste guard, não uma exceção temporária — pequena,
+# fechada, revisada, e cada entrada carrega o motivo AO LADO (entrada sem
+# motivo é entrada que ninguém reavalia depois).
+_ALVO_GRAPH_HOST = "graph.facebook.com"
+
+_ALLOWLIST_GRAPH_HOST: dict[tuple[str, str], str] = {
+    ("src/meta_ads/reports.py", "run_meta_graph_get"): (
+        "o executor único: can_manager_access roda incondicional ANTES da URL "
+        "ser montada (linha 160, contra a 233) — o freio do Modelo B. Nenhuma "
+        "outra função deste arquivo constrói a URL (medido: só _paginar_graph "
+        "mais existe, e recebe `url` por parâmetro)."
+    ),
+    ("src/meta_ads/partnership.py", "<módulo>"): (
+        "monta o inventário AUTORITATIVO da parceria (fetch_partnership), lido "
+        "pelo job de resync (src/jobs/meta_resync.py) ANTES de qualquer decisão "
+        "de acesso por gestor existir — é a fonte que o gate depois consulta, "
+        "não uma leitura de dado de campanha; não há o que gatear."
+    ),
+    ("src/auth/meta_oauth.py", "<módulo>"): (
+        "fluxo OAuth inteiro (troca de código, /me, /debug_token, "
+        "/me/adaccounts, refresh) — anterior ao gate por natureza: estabelece "
+        "a IDENTIDADE e o inventário que o gate consulta depois, nunca lê dado "
+        "de campanha de um gestor já autenticado."
+    ),
+}
+
+# Piso de não-vacuidade DERIVADO DE MEDIÇÃO, não de chute: 3 ocorrências reais
+# do literal em `src/` hoje, uma por arquivo acima (mesmo grep, 2026-09-21).
+# Existe pela mesma razão do `assert vistas` que este guard tinha antes (F57
+# Google mantém a forma irmã): sem piso, o dia em que os 3 sites forem
+# reescritos pra montar a URL por outro caminho (concatenação, `httpx.URL`,
+# uma constante que o AST não alcança) faz a varredura achar ZERO — e "nenhuma
+# violação" e "o scanner parou de enxergar o próprio alvo" têm o mesmo
+# resultado (lista vazia); só o piso distingue os dois. Se o número cair de
+# propósito (um site migrou de verdade), atualize o piso NA MESMA mudança —
+# ele documenta o presente, não uma meta.
+_PISO_GRAPH_HOST = 3
 
 
-def _ofensores_f57_meta(
-    arv: ast.Module, *, executor_autorizado: str | None
-) -> list[tuple[str, int]]:
-    """(escopo, linha) de cada `build_meta_api(...)` fora do executor autorizado.
+def _ocorrencias_graph_host(arv: ast.Module, caminho_rel: str) -> list[tuple[str, int, bool]]:
+    """(escopo, linha, autorizado) de cada literal contendo `graph.facebook.com`.
 
-    Até 2026-09-07 este guard era `"build_meta_api(" in p.read_text()` com
-    allowlist por ARQUIVO — a forma exata que o F57 acabara de perder. Duas
-    consequências, as duas medidas: uma função nova em `reports.py` chamando a
-    factory direto passava verde (o arquivo inteiro era isento), e o substring
-    contava o `def build_meta_api(` de `client.py` como chamada — por isso
-    `client.py` precisava estar na allowlist.
+    "Escopo" segue a mesma unidade do F57: o literal é atribuído à função MAIS
+    INTERNA que o contém no corpo PRÓPRIO dela (`h.literais_no_corpo_proprio`,
+    o par de `h.chama_no_corpo_proprio` — literal em vez de chamada), com o
+    MÓDULO entrando como escopo pelo mesmo motivo do F57/F58: um literal no
+    corpo do módulo não tem função dona e escaparia sem isto.
 
-    Com AST, definição não é chamada: `client.py` não precisa de isenção
-    nenhuma, e a única exceção que resta é a FUNÇÃO executora. Medido antes do
-    aperto: há **1** call-site vivo em `src/`, `run_meta_graph_get`
-    (`src/meta_ads/reports.py:129`) — nenhuma violação viva foi revelada.
+    Docstring (primeiro statement de módulo/classe/função) é filtrado via
+    `h._nos_de_docstring` — prosa que CITA o host pra explicar código real (o
+    jeito natural de documentar esta área depois do F190) não é o alvo.
     """
+    ids_docstring = h._nos_de_docstring(arv)
+    achados: list[tuple[str, int, bool]] = []
+    for escopo in (arv, *h.funcoes(arv)):
+        nome = getattr(escopo, "name", "<módulo>")
+        for no in h.literais_no_corpo_proprio(escopo):
+            if isinstance(no, ast.Constant) and id(no) in ids_docstring:
+                continue
+            if _ALVO_GRAPH_HOST not in h._texto_logico(no):
+                continue
+            achados.append((nome, no.lineno, (caminho_rel, nome) in _ALLOWLIST_GRAPH_HOST))
+    return achados
+
+
+def _ofensores_f57_meta(arv: ast.Module, caminho_rel: str) -> list[tuple[str, int]]:
+    """(escopo, linha) de cada ocorrência do literal fora da allowlist."""
     return [
         (nome, linha)
-        for escopo in (arv, *h.funcoes(arv))
-        if (nome := getattr(escopo, "name", "<módulo>")) != executor_autorizado
-        for linha in h.chama_no_corpo_proprio(escopo, "build_meta_api", arv=arv)
+        for nome, linha, autorizado in _ocorrencias_graph_host(arv, caminho_rel)
+        if not autorizado
     ]
 
 
 def test_meta_graph_execution_is_contained() -> None:
-    """F57-Meta: build_meta_api (o factory de execução com o system-user token) só
-    pode ser chamado dentro de run_meta_graph_get (reports.py), que aplica o gate.
-    Uma tool que chame direto pularia o hard-gate incondicional.
+    """F57-Meta: a URL da Graph API (`graph.facebook.com`) só pode ser escrita
+    em (arquivo, escopo) autorizados — hoje, o executor gateado e os dois
+    pontos que rodam ANTES de qualquer gate fazer sentido (OAuth, inventário
+    da parceria). Uma tool nova que monte a URL em qualquer outro lugar e fale
+    `httpx` direto pula `can_manager_access` — o único freio do Modelo B
+    (token compartilhado entre ~24 contas).
 
-    F190/Task 3 (21/09): `run_meta_graph_get` passou a falar Graph API por
-    httpx com auth em header — `build_meta_api` perdeu o ÚNICO call-site vivo
-    que este guard conhecia. O piso de não-vacuidade que vivia aqui (`assert
-    vistas`) existia pra impedir o guard de passar por CASAMENTO QUEBRADO (a
-    factory renomeada e ninguém atualizou o nome procurado). Essa não é a
-    situação agora: zero é o valor ESPERADO, porque a migração terminou o
-    trabalho, não porque o padrão parou de casar. A Task 6 desta mesma SDD
-    apaga `build_meta_api` de vez de `client.py` — quando isso acontecer, este
-    guard fica sem sujeito e deve ser REMOVIDO junto (não só afrouxado de
-    novo), porque não há mais fato nenhum pra verificar.
-
-    O que continua de pé — e por isso a segunda asserção não sai daqui — é
-    "nenhuma chamada FORA do executor autorizado": se algum código futuro
-    ressuscitar uma chamada direta a `build_meta_api` (ex.: revert parcial),
-    ainda queremos ser avisados.
+    Retargetado em F190/Task 6 (21/09, ruling R10): até aqui o guard vigiava
+    chamada a `build_meta_api`, que a Task 3 desta SDD esvaziou (transporte
+    virou httpx) e que esta mesma task apaga de `client.py`. O SUJEITO trocou
+    de nome — de "chamar a factory" pra "escrever o host" — mas a invariante
+    que importa (só o caminho gateado fala com a Graph API) é a mesma; apagar
+    o guard junto do sujeito antigo deixaria a migração terminar SEM proteção
+    nenhuma. Ver o comentário acima de `_ALLOWLIST_GRAPH_HOST` pra allowlist e
+    o motivo de cada entrada, e `_PISO_GRAPH_HOST` pra a medição do piso.
     """
-    arquivo_do_executor, nome_do_executor = _EXECUTOR_META
+    vistos_por_entrada: dict[tuple[str, str], int] = {chave: 0 for chave in _ALLOWLIST_GRAPH_HOST}
+    total_vistas = 0
     ofensores: list[str] = []
     for p in h.fontes_py():
-        arv = h.arvore(p)
-        autorizado = nome_do_executor if h.rel(p) == arquivo_do_executor else None
-        ofensores.extend(
-            f"{h.rel(p)}:{linha} (em {nome})"
-            for nome, linha in _ofensores_f57_meta(arv, executor_autorizado=autorizado)
-        )
+        caminho_rel = h.rel(p)
+        for nome, linha, autorizado in _ocorrencias_graph_host(h.arvore(p), caminho_rel):
+            total_vistas += 1
+            chave = (caminho_rel, nome)
+            if autorizado:
+                vistos_por_entrada[chave] += 1
+            else:
+                ofensores.append(f"{caminho_rel}:{linha} (em {nome})")
 
-    # NAO restaurar "assert vistas" sem restaurar tambem um call-site real —
-    # senao o proximo refactor so reaprende esta mesma licao (ver docstring).
+    assert total_vistas >= _PISO_GRAPH_HOST, (
+        f"F57-Meta — só {total_vistas} ocorrência(s) de {_ALVO_GRAPH_HOST!r} em `src/`, "
+        f"piso {_PISO_GRAPH_HOST} (medido em 2026-09-21, um por arquivo da allowlist). "
+        "Varredura achando MENOS do que já viu antes passa por vacuidade parcial: ou o "
+        "literal mudou de forma (scanner desatualizado) ou um site conhecido sumiu sem "
+        "atualizar este piso na mesma mudança."
+    )
+    faltando = sorted(chave for chave, n in vistos_por_entrada.items() if n == 0)
+    assert not faltando, (
+        f"F57-Meta — entrada(s) da allowlist sem NENHUMA ocorrência real: {faltando}. "
+        "A allowlist é a invariante deste guard (R10): entrada que não casa nada é "
+        "entrada que ninguém reavalia — confirme se o site migrou e remova a entrada, "
+        "ou se é vacuidade de scanner."
+    )
     assert not ofensores, (
-        f"F57-Meta — build_meta_api chamado fora de {nome_do_executor}: {ofensores}. "
-        "Toda leitura Meta deve passar por run_meta_graph_get (gate "
-        "can_manager_access + audit + BUC)."
+        f"F57-Meta — {_ALVO_GRAPH_HOST!r} fora dos lugares autorizados: {ofensores}. "
+        "Toda leitura Meta deve passar por run_meta_graph_get (can_manager_access "
+        "incondicional — o único freio do Modelo B). Se o site novo é legítimo, "
+        "acrescente (arquivo, escopo) a `_ALLOWLIST_GRAPH_HOST` COM o motivo ao lado."
     )
 
 
-# (id, fonte, autorizado_neste_arquivo, acusa?) — contrato do guard F57-Meta.
+# (id, caminho_rel sintético, fonte, acusa?) — contrato do guard F57-Meta
+# retargetado, forma a forma, pela MESMA travessia que o teste de `src/` usa.
+# Sem esta tabela, as duas metades do contrato (autoriza o escopo exato /
+# reprova um escopo vizinho no MESMO arquivo autorizado) dependeriam de existir
+# um ocupante vivo de cada forma — e hoje cada arquivo da allowlist contribui
+# UMA ocorrência só, então perder qualquer uma das metades não deixaria nada
+# vermelho.
 _FORMAS_F57_META = [
     (
         "no_proprio_executor",
-        "async def run_meta_graph_get(mid, path):\n    api = build_meta_api()\n    return api\n",
-        "run_meta_graph_get",
+        "src/meta_ads/reports.py",
+        "async def run_meta_graph_get(edge):\n"
+        '    return f"https://graph.facebook.com/v22.0{edge}"\n',
         False,
     ),
     (
-        "irma_no_arquivo_do_executor",
-        # A SABOTAGEM: verde até 2026-09-07 porque a allowlist era por ARQUIVO.
-        "async def run_meta_graph_get(mid, path):\n"
-        "    return build_meta_api()\n"
-        "async def zz_atalho(path):\n"
-        "    return build_meta_api()\n",
-        "run_meta_graph_get",
+        "funcao_nova_no_arquivo_do_executor",
+        # A SABOTAGEM que a allowlist por ARQUIVO do guard antigo permitia,
+        # agora sobre o literal: função nova em reports.py que TAMBÉM escreve
+        # a URL, sem passar pelo gate de run_meta_graph_get.
+        "src/meta_ads/reports.py",
+        "async def run_meta_graph_get(edge):\n"
+        '    return f"https://graph.facebook.com/v22.0{edge}"\n'
+        "async def zz_atalho(edge):\n"
+        '    return f"https://graph.facebook.com/v22.0{edge}"\n',
         True,
     ),
     (
-        "em_arquivo_qualquer",
-        "async def ler(path):\n    return build_meta_api()\n",
-        None,
-        True,
-    ),
-    (
-        "definicao_nao_e_chamada",
-        # `client.py` DEFINE a factory. O substring `build_meta_api(` casava a
-        # linha do `def` — era só por isso que ele precisava de allowlist.
-        "def build_meta_api(token):\n    return FacebookAdsApi(token)\n",
-        None,
+        "modulo_do_arquivo_autorizado",
+        "src/meta_ads/partnership.py",
+        '_GRAPH = "https://graph.facebook.com/v22.0"\n',
         False,
     ),
     (
-        "alias_de_import_nao_escapa",
-        "from src.meta_ads.client import build_meta_api as _mk\nasync def ler(path):\n    return _mk()\n",
-        None,
+        "funcao_nova_em_arquivo_de_modulo_autorizado",
+        # `partnership.py` está autorizado só no ESCOPO `<módulo>` — uma
+        # função nova no MESMO arquivo não herda a isenção.
+        "src/meta_ads/partnership.py",
+        '_GRAPH = "https://graph.facebook.com/v22.0"\n'
+        "def outra():\n"
+        '    return "https://graph.facebook.com/v23.0/outra-coisa"\n',
         True,
     ),
     (
-        "chamada_em_lambda_de_funcao_irma",
-        "async def run_meta_graph_get(mid, path):\n"
-        "    return build_meta_api()\n"
-        "async def zz(path):\n"
-        "    return await run_blocking(lambda: build_meta_api())\n",
-        "run_meta_graph_get",
+        "arquivo_nao_autorizado",
+        "src/mcp/tools/_meta_qualquer.py",
+        'async def ler():\n    return "https://graph.facebook.com/v22.0/me"\n',
+        True,
+    ),
+    (
+        "docstring_nao_conta",
+        "src/mcp/tools/_meta_qualquer.py",
+        "def f() -> None:\n"
+        '    """Explica por que este modulo NAO fala graph.facebook.com direto."""\n'
+        "    return None\n",
+        False,
+    ),
+    (
+        "fstring_com_expressao_ainda_e_pega",
+        "src/mcp/tools/_meta_qualquer.py",
+        'def f(edge):\n    return f"https://graph.facebook.com/{edge}"\n',
         True,
     ),
 ]
 
 
 @pytest.mark.parametrize(
-    ("fonte", "autorizado", "acusa"),
-    [(fonte, aut, acusa) for _, fonte, aut, acusa in _FORMAS_F57_META],
+    ("caminho_rel", "fonte", "acusa"),
+    [(caminho, fonte, acusa) for _, caminho, fonte, acusa in _FORMAS_F57_META],
     ids=[ident for ident, _, _, _ in _FORMAS_F57_META],
 )
-def test_f57_meta_acusa_a_violacao_e_so_ela(
-    fonte: str, autorizado: str | None, acusa: bool
-) -> None:
-    """Contrato do guard F57-Meta, forma a forma, pela MESMA travessia.
-
-    O único ocupante vivo é o próprio executor, então sem esta tabela o aperto
-    (substring+arquivo → AST+função) não teria nada que o distinguisse do guard
-    frouxo: os dois são verdes contra `src/` de hoje.
+def test_f57_meta_acusa_a_violacao_e_so_ela(caminho_rel: str, fonte: str, acusa: bool) -> None:
+    """Contrato do guard F57-Meta retargetado, forma a forma, pela MESMA
+    travessia que o teste de `src/` usa (`_ofensores_f57_meta`).
     """
-    achados = _ofensores_f57_meta(ast.parse(fonte), executor_autorizado=autorizado)
+    achados = _ofensores_f57_meta(ast.parse(fonte), caminho_rel)
 
     assert bool(achados) is acusa, (
         f"veredito errado: esperado {'ACUSA' if acusa else 'passa'}, "
-        f"obtido {achados or 'passa'} para:\n{fonte}"
+        f"obtido {achados or 'passa'} para {caminho_rel}:\n{fonte}"
     )
 
 

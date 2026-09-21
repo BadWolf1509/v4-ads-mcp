@@ -277,6 +277,42 @@ def _texto_logico(no: ast.JoinedStr | ast.Constant) -> str:
     return "".join(partes)
 
 
+def literais_no_corpo_proprio(escopo: ast.AST) -> Iterator[ast.JoinedStr | ast.Constant]:
+    """Como `_literais_de_string`, mas só o que está no corpo PRÓPRIO de
+    `escopo` — não desce em `def`/`async def` aninhado (escopo próprio,
+    visitado em separado por quem itera `funcoes()`).
+
+    É `_literais_de_string` cruzada com o alcance de `nos_do_corpo_proprio`:
+    mesma composição, do lado do literal em vez do lado da chamada — o par de
+    `chama_no_corpo_proprio`. Existe porque um guard que precisa saber QUAL
+    FUNÇÃO contém um literal — não só "existe em algum lugar do módulo" — não
+    pode chamar `_literais_de_string(arv)` direto: ela desceria em toda
+    função aninhada, e cada literal apareceria atribuído ao módulo E à função
+    ao mesmo tempo, sem meio de escolher entre os dois.
+
+    `lambda` é transparente, como em `nos_do_corpo_proprio`: o corpo dele é
+    parte léxica de quem o declara, não escopo à parte.
+    """
+    inicio: list[ast.AST] = (
+        [escopo.body] if isinstance(escopo, ast.Lambda) else list(getattr(escopo, "body", []))
+    )
+
+    def desce(no: ast.AST) -> Iterator[ast.JoinedStr | ast.Constant]:
+        if isinstance(no, ast.FunctionDef | ast.AsyncFunctionDef):
+            return  # escopo próprio — funcoes() o visita em separado
+        if isinstance(no, ast.JoinedStr):
+            yield no
+            return
+        if isinstance(no, ast.Constant) and isinstance(no.value, str):
+            yield no
+            return
+        for filho in ast.iter_child_nodes(no):
+            yield from desce(filho)
+
+    for no in inicio:
+        yield from desce(no)
+
+
 def html_em_python(raizes: Iterable[Path] | None = None) -> list[FragmentoHTML]:
     """Literais Python (f-string ou string pura) que contêm HTML — `<`
     seguido de nome de tag —, sob `raizes` (default: `src/web` e `src/auth`,

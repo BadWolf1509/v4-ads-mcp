@@ -25,6 +25,7 @@ import httpx
 import pytest
 
 from src.meta_ads import reports
+from src.meta_ads.client import MetaSystemUserTokenMissingError
 from src.meta_ads.errors import MetaAdsFriendlyError
 
 
@@ -300,3 +301,41 @@ async def test_run_meta_graph_get_error_path_without_audit_opt_in_skips_audit() 
         )
 
     mock_audit_record.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_meta_graph_get_raises_when_system_user_token_missing() -> None:
+    """F190/Task 6: `if not token: raise MetaSystemUserTokenMissingError` migrou
+    de `build_meta_api` (Task 3) pro executor e ficou sem teste equivalente — o
+    antigo cobria o construtor, que não existe mais neste caminho
+    (`test_meta_client.py::test_build_meta_api_raises_when_system_user_token_empty`,
+    removido na mesma task que apagou `build_meta_api` de `client.py`). Preserva
+    a cobertura apontando pro executor real (`reports.py:218-223`), depois do
+    hard-gate (`can_manager_access`) e da checagem edge/ad_account_id — as duas
+    têm que passar pra este caminho ser exercitado, senão o teste provaria outra
+    coisa.
+    """
+    mid, sid = uuid4(), uuid4()
+    fake_pool = _patch_allowed_pool()
+
+    settings_sem_token = MagicMock()
+    settings_sem_token.meta_system_user_token = ""
+
+    with (
+        patch.object(reports, "get_settings", MagicMock(return_value=settings_sem_token)),
+        patch.object(reports.connection, "get_pool", return_value=fake_pool),
+        patch.object(
+            reports.manager_meta_account_access,
+            "can_manager_access",
+            AsyncMock(return_value=True),
+        ),
+        pytest.raises(MetaSystemUserTokenMissingError),
+    ):
+        await reports.run_meta_graph_get(
+            manager_id=mid,
+            session_id=sid,
+            ad_account_id="act_999",
+            edge="/act_999/insights",
+            params={"level": "campaign"},
+            operation_name="meta_get_campaign_performance",
+        )
