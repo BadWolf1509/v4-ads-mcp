@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~4600 linhas, 492 KB, IDs de **F1 a F189** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** só 44 findings têm cabeçalho `## F<n>` próprio e os demais vivem dentro de outras entradas, então toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~4700 linhas, 504 KB, IDs de **F1 a F190** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** só 44 findings têm cabeçalho `## F<n>` próprio e os demais vivem dentro de outras entradas, então toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -4600,3 +4600,79 @@ O fake nunca olha `path` — lista ou string dão o mesmo verde. Pior: a anotaç
 As anotações mentirosas dos mocks antigos viraram `path: Any`, com nota dizendo o que eles cobram (o fluxo) e o que não cobram (a forma).
 
 **Fora de escopo, dito de propósito:** `graph.py` não foi tocado — está correto e é a prova viva de qual forma funciona. A fórmula do `truncated` não mudou: com uma página ela fica correta sozinha. E a varredura que achou isto cobriu **duas das quatro formas** da lente; *ausência que é filtro* e *resumo × detalhe* seguem não varridas.
+
+---
+
+## F190 (CRITICAL, ✅ CORRIGIDO 2026-09-21) — o SDK Meta assava o access token na query string; o fallback de erro espalhava a URL inteira, com token, em três sinks
+
+**Achado pela varredura ampla de 5 agentes paralelos em 2026-09-21** (sub-projeto 1 de 4) — o único dos quatro achados da varredura **verificado elo a elo** antes de virar trabalho; os demais aguardam verificação própria antes de virar código.
+
+### A cadeia, elo a elo
+
+1. **O SDK assa o token na URL, sem opt-out.** `FacebookSession.__init__`, na fonte instalada do `facebook_business`:
+
+   ```python
+   params = {'access_token': self.access_token}
+   if app_secret:
+       params['appsecret_proof'] = self._gen_appsecret_proof()
+   self.requests.params.update(params)
+   ```
+
+   `FacebookAdsApi.call` nunca remove esses params, e `headers=` é aditivo, não substitutivo — não há como pedir ao SDK pra não fazer isso.
+
+2. **`src/meta_ads/errors.py:63` (na forma pré-fix) interpolava a exceção crua.** Fallback para tudo que não é `FacebookRequestError` — ou seja, toda falha de transporte:
+
+   ```python
+   return MetaAdsFriendlyError(f"Erro inesperado: {e}", retryable=False)
+   ```
+
+   `str(e)` de uma falha de rede carrega a URL inteira, token incluído.
+
+3. **Três sinks ao mesmo tempo.** `src/meta_ads/reports.py:191` entregava essa string a `audit_log.record(error_message=...)` — coluna `TEXT` do Postgres. A mesma string ia para o Cloud Logging via `structlog` e para o envelope de erro da tool, que alcança o contexto do LLM e a transcrição do chat.
+
+Um soluço de rede no Cloud Run bastava para mandar, de uma vez só, o token **que não expira** e alcança as ~24 contas de anúncio do system-user (Modelo B) para os três destinos. Quem lê qualquer um dos três contorna `can_manager_access` — a matriz que a documentação chama de *o único freio* do modelo.
+
+### Por que passou
+
+A invariante já estava **escrita no repo**, em `src/meta_ads/graph.py:36`:
+
+> `# F82 — token no HEADER, nunca na query: quem lê a URL num log contorna tudo.`
+
+**O F82 foi fechado numa das duas implementações de chamada Meta e não na outra** — e a outra (`src/meta_ads/client.py` + `reports.py`, via SDK `facebook_business`) é a que as **cinco tools de performance** usam. `tests/unit/test_meta_secret_leak.py`, na forma em que existia até esta sessão, asserava a invariante exercitando funções específicas de UM arquivo (`src/auth/meta_oauth.py`) — nenhum teste sequer abria `src/meta_ads/`. **Guard que enumera absolve o arquivo que ninguém lembrou de listar**, que é precisamente o arquivo onde o bug morava.
+
+É o terceiro caso do mesmo padrão **no mesmo dia da varredura**: F189 (paginação certa num arquivo, errada no outro), F161 (fechado num caminho do `ad_schedule` e não no que produz o resumo), e este. O `CLAUDE.md` já nomeia a classe no F57 — a regra existe; o mecanismo que a aplica, não.
+
+### O fix, em duas camadas
+
+1. **Transporte — remove a causa.** `run_meta_graph_get` (`src/meta_ads/reports.py`) trocou `api.call` (SDK, `requests` síncrono via `run_blocking`) por `httpx.AsyncClient`, com `Authorization: Bearer <token>` no header, seguindo o padrão que `graph.py::fetch_paginated` já usava em produção. Com header auth o token nunca entra na URL. Ganho absorvido de brinde: a chamada vira `await` de verdade e para de competir pelo pool de threads do `anyio`, compartilhado com os cinco executores Google.
+2. **Redação — defesa em profundidade.** `errors.py::to_friendly_meta_error` ganhou `_redigir()`, aplicado nos 5 pontos onde uma mensagem Meta vira `MetaAdsFriendlyError` — inclusive o `MetaGraphHTTPError` novo. É mecanismo, não disciplina: único ponto por onde toda exceção Meta já passa antes de virar mensagem, então nenhum chamador futuro precisa lembrar de aplicá-la. Existe mesmo com o transporte corrigido, porque uma camada só é a que falha — e este finding é a prova de que a invariante escrita não bastou. A denylist por regex (`access_token`, `appsecret_proof`, `client_secret`) foi endurecida numa revisão própria: a 1ª versão só reconhecia `nome=valor` sem aspas coladas, e vazava `access_token="X"` e as duas formas JSON/repr (`{"access_token": "X"}`, `{'client_secret': 'X'}`) — sondadas empiricamente antes do fix, não a partir da sugestão pronta da revisão (que também vazava um dos quatro casos).
+
+Absorvidos no mesmo fix, por estarem na função sendo reescrita:
+
+- **Timeout ausente.** O SDK guardava `timeout=None` e repassava a `requests`, que bloqueia indefinidamente; como a chamada ia por `run_blocking`, uma conexão pendurada prendia um slot do pool de threads compartilhado. O `httpx.AsyncClient` novo é construído com `timeout=30.0` explícito (espelha `auth/meta_oauth.py:256`).
+- **`cast(dict, ...)` que mentia sobre corpo não-JSON.** `FacebookResponse.is_success()` decidia sucesso por teste de *substring* sobre o corpo — uma página HTML de erro de intermediário passava, e o estouro chegava ao gestor como `'str' object has no attribute 'get'`, **marcado `retryable=False`** (permanente). Trocado por status HTTP real: `MetaGraphHTTPError(status, trecho)`, com `isinstance(body, dict)` checado na borda em vez do `cast` que satisfazia o mypy sem existir em runtime. 5xx/429 viram `retryable=True`.
+- **Hard-gate amarrado só ao kwarg, não à URL.** O gate (`can_manager_access`) rodava contra `ad_account_id`; a requisição ia para `edge`, e nada ligava os dois — o F72 tornou o kwarg obrigatório, não autoritativo sobre a URL. Corrigido com `f"/{ad_account_id}/" not in f"{edge}/"` (delimitado por barras dos dois lados — a 1ª versão, substring crua, colidia: `"act_1" in "/act_12345/insights"` é `True`, e o gate aprovaria a conta errada).
+
+`build_meta_api` foi **removido** de `client.py` junto com os testes que só existiam pra ele — depois da troca de transporte ficava com zero consumidores, e código morto com teste verde é pior que código morto (parece cobertura). `client.py` **permanece**: `build_facebook_ads_api` segue com consumidor real fora deste caminho, e o módulo exporta `MetaAccessDeniedError` (usado por `src/mcp/server.py`) e `META_GRAPH_API_VERSION` (usado por `partnership.py` e pelo transporte novo).
+
+**Fora de escopo, com motivo:**
+- **Unificar as duas implementações de paginação.** `graph.py::fetch_paginated` serve o caminho de reconciliação; mudar seu contrato arriscaria algo que funciona em troca de elegância. As duas passam a autenticar por header — **a gemelaridade de segurança morre aqui** — mas a duplicação estrutural fica como débito.
+- **`_parse_buc_header_pct` devolvendo `0` em três caminhos de "desconhecido"**, `spend_brl`/`cpc_brl` fixos num inventário multi-moeda, divergência de `ctr` entre tools, taxonomia de `actions`, janelas de atribuição — todos do sub-projeto 2 da mesma varredura, e **ainda não verificados**; misturar teria tornado o PR não-revisável.
+
+### Os guards — três propriedades distintas, não uma
+
+**1. Comportamental, os três sinks.** `tests/unit/test_meta_token_nao_vaza_em_erro.py` injeta uma falha de transporte carregando um token-sentinela e assere que ele não aparece em nenhum dos três sinks: a mensagem do `MetaAdsFriendlyError`, os kwargs de `audit_log.record`, e o evento de `structlog`. Três asserções, não uma — os três sinks recebem o mesmo `friendly.message` hoje, mas isso é coincidência de implementação, não contrato; um refactor que formate o log separadamente reabriria o vazamento por um lado só, exatamente como o F82 ficou meio fechado. **Visto VERMELHO contra o código pré-fix** antes de qualquer alteração de produção — e a 1ª versão do teste teve de ser corrigida (a exceção nascia fora do `try`, então os sinks de audit/log nunca eram exercitados) antes de o vermelho ser pelo motivo certo. Mais 5 testes unitários do próprio `_redigir` no mesmo arquivo (aspas coladas, formato JSON, `client_secret` isolado, preservação do nome do parâmetro, texto sem credencial intocado).
+
+**2. Estrutural, credencial em query string.** `tests/unit/test_meta_secret_leak.py::test_nenhum_caminho_meta_poe_credencial_em_query` trocou "uma função por arquivo que alguém lembrou de escrever" por uma propriedade AST sobre **todo** literal de string de `src/meta_ads/` **e** `src/auth/` — as duas pastas onde código Meta roda; varrer só uma repetiria, no eixo do diretório, o mesmo defeito que a propriedade existe para corrigir no eixo do arquivo. Resolvido por construção, não por lista de isenção: um kwarg Python (`access_token=access_token`, passado ao bridge do SDK) não é literal de string nenhum e nunca aparece pro scanner; um f-string real (`f"...?access_token={token}"`) vira `...?access_token=X` no texto lógico e casa o termo. Piso de não-vacuidade (≥15 arquivos) **mais** um assert sobre os diretórios reais (`{"meta_ads", "auth"}`) — o piso sozinho não bastaria: `meta_ads/` (a área mais ativa do repo) crescendo sozinha até compensar `auth/` sumindo do scan passaria pelo piso numérico e reproduziria o F82 original, que morava exatamente em `auth/meta_oauth.py`. Docstrings que citam `access_token=` em prosa são filtradas (`h._nos_de_docstring`), senão a própria documentação deste finding dispararia falso positivo.
+
+**3. Estrutural, contenção (F57-Meta).** `tests/unit/test_structural_guards.py::test_meta_graph_execution_is_contained` afirma que só o executor gateado (`reports.py::run_meta_graph_get`) constrói ou usa diretamente um cliente HTTP contra a Graph API — não importa se ele usa header ou query string. Retargetado **duas vezes** na mesma sessão: a 1ª versão (herdada do F72) varria só a chamada a `build_meta_api`; quando essa função saiu em definitivo, uma 2ª forma varreu o literal `graph.facebook.com` (um proxy de quem fala com a API) — e dois refactors não-adversariais escapavam por completo: concatenação de string (`"https://graph." + "facebook.com/..."`, nenhum `Constant` sozinho contém o literal) e reuso de uma constante já autorizada importada num arquivo novo (o literal nunca é reescrito). Retargetado de novo pro mecanismo — construção/uso de `httpx`/`requests` — resolvido por caminho canônico (cobre alias de import). Uma rodada seguinte ampliou o conjunto para incluir `aiohttp` (dependência já instalada, transitiva via `facebook-business`) e `urllib.request.urlopen` (stdlib): o texto do teste prometia "constrói OU USA cliente HTTP" e a checagem cobria só `httpx`/`requests`.
+
+⚠️ **Limites declarados dos guards — para que ninguém confie mais do que eles entregam:**
+- **Os dois guards estruturais (#2 e #3) pegam o caminho honesto, não o adversarial.** Despacho dinâmico (`importlib.import_module(...)`, `__import__(...)`, `getattr(httpx, "AsyncClient")()`) fica fora do alcance de uma varredura sintática (AST) — confirmado rodando as três formas contra o scanner real (zero achados, medido). Resolver isso exigiria executar o código; um scanner que tentasse cobrir despacho dinâmico goela abaixo ficaria gordo e cheio de falso positivo — o mesmo trade-off que o helper `chama()` do harness já aceita e documenta.
+- **A cobertura é por raiz, não pela árvore inteira.** O guard de contenção (#3, F57-Meta) varre `src/meta_ads/` e os arquivos cujo nome contém `meta` sob `src/mcp/tools/` — e **exclui por decisão**, não por esquecimento, `src/auth/meta_oauth.py` e `src/jobs/meta_resync.py` (roteador OAuth e job de resync, ambos anteriores a qualquer decisão de acesso por gestor). Um arquivo Meta escrito fora dessas raízes não é coberto por este guard. O guard de credencial-em-query (#2) tem raízes diferentes (`meta_ads/` + `auth/`, sem `mcp/tools/`) — os dois protegem propriedades distintas e não têm o mesmo escopo entre si.
+
+O guard do F189 (`test_meta_paginacao_usa_url_completa.py`) segue verde sobre o transporte novo — reescrito para `httpx.MockTransport` no mesmo commit que trocou o transporte, preservando a invariante de fundo (URL da 2ª página é `paging.next`, nunca remontada). Mais 7 testes em `tests/unit/test_meta_transporte_httpx.py`: token no header e nunca na URL; cliente construído **com** timeout (falha contra `timeout=None`, capturando os kwargs reais da fábrica — uma 1ª versão só lia a constante `_TIMEOUT_GRAPH`, que continuaria definida mesmo se a produção parasse de repassá-la); corpo não-JSON levanta `MetaGraphHTTPError`, não `AttributeError`; 5xx retryable / 4xx não (com controle: um teste irmão prova que nem tudo é retryable, senão a asserção do primeiro não valeria nada); `edge` divergente do `ad_account_id` gateado é recusado, inclusive por colisão de substring (`act_1` vs `act_12345`).
+
+### ⚠️ O débito declarado
+
+> **Não foi medido se o token já vazou.** Decisão do Wellington em 2026-09-21: consertar para frente, sem rotação de token nem expurgo do log. A contagem que responderia é um `COUNT(*)` em `audit_log` por `error_message` contendo o nome do parâmetro de token, e **ela não foi executada**. Registrado para que "ninguém mediu" não vire "nunca aconteceu".
