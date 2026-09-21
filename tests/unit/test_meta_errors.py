@@ -9,7 +9,8 @@ gestor, e nenhum caminho de retry disparava.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+import sys
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -118,3 +119,34 @@ def test_o_que_nao_e_throttle_continua_nao_retryable(code: int) -> None:
     de "diz sim para tudo".
     """
     assert to_friendly_meta_error(_erro(code)).retryable is False
+
+
+def test_meta_graph_http_error_retryable_mesmo_sem_o_sdk_instalado() -> None:
+    """F190/Task 3, fix round 1 (achado B da revisao): MetaGraphHTTPError nao
+    tem relacao NENHUMA com o SDK facebook_business — o ramo que o mapeia tem
+    de vir ANTES do `try: from facebook_business.exceptions import ... except
+    ImportError: return ...`.
+
+    Antes: o ramo vivia DEPOIS daquele try/except. Se o import do SDK
+    falhasse — ausente, quebrado, ou removido de vez pela Task 6, que esta
+    tirando superficie do SDK — o `return` antecipado do `except ImportError`
+    engolia o ramo inteiro, e um 503 (retryable de verdade) virava "Erro
+    inesperado" com retryable=False. O MESMO bug que esta task existe pra
+    fechar, reaberto por um caminho diferente.
+
+    `patch.dict(sys.modules, {"facebook_business.exceptions": None})` forca o
+    proximo `from facebook_business.exceptions import ...` a levantar
+    ImportError, simulando o SDK ausente independente de ele estar de fato
+    instalado neste ambiente.
+    """
+    from src.meta_ads.reports import MetaGraphHTTPError
+
+    with patch.dict(sys.modules, {"facebook_business.exceptions": None}):
+        resultado = to_friendly_meta_error(MetaGraphHTTPError(503, "Service Unavailable"))
+
+    assert resultado.retryable is True, (
+        "um MetaGraphHTTPError 5xx tem que continuar retryable mesmo quando o "
+        "import do SDK falha — o ramo nao pode estar atras do try/except "
+        "ImportError, que nao tem nada a ver com ele"
+    )
+    assert "503" in resultado.message

@@ -69,6 +69,19 @@ def to_friendly_meta_error(e: Exception) -> MetaAdsFriendlyError:
     Handles FacebookRequestError variants. Falls back to generic error msg
     for unknown exception types.
     """
+    # F190/Task 3 fix round 1: MetaGraphHTTPError nao tem relacao NENHUMA com
+    # o SDK facebook_business — checar ANTES do try/except ImportError abaixo.
+    # Na ordem antiga, um import quebrado do SDK (ausente, ou removido de vez
+    # pela Task 6) engolia este ramo pelo `return` antecipado do `except
+    # ImportError`, e todo MetaGraphHTTPError 5xx virava "Erro inesperado"
+    # com retryable=False — o MESMO bug que esta task fechou, reaberto por um
+    # caminho diferente. Ver test_meta_graph_http_error_retryable_mesmo_sem_o_sdk_instalado
+    # em test_meta_errors.py.
+    from src.meta_ads.reports import MetaGraphHTTPError  # noqa: PLC0415
+
+    if isinstance(e, MetaGraphHTTPError):
+        return MetaAdsFriendlyError(_redigir(str(e)), retryable=e.retryable)
+
     try:
         from facebook_business.exceptions import FacebookRequestError  # noqa: PLC0415
     except ImportError:  # pragma: no cover
@@ -103,10 +116,5 @@ def to_friendly_meta_error(e: Exception) -> MetaAdsFriendlyError:
             f"Erro Meta API ({code}/{subcode}): {_redigir(str(message))}",
             retryable=False,
         )
-
-    from src.meta_ads.reports import MetaGraphHTTPError  # noqa: PLC0415
-
-    if isinstance(e, MetaGraphHTTPError):
-        return MetaAdsFriendlyError(_redigir(str(e)), retryable=e.retryable)
 
     return MetaAdsFriendlyError(f"Erro inesperado: {_redigir(str(e))}", retryable=False)

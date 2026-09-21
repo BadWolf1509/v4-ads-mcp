@@ -89,12 +89,51 @@ async def test_o_token_vai_no_header_e_nunca_na_url() -> None:
 
 @pytest.mark.asyncio
 async def test_o_cliente_e_construido_com_timeout() -> None:
-    """Falha contra `timeout=None`, que e o default do SDK que saiu daqui."""
+    """Falha contra `timeout=None`, que e o default do SDK que saiu daqui.
+
+    Fix round 1 (achado A da revisao): a versao anterior so lia a constante
+    `reports._TIMEOUT_GRAPH` — isso passa verde mesmo se a producao PARAR de
+    repassar o timeout pro `httpx.AsyncClient(...)` de verdade, porque nos
+    testes o `AsyncClient` e um `MagicMock` que ignora kwargs (a constante
+    existir nao prova que ela chega na construcao). Agora captura a FABRICA
+    e afirma o kwarg que `run_meta_graph_get` de fato passou.
+    """
     from src.meta_ads import reports
 
     assert reports._TIMEOUT_GRAPH is not None
     assert reports._TIMEOUT_GRAPH > 0, (
         "sem timeout, uma conexao pendurada fica pendurada para sempre"
+    )
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": [], "paging": {}})
+
+    transporte = httpx.MockTransport(handler)
+    cliente_real = httpx.AsyncClient(transport=transporte, timeout=reports._TIMEOUT_GRAPH)
+    fabrica = MagicMock(return_value=cliente_real)
+
+    with (
+        patch.object(reports.httpx, "AsyncClient", fabrica),
+        patch.object(
+            reports.manager_meta_account_access,
+            "can_manager_access",
+            AsyncMock(return_value=True),
+        ),
+        patch.object(reports.connection, "get_pool", return_value=_pool()),
+        patch.object(reports.audit_log, "record", AsyncMock(return_value=1)),
+    ):
+        await reports.run_meta_graph_get(
+            manager_id=uuid4(),
+            session_id=uuid4(),
+            ad_account_id="act_1",
+            edge="/act_1/insights",
+            params={"level": "campaign"},
+            operation_name="meta_get_campaign_performance",
+        )
+
+    assert fabrica.call_args.kwargs.get("timeout"), (
+        "o AsyncClient foi construido SEM timeout — a constante existir nao "
+        "prova que ela chega na construcao"
     )
 
 
