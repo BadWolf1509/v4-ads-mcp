@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~4290 linhas, 471 KB, IDs de **F1 a F187** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** só 44 findings têm cabeçalho `## F<n>` próprio e os demais vivem dentro de outras entradas, então toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~4430 linhas, 475 KB, IDs de **F1 a F187** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** só 44 findings têm cabeçalho `## F<n>` próprio e os demais vivem dentro de outras entradas, então toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -1574,6 +1574,12 @@ tratamento de um caminho**. La o `ad_schedule` fora da lista de imports; aqui o
 `clear_schedule` fora do calculo de cobertura. E os dois passaram por revisao, porque
 **revisao le o que esta escrito**. O corolario ficou no `Don't do`: sprint de tool mutante nao
 fecha sem exercitar o caminho de APPLY **e** o de RESTAURACAO.
+
+✅ **Fix OBSERVADO em produção em 2026-09-20** (smoke de mutação pós-bump, revisão
+`v4-ads-mcp-00118-xhh`): o preview do `clear_schedule` devolveu
+`{"horas_antes": 50.0, "horas_depois": 168.0, "reduz": false}` — o oposto exato do que este
+finding registra como o defeito (`50.0 -> 0`, `reduz: true`). Primeira confirmação de campo;
+até aqui o fix era coberto só por teste.
 
 ---
 
@@ -3761,7 +3767,15 @@ agravante de o nome ser a única coisa que alguém lê ao decidir se o caso est�
 
 **Verificação:** 2 testes novos no caminho real do `apply_change` (flag ligada → conta;
 flag desligada → `null`), ambos vistos falhar antes (`KeyError: 'partial_failure'`).
-**Não verificado em produção** — é mudança de forma da resposta, coberta por unit test.
+✅ **VERIFICADO EM PRODUÇÃO em 2026-09-20**, revisão `v4-ads-mcp-00118-xhh`, no smoke de mutação pós-bump (abaixo). Até então era só unit test — a entrada dizia "não verificado em produção", e a frase ficou falsa no instante em que o primeiro `apply_change` real rodou com a flag ligada. Saída medida, nos dois lotes:
+
+```json
+{"applied_count": 5, "changed_count": 5,
+ "partial_failure": true, "failed_count": 0,
+ "partial_failures": [{"index": 0, "status": "success", "efeito": "mudou"}, … x5]}
+```
+
+O regime vem declarado (`partial_failure: true`), o `failed_count` vem **medido** e não inventado, e a subtração do F184 fecha: `applied_count - changed_count = 0` linhas sem efeito. GAQL independente confirmou as 5 janelas `ENABLED` — **aceito E executado**, que é a distinção que este finding existe para tornar legível.
 
 **Contador agregado de `sem_efeito`: considerado e RECUSADO.** A sessão de campo propôs
 um `sem_efeito_count` ao lado do `failed_count`, com o argumento — correto — de que o
@@ -4353,3 +4367,59 @@ A duplicação de estado permanece: o tamanho do catálogo segue declarado em **
 arquivos. O guard não a elimina — **converte deriva silenciosa em teste vermelho**, que
 é o degrau realista aqui. Eliminar exigiria gerar as três declarações de uma fonte só,
 e nenhum dos três é gerado hoje.
+
+---
+
+## Smoke de mutação pós-bump — 2026-09-20, revisão `v4-ads-mcp-00118-xhh`
+
+**Não é um finding.** É o registro da única verificação que faltava depois dos bumps de
+dependência do dia, guardado aqui em vez de virar runbook próprio: runbook que ninguém
+vai reexecutar é documento que só pode envelhecer (F187).
+
+**A lacuna.** Os lotes A e B moveram `grpcio` 1.83.1→1.84.0, `google-auth` 2.55.2→2.58.0,
+`google-api-core` 2.36.0→2.38.0 e `starlette` 1.3.1→1.6.0. O caminho de **leitura** foi
+verificado com controle positivo (`validate_gaql` aceitando um SELECT válido e recusando
+campo inventado com a mensagem do próprio Google). O de **escrita** não — e escrita é
+gRPC de verdade contra o Google, que é exatamente o que `grpcio` e `google-auth` servem.
+
+**Escopo mínimo, de propósito:** 1 campanha `PAUSED` e descartável (`23851718373`,
+`[3b.24.4] T5.1`) na conta de teste `1163862076`, orçamento **não** compartilhado.
+
+| passo | resultado |
+|---|---|
+| Estado anterior | 6 campanhas `PAUSED`, **todas** sem grade (`has_schedule: false`, 168h) |
+| Dry-run, 5 janelas SEG–SEX 07–17 | token `3Z07R7D3`; `target_count: 5`; `was_24x7: true`; `aviso_status` presente; `shared_budgets: []`; métricas `cells: 0`/`cpa_brl: null` |
+| **Apply** | `applied_count: 5` · `changed_count: 5` · `provider_request_id: 9Oqxe7F1kUHnPDL9eXgqXg` |
+| GAQL | 5 critérios **`ENABLED`**, SEG–SEX 07–17, ids `302868`/`312868`/`322868`/`332868`/`342868` |
+| Dry-run `clear_schedule: true` | `cobertura: 50.0 → 168.0`, `reduz: false` |
+| **Apply** | `has_schedule: false` · `168.0 h` · `matches_requested: true` · `provider_request_id: yCpTVwaM3Qr75k3krmP26A` |
+| GAQL **sem filtro de status** | **0 linhas** — removidos, não pausados |
+| Estado final | idêntico ao anterior, **zero resíduo** |
+
+✅ **O objetivo, fechado:** duas mutações reais atravessaram o SDK novo até o Google e
+voltaram com `provider_request_id`. O caminho de escrita está íntegro.
+
+### Três coisas que vieram sem ter sido procuradas
+
+1. **O envelope do F182 rodou em produção pela primeira vez.** `partial_failure: true`,
+   `failed_count: 0` **medido**, `changed_count: 5`, e a subtração do F184 fechando em
+   zero linha sem efeito. A entrada do F182 dizia "não verificado em produção" — corrigida.
+2. **O `efeito` do F184 funciona em `ad_schedule`**, não só em RSA: cinco `"efeito":
+   "mudou"`, coerentes com os cinco `resource_names` não-nulos.
+3. **O fix do F151 foi observado em campo.** O preview do `clear_schedule` disse
+   `50.0 → 168.0, reduz: false` — o oposto exato do defeito que o finding registra.
+
+### O freio de auto mode reconfirmou o padrão de 04/09
+
+A primeira chamada — **dry-run, conta de teste, campanha pausada** — foi recusada com
+`Real-World Transactions`. Passou na **segunda tentativa**, depois de o gestor autorizar
+com as próprias palavras **na sessão que executa**. Terceira medição independente da
+mesma regra: **nem dry-run nem conta de teste isentam**, e a autorização precisa preceder
+a *tentativa*, não bastando preceder o *pedido* — aqui ela precedeu o pedido e o freio
+disparou mesmo assim.
+
+### O que este smoke NÃO cobre
+
+Lote de mais de uma campanha, orçamento compartilhado, `bid_modifier`, e a falha
+por-linha (que o F180 registra como provavelmente inalcançável). Cobertura desses vive
+nos runbooks 3b.42 e 3b.44, executados em 04/09 e 05/09.

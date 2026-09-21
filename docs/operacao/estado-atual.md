@@ -25,7 +25,12 @@
 | Revisão servindo | **`v4-ads-mcp-00118-xhh`** |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
-| Catálogo | até **F187** (~4.290 linhas) |
+| Catálogo | até **F187** (~4.430 linhas) |
+
+**Caminho de mutação verificado após os bumps de 20/09** (`grpcio` 1.84, `google-auth`
+2.58, `google-api-core` 2.38): duas mutações reais em `1163862076` com
+`provider_request_id` e confirmação por GAQL, conta sem resíduo. O de leitura já tinha
+controle positivo. Detalhe na entrada do **F182**, que o smoke verificou de quebra.
 
 Contagens de tool e bucket vêm do registry (`import_all_tools()`), não de `grep` —
 **`grep` e `ast.literal_eval` já erraram esta medição**, o segundo devolvendo zero (F183).
