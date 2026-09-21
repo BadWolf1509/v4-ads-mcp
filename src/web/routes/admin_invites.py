@@ -110,13 +110,33 @@ async def admin_invites_cancel(
         # Task 5: cancelamento do convite e audit na mesma transação (ver
         # admin_invites_new).
         async with conn.transaction():
-            await managers_repo.delete_invite(conn, manager_id=parsed_invite_id)
+            # F179: o retorno é `bool` e existe para isto. Descartado, o audit
+            # afirmava um cancelamento que podia não ter ocorrido — convidado
+            # que loga entre o SELECT e o DELETE já não tem status='invited'.
+            cancelou = await managers_repo.delete_invite(conn, manager_id=parsed_invite_id)
             await _audit_admin(
                 conn,
                 admin=user,
                 operation="admin_invite_cancel",
                 email=email,
+                had_effect=cancelou,
             )
+    if not cancelou:
+        # A trilha já registrou `had_effect=false`; isto é a outra ponta, a
+        # que o humano lê. Checar ANTES do DELETE não é possível: o caso só
+        # se revela no resultado dele.
+        #
+        # Usa `error=` + _admin_flash (mapa fixo, sobrevive ao reload) em vez
+        # do HX-Trigger/toast usado noutras rotas: aqui a resposta HTMX sempre
+        # navega (HX-Redirect), e um toast reagendado por cima de uma
+        # navegação pisca por uma fração de segundo — pouco confiável para um
+        # aviso que o admin precisa mesmo ver.
+        if request.headers.get("HX-Request"):
+            return Response(
+                status_code=204,
+                headers={"HX-Redirect": "/admin/invites?error=invite_ja_aceito"},
+            )
+        return RedirectResponse(url="/admin/invites?error=invite_ja_aceito", status_code=303)
     if request.headers.get("HX-Request"):
         # Full-page refresh (browser reload) picks up the updated pending
         # count + subnav badge for free — cheaper than hand-updating both.

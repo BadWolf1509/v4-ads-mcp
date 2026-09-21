@@ -40,6 +40,7 @@ async def record(
     duration_ms: int | None = None,
     platform: Literal["google", "meta"] = "google",
     dry_run: bool | None = None,
+    had_effect: bool | None = None,
 ) -> int:
     """Insert a row into audit_log; returns the new row id.
 
@@ -47,6 +48,9 @@ async def record(
     dry_run: True marca preview que mintou token sem aplicar (F148). None nos
         demais caminhos — a coluna e nullable justamente para nao afirmar nada
         sobre as linhas anteriores ao fix.
+    had_effect: true = a escrita afetou linha; false = passou sem efeito; None
+        nos caminhos que nao medem. Nullable pelo mesmo motivo do `dry_run`
+        (F148): NULL nao afirma nada sobre as linhas anteriores ao fix.
     """
     import json
 
@@ -56,9 +60,9 @@ async def record(
             manager_id, session_id, customer_id,
             action_type, operation, target_count,
             params_summary, provider_request_id, status,
-            error_message, duration_ms, platform, dry_run
+            error_message, duration_ms, platform, dry_run, had_effect
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13)
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, $14)
         RETURNING id
         """,
         manager_id,
@@ -74,6 +78,7 @@ async def record(
         duration_ms,
         platform,
         dry_run,
+        had_effect,
     )
     assert row is not None
     return int(row["id"])
