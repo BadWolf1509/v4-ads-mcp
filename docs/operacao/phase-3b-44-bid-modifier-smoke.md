@@ -193,8 +193,11 @@ classificador de auto mode antes de chegar ao MCP · ⬜ não executado.
 | T7 (opcional) | Concorrência otimista: dois tokens, o segundo aplicado primeiro | **sim** | ✅ PASS | token A recusado: "A grade mudou desde o preview"; GAQL confirma WED em 1.8 (de B), nao 1.2 | `apply_change` do token A recusado citando "mudou desde o preview" |
 | T6 | `clear_schedule: true` — restauração | **sim** | ✅ PASS | `has_schedule: false`, 168.0 h/semana; GAQL sem filtro de status devolve **0 linhas** | `has_schedule: false`; `run_gaql` sem filtro de status devolve 0 linhas |
 
-**Effective result:** 0/7 obrigatórios executados (+ T7 opcional). Nenhuma tool chamada nesta
-sessão de escrita — branch não mesclada, sem autorização de mutação nesta sessão.
+**Effective result:** **8/8 executados** (7 obrigatórios + T7 opcional) · 8 PASS.
+
+🔑 **Este parágrafo dizia `0/7 executados — nenhuma tool chamada`, e era falso (corrigido em 2026-09-20).** Foi escrito na sessão de ESCRITA do runbook, antes da execução, e nunca atualizado — enquanto a tabela logo acima registrava os 8 com evidência. Mesma falha do 3b.42, mesmo dia de descoberta, e **a mesma armadilha**: o resumo é o que alguém lê para decidir se falta rodar, e aqui ele convidava a re-executar 8 testes que MUTAM a conta de teste.
+
+**Confirmado de forma independente no `audit_log`:** a execução foi em **2026-09-05**, com **11 mutações** de `ad_schedule` em `1163862076` naquele dia, entre elas o T2 com `provider_request_id: U1bh4UgJJ_DM5vyJaFe9WQ` — idêntico ao transcrito na tabela. Ver **F187**, que registra a classe, e o guard `tests/unit/test_resumo_bate_com_o_detalhe.py`, que passou a cobrar esta igualdade: foi ele que achou este arquivo.
 
 **Ordem de execução (obrigatória, não intercambiável):** Setup → T1 → T2 → T3 → T4 → T5 →
 T7 (se incluído) → T6. **T6 tem que ser o ÚLTIMO passo mutante** — ele apaga a grade

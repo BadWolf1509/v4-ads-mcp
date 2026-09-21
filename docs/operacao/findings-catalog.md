@@ -4284,3 +4284,72 @@ de verdade. O guard afirma **números derivados**, não frases.
 Ao abrir um runbook ou um doc de estado **para decidir se algo falta**, a fonte é a
 **tabela de resultados**, nunca o parágrafo de abertura — e, para execução que muta,
 o instrumento é o `audit_log`, que é independente do documento.
+
+### ✅ Guards IMPLEMENTADOS em 2026-09-20 — e o primeiro achou uma quinta instância
+
+`tests/unit/test_resumo_bate_com_o_detalhe.py`, 5 testes: 2 guards, 2 controles
+positivos e 1 asserção exata de faixa.
+
+#### O que o guard 1 achou antes de ficar verde
+
+🔴 **`phase-3b-44-bid-modifier-smoke.md`, viva na `main`:** o resumo dizia
+*"0/7 obrigatórios executados. Nenhuma tool chamada nesta sessão de escrita"*, e a
+tabela logo acima registrava **8 testes `✅ PASS`** com token aplicado (`9A38BHTH`),
+ids de criterion e `provider_request_id`.
+
+Mesmo mecanismo do 3b.42: escrito na sessão de **escrita** do runbook, antes da
+execução, e nunca atualizado. E a mesma armadilha — o resumo convidava a re-executar
+**8 testes que mutam** a conta de teste.
+
+**Confirmado no `audit_log` antes de reescrever qualquer coisa**, que é a disciplina que
+este finding exige: execução em **2026-09-05**, **11 mutações** de `ad_schedule` em
+`1163862076` naquele dia, e o T2 com `provider_request_id: U1bh4UgJJ_DM5vyJaFe9WQ` —
+idêntico ao transcrito na tabela.
+
+#### Desenho do guard 1 — três decisões que não são óbvias
+
+- **O índice da coluna `Result` é derivado do cabeçalho da tabela, nunca fixo.** Ele
+  varia na família: 2 em três runbooks, 3 no 3b.44, que tem uma coluna `Muta?` a mais.
+- **A lista de glifos é do lado EXECUTADO, de propósito.** Enumerar o que conta como
+  executado erra **acusando** (glifo novo vira divergência barulhenta); enumerar o lado
+  "não executado" erraria **absolvendo**, que é o modo calado. E foi preciso: o ⚠️ do
+  `3b.42 T8` (*"⚠️ PASS com bug no preview"*) **não está na legenda** e mesmo assim é
+  usado — a primeira versão contou 9 de 10 e acusou o 3b.42 de mentir quando o errado
+  era o meu casador.
+- **O denominador do `N/M` NÃO é asserido.** Ele não tem definição uniforme: o 3b.44
+  conta "obrigatórios" e exclui um teste opcional, os outros contam o total. Asserir
+  codificaria uma convenção que não existe. O numerador é o que responde *"falta
+  rodar?"*.
+
+#### Desenho do guard 2 — e o erro que o controle pegou
+
+Tolerância de **±10%** no tamanho, **exata** na faixa de IDs. A faixa é o índice do
+arquivo: tolerar deriva ali manda o leitor procurar o que o índice diz não existir.
+
+🔑 **A primeira versão varria o arquivo inteiro e acusava a própria entrada do F187** —
+que transcreve `"~1490 linhas, 151 IDs (F1-F152)"` como evidência do defeito. **O guard
+não distinguia declaração de citação, e acusou a documentação do bug de ser o bug.**
+Corrigido recortando ao cabeçalho **só do catálogo**, que é o único arquivo que contém
+a própria história; quem apenas referencia de fora é varrido inteiro.
+
+E o **controle positivo pegou o excesso dessa correção na hora**: recortar os três
+excluía a declaração do `estado-atual`, que vive numa tabela abaixo do `---`. Sem o
+controle, o guard teria ficado verde varrendo dois arquivos em vez de três.
+
+#### Validação — as duas metades, por caminhos diferentes
+
+| guard | visto VERMELHO contra | como |
+|---|---|---|
+| 1 — resumo × tabela | **a `main` viva** | achou o 3b.44 sozinho, sem sabotagem |
+| 2 — métricas auto-declaradas | **conteúdo pré-fix** | `git show c9700b4^:…` → `~1490` num arquivo de 3.903 (**desvio 62%**) e faixa `F152` contra `F184` real |
+
+O guard 2 **nasceu verde**, porque as métricas foram corrigidas horas antes — era o
+risco previsto na abertura do F187, e o `git show` é o que o desarma sem tocar a árvore
+(nunca `git checkout`).
+
+#### O que continua fora
+
+A duplicação de estado permanece: o tamanho do catálogo segue declarado em **três**
+arquivos. O guard não a elimina — **converte deriva silenciosa em teste vermelho**, que
+é o degrau realista aqui. Eliminar exigiria gerar as três declarações de uma fonte só,
+e nenhum dos três é gerado hoje.
