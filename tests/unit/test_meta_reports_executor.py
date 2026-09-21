@@ -183,7 +183,7 @@ async def test_run_meta_graph_get_records_buc_even_without_ad_account_id_in_para
 
 @pytest.mark.asyncio
 async def test_run_meta_graph_get_skips_rate_counter_when_buc_header_absent() -> None:
-    """Sem header BUC (edge não-insights, por ex.) → record_actual_meta NÃO chamado."""
+    """Resposta sem o header BUC (edge fora de /insights, por ex.) → record_actual_meta NÃO chamado."""
     mid, sid = uuid4(), uuid4()
     fake_pool = _patch_allowed_pool()
 
@@ -206,9 +206,14 @@ async def test_run_meta_graph_get_skips_rate_counter_when_buc_header_absent() ->
             manager_id=mid,
             session_id=sid,
             ad_account_id="act_111",
-            edge="/me/adaccounts",
+            # F190/Task 4: era "/me/adaccounts" — edge que não contém a conta
+            # gateada, par que só passava porque nada amarrava os dois (ver
+            # test_edge_divergente_do_ad_account_gateado_e_recusado). O ponto
+            # deste teste é a ausência do header BUC, não a forma do edge — o
+            # handler acima não devolve o header independente de qual edge é.
+            edge="/act_111/insights",
             params={},
-            operation_name="meta_list_my_ad_accounts",
+            operation_name="meta_get_campaign_performance",
         )
 
     mock_record_actual_meta.assert_not_awaited()

@@ -186,3 +186,43 @@ async def test_erro_4xx_nao_e_retryable() -> None:
         await _rodar(handler)
 
     assert getattr(capturado.value, "retryable", True) is False
+
+
+@pytest.mark.asyncio
+async def test_edge_divergente_do_ad_account_gateado_e_recusado() -> None:
+    """A conta que o gate aprovou tem de ser a conta na URL.
+
+    Hoje os tres chamadores derivam os dois do mesmo valor, entao concordam — e
+    e por isso que os testes de gate existentes passam por cima desta mudanca:
+    eles sempre passam um par casado. O risco e a tool futura cujo edge seja
+    `/{campaign_id}/insights`: gate na conta A, leitura na conta B, num token que
+    alcanca ~24 contas. F57 um andar acima — o gate existe e o escopo dele nao
+    esta amarrado ao que de fato e lido.
+    """
+    from src.meta_ads import reports
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": [], "paging": {}})
+
+    transporte = httpx.MockTransport(handler)
+    cliente_real = httpx.AsyncClient(transport=transporte, timeout=reports._TIMEOUT_GRAPH)
+
+    with (
+        patch.object(reports.httpx, "AsyncClient", MagicMock(return_value=cliente_real)),
+        patch.object(
+            reports.manager_meta_account_access,
+            "can_manager_access",
+            AsyncMock(return_value=True),
+        ),
+        patch.object(reports.connection, "get_pool", return_value=_pool()),
+        patch.object(reports.audit_log, "record", AsyncMock(return_value=1)),
+        pytest.raises(ValueError, match="act_1"),
+    ):
+        await reports.run_meta_graph_get(
+            manager_id=uuid4(),
+            session_id=uuid4(),
+            ad_account_id="act_1",
+            edge="/act_999/insights",  # conta DIFERENTE da gateada
+            params={"level": "campaign"},
+            operation_name="meta_get_campaign_performance",
+        )

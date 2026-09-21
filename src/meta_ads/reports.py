@@ -200,6 +200,16 @@ async def run_meta_graph_get(
             f"Você não tem acesso à conta {ad_account_id}. Peça ao admin pra liberar no painel."
         )
 
+    # F190 — o gate aprovou `ad_account_id`; a requisicao vai para `edge`. Sem
+    # amarrar os dois, o F72 garante que o gate RODA, nao que ele rodou sobre a
+    # conta certa. Falha fechado: prefere recusar uma edge legitima e exotica a
+    # ler uma conta que ninguem gateou.
+    if ad_account_id not in edge:
+        raise ValueError(
+            f"edge {edge!r} nao contem a conta gateada {ad_account_id!r} — "
+            "o gate de acesso e a requisicao apontam para contas diferentes."
+        )
+
     token = settings.meta_system_user_token
     if not token:
         raise MetaSystemUserTokenMissingError(
