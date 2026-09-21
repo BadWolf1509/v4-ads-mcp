@@ -4487,6 +4487,41 @@ que é o corte que alguém esperaria de uma grade.
 partição em blocos precisa da grade **inteira**, e cortar no servidor quebraria o caminho
 default para ganhar nada no caminho raro.
 
-**Guard:** um teste que afirme `ORDER BY` na query montada fecha a forma; não escrito ainda,
-porque o fix não foi feito — escrever o guard antes do fix é o que este repo faz de certo, e
-fica como primeiro passo de quem pegar isto.
+✅ **CORRIGIDO em 2026-09-20 — guard ANTES do fix**, como a própria entrada prescrevia.
+
+`ORDER BY campaign.id, segments.day_of_week, segments.hour` na `day_hour_metrics_query`.
+
+**Guard:** `tests/unit/test_grade_horaria_tem_ordem.py`, **3 testes, os três vistos VERMELHOS**
+contra o código pré-fix e verdes depois. Não são três jeitos de dizer a mesma coisa:
+
+| teste | por que ele sozinho não bastaria |
+|---|---|
+| tem `ORDER BY` | presença; `ORDER BY campaign.id` sozinho passaria **sem resolver nada** |
+| cobre as **três** dimensões | as células de uma campanha seguiriam sem ordem entre si — modo 7 do caderno, asserir o ADJACENTE à invariante |
+| ordem das chaves, do maior agrupamento pro menor | quando o corte dispara, vira prefixo COMPLETO das primeiras campanhas em vez de pedaço de todas |
+
+🔑 **O terceiro teste começou vermelho pelo motivo CERTO com a mensagem ERRADA** —
+`ValueError: substring not found`, porque ele indexava o `ORDER BY` inexistente. Corrigido
+para degradar em asserção antes de rodar o fix: vermelho que não explica é vermelho que a
+próxima sessão interpreta errado.
+
+### Por que o guard é ESTREITO, e a medição que decidiu isso
+
+A invariante tentadora era *"toda query GAQL tem `ORDER BY`"*. **Medido antes de escrever:
+27 funções montam GAQL neste repo e 24 não ordenam** — e na maioria isso está **certo**, são
+pré-flights que buscam entidade por id, onde o chamador indexa por id e ordem não significa
+nada. Guard de classe exigiria 24 isenções: ruído com aparência de rigor.
+
+A invariante real é sobre o **corte**, não sobre a query — *lista que alguém fatia precisa de
+ordem determinística*. Ligar corte a query exige análise de fluxo de dados que **não foi
+feita**, e o guard diz isso na própria docstring em vez de deixar o escopo parecer maior.
+
+**Fora de cobertura, nomeado:** os outros cortes client-side de `src/mcp/tools/` — 21 fatias
+`x[:n]` mapeadas, das quais ~9 truncam resultado que o gestor lê (`rows[:limit]` em
+`get_budget_pacing`, `get_conversion_actions`, `get_recommendations`, `run_gaql`,
+`meta_get_performance_breakdown`, `get_negative_keywords_audit`). Várias vêm de queries que
+ordenam por custo desc, mas **este guard não verifica nenhuma delas.**
+
+**Não verificado em produção ainda** — exige deploy. A verificação é a mesma que achou o
+defeito: duas chamadas de `raw_grid` diferindo só no `limit`, conferindo se agora voltam na
+mesma ordem.
