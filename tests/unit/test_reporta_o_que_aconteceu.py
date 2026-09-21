@@ -300,8 +300,9 @@ def _resposta_add_ops_com_falhas(client: Any, indices: dict[int, str]) -> MagicM
 
     erros = [_FakeError(i, m) for i, m in indices.items()]
 
-    def fake_unpack(target_pb: MagicMock) -> None:
+    def fake_unpack(target_pb: MagicMock) -> bool:
         target_pb.errors = erros
+        return True
 
     raw_any = MagicMock()
     raw_any.type_url = "type.googleapis.com/google.ads.googleads.v24.errors.GoogleAdsFailure"
@@ -624,8 +625,9 @@ async def test_apply_change_do_customer_match_devolve_o_envelope_inteiro(_ctx: A
 
 
 def _failure_com(erros: list[Any], client: MagicMock) -> MagicMock:
-    def fake_unpack(target_pb: MagicMock) -> None:
+    def fake_unpack(target_pb: MagicMock) -> bool:
         target_pb.errors = erros
+        return True
 
     raw_any = MagicMock()
     raw_any.type_url = "type.googleapis.com/google.ads.googleads.v24.errors.GoogleAdsFailure"
