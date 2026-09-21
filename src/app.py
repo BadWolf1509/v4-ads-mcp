@@ -13,6 +13,7 @@ from src.config import get_settings
 from src.db import connection
 from src.logging import configure_logging
 from src.mcp.server import mount_mcp
+from src.mcp.tools._registry import all_tools
 from src.web.middleware import (
     CSRFOriginMiddleware,
     SecurityHeadersMiddleware,
@@ -66,6 +67,15 @@ def create_app(skip_db_init: bool = False) -> FastAPI:
         O smoke do deploy bate /health (shallow) → sempre 200. Com ?deep=1 faz
         SELECT 1 no pool: 200 se o DB responde, 503 'degraded' se não — readiness
         real (antes um deploy com DB inacessível passava no smoke estático).
+
+        F186: `?deep=1` também reporta `tools`, a contagem do registry MCP. É a
+        única parte do stack MCP afirmável SEM credencial, e isso importa porque
+        o smoke autenticado do deploy depende de um token que hoje não há como
+        provisionar — não existe identidade de serviço no Workspace, e
+        `sessions_create` só emite sessão para o próprio manager logado.
+
+        Contagem, nunca os nomes: esta rota é pública. Zero é app de pé com o
+        MCP não montado, e isso é `degraded` — não um 200 silencioso.
         """
         if not deep:
             return JSONResponse({"status": "ok", "version": __version__})
@@ -81,10 +91,22 @@ def create_app(skip_db_init: bool = False) -> FastAPI:
                 exc_type=type(e).__name__,
             )
             return JSONResponse(
-                {"status": "degraded", "version": __version__, "db": "error"},
+                {
+                    "status": "degraded",
+                    "version": __version__,
+                    "db": "error",
+                    "tools": len(all_tools()),
+                },
                 status_code=503,
             )
-        return JSONResponse({"status": "ok", "version": __version__, "db": "ok"})
+        tools = len(all_tools())
+        if tools == 0:
+            log.error("health_deep_registry_vazio")
+            return JSONResponse(
+                {"status": "degraded", "version": __version__, "db": "ok", "tools": 0},
+                status_code=503,
+            )
+        return JSONResponse({"status": "ok", "version": __version__, "db": "ok", "tools": tools})
 
     # Estaticos e HTML saiam sem compressao nenhuma ate 2026-08-11. /mcp fica
     # de fora (SSE) — ver SelectiveGZipMiddleware.
