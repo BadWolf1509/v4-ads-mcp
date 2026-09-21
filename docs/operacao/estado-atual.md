@@ -25,7 +25,7 @@
 | Revisão servindo | **`v4-ads-mcp-00118-xhh`** |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
-| Catálogo | até **F186** (~4.210 linhas) |
+| Catálogo | até **F187** (~4.290 linhas) |
 
 Contagens de tool e bucket vêm do registry (`import_all_tools()`), não de `grep` —
 **`grep` e `ast.literal_eval` já erraram esta medição**, o segundo devolvendo zero (F183).
@@ -58,6 +58,7 @@ duas afirmações falsas sobre o breakdown; o **0.4.1 corrigiu e está instalado
 | **F180** | **em parte, provavelmente para sempre** — a flag `partial_failure` está ligada, mas a falha por-linha **nunca foi exercitada**: o Google aceita operação impossível em vez de errar (campanha `REMOVED`, `final_urls` inválida, anúncio apagado entre preview e apply). O único gatilho conhecido é a variação de experimento, que o **F181 agora bloqueia no pre-flight**. Consequência: `failed_count` é constante zero — leia `efeito` e `changed_count` |
 | **F154** | `/me/adaccounts` não é prova de alcance |
 | **F185** | `recommendation_subscription`: 4 de 11 opacos e **sem chave nenhuma** — limitação da API, sem correção possível deste lado |
+| **F187** | o **resumo no topo** de um artefato é a superfície de decisão e o **detalhe embaixo** é a verdade — 4 instâncias medidas, uma quase custou mutação em conta real. Remédio proposto: derivar o resumo, ou guard que cobre a igualdade |
 | **F186** | 🔴 smoke autenticado do `/mcp` **desarmado** — e o manager dele **não existe**: criar exige identidade de serviço no Workspace, acesso que o gestor **não tem**. **ABERTO como risco ACEITO.** No lugar entrou `tools` no `/health?deep=1` (sem credencial), e o desarme aparece como `::warning::` em todo deploy |
 
 Fechados em 20/09: **F181, F182, F183, F184** — mais a **2ª instância do F182**, que

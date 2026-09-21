@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~4210 linhas, 466 KB, IDs de **F1 a F186** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** só 44 findings têm cabeçalho `## F<n>` próprio e os demais vivem dentro de outras entradas, então toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~4290 linhas, 471 KB, IDs de **F1 a F187** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** só 44 findings têm cabeçalho `## F<n>` próprio e os demais vivem dentro de outras entradas, então toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -4207,3 +4207,80 @@ Uma identidade `@v4company.com` sem caixa postal — alias ou conta de serviço 
 por inteiro: manager com grant zero, pior caso `tools/list`, e a reconciliação não a
 toca. **É um pedido ao TI da V4, não um projeto.** Enquanto não existir, o smoke
 autenticado fica desarmado **por decisão registrada**, que é diferente de esquecido.
+
+---
+
+## F187 (MEDIUM, ABERTO) — o resumo no topo é o que se lê para decidir; o detalhe embaixo é o que está certo
+
+**A classe.** Um artefato com **resumo** e **detalhe** sobre o mesmo fato, onde o resumo
+é a superfície de decisão e o detalhe é a verdade. Quando divergem, a decisão sai pelo
+resumo — e a divergência é **estruturalmente invisível**, porque qualquer auditoria que
+leia o detalhe conclui *"o documento está certo"* e absolve o arquivo.
+
+Foi por isso que sobreviveu tanto tempo em quatro lugares diferentes.
+
+### As quatro instâncias, todas de 2026-09
+
+| artefato | o resumo dizia | o detalhe dizia | custo |
+|---|---|---|---|
+| **Runbook 3b.42** (PR [#95](https://github.com/BadWolf1509/v4-ads-mcp/pull/95)) | *"T4, T7 e T8 seguem sem nunca terem sido chamados"*, *"nenhuma mutação foi aplicada"* | tabela + checklist + `Effective result: 10/10`, com `provider_request_id` e 2 findings nascidos da execução | **quase uma rodada nova de mutação em conta real** |
+| **Cabeçalho do catálogo** (PR [#88](https://github.com/BadWolf1509/v4-ads-mcp/pull/88)) | *"~1490 linhas, **151 IDs** (F1-F152)"*, `Last updated: 2026-09-03` | 3.993 linhas, até F186 | leitor dimensiona errado o arquivo que não pode ler inteiro |
+| **`estado-atual.md`** (PR [#81](https://github.com/BadWolf1509/v4-ads-mcp/pull/81)) | narrativa de 83 KB dizendo *"falta só o merge"* | a tabela **duas telas acima**, no mesmo arquivo, com os 7 PRs mesclados | quem abre para saber onde as coisas estão sai com o oposto |
+| **F186** — deploy verde | `conclusion: success` | `⚠ SMOKE_MCP_BEARER inválido` no log | **8 deploys com o check desarmado** |
+
+A quarta é de outro suporte — pipeline, não documento — e é o que prova que a classe não
+é sobre markdown. É sobre **onde a decisão é tomada** contra **onde o dado está**.
+
+🔑 **O agravante que define a classe:** o detalhe estar **certo** é o que mantém o defeito
+vivo. Nas quatro, uma revisão que abrisse a tabela, o log ou a seção de baixo concluiria
+que está tudo em ordem. **O erro não é um dado errado no arquivo — é qual dos dois dados
+certos alguém lê antes de agir.**
+
+### O custo medido, e ele é meu
+
+A frase *"o smoke 3b.42 parou em 5 de 10"* atravessou **dois PRs no mesmo dia cujo
+propósito declarado era remover afirmação falsa daquele arquivo** — a consolidação da
+manhã (#81) e o fecho da noite (#94). Li o runbook nas duas vezes e **parei no parágrafo
+do topo**. Na terceira vez ela virou um pedido de execução, e só não virou mutação porque
+o `audit_log` foi consultado **antes** de executar, não depois.
+
+**Três leituras do mesmo arquivo, três vezes a mesma conclusão errada.** Não foi
+desatenção pontual: o topo é o que o arquivo oferece primeiro, e quem lê para decidir
+não desce.
+
+E o parágrafo do runbook **avisava exatamente sobre isso** — que documento marcado como
+pendente *"convida a próxima sessão a re-executar mutação numa conta real pra completar o
+smoke"*. Ele emitiu o convite de que avisa. Ponto cego declarado, modo 6 do caderno de
+guards, com o declarante e a vítima no mesmo parágrafo.
+
+### Remédio proposto — padrão: fonte única + derivação
+
+A regra *"atualize o topo junto"* é processo humano no lugar de mecanismo: teste 1 da
+lista de gambiarra do `CLAUDE.md` ("depende de alguém lembrar"). **Não é o remédio.**
+
+O padrão é **não ter duas cópias**: o resumo se **deriva** do detalhe, ou um guard cobra
+a igualdade. Duas partes, as duas mecanizáveis:
+
+1. **Runbooks de smoke — `Effective result` derivado da tabela.** A tabela tem uma coluna
+   de status por teste (✅ / ◐ / 🚫 / ⬜). Um guard conta os ✅ e assere contra o `N/M`
+   escrito no cabeçalho. Vale para a família toda, porque os runbooks saem de um mesmo
+   gerador (`smoke-runbook-generator`).
+2. **Métricas de arquivo que o próprio arquivo declara.** O `findings-catalog.md` diz o
+   próprio tamanho e a própria faixa; o `CLAUDE.md` e o `estado-atual.md` repetem os
+   mesmos números. **São três cópias do mesmo fato** — dívida que já registrei ao criá-la.
+   Um guard mede o arquivo e compara com o declarado, com tolerância, nos três lugares.
+
+**Validação exigida:** os três arquivos estão **corrigidos hoje**, então um guard escrito
+agora nasce verde e não prova nada. O controle é rodar a lógica dele contra o conteúdo
+**pré-fix**, que o git ainda tem — `git show <sha>:<path>` lê sem tocar a árvore (nunca
+`git checkout`, que descarta trabalho não commitado).
+
+**Deliberadamente fora:** tentar casar prosa do resumo contra prosa do detalhe. Isso é
+casador de linguagem natural, erra pelo que não está na lista, e seria a terceira fonte
+de verdade. O guard afirma **números derivados**, não frases.
+
+### O que fazer enquanto não há guard
+
+Ao abrir um runbook ou um doc de estado **para decidir se algo falta**, a fonte é a
+**tabela de resultados**, nunca o parágrafo de abertura — e, para execução que muta,
+o instrumento é o `audit_log`, que é independente do documento.
