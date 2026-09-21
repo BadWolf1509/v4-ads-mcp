@@ -21,11 +21,19 @@ name: Liveness do smoke autenticado
 # passo 1. Fechar esse ultimo furo exigiria vigia FORA do GitHub, que e
 # desproporcional para uma ferramenta interna com um dev.
 
+# SEM `schedule`, de proposito (20/09). O agendamento diario nasceu para
+# DESCOBRIR que o smoke estava desarmado — e descobriu: 8 de 8 deploys desde
+# 18/09. Descoberta feita, virou acompanhamento, e acompanhamento nao mora num
+# vermelho diario que ninguem pode limpar: provisionar o token exige identidade
+# de servico no Workspace, acesso que o gestor nao tem. Alarme que nao se pode
+# resolver treina todo mundo a ignorar vermelho, e ai o proximo alarme de
+# verdade passa batido.
+#
+# O estado continua VISIVEL onde importa: cada deploy carrega a anotacao
+# `::warning::` do passo 1. Este workflow fica como verificacao SOB DEMANDA —
+# no dia em que o token existir, rode-o para confirmar que armou, e reponha o
+# `schedule` (o alarme volta a fazer sentido quando ha o que consertar).
 on:
-  schedule:
-    # 11:17 UTC = 08:17 BRT. Minuto quebrado de proposito: cron no topo da hora
-    # entra na fila mais concorrida do GitHub e atrasa sem avisar.
-    - cron: "17 11 * * *"
   workflow_dispatch: {}
 
 concurrency:

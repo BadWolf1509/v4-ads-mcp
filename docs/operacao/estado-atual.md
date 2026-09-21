@@ -49,7 +49,7 @@ duas afirmações falsas sobre o breakdown; o **0.4.1 corrigiu e está instalado
   Runbook: [`phase-3b-42-ad-schedule-smoke.md`](phase-3b-42-ad-schedule-smoke.md).
 - **F129** — governança do system user Meta: ação humana, fora do código.
 - **F67** — custom domain `mcpv4.fluxocerto.dev.br`, pendente via LB.
-- **Reemitir o `SMOKE_MCP_BEARER`** (F186) — re-arma o smoke autenticado do `/mcp` imediatamente. É credencial: criação e instalação são do gestor, não da sessão.
+- **Pedir ao TI da V4 uma identidade `@v4company.com` sem caixa postal** (alias ou conta de serviço) — é o que **desbloqueia o F186 por inteiro**: manager com grant zero, pior caso de vazamento `tools/list`, e a reconciliação não a toca. Sem ela não há token de CI possível: `sessions_create` só emite para o próprio manager logado, e login exige identidade Google do domínio. **Emitir sob um manager existente está recusado** — poria no GitHub Actions um token com alcance de ~38 contas Google e 26 Meta.
 - **Varredura de `recommendation_subscription` sobre o MCC** — pedida pela sessão de tráfego a partir do F185. **Recomendado:** a tool de LEITURA, desenhada para varrer **só o que o gestor já alcança** (varredura que vê além do hard-gate de acesso vira caminho lateral para o gate) e para **contar os opacos em vez de descartá-los**. **Não recomendada:** a tool de escrita — o F185 mostra que 4 de 11 não têm chave, então ela alcançaria 7 de 11 e seria obrigada a dizer isso.
 
 ## Findings abertos
@@ -61,7 +61,7 @@ duas afirmações falsas sobre o breakdown; o **0.4.1 corrigiu e está instalado
 | **F180** | **em parte** — ver abaixo |
 | **F154** | `/me/adaccounts` não é prova de alcance |
 | **F185** | `recommendation_subscription`: 4 de 11 opacos e **sem chave nenhuma** — limitação da API, sem correção possível deste lado |
-| **F186** | 🔴 o smoke autenticado do `/mcp` **está desarmado** (token vencido) — 8 de 8 deploys amostrados desde 18/09. Passos 1 e 3 **feitos** (o desarme vira `::warning::` e um workflow diário cobra); **falta o passo 2, que é credencial e é do gestor** |
+| **F186** | 🔴 smoke autenticado do `/mcp` **desarmado** — e o manager dele **não existe**: criar exige identidade de serviço no Workspace, acesso que o gestor **não tem**. **ABERTO como risco ACEITO.** No lugar entrou `tools` no `/health?deep=1` (sem credencial), e o desarme aparece como `::warning::` em todo deploy |
 
 Fechados em 20/09: **F181, F182, F183, F184** (sprint de RSA, abaixo) — mais a
 **2ª instância do F182**, que fechou a *classe*: só o `apply_change` descreve a

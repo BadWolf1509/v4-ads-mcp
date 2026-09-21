@@ -4130,3 +4130,80 @@ credencial: criação e instalação são do gestor, não da sessão.**
 Enquanto isso não acontecer, o efeito prático permanece: o smoke autenticado não roda, e
 todo deploy fecha verde tendo medido menos do que parece. A diferença é que agora **isso
 aparece** no resumo de cada deploy e **falha** todo dia às 08:17.
+
+### 🔴 Adendo (2026-09-20): o passo 2 não é "reemitir" — o manager do smoke NÃO EXISTE
+
+Ao levantar o passo a passo da reemissão, a premissa caiu. **Medido no banco de
+produção, leitura apenas:**
+
+| | |
+|---|---|
+| Sessões MCP | **10**, nenhuma rotulada `smoke` — nem entre as 3 revogadas, e **0 órfãs** |
+| Managers | **4**: `wellington` (admin), `anderson`, `lucassoares`, `pedro.vytor` |
+| Grants de cada um | **36–38 contas Google + 26 Meta** — **nenhum manager com grant zero** |
+
+O comentário do `deploy.yml` descreve o Bearer como *"um manager **smoke** SEM nenhum
+grant"*, com o argumento de que *"pior caso de vazamento = `tools/list`"`*. **Esse manager
+nunca apareceu nesta base.** Não há o que reemitir; há que **criar** — e aí o caminho
+fecha por três constatações, nesta ordem:
+
+1. **`sessions_create` fixa `manager_id=user.id`** (`src/web/routes/sessions.py:348`).
+   **Não existe rota de admin que emita sessão para outro manager** — token só nasce de
+   alguém logado, para si mesmo.
+2. **Login exige identidade Google do domínio corporativo** (`is_allowed_email`,
+   `src/auth/domain_check.py:14`). Uma identidade de serviço precisa existir no Workspace.
+3. **O gestor não tem acesso para criar contas no Workspace da v4company.com.** Isso é
+   pedido ao TI, não tarefa de código.
+
+✅ **Uma objeção que foi levantada e NÃO se aplica:** o medo de a reconciliação matar uma
+identidade de serviço. Ela revoga **grants** contra as plataformas de anúncio
+(`manager_account_access` / `manager_meta_account_access`), não **managers** contra um
+diretório. Registrado para não ser reinventado como bloqueio.
+
+**Emitir sob um manager existente está RECUSADO:** colocaria no GitHub Actions um token
+com alcance de ~38 contas Google e 26 Meta. Isso inverte a premissa de segurança que
+justificava o smoke — de *"pior caso = `tools/list`"* para *"pior caso = a MCC inteira"*.
+
+### 🔑 E o alarme do passo 3 era para uma condição que ninguém pode limpar
+
+Erro meu, de desenho, e vale mais que o fix: **montei um dead man's switch cujo remédio
+está fora do alcance de quem recebe o alarme.** Vermelho diário permanente não é
+vigilância — é como se treina uma equipe a ignorar vermelho, e é assim que o **próximo**
+alarme de verdade passa batido.
+
+O agendamento cumpriu o que devia: **descobrir**. Ninguém sabia que o smoke estava
+desligado havia 8 deploys; agora se sabe. Descoberta feita, virou **acompanhamento** — e
+acompanhamento mora no catálogo e na anotação por deploy, não num cron.
+
+**`schedule` removido; `workflow_dispatch` mantido.** No dia em que o token existir, rodar
+o dispatch confirma que armou, e o `schedule` volta — porque aí o alarme tem o que cobrar.
+
+### ✅ O que entrou no lugar: um check que não precisa de credencial
+
+`/health?deep=1` passa a reportar **`tools`**, a contagem do registry MCP, e o smoke do
+deploy afirma que ela é **não-zero**. Rota pública: **contagem, nunca os nomes**.
+
+**Cobre:** app de pé **com o MCP montado** — a regressão mais provável de bump de
+dependência e de refactor, e a que hoje passava com `/health` verde e 401 no portão.
+**Não cobre:** a resolução `Bearer → sessão` e o **streaming SSE** de um `tools/list`
+real. Essas duas só o smoke autenticado alcança, e ele segue desarmado.
+
+**Não é substituto; é a parte afirmável sem credencial.** Um check que roda vale mais que
+um check que não pode ser provisionado.
+
+Zero é `degraded` **503**, não 200 silencioso — e o campo existe **também** no ramo de DB
+em erro, porque "não reportou" e "registry vazio" não podem parecer a mesma coisa para um
+`grep`. É a regra do próprio F182 aplicada ao remédio dele.
+
+**Guard:** `tests/unit/test_health_reporta_o_registry.py`, 3 testes, com a asserção
+**derivada** (`len(all_tools())`) e nunca um literal — contagem escrita à mão num teste é
+segunda fonte de verdade e mente na primeira tool nova. Um dos três existe só para provar
+que o registry não veio vazio no ambiente de teste, senão a asserção derivada passaria
+por vacuidade comparando zero com zero.
+
+### Estado: ABERTO como risco ACEITO, com o desbloqueio nomeado
+
+Uma identidade `@v4company.com` sem caixa postal — alias ou conta de serviço — resolve
+por inteiro: manager com grant zero, pior caso `tools/list`, e a reconciliação não a
+toca. **É um pedido ao TI da V4, não um projeto.** Enquanto não existir, o smoke
+autenticado fica desarmado **por decisão registrada**, que é diferente de esquecido.
