@@ -83,7 +83,11 @@ class _Progresso:
     create_id: str = ""
     add_id: str = ""
     run_id: str = ""
-    membros_recusados: list[dict[str, Any]] = field(default_factory=list)
+    # `None` = a leitura do `partial_failure_error` nao foi confiavel (ver
+    # `LeituraDeFalhas.medido`). Lista vazia continua significando "medi e o
+    # Google nao recusou ninguem" — sao coisas diferentes, e antes as duas
+    # eram `[]`.
+    membros_recusados: list[dict[str, Any]] | None = field(default_factory=list)
 
     @property
     def etapa(self) -> str:
@@ -105,7 +109,7 @@ class _Progresso:
     def ultimo_request_id(self) -> str:
         return self.run_id or self.add_id or self.create_id
 
-    def submetidos(self, member_count: int) -> int:
+    def submetidos(self, member_count: int) -> int | None:
         """Quantos membros o Google reconhecidamente RECEBEU — nunca o tentado.
 
         Zero enquanto o passo 2 nao devolveu: parada no `create_job` nao
@@ -123,10 +127,21 @@ class _Progresso:
         deixa a PII no Google com `add_id` vazio, e aqui isso vira 0. Subestimar
         e o lado seguro — a trilha carrega `etapa` e `job_resource_name` para
         quem precisa investigar o caso ambiguo.
+
+        `None` quando a leitura das recusas nao foi confiavel: subtrair de uma
+        lista que nao se conseguiu ler devolveria o lote INTEIRO como aceito,
+        que e a afirmacao mais cara desta tool.
         """
         if not self.pii_anexada:
             return 0
+        if self.membros_recusados is None:
+            return None
         return member_count - len(self.membros_recusados)
+
+
+def _quantos(recusados: list[dict[str, Any]] | None) -> int | None:
+    """`len`, ou `None` quando a leitura nao foi confiavel."""
+    return None if recusados is None else len(recusados)
 
 
 def _build_user_data_operations(
@@ -309,10 +324,17 @@ async def run_offline_user_data_job(
                 origem="run_offline_user_data_job",
                 customer_id=customer_id,
             )
-            progresso.membros_recusados = [
-                {"index": idx, "error_code": e.error_code, "error_message": e.error_message}
-                for idx, e in sorted(leitura.erros.items())
-            ]
+            # Tres campos que descrevem a mesma coisa desconhecida dizem
+            # desconhecido juntos: `membros_recusados=None` propaga para
+            # `members_failed` e `members_submitted` mais abaixo.
+            progresso.membros_recusados = (
+                [
+                    {"index": idx, "error_code": e.error_code, "error_message": e.error_message}
+                    for idx, e in sorted(leitura.erros.items())
+                ]
+                if leitura.medido
+                else None
+            )
 
             # Step 3: Run job (fire-and-forget)
             reset_request_id()
@@ -397,7 +419,7 @@ async def run_offline_user_data_job(
                     # o lote inteiro como submetido nos dois casos. `member_count`
                     # (o tentado) continua ao lado, em `audit_params`.
                     "members_submitted": progresso.submetidos(member_count),
-                    "members_failed": len(progresso.membros_recusados),
+                    "members_failed": _quantos(progresso.membros_recusados),
                 },
                 provider_request_id=progresso.ultimo_request_id,
                 status=status,
@@ -443,7 +465,7 @@ async def run_offline_user_data_job(
         customer_id=customer_id,
         job_resource_name=progresso.job_resource_name,
         members_submitted=members_submitted,
-        members_failed=len(progresso.membros_recusados),
+        members_failed=_quantos(progresso.membros_recusados),
     )
 
     return {
@@ -454,6 +476,6 @@ async def run_offline_user_data_job(
         # R1-I3: o que o Google ACEITOU. Antes era `member_count` cru — o lote
         # inteiro, recusados inclusive.
         "members_submitted": members_submitted,
-        "members_failed": len(progresso.membros_recusados),
+        "members_failed": _quantos(progresso.membros_recusados),
         "failures": progresso.membros_recusados,
     }
