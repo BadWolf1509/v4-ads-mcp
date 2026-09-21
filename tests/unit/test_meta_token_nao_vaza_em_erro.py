@@ -23,6 +23,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+import httpx
 import pytest
 
 SENTINELA = "SENTINELA_TOKEN_NAO_E_SEGREDO"
@@ -42,6 +43,16 @@ async def _falha_de_transporte_carregando_o_token() -> tuple[str, list[Any], lis
     """Roda o executor contra um transporte que levanta com o token na mensagem.
 
     Devolve `(mensagem_amigavel, kwargs_do_audit, eventos_de_log)`.
+
+    F190/Task 3 (21/09): a falha nascia de `build_meta_api` mockado — depois da
+    troca de transporte esse nome nem existe mais em `reports`. O acionador
+    agora e um `httpx.MockTransport` cujo handler levanta a mesma excecao de
+    antes. Com header auth a URL de verdade NUNCA carrega o token (essa e a
+    invariante que a Task 3 fecha por construcao) — esta falha aqui e
+    FABRICADA de proposito, pra provar que a redacao (defesa em profundidade)
+    segura mesmo se um token aparecer por outro caminho que ninguem previu. As
+    TRES assercoes dos testes abaixo e o SENTINELA ficam identicos; só a forma
+    de acionar a falha muda.
     """
     from src.meta_ads import reports
 
@@ -51,6 +62,9 @@ async def _falha_de_transporte_carregando_o_token() -> tuple[str, list[Any], lis
         f"https://graph.facebook.com/v22.0/act_1/insights?access_token={SENTINELA}&level=campaign"
     )
     erro = ConnectionError(f"Max retries exceeded with url: {url_com_token}")
+
+    def _handler_que_falha(_request: httpx.Request) -> httpx.Response:
+        raise erro
 
     audit_chamadas: list[Any] = []
     eventos: list[Any] = []
@@ -66,11 +80,11 @@ async def _falha_de_transporte_carregando_o_token() -> tuple[str, list[Any], lis
     log_falso.warning = _warning
     log_falso.info = MagicMock()
 
-    api_falso = MagicMock()
-    api_falso.call = MagicMock(side_effect=erro)
+    transporte = httpx.MockTransport(_handler_que_falha)
+    cliente_real = httpx.AsyncClient(transport=transporte, timeout=reports._TIMEOUT_GRAPH)
 
     with (  # noqa: SIM117
-        patch.object(reports, "build_meta_api", MagicMock(return_value=api_falso)),
+        patch.object(reports.httpx, "AsyncClient", MagicMock(return_value=cliente_real)),
         patch.object(
             reports.manager_meta_account_access,
             "can_manager_access",

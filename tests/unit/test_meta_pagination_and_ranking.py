@@ -24,6 +24,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+import httpx
 import pytest
 
 
@@ -48,29 +49,22 @@ def _campanha(nome: str, spend: str) -> dict[str, Any]:
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_executor_segue_paginacao_e_junta_as_paginas() -> None:
-    """F88: com max_pages>1, as linhas das paginas seguintes entram no resultado."""
+async def _rodar(handler: Any, *, max_pages: int) -> dict[str, Any]:
+    """Roda o executor contra um transporte httpx falso (MockTransport).
+
+    F190/Task 3 (21/09): o fake mudou de `api.call` (SDK, mockado via
+    `build_meta_api`) pra `httpx.MockTransport` — aquele nome nem existe mais
+    no caminho. O que os dois testes abaixo AFIRMAM nao mudou: paginas seguidas
+    entram no resultado, e o teto de paginas + o sinal de truncamento
+    sobrevivem. So o mecanismo de fake mudou.
+    """
     from src.meta_ads import reports
 
-    paginas = [
-        _pagina([_campanha("a", "10")], "https://graph.facebook.com/next-1"),
-        _pagina([_campanha("b", "20")], None),
-    ]
-    chamadas = {"n": 0}
-
-    def fake_call(method: str, path: Any, params: dict[str, Any]) -> MagicMock:
-        resp = MagicMock()
-        resp.json = MagicMock(return_value=paginas[chamadas["n"]])
-        resp.headers = MagicMock(return_value={})
-        chamadas["n"] += 1
-        return resp
-
-    api = MagicMock()
-    api.call = fake_call
+    transporte = httpx.MockTransport(handler)
+    cliente_real = httpx.AsyncClient(transport=transporte, timeout=reports._TIMEOUT_GRAPH)
 
     with (
-        patch.object(reports, "build_meta_api", MagicMock(return_value=api)),
+        patch.object(reports.httpx, "AsyncClient", MagicMock(return_value=cliente_real)),
         patch.object(
             reports.manager_meta_account_access,
             "can_manager_access",
@@ -79,56 +73,48 @@ async def test_executor_segue_paginacao_e_junta_as_paginas() -> None:
         patch.object(reports.connection, "get_pool", return_value=_pool()),
         patch.object(reports.audit_log, "record", AsyncMock(return_value=1)),
     ):
-        corpo = await reports.run_meta_graph_get(
+        return await reports.run_meta_graph_get(
             manager_id=uuid4(),
             session_id=uuid4(),
             ad_account_id="act_1",
             edge="/act_1/insights",
             params={"level": "campaign"},
             operation_name="meta_get_campaign_performance",
-            max_pages=5,
+            max_pages=max_pages,
         )
 
+
+@pytest.mark.asyncio
+async def test_executor_segue_paginacao_e_junta_as_paginas() -> None:
+    """F88: com max_pages>1, as linhas das paginas seguintes entram no resultado."""
+    paginas = [
+        _pagina([_campanha("a", "10")], "https://graph.facebook.com/next-1"),
+        _pagina([_campanha("b", "20")], None),
+    ]
+    vistas: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        vistas.append(request)
+        return httpx.Response(200, json=paginas[len(vistas) - 1])
+
+    corpo = await _rodar(handler, max_pages=5)
+
     assert [r["campaign_id"] for r in corpo["data"]] == ["a", "b"]
-    assert chamadas["n"] == 2
+    assert len(vistas) == 2
 
 
 @pytest.mark.asyncio
 async def test_executor_respeita_o_teto_de_paginas_e_preserva_o_sinal() -> None:
     """F88: parar no teto e legitimo, mas o `paging.next` da ultima pagina fica
     visivel pro caller saber que ficou dado pra tras."""
-    from src.meta_ads import reports
 
-    def fake_call(method: str, path: Any, params: dict[str, Any]) -> MagicMock:
-        resp = MagicMock()
-        resp.json = MagicMock(
-            return_value=_pagina([_campanha("x", "1")], "https://graph.facebook.com/sempre-mais")
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=_pagina([_campanha("x", "1")], "https://graph.facebook.com/sempre-mais"),
         )
-        resp.headers = MagicMock(return_value={})
-        return resp
 
-    api = MagicMock()
-    api.call = fake_call
-
-    with (
-        patch.object(reports, "build_meta_api", MagicMock(return_value=api)),
-        patch.object(
-            reports.manager_meta_account_access,
-            "can_manager_access",
-            AsyncMock(return_value=True),
-        ),
-        patch.object(reports.connection, "get_pool", return_value=_pool()),
-        patch.object(reports.audit_log, "record", AsyncMock(return_value=1)),
-    ):
-        corpo = await reports.run_meta_graph_get(
-            manager_id=uuid4(),
-            session_id=uuid4(),
-            ad_account_id="act_1",
-            edge="/act_1/insights",
-            params={"level": "campaign"},
-            operation_name="meta_get_campaign_performance",
-            max_pages=3,
-        )
+    corpo = await _rodar(handler, max_pages=3)
 
     assert len(corpo["data"]) == 3  # parou no teto
     assert (corpo.get("paging") or {}).get("next"), "o sinal de 'ha mais' tem que sobreviver"

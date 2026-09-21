@@ -104,4 +104,9 @@ def to_friendly_meta_error(e: Exception) -> MetaAdsFriendlyError:
             retryable=False,
         )
 
+    from src.meta_ads.reports import MetaGraphHTTPError  # noqa: PLC0415
+
+    if isinstance(e, MetaGraphHTTPError):
+        return MetaAdsFriendlyError(_redigir(str(e)), retryable=e.retryable)
+
     return MetaAdsFriendlyError(f"Erro inesperado: {_redigir(str(e))}", retryable=False)

@@ -345,27 +345,36 @@ def _ofensores_f57_meta(
 def test_meta_graph_execution_is_contained() -> None:
     """F57-Meta: build_meta_api (o factory de execução com o system-user token) só
     pode ser chamado dentro de run_meta_graph_get (reports.py), que aplica o gate.
-    Uma tool que chame direto pularia o hard-gate incondicional."""
+    Uma tool que chame direto pularia o hard-gate incondicional.
+
+    F190/Task 3 (21/09): `run_meta_graph_get` passou a falar Graph API por
+    httpx com auth em header — `build_meta_api` perdeu o ÚNICO call-site vivo
+    que este guard conhecia. O piso de não-vacuidade que vivia aqui (`assert
+    vistas`) existia pra impedir o guard de passar por CASAMENTO QUEBRADO (a
+    factory renomeada e ninguém atualizou o nome procurado). Essa não é a
+    situação agora: zero é o valor ESPERADO, porque a migração terminou o
+    trabalho, não porque o padrão parou de casar. A Task 6 desta mesma SDD
+    apaga `build_meta_api` de vez de `client.py` — quando isso acontecer, este
+    guard fica sem sujeito e deve ser REMOVIDO junto (não só afrouxado de
+    novo), porque não há mais fato nenhum pra verificar.
+
+    O que continua de pé — e por isso a segunda asserção não sai daqui — é
+    "nenhuma chamada FORA do executor autorizado": se algum código futuro
+    ressuscitar uma chamada direta a `build_meta_api` (ex.: revert parcial),
+    ainda queremos ser avisados.
+    """
     arquivo_do_executor, nome_do_executor = _EXECUTOR_META
     ofensores: list[str] = []
-    vistas = 0
     for p in h.fontes_py():
         arv = h.arvore(p)
         autorizado = nome_do_executor if h.rel(p) == arquivo_do_executor else None
-        vistas += sum(
-            len(h.chama_no_corpo_proprio(e, "build_meta_api", arv=arv))
-            for e in (arv, *h.funcoes(arv))
-        )
         ofensores.extend(
             f"{h.rel(p)}:{linha} (em {nome})"
             for nome, linha in _ofensores_f57_meta(arv, executor_autorizado=autorizado)
         )
 
-    assert vistas, (
-        "F57-Meta — nenhuma chamada a build_meta_api em src/. Guard que varre "
-        "zero call-sites passa por vacuidade: a factory foi renomeada, ou o "
-        "casamento quebrou."
-    )
+    # NAO restaurar "assert vistas" sem restaurar tambem um call-site real —
+    # senao o proximo refactor so reaprende esta mesma licao (ver docstring).
     assert not ofensores, (
         f"F57-Meta — build_meta_api chamado fora de {nome_do_executor}: {ofensores}. "
         "Toda leitura Meta deve passar por run_meta_graph_get (gate "
