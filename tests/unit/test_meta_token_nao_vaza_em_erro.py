@@ -169,3 +169,53 @@ def test_o_redator_nao_mexe_em_texto_sem_credencial() -> None:
 
     limpo = "Erro Meta API (100/None): Tried accessing nonexisting field (ad_id)"
     assert _redigir(limpo) == limpo
+
+
+def test_o_redator_cobre_aspas_coladas_e_formato_json() -> None:
+    """F190 round 1: a primeira versao do regex so conhecia `nome=valor` sem
+    aspas coladas — e essas TRES formas reais vazavam contra ela:
+
+    - `access_token="X"`: a aspa colada no `=` fazia o `[^&\\s"']+` falhar de
+      cara (o primeiro char depois do `=` ja era aspa, que a classe nega).
+    - `{"access_token": "X"}`: JSON usa `:`, e o regex antigo so conhecia `=`.
+    - `{'client_secret': 'X'}`: mesma lacuna do `:`, e aspa simples nem era
+      cogitada.
+
+    O contrato e esta lista de casos, nao o regex — cada forma tem de perder
+    o valor E manter o nome do parametro (senao o log perde o diagnostico
+    junto com o segredo).
+    """
+    from src.meta_ads.errors import _redigir
+
+    caso_aspas_coladas = f'access_token="{SENTINELA}"'
+    redigido = _redigir(caso_aspas_coladas)
+    assert SENTINELA not in redigido, f"vazou em aspas coladas: {redigido!r}"
+    assert redigido == 'access_token="<REDIGIDO>"'
+
+    caso_json_aspas_duplas = f'{{"access_token": "{SENTINELA}"}}'
+    redigido = _redigir(caso_json_aspas_duplas)
+    assert SENTINELA not in redigido, f"vazou em JSON aspas duplas: {redigido!r}"
+    assert redigido == '{"access_token": "<REDIGIDO>"}'
+
+    caso_json_aspas_simples = f"{{'client_secret': '{SENTINELA}'}}"
+    redigido = _redigir(caso_json_aspas_simples)
+    assert SENTINELA not in redigido, f"vazou em JSON/repr aspas simples: {redigido!r}"
+    assert redigido == "{'client_secret': '<REDIGIDO>'}"
+
+
+def test_o_redator_cobre_client_secret_isolado() -> None:
+    """O brief nomeia tres parametros obrigatorios (access_token, appsecret_proof,
+    client_secret); so os dois primeiros tinham teste dedicado ate agora.
+    `client_secret` aparece no fluxo OAuth (troca de `code` por token), nao no
+    SDK — cobrir em isolamento, no mesmo padrao do teste de appsecret_proof.
+    """
+    from src.meta_ads.errors import _redigir
+
+    redigido = _redigir(
+        f"POST https://graph.facebook.com/v22.0/oauth/access_token"
+        f"?client_id=123456&client_secret={SENTINELA}&redirect_uri=https://x"
+    )
+    assert SENTINELA not in redigido
+    assert "client_secret=<REDIGIDO>" in redigido
+    assert "client_id=123456" in redigido, "parametro nao-sensivel tem de sobreviver"
+    assert "redirect_uri=https://x" in redigido, "parametro nao-sensivel tem de sobreviver"

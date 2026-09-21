@@ -22,8 +22,18 @@ CODIGOS_DE_THROTTLE = frozenset({4, 17, 613, 80004})
 # A primeira e o transporte nao pôr o token na URL (Task 3). Esta existe porque
 # uma camada so e a que falha, e este finding e a prova: a invariante do F82
 # estava escrita e mesmo assim o vazamento ficou aberto num dos dois caminhos.
+#
+# Round 1 do F190 (revisao) mediu que a primeira versao deste regex — so
+# `nome=valor` sem aspas coladas — deixava passar TRES formas reais:
+# `access_token="X"` (aspa colada no `=`), `{"access_token": "X"}` (JSON,
+# separador `:`, aspas duplas) e `{'client_secret': 'X'}` (JSON/repr Python,
+# aspas simples). O separador cobre `=` OU `:`, com aspa simples OU dupla
+# opcional de cada lado — sondado empiricamente contra os quatro casos antes
+# de entrar aqui (ver tests abaixo).
 _PARAMS_SENSIVEIS = re.compile(
-    r"(access_token|appsecret_proof|client_secret)=[^&\s\"']+",
+    r"(access_token|appsecret_proof|client_secret)"  # nome
+    r"([\"']?\s*[:=]\s*[\"']?)"  # separador: = ou :, com aspa simples/dupla opcional
+    r"[^&\s\"']+",  # valor
     re.IGNORECASE,
 )
 
@@ -33,8 +43,18 @@ def _redigir(texto: str) -> str:
 
     Preserva o nome de proposito: quem le o log precisa saber QUE havia um token
     ali — apagar o par inteiro esconderia a propria ocorrencia do problema.
+
+    O que esta denylist NAO alcanca: qualquer credencial que nao esteja
+    imediatamente colada a um dos tres nomes reconhecidos via `=` ou `:`. Em
+    particular, token citado em PROSA pela propria API Graph — por exemplo
+    `"Cannot parse access token: X"` (formato real de erro) usa "access token"
+    com espaco, nao o literal `access_token` — nao tem a ancora `nome=`/`nome:`
+    que este regex procura, e nenhuma denylist por nome de parametro chega la.
+    Essa e a razao de esta camada ser a SEGUNDA linha de defesa, nao a unica:
+    a primeira (Task 3) e o transporte nunca por o token na URL/corpo em
+    primeiro lugar.
     """
-    return _PARAMS_SENSIVEIS.sub(r"\1=<REDIGIDO>", texto)
+    return _PARAMS_SENSIVEIS.sub(r"\1\2<REDIGIDO>", texto)
 
 
 @dataclass(slots=True, frozen=True)
