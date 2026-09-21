@@ -25,7 +25,7 @@
 | Revisão servindo | **`v4-ads-mcp-00121-hlq`** — `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O handshake MCP **autenticado NÃO foi conferido**: segue desarmado (F186), então "registry montado" aqui é o que o health afirma, não o que um `tools/list` provou |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
-| Catálogo | até **F188** (~4.540 linhas, 488 KB) |
+| Catálogo | até **F189** (~4.600 linhas, 492 KB) |
 
 **Caminho de mutação verificado após os bumps de 20/09** (`grpcio` 1.84, `google-auth`
 2.58, `google-api-core` 2.38): duas mutações reais em `1163862076` com

@@ -190,7 +190,7 @@ async def meta_get_performance_breakdown(
     }
     if truncated:
         resultado["truncated_hint"] = (
-            "Há mais linhas do que as páginas lidas. O ranking devolvido É o topo "
+            "Há mais linhas do que o `limit` pedido. O ranking devolvido É o topo "
             "real por gasto (ordenação no servidor, antes do corte) — ficou de fora "
             "a cauda de menor gasto. Reduza o nível de detalhe pra ver tudo."
         )

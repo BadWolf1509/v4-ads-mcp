@@ -28,10 +28,17 @@ from src.meta_ads.account_overview import resolve_meta_date_window
 from src.meta_ads.insights import Level, build_insights_call, parse_insights_row
 from src.meta_ads.reports import run_meta_graph_get
 
-# F88: teto de páginas por chamada. Cada página é 1 request Graph (conta no BUC),
-# então isto limita o custo; a flag `truncated` avisa quando o teto cortou e o
-# ranking pode não conter o verdadeiro topo.
-_MAX_PAGES = 5
+# F189: UMA página. O F88 lia 5 e cortava em `limit` depois — mas o mesmo F88
+# ligou `sort=spend_descending` SERVER-SIDE (sondado com controle positivo), e
+# com ele a página 1 JÁ é o topo por gasto. As 4 páginas extras gastavam request
+# Graph (BUC de um token compartilhado por 24 contas) sem melhorar o ranking, e
+# eram o que tornava `truncated` ambíguo: com a conta entre `limit+1` e
+# `5*limit` entidades os dados acabavam ANTES do teto, não sobrava `next`, e
+# `truncated: false` saía tendo descartado linhas.
+#
+# Com uma página, `truncated` = "sobrou `next`" significa exatamente o que a
+# description promete — ficou cauda de menor gasto — e `rows[:limit]` vira no-op.
+_MAX_PAGES = 1
 
 
 def meta_account_not_found_error(ad_account_id: str) -> dict[str, Any]:
@@ -146,9 +153,9 @@ async def run_meta_level_performance(
     }
     if truncated:
         resultado["truncated_hint"] = (
-            f"A conta tem mais entidades do que as {_MAX_PAGES} páginas lidas. "
+            f"A conta tem mais entidades do que o `limit` pedido ({limit}). "
             "O ranking devolvido É o topo real por gasto (a ordenação acontece no "
             "servidor, antes do corte) — o que ficou de fora é a cauda de menor "
-            "gasto. Pra visão completa, consulte o Gerenciador de Anúncios."
+            "gasto. Peça um `limit` maior, ou consulte o Gerenciador de Anúncios."
         )
     return resultado
