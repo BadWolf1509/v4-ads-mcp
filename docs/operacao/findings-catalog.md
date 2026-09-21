@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~4490 linhas, 478 KB, IDs de **F1 a F188** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** só 44 findings têm cabeçalho `## F<n>` próprio e os demais vivem dentro de outras entradas, então toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~4540 linhas, 488 KB, IDs de **F1 a F188** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** só 44 findings têm cabeçalho `## F<n>` próprio e os demais vivem dentro de outras entradas, então toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -4460,12 +4460,23 @@ if args.get("raw_grid", False):
 
 ### O que isso custa
 
-1. **Ordem não reprodutível.** Duas execuções da mesma chamada não são diffáveis, o que
-   atrapalha exatamente quem usa `raw_grid` — alguém conferindo célula a célula.
-2. **Quando trunca, a fatia é arbitrária.** Não é "as N primeiras por custo", nem por dia,
-   nem por nada: é o que o Google mandou primeiro naquela chamada. `truncated: true` diz
-   que cortou, **não diz o quê** — e não há critério que torne "as primeiras N"
-   significativas. **Uma amostra arbitrária apresentada como grade.**
+**Ordem não reprodutível.** Duas execuções da mesma chamada não são diffáveis, o que
+atrapalha exatamente quem usa `raw_grid` — alguém conferindo célula a célula.
+
+⚠️ **O segundo custo foi RETIRADO em 2026-09-21, ao verificar o fix em produção.** Esta
+entrada afirmava também que *"quando trunca, a fatia é arbitrária… uma amostra arbitrária
+apresentada como grade"*. **Isso não era alcançável.** O teto do `raw_grid` é
+`168 * len(campaign_ids)`, e a conjunta produz no máximo uma célula por
+`(campanha, dia, hora)` — 168 por campanha, porque `parse_day_hour_row` emite uma por
+linha e o GAQL torna a chave única. Logo `len(celulas) > teto` é **falso por construção**:
+o corte existe como defesa, não como caminho vivo, mesma postura de `account+hourly` (que
+tem contraprova própria em `test_a_grade_horaria_avisa_se_passar_das_168`).
+
+O fix continua certo — o que estava inflado era a justificativa. **Afirmar dois custos
+onde há um é a mesma família que esta entrada cataloga**, só que do lado de quem escreve:
+um texto que afirma mais do que mediu. Medido em produção em 21/09, na revisão
+`00120-pmp`: duas chamadas de `raw_grid` diferindo só no `limit` (400 e 213) devolveram a
+mesma grade inteira, `truncated: false` nas duas.
 
 ✅ **O caminho DEFAULT é imune, e isso importa para ler o resto do smoke.** A partição em
 blocos itera `celulas` **inteiro** antes de agregar, então a ordem não a afeta. Foi o

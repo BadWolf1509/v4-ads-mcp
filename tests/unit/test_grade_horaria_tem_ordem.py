@@ -6,9 +6,15 @@ diferindo só no `limit` devolveram as MESMAS 213 células em ordens diferentes,
 das duas truncou. Logo a diferença não veio do corte; veio da ordem do Google, que não é
 estável.
 
-Custa duas coisas: ordem não reprodutível (quem usa `raw_grid` confere célula a célula e
-não consegue diffar duas execuções) e, quando trunca, **amostra arbitrária apresentada
-como grade** — `truncated: true` diz que cortou, não diz o quê.
+Custa ordem não reprodutível: quem usa `raw_grid` confere célula a célula e não consegue
+diffar duas execuções.
+
+**Correção de 2026-09-21, medida ao verificar o fix em produção.** Esta docstring cobrava
+um segundo custo — "quando trunca, amostra arbitrária apresentada como grade". Ele NÃO era
+alcançável: o teto do `raw_grid` é `168 * len(campaign_ids)` e a conjunta produz no máximo
+168 células por campanha, então `len(celulas) > teto` é falso por construção — o corte é
+defesa, não caminho vivo. Afirmar dois custos onde há um é a mesma família de defeito que
+este guard fecha, do lado de quem escreve.
 
 ## Por que este guard é ESTREITO, e por que isso não é preguiça
 

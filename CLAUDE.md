@@ -59,7 +59,7 @@ tripwires do `Don't do`. O resto é roteado — carregue sob demanda:
 | roadmap Meta / Fase 2B | [`specs/`](docs/superpowers/specs/) |
 
 **Antes de desenhar ou corrigir código**, faça busca **dirigida** em
-[`findings-catalog.md`](docs/operacao/findings-catalog.md) pela área ou sintoma — **F1–F188, ~4490 linhas, 478 KB**. Grep por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `CSP`); ler
+[`findings-catalog.md`](docs/operacao/findings-catalog.md) pela área ou sintoma — **F1–F188, ~4540 linhas, 488 KB**. Grep por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `CSP`); ler
 integral não cabe em contexto nenhum. Cada entrada corrigida traz o que foi feito **e o que ficou deliberadamente de fora**.
 
 A última sessão de cada frente está em `docs/operacao/session-*-handoff.md`; o handoff é o

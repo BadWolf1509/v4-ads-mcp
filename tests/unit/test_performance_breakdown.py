@@ -525,3 +525,49 @@ async def test_campaign_hourly_campaign_ids_repetido_nao_dobra_linhas_nem_soma(m
     assert sum(r["cost_brl"] for r in out["rows"]) == pytest.approx(170.0)
     assert sum(r["conversions"] for r in out["rows"]) == pytest.approx(4.0)
     assert out["truncated"] is False
+
+
+@pytest.mark.asyncio
+async def test_raw_grid_ignora_o_limit_do_gestor(monkeypatch):
+    """O teto do `raw_grid` e ESTRUTURAL (168 x len(campaign_ids)) — o `limit`
+    nao entra na conta.
+
+    Os dois testes irmaos prendem os dois lados do teto, mas NENHUM dos dois
+    passa `limit`: uma implementacao que fizesse `teto = min(168 * n, limit)`
+    passaria verde nos dois e mudaria o contrato calado. A folga foi medida em
+    2026-09-21, indo corrigir a description — que ate entao mandava o gestor
+    "pedir um `limit` maior" diante de um teto onde o `limit` nao participa.
+
+    Medido em producao no mesmo dia: duas chamadas de `raw_grid` diferindo so
+    no `limit` (400 e 213) devolveram byte a byte a mesma grade. Este teste e
+    aquela medicao, presa.
+    """
+    celulas = [
+        {
+            "campaign_id": "1",
+            "day_of_week": "MONDAY",
+            "hour": i % 24,
+            "cost_micros": 1_000_000,
+            "conversions": 1.0,
+        }
+        for i in range(100)
+    ]
+    _wire_bd(monkeypatch, celulas=celulas)
+    out = await mod.get_performance_breakdown(
+        {
+            "customer_id": "1234567890",
+            "level": "campaign",
+            "breakdown": "hourly",
+            "campaign_ids": ["1"],
+            "raw_grid": True,
+            "limit": 5,
+        }
+    )
+    assert len(out["rows"]) == 100, (
+        "o `limit` do gestor cortou a grade crua: o teto do `raw_grid` e "
+        f"estrutural (168 x 1), nao 5 — vieram {len(out['rows'])} celulas"
+    )
+    assert out["truncated"] is False, (
+        "`truncated` acusou corte que o teto estrutural nao manda fazer — "
+        "sinal de que o `limit` entrou na conta do teto"
+    )
