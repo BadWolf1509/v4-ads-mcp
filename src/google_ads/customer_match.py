@@ -303,16 +303,15 @@ async def run_offline_user_data_job(
             # identificador nao suportado). A resposta deste RPC nao tem lista
             # por-op: quem falhou so aparece pelo indice dentro do
             # `partial_failure_error`.
+            leitura = erros_por_indice(
+                add_response,
+                client,
+                origem="run_offline_user_data_job",
+                customer_id=customer_id,
+            )
             progresso.membros_recusados = [
                 {"index": idx, "error_code": e.error_code, "error_message": e.error_message}
-                for idx, e in sorted(
-                    erros_por_indice(
-                        add_response,
-                        client,
-                        origem="run_offline_user_data_job",
-                        customer_id=customer_id,
-                    ).items()
-                )
+                for idx, e in sorted(leitura.erros.items())
             ]
 
             # Step 3: Run job (fire-and-forget)

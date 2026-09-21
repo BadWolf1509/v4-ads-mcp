@@ -43,6 +43,24 @@ class ErroDeLinha:
     error_message: str
 
 
+@dataclass(frozen=True, slots=True)
+class LeituraDeFalhas:
+    """O que se sabe sobre QUEM falhou num lote — e se da para saber.
+
+    `medido=False` NAO e "nenhuma linha falhou": e "nao consegui ler quem
+    falhou". Quem consome traduz isso para o vocabulario da sua superficie; o
+    que nao pode e ler `erros` vazio como ausencia de falha.
+
+    E um dataclass, nao `tuple[dict, bool]`, de proposito: tupla e
+    desempacotavel por descuido, e `erros, _ = ...` passaria batido numa
+    revisao. Sem `.items()`, os tres call-sites de hoje quebram no MYPY, que e
+    onde se quer que quebrem.
+    """
+
+    erros: dict[int, ErroDeLinha]
+    medido: bool
+
+
 def _codigo(gae: Any) -> str:
     """`error_code` do erro, e "UNKNOWN" quando ele nao vier.
 
@@ -63,20 +81,25 @@ def erros_por_indice(
     response: Any,
     client: Any,
     **contexto: Any,
-) -> dict[int, ErroDeLinha]:
-    """Mapa `indice da operacao -> erro`, extraido do `partial_failure_error`.
+) -> LeituraDeFalhas:
+    """Mapa `indice da operacao -> erro`, mais se a leitura foi CONFIAVEL.
 
-    Devolve `{}` quando nao houve falha alguma (`code == 0`), quando a resposta
-    nem tem o campo, e tambem quando o desempacotamento quebra (drift de SDK,
-    forma inesperada) — nesse ultimo caso loga com o `contexto` recebido. Cair
-    para "nao sei quem falhou" e mais seguro que levantar: quem chama ja tem a
-    contagem de falhas por outra via e monta um erro generico por linha.
+    Antes devolvia `dict` cru, e `{}` significava duas coisas incompativeis:
+    "nenhuma linha falhou" e "nao consegui ler". A justificativa escrita aqui
+    para engolir a falha era que "quem chama ja tem a contagem de falhas por
+    outra via" — verdade em `run_mutation` (le `WhichOneof`) e em
+    `run_conversion_upload` (heuristica em `results`), e FALSA no Customer
+    Match, cuja resposta so tem o `partial_failure_error`. A docstring do
+    modulo ja dizia isso, dois paragrafos acima, sem que ninguem cruzasse os
+    dois fatos.
     """
     erros: dict[int, ErroDeLinha] = {}
     pfe = getattr(response, "partial_failure_error", None)
     if pfe is None or getattr(pfe, "code", 0) == 0:
-        return erros
+        return LeituraDeFalhas(erros, medido=True)
 
+    medido = True
+    desempacotou_algum = False
     try:
         for detail in getattr(pfe, "details", []) or []:
             # proto-plus embrulha; o `Any` cru mora em `_pb`.
@@ -90,7 +113,21 @@ def erros_por_indice(
             if "GoogleAdsFailure" not in raw.type_url:
                 continue
             failure_pb = client.get_type("GoogleAdsFailure")._meta.pb()
-            raw.Unpack(failure_pb)
+            # O retorno do `Unpack` era DESCARTADO. Sondado em 21/09: ele
+            # devolve bool, NAO levanta na divergencia, e compara pelo NOME
+            # COMPLETO do tipo — entao um type_url de outra versao deixa
+            # `failure_pb` zerado e o laco abaixo nao roda. O filtro acima e
+            # agnostico de versao de proposito; o alvo aqui e versionado. A
+            # defesa esta num lado e a sensibilidade no outro.
+            if not raw.Unpack(failure_pb):
+                medido = False
+                log.warning(
+                    "partial_failure_unpack_recusou",
+                    type_url=str(raw.type_url),
+                    **contexto,
+                )
+                continue
+            desempacotou_algum = True
             for gae in failure_pb.errors:
                 if not gae.location.field_path_elements:
                     continue
@@ -101,4 +138,11 @@ def erros_por_indice(
                 )
     except Exception:
         log.exception("partial_failure_detail_unpack_failed", **contexto)
-    return erros
+        medido = False
+
+    # `code != 0` afirma que HOUVE falha. Chegar aqui sem ter desempacotado
+    # nenhum detail significa que nao se sabe QUAIS — dizer "medi e nao achei"
+    # seria o defeito original com roupa nova.
+    if not desempacotou_algum:
+        medido = False
+    return LeituraDeFalhas(erros, medido=medido)

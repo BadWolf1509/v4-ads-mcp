@@ -287,9 +287,10 @@ def _parse_upload_response(
     # Build row -> error_code/message mapping from partial_failure_error.details.
     # O desempacotamento do proto vive em `partial_failure.py` (compartilhado com
     # `run_mutation` e o Customer Match — ver a docstring de la).
+    leitura = erros_por_indice(response, client, origem="run_conversion_upload")
     row_errors = {
         idx: {"error_code": e.error_code, "error_message": e.error_message}
-        for idx, e in erros_por_indice(response, client, origem="run_conversion_upload").items()
+        for idx, e in leitura.erros.items()
     }
 
     # Walk results — empty conversion_action = failed row.

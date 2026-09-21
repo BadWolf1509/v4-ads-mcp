@@ -75,16 +75,14 @@ def _parse_partial_failures(
     # desempacotamento do proto vive em `partial_failure.py` — as tres APIs de
     # escrita reportam falha por-linha do mesmo jeito, e a terceira leitora
     # (Customer Match, R1-I3) teria sido a terceira copia.
-    error_by_index = {
-        idx: e.error_message
-        for idx, e in erros_por_indice(
-            response,
-            client,
-            origem="run_mutation",
-            operation=operation_type,
-            customer_id=customer_id,
-        ).items()
-    }
+    leitura = erros_por_indice(
+        response,
+        client,
+        origem="run_mutation",
+        operation=operation_type,
+        customer_id=customer_id,
+    )
+    error_by_index = {idx: e.error_message for idx, e in leitura.erros.items()}
 
     # Walk operation responses and classify by which oneof is set.
     for idx, op_resp in enumerate(response.mutate_operation_responses):

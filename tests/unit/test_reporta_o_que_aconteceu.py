@@ -668,9 +668,9 @@ def test_erro_sem_codigo_nao_derruba_a_mensagem() -> None:
     client = MagicMock()
     resp = _failure_com([_ErroSemCodigo(1, "CRITERION_EXISTS")], client)
 
-    erros = erros_por_indice(resp, client, origem="teste")
-    assert erros[1].error_message == "CRITERION_EXISTS"
-    assert erros[1].error_code == "UNKNOWN"
+    leitura = erros_por_indice(resp, client, origem="teste")
+    assert leitura.erros[1].error_message == "CRITERION_EXISTS"
+    assert leitura.erros[1].error_code == "UNKNOWN"
 
 
 def test_sem_falha_nenhuma_devolve_mapa_vazio() -> None:
@@ -679,4 +679,5 @@ def test_sem_falha_nenhuma_devolve_mapa_vazio() -> None:
     resp = MagicMock()
     resp.partial_failure_error.code = 0
     resp.partial_failure_error.details = []
-    assert erros_por_indice(resp, MagicMock(), origem="teste") == {}
+    leitura = erros_por_indice(resp, MagicMock(), origem="teste")
+    assert leitura.erros == {}
