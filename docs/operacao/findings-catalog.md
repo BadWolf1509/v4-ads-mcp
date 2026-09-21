@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~4540 linhas, 488 KB, IDs de **F1 a F188** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** só 44 findings têm cabeçalho `## F<n>` próprio e os demais vivem dentro de outras entradas, então toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~4600 linhas, 492 KB, IDs de **F1 a F189** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** só 44 findings têm cabeçalho `## F<n>` próprio e os demais vivem dentro de outras entradas, então toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -4536,3 +4536,67 @@ ordenam por custo desc, mas **este guard não verifica nenhuma delas.**
 **Não verificado em produção ainda** — exige deploy. A verificação é a mesma que achou o
 defeito: duas chamadas de `raw_grid` diferindo só no `limit`, conferindo se agora voltam na
 mesma ordem.
+
+---
+
+## F189 (HIGH, ✅ CORRIGIDO 2026-09-21) — a paginação do executor Meta estava quebrada: qualquer resultado com mais de uma página virava erro
+
+**Achado pela varredura de 2026-09-21**, aplicando sistematicamente a lente dos F182/F184/F185/F186/F187/F188: *um sinal que não distingue "medi zero" de "não perguntei"*.
+
+### A medição
+
+Conta `act_4051924171730156` (Dr. Dérick Vinhas, **17 anúncios**), mesma janela, um anúncio de diferença isolando a paginação:
+
+| `limit` | páginas necessárias | resultado |
+|---|---|---|
+| 17 | 1 | ✅ 200, 17 linhas |
+| **16** | 2 | 🔴 `(#100) Tried accessing nonexisting field (ad_id)` |
+
+A única variável que muda entre as duas é **seguir `paging.next`**.
+
+### A causa
+
+`src/meta_ads/reports.py` passava a URL do `next` **dentro de uma lista**:
+
+```python
+resposta = api.call("GET", [proxima], params={})
+```
+
+O SDK instalado documenta o contrato no próprio docstring de `FacebookAdsApi.call` — *"path: A tuple of path tokens **or a full URL string**"* — e ramifica em `isinstance(path, six.string_types)`. Com não-string ele concatena na base:
+
+```python
+path = "/".join((GRAPH, api_version, "/".join(map(str, path))))
+```
+
+produzindo `graph.facebook.com/vXX/https://graph.facebook.com/vXX/act_.../insights?...`. O `level=ad` se perde no caminho, e a Graph API reclama de um campo que naquele contexto não existe.
+
+**O irmão certo morava no mesmo repo:** `src/meta_ads/graph.py` segue o `next` passando a URL como string pro httpx. Duas implementações de paginação, uma certa e uma errada — e a docstring do teste da outra ainda afirmava ser *"o único lugar que sabe seguir paging.next"*.
+
+### O que custou
+
+1. **O F88 nunca funcionou.** Ele existe para ler até 5 páginas e garantir que o "top por gasto" seja o topo real; o caminho que ele criou errava sempre.
+2. **Foi regressão, não lacuna.** Com o `max_pages=1` anterior a chamada devolvia a 1ª página **com sucesso**. O F88 trocou resposta parcial por erro total.
+3. **Atingia 4 das 6 tools Meta** — os três `meta_get_*_performance` e o `meta_get_performance_breakdown`. Com `limit` default 100, qualquer conta com mais de 100 entidades falhava na chamada padrão.
+4. 🔑 **E fechava a lente:** a description promete que `truncated: true` significa "ficou cauda de menor gasto de fora". Como toda existência de `next` levava ao erro, **`truncated` só podia valer `false` numa resposta bem-sucedida** — sinal prometido e inalcançável, a mesma forma corrigida no F188 no mesmo dia.
+
+### Por que o guard que existia não pegou
+
+`test_meta_pagination_and_ranking.py` cobre a paginação desde o F88 e passou verde o tempo inteiro:
+
+```python
+def fake_call(method: str, path: list[str], params): ...   # devolve por CONTAGEM
+```
+
+O fake nunca olha `path` — lista ou string dão o mesmo verde. Pior: a anotação `path: list[str]` **codificava a convenção errada**, que o `CLAUDE.md` classifica como pior que teste ausente. É a família F84/F89: **mock que não consegue expressar o bug não é cobertura.**
+
+### O fix
+
+1. `api.call("GET", proxima, params={})` — string, não lista.
+2. **`_MAX_PAGES: 5 → 1`.** O mesmo F88 ligou `sort=spend_descending` **server-side** (sondado com controle positivo), e com ele a página 1 já é o topo. As 4 páginas extras gastavam request Graph (BUC de um token compartilhado por 24 contas) sem melhorar o ranking — **e eram o que tornava o `truncated` ambíguo**: com a conta entre `limit+1` e `5*limit` entidades os dados acabavam antes do teto, não sobrava `next`, e `truncated: false` saía tendo descartado até `4*limit` linhas. Com uma página o corte vira no-op e o sinal fica honesto.
+3. Os textos de `truncated_hint` passaram a falar do `limit` pedido, não de "páginas lidas" — aqui *"peça um `limit` maior"* é remédio que funciona, ao contrário do caso do F188.
+
+**Guard:** `tests/unit/test_meta_paginacao_usa_url_completa.py`, **4 testes, escritos ANTES do fix**. Os dois da invariante vistos vermelhos contra o código real pré-fix (não contra sabotagem); o terceiro é **controle** e passou verde desde o início — a primeira chamada tem de continuar sendo sequência de tokens, senão "passe sempre string" seria satisfeito mandando a edge crua. O quarto prende `_MAX_PAGES == 1` com a consequência escrita: subir o teto exige corrigir o `truncated` no mesmo commit.
+
+As anotações mentirosas dos mocks antigos viraram `path: Any`, com nota dizendo o que eles cobram (o fluxo) e o que não cobram (a forma).
+
+**Fora de escopo, dito de propósito:** `graph.py` não foi tocado — está correto e é a prova viva de qual forma funciona. A fórmula do `truncated` não mudou: com uma página ela fica correta sozinha. E a varredura que achou isto cobriu **duas das quatro formas** da lente; *ausência que é filtro* e *resumo × detalhe* seguem não varridas.

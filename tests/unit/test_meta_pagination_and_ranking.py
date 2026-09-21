@@ -38,6 +38,11 @@ def _campanha(nome: str, spend: str) -> dict[str, Any]:
     return {"campaign_id": nome, "campaign_name": nome, "spend": spend}
 
 
+# F189: estes fakes ignoram `path` de proposito — eles cobram que as PAGINAS
+# sejam seguidas e juntadas, nao a FORMA da URL. Ate 2026-09-21 a anotacao aqui
+# era `path: list[str]`, que codificava a convencao ERRADA (o SDK so trata
+# string como URL completa) e fazia o mock passar verde sobre o bug. Quem cobra
+# a forma e `test_meta_paginacao_usa_url_completa.py`; estes cobram o fluxo.
 # --------------------------------------------------------------------------
 # O executor: seguir paging.next
 # --------------------------------------------------------------------------
@@ -54,7 +59,7 @@ async def test_executor_segue_paginacao_e_junta_as_paginas() -> None:
     ]
     chamadas = {"n": 0}
 
-    def fake_call(method: str, path: list[str], params: dict[str, Any]) -> MagicMock:
+    def fake_call(method: str, path: Any, params: dict[str, Any]) -> MagicMock:
         resp = MagicMock()
         resp.json = MagicMock(return_value=paginas[chamadas["n"]])
         resp.headers = MagicMock(return_value={})
@@ -94,7 +99,7 @@ async def test_executor_respeita_o_teto_de_paginas_e_preserva_o_sinal() -> None:
     visivel pro caller saber que ficou dado pra tras."""
     from src.meta_ads import reports
 
-    def fake_call(method: str, path: list[str], params: dict[str, Any]) -> MagicMock:
+    def fake_call(method: str, path: Any, params: dict[str, Any]) -> MagicMock:
         resp = MagicMock()
         resp.json = MagicMock(
             return_value=_pagina([_campanha("x", "1")], "https://graph.facebook.com/sempre-mais")

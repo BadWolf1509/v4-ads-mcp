@@ -155,8 +155,14 @@ async def run_meta_graph_get(
                 if proxima is None:
                     resposta = api.call("GET", [edge.lstrip("/")], params=params or {})
                 else:
-                    # `paging.next` já carrega cursor + fields + token na própria URL.
-                    resposta = api.call("GET", [proxima], params={})
+                    # `paging.next` já carrega cursor + fields + token na própria URL,
+                    # então vai como STRING: o SDK ramifica em
+                    # `isinstance(path, six.string_types)` e só trata string como URL
+                    # completa. Embrulhada em lista, ele concatena na base e monta
+                    # `GRAPH/vXX/https://graph.facebook.com/...` — URL dobrada, `level`
+                    # perdido, e a Graph API responde (#100). Era o F189: qualquer
+                    # resultado com mais de uma página virava erro.
+                    resposta = api.call("GET", proxima, params={})
                 corpo = cast(dict[str, Any], resposta.json())
                 lidas += 1
                 colhidas.extend(corpo.get("data") or [])
