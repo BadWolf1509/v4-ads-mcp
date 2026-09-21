@@ -20,22 +20,37 @@ def aplicar_limite[T](linhas: list[T], limite: int) -> tuple[list[T], bool]:
 def classify_partial(
     error: str | None,
     *,
+    status: str,
     ok_status: str,
     exists_status: str,
     exists_patterns: tuple[str, ...],
 ) -> str:
-    """Mapeia o erro de partial-failure de UMA linha pro status por-linha.
+    """Mapeia o veredito + erro de partial-failure de UMA linha pro status por-linha.
 
-    - error=None            → ok_status (a linha aplicou).
-    - casa um exists_pattern → exists_status (idempotência: já existe / já anexado).
-    - senão                 → "failed".
+    `status` ("success" | "failed" — o WhichOneof/heuristica que MEDE se a
+    linha aplicou) decide PRIMEIRO, nao `error`. Ate 21/09 `error is None`
+    sozinho significava "aplicou" — certo enquanto `error` so podia ser None
+    por ausencia de erro. Ficou errado quando `error` passou a poder ser
+    `None` por um segundo motivo, incompativel com o primeiro: "houve erro
+    mas o motivo nao foi lido" (leitura.medido=False em erros_por_indice,
+    Task 2/4). Uma linha que o WhichOneof MEDIU como falha, com motivo nao
+    lido, virava `ok_status` por aqui — o status mentia, na direcao mais
+    perigosa (CRITICAL achado na revisao pos-Task 4, fix round 1/5).
+
+    - status="success"                            -> ok_status (a linha aplicou;
+      `error` e ignorado).
+    - status="failed" e `error` casa um exists_pattern -> exists_status
+      (idempotencia: ja existe / ja anexado).
+    - status="failed", qualquer outro caso (inclusive error=None, motivo nao
+      lido) -> "failed".
 
     Centraliza o _classify_partial que estava copiado idêntico em add_keywords /
     add_negatives_from_search_terms / apply_audience (só mudavam os 3 rótulos).
     """
-    if error is None:
+    if status == "success":
         return ok_status
-    upper = error.upper()
-    if any(p in upper for p in exists_patterns):
-        return exists_status
+    if error is not None:
+        upper = error.upper()
+        if any(p in upper for p in exists_patterns):
+            return exists_status
     return "failed"

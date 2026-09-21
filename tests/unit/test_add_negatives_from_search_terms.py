@@ -87,9 +87,14 @@ async def test_tool_zips_partial_failures_back_to_input():
     from src.mcp.tools.add_negatives_from_search_terms import add_negatives_from_search_terms
 
     fake_partials = [
-        {"index": 0, "status": "added", "error": None},
+        # F152: run_mutation devolve status NEUTRO ("success"/"failed"), nunca o
+        # verbo do dominio -- esta fixture usava "added" (o rotulo de SAIDA da
+        # tool, nao o de ENTRADA) e passou despercebido enquanto classify_partial
+        # nao lia `status`. Fix round 1/5 da Task 4 passou a ler; a fixture
+        # tinha que virar o que run_mutation de fato devolve.
+        {"index": 0, "status": "success", "error": None},
         {"index": 1, "status": "failed", "error": "CRITERION_EXISTS"},
-        {"index": 2, "status": "added", "error": None},
+        {"index": 2, "status": "success", "error": None},
     ]
 
     with patch(

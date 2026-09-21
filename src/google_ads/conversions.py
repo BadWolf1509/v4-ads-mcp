@@ -299,7 +299,7 @@ def _parse_upload_response(
             # Sob leitura nao-confiavel o motivo e `None`, nao "no detail": a
             # linha falhou (a heuristica do `conversion_action` vazio diz isso),
             # mas o porque nao foi lido.
-            padrao: dict[str, Any] = (
+            padrao: dict[str, str | None] = (
                 {"error_code": "UNKNOWN", "error_message": "no detail"}
                 if leitura.medido
                 else {"error_code": None, "error_message": None}

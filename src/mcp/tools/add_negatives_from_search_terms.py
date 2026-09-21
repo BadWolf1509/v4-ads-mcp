@@ -114,6 +114,7 @@ async def add_negatives_from_search_terms(args: dict[str, Any]) -> dict[str, Any
         per_op = next((p for p in partial_failures if p["index"] == idx), None)
         row_status = classify_partial(
             per_op["error"] if per_op else None,
+            status=per_op["status"] if per_op else "success",
             ok_status="added",
             exists_status="already_exists",
             exists_patterns=_ALREADY_EXISTS_PATTERNS,

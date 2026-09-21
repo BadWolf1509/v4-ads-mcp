@@ -149,9 +149,14 @@ async def test_partial_failure_mapping_already_exists():
     from src.mcp.tools.add_keywords import add_keywords
 
     fake_partials = [
-        {"index": 0, "status": "added", "error": None},
+        # F152: run_mutation devolve status NEUTRO ("success"/"failed"), nunca o
+        # verbo do dominio -- esta fixture usava "added" (o rotulo de SAIDA da
+        # tool, nao o de ENTRADA) e passou despercebido enquanto classify_partial
+        # nao lia `status`. Fix round 1/5 da Task 4 passou a ler; a fixture
+        # tinha que virar o que run_mutation de fato devolve.
+        {"index": 0, "status": "success", "error": None},
         {"index": 1, "status": "failed", "error": "CRITERION_EXISTS: keyword already exists"},
-        {"index": 2, "status": "added", "error": None},
+        {"index": 2, "status": "success", "error": None},
     ]
     with patch(
         "src.mcp.tools.add_keywords.run_mutation",
