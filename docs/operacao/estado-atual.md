@@ -25,7 +25,7 @@
 | Revisão servindo | **`v4-ads-mcp-00119-7f8`** — saúde conferida por `/health?deep=1` (`tools: 68`) e handshake MCP real |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
-| Catálogo | até **F187** (~4.430 linhas) |
+| Catálogo | até **F188** (~4.490 linhas) |
 
 **Caminho de mutação verificado após os bumps de 20/09** (`grpcio` 1.84, `google-auth`
 2.58, `google-api-core` 2.38): duas mutações reais em `1163862076` com
@@ -66,10 +66,6 @@ Estavam invisíveis até a revisão de 20/09: **nenhum arquivo vivo apontava par
 a lista acima só cobre o que depende do gestor. **Smoke pendente sem ponteiro é smoke que
 ninguém roda** — e foi assim que dois sumiram de vista.
 
-- **Smoke 3b.43 (`particao-horaria`) — `0/6 executados`.** Os seis são LEITURA
-  (`get_ad_schedule(include_metrics)` e `get_performance_breakdown` com `hourly`, `geo` e
-  `raw_grid`), então **não precisam de aval**: rodam em qualquer sessão.
-  [`phase-3b-43-particao-horaria-smoke.md`](phase-3b-43-particao-horaria-smoke.md).
 - **Smoke 3b.41 (`assets`) — `8/9`, o T2 pendente.** Também leitura: `get_assets` com
   `field_type="CALLOUT"`, conferindo que o filtro se aplica e que `links[]` é subconjunto
   do T1. [`phase-3b-41-assets-smoke.md`](phase-3b-41-assets-smoke.md).
@@ -83,6 +79,7 @@ ninguém roda** — e foi assim que dois sumiram de vista.
 | **F180** | **em parte, provavelmente para sempre** — a flag `partial_failure` está ligada, mas a falha por-linha **nunca foi exercitada**: o Google aceita operação impossível em vez de errar (campanha `REMOVED`, `final_urls` inválida, anúncio apagado entre preview e apply). O único gatilho conhecido é a variação de experimento, que o **F181 agora bloqueia no pre-flight**. Consequência: `failed_count` é constante zero — leia `efeito` e `changed_count` |
 | **F154** | `/me/adaccounts` não é prova de alcance |
 | **F185** | `recommendation_subscription`: 4 de 11 opacos e **sem chave nenhuma** — limitação da API, sem correção possível deste lado |
+| **F188** | `raw_grid` do `get_performance_breakdown` fatia lista **sem `ORDER BY`** — ordem não reprodutível, e ao truncar devolve amostra arbitrária como se fosse grade. Caminho default (partição em blocos) **imune**. Fix sondado |
 | **F187** | o **resumo no topo** de um artefato é a superfície de decisão e o **detalhe embaixo** é a verdade — 4 instâncias medidas, uma quase custou mutação em conta real. Remédio proposto: derivar o resumo, ou guard que cobre a igualdade |
 | **F186** | 🔴 smoke autenticado do `/mcp` **desarmado** — e o manager dele **não existe**: criar exige identidade de serviço no Workspace, acesso que o gestor **não tem**. **ABERTO como risco ACEITO.** No lugar entrou `tools` no `/health?deep=1` (sem credencial), e o desarme aparece como `::warning::` em todo deploy |
 
