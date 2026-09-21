@@ -19,7 +19,7 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 ## Estado atual
 
 **2026-09-20.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`,
-**68 MCP tools** (62 Google + 6 Meta), CI gated + deploy automático. Catálogo até **F189**. **Detalhe, pendências e decision gates vivem em
+**68 MCP tools** (62 Google + 6 Meta), CI gated + deploy automático. Catálogo até **F190**. **Detalhe, pendências e decision gates vivem em
 [`estado-atual.md`](docs/operacao/estado-atual.md)** — atualize AQUELE no fecho, não este.
 
 **Sabe de cara:**
@@ -59,7 +59,7 @@ tripwires do `Don't do`. O resto é roteado — carregue sob demanda:
 | roadmap Meta / Fase 2B | [`specs/`](docs/superpowers/specs/) |
 
 **Antes de desenhar ou corrigir código**, faça busca **dirigida** em
-[`findings-catalog.md`](docs/operacao/findings-catalog.md) pela área ou sintoma — **F1–F189, ~4600 linhas, 492 KB**. Grep por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `CSP`); ler
+[`findings-catalog.md`](docs/operacao/findings-catalog.md) pela área ou sintoma — **F1–F190, ~4700 linhas, 504 KB**. Grep por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `CSP`); ler
 integral não cabe em contexto nenhum. Cada entrada corrigida traz o que foi feito **e o que ficou deliberadamente de fora**.
 
 A última sessão de cada frente está em `docs/operacao/session-*-handoff.md`; o handoff é o
@@ -168,7 +168,7 @@ Quando o padrão de mercado custar caro demais para o momento, **apresente o tra
 - Don't shippar tool sem per-value empirical probe em smoke pra enum whitelist (3b.19A.1 — pegou 10+ design-gaps).
 - Don't usar MagicMock em builder tests de proto (use `make_capture_client` — F16/F42/F44).
 - Don't incluir `oneOf/allOf/anyOf` em `input_schema` (Anthropic rejeita — 3b.19B.1).
-- Don't chamar `FacebookAdsApi.init()`; don't passar `access_token`/`app_id`/`app_secret` direto pro `__init__` — use `FacebookSession` bridge / `build_facebook_ads_api()` (F48).
+- Don't trazer o SDK `facebook_business` de volta pro caminho de request: o transporte Meta é `httpx` + header (F190) e as duas fábricas saíram sem consumidor. Se voltar, vale o F48 — ver `nucleo.md`.
 - Don't aplicar `is_allowed_email` (V4 domain) no callback Meta OAuth — `fb_email` é conta FB pessoal (A6); auth é o manager_id no state HMAC.
 - Don't usar `{{ button() }}` em `<form>` sem `type="submit"` (F49).
 - Don't retornar `303` cru de um handler chamado por `hx-post` — torne HX-aware (`204`+`HX-Redirect`/`HX-Refresh`, espelha `sessions_revoke`), senão o HTMX injeta a página no `hx-target` (dropdown Managers, 2ª sessão 07-04).

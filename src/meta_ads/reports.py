@@ -9,22 +9,131 @@ V0 (Sprint M.2a) covers simple GET edges (/me/adaccounts etc).
 M.3+ adds Insights API support (paginação, async jobs).
 """
 
+import json
 import time
-from typing import Any, cast
+from typing import Any
 from uuid import UUID
 
+import httpx
 import structlog
 
-from src.blocking import run_blocking
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import audit_log, manager_meta_account_access
 from src.governance.bookkeeping import best_effort
 from src.governance.rate_limit import record_actual_meta
-from src.meta_ads.client import MetaAccessDeniedError, build_meta_api
+from src.meta_ads.client import (
+    META_GRAPH_API_VERSION,
+    MetaAccessDeniedError,
+    MetaSystemUserTokenMissingError,
+)
 from src.meta_ads.errors import to_friendly_meta_error
 
 log = structlog.get_logger(__name__)
+
+# F190 — timeout explicito. O SDK que saiu daqui guardava `timeout=None` e
+# repassava a `requests`, que bloqueia indefinidamente; como a chamada ia por
+# `run_blocking`, uma conexao pendurada prendia um slot do pool de threads do
+# anyio, compartilhado com os cinco executores Google. Espelha o valor que os
+# outros call sites Meta em httpx ja usam (`auth/meta_oauth.py`).
+_TIMEOUT_GRAPH = 30.0
+
+
+def _envelope_de_erro(corpo: str) -> tuple[int | None, int | None, str | None]:
+    """`(code, error_subcode, message)` do envelope `{"error": {...}}` do Graph.
+
+    Tupla de `None` quando o corpo nao e JSON, nao e objeto, ou nao traz a chave
+    `error` — pagina HTML de intermediario, corpo vazio, resposta truncada.
+    Quem le distingue "o Graph explicou o erro" de "so temos o status HTTP".
+    """
+    try:
+        bruto: Any = json.loads(corpo)
+    except ValueError:
+        return (None, None, None)
+    if not isinstance(bruto, dict):
+        return (None, None, None)
+    erro = bruto.get("error")
+    if not isinstance(erro, dict):
+        return (None, None, None)
+    code = erro.get("code")
+    subcode = erro.get("error_subcode")
+    mensagem = erro.get("message")
+    return (
+        code if isinstance(code, int) else None,
+        subcode if isinstance(subcode, int) else None,
+        mensagem if isinstance(mensagem, str) else None,
+    )
+
+
+class MetaGraphHTTPError(Exception):
+    """Status HTTP nao-2xx da Graph API, com o codigo no texto.
+
+    Existe porque `FacebookResponse.is_success()` decidia sucesso por teste de
+    SUBSTRING sobre o corpo: uma pagina HTML de erro de intermediario passava, e
+    o estouro chegava ao gestor como `'str' object has no attribute 'get'`,
+    marcado como permanente. Agora o status e o veredito.
+
+    Carrega TAMBEM `code`/`subcode`/`mensagem` quando o corpo traz o envelope de
+    erro do Graph. Sem isso, a troca de transporte da Task 3 deixava a tabela
+    curada de `errors.py` sem produtor — throttle Meta chegava ao gestor como
+    JSON cru em ingles, truncado, e marcado como permanente. Recebe o corpo
+    INTEIRO e trunca ela mesma pra mensagem: truncar antes (`resp.text[:200]`,
+    como o chamador fazia) corta o JSON no meio e o envelope se perde.
+    """
+
+    def __init__(self, status: int, corpo: str):
+        self.status = status
+        self.retryable = status >= 500 or status == 429
+        self.code, self.subcode, self.mensagem = _envelope_de_erro(corpo)
+        super().__init__(f"Graph API respondeu HTTP {status}: {corpo[:200]}")
+
+
+async def _paginar_graph(
+    http: httpx.AsyncClient,
+    url: str,
+    params: dict[str, Any],
+    cabecalhos: dict[str, str],
+    max_pages: int,
+) -> tuple[dict[str, Any], list[Any], httpx.Headers, int]:
+    """Segue `paging.next` ate `max_pages`.
+
+    Devolve `(ultimo_corpo, linhas, headers, paginas_lidas)`. O `paging` que
+    sobrevive e o da ULTIMA pagina lida — e assim que o chamador sabe se ficou
+    dado para tras. Os headers da ultima resposta saem junto porque o contador
+    BUC os le. `paginas_lidas` e o numero de requests REALMENTE feitos: o
+    rate counter (BUC) conta chamadas de verdade, nao a estimativa do caller
+    (F88) — sem isto o contador ficaria impreciso pro primeiro caller que
+    setar `max_pages > 1` (hoje nenhum seta; _MAX_PAGES das tools Meta e 1).
+
+    F189: a URL do `next` vai como STRING. Foi embrulhada em lista uma vez, e o
+    SDK — que so trata string como URL completa — concatenou na base e produziu
+    uma URL dobrada; qualquer resultado com mais de uma pagina virava erro.
+    """
+    linhas: list[Any] = []
+    corpo: dict[str, Any] = {}
+    proxima: str | None = None
+    headers = httpx.Headers()
+    lidas = 0
+    for _ in range(max_pages):
+        if proxima is None:
+            resp = await http.get(url, params=params, headers=cabecalhos)
+        else:
+            # `paging.next` ja carrega cursor e fields na propria URL.
+            resp = await http.get(proxima, headers=cabecalhos)
+        headers = resp.headers
+        if resp.status_code != 200:
+            raise MetaGraphHTTPError(resp.status_code, resp.text)
+        bruto = resp.json()
+        if not isinstance(bruto, dict):
+            # Nao e `cast`: o cast satisfaz o mypy e nao existe em runtime.
+            raise MetaGraphHTTPError(resp.status_code, f"corpo nao-JSON: {type(bruto).__name__}")
+        corpo = bruto
+        lidas += 1
+        linhas.extend(corpo.get("data") or [])
+        proxima = (corpo.get("paging") or {}).get("next")
+        if not proxima:
+            break
+    return corpo, linhas, headers, lidas
 
 
 async def run_meta_graph_get(
@@ -126,52 +235,41 @@ async def run_meta_graph_get(
             f"Você não tem acesso à conta {ad_account_id}. Peça ao admin pra liberar no painel."
         )
 
-    api = build_meta_api(
-        system_user_token=settings.meta_system_user_token,
-        app_id=settings.meta_app_id,
-        app_secret=settings.meta_app_secret,
-    )
+    # F190 — o gate aprovou `ad_account_id`; a requisicao vai para `edge`. Sem
+    # amarrar os dois, o F72 garante que o gate RODA, nao que ele rodou sobre a
+    # conta certa. Falha fechado: prefere recusar uma edge legitima e exotica a
+    # ler uma conta que ninguem gateou.
+    #
+    # Fix round 1: `ad_account_id in edge` era substring CRUA — `"act_1" in
+    # "/act_12345/insights"` e True, entao o gate aprovaria act_1 e a leitura
+    # sairia sobre act_12345. Delimitado por barras dos dois lados; o `+ "/"`
+    # no fim de `edge` cobre a edge que termina no proprio id (sem path depois).
+    if f"/{ad_account_id}/" not in f"{edge}/":
+        raise ValueError(
+            f"edge {edge!r} nao contem a conta gateada {ad_account_id!r} — "
+            "o gate de acesso e a requisicao apontam para contas diferentes."
+        )
+
+    token = settings.meta_system_user_token
+    if not token:
+        raise MetaSystemUserTokenMissingError(
+            "Token do system user Meta não configurado. "
+            "O admin precisa subir o secret meta-system-user-token."
+        )
 
     log.info("meta_graph_get_start", edge=edge, operation=operation_name)
     started = time.monotonic()
 
     try:
-        # F88: segue `paging.next` até `max_pages`. As linhas de todas as páginas
-        # são concatenadas em `data`; o `paging` que sobrevive é o da ÚLTIMA
-        # página, então um `next` remanescente sinaliza truncamento pro caller.
-        # F86: `FacebookAdsApi.call` usa `requests` por baixo — nao e coroutine
-        # (verificado na fonte instalada). A paginacao INTEIRA sai do event loop
-        # num closure so: sao ate `max_pages` round-trips SEQUENCIAIS ao
-        # graph.facebook.com, e deixa-los no loop serializa todos os requests da
-        # instancia, inclusive o /health. Offloadar so a 1a chamada nao adiantaria
-        # — o bloqueio mudaria de lugar, como no stream do lado Google.
-        def _paginar() -> tuple[dict[str, Any], list[Any], int, Any]:
-            corpo: dict[str, Any] = {}
-            colhidas: list[Any] = []
-            lidas = 0
-            proxima: str | None = None
-            resposta: Any = None
-            while lidas < max_pages:
-                if proxima is None:
-                    resposta = api.call("GET", [edge.lstrip("/")], params=params or {})
-                else:
-                    # `paging.next` já carrega cursor + fields + token na própria URL,
-                    # então vai como STRING: o SDK ramifica em
-                    # `isinstance(path, six.string_types)` e só trata string como URL
-                    # completa. Embrulhada em lista, ele concatena na base e monta
-                    # `GRAPH/vXX/https://graph.facebook.com/...` — URL dobrada, `level`
-                    # perdido, e a Graph API responde (#100). Era o F189: qualquer
-                    # resultado com mais de uma página virava erro.
-                    resposta = api.call("GET", proxima, params={})
-                corpo = cast(dict[str, Any], resposta.json())
-                lidas += 1
-                colhidas.extend(corpo.get("data") or [])
-                proxima = (corpo.get("paging") or {}).get("next")
-                if not proxima:
-                    break
-            return corpo, colhidas, lidas, resposta
-
-        body, linhas, paginas_lidas, response = await run_blocking(_paginar)
+        # F190 — token no HEADER, nunca na query. Mesma postura de
+        # `graph.py::fetch_paginated`, que ja rodava assim em producao: e a
+        # evidencia empirica de que este app nao exige `appsecret_proof`.
+        cabecalhos = {"Authorization": f"Bearer {token}"}
+        url = f"https://graph.facebook.com/{META_GRAPH_API_VERSION}{edge}"
+        async with httpx.AsyncClient(timeout=_TIMEOUT_GRAPH) as http:
+            body, linhas, headers_ultima, paginas_lidas = await _paginar_graph(
+                http, url, params or {}, cabecalhos, max_pages
+            )
         if "data" in body or linhas:
             body = {**body, "data": linhas}
     except Exception as e:  # noqa: BLE001 — catch all to map to friendly
@@ -208,7 +306,7 @@ async def run_meta_graph_get(
     # params.get("ad_account_id"), que era um passthrough espúrio só existindo
     # pra alimentar este contador (Task 3.4: desacopla o BUC do dict de params
     # do Graph, que agora pode perder essa chave sem quebrar o rate counter).
-    buc_header = response.headers().get("x-business-use-case-usage")
+    buc_header = headers_ultima.get("x-business-use-case-usage")
     if buc_header:
         try:
             await record_actual_meta(
@@ -235,7 +333,7 @@ async def run_meta_graph_get(
                 status="success",
                 duration_ms=elapsed_ms,
                 platform="meta",
-                provider_request_id=response.headers().get("x-fb-trace-id"),
+                provider_request_id=headers_ultima.get("x-fb-trace-id"),
             )
 
     log.info(

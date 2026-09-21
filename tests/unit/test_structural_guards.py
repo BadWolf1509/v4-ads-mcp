@@ -7,8 +7,14 @@ transforma a convenção num teste que falha no commit em vez de num incidente.
 - F57 (Google): call-site de build_client_for_manager sem ensure_account_access
   → vazou existência/schema de qualquer conta da MCC (o validate_gaql ficou
   desguarnecido até a auditoria de 2026-06-20).
-- F57-Meta: chamada à Graph API fora de run_meta_graph_get → pula o hard-gate
-  (o freio do Modelo B é a matriz de acesso; o token é compartilhado).
+- F57-Meta: cliente HTTP (`httpx.AsyncClient`/`Client`/`get`/`post`) construído
+  ou invocado fora de quem já gateia → pula o hard-gate (o freio do Modelo B é
+  a matriz de acesso; o token é compartilhado). Retargetado DUAS vezes em
+  F190/Task 6 (21/09): 1ª pro literal `graph.facebook.com` (ruling R10, quando
+  `build_meta_api` sumiu); 2ª pro MECANISMO — cliente HTTP, não URL — depois
+  que o fix round 1 provou por mutação que concatenação de string e reuso de
+  constante autorizada escapam de qualquer varredura de literal, sempre. A
+  invariante nunca mudou: só o executor gateado fala com a Graph API.
 - F58: conn.cursor() sem async with conn.transaction() → asyncpg exige transação
   pra server-side cursor (o CSV export quebrou em prod porque nenhum teste iterou).
 - F83: I/O de bookkeeping num `finally` sem best_effort → exceção ali DESCARTA o
@@ -310,138 +316,460 @@ def test_f57_acusa_a_violacao_e_so_ela(fonte: str, acusa: bool) -> None:
     )
 
 
-# `src/meta_ads/reports.py` é o arquivo do executor; `run_meta_graph_get`, a
-# única função que pode construir a API de execução. Exceção por FUNÇÃO (par
-# arquivo+nome), não por arquivo: era a allowlist por ARQUIVO deste guard que
-# deixava qualquer função nova de `reports.py` tocar a Graph API sem o gate.
-_EXECUTOR_META = ("src/meta_ads/reports.py", "run_meta_graph_get")
+# F57-Meta RETARGETADO UMA SEGUNDA VEZ (F190/Task 6, 21/09 — fix round 1,
+# achado CRITICAL do revisor, provado por mutação com dois probes empíricos
+# rodados em `src/`). A 1ª versão (ruling R10) trocou "chamada a
+# build_meta_api" por "literal `graph.facebook.com`" quando a função sumiu de
+# client.py. Essa versão tinha um defeito de EIXO: o literal é um PROXY de
+# quem fala com a Graph API, não o mecanismo. Dois refactors NÃO-adversariais
+# — coisa que qualquer um faz sem pensar — escapavam por completo:
+#
+#   A) concatenação: `"https://graph." + "facebook.com/v22.0"` — nenhum
+#      Constant sozinho contém o literal, e `_texto_logico` não junta
+#      literais através de um `BinOp`.
+#   B) reuso de constante JÁ autorizada: `from src.auth.meta_oauth import
+#      META_GRAPH_BASE` num arquivo novo — o literal nunca é REESCRITO, zero
+#      ocorrências no arquivo, guard verde.
+#
+# Os dois probes tinham `httpx.AsyncClient()` no arquivo novo — é isso que
+# efetivamente ALCANÇA a Graph API, não importa como a URL foi montada depois.
+# Uma tool não pode fazer requisição sem construir (ou receber já construído)
+# um cliente; o literal é opcional, o cliente não é.
+#
+# Retargetado pro MECANISMO: o guard varre as raízes abaixo procurando
+# CONSTRUÇÃO/USO DIRETO de cliente HTTP (`_METODOS_CLIENTE_HTTP`) e afirma que
+# só acontece em (arquivo, escopo) autorizados. Resolução por CAMINHO
+# CANÔNICO (`h.origens_de_import` + `h.caminho_canonico`), não pelo último
+# nome do atributo — `import httpx as hx` ou `from httpx import AsyncClient`
+# resolvem pro mesmo alvo que `import httpx; httpx.AsyncClient(...)`.
+#
+# FIX ROUND 2 (achado do revisor, mesma sessão): o conjunto só cobria
+# `httpx`/`requests` — a frase de abertura de `test_meta_graph_execution_is_contained`
+# ("só o executor gateado pode construir OU USAR cliente HTTP") era mais larga
+# do que isso verificava. O revisor mediu os escapes reais e ordenou por
+# plausibilidade; dois viraram cobertura, o resto virou limite DECLARADO (ver
+# a docstring do teste — despacho dinâmico não é perseguido aqui):
+#
+#   - `aiohttp.ClientSession()` — plausibilidade ALTA: `aiohttp` já é
+#     dependência instalada (`pyproject.toml`, pin de segurança
+#     PYSEC-2026-3545/3546/3547, transitiva via `facebook-business`) — quem
+#     escrever `import aiohttp` não instala nada novo nem sente que está
+#     fazendo algo diferente.
+#   - `urllib.request.urlopen(...)` — stdlib, custo zero, reflexo comum de
+#     quick fix.
+_METODOS_CLIENTE_HTTP = frozenset(
+    {
+        "httpx.AsyncClient",
+        "httpx.Client",
+        "httpx.get",
+        "httpx.post",
+        "httpx.put",
+        "httpx.delete",
+        "httpx.patch",
+        "httpx.request",
+        "httpx.stream",
+        # Defensivo: `requests` não tem consumidor real em src/meta_ads/ nem
+        # src/auth/ desde a Task 3 (medido — o `requests` que resta em
+        # reports.py é prosa, não import). Se algo reverter parcial pro SDK
+        # antigo (que usa `requests` por baixo via facebook_business), a
+        # chamada direta equivalente já está coberta.
+        "requests.get",
+        "requests.post",
+        "requests.put",
+        "requests.delete",
+        "requests.patch",
+        "requests.request",
+        "requests.Session",
+        # Fix round 2: aiohttp cobre construtor (ClientSession) E o helper de
+        # um-tiro (aiohttp.request), no mesmo padrão de completude do httpx
+        # acima — deixar só ClientSession coberto reproduziria, dentro do
+        # aiohttp, a MESMA assimetria que este round inteiro existe pra
+        # fechar (biblioteca X tem verbo coberto, biblioteca Y não).
+        "aiohttp.ClientSession",
+        "aiohttp.request",
+        # urllib.request.Request() sozinho não é I/O (só monta o objeto,
+        # como httpx.Headers()) — urlopen() é quem manda a requisição, com
+        # ou sem Request por trás. Cobrir só o verbo que FAZ I/O é a mesma
+        # precisão do caso "httpx_helper_nao_relacionado_nao_conta" abaixo.
+        "urllib.request.urlopen",
+        # ONDA FINAL (obrigação em aberto do round 2): `urlretrieve` é o OUTRO
+        # verbo de I/O do mesmo módulo stdlib. A ruling do round 2 dizia "se
+        # não for consertado, tem de ser declarado no docstring" — e não foi
+        # feito nem um nem outro, então ficou um buraco que o texto do teste
+        # não avisava. Ele é resolvível estaticamente (import comum, atributo
+        # estático), então NÃO cai na carve-out de despacho dinâmico que o
+        # docstring declara: ficar de fora seria omissão, não limite.
+        "urllib.request.urlretrieve",
+    }
+)
+
+# Piso de arquivos de tool Meta sob src/mcp/tools/ — protege a DESCOBERTA de
+# arquivo (eixo diferente do piso de ocorrência abaixo): se a convenção de
+# nome mudar (deixar de conter "meta"), `_raizes_cliente_http_meta` erraria
+# calado varrendo uma fração da superfície. Medido: `ls src/mcp/tools/ | grep
+# -i meta` = 8 arquivos, 2026-09-21.
+_PISO_ARQUIVOS_TOOLS_META = 8
 
 
-def _ofensores_f57_meta(
-    arv: ast.Module, *, executor_autorizado: str | None
-) -> list[tuple[str, int]]:
-    """(escopo, linha) de cada `build_meta_api(...)` fora do executor autorizado.
+def _raizes_cliente_http_meta() -> list[Path]:
+    """Arquivos varridos pelo guard: todo `src/meta_ads/**.py` (recursivo, já
+    com o `EscopoVazioError` de `h.fontes_py` embutido) + os handlers de tool
+    Meta em `src/mcp/tools/` (nome contém "meta", direto no diretório — tools
+    não vivem em subpasta).
 
-    Até 2026-09-07 este guard era `"build_meta_api(" in p.read_text()` com
-    allowlist por ARQUIVO — a forma exata que o F57 acabara de perder. Duas
-    consequências, as duas medidas: uma função nova em `reports.py` chamando a
-    factory direto passava verde (o arquivo inteiro era isento), e o substring
-    contava o `def build_meta_api(` de `client.py` como chamada — por isso
-    `client.py` precisava estar na allowlist.
+    Escopo deliberadamente MENOR que `src/` inteiro: `httpx` é usado em áreas
+    do repo sem nenhuma relação com a Graph API (`src/auth/oauth.py` é o
+    OAuth do GOOGLE, por exemplo) — varrer ali geraria ruído sem proteger
+    nada, e é exatamente o "restrinja às raízes" que o revisor pediu.
 
-    Com AST, definição não é chamada: `client.py` não precisa de isenção
-    nenhuma, e a única exceção que resta é a FUNÇÃO executora. Medido antes do
-    aperto: há **1** call-site vivo em `src/`, `run_meta_graph_get`
-    (`src/meta_ads/reports.py:129`) — nenhuma violação viva foi revelada.
+    FICAM DE FORA, apesar de construírem `httpx.AsyncClient` de verdade e
+    falarem com a Graph API — cada um por motivo medido, não por esquecimento:
+
+    - `src/auth/meta_oauth.py` (2 construções reais: `meta_oauth_callback` e
+      `meta_oauth_refresh_accounts`) — o roteador OAuth inteiro. Não é onde
+      uma TOOL nova nasce; é arquivo estável, tocado só quando o fluxo OAuth
+      muda. Era allowlist no guard anterior (literal, por módulo inteiro);
+      aqui fica de FORA do escopo por decisão, não por buraco herdado.
+    - `src/jobs/meta_resync.py` (1 construção real) — o job de resync roda
+      com o token de system-user direto, automação privilegiada sem
+      manager_id no caminho. Mesma classe de "anterior ao gate por natureza".
+
+    Isto é uma FRONTEIRA CONHECIDA, não uma garantia universal: uma tool ou
+    job Meta que alguém escreva FORA destas duas raízes (outro diretório do
+    repo, uma rota nova em `src/web/routes/`) NÃO é coberto por este guard —
+    nada aqui afirma o contrário.
     """
+    raiz_meta_ads = h.fontes_py(h.SRC / "meta_ads")
+    tools_meta = sorted(
+        p.resolve() for p in (h.SRC / "mcp" / "tools").glob("*.py") if "meta" in p.stem.lower()
+    )
+    if len(tools_meta) < _PISO_ARQUIVOS_TOOLS_META:
+        raise h.EscopoVazioError(
+            f"só {len(tools_meta)} arquivo(s) de tool Meta encontrado(s) sob "
+            f"src/mcp/tools/ (piso: {_PISO_ARQUIVOS_TOOLS_META}, medido em "
+            "2026-09-21). A convenção de nome pode ter mudado (deixou de "
+            "conter 'meta') — o guard estaria varrendo só uma fração da "
+            "superfície de tools, calado."
+        )
+    return raiz_meta_ads + tools_meta
+
+
+# A allowlist é a invariante deste guard, não uma exceção temporária — pequena,
+# fechada, revisada, e cada entrada carrega o motivo AO LADO (entrada sem
+# motivo é entrada que ninguém reavalia depois).
+_ALLOWLIST_CLIENTE_HTTP: dict[tuple[str, str], str] = {
+    ("src/meta_ads/reports.py", "run_meta_graph_get"): (
+        "o executor único: can_manager_access roda incondicional ANTES do "
+        "`async with httpx.AsyncClient(...)` (linha 160, contra a 234) — o "
+        "freio do Modelo B. Nenhuma outra função deste arquivo constrói "
+        "cliente (medido: só _paginar_graph mais existe, e RECEBE `http` por "
+        "parâmetro — usa o cliente que o executor já gateou, não constrói um "
+        "novo)."
+    ),
+}
+
+# Medido em 2026-09-21 (fix round 1): sob as duas raízes de
+# `_raizes_cliente_http_meta`, exatamente 1 construção real de cliente —
+# `httpx.AsyncClient(...)` em `reports.py:234`. Nenhum dos 8 arquivos de tool
+# constrói cliente (todos delegam a `run_meta_graph_get`); `graph.py` e
+# `partnership.py` RECEBEM `http` por parâmetro, não constroem.
+#
+# HONESTO SOBRE A REDUNDÂNCIA (achado Minor do revisor): com allowlist de 1
+# entrada só, este piso e a checagem por-entrada (`vistos_por_entrada`)
+# afirmam a MESMA coisa hoje — a checagem por-entrada já implica que o total
+# não pode ser zero enquanto a entrada existir. Não finjo que são
+# independentes. Mantenho os dois porque (a) o valor é MEDIDO, não decoração,
+# e (b) no dia em que a allowlist ganhar uma 2ª entrada, ou em que uma
+# revisão quiser saber "o total caiu?" sem percorrer cada chave, o piso deixa
+# de ser redundante sem precisar de desenho novo. Se isto continuar do mesmo
+# jeito na próxima rodada, considere apagar um dos dois em vez de manter os
+# dois por hábito.
+_PISO_CLIENTE_HTTP = 1
+
+
+def _ocorrencias_cliente_http(arv: ast.Module, caminho_rel: str) -> list[tuple[str, int, bool]]:
+    """(escopo, linha, autorizado) de cada Call que constrói/invoca um cliente
+    HTTP (`_METODOS_CLIENTE_HTTP`) no corpo PRÓPRIO de cada escopo.
+
+    Resolve o alvo pelo CAMINHO CANÔNICO (`h.origens_de_import` +
+    `h.caminho_canonico`), não pelo último nome do atributo: `httpx.get(`
+    bate por `Attribute`, `from httpx import AsyncClient` + `AsyncClient(`
+    bate por `Name` resolvido via import, e `import httpx as hx` +
+    `hx.AsyncClient(` bate pelos dois — as três formas usam a MESMA
+    resolução, então renomear o import não escapa (mesma lição do F57
+    original, aplicada ao módulo em vez do nome de uma função).
+
+    Um cliente RECEBIDO por parâmetro (`http.get(...)`, onde `http` é
+    argumento, não import) nunca resolve pra `httpx.*` — `caminho_canonico`
+    só reconhece raiz ligada por `import`/`from import` no PRÓPRIO arquivo.
+    É por isso que `graph.py::fetch_paginated` e
+    `partnership.py::fetch_partnership` (que recebem `http: httpx.AsyncClient`
+    de fora) não aparecem aqui: USAM um cliente que já passou pelo construtor
+    gateado, não CONSTROEM um novo.
+    """
+    origens = h.origens_de_import(arv)
+    achados: list[tuple[str, int, bool]] = []
+    for escopo in (arv, *h.funcoes(arv)):
+        nome = getattr(escopo, "name", "<módulo>")
+        for no in h.nos_do_corpo_proprio(escopo):
+            if not isinstance(no, ast.Call):
+                continue
+            caminho = h.caminho_canonico(no.func, origens)
+            if caminho not in _METODOS_CLIENTE_HTTP:
+                continue
+            achados.append((nome, no.lineno, (caminho_rel, nome) in _ALLOWLIST_CLIENTE_HTTP))
+    return achados
+
+
+def _ofensores_f57_meta(arv: ast.Module, caminho_rel: str) -> list[tuple[str, int]]:
+    """(escopo, linha) de cada construção/uso de cliente HTTP fora da allowlist."""
     return [
         (nome, linha)
-        for escopo in (arv, *h.funcoes(arv))
-        if (nome := getattr(escopo, "name", "<módulo>")) != executor_autorizado
-        for linha in h.chama_no_corpo_proprio(escopo, "build_meta_api", arv=arv)
+        for nome, linha, autorizado in _ocorrencias_cliente_http(arv, caminho_rel)
+        if not autorizado
     ]
 
 
 def test_meta_graph_execution_is_contained() -> None:
-    """F57-Meta: build_meta_api (o factory de execução com o system-user token) só
-    pode ser chamado dentro de run_meta_graph_get (reports.py), que aplica o gate.
-    Uma tool que chame direto pularia o hard-gate incondicional."""
-    arquivo_do_executor, nome_do_executor = _EXECUTOR_META
-    ofensores: list[str] = []
-    vistas = 0
-    for p in h.fontes_py():
-        arv = h.arvore(p)
-        autorizado = nome_do_executor if h.rel(p) == arquivo_do_executor else None
-        vistas += sum(
-            len(h.chama_no_corpo_proprio(e, "build_meta_api", arv=arv))
-            for e in (arv, *h.funcoes(arv))
-        )
-        ofensores.extend(
-            f"{h.rel(p)}:{linha} (em {nome})"
-            for nome, linha in _ofensores_f57_meta(arv, executor_autorizado=autorizado)
-        )
+    """F57-Meta: só o executor gateado pode CONSTRUIR ou usar diretamente um
+    cliente HTTP (`httpx`/`aiohttp`/`urllib.request` — ver
+    `_METODOS_CLIENTE_HTTP` pro conjunto exato) contra a Graph API. Uma tool
+    nova que construa o próprio cliente pula `can_manager_access` — o único
+    freio do Modelo B (token compartilhado entre ~24 contas) — não importa
+    COMO ela monte a URL depois.
 
-    assert vistas, (
-        "F57-Meta — nenhuma chamada a build_meta_api em src/. Guard que varre "
-        "zero call-sites passa por vacuidade: a factory foi renomeada, ou o "
-        "casamento quebrou."
+    **O que este guard NÃO pega — limite estrutural, não descuido, e a
+    mesma classe de limite que `h.chama()` já documenta pra despacho
+    dinâmico.** A varredura é sintática (AST); ela resolve `Name`,
+    `Attribute` e alias de import (`caminho_canonico`), mas não executa nada.
+    Três formas ficam de fora POR CONSTRUÇÃO, confirmadas rodando contra este
+    scanner (fix round 2, 2026-09-21 — nenhuma das três produz achado):
+
+    - `getattr(httpx, "AsyncClient")()` — o alvo da chamada é o RETORNO de um
+      `getattr`, não um `Name`/`Attribute` estático.
+    - `importlib.import_module("httpx").AsyncClient()` — a base do atributo
+      é uma `Call`, não uma raiz que `origens_de_import` conhece.
+    - `__import__("httpx").AsyncClient()` — mesma forma do caso acima.
+
+    Resolver estas três exigiria executar o código (ou modelar `getattr`/
+    `importlib` especificamente), e um scanner que tentasse cobrir despacho
+    dinâmico goela abaixo ficaria gordo e cheio de falso positivo — o mesmo
+    trade-off que `chama()` já aceita e documenta. **Este guard pega o
+    caminho HONESTO — o refactor que ninguém pensaria duas vezes antes de
+    escrever — não o adversarial.** Quem precisar de garantia contra código
+    deliberadamente ofuscado precisa de outra camada, não deste guard.
+
+    Retargetado DUAS vezes em F190/Task 6 (21/09). Fix round 1 (achado
+    Critical do revisor, provado por mutação com dois probes empíricos): a 1ª
+    versão (ruling R10) varria o LITERAL `graph.facebook.com` — um PROXY de
+    quem fala com a API, não o mecanismo. Concatenação de string e reuso de
+    uma constante já autorizada escapavam por completo (ver o comentário
+    acima de `_METODOS_CLIENTE_HTTP` pros dois probes). Os dois tinham
+    `httpx.AsyncClient()` no arquivo novo — é isso que este guard vigia desde
+    então. Fix round 2 (achado do revisor, mesma sessão): o conjunto só
+    cobria `httpx`/`requests`, deixando `aiohttp` (dependência já instalada)
+    e `urllib.request.urlopen` (stdlib) de fora sem que o docstring avisasse
+    — ver o comentário de `_METODOS_CLIENTE_HTTP` pros dois novos. Onda final:
+    `urllib.request.urlretrieve` entrou junto — era obrigação em aberto do
+    round 2 ("consertar OU declarar", e não foi feito nem um nem outro), e é
+    resolvível estaticamente, então não cabia na carve-out acima. Ver
+    `_raizes_cliente_http_meta` pro escopo de ARQUIVO (e o que fica de fora,
+    deliberadamente) e `_ALLOWLIST_CLIENTE_HTTP` pra allowlist com o motivo
+    de cada entrada.
+    """
+    vistos_por_entrada: dict[tuple[str, str], int] = {chave: 0 for chave in _ALLOWLIST_CLIENTE_HTTP}
+    total_vistas = 0
+    ofensores: list[str] = []
+    for p in _raizes_cliente_http_meta():
+        caminho_rel = h.rel(p)
+        for nome, linha, autorizado in _ocorrencias_cliente_http(h.arvore(p), caminho_rel):
+            total_vistas += 1
+            chave = (caminho_rel, nome)
+            if autorizado:
+                vistos_por_entrada[chave] += 1
+            else:
+                ofensores.append(f"{caminho_rel}:{linha} (em {nome})")
+
+    assert total_vistas >= _PISO_CLIENTE_HTTP, (
+        f"F57-Meta — só {total_vistas} construção(ões)/uso(s) de cliente HTTP sob as "
+        f"raízes varridas, piso {_PISO_CLIENTE_HTTP} (medido em 2026-09-21). Varredura "
+        "achando MENOS do que já viu antes passa por vacuidade: ou `_METODOS_CLIENTE_HTTP` "
+        "parou de casar (o import mudou de forma que `caminho_canonico` não resolve) ou o "
+        "único site conhecido sumiu sem atualizar este piso na mesma mudança."
+    )
+    faltando = sorted(chave for chave, n in vistos_por_entrada.items() if n == 0)
+    assert not faltando, (
+        f"F57-Meta — entrada(s) da allowlist sem NENHUMA construção/uso real: {faltando}. "
+        "A allowlist é a invariante deste guard: entrada que não casa nada é entrada que "
+        "ninguém reavalia — confirme se o site migrou e remova a entrada, ou se é vacuidade "
+        "de scanner."
     )
     assert not ofensores, (
-        f"F57-Meta — build_meta_api chamado fora de {nome_do_executor}: {ofensores}. "
-        "Toda leitura Meta deve passar por run_meta_graph_get (gate "
-        "can_manager_access + audit + BUC)."
+        f"F57-Meta — cliente HTTP construído/usado fora dos lugares autorizados: "
+        f"{ofensores}. Toda leitura Meta deve passar por run_meta_graph_get "
+        "(can_manager_access incondicional — o único freio do Modelo B), não importa como "
+        "a URL foi montada. Se o site novo é legítimo, acrescente (arquivo, escopo) a "
+        "`_ALLOWLIST_CLIENTE_HTTP` COM o motivo ao lado."
     )
 
 
-# (id, fonte, autorizado_neste_arquivo, acusa?) — contrato do guard F57-Meta.
+# (id, caminho_rel sintético, fonte, acusa?) — contrato do guard F57-Meta
+# (mecanismo), forma a forma, pela MESMA travessia que o teste de `src/` usa.
+# "concatenacao_de_url_ainda_e_pega" e "constante_importada_ainda_e_pega" são
+# os DOIS PROBES do achado Critical do fix round 1; "aiohttp_client_session_e_pego",
+# "aiohttp_request_e_pego" e "urllib_urlopen_e_pego" são os do fix round 2 —
+# sem eles aqui, uma regressão futura do MECANISMO ou do CONJUNTO
+# (`_METODOS_CLIENTE_HTTP` perde uma entrada num refactor) só apareceria
+# rodando o probe manual de novo, nunca num `pytest` de rotina.
 _FORMAS_F57_META = [
     (
         "no_proprio_executor",
-        "async def run_meta_graph_get(mid, path):\n    api = build_meta_api()\n    return api\n",
-        "run_meta_graph_get",
+        "src/meta_ads/reports.py",
+        "async def run_meta_graph_get(edge):\n"
+        "    async with httpx.AsyncClient() as http:\n"
+        "        return await http.get(edge)\n",
         False,
     ),
     (
-        "irma_no_arquivo_do_executor",
-        # A SABOTAGEM: verde até 2026-09-07 porque a allowlist era por ARQUIVO.
-        "async def run_meta_graph_get(mid, path):\n"
-        "    return build_meta_api()\n"
-        "async def zz_atalho(path):\n"
-        "    return build_meta_api()\n",
-        "run_meta_graph_get",
+        "funcao_nova_no_arquivo_do_executor",
+        # A MESMA sabotagem de sempre, agora sobre o cliente: função nova em
+        # reports.py que TAMBÉM constrói httpx.AsyncClient, sem passar pelo
+        # gate de run_meta_graph_get.
+        "src/meta_ads/reports.py",
+        "async def run_meta_graph_get(edge):\n"
+        "    async with httpx.AsyncClient() as http:\n"
+        "        return await http.get(edge)\n"
+        "async def zz_atalho(edge):\n"
+        "    async with httpx.AsyncClient() as http:\n"
+        "        return await http.get(edge)\n",
         True,
     ),
     (
-        "em_arquivo_qualquer",
-        "async def ler(path):\n    return build_meta_api()\n",
-        None,
+        "arquivo_nao_autorizado",
+        "src/meta_ads/_qualquer_novo.py",
+        "async def ler():\n"
+        "    async with httpx.AsyncClient() as http:\n"
+        '        return await http.get("https://graph.facebook.com/v22.0/me")\n',
         True,
     ),
     (
-        "definicao_nao_e_chamada",
-        # `client.py` DEFINE a factory. O substring `build_meta_api(` casava a
-        # linha do `def` — era só por isso que ele precisava de allowlist.
-        "def build_meta_api(token):\n    return FacebookAdsApi(token)\n",
-        None,
+        "concatenacao_de_url_ainda_e_pega",
+        # PROBE A do revisor: a varredura por LITERAL não pegava isto —
+        # nenhum Constant sozinho contém "graph.facebook.com". A varredura
+        # por MECANISMO nem olha a URL.
+        "src/meta_ads/_qualquer_novo.py",
+        "async def ler(edge):\n"
+        '    host = "https://graph." + "facebook.com/v22.0"\n'
+        "    async with httpx.AsyncClient() as http:\n"
+        "        return await http.get(host + edge)\n",
+        True,
+    ),
+    (
+        "constante_importada_ainda_e_pega",
+        # PROBE B do revisor: zero ocorrências do literal neste arquivo (a
+        # constante é importada, não reescrita) — a varredura por LITERAL
+        # ficava verde. A varredura por MECANISMO não precisa do literal.
+        "src/meta_ads/_qualquer_novo.py",
+        "from src.auth.meta_oauth import META_GRAPH_BASE\n"
+        "async def ler(edge):\n"
+        "    async with httpx.AsyncClient() as http:\n"
+        "        return await http.get(META_GRAPH_BASE + edge)\n",
+        True,
+    ),
+    (
+        "aiohttp_client_session_e_pego",
+        # PROBE do fix round 2: aiohttp já é dependência instalada (pin de
+        # segurança transitivo via facebook-business) — ninguém precisa
+        # instalar nada pra chegar aqui.
+        "src/meta_ads/_qualquer_novo.py",
+        "import aiohttp\n"
+        "async def ler(url):\n"
+        "    async with aiohttp.ClientSession() as sessao:\n"
+        "        return await sessao.get(url)\n",
+        True,
+    ),
+    (
+        "aiohttp_request_e_pego",
+        # O helper de um-tiro do aiohttp — mesmo papel do httpx.get/post.
+        "src/meta_ads/_qualquer_novo.py",
+        "import aiohttp\n"
+        "async def ler(url):\n"
+        '    async with aiohttp.request("GET", url) as resp:\n'
+        "        return resp\n",
+        True,
+    ),
+    (
+        "urllib_urlopen_e_pego",
+        # PROBE do fix round 2: stdlib, custo zero — o outro escape que o
+        # revisor classificou como plausível.
+        "src/meta_ads/_qualquer_novo.py",
+        "import urllib.request\ndef ler(url):\n    return urllib.request.urlopen(url)\n",
+        True,
+    ),
+    (
+        "urllib_urlretrieve_e_pego",
+        # PROBE da onda final: o SEGUNDO verbo de I/O do mesmo módulo. Deixá-lo
+        # de fora reproduzia, dentro do `urllib.request`, a mesma assimetria
+        # que o round 2 fechou entre httpx e aiohttp — biblioteca coberta pela
+        # metade é biblioteca descoberta.
+        "src/meta_ads/_qualquer_novo.py",
+        'import urllib.request\ndef ler(url):\n    return urllib.request.urlretrieve(url, "/tmp/x")\n',
+        True,
+    ),
+    (
+        "cliente_recebido_por_parametro_nao_conta",
+        # A forma real de graph.py::fetch_paginated: RECEBE `http`, não
+        # CONSTRÓI. `caminho_canonico` só resolve raiz ligada por import no
+        # PRÓPRIO arquivo — parâmetro nunca aparece em `origens_de_import`.
+        "src/meta_ads/_qualquer_novo.py",
+        "async def usa_cliente_alheio(http, edge):\n    return await http.get(edge)\n",
+        False,
+    ),
+    (
+        "httpx_helper_nao_relacionado_nao_conta",
+        # Precisão do conjunto: httpx.Headers()/httpx.URL() não enviam
+        # requisição nem constroem cliente — não estão em
+        # _METODOS_CLIENTE_HTTP. reports.py usa httpx.Headers() de verdade
+        # (linha 80, dentro de _paginar_graph) e não pode acender o guard.
+        "src/meta_ads/_qualquer_novo.py",
+        "def monta_headers():\n    return httpx.Headers()\n",
         False,
     ),
     (
         "alias_de_import_nao_escapa",
-        "from src.meta_ads.client import build_meta_api as _mk\nasync def ler(path):\n    return _mk()\n",
-        None,
+        "src/meta_ads/_qualquer_novo.py",
+        "import httpx as hx\n"
+        "async def ler(edge):\n"
+        "    async with hx.AsyncClient() as http:\n"
+        "        return await http.get(edge)\n",
         True,
     ),
     (
-        "chamada_em_lambda_de_funcao_irma",
-        "async def run_meta_graph_get(mid, path):\n"
-        "    return build_meta_api()\n"
-        "async def zz(path):\n"
-        "    return await run_blocking(lambda: build_meta_api())\n",
-        "run_meta_graph_get",
+        "from_import_bare_form_e_pego",
+        "src/meta_ads/_qualquer_novo.py",
+        "from httpx import AsyncClient\n"
+        "async def ler(edge):\n"
+        "    async with AsyncClient() as http:\n"
+        "        return await http.get(edge)\n",
         True,
     ),
 ]
 
 
 @pytest.mark.parametrize(
-    ("fonte", "autorizado", "acusa"),
-    [(fonte, aut, acusa) for _, fonte, aut, acusa in _FORMAS_F57_META],
+    ("caminho_rel", "fonte", "acusa"),
+    [(caminho, fonte, acusa) for _, caminho, fonte, acusa in _FORMAS_F57_META],
     ids=[ident for ident, _, _, _ in _FORMAS_F57_META],
 )
-def test_f57_meta_acusa_a_violacao_e_so_ela(
-    fonte: str, autorizado: str | None, acusa: bool
-) -> None:
-    """Contrato do guard F57-Meta, forma a forma, pela MESMA travessia.
-
-    O único ocupante vivo é o próprio executor, então sem esta tabela o aperto
-    (substring+arquivo → AST+função) não teria nada que o distinguisse do guard
-    frouxo: os dois são verdes contra `src/` de hoje.
+def test_f57_meta_acusa_a_violacao_e_so_ela(caminho_rel: str, fonte: str, acusa: bool) -> None:
+    """Contrato do guard F57-Meta (mecanismo), forma a forma, pela MESMA
+    travessia que o teste de `src/` usa (`_ofensores_f57_meta`).
     """
-    achados = _ofensores_f57_meta(ast.parse(fonte), executor_autorizado=autorizado)
+    achados = _ofensores_f57_meta(ast.parse(fonte), caminho_rel)
 
     assert bool(achados) is acusa, (
         f"veredito errado: esperado {'ACUSA' if acusa else 'passa'}, "
-        f"obtido {achados or 'passa'} para:\n{fonte}"
+        f"obtido {achados or 'passa'} para {caminho_rel}:\n{fonte}"
     )
 
 

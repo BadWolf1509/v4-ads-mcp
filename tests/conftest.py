@@ -32,6 +32,18 @@ _TEST_ENV = {
     "LOG_LEVEL": "warning",
     "META_APP_ID": "test_meta_app_123456789",
     "META_APP_SECRET": "test_meta_secret_dummy_value_at_least_32_chars_long",
+    # F190/Task 3 (21/09): antes deste fix, `run_meta_graph_get` só tocava
+    # `settings.meta_system_user_token` por trás de `build_meta_api` — todo
+    # teste que exercitava o caminho feliz/erro mockava essa factory inteira e
+    # nunca lia o valor real. Com o token lido inline (token no header, sem
+    # SDK), qualquer teste que NÃO mocka isso individualmente precisa de um
+    # valor não-vazio aqui, senão `MetaSystemUserTokenMissingError` dispara
+    # antes de qualquer requisição — mesmo em testes que só querem exercitar o
+    # transporte. Dummy, nunca um token real (ver
+    # test_meta_reports_executor.py::test_run_meta_graph_get_raises_when_system_user_token_missing
+    # pro caso "vazio" — ele mocka `get_settings()` com token="" direto,
+    # não por aqui — F190/Task 6, depois que build_meta_api saiu de client.py).
+    "META_SYSTEM_USER_TOKEN": "test_meta_system_user_token_dummy",
 }
 
 # Testcontainers needs DOCKER_HOST + Ryuk-disable on Windows + Docker Desktop

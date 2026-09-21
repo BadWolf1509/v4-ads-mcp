@@ -94,8 +94,8 @@ def build_insights_call(
     M.3.1 hotfix (F53): effective_status param removido; filtering omitido.
 
     Task 3.4: `params` NÃO carrega mais `ad_account_id` — esse dict vai direto
-    pro Graph API como query params (`api.call("GET", [edge], params=params)`
-    em run_meta_graph_get); `ad_account_id` ali era um passthrough espúrio que
+    pro Graph API como query params (`http.get(url, params=params, ...)` em
+    run_meta_graph_get); `ad_account_id` ali era um passthrough espúrio que
     só existia pra alimentar o rate-counter BUC. O executor agora usa o kwarg
     `ad_account_id` (obrigatório desde F72), então esse dict pode ficar restrito
     a params reais do Graph sem quebrar o contador. O account do EDGE

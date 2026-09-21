@@ -25,7 +25,7 @@
 | Revisão servindo | **`v4-ads-mcp-00121-hlq`** — `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O handshake MCP **autenticado NÃO foi conferido**: segue desarmado (F186), então "registry montado" aqui é o que o health afirma, não o que um `tools/list` provou |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
-| Catálogo | até **F189** (~4.600 linhas, 492 KB) |
+| Catálogo | até **F190** (~4.700 linhas, 504 KB) |
 
 **Caminho de mutação verificado após os bumps de 20/09** (`grpcio` 1.84, `google-auth`
 2.58, `google-api-core` 2.38): duas mutações reais em `1163862076` com
@@ -55,6 +55,7 @@ duas afirmações falsas sobre o breakdown; o **0.4.1 corrigiu e está instalado
 
 ## Pendências que dependem do Wellington
 
+- **F190 — não foi medido se o token Meta já vazou.** Decisão de 21/09: consertar para frente, sem rotação nem expurgo de log. A conta que responderia é um `COUNT(*)` em `audit_log` por `error_message` com nome de parâmetro de token, e **ela não foi executada** — "ninguém mediu" não é "nunca aconteceu".
 - **F129** — governança do system user Meta: ação humana, fora do código.
 - **F67** — custom domain `mcpv4.fluxocerto.dev.br`, pendente via LB.
 - **Pedir ao TI da V4 uma identidade `@v4company.com` sem caixa postal** (alias ou conta de serviço) — é o que **desbloqueia o F186 por inteiro**: manager com grant zero, pior caso de vazamento `tools/list`, e a reconciliação não a toca. Sem ela não há token de CI possível: `sessions_create` só emite para o próprio manager logado, e login exige identidade Google do domínio. **Emitir sob um manager existente está recusado** — poria no GitHub Actions um token com alcance de ~38 contas Google e 26 Meta.

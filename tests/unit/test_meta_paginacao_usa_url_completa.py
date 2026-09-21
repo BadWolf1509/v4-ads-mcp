@@ -40,6 +40,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+import httpx
 import pytest
 
 _PROXIMA = "https://graph.facebook.com/v23.0/act_1/insights?after=cursor123&level=campaign"
@@ -62,28 +63,36 @@ def _pool() -> MagicMock:
     return pool
 
 
-async def _rodar(max_pages: int) -> tuple[dict[str, Any], list[Any]]:
-    """Roda o executor com um fake que REGISTRA o `path` de cada chamada."""
+async def _rodar(max_pages: int) -> tuple[dict[str, Any], list[httpx.URL]]:
+    """Roda o executor com um handler que REGISTRA a URL de cada chamada.
+
+    F190/Task 3 (21/09): o fake mudou de `api.call` (SDK, mockado via
+    `build_meta_api`) pra `httpx.MockTransport` — o SDK que produzia o bug
+    original (ramificar em `isinstance(path, six.string_types)`) nem existe
+    mais neste caminho, e a ambiguidade "tokens de path vs URL completa" que
+    causava o F189 não tem equivalente em httpx (`.get(url, ...)` sempre leva
+    uma URL). O que sobrevive — e o que este guard tem de continuar cobrando —
+    e a invariante de FUNDO: a URL da 2a pagina tem de ser exatamente
+    `paging.next`, nunca remontada sobre a base do Graph.
+    """
     from src.meta_ads import reports
 
     paginas = [
         _pagina([{"campaign_id": "a", "spend": "10"}], _PROXIMA),
         _pagina([{"campaign_id": "b", "spend": "5"}], None),
     ]
-    caminhos: list[Any] = []
+    vistas: list[httpx.URL] = []
 
-    def fake_call(method: str, path: Any, params: dict[str, Any]) -> MagicMock:
-        caminhos.append(path)
-        resp = MagicMock()
-        resp.json = MagicMock(return_value=paginas[min(len(caminhos) - 1, len(paginas) - 1)])
-        resp.headers = MagicMock(return_value={})
-        return resp
+    def handler(request: httpx.Request) -> httpx.Response:
+        vistas.append(request.url)
+        indice = min(len(vistas) - 1, len(paginas) - 1)
+        return httpx.Response(200, json=paginas[indice])
 
-    api = MagicMock()
-    api.call = fake_call
+    transporte = httpx.MockTransport(handler)
+    cliente_real = httpx.AsyncClient(transport=transporte, timeout=reports._TIMEOUT_GRAPH)
 
     with (
-        patch.object(reports, "build_meta_api", MagicMock(return_value=api)),
+        patch.object(reports.httpx, "AsyncClient", MagicMock(return_value=cliente_real)),
         patch.object(
             reports.manager_meta_account_access,
             "can_manager_access",
@@ -101,63 +110,73 @@ async def _rodar(max_pages: int) -> tuple[dict[str, Any], list[Any]]:
             operation_name="meta_get_campaign_performance",
             max_pages=max_pages,
         )
-    return corpo, caminhos
+    return corpo, vistas
 
 
 @pytest.mark.asyncio
 async def test_a_pagina_seguinte_recebe_a_url_como_string() -> None:
-    """A invariante. Vermelho contra `api.call("GET", [proxima], ...)`.
+    """A invariante do F189, portada pro transporte novo.
+
+    A assinatura exata do bug original era a URL DOBRADA —
+    `graph.facebook.com/vXX/https://graph.facebook.com/...` — porque o `next`
+    embrulhado em lista virava tokens de path concatenados na base. Em httpx
+    isso se traduz em "o host do Graph não pode aparecer duas vezes na URL da
+    2a pagina".
 
     O piso de nao-vacuidade vem antes da assercao: sem as DUAS chamadas nao houve
-    paginacao nenhuma, e um `assert` sobre `caminhos[1]` que nunca roda passaria
+    paginacao nenhuma, e um `assert` sobre `vistas[1]` que nunca roda passaria
     por nao ter olhado nada — a forma mais silenciosa de um guard morrer.
     """
-    _, caminhos = await _rodar(max_pages=5)
+    _, vistas = await _rodar(max_pages=5)
 
-    assert len(caminhos) == 2, (
-        f"a paginacao nao rodou: {len(caminhos)} chamada(s). Sem seguir o "
-        "`paging.next` este guard nao afirma nada sobre a forma do `path`."
+    assert len(vistas) == 2, (
+        f"a paginacao nao rodou: {len(vistas)} chamada(s). Sem seguir o "
+        "`paging.next` este guard nao afirma nada sobre a URL da 2a pagina."
     )
-    assert isinstance(caminhos[1], str), (
-        "a chamada que segue `paging.next` passou `path` como "
-        f"{type(caminhos[1]).__name__}, nao `str`. O SDK ramifica em "
-        "`isinstance(path, six.string_types)`: com nao-string ele concatena na "
-        "URL base e produz `graph.facebook.com/vXX/https://graph.facebook.com/...` "
-        "— a Graph API recusa com (#100). Passe `proxima`, nao `[proxima]` (F189)."
+    assert str(vistas[1]).count("graph.facebook.com") == 1, (
+        f"a URL da 2a pagina veio dobrada: {vistas[1]}. E a assinatura exata do "
+        "F189 — `next` remontado sobre a base produz duas ocorrencias do host "
+        "do Graph na mesma URL."
     )
 
 
 @pytest.mark.asyncio
 async def test_a_url_seguinte_e_a_do_paging_next_intacta() -> None:
-    """Nao basta ser string: tem de ser A URL que o Meta mandou.
+    """Nao basta nao estar dobrada: tem de ser A URL que o Meta mandou, intacta.
 
-    Sem esta, `str(["..."])` ou qualquer derivacao passariam no teste irmao —
-    seria asserir o ADJACENTE (o tipo) em vez da invariante (o destino).
+    Sem esta, qualquer URL "parecida mas errada" passaria no teste irmao —
+    seria asserir o ADJACENTE (nao-dobrada) em vez da invariante (o destino
+    exato).
     """
-    _, caminhos = await _rodar(max_pages=5)
+    _, vistas = await _rodar(max_pages=5)
 
-    assert len(caminhos) == 2, "sem a segunda chamada nao ha URL de paginacao para conferir"
-    assert caminhos[1] == _PROXIMA, (
-        f"a segunda chamada foi para {caminhos[1]!r}, nao para a URL que o Meta "
+    assert len(vistas) == 2, "sem a segunda chamada nao ha URL de paginacao para conferir"
+    assert str(vistas[1]) == _PROXIMA, (
+        f"a segunda chamada foi para {vistas[1]!r}, nao para a URL que o Meta "
         f"devolveu em `paging.next` ({_PROXIMA!r}). O `next` ja carrega cursor, "
         "fields e token — qualquer remontagem perde algum deles."
     )
 
 
 @pytest.mark.asyncio
-async def test_a_primeira_chamada_segue_usando_token_de_caminho() -> None:
-    """Controle: a PRIMEIRA chamada nao e URL completa, e nao pode virar uma.
+async def test_a_primeira_chamada_usa_a_url_base_nao_o_paging_next() -> None:
+    """Controle: a PRIMEIRA chamada e construida (base + edge), nao reaproveita
+    a URL de paginacao de uma chamada anterior.
 
-    Sem este, "passe sempre string" seria satisfeito mandando a edge crua como
-    string — o SDK trataria `/act_1/insights` como URL absoluta e a requisicao
-    iria para lugar nenhum. O contrato tem dois lados, e o guard cobra os dois.
+    Sem este controle, um executor hipotetico que SEMPRE usasse `_PROXIMA` (bug
+    oposto: ignorar a propria 1a pagina) passaria no teste irmao, que so olha a
+    chamada [1]. Este cobra a [0]: o contrato tem dois lados.
     """
-    _, caminhos = await _rodar(max_pages=1)
+    _, vistas = await _rodar(max_pages=1)
 
-    assert len(caminhos) == 1, "com max_pages=1 o executor faz exatamente uma chamada"
-    assert not isinstance(caminhos[0], str), (
-        f"a primeira chamada passou `path` como str ({caminhos[0]!r}); ela tem de "
-        "ser sequencia de tokens para o SDK montar a URL sobre a base do Graph."
+    assert len(vistas) == 1, "com max_pages=1 o executor faz exatamente uma chamada"
+    assert str(vistas[0]) != _PROXIMA, (
+        f"a primeira chamada foi para {vistas[0]!r}, igual a URL de paginacao "
+        f"({_PROXIMA!r}) — ela tem que ser a URL BASE (edge + params proprios), "
+        "nao a URL de uma 2a pagina que nunca deveria ter acontecido aqui."
+    )
+    assert "act_1/insights" in str(vistas[0]), (
+        f"a primeira chamada nao foi pro edge esperado: {vistas[0]!r}"
     )
 
 

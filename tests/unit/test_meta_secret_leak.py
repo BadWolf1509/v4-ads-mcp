@@ -23,6 +23,7 @@ header `Authorization: Bearer` no userinfo — nada na URL.
 
 from __future__ import annotations
 
+import ast
 import logging
 
 import httpx
@@ -180,3 +181,143 @@ async def test_header_acompanha_a_paginacao_ate_o_fim() -> None:
             "carrega mais o token quando a autenticacao vem por header"
         )
         assert _FAKE_SU_TOKEN not in str(chamada.request.url)
+
+
+# ---------------------------------------------------------------------------
+# Camada 4 (2026-09-21, F190 Task 5): os testes acima cobrem a invariante
+# exercitando FUNÇÕES especificas de `src/auth/meta_oauth.py` — nenhum deles
+# toca `src/meta_ads/`. Foi assim que `reports.py` (que fala com a Graph API
+# pelo SDK `facebook_business`, e o SDK assa o token na query por baixo dos
+# panos) ficou fora do alcance por meses: nao havia teste que sequer abrisse
+# aquele arquivo. O teste abaixo troca "um teste por funcao que eu lembrei de
+# escrever" por "uma propriedade sobre todo arquivo que existe", varrendo os
+# DOIS diretorios onde codigo Meta roda em vez de enumerar nomes.
+# ---------------------------------------------------------------------------
+
+
+def test_nenhum_caminho_meta_poe_credencial_em_query() -> None:
+    """Propriedade, nao lista: TODO arquivo de `src/meta_ads/` e `src/auth/` obedece.
+
+    A versao anterior cobria a invariante enumerando funcoes de UM arquivo
+    (`meta_oauth.py`, nos testes acima). `reports.py` falava com a Graph API
+    pelo SDK, que assa o token na query — e ficou fora do escopo por nao estar
+    na lista. Guard que enumera absolve o arquivo que ninguem lembrou de
+    listar, que e precisamente o arquivo onde o bug mora.
+
+    Escopo cobre as DUAS pastas onde codigo Meta roda — `src/meta_ads/`
+    (SDK/Graph/relatorios) e `src/auth/` (OAuth, onde o F82 original morava
+    em `meta_oauth.py`). Varrer so uma das duas repetiria, no eixo do escopo
+    de diretorio, o mesmo defeito que esta propriedade existe para corrigir
+    no eixo da lista de arquivos — por isso o piso abaixo soma as duas.
+
+    A checagem em si mira LITERAL DE STRING (`h._literais_de_string` +
+    `h._texto_logico`), nao o texto cru do arquivo inteiro. Round 1 desta
+    task usava substring no arquivo inteiro e precisava de uma lista de
+    isencao pra absolver `access_token=access_token` — kwarg Python passado
+    pro bridge do SDK (F48) ou pro `fetch_paginated()` (que poe o valor em
+    `headers=`, nunca em `params=`). Essa lista era a MESMA doenca que esta
+    task existe pra curar, so que na isencao em vez do escopo: `client.py`
+    ficaria absolvido de `access_token=` para sempre, inclusive se um dia
+    ganhasse uma construcao de query real ao lado do kwarg ja vetado.
+
+    Resolvido pela CONSTRUCAO, nao por lista: um kwarg (`access_token=
+    access_token`) nao e literal de string nenhum — `ast` nao o enxerga como
+    tal —, entao nunca aparece pra `_literais_de_string`. Um f-string real
+    (`f"...?access_token={token}"`, a forma que de fato vaza) vira
+    `...?access_token=X` no texto logico (`{token}` -> placeholder) e casa o
+    termo. Sem lista, sem precisar saber de antemao qual arquivo faz o que —
+    e sem a isencao por `_PARAMS_SENSIVEIS` do round 1: o proprio regex de
+    `errors.py` e uma string concatenada (`"...client_secret)(..."`) que
+    nunca contem `nome=` colado, entao nunca batia o termo e nunca precisou
+    de isencao — era isencao que nao isentava nada.
+
+    Round 2 (fix, mesmo dia) acrescentou DUAS defesas que o round 1 nao
+    tinha:
+
+    1. O piso numerico (>= 15) e um RETRATO de hoje, nao uma invariante — ele
+       so pega a varredura ESVAZIANDO. Se `meta_ads/` crescer sozinho ate uns
+       20 arquivos e alguem apagar o termo do `auth/` (exatamente o
+       diretorio onde o F82 original morava), o total ainda passa de 15 e o
+       guard volta a varrer so METADE do escopo, em silencio — o mesmo
+       defeito desta task, reencarnado. Por isso a asserção abaixo AFIRMA OS
+       DIRETORIOS (`{"meta_ads", "auth"}`), nao so a contagem. As duas
+       ficam: uma pega o colapso pra um so lado, a outra pega a varredura
+       esvaziando dentro de uma raiz que continua existindo — cobrem eixos
+       diferentes.
+    2. O scanner agora filtra docstring via `h._nos_de_docstring` (o mesmo
+       helper que `html_em_python` usa, no harness irmao). Sem isso, prosa
+       que CITA `access_token=` pra EXPLICAR o codigo — o jeito natural de
+       documentar esta area depois de um incidente como o F190 — dispara
+       falso positivo, e a reacao natural de quem for documentar e pedir
+       isencao: a doenca que este teste inteiro existe pra extirpar.
+
+    ⚠️ **LIMITE DECLARADO (onda final, 2026-09-21): este guard so ve LITERAL DE
+    STRING — nao ve `params=`.** Medido:
+
+        f"https://g/x?access_token={token}"           -> PEGO aqui
+        http.get(url, params={"access_token": token}) -> NAO pego aqui
+
+    E `params=` e exatamente o mecanismo que o SDK usava, ou seja: sozinho,
+    este guard nao pegaria o bug do F190 escrito em codigo nosso.
+
+    **Quem cobre isso e `tests/unit/test_no_secrets_in_query_params.py`** — e
+    cobre MELHOR do que caberia aqui, verificado rodando um arquivo-probe
+    contra ele: varre `src/` INTEIRO (nao so estas duas raizes), pega o dict
+    inline **e** o dict montado numa variavel e passado depois (`p = {...}` …
+    `params=p`), e tem allowlist que so encolhe, com guard proprio contra
+    entrada obsoleta.
+
+    Escrever um 2o eixo aqui foi TENTADO e DESFEITO na mesma sessao: era um
+    duplicado estritamente mais fraco do que ja existia, e invariante com duas
+    implementacoes diverge — a pergunta certa e qual e a autoritativa. Esta
+    fica sendo a do literal; a de `params=` e a do arquivo irmao, que ganhou
+    `appsecret_proof` e `authorization` no conjunto de chaves na mesma passada
+    (eram os dois nomes desta familia que faltavam la).
+    """
+    from tests.unit import _guard_harness as h
+
+    arquivos = h.fontes_py(h.SRC / "meta_ads") + h.fontes_py(h.SRC / "auth")
+    # Medido em 2026-09-21: 11 arquivos .py em src/meta_ads/ + 8 em src/auth/
+    # = 19. O piso fica ACIMA do maior dos dois diretorios sozinho (11): se a
+    # varredura algum dia colapsar pra so `meta_ads/` (auth silenciosamente
+    # cai) ou so `auth/`, o piso ainda dispara — nao so no zero absoluto que
+    # `fontes_py` ja cobre via EscopoVazioError. Cobre a varredura esvaziando
+    # DENTRO de uma raiz que continua existindo; NAO cobre uma raiz inteira
+    # sumir enquanto a outra cresce o bastante pra compensar a contagem — e
+    # pra isso que serve o assert de diretorios logo abaixo.
+    assert len(arquivos) >= 15, (
+        f"piso de nao-vacuidade: so {len(arquivos)} arquivos em "
+        "src/meta_ads/+src/auth/ (medido em 2026-09-21: 11+8=19). O "
+        "localizador parou de casar, ou o escopo colapsou pra um so "
+        "diretorio, e o guard estaria absolvendo por vacuidade parcial."
+    )
+    # Afirma os DIRETORIOS, nao a contagem: um piso numerico sozinho expira
+    # sem avisar quando `meta_ads/` (a area mais ativa do repo) crescer o
+    # bastante pra compensar `auth/` sumindo do scan — e `auth/meta_oauth.py`
+    # e onde o F82 original morava. Verificado contra os caminhos reais que
+    # `fontes_py` devolve (absolutos, resolvidos): `p.relative_to(h.SRC)` da
+    # `meta_ads\arquivo.py` ou `auth\arquivo.py`, e `.parts[0]` isola a raiz.
+    diretorios = {p.relative_to(h.SRC).parts[0] for p in arquivos}
+    assert diretorios == {"meta_ads", "auth"}, (
+        f"a varredura perdeu uma das duas raizes: achou {diretorios}. O F82 "
+        "morava em `auth/meta_oauth.py` — varrer so `meta_ads/` reproduz o "
+        "defeito."
+    )
+    ofensores: list[str] = []
+    for arq in arquivos:
+        arv = h.arvore(arq)
+        ids_docstring = h._nos_de_docstring(arv)
+        for literal in h._literais_de_string(arv):
+            if isinstance(literal, ast.Constant) and id(literal) in ids_docstring:
+                continue  # prosa explicando o codigo, nao codigo
+            texto = h._texto_logico(literal)
+            for termo in ("access_token=", "appsecret_proof=", "client_secret="):
+                if termo in texto:
+                    ofensores.append(f"{h.rel(arq)}:{literal.lineno}: {termo}")
+    # `params=` NAO e varrido aqui — e o limite declarado no docstring, coberto
+    # por `test_no_secrets_in_query_params.py`, que faz isso melhor.
+    assert ofensores == [], (
+        "credencial montada em query string (literal de string, nao kwarg, "
+        f"nao docstring) fora do redator: {ofensores}. A invariante do F82 "
+        "e header, nunca query."
+    )
