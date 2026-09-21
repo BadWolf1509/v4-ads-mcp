@@ -79,14 +79,23 @@ Cada balde é `{cost_brl, conversions, cpa_brl, cells}` — `cpa_brl` é `None` 
 
 | # | Teste | Result | Execution Date | Notes |
 |---|---|---|---|---|
-| T1 | `get_ad_schedule(7862230676, campaign_ids=[JPA, CAB], include_metrics=true)` | ⬜ pending | — | Crítico: soma dos 4 baldes por campanha bate com `get_performance_breakdown(level=campaign)` da mesma campanha (cruzamento obrigatório, ver Teste T1) |
-| T2 | a mesma chamada **sem** `include_metrics` | ⬜ pending | — | `metrics_por_bloco` ausente; resposta idêntica a T1 nos demais campos |
-| T3 | `get_performance_breakdown(7862230676, level=campaign, breakdown=hourly, campaign_ids=[JPA, CAB])` | ⬜ pending | — | 8 linhas (2×4 baldes), `truncated: false`; cruza com T1 |
-| T4 | o mesmo com `raw_grid: true` | ⬜ pending | — | células cruas em `cost_micros` (não `cost_brl`); `truncated` matematicamente `false` (teto 336, ver Failure modes) |
-| T5 | `get_performance_breakdown(1163862076, level=campaign, breakdown=geo)` | ⬜ pending | — | continua recusado; zero I/O (recusa antes de `resolve_account_today`) |
-| T6 | `get_ad_schedule(1163862076, include_metrics=true)` sem `campaign_ids` | ⬜ pending | — | caminho de erro; opcional, incluído por completude |
+| T1 | `get_ad_schedule(7862230676, campaign_ids=[JPA, CAB], include_metrics=true)` | ✅ PASS | 2026-09-20 | Os 4 baldes nas 2 campanhas, `period` presente. **Cruzamento fecha:** JPA soma 8433,63 contra total independente 8433,63 (delta 0,00); CAB 904,19 contra 904,20 (delta R$ 0,01, dentro da tolerancia). Conversoes 420,49/420,5 e 47,00/47,0. |
+| T2 | a mesma chamada **sem** `include_metrics` | ✅ PASS | 2026-09-20 | `metrics_por_bloco` AUSENTE e `period` AUSENTE (o fix "period so existe com include_metrics" confirmado); resto identico a T1 campo por campo. |
+| T3 | `get_performance_breakdown(7862230676, level=campaign, breakdown=hourly, campaign_ids=[JPA, CAB])` | ✅ PASS | 2026-09-20 | **8 linhas**, ordem JPA x4 blocos depois CAB x4, `truncated: false`. **Valores IDENTICOS aos de T1** — duas superficies, caminhos de codigo distintos, mesmos numeros. |
+| T4 | o mesmo com `raw_grid: true` | ✅ PASS | 2026-09-20 | Grade crua em `cost_micros` (nao `cost_brl`), `truncated: false`, 213 celulas = a soma dos `cells` de T3 (137 JPA + 76 CAB). 🔴 **Mas duas chamadas identicas diferindo so no `limit` voltaram em ORDENS DIFERENTES** — ver F188. |
+| T5 | `get_performance_breakdown(1163862076, level=campaign, breakdown=geo)` | ✅ PASS | 2026-09-20 | Recusado. `error_message` bate **caractere por caractere** com o esperado, acentos inclusive (`só`, `é`, `você`). Checagem adjacente tambem PASS: `level=ad_group`+`hourly` recusa igual, nomeando o combo pedido. |
+| T6 | `get_ad_schedule(1163862076, include_metrics=true)` sem `campaign_ids` | ✅ PASS | 2026-09-20 | Recusado com o texto ASCII exato (`a conjunta dia x hora e cara e nao roda sobre a conta inteira.`). |
 
-**Effective result:** 0/6 executados. Nenhuma tool chamada nesta sessão de escrita (branch não deployado — ver cabeçalho).
+**Effective result:** **6/6 executados** · 6 PASS · **1 finding novo (F188)**, achado pelo T4.
+
+Executado em **2026-09-20**, revisao `v4-ads-mcp-00119-7f8`, muito depois do branch ter sido
+mesclado — o paragrafo acima e de 04/09, quando o recurso so existia em branch. **Nenhum passo
+mutou nada:** as duas tools sao leitura pura, e por isso este smoke nao precisou de aval.
+
+🔑 **A asserção mais forte nao estava na checklist:** T1 e T3 produzem os MESMOS numeros por
+caminhos de codigo diferentes, e os dois reconciliam com um terceiro (`level=campaign` sem
+breakdown) dentro de R$ 0,01. Tres superficies concordando e o que separa "a particao roda" de
+"a particao esta certa".
 
 ### Sign-off checklist — TODO após execução
 

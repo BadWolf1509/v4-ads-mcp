@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~4430 linhas, 475 KB, IDs de **F1 a F187** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** só 44 findings têm cabeçalho `## F<n>` próprio e os demais vivem dentro de outras entradas, então toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~4490 linhas, 478 KB, IDs de **F1 a F188** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** só 44 findings têm cabeçalho `## F<n>` próprio e os demais vivem dentro de outras entradas, então toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -4423,3 +4423,70 @@ disparou mesmo assim.
 Lote de mais de uma campanha, orçamento compartilhado, `bid_modifier`, e a falha
 por-linha (que o F180 registra como provavelmente inalcançável). Cobertura desses vive
 nos runbooks 3b.42 e 3b.44, executados em 04/09 e 05/09.
+
+---
+
+## F188 (MEDIUM, ABERTO) — `raw_grid` fatia uma lista NÃO ORDENADA, e a ordem do Google não é estável
+
+**Achado pelo T4 do smoke 3b.43, em 2026-09-20**, rodando contra `7862230676`.
+
+### A medição
+
+Duas chamadas **idênticas** de `get_performance_breakdown(level=campaign, breakdown=hourly,
+raw_grid=true)`, diferindo **só no `limit`** (400 e 213), devolveram as **mesmas 213 células
+em ordens diferentes**:
+
+| chamada | ordem observada |
+|---|---|
+| `limit: 400` | todas as linhas de JPA, depois todas de CAB |
+| `limit: 213` | intercalado, por hora e depois por dia |
+
+Nenhuma das duas truncou (`truncated: false` nas duas, 213 células ≤ teto 336). **Logo a
+diferença não veio do corte — veio da ordem em que o Google devolveu.**
+
+### A causa, no código
+
+`day_hour_metrics_query` (`src/google_ads/queries/ad_schedule.py:131`) **não tem `ORDER BY`**
+— e não tem `LIMIT` tampouco: a grade inteira vem do Google e o corte é client-side:
+
+```python
+truncado = len(celulas) > teto
+if args.get("raw_grid", False):
+    return {..., "rows": celulas[:teto], "truncated": truncado}
+```
+
+`celulas[:teto]` é **fatia de lista não ordenada**. É a família do F98/F88 e o `Don't do` do
+`CLAUDE.md` em pessoa: *"`LIMIT` sem `ORDER BY` num tool que ordena depois"*.
+
+### O que isso custa
+
+1. **Ordem não reprodutível.** Duas execuções da mesma chamada não são diffáveis, o que
+   atrapalha exatamente quem usa `raw_grid` — alguém conferindo célula a célula.
+2. **Quando trunca, a fatia é arbitrária.** Não é "as N primeiras por custo", nem por dia,
+   nem por nada: é o que o Google mandou primeiro naquela chamada. `truncated: true` diz
+   que cortou, **não diz o quê** — e não há critério que torne "as primeiras N"
+   significativas. **Uma amostra arbitrária apresentada como grade.**
+
+✅ **O caminho DEFAULT é imune, e isso importa para ler o resto do smoke.** A partição em
+blocos itera `celulas` **inteiro** antes de agregar, então a ordem não a afeta. Foi o
+caminho exercitado por T1 e T3, e ele reconciliou com um terceiro instrumento dentro de
+**R$ 0,01** — o defeito é só do `raw_grid`.
+
+### Fix proposto, já sondado
+
+Acrescentar `ORDER BY campaign.id, segments.day_of_week, segments.hour` à query. **Validado
+com `validate_gaql` e com controle positivo**: a query com o `ORDER BY` volta `valid: true`,
+e a mesma com `ORDER BY segments.banana_inexistente` é recusada — o validador está validando,
+não carimbando.
+
+Isso resolve os dois custos de uma vez: a ordem vira determinística **e** `celulas[:teto]`
+passa a ser um prefixo bem definido (as primeiras células em ordem cronológica por campanha),
+que é o corte que alguém esperaria de uma grade.
+
+**Fora de escopo:** trocar o corte client-side por `LIMIT` no Google. Não adianta aqui — a
+partição em blocos precisa da grade **inteira**, e cortar no servidor quebraria o caminho
+default para ganhar nada no caminho raro.
+
+**Guard:** um teste que afirme `ORDER BY` na query montada fecha a forma; não escrito ainda,
+porque o fix não foi feito — escrever o guard antes do fix é o que este repo faz de certo, e
+fica como primeiro passo de quem pegar isto.
