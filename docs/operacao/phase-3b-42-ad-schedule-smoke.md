@@ -74,7 +74,13 @@ https://v4-ads-mcp-299432068772.southamerica-east1.run.app
 
 **Legenda.** ✅ executado com a evidência transcrita aqui · ◐ executado em sessão de campo (par), detalhe no [`findings-catalog.md`](findings-catalog.md) e saída não transcrita · 🚫 tentado e barrado pelo classificador do harness antes de chegar ao MCP · ⬜ não executado.
 
-🔴 **Por que a legenda existe** (lição do 3b.41): um runbook que fica marcado `⬜ pending` no papel enquanto os testes já rodaram convida a próxima sessão a re-executar mutação numa conta real "pra completar o smoke". **Este documento NÃO está mais 100% `⬜ pending`:** em 2026-09-04 rodaram T1, T2, T2b, T3 e T9 — **5 PASS, zero falhas**. T4, T7 e T8 seguem sem nunca terem sido chamados (reservam aval do Wellington), e T5/T6 dependem do T4. **Nenhuma mutação foi aplicada:** T2b e T3 pararam no dry-run e os dois tokens foram descartados sem `apply_change`, então o Google nunca foi mutado — só `pending_confirmations` recebeu as 2 linhas de preview, que expiram em 10 min. As únicas chamadas reais feitas para produzir este documento foram `run_gaql` (leitura pura) contra `7862230676` e `1163862076`, registradas na seção "Dados conhecidos pré-smoke".
+🔴 **Por que a legenda existe** (lição do 3b.41): um runbook que fica marcado `⬜ pending` no papel enquanto os testes já rodaram convida a próxima sessão a re-executar mutação numa conta real "pra completar o smoke".
+
+🔑 **E foi exatamente isso que este parágrafo causou — corrigido em 2026-09-20.** Ele dizia que T4, T7 e T8 "seguem sem nunca terem sido chamados" e que "nenhuma mutação foi aplicada". **As duas afirmações eram falsas.** Foi escrito ANTES da execução daquele mesmo dia e nunca atualizado, enquanto a tabela, o checklist e o `Effective result: 10/10` logo abaixo registravam a verdade. Em 20/09 a contradição quase custou uma rodada nova de mutação na conta de teste — **o documento convidou a re-execução de que ele próprio avisa**, e só não colou porque o `audit_log` foi consultado antes.
+
+**O estado real: 10/10 executados em 2026-09-04, 10 PASS.** T4, T5, T6, T7 e T8 rodaram e **mutaram** a conta de teste `1163862076`, com restauração verificada. Confirmado de forma independente no `audit_log`: a falha do T4 às `08:03:10` (`mutate`, `error` — virou o **F150**), o apply do T4 às `08:25:06` com `provider_request_id: UL-Oxzm9Xqk-6cFrDM7b3A` **idêntico ao transcrito na tabela**, o T7 às `08:26:49` e o T8 às `08:27:30`. A conta de cliente `7862230676` **nunca foi mutada** — T2b parou no dry-run com o token descartado, e isso segue verdadeiro.
+
+**A lição que sobra é mais dura que a original:** não basta a legenda existir. **O resumo no topo e a tabela embaixo são duas fontes de verdade para o mesmo fato**, e quem lê o topo para decidir o que falta não chega à tabela. Ao terminar uma execução, **atualize o topo no mesmo movimento** — ou não escreva estado no topo.
 
 | # | Teste | Result | Execution Date | Notes |
 |---|---|---|---|---|

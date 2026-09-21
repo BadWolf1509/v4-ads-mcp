@@ -44,9 +44,6 @@ duas afirmações falsas sobre o breakdown; o **0.4.1 corrigiu e está instalado
 
 ## Pendências que dependem do Wellington
 
-- **Smoke 3b.42 (`ad_schedule`) parou em 5 de 10**, em 04/09. T4, T7 e T8 mutam a conta de
-  teste `1163862076` e precisam do aval **na sessão que executa**; T5/T6 dependem do T4.
-  Runbook: [`phase-3b-42-ad-schedule-smoke.md`](phase-3b-42-ad-schedule-smoke.md).
 - **F129** — governança do system user Meta: ação humana, fora do código.
 - **F67** — custom domain `mcpv4.fluxocerto.dev.br`, pendente via LB.
 - **Pedir ao TI da V4 uma identidade `@v4company.com` sem caixa postal** (alias ou conta de serviço) — é o que **desbloqueia o F186 por inteiro**: manager com grant zero, pior caso de vazamento `tools/list`, e a reconciliação não a toca. Sem ela não há token de CI possível: `sessions_create` só emite para o próprio manager logado, e login exige identidade Google do domínio. **Emitir sob um manager existente está recusado** — poria no GitHub Actions um token com alcance de ~38 contas Google e 26 Meta.
