@@ -115,7 +115,11 @@ async def admin_audit_export_csv(
     status: str = "all",
     days: int = 7,
 ) -> StreamingResponse:
-    """Stream CSV export of the global audit log (admin) with current filters applied."""
+    """Stream CSV export of the global audit log (admin) with current filters applied.
+
+    O arquivo termina com uma linha-sentinela; a AUSENCIA dela significa
+    export incompleto (o 200 ja foi enviado quando a primeira linha saiu).
+    """
     _require_admin(user)
     pool = connection.get_pool()
     scope_manager_id = UUID(manager_id) if manager_id else None

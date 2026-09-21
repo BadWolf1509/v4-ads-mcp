@@ -179,27 +179,43 @@ async def export_csv_rows(
     csv.writer(buf).writerow(header)
     yield buf.getvalue()
 
-    # asyncpg server-side cursors MUST run inside an explicit transaction.
-    # (Pre-existing bug surfaced by the first test to actually iterate this
-    # generator: NoActiveSQLTransactionError without this wrapper.)
-    async with conn.transaction():
-        async for row in conn.cursor(sql, *params):
-            buf = io.StringIO()
-            csv.writer(buf).writerow(
-                [
-                    row["occurred_at"].isoformat() if row["occurred_at"] else "",
-                    _csv_safe(row["email"] or ""),
-                    _csv_safe(row["operation"] or ""),
-                    row["customer_id"] or "",
-                    row["action_type"] or "",
-                    row["status"] or "",
-                    row["target_count"] if row["target_count"] is not None else "",
-                    row["duration_ms"] if row["duration_ms"] is not None else "",
-                    _csv_safe(row["error_message"] or ""),
-                    _csv_safe(row["provider_request_id"] or ""),
-                ]
-            )
-            yield buf.getvalue()
+    # O cliente ja recebeu 200 OK + Content-Disposition quando a primeira linha
+    # saiu (StreamingResponse) — nao ha status a corrigir se o cursor quebrar
+    # no meio. A unica honestidade possivel e MARCAR o arquivo: a linha-
+    # sentinela de sucesso so existe para que a AUSENCIA dela, sob exceçao,
+    # signifique "incompleto" — fail-closed por construçao (ver brief da Task 6).
+    lidas = 0
+    try:
+        # asyncpg server-side cursors MUST run inside an explicit transaction.
+        # (Pre-existing bug surfaced by the first test to actually iterate this
+        # generator: NoActiveSQLTransactionError without this wrapper.)
+        async with conn.transaction():
+            async for row in conn.cursor(sql, *params):
+                buf = io.StringIO()
+                csv.writer(buf).writerow(
+                    [
+                        row["occurred_at"].isoformat() if row["occurred_at"] else "",
+                        _csv_safe(row["email"] or ""),
+                        _csv_safe(row["operation"] or ""),
+                        row["customer_id"] or "",
+                        row["action_type"] or "",
+                        row["status"] or "",
+                        row["target_count"] if row["target_count"] is not None else "",
+                        row["duration_ms"] if row["duration_ms"] is not None else "",
+                        _csv_safe(row["error_message"] or ""),
+                        _csv_safe(row["provider_request_id"] or ""),
+                    ]
+                )
+                lidas += 1
+                yield buf.getvalue()
+    except Exception as e:
+        buf = io.StringIO()
+        csv.writer(buf).writerow([f"# v4-ads-mcp: EXPORT INCOMPLETO apos {lidas} linhas — {e}"])
+        yield buf.getvalue()
+        raise
+    buf = io.StringIO()
+    csv.writer(buf).writerow([f"# v4-ads-mcp: export completo, {lidas} linhas"])
+    yield buf.getvalue()
 
 
 async def list_for_manager(
