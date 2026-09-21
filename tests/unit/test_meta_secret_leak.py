@@ -193,32 +193,6 @@ async def test_header_acompanha_a_paginacao_ate_o_fim() -> None:
 # DOIS diretorios onde codigo Meta roda em vez de enumerar nomes.
 # ---------------------------------------------------------------------------
 
-# Achados do Step 3 (2026-09-21), investigados antes de entrar aqui — cada
-# par (caminho, termo) casa a checagem abaixo, mas NAO e vazamento: e KWARG
-# python (`f(access_token=access_token)`), nunca texto que vira URL/query.
-# `_PARAMS_SENSIVEIS` nao serve de isencao pra estes porque eles nao formatam
-# mensagem de erro — nao ha porque importar o redator so pra passar aqui.
-# Confirmado lendo cada call-site (nao por analogia — F87/F89):
-#   - client.py: kwarg pro bridge do SDK (`FacebookSession`/
-#     `build_facebook_ads_api`, padrao F48) — o SDK nunca serializa isso em
-#     query, e F48 exige passar por este bridge em vez de montar a URL a mao.
-#   - partnership.py e meta_oauth.py: kwarg pro `fetch_paginated()`
-#     (src/meta_ads/graph.py:37), que poe o valor em
-#     `headers={"Authorization": f"Bearer {access_token}"}` — nunca em
-#     `params=`.
-# Isto NAO e a enumeracao que este teste substitui: a varredura de ARQUIVOS
-# continua sendo TODO .py sob as duas pastas (property, nao lista) — so os
-# tres pares abaixo, ja lidos e confirmados, nao reprovam o build. Um arquivo
-# novo, ou um termo novo num destes tres arquivos, nao esta nesta lista e
-# ainda reprova.
-_KWARG_SEGURO_INVESTIGADO: frozenset[tuple[str, str]] = frozenset(
-    {
-        ("src/meta_ads/client.py", "access_token="),
-        ("src/meta_ads/partnership.py", "access_token="),
-        ("src/auth/meta_oauth.py", "access_token="),
-    }
-)
-
 
 def test_nenhum_caminho_meta_poe_credencial_em_query() -> None:
     """Propriedade, nao lista: TODO arquivo de `src/meta_ads/` e `src/auth/` obedece.
@@ -234,6 +208,27 @@ def test_nenhum_caminho_meta_poe_credencial_em_query() -> None:
     em `meta_oauth.py`). Varrer so uma das duas repetiria, no eixo do escopo
     de diretorio, o mesmo defeito que esta propriedade existe para corrigir
     no eixo da lista de arquivos — por isso o piso abaixo soma as duas.
+
+    A checagem em si mira LITERAL DE STRING (`h._literais_de_string` +
+    `h._texto_logico`), nao o texto cru do arquivo inteiro. Round 1 desta
+    task usava substring no arquivo inteiro e precisava de uma lista de
+    isencao pra absolver `access_token=access_token` — kwarg Python passado
+    pro bridge do SDK (F48) ou pro `fetch_paginated()` (que poe o valor em
+    `headers=`, nunca em `params=`). Essa lista era a MESMA doenca que esta
+    task existe pra curar, so que na isencao em vez do escopo: `client.py`
+    ficaria absolvido de `access_token=` para sempre, inclusive se um dia
+    ganhasse uma construcao de query real ao lado do kwarg ja vetado.
+
+    Resolvido pela CONSTRUCAO, nao por lista: um kwarg (`access_token=
+    access_token`) nao e literal de string nenhum — `ast` nao o enxerga como
+    tal —, entao nunca aparece pra `_literais_de_string`. Um f-string real
+    (`f"...?access_token={token}"`, a forma que de fato vaza) vira
+    `...?access_token=X` no texto logico (`{token}` -> placeholder) e casa o
+    termo. Sem lista, sem precisar saber de antemao qual arquivo faz o que —
+    e sem a isencao por `_PARAMS_SENSIVEIS` do round 1: o proprio regex de
+    `errors.py` e uma string concatenada (`"...client_secret)(..."`) que
+    nunca contem `nome=` colado, entao nunca batia o termo e nunca precisou
+    de isencao — era isencao que nao isentava nada.
     """
     from tests.unit import _guard_harness as h
 
@@ -251,14 +246,14 @@ def test_nenhum_caminho_meta_poe_credencial_em_query() -> None:
     )
     ofensores: list[str] = []
     for arq in arquivos:
-        texto = arq.read_text(encoding="utf-8")
-        caminho = h.rel(arq)
-        for termo in ("access_token=", "appsecret_proof="):
-            if termo in texto and "_PARAMS_SENSIVEIS" not in texto:
-                if (caminho, termo) in _KWARG_SEGURO_INVESTIGADO:
-                    continue
-                ofensores.append(f"{caminho}: {termo}")
+        arv = h.arvore(arq)
+        for literal in h._literais_de_string(arv):
+            texto = h._texto_logico(literal)
+            for termo in ("access_token=", "appsecret_proof=", "client_secret="):
+                if termo in texto:
+                    ofensores.append(f"{h.rel(arq)}:{literal.lineno}: {termo}")
     assert ofensores == [], (
-        "credencial montada em query string fora do redator: "
-        f"{ofensores}. A invariante do F82 e header, nunca query."
+        "credencial montada em query string (literal de string, nao kwarg) "
+        f"fora do redator: {ofensores}. A invariante do F82 e header, nunca "
+        "query."
     )
