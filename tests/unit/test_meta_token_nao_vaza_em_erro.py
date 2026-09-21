@@ -217,6 +217,82 @@ def test_o_redator_cobre_aspas_coladas_e_formato_json() -> None:
     assert redigido == "{'client_secret': '<REDIGIDO>'}"
 
 
+def test_o_redator_cobre_o_token_no_header_authorization() -> None:
+    """Onda final F190: o redator era CEGO a forma que a propria branch criou.
+
+    `_PARAMS_SENSIVEIS` cobre `nome=valor` / `{"nome": "valor"}` — a forma de
+    QUERY STRING, que era o mundo ANTES da troca de transporte. A Task 3 pos o
+    token em `Authorization: Bearer <token>`, e as formas abaixo passavam
+    INALTERADAS pelo redator (medido contra o codigo pre-fix). A camada 2
+    existe pra cobrir o caminho que ninguem previu, e estava cega ao caminho
+    que a camada 1 tinha acabado de criar.
+
+    Cada forma tem de perder o VALOR e manter o nome do cabecalho E o esquema
+    (`Bearer`) — mesmo contrato dos casos de query string acima: quem le o log
+    precisa saber QUE tipo de credencial estava ali.
+    """
+    from src.meta_ads.errors import _redigir
+
+    formas = {
+        "cabecalho cru": f"Authorization: Bearer {SENTINELA}",
+        "cabecalho minusculo": f"authorization: Bearer {SENTINELA}",
+        "dict repr (aspas simples)": f"{{'authorization': 'Bearer {SENTINELA}'}}",
+        "dict JSON (aspas duplas)": f'{{"Authorization": "Bearer {SENTINELA}"}}',
+    }
+    for rotulo, texto in formas.items():
+        redigido = _redigir(texto)
+        assert SENTINELA not in redigido, f"vazou em {rotulo}: {redigido!r}"
+        assert "Bearer <REDIGIDO>" in redigido, (
+            f"{rotulo}: o esquema tem de sobreviver junto com o nome — veio {redigido!r}"
+        )
+
+    # O nome do cabecalho sobrevive inteiro, nas duas caixas.
+    assert _redigir(f"Authorization: Bearer {SENTINELA}") == "Authorization: Bearer <REDIGIDO>"
+    assert (
+        _redigir(f"{{'authorization': 'Bearer {SENTINELA}'}}")
+        == "{'authorization': 'Bearer <REDIGIDO>'}"
+    )
+
+
+def test_o_reflexo_obvio_de_por_authorization_na_lista_de_nomes_deixaria_o_token() -> None:
+    """Contraprova do DESENHO, nao do resultado: por que ancorar no esquema.
+
+    O reflexo obvio seria acrescentar `authorization` a alternacao de nomes de
+    `_PARAMS_SENSIVEIS`. Medido, isso produz `Authorization: <REDIGIDO>
+    <token>`: a classe de valor daquele regex (`[^&\\s"']+`) para no primeiro
+    espaco, entao ela redige o literal "Bearer" e deixa o TOKEN INTEIRO passar
+    — pior que nao cobrir, porque o `<REDIGIDO>` no meio da linha PARECE
+    cobertura.
+
+    Este teste reconstroi o regex ingenuo e assere que ele vaza, e depois que o
+    redator de verdade nao vaza sobre a MESMA entrada. Sem ele, nada distingue
+    "o valor sumiu" de "alguma coisa sumiu" — a asserção `"<REDIGIDO>" in
+    resultado` passaria nos dois casos, inclusive no que vaza.
+    """
+    import re
+
+    from src.meta_ads.errors import _redigir
+
+    ingenuo = re.compile(
+        r"(access_token|appsecret_proof|client_secret|authorization)"
+        r"([\"']?\s*[:=]\s*[\"']?)"
+        r"[^&\s\"']+",
+        re.IGNORECASE,
+    )
+    entrada = f"Authorization: Bearer {SENTINELA}"
+    vazado = ingenuo.sub(r"\1\2<REDIGIDO>", entrada)
+
+    assert "<REDIGIDO>" in vazado, "premissa do controle invalida: o regex ingenuo nem casou"
+    assert SENTINELA in vazado, (
+        "premissa deste teste invalida: o regex ingenuo deveria DEIXAR o token. "
+        "Se ele passou a cobrir, a ancora no esquema virou redundante e este "
+        "teste precisa ser reescrito, nao apagado."
+    )
+    assert SENTINELA not in _redigir(entrada), (
+        "o redator de verdade tem de fechar a forma que o ingenuo deixa aberta"
+    )
+
+
 def test_o_redator_cobre_client_secret_isolado() -> None:
     """O brief nomeia tres parametros obrigatorios (access_token, appsecret_proof,
     client_secret); so os dois primeiros tinham teste dedicado ate agora.

@@ -253,8 +253,8 @@ async def test_run_meta_graph_get_error_path_maps_friendly_and_audits() -> None:
             params_summary={"ad_account_id": "act_999"},
         )
 
-    # RuntimeError genérico não é FacebookRequestError nem MetaGraphHTTPError →
-    # to_friendly_meta_error cai no fallback "Erro inesperado: {e}".
+    # RuntimeError genérico não é MetaGraphHTTPError → to_friendly_meta_error
+    # cai no fallback "Erro inesperado: {e}".
     assert "Erro inesperado" in excinfo.value.message
 
     mock_audit_record.assert_awaited_once()

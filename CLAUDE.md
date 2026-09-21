@@ -168,7 +168,7 @@ Quando o padrão de mercado custar caro demais para o momento, **apresente o tra
 - Don't shippar tool sem per-value empirical probe em smoke pra enum whitelist (3b.19A.1 — pegou 10+ design-gaps).
 - Don't usar MagicMock em builder tests de proto (use `make_capture_client` — F16/F42/F44).
 - Don't incluir `oneOf/allOf/anyOf` em `input_schema` (Anthropic rejeita — 3b.19B.1).
-- Don't chamar `FacebookAdsApi.init()`; don't passar `access_token`/`app_id`/`app_secret` direto pro `__init__` — use `FacebookSession` bridge / `build_facebook_ads_api()` (F48).
+- Don't trazer o SDK `facebook_business` de volta pro caminho de request: o transporte Meta é `httpx` + header (F190) e as duas fábricas saíram sem consumidor. Se voltar, vale o F48 — ver `nucleo.md`.
 - Don't aplicar `is_allowed_email` (V4 domain) no callback Meta OAuth — `fb_email` é conta FB pessoal (A6); auth é o manager_id no state HMAC.
 - Don't usar `{{ button() }}` em `<form>` sem `type="submit"` (F49).
 - Don't retornar `303` cru de um handler chamado por `hx-post` — torne HX-aware (`204`+`HX-Redirect`/`HX-Refresh`, espelha `sessions_revoke`), senão o HTMX injeta a página no `hx-target` (dropdown Managers, 2ª sessão 07-04).

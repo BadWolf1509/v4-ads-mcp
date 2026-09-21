@@ -9,6 +9,7 @@ V0 (Sprint M.2a) covers simple GET edges (/me/adaccounts etc).
 M.3+ adds Insights API support (paginação, async jobs).
 """
 
+import json
 import time
 from typing import Any
 from uuid import UUID
@@ -38,6 +39,32 @@ log = structlog.get_logger(__name__)
 _TIMEOUT_GRAPH = 30.0
 
 
+def _envelope_de_erro(corpo: str) -> tuple[int | None, int | None, str | None]:
+    """`(code, error_subcode, message)` do envelope `{"error": {...}}` do Graph.
+
+    Tupla de `None` quando o corpo nao e JSON, nao e objeto, ou nao traz a chave
+    `error` — pagina HTML de intermediario, corpo vazio, resposta truncada.
+    Quem le distingue "o Graph explicou o erro" de "so temos o status HTTP".
+    """
+    try:
+        bruto: Any = json.loads(corpo)
+    except ValueError:
+        return (None, None, None)
+    if not isinstance(bruto, dict):
+        return (None, None, None)
+    erro = bruto.get("error")
+    if not isinstance(erro, dict):
+        return (None, None, None)
+    code = erro.get("code")
+    subcode = erro.get("error_subcode")
+    mensagem = erro.get("message")
+    return (
+        code if isinstance(code, int) else None,
+        subcode if isinstance(subcode, int) else None,
+        mensagem if isinstance(mensagem, str) else None,
+    )
+
+
 class MetaGraphHTTPError(Exception):
     """Status HTTP nao-2xx da Graph API, com o codigo no texto.
 
@@ -45,12 +72,20 @@ class MetaGraphHTTPError(Exception):
     SUBSTRING sobre o corpo: uma pagina HTML de erro de intermediario passava, e
     o estouro chegava ao gestor como `'str' object has no attribute 'get'`,
     marcado como permanente. Agora o status e o veredito.
+
+    Carrega TAMBEM `code`/`subcode`/`mensagem` quando o corpo traz o envelope de
+    erro do Graph. Sem isso, a troca de transporte da Task 3 deixava a tabela
+    curada de `errors.py` sem produtor — throttle Meta chegava ao gestor como
+    JSON cru em ingles, truncado, e marcado como permanente. Recebe o corpo
+    INTEIRO e trunca ela mesma pra mensagem: truncar antes (`resp.text[:200]`,
+    como o chamador fazia) corta o JSON no meio e o envelope se perde.
     """
 
-    def __init__(self, status: int, trecho: str):
+    def __init__(self, status: int, corpo: str):
         self.status = status
         self.retryable = status >= 500 or status == 429
-        super().__init__(f"Graph API respondeu HTTP {status}: {trecho}")
+        self.code, self.subcode, self.mensagem = _envelope_de_erro(corpo)
+        super().__init__(f"Graph API respondeu HTTP {status}: {corpo[:200]}")
 
 
 async def _paginar_graph(
@@ -87,7 +122,7 @@ async def _paginar_graph(
             resp = await http.get(proxima, headers=cabecalhos)
         headers = resp.headers
         if resp.status_code != 200:
-            raise MetaGraphHTTPError(resp.status_code, resp.text[:200])
+            raise MetaGraphHTTPError(resp.status_code, resp.text)
         bruto = resp.json()
         if not isinstance(bruto, dict):
             # Nao e `cast`: o cast satisfaz o mypy e nao existe em runtime.

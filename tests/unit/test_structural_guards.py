@@ -392,6 +392,14 @@ _METODOS_CLIENTE_HTTP = frozenset(
         # ou sem Request por trás. Cobrir só o verbo que FAZ I/O é a mesma
         # precisão do caso "httpx_helper_nao_relacionado_nao_conta" abaixo.
         "urllib.request.urlopen",
+        # ONDA FINAL (obrigação em aberto do round 2): `urlretrieve` é o OUTRO
+        # verbo de I/O do mesmo módulo stdlib. A ruling do round 2 dizia "se
+        # não for consertado, tem de ser declarado no docstring" — e não foi
+        # feito nem um nem outro, então ficou um buraco que o texto do teste
+        # não avisava. Ele é resolvível estaticamente (import comum, atributo
+        # estático), então NÃO cai na carve-out de despacho dinâmico que o
+        # docstring declara: ficar de fora seria omissão, não limite.
+        "urllib.request.urlretrieve",
     }
 )
 
@@ -561,7 +569,10 @@ def test_meta_graph_execution_is_contained() -> None:
     então. Fix round 2 (achado do revisor, mesma sessão): o conjunto só
     cobria `httpx`/`requests`, deixando `aiohttp` (dependência já instalada)
     e `urllib.request.urlopen` (stdlib) de fora sem que o docstring avisasse
-    — ver o comentário de `_METODOS_CLIENTE_HTTP` pros dois novos. Ver
+    — ver o comentário de `_METODOS_CLIENTE_HTTP` pros dois novos. Onda final:
+    `urllib.request.urlretrieve` entrou junto — era obrigação em aberto do
+    round 2 ("consertar OU declarar", e não foi feito nem um nem outro), e é
+    resolvível estaticamente, então não cabia na carve-out acima. Ver
     `_raizes_cliente_http_meta` pro escopo de ARQUIVO (e o que fica de fora,
     deliberadamente) e `_ALLOWLIST_CLIENTE_HTTP` pra allowlist com o motivo
     de cada entrada.
@@ -693,6 +704,16 @@ _FORMAS_F57_META = [
         # revisor classificou como plausível.
         "src/meta_ads/_qualquer_novo.py",
         "import urllib.request\ndef ler(url):\n    return urllib.request.urlopen(url)\n",
+        True,
+    ),
+    (
+        "urllib_urlretrieve_e_pego",
+        # PROBE da onda final: o SEGUNDO verbo de I/O do mesmo módulo. Deixá-lo
+        # de fora reproduzia, dentro do `urllib.request`, a mesma assimetria
+        # que o round 2 fechou entre httpx e aiohttp — biblioteca coberta pela
+        # metade é biblioteca descoberta.
+        "src/meta_ads/_qualquer_novo.py",
+        'import urllib.request\ndef ler(url):\n    return urllib.request.urlretrieve(url, "/tmp/x")\n',
         True,
     ),
     (

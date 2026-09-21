@@ -23,6 +23,7 @@ header `Authorization: Bearer` no userinfo — nada na URL.
 
 from __future__ import annotations
 
+import ast
 import logging
 
 import httpx
@@ -249,9 +250,30 @@ def test_nenhum_caminho_meta_poe_credencial_em_query() -> None:
        documentar esta area depois de um incidente como o F190 — dispara
        falso positivo, e a reacao natural de quem for documentar e pedir
        isencao: a doenca que este teste inteiro existe pra extirpar.
-    """
-    import ast
 
+    ⚠️ **LIMITE DECLARADO (onda final, 2026-09-21): este guard so ve LITERAL DE
+    STRING — nao ve `params=`.** Medido:
+
+        f"https://g/x?access_token={token}"           -> PEGO aqui
+        http.get(url, params={"access_token": token}) -> NAO pego aqui
+
+    E `params=` e exatamente o mecanismo que o SDK usava, ou seja: sozinho,
+    este guard nao pegaria o bug do F190 escrito em codigo nosso.
+
+    **Quem cobre isso e `tests/unit/test_no_secrets_in_query_params.py`** — e
+    cobre MELHOR do que caberia aqui, verificado rodando um arquivo-probe
+    contra ele: varre `src/` INTEIRO (nao so estas duas raizes), pega o dict
+    inline **e** o dict montado numa variavel e passado depois (`p = {...}` …
+    `params=p`), e tem allowlist que so encolhe, com guard proprio contra
+    entrada obsoleta.
+
+    Escrever um 2o eixo aqui foi TENTADO e DESFEITO na mesma sessao: era um
+    duplicado estritamente mais fraco do que ja existia, e invariante com duas
+    implementacoes diverge — a pergunta certa e qual e a autoritativa. Esta
+    fica sendo a do literal; a de `params=` e a do arquivo irmao, que ganhou
+    `appsecret_proof` e `authorization` no conjunto de chaves na mesma passada
+    (eram os dois nomes desta familia que faltavam la).
+    """
     from tests.unit import _guard_harness as h
 
     arquivos = h.fontes_py(h.SRC / "meta_ads") + h.fontes_py(h.SRC / "auth")
@@ -292,6 +314,8 @@ def test_nenhum_caminho_meta_poe_credencial_em_query() -> None:
             for termo in ("access_token=", "appsecret_proof=", "client_secret="):
                 if termo in texto:
                     ofensores.append(f"{h.rel(arq)}:{literal.lineno}: {termo}")
+    # `params=` NAO e varrido aqui — e o limite declarado no docstring, coberto
+    # por `test_no_secrets_in_query_params.py`, que faz isso melhor.
     assert ofensores == [], (
         "credencial montada em query string (literal de string, nao kwarg, "
         f"nao docstring) fora do redator: {ofensores}. A invariante do F82 "

@@ -55,6 +55,7 @@ duas afirmações falsas sobre o breakdown; o **0.4.1 corrigiu e está instalado
 
 ## Pendências que dependem do Wellington
 
+- **F190 — não foi medido se o token Meta já vazou.** Decisão de 21/09: consertar para frente, sem rotação nem expurgo de log. A conta que responderia é um `COUNT(*)` em `audit_log` por `error_message` com nome de parâmetro de token, e **ela não foi executada** — "ninguém mediu" não é "nunca aconteceu".
 - **F129** — governança do system user Meta: ação humana, fora do código.
 - **F67** — custom domain `mcpv4.fluxocerto.dev.br`, pendente via LB.
 - **Pedir ao TI da V4 uma identidade `@v4company.com` sem caixa postal** (alias ou conta de serviço) — é o que **desbloqueia o F186 por inteiro**: manager com grant zero, pior caso de vazamento `tools/list`, e a reconciliação não a toca. Sem ela não há token de CI possível: `sessions_create` só emite para o próprio manager logado, e login exige identidade Google do domínio. **Emitir sob um manager existente está recusado** — poria no GitHub Actions um token com alcance de ~38 contas Google e 26 Meta.

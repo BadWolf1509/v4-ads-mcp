@@ -1,14 +1,26 @@
-"""Factory for facebook_business FacebookAdsApi.
+"""Constantes e erros do lado Meta — sem SDK, sem I/O.
 
-Different from Google SDK: Meta uses GLOBAL state (FacebookAdsApi.set_default_api)
-by default — dangerous in async multi-manager. Convention: always construct
-FacebookAdsApi(...) instance directly (NOT .init()) and pass api= explicit
-in every SDK call site (M.3+ mutates).
+Este módulo já foi a fábrica do `FacebookAdsApi`. Depois do F190 o transporte
+Meta é `httpx` direto (`reports.py::run_meta_graph_get`, token em
+`Authorization: Bearer`), e **nenhum caminho de request constrói cliente do
+SDK `facebook_business`**. Sobraram aqui os três nomes que o resto do código
+importa:
+
+- `META_GRAPH_API_VERSION` — a versão do Graph usada por `reports.py` e
+  `partnership.py`;
+- `MetaSystemUserTokenMissingError` e `MetaAccessDeniedError` — erros do gate
+  do Modelo B, levantados por `reports.py` e tratados em `src/mcp/server.py`.
+
+`build_meta_api` e `build_facebook_ads_api` foram **removidos** (F190, Tasks 6 e
+onda final): depois da troca de transporte os dois ficaram com **zero
+consumidores em `src/`** — medido, não estimado —, e código morto com teste
+verde é pior que código morto, porque parece cobertura. A convenção do F48
+(nunca `FacebookAdsApi.init()`, sempre a ponte `FacebookSession`) fica
+registrada no catálogo: ela vale se alguém algum dia trouxer o SDK de volta,
+mas não há mais call site que a aplique.
 """
 
-from typing import Any
-
-# Meta Graph API version used across all Meta SDK call sites.
+# Meta Graph API version used across all Meta Graph call sites.
 META_GRAPH_API_VERSION = "v22.0"
 
 
@@ -22,33 +34,3 @@ class MetaAccessDeniedError(Exception):
     def __init__(self, message: str):
         self.message = message
         super().__init__(message)
-
-
-def build_facebook_ads_api(
-    *,
-    app_id: str,
-    app_secret: str,
-    access_token: str,
-    api_version: str = META_GRAPH_API_VERSION,
-) -> Any:
-    """Pure factory — construct FacebookSession + FacebookAdsApi sem IO.
-
-    F48: facebook_business v21 FacebookAdsApi.__init__ aceita (session, api_version,
-    enable_debug_logger) — NÃO access_token/app_id/app_secret kwargs direto.
-    Mirror what FacebookAdsApi.init() does internamente mas mantém convention
-    NÃO usar global state.
-
-    Args:
-        app_id: Meta App ID (config)
-        app_secret: Meta App Secret (config, signed-request validation also uses)
-        access_token: system-user token or per-user long-lived token
-        api_version: Graph API version (default v22.0)
-
-    Returns:
-        FacebookAdsApi instance ready pra .call() em call sites
-    """
-    from facebook_business.api import FacebookAdsApi  # noqa: PLC0415
-    from facebook_business.session import FacebookSession  # noqa: PLC0415
-
-    session = FacebookSession(app_id=app_id, app_secret=app_secret, access_token=access_token)
-    return FacebookAdsApi(session=session, api_version=api_version)

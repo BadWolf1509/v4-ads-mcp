@@ -1,13 +1,18 @@
 """Ponte pra chamadas SINCRONAS de SDK saírem do event loop (F86).
 
-Vale pros DOIS provedores, e por isso mora fora de `google_ads/`:
+Mora fora de `google_ads/` por origem histórica: nasceu cobrindo os DOIS
+provedores. Hoje só o lado Google passa por aqui — o Meta saiu do escopo no
+F190, quando `run_meta_graph_get` trocou o SDK `facebook_business` (síncrono,
+`requests` por baixo) por `httpx.AsyncClient`. Aquele caminho virou `await` de
+verdade e parou de competir por este pool de threads; o ganho é real e vale
+registrar, porque era uma sequência de round-trips bloqueantes por causa da
+paginação, não um só.
+
+O que sobra:
 
 - `google-ads` é um cliente gRPC **bloqueante**: `search`, `search_stream`,
   `mutate`, `upload_click_conversions` e os métodos de offline user data job
   param a thread até a resposta chegar.
-- `facebook_business` usa `requests` por baixo (`FacebookAdsApi.call` não é
-  coroutine — verificado na fonte instalada), e o executor Meta pagina, então
-  é uma sequência de round-trips bloqueantes, não um só.
 
 Chamados direto de dentro de `async def`, param o event loop inteiro — e com
 `--concurrency=80` isso serializa todos os requests da instância.
@@ -17,10 +22,11 @@ introduziu **nem começa a contar**, porque o timer só dispara quando o loop vo
 a girar. Era um caminho pra 503 no uptime check sem nenhum problema de banco,
 indistinguível — pela evidência — do stale connection que a F77 perseguia.
 
-Escopo: TODO caminho que atende request — os 5 executores Google, o executor
-Meta e `validate_gaql`, que constrói o client direto e não passa por executor
-nenhum. `accounts.py` continua síncrono de propósito: é consumido apenas pelo
-Cloud Run Job de resync, que não serve tráfego.
+Escopo: TODO caminho que atende request e chama SDK síncrono — os 5 executores
+Google e `validate_gaql`, que constrói o client direto e não passa por executor
+nenhum. O executor Meta saiu desta lista no F190 (é `httpx` async agora, não
+tem o que offloadar). `accounts.py` continua síncrono de propósito: é consumido
+apenas pelo Cloud Run Job de resync, que não serve tráfego.
 
 O guard `test_chamada_bloqueante_sai_do_event_loop` mantém essa lista honesta —
 quando o F86 foi fechado sem guard, três desses sites ficaram para trás.
