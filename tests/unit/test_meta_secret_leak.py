@@ -180,3 +180,85 @@ async def test_header_acompanha_a_paginacao_ate_o_fim() -> None:
             "carrega mais o token quando a autenticacao vem por header"
         )
         assert _FAKE_SU_TOKEN not in str(chamada.request.url)
+
+
+# ---------------------------------------------------------------------------
+# Camada 4 (2026-09-21, F190 Task 5): os testes acima cobrem a invariante
+# exercitando FUNÇÕES especificas de `src/auth/meta_oauth.py` — nenhum deles
+# toca `src/meta_ads/`. Foi assim que `reports.py` (que fala com a Graph API
+# pelo SDK `facebook_business`, e o SDK assa o token na query por baixo dos
+# panos) ficou fora do alcance por meses: nao havia teste que sequer abrisse
+# aquele arquivo. O teste abaixo troca "um teste por funcao que eu lembrei de
+# escrever" por "uma propriedade sobre todo arquivo que existe", varrendo os
+# DOIS diretorios onde codigo Meta roda em vez de enumerar nomes.
+# ---------------------------------------------------------------------------
+
+# Achados do Step 3 (2026-09-21), investigados antes de entrar aqui — cada
+# par (caminho, termo) casa a checagem abaixo, mas NAO e vazamento: e KWARG
+# python (`f(access_token=access_token)`), nunca texto que vira URL/query.
+# `_PARAMS_SENSIVEIS` nao serve de isencao pra estes porque eles nao formatam
+# mensagem de erro — nao ha porque importar o redator so pra passar aqui.
+# Confirmado lendo cada call-site (nao por analogia — F87/F89):
+#   - client.py: kwarg pro bridge do SDK (`FacebookSession`/
+#     `build_facebook_ads_api`, padrao F48) — o SDK nunca serializa isso em
+#     query, e F48 exige passar por este bridge em vez de montar a URL a mao.
+#   - partnership.py e meta_oauth.py: kwarg pro `fetch_paginated()`
+#     (src/meta_ads/graph.py:37), que poe o valor em
+#     `headers={"Authorization": f"Bearer {access_token}"}` — nunca em
+#     `params=`.
+# Isto NAO e a enumeracao que este teste substitui: a varredura de ARQUIVOS
+# continua sendo TODO .py sob as duas pastas (property, nao lista) — so os
+# tres pares abaixo, ja lidos e confirmados, nao reprovam o build. Um arquivo
+# novo, ou um termo novo num destes tres arquivos, nao esta nesta lista e
+# ainda reprova.
+_KWARG_SEGURO_INVESTIGADO: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("src/meta_ads/client.py", "access_token="),
+        ("src/meta_ads/partnership.py", "access_token="),
+        ("src/auth/meta_oauth.py", "access_token="),
+    }
+)
+
+
+def test_nenhum_caminho_meta_poe_credencial_em_query() -> None:
+    """Propriedade, nao lista: TODO arquivo de `src/meta_ads/` e `src/auth/` obedece.
+
+    A versao anterior cobria a invariante enumerando funcoes de UM arquivo
+    (`meta_oauth.py`, nos testes acima). `reports.py` falava com a Graph API
+    pelo SDK, que assa o token na query — e ficou fora do escopo por nao estar
+    na lista. Guard que enumera absolve o arquivo que ninguem lembrou de
+    listar, que e precisamente o arquivo onde o bug mora.
+
+    Escopo cobre as DUAS pastas onde codigo Meta roda — `src/meta_ads/`
+    (SDK/Graph/relatorios) e `src/auth/` (OAuth, onde o F82 original morava
+    em `meta_oauth.py`). Varrer so uma das duas repetiria, no eixo do escopo
+    de diretorio, o mesmo defeito que esta propriedade existe para corrigir
+    no eixo da lista de arquivos — por isso o piso abaixo soma as duas.
+    """
+    from tests.unit import _guard_harness as h
+
+    arquivos = h.fontes_py(h.SRC / "meta_ads") + h.fontes_py(h.SRC / "auth")
+    # Medido em 2026-09-21: 11 arquivos .py em src/meta_ads/ + 8 em src/auth/
+    # = 19. O piso fica ACIMA do maior dos dois diretorios sozinho (11): se a
+    # varredura algum dia colapsar pra so `meta_ads/` (auth silenciosamente
+    # cai) ou so `auth/`, o piso ainda dispara — nao so no zero absoluto que
+    # `fontes_py` ja cobre via EscopoVazioError.
+    assert len(arquivos) >= 15, (
+        f"piso de nao-vacuidade: so {len(arquivos)} arquivos em "
+        "src/meta_ads/+src/auth/ (medido em 2026-09-21: 11+8=19). O "
+        "localizador parou de casar, ou o escopo colapsou pra um so "
+        "diretorio, e o guard estaria absolvendo por vacuidade parcial."
+    )
+    ofensores: list[str] = []
+    for arq in arquivos:
+        texto = arq.read_text(encoding="utf-8")
+        caminho = h.rel(arq)
+        for termo in ("access_token=", "appsecret_proof="):
+            if termo in texto and "_PARAMS_SENSIVEIS" not in texto:
+                if (caminho, termo) in _KWARG_SEGURO_INVESTIGADO:
+                    continue
+                ofensores.append(f"{caminho}: {termo}")
+    assert ofensores == [], (
+        "credencial montada em query string fora do redator: "
+        f"{ofensores}. A invariante do F82 e header, nunca query."
+    )
