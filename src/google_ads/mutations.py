@@ -100,7 +100,14 @@ def _parse_partial_failures(
                 {
                     "index": idx,
                     "status": "failed",
-                    "error": error_by_index.get(idx, "Unknown partial failure"),
+                    # `None` quando a leitura nao foi confiavel: a linha FALHOU
+                    # (o `WhichOneof` diz isso, e essa contagem e medida), mas o
+                    # motivo nao foi lido. A string antiga afirmava o contrario.
+                    "error": (
+                        error_by_index.get(idx, "Unknown partial failure")
+                        if leitura.medido
+                        else None
+                    ),
                 }
             )
     return per_op_results

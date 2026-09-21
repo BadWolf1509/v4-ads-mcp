@@ -296,10 +296,15 @@ def _parse_upload_response(
     # Walk results — empty conversion_action = failed row.
     for idx, result in enumerate(response.results):
         if not getattr(result, "conversion_action", None):
-            err = row_errors.get(
-                idx,
-                {"error_code": "UNKNOWN", "error_message": "no detail"},
+            # Sob leitura nao-confiavel o motivo e `None`, nao "no detail": a
+            # linha falhou (a heuristica do `conversion_action` vazio diz isso),
+            # mas o porque nao foi lido.
+            padrao: dict[str, Any] = (
+                {"error_code": "UNKNOWN", "error_message": "no detail"}
+                if leitura.medido
+                else {"error_code": None, "error_message": None}
             )
+            err = row_errors.get(idx, padrao)
             failures.append(
                 {
                     "row_index": idx,
