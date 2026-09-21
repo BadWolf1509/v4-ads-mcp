@@ -229,7 +229,29 @@ def test_nenhum_caminho_meta_poe_credencial_em_query() -> None:
     `errors.py` e uma string concatenada (`"...client_secret)(..."`) que
     nunca contem `nome=` colado, entao nunca batia o termo e nunca precisou
     de isencao — era isencao que nao isentava nada.
+
+    Round 2 (fix, mesmo dia) acrescentou DUAS defesas que o round 1 nao
+    tinha:
+
+    1. O piso numerico (>= 15) e um RETRATO de hoje, nao uma invariante — ele
+       so pega a varredura ESVAZIANDO. Se `meta_ads/` crescer sozinho ate uns
+       20 arquivos e alguem apagar o termo do `auth/` (exatamente o
+       diretorio onde o F82 original morava), o total ainda passa de 15 e o
+       guard volta a varrer so METADE do escopo, em silencio — o mesmo
+       defeito desta task, reencarnado. Por isso a asserção abaixo AFIRMA OS
+       DIRETORIOS (`{"meta_ads", "auth"}`), nao so a contagem. As duas
+       ficam: uma pega o colapso pra um so lado, a outra pega a varredura
+       esvaziando dentro de uma raiz que continua existindo — cobrem eixos
+       diferentes.
+    2. O scanner agora filtra docstring via `h._nos_de_docstring` (o mesmo
+       helper que `html_em_python` usa, no harness irmao). Sem isso, prosa
+       que CITA `access_token=` pra EXPLICAR o codigo — o jeito natural de
+       documentar esta area depois de um incidente como o F190 — dispara
+       falso positivo, e a reacao natural de quem for documentar e pedir
+       isencao: a doenca que este teste inteiro existe pra extirpar.
     """
+    import ast
+
     from tests.unit import _guard_harness as h
 
     arquivos = h.fontes_py(h.SRC / "meta_ads") + h.fontes_py(h.SRC / "auth")
@@ -237,23 +259,41 @@ def test_nenhum_caminho_meta_poe_credencial_em_query() -> None:
     # = 19. O piso fica ACIMA do maior dos dois diretorios sozinho (11): se a
     # varredura algum dia colapsar pra so `meta_ads/` (auth silenciosamente
     # cai) ou so `auth/`, o piso ainda dispara — nao so no zero absoluto que
-    # `fontes_py` ja cobre via EscopoVazioError.
+    # `fontes_py` ja cobre via EscopoVazioError. Cobre a varredura esvaziando
+    # DENTRO de uma raiz que continua existindo; NAO cobre uma raiz inteira
+    # sumir enquanto a outra cresce o bastante pra compensar a contagem — e
+    # pra isso que serve o assert de diretorios logo abaixo.
     assert len(arquivos) >= 15, (
         f"piso de nao-vacuidade: so {len(arquivos)} arquivos em "
         "src/meta_ads/+src/auth/ (medido em 2026-09-21: 11+8=19). O "
         "localizador parou de casar, ou o escopo colapsou pra um so "
         "diretorio, e o guard estaria absolvendo por vacuidade parcial."
     )
+    # Afirma os DIRETORIOS, nao a contagem: um piso numerico sozinho expira
+    # sem avisar quando `meta_ads/` (a area mais ativa do repo) crescer o
+    # bastante pra compensar `auth/` sumindo do scan — e `auth/meta_oauth.py`
+    # e onde o F82 original morava. Verificado contra os caminhos reais que
+    # `fontes_py` devolve (absolutos, resolvidos): `p.relative_to(h.SRC)` da
+    # `meta_ads\arquivo.py` ou `auth\arquivo.py`, e `.parts[0]` isola a raiz.
+    diretorios = {p.relative_to(h.SRC).parts[0] for p in arquivos}
+    assert diretorios == {"meta_ads", "auth"}, (
+        f"a varredura perdeu uma das duas raizes: achou {diretorios}. O F82 "
+        "morava em `auth/meta_oauth.py` — varrer so `meta_ads/` reproduz o "
+        "defeito."
+    )
     ofensores: list[str] = []
     for arq in arquivos:
         arv = h.arvore(arq)
+        ids_docstring = h._nos_de_docstring(arv)
         for literal in h._literais_de_string(arv):
+            if isinstance(literal, ast.Constant) and id(literal) in ids_docstring:
+                continue  # prosa explicando o codigo, nao codigo
             texto = h._texto_logico(literal)
             for termo in ("access_token=", "appsecret_proof=", "client_secret="):
                 if termo in texto:
                     ofensores.append(f"{h.rel(arq)}:{literal.lineno}: {termo}")
     assert ofensores == [], (
-        "credencial montada em query string (literal de string, nao kwarg) "
-        f"fora do redator: {ofensores}. A invariante do F82 e header, nunca "
-        "query."
+        "credencial montada em query string (literal de string, nao kwarg, "
+        f"nao docstring) fora do redator: {ofensores}. A invariante do F82 "
+        "e header, nunca query."
     )
