@@ -63,7 +63,7 @@ https://v4-ads-mcp-299432068772.southamerica-east1.run.app
 | # | Test | Result | Execution Date | Notes |
 |---|---|---|---|---|
 | T1 | `get_assets` sem filtro — aparecem linhas dos **3 níveis** em `links[]`, ≥1 com `status: REMOVED`, `summary` com agregações | ◐ PASS | 2026-09-02 | Conta `7862230676`, `limit: 1000`. **735 vínculos** = 26 `customer_asset` + 313 `campaign_asset` + 396 `ad_group_asset` (3 níveis ✓). `truncated: false`, `orphan_scope: conta_completa`, **132 assets sem vínculo ativo** incluindo `144113768040` e `144113768046` (REMOVED ✓). |
-| T2 | `get_assets` com `field_type="CALLOUT"` — filtro se aplica, apenas callouts retornados, `links[]` é subset de T1 | ⬜ pending | | **O único não executado.** Cobre o ramo `filter_active=True`, que é onde `assets_sem_vinculo_ativo` é omitido e `orphan_scope` vira `nao_calculado_com_filtro` — ramo distinto do exercitado em T1. |
+| T2 | `get_assets` com `field_type="CALLOUT"` — filtro se aplica, apenas callouts retornados, `links[]` é subset de T1 | ✅ PASS | 2026-09-20 | **19 vínculos, todos `CALLOUT`** — CAMPAIGN 16, CUSTOMER 3, zero AD_GROUP; `ELIGIBLE` 13 / `REMOVED` 6; `truncated: false`. **Conferido por GAQL independente e bate em todas as dimensões:** `campaign_asset` dá 16 (12+4) e `customer_asset` dá 3 (1+2). `orphan_scope: "nao_calculado_com_filtro"` — a tool DECLARA que não calculou em vez de devolver número possívelmente errado. ⚠️ `asset_name` veio `""`, e o "Expected shape" abaixo está DEFASADO nesse campo — ver nota. |
 | T3 | Asset `144113768043` aparece com `primary_status: ELIGIBLE` **nos dois níveis** (CUSTOMER + CAMPAIGN) em `links[]` — prova que precedência não existe | ◐ PASS **por outra via** | 2026-09-02 | Respondido pela **probe de precedência via `run_gaql`**, não pelo `links[]` do `get_assets`: `primary_status` veio `ELIGIBLE` nos dois níveis. A conclusão (precedência não existe) está provada; a asserção *como escrita* — via `get_assets` — não foi exercida. |
 | T4 | `remove_asset_link` com `links=[{level, resource_name}]` — retorna `confirmation_token` 8 chars + `status: dry_run` | ◐ PASS | 2026-09-02 | Conta de teste `1163862076`, alvos com `[3b.25]` no texto, campanha PAUSED. |
 | T4b | `apply_change(confirmation_token=<T4>)` — aplica a mutação, retorna `status: applied` + `applied_count >= 1` | ◐ PASS | 2026-09-02 | |
@@ -72,7 +72,18 @@ https://v4-ads-mcp-299432068772.southamerica-east1.run.app
 | T6b | `apply_change(confirmation_token=<T6>)` — idempotência: `status: applied` sem erro terminal (`applied_count` pode ser 0 ou 1); prova real é o re-query GAQL `status: REMOVED` | ◐ PASS **e gerou o F139** | 2026-09-02 | Devolveu `status: applied` + `applied_count: 1` pra operação que **não mudou nada**; o único vestígio era `resource_names: [null]`. Daí saiu o `changed_count`. |
 | T7 | `account_frontier` é a fronteira da CONTA, não da janela (F131) | ✅ PASS | 2026-09-02 | Evidência transcrita na seção T7. |
 
-**Effective result:** 8/9 executados (7 na sessão de campo, 1 aqui) · **1 pendente (T2)** · 0 falhas.
+**Effective result:** **9/9 executados** · 9 PASS · 0 falhas.
+
+O T2 rodou em **2026-09-20**, revisão `v4-ads-mcp-00119-7f8` — leitura pura, sem aval necessário. Ficou
+um ano parado por invisibilidade, não por dificuldade: **nenhum arquivo vivo apontava para este
+runbook**, e a única lista de pendências do `estado-atual` era a das que dependem do gestor — onde
+uma leitura pendente não cabia. Corrigido na revisão de contexto do mesmo dia.
+
+⚠️ **`asset_name` nos blocos "Expected response shape" deste documento está DEFASADO.** Eles mostram
+`"asset_name": "Atendimento Eficaz"`; o valor real é `""`. **Não é regressão** — está medido e
+catalogado: o Google só popula `name` em algumas famílias, e nas sete de texto vem vazio em **100%**
+(CALLOUT **19/19**, os mesmos 19 de hoje). A description da tool já avisa. Os blocos ficam como
+estão, com esta ressalva, porque reescrevê-los apagaria o registro de que a expectativa era outra.
 
 ### F-findings emerged
 
