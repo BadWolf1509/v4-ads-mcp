@@ -226,3 +226,48 @@ async def test_edge_divergente_do_ad_account_gateado_e_recusado() -> None:
             params={"level": "campaign"},
             operation_name="meta_get_campaign_performance",
         )
+
+
+@pytest.mark.asyncio
+async def test_colisao_de_substring_entre_contas_e_recusada() -> None:
+    """`ad_account_id in edge` cru colide: "act_1" e substring de "act_12345".
+
+    Fix round 1 (achado do coordenador — era a propria preocupacao 4 do
+    relatorio da task, registrada e nao engolida). A checagem original
+    (`ad_account_id not in edge`) e substring CRUA: o teste irmao acima
+    (`test_edge_divergente_...`) usa contas de tamanhos iguais (`act_1` vs
+    `act_999`) e por isso nao pega o caso em que uma conta e PREFIXO lexico da
+    outra. Com `ad_account_id="act_1"` e `edge="/act_12345/insights"`, "act_1"
+    APARECE dentro de "/act_12345/insights" — a checagem crua aprovaria o
+    gate pra act_1 e a leitura sairia sobre act_12345, o cenario exato que
+    esta task existe pra impedir, sobrevivendo por acidente lexico. Delimitado
+    por barras dos dois lados fecha o buraco sem afetar nenhum call-site de
+    hoje (todos usam `/{ad_account_id}/algo`).
+    """
+    from src.meta_ads import reports
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": [], "paging": {}})
+
+    transporte = httpx.MockTransport(handler)
+    cliente_real = httpx.AsyncClient(transport=transporte, timeout=reports._TIMEOUT_GRAPH)
+
+    with (
+        patch.object(reports.httpx, "AsyncClient", MagicMock(return_value=cliente_real)),
+        patch.object(
+            reports.manager_meta_account_access,
+            "can_manager_access",
+            AsyncMock(return_value=True),
+        ),
+        patch.object(reports.connection, "get_pool", return_value=_pool()),
+        patch.object(reports.audit_log, "record", AsyncMock(return_value=1)),
+        pytest.raises(ValueError, match="act_1"),
+    ):
+        await reports.run_meta_graph_get(
+            manager_id=uuid4(),
+            session_id=uuid4(),
+            ad_account_id="act_1",
+            edge="/act_12345/insights",  # "act_1" e substring lexica de "act_12345"
+            params={"level": "campaign"},
+            operation_name="meta_get_campaign_performance",
+        )

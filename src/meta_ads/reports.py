@@ -204,7 +204,12 @@ async def run_meta_graph_get(
     # amarrar os dois, o F72 garante que o gate RODA, nao que ele rodou sobre a
     # conta certa. Falha fechado: prefere recusar uma edge legitima e exotica a
     # ler uma conta que ninguem gateou.
-    if ad_account_id not in edge:
+    #
+    # Fix round 1: `ad_account_id in edge` era substring CRUA — `"act_1" in
+    # "/act_12345/insights"` e True, entao o gate aprovaria act_1 e a leitura
+    # sairia sobre act_12345. Delimitado por barras dos dois lados; o `+ "/"`
+    # no fim de `edge` cobre a edge que termina no proprio id (sem path depois).
+    if f"/{ad_account_id}/" not in f"{edge}/":
         raise ValueError(
             f"edge {edge!r} nao contem a conta gateada {ad_account_id!r} — "
             "o gate de acesso e a requisicao apontam para contas diferentes."
