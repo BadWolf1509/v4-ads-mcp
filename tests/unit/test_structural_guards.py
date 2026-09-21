@@ -7,12 +7,14 @@ transforma a convenção num teste que falha no commit em vez de num incidente.
 - F57 (Google): call-site de build_client_for_manager sem ensure_account_access
   → vazou existência/schema de qualquer conta da MCC (o validate_gaql ficou
   desguarnecido até a auditoria de 2026-06-20).
-- F57-Meta: URL da Graph API (literal `graph.facebook.com`) escrita fora de
-  quem já gateia → pula o hard-gate (o freio do Modelo B é a matriz de acesso;
-  o token é compartilhado). Retargetado em F190/Task 6 (21/09, ruling R10):
-  o sujeito original (chamada a `build_meta_api`) sumiu quando o transporte
-  virou httpx; a invariante — só o executor gateado fala com a Graph API —
-  não sumiu, só trocou de forma.
+- F57-Meta: cliente HTTP (`httpx.AsyncClient`/`Client`/`get`/`post`) construído
+  ou invocado fora de quem já gateia → pula o hard-gate (o freio do Modelo B é
+  a matriz de acesso; o token é compartilhado). Retargetado DUAS vezes em
+  F190/Task 6 (21/09): 1ª pro literal `graph.facebook.com` (ruling R10, quando
+  `build_meta_api` sumiu); 2ª pro MECANISMO — cliente HTTP, não URL — depois
+  que o fix round 1 provou por mutação que concatenação de string e reuso de
+  constante autorizada escapam de qualquer varredura de literal, sempre. A
+  invariante nunca mudou: só o executor gateado fala com a Graph API.
 - F58: conn.cursor() sem async with conn.transaction() → asyncpg exige transação
   pra server-side cursor (o CSV export quebrou em prod porque nenhum teste iterou).
 - F83: I/O de bookkeeping num `finally` sem best_effort → exceção ali DESCARTA o
@@ -314,139 +316,209 @@ def test_f57_acusa_a_violacao_e_so_ela(fonte: str, acusa: bool) -> None:
     )
 
 
-# F57-Meta RETARGETADO (F190/Task 6, 21/09 — ruling R10 do ledger da SDD). Até
-# aqui o guard vigiava toda CHAMADA a `build_meta_api`. A Task 3 desta mesma
-# SDD trocou o transporte Meta pra httpx com auth em header — `build_meta_api`
-# perdeu o único call-site vivo que o guard conhecia — e esta task apaga a
-# função de `client.py` de vez (código morto com teste verde é pior que código
-# morto). O brief original mandava apagar o guard inteiro junto. Errado: o
-# guard nunca vigiou "a chamada em si" — vigiava CONTENÇÃO, "só o executor
-# gateado fala com a Graph API". A função era só o SUJEITO de 2026-09-07; o
-# mecanismo que precisa ficar contido — a construção da URL — não sumiu, só
-# trocou de forma: do argumento de uma factory pro literal `graph.facebook.com`
-# escrito direto em `reports.py:233`. Apagar o guard junto do sujeito antigo
-# deixaria a varredura permanentemente vazia, e nada impediria uma tool Meta
-# nova de montar a URL e falar `httpx` direto, pulando `can_manager_access` —
-# o único freio do Modelo B (token compartilhado, ~24 contas).
+# F57-Meta RETARGETADO UMA SEGUNDA VEZ (F190/Task 6, 21/09 — fix round 1,
+# achado CRITICAL do revisor, provado por mutação com dois probes empíricos
+# rodados em `src/`). A 1ª versão (ruling R10) trocou "chamada a
+# build_meta_api" por "literal `graph.facebook.com`" quando a função sumiu de
+# client.py. Essa versão tinha um defeito de EIXO: o literal é um PROXY de
+# quem fala com a Graph API, não o mecanismo. Dois refactors NÃO-adversariais
+# — coisa que qualquer um faz sem pensar — escapavam por completo:
 #
-# Retargetado: o guard varre `src/` pelo LITERAL `graph.facebook.com` (não
-# mais por chamada) e afirma que ele só aparece em (arquivo, escopo)
-# autorizados. "Escopo" é o nome da função dona do literal, ou `<módulo>`
-# quando o literal vive fora de qualquer função — as duas formas REAIS medidas
-# hoje (`grep -rn "graph\.facebook\.com" src/ --include=*.py`, 2026-09-21):
+#   A) concatenação: `"https://graph." + "facebook.com/v22.0"` — nenhum
+#      Constant sozinho contém o literal, e `_texto_logico` não junta
+#      literais através de um `BinOp`.
+#   B) reuso de constante JÁ autorizada: `from src.auth.meta_oauth import
+#      META_GRAPH_BASE` num arquivo novo — o literal nunca é REESCRITO, zero
+#      ocorrências no arquivo, guard verde.
 #
-#   src/meta_ads/reports.py:233     (dentro de run_meta_graph_get)
-#   src/meta_ads/partnership.py:17  (nível de módulo — `_GRAPH = f"..."`)
-#   src/auth/meta_oauth.py:50       (nível de módulo — `META_GRAPH_BASE = "..."`)
+# Os dois probes tinham `httpx.AsyncClient()` no arquivo novo — é isso que
+# efetivamente ALCANÇA a Graph API, não importa como a URL foi montada depois.
+# Uma tool não pode fazer requisição sem construir (ou receber já construído)
+# um cliente; o literal é opcional, o cliente não é.
 #
-# `src/meta_ads/graph.py::fetch_paginated` NÃO entra — era candidato na leitura
-# inicial do brief ("chamado por quem já gateia"), mas a leitura mostra que ele
-# NUNCA escreve o literal: recebe `url` já pronta por parâmetro (é
-# `partnership.py`/`meta_oauth.py` quem monta a URL e a passa pra dentro).
-# Incluí-lo seria uma entrada que o scanner nunca bateria — o oposto do que a
-# allowlist existe pra fazer (cada entrada tem que ter motivo E ocorrência
-# real; ver `_PISO_GRAPH_HOST`). Se um dia `fetch_paginated` passar a
-# hardcodar o host Meta em vez de receber a URL, isso É uma mudança que vale
-# pegar — é paginação genérica, reusada por dois callers, e não deveria saber
-# o nome de nenhum provider — e sem a entrada na allowlist o guard pega.
-#
+# Retargetado pro MECANISMO: o guard varre as raízes abaixo procurando
+# CONSTRUÇÃO/USO DIRETO de cliente HTTP (`_METODOS_CLIENTE_HTTP`) e afirma que
+# só acontece em (arquivo, escopo) autorizados. Resolução por CAMINHO
+# CANÔNICO (`h.origens_de_import` + `h.caminho_canonico`), não pelo último
+# nome do atributo — `import httpx as hx` ou `from httpx import AsyncClient`
+# resolvem pro mesmo alvo que `import httpx; httpx.AsyncClient(...)`.
+_METODOS_CLIENTE_HTTP = frozenset(
+    {
+        "httpx.AsyncClient",
+        "httpx.Client",
+        "httpx.get",
+        "httpx.post",
+        "httpx.put",
+        "httpx.delete",
+        "httpx.patch",
+        "httpx.request",
+        "httpx.stream",
+        # Defensivo: `requests` não tem consumidor real em src/meta_ads/ nem
+        # src/auth/ desde a Task 3 (medido — o `requests` que resta em
+        # reports.py é prosa, não import). Se algo reverter parcial pro SDK
+        # antigo (que usa `requests` por baixo via facebook_business), a
+        # chamada direta equivalente já está coberta.
+        "requests.get",
+        "requests.post",
+        "requests.put",
+        "requests.delete",
+        "requests.patch",
+        "requests.request",
+        "requests.Session",
+    }
+)
+
+# Piso de arquivos de tool Meta sob src/mcp/tools/ — protege a DESCOBERTA de
+# arquivo (eixo diferente do piso de ocorrência abaixo): se a convenção de
+# nome mudar (deixar de conter "meta"), `_raizes_cliente_http_meta` erraria
+# calado varrendo uma fração da superfície. Medido: `ls src/mcp/tools/ | grep
+# -i meta` = 8 arquivos, 2026-09-21.
+_PISO_ARQUIVOS_TOOLS_META = 8
+
+
+def _raizes_cliente_http_meta() -> list[Path]:
+    """Arquivos varridos pelo guard: todo `src/meta_ads/**.py` (recursivo, já
+    com o `EscopoVazioError` de `h.fontes_py` embutido) + os handlers de tool
+    Meta em `src/mcp/tools/` (nome contém "meta", direto no diretório — tools
+    não vivem em subpasta).
+
+    Escopo deliberadamente MENOR que `src/` inteiro: `httpx` é usado em áreas
+    do repo sem nenhuma relação com a Graph API (`src/auth/oauth.py` é o
+    OAuth do GOOGLE, por exemplo) — varrer ali geraria ruído sem proteger
+    nada, e é exatamente o "restrinja às raízes" que o revisor pediu.
+
+    FICAM DE FORA, apesar de construírem `httpx.AsyncClient` de verdade e
+    falarem com a Graph API — cada um por motivo medido, não por esquecimento:
+
+    - `src/auth/meta_oauth.py` (2 construções reais: `meta_oauth_callback` e
+      `meta_oauth_refresh_accounts`) — o roteador OAuth inteiro. Não é onde
+      uma TOOL nova nasce; é arquivo estável, tocado só quando o fluxo OAuth
+      muda. Era allowlist no guard anterior (literal, por módulo inteiro);
+      aqui fica de FORA do escopo por decisão, não por buraco herdado.
+    - `src/jobs/meta_resync.py` (1 construção real) — o job de resync roda
+      com o token de system-user direto, automação privilegiada sem
+      manager_id no caminho. Mesma classe de "anterior ao gate por natureza".
+
+    Isto é uma FRONTEIRA CONHECIDA, não uma garantia universal: uma tool ou
+    job Meta que alguém escreva FORA destas duas raízes (outro diretório do
+    repo, uma rota nova em `src/web/routes/`) NÃO é coberto por este guard —
+    nada aqui afirma o contrário.
+    """
+    raiz_meta_ads = h.fontes_py(h.SRC / "meta_ads")
+    tools_meta = sorted(
+        p.resolve() for p in (h.SRC / "mcp" / "tools").glob("*.py") if "meta" in p.stem.lower()
+    )
+    if len(tools_meta) < _PISO_ARQUIVOS_TOOLS_META:
+        raise h.EscopoVazioError(
+            f"só {len(tools_meta)} arquivo(s) de tool Meta encontrado(s) sob "
+            f"src/mcp/tools/ (piso: {_PISO_ARQUIVOS_TOOLS_META}, medido em "
+            "2026-09-21). A convenção de nome pode ter mudado (deixou de "
+            "conter 'meta') — o guard estaria varrendo só uma fração da "
+            "superfície de tools, calado."
+        )
+    return raiz_meta_ads + tools_meta
+
+
 # A allowlist é a invariante deste guard, não uma exceção temporária — pequena,
 # fechada, revisada, e cada entrada carrega o motivo AO LADO (entrada sem
 # motivo é entrada que ninguém reavalia depois).
-_ALVO_GRAPH_HOST = "graph.facebook.com"
-
-_ALLOWLIST_GRAPH_HOST: dict[tuple[str, str], str] = {
+_ALLOWLIST_CLIENTE_HTTP: dict[tuple[str, str], str] = {
     ("src/meta_ads/reports.py", "run_meta_graph_get"): (
-        "o executor único: can_manager_access roda incondicional ANTES da URL "
-        "ser montada (linha 160, contra a 233) — o freio do Modelo B. Nenhuma "
-        "outra função deste arquivo constrói a URL (medido: só _paginar_graph "
-        "mais existe, e recebe `url` por parâmetro)."
-    ),
-    ("src/meta_ads/partnership.py", "<módulo>"): (
-        "monta o inventário AUTORITATIVO da parceria (fetch_partnership), lido "
-        "pelo job de resync (src/jobs/meta_resync.py) ANTES de qualquer decisão "
-        "de acesso por gestor existir — é a fonte que o gate depois consulta, "
-        "não uma leitura de dado de campanha; não há o que gatear."
-    ),
-    ("src/auth/meta_oauth.py", "<módulo>"): (
-        "fluxo OAuth inteiro (troca de código, /me, /debug_token, "
-        "/me/adaccounts, refresh) — anterior ao gate por natureza: estabelece "
-        "a IDENTIDADE e o inventário que o gate consulta depois, nunca lê dado "
-        "de campanha de um gestor já autenticado."
+        "o executor único: can_manager_access roda incondicional ANTES do "
+        "`async with httpx.AsyncClient(...)` (linha 160, contra a 234) — o "
+        "freio do Modelo B. Nenhuma outra função deste arquivo constrói "
+        "cliente (medido: só _paginar_graph mais existe, e RECEBE `http` por "
+        "parâmetro — usa o cliente que o executor já gateou, não constrói um "
+        "novo)."
     ),
 }
 
-# Piso de não-vacuidade DERIVADO DE MEDIÇÃO, não de chute: 3 ocorrências reais
-# do literal em `src/` hoje, uma por arquivo acima (mesmo grep, 2026-09-21).
-# Existe pela mesma razão do `assert vistas` que este guard tinha antes (F57
-# Google mantém a forma irmã): sem piso, o dia em que os 3 sites forem
-# reescritos pra montar a URL por outro caminho (concatenação, `httpx.URL`,
-# uma constante que o AST não alcança) faz a varredura achar ZERO — e "nenhuma
-# violação" e "o scanner parou de enxergar o próprio alvo" têm o mesmo
-# resultado (lista vazia); só o piso distingue os dois. Se o número cair de
-# propósito (um site migrou de verdade), atualize o piso NA MESMA mudança —
-# ele documenta o presente, não uma meta.
-_PISO_GRAPH_HOST = 3
+# Medido em 2026-09-21 (fix round 1): sob as duas raízes de
+# `_raizes_cliente_http_meta`, exatamente 1 construção real de cliente —
+# `httpx.AsyncClient(...)` em `reports.py:234`. Nenhum dos 8 arquivos de tool
+# constrói cliente (todos delegam a `run_meta_graph_get`); `graph.py` e
+# `partnership.py` RECEBEM `http` por parâmetro, não constroem.
+#
+# HONESTO SOBRE A REDUNDÂNCIA (achado Minor do revisor): com allowlist de 1
+# entrada só, este piso e a checagem por-entrada (`vistos_por_entrada`)
+# afirmam a MESMA coisa hoje — a checagem por-entrada já implica que o total
+# não pode ser zero enquanto a entrada existir. Não finjo que são
+# independentes. Mantenho os dois porque (a) o valor é MEDIDO, não decoração,
+# e (b) no dia em que a allowlist ganhar uma 2ª entrada, ou em que uma
+# revisão quiser saber "o total caiu?" sem percorrer cada chave, o piso deixa
+# de ser redundante sem precisar de desenho novo. Se isto continuar do mesmo
+# jeito na próxima rodada, considere apagar um dos dois em vez de manter os
+# dois por hábito.
+_PISO_CLIENTE_HTTP = 1
 
 
-def _ocorrencias_graph_host(arv: ast.Module, caminho_rel: str) -> list[tuple[str, int, bool]]:
-    """(escopo, linha, autorizado) de cada literal contendo `graph.facebook.com`.
+def _ocorrencias_cliente_http(arv: ast.Module, caminho_rel: str) -> list[tuple[str, int, bool]]:
+    """(escopo, linha, autorizado) de cada Call que constrói/invoca um cliente
+    HTTP (`_METODOS_CLIENTE_HTTP`) no corpo PRÓPRIO de cada escopo.
 
-    "Escopo" segue a mesma unidade do F57: o literal é atribuído à função MAIS
-    INTERNA que o contém no corpo PRÓPRIO dela (`h.literais_no_corpo_proprio`,
-    o par de `h.chama_no_corpo_proprio` — literal em vez de chamada), com o
-    MÓDULO entrando como escopo pelo mesmo motivo do F57/F58: um literal no
-    corpo do módulo não tem função dona e escaparia sem isto.
+    Resolve o alvo pelo CAMINHO CANÔNICO (`h.origens_de_import` +
+    `h.caminho_canonico`), não pelo último nome do atributo: `httpx.get(`
+    bate por `Attribute`, `from httpx import AsyncClient` + `AsyncClient(`
+    bate por `Name` resolvido via import, e `import httpx as hx` +
+    `hx.AsyncClient(` bate pelos dois — as três formas usam a MESMA
+    resolução, então renomear o import não escapa (mesma lição do F57
+    original, aplicada ao módulo em vez do nome de uma função).
 
-    Docstring (primeiro statement de módulo/classe/função) é filtrado via
-    `h._nos_de_docstring` — prosa que CITA o host pra explicar código real (o
-    jeito natural de documentar esta área depois do F190) não é o alvo.
+    Um cliente RECEBIDO por parâmetro (`http.get(...)`, onde `http` é
+    argumento, não import) nunca resolve pra `httpx.*` — `caminho_canonico`
+    só reconhece raiz ligada por `import`/`from import` no PRÓPRIO arquivo.
+    É por isso que `graph.py::fetch_paginated` e
+    `partnership.py::fetch_partnership` (que recebem `http: httpx.AsyncClient`
+    de fora) não aparecem aqui: USAM um cliente que já passou pelo construtor
+    gateado, não CONSTROEM um novo.
     """
-    ids_docstring = h._nos_de_docstring(arv)
+    origens = h.origens_de_import(arv)
     achados: list[tuple[str, int, bool]] = []
     for escopo in (arv, *h.funcoes(arv)):
         nome = getattr(escopo, "name", "<módulo>")
-        for no in h.literais_no_corpo_proprio(escopo):
-            if isinstance(no, ast.Constant) and id(no) in ids_docstring:
+        for no in h.nos_do_corpo_proprio(escopo):
+            if not isinstance(no, ast.Call):
                 continue
-            if _ALVO_GRAPH_HOST not in h._texto_logico(no):
+            caminho = h.caminho_canonico(no.func, origens)
+            if caminho not in _METODOS_CLIENTE_HTTP:
                 continue
-            achados.append((nome, no.lineno, (caminho_rel, nome) in _ALLOWLIST_GRAPH_HOST))
+            achados.append((nome, no.lineno, (caminho_rel, nome) in _ALLOWLIST_CLIENTE_HTTP))
     return achados
 
 
 def _ofensores_f57_meta(arv: ast.Module, caminho_rel: str) -> list[tuple[str, int]]:
-    """(escopo, linha) de cada ocorrência do literal fora da allowlist."""
+    """(escopo, linha) de cada construção/uso de cliente HTTP fora da allowlist."""
     return [
         (nome, linha)
-        for nome, linha, autorizado in _ocorrencias_graph_host(arv, caminho_rel)
+        for nome, linha, autorizado in _ocorrencias_cliente_http(arv, caminho_rel)
         if not autorizado
     ]
 
 
 def test_meta_graph_execution_is_contained() -> None:
-    """F57-Meta: a URL da Graph API (`graph.facebook.com`) só pode ser escrita
-    em (arquivo, escopo) autorizados — hoje, o executor gateado e os dois
-    pontos que rodam ANTES de qualquer gate fazer sentido (OAuth, inventário
-    da parceria). Uma tool nova que monte a URL em qualquer outro lugar e fale
-    `httpx` direto pula `can_manager_access` — o único freio do Modelo B
-    (token compartilhado entre ~24 contas).
+    """F57-Meta: só o executor gateado pode CONSTRUIR ou usar diretamente um
+    cliente HTTP (`httpx.AsyncClient`/`Client`/`get`/`post`/...) contra a
+    Graph API. Uma tool nova que construa o próprio cliente pula
+    `can_manager_access` — o único freio do Modelo B (token compartilhado
+    entre ~24 contas) — não importa COMO ela monte a URL depois.
 
-    Retargetado em F190/Task 6 (21/09, ruling R10): até aqui o guard vigiava
-    chamada a `build_meta_api`, que a Task 3 desta SDD esvaziou (transporte
-    virou httpx) e que esta mesma task apaga de `client.py`. O SUJEITO trocou
-    de nome — de "chamar a factory" pra "escrever o host" — mas a invariante
-    que importa (só o caminho gateado fala com a Graph API) é a mesma; apagar
-    o guard junto do sujeito antigo deixaria a migração terminar SEM proteção
-    nenhuma. Ver o comentário acima de `_ALLOWLIST_GRAPH_HOST` pra allowlist e
-    o motivo de cada entrada, e `_PISO_GRAPH_HOST` pra a medição do piso.
+    Retargetado uma SEGUNDA vez em F190/Task 6 (21/09, fix round 1 — achado
+    Critical do revisor, provado por mutação com dois probes empíricos): a 1ª
+    versão (ruling R10) varria o LITERAL `graph.facebook.com` — um PROXY de
+    quem fala com a API, não o mecanismo. Concatenação de string e reuso de
+    uma constante já autorizada escapavam por completo (ver o comentário
+    acima de `_METODOS_CLIENTE_HTTP` pros dois probes). Os dois tinham
+    `httpx.AsyncClient()` no arquivo novo — é isso que este guard vigia
+    agora. Ver `_raizes_cliente_http_meta` pro escopo (e o que fica de fora,
+    deliberadamente) e `_ALLOWLIST_CLIENTE_HTTP` pra allowlist com o motivo
+    de cada entrada.
     """
-    vistos_por_entrada: dict[tuple[str, str], int] = {chave: 0 for chave in _ALLOWLIST_GRAPH_HOST}
+    vistos_por_entrada: dict[tuple[str, str], int] = {chave: 0 for chave in _ALLOWLIST_CLIENTE_HTTP}
     total_vistas = 0
     ofensores: list[str] = []
-    for p in h.fontes_py():
+    for p in _raizes_cliente_http_meta():
         caminho_rel = h.rel(p)
-        for nome, linha, autorizado in _ocorrencias_graph_host(h.arvore(p), caminho_rel):
+        for nome, linha, autorizado in _ocorrencias_cliente_http(h.arvore(p), caminho_rel):
             total_vistas += 1
             chave = (caminho_rel, nome)
             if autorizado:
@@ -454,89 +526,126 @@ def test_meta_graph_execution_is_contained() -> None:
             else:
                 ofensores.append(f"{caminho_rel}:{linha} (em {nome})")
 
-    assert total_vistas >= _PISO_GRAPH_HOST, (
-        f"F57-Meta — só {total_vistas} ocorrência(s) de {_ALVO_GRAPH_HOST!r} em `src/`, "
-        f"piso {_PISO_GRAPH_HOST} (medido em 2026-09-21, um por arquivo da allowlist). "
-        "Varredura achando MENOS do que já viu antes passa por vacuidade parcial: ou o "
-        "literal mudou de forma (scanner desatualizado) ou um site conhecido sumiu sem "
-        "atualizar este piso na mesma mudança."
+    assert total_vistas >= _PISO_CLIENTE_HTTP, (
+        f"F57-Meta — só {total_vistas} construção(ões)/uso(s) de cliente HTTP sob as "
+        f"raízes varridas, piso {_PISO_CLIENTE_HTTP} (medido em 2026-09-21). Varredura "
+        "achando MENOS do que já viu antes passa por vacuidade: ou `_METODOS_CLIENTE_HTTP` "
+        "parou de casar (o import mudou de forma que `caminho_canonico` não resolve) ou o "
+        "único site conhecido sumiu sem atualizar este piso na mesma mudança."
     )
     faltando = sorted(chave for chave, n in vistos_por_entrada.items() if n == 0)
     assert not faltando, (
-        f"F57-Meta — entrada(s) da allowlist sem NENHUMA ocorrência real: {faltando}. "
-        "A allowlist é a invariante deste guard (R10): entrada que não casa nada é "
-        "entrada que ninguém reavalia — confirme se o site migrou e remova a entrada, "
-        "ou se é vacuidade de scanner."
+        f"F57-Meta — entrada(s) da allowlist sem NENHUMA construção/uso real: {faltando}. "
+        "A allowlist é a invariante deste guard: entrada que não casa nada é entrada que "
+        "ninguém reavalia — confirme se o site migrou e remova a entrada, ou se é vacuidade "
+        "de scanner."
     )
     assert not ofensores, (
-        f"F57-Meta — {_ALVO_GRAPH_HOST!r} fora dos lugares autorizados: {ofensores}. "
-        "Toda leitura Meta deve passar por run_meta_graph_get (can_manager_access "
-        "incondicional — o único freio do Modelo B). Se o site novo é legítimo, "
-        "acrescente (arquivo, escopo) a `_ALLOWLIST_GRAPH_HOST` COM o motivo ao lado."
+        f"F57-Meta — cliente HTTP construído/usado fora dos lugares autorizados: "
+        f"{ofensores}. Toda leitura Meta deve passar por run_meta_graph_get "
+        "(can_manager_access incondicional — o único freio do Modelo B), não importa como "
+        "a URL foi montada. Se o site novo é legítimo, acrescente (arquivo, escopo) a "
+        "`_ALLOWLIST_CLIENTE_HTTP` COM o motivo ao lado."
     )
 
 
 # (id, caminho_rel sintético, fonte, acusa?) — contrato do guard F57-Meta
-# retargetado, forma a forma, pela MESMA travessia que o teste de `src/` usa.
-# Sem esta tabela, as duas metades do contrato (autoriza o escopo exato /
-# reprova um escopo vizinho no MESMO arquivo autorizado) dependeriam de existir
-# um ocupante vivo de cada forma — e hoje cada arquivo da allowlist contribui
-# UMA ocorrência só, então perder qualquer uma das metades não deixaria nada
-# vermelho.
+# (mecanismo), forma a forma, pela MESMA travessia que o teste de `src/` usa.
+# "concatenacao_de_url_ainda_e_pega" e "constante_importada_ainda_e_pega" são
+# os DOIS PROBES do achado Critical do fix round 1 — sem eles aqui, uma
+# regressão futura do MECANISMO (ex.: alguém troca `caminho_canonico` por
+# match cru de `.attr`, reabrindo o buraco do alias) só apareceria rodando o
+# probe manual de novo, nunca num `pytest` de rotina.
 _FORMAS_F57_META = [
     (
         "no_proprio_executor",
         "src/meta_ads/reports.py",
         "async def run_meta_graph_get(edge):\n"
-        '    return f"https://graph.facebook.com/v22.0{edge}"\n',
+        "    async with httpx.AsyncClient() as http:\n"
+        "        return await http.get(edge)\n",
         False,
     ),
     (
         "funcao_nova_no_arquivo_do_executor",
-        # A SABOTAGEM que a allowlist por ARQUIVO do guard antigo permitia,
-        # agora sobre o literal: função nova em reports.py que TAMBÉM escreve
-        # a URL, sem passar pelo gate de run_meta_graph_get.
+        # A MESMA sabotagem de sempre, agora sobre o cliente: função nova em
+        # reports.py que TAMBÉM constrói httpx.AsyncClient, sem passar pelo
+        # gate de run_meta_graph_get.
         "src/meta_ads/reports.py",
         "async def run_meta_graph_get(edge):\n"
-        '    return f"https://graph.facebook.com/v22.0{edge}"\n'
+        "    async with httpx.AsyncClient() as http:\n"
+        "        return await http.get(edge)\n"
         "async def zz_atalho(edge):\n"
-        '    return f"https://graph.facebook.com/v22.0{edge}"\n',
-        True,
-    ),
-    (
-        "modulo_do_arquivo_autorizado",
-        "src/meta_ads/partnership.py",
-        '_GRAPH = "https://graph.facebook.com/v22.0"\n',
-        False,
-    ),
-    (
-        "funcao_nova_em_arquivo_de_modulo_autorizado",
-        # `partnership.py` está autorizado só no ESCOPO `<módulo>` — uma
-        # função nova no MESMO arquivo não herda a isenção.
-        "src/meta_ads/partnership.py",
-        '_GRAPH = "https://graph.facebook.com/v22.0"\n'
-        "def outra():\n"
-        '    return "https://graph.facebook.com/v23.0/outra-coisa"\n',
+        "    async with httpx.AsyncClient() as http:\n"
+        "        return await http.get(edge)\n",
         True,
     ),
     (
         "arquivo_nao_autorizado",
-        "src/mcp/tools/_meta_qualquer.py",
-        'async def ler():\n    return "https://graph.facebook.com/v22.0/me"\n',
+        "src/meta_ads/_qualquer_novo.py",
+        "async def ler():\n"
+        "    async with httpx.AsyncClient() as http:\n"
+        '        return await http.get("https://graph.facebook.com/v22.0/me")\n',
         True,
     ),
     (
-        "docstring_nao_conta",
-        "src/mcp/tools/_meta_qualquer.py",
-        "def f() -> None:\n"
-        '    """Explica por que este modulo NAO fala graph.facebook.com direto."""\n'
-        "    return None\n",
+        "concatenacao_de_url_ainda_e_pega",
+        # PROBE A do revisor: a varredura por LITERAL não pegava isto —
+        # nenhum Constant sozinho contém "graph.facebook.com". A varredura
+        # por MECANISMO nem olha a URL.
+        "src/meta_ads/_qualquer_novo.py",
+        "async def ler(edge):\n"
+        '    host = "https://graph." + "facebook.com/v22.0"\n'
+        "    async with httpx.AsyncClient() as http:\n"
+        "        return await http.get(host + edge)\n",
+        True,
+    ),
+    (
+        "constante_importada_ainda_e_pega",
+        # PROBE B do revisor: zero ocorrências do literal neste arquivo (a
+        # constante é importada, não reescrita) — a varredura por LITERAL
+        # ficava verde. A varredura por MECANISMO não precisa do literal.
+        "src/meta_ads/_qualquer_novo.py",
+        "from src.auth.meta_oauth import META_GRAPH_BASE\n"
+        "async def ler(edge):\n"
+        "    async with httpx.AsyncClient() as http:\n"
+        "        return await http.get(META_GRAPH_BASE + edge)\n",
+        True,
+    ),
+    (
+        "cliente_recebido_por_parametro_nao_conta",
+        # A forma real de graph.py::fetch_paginated: RECEBE `http`, não
+        # CONSTRÓI. `caminho_canonico` só resolve raiz ligada por import no
+        # PRÓPRIO arquivo — parâmetro nunca aparece em `origens_de_import`.
+        "src/meta_ads/_qualquer_novo.py",
+        "async def usa_cliente_alheio(http, edge):\n    return await http.get(edge)\n",
         False,
     ),
     (
-        "fstring_com_expressao_ainda_e_pega",
-        "src/mcp/tools/_meta_qualquer.py",
-        'def f(edge):\n    return f"https://graph.facebook.com/{edge}"\n',
+        "httpx_helper_nao_relacionado_nao_conta",
+        # Precisão do conjunto: httpx.Headers()/httpx.URL() não enviam
+        # requisição nem constroem cliente — não estão em
+        # _METODOS_CLIENTE_HTTP. reports.py usa httpx.Headers() de verdade
+        # (linha 80, dentro de _paginar_graph) e não pode acender o guard.
+        "src/meta_ads/_qualquer_novo.py",
+        "def monta_headers():\n    return httpx.Headers()\n",
+        False,
+    ),
+    (
+        "alias_de_import_nao_escapa",
+        "src/meta_ads/_qualquer_novo.py",
+        "import httpx as hx\n"
+        "async def ler(edge):\n"
+        "    async with hx.AsyncClient() as http:\n"
+        "        return await http.get(edge)\n",
+        True,
+    ),
+    (
+        "from_import_bare_form_e_pego",
+        "src/meta_ads/_qualquer_novo.py",
+        "from httpx import AsyncClient\n"
+        "async def ler(edge):\n"
+        "    async with AsyncClient() as http:\n"
+        "        return await http.get(edge)\n",
         True,
     ),
 ]
@@ -548,7 +657,7 @@ _FORMAS_F57_META = [
     ids=[ident for ident, _, _, _ in _FORMAS_F57_META],
 )
 def test_f57_meta_acusa_a_violacao_e_so_ela(caminho_rel: str, fonte: str, acusa: bool) -> None:
-    """Contrato do guard F57-Meta retargetado, forma a forma, pela MESMA
+    """Contrato do guard F57-Meta (mecanismo), forma a forma, pela MESMA
     travessia que o teste de `src/` usa (`_ofensores_f57_meta`).
     """
     achados = _ofensores_f57_meta(ast.parse(fonte), caminho_rel)
