@@ -342,6 +342,21 @@ def test_f57_acusa_a_violacao_e_so_ela(fonte: str, acusa: bool) -> None:
 # CANÔNICO (`h.origens_de_import` + `h.caminho_canonico`), não pelo último
 # nome do atributo — `import httpx as hx` ou `from httpx import AsyncClient`
 # resolvem pro mesmo alvo que `import httpx; httpx.AsyncClient(...)`.
+#
+# FIX ROUND 2 (achado do revisor, mesma sessão): o conjunto só cobria
+# `httpx`/`requests` — a frase de abertura de `test_meta_graph_execution_is_contained`
+# ("só o executor gateado pode construir OU USAR cliente HTTP") era mais larga
+# do que isso verificava. O revisor mediu os escapes reais e ordenou por
+# plausibilidade; dois viraram cobertura, o resto virou limite DECLARADO (ver
+# a docstring do teste — despacho dinâmico não é perseguido aqui):
+#
+#   - `aiohttp.ClientSession()` — plausibilidade ALTA: `aiohttp` já é
+#     dependência instalada (`pyproject.toml`, pin de segurança
+#     PYSEC-2026-3545/3546/3547, transitiva via `facebook-business`) — quem
+#     escrever `import aiohttp` não instala nada novo nem sente que está
+#     fazendo algo diferente.
+#   - `urllib.request.urlopen(...)` — stdlib, custo zero, reflexo comum de
+#     quick fix.
 _METODOS_CLIENTE_HTTP = frozenset(
     {
         "httpx.AsyncClient",
@@ -365,6 +380,18 @@ _METODOS_CLIENTE_HTTP = frozenset(
         "requests.patch",
         "requests.request",
         "requests.Session",
+        # Fix round 2: aiohttp cobre construtor (ClientSession) E o helper de
+        # um-tiro (aiohttp.request), no mesmo padrão de completude do httpx
+        # acima — deixar só ClientSession coberto reproduziria, dentro do
+        # aiohttp, a MESMA assimetria que este round inteiro existe pra
+        # fechar (biblioteca X tem verbo coberto, biblioteca Y não).
+        "aiohttp.ClientSession",
+        "aiohttp.request",
+        # urllib.request.Request() sozinho não é I/O (só monta o objeto,
+        # como httpx.Headers()) — urlopen() é quem manda a requisição, com
+        # ou sem Request por trás. Cobrir só o verbo que FAZ I/O é a mesma
+        # precisão do caso "httpx_helper_nao_relacionado_nao_conta" abaixo.
+        "urllib.request.urlopen",
     }
 )
 
@@ -497,19 +524,45 @@ def _ofensores_f57_meta(arv: ast.Module, caminho_rel: str) -> list[tuple[str, in
 
 def test_meta_graph_execution_is_contained() -> None:
     """F57-Meta: só o executor gateado pode CONSTRUIR ou usar diretamente um
-    cliente HTTP (`httpx.AsyncClient`/`Client`/`get`/`post`/...) contra a
-    Graph API. Uma tool nova que construa o próprio cliente pula
-    `can_manager_access` — o único freio do Modelo B (token compartilhado
-    entre ~24 contas) — não importa COMO ela monte a URL depois.
+    cliente HTTP (`httpx`/`aiohttp`/`urllib.request` — ver
+    `_METODOS_CLIENTE_HTTP` pro conjunto exato) contra a Graph API. Uma tool
+    nova que construa o próprio cliente pula `can_manager_access` — o único
+    freio do Modelo B (token compartilhado entre ~24 contas) — não importa
+    COMO ela monte a URL depois.
 
-    Retargetado uma SEGUNDA vez em F190/Task 6 (21/09, fix round 1 — achado
+    **O que este guard NÃO pega — limite estrutural, não descuido, e a
+    mesma classe de limite que `h.chama()` já documenta pra despacho
+    dinâmico.** A varredura é sintática (AST); ela resolve `Name`,
+    `Attribute` e alias de import (`caminho_canonico`), mas não executa nada.
+    Três formas ficam de fora POR CONSTRUÇÃO, confirmadas rodando contra este
+    scanner (fix round 2, 2026-09-21 — nenhuma das três produz achado):
+
+    - `getattr(httpx, "AsyncClient")()` — o alvo da chamada é o RETORNO de um
+      `getattr`, não um `Name`/`Attribute` estático.
+    - `importlib.import_module("httpx").AsyncClient()` — a base do atributo
+      é uma `Call`, não uma raiz que `origens_de_import` conhece.
+    - `__import__("httpx").AsyncClient()` — mesma forma do caso acima.
+
+    Resolver estas três exigiria executar o código (ou modelar `getattr`/
+    `importlib` especificamente), e um scanner que tentasse cobrir despacho
+    dinâmico goela abaixo ficaria gordo e cheio de falso positivo — o mesmo
+    trade-off que `chama()` já aceita e documenta. **Este guard pega o
+    caminho HONESTO — o refactor que ninguém pensaria duas vezes antes de
+    escrever — não o adversarial.** Quem precisar de garantia contra código
+    deliberadamente ofuscado precisa de outra camada, não deste guard.
+
+    Retargetado DUAS vezes em F190/Task 6 (21/09). Fix round 1 (achado
     Critical do revisor, provado por mutação com dois probes empíricos): a 1ª
     versão (ruling R10) varria o LITERAL `graph.facebook.com` — um PROXY de
     quem fala com a API, não o mecanismo. Concatenação de string e reuso de
     uma constante já autorizada escapavam por completo (ver o comentário
     acima de `_METODOS_CLIENTE_HTTP` pros dois probes). Os dois tinham
-    `httpx.AsyncClient()` no arquivo novo — é isso que este guard vigia
-    agora. Ver `_raizes_cliente_http_meta` pro escopo (e o que fica de fora,
+    `httpx.AsyncClient()` no arquivo novo — é isso que este guard vigia desde
+    então. Fix round 2 (achado do revisor, mesma sessão): o conjunto só
+    cobria `httpx`/`requests`, deixando `aiohttp` (dependência já instalada)
+    e `urllib.request.urlopen` (stdlib) de fora sem que o docstring avisasse
+    — ver o comentário de `_METODOS_CLIENTE_HTTP` pros dois novos. Ver
+    `_raizes_cliente_http_meta` pro escopo de ARQUIVO (e o que fica de fora,
     deliberadamente) e `_ALLOWLIST_CLIENTE_HTTP` pra allowlist com o motivo
     de cada entrada.
     """
@@ -552,10 +605,11 @@ def test_meta_graph_execution_is_contained() -> None:
 # (id, caminho_rel sintético, fonte, acusa?) — contrato do guard F57-Meta
 # (mecanismo), forma a forma, pela MESMA travessia que o teste de `src/` usa.
 # "concatenacao_de_url_ainda_e_pega" e "constante_importada_ainda_e_pega" são
-# os DOIS PROBES do achado Critical do fix round 1 — sem eles aqui, uma
-# regressão futura do MECANISMO (ex.: alguém troca `caminho_canonico` por
-# match cru de `.attr`, reabrindo o buraco do alias) só apareceria rodando o
-# probe manual de novo, nunca num `pytest` de rotina.
+# os DOIS PROBES do achado Critical do fix round 1; "aiohttp_client_session_e_pego",
+# "aiohttp_request_e_pego" e "urllib_urlopen_e_pego" são os do fix round 2 —
+# sem eles aqui, uma regressão futura do MECANISMO ou do CONJUNTO
+# (`_METODOS_CLIENTE_HTTP` perde uma entrada num refactor) só apareceria
+# rodando o probe manual de novo, nunca num `pytest` de rotina.
 _FORMAS_F57_META = [
     (
         "no_proprio_executor",
@@ -609,6 +663,36 @@ _FORMAS_F57_META = [
         "async def ler(edge):\n"
         "    async with httpx.AsyncClient() as http:\n"
         "        return await http.get(META_GRAPH_BASE + edge)\n",
+        True,
+    ),
+    (
+        "aiohttp_client_session_e_pego",
+        # PROBE do fix round 2: aiohttp já é dependência instalada (pin de
+        # segurança transitivo via facebook-business) — ninguém precisa
+        # instalar nada pra chegar aqui.
+        "src/meta_ads/_qualquer_novo.py",
+        "import aiohttp\n"
+        "async def ler(url):\n"
+        "    async with aiohttp.ClientSession() as sessao:\n"
+        "        return await sessao.get(url)\n",
+        True,
+    ),
+    (
+        "aiohttp_request_e_pego",
+        # O helper de um-tiro do aiohttp — mesmo papel do httpx.get/post.
+        "src/meta_ads/_qualquer_novo.py",
+        "import aiohttp\n"
+        "async def ler(url):\n"
+        '    async with aiohttp.request("GET", url) as resp:\n'
+        "        return resp\n",
+        True,
+    ),
+    (
+        "urllib_urlopen_e_pego",
+        # PROBE do fix round 2: stdlib, custo zero — o outro escape que o
+        # revisor classificou como plausível.
+        "src/meta_ads/_qualquer_novo.py",
+        "import urllib.request\ndef ler(url):\n    return urllib.request.urlopen(url)\n",
         True,
     ),
     (
