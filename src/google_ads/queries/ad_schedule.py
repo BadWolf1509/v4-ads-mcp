@@ -124,7 +124,16 @@ def parse_campaign_on_budget_row(row: Any) -> dict[str, Any]:
 
 
 def day_hour_metrics_query(*, campaign_ids: list[str], start: date, end: date) -> str:
-    """Conjunta dia x hora sobre `campaign` — probada valida em 03/09 (spec §4.2)."""
+    """Conjunta dia x hora sobre `campaign` — probada valida em 03/09 (spec §4.2).
+
+    F188: o `ORDER BY` NAO e estetica. O `raw_grid` do `get_performance_breakdown`
+    devolve `celulas[:teto]`, e fatia de lista sem ordem e amostra arbitraria
+    apresentada como grade. Medido em 20/09: duas chamadas identicas diferindo so
+    no `limit` devolveram as MESMAS 213 celulas em ordens diferentes, sem nenhuma
+    delas truncar — a ordem do Google nao e estavel. As TRES dimensoes sao
+    necessarias: so `campaign.id` deixaria as celulas de uma campanha sem ordem
+    entre si. ORDER BY validado por `validate_gaql` com controle positivo.
+    """
     if len(campaign_ids) == 0:
         raise ValueError("campaign_ids vazio: ao menos um id e obrigatorio")
     return f"""
@@ -133,6 +142,7 @@ def day_hour_metrics_query(*, campaign_ids: list[str], start: date, end: date) -
         FROM campaign
         WHERE {gaql_date_clause(start, end)}
           AND campaign.id IN ({",".join(str(int(c)) for c in campaign_ids)})
+        ORDER BY campaign.id, segments.day_of_week, segments.hour
     """.strip()
 
 
