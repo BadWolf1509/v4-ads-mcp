@@ -60,6 +60,20 @@ duas afirmações falsas sobre o breakdown; o **0.4.1 corrigiu e está instalado
 - **Pedir ao TI da V4 uma identidade `@v4company.com` sem caixa postal** (alias ou conta de serviço) — é o que **desbloqueia o F186 por inteiro**: manager com grant zero, pior caso de vazamento `tools/list`, e a reconciliação não a toca. Sem ela não há token de CI possível: `sessions_create` só emite para o próprio manager logado, e login exige identidade Google do domínio. **Emitir sob um manager existente está recusado** — poria no GitHub Actions um token com alcance de ~38 contas Google e 26 Meta.
 - **Varredura de `recommendation_subscription` sobre o MCC** — pedida pela sessão de tráfego a partir do F185. **Recomendado:** a tool de LEITURA, desenhada para varrer **só o que o gestor já alcança** (varredura que vê além do hard-gate de acesso vira caminho lateral para o gate) e para **contar os opacos em vez de descartá-los**. **Não recomendada:** a tool de escrita — o F185 mostra que 4 de 11 não têm chave, então ela alcançaria 7 de 11 e seria obrigada a dizer isso.
 
+## Pendências que NÃO dependem de aval — são leitura pura
+
+Estavam invisíveis até a revisão de 20/09: **nenhum arquivo vivo apontava para elas**, e
+a lista acima só cobre o que depende do gestor. **Smoke pendente sem ponteiro é smoke que
+ninguém roda** — e foi assim que dois sumiram de vista.
+
+- **Smoke 3b.43 (`particao-horaria`) — `0/6 executados`.** Os seis são LEITURA
+  (`get_ad_schedule(include_metrics)` e `get_performance_breakdown` com `hourly`, `geo` e
+  `raw_grid`), então **não precisam de aval**: rodam em qualquer sessão.
+  [`phase-3b-43-particao-horaria-smoke.md`](phase-3b-43-particao-horaria-smoke.md).
+- **Smoke 3b.41 (`assets`) — `8/9`, o T2 pendente.** Também leitura: `get_assets` com
+  `field_type="CALLOUT"`, conferindo que o filtro se aplica e que `links[]` é subconjunto
+  do T1. [`phase-3b-41-assets-smoke.md`](phase-3b-41-assets-smoke.md).
+
 ## Findings abertos
 
 | ID | o que é |
