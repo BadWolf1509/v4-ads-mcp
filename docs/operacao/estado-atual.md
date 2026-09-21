@@ -22,7 +22,7 @@
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00118-xhh`** |
+| Revisão servindo | **`v4-ads-mcp-00119-7f8`** — saúde conferida por `/health?deep=1` (`tools: 68`) e handshake MCP real |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
 | Catálogo | até **F187** (~4.430 linhas) |
@@ -31,6 +31,12 @@
 2.58, `google-api-core` 2.38): duas mutações reais em `1163862076` com
 `provider_request_id` e confirmação por GAQL, conta sem resíduo. O de leitura já tinha
 controle positivo. Detalhe na entrada do **F182**, que o smoke verificou de quebra.
+
+⚠️ **`deploy: skipped` NAO significa "PR de documentação".** O gate do F138 pula o
+deploy só quando o push mexeu **exclusivamente** em `docs/` e markdown — um arquivo em
+`tests/` conta como código e publica revisão. Em 20/09 o merge do #97 (guard novo +
+docs) deployou, e eu só percebi remedindo: **cheque a revisão servindo, não o rótulo
+do PR.**
 
 Contagens de tool e bucket vêm do registry (`import_all_tools()`), não de `grep` —
 **`grep` e `ast.literal_eval` já erraram esta medição**, o segundo devolvendo zero (F183).
