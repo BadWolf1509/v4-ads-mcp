@@ -386,8 +386,20 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
             # AUSENTE do corte — e tambem a da BORDA, dona da ultima linha lida,
             # cuja grade pode ter sido cortada no meio. Mesma funcao que o gemeo
             # `get_ad_schedule` chama; duas copias da regra e como o F128 nasceu.
+            #
+            # status="enabled" aqui, NAO o "all" literal da query de linha 361
+            # (Task 8, 2026-09-21): a terceira familia de `campanhas_com_grade_incerta`
+            # existe pra vazio-por-FILTRO — quando o status pedido e um SUBCONJUNTO
+            # que pode esconder janelas ENABLED que existem mas nao vieram (paused/
+            # removed/all). Aqui `status="all"` e uma SUPERCONJUNTO deliberado (§7:
+            # confirmar REMOVED por presenca), e `servindo`, duas linhas acima, ja
+            # derivou o subconjunto ENABLED dele por filtro client-side ANTES desta
+            # chamada — a leitura que embasa o resumo e literalmente a enabled, so
+            # que lida via uma query mais larga. Declarar "all" aqui marcaria toda
+            # confirmacao pos-apply como incerta, inclusive as que leram a grade
+            # inteira sem corte nenhum — reintroduziria o F128 pela porta dos fundos.
             incertas = campanhas_com_grade_incerta(
-                rows, truncated=leitura_parcial, campanhas=campaign_ids
+                rows, truncated=leitura_parcial, campanhas=campaign_ids, status="enabled"
             )
 
             def _resumo(cid: str) -> dict[str, Any]:
