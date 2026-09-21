@@ -112,7 +112,7 @@ async def audit_quality_score(args: dict[str, Any]) -> dict[str, Any]:
     start_date = start_date_obj.isoformat()
     end_date = end_date_obj.isoformat()
 
-    query = build_audit_quality_score_query(
+    query, filtros_da_query = build_audit_quality_score_query(
         start_date=start_date,
         end_date=end_date,
         ad_group_ids=ad_group_ids,
@@ -151,7 +151,10 @@ async def audit_quality_score(args: dict[str, Any]) -> dict[str, Any]:
             "days": days,
         },
         "filters_applied": {
-            "ad_group_ids": ad_group_ids,
+            **filtros_da_query,
+            # Aplicados AQUI, depois da query: `min_impressions` e threshold
+            # client-side em `flag_keywords` (nao entra no WHERE do GAQL — so
+            # governa a flag `candidate_pause`), e `limit` corta o resultado.
             "min_impressions": min_impressions,
             "limit": limit,
         },

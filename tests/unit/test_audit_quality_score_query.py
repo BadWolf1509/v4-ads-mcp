@@ -6,7 +6,7 @@ from src.google_ads.queries.audit_quality_score import build_audit_quality_score
 
 
 def test_query_without_ad_group_filter():
-    query = build_audit_quality_score_query(
+    query, _filtros = build_audit_quality_score_query(
         start_date="2026-04-20",
         end_date="2026-05-20",
         ad_group_ids=None,
@@ -19,7 +19,7 @@ def test_query_without_ad_group_filter():
 
 
 def test_query_with_ad_group_filter_three_ids():
-    query = build_audit_quality_score_query(
+    query, _filtros = build_audit_quality_score_query(
         start_date="2026-04-20",
         end_date="2026-05-20",
         ad_group_ids=["1001", "1002", "1003"],
@@ -42,7 +42,7 @@ def test_recusa_ad_group_id_nao_numerico() -> None:
 
 def test_query_includes_status_enabled_and_qs_not_null():
     """Hardcoded filters MUST always be present (no opt-out)."""
-    query = build_audit_quality_score_query(
+    query, _filtros = build_audit_quality_score_query(
         start_date="2026-04-20",
         end_date="2026-05-20",
         ad_group_ids=None,
@@ -52,7 +52,7 @@ def test_query_includes_status_enabled_and_qs_not_null():
 
 
 def test_query_with_custom_date_range_yyyy_mm_dd():
-    query = build_audit_quality_score_query(
+    query, _filtros = build_audit_quality_score_query(
         start_date="2026-05-01",
         end_date="2026-05-14",
         ad_group_ids=None,
@@ -62,7 +62,7 @@ def test_query_with_custom_date_range_yyyy_mm_dd():
 
 def test_query_selects_all_required_fields():
     """Output must include all fields needed by KeywordRow dataclass."""
-    query = build_audit_quality_score_query(
+    query, _filtros = build_audit_quality_score_query(
         start_date="2026-04-20",
         end_date="2026-05-20",
         ad_group_ids=None,

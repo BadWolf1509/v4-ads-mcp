@@ -98,7 +98,7 @@ async def audit_zombie_keywords(args: dict[str, Any]) -> dict[str, Any]:
     start_date = start_date_obj.isoformat()
     end_date = end_date_obj.isoformat()
 
-    query = build_audit_zombie_keywords_query(
+    query, filtros_da_query = build_audit_zombie_keywords_query(
         start_date=start_date,
         end_date=end_date,
         ad_group_ids=ad_group_ids,
@@ -132,8 +132,11 @@ async def audit_zombie_keywords(args: dict[str, Any]) -> dict[str, Any]:
             "days": days,
         },
         "filters_applied": {
-            "ad_group_ids": ad_group_ids,
+            **filtros_da_query,
+            # Aplicados AQUI, depois da query: o `limit` corta o resultado e a
+            # definicao de zumbi e um filtro client-side em `flag_zombie_keywords`.
             "limit": limit,
+            "definicao_de_zumbi": "impressions == 0 AND clicks == 0",
         },
         "total_zombies": total,
         "truncated": total > limit,

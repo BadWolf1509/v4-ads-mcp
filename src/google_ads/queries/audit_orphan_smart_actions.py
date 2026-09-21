@@ -19,11 +19,16 @@ def build_audit_orphan_smart_actions_query(
     start_date: str,
     end_date: str,
     category: str | None,
-) -> str:
-    """GAQL pra conversion_action com metrics aggregadas em window.
+) -> tuple[str, dict[str, Any]]:
+    """GAQL pra conversion_action com metrics aggregadas em window, MAIS os
+    filtros que ela aplica.
 
     Filters: date range via gaql_date_clause + status=ENABLED + optional category.
     Returns one row per conversion_action with metrics aggregated over date window.
+
+    A tupla existe porque `filters_applied` era escrito a mao ao lado da
+    chamada e divergiu: declarava 2 filtros e a query cortava 3. Derivar fecha
+    a classe — filtro novo aqui aparece na resposta sem ninguem lembrar.
     """
     start = date.fromisoformat(start_date)
     end = date.fromisoformat(end_date)
@@ -33,7 +38,7 @@ def build_audit_orphan_smart_actions_query(
     if category:
         category_clause = f" AND conversion_action.category = '{category}'"
 
-    return f"""
+    gaql = f"""
         SELECT
           conversion_action.id,
           conversion_action.name,
@@ -46,6 +51,12 @@ def build_audit_orphan_smart_actions_query(
         WHERE {date_clause}
           AND conversion_action.status = 'ENABLED'{category_clause}
     """.strip()
+    filtros: dict[str, Any] = {
+        "category": category,
+        "conversion_action_status": "ENABLED",
+        "date_range": {"start": start_date, "end": end_date},
+    }
+    return gaql, filtros
 
 
 def parse_conversion_action_row(row: Any) -> dict[str, Any]:
