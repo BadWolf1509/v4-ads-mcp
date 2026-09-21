@@ -133,3 +133,39 @@ async def test_o_token_nao_aparece_no_log_estruturado() -> None:
     assert SENTINELA not in texto, (
         "o token vazou para o log estruturado (Cloud Logging). Terceiro sink (F190)."
     )
+
+
+def test_o_redator_preserva_o_nome_do_parametro_e_o_resto_da_url() -> None:
+    """Redigir o par inteiro esconderia a ocorrencia; queremos saber QUE havia token.
+
+    E o controle do lado oposto: a parte nao-sensivel da URL tem de sobreviver,
+    senao a mensagem de erro perde o diagnostico junto com o segredo.
+    """
+    from src.meta_ads.errors import _redigir
+
+    redigido = _redigir(
+        f"url: https://graph.facebook.com/v22.0/act_1/insights"
+        f"?access_token={SENTINELA}&level=campaign&limit=5"
+    )
+    assert SENTINELA not in redigido
+    assert "access_token=<REDIGIDO>" in redigido
+    assert "level=campaign" in redigido, "a parte diagnostica da URL tem de sobreviver"
+    assert "limit=5" in redigido
+
+
+def test_o_redator_cobre_appsecret_proof() -> None:
+    """O SDK injeta os DOIS sem opt-out; redigir so um deixa o outro passar."""
+    from src.meta_ads.errors import _redigir
+
+    redigido = _redigir(f"?access_token={SENTINELA}&appsecret_proof=abc123def&x=1")
+    assert "abc123def" not in redigido
+    assert "appsecret_proof=<REDIGIDO>" in redigido
+    assert "x=1" in redigido
+
+
+def test_o_redator_nao_mexe_em_texto_sem_credencial() -> None:
+    """Controle negativo: sem isto, um redator que devolvesse "" passaria em tudo."""
+    from src.meta_ads.errors import _redigir
+
+    limpo = "Erro Meta API (100/None): Tried accessing nonexisting field (ad_id)"
+    assert _redigir(limpo) == limpo

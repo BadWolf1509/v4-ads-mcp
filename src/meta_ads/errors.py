@@ -1,5 +1,6 @@
 """Map Meta API exceptions → PT-BR friendly errors for V4 gestores."""
 
+import re
 from dataclasses import dataclass
 
 # Familia de throttle do Graph. Cada um e um limite DIFERENTE, e todos passam:
@@ -11,6 +12,29 @@ from dataclasses import dataclass
 # no ramo generico com retryable=False, e um throttle de minutos chegava ao
 # gestor como falha permanente.
 CODIGOS_DE_THROTTLE = frozenset({4, 17, 613, 80004})
+
+# F190 — qualquer coisa que pareca credencial numa query string sai ANTES de a
+# mensagem chegar a um sink. Cobre `access_token`, `appsecret_proof` e
+# `client_secret`; o SDK injeta os dois primeiros sem opt-out
+# (`FacebookSession.__init__`), e o terceiro aparece no fluxo OAuth.
+#
+# Denylist e reconhecidamente fraca — por isso ela e a SEGUNDA linha de defesa.
+# A primeira e o transporte nao pôr o token na URL (Task 3). Esta existe porque
+# uma camada so e a que falha, e este finding e a prova: a invariante do F82
+# estava escrita e mesmo assim o vazamento ficou aberto num dos dois caminhos.
+_PARAMS_SENSIVEIS = re.compile(
+    r"(access_token|appsecret_proof|client_secret)=[^&\s\"']+",
+    re.IGNORECASE,
+)
+
+
+def _redigir(texto: str) -> str:
+    """Troca o VALOR de parametro sensivel por `<REDIGIDO>`, preservando o nome.
+
+    Preserva o nome de proposito: quem le o log precisa saber QUE havia um token
+    ali — apagar o par inteiro esconderia a propria ocorrencia do problema.
+    """
+    return _PARAMS_SENSIVEIS.sub(r"\1=<REDIGIDO>", texto)
 
 
 @dataclass(slots=True, frozen=True)
@@ -28,7 +52,7 @@ def to_friendly_meta_error(e: Exception) -> MetaAdsFriendlyError:
     try:
         from facebook_business.exceptions import FacebookRequestError  # noqa: PLC0415
     except ImportError:  # pragma: no cover
-        return MetaAdsFriendlyError(f"Erro inesperado: {e}", retryable=False)
+        return MetaAdsFriendlyError(f"Erro inesperado: {_redigir(str(e))}", retryable=False)
 
     if isinstance(e, FacebookRequestError):
         subcode = e.api_error_subcode()
@@ -52,12 +76,12 @@ def to_friendly_meta_error(e: Exception) -> MetaAdsFriendlyError:
             )
         if code == 100:
             return MetaAdsFriendlyError(
-                f"Campo inválido na requisição Meta: {message}",
+                f"Campo inválido na requisição Meta: {_redigir(str(message))}",
                 retryable=False,
             )
         return MetaAdsFriendlyError(
-            f"Erro Meta API ({code}/{subcode}): {message}",
+            f"Erro Meta API ({code}/{subcode}): {_redigir(str(message))}",
             retryable=False,
         )
 
-    return MetaAdsFriendlyError(f"Erro inesperado: {e}", retryable=False)
+    return MetaAdsFriendlyError(f"Erro inesperado: {_redigir(str(e))}", retryable=False)
