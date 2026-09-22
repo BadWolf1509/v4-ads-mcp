@@ -85,11 +85,11 @@ O harness existe porque 17 guards reimplementaram cada um a própria varredura, 
 
 - Um guard baseado em `grep` procurava o padrão proibido no código, mas o mesmo padrão também aparecia no comentário que **documenta por que ele é proibido** — o grep casava a própria docstring, não uma violação real, e por isso ficava verde mesmo com o código pré-fix presente.
 - Um guard baseado em AST exigia que o código seguisse uma forma sintática específica — mas essa forma não é como o codebase de fato escreve aquele trecho em lugar nenhum. A asserção ficava verdadeira **independente da implementação**: nada no código real, certo ou quebrado, fazia esse guard corar.
-- Um guard baseado em AST só reconhecia dict **literal** (`{...}`) no ponto de chamada, mas o call-site de produção monta o dict numa variável antes de passá-la adiante. O guard nunca via a montagem real e passava calado — o mesmo ponto cego que `chama()` tem hoje pra nome ligado por atribuição (`g = alvo; g()`), documentado acima.
+- Um guard baseado em AST só reconhecia dict **literal** (`{...}`) no ponto de chamada, mas o call-site de produção monta o dict numa variável antes de passá-la adiante. O guard nunca via a montagem real e passava calado — a mesma classe de ponto cego que qualquer casador de AST tem pra nome ligado por atribuição (`g = alvo; g()`), documentada acima como limitação de `chama()`.
 
 Nenhum dos três precisava de sabotagem elaborada pra ser exposto — bastava rodá-los contra o código de antes do fix, e nenhum ficava vermelho.
 
 ### No JSON Schema composition keywords (post-3b.19B.1)
 
 
-`input_schema` NÃO pode ter `oneOf/allOf/anyOf` em nenhum nível — nunca inclua nenhuma das três em `input_schema`, o validator da Anthropic rejeita a tool inteira. Constraints cross-field via `_validate_*` helper privado. Guard: `test_no_composition_keywords_in_any_schema`.
+`input_schema` NÃO pode ter `oneOf/allOf/anyOf` em nenhum nível — nunca inclua nenhuma das três em `input_schema`. Achado empírico do 3b.19B.1 (`tests/unit/test_tools_schemas.py`): o 400 da Anthropic não derruba só a tool com o schema errado — derruba a **sessão inteira** do gestor, sem nenhuma tool utilizável. Já aconteceu 2× em produção, em sprints diferentes: `update_rsa` (3b.18, `anyOf` em `properties.updates.items`) e `create_conversion_value_rule_set` (3b.19B, `allOf` na raiz e em `items`). Constraints cross-field via `_validate_*` helper privado. Guard: `test_no_composition_keywords_in_any_schema`.
