@@ -152,11 +152,22 @@ async def audit_quality_score(args: dict[str, Any]) -> dict[str, Any]:
         },
         "filters_applied": {
             **filtros_da_query,
-            # Aplicados AQUI, depois da query: `min_impressions` e threshold
-            # client-side em `flag_keywords` (nao entra no WHERE do GAQL — so
-            # governa a flag `candidate_pause`), e `limit` corta o resultado.
+            # Aplicados AQUI, depois da query: `min_impressions` e `limit` sao
+            # client-side em `flag_keywords`. `min_impressions` NAO e so
+            # threshold de ROTULO — ele e METADE de uma condicao dominante:
+            # `flag_keywords.py` descarta (`if flags: ...`) toda linha que nao
+            # ganhe NENHUMA flag, entao abaixo do threshold (e fora do
+            # candidate_promote_exact) a keyword some da resposta, nao so
+            # troca de texto. Ver `definicao_de_flag` abaixo (item 4, revisao
+            # final) pro corte de fato, medido contra `flag_keywords.py`.
             "min_impressions": min_impressions,
             "limit": limit,
+            "definicao_de_flag": (
+                "candidate_pause: quality_score<=2 AND clicks==0 AND "
+                "impressions>=min_impressions; candidate_promote_exact: "
+                "quality_score>=7 AND match_type=='BROAD' AND conversions>=1; "
+                "keyword fora dos dois conjuntos NAO aparece em flagged_keywords"
+            ),
         },
         "total_flagged": total,
         "truncated": total > limit,

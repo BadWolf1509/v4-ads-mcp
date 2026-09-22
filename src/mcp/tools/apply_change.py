@@ -110,6 +110,12 @@ def _matches_requested(
         "`failed_count` medido; `partial_failure: false` traz `partial_failures` VAZIA "
         "e `failed_count: null` — null significa NAO MEDIDO, nao 'nenhuma falhou' "
         "(F182). O regime e decisao da tool de origem, nao um parametro seu. "
+        "`partial_failures[].error` tambem pode vir `null`: a linha FALHOU (a "
+        "contagem e medida, via WhichOneof/heuristica), so o MOTIVO que nao foi "
+        "lido — nao e 'sem motivo', e 'nao consegui ler'. `motivos_medidos` "
+        "(bool; `null` quando `partial_failure: false`) resume isso pra resposta "
+        "inteira de uma vez: `false` explica todo `error: null` sem exigir "
+        "conferencia linha a linha. "
         "ATENCAO (F184): `status: success` numa linha NAO prova que "
         "ela mudou algo — o Google aceita operacao e nao a executa. Cada linha traz "
         "`efeito`: 'mudou', 'sem_efeito' (passou sem mudar nada), ou null "
@@ -165,6 +171,10 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
             provider_request_id=result["provider_request_id"],
             failed_count=result["failed_count"],
             failures=result["failures"],
+            # Item 3 (revisao final, spec §4.2): conversions sempre roda com
+            # partial_failure=True (hardcoded em run_conversion_upload), entao
+            # isto e sempre um bool medido, nunca None por "nao perguntei".
+            motivos_medidos=result.get("motivos_medidos"),
         )
 
     # C2: RecommendationService path. Sem este ramo o token que o
@@ -276,6 +286,10 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
             members_submitted=result["members_submitted"],
             members_failed=result["members_failed"],
             failures=result["failures"],
+            # Item 3 (revisao final, spec §4.2): diz PORQUE os tres campos
+            # acima podem vir `null` juntos — leitura de recusas nao confiavel,
+            # nunca "ninguem foi recusado".
+            recusas_medidas=result["recusas_medidas"],
             job_resource_name=result["job_resource_name"],
             provider_request_id_create_job=result["provider_request_id_create_job"],
             provider_request_id_add_ops=result["provider_request_id_add_ops"],
@@ -469,6 +483,10 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
             resource_names=result.get("resource_names", []),
             resulting_schedule=resulting,
             confirmation_error=confirmation_error,
+            # Item 3 (revisao final, spec §4.2): este ramo sempre roda com
+            # partial_failure=True (ver a chamada de run_mutation acima) — bool
+            # medido, nao None.
+            motivos_medidos=result.get("motivos_medidos"),
         )
 
     # Default path: chained mutation via GoogleAdsService.mutate (Sprint 3b.1-3b.25).
@@ -513,4 +531,8 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
             sum(1 for r in partial_failures if r["status"] == "failed") if partial_failure else None
         ),
         resource_names=result.get("resource_names", []),
+        # Item 3 (revisao final, spec §4.2): mesma familia do `failed_count`
+        # acima — `None` quando `partial_failure=False` (run_mutation nao
+        # tentou ler motivo nenhum, "nao perguntei"), bool medido quando True.
+        motivos_medidos=result.get("motivos_medidos"),
     )

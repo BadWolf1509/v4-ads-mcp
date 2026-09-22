@@ -592,6 +592,11 @@ async def test_apply_change_do_customer_match_devolve_o_envelope_inteiro(_ctx: A
         "members_submitted": 2,
         "members_failed": 1,
         "failures": [{"index": 1, "error_code": "INVALID_SHA256_FORMAT", "error_message": "x"}],
+        # Item 3 (revisao final, spec §4.2): campo novo, sempre presente no
+        # caminho de sucesso real de run_offline_user_data_job — `True` aqui
+        # porque este cenario tem `failures` com motivo concreto (leitura
+        # confiavel), nao `None`.
+        "recusas_medidas": True,
     }
     with (
         patch.object(mod, "connection") as mock_conn,
@@ -614,6 +619,7 @@ async def test_apply_change_do_customer_match_devolve_o_envelope_inteiro(_ctx: A
     assert out["members_submitted"] == 2
     assert out["members_failed"] == 1
     assert out["failures"] == resultado["failures"]
+    assert out["recusas_medidas"] is True
     assert out["job_resource_name"].endswith("/JOB123")
     # LGPD: a resposta ecoa contagem e indice — nunca o hash que subiu.
     assert "h0" not in str(out)
