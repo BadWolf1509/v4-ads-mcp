@@ -210,7 +210,16 @@ async def export_csv_rows(
                 yield buf.getvalue()
     except Exception as e:
         buf = io.StringIO()
-        csv.writer(buf).writerow([f"# v4-ads-mcp: EXPORT INCOMPLETO apos {lidas} linhas — {e}"])
+        # Item 5 (revisao final): `{e}` cru vazava infra do servidor pro
+        # arquivo — probe real: mensagem de erro do asyncpg trazia host,
+        # porta e usuario do Postgres, num CSV baixavel por gestor nao-admin.
+        # O TIPO da excecao basta pra sentinela dizer "algo quebrou e onde
+        # parou"; o `raise` abaixo preserva a excecao original (com o texto
+        # completo) pro traceback do servidor — o detalhe nao some, so nao
+        # vai pro arquivo que sai da porta.
+        csv.writer(buf).writerow(
+            [f"# v4-ads-mcp: EXPORT INCOMPLETO apos {lidas} linhas — {type(e).__name__}"]
+        )
         yield buf.getvalue()
         raise
     buf = io.StringIO()

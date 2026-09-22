@@ -80,6 +80,19 @@ async def test_falha_no_meio_marca_o_arquivo() -> None:
         "indistinguivel de um export que achou poucas linhas"
     )
     assert MARCA_OK not in texto
+    # Item 5 (revisao final): o TEXTO cru da excecao nao pode vazar pro CSV --
+    # probe real em producao trazia host/porta/usuario do Postgres, num
+    # arquivo baixavel por gestor nao-admin. So o TIPO e seguro de expor.
+    assert "conexao caiu no meio do cursor" not in texto, (
+        "o texto cru da excecao vazou pro arquivo -- pode carregar infra do "
+        "servidor (host, porta, usuario do banco); so o TIPO da excecao "
+        "(ConnectionError) e seguro pra um gestor nao-admin ver"
+    )
+    assert "ConnectionError" in texto, (
+        "CONTROLE POSITIVO: o TIPO da excecao continua visivel na sentinela -- "
+        "sem isto, a asserção negativa de cima passaria tambem apagando o "
+        "campo inteiro, que nao e o comportamento correto"
+    )
 
 
 @pytest.mark.asyncio
