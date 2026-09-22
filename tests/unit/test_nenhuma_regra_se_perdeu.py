@@ -1,15 +1,18 @@
 """Nenhuma regra `Don't` se perdeu ao sair do CLAUDE.md para os arquivos roteados.
 
 A separacao de 2026-09-22 moveu 37 das 45 **bullets** do `Don't do` para
-`docs/convencoes/`. O `Don't do` tem 45 bullets mas 61 **regras**: 13 bullets
-carregam 2+ regras cada. Extrair uma ANCORA por BULLET deixa 17 regras SEM
-cobertura.
+`docs/convencoes/`. O `Don't do` tem 45 bullets mas 63 **claúsulas** (regras):
+13 bullets carregam 2+ claúsulas cada. Extrair uma ANCORA por BULLET deixa
+17 claúsulas SEM cobertura propria.
 
 Consequencia: na Task 7, ao APAGAR um bullet inteiro, essas 17 sub-regras
 sumiram sem que nada acusasse — nao estao na lista de ancoras, entao nada
 as conta.
 
 Solucao: 62 ancoras (45 originais + 17 sub-regras que dividiam bullet).
+Das 63 claúsulas, 62 tem ancora unica; 1 claúsula (Don't chamar SDK Google
+fora de run_blocking, bullet 1) e coberta de graça pela ancora `run_blocking`
+que aparece nos dois bullets. Por isso 62 ancoras bastam.
 
 Cada regra e identificada por uma ANCORA (um trecho distintivo + sua CONTAGEM).
 Por que contagem (nao presenca)? Porque 17 das 62 ancoras ja vivem naturalmente
@@ -89,17 +92,17 @@ ANCORAS = (
     # ancora por BULLET deixava 17 sem cobertura, e a Task 7 as levaria junto
     # com o bullet sem que nada acusasse.
     "gaql_string_literal",  # do bullet 1
-    "Settings",  # do bullet 1
+    "pool/cliente/logger",  # do bullet 1
     "LIMIT",  # do bullet 3
     "params=",  # do bullet 3
-    "python scripts/check_pre_push.py",  # do bullet 5
+    "push sem `python scripts",  # do bullet 5
     "asserir o ADJACENTE",  # do bullet 2
     "coluna sem alias",  # do bullet 12
     "pin do Tailwind",  # do bullet 14
     "<link>",  # do bullet 14
-    "/mcp",  # do bullet 15
+    "aplicar gzip",  # do bullet 15
     "{% block head_extra %}",  # do bullet 15
-    "deploy.yml",  # do bullet 16
+    "3 Cloud Run Jobs",  # do bullet 16
     "check bloqueante",  # do bullet 17
     "dict opcional",  # do bullet 22
     "aria-label",  # do bullet 24
@@ -162,17 +165,17 @@ PISO_DE_OCORRENCIAS = {
     "ads_get_field_context": 5,
     "pipe PowerShell": 1,
     "gaql_string_literal": 2,
-    "Settings": 4,
+    "pool/cliente/logger": 1,
     "LIMIT": 2,
     "params=": 1,
-    "python scripts/check_pre_push.py": 2,
+    "push sem `python scripts": 1,
     "asserir o ADJACENTE": 1,
     "coluna sem alias": 1,
     "pin do Tailwind": 1,
     "<link>": 4,
-    "/mcp": 6,
+    "aplicar gzip": 1,
     "{% block head_extra %}": 3,
-    "deploy.yml": 5,
+    "3 Cloud Run Jobs": 1,
     "check bloqueante": 1,
     "dict opcional": 1,
     "aria-label": 6,
