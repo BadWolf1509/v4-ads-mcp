@@ -12,14 +12,27 @@ as conta.
 Solucao: 62 ancoras (45 originais + 17 sub-regras que dividiam bullet).
 Das 63 cláusulas, 62 tem ancora unica; 1 cláusula (Don't chamar SDK Google
 fora de run_blocking, bullet 1) e coberta de graça pela ancora `run_blocking`
-que aparece nos dois bullets. Por isso 62 ancoras bastam.
+que aparece nos dois bullets. Por isso 62 ancoras cobriam as 63 cláusulas.
+
+A revisao final de 22/09 achou uma TERCEIRA perda (C1), de classe diferente
+das outras 17: a cláusula "asserir o ADJACENTE" (bullet 2) TINHA ancora
+propria (`asserir o ADJACENTE`) e o piso — de 1 — estava satisfeito. Mas o
+bullet enumerava TRES modos de asserir o adjacente, e a ancora so provava
+que a FRASE sobrevivia, nao que os tres exemplos sobreviviam junto: um dos
+tres ("asseriam concordância em vez de corretude") foi embora sem chegar a
+`docs/convencoes/testes.md`, e o piso de 1 continuou satisfeito porque a
+frase-mae ainda estava la. Correcao: 63a ancora (`concordância`) — um
+SEGUNDO trecho distintivo pro MESMO bullet, nao uma cláusula nova. Onde uma
+ancora so prova "o bullet nao sumiu", uma ancora por exemplo prova que cada
+exemplo nao sumiu.
 
 Cada regra e identificada por uma ANCORA (um trecho distintivo + sua CONTAGEM).
-Por que contagem (nao presenca)? Porque 17 das 62 ancoras ja vivem naturalmente
-em `docs/convencoes/` — aqueles arquivos falam dos mesmos identificadores por
-conta propria (ex: `_CSP_POLICY` em painel.md porque fala de CSP). Para essas,
-presenca nao basta: apagar do CLAUDE.md sem mover nao seria detectado, porque o
-token continua no destino.
+Por que contagem (nao presenca)? Porque boa parte das ancoras — 22 das 63,
+medido contra o estado pre-separacao (`main`), nao reestimado — ja vivem
+naturalmente em `docs/convencoes/` — aqueles arquivos falam dos mesmos
+identificadores por conta propria (ex: `_CSP_POLICY` em painel.md porque
+fala de CSP). Para essas, presenca nao basta: apagar do CLAUDE.md sem mover
+nao seria detectado, porque o token continua no destino.
 
 Contagem fecha o buraco: MOVER mantem o total (sai de um arquivo, entra noutro);
 APAGAR sem mover derruba. O piso e medido contra o estado PRE-SEPARACAO, nunca
@@ -109,13 +122,20 @@ ANCORAS = (
     "aria-label",  # do bullet 24
     "<th>",  # do bullet 27
     "<table>",  # do bullet 43
+    # --- reforco de cobertura, NAO uma 64a cláusula (revisao final, 22/09,
+    # achado C1). "asserir o ADJACENTE" (acima) ja e a ancora da cláusula do
+    # bullet 2 e ja tinha piso satisfeito — o que faltava era granularidade
+    # DENTRO dela: o bullet enumera tres modos, e a ancora da cláusula so
+    # prova que a frase-mae sobrou, nao que os tres exemplos sobraram junto.
+    "concordância",  # 2o dos tres modos do bullet 2, reforco sobre a cláusula acima
 )
 
 # Quantas vezes cada ancora aparece na uniao HOJE, antes da separacao.
-# Presenca nao basta: 17 destas ancoras ja vivem em `docs/convencoes/`
-# porque aqueles arquivos falam dos mesmos identificadores por conta
-# propria. Para essas, "a ancora existe" fica verde mesmo que a regra
-# tenha sido APAGADA do CLAUDE.md sem chegar ao destino.
+# Presenca nao basta: 22 destas ancoras (medido contra `main`, nao
+# reestimado) ja vivem em `docs/convencoes/` porque aqueles arquivos falam
+# dos mesmos identificadores por conta propria. Para essas, "a ancora
+# existe" fica verde mesmo que a regra tenha sido APAGADA do CLAUDE.md sem
+# chegar ao destino.
 #
 # Contagem fecha o buraco: MOVER mantem o total (sai de um arquivo, entra
 # noutro); APAGAR sem mover derruba. O piso e medido, nunca estimado.
@@ -194,6 +214,12 @@ PISO_DE_OCORRENCIAS = {
     "hx-post": 2,
     "{% block head_extra %}": 2,
     "aria-label": 4,
+    # Revisao final de 22/09 (achado C1). Em `main` a palavra aparecia 1x,
+    # dentro do proprio bullet 2 ("asseriam concordância em vez de
+    # corretude"). Apos o fix (2o modo acrescentado em
+    # docs/convencoes/testes.md), medido de novo na uniao: 1. Nao estimado
+    # a partir do valor de `main` — confirmado depois do texto escrito.
+    "concordância": 1,
 }
 
 
@@ -211,8 +237,8 @@ def test_o_scan_tem_escopo() -> None:
     """
     faltando = [n for n in _FONTES if not (h.RAIZ / n).exists()]
     assert not faltando, f"arquivo de destino nao existe: {faltando}"
-    assert len(ANCORAS) == 62, f"a lista tem {len(ANCORAS)} ancoras, esperava 62"
-    assert len(set(ANCORAS)) == 62, "ha ancora duplicada — ela deixa de identificar UMA regra"
+    assert len(ANCORAS) == 63, f"a lista tem {len(ANCORAS)} ancoras, esperava 63"
+    assert len(set(ANCORAS)) == 63, "ha ancora duplicada — ela deixa de identificar UMA regra"
     assert len(_uniao()) > 40_000, "uniao pequena demais: algum arquivo nao foi lido"
     assert set(PISO_DE_OCORRENCIAS) == set(ANCORAS), (
         "piso e ancoras divergiram — toda ancora precisa de piso medido"
