@@ -22,7 +22,7 @@
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00121-hlq`** — `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O handshake MCP **autenticado NÃO foi conferido**: segue desarmado (F186), então "registry montado" aqui é o que o health afirma, não o que um `tools/list` provou |
+| Revisão servindo | **`v4-ads-mcp-00123-tz8`** — `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O handshake MCP **autenticado NÃO foi conferido**: segue desarmado (F186), então "registry montado" aqui é o que o health afirma, não o que um `tools/list` provou |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
 | Catálogo | até **F191** (~5.100 linhas, 535 KB) |
@@ -110,6 +110,25 @@ por campanha, então `truncated: true` é falso por construção. Três textos c
 restava ganhou guard — `test_raw_grid_ignora_o_limit_do_gestor`, validado por sabotagem.
 **Afirmar dois custos onde há um é a mesma família que o F188 cataloga, do lado de quem
 escreve.**
+
+Fechados no mesmo dia: **F189** e **F190** — os dois verificados em produção, e os três
+achados pelo mesmo método: **variar uma coisa só e perguntar por que o resultado mudou.**
+
+- **F189** — `limit: 17` passava, `limit: 16` errava. A paginação Meta embrulhava a URL do
+  `paging.next` numa **lista**, e o SDK só trata string como URL completa: **qualquer
+  resultado com mais de uma página virava erro**, desde que o F88 introduziu a paginação.
+  Foi regressão, não lacuna — antes a 1ª página voltava com sucesso.
+- **F190** — o token de system user (não expira, ~24 contas) vazava para `audit_log`,
+  Cloud Logging e contexto do LLM em qualquer falha de transporte. Fechado em duas
+  camadas: redação em `to_friendly_meta_error` (estanca) e transporte httpx com auth por
+  header (remove a causa). 19 commits, 7 tasks, verificado em produção.
+  ⚠️ **Débito declarado: NÃO foi medido se o token já vazou** — ver a entrada no catálogo.
+
+🔑 **Os três estavam escondidos pela mesma causa: existia a regra e não existia o
+mecanismo.** A invariante do F190 estava escrita no repo desde o F82 (*"token no HEADER,
+nunca na query"*) e o guard que deveria aplicá-la **enumerava dois arquivos** — o do bug
+não estava na lista. O F189 tinha a implementação certa ao lado da errada. Metade das 7
+tasks do F190 não consertou código: consertou **o que deveria ter pegado o código**.
 
 Fechados em 21/09 também: **F179** e **F191** — seis superfícies (núcleo do
 partial-failure/`Unpack`, Customer Match, `admin_invites_cancel`, CSV do audit,
