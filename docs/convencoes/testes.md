@@ -45,10 +45,17 @@ with patch("src.mcp.tools.<your_tool>.<helper_name>", AsyncMock(return_value=Non
 ```
 Patches em `src.mcp.tools.<tool>.run_report` NÃO cobrem o site de pré-flight. Mitigação: `check_pre_push_full.py`.
 
+**Mesma classe de bug quando a função é movida, não só na primeira vez que o teste é escrito:** ao mover uma função pra outro módulo, `grep` TODOS os patch-sites dela em `tests/` — não só os testes novos que você está escrevendo. Um mock deixado apontando pro namespace antigo não dá teste vermelho na hora; dá `AttributeError`, e só aparece no CI com Docker, porque `check_pre_push.py` não roda a suíte de integração que exercita esse caminho localmente. Mesma classe pre-flight mock-target de cima; fix de referência `dedd82a` 2026-07-04.
+
+### Não assertar superfície de API externa por analogia
+
+
+Teste que codifica a convenção errada sobre uma API externa é **pior que teste ausente** — ele desliga a suspeita e ainda dá falsa confiança de cobertura (aconteceu 3×: F87, F89, e os mocks do F84/F89, que nem conseguiam expressar o bug que supostamente cobriam). Probe empírica primeiro, nunca por analogia com outra API que "parece" funcionar do mesmo jeito — `validate_gaql` pro Google, `ads_get_field_context` pro Meta.
+
 ### Schema whitelist empirical validation (post-3b.19A)
 
 
-Todo valor de enum em whitelist DEVE ser validado empiricamente em smoke runbook (criar entidade real por valor — SDK descriptors contêm valores que o runtime rejeita). Família: F17/F18/F19/F25/F27/F31/F32/F34/F36/F44. Smoke runbook inclui per-value probe (batch 5/call). Rejeitado → remove do schema + documenta out-of-scope.
+Todo valor de enum em whitelist DEVE ser validado empiricamente em smoke runbook (criar entidade real por valor — SDK descriptors contêm valores que o runtime rejeita). Família: F17/F18/F19/F25/F27/F31/F32/F34/F36/F44. Smoke runbook inclui per-value empirical probe (batch 5/call) — nunca shippe tool nova com enum whitelist sem essa probe (3b.19A.1: pegou 10+ design-gaps). Rejeitado → remove do schema + documenta out-of-scope.
 
 ### Guard estrutural: use o harness, não abra travessia própria (F155)
 
@@ -74,7 +81,15 @@ O harness existe porque 17 guards reimplementaram cada um a própria varredura, 
 
 **Ao escrever ou apertar um guard:** a asserção tem que distinguir código bom de quebrado, então prove a mordida contra o código PRÉ-fix (sabotagem ou cópia — **nunca `git checkout`**) e acompanhe cada sabotagem de um controle positivo, senão um `assert False` também ficaria vermelho. Enumerar formas ofensoras não é afirmar a propriedade; e um falso positivo é pior que guard ausente, porque ensina a contorná-lo.
 
+**Três exemplos concretos, medidos em 02/09 na mesma sessão — cada guard passava verde e nenhum dos três media a invariante de verdade:**
+
+- Um guard baseado em `grep` procurava o padrão proibido no código, mas o mesmo padrão também aparecia no comentário que **documenta por que ele é proibido** — o grep casava a própria docstring, não uma violação real, e por isso ficava verde mesmo com o código pré-fix presente.
+- Um guard baseado em AST exigia que o código seguisse uma forma sintática específica — mas essa forma não é como o codebase de fato escreve aquele trecho em lugar nenhum. A asserção ficava verdadeira **independente da implementação**: nada no código real, certo ou quebrado, fazia esse guard corar.
+- Um guard baseado em AST só reconhecia dict **literal** (`{...}`) no ponto de chamada, mas o call-site de produção monta o dict numa variável antes de passá-la adiante. O guard nunca via a montagem real e passava calado — o mesmo ponto cego que `chama()` tem hoje pra nome ligado por atribuição (`g = alvo; g()`), documentado acima.
+
+Nenhum dos três precisava de sabotagem elaborada pra ser exposto — bastava rodá-los contra o código de antes do fix, e nenhum ficava vermelho.
+
 ### No JSON Schema composition keywords (post-3b.19B.1)
 
 
-`input_schema` NÃO pode ter `oneOf`/`allOf`/`anyOf` em nenhum nível (Anthropic validator rejeita). Constraints cross-field via `_validate_*` helper privado. Guard: `test_no_composition_keywords_in_any_schema`.
+`input_schema` NÃO pode ter `oneOf/allOf/anyOf` em nenhum nível — nunca inclua nenhuma das três em `input_schema`, o validator da Anthropic rejeita a tool inteira. Constraints cross-field via `_validate_*` helper privado. Guard: `test_no_composition_keywords_in_any_schema`.
