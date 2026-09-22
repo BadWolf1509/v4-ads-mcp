@@ -156,7 +156,12 @@ PISO_DE_OCORRENCIAS = {
     "superpowers:brainstorming": 2,
     "arquivos OVERLAPPING": 1,
     "per-value empirical probe": 1,
-    "make_capture_client": 5,
+    # 4, nao 5: a Task 5 nao copiou esta regra porque `testes.md:19-22` ja a
+    # trazia inteira desde a extracao de 08-19 (copiar seria a secao "Don't do"
+    # paralela que o plano proibe). O piso original contava a mencao do
+    # CLAUDE.md que a Task 7 remove legitimamente. Decisao do coordenador,
+    # 22/09 — nao baixe outros pisos sem ruling equivalente.
+    "make_capture_client": 4,
     "oneOf/allOf/anyOf": 1,
     "facebook_business": 3,
     "is_allowed_email": 1,
