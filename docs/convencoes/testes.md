@@ -79,7 +79,7 @@ O harness existe porque 17 guards reimplementaram cada um a própria varredura, 
 - `workflows()` casa só `*.yml`, não-recursivo.
 - O `EscopoVazioError` protege a TRAVESSIA, não o predicado: se o guard filtra depois (`if p.name.startswith("test_")`, `_arquivos_google()`…), o conjunto pós-filtro pode ficar vazio em silêncio. Quem filtra afirma a própria população — piso ou contagem exata.
 
-**Ao escrever ou apertar um guard:** a asserção tem que distinguir código bom de quebrado, então prove a mordida contra o código PRÉ-fix (sabotagem ou cópia — **nunca `git checkout`**) e acompanhe cada sabotagem de um controle positivo, senão um `assert False` também ficaria vermelho. Enumerar formas ofensoras não é afirmar a propriedade; e um falso positivo é pior que guard ausente, porque ensina a contorná-lo.
+**Ao escrever ou apertar um guard:** a asserção tem que distinguir código bom de quebrado, então prove a mordida contra o código PRÉ-fix (sabotagem ou cópia — **nunca `git checkout`**) e acompanhe cada sabotagem de um controle positivo, senão um `assert False` também ficaria vermelho. Enumerar formas ofensoras não é afirmar a propriedade; asserir **concordância** entre duas saídas não é asserir que estão certas — duas respostas erradas e iguais também concordam entre si, e passam do mesmo jeito; e um falso positivo é pior que guard ausente, porque ensina a contorná-lo.
 
 **Três exemplos concretos, medidos em 02/09 na mesma sessão — cada guard passava verde e nenhum dos três media a invariante de verdade:**
 
