@@ -5,13 +5,19 @@ A separacao de 2026-09-22 moveu 37 das 45 regras do `Don't do` para
 bullet cair no caminho, nada acusa — o CLAUDE.md so fica menor, que e o que se
 queria.
 
-Cada regra e identificada por uma ANCORA (um trecho distintivo), nao pelo
-texto: o texto e reescrito para caber na voz do arquivo de destino, e comparar
-texto daria falso positivo a cada adaptacao legitima. As 45 ancoras foram
-extraidas ANTES da separacao e verificadas como unicas.
+Cada regra e identificada por uma ANCORA (um trecho distintivo + sua CONTAGEM),
+nao apenas por presenca. Por que contagem? Porque 17 das 45 ancoras ja vivem
+naturalmente em `docs/convencoes/` — aqueles arquivos falam dos mesmos
+identificadores por conta propria (ex: `_CSP_POLICY` em painel.md porque fala de
+CSP). Para essas, presenca nao basta: apagar do CLAUDE.md sem mover nao seria
+detectado, porque o token continua no destino.
 
-Se um teste aqui ficar vermelho, uma regra sumiu. NAO ajuste a lista para
-passar — ache a regra.
+Contagem fecha o buraco: MOVER mantem o total (sai de um arquivo, entra noutro);
+APAGAR sem mover derruba. O piso e medido contra o estado PRE-SEPARACAO, nunca
+estimado.
+
+Se um teste aqui ficar vermelho, uma regra foi APAGADA sem chegar ao destino.
+NAO baixe o piso — ache a regra.
 """
 
 import sys
@@ -74,6 +80,62 @@ ANCORAS = (
     "pipe PowerShell",  # 45
 )
 
+# Quantas vezes cada ancora aparece na uniao HOJE, antes da separacao.
+# Presenca nao basta: 17 destas ancoras ja vivem em `docs/convencoes/`
+# porque aqueles arquivos falam dos mesmos identificadores por conta
+# propria. Para essas, "a ancora existe" fica verde mesmo que a regra
+# tenha sido APAGADA do CLAUDE.md sem chegar ao destino.
+#
+# Contagem fecha o buraco: MOVER mantem o total (sai de um arquivo, entra
+# noutro); APAGAR sem mover derruba. O piso e medido, nunca estimado.
+PISO_DE_OCORRENCIAS = {
+    "best_effort": 4,
+    "git checkout": 2,
+    "run_with_reconnect": 4,
+    "validate_gaql": 5,
+    "check_pre_push.py | tail && git commit": 1,
+    "gh run view <id> --json conclusion": 2,
+    "⬜ pending": 1,
+    "classificador de auto mode": 1,
+    "ci.yml": 2,
+    "build_client_for_manager": 4,
+    "_CSP_POLICY": 3,
+    "conn.cursor(...)": 2,
+    "pool.acquire()": 1,
+    "python scripts/build_tailwind.py": 3,
+    "--v4-gray-300": 2,
+    "--universal": 3,
+    "por ordem de criação": 1,
+    "run_blocking": 3,
+    "-03:00": 1,
+    "change_event": 1,
+    "datetime.now": 1,
+    "mgr:<uuid>": 3,
+    "blast_radius.classify": 1,
+    "?v={{ asset_version }}": 2,
+    "_CSRF_EXEMPT_ROUTES": 2,
+    "hx-post": 3,
+    'role="button"': 1,
+    "onclick=": 1,
+    "search_input": 1,
+    "pyproject.toml": 2,
+    "error_envelope": 1,
+    "AttributeError": 1,
+    "SQL cru sem extremo cuidado": 1,
+    "superpowers:brainstorming": 2,
+    "arquivos OVERLAPPING": 1,
+    "per-value empirical probe": 1,
+    "make_capture_client": 5,
+    "oneOf/allOf/anyOf": 1,
+    "facebook_business": 3,
+    "is_allowed_email": 1,
+    "{{ button() }}": 1,
+    "sessions_revoke": 2,
+    "request.query_params": 1,
+    "ads_get_field_context": 5,
+    "pipe PowerShell": 1,
+}
+
 
 def _uniao() -> str:
     """O texto dos seis arquivos, concatenado."""
@@ -92,13 +154,21 @@ def test_o_scan_tem_escopo() -> None:
     assert len(ANCORAS) == 45, f"a lista tem {len(ANCORAS)} ancoras, esperava 45"
     assert len(set(ANCORAS)) == 45, "ha ancora duplicada — ela deixa de identificar UMA regra"
     assert len(_uniao()) > 40_000, "uniao pequena demais: algum arquivo nao foi lido"
+    assert set(PISO_DE_OCORRENCIAS) == set(ANCORAS), (
+        "piso e ancoras divergiram — toda ancora precisa de piso medido"
+    )
 
 
 def test_nenhuma_regra_se_perdeu() -> None:
     texto = _uniao()
-    sumidas = [(i, a) for i, a in enumerate(ANCORAS, 1) if a not in texto]
-    assert not sumidas, (
-        "regras que sumiram da uniao CLAUDE.md + docs/convencoes/:\n  "
-        + "\n  ".join(f"#{i}: {a!r}" for i, a in sumidas)
-        + "\nNAO remova a ancora da lista — ache a regra."
+    perdidas = [
+        (i, a, texto.count(a), PISO_DE_OCORRENCIAS[a])
+        for i, a in enumerate(ANCORAS, 1)
+        if texto.count(a) < PISO_DE_OCORRENCIAS[a]
+    ]
+    assert not perdidas, (
+        "regras que perderam ocorrencia na uniao CLAUDE.md + docs/convencoes/:\n  "
+        + "\n  ".join(f"#{i}: {a!r} tem {n}, esperava >= {p}" for i, a, n, p in perdidas)
+        + "\nMOVER mantem a contagem. Se caiu, a regra foi APAGADA sem chegar ao destino."
+        "\nNAO baixe o piso — ache a regra."
     )
