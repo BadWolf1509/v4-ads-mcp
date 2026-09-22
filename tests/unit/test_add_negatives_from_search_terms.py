@@ -158,8 +158,8 @@ async def test_tool_passes_custom_params_summary_to_run_mutation():
             "provider_request_id": "r",
             "applied_count": 2,
             "partial_failures": [
-                {"index": 0, "status": "added", "error": None},
-                {"index": 1, "status": "added", "error": None},
+                {"index": 0, "status": "success", "error": None},
+                {"index": 1, "status": "success", "error": None},
             ],
         }
 

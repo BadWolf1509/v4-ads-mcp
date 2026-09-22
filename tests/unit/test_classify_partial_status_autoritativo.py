@@ -65,3 +65,35 @@ def test_status_failed_com_error_lido_que_nao_casa_pattern() -> None:
         exists_patterns=_EXISTS_PATTERNS,
     )
     assert resultado == "failed"
+
+
+def test_status_vocabulario_de_entrada_e_so_success() -> None:
+    """Fixa o vocabulario ACEITO de `status`: SO a string "success" e OK.
+
+    Item 2 da revisao final: `status` vem de `run_mutation`/
+    `_parse_partial_failures`, que so emite "success" ou "failed" (ver
+    mutations.py) -- nunca o rotulo de SAIDA que a tool devolve pro chamador
+    (ex.: "added", "attached"). Dez fixtures em test_add_keywords.py/
+    test_add_negatives_from_search_terms.py/test_apply_audience.py usavam
+    "added" como `status` de ENTRADA e caiam neste mesmo ramo (`!= "success"`
+    -> nao casa nenhum exists_pattern com error=None -> "failed") em silencio,
+    porque nenhuma delas conferia o `status` por-linha da resposta. Este teste
+    fixa a propriedade pra quem escrever fixture nova: qualquer coisa que nao
+    seja EXATAMENTE "success" cai no ramo de falha, sem excecao por parecer um
+    rotulo de sucesso.
+    """
+    for rotulo_de_saida_ou_lixo in ("added", "attached", "ADDED", "Success", "ok", ""):
+        resultado = classify_partial(
+            None,
+            status=rotulo_de_saida_ou_lixo,
+            ok_status="added",
+            exists_status="already_exists",
+            exists_patterns=_EXISTS_PATTERNS,
+        )
+        assert resultado == "failed", (
+            f"status={rotulo_de_saida_ou_lixo!r} nao e a string 'success' -- "
+            "tem que cair no ramo de falha. Rotulo de SAIDA da tool (ex. "
+            "'added', que e o que ok_status vale aqui) nao e vocabulario "
+            "valido de ENTRADA, e uma fixture que confundir os dois passa "
+            "calada sem este guard."
+        )

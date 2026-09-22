@@ -261,7 +261,9 @@ async def test_auto_path_observation_under_threshold():
         return {
             "provider_request_id": "req-1",
             "applied_count": 5,
-            "partial_failures": [{"index": i, "status": "added", "error": None} for i in range(5)],
+            "partial_failures": [
+                {"index": i, "status": "success", "error": None} for i in range(5)
+            ],
         }
 
     fake_run_report = AsyncMock(
@@ -412,7 +414,9 @@ async def test_custom_params_summary_aggregates_without_raw_resource_names():
         return {
             "provider_request_id": "req-3",
             "applied_count": 4,
-            "partial_failures": [{"index": i, "status": "added", "error": None} for i in range(4)],
+            "partial_failures": [
+                {"index": i, "status": "success", "error": None} for i in range(4)
+            ],
         }
 
     fake_run_report = AsyncMock(
@@ -520,7 +524,7 @@ async def test_taxonomy_preflight_allows_in_market():
         return_value={
             "provider_request_id": "req-1",
             "applied_count": 1,
-            "partial_failures": [{"index": 0, "status": "added", "error": None}],
+            "partial_failures": [{"index": 0, "status": "success", "error": None}],
         }
     )
     with (
@@ -557,7 +561,7 @@ async def test_taxonomy_preflight_allows_affinity():
         return_value={
             "provider_request_id": "req-2",
             "applied_count": 1,
-            "partial_failures": [{"index": 0, "status": "added", "error": None}],
+            "partial_failures": [{"index": 0, "status": "success", "error": None}],
         }
     )
     with (
@@ -594,7 +598,7 @@ async def test_taxonomy_preflight_skipped_when_no_user_interest():
         return_value={
             "provider_request_id": "req-3",
             "applied_count": 1,
-            "partial_failures": [{"index": 0, "status": "added", "error": None}],
+            "partial_failures": [{"index": 0, "status": "success", "error": None}],
         }
     )
     with (
@@ -638,7 +642,9 @@ async def test_taxonomy_preflight_batch_lookup_single_read():
         return_value={
             "provider_request_id": "req-4",
             "applied_count": 3,
-            "partial_failures": [{"index": i, "status": "added", "error": None} for i in range(3)],
+            "partial_failures": [
+                {"index": i, "status": "success", "error": None} for i in range(3)
+            ],
         }
     )
     with (

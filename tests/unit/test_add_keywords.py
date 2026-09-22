@@ -98,7 +98,9 @@ async def test_auto_path_under_threshold():
         return {
             "provider_request_id": "req-1",
             "applied_count": 5,
-            "partial_failures": [{"index": i, "status": "added", "error": None} for i in range(5)],
+            "partial_failures": [
+                {"index": i, "status": "success", "error": None} for i in range(5)
+            ],
         }
 
     with patch("src.mcp.tools.add_keywords.run_mutation", AsyncMock(side_effect=fake_run_mutation)):
@@ -197,7 +199,9 @@ async def test_custom_params_summary_aggregates_metadata():
         return {
             "provider_request_id": "req-3",
             "applied_count": 4,
-            "partial_failures": [{"index": i, "status": "added", "error": None} for i in range(4)],
+            "partial_failures": [
+                {"index": i, "status": "success", "error": None} for i in range(4)
+            ],
         }
 
     with patch("src.mcp.tools.add_keywords.run_mutation", AsyncMock(side_effect=fake_run_mutation)):
