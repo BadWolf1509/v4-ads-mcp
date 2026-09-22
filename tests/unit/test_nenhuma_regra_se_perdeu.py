@@ -1,16 +1,22 @@
 """Nenhuma regra `Don't` se perdeu ao sair do CLAUDE.md para os arquivos roteados.
 
-A separacao de 2026-09-22 moveu 37 das 45 regras do `Don't do` para
-`docs/convencoes/`. Mover texto entre arquivos e uma operacao sem rede: se um
-bullet cair no caminho, nada acusa — o CLAUDE.md so fica menor, que e o que se
-queria.
+A separacao de 2026-09-22 moveu 37 das 45 **bullets** do `Don't do` para
+`docs/convencoes/`. O `Don't do` tem 45 bullets mas 61 **regras**: 13 bullets
+carregam 2+ regras cada. Extrair uma ANCORA por BULLET deixa 17 regras SEM
+cobertura.
 
-Cada regra e identificada por uma ANCORA (um trecho distintivo + sua CONTAGEM),
-nao apenas por presenca. Por que contagem? Porque 17 das 45 ancoras ja vivem
-naturalmente em `docs/convencoes/` — aqueles arquivos falam dos mesmos
-identificadores por conta propria (ex: `_CSP_POLICY` em painel.md porque fala de
-CSP). Para essas, presenca nao basta: apagar do CLAUDE.md sem mover nao seria
-detectado, porque o token continua no destino.
+Consequencia: na Task 7, ao APAGAR um bullet inteiro, essas 17 sub-regras
+sumiram sem que nada acusasse — nao estao na lista de ancoras, entao nada
+as conta.
+
+Solucao: 62 ancoras (45 originais + 17 sub-regras que dividiam bullet).
+
+Cada regra e identificada por uma ANCORA (um trecho distintivo + sua CONTAGEM).
+Por que contagem (nao presenca)? Porque 17 das 62 ancoras ja vivem naturalmente
+em `docs/convencoes/` — aqueles arquivos falam dos mesmos identificadores por
+conta propria (ex: `_CSP_POLICY` em painel.md porque fala de CSP). Para essas,
+presenca nao basta: apagar do CLAUDE.md sem mover nao seria detectado, porque o
+token continua no destino.
 
 Contagem fecha o buraco: MOVER mantem o total (sai de um arquivo, entra noutro);
 APAGAR sem mover derruba. O piso e medido contra o estado PRE-SEPARACAO, nunca
@@ -78,6 +84,27 @@ ANCORAS = (
     "request.query_params",  # 43
     "ads_get_field_context",  # 44
     "pipe PowerShell",  # 45
+    # --- 17 sub-regras que dividiam bullet com outra e nao tinham ancora
+    # propria (Ruling 2, 22/09). 45 bullets carregam 61 regras; extrair uma
+    # ancora por BULLET deixava 17 sem cobertura, e a Task 7 as levaria junto
+    # com o bullet sem que nada acusasse.
+    "gaql_string_literal",  # do bullet 1
+    "Settings",  # do bullet 1
+    "LIMIT",  # do bullet 3
+    "params=",  # do bullet 3
+    "python scripts/check_pre_push.py",  # do bullet 5
+    "asserir o ADJACENTE",  # do bullet 2
+    "coluna sem alias",  # do bullet 12
+    "pin do Tailwind",  # do bullet 14
+    "<link>",  # do bullet 14
+    "/mcp",  # do bullet 15
+    "{% block head_extra %}",  # do bullet 15
+    "deploy.yml",  # do bullet 16
+    "check bloqueante",  # do bullet 17
+    "dict opcional",  # do bullet 22
+    "aria-label",  # do bullet 24
+    "<th>",  # do bullet 27
+    "<table>",  # do bullet 43
 )
 
 # Quantas vezes cada ancora aparece na uniao HOJE, antes da separacao.
@@ -134,6 +161,23 @@ PISO_DE_OCORRENCIAS = {
     "request.query_params": 1,
     "ads_get_field_context": 5,
     "pipe PowerShell": 1,
+    "gaql_string_literal": 2,
+    "Settings": 4,
+    "LIMIT": 2,
+    "params=": 1,
+    "python scripts/check_pre_push.py": 2,
+    "asserir o ADJACENTE": 1,
+    "coluna sem alias": 1,
+    "pin do Tailwind": 1,
+    "<link>": 4,
+    "/mcp": 6,
+    "{% block head_extra %}": 3,
+    "deploy.yml": 5,
+    "check bloqueante": 1,
+    "dict opcional": 1,
+    "aria-label": 6,
+    "<th>": 1,
+    "<table>": 1,
 }
 
 
@@ -151,8 +195,8 @@ def test_o_scan_tem_escopo() -> None:
     """
     faltando = [n for n in _FONTES if not (h.RAIZ / n).exists()]
     assert not faltando, f"arquivo de destino nao existe: {faltando}"
-    assert len(ANCORAS) == 45, f"a lista tem {len(ANCORAS)} ancoras, esperava 45"
-    assert len(set(ANCORAS)) == 45, "ha ancora duplicada — ela deixa de identificar UMA regra"
+    assert len(ANCORAS) == 62, f"a lista tem {len(ANCORAS)} ancoras, esperava 62"
+    assert len(set(ANCORAS)) == 62, "ha ancora duplicada — ela deixa de identificar UMA regra"
     assert len(_uniao()) > 40_000, "uniao pequena demais: algum arquivo nao foi lido"
     assert set(PISO_DE_OCORRENCIAS) == set(ANCORAS), (
         "piso e ancoras divergiram — toda ancora precisa de piso medido"
