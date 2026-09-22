@@ -97,6 +97,10 @@ async def run_conversion_upload(
     applied_count = 0
     failed_count = 0
     failures: list[dict[str, Any]] = []
+    # Item 3 (revisao final, spec §4.2): pre-inicializado como o resto do
+    # bloco (defensivo contra excecao antes de `_parse_upload_response`
+    # rodar); a leitura de sucesso sempre reatribui com `leitura.medido`.
+    motivos_medidos: bool | None = None
     status = "success"
     error_message: str | None = None
     err_text: str | None = None
@@ -159,7 +163,9 @@ async def run_conversion_upload(
 
         response, provider_request_id = await run_blocking(_upload)
 
-        applied_count, failed_count, failures = _parse_upload_response(response, payload, client)
+        applied_count, failed_count, failures, motivos_medidos = _parse_upload_response(
+            response, payload, client
+        )
 
     except Exception as e:
         status = "error"
@@ -254,6 +260,10 @@ async def run_conversion_upload(
         "failed_count": failed_count,
         "failures": failures,
         "provider_request_id": provider_request_id or "",
+        # Item 3 (revisao final, spec §4.2): sempre um bool medido aqui — este
+        # dispatcher roda com partial_failure=True hardcoded, nunca "nao
+        # perguntei".
+        "motivos_medidos": motivos_medidos,
     }
 
 
@@ -273,12 +283,17 @@ def utc_offset(local_ts: str, zone: ZoneInfo) -> str:
 
 def _parse_upload_response(
     response: Any, payload: dict[str, Any], client: Any
-) -> tuple[int, int, list[dict[str, Any]]]:
-    """Parse UploadClickConversionsResponse -> (applied, failed, failures list).
+) -> tuple[int, int, list[dict[str, Any]], bool]:
+    """Parse UploadClickConversionsResponse -> (applied, failed, failures, motivos_medidos).
 
     Heuristic per Google docs: empty/falsy `result.conversion_action` in
     response.results[i] indicates row i failed. Detailed errors come from
     response.partial_failure_error.details[] (deserialized via GoogleAdsFailure).
+
+    `motivos_medidos` (item 3, revisao final, spec §4.2) e `leitura.medido` de
+    `erros_por_indice`: `failed` continua vindo da heuristica acima (sempre
+    medida — nao depende do desempacotamento do proto), so o MOTIVO por linha
+    e que pode nao ter sido lido.
     """
     input_conversions = payload["conversions"]
     applied = 0
@@ -315,4 +330,4 @@ def _parse_upload_response(
         else:
             applied += 1
 
-    return applied, len(failures), failures
+    return applied, len(failures), failures, leitura.medido

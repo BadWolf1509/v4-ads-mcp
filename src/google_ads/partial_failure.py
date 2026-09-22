@@ -142,7 +142,12 @@ def erros_por_indice(
 
     # `code != 0` afirma que HOUVE falha. Chegar aqui sem ter desempacotado
     # nenhum detail significa que nao se sabe QUAIS — dizer "medi e nao achei"
-    # seria o defeito original com roupa nova.
-    if not desempacotou_algum:
+    # seria o defeito original com roupa nova. O mesmo vale quando ALGUM
+    # detail desempacotou (`desempacotou_algum=True`) mas nenhum erro dentro
+    # dele trouxe `field_path_elements`: o `continue` do laco acima deixa
+    # `erros` vazio do mesmo jeito, e `desempacotou_algum` sozinho nao prova
+    # que alguma linha foi atribuida (item 1 da revisao final — reproduzido em
+    # `test_unpack_ok_mas_nenhum_erro_com_indice_nao_e_medido`).
+    if not desempacotou_algum or not erros:
         medido = False
     return LeituraDeFalhas(erros, medido=medido)

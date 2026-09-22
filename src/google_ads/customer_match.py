@@ -109,6 +109,20 @@ class _Progresso:
     def ultimo_request_id(self) -> str:
         return self.run_id or self.add_id or self.create_id
 
+    @property
+    def recusas_medidas(self) -> bool:
+        """True quando a leitura de QUEM foi recusado foi confiavel.
+
+        Item 3 da revisao final (spec §4.2): `membros_recusados=None` e o unico
+        jeito de isto dar `False` no caminho de sucesso (ver `submetidos` acima
+        — `pii_anexada=False` so acontece num caminho que levanta excecao antes
+        de chegar aqui). Existe pra `members_submitted`/`members_failed`/
+        `failures` nao ficarem `None` em silencio: os tres descrevem a MESMA
+        coisa desconhecida, e este campo diz PORQUE, no mesmo padrao de
+        `schedule_desconhecida_por_filtro` do get_ad_schedule.
+        """
+        return self.membros_recusados is not None
+
     def submetidos(self, member_count: int) -> int | None:
         """Quantos membros o Google reconhecidamente RECEBEU — nunca o tentado.
 
@@ -478,4 +492,8 @@ async def run_offline_user_data_job(
         "members_submitted": members_submitted,
         "members_failed": _quantos(progresso.membros_recusados),
         "failures": progresso.membros_recusados,
+        # Item 3 (revisao final, spec §4.2): marcador explicito ao lado dos tres
+        # campos acima — False = os tres vieram `None` porque a leitura de
+        # recusas nao foi confiavel, nao porque ninguem foi recusado.
+        "recusas_medidas": progresso.recusas_medidas,
     }

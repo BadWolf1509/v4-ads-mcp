@@ -83,7 +83,7 @@ def _resposta_com_uma_falha() -> Any:
 
 
 def test_sem_medicao_o_erro_da_linha_e_none() -> None:
-    linhas = _parse_partial_failures(
+    linhas, motivos_medidos = _parse_partial_failures(
         _resposta_com_uma_falha(),
         MagicMock(),
         operation_type="add_keywords",
@@ -95,6 +95,10 @@ def test_sem_medicao_o_erro_da_linha_e_none() -> None:
     assert falha[0]["error"] is None, (
         "'Unknown partial failure' afirma que se leu o motivo e ele era desconhecido; "
         "a verdade e que nao se leu"
+    )
+    assert motivos_medidos is False, (
+        "item 3 (revisao final): o segundo elemento da tupla e leitura.medido -- "
+        "nenhum detail desempacotou, entao nao foi medido"
     )
 
 
@@ -119,7 +123,7 @@ def test_com_medicao_indice_ausente_do_mapa_preserva_string_antiga() -> None:
         _fake_unpackable_detail(99, "erro de um indice que nao e o 1")
     ]
 
-    linhas = _parse_partial_failures(
+    linhas, motivos_medidos = _parse_partial_failures(
         resp,
         _client_com_google_ads_failure_stub(),
         operation_type="add_keywords",
@@ -134,6 +138,7 @@ def test_com_medicao_indice_ausente_do_mapa_preserva_string_antiga() -> None:
         "caso, e as duas causas (nao lido vs lido-mas-sem-cobertura) "
         "ficariam indistinguiveis de novo"
     )
+    assert motivos_medidos is True, "o detail desempacotou -- so nao cobriu este indice"
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +161,7 @@ def test_upload_sem_medicao_error_code_e_message_sao_none() -> None:
     resp = _resposta_upload_uma_falha(details=[])  # nada desempacotavel -> medido=False
     payload = {"conversions": [{"gclid": "Cj0_0"}]}
 
-    applied, failed, failures = _parse_upload_response(resp, payload, MagicMock())
+    applied, failed, failures, motivos_medidos = _parse_upload_response(resp, payload, MagicMock())
 
     assert applied == 0
     assert failed == 1
@@ -166,6 +171,7 @@ def test_upload_sem_medicao_error_code_e_message_sao_none() -> None:
     assert failures[0]["error_message"] is None, (
         "'no detail' afirma que se leu o motivo; sob leitura nao-confiavel nao se leu"
     )
+    assert motivos_medidos is False
 
 
 def test_upload_com_medicao_indice_ausente_preserva_unknown_no_detail() -> None:
@@ -175,7 +181,7 @@ def test_upload_com_medicao_indice_ausente_preserva_unknown_no_detail() -> None:
     )
     payload = {"conversions": [{"gclid": "Cj0_0"}]}
 
-    applied, failed, failures = _parse_upload_response(
+    applied, failed, failures, motivos_medidos = _parse_upload_response(
         resp, payload, _client_com_google_ads_failure_stub()
     )
 
@@ -186,3 +192,4 @@ def test_upload_com_medicao_indice_ausente_preserva_unknown_no_detail() -> None:
         "so falta cobertura do indice, nao quando a leitura falhou"
     )
     assert failures[0]["error_message"] == "no detail"
+    assert motivos_medidos is True, "o detail desempacotou -- so nao cobriu este indice"
