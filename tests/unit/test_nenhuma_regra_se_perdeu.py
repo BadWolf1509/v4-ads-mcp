@@ -194,8 +194,8 @@ def test_o_scan_tem_escopo() -> None:
     """CONTROLE ANTI-VACUIDADE. Um scan que le zero arquivos passa por vacuidade.
 
     Sem isto, renomear `docs/convencoes/` deixaria a uniao quase vazia e o teste
-    de baixo acusaria 45 regras sumidas — ou, se a lista tambem esvaziasse,
-    passaria verde varrendo nada.
+    de baixo acusaria todas as ancoras como sumidas — ou, se a lista tambem
+    esvaziasse, passaria verde varrendo nada.
     """
     faltando = [n for n in _FONTES if not (h.RAIZ / n).exists()]
     assert not faltando, f"arquivo de destino nao existe: {faltando}"
