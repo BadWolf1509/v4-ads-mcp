@@ -1,16 +1,16 @@
 """Nenhuma regra `Don't` se perdeu ao sair do CLAUDE.md para os arquivos roteados.
 
 A separacao de 2026-09-22 moveu 37 das 45 **bullets** do `Don't do` para
-`docs/convencoes/`. O `Don't do` tem 45 bullets mas 63 **claúsulas** (regras):
-13 bullets carregam 2+ claúsulas cada. Extrair uma ANCORA por BULLET deixa
-17 claúsulas SEM cobertura propria.
+`docs/convencoes/`. O `Don't do` tem 45 bullets mas 63 **cláusulas** (regras):
+13 bullets carregam 2+ cláusulas cada. Extrair uma ANCORA por BULLET deixa
+17 cláusulas SEM cobertura propria.
 
 Consequencia: na Task 7, ao APAGAR um bullet inteiro, essas 17 sub-regras
 sumiram sem que nada acusasse — nao estao na lista de ancoras, entao nada
 as conta.
 
 Solucao: 62 ancoras (45 originais + 17 sub-regras que dividiam bullet).
-Das 63 claúsulas, 62 tem ancora unica; 1 claúsula (Don't chamar SDK Google
+Das 63 cláusulas, 62 tem ancora unica; 1 cláusula (Don't chamar SDK Google
 fora de run_blocking, bullet 1) e coberta de graça pela ancora `run_blocking`
 que aparece nos dois bullets. Por isso 62 ancoras bastam.
 
@@ -88,9 +88,10 @@ ANCORAS = (
     "ads_get_field_context",  # 44
     "pipe PowerShell",  # 45
     # --- 17 sub-regras que dividiam bullet com outra e nao tinham ancora
-    # propria (Ruling 2, 22/09). 45 bullets carregam 61 regras; extrair uma
-    # ancora por BULLET deixava 17 sem cobertura, e a Task 7 as levaria junto
-    # com o bullet sem que nada acusasse.
+    # propria (Ruling 2, 22/09). 45 bullets carregam 63 cláusulas; 62 têm
+    # ancora unica, 1 e coberta de graça por ancora compartilhada (run_blocking
+    # em bullet 1). Extrair uma ancora por BULLET deixava 17 sem cobertura, e a
+    # Task 7 as levaria junto com o bullet sem que nada acusasse.
     "gaql_string_literal",  # do bullet 1
     "pool/cliente/logger",  # do bullet 1
     "LIMIT",  # do bullet 3
