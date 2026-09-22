@@ -18,8 +18,8 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 
 ## Estado atual
 
-**2026-09-20.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`,
-**68 MCP tools** (62 Google + 6 Meta), CI gated + deploy automático. Catálogo até **F190**. **Detalhe, pendências e decision gates vivem em
+**2026-09-21.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`,
+**68 MCP tools** (62 Google + 6 Meta), CI gated + deploy automático. Catálogo até **F191**. **Detalhe, pendências e decision gates vivem em
 [`estado-atual.md`](docs/operacao/estado-atual.md)** — atualize AQUELE no fecho, não este.
 
 **Sabe de cara:**
@@ -37,8 +37,9 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 - **Docker parado ≠ Docker travado:** os processos do Desktop sobem e ainda assim não há
   engine se o serviço `com.docker.service` estiver `Stopped` (exige elevação).
 - Varredura fechada em 18/09: **7 frentes, F155–F179**. Abertos: **F178** (callback OAuth
-  sem CSS — `<style>` inline barrado pela CSP) e **F179** (`admin_invites_cancel` audita
-  cancelamento que pode não ter ocorrido). **F180 em parte:** o Google engole operação
+  sem CSS — `<style>` inline barrado pela CSP). **F179** fechou em 21/09, junto do
+  **F191** (seis superfícies onde ausência de medição virava zero/sucesso).
+  **F180 em parte:** o Google engole operação
   impossível em vez de errar, então `failed_count` é sempre zero — leia `efeito`.
 
 ## Context bootstrap
@@ -59,7 +60,7 @@ tripwires do `Don't do`. O resto é roteado — carregue sob demanda:
 | roadmap Meta / Fase 2B | [`specs/`](docs/superpowers/specs/) |
 
 **Antes de desenhar ou corrigir código**, faça busca **dirigida** em
-[`findings-catalog.md`](docs/operacao/findings-catalog.md) pela área ou sintoma — **F1–F190, ~4700 linhas, 504 KB**. Grep por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `CSP`); ler
+[`findings-catalog.md`](docs/operacao/findings-catalog.md) pela área ou sintoma — **F1–F191, ~5100 linhas, 535 KB**. Grep por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `CSP`); ler
 integral não cabe em contexto nenhum. Cada entrada corrigida traz o que foi feito **e o que ficou deliberadamente de fora**.
 
 A última sessão de cada frente está em `docs/operacao/session-*-handoff.md`; o handoff é o

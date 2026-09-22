@@ -25,7 +25,7 @@
 | Revisão servindo | **`v4-ads-mcp-00121-hlq`** — `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O handshake MCP **autenticado NÃO foi conferido**: segue desarmado (F186), então "registry montado" aqui é o que o health afirma, não o que um `tools/list` provou |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
-| Catálogo | até **F190** (~4.700 linhas, 504 KB) |
+| Catálogo | até **F191** (~5.100 linhas, 535 KB) |
 
 **Caminho de mutação verificado após os bumps de 20/09** (`grpcio` 1.84, `google-auth`
 2.58, `google-api-core` 2.38): duas mutações reais em `1163862076` com
@@ -77,10 +77,20 @@ na revisão de contexto e foram executados em seguida, sem aval, porque nunca pr
 
 ## Findings abertos
 
+### Varredura de 21/09 (5 agentes paralelos, 4 sub-projetos)
+
+| sub-projeto | conteúdo | status |
+|---|---|---|
+| 1 | transporte Meta / token em query string | fechado — **F190** |
+| 2 | terceiro estado não medido (`Unpack`/partial-failure, F179, CSV do audit, `filters_applied`, `get_ad_schedule`) | fechado — **F191**. F154, que fazia parte do recorte original, **saiu para spec próprio** |
+| 3 | não descrito nesta tabela — sem spec ainda | pendente |
+| 4 | não descrito nesta tabela — sem spec ainda | pendente |
+
+**2 de 4 sub-projetos fechados** (era 1 antes desta sessão). ⚠️ A nota "fora de escopo" do F190 usa "sub-projeto 2" para um recorte DIFERENTE (métricas Meta: `_parse_buc_header_pct`, `spend_brl`/`cpc_brl`, `ctr`, taxonomia de `actions`, janelas de atribuição) — escrita **antes** da reclassificação que a abertura do spec do F191 documenta. Os dois "sub-projeto 2" não são o mesmo recorte; qual dos dois está vivo não foi conferido aqui.
+
 | ID | o que é |
 |---|---|
 | **F178** | callback OAuth renderiza sem CSS — `<style>` inline barrado pela CSP |
-| **F179** | `admin_invites_cancel` audita cancelamento que pode não ter ocorrido |
 | **F180** | **em parte, provavelmente para sempre** — a flag `partial_failure` está ligada, mas a falha por-linha **nunca foi exercitada**: o Google aceita operação impossível em vez de errar (campanha `REMOVED`, `final_urls` inválida, anúncio apagado entre preview e apply). O único gatilho conhecido é a variação de experimento, que o **F181 agora bloqueia no pre-flight**. Consequência: `failed_count` é constante zero — leia `efeito` e `changed_count` |
 | **F154** | `/me/adaccounts` não é prova de alcance |
 | **F185** | `recommendation_subscription`: 4 de 11 opacos e **sem chave nenhuma** — limitação da API, sem correção possível deste lado |
@@ -100,6 +110,13 @@ por campanha, então `truncated: true` é falso por construção. Três textos c
 restava ganhou guard — `test_raw_grid_ignora_o_limit_do_gestor`, validado por sabotagem.
 **Afirmar dois custos onde há um é a mesma família que o F188 cataloga, do lado de quem
 escreve.**
+
+Fechados em 21/09 também: **F179** e **F191** — seis superfícies (núcleo do
+partial-failure/`Unpack`, Customer Match, `admin_invites_cancel`, CSV do audit,
+`filters_applied`, `get_ad_schedule`) onde uma ausência de medição era lida como zero ou
+sucesso. Inclui um Critical que a própria branch quase introduziu — `classify_partial`
+lendo `error=None` como sucesso em 3 tools do ramo AUTO — achado só na revisão e fechado
+no fix round. Detalhe completo no catálogo.
 
 > A narrativa do sprint de RSA **saiu daqui**, pela regra do cabeçalho: ela ocupava 42
 > das 111 linhas descrevendo trabalho já fechado. O detalhe de cada finding vive no
