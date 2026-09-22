@@ -12,7 +12,7 @@ from src.google_ads.queries.audit_zombie_keywords import (
 
 
 def test_build_query_includes_required_fields():
-    q = build_audit_zombie_keywords_query(
+    q, _filtros = build_audit_zombie_keywords_query(
         start_date="2026-04-21",
         end_date="2026-05-21",
         ad_group_ids=None,
@@ -37,7 +37,7 @@ def test_build_query_includes_required_fields():
 
 
 def test_build_query_filters_enabled_and_not_negative():
-    q = build_audit_zombie_keywords_query(
+    q, _filtros = build_audit_zombie_keywords_query(
         start_date="2026-04-21",
         end_date="2026-05-21",
         ad_group_ids=None,
@@ -47,7 +47,7 @@ def test_build_query_filters_enabled_and_not_negative():
 
 
 def test_build_query_ad_group_ids_filter():
-    q = build_audit_zombie_keywords_query(
+    q, _filtros = build_audit_zombie_keywords_query(
         start_date="2026-04-21",
         end_date="2026-05-21",
         ad_group_ids=["123", "456"],

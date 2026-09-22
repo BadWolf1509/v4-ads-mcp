@@ -119,7 +119,7 @@ async def audit_orphan_smart_actions(args: dict[str, Any]) -> dict[str, Any]:
     start_date = start_date_obj.isoformat()
     end_date = end_date_obj.isoformat()
 
-    query = build_audit_orphan_smart_actions_query(
+    query, filtros_da_query = build_audit_orphan_smart_actions_query(
         start_date=start_date,
         end_date=end_date,
         category=category,
@@ -153,8 +153,14 @@ async def audit_orphan_smart_actions(args: dict[str, Any]) -> dict[str, Any]:
             "days": days,
         },
         "filters_applied": {
-            "category": category,
+            **filtros_da_query,
+            # Aplicado AQUI, depois da query: `limit` corta o resultado, e a
+            # definicao de orphan e filtro client-side DOMINANTE em
+            # `flag_orphan_smart_actions.py` (`if r.all_conversions == 0.0`) —
+            # mesmo padrao do `definicao_de_zumbi` em audit_zombie_keywords
+            # (item 4, revisao final).
             "limit": limit,
+            "definicao_de_orphan": "all_conversions == 0.0",
         },
         "total_orphans": total,
         "truncated": total > limit,

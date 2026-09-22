@@ -261,7 +261,9 @@ async def test_auto_path_observation_under_threshold():
         return {
             "provider_request_id": "req-1",
             "applied_count": 5,
-            "partial_failures": [{"index": i, "status": "added", "error": None} for i in range(5)],
+            "partial_failures": [
+                {"index": i, "status": "success", "error": None} for i in range(5)
+            ],
         }
 
     fake_run_report = AsyncMock(
@@ -346,7 +348,12 @@ async def test_partial_failure_mapping_already_attached():
     from src.mcp.tools.apply_audience import apply_audience
 
     fake_partials = [
-        {"index": 0, "status": "added", "error": None},
+        # F152: run_mutation devolve status NEUTRO ("success"/"failed"), nunca o
+        # verbo do dominio -- esta fixture usava "added" (o rotulo de SAIDA da
+        # tool, nao o de ENTRADA) e passou despercebido enquanto classify_partial
+        # nao lia `status`. Fix round 1/5 da Task 4 passou a ler; a fixture
+        # tinha que virar o que run_mutation de fato devolve.
+        {"index": 0, "status": "success", "error": None},
         {"index": 1, "status": "failed", "error": "CRITERION_EXISTS: criterion already exists"},
     ]
     fake_run_report = AsyncMock(
@@ -407,7 +414,9 @@ async def test_custom_params_summary_aggregates_without_raw_resource_names():
         return {
             "provider_request_id": "req-3",
             "applied_count": 4,
-            "partial_failures": [{"index": i, "status": "added", "error": None} for i in range(4)],
+            "partial_failures": [
+                {"index": i, "status": "success", "error": None} for i in range(4)
+            ],
         }
 
     fake_run_report = AsyncMock(
@@ -515,7 +524,7 @@ async def test_taxonomy_preflight_allows_in_market():
         return_value={
             "provider_request_id": "req-1",
             "applied_count": 1,
-            "partial_failures": [{"index": 0, "status": "added", "error": None}],
+            "partial_failures": [{"index": 0, "status": "success", "error": None}],
         }
     )
     with (
@@ -552,7 +561,7 @@ async def test_taxonomy_preflight_allows_affinity():
         return_value={
             "provider_request_id": "req-2",
             "applied_count": 1,
-            "partial_failures": [{"index": 0, "status": "added", "error": None}],
+            "partial_failures": [{"index": 0, "status": "success", "error": None}],
         }
     )
     with (
@@ -589,7 +598,7 @@ async def test_taxonomy_preflight_skipped_when_no_user_interest():
         return_value={
             "provider_request_id": "req-3",
             "applied_count": 1,
-            "partial_failures": [{"index": 0, "status": "added", "error": None}],
+            "partial_failures": [{"index": 0, "status": "success", "error": None}],
         }
     )
     with (
@@ -633,7 +642,9 @@ async def test_taxonomy_preflight_batch_lookup_single_read():
         return_value={
             "provider_request_id": "req-4",
             "applied_count": 3,
-            "partial_failures": [{"index": i, "status": "added", "error": None} for i in range(3)],
+            "partial_failures": [
+                {"index": i, "status": "success", "error": None} for i in range(3)
+            ],
         }
     )
     with (

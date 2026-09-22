@@ -110,6 +110,12 @@ def _matches_requested(
         "`failed_count` medido; `partial_failure: false` traz `partial_failures` VAZIA "
         "e `failed_count: null` — null significa NAO MEDIDO, nao 'nenhuma falhou' "
         "(F182). O regime e decisao da tool de origem, nao um parametro seu. "
+        "`partial_failures[].error` tambem pode vir `null`: a linha FALHOU (a "
+        "contagem e medida, via WhichOneof/heuristica), so o MOTIVO que nao foi "
+        "lido — nao e 'sem motivo', e 'nao consegui ler'. `motivos_medidos` "
+        "(bool; `null` quando `partial_failure: false`) resume isso pra resposta "
+        "inteira de uma vez: `false` explica todo `error: null` sem exigir "
+        "conferencia linha a linha. "
         "ATENCAO (F184): `status: success` numa linha NAO prova que "
         "ela mudou algo — o Google aceita operacao e nao a executa. Cada linha traz "
         "`efeito`: 'mudou', 'sem_efeito' (passou sem mudar nada), ou null "
@@ -165,6 +171,10 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
             provider_request_id=result["provider_request_id"],
             failed_count=result["failed_count"],
             failures=result["failures"],
+            # Item 3 (revisao final, spec §4.2): conversions sempre roda com
+            # partial_failure=True (hardcoded em run_conversion_upload), entao
+            # isto e sempre um bool medido, nunca None por "nao perguntei".
+            motivos_medidos=result.get("motivos_medidos"),
         )
 
     # C2: RecommendationService path. Sem este ramo o token que o
@@ -276,6 +286,10 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
             members_submitted=result["members_submitted"],
             members_failed=result["members_failed"],
             failures=result["failures"],
+            # Item 3 (revisao final, spec §4.2): diz PORQUE os tres campos
+            # acima podem vir `null` juntos — leitura de recusas nao confiavel,
+            # nunca "ninguem foi recusado".
+            recusas_medidas=result["recusas_medidas"],
             job_resource_name=result["job_resource_name"],
             provider_request_id_create_job=result["provider_request_id_create_job"],
             provider_request_id_add_ops=result["provider_request_id_add_ops"],
@@ -386,8 +400,20 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
             # AUSENTE do corte — e tambem a da BORDA, dona da ultima linha lida,
             # cuja grade pode ter sido cortada no meio. Mesma funcao que o gemeo
             # `get_ad_schedule` chama; duas copias da regra e como o F128 nasceu.
+            #
+            # status="enabled" aqui, NAO o "all" literal da query de linha 361
+            # (Task 8, 2026-09-21): a terceira familia de `campanhas_com_grade_incerta`
+            # existe pra vazio-por-FILTRO — quando o status pedido e um SUBCONJUNTO
+            # que pode esconder janelas ENABLED que existem mas nao vieram (paused/
+            # removed/all). Aqui `status="all"` e uma SUPERCONJUNTO deliberado (§7:
+            # confirmar REMOVED por presenca), e `servindo`, duas linhas acima, ja
+            # derivou o subconjunto ENABLED dele por filtro client-side ANTES desta
+            # chamada — a leitura que embasa o resumo e literalmente a enabled, so
+            # que lida via uma query mais larga. Declarar "all" aqui marcaria toda
+            # confirmacao pos-apply como incerta, inclusive as que leram a grade
+            # inteira sem corte nenhum — reintroduziria o F128 pela porta dos fundos.
             incertas = campanhas_com_grade_incerta(
-                rows, truncated=leitura_parcial, campanhas=campaign_ids
+                rows, truncated=leitura_parcial, campanhas=campaign_ids, status="enabled"
             )
 
             def _resumo(cid: str) -> dict[str, Any]:
@@ -457,6 +483,10 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
             resource_names=result.get("resource_names", []),
             resulting_schedule=resulting,
             confirmation_error=confirmation_error,
+            # Item 3 (revisao final, spec §4.2): este ramo sempre roda com
+            # partial_failure=True (ver a chamada de run_mutation acima) — bool
+            # medido, nao None.
+            motivos_medidos=result.get("motivos_medidos"),
         )
 
     # Default path: chained mutation via GoogleAdsService.mutate (Sprint 3b.1-3b.25).
@@ -501,4 +531,8 @@ async def apply_change(args: dict[str, Any]) -> dict[str, Any]:
             sum(1 for r in partial_failures if r["status"] == "failed") if partial_failure else None
         ),
         resource_names=result.get("resource_names", []),
+        # Item 3 (revisao final, spec §4.2): mesma familia do `failed_count`
+        # acima — `None` quando `partial_failure=False` (run_mutation nao
+        # tentou ler motivo nenhum, "nao perguntei"), bool medido quando True.
+        motivos_medidos=result.get("motivos_medidos"),
     )

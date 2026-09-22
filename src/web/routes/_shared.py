@@ -45,6 +45,10 @@ _ADMIN_FLASH_ERRORS: dict[str, str] = {
         "acesso nenhum (o gate exige conta ativa). Espere a reconciliação "
         "reativá-la; a linha volta com o botão."
     ),
+    # F179: admin_invites_cancel mede o retorno do DELETE antes de audita-lo —
+    # convidado que logou entre o SELECT e o DELETE ja nao tem status='invited',
+    # e o cancelamento nao teve efeito nenhum. Mapa fixo, nao eco do param.
+    "invite_ja_aceito": "Esse convite já foi aceito — nada foi cancelado.",
 }
 
 # Mapa fixo pro `ok=<codigo>` da reconciliacao Google — distinto do `ok=1` usado
@@ -89,6 +93,7 @@ async def _audit_admin(
     operation: str,
     customer_id: str | None = None,
     platform: Literal["google", "meta"] = "google",
+    had_effect: bool | None = None,
     **summary: Any,
 ) -> None:
     """Record an audit_log row for a sensitive admin-panel mutation.
@@ -97,6 +102,10 @@ async def _audit_admin(
     session, so session_id is always None; manager_id is the authenticated
     admin performing the action. summary becomes params_summary (target of
     the action — never tokens/secrets).
+
+    had_effect: true = a escrita afetou linha; false = passou sem efeito; None
+        nos caminhos que nao medem. Repassado direto para audit_log.record —
+        mesma semantica, ver o docstring de la (F179).
     """
     await audit_log.record(
         conn,
@@ -107,6 +116,7 @@ async def _audit_admin(
         operation=operation,
         params_summary=summary or None,
         platform=platform,
+        had_effect=had_effect,
     )
 
 

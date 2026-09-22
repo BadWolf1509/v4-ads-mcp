@@ -65,7 +65,17 @@ def _make_capture_client_with_offline_user_data_job_service() -> tuple[Any, Magi
     service.create_offline_user_data_job = MagicMock(
         return_value=MagicMock(resource_name="customers/1163862076/offlineUserDataJobs/JOB123")
     )
-    service.add_offline_user_data_job_operations = MagicMock(return_value=MagicMock())
+    # `partial_failure_error` precisa ser um Status honesto (code=0, sem
+    # details) — igual a TODOS os outros fakes de dispatcher no repo
+    # (test_run_mutation_*, test_run_conversion_upload*,
+    # test_sdk_offloaded_from_event_loop.py). Um MagicMock() cru sem isso
+    # tem `.code` como MagicMock (nunca == 0) e `.details` nao-iteravel — o
+    # que antes virava `{}` (a excecao era engolida), e agora e honestamente
+    # `medido=False` (Task 3: nao da pra tratar "nao consegui ler" como
+    # "zero falhas"). Simular resposta LIMPA precisa dizer isso de verdade.
+    service.add_offline_user_data_job_operations = MagicMock(
+        return_value=MagicMock(partial_failure_error=MagicMock(code=0, details=[]))
+    )
     service.run_offline_user_data_job = MagicMock(return_value=MagicMock())
 
     _original_get_service = client.get_service

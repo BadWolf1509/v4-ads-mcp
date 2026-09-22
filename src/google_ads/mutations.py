@@ -48,7 +48,7 @@ def _parse_partial_failures(
     operation_type: str,
     customer_id: str,
     target_count: int,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], bool]:
     """Classifica cada op de uma resposta partial_failure em success/failed (+ erro).
 
     Google Ads API surface (NOT what naive readings of the SDK suggest):
@@ -60,6 +60,14 @@ def _parse_partial_failures(
     - Per-op error MESSAGES vivem em partial_failure_error.details[] como um
       GoogleAdsFailure proto, cujo errors[].location.field_path_elements[0].index liga
       cada erro ao índice da op em mutate_operations.
+
+    Retorna (per_op_results, motivos_medidos). O segundo e `leitura.medido` de
+    `erros_por_indice` — item 3 da revisao final (spec §4.2): a CONTAGEM
+    success/failed vem do WhichOneof e nao muda; o que pode nao ter sido lido
+    e o MOTIVO de cada falha, e o chamador precisa saber se pode confiar nos
+    `error` de linha ou se eles vieram `None` por leitura nao-confiavel.
+    `False` quando a resposta nem tem `mutate_operation_responses` (nada foi
+    lido, nem contagem).
     """
     per_op_results: list[dict[str, Any]] = []
     if not hasattr(response, "mutate_operation_responses"):
@@ -69,22 +77,20 @@ def _parse_partial_failures(
             customer_id=customer_id,
             target_count=target_count,
         )
-        return per_op_results
+        return per_op_results, False
 
     # Build error-by-index map from the top-level partial_failure_error. O
     # desempacotamento do proto vive em `partial_failure.py` — as tres APIs de
     # escrita reportam falha por-linha do mesmo jeito, e a terceira leitora
     # (Customer Match, R1-I3) teria sido a terceira copia.
-    error_by_index = {
-        idx: e.error_message
-        for idx, e in erros_por_indice(
-            response,
-            client,
-            origem="run_mutation",
-            operation=operation_type,
-            customer_id=customer_id,
-        ).items()
-    }
+    leitura = erros_por_indice(
+        response,
+        client,
+        origem="run_mutation",
+        operation=operation_type,
+        customer_id=customer_id,
+    )
+    error_by_index = {idx: e.error_message for idx, e in leitura.erros.items()}
 
     # Walk operation responses and classify by which oneof is set.
     for idx, op_resp in enumerate(response.mutate_operation_responses):
@@ -95,17 +101,27 @@ def _parse_partial_failures(
             # ou remove — o `oneof` da RESPOSTA diz sucesso/falha e o tipo do
             # recurso, nunca o verbo, que so existe do lado da requisicao. Dizer
             # "added" num remove era mentira sobre o que ocorreu. Tool que quer
-            # verbo de dominio remapeia com `classify_partial`, que le `error`.
+            # verbo de dominio remapeia com `classify_partial`, que le `status`
+            # PRIMEIRO (o veredito medido) e so recorre a `error` pra refinar
+            # dentro do ramo "failed" (fix round 1/5 da Task 4 — ver a
+            # docstring de `classify_partial`).
             per_op_results.append({"index": idx, "status": "success", "error": None})
         else:
             per_op_results.append(
                 {
                     "index": idx,
                     "status": "failed",
-                    "error": error_by_index.get(idx, "Unknown partial failure"),
+                    # `None` quando a leitura nao foi confiavel: a linha FALHOU
+                    # (o `WhichOneof` diz isso, e essa contagem e medida), mas o
+                    # motivo nao foi lido. A string antiga afirmava o contrario.
+                    "error": (
+                        error_by_index.get(idx, "Unknown partial failure")
+                        if leitura.medido
+                        else None
+                    ),
                 }
             )
-    return per_op_results
+    return per_op_results, leitura.medido
 
 
 def resultado_para_audit(
@@ -299,8 +315,12 @@ async def run_mutation(
             # Parse per-op status when partial_failure is enabled (helper isola o
             # parsing do proto — ver _parse_partial_failures).
             per_op_results: list[dict[str, Any]] = []
+            # Item 3 (revisao final, spec §4.2): `None` = "nao perguntei"
+            # (partial_failure=False, mesma semantica do `failed_count: null`
+            # do F182); bool = leitura.medido quando de fato se perguntou.
+            motivos_medidos: bool | None = None
             if partial_failure:
-                per_op_results = _parse_partial_failures(
+                per_op_results, motivos_medidos = _parse_partial_failures(
                     response,
                     client,
                     operation_type=operation_type,
@@ -365,6 +385,7 @@ async def run_mutation(
             "changed_count": changed_count,
             "partial_failures": per_op_results,
             "resource_names": resource_names,
+            "motivos_medidos": motivos_medidos,
         }
     except Exception as e:
         status = "error"

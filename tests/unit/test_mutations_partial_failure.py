@@ -79,8 +79,9 @@ def _client_with_partial_failure(per_op_errors: list[str | None]) -> MagicMock:
             for i in failed_indices
         ]
 
-        def fake_unpack(target_pb: MagicMock) -> None:
+        def fake_unpack(target_pb: MagicMock) -> bool:
             target_pb.errors = fake_errors
+            return True
 
         raw_any = MagicMock()
         raw_any.type_url = "type.googleapis.com/google.ads.googleads.v20.errors.GoogleAdsFailure"

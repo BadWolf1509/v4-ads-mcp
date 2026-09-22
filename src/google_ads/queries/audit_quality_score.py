@@ -11,19 +11,23 @@ def build_audit_quality_score_query(
     start_date: str,
     end_date: str,
     ad_group_ids: list[str] | None = None,
-) -> str:
-    """Build GAQL query for keyword_view filtered by status/date/qs/optional ad_groups.
+) -> tuple[str, dict[str, Any]]:
+    """Build GAQL query for keyword_view, MAIS os filtros que ela aplica.
 
     Hardcoded filters (per spec section 2):
     - ad_group_criterion.status = 'ENABLED' (only current-actionable)
     - ad_group_criterion.quality_info.quality_score IS NOT NULL (exclude unset/new kw)
+
+    A tupla existe porque `filters_applied` era escrito a mao ao lado da
+    chamada e divergiu: declarava 3 filtros e a query cortava 5 (`min_impressions`
+    NAO entra aqui — e client-side, aplicado depois em `flag_keywords`).
 
     Args:
         start_date, end_date: YYYY-MM-DD (resolved via resolve_date_window upstream).
         ad_group_ids: optional filter — None means scan account-wide.
 
     Returns:
-        GAQL string ready for run_report.
+        (GAQL string ready for run_report, filtros aplicados server-side).
     """
     query = (
         "SELECT "
@@ -42,7 +46,13 @@ def build_audit_quality_score_query(
     if ad_group_ids:
         ids_clause = ", ".join(str(int(id_)) for id_ in ad_group_ids)
         query += f" AND ad_group.id IN ({ids_clause})"
-    return query
+    filtros: dict[str, Any] = {
+        "ad_group_ids": ad_group_ids,
+        "criterion_status": "ENABLED",
+        "quality_score_nao_nulo": True,
+        "date_range": {"start": start_date, "end": end_date},
+    }
+    return query, filtros
 
 
 def parse_keyword_view_row(row: Any) -> dict[str, Any]:

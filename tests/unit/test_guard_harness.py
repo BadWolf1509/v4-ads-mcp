@@ -194,7 +194,7 @@ def test_html_em_python_default_encontra_os_tres_alvos_conhecidos() -> None:
     achados = h.html_em_python()
 
     assert {a.name for a in achados} == {
-        "_shared.py:140",
+        "_shared.py:150",
         "oauth.py:394",
         "oauth.py:409",
     }

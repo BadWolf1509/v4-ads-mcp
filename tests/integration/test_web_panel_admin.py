@@ -719,7 +719,7 @@ async def test_admin_invites_cancel_records_audit(client: AsyncClient):
 
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            """SELECT operation, action_type, manager_id, customer_id, params_summary
+            """SELECT operation, action_type, manager_id, customer_id, params_summary, had_effect
                FROM audit_log WHERE operation = $1 ORDER BY occurred_at DESC LIMIT 1""",
             "admin_invite_cancel",
         )
@@ -728,6 +728,59 @@ async def test_admin_invites_cancel_records_audit(client: AsyncClient):
     assert row["manager_id"] == admin_id
     summary = json.loads(row["params_summary"])
     assert summary["email"] == "cancelado@v4company.com"
+    # F179, contraprova do caminho feliz: cancelamento que DE FATO apagou a
+    # linha grava had_effect=true. Sem isto, uma implementação que gravasse
+    # sempre false passaria no teste de baixo (test_..._ja_aceito_...) e o par
+    # não distinguiria código bom de quebrado.
+    assert row["had_effect"] is True
+
+
+@pytest.mark.integration
+async def test_admin_invites_cancel_ja_aceito_nao_afirma_cancelamento(client: AsyncClient):
+    """F179: convidado que loga entre o SELECT e o DELETE não pode ser
+    reportado como cancelado.
+
+    Reproduz a corrida sem depender de concorrência real: sobe o convite pra
+    'active' (o que um login legítimo teria feito) ANTES do POST de
+    cancelamento — o UPDATE simula exatamente o intervalo que a rota não
+    controla. `delete_invite` filtra por status='invited', então o DELETE não
+    afeta linha nenhuma e a rota tem que dizer isso em vez de fingir sucesso.
+    """
+    pool = connection.get_pool()
+    admin_id, _ = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        invite = await managers.create_invited(
+            conn,
+            email="ja.aceito@v4company.com",
+            invited_by=admin_id,
+            full_name="Ja Aceito",
+        )
+        await conn.execute("UPDATE managers SET status = 'active' WHERE id = $1", invite.id)
+
+    response = await client.post(
+        f"/admin/invites/{invite.id}/cancel",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 303
+    # Ponta 1: o admin é avisado do que realmente aconteceu — não um "ok=1"
+    # genérico. Formato conferido em admin_invites.py, não presumido aqui.
+    assert response.headers["location"] == "/admin/invites?error=invite_ja_aceito"
+
+    async with pool.acquire() as conn:
+        # A conta segue 'active' — o DELETE (WHERE status='invited') não a atingiu.
+        status_atual = await conn.fetchval("SELECT status FROM managers WHERE id = $1", invite.id)
+        row = await conn.fetchrow(
+            """SELECT operation, action_type, manager_id, had_effect
+               FROM audit_log WHERE operation = $1 ORDER BY occurred_at DESC LIMIT 1""",
+            "admin_invite_cancel",
+        )
+    assert status_atual == "active"
+    assert row is not None
+    assert row["action_type"] == "mutate"
+    assert row["manager_id"] == admin_id
+    # Ponta 2: o audit não afirma um cancelamento que não ocorreu — lido do
+    # Postgres de verdade, não da chamada Python que gravou.
+    assert row["had_effect"] is False
 
 
 @pytest.mark.integration

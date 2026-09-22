@@ -10,7 +10,7 @@ from src.google_ads.queries.audit_orphan_smart_actions import (
 
 
 def test_build_query_includes_required_fields():
-    q = build_audit_orphan_smart_actions_query(
+    q, _filtros = build_audit_orphan_smart_actions_query(
         start_date="2026-04-21",
         end_date="2026-05-21",
         category=None,
@@ -30,7 +30,7 @@ def test_build_query_includes_required_fields():
 
 
 def test_build_query_filters_enabled():
-    q = build_audit_orphan_smart_actions_query(
+    q, _filtros = build_audit_orphan_smart_actions_query(
         start_date="2026-04-21",
         end_date="2026-05-21",
         category=None,
@@ -39,7 +39,7 @@ def test_build_query_filters_enabled():
 
 
 def test_build_query_category_filter():
-    q = build_audit_orphan_smart_actions_query(
+    q, _filtros = build_audit_orphan_smart_actions_query(
         start_date="2026-04-21",
         end_date="2026-05-21",
         category="CONTACT",

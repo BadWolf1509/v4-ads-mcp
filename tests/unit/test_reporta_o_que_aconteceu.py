@@ -300,8 +300,9 @@ def _resposta_add_ops_com_falhas(client: Any, indices: dict[int, str]) -> MagicM
 
     erros = [_FakeError(i, m) for i, m in indices.items()]
 
-    def fake_unpack(target_pb: MagicMock) -> None:
+    def fake_unpack(target_pb: MagicMock) -> bool:
         target_pb.errors = erros
+        return True
 
     raw_any = MagicMock()
     raw_any.type_url = "type.googleapis.com/google.ads.googleads.v24.errors.GoogleAdsFailure"
@@ -591,6 +592,11 @@ async def test_apply_change_do_customer_match_devolve_o_envelope_inteiro(_ctx: A
         "members_submitted": 2,
         "members_failed": 1,
         "failures": [{"index": 1, "error_code": "INVALID_SHA256_FORMAT", "error_message": "x"}],
+        # Item 3 (revisao final, spec §4.2): campo novo, sempre presente no
+        # caminho de sucesso real de run_offline_user_data_job — `True` aqui
+        # porque este cenario tem `failures` com motivo concreto (leitura
+        # confiavel), nao `None`.
+        "recusas_medidas": True,
     }
     with (
         patch.object(mod, "connection") as mock_conn,
@@ -613,6 +619,7 @@ async def test_apply_change_do_customer_match_devolve_o_envelope_inteiro(_ctx: A
     assert out["members_submitted"] == 2
     assert out["members_failed"] == 1
     assert out["failures"] == resultado["failures"]
+    assert out["recusas_medidas"] is True
     assert out["job_resource_name"].endswith("/JOB123")
     # LGPD: a resposta ecoa contagem e indice — nunca o hash que subiu.
     assert "h0" not in str(out)
@@ -624,8 +631,9 @@ async def test_apply_change_do_customer_match_devolve_o_envelope_inteiro(_ctx: A
 
 
 def _failure_com(erros: list[Any], client: MagicMock) -> MagicMock:
-    def fake_unpack(target_pb: MagicMock) -> None:
+    def fake_unpack(target_pb: MagicMock) -> bool:
         target_pb.errors = erros
+        return True
 
     raw_any = MagicMock()
     raw_any.type_url = "type.googleapis.com/google.ads.googleads.v24.errors.GoogleAdsFailure"
@@ -666,9 +674,9 @@ def test_erro_sem_codigo_nao_derruba_a_mensagem() -> None:
     client = MagicMock()
     resp = _failure_com([_ErroSemCodigo(1, "CRITERION_EXISTS")], client)
 
-    erros = erros_por_indice(resp, client, origem="teste")
-    assert erros[1].error_message == "CRITERION_EXISTS"
-    assert erros[1].error_code == "UNKNOWN"
+    leitura = erros_por_indice(resp, client, origem="teste")
+    assert leitura.erros[1].error_message == "CRITERION_EXISTS"
+    assert leitura.erros[1].error_code == "UNKNOWN"
 
 
 def test_sem_falha_nenhuma_devolve_mapa_vazio() -> None:
@@ -677,4 +685,5 @@ def test_sem_falha_nenhuma_devolve_mapa_vazio() -> None:
     resp = MagicMock()
     resp.partial_failure_error.code = 0
     resp.partial_failure_error.details = []
-    assert erros_por_indice(resp, MagicMock(), origem="teste") == {}
+    leitura = erros_por_indice(resp, MagicMock(), origem="teste")
+    assert leitura.erros == {}

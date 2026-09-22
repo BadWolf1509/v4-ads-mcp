@@ -77,15 +77,17 @@ _DESCRIPTION = (
     "(grade de campanha PAUSED nao afeta entrega). ATENCAO: campanha "
     "SEM nenhuma janela serve 24x7 — `has_schedule: false` e `hours_per_week: 168` "
     "dizem isso explicitamente; nao leia lista vazia como 'nao serve'. Isso vale SO "
-    "quando a resposta nao veio cortada: sob `truncated: true`, tem `has_schedule: "
-    "null`, `hours_per_week: null`, `windows: null` e "
+    "quando a resposta nao veio cortada NEM filtrada: sob `truncated: true`, tem "
+    "`has_schedule: null`, `hours_per_week: null`, `windows: null` e "
     "`schedule_desconhecida_por_truncamento: true` no resumo (1) toda campanha cuja "
     "grade caiu inteira alem do corte do `limit` e (2) a campanha da BORDA do corte "
     "— a ultima que ainda tem linha na resposta, cuja grade pode ter sido cortada no "
     "meio; as linhas vem ordenadas por campanha, entao havendo corte existe sempre "
-    "exatamente uma nessa posicao, e nao da para saber se ela veio inteira. "
-    "`null` significa 'nao sei se tem grade ou nao, aumente o `limit`', "
-    "nunca leia `null` como false nem como 24x7. Janela cobre "
+    "exatamente uma nessa posicao, e nao da para saber se ela veio inteira — e "
+    "tambem quando `status` e diferente de `enabled`, caso em que o conjunto "
+    "lido nao e o de entrega e vem `schedule_desconhecida_por_filtro: true`. "
+    "`null` significa 'nao sei se tem grade ou nao, aumente o `limit` ou peca "
+    "`status='enabled'`', nunca leia `null` como false nem como 24x7. Janela cobre "
     "[inicio, fim); `end_hour: 24` = ate o fim do dia; minutos so 0/15/30/45 (API). "
     "Uma campanha pode ter ate 7x24 janelas: `limit` (default 200, teto 1000) corta e "
     "`truncated: true` avisa. `budget_is_shared` vem de campaign_budget.explicitly_shared "
@@ -142,11 +144,13 @@ def campanhas_com_grade_incerta(
     # call-site de hoje passa gerador (um manda dict, outro manda lista), mas
     # `Iterable` CONVIDA a isso e o mypy aceita.
     campanhas: Collection[str],
+    status: str,
 ) -> set[str]:
-    """Campanhas cuja grade NAO pode ser afirmada depois de uma leitura cortada.
+    """Campanhas cuja grade NAO pode ser afirmada depois de uma leitura cortada
+    ou filtrada.
 
     `rows` sao as linhas que SOBREVIVERAM ao corte (pos-`aplicar_limite`).
-    Duas familias, e a segunda e a que faltava (residuo do F147):
+    Tres familias, e a segunda e a que faltava (residuo do F147):
 
     - a **ausente**: nenhuma linha dela sobreviveu, entao `summarize_current([])`
       a chamaria de "sem grade" — que na §3 quer dizer 24x7, o oposto do que a
@@ -156,15 +160,30 @@ def campanhas_com_grade_incerta(
       grade de exatamente uma campanha — sempre existe uma nessa posicao quando
       houve corte. O resumo dela sairia calculado sobre a PARTE lida:
       `hours_per_week` subestimado, sem `null` e sem sinal nenhum.
+    - a **filtrada**: `status` diferente de `enabled` faz a query devolver um
+      conjunto que nao e o de entrega. Vale mesmo sem truncamento.
 
     Nao ha como saber se o corte caiu no fim da grade da campanha da borda ou no
     meio dela — a resposta so tem as linhas que couberam. Adivinhar "esta
     completa" e o defeito original com outra roupa, entao a borda entra SEMPRE
     que houve corte.
 
-    Fora de truncamento devolve conjunto vazio: nada aqui muda a leitura
-    completa.
+    Fora de truncamento e com `status='enabled'` devolve conjunto vazio: nada
+    aqui muda a leitura completa.
     """
+    # TERCEIRA familia (2026-09-21). As duas de baixo tratam o vazio por CORTE;
+    # esta trata o vazio por FILTRO. Entrega e determinada pelos criterios
+    # ENABLED, e so `status='enabled'` devolve exatamente esse conjunto:
+    # `paused`/`removed` excluem as janelas que restringem, e `all` inclui
+    # criterios que nao restringem. Nos tres casos o resumo deixa de ser uma
+    # afirmacao sobre entrega.
+    #
+    # Deliberadamente pessimista em `all`: daria para derivar o subconjunto
+    # enabled client-side, e isso exigiria um segundo argumento de corretude
+    # que nada testa. A clausula entra AQUI, junto das outras duas — separar
+    # as familias de novo e como o F128 nasceu.
+    if status != "enabled":
+        return set(campanhas)
     if not truncated:
         return set()
     lidas = {r["campaign_id"] for r in rows}
@@ -172,6 +191,39 @@ def campanhas_com_grade_incerta(
     if rows:
         incertas.add(rows[-1]["campaign_id"])
     return incertas & set(campanhas)
+
+
+def anular_resumos_incertos(
+    summary: dict[str, dict[str, Any]],
+    *,
+    grade_rows: list[dict[str, Any]],
+    truncated: bool,
+    status: str,
+) -> None:
+    """Poe `null` nos tres campos de entrega das campanhas incertas, IN PLACE.
+
+    Extraida da tool para ser testavel sem I/O. Os tres campos dizem
+    desconhecido JUNTOS: `has_schedule: null` ao lado de `windows: 0` le como
+    "zero janelas", que e justamente a afirmacao que este bloco existe para
+    nao fazer.
+
+    Os dois marcadores de motivo podem aparecer ao mesmo tempo — uma leitura
+    pode estar cortada E filtrada, e esconder um dos motivos seria a mesma
+    doenca de origem.
+    """
+    incertas = campanhas_com_grade_incerta(
+        grade_rows, truncated=truncated, campanhas=summary, status=status
+    )
+    for cid, resumo in summary.items():
+        if cid not in incertas:
+            continue
+        resumo["has_schedule"] = None
+        resumo["hours_per_week"] = None
+        resumo["windows"] = None
+        if truncated:
+            resumo["schedule_desconhecida_por_truncamento"] = True
+        if status != "enabled":
+            resumo["schedule_desconhecida_por_filtro"] = True
 
 
 @register_tool(
@@ -225,31 +277,15 @@ async def get_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
 
     # Task 4 (PR 4): `atual.get(cid, [])` acima nao distingue "campanha sem
     # nenhuma janela" de "campanha com janelas que cairam alem do corte do
-    # `limit`" — as duas chegam como lista vazia, e `summarize_current([])`
-    # sempre le a primeira. Sob `truncated`, toda campanha AUSENTE de `atual`
-    # cai nesse limbo: nao sabemos se ela serve 24x7 ou se so nao coube na
-    # pagina. `false`/`168` aqui e uma afirmacao sobre ENTREGA — nao se chuta
-    # isso a partir de uma leitura parcial (mesma familia do F131: vazio que
-    # quer dizer duas coisas).
-    #
-    # A2 (revisao final, residuo do F147): a campanha da BORDA cai no mesmo
-    # limbo por outro caminho — parte da grade dela sobreviveu ao corte e o
-    # resto nao, e o resumo sairia calculado sobre a parte, com
-    # `hours_per_week` subestimado e nenhum sinal. As duas familias vivem em
-    # `campanhas_com_grade_incerta`, que os DOIS gemeos chamam: separar as
+    # `limit`" (ou que ficaram de fora por causa do `status` pedido) — as tres
+    # chegam como lista vazia, e `summarize_current([])` sempre le a primeira.
+    # `false`/`168` aqui e uma afirmacao sobre ENTREGA — nao se chuta isso a
+    # partir de uma leitura parcial ou filtrada (mesma familia do F131: vazio
+    # que quer dizer mais de uma coisa). `anular_resumos_incertos` extrai o
+    # laco pra ser testavel sem I/O; ela chama `campanhas_com_grade_incerta`,
+    # que os DOIS gemeos (esta tool e `apply_change`) chamam — separar as
     # clausulas de novo e como o F128 nasceu.
-    incertas = campanhas_com_grade_incerta(grade_rows, truncated=truncated, campanhas=summary)
-    for cid, resumo in summary.items():
-        if cid in incertas:
-            resumo["has_schedule"] = None
-            resumo["hours_per_week"] = None
-            # `windows` tambem, senao o resumo se contradiz: `has_schedule: null`
-            # ao lado de `windows: 0` le como "zero janelas", que e justamente a
-            # afirmacao que este bloco existe para nao fazer. Tres campos que
-            # descrevem a mesma coisa desconhecida tem que dizer desconhecido
-            # juntos.
-            resumo["windows"] = None
-            resumo["schedule_desconhecida_por_truncamento"] = True
+    anular_resumos_incertos(summary, grade_rows=grade_rows, truncated=truncated, status=status)
 
     # Fix Important 2 (revisao final): period so existe quando include_metrics
     # pede a janela — aditivo, senao muda o contrato de quem so le a grade.

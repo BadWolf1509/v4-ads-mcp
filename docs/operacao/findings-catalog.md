@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~4700 linhas, 504 KB, IDs de **F1 a F190** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** só 44 findings têm cabeçalho `## F<n>` próprio e os demais vivem dentro de outras entradas, então toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~5100 linhas, 535 KB, IDs de **F1 a F191** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** só 44 findings têm cabeçalho `## F<n>` próprio e os demais vivem dentro de outras entradas, então toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -3336,7 +3336,7 @@ mudança).
 
 ---
 
-## F179 (HIGH, ABERTO) — `admin_invites_cancel` audita um cancelamento que pode não ter acontecido
+## F179 (HIGH, CORRIGIDO em 2026-09-21) — `admin_invites_cancel` audita um cancelamento que pode não ter acontecido
 
 **Sintoma.** `src/web/routes/admin_invites.py:113`: dentro do
 `async with conn.transaction():` que esta mesma PR introduziu (Task 5,
@@ -3370,6 +3370,19 @@ padrão que `admin_accounts_google_restore` (`admin_accounts.py:86-92`) já
 usa — recusa cedo com uma flash message quando a ação não faria sentido —
 mas aqui a checagem só é possível DEPOIS do `DELETE` (o "não faria sentido"
 não dá pra ver antes, é o resultado do próprio `DELETE` que revela).
+
+---
+
+✅ **CORRIGIDO em 2026-09-21**, como parte do **F191** (mesma classe: seis superfícies
+onde uma ausência de medição virava zero ou sucesso). `admin_invites.py` passou a ler o
+`bool` de `delete_invite`: `cancelou = await managers_repo.delete_invite(conn,
+manager_id=parsed_invite_id)`, repassado a `_audit_admin(..., had_effect=cancelou)`. Sob
+`False`, o `audit_log` grava `had_effect=false` (migration
+`011_audit_log_had_effect.sql`, coluna nullable, molde da 007) e o admin vê *"Esse
+convite já foi aceito — nada foi cancelado."* — as duas pontas da opção (a) que esta
+entrada deixava em aberto: recusa visível, não silêncio. Teste de integração visto
+vermelho contra o código pré-fix (restaurado por cópia), verde depois. Detalhe completo,
+incluindo os outros cinco membros da mesma classe, em **F191**.
 
 ---
 
@@ -4689,3 +4702,417 @@ Quatro dos seis achados eram **defeitos criados ou expostos pelo próprio fix**,
 ### ⚠️ O débito declarado
 
 > **Não foi medido se o token já vazou.** Decisão do Wellington em 2026-09-21: consertar para frente, sem rotação de token nem expurgo do log. A contagem que responderia é um `COUNT(*)` em `audit_log` por `error_message` contendo o nome do parâmetro de token, e **ela não foi executada**. Registrado para que "ninguém mediu" não vire "nunca aconteceu".
+
+---
+
+## F191 (HIGH, CORRIGIDO em 2026-09-21) — uma ausência lida como medição, em seis superfícies
+
+**Achado pela varredura ampla de 5 agentes paralelos em 2026-09-21** (sub-projeto 2 de 4,
+Classe A de uma reclassificação feita no mesmo dia: os achados não se agrupavam bem por
+sintoma — a divisão original era "respostas / infra / guards" — e sim por **forma de
+defeito**. Todo membro abaixo tem a mesma: *um retorno que responde "teve efeito?" é
+descartado, e a ausência que sobra é lida como zero.* Spec:
+[`2026-09-21-terceiro-estado-nao-medido-design.md`](../superpowers/specs/2026-09-21-terceiro-estado-nao-medido-design.md);
+plano: [`2026-09-21-terceiro-estado-nao-medido.md`](../superpowers/plans/2026-09-21-terceiro-estado-nao-medido.md).
+Um dos seis membros já tinha entrada própria — **F179**, agora fechada e apontando pra cá.
+
+⚠️ **Nota de numeração:** a entrada do F190 chama de "sub-projeto 2 da mesma varredura" um
+recorte DIFERENTE (`_parse_buc_header_pct` devolvendo `0`, `spend_brl`/`cpc_brl` fixos,
+divergência de `ctr`, taxonomia de `actions`, janelas de atribuição — achados de métrica
+Meta). Aquele texto foi escrito **antes** da reclassificação que a abertura do spec deste
+finding documenta. Os dois "sub-projeto 2" não descrevem o mesmo recorte, e qual dos dois
+rótulos é o vivo não foi conferido aqui — fica escrito para não confundir quem grep por
+"sub-projeto 2" depois.
+
+### A regra já existia — o defeito é a falta de mecanismo, não da regra
+
+A regra está escrita neste repo, e corretamente aplicada em dois pontos. `mutations.py`,
+`anotar_efeito_por_operacao`:
+
+> `None` — desconhecido. Op que falhou (...), ou resposta sem `resource_names`. **Não saber
+> é diferente de não ter mudado, e afirmar `sem_efeito` a partir de uma ausência seria
+> cometer o F184 do nosso lado.**
+
+E `apply_change` documenta o mesmo para `failed_count: null` — *"null significa NAO MEDIDO,
+nao 'nenhuma falhou'"*. O que faltava não era a regra: era alguém aplicá-la nos outros seis
+lugares. É a lente da varredura de 21/09 (F188/F189/F190) de novo — **a regra existe e o
+mecanismo não.**
+
+### A sonda do `Unpack` — medida, não deduzida
+
+A regra da casa proíbe assertar superfície de API externa por analogia (F87, F89). O
+`Unpack` de `google.protobuf.any_pb2.Any` foi sondado contra o protobuf instalado
+(`google-ads` 31.1.0), não deduzido:
+
+```
+Unpack(tipo CERTO)        -> True   | alvo populado
+Unpack(tipo ERRADO)       -> False  | sem excecao
+Unpack(type_url alterado) -> False  | compara por NOME COMPLETO do tipo
+```
+
+Três fatos usados no desenho: (1) `Unpack` devolve **`bool`**; (2) na divergência ele **não
+levanta** — devolve `False` e deixa o alvo intocado; (3) a comparação é pelo **nome
+completo** do tipo, então um `type_url` de outra versão do proto devolve `False` sem avisar.
+
+### 1. `erros_por_indice` — o núcleo, e os dois gatilhos
+
+`src/google_ads/partial_failure.py:80` (era função solta, hoje produz `LeituraDeFalhas`,
+definida na linha 47). Antes:
+
+```python
+failure_pb = client.get_type("GoogleAdsFailure")._meta.pb()
+raw.Unpack(failure_pb)          # retorno descartado
+for gae in failure_pb.errors:   # vazio se o Unpack falhou
+```
+
+`False` ⇒ `failure_pb` zerado ⇒ o laço não roda ⇒ a função devolvia `{}` — o mesmo `{}` que
+significa "nenhuma linha falhou". **Dois gatilhos, e eles não têm a mesma probabilidade:**
+
+| gatilho | avaliação |
+|---|---|
+| o `except Exception` do laço (`partial_failure.py:139`) — já existia e já loga `partial_failure_detail_unpack_failed` | **realista**: qualquer drift de campo do proto cai aqui |
+| `Unpack` devolvendo `False` por divergência de versão no `type_url` | **latente, e NÃO OBSERVADO em produção** |
+
+Não se afirma que o segundo já disparou. Ninguém mediu — e é exatamente o que este finding
+existe para não fazer por conta própria. O módulo é inconsistente por construção sobre esse
+gatilho: o filtro que decide se um `detail` é `GoogleAdsFailure` é deliberadamente agnóstico
+de versão (`"GoogleAdsFailure" not in raw.type_url`, comentário no código: *"o type_url evita
+importar a classe versionada do proto"*), mas o alvo entregue ao `Unpack`
+(`client.get_type("GoogleAdsFailure")`) é **versionado**, seguindo a versão configurada do
+cliente. A defesa contra variação de versão está num lado e a sensibilidade a ela está no
+outro.
+
+A docstring antiga se contradizia com o resto do módulo. Justificava engolir a falha assim
+— *"quem chama já tem a contagem de falhas por outra via"* — verdade em `run_mutation`
+(lê `WhichOneof`) e em `run_conversion_upload` (heurística em `results`), e **falsa** no
+Customer Match, cuja resposta só tem `partial_failure_error`. O próprio docstring do módulo,
+dois parágrafos acima, já registrava esse terceiro caso — sem que ninguém cruzasse os dois
+fatos.
+
+**Fix (Task 2):** `erros_por_indice` devolve `LeituraDeFalhas(erros: dict[int, ErroDeLinha],
+medido: bool)` — um `@dataclass(frozen=True, slots=True)`, não `tuple[dict, bool]`, de
+propósito: tupla é desempacotável por descuido (`erros, _ = ...` passaria batido numa
+revisão), e sem `.items()` os três call-sites antigos quebram **no mypy strict**, que é onde
+se quer que quebrem. `medido=False` quando o `except` dispara OU quando `code != 0` mas
+nenhum detail desempacotou (a linha que se esquece: `code != 0` afirma que houve falha —
+sair dali com `erros={}` e `medido=True` seria o defeito original com roupa nova).
+
+### 2. O gradiente de severidade, medido nas três leitoras
+
+A varredura original tratou as três leitoras como um caso só. Medido campo a campo, são
+**dois níveis**, e só um envolve PII:
+
+| leitora | como detecta falha | por que este nível |
+|---|---|---|
+| **`customer_match.py:306`** | 🔴 **ALTO** — **só** por `erros_por_indice`. O comentário do próprio código diz: *"A resposta deste RPC nao tem lista por-op: quem falhou so aparece pelo indice dentro do partial_failure_error"* | é a **única** das três cuja detecção de falha depende **inteiramente** de `erros_por_indice` — não há um segundo sinal (`WhichOneof`, heurística) para cair de volta. Sob `medido=False`, `membros_recusados` vazio virava o lote inteiro de PII hasheada reportado como 100% aceito |
+| `mutations.py:93` (dentro de `_parse_partial_failures`, `mutations.py:44`) | 🟡 MÉDIO — `WhichOneof("response")` por operação, **independente** do mapa de erros | a contagem de falhas sobrevive por outro caminho; só a mensagem degradava (`"Unknown partial failure"`, que afirma ter lido o motivo e não leu) |
+| `conversions.py:290` | 🟡 MÉDIO — heurística `result.conversion_action` falsy, também independente | idem: `failed_count` sobrevive, só a mensagem degradava |
+
+### 3. O Critical que a Task 4 introduziu — e o fix round fechou
+
+**A branch quase passou a introduzir o próprio defeito que existe para remover, num lugar
+pior que o original.** `classify_partial` (`src/mcp/tools/_common.py:20`), consumida por
+**três tools do ramo AUTO** — `add_keywords.py:136`, `add_negatives_from_search_terms.py:115`
+e `apply_audience.py:296` — decidia o status por-linha assim: `status="success"` vence
+sempre; senão, se `error` casa um `exists_pattern`, vira idempotência; senão `"failed"`. O
+problema: **até a Task 4, `error is None` sozinho significava "aplicou"** — certo enquanto
+`error` só podia ser `None` por ausência de erro. A própria Task 4 tornou isso **errado**: fez
+`error` da linha virar `None` também quando `leitura.medido` é `False` (motivo não lido).
+Uma linha que o `WhichOneof` **mediu como falha**, com motivo não lido, passaria por
+`classify_partial` e voltaria `ok_status` — **`"added"`, numa tool de mutate AUTO, sem
+confirmação humana.**
+
+Achado só na revisão pós-Task-4 (1 Critical, 2 Important, 2 Minor — reprovada). **Ruling 5**
+tirou o conserto da lista de arquivos que a Task 4 declarava (`_common.py` e as 3 tools do
+AUTO não estavam nela) porque o defeito era real e o custo de não corrigir era maior que o
+de estourar o escopo. Fix (round 1/5, commit `beff18d`): `classify_partial` ganhou `status`
+**obrigatório** (keyword-only) que decide **primeiro** — `status="success"` → `ok_status`
+sempre, ignorando `error`; só sob `status="failed"` é que `error` entra em jogo (padrão
+idempotência, senão `"failed"`). Os 3 call-sites passam `status=per_op["status"] if per_op
+else "success"`. Dois guards novos, verificados por sabotagem (simulando o corpo antigo:
+devolve `"added"` em vez de `"failed"` — o teste pega). Re-revisão: 4/4 ADDRESSED, 0 open.
+
+### 4. F179 — o audit deixa de afirmar um cancelamento que não ocorreu
+
+Já catalogado (entrada própria, agora fechada — ver abaixo). `src/web/routes/admin_invites.py`
+descartava o `bool` de `managers_repo.delete_invite` (que só deleta `WHERE status =
+'invited'`) e chamava `_audit_admin` incondicionalmente. Convidado que loga entre o `SELECT`
+e o `DELETE` já está `status='active'`; o `DELETE` não afeta linha nenhuma; o audit afirmava
+um cancelamento que virou conta ativa. A transação do F174 tornou o par escrita+audit
+**atômico**, não **verdadeiro** — os dois commitam juntos mesmo quando a escrita não teve
+efeito.
+
+**Migration `011_audit_log_had_effect.sql`**, moldada no precedente da **007**
+(`007_audit_log_dry_run.sql`, F148): coluna **nullable**, sem entrar no enum público de
+`status` (`success|error|denied`, filtro de `get_my_audit_log` — mexer nele quebraria
+consumidor, mesma razão escrita na 007). `NULL` não afirma nada sobre linhas anteriores ao
+fix.
+
+```sql
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS had_effect boolean;
+COMMENT ON COLUMN audit_log.had_effect IS
+  'true = a escrita afetou linha; false = passou sem efeito; NULL = nao medido ou anterior ao fix (F179).';
+```
+
+Fix (`admin_invites.py:116-127`): `cancelou = await managers_repo.delete_invite(...)`, lido
+e passado a `_audit_admin(..., had_effect=cancelou)`; sob `not cancelou`, o admin vê *"Esse
+convite já foi aceito — nada foi cancelado."* As duas pontas, não uma — (1) é a trilha, (2)
+é a UX, e recusar antes do `DELETE` não é possível (só o resultado dele revela o caso). Fix
+round 1/5 (commit `264ad29`) acrescentou o teste de integração que faltava (a regra F86→F109
+do `CLAUDE.md`: "fix sem teste que falhe contra o código pré-fix não fica fechado") — visto
+**vermelho contra o código pré-fix restaurado por cópia**, verde depois.
+
+### 5. O CSV do audit passa a provar que terminou
+
+`src/web/routes/admin_audit.py` e `src/web/routes/audit.py` compartilham o mesmo `stream()`
+sem `try/except` nenhum em cima de `audit_log.export_csv_rows`. `StreamingResponse` já
+emitiu `200 OK` e o `Content-Disposition` antes da primeira linha — exceção no meio do cursor
+(queda de conexão, erro de query, timeout do pool) corta o corpo, e o gestor recebe um CSV
+**sintaticamente válido e truncado**, indistinguível de um export que só achou poucas linhas.
+
+**Fix:** `export_csv_rows` (`audit_log.py:126`) emite uma **linha-sentinela** final —
+`# v4-ads-mcp: export completo, N linhas` no caminho feliz, ou `# v4-ads-mcp: EXPORT
+INCOMPLETO apos N linhas — {e}` sob exceção, relançada em seguida para preservar o log do
+servidor. A ausência da sentinela lê como incompleto: **fail-closed por construção.** O `#`
+inicial não é comentário CSV (CSV não tem); é o primeiro campo de uma linha CSV de uma
+coluna só, bem-formada via `csv.writer` — planilha abre sem erro.
+
+**Alternativa considerada e recusada: bufferizar o export inteiro** para poder falhar antes
+do `200`. Recusada porque `audit_log` é a tabela que **mais cresce** no schema, e o cursor
+server-side em `export_csv_rows` existe justamente para não carregá-la inteira na memória —
+bufferizar trocaria um problema de honestidade por um de memória.
+
+O teste que o plano trazia verbatim **não podia passar como escrito** (`[l async for l in
+export_csv_rows(...)]` sobre um gerador que dá `yield` dentro do `except` e depois `raise` —
+o `raise` só emerge na chamada seguinte de `__anext__`, fora da list-comprehension, antes de
+qualquer `assert` rodar). O implementador trocou por `async for` manual dentro de
+`pytest.raises`, o que é **estritamente melhor**: passa a asserir que a exceção sobrevive até
+o chamador, garantia que o plano exigia em prosa e não testava.
+
+### 6. `filters_applied` — derivado da query, não escrito à mão
+
+Três tools publicam `filters_applied`. Medido campo a campo contra o `WHERE` de cada query —
+**7 declarados, 5 escondidos**, e os três escondiam o mesmo `ENABLED`:
+
+| tool | declarava | cortava e **não** declarava |
+|---|---|---|
+| `audit_zombie_keywords` | `ad_group_ids`, `limit` | `ad_group_criterion.status='ENABLED'`, `ad_group_criterion.negative=FALSE` |
+| `audit_quality_score` | `ad_group_ids`, `min_impressions`, `limit` | `ad_group_criterion.status='ENABLED'`, `quality_info.quality_score IS NOT NULL` |
+| `audit_orphan_smart_actions` | `category`, `limit` | `conversion_action.status='ENABLED'` |
+
+Um gestor perguntando *"quais keywords estão desperdiçando?"* recebia uma resposta
+silenciosamente escopada a keywords ativas e não-negativas — as pausadas com custo acumulado
+não apareciam, e nada na resposta dizia isso. Nomear alguns filtros faz a lista ler como
+**a** lista.
+
+**Fix:** cada builder (`src/google_ads/queries/audit_{zombie_keywords,quality_score,
+orphan_smart_actions}.py`) passa a devolver `tuple[str, dict[str, Any]]` — `(gaql,
+filtros_aplicados)` — e a tool monta `filters_applied` como `{**filtros_da_query,
+<filtros client-side que ela mesma aplica>}` (ex.: `audit_quality_score.py:153`, onde
+`min_impressions` — threshold client-side em `flag_keywords`, nunca entra no `WHERE` — e
+`limit` se somam ao que a query devolveu). Fecha a **classe**, não a instância: um filtro
+novo numa query futura aparece na resposta sem ninguém lembrar de acrescentá-lo. O teste
+correspondente (`test_filters_applied_e_derivado.py`) usa um mapa campo-do-WHERE→chave
+**derivado via regex sobre o GAQL**, não chaves nomeadas uma a uma — o revisor confirmou a
+propriedade **empiricamente**, injetando `AND campaign.status = 'ENABLED'` numa query sem
+tocar no dict e vendo o teste ir a vermelho com a mensagem certa.
+
+### 7. `get_ad_schedule` — o terceiro jeito de a lista ficar vazia
+
+`summarize_current` (`src/google_ads/ad_schedule.py:330`) lê lista vazia como *"esta campanha
+serve 24x7"* (`has_schedule: false`, `hours_per_week: 168`) — uma afirmação sobre entrega. O
+F147 já tinha consertado **dois** dos jeitos de a lista vir vazia sem significar isso: a
+campanha **ausente** do corte, e a da **borda** (última linha lida, grade possivelmente
+cortada no meio). Os dois entram em `campanhas_com_grade_incerta`
+(`src/mcp/tools/get_ad_schedule.py:137`), cujo comentário já avisava: *"separar as clausulas
+de novo e como o F128 nasceu."*
+
+**O terceiro não estava na enumeração:** o parâmetro `status`, que filtra os **critérios** e
+tem default `enabled`. Pedir `status='paused'` numa campanha cujas janelas são todas
+`ENABLED` faz a query devolver zero linhas — e o resumo respondia *"serve 24x7"* sobre uma
+campanha cuja grade real não foi lida.
+
+**Fix:** `campanhas_com_grade_incerta` ganhou a terceira família **na própria função**, não
+num `if` paralelo (2026-09-21, comentário no código: *"separar as familias de novo e como o
+F128 nasceu"*). Sob `status != "enabled"`, a função devolve `set(campanhas)` inteira —
+**deliberadamente pessimista**, inclusive em `status='all'`:
+
+> Daria para derivar o subconjunto enabled client-side, e isso exigiria um segundo argumento
+> de corretude que nada testa.
+
+**Nota de escopo (Ruling 7, verificada por grep):** existe um **segundo call-site** de
+`campanhas_com_grade_incerta`, em `apply_change.py:401` (confirmação pós-mutação de
+`update_ad_schedule`), que passa `status="enabled"` **mesmo a query de linha 361 pedindo
+`status="all"`** — de propósito (§7 do spec de `update_ad_schedule`: confirmar `REMOVED` por
+presença). Não é o gêmeo perdido: `servindo` (`apply_change.py:384`) já filtra as linhas para
+`ENABLED` **duas linhas antes** dessa chamada, então a população entregue à função **já é**
+a de entrega — declarar `"all"` ali marcaria toda confirmação pós-mutação como incerta sem
+truncamento nenhum, reabrindo o F128 pela porta dos fundos. O revisor da Task 8 validou com
+argumento independente: é seguro por ser **superconjunto** — uma campanha só sai de
+`lidas`/escapa da borda se TODAS as suas linhas sobreviveram ao corte, o que implica que as
+`ENABLED` também sobreviveram.
+
+### A correção ao próprio spec — o guard
+
+O spec (§4.7) desenhou o guard varrendo `ast.Expr` cujo `.value` é `ast.Call` diretamente.
+**Medido depois de aprovado, isso pegava 1 dos 3 alvos:**
+
+```
+Unpack:            1 chamada,  1 com retorno DESCARTADO
+delete_invite:     1 chamada,  0 com retorno descartado   <-- perdido
+erros_por_indice:  3 chamadas, 0 com retorno descartado
+```
+
+Duas causas: (1) `await managers_repo.delete_invite(...)` é
+`ast.Expr → ast.Await → ast.Call` — sem desembrulhar o `Await`, o guard perde **todo `await`
+descartado**, quase todo o codebase async; (2) **`erros_por_indice` nunca tem o retorno
+descartado** — é sempre consumido, e o defeito era que o valor consumido não conseguia
+expressar incerteza. Um guard de "retorno descartado" é vacuamente verde nele; o mecanismo
+correto é o **mypy strict** (via `LeituraDeFalhas` sem `.items()`), não uma segunda asserção
+que diverge da primeira no dia em que uma for atualizada.
+
+`tests/unit/test_terceiro_estado_guard.py` implementa a forma corrigida: desembrulha
+`ast.Await`, acusa `Unpack` e `delete_invite` por retorno descartado, e trata
+`erros_por_indice` **só como controle anti-vacuidade** (se a contagem de chamadas cair abaixo
+do piso, o guard perdeu o sujeito — não reafirma o contrato que o mypy já mantém). Piso
+**derivado de medição** sobre os 201 arquivos de `src/` em 21/09: `erros_por_indice=3`,
+`delete_invite=1`, `Unpack=1` — bate com o brief original, sem drift. As três sabotagens
+(Unpack, delete_invite, piso) reproduziram o vermelho esperado, restauradas por cópia
+(`git diff --stat` vazio), nunca `git checkout`.
+
+**Pré-requisito (Task 1):** 6 arquivos stubavam `Unpack` com `fake_unpack(target_pb) ->
+None`. Enquanto a produção descartava o retorno isso não aparecia; no minuto em que ela
+passou a lê-lo, `None` é falsy e todo teste de partial failure teria ido a vermelho **sem
+bug nenhum** — o modo "o mock que bloqueia o conserto". Os 7 pontos (`test_reporta_o_que_
+aconteceu.py` tem dois) passaram a `return True`, ficando fiéis ao proto sondado, antes de
+qualquer mudança em produção — para que o vermelho das tasks seguintes distinguisse bug de
+mock.
+
+### O que ficou de fora, escrito
+
+- **F154** — decisão do Wellington em 21/09, antes deste trabalho começar. Mesma classe,
+  outra forma (um sinal que responde uma pergunta e é exibido como outra); toca
+  `jobs/meta_resync` e o painel admin, subsistemas que nenhum membro acima toca. **Spec
+  próprio.**
+- **Resto da Classe B** (guards que não cobrem): `<style>` como elemento não coberto por
+  nenhum guard (F178), o guard de reconnect varrendo só `src/web/routes` e deixando o
+  caminho de login fora, e o remédio geral do F187. Só o pedaço de B que **bloqueava** a
+  Classe A entrou aqui — os mocks de `Unpack` (Task 1).
+- **Classe C** — `migrate.py` sem lock advisory. Não é a forma deste finding, e a migration
+  011 que ele adiciona faz do lock um assunto **adjacente, não pré-requisito**: `ADD COLUMN
+  IF NOT EXISTS` é idempotente por construção.
+- **~4 achados da varredura ainda não recuperados.** Os 5 relatórios dos agentes paralelos
+  **não foram persistidos em disco** — a extração do transcript ficou pendente (e o job que
+  tentava foi morto na Task 5 desta mesma branch, 2h48 rodando, 0 bytes de saída). O que
+  entrou neste finding foi **remedido direto no código**, evidência mais forte que o
+  relatório; o que não coube nisso continua não verificado e **não vira trabalho até ser**.
+- **Uniformizar o `type_url` dos mocks pra v24.** Os 6 arquivos da Task 1 seguem com `v20`
+  (5 deles) e `v24` (1). Mudança de outro escopo — misturá-la aqui tornaria o vermelho das
+  Tasks 1-2 ambíguo, que é exatamente o erro que a ordem Task1→Task2 existe para evitar.
+- **F185, F186, F180 ficam como estão** — decisão do Wellington em 21/09, anterior a este
+  trabalho.
+
+### Minors deferidos, para triagem
+
+**As duas que o Wellington marcou como prioridade de triagem:**
+
+1. 🔒 **(único achado com cheiro de segurança em toda a branch)** — a sentinela de erro do
+   CSV (item 5 acima) embute `{e}` **cru** em `audit_log.py:213`, entregue por
+   `/audit/export.csv` — rota alcançável por gestor **não-admin** (`src/web/routes/audit.py`,
+   distinta de `/admin/audit/export.csv`). Uma exceção de conexão pode carregar fragmento de
+   DSN. Mitigado porque o mesmo arquivo já despeja `error_message` cru das linhas de dados —
+   não é uma exposição nova, é a mesma classe já presente. Conserto barato: emitir o **nome
+   do tipo** da exceção em vez de `str(e)`.
+2. `audit_quality_score` e `audit_orphan_smart_actions` **não declaram** o critério
+   client-side que define o que é devolvido — os thresholds de QS (`_QS_PAUSE_MAX=2`,
+   `_QS_PROMOTE_MIN=7`, em `flag_keywords.py`) e o corte `all_conversions == 0.0` —, enquanto
+   `audit_zombie_keywords` declara o seu via `"definicao_de_zumbi": "impressions == 0 AND
+   clicks == 0"` (`audit_zombie_keywords.py:139`). É o mesmo defeito do item 6 acima, do outro
+   lado: fato certo, faltando no lugar onde a decisão é lida. Conserto: 2 linhas em cada tool.
+
+**Os demais, por task:**
+
+3. (Task 1) O guard de fidelidade dos mocks aceita `return None` **explícito** —
+   `no.value is not None` testa "tem expressão de retorno", não "a expressão não é `None`".
+   É exatamente o defeito que ele existe para pegar (modo "asserção adjacente à invariante").
+   Risco hoje zero — os 7 fakes usam `return True` literal.
+4. (Task 3) `customer_match.py:448` pode emitir *"Atencao: None membro(s) JA foram
+   enviados"* ao gestor sob leitura não confiável. Gestor não-anglófono pode ler `None` como
+   **zero**, o oposto de "desconhecido" — numa frase cujo propósito é impedir reenvio.
+   Mitigado porque o resto da frase é inequívoco.
+5. (Task 3) Janela teórica estreita: em `partial_failure.py`, os dois `getattr` de contexto
+   rodam **fora** do `try`. Uma exceção não-`AttributeError` ali sobe com `pii_anexada=True`
+   já setado e `membros_recusados` no default `[]` em vez de `None`, reproduzindo o defeito
+   de origem nesse caminho específico. Trocar o default para `None` **não serve** — quebraria
+   a regra no sentido oposto (`members_failed=None` ao lado de `members_submitted=0` onde
+   zero é a verdade, na parada antes do passo 2). O conserto certo alarga o `try`.
+6. (Task 4) Assimetria sob leitura parcialmente medida: `mutations.py` descarta o mapa de
+   erros inteiro daquela resposta; `conversions.py` devolve o dado real do índice presente.
+   As duas são defensáveis (conservadora vs. informativa) e o spec não decide entre elas —
+   questão de desenho, não defeito.
+7. (Task 4) Fora das fixtures corrigidas, **~9 outras** nos 3 arquivos de tool usam
+   `"status": "added"` — o rótulo de SAÍDA da tool — onde `run_mutation` de fato devolve
+   `"success"` (neutro). Não quebraram porque não afirmam sobre `status`. Mesma família do
+   F87/F89 ("teste que codifica a convenção errada é pior que teste ausente"): armadilha
+   latente para quem mexer perto.
+8. (Task 5) A coluna `had_effect` entra nos dicts de `SELECT al.*` de `/audit` e
+   `/audit/{id}`, e nenhum template a referencia (grep confirmado). Registro para não se
+   perder se um template futuro iterar a linha inteira.
+9. (Task 8) O nome do parâmetro `status` em `campanhas_com_grade_incerta` conflacia "filtro
+   pedido na query" com "esta população representa entrega" — smell de API que só funciona
+   certo quando o chamador entende uma segunda camada de contrato fora da assinatura (ver
+   item 7 acima). Sugestão: um booleano explícito (`populacao_e_de_entrega`) em vez de
+   reaproveitar a string.
+10. (Task 8) Nenhum teste exercita os **dois marcadores simultaneamente**
+    (`schedule_desconhecida_por_truncamento` **e** `schedule_desconhecida_por_filtro` na
+    mesma resposta). Lacuna do plano, não do código — o código trata os dois como
+    independentes (comentário: "os dois marcadores podem aparecer ao mesmo tempo").
+11. (Task 8) Nenhum teste combina corte na fronteira com status misto **na mesma campanha**
+    — o caso que sustenta o argumento de superconjunto do Ruling 7. Verificado por leitura
+    pelo revisor; não há regressão travando.
+12. (Task 9) A docstring do guard central diz *"pegava 1 dos 3 alvos"*, frase ambígua: são
+    2 alvos de acusação (`Unpack`, `delete_invite`) + 1 de contagem (`erros_por_indice`), não
+    3 alvos do mesmo tipo.
+
+### Imprecisões de autoria do plano
+
+O ledger da execução (`progress.md`) registra várias imprecisões no *meu próprio* plano,
+descobertas só ao implementar. A maioria é cosmética; **duas são a regra F57 do próprio
+`CLAUDE.md` — "don't adicionar gate/pré-flight a todos os executores sem grep TODA função
+que chama X" — quebrada no planejamento, não no código:**
+
+- **Task 4:** a lista de arquivos não incluía `src/mcp/tools/_common.py` nem as 3 tools do
+  ramo AUTO que consomem `classify_partial`. Achado só na revisão, virou o Critical do item 3
+  acima (Ruling 5).
+- **Task 8:** a lista de arquivos não incluía o segundo call-site de
+  `campanhas_com_grade_incerta` em `apply_change.py:401`. Achado pelo mypy + `TypeError`
+  (Ruling 7). **Duas vezes no mesmo plano** — o plano que existe para consertar consertos que
+  pegam um gêmeo e deixam o outro cometeu a mesma classe de erro na própria escrita.
+
+As demais, cosméticas ou de menor custo:
+
+- **Task 1:** números de linha do brief não batiam com os reais (o brief estimava a área de
+  edição; o AST aponta o `def`). Os 7 pontos foram todos achados mesmo assim.
+- **Task 3:** o brief dizia "quatro ocorrências de `len(progresso.membros_recusados)`" e
+  listava três, chamando de quarta uma linha que **não é** `len()` e que o próprio brief
+  mandava não tocar — texto auto-contraditório; o implementador leu certo.
+- **Task 5:** o brief presumiu um helper `_flash` que **não existe** — o real é
+  `_admin_flash`. O brief mandava conferir, e o implementador conferiu.
+- **Task 6, a mais séria do grupo cosmético:** o código de teste **verbatim no plano não
+  podia passar como escrito** (detalhe no item 5 acima — list-comprehension sobre generator
+  que levanta depois do último `yield`). Mesma família de um plano anterior cujo
+  `_paginar_graph` não passava no mypy como literalmente escrito. Mais 2 violações reais de
+  lint (`UP035`, `N805` ×2) no texto verbatim, pegas pelo passo 1/7 do full sweep.
+- **Task 6:** mais uma ocorrência de números de linha com drift.
+
+### Verificação
+
+Guard central (`test_terceiro_estado_guard.py`) visto **vermelho contra o código pré-fix**
+por sabotagem, verde depois — nunca `git checkout` para restaurar (restauração por cópia,
+`git diff --stat` vazio, conferida a cada task). `python scripts/check_pre_push.py` 6/6
+EXIT=0 nas 9 tasks de código. **Full sweep obrigatório rodado de verdade** nas Tasks 5 e 6
+(migration nova, query com cursor) — 7/7 nas duas, a Task 5 pegando de quebra um `EXITCODE=1`
+real (`test_migrations_are_idempotent` não atualizado para a 011, não Docker) que só o sweep
+via. Nove commits, um por task (`e134a3c`, `951dfa9`, `2934cce`, `1b15e6b`→`beff18d`,
+`982b6ed`→`264ad29`, `72d0a16`, `e26ae2c`, `19a1b43`, `26ab7a9`), cada um com revisão própria
+— spec ✅ nas 9, qualidade Aprovada em 8 e Reprovada em 1 (Task 4, fechada em fix round 1/5).

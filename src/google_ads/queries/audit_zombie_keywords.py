@@ -19,11 +19,12 @@ def build_audit_zombie_keywords_query(
     start_date: str,
     end_date: str,
     ad_group_ids: list[str] | None,
-) -> str:
-    """GAQL pra keyword_view com fields necessários (audit_zombie_keywords).
+) -> tuple[str, dict[str, Any]]:
+    """GAQL pra keyword_view, MAIS os filtros que ela aplica.
 
-    Filters: date range via gaql_date_clause + status=ENABLED +
-    negative=FALSE + optional ad_group_ids IN clause.
+    A tupla existe porque `filters_applied` era escrito a mao ao lado da
+    chamada e divergiu: declarava 2 filtros e a query cortava 4. Derivar fecha
+    a classe — filtro novo aqui aparece na resposta sem ninguem lembrar.
     """
     start = date.fromisoformat(start_date)
     end = date.fromisoformat(end_date)
@@ -34,7 +35,7 @@ def build_audit_zombie_keywords_query(
         ids = ", ".join(str(int(x)) for x in ad_group_ids)
         ad_group_clause = f" AND ad_group.id IN ({ids})"
 
-    return f"""
+    gaql = f"""
         SELECT
           ad_group_criterion.criterion_id,
           ad_group_criterion.keyword.text,
@@ -53,6 +54,13 @@ def build_audit_zombie_keywords_query(
           AND ad_group_criterion.status = 'ENABLED'
           AND ad_group_criterion.negative = FALSE{ad_group_clause}
     """.strip()
+    filtros: dict[str, Any] = {
+        "ad_group_ids": ad_group_ids,
+        "criterion_status": "ENABLED",
+        "negative": False,
+        "date_range": {"start": start_date, "end": end_date},
+    }
+    return gaql, filtros
 
 
 def parse_keyword_view_row(row: Any) -> dict[str, Any]:

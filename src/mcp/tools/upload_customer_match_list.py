@@ -144,8 +144,17 @@ def _hash_members(members: list[dict[str, Any]]) -> list[dict[str, str]]:
         "hash client-side (PII nunca sai unhashed). LGPD invariants: consent "
         "GRANTED + audit log sem plaintext. Operation: 'add' (incluir) ou "
         "'remove' (excluir — opt-out LGPD). User list deve existir (CRM_BASED + "
-        "Customer Match policy aceita). Tool retorna job_resource_name + hint "
-        "pra checar status (jobs processam em horas no backend Google)."
+        "Customer Match policy aceita). Esta chamada so devolve o PREVIEW "
+        "(dry-run); apos apply_change a resposta traz job_resource_name + hint "
+        "pra checar status (jobs processam em horas no backend Google), mais "
+        "members_submitted (o que o Google ACEITOU) + members_failed + "
+        "failures[] (motivo por membro recusado) + recusas_medidas (bool). "
+        "Quando a leitura de quem foi recusado nao for confiavel, "
+        "recusas_medidas vem `false` e os TRES campos anteriores (members_"
+        "submitted, members_failed, failures) vem `null` JUNTOS — null ali "
+        "significa 'nao consegui saber quantos/quais membros foram recusados', "
+        "nunca 'nenhum foi' (lote de PII nao pode ser lido como 100% aceito so "
+        "por ausencia de leitura)."
     ),
     input_schema=_SCHEMA,
     bucket="defer",

@@ -86,6 +86,7 @@ def _client_with_responses(per_op_errors):
 
         def fake_unpack(target_pb):
             target_pb.errors = fake_failure_pb.errors
+            return True
 
         fake_detail.Unpack = fake_unpack
         response.partial_failure_error.details = [fake_detail]

@@ -80,6 +80,7 @@ def _client_with_responses(per_op_errors):
 
         def fake_unpack(target_pb):
             target_pb.errors = fake_errors
+            return True
 
         raw_any = MagicMock()
         raw_any.type_url = "type.googleapis.com/google.ads.googleads.v20.errors.GoogleAdsFailure"

@@ -111,7 +111,11 @@ async def audit_export_csv(
     status: str = "all",
     days: int = 7,
 ) -> StreamingResponse:
-    """Stream CSV export of the gestor's audit log with current filters applied."""
+    """Stream CSV export of the gestor's audit log with current filters applied.
+
+    O arquivo termina com uma linha-sentinela; a AUSENCIA dela significa
+    export incompleto (o 200 ja foi enviado quando a primeira linha saiu).
+    """
     pool = connection.get_pool()
 
     async def stream() -> AsyncIterator[bytes]:
