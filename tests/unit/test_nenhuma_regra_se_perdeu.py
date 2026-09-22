@@ -120,7 +120,6 @@ ANCORAS = (
 # Contagem fecha o buraco: MOVER mantem o total (sai de um arquivo, entra
 # noutro); APAGAR sem mover derruba. O piso e medido, nunca estimado.
 PISO_DE_OCORRENCIAS = {
-    "best_effort": 4,
     "git checkout": 2,
     "run_with_reconnect": 4,
     "validate_gaql": 5,
@@ -135,17 +134,13 @@ PISO_DE_OCORRENCIAS = {
     "pool.acquire()": 1,
     "python scripts/build_tailwind.py": 3,
     "--v4-gray-300": 2,
-    "--universal": 3,
     "por ordem de criação": 1,
-    "run_blocking": 3,
     "-03:00": 1,
     "change_event": 1,
     "datetime.now": 1,
-    "mgr:<uuid>": 3,
     "blast_radius.classify": 1,
     "?v={{ asset_version }}": 2,
     "_CSRF_EXEMPT_ROUTES": 2,
-    "hx-post": 3,
     'role="button"': 1,
     "onclick=": 1,
     "search_input": 1,
@@ -180,13 +175,25 @@ PISO_DE_OCORRENCIAS = {
     "pin do Tailwind": 1,
     "<link>": 4,
     "aplicar gzip": 1,
-    "{% block head_extra %}": 3,
     "3 Cloud Run Jobs": 1,
     "check bloqueante": 1,
     "dict opcional": 1,
-    "aria-label": 6,
     "<th>": 1,
     "<table>": 1,
+    # Rebase de 22/09 (Task 7, ruling do coordenador). Estes sete pisos foram
+    # medidos ANTES da separacao e contavam as MENCOES do CLAUDE.md, nao a
+    # existencia da regra. A prosa do destino diz a mesma coisa com menos
+    # repeticoes literais, entao a remocao da copia do CLAUDE.md derruba a
+    # contagem sem nada ter se perdido. Cada um foi verificado: a regra esta
+    # no destino. Os novos valores sao a contagem POS-remocao, medida.
+    # NAO rebaseie outros pisos sem verificar a regra no destino primeiro.
+    "best_effort": 3,
+    "--universal": 2,
+    "run_blocking": 2,
+    "mgr:<uuid>": 2,
+    "hx-post": 2,
+    "{% block head_extra %}": 2,
+    "aria-label": 4,
 }
 
 
