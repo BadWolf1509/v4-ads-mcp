@@ -4703,6 +4703,27 @@ Quatro dos seis achados eram **defeitos criados ou expostos pelo próprio fix**,
 
 > **Não foi medido se o token já vazou.** Decisão do Wellington em 2026-09-21: consertar para frente, sem rotação de token nem expurgo do log. A contagem que responderia é um `COUNT(*)` em `audit_log` por `error_message` contendo o nome do parâmetro de token, e **ela não foi executada**. Registrado para que "ninguém mediu" não vire "nunca aconteceu".
 
+**Medido em 2026-09-25 — nenhuma ocorrência.** Transação `READ ONLY` em produção, só
+contagens (nenhum `error_message` saiu do banco):
+
+| onde | detector | janela | ocorrências |
+|---|---|---|---|
+| `audit_log` | `access_token=`, `appsecret_proof=`, valor no formato `EAA…` (regex), e os mesmos em `params_summary` | a história inteira da tabela, 04/05 a 26/09 — o `db_purge` nunca toca o `audit_log` | **0** |
+| Cloud Logging | `"access_token="` e `"appsecret_proof="` em busca global | 30 dias, a retenção | **0** |
+
+**Controles.** No Cloud Logging, controle **positivo**: eventos do próprio app
+(`db_pool_created`, `resync_complete`) aparecem 50 e 32 vezes na mesma busca — sem isso, o
+zero podia ser a busca cega. No `audit_log`, o vazamento só acontecia em **falha de
+transporte**, e das 26 linhas de erro Meta da história inteira nenhuma tem cara de uma
+(`timeout`, `connection`, `Max retries`…). O zero bate com o mecanismo, não só com o
+detector.
+
+**O que isso sustenta:** não há evidência de vazamento nos dois lugares medidos, e a
+decisão de 21/09 — consertar para frente, sem rotação — passa a se apoiar em medição, não
+na falta dela. **O que não sustenta:** Cloud Logging anterior a 30 dias já expirou; e o
+contexto do LLM não se mede direto — a medida indireta é que as falhas de tool Meta são
+auditadas, e o caminho do vazamento nunca disparou nelas.
+
 ---
 
 ## F191 (HIGH, CORRIGIDO em 2026-09-21) — uma ausência lida como medição, em seis superfícies
@@ -5006,6 +5027,9 @@ mock.
   tentava foi morto na Task 5 desta mesma branch, 2h48 rodando, 0 bytes de saída). O que
   entrou neste finding foi **remedido direto no código**, evidência mais forte que o
   relatório; o que não coube nisso continua não verificado e **não vira trabalho até ser**.
+  **25/09:** recuperados do transcript por ID de agente, em segundos, e arquivados em
+  [`_archive/varredura-2026-09-21/`](../_archive/varredura-2026-09-21/README.md) com o
+  destino de cada achado. A regra acima continua valendo para o que eles afirmam.
 - **Uniformizar o `type_url` dos mocks pra v24.** Os 6 arquivos da Task 1 seguem com `v20`
   (5 deles) e `v24` (1). Mudança de outro escopo — misturá-la aqui tornaria o vermelho das
   Tasks 1-2 ambíguo, que é exatamente o erro que a ordem Task1→Task2 existe para evitar.

@@ -18,11 +18,11 @@
 
 ---
 
-## Produção — medido em 2026-09-21
+## Produção — medido em 2026-09-25
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00123-tz8`** — `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O handshake MCP **autenticado NÃO foi conferido**: segue desarmado (F186), então "registry montado" aqui é o que o health afirma, não o que um `tools/list` provou |
+| Revisão servindo | **`v4-ads-mcp-00125-hct`**, 100% do tráfego — `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O handshake MCP **autenticado NÃO foi conferido**: segue desarmado (F186), então "registry montado" aqui é o que o health afirma, não o que um `tools/list` provou |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
 | Catálogo | até **F192** (~5.300 linhas, 545 KB) |
@@ -48,14 +48,30 @@ reconciliação Google roda em **observação**: compara, conta, e **não revoga
 trava depende do soak. O lado **Meta já revoga** (`META_RECONCILE_APPLY=true` desde
 09/09, verificado no mesmo dia).
 
+**Soak medido em 25/09:** 21 execuções diárias (05/09 a 25/09), todas `success`,
+`complete=True`, `applied=False`, `revoked_grants=0` e `revoke_candidates=34` — o backlog,
+conferido por query independente: 34 grants vivos em 9 contas inativas, o mesmo de 05/09.
+Os desvios da previsão têm causa: `added` em 09/09 e 18/09 (contas novas no MCC) e
+`bumped=3` em 24 e 25/09 — **três contas sumiram do MCC** e estão a uma ausência do limiar
+de 3. Se seguirem fora, a execução de **26/09** reporta `removed=3` e `revoke_candidates=46`
+(+12 grants): o primeiro exercício real do caminho de remoção em dry-run. **Antes da
+virada:** o PR 3 do [spec do gate](../superpowers/specs/2026-09-05-gate-google-design.md)
+(fila, log estruturado, runbook da policy), sem sinal de que foi feito.
+
 **Fase 2B travada no soak** — o tombstone dos 8 reports antigos não acontece enquanto os
 gestores não migrarem para `get_performance_breakdown`. Re-checar por `audit_log`.
 ⚠️ O plugin `v4-trafego-google-ads` **0.4.0 empurrava ativamente na direção errada**, com
 duas afirmações falsas sobre o breakdown; o **0.4.1 corrigiu e está instalado** (20/09).
+**Medido em 25/09:** o antigo segue mais usado que o novo — em 30 dias,
+`get_campaign_performance` teve 148 chamadas de 3 gestores contra 33 do
+`get_performance_breakdown` (1 gestor); desde 20/09, 20 contra 14. O 0.4.1 **já** manda
+usar o breakdown em todos os skills, então o motor está em outro lugar: versão do plugin
+na máquina dos outros gestores, ou o LLM escolhendo a tool pelo nome. Separar por gestor
+é a medida de 04/10.
 
 ## Pendências que dependem do Wellington
 
-- **F190 — não foi medido se o token Meta já vazou.** Decisão de 21/09: consertar para frente, sem rotação nem expurgo de log. A conta que responderia é um `COUNT(*)` em `audit_log` por `error_message` com nome de parâmetro de token, e **ela não foi executada** — "ninguém mediu" não é "nunca aconteceu".
+- **Três contas Google saíram do MCC em 24/09** — `4493906974`, `8726746966` e `9450567241`, 4 grants vivos cada. Churn ou desvinculação por engano? A resposta muda a virada da trava Google: se foi engano, revincular antes.
 - **F129** — governança do system user Meta: ação humana, fora do código.
 - **F67** — custom domain `mcpv4.fluxocerto.dev.br`, pendente via LB.
 - **Pedir ao TI da V4 uma identidade `@v4company.com` sem caixa postal** (alias ou conta de serviço) — é o que **desbloqueia o F186 por inteiro**: manager com grant zero, pior caso de vazamento `tools/list`, e a reconciliação não a toca. Sem ela não há token de CI possível: `sessions_create` só emite para o próprio manager logado, e login exige identidade Google do domínio. **Emitir sob um manager existente está recusado** — poria no GitHub Actions um token com alcance de ~38 contas Google e 26 Meta.
@@ -79,14 +95,37 @@ na revisão de contexto e foram executados em seguida, sem aval, porque nunca pr
 
 ### Varredura de 21/09 (5 agentes paralelos, 4 sub-projetos)
 
-| sub-projeto | conteúdo | status |
-|---|---|---|
-| 1 | transporte Meta / token em query string | fechado — **F190** |
-| 2 | terceiro estado não medido (`Unpack`/partial-failure, F179, CSV do audit, `filters_applied`, `get_ad_schedule`) | fechado — **F191**. F154, que fazia parte do recorte original, **saiu para spec próprio** |
-| 3 | não descrito nesta tabela — sem spec ainda | pendente |
-| 4 | não descrito nesta tabela — sem spec ainda | pendente |
+Os 5 relatórios, recuperados do transcript em 25/09 (a extração de 21/09 tinha falhado),
+estão em [`_archive/varredura-2026-09-21/`](../_archive/varredura-2026-09-21/README.md) —
+com o destino de cada achado. **Os status lá são dos agentes**: achado que ninguém remediu
+no código não vira trabalho até ser verificado.
 
-**2 de 4 sub-projetos fechados** (era 1 antes desta sessão). ⚠️ A nota "fora de escopo" do F190 usa "sub-projeto 2" para um recorte DIFERENTE (métricas Meta: `_parse_buc_header_pct`, `spend_brl`/`cpc_brl`, `ctr`, taxonomia de `actions`, janelas de atribuição) — escrita **antes** da reclassificação que a abertura do spec do F191 documenta. Os dois "sub-projeto 2" não são o mesmo recorte; qual dos dois está vivo não foi conferido aqui.
+| sub-projeto (decomposição de 21/09) | status |
+|---|---|
+| 1 · credencial + contratos do SDK Meta | fechado — **F190** |
+| 2 · respostas que afirmam mais do que mediram | **em parte** — núcleo no **F191**; o resto é a frente *respostas Google* |
+| 3 · infra de dados (CSV do audit, guard de reconnect, lock no `migrate.py`, `revoke` Meta) | **em parte** — CSV no F191; o resto é a frente *infra e guards* |
+| 4 · guards que não cobrem (mock que bloqueava o conserto, testes que enumeram) | **em parte** — mock no F191; o resto é a frente *infra e guards* |
+
+As **métricas Meta** que a nota do F190 chama de "sub-projeto 2" (`_parse_buc_header_pct`,
+zero no lugar de campo ausente, `_brl` fixo, atribuição implícita) **nunca estiveram em
+sub-projeto nenhum** — viraram a frente *métricas Meta*.
+
+### Ordem de ataque (25/09)
+
+Medir a exposição, dar dado às decisões, consertos pequenos, e só então specs — um por vez.
+
+1. **Rollout Google** — soak medido (acima): observar a execução de 26/09 → PR 3 do spec do gate → virada da trava e policy de alerta, as duas do Wellington.
+2. **Fase 2B** — medida em 25/09 (acima); em 04/10, separar o uso por gestor, junto da remedição dos buckets.
+3. **F178** — e o guard que faltou: nenhum teste cobre o *elemento* `<style>`.
+4. **Consertos pequenos** — a mensagem "None membro(s)" do Customer Match, o `try` estreito do `partial_failure.py`, `days` sem teto no export CSV do audit.
+5. **Respostas Google** (spec) — o que as respostas escondem do recorte, e o remédio do F187.
+6. **Métricas Meta** (spec) — zero no lugar de "não veio", e o limitador que lê "não sei" como 0%.
+7. **F154** (spec).
+8. **Infra e guards** (spec) — o resto dos sub-projetos 3 e 4.
+9. **`recommendation_subscription`** — tool de leitura no MCC.
+
+### Os abertos, um por linha
 
 | ID | o que é |
 |---|---|
@@ -122,7 +161,8 @@ achados pelo mesmo método: **variar uma coisa só e perguntar por que o resulta
   Cloud Logging e contexto do LLM em qualquer falha de transporte. Fechado em duas
   camadas: redação em `to_friendly_meta_error` (estanca) e transporte httpx com auth por
   header (remove a causa). 19 commits, 7 tasks, verificado em produção.
-  ⚠️ **Débito declarado: NÃO foi medido se o token já vazou** — ver a entrada no catálogo.
+  **Débito medido em 25/09: nenhuma ocorrência** no `audit_log` (história inteira) nem no
+  Cloud Logging (30 dias), com controle positivo — ver a entrada no catálogo.
 
 🔑 **Os três estavam escondidos pela mesma causa: existia a regra e não existia o
 mecanismo.** A invariante do F190 estava escrita no repo desde o F82 (*"token no HEADER,
