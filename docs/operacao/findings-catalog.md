@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~5300 linhas, 545 KB, IDs de **F1 a F192** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 52 têm; 53 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~5400 linhas, 563 KB, IDs de **F1 a F193** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 52 têm; 53 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -5364,3 +5364,77 @@ as regras da área foram junto), o bloco de ponteiros que ficou no `CLAUDE.md`, 
 **Guard:** `tests/unit/test_nenhuma_regra_se_perdeu.py` (2 testes — escopo + as 63 âncoras
 contra piso) e `tests/unit/test_docs_links.py` (orçamento de bytes + links relativos
 resolvem). Ambos rodam no `check_pre_push.py`.
+
+---
+
+## F193 (HIGH, ✅ CORRIGIDO 2026-09-26) — respostas Google que afirmavam mais do que o recorte que mediram
+
+**Origem:** varredura de 21/09, relatórios 01 e 02 (índice: [índice](../_archive/varredura-2026-09-21/README.md)).
+Spec: [`2026-09-25-respostas-google-dizem-o-recorte-design.md`](../superpowers/specs/2026-09-25-respostas-google-dizem-o-recorte-design.md); plano: [`2026-09-26-respostas-google-dizem-o-recorte.md`](../superpowers/plans/2026-09-26-respostas-google-dizem-o-recorte.md).
+
+**A classe.** A do F187 — resumo como superfície de decisão, detalhe como verdade —,
+dentro da resposta das tools: filtro aplicado que a resposta não dizia; razão sem
+denominador virando número; e um preview de mutação que dizia "no periodo" sobre um custo
+de toda a vida. Achada pela varredura de 21/09 (relatórios 01 e 02, arquivados) e
+conferida no código e por probe em 25/09.
+
+**✅ O que foi feito:**
+
+- As 17 funções de query dos cinco módulos (`performance`, `tactical`, `client_report`,
+  `overview`, `bulk_pause`) devolvem `(gaql, filtros)` — o padrão do F191 —, e as 16 tools
+  de leitura (contando o `get_performance_breakdown`) e o preview do `bulk_pause_by_query`
+  ecoam `filters_applied`, com a frase na description conferida por teste; o ramo `no_op`
+  do `bulk_pause_by_query` (zero entidades no filtro) também ecoa. A description dessa
+  tool trocou a regra antiga da janela — auto-injetava só quando o filtro usava
+  `metrics.*` — pela nova, também conferida por teste: `date_range` entra sempre como
+  `segments.date BETWEEN`, exceto quando o filtro do gestor já traz `segments.date`.
+- Cláusula de filtro de métrica e eco têm fonte única: a privada
+  `_clausula_e_eco_de_metrica` (`src/google_ads/queries/_common.py`) devolve `(clausula,
+  ecos)`, e `build_metric_filter_clause`/`filtros_de_metrica` só repassam, cada uma, um
+  lado dela — não descolam por construção, não por um teste que confira depois.
+- `razao()` é a única regra de denominador zero: 33 ocorrências em 14 arquivos viraram
+  `null`; o overview ganhou `sem_dados_no_periodo`. De quebra tirou um `ZeroDivisionError`
+  incidental do `roas` do `get_account_overview` — o guarda antigo era `if cost` (em
+  micros), dividindo por `micros_to_currency(cost)`, e custo entre 1 e 4.999 micros
+  arredonda para 0.0. Nenhum teste nomeia esse caso; fica coberto só genericamente pelos
+  testes de `razao()` (deferido para a revisão final).
+- O `bulk_pause_by_query` mede sempre no período (probe em duas contas: o conjunto a
+  pausar não muda). Um teste existente afirmava a regra que o spec revoga
+  (`test_date_clause_not_injected_when_filter_has_no_metrics`); foi reescrito para afirmar
+  a nova (`test_date_clause_injected_even_when_filter_has_no_metrics`).
+- A auditoria de negativas declara o nível (`campanha`) em vez de "conta inteira".
+- O resumo do `add_negatives_from_search_terms` conta como o envelope.
+
+**Guards:** completude derivada do `WHERE`, agora nos dois sentidos por igualdade de
+conjuntos — chave ecoada sem corte no `WHERE` também falha, não só corte sem chave
+(`_CHAVES_SEM_CAMPO` declara as exceções `nivel` e `filtro_do_gestor`). O parser exige
+reconhecer toda condição (o do F191 não via `>=` nem `DURING`) e confere também o valor —
+literal entre aspas, `= true/false`, `BETWEEN` com as duas datas ou `DURING` —, e uma
+segunda família, `_chamadas_sem_corte()`, cobre os ramos sem corte opcional (status `all`,
+sem mínimos, mínimos zero, `bulk_pause` com a janela já no filtro do gestor); função que
+ainda devolve texto em vez da tupla falha com instrução. Veio de um fix round da revisão
+da Task 2 — o desenho original do plano deixava esse guard verde com chave sem corte,
+status em minúsculas ou janela errada. Eco comportamental por tool: espião com cópia
+profunda do retorno, `_janelas` exigindo que `period`/`previous_period` batam com o
+`date_range` ecoado, população dos 16 Casos por varredura do import e `bulk_pause_by_query`
+coberto à parte em `test_bulk_pause_tool.py`. Desempacotamento nas chamadas de teste,
+inclusive por import com alias (`h.nomes_locais`) — 31 asserts `not in` teriam virado
+verde vazio. Razão indefinida (AST) e igualdade no resumo — com as populações por
+varredura (funções pela anotação de retorno, tools pelo import), não por lista. Cada um
+visto vermelho contra o código anterior.
+
+**Deliberadamente fora:** negativas de grupo e listas compartilhadas (frente própria); o
+ramo `campaign`+`hourly` do breakdown (`day_hour_metrics_query`, em `ad_schedule.py`);
+`get_assets`, `run_gaql` e `audit_competitor_keywords` (já declaram o corte por
+`truncated`); as três tools do F191 (`audit_zombie_keywords`, `audit_quality_score`,
+`audit_orphan_smart_actions`) — já ecoavam `filters_applied` e a description delas segue
+sem a frase, porque o eco inclui cortes client-side (`limit`, `definicao_de_zumbi`) que "o
+recorte que a query aplicou" descreveria a menos; `country_name: null` (já é o terceiro
+estado); modelo de freshness para métricas; as métricas Meta (próxima frente).
+
+**Contrato que mudou:** 13 tools de leitura passaram de número para `null` nas razões sem
+denominador (e o `delta_pct` do preview do `update_campaign_budget`, explicado no texto).
+Consumidor externo, medido em 26/09 no plugin `v4-trafego-google-ads`: uma referência exata
+aos campos, que só os lista; e `relatorio-cliente-google-ads/SKILL.md:33`, que ordena anúncios
+por CTR — com `ctr: null`, a linha sai do ranking em vez de virar 0. O plugin é outro
+repositório: o ajuste é de lá.

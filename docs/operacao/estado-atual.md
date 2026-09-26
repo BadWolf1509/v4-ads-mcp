@@ -25,7 +25,7 @@
 | Revisão servindo | **`v4-ads-mcp-00125-hct`**, 100% do tráfego — `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O handshake MCP **autenticado NÃO foi conferido**: segue desarmado (F186), então "registry montado" aqui é o que o health afirma, não o que um `tools/list` provou |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
-| Catálogo | até **F192** (~5.300 linhas, 545 KB) |
+| Catálogo | até **F193** (~5.400 linhas, 563 KB) |
 
 **Caminho de mutação verificado após os bumps de 20/09** (`grpcio` 1.84, `google-auth`
 2.58, `google-api-core` 2.38): duas mutações reais em `1163862076` com
@@ -105,7 +105,7 @@ no código não vira trabalho até ser verificado.
 | sub-projeto (decomposição de 21/09) | status |
 |---|---|
 | 1 · credencial + contratos do SDK Meta | fechado — **F190** |
-| 2 · respostas que afirmam mais do que mediram | **em parte** — núcleo no **F191**; o resto é a frente *respostas Google* |
+| 2 · respostas que afirmam mais do que mediram | **fechado** — núcleo no **F191**, o resto no **F193** |
 | 3 · infra de dados (CSV do audit, guard de reconnect, lock no `migrate.py`, `revoke` Meta) | **em parte** — CSV no F191; o resto é a frente *infra e guards* |
 | 4 · guards que não cobrem (mock que bloqueava o conserto, testes que enumeram) | **em parte** — mock no F191; o resto é a frente *infra e guards* |
 
@@ -119,11 +119,10 @@ Medir a exposição, dar dado às decisões, consertos pequenos, e só então sp
 
 1. **Rollout Google** — soak medido e PR 3 já feito (acima): observar a execução de 26/09 → virada da trava, do Wellington.
 2. **Fase 2B** — medida em 25/09 (acima); em 04/10, separar o uso por gestor, junto da remedição dos buckets.
-3. **Respostas Google** (spec) — o que as respostas escondem do recorte, e o remédio do F187.
-4. **Métricas Meta** (spec) — zero no lugar de "não veio", e o limitador que lê "não sei" como 0%.
-5. **F154** (spec).
-6. **Infra e guards** (spec) — o resto dos sub-projetos 3 e 4.
-7. **`recommendation_subscription`** — tool de leitura no MCC.
+3. **Métricas Meta** (spec) — zero no lugar de "não veio", e o limitador que lê "não sei" como 0%.
+4. **F154** (spec).
+5. **Infra e guards** (spec) — o resto dos sub-projetos 3 e 4.
+6. **`recommendation_subscription`** — tool de leitura no MCC.
 
 ### Os abertos, um por linha
 
@@ -134,6 +133,8 @@ Medir a exposição, dar dado às decisões, consertos pequenos, e só então sp
 | **F185** | `recommendation_subscription`: 4 de 11 opacos e **sem chave nenhuma** — limitação da API, sem correção possível deste lado |
 | **F187** | o **resumo no topo** de um artefato é a superfície de decisão e o **detalhe embaixo** é a verdade — 4 instâncias medidas, uma quase custou mutação em conta real. Remédio proposto: derivar o resumo, ou guard que cobre a igualdade |
 | **F186** | 🔴 smoke autenticado do `/mcp` **desarmado** — e o manager dele **não existe**: criar exige identidade de serviço no Workspace, acesso que o gestor **não tem**. **ABERTO como risco ACEITO.** No lugar entrou `tools` no `/health?deep=1` (sem credencial), e o desarme aparece como `::warning::` em todo deploy — **observado disparando** nos dois deploys de 21/09, que é o que separa "o aviso existe" de "o aviso avisa" |
+| — | *negativas de grupo e listas compartilhadas na auditoria de negativas* (spec §7: frente própria) |
+| — | fora deste repo: *o skill `relatorio-cliente-google-ads` do plugin ordena anúncios por CTR (`SKILL.md:33`): com `ctr: null`, a linha tem de sair do ranking* |
 
 Fechados em 20/09: **F181, F182, F183, F184** — mais a **2ª instância do F182**, que
 fechou a *classe*: só o `apply_change` descreve a contagem do lote, agora com guard. O
