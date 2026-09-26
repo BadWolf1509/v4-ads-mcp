@@ -59,10 +59,17 @@ de 3. Se seguirem fora, a execução de **26/09** reporta `removed=3` e `revoke_
 (+12 grants): o primeiro exercício real do caminho de remoção em dry-run. O PR 3 do
 [spec do gate](../superpowers/specs/2026-09-05-gate-google-design.md) — filas no painel,
 sinal do alerta, runbook — **já está feito** (Tasks 6 e 7 do plano de 05/09; métrica e
-policy executadas em 05/09, ver `infra-setup.md`). **O que falta para a virada:** a
-execução de 26/09 confirmar a previsão. A resposta sobre as três contas veio em 26/09:
-**churn** — deixaram de ser clientes da unidade, então os 12 grants delas são revogações
-legítimas, não algo a revincular.
+policy executadas em 05/09, ver `infra-setup.md`). **A execução de 26/09 confirmou a previsão:**
+`removed=3` e `revoke_candidates=46` (34 do backlog + 12 das três contas), `applied=False`,
+`complete=True` — lido no `audit_log` em transação READ ONLY. A contagem por estado segue em
+34: em observação a remoção só é projetada, e as três contas continuam `is_active` com
+`missed_syncs=2`. A resposta sobre elas veio no mesmo dia: **churn** — deixaram de ser
+clientes da unidade, então os 12 grants delas são revogações legítimas, não algo a
+revincular. **A virada está destravada e é decisão do Wellington:** trocar
+`GOOGLE_RECONCILE_APPLY=false` por `true` no `JOB_ENV_VARS` do `deploy.yml` (PR com deploy).
+Na primeira execução depois dela saem as três contas e são revogados os 46 grants. **Novo
+em 26/09:** `bumped=1` — Alumínios Veneza (`2640486995`, 4 grants vivos) faltou no
+inventário, 1ª ausência de 3.
 
 **Fase 2B travada no soak** — o tombstone dos 8 reports antigos não acontece enquanto os
 gestores não migrarem para `get_performance_breakdown`. Re-checar por `audit_log`.
@@ -77,6 +84,7 @@ na máquina dos outros gestores, ou o LLM escolhendo a tool pelo nome. Separar p
 
 ## Pendências que dependem do Wellington
 
+- **Alumínios Veneza (`2640486995`) faltou no inventário do MCC em 26/09** — 1ª de 3 ausências, 4 grants vivos. Saiu da unidade ou é transitório? Se seguir fora em 27 e 28/09 a reconciliação a remove; com a trava virada, revoga os 4 grants.
 - **F129** — governança do system user Meta: ação humana, fora do código.
 - **F67** — custom domain `mcpv4.fluxocerto.dev.br`, pendente via LB.
 - **Pedir ao TI da V4 uma identidade `@v4company.com` sem caixa postal** (alias ou conta de serviço) — é o que **desbloqueia o F186 por inteiro**: manager com grant zero, pior caso de vazamento `tools/list`, e a reconciliação não a toca. Sem ela não há token de CI possível: `sessions_create` só emite para o próprio manager logado, e login exige identidade Google do domínio. **Emitir sob um manager existente está recusado** — poria no GitHub Actions um token com alcance de ~38 contas Google e 26 Meta.
@@ -120,7 +128,7 @@ sub-projeto nenhum** — viraram a frente *métricas Meta*.
 
 Medir a exposição, dar dado às decisões, consertos pequenos, e só então specs — um por vez.
 
-1. **Rollout Google** — soak medido e PR 3 já feito (acima): observar a execução de 26/09 → virada da trava, do Wellington.
+1. **Rollout Google** — a execução de 26/09 confirmou a previsão, e as três contas são churn: a virada da trava está destravada, decisão do Wellington.
 2. **Fase 2B** — medida em 25/09 (acima); em 04/10, separar o uso por gestor, junto da remedição dos buckets.
 3. **Métricas Meta** (spec) — zero no lugar de "não veio", e o limitador que lê "não sei" como 0%.
 4. **F154** (spec).
