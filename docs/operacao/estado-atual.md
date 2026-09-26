@@ -18,14 +18,16 @@
 
 ---
 
-## Produção — medido em 2026-09-25
+## Produção — medido em 2026-09-26
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00125-hct`**, 100% do tráfego — `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O handshake MCP **autenticado NÃO foi conferido**: segue desarmado (F186), então "registry montado" aqui é o que o health afirma, não o que um `tools/list` provou |
+| Revisão servindo | deploy do **#111** (merge `83b80ee`; run `36258034445`: migrations, rota de 100% para a nova revisão e smoke `success`) — `/health?deep=1` devolveu `db: ok` e `tools: 68`. **Nome da revisão não medido:** `gcloud` sem credencial em 26/09 (a do #110 era `v4-ads-mcp-00126-n8r`). ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186); em 26/09 as tools responderam por uma sessão autenticada (smoke abaixo), que é prova de `tools/call`, não do `tools/list` da revisão nova |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
 | Catálogo | até **F193** (~5.400 linhas, 563 KB) |
+
+**Smoke de leitura do F193 em produção (26/09, `Conta Interna - 02`):** `filters_applied` em `get_campaign_performance` (com `campaign_status`, e sem ele com `status=all`), `get_account_overview` (aninhado `current`/`previous`, janelas iguais às de `period`/`previous_period`), `get_negative_keywords_audit` (`nivel: "campanha"`), `get_budget_pacing` (`{"during": "THIS_MONTH"}`) e `get_performance_breakdown` por keyword (`criterion_status`); razões `null` num período sem atividade. **Limite medido:** para período sem atividade o Google devolve uma linha **zerada**, não nenhuma linha — então `sem_dados_no_periodo` vem `false` com contagens zero, e só fica `true` quando não vem linha nenhuma. Quem protege a leitura são as razões `null`. As descriptions novas só aparecem em sessão MCP nova (F140).
 
 **Caminho de mutação verificado após os bumps de 20/09** (`grpcio` 1.84, `google-auth`
 2.58, `google-api-core` 2.38): duas mutações reais em `1163862076` com
@@ -135,7 +137,7 @@ Medir a exposição, dar dado às decisões, consertos pequenos, e só então sp
 | **F187** | o **resumo no topo** de um artefato é a superfície de decisão e o **detalhe embaixo** é a verdade — 4 instâncias medidas, uma quase custou mutação em conta real. Remédio proposto: derivar o resumo, ou guard que cobre a igualdade |
 | **F186** | 🔴 smoke autenticado do `/mcp` **desarmado** — e o manager dele **não existe**: criar exige identidade de serviço no Workspace, acesso que o gestor **não tem**. **ABERTO como risco ACEITO.** No lugar entrou `tools` no `/health?deep=1` (sem credencial), e o desarme aparece como `::warning::` em todo deploy — **observado disparando** nos dois deploys de 21/09, que é o que separa "o aviso existe" de "o aviso avisa" |
 | — | *negativas de grupo e listas compartilhadas na auditoria de negativas* (spec §7: frente própria) |
-| — | fora deste repo: *o plugin `v4-trafego-google-ads` tem seis pontos que fazem conta ou ranking com campos que agora podem vir `null` (`analise-performance-google-ads/SKILL.md:44,137`; `relatorio-cliente-google-ads/SKILL.md:33,76-89,112-116`; `shared/v4-brand.md:43`) — o ajuste é tratar `null` como indefinido em todos eles, não só no ranking por CTR, e entra antes do deploy desta branch ou junto dele* |
+| — | fora deste repo: *o plugin `v4-trafego-google-ads` tem seis pontos que fazem conta ou ranking com campos que agora podem vir `null` (`analise-performance-google-ads/SKILL.md:44,137`; `relatorio-cliente-google-ads/SKILL.md:33,76-89,112-116`; `shared/v4-brand.md:43`) — o ajuste é tratar `null` como indefinido em todos eles, não só no ranking por CTR, e entra antes do deploy desta branch ou junto dele* **O deploy saiu em 26/09 antes do ajuste; o texto das 6 mudanças (regra única em `shared/v4-brand.md` e ajustes pontuais) foi entregue ao Wellington no mesmo dia, para aplicar na fonte do plugin (a cópia instalada é um upload, não um repositório).** |
 
 Fechados em 20/09: **F181, F182, F183, F184** — mais a **2ª instância do F182**, que
 fechou a *classe*: só o `apply_change` descreve a contagem do lote, agora com guard. O
