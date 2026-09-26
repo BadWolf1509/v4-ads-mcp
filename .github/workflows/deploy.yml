@@ -45,11 +45,16 @@ jobs:
       # restaura com um clique.
       #
       # `GOOGLE_RECONCILE_APPLY` espelha `META_RECONCILE_APPLY` acima: lida só
-      # por `src/jobs/account_resync.py` (reconcile_google), so o JOB. Comeca
-      # em `false` (Task 5, 2026-09-05) — sobe depois de um soak com
-      # `applied: false` observando `revoke_candidates`, mesmo criterio usado
-      # pro lado Meta.
-      JOB_ENV_VARS: "APP_ENV=production,META_BUSINESS_ID=619664032237208,META_RECONCILE_APPLY=true,GOOGLE_RECONCILE_APPLY=false"
+      # por `src/jobs/account_resync.py` (reconcile_google), so o JOB. Comecou
+      # em `false` (Task 5, 2026-09-05) e foi ligada em 2026-09-26 depois de 22
+      # execucoes de soak com `applied: false` (05/09 a 26/09): a de 26/09 bateu
+      # a previsao (`removed=3`, `revoke_candidates=46`). Raio medido na virada
+      # (26/09, 18:13 UTC): 3 contas e 46 grants — 34 do backlog em 9 contas ja
+      # inativas + 12 de 4493906974, 8726746966 e 9450567241, que deixaram a
+      # unidade. Para desligar, volte para `false` nas DUAS linhas (esta e o
+      # `--set-env-vars` do servico): a revogacao e soft (`revoked_at`) e o
+      # painel restaura com um clique.
+      JOB_ENV_VARS: "APP_ENV=production,META_BUSINESS_ID=619664032237208,META_RECONCILE_APPLY=true,GOOGLE_RECONCILE_APPLY=true"
       JOB_SECRETS: "DATABASE_URL=database-url:latest,SESSION_SIGNING_KEY=session-signing-key:latest,AES_MASTER_KEY=aes-master-key:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,GOOGLE_ADS_DEVELOPER_TOKEN=google-ads-developer-token:latest,GOOGLE_ADS_LOGIN_CUSTOMER_ID=google-ads-login-customer-id:latest"
 
     steps:
@@ -227,7 +232,7 @@ jobs:
             --cpu=1 \
             --memory=512Mi \
             --timeout=300 \
-            --set-env-vars="APP_ENV=production,APP_TIMEZONE=America/Sao_Paulo,LOG_LEVEL=info,BOOTSTRAP_ADMIN_EMAILS=wellington.ribeiro@v4company.com,PUBLIC_BASE_URL=https://v4-ads-mcp-299432068772.southamerica-east1.run.app,META_BUSINESS_ID=619664032237208,META_RECONCILE_APPLY=true,GOOGLE_RECONCILE_APPLY=false" \
+            --set-env-vars="APP_ENV=production,APP_TIMEZONE=America/Sao_Paulo,LOG_LEVEL=info,BOOTSTRAP_ADMIN_EMAILS=wellington.ribeiro@v4company.com,PUBLIC_BASE_URL=https://v4-ads-mcp-299432068772.southamerica-east1.run.app,META_BUSINESS_ID=619664032237208,META_RECONCILE_APPLY=true,GOOGLE_RECONCILE_APPLY=true" \
             --set-secrets="DATABASE_URL=database-url:latest,SESSION_SIGNING_KEY=session-signing-key:latest,AES_MASTER_KEY=aes-master-key:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,GOOGLE_ADS_DEVELOPER_TOKEN=google-ads-developer-token:latest,GOOGLE_ADS_LOGIN_CUSTOMER_ID=google-ads-login-customer-id:latest,META_APP_ID=meta-app-id:latest,META_APP_SECRET=meta-app-secret:latest,META_SYSTEM_USER_TOKEN=meta-system-user-token:latest"
 
       - name: Route 100% traffic to latest revision
