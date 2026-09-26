@@ -233,7 +233,7 @@ def test_recommendations_query_shape() -> None:
 
 
 def test_campaign_performance_query_shape_status_filter_and_order() -> None:
-    q = campaign_performance_query(_S, _E, "enabled", 10)
+    q, _ = campaign_performance_query(_S, _E, "enabled", 10)
     assert "FROM campaign" in q
     for field in (
         "campaign.id",
@@ -254,12 +254,12 @@ def test_campaign_performance_query_shape_status_filter_and_order() -> None:
 
 
 def test_campaign_performance_query_status_all_omits_status_clause() -> None:
-    q = campaign_performance_query(_S, _E, "all", 10)
+    q, _ = campaign_performance_query(_S, _E, "all", 10)
     assert "campaign.status = " not in q
 
 
 def test_ad_group_performance_query_shape_status_filter_and_order() -> None:
-    q = ad_group_performance_query(_S, _E, "paused", 20)
+    q, _ = ad_group_performance_query(_S, _E, "paused", 20)
     assert "FROM ad_group" in q
     for field in (
         "ad_group.id",
@@ -281,12 +281,12 @@ def test_ad_group_performance_query_shape_status_filter_and_order() -> None:
 
 
 def test_ad_group_performance_query_status_all_omits_status_clause() -> None:
-    q = ad_group_performance_query(_S, _E, "all", 20)
+    q, _ = ad_group_performance_query(_S, _E, "all", 20)
     assert "ad_group.status = " not in q
 
 
 def test_device_performance_query_shape() -> None:
-    q = device_performance_query(_S, _E)
+    q, _ = device_performance_query(_S, _E)
     assert "FROM customer" in q
     for field in (
         "segments.device",
@@ -301,7 +301,7 @@ def test_device_performance_query_shape() -> None:
 
 
 def test_geo_performance_query_shape_and_order() -> None:
-    q = geo_performance_query(_S, _E, 15)
+    q, _ = geo_performance_query(_S, _E, 15)
     assert "FROM geographic_view" in q
     for field in (
         "geographic_view.country_criterion_id",
@@ -318,7 +318,7 @@ def test_geo_performance_query_shape_and_order() -> None:
 
 
 def test_hourly_performance_query_shape() -> None:
-    q = hourly_performance_query(_S, _E)
+    q, _ = hourly_performance_query(_S, _E)
     assert "FROM customer" in q
     for field in (
         "segments.hour",
@@ -339,7 +339,7 @@ def test_hourly_performance_query_shape() -> None:
 
 
 def test_keyword_performance_query_shape_status_filter_and_order() -> None:
-    q = keyword_performance_query(_S, _E, "enabled", 25)
+    q, _ = keyword_performance_query(_S, _E, "enabled", 25)
     assert "FROM keyword_view" in q
     for field in (
         "ad_group_criterion.criterion_id",
@@ -371,12 +371,12 @@ def test_keyword_performance_query_shape_status_filter_and_order() -> None:
 
 
 def test_keyword_performance_query_status_all_omits_status_clause() -> None:
-    q = keyword_performance_query(_S, _E, "all", 25)
+    q, _ = keyword_performance_query(_S, _E, "all", 25)
     assert "ad_group_criterion.status = " not in q
 
 
 def test_keyword_performance_query_metric_filters_appended() -> None:
-    q = keyword_performance_query(
+    q, _ = keyword_performance_query(
         _S, _E, "enabled", 25, min_cost_brl=10.0, min_clicks=5, min_conversions=1.0
     )
     assert "AND metrics.cost_micros >= 10000000" in q
@@ -434,7 +434,7 @@ def test_negative_keywords_audit_query_shape() -> None:
 
 
 def test_ad_performance_query_shape_status_filter_and_order() -> None:
-    q = ad_performance_query(_S, _E, "enabled", 12)
+    q, _ = ad_performance_query(_S, _E, "enabled", 12)
     assert "FROM ad_group_ad" in q
     for field in (
         "ad_group_ad.ad.id",
@@ -462,12 +462,12 @@ def test_ad_performance_query_shape_status_filter_and_order() -> None:
 
 
 def test_ad_performance_query_status_all_omits_status_clause() -> None:
-    q = ad_performance_query(_S, _E, "all", 12)
+    q, _ = ad_performance_query(_S, _E, "all", 12)
     assert "ad_group_ad.status = " not in q
 
 
 def test_audience_performance_query_shape_and_order() -> None:
-    q = audience_performance_query(_S, _E, 8)
+    q, _ = audience_performance_query(_S, _E, 8)
     assert "FROM ad_group_audience_view" in q
     for field in (
         "ad_group_audience_view.resource_name",
@@ -528,25 +528,25 @@ def test_conversion_actions_query_shape() -> None:
 
 
 def test_campaign_performance_query_pede_uma_linha_a_mais() -> None:
-    q = campaign_performance_query(_S, _E, "ENABLED", 100)
+    q, _ = campaign_performance_query(_S, _E, "ENABLED", 100)
     assert "LIMIT 101" in q
     assert "LIMIT 100" not in q
 
 
 def test_ad_group_performance_query_pede_uma_linha_a_mais() -> None:
-    q = ad_group_performance_query(_S, _E, "ENABLED", 100)
+    q, _ = ad_group_performance_query(_S, _E, "ENABLED", 100)
     assert "LIMIT 101" in q
     assert "LIMIT 100" not in q
 
 
 def test_geo_performance_query_pede_uma_linha_a_mais() -> None:
-    q = geo_performance_query(_S, _E, 100)
+    q, _ = geo_performance_query(_S, _E, 100)
     assert "LIMIT 101" in q
     assert "LIMIT 100" not in q
 
 
 def test_keyword_performance_query_pede_uma_linha_a_mais() -> None:
-    q = keyword_performance_query(_S, _E, "ENABLED", 100)
+    q, _ = keyword_performance_query(_S, _E, "ENABLED", 100)
     assert "LIMIT 101" in q
     assert "LIMIT 100" not in q
 
@@ -558,13 +558,13 @@ def test_search_terms_query_pede_uma_linha_a_mais() -> None:
 
 
 def test_ad_performance_query_pede_uma_linha_a_mais() -> None:
-    q = ad_performance_query(_S, _E, "ENABLED", 100)
+    q, _ = ad_performance_query(_S, _E, "ENABLED", 100)
     assert "LIMIT 101" in q
     assert "LIMIT 100" not in q
 
 
 def test_audience_performance_query_pede_uma_linha_a_mais() -> None:
-    q = audience_performance_query(_S, _E, 100)
+    q, _ = audience_performance_query(_S, _E, 100)
     assert "LIMIT 101" in q
     assert "LIMIT 100" not in q
 

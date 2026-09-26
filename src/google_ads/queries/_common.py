@@ -151,6 +151,15 @@ def gaql_date_clause(start: date, end: date) -> str:
     return f"segments.date BETWEEN '{start.isoformat()}' AND '{end.isoformat()}'"
 
 
+def janela_aplicada(start: date, end: date) -> dict[str, str]:
+    """O `date_range` que `filters_applied` ecoa para a janela de `gaql_date_clause`.
+
+    Mesma forma do F191 (`{"start", "end"}`). Mora ao lado da clausula para que
+    quem monta uma monte a outra: o eco derivado da mesma fonte (spec 2026-09-25).
+    """
+    return {"start": start.isoformat(), "end": end.isoformat()}
+
+
 # Plural-form keys in sync with resource types Google Ads emits via change_event.
 # Compound IDs (e.g., {campaign_id}~{criterion_id}) returned as-is — caller splits if needed.
 # Sprint 3b.21: extracted from get_change_history.py for cross-tool reuse.
@@ -254,6 +263,27 @@ def build_metric_filter_clause(
     if min_conversions is not None:
         clauses.append(f"AND metrics.conversions > {float(min_conversions)}")
     return " ".join(clauses)
+
+
+def filtros_de_metrica(
+    min_cost_brl: float | None = None,
+    min_clicks: int | None = None,
+    min_conversions: float | None = None,
+) -> dict[str, float | int]:
+    """O eco de `build_metric_filter_clause`: so os minimos que viraram clausula.
+
+    Funcao irma, e nao retorno duplo, porque `build_metric_filter_clause` tem teste
+    da string exata. O guard derivado (`test_toda_funcao_convertida_ecoa_cada_corte_
+    do_where`) acusa se as duas descolarem.
+    """
+    ecos: dict[str, float | int] = {}
+    if min_cost_brl is not None:
+        ecos["min_cost_brl"] = min_cost_brl
+    if min_clicks is not None:
+        ecos["min_clicks"] = min_clicks
+    if min_conversions is not None:
+        ecos["min_conversions"] = min_conversions
+    return ecos
 
 
 def value_proxy_warning(conversions: float, conversions_value: float) -> str | None:

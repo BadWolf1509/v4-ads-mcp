@@ -82,6 +82,7 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         "report sera arquivado (Fase 2B). Performance segmentada por device (MOBILE, DESKTOP, TABLET, CONNECTED_TV, "
         "OTHER). Util pra ajustar bid adjustments por dispositivo."
         " Razao com denominador zero vem null (indefinida), nao 0."
+        " filters_applied diz o recorte que a query aplicou."
     ),
     input_schema=_SCHEMA,
     bucket="defer",
@@ -96,11 +97,12 @@ async def get_device_performance(args: dict[str, Any]) -> dict[str, Any]:
         end_date=args.get("end_date"),
         today=today,
     )
+    gaql, filtros = device_performance_query(start, end)
     rows = await run_report(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
-        query=device_performance_query(start, end),
+        query=gaql,
         row_formatter=_row_formatter,
         operation_name="get_device_performance",
         audit_this_call=True,
@@ -108,5 +110,6 @@ async def get_device_performance(args: dict[str, Any]) -> dict[str, Any]:
     return {
         "customer_id": customer_id,
         "period": {"from": start.isoformat(), "to": end.isoformat()},
+        "filters_applied": filtros,
         "rows": rows,
     }

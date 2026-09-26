@@ -84,6 +84,7 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         "Util pra encontrar janelas de melhor/pior performance e ajustar bid "
         "adjustments por horario."
         " Razao com denominador zero vem null (indefinida), nao 0."
+        " filters_applied diz o recorte que a query aplicou."
     ),
     input_schema=_SCHEMA,
     bucket="defer",
@@ -98,11 +99,12 @@ async def get_hourly_performance(args: dict[str, Any]) -> dict[str, Any]:
         end_date=args.get("end_date"),
         today=today,
     )
+    gaql, filtros = hourly_performance_query(start, end)
     rows = await run_report(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
-        query=hourly_performance_query(start, end),
+        query=gaql,
         row_formatter=_row_formatter,
         operation_name="get_hourly_performance",
         audit_this_call=True,
@@ -110,5 +112,6 @@ async def get_hourly_performance(args: dict[str, Any]) -> dict[str, Any]:
     return {
         "customer_id": customer_id,
         "period": {"from": start.isoformat(), "to": end.isoformat()},
+        "filters_applied": filtros,
         "rows": rows,
     }

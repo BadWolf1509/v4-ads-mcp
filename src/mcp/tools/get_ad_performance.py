@@ -106,6 +106,7 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         "`truncated: true` avisa que a conta tinha MAIS anuncios do que o limit e a "
         "lista foi cortada no topo de gasto — peca um limit maior ou filtre."
         " Razao com denominador zero vem null (indefinida), nao 0."
+        " filters_applied diz o recorte que a query aplicou."
     ),
     input_schema=_SCHEMA,
     bucket="defer",
@@ -122,11 +123,12 @@ async def get_ad_performance(args: dict[str, Any]) -> dict[str, Any]:
     )
     status = args.get("status", "enabled")
     limit = args.get("limit", 100)
+    gaql, filtros = ad_performance_query(start, end, status, limit)
     rows = await run_report(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
-        query=ad_performance_query(start, end, status, limit),
+        query=gaql,
         row_formatter=_row_formatter,
         operation_name="get_ad_performance",
         audit_this_call=True,
@@ -137,6 +139,7 @@ async def get_ad_performance(args: dict[str, Any]) -> dict[str, Any]:
     return {
         "customer_id": customer_id,
         "period": {"from": start.isoformat(), "to": end.isoformat()},
+        "filters_applied": filtros,
         "rows": rows,
         "truncated": truncado,
     }

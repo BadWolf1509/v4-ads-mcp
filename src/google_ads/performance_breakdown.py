@@ -70,7 +70,14 @@ def _common_metrics(m: Any) -> dict[str, Any]:
 
 def build_performance_breakdown_query(
     level: str, breakdown: str | None, status: str, start: date, end: date, limit: int
-) -> str:
+) -> tuple[str, dict[str, Any]]:
+    """Despacha por `level`/`breakdown` e devolve o `(gaql, filtros)` da funcao
+    despachada — o recorte que a tool ecoa em `filters_applied`.
+
+    O ramo `campaign`+`hourly` nao passa por aqui: a tool monta a conjunta com
+    `day_hour_metrics_query` (ad_schedule.py), fora do escopo do eco (spec
+    2026-09-25, §7) — aquela resposta nao traz `filters_applied`.
+    """
     if level == "account":
         if breakdown == "device":
             return device_performance_query(start, end)

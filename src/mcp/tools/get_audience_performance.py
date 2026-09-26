@@ -100,6 +100,7 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         "`truncated: true` avisa que a conta tinha MAIS audiencias do que o limit e a "
         "lista foi cortada no topo de gasto — peca um limit maior."
         " Razao com denominador zero vem null (indefinida), nao 0."
+        " filters_applied diz o recorte que a query aplicou."
     ),
     input_schema=_SCHEMA,
     bucket="defer",
@@ -115,11 +116,12 @@ async def get_audience_performance(args: dict[str, Any]) -> dict[str, Any]:
         today=today,
     )
     limit = args.get("limit", 200)
+    gaql, filtros = audience_performance_query(start, end, limit)
     rows = await run_report(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
-        query=audience_performance_query(start, end, limit),
+        query=gaql,
         row_formatter=_row_formatter,
         operation_name="get_audience_performance",
         audit_this_call=True,
@@ -130,6 +132,7 @@ async def get_audience_performance(args: dict[str, Any]) -> dict[str, Any]:
     return {
         "customer_id": customer_id,
         "period": {"from": start.isoformat(), "to": end.isoformat()},
+        "filters_applied": filtros,
         "rows": rows,
         "truncated": truncado,
     }
