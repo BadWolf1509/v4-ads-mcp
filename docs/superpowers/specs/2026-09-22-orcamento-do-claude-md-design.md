@@ -3,7 +3,8 @@
 **Data:** 2026-09-22
 **Origem:** pedido de "ajustar a documentação para eficiência máxima de contexto".
 A medição **reenquadrou o pedido** e depois **invalidou o primeiro método proposto**;
-as duas correções estão registradas abaixo em vez de apagadas.
+as correções estão registradas abaixo em vez de apagadas — inclusive a de 25/09, que
+achou errado o número do §3.
 
 ---
 
@@ -65,6 +66,13 @@ catálogo muito mais do que economizaria. Método descartado.
 formas — 62 em linha de tabela `| **F<n>** |` e 52 em cabeçalho `## F<n>` — e o primeiro
 detector via só a segunda, produzindo "21 regras sem entrada" que era artefato meu. Fica
 registrado porque é a classe de defeito que este repo mais paga.)*
+
+**Correção de 25/09 — o instrumento não tinha acertado.** O catálogo tem uma **terceira**
+forma, item de lista `- **F<n> (SEV) —`, com 69 findings (F57–F60, F74–F138) registrados só
+nela. Com as três — e com o detector de duas reproduzindo o 12/33 acima exato, como
+controle —, são **27 bullets com entrada (60% dos bytes) e 18 órfãos (40%)**; os 18 são
+exatamente os que não citam F-number nenhum. O método continuaria exigindo 18 entradas
+escritas antes, e a decisão fica: ela se apoia no §2, não neste número. Registro no F192.
 
 ## 4. O eixo do corte
 

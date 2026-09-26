@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~5300 linhas, 545 KB, IDs de **F1 a F192** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** só 52 findings têm cabeçalho `## F<n>` próprio (53 linhas de cabeçalho, mas F182 aparece 2×) e os demais vivem dentro de outras entradas, então toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~5300 linhas, 545 KB, IDs de **F1 a F192** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 52 têm; 53 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -5160,17 +5160,28 @@ defesa.
 ### O método que caiu na medição — e o instrumento que errou antes de acertar
 
 A proposta inicial era comprimir cada bullet com entrada própria no catálogo para "regra +
-ponteiro F-N". Medido nas 45: só **12 bullets (3.211 B, 24%)** tinham entrada própria; **33
-(9.540 B, 74%) eram órfãos** — o `CLAUDE.md` era o único registro daquela regra em todo o
-repo. Comprimir para ponteiro exigiria **escrever 33 entradas de catálogo antes**, inflando
-o catálogo mais do que economizaria. Método descartado.
+ponteiro F-N". O número que a derrubou em 22/09 — **12 bullets com entrada, 33 órfãos** —
+**estava errado**, pelo defeito do parágrafo seguinte. Remedido em 25/09 nas 45 (12.840 B,
+bullet de `- ` ao próximo): **27 (7.721 B, 60%) têm entrada própria; 18 (5.119 B, 40%) são
+órfãos**, e os 18 são **exatamente** os que não citam F-number nenhum — todo bullet que
+cita um finding tem entrada. Comprimir para ponteiro exigiria escrever 18 entradas antes,
+não 33. **O método segue descartado, pelo motivo que sempre o sustentou** — comprimir trata
+o sintoma de um arquivo que cresce por acúmulo (spec §2) —, e não pelo número errado.
 
-O instrumento que mediu isso errou primeiro: este catálogo registra findings em **duas
-formas** — 62 em linha de tabela `| **F<n>** |` e 52 em cabeçalho `## F<n>` — e a 1ª
-tentativa de contagem varreu só a segunda forma, produzindo "21 regras sem entrada" que era
-**artefato do detector**, não do catálogo. Fica registrado aqui porque é a classe de defeito
-que este catálogo mais paga: um sinal que conta menos do que existe porque olhou só uma
-forma.
+O instrumento errou **três vezes, as três do mesmo jeito**. Este catálogo registra findings
+em **três** formas: linha de tabela `| **F<n>** |` (62), cabeçalho `## F<n>` (52) e item de
+lista `- **F<n> (SEV) —` (69, **todos só ali**: F57–F60 e F74–F138). Os 11 IDs fora das
+três são lacunas — nove sem ocorrência nenhuma, F31 e F32 só citados dentro do F53. A 1ª
+contagem viu uma forma ("21 regras sem entrada"); a 2ª viu duas (o 12/33 acima, publicado
+como medição); a 3ª só apareceu em 25/09, ao restaurar um ponteiro para o F96, que vive na
+lista. **Controle:** o detector de duas formas reproduz o 12/33 exato; o de três dá 27/18.
+O conserto de 22/09 **pegou um gêmeo e deixou o outro** — trocar "olhou uma forma" por
+"olhe duas" é declarar a ausência de uma terceira sem procurá-la —, e o cabeçalho deste
+catálogo já avisava desde 20/09 que *"toda contagem já tentada aqui deu número diferente
+conforme o critério"*: a regra estava escrita, e nada a aplicou. Na própria remedição, um
+filtro "mais rigoroso" que só aceitava severidade em inglês perdeu o `F57 (CRÍTICO)` e deu
+26/19; **filtro mais estreito que o formato é o mesmo defeito**, pego só porque o número
+mudou e o único F-number divergente foi conferido à mão.
 
 ### O scan que virou rede de segurança — e os três defeitos que ele teve, todos achados em revisão
 
