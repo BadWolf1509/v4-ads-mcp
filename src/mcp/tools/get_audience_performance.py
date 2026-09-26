@@ -4,7 +4,13 @@
 from typing import Any
 
 from src.google_ads.account_clock import resolve_account_today
-from src.google_ads.queries._common import micros_to_currency, resolve_date_window
+from src.google_ads.queries._common import (
+    arredondado,
+    em_moeda,
+    micros_to_currency,
+    razao,
+    resolve_date_window,
+)
 from src.google_ads.queries.tactical import audience_performance_query
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
@@ -80,8 +86,8 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         "cost_brl": micros_to_currency(cost_micros),
         "conversions": round(float(m.conversions), 2),
         "conversions_value_brl": round(float(m.conversions_value), 2),
-        "ctr": round(clicks / impr, 4) if impr else 0.0,
-        "cpc_brl": micros_to_currency(cost_micros / clicks) if clicks else 0.0,
+        "ctr": arredondado(razao(clicks, impr), 4),
+        "cpc_brl": em_moeda(razao(cost_micros, clicks)),
     }
 
 
@@ -93,6 +99,7 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         "remarketing (user_list) ou interesses (user_interest_category) + metricas. "
         "`truncated: true` avisa que a conta tinha MAIS audiencias do que o limit e a "
         "lista foi cortada no topo de gasto — peca um limit maior."
+        " Razao com denominador zero vem null (indefinida), nao 0."
     ),
     input_schema=_SCHEMA,
     bucket="defer",

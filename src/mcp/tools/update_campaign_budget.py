@@ -4,7 +4,7 @@
 from typing import Any
 
 from src.db import connection
-from src.google_ads.queries._common import micros_to_currency
+from src.google_ads.queries._common import arredondado, micros_to_currency, percentual, razao
 from src.google_ads.queries.ad_schedule import (
     campaigns_on_budgets_query,
     parse_campaign_on_budget_row,
@@ -158,9 +158,7 @@ async def update_campaign_budget(args: dict[str, Any]) -> dict[str, Any]:
     info = rows[0]
     current_micros = info["current_amount_micros"]
     current_brl = micros_to_currency(current_micros)
-    delta_pct = (
-        ((new_amount_micros - current_micros) / current_micros * 100) if current_micros else 0.0
-    )
+    delta_pct = percentual(razao(new_amount_micros - current_micros, current_micros))
 
     risk = classify(
         operation="update_campaign_budget",
@@ -172,10 +170,15 @@ async def update_campaign_budget(args: dict[str, Any]) -> dict[str, Any]:
         "new_amount_micros": new_amount_micros,
         "__target_count__": 1,
     }
+    delta_txt = (
+        f"delta {delta_pct:+.1f}%"
+        if delta_pct is not None
+        else "variacao indefinida: o orcamento atual e zero"
+    )
     summary = (
         f"Orcamento de '{info['campaign_name']}' (id {campaign_id}): "
         f"R$ {current_brl} -> R$ {new_amount_brl:.2f} "
-        f"(delta {delta_pct:+.1f}%)."
+        f"({delta_txt})."
     )
 
     # A segunda ida a API so acontece quando ha portfolio para declarar.
@@ -214,6 +217,6 @@ async def update_campaign_budget(args: dict[str, Any]) -> dict[str, Any]:
         confirmation_reason=risk.reason,
         current_amount_brl=current_brl,
         new_amount_brl=new_amount_brl,
-        delta_pct=round(delta_pct, 2),
+        delta_pct=arredondado(delta_pct, 2),
         shared_budget=shared_budget,
     )

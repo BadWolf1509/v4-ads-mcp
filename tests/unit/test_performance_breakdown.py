@@ -88,8 +88,8 @@ def test_common_metrics_zero_division():
         conversions_value=0.0,
     )
     out = _common_metrics(m)
-    assert out["ctr"] == 0.0
-    assert out["cpc_brl"] == 0.0
+    assert out["ctr"] is None
+    assert out["cpc_brl"] is None
 
 
 _S, _E = date(2026, 1, 1), date(2026, 1, 31)

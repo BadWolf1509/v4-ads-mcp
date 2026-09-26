@@ -197,6 +197,40 @@ def micros_to_currency(micros: int | float) -> float:
     return round(micros / 1_000_000.0, 2)
 
 
+def razao(numerador: float | None, denominador: float | None) -> float | None:
+    """`numerador / denominador`, ou `None` quando nao ha o que dividir.
+
+    Razao sem denominador e INDEFINIDA, nao zero: CPA R$ 0,00 com gasto e zero
+    conversao se le como o melhor CPA possivel; CPC R$ 0,00 sem clique, como
+    clique de graca. `None` e o terceiro estado do F191 — distinto do zero
+    medido. E a UNICA regra de denominador zero das tools Google: o guard
+    `test_nenhuma_razao_vira_zero_quando_o_denominador_some` acusa a forma
+    `x / y if y else 0` em `src/mcp/tools/` e `src/google_ads/`.
+    """
+    if numerador is None or not denominador:
+        return None
+    return numerador / denominador
+
+
+def arredondado(valor: float | None, casas: int) -> float | None:
+    """`round` que deixa `None` passar: a razao indefinida continua indefinida."""
+    return None if valor is None else round(valor, casas)
+
+
+def em_moeda(valor_micros: float | None) -> float | None:
+    """`micros_to_currency` que deixa `None` passar."""
+    return None if valor_micros is None else micros_to_currency(valor_micros)
+
+
+def percentual(valor: float | None) -> float | None:
+    """`valor * 100` que deixa `None` passar.
+
+    Mantem a ordem `a / b * 100` das contas de antes: `a * 100 / b` muda o ultimo
+    bit e pode virar o arredondamento na casa decimal.
+    """
+    return None if valor is None else valor * 100
+
+
 def build_metric_filter_clause(
     min_cost_brl: float | None = None,
     min_clicks: int | None = None,

@@ -128,6 +128,7 @@ _CELULAS_DA_GRADE = 7 * 24
         "devolve negativa, mas por outro motivo: ele exige `quality_score IS NOT "
         "NULL`, e criterio negativo nao tem indice de qualidade). Para visao geral da "
         "conta com comparativo use get_account_overview."
+        " Razao com denominador zero vem null (indefinida), nao 0."
     ),
     input_schema=_SCHEMA,
     bucket="always",

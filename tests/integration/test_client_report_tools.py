@@ -50,7 +50,7 @@ async def test_funnel_handles_empty_data(bound_context):
     with patch("src.mcp.tools.get_funnel_metrics.run_report", AsyncMock(return_value=[])):
         result = await get_funnel_metrics({"customer_id": "1234567890"})
     assert result["funnel"]["stages"][0]["value"] == 0
-    assert result["funnel"]["totals"]["roas"] == 0.0
+    assert result["funnel"]["totals"]["roas"] is None
 
 
 @pytest.mark.asyncio

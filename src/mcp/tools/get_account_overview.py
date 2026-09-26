@@ -5,8 +5,11 @@ from typing import Any
 
 from src.google_ads.account_clock import resolve_account_today
 from src.google_ads.queries._common import (
+    arredondado,
+    em_moeda,
     get_comparison_range,
     micros_to_currency,
+    razao,
     resolve_date_window,
     value_proxy_warning,
 )
@@ -64,7 +67,13 @@ _SCHEMA: dict[str, Any] = {
 
 
 def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    """Sum the per-day rows into single totals + computed ratios."""
+    """Sum the per-day rows into single totals + computed ratios.
+
+    Razao sem denominador vem `None` (indefinida), nao 0.0 (spec 2026-09-25,
+    §4.2). Periodo sem nenhuma linha traz as contagens em 0 — verdade: nao houve
+    impressao, clique nem gasto — e `sem_dados_no_periodo: True`, que distingue
+    "nao ha dado" de uma linha medida com zero.
+    """
     if not rows:
         return {
             "impressions": 0,
@@ -72,10 +81,11 @@ def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "cost_brl": 0.0,
             "conversions": 0.0,
             "conversions_value_brl": 0.0,
-            "ctr": 0.0,
-            "average_cpc_brl": 0.0,
-            "cost_per_conversion_brl": 0.0,
-            "roas": 0.0,
+            "ctr": None,
+            "average_cpc_brl": None,
+            "cost_per_conversion_brl": None,
+            "roas": None,
+            "sem_dados_no_periodo": True,
         }
     impr = sum(r["impressions"] for r in rows)
     clicks = sum(r["clicks"] for r in rows)
@@ -88,10 +98,13 @@ def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "cost_brl": micros_to_currency(cost),
         "conversions": round(conv, 2),
         "conversions_value_brl": round(conv_val, 2),
-        "ctr": round(clicks / impr, 4) if impr else 0.0,
-        "average_cpc_brl": micros_to_currency(cost / clicks) if clicks else 0.0,
-        "cost_per_conversion_brl": micros_to_currency(cost / conv) if conv else 0.0,
-        "roas": round(conv_val / micros_to_currency(cost), 2) if cost else 0.0,
+        "ctr": arredondado(razao(clicks, impr), 4),
+        "average_cpc_brl": em_moeda(razao(cost, clicks)),
+        "cost_per_conversion_brl": em_moeda(razao(cost, conv)),
+        # O guarda antigo era `if cost` (micros) e dividia por `micros_to_currency(cost)`:
+        # custo abaixo de meio centavo arredonda para 0.0 e dava ZeroDivisionError.
+        "roas": arredondado(razao(conv_val, micros_to_currency(cost)), 2),
+        "sem_dados_no_periodo": False,
     }
     # UX-1: detect tracking placeholder (conversions_value == conversions exact 1:1)
     warning = value_proxy_warning(aggregate["conversions"], aggregate["conversions_value_brl"])
@@ -117,6 +130,7 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         "[DEFER] KPIs consolidados de uma conta Google Ads (impressoes, clicks, custo, "
         "conversoes, valor, CTR, CPC, CPA, ROAS) para um periodo, com comparativo "
         "do periodo imediatamente anterior de mesma duracao."
+        " Razao com denominador zero vem null (indefinida), nao 0."
     ),
     input_schema=_SCHEMA,
     bucket="defer",

@@ -5,7 +5,10 @@ from typing import Any
 
 from src.google_ads.account_clock import resolve_account_today
 from src.google_ads.queries._common import (
+    arredondado,
     micros_to_currency,
+    percentual,
+    razao,
     resolve_date_window,
     value_proxy_warning,
 )
@@ -80,9 +83,9 @@ def _build_funnel(rows: list[dict[str, Any]]) -> dict[str, Any]:
     totals: dict[str, Any] = {
         "cost_brl": cost_brl,
         "conversions_value_brl": round(conv_val, 2),
-        "roas": round(conv_val / cost_brl, 2) if cost_brl else 0.0,
-        "average_order_value_brl": round(conv_val / conv, 2) if conv else 0.0,
-        "cost_per_conversion_brl": round(cost_brl / conv, 2) if conv else 0.0,
+        "roas": arredondado(razao(conv_val, cost_brl), 2),
+        "average_order_value_brl": arredondado(razao(conv_val, conv), 2),
+        "cost_per_conversion_brl": arredondado(razao(cost_brl, conv), 2),
     }
     # UX-1: detect tracking placeholder
     warning = value_proxy_warning(round(conv, 2), totals["conversions_value_brl"])
@@ -95,12 +98,12 @@ def _build_funnel(rows: list[dict[str, Any]]) -> dict[str, Any]:
             {
                 "stage": "clicks",
                 "value": clicks,
-                "rate_from_prev_pct": round(clicks / impr * 100, 2) if impr else 0.0,
+                "rate_from_prev_pct": arredondado(percentual(razao(clicks, impr)), 2),
             },
             {
                 "stage": "conversions",
                 "value": round(conv, 2),
-                "rate_from_prev_pct": round(conv / clicks * 100, 2) if clicks else 0.0,
+                "rate_from_prev_pct": arredondado(percentual(razao(conv, clicks)), 2),
             },
         ],
         "totals": totals,
@@ -113,6 +116,7 @@ def _build_funnel(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "[DEFER] Funil completo da conta: impressoes -> clicks -> conversoes -> valor "
         "(receita), com taxas de conversao entre etapas e KPIs derivados (ROAS, "
         "AOV, CPA). Util pra relatorio cliente."
+        " Razao com denominador zero vem null (indefinida), nao 0."
     ),
     input_schema=_SCHEMA,
     bucket="defer",

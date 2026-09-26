@@ -8,7 +8,7 @@ SimpleNamespace). Espelha src/meta_ads/insights.py (M.4).
 from datetime import date
 from typing import Any
 
-from src.google_ads.queries._common import micros_to_currency
+from src.google_ads.queries._common import arredondado, em_moeda, micros_to_currency, razao
 from src.google_ads.queries.performance import (
     ad_group_performance_query,
     campaign_performance_query,
@@ -63,8 +63,8 @@ def _common_metrics(m: Any) -> dict[str, Any]:
         "cost_brl": micros_to_currency(cost_micros),
         "conversions": round(float(m.conversions), 2),
         "conversions_value_brl": round(float(m.conversions_value), 2),
-        "ctr": round(clicks / impr, 4) if impr else 0.0,
-        "cpc_brl": micros_to_currency(cost_micros / clicks) if clicks else 0.0,
+        "ctr": arredondado(razao(clicks, impr), 4),
+        "cpc_brl": em_moeda(razao(cost_micros, clicks)),
     }
 
 

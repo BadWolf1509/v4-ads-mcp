@@ -5,7 +5,7 @@ from datetime import date
 from typing import Any
 
 from src.google_ads.account_clock import resolve_account_today
-from src.google_ads.queries._common import micros_to_currency
+from src.google_ads.queries._common import arredondado, micros_to_currency, percentual, razao
 from src.google_ads.queries.overview import budget_pacing_query
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
@@ -75,8 +75,8 @@ def _project(rows: list[dict[str, Any]], *, today: date) -> list[dict[str, Any]]
     out: list[dict[str, Any]] = []
     for c in by_campaign.values():
         mtd = micros_to_currency(c["cost_micros_total"])
-        daily_avg = mtd / days_elapsed if days_elapsed else 0
-        projected = round(daily_avg * days_in_month, 2)
+        daily_avg = razao(mtd, days_elapsed)
+        projected = arredondado(None if daily_avg is None else daily_avg * days_in_month, 2)
         budget_monthly = round(c["daily_budget_brl"] * days_in_month, 2)
         out.append(
             {
@@ -84,15 +84,15 @@ def _project(rows: list[dict[str, Any]], *, today: date) -> list[dict[str, Any]]
                 "campaign_name": c["campaign_name"],
                 "daily_budget_brl": c["daily_budget_brl"],
                 "spent_mtd_brl": mtd,
-                "spent_pct_of_monthly_budget": round(mtd / budget_monthly * 100, 1)
-                if budget_monthly
-                else 0,
+                "spent_pct_of_monthly_budget": arredondado(
+                    percentual(razao(mtd, budget_monthly)), 1
+                ),
                 "days_elapsed": days_elapsed,
                 "days_remaining": days_remaining,
                 "projected_monthly_brl": projected,
-                "projection_vs_budget_pct": round(projected / budget_monthly * 100, 1)
-                if budget_monthly
-                else 0,
+                "projection_vs_budget_pct": arredondado(
+                    percentual(razao(projected, budget_monthly)), 1
+                ),
                 "delivery_method": c["delivery_method"],
             }
         )
@@ -106,6 +106,7 @@ def _project(rows: list[dict[str, Any]], *, today: date) -> list[dict[str, Any]]
         "% consumido do orcamento mensal. Util pra ver no inicio do dia se alguma "
         "campanha esta acelerada/lenta demais. Ordenado por gasto no mes desc; "
         "limit (default 100, max 1000) corta a cauda e `truncated:true` avisa."
+        " Razao com denominador zero vem null (indefinida), nao 0."
     ),
     input_schema=_SCHEMA,
     bucket="defer",
