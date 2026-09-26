@@ -108,3 +108,38 @@ def test_unpack_ok_mas_nenhum_erro_com_indice_nao_e_medido() -> None:
         "nao da pra dizer QUEM falhou, e isso e 'nao medido', nao '{}' mudo"
     )
     assert leitura.erros == {}
+
+
+class _RespostaQueLevantaAoLerOErro:
+    """`partial_failure_error` que explode ao ser LIDO, nao ao ser desempacotado."""
+
+    @property
+    def partial_failure_error(self) -> Any:
+        raise RuntimeError("proto corrompido na leitura")
+
+
+class _ErroComCodeQueLevanta:
+    @property
+    def code(self) -> int:
+        raise RuntimeError("proto corrompido no code")
+
+
+class _RespostaComCodeQueLevanta:
+    partial_failure_error = _ErroComCodeQueLevanta()
+
+
+def test_leitura_do_partial_failure_error_que_levanta_nao_e_medida() -> None:
+    """Minor 5 do F191: as leituras de `partial_failure_error` e de `.code` ficavam
+    FORA do `try`. `getattr` com default so engole `AttributeError`; qualquer outra
+    excecao ali subia com a PII ja anexada, e o Customer Match ficava com o default
+    `membros_recusados=[]` -- "zero recusados", medido. Tem que virar "nao medido",
+    como toda leitura que falha dentro do `try`."""
+    leitura = erros_por_indice(_RespostaQueLevantaAoLerOErro(), _cliente())
+    assert leitura.medido is False
+    assert leitura.erros == {}
+
+
+def test_code_que_levanta_ao_ser_lido_nao_e_medido() -> None:
+    leitura = erros_por_indice(_RespostaComCodeQueLevanta(), _cliente())
+    assert leitura.medido is False
+    assert leitura.erros == {}
