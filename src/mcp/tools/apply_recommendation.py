@@ -34,6 +34,7 @@ from typing import Any
 
 from src.db import connection
 from src.google_ads.mutations import run_recommendation_action
+from src.google_ads.queries._common import arredondado, percentual, razao
 from src.google_ads.queries.recommendations import (
     TIPOS_CONHECIDOS,
     TIPOS_DE_MIGRACAO,
@@ -79,9 +80,12 @@ def _rotulo(info: dict[str, Any]) -> str:
 
 
 def _delta_pct(atual: float | None, recomendado: float | None) -> float | None:
-    if atual is None or recomendado is None or atual == 0:
+    """F4: `atual == 0` continua dando `None` — agora via `razao()`, nao por
+    checagem escrita a mao. Guard AST nao ve esta forma (`if ...: return
+    None`), entao a migracao aqui foi a mao (docstring de `razao()`)."""
+    if atual is None or recomendado is None:
         return None
-    return round((recomendado - atual) / atual * 100, 2)
+    return arredondado(percentual(razao(recomendado - atual, atual)), 2)
 
 
 def _aviso_de_migracao(tipo: str, campanha: dict[str, Any] | None) -> str | None:

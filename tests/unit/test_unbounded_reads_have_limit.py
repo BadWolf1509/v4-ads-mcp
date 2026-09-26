@@ -42,18 +42,22 @@ def _ctx():
 
 
 @pytest.mark.parametrize(
-    "builder",
-    [recommendations_query, conversion_actions_query, budget_pacing_query],
+    "builder,gaql_de",
+    [
+        (recommendations_query, lambda q: q),  # segue devolvendo so o texto
+        (conversion_actions_query, lambda q: q[0]),  # (gaql, filtros) desde 2026-09-26
+        (budget_pacing_query, lambda q: q[0]),  # (gaql, filtros) desde 2026-09-26
+    ],
     ids=["recommendations", "conversion_actions", "budget_pacing"],
 )
-def test_builder_emite_limit_com_a_linha_sentinela(builder: Any) -> None:
+def test_builder_emite_limit_com_a_linha_sentinela(builder: Any, gaql_de: Any) -> None:
     """F98: `LIMIT limit+1` — a linha extra e o que detecta o corte.
 
     Mesmo truque de `bulk_pause.py` (`LIMIT 101` pra detectar >100): sem ela o
     tool nao consegue distinguir "vieram exatamente 100" de "tem mais".
     """
-    assert "LIMIT 101" in builder(limit=100)
-    assert "LIMIT 26" in builder(limit=25)
+    assert "LIMIT 101" in gaql_de(builder(limit=100))
+    assert "LIMIT 26" in gaql_de(builder(limit=25))
 
 
 def test_budget_pacing_ordena_antes_de_cortar() -> None:
@@ -64,7 +68,7 @@ def test_budget_pacing_ordena_antes_de_cortar() -> None:
     si — parecendo o topo de gasto da conta sem ser. Os outros dois tools sao
     inventario (nao ha ranking implicito), entao so este precisa do ORDER BY.
     """
-    query = budget_pacing_query(limit=50)
+    query, _ = budget_pacing_query(limit=50)
     assert "ORDER BY metrics.cost_micros DESC" in query
     assert query.index("ORDER BY") < query.index("LIMIT")
 

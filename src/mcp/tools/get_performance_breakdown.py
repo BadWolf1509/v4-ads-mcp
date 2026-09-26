@@ -128,6 +128,10 @@ _CELULAS_DA_GRADE = 7 * 24
         "devolve negativa, mas por outro motivo: ele exige `quality_score IS NOT "
         "NULL`, e criterio negativo nao tem indice de qualidade). Para visao geral da "
         "conta com comparativo use get_account_overview."
+        " Razao com denominador zero vem null (indefinida), nao 0."
+        " Com level=campaign e breakdown=hourly a resposta nao traz filters_applied"
+        " (grade dia x hora)."
+        " filters_applied diz o recorte que a query aplicou."
     ),
     input_schema=_SCHEMA,
     bucket="always",
@@ -207,11 +211,12 @@ async def get_performance_breakdown(args: dict[str, Any]) -> dict[str, Any]:
             "truncated": truncado,
         }
 
+    gaql, filtros = build_performance_breakdown_query(level, breakdown, status, start, end, limit)
     rows = await run_report(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
-        query=build_performance_breakdown_query(level, breakdown, status, start, end, limit),
+        query=gaql,
         row_formatter=lambda row: parse_performance_row(row, level, breakdown),
         operation_name="get_performance_breakdown",
         audit_this_call=True,
@@ -259,6 +264,7 @@ async def get_performance_breakdown(args: dict[str, Any]) -> dict[str, Any]:
         "level": level,
         "breakdown": breakdown,
         "period": {"from": start.isoformat(), "to": end.isoformat()},
+        "filters_applied": filtros,
         "rows": rows,
         "truncated": truncado,
     }

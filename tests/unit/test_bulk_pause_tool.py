@@ -204,3 +204,121 @@ async def test_invalid_date_range_returns_error(monkeypatch):
     assert "date_range" in result["error_message"].lower()
     run_report_mock.assert_not_called()
     create_pending_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_preview_com_filtro_so_de_entidade_diz_o_periodo_e_o_ecoa(monkeypatch):
+    """O rotulo "no periodo" sai do `filtros`, e o custo e o do periodo (spec 2026-09-25, §4.1)."""
+    from src.mcp.tools import bulk_pause_by_query as mod
+
+    queries: list[str] = []
+
+    async def fake_run_report(**kwargs):
+        queries.append(kwargs["query"])
+        return [
+            {
+                "ad_group_id": "111",
+                "criterion_id": "200",
+                "keyword_text": "test 1",
+                "campaign_name": "Camp A",
+                "ad_group_name": "AG 1",
+                "cost_brl": 12.5,
+            }
+        ]
+
+    async def fake_create_pending(conn, **kwargs):
+        return "TOK01234"
+
+    monkeypatch.setattr(mod, "run_report", fake_run_report)
+    monkeypatch.setattr(mod, "create_pending", fake_create_pending)
+    with patch("src.mcp.tools.bulk_pause_by_query.connection") as conn_module:
+        conn_module.get_pool.return_value.acquire.return_value.__aenter__ = AsyncMock(
+            return_value=AsyncMock()
+        )
+        conn_module.get_pool.return_value.acquire.return_value.__aexit__ = AsyncMock(
+            return_value=None
+        )
+        result = await mod.bulk_pause_by_query(
+            {
+                "customer_id": "1234567890",
+                "target_type": "keyword",
+                "filter": "ad_group_criterion.status = 'ENABLED'",
+            }
+        )
+
+    assert "segments.date BETWEEN" in queries[0]
+    janela = result["preview"]["filters_applied"]["date_range"]
+    assert f"no periodo {janela['start']} a {janela['end']}" in result["blast_summary"]
+
+    from src.mcp.tools._registry import get_tool, import_all_tools
+
+    import_all_tools()
+    tool = get_tool("bulk_pause_by_query")
+    assert tool is not None
+    assert "filters_applied diz o recorte que a query aplicou." in tool.description
+    # a description dizia "auto-injeta ... quando filter usa metrics.*": a regra antiga
+    assert "exceto quando o filter ja traz segments.date" in tool.description
+
+
+@pytest.mark.asyncio
+async def test_preview_com_filtro_que_ja_tem_a_janela_diz_periodo_do_proprio_filtro(monkeypatch):
+    """F6: quando o filtro do gestor ja traz `segments.date`, `bulk_pause_query`
+    nao injeta `date_range` — o rotulo cai no ramo "no periodo definido no
+    proprio filtro" e `filters_applied` fica sem a chave (espelha
+    test_preview_com_filtro_so_de_entidade_diz_o_periodo_e_o_ecoa)."""
+    from src.mcp.tools import bulk_pause_by_query as mod
+
+    async def fake_run_report(**kwargs):
+        return [
+            {
+                "ad_group_id": "111",
+                "criterion_id": "200",
+                "keyword_text": "test 1",
+                "campaign_name": "Camp A",
+                "ad_group_name": "AG 1",
+                "cost_brl": 12.5,
+            }
+        ]
+
+    async def fake_create_pending(conn, **kwargs):
+        return "TOK01234"
+
+    monkeypatch.setattr(mod, "run_report", fake_run_report)
+    monkeypatch.setattr(mod, "create_pending", fake_create_pending)
+    with patch("src.mcp.tools.bulk_pause_by_query.connection") as conn_module:
+        conn_module.get_pool.return_value.acquire.return_value.__aenter__ = AsyncMock(
+            return_value=AsyncMock()
+        )
+        conn_module.get_pool.return_value.acquire.return_value.__aexit__ = AsyncMock(
+            return_value=None
+        )
+        result = await mod.bulk_pause_by_query(
+            {
+                "customer_id": "1234567890",
+                "target_type": "keyword",
+                "filter": "segments.date DURING LAST_7_DAYS AND metrics.cost_micros > 0",
+            }
+        )
+
+    assert "no periodo definido no proprio filtro" in result["blast_summary"]
+    assert "date_range" not in result["preview"]["filters_applied"]
+
+
+@pytest.mark.asyncio
+async def test_sem_match_tambem_diz_a_janela(monkeypatch):
+    """Zero linhas depende da janela que a query aplicou: o `no_op` diz qual."""
+    from src.mcp.tools import bulk_pause_by_query as mod
+
+    async def fake_run_report(**_kwargs):
+        return []
+
+    monkeypatch.setattr(mod, "run_report", fake_run_report)
+    result = await mod.bulk_pause_by_query(
+        {
+            "customer_id": "1234567890",
+            "target_type": "campaign",
+            "filter": "campaign.status = 'ENABLED'",
+        }
+    )
+    assert result["status"] == "no_op"
+    assert "date_range" in result["filters_applied"]

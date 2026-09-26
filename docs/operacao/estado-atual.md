@@ -25,7 +25,7 @@
 | Revisão servindo | **`v4-ads-mcp-00125-hct`**, 100% do tráfego — `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O handshake MCP **autenticado NÃO foi conferido**: segue desarmado (F186), então "registry montado" aqui é o que o health afirma, não o que um `tools/list` provou |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
-| Catálogo | até **F192** (~5.300 linhas, 545 KB) |
+| Catálogo | até **F193** (~5.400 linhas, 563 KB) |
 
 **Caminho de mutação verificado após os bumps de 20/09** (`grpcio` 1.84, `google-auth`
 2.58, `google-api-core` 2.38): duas mutações reais em `1163862076` com
@@ -58,7 +58,9 @@ de 3. Se seguirem fora, a execução de **26/09** reporta `removed=3` e `revoke_
 [spec do gate](../superpowers/specs/2026-09-05-gate-google-design.md) — filas no painel,
 sinal do alerta, runbook — **já está feito** (Tasks 6 e 7 do plano de 05/09; métrica e
 policy executadas em 05/09, ver `infra-setup.md`). **O que falta para a virada:** a
-execução de 26/09 confirmar a previsão, e a resposta sobre as três contas.
+execução de 26/09 confirmar a previsão. A resposta sobre as três contas veio em 26/09:
+**churn** — deixaram de ser clientes da unidade, então os 12 grants delas são revogações
+legítimas, não algo a revincular.
 
 **Fase 2B travada no soak** — o tombstone dos 8 reports antigos não acontece enquanto os
 gestores não migrarem para `get_performance_breakdown`. Re-checar por `audit_log`.
@@ -73,7 +75,6 @@ na máquina dos outros gestores, ou o LLM escolhendo a tool pelo nome. Separar p
 
 ## Pendências que dependem do Wellington
 
-- **Três contas Google saíram do MCC em 24/09** — `4493906974`, `8726746966` e `9450567241`, 4 grants vivos cada. Churn ou desvinculação por engano? A resposta muda a virada da trava Google: se foi engano, revincular antes.
 - **F129** — governança do system user Meta: ação humana, fora do código.
 - **F67** — custom domain `mcpv4.fluxocerto.dev.br`, pendente via LB.
 - **Pedir ao TI da V4 uma identidade `@v4company.com` sem caixa postal** (alias ou conta de serviço) — é o que **desbloqueia o F186 por inteiro**: manager com grant zero, pior caso de vazamento `tools/list`, e a reconciliação não a toca. Sem ela não há token de CI possível: `sessions_create` só emite para o próprio manager logado, e login exige identidade Google do domínio. **Emitir sob um manager existente está recusado** — poria no GitHub Actions um token com alcance de ~38 contas Google e 26 Meta.
@@ -105,7 +106,7 @@ no código não vira trabalho até ser verificado.
 | sub-projeto (decomposição de 21/09) | status |
 |---|---|
 | 1 · credencial + contratos do SDK Meta | fechado — **F190** |
-| 2 · respostas que afirmam mais do que mediram | **em parte** — núcleo no **F191**; o resto é a frente *respostas Google* |
+| 2 · respostas que afirmam mais do que mediram | **fechado** — núcleo no **F191**, o resto no **F193** |
 | 3 · infra de dados (CSV do audit, guard de reconnect, lock no `migrate.py`, `revoke` Meta) | **em parte** — CSV no F191; o resto é a frente *infra e guards* |
 | 4 · guards que não cobrem (mock que bloqueava o conserto, testes que enumeram) | **em parte** — mock no F191; o resto é a frente *infra e guards* |
 
@@ -119,11 +120,10 @@ Medir a exposição, dar dado às decisões, consertos pequenos, e só então sp
 
 1. **Rollout Google** — soak medido e PR 3 já feito (acima): observar a execução de 26/09 → virada da trava, do Wellington.
 2. **Fase 2B** — medida em 25/09 (acima); em 04/10, separar o uso por gestor, junto da remedição dos buckets.
-3. **Respostas Google** (spec) — o que as respostas escondem do recorte, e o remédio do F187.
-4. **Métricas Meta** (spec) — zero no lugar de "não veio", e o limitador que lê "não sei" como 0%.
-5. **F154** (spec).
-6. **Infra e guards** (spec) — o resto dos sub-projetos 3 e 4.
-7. **`recommendation_subscription`** — tool de leitura no MCC.
+3. **Métricas Meta** (spec) — zero no lugar de "não veio", e o limitador que lê "não sei" como 0%.
+4. **F154** (spec).
+5. **Infra e guards** (spec) — o resto dos sub-projetos 3 e 4.
+6. **`recommendation_subscription`** — tool de leitura no MCC.
 
 ### Os abertos, um por linha
 
@@ -134,6 +134,8 @@ Medir a exposição, dar dado às decisões, consertos pequenos, e só então sp
 | **F185** | `recommendation_subscription`: 4 de 11 opacos e **sem chave nenhuma** — limitação da API, sem correção possível deste lado |
 | **F187** | o **resumo no topo** de um artefato é a superfície de decisão e o **detalhe embaixo** é a verdade — 4 instâncias medidas, uma quase custou mutação em conta real. Remédio proposto: derivar o resumo, ou guard que cobre a igualdade |
 | **F186** | 🔴 smoke autenticado do `/mcp` **desarmado** — e o manager dele **não existe**: criar exige identidade de serviço no Workspace, acesso que o gestor **não tem**. **ABERTO como risco ACEITO.** No lugar entrou `tools` no `/health?deep=1` (sem credencial), e o desarme aparece como `::warning::` em todo deploy — **observado disparando** nos dois deploys de 21/09, que é o que separa "o aviso existe" de "o aviso avisa" |
+| — | *negativas de grupo e listas compartilhadas na auditoria de negativas* (spec §7: frente própria) |
+| — | fora deste repo: *o plugin `v4-trafego-google-ads` tem seis pontos que fazem conta ou ranking com campos que agora podem vir `null` (`analise-performance-google-ads/SKILL.md:44,137`; `relatorio-cliente-google-ads/SKILL.md:33,76-89,112-116`; `shared/v4-brand.md:43`) — o ajuste é tratar `null` como indefinido em todos eles, não só no ranking por CTR, e entra antes do deploy desta branch ou junto dele* |
 
 Fechados em 20/09: **F181, F182, F183, F184** — mais a **2ª instância do F182**, que
 fechou a *classe*: só o `apply_change` descreve a contagem do lote, agora com guard. O

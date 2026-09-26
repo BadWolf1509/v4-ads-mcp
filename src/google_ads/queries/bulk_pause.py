@@ -9,8 +9,9 @@ inject SQL or escape the WHERE-clause scope.
 """
 
 from datetime import date
+from typing import Any
 
-from src.google_ads.queries._common import gaql_date_clause
+from src.google_ads.queries._common import gaql_date_clause, janela_aplicada
 
 
 class FilterValidationError(ValueError):
@@ -99,13 +100,21 @@ def bulk_pause_query(
     filter_clause: str,
     start: date,
     end: date,
-) -> str:
+) -> tuple[str, dict[str, Any]]:
     """Compose the GAQL for the bulk_pause_by_query dry-run.
 
     target_type must be one of {keyword, ad, campaign, ad_group}.
     filter_clause must already have passed validate_filter().
-    start/end provide the segments.date BETWEEN clause (auto-injected
-    only when filter mentions metrics.* — entity-only filters skip it).
+
+    A janela entra SEMPRE, exceto quando o filtro do gestor ja traz
+    `segments.date`: sem ela, `metrics.cost_micros` no SELECT vem com o custo de
+    TODA A VIDA da entidade, e o preview dizia "no periodo" sobre ele (spec
+    2026-09-25, §4.1 — medido: R$ 3.013,88 na vida contra R$ 638,05 em 30 dias).
+    Probe em duas contas: a janela nao muda QUAIS entidades o filtro seleciona,
+    nos quatro alvos. Refazer o probe se o Google mudar esse comportamento.
+    O probe de 25/09 so mediu entidades que ja existiam; quem refizer deve
+    incluir uma entidade criada depois do fim da janela (a janela padrao
+    termina ontem) — o caso mais provavel de divergir.
     """
     if target_type not in _TARGET_TO_QUERY:
         raise ValueError(
@@ -115,9 +124,11 @@ def bulk_pause_query(
     resource, select_fields = _TARGET_TO_QUERY[target_type]
     select_clause = ", ".join(select_fields)
 
+    filtros: dict[str, Any] = {"filtro_do_gestor": filter_clause}
     where_parts = []
-    if "metrics." in filter_clause and "segments.date" not in filter_clause:
+    if "segments.date" not in filter_clause:
         where_parts.append(gaql_date_clause(start, end))
+        filtros["date_range"] = janela_aplicada(start, end)
     # Note: do NOT wrap filter_clause in parentheses — GAQL does not support
     # parenthesized grouping in WHERE clauses (Google rejects with "invalid
     # field name '('"). validate_filter() already restricts to AND-chained
@@ -126,9 +137,10 @@ def bulk_pause_query(
     where_parts.append(filter_clause)
     where_clause = " AND ".join(where_parts)
 
-    return f"""
+    gaql = f"""
         SELECT {select_clause}
         FROM {resource}
         WHERE {where_clause}
         LIMIT 101
     """.strip()
+    return gaql, filtros

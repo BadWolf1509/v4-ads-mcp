@@ -151,6 +151,15 @@ def gaql_date_clause(start: date, end: date) -> str:
     return f"segments.date BETWEEN '{start.isoformat()}' AND '{end.isoformat()}'"
 
 
+def janela_aplicada(start: date, end: date) -> dict[str, str]:
+    """O `date_range` que `filters_applied` ecoa para a janela de `gaql_date_clause`.
+
+    Mesma forma do F191 (`{"start", "end"}`). Mora ao lado da clausula para que
+    quem monta uma monte a outra: o eco derivado da mesma fonte (spec 2026-09-25).
+    """
+    return {"start": start.isoformat(), "end": end.isoformat()}
+
+
 # Plural-form keys in sync with resource types Google Ads emits via change_event.
 # Compound IDs (e.g., {campaign_id}~{criterion_id}) returned as-is — caller splits if needed.
 # Sprint 3b.21: extracted from get_change_history.py for cross-tool reuse.
@@ -197,6 +206,65 @@ def micros_to_currency(micros: int | float) -> float:
     return round(micros / 1_000_000.0, 2)
 
 
+def razao(numerador: float | None, denominador: float | None) -> float | None:
+    """`numerador / denominador`, ou `None` quando nao ha o que dividir.
+
+    Razao sem denominador e INDEFINIDA, nao zero: CPA R$ 0,00 com gasto e zero
+    conversao se le como o melhor CPA possivel; CPC R$ 0,00 sem clique, como
+    clique de graca. `None` e o terceiro estado do F191 — distinto do zero
+    medido. E a UNICA regra de denominador zero das tools Google: o guard
+    `test_nenhuma_razao_vira_zero_quando_o_denominador_some` acusa a expressao
+    condicional nas duas orientacoes (`x / y if y else 0` e tambem
+    `0 if not y else x / y`), com `0`, `0.0` ou `None` no ramo constante, em
+    `src/mcp/tools/` e `src/google_ads/`. A forma em instrucoes (`if ...:
+    return None`) o guard nao ve — `apply_recommendation._delta_pct` foi
+    migrada a mao (F4).
+    """
+    if numerador is None or not denominador:
+        return None
+    return numerador / denominador
+
+
+def arredondado(valor: float | None, casas: int) -> float | None:
+    """`round` que deixa `None` passar: a razao indefinida continua indefinida."""
+    return None if valor is None else round(valor, casas)
+
+
+def em_moeda(valor_micros: float | None) -> float | None:
+    """`micros_to_currency` que deixa `None` passar."""
+    return None if valor_micros is None else micros_to_currency(valor_micros)
+
+
+def percentual(valor: float | None) -> float | None:
+    """`valor * 100` que deixa `None` passar.
+
+    Mantem a ordem `a / b * 100` das contas de antes: `a * 100 / b` muda o ultimo
+    bit e pode virar o arredondamento na casa decimal.
+    """
+    return None if valor is None else valor * 100
+
+
+def _clausula_e_eco_de_metrica(
+    min_cost_brl: float | None,
+    min_clicks: int | None,
+    min_conversions: float | None,
+) -> tuple[str, dict[str, float | int]]:
+    """Fonte unica da clausula de metrica e do seu eco: o mesmo ramo escreve a
+    clausula e a chave, entao as duas nao descolam por construcao."""
+    clauses: list[str] = []
+    ecos: dict[str, float | int] = {}
+    if min_cost_brl is not None:
+        clauses.append(f"AND metrics.cost_micros >= {int(min_cost_brl * 1_000_000)}")
+        ecos["min_cost_brl"] = min_cost_brl
+    if min_clicks is not None:
+        clauses.append(f"AND metrics.clicks >= {int(min_clicks)}")
+        ecos["min_clicks"] = min_clicks
+    if min_conversions is not None:
+        clauses.append(f"AND metrics.conversions > {float(min_conversions)}")
+        ecos["min_conversions"] = min_conversions
+    return " ".join(clauses), ecos
+
+
 def build_metric_filter_clause(
     min_cost_brl: float | None = None,
     min_clicks: int | None = None,
@@ -212,14 +280,21 @@ def build_metric_filter_clause(
     Returns a fragment starting with "AND " (safe to append after an existing
     WHERE clause), or "" when no filter is requested.
     """
-    clauses: list[str] = []
-    if min_cost_brl is not None:
-        clauses.append(f"AND metrics.cost_micros >= {int(min_cost_brl * 1_000_000)}")
-    if min_clicks is not None:
-        clauses.append(f"AND metrics.clicks >= {int(min_clicks)}")
-    if min_conversions is not None:
-        clauses.append(f"AND metrics.conversions > {float(min_conversions)}")
-    return " ".join(clauses)
+    return _clausula_e_eco_de_metrica(min_cost_brl, min_clicks, min_conversions)[0]
+
+
+def filtros_de_metrica(
+    min_cost_brl: float | None = None,
+    min_clicks: int | None = None,
+    min_conversions: float | None = None,
+) -> dict[str, float | int]:
+    """O eco de `build_metric_filter_clause`: so os minimos que viraram clausula.
+
+    Chama `_clausula_e_eco_de_metrica`, a MESMA funcao que monta a clausula: o
+    mesmo ramo escreve a clausula e a chave do eco, entao as duas nao descolam
+    por construcao — nao por um guard que confira depois.
+    """
+    return _clausula_e_eco_de_metrica(min_cost_brl, min_clicks, min_conversions)[1]
 
 
 def value_proxy_warning(conversions: float, conversions_value: float) -> str | None:

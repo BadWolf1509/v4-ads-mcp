@@ -1,13 +1,18 @@
 """GAQL queries for visao geral tools (account_overview, budget_pacing)."""
 
 from datetime import date
+from typing import Any
 
-from src.google_ads.queries._common import gaql_date_clause
+from src.google_ads.queries._common import gaql_date_clause, janela_aplicada
 
 
-def overview_query(date_start: date, date_end: date) -> str:
-    """Aggregate metrics across all enabled campaigns for the date range."""
-    return f"""
+def overview_query(date_start: date, date_end: date) -> tuple[str, dict[str, Any]]:
+    """Metricas agregadas da conta (recurso `customer`) no periodo.
+
+    Nao filtra status: a docstring antiga dizia "across all enabled campaigns",
+    e a query nunca teve esse corte.
+    """
+    gaql = f"""
         SELECT
           metrics.impressions,
           metrics.clicks,
@@ -20,9 +25,10 @@ def overview_query(date_start: date, date_end: date) -> str:
         FROM customer
         WHERE {gaql_date_clause(date_start, date_end)}
     """.strip()
+    return gaql, {"date_range": janela_aplicada(date_start, date_end)}
 
 
-def budget_pacing_query(limit: int = 100) -> str:
+def budget_pacing_query(limit: int = 100) -> tuple[str, dict[str, Any]]:
     """Per-campaign current budget + MTD spend.
 
     Returns one row per enabled campaign with budget amount + month-to-date metrics.
@@ -31,8 +37,12 @@ def budget_pacing_query(limit: int = 100) -> str:
     o tool ordena por gasto DESC no fim, então cortar um conjunto não-ordenado
     entregaria N campanhas arbitrárias reordenadas entre si, parecendo o topo de
     gasto da conta sem ser — a classe F88 ("truncar e depois ordenar").
+
+    A janela e `DURING THIS_MONTH`, resolvida pelo Google no fuso da conta; o eco a
+    declara assim, `{"during": "THIS_MONTH"}`, e nao com datas que esta funcao nao
+    calculou.
     """
-    return f"""
+    gaql = f"""
         SELECT
           campaign.id,
           campaign.name,
@@ -46,3 +56,8 @@ def budget_pacing_query(limit: int = 100) -> str:
         ORDER BY metrics.cost_micros DESC
         LIMIT {limit + 1}
     """.strip()
+    filtros: dict[str, Any] = {
+        "campaign_status": "ENABLED",
+        "date_range": {"during": "THIS_MONTH"},
+    }
+    return gaql, filtros

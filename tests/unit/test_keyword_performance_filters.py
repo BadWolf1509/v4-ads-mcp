@@ -11,7 +11,7 @@ from src.mcp.tools._registry import get_tool
 
 
 def test_query_without_filters_omits_metric_clauses() -> None:
-    q = keyword_performance_query(date(2026, 6, 1), date(2026, 6, 19), "enabled", 200)
+    q, _ = keyword_performance_query(date(2026, 6, 1), date(2026, 6, 19), "enabled", 200)
     assert "metrics.cost_micros >=" not in q
     assert "metrics.clicks >=" not in q
     assert "metrics.conversions >" not in q
@@ -21,7 +21,7 @@ def test_query_without_filters_omits_metric_clauses() -> None:
 
 
 def test_query_with_filters_injects_clauses() -> None:
-    q = keyword_performance_query(
+    q, _ = keyword_performance_query(
         date(2026, 6, 1),
         date(2026, 6, 19),
         "enabled",

@@ -353,3 +353,25 @@ async def test_a_query_das_irmas_nao_sai_quando_o_orcamento_e_exclusivo(
     )
     assert len(queries) == 1
     assert "campaign.campaign_budget IN" not in queries[0]
+
+
+async def test_orcamento_atual_zero_nao_vira_variacao_de_zero_porcento(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """De R$ 0 para R$ 100 nao e "delta +0.0%": a razao nao existe (spec 2026-09-25,
+    §4.2). O `classify` de orcamento e sempre CONFIRM e nao le o numero — o erro
+    ficava so no texto que o gestor confirma e no preview."""
+    captured = _wire(monkeypatch, explicitly_shared=False, irmas=[])
+    zerado = {**_valores_alvo(explicitly_shared=False), "campaign_budget.amount_micros": 0}
+
+    async def _run(**kwargs: Any) -> list[dict[str, Any]]:
+        formatar = kwargs["row_formatter"]
+        return [formatar(_linha(kwargs["query"], zerado))]
+
+    monkeypatch.setattr(mod, "run_report", _run)
+    envelope: dict[str, Any] = await mod.update_campaign_budget(
+        {"customer_id": _CUSTOMER, "campaign_id": _ALVO_ID, "new_daily_budget_brl": 100.0}
+    )
+    assert envelope["delta_pct"] is None
+    assert "variacao indefinida" in envelope["blast_summary"]
+    assert "variacao indefinida" in captured["blast_summary"]

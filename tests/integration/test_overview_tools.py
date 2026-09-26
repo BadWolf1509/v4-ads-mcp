@@ -91,8 +91,10 @@ async def test_account_overview_handles_zero_division(bound_context):
 
     cur = result["current"]
     assert cur["impressions"] == 0
-    assert cur["ctr"] == 0.0
-    assert cur["roas"] == 0.0
+    assert cur["ctr"] is None
+    assert cur["roas"] is None
+    assert cur["sem_dados_no_periodo"] is True
+    assert result["previous"]["sem_dados_no_periodo"] is True  # nos dois periodos (spec §4.2)
 
 
 @pytest.mark.asyncio

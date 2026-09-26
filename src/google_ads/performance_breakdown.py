@@ -8,7 +8,7 @@ SimpleNamespace). Espelha src/meta_ads/insights.py (M.4).
 from datetime import date
 from typing import Any
 
-from src.google_ads.queries._common import micros_to_currency
+from src.google_ads.queries._common import arredondado, em_moeda, micros_to_currency, razao
 from src.google_ads.queries.performance import (
     ad_group_performance_query,
     campaign_performance_query,
@@ -63,14 +63,21 @@ def _common_metrics(m: Any) -> dict[str, Any]:
         "cost_brl": micros_to_currency(cost_micros),
         "conversions": round(float(m.conversions), 2),
         "conversions_value_brl": round(float(m.conversions_value), 2),
-        "ctr": round(clicks / impr, 4) if impr else 0.0,
-        "cpc_brl": micros_to_currency(cost_micros / clicks) if clicks else 0.0,
+        "ctr": arredondado(razao(clicks, impr), 4),
+        "cpc_brl": em_moeda(razao(cost_micros, clicks)),
     }
 
 
 def build_performance_breakdown_query(
     level: str, breakdown: str | None, status: str, start: date, end: date, limit: int
-) -> str:
+) -> tuple[str, dict[str, Any]]:
+    """Despacha por `level`/`breakdown` e devolve o `(gaql, filtros)` da funcao
+    despachada — o recorte que a tool ecoa em `filters_applied`.
+
+    O ramo `campaign`+`hourly` nao passa por aqui: a tool monta a conjunta com
+    `day_hour_metrics_query` (ad_schedule.py), fora do escopo do eco (spec
+    2026-09-25, §7) — aquela resposta nao traz `filters_applied`.
+    """
     if level == "account":
         if breakdown == "device":
             return device_performance_query(start, end)

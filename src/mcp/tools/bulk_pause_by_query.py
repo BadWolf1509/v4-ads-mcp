@@ -192,12 +192,15 @@ def _build_entities(target_type: str, rows: list[dict[str, Any]]) -> list[dict[s
         "amostras + custo total + confirmation_token (TTL 10min). Apply via "
         "apply_change(token). Limite hard: 100 entidades por chamada (se exceder, "
         "rejeita pedindo refinar). filter eh apenas o corpo da WHERE clause (sem "
-        "SELECT/FROM/LIMIT). date_range default LAST_30_DAYS auto-injeta segments.date "
-        "BETWEEN quando filter usa metrics.*. RECOMENDACAO: pra evitar incluir "
+        "SELECT/FROM/LIMIT). date_range (default LAST_30_DAYS) entra SEMPRE como "
+        "segments.date BETWEEN, exceto quando o filter ja traz segments.date: o custo "
+        "do preview e o do periodo, nao o da vida da entidade. RECOMENDACAO: pra "
+        "evitar incluir "
         "entidades ja pausadas, adicione `AND <target>.status = 'ENABLED'` no filter "
         "(ex: `ad_group_criterion.status = 'ENABLED'` pra keywords). "
         "Nota: <entity>.status pode lagar alguns minutos entre queries Google Ads — "
         "preview pode mostrar entidades ja pausadas/REMOVED. Re-query antes de apply."
+        " filters_applied diz o recorte que a query aplicou."
     ),
     input_schema=_SCHEMA,
     bucket="defer",
@@ -227,7 +230,7 @@ async def bulk_pause_by_query(args: dict[str, Any]) -> dict[str, Any]:
         )
     except InvalidDateRangeError as e:
         return error_envelope("bulk_pause_by_query", f"periodo invalido: {e}")
-    query = bulk_pause_query(
+    query, filtros = bulk_pause_query(
         target_type=target_type,
         filter_clause=filter_clause,
         start=start,
@@ -264,6 +267,7 @@ async def bulk_pause_by_query(args: dict[str, Any]) -> dict[str, Any]:
             "operation": "bulk_pause_by_query",
             "customer_id": customer_id,
             "matched_count": 0,
+            "filters_applied": filtros,
             "message": "Nenhuma entidade matched o filtro. Nada a pausar.",
         }
 
@@ -274,9 +278,10 @@ async def bulk_pause_by_query(args: dict[str, Any]) -> dict[str, Any]:
             (
                 f"Sua query matched {_MAX_ENTITIES}+ entidades — acima do limite de "
                 f"{_MAX_ENTITIES} por chamada (decisão MVP). Refine o filtro pra "
-                f"reduzir alcance, ou divida em multiplas chamadas. Ex: adicionar "
-                f"AND segments.date DURING LAST_7_DAYS, filtrar campaign.id "
-                f"especifico, ou metricas mais restritivas."
+                f"reduzir alcance, ou divida em multiplas chamadas. Ex: filtrar "
+                f"campaign.id ou ad_group.id especifico, ou exigir uma condicao de "
+                f"metrica (ex.: metrics.clicks > 0) com um date_range menor — a "
+                f"janela sozinha nao muda quais entidades casam, so o custo."
             ),
             customer_id=customer_id,
             matched_count=f"{_MAX_ENTITIES}+",
@@ -295,8 +300,14 @@ async def bulk_pause_by_query(args: dict[str, Any]) -> dict[str, Any]:
         "__target_count__": count,
         "__partial_failure__": True,
     }
+    janela = filtros.get("date_range")
+    periodo_txt = (
+        f"no periodo {janela['start']} a {janela['end']}"
+        if janela is not None
+        else "no periodo definido no proprio filtro"
+    )
     summary = (
-        f"Pausar {count} {target_type}(s). Custo total R$ {total_cost:.2f} no periodo. "
+        f"Pausar {count} {target_type}(s). Custo total R$ {total_cost:.2f} {periodo_txt}. "
         f"Amostra: " + ", ".join(f"'{s['label']}' ({s['context']})" for s in sample[:3])
     )
 
@@ -322,5 +333,6 @@ async def bulk_pause_by_query(args: dict[str, Any]) -> dict[str, Any]:
             "matched_count": count,
             "total_cost_brl": round(total_cost, 2),
             "sample": sample,
+            "filters_applied": filtros,
         },
     )

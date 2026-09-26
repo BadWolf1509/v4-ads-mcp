@@ -55,6 +55,7 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         "e include_in_conversions_metric (dashboard 'Conversions' metric). "
         "Util pra auditoria de tracking + decisao de promocao Secondary->Primary. "
         "limit (default 100, max 1000); `truncated:true` avisa quando cortou."
+        " filters_applied diz o recorte que a query aplicou."
     ),
     input_schema=_SCHEMA,
     bucket="always",
@@ -63,11 +64,12 @@ async def get_conversion_actions(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()
     customer_id = args["customer_id"]
     limit = args.get("limit", 100)
+    gaql, filtros = conversion_actions_query(limit=limit)
     rows = await run_report(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
-        query=conversion_actions_query(limit=limit),
+        query=gaql,
         row_formatter=_row_formatter,
         operation_name="get_conversion_actions",
         audit_this_call=True,  # sensitive: lists conversion config
@@ -77,6 +79,7 @@ async def get_conversion_actions(args: dict[str, Any]) -> dict[str, Any]:
     rows = rows[:limit]
     return {
         "customer_id": customer_id,
+        "filters_applied": filtros,
         "count": len(rows),
         "truncated": truncated,
         "actions": rows,

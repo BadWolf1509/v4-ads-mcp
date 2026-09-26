@@ -25,7 +25,7 @@ conserta.
 | # | sub-projeto | continha | hoje |
 |---|---|---|---|
 | 1 | credencial + contratos do SDK Meta | token na query string · sem timeout · `cast(dict)` sobre corpo não-JSON · gate não amarrado à URL | fechado — F190 |
-| 2 | respostas que afirmam mais do que mediram | `get_ad_schedule` · `Unpack` · `filters_applied` · eco de `status` · `applied_count` × `blast_summary` · escopo do `get_assets` | núcleo fechado no F191; eco de `status` e `get_assets` seguem abertos |
+| 2 | respostas que afirmam mais do que mediram | `get_ad_schedule` · `Unpack` · `filters_applied` · eco de `status` · `applied_count` × `blast_summary` · escopo do `get_assets` | núcleo fechado no F191; eco de `status` fechado no F193; `get_assets` descartado no F193 (já declarado) |
 | 3 | infra de dados | CSV do audit falha aberto · escopo do guard de reconnect · lock no `migrate.py` · assimetria do `revoke` Meta | CSV fechado no F191; o resto aberto |
 | 4 | guards que não cobrem | o mock que bloqueava o conserto · testes que enumeram em vez de afirmar a propriedade | mock fechado no F191; o resto aberto |
 
@@ -41,16 +41,16 @@ o F191 é a classe A. Os IDs F<n> citados abaixo estão no
 | # | achado | destino |
 |---|---|---|
 | 1 | `filters_applied` omite os filtros que cortam | fechado — F191 |
-| 2 | 6 tools com `status` default `'enabled'` não ecoam o filtro | aberto — *respostas Google* |
-| 3 | `get_top_keywords_creatives` filtra `ENABLED` sem declarar | aberto — *respostas Google* |
+| 2 | 6 tools com `status` default `'enabled'` não ecoam o filtro | fechado — F193 |
+| 3 | `get_top_keywords_creatives` filtra `ENABLED` sem declarar | fechado — F193 |
 | 4 | Meta: `purchases`/`leads`/`purchase_roas` viram `0` quando o campo não vem | aberto — *métricas Meta* |
-| 5 | `get_account_overview`: `if not rows` devolve zeros sem marcador | aberto — *respostas Google* |
-| 6 | `bulk_pause_by_query` não diz sobre qual janela mediu | aberto — *respostas Google* |
-| 7 | `get_budget_pacing`: `ENABLED` fixo, sem parâmetro nem eco | aberto — *respostas Google* |
+| 5 | `get_account_overview`: `if not rows` devolve zeros sem marcador | fechado — F193 |
+| 6 | `bulk_pause_by_query` não diz sobre qual janela mediu | fechado — F193 |
+| 7 | `get_budget_pacing`: `ENABLED` fixo, sem parâmetro nem eco | fechado — F193 (eco; parâmetro de status não entrou) |
 | 8 | `audit_zombie_keywords.filters_applied` | fechado — F191 |
-| 9 | `get_negative_keywords_audit.total_negatives` sem escopo declarado | aberto — *respostas Google* |
+| 9 | `get_negative_keywords_audit.total_negatives` sem escopo declarado | fechado — F193 |
 | 10 | `meta_list_my_ad_accounts`: conta desativada pelo reconciliador some sem rastro | aberto — *F154* (a mesma pergunta: o que a lista de contas prova) |
-| 11 | `country_name: null` no breakdown geo | aberto, baixo — *respostas Google* |
+| 11 | `country_name: null` no breakdown geo | descartado no F193 — null já é o terceiro estado honesto |
 | 12 | não existe modelo de freshness para métricas | PLAUSÍVEL — fora da fila: é desenho, e o relatório traz o probe que decide |
 
 ### 02 — resumo × detalhe
@@ -58,12 +58,12 @@ o F191 é a classe A. Os IDs F<n> citados abaixo estão no
 | # | achado | destino |
 |---|---|---|
 | 1 | `get_ad_schedule`: resumo e lista com filtros de status diferentes | fechado — F191 |
-| 2 | `add_negatives_from_search_terms`: dois números para a mesma pergunta | aberto — *respostas Google* (instância do F187) |
-| 3 | `get_assets`: `summary` do conjunto inteiro, `links[]` cortado | aberto — *respostas Google* (instância do F187) |
-| 4 | `bulk_pause_by_query`: "no período" para custo que pode ser vitalício | PLAUSÍVEL — *respostas Google* |
+| 2 | `add_negatives_from_search_terms`: dois números para a mesma pergunta | fechado — F193 |
+| 3 | `get_assets`: `summary` do conjunto inteiro, `links[]` cortado | descartado no F193 — já declarado por truncated/returned/orphan_scope |
+| 4 | `bulk_pause_by_query`: "no período" para custo que pode ser vitalício | fechado — F193 |
 | 5 | `get_performance_breakdown` (`campaign`+`hourly`): `truncated` ambíguo | fechado — F188 |
-| 6 | `run_gaql`: `row_count` é o universo, `rows` é o cortado | aberto, baixo — *respostas Google* |
-| 7 | `audit_competitor_keywords`: custo do veredito × lista cortada | aberto, baixo — *respostas Google* |
+| 6 | `run_gaql`: `row_count` é o universo, `rows` é o cortado | descartado no F193 — já declarado por truncated/returned/orphan_scope |
+| 7 | `audit_competitor_keywords`: custo do veredito × lista cortada | descartado no F193 — já declarado por truncated/returned/orphan_scope |
 
 ### 03 — contratos Meta
 

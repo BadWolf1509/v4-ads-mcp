@@ -4,7 +4,13 @@
 from typing import Any
 
 from src.google_ads.account_clock import resolve_account_today
-from src.google_ads.queries._common import micros_to_currency, resolve_date_window
+from src.google_ads.queries._common import (
+    arredondado,
+    em_moeda,
+    micros_to_currency,
+    razao,
+    resolve_date_window,
+)
 from src.google_ads.queries.performance import hourly_performance_query
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
@@ -65,8 +71,8 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         "cost_brl": micros_to_currency(cost_micros),
         "conversions": round(float(m.conversions), 2),
         "conversions_value_brl": round(float(m.conversions_value), 2),
-        "ctr": round(clicks / impr, 4) if impr else 0.0,
-        "cpc_brl": micros_to_currency(cost_micros / clicks) if clicks else 0.0,
+        "ctr": arredondado(razao(clicks, impr), 4),
+        "cpc_brl": em_moeda(razao(cost_micros, clicks)),
     }
 
 
@@ -77,6 +83,8 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         "report sera arquivado (Fase 2B). Performance segmentada por hora (0-23) e dia da semana (MONDAY-SUNDAY). "
         "Util pra encontrar janelas de melhor/pior performance e ajustar bid "
         "adjustments por horario."
+        " Razao com denominador zero vem null (indefinida), nao 0."
+        " filters_applied diz o recorte que a query aplicou."
     ),
     input_schema=_SCHEMA,
     bucket="defer",
@@ -91,11 +99,12 @@ async def get_hourly_performance(args: dict[str, Any]) -> dict[str, Any]:
         end_date=args.get("end_date"),
         today=today,
     )
+    gaql, filtros = hourly_performance_query(start, end)
     rows = await run_report(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
-        query=hourly_performance_query(start, end),
+        query=gaql,
         row_formatter=_row_formatter,
         operation_name="get_hourly_performance",
         audit_this_call=True,
@@ -103,5 +112,6 @@ async def get_hourly_performance(args: dict[str, Any]) -> dict[str, Any]:
     return {
         "customer_id": customer_id,
         "period": {"from": start.isoformat(), "to": end.isoformat()},
+        "filters_applied": filtros,
         "rows": rows,
     }

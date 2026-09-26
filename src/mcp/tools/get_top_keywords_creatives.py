@@ -107,6 +107,7 @@ def _ad_formatter(row: Any) -> dict[str, Any]:
         "[DEFER] Top N palavras-chave + top N anuncios (RSAs) ranqueados por metrica "
         "configuravel (cost, conversions, clicks, impressions). Default top_n=10, "
         "metric=cost. Util pra relatorio cliente — secao de destaques."
+        " filters_applied diz o recorte que a query aplicou."
     ),
     input_schema=_SCHEMA,
     bucket="defer",
@@ -127,11 +128,13 @@ async def get_top_keywords_creatives(args: dict[str, Any]) -> dict[str, Any]:
     # C5: `metric` vai no ORDER BY porque o LIMIT e do lado do Google. Ordenar
     # por custo e reordenar aqui devolveria o top-N POR CUSTO reordenado — a
     # keyword barata que converte muito nunca chegaria para ser reordenada.
+    gaql_kw, filtros_kw = top_keywords_query(start, end, top_n, metric=metric)
+    gaql_cr, filtros_cr = top_creatives_query(start, end, top_n, metric=metric)
     keywords = await run_report(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
-        query=top_keywords_query(start, end, top_n, metric=metric),
+        query=gaql_kw,
         row_formatter=_kw_formatter,
         operation_name="get_top_keywords_creatives",
     )
@@ -139,7 +142,7 @@ async def get_top_keywords_creatives(args: dict[str, Any]) -> dict[str, Any]:
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
-        query=top_creatives_query(start, end, top_n, metric=metric),
+        query=gaql_cr,
         row_formatter=_ad_formatter,
         operation_name="get_top_keywords_creatives",
     )
@@ -147,6 +150,7 @@ async def get_top_keywords_creatives(args: dict[str, Any]) -> dict[str, Any]:
     return {
         "customer_id": customer_id,
         "period": {"from": start.isoformat(), "to": end.isoformat()},
+        "filters_applied": {"top_keywords": filtros_kw, "top_creatives": filtros_cr},
         "metric": metric,
         "top_keywords": keywords,
         "top_creatives": creatives,

@@ -88,8 +88,8 @@ def test_common_metrics_zero_division():
         conversions_value=0.0,
     )
     out = _common_metrics(m)
-    assert out["ctr"] == 0.0
-    assert out["cpc_brl"] == 0.0
+    assert out["ctr"] is None
+    assert out["cpc_brl"] is None
 
 
 _S, _E = date(2026, 1, 1), date(2026, 1, 31)
@@ -104,21 +104,21 @@ def test_build_query_entity_levels_from_clause():
         "audience": "FROM ad_group_audience_view",
     }
     for level, frm in cases.items():
-        q = build_performance_breakdown_query(level, None, "enabled", _S, _E, 100)
+        q, _ = build_performance_breakdown_query(level, None, "enabled", _S, _E, 100)
         assert frm in q
 
 
 def test_build_query_account_breakdowns():
-    q_dev = build_performance_breakdown_query("account", "device", "enabled", _S, _E, 100)
+    q_dev, _ = build_performance_breakdown_query("account", "device", "enabled", _S, _E, 100)
     assert "segments.device" in q_dev and "FROM customer" in q_dev
-    q_geo = build_performance_breakdown_query("account", "geo", "enabled", _S, _E, 100)
+    q_geo, _ = build_performance_breakdown_query("account", "geo", "enabled", _S, _E, 100)
     assert "geographic_view.country_criterion_id" in q_geo
-    q_hr = build_performance_breakdown_query("account", "hourly", "enabled", _S, _E, 100)
+    q_hr, _ = build_performance_breakdown_query("account", "hourly", "enabled", _S, _E, 100)
     assert "segments.hour" in q_hr and "FROM customer" in q_hr
 
 
 def test_build_query_status_applied_to_entity_with_status():
-    q = build_performance_breakdown_query("campaign", None, "paused", _S, _E, 100)
+    q, _ = build_performance_breakdown_query("campaign", None, "paused", _S, _E, 100)
     assert "campaign.status = 'PAUSED'" in q
 
 
@@ -570,4 +570,24 @@ async def test_raw_grid_ignora_o_limit_do_gestor(monkeypatch):
     assert out["truncated"] is False, (
         "`truncated` acusou corte que o teto estrutural nao manda fazer — "
         "sinal de que o `limit` entrou na conta do teto"
+    )
+
+
+def test_description_avisa_que_campaign_hourly_nao_ecoa_filters_applied():
+    """F3: o ramo level=campaign+breakdown=hourly usa `day_hour_metrics_query`
+    (fora do escopo do spec §7, `ad_schedule.py`) e nao devolve `filters_applied`
+    — a description tem que dizer isso ANTES da frase final que afirma o eco
+    para os demais ramos."""
+    from src.mcp.tools._registry import get_tool, import_all_tools
+
+    import_all_tools()
+    tool = get_tool("get_performance_breakdown")
+    assert tool is not None
+
+    aviso = "Com level=campaign e breakdown=hourly a resposta nao traz filters_applied"
+    frase_final = "filters_applied diz o recorte que a query aplicou."
+    assert aviso in tool.description
+    assert frase_final in tool.description
+    assert tool.description.index(aviso) < tool.description.index(frase_final), (
+        "o aviso do ramo sem eco tem que vir ANTES da frase final que afirma o eco"
     )

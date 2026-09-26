@@ -1,8 +1,14 @@
 """GAQL queries for tactical optimization tools."""
 
 from datetime import date
+from typing import Any
 
-from src.google_ads.queries._common import build_metric_filter_clause, gaql_date_clause
+from src.google_ads.queries._common import (
+    build_metric_filter_clause,
+    filtros_de_metrica,
+    gaql_date_clause,
+    janela_aplicada,
+)
 
 
 def keyword_performance_query(
@@ -14,10 +20,15 @@ def keyword_performance_query(
     min_cost_brl: float | None = None,
     min_clicks: int | None = None,
     min_conversions: float | None = None,
-) -> str:
-    status_clause = "" if status == "all" else f"AND ad_group_criterion.status = '{status.upper()}'"
+) -> tuple[str, dict[str, Any]]:
+    filtros: dict[str, Any] = {"date_range": janela_aplicada(start, end)}
+    status_clause = ""
+    if status != "all":
+        status_clause = f"AND ad_group_criterion.status = '{status.upper()}'"
+        filtros["criterion_status"] = status.upper()
     metric_clause = build_metric_filter_clause(min_cost_brl, min_clicks, min_conversions)
-    return f"""
+    filtros.update(filtros_de_metrica(min_cost_brl, min_clicks, min_conversions))
+    gaql = f"""
         SELECT
           ad_group_criterion.criterion_id,
           ad_group_criterion.keyword.text,
@@ -39,6 +50,7 @@ def keyword_performance_query(
         ORDER BY metrics.cost_micros DESC
         LIMIT {limit + 1}
     """.strip()
+    return gaql, filtros
 
 
 def search_terms_query(
@@ -49,9 +61,11 @@ def search_terms_query(
     min_cost_brl: float | None = None,
     min_clicks: int | None = None,
     min_conversions: float | None = None,
-) -> str:
+) -> tuple[str, dict[str, Any]]:
+    filtros: dict[str, Any] = {"date_range": janela_aplicada(start, end)}
     metric_clause = build_metric_filter_clause(min_cost_brl, min_clicks, min_conversions)
-    return f"""
+    filtros.update(filtros_de_metrica(min_cost_brl, min_clicks, min_conversions))
+    gaql = f"""
         SELECT
           search_term_view.search_term,
           search_term_view.status,
@@ -64,11 +78,17 @@ def search_terms_query(
         ORDER BY metrics.cost_micros DESC
         LIMIT {limit + 1}
     """.strip()
+    return gaql, filtros
 
 
-def negative_keywords_audit_query() -> str:
-    """Negative keywords applied at campaign level."""
-    return """
+def negative_keywords_audit_query() -> tuple[str, dict[str, Any]]:
+    """Negativas de keyword no NIVEL DE CAMPANHA — so elas.
+
+    Negativas de grupo (`ad_group_criterion`) e listas compartilhadas
+    (`shared_criterion`) nao entram: o `nivel` no `filtros` diz isso na resposta
+    (spec 2026-09-25, §4.3). Cobrir a conta inteira e frente propria.
+    """
+    gaql = """
         SELECT
           campaign_criterion.criterion_id,
           campaign_criterion.negative,
@@ -80,11 +100,19 @@ def negative_keywords_audit_query() -> str:
         WHERE campaign_criterion.negative = true
           AND campaign_criterion.type = 'KEYWORD'
     """.strip()
+    filtros: dict[str, Any] = {"nivel": "campanha", "negative": True, "criterion_type": "KEYWORD"}
+    return gaql, filtros
 
 
-def ad_performance_query(start: date, end: date, status: str, limit: int) -> str:
-    status_clause = "" if status == "all" else f"AND ad_group_ad.status = '{status.upper()}'"
-    return f"""
+def ad_performance_query(
+    start: date, end: date, status: str, limit: int
+) -> tuple[str, dict[str, Any]]:
+    filtros: dict[str, Any] = {"date_range": janela_aplicada(start, end)}
+    status_clause = ""
+    if status != "all":
+        status_clause = f"AND ad_group_ad.status = '{status.upper()}'"
+        filtros["ad_status"] = status.upper()
+    gaql = f"""
         SELECT
           ad_group_ad.ad.id,
           ad_group_ad.status,
@@ -102,10 +130,11 @@ def ad_performance_query(start: date, end: date, status: str, limit: int) -> str
         ORDER BY metrics.cost_micros DESC
         LIMIT {limit + 1}
     """.strip()
+    return gaql, filtros
 
 
-def audience_performance_query(start: date, end: date, limit: int) -> str:
-    return f"""
+def audience_performance_query(start: date, end: date, limit: int) -> tuple[str, dict[str, Any]]:
+    gaql = f"""
         SELECT
           ad_group_audience_view.resource_name,
           ad_group_criterion.criterion_id,
@@ -120,11 +149,15 @@ def audience_performance_query(start: date, end: date, limit: int) -> str:
         ORDER BY metrics.cost_micros DESC
         LIMIT {limit + 1}
     """.strip()
+    return gaql, {"date_range": janela_aplicada(start, end)}
 
 
-def conversion_actions_query(limit: int = 100) -> str:
-    """F98 — `limit + 1`: a linha extra é a sentinela que revela o corte."""
-    return f"""
+def conversion_actions_query(limit: int = 100) -> tuple[str, dict[str, Any]]:
+    """F98 — `limit + 1`: a linha extra é a sentinela que revela o corte.
+
+    Nao corta nada: o `filtros` vazio e o eco honesto, nao uma ausencia.
+    """
+    gaql = f"""
         SELECT
           conversion_action.id,
           conversion_action.name,
@@ -140,3 +173,4 @@ def conversion_actions_query(limit: int = 100) -> str:
         FROM conversion_action
         LIMIT {limit + 1}
     """.strip()
+    return gaql, {}
