@@ -213,8 +213,12 @@ def razao(numerador: float | None, denominador: float | None) -> float | None:
     conversao se le como o melhor CPA possivel; CPC R$ 0,00 sem clique, como
     clique de graca. `None` e o terceiro estado do F191 — distinto do zero
     medido. E a UNICA regra de denominador zero das tools Google: o guard
-    `test_nenhuma_razao_vira_zero_quando_o_denominador_some` acusa a forma
-    `x / y if y else 0` em `src/mcp/tools/` e `src/google_ads/`.
+    `test_nenhuma_razao_vira_zero_quando_o_denominador_some` acusa a expressao
+    condicional nas duas orientacoes (`x / y if y else 0` e tambem
+    `0 if not y else x / y`), com `0`, `0.0` ou `None` no ramo constante, em
+    `src/mcp/tools/` e `src/google_ads/`. A forma em instrucoes (`if ...:
+    return None`) o guard nao ve — `apply_recommendation._delta_pct` foi
+    migrada a mao (F4).
     """
     if numerador is None or not denominador:
         return None

@@ -297,8 +297,10 @@ def test_toda_funcao_convertida_ecoa_cada_corte_do_where() -> None:
 
 def test_o_escopo_final_tem_as_17_funcoes_nos_5_modulos() -> None:
     """Piso: sem ele, um modulo que saisse da tupla deixaria os guards menores e verdes."""
-    assert len(_MODULOS_CONVERTIDOS) == 5
-    assert len(_chamadas()) == 17
+    assert len(_MODULOS_CONVERTIDOS) >= 5, (
+        f"piso medido em 26/09: 5 modulos; achou {len(_MODULOS_CONVERTIDOS)}"
+    )
+    assert len(_chamadas()) >= 17, f"piso medido em 26/09: 17 funcoes; achou {len(_chamadas())}"
     assert {n for m in _MODULOS_CONVERTIDOS for n in _funcoes_publicas(m)} == set(_chamadas())
 
 

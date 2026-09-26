@@ -40,19 +40,26 @@ def test_fora_do_zero_o_valor_e_o_de_antes(a: float, b: float) -> None:
 
 
 def _divisoes_que_viram_zero(arv: ast.AST) -> list[int]:
-    """`<algo que divide> if <cond> else 0` — a forma que a regra proibe."""
+    """`<algo que divide> if <cond> else <0|0.0|None>`, nas duas orientacoes —
+    a forma que a regra proibe. F4: conta tambem quando quem divide e o
+    `orelse` (`0 if not y else x / y`) e quando a constante do outro lado e
+    `None`, nao so `0`/`0.0`."""
     achados = []
     for no in ast.walk(arv):
-        if (
-            isinstance(no, ast.IfExp)
-            and isinstance(no.orelse, ast.Constant)
-            and not isinstance(no.orelse.value, bool)
-            and no.orelse.value in (0, 0.0)
-            and any(
-                isinstance(s, ast.BinOp) and isinstance(s.op, ast.Div) for s in ast.walk(no.body)
-            )
-        ):
-            achados.append(no.lineno)
+        if not isinstance(no, ast.IfExp):
+            continue
+        for quem_divide, constante in ((no.body, no.orelse), (no.orelse, no.body)):
+            if (
+                isinstance(constante, ast.Constant)
+                and not isinstance(constante.value, bool)
+                and constante.value in (0, 0.0, None)
+                and any(
+                    isinstance(s, ast.BinOp) and isinstance(s.op, ast.Div)
+                    for s in ast.walk(quem_divide)
+                )
+            ):
+                achados.append(no.lineno)
+                break
     return achados
 
 
@@ -60,6 +67,12 @@ def test_o_detector_enxerga_a_forma_proibida() -> None:
     """Controle positivo: sem ele, o guard abaixo passaria verde por nao casar nada."""
     arv = ast.parse("x = {'ctr': round(c / i, 4) if i else 0.0, 'n': 0}")
     assert _divisoes_que_viram_zero(arv) == [1]
+
+    invertida = ast.parse("x = 0 if not i else c / i")
+    assert _divisoes_que_viram_zero(invertida) == [1]
+
+    com_none = ast.parse("x = c / i if i else None")
+    assert _divisoes_que_viram_zero(com_none) == [1]
 
 
 def test_nenhuma_razao_vira_zero_quando_o_denominador_some() -> None:
@@ -69,10 +82,7 @@ def test_nenhuma_razao_vira_zero_quando_o_denominador_some() -> None:
         for p in h.fontes_py(raiz)
         for linha in _divisoes_que_viram_zero(h.arvore(p))
     ]
-    assert not ofensores, (
-        "razao que vira 0 quando o denominador some — CPA R$ 0,00 le como o melhor "
-        f"CPA possivel. Use `razao()` de src/google_ads/queries/_common.py: {ofensores}"
-    )
+    assert not ofensores, f"regra de denominador zero escrita a mao — use `razao()`: {ofensores}"
 
 
 _FORMATADORES_POR_LINHA = [
@@ -145,6 +155,32 @@ def test_overview_com_gasto_e_zero_conversao_nao_tem_cpa() -> None:
     assert out["average_cpc_brl"] == 0.5
 
 
+def test_overview_com_custo_abaixo_de_meio_centavo_nao_quebra_o_roas() -> None:
+    """F2: `cost_micros` entre 1 e 4.999 arredonda pra 0.0 em `micros_to_currency`.
+
+    O guarda antigo era `if cost` (em micros, entao truthy) dividindo por esse
+    0.0: `ZeroDivisionError`. `razao()` confere o denominador JA convertido —
+    `cost_brl` fica 0.0 (verdade: o custo real e menor que 1 centavo) e `roas`
+    vira `None` (indefinido), sem levantar.
+    """
+    from src.mcp.tools.get_account_overview import _aggregate
+
+    out = _aggregate(
+        [
+            {
+                "impressions": 100,
+                "clicks": 10,
+                "cost_micros": 3_000,
+                "conversions": 1.0,
+                "conversions_value": 50.0,
+            }
+        ]
+    )
+    assert out["sem_dados_no_periodo"] is False
+    assert out["cost_brl"] == 0.0
+    assert out["roas"] is None
+
+
 def test_funil_distingue_zero_medido_de_indefinido() -> None:
     from src.mcp.tools.get_funnel_metrics import _build_funnel
 
@@ -188,9 +224,11 @@ def test_pacing_sem_orcamento_nao_vira_zero_porcento() -> None:
 
 
 _FRASE_DA_RAZAO = "Razao com denominador zero vem null (indefinida), nao 0."
-# O `delta_pct` do preview de orcamento tambem pode vir null; quem explica e o
-# `blast_summary` ("variacao indefinida"), nao a description da tool de mutacao.
-_MUTACAO_COM_RAZAO = {"update_campaign_budget"}
+# O `delta_pct` do preview de orcamento (e o de `apply_recommendation`, que
+# depois do F4 tambem chama `razao()` no mesmo `_delta_pct`) tambem pode vir
+# null; quem explica e o `blast_summary`/resumo da mutacao ("variacao
+# indefinida"), nao a description da tool de mutacao.
+_MUTACAO_COM_RAZAO = {"update_campaign_budget", "apply_recommendation"}
 
 
 def _tools_com_razao() -> set[str]:

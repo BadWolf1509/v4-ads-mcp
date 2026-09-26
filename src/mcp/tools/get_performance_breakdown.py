@@ -129,6 +129,8 @@ _CELULAS_DA_GRADE = 7 * 24
         "NULL`, e criterio negativo nao tem indice de qualidade). Para visao geral da "
         "conta com comparativo use get_account_overview."
         " Razao com denominador zero vem null (indefinida), nao 0."
+        " Com level=campaign e breakdown=hourly a resposta nao traz filters_applied"
+        " (grade dia x hora)."
         " filters_applied diz o recorte que a query aplicou."
     ),
     input_schema=_SCHEMA,

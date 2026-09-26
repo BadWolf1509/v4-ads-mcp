@@ -112,6 +112,9 @@ def bulk_pause_query(
     2026-09-25, §4.1 — medido: R$ 3.013,88 na vida contra R$ 638,05 em 30 dias).
     Probe em duas contas: a janela nao muda QUAIS entidades o filtro seleciona,
     nos quatro alvos. Refazer o probe se o Google mudar esse comportamento.
+    O probe de 25/09 so mediu entidades que ja existiam; quem refizer deve
+    incluir uma entidade criada depois do fim da janela (a janela padrao
+    termina ontem) — o caso mais provavel de divergir.
     """
     if target_type not in _TARGET_TO_QUERY:
         raise ValueError(

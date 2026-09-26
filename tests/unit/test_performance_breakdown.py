@@ -571,3 +571,23 @@ async def test_raw_grid_ignora_o_limit_do_gestor(monkeypatch):
         "`truncated` acusou corte que o teto estrutural nao manda fazer — "
         "sinal de que o `limit` entrou na conta do teto"
     )
+
+
+def test_description_avisa_que_campaign_hourly_nao_ecoa_filters_applied():
+    """F3: o ramo level=campaign+breakdown=hourly usa `day_hour_metrics_query`
+    (fora do escopo do spec §7, `ad_schedule.py`) e nao devolve `filters_applied`
+    — a description tem que dizer isso ANTES da frase final que afirma o eco
+    para os demais ramos."""
+    from src.mcp.tools._registry import get_tool, import_all_tools
+
+    import_all_tools()
+    tool = get_tool("get_performance_breakdown")
+    assert tool is not None
+
+    aviso = "Com level=campaign e breakdown=hourly a resposta nao traz filters_applied"
+    frase_final = "filters_applied diz o recorte que a query aplicou."
+    assert aviso in tool.description
+    assert frase_final in tool.description
+    assert tool.description.index(aviso) < tool.description.index(frase_final), (
+        "o aviso do ramo sem eco tem que vir ANTES da frase final que afirma o eco"
+    )

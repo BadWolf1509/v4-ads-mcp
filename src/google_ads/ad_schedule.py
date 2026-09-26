@@ -14,6 +14,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
+from src.google_ads.queries._common import arredondado, razao
+
 DIAS: tuple[str, ...] = (
     "MONDAY",
     "TUESDAY",
@@ -251,7 +253,9 @@ def _agrega(cells: list[MetricCell]) -> dict[str, Any]:
     return {
         "cost_brl": cost_brl,
         "conversions": round(conv, 2),
-        "cpa_brl": round(cost_brl / conv, 2) if conv > 0 else None,
+        # F4: era `round(cost_brl / conv, 2) if conv > 0 else None` — hand-rolled;
+        # `conv` nunca e negativo, entao o valor fica identico com `razao()`.
+        "cpa_brl": arredondado(razao(cost_brl, conv), 2),
         "cells": len(cells),
     }
 

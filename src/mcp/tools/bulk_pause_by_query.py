@@ -278,9 +278,10 @@ async def bulk_pause_by_query(args: dict[str, Any]) -> dict[str, Any]:
             (
                 f"Sua query matched {_MAX_ENTITIES}+ entidades — acima do limite de "
                 f"{_MAX_ENTITIES} por chamada (decisão MVP). Refine o filtro pra "
-                f"reduzir alcance, ou divida em multiplas chamadas. Ex: adicionar "
-                f"AND segments.date DURING LAST_7_DAYS, filtrar campaign.id "
-                f"especifico, ou metricas mais restritivas."
+                f"reduzir alcance, ou divida em multiplas chamadas. Ex: filtrar "
+                f"campaign.id ou ad_group.id especifico, ou exigir uma condicao de "
+                f"metrica (ex.: metrics.clicks > 0) com um date_range menor — a "
+                f"janela sozinha nao muda quais entidades casam, so o custo."
             ),
             customer_id=customer_id,
             matched_count=f"{_MAX_ENTITIES}+",
