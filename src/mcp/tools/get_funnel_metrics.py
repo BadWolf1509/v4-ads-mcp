@@ -117,6 +117,7 @@ def _build_funnel(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "(receita), com taxas de conversao entre etapas e KPIs derivados (ROAS, "
         "AOV, CPA). Util pra relatorio cliente."
         " Razao com denominador zero vem null (indefinida), nao 0."
+        " filters_applied diz o recorte que a query aplicou."
     ),
     input_schema=_SCHEMA,
     bucket="defer",
@@ -131,16 +132,18 @@ async def get_funnel_metrics(args: dict[str, Any]) -> dict[str, Any]:
         end_date=args.get("end_date"),
         today=today,
     )
+    gaql, filtros = funnel_query(start, end)
     rows = await run_report(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
-        query=funnel_query(start, end),
+        query=gaql,
         row_formatter=_row_formatter,
         operation_name="get_funnel_metrics",
     )
     return {
         "customer_id": customer_id,
         "period": {"from": start.isoformat(), "to": end.isoformat()},
+        "filters_applied": filtros,
         "funnel": _build_funnel(rows),
     }

@@ -53,7 +53,7 @@ _DATE_CLAUSE = "segments.date BETWEEN '2026-01-01' AND '2026-01-31'"
 
 
 def test_overview_query_selects_customer_metrics() -> None:
-    q = overview_query(_S, _E)
+    q, _ = overview_query(_S, _E)
     assert "FROM customer" in q
     for field in (
         "metrics.impressions",
@@ -69,12 +69,12 @@ def test_overview_query_selects_customer_metrics() -> None:
 
 
 def test_overview_query_where_date_clause() -> None:
-    q = overview_query(_S, _E)
+    q, _ = overview_query(_S, _E)
     assert _DATE_CLAUSE in q
 
 
 def test_budget_pacing_query_shape() -> None:
-    q = budget_pacing_query()
+    q, _ = budget_pacing_query()
     assert "FROM campaign" in q
     for field in (
         "campaign.id",
@@ -96,7 +96,7 @@ def test_budget_pacing_query_shape() -> None:
 
 
 def test_funnel_query_shape() -> None:
-    q = funnel_query(_S, _E)
+    q, _ = funnel_query(_S, _E)
     assert "FROM customer" in q
     for field in (
         "metrics.impressions",
@@ -121,7 +121,7 @@ _ORDEM = {
 
 
 def test_top_keywords_query_shape_and_order() -> None:
-    q = top_keywords_query(_S, _E, 5, metric="cost")
+    q, _ = top_keywords_query(_S, _E, 5, metric="cost")
     assert "FROM keyword_view" in q
     for field in (
         "ad_group_criterion.criterion_id",
@@ -139,12 +139,12 @@ def test_top_keywords_query_shape_and_order() -> None:
 
 
 def test_top_keywords_query_limit_is_parameterized() -> None:
-    assert "LIMIT 25" in top_keywords_query(_S, _E, 25, metric="cost")
-    assert "LIMIT 5" not in top_keywords_query(_S, _E, 25, metric="cost")
+    assert "LIMIT 25" in top_keywords_query(_S, _E, 25, metric="cost")[0]
+    assert "LIMIT 5" not in top_keywords_query(_S, _E, 25, metric="cost")[0]
 
 
 def test_top_creatives_query_shape_and_order() -> None:
-    q = top_creatives_query(_S, _E, 3, metric="cost")
+    q, _ = top_creatives_query(_S, _E, 3, metric="cost")
     assert "FROM ad_group_ad" in q
     for field in (
         "ad_group_ad.ad.id",
@@ -163,13 +163,13 @@ def test_top_creatives_query_shape_and_order() -> None:
 
 def test_top_keywords_ordena_pela_metrica_pedida() -> None:
     for metric, campo in _ORDEM.items():
-        q = top_keywords_query(_S, _E, 10, metric=metric)
+        q, _ = top_keywords_query(_S, _E, 10, metric=metric)
         assert f"ORDER BY {campo} DESC" in q, metric
 
 
 def test_top_creatives_ordena_pela_metrica_pedida() -> None:
     for metric, campo in _ORDEM.items():
-        q = top_creatives_query(_S, _E, 10, metric=metric)
+        q, _ = top_creatives_query(_S, _E, 10, metric=metric)
         assert f"ORDER BY {campo} DESC" in q, metric
 
 
@@ -187,8 +187,8 @@ def test_o_campo_do_order_by_esta_no_select() -> None:
     """
     for metric, campo in _ORDEM.items():
         for nome, q in (
-            ("top_keywords_query", top_keywords_query(_S, _E, 10, metric=metric)),
-            ("top_creatives_query", top_creatives_query(_S, _E, 10, metric=metric)),
+            ("top_keywords_query", top_keywords_query(_S, _E, 10, metric=metric)[0]),
+            ("top_creatives_query", top_creatives_query(_S, _E, 10, metric=metric)[0]),
         ):
             select = q.split("FROM")[0]
             assert re.search(rf"{re.escape(campo)}(?![\w.])", select), (
@@ -612,8 +612,8 @@ def test_o_top_n_tem_desempate_estavel() -> None:
     """
     for metric in ("conversions", "clicks", "impressions"):
         for q in (
-            top_keywords_query(_S, _E, 10, metric=metric),
-            top_creatives_query(_S, _E, 10, metric=metric),
+            top_keywords_query(_S, _E, 10, metric=metric)[0],
+            top_creatives_query(_S, _E, 10, metric=metric)[0],
         ):
             assert "DESC, metrics.cost_micros DESC" in q, f"{metric}: sem desempate"
 
@@ -623,8 +623,8 @@ def test_ordenar_por_custo_nao_repete_o_campo_no_desempate() -> None:
     aceito pelo Google e diria a mesma coisa duas vezes — ruido que faz o
     proximo leitor procurar um significado que nao existe."""
     for q in (
-        top_keywords_query(_S, _E, 10, metric="cost"),
-        top_creatives_query(_S, _E, 10, metric="cost"),
+        top_keywords_query(_S, _E, 10, metric="cost")[0],
+        top_creatives_query(_S, _E, 10, metric="cost")[0],
     ):
         assert q.count("metrics.cost_micros DESC") == 1
 

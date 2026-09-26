@@ -7,6 +7,7 @@ ela declara e a mesma que ela mandou ao Google (spec 2026-09-25, §3.3).
 
 from __future__ import annotations
 
+import ast
 import copy
 import importlib
 from collections.abc import Callable, Iterator
@@ -18,6 +19,7 @@ from uuid import uuid4
 import pytest
 
 from src.mcp.context import McpRequestContext, clear_current, set_current
+from tests.unit import _guard_harness as h
 
 _CONTA = "1234567890"
 
@@ -88,6 +90,21 @@ CASOS: list[Caso] = [
     ),
     Caso(
         "get_conversion_actions", ("conversion_actions_query",), _unico("conversion_actions_query")
+    ),
+    Caso("get_funnel_metrics", ("funnel_query",), _unico("funnel_query")),
+    Caso("get_budget_pacing", ("budget_pacing_query",), _unico("budget_pacing_query")),
+    Caso(
+        "get_top_keywords_creatives",
+        ("top_keywords_query", "top_creatives_query"),
+        lambda r: {
+            "top_keywords": r["top_keywords_query"][0][1],
+            "top_creatives": r["top_creatives_query"][0][1],
+        },
+    ),
+    Caso(
+        "get_account_overview",
+        ("overview_query",),
+        lambda r: {"current": r["overview_query"][0][1], "previous": r["overview_query"][1][1]},
     ),
 ]
 
@@ -161,4 +178,40 @@ async def test_a_resposta_ecoa_o_recorte_da_query_que_rodou(caso: Caso) -> None:
     assert ditas == ecoadas, f"`period` diz {ditas} e o eco diz {ecoadas}"
     assert _FRASE_DO_ECO in tool.description, (
         f"`{caso.tool}` ecoa filters_applied e a description nao diz (spec §3.2)"
+    )
+
+
+# Modulos cujas funcoes montam o GAQL que as tools rodam. Tool que importa deles
+# tem de estar em `CASOS`: a lista acima e conferida por varredura, nao lembrada.
+_MODULOS_DE_QUERY = {
+    "src.google_ads.queries.performance",
+    "src.google_ads.queries.tactical",
+    "src.google_ads.queries.client_report",
+    "src.google_ads.queries.overview",
+    "src.google_ads.queries.bulk_pause",
+    "src.google_ads.performance_breakdown",
+}
+# O preview do bulk_pause_by_query e um dry-run de mutacao (grava token no banco):
+# o eco dele e conferido em tests/unit/test_bulk_pause_tool.py.
+_FORA_DO_ECO_DE_LEITURA = {"bulk_pause_by_query"}
+
+
+def _tools_que_usam_as_funcoes_de_query() -> set[str]:
+    return {
+        p.stem
+        for p in h.fontes_py(h.SRC / "mcp" / "tools")
+        if any(
+            isinstance(no, ast.ImportFrom) and no.module in _MODULOS_DE_QUERY
+            for no in ast.walk(h.arvore(p))
+        )
+    }
+
+
+def test_toda_tool_que_monta_query_dos_cinco_modulos_esta_no_eco() -> None:
+    usam = _tools_que_usam_as_funcoes_de_query()
+    assert len(usam) >= 17, f"piso medido em 26/09 (16 de leitura + bulk_pause): {sorted(usam)}"
+    faltam = sorted(usam - _FORA_DO_ECO_DE_LEITURA - {c.tool for c in CASOS})
+    assert not faltam, (
+        f"tool que roda query dos cinco modulos e nao esta em CASOS: {faltam}. "
+        "Acrescente o Caso: a resposta dela tem de ecoar filters_applied."
     )

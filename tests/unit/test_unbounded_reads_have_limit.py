@@ -46,7 +46,7 @@ def _ctx():
     [
         (recommendations_query, lambda q: q),  # segue devolvendo so o texto
         (conversion_actions_query, lambda q: q[0]),  # (gaql, filtros) desde 2026-09-26
-        (budget_pacing_query, lambda q: q),  # vira q[0] na Task 4
+        (budget_pacing_query, lambda q: q[0]),  # (gaql, filtros) desde 2026-09-26
     ],
     ids=["recommendations", "conversion_actions", "budget_pacing"],
 )
@@ -68,7 +68,7 @@ def test_budget_pacing_ordena_antes_de_cortar() -> None:
     si — parecendo o topo de gasto da conta sem ser. Os outros dois tools sao
     inventario (nao ha ranking implicito), entao so este precisa do ORDER BY.
     """
-    query = budget_pacing_query(limit=50)
+    query, _ = budget_pacing_query(limit=50)
     assert "ORDER BY metrics.cost_micros DESC" in query
     assert query.index("ORDER BY") < query.index("LIMIT")
 

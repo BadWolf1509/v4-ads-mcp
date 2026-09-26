@@ -107,6 +107,7 @@ def _project(rows: list[dict[str, Any]], *, today: date) -> list[dict[str, Any]]
         "campanha esta acelerada/lenta demais. Ordenado por gasto no mes desc; "
         "limit (default 100, max 1000) corta a cauda e `truncated:true` avisa."
         " Razao com denominador zero vem null (indefinida), nao 0."
+        " filters_applied diz o recorte que a query aplicou."
     ),
     input_schema=_SCHEMA,
     bucket="defer",
@@ -116,11 +117,12 @@ async def get_budget_pacing(args: dict[str, Any]) -> dict[str, Any]:
     customer_id = args["customer_id"]
     limit = args.get("limit", 100)
     today = await resolve_account_today(customer_id)
+    gaql, filtros = budget_pacing_query(limit=limit)
     rows = await run_report(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
-        query=budget_pacing_query(limit=limit),
+        query=gaql,
         row_formatter=_row_formatter,
         operation_name="get_budget_pacing",
     )
@@ -130,6 +132,7 @@ async def get_budget_pacing(args: dict[str, Any]) -> dict[str, Any]:
     return {
         "customer_id": customer_id,
         "as_of": today.isoformat(),
+        "filters_applied": filtros,
         "truncated": truncated,
         "campaigns": _project(rows, today=today),
     }

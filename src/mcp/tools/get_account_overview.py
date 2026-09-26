@@ -131,6 +131,7 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         "conversoes, valor, CTR, CPC, CPA, ROAS) para um periodo, com comparativo "
         "do periodo imediatamente anterior de mesma duracao."
         " Razao com denominador zero vem null (indefinida), nao 0."
+        " filters_applied diz o recorte que a query aplicou."
     ),
     input_schema=_SCHEMA,
     bucket="defer",
@@ -147,11 +148,13 @@ async def get_account_overview(args: dict[str, Any]) -> dict[str, Any]:
     )
     prev_start, prev_end = get_comparison_range(start, end)
 
+    gaql_atual, filtros_atual = overview_query(start, end)
+    gaql_anterior, filtros_anterior = overview_query(prev_start, prev_end)
     rows_curr = await run_report(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
-        query=overview_query(start, end),
+        query=gaql_atual,
         row_formatter=_row_formatter,
         operation_name="get_account_overview",
     )
@@ -159,7 +162,7 @@ async def get_account_overview(args: dict[str, Any]) -> dict[str, Any]:
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
-        query=overview_query(prev_start, prev_end),
+        query=gaql_anterior,
         row_formatter=_row_formatter,
         operation_name="get_account_overview",
     )
@@ -168,6 +171,7 @@ async def get_account_overview(args: dict[str, Any]) -> dict[str, Any]:
         "customer_id": customer_id,
         "period": {"from": start.isoformat(), "to": end.isoformat()},
         "previous_period": {"from": prev_start.isoformat(), "to": prev_end.isoformat()},
+        "filters_applied": {"current": filtros_atual, "previous": filtros_anterior},
         "current": _aggregate(rows_curr),
         "previous": _aggregate(rows_prev),
     }

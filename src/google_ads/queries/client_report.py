@@ -1,8 +1,9 @@
 """GAQL queries for client-report tools."""
 
 from datetime import date
+from typing import Any
 
-from src.google_ads.queries._common import gaql_date_clause
+from src.google_ads.queries._common import gaql_date_clause, janela_aplicada
 
 # C5: o corte (`LIMIT top_n`) acontece NO GOOGLE, entao o `ORDER BY` tem que ser
 # a metrica que o gestor pediu. Um mapa so, compartilhado pelos dois builders:
@@ -46,9 +47,9 @@ def _order_by(metric: str) -> str:
     return f"{campo} DESC, {_DESEMPATE} DESC"
 
 
-def funnel_query(start: date, end: date) -> str:
+def funnel_query(start: date, end: date) -> tuple[str, dict[str, Any]]:
     """Aggregate funnel metrics from customer-level for the period."""
-    return f"""
+    gaql = f"""
         SELECT
           metrics.impressions,
           metrics.clicks,
@@ -58,16 +59,19 @@ def funnel_query(start: date, end: date) -> str:
         FROM customer
         WHERE {gaql_date_clause(start, end)}
     """.strip()
+    return gaql, {"date_range": janela_aplicada(start, end)}
 
 
-def top_keywords_query(start: date, end: date, top_n: int, *, metric: str) -> str:
+def top_keywords_query(
+    start: date, end: date, top_n: int, *, metric: str
+) -> tuple[str, dict[str, Any]]:
     """Top N keywords by `metric`: o Google ordena e corta, nesta ordem.
 
     `metric` entra no `ORDER BY` porque o `LIMIT` e do lado do Google — se a
     ordenacao nao for a pedida, o top-N devolvido e o top-N de OUTRA coluna, e
     nenhum re-sort no cliente traz de volta a linha que nao veio (C5).
     """
-    return f"""
+    gaql = f"""
         SELECT
           ad_group_criterion.criterion_id,
           ad_group_criterion.keyword.text,
@@ -82,11 +86,14 @@ def top_keywords_query(start: date, end: date, top_n: int, *, metric: str) -> st
         ORDER BY {_order_by(metric)}
         LIMIT {top_n}
     """.strip()
+    return gaql, {"date_range": janela_aplicada(start, end), "criterion_status": "ENABLED"}
 
 
-def top_creatives_query(start: date, end: date, top_n: int, *, metric: str) -> str:
+def top_creatives_query(
+    start: date, end: date, top_n: int, *, metric: str
+) -> tuple[str, dict[str, Any]]:
     """Top N RSAs by `metric`: o Google ordena e corta, nesta ordem (ver C5)."""
-    return f"""
+    gaql = f"""
         SELECT
           ad_group_ad.ad.id,
           ad_group_ad.ad.responsive_search_ad.headlines,
@@ -102,3 +109,4 @@ def top_creatives_query(start: date, end: date, top_n: int, *, metric: str) -> s
         ORDER BY {_order_by(metric)}
         LIMIT {top_n}
     """.strip()
+    return gaql, {"date_range": janela_aplicada(start, end), "ad_status": "ENABLED"}

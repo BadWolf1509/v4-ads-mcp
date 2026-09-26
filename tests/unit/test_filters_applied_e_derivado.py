@@ -125,6 +125,8 @@ _ESTE_ARQUIVO = Path(__file__).resolve()
 _MODULOS_CONVERTIDOS: tuple[Path, ...] = (
     h.SRC / "google_ads" / "queries" / "performance.py",
     h.SRC / "google_ads" / "queries" / "tactical.py",
+    h.SRC / "google_ads" / "queries" / "client_report.py",
+    h.SRC / "google_ads" / "queries" / "overview.py",
 )
 
 
@@ -135,6 +137,8 @@ def _chamadas() -> dict[str, Callable[[], tuple[str, dict[str, Any]]]]:
     So cobre esses ramos — `_chamadas_sem_corte()` cobre o resto (status='all',
     minimos ausentes ou zero), que o guard de completude tambem precisa ver.
     """
+    from src.google_ads.queries import client_report as c
+    from src.google_ads.queries import overview as o
     from src.google_ads.queries import performance as p
     from src.google_ads.queries import tactical as t
 
@@ -154,6 +158,11 @@ def _chamadas() -> dict[str, Callable[[], tuple[str, dict[str, Any]]]]:
         ),
         "negative_keywords_audit_query": lambda: t.negative_keywords_audit_query(),
         "conversion_actions_query": lambda: t.conversion_actions_query(limit=10),
+        "funnel_query": lambda: c.funnel_query(_S, _E),
+        "top_keywords_query": lambda: c.top_keywords_query(_S, _E, 10, metric="cost"),
+        "top_creatives_query": lambda: c.top_creatives_query(_S, _E, 10, metric="cost"),
+        "overview_query": lambda: o.overview_query(_S, _E),
+        "budget_pacing_query": lambda: o.budget_pacing_query(limit=10),
     }
 
 
