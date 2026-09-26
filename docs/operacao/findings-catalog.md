@@ -5447,3 +5447,9 @@ em prosa — que só apareceu ao ler os arquivos linha a linha, em 26/09. **Conf
 `:112-116` (funil: CTR, taxa de conversão, ticket médio); `shared/v4-brand.md:43`
 ("variação % de cada KPI"). Risco: o relatório do cliente imprimiria `None` ou uma
 variação indefinida.
+
+**Medido em produção (26/09, depois do deploy):** o eco apareceu nas cinco tools conferidas e as
+razões vieram `null` num período sem atividade. Um limite que o spec não previa: nesse período
+o Google devolve uma linha **zerada**, não nenhuma, e o `sem_dados_no_periodo` do overview só
+fica `true` quando não vem linha nenhuma — raro no recurso `customer`. As razões `null` cobrem
+a leitura nos dois casos.
