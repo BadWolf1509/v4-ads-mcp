@@ -127,6 +127,7 @@ _MODULOS_CONVERTIDOS: tuple[Path, ...] = (
     h.SRC / "google_ads" / "queries" / "tactical.py",
     h.SRC / "google_ads" / "queries" / "client_report.py",
     h.SRC / "google_ads" / "queries" / "overview.py",
+    h.SRC / "google_ads" / "queries" / "bulk_pause.py",
 )
 
 
@@ -141,6 +142,7 @@ def _chamadas() -> dict[str, Callable[[], tuple[str, dict[str, Any]]]]:
     from src.google_ads.queries import overview as o
     from src.google_ads.queries import performance as p
     from src.google_ads.queries import tactical as t
+    from src.google_ads.queries.bulk_pause import bulk_pause_query
 
     return {
         "campaign_performance_query": lambda: p.campaign_performance_query(_S, _E, "enabled", 10),
@@ -163,6 +165,12 @@ def _chamadas() -> dict[str, Callable[[], tuple[str, dict[str, Any]]]]:
         "top_creatives_query": lambda: c.top_creatives_query(_S, _E, 10, metric="cost"),
         "overview_query": lambda: o.overview_query(_S, _E),
         "budget_pacing_query": lambda: o.budget_pacing_query(limit=10),
+        "bulk_pause_query": lambda: bulk_pause_query(
+            target_type="keyword",
+            filter_clause="ad_group_criterion.status = 'ENABLED'",
+            start=_S,
+            end=_E,
+        ),
     }
 
 
@@ -176,6 +184,7 @@ def _chamadas_sem_corte() -> list[tuple[str, Callable[[], tuple[str, dict[str, A
     minimo zero, que E corte (o ramo e `is not None`, nao truthiness)."""
     from src.google_ads.queries import performance as p
     from src.google_ads.queries import tactical as t
+    from src.google_ads.queries.bulk_pause import bulk_pause_query
 
     return [
         ("campaign_performance_query", lambda: p.campaign_performance_query(_S, _E, "all", 10)),
@@ -193,6 +202,15 @@ def _chamadas_sem_corte() -> list[tuple[str, Callable[[], tuple[str, dict[str, A
             "search_terms_query",
             lambda: t.search_terms_query(
                 _S, _E, 10, min_cost_brl=0.0, min_clicks=0, min_conversions=0.0
+            ),
+        ),
+        (
+            "bulk_pause_query",
+            lambda: bulk_pause_query(
+                target_type="campaign",
+                filter_clause="segments.date DURING LAST_7_DAYS AND metrics.cost_micros > 0",
+                start=_S,
+                end=_E,
             ),
         ),
     ]
@@ -254,6 +272,10 @@ def test_toda_funcao_convertida_ecoa_cada_corte_do_where() -> None:
             "clausula do WHERE que ele descreve (spec 2026-09-25, §3.1)."
         )
         gaql, filtros = resultado
+        if "filtro_do_gestor" in filtros:
+            # texto livre do gestor: ecoado INTEIRO, e fora da analise campo a campo
+            assert filtros["filtro_do_gestor"] in gaql
+            gaql = gaql.replace(filtros["filtro_do_gestor"], "")
         esperadas = set()
         for campo in _campos_do_where(gaql):
             chave = CAMPO_PARA_CHAVE.get(campo)
@@ -271,6 +293,13 @@ def test_toda_funcao_convertida_ecoa_cada_corte_do_where() -> None:
             assert _valor_no_gaql(chave, filtros[chave], gaql), (
                 f"{nome}: filtros[{chave!r}] = {filtros[chave]!r} nao e o que o WHERE aplica"
             )
+
+
+def test_o_escopo_final_tem_as_17_funcoes_nos_5_modulos() -> None:
+    """Piso: sem ele, um modulo que saisse da tupla deixaria os guards menores e verdes."""
+    assert len(_MODULOS_CONVERTIDOS) == 5
+    assert len(_chamadas()) == 17
+    assert {n for m in _MODULOS_CONVERTIDOS for n in _funcoes_publicas(m)} == set(_chamadas())
 
 
 def test_o_breakdown_repassa_o_recorte_da_funcao_que_despacha() -> None:
