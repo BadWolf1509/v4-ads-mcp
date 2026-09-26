@@ -54,9 +54,11 @@ conferido por query independente: 34 grants vivos em 9 contas inativas, o mesmo 
 Os desvios da previsão têm causa: `added` em 09/09 e 18/09 (contas novas no MCC) e
 `bumped=3` em 24 e 25/09 — **três contas sumiram do MCC** e estão a uma ausência do limiar
 de 3. Se seguirem fora, a execução de **26/09** reporta `removed=3` e `revoke_candidates=46`
-(+12 grants): o primeiro exercício real do caminho de remoção em dry-run. **Antes da
-virada:** o PR 3 do [spec do gate](../superpowers/specs/2026-09-05-gate-google-design.md)
-(fila, log estruturado, runbook da policy), sem sinal de que foi feito.
+(+12 grants): o primeiro exercício real do caminho de remoção em dry-run. O PR 3 do
+[spec do gate](../superpowers/specs/2026-09-05-gate-google-design.md) — filas no painel,
+sinal do alerta, runbook — **já está feito** (Tasks 6 e 7 do plano de 05/09; métrica e
+policy executadas em 05/09, ver `infra-setup.md`). **O que falta para a virada:** a
+execução de 26/09 confirmar a previsão, e a resposta sobre as três contas.
 
 **Fase 2B travada no soak** — o tombstone dos 8 reports antigos não acontece enquanto os
 gestores não migrarem para `get_performance_breakdown`. Re-checar por `audit_log`.
@@ -115,7 +117,7 @@ sub-projeto nenhum** — viraram a frente *métricas Meta*.
 
 Medir a exposição, dar dado às decisões, consertos pequenos, e só então specs — um por vez.
 
-1. **Rollout Google** — soak medido (acima): observar a execução de 26/09 → PR 3 do spec do gate → virada da trava e policy de alerta, as duas do Wellington.
+1. **Rollout Google** — soak medido e PR 3 já feito (acima): observar a execução de 26/09 → virada da trava, do Wellington.
 2. **Fase 2B** — medida em 25/09 (acima); em 04/10, separar o uso por gestor, junto da remedição dos buckets.
 3. **F178** — e o guard que faltou: nenhum teste cobre o *elemento* `<style>`.
 4. **Consertos pequenos** — a mensagem "None membro(s)" do Customer Match, o `try` estreito do `partial_failure.py`, `days` sem teto no export CSV do audit.
