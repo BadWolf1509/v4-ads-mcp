@@ -458,10 +458,24 @@ async def run_offline_user_data_job(
         # (RunOfflineUserDataJob), e nao criar outro; nenhuma tool deste MCP faz
         # isso hoje, e o gestor precisa saber disso em vez de ficar sem caminho.
         if progresso.pii_anexada:
+            enviados = progresso.submetidos(member_count)
+            # Minor 4 do F191: `submetidos()` devolve None quando a leitura das
+            # recusas nao foi confiavel. Interpolado cru, virava "None membro(s)
+            # JA foram enviados" — e gestor le `None` como ZERO, numa frase que
+            # existe justamente pra impedir o reenvio.
+            job = progresso.job_resource_name
+            if enviados is not None:
+                enviados_txt = (
+                    f"{enviados} membro(s) JA foram enviados ao Google e estao anexados "
+                    f"ao job {job}"
+                )
+            else:
+                enviados_txt = (
+                    f"membros JA foram enviados ao Google e estao anexados ao job {job}, "
+                    "mas nao foi possivel medir quantos: trate o lote inteiro como enviado"
+                )
             raise type(friendly_error)(
-                f"{friendly_error} Atencao: {progresso.submetidos(member_count)} membro(s) JA "
-                f"foram enviados ao Google e estao anexados ao job "
-                f"{progresso.job_resource_name}; o que falhou foi o passo "
+                f"{friendly_error} Atencao: {enviados_txt}; o que falhou foi o passo "
                 f"'{progresso.etapa}'. NAO repita o upload: reenviar nao duplicaria membros "
                 "(a lista de Customer Match e um conjunto de identificadores hasheados), mas "
                 "criaria um SEGUNDO job com a mesma PII, e o Google nao apaga "

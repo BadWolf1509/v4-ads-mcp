@@ -329,6 +329,7 @@ def _resposta_add_ops_com_falhas(client: Any, indices: dict[int, str]) -> MagicM
 async def _rodar_job(
     *,
     recusados: dict[int, str] | None = None,
+    resposta_add: Any = None,
     falha_em: str | None = None,
     membros: int = 3,
 ) -> tuple[dict[str, Any] | None, AsyncMock, Exception | None]:
@@ -345,6 +346,10 @@ async def _rodar_job(
         service.add_offline_user_data_job_operations = MagicMock(
             return_value=_resposta_add_ops_com_falhas(client, recusados)
         )
+    if resposta_add is not None:
+        # Resposta montada a mao, pro caso que `recusados` nao expressa: o
+        # Google afirma falha e nao da pra ler QUAIS linhas.
+        service.add_offline_user_data_job_operations = MagicMock(return_value=resposta_add)
     if falha_em is not None:
         setattr(service, falha_em, MagicMock(side_effect=RuntimeError("boom da API")))
 
@@ -562,6 +567,35 @@ async def test_customer_match_erro_diz_o_numero_certo_e_a_saida() -> None:
     )
     # A mensagem carrega contagem e identificador de job — nunca o hash.
     assert "h0" not in msg
+
+
+@pytest.mark.asyncio
+async def test_customer_match_erro_sem_medicao_nao_diz_none_membros() -> None:
+    """Minor 4 do F191: quando a leitura das recusas nao e confiavel,
+    `submetidos()` devolve None, e interpolado na frase virava "None membro(s)
+    JA foram enviados". Gestor nao-anglofono le `None` como ZERO, numa frase cujo
+    proposito e impedir reenvio. A frase tem que dizer que nao se sabe quantos —
+    e manter a orientacao inteira (o job, a saida, a razao do "NAO repita").
+    """
+    resp = MagicMock()
+    resp.partial_failure_error.code = 1  # o Google afirma que houve falha...
+    resp.partial_failure_error.details = []  # ...e nao da pra ler QUAIS linhas
+    _, audit, erro = await _rodar_job(
+        resposta_add=resp,
+        falha_em="run_offline_user_data_job",
+        membros=5,
+    )
+
+    assert erro is not None
+    # Premissa: o cenario e mesmo o "nao medido". Sem isto o teste passaria
+    # pelo ramo do numero e nao afirmaria nada sobre o ramo None.
+    assert audit.call_args.kwargs["params_summary"]["members_submitted"] is None
+    msg = str(erro)
+    assert "None" not in msg, "gestor le `None` como zero numa frase que impede reenvio"
+    assert "nao foi possivel medir quantos" in msg
+    assert "JOB123" in msg
+    assert "RunOfflineUserDataJob" in msg
+    assert "conjunto de identificadores hasheados" in msg
 
 
 @pytest.mark.asyncio
