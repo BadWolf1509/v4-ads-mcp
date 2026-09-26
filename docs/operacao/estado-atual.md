@@ -43,26 +43,22 @@ Contagens de tool e bucket vêm do registry (`import_all_tools()`), não de `gre
 
 ## Decision gates abertos
 
-**`GOOGLE_RECONCILE_APPLY=false` — a virada está destravada e é decisão do Wellington.** O laço
-de reconciliação Google roda em **observação** (compara, conta, não revoga); o lado **Meta já
-revoga** (`META_RECONCILE_APPLY=true` desde 09/09). O soak terminou: 22 execuções diárias (05/09
-a 26/09), todas `success` e `complete`, e a de **26/09 confirmou a previsão** — `removed=3` e
-`revoke_candidates=46` (34 do backlog em 9 contas já inativas + 12 das três contas que deixaram a
-unidade: `4493906974`, `8726746966`, `9450567241`), lido no `audit_log` em transação READ ONLY.
-A contagem por estado segue em 34: em observação a remoção só é projetada. O PR 3 do
-[spec do gate](../superpowers/specs/2026-09-05-gate-google-design.md) — filas no painel, alerta,
-runbook — já está feito.
+**`GOOGLE_RECONCILE_APPLY=true` desde 26/09 — as duas reconciliações revogam.** A Meta revoga
+desde 05/09 (`META_RECONCILE_APPLY=true`, #41); a Google foi virada em 26/09, com autorização
+nominal do Wellington, depois de 22 execuções de soak (05/09 a 26/09), todas `success` e
+`complete` — a de 26/09 bateu a previsão (`removed=3`, `revoke_candidates=46`).
 
-- **Como virar:** `GOOGLE_RECONCILE_APPLY=false` → `true` em **duas** linhas do
-  `.github/workflows/deploy.yml`: o `JOB_ENV_VARS`, que o job lê, e o `--set-env-vars` do serviço,
-  inerte mas mantido igual de propósito (o comentário ao lado explica). É PR com deploy.
-- **Efeito:** a primeira execução seguinte (09:00 UTC) marca as três contas como inativas e revoga
-  os 46 grants, cada um com trilha no `audit_log`; reconceder pelo painel restaura.
-- **O freio:** em 26/09 o classificador do auto mode **recusou** a edição do `deploy.yml` como
-  deploy em produção, depois de um "pode prosseguir" genérico. A virada precisa de
-  **autorização nominal** na sessão ("autorizo virar a trava Google…").
-- **Novo em 26/09:** `bumped=1` — Alumínios Veneza (`2640486995`, 4 grants vivos) faltou no
-  inventário, 1ª ausência de 3 (ver pendências).
+- **Raio medido na virada** (26/09, 18:13 UTC, transação READ ONLY): 3 contas desativadas e
+  **46 grants** revogados — 34 do backlog em 9 contas já inativas + 12 das três que deixaram a
+  unidade (`4493906974` DR DÉRICK VINHAS, `8726746966` Imperial Alimentos, `9450567241` Dra.
+  Paula Minchillo). A **Alumínios Veneza** (`2640486995`, 4 grants) também saiu — churn
+  confirmado em 26/09 —, com 1 ausência gravada: sai na 3ª, em **28/09**.
+- **Conferir:** a primeira execução com a trava (sob demanda, 26/09) deve gravar
+  `applied=true`, `removed=3`, `revoked_grants=46` e uma revogação por conta no `audit_log`; a
+  de 28/09, `removed=1` e `revoked_grants=4`.
+- **Para desligar:** `false` nas **duas** linhas do `.github/workflows/deploy.yml` — o
+  `JOB_ENV_VARS`, que o job lê, e o `--set-env-vars` do serviço, inerte mas mantido igual. A
+  revogação é soft (`revoked_at`) e o painel reconcede com um clique.
 
 **Fase 2B travada no soak** — o tombstone dos 8 reports antigos não acontece enquanto os
 gestores não migrarem para `get_performance_breakdown`. Re-checar por `audit_log`.
@@ -77,9 +73,8 @@ na máquina dos outros gestores, ou o LLM escolhendo a tool pelo nome. Separar p
 
 ## Pendências que dependem do Wellington
 
-- **Autorizar nominalmente a virada da trava Google** — ver *Decision gates* acima.
 - **Aplicar no plugin `v4-trafego-google-ads` o ajuste do `null`.** Seis pontos fazem conta ou ranking com campos que, desde o deploy de 26/09, podem vir `null` (`analise-performance-google-ads/SKILL.md:44,137`; `relatorio-cliente-google-ads/SKILL.md:33,76-89,112-116`; `shared/v4-brand.md:43`). O texto das mudanças foi entregue em 26/09; a cópia instalada é upload do app, então o ajuste é na fonte. Até lá o relatório de cliente pode imprimir `None`.
-- **Alumínios Veneza (`2640486995`) faltou no inventário do MCC em 26/09** — 1ª de 3 ausências, 4 grants vivos. Saiu da unidade ou é transitório? Se seguir fora em 27 e 28/09 a reconciliação a remove; com a trava virada, revoga os 4 grants.
+- **Remover do BM as contas Meta das quatro clientes que saíram** (decisão de 26/09): Dr. Dérick Vinhas (`act_4051924171730156`), Dra. Paula Minchillo (`act_1479232423809572`), Imperial Alimentos (`act_1648706246292124`) e Panelas Veneza (`act_374213944466235`, da Alumínios Veneza) — medidas em 26/09 alcançáveis pelo system user, com 4 grants vivos cada. A reconciliação Meta só revoga quando o alcance some: fora do BM, ela revoga sozinha em 3 execuções, com trilha. Revogar pelo painel foi descartado — o BM seguiria alcançando, e nada impediria reconceder.
 - **F129** — governança do system user Meta: ação humana, fora do código.
 - **F67** — custom domain `mcpv4.fluxocerto.dev.br`, pendente via LB.
 - **Pedir ao TI da V4 uma identidade `@v4company.com` sem caixa postal** (alias ou conta de serviço) — é o que **desbloqueia o F186 por inteiro**: manager com grant zero, pior caso de vazamento `tools/list`, e a reconciliação não a toca. Sem ela não há token de CI possível: `sessions_create` só emite para o próprio manager logado, e login exige identidade Google do domínio. **Emitir sob um manager existente está recusado** — poria no GitHub Actions um token com alcance de ~38 contas Google e 26 Meta.
@@ -109,7 +104,7 @@ sub-projeto nenhum** — viraram a frente *métricas Meta*.
 
 Medir a exposição, dar dado às decisões, consertos pequenos, e só então specs — um por vez.
 
-1. **Rollout Google** — soak concluído (26/09); falta a autorização nominal da virada.
+1. **Rollout Google** — trava virada em 26/09 (ver *Decision gates*); falta conferir as execuções.
 2. **Fase 2B** — em 04/10, separar o uso por gestor, junto da remedição dos buckets.
 3. **Métricas Meta** (spec) — zero no lugar de "não veio", e o limitador que lê "não sei" como 0%.
 4. **F154** (spec).
