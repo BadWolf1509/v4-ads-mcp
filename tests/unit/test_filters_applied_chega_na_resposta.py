@@ -7,6 +7,7 @@ ela declara e a mesma que ela mandou ao Google (spec 2026-09-25, §3.3).
 
 from __future__ import annotations
 
+import copy
 import importlib
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
@@ -121,7 +122,12 @@ async def test_a_resposta_ecoa_o_recorte_da_query_que_rodou(caso: Caso) -> None:
 
         def espiao(*a: Any, _o: Any = original, _n: str = nome, **k: Any) -> Any:
             resultado = _o(*a, **k)
-            registro[_n].append(resultado)
+            # F-round1 achado 2: guardar o MESMO objeto que a tool recebe deixa o
+            # guard comparar o objeto consigo mesmo — se a tool mutasse `filtros`
+            # no lugar antes de devolver, os dois lados mudariam juntos e o `==`
+            # continuaria verdadeiro. `deepcopy` prende o valor no instante da
+            # chamada, antes de qualquer mutacao posterior da tool.
+            registro[_n].append(copy.deepcopy(resultado))
             return resultado
 
         espioes.append(patch.object(modulo, nome, side_effect=espiao))

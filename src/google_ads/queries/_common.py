@@ -240,6 +240,27 @@ def percentual(valor: float | None) -> float | None:
     return None if valor is None else valor * 100
 
 
+def _clausula_e_eco_de_metrica(
+    min_cost_brl: float | None,
+    min_clicks: int | None,
+    min_conversions: float | None,
+) -> tuple[str, dict[str, float | int]]:
+    """Fonte unica da clausula de metrica e do seu eco: o mesmo ramo escreve a
+    clausula e a chave, entao as duas nao descolam por construcao."""
+    clauses: list[str] = []
+    ecos: dict[str, float | int] = {}
+    if min_cost_brl is not None:
+        clauses.append(f"AND metrics.cost_micros >= {int(min_cost_brl * 1_000_000)}")
+        ecos["min_cost_brl"] = min_cost_brl
+    if min_clicks is not None:
+        clauses.append(f"AND metrics.clicks >= {int(min_clicks)}")
+        ecos["min_clicks"] = min_clicks
+    if min_conversions is not None:
+        clauses.append(f"AND metrics.conversions > {float(min_conversions)}")
+        ecos["min_conversions"] = min_conversions
+    return " ".join(clauses), ecos
+
+
 def build_metric_filter_clause(
     min_cost_brl: float | None = None,
     min_clicks: int | None = None,
@@ -255,14 +276,7 @@ def build_metric_filter_clause(
     Returns a fragment starting with "AND " (safe to append after an existing
     WHERE clause), or "" when no filter is requested.
     """
-    clauses: list[str] = []
-    if min_cost_brl is not None:
-        clauses.append(f"AND metrics.cost_micros >= {int(min_cost_brl * 1_000_000)}")
-    if min_clicks is not None:
-        clauses.append(f"AND metrics.clicks >= {int(min_clicks)}")
-    if min_conversions is not None:
-        clauses.append(f"AND metrics.conversions > {float(min_conversions)}")
-    return " ".join(clauses)
+    return _clausula_e_eco_de_metrica(min_cost_brl, min_clicks, min_conversions)[0]
 
 
 def filtros_de_metrica(
@@ -272,18 +286,11 @@ def filtros_de_metrica(
 ) -> dict[str, float | int]:
     """O eco de `build_metric_filter_clause`: so os minimos que viraram clausula.
 
-    Funcao irma, e nao retorno duplo, porque `build_metric_filter_clause` tem teste
-    da string exata. O guard derivado (`test_toda_funcao_convertida_ecoa_cada_corte_
-    do_where`) acusa se as duas descolarem.
+    Chama `_clausula_e_eco_de_metrica`, a MESMA funcao que monta a clausula: o
+    mesmo ramo escreve a clausula e a chave do eco, entao as duas nao descolam
+    por construcao — nao por um guard que confira depois.
     """
-    ecos: dict[str, float | int] = {}
-    if min_cost_brl is not None:
-        ecos["min_cost_brl"] = min_cost_brl
-    if min_clicks is not None:
-        ecos["min_clicks"] = min_clicks
-    if min_conversions is not None:
-        ecos["min_conversions"] = min_conversions
-    return ecos
+    return _clausula_e_eco_de_metrica(min_cost_brl, min_clicks, min_conversions)[1]
 
 
 def value_proxy_warning(conversions: float, conversions_value: float) -> str | None:

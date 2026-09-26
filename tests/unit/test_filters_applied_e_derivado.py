@@ -126,8 +126,12 @@ _MODULOS_CONVERTIDOS: tuple[Path, ...] = (h.SRC / "google_ads" / "queries" / "pe
 
 
 def _chamadas() -> dict[str, Callable[[], tuple[str, dict[str, Any]]]]:
-    """Uma chamada de exemplo por funcao convertida, com args que exercitam TODO
-    ramo do WHERE (status != 'all', minimos de metrica preenchidos)."""
+    """Uma chamada de exemplo por funcao convertida, com args que exercitam os
+    ramos COM corte opcional (status != 'all', minimos de metrica preenchidos).
+
+    So cobre esses ramos — `_chamadas_sem_corte()` cobre o resto (status='all',
+    minimos ausentes ou zero), que o guard de completude tambem precisa ver.
+    """
     from src.google_ads.queries import performance as p
     from src.google_ads.queries import tactical as t
 
@@ -143,6 +147,31 @@ def _chamadas() -> dict[str, Callable[[], tuple[str, dict[str, Any]]]]:
         ),
         "audience_performance_query": lambda: t.audience_performance_query(_S, _E, 10),
     }
+
+
+# Chaves do eco que nao sao campo do WHERE: `nivel` declara o escopo (Task 3,
+# negativas so de campanha); `filtro_do_gestor` e o texto livre do gestor (Task 5).
+_CHAVES_SEM_CAMPO = frozenset({"nivel", "filtro_do_gestor"})
+
+
+def _chamadas_sem_corte() -> list[tuple[str, Callable[[], tuple[str, dict[str, Any]]]]]:
+    """Os ramos em que o corte opcional NAO entra (status="all", minimos None), e o
+    minimo zero, que E corte (o ramo e `is not None`, nao truthiness)."""
+    from src.google_ads.queries import performance as p
+    from src.google_ads.queries import tactical as t
+
+    return [
+        ("campaign_performance_query", lambda: p.campaign_performance_query(_S, _E, "all", 10)),
+        ("ad_group_performance_query", lambda: p.ad_group_performance_query(_S, _E, "all", 10)),
+        ("ad_performance_query", lambda: t.ad_performance_query(_S, _E, "all", 10)),
+        ("keyword_performance_query", lambda: t.keyword_performance_query(_S, _E, "all", 10)),
+        (
+            "keyword_performance_query",
+            lambda: t.keyword_performance_query(
+                _S, _E, "enabled", 10, min_cost_brl=0.0, min_clicks=0, min_conversions=0.0
+            ),
+        ),
+    ]
 
 
 def _funcoes_publicas(mod: Path) -> set[str]:
@@ -179,16 +208,45 @@ def test_o_parser_novo_ve_o_que_o_antigo_nao_via() -> None:
     }
 
 
+def _valor_no_gaql(chave: str, valor: Any, gaql: str) -> bool:
+    """O valor ecoado e o que o WHERE aplica (os minimos numericos saem da mesma
+    funcao que escreve a clausula, `_clausula_e_eco_de_metrica`)."""
+    if chave == "date_range":
+        if "during" in valor:
+            return f"DURING {valor['during']}" in gaql
+        return f"BETWEEN '{valor['start']}' AND '{valor['end']}'" in gaql
+    if isinstance(valor, bool):
+        return f"= {str(valor).lower()}" in gaql
+    if isinstance(valor, str):
+        return f"'{valor}'" in gaql
+    return True
+
+
 def test_toda_funcao_convertida_ecoa_cada_corte_do_where() -> None:
-    for nome, chamar in _chamadas().items():
-        gaql, filtros = chamar()
+    for nome, chamar in [*_chamadas().items(), *_chamadas_sem_corte()]:
+        resultado = chamar()
+        assert isinstance(resultado, tuple) and len(resultado) == 2, (
+            f"{nome} tem de devolver (gaql, filtros), com filtros montado junto da "
+            "clausula do WHERE que ele descreve (spec 2026-09-25, §3.1)."
+        )
+        gaql, filtros = resultado
+        esperadas = set()
         for campo in _campos_do_where(gaql):
             chave = CAMPO_PARA_CHAVE.get(campo)
             assert chave is not None, (
                 f"{nome}: `{campo}` corta no WHERE e este teste nao o conhece. Decida a "
                 "chave em `filters_applied`, declare-a na funcao e mapeie aqui."
             )
-            assert chave in filtros, f"{nome}: `{campo}` corta e nao aparece em filtros"
+            esperadas.add(chave)
+        declaradas = set(filtros) - _CHAVES_SEM_CAMPO
+        assert declaradas == esperadas, (
+            f"{nome}: o WHERE corta {sorted(esperadas)} e o eco declara {sorted(declaradas)}. "
+            "Chave sem corte afirma um recorte que a query nao aplicou; corte sem chave o esconde."
+        )
+        for chave in declaradas:
+            assert _valor_no_gaql(chave, filtros[chave], gaql), (
+                f"{nome}: filtros[{chave!r}] = {filtros[chave]!r} nao e o que o WHERE aplica"
+            )
 
 
 def test_o_breakdown_repassa_o_recorte_da_funcao_que_despacha() -> None:
@@ -222,7 +280,9 @@ def _chamadas_sem_desempacotar(arv: ast.Module, nomes: set[str]) -> list[int]:
     So duas formas passam: `a, b = f(...)` e `f(...)[i]`. Qualquer outra entrega a
     TUPLA a quem espera texto — e `assert "x" not in q` contra uma tupla fica verde
     sem afirmar nada (31 asserts `not in` nos arquivos consumidores, medido em 25/09).
-    Limite: chamada por nome local (`builder(...)` num parametrize) nao e vista.
+    `nomes` ja e o conjunto de nomes LOCAIS a casar (aliases inclusive) — quem chama
+    resolve alias com `h.nomes_locais` antes de passar pra ca. Limite: chamada por
+    nome local dinamico (`builder(...)` num parametrize) nao e vista.
     """
     pais = {filho: no for no in ast.walk(arv) for filho in ast.iter_child_nodes(no)}
     ruins = []
@@ -246,19 +306,38 @@ def _chamadas_sem_desempacotar(arv: ast.Module, nomes: set[str]) -> list[int]:
 
 
 def test_o_detector_de_desempacotamento_enxerga_as_formas_proibidas() -> None:
-    """Controle positivo, com a fronteira exata do que passa."""
-    fonte = "q = f(1)\nassert 'x' in f(1)\nfor q in (f(1),):\n    pass\ng, h = f(1)\ng = f(1)[0]\n"
-    assert _chamadas_sem_desempacotar(ast.parse(fonte), {"f"}) == [1, 2, 3]
+    """Controle positivo, com a fronteira exata do que passa — inclusive alias
+    de import (`from m import f as apelido`), que so e visto porque `nomes` aqui
+    ja vem expandido por `h.nomes_locais`."""
+    fonte = (
+        "q = f(1)\n"
+        "assert 'x' in f(1)\n"
+        "for q in (f(1),):\n"
+        "    pass\n"
+        "g, h = f(1)\n"
+        "g = f(1)[0]\n"
+        "from m import f as apelido\n"
+        "q = apelido(1)\n"
+    )
+    arv = ast.parse(fonte)
+    assert _chamadas_sem_desempacotar(arv, h.nomes_locais(arv, "f")) == [1, 2, 3, 8]
 
 
 def test_chamada_de_funcao_de_query_em_teste_desempacota_a_tupla() -> None:
     nomes = _nomes_em_escopo()
-    ofensores = [
-        f"{h.rel(p)}:{linha}"
-        for p in h.testes_py()
-        if p.resolve() != _ESTE_ARQUIVO
-        for linha in _chamadas_sem_desempacotar(h.arvore(p), nomes)
-    ]
+    ofensores: list[str] = []
+    for p in h.testes_py():
+        if p.resolve() == _ESTE_ARQUIVO:
+            continue
+        arv = h.arvore(p)
+        # Alias de import (`from ... import f as apelido`) e um nome LOCAL
+        # diferente do escrito na funcao — sem expandir por arquivo, `q =
+        # apelido(1)` nao casa contra `nomes` e o detector acusa `[]` (achado 3
+        # da revisao, sonda medida 2026-09-26).
+        nomes_do_arquivo = {alias for n in nomes for alias in h.nomes_locais(arv, n)}
+        ofensores.extend(
+            f"{h.rel(p)}:{linha}" for linha in _chamadas_sem_desempacotar(arv, nomes_do_arquivo)
+        )
     assert not ofensores, (
         f"chamada de funcao de query sem desempacotar `(gaql, filtros)`: {ofensores}. "
         "Use `gaql, _ = f(...)` ou `f(...)[0]`."
