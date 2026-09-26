@@ -55,7 +55,7 @@ tripwires do `Don't do`. O resto é roteado — carregue sob demanda:
 | escrever teste, shippar tool nova | [`convencoes/testes.md`](docs/convencoes/testes.md) — tripwires da área vivem lá |
 | query, repository, migration, janela de data | [`convencoes/dados.md`](docs/convencoes/dados.md) — tripwires da área vivem lá |
 | planejar trabalho, procedimento operacional raro | [`convencoes/processo.md`](docs/convencoes/processo.md) — tripwires da área vivem lá |
-| adicionar dependência, mexer em deploy ou rollback | [`convencoes/processo.md`](docs/convencoes/processo.md) |
+| adicionar dependência, mexer em deploy ou rollback | [`convencoes/processo.md`](docs/convencoes/processo.md) — tripwires da área vivem lá |
 | estado de produção, pendências, decision gates | [`operacao/estado-atual.md`](docs/operacao/estado-atual.md) |
 | infra, DR, alertas | [`infra-setup.md`](docs/operacao/infra-setup.md) · [`backup-restore-runbook.md`](docs/operacao/backup-restore-runbook.md) |
 | roadmap Meta / Fase 2B | [`specs/`](docs/superpowers/specs/) |
@@ -140,13 +140,13 @@ Quando o padrão de mercado custar caro demais para o momento, **apresente o tra
 
 **Os tripwires de área saíram daqui em 22/09 e vivem com a convenção da área.**
 Acima ficaram só os que disparam onde nada roteia — shell, git, CI, segredo,
-autorização, processo. Se você vai mexer numa destas áreas, **as regras dela
-estão no arquivo roteado**, não aqui:
+autorização, dado de produção, verificação e brainstorming. Se você vai mexer
+numa destas áreas, **as regras dela estão no arquivo roteado**, não aqui:
 
-| área | arquivo | o que mora lá |
-|---|---|---|
-| painel, CSS, template, HTMX, CSP, a11y | [`convencoes/painel.md`](docs/convencoes/painel.md) | 12 regras |
-| executor, gate, pool, SDK, envelope de mutate | [`convencoes/nucleo.md`](docs/convencoes/nucleo.md) | 11 regras |
-| query, transação, janela de data, fuso | [`convencoes/dados.md`](docs/convencoes/dados.md) | 4 regras |
-| teste, mock, probe de API externa | [`convencoes/testes.md`](docs/convencoes/testes.md) | 5 regras |
-| dependência, deploy, rollback, sprint | [`convencoes/processo.md`](docs/convencoes/processo.md) | 5 regras |
+| área | arquivo |
+|---|---|
+| painel, CSS, template, HTMX, CSP, a11y | [`convencoes/painel.md`](docs/convencoes/painel.md) |
+| executor, gate, pool, SDK, envelope de mutate | [`convencoes/nucleo.md`](docs/convencoes/nucleo.md) |
+| query, transação, janela de data, fuso | [`convencoes/dados.md`](docs/convencoes/dados.md) |
+| teste, mock, probe de API externa | [`convencoes/testes.md`](docs/convencoes/testes.md) |
+| dependência, deploy, rollback, sprint | [`convencoes/processo.md`](docs/convencoes/processo.md) |
