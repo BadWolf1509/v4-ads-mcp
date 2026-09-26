@@ -6,13 +6,13 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 
 from src.db import connection
 from src.db.repositories import audit_log, manager_account_access
 from src.web.deps import CurrentUser, current_manager
-from src.web.routes._shared import templates
+from src.web.routes._shared import _TETO_DIAS_EXPORT_AUDIT, templates
 
 router = APIRouter(tags=["web"])
 
@@ -109,7 +109,7 @@ async def audit_export_csv(
     action_type: str = "all",
     customer_id: str | None = None,
     status: str = "all",
-    days: int = 7,
+    days: int = Query(7, ge=1, le=_TETO_DIAS_EXPORT_AUDIT),  # noqa: B008
 ) -> StreamingResponse:
     """Stream CSV export of the gestor's audit log with current filters applied.
 
