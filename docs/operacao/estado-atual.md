@@ -17,7 +17,7 @@
 > arquivo, e aqui fica uma linha.
 
 > **Última sessão:** [`session-2026-09-25-26-handoff.md`](session-2026-09-25-26-handoff.md)
-> — o mapa de 25 e 26/09: PRs #108 a #112, o F193 e o fim do soak Google.
+> — o mapa de 25 e 26/09: PRs #108 a #114, o F193 e a virada da trava Google.
 
 ---
 
@@ -25,7 +25,7 @@
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00127-9x6`**, 100% do tráfego (medido por `gcloud` em 26/09) — o deploy do **#111** (F193). `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186); em 26/09 as tools responderam por uma sessão autenticada (smoke abaixo), que prova `tools/call`, não o `tools/list` da revisão nova |
+| Revisão servindo | **`v4-ads-mcp-00128-j2h`**, 100% do tráfego (medido por `gcloud` em 26/09, 23:20 UTC) — o deploy do **#114**, que virou a trava Google (run `36278725323`, `test` e `deploy` `success`). O código é o do **#111** (F193), em produção desde a `00127-9x6`, cujo `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186); em 26/09 as tools do F193 responderam por uma sessão autenticada (smoke abaixo), que prova `tools/call`, não o `tools/list` da revisão nova |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
 | Catálogo | até **F193** (~5.400 linhas, 563 KB) |
@@ -53,9 +53,15 @@ nominal do Wellington, depois de 22 execuções de soak (05/09 a 26/09), todas `
   unidade (`4493906974` DR DÉRICK VINHAS, `8726746966` Imperial Alimentos, `9450567241` Dra.
   Paula Minchillo). A **Alumínios Veneza** (`2640486995`, 4 grants) também saiu — churn
   confirmado em 26/09 —, com 1 ausência gravada: sai na 3ª, em **28/09**.
-- **Conferir:** a primeira execução com a trava (sob demanda, 26/09) deve gravar
-  `applied=true`, `removed=3`, `revoked_grants=46` e uma revogação por conta no `audit_log`; a
-  de 28/09, `removed=1` e `revoked_grants=4`.
+- **Conferido na primeira execução com a trava** (sob demanda, 26/09 às 23:21 UTC, execução
+  `v4-ads-mcp-resync-6h6q6`): `applied=true`, `removed=3`, `revoked_grants=46` — a previsão
+  exata —, 12 linhas `google_access_cleanup` (uma por conta, `left_mcc`), **zero** grant vivo em
+  conta Google inativa e 26 contas ativas (as 25 do MCC + a Alumínios em carência). O raio foi
+  medido duas vezes no dia (18:13 e 23:14 UTC), igual nas duas. A Meta, no mesmo job:
+  `applied=true`, `removed=0`, `revoked_grants=0`; o `unreachable=1` é a CHUTE 07, igual desde
+  24/09 pelo menos.
+- **Falta conferir a de 28/09:** `removed=1` e `revoked_grants=4` — a Alumínios Veneza na 3ª
+  ausência.
 - **Para desligar:** `false` nas **duas** linhas do `.github/workflows/deploy.yml` — o
   `JOB_ENV_VARS`, que o job lê, e o `--set-env-vars` do serviço, inerte mas mantido igual. A
   revogação é soft (`revoked_at`) e o painel reconcede com um clique.
@@ -104,7 +110,7 @@ sub-projeto nenhum** — viraram a frente *métricas Meta*.
 
 Medir a exposição, dar dado às decisões, consertos pequenos, e só então specs — um por vez.
 
-1. **Rollout Google** — trava virada em 26/09 (ver *Decision gates*); falta conferir as execuções.
+1. **Rollout Google** — virado e conferido em 26/09; falta a execução de 28/09 (Alumínios Veneza).
 2. **Fase 2B** — em 04/10, separar o uso por gestor, junto da remedição dos buckets.
 3. **Métricas Meta** (spec) — zero no lugar de "não veio", e o limitador que lê "não sei" como 0%.
 4. **F154** (spec).
