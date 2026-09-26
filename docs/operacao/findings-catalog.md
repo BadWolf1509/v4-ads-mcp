@@ -5396,8 +5396,11 @@ conferida no código e por probe em 25/09.
   `null`; o overview ganhou `sem_dados_no_periodo`. De quebra tirou um `ZeroDivisionError`
   incidental do `roas` do `get_account_overview` — o guarda antigo era `if cost` (em
   micros), dividindo por `micros_to_currency(cost)`, e custo entre 1 e 4.999 micros
-  arredonda para 0.0. Nenhum teste nomeia esse caso; fica coberto só genericamente pelos
-  testes de `razao()` (deferido para a revisão final).
+  arredonda para 0.0. Nomeado em
+  `test_overview_com_custo_abaixo_de_meio_centavo_nao_quebra_o_roas`
+  (`tests/unit/test_razao_indefinida.py`), com o vermelho provado por sabotagem por
+  cópia — `roas` na forma antiga (`round(conv_val / micros_to_currency(cost), 2) if
+  cost else 0.0`) reproduz o `ZeroDivisionError` (revisão final, 26/09).
 - O `bulk_pause_by_query` mede sempre no período (probe em duas contas: o conjunto a
   pausar não muda). Um teste existente afirmava a regra que o spec revoga
   (`test_date_clause_not_injected_when_filter_has_no_metrics`); foi reescrito para afirmar
@@ -5434,7 +5437,13 @@ estado); modelo de freshness para métricas; as métricas Meta (próxima frente)
 
 **Contrato que mudou:** 13 tools de leitura passaram de número para `null` nas razões sem
 denominador (e o `delta_pct` do preview do `update_campaign_budget`, explicado no texto).
-Consumidor externo, medido em 26/09 no plugin `v4-trafego-google-ads`: uma referência exata
-aos campos, que só os lista; e `relatorio-cliente-google-ads/SKILL.md:33`, que ordena anúncios
-por CTR — com `ctr: null`, a linha sai do ranking em vez de virar 0. O plugin é outro
-repositório: o ajuste é de lá.
+Consumidor externo no plugin `v4-trafego-google-ads` (outro repositório — o ajuste é de lá):
+grep por nome de campo só achava a referência exata que lista os campos, sem ver consumidor
+em prosa — que só apareceu ao ler os arquivos linha a linha, em 26/09. **Conferidos:**
+`skills/analise-performance-google-ads/SKILL.md:44` (pega CTR/CPC/CPA/ROAS do
+`get_account_overview`) e `:137` (`(atual - anterior) / anterior × 100` para cada KPI);
+`skills/relatorio-cliente-google-ads/SKILL.md:33` (ordena anúncios por CTR), `:76-89`
+(tabela Atual/Anterior/Variação de CTR, CPC médio, taxa de conversão, CPA e ROAS) e
+`:112-116` (funil: CTR, taxa de conversão, ticket médio); `shared/v4-brand.md:43`
+("variação % de cada KPI"). Risco: o relatório do cliente imprimiria `None` ou uma
+variação indefinida.

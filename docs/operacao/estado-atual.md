@@ -134,7 +134,7 @@ Medir a exposição, dar dado às decisões, consertos pequenos, e só então sp
 | **F187** | o **resumo no topo** de um artefato é a superfície de decisão e o **detalhe embaixo** é a verdade — 4 instâncias medidas, uma quase custou mutação em conta real. Remédio proposto: derivar o resumo, ou guard que cobre a igualdade |
 | **F186** | 🔴 smoke autenticado do `/mcp` **desarmado** — e o manager dele **não existe**: criar exige identidade de serviço no Workspace, acesso que o gestor **não tem**. **ABERTO como risco ACEITO.** No lugar entrou `tools` no `/health?deep=1` (sem credencial), e o desarme aparece como `::warning::` em todo deploy — **observado disparando** nos dois deploys de 21/09, que é o que separa "o aviso existe" de "o aviso avisa" |
 | — | *negativas de grupo e listas compartilhadas na auditoria de negativas* (spec §7: frente própria) |
-| — | fora deste repo: *o skill `relatorio-cliente-google-ads` do plugin ordena anúncios por CTR (`SKILL.md:33`): com `ctr: null`, a linha tem de sair do ranking* |
+| — | fora deste repo: *o plugin `v4-trafego-google-ads` tem seis pontos que fazem conta ou ranking com campos que agora podem vir `null` (`analise-performance-google-ads/SKILL.md:44,137`; `relatorio-cliente-google-ads/SKILL.md:33,76-89,112-116`; `shared/v4-brand.md:43`) — o ajuste é tratar `null` como indefinido em todos eles, não só no ranking por CTR, e entra antes do deploy desta branch ou junto dele* |
 
 Fechados em 20/09: **F181, F182, F183, F184** — mais a **2ª instância do F182**, que
 fechou a *classe*: só o `apply_change` descreve a contagem do lote, agora com guard. O
