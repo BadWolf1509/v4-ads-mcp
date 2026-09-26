@@ -150,6 +150,13 @@ quando o denominador é zero, substitui as **29 ocorrências** de `x / y if y el
 | `get_funnel_metrics.py` | `cost_per_conversion_brl`, `average_order_value_brl`, `roas`, `rate_from_prev_pct` |
 | `get_campaign/ad_group/keyword/ad/audience/device/geo/hourly_performance.py`, `get_search_terms_report.py`, `performance_breakdown.py` | `ctr`, `cpc_brl` |
 
+**Correção de 25/09, no levantamento do plano:** o guard por AST mede **33 ocorrências em 14
+arquivos**, não 29 em 12 — o inventário acima veio de `grep` por nome de variável. As 4 a
+mais são da mesma classe: `get_budget_pacing` (média diária, `spent_pct_of_monthly_budget`,
+`projection_vs_budget_pct`) e `update_campaign_budget` (`delta_pct` do preview; o `classify`
+o ignora, orçamento é sempre CONFIRM). O plano cobre as 33. E `date_range` segue a forma real
+do F191, `{"start", "end"}`, não o `{"from", "to"}` da §3.1.
+
 O helper só divide ou devolve `None`: arredondamento e conversão de micros continuam onde
 estão hoje, e ele mora num lugar só (o plano escolhe o módulo; a regra é não haver segunda
 implementação).
