@@ -58,7 +58,9 @@ de 3. Se seguirem fora, a execução de **26/09** reporta `removed=3` e `revoke_
 [spec do gate](../superpowers/specs/2026-09-05-gate-google-design.md) — filas no painel,
 sinal do alerta, runbook — **já está feito** (Tasks 6 e 7 do plano de 05/09; métrica e
 policy executadas em 05/09, ver `infra-setup.md`). **O que falta para a virada:** a
-execução de 26/09 confirmar a previsão, e a resposta sobre as três contas.
+execução de 26/09 confirmar a previsão. A resposta sobre as três contas veio em 26/09:
+**churn** — deixaram de ser clientes da unidade, então os 12 grants delas são revogações
+legítimas, não algo a revincular.
 
 **Fase 2B travada no soak** — o tombstone dos 8 reports antigos não acontece enquanto os
 gestores não migrarem para `get_performance_breakdown`. Re-checar por `audit_log`.
@@ -73,7 +75,6 @@ na máquina dos outros gestores, ou o LLM escolhendo a tool pelo nome. Separar p
 
 ## Pendências que dependem do Wellington
 
-- **Três contas Google saíram do MCC em 24/09** — `4493906974`, `8726746966` e `9450567241`, 4 grants vivos cada. Churn ou desvinculação por engano? A resposta muda a virada da trava Google: se foi engano, revincular antes.
 - **F129** — governança do system user Meta: ação humana, fora do código.
 - **F67** — custom domain `mcpv4.fluxocerto.dev.br`, pendente via LB.
 - **Pedir ao TI da V4 uma identidade `@v4company.com` sem caixa postal** (alias ou conta de serviço) — é o que **desbloqueia o F186 por inteiro**: manager com grant zero, pior caso de vazamento `tools/list`, e a reconciliação não a toca. Sem ela não há token de CI possível: `sessions_create` só emite para o próprio manager logado, e login exige identidade Google do domínio. **Emitir sob um manager existente está recusado** — poria no GitHub Actions um token com alcance de ~38 contas Google e 26 Meta.
