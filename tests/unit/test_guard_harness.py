@@ -184,20 +184,21 @@ def test_templates_html_desce_em_subdiretorio(tmp_path: Path) -> None:
     assert (tmp_path / "admin" / "aninhada.html").resolve() in achados
 
 
-def test_html_em_python_default_encontra_os_tres_alvos_conhecidos() -> None:
-    """Ancora nos 3 pontos medidos pro Task 8 (2026-09-17): o fragmento de
+def test_html_em_python_default_encontra_os_alvos_conhecidos() -> None:
+    """Ancora nos pontos medidos. Eram 3 no Task 8 (2026-09-17): o fragmento de
     toggle em `_shared.py` e as duas páginas inteiras em `oauth.py`. Contagem
     exata (não só "não vazio"): sobe se alguém montar HTML novo em Python sem
-    dar cobertura a11y a ele, desce se um destes 3 virar template — as duas
-    direções são informação, então o teste fixa o número em vez de só `>= 1`.
+    dar cobertura a11y a ele, desce se um destes virar template — as duas
+    direções são informação, então o teste fixa o conjunto em vez de só `>= 1`.
+
+    Desceu para 1 em 2026-09-25: o F178 levou as duas páginas do OAuth para
+    template (`oauth_conectado.html` e `error.html`). A âncora é `arquivo:linha`,
+    então código novo ACIMA do fragmento em `_shared.py` também a desloca —
+    confira com `h.html_em_python()` antes de reescrever o número.
     """
     achados = h.html_em_python()
 
-    assert {a.name for a in achados} == {
-        "_shared.py:150",
-        "oauth.py:394",
-        "oauth.py:409",
-    }
+    assert {a.name for a in achados} == {"_shared.py:157"}
 
 
 def test_html_em_python_ignora_docstring(tmp_path: Path) -> None:

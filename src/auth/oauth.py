@@ -8,7 +8,6 @@ The `invite` token is an HMAC-signed payload with manager_id (created
 by the bootstrap CLI). Phase 1b will replace this with a panel session.
 """
 
-import html
 from dataclasses import dataclass
 from typing import Any, Literal
 from urllib.parse import urlencode
@@ -25,6 +24,7 @@ from src.auth.tokens import derive_master_key_from_settings, encrypt_refresh_tok
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import google_oauth_connections, managers
+from src.web.routes._shared import templates
 
 log = structlog.get_logger(__name__)
 
@@ -216,15 +216,17 @@ async def oauth_callback(
 ) -> HTMLResponse | RedirectResponse:
     """Exchange the auth code for a refresh token and persist it encrypted."""
     if error:
-        return _error_page(f"O Google retornou um erro: {error}", status=400)
+        return _error_page(request, f"O Google retornou um erro: {error}", status=400)
     if not code or not state:
-        return _error_page("Resposta incompleta do Google (faltou code ou state).", status=400)
+        return _error_page(
+            request, "Resposta incompleta do Google (faltou code ou state).", status=400
+        )
 
     settings = get_settings()
     try:
         payload = verify_state(state, settings.session_signing_key, aud="google_oauth")
     except InvalidStateError as e:
-        return _error_page(f"State inválido ou expirado: {e}", status=400)
+        return _error_page(request, f"State inválido ou expirado: {e}", status=400)
 
     mode = payload.get("mode")
     manager_id_str = payload.get("manager_id")
@@ -246,6 +248,7 @@ async def oauth_callback(
                 "oauth_token_exchange_failed", status=token_resp.status_code, body=token_resp.text
             )
             return _error_page(
+                request,
                 f"Troca do code falhou (HTTP {token_resp.status_code}). Tente conectar de novo.",
                 status=502,
             )
@@ -254,6 +257,7 @@ async def oauth_callback(
         access_token = tokens.get("access_token")
         if not refresh_token:
             return _error_page(
+                request,
                 "O Google não devolveu refresh_token. Isso geralmente significa que a conta já tinha autorizado o app antes; revogue em https://myaccount.google.com/permissions e tente de novo.",
                 status=400,
             )
@@ -268,6 +272,7 @@ async def oauth_callback(
 
     if not is_allowed_email(google_email):
         return _error_page(
+            request,
             f"Conta {google_email} nao autorizada — apenas @v4company.com.",
             status=403,
         )
@@ -343,7 +348,7 @@ async def oauth_callback(
     elif manager_id_str:
         manager_id = UUID(manager_id_str)
     else:
-        return _error_page("State payload missing both manager_id and mode.", status=400)
+        return _error_page(request, "State payload missing both manager_id and mode.", status=400)
 
     # Encrypt + persist.
     master_key = derive_master_key_from_settings(settings.aes_master_key)
@@ -386,33 +391,28 @@ async def oauth_callback(
         return response
 
     log.info("oauth_callback_success", manager_id=str(manager_id), google_email=google_email)
-    return _success_page(google_email)
+    return _success_page(request, google_email)
 
 
-def _success_page(email: str) -> HTMLResponse:
-    return HTMLResponse(
-        f"""<!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><title>V4 Ads MCP — Conectado</title>
-<style>body{{font-family:system-ui;max-width:640px;margin:80px auto;padding:0 24px;color:#333}}.ok{{color:#228B22}}</style>
-</head><body>
-<h1 class="ok">✅ Conectado</h1>
-<p>Conta Google <code>{html.escape(email)}</code> autorizada.</p>
-<p>Próximo passo: o admin precisa atribuir a você as contas Google Ads que você pode operar (no MVP, isso é manual via CLI). Após isso, peça pra ele criar uma sessão MCP e te enviar o token.</p>
-<p>Pode fechar esta aba.</p>
-</body></html>""",
+def _success_page(request: Request, email: str) -> HTMLResponse:
+    # F178: as duas paginas eram HTML montado aqui, com `<style>` inline — que a
+    # CSP (`style-src` sem 'unsafe-inline') bloqueia, e elas renderizavam sem CSS
+    # nenhum em producao. Agora sao templates do painel: o estilo vem do mesmo
+    # Tailwind versionado do resto, e o autoescape do Jinja faz o que o
+    # `html.escape` fazia a mao. `current_user=None`: o `_base.html` so desenha a
+    # navegacao com sessao, como no `login.html` e no `error.html`.
+    return templates.TemplateResponse(
+        request,
+        "oauth_conectado.html",
+        {"current_user": None, "email": email},
         status_code=200,
     )
 
 
-def _error_page(message: str, *, status: int) -> HTMLResponse:
-    return HTMLResponse(
-        f"""<!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><title>V4 Ads MCP — Erro</title>
-<style>body{{font-family:system-ui;max-width:640px;margin:80px auto;padding:0 24px;color:#333}}.err{{color:#c00}}</style>
-</head><body>
-<h1 class="err">❌ Falha</h1>
-<p>{html.escape(message)}</p>
-<p><a href="/health">Status do serviço</a></p>
-</body></html>""",
+def _error_page(request: Request, message: str, *, status: int) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "error.html",
+        {"current_user": None, "title": "Falha na conexão com o Google", "message": message},
         status_code=status,
     )

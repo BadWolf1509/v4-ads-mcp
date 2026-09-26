@@ -136,6 +136,28 @@ def test_sem_script_inline_em_template():
     assert not ofensores, f"<script> inline em: {ofensores}"
 
 
+# Comentario Jinja e HTML nao vao pro browser: o `_base.html` cita o `<style>` que
+# o htmx injetava, justamente pra explicar por que ele esta desligado — casar o
+# comentario seria o guard acusando a propria documentacao.
+_COMENTARIO = re.compile(r"\{#.*?#\}|<!--.*?-->", re.S)
+
+
+def test_sem_elemento_style_em_template():
+    """F178: `style-src` sem 'unsafe-inline' bloqueia o ELEMENTO <style>, nao so o atributo.
+
+    Os guards de CSP cobriam o atributo `style=` e o `<script>`; o elemento `<style>`
+    passava por baixo de todos — inclusive no HTML montado em Python
+    (`html_em_python`), que era exatamente onde ele morava: as paginas de callback
+    do OAuth (`src/auth/oauth.py`) renderizavam sem CSS nenhum em producao.
+    """
+    ofensores = [
+        t.name
+        for t in h.templates_html() + h.html_em_python()
+        if re.search(r"<style\b", _COMENTARIO.sub("", t.read_text(encoding="utf-8")), re.I)
+    ]
+    assert not ofensores, f"elemento <style> inline em: {ofensores}"
+
+
 def test_fragmento_de_toggle_nao_carrega_handler():
     """F74: o handler do checkbox é delegado, então o fragmento não pode
     depender de re-emitir `hx-on` pra sobreviver ao swap."""

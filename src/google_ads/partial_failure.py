@@ -94,13 +94,18 @@ def erros_por_indice(
     dois fatos.
     """
     erros: dict[int, ErroDeLinha] = {}
-    pfe = getattr(response, "partial_failure_error", None)
-    if pfe is None or getattr(pfe, "code", 0) == 0:
-        return LeituraDeFalhas(erros, medido=True)
-
     medido = True
     desempacotou_algum = False
     try:
+        # As duas leituras abaixo ficavam FORA do `try` (minor 5 do F191).
+        # `getattr` com default so engole `AttributeError`: qualquer outra
+        # excecao ao LER o erro subia inteira, com a PII ja anexada, e o
+        # Customer Match ficava com o default `membros_recusados=[]` — "zero
+        # recusados", medido. Dentro do `try`, ela vira "nao medido".
+        pfe = getattr(response, "partial_failure_error", None)
+        if pfe is None or getattr(pfe, "code", 0) == 0:
+            return LeituraDeFalhas(erros, medido=True)
+
         for detail in getattr(pfe, "details", []) or []:
             # proto-plus embrulha; o `Any` cru mora em `_pb`.
             raw = detail._pb if hasattr(detail, "_pb") else detail

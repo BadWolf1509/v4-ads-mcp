@@ -6,13 +6,13 @@ from typing import Any
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 
 from src.db import connection
 from src.db.repositories import audit_log, google_ads_accounts
 from src.web.deps import CurrentUser, current_manager, pending_invites_count
-from src.web.routes._shared import _require_admin, templates
+from src.web.routes._shared import _TETO_DIAS_EXPORT_AUDIT, _require_admin, templates
 
 router = APIRouter(tags=["web"])
 
@@ -113,7 +113,7 @@ async def admin_audit_export_csv(
     action_type: str = "all",
     customer_id: str | None = None,
     status: str = "all",
-    days: int = 7,
+    days: int = Query(7, ge=1, le=_TETO_DIAS_EXPORT_AUDIT),  # noqa: B008
 ) -> StreamingResponse:
     """Stream CSV export of the global audit log (admin) with current filters applied.
 

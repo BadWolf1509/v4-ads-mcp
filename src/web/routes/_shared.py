@@ -29,6 +29,13 @@ def _require_admin(user: CurrentUser) -> None:
         raise HTTPException(status_code=403, detail="Admin access required")
 
 
+# Teto de `days` nos dois exports CSV do audit (item 4 do relatorio de DB da
+# varredura de 21/09). O export e trilha de compliance, e um ano cobre a
+# historia inteira do `audit_log`. O seletor do painel vai ate 90 dias, mas
+# quem limita a rota e a validacao, nao o seletor: a URL aceita o que vier.
+_TETO_DIAS_EXPORT_AUDIT = 365
+
+
 _ADMIN_FLASH_ERRORS: dict[str, str] = {
     "bad_domain": "Só emails @v4company.com podem ser convidados.",
     "exists": "Esse email já está cadastrado (convite pendente ou conta existente). Nada foi criado.",
