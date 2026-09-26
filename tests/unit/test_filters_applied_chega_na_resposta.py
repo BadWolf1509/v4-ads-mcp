@@ -80,6 +80,15 @@ CASOS: list[Caso] = [
         _unico("build_performance_breakdown_query"),
         {"level": "campaign"},
     ),
+    Caso("get_search_terms_report", ("search_terms_query",), _unico("search_terms_query")),
+    Caso(
+        "get_negative_keywords_audit",
+        ("negative_keywords_audit_query",),
+        _unico("negative_keywords_audit_query"),
+    ),
+    Caso(
+        "get_conversion_actions", ("conversion_actions_query",), _unico("conversion_actions_query")
+    ),
 ]
 
 

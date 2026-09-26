@@ -26,7 +26,8 @@ _SCHEMA: dict[str, Any] = {
             "default": 100,
             "description": (
                 "Maximo de negativas retornadas em by_campaign (ordenadas recentes primeiro). "
-                "total_negatives + additions_summary refletem conta inteira (nao truncados). "
+                "total_negatives + additions_summary contam todas as negativas DE CAMPANHA "
+                "da conta, nao so as da pagina. "
                 "Default 100; aumentar so se necessario (contas grandes podem exceder MCP "
                 "response cap acima de ~125 rows)."
             ),
@@ -113,11 +114,13 @@ def _compute_summary(negatives_with_dates: list[dict[str, Any]], today: date) ->
         "retention ~30 dias). Util pra auditoria de cobertura de negativas, "
         "identificar duplicacoes ou gaps, e narrar 'X negativas adicionadas no "
         "periodo' em report semanal. Bloco additions_summary no root agrega "
-        "counts por janela (7d / 30d / pre-30d-ou-desconhecido) — sobre a conta "
-        "INTEIRA, nao truncado. by_campaign retorna max `limit` negativas "
+        "counts por janela (7d / 30d / pre-30d-ou-desconhecido) — sobre todas as "
+        "negativas DE CAMPANHA, nao so a pagina. by_campaign retorna max `limit` negativas "
         "(default 100, max 1000) ordenadas por adicao recente primeiro. "
-        "Quando truncado, response inclui `truncated: true` + `total_negatives` "
-        "reflete o universo completo da conta."
+        "Quando truncado, response inclui `truncated: true`; `total_negatives` conta "
+        "todas as negativas de campanha. Negativas de grupo e listas compartilhadas "
+        "NAO entram (`filters_applied.nivel`)."
+        " filters_applied diz o recorte que a query aplicou."
     ),
     input_schema=_SCHEMA,
     bucket="defer",
@@ -131,12 +134,14 @@ async def get_negative_keywords_audit(args: dict[str, Any]) -> dict[str, Any]:
     creates_start = today - timedelta(days=29)
     creates_end = today
 
+    gaql, filtros = negative_keywords_audit_query()
+
     # Parallel: full state of negatives + recent CREATE events for enrichment
     negatives_task = run_report(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
-        query=negative_keywords_audit_query(),
+        query=gaql,
         row_formatter=_row_formatter_negatives,
         operation_name="get_negative_keywords_audit",
     )
@@ -202,6 +207,7 @@ async def get_negative_keywords_audit(args: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "customer_id": customer_id,
+        "filters_applied": filtros,
         "total_negatives": total,
         "returned_count": len(sliced),
         "truncated": truncated,

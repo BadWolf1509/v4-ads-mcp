@@ -385,7 +385,7 @@ def test_keyword_performance_query_metric_filters_appended() -> None:
 
 
 def test_search_terms_query_shape_and_order() -> None:
-    q = search_terms_query(_S, _E, 30)
+    q, _ = search_terms_query(_S, _E, 30)
     assert "FROM search_term_view" in q
     for field in (
         "search_term_view.search_term",
@@ -407,7 +407,7 @@ def test_search_terms_query_shape_and_order() -> None:
 
 
 def test_search_terms_query_metric_filters_appended() -> None:
-    q = search_terms_query(_S, _E, 30, min_cost_brl=5.5, min_clicks=2)
+    q, _ = search_terms_query(_S, _E, 30, min_cost_brl=5.5, min_clicks=2)
     assert "AND metrics.cost_micros >= 5500000" in q
     assert "AND metrics.clicks >= 2" in q
     # min_conversions não informado -> cláusula de conversions ausente.
@@ -415,7 +415,7 @@ def test_search_terms_query_metric_filters_appended() -> None:
 
 
 def test_negative_keywords_audit_query_shape() -> None:
-    q = negative_keywords_audit_query()
+    q, _ = negative_keywords_audit_query()
     assert "FROM campaign_criterion" in q
     for field in (
         "campaign_criterion.criterion_id",
@@ -490,8 +490,21 @@ def test_audience_performance_query_shape_and_order() -> None:
     assert "LIMIT 9" in q  # +1: a linha sentinela
 
 
+def test_auditoria_de_negativas_declara_que_so_le_campanha() -> None:
+    """A description dizia "conta inteira"; a query le so `campaign_criterion`.
+    Negativas de grupo e listas compartilhadas NAO entram (spec 2026-09-25, §4.3)."""
+    gaql, filtros = negative_keywords_audit_query()
+    assert "FROM campaign_criterion" in gaql
+    assert filtros["nivel"] == "campanha"
+
+
+def test_conversoes_nao_cortam_nada_e_dizem_isso() -> None:
+    _gaql, filtros = conversion_actions_query(limit=10)
+    assert filtros == {}
+
+
 def test_conversion_actions_query_shape() -> None:
-    q = conversion_actions_query()
+    q, _ = conversion_actions_query()
     assert "FROM conversion_action" in q
     for field in (
         "conversion_action.id",
@@ -552,7 +565,7 @@ def test_keyword_performance_query_pede_uma_linha_a_mais() -> None:
 
 
 def test_search_terms_query_pede_uma_linha_a_mais() -> None:
-    q = search_terms_query(_S, _E, 100)
+    q, _ = search_terms_query(_S, _E, 100)
     assert "LIMIT 101" in q
     assert "LIMIT 100" not in q
 

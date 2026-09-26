@@ -122,7 +122,10 @@ _ESTE_ARQUIVO = Path(__file__).resolve()
 
 # Modulos em que TODA funcao `*_query` publica devolve (gaql, filtros). Cresce a
 # cada task do plano 2026-09-26; a Task 5 fecha em 5 modulos e poe o piso de 17.
-_MODULOS_CONVERTIDOS: tuple[Path, ...] = (h.SRC / "google_ads" / "queries" / "performance.py",)
+_MODULOS_CONVERTIDOS: tuple[Path, ...] = (
+    h.SRC / "google_ads" / "queries" / "performance.py",
+    h.SRC / "google_ads" / "queries" / "tactical.py",
+)
 
 
 def _chamadas() -> dict[str, Callable[[], tuple[str, dict[str, Any]]]]:
@@ -146,6 +149,11 @@ def _chamadas() -> dict[str, Callable[[], tuple[str, dict[str, Any]]]]:
             _S, _E, "enabled", 10, min_cost_brl=10.0, min_clicks=5, min_conversions=1.0
         ),
         "audience_performance_query": lambda: t.audience_performance_query(_S, _E, 10),
+        "search_terms_query": lambda: t.search_terms_query(
+            _S, _E, 10, min_cost_brl=10.0, min_clicks=5, min_conversions=1.0
+        ),
+        "negative_keywords_audit_query": lambda: t.negative_keywords_audit_query(),
+        "conversion_actions_query": lambda: t.conversion_actions_query(limit=10),
     }
 
 
@@ -169,6 +177,13 @@ def _chamadas_sem_corte() -> list[tuple[str, Callable[[], tuple[str, dict[str, A
             "keyword_performance_query",
             lambda: t.keyword_performance_query(
                 _S, _E, "enabled", 10, min_cost_brl=0.0, min_clicks=0, min_conversions=0.0
+            ),
+        ),
+        ("search_terms_query", lambda: t.search_terms_query(_S, _E, 10)),
+        (
+            "search_terms_query",
+            lambda: t.search_terms_query(
+                _S, _E, 10, min_cost_brl=0.0, min_clicks=0, min_conversions=0.0
             ),
         ),
     ]

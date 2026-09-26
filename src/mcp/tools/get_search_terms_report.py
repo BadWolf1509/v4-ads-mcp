@@ -118,6 +118,7 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         "limit ou use min_cost_brl/min_clicks antes de concluir que nao ha o que "
         "negativar."
         " Razao com denominador zero vem null (indefinida), nao 0."
+        " filters_applied diz o recorte que a query aplicou."
     ),
     input_schema=_SCHEMA,
     bucket="defer",
@@ -133,18 +134,19 @@ async def get_search_terms_report(args: dict[str, Any]) -> dict[str, Any]:
         today=today,
     )
     limit = args.get("limit", 50)
+    gaql, filtros = search_terms_query(
+        start,
+        end,
+        limit,
+        min_cost_brl=args.get("min_cost_brl"),
+        min_clicks=args.get("min_clicks"),
+        min_conversions=args.get("min_conversions"),
+    )
     rows = await run_report(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
-        query=search_terms_query(
-            start,
-            end,
-            limit,
-            min_cost_brl=args.get("min_cost_brl"),
-            min_clicks=args.get("min_clicks"),
-            min_conversions=args.get("min_conversions"),
-        ),
+        query=gaql,
         row_formatter=_row_formatter,
         operation_name="get_search_terms_report",
     )
@@ -154,6 +156,7 @@ async def get_search_terms_report(args: dict[str, Any]) -> dict[str, Any]:
     return {
         "customer_id": customer_id,
         "period": {"from": start.isoformat(), "to": end.isoformat()},
+        "filters_applied": filtros,
         "rows": rows,
         "truncated": truncado,
     }
