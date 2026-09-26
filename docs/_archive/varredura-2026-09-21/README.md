@@ -95,7 +95,7 @@ o F191 é a classe A. Os IDs F<n> citados abaixo estão no
 | 1 | export CSV do audit falha aberto | fechado — F191 |
 | 2 | `pool.acquire()` cru em leituras quentes, fora do guard estrutural | aberto — *infra e guards* |
 | 3 | `migrate.py` sem advisory lock | aberto — *infra e guards*. Conferido em 25/09: nenhum `pg_advisory` no arquivo |
-| 4 | `days` e resultado sem teto nos exports CSV | `days`: *consertos pequenos* — conferido em 25/09 (`days: int = 7` sem limite em `routes/audit.py`); resultado: *infra e guards* |
+| 4 | `days` e resultado sem teto nos exports CSV | `days`: fechado em 25/09 — teto de 365, validado na rota; resultado: aberto — *infra e guards* |
 | 5 | `revoke` Meta sem `AND revoked_at IS NULL` | aberto — *infra e guards*. Conferido em 25/09: falta no `revoke` manual de `manager_meta_account_access.py`; o `revoke_for_account`, que a reconciliação usa em produção, tem. O `revoke` de `google_oauth_connections.py` também não tem |
 | 6 | `get_active_for_manager`: `LIMIT 1` sobre chave de ordenação não-única | aberto, baixo — *infra e guards* |
 | 7 | `IndexError` com `limit=0` nos dois pagers keyset | aberto, inalcançável hoje — *infra e guards* |

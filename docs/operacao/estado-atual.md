@@ -119,19 +119,16 @@ Medir a exposição, dar dado às decisões, consertos pequenos, e só então sp
 
 1. **Rollout Google** — soak medido e PR 3 já feito (acima): observar a execução de 26/09 → virada da trava, do Wellington.
 2. **Fase 2B** — medida em 25/09 (acima); em 04/10, separar o uso por gestor, junto da remedição dos buckets.
-3. **F178** — e o guard que faltou: nenhum teste cobre o *elemento* `<style>`.
-4. **Consertos pequenos** — a mensagem "None membro(s)" do Customer Match, o `try` estreito do `partial_failure.py`, `days` sem teto no export CSV do audit.
-5. **Respostas Google** (spec) — o que as respostas escondem do recorte, e o remédio do F187.
-6. **Métricas Meta** (spec) — zero no lugar de "não veio", e o limitador que lê "não sei" como 0%.
-7. **F154** (spec).
-8. **Infra e guards** (spec) — o resto dos sub-projetos 3 e 4.
-9. **`recommendation_subscription`** — tool de leitura no MCC.
+3. **Respostas Google** (spec) — o que as respostas escondem do recorte, e o remédio do F187.
+4. **Métricas Meta** (spec) — zero no lugar de "não veio", e o limitador que lê "não sei" como 0%.
+5. **F154** (spec).
+6. **Infra e guards** (spec) — o resto dos sub-projetos 3 e 4.
+7. **`recommendation_subscription`** — tool de leitura no MCC.
 
 ### Os abertos, um por linha
 
 | ID | o que é |
 |---|---|
-| **F178** | callback OAuth renderiza sem CSS — `<style>` inline barrado pela CSP |
 | **F180** | **em parte, provavelmente para sempre** — a flag `partial_failure` está ligada, mas a falha por-linha **nunca foi exercitada**: o Google aceita operação impossível em vez de errar (campanha `REMOVED`, `final_urls` inválida, anúncio apagado entre preview e apply). O único gatilho conhecido é a variação de experimento, que o **F181 agora bloqueia no pre-flight**. Consequência: `failed_count` é constante zero — leia `efeito` e `changed_count` |
 | **F154** | `/me/adaccounts` não é prova de alcance |
 | **F185** | `recommendation_subscription`: 4 de 11 opacos e **sem chave nenhuma** — limitação da API, sem correção possível deste lado |

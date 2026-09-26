@@ -36,8 +36,8 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
   o método, em [`tool-buckets-2026-09-04.md`](docs/operacao/tool-buckets-2026-09-04.md).
 - **Docker parado ≠ Docker travado:** os processos do Desktop sobem e ainda assim não há
   engine se o serviço `com.docker.service` estiver `Stopped` (exige elevação).
-- Varredura fechada em 18/09: **7 frentes, F155–F179**. Abertos: **F178** (callback OAuth
-  sem CSS — `<style>` inline barrado pela CSP). **F179** fechou em 21/09, junto do
+- Varredura fechada em 18/09: **7 frentes, F155–F179**. **F178** fechou em 25/09;
+  **F179** em 21/09, junto do
   **F191** (seis superfícies onde ausência de medição virava zero/sucesso).
   **F180 em parte:** o Google engole operação
   impossível em vez de errar, então `failed_count` é sempre zero — leia `efeito`.

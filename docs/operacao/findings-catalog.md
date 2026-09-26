@@ -3307,7 +3307,7 @@ nomeando exatamente `access.html:27 <input>`; restaurado, verde (43/43).
 
 ---
 
-## F178 (MEDIUM, ABERTO) — as páginas de callback OAuth renderizam sem estilo em produção
+## F178 (MEDIUM, CORRIGIDO em 2026-09-25) — as páginas de callback OAuth renderizam sem estilo em produção
 
 **Sintoma.** `_success_page`/`_error_page` (`src/auth/oauth.py:392`/`:407`,
 com o `<style>` inline nos f-strings que abrem em `:394`/`:409`) montam a
@@ -3333,6 +3333,29 @@ Python puras (fora do `Jinja2Templates` do resto do painel), o fix precisa
 decidir entre um `<link rel="stylesheet">` pro estático certo (mínimo) ou
 migrar as duas pro sistema de templates do painel (mais consistente, mais
 mudança).
+
+**✅ CORRIGIDO em 2026-09-25 — as duas páginas viraram template.** Ficou a opção
+mais consistente: `_success_page` renderiza `oauth_conectado.html` e `_error_page`
+reusa o `error.html`, os dois sobre o `_base.html` sem sessão (como o `login.html`).
+O estilo vem do mesmo Tailwind versionado do painel — só classes que já existiam,
+então o CSS gerado não mudou —, e o autoescape do Jinja faz o que o `html.escape`
+fazia à mão. O texto de sucesso também estava errado duas vezes: mandava esperar
+atribuição "manual via CLI" (hoje é a matriz de acesso) e pedir ao admin que criasse
+a sessão MCP (hoje só o próprio gestor emite a dele, em `/sessions/new`).
+
+**O guard que faltava:** `test_sem_elemento_style_em_template` varre
+`templates_html() + html_em_python()` pelo harness, com comentário Jinja e HTML
+removido antes — o `_base.html` cita o `<style>` do htmx para explicar por que ele
+está desligado, e casar isso seria o guard acusando a própria documentação. Mordida
+provada nos dois lados: vermelho contra o código anterior (`oauth.py:394`,
+`oauth.py:409`) e por sabotagem num template (`error.html`). Um teste de página
+pela pilha inteira (`GET /oauth/google/callback?error=…`, sem banco) também fica
+vermelho contra o `oauth.py` anterior.
+
+**Deliberadamente fora:** a CSP não mudou — continua sem `unsafe-inline`, que era o
+ponto. O harness continua ancorando em `arquivo:linha`: o conjunto de
+`html_em_python()` caiu de 3 para 1 alvo, e a âncora do que sobrou deslocou 7
+linhas por código novo acima dela no mesmo PR.
 
 ---
 
@@ -5064,12 +5087,16 @@ mock.
    enviados"* ao gestor sob leitura não confiável. Gestor não-anglófono pode ler `None` como
    **zero**, o oposto de "desconhecido" — numa frase cujo propósito é impedir reenvio.
    Mitigado porque o resto da frase é inequívoco.
+   **✅ Corrigido em 25/09:** cada ramo monta a oração inteira; sem medição, a frase
+   diz "nao foi possivel medir quantos: trate o lote inteiro como enviado".
 5. (Task 3) Janela teórica estreita: em `partial_failure.py`, os dois `getattr` de contexto
    rodam **fora** do `try`. Uma exceção não-`AttributeError` ali sobe com `pii_anexada=True`
    já setado e `membros_recusados` no default `[]` em vez de `None`, reproduzindo o defeito
    de origem nesse caminho específico. Trocar o default para `None` **não serve** — quebraria
    a regra no sentido oposto (`members_failed=None` ao lado de `members_submitted=0` onde
    zero é a verdade, na parada antes do passo 2). O conserto certo alarga o `try`.
+   **✅ Corrigido em 25/09:** as duas leituras entraram no `try` que já existia; a
+   exceção ali vira `medido=False`.
 6. (Task 4) Assimetria sob leitura parcialmente medida: `mutations.py` descarta o mapa de
    erros inteiro daquela resposta; `conversions.py` devolve o dado real do índice presente.
    As duas são defensáveis (conservadora vs. informativa) e o spec não decide entre elas —
