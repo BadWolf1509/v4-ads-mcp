@@ -1,5 +1,6 @@
 """Unit tests for the add_negatives_from_search_terms MCP tool."""
 
+import re
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -194,3 +195,62 @@ async def test_tool_passes_custom_params_summary_to_run_mutation():
         "match_types_distribution": {"EXACT": 1, "PHRASE": 1},
         "scope_ids_count": 2,
     }
+
+
+@pytest.mark.asyncio
+async def test_o_resumo_conta_como_o_envelope():
+    """F187 dentro da resposta: o texto dizia "(3 aceita(s) pelo Google)" contando a
+    duplicata que o Google RECUSOU, enquanto `applied_count` dizia 2. O numero do
+    texto e o do campo tem de ser o mesmo, e as tres parcelas somam o tentado."""
+    from src.mcp.tools.add_negatives_from_search_terms import add_negatives_from_search_terms
+
+    fake_partials = [
+        {"index": 0, "status": "success", "error": None},
+        {"index": 1, "status": "failed", "error": "CRITERION_EXISTS"},
+        {"index": 2, "status": "success", "error": None},
+    ]
+    with patch(
+        "src.mcp.tools.add_negatives_from_search_terms.run_mutation",
+        AsyncMock(
+            return_value={
+                "provider_request_id": "req-123",
+                "applied_count": 2,
+                "partial_failures": fake_partials,
+            }
+        ),
+    ):
+        result = await add_negatives_from_search_terms(
+            {
+                "customer_id": "1234567890",
+                "negatives": [
+                    {
+                        "search_term": "a",
+                        "match_type": "EXACT",
+                        "scope": "campaign",
+                        "scope_id": "111",
+                    },
+                    {
+                        "search_term": "b",
+                        "match_type": "EXACT",
+                        "scope": "campaign",
+                        "scope_id": "111",
+                    },
+                    {
+                        "search_term": "c",
+                        "match_type": "EXACT",
+                        "scope": "ad_group",
+                        "scope_id": "222",
+                    },
+                ],
+            }
+        )
+
+    resumo = result["blast_summary"]
+    m = re.search(
+        r"(\d+) aceita\(s\) pelo Google, (\d+) ja existia\(m\), (\d+) recusada\(s\)", resumo
+    )
+    assert m, resumo
+    aceitas, ja_existiam, recusadas = map(int, m.groups())
+    assert aceitas == result["applied_count"]  # o numero do texto E o do campo
+    assert (ja_existiam, recusadas) == (1, 0)
+    assert aceitas + ja_existiam + recusadas == 3  # as tres parcelas somam o tentado

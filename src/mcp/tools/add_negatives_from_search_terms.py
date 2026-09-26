@@ -133,12 +133,17 @@ async def add_negatives_from_search_terms(args: dict[str, Any]) -> dict[str, Any
     # O envelope a mao daqui NAO devolvia `blast_summary` — o unico dos cinco
     # em que faltava, e ninguem notou porque cada envelope a mao e' um contrato
     # proprio. O helper garante o campo; o resumo abaixo e' o texto que faltava.
-    aplicadas = sum(1 for a in added if a["status"] != "failed")
+    # O numero de aceitas e o proprio `applied_count` do envelope, ao lado: fonte
+    # unica (F187). Antes, a conta `status != "failed"` incluia `already_exists`,
+    # a duplicata que o Google RECUSOU, e o texto discordava do campo.
+    ja_existiam = sum(1 for a in added if a["status"] == "already_exists")
+    recusadas = sum(1 for a in added if a["status"] == "failed")
     return applied_envelope(
         "add_negatives_from_search_terms",
         customer_id,
-        f"Adicionar {target_count} negativa(s) derivada(s) do search_terms_report "
-        f"({aplicadas} aceita(s) pelo Google).",
+        f"Adicionar {target_count} negativa(s) derivada(s) do search_terms_report: "
+        f"{result['applied_count']} aceita(s) pelo Google, {ja_existiam} ja existia(m), "
+        f"{recusadas} recusada(s).",
         applied_count=result["applied_count"],
         provider_request_id=result["provider_request_id"],
         auto_applied_reason=risk.reason,
