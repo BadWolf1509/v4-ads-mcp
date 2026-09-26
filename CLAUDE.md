@@ -19,7 +19,7 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 ## Estado atual
 
 **2026-09-21.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`,
-**68 MCP tools** (62 Google + 6 Meta), CI gated + deploy automático. Catálogo até **F191**. **Detalhe, pendências e decision gates vivem em
+**68 MCP tools** (62 Google + 6 Meta), CI gated + deploy automático. Catálogo até **F192**. **Detalhe, pendências e decision gates vivem em
 [`estado-atual.md`](docs/operacao/estado-atual.md)** — atualize AQUELE no fecho, não este.
 
 **Sabe de cara:**
@@ -50,17 +50,18 @@ tripwires do `Don't do`. O resto é roteado — carregue sob demanda:
 
 | Vai mexer em… | Leia |
 |---|---|
-| executores Google/Meta, gate de acesso, pool, observabilidade | [`convencoes/nucleo.md`](docs/convencoes/nucleo.md) |
-| `src/web/` — templates, CSP, Tailwind, HTMX | [`convencoes/painel.md`](docs/convencoes/painel.md) |
-| escrever teste, shippar tool nova | [`convencoes/testes.md`](docs/convencoes/testes.md) |
-| query, repository, migration, janela de data | [`convencoes/dados.md`](docs/convencoes/dados.md) |
-| planejar trabalho, procedimento operacional raro | [`convencoes/processo.md`](docs/convencoes/processo.md) |
+| executores Google/Meta, gate de acesso, pool, observabilidade | [`convencoes/nucleo.md`](docs/convencoes/nucleo.md) — tripwires da área vivem lá |
+| `src/web/` — templates, CSP, Tailwind, HTMX | [`convencoes/painel.md`](docs/convencoes/painel.md) — tripwires da área vivem lá |
+| escrever teste, shippar tool nova | [`convencoes/testes.md`](docs/convencoes/testes.md) — tripwires da área vivem lá |
+| query, repository, migration, janela de data | [`convencoes/dados.md`](docs/convencoes/dados.md) — tripwires da área vivem lá |
+| planejar trabalho, procedimento operacional raro | [`convencoes/processo.md`](docs/convencoes/processo.md) — tripwires da área vivem lá |
+| adicionar dependência, mexer em deploy ou rollback | [`convencoes/processo.md`](docs/convencoes/processo.md) — tripwires da área vivem lá |
 | estado de produção, pendências, decision gates | [`operacao/estado-atual.md`](docs/operacao/estado-atual.md) |
 | infra, DR, alertas | [`infra-setup.md`](docs/operacao/infra-setup.md) · [`backup-restore-runbook.md`](docs/operacao/backup-restore-runbook.md) |
 | roadmap Meta / Fase 2B | [`specs/`](docs/superpowers/specs/) |
 
 **Antes de desenhar ou corrigir código**, faça busca **dirigida** em
-[`findings-catalog.md`](docs/operacao/findings-catalog.md) pela área ou sintoma — **F1–F191, ~5100 linhas, 535 KB**. Grep por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `CSP`); ler
+[`findings-catalog.md`](docs/operacao/findings-catalog.md) pela área ou sintoma — **F1–F192, ~5300 linhas, 545 KB**. Grep por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `CSP`); ler
 integral não cabe em contexto nenhum. Cada entrada corrigida traz o que foi feito **e o que ficou deliberadamente de fora**.
 
 A última sessão de cada frente está em `docs/operacao/session-*-handoff.md`; o handoff é o
@@ -128,51 +129,24 @@ Quando o padrão de mercado custar caro demais para o momento, **apresente o tra
 ## Don't do
 
 
-- Don't fazer I/O de bookkeeping em `finally` sem `best_effort` — exceção ali descarta o `return` e transforma operação já aplicada em erro (F83). Don't chamar SDK Google fora de `run_blocking` (F86). Don't interpolar texto livre em GAQL sem `gaql_string_literal` (F87). Don't ler `Settings` dentro de primitivo de infra (pool/cliente/logger) — quem serve tráfego injeta (F92).
-- Don't confiar em guard que passou de primeira: verifique contra o código PRÉ-fix (sabotagem ou cópia — **nunca `git checkout`**, que descarta trabalho não commitado). E don't asserir o ADJACENTE à invariante: em 02/09 três guards meus passaram verdes porque **enumeravam** filtros em vez de afirmar a propriedade (o que ficou fora da lista passou), asseriam **concordância** em vez de corretude (duas respostas erradas e iguais passam), ou eram verdadeiros **independente da implementação**. Se a asserção não distingue código bom de quebrado, ela não é guard. Aconteceu 3× nesta sessão — grep casando a própria docstring, AST exigindo forma que o codebase não usa, e AST vendo só dict literal quando o call-site monta o dict numa variável.
-- Don't envolver em `run_with_reconnect` um bloco que ESCREVE — o retry re-executa a escrita. Separe o read, ou proteja a escrita com `best_effort` (F91). Don't pôr `LIMIT` sem `ORDER BY` num tool que ordena depois (F98/F88). Don't pôr segredo em `params=` de GET (guard AST em `test_no_secrets_in_query_params.py`; use header ou `data=` no POST).
-- Don't assertar superfície de API externa por analogia. Teste que codifica a convenção errada é PIOR que teste ausente (aconteceu 3×: F87, F89, e os mocks do F84/F89 que nem conseguiam expressar o bug). Probe empírica primeiro — `validate_gaql` pro Google, `ads_get_field_context` pro Meta.
+- Don't confiar em guard que passou de primeira: verifique contra o código PRÉ-fix (sabotagem ou cópia — **nunca `git checkout`**, que descarta trabalho não commitado). E don't asserir o ADJACENTE à invariante: se a asserção não distingue código bom de quebrado, ela não é guard. Os modos e os exemplos medidos estão em `docs/convencoes/testes.md`.
 - Don't pôr pipe entre o gate e o `&&`: o exit code de um pipeline é o do ÚLTIMO comando, então `check_pre_push.py | tail && git commit` **não é gate** e já deixou passar commit com gate vermelho (02/09; a variante com `grep` já tinha acontecido antes). Rode mudo e leia `$?`. Don't push sem `python scripts/check_pre_push.py` antes. Full sweep MANDATORY ao mexer em pré-flight de mutate, queries com JOIN/cursor, ou migrations.
 - Don't confiar no exit code de `gh run watch` — confirme via `gh run view <id> --json conclusion`.
-- **Don't fechar sprint de tool mutante com o APPLY ou a RESTAURAÇÃO em `⬜ pending`** —
-  em 04/09 os dois morderam: o F150 foi para produção prevendo e não aplicando, e o F151
-  dizia que restaurar entrega a zerava. Os dois são **ausência de tratamento de um
-  caminho**, e **três revisões passaram por cima**: revisão lê o código ESCRITO.
 - **Don't agendar smoke de tool que muta sem o gestor presente:** o classificador de auto mode recusa a chamada, e a alavanca e **autorizacao humana explicita na sessao dele** — aval relayado por outra sessao Claude nao passa. Nem dry-run nem conta de teste isentam: medido 3x (04/09 e 20/09), sempre passando na SEGUNDA tentativa. E o aval precisa preceder a **TENTATIVA**, nao o pedido: em 20/09 ele veio antes da chamada e o freio disparou igual. Tente, leve a recusa ao gestor, repita. A leitura "o freio reage ao nome da tool" foi **RETIRADA**: se fosse o nome, a 2a teria sido barrada igual.
 - **Don't tomar "sem checks" de PR empilhado por CI verde:** o `ci.yml` só dispara em `pull_request` contra `main`, então PR cuja base é outra branch **não roda CI nenhum** — e a ausência se parece com "ainda enfileirado". Reapontar a base depois também não dispara: isso é evento `edited`, e os tipos padrão são `opened`/`synchronize`/`reopened`. O que dispara é `git merge origin/main` dentro da branch e push (conta como `synchronize`) — nunca force-push, que descarta o histórico do outro. Medido em 04/09 no #32, empilhado sobre o #31.
-- Don't adicionar gate/pré-flight "a todos os executores" sem `grep` TODA função que chama `build_client_for_manager` (F57).
-- Don't adicionar recurso externo (CDN/font) sem atualizar `_CSP_POLICY` no mesmo commit (CSP enforcing bloqueia).
-- Don't usar `conn.cursor(...)` sem `async with conn.transaction()` (F58); don't deixar coluna sem alias em query com JOIN (F59).
-- Don't fazer read idempotente de disponibilidade/hot-path (ex.: resolução de sessão ou deep health) com `pool.acquire()` cru — use `connection.run_with_reconnect(op)` (asyncpg NÃO faz pre-ping; F76/F77). Probe externo deve ter deadline interno menor (`health`: 5s interno < 10s externo). Retry só em read idempotente; mutação NÃO leva retry cego (pode ter commitado). Log Cloud Logging usa `severity` (não `level`) — `add_cloud_logging_severity` já cobre no pipeline JSON.
-- Don't mexer em classe utilitária de template sem rodar `python scripts/build_tailwind.py` e commitar o CSS no MESMO commit (o CI faz `git diff --exit-code`). Don't reordenar os `<link>` do `<head>` — `v4-tailwind.css` por último, senão o Preflight perde e todo heading estoura. Don't subir o pin do Tailwind pra v4 (config CSS-first).
-- Don't usar `--v4-gray-300` como cor de texto sobre fundo claro (2,1:1) — use `--v4-gray-500`; sobre fundo escuro, marque a linha com `/* on-dark */`. Don't aplicar gzip a `/mcp` (SSE). Don't pôr `{% block head_extra %}` dentro de `{% block content %}`.
-- Don't escrever `uv pip compile` sem `--universal` em lugar nenhum (doc, workflow, commit): sem a flag o `pywin32` sai sem marker e o buildpack CNB quebra no Linux (F113). Don't adicionar campo obrigatório em `Settings` sem declará-lo TAMBÉM nos 3 Cloud Run Jobs do `deploy.yml` — eles chamam `get_settings()` e validam tudo na subida (F114); use `--update-*` (merge), nunca `--set-*` (replace), em job cujo estado você não consegue enumerar.
-- Don't deduzir a revisão de rollback por ordem de criação — capture a que está servindo ANTES do deploy (F116). Don't deixar check bloqueante só no CI: o gate local tem que cobrir (F115).
-- Don't chamar SDK de ads (Google **ou** Meta) fora de um closure passado a `run_blocking` em caminho que atende request — inclui tool que constrói o client sozinho, como `validate_gaql` (F109). Ao offloadar, leia o `request-id` **dentro** do closure: `to_thread` copia o contexto e não devolve.
-- **Don't hardcodar fuso ou offset em mutate que grava timestamp no Google** (`-03:00`, `_BRT`): o fuso é `await resolve_account_zone(customer_id)` no dry-run, guardado no payload pendente e mostrado no preview; **sem fuso, recuse** — em escrita, offset chutado é corrupção de dado, não ruído (F146; contraste com o fallback UTC do F141, que é leitura).
-- **Don't procurar `REMOVE` no `change_event` para entidade que tem campo `status`** (campanha, grupo, keyword, anúncio): no Google, remover essas entidades é **`UPDATE` de `status → REMOVED`**; `REMOVE` só aparece em vínculos/critérios/orçamentos, que não têm status. Medido por `aggregate_by` em 141 eventos (F145). Predicado de flag olha `new_resource.<entidade>.status`, keyed pelo `resource_type` — não pela presença do atributo, que em proto-plus existe sempre.
-- **Don't ler o relógio do servidor em tool Google** (`datetime.now`/`date.today`): `hoje` é `await resolve_account_today(customer_id)`, no fuso da conta, UMA vez por request e passado a tudo (janela, clamp, sonda, freshness). As contas do MCC são todas UTC−3/−4 (26 em 04/09, seis fusos — a contagem muda; a regra não); em UTC todo preset deslizava um dia das 21h à meia-noite (F141). Guard AST em `test_no_server_clock_in_google_tools.py`; exceção só com motivo escrito.
-- Don't reportar quota sem dizer QUAL quota: desde o F73 há duas chaves (`mgr:<uuid>` e o dev token), e a menor é a que barra (F110). Don't derivar identificador de auditoria de um dict opcional quando existe kwarg obrigatório com o mesmo dado (F111).
-- Don't computar `blast_radius.classify` e ignorar `.level` sem que o caminho fixo esteja amarrado por teste — hoje 18 das 28 tools fazem isso e o guard derivado é o que impede a divergência silenciosa (F112).
-- Don't pôr nome acessível (`aria-label`) num elemento que um swap HTMX substitui — o fragmento servido pela rota não tem o texto e o rótulo degrada calado. Aponte pra fora do nó trocado com `aria-labelledby`, derivando os ids do que a rota já recebe (F101, mesma família do F74). Don't referenciar `/static` sem `?v={{ asset_version }}`: o `Cache-Control` é `immutable` por um ano (F102).
-- Don't isentar prefixo de CSRF — isente **rota**, por igualdade literal em `_CSRF_EXEMPT_ROUTES`/`_rota_isenta_de_csrf`. Prefixo herda tudo que um `APIRouter(prefix=…)` pendurar ali depois, sem revisão (F106/F173).
-- Don't devolver 200 de um POST de mutação sem HTMX — 303, senão o refresh re-executa a ação (F107; espelho do F96, que era 303 cru num `hx-post`).
-- Don't pôr `role="button"` num `<tr>`: pela ARIA os filhos viram presentacionais e a linha perde o vínculo com os `<th scope="col">`. `tabindex="0"` + `aria-expanded` (suportado em `role=row`) dá o teclado sem isso (F105). Don't deixar `<th>` sem `scope` (F104).
-- **Don't escrever JS nem CSS inline em template** (`onclick=`, `hx-on`, `<script>`, `style=`): a CSP não tem `unsafe-*`, então o browser bloqueia — e handler inline morre calado. Use `data-v4-*` + listener em `v4-panel.js`, e classe pro estilo. Vale também pra HTML montado dentro de string Jinja passada a macro (aspas escapadas escondem o atributo de grep).
-- Don't fazer macro emitir markup que o consumidor não pode alcançar — `search_input` emitia `name=` enquanto o JS procurava `id=`, e os 4 filtros do painel ficaram mortos sem ninguém notar (F81). Handler inline falha em silêncio.
-- Don't adicionar dependência sem checar "no build step" (HTMX via CDN; Tailwind gerado offline — sem node/Vite/React no runtime). Ao adicionar uma dep de PROD: editar `pyproject.toml` E **regenerar `requirements.txt` no MESMO commit** com `uv pip compile pyproject.toml -o requirements.txt --universal` (o `--universal` é obrigatório — sem markers de plataforma o `pywin32` win-only quebra o build Linux/CNB; o buildpack e o CI instalam desse lockfile).
-- Don't montar envelope de mutate à mão — use `error_envelope`/`applied_envelope`/`preview_envelope` de `src/mcp/tools/_mutate_common.py` (erro canônico = `error_message`+`operation`; TTL via `DEFAULT_TTL_MINUTES`, nunca literal 10). Novo executor Google → padrão `reserved` (before_call global + `mgr:<uuid>` em transação externa, `record_actual` gated por `reserved`, audit SEMPRE; F73). Rate-limit tem cap por gestor via chave `mgr:<uuid>` em `rate_counters`.
-- Don't mover uma função sem `grep` TODOS os patch-sites dela em `tests/` (não só os testes novos) — mock target no namespace antigo dá `AttributeError` só no CI com Docker (classe pre-flight mock-target, fix `dedd82a` 2026-07-04).
 - Don't modificar dados de produção via SQL cru sem extremo cuidado (Python script + BEGIN/COMMIT + idempotência).
 - Don't pular `superpowers:brainstorming` antes de trabalho criativo mesmo que pareça simples.
-- Don't dispatch implementers em paralelo em arquivos OVERLAPPING (reviewers paralelos OK).
-- Don't shippar tool sem per-value empirical probe em smoke pra enum whitelist (3b.19A.1 — pegou 10+ design-gaps).
-- Don't usar MagicMock em builder tests de proto (use `make_capture_client` — F16/F42/F44).
-- Don't incluir `oneOf/allOf/anyOf` em `input_schema` (Anthropic rejeita — 3b.19B.1).
-- Don't trazer o SDK `facebook_business` de volta pro caminho de request: o transporte Meta é `httpx` + header (F190) e as duas fábricas saíram sem consumidor. Se voltar, vale o F48 — ver `nucleo.md`.
-- Don't aplicar `is_allowed_email` (V4 domain) no callback Meta OAuth — `fb_email` é conta FB pessoal (A6); auth é o manager_id no state HMAC.
-- Don't usar `{{ button() }}` em `<form>` sem `type="submit"` (F49).
-- Don't retornar `303` cru de um handler chamado por `hx-post` — torne HX-aware (`204`+`HX-Redirect`/`HX-Refresh`, espelha `sessions_revoke`), senão o HTMX injeta a página no `hx-target` (dropdown Managers, 2ª sessão 07-04).
-- Don't ecoar `request.query_params` no contexto da macro `alert` (`{{ message|safe }}` = XSS) — mapa fixo código→mensagem. Don't deixar `<table>` fora de contentor de scroll: sem ele a PÁGINA rola na horizontal (F118, +751px em 375). As duas exceções antigas caíram em 08-20 — sticky-head usa `.v4-table-wrap--wide` (scroller só abaixo de 1200px) e o dropdown se desancora sozinho. Contentor novo exige `tabindex="0" role="region" aria-label` (F125); o guard derivado cobra os dois.
-- Don't shippar tool Meta com fields novos sem validar via `ads_get_field_context` (F53/F54/F55 — `/insights` vs `/entities`).
 - Don't upload secret via pipe PowerShell — arquivo binary intermediário (F47); NUNCA cole secret em chat.
+
+**Os tripwires de área saíram daqui em 22/09 e vivem com a convenção da área.**
+Acima ficaram só os que disparam onde nada roteia — shell, git, CI, segredo,
+autorização, dado de produção, verificação e brainstorming. Se você vai mexer
+numa destas áreas, **as regras dela estão no arquivo roteado**, não aqui:
+
+| área | arquivo |
+|---|---|
+| painel, CSS, template, HTMX, CSP, a11y | [`convencoes/painel.md`](docs/convencoes/painel.md) |
+| executor, gate, pool, SDK, envelope de mutate | [`convencoes/nucleo.md`](docs/convencoes/nucleo.md) |
+| query, transação, janela de data, fuso | [`convencoes/dados.md`](docs/convencoes/dados.md) |
+| teste, mock, probe de API externa | [`convencoes/testes.md`](docs/convencoes/testes.md) |
+| dependência, deploy, rollback, sprint | [`convencoes/processo.md`](docs/convencoes/processo.md) |

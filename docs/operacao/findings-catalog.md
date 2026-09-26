@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~5100 linhas, 535 KB, IDs de **F1 a F191** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** só 44 findings têm cabeçalho `## F<n>` próprio e os demais vivem dentro de outras entradas, então toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~5300 linhas, 545 KB, IDs de **F1 a F192** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 52 têm; 53 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -5116,3 +5116,200 @@ real (`test_migrations_are_idempotent` não atualizado para a 011, não Docker) 
 via. Nove commits, um por task (`e134a3c`, `951dfa9`, `2934cce`, `1b15e6b`→`beff18d`,
 `982b6ed`→`264ad29`, `72d0a16`, `e26ae2c`, `19a1b43`, `26ab7a9`), cada um com revisão própria
 — spec ✅ nas 9, qualidade Aprovada em 8 e Reprovada em 1 (Task 4, fechada em fix round 1/5).
+
+---
+
+## F192 (MED, ✅ CORRIGIDO 2026-09-22) — o pedido era "eficiência de contexto"; a dor real era 24 bytes de folga, e o scan que garantiu a separação tinha um ponto cego por construção: regra sem âncora é invisível
+
+**Origem:** pedido para "ajustar a documentação para eficiência máxima de contexto". Spec:
+[`2026-09-22-orcamento-do-claude-md-design.md`](../superpowers/specs/2026-09-22-orcamento-do-claude-md-design.md);
+plano: [`2026-09-22-orcamento-do-claude-md.md`](../superpowers/plans/2026-09-22-orcamento-do-claude-md.md);
+ledger de execução (8 tasks, 11 rulings do coordenador):
+`.superpowers/sdd/2026-09-22-orcamento-do-claude-md/progress.md`.
+
+### O reenquadramento
+
+`CLAUDE.md` é o único custo incondicional da documentação — entra inteiro em toda sessão,
+medido em 23.976 bytes ≈ **6.000 tokens, toda sessão**. **Mas 6.000 tokens numa janela de
+200k+ é ~3%.** Comprimir o `Don't do` (54% do arquivo, 12.751 bytes) economizaria ~1.000
+tokens — ruído. **A dor medida era outra:** contra o teto de 24.000 bytes (com guard), a
+folga era de **24 bytes**. O arquivo estava num batente rígido, e o próximo finding que
+precisasse de tripwire não tinha onde entrar. O critério de sucesso mudou junto: não
+"quantos bytes economizei", e sim "quantos bytes de folga sobraram para os próximos meses".
+
+### Por que o teto não é arbitrário
+
+O racional está escrito em `tests/unit/test_docs_links.py::test_claude_md_cabe_no_orcamento`:
+em 2026-08-19 o arquivo chegou a **54.852 bytes**, 88% deles em três seções voláteis ou
+específicas de área; separar por volatilidade derrubou pra ~17,7 KB, e o teto de 24.000
+existe **para que a separação não seja desfeita por acúmulo** — sem ele "o arquivo volta ao
+que era em poucos meses", e foi exatamente o que aconteceu entre 08-19 e 09-22. **Subir o
+teto estava fora de cogitação desde o design:** é o modo de falha que o próprio guard existe
+para impedir, já observado uma vez.
+
+### O eixo do corte
+
+O mesmo de 08-19 — **onde a regra dispara**: fica no `CLAUDE.md` o que dispara onde nada
+roteia (shell, git, CI, deploy, segredo, autorização, processo); vai para o arquivo de área
+o que só importa depois que a sessão já está ali (painel, query/janela, teste, executor).
+**Segundo eixo, que refina o primeiro:** uma regra coberta por guard automatizado é mais
+segura de mover — o mecanismo não depende de atenção humana, o CI reprova mesmo que ninguém
+tenha lido o texto movido. Onde há guard, o texto é lembrete; onde não há, o texto é a única
+defesa.
+
+### O método que caiu na medição — e o instrumento que errou antes de acertar
+
+A proposta inicial era comprimir cada bullet com entrada própria no catálogo para "regra +
+ponteiro F-N". O número que a derrubou em 22/09 — **12 bullets com entrada, 33 órfãos** —
+**estava errado**, pelo defeito do parágrafo seguinte. Remedido em 25/09 nas 45 (12.840 B,
+bullet de `- ` ao próximo): **27 (7.721 B, 60%) têm entrada própria; 18 (5.119 B, 40%) são
+órfãos**, e os 18 são **exatamente** os que não citam F-number nenhum — todo bullet que
+cita um finding tem entrada. Comprimir para ponteiro exigiria escrever 18 entradas antes,
+não 33. **O método segue descartado, pelo motivo que sempre o sustentou** — comprimir trata
+o sintoma de um arquivo que cresce por acúmulo (spec §2) —, e não pelo número errado.
+
+O instrumento errou **três vezes, as três do mesmo jeito**. Este catálogo registra findings
+em **três** formas: linha de tabela `| **F<n>** |` (62), cabeçalho `## F<n>` (52) e item de
+lista `- **F<n> (SEV) —` (69, **todos só ali**: F57–F60 e F74–F138). Os 11 IDs fora das
+três são lacunas — nove sem ocorrência nenhuma, F31 e F32 só citados dentro do F53. A 1ª
+contagem viu uma forma ("21 regras sem entrada"); a 2ª viu duas (o 12/33 acima, publicado
+como medição); a 3ª só apareceu em 25/09, ao restaurar um ponteiro para o F96, que vive na
+lista. **Controle:** o detector de duas formas reproduz o 12/33 exato; o de três dá 27/18.
+O conserto de 22/09 **pegou um gêmeo e deixou o outro** — trocar "olhou uma forma" por
+"olhe duas" é declarar a ausência de uma terceira sem procurá-la —, e o cabeçalho deste
+catálogo já avisava desde 20/09 que *"toda contagem já tentada aqui deu número diferente
+conforme o critério"*: a regra estava escrita, e nada a aplicou. Na própria remedição, um
+filtro "mais rigoroso" que só aceitava severidade em inglês perdeu o `F57 (CRÍTICO)` e deu
+26/19; **filtro mais estreito que o formato é o mesmo defeito**, pego só porque o número
+mudou e o único F-number divergente foi conferido à mão.
+
+### O scan que virou rede de segurança — e os três defeitos que ele teve, todos achados em revisão
+
+A Task 1 construiu um teste (`test_nenhuma_regra_se_perdeu.py`) que compara a união do
+`CLAUDE.md` com os cinco `docs/convencoes/*.md` antes e depois da separação, âncora por
+âncora, contra um piso de ocorrências medido no estado pré-separação. Ele passou por **5
+rounds de fix**, e os três defeitos de fundo foram todos meus, todos achados em revisão —
+pela leitura, não pela sabotagem:
+
+1. **Presença não é a invariante — contagem é.** 17 das 45 âncoras originais já viviam
+   naturalmente em `docs/convencoes/` antes de qualquer bullet se mover (aqueles arquivos
+   falam dos mesmos identificadores por conta própria). Pra essas, "o token existe" ficava
+   **vacuamente verde**: apagar a regra do `CLAUDE.md` sem movê-la não seria detectado.
+   Virou `texto.count(âncora) >= piso medido`.
+2. **A âncora era por bullet, não por regra.** 13 dos 45 bullets carregam 2+ cláusulas — 45
+   bullets, **63 cláusulas**. Extrair uma âncora por bullet deixava **17 sub-regras sem
+   cobertura própria**; apagar o bullet as levaria junto sem o scan acusar. A lista foi de
+   45 para **62 âncoras** (45 originais + 17 sub-regras), cobrindo diretamente 62 das 63
+   cláusulas — a última anda de graça numa âncora compartilhada com outro bullet
+   (`run_blocking`).
+3. **Quatro âncoras eram genéricas demais.** `/mcp` (6 ocorrências fora do contexto-alvo),
+   `deploy.yml` (5), `Settings` (4), `python scripts/check_pre_push.py` (2) — texto não
+   relacionado podia repor a ocorrência de uma regra apagada e manter o scan verde. Trocadas
+   por específicas: `aplicar gzip`, `3 Cloud Run Jobs`, `pool/cliente/logger`, `` push sem
+   `python scripts` ``.
+
+Mesma família do bullet que este catálogo já vinha catalogando a semana inteira do lado do
+código (F182/F184/F187/F188/F189/F190/F191 — "um sinal que afirma mais do que mediu") e do
+que o próprio `CLAUDE.md` diz sobre guard: *"se a asserção não distingue código bom de
+quebrado, ela não é guard."* Aqui a mesma classe mordeu o scan que protege a própria
+documentação, três vezes na mesma task — achada porque o coordenador tratou o próprio scan
+como código a revisar, não como verdade dada.
+
+### 🔑 O que a troca de âncoras genéricas comprou — o achado mais caro desta rede
+
+A Task 2 moveu um bullet de três regras (pin do Tailwind, ordem de `<link>`, gzip/SSE) e
+**perdeu a do meio** — *"Don't aplicar gzip a `/mcp` (SSE)"*. Passou batido na hora porque a
+âncora daquele bullet ainda era `/mcp`, genérica, satisfeita por 6 ocorrências de outros
+contextos — o scan da época não tinha como distinguir "a regra se mudou" de "a palavra
+`/mcp` aparece em outro parágrafo". Só quando o fix round 3 da Task 1 trocou a âncora por
+`aplicar gzip` (específica) é que a Task 7, ao remover o bullet original, viu a contagem cair
+a zero e parou. **A troca de âncoras genéricas por específicas não era higiene — era o que
+expôs uma perda real, na hora em que ainda dava para consertar.** Sem ela, a regra teria
+desaparecido do repositório em silêncio: nem o `CLAUDE.md` a teria mais, nem
+`docs/convencoes/`, e nada teria acusado. Fechada em `docs/convencoes/painel.md` (commit
+`eb8e1f0`).
+
+### Os 8 pisos ajustados — rebaixar um piso não é a mesma coisa que baixar a guarda
+
+Dois pisos precisaram de correção **para baixo** durante a execução: `make_capture_client`
+(5→4, porque `docs/convencoes/testes.md` já trazia a regra inteira desde 08-19 e copiar
+seria a duplicação que o plano proibia) e mais sete, medidos depois que a remoção real
+revelou que aqueles pisos **encodavam menções do `CLAUDE.md`, não a existência da regra** (a
+prosa do destino diz a mesma coisa com menos repetições literais: `best_effort`,
+`--universal`, `run_blocking`, `mgr:<uuid>`, `hx-post`, `{% block head_extra %}`,
+`aria-label`). Cada um dos 8 foi verificado individualmente contra o texto no destino antes
+do rebase — nunca "o scan ficou vermelho, baixa o número até passar". A revisão da Task 7
+recomputou os 8 de forma independente e achou **`real == piso` exato**, não "acima do piso":
+nenhuma folga artificial sobrando.
+
+### O limite medido desta rede
+
+Houve **três perdas parciais nesta separação**, em duas classes diferentes — não em regra
+com piso errado. As duas primeiras foram em regra **SEM âncora própria**. A primeira
+(`aplicar gzip`, acima) foi pega porque a troca de âncora genérica→específica tropeçou
+nela por acidente, não por desenho — a âncora nova existia por outro motivo. A segunda —
+a cláusula *"Don't adicionar dependência sem checar 'no build step'"*, que dividia bullet
+com a mecânica do `--universal` — **não tinha âncora entre as 62** (só a mecânica, âncora
+`--universal`, tinha sido extraída como regra própria), e por isso **não existia contraste
+algum pra ela falhar**: o scan não a via, verde ou vermelho. Só apareceu porque a revisão
+da Task 7 leu os 37 bullets removidos um a um contra os 5 destinos, e um leitor humano
+notou que metade de um bullet de duas cláusulas tinha chegado sozinha. Fechada nesta
+sessão (`docs/convencoes/processo.md`, ao lado da regra do `--universal`, commit
+`b09351c`).
+
+A terceira é de uma classe diferente: **a cláusula TINHA âncora própria** (`asserir o
+ADJACENTE`, bullet 2) e o piso — 1 — estava satisfeito, sempre. O bullet enumerava TRÊS
+modos de asserir o adjacente à invariante; só dois chegaram a `docs/convencoes/testes.md`
+quando o bullet foi comprimido num ponteiro para esse arquivo. A âncora não notou porque
+ela mede a **frase-mãe** ("don't asserir o adjacente"), não os exemplos dentro dela — a
+frase continuou lá, então o piso de 1 continuou satisfeito com um dos três modos ausente.
+Pior que perda silenciosa: o `CLAUDE.md` passou a prometer que "os modos e os exemplos
+medidos estão em `docs/convencoes/testes.md`", e o ponteiro entregava 3/3 exemplos e
+2/3 modos. Não foi achada pelo scan (a âncora estava satisfeita pela frase que ficou) nem
+pelas revisões por task — a da Task 5 confirmou que essa mesma âncora ficou **imóvel**
+(prova que Task 5 não a tocou, não que o conteúdo atrás dela seguia completo), e a da
+Task 7 leu os 37 bullets **removidos** um a um; este bullet não estava entre eles, porque
+é um dos 8 que ficaram. Só apareceu na revisão final da branch, comparando cláusula a
+cláusula contra `main`. Fechada nesta sessão (o modo que faltava em
+`docs/convencoes/testes.md`, commit `aab91e1`; a 63ª âncora em
+`tests/unit/test_nenhuma_regra_se_perdeu.py`, commit `5cec671`).
+
+**O scan cobre 63 âncoras agora (62 até esta correção); o que não tem âncora, ou tem
+âncora grossa demais pro que promete proteger, é invisível a ele — não é bug do scan, é o
+contorno do que ele pode ver.** O contorno em si — âncora é a unidade de proteção, não
+"regra", e uma âncora por regra não basta quando a regra promete mais de um exemplo — fica
+como propriedade permanente do mecanismo, não como pendência.
+
+### O que ficou de fora, dito de propósito
+
+- **Comprimir o `findings-catalog.md`** (545 KB, com esta entrada já somada): o custo dele é por grep, não incondicional
+  como o do `CLAUDE.md`; comprimir arrisca perder o "o que ficou deliberadamente de fora" que
+  torna cada entrada útil — inclusive esta.
+- **Arquivar os 16 planos órfãos** de `docs/superpowers/plans/` (556 KB de 1.396 KB, medidos
+  sem link de entrada vivo; os outros 18 são apontados por doc viva e ficam) — trabalho
+  independente, um `git mv` para `_archive/`.
+- **Subir o teto de 24.000 bytes** — é exatamente o modo de falha que o guard existe para
+  impedir (ver "Por que o teto não é arbitrário").
+
+### Resultado medido
+
+`CLAUDE.md`: 23.976 → **14.641 bytes**, folga 24 → **9.359** (piso do critério de pronto era
+8.000; abaixo dos 17,7 KB que a separação de 08-19 tinha alcançado). `Don't do`: 45
+bullets/63 cláusulas, **12.885 B medidos** (bullet = do marcador `- ` até o próximo, `\n`
+final de cada bullet incluído; sem esse `\n` são 12.840 B — 45 B de diferença, um byte por
+bullet. Os dois métodos ficam registrados aqui porque essa divergência é exatamente o tipo
+de coisa que este finding pede para não esconder) → **8 bullets ficam (2.384 B)**, **37
+saem (10.501 B, 81%)** para os cinco arquivos de área (`painel.md` 12, `nucleo.md` 11,
+`dados.md` 4, `testes.md` 5, `processo.md` 5). Medido contra `git show main:CLAUDE.md`
+(total pré-separação) e o `CLAUDE.md` atual (o que ficou) — não os 12.751/2.765/9.985 que
+estavam aqui antes desta correção, que eram a previsão da spec §5 copiada sem medir. A
+queda de 2.765 (previsto) para 2.384 (medido) nos 8 bullets que ficam tem causa
+identificável: a previsão foi escrita antes de a Task 7 comprimir o bullet do guard num
+ponteiro pra `testes.md` — a mesma compressão que perdeu um dos três modos que o bullet
+enumerava (achado na revisão final, ver acima). **81% dos tripwires do `Don't do` saíram
+do arquivo sempre-carregado**; a mitigação é a tabela de roteamento (agora declarando que
+as regras da área foram junto), o bloco de ponteiros que ficou no `CLAUDE.md`, e o scan.
+
+**Guard:** `tests/unit/test_nenhuma_regra_se_perdeu.py` (2 testes — escopo + as 63 âncoras
+contra piso) e `tests/unit/test_docs_links.py` (orçamento de bytes + links relativos
+resolvem). Ambos rodam no `check_pre_push.py`.
