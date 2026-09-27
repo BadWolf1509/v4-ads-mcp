@@ -12,24 +12,15 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
+
+from src.meta_ads.insights import _COMMON_INSIGHTS_FIELDS
 from src.meta_ads.metricas import FRASE_DA_ATRIBUICAO, FRASE_DO_CTR, FRASE_DO_NULL
 from tests.unit import _guard_harness as h
 
-# Os campos de métrica que a linha /insights traz (`insights._COMMON_INSIGHTS_FIELDS`).
-_CHAVES_DE_METRICA = frozenset(
-    {
-        "spend",
-        "impressions",
-        "clicks",
-        "ctr",
-        "cpc",
-        "reach",
-        "frequency",
-        "actions",
-        "action_values",
-        "purchase_roas",
-    }
-)
+# Os campos de métrica que a linha /insights traz, lidos da lista que o construtor
+# pede: campo novo na chamada entra no guard sozinho, sem segunda cópia a lembrar.
+_CHAVES_DE_METRICA = frozenset(_COMMON_INSIGHTS_FIELDS)
 _CONTRATO = h.SRC / "meta_ads" / "metricas.py"
 _CONSTRUTOR = (h.SRC / "meta_ads" / "insights.py", "build_insights_call")
 
@@ -124,21 +115,35 @@ def _modulo(caminho: Path) -> str:
     return ".".join(caminho.relative_to(h.RAIZ).with_suffix("").parts)
 
 
+def _alvos_de_import(arv: ast.Module, onde: str) -> set[str]:
+    """Os modulos que o arquivo importa, pelo caminho pontilhado.
+
+    `from pacote import modulo` liga o MODULO `pacote.modulo`, nao o pacote: cada
+    nome importado entra tambem como `modulo.nome`, e a leitura que nao for modulo
+    nao casa com nada no grafo. Import relativo nao tem caminho estatico — `src/`
+    nao tem nenhum (grep 2026-09-07, nota de `h.origens_de_import`) — e um que
+    surja falha aqui, em vez de sumir do grafo calado.
+    """
+    alvos: set[str] = set()
+    for no in ast.walk(arv):
+        if isinstance(no, ast.ImportFrom):
+            assert not no.level and no.module, (
+                f"import relativo em {onde}:{no.lineno} — o grafo do guard nao o resolve"
+            )
+            alvos.add(no.module)
+            alvos.update(f"{no.module}.{a.name}" for a in no.names)
+        elif isinstance(no, ast.Import):
+            alvos.update(a.name for a in no.names)
+    return alvos
+
+
 def _tools_que_chegam_ao_contrato() -> set[str]:
     """Tool cujo modulo importa o contrato, direto ou por modulo de `src/` no meio.
 
     A populacao sai do grafo de import, nao de lista: tool Meta nova que devolva
     metrica cai aqui sozinha.
     """
-    importa: dict[str, set[str]] = {}
-    for p in h.fontes_py():
-        alvos = set()
-        for no in ast.walk(h.arvore(p)):
-            if isinstance(no, ast.ImportFrom) and no.module:
-                alvos.add(no.module)
-            elif isinstance(no, ast.Import):
-                alvos.update(a.name for a in no.names)
-        importa[_modulo(p)] = alvos
+    importa = {_modulo(p): _alvos_de_import(h.arvore(p), h.rel(p)) for p in h.fontes_py()}
     alcanca = {"src.meta_ads.metricas"}
     mudou = True
     while mudou:
@@ -172,3 +177,21 @@ def test_toda_tool_com_metrica_meta_avisa_o_contrato_na_description() -> None:
         if ausentes:
             faltando[nome] = ausentes
     assert not faltando, f"description sem a frase do contrato: {faltando}"
+
+
+def test_grafo_de_import_le_as_formas_que_ligam_o_modulo() -> None:
+    """`from pacote import modulo` tambem chega ao contrato (revisao da Task 5).
+
+    O grafo lia so `ImportFrom.module`: essa forma entrava como o pacote, e a tool
+    saia da populacao do guard das descriptions sem aviso.
+    """
+    formas = (
+        "from src.meta_ads.metricas import ATRIBUICAO",
+        "from src.meta_ads import metricas",
+        "import src.meta_ads.metricas",
+        "import src.meta_ads.metricas as contrato",
+    )
+    for fonte in formas:
+        assert "src.meta_ads.metricas" in _alvos_de_import(ast.parse(fonte), "<teste>"), fonte
+    with pytest.raises(AssertionError, match="import relativo"):
+        _alvos_de_import(ast.parse("from .metricas import ATRIBUICAO"), "<teste>")
