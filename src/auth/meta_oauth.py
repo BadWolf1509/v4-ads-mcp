@@ -19,7 +19,6 @@ import hashlib
 import hmac
 import json
 from datetime import UTC, datetime, timedelta
-from typing import Any, NamedTuple
 from urllib.parse import urlencode
 from uuid import UUID, uuid4
 
@@ -37,12 +36,9 @@ from src.config import get_settings
 from src.db import connection
 from src.db.repositories import (
     audit_log,
-    meta_ad_accounts,
     meta_oauth_connections,
 )
-from src.meta_ads.graph import fetch_paginated
 from src.web.deps import CurrentUser, current_manager
-from src.web.routes._shared import _require_admin
 
 log = structlog.get_logger(__name__)
 
@@ -123,9 +119,6 @@ def _build_redirect_uri(request: Request) -> str:
     return url
 
 
-_ADACCOUNT_FIELDS = "id,name,business,account_status,currency,timezone_name"
-
-
 async def _exchange_for_long_lived_token(
     http: httpx.AsyncClient,
     *,
@@ -149,35 +142,6 @@ async def _exchange_for_long_lived_token(
             "fb_exchange_token": short_token,
         },
     )
-
-
-class AdAccountsFetch(NamedTuple):
-    """Resultado da paginação de /me/adaccounts.
-
-    `complete=False` significa inventário **truncado** — uma página falhou ou o
-    cap de páginas estourou. Quem faz deletion detection PRECISA olhar esta flag
-    (F93): sobre lista truncada, "conta ausente" significa "página que não veio",
-    não churn — desativá-la derruba conta viva, que é o sintoma do F65 entrando
-    por outra porta. Pra cache de exibição, parcial é tolerável.
-    """
-
-    accounts: list[dict[str, Any]]
-    complete: bool
-
-
-async def _fetch_all_adaccounts(http: httpx.AsyncClient, access_token: str) -> AdAccountsFetch:
-    """GET /me/adaccounts seguindo paging.next até esgotar.
-
-    A paginação em si vive em `src/meta_ads/graph.py` desde 2026-08-20 — este
-    módulo é OAuth, e o resync (que não é OAuth) reusava o helper daqui.
-    """
-    out = await fetch_paginated(
-        http,
-        f"{META_GRAPH_BASE}/me/adaccounts",
-        access_token=access_token,
-        params={"fields": _ADACCOUNT_FIELDS, "limit": 200},
-    )
-    return AdAccountsFetch(accounts=out.rows, complete=out.complete)
 
 
 @router.get("/start")
@@ -212,7 +176,7 @@ async def meta_oauth_callback(
     error: str | None = None,
     error_description: str | None = None,
 ) -> HTMLResponse | RedirectResponse:
-    """Exchange code → long-lived access_token → persist + sync accounts.
+    """Exchange code → long-lived access_token → persist.
 
     Flow:
     1. Verify state HMAC
@@ -225,8 +189,13 @@ async def meta_oauth_callback(
     5. GET /debug_token → granted_scopes
     6. check_meta_granted_scopes → block if missing essentials
     7. Encrypt + upsert meta_oauth_connections
-    8. GET /me/adaccounts → upsert meta_ad_accounts (Modelo B: sem auto-grant)
-    9. audit_log + redirect to /admin
+    8. audit_log + redirect to /admin
+
+    F197: o callback NÃO grava mais o inventário. Ele fazia upsert do
+    `/me/adaccounts` do token PESSOAL do gestor com `is_active = true` e a série
+    de ausências zerada — por cima da reconciliação contra a parceria do BM,
+    reativando conta que estava saindo e trazendo conta de fora da parceria.
+    Quem escreve `meta_ad_accounts` é só o job (`src/jobs/meta_resync.py`).
     """
     if error:
         msg = error_description or error
@@ -361,17 +330,8 @@ async def meta_oauth_callback(
         encrypted = encrypt_refresh_token(access_token, master_key)
         token_expires_at = datetime.now(UTC) + timedelta(seconds=expires_in_seconds)
 
-        # Step 8: list ad accounts (paginado — segue paging.next).
-        # Cache de exibição: inventário parcial é tolerável aqui (não há deletion
-        # detection neste caminho), mas fica registrado — ver F93.
-        fetched = await _fetch_all_adaccounts(http, access_token)
-        if not fetched.complete:
-            log.warning("meta_oauth_adaccounts_partial", fetched=len(fetched.accounts))
-        ad_accounts_data = fetched.accounts
-
-    # Step 7+8 persist (outside http context)
+    # Step 7 persist (outside http context)
     pool = connection.get_pool()
-    accounts_payload: list[dict[str, Any]] = []
     async with pool.acquire() as conn:
         await meta_oauth_connections.upsert(
             conn,
@@ -382,28 +342,9 @@ async def meta_oauth_callback(
             token_expires_at=token_expires_at,
             scopes=list(granted_scopes),
         )
-        # Upsert ad accounts
-        for a in ad_accounts_data:
-            ad_id_raw = a.get("id", "")
-            if not ad_id_raw.startswith("act_"):
-                ad_id_raw = f"act_{ad_id_raw}"
-            business = a.get("business") or {}
-            accounts_payload.append(
-                {
-                    "ad_account_id": ad_id_raw,
-                    "business_id": business.get("id"),
-                    "business_name": business.get("name"),
-                    "account_name": a.get("name", ad_id_raw),
-                    "currency": a.get("currency"),
-                    "timezone_name": a.get("timezone_name"),
-                    "account_status": a.get("account_status"),
-                }
-            )
-        if accounts_payload:
-            await meta_ad_accounts.upsert_many(conn, accounts_payload)
         # Modelo B: sem auto-grant — acesso é concedido só via matriz admin.
 
-        # Step 9: audit
+        # Step 8: audit
         await audit_log.record(
             conn,
             manager_id=manager_id,
@@ -411,7 +352,6 @@ async def meta_oauth_callback(
             customer_id=None,
             action_type="auth",
             operation="meta_oauth_connect",
-            target_count=len(accounts_payload),
             params_summary={"fb_email": fb_email, "scopes": list(granted_scopes)},
             status="success",
             platform="meta",
@@ -421,7 +361,6 @@ async def meta_oauth_callback(
         "meta_oauth_callback_success",
         manager_id=str(manager_id),
         fb_email=fb_email,
-        accounts_synced=len(accounts_payload),
     )
     return RedirectResponse("/admin?meta_connected=1", status_code=302)
 
@@ -507,77 +446,3 @@ async def meta_data_deletion_callback(request: Request) -> dict[str, str]:
         "url": url,
         "confirmation_code": confirmation_code,
     }
-
-
-@router.post("/refresh-accounts")
-async def meta_oauth_refresh_accounts(
-    user: CurrentUser = Depends(current_manager),  # noqa: B008
-) -> RedirectResponse:
-    """Re-sync meta_ad_accounts list via Graph /me/adaccounts.
-
-    Útil quando cliente novo entra no BM ou ad account é renomeada.
-    Usa o system-user token (settings.meta_system_user_token / Secret Manager:
-    meta-system-user-token) — não depende de conexão OAuth pessoal do gestor.
-    Grants de acesso são controlados exclusivamente pela matriz admin (Modelo B):
-    nenhum manager_meta_account_access é criado automaticamente.
-    """
-    _require_admin(user)
-    settings = get_settings()
-    token = settings.meta_system_user_token
-    if not token:
-        raise HTTPException(
-            status_code=422,
-            detail="Token do system user Meta não configurado.",
-        )
-
-    pool = connection.get_pool()
-
-    async with httpx.AsyncClient(timeout=30.0) as http:
-        fetched = await _fetch_all_adaccounts(http, token)
-    # Refresh manual do admin: parcial é tolerável (só atualiza o cache; a
-    # deteccao de churn mora no job de resync), mas nao pode passar batido (F93).
-    if not fetched.complete:
-        log.warning("meta_refresh_accounts_partial", fetched=len(fetched.accounts))
-    ad_accounts_data = fetched.accounts
-
-    accounts_payload: list[dict[str, Any]] = []
-    for a in ad_accounts_data:
-        ad_id_raw = a.get("id", "")
-        if not ad_id_raw.startswith("act_"):
-            ad_id_raw = f"act_{ad_id_raw}"
-        business = a.get("business") or {}
-        accounts_payload.append(
-            {
-                "ad_account_id": ad_id_raw,
-                "business_id": business.get("id"),
-                "business_name": business.get("name"),
-                "account_name": a.get("name", ad_id_raw),
-                "currency": a.get("currency"),
-                "timezone_name": a.get("timezone_name"),
-                "account_status": a.get("account_status"),
-            }
-        )
-
-    async with pool.acquire() as conn:
-        if accounts_payload:
-            await meta_ad_accounts.upsert_many(conn, accounts_payload)
-        # No auto-grant: Modelo B matrix controls grants exclusively.
-
-        await audit_log.record(
-            conn,
-            manager_id=user.id,
-            session_id=None,
-            customer_id=None,
-            action_type="auth",
-            operation="meta_refresh_accounts",
-            target_count=len(accounts_payload),
-            status="success",
-            platform="meta",
-        )
-
-    log.info(
-        "meta_accounts_refreshed",
-        manager_id=str(user.id),
-        count=len(accounts_payload),
-    )
-    return RedirectResponse("/admin?meta_refreshed=1", status_code=302)

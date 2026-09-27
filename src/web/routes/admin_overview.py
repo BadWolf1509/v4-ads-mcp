@@ -128,7 +128,6 @@ async def admin_index(
 
     meta_connected = request.query_params.get("meta_connected") == "1"
     meta_revoked = request.query_params.get("meta_revoked") == "1"
-    meta_refreshed = request.query_params.get("meta_refreshed") == "1"
 
     return templates.TemplateResponse(
         request,
@@ -154,7 +153,6 @@ async def admin_index(
             "meta_days_since_expiry": meta_expiry.days_since,
             "meta_connected": meta_connected,
             "meta_revoked": meta_revoked,
-            "meta_refreshed": meta_refreshed,
         },
     )
 

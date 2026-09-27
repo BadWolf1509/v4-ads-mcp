@@ -2,7 +2,7 @@
 """Núcleo compartilhado do trio meta_get_{campaign,ad_set,ad}_performance (Task 3.3).
 
 Os 3 tools de performance Meta MCP (campaign/ad_set/ad) eram ~92% idênticos:
-resolve date window → lookup ad_account (mesma msg "não encontrada" repetida) →
+resolve date window → lookup ad_account (mesma msg de conta fora do inventário) →
 build_insights_call → run_meta_graph_get → parse+sort rows → envelope de sucesso.
 Só variava `level` (+ nome do tool/operation_name pro audit_log).
 
@@ -57,13 +57,18 @@ def meta_account_not_found_error(ad_account_id: str) -> dict[str, Any]:
     """Envelope de erro padrão quando `ad_account_id` não está em meta_ad_accounts.
 
     Uma fonte pra mensagem repetida em 5 call sites (F-classe: mensagem duplicada
-    diverge silenciosamente se só 1 site for atualizado no futuro).
+    diverge silenciosamente se só 1 site for atualizado no futuro). O overview e o
+    breakdown repetiam o texto em vez de chamar esta função até o F197 — e o texto
+    mandava usar um nome de operação de audit como se fosse tool, ou reconectar o
+    OAuth, que nunca mais atualizou o inventário.
     """
     return {
         "status": "error",
         "error_message": (
-            f"Ad account {ad_account_id} não encontrada. "
-            f"Use meta_refresh_accounts ou reconnect via /oauth/meta/start."
+            f"Conta Meta {ad_account_id} não está no inventário. O inventário é a "
+            "parceria do BM da V4, sincronizada pelo resync diário (06:00, horário de "
+            "Brasília): conta nova entra na execução seguinte. Se ela já deveria estar "
+            "lá, peça ao admin para conferir a parceria no Business Manager."
         ),
     }
 

@@ -186,7 +186,7 @@ async def test_account_not_found_returns_error(db):
 
     assert result["status"] == "error"
     assert "act_999999" in result["error_message"]
-    assert "não encontrada" in result["error_message"]
+    assert "não está no inventário" in result["error_message"]
 
 
 @pytest.mark.integration

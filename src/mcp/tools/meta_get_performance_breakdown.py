@@ -14,7 +14,11 @@ from src.db import connection
 from src.db.repositories import meta_ad_accounts
 from src.mcp.context import get_current
 from src.mcp.tools._meta_common import meta_error_message
-from src.mcp.tools._meta_performance import _MAX_PAGES, _gasto_para_ordenar
+from src.mcp.tools._meta_performance import (
+    _MAX_PAGES,
+    _gasto_para_ordenar,
+    meta_account_not_found_error,
+)
 from src.mcp.tools._registry import register_tool
 from src.meta_ads.account_clock import resolve_meta_account_today
 from src.meta_ads.account_overview import resolve_meta_date_window
@@ -127,13 +131,7 @@ async def meta_get_performance_breakdown(
     async with pool.acquire() as conn:
         account = await meta_ad_accounts.get_by_id(conn, ad_account_id)
         if account is None:
-            return {
-                "status": "error",
-                "error_message": (
-                    f"Ad account {ad_account_id} não encontrada. "
-                    f"Use meta_refresh_accounts ou reconnect via /oauth/meta/start."
-                ),
-            }
+            return meta_account_not_found_error(ad_account_id)
 
     level_typed = cast(Level, level)
     edge, params = build_insights_call(

@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~5700 linhas, 576 KB, IDs de **F1 a F196** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 55 têm; 56 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~5800 linhas, 579 KB, IDs de **F1 a F197** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 55 têm; 56 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -1770,7 +1770,7 @@ ele é intermitente para uma e persistente para a outra.
 
 **Fora, com o motivo:** o gêmeo Google do `unreachable`; o `/me/adaccounts` que resta — o do OAuth pessoal, dormente desde o Modelo B, e o do botão
 "Sincronizar contas" do admin (`POST /refresh-accounts`, token do SU), que ainda faz upsert
-do índice, contra a spec 2026-08-20: é outro achado, a registrar; fila de "não medido" no painel (entra se o relatório mostrar a sonda
+do índice, contra a spec 2026-08-20: virou o **F197**; fila de "não medido" no painel (entra se o relatório mostrar a sonda
 falhando com frequência); o motivo de o índice omitir a CHUTE 07 (a sonda o torna irrelevante
 para o sinal).
 
@@ -5706,3 +5706,52 @@ contra R$ 8.188,72 de `01/09–26/09`), e as 15 tools terminam ontem — a difer
 corrente. Alinhar muda os números de todo dia e reabre, no comparativo do overview, o dia
 parcial que o F195 tirou: decisão própria. E, no dia 1 e na segunda, o comparativo do overview
 compara um dia parcial com um dia cheio — como a interface do Google.
+
+---
+
+## F197 (MEDIUM, ✅ CORRIGIDO 2026-09-27) — dois caminhos do painel escreviam o inventário Meta por cima da reconciliação
+
+> **Como apareceu:** a revisão final do F154 notou que o botão "Sincronizar contas" do admin
+> ainda lia `/me/adaccounts`. Ao medir, apareceu um segundo caminho.
+
+**Os dois escritores, além do job:**
+
+- o botão "Sincronizar contas" (`/admin/accounts/meta`) e o "Atualizar lista" (`/admin`) —
+  `POST /oauth/meta/refresh-accounts`, com o token do system user; **3 cliques em 21/09**
+  (logs de 30 dias);
+- o callback do OAuth Meta pessoal — aberto a **qualquer gestor**, não só ao admin —, com o
+  `/me/adaccounts` do token **pessoal**; 0 usos em 30 dias.
+
+Os dois chamavam `meta_ad_accounts.upsert_many`, que grava `is_active = true` e zera
+`missed_syncs` e `last_missed_on`. Conta em carência que ainda estivesse no índice tinha o
+desligamento reiniciado a cada clique; conta já desativada voltava a ativa; e conta fora da
+parceria — no callback, até conta pessoal do gestor ou de outra agência — entrava ativa no
+inventário, até a reconciliação a tirar três execuções depois. A fonte autoritativa é a
+parceria do BM (spec 2026-08-20), e o F154 tinha acabado de medir que o índice nem prova
+alcance. O Google nunca teve esse caminho: lá o painel manda aguardar o resync.
+
+**Decisão (Wellington, 27/09): só o job escreve o inventário** — conta nova entra no resync
+diário (06:00, horário de Brasília); sob demanda, executar o job, com autorização nominal.
+
+**✅ O que foi feito:**
+
+- Saíram o endpoint, os dois botões e o aviso `meta_refreshed` do `/admin`. O callback segue
+  guardando a conexão, sem tocar no inventário; o wrapper `_fetch_all_adaccounts`, sem
+  chamador, saiu junto (a propriedade F82 do header em toda página foi para o teste do
+  paginador).
+- As mensagens de "conta não encontrada" das tools Meta mandavam usar `meta_refresh_accounts`
+  — nome de operação de audit, nunca uma tool — ou reconectar o OAuth. Agora há uma fonte só
+  (`meta_account_not_found_error`: o overview e o breakdown repetiam o texto em vez de
+  chamá-la), com o caminho real. A description de `meta_list_my_ad_accounts` também.
+- **Guard** (`tests/unit/test_inventario_escritor_unico.py`): chamada a qualquer escritor do
+  inventário, Meta ou Google, fora de `src/jobs/` falha — contra o código anterior apontou
+  `meta_oauth.py`, linhas 403 e 563. Os escritores são **derivados do SQL** de cada função dos
+  dois repositórios (`upsert_many`, `deactivate`, `apply_absences`, `set_reachable`,
+  `mark_inactive_except`): a primeira versão listava só o `upsert_many`, e a revisão pegou —
+  asserção mais estreita que a invariante. SQL de escrita cru nas duas tabelas fora dos
+  repositórios também falha; controles provam a derivação, os dois jobs e as duas formas de
+  import; e um teste impede texto de `src/` ou template de citar o caminho que saiu (pegou 8).
+  Sabotagens medidas: um `deactivate` e um `UPDATE` cru no painel, cada um derrubando o seu.
+
+**Fora, com o motivo:** o fluxo do OAuth pessoal em si (conectar, revogar) fica — dormente
+desde o Modelo B e sem uso em 30 dias; removê-lo é outra decisão.

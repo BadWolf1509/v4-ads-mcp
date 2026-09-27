@@ -1,8 +1,9 @@
 # bucket: always
 """List Meta Ad Accounts the manager has access to (Sprint M.2a Task 9).
 
-Source: manager_meta_account_access (local cache, populated on OAuth callback).
-Does NOT call Meta API. Reconnect via webapp to refresh.
+Source: manager_meta_account_access (os acessos que o admin concede) cruzado com
+meta_ad_accounts (o inventário, que só o resync diário escreve — F197).
+Does NOT call Meta API.
 """
 
 from typing import Any
@@ -15,8 +16,10 @@ from src.meta_ads.labels import META_ACCOUNT_STATUS_LABELS
 
 _DESCRIPTION = (
     "[CORE] Lista as contas de anúncio Meta às quais o gestor tem acesso. "
-    "Fonte: cache local sincronizado quando o gestor conecta Meta via OAuth. "
-    "Pra forçar refresh dos accounts, gestor precisa reconectar via painel admin. "
+    "Fonte: o inventário local (a parceria do BM da V4, sincronizada pelo resync "
+    "diário das 06:00, horário de Brasília) cruzado com os acessos que o admin "
+    "concedeu ao gestor. Conta nova entra na execução seguinte do resync; se faltar "
+    "alguma, peça ao admin. "
     "Retorna: ad_account_id ('act_<numeric>'), account_name, business_id/name "
     "(NULL se personal), currency, timezone_name, account_status (Meta enum) "
     "+ account_status_label (PT-BR)."
