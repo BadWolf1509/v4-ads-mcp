@@ -39,8 +39,6 @@ charset-normalizer==3.4.9
     # via requests
 click==8.5.0
     # via uvicorn
-colorama==0.4.6 ; sys_platform == 'win32'
-    # via click
 cryptography==50.0.1
     # via
     #   v4-ads-mcp (pyproject.toml)
@@ -56,7 +54,7 @@ frozenlist==1.8.0
     # via
     #   aiohttp
     #   aiosignal
-google-ads==31.1.0
+google-ads==31.4.0
     # via v4-ads-mcp (pyproject.toml)
 google-api-core==2.38.0
     # via
@@ -75,7 +73,7 @@ google-cloud-core==2.7.0
     # via google-cloud-storage
 google-cloud-storage==3.13.1
     # via v4-ads-mcp (pyproject.toml)
-google-crc32c==1.8.0
+google-crc32c==1.9.0
     # via
     #   google-cloud-storage
     #   google-resumable-media
@@ -130,6 +128,8 @@ multidict==6.7.1
     #   yarl
 oauthlib==3.3.1
     # via requests-oauthlib
+opentelemetry-api==1.45.0
+    # via google-api-core
 propcache==0.5.2
     # via
     #   aiohttp
@@ -153,13 +153,13 @@ pycountry==26.2.16
     # via facebook-business
 pycparser==3.0 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
     # via cffi
-pydantic==2.13.4
+pydantic==2.13.5
     # via
     #   v4-ads-mcp (pyproject.toml)
     #   fastapi
     #   mcp
     #   pydantic-settings
-pydantic-core==2.46.4
+pydantic-core==2.46.5
     # via pydantic
 pydantic-settings==2.15.0
     # via
@@ -212,6 +212,7 @@ typing-extensions==4.16.0
     #   fastapi
     #   grpcio
     #   mcp
+    #   opentelemetry-api
     #   pydantic
     #   pydantic-core
     #   typing-inspection
@@ -231,7 +232,7 @@ uvicorn==0.51.0
     #   mcp
 uvloop==0.22.1 ; platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'
     # via uvicorn
-watchfiles==1.2.0
+watchfiles==1.3.0
     # via uvicorn
 websockets==16.1
     # via uvicorn
