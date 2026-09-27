@@ -40,7 +40,11 @@ def resolve_meta_date_window(
     daqui terminava hoje, com o dia corrente pela metade dentro da janela.
     """
     if start_date and end_date:
-        return (date.fromisoformat(start_date), date.fromisoformat(end_date))
+        inicio, fim = date.fromisoformat(start_date), date.fromisoformat(end_date)
+        # F196, o gemeo Meta: o custom do Google ja recusava `from` depois de `to`.
+        if inicio > fim:
+            raise ValueError(f"start_date ({inicio}) e depois de end_date ({fim})")
+        return inicio, fim
     if start_date or end_date:
         raise ValueError("start_date e end_date devem ser fornecidos juntos")
     return janela_do_preset(preset or "LAST_7_DAYS", today=today)
