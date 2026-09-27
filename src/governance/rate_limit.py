@@ -205,13 +205,14 @@ def _parse_buc_header_pct(buc_header: str | None, *, ad_account_id: str) -> int 
         for u in usages:
             if not isinstance(u, dict):
                 continue
-            pcts.extend(
-                [
-                    int(u.get("call_count", 0)),
-                    int(u.get("total_cputime", 0)),
-                    int(u.get("total_time", 0)),
-                ]
-            )
+            # Campo ausente ou valor que nao e numero nao conta como 0: a entrada
+            # sem nenhum dos tres lia como conta ociosa, e um valor nao numerico
+            # levantava no int() antes de o contador de chamadas gravar.
+            for chave in ("call_count", "total_cputime", "total_time"):
+                try:
+                    pcts.append(int(float(u[chave])))
+                except (KeyError, TypeError, ValueError, OverflowError):
+                    continue
     return max(pcts) if pcts else None
 
 

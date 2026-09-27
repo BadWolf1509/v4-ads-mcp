@@ -22,6 +22,7 @@ Três regras, uma fonte:
 Puro: sem IO, sem SDK.
 """
 
+import math
 from typing import Any
 
 # O mapa canônico (spec §3.1). Os totais que o Gerenciador de Anúncios chama de
@@ -48,9 +49,12 @@ def _numero(valor: Any) -> float | None:
     if valor is None:
         return None
     try:
-        return float(valor)
+        numero = float(valor)
     except (TypeError, ValueError):
         return None
+    # "nan" e "inf" convertem em float e derrubavam o round() da contagem — a
+    # resposta inteira caia. Numero nao finito e valor que nao converte: null.
+    return numero if math.isfinite(numero) else None
 
 
 def _contagem(valor: float | None) -> int | None:

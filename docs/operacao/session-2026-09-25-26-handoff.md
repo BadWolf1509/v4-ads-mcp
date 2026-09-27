@@ -1,7 +1,7 @@
 # Sessão 2026-09-25/26 — Handoff (medir, fechar o F193, virar a trava Google, métricas Meta)
 
 > Dois dias, oito PRs mergeados (#108–#115; três deles com deploy), e a frente *métricas Meta*
-> em execução na branch `spec/metricas-meta` (seção abaixo). Este é o **mapa**;
+> (F194) fechada no código na branch `spec/metricas-meta` (seção abaixo). Este é o **mapa**;
 > a enciclopédia é o [`findings-catalog.md`](findings-catalog.md), e o estado vivo é o
 > [`estado-atual.md`](estado-atual.md). A sessão seguiu a ordem de ataque de 25/09: medir a
 > exposição, dar dado às decisões, consertos pequenos, e só então spec — um por vez.
@@ -46,19 +46,17 @@ As decisões que mudaram o plano no caminho, todas registradas no F193:
 Defeitos do **plano** achados na execução: um teste que afirmava a regra que o spec revoga, e
 seis consumidores do plugin em **prosa**, que o grep por nome de campo não via.
 
-## A frente métricas Meta — em execução (branch `spec/metricas-meta`, sem push)
+## A frente métricas Meta — F194 (branch `spec/metricas-meta`)
 
 [Spec](../superpowers/specs/2026-09-26-metricas-meta-dizem-o-que-mediram-design.md) (`79b82ce`) →
 [plano](../superpowers/plans/2026-09-26-metricas-meta-dizem-o-que-mediram.md) (`0cd0ae4`) → execução
-por subagentes. **Tasks 1 a 5 commitadas** (`b810621`, `86015c9`, `aa138c9`, `2d5eb73`, `67ca703`);
-1 a 4 revisadas e aprovadas, **a 5 falta revisar**; a 6 (docs, F194) não começou.
+por subagentes: seis tasks (`b810621`, `86015c9`, `aa138c9`, `2d5eb73`, `67ca703`, `f16400f`),
+uma rodada de correção da Task 5 (`910b8f8`) e uma da revisão final da branch. Todas revisadas;
+o full sweep (Docker) passou nos 7 passos.
 
-**Para retomar:** o ledger do subagent-driven-development está em
-`.superpowers/sdd/2026-09-26-metricas-meta-dizem-o-que-mediram/progress.md` (git-ignored) — ele tem
-o estado, os deferred minors e a decisão que a Task 6 precisa carregar: **um par âncora/substituição
-a mais no `nucleo.md`**, porque a linha do BUC post-call (`record_actual_meta`) ainda descreve o
-contrato antigo. Depois da Task 6: revisão final, full sweep, PR com vigia + auto-merge, deploy e
-smoke em produção (Cheiro | Conta 01, `act_926193536103926`: `purchases` 10, onde hoje sai 0).
+**O que falta:** o PR (vigia de CI + auto-merge; o merge deploya) e o smoke de leitura em
+produção numa sessão MCP **nova** (F140) — o roteiro está no `estado-atual.md`, e a conta de
+referência é a Cheiro | Conta 01 (`act_926193536103926`: `purchases` 10, onde hoje sai 0).
 
 **O que as sondagens de 26/09 mediram** (Graph API, 24 contas, 30 dias,
 `scripts/probe_meta_metricas.py`): a mesma compra sob 5 nomes e o mesmo lead sob 7; 14 de 14 contas
@@ -66,13 +64,21 @@ com gasto medem conversas iniciadas, que nenhuma tool expunha; `action_values` e
 vazios em todas; `ctr` em escalas 100× diferentes entre o overview e o trio; o horário sem
 `reach`/`frequency`; o BUC gravando "não sei" como 0. E duas afirmações falsas nas docs: o índice
 da varredura dava o 03#10 como fechado pelo F190 (o overview seguia mandando o parâmetro), e a
-contagem de cabeçalhos no topo do catálogo estava defasada em um.
+contagem de cabeçalhos no topo do catálogo estava defasada em um. Na revisão final, as
+combinações de parâmetros foram mandadas juntas à API, na forma exata do construtor
+(`scripts/probe_meta_combinacoes.py`, 27/09): 16 de 16 com 200, e o controle inválido 400.
 
 **Como o plano foi feito — e por que foi diferente do F193:** o código de cada task foi escrito e
 executado num worktree antes do plano, uma task por commit, cada uma verde isolada; o plano foi
 **gerado desses commits** (os blocos são os diffs exatos) e reaplicado bloco a bloco a partir do
-próprio arquivo sobre o commit do spec — resultado idêntico. Até agora, as cinco tasks bateram byte a
-byte com o plano, e as revisões não acharam nada Important.
+próprio arquivo sobre o commit do spec — resultado idêntico. As seis tasks bateram byte a byte
+com o plano, conferido por script a cada commit. As revisões por task acharam **um** Important,
+e ele era do plano, não da execução: o grafo de import do guard das descriptions não via
+`from pacote import módulo` (`910b8f8`). **O plano commitado difere do executado em dois
+pontos**, decididos na execução: esse conserto do guard, e o par do `nucleo.md` que troca a
+linha do BUC antigo pelo contrato novo (carregado pela Task 6). A revisão final achou dois
+Important — estas docs se contradizendo, e as combinações de parâmetros nunca enviadas juntas
+à API real (sondadas: passam) — e Minors que entraram no mesmo commit de correção.
 
 ## O que ficou pendente
 
@@ -80,8 +86,11 @@ byte com o plano, e as revisões não acharam nada Important.
 - **Plugin `v4-trafego-google-ads`:** o texto do ajuste do `null` (6 pontos) foi entregue ao Wellington; aplicar na fonte.
 - **Remover do BM as contas Meta das quatro clientes que saíram** — ação do Wellington, decidida em 26/09; detalhe no `estado-atual.md`.
 - **04/10:** remedição dos buckets e uso da Fase 2B por gestor.
-- **Terminar a frente métricas Meta** — ver a seção acima.
-- **Nível de acesso da API Meta:** o cabeçalho de throttle diz `development_access` — o app segue no Limited Access do D1 de maio; decisão do Wellington (pedir o Full Access agora, ou esperar volume). Entra no `estado-atual` pela Task 6.
+- **Smoke de leitura do F194 em produção**, numa sessão MCP nova — roteiro no `estado-atual.md`.
+- **Alerta para os WARNING do Meta** (`meta_rate_limit_warning`, `meta_buc_nao_lido`): a única
+  política de alerta por log dispara em `severity>=ERROR`, então o aviso existe e ninguém é
+  avisado. Métrica por log + política, como a do `google_accounts_sem_grant` (declarado no F194).
+- **Nível de acesso da API Meta:** o cabeçalho de throttle diz `development_access` — o app segue no Limited Access do D1 de maio; decisão do Wellington (pedir o Full Access agora, ou esperar volume). Registrado no `estado-atual`.
 - **Follow-ups do F193** (Minor): no corpo do #111.
 
 ## Operacional que custou tempo

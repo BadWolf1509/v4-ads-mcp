@@ -83,6 +83,18 @@ def test_parse_buc_zero_medido_segue_zero():
     assert _parse_buc_header_pct(header, ad_account_id="act_123") == 0
 
 
+def test_parse_buc_entrada_sem_nenhum_campo_e_none():
+    """Campo ausente nao e 0 medido: a entrada sem os tres nao diz nada."""
+    header = json.dumps({"123": [{"type": "ads_insights", "estimated_time_to_regain_access": 0}]})
+    assert _parse_buc_header_pct(header, ad_account_id="act_123") is None
+
+
+def test_parse_buc_valor_nao_numerico_nao_conta_e_nao_levanta():
+    """O int() levantava antes de o contador de chamadas gravar."""
+    header = json.dumps({"123": [{"call_count": "x", "total_cputime": None, "total_time": 40}]})
+    assert _parse_buc_header_pct(header, ad_account_id="act_123") == 40
+
+
 # ============================================================================
 # x-fb-ads-insights-throttle — onde vem a quota do APP em chamada /insights
 # ============================================================================

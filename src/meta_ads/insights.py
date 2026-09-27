@@ -136,7 +136,10 @@ def build_insights_call(
         # que e o que o Gerenciador mostra. Sondado com controle: valor invalido
         # volta HTTP 400 ("must be a boolean"), entao a API le o parametro
         # (`scripts/probe_meta_metricas.py`). A resposta diz qual usou
-        # (`metricas.ATRIBUICAO`).
+        # (`metricas.ATRIBUICAO`). Junto com `sort`, `breakdowns` e os fields de
+        # cada nivel, na forma exata deste construtor: as 16 combinacoes que as
+        # tools mandam voltaram 200, e o controle invalido 400 na mais carregada
+        # (`scripts/probe_meta_combinacoes.py`, 27/09).
         "use_unified_attribution_setting": "true",
     }
     if breakdowns:

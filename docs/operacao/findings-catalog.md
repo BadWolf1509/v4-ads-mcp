@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~5500 linhas, 564 KB, IDs de **F1 a F194** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 54 têm; 55 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~5500 linhas, 565 KB, IDs de **F1 a F194** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 54 têm; 55 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -5505,6 +5505,13 @@ Graph API — o transporte repassa `params` como recebe. Ninguém tinha conferid
   75% passa a considerar também a quota do app e da conta do `x-fb-ads-insights-throttle`, e
   diz qual passou.
 - **Descriptions** das 5 tools dizem o que é o `null`, a unidade do `ctr` e a atribuição.
+- **Na revisão final da branch:** `nan`/`inf` viram `null` (antes derrubavam o `round()` da
+  contagem, e a resposta inteira); o parser do BUC não conta campo ausente ou não numérico
+  como 0; o guard do F89 cruza o contrato com os fields do nível `account` (os comuns), não
+  com a união dos níveis; a linha sem `spend` testada pelas duas tools que ordenam. E as
+  combinações de parâmetros, que só tinham sido sondadas uma a uma, foram mandadas juntas à
+  API real na forma exata do construtor (`scripts/probe_meta_combinacoes.py`): 16 de 16 com
+  200, e o controle inválido 400.
 
 **Os guards** (`tests/unit/test_meta_metricas_guards.py`), vermelhos contra o código
 anterior e por sabotagem em cópia:
@@ -5528,4 +5535,8 @@ fantasma plantado em `metricas.py`** (medido). Passou a varrer os dois leitores 
 **Fora, com o motivo:** chaves `_brl` (30 de 30 contas em BRL); as duas paginações
 (débito do F190); o nível de acesso `development_access`, que o mesmo cabeçalho revelou
 (pendência no `estado-atual`); métricas derivadas de custo por resultado; o dia do contador
-BUC no fuso da conta (o contador não tem leitor); status de entidade; freshness de métricas.
+BUC no fuso da conta (o contador não tem leitor); status de entidade; freshness de métricas;
+o `last_throttle_pct` que nasce `0` pelo `DEFAULT` da coluna no dia sem BUC lido (sem
+leitor); e o alerta: `meta_rate_limit_warning` e `meta_buc_nao_lido` são WARNING, e a única
+política de alerta por log dispara em `severity>=ERROR` — o sinal existe e não avisa
+ninguém (pendência).

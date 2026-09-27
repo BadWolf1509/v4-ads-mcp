@@ -28,6 +28,7 @@ import ast
 import pytest
 
 from src.meta_ads.insights import (
+    _COMMON_INSIGHTS_FIELDS,
     INSIGHTS_FIELDS_AD,
     INSIGHTS_FIELDS_ADSET,
     INSIGHTS_FIELDS_CAMPAIGN,
@@ -93,9 +94,17 @@ def test_breakdown_continua_exposto() -> None:
 # da varredura e ele seguia verde sobre um campo fantasma (medido: `linha.get(...)`
 # plantado no contrato passava). O `.get` e casado no NOME DO PRIMEIRO PARAMETRO de
 # cada funcao, nao num nome fixo: `row` aqui, `linha` la.
+#
+# E cada leitor e cruzado com o que a query DELE pede. O contrato tambem serve o
+# nivel `account`, que so pede `_COMMON_INSIGHTS_FIELDS`: contra a uniao dos
+# niveis, uma metrica pedida so num nivel e lida no contrato passaria verde e
+# sairia null em toda linha dos outros (revisao final do F194).
+_PEDIDOS_NOS_NIVEIS_DE_ENTIDADE = frozenset(
+    set(INSIGHTS_FIELDS_CAMPAIGN) | set(INSIGHTS_FIELDS_ADSET) | set(INSIGHTS_FIELDS_AD)
+)
 _LEITORES_DE_LINHA = (
-    ("insights.py", "parse_insights_row"),
-    ("metricas.py", "metricas_da_linha"),
+    ("insights.py", "parse_insights_row", _PEDIDOS_NOS_NIVEIS_DE_ENTIDADE),
+    ("metricas.py", "metricas_da_linha", frozenset(_COMMON_INSIGHTS_FIELDS)),
 )
 
 
@@ -124,13 +133,12 @@ def test_parser_nao_le_campo_que_a_query_nao_pede() -> None:
 
     E o que faltava pra fechar F53/F54 — aqueles fixes corrigiram a QUERY e
     deixaram o parser pedindo campo inexistente. Le o AST de cada leitor de linha
-    (`_LEITORES_DE_LINHA`) e cruza cada literal lido com a uniao das listas que a
-    query realmente manda. Chaves de breakdown sao dinamicas (`row.get(key)`), entao
+    (`_LEITORES_DE_LINHA`) e cruza cada literal lido com o que a query DAQUELE
+    leitor realmente manda. Chaves de breakdown sao dinamicas (`row.get(key)`), entao
     nao aparecem como constante e ficam naturalmente fora do check.
     """
-    pedidos = set(INSIGHTS_FIELDS_CAMPAIGN) | set(INSIGHTS_FIELDS_ADSET) | set(INSIGHTS_FIELDS_AD)
     fantasmas = {}
-    for arquivo, funcao in _LEITORES_DE_LINHA:
+    for arquivo, funcao, pedidos in _LEITORES_DE_LINHA:
         lidos = _campos_lidos(arquivo, funcao)
         assert lidos, f"{arquivo}::{funcao} nao le campo nenhum — o guard perdeu o alvo"
         if lidos - pedidos:

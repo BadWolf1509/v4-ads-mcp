@@ -103,6 +103,23 @@ def test_valor_que_nao_converte_e_null() -> None:
     assert m["messaging_conversations_started"] is None
 
 
+def test_numero_nao_finito_e_null_e_nao_derruba_a_linha() -> None:
+    """`float("nan")` e `float("inf")` convertem, e o round() da contagem levantava."""
+    linha = {
+        "spend": "inf",
+        "impressions": "nan",
+        "actions": [
+            {"action_type": ACAO_COMPRA, "value": "nan"},
+            {"action_type": ACAO_LEAD, "value": "-inf"},
+        ],
+    }
+    m = metricas_da_linha(linha)
+    assert m["spend_brl"] is None
+    assert m["impressions"] is None
+    assert m["purchases"] is None
+    assert m["leads"] is None
+
+
 def test_zero_que_a_meta_manda_segue_zero() -> None:
     """Null é só para o que não veio: o zero medido continua zero."""
     linha = {"spend": "0", "actions": [{"action_type": ACAO_COMPRA, "value": "0"}]}

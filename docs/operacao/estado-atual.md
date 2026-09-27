@@ -17,9 +17,9 @@
 > arquivo, e aqui fica uma linha.
 
 > **Última sessão:** [`session-2026-09-25-26-handoff.md`](session-2026-09-25-26-handoff.md)
-> — o mapa de 25 e 26/09: PRs #108 a #115, o F193, a virada da trava Google e a frente
-> **métricas Meta em execução** na branch `spec/metricas-meta` (tasks 1 a 5 de 6 commitadas;
-> como retomar está lá).
+> — o mapa de 25 a 27/09: PRs #108 a #115, o F193, a virada da trava Google e a frente
+> **métricas Meta** (F194), fechada no código na branch `spec/metricas-meta`; o que falta é
+> o smoke de leitura em produção (abaixo).
 
 ---
 
@@ -30,9 +30,11 @@
 | Revisão servindo | **`v4-ads-mcp-00128-j2h`**, 100% do tráfego (medido por `gcloud` em 26/09, 23:20 UTC) — o deploy do **#114**, que virou a trava Google (run `36278725323`, `test` e `deploy` `success`). O código é o do **#111** (F193), em produção desde a `00127-9x6`, cujo `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186); em 26/09 as tools do F193 responderam por uma sessão autenticada (smoke abaixo), que prova `tools/call`, não o `tools/list` da revisão nova |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
-| Catálogo | até **F194** (~5.500 linhas. 564 KB) |
+| Catálogo | até **F194** (~5.500 linhas, 565 KB) |
 
 **Smoke de leitura do F193 em produção (26/09, `Conta Interna - 02`):** `filters_applied` em `get_campaign_performance` (com `campaign_status`, e sem ele com `status=all`), `get_account_overview` (aninhado `current`/`previous`, janelas iguais às de `period`/`previous_period`), `get_negative_keywords_audit` (`nivel: "campanha"`), `get_budget_pacing` (`{"during": "THIS_MONTH"}`) e `get_performance_breakdown` por keyword (`criterion_status`); razões `null` num período sem atividade. **Limite medido:** para período sem atividade o Google devolve uma linha **zerada**, não nenhuma linha — então `sem_dados_no_periodo` vem `false` com contagens zero, e só fica `true` quando não vem linha nenhuma. Quem protege a leitura são as razões `null`. As descriptions novas só aparecem em sessão MCP nova (F140).
+
+**Smoke de leitura do F194 — pendente**, depois do deploy e numa sessão MCP **nova** (F140; sessão aberta antes vê a description antiga com a resposta nova): `meta_get_account_overview` e `meta_get_campaign_performance` na Cheiro | Conta 01 (`act_926193536103926`, LAST_30_DAYS) — `purchases` 10 (não 0), `leads` 13, `messaging_conversations_started` presente, `ctr` em fração, `atribuicao: "unificada"`; numa conta com gasto e sem compra, `purchases: null`; `meta_get_performance_breakdown` com `breakdown=hourly`, `reach: null`.
 
 ⚠️ **`deploy: skipped` NAO significa "PR de documentação".** O gate do F138 pula o
 deploy só quando o push mexeu **exclusivamente** em `docs/` e markdown — um arquivo em
@@ -131,4 +133,4 @@ Medir a exposição, dar dado às decisões, consertos pequenos, e só então sp
 | — | *negativas de grupo e listas compartilhadas na auditoria de negativas* (spec §7: frente própria) |
 | — | follow-ups do **F193** (Minor, não bloqueiam) — listados no corpo do [#111](https://github.com/BadWolf1509/v4-ads-mcp/pull/111): comentário da isenção do `apply_recommendation`, frase do eco nas três tools do F191, cobertura estreita de alguns testes |
 
-**Fechados de 20 a 26/09:** **F179**, **F181–F184**, **F188**, **F189**, **F190**, **F191**, **F193** e **F194**. O defeito de cada um está no [catálogo](findings-catalog.md); a narrativa desses dias, que morava aqui, foi para [`_archive/estado-atual-2026-09-20-a-26.md`](../_archive/estado-atual-2026-09-20-a-26.md). 🔑 A lição que atravessa todos: **existia a regra e não existia o mecanismo** — a invariante escrita, e nada que a aplicasse.
+**Fechados de 20 a 27/09:** **F179**, **F181–F184**, **F188**, **F189**, **F190**, **F191**, **F193** e **F194**. O defeito de cada um está no [catálogo](findings-catalog.md); a narrativa desses dias, que morava aqui, foi para [`_archive/estado-atual-2026-09-20-a-26.md`](../_archive/estado-atual-2026-09-20-a-26.md). 🔑 A lição que atravessa todos: **existia a regra e não existia o mecanismo** — a invariante escrita, e nada que a aplicasse.
