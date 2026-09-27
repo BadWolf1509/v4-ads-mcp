@@ -81,3 +81,10 @@ async def test_janela_custom_que_termina_hoje_tambem_avisa() -> None:
     r = await _overview(start_date="2026-09-21", end_date="2026-09-27")
     assert r["previous_date_range"] == {"start": "2026-09-14", "end": "2026-09-20"}
     assert r["inclui_dia_corrente"] is True
+
+
+@pytest.mark.asyncio
+async def test_janela_toda_no_futuro_nao_contem_hoje() -> None:
+    """O campo diz se a janela CONTEM hoje — terminar depois de hoje nao basta."""
+    r = await _overview(start_date="2026-09-28", end_date="2026-09-30")
+    assert r["inclui_dia_corrente"] is False

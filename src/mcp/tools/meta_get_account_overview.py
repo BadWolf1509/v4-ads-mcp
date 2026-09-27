@@ -212,7 +212,7 @@ async def meta_get_account_overview(
             "start": prev_start.isoformat(),
             "end": prev_end.isoformat(),
         },
-        "inclui_dia_corrente": current_end >= today,
+        "inclui_dia_corrente": current_start <= today <= current_end,
         "atribuicao": ATRIBUICAO,
         "current": current_metrics,
         "previous": previous_metrics,
