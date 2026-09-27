@@ -11,6 +11,7 @@ from src.meta_ads.account_overview import (
     resolve_meta_date_window,
     shift_to_previous_period,
 )
+from tests.unit._meta_formas_medidas import LINHA_COMPRA_E_LEAD, LINHA_SO_CONVERSAS
 
 TODAY = date(2026, 5, 25)
 
@@ -71,180 +72,80 @@ class TestShiftPreviousPeriod:
 
 
 class TestParseInsightsResponse:
-    """parse_insights_response tests."""
+    """parse_insights_response — as metricas do periodo pelo contrato (spec 2026-09-26).
 
-    def test_parse_insights_empty_data(self):
-        result = parse_insights_response({"data": []})
-        assert result["spend"] == 0.0
-        assert result["impressions"] == 0
-        assert result["conversions"] == 0
+    Os testes anteriores afirmavam a regra que o spec revoga: zero para campo ausente
+    (`conversions == 0`, `purchase_roas == 0.0`), `ctr` em porcentagem, e a SOMA de
+    seis nomes de conversao — que conta o mesmo evento varias vezes quando a Meta
+    devolve os recortes (medido: a mesma compra sob 5 nomes, o mesmo lead sob 7).
+    """
 
-    def test_parse_insights_no_data_key(self):
-        result = parse_insights_response({})
-        assert result["spend"] == 0.0
+    def test_sem_linha_entrega_zero_eventos_null_e_marcador(self):
+        """M7: sem entrega, a Meta nao manda linha — nao manda linha zerada."""
+        for data in ({"data": []}, {}):
+            result = parse_insights_response(data)
+            assert result["sem_dados_no_periodo"] is True
+            assert result["spend_brl"] == 0.0
+            assert result["impressions"] == 0
+            assert result["purchases"] is None
+            assert result["leads"] is None
+            assert result["ctr"] is None
 
-    def test_parse_insights_full_row(self):
-        data = {
-            "data": [
-                {
-                    "spend": "1234.56",
-                    "impressions": "45000",
-                    "clicks": "1200",
-                    "ctr": "2.67",
-                    "cpc": "1.03",
-                    "reach": "23000",
-                    "frequency": "1.95",
-                    "actions": [
-                        {"action_type": "purchase", "value": "35"},
-                        {"action_type": "link_click", "value": "1200"},  # NOT counted
-                        {"action_type": "lead", "value": "5"},
-                    ],
-                    "action_values": [
-                        {"action_type": "purchase", "value": "8400.0"},
-                        {"action_type": "link_click", "value": "0"},  # NOT counted
-                    ],
-                    "purchase_roas": [{"action_type": "omni_purchase", "value": "6.8"}],
-                }
-            ]
-        }
-        result = parse_insights_response(data)
-        assert result["spend"] == 1234.56
-        assert result["impressions"] == 45000
-        assert result["clicks"] == 1200
-        assert result["ctr"] == 2.67
-        assert result["cpc"] == 1.03
-        assert result["reach"] == 23000
-        assert result["frequency"] == 1.95
-        assert result["conversions"] == 40  # 35 purchase + 5 lead
-        assert result["conversion_value"] == 8400.0
-        assert result["purchase_roas"] == 6.8
+    def test_linha_medida_sai_pelo_contrato(self):
+        result = parse_insights_response({"data": [LINHA_COMPRA_E_LEAD]})
+        assert result["sem_dados_no_periodo"] is False
+        assert result["spend_brl"] == 22662.53
+        assert result["purchases"] == 10
+        assert result["leads"] == 13
+        assert result["messaging_conversations_started"] == 3531
+        assert result["ctr"] == 0.0178  # fracao, como o trio e o Google
+        assert result["purchase_roas"] is None  # M4: nao veio
 
-    def test_parse_insights_fb_pixel_action_types_counted(self):
-        """offsite_conversion.fb_pixel_* MUST be counted (Meta tracking)."""
-        data = {
-            "data": [
-                {
-                    "spend": "100",
-                    "actions": [
-                        {"action_type": "offsite_conversion.fb_pixel_purchase", "value": "10"},
-                        {"action_type": "offsite_conversion.fb_pixel_lead", "value": "3"},
-                    ],
-                }
-            ]
-        }
-        result = parse_insights_response(data)
-        assert result["conversions"] == 13
+    def test_nao_ha_mais_soma_de_conversoes(self):
+        """`conversions`/`conversion_value` saem: somavam recortes do mesmo evento."""
+        result = parse_insights_response({"data": [LINHA_COMPRA_E_LEAD]})
+        assert "conversions" not in result
+        assert "conversion_value" not in result
 
-    def test_parse_insights_missing_purchase_roas_returns_zero(self):
-        data = {"data": [{"spend": "100"}]}
-        result = parse_insights_response(data)
-        assert result["purchase_roas"] == 0.0
+    def test_mesmas_chaves_do_trio(self):
+        """Um contrato so: o overview e o trio falam os mesmos nomes."""
+        from src.meta_ads.metricas import metricas_da_linha
 
-    def test_parse_insights_null_values_handled(self):
-        """Meta às vezes retorna null pra fields ausentes."""
-        data = {"data": [{"spend": None, "impressions": None, "actions": None}]}
-        result = parse_insights_response(data)
-        assert result["spend"] == 0.0
-        assert result["impressions"] == 0
-        assert result["conversions"] == 0
-
-    def test_parse_insights_complete_register_action_type(self):
-        """complete_registration também é action_type countable."""
-        data = {
-            "data": [
-                {
-                    "spend": "100",
-                    "actions": [
-                        {"action_type": "complete_registration", "value": "8"},
-                    ],
-                }
-            ]
-        }
-        result = parse_insights_response(data)
-        assert result["conversions"] == 8
-
-    def test_parse_insights_multiple_roas_entries_first_purchase_wins(self):
-        """purchase_roas array pode ter múltiplas entradas, retorna primeira purchase/omni_purchase."""
-        data = {
-            "data": [
-                {
-                    "purchase_roas": [
-                        {"action_type": "link_click", "value": "1.5"},
-                        {"action_type": "purchase", "value": "4.2"},
-                        {"action_type": "omni_purchase", "value": "5.0"},
-                    ]
-                }
-            ]
-        }
-        result = parse_insights_response(data)
-        assert result["purchase_roas"] == 4.2  # purchase encontrado primeiro
+        result = parse_insights_response({"data": [LINHA_SO_CONVERSAS]})
+        assert set(result) == set(metricas_da_linha({})) | {"sem_dados_no_periodo"}
 
 
 class TestComputeDeltas:
-    """compute_deltas tests."""
+    """compute_deltas — por campo de DELTA_CAMPOS; null quando nao ha base ou medida."""
 
-    def test_compute_deltas_growth(self):
-        current = {"spend": 1200.0, "conversions": 40}
-        previous = {"spend": 1000.0, "conversions": 30}
+    def test_variacao_por_campo(self):
+        current = {"spend_brl": 1200.0, "purchases": 40}
+        previous = {"spend_brl": 1000.0, "purchases": 30}
         deltas = compute_deltas(current, previous)
-        assert deltas["spend_pct"] == 20.0
-        assert round(deltas["conversions_pct"], 2) == 33.33
+        assert deltas["spend_brl_pct"] == 20.0
+        assert deltas["purchases_pct"] == 33.33
 
-    def test_compute_deltas_decline(self):
-        current = {"spend": 800.0, "conversions": 25}
-        previous = {"spend": 1000.0, "conversions": 30}
-        deltas = compute_deltas(current, previous)
-        assert deltas["spend_pct"] == -20.0
-        assert round(deltas["conversions_pct"], 2) == -16.67
+    def test_anterior_zero_da_null(self):
+        deltas = compute_deltas({"spend_brl": 100.0}, {"spend_brl": 0.0})
+        assert deltas["spend_brl_pct"] is None
 
-    def test_compute_deltas_previous_zero_returns_none(self):
-        current = {"spend": 100.0, "conversions": 5}
-        previous = {"spend": 0.0, "conversions": 0}
-        deltas = compute_deltas(current, previous)
-        assert deltas["spend_pct"] is None
-        assert deltas["conversions_pct"] is None
+    def test_lado_nao_medido_da_null_nao_menos_cem(self):
+        """Antes, campo ausente contava como 0 e a variacao saia -100%."""
+        deltas = compute_deltas({"purchases": None}, {"purchases": 10})
+        assert deltas["purchases_pct"] is None
+        deltas = compute_deltas({}, {"leads": 10})
+        assert deltas["leads_pct"] is None
 
-    def test_compute_deltas_missing_keys_zero(self):
-        current = {"spend": 100.0}
-        previous = {"spend": 50.0, "conversions": 10}
-        deltas = compute_deltas(current, previous)
-        assert deltas["spend_pct"] == 100.0
-        assert deltas["conversions_pct"] == -100.0
+    def test_iguais_dao_zero_nao_null(self):
+        deltas = compute_deltas({"spend_brl": 500.0}, {"spend_brl": 500.0})
+        assert deltas["spend_brl_pct"] == 0.0
 
-    def test_compute_deltas_returns_all_expected_keys(self):
-        current = {
-            "spend": 100,
-            "impressions": 1000,
-            "clicks": 50,
-            "conversions": 5,
-            "conversion_value": 500,
-            "purchase_roas": 5.0,
-        }
-        previous = {
-            "spend": 100,
-            "impressions": 1000,
-            "clicks": 50,
-            "conversions": 5,
-            "conversion_value": 500,
-            "purchase_roas": 5.0,
-        }
-        deltas = compute_deltas(current, previous)
-        expected_keys = {
-            "spend_pct",
-            "impressions_pct",
-            "clicks_pct",
-            "conversions_pct",
-            "conversion_value_pct",
-            "purchase_roas_pct",
-        }
-        assert set(deltas.keys()) == expected_keys
+    def test_chaves_sao_as_de_delta_campos(self):
+        from src.meta_ads.account_overview import DELTA_CAMPOS
 
-    def test_compute_deltas_zero_percent_change(self):
-        """Dados iguais → 0.0 não None."""
-        current = {"spend": 500.0}
-        previous = {"spend": 500.0}
-        deltas = compute_deltas(current, previous)
-        assert deltas["spend_pct"] == 0.0
+        deltas = compute_deltas({}, {})
+        assert set(deltas) == {f"{c}_pct" for c in DELTA_CAMPOS}
+        assert "messaging_conversations_started_pct" in deltas
 
 
 class TestBuildWarnings:

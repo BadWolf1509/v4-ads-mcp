@@ -6,16 +6,19 @@ Zero IO. Date math + Graph response parsing + deltas + warnings.
 from datetime import date, datetime, timedelta
 from typing import Any
 
-# Conversion actions a totalizar (cross-platform pattern com Google)
-CONVERSION_ACTION_TYPES = frozenset(
-    {
-        "purchase",
-        "lead",
-        "complete_registration",
-        "offsite_conversion.fb_pixel_purchase",
-        "offsite_conversion.fb_pixel_lead",
-        "offsite_conversion.fb_pixel_complete_registration",
-    }
+from src.meta_ads.metricas import metricas_da_linha, metricas_sem_linha
+
+# Os campos com variacao no comparativo (sufixo `_pct`). Os nomes sao os do
+# contrato (`metricas.py`), os mesmos do trio.
+DELTA_CAMPOS = (
+    "spend_brl",
+    "impressions",
+    "clicks",
+    "purchases",
+    "purchases_value_brl",
+    "leads",
+    "messaging_conversations_started",
+    "purchase_roas",
 )
 
 _PRESET_DAYS: dict[str, int] = {
@@ -59,51 +62,37 @@ def shift_to_previous_period(start: date, end: date) -> tuple[date, date]:
     return (prev_start, prev_end)
 
 
-def parse_insights_response(data: dict[str, Any]) -> dict[str, float | int]:
-    """Parse Graph /insights response → normalized metrics dict.
+def parse_insights_response(data: dict[str, Any]) -> dict[str, Any]:
+    """Resposta /insights de nivel `account` -> metricas do periodo, pelo contrato.
 
-    Empty/missing/null fields → 0.
+    Sem linha nenhuma (a Meta nao manda linha zerada: sem entrega, nao vem linha),
+    as metricas saem de `metricas_sem_linha` e `sem_dados_no_periodo` e True — o
+    que distingue "nao houve entrega" de uma linha medida com zero. E o contrato do
+    overview Google (F193), com uma diferenca deliberada: la as conversoes sem linha
+    sao 0; aqui os eventos sao None, porque a Meta nao diz se a conta os rastreia
+    (spec 2026-09-26, §3.4).
     """
-    rows = data.get("data") or []
-    if not rows:
-        return _empty_metrics()
-    row = rows[0]
-    actions = _sum_actions(row.get("actions") or [], CONVERSION_ACTION_TYPES)
-    action_values = _sum_actions(row.get("action_values") or [], CONVERSION_ACTION_TYPES)
-    return {
-        "spend": _to_float(row.get("spend")),
-        "impressions": _to_int(row.get("impressions")),
-        "clicks": _to_int(row.get("clicks")),
-        "ctr": _to_float(row.get("ctr")),
-        "cpc": _to_float(row.get("cpc")),
-        "reach": _to_int(row.get("reach")),
-        "frequency": _to_float(row.get("frequency")),
-        "conversions": int(actions),
-        "conversion_value": float(action_values),
-        "purchase_roas": _extract_purchase_roas(row.get("purchase_roas") or []),
-    }
+    linhas = data.get("data") or []
+    if not linhas:
+        return {**metricas_sem_linha(), "sem_dados_no_periodo": True}
+    return {**metricas_da_linha(linhas[0]), "sem_dados_no_periodo": False}
 
 
-def compute_deltas(
-    current: dict[str, float | int], previous: dict[str, float | int]
-) -> dict[str, float | None]:
-    """Returns dict with `_pct` suffix per metric. None if previous=0."""
+def compute_deltas(current: dict[str, Any], previous: dict[str, Any]) -> dict[str, float | None]:
+    """Variacao percentual por campo de `DELTA_CAMPOS`, com sufixo `_pct`.
+
+    None quando um dos lados e None (nao medido) ou o anterior e 0 (sem base).
+    Campo ausente do dict conta como nao medido — antes contava como 0 e virava
+    -100%.
+    """
     out: dict[str, float | None] = {}
-    for key in (
-        "spend",
-        "impressions",
-        "clicks",
-        "conversions",
-        "conversion_value",
-        "purchase_roas",
-    ):
-        prev_val = previous.get(key, 0)
-        curr_val = current.get(key, 0)
-        if prev_val == 0:
+    for key in DELTA_CAMPOS:
+        prev_val = previous.get(key)
+        curr_val = current.get(key)
+        if prev_val is None or curr_val is None or prev_val == 0:
             out[f"{key}_pct"] = None
         else:
-            pct = round((curr_val - prev_val) / prev_val * 100, 2)
-            out[f"{key}_pct"] = pct
+            out[f"{key}_pct"] = round((curr_val - prev_val) / prev_val * 100, 2)
     return out
 
 
@@ -129,52 +118,3 @@ def build_warnings(
                 f"Reconectar via /admin → 'Conectar Meta' pra evitar interrupção das tools."
             )
     return out
-
-
-# ============================================================================
-# Helpers (module-private)
-# ============================================================================
-
-
-def _sum_actions(actions: list[dict[str, Any]], filter_types: frozenset[str]) -> float:
-    return sum(_to_float(a.get("value")) for a in actions if a.get("action_type") in filter_types)
-
-
-def _extract_purchase_roas(roas_arr: list[dict[str, Any]]) -> float:
-    for entry in roas_arr:
-        if entry.get("action_type") in ("purchase", "omni_purchase"):
-            return _to_float(entry.get("value"))
-    return 0.0
-
-
-def _to_float(v: Any) -> float:
-    if v is None:
-        return 0.0
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def _to_int(v: Any) -> int:
-    if v is None:
-        return 0
-    try:
-        return int(float(v))
-    except (TypeError, ValueError):
-        return 0
-
-
-def _empty_metrics() -> dict[str, float | int]:
-    return {
-        "spend": 0.0,
-        "impressions": 0,
-        "clicks": 0,
-        "ctr": 0.0,
-        "cpc": 0.0,
-        "reach": 0,
-        "frequency": 0.0,
-        "conversions": 0,
-        "conversion_value": 0.0,
-        "purchase_roas": 0.0,
-    }

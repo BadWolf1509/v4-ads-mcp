@@ -24,15 +24,21 @@ from src.meta_ads.account_overview import (
     resolve_meta_date_window,
     shift_to_previous_period,
 )
+from src.meta_ads.insights import build_insights_call
 from src.meta_ads.labels import META_ACCOUNT_STATUS_LABELS
+from src.meta_ads.metricas import ATRIBUICAO, CONTRATO_NA_DESCRIPTION
 from src.meta_ads.reports import run_meta_graph_get
 
 log = structlog.get_logger(__name__)
 
 _DESCRIPTION = (
-    "[CORE] Overview de uma conta Meta Ads: métricas essenciais (spend, impressões, clicks, "
-    "CTR, CPC, reach, frequency, conversões, conversion_value, purchase_roas) "
-    "para o período selecionado com comparativo do período anterior de mesma duração. "
+    "[CORE] Overview de uma conta Meta Ads: métricas essenciais (spend_brl, impressões, "
+    "clicks, CTR, cpc_brl, reach, frequency, purchases, purchases_value_brl, purchase_roas, "
+    "leads, messaging_conversations_started) para o período selecionado com comparativo "
+    "do período anterior de mesma duração. Conversoes saem por evento (compras, leads, "
+    "conversas iniciadas), nunca somadas: a mesma compra vem sob varios nomes na Meta. "
+    "Cada periodo traz sem_dados_no_periodo: true quando a Meta nao devolveu linha "
+    "(sem entrega). " + CONTRATO_NA_DESCRIPTION + " "
     "Inclui warnings PT-BR pra account_status problemático. "
     "Requer conexão Meta ativa (gestor deve ter conectado via /oauth/meta/start). "
     "Use meta_list_my_ad_accounts pra listar IDs disponíveis."
@@ -125,7 +131,24 @@ async def meta_get_account_overview(
         account.account_status or 0, "DESCONHECIDO"
     )
 
-    fields = "spend,impressions,clicks,ctr,cpc,reach,frequency,actions,action_values,purchase_roas"
+    # Spec 2026-09-26 §4.2: as duas chamadas saem do construtor unico — os mesmos
+    # campos do trio, a atribuicao unificada, e sem o `ad_account_id` espurio que os
+    # params montados a mao mandavam para a Graph API (o indice da varredura dava o
+    # 03#10 como fechado pelo F190; nao estava).
+    edge, params_atual = build_insights_call(
+        level="account",
+        ad_account_id=ad_account_id,
+        start=current_start,
+        end=current_end,
+        limit=1,
+    )
+    _, params_anterior = build_insights_call(
+        level="account",
+        ad_account_id=ad_account_id,
+        start=prev_start,
+        end=prev_end,
+        limit=1,
+    )
 
     # 3. Two Graph API calls: current period + previous period
     try:
@@ -133,15 +156,8 @@ async def meta_get_account_overview(
             manager_id=manager_id,
             session_id=session_id,
             ad_account_id=ad_account_id,
-            edge=f"/{ad_account_id}/insights",
-            params={
-                "fields": fields,
-                "time_range": (
-                    f'{{"since":"{current_start.isoformat()}","until":"{current_end.isoformat()}"}}'
-                ),
-                "level": "account",
-                "ad_account_id": ad_account_id,
-            },
+            edge=edge,
+            params=params_atual,
             operation_name="meta_get_account_overview",
             estimated_calls=1,
             audit_this_call=True,
@@ -157,15 +173,8 @@ async def meta_get_account_overview(
             manager_id=manager_id,
             session_id=session_id,
             ad_account_id=ad_account_id,
-            edge=f"/{ad_account_id}/insights",
-            params={
-                "fields": fields,
-                "time_range": (
-                    f'{{"since":"{prev_start.isoformat()}","until":"{prev_end.isoformat()}"}}'
-                ),
-                "level": "account",
-                "ad_account_id": ad_account_id,
-            },
+            edge=edge,
+            params=params_anterior,
             operation_name="meta_get_account_overview",
             estimated_calls=1,
             audit_this_call=False,
@@ -195,6 +204,7 @@ async def meta_get_account_overview(
             "start": current_start.isoformat(),
             "end": current_end.isoformat(),
         },
+        "atribuicao": ATRIBUICAO,
         "current": current_metrics,
         "previous": previous_metrics,
         "deltas": deltas,
