@@ -16,11 +16,11 @@
 > **Trabalho que fechou sai daqui:** o defeito vai para o catálogo, a narrativa para o
 > arquivo, e aqui fica uma linha.
 
-> **Última sessão:** [`session-2026-09-25-26-handoff.md`](session-2026-09-25-26-handoff.md)
-> — o mapa de 25 a 27/09: PRs #108 a #115, o F193, a virada da trava Google e a frente
-> **métricas Meta** (F194), mesclada no #116 e conferida em produção em 27/09 (abaixo) — o
-> smoke abriu o **F195**, corrigido no mesmo dia (janelas `LAST_N_DAYS` até ontem, como no Google
-> e na própria Meta).
+> **Última sessão:** [`session-2026-09-27-handoff.md`](session-2026-09-27-handoff.md)
+> — o mapa de 27/09: o F194 em produção e conferido, o **F195** (janelas `LAST_N_DAYS` até
+> ontem, como no Google e na Meta), as descriptions Meta com as chaves reais, o alerta dos avisos
+> Meta de quota no GCP e a frente **F154** em execução na branch `spec/f154-alcance` (como
+> retomar está lá). O dia anterior: [`session-2026-09-25-26-handoff.md`](session-2026-09-25-26-handoff.md).
 
 ---
 
@@ -28,7 +28,7 @@
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00129-vf9`**, 100% do tráfego (medido por `gcloud` em 27/09, 06:24 UTC) — o deploy do **#116** (F194; run `36298720240`, `test` e `deploy` `success`), criada às 06:05 UTC; `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186); em 27/09 uma sessão autenticada aberta depois do deploy recebeu as descriptions novas do F194 — prova o `tools/list` da revisão nova, não só `tools/call` |
+| Revisão servindo | **`v4-ads-mcp-00131-cjv`**, 100% do tráfego (medido por `gcloud` em 27/09, 17:40 UTC) — o deploy do **#119** (descriptions Meta com as chaves reais; run `36333559354`, `test` e `deploy` `success`), sobre o **#116** (F194) e o **#118** (F195); `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186): as descriptions novas só aparecem em sessão MCP aberta depois do deploy (F140) |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
 | Catálogo | até **F195** (~5.600 linhas, 570 KB) |
