@@ -1,7 +1,7 @@
-# Sessão 2026-09-27 — Handoff (F194 em produção, F195, o alerta Meta, F154 em execução)
+# Sessão 2026-09-27 — Handoff (F194 em produção, F195, o alerta Meta, F154)
 
 > Um dia, quatro PRs mergeados (#116–#119, três com deploy), um alerta criado no GCP e a frente
-> **F154** em execução na branch `spec/f154-alcance` (seção abaixo). Este é o **mapa**; a
+> **F154** executada por subagentes na branch `spec/f154-alcance` (seção abaixo). Este é o **mapa**; a
 > enciclopédia é o [`findings-catalog.md`](findings-catalog.md), e o estado vivo é o
 > [`estado-atual.md`](estado-atual.md). O dia anterior está em
 > [`session-2026-09-25-26-handoff.md`](session-2026-09-25-26-handoff.md).
@@ -28,20 +28,23 @@
 - **`THIS_MONTH` do Google no dia 1 do mês devolve janela invertida** (em 01/10: `01/10–30/09`),
   achado ao mover o código no F195; aceito por 15 tools Google. Sugerido como sessão separada.
 
-## A frente F154 — em execução (branch `spec/f154-alcance`, sem push)
+## A frente F154 — o alcance medido pela leitura
 
 Spec (`b038ba2`) → plano (`6158397`) → execução por subagentes, em segundo plano. O plano foi
 **gerado de commits executados** num rascunho e **reaplicado do próprio arquivo sem diferença**;
-os "ver falhar" foram medidos por script. **T1** `99a6736` (review limpo) e **T2** `eb908c5`
-(idêntica ao rascunho; **review pendente**).
+os "ver falhar" foram medidos por script, e o patch de cada task saiu **idêntico ao do rascunho**:
+T1 a sonda (`99a6736`), T2 o plano (`eb908c5`), T3 o `set_reachable` (`14bdddb`), T4 o job
+(`e02a986`), T5 os docs (`383de21`), cada uma com revisão limpa; full sweep 7/7.
 
-**Para retomar:** o ledger está em
-`D:/v4-ads-mcp-wt/f154/.superpowers/sdd/2026-09-27-f154-alcance-pela-leitura/progress.md`
-(git-ignored), com o estado, os modelos medidos e os próximos passos: review da T2 → T3 e T4
-(Sonnet) → T5 (Haiku) → revisão final (Opus) → full sweep → PR **com autorização nominal** (o merge
-muda o que o job grava) → verificação pós-deploy (spec §6). Dois worktrees fora do repo:
-`D:/v4-ads-mcp-wt/f154` (o trabalho) e `D:/v4-ads-mcp-wt/f154-proto` (o rascunho que o conferidor
-compara). As ferramentas do método estão em `.superpowers/ferramentas-plano/` do repo principal.
+**A revisão final (Opus) achou o que as cinco revisões por task não viam, porque mora entre as
+tasks:** nenhum teste cobria `false → true` — o caminho que conserta a CHUTE 07 em produção; a
+sabotagem que só grava `false` passava em tudo — e o laço da sonda não tinha prazo total: rodava
+em série, com a conexão do job adquirida e ociosa, num job de 600 s. A rodada final pôs prazo
+total de 60 s e até 5 sondas em paralelo (conta fora do prazo sai não medida), o guard do
+`false → true` e a sonda na lista do guard do relógio.
+
+**Depois do merge:** a verificação da spec §6 está no [`estado-atual`](estado-atual.md), na
+execução diária seguinte ao deploy.
 
 ## O que ficou pendente
 

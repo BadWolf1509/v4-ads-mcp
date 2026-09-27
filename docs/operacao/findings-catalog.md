@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~5700 linhas, 572 KB, IDs de **F1 a F195** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 55 têm; 56 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~5700 linhas, 573 KB, IDs de **F1 a F195** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 55 têm; 56 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -1741,7 +1741,7 @@ semanas. Uma re-sincronizacao manual seguida de nova leitura resolveria de vez: 
 **Decisão (Wellington, 27/09): leitura mínima por conta** — spec
 `2026-09-27-f154-alcance-pela-leitura-design.md`. **Medido em 27/09, e o confundidor caiu:** 25
 contas ativas, `/me/adaccounts` com 24; a CHUTE 07 com `su_reachable = false` pelo menos desde
-24/09, e o SU a lê (nó e `/insights` com `200`); conta sem acesso → `403` com `code 200`; token
+24/09, e o SU a lê (o nó da conta e o `/insights`, os dois com `200`); conta sem acesso → `403` com `code 200`; token
 inválido → `401` com `code 190`. A CA - V4 Lima Soares, a outra de 05/09, hoje aparece no índice:
 ele é intermitente para uma e persistente para a outra.
 
@@ -1757,15 +1757,28 @@ ele é intermitente para uma e persistente para a outra.
   `parceria − índice`.
 - **O job não chama mais `/me/adaccounts`, e a completude é só a da parceria — fecha o M10:** uma
   falha do alcance não congela mais o desligamento. O relatório ganhou `alcance_nao_medido`.
+- **Prazo e teto (revisão final da branch):** até 5 sondas em paralelo, dentro de um prazo
+  total de 60 s. Em série, o pior caso crescia com a parceria (25 × 15 s = 375 s) com a
+  conexão do job adquirida e ociosa, num job de 600 s; conta fora do prazo sai não medida.
 - **Guards, cada um medido vermelho:** o teste do job com `respx` estrito (o índice não tem rota;
   contra o código anterior caiu com `/me/adaccounts not mocked!`); conta não medida mantém o
   valor (a sabotagem com a lógica antiga o derruba); desligamento com todo o alcance não medido
-  (a sabotagem que religa a completude ao alcance o derruba).
+  (a sabotagem que religa a completude ao alcance o derruba). Da revisão final: a conta que
+  volta de `false` a `true` — o caminho que conserta a CHUTE 07, que nenhum teste cobria (a
+  sabotagem que só grava `false` passava em tudo); o prazo, o teto e o timeout de cada
+  sonda; e a sonda na lista do guard do relógio.
 
-**Fora, com o motivo:** o gêmeo Google do `unreachable`; o `/me/adaccounts` do OAuth pessoal
-(dormente desde o Modelo B); fila de "não medido" no painel (entra se o relatório mostrar a sonda
+**Fora, com o motivo:** o gêmeo Google do `unreachable`; o `/me/adaccounts` que resta — o do OAuth pessoal, dormente desde o Modelo B, e o do botão
+"Sincronizar contas" do admin (`POST /refresh-accounts`, token do SU), que ainda faz upsert
+do índice, contra a spec 2026-08-20: é outro achado, a registrar; fila de "não medido" no painel (entra se o relatório mostrar a sonda
 falhando com frequência); o motivo de o índice omitir a CHUTE 07 (a sonda o torna irrelevante
 para o sinal).
+
+**Dois limites conhecidos:** o token do SU perder `ads_read` faria toda sonda devolver `#200`
+e marcaria a parceria inteira como recusada — posição da spec (cada `false` tem uma resposta
+por trás; o gate não lê a coluna, e a leitura boa seguinte desfaz). E conta **nunca** medida
+fica com o `DEFAULT true` da migration 006: o modelo fiel teria um terceiro estado (`NULL`),
+que pede migration.
 
 ---
 

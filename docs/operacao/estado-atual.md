@@ -19,8 +19,8 @@
 > **Última sessão:** [`session-2026-09-27-handoff.md`](session-2026-09-27-handoff.md)
 > — o mapa de 27/09: o F194 em produção e conferido, o **F195** (janelas `LAST_N_DAYS` até
 > ontem, como no Google e na Meta), as descriptions Meta com as chaves reais, o alerta dos avisos
-> Meta de quota no GCP e a frente **F154** em execução na branch `spec/f154-alcance` (como
-> retomar está lá). O dia anterior: [`session-2026-09-25-26-handoff.md`](session-2026-09-25-26-handoff.md).
+> Meta de quota no GCP e o **F154** (o alcance do system user medido pela leitura, não pelo
+> índice) — a verificação em produção está logo abaixo. O dia anterior: [`session-2026-09-25-26-handoff.md`](session-2026-09-25-26-handoff.md).
 
 ---
 
@@ -31,7 +31,7 @@
 | Revisão servindo | **`v4-ads-mcp-00131-cjv`**, 100% do tráfego (medido por `gcloud` em 27/09, 17:40 UTC) — o deploy do **#119** (descriptions Meta com as chaves reais; run `36333559354`, `test` e `deploy` `success`), sobre o **#116** (F194) e o **#118** (F195); `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186): as descriptions novas só aparecem em sessão MCP aberta depois do deploy (F140) |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
-| Catálogo | até **F195** (~5.700 linhas, 572 KB) |
+| Catálogo | até **F195** (~5.700 linhas, 573 KB) |
 
 **Smoke de leitura do F193 em produção (26/09, `Conta Interna - 02`):** `filters_applied` em `get_campaign_performance` (com `campaign_status`, e sem ele com `status=all`), `get_account_overview` (aninhado `current`/`previous`, janelas iguais às de `period`/`previous_period`), `get_negative_keywords_audit` (`nivel: "campanha"`), `get_budget_pacing` (`{"during": "THIS_MONTH"}`) e `get_performance_breakdown` por keyword (`criterion_status`); razões `null` num período sem atividade. **Limite medido:** para período sem atividade o Google devolve uma linha **zerada**, não nenhuma linha — então `sem_dados_no_periodo` vem `false` com contagens zero, e só fica `true` quando não vem linha nenhuma. Quem protege a leitura são as razões `null`. As descriptions novas só aparecem em sessão MCP nova (F140).
 
@@ -39,7 +39,7 @@
 
 **Smoke de leitura do F195 em produção (27/09, run `36332640719`):** `meta_get_account_overview` na Cheiro | Conta 01 com `LAST_7_DAYS` ecoou `date_range` `20/09–26/09` — exatamente o `date_preset=last_7d` da própria Meta sondado no mesmo dia —, `previous_date_range` `13/09–19/09` e `inclui_dia_corrente: false`; com `TODAY`, `27/09` contra `26/09` e `inclui_dia_corrente: true`, com variações de ~−99% que são o dia ainda aberto — o caso que o campo existe para avisar. Chamado de uma sessão aberta antes do deploy: a resposta é do código novo; as descriptions novas só aparecem em sessão nova (F140).
 
-**Verificação do F154 — pendente**, na execução do `v4-ads-mcp-resync` seguinte ao deploy (a diária ou uma sob demanda): a CHUTE 07 com `su_reachable = true`, o `meta_reconcile` com `unreachable: 0` e `alcance_nao_medido: 0`, e no painel a fila "Sem o system user atribuído" vazia.
+**Verificação do F154 — pendente**, na execução diária do `v4-ads-mcp-resync` (09:00 UTC) seguinte ao deploy — uma sob demanda roda o resync inteiro com as duas reconciliações ligadas, mutação de produção que pede autorização nominal: a CHUTE 07 com `su_reachable = true`, o `meta_reconcile` com `unreachable: 0` e `alcance_nao_medido: 0`, e no painel a fila "Sem o system user atribuído" vazia. Tudo por leitura: o `params_summary` da linha `meta_reconcile` no `audit_log` e o `su_reachable` da `act_1428319651342125`. `unreachable` ou `alcance_nao_medido` acima de 0 se explica pelo log `meta_alcance_nao_medido`, que traz os ids, antes de virar defeito.
 
 ⚠️ **`deploy: skipped` NAO significa "PR de documentação".** O gate do F138 pula o
 deploy só quando o push mexeu **exclusivamente** em `docs/` e markdown — um arquivo em
