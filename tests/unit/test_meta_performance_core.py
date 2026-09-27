@@ -161,13 +161,15 @@ async def test_run_meta_level_performance_success_shape_parity(level: str) -> No
     # F88: `truncated` entrou no envelope de propósito. A parity desta suíte é
     # com o shape pré-dedup M.3, e a adição é aditiva — nenhum campo saiu. Sem
     # ela, o consumidor não tem como saber que o "top por gasto" pode estar
-    # incompleto porque o teto de paginação cortou.
+    # incompleto porque o teto de paginação cortou. `atribuicao` entrou pelo mesmo
+    # motivo (spec 2026-09-26, §4.2): a resposta diz a atribuição que usou.
     assert set(result) == {
         "status",
         "ad_account_id",
         "ad_account_name",
         "currency",
         "date_range",
+        "atribuicao",
         "rows",
         "total_rows",
         "truncated",

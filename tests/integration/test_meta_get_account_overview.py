@@ -72,8 +72,8 @@ async def test_meta_get_account_overview_happy_path(db):
                 "cpc": "4.0",
                 "reach": "8000",
                 "frequency": "1.25",
-                "actions": [{"action_type": "purchase", "value": "40"}],
-                "action_values": [{"action_type": "purchase", "value": "8000"}],
+                "actions": [{"action_type": "omni_purchase", "value": "40"}],
+                "action_values": [{"action_type": "omni_purchase", "value": "8000"}],
                 "purchase_roas": [{"action_type": "omni_purchase", "value": "6.67"}],
             }
         ]
@@ -88,17 +88,15 @@ async def test_meta_get_account_overview_happy_path(db):
                 "cpc": "4.17",
                 "reach": "6500",
                 "frequency": "1.23",
-                "actions": [{"action_type": "purchase", "value": "30"}],
-                "action_values": [{"action_type": "purchase", "value": "6000"}],
+                "actions": [{"action_type": "omni_purchase", "value": "30"}],
+                "action_values": [{"action_type": "omni_purchase", "value": "6000"}],
                 "purchase_roas": [{"action_type": "omni_purchase", "value": "6.0"}],
             }
         ]
     }
 
-    with patch(
-        "src.mcp.tools.meta_get_account_overview.run_meta_graph_get",
-        new=AsyncMock(side_effect=[current_body, previous_body]),
-    ):
+    graph = AsyncMock(side_effect=[current_body, previous_body])
+    with patch("src.mcp.tools.meta_get_account_overview.run_meta_graph_get", new=graph):
         result = await meta_get_account_overview(
             manager_id=mid,
             session_id=uuid4(),
@@ -111,12 +109,25 @@ async def test_meta_get_account_overview_happy_path(db):
     assert result["account_name"] == "Test Account"
     assert result["account_status_label"] == "ATIVO"
     assert result["currency"] == "BRL"
-    assert result["current"]["spend"] == 1200.0
-    assert result["current"]["conversions"] == 40
+    # Spec 2026-09-26: os nomes do contrato (os do trio), conversao por evento.
+    assert result["current"]["spend_brl"] == 1200.0
+    assert result["current"]["purchases"] == 40
+    assert result["current"]["purchases_value_brl"] == 8000.0
     assert result["current"]["purchase_roas"] == 6.67
-    assert result["previous"]["spend"] == 1000.0
-    assert result["deltas"]["spend_pct"] == 20.0
-    assert result["deltas"]["conversions_pct"] == round((40 - 30) / 30 * 100, 2)
+    assert result["current"]["ctr"] == 0.03
+    assert result["current"]["leads"] is None
+    assert result["current"]["sem_dados_no_periodo"] is False
+    assert result["previous"]["spend_brl"] == 1000.0
+    assert result["deltas"]["spend_brl_pct"] == 20.0
+    assert result["deltas"]["purchases_pct"] == round((40 - 30) / 30 * 100, 2)
+    assert result["atribuicao"] == "unificada"
+    # As duas chamadas saem do construtor unico: atribuicao unificada, e sem o
+    # `ad_account_id` espurio que os params montados a mao mandavam (03#10).
+    for chamada in graph.await_args_list:
+        params = chamada.kwargs["params"]
+        assert params["use_unified_attribution_setting"] == "true"
+        assert params["level"] == "account"
+        assert "ad_account_id" not in params
     assert result["_warnings"] == []
     assert "date_range" in result
     assert result["date_range"]["start"] is not None

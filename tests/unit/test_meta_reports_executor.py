@@ -137,6 +137,8 @@ async def test_run_meta_graph_get_happy_path_parses_and_audits() -> None:
     rate_kwargs = mock_record_actual_meta.call_args.kwargs
     assert rate_kwargs["ad_account_id"] == "act_999"
     assert rate_kwargs["buc_header"] == '{"999": [{"call_count": 5}]}'
+    # spec 2026-09-26 §5: o cabecalho da quota do app vai junto; aqui nao veio.
+    assert rate_kwargs["insights_throttle_header"] is None
     assert rate_kwargs["calls"] == 1
 
 
@@ -184,7 +186,7 @@ async def test_run_meta_graph_get_records_buc_even_without_ad_account_id_in_para
 
 @pytest.mark.asyncio
 async def test_run_meta_graph_get_skips_rate_counter_when_buc_header_absent() -> None:
-    """Resposta sem o header BUC (edge fora de /insights, por ex.) → record_actual_meta NÃO chamado."""
+    """Resposta sem NENHUM dos dois cabecalhos de uso → record_actual_meta NÃO chamado."""
     mid, sid = uuid4(), uuid4()
     fake_pool = _patch_allowed_pool()
 
@@ -339,3 +341,46 @@ async def test_run_meta_graph_get_raises_when_system_user_token_missing() -> Non
             params={"level": "campaign"},
             operation_name="meta_get_campaign_performance",
         )
+
+
+@pytest.mark.asyncio
+async def test_run_meta_graph_get_registra_quando_so_a_quota_do_app_vem() -> None:
+    """Spec 2026-09-26 §5: a quota do APP vem no `x-fb-ads-insights-throttle`.
+
+    Antes, sem o BUC o registro nem era chamado — e a unica leitura da quota do app
+    ficava de fora. O BUC ausente segue "nao sei" (quem decide e o registro).
+    """
+    mid, sid = uuid4(), uuid4()
+    fake_pool = _patch_allowed_pool()
+    throttle = '{"app_id_util_pct":0.02,"acc_id_util_pct":0}'
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"data": []}, headers={"x-fb-ads-insights-throttle": throttle}
+        )
+
+    mock_record_actual_meta = AsyncMock()
+
+    with (
+        patch.object(reports.connection, "get_pool", return_value=fake_pool),
+        patch.object(
+            reports.manager_meta_account_access,
+            "can_manager_access",
+            AsyncMock(return_value=True),
+        ),
+        patch.object(reports.httpx, "AsyncClient", MagicMock(return_value=_cliente_httpx(handler))),
+        patch.object(reports, "record_actual_meta", mock_record_actual_meta),
+    ):
+        await reports.run_meta_graph_get(
+            manager_id=mid,
+            session_id=sid,
+            ad_account_id="act_111",
+            edge="/act_111/insights",
+            params={},
+            operation_name="meta_get_campaign_performance",
+        )
+
+    mock_record_actual_meta.assert_awaited_once()
+    kwargs = mock_record_actual_meta.call_args.kwargs
+    assert kwargs["insights_throttle_header"] == throttle
+    assert kwargs["buc_header"] is None

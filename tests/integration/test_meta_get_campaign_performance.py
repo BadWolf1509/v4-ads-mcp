@@ -73,8 +73,8 @@ async def test_happy_path_returns_sorted_rows(db):
                 "clicks": "50",
                 "ctr": "5.0",
                 "cpc": "2.0",
-                "actions": [{"action_type": "purchase", "value": "1"}],
-                "action_values": [{"action_type": "purchase", "value": "50"}],
+                "actions": [{"action_type": "omni_purchase", "value": "1"}],
+                "action_values": [{"action_type": "omni_purchase", "value": "50"}],
                 "purchase_roas": [{"action_type": "omni_purchase", "value": "0.5"}],
             },
             {
@@ -86,8 +86,8 @@ async def test_happy_path_returns_sorted_rows(db):
                 "clicks": "300",
                 "ctr": "3.0",
                 "cpc": "3.33",
-                "actions": [{"action_type": "purchase", "value": "20"}],
-                "action_values": [{"action_type": "purchase", "value": "4000"}],
+                "actions": [{"action_type": "omni_purchase", "value": "20"}],
+                "action_values": [{"action_type": "omni_purchase", "value": "4000"}],
                 "purchase_roas": [{"action_type": "omni_purchase", "value": "4.0"}],
             },
             {
@@ -128,6 +128,11 @@ async def test_happy_path_returns_sorted_rows(db):
     assert top["purchases"] == 20
     assert top["purchases_value_brl"] == 4000.0
     assert top["purchase_roas"] == 4.0
+    # Spec 2026-09-26: evento nao reportado e null; a campanha de leads tem leads.
+    assert top["leads"] is None
+    assert result["rows"][1]["leads"] == 10
+    assert result["rows"][1]["purchases"] is None
+    assert result["atribuicao"] == "unificada"
     # F89: metadata de entidade nao sai na resposta (era 'DESCONHECIDO' sempre).
     assert "effective_status" not in top
     assert "effective_status_label" not in top

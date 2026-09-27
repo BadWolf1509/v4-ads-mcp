@@ -14,7 +14,7 @@ from src.db import connection
 from src.db.repositories import meta_ad_accounts
 from src.mcp.context import get_current
 from src.mcp.tools._meta_common import meta_error_message
-from src.mcp.tools._meta_performance import _MAX_PAGES
+from src.mcp.tools._meta_performance import _MAX_PAGES, _gasto_para_ordenar
 from src.mcp.tools._registry import register_tool
 from src.meta_ads.account_clock import resolve_meta_account_today
 from src.meta_ads.account_overview import resolve_meta_date_window
@@ -24,14 +24,18 @@ from src.meta_ads.insights import (
     build_insights_call,
     parse_insights_row,
 )
+from src.meta_ads.metricas import ATRIBUICAO, CONTRATO_NA_DESCRIPTION
 from src.meta_ads.reports import run_meta_graph_get
 
 _DESCRIPTION = (
     "[DEFER] Performance Meta Ads quebrada por UMA dimensão: platform "
     "(Facebook/Instagram/Audience Network), device (iOS/Android/desktop), geo (país) "
     "ou hourly (hora do dia). level = campaign|adset|ad (default campaign). Métricas: "
-    "spend, impressões, clicks, CTR, CPC, reach, frequency, purchases, purchase_roas, "
-    "leads. Cada row traz o valor da dimensão em `breakdown`. Ordenado por spend desc **no servidor**, entao o topo devolvido E o topo real da conta; `truncated:true` significa que ficou cauda de MENOR gasto de fora, nao que o ranking esteja incompleto. "
+    "spend, impressões, clicks, CTR, CPC, reach, frequency, purchases, purchases_value_brl, "
+    "purchase_roas, "
+    "leads, messaging_conversations_started (conversas iniciadas). "
+    "O breakdown hourly nao traz reach nem frequency: vem null. " + CONTRATO_NA_DESCRIPTION + " "
+    "Cada row traz o valor da dimensão em `breakdown`. Ordenado por spend desc **no servidor**, entao o topo devolvido E o topo real da conta; `truncated:true` significa que ficou cauda de MENOR gasto de fora, nao que o ranking esteja incompleto. "
     "1 breakdown por chamada. Use meta_list_my_ad_accounts pros IDs."
 )
 
@@ -172,7 +176,7 @@ async def meta_get_performance_breakdown(
     ]
     # F88: ordenação SERVER-SIDE (`sort=spend_descending`); este sort é rede de
     # segurança idempotente sobre dado já ordenado, e garante o corte abaixo.
-    rows.sort(key=lambda r: r["spend_brl"], reverse=True)
+    rows.sort(key=_gasto_para_ordenar, reverse=True)
     rows = rows[:limit]
     truncated = bool((resp.get("paging") or {}).get("next"))
 
@@ -184,6 +188,7 @@ async def meta_get_performance_breakdown(
         "level": level,
         "breakdown": breakdown,
         "date_range": {"start": start.isoformat(), "end": end.isoformat()},
+        "atribuicao": ATRIBUICAO,
         "rows": rows,
         "total_rows": len(rows),
         "truncated": truncated,

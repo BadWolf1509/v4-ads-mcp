@@ -306,13 +306,20 @@ async def run_meta_graph_get(
     # params.get("ad_account_id"), que era um passthrough espúrio só existindo
     # pra alimentar este contador (Task 3.4: desacopla o BUC do dict de params
     # do Graph, que agora pode perder essa chave sem quebrar o rate counter).
+    #
+    # Spec 2026-09-26 §5: le tambem o `x-fb-ads-insights-throttle`, onde vem a quota
+    # do APP em chamada /insights (o `x-app-usage` nao vem ali — medido). Registra se
+    # QUALQUER dos dois vier: a chamada aconteceu e conta, e o que nao veio e "nao
+    # sei", nunca 0.
     buc_header = headers_ultima.get("x-business-use-case-usage")
-    if buc_header:
+    throttle_insights = headers_ultima.get("x-fb-ads-insights-throttle")
+    if buc_header or throttle_insights:
         try:
             await record_actual_meta(
                 app_id=settings.meta_app_id,
                 ad_account_id=ad_account_id,
                 buc_header=buc_header,
+                insights_throttle_header=throttle_insights,
                 # F88: contabiliza as chamadas REALMENTE feitas, não a estimativa.
                 calls=max(estimated_calls, paginas_lidas),
             )
