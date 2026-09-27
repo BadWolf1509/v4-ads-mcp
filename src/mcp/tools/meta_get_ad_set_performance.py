@@ -14,10 +14,7 @@ from src.mcp.tools._registry import register_tool
 from src.meta_ads.metricas import CONTRATO_NA_DESCRIPTION
 
 _DESCRIPTION = (
-    "[CORE] Performance por ad set Meta Ads: spend, impressões, clicks, CTR, "
-    "CPC, reach, frequency, purchases, purchases_value_brl, purchase_roas, leads, messaging_conversations_started (conversas iniciadas). "
-    + CONTRATO_NA_DESCRIPTION
-    + " "
+    "[CORE] Performance por ad set Meta Ads, uma linha por ad set. " + CONTRATO_NA_DESCRIPTION + " "
     "Inclui campaign_id/name parent + optimization_goal. Ordenado por spend desc **no servidor**, entao o topo devolvido E o topo real da conta; `truncated:true` significa que ficou cauda de MENOR gasto de fora, nao que o ranking esteja incompleto. "
     "Filtros: limit (max 500). "
     "[Limitação] Metadata de entidade (effective_status, billing_event, "

@@ -104,6 +104,10 @@ async def main(conta: str) -> int:
                 print(f"{rotulo:<40} {r.status_code}  {msg}")
                 if not rotulo.startswith("CONTROLE"):
                     recusadas += 1
+            if rotulo.startswith("CONTROLE") and r.status_code == 200:
+                # Sem o 400 do controle, os 200 acima nao provam que a API le o parametro.
+                print("CONTROLE NAO RECUSOU: a API ignorou a atribuicao invalida")
+                recusadas += 1
     return recusadas
 
 

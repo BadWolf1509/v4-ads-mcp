@@ -14,8 +14,7 @@ from src.mcp.tools._registry import register_tool
 from src.meta_ads.metricas import CONTRATO_NA_DESCRIPTION
 
 _DESCRIPTION = (
-    "[CORE] Performance por anúncio (ad) Meta Ads: spend, impressões, clicks, "
-    "CTR, CPC, reach, frequency, purchases, purchases_value_brl, purchase_roas, leads, messaging_conversations_started (conversas iniciadas). "
+    "[CORE] Performance por anúncio (ad) Meta Ads, uma linha por anúncio. "
     + CONTRATO_NA_DESCRIPTION
     + " "
     "Inclui ad_set_id/name + campaign_id/name parents. "
