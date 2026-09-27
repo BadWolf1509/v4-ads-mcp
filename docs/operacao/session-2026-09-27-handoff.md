@@ -50,8 +50,8 @@ execução diária seguinte ao deploy.
 
 - **28/09:** conferir a reconciliação Google — a Alumínios Veneza com `removed=1`,
   `revoked_grants=4`.
-- **01/10:** o `THIS_MONTH` invertido dispara — a sessão sugerida mede o que a GAQL faz e propõe o
-  conserto.
+- ~~**01/10:** o `THIS_MONTH` invertido~~ — fechado no mesmo dia como **F196**: a GAQL responde a
+  janela invertida com 0 linhas, sem erro; no dia 1 a janela passou a ser só hoje.
 - **04/10:** remedição dos buckets e do uso da Fase 2B por gestor.
 - **Do Wellington:** remover do BM as 4 contas Meta das clientes que saíram; o ajuste do `null`
   no plugin Google; o pedido de Full Access da API Meta; F129; F67; a identidade de serviço (F186).
