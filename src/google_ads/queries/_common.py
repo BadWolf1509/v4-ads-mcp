@@ -12,24 +12,16 @@ import structlog
 
 from src.google_ads.queries._gaql import gaql_string_literal
 from src.google_ads.reports import run_report
+from src.janelas import PRESETS, janela_do_preset
 
 
 class InvalidDateRangeError(ValueError):
     """Raised when a date range cannot be parsed."""
 
 
-_PRESETS = {
-    "TODAY",
-    "YESTERDAY",
-    "LAST_7_DAYS",
-    "LAST_14_DAYS",
-    "LAST_30_DAYS",
-    "LAST_90_DAYS",
-    "THIS_MONTH",
-    "LAST_MONTH",
-    "THIS_WEEK",
-    "LAST_WEEK",
-}
+# Os presets e a janela de cada um moram em `src.janelas` (F195): uma regra so para
+# o Google e a Meta.
+_PRESETS = PRESETS
 
 
 log = structlog.get_logger(__name__)
@@ -76,37 +68,7 @@ def parse_date_range(arg: str | dict[str, str], *, today: date) -> tuple[date, d
 
     # F141: `today` vem do chamador, ja no fuso da conta (`account_today`).
     # Sem default de proposito — esquecer de passar quebra alto, nao cai em UTC.
-    yesterday = today - timedelta(days=1)
-
-    if preset == "TODAY":
-        return today, today
-    if preset == "YESTERDAY":
-        return yesterday, yesterday
-    if preset == "LAST_7_DAYS":
-        return yesterday - timedelta(days=6), yesterday
-    if preset == "LAST_14_DAYS":
-        return yesterday - timedelta(days=13), yesterday
-    if preset == "LAST_30_DAYS":
-        return yesterday - timedelta(days=29), yesterday
-    if preset == "LAST_90_DAYS":
-        return yesterday - timedelta(days=89), yesterday
-    if preset == "THIS_MONTH":
-        return today.replace(day=1), yesterday
-    if preset == "LAST_MONTH":
-        first_this = today.replace(day=1)
-        last_prev = first_this - timedelta(days=1)
-        first_prev = last_prev.replace(day=1)
-        return first_prev, last_prev
-    if preset == "THIS_WEEK":
-        # ISO week starts Monday; today.weekday() = 0 for Monday
-        monday = today - timedelta(days=today.weekday())
-        return monday, yesterday if yesterday >= monday else monday
-    if preset == "LAST_WEEK":
-        last_sunday = today - timedelta(days=today.weekday() + 1)
-        last_monday = last_sunday - timedelta(days=6)
-        return last_monday, last_sunday
-
-    raise InvalidDateRangeError(f"Unhandled preset {preset}")  # unreachable
+    return janela_do_preset(preset, today=today)
 
 
 def resolve_date_window(

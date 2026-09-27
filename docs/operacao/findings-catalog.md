@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~5600 linhas, 569 KB, IDs de **F1 a F195** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 55 têm; 56 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~5600 linhas, 570 KB, IDs de **F1 a F195** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 55 têm; 56 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -5567,7 +5567,7 @@ aberta depois dele, que já recebeu as descriptions novas):**
 fixa se confere na mesma janela fixa. A diferença de convenção entre os presets virou o
 **F195**.
 
-## F195 (MEDIUM, ABERTO) — o `LAST_N_DAYS` das tools Meta inclui o dia corrente; o do Google termina ontem
+## F195 (MEDIUM, ✅ CORRIGIDO 2026-09-27) — o `LAST_N_DAYS` das tools Meta inclui o dia corrente; o do Google termina ontem
 
 **Origem:** smoke de leitura do F194 (27/09) — a referência do roteiro não se reproduzia pelo
 preset.
@@ -5598,9 +5598,32 @@ horas de deriva de fuso por dia; aqui, o dia inteiro. A resposta não mente sobr
 (`date_range` ecoa `start`/`end`), mas o overview não ecoa a do `previous`, e nada nela diz que
 o `current` tem um dia pela metade.
 
-**Conserto candidato, não decidido:** alinhar ao Google — `LAST_N_DAYS` terminando ontem no
-fuso da conta (`TODAY` segue para o dia corrente) —, reescrever o teste que fixa
-`end == TODAY`, dizer "até ontem" nas descriptions e ecoar a janela do `previous` no overview.
-Muda o número que o gestor vê, de propósito; a decisão é do Wellington.
+**Decisão (Wellington, 27/09): alinhar** — é a regra do Google e da própria Meta. Sondado na
+Graph API em 27/09 (Cheiro | Conta 01, fuso `America/Sao_Paulo`): `date_preset=last_7d`
+devolve `20/09–26/09` e `last_30d`, `28/08–26/09` — os dias completos até ontem. As tools
+Meta discordavam da plataforma que elas leem.
+
+**✅ O que foi feito:**
+
+- **Uma regra só:** `src/janelas.py::janela_do_preset`, primitivo neutro na raiz de `src/`
+  pelo mesmo motivo do `clock.py` (F141/F91: duas cópias da mesma regra divergem). O
+  `parse_date_range` do Google e o `resolve_meta_date_window` da Meta delegam para ele. O
+  corpo dos presets veio do Google **sem mudança** — o lado Google não muda; o Meta passa a
+  terminar ontem. Preset desconhecido é `ValueError` (era `KeyError`, que escapava do
+  tratamento das tools).
+- **O overview Meta diz as duas janelas:** `previous_date_range` ecoado, e
+  `inclui_dia_corrente: true` quando a atual contém hoje (preset `TODAY` ou janela custom até
+  hoje) — o caso em que a variação ainda compara um dia parcial com dias cheios.
+- **As 5 descriptions dizem a regra:** `FRASE_DA_JANELA` entrou no contrato que elas já
+  carregam, e o guard das descriptions a confere junto das outras três.
+- **Guard:** `tests/unit/test_janelas.py` — paridade Meta × Google nos 6 presets que as
+  tools Meta aceitam, em 5 datas (viradas de mês e de ano, segunda-feira); contra o código
+  anterior, 20 falhas (os 4 `LAST_N_DAYS` × 5 datas), mais a referência medida da Meta e o
+  `KeyError`.
+
+**Fora, com o motivo:** o `THIS_MONTH` do Google no **dia 1** do mês devolve janela
+**invertida** (início hoje, fim ontem: em 01/10, `01/10–30/09`) — achado ao mover o código,
+conferido na `main`; herdado sem mudança, porque consertá-lo muda 15 tools Google e pede
+medida própria (o que a GAQL faz com `BETWEEN` invertido). Nenhuma tool Meta aceita o preset.
 
 **Não medido:** quanto do uso real das tools Meta passa por preset `LAST_N_DAYS`.

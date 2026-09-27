@@ -40,7 +40,12 @@ ATRIBUICAO = "unificada"
 FRASE_DO_NULL = "Metrica null = a Meta nao reportou: zero ou nao rastreado (a API nao distingue)."
 FRASE_DO_CTR = "ctr em fracao (0.0283 = 2,83%), como no Google."
 FRASE_DA_ATRIBUICAO = "Atribuicao unificada: a do conjunto de anuncios, como no Gerenciador."
-CONTRATO_NA_DESCRIPTION = f"{FRASE_DO_NULL} {FRASE_DO_CTR} {FRASE_DA_ATRIBUICAO}"
+# F195: a janela de cada preset sai de `src.janelas`, a mesma regra do Google e da Meta.
+FRASE_DA_JANELA = (
+    "LAST_N_DAYS = os N dias completos ate ontem, no fuso da conta (como no Gerenciador); "
+    "TODAY = o dia corrente, ainda aberto."
+)
+CONTRATO_NA_DESCRIPTION = f"{FRASE_DO_NULL} {FRASE_DO_CTR} {FRASE_DA_ATRIBUICAO} {FRASE_DA_JANELA}"
 
 MetricaMeta = float | int | None
 

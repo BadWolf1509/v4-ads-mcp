@@ -15,7 +15,12 @@ from pathlib import Path
 import pytest
 
 from src.meta_ads.insights import _COMMON_INSIGHTS_FIELDS
-from src.meta_ads.metricas import FRASE_DA_ATRIBUICAO, FRASE_DO_CTR, FRASE_DO_NULL
+from src.meta_ads.metricas import (
+    FRASE_DA_ATRIBUICAO,
+    FRASE_DA_JANELA,
+    FRASE_DO_CTR,
+    FRASE_DO_NULL,
+)
 from tests.unit import _guard_harness as h
 
 # Os campos de métrica que a linha /insights traz, lidos da lista que o construtor
@@ -171,7 +176,7 @@ def test_toda_tool_com_metrica_meta_avisa_o_contrato_na_description() -> None:
         assert tool is not None, f"`{nome}` nao esta no registry com o nome do modulo"
         ausentes = [
             f
-            for f in (FRASE_DO_NULL, FRASE_DO_CTR, FRASE_DA_ATRIBUICAO)
+            for f in (FRASE_DO_NULL, FRASE_DO_CTR, FRASE_DA_ATRIBUICAO, FRASE_DA_JANELA)
             if f not in tool.description
         ]
         if ausentes:
