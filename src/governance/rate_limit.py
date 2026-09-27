@@ -11,6 +11,7 @@ parallel callers don't double-count. Each function takes a single
 asyncpg connection and runs in one transaction.
 """
 
+import json
 from datetime import UTC, datetime
 from typing import NamedTuple
 
@@ -170,27 +171,29 @@ def hash_developer_token(token: str) -> str:
 # ============================================================================
 
 
-def _parse_buc_header_pct(buc_header: str, *, ad_account_id: str) -> int:
+def _parse_buc_header_pct(buc_header: str | None, *, ad_account_id: str) -> int | None:
     """Parse X-Business-Use-Case-Usage header + return max usage pct for ad_account.
 
-    BUC format: {"<numeric_ad_account_id>": [{"type":"ads_management",
+    BUC format: {"<numeric_ad_account_id>": [{"type":"ads_insights",
                   "call_count": 42, "total_cputime": 12, "total_time": 35,
                   "estimated_time_to_regain_access": 0}]}
 
     Strategy: max(call_count, total_cputime, total_time) across all entries
-    for the matching ad_account. Returns 0 if header empty/malformed/no-match.
+    for the matching ad_account.
+
+    Spec 2026-09-26 §5: cabecalho vazio, JSON malformado, nao-dict ou sem a chave da
+    conta devolve **None** — "nao sei", nunca `0`. O `0` antigo era indistinguivel de
+    uma conta ociosa e sobrescrevia o ultimo valor medido.
     """
     if not buc_header:
-        return 0
+        return None
     try:
-        import json
-
         parsed = json.loads(buc_header)
     except (ValueError, TypeError):
-        return 0
+        return None
 
     if not isinstance(parsed, dict):
-        return 0
+        return None
 
     numeric_id = ad_account_id.replace("act_", "")
     pcts: list[int] = []
@@ -209,20 +212,49 @@ def _parse_buc_header_pct(buc_header: str, *, ad_account_id: str) -> int:
                     int(u.get("total_time", 0)),
                 ]
             )
-    return max(pcts) if pcts else 0
+    return max(pcts) if pcts else None
+
+
+def _parse_insights_throttle(header: str | None) -> dict[str, float] | None:
+    """Parse X-FB-Ads-Insights-Throttle -> {"app_id_util_pct": x, "acc_id_util_pct": y}.
+
+    Medido em 26/09 (`scripts/probe_meta_metricas.py`): em chamada /insights o
+    `x-app-usage` NAO vem; a quota do APP vem aqui, junto da da conta. Devolve so os
+    dois campos numericos que vierem; nenhum, ou cabecalho ausente/malformado -> None.
+    """
+    if not header:
+        return None
+    try:
+        parsed = json.loads(header)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    sinais: dict[str, float] = {}
+    for chave in ("app_id_util_pct", "acc_id_util_pct"):
+        valor = parsed.get(chave)
+        if isinstance(valor, int | float) and not isinstance(valor, bool):
+            sinais[chave] = float(valor)
+    return sinais or None
 
 
 async def record_actual_meta(
     *,
     app_id: str,
     ad_account_id: str,
-    buc_header: str,
+    buc_header: str | None,
+    insights_throttle_header: str | None = None,
     calls: int = 1,
 ) -> None:
-    """Parse BUC header + persist counter increments + throttle pct.
+    """Conta as chamadas e registra o uso medido — so o MEDIDO.
+
+    Spec 2026-09-26 §5: BUC nao lido nao grava nada no `last_throttle_pct` (o ultimo
+    valor medido fica) e vira o evento `meta_buc_nao_lido`. O aviso
+    `meta_rate_limit_warning` dispara quando QUALQUER sinal medido passa de 75% — o
+    BUC da conta, ou a quota do app/conta do `x-fb-ads-insights-throttle` — e diz
+    quais: a quota que barra e a que tem menos folga (F110).
 
     Hashes app_id (SHA-256 truncated 32-char) before persisting for storage privacy.
-    Structlog warning if throttle_pct > 75%.
     """
     import hashlib
     from datetime import date
@@ -231,6 +263,7 @@ async def record_actual_meta(
     from src.db.repositories import meta_rate_counters
 
     throttle_pct = _parse_buc_header_pct(buc_header, ad_account_id=ad_account_id)
+    insights = _parse_insights_throttle(insights_throttle_header)
     app_id_hash = hashlib.sha256(app_id.encode()).hexdigest()[:32]
     today = date.today()
 
@@ -243,17 +276,32 @@ async def record_actual_meta(
             date=today,
             by=calls,
         )
-        await meta_rate_counters.update_throttle(
-            conn,
-            app_id=app_id_hash,
+        if throttle_pct is not None:
+            await meta_rate_counters.update_throttle(
+                conn,
+                app_id=app_id_hash,
+                ad_account_id=ad_account_id,
+                date=today,
+                throttle_pct=throttle_pct,
+            )
+
+    if throttle_pct is None:
+        # WARNING, nao info: e o unico sinal que avisa que o token COMPARTILHADO vai
+        # ser limitado, e em 26/09 ele veio em toda chamada /insights medida — ausente
+        # ou ilegivel e anomalia (formato mudou), nao rotina.
+        log.warning(
+            "meta_buc_nao_lido",
             ad_account_id=ad_account_id,
-            date=today,
-            throttle_pct=throttle_pct,
+            motivo="ausente" if not buc_header else "nao_entendido",
         )
 
-    if throttle_pct > 75:
+    medidos: dict[str, float] = dict(insights or {})
+    if throttle_pct is not None:
+        medidos["buc_conta_pct"] = float(throttle_pct)
+    acima = {nome: valor for nome, valor in medidos.items() if valor > 75}
+    if acima:
         log.warning(
             "meta_rate_limit_warning",
             ad_account_id=ad_account_id,
-            throttle_pct=throttle_pct,
+            acima_de_75=acima,
         )

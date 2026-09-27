@@ -1,8 +1,13 @@
-"""Unit tests for BUC (X-Business-Use-Case-Usage) header parsing (Sprint M.2a Task 7)."""
+"""Unit tests for BUC (X-Business-Use-Case-Usage) header parsing (Sprint M.2a Task 7).
+
+Spec 2026-09-26 §5: "nao sei" e `None`, nunca `0`. Os quatro testes de vazio/
+malformado/sem a conta afirmavam `== 0` — a regra que o spec revoga: o 0 era
+indistinguivel de conta ociosa e sobrescrevia o ultimo valor medido.
+"""
 
 import json
 
-from src.governance.rate_limit import _parse_buc_header_pct
+from src.governance.rate_limit import _parse_buc_header_pct, _parse_insights_throttle
 
 
 def test_parse_buc_extracts_max_pct():
@@ -24,27 +29,27 @@ def test_parse_buc_extracts_max_pct():
     assert pct == 42  # max(42, 12, 35)
 
 
-def test_parse_buc_returns_zero_when_account_not_in_header():
+def test_parse_buc_returns_none_when_account_not_in_header():
     header = json.dumps(
         {"999": [{"type": "ads_read", "call_count": 50, "total_cputime": 0, "total_time": 0}]}
     )
     pct = _parse_buc_header_pct(header, ad_account_id="act_111")
-    assert pct == 0
+    assert pct is None
 
 
 def test_parse_buc_handles_empty_header():
     pct = _parse_buc_header_pct("", ad_account_id="act_123")
-    assert pct == 0
+    assert pct is None
 
 
 def test_parse_buc_handles_empty_json():
     pct = _parse_buc_header_pct("{}", ad_account_id="act_123")
-    assert pct == 0
+    assert pct is None
 
 
 def test_parse_buc_handles_malformed_json():
     pct = _parse_buc_header_pct("not valid json", ad_account_id="act_123")
-    assert pct == 0
+    assert pct is None
 
 
 def test_parse_buc_strips_act_prefix():
@@ -66,3 +71,38 @@ def test_parse_buc_multiple_usage_entries():
     )
     pct = _parse_buc_header_pct(header, ad_account_id="act_123")
     assert pct == 90
+
+
+def test_parse_buc_handles_none_header():
+    assert _parse_buc_header_pct(None, ad_account_id="act_123") is None
+
+
+def test_parse_buc_zero_medido_segue_zero():
+    """Null e so para o que nao veio: 0% medido continua 0."""
+    header = json.dumps({"123": [{"call_count": 0, "total_cputime": 0, "total_time": 0}]})
+    assert _parse_buc_header_pct(header, ad_account_id="act_123") == 0
+
+
+# ============================================================================
+# x-fb-ads-insights-throttle — onde vem a quota do APP em chamada /insights
+# ============================================================================
+
+
+def test_insights_throttle_forma_medida():
+    """Forma medida em 26/09 (`scripts/probe_meta_metricas.py`)."""
+    header = (
+        '{"app_id_util_pct":0.02,"acc_id_util_pct":0,"ads_api_access_tier":"development_access"}'
+    )
+    assert _parse_insights_throttle(header) == {"app_id_util_pct": 0.02, "acc_id_util_pct": 0.0}
+
+
+def test_insights_throttle_ausente_ou_malformado_e_none():
+    assert _parse_insights_throttle(None) is None
+    assert _parse_insights_throttle("") is None
+    assert _parse_insights_throttle("nao json") is None
+    assert _parse_insights_throttle("[1, 2]") is None
+    assert _parse_insights_throttle('{"ads_api_access_tier": "x"}') is None
+
+
+def test_insights_throttle_so_devolve_o_que_veio():
+    assert _parse_insights_throttle('{"app_id_util_pct": 81}') == {"app_id_util_pct": 81.0}
