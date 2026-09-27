@@ -344,7 +344,7 @@ async def meta_oauth_callback(
         )
         # Modelo B: sem auto-grant — acesso é concedido só via matriz admin.
 
-        # Step 9: audit
+        # Step 8: audit
         await audit_log.record(
             conn,
             manager_id=manager_id,

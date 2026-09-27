@@ -5743,10 +5743,15 @@ diário (06:00, horário de Brasília); sob demanda, executar o job, com autoriz
   — nome de operação de audit, nunca uma tool — ou reconectar o OAuth. Agora há uma fonte só
   (`meta_account_not_found_error`: o overview e o breakdown repetiam o texto em vez de
   chamá-la), com o caminho real. A description de `meta_list_my_ad_accounts` também.
-- **Guard** (`tests/unit/test_inventario_escritor_unico.py`): chamada ao `upsert_many` do
+- **Guard** (`tests/unit/test_inventario_escritor_unico.py`): chamada a qualquer escritor do
   inventário, Meta ou Google, fora de `src/jobs/` falha — contra o código anterior apontou
-  `meta_oauth.py`, linhas 403 e 563. Um controle confere que a varredura acha os dois jobs, e
-  um terceiro teste impede texto de `src/` ou template de citar o caminho que saiu (pegou 8).
+  `meta_oauth.py`, linhas 403 e 563. Os escritores são **derivados do SQL** de cada função dos
+  dois repositórios (`upsert_many`, `deactivate`, `apply_absences`, `set_reachable`,
+  `mark_inactive_except`): a primeira versão listava só o `upsert_many`, e a revisão pegou —
+  asserção mais estreita que a invariante. SQL de escrita cru nas duas tabelas fora dos
+  repositórios também falha; controles provam a derivação, os dois jobs e as duas formas de
+  import; e um teste impede texto de `src/` ou template de citar o caminho que saiu (pegou 8).
+  Sabotagens medidas: um `deactivate` e um `UPDATE` cru no painel, cada um derrubando o seu.
 
 **Fora, com o motivo:** o fluxo do OAuth pessoal em si (conectar, revogar) fica — dormente
 desde o Modelo B e sem uso em 30 dias; removê-lo é outra decisão.

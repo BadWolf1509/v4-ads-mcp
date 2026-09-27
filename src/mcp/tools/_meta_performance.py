@@ -2,7 +2,7 @@
 """Núcleo compartilhado do trio meta_get_{campaign,ad_set,ad}_performance (Task 3.3).
 
 Os 3 tools de performance Meta MCP (campaign/ad_set/ad) eram ~92% idênticos:
-resolve date window → lookup ad_account (mesma msg "não encontrada" repetida) →
+resolve date window → lookup ad_account (mesma msg de conta fora do inventário) →
 build_insights_call → run_meta_graph_get → parse+sort rows → envelope de sucesso.
 Só variava `level` (+ nome do tool/operation_name pro audit_log).
 
