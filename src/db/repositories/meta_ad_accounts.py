@@ -276,8 +276,9 @@ async def list_queues(conn: asyncpg.Connection) -> ReconcileQueues:
 
     Fix round 1 (review): as filas são exclusivas, `sem_su` tem precedência.
     Sem `AND a.su_reachable = true` aqui, uma conta na parceria, sem gestor E
-    sem SU (caso real em produção — `CA - V4 Lima Soares`, `CHUTE 07`) caía
-    nas DUAS filas ao mesmo tempo. Não é só duplicação visual: delegar um
+    sem SU caía nas DUAS filas ao mesmo tempo (os dois casos de produção que
+    pareciam reais, `CA - V4 Lima Soares` e `CHUTE 07`, eram artefato do índice
+    `/me/adaccounts` — F154; o predicado continua certo). Não é só duplicação visual: delegar um
     gestor numa conta que o system user não alcança produz um grant que só
     gera `#200` quando usado. A ordem certa do admin é atribuir o SU no
     Business Manager primeiro, delegar depois — uma fila que convida a

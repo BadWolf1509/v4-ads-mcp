@@ -6,9 +6,10 @@ Cloud Scheduler) pra que conta de cliente nova entre no inventário zero-touch.
 Le a parceria (`fetch_partnership`, autoritativa — a edge do BM, spec
 2026-08-20) e MEDE o alcance do system user com uma leitura mínima por conta da
 parceria (`meta_ads.alcance`, F154) — não mais pelo índice `/me/adaccounts`, que
-omitia conta que o SU lê. `build_plan` decide; este módulo só aplica. Grants seguem MANUAIS (Modelo B): reconciliar nunca CONCEDE acesso —
-só ajusta o inventário e, quando uma conta sai da parceria, revoga o que os
-gestores tinham.
+omitia conta que o SU lê. `build_plan` decide; este módulo só aplica. Grants
+seguem MANUAIS (Modelo B): reconciliar nunca CONCEDE acesso — só ajusta o
+inventário e, quando uma conta sai da parceria, revoga o que os gestores
+tinham.
 
 Standalone: `python -m src.jobs.meta_resync`
 """

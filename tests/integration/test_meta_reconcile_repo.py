@@ -346,6 +346,14 @@ async def test_set_reachable_nao_toca_em_conta_nao_medida(db) -> None:
         assert (await meta_ad_accounts.get_by_id(conn, "act_2")).su_reachable is False
         assert (await meta_ad_accounts.get_by_id(conn, "act_1")).su_reachable is True
 
+        # act_2 lida de novo: volta a true. E o caminho que conserta a CHUTE 07 em
+        # producao (false pelo indice, lida pela sonda). Revisao final da branch: sem
+        # esta linha, um set_reachable que so gravasse false passava em todos os testes.
+        await meta_ad_accounts.set_reachable(
+            conn, le=["act_2"], recusa=[], scope_ids=["act_1", "act_2"]
+        )
+        assert (await meta_ad_accounts.get_by_id(conn, "act_2")).su_reachable is True
+
 
 @pytest.mark.integration
 async def test_set_reachable_nao_toca_em_conta_fora_do_escopo(db) -> None:

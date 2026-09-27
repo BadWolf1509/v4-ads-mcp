@@ -105,11 +105,12 @@ def build_plan(
     ids_ativos = {r.ad_account_id for r in ativos}
 
     to_add = sorted(partnership_ids - ids_ativos)
-    # T3c (revisão de branch): o sinal da §3 é `in_partnership ∧ ¬reachable` —
+    # T3c (revisão de branch): o sinal da §3 é `in_partnership ∧ recusada` —
     # sem interseção com o inventário. Intersectar com `ids_ativos` (lido ANTES
-    # do upsert) apagava justamente a conta nova-e-inalcançável, que é o caso
-    # real em produção (`CA - V4 Lima Soares`, `CHUTE 07`): ela entra por
+    # do upsert) apagaria justamente a conta nova-e-recusada: ela entra por
     # `to_add` no mesmo ciclo, e o audit reportaria `unreachable: 0` no dia 1.
+    # (Os dois casos de produção que a motivaram, `CA - V4 Lima Soares` e
+    # `CHUTE 07`, eram artefato do índice — F154.)
     #
     # F154: `refused_ids` sao as RECUSAS medidas pela sonda (`meta_ads.alcance`), nao o
     # complemento de um indice. `parceria - alcancadas` punha no sinal tambem o que nao foi

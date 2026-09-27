@@ -13,6 +13,7 @@ ausência de medição não é resposta (F191/F194).
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Literal
@@ -30,6 +31,15 @@ _GRAPH = f"https://graph.facebook.com/{META_GRAPH_API_VERSION}"
 
 # O cliente do job usa 60 s; 25 contas penduradas seriam 25 minutos de job.
 TIMEOUT_DA_SONDA = 15.0
+
+# Revisão final da branch (27/09): o laço roda com a conexão do job já adquirida e ociosa
+# (o `account_resync` a entrega antes da rede), num Cloud Run Job de 600 s. Em série, o pior
+# caso crescia com a parceria — 25 × 15 s = 375 s hoje, 600 s perto de 38 contas. Com
+# poucas sondas em paralelo e um prazo TOTAL, o pior caso é o prazo, qualquer que seja o
+# tamanho da parceria; conta que não coube nele sai como não medida — não grava e não
+# bloqueia nada.
+CONCORRENCIA_DA_SONDA = 5
+PRAZO_DA_SONDA = 60.0
 
 # A única recusa medida (27/09): "(#200) Ad account owner has NOT grant ads_management or
 # ads_read permission". Um código de recusa que ainda não vimos sai como não medido — não
@@ -66,32 +76,57 @@ async def sondar_alcance(
     access_token: str,
     contas: list[tuple[str, str | None]],
     agora: datetime,
+    prazo: float = PRAZO_DA_SONDA,
 ) -> Alcance:
     """Uma leitura mínima por conta — `(ad_account_id, fuso)` → o estado de cada uma.
 
     "Ontem" é no fuso da conta, sobre o instante que o job lê uma vez (F141). Conta sem
     entrega ontem devolve 200 com `data` vazia: continua sendo "lê" — a pergunta é o
     acesso, não o gasto.
+
+    Até `CONCORRENCIA_DA_SONDA` sondas ao mesmo tempo, todas dentro de `prazo` segundos: a
+    que não terminou a tempo é cancelada e sai como não medida. Id repetido em `contas` é
+    sondado uma vez — cada conta cai em exatamente um estado, que é o que `set_reachable`
+    presume.
     """
     cabecalho = {"Authorization": f"Bearer {access_token}"}
-    por_estado: dict[Estado, set[str]] = {"le": set(), "recusa": set(), "nao_medido": set()}
-    for ad_account_id, fuso in contas:
+    semaforo = asyncio.Semaphore(CONCORRENCIA_DA_SONDA)
+
+    async def sondar(ad_account_id: str, fuso: str | None) -> Estado:
         ontem = account_today(fuso, now=agora) - timedelta(days=1)
         edge, params = build_insights_call(
             level="account", ad_account_id=ad_account_id, start=ontem, end=ontem, limit=1
         )
-        try:
-            resposta = await http.get(
-                _GRAPH + edge, params=params, headers=cabecalho, timeout=TIMEOUT_DA_SONDA
-            )
+        async with semaforo:
             try:
-                corpo = resposta.json()
-            except ValueError:
-                corpo = None
-            estado = classificar_sonda(resposta.status_code, corpo)
-        except httpx.HTTPError:
-            estado = "nao_medido"
+                resposta = await http.get(
+                    _GRAPH + edge, params=params, headers=cabecalho, timeout=TIMEOUT_DA_SONDA
+                )
+            except httpx.HTTPError:
+                return "nao_medido"
+        try:
+            corpo = resposta.json()
+        except ValueError:
+            corpo = None
+        return classificar_sonda(resposta.status_code, corpo)
+
+    tarefas = {
+        ad_account_id: asyncio.create_task(sondar(ad_account_id, fuso))
+        for ad_account_id, fuso in dict(contas).items()
+    }
+    esgotadas: set[asyncio.Task[Estado]] = set()
+    if tarefas:
+        _, esgotadas = await asyncio.wait(tarefas.values(), timeout=prazo)
+        for tarefa in esgotadas:
+            tarefa.cancel()
+        await asyncio.gather(*esgotadas, return_exceptions=True)
+
+    por_estado: dict[Estado, set[str]] = {"le": set(), "recusa": set(), "nao_medido": set()}
+    for ad_account_id, tarefa in tarefas.items():
+        estado: Estado = "nao_medido" if tarefa in esgotadas else tarefa.result()
         por_estado[estado].add(ad_account_id)
+    if esgotadas:
+        log.warning("meta_alcance_prazo_esgotado", prazo_s=prazo, total=len(esgotadas))
     if por_estado["nao_medido"]:
         log.warning(
             "meta_alcance_nao_medido",
