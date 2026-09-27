@@ -301,7 +301,7 @@ async def test_lista_vazia_e_noop_em_todas_as_operacoes(db) -> None:
 
         assert await meta_ad_accounts.deactivate(conn, ad_account_ids=[]) == 0
         await meta_ad_accounts.apply_absences(conn, bump=[], reset=[])
-        await meta_ad_accounts.set_reachable(conn, reachable_ids=[], scope_ids=["act_1"])
+        await meta_ad_accounts.set_reachable(conn, le=[], recusa=[], scope_ids=["act_1"])
 
         assert len(await meta_ad_accounts.list_all(conn)) == 2
         assert (await meta_ad_accounts.get_by_id(conn, "act_1")).su_reachable is True
@@ -313,11 +313,46 @@ async def test_set_reachable_marca_quem_esta_fora_do_alcance(db) -> None:
         await meta_ad_accounts.upsert_many(conn, [CONTA, OUTRA])
 
         await meta_ad_accounts.set_reachable(
-            conn, reachable_ids=["act_1"], scope_ids=["act_1", "act_2"]
+            conn, le=["act_1"], recusa=["act_2"], scope_ids=["act_1", "act_2"]
         )
 
         assert (await meta_ad_accounts.get_by_id(conn, "act_1")).su_reachable is True
         assert (await meta_ad_accounts.get_by_id(conn, "act_2")).su_reachable is False
+
+
+@pytest.mark.integration
+async def test_set_reachable_nao_toca_em_conta_nao_medida(db) -> None:
+    """F154: conta que a sonda nao conseguiu medir fica com o ULTIMO valor medido.
+
+    Com o indice, "nao veio" virava `false`: um timeout ou um token recusado apagaria o
+    alcance de quem o SU le. Agora so grava o que tem resposta — nos dois sentidos.
+    """
+    async with db.acquire() as conn:
+        await meta_ad_accounts.upsert_many(conn, [CONTA, OUTRA])
+
+        # act_2 nao medida: segue true (o DEFAULT), nao vira false por nao ter vindo.
+        await meta_ad_accounts.set_reachable(
+            conn, le=["act_1"], recusa=[], scope_ids=["act_1", "act_2"]
+        )
+        assert (await meta_ad_accounts.get_by_id(conn, "act_2")).su_reachable is True
+
+        # act_2 recusada e depois nao medida: segue false, nao volta a true sozinha.
+        await meta_ad_accounts.set_reachable(
+            conn, le=[], recusa=["act_2"], scope_ids=["act_1", "act_2"]
+        )
+        await meta_ad_accounts.set_reachable(
+            conn, le=["act_1"], recusa=[], scope_ids=["act_1", "act_2"]
+        )
+        assert (await meta_ad_accounts.get_by_id(conn, "act_2")).su_reachable is False
+        assert (await meta_ad_accounts.get_by_id(conn, "act_1")).su_reachable is True
+
+        # act_2 lida de novo: volta a true. E o caminho que conserta a CHUTE 07 em
+        # producao (false pelo indice, lida pela sonda). Revisao final da branch: sem
+        # esta linha, um set_reachable que so gravasse false passava em todos os testes.
+        await meta_ad_accounts.set_reachable(
+            conn, le=["act_2"], recusa=[], scope_ids=["act_1", "act_2"]
+        )
+        assert (await meta_ad_accounts.get_by_id(conn, "act_2")).su_reachable is True
 
 
 @pytest.mark.integration
@@ -334,7 +369,10 @@ async def test_set_reachable_nao_toca_em_conta_fora_do_escopo(db) -> None:
         # act_2 sai da parceria: fora do escopo do proximo set_reachable.
         await meta_ad_accounts.deactivate(conn, ad_account_ids=["act_2"])
 
-        await meta_ad_accounts.set_reachable(conn, reachable_ids=["act_1"], scope_ids=["act_1"])
+        # A recusa de act_2 vem medida, mas act_2 esta fora do escopo: nao grava.
+        await meta_ad_accounts.set_reachable(
+            conn, le=["act_1"], recusa=["act_2"], scope_ids=["act_1"]
+        )
 
         assert (await meta_ad_accounts.get_by_id(conn, "act_1")).su_reachable is True
         assert (await meta_ad_accounts.get_by_id(conn, "act_2")).su_reachable is True, (
@@ -403,13 +441,13 @@ async def test_list_inventory_rows_traz_a_data_da_ultima_ausencia_meta(db) -> No
 
 
 def _patches_do_job(*, apply: bool):
-    """Settings + as duas leituras da rede (parceria vazia, alcance vazio).
+    """Settings + a rede (parceria vazia; a sonda de alcance sem conta a medir).
 
     Parceria vazia e completa e o cenario de churn: a conta semeada esta ATIVA
     no inventario e nao esta na parceria, entao `build_plan` a manda pro
     `to_bump` (carencia 0 + 1 = 1 < limiar 3). O banco e real; so a rede sai.
     """
-    from src.auth.meta_oauth import AdAccountsFetch
+    from src.meta_ads.alcance import Alcance
     from src.meta_ads.partnership import PartnershipSnapshot
 
     return [
@@ -429,11 +467,7 @@ def _patches_do_job(*, apply: bool):
             "fetch_partnership",
             AsyncMock(return_value=PartnershipSnapshot([], True)),
         ),
-        patch.object(
-            meta_resync,
-            "_fetch_all_adaccounts",
-            AsyncMock(return_value=AdAccountsFetch(accounts=[], complete=True)),
-        ),
+        patch.object(meta_resync, "sondar_alcance", AsyncMock(return_value=Alcance())),
     ]
 
 
@@ -626,7 +660,7 @@ async def test_list_queues_sem_su_tem_precedencia_sobre_sem_delegacao(db) -> Non
         # act_1 fica alcancavel (cai em sem_delegacao, o caso normal); act_2
         # fica de fora (sem SU E sem gestor — o caso que se sobrepunha).
         await meta_ad_accounts.set_reachable(
-            conn, reachable_ids=["act_1"], scope_ids=["act_1", "act_2"]
+            conn, le=["act_1"], recusa=["act_2"], scope_ids=["act_1", "act_2"]
         )
 
         queues = await meta_ad_accounts.list_queues(conn)

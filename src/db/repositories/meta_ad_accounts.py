@@ -196,9 +196,14 @@ async def deactivate(conn: asyncpg.Connection, *, ad_account_ids: list[str]) -> 
 
 
 async def set_reachable(
-    conn: asyncpg.Connection, *, reachable_ids: list[str], scope_ids: list[str]
+    conn: asyncpg.Connection, *, le: list[str], recusa: list[str], scope_ids: list[str]
 ) -> None:
-    """Marca alcance do system user. NÃO desativa: alcance ≠ pertencer à parceria.
+    """Grava o alcance MEDIDO do system user. NÃO desativa: alcance ≠ pertencer à parceria.
+
+    F154: `le` e `recusa` vêm da sonda (`meta_ads.alcance`) — `true` para quem ela leu,
+    `false` para quem recusou com `#200`. Conta que a sonda não conseguiu medir não é
+    tocada: fica o último valor medido. Antes o sinal era `id ∈ /me/adaccounts`, e "não
+    veio" virava `false` — um índice que omitia a CHUTE 07, lida pelo system user.
 
     `scope_ids` é obrigatório de propósito (M4 da revisão de branch): sem o
     `WHERE`, o UPDATE marcava `su_reachable = false` também em conta inativa ou
@@ -207,16 +212,17 @@ async def set_reachable(
     Kwarg obrigatório em vez de default: quem chama tem de dizer sobre qual
     conjunto está afirmando alcance (lição F57).
 
-    Lista de alcance vazia continua sendo no-op (F85): "o SU não lê NADA" quase
-    sempre é falha de leitura, não estado real — e apagaria o sinal da conta
-    inteira do BM de uma vez.
+    Nada medido é no-op. Recusa em todas as contas, ao contrário do índice vazio do F85,
+    é estado real: cada `false` tem uma resposta `#200` por trás.
     """
-    if not reachable_ids or not scope_ids:
+    if not scope_ids or not (le or recusa):
         return
     await conn.execute(
         "UPDATE meta_ad_accounts SET su_reachable = (ad_account_id = ANY($1::text[])) "
-        "WHERE ad_account_id = ANY($2::text[])",
-        reachable_ids,
+        "WHERE ad_account_id = ANY($3::text[]) "
+        "AND (ad_account_id = ANY($1::text[]) OR ad_account_id = ANY($2::text[]))",
+        le,
+        recusa,
         scope_ids,
     )
 
@@ -270,8 +276,9 @@ async def list_queues(conn: asyncpg.Connection) -> ReconcileQueues:
 
     Fix round 1 (review): as filas são exclusivas, `sem_su` tem precedência.
     Sem `AND a.su_reachable = true` aqui, uma conta na parceria, sem gestor E
-    sem SU (caso real em produção — `CA - V4 Lima Soares`, `CHUTE 07`) caía
-    nas DUAS filas ao mesmo tempo. Não é só duplicação visual: delegar um
+    sem SU caía nas DUAS filas ao mesmo tempo (os dois casos de produção que
+    pareciam reais, `CA - V4 Lima Soares` e `CHUTE 07`, eram artefato do índice
+    `/me/adaccounts` — F154; o predicado continua certo). Não é só duplicação visual: delegar um
     gestor numa conta que o system user não alcança produz um grant que só
     gera `#200` quando usado. A ordem certa do admin é atribuir o SU no
     Business Manager primeiro, delegar depois — uma fila que convida a

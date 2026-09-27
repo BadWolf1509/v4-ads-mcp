@@ -154,6 +154,12 @@ PRIMITIVOS = [
     # arquivo solto). Restaura a simetria com o par Google, que e a tese desta
     # PR.
     h.SRC / "meta_ads" / "account_overview.py",
+    # A sonda do F154 (revisao final da branch, 27/09): resolve "ontem" no fuso de
+    # cada conta sobre o instante `agora` que o job le uma vez e injeta. Nao le
+    # relogio hoje; um `agora: datetime | None = None` com `datetime.now(UTC)` de
+    # default reabriria o F141 no sinal que o painel mostra, e nada o pegaria:
+    # `src/meta_ads/` nao e varrido nem por TOOLS nem por JOBS.
+    h.SRC / "meta_ads" / "alcance.py",
 ]
 
 # Podem ler o relogio, e SO como default injetavel. Nao sao excecao ao guard:

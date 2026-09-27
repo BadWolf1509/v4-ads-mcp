@@ -22,13 +22,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.db.repositories.manager_meta_account_access import PARTNERSHIP_ENDED_REASON
+from src.meta_ads.alcance import Alcance
 from src.meta_ads.partnership import PartnershipSnapshot
 from src.meta_ads.reconcile import InventoryRow
 
 
 def _patches(job, *, apply: bool, parceria: list[str]):
-    """Setup comum: settings + as duas leituras (parceria completa, alcance
-    completo) + o `conn` que os testes passam a `reconcile_meta`.
+    """Setup comum: settings + a parceria completa + a sonda de alcance (todas as
+    contas lidas) + o `conn` que os testes passam a `reconcile_meta`.
     `record_job_run` vem à parte (`gravar_run`) porque alguns testes precisam
     inspecionar a chamada depois do `with`.
 
@@ -37,8 +38,6 @@ def _patches(job, *, apply: bool, parceria: list[str]):
     `patch` sobrando em `connection.get_pool` desarmaria justamente essa
     invariante — se alguém reintroduzisse o `pool.acquire()` interno, o mock o
     faria passar verde."""
-    from src.auth.meta_oauth import AdAccountsFetch
-
     conn = MagicMock()
     conn.execute = AsyncMock(return_value="UPDATE 0")
     gravar_run = AsyncMock()
@@ -62,11 +61,7 @@ def _patches(job, *, apply: bool, parceria: list[str]):
             ),
         ),
         patch.object(
-            job,
-            "_fetch_all_adaccounts",
-            AsyncMock(
-                return_value=AdAccountsFetch(accounts=[{"id": i} for i in parceria], complete=True)
-            ),
+            job, "sondar_alcance", AsyncMock(return_value=Alcance(le=frozenset(parceria)))
         ),
         patch.object(job, "record_job_run", gravar_run),
     ]
@@ -157,7 +152,8 @@ async def test_dry_run_observa_tudo_e_so_deixa_de_destruir() -> None:
     )
     assert all(isinstance(dia, date) for _aid, dia in absencias.await_args.kwargs["bump"])
     marca_alcance.assert_awaited_once()
-    assert marca_alcance.await_args.kwargs["reachable_ids"] == ["act_1"]
+    assert marca_alcance.await_args.kwargs["le"] == ["act_1"]
+    assert marca_alcance.await_args.kwargs["recusa"] == []
     # M4: o UPDATE é escopado à parceria — sem WHERE ele marcava su_reachable
     # também em conta inativa/fora da parceria, ruído num sinal que só faz
     # sentido para quem ESTÁ na parceria (spec §3).
@@ -209,8 +205,8 @@ async def test_com_apply_ligado_desativa_e_revoga_e_audita_a_conta() -> None:
     # Gate: a plataforma é obrigatória e FIXADA no call-site (sabotagem 2).
     assert audita.await_args.kwargs["platform"] == "meta"
     # Req. 3: alcance só é marcado com a leitura completa (aqui, complete=True
-    # nos dois lados) — reachable_ids reflete exatamente o que foi lido.
-    assert marca_alcance.await_args.kwargs["reachable_ids"] == ["act_1"]
+    # nos dois lados) — `le` reflete exatamente o que foi lido.
+    assert marca_alcance.await_args.kwargs["le"] == ["act_1"]
     # Req. 1: absences + alcance + desativação + revogação + a auditoria da
     # revogação inteiras dentro de UMA transação — tudo ou nada.
     conn.transaction.assert_called_once()
@@ -253,7 +249,6 @@ async def test_leitura_parcial_bloqueia_aplicacao_mesmo_com_apply_ligado() -> No
     Este é o outro lado do C2: a observação sai da trava do flag, mas NÃO sai da
     exigência de leitura completa. `set_reachable` sobre página truncada
     marcaria "sem SU" em conta que simplesmente não veio na página."""
-    from src.auth.meta_oauth import AdAccountsFetch
     from src.jobs import meta_resync as job
 
     conn = MagicMock()
@@ -277,9 +272,7 @@ async def test_leitura_parcial_bloqueia_aplicacao_mesmo_com_apply_ligado() -> No
             ),
         ),
         patch.object(
-            job,
-            "_fetch_all_adaccounts",
-            AsyncMock(return_value=AdAccountsFetch(accounts=[{"id": "act_1"}], complete=True)),
+            job, "sondar_alcance", AsyncMock(return_value=Alcance(le=frozenset({"act_1"})))
         ),
         patch.object(
             job.meta_ad_accounts,
@@ -380,3 +373,106 @@ async def test_reconcile_dos_dois_lados_exige_a_conexao_de_quem_chama() -> None:
             f"{fn.__qualname__}: `conn` voltou a ter default — quem chama pode "
             "omitir a conexão e abrir uma segunda transação por baixo da dele"
         )
+
+
+@pytest.mark.asyncio
+async def test_alcance_vem_da_sonda_e_o_indice_nao_e_chamado() -> None:
+    """F154: o alcance e medido por conta, e `/me/adaccounts` saiu do job.
+
+    Rede por `respx` em modo estrito: qualquer chamada nao mockada levanta. A parceria vem
+    das duas edges do BM; `act_1` le (200) e `act_2` recusa com `#200` — a forma medida em
+    27/09. Se o job voltasse a ler o indice, o `/me/adaccounts` nao teria rota.
+    """
+    import httpx
+    import respx
+
+    from src.jobs import meta_resync as job
+
+    grafo = "https://graph.facebook.com/v22.0"
+    contas = {
+        "data": [
+            {"id": "act_1", "name": "Lida", "timezone_name": "America/Sao_Paulo"},
+            {"id": "act_2", "name": "Recusa", "timezone_name": "America/Sao_Paulo"},
+        ]
+    }
+    recusa = {"error": {"code": 200, "message": "(#200) Ad account owner has NOT grant"}}
+    settings = MagicMock(
+        meta_system_user_token="tok", meta_business_id="bm", meta_reconcile_apply=False
+    )
+    conn = MagicMock()
+    conn.execute = AsyncMock(return_value="UPDATE 0")
+    marca_alcance = AsyncMock()
+    gravar_run = AsyncMock()
+    with respx.mock(assert_all_called=True) as rede, ExitStack() as stack:
+        rede.get(f"{grafo}/bm/client_ad_accounts").mock(
+            return_value=httpx.Response(200, json=contas)
+        )
+        rede.get(f"{grafo}/bm/owned_ad_accounts").mock(
+            return_value=httpx.Response(200, json={"data": []})
+        )
+        rede.get(f"{grafo}/act_1/insights").mock(
+            return_value=httpx.Response(200, json={"data": []})
+        )
+        rede.get(f"{grafo}/act_2/insights").mock(return_value=httpx.Response(403, json=recusa))
+        for p in [
+            patch.object(job, "get_settings", MagicMock(return_value=settings)),
+            patch.object(job.meta_ad_accounts, "list_inventory_rows", AsyncMock(return_value=[])),
+            patch.object(job.meta_ad_accounts, "upsert_many", AsyncMock(return_value=2)),
+            patch.object(job.meta_ad_accounts, "apply_absences", AsyncMock()),
+            patch.object(job.meta_ad_accounts, "set_reachable", marca_alcance),
+            patch.object(job, "record_job_run", gravar_run),
+        ]:
+            stack.enter_context(p)
+        plano = await job.reconcile_meta(conn)
+
+    assert marca_alcance.await_args.kwargs["le"] == ["act_1"]
+    assert marca_alcance.await_args.kwargs["recusa"] == ["act_2"]
+    assert plano.unreachable == ["act_2"]
+    resumo = gravar_run.await_args.kwargs["params_summary"]
+    assert resumo["unreachable"] == 1
+    assert resumo["alcance_nao_medido"] == 0
+
+
+@pytest.mark.asyncio
+async def test_desligamento_nao_depende_do_alcance() -> None:
+    """F154 fecha o M10: com a parceria inteira lida, o desligamento roda mesmo que a
+    sonda nao tenha medido conta nenhuma (token recusado, limite, rede).
+
+    Antes a completude era `parceria AND /me/adaccounts`: uma indisponibilidade do indice —
+    que desde a spec 2026-08-20 §3 nao define o inventario — congelava o offboarding e
+    gravava `status=error` todo dia.
+    """
+    from src.jobs import meta_resync as job
+
+    conn, gravar_run, ps = _patches(job, apply=True, parceria=["act_1"])
+    desativa = AsyncMock(return_value=1)
+    with ExitStack() as stack:
+        for p in [
+            *ps,
+            patch.object(
+                job,
+                "sondar_alcance",
+                AsyncMock(return_value=Alcance(nao_medido=frozenset({"act_1"}))),
+            ),
+            patch.object(
+                job.meta_ad_accounts,
+                "list_inventory_rows",
+                AsyncMock(return_value=[InventoryRow("act_2", True, 9)]),
+            ),
+            patch.object(job.meta_ad_accounts, "upsert_many", AsyncMock(return_value=1)),
+            patch.object(job.meta_ad_accounts, "apply_absences", AsyncMock()),
+            patch.object(job.meta_ad_accounts, "set_reachable", AsyncMock()),
+            patch.object(job.meta_ad_accounts, "deactivate", desativa),
+            patch.object(
+                job.manager_meta_account_access, "revoke_for_account", AsyncMock(return_value=[])
+            ),
+            patch.object(job, "record_access_revocation", AsyncMock()),
+        ]:
+            stack.enter_context(p)
+        plano = await job.reconcile_meta(conn)
+
+    assert plano.blocked_reason is None
+    assert desativa.await_args.kwargs["ad_account_ids"] == ["act_2"]
+    resumo = gravar_run.await_args.kwargs["params_summary"]
+    assert resumo["complete"] is True
+    assert resumo["alcance_nao_medido"] == 1

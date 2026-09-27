@@ -80,7 +80,7 @@ def _faltas_com_esta_execucao(r: InventoryRow, *, now: datetime) -> int:
 def build_plan(
     *,
     partnership_ids: set[str],
-    reachable_ids: set[str],
+    refused_ids: set[str],
     inventory: list[InventoryRow],
     complete: bool,
     now: datetime,
@@ -88,7 +88,7 @@ def build_plan(
     max_removal_ratio: float = 0.2,
     max_removal_abs: int = 5,
 ) -> Plan:
-    """(parceria, alcance, inventário, instante) → plano.
+    """(parceria, recusas medidas, inventário, instante) → plano.
 
     Aditivo sempre; destrutivo só com leitura completa e dentro do teto.
 
@@ -105,12 +105,18 @@ def build_plan(
     ids_ativos = {r.ad_account_id for r in ativos}
 
     to_add = sorted(partnership_ids - ids_ativos)
-    # T3c (revisão de branch): o sinal da §3 é `in_partnership ∧ ¬reachable` —
+    # T3c (revisão de branch): o sinal da §3 é `in_partnership ∧ recusada` —
     # sem interseção com o inventário. Intersectar com `ids_ativos` (lido ANTES
-    # do upsert) apagava justamente a conta nova-e-inalcançável, que é o caso
-    # real em produção (`CA - V4 Lima Soares`, `CHUTE 07`): ela entra por
+    # do upsert) apagaria justamente a conta nova-e-recusada: ela entra por
     # `to_add` no mesmo ciclo, e o audit reportaria `unreachable: 0` no dia 1.
-    unreachable = sorted(partnership_ids - reachable_ids)
+    # (Os dois casos de produção que a motivaram, `CA - V4 Lima Soares` e
+    # `CHUTE 07`, eram artefato do índice — F154.)
+    #
+    # F154: `refused_ids` sao as RECUSAS medidas pela sonda (`meta_ads.alcance`), nao o
+    # complemento de um indice. `parceria - alcancadas` punha no sinal tambem o que nao foi
+    # lido — a CHUTE 07, lida pelo system user e ausente de `/me/adaccounts`, saia como
+    # inalcancavel todo dia. Conta nao medida fica fora: nao medido nao e resposta.
+    unreachable = sorted(partnership_ids & refused_ids)
     to_reset = sorted(
         r.ad_account_id for r in ativos if r.missed_syncs and r.ad_account_id in partnership_ids
     )

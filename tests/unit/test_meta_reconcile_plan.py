@@ -25,7 +25,7 @@ def inv(id_: str, ativo: bool = True, faltas: int = 0) -> InventoryRow:
 def test_conta_nova_da_parceria_entra() -> None:
     plano = build_plan(
         partnership_ids={"act_1", "act_2"},
-        reachable_ids={"act_1", "act_2"},
+        refused_ids=set(),
         inventory=[inv("act_1")],
         complete=True,
         now=AGORA,
@@ -39,7 +39,7 @@ def test_ausencia_na_parceria_conta_carencia_antes_de_remover() -> None:
     for faltas, espera_remocao in ((0, False), (1, False), (2, True)):
         plano = build_plan(
             partnership_ids={"act_1"},
-            reachable_ids={"act_1"},
+            refused_ids=set(),
             inventory=[inv("act_1"), inv("act_2", faltas=faltas)],
             complete=True,
             now=AGORA,
@@ -53,7 +53,7 @@ def test_leitura_incompleta_bloqueia_o_lado_destrutivo_mas_nao_o_aditivo() -> No
     """F93: pagina que falhou nao e churn. Adicionar segue seguro."""
     plano = build_plan(
         partnership_ids={"act_1", "act_novo"},
-        reachable_ids={"act_1"},
+        refused_ids={"act_novo"},
         inventory=[inv("act_1"), inv("act_sumiu", faltas=9)],
         complete=False,
         now=AGORA,
@@ -69,7 +69,7 @@ def test_guard_percentual_barra_remocao_em_massa() -> None:
     inventario = [inv(f"act_{i}", faltas=9) for i in range(10)]
     plano = build_plan(
         partnership_ids=set(),
-        reachable_ids=set(),
+        refused_ids=set(),
         inventory=inventario,
         complete=True,
         now=AGORA,
@@ -85,7 +85,7 @@ def test_conta_na_parceria_sem_su_e_sinalizada_nunca_removida() -> None:
     """A distincao que o F128 nao tinha: 'nao alcanco' != 'nao e mais nossa'."""
     plano = build_plan(
         partnership_ids={"act_1"},
-        reachable_ids=set(),
+        refused_ids={"act_1"},
         inventory=[inv("act_1")],
         complete=True,
         now=AGORA,
@@ -98,7 +98,7 @@ def test_conta_na_parceria_sem_su_e_sinalizada_nunca_removida() -> None:
 def test_conta_que_reaparece_zera_a_carencia() -> None:
     plano = build_plan(
         partnership_ids={"act_1"},
-        reachable_ids={"act_1"},
+        refused_ids=set(),
         inventory=[inv("act_1", faltas=2)],
         complete=True,
         now=AGORA,
@@ -110,7 +110,7 @@ def test_conta_que_reaparece_zera_a_carencia() -> None:
 def test_conta_ja_desativada_nao_reaparece_no_plano_destrutivo() -> None:
     plano = build_plan(
         partnership_ids=set(),
-        reachable_ids=set(),
+        refused_ids=set(),
         inventory=[inv("act_velha", ativo=False, faltas=9)],
         complete=True,
         now=AGORA,
@@ -133,7 +133,7 @@ def test_guard_mede_o_inventario_ativo_e_nao_so_os_ausentes() -> None:
 
     plano = build_plan(
         partnership_ids=partnership,
-        reachable_ids=partnership,
+        refused_ids=set(),
         inventory=inventario,
         complete=True,
         now=AGORA,
@@ -159,7 +159,7 @@ def test_teto_absoluto_e_o_vinculante_quando_a_conta_cresce() -> None:
 
     plano = build_plan(
         partnership_ids=parceria,
-        reachable_ids=parceria,
+        refused_ids=set(),
         inventory=inventario,
         complete=True,
         now=AGORA,
@@ -179,7 +179,7 @@ def test_teto_absoluto_e_o_vinculante_quando_a_conta_cresce() -> None:
     # simplesmente barrando tudo.
     plano_ok = build_plan(
         partnership_ids=parceria,
-        reachable_ids=parceria,
+        refused_ids=set(),
         inventory=[inv(f"act_p_{i}") for i in range(44)] + ausentes[:5],
         complete=True,
         now=AGORA,
@@ -203,7 +203,7 @@ def test_conta_nova_e_inalcancavel_sinaliza_no_mesmo_ciclo() -> None:
     """
     plano = build_plan(
         partnership_ids={"act_nova_sem_su", "act_ja_dentro"},
-        reachable_ids={"act_ja_dentro"},
+        refused_ids={"act_nova_sem_su"},
         inventory=[inv("act_ja_dentro")],
         complete=True,
         now=AGORA,
@@ -240,7 +240,7 @@ def test_retry_no_mesmo_dia_nao_soma_a_ausencia_ja_contada() -> None:
     )
     plano = build_plan(
         partnership_ids={"act_1"},
-        reachable_ids={"act_1"},
+        refused_ids=set(),
         inventory=[inv("act_1"), ja_contada],
         complete=True,
         now=AGORA,
@@ -267,7 +267,7 @@ def test_ausencia_carimbada_em_outro_dia_continua_somando() -> None:
     )
     plano = build_plan(
         partnership_ids={"act_1"},
-        reachable_ids={"act_1"},
+        refused_ids=set(),
         inventory=[inv("act_1"), de_ontem],
         complete=True,
         now=AGORA,
@@ -275,3 +275,20 @@ def test_ausencia_carimbada_em_outro_dia_continua_somando() -> None:
     )
     assert plano.to_remove == ["act_2"], "carencia parou de avancar em dia novo"
     assert plano.to_bump == []
+
+
+def test_conta_nao_medida_nao_e_sinalizada_como_inalcancavel() -> None:
+    """F154: `unreachable` sao as RECUSAS medidas, nao "tudo que nao foi lido".
+
+    Antes o alcance era `parceria - indice`, e a CHUTE 07 — lida pelo system user, mas
+    ausente de `/me/adaccounts` — saia como inalcancavel todo dia. Conta que a sonda nao
+    conseguiu medir (token, limite, timeout) tambem nao entra: nao medido nao e resposta.
+    """
+    plano = build_plan(
+        partnership_ids={"act_lida", "act_nao_medida", "act_recusada"},
+        refused_ids={"act_recusada"},
+        inventory=[inv("act_lida"), inv("act_nao_medida"), inv("act_recusada")],
+        complete=True,
+        now=AGORA,
+    )
+    assert plano.unreachable == ["act_recusada"]
