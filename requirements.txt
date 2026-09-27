@@ -153,7 +153,7 @@ pycountry==26.2.16
     # via facebook-business
 pycparser==3.0 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
     # via cffi
-pydantic==2.13.4
+pydantic==2.13.5
     # via
     #   v4-ads-mcp (pyproject.toml)
     #   fastapi
