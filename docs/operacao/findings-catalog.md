@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~5700 linhas, 573 KB, IDs de **F1 a F195** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 55 têm; 56 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~5700 linhas, 576 KB, IDs de **F1 a F196** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 55 têm; 56 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -5662,5 +5662,47 @@ Meta discordavam da plataforma que elas leem.
 **invertida** (início hoje, fim ontem: em 01/10, `01/10–30/09`) — achado ao mover o código,
 conferido na `main`; herdado sem mudança, porque consertá-lo muda 15 tools Google e pede
 medida própria (o que a GAQL faz com `BETWEEN` invertido). Nenhuma tool Meta aceita o preset.
+→ **F196**, corrigido no mesmo dia: a GAQL responde a janela invertida com 0 linhas, sem erro.
 
 **Não medido:** quanto do uso real das tools Meta passa por preset `LAST_N_DAYS`.
+
+---
+
+## F196 (MEDIUM, ✅ CORRIGIDO 2026-09-27) — o `THIS_MONTH` do Google no dia 1 do mês devolve janela invertida, e a GAQL a responde com zero, sem erro
+
+> **Como apareceu:** ao mover o corpo dos presets para `src/janelas.py` no F195 (27/09). O
+> `THIS_MONTH` era `(dia 1, ontem)`, e no dia 1 o "ontem" é do mês anterior — em 01/10,
+> `01/10–30/09`. O irmão `THIS_WEEK`, três linhas abaixo, já tinha a proteção (na segunda,
+> `(segunda, segunda)`); o `THIS_MONTH`, não.
+
+**Medido em 27/09** (Mestre da Obra – João Pessoa, só leitura): `BETWEEN '2026-09-27' AND
+'2026-09-26'` devolve **0 linhas e nenhum erro**, com o controle de um dia na mesma conta
+devolvendo R$ 180,08. Em 01/10 as **15 tools Google** que aceitam o preset (o
+`bulk_pause_by_query` entre elas) diriam "zero no mês" — a família do F191: ausência de
+medição apresentada como zero. O comparativo herdava o defeito: `get_comparison_range` sobre a
+janela invertida calcula `period_days = 0` e devolve outra janela invertida.
+
+**A regra sem mecanismo:** o intervalo custom já recusava `from` depois de `to`
+(`_common.parse_date_range`); o preset nunca passou por essa checagem. E o custom da Meta
+(`resolve_meta_date_window`) também não a tinha.
+
+**Decisão (Wellington, 27/09): no dia 1, só hoje** — como o `THIS_WEEK` na segunda, e o mesmo
+que o `DURING THIS_MONTH` do Google devolve nesse dia.
+
+**✅ O que foi feito:**
+
+- `THIS_MONTH` no dia 1 = `(hoje, hoje)`; nos outros dias segue do dia 1 até ontem.
+- **Checagem na fonte:** `janela_do_preset` garante `início <= fim <= hoje` e falha alto
+  (`ValueError`) se uma regra de preset a violar — janela invertida não chega mais à GAQL.
+- **O gêmeo Meta:** o custom da Meta recusa início depois do fim, como o do Google.
+- **Guards** (`tests/unit/test_janelas.py`): a varredura de todo preset em todo dia de três anos
+  (2026–2028, com o 29/02) — sem o ramo do dia 1, ela lista as 37 viradas de mês —, o dia 1 e a
+  segunda como exemplos, a checagem na fonte e o custom Meta; cada um derrubado pela sabotagem
+  que remove o seu pedaço.
+
+**Fora, com o motivo:** as **duas definições de `THIS_MONTH`**. O `get_budget_pacing` usa o
+`DURING THIS_MONTH` do Google, que inclui hoje (medido: R$ 8.284,69, igual a `01/09–27/09`,
+contra R$ 8.188,72 de `01/09–26/09`), e as 15 tools terminam ontem — a diferença é o dia
+corrente. Alinhar muda os números de todo dia e reabre, no comparativo do overview, o dia
+parcial que o F195 tirou: decisão própria. E, no dia 1 e na segunda, o comparativo do overview
+compara um dia parcial com um dia cheio — como a interface do Google.
