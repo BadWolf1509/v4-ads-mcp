@@ -3,10 +3,10 @@
 Roda piggyback no fim do job diário account_resync (mesmo Cloud Run Job +
 Cloud Scheduler) pra que conta de cliente nova entre no inventário zero-touch.
 
-Le duas fontes: `fetch_partnership` (autoritativa — a edge do BM, spec
-2026-08-20) e `_fetch_all_adaccounts` (o alcance do system user via
-/me/adaccounts). `build_plan` decide o que fazer com as duas; este módulo só
-aplica. Grants seguem MANUAIS (Modelo B): reconciliar nunca CONCEDE acesso —
+Le a parceria (`fetch_partnership`, autoritativa — a edge do BM, spec
+2026-08-20) e MEDE o alcance do system user com uma leitura mínima por conta da
+parceria (`meta_ads.alcance`, F154) — não mais pelo índice `/me/adaccounts`, que
+omitia conta que o SU lê. `build_plan` decide; este módulo só aplica. Grants seguem MANUAIS (Modelo B): reconciliar nunca CONCEDE acesso —
 só ajusta o inventário e, quando uma conta sai da parceria, revoga o que os
 gestores tinham.
 
@@ -21,7 +21,6 @@ import asyncpg
 import httpx
 import structlog
 
-from src.auth.meta_oauth import _fetch_all_adaccounts
 from src.clock import account_today
 from src.config import get_settings
 from src.db import connection
@@ -29,6 +28,7 @@ from src.db.repositories import manager_meta_account_access, meta_ad_accounts
 from src.governance.bookkeeping import best_effort
 from src.jobs._audit import record_access_revocation, record_job_crash, record_job_run
 from src.logging import configure_logging
+from src.meta_ads.alcance import sondar_alcance
 from src.meta_ads.partnership import fetch_partnership
 from src.meta_ads.reconcile import Plan, build_plan
 
@@ -71,28 +71,34 @@ async def reconcile_meta(conn: asyncpg.Connection, *, now: datetime | None = Non
         log.warning("meta_reconcile_no_business_id")
         return Plan(blocked_reason="meta_business_id nao configurado")
 
+    # Lido antes da rede: a sonda resolve "ontem" no fuso de cada conta sobre este
+    # mesmo instante, e o carimbo das ausências abaixo também (C4/F141).
+    agora = now if now is not None else datetime.now(UTC)
     async with httpx.AsyncClient(timeout=60.0) as http:
         parceria = await fetch_partnership(
             http,
             access_token=settings.meta_system_user_token,
             business_id=settings.meta_business_id,
         )
-        alcance = await _fetch_all_adaccounts(http, settings.meta_system_user_token)
+        # F154: o alcance é MEDIDO — uma leitura mínima por conta da parceria, na
+        # forma das tools. O índice `/me/adaccounts` omitia conta que o SU lê (a
+        # CHUTE 07, em 27/09), e a fila do painel mandava atribuir um SU que já lia.
+        alcance = await sondar_alcance(
+            http,
+            access_token=settings.meta_system_user_token,
+            contas=[(a["ad_account_id"], a.get("timezone_name")) for a in parceria.accounts],
+            agora=agora,
+        )
 
     ids_parceria = {a["ad_account_id"] for a in parceria.accounts}
-    ids_alcance = {
-        i if i.startswith("act_") else f"act_{i}"
-        for i in (a.get("id", "") for a in alcance.accounts)
-    }
 
-    # M10 (registrado, não corrigido): o AND acopla as duas fontes que a §3
-    # desacopla de propósito. Falha para o lado seguro — sem as duas leituras
-    # inteiras nada é desativado —, mas o preço é real: indisponibilidade
-    # prolongada de `/me/adaccounts` (que não define mais o inventário) congela
-    # o offboarding e grava `status=error` todo dia, indefinidamente.
-    leitura_completa = parceria.complete and alcance.complete
+    # F154 fecha o M10: a completude é só a da parceria, a fonte autoritativa
+    # (spec 2026-08-20 §3). Antes era `parceria AND /me/adaccounts`, e uma
+    # indisponibilidade do índice — que não define o inventário — congelava o
+    # offboarding e gravava `status=error` todo dia. A sonda não entra aqui: conta
+    # não medida só deixa de ter o alcance atualizado, não bloqueia nada.
+    leitura_completa = parceria.complete
 
-    agora = now if now is not None else datetime.now(UTC)
     # Uma transação só pro bloco de escrita inteiro: metade aplicada
     # (carência somada sem desativar, ou desativada com grant ainda vivo) é
     # exatamente a inconsistência que este recurso existe pra evitar.
@@ -106,8 +112,8 @@ async def reconcile_meta(conn: asyncpg.Connection, *, now: datetime | None = Non
         inventario = await meta_ad_accounts.list_inventory_rows(conn)
         plano = build_plan(
             partnership_ids=ids_parceria,
-            # O complemento do indice, por enquanto: a sonda da Task 4 substitui a fonte.
-            refused_ids=ids_parceria - ids_alcance,
+            # F154: as recusas MEDIDAS (`#200`), não o complemento de um índice.
+            refused_ids=set(alcance.recusa),
             inventory=inventario,
             complete=leitura_completa,
             # O MESMO instante que carimba as ausências abaixo.
@@ -145,17 +151,15 @@ async def reconcile_meta(conn: asyncpg.Connection, *, now: datetime | None = Non
         fusos = {r.ad_account_id: r.timezone_name for r in inventario}
         bump = [(aid, account_today(fusos[aid], now=agora)) for aid in plano.to_bump]
         await meta_ad_accounts.apply_absences(conn, bump=bump, reset=plano.to_reset)
-        # `leitura_completa`, NÃO `aplicado`: confundir os dois foi o C2. O que o
-        # alcance exige é a leitura inteira de /me/adaccounts — sobre página
-        # truncada, "não veio" significa "não li", e marcar su_reachable=false
-        # inventaria um sinal falso. Que a trava de rollout esteja ligada ou não é
-        # outra pergunta, e não é esta. Índice vazio segue no-op (F85) até a sonda
-        # da Task 4 substituir a fonte.
-        if leitura_completa and ids_alcance:
+        # `leitura_completa`, NÃO `aplicado`: confundir os dois foi o C2 — a trava
+        # de rollout é outra pergunta. Com a parceria truncada o escopo também vem
+        # truncado, e o alcance espera a leitura inteira. Conta que a sonda não mediu
+        # não é tocada (`set_reachable` só grava `le`/`recusa`).
+        if leitura_completa:
             await meta_ad_accounts.set_reachable(
                 conn,
-                le=sorted(ids_parceria & ids_alcance),
-                recusa=sorted(ids_parceria - ids_alcance),
+                le=sorted(alcance.le),
+                recusa=sorted(alcance.recusa),
                 scope_ids=sorted(ids_parceria),
             )
 
@@ -209,13 +213,13 @@ async def reconcile_meta(conn: asyncpg.Connection, *, now: datetime | None = Non
                 "added": len(plano.to_add),
                 "removed": len(plano.to_remove),
                 "bumped": len(plano.to_bump),
+                # F154: só as recusas medidas; o que a sonda não mediu sai
+                # separado, para "não sei" não se passar por "não alcança".
                 "unreachable": len(plano.unreachable),
+                "alcance_nao_medido": len(alcance.nao_medido),
                 "revoked_grants": revogados,
-                # M3: a §9 nomeia `complete` explicitamente. Dá pra inferir de
-                # error_message == "leitura incompleta", mas essa string
-                # colapsa duas leituras diferentes (parceria vs
-                # /me/adaccounts) num motivo só — na triagem você não saberia
-                # qual falhou.
+                # M3: a §9 nomeia `complete` explicitamente. Desde o F154 ele é
+                # só a leitura da parceria — o alcance não bloqueia mais nada.
                 "complete": leitura_completa,
                 "applied": aplicado,
             },

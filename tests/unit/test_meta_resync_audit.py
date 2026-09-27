@@ -13,8 +13,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.auth.meta_oauth import AdAccountsFetch
 from src.jobs import meta_resync
+from src.meta_ads.alcance import Alcance
 from src.meta_ads.partnership import PartnershipSnapshot
 
 
@@ -53,9 +53,7 @@ async def test_reconcile_meta_records_audit(monkeypatch: pytest.MonkeyPatch) -> 
         ),
     )
     monkeypatch.setattr(
-        meta_resync,
-        "_fetch_all_adaccounts",
-        AsyncMock(return_value=AdAccountsFetch(accounts=[{"id": "act_1"}], complete=True)),
+        meta_resync, "sondar_alcance", AsyncMock(return_value=Alcance(le=frozenset({"act_1"})))
     )
     monkeypatch.setattr(meta_resync.meta_ad_accounts, "upsert_many", AsyncMock(return_value=1))
     monkeypatch.setattr(
@@ -112,9 +110,7 @@ async def test_reconcile_meta_record_job_run_failure_is_non_fatal(
         ),
     )
     monkeypatch.setattr(
-        meta_resync,
-        "_fetch_all_adaccounts",
-        AsyncMock(return_value=AdAccountsFetch(accounts=[{"id": "act_1"}], complete=True)),
+        meta_resync, "sondar_alcance", AsyncMock(return_value=Alcance(le=frozenset({"act_1"})))
     )
     monkeypatch.setattr(meta_resync.meta_ad_accounts, "upsert_many", AsyncMock(return_value=1))
     monkeypatch.setattr(

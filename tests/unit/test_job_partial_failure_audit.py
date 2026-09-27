@@ -100,15 +100,15 @@ async def test_fetch_completo_quando_paginacao_termina_naturalmente() -> None:
 def _patch_resync(
     monkeypatch: pytest.MonkeyPatch, *, parceria_accounts: list, complete: bool
 ) -> tuple[AsyncMock, AsyncMock, MagicMock]:
-    """Troca as duas leituras (`fetch_partnership` + `_fetch_all_adaccounts`,
-    ambas com o mesmo `complete`) e o passo destrutivo do plano por dublês.
+    """Troca a parceria (`fetch_partnership`, com o `complete` pedido), a sonda de
+    alcance (todas as contas lidas) e o passo destrutivo do plano por dublês.
 
     O inventário fixo (`act_ausente`, ativo, `missed_syncs=2`) nunca está na
     parceria — cruza o limiar (`2 + 1 >= 3`) sempre que `complete=True`, o que
     faz `build_plan()` propor remoção e exercita `deactivate`/`revoke_for_account`
     de verdade no teste do caminho feliz.
     """
-    from src.auth.meta_oauth import AdAccountsFetch
+    from src.meta_ads.alcance import Alcance
 
     settings = MagicMock()
     settings.meta_system_user_token = "tok"
@@ -122,12 +122,9 @@ def _patch_resync(
     )
     monkeypatch.setattr(
         meta_resync,
-        "_fetch_all_adaccounts",
+        "sondar_alcance",
         AsyncMock(
-            return_value=AdAccountsFetch(
-                accounts=[{"id": a["ad_account_id"]} for a in parceria_accounts],
-                complete=complete,
-            )
+            return_value=Alcance(le=frozenset(a["ad_account_id"] for a in parceria_accounts))
         ),
     )
     monkeypatch.setattr(

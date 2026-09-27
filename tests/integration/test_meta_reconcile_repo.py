@@ -433,13 +433,13 @@ async def test_list_inventory_rows_traz_a_data_da_ultima_ausencia_meta(db) -> No
 
 
 def _patches_do_job(*, apply: bool):
-    """Settings + as duas leituras da rede (parceria vazia, alcance vazio).
+    """Settings + a rede (parceria vazia; a sonda de alcance sem conta a medir).
 
     Parceria vazia e completa e o cenario de churn: a conta semeada esta ATIVA
     no inventario e nao esta na parceria, entao `build_plan` a manda pro
     `to_bump` (carencia 0 + 1 = 1 < limiar 3). O banco e real; so a rede sai.
     """
-    from src.auth.meta_oauth import AdAccountsFetch
+    from src.meta_ads.alcance import Alcance
     from src.meta_ads.partnership import PartnershipSnapshot
 
     return [
@@ -459,11 +459,7 @@ def _patches_do_job(*, apply: bool):
             "fetch_partnership",
             AsyncMock(return_value=PartnershipSnapshot([], True)),
         ),
-        patch.object(
-            meta_resync,
-            "_fetch_all_adaccounts",
-            AsyncMock(return_value=AdAccountsFetch(accounts=[], complete=True)),
-        ),
+        patch.object(meta_resync, "sondar_alcance", AsyncMock(return_value=Alcance())),
     ]
 
 
