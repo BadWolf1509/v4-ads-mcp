@@ -30,7 +30,7 @@
 | Revisão servindo | **`v4-ads-mcp-00128-j2h`**, 100% do tráfego (medido por `gcloud` em 26/09, 23:20 UTC) — o deploy do **#114**, que virou a trava Google (run `36278725323`, `test` e `deploy` `success`). O código é o do **#111** (F193), em produção desde a `00127-9x6`, cujo `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186); em 26/09 as tools do F193 responderam por uma sessão autenticada (smoke abaixo), que prova `tools/call`, não o `tools/list` da revisão nova |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
-| Catálogo | até **F193** (~5.400 linhas, 563 KB) |
+| Catálogo | até **F194** (~5.500 linhas. 564 KB) |
 
 **Smoke de leitura do F193 em produção (26/09, `Conta Interna - 02`):** `filters_applied` em `get_campaign_performance` (com `campaign_status`, e sem ele com `status=all`), `get_account_overview` (aninhado `current`/`previous`, janelas iguais às de `period`/`previous_period`), `get_negative_keywords_audit` (`nivel: "campanha"`), `get_budget_pacing` (`{"during": "THIS_MONTH"}`) e `get_performance_breakdown` por keyword (`criterion_status`); razões `null` num período sem atividade. **Limite medido:** para período sem atividade o Google devolve uma linha **zerada**, não nenhuma linha — então `sem_dados_no_periodo` vem `false` com contagens zero, e só fica `true` quando não vem linha nenhuma. Quem protege a leitura são as razões `null`. As descriptions novas só aparecem em sessão MCP nova (F140).
 
@@ -83,6 +83,7 @@ na máquina dos outros gestores, ou o LLM escolhendo a tool pelo nome. Separar p
 
 - **Aplicar no plugin `v4-trafego-google-ads` o ajuste do `null`.** Seis pontos fazem conta ou ranking com campos que, desde o deploy de 26/09, podem vir `null` (`analise-performance-google-ads/SKILL.md:44,137`; `relatorio-cliente-google-ads/SKILL.md:33,76-89,112-116`; `shared/v4-brand.md:43`). O texto das mudanças foi entregue em 26/09; a cópia instalada é upload do app, então o ajuste é na fonte. Até lá o relatório de cliente pode imprimir `None`.
 - **Remover do BM as contas Meta das quatro clientes que saíram** (decisão de 26/09): Dr. Dérick Vinhas (`act_4051924171730156`), Dra. Paula Minchillo (`act_1479232423809572`), Imperial Alimentos (`act_1648706246292124`) e Panelas Veneza (`act_374213944466235`, da Alumínios Veneza) — medidas em 26/09 alcançáveis pelo system user, com 4 grants vivos cada. A reconciliação Meta só revoga quando o alcance some: fora do BM, ela revoga sozinha em 3 execuções, com trilha. Revogar pelo painel foi descartado — o BM seguiria alcançando, e nada impediria reconceder.
+- **Nível de acesso da API Meta.** O cabeçalho `x-fb-ads-insights-throttle` diz `ads_api_access_tier: development_access` (medido em 26/09): o app segue no Limited Access do **D1** de maio. A regra do D1 para pedir o Full Access é 500 chamadas em 15 dias; o uso medido em 26/09 é de ~200 por quinzena (395 chamadas Meta em 30 dias). Decisão sua: pedir agora com o volume atual, ou esperar.
 - **F129** — governança do system user Meta: ação humana, fora do código.
 - **F67** — custom domain `mcpv4.fluxocerto.dev.br`, pendente via LB.
 - **Pedir ao TI da V4 uma identidade `@v4company.com` sem caixa postal** (alias ou conta de serviço) — é o que **desbloqueia o F186 por inteiro**: manager com grant zero, pior caso de vazamento `tools/list`, e a reconciliação não a toca. Sem ela não há token de CI possível: `sessions_create` só emite para o próprio manager logado, e login exige identidade Google do domínio. **Emitir sob um manager existente está recusado** — poria no GitHub Actions um token com alcance de ~38 contas Google e 26 Meta.
@@ -106,7 +107,7 @@ no código não vira trabalho até ser verificado.
 
 As **métricas Meta** que a nota do F190 chama de "sub-projeto 2" (`_parse_buc_header_pct`,
 zero no lugar de campo ausente, `_brl` fixo, atribuição implícita) **nunca estiveram em
-sub-projeto nenhum** — viraram a frente *métricas Meta*.
+sub-projeto nenhum** — viraram a frente *métricas Meta*, fechada no **F194** (27/09).
 
 ### Ordem de ataque (atualizada em 26/09)
 
@@ -114,10 +115,9 @@ Medir a exposição, dar dado às decisões, consertos pequenos, e só então sp
 
 1. **Rollout Google** — virado e conferido em 26/09; falta a execução de 28/09 (Alumínios Veneza).
 2. **Fase 2B** — em 04/10, separar o uso por gestor, junto da remedição dos buckets.
-3. **Métricas Meta** (spec) — zero no lugar de "não veio", e o limitador que lê "não sei" como 0%.
-4. **F154** (spec).
-5. **Infra e guards** (spec) — o resto dos sub-projetos 3 e 4.
-6. **`recommendation_subscription`** — tool de leitura no MCC.
+3. **F154** (spec).
+4. **Infra e guards** (spec) — o resto dos sub-projetos 3 e 4.
+5. **`recommendation_subscription`** — tool de leitura no MCC.
 
 ### Os abertos, um por linha
 
@@ -131,4 +131,4 @@ Medir a exposição, dar dado às decisões, consertos pequenos, e só então sp
 | — | *negativas de grupo e listas compartilhadas na auditoria de negativas* (spec §7: frente própria) |
 | — | follow-ups do **F193** (Minor, não bloqueiam) — listados no corpo do [#111](https://github.com/BadWolf1509/v4-ads-mcp/pull/111): comentário da isenção do `apply_recommendation`, frase do eco nas três tools do F191, cobertura estreita de alguns testes |
 
-**Fechados de 20 a 26/09:** **F179**, **F181–F184**, **F188**, **F189**, **F190**, **F191** e **F193**. O defeito de cada um está no [catálogo](findings-catalog.md); a narrativa desses dias, que morava aqui, foi para [`_archive/estado-atual-2026-09-20-a-26.md`](../_archive/estado-atual-2026-09-20-a-26.md). 🔑 A lição que atravessa todos: **existia a regra e não existia o mecanismo** — a invariante escrita, e nada que a aplicasse.
+**Fechados de 20 a 26/09:** **F179**, **F181–F184**, **F188**, **F189**, **F190**, **F191**, **F193** e **F194**. O defeito de cada um está no [catálogo](findings-catalog.md); a narrativa desses dias, que morava aqui, foi para [`_archive/estado-atual-2026-09-20-a-26.md`](../_archive/estado-atual-2026-09-20-a-26.md). 🔑 A lição que atravessa todos: **existia a regra e não existia o mecanismo** — a invariante escrita, e nada que a aplicasse.

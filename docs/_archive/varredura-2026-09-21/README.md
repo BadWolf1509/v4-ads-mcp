@@ -43,7 +43,7 @@ o F191 é a classe A. Os IDs F<n> citados abaixo estão no
 | 1 | `filters_applied` omite os filtros que cortam | fechado — F191 |
 | 2 | 6 tools com `status` default `'enabled'` não ecoam o filtro | fechado — F193 |
 | 3 | `get_top_keywords_creatives` filtra `ENABLED` sem declarar | fechado — F193 |
-| 4 | Meta: `purchases`/`leads`/`purchase_roas` viram `0` quando o campo não vem | aberto — *métricas Meta* |
+| 4 | Meta: `purchases`/`leads`/`purchase_roas` viram `0` quando o campo não vem | fechado — F194 (ausente é `null`; o total canônico é `omni_purchase`) |
 | 5 | `get_account_overview`: `if not rows` devolve zeros sem marcador | fechado — F193 |
 | 6 | `bulk_pause_by_query` não diz sobre qual janela mediu | fechado — F193 |
 | 7 | `get_budget_pacing`: `ENABLED` fixo, sem parâmetro nem eco | fechado — F193 (eco; parâmetro de status não entrou) |
@@ -72,13 +72,13 @@ o F191 é a classe A. Os IDs F<n> citados abaixo estão no
 | 1 | token do system user na query string | fechado — F190 |
 | 2 | nenhum timeout HTTP | fechado — F190 (`_TIMEOUT_GRAPH` no httpx) |
 | 3 | 5xx com corpo não-JSON / `cast(dict)` | fechado — F190 (`MetaGraphHTTPError` em não-200 e em corpo que não é dict) |
-| 4 | três regras diferentes para os mesmos campos | aberto — *métricas Meta* |
-| 5 | contrato de atribuição implícito | aberto — *métricas Meta* |
-| 6 | `reach`/`frequency` sob breakdown: ausência vira `0` | aberto — *métricas Meta* |
-| 7 | BUC: "desconhecido" gravado como `0`; quota de app nunca lida | aberto — *métricas Meta*. Conferido em 25/09: `src/governance/rate_limit.py` devolve `0` em três caminhos |
+| 4 | três regras diferentes para os mesmos campos | fechado — F194 (um contrato só, `metricas.py`, com guard) |
+| 5 | contrato de atribuição implícito | fechado — F194 (atribuição unificada fixada e ecoada; medido: sem efeito na conta com conversões) |
+| 6 | `reach`/`frequency` sob breakdown: ausência vira `0` | fechado — F194 (medido: ausentes em 50 de 50 linhas do horário; vêm `null`) |
+| 7 | BUC: "desconhecido" gravado como `0`; quota de app nunca lida | fechado — F194 ("não sei" é `None` e não grava; a quota do app vem no `x-fb-ads-insights-throttle`, medido). O dia do contador no fuso da conta ficou fora: o contador não tem leitor |
 | 8 | gate não amarrado ao alvo da requisição | fechado — F190 (guard de contenção) |
-| 9 | `_brl` fixo num inventário multi-moeda | aberto — *métricas Meta* |
-| 10 | `ad_account_id` sobrando na query | fechado — F190 (o transporte novo não o envia) |
+| 9 | `_brl` fixo num inventário multi-moeda | fora — F194 declarou: 30 de 30 contas em BRL (medido em 26/09) |
+| 10 | `ad_account_id` sobrando na query | fechado — F194. Esta linha dizia "fechado — F190 (o transporte novo não o envia)", e não era: o overview montava os params à mão e seguia mandando o parâmetro (conferido em 26/09) |
 | — | duas paginações, só uma consertada | débito declarado no F190 |
 
 ### 04 — mocks

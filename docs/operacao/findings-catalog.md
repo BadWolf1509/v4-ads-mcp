@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~5400 linhas, 563 KB, IDs de **F1 a F193** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 52 têm; 53 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~5500 linhas, 564 KB, IDs de **F1 a F194** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 54 têm; 55 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -5453,3 +5453,79 @@ razões vieram `null` num período sem atividade. Um limite que o spec não prev
 o Google devolve uma linha **zerada**, não nenhuma, e o `sem_dados_no_periodo` do overview só
 fica `true` quando não vem linha nenhuma — raro no recurso `customer`. As razões `null` cobrem
 a leitura nos dois casos.
+
+## F194 (HIGH, ✅ CORRIGIDO 2026-09-27) — métricas Meta que afirmavam mais do que a Meta mediu
+
+**Origem:** varredura de 21/09, relatórios 01 (item 4) e 03 (itens 4 a 7, 9 e 10) — [índice](../_archive/varredura-2026-09-21/README.md); o F190 deixou estes itens explicitamente para cá.
+Spec: [`2026-09-26-metricas-meta-dizem-o-que-mediram-design.md`](../superpowers/specs/2026-09-26-metricas-meta-dizem-o-que-mediram-design.md); plano: [`2026-09-26-metricas-meta-dizem-o-que-mediram.md`](../superpowers/plans/2026-09-26-metricas-meta-dizem-o-que-mediram.md).
+
+**A classe.** A do F191 e do F193 — uma resposta que afirma mais do que mediu —, agora no
+lado Meta, e com a forma do F189/F190: os mesmos campos saíam por **duas regras**, uma em
+`insights.py` (trio e breakdown) e outra em `account_overview.py` (overview).
+
+**Medido em 26/09** (Graph API, 24 contas, 30 dias, `scripts/probe_meta_metricas.py`, com
+controle de valor inválido nos parâmetros de atribuição):
+
+- a mesma compra sai sob **5 nomes** e o mesmo lead sob **7**. O trio buscava o nome exato
+  `purchase`, que nenhuma conta devolve, e reportava **`purchases: 0` sobre 10 compras
+  reais**; o overview somava uma lista fixa de nomes, que conta o mesmo evento várias vezes
+  quando os recortes vêm juntos;
+- **14 de 14** contas com gasto medem conversas iniciadas, e nenhuma tool as expunha: para 13
+  delas a resposta dizia `purchases: 0, leads: 0`;
+- `action_values` e `purchase_roas` vazios em todas as contas: `0` e `0.0` eram "não
+  medido" em 100% das linhas;
+- `ctr` em porcentagem no overview e em fração no trio — 100× entre as duas tools mais
+  usadas;
+- `reach`/`frequency` ausentes em 50 de 50 linhas do breakdown horário, e saindo `0`;
+- 10 das 24 contas sem linha nenhuma no período (a Meta não manda linha zerada): o overview
+  devolvia zeros sem marcador;
+- o BUC gravava "não entendi" como `0`, por cima do último valor medido; a quota do app vem no
+  `x-fb-ads-insights-throttle` (o `x-app-usage` não vem em chamada de insights), que nada lia.
+
+E uma afirmação falsa no índice da varredura: o 03#10 constava **fechado pelo F190** ("o
+transporte novo não o envia"), e o overview seguia mandando `ad_account_id` como parâmetro da
+Graph API — o transporte repassa `params` como recebe. Ninguém tinha conferido.
+
+**✅ O que foi feito:**
+
+- **`src/meta_ads/metricas.py`, o contrato:** a única leitura de métrica de uma linha Graph.
+  Um nome canônico por campo (`omni_purchase`, `lead`,
+  `onsite_conversion.messaging_conversation_started_7d`), nunca soma de nomes; ausente é
+  `null`; `ctr` em fração; contagem arredonda. Campo novo:
+  `messaging_conversations_started`.
+- **Trio, breakdown e overview passam pelo contrato.** O overview troca
+  `conversions`/`conversion_value` pelos campos do trio, traz `sem_dados_no_periodo` e dá
+  variação `null` quando um lado não foi medido — antes, campo ausente contava 0 e virava
+  -100%.
+- **Construtor único:** `build_insights_call` monta toda chamada `/insights`, agora também no
+  nível `account`, e fixa `use_unified_attribution_setting=true` (sondado: valor inválido
+  volta 400; na conta com conversões, os números não mudaram). As respostas dizem
+  `atribuicao: "unificada"`.
+- **BUC:** "não lido" é `None`, não grava e emite `meta_buc_nao_lido` em WARNING; o aviso de
+  75% passa a considerar também a quota do app e da conta do `x-fb-ads-insights-throttle`, e
+  diz qual passou.
+- **Descriptions** das 5 tools dizem o que é o `null`, a unidade do `ctr` e a atribuição.
+
+**Os guards** (`tests/unit/test_meta_metricas_guards.py`), vermelhos contra o código
+anterior e por sabotagem em cópia:
+
+- só `metricas.py` lê chave de métrica de linha Graph — contra o código anterior acusou as
+  leituras do overview;
+- só `build_insights_call` monta `/insights` — acusou as duas chamadas montadas à mão do
+  overview;
+- as tools que chegam ao contrato (população pelo grafo de import: as 5) carregam as três
+  frases. O grafo lê também `from pacote import módulo`, e import relativo falha alto em vez
+  de sumir dele (achado da revisão: a primeira versão via só `from módulo import nome`).
+
+**O guard do F89 tinha um ponto cego que esta mudança criaria:** ele lia só o corpo de
+`parse_insights_row`, e com as métricas movidas para o contrato ficava **verde sobre um campo
+fantasma plantado em `metricas.py`** (medido). Passou a varrer os dois leitores de linha.
+
+**Fixtures que modelavam uma convenção:** as de quatro arquivos de teste usavam o nome nu
+`purchase`, que nenhuma das 24 contas devolve. Reescritas com as formas medidas
+(`tests/unit/_meta_formas_medidas.py`).
+
+**Fora, com o motivo:** chaves `_brl` (30 de 30 contas em BRL); as duas paginações
+(débito do F190); o nível de acesso `development_access`, que o mesmo cabeçalho revelou
+(pendência no `estado-atual`); métricas derivadas de custo por resultado; o dia do contador
+BUC no fuso da conta (o contador não tem leitor); status de entidade; freshness de métricas.
