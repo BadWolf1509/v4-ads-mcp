@@ -7,7 +7,8 @@
   {% if flash %}{{ alert(flash.message, flash.kind) }}{% endif %}
   {% include "admin/_accounts_tabs.html" %}
 
-  {# flex-wrap: sem ele o botao de sincronizar saia 41px pra fora em 375px. #}
+  {# F197: o botao "Sincronizar contas" saiu — so o resync diario escreve o
+     inventario, contra a parceria do BM. #}
   <div class="v4-card mb-4 flex flex-wrap items-center gap-3">
     <span class="font-semibold">Token do system user:</span>
     {% if token_configured %}
@@ -16,9 +17,6 @@
       <span class="v4-badge v4-badge--error">não configurado</span>
       <span class="text-sm text-v4-gray-700">Suba o secret <code>meta-system-user-token</code>.</span>
     {% endif %}
-    <form method="POST" action="/oauth/meta/refresh-accounts" class="ml-auto">
-      <button type="submit" class="v4-btn v4-btn--small v4-btn--secondary">Sincronizar contas</button>
-    </form>
   </div>
 
   {# Reconciliacao contra a parceria autoritativa (spec 2026-08-20): tres
@@ -156,7 +154,7 @@
     </table>
     </div>
     {% else %}
-      {{ empty_state("Nenhuma conta sincronizada ainda.", "Aguarde o resync ou clique em Sincronizar contas.") }}
+      {{ empty_state("Nenhuma conta sincronizada ainda.", "Aguarde o resync diário (06:00, horário de Brasília).") }}
     {% endif %}
   </div>
 </section>

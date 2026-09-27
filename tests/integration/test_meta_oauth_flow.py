@@ -34,7 +34,8 @@ def _make_state(manager_id: str) -> str:
 @pytest.mark.integration
 @respx.mock
 async def test_oauth_callback_happy_path(client: AsyncClient) -> None:
-    """Full happy path: short token → long token → /me → debug_token → /me/adaccounts."""
+    """Full happy path: short token → long token → /me → debug_token. Sem
+    `/me/adaccounts` desde o F197: o callback nao grava mais o inventario."""
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         mid = uuid4()
@@ -68,22 +69,6 @@ async def test_oauth_callback_happy_path(client: AsyncClient) -> None:
                         "public_profile",
                     ]
                 }
-            },
-        )
-    )
-    respx.get("https://graph.facebook.com/v22.0/me/adaccounts").mock(
-        return_value=Response(
-            200,
-            json={
-                "data": [
-                    {
-                        "id": "act_111",
-                        "name": "Cliente Alpha",
-                        "account_status": 1,
-                        "currency": "BRL",
-                        "timezone_name": "America/Sao_Paulo",
-                    }
-                ]
             },
         )
     )
@@ -193,9 +178,6 @@ async def test_oauth_callback_accepts_personal_fb_email(client: AsyncClient) -> 
                 }
             },
         )
-    )
-    respx.get("https://graph.facebook.com/v22.0/me/adaccounts").mock(
-        return_value=Response(200, json={"data": []})
     )
 
     resp = await client.get(

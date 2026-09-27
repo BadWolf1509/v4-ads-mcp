@@ -25,9 +25,11 @@ def test_meta_account_not_found_error_message() -> None:
     err = meta_account_not_found_error("act_404")
     assert err["status"] == "error"
     assert "act_404" in err["error_message"]
-    assert "não encontrada" in err["error_message"]
-    assert "meta_refresh_accounts" in err["error_message"]
-    assert "/oauth/meta/start" in err["error_message"]
+    assert "não está no inventário" in err["error_message"]
+    assert "resync diário" in err["error_message"]
+    # F197: reconectar o OAuth nao atualiza mais o inventario — a mensagem nao pode
+    # mandar fazer isso.
+    assert "/oauth/meta/start" not in err["error_message"]
 
 
 class _FakeAcquire:

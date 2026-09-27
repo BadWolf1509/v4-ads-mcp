@@ -108,7 +108,7 @@ def _achados_na_arvore(arvore: ast.Module, rel: str) -> list[tuple[str, int, str
     Pega as duas formas. O dict INLINE (`params={... "access_token": t}`) e o
     obvio; o que quase escapou foi o dict montado numa VARIAVEL e passado
     depois (`params = {...}` … `http.get(url, params=params)`) — a forma que
-    `_fetch_all_adaccounts` usa por causa da paginacao. Guard que so via a
+    a paginacao (`fetch_paginated`) usa. Guard que so via a
     forma inline daria verde no call-site mais importante dos tres.
 
     Separada de `_achados()` (onda final F190) pra que os probes de contrato

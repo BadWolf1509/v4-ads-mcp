@@ -34,10 +34,6 @@ def _app() -> FastAPI:
     async def meta_revoke() -> dict[str, bool]:
         return {"ok": True}
 
-    @a.post("/oauth/meta/refresh-accounts")
-    async def meta_refresh() -> dict[str, bool]:
-        return {"ok": True}
-
     @a.post("/oauth/meta/data-deletion-callback")
     async def meta_data_deletion() -> dict[str, bool]:
         return {"ok": True}
@@ -114,9 +110,9 @@ async def test_csrf_nao_isenta_o_prefixo_oauth_inteiro() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("rota", ["/oauth/meta/revoke", "/oauth/meta/refresh-accounts"])
+@pytest.mark.parametrize("rota", ["/oauth/meta/revoke"])
 async def test_mutacao_do_painel_sob_oauth_nao_e_isenta(rota: str) -> None:
-    """revoke e refresh-accounts sao acoes do PAINEL autenticadas por cookie.
+    """revoke e acao do PAINEL autenticada por cookie (a de sincronizar contas saiu no F197).
 
     Vivem sob /oauth por acidente de roteamento (o APIRouter tem prefix
     /oauth/meta), nao porque precisem da isencao. Origin divergente tem que

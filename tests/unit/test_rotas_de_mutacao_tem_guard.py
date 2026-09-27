@@ -20,7 +20,8 @@ Duas decisões medidas antes de escrever o casador (não assumidas):
    opcional.** `_require_admin` tem 26 call sites hoje (25 em
    `src/web/routes/admin_*.py` + 1 em `src/auth/meta_oauth.py`, que ganhou o
    seu depois desta frase ter sido escrita — ver F172 em
-   `docs/operacao/findings-catalog.md`) e NENHUM é `Depends(_require_admin)`:
+   `docs/operacao/findings-catalog.md` — e o perdeu com a rota no F197) e NENHUM
+   é `Depends(_require_admin)`:
    todas as rotas admin do painel chamam
    `_require_admin(user)` como primeira linha do corpo (padrão visível em
    `src/web/routes/admin_*.py`). Um casador que olha só
@@ -157,8 +158,10 @@ def test_toda_rota_post_do_painel_exige_admin_ou_tem_motivo() -> None:
             continue
         ofensores.append(f"{r.path} ({r.name})")
 
-    assert examinadas >= 19, (
-        f"o scanner viu {examinadas} rotas POST (esperava >= 19) — guard que "
+    # 18 desde o F197: `POST /oauth/meta/refresh-accounts` saiu (so o resync diario
+    # escreve o inventario). Piso que desce junto com uma remocao deliberada.
+    assert examinadas >= 18, (
+        f"o scanner viu {examinadas} rotas POST (esperava >= 18) — guard que "
         "varre de menos passa por vacuidade. Confira se create_app() registra "
         "os três routers (oauth, meta_oauth, web) e se _flatten resolve os "
         "wrappers _IncludedRouter."

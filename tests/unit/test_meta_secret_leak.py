@@ -133,36 +133,20 @@ _FAKE_SU_TOKEN = "system-user-token-que-nao-expira"  # noqa: S105 — valor de t
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_adaccounts_manda_o_token_no_header_e_nao_na_url() -> None:
-    """F82: o token system-user da acesso as ~19 contas do BM e NAO expira."""
-    from src.auth.meta_oauth import META_GRAPH_BASE, _fetch_all_adaccounts
-
-    rota = respx.get(f"{META_GRAPH_BASE}/me/adaccounts").mock(
-        return_value=httpx.Response(200, json={"data": [{"id": "act_1"}], "paging": {}})
-    )
-
-    async with httpx.AsyncClient() as http:
-        resultado = await _fetch_all_adaccounts(http, _FAKE_SU_TOKEN)
-
-    assert resultado.complete is True
-    pedido = rota.calls[0].request
-    assert pedido.headers.get("Authorization") == f"Bearer {_FAKE_SU_TOKEN}"
-    assert _FAKE_SU_TOKEN not in str(pedido.url), "o token continua na query string"
-    assert "access_token" not in str(pedido.url)
-
-
-@pytest.mark.asyncio
-@respx.mock
 async def test_header_acompanha_a_paginacao_ate_o_fim() -> None:
     """F82 + (D): o `next` vem SEM token; sem o header a 2a pagina daria 401.
 
     Este e o teste que o probe tornou obrigatorio — antes dele eu ia reescrever
-    a URL do `next` pra tirar o token, que e o oposto do que o Graph faz.
+    a URL do `next` pra tirar o token, que e o oposto do que o Graph faz. Mira o
+    paginador (`fetch_paginated`) desde o F197 — o wrapper de `/me/adaccounts`
+    que ele exercitava saiu, e a parceria do BM pagina pelo mesmo caminho.
     """
-    from src.auth.meta_oauth import META_GRAPH_BASE, _fetch_all_adaccounts
+    from src.auth.meta_oauth import META_GRAPH_BASE
+    from src.meta_ads.graph import fetch_paginated
 
-    proxima = f"{META_GRAPH_BASE}/me/adaccounts?after=cursor2&fields=id"
-    respx.get(f"{META_GRAPH_BASE}/me/adaccounts").mock(
+    edge = f"{META_GRAPH_BASE}/619664032237208/client_ad_accounts"
+    proxima = f"{edge}?after=cursor2&fields=id"
+    respx.get(edge).mock(
         side_effect=[
             httpx.Response(200, json={"data": [{"id": "act_1"}], "paging": {"next": proxima}}),
             httpx.Response(200, json={"data": [{"id": "act_2"}], "paging": {}}),
@@ -170,9 +154,11 @@ async def test_header_acompanha_a_paginacao_ate_o_fim() -> None:
     )
 
     async with httpx.AsyncClient() as http:
-        resultado = await _fetch_all_adaccounts(http, _FAKE_SU_TOKEN)
+        resultado = await fetch_paginated(
+            http, edge, access_token=_FAKE_SU_TOKEN, params={"fields": "id"}
+        )
 
-    assert [c["id"] for c in resultado.accounts] == ["act_1", "act_2"]
+    assert [c["id"] for c in resultado.rows] == ["act_1", "act_2"]
     assert resultado.complete is True
     assert len(respx.calls) == 2
     for chamada in respx.calls:

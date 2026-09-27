@@ -2,15 +2,13 @@
 
 Duas falhas somadas:
 
-1. `_fetch_all_adaccounts` faz `break` em resposta non-200 e devolve a lista
-   PARCIAL. Isso e correto pro uso original (cache de exibicao do OAuth), mas
-   `reconcile_meta` tambem usa o helper pra medir o ALCANCE do system user —
-   entao um 500 na pagina 2 nao pode passar por leitura completa. Desde a Task
-   7 (2026-08-20) quem decide o que fazer com inventario truncado e
-   `build_plan()` (via o `complete` combinado de `fetch_partnership` +
-   `_fetch_all_adaccounts`), nao mais `_deactivate_churned` — mas a propriedade
-   e a mesma: leitura parcial bloqueia o lado destrutivo e o audit registra
-   `error`, nunca `success` por omissao.
+1. Leitura parcial nao pode passar por completa: um 500 na pagina 2 devolve a
+   lista truncada. Desde a Task 7 (2026-08-20) quem decide o que fazer com
+   inventario truncado e `build_plan()`, pelo `complete` de `fetch_partnership`
+   (a paginacao marca `complete=False` quando uma pagina falha — guard em
+   `test_meta_graph_paginacao.py`); leitura parcial bloqueia o lado destrutivo e
+   o audit registra `error`, nunca `success` por omissao. Os dois testes do
+   wrapper de `/me/adaccounts` sairam com ele no F197.
 2. Crash inesperado no corpo do job (build_client, upsert_many, rede) nao grava
    NENHUMA linha: o rastro fica so no Cloud Run, entao um resync quebrado por
    dias fica invisivel na trilha de auditoria.
@@ -24,16 +22,11 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
-import httpx
 import pytest
-import respx
-from httpx import Response
 
 from src.jobs import _audit, meta_resync
 from src.meta_ads.partnership import PartnershipSnapshot
 from src.meta_ads.reconcile import InventoryRow
-
-_ADACCOUNTS = "https://graph.facebook.com/v22.0/me/adaccounts"
 
 
 class _FakeAcquire:
@@ -51,50 +44,6 @@ class _FakeAcquire:
 class _FakePool:
     def acquire(self) -> _FakeAcquire:
         return _FakeAcquire()
-
-
-@pytest.mark.asyncio
-async def test_fetch_sinaliza_incompleto_quando_uma_pagina_falha() -> None:
-    """F93(1): pagina non-200 no meio da paginacao => complete=False."""
-    from src.auth.meta_oauth import _fetch_all_adaccounts
-
-    with respx.mock:
-        respx.get(url__startswith=_ADACCOUNTS).mock(
-            side_effect=[
-                Response(
-                    200,
-                    json={
-                        "data": [{"id": "act_1", "name": "A"}],
-                        "paging": {"next": f"{_ADACCOUNTS}?after=cursor2"},
-                    },
-                ),
-                Response(500, json={"error": {"message": "boom"}}),
-            ]
-        )
-        async with httpx.AsyncClient() as http:
-            result = await _fetch_all_adaccounts(http, "tok")
-
-    assert [a["id"] for a in result.accounts] == ["act_1"]
-    assert result.complete is False, (
-        "inventario truncado nao pode se passar por completo — e o que faz o "
-        "deletion detection desativar conta viva"
-    )
-
-
-@pytest.mark.asyncio
-async def test_fetch_completo_quando_paginacao_termina_naturalmente() -> None:
-    """F93(1): sem `paging.next` e sem erro => complete=True."""
-    from src.auth.meta_oauth import _fetch_all_adaccounts
-
-    with respx.mock:
-        respx.get(url__startswith=_ADACCOUNTS).mock(
-            return_value=Response(200, json={"data": [{"id": "act_1", "name": "A"}]})
-        )
-        async with httpx.AsyncClient() as http:
-            result = await _fetch_all_adaccounts(http, "tok")
-
-    assert result.complete is True
-    assert len(result.accounts) == 1
 
 
 def _patch_resync(

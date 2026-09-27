@@ -425,8 +425,8 @@ def _raizes_cliente_http_meta() -> list[Path]:
     FICAM DE FORA, apesar de construírem `httpx.AsyncClient` de verdade e
     falarem com a Graph API — cada um por motivo medido, não por esquecimento:
 
-    - `src/auth/meta_oauth.py` (2 construções reais: `meta_oauth_callback` e
-      `meta_oauth_refresh_accounts`) — o roteador OAuth inteiro. Não é onde
+    - `src/auth/meta_oauth.py` (1 construção real: `meta_oauth_callback`; a do
+      botão de sincronizar contas saiu no F197) — o roteador OAuth inteiro. Não é onde
       uma TOOL nova nasce; é arquivo estável, tocado só quando o fluxo OAuth
       muda. Era allowlist no guard anterior (literal, por módulo inteiro);
       aqui fica de FORA do escopo por decisão, não por buraco herdado.

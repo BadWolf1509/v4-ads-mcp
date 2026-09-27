@@ -20,8 +20,9 @@ _SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 #   - /mcp: auth por Bearer, nao por cookie.
 # O prefixo `/oauth/` inteiro era largo demais. Os endpoints OAuth de verdade sao
 # GET (start, callback) — metodo seguro, nunca checado —, mas `/oauth/meta/revoke` e
-# `/oauth/meta/refresh-accounts` sao mutacoes do PAINEL autenticadas por cookie
-# (Depends(current_manager)), disparadas por <form method="post"> em admin/index.html.
+# mutacao do PAINEL autenticada por cookie (Depends(current_manager)), disparada por
+# <form method="post"> em admin/index.html (a outra, a de sincronizar contas, saiu
+# no F197).
 # Vivem ali por acidente de roteamento (o APIRouter tem prefix /oauth/meta) e ficavam
 # de fora da unica checagem de origem que existe.
 #
