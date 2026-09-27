@@ -106,7 +106,8 @@ async def reconcile_meta(conn: asyncpg.Connection, *, now: datetime | None = Non
         inventario = await meta_ad_accounts.list_inventory_rows(conn)
         plano = build_plan(
             partnership_ids=ids_parceria,
-            reachable_ids=ids_alcance,
+            # O complemento do indice, por enquanto: a sonda da Task 4 substitui a fonte.
+            refused_ids=ids_parceria - ids_alcance,
             inventory=inventario,
             complete=leitura_completa,
             # O MESMO instante que carimba as ausências abaixo.
