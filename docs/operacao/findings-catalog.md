@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~5800 linhas, 579 KB, IDs de **F1 a F197** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 55 têm; 56 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~5800 linhas, 581 KB, IDs de **F1 a F198** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 55 têm; 56 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -5755,3 +5755,37 @@ diário (06:00, horário de Brasília); sob demanda, executar o job, com autoriz
 
 **Fora, com o motivo:** o fluxo do OAuth pessoal em si (conectar, revogar) fica — dormente
 desde o Modelo B e sem uso em 30 dias; removê-lo é outra decisão.
+
+---
+
+## F198 (MEDIUM, ✅ CORRIGIDO 2026-09-27) — o `requirements.txt` não era fechado: dependência transitiva nova entrava sem pin
+
+> **Como apareceu:** ao preparar o lote do Dependabot de 27/09, o `uv pip compile` trouxe uma
+> linha que ninguém pediu (`opentelemetry-api`). Recompilar o lock da `main`, sem mudar nada,
+> trouxe a mesma diferença: era deriva que já estava lá.
+
+**Medido em 27/09:** o `google-api-core==2.38.0` exige `opentelemetry-api>=1.44,<2.0`, e o
+lockfile não tinha a linha. O `pip install -r requirements.txt` do CI a instalava **por
+resolução** — o run do merge do #122 baixou o 1.45.0 —, sem pin e sem nada vermelho; o deploy,
+que instala do mesmo arquivo, provavelmente idem (não medido). Origem: o lote de 20/09 (#89)
+subiu o `google-api-core` 2.36 → 2.38 aplicando só a linha do Dependabot, "sem regenerar", e a
+versão nova trouxe uma dependência. O lock também guardava um `colorama` (win32) que o `click`
+8.5.0 não pede mais.
+
+**A regra sem mecanismo:** o comentário do `ci.yml` dizia "requirements.txt = lockfile pinado";
+nada conferia que ele era **fechado**.
+
+**✅ O que foi feito:**
+
+- O lock regerado (`uv pip compile … --universal --upgrade-package pydantic-core`) pina o
+  `opentelemetry-api==1.45.0` — a versão que o CI já instalava — e tira o `colorama`, junto
+  dos bumps do lote.
+- **Mecanismo:** `scripts/check_lockfile_fechado.py` instala o lock num venv limpo com
+  `--no-deps` e roda o `pip check`. Chamado pelo CI (passo "Lockfile fechado", antes do
+  pip-audit) e pelo full sweep local (F115: check bloqueante não fica só no CI). Medido: com o
+  lock antigo, exit 1 citando o `opentelemetry-api`; com o regerado, exit 0.
+- `processo.md`: bump do Dependabot que traz dependência nova exige regerar o lock — aplicar só
+  a linha dele não basta.
+
+**Fora, com o motivo:** o gate rápido não roda a checagem (precisa de rede e baixa ~80
+pacotes); o arquivo só muda por regeneração ou por PR do Dependabot, e os dois passam pelo CI.
