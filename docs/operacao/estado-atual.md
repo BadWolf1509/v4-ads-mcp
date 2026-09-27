@@ -17,7 +17,9 @@
 > arquivo, e aqui fica uma linha.
 
 > **Última sessão:** [`session-2026-09-25-26-handoff.md`](session-2026-09-25-26-handoff.md)
-> — o mapa de 25 e 26/09: PRs #108 a #114, o F193 e a virada da trava Google.
+> — o mapa de 25 e 26/09: PRs #108 a #115, o F193, a virada da trava Google e a frente
+> **métricas Meta em execução** na branch `spec/metricas-meta` (tasks 1 a 5 de 6 commitadas;
+> como retomar está lá).
 
 ---
 
