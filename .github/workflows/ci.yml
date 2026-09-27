@@ -109,6 +109,15 @@ jobs:
           pip install -r requirements.txt
           pip install -e ".[dev]" -c requirements.txt
 
+      - name: Lockfile fechado (F198)
+        # O requirements.txt so e lockfile se for FECHADO: toda dependencia de toda
+        # linha pinada tem linha propria. Em 20/09 um bump do google-api-core aplicado
+        # so na linha dele (sem regerar) trouxe `opentelemetry-api`, que o
+        # `pip install -r` acima instalava por RESOLUCAO, sem pin — e o CI seguia
+        # verde. O script instala o lock num venv limpo com `--no-deps` e roda o
+        # `pip check` — o mesmo arquivo que o full sweep local chama (F115).
+        run: python scripts/check_lockfile_fechado.py
+
       - name: Security audit (pip-audit, non-blocking)
         # `continue-on-error: true` deixava o passo sair 1 e o GitHub pintar uma
         # annotation VERMELHA num run VERDE. O resultado ficava invisivel: em

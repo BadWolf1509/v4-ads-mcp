@@ -45,6 +45,13 @@ BASE_STEPS: list[Step] = [
     ),
 ]
 
+# F198: o lockfile e fechado (toda dependencia tem linha propria). Precisa de rede,
+# por isso fica no full sweep e no CI (que chama o mesmo script), nao no gate rapido.
+LOCKFILE_STEP = Step(
+    "lockfile fechado",
+    [sys.executable, str(Path(__file__).resolve().parent / "check_lockfile_fechado.py")],
+)
+
 DB_INTEGRATION_STEP = Step(
     "pytest DB integration",
     [sys.executable, "-m", "pytest", "tests/integration", "-m", "integration", "-q"],
