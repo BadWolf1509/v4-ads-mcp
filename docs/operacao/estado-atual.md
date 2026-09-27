@@ -31,13 +31,15 @@
 | Revisão servindo | **`v4-ads-mcp-00131-cjv`**, 100% do tráfego (medido por `gcloud` em 27/09, 17:40 UTC) — o deploy do **#119** (descriptions Meta com as chaves reais; run `36333559354`, `test` e `deploy` `success`), sobre o **#116** (F194) e o **#118** (F195); `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186): as descriptions novas só aparecem em sessão MCP aberta depois do deploy (F140) |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
-| Catálogo | até **F195** (~5.600 linhas, 570 KB) |
+| Catálogo | até **F195** (~5.700 linhas, 572 KB) |
 
 **Smoke de leitura do F193 em produção (26/09, `Conta Interna - 02`):** `filters_applied` em `get_campaign_performance` (com `campaign_status`, e sem ele com `status=all`), `get_account_overview` (aninhado `current`/`previous`, janelas iguais às de `period`/`previous_period`), `get_negative_keywords_audit` (`nivel: "campanha"`), `get_budget_pacing` (`{"during": "THIS_MONTH"}`) e `get_performance_breakdown` por keyword (`criterion_status`); razões `null` num período sem atividade. **Limite medido:** para período sem atividade o Google devolve uma linha **zerada**, não nenhuma linha — então `sem_dados_no_periodo` vem `false` com contagens zero, e só fica `true` quando não vem linha nenhuma. Quem protege a leitura são as razões `null`. As descriptions novas só aparecem em sessão MCP nova (F140).
 
 **Smoke de leitura do F194 em produção (27/09, sessão MCP aberta depois do deploy):** na Cheiro | Conta 01, `meta_get_account_overview` e `meta_get_campaign_performance` trazem `purchases` medido (não `0`), `leads`, `messaging_conversations_started`, `ctr` em fração e `atribuicao: "unificada"`, com a soma das 19 campanhas igual ao total da conta; na janela da medição original (`27/08–25/09`), exatamente `purchases` 10, `leads` 13 e 3.531 conversas. `purchases: null` em conta com gasto e sem compra (MI Imports | Conta 02); `sem_dados_no_periodo: true` em conta sem entrega; breakdown horário com `reach` e `frequency` `null` em 50 de 50 linhas; BUC lido do cabeçalho real (`last_throttle_pct` gravado, nenhum `meta_buc_nao_lido`). **O preset do roteiro deu `purchases` 9, não 10:** o `LAST_30_DAYS` Meta inclui o dia corrente (`29/08–27/09`) e a referência terminava na véspera — é o **F195**. Detalhe no F194 do [catálogo](findings-catalog.md).
 
 **Smoke de leitura do F195 em produção (27/09, run `36332640719`):** `meta_get_account_overview` na Cheiro | Conta 01 com `LAST_7_DAYS` ecoou `date_range` `20/09–26/09` — exatamente o `date_preset=last_7d` da própria Meta sondado no mesmo dia —, `previous_date_range` `13/09–19/09` e `inclui_dia_corrente: false`; com `TODAY`, `27/09` contra `26/09` e `inclui_dia_corrente: true`, com variações de ~−99% que são o dia ainda aberto — o caso que o campo existe para avisar. Chamado de uma sessão aberta antes do deploy: a resposta é do código novo; as descriptions novas só aparecem em sessão nova (F140).
+
+**Verificação do F154 — pendente**, na execução do `v4-ads-mcp-resync` seguinte ao deploy (a diária ou uma sob demanda): a CHUTE 07 com `su_reachable = true`, o `meta_reconcile` com `unreachable: 0` e `alcance_nao_medido: 0`, e no painel a fila "Sem o system user atribuído" vazia.
 
 ⚠️ **`deploy: skipped` NAO significa "PR de documentação".** O gate do F138 pula o
 deploy só quando o push mexeu **exclusivamente** em `docs/` e markdown — um arquivo em
@@ -66,7 +68,7 @@ nominal do Wellington, depois de 22 execuções de soak (05/09 a 26/09), todas `
   conta Google inativa e 26 contas ativas (as 25 do MCC + a Alumínios em carência). O raio foi
   medido duas vezes no dia (18:13 e 23:14 UTC), igual nas duas. A Meta, no mesmo job:
   `applied=true`, `removed=0`, `revoked_grants=0`; o `unreachable=1` é a CHUTE 07, igual desde
-  24/09 pelo menos.
+  24/09 pelo menos — artefato do índice `/me/adaccounts`, que o F154 tirou do job em 27/09 (a CHUTE 07 é lida).
 - **Falta conferir a de 28/09:** `removed=1` e `revoked_grants=4` — a Alumínios Veneza na 3ª
   ausência.
 - **Para desligar:** `false` nas **duas** linhas do `.github/workflows/deploy.yml` — o
@@ -120,16 +122,14 @@ Medir a exposição, dar dado às decisões, consertos pequenos, e só então sp
 
 1. **Rollout Google** — virado e conferido em 26/09; falta a execução de 28/09 (Alumínios Veneza).
 2. **Fase 2B** — em 04/10, separar o uso por gestor, junto da remedição dos buckets.
-3. **F154** (spec).
-4. **Infra e guards** (spec) — o resto dos sub-projetos 3 e 4.
-5. **`recommendation_subscription`** — tool de leitura no MCC.
+3. **Infra e guards** (spec) — o resto dos sub-projetos 3 e 4.
+4. **`recommendation_subscription`** — tool de leitura no MCC.
 
 ### Os abertos, um por linha
 
 | ID | o que é |
 |---|---|
 | **F180** | **em parte, provavelmente para sempre** — a flag `partial_failure` está ligada, mas a falha por-linha **nunca foi exercitada**: o Google aceita operação impossível em vez de errar (campanha `REMOVED`, `final_urls` inválida, anúncio apagado entre preview e apply). O único gatilho conhecido é a variação de experimento, que o **F181 agora bloqueia no pre-flight**. Consequência: `failed_count` é constante zero — leia `efeito` e `changed_count` |
-| **F154** | `/me/adaccounts` não é prova de alcance |
 | **F185** | `recommendation_subscription`: 4 de 11 opacos e **sem chave nenhuma** — limitação da API, sem correção possível deste lado |
 | **F187** | o **resumo no topo** de um artefato é a superfície de decisão e o **detalhe embaixo** é a verdade — 4 instâncias medidas, uma quase custou mutação em conta real. Remédio proposto: derivar o resumo, ou guard que cobre a igualdade |
 | — | **`THIS_MONTH` do Google no dia 1 devolve janela invertida** (em 01/10: `01/10–30/09`) — achado em 27/09 ao consertar o F195, conferido na `main`; aceito por **15 tools Google**. Sessão separada sugerida para medir o que a GAQL faz com a janela invertida e propor o conserto. **Próximo dia 1: quinta, 01/10** |
@@ -137,4 +137,4 @@ Medir a exposição, dar dado às decisões, consertos pequenos, e só então sp
 | — | *negativas de grupo e listas compartilhadas na auditoria de negativas* (spec §7: frente própria) |
 | — | follow-ups do **F193** (Minor, não bloqueiam) — listados no corpo do [#111](https://github.com/BadWolf1509/v4-ads-mcp/pull/111): comentário da isenção do `apply_recommendation`, frase do eco nas três tools do F191, cobertura estreita de alguns testes |
 
-**Fechados de 20 a 27/09:** **F179**, **F181–F184**, **F188**, **F189**, **F190**, **F191**, **F193**, **F194** e **F195**. O defeito de cada um está no [catálogo](findings-catalog.md); a narrativa desses dias, que morava aqui, foi para [`_archive/estado-atual-2026-09-20-a-26.md`](../_archive/estado-atual-2026-09-20-a-26.md). 🔑 A lição que atravessa todos: **existia a regra e não existia o mecanismo** — a invariante escrita, e nada que a aplicasse.
+**Fechados de 20 a 27/09:** **F179**, **F181–F184**, **F188**, **F189**, **F190**, **F191**, **F193**, **F194**, **F195** e **F154**. O defeito de cada um está no [catálogo](findings-catalog.md); a narrativa desses dias, que morava aqui, foi para [`_archive/estado-atual-2026-09-20-a-26.md`](../_archive/estado-atual-2026-09-20-a-26.md). 🔑 A lição que atravessa todos: **existia a regra e não existia o mecanismo** — a invariante escrita, e nada que a aplicasse.
