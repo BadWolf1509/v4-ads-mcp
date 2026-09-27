@@ -8,7 +8,7 @@
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~5500 linhas, 565 KB, IDs de **F1 a F194** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 54 têm; 55 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~5600 linhas, 569 KB, IDs de **F1 a F195** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 55 têm; 56 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -5540,3 +5540,67 @@ o `last_throttle_pct` que nasce `0` pelo `DEFAULT` da coluna no dia sem BUC lido
 leitor); e o alerta: `meta_rate_limit_warning` e `meta_buc_nao_lido` são WARNING, e a única
 política de alerta por log dispara em `severity>=ERROR` — o sinal existe e não avisa
 ninguém (pendência).
+
+**Medido em produção (27/09, depois do deploy — revisão `v4-ads-mcp-00129-vf9`, numa sessão MCP
+aberta depois dele, que já recebeu as descriptions novas):**
+
+- **Cheiro | Conta 01, na janela da sonda (`27/08–25/09`):** overview e trio devolvem o que a
+  sonda mediu na Graph API — `purchases` 10, `leads` 13, 3.531 conversas —, e a soma das 19
+  campanhas bate com o total da conta nos quatro campos (compras, leads, conversas, gasto).
+  `ctr` em fração, `purchases_value_brl` e `purchase_roas` `null`, `atribuicao: "unificada"`.
+- **Com gasto e sem compra, `purchases: null`:** MI Imports | Conta 02 (R$ 25.621,29 em 30
+  dias) e Fardim Tintas; na linha de campanha sem compra, também `null`.
+- **Sem entrega:** CA - MDO João Pessoa com `sem_dados_no_periodo: true` nos dois períodos —
+  entrega em `0`, eventos, razões e variações `null`.
+- **Breakdown horário:** `reach` e `frequency` `null` em 50 de 50 linhas.
+- **BUC do cabeçalho real:** nenhum `meta_buc_nao_lido` nas 23 chamadas Graph do smoke — o que,
+  sozinho, não provava leitura: o executor só registra se vier **algum** dos dois cabeçalhos
+  (`reports.py`), e sem nenhum não há aviso. O positivo veio do banco (leitura READ ONLY): o
+  `calls_used` do dia bate com as chamadas feitas em cada conta (13 e 6), e o
+  `last_throttle_pct` é 2 e 1 — valor que o `DEFAULT 0` não produz e que só o `update_throttle`
+  grava, depois de o parser entender o BUC.
+
+**O roteiro do smoke não reproduzia a própria referência.** Pedia `LAST_30_DAYS` e esperava
+`purchases` 10; o preset deu **9**. A sonda de 26/09 media os 30 dias até a véspera
+(`27/08–25/09`); o preset Meta resolve os 30 dias até hoje, inclusive (`29/08–27/09` em
+27/09) — saíram as 2 compras de 27–28/08, entrou 1 de 26–27/09. Referência medida em janela
+fixa se confere na mesma janela fixa. A diferença de convenção entre os presets virou o
+**F195**.
+
+## F195 (MEDIUM, ABERTO) — o `LAST_N_DAYS` das tools Meta inclui o dia corrente; o do Google termina ontem
+
+**Origem:** smoke de leitura do F194 (27/09) — a referência do roteiro não se reproduzia pelo
+preset.
+
+**Medido:**
+
+- `resolve_meta_date_window` ([`account_overview.py`](../../src/meta_ads/account_overview.py))
+  resolve `LAST_7/14/30/90_DAYS` como `hoje-(N-1)..hoje` no fuso da conta; o
+  `parse_date_range` do Google ([`_common.py`](../../src/google_ads/queries/_common.py)), como
+  `ontem-(N-1)..ontem`. Mesmo nome de preset, janelas deslocadas de um dia, e a Meta com um dia
+  **parcial** dentro. Passam por esse resolvedor as 5 tools Meta de métrica (overview, breakdown
+  e o núcleo do trio). É desenho do M.2b (maio), fixado por teste
+  (`test_meta_account_overview.py`: `end == TODAY`); o F165 levou o "hoje" para o fuso da conta
+  e não tocou nisto.
+- Em produção, `LAST_30_DAYS` pedido às ~03h de 27/09 (fuso da conta) ecoou `29/08–27/09`.
+- **O comparativo do overview põe dia parcial contra dias cheios:** o `current` tem N-1 dias
+  cheios e o parcial de hoje; o `previous` (`shift_to_previous_period`), N dias cheios. Na MI
+  Imports | Conta 02, no mesmo instante, `LAST_7_DAYS` (`21/09–27/09` contra `14/09–20/09`) deu
+  gasto **−19,6%**, cliques −10,45% e impressões −6,81%; os 7 dias cheios até ontem
+  (`20/09–26/09` contra `13/09–19/09`) deram gasto **+1,14%**, cliques +8,81% e impressões
+  +13,7%. O sinal inverte nas três.
+- O tamanho depende da conta e da hora: na Cheiro | Conta 01, cujo gasto nos dois domingos
+  envolvidos foi ~R$ 0 (pela diferença entre as janelas), as duas deram +1,45% e +1,44%.
+
+É o efeito que o F141 chamava de o mais perigoso do lado Google — "Últimos 7 dias" com 6 dias
+cheios + o parcial de hoje **parece certo** e vem com um número menor —, lá restrito às ~3
+horas de deriva de fuso por dia; aqui, o dia inteiro. A resposta não mente sobre a janela
+(`date_range` ecoa `start`/`end`), mas o overview não ecoa a do `previous`, e nada nela diz que
+o `current` tem um dia pela metade.
+
+**Conserto candidato, não decidido:** alinhar ao Google — `LAST_N_DAYS` terminando ontem no
+fuso da conta (`TODAY` segue para o dia corrente) —, reescrever o teste que fixa
+`end == TODAY`, dizer "até ontem" nas descriptions e ecoar a janela do `previous` no overview.
+Muda o número que o gestor vê, de propósito; a decisão é do Wellington.
+
+**Não medido:** quanto do uso real das tools Meta passa por preset `LAST_N_DAYS`.
