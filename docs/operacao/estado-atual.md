@@ -19,7 +19,8 @@
 > **Última sessão:** [`session-2026-09-25-26-handoff.md`](session-2026-09-25-26-handoff.md)
 > — o mapa de 25 a 27/09: PRs #108 a #115, o F193, a virada da trava Google e a frente
 > **métricas Meta** (F194), mesclada no #116 e conferida em produção em 27/09 (abaixo) — o
-> smoke abriu o **F195**.
+> smoke abriu o **F195**, corrigido no mesmo dia (janelas `LAST_N_DAYS` até ontem, como no Google
+> e na própria Meta).
 
 ---
 
@@ -30,11 +31,13 @@
 | Revisão servindo | **`v4-ads-mcp-00129-vf9`**, 100% do tráfego (medido por `gcloud` em 27/09, 06:24 UTC) — o deploy do **#116** (F194; run `36298720240`, `test` e `deploy` `success`), criada às 06:05 UTC; `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186); em 27/09 uma sessão autenticada aberta depois do deploy recebeu as descriptions novas do F194 — prova o `tools/list` da revisão nova, não só `tools/call` |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
-| Catálogo | até **F195** (~5.600 linhas, 569 KB) |
+| Catálogo | até **F195** (~5.600 linhas, 570 KB) |
 
 **Smoke de leitura do F193 em produção (26/09, `Conta Interna - 02`):** `filters_applied` em `get_campaign_performance` (com `campaign_status`, e sem ele com `status=all`), `get_account_overview` (aninhado `current`/`previous`, janelas iguais às de `period`/`previous_period`), `get_negative_keywords_audit` (`nivel: "campanha"`), `get_budget_pacing` (`{"during": "THIS_MONTH"}`) e `get_performance_breakdown` por keyword (`criterion_status`); razões `null` num período sem atividade. **Limite medido:** para período sem atividade o Google devolve uma linha **zerada**, não nenhuma linha — então `sem_dados_no_periodo` vem `false` com contagens zero, e só fica `true` quando não vem linha nenhuma. Quem protege a leitura são as razões `null`. As descriptions novas só aparecem em sessão MCP nova (F140).
 
 **Smoke de leitura do F194 em produção (27/09, sessão MCP aberta depois do deploy):** na Cheiro | Conta 01, `meta_get_account_overview` e `meta_get_campaign_performance` trazem `purchases` medido (não `0`), `leads`, `messaging_conversations_started`, `ctr` em fração e `atribuicao: "unificada"`, com a soma das 19 campanhas igual ao total da conta; na janela da medição original (`27/08–25/09`), exatamente `purchases` 10, `leads` 13 e 3.531 conversas. `purchases: null` em conta com gasto e sem compra (MI Imports | Conta 02); `sem_dados_no_periodo: true` em conta sem entrega; breakdown horário com `reach` e `frequency` `null` em 50 de 50 linhas; BUC lido do cabeçalho real (`last_throttle_pct` gravado, nenhum `meta_buc_nao_lido`). **O preset do roteiro deu `purchases` 9, não 10:** o `LAST_30_DAYS` Meta inclui o dia corrente (`29/08–27/09`) e a referência terminava na véspera — é o **F195**. Detalhe no F194 do [catálogo](findings-catalog.md).
+
+**Smoke do F195 — pendente**, depois do deploy e numa sessão MCP nova: `meta_get_account_overview` com `LAST_7_DAYS` ecoa `date_range` terminando **ontem** no fuso da conta, `previous_date_range` com os 7 dias anteriores e `inclui_dia_corrente: false`; com `TODAY`, `inclui_dia_corrente: true`.
 
 ⚠️ **`deploy: skipped` NAO significa "PR de documentação".** O gate do F138 pula o
 deploy só quando o push mexeu **exclusivamente** em `docs/` e markdown — um arquivo em
@@ -130,8 +133,7 @@ Medir a exposição, dar dado às decisões, consertos pequenos, e só então sp
 | **F185** | `recommendation_subscription`: 4 de 11 opacos e **sem chave nenhuma** — limitação da API, sem correção possível deste lado |
 | **F187** | o **resumo no topo** de um artefato é a superfície de decisão e o **detalhe embaixo** é a verdade — 4 instâncias medidas, uma quase custou mutação em conta real. Remédio proposto: derivar o resumo, ou guard que cobre a igualdade |
 | **F186** | 🔴 smoke autenticado do `/mcp` **desarmado** — e o manager dele **não existe**: criar exige identidade de serviço no Workspace, acesso que o gestor **não tem**. **ABERTO como risco ACEITO.** No lugar entrou `tools` no `/health?deep=1` (sem credencial), e o desarme aparece como `::warning::` em todo deploy — **observado disparando** nos dois deploys de 21/09, que é o que separa "o aviso existe" de "o aviso avisa" |
-| **F195** | o `LAST_N_DAYS` das tools Meta **inclui o dia corrente** e o do Google termina ontem: mesmo preset, janelas diferentes, e no comparativo do overview Meta o `current` leva o dia parcial contra dias cheios do `previous` — medido em 27/09 na MI Imports, `LAST_7_DAYS` com gasto −19,6% onde os 7 dias cheios dão +1,14%. Conserto candidato (alinhar ao Google) **não decidido**: muda o número que o gestor vê |
 | — | *negativas de grupo e listas compartilhadas na auditoria de negativas* (spec §7: frente própria) |
 | — | follow-ups do **F193** (Minor, não bloqueiam) — listados no corpo do [#111](https://github.com/BadWolf1509/v4-ads-mcp/pull/111): comentário da isenção do `apply_recommendation`, frase do eco nas três tools do F191, cobertura estreita de alguns testes |
 
-**Fechados de 20 a 27/09:** **F179**, **F181–F184**, **F188**, **F189**, **F190**, **F191**, **F193** e **F194**. O defeito de cada um está no [catálogo](findings-catalog.md); a narrativa desses dias, que morava aqui, foi para [`_archive/estado-atual-2026-09-20-a-26.md`](../_archive/estado-atual-2026-09-20-a-26.md). 🔑 A lição que atravessa todos: **existia a regra e não existia o mecanismo** — a invariante escrita, e nada que a aplicasse.
+**Fechados de 20 a 27/09:** **F179**, **F181–F184**, **F188**, **F189**, **F190**, **F191**, **F193**, **F194** e **F195**. O defeito de cada um está no [catálogo](findings-catalog.md); a narrativa desses dias, que morava aqui, foi para [`_archive/estado-atual-2026-09-20-a-26.md`](../_archive/estado-atual-2026-09-20-a-26.md). 🔑 A lição que atravessa todos: **existia a regra e não existia o mecanismo** — a invariante escrita, e nada que a aplicasse.

@@ -38,7 +38,9 @@ _DESCRIPTION = (
     "do período anterior de mesma duração. Conversoes saem por evento (compras, leads, "
     "conversas iniciadas), nunca somadas: a mesma compra vem sob varios nomes na Meta. "
     "Cada periodo traz sem_dados_no_periodo: true quando a Meta nao devolveu linha "
-    "(sem entrega). " + CONTRATO_NA_DESCRIPTION + " "
+    "(sem entrega). Traz as duas janelas (date_range e previous_date_range) e "
+    "inclui_dia_corrente: true quando a atual contem hoje, que ainda nao fechou — "
+    "a variacao entao compara um dia parcial com dias cheios. " + CONTRATO_NA_DESCRIPTION + " "
     "Inclui warnings PT-BR pra account_status problemático. "
     "Requer conexão Meta ativa (gestor deve ter conectado via /oauth/meta/start). "
     "Use meta_list_my_ad_accounts pra listar IDs disponíveis."
@@ -204,6 +206,13 @@ async def meta_get_account_overview(
             "start": current_start.isoformat(),
             "end": current_end.isoformat(),
         },
+        # F195: a janela do comparativo nao era ecoada, e nada dizia quando a atual
+        # levava o dia corrente, ainda aberto, contra dias cheios da anterior.
+        "previous_date_range": {
+            "start": prev_start.isoformat(),
+            "end": prev_end.isoformat(),
+        },
+        "inclui_dia_corrente": current_start <= today <= current_end,
         "atribuicao": ATRIBUICAO,
         "current": current_metrics,
         "previous": previous_metrics,

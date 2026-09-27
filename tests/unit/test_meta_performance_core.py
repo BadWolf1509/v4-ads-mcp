@@ -256,5 +256,6 @@ async def test_run_meta_level_performance_defaults_to_last_30_days() -> None:
             limit=100,
         )
 
-    assert result["date_range"]["start"] == "2026-06-01"
-    assert result["date_range"]["end"] == "2026-06-30"
+    # F195: os 30 dias completos ate ontem (hoje = 30/06), como no Google e na Meta.
+    assert result["date_range"]["start"] == "2026-05-31"
+    assert result["date_range"]["end"] == "2026-06-29"

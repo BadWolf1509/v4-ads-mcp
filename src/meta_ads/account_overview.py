@@ -6,6 +6,7 @@ Zero IO. Date math + Graph response parsing + deltas + warnings.
 from datetime import date, datetime, timedelta
 from typing import Any
 
+from src.janelas import janela_do_preset
 from src.meta_ads.metricas import metricas_da_linha, metricas_sem_linha
 
 # Os campos com variacao no comparativo (sufixo `_pct`). Os nomes sao os do
@@ -21,13 +22,6 @@ DELTA_CAMPOS = (
     "purchase_roas",
 )
 
-_PRESET_DAYS: dict[str, int] = {
-    "LAST_7_DAYS": 7,
-    "LAST_14_DAYS": 14,
-    "LAST_30_DAYS": 30,
-    "LAST_90_DAYS": 90,
-}
-
 
 def resolve_meta_date_window(
     preset: str | None,
@@ -38,20 +32,18 @@ def resolve_meta_date_window(
     """Resolve preset OR (start, end) → (start, end) date tuple.
 
     Custom (start+end) overrides preset. Default LAST_7_DAYS se ambos None.
-    Raises ValueError se inconsistent (apenas um de start/end fornecido).
+    Raises ValueError se inconsistent (apenas um de start/end fornecido) ou preset
+    desconhecido.
+
+    F195: o preset sai de `src.janelas`, a mesma regra do Google — `LAST_N_DAYS` sao
+    os N dias completos ate ontem, como na propria Meta (`date_preset=last_7d`). A conta
+    daqui terminava hoje, com o dia corrente pela metade dentro da janela.
     """
     if start_date and end_date:
         return (date.fromisoformat(start_date), date.fromisoformat(end_date))
     if start_date or end_date:
         raise ValueError("start_date e end_date devem ser fornecidos juntos")
-    preset = preset or "LAST_7_DAYS"
-    if preset == "TODAY":
-        return (today, today)
-    if preset == "YESTERDAY":
-        y = today - timedelta(days=1)
-        return (y, y)
-    days = _PRESET_DAYS[preset]
-    return (today - timedelta(days=days - 1), today)
+    return janela_do_preset(preset or "LAST_7_DAYS", today=today)
 
 
 def shift_to_previous_period(start: date, end: date) -> tuple[date, date]:

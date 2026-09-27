@@ -20,14 +20,16 @@ class TestResolveDateWindow:
     """resolve_meta_date_window tests."""
 
     def test_resolve_date_window_default_last_7_days(self):
+        # F195: os 7 dias completos ate ontem, como no Google e na propria Meta — o
+        # `end == TODAY` antigo punha o dia corrente, ainda aberto, dentro da janela.
         start, end = resolve_meta_date_window(None, None, None, TODAY)
-        assert start == date(2026, 5, 19)
-        assert end == TODAY
+        assert start == date(2026, 5, 18)
+        assert end == date(2026, 5, 24)
 
     def test_resolve_date_window_last_30_days(self):
         start, end = resolve_meta_date_window("LAST_30_DAYS", None, None, TODAY)
-        assert start == date(2026, 4, 26)
-        assert end == TODAY
+        assert start == date(2026, 4, 25)
+        assert end == date(2026, 5, 24)
 
     def test_resolve_date_window_today(self):
         start, end = resolve_meta_date_window("TODAY", None, None, TODAY)
