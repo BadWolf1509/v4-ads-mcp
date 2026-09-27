@@ -32,10 +32,8 @@ from src.meta_ads.reports import run_meta_graph_get
 log = structlog.get_logger(__name__)
 
 _DESCRIPTION = (
-    "[CORE] Overview de uma conta Meta Ads: métricas essenciais (spend_brl, impressões, "
-    "clicks, CTR, cpc_brl, reach, frequency, purchases, purchases_value_brl, purchase_roas, "
-    "leads, messaging_conversations_started) para o período selecionado com comparativo "
-    "do período anterior de mesma duração. Conversoes saem por evento (compras, leads, "
+    "[CORE] Overview de uma conta Meta Ads: as métricas do período selecionado, com "
+    "comparativo do período anterior de mesma duração. Conversoes saem por evento (compras, leads, "
     "conversas iniciadas), nunca somadas: a mesma compra vem sob varios nomes na Meta. "
     "Cada periodo traz sem_dados_no_periodo: true quando a Meta nao devolveu linha "
     "(sem entrega). Traz as duas janelas (date_range e previous_date_range) e "

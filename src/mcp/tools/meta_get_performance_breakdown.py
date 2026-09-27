@@ -30,10 +30,7 @@ from src.meta_ads.reports import run_meta_graph_get
 _DESCRIPTION = (
     "[DEFER] Performance Meta Ads quebrada por UMA dimensão: platform "
     "(Facebook/Instagram/Audience Network), device (iOS/Android/desktop), geo (país) "
-    "ou hourly (hora do dia). level = campaign|adset|ad (default campaign). Métricas: "
-    "spend, impressões, clicks, CTR, CPC, reach, frequency, purchases, purchases_value_brl, "
-    "purchase_roas, "
-    "leads, messaging_conversations_started (conversas iniciadas). "
+    "ou hourly (hora do dia). level = campaign|adset|ad (default campaign). "
     "O breakdown hourly nao traz reach nem frequency: vem null. " + CONTRATO_NA_DESCRIPTION + " "
     "Cada row traz o valor da dimensão em `breakdown`. Ordenado por spend desc **no servidor**, entao o topo devolvido E o topo real da conta; `truncated:true` significa que ficou cauda de MENOR gasto de fora, nao que o ranking esteja incompleto. "
     "1 breakdown por chamada. Use meta_list_my_ad_accounts pros IDs."

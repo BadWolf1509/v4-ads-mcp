@@ -87,9 +87,8 @@ Important — estas docs se contradizendo, e as combinações de parâmetros nun
 - **Remover do BM as contas Meta das quatro clientes que saíram** — ação do Wellington, decidida em 26/09; detalhe no `estado-atual.md`.
 - **04/10:** remedição dos buckets e uso da Fase 2B por gestor.
 - **Smoke de leitura do F194 em produção**, numa sessão MCP nova — roteiro no `estado-atual.md`.
-- **Alerta para os WARNING do Meta** (`meta_rate_limit_warning`, `meta_buc_nao_lido`): a única
-  política de alerta por log dispara em `severity>=ERROR`, então o aviso existe e ninguém é
-  avisado. Métrica por log + política, como a do `google_accounts_sem_grant` (declarado no F194).
+- **Alerta para os WARNING do Meta — criado em 27/09:** métrica `meta_avisos_de_quota` e policy
+  `3565996587605688856`, no mesmo canal de e-mail (detalhe no `infra-setup.md`).
 - **Nível de acesso da API Meta:** o cabeçalho de throttle diz `development_access` — o app segue no Limited Access do D1 de maio; decisão do Wellington (pedir o Full Access agora, ou esperar volume). Registrado no `estado-atual`.
 - **Follow-ups do F193** (Minor): no corpo do #111.
 

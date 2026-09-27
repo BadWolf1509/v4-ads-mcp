@@ -45,7 +45,6 @@ FRASE_DA_JANELA = (
     "LAST_N_DAYS = os N dias completos ate ontem, no fuso da conta (como no Gerenciador); "
     "TODAY = o dia corrente, ainda aberto."
 )
-CONTRATO_NA_DESCRIPTION = f"{FRASE_DO_NULL} {FRASE_DO_CTR} {FRASE_DA_ATRIBUICAO} {FRASE_DA_JANELA}"
 
 MetricaMeta = float | int | None
 
@@ -115,3 +114,17 @@ def metricas_sem_linha() -> dict[str, MetricaMeta]:
         "clicks": 0,
         "reach": 0,
     }
+
+
+# As chaves de metrica que a resposta traz, derivadas do contrato — nao escritas a mao.
+# Cada description listava as suas em prosa, e elas divergiram: o breakdown omitia
+# `purchases_value_brl`, e todas diziam `impressões`/`CPC` onde a resposta traz
+# `impressions`/`cpc_brl` (revisao final do F194).
+FRASE_DAS_METRICAS = (
+    "Metricas (chaves da resposta): "
+    + ", ".join(metricas_da_linha({}))
+    + "; messaging_conversations_started = conversas iniciadas."
+)
+CONTRATO_NA_DESCRIPTION = (
+    f"{FRASE_DAS_METRICAS} {FRASE_DO_NULL} {FRASE_DO_CTR} {FRASE_DA_ATRIBUICAO} {FRASE_DA_JANELA}"
+)

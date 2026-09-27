@@ -5538,8 +5538,9 @@ fantasma plantado em `metricas.py`** (medido). Passou a varrer os dois leitores 
 BUC no fuso da conta (o contador não tem leitor); status de entidade; freshness de métricas;
 o `last_throttle_pct` que nasce `0` pelo `DEFAULT` da coluna no dia sem BUC lido (sem
 leitor); e o alerta: `meta_rate_limit_warning` e `meta_buc_nao_lido` são WARNING, e a única
-política de alerta por log dispara em `severity>=ERROR` — o sinal existe e não avisa
-ninguém (pendência).
+política de alerta por log dispara em `severity>=ERROR` — o sinal existia e não avisava
+ninguém. **Resolvido em 27/09:** métrica `meta_avisos_de_quota` e policy própria
+(`infra-setup.md`).
 
 **Medido em produção (27/09, depois do deploy — revisão `v4-ads-mcp-00129-vf9`, numa sessão MCP
 aberta depois dele, que já recebeu as descriptions novas):**

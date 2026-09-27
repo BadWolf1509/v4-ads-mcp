@@ -10,6 +10,7 @@ contrato mudou de número para null, quem lê a tool (o LLM) tem de ser avisado.
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 import pytest
@@ -182,6 +183,31 @@ def test_toda_tool_com_metrica_meta_avisa_o_contrato_na_description() -> None:
         if ausentes:
             faltando[nome] = ausentes
     assert not faltando, f"description sem a frase do contrato: {faltando}"
+
+
+def test_toda_chave_de_metrica_da_resposta_esta_na_description() -> None:
+    """O LLM le as chaves da resposta pelo nome que a description da.
+
+    A lista era escrita a mao em cada uma das 5 descriptions e divergiu: o breakdown
+    omitia `purchases_value_brl`, e todas diziam `impressões`/`CTR`/`CPC` onde a resposta
+    traz `impressions`/`ctr`/`cpc_brl` (revisao final do F194).
+    """
+    from src.mcp.tools._registry import get_tool, import_all_tools
+    from src.meta_ads.metricas import metricas_da_linha
+
+    import_all_tools()
+    chaves = list(metricas_da_linha({}))
+    faltando = {}
+    for nome in sorted(_tools_que_chegam_ao_contrato()):
+        tool = get_tool(nome)
+        assert tool is not None
+        # Nome inteiro: `purchases` nao conta por estar dentro de `purchases_value_brl`.
+        ausentes = [
+            c for c in chaves if not re.search(rf"(?<!\w){re.escape(c)}(?!\w)", tool.description)
+        ]
+        if ausentes:
+            faltando[nome] = ausentes
+    assert not faltando, f"chave de metrica fora da description: {faltando}"
 
 
 def test_grafo_de_import_le_as_formas_que_ligam_o_modulo() -> None:
