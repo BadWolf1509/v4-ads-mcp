@@ -145,16 +145,17 @@ async def reconcile_meta(conn: asyncpg.Connection, *, now: datetime | None = Non
         fusos = {r.ad_account_id: r.timezone_name for r in inventario}
         bump = [(aid, account_today(fusos[aid], now=agora)) for aid in plano.to_bump]
         await meta_ad_accounts.apply_absences(conn, bump=bump, reset=plano.to_reset)
-        if leitura_completa:
-            # `leitura_completa`, NÃO `aplicado`: confundir os dois foi o
-            # C2. O que o alcance exige é a leitura inteira de
-            # /me/adaccounts — sobre página truncada, "não veio" significa
-            # "não li", e marcar su_reachable=false inventaria um sinal
-            # falso. Que a trava de rollout esteja ligada ou não é outra
-            # pergunta, e não é esta.
+        # `leitura_completa`, NÃO `aplicado`: confundir os dois foi o C2. O que o
+        # alcance exige é a leitura inteira de /me/adaccounts — sobre página
+        # truncada, "não veio" significa "não li", e marcar su_reachable=false
+        # inventaria um sinal falso. Que a trava de rollout esteja ligada ou não é
+        # outra pergunta, e não é esta. Índice vazio segue no-op (F85) até a sonda
+        # da Task 4 substituir a fonte.
+        if leitura_completa and ids_alcance:
             await meta_ad_accounts.set_reachable(
                 conn,
-                reachable_ids=sorted(ids_alcance),
+                le=sorted(ids_parceria & ids_alcance),
+                recusa=sorted(ids_parceria - ids_alcance),
                 scope_ids=sorted(ids_parceria),
             )
 

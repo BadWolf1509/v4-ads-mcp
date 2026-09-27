@@ -157,7 +157,8 @@ async def test_dry_run_observa_tudo_e_so_deixa_de_destruir() -> None:
     )
     assert all(isinstance(dia, date) for _aid, dia in absencias.await_args.kwargs["bump"])
     marca_alcance.assert_awaited_once()
-    assert marca_alcance.await_args.kwargs["reachable_ids"] == ["act_1"]
+    assert marca_alcance.await_args.kwargs["le"] == ["act_1"]
+    assert marca_alcance.await_args.kwargs["recusa"] == []
     # M4: o UPDATE é escopado à parceria — sem WHERE ele marcava su_reachable
     # também em conta inativa/fora da parceria, ruído num sinal que só faz
     # sentido para quem ESTÁ na parceria (spec §3).
@@ -209,8 +210,8 @@ async def test_com_apply_ligado_desativa_e_revoga_e_audita_a_conta() -> None:
     # Gate: a plataforma é obrigatória e FIXADA no call-site (sabotagem 2).
     assert audita.await_args.kwargs["platform"] == "meta"
     # Req. 3: alcance só é marcado com a leitura completa (aqui, complete=True
-    # nos dois lados) — reachable_ids reflete exatamente o que foi lido.
-    assert marca_alcance.await_args.kwargs["reachable_ids"] == ["act_1"]
+    # nos dois lados) — `le` reflete exatamente o que foi lido.
+    assert marca_alcance.await_args.kwargs["le"] == ["act_1"]
     # Req. 1: absences + alcance + desativação + revogação + a auditoria da
     # revogação inteiras dentro de UMA transação — tudo ou nada.
     conn.transaction.assert_called_once()

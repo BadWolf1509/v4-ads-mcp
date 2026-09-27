@@ -946,7 +946,8 @@ async def test_painel_meta_separa_as_tres_filas(client: AsyncClient) -> None:
         # fila 2: na parceria, mas o system user não foi atribuído
         await meta_ad_accounts.set_reachable(
             conn,
-            reachable_ids=["act_sem_delegacao", "act_saiu"],
+            le=["act_sem_delegacao", "act_saiu"],
+            recusa=["act_sem_su"],
             scope_ids=["act_sem_delegacao", "act_sem_su", "act_saiu"],
         )
         # fila 3: saiu da parceria — desativada e com o grant do gestor revogado
