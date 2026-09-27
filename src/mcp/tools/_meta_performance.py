@@ -26,6 +26,7 @@ from src.mcp.tools._meta_common import meta_error_message
 from src.meta_ads.account_clock import resolve_meta_account_today
 from src.meta_ads.account_overview import resolve_meta_date_window
 from src.meta_ads.insights import Level, build_insights_call, parse_insights_row
+from src.meta_ads.metricas import ATRIBUICAO
 from src.meta_ads.reports import run_meta_graph_get
 
 # F189: UMA página. O F88 lia 5 e cortava em `limit` depois — mas o mesmo F88
@@ -39,6 +40,17 @@ from src.meta_ads.reports import run_meta_graph_get
 # Com uma página, `truncated` = "sobrou `next`" significa exatamente o que a
 # description promete — ficou cauda de menor gasto — e `rows[:limit]` vira no-op.
 _MAX_PAGES = 1
+
+
+def _gasto_para_ordenar(linha: dict[str, Any]) -> float:
+    """Chave do sort de seguranca: `spend_brl` pode vir None pelo contrato.
+
+    Nao acontece em linha com entrega (a Meta manda `spend` sempre que ha linha),
+    mas `None > float` estoura TypeError — e o sort e rede de seguranca, nao pode
+    ser ele a derrubar a resposta. None vai para o fim.
+    """
+    gasto = linha["spend_brl"]
+    return -1.0 if gasto is None else float(gasto)
 
 
 def meta_account_not_found_error(ad_account_id: str) -> dict[str, Any]:
@@ -133,7 +145,7 @@ async def run_meta_level_performance(
     # a 1ª página JÁ é o topo. O sort abaixo é rede de segurança idempotente
     # sobre dado já ordenado — o corte (`[:limit]`) é que precisa da garantia.
     rows = [parse_insights_row(r, level) for r in resp.get("data", [])]
-    rows.sort(key=lambda r: r["spend_brl"], reverse=True)
+    rows.sort(key=_gasto_para_ordenar, reverse=True)
     rows = rows[:limit]
 
     # Sobrou `paging.next` = há mais linhas ABAIXO do topo. Com o sort
@@ -147,6 +159,7 @@ async def run_meta_level_performance(
         "ad_account_name": account.account_name,
         "currency": account.currency,
         "date_range": {"start": start.isoformat(), "end": end.isoformat()},
+        "atribuicao": ATRIBUICAO,
         "rows": rows,
         "total_rows": len(rows),
         "truncated": truncated,

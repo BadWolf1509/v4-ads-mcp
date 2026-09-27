@@ -11,11 +11,14 @@ from uuid import UUID
 from src.mcp.context import get_current
 from src.mcp.tools._meta_performance import run_meta_level_performance
 from src.mcp.tools._registry import register_tool
+from src.meta_ads.metricas import CONTRATO_NA_DESCRIPTION
 
 _DESCRIPTION = (
     "[CORE] Performance por anúncio (ad) Meta Ads: spend, impressões, clicks, "
-    "CTR, CPC, reach, frequency, purchases, purchases_value_brl, purchase_roas, "
-    "leads. Inclui ad_set_id/name + campaign_id/name parents. "
+    "CTR, CPC, reach, frequency, purchases, purchases_value_brl, purchase_roas, leads, messaging_conversations_started (conversas iniciadas). "
+    + CONTRATO_NA_DESCRIPTION
+    + " "
+    "Inclui ad_set_id/name + campaign_id/name parents. "
     "Ordenado por spend desc **no servidor**, entao o topo devolvido E o topo real da conta; `truncated:true` significa que ficou cauda de MENOR gasto de fora, nao que o ranking esteja incompleto. Filtros: limit (max 500). "
     "[Limitação] Metadata de entidade (effective_status, creative_id) NÃO vem: a "
     "Meta Insights API só serve métricas — esses campos vivem em /ads. Retorna "

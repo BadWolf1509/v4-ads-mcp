@@ -11,10 +11,13 @@ from uuid import UUID
 from src.mcp.context import get_current
 from src.mcp.tools._meta_performance import run_meta_level_performance
 from src.mcp.tools._registry import register_tool
+from src.meta_ads.metricas import CONTRATO_NA_DESCRIPTION
 
 _DESCRIPTION = (
     "[CORE] Performance por campanha Meta Ads: spend, impressões, clicks, CTR, "
-    "CPC, reach, frequency, purchases, purchases_value_brl, purchase_roas, leads. "
+    "CPC, reach, frequency, purchases, purchases_value_brl, purchase_roas, leads, messaging_conversations_started (conversas iniciadas). "
+    + CONTRATO_NA_DESCRIPTION
+    + " "
     "Ordenado por spend desc **no servidor**, entao o topo devolvido E o topo real da conta; `truncated:true` significa que ficou cauda de MENOR gasto de fora, nao que o ranking esteja incompleto. Filtros: limit (max 500). "
     "Use meta_list_my_ad_accounts pra listar ad_account_ids disponíveis. "
     "[Limitação] Retorna campanhas de QUALQUER status (ACTIVE/PAUSED/ARCHIVED) e "

@@ -6,11 +6,10 @@ Pure module — zero IO, zero SDK. ~50ms total.
 from datetime import date
 
 from src.meta_ads.insights import (
-    _extract_action_value,
-    _extract_purchase_roas,
     build_insights_call,
     parse_insights_row,
 )  # noqa: F401
+from tests.unit._meta_formas_medidas import LINHA_COMPRA_E_LEAD, LINHA_HORARIA
 
 # ============================================================================
 # build_insights_call
@@ -118,11 +117,13 @@ def test_parse_insights_row_campaign_full() -> None:
         "cpc": "1.54",
         "reach": "12345",
         "frequency": "4.05",
+        # Spec 2026-09-26: a forma MEDIDA — o total de compras e `omni_purchase`;
+        # o nome nu `purchase` nao apareceu em nenhuma das 24 contas.
         "actions": [
-            {"action_type": "purchase", "value": "12"},
+            {"action_type": "omni_purchase", "value": "12"},
             {"action_type": "lead", "value": "3"},
         ],
-        "action_values": [{"action_type": "purchase", "value": "5500.00"}],
+        "action_values": [{"action_type": "omni_purchase", "value": "5500.00"}],
         "purchase_roas": [{"action_type": "omni_purchase", "value": "4.45"}],
     }
     out = parse_insights_row(row, "campaign")
@@ -142,6 +143,7 @@ def test_parse_insights_row_campaign_full() -> None:
     assert out["purchases_value_brl"] == 5500.00
     assert out["purchase_roas"] == 4.45
     assert out["leads"] == 3
+    assert out["messaging_conversations_started"] is None
 
 
 # ============================================================================
@@ -211,8 +213,12 @@ def test_parse_insights_row_ad_sem_metadata_de_criativo() -> None:
 # ============================================================================
 
 
-def test_parse_insights_row_no_actions() -> None:
-    """Row sem actions → purchases=0, leads=0, purchases_value_brl=0."""
+def test_parse_insights_row_sem_actions_da_null_nao_zero() -> None:
+    """Spec 2026-09-26: evento que a Meta nao reportou e null (zero OU nao rastreado).
+
+    Este teste afirmava `purchases == 0` sobre uma linha sem `actions` — a regra que o
+    spec revoga: o 0 era indistinguivel de "a Meta mediu e deu zero".
+    """
     row = {
         "campaign_id": "1",
         "campaign_name": "Test",
@@ -220,10 +226,11 @@ def test_parse_insights_row_no_actions() -> None:
         "spend": "100",
     }
     out = parse_insights_row(row, "campaign")
-    assert out["purchases"] == 0
-    assert out["purchases_value_brl"] == 0.0
-    assert out["leads"] == 0
-    assert out["purchase_roas"] == 0.0
+    assert out["purchases"] is None
+    assert out["purchases_value_brl"] is None
+    assert out["leads"] is None
+    assert out["purchase_roas"] is None
+    assert out["messaging_conversations_started"] is None
 
 
 def test_parse_insights_row_ctr_normalization() -> None:
@@ -263,52 +270,27 @@ def test_parse_insights_row_ignora_metadata_que_a_query_nao_pede() -> None:
 
 
 # ============================================================================
-# _extract_action_value helper
+# As formas medidas em 26/09 (spec 2026-09-26) — o que o parser anterior errava
 # ============================================================================
 
 
-def test_extract_action_value_missing_action_type() -> None:
-    actions = [{"action_type": "link_click", "value": "100"}]
-    assert _extract_action_value(actions, "purchase") == 0.0
+def test_compra_e_lead_sob_varios_nomes_saem_pelo_total_canonico() -> None:
+    """M2: 10 compras sob 5 nomes, 13 leads sob 7. O parser anterior buscava o nome
+    exato `purchase` e devolvia `purchases: 0` sobre as 10 compras."""
+    row = {"campaign_id": "1", "campaign_name": "C", **LINHA_COMPRA_E_LEAD}
+    out = parse_insights_row(row, "campaign")
+    assert out["purchases"] == 10
+    assert out["leads"] == 13
+    assert out["messaging_conversations_started"] == 3531
 
 
-def test_extract_action_value_first_match_only() -> None:
-    """Se houver múltiplos action_type='purchase', retorna primeiro encontrado."""
-    actions = [
-        {"action_type": "purchase", "value": "10"},
-        {"action_type": "purchase", "value": "20"},
-    ]
-    assert _extract_action_value(actions, "purchase") == 10.0
-
-
-def test_extract_action_value_malformed_value() -> None:
-    """Value não-numérico → 0 (defensive)."""
-    actions = [{"action_type": "purchase", "value": "not_a_number"}]
-    assert _extract_action_value(actions, "purchase") == 0.0
-
-
-def test_extract_action_value_none_or_empty() -> None:
-    assert _extract_action_value(None, "purchase") == 0.0
-    assert _extract_action_value([], "purchase") == 0.0
-
-
-# ============================================================================
-# _extract_purchase_roas helper
-# ============================================================================
-
-
-def test_extract_purchase_roas_first_only() -> None:
-    """purchase_roas é lista; retorna [0].value."""
-    roas = [
-        {"action_type": "omni_purchase", "value": "4.45"},
-        {"action_type": "purchase", "value": "5.00"},  # ignored
-    ]
-    assert _extract_purchase_roas(roas) == 4.45
-
-
-def test_extract_purchase_roas_empty_list() -> None:
-    assert _extract_purchase_roas([]) == 0.0
-    assert _extract_purchase_roas(None) == 0.0
+def test_linha_horaria_sem_reach_da_null() -> None:
+    """M5: o breakdown horario nao traz reach/frequency — antes saiam 0."""
+    chave = "hourly_stats_aggregated_by_advertiser_time_zone"
+    out = parse_insights_row(dict(LINHA_HORARIA), "campaign", breakdown_keys=[chave])
+    assert out["reach"] is None
+    assert out["frequency"] is None
+    assert out["breakdown"] == {chave: "09:00:00 - 09:59:59"}
 
 
 # ============================================================================
@@ -397,3 +379,49 @@ def test_parse_insights_row_breakdown_missing_value_is_none() -> None:
     row = {"campaign_id": "1", "campaign_name": "T", "effective_status": "ACTIVE", "spend": "10"}
     out = parse_insights_row(row, "campaign", breakdown_keys=["publisher_platform"])
     assert out["breakdown"] == {"publisher_platform": None}
+
+
+# ============================================================================
+# build_insights_call — nivel `account` e atribuicao (spec 2026-09-26, §4.2)
+# ============================================================================
+
+
+def test_build_insights_call_nivel_account_pede_so_as_metricas() -> None:
+    """O overview passa a sair do construtor unico, no nivel `account`."""
+    edge, params = build_insights_call(
+        level="account",
+        ad_account_id="act_123",
+        start=date(2026, 9, 1),
+        end=date(2026, 9, 7),
+        limit=1,
+    )
+    assert edge == "/act_123/insights"
+    assert params["level"] == "account"
+    assert params["fields"].split(",") == [
+        "spend",
+        "impressions",
+        "clicks",
+        "ctr",
+        "cpc",
+        "reach",
+        "frequency",
+        "actions",
+        "action_values",
+        "purchase_roas",
+    ]
+    assert "ad_account_id" not in params
+
+
+def test_toda_chamada_leva_a_atribuicao_unificada() -> None:
+    """Sondado com controle: valor invalido volta 400, entao a API le o parametro."""
+    for level in ("account", "campaign", "adset", "ad"):
+        for breakdowns in (None, ["publisher_platform"]):
+            _, params = build_insights_call(
+                level=level,  # type: ignore[arg-type]
+                ad_account_id="act_1",
+                start=date(2026, 9, 1),
+                end=date(2026, 9, 1),
+                limit=10,
+                breakdowns=breakdowns,
+            )
+            assert params["use_unified_attribution_setting"] == "true", (level, breakdowns)

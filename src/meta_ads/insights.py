@@ -18,7 +18,13 @@ resposta, com valor de verdade.
 from datetime import date
 from typing import Any, Literal
 
+from src.meta_ads.metricas import metricas_da_linha
+
+# Nivel de LINHA (o que `parse_insights_row` sabe desenhar) x nivel de CHAMADA
+# (o que `build_insights_call` monta): o overview pede `account`, uma linha so, e a
+# le por `account_overview.parse_insights_response` — nao por `parse_insights_row`.
 Level = Literal["campaign", "adset", "ad"]
+NivelDaChamada = Literal["account", "campaign", "adset", "ad"]
 
 Breakdown = Literal["platform", "device", "geo", "hourly"]
 
@@ -78,7 +84,7 @@ INSIGHTS_FIELDS_AD = [
 
 def build_insights_call(
     *,
-    level: Level,
+    level: NivelDaChamada,
     ad_account_id: str,
     start: date,
     end: date,
@@ -103,6 +109,7 @@ def build_insights_call(
     resolver a conta, e não muda.
     """
     fields_by_level = {
+        "account": _COMMON_INSIGHTS_FIELDS,
         "campaign": INSIGHTS_FIELDS_CAMPAIGN,
         "adset": INSIGHTS_FIELDS_ADSET,
         "ad": INSIGHTS_FIELDS_AD,
@@ -125,33 +132,16 @@ def build_insights_call(
         # nada (foi assim que F53/F54/F55 nasceram). A combinacao com
         # `breakdowns` foi sondada a parte, inclusive a hourly.
         "sort": "spend_descending",
+        # Spec 2026-09-26 §4.2: a atribuicao configurada no conjunto de anuncios,
+        # que e o que o Gerenciador mostra. Sondado com controle: valor invalido
+        # volta HTTP 400 ("must be a boolean"), entao a API le o parametro
+        # (`scripts/probe_meta_metricas.py`). A resposta diz qual usou
+        # (`metricas.ATRIBUICAO`).
+        "use_unified_attribution_setting": "true",
     }
     if breakdowns:
         params["breakdowns"] = ",".join(breakdowns)
     return edge, params
-
-
-def _extract_action_value(actions: list[dict[str, Any]] | None, action_type: str) -> float:
-    """Extract value of FIRST action matching action_type. 0 if absent."""
-    if not actions:
-        return 0.0
-    for a in actions:
-        if a.get("action_type") == action_type:
-            try:
-                return float(a.get("value", 0))
-            except (TypeError, ValueError):
-                return 0.0
-    return 0.0
-
-
-def _extract_purchase_roas(roas_list: list[dict[str, Any]] | None) -> float:
-    """purchase_roas é lista: [{'action_type':'omni_purchase','value':'4.45'}]."""
-    if not roas_list:
-        return 0.0
-    try:
-        return float(roas_list[0].get("value", 0))
-    except (TypeError, ValueError, IndexError):
-        return 0.0
 
 
 def parse_insights_row(
@@ -163,29 +153,16 @@ def parse_insights_row(
     M.4: se `breakdown_keys` for dado, os valores da dimensão do row são
     expostos em result["breakdown"] (ex: {"publisher_platform": "instagram"}).
     """
-    spend = float(row.get("spend") or 0)
-    clicks = int(row.get("clicks") or 0)
-    actions = row.get("actions")
-    action_values = row.get("action_values")
-
+    # As metricas saem do contrato (`metricas.py`), a unica leitura de metrica de
+    # linha Graph — ausente vira None, um nome por campo, ctr em fracao. Aqui so
+    # mora o desenho por nivel.
+    #
     # F89: `effective_status` NÃO é devolvido. Os F53/F54 o tiraram da query
     # (a Meta Insights o rejeita — é metadata de entidade, vive em /campaigns),
     # mas o parser seguia lendo, então saía "UNKNOWN"/"DESCONHECIDO" em 100% das
     # linhas. Campo constante é pior que campo ausente pra consumidor LLM: ele
     # relata como se fosse dado. Volta junto com o enriquecimento em 2 passos.
-    common: dict[str, Any] = {
-        "spend_brl": round(spend, 2),
-        "impressions": int(row.get("impressions") or 0),
-        "clicks": clicks,
-        "ctr": round(float(row.get("ctr") or 0) / 100, 4),  # Meta % → decimal
-        "cpc_brl": round(float(row.get("cpc") or 0), 4),
-        "reach": int(row.get("reach") or 0),
-        "frequency": round(float(row.get("frequency") or 0), 2),
-        "purchases": int(_extract_action_value(actions, "purchase")),
-        "purchases_value_brl": round(_extract_action_value(action_values, "purchase"), 2),
-        "purchase_roas": _extract_purchase_roas(row.get("purchase_roas")),
-        "leads": int(_extract_action_value(actions, "lead")),
-    }
+    common = metricas_da_linha(row)
 
     if level == "campaign":
         result: dict[str, Any] = {
