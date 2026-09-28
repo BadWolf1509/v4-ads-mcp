@@ -30,9 +30,9 @@ async def test_first_call_starts_counter_at_estimate(db) -> None:
 async def test_record_actual_reconciles_estimate(db) -> None:
     pool = db
     async with pool.acquire() as conn:
-        await before_call(conn, _TOKEN_ID, estimated_ops=10)
+        dia = await before_call(conn, _TOKEN_ID, estimated_ops=10)
         # Google said only 7 ops actually used.
-        await record_actual(conn, _TOKEN_ID, actual_ops=7, estimated_ops=10)
+        await record_actual(conn, _TOKEN_ID, dia=dia, actual_ops=7, estimated_ops=10)
         used, _, _ = await get_today_usage(conn, _TOKEN_ID)
     assert used == 7  # reconciled down
 
@@ -143,7 +143,7 @@ async def test_manager_key_reserves_and_reconciles_independently_of_global_key(d
 
     async with pool.acquire() as conn:
         await before_call(conn, _TOKEN_ID, estimated_ops=50)
-        await before_call(conn, mgr_key, estimated_ops=30, daily_limit=5000)
+        dia_do_gestor = await before_call(conn, mgr_key, estimated_ops=30, daily_limit=5000)
 
         global_used, _, _ = await get_today_usage(conn, _TOKEN_ID)
         mgr_used, _, _ = await get_today_usage(conn, mgr_key, daily_limit=5000)
@@ -151,7 +151,7 @@ async def test_manager_key_reserves_and_reconciles_independently_of_global_key(d
         assert mgr_used == 30
 
         # Reconcilia so a chave do gestor pra baixo — a global fica intacta.
-        await record_actual(conn, mgr_key, actual_ops=20, estimated_ops=30)
+        await record_actual(conn, mgr_key, dia=dia_do_gestor, actual_ops=20, estimated_ops=30)
 
         global_used_after, _, _ = await get_today_usage(conn, _TOKEN_ID)
         mgr_used_after, _, _ = await get_today_usage(conn, mgr_key, daily_limit=5000)
@@ -174,3 +174,68 @@ async def test_manager_key_blocks_at_its_own_daily_limit(db) -> None:
 
         mgr_used, _, _ = await get_today_usage(conn, mgr_key, daily_limit=manager_daily_quota)
     assert mgr_used == 95  # bloqueio nao alterou a row
+
+
+@pytest.mark.integration
+async def test_acerto_que_atravessa_a_meia_noite_acerta_o_dia_da_reserva(db, monkeypatch) -> None:
+    """Spec 2026-09-28 §3.2.4: reserva e acerto no mesmo balde.
+
+    O `record_actual` acertava a linha de HOJE. Uma chamada reservada às 23:59 UTC e
+    acertada às 00:01 caía num dia sem linha — `UPDATE` de zero linhas, sem erro — e a
+    correção sumia; a reserva de ontem ficava com a estimativa, não com o medido.
+    """
+    import src.governance.rate_limit as rl
+
+    reserva = datetime(2026, 9, 27, 23, 59, tzinfo=UTC)
+    acerto = datetime(2026, 9, 28, 0, 1, tzinfo=UTC)
+    monkeypatch.setattr(rl, "_today", lambda: reserva)
+    async with db.acquire() as conn:
+        dia = await before_call(conn, _TOKEN_ID, estimated_ops=10)
+        monkeypatch.setattr(rl, "_today", lambda: acerto)
+        await record_actual(conn, _TOKEN_ID, dia=dia, actual_ops=7, estimated_ops=10)
+        linhas = await conn.fetch(
+            "SELECT date, operations_used FROM rate_counters "
+            "WHERE developer_token_id = $1 ORDER BY date",
+            _TOKEN_ID,
+        )
+    assert dia == reserva.date()
+    assert [(r["date"], r["operations_used"]) for r in linhas] == [(reserva.date(), 7)]
+
+
+def _buc(pct: int) -> str:
+    import json
+
+    return json.dumps({"123": [{"call_count": pct, "total_cputime": 1, "total_time": 1}]})
+
+
+@pytest.mark.integration
+async def test_contador_meta_grava_as_duas_coisas_ou_nenhuma(db, monkeypatch) -> None:
+    """Spec 2026-09-28 §3.2.4: `increment_calls` e `update_throttle` numa transação só."""
+    from src.db.repositories import meta_rate_counters
+    from src.governance.rate_limit import record_actual_meta
+
+    async def quebra(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("falhou no meio")
+
+    monkeypatch.setattr(meta_rate_counters, "update_throttle", quebra)
+    with pytest.raises(RuntimeError, match="falhou no meio"):
+        await record_actual_meta(app_id="app", ad_account_id="act_123", buc_header=_buc(42))
+
+    async with db.acquire() as conn:
+        linhas = await conn.fetchval("SELECT count(*) FROM meta_rate_counters")
+    assert linhas == 0, "o increment_calls ficou gravado sem o update_throttle"
+
+
+@pytest.mark.integration
+async def test_contador_meta_conta_no_dia_utc(db, monkeypatch) -> None:
+    """Spec 2026-09-28 §3.2.4: o lado Meta usava `date.today()` — o dia do SO, sem fuso —
+    e o Google, o dia UTC. Só concordavam porque o container roda em UTC."""
+    import src.governance.rate_limit as rl
+    from src.governance.rate_limit import record_actual_meta
+
+    monkeypatch.setattr(rl, "_today", lambda: datetime(2030, 1, 1, 12, tzinfo=UTC))
+    await record_actual_meta(app_id="app", ad_account_id="act_123", buc_header=_buc(42))
+
+    async with db.acquire() as conn:
+        dias = [r["date"] for r in await conn.fetch("SELECT date FROM meta_rate_counters")]
+    assert dias == [datetime(2030, 1, 1, tzinfo=UTC).date()]

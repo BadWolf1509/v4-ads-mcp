@@ -12,7 +12,7 @@ asyncpg connection and runs in one transaction.
 """
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import NamedTuple
 
 import asyncpg
@@ -46,8 +46,11 @@ async def before_call(
     *,
     estimated_ops: int,
     daily_limit: int = DAILY_QUOTA_BASIC,
-) -> None:
+) -> date:
     """Reserve estimated_ops in today's counter. Raises QuotaExhausted at 100%.
+
+    Devolve o dia (UTC) em que reservou: o `record_actual` acerta ESSE dia, não o de
+    hoje — reserva e acerto no mesmo balde (spec 2026-09-28 §3.2.4).
 
     Logs a one-time warning when crossing 80% threshold (uses
     `last_alert_pct` to dedupe within the day).
@@ -109,17 +112,22 @@ async def before_call(
             new_used,
             new_alert,
         )
+    return today
 
 
 async def record_actual(
     conn: asyncpg.Connection,
     developer_token_id: str,
     *,
+    dia: date,
     actual_ops: int,
     estimated_ops: int,
 ) -> None:
-    """Reconcile counter after API responds. Adjusts by (actual - estimated)."""
-    today = _today().date()
+    """Acerta a reserva depois da resposta: soma (actual - estimated) ao dia `dia`.
+
+    `dia` é o que o `before_call` devolveu. Acertar o dia de HOJE descartava a correção
+    de chamada que atravessa a meia-noite UTC: `UPDATE` de zero linhas, sem erro.
+    """
     delta = actual_ops - estimated_ops
     if delta == 0:
         return  # estimate was right
@@ -130,7 +138,7 @@ async def record_actual(
         WHERE developer_token_id = $1 AND date = $2
         """,
         developer_token_id,
-        today,
+        dia,
         delta,
     )
 
@@ -258,7 +266,6 @@ async def record_actual_meta(
     Hashes app_id (SHA-256 truncated 32-char) before persisting for storage privacy.
     """
     import hashlib
-    from datetime import date
 
     from src.db import connection
     from src.db.repositories import meta_rate_counters
@@ -266,10 +273,12 @@ async def record_actual_meta(
     throttle_pct = _parse_buc_header_pct(buc_header, ad_account_id=ad_account_id)
     insights = _parse_insights_throttle(insights_throttle_header)
     app_id_hash = hashlib.sha256(app_id.encode()).hexdigest()[:32]
-    today = date.today()
+    # Spec 2026-09-28 §3.2.4: o mesmo dia UTC do Google (era `date.today()`, o dia do SO),
+    # e as duas gravações numa transação — a falha da segunda desfaz a primeira.
+    today = _today().date()
 
     pool = connection.get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire() as conn, conn.transaction():
         await meta_rate_counters.increment_calls(
             conn,
             app_id=app_id_hash,

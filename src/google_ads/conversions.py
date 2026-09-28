@@ -111,8 +111,8 @@ async def run_conversion_upload(
         # EXTERNA torna as duas reservas tudo-ou-nada (before_call's internal
         # conn.transaction() vira SAVEPOINT; raise em qualquer uma desfaz ambas).
         async with pool.acquire() as conn, conn.transaction():
-            await before_call(conn, token_id, estimated_ops=max(1, target_count))
-            await before_call(
+            dia = await before_call(conn, token_id, estimated_ops=max(1, target_count))
+            dia_do_gestor = await before_call(
                 conn,
                 f"mgr:{manager_id}",
                 estimated_ops=max(1, target_count),
@@ -200,12 +200,14 @@ async def run_conversion_upload(
                 await record_actual(
                     conn,
                     token_id,
+                    dia=dia,
                     actual_ops=actual_ops,
                     estimated_ops=max(1, target_count),
                 )
                 await record_actual(
                     conn,
                     f"mgr:{manager_id}",
+                    dia=dia_do_gestor,
                     actual_ops=actual_ops,
                     estimated_ops=max(1, target_count),
                 )
