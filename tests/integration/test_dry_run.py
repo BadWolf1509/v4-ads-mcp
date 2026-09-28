@@ -199,3 +199,40 @@ async def test_pendencia_e_trilha_vivem_ou_morrem_juntas(db, session_id) -> None
             "SELECT count(*) FROM pending_confirmations WHERE session_id = $1", sid
         )
     assert pendentes == 0, "token ficou de pe sem linha de auditoria — e o proprio F148"
+
+
+@pytest.mark.integration
+async def test_token_vence_pelo_relogio_do_banco(db, session_id, monkeypatch) -> None:
+    """Spec 2026-09-28 §3.2.5: o prazo é gravado com o `now()` do banco, e é com ele que
+    se decide. Com o relógio da app atrasado (Cloud Run e Supabase são hosts diferentes),
+    comparar `expires_at` com `datetime.now()` da app aceitava um token já vencido."""
+    from datetime import UTC
+    from datetime import datetime as _datetime
+
+    class _RelogioAtrasado(_datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[no-untyped-def, override]
+            return _datetime(2020, 1, 1, tzinfo=UTC)
+
+    sid, mid = session_id
+    with patch("src.governance.dry_run.ensure_account_access", AsyncMock(return_value=None)):
+        async with db.acquire() as conn:
+            token = await create_pending(
+                conn,
+                manager_id=mid,
+                session_id=sid,
+                customer_id="1234567890",
+                operation_type="update_campaign_budget",
+                payload={},
+                blast_summary="...",
+            )
+            await conn.execute(
+                "UPDATE pending_confirmations SET expires_at = now() - interval '1 minute' "
+                "WHERE token = $1",
+                token,
+            )
+
+    monkeypatch.setattr("src.governance.dry_run.datetime", _RelogioAtrasado, raising=False)
+    async with db.acquire() as conn:
+        with pytest.raises(InvalidTokenError, match="expired"):
+            await consume(conn, token=token, session_id=sid)

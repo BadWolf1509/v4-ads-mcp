@@ -349,6 +349,13 @@ def _build_manager_page_sql(
     return sql, params
 
 
+def _recusa_limite_menor_que_um(limit: int) -> None:
+    """Spec 2026-09-28 §3.2.3: com `limit=0`, a página fica vazia, a linha sentinela
+    diz "tem mais" e o `page[-1]` do cursor estoura `IndexError`."""
+    if limit < 1:
+        raise ValueError(f"limit tem de ser >= 1, veio {limit}")
+
+
 async def list_page_for_manager(
     conn: asyncpg.Connection,
     *,
@@ -389,6 +396,7 @@ async def list_page_for_manager(
     tools layer. The SQL itself lives in `_build_manager_page_sql` — see its
     docstring for why it isn't inlined here anymore.
     """
+    _recusa_limite_menor_que_um(limit)
     sql, params = _build_manager_page_sql(
         manager_id=manager_id,
         days=days,
@@ -484,6 +492,7 @@ async def list_page_admin(
     admin table shows (gestor e-mail, no per-row dry_run/params_summary). The
     SQL itself lives in `_build_admin_page_sql`.
     """
+    _recusa_limite_menor_que_um(limit)
     sql, params = _build_admin_page_sql(
         days=days,
         manager_id=manager_id,

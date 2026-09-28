@@ -13,7 +13,6 @@ import json
 import secrets
 import string
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -136,7 +135,7 @@ async def consume(
         row = await conn.fetchrow(
             """
             SELECT session_id, customer_id, operation_type, payload, blast_summary,
-                   expires_at, consumed_at
+                   expires_at, consumed_at, expires_at < now() AS expirado
             FROM pending_confirmations
             WHERE token = $1
             FOR UPDATE
@@ -151,7 +150,9 @@ async def consume(
             raise InvalidTokenError(
                 f"Token '{token}' belongs to a different session — refuse to apply"
             )
-        if row["expires_at"] < datetime.now(UTC):
+        # Spec 2026-09-28 §3.2.5: o prazo foi gravado com o `now()` do banco, e é com
+        # ele que se decide — o relógio da app é outro host.
+        if row["expirado"]:
             raise InvalidTokenError(f"Token '{token}' expired")
 
         await conn.execute(
