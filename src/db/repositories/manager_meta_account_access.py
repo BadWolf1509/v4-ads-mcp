@@ -104,12 +104,16 @@ async def revoke(
 
     Era DELETE. Curadoria de acesso é trabalho humano — apagar a linha perderia
     quem tinha acesso quando a parceria (ou o gestor) volta.
+
+    Só pega linha viva (spec 2026-09-28 §3.2.1): revogar de novo uma linha que o churn
+    já revogou trocaria `partnership_ended` pelo motivo novo, e o `restore_for_account`
+    deixaria de devolvê-la quando a parceria voltasse.
     """
     await conn.execute(
         """
         UPDATE manager_meta_account_access
            SET revoked_at = now(), revoked_reason = $3
-         WHERE manager_id = $1 AND ad_account_id = $2
+         WHERE manager_id = $1 AND ad_account_id = $2 AND revoked_at IS NULL
         """,
         manager_id,
         ad_account_id,

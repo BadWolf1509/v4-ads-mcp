@@ -55,7 +55,8 @@ async def _pick_oauth_connection(conn: asyncpg.Connection) -> tuple[Any, Any]:
 
     # Fallback: any active connection.
     row = await conn.fetchrow(
-        "SELECT manager_id FROM google_oauth_connections WHERE revoked_at IS NULL ORDER BY connected_at DESC LIMIT 1"
+        "SELECT manager_id FROM google_oauth_connections WHERE revoked_at IS NULL"
+        " ORDER BY connected_at DESC, id DESC LIMIT 1"
     )
     if row is None:
         return None, None
