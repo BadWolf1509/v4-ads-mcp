@@ -115,7 +115,7 @@ Cada guard é visto falhar contra o código de 28/09, por sabotagem ou cópia, n
 | 1 | unit: `init_pool` passa `setup` ao `create_pool` e `get_pool()` devolve o invólucro |
 | 1 | estrutural: nenhum `asyncpg.create_pool(`/`asyncpg.connect(` em `src/` fora de `connection.py` |
 | 2 | derivado do SQL: todo literal SQL em `src/` que **revoga** (`UPDATE … SET revoked_at = now()`) tem `revoked_at IS NULL` no `WHERE`. O `restore`, que grava `revoked_at = NULL`, fica fora por definição. Sabotagem: tirar o predicado do `revoke` Google |
-| 2 | derivado do SQL: todo `ORDER BY … LIMIT 1` em `src/` tem `id` como última chave de ordenação. Exceção só por lista no próprio guard, com a coluna e a constraint `UNIQUE` que a garante. Sabotagem: tirar o `id DESC` de um dos três |
+| 2 | derivado do SQL: todo `ORDER BY … LIMIT 1` em `src/` **sobre tabela do nosso banco** (criada numa migration — é o que separa o SQL da GAQL, cujo `LIMIT 1` em `change_event` lê um valor, não escolhe linha) tem `id` como última chave de ordenação. Exceção só por lista no próprio guard, com a coluna e a constraint `UNIQUE` que a garante. Sabotagem: tirar o `id DESC` de um dos três |
 | 2 | unit: `limit=0` levanta `ValueError` nos dois pagers |
 | 2 | integração: acerto de quota com o dia virando entre `before_call` e `record_actual` acerta a linha da reserva |
 | 2 | integração: falha no `update_throttle` desfaz o `increment_calls` |
