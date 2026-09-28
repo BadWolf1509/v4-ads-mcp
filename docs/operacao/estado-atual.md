@@ -16,11 +16,11 @@
 > **Trabalho que fechou sai daqui:** o defeito vai para o catálogo, a narrativa para o
 > arquivo, e aqui fica uma linha.
 
-> **Última sessão:** [`session-2026-09-27-handoff.md`](session-2026-09-27-handoff.md)
-> — o mapa de 27/09: o F194 em produção e conferido, o **F195** (janelas `LAST_N_DAYS` até
-> ontem, como no Google e na Meta), as descriptions Meta com as chaves reais, o alerta dos avisos
-> Meta de quota no GCP e o **F154** (o alcance do system user medido pela leitura, não pelo
-> índice) — a verificação em produção está logo abaixo. O dia anterior: [`session-2026-09-25-26-handoff.md`](session-2026-09-25-26-handoff.md).
+> **Última sessão:** [`session-2026-09-28-handoff.md`](session-2026-09-28-handoff.md)
+> — a noite de 27/09 e o 28/09: o **F196** (`THIS_MONTH` no dia 1), o **F197** (só o job escreve
+> o inventário), o **F198** (lockfile fechado), o lote de dependências e o `mcp` 1.30, e a
+> verificação da execução diária de 28/09 (18 de 18). Antes: [`session-2026-09-27-handoff.md`](session-2026-09-27-handoff.md)
+> (F194, F195, F154).
 
 ---
 
@@ -28,7 +28,7 @@
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00131-cjv`**, 100% do tráfego (medido por `gcloud` em 27/09, 17:40 UTC) — o deploy do **#119** (descriptions Meta com as chaves reais; run `36333559354`, `test` e `deploy` `success`), sobre o **#116** (F194) e o **#118** (F195); `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186): as descriptions novas só aparecem em sessão MCP aberta depois do deploy (F140) |
+| Revisão servindo | **`v4-ads-mcp-00136-lxv`**, 100% do tráfego (medido por `gcloud` em 28/09, 15:41 UTC) — o deploy do **#124** (`mcp` 1.30.0, sozinho; run `36444473607`, `test` e `deploy` `success`, imagem `db71a3f` também no job `v4-ads-mcp-resync`), sobre o **#128** (lote de dependências e F198), o **#122** (F197), o **#121** (F196) e o **#120** (F154); `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186); o do `mcp` 1.30 foi feito por uma sessão Claude autenticada |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
 | Catálogo | até **F198** (~5.800 linhas, 581 KB) |
@@ -39,7 +39,7 @@
 
 **Smoke de leitura do F195 em produção (27/09, run `36332640719`):** `meta_get_account_overview` na Cheiro | Conta 01 com `LAST_7_DAYS` ecoou `date_range` `20/09–26/09` — exatamente o `date_preset=last_7d` da própria Meta sondado no mesmo dia —, `previous_date_range` `13/09–19/09` e `inclui_dia_corrente: false`; com `TODAY`, `27/09` contra `26/09` e `inclui_dia_corrente: true`, com variações de ~−99% que são o dia ainda aberto — o caso que o campo existe para avisar. Chamado de uma sessão aberta antes do deploy: a resposta é do código novo; as descriptions novas só aparecem em sessão nova (F140).
 
-**Verificação do F154 — pendente**, na execução diária do `v4-ads-mcp-resync` (09:00 UTC) seguinte ao deploy — uma sob demanda roda o resync inteiro com as duas reconciliações ligadas, mutação de produção que pede autorização nominal: a CHUTE 07 com `su_reachable = true`, o `meta_reconcile` com `unreachable: 0` e `alcance_nao_medido: 0`, e no painel a fila "Sem o system user atribuído" vazia. Tudo por leitura: o `params_summary` da linha `meta_reconcile` no `audit_log` e o `su_reachable` da `act_1428319651342125`. `unreachable` ou `alcance_nao_medido` acima de 0 se explica pelo log `meta_alcance_nao_medido`, que traz os ids, antes de virar defeito.
+**Verificação do F154 — conferida em 28/09** (execução das 09:00:03, imagem `e9e728c`): a CHUTE 07 com `su_reachable = true`, o `meta_reconcile` com `unreachable: 0` e `alcance_nao_medido: 0`, a fila "Sem o SU" vazia, a etapa Meta em ~8 s e nenhum aviso no log. O critério, para a próxima: na execução diária do `v4-ads-mcp-resync` (09:00 UTC) seguinte ao deploy — uma sob demanda roda o resync inteiro com as duas reconciliações ligadas, mutação de produção que pede autorização nominal: a CHUTE 07 com `su_reachable = true`, o `meta_reconcile` com `unreachable: 0` e `alcance_nao_medido: 0`, e no painel a fila "Sem o system user atribuído" vazia. Tudo por leitura: o `params_summary` da linha `meta_reconcile` no `audit_log` e o `su_reachable` da `act_1428319651342125`. `unreachable` ou `alcance_nao_medido` acima de 0 se explica pelo log `meta_alcance_nao_medido`, que traz os ids, antes de virar defeito.
 
 ⚠️ **`deploy: skipped` NAO significa "PR de documentação".** O gate do F138 pula o
 deploy só quando o push mexeu **exclusivamente** em `docs/` e markdown — um arquivo em
@@ -61,7 +61,7 @@ nominal do Wellington, depois de 22 execuções de soak (05/09 a 26/09), todas `
   **46 grants** revogados — 34 do backlog em 9 contas já inativas + 12 das três que deixaram a
   unidade (`4493906974` DR DÉRICK VINHAS, `8726746966` Imperial Alimentos, `9450567241` Dra.
   Paula Minchillo). A **Alumínios Veneza** (`2640486995`, 4 grants) também saiu — churn
-  confirmado em 26/09 —, com 1 ausência gravada: sai na 3ª, em **28/09**.
+  confirmado em 26/09 —, com 1 ausência gravada: saiu na 3ª, em **28/09** (conferido).
 - **Conferido na primeira execução com a trava** (sob demanda, 26/09 às 23:21 UTC, execução
   `v4-ads-mcp-resync-6h6q6`): `applied=true`, `removed=3`, `revoked_grants=46` — a previsão
   exata —, 12 linhas `google_access_cleanup` (uma por conta, `left_mcc`), **zero** grant vivo em
@@ -69,8 +69,8 @@ nominal do Wellington, depois de 22 execuções de soak (05/09 a 26/09), todas `
   medido duas vezes no dia (18:13 e 23:14 UTC), igual nas duas. A Meta, no mesmo job:
   `applied=true`, `removed=0`, `revoked_grants=0`; o `unreachable=1` é a CHUTE 07, igual desde
   24/09 pelo menos — artefato do índice `/me/adaccounts`, que o F154 tirou do job em 27/09 (a CHUTE 07 é lida).
-- **Falta conferir a de 28/09:** `removed=1` e `revoked_grants=4` — a Alumínios Veneza na 3ª
-  ausência.
+- **Conferida a de 28/09:** `removed=1` e `revoked_grants=4` — a Alumínios Veneza na 3ª
+  ausência, com a linha `google_access_cleanup` dos 4 gestores e zero grant vivo em conta inativa.
 - **Para desligar:** `false` nas **duas** linhas do `.github/workflows/deploy.yml` — o
   `JOB_ENV_VARS`, que o job lê, e o `--set-env-vars` do serviço, inerte mas mantido igual. A
   revogação é soft (`revoked_at`) e o painel reconcede com um clique.
@@ -89,7 +89,7 @@ na máquina dos outros gestores, ou o LLM escolhendo a tool pelo nome. Separar p
 ## Pendências que dependem do Wellington
 
 - **Aplicar no plugin `v4-trafego-google-ads` o ajuste do `null`.** Seis pontos fazem conta ou ranking com campos que, desde o deploy de 26/09, podem vir `null` (`analise-performance-google-ads/SKILL.md:44,137`; `relatorio-cliente-google-ads/SKILL.md:33,76-89,112-116`; `shared/v4-brand.md:43`). O texto das mudanças foi entregue em 26/09; a cópia instalada é upload do app, então o ajuste é na fonte. Até lá o relatório de cliente pode imprimir `None`.
-- **Remover do BM as contas Meta das quatro clientes que saíram** (decisão de 26/09): Dr. Dérick Vinhas (`act_4051924171730156`), Dra. Paula Minchillo (`act_1479232423809572`), Imperial Alimentos (`act_1648706246292124`) e Panelas Veneza (`act_374213944466235`, da Alumínios Veneza) — medidas em 26/09 alcançáveis pelo system user, com 4 grants vivos cada. A reconciliação Meta só revoga quando o alcance some: fora do BM, ela revoga sozinha em 3 execuções, com trilha. Revogar pelo painel foi descartado — o BM seguiria alcançando, e nada impediria reconceder.
+- **Remover do BM as contas Meta das quatro clientes que saíram** (decisão de 26/09): Dr. Dérick Vinhas (`act_4051924171730156`), Dra. Paula Minchillo (`act_1479232423809572`), Imperial Alimentos (`act_1648706246292124`) e Panelas Veneza (`act_374213944466235`, da Alumínios Veneza) — medidas em 26/09 alcançáveis pelo system user, com 4 grants vivos cada. A reconciliação Meta revoga quando a conta sai da parceria do BM: fora dele, em 3 execuções, com trilha — e desde o F197 nenhum botão reinicia essa carência. Revogar pelo painel foi descartado — o BM seguiria alcançando, e nada impediria reconceder.
 - **Nível de acesso da API Meta.** O cabeçalho `x-fb-ads-insights-throttle` diz `ads_api_access_tier: development_access` (medido em 26/09): o app segue no Limited Access do **D1** de maio. A regra do D1 para pedir o Full Access é 500 chamadas em 15 dias; o uso medido em 26/09 é de ~200 por quinzena (395 chamadas Meta em 30 dias). Decisão sua: pedir agora com o volume atual, ou esperar.
 - **F129** — governança do system user Meta: ação humana, fora do código.
 - **F67** — custom domain `mcpv4.fluxocerto.dev.br`, pendente via LB.
@@ -120,10 +120,9 @@ sub-projeto nenhum** — viraram a frente *métricas Meta*, fechada no **F194** 
 
 Medir a exposição, dar dado às decisões, consertos pequenos, e só então specs — um por vez.
 
-1. **Rollout Google** — virado e conferido em 26/09; falta a execução de 28/09 (Alumínios Veneza).
-2. **Fase 2B** — em 04/10, separar o uso por gestor, junto da remedição dos buckets.
-3. **Infra e guards** (spec) — o resto dos sub-projetos 3 e 4.
-4. **`recommendation_subscription`** — tool de leitura no MCC.
+1. **Fase 2B** — em 04/10, separar o uso por gestor, junto da remedição dos buckets.
+2. **Infra e guards** (spec) — o resto dos sub-projetos 3 e 4.
+3. **`recommendation_subscription`** — tool de leitura no MCC.
 
 ### Os abertos, um por linha
 
