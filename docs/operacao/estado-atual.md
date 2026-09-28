@@ -24,7 +24,7 @@
 
 ---
 
-## Produção — medido em 2026-09-27
+## Produção — medido em 2026-09-28
 
 | | |
 |---|---|
@@ -33,13 +33,15 @@
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
 | Catálogo | até **F198** (~5.800 linhas, 581 KB) |
 
-**Smoke de leitura do F193 em produção (26/09, `Conta Interna - 02`):** `filters_applied` em `get_campaign_performance` (com `campaign_status`, e sem ele com `status=all`), `get_account_overview` (aninhado `current`/`previous`, janelas iguais às de `period`/`previous_period`), `get_negative_keywords_audit` (`nivel: "campanha"`), `get_budget_pacing` (`{"during": "THIS_MONTH"}`) e `get_performance_breakdown` por keyword (`criterion_status`); razões `null` num período sem atividade. **Limite medido:** para período sem atividade o Google devolve uma linha **zerada**, não nenhuma linha — então `sem_dados_no_periodo` vem `false` com contagens zero, e só fica `true` quando não vem linha nenhuma. Quem protege a leitura são as razões `null`. As descriptions novas só aparecem em sessão MCP nova (F140).
+**Conferidos em produção, por leitura:** os smokes do F193 (26/09), do F194 e do F195 (27/09), a
+execução diária de 28/09 (F154 e a Alumínios Veneza saindo: 18 de 18) e o `mcp` 1.30 por uma
+sessão autenticada. O detalhe está nos handoffs e no catálogo; a narrativa que morava aqui, em
+[`_archive/estado-atual-2026-09-27-a-28.md`](../_archive/estado-atual-2026-09-27-a-28.md). Um
+limite medido segue valendo (F193): para período sem atividade o Google devolve uma linha
+**zerada**, não nenhuma — quem protege a leitura são as razões `null`.
 
-**Smoke de leitura do F194 em produção (27/09, sessão MCP aberta depois do deploy):** na Cheiro | Conta 01, `meta_get_account_overview` e `meta_get_campaign_performance` trazem `purchases` medido (não `0`), `leads`, `messaging_conversations_started`, `ctr` em fração e `atribuicao: "unificada"`, com a soma das 19 campanhas igual ao total da conta; na janela da medição original (`27/08–25/09`), exatamente `purchases` 10, `leads` 13 e 3.531 conversas. `purchases: null` em conta com gasto e sem compra (MI Imports | Conta 02); `sem_dados_no_periodo: true` em conta sem entrega; breakdown horário com `reach` e `frequency` `null` em 50 de 50 linhas; BUC lido do cabeçalho real (`last_throttle_pct` gravado, nenhum `meta_buc_nao_lido`). **O preset do roteiro deu `purchases` 9, não 10:** o `LAST_30_DAYS` Meta inclui o dia corrente (`29/08–27/09`) e a referência terminava na véspera — é o **F195**. Detalhe no F194 do [catálogo](findings-catalog.md).
-
-**Smoke de leitura do F195 em produção (27/09, run `36332640719`):** `meta_get_account_overview` na Cheiro | Conta 01 com `LAST_7_DAYS` ecoou `date_range` `20/09–26/09` — exatamente o `date_preset=last_7d` da própria Meta sondado no mesmo dia —, `previous_date_range` `13/09–19/09` e `inclui_dia_corrente: false`; com `TODAY`, `27/09` contra `26/09` e `inclui_dia_corrente: true`, com variações de ~−99% que são o dia ainda aberto — o caso que o campo existe para avisar. Chamado de uma sessão aberta antes do deploy: a resposta é do código novo; as descriptions novas só aparecem em sessão nova (F140).
-
-**Verificação do F154 — conferida em 28/09** (execução das 09:00:03, imagem `e9e728c`): a CHUTE 07 com `su_reachable = true`, o `meta_reconcile` com `unreachable: 0` e `alcance_nao_medido: 0`, a fila "Sem o SU" vazia, a etapa Meta em ~8 s e nenhum aviso no log. O critério, para a próxima: na execução diária do `v4-ads-mcp-resync` (09:00 UTC) seguinte ao deploy — uma sob demanda roda o resync inteiro com as duas reconciliações ligadas, mutação de produção que pede autorização nominal: a CHUTE 07 com `su_reachable = true`, o `meta_reconcile` com `unreachable: 0` e `alcance_nao_medido: 0`, e no painel a fila "Sem o system user atribuído" vazia. Tudo por leitura: o `params_summary` da linha `meta_reconcile` no `audit_log` e o `su_reachable` da `act_1428319651342125`. `unreachable` ou `alcance_nao_medido` acima de 0 se explica pelo log `meta_alcance_nao_medido`, que traz os ids, antes de virar defeito.
+**Com data:** **01/10** — smoke de leitura do F196 (`THIS_MONTH` numa conta real devolve o dia 1,
+não vazio); **04/10** — remedição dos buckets e do uso da Fase 2B por gestor.
 
 ⚠️ **`deploy: skipped` NAO significa "PR de documentação".** O gate do F138 pula o
 deploy só quando o push mexeu **exclusivamente** em `docs/` e markdown — um arquivo em
@@ -55,22 +57,11 @@ Contagens de tool e bucket vêm do registry (`import_all_tools()`), não de `gre
 **`GOOGLE_RECONCILE_APPLY=true` desde 26/09 — as duas reconciliações revogam.** A Meta revoga
 desde 05/09 (`META_RECONCILE_APPLY=true`, #41); a Google foi virada em 26/09, com autorização
 nominal do Wellington, depois de 22 execuções de soak (05/09 a 26/09), todas `success` e
-`complete` — a de 26/09 bateu a previsão (`removed=3`, `revoke_candidates=46`).
+`complete` — a de 26/09 bateu a previsão (`removed=3`, `revoke_candidates=46`). Conferidas depois
+a primeira execução com a trava (26/09: `removed=3`, `revoked_grants=46`) e a de 28/09 (a Alumínios
+Veneza na 3ª ausência: `removed=1`, `revoked_grants=4`), as duas com zero grant vivo em conta
+inativa.
 
-- **Raio medido na virada** (26/09, 18:13 UTC, transação READ ONLY): 3 contas desativadas e
-  **46 grants** revogados — 34 do backlog em 9 contas já inativas + 12 das três que deixaram a
-  unidade (`4493906974` DR DÉRICK VINHAS, `8726746966` Imperial Alimentos, `9450567241` Dra.
-  Paula Minchillo). A **Alumínios Veneza** (`2640486995`, 4 grants) também saiu — churn
-  confirmado em 26/09 —, com 1 ausência gravada: saiu na 3ª, em **28/09** (conferido).
-- **Conferido na primeira execução com a trava** (sob demanda, 26/09 às 23:21 UTC, execução
-  `v4-ads-mcp-resync-6h6q6`): `applied=true`, `removed=3`, `revoked_grants=46` — a previsão
-  exata —, 12 linhas `google_access_cleanup` (uma por conta, `left_mcc`), **zero** grant vivo em
-  conta Google inativa e 26 contas ativas (as 25 do MCC + a Alumínios em carência). O raio foi
-  medido duas vezes no dia (18:13 e 23:14 UTC), igual nas duas. A Meta, no mesmo job:
-  `applied=true`, `removed=0`, `revoked_grants=0`; o `unreachable=1` é a CHUTE 07, igual desde
-  24/09 pelo menos — artefato do índice `/me/adaccounts`, que o F154 tirou do job em 27/09 (a CHUTE 07 é lida).
-- **Conferida a de 28/09:** `removed=1` e `revoked_grants=4` — a Alumínios Veneza na 3ª
-  ausência, com a linha `google_access_cleanup` dos 4 gestores e zero grant vivo em conta inativa.
 - **Para desligar:** `false` nas **duas** linhas do `.github/workflows/deploy.yml` — o
   `JOB_ENV_VARS`, que o job lê, e o `--set-env-vars` do serviço, inerte mas mantido igual. A
   revogação é soft (`revoked_at`) e o painel reconcede com um clique.
@@ -91,6 +82,9 @@ na máquina dos outros gestores, ou o LLM escolhendo a tool pelo nome. Separar p
 - **Aplicar no plugin `v4-trafego-google-ads` o ajuste do `null`.** Seis pontos fazem conta ou ranking com campos que, desde o deploy de 26/09, podem vir `null` (`analise-performance-google-ads/SKILL.md:44,137`; `relatorio-cliente-google-ads/SKILL.md:33,76-89,112-116`; `shared/v4-brand.md:43`). O texto das mudanças foi entregue em 26/09; a cópia instalada é upload do app, então o ajuste é na fonte. Até lá o relatório de cliente pode imprimir `None`.
 - **Remover do BM as contas Meta das quatro clientes que saíram** (decisão de 26/09): Dr. Dérick Vinhas (`act_4051924171730156`), Dra. Paula Minchillo (`act_1479232423809572`), Imperial Alimentos (`act_1648706246292124`) e Panelas Veneza (`act_374213944466235`, da Alumínios Veneza) — medidas em 26/09 alcançáveis pelo system user, com 4 grants vivos cada. A reconciliação Meta revoga quando a conta sai da parceria do BM: fora dele, em 3 execuções, com trilha — e desde o F197 nenhum botão reinicia essa carência. Revogar pelo painel foi descartado — o BM seguiria alcançando, e nada impediria reconceder.
 - **Nível de acesso da API Meta.** O cabeçalho `x-fb-ads-insights-throttle` diz `ads_api_access_tier: development_access` (medido em 26/09): o app segue no Limited Access do **D1** de maio. A regra do D1 para pedir o Full Access é 500 chamadas em 15 dias; o uso medido em 26/09 é de ~200 por quinzena (395 chamadas Meta em 30 dias). Decisão sua: pedir agora com o volume atual, ou esperar.
+- **Decidir as duas definições de `THIS_MONTH`** (F196, "Fora"): o `get_budget_pacing` usa o
+  `DURING THIS_MONTH` do Google, que inclui hoje; as 15 tools terminam ontem. Alinhar muda os números
+  de todo dia e põe o dia parcial no comparativo do overview (o que o F195 tirou).
 - **F129** — governança do system user Meta: ação humana, fora do código.
 - **F67** — custom domain `mcpv4.fluxocerto.dev.br`, pendente via LB.
 - **Pedir ao TI da V4 uma identidade `@v4company.com` sem caixa postal** (alias ou conta de serviço) — é o que **desbloqueia o F186 por inteiro**: manager com grant zero, pior caso de vazamento `tools/list`, e a reconciliação não a toca. Sem ela não há token de CI possível: `sessions_create` só emite para o próprio manager logado, e login exige identidade Google do domínio. **Emitir sob um manager existente está recusado** — poria no GitHub Actions um token com alcance de ~38 contas Google e 26 Meta.
@@ -116,7 +110,7 @@ As **métricas Meta** que a nota do F190 chama de "sub-projeto 2" (`_parse_buc_h
 zero no lugar de campo ausente, `_brl` fixo, atribuição implícita) **nunca estiveram em
 sub-projeto nenhum** — viraram a frente *métricas Meta*, fechada no **F194** (27/09).
 
-### Ordem de ataque (atualizada em 26/09)
+### Ordem de ataque (atualizada em 28/09)
 
 Medir a exposição, dar dado às decisões, consertos pequenos, e só então specs — um por vez.
 
@@ -133,6 +127,7 @@ Medir a exposição, dar dado às decisões, consertos pequenos, e só então sp
 | **F187** | o **resumo no topo** de um artefato é a superfície de decisão e o **detalhe embaixo** é a verdade — 4 instâncias medidas, uma quase custou mutação em conta real. Remédio proposto: derivar o resumo, ou guard que cobre a igualdade |
 | **F186** | 🔴 smoke autenticado do `/mcp` **desarmado** — e o manager dele **não existe**: criar exige identidade de serviço no Workspace, acesso que o gestor **não tem**. **ABERTO como risco ACEITO.** No lugar entrou `tools` no `/health?deep=1` (sem credencial), e o desarme aparece como `::warning::` em todo deploy — **observado disparando** nos dois deploys de 21/09, que é o que separa "o aviso existe" de "o aviso avisa" |
 | — | *negativas de grupo e listas compartilhadas na auditoria de negativas* (spec §7: frente própria) |
+| — | data inválida numa tool Google vira **"Erro interno"**: 20 das 22 chamadas de `resolve_date_window` não capturam o `InvalidDateRangeError`, e o envelope só preserva a mensagem de erro amigável — o LLM não consegue se corrigir. Zero ocorrências em 30 dias (medido em 27/09); achado na revisão do F196 |
 | — | follow-ups do **F193** (Minor, não bloqueiam) — listados no corpo do [#111](https://github.com/BadWolf1509/v4-ads-mcp/pull/111): comentário da isenção do `apply_recommendation`, frase do eco nas três tools do F191, cobertura estreita de alguns testes |
 
 **Fechados de 20 a 27/09:** **F179**, **F181–F184**, **F188**, **F189**, **F190**, **F191**, **F193**, **F194**, **F195**, **F154**, **F196**, **F197** e **F198**. O defeito de cada um está no [catálogo](findings-catalog.md); a narrativa desses dias, que morava aqui, foi para [`_archive/estado-atual-2026-09-20-a-26.md`](../_archive/estado-atual-2026-09-20-a-26.md). 🔑 A lição que atravessa todos: **existia a regra e não existia o mecanismo** — a invariante escrita, e nada que a aplicasse.
