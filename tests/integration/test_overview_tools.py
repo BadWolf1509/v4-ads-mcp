@@ -108,7 +108,7 @@ async def test_budget_pacing_projects_monthly(bound_context):
             "campaign_name": "Campaign A",
             "daily_budget_brl": 100.0,
             "delivery_method": "STANDARD",
-            "cost_micros_today": 50_000_000,
+            "cost_micros": 50_000_000,
         },
     ]
     with patch(
@@ -121,9 +121,9 @@ async def test_budget_pacing_projects_monthly(bound_context):
     c = result["campaigns"][0]
     assert c["campaign_id"] == "111"
     assert c["spent_mtd_brl"] == 50.0
-    assert c["days_elapsed"] == 15
-    # 50 BRL in 15 days = 3.33/day; projected for 31 days ≈ 103 BRL
-    assert 99 <= c["projected_monthly_brl"] <= 110
+    # F199: 14 dias fechados (1-14/05); hoje, 15/05, fica fora da projecao
+    assert c["days_elapsed"] == 14
+    assert c["projected_monthly_brl"] == round(50 / 14 * 31, 2)
 
 
 @pytest.mark.asyncio

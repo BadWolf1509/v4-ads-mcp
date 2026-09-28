@@ -74,7 +74,7 @@ def test_overview_query_where_date_clause() -> None:
 
 
 def test_budget_pacing_query_shape() -> None:
-    q, _ = budget_pacing_query()
+    q, _ = budget_pacing_query(_S, _E)
     assert "FROM campaign" in q
     for field in (
         "campaign.id",
@@ -85,9 +85,10 @@ def test_budget_pacing_query_shape() -> None:
         "metrics.cost_micros",
     ):
         assert field in q, f"faltou {field} no SELECT do budget_pacing_query"
-    # Só campanhas ativas, gasto do mês corrente.
+    # Só campanhas ativas, na janela que o chamador resolveu (F199: dias fechados).
     assert "campaign.status = 'ENABLED'" in q
-    assert "segments.date DURING THIS_MONTH" in q
+    assert _DATE_CLAUSE in q
+    assert "DURING" not in q
 
 
 # ---------------------------------------------------------------------------

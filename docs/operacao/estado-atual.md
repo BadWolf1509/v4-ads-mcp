@@ -41,7 +41,8 @@ limite medido segue valendo (F193): para período sem atividade o Google devolve
 **zerada**, não nenhuma — quem protege a leitura são as razões `null`.
 
 **Com data:** **01/10** — smoke de leitura do F196 (`THIS_MONTH` numa conta real devolve o dia 1,
-não vazio); **04/10** — remedição dos buckets e do uso da Fase 2B por gestor.
+não vazio) e do F199 (`get_budget_pacing` com `inclui_dia_corrente: true` e projeção `null`, não
+30× o parcial); **04/10** — remedição dos buckets e do uso da Fase 2B por gestor.
 
 ⚠️ **`deploy: skipped` NAO significa "PR de documentação".** O gate do F138 pula o
 deploy só quando o push mexeu **exclusivamente** em `docs/` e markdown — um arquivo em
@@ -82,9 +83,6 @@ na máquina dos outros gestores, ou o LLM escolhendo a tool pelo nome. Separar p
 - **Aplicar no plugin `v4-trafego-google-ads` o ajuste do `null`.** Seis pontos fazem conta ou ranking com campos que, desde o deploy de 26/09, podem vir `null` (`analise-performance-google-ads/SKILL.md:44,137`; `relatorio-cliente-google-ads/SKILL.md:33,76-89,112-116`; `shared/v4-brand.md:43`). O texto das mudanças foi entregue em 26/09; a cópia instalada é upload do app, então o ajuste é na fonte. Até lá o relatório de cliente pode imprimir `None`.
 - **Remover do BM as contas Meta das quatro clientes que saíram** (decisão de 26/09): Dr. Dérick Vinhas (`act_4051924171730156`), Dra. Paula Minchillo (`act_1479232423809572`), Imperial Alimentos (`act_1648706246292124`) e Panelas Veneza (`act_374213944466235`, da Alumínios Veneza) — medidas em 26/09 alcançáveis pelo system user, com 4 grants vivos cada. A reconciliação Meta revoga quando a conta sai da parceria do BM: fora dele, em 3 execuções, com trilha — e desde o F197 nenhum botão reinicia essa carência. Revogar pelo painel foi descartado — o BM seguiria alcançando, e nada impediria reconceder.
 - **Nível de acesso da API Meta.** O cabeçalho `x-fb-ads-insights-throttle` diz `ads_api_access_tier: development_access` (medido em 26/09): o app segue no Limited Access do **D1** de maio. A regra do D1 para pedir o Full Access é 500 chamadas em 15 dias; o uso medido em 26/09 é de ~200 por quinzena (395 chamadas Meta em 30 dias). Decisão sua: pedir agora com o volume atual, ou esperar.
-- **Decidir as duas definições de `THIS_MONTH`** (F196, "Fora"): o `get_budget_pacing` usa o
-  `DURING THIS_MONTH` do Google, que inclui hoje; as 15 tools terminam ontem. Alinhar muda os números
-  de todo dia e põe o dia parcial no comparativo do overview (o que o F195 tirou).
 - **F129** — governança do system user Meta: ação humana, fora do código.
 - **F67** — custom domain `mcpv4.fluxocerto.dev.br`, pendente via LB.
 - **Pedir ao TI da V4 uma identidade `@v4company.com` sem caixa postal** (alias ou conta de serviço) — é o que **desbloqueia o F186 por inteiro**: manager com grant zero, pior caso de vazamento `tools/list`, e a reconciliação não a toca. Sem ela não há token de CI possível: `sessions_create` só emite para o próprio manager logado, e login exige identidade Google do domínio. **Emitir sob um manager existente está recusado** — poria no GitHub Actions um token com alcance de ~38 contas Google e 26 Meta.

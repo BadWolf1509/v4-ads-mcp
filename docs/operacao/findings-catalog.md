@@ -5704,7 +5704,8 @@ que o `DURING THIS_MONTH` do Google devolve nesse dia.
 `DURING THIS_MONTH` do Google, que inclui hoje (medido: R$ 8.284,69, igual a `01/09–27/09`,
 contra R$ 8.188,72 de `01/09–26/09`), e as 15 tools terminam ontem — a diferença é o dia
 corrente. Alinhar muda os números de todo dia e reabre, no comparativo do overview, o dia
-parcial que o F195 tirou: decisão própria. E, no dia 1 e na segunda, o comparativo do overview
+parcial que o F195 tirou: decisão própria. **Decidida em 28/09 (Wellington): dias fechados** —
+o pacing passou a usar esta janela, e a medição achou o defeito que ela escondia (**F199**). E, no dia 1 e na segunda, o comparativo do overview
 compara um dia parcial com um dia cheio — como a interface do Google.
 
 ---

@@ -57,6 +57,8 @@ CAMPO_PARA_CHAVE = {
     "metrics.conversions": "min_conversions",
     "campaign_criterion.negative": "negative",
     "campaign_criterion.type": "criterion_type",
+    # F199: o gasto de hoje so das campanhas que o pacing listou
+    "campaign.id": "campaign_ids",
 }
 
 
@@ -164,7 +166,8 @@ def _chamadas() -> dict[str, Callable[[], tuple[str, dict[str, Any]]]]:
         "top_keywords_query": lambda: c.top_keywords_query(_S, _E, 10, metric="cost"),
         "top_creatives_query": lambda: c.top_creatives_query(_S, _E, 10, metric="cost"),
         "overview_query": lambda: o.overview_query(_S, _E),
-        "budget_pacing_query": lambda: o.budget_pacing_query(limit=10),
+        "budget_pacing_query": lambda: o.budget_pacing_query(_S, _E, limit=10),
+        "budget_pacing_hoje_query": lambda: o.budget_pacing_hoje_query(_E, ["1", "2"]),
         "bulk_pause_query": lambda: bulk_pause_query(
             target_type="keyword",
             filter_clause="ad_group_criterion.status = 'ENABLED'",
