@@ -13,8 +13,9 @@ Sondado na Graph API em 27/09 (Cheiro | Conta 01, fuso da conta): `date_preset=l
 devolveu 20/09–26/09 e `last_30d`, 28/08–26/09. Os presets "deste período" (`THIS_MONTH`,
 `THIS_WEEK`) também vão até ontem — e, no primeiro dia do período, que ainda não tem dia
 completo, são só hoje (F196). Nos outros dias divergem do `DURING THIS_MONTH` do Google,
-que inclui hoje (medido em 27/09) e que o `get_budget_pacing` usa: a diferença entre os
-dois é o dia corrente.
+que inclui hoje (medido em 27/09) — e que nenhuma tool usa mais: o `get_budget_pacing`
+projetava por ele, com o dia parcial contado como inteiro, e passou a usar esta janela
+(F199).
 
 O corpo dos presets veio sem mudança de `parse_date_range`: o lado Google não muda.
 Puro: `today` vem do chamador, já no fuso da conta (F141) — sem default de propósito.

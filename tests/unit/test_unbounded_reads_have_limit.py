@@ -13,6 +13,7 @@ de API externa por analogia).
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
@@ -30,6 +31,12 @@ from src.mcp.tools.get_conversion_actions import get_conversion_actions
 from src.mcp.tools.get_recommendations import _SCHEMA as SCHEMA_RECS
 from src.mcp.tools.get_recommendations import get_recommendations
 
+_S, _E = date(2026, 9, 1), date(2026, 9, 27)
+
+
+def _pacing_query(limit: int) -> str:
+    return budget_pacing_query(_S, _E, limit=limit)[0]
+
 
 @pytest.fixture(autouse=True)
 def _ctx():
@@ -46,7 +53,7 @@ def _ctx():
     [
         (recommendations_query, lambda q: q),  # segue devolvendo so o texto
         (conversion_actions_query, lambda q: q[0]),  # (gaql, filtros) desde 2026-09-26
-        (budget_pacing_query, lambda q: q[0]),  # (gaql, filtros) desde 2026-09-26
+        (_pacing_query, lambda q: q),  # (gaql, filtros) desde 2026-09-26; janela desde o F199
     ],
     ids=["recommendations", "conversion_actions", "budget_pacing"],
 )
@@ -68,7 +75,7 @@ def test_budget_pacing_ordena_antes_de_cortar() -> None:
     si — parecendo o topo de gasto da conta sem ser. Os outros dois tools sao
     inventario (nao ha ranking implicito), entao so este precisa do ORDER BY.
     """
-    query, _ = budget_pacing_query(limit=50)
+    query, _ = budget_pacing_query(_S, _E, limit=50)
     assert "ORDER BY metrics.cost_micros DESC" in query
     assert query.index("ORDER BY") < query.index("LIMIT")
 
@@ -142,7 +149,7 @@ async def test_budget_pacing_corta_antes_de_projetar() -> None:
             "campaign_name": f"Camp {i}",
             "daily_budget_brl": 100.0,
             "delivery_method": "STANDARD",
-            "cost_micros_today": 1_000_000 * (10 - i),
+            "cost_micros": 1_000_000 * (10 - i),
         }
         for i in range(4)
     ]

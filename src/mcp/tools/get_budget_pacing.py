@@ -6,8 +6,9 @@ from typing import Any
 
 from src.google_ads.account_clock import resolve_account_today
 from src.google_ads.queries._common import arredondado, micros_to_currency, percentual, razao
-from src.google_ads.queries.overview import budget_pacing_query
+from src.google_ads.queries.overview import budget_pacing_hoje_query, budget_pacing_query
 from src.google_ads.reports import run_report
+from src.janelas import janela_do_preset
 from src.mcp.context import get_current
 from src.mcp.tools._registry import register_tool
 
@@ -40,15 +41,29 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         "campaign_name": row.campaign.name,
         "daily_budget_brl": micros_to_currency(row.campaign_budget.amount_micros),
         "delivery_method": row.campaign_budget.delivery_method.name,
-        "cost_micros_today": int(row.metrics.cost_micros),
+        "cost_micros": int(row.metrics.cost_micros),
     }
 
 
-def _project(rows: list[dict[str, Any]], *, today: date) -> list[dict[str, Any]]:
-    """Aggregate per-campaign MTD spend + project end-of-month.
+def _row_formatter_hoje(row: Any) -> dict[str, Any]:
+    return {"campaign_id": str(row.campaign.id), "cost_micros": int(row.metrics.cost_micros)}
+
+
+def _project(
+    rows: list[dict[str, Any]],
+    gasto_hoje_micros: dict[str, int] | None = None,
+    *,
+    today: date,
+) -> list[dict[str, Any]]:
+    """Agrega o gasto por campanha e projeta o fim do mes pelos dias FECHADOS.
 
     F141: `today` e o dia corrente NO FUSO DA CONTA, vindo do chamador. Com o
     dia UTC, a projecao do ultimo dia do mes saia 30x entre 21h e meia-noite.
+
+    F199: `rows` traz o gasto da janela `THIS_MONTH` — ate ontem, os `today.day - 1`
+    dias fechados. A projecao e a media deles vezes os dias do mes; no dia 1 nao ha
+    dia fechado, e a razao sem denominador vem `None`. O gasto de hoje, parcial, vem
+    em `gasto_hoje_micros` e so e ecoado: no dia 1 ele e o proprio gasto da janela.
     """
     # Days in current month
     if today.month == 12:
@@ -56,8 +71,8 @@ def _project(rows: list[dict[str, Any]], *, today: date) -> list[dict[str, Any]]
     else:
         next_month_first = today.replace(month=today.month + 1, day=1)
     days_in_month = (next_month_first - today.replace(day=1)).days
-    days_elapsed = today.day
-    days_remaining = days_in_month - days_elapsed
+    dias_fechados = today.day - 1
+    days_remaining = days_in_month - dias_fechados
 
     by_campaign: dict[str, dict[str, Any]] = {}
     for r in rows:
@@ -70,12 +85,17 @@ def _project(rows: list[dict[str, Any]], *, today: date) -> list[dict[str, Any]]
                 "delivery_method": r["delivery_method"],
                 "cost_micros_total": 0,
             }
-        by_campaign[cid]["cost_micros_total"] += r["cost_micros_today"]
+        by_campaign[cid]["cost_micros_total"] += r["cost_micros"]
 
     out: list[dict[str, Any]] = []
     for c in by_campaign.values():
         mtd = micros_to_currency(c["cost_micros_total"])
-        daily_avg = razao(mtd, days_elapsed)
+        hoje_micros = (
+            c["cost_micros_total"]
+            if dias_fechados == 0
+            else (gasto_hoje_micros or {}).get(c["campaign_id"], 0)
+        )
+        daily_avg = razao(mtd, dias_fechados)
         projected = arredondado(None if daily_avg is None else daily_avg * days_in_month, 2)
         budget_monthly = round(c["daily_budget_brl"] * days_in_month, 2)
         out.append(
@@ -84,10 +104,11 @@ def _project(rows: list[dict[str, Any]], *, today: date) -> list[dict[str, Any]]
                 "campaign_name": c["campaign_name"],
                 "daily_budget_brl": c["daily_budget_brl"],
                 "spent_mtd_brl": mtd,
+                "gasto_hoje_brl": micros_to_currency(hoje_micros),
                 "spent_pct_of_monthly_budget": arredondado(
                     percentual(razao(mtd, budget_monthly)), 1
                 ),
-                "days_elapsed": days_elapsed,
+                "days_elapsed": dias_fechados,
                 "days_remaining": days_remaining,
                 "projected_monthly_brl": projected,
                 "projection_vs_budget_pct": arredondado(
@@ -102,9 +123,14 @@ def _project(rows: list[dict[str, Any]], *, today: date) -> list[dict[str, Any]]
 @register_tool(
     name="get_budget_pacing",
     description=(
-        "[DEFER] Por campanha ativa: orcamento diario, gasto MTD, projecao de fim de mes, "
-        "% consumido do orcamento mensal. Util pra ver no inicio do dia se alguma "
-        "campanha esta acelerada/lenta demais. Ordenado por gasto no mes desc; "
+        "[DEFER] Por campanha ativa: orcamento diario, gasto no mes ATE ONTEM "
+        "(`spent_mtd_brl`, dias fechados), projecao de fim de mes pela media dos dias "
+        "fechados, % consumido do orcamento mensal, e o gasto parcial de hoje em "
+        "`gasto_hoje_brl` — dia ainda aberto, fora da projecao; serve de sinal de "
+        "estouro no dia. No dia 1 nao ha dia fechado: a janela e so hoje "
+        "(`inclui_dia_corrente: true`) e a projecao vem null. `days_elapsed` conta os "
+        "dias fechados; `days_remaining` inclui hoje. Util pra ver no inicio do dia se "
+        "alguma campanha esta acelerada/lenta demais. Ordenado por gasto no mes desc; "
         "limit (default 100, max 1000) corta a cauda e `truncated:true` avisa."
         " Razao com denominador zero vem null (indefinida), nao 0."
         " filters_applied diz o recorte que a query aplicou."
@@ -117,7 +143,8 @@ async def get_budget_pacing(args: dict[str, Any]) -> dict[str, Any]:
     customer_id = args["customer_id"]
     limit = args.get("limit", 100)
     today = await resolve_account_today(customer_id)
-    gaql, filtros = budget_pacing_query(limit=limit)
+    inicio, fim = janela_do_preset("THIS_MONTH", today=today)
+    gaql, filtros = budget_pacing_query(inicio, fim, limit=limit)
     rows = await run_report(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
@@ -129,10 +156,26 @@ async def get_budget_pacing(args: dict[str, Any]) -> dict[str, Any]:
     # F98 — a sentinela é uma campanha a mais e não pode entrar na projeção.
     truncated = len(rows) > limit
     rows = rows[:limit]
+    inclui_dia_corrente = fim == today
+    gasto_hoje: dict[str, int] = {}
+    if rows and not inclui_dia_corrente:
+        ids = list(dict.fromkeys(r["campaign_id"] for r in rows))
+        gaql_hoje, _ = budget_pacing_hoje_query(today, ids)
+        for r in await run_report(
+            manager_id=ctx.manager_id,
+            session_id=ctx.session_id,
+            customer_id=customer_id,
+            query=gaql_hoje,
+            row_formatter=_row_formatter_hoje,
+            operation_name="get_budget_pacing",
+        ):
+            gasto_hoje[r["campaign_id"]] = gasto_hoje.get(r["campaign_id"], 0) + r["cost_micros"]
     return {
         "customer_id": customer_id,
         "as_of": today.isoformat(),
+        "period": {"from": inicio.isoformat(), "to": fim.isoformat()},
+        "inclui_dia_corrente": inclui_dia_corrente,
         "filters_applied": filtros,
         "truncated": truncated,
-        "campaigns": _project(rows, today=today),
+        "campaigns": _project(rows, gasto_hoje, today=today),
     }
