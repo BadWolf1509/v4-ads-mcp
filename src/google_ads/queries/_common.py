@@ -16,7 +16,12 @@ from src.janelas import PRESETS, janela_do_preset
 
 
 class InvalidDateRangeError(ValueError):
-    """Raised when a date range cannot be parsed."""
+    """Periodo pedido que nao da para resolver — erro de ENTRADA de quem chamou.
+
+    O `_error_envelope` do servidor devolve a mensagem ao cliente MCP, entao ela e
+    escrita para o LLM se corrigir: em PT-BR, dizendo o que mandar no lugar. Janela
+    invertida vinda de preset nao e isto — e bug nosso, `ValueError` de `janelas.py`.
+    """
 
 
 # Os presets e a janela de cada um moram em `src.janelas` (F195): uma regra so para
@@ -52,18 +57,28 @@ def parse_date_range(arg: str | dict[str, str], *, today: date) -> tuple[date, d
             start = date.fromisoformat(arg["from"])
             end = date.fromisoformat(arg["to"])
         except (KeyError, ValueError) as e:
-            raise InvalidDateRangeError(f"Invalid date dict {arg}: {e}") from e
+            raise InvalidDateRangeError(
+                f"Data invalida em start_date/end_date ({e}): use o formato AAAA-MM-DD, "
+                "por exemplo 2026-09-01."
+            ) from e
         if start > end:
-            raise InvalidDateRangeError(f"date_range from ({start}) is after to ({end})")
+            raise InvalidDateRangeError(
+                f"start_date ({start}) e depois de end_date ({end}): o inicio do periodo "
+                "tem de ser anterior ou igual ao fim."
+            )
         return start, end
 
     if not isinstance(arg, str):
-        raise InvalidDateRangeError(f"date_range must be string or dict, got {type(arg)}")
+        raise InvalidDateRangeError(
+            f"date_range invalido ({type(arg).__name__}): use um preset "
+            f"({', '.join(sorted(_PRESETS))}) ou start_date + end_date."
+        )
 
     preset = arg.upper()
     if preset not in _PRESETS:
         raise InvalidDateRangeError(
-            f"Unknown date_range preset '{preset}'. Valid presets: {', '.join(sorted(_PRESETS))}"
+            f"date_range '{preset}' desconhecido. Presets validos: {', '.join(sorted(_PRESETS))}; "
+            "ou use start_date + end_date (AAAA-MM-DD)."
         )
 
     # F141: `today` vem do chamador, ja no fuso da conta (`account_today`).
