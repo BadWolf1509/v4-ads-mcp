@@ -7,8 +7,10 @@ purge não deve derrubar o job de resync.
 
 import asyncpg
 
+from src.db.connection import PoolValidado
 
-async def purge_expired(pool: asyncpg.Pool) -> dict[str, int]:
+
+async def purge_expired(pool: PoolValidado | asyncpg.Pool) -> dict[str, int]:
     """Purga rows expiradas/antigas. Retorna contagem de rows deletadas por tabela.
 
     - pending_confirmations: expires_at < now() - 7 dias (consumidas ou não —
