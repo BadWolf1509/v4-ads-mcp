@@ -15,6 +15,11 @@ propriedade de todo statement da forma, inclusive do próximo que alguém escrev
    conexões vivas no mesmo instante escolhia a credencial de forma arbitrária. Tabela "do
    nosso banco" = criada numa migration: é o que separa o SQL da GAQL (`change_event`,
    `campaign`), cujo `LIMIT 1` lê um valor, não escolhe linha.
+
+Os casadores cobrem as formas que um refactor plausível produziria (revisão da Task 2): SQL
+montado com `+`, nome de tabela interpolado (`UPDATE {tabela}`, `FROM {tabela}` — tabela
+desconhecida é cobrada: erra acusando) e subquery ou CTE antes do `FROM` principal (cada
+`ORDER BY … LIMIT 1` do literal é cobrado, não só o que segue o primeiro `FROM`).
 """
 
 from __future__ import annotations
@@ -27,30 +32,65 @@ from tests.unit import _guard_harness as h
 
 _MIGRATIONS = h.SRC / "db" / "migrations"
 
+# Os pisos abaixo (9 revogações, 3 escolhas de uma linha, medidos em 28/09) são OBSERVAÇÃO,
+# não teto: código novo só os faz subir. Existem porque um casador que parasse de casar
+# devolveria "nenhum ofensor" e ficaria verde para sempre.
+
 # Exceções à regra do desempate: {(tabela, coluna final): a constraint UNIQUE que a garante}.
 _DESEMPATE_POR_CHAVE_UNICA: dict[tuple[str, str], str] = {}
 
-_REVOGA = re.compile(r"\bUPDATE\s+(\w+)\b.*?\bSET\b.*?\brevoked_at\s*=\s*now\(\)", re.I | re.S)
+_REVOGA = re.compile(
+    r"\bUPDATE\s+[\w{}.]+.*?\bSET\b.*?\brevoked_at\s*=\s*"
+    r"(?:now\(\)|current_timestamp\b|clock_timestamp\(\)|\$\d+)",
+    re.I | re.S,
+)
 _SO_LINHA_VIVA = re.compile(r"\bWHERE\b.*\b(?:\w+\.)?revoked_at\s+IS\s+NULL\b", re.I | re.S)
-_ESCOLHE_UMA = re.compile(r"\bFROM\s+(\w+)\b.*?\bORDER\s+BY\s+(.+?)\s+LIMIT\s+1\b", re.I | re.S)
+_TABELA_CITADA = re.compile(r"\b(?:FROM|JOIN)\s+(?:\w+\.)?(\w+|\{\})", re.I)
+# Cada `ORDER BY` até o SEU `LIMIT 1`, sem atravessar outro `ORDER BY`, outro `LIMIT` ou `)`.
+_ORDENA_E_PEGA_UMA = re.compile(
+    r"\bORDER\s+BY\s+((?:(?!\bORDER\s+BY\b|\bLIMIT\b)[^)])+?)\s*\bLIMIT\s+1\b", re.I | re.S
+)
 
 
 def _texto(no: ast.AST) -> str | None:
+    """O texto de um literal. `+` entre pedaços é juntado; o que não é literal (nome,
+    chamada, interpolação) vira `{}`."""
     if isinstance(no, ast.Constant) and isinstance(no.value, str):
         return no.value
     if isinstance(no, ast.JoinedStr):
         return "".join(v.value if isinstance(v, ast.Constant) else "{}" for v in no.values)
+    if isinstance(no, ast.BinOp) and isinstance(no.op, ast.Add):
+        esquerda, direita = _texto(no.left), _texto(no.right)
+        if esquerda is None and direita is None:
+            return None
+        return (esquerda if esquerda is not None else "{}") + (
+            direita if direita is not None else "{}"
+        )
     return None
 
 
+def _literais_da_arvore(arv: ast.AST) -> list[tuple[int, str]]:
+    """Só a expressão de texto INTEIRA: um pedaço de dentro de um `+` ou de uma f-string
+    casaria sozinho a metade de um statement (o `UPDATE … SET` sem o `WHERE`)."""
+    dentro_de_texto = {
+        id(filho)
+        for pai in ast.walk(arv)
+        if isinstance(pai, ast.JoinedStr) or _texto(pai) is not None
+        for filho in ast.iter_child_nodes(pai)
+    }
+    return [
+        (no.lineno, t)  # type: ignore[attr-defined]
+        for no in ast.walk(arv)
+        if id(no) not in dentro_de_texto and (t := _texto(no)) is not None
+    ]
+
+
 def _literais(raiz: Path) -> list[tuple[str, str]]:
-    achados = []
-    for arquivo in h.fontes_py(raiz):
-        for no in ast.walk(h.arvore(arquivo)):
-            texto = _texto(no)
-            if texto is not None:
-                achados.append((f"{h.rel(arquivo)}:{no.lineno}", texto))  # type: ignore[attr-defined]
-    return achados
+    return [
+        (f"{h.rel(arquivo)}:{linha}", texto)
+        for arquivo in h.fontes_py(raiz)
+        for linha, texto in _literais_da_arvore(h.arvore(arquivo))
+    ]
 
 
 def _tabelas_do_banco(pasta: Path) -> set[str]:
@@ -84,9 +124,12 @@ def _escolhas_de_uma_linha(
 ) -> list[tuple[str, str, str]]:
     achadas = []
     for onde, t in literais:
-        m = _ESCOLHE_UMA.search(t)
-        if m and m.group(1).lower() in tabelas:
-            achadas.append((onde, m.group(1).lower(), _ultima_chave(m.group(2))))
+        citadas = {m.group(1).lower() for m in _TABELA_CITADA.finditer(t)}
+        do_banco = sorted(citadas & (tabelas | {"{}"}))
+        if not do_banco:
+            continue
+        for m in _ORDENA_E_PEGA_UMA.finditer(t):
+            achadas.append((onde, ",".join(do_banco), _ultima_chave(m.group(1))))
     return achadas
 
 
@@ -147,3 +190,44 @@ def test_os_casadores_veem_o_que_devem_e_so_isso() -> None:
         ("dez", "SELECT * FROM conexoes ORDER BY criado DESC LIMIT 10"),
     ]
     assert _escolhas_sem_desempate(escolhas, tabelas) == ["empate (conexoes, termina em 'criado')"]
+
+
+_REFACTOR = """
+a = f"UPDATE {tabela} SET revoked_at = now() WHERE id = $1"
+b = "UPDATE conexoes " + "SET revoked_at = now() " + "WHERE id = $1"
+c = "SELECT * FROM " + tabela + " ORDER BY criado DESC LIMIT 1"
+d = "UPDATE conexoes " + "SET revoked_at = now() " + "WHERE id = $1 AND revoked_at IS NULL"
+e = "UPDATE conexoes SET revoked_at = CURRENT_TIMESTAMP WHERE id = $1"
+f = "UPDATE conexoes SET revoked_at = $2 WHERE id = $1"
+g = "SELECT * FROM public.conexoes ORDER BY criado LIMIT 1"
+"""
+
+
+def test_os_casadores_veem_as_formas_de_um_refactor() -> None:
+    """Controle das formas que as revisões apontaram como fora do casador: tabela interpolada,
+    SQL montado com `+`, CTE/subquery antes do `FROM` principal, o carimbo por
+    `CURRENT_TIMESTAMP` ou parâmetro e a tabela com schema. E o `d`: montado com `+` e
+    CORRETO — um pedaço intermediário não pode acusar sozinho."""
+    literais = [(f"l{n}", t) for n, t in _literais_da_arvore(ast.parse(_REFACTOR))]
+    assert _revogacoes_sem_predicado(literais) == ["l2", "l3", "l6", "l7"]
+    assert _escolhas_sem_desempate(literais, {"conexoes"}) == [
+        "l4 ({}, termina em 'criado')",
+        "l8 (conexoes, termina em 'criado')",
+    ]
+
+    cte = [
+        (
+            "cte",
+            "WITH ultimas AS (SELECT * FROM conexoes WHERE vivo) "
+            "SELECT * FROM ultimas ORDER BY criado DESC LIMIT 1",
+        ),
+        (
+            "sub",
+            "SELECT (SELECT n FROM conexoes c ORDER BY c.criado LIMIT 1) AS n "
+            "FROM outra ORDER BY x DESC LIMIT 5",
+        ),
+    ]
+    assert _escolhas_sem_desempate(cte, {"conexoes"}) == [
+        "cte (conexoes, termina em 'criado')",
+        "sub (conexoes, termina em 'criado')",
+    ]

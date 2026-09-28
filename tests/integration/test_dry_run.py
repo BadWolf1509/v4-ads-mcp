@@ -202,17 +202,17 @@ async def test_pendencia_e_trilha_vivem_ou_morrem_juntas(db, session_id) -> None
 
 
 @pytest.mark.integration
-async def test_token_vence_pelo_relogio_do_banco(db, session_id, monkeypatch) -> None:
+async def test_token_vence_pelo_relogio_do_banco(db, session_id) -> None:
     """Spec 2026-09-28 §3.2.5: o prazo é gravado com o `now()` do banco, e é com ele que
     se decide. Com o relógio da app atrasado (Cloud Run e Supabase são hosts diferentes),
-    comparar `expires_at` com `datetime.now()` da app aceitava um token já vencido."""
-    from datetime import UTC
-    from datetime import datetime as _datetime
+    comparar `expires_at` com o relógio da app aceitava um token já vencido.
 
-    class _RelogioAtrasado(_datetime):
-        @classmethod
-        def now(cls, tz=None):  # type: ignore[no-untyped-def, override]
-            return _datetime(2020, 1, 1, tzinfo=UTC)
+    O relógio da app é congelado em 2020 pelo `freezegun`, que troca `datetime` e `time` em
+    todo módulo carregado, qualquer que seja a forma do import: uma comparação com o relógio
+    da app, reintroduzida de qualquer jeito, aceitaria o token e este teste cairia. O
+    `real_asyncio=True` mantém real o relógio do event loop, pelo qual o asyncpg mede timeout.
+    """
+    from freezegun import freeze_time
 
     sid, mid = session_id
     with patch("src.governance.dry_run.ensure_account_access", AsyncMock(return_value=None)):
@@ -232,7 +232,7 @@ async def test_token_vence_pelo_relogio_do_banco(db, session_id, monkeypatch) ->
                 token,
             )
 
-    monkeypatch.setattr("src.governance.dry_run.datetime", _RelogioAtrasado, raising=False)
-    async with db.acquire() as conn:
-        with pytest.raises(InvalidTokenError, match="expired"):
-            await consume(conn, token=token, session_id=sid)
+    with freeze_time("2020-01-01", real_asyncio=True):
+        async with db.acquire() as conn:
+            with pytest.raises(InvalidTokenError, match="expired"):
+                await consume(conn, token=token, session_id=sid)

@@ -58,7 +58,10 @@ original eram do agente que o escreveu; os abaixo foram medidos.
   - o `acquire()` dele devolve um gerenciador de contexto que retira a conexão e, se a retirada
     levantar um dos `_DROPPED_CONNECTION_ERRORS` (o `SELECT 1` do `setup` falhou), retira **uma**
     vez de novo, com o log `db_conexao_testada_reconectou`;
-  - todo o resto (`release`, `close`, `get_size`…) delega ao pool real.
+  - nada além do `acquire()` é exposto, de propósito: um atalho do asyncpg (`pool.fetch`,
+    `pool.execute`) retiraria a conexão por dentro, sem a repetição. Nenhum ponto de `src/`
+    usa outro método do pool (conferido em 28/09). O ciclo de vida é do `close_pool()`, e o
+    `init_pool` não devolve o pool cru (revisão final da branch): `get_pool()` é a única porta.
 - **Por que repetir é seguro para escrita:** a repetição acontece antes de o chamador receber a
   conexão. Nenhum comando do chamador rodou, então nada é repetido.
 - O `run_with_reconnect` fica como está: é a segunda rede das leituras, para a conexão que morre
@@ -144,6 +147,8 @@ Tudo por leitura:
 - **latência do `/mcp`** (Cloud Run, p50 e p95): as 24 h antes e as 24 h depois do deploy, para medir
   o custo real do `SELECT 1`;
 - **log:** contagem de `db_conexao_testada_reconectou` e de `db_dropped_connection_retry`, e nenhum
-  500 de conexão no primeiro acesso da manhã seguinte;
+  500 de conexão no primeiro acesso da manhã seguinte. Leitura: o `db_dropped_connection_retry`
+  conta a conexão que morreu entre o teste e a query **e** a retirada que falhou duas vezes dentro
+  de um `run_with_reconnect` — não é só o primeiro caso;
 - **deploy:** o job de migration termina limpo com o lock;
 - **smoke de leitura:** `list_my_accounts`, `get_my_rate_limit_status` e uma tool Meta.

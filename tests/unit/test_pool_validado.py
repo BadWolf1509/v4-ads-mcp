@@ -144,20 +144,39 @@ def test_get_pool_devolve_o_pool_validado(monkeypatch: pytest.MonkeyPatch) -> No
     assert isinstance(connection.get_pool(), connection.PoolValidado)
 
 
-_ABRE_CONEXAO = {"asyncpg.create_pool", "asyncpg.connect"}
+# Revisão final da branch: o casador só via `asyncpg.connect(...)`/`asyncpg.create_pool(...)`
+# chamados pelo nome. Agora vê qualquer REFERÊNCIA a eles (alias `abre = asyncpg.connect`,
+# `asyncpg.connection.connect`, `from asyncpg.pool import create_pool`), a CHAMADA a
+# `asyncpg.Pool(...)` (a anotação de tipo não abre conexão) e o acesso ao `_pool` cru do
+# `connection` — que contorna a repetição da retirada sem abrir conexão nova.
+_REFERENCIA_PROIBIDA = {"connect", "create_pool"}
+_CHAMADA_PROIBIDA = {"Pool"}
+
+
+def _ofensores_na_arvore(arv: ast.Module) -> list[int]:
+    origens = h.origens_de_import(arv)
+    linhas = []
+    for no in ast.walk(arv):
+        if isinstance(no, ast.Attribute | ast.Name):
+            caminho = h.caminho_canonico(no, origens) or ""
+            ultimo = caminho.rsplit(".", 1)[-1]
+            abre_conexao = caminho.startswith("asyncpg.") and ultimo in _REFERENCIA_PROIBIDA
+            if abre_conexao or caminho == "src.db.connection._pool":
+                linhas.append(no.lineno)
+        if isinstance(no, ast.Call):
+            caminho = h.caminho_canonico(no.func, origens) or ""
+            if caminho.startswith("asyncpg.") and caminho.rsplit(".", 1)[-1] in _CHAMADA_PROIBIDA:
+                linhas.append(no.lineno)
+    return sorted(set(linhas))
 
 
 def _quem_abre_conexao_fora_do_pool() -> list[str]:
-    ofensores = []
-    for arquivo in h.fontes_py(h.SRC):
-        if h.rel(arquivo) == "src/db/connection.py":
-            continue
-        arv = h.arvore(arquivo)
-        origens = h.origens_de_import(arv)
-        for no in ast.walk(arv):
-            if isinstance(no, ast.Call) and h.caminho_canonico(no.func, origens) in _ABRE_CONEXAO:
-                ofensores.append(f"{h.rel(arquivo)}:{no.lineno}")
-    return ofensores
+    return [
+        f"{h.rel(arquivo)}:{linha}"
+        for arquivo in h.fontes_py(h.SRC)
+        if h.rel(arquivo) != "src/db/connection.py"
+        for linha in _ofensores_na_arvore(h.arvore(arquivo))
+    ]
 
 
 def test_so_o_connection_abre_conexao_com_o_banco() -> None:
@@ -182,3 +201,28 @@ def test_o_scan_de_conexao_ve_as_duas_formas(
     monkeypatch.setattr(h, "SRC", pasta)
     monkeypatch.setattr(h, "RAIZ", tmp_path.resolve())
     assert sorted(_quem_abre_conexao_fora_do_pool()) == ["src/a.py:3", "src/b.py:3"]
+
+
+_FORMAS_DA_REVISAO = {
+    "pool_submodulo": "from asyncpg.pool import create_pool\nasync def f():\n    await create_pool(dsn='x')\n",
+    "connection_submodulo": "import asyncpg\nasync def f():\n    await asyncpg.connection.connect('x')\n",
+    "alias": "import asyncpg\nabre = asyncpg.connect\nasync def f():\n    await abre('x')\n",
+    "pool_cru": "from src.db import connection\nasync def f():\n    async with connection._pool.acquire():\n        pass\n",
+    "pool_construido": "import asyncpg\ndef f():\n    return asyncpg.Pool('x')\n",
+}
+
+
+@pytest.mark.parametrize("forma", sorted(_FORMAS_DA_REVISAO))
+def test_o_scan_de_conexao_ve_as_formas_da_revisao(forma: str) -> None:
+    """Controle das formas que a revisão final mediu passando: cada uma é acusada."""
+    assert _ofensores_na_arvore(ast.parse(_FORMAS_DA_REVISAO[forma]))
+
+
+def test_o_scan_de_conexao_nao_acusa_anotacao_nem_get_pool() -> None:
+    """Controle negativo: anotar `asyncpg.Pool`/`asyncpg.Connection` e usar `get_pool()` é o uso certo."""
+    codigo = (
+        "import asyncpg\nfrom src.db import connection\n"
+        "async def f(conn: asyncpg.Connection, p: asyncpg.Pool | None) -> None:\n"
+        "    async with connection.get_pool().acquire() as c:\n        pass\n"
+    )
+    assert _ofensores_na_arvore(ast.parse(codigo)) == []

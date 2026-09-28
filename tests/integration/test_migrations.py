@@ -116,6 +116,9 @@ async def test_duas_execucoes_concorrentes_aplicam_cada_migration_uma_vez(pg_dsn
 
     import asyncpg
 
+    # O `init_pool` devolveria um pool vazado de outro teste (apontado para um banco já
+    # migrado): as duas `run_all` virariam no-op e o teste passaria sem concorrência.
+    assert connection._pool is None, "pool global vazou do teste anterior"
     nome = f"mig_concorrente_{os.getpid()}"
     admin = await asyncpg.connect(pg_dsn)
     try:

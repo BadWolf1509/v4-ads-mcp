@@ -93,11 +93,11 @@ o F191 é a classe A. Os IDs F<n> citados abaixo estão no
 | # | achado | destino |
 |---|---|---|
 | 1 | export CSV do audit falha aberto | fechado — F191 |
-| 2 | `pool.acquire()` cru em leituras quentes, fora do guard estrutural | fechado — *infra e guards* (spec 2026-09-28): a conexão é testada na retirada, para toda leitura e escrita |
-| 3 | `migrate.py` sem advisory lock | fechado — *infra e guards* (spec 2026-09-28): `pg_advisory_xact_lock` por migration, com re-checagem |
-| 4 | `days` e resultado sem teto nos exports CSV | `days`: fechado em 25/09 — teto de 365, validado na rota; resultado: fechado — *infra e guards* (spec 2026-09-28) (50.000 linhas, com marca de corte) |
-| 5 | `revoke` Meta sem `AND revoked_at IS NULL` | fechado — *infra e guards* (spec 2026-09-28): os três `revoke` sem o predicado (o Meta manual e os das duas conexões OAuth), com guard derivado do SQL |
-| 6 | `get_active_for_manager`: `LIMIT 1` sobre chave de ordenação não-única | fechado — *infra e guards* (spec 2026-09-28): `id` como desempate, também no `account_resync.py`, com guard derivado do SQL |
-| 7 | `IndexError` com `limit=0` nos dois pagers keyset | fechado — *infra e guards* (spec 2026-09-28): `limit < 1` recusado na entrada |
-| 8 | itens menores | fechado — *infra e guards* (spec 2026-09-28): o dia do contador Meta em UTC, o acerto de quota no dia da reserva, a transação do contador Meta e a expiração do token de dry-run no relógio do banco |
+| 2 | `pool.acquire()` cru em leituras quentes, fora do guard estrutural | fechado no código — *infra e guards* (spec 2026-09-28; verificação de produção pendente): a conexão é testada na retirada, para toda leitura e escrita que passa pelo pool de `src/` (os scripts de sondagem de `scripts/` abrem conexão própria e ficam fora) |
+| 3 | `migrate.py` sem advisory lock | fechado no código — *infra e guards* (spec 2026-09-28; verificação de produção pendente): `pg_advisory_xact_lock` por migration, com re-checagem |
+| 4 | `days` e resultado sem teto nos exports CSV | `days`: fechado em 25/09 — teto de 365, validado na rota; resultado: fechado no código — *infra e guards* (spec 2026-09-28; verificação de produção pendente) (50.000 linhas, com marca de corte) |
+| 5 | `revoke` Meta sem `AND revoked_at IS NULL` | fechado no código — *infra e guards* (spec 2026-09-28; verificação de produção pendente): os três `revoke` sem o predicado (o Meta manual e os das duas conexões OAuth), com guard derivado do SQL |
+| 6 | `get_active_for_manager`: `LIMIT 1` sobre chave de ordenação não-única | fechado no código — *infra e guards* (spec 2026-09-28; verificação de produção pendente): `id` como desempate, também no `account_resync.py`, com guard derivado do SQL |
+| 7 | `IndexError` com `limit=0` nos dois pagers keyset | fechado no código — *infra e guards* (spec 2026-09-28; verificação de produção pendente): `limit < 1` recusado na entrada |
+| 8 | itens menores | fechado no código — *infra e guards* (spec 2026-09-28; verificação de produção pendente): o dia do contador Meta em UTC, o acerto de quota no dia da reserva, a transação do contador Meta e a expiração do token de dry-run no relógio do banco |
 | 9 | F179 localizado | fechado — F191 |

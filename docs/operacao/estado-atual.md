@@ -101,8 +101,8 @@ no código não vira trabalho até ser verificado.
 |---|---|
 | 1 · credencial + contratos do SDK Meta | fechado — **F190** |
 | 2 · respostas que afirmam mais do que mediram | **fechado** — núcleo no **F191**, o resto no **F193** |
-| 3 · infra de dados (CSV do audit, guard de reconnect, lock no `migrate.py`, `revoke` Meta) | **fechado** — CSV no F191; o resto na frente *infra e guards* ([spec 2026-09-28](../superpowers/specs/2026-09-28-infra-e-guards-design.md)) |
-| 4 · guards que não cobrem (mock que bloqueava o conserto, testes que enumeram) | **fechado** — mock no F191; o guard de reconexão que enumerava deu lugar ao pool validado, um ponto só ([spec 2026-09-28](../superpowers/specs/2026-09-28-infra-e-guards-design.md)) |
+| 3 · infra de dados (CSV do audit, guard de reconnect, lock no `migrate.py`, `revoke` Meta) | **fechado no código** (verificação de produção pendente, §6 da spec) — CSV no F191; o resto na frente *infra e guards* ([spec 2026-09-28](../superpowers/specs/2026-09-28-infra-e-guards-design.md)) |
+| 4 · guards que não cobrem (mock que bloqueava o conserto, testes que enumeram) | **fechado no código** (verificação de produção pendente) — mock no F191; a proteção contra conexão derrubada deixou de depender de lista: o pool valida a conexão num ponto só, e o guard que enumera funções e o `run_with_reconnect` ficam como segunda rede ([spec 2026-09-28](../superpowers/specs/2026-09-28-infra-e-guards-design.md)) |
 
 As **métricas Meta** que a nota do F190 chama de "sub-projeto 2" (`_parse_buc_header_pct`,
 zero no lugar de campo ausente, `_brl` fixo, atribuição implícita) **nunca estiveram em

@@ -40,7 +40,16 @@ async def _list_pending(conn: asyncpg.Connection) -> list[Path]:
 
 
 async def run_all() -> None:
-    """Apply every pending migration in order. Idempotent."""
+    """Apply every pending migration in order. Idempotent.
+
+    Seguro sob execução concorrente (spec 2026-09-28 §3.3.1): o bootstrap e cada migration
+    rodam sob `pg_advisory_xact_lock`, e cada migration confere `_migrations` de novo depois
+    do lock — duas execuções aplicam cada migration uma vez e as duas terminam limpas.
+
+    A espera pelo lock herda o `command_timeout=30` do pool: atrás de uma migration que
+    segure o lock por mais de 30 s, a execução que espera falha com `TimeoutError`, e o
+    retry do job a refaz — a re-checagem pula o que a outra já aplicou.
+    """
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         # Dois `CREATE TABLE IF NOT EXISTS` concorrentes também colidem (no catálogo):

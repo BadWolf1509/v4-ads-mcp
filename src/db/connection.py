@@ -74,9 +74,10 @@ class _RetiradaValidada:
 class PoolValidado:
     """O pool que `get_pool()` devolve: a conexão é testada na retirada (spec 2026-09-28 §3.1).
 
-    `src/` só usa `acquire()`; `close()` é do ciclo de vida. Nada mais é exposto, de
-    propósito: um atalho do asyncpg (`pool.fetch`, `pool.execute`) retiraria por dentro,
-    sem a repetição.
+    Só `acquire()` é exposto, de propósito: um atalho do asyncpg (`pool.fetch`,
+    `pool.execute`) retiraria por dentro, sem a repetição. O ciclo de vida é do
+    `close_pool()`, que também zera o global (um `close()` aqui deixaria `_pool` apontando
+    para um pool fechado, e o `init_pool` seguinte o devolveria).
     """
 
     def __init__(self, pool: Any) -> None:
@@ -84,9 +85,6 @@ class PoolValidado:
 
     def acquire(self) -> _RetiradaValidada:
         return _RetiradaValidada(self._pool)
-
-    async def close(self) -> None:
-        await self._pool.close()
 
 
 # F92 — defaults conservadores do pool. Ver docstring de init_pool pra conta
@@ -100,8 +98,11 @@ async def init_pool(
     database_url: str,
     min_size: int = DEFAULT_POOL_MIN_SIZE,
     max_size: int = DEFAULT_POOL_MAX_SIZE,
-) -> asyncpg.Pool:
+) -> None:
     """Create the global pool. Call once at app startup.
+
+    Não devolve o pool, de propósito (spec 2026-09-28 §3.1): o objeto do asyncpg é o pool
+    CRU, e quem o usasse escaparia da repetição da retirada. A única porta é `get_pool()`.
 
     F92 — o default caiu de 10 pra 5. O orçamento é **instâncias × pool** e tem
     que caber no teto do banco: com `--max-instances=10`, o antigo default
@@ -117,7 +118,7 @@ async def init_pool(
     """
     global _pool
     if _pool is not None:
-        return _pool
+        return
     _pool = await asyncpg.create_pool(
         dsn=database_url,
         min_size=min_size,
@@ -127,7 +128,6 @@ async def init_pool(
         setup=_testa_conexao,
     )
     log.info("db_pool_created", min_size=min_size, max_size=max_size)
-    return _pool
 
 
 async def close_pool() -> None:
