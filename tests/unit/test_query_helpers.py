@@ -58,7 +58,7 @@ def test_parse_explicit_range_dict() -> None:
 
 
 def test_parse_inverted_range_raises() -> None:
-    with pytest.raises(InvalidDateRangeError, match="from.*after.*to"):
+    with pytest.raises(InvalidDateRangeError, match="start_date.*depois de end_date"):
         parse_date_range({"from": "2026-01-31", "to": "2026-01-01"}, today=date(2026, 5, 15))
 
 
@@ -141,7 +141,7 @@ def test_resolve_date_window_invalid_custom_format_raises() -> None:
 
 
 def test_resolve_date_window_inverted_custom_raises() -> None:
-    with pytest.raises(InvalidDateRangeError, match="after"):
+    with pytest.raises(InvalidDateRangeError, match="depois de end_date"):
         resolve_date_window(
             date_range="LAST_7_DAYS",
             start_date="2026-05-14",
@@ -167,7 +167,7 @@ def test_parse_date_range_recovers_from_json_string_dict() -> None:
 def test_parse_date_range_invalid_json_string_falls_through_to_preset_error() -> None:
     """String starting with '{' but invalid JSON should not silently succeed —
     fall through to the preset error path with original (lowercased) input visible."""
-    with pytest.raises(InvalidDateRangeError, match="Unknown date_range preset"):
+    with pytest.raises(InvalidDateRangeError, match="date_range .* desconhecido"):
         parse_date_range("{not valid json}", today=date(2026, 5, 15))
 
 
