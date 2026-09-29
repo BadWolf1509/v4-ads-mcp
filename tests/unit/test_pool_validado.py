@@ -14,6 +14,8 @@ comando dele rodou, então nada é repetido — leitura e escrita ficam cobertas
 from __future__ import annotations
 
 import ast
+import asyncio
+import contextlib
 from typing import Any
 
 import asyncpg
@@ -261,3 +263,38 @@ async def test_conexao_sem_resposta_repete_a_retirada() -> None:
     async with connection.PoolValidado(cru).acquire() as conn:
         assert conn == "conexao nova"
     assert len(cru.retiradas) == 2
+
+
+class _ConexaoDoCorpo:
+    def __init__(self) -> None:
+        self.terminada = False
+
+    def terminate(self) -> None:
+        self.terminada = True
+
+
+@pytest.mark.parametrize(
+    ("erro", "descarta"),
+    [
+        (TimeoutError(), True),
+        (asyncio.CancelledError(), True),
+        (ValueError("erro do chamador"), False),
+        (None, False),
+    ],
+    ids=["timeout", "cancelamento", "outro-erro", "saida-normal"],
+)
+async def test_conexao_que_sai_por_timeout_ou_cancelamento_e_descartada(
+    erro: BaseException | None, descarta: bool
+) -> None:
+    """Depois de timeout ou cancelamento a conexao pode estar no meio de um cancelamento, e a
+    devolucao do asyncpg espera o fim dele sem prazo — num socket mudo, para sempre, e protegida
+    por `shield`: quem chamou volta, a vaga do pool fica presa (medido em 29/09). Descartar
+    antes de devolver libera a vaga na hora."""
+    conn = _ConexaoDoCorpo()
+    cru = _PoolFalso([conn])
+    with pytest.raises(type(erro)) if erro is not None else contextlib.nullcontext():
+        async with connection.PoolValidado(cru).acquire():
+            if erro is not None:
+                raise erro
+    assert conn.terminada is descarta
+    assert cru.retiradas[0].soltou, "a devolucao ao pool acontece nos quatro casos"

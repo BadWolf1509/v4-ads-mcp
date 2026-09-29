@@ -1,5 +1,6 @@
 """asyncpg connection pool factory."""
 
+import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from types import TracebackType
 from typing import Any
@@ -62,17 +63,32 @@ async def _testa_conexao(conn: asyncpg.Connection) -> None:
         ) from exc
 
 
+# A conexão que sai do corpo assim pode estar no meio de um cancelamento (ver
+# `_RetiradaValidada`): descartada, não devolvida.
+_SAIDAS_QUE_DESCARTAM: tuple[type[BaseException], ...] = (TimeoutError, asyncio.CancelledError)
+
+
 class _RetiradaValidada:
     """`async with pool.acquire() as conn`, com a retirada repetida uma vez.
 
     Usa o protocolo de gerenciador de contexto da retirada do asyncpg (e dos fakes dos
     testes), não `await pool.acquire()`. Só a RETIRADA é repetida: um erro dentro do corpo
     do `with` — a query do chamador — sobe sem repetição, então escrita nunca roda duas vezes.
+
+    Na devolução, a conexão que sai do corpo por timeout ou cancelamento é DESCARTADA
+    (`terminate()`) antes de voltar ao pool — o padrão de descartar conexão devolvida em estado
+    duvidoso (o `psycopg_pool` faz o mesmo; o asyncpg, quando o reset falha). Ela pode estar
+    no meio de um cancelamento, e a devolução do asyncpg espera o fim dele sem prazo, sob
+    `shield`: num socket mudo, para sempre. Medido em 29/09 com asyncpg 0.31: presa aos 90 s,
+    e com `asyncio.timeout` em volta (o formato do /health?deep=1) quem chamou ficava preso
+    junto, e a vaga do pool, perdida. Custa reabrir uma conexão saudável cuja query estourou
+    ou foi cancelada — raro.
     """
 
     def __init__(self, pool: Any) -> None:
         self._pool = pool
         self._retirada: Any = None
+        self._conn: Any = None
 
     async def __aenter__(self) -> asyncpg.Connection:
         for tentativa in (1, 2):
@@ -85,6 +101,7 @@ class _RetiradaValidada:
                 log.warning("db_conexao_testada_reconectou", error=str(exc))
                 continue
             self._retirada = retirada
+            self._conn = conn
             return conn
         raise AssertionError("inalcançável: a 2ª tentativa devolve ou levanta")
 
@@ -94,6 +111,8 @@ class _RetiradaValidada:
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> bool | None:
+        if exc_type is not None and issubclass(exc_type, _SAIDAS_QUE_DESCARTAM):
+            self._conn.terminate()
         return await self._retirada.__aexit__(exc_type, exc, tb)  # type: ignore[no-any-return]
 
 

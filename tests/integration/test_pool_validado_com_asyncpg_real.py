@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 import asyncpg
@@ -196,3 +197,68 @@ async def test_socket_buraco_negro_nao_prende_a_retirada(pg_dsn: str) -> None:
         gasto = asyncio.get_running_loop().time() - inicio
         # esperou o prazo do teste, e nao mais que ele e uma reconexao
         assert connection._TIMEOUT_DO_TESTE <= gasto < connection._TIMEOUT_DO_TESTE + 5
+
+
+async def _vigiar(coro: Any, prazo: float, o_que: str) -> Any:
+    """Roda `coro` numa tarefa separada e espera no maximo `prazo`: vigiado DE FORA, porque
+    um timeout dentro da tarefa nao sai do `close()`/devolucao do asyncpg presos no socket
+    mudo. No estouro aborta o pool e falha. Devolve a tarefa terminada (resultado ou erro)."""
+    tarefa = asyncio.ensure_future(coro)
+    feitas, _ = await asyncio.wait({tarefa}, timeout=prazo)
+    if not feitas:
+        cru = connection._pool
+        if cru is not None:
+            cru.terminate()
+        connection._pool = None
+        tarefa.cancel()
+        pytest.fail(f"{o_que}: presa alem de {prazo:g} s num socket que nao responde")
+    return tarefa
+
+
+async def _retirada_seguinte_funciona() -> None:
+    """Com pool de UMA vaga, a retirada seguinte so volta se a vaga anterior foi liberada."""
+    tarefa = await _vigiar(_consultar(), 10, "a retirada seguinte (vaga presa?)")
+    assert tarefa.result() == 1
+
+
+async def _consultar() -> object:
+    async with connection.get_pool().acquire() as conn:
+        return await conn.fetchval("SELECT 1")
+
+
+@pytest.mark.integration
+async def test_consulta_que_estoura_no_socket_mudo_nao_prende_a_devolucao(pg_dsn: str) -> None:
+    """O socket emudece DEPOIS do teste da retirada, no meio do uso. A consulta estoura o
+    prazo; sem descartar a conexao, a devolucao ao pool esperava para sempre (medido em 29/09:
+    presa aos 90 s)."""
+
+    async def usar(proxy: _ProxyQueDerruba) -> None:
+        async with connection.get_pool().acquire() as conn:
+            assert proxy.silenciar_as_ociosas() == 1
+            await conn.fetchval("SELECT 1", timeout=1)
+
+    async with _pool_pelo_proxy(pg_dsn, max_size=1) as proxy:
+        await _aquecer(1)
+        tarefa = await _vigiar(usar(proxy), 10, "a devolucao da conexao")
+        assert isinstance(tarefa.exception(), TimeoutError)
+        await _retirada_seguinte_funciona()
+
+
+@pytest.mark.integration
+async def test_timeout_de_quem_chama_nao_deixa_a_vaga_do_pool_presa(pg_dsn: str) -> None:
+    """O formato do /health?deep=1: `asyncio.timeout` em volta do uso. Medido em 29/09 sem o
+    descarte: quem chamou ficava preso tambem — o cancelamento e consumido uma vez, e a espera
+    pela devolucao (sob `shield`) nao termina — e a vaga, perdida; com todas as vagas assim,
+    nenhuma retirada volta. Pool de 1 vaga mostra as duas coisas."""
+
+    async def usar(proxy: _ProxyQueDerruba) -> None:
+        async with asyncio.timeout(1):
+            async with connection.get_pool().acquire() as conn:
+                assert proxy.silenciar_as_ociosas() == 1
+                await conn.fetchval("SELECT 1")
+
+    async with _pool_pelo_proxy(pg_dsn, max_size=1) as proxy:
+        await _aquecer(1)
+        tarefa = await _vigiar(usar(proxy), 10, "quem chamou")
+        assert isinstance(tarefa.exception(), TimeoutError)
+        await _retirada_seguinte_funciona()
