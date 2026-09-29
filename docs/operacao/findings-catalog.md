@@ -4,11 +4,11 @@
 >
 > **Maintainer note:** Add a new entry here whenever a finding is documented in a smoke runbook. Keep entries scannable — link to runbook for detail.
 >
-> **Last updated:** 2026-09-28 — **F199** (pacing pelos dias fechados), **F200** (infra e guards; verificação de produção pendente) e **F201** (data inválida virava "Erro interno"), no fim do arquivo. De 2026-09-20: **F180–F185**: sprint de RSA (F180 em parte; F181/F182/F183/F184 corrigidos), a 2ª instância do F182, e dois ABERTOS: **F185** (limitação da API, sem correção possível deste lado) e **F186** (o smoke autenticado do `/mcp` está desarmado por token vencido). O resto deste parágrafo é de **2026-09-03** e não foi atualizado desde então — leia como de época: **F141–F146 fechados** em tres PRs (#28 bloco fuso+freshness; #29 structural_change; #30 fuso do upload offline) mais o F142 (whitelist de client_type) direto na main. Ontem, 02/09: **+F131–F140** da sessao de campo MO-JP, fechados no PR #27 e nos fixes seguintes. Narrativa completa e licoes de metodo no handoff [`session-2026-09-02-03-handoff.md`](session-2026-09-02-03-handoff.md); o historico anterior (F82–F130, 08/14 a 08/20) esta nos handoffs de 08-14-15 e 08-19.
+> **Last updated:** 2026-09-29 — **F202** (pacing de orçamento compartilhado) e **F203** (retirada do pool presa sem limite num socket mudo; corrige os "30 s" do F200), os dois corrigidos no código com deploy pendente. De 2026-09-28: **F199** (pacing pelos dias fechados), **F200** (infra e guards; verificação de produção pendente) e **F201** (data inválida virava "Erro interno"), no fim do arquivo. De 2026-09-20: **F180–F185**: sprint de RSA (F180 em parte; F181/F182/F183/F184 corrigidos), a 2ª instância do F182, e dois ABERTOS: **F185** (limitação da API, sem correção possível deste lado) e **F186** (o smoke autenticado do `/mcp` está desarmado por token vencido). O resto deste parágrafo é de **2026-09-03** e não foi atualizado desde então — leia como de época: **F141–F146 fechados** em tres PRs (#28 bloco fuso+freshness; #29 structural_change; #30 fuso do upload offline) mais o F142 (whitelist de client_type) direto na main. Ontem, 02/09: **+F131–F140** da sessao de campo MO-JP, fechados no PR #27 e nos fixes seguintes. Narrativa completa e licoes de metodo no handoff [`session-2026-09-02-03-handoff.md`](session-2026-09-02-03-handoff.md); o historico anterior (F82–F130, 08/14 a 08/20) esta nos handoffs de 08-14-15 e 08-19.
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~5900 linhas, 595 KB, IDs de **F1 a F201** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 55 têm; 56 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~6000 linhas, 601 KB, IDs de **F1 a F203** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 55 têm; 56 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -5882,7 +5882,9 @@ novo.
 - Três recomendações da revisão final que mudam o comportamento de produção ficam para decisão do
   Wellington: timeout curto no `SELECT 1` (um socket buraco-negro custa hoje os 30 s do
   `command_timeout`), `expire_connections` na primeira queda, e repetir a retirada em qualquer
-  erro do teste.
+  erro do teste. ⚠️ **Os "30 s" eram leitura, não medição** — medido em 29/09, a retirada fica
+  presa **sem limite**; o timeout curto virou o **F203**. As outras duas seguem sem dado que as
+  peça (zero quedas desde o deploy).
 - A espera pelo lock das migrations herda o `command_timeout=30` do pool (documentado no
   `run_all`); o retry do job cobre.
 - `scripts/` (sondas locais) abre conexão própria e fica fora do guard, que varre `src/`.
@@ -5911,3 +5913,82 @@ parâmetro e lista os válidos). O `ValueError` cru continua interno: a invarian
 `janelas.py` (janela invertida vinda de um preset) é bug nosso, não entrada errada de quem
 chamou. **Guard:** `tests/unit/test_erro_de_data_chega_ao_llm.py`. Smoke em produção: a mensagem
 PT-BR chega.
+
+---
+
+## F202 (MEDIUM, ✅ CORRIGIDO NO CÓDIGO 2026-09-29 — deploy pendente) — o `get_budget_pacing` comparava cada campanha com o orçamento compartilhado inteiro
+
+> **Como apareceu:** no F199 (28/09), medindo o pacing na Mestre da Obra – João Pessoa — ficou
+> no "Fora" dele.
+
+**Medido em 29/09** (`7862230676`, só leitura): as duas campanhas ativas dividem o orçamento
+`15803241252` (R$ 310/dia, `explicitly_shared`, `reference_count` 2). A tool dizia 85% (JPA,
+R$ 7.946,18) e 9% (CAB, R$ 848,89) de R$ 9.300 cada; somar os orçamentos das linhas dava
+R$ 18.600, o dobro. Juntas: R$ 8.795,07 de R$ 9.300 (94,6%). Nenhuma das duas linhas dizia que o
+orçamento era dividido.
+
+**✅ O que foi feito** (branch `fix/pacing-orcamento-compartilhado`, `1082e61`). Padrão:
+normalizar pela entidade dona do dado — o ritmo é do orçamento, não da campanha.
+
+- A query principal traz `campaign_budget.id`, `.name` e `.explicitly_shared`. Cada campanha
+  ganha `budget_id` e `orcamento_compartilhado`; na de orçamento compartilhado os dois
+  percentuais vêm `null` (ela não tem orçamento próprio).
+- Bloco novo `orcamentos_compartilhados`, um por orçamento: orçamento diário e mensal, campanhas
+  listadas, gasto até ontem e de hoje, projeção e os dois percentuais.
+- O gasto vem do próprio `campaign_budget` — a GAQL aceita `metrics.cost_micros FROM
+  campaign_budget` (medido: R$ 8.795,07, a soma exata das duas) —, então inclui campanha pausada
+  no mês ou cortada pelo `limit`, que a soma das linhas perderia. Duas queries a mais (dias
+  fechados e hoje; uma no dia 1), só quando há orçamento compartilhado; `IN` com `int()`, `LIMIT
+  1000` estrutural. As duas validadas contra a API (hoje, 29/09: R$ 33,57 no orçamento).
+- Description: não somar `daily_budget_brl` das campanhas.
+- **Guards** (`tests/unit/test_budget_pacing_orcamento_compartilhado.py`), cada um derrubado por
+  sabotagem medida: percentual de volta na campanha; total = soma das linhas; query sem
+  `explicitly_shared`; id não numérico no `IN`.
+
+**Fora, com o motivo:** orçamento de período fixo (`CUSTOM_PERIOD`, `total_amount_micros`) — a
+tool já não o tratava, defeito à parte; orçamento alterado no meio do mês segue projetado pelo
+valor atual. O plugin `v4-trafego-google-ads`, que lê `spent_pct_of_monthly_budget` por campanha,
+passa a ver `null` em orçamento compartilhado — cabe no ajuste do `null` já pendente.
+
+---
+
+## F203 (MEDIUM, ✅ CORRIGIDO NO CÓDIGO 2026-09-29 — deploy pendente) — um socket que não responde nem fecha prendia a retirada do pool sem limite; o F200 dizia "30 s"
+
+> **Como apareceu:** ao desenhar a 1ª recomendação da revisão final do F200 (timeout curto no
+> `SELECT 1` da retirada), lendo o código do asyncpg 0.31 instalado.
+
+**A cadeia, lida no código e medida:** o `setup` do pool (`_testa_conexao`) roda o `SELECT 1` com
+o `command_timeout=30`. No estouro, o protocolo do asyncpg pede o cancelamento
+(`_request_cancel`) e levanta `TimeoutError`; o holder, por ter falhado o `setup`, chama o
+`close()` **gracioso** da conexão, que espera sem prazo o `cancel_waiter` — a resposta do
+cancelamento, pelo mesmo socket mudo. Medido com um proxy TCP que para de repassar bytes sem
+fechar nada: a retirada seguia **presa aos 75 s** (teto da sonda); controle com o proxy normal,
+0,0 s. O "30 s" do F200 e da revisão final era leitura, não medição. Em produção, um buraco-negro
+(NAT ou firewall que descarta sem RST, failover do Supavisor) prenderia cada requisição até o
+keepalive do TCP, e o `/health?deep=1`, que desiste em 5 s, marcaria o banco como fora.
+
+**✅ O que foi feito** (branch `fix/pool-timeout-no-teste`, `bc7e343`):
+
+- `_TIMEOUT_DO_TESTE` = 2 s no `SELECT 1` (o custo normal medido em produção é +7 ms no p50; 2 s
+  cabe duas vezes nos 5 s do health profundo).
+- No estouro, `conn.terminate()` — aborta o transporte sem esperar nada; o `close()` do holder vê
+  a conexão fechada e só limpa — e `ConexaoSemRespostaError`, subclasse de `ConnectionError`,
+  então o `PoolValidado` repete a retirada numa conexão nova. Mesmo cenário, com o conserto:
+  2,1 s e o `SELECT 1` passa.
+- **Guards:** unitário (prazo passado ao `execute`, `terminate` chamado, erro da família que
+  repete) e de integração com asyncpg real, com o proxy do teste do F200 em modo buraco-negro.
+  Três sabotagens (sem `terminate`; sem prazo próprio; `TimeoutError` cru) derrubam os dois.
+  Convenção em `docs/convencoes/nucleo.md`.
+
+**🔑 Lição de método — guard que trava não é guard:** a 1ª versão do guard de integração usava
+`asyncio.timeout` em volta da retirada e, sob sabotagem, **travou a suíte** em vez de falhar: o
+asyncpg trata o cancelamento chamando o mesmo `close()` que espera o socket mudo, dentro da
+própria tarefa. O guard passou a vigiar **de fora** (tarefa separada e `asyncio.wait` com prazo;
+no estouro, `pool.terminate()` e `pytest.fail`), e o fechamento do pool no helper também ganhou
+prazo. No CI, um guard que trava vira job pendurado até o timeout do runner.
+
+**Fora, com o motivo:** a mesma cadeia no caminho da **query** do chamador (socket que emudece no
+meio da query, depois do teste): o `command_timeout` de 30 s estoura e a devolução da conexão ao
+pool pode esperar do mesmo jeito — não medido, frente própria se o buraco-negro aparecer em
+produção. As outras duas recomendações da revisão final (`expire_connections` na primeira queda;
+repetir em qualquer erro) seguem sem dado que as peça: zero quedas desde o deploy de 29/09.
