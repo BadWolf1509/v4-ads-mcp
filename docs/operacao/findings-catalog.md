@@ -4,11 +4,11 @@
 >
 > **Maintainer note:** Add a new entry here whenever a finding is documented in a smoke runbook. Keep entries scannable — link to runbook for detail.
 >
-> **Last updated:** 2026-09-20 — **F180–F185**: sprint de RSA (F180 em parte; F181/F182/F183/F184 corrigidos), a 2ª instância do F182, e dois ABERTOS: **F185** (limitação da API, sem correção possível deste lado) e **F186** (o smoke autenticado do `/mcp` está desarmado por token vencido). O resto deste parágrafo é de **2026-09-03** e não foi atualizado desde então — leia como de época: **F141–F146 fechados** em tres PRs (#28 bloco fuso+freshness; #29 structural_change; #30 fuso do upload offline) mais o F142 (whitelist de client_type) direto na main. Ontem, 02/09: **+F131–F140** da sessao de campo MO-JP, fechados no PR #27 e nos fixes seguintes. Narrativa completa e licoes de metodo no handoff [`session-2026-09-02-03-handoff.md`](session-2026-09-02-03-handoff.md); o historico anterior (F82–F130, 08/14 a 08/20) esta nos handoffs de 08-14-15 e 08-19.
+> **Last updated:** 2026-09-28 — **F199** (pacing pelos dias fechados), **F200** (infra e guards; verificação de produção pendente) e **F201** (data inválida virava "Erro interno"), no fim do arquivo. De 2026-09-20: **F180–F185**: sprint de RSA (F180 em parte; F181/F182/F183/F184 corrigidos), a 2ª instância do F182, e dois ABERTOS: **F185** (limitação da API, sem correção possível deste lado) e **F186** (o smoke autenticado do `/mcp` está desarmado por token vencido). O resto deste parágrafo é de **2026-09-03** e não foi atualizado desde então — leia como de época: **F141–F146 fechados** em tres PRs (#28 bloco fuso+freshness; #29 structural_change; #30 fuso do upload offline) mais o F142 (whitelist de client_type) direto na main. Ontem, 02/09: **+F131–F140** da sessao de campo MO-JP, fechados no PR #27 e nos fixes seguintes. Narrativa completa e licoes de metodo no handoff [`session-2026-09-02-03-handoff.md`](session-2026-09-02-03-handoff.md); o historico anterior (F82–F130, 08/14 a 08/20) esta nos handoffs de 08-14-15 e 08-19.
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~5800 linhas, 581 KB, IDs de **F1 a F198** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 55 têm; 56 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~5900 linhas, 595 KB, IDs de **F1 a F201** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 55 têm; 56 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -5790,3 +5790,124 @@ nada conferia que ele era **fechado**.
 
 **Fora, com o motivo:** o gate rápido não roda a checagem (precisa de rede e baixa ~80
 pacotes); o arquivo só muda por regeneração ou por PR do Dependabot, e os dois passam pelo CI.
+
+---
+
+## F199 (MEDIUM, ✅ CORRIGIDO 2026-09-28) — o `get_budget_pacing` projetava o fim do mês contando o dia corrente, pela metade, como dia inteiro
+
+> **Como apareceu:** ao decidir as duas definições de `THIS_MONTH` (o "Fora" do F196), medindo
+> o pacing numa conta real.
+
+**Medido em 28/09** (Mestre da Obra – João Pessoa, `7862230676`, só leitura): o `DURING
+THIS_MONTH` do Google inclui hoje, e a projeção dividia esse gasto por `today.day`. Até 27/09,
+R$ 8.344,07 em 27 dias fechados; hoje às 13:28, R$ 277,63. Projeção da tool: R$ 9.237; pelos
+dias fechados: R$ 9.271 — −3,6% antes do primeiro gasto do dia 28. Na manhã do dia 1, com R$ 20
+gastos, seriam R$ 600 contra ~R$ 9.271 (~−94%): toda campanha "lenta demais" justamente no
+início do dia e do mês, quando a description manda usar a tool. O erro é ~1/dia-do-mês.
+
+**Decisão (Wellington, 28/09): dias fechados** — contra manter e só avisar, e contra ratear
+hoje pela hora (o gasto não é uniforme: 84% de um dia típico em 56% das horas).
+
+**✅ O que foi feito** ([#131](https://github.com/BadWolf1509/v4-ads-mcp/pull/131), revisão `00137`):
+
+- A janela passa a ser a do `THIS_MONTH` de `src/janelas.py` (até ontem; no dia 1, só hoje — a
+  regra do F196): uma definição só de `THIS_MONTH` no projeto, e nenhuma tool usa mais o
+  `DURING THIS_MONTH`.
+- Projeção = gasto dos dias fechados ÷ dias fechados × dias do mês. No dia 1 não há dia fechado
+  e a projeção vem `null` — razão sem denominador (F191).
+- O gasto de hoje vem à parte, em `gasto_hoje_brl`, por uma segunda query (`campaign.id IN` das
+  campanhas listadas, `LIMIT 1000` estrutural): sinal de estouro no dia, fora da projeção. A
+  resposta ganha `period` e `inclui_dia_corrente` (`true` só no dia 1); `days_elapsed` conta
+  dias fechados e `days_remaining` inclui hoje.
+- As duas queries validadas contra a API (`validate_gaql` e leitura): 7.566,82 + 777,26 =
+  8.344,07 nos dias fechados; hoje, 221,19 + 56,44 = 277,63. Smoke em produção: janela
+  01–27/09, R$ 7.566,82 igual à GAQL.
+- **Guards** (`tests/unit/test_budget_pacing_dias_fechados.py`), vistos falhar contra o código
+  antigo: 28 dias em vez de 27, `DURING` em vez de `BETWEEN`, projeção 620 em vez de `null` no
+  dia 1.
+
+**Fora, com o motivo:** o **orçamento compartilhado** — as duas campanhas da conta medida
+dividem o orçamento `15803241252`, e o pacing compara cada uma com o orçamento inteiro (o mensal
+fica contado duas vezes). Defeito anterior a este, frente própria.
+
+---
+
+## F200 (MEDIUM, ✅ CORRIGIDO NO CÓDIGO 2026-09-28 — verificação de produção pendente) — infra e guards: o resto dos sub-projetos 3 e 4 da varredura de 21/09
+
+> **Como apareceu:** varredura de 21/09 (relatórios 04 e 05,
+> [`_archive/varredura-2026-09-21/`](../_archive/varredura-2026-09-21/README.md)), conferida no
+> código de 28/09 por um agente só de leitura — todos os achados seguiam presentes; o 05#4a
+> (teto de `days`) já tinha fechado em 25/09.
+
+**✅ O que foi feito** ([#133](https://github.com/BadWolf1509/v4-ads-mcp/pull/133), revisão
+`00139`; [spec](../superpowers/specs/2026-09-28-infra-e-guards-design.md) e
+[plano](../superpowers/plans/2026-09-28-infra-e-guards.md)):
+
+- **05#2 e sub-projeto 4 — conexão testada na retirada do pool.** `setup` = `SELECT 1`, e o
+  `PoolValidado` repete a **retirada** uma vez em conexão derrubada — antes de o chamador
+  receber a conexão, então cobre escrita também. Eram 9 leituras do caminho quente sem o
+  `run_with_reconnect`, e o guard de reconexão enumerava 6 funções. `get_pool()` é a única
+  porta: `init_pool` não devolve o pool cru, e um guard acusa `asyncpg.connect`/`create_pool`
+  (inclusive por alias e submódulo), `asyncpg.Pool(...)` e `connection._pool` fora de
+  `connection.py`. Teste de integração com asyncpg real e um proxy TCP que derruba a conexão
+  ociosa na próxima escrita (o modo do F76): o pool cru falha; o `PoolValidado` reconecta com 1
+  e com 2 conexões mortas, e o corpo roda uma vez.
+- **05#5 — revogação que re-revogava.** Os três `revoke` sem `AND revoked_at IS NULL` (Meta
+  manual e as duas conexões OAuth); no Meta, re-revogar com outro motivo tirava a linha do
+  `restore_for_account`. Guard derivado do SQL de `src/` (9 revogações; pega `+`, f-string,
+  `CURRENT_TIMESTAMP` e `$n`).
+- **05#6 — `ORDER BY … LIMIT 1` sem desempate:** `connected_at DESC` nos dois
+  `get_active_for_manager` e no `account_resync.py`, e o `ORDER BY created_at` dos admins. Guard
+  derivado do SQL (tabela do banco = criada em migration; CTE, subquery e schema).
+- **05#7** — os pagers keyset recusam `limit < 1`.
+- **05#8 — o relógio certo.** O token de dry-run vence pelo `now()` do banco (era o relógio da
+  app; medido: aceitava token vencido com a app atrasada). Reserva e acerto de quota no mesmo dia
+  UTC — `before_call` devolve o dia e `record_actual(dia=)` é obrigatório; o acerto na virada da
+  meia-noite era descartado sem erro. O contador Meta passa a UTC, numa transação.
+- **05#3 — migrations serializadas** por `pg_advisory_xact_lock` (a variante de transação
+  funciona nos dois modos do Supavisor), com re-checagem. Medido: duas execuções concorrentes
+  colidiam já no `pg_type` do `CREATE TABLE IF NOT EXISTS _migrations`.
+- **05#4b** — o export CSV do audit tem teto de 50.000 linhas (`LIMIT teto+1`) e marca
+  `EXPORT CORTADO`; medido: 5.795 linhas em 365 dias, então o teto não corta nada hoje.
+
+**Verificação de produção (spec §6), pendente em 28/09:** latência de 24 h contra a base medida
+antes do deploy (p50 16,9 ms, p95 708 ms, serviço inteiro), eventos de reconexão (base: 2 em 7
+dias), primeiro acesso da manhã sem 500 e o job das 09:00 UTC de 29/09, o primeiro com o pool
+novo.
+
+**Fora, com o motivo:**
+
+- O `run_with_reconnect` segue como segunda rede das leituras (a conexão que morre entre o teste
+  e a query); removê-lo é decisão à parte, depois de medir o pool validado em produção.
+- Três recomendações da revisão final que mudam o comportamento de produção ficam para decisão do
+  Wellington: timeout curto no `SELECT 1` (um socket buraco-negro custa hoje os 30 s do
+  `command_timeout`), `expire_connections` na primeira queda, e repetir a retirada em qualquer
+  erro do teste.
+- A espera pelo lock das migrations herda o `command_timeout=30` do pool (documentado no
+  `run_all`); o retry do job cobre.
+- `scripts/` (sondas locais) abre conexão própria e fica fora do guard, que varre `src/`.
+- O adjacente do 05#4: `export_csv_rows(manager_id=None)` exporta o audit de todos os gestores
+  por default — falha aberta apontada pela revisão final, hoje latente (as duas rotas passam o
+  gestor explícito); frente própria.
+- Freshness de métricas (01#12) e a segunda paginação Meta (débito do F190): frentes próprias.
+
+---
+
+## F201 (LOW, ✅ CORRIGIDO 2026-09-28) — data inválida numa tool Google chegava ao LLM como "Erro interno"
+
+> **Como apareceu:** na revisão do F196 (27/09).
+
+`resolve_date_window` recusa período inválido com `InvalidDateRangeError` — só um lado do
+período, início depois do fim, data fora do formato, preset desconhecido. Das ~23 tools que o
+chamam, só `bulk_pause_by_query` e `update_ad_schedule` capturavam o erro; nas outras ele subia
+até o `_error_envelope`, que só preserva a mensagem de erro amigável (F62), e o LLM recebia
+"Erro interno ao executar a ferramenta", sem nada com que se corrigir. Reproduzido de ponta a
+ponta pela tool real; zero ocorrências em produção em 30 dias (medido em 27/09) — por isso LOW.
+
+**✅ O que foi feito** ([#132](https://github.com/BadWolf1509/v4-ads-mcp/pull/132), revisão
+`00138`): o envelope trata o `InvalidDateRangeError` como erro de entrada, uma vez só para toda
+tool, e as mensagens vão para PT-BR dizendo o que mandar no lugar (o preset desconhecido nomeia o
+parâmetro e lista os válidos). O `ValueError` cru continua interno: a invariante de
+`janelas.py` (janela invertida vinda de um preset) é bug nosso, não entrada errada de quem
+chamou. **Guard:** `tests/unit/test_erro_de_data_chega_ao_llm.py`. Smoke em produção: a mensagem
+PT-BR chega.

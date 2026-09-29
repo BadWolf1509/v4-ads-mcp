@@ -31,7 +31,7 @@
 | Revisão servindo | **`v4-ads-mcp-00139-fpf`**, 100% do tráfego (medido por `gcloud` em 29/09, ~00:10 UTC) — o deploy do **#133** (infra e guards; run `36500922965`, `test` e `deploy` `success`, o job de migration com o lock limpo), sobre o **#132** (`00138`, erro de data) e o **#131** (`00137`, F199); `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186); os desta noite foram feitos por uma sessão Claude autenticada |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
-| Catálogo | até **F198** (~5.800 linhas, 581 KB) — **F199 e F200 aguardam o `/findings-add`** (textos em `.superpowers/findings-pendentes/`) |
+| Catálogo | até **F201** (~5.900 linhas, 595 KB) — o **F200** (infra e guards) fecha de vez com a verificação de 29/09 |
 
 **Conferidos em produção, por leitura:** os smokes do F193 (26/09), do F194 e do F195 (27/09), a
 execução diária de 28/09 (18 de 18), o `mcp` 1.30, e os de 28/09 à noite — o pacing pelos dias
@@ -85,7 +85,6 @@ na máquina dos outros gestores, ou o LLM escolhendo a tool pelo nome. Separar p
 
 ## Pendências que dependem do Wellington
 
-- **Rodar o `/findings-add` do F199 e do F200** — a skill só roda por você. Os textos estão prontos em `.superpowers/findings-pendentes/F199.txt` (pacing pelos dias fechados) e `F200.txt` (infra e guards, com o que ficou de fora).
 - **Decidir as três recomendações da revisão final da infra e guards**, que mudam o comportamento de produção: timeout curto no `SELECT 1` da retirada (hoje uma conexão "buraco negro" custa os 30 s do `command_timeout`); invalidar o pool inteiro na primeira queda detectada (`expire_connections`); repetir a retirada em qualquer falha do teste, não só nas de conexão derrubada. Melhor depois da verificação de 29/09, com a latência medida.
 - **Aplicar no plugin `v4-trafego-google-ads` o ajuste do `null`.** Seis pontos fazem conta ou ranking com campos que, desde o deploy de 26/09, podem vir `null` (`analise-performance-google-ads/SKILL.md:44,137`; `relatorio-cliente-google-ads/SKILL.md:33,76-89,112-116`; `shared/v4-brand.md:43`). O texto das mudanças foi entregue em 26/09; a cópia instalada é upload do app, então o ajuste é na fonte. Até lá o relatório de cliente pode imprimir `None`.
 - **Remover do BM as contas Meta das quatro clientes que saíram** (decisão de 26/09): Dr. Dérick Vinhas (`act_4051924171730156`), Dra. Paula Minchillo (`act_1479232423809572`), Imperial Alimentos (`act_1648706246292124`) e Panelas Veneza (`act_374213944466235`, da Alumínios Veneza) — medidas em 26/09 alcançáveis pelo system user, com 4 grants vivos cada. A reconciliação Meta revoga quando a conta sai da parceria do BM: fora dele, em 3 execuções, com trilha — e desde o F197 nenhum botão reinicia essa carência. Revogar pelo painel foi descartado — o BM seguiria alcançando, e nada impediria reconceder.
@@ -108,8 +107,8 @@ no código não vira trabalho até ser verificado.
 |---|---|
 | 1 · credencial + contratos do SDK Meta | fechado — **F190** |
 | 2 · respostas que afirmam mais do que mediram | **fechado** — núcleo no **F191**, o resto no **F193** |
-| 3 · infra de dados (CSV do audit, guard de reconnect, lock no `migrate.py`, `revoke` Meta) | **fechado no código** (verificação de produção pendente, §6 da spec) — CSV no F191; o resto na frente *infra e guards* ([spec 2026-09-28](../superpowers/specs/2026-09-28-infra-e-guards-design.md)) |
-| 4 · guards que não cobrem (mock que bloqueava o conserto, testes que enumeram) | **fechado no código** (verificação de produção pendente) — mock no F191; a proteção contra conexão derrubada deixou de depender de lista: o pool valida a conexão num ponto só, e o guard que enumera funções e o `run_with_reconnect` ficam como segunda rede ([spec 2026-09-28](../superpowers/specs/2026-09-28-infra-e-guards-design.md)) |
+| 3 · infra de dados (CSV do audit, guard de reconnect, lock no `migrate.py`, `revoke` Meta) | **fechado no código** (verificação de produção pendente, §6 da spec) — CSV no F191; o resto no **F200**, a frente *infra e guards* ([spec 2026-09-28](../superpowers/specs/2026-09-28-infra-e-guards-design.md)) |
+| 4 · guards que não cobrem (mock que bloqueava o conserto, testes que enumeram) | **fechado no código** (verificação de produção pendente) — mock no F191, o resto no **F200**; a proteção contra conexão derrubada deixou de depender de lista: o pool valida a conexão num ponto só, e o guard que enumera funções e o `run_with_reconnect` ficam como segunda rede ([spec 2026-09-28](../superpowers/specs/2026-09-28-infra-e-guards-design.md)) |
 
 As **métricas Meta** que a nota do F190 chama de "sub-projeto 2" (`_parse_buc_header_pct`,
 zero no lugar de campo ausente, `_brl` fixo, atribuição implícita) **nunca estiveram em
@@ -136,4 +135,4 @@ Medir a exposição, dar dado às decisões, consertos pequenos, e só então sp
 | — | **orçamento compartilhado no `get_budget_pacing`**: cada campanha é comparada com o orçamento inteiro, e o mensal conta duas vezes (medido na Mestre da Obra – João Pessoa ao fazer o F199) — chip aberto em 28/09 |
 | — | **`export_csv_rows(manager_id=None)` exporta o audit de todos os gestores por default** — falha aberta apontada pela revisão da infra e guards; chip aberto em 28/09 |
 
-**Fechados de 20 a 28/09:** **F179**, **F181–F184**, **F188**, **F189**, **F190**, **F191**, **F193**, **F194**, **F195**, **F154**, **F196**, **F197**, **F198** e, no código, o **F199**, o erro de data que virava "Erro interno" e a frente infra e guards (catálogo e verificação de produção pendentes). O defeito de cada um está no [catálogo](findings-catalog.md); a narrativa desses dias, que morava aqui, foi para [`_archive/estado-atual-2026-09-20-a-26.md`](../_archive/estado-atual-2026-09-20-a-26.md). 🔑 A lição que atravessa todos: **existia a regra e não existia o mecanismo** — a invariante escrita, e nada que a aplicasse.
+**Fechados de 20 a 28/09:** **F179**, **F181–F184**, **F188**, **F189**, **F190**, **F191**, **F193**, **F194**, **F195**, **F154**, **F196**, **F197**, **F198**, **F199**, **F201** (data inválida virava "Erro interno") e, no código, o **F200** (infra e guards — verificação de produção pendente). O defeito de cada um está no [catálogo](findings-catalog.md); a narrativa desses dias, que morava aqui, foi para [`_archive/estado-atual-2026-09-20-a-26.md`](../_archive/estado-atual-2026-09-20-a-26.md). 🔑 A lição que atravessa todos: **existia a regra e não existia o mecanismo** — a invariante escrita, e nada que a aplicasse.
