@@ -1,26 +1,16 @@
 # Estado atual — V4 Ads MCP
 
-> **Volátil por natureza.** Esta é a seção que muda a cada sessão; ela vivia no
-> `CLAUDE.md` e era o motivo de ele reinchar — estado e convenção no mesmo arquivo
-> significa que todo trabalho novo empurra bytes para dentro do que é carregado sempre.
-> O `CLAUDE.md` mantém um resumo de poucas linhas e aponta para cá.
+> **Volátil por natureza** — o `CLAUDE.md` mantém um resumo de poucas linhas e aponta para cá.
+> **Ao terminar uma sessão, atualize ESTE arquivo** e mantenha-o curto: em 20/09 ele tinha
+> **91 KB**, 83 deles narrando frente já concluída e contradizendo a própria tabela. **Trabalho
+> que fechou sai daqui:** o defeito vai para o catálogo, a narrativa para o arquivo
+> ([`_archive/`](../_archive/varredura-2026-09-06-frentes.md)), e aqui fica uma linha.
 
-> **Ao terminar uma sessão, atualize ESTE arquivo**, não o `CLAUDE.md`.
-
-> 🔑 **E mantenha-o curto.** Em 20/09 ele estava com **91 KB**, dos quais 83 eram a
-> narrativa de uma frente **já concluída** — narrando como *"falta só o merge"* sete PRs
-> mesclados, e contradizendo a própria tabela duas telas abaixo. Arquivo de estado que
-> narra o passado deixa de ser confiável sobre o presente, que é a única coisa que ele
-> faz. A narrativa foi para
-> [`_archive/varredura-2026-09-06-frentes.md`](../_archive/varredura-2026-09-06-frentes.md).
-> **Trabalho que fechou sai daqui:** o defeito vai para o catálogo, a narrativa para o
-> arquivo, e aqui fica uma linha.
-
-> **Última sessão:** [`session-2026-09-28-noite-handoff.md`](session-2026-09-28-noite-handoff.md)
-> — a tarde e a noite de 28/09: o **F199** (pacing pelos dias fechados), o erro de data que chega ao
-> LLM, e a frente **infra e guards** (conexão testada na retirada do pool, SQL idempotente,
-> migrations com lock), com a verificação de produção marcada para 29/09. Antes:
-> [`session-2026-09-28-handoff.md`](session-2026-09-28-handoff.md) (F196, F197, F198, dependências).
+> **Última sessão:** [`session-2026-09-29-handoff.md`](session-2026-09-29-handoff.md) — 29/09: a
+> verificação parcial da infra e guards, a saída das 4 contas Meta do BM, e três consertos
+> commitados **sem deploy** (F202 pacing; F203 pool). Antes:
+> [`session-2026-09-28-noite-handoff.md`](session-2026-09-28-noite-handoff.md) (F199, erro de data,
+> infra e guards).
 
 ---
 
@@ -28,111 +18,117 @@
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00139-fpf`**, 100% do tráfego (medido por `gcloud` em 29/09, ~00:10 UTC) — o deploy do **#133** (infra e guards; run `36500922965`, `test` e `deploy` `success`, o job de migration com o lock limpo), sobre o **#132** (`00138`, erro de data) e o **#131** (`00137`, F199); `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186); os desta noite foram feitos por uma sessão Claude autenticada |
+| Revisão servindo | **`v4-ads-mcp-00139-fpf`**, 100% do tráfego (29/09) — o deploy do **#133** (infra e guards). Os PRs de docs #134–#136 não deployaram. ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186) |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
-| Catálogo | até **F203** (~6.000 linhas, 601 KB) — **F202** e **F203** corrigidos no código, deploy pendente; o **F200** (infra e guards) fecha de vez com a verificação de 29/09 |
+| Catálogo | até **F203** (~6.000 linhas, 601 KB) |
 
-**Conferidos em produção, por leitura:** os smokes do F193 (26/09), do F194 e do F195 (27/09), a
-execução diária de 28/09 (18 de 18), o `mcp` 1.30, e os de 28/09 à noite — o pacing pelos dias
-fechados, a mensagem de data inválida e três tools sobre o pool novo. O detalhe está nos handoffs;
-a narrativa antiga, em
-[`_archive/estado-atual-2026-09-27-a-28.md`](../_archive/estado-atual-2026-09-27-a-28.md). Um
-limite medido segue valendo (F193): para período sem atividade o Google devolve uma linha
-**zerada**, não nenhuma — quem protege a leitura são as razões `null`.
+**Verificação da infra e guards (spec §6), parcial até ~13:00 UTC de 29/09:** job das 09:00 UTC
+`success` (37 s, sem retry); zero `db_conexao_testada_reconectou` e `db_dropped_connection_retry`
+(o mesmo filtro acha os 2 da base); zero `severity>=ERROR` e zero 5xx em >1.000 requests. Não
+houve madrugada ociosa (o `/health?deep=1` bate a cada ~50 s), então o cenário do F76 não foi
+exercitado. **Custo do `SELECT 1` na retirada: +7 ms no p50** do `/health?deep=1` (o A/B limpo).
+⚠️ **A linha de base antiga (p50 16,9 / p95 708 ms) estava errada** — saiu da métrica do serviço,
+que agrega por percentil entre séries e hoje deu p95 936 onde os logs dão 153. **Base correta, por
+rota, 24 h antes do deploy:** `/health?deep=1` p50 16,0 / p95 80,2 ms; `POST /mcp` p50 70,2 / p95
+1.644 ms. Roteiro e scripts (`latencia_por_rota.py`, `contas_no_bm.py`) em
+`.superpowers/verificacao-2026-09-29/LEIA.md`.
 
-**Com data:** **29/09** — verificação de produção da infra e guards (spec §6): latência contra a
-base medida antes do deploy (p50 16,9 ms, p95 708 ms, serviço inteiro), eventos de reconexão (base:
-2 em 7 dias), primeiro acesso da manhã sem 500, e o job das 09:00 UTC, o primeiro com o pool novo —
-roteiro e script em `.superpowers/verificacao-2026-09-29/`; **01/10** — smoke de leitura do F196
-(`THIS_MONTH` numa conta real devolve o dia 1, não vazio) e do F199 (`get_budget_pacing` com
-`inclui_dia_corrente: true` e projeção `null`, não 30× o parcial); **04/10** — remedição dos
-buckets e do uso da Fase 2B por gestor.
+**Aguardando deploy (commitado, sem push):**
 
-⚠️ **`deploy: skipped` NAO significa "PR de documentação".** O gate do F138 pula o
-deploy só quando o push mexeu **exclusivamente** em `docs/` e markdown — um arquivo em
-`tests/` conta como código e publica revisão. Em 20/09 o merge do #97 (guard novo +
-docs) deployou, e eu só percebi remedindo: **cheque a revisão servindo, não o rótulo
-do PR.**
+| branch | commits | o quê |
+|---|---|---|
+| `fix/pool-timeout-no-teste` | `bc7e343`, `91c0c9f` | **F203** — prazo de 2 s no `SELECT 1` da retirada, com `terminate()`; e a conexão que sai do corpo por timeout ou cancelamento é descartada. As duas travas eram **sem limite** (medido: 75 s e 90 s), a segunda levando junto quem chamou e a vaga do pool |
+| `fix/pacing-orcamento-compartilhado` | `1082e61` | **F202** — `get_budget_pacing` mede o orçamento compartilhado pelo orçamento: percentuais `null` na campanha e bloco `orcamentos_compartilhados` com o gasto lido do `campaign_budget` |
 
-Contagens de tool e bucket vêm do registry (`import_all_tools()`), não de `grep` —
-**`grep` e `ast.literal_eval` já erraram esta medição**, o segundo devolvendo zero (F183).
+Deploy: o F203 primeiro (mexe no pool de toda requisição), cada um em PR próprio com autorização
+nominal; o segundo fica BEHIND quando o primeiro mescla (`git merge origin/main`, nunca force-push).
+
+**Com data:**
+- **29/09, depois de 30/09 00:10 UTC** — leitura das 24 h por rota contra a base correta; PR de
+  docs que fecha o F200 como verificado e fecha o "fechado no código" dos sub-projetos 3 e 4.
+- **30/09, 09:00 UTC** — 2ª ausência das 4 contas Meta no job (`missed_syncs=2`).
+- **01/10, 09:00 UTC** — as 4 contas desativadas e os **16 grants revogados** (a 1ª ausência
+  entrou em 29/09, como previsto; teto de remoção 5 com 25 ativas, não barra). Smoke de leitura do
+  F196 (`THIS_MONTH` devolve o dia 1), do F199 (projeção `null`) e do F202, se já no ar.
+- **04/10** — remedição dos buckets e do uso da Fase 2B por gestor.
+
+⚠️ **`deploy: skipped` não significa "PR de documentação":** o gate do F138 pula só push
+exclusivamente em `docs/` e markdown; `tests/` publica revisão. **Cheque a revisão servindo.**
+Contagens de tool e bucket vêm do registry (`import_all_tools()`), nunca de `grep` (F183).
 
 ## Decision gates abertos
 
-**`GOOGLE_RECONCILE_APPLY=true` desde 26/09 — as duas reconciliações revogam.** A Meta revoga
-desde 05/09 (`META_RECONCILE_APPLY=true`, #41); a Google foi virada em 26/09, com autorização
-nominal do Wellington, depois de 22 execuções de soak (05/09 a 26/09), todas `success` e
-`complete` — a de 26/09 bateu a previsão (`removed=3`, `revoke_candidates=46`). Conferidas depois
-a primeira execução com a trava (26/09: `removed=3`, `revoked_grants=46`) e a de 28/09 (a Alumínios
-Veneza na 3ª ausência: `removed=1`, `revoked_grants=4`), as duas com zero grant vivo em conta
-inativa.
+**As duas reconciliações revogam** — Meta desde 05/09, Google desde 26/09 (22 execuções de soak
+antes; conferidas depois 26/09 `removed=3`/`revoked_grants=46` e 28/09 `removed=1`/`4`, zero grant
+vivo em conta inativa). **Para desligar:** `false` nas **duas** linhas do
+`.github/workflows/deploy.yml` (o `JOB_ENV_VARS`, que o job lê, e o `--set-env-vars` do serviço);
+a revogação é soft (`revoked_at`) e o painel reconcede com um clique.
 
-- **Para desligar:** `false` nas **duas** linhas do `.github/workflows/deploy.yml` — o
-  `JOB_ENV_VARS`, que o job lê, e o `--set-env-vars` do serviço, inerte mas mantido igual. A
-  revogação é soft (`revoked_at`) e o painel reconcede com um clique.
-
-**Fase 2B travada no soak** — o tombstone dos 8 reports antigos não acontece enquanto os
-gestores não migrarem para `get_performance_breakdown`. Re-checar por `audit_log`.
-⚠️ O plugin `v4-trafego-google-ads` **0.4.0 empurrava ativamente na direção errada**, com
-duas afirmações falsas sobre o breakdown; o **0.4.1 corrigiu e está instalado** (20/09).
-**Medido em 25/09:** o antigo segue mais usado que o novo — em 30 dias,
-`get_campaign_performance` teve 148 chamadas de 3 gestores contra 33 do
-`get_performance_breakdown` (1 gestor); desde 20/09, 20 contra 14. O 0.4.1 **já** manda
-usar o breakdown em todos os skills, então o motor está em outro lugar: versão do plugin
-na máquina dos outros gestores, ou o LLM escolhendo a tool pelo nome. Separar por gestor
-é a medida de 04/10.
+**Fase 2B travada no soak** — o tombstone dos 8 reports antigos espera os gestores migrarem para
+`get_performance_breakdown`. Medido em 25/09: `get_campaign_performance` 148 chamadas de 3
+gestores contra 33 do breakdown (1 gestor) em 30 dias, com o plugin 0.4.1 (que já manda usar o
+breakdown) instalado desde 20/09 — o motor está na versão do plugin dos outros gestores ou no LLM
+escolhendo pelo nome. Separar por gestor é a medida de 04/10.
 
 ## Pendências que dependem do Wellington
 
-- **Decidir as três recomendações da revisão final da infra e guards**, que mudam o comportamento de produção: ~~timeout curto no `SELECT 1` da retirada~~ — virou o **F203** (medido: a retirada ficava presa sem limite, não 30 s; conserto commitado, deploy pendente); invalidar o pool inteiro na primeira queda detectada (`expire_connections`); repetir a retirada em qualquer falha do teste, não só nas de conexão derrubada. Melhor depois da verificação de 29/09, com a latência medida.
-- **Aplicar no plugin `v4-trafego-google-ads` o ajuste do `null`.** Seis pontos fazem conta ou ranking com campos que, desde o deploy de 26/09, podem vir `null` (`analise-performance-google-ads/SKILL.md:44,137`; `relatorio-cliente-google-ads/SKILL.md:33,76-89,112-116`; `shared/v4-brand.md:43`). O texto das mudanças foi entregue em 26/09; a cópia instalada é upload do app, então o ajuste é na fonte. Até lá o relatório de cliente pode imprimir `None`.
-- **Remover do BM as contas Meta das quatro clientes que saíram** (decisão de 26/09): Dr. Dérick Vinhas (`act_4051924171730156`), Dra. Paula Minchillo (`act_1479232423809572`), Imperial Alimentos (`act_1648706246292124`) e Panelas Veneza (`act_374213944466235`, da Alumínios Veneza) — medidas em 26/09 alcançáveis pelo system user, com 4 grants vivos cada. A reconciliação Meta revoga quando a conta sai da parceria do BM: fora dele, em 3 execuções, com trilha — e desde o F197 nenhum botão reinicia essa carência. Revogar pelo painel foi descartado — o BM seguiria alcançando, e nada impediria reconceder.
-- **Nível de acesso da API Meta.** O cabeçalho `x-fb-ads-insights-throttle` diz `ads_api_access_tier: development_access` (medido em 26/09): o app segue no Limited Access do **D1** de maio. A regra do D1 para pedir o Full Access é 500 chamadas em 15 dias; o uso medido em 26/09 é de ~200 por quinzena (395 chamadas Meta em 30 dias). Decisão sua: pedir agora com o volume atual, ou esperar.
-- **F129** — governança do system user Meta: ação humana, fora do código.
-- **F67** — custom domain `mcpv4.fluxocerto.dev.br`, pendente via LB.
-- **Pedir ao TI da V4 uma identidade `@v4company.com` sem caixa postal** (alias ou conta de serviço) — é o que **desbloqueia o F186 por inteiro**: manager com grant zero, pior caso de vazamento `tools/list`, e a reconciliação não a toca. Sem ela não há token de CI possível: `sessions_create` só emite para o próprio manager logado, e login exige identidade Google do domínio. **Emitir sob um manager existente está recusado** — poria no GitHub Actions um token com alcance de ~38 contas Google e 26 Meta.
-- **Varredura de `recommendation_subscription` sobre o MCC** — pedida pela sessão de tráfego a partir do F185. **Recomendado:** a tool de LEITURA, desenhada para varrer **só o que o gestor já alcança** (varredura que vê além do hard-gate de acesso vira caminho lateral para o gate) e para **contar os opacos em vez de descartá-los**. **Não recomendada:** a tool de escrita — o F185 mostra que 4 de 11 não têm chave, então ela alcançaria 7 de 11 e seria obrigada a dizer isso.
+- **Duas recomendações restantes da revisão final da infra e guards** (`expire_connections` na
+  primeira queda; repetir a retirada em qualquer erro do teste): **sem dado que as peça** — zero
+  quedas desde o deploy. A terceira virou o F203.
+- **Ajuste do `null` no plugin `v4-trafego-google-ads`** — seis pontos fazem conta com campos que
+  podem vir `null` desde 26/09 (`analise-performance-google-ads/SKILL.md:44,137`;
+  `relatorio-cliente-google-ads/SKILL.md:33,76-89,112-116`; `shared/v4-brand.md:43`); com o F202,
+  também `spent_pct_of_monthly_budget` e `projection_vs_budget_pct` do pacing em orçamento
+  compartilhado. A cópia instalada é upload do app: o ajuste é na fonte. Até lá o relatório de
+  cliente pode imprimir `None`.
+- **Nível de acesso da API Meta** — `ads_api_access_tier: development_access` (26/09); a regra do
+  D1 pede 500 chamadas em 15 dias, o uso é ~200. Pedir agora ou esperar.
+- **Identidade `@v4company.com` sem caixa postal no TI** — desbloqueia o **F186** inteiro. Emitir
+  token sob um manager existente está recusado (~38 contas Google e 26 Meta no GitHub Actions).
+- **F129** (governança do system user Meta) e **F67** (custom domain via LB).
+- **`recommendation_subscription`** — recomendada a tool de LEITURA, varrendo só o que o gestor
+  alcança e contando os opacos (F185: 4 de 11 sem chave); a de escrita, não.
 
 ## Findings abertos
 
-### Varredura de 21/09 (5 agentes paralelos, 4 sub-projetos)
+### Varredura de 21/09 (5 agentes, 4 sub-projetos)
 
-Os 5 relatórios, recuperados do transcript em 25/09 (a extração de 21/09 tinha falhado),
-estão em [`_archive/varredura-2026-09-21/`](../_archive/varredura-2026-09-21/README.md) —
-com o destino de cada achado. **Os status lá são dos agentes**: achado que ninguém remediu
-no código não vira trabalho até ser verificado.
+Relatórios e destino de cada achado em
+[`_archive/varredura-2026-09-21/`](../_archive/varredura-2026-09-21/README.md).
 
-| sub-projeto (decomposição de 21/09) | status |
+| sub-projeto | status |
 |---|---|
 | 1 · credencial + contratos do SDK Meta | fechado — **F190** |
-| 2 · respostas que afirmam mais do que mediram | **fechado** — núcleo no **F191**, o resto no **F193** |
-| 3 · infra de dados (CSV do audit, guard de reconnect, lock no `migrate.py`, `revoke` Meta) | **fechado no código** (verificação de produção pendente, §6 da spec) — CSV no F191; o resto no **F200**, a frente *infra e guards* ([spec 2026-09-28](../superpowers/specs/2026-09-28-infra-e-guards-design.md)) |
-| 4 · guards que não cobrem (mock que bloqueava o conserto, testes que enumeram) | **fechado no código** (verificação de produção pendente) — mock no F191, o resto no **F200**; a proteção contra conexão derrubada deixou de depender de lista: o pool valida a conexão num ponto só, e o guard que enumera funções e o `run_with_reconnect` ficam como segunda rede ([spec 2026-09-28](../superpowers/specs/2026-09-28-infra-e-guards-design.md)) |
+| 2 · respostas que afirmam mais do que mediram | fechado — **F191** e **F193** (as métricas Meta, fora dele, no **F194**) |
+| 3 · infra de dados | **fechado no código**, verificação de produção em curso — CSV no F191; o resto no **F200** ([spec](../superpowers/specs/2026-09-28-infra-e-guards-design.md)) |
+| 4 · guards que não cobrem | **fechado no código**, verificação em curso — mock no F191; o resto no **F200**: o pool valida a conexão num ponto só |
 
-As **métricas Meta** que a nota do F190 chama de "sub-projeto 2" (`_parse_buc_header_pct`,
-zero no lugar de campo ausente, `_brl` fixo, atribuição implícita) **nunca estiveram em
-sub-projeto nenhum** — viraram a frente *métricas Meta*, fechada no **F194** (27/09).
-
-### Ordem de ataque (atualizada em 28/09)
+### Ordem de ataque (atualizada em 29/09)
 
 Medir a exposição, dar dado às decisões, consertos pequenos, e só então specs — um por vez.
 
-1. **Fase 2B** — em 04/10, separar o uso por gestor, junto da remedição dos buckets.
-2. **`recommendation_subscription`** — tool de leitura no MCC.
-3. **F187** — o remédio do resumo × detalhe.
+1. **Deploy do F203 e do F202**, e o smoke de 01/10.
+2. **Fase 2B** — em 04/10, o uso por gestor, junto dos buckets.
+3. **`recommendation_subscription`** — spec da tool de leitura.
+4. **F187** — o remédio do resumo × detalhe.
 
 ### Os abertos, um por linha
 
 | ID | o que é |
 |---|---|
-| **F180** | **em parte, provavelmente para sempre** — a flag `partial_failure` está ligada, mas a falha por-linha **nunca foi exercitada**: o Google aceita operação impossível em vez de errar (campanha `REMOVED`, `final_urls` inválida, anúncio apagado entre preview e apply). O único gatilho conhecido é a variação de experimento, que o **F181 agora bloqueia no pre-flight**. Consequência: `failed_count` é constante zero — leia `efeito` e `changed_count` |
-| **F185** | `recommendation_subscription`: 4 de 11 opacos e **sem chave nenhuma** — limitação da API, sem correção possível deste lado |
-| **F187** | o **resumo no topo** de um artefato é a superfície de decisão e o **detalhe embaixo** é a verdade — 4 instâncias medidas, uma quase custou mutação em conta real. Remédio proposto: derivar o resumo, ou guard que cobre a igualdade |
-| **F186** | 🔴 smoke autenticado do `/mcp` **desarmado** — e o manager dele **não existe**: criar exige identidade de serviço no Workspace, acesso que o gestor **não tem**. **ABERTO como risco ACEITO.** No lugar entrou `tools` no `/health?deep=1` (sem credencial), e o desarme aparece como `::warning::` em todo deploy — **observado disparando** nos dois deploys de 21/09, que é o que separa "o aviso existe" de "o aviso avisa" |
-| — | *negativas de grupo e listas compartilhadas na auditoria de negativas* (spec §7: frente própria) |
-| — | follow-ups do **F193** (Minor, não bloqueiam) — listados no corpo do [#111](https://github.com/BadWolf1509/v4-ads-mcp/pull/111): comentário da isenção do `apply_recommendation`, frase do eco nas três tools do F191, cobertura estreita de alguns testes |
-| — | **orçamento compartilhado no `get_budget_pacing`**: cada campanha é comparada com o orçamento inteiro, e o mensal conta duas vezes (medido na Mestre da Obra – João Pessoa ao fazer o F199) — **F202**, corrigido no código em 29/09 (`fix/pacing-orcamento-compartilhado`), deploy pendente |
-| — | **`export_csv_rows(manager_id=None)` exporta o audit de todos os gestores por default** — falha aberta apontada pela revisão da infra e guards; chip aberto em 28/09 |
+| **F180** | **em parte, provavelmente para sempre** — o Google aceita operação impossível em vez de errar, então `failed_count` é constante zero: leia `efeito` e `changed_count`. O único gatilho conhecido (variação de experimento) o **F181** bloqueia no pre-flight |
+| **F185** | `recommendation_subscription`: 4 de 11 opacos e sem chave — limitação da API |
+| **F187** | o **resumo no topo** decide e o **detalhe embaixo** é a verdade — 4 instâncias; remédio: derivar o resumo, ou guard da igualdade |
+| **F186** | 🔴 smoke autenticado do `/mcp` **desarmado**, risco ACEITO até a identidade do TI; no lugar, `tools` no `/health?deep=1` e o `::warning::` em todo deploy |
+| — | *negativas de grupo e listas compartilhadas na auditoria de negativas* (frente própria) |
+| — | follow-ups Minor do **F193** (corpo do [#111](https://github.com/BadWolf1509/v4-ads-mcp/pull/111)) |
+| — | **`export_csv_rows(manager_id=None)` exporta o audit de todos os gestores por default** — falha aberta latente (as duas rotas passam o gestor explícito); chip de 28/09 |
+| — | **orçamento de período fixo** (`CUSTOM_PERIOD`) no `get_budget_pacing` — a tool não o trata (Fora do F202) |
 
-**Fechados de 20 a 28/09:** **F179**, **F181–F184**, **F188**, **F189**, **F190**, **F191**, **F193**, **F194**, **F195**, **F154**, **F196**, **F197**, **F198**, **F199**, **F201** (data inválida virava "Erro interno") e, no código, o **F200** (infra e guards — verificação de produção pendente). O defeito de cada um está no [catálogo](findings-catalog.md); a narrativa desses dias, que morava aqui, foi para [`_archive/estado-atual-2026-09-20-a-26.md`](../_archive/estado-atual-2026-09-20-a-26.md). 🔑 A lição que atravessa todos: **existia a regra e não existia o mecanismo** — a invariante escrita, e nada que a aplicasse.
+**Fechados de 20 a 29/09:** **F154**, **F179**, **F181–F184**, **F188–F191**, **F193–F199** e
+**F201**; no código, **F200** (verificação em curso), **F202** e **F203** (deploy pendente). O
+defeito de cada um está no [catálogo](findings-catalog.md); a narrativa desses dias, em
+[`_archive/estado-atual-2026-09-20-a-26.md`](../_archive/estado-atual-2026-09-20-a-26.md) e
+[`_archive/estado-atual-2026-09-27-a-28.md`](../_archive/estado-atual-2026-09-27-a-28.md). 🔑 A
+lição que atravessa todos: **existia a regra e não existia o mecanismo**.

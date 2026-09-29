@@ -18,29 +18,25 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 
 ## Estado atual
 
-**2026-09-28.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`,
-**68 MCP tools** (62 Google + 6 Meta), CI gated + deploy automático. Catálogo até **F203**. **Detalhe, pendências e decision gates vivem em
+**2026-09-29.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`,
+**68 MCP tools** (62 Google + 6 Meta), CI gated + deploy automático. Catálogo até **F203**.
+**Detalhe, pendências, o que aguarda deploy e decision gates vivem em
 [`estado-atual.md`](docs/operacao/estado-atual.md)** — atualize AQUELE no fecho, não este.
 
 **Sabe de cara:**
 
-- `gcloud` pode estar **sem credencial válida** — confirme antes de tarefa de infra, e
-  **nunca com `2>/dev/null`**: ele tenta pedir reautenticação e pendura em silêncio.
+- `gcloud` pode estar **sem credencial válida** (perde durante a noite) — confirme antes de
+  tarefa de infra, e **nunca com `2>/dev/null`**: ele tenta reautenticar e pendura em silêncio.
 - **As duas reconciliações REVOGAM** o acesso a conta que sai da plataforma — Meta desde
   05/09, Google desde 26/09 (`*_RECONCILE_APPLY=true`). Cliente que sai da unidade só perde
   o acesso quando **sai do MCC/BM**: o churn, sozinho, não revoga nada.
 - Fase 2B (tombstone dos 8 reports antigos) segue **travada** no soak — não tombstonar.
 - **Tool nova só aparece pra sessão nova** (F140): o catálogo é negociado no handshake do
   MCP, e o sintoma é a tool "não existir", não um erro de versão. Reconecte antes do smoke.
-- **Buckets** (PR #32, 04/09): 22 always + 46 defer; **próxima remedição em 04/10**, com
-  o método, em [`tool-buckets-2026-09-04.md`](docs/operacao/tool-buckets-2026-09-04.md).
-- **Docker parado ≠ Docker travado:** os processos do Desktop sobem e ainda assim não há
-  engine se o serviço `com.docker.service` estiver `Stopped` (exige elevação).
-- Varredura fechada em 18/09: **7 frentes, F155–F179**. **F178** fechou em 25/09;
-  **F179** em 21/09, junto do
-  **F191** (seis superfícies onde ausência de medição virava zero/sucesso).
-  **F180 em parte:** o Google engole operação
-  impossível em vez de errar, então `failed_count` é sempre zero — leia `efeito`.
+- **Docker** para o full sweep: se o engine não responde, abra o Docker Desktop (o engine sobe em
+  ~15 s mesmo com `com.docker.service` em `Stopped`, medido em 29/09).
+- **F180 em parte:** o Google engole operação impossível em vez de errar, então `failed_count`
+  é sempre zero — leia `efeito`.
 
 ## Context bootstrap
 
