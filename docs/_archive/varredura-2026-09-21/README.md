@@ -26,8 +26,8 @@ conserta.
 |---|---|---|---|
 | 1 | credencial + contratos do SDK Meta | token na query string · sem timeout · `cast(dict)` sobre corpo não-JSON · gate não amarrado à URL | fechado — F190 |
 | 2 | respostas que afirmam mais do que mediram | `get_ad_schedule` · `Unpack` · `filters_applied` · eco de `status` · `applied_count` × `blast_summary` · escopo do `get_assets` | núcleo fechado no F191; eco de `status` fechado no F193; `get_assets` descartado no F193 (já declarado) |
-| 3 | infra de dados | CSV do audit falha aberto · escopo do guard de reconnect · lock no `migrate.py` · assimetria do `revoke` Meta | CSV fechado no F191; o resto aberto |
-| 4 | guards que não cobrem | o mock que bloqueava o conserto · testes que enumeram em vez de afirmar a propriedade | mock fechado no F191; o resto aberto |
+| 3 | infra de dados | CSV do audit falha aberto · escopo do guard de reconnect · lock no `migrate.py` · assimetria do `revoke` Meta | CSV fechado no F191; o resto na *infra e guards* (spec 2026-09-28) |
+| 4 | guards que não cobrem | o mock que bloqueava o conserto · testes que enumeram em vez de afirmar a propriedade | mock fechado no F191; o resto na *infra e guards* (spec 2026-09-28) |
 
 Ainda em 21/09 os achados foram **reclassificados por forma de defeito** (classes A, B, C —
 ver a abertura do [spec do F191](../../superpowers/specs/2026-09-21-terceiro-estado-nao-medido-design.md));
@@ -93,11 +93,11 @@ o F191 é a classe A. Os IDs F<n> citados abaixo estão no
 | # | achado | destino |
 |---|---|---|
 | 1 | export CSV do audit falha aberto | fechado — F191 |
-| 2 | `pool.acquire()` cru em leituras quentes, fora do guard estrutural | aberto — *infra e guards* |
-| 3 | `migrate.py` sem advisory lock | aberto — *infra e guards*. Conferido em 25/09: nenhum `pg_advisory` no arquivo |
-| 4 | `days` e resultado sem teto nos exports CSV | `days`: fechado em 25/09 — teto de 365, validado na rota; resultado: aberto — *infra e guards* |
-| 5 | `revoke` Meta sem `AND revoked_at IS NULL` | aberto — *infra e guards*. Conferido em 25/09: falta no `revoke` manual de `manager_meta_account_access.py`; o `revoke_for_account`, que a reconciliação usa em produção, tem. O `revoke` de `google_oauth_connections.py` também não tem |
-| 6 | `get_active_for_manager`: `LIMIT 1` sobre chave de ordenação não-única | aberto, baixo — *infra e guards* |
-| 7 | `IndexError` com `limit=0` nos dois pagers keyset | aberto, inalcançável hoje — *infra e guards* |
-| 8 | itens menores | ver o relatório |
+| 2 | `pool.acquire()` cru em leituras quentes, fora do guard estrutural | fechado no código — *infra e guards* (spec 2026-09-28; verificação de produção pendente): a conexão é testada na retirada, para toda leitura e escrita que passa pelo pool de `src/` (os scripts de sondagem de `scripts/` abrem conexão própria e ficam fora) |
+| 3 | `migrate.py` sem advisory lock | fechado no código — *infra e guards* (spec 2026-09-28; verificação de produção pendente): `pg_advisory_xact_lock` por migration, com re-checagem |
+| 4 | `days` e resultado sem teto nos exports CSV | `days`: fechado em 25/09 — teto de 365, validado na rota; resultado: fechado no código — *infra e guards* (spec 2026-09-28; verificação de produção pendente) (50.000 linhas, com marca de corte) |
+| 5 | `revoke` Meta sem `AND revoked_at IS NULL` | fechado no código — *infra e guards* (spec 2026-09-28; verificação de produção pendente): os três `revoke` sem o predicado (o Meta manual e os das duas conexões OAuth), com guard derivado do SQL |
+| 6 | `get_active_for_manager`: `LIMIT 1` sobre chave de ordenação não-única | fechado no código — *infra e guards* (spec 2026-09-28; verificação de produção pendente): `id` como desempate, também no `account_resync.py`, com guard derivado do SQL |
+| 7 | `IndexError` com `limit=0` nos dois pagers keyset | fechado no código — *infra e guards* (spec 2026-09-28; verificação de produção pendente): `limit < 1` recusado na entrada |
+| 8 | itens menores | fechado no código — *infra e guards* (spec 2026-09-28; verificação de produção pendente): o dia do contador Meta em UTC, o acerto de quota no dia da reserva, a transação do contador Meta e a expiração do token de dry-run no relógio do banco |
 | 9 | F179 localizado | fechado — F191 |

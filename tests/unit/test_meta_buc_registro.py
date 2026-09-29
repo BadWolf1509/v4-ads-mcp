@@ -17,9 +17,22 @@ from structlog.testing import capture_logs
 from src.governance import rate_limit
 
 
+class _FakeTransacao:
+    async def __aenter__(self) -> None:
+        return None
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+
+class _FakeConn:
+    def transaction(self) -> _FakeTransacao:
+        return _FakeTransacao()
+
+
 class _FakeAcquire:
     async def __aenter__(self) -> object:
-        return object()
+        return _FakeConn()
 
     async def __aexit__(self, *exc: object) -> None:
         return None

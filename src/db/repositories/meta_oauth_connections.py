@@ -83,7 +83,7 @@ async def get_active_for_manager(
         """
         SELECT * FROM meta_oauth_connections
         WHERE manager_id = $1 AND revoked_at IS NULL
-        ORDER BY connected_at DESC
+        ORDER BY connected_at DESC, id DESC
         LIMIT 1
         """,
         manager_id,
@@ -93,6 +93,6 @@ async def get_active_for_manager(
 
 async def revoke(conn: asyncpg.Connection, connection_id: UUID) -> None:
     await conn.execute(
-        "UPDATE meta_oauth_connections SET revoked_at = now() WHERE id = $1",
+        "UPDATE meta_oauth_connections SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL",
         connection_id,
     )

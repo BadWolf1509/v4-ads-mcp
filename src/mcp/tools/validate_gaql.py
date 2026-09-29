@@ -124,8 +124,8 @@ async def validate_gaql(args: dict[str, Any]) -> dict[str, Any]:
         # Transacao EXTERNA torna as duas reservas tudo-ou-nada (mesmo padrao
         # de run_report: before_call's conn.transaction() interna vira SAVEPOINT).
         async with pool.acquire() as conn, conn.transaction():
-            await before_call(conn, token_id, estimated_ops=estimated_ops)
-            await before_call(
+            dia = await before_call(conn, token_id, estimated_ops=estimated_ops)
+            dia_do_gestor = await before_call(
                 conn,
                 f"mgr:{ctx.manager_id}",
                 estimated_ops=estimated_ops,
@@ -191,11 +191,12 @@ async def validate_gaql(args: dict[str, Any]) -> dict[str, Any]:
                 conn.transaction(),
             ):
                 await record_actual(
-                    conn, token_id, actual_ops=actual_ops, estimated_ops=estimated_ops
+                    conn, token_id, dia=dia, actual_ops=actual_ops, estimated_ops=estimated_ops
                 )
                 await record_actual(
                     conn,
                     f"mgr:{ctx.manager_id}",
+                    dia=dia_do_gestor,
                     actual_ops=actual_ops,
                     estimated_ops=estimated_ops,
                 )

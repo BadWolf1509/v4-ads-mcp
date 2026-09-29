@@ -105,3 +105,44 @@ async def test_bulk_grant_continua_limpando_a_revogacao(db) -> None:
         )
         assert linha["revoked_at"] is None, "a revogacao deveria ter sido limpa"
         assert linha["access_level"] == "write"
+
+
+@pytest.mark.integration
+async def test_revogar_de_novo_nao_tira_a_linha_do_restore(db) -> None:
+    """Spec 2026-09-28 §3.2.1: o `revoke` manual só pega linha viva.
+
+    Sem `AND revoked_at IS NULL`, revogar de novo uma linha que o churn já revogou
+    re-carimba o motivo: `partnership_ended` vira `manual`, e o `restore_for_account` —
+    que filtra por esse motivo — deixa de devolver o acesso quando a parceria volta.
+    """
+    async with db.acquire() as conn:
+        manager_id = await _make_manager(conn, "mrevoga2x@v4company.com")
+        await _make_account(conn, "act_3333333333")
+        await manager_meta_account_access.grant(
+            conn,
+            manager_id=manager_id,
+            ad_account_id="act_3333333333",
+            access_level="write",
+            granted_by=manager_id,
+        )
+        await manager_meta_account_access.revoke_for_account(
+            conn,
+            ad_account_id="act_3333333333",
+            reason=manager_meta_account_access.PARTNERSHIP_ENDED_REASON,
+        )
+
+        await manager_meta_account_access.revoke(
+            conn, manager_id=manager_id, ad_account_id="act_3333333333", reason="manual"
+        )
+
+        motivo = await conn.fetchval(
+            "SELECT revoked_reason FROM manager_meta_account_access "
+            " WHERE manager_id = $1 AND ad_account_id = $2",
+            manager_id,
+            "act_3333333333",
+        )
+        assert motivo == manager_meta_account_access.PARTNERSHIP_ENDED_REASON
+        restauradas = await manager_meta_account_access.restore_for_account(
+            conn, ad_account_id="act_3333333333"
+        )
+        assert restauradas == 1

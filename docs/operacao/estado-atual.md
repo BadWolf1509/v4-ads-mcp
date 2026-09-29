@@ -101,8 +101,8 @@ no código não vira trabalho até ser verificado.
 |---|---|
 | 1 · credencial + contratos do SDK Meta | fechado — **F190** |
 | 2 · respostas que afirmam mais do que mediram | **fechado** — núcleo no **F191**, o resto no **F193** |
-| 3 · infra de dados (CSV do audit, guard de reconnect, lock no `migrate.py`, `revoke` Meta) | **em parte** — CSV no F191; o resto é a frente *infra e guards* |
-| 4 · guards que não cobrem (mock que bloqueava o conserto, testes que enumeram) | **em parte** — mock no F191; o resto é a frente *infra e guards* |
+| 3 · infra de dados (CSV do audit, guard de reconnect, lock no `migrate.py`, `revoke` Meta) | **fechado no código** (verificação de produção pendente, §6 da spec) — CSV no F191; o resto na frente *infra e guards* ([spec 2026-09-28](../superpowers/specs/2026-09-28-infra-e-guards-design.md)) |
+| 4 · guards que não cobrem (mock que bloqueava o conserto, testes que enumeram) | **fechado no código** (verificação de produção pendente) — mock no F191; a proteção contra conexão derrubada deixou de depender de lista: o pool valida a conexão num ponto só, e o guard que enumera funções e o `run_with_reconnect` ficam como segunda rede ([spec 2026-09-28](../superpowers/specs/2026-09-28-infra-e-guards-design.md)) |
 
 As **métricas Meta** que a nota do F190 chama de "sub-projeto 2" (`_parse_buc_header_pct`,
 zero no lugar de campo ausente, `_brl` fixo, atribuição implícita) **nunca estiveram em
@@ -113,8 +113,8 @@ sub-projeto nenhum** — viraram a frente *métricas Meta*, fechada no **F194** 
 Medir a exposição, dar dado às decisões, consertos pequenos, e só então specs — um por vez.
 
 1. **Fase 2B** — em 04/10, separar o uso por gestor, junto da remedição dos buckets.
-2. **Infra e guards** (spec) — o resto dos sub-projetos 3 e 4.
-3. **`recommendation_subscription`** — tool de leitura no MCC.
+2. **`recommendation_subscription`** — tool de leitura no MCC.
+3. **F187** — o remédio do resumo × detalhe.
 
 ### Os abertos, um por linha
 

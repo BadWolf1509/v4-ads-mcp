@@ -100,3 +100,43 @@ async def test_indices_da_010_existem_apos_migrar(db) -> None:
         f"idx_audit_occurred_at ausente. Indices vistos: {sorted(nomes)}"
     )
     assert "idx_mac_customer" in nomes, f"idx_mac_customer ausente. Indices vistos: {sorted(nomes)}"
+
+
+@pytest.mark.integration
+async def test_duas_execucoes_concorrentes_aplicam_cada_migration_uma_vez(pg_dsn: str) -> None:
+    """Spec 2026-09-28 §3.3.1: `pg_advisory_xact_lock` por migration, com re-checagem.
+
+    Sem lock, as duas execuções listam as mesmas pendentes e a perdedora aborta na PK de
+    `_migrations` (o DDL é transacional, então o schema não quebra — o job é que falha).
+    O `deploy-prod` já serializa os deploys do CI; sobra o `gcloud run jobs execute`
+    manual. Banco novo e vazio: o do container já foi migrado pelos testes acima.
+    """
+    import asyncio
+    import os
+
+    import asyncpg
+
+    # O `init_pool` devolveria um pool vazado de outro teste (apontado para um banco já
+    # migrado): as duas `run_all` virariam no-op e o teste passaria sem concorrência.
+    assert connection._pool is None, "pool global vazou do teste anterior"
+    nome = f"mig_concorrente_{os.getpid()}"
+    admin = await asyncpg.connect(pg_dsn)
+    try:
+        await admin.execute(f'CREATE DATABASE "{nome}"')
+    finally:
+        await admin.close()
+    await connection.init_pool(pg_dsn.rsplit("/", 1)[0] + f"/{nome}", min_size=2, max_size=2)
+    try:
+        await asyncio.gather(migrate.run_all(), migrate.run_all())
+        async with connection.get_pool().acquire() as conn:
+            aplicadas = [
+                r["name"] for r in await conn.fetch("SELECT name FROM _migrations ORDER BY name")
+            ]
+    finally:
+        await connection.close_pool()
+        admin = await asyncpg.connect(pg_dsn)
+        try:
+            await admin.execute(f'DROP DATABASE "{nome}" WITH (FORCE)')
+        finally:
+            await admin.close()
+    assert aplicadas == sorted(p.name for p in migrate.MIGRATIONS_DIR.glob("*.sql"))

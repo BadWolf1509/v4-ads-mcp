@@ -1,6 +1,8 @@
 """asyncpg connection pool factory."""
 
 from collections.abc import AsyncIterator, Awaitable, Callable
+from types import TracebackType
+from typing import Any
 
 import asyncpg
 import structlog
@@ -23,6 +25,68 @@ _DROPPED_CONNECTION_ERRORS: tuple[type[BaseException], ...] = (
 )
 
 
+async def _testa_conexao(conn: asyncpg.Connection) -> None:
+    """`setup` do pool: roda a cada retirada, antes de a conexão chegar ao chamador.
+
+    O asyncpg não testa a conexão ociosa (F76), e o Supabase fecha o socket: sem isto, a
+    primeira query do chamador é quem descobre. Se o `SELECT 1` falha, o asyncpg fecha a
+    conexão e repassa o erro; o `PoolValidado` então retira de novo, e a próxima retirada
+    reconecta (spec 2026-09-28 §3.1).
+    """
+    await conn.execute("SELECT 1")
+
+
+class _RetiradaValidada:
+    """`async with pool.acquire() as conn`, com a retirada repetida uma vez.
+
+    Usa o protocolo de gerenciador de contexto da retirada do asyncpg (e dos fakes dos
+    testes), não `await pool.acquire()`. Só a RETIRADA é repetida: um erro dentro do corpo
+    do `with` — a query do chamador — sobe sem repetição, então escrita nunca roda duas vezes.
+    """
+
+    def __init__(self, pool: Any) -> None:
+        self._pool = pool
+        self._retirada: Any = None
+
+    async def __aenter__(self) -> asyncpg.Connection:
+        for tentativa in (1, 2):
+            retirada = self._pool.acquire()
+            try:
+                conn = await retirada.__aenter__()
+            except _DROPPED_CONNECTION_ERRORS as exc:
+                if tentativa == 2:
+                    raise
+                log.warning("db_conexao_testada_reconectou", error=str(exc))
+                continue
+            self._retirada = retirada
+            return conn
+        raise AssertionError("inalcançável: a 2ª tentativa devolve ou levanta")
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> bool | None:
+        return await self._retirada.__aexit__(exc_type, exc, tb)  # type: ignore[no-any-return]
+
+
+class PoolValidado:
+    """O pool que `get_pool()` devolve: a conexão é testada na retirada (spec 2026-09-28 §3.1).
+
+    Só `acquire()` é exposto, de propósito: um atalho do asyncpg (`pool.fetch`,
+    `pool.execute`) retiraria por dentro, sem a repetição. O ciclo de vida é do
+    `close_pool()`, que também zera o global (um `close()` aqui deixaria `_pool` apontando
+    para um pool fechado, e o `init_pool` seguinte o devolveria).
+    """
+
+    def __init__(self, pool: Any) -> None:
+        self._pool = pool
+
+    def acquire(self) -> _RetiradaValidada:
+        return _RetiradaValidada(self._pool)
+
+
 # F92 — defaults conservadores do pool. Ver docstring de init_pool pra conta
 # (instâncias × pool ≤ teto do banco). Settings espelha estes valores pro caminho
 # que serve tráfego; um teste garante que os dois não divergem.
@@ -34,8 +98,11 @@ async def init_pool(
     database_url: str,
     min_size: int = DEFAULT_POOL_MIN_SIZE,
     max_size: int = DEFAULT_POOL_MAX_SIZE,
-) -> asyncpg.Pool:
+) -> None:
     """Create the global pool. Call once at app startup.
+
+    Não devolve o pool, de propósito (spec 2026-09-28 §3.1): o objeto do asyncpg é o pool
+    CRU, e quem o usasse escaparia da repetição da retirada. A única porta é `get_pool()`.
 
     F92 — o default caiu de 10 pra 5. O orçamento é **instâncias × pool** e tem
     que caber no teto do banco: com `--max-instances=10`, o antigo default
@@ -51,16 +118,16 @@ async def init_pool(
     """
     global _pool
     if _pool is not None:
-        return _pool
+        return
     _pool = await asyncpg.create_pool(
         dsn=database_url,
         min_size=min_size,
         max_size=max_size,
         command_timeout=30,
         max_inactive_connection_lifetime=_MAX_INACTIVE_CONNECTION_LIFETIME,
+        setup=_testa_conexao,
     )
     log.info("db_pool_created", min_size=min_size, max_size=max_size)
-    return _pool
 
 
 async def close_pool() -> None:
@@ -73,11 +140,11 @@ async def close_pool() -> None:
     log.info("db_pool_closed")
 
 
-def get_pool() -> asyncpg.Pool:
-    """Get the global pool. Raises if init_pool was not called."""
+def get_pool() -> PoolValidado:
+    """O pool global, com a conexão testada na retirada. Levanta se `init_pool` não rodou."""
     if _pool is None:
         raise RuntimeError("DB pool not initialized; call init_pool() first")
-    return _pool
+    return PoolValidado(_pool)
 
 
 async def acquire() -> AsyncIterator[asyncpg.Connection]:

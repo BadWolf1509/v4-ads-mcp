@@ -269,8 +269,8 @@ async def run_mutation(
         # EXTERNA torna as duas reservas tudo-ou-nada (before_call's internal
         # conn.transaction() vira SAVEPOINT; raise em qualquer uma desfaz ambas).
         async with pool.acquire() as conn, conn.transaction():
-            await before_call(conn, token_id, estimated_ops=max(1, target_count))
-            await before_call(
+            dia = await before_call(conn, token_id, estimated_ops=max(1, target_count))
+            dia_do_gestor = await before_call(
                 conn,
                 f"mgr:{manager_id}",
                 estimated_ops=max(1, target_count),
@@ -413,12 +413,14 @@ async def run_mutation(
                 await record_actual(
                     conn,
                     token_id,
+                    dia=dia,
                     actual_ops=target_count,
                     estimated_ops=max(1, target_count),
                 )
                 await record_actual(
                     conn,
                     f"mgr:{manager_id}",
+                    dia=dia_do_gestor,
                     actual_ops=target_count,
                     estimated_ops=max(1, target_count),
                 )
@@ -511,8 +513,8 @@ async def run_recommendation_action(
         # outros 4 executores; sem a 2a chave o cap por gestor teria um buraco
         # por onde apply/dismiss_recommendation passariam livres).
         async with pool.acquire() as conn, conn.transaction():
-            await before_call(conn, token_id, estimated_ops=1)
-            await before_call(
+            dia = await before_call(conn, token_id, estimated_ops=1)
+            dia_do_gestor = await before_call(
                 conn,
                 f"mgr:{manager_id}",
                 estimated_ops=1,
@@ -569,8 +571,10 @@ async def run_recommendation_action(
                 pool.acquire() as conn,
                 conn.transaction(),
             ):
-                await record_actual(conn, token_id, actual_ops=1, estimated_ops=1)
-                await record_actual(conn, f"mgr:{manager_id}", actual_ops=1, estimated_ops=1)
+                await record_actual(conn, token_id, dia=dia, actual_ops=1, estimated_ops=1)
+                await record_actual(
+                    conn, f"mgr:{manager_id}", dia=dia_do_gestor, actual_ops=1, estimated_ops=1
+                )
         async with (
             best_effort(
                 "recommendation_audit_write_failed",

@@ -8,6 +8,9 @@ from typing import Any, Literal
 from uuid import UUID
 
 import asyncpg
+import structlog
+
+log = structlog.get_logger(__name__)
 
 # Excel/Sheets treat a leading =, +, -, @ (or tab) as a formula trigger — a
 # manager_email, operation, or error_message that happens to start with one of
@@ -123,6 +126,11 @@ async def get_by_id(
     return dict(row) if row else None
 
 
+# Spec 2026-09-28 §3.3.2: teto de linhas do export CSV. Medido em 28/09: 5.795 linhas
+# em 365 dias (o teto de `days`), então 50.000 dá folga de anos e não corta nada hoje.
+_TETO_LINHAS_EXPORT = 50_000
+
+
 async def export_csv_rows(
     conn: asyncpg.Connection,
     *,
@@ -155,12 +163,16 @@ async def export_csv_rows(
         where.append(f"al.status = ${idx}")
         params.append(status)
         idx += 1
+    teto = _TETO_LINHAS_EXPORT
+    # F98: pede teto + 1 — a linha extra é o que revela que havia mais.
+    params.append(teto + 1)
     sql = f"""SELECT al.occurred_at, m.email, al.operation, al.customer_id,
                      al.action_type, al.status, al.target_count, al.duration_ms,
                      al.error_message, al.provider_request_id
               FROM audit_log al LEFT JOIN managers m ON m.id = al.manager_id
               WHERE {" AND ".join(where)}
-              ORDER BY al.occurred_at DESC, al.id DESC"""
+              ORDER BY al.occurred_at DESC, al.id DESC
+              LIMIT ${idx}"""
 
     # Header
     header = [
@@ -185,12 +197,16 @@ async def export_csv_rows(
     # sentinela de sucesso so existe para que a AUSENCIA dela, sob exceçao,
     # signifique "incompleto" — fail-closed por construçao (ver brief da Task 6).
     lidas = 0
+    cortado = False
     try:
         # asyncpg server-side cursors MUST run inside an explicit transaction.
         # (Pre-existing bug surfaced by the first test to actually iterate this
         # generator: NoActiveSQLTransactionError without this wrapper.)
         async with conn.transaction():
             async for row in conn.cursor(sql, *params):
+                if lidas == teto:
+                    cortado = True
+                    break
                 buf = io.StringIO()
                 csv.writer(buf).writerow(
                     [
@@ -223,7 +239,13 @@ async def export_csv_rows(
         yield buf.getvalue()
         raise
     buf = io.StringIO()
-    csv.writer(buf).writerow([f"# v4-ads-mcp: export completo, {lidas} linhas"])
+    if cortado:
+        log.warning("audit_export_cortado", teto=teto, days=days)
+        csv.writer(buf).writerow(
+            [f"# v4-ads-mcp: EXPORT CORTADO em {teto} linhas — reduza o periodo (days={days})"]
+        )
+    else:
+        csv.writer(buf).writerow([f"# v4-ads-mcp: export completo, {lidas} linhas"])
     yield buf.getvalue()
 
 
@@ -349,6 +371,13 @@ def _build_manager_page_sql(
     return sql, params
 
 
+def _recusa_limite_menor_que_um(limit: int) -> None:
+    """Spec 2026-09-28 §3.2.3: com `limit=0`, a página fica vazia, a linha sentinela
+    diz "tem mais" e o `page[-1]` do cursor estoura `IndexError`."""
+    if limit < 1:
+        raise ValueError(f"limit tem de ser >= 1, veio {limit}")
+
+
 async def list_page_for_manager(
     conn: asyncpg.Connection,
     *,
@@ -389,6 +418,7 @@ async def list_page_for_manager(
     tools layer. The SQL itself lives in `_build_manager_page_sql` — see its
     docstring for why it isn't inlined here anymore.
     """
+    _recusa_limite_menor_que_um(limit)
     sql, params = _build_manager_page_sql(
         manager_id=manager_id,
         days=days,
@@ -484,6 +514,7 @@ async def list_page_admin(
     admin table shows (gestor e-mail, no per-row dry_run/params_summary). The
     SQL itself lives in `_build_admin_page_sql`.
     """
+    _recusa_limite_menor_que_um(limit)
     sql, params = _build_admin_page_sql(
         days=days,
         manager_id=manager_id,
