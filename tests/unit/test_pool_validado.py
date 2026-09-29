@@ -131,7 +131,7 @@ async def test_init_pool_liga_o_teste_de_conexao(monkeypatch: pytest.MonkeyPatch
     executado: list[str] = []
 
     class _Conn:
-        async def execute(self, sql: str) -> str:
+        async def execute(self, sql: str, *, timeout: object = None) -> str:  # noqa: ASYNC109 — assinatura do asyncpg
             executado.append(sql)
             return "SELECT 1"
 
@@ -226,3 +226,38 @@ def test_o_scan_de_conexao_nao_acusa_anotacao_nem_get_pool() -> None:
         "    async with connection.get_pool().acquire() as c:\n        pass\n"
     )
     assert _ofensores_na_arvore(ast.parse(codigo)) == []
+
+
+class _ConexaoMuda:
+    """Conexão cujo `SELECT 1` estoura o prazo (socket buraco-negro) — registra o que recebeu."""
+
+    def __init__(self) -> None:
+        self.timeout: object = "nao passado"
+        self.terminada = False
+
+    async def execute(self, _sql: str, *, timeout: object = None) -> str:  # noqa: ASYNC109 — assinatura do asyncpg
+        self.timeout = timeout
+        raise TimeoutError
+
+    def terminate(self) -> None:
+        self.terminada = True
+
+
+async def test_teste_da_retirada_tem_prazo_curto_e_aborta_a_conexao_muda() -> None:
+    """Sem prazo proprio o teste herdava os 30 s do `command_timeout`; e no estouro o `close()`
+    gracioso do asyncpg esperava, sem prazo, a resposta do cancelamento pelo socket mudo.
+    Medido em 29/09 (asyncpg 0.31, proxy que para de repassar bytes): presa aos 75 s."""
+    conn = _ConexaoMuda()
+    with pytest.raises(connection.ConexaoSemRespostaError):
+        await connection._testa_conexao(conn)  # type: ignore[arg-type]
+    assert conn.timeout == connection._TIMEOUT_DO_TESTE
+    assert connection._TIMEOUT_DO_TESTE <= 2.5, "cabe duas vezes nos 5 s do health profundo"
+    assert conn.terminada, "sem terminate() o close() do pool espera o socket mudo"
+
+
+async def test_conexao_sem_resposta_repete_a_retirada() -> None:
+    assert issubclass(connection.ConexaoSemRespostaError, connection._DROPPED_CONNECTION_ERRORS)
+    cru = _PoolFalso([connection.ConexaoSemRespostaError("mudo"), "conexao nova"])
+    async with connection.PoolValidado(cru).acquire() as conn:
+        assert conn == "conexao nova"
+    assert len(cru.retiradas) == 2

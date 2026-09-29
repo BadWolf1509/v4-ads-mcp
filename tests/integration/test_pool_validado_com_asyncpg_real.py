@@ -10,6 +10,11 @@ guarda contra uma troca de versão (o `pyproject.toml` aceita `asyncpg>=0.30.0`)
 1. o erro do `setup` (o `SELECT 1`) sobe da retirada, não é engolido;
 2. o holder fecha a conexão e volta à fila;
 3. a fila é LIFO, então a 2ª retirada pega o mesmo holder, agora vazio, e reconecta.
+
+E o socket BURACO-NEGRO (29/09): o proxy para de repassar bytes sem fechar nada. Sem prazo
+próprio no `SELECT 1`, a retirada ficava presa — medido: ainda presa aos 75 s, bem além
+dos 30 s do `command_timeout`, porque o `close()` gracioso espera a resposta do
+cancelamento pelo socket mudo.
 """
 
 from __future__ import annotations
@@ -26,12 +31,14 @@ from src.db import connection
 
 
 class _ProxyQueDerruba:
-    """Repassa bytes ao Postgres; as conexões condenadas morrem na próxima escrita do cliente."""
+    """Repassa bytes ao Postgres; as conexões condenadas morrem na próxima escrita do cliente,
+    e as silenciadas viram buraco-negro: os bytes somem nos dois sentidos, e nada fecha."""
 
     def __init__(self, host: str, porta: int) -> None:
         self._destino = (host, porta)
         self._abertas: set[asyncio.StreamWriter] = set()
         self._condenadas: set[asyncio.StreamWriter] = set()
+        self._silenciadas: set[asyncio.StreamWriter] = set()
         self.porta = 0
         self.aceitas = 0  # conexões que o pool abriu através do proxy
 
@@ -50,6 +57,10 @@ class _ProxyQueDerruba:
         self._condenadas |= self._abertas
         return len(self._abertas)
 
+    def silenciar_as_ociosas(self) -> int:
+        self._silenciadas |= self._abertas
+        return len(self._abertas)
+
     async def _atender(self, r_cli: asyncio.StreamReader, w_cli: asyncio.StreamWriter) -> None:
         r_srv, w_srv = await asyncio.open_connection(*self._destino)
         self._abertas.add(w_cli)
@@ -61,12 +72,16 @@ class _ProxyQueDerruba:
                     w_cli.transport.abort()
                     w_srv.transport.abort()
                     return
+                if w_cli in self._silenciadas:
+                    continue
                 w_srv.write(dados)
                 await w_srv.drain()
             w_srv.close()  # o cliente fechou: o banco fica sabendo
 
         async def banco_para_cliente() -> None:
             while dados := await r_srv.read(65536):
+                if w_cli in self._silenciadas:
+                    continue
                 w_cli.write(dados)
                 await w_cli.drain()
             w_cli.close()  # o banco fechou (Terminate): o `close()` do asyncpg espera isto
@@ -90,7 +105,22 @@ async def _pool_pelo_proxy(pg_dsn: str, max_size: int) -> AsyncIterator[_ProxyQu
         try:
             yield proxy
         finally:
+            await _fechar_sem_travar()
+
+
+async def _fechar_sem_travar() -> None:
+    """Fecha o pool com prazo: com uma conexão presa no socket mudo, o `close()` gracioso
+    do asyncpg espera para sempre, e o guard travaria a suíte em vez de falhar (medido na
+    sabotagem de 29/09). No estouro, aborta o pool e falha dizendo por quê."""
+    try:
+        async with asyncio.timeout(15):
             await connection.close_pool()
+    except TimeoutError:
+        cru = connection._pool
+        if cru is not None:
+            cru.terminate()
+        connection._pool = None
+        pytest.fail("fechar o pool travou: conexão presa num socket que não responde")
 
 
 async def _aquecer(n: int) -> None:
@@ -133,3 +163,36 @@ async def test_pool_validado_reconecta_e_o_corpo_roda_uma_vez(pg_dsn: str, morta
         # holder que falhou, agora vazio. Contado no proxy, não no log — o log depende da
         # configuração do structlog que outros testes da suíte deixam para trás.
         assert proxy.aceitas - antes == 1
+
+
+@pytest.mark.integration
+async def test_socket_buraco_negro_nao_prende_a_retirada(pg_dsn: str) -> None:
+    """O teste da retirada tem prazo curto e aborta a conexão muda; a retirada se repete numa
+    conexão nova. Sem isso, presa aos 75 s (medido em 29/09).
+
+    O prazo é vigiado DE FORA, numa tarefa separada: um `asyncio.timeout` em volta da
+    retirada não sai dela — o asyncpg trata o cancelamento chamando o mesmo `close()` que
+    espera o socket mudo, dentro da própria tarefa (medido na sabotagem de 29/09: a suíte
+    travou em vez de falhar). No estouro, aborta o pool e falha."""
+
+    async def retirar_e_consultar() -> object:
+        async with connection.get_pool().acquire() as conn:
+            return await conn.fetchval("SELECT 1")
+
+    async with _pool_pelo_proxy(pg_dsn, max_size=1) as proxy:
+        await _aquecer(1)
+        assert proxy.silenciar_as_ociosas() == 1
+        inicio = asyncio.get_running_loop().time()
+        tarefa = asyncio.ensure_future(retirar_e_consultar())
+        feitas, _ = await asyncio.wait({tarefa}, timeout=connection._TIMEOUT_DO_TESTE + 8)
+        if not feitas:
+            cru = connection._pool
+            if cru is not None:
+                cru.terminate()
+            connection._pool = None
+            tarefa.cancel()
+            pytest.fail("a retirada ficou presa na conexão que não responde")
+        assert tarefa.result() == 1
+        gasto = asyncio.get_running_loop().time() - inicio
+        # esperou o prazo do teste, e nao mais que ele e uma reconexao
+        assert connection._TIMEOUT_DO_TESTE <= gasto < connection._TIMEOUT_DO_TESTE + 5
