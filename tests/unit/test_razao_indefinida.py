@@ -212,6 +212,9 @@ def test_pacing_sem_orcamento_nao_vira_zero_porcento() -> None:
                 "campaign_name": "c",
                 "daily_budget_brl": 0.0,
                 "delivery_method": "STANDARD",
+                "budget_id": "9",
+                "budget_name": "orcamento proprio",
+                "orcamento_compartilhado": False,
                 "cost_micros": 3_000_000_000,  # 30 dias fechados
             }
         ],
