@@ -16,33 +16,38 @@
 > **Trabalho que fechou sai daqui:** o defeito vai para o catálogo, a narrativa para o
 > arquivo, e aqui fica uma linha.
 
-> **Última sessão:** [`session-2026-09-28-handoff.md`](session-2026-09-28-handoff.md)
-> — a noite de 27/09 e o 28/09: o **F196** (`THIS_MONTH` no dia 1), o **F197** (só o job escreve
-> o inventário), o **F198** (lockfile fechado), o lote de dependências e o `mcp` 1.30, e a
-> verificação da execução diária de 28/09 (18 de 18). Antes: [`session-2026-09-27-handoff.md`](session-2026-09-27-handoff.md)
-> (F194, F195, F154).
+> **Última sessão:** [`session-2026-09-28-noite-handoff.md`](session-2026-09-28-noite-handoff.md)
+> — a tarde e a noite de 28/09: o **F199** (pacing pelos dias fechados), o erro de data que chega ao
+> LLM, e a frente **infra e guards** (conexão testada na retirada do pool, SQL idempotente,
+> migrations com lock), com a verificação de produção marcada para 29/09. Antes:
+> [`session-2026-09-28-handoff.md`](session-2026-09-28-handoff.md) (F196, F197, F198, dependências).
 
 ---
 
-## Produção — medido em 2026-09-28
+## Produção — medido em 2026-09-29
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00136-lxv`**, 100% do tráfego (medido por `gcloud` em 28/09, 15:41 UTC) — o deploy do **#124** (`mcp` 1.30.0, sozinho; run `36444473607`, `test` e `deploy` `success`, imagem `db71a3f` também no job `v4-ads-mcp-resync`), sobre o **#128** (lote de dependências e F198), o **#122** (F197), o **#121** (F196) e o **#120** (F154); `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186); o do `mcp` 1.30 foi feito por uma sessão Claude autenticada |
+| Revisão servindo | **`v4-ads-mcp-00139-fpf`**, 100% do tráfego (medido por `gcloud` em 29/09, ~00:10 UTC) — o deploy do **#133** (infra e guards; run `36500922965`, `test` e `deploy` `success`, o job de migration com o lock limpo), sobre o **#132** (`00138`, erro de data) e o **#131** (`00137`, F199); `/health?deep=1` devolveu `db: ok` e `tools: 68`. ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186); os desta noite foram feitos por uma sessão Claude autenticada |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
-| Catálogo | até **F198** (~5.800 linhas, 581 KB) |
+| Catálogo | até **F198** (~5.800 linhas, 581 KB) — **F199 e F200 aguardam o `/findings-add`** (textos em `.superpowers/findings-pendentes/`) |
 
 **Conferidos em produção, por leitura:** os smokes do F193 (26/09), do F194 e do F195 (27/09), a
-execução diária de 28/09 (F154 e a Alumínios Veneza saindo: 18 de 18) e o `mcp` 1.30 por uma
-sessão autenticada. O detalhe está nos handoffs e no catálogo; a narrativa que morava aqui, em
+execução diária de 28/09 (18 de 18), o `mcp` 1.30, e os de 28/09 à noite — o pacing pelos dias
+fechados, a mensagem de data inválida e três tools sobre o pool novo. O detalhe está nos handoffs;
+a narrativa antiga, em
 [`_archive/estado-atual-2026-09-27-a-28.md`](../_archive/estado-atual-2026-09-27-a-28.md). Um
 limite medido segue valendo (F193): para período sem atividade o Google devolve uma linha
 **zerada**, não nenhuma — quem protege a leitura são as razões `null`.
 
-**Com data:** **01/10** — smoke de leitura do F196 (`THIS_MONTH` numa conta real devolve o dia 1,
-não vazio) e do F199 (`get_budget_pacing` com `inclui_dia_corrente: true` e projeção `null`, não
-30× o parcial); **04/10** — remedição dos buckets e do uso da Fase 2B por gestor.
+**Com data:** **29/09** — verificação de produção da infra e guards (spec §6): latência contra a
+base medida antes do deploy (p50 16,9 ms, p95 708 ms, serviço inteiro), eventos de reconexão (base:
+2 em 7 dias), primeiro acesso da manhã sem 500, e o job das 09:00 UTC, o primeiro com o pool novo —
+roteiro e script em `.superpowers/verificacao-2026-09-29/`; **01/10** — smoke de leitura do F196
+(`THIS_MONTH` numa conta real devolve o dia 1, não vazio) e do F199 (`get_budget_pacing` com
+`inclui_dia_corrente: true` e projeção `null`, não 30× o parcial); **04/10** — remedição dos
+buckets e do uso da Fase 2B por gestor.
 
 ⚠️ **`deploy: skipped` NAO significa "PR de documentação".** O gate do F138 pula o
 deploy só quando o push mexeu **exclusivamente** em `docs/` e markdown — um arquivo em
@@ -80,6 +85,8 @@ na máquina dos outros gestores, ou o LLM escolhendo a tool pelo nome. Separar p
 
 ## Pendências que dependem do Wellington
 
+- **Rodar o `/findings-add` do F199 e do F200** — a skill só roda por você. Os textos estão prontos em `.superpowers/findings-pendentes/F199.txt` (pacing pelos dias fechados) e `F200.txt` (infra e guards, com o que ficou de fora).
+- **Decidir as três recomendações da revisão final da infra e guards**, que mudam o comportamento de produção: timeout curto no `SELECT 1` da retirada (hoje uma conexão "buraco negro" custa os 30 s do `command_timeout`); invalidar o pool inteiro na primeira queda detectada (`expire_connections`); repetir a retirada em qualquer falha do teste, não só nas de conexão derrubada. Melhor depois da verificação de 29/09, com a latência medida.
 - **Aplicar no plugin `v4-trafego-google-ads` o ajuste do `null`.** Seis pontos fazem conta ou ranking com campos que, desde o deploy de 26/09, podem vir `null` (`analise-performance-google-ads/SKILL.md:44,137`; `relatorio-cliente-google-ads/SKILL.md:33,76-89,112-116`; `shared/v4-brand.md:43`). O texto das mudanças foi entregue em 26/09; a cópia instalada é upload do app, então o ajuste é na fonte. Até lá o relatório de cliente pode imprimir `None`.
 - **Remover do BM as contas Meta das quatro clientes que saíram** (decisão de 26/09): Dr. Dérick Vinhas (`act_4051924171730156`), Dra. Paula Minchillo (`act_1479232423809572`), Imperial Alimentos (`act_1648706246292124`) e Panelas Veneza (`act_374213944466235`, da Alumínios Veneza) — medidas em 26/09 alcançáveis pelo system user, com 4 grants vivos cada. A reconciliação Meta revoga quando a conta sai da parceria do BM: fora dele, em 3 execuções, com trilha — e desde o F197 nenhum botão reinicia essa carência. Revogar pelo painel foi descartado — o BM seguiria alcançando, e nada impediria reconceder.
 - **Nível de acesso da API Meta.** O cabeçalho `x-fb-ads-insights-throttle` diz `ads_api_access_tier: development_access` (medido em 26/09): o app segue no Limited Access do **D1** de maio. A regra do D1 para pedir o Full Access é 500 chamadas em 15 dias; o uso medido em 26/09 é de ~200 por quinzena (395 chamadas Meta em 30 dias). Decisão sua: pedir agora com o volume atual, ou esperar.
@@ -126,5 +133,7 @@ Medir a exposição, dar dado às decisões, consertos pequenos, e só então sp
 | **F186** | 🔴 smoke autenticado do `/mcp` **desarmado** — e o manager dele **não existe**: criar exige identidade de serviço no Workspace, acesso que o gestor **não tem**. **ABERTO como risco ACEITO.** No lugar entrou `tools` no `/health?deep=1` (sem credencial), e o desarme aparece como `::warning::` em todo deploy — **observado disparando** nos dois deploys de 21/09, que é o que separa "o aviso existe" de "o aviso avisa" |
 | — | *negativas de grupo e listas compartilhadas na auditoria de negativas* (spec §7: frente própria) |
 | — | follow-ups do **F193** (Minor, não bloqueiam) — listados no corpo do [#111](https://github.com/BadWolf1509/v4-ads-mcp/pull/111): comentário da isenção do `apply_recommendation`, frase do eco nas três tools do F191, cobertura estreita de alguns testes |
+| — | **orçamento compartilhado no `get_budget_pacing`**: cada campanha é comparada com o orçamento inteiro, e o mensal conta duas vezes (medido na Mestre da Obra – João Pessoa ao fazer o F199) — chip aberto em 28/09 |
+| — | **`export_csv_rows(manager_id=None)` exporta o audit de todos os gestores por default** — falha aberta apontada pela revisão da infra e guards; chip aberto em 28/09 |
 
-**Fechados de 20 a 27/09:** **F179**, **F181–F184**, **F188**, **F189**, **F190**, **F191**, **F193**, **F194**, **F195**, **F154**, **F196**, **F197** e **F198**. O defeito de cada um está no [catálogo](findings-catalog.md); a narrativa desses dias, que morava aqui, foi para [`_archive/estado-atual-2026-09-20-a-26.md`](../_archive/estado-atual-2026-09-20-a-26.md). 🔑 A lição que atravessa todos: **existia a regra e não existia o mecanismo** — a invariante escrita, e nada que a aplicasse.
+**Fechados de 20 a 28/09:** **F179**, **F181–F184**, **F188**, **F189**, **F190**, **F191**, **F193**, **F194**, **F195**, **F154**, **F196**, **F197**, **F198** e, no código, o **F199**, o erro de data que virava "Erro interno" e a frente infra e guards (catálogo e verificação de produção pendentes). O defeito de cada um está no [catálogo](findings-catalog.md); a narrativa desses dias, que morava aqui, foi para [`_archive/estado-atual-2026-09-20-a-26.md`](../_archive/estado-atual-2026-09-20-a-26.md). 🔑 A lição que atravessa todos: **existia a regra e não existia o mecanismo** — a invariante escrita, e nada que a aplicasse.
