@@ -23,16 +23,12 @@
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
 | Catálogo | até **F203** (~6.000 linhas, 601 KB) |
 
-**Verificação da infra e guards (spec §6), parcial até ~13:00 UTC de 29/09:** job das 09:00 UTC
-`success` (37 s, sem retry); zero `db_conexao_testada_reconectou` e `db_dropped_connection_retry`
-(o mesmo filtro acha os 2 da base); zero `severity>=ERROR` e zero 5xx em >1.000 requests. Não
-houve madrugada ociosa (o `/health?deep=1` bate a cada ~50 s), então o cenário do F76 não foi
-exercitado. **Custo do `SELECT 1` na retirada: +7 ms no p50** do `/health?deep=1` (o A/B limpo).
-⚠️ **A linha de base antiga (p50 16,9 / p95 708 ms) estava errada** — saiu da métrica do serviço,
-que agrega por percentil entre séries e hoje deu p95 936 onde os logs dão 153. **Base correta, por
-rota, 24 h antes do deploy:** `/health?deep=1` p50 16,0 / p95 80,2 ms; `POST /mcp` p50 70,2 / p95
-1.644 ms. Roteiro e scripts (`latencia_por_rota.py`, `contas_no_bm.py`) em
-`.superpowers/verificacao-2026-09-29/LEIA.md`.
+**Infra e guards verificada em produção (F200, 24 h até 30/09 00:08 UTC):** zero reconexão, zero
+`severity>=ERROR`, zero 5xx em ~2.500 requests (o filtro acha os 2 eventos da base); job de 29/09
+`success`. **Custo do `SELECT 1` na retirada: +8 ms no p50** do `/health?deep=1` (16,0 → 24,1 ms;
+p95 80,2 → 95,1) — o A/B limpo. Latência se mede **por rota, pelos logs de request**
+(`latencia_por_rota.py`); a métrica do serviço agrega percentil entre séries e não compara. Scripts
+em `.superpowers/verificacao-2026-09-29/` (`latencia_por_rota.py`, `contas_no_bm.py`).
 
 **Aguardando deploy (commitado, sem push):**
 
@@ -45,8 +41,6 @@ Deploy: o F203 primeiro (mexe no pool de toda requisição), cada um em PR próp
 nominal; o segundo fica BEHIND quando o primeiro mescla (`git merge origin/main`, nunca force-push).
 
 **Com data:**
-- **29/09, depois de 30/09 00:10 UTC** — leitura das 24 h por rota contra a base correta; PR de
-  docs que fecha o F200 como verificado e fecha o "fechado no código" dos sub-projetos 3 e 4.
 - **30/09, 09:00 UTC** — 2ª ausência das 4 contas Meta no job (`missed_syncs=2`).
 - **01/10, 09:00 UTC** — as 4 contas desativadas e os **16 grants revogados** (a 1ª ausência
   entrou em 29/09, como previsto; teto de remoção 5 com 25 ativas, não barra). Smoke de leitura do
@@ -101,8 +95,8 @@ Relatórios e destino de cada achado em
 |---|---|
 | 1 · credencial + contratos do SDK Meta | fechado — **F190** |
 | 2 · respostas que afirmam mais do que mediram | fechado — **F191** e **F193** (as métricas Meta, fora dele, no **F194**) |
-| 3 · infra de dados | **fechado no código**, verificação de produção em curso — CSV no F191; o resto no **F200** ([spec](../superpowers/specs/2026-09-28-infra-e-guards-design.md)) |
-| 4 · guards que não cobrem | **fechado no código**, verificação em curso — mock no F191; o resto no **F200**: o pool valida a conexão num ponto só |
+| 3 · infra de dados | **fechado** — CSV no F191; o resto no **F200**, verificado em produção em 30/09 ([spec](../superpowers/specs/2026-09-28-infra-e-guards-design.md)) |
+| 4 · guards que não cobrem | **fechado** — mock no F191; o resto no **F200**: o pool valida a conexão num ponto só |
 
 ### Ordem de ataque (atualizada em 29/09)
 
@@ -126,8 +120,8 @@ Medir a exposição, dar dado às decisões, consertos pequenos, e só então sp
 | — | **`export_csv_rows(manager_id=None)` exporta o audit de todos os gestores por default** — falha aberta latente (as duas rotas passam o gestor explícito); chip de 28/09 |
 | — | **orçamento de período fixo** (`CUSTOM_PERIOD`) no `get_budget_pacing` — a tool não o trata (Fora do F202) |
 
-**Fechados de 20 a 29/09:** **F154**, **F179**, **F181–F184**, **F188–F191**, **F193–F199** e
-**F201**; no código, **F200** (verificação em curso), **F202** e **F203** (deploy pendente). O
+**Fechados de 20 a 29/09:** **F154**, **F179**, **F181–F184**, **F188–F191**, **F193–F199**,
+**F200**, **F201**; no código, **F202** e **F203** (deploy pendente). O
 defeito de cada um está no [catálogo](findings-catalog.md); a narrativa desses dias, em
 [`_archive/estado-atual-2026-09-20-a-26.md`](../_archive/estado-atual-2026-09-20-a-26.md) e
 [`_archive/estado-atual-2026-09-27-a-28.md`](../_archive/estado-atual-2026-09-27-a-28.md). 🔑 A
