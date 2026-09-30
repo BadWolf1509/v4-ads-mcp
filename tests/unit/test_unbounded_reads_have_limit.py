@@ -149,6 +149,9 @@ async def test_budget_pacing_corta_antes_de_projetar() -> None:
             "campaign_name": f"Camp {i}",
             "daily_budget_brl": 100.0,
             "delivery_method": "STANDARD",
+            "budget_id": "9",
+            "budget_name": "orcamento proprio",
+            "orcamento_compartilhado": False,
             "cost_micros": 1_000_000 * (10 - i),
         }
         for i in range(4)

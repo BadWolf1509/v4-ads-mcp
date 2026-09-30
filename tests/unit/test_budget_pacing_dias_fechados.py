@@ -38,6 +38,9 @@ def _linha(cid: str, custo_brl: float, orcamento: float = 310.0) -> dict[str, An
         "campaign_name": f"Camp {cid}",
         "daily_budget_brl": orcamento,
         "delivery_method": "STANDARD",
+        "budget_id": "9",
+        "budget_name": "orcamento proprio",
+        "orcamento_compartilhado": False,
         "cost_micros": round(custo_brl * 1_000_000),
     }
 

@@ -59,6 +59,8 @@ CAMPO_PARA_CHAVE = {
     "campaign_criterion.type": "criterion_type",
     # F199: o gasto de hoje so das campanhas que o pacing listou
     "campaign.id": "campaign_ids",
+    # o gasto dos orcamentos compartilhados, lido do proprio orcamento
+    "campaign_budget.id": "budget_ids",
 }
 
 
@@ -168,6 +170,9 @@ def _chamadas() -> dict[str, Callable[[], tuple[str, dict[str, Any]]]]:
         "overview_query": lambda: o.overview_query(_S, _E),
         "budget_pacing_query": lambda: o.budget_pacing_query(_S, _E, limit=10),
         "budget_pacing_hoje_query": lambda: o.budget_pacing_hoje_query(_E, ["1", "2"]),
+        "budget_pacing_orcamentos_query": lambda: o.budget_pacing_orcamentos_query(
+            _S, _E, ["1", "2"]
+        ),
         "bulk_pause_query": lambda: bulk_pause_query(
             target_type="keyword",
             filter_clause="ad_group_criterion.status = 'ENABLED'",

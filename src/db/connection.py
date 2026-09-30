@@ -1,5 +1,6 @@
 """asyncpg connection pool factory."""
 
+import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from types import TracebackType
 from typing import Any
@@ -25,6 +26,19 @@ _DROPPED_CONNECTION_ERRORS: tuple[type[BaseException], ...] = (
 )
 
 
+# O `SELECT 1` da retirada custa uma ida e volta (medido em produção em 29/09: +7 ms no p50
+# do /health?deep=1). 2 s é folga de ~300x, e cabe duas vezes nos 5 s do health profundo.
+_TIMEOUT_DO_TESTE = 2.0
+
+
+class ConexaoSemRespostaError(ConnectionError):
+    """O `SELECT 1` da retirada não voltou no prazo: socket que não responde nem fecha.
+
+    Subclasse de `ConnectionError`, então entra em `_DROPPED_CONNECTION_ERRORS`: a retirada
+    é repetida numa conexão nova, como na conexão derrubada.
+    """
+
+
 async def _testa_conexao(conn: asyncpg.Connection) -> None:
     """`setup` do pool: roda a cada retirada, antes de a conexão chegar ao chamador.
 
@@ -32,8 +46,26 @@ async def _testa_conexao(conn: asyncpg.Connection) -> None:
     primeira query do chamador é quem descobre. Se o `SELECT 1` falha, o asyncpg fecha a
     conexão e repassa o erro; o `PoolValidado` então retira de novo, e a próxima retirada
     reconecta (spec 2026-09-28 §3.1).
+
+    Socket buraco-negro (não responde e não fecha): sem prazo próprio, o teste herdava os 30 s
+    do `command_timeout`, e nem isso — no estouro o asyncpg pede o cancelamento e o `close()`
+    gracioso que o pool chama espera, sem prazo, a resposta dele pelo mesmo socket mudo.
+    Medido com asyncpg 0.31 e um proxy que para de repassar bytes: a retirada seguia presa
+    aos 75 s. Por isso o prazo curto e o `terminate()`, que aborta o transporte sem esperar
+    nada; o `close()` do pool vê a conexão fechada e só limpa.
     """
-    await conn.execute("SELECT 1")
+    try:
+        await conn.execute("SELECT 1", timeout=_TIMEOUT_DO_TESTE)
+    except TimeoutError as exc:
+        conn.terminate()
+        raise ConexaoSemRespostaError(
+            f"SELECT 1 da retirada sem resposta em {_TIMEOUT_DO_TESTE:g} s"
+        ) from exc
+
+
+# A conexão que sai do corpo assim pode estar no meio de um cancelamento (ver
+# `_RetiradaValidada`): descartada, não devolvida.
+_SAIDAS_QUE_DESCARTAM: tuple[type[BaseException], ...] = (TimeoutError, asyncio.CancelledError)
 
 
 class _RetiradaValidada:
@@ -42,11 +74,21 @@ class _RetiradaValidada:
     Usa o protocolo de gerenciador de contexto da retirada do asyncpg (e dos fakes dos
     testes), não `await pool.acquire()`. Só a RETIRADA é repetida: um erro dentro do corpo
     do `with` — a query do chamador — sobe sem repetição, então escrita nunca roda duas vezes.
+
+    Na devolução, a conexão que sai do corpo por timeout ou cancelamento é DESCARTADA
+    (`terminate()`) antes de voltar ao pool — o padrão de descartar conexão devolvida em estado
+    duvidoso (o `psycopg_pool` faz o mesmo; o asyncpg, quando o reset falha). Ela pode estar
+    no meio de um cancelamento, e a devolução do asyncpg espera o fim dele sem prazo, sob
+    `shield`: num socket mudo, para sempre. Medido em 29/09 com asyncpg 0.31: presa aos 90 s,
+    e com `asyncio.timeout` em volta (o formato do /health?deep=1) quem chamou ficava preso
+    junto, e a vaga do pool, perdida. Custa reabrir uma conexão saudável cuja query estourou
+    ou foi cancelada — raro.
     """
 
     def __init__(self, pool: Any) -> None:
         self._pool = pool
         self._retirada: Any = None
+        self._conn: Any = None
 
     async def __aenter__(self) -> asyncpg.Connection:
         for tentativa in (1, 2):
@@ -59,6 +101,7 @@ class _RetiradaValidada:
                 log.warning("db_conexao_testada_reconectou", error=str(exc))
                 continue
             self._retirada = retirada
+            self._conn = conn
             return conn
         raise AssertionError("inalcançável: a 2ª tentativa devolve ou levanta")
 
@@ -68,6 +111,8 @@ class _RetiradaValidada:
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> bool | None:
+        if exc_type is not None and issubclass(exc_type, _SAIDAS_QUE_DESCARTAM):
+            self._conn.terminate()
         return await self._retirada.__aexit__(exc_type, exc, tb)  # type: ignore[no-any-return]
 
 

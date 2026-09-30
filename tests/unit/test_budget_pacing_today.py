@@ -25,6 +25,9 @@ LINHA = {
     "campaign_name": "c",
     "daily_budget_brl": 100.0,
     "delivery_method": "STANDARD",
+    "budget_id": "9",
+    "budget_name": "orcamento proprio",
+    "orcamento_compartilhado": False,
     "cost_micros": 3_000_000_000,  # R$ 3.000 nos 30 dias fechados
 }
 

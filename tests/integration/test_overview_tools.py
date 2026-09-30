@@ -108,6 +108,9 @@ async def test_budget_pacing_projects_monthly(bound_context):
             "campaign_name": "Campaign A",
             "daily_budget_brl": 100.0,
             "delivery_method": "STANDARD",
+            "budget_id": "9",
+            "budget_name": "orcamento proprio",
+            "orcamento_compartilhado": False,
             "cost_micros": 50_000_000,
         },
     ]

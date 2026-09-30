@@ -41,12 +41,18 @@ def budget_pacing_query(
     F199: a janela e a do `THIS_MONTH` de `janelas.py` — os dias FECHADOS do mes, ate
     ontem; no dia 1, so hoje. Era `DURING THIS_MONTH`, que inclui o dia corrente, e a
     projecao dividia esse gasto parcial por um dia inteiro.
+
+    O id, o nome e o `explicitly_shared` do orcamento separam a campanha que tem orcamento
+    proprio da que divide um: nesta, o percentual e do orcamento, nao da campanha.
     """
     gaql = f"""
         SELECT
           campaign.id,
           campaign.name,
           campaign.status,
+          campaign_budget.id,
+          campaign_budget.name,
+          campaign_budget.explicitly_shared,
           campaign_budget.amount_micros,
           campaign_budget.delivery_method,
           metrics.cost_micros
@@ -85,5 +91,37 @@ def budget_pacing_hoje_query(today: date, campaign_ids: list[str]) -> tuple[str,
     filtros: dict[str, Any] = {
         "campaign_ids": list(campaign_ids),
         "date_range": janela_aplicada(today, today),
+    }
+    return gaql, filtros
+
+
+def budget_pacing_orcamentos_query(
+    date_start: date, date_end: date, budget_ids: list[str]
+) -> tuple[str, dict[str, Any]]:
+    """Gasto dos orcamentos COMPARTILHADOS na janela, lido do proprio orcamento.
+
+    O total vem do `campaign_budget` (a GAQL aceita `metrics.cost_micros` ali; medido em
+    29/09: R$ 8.795,07, a soma exata das duas campanhas da Mestre da Obra - Joao Pessoa),
+    nao da soma das linhas da tool: campanha pausada no meio do mes, ou cortada pelo
+    `limit`, gastou do mesmo orcamento e nao aparece na lista. `LIMIT 1000` e teto
+    estrutural: uma linha por orcamento, e orcamento nao passa de campanha listada.
+    """
+    if not 1 <= len(budget_ids) <= 1000:
+        raise ValueError(
+            f"budget_pacing_orcamentos_query: 1 a 1000 orcamentos, veio {len(budget_ids)}"
+        )
+    ids = ", ".join(str(int(x)) for x in budget_ids)
+    gaql = f"""
+        SELECT
+          campaign_budget.id,
+          metrics.cost_micros
+        FROM campaign_budget
+        WHERE campaign_budget.id IN ({ids})
+          AND {gaql_date_clause(date_start, date_end)}
+        LIMIT 1000
+    """.strip()
+    filtros: dict[str, Any] = {
+        "budget_ids": list(budget_ids),
+        "date_range": janela_aplicada(date_start, date_end),
     }
     return gaql, filtros
