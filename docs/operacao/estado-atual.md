@@ -6,51 +6,40 @@
 > que fechou sai daqui:** o defeito vai para o catálogo, a narrativa para o arquivo
 > ([`_archive/`](../_archive/varredura-2026-09-06-frentes.md)), e aqui fica uma linha.
 
-> **Última sessão:** [`session-2026-09-29-handoff.md`](session-2026-09-29-handoff.md) — 29/09: a
-> verificação parcial da infra e guards, a saída das 4 contas Meta do BM, e três consertos
-> commitados **sem deploy** (F202 pacing; F203 pool). Antes:
+> **Última sessão:** [`session-2026-09-29-handoff.md`](session-2026-09-29-handoff.md) — 29–30/09: a
+> verificação da infra e guards (F200), a saída das 4 contas Meta do BM, e o **F203** (pool) e o
+> **F202** (pacing), deployados na noite de 29/09. Antes:
 > [`session-2026-09-28-noite-handoff.md`](session-2026-09-28-noite-handoff.md) (F199, erro de data,
 > infra e guards).
 
 ---
 
-## Produção — medido em 2026-09-29
+## Produção — medido em 2026-09-30
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00139-fpf`**, 100% do tráfego (29/09) — o deploy do **#133** (infra e guards). Os PRs de docs #134–#136 não deployaram. ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186) |
+| Revisão servindo | **`v4-ads-mcp-00141-2gn`**, 100% do tráfego (30/09 ~00:40 UTC) — o **#139** (F202, run `36652602902`), sobre o **#138** (F203, `00140-8xb`, run `36651474629`) e o **#133** (`00139`, infra e guards). Smokes de leitura dos dois: `/health?deep=1` ok com 68 tools; `get_my_rate_limit_status` e `list_my_accounts` sobre o pool novo; `get_budget_pacing` na Mestre da Obra – João Pessoa com o bloco do orçamento em R$ 8.795,07 / 94,6%. ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186) |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
 | Catálogo | até **F203** (~6.000 linhas, 601 KB) |
 
-**Verificação da infra e guards (spec §6), parcial até ~13:00 UTC de 29/09:** job das 09:00 UTC
-`success` (37 s, sem retry); zero `db_conexao_testada_reconectou` e `db_dropped_connection_retry`
-(o mesmo filtro acha os 2 da base); zero `severity>=ERROR` e zero 5xx em >1.000 requests. Não
-houve madrugada ociosa (o `/health?deep=1` bate a cada ~50 s), então o cenário do F76 não foi
-exercitado. **Custo do `SELECT 1` na retirada: +7 ms no p50** do `/health?deep=1` (o A/B limpo).
-⚠️ **A linha de base antiga (p50 16,9 / p95 708 ms) estava errada** — saiu da métrica do serviço,
-que agrega por percentil entre séries e hoje deu p95 936 onde os logs dão 153. **Base correta, por
-rota, 24 h antes do deploy:** `/health?deep=1` p50 16,0 / p95 80,2 ms; `POST /mcp` p50 70,2 / p95
-1.644 ms. Roteiro e scripts (`latencia_por_rota.py`, `contas_no_bm.py`) em
-`.superpowers/verificacao-2026-09-29/LEIA.md`.
+**Infra e guards verificada em produção (F200, 24 h até 30/09 00:08 UTC):** zero reconexão, zero
+`severity>=ERROR`, zero 5xx em ~2.500 requests (o filtro acha os 2 eventos da base); job de 29/09
+`success`. **Custo do `SELECT 1` na retirada: +8 ms no p50** do `/health?deep=1` (16,0 → 24,1 ms;
+p95 80,2 → 95,1) — o A/B limpo. Latência se mede **por rota, pelos logs de request**
+(`latencia_por_rota.py`); a métrica do serviço agrega percentil entre séries e não compara. Scripts
+em `.superpowers/verificacao-2026-09-29/` (`latencia_por_rota.py`, `contas_no_bm.py`).
 
-**Aguardando deploy (commitado, sem push):**
-
-| branch | commits | o quê |
-|---|---|---|
-| `fix/pool-timeout-no-teste` | `bc7e343`, `91c0c9f` | **F203** — prazo de 2 s no `SELECT 1` da retirada, com `terminate()`; e a conexão que sai do corpo por timeout ou cancelamento é descartada. As duas travas eram **sem limite** (medido: 75 s e 90 s), a segunda levando junto quem chamou e a vaga do pool |
-| `fix/pacing-orcamento-compartilhado` | `1082e61` | **F202** — `get_budget_pacing` mede o orçamento compartilhado pelo orçamento: percentuais `null` na campanha e bloco `orcamentos_compartilhados` com o gasto lido do `campaign_budget` |
-
-Deploy: o F203 primeiro (mexe no pool de toda requisição), cada um em PR próprio com autorização
-nominal; o segundo fica BEHIND quando o primeiro mescla (`git merge origin/main`, nunca force-push).
+**Novo em produção desde 29/09 à noite:** o **F203** — prazo de 2 s no `SELECT 1` da retirada com
+`terminate()`, e a conexão que sai do corpo por timeout ou cancelamento é descartada (as duas travas
+eram sem limite) — e o **F202** — o pacing mede orçamento compartilhado pelo orçamento
+(percentuais `null` na campanha, bloco `orcamentos_compartilhados`).
 
 **Com data:**
-- **29/09, depois de 30/09 00:10 UTC** — leitura das 24 h por rota contra a base correta; PR de
-  docs que fecha o F200 como verificado e fecha o "fechado no código" dos sub-projetos 3 e 4.
 - **30/09, 09:00 UTC** — 2ª ausência das 4 contas Meta no job (`missed_syncs=2`).
 - **01/10, 09:00 UTC** — as 4 contas desativadas e os **16 grants revogados** (a 1ª ausência
   entrou em 29/09, como previsto; teto de remoção 5 com 25 ativas, não barra). Smoke de leitura do
-  F196 (`THIS_MONTH` devolve o dia 1), do F199 (projeção `null`) e do F202, se já no ar.
+  F196 (`THIS_MONTH` devolve o dia 1), do F199 (projeção `null`) e do F202 (o bloco do orçamento também com projeção `null`).
 - **04/10** — remedição dos buckets e do uso da Fase 2B por gestor.
 
 ⚠️ **`deploy: skipped` não significa "PR de documentação":** o gate do F138 pula só push
@@ -101,14 +90,14 @@ Relatórios e destino de cada achado em
 |---|---|
 | 1 · credencial + contratos do SDK Meta | fechado — **F190** |
 | 2 · respostas que afirmam mais do que mediram | fechado — **F191** e **F193** (as métricas Meta, fora dele, no **F194**) |
-| 3 · infra de dados | **fechado no código**, verificação de produção em curso — CSV no F191; o resto no **F200** ([spec](../superpowers/specs/2026-09-28-infra-e-guards-design.md)) |
-| 4 · guards que não cobrem | **fechado no código**, verificação em curso — mock no F191; o resto no **F200**: o pool valida a conexão num ponto só |
+| 3 · infra de dados | **fechado** — CSV no F191; o resto no **F200**, verificado em produção em 30/09 ([spec](../superpowers/specs/2026-09-28-infra-e-guards-design.md)) |
+| 4 · guards que não cobrem | **fechado** — mock no F191; o resto no **F200**: o pool valida a conexão num ponto só |
 
 ### Ordem de ataque (atualizada em 29/09)
 
 Medir a exposição, dar dado às decisões, consertos pequenos, e só então specs — um por vez.
 
-1. **Deploy do F203 e do F202**, e o smoke de 01/10.
+1. **Smoke de 01/10** (dia 1) e a revogação das 4 contas Meta.
 2. **Fase 2B** — em 04/10, o uso por gestor, junto dos buckets.
 3. **`recommendation_subscription`** — spec da tool de leitura.
 4. **F187** — o remédio do resumo × detalhe.
@@ -126,8 +115,8 @@ Medir a exposição, dar dado às decisões, consertos pequenos, e só então sp
 | — | **`export_csv_rows(manager_id=None)` exporta o audit de todos os gestores por default** — falha aberta latente (as duas rotas passam o gestor explícito); chip de 28/09 |
 | — | **orçamento de período fixo** (`CUSTOM_PERIOD`) no `get_budget_pacing` — a tool não o trata (Fora do F202) |
 
-**Fechados de 20 a 29/09:** **F154**, **F179**, **F181–F184**, **F188–F191**, **F193–F199** e
-**F201**; no código, **F200** (verificação em curso), **F202** e **F203** (deploy pendente). O
+**Fechados de 20 a 29/09:** **F154**, **F179**, **F181–F184**, **F188–F191**, **F193–F199**,
+**F200–F203**. O
 defeito de cada um está no [catálogo](findings-catalog.md); a narrativa desses dias, em
 [`_archive/estado-atual-2026-09-20-a-26.md`](../_archive/estado-atual-2026-09-20-a-26.md) e
 [`_archive/estado-atual-2026-09-27-a-28.md`](../_archive/estado-atual-2026-09-27-a-28.md). 🔑 A

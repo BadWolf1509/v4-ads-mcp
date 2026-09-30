@@ -4,7 +4,7 @@
 >
 > **Maintainer note:** Add a new entry here whenever a finding is documented in a smoke runbook. Keep entries scannable — link to runbook for detail.
 >
-> **Last updated:** 2026-09-29 — **F202** (pacing de orçamento compartilhado) e **F203** (retirada do pool presa sem limite num socket mudo; corrige os "30 s" do F200), os dois corrigidos no código com deploy pendente. De 2026-09-28: **F199** (pacing pelos dias fechados), **F200** (infra e guards; verificação de produção pendente) e **F201** (data inválida virava "Erro interno"), no fim do arquivo. De 2026-09-20: **F180–F185**: sprint de RSA (F180 em parte; F181/F182/F183/F184 corrigidos), a 2ª instância do F182, e dois ABERTOS: **F185** (limitação da API, sem correção possível deste lado) e **F186** (o smoke autenticado do `/mcp` está desarmado por token vencido). O resto deste parágrafo é de **2026-09-03** e não foi atualizado desde então — leia como de época: **F141–F146 fechados** em tres PRs (#28 bloco fuso+freshness; #29 structural_change; #30 fuso do upload offline) mais o F142 (whitelist de client_type) direto na main. Ontem, 02/09: **+F131–F140** da sessao de campo MO-JP, fechados no PR #27 e nos fixes seguintes. Narrativa completa e licoes de metodo no handoff [`session-2026-09-02-03-handoff.md`](session-2026-09-02-03-handoff.md); o historico anterior (F82–F130, 08/14 a 08/20) esta nos handoffs de 08-14-15 e 08-19.
+> **Last updated:** 2026-09-30 — **F200 verificado em produção** (24 h: zero reconexão, zero erro, +8 ms no p50 do health) e o "Fora" do **F203** corrigido na mesma branch; **F203** e **F202** em produção (`00140`, `00141`), com smoke de leitura. De 2026-09-29: **F202** (pacing de orçamento compartilhado) e **F203** (retirada do pool presa sem limite num socket mudo; corrige os "30 s" do F200), deployados em 30/09. De 2026-09-28: **F199** (pacing pelos dias fechados), **F200** (infra e guards) e **F201** (data inválida virava "Erro interno"), no fim do arquivo. De 2026-09-20: **F180–F185**: sprint de RSA (F180 em parte; F181/F182/F183/F184 corrigidos), a 2ª instância do F182, e dois ABERTOS: **F185** (limitação da API, sem correção possível deste lado) e **F186** (o smoke autenticado do `/mcp` está desarmado por token vencido). O resto deste parágrafo é de **2026-09-03** e não foi atualizado desde então — leia como de época: **F141–F146 fechados** em tres PRs (#28 bloco fuso+freshness; #29 structural_change; #30 fuso do upload offline) mais o F142 (whitelist de client_type) direto na main. Ontem, 02/09: **+F131–F140** da sessao de campo MO-JP, fechados no PR #27 e nos fixes seguintes. Narrativa completa e licoes de metodo no handoff [`session-2026-09-02-03-handoff.md`](session-2026-09-02-03-handoff.md); o historico anterior (F82–F130, 08/14 a 08/20) esta nos handoffs de 08-14-15 e 08-19.
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
@@ -5832,7 +5832,7 @@ fica contado duas vezes). Defeito anterior a este, frente própria.
 
 ---
 
-## F200 (MEDIUM, ✅ CORRIGIDO NO CÓDIGO 2026-09-28 — verificação de produção pendente) — infra e guards: o resto dos sub-projetos 3 e 4 da varredura de 21/09
+## F200 (MEDIUM, ✅ CORRIGIDO 2026-09-28, VERIFICADO EM PRODUÇÃO 2026-09-30) — infra e guards: o resto dos sub-projetos 3 e 4 da varredura de 21/09
 
 > **Como apareceu:** varredura de 21/09 (relatórios 04 e 05,
 > [`_archive/varredura-2026-09-21/`](../_archive/varredura-2026-09-21/README.md)), conferida no
@@ -5870,10 +5870,23 @@ fica contado duas vezes). Defeito anterior a este, frente própria.
 - **05#4b** — o export CSV do audit tem teto de 50.000 linhas (`LIMIT teto+1`) e marca
   `EXPORT CORTADO`; medido: 5.795 linhas em 365 dias, então o teto não corta nada hoje.
 
-**Verificação de produção (spec §6), pendente em 28/09:** latência de 24 h contra a base medida
-antes do deploy (p50 16,9 ms, p95 708 ms, serviço inteiro), eventos de reconexão (base: 2 em 7
-dias), primeiro acesso da manhã sem 500 e o job das 09:00 UTC de 29/09, o primeiro com o pool
-novo.
+**✅ Verificado em produção (spec §6), 24 h de 29/09 00:08 a 30/09 00:08 UTC** (revisão `00139`):
+
+- **Reconexão e erro:** zero `db_conexao_testada_reconectou`, zero `db_dropped_connection_retry`
+  (o mesmo filtro acha os 2 da base, de 24 e 25/09), zero `severity>=ERROR` e zero 5xx em ~2.500
+  requests.
+- **Latência, pelos logs de request por rota** (`/health?deep=1` é o A/B limpo: mesma requisição,
+  carga constante, uma retirada): p50 16,0 → **24,1 ms**, p95 80,2 → 95,1 ms — **+8 ms, uma ida e
+  volta**, o custo do `SELECT 1`. `POST /mcp`: p50 70,2 → 72,6 ms (o p95 depende de quantas tools
+  reais esperaram a API do Google no dia, e não compara). ⚠️ A base escrita aqui em 28/09 (p50 16,9 /
+  p95 708 ms) saiu da métrica do serviço, que agrega percentil entre séries — no dia 29 ela deu p95
+  936 onde os logs davam 153; foi descartada.
+- **Job das 09:00 UTC de 29/09**, o primeiro com o pool novo e o desempate por `id`: `success` em 37 s,
+  sem retry.
+- **Primeiro acesso da manhã:** sem 500 — mas o cenário do F76 não foi exercitado: o
+  `/health?deep=1` bate a cada ~50 s, e não houve conexão ociosa por horas.
+- O que o teste da retirada ainda não cobria (socket buraco-negro, na retirada e no meio do uso)
+  foi medido no mesmo dia e virou o **F203**.
 
 **Fora, com o motivo:**
 
@@ -5916,7 +5929,7 @@ PT-BR chega.
 
 ---
 
-## F202 (MEDIUM, ✅ CORRIGIDO NO CÓDIGO 2026-09-29 — deploy pendente) — o `get_budget_pacing` comparava cada campanha com o orçamento compartilhado inteiro
+## F202 (MEDIUM, ✅ CORRIGIDO 2026-09-30, revisão `00141`) — o `get_budget_pacing` comparava cada campanha com o orçamento compartilhado inteiro
 
 > **Como apareceu:** no F199 (28/09), medindo o pacing na Mestre da Obra – João Pessoa — ficou
 > no "Fora" dele.
@@ -5952,7 +5965,7 @@ passa a ver `null` em orçamento compartilhado — cabe no ajuste do `null` já 
 
 ---
 
-## F203 (MEDIUM, ✅ CORRIGIDO NO CÓDIGO 2026-09-29 — deploy pendente) — um socket que não responde nem fecha prendia a retirada do pool sem limite; o F200 dizia "30 s"
+## F203 (MEDIUM, ✅ CORRIGIDO 2026-09-30, revisão `00140`) — um socket que não responde nem fecha prendia a retirada do pool sem limite; o F200 dizia "30 s"
 
 > **Como apareceu:** ao desenhar a 1ª recomendação da revisão final do F200 (timeout curto no
 > `SELECT 1` da retirada), lendo o código do asyncpg 0.31 instalado.
@@ -5987,8 +6000,18 @@ própria tarefa. O guard passou a vigiar **de fora** (tarefa separada e `asyncio
 no estouro, `pool.terminate()` e `pytest.fail`), e o fechamento do pool no helper também ganhou
 prazo. No CI, um guard que trava vira job pendurado até o timeout do runner.
 
-**Fora, com o motivo:** a mesma cadeia no caminho da **query** do chamador (socket que emudece no
-meio da query, depois do teste): o `command_timeout` de 30 s estoura e a devolução da conexão ao
-pool pode esperar do mesmo jeito — não medido, frente própria se o buraco-negro aparecer em
-produção. As outras duas recomendações da revisão final (`expire_connections` na primeira queda;
-repetir em qualquer erro) seguem sem dado que as peça: zero quedas desde o deploy de 29/09.
+**✅ E a mesma cadeia no caminho da query — medida e corrigida no mesmo dia** (`91c0c9f`, mesma
+branch): com o socket mudo no meio do uso, a consulta estoura em 30 s, mas a **devolução** ao pool
+espera o fim do cancelamento sem prazo, sob `shield` — presa aos 90 s. Com `asyncio.timeout` em
+volta (o formato do `/health?deep=1`), quem chamou ficava preso junto e a vaga do pool, perdida;
+com as 5 vagas assim, nenhuma retirada volta. O `_RetiradaValidada.__aexit__` chama `terminate()`
+antes de devolver quando o corpo sai por `TimeoutError` ou `CancelledError` — o padrão de
+descartar conexão devolvida em estado duvidoso (o `psycopg_pool` faz o mesmo; o asyncpg, quando o
+reset falha). Custo: reabrir uma conexão saudável cuja query estourou ou foi cancelada. Guards:
+unitário (descarta em timeout e cancelamento, não em saída normal nem em outro erro) e dois de
+integração com pool de 1 vaga, provando que a vaga volta; **seis sabotagens** na branch (três de
+cada parte) derrubam cada uma o seu par.
+
+**Fora, com o motivo:** as outras duas recomendações da revisão final (`expire_connections` na
+primeira queda; repetir em qualquer erro) seguem sem dado que as peça: zero quedas em 24 h de
+produção com o pool validado (verificação do F200).
