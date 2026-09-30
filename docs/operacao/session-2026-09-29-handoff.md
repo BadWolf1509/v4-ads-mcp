@@ -10,8 +10,8 @@
 |---|---|---|
 | #135 | F199, F200, F201 no catálogo | não deploya (docs) |
 | #136 | F202, F203 no catálogo; o "30 s" do F200 corrigido | não deploya (docs) |
-| `fix/pacing-orcamento-compartilhado` (`1082e61`) | **F202** | **commitado, sem push** |
-| `fix/pool-timeout-no-teste` (`bc7e343`, `91c0c9f`) | **F203** (retirada e devolução) | **commitado, sem push** |
+| #139 (`fix/pacing-orcamento-compartilhado`) | **F202** | **`00141-2gn`** (30/09 ~00:40 UTC), smoke ok |
+| #138 (`fix/pool-timeout-no-teste`) | **F203** (retirada e devolução) | **`00140-8xb`**, smoke ok |
 
 Os worktrees das duas branches estão em `D:/v4-ads-mcp-wt/pacing-compartilhado` e
 `D:/v4-ads-mcp-wt/pool-timeout`. Nenhum deploy hoje: a janela de 24 h da verificação fecha em
@@ -45,8 +45,8 @@ Os worktrees das duas branches estão em `D:/v4-ads-mcp-wt/pacing-compartilhado`
 
 ## Pendente
 
-- **Hoje à noite (depois de 00:10 UTC):** leitura das 24 h (`latencia_por_rota.py`) e PR de docs
-  fechando o F200; depois, deploy do F203 e do F202, cada um com autorização nominal.
+- ✅ **Feito na noite de 29/09:** leitura das 24 h (F200 verificado: zero reconexão, +8 ms no p50
+  do health), deploy do F203 e do F202 com smoke de leitura, e o PR de docs que registra tudo.
 - **30/09:** 2ª ausência das 4 contas; **01/10:** revogação + smoke do dia 1; **04/10:** buckets e
   Fase 2B.
 - **Do Wellington:** ajuste do `null` no plugin (agora com o pacing), Full Access Meta, identidade
