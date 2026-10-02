@@ -35,12 +35,21 @@ em `.superpowers/verificacao-2026-09-29/` (`latencia_por_rota.py`, `contas_no_bm
 eram sem limite) — e o **F202** — o pacing mede orçamento compartilhado pelo orçamento
 (percentuais `null` na campanha, bloco `orcamentos_compartilhados`).
 
-**Com data:**
-- **30/09, 09:00 UTC** — 2ª ausência das 4 contas Meta no job (`missed_syncs=2`).
-- **01/10, 09:00 UTC** — as 4 contas desativadas e os **16 grants revogados** (a 1ª ausência
-  entrou em 29/09, como previsto; teto de remoção 5 com 25 ativas, não barra). Smoke de leitura do
-  F196 (`THIS_MONTH` devolve o dia 1), do F199 (projeção `null`) e do F202 (o bloco do orçamento também com projeção `null`).
-- **04/10** — remedição dos buckets e do uso da Fase 2B por gestor.
+**Conferido em 30/09–01/10:** as 4 contas Meta que saíram do BM foram **desativadas no job de 01/10,
+com os 16 grants revogados** (ausências em 29 e 30/09; zero grant vivo). **Smoke do dia 1** (Mestre da
+Obra – João Pessoa, 01/10 22h): `THIS_MONTH` devolve `01/10–01/10` com dados (F196); pacing com
+`inclui_dia_corrente: true` e projeção `null` (F199), também no bloco do orçamento compartilhado
+(F202, R$ 299,42 = a soma das duas campanhas). **1ª queda real pega pelo pool validado:** 30/09
+02:22 UTC, `db_conexao_testada_reconectou` (`connection was closed in the middle of operation`) e o
+`/health?deep=1` daquele instante devolveu 200 em 90 ms (F200).
+
+**Com data:** **04/10** — remedição dos buckets e do uso da Fase 2B por gestor.
+
+**Uso real, 30 dias até 30/09** (`audit_log`): 1.896 chamadas, 4 gestores (uso de verdade: Wellington
+e `pedro.vytor`). O **`run_gaql` é 38%** (725) — 259 do Pedro em rajadas de ~38 por sessão, roteiro
+que o skill `analise-performance-google-ads` do plugin prescreve em GAQL cru: **conversões por ação
+de conversão** (94 consultas), totais da conta em janela longa e **parcela de impressão** — nenhuma
+tool curada cobre as duas primeiras dimensões. É a próxima frente (ordem de ataque abaixo).
 
 ⚠️ **`deploy: skipped` não significa "PR de documentação":** o gate do F138 pula só push
 exclusivamente em `docs/` e markdown; `tests/` publica revisão. **Cheque a revisão servindo.**
@@ -97,10 +106,12 @@ Relatórios e destino de cada achado em
 
 Medir a exposição, dar dado às decisões, consertos pequenos, e só então specs — um por vez.
 
-1. **Smoke de 01/10** (dia 1) e a revogação das 4 contas Meta.
-2. **Fase 2B** — em 04/10, o uso por gestor, junto dos buckets.
-3. **`recommendation_subscription`** — spec da tool de leitura.
-4. **F187** — o remédio do resumo × detalhe.
+1. **Conversões por ação e parcela de impressão curadas** — spec; a lacuna que o uso real mede.
+2. **Plugin na fonte** (com o Wellington): ajuste do `null` e troca do GAQL cru do skill pelas tools
+   curadas — destrava também a Fase 2B.
+3. **Fase 2B** — em 04/10, o uso por gestor, junto dos buckets.
+4. **`recommendation_subscription`** — spec da tool de leitura.
+5. **F187** — o remédio do resumo × detalhe.
 
 ### Os abertos, um por linha
 
