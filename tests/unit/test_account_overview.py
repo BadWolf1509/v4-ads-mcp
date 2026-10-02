@@ -35,6 +35,9 @@ async def test_overview_includes_tracking_warning_on_1_to_1():
             "cost_micros": 1_935_680_000,
             "conversions": 93.0,
             "conversions_value": 93.0,  # 1:1 placeholder
+            "parcela_impressao": None,
+            "perdida_orcamento": None,
+            "perdida_classificacao": None,
         }
     ]
     fake_rows_prev = [
@@ -44,6 +47,9 @@ async def test_overview_includes_tracking_warning_on_1_to_1():
             "cost_micros": 1_435_570_000,
             "conversions": 727.49,
             "conversions_value": 727.49,  # also 1:1
+            "parcela_impressao": None,
+            "perdida_orcamento": None,
+            "perdida_classificacao": None,
         }
     ]
 
@@ -75,6 +81,9 @@ async def test_overview_omits_tracking_warning_on_real_tracking():
             "cost_micros": 500_000_000,
             "conversions": 10.0,
             "conversions_value": 2500.0,  # real revenue tracking
+            "parcela_impressao": None,
+            "perdida_orcamento": None,
+            "perdida_classificacao": None,
         }
     ]
     fake_rows_prev = [
@@ -84,6 +93,9 @@ async def test_overview_omits_tracking_warning_on_real_tracking():
             "cost_micros": 400_000_000,
             "conversions": 8.0,
             "conversions_value": 2000.0,
+            "parcela_impressao": None,
+            "perdida_orcamento": None,
+            "perdida_classificacao": None,
         }
     ]
 

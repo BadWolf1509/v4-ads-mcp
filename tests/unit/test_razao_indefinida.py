@@ -146,6 +146,9 @@ def test_overview_com_gasto_e_zero_conversao_nao_tem_cpa() -> None:
                 "cost_micros": 5_000_000,
                 "conversions": 0.0,
                 "conversions_value": 0.0,
+                "parcela_impressao": None,
+                "perdida_orcamento": None,
+                "perdida_classificacao": None,
             }
         ]
     )
@@ -173,6 +176,9 @@ def test_overview_com_custo_abaixo_de_meio_centavo_nao_quebra_o_roas() -> None:
                 "cost_micros": 3_000,
                 "conversions": 1.0,
                 "conversions_value": 50.0,
+                "parcela_impressao": None,
+                "perdida_orcamento": None,
+                "perdida_classificacao": None,
             }
         ]
     )
