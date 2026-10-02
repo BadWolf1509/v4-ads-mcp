@@ -8,6 +8,7 @@ from src.google_ads.queries._common import (
     arredondado,
     em_moeda,
     get_comparison_range,
+    metrica_opcional,
     micros_to_currency,
     razao,
     resolve_date_window,
@@ -66,8 +67,25 @@ _SCHEMA: dict[str, Any] = {
 }
 
 
+# Parcela de impressao na conta: os tres campos que `customer` aceita (spec 2026-10-02 §3.2).
+_PARCELA = ("parcela_impressao", "perdida_orcamento", "perdida_classificacao")
+
+
+def _parcela(rows: list[dict[str, Any]]) -> dict[str, float | None]:
+    """Parcela nao soma: vale a linha unica que `customer` sem segmento devolve.
+
+    Sem linha, ou com mais de uma, nao ha um valor a afirmar — `None`.
+    """
+    if len(rows) != 1:
+        return dict.fromkeys(_PARCELA)
+    return {k: rows[0].get(k) for k in _PARCELA}
+
+
 def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    """Sum the per-day rows into single totals + computed ratios.
+    """Sum the rows into single totals + computed ratios.
+
+    `customer` sem segmento devolve uma linha so; a soma cobre o caso de mais de uma,
+    e a parcela de impressao (que nao soma) fica com `_parcela`.
 
     Razao sem denominador vem `None` (indefinida), nao 0.0 (spec 2026-09-25,
     §4.2). Periodo sem nenhuma linha traz as contagens em 0 — verdade: nao houve
@@ -85,6 +103,7 @@ def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "average_cpc_brl": None,
             "cost_per_conversion_brl": None,
             "roas": None,
+            **_parcela(rows),
             "sem_dados_no_periodo": True,
         }
     impr = sum(r["impressions"] for r in rows)
@@ -104,6 +123,7 @@ def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
         # O guarda antigo era `if cost` (micros) e dividia por `micros_to_currency(cost)`:
         # custo abaixo de meio centavo arredonda para 0.0 e dava ZeroDivisionError.
         "roas": arredondado(razao(conv_val, micros_to_currency(cost)), 2),
+        **_parcela(rows),
         "sem_dados_no_periodo": False,
     }
     # UX-1: detect tracking placeholder (conversions_value == conversions exact 1:1)
@@ -121,6 +141,9 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         "cost_micros": int(m.cost_micros),
         "conversions": float(m.conversions),
         "conversions_value": float(m.conversions_value),
+        "parcela_impressao": metrica_opcional(m, "search_impression_share"),
+        "perdida_orcamento": metrica_opcional(m, "search_budget_lost_impression_share"),
+        "perdida_classificacao": metrica_opcional(m, "search_rank_lost_impression_share"),
     }
 
 
@@ -129,7 +152,12 @@ def _row_formatter(row: Any) -> dict[str, Any]:
     description=(
         "[DEFER] KPIs consolidados de uma conta Google Ads (impressoes, clicks, custo, "
         "conversoes, valor, CTR, CPC, CPA, ROAS) para um periodo, com comparativo "
-        "do periodo imediatamente anterior de mesma duracao."
+        "do periodo imediatamente anterior de mesma duracao. Parcela de impressao de "
+        "pesquisa da conta (fracao 0-1): `parcela_impressao`, `perdida_orcamento`, "
+        "`perdida_classificacao` — null quando o Google nao a mede (conta sem pesquisa, "
+        "periodo sem impressao); 0.0999 e o '< 10%' do Google. Topo e topo absoluto nao "
+        "existem no nivel da conta: estao nas linhas de get_performance_breakdown("
+        "level='campaign')."
         " Razao com denominador zero vem null (indefinida), nao 0."
         " filters_applied diz o recorte que a query aplicou."
     ),

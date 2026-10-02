@@ -61,6 +61,8 @@ CAMPO_PARA_CHAVE = {
     "campaign.id": "campaign_ids",
     # o gasto dos orcamentos compartilhados, lido do proprio orcamento
     "campaign_budget.id": "budget_ids",
+    # spec 2026-10-02: as flags so das acoes que o recorte por acao trouxe
+    "conversion_action.id": "conversion_action_ids",
 }
 
 
@@ -150,6 +152,10 @@ def _chamadas() -> dict[str, Callable[[], tuple[str, dict[str, Any]]]]:
 
     return {
         "campaign_performance_query": lambda: p.campaign_performance_query(_S, _E, "enabled", 10),
+        "conversion_action_breakdown_query": lambda: p.conversion_action_breakdown_query(
+            "campaign", _S, _E, "enabled", 10
+        ),
+        "conversion_action_flags_query": lambda: p.conversion_action_flags_query(["1", "2"]),
         "ad_group_performance_query": lambda: p.ad_group_performance_query(_S, _E, "enabled", 10),
         "device_performance_query": lambda: p.device_performance_query(_S, _E),
         "geo_performance_query": lambda: p.geo_performance_query(_S, _E, 10),
@@ -196,6 +202,10 @@ def _chamadas_sem_corte() -> list[tuple[str, Callable[[], tuple[str, dict[str, A
 
     return [
         ("campaign_performance_query", lambda: p.campaign_performance_query(_S, _E, "all", 10)),
+        (
+            "conversion_action_breakdown_query",
+            lambda: p.conversion_action_breakdown_query("account", _S, _E, "enabled", 10),
+        ),
         ("ad_group_performance_query", lambda: p.ad_group_performance_query(_S, _E, "all", 10)),
         ("ad_performance_query", lambda: t.ad_performance_query(_S, _E, "all", 10)),
         ("keyword_performance_query", lambda: t.keyword_performance_query(_S, _E, "all", 10)),
@@ -326,6 +336,12 @@ def test_o_breakdown_repassa_o_recorte_da_funcao_que_despacha() -> None:
         ("account", "device"): lambda: p.device_performance_query(_S, _E),
         ("account", "geo"): lambda: p.geo_performance_query(_S, _E, 10),
         ("account", "hourly"): lambda: p.hourly_performance_query(_S, _E),
+        ("account", "conversion_action"): lambda: p.conversion_action_breakdown_query(
+            "account", _S, _E, "enabled", 10
+        ),
+        ("campaign", "conversion_action"): lambda: p.conversion_action_breakdown_query(
+            "campaign", _S, _E, "enabled", 10
+        ),
     }
     for (level, breakdown), direto in esperados.items():
         assert (

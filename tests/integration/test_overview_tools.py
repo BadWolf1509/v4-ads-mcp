@@ -35,6 +35,9 @@ async def test_account_overview_aggregates_and_compares(bound_context):
                 "cost_micros": 100_000_000,
                 "conversions": 5.0,
                 "conversions_value": 500.0,
+                "parcela_impressao": None,
+                "perdida_orcamento": None,
+                "perdida_classificacao": None,
             },
             {
                 "impressions": 2000,
@@ -42,6 +45,9 @@ async def test_account_overview_aggregates_and_compares(bound_context):
                 "cost_micros": 200_000_000,
                 "conversions": 10.0,
                 "conversions_value": 1000.0,
+                "parcela_impressao": None,
+                "perdida_orcamento": None,
+                "perdida_classificacao": None,
             },
         ],
         # previous period rows
@@ -52,6 +58,9 @@ async def test_account_overview_aggregates_and_compares(bound_context):
                 "cost_micros": 150_000_000,
                 "conversions": 7.0,
                 "conversions_value": 700.0,
+                "parcela_impressao": None,
+                "perdida_orcamento": None,
+                "perdida_classificacao": None,
             },
         ],
     ]

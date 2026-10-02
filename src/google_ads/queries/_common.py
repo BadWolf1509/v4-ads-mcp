@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 from datetime import date, timedelta
+from types import SimpleNamespace
 from typing import Any
 from uuid import UUID
 
@@ -205,6 +206,20 @@ def razao(numerador: float | None, denominador: float | None) -> float | None:
 def arredondado(valor: float | None, casas: int) -> float | None:
     """`round` que deixa `None` passar: a razao indefinida continua indefinida."""
     return None if valor is None else round(valor, casas)
+
+
+def metrica_opcional(m: Any, campo: str) -> float | None:
+    """Metrica `optional` do proto: o valor quando o Google a mandou, `None` quando nao.
+
+    Os `search_*impression_share` sao `optional` (v24): campanha que nao e de pesquisa, ou
+    de pesquisa sem impressao, vem SEM o campo — e ler o atributo direto devolve `0.0`, o
+    zero falso (medido em 02/10, spec 2026-10-02 §3.2). Presenca no proto-plus e `campo in
+    m` (e tambem no protobuf cru, sondado). O fallback por atributo e SO do `SimpleNamespace`
+    dos testes: qualquer outro objeto sem `in` levanta, porque `hasattr` seria sempre
+    verdadeiro e o zero falso voltaria em silencio (revisao 02/10, M6).
+    """
+    presente = hasattr(m, campo) if isinstance(m, SimpleNamespace) else campo in m
+    return float(getattr(m, campo)) if presente else None
 
 
 def em_moeda(valor_micros: float | None) -> float | None:

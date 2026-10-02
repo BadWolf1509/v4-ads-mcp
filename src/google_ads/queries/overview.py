@@ -11,6 +11,9 @@ def overview_query(date_start: date, date_end: date) -> tuple[str, dict[str, Any
 
     Nao filtra status: a docstring antiga dizia "across all enabled campaigns",
     e a query nunca teve esse corte.
+
+    Parcela de impressao: so os tres campos que `customer` aceita — topo e topo absoluto
+    sao recusados pela API neste recurso (medido em 02/10, spec 2026-10-02 §2).
     """
     gaql = f"""
         SELECT
@@ -21,7 +24,10 @@ def overview_query(date_start: date, date_end: date) -> tuple[str, dict[str, Any
           metrics.conversions_value,
           metrics.ctr,
           metrics.average_cpc,
-          metrics.cost_per_conversion
+          metrics.cost_per_conversion,
+          metrics.search_impression_share,
+          metrics.search_budget_lost_impression_share,
+          metrics.search_rank_lost_impression_share
         FROM customer
         WHERE {gaql_date_clause(date_start, date_end)}
     """.strip()

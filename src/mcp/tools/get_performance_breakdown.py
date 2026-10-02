@@ -7,8 +7,12 @@ meta_get_performance_breakdown (M.4): level + breakdown opcional.
 
 from typing import Any
 
+import structlog
+
+from src.google_ads.access import AccountAccessDeniedError
 from src.google_ads.account_clock import resolve_account_today
 from src.google_ads.ad_schedule import BLOCOS_PADRAO, DIAS, MetricCell, partition_by_blocks
+from src.google_ads.errors import GoogleAdsFriendlyError
 from src.google_ads.performance_breakdown import (
     _validate_combo,
     build_performance_breakdown_query,
@@ -16,10 +20,14 @@ from src.google_ads.performance_breakdown import (
 )
 from src.google_ads.queries._common import resolve_date_window
 from src.google_ads.queries.ad_schedule import day_hour_metrics_query, parse_day_hour_row
+from src.google_ads.queries.performance import conversion_action_flags_query
 from src.google_ads.reports import lookup_country_names, run_report
+from src.governance.rate_limit import QuotaExhausted
 from src.mcp.context import get_current
 from src.mcp.tools._common import aplicar_limite
 from src.mcp.tools._registry import register_tool
+
+log = structlog.get_logger(__name__)
 
 _DATE_PRESETS = [
     "TODAY",
@@ -45,15 +53,15 @@ _SCHEMA: dict[str, Any] = {
         },
         "breakdown": {
             "type": "string",
-            "enum": ["device", "geo", "hourly"],
-            "description": "Dimensao secundaria. So em level=account no v0, e (Task 5) tambem em level=campaign.",
+            "enum": ["device", "geo", "hourly", "conversion_action"],
+            "description": "Dimensao secundaria. device/geo/hourly/conversion_action em level=account; hourly (exige campaign_ids) e conversion_action em level=campaign.",
         },
         "campaign_ids": {
             "type": "array",
             "items": {"type": "string", "pattern": "^[0-9]+$"},
             "maxItems": 20,
             "uniqueItems": True,
-            "description": "Obrigatorio so pra level='campaign'+breakdown='hourly': a conjunta dia x hora e cara e nao roda sobre a conta inteira. Ignorado nos demais levels.",
+            "description": "Obrigatorio so pra level='campaign'+breakdown='hourly': a conjunta dia x hora e cara e nao roda sobre a conta inteira. Ignorado em qualquer outra combinacao, inclusive campaign+conversion_action (que traz todas as campanhas).",
         },
         "date_range": {
             "type": "string",
@@ -99,13 +107,105 @@ _ORDEM_DO_DIA: dict[str, int] = {dia: i for i, dia in enumerate(DIAS)}
 # `teto = 168 * len(campaign_ids)`, teto da grade, nao do gestor.
 _CELULAS_DA_GRADE = 7 * 24
 
+# Acao que o recurso `conversion_action` nao devolve (medido em 02/10: "Conversation
+# started", gerenciada pelo Google ou de outra conta). Flag `null` com este motivo — nunca
+# `false`: ausencia de medicao nao e resposta (F191). Spec 2026-10-02 §3.1.
+_MOTIVO_SEM_FLAG = (
+    "acao nao listada em conversion_action (gerenciada pelo Google ou de outra conta)"
+)
+# As duas flags sao `optional` no v24: acao listada pode vir sem uma delas, e ler o atributo
+# daria `False` (F191). O que veio vale; o que nao veio e `null` com este motivo.
+_MOTIVO_FLAG_NAO_INFORMADA = "flag nao informada pelo Google para esta acao"
+# Id vazio ou nao numerico (o `int()` da consulta recusaria), ou alem das 1000 primeiras acoes
+# distintas (teto estrutural da consulta): sem consulta, sem flag — nunca a tool inteira caindo.
+_MOTIVO_ID_FORA_DA_CONSULTA = (
+    "acao fora da consulta ao cadastro (id invalido ou alem de 1000 acoes)"
+)
+# Motivo FIXO: o texto cru do erro (host do banco, SQL, driver) nao chega ao gestor — o mesmo
+# scrub do `_error_envelope` do servidor. So o erro escrito para ele (friendly, quota) vai junto.
+_MOTIVO_CONSULTA_FALHOU = "consulta ao cadastro das acoes falhou"
+_TETO_DE_ACOES = 1000
+
+
+def _flag_opcional(ca: Any, campo: str) -> bool | None:
+    return bool(getattr(ca, campo)) if campo in ca else None
+
+
+def _flag_da_acao(row: Any) -> dict[str, Any]:
+    ca = row.conversion_action
+    return {
+        "conversion_action_id": str(ca.id),
+        "include_in_conversions_metric": _flag_opcional(ca, "include_in_conversions_metric"),
+        "primary_for_goal": _flag_opcional(ca, "primary_for_goal"),
+    }
+
+
+def _sem_flags(rows: list[dict[str, Any]], motivo: str) -> None:
+    for r in rows:
+        r["conta_em_conversoes"] = None
+        r["primary_for_goal"] = None
+        r["flags_motivo"] = motivo
+
+
+def _junta_flags(rows: list[dict[str, Any]], flags: dict[str, dict[str, Any]]) -> None:
+    for r in rows:
+        f = flags.get(r["conversion_action_id"])
+        if f is None:
+            _sem_flags([r], _MOTIVO_SEM_FLAG)
+            continue
+        r["conta_em_conversoes"] = f["include_in_conversions_metric"]
+        r["primary_for_goal"] = f["primary_for_goal"]
+        faltou = r["conta_em_conversoes"] is None or r["primary_for_goal"] is None
+        r["flags_motivo"] = _MOTIVO_FLAG_NAO_INFORMADA if faltou else None
+
+
+async def _flags_das_acoes(customer_id: str, rows: list[dict[str, Any]]) -> None:
+    """Segunda consulta: o cadastro das acoes das linhas ja cortadas (sem a sentinela).
+
+    Nao audita de proposito — leitura de enriquecimento, como o `lookup_country_names` do
+    `geo`; a principal ja foi auditada. E nunca derruba a resposta: as conversoes ja foram
+    lidas, e flag que nao se mediu sai `null` com motivo (revisao 02/10, I1 e M5).
+    """
+    ids = list(dict.fromkeys(r["conversion_action_id"] for r in rows))
+    consultados = [i for i in ids if i.isascii() and i.isdigit()][:_TETO_DE_ACOES]
+    na_consulta = set(consultados)
+    dentro = [r for r in rows if r["conversion_action_id"] in na_consulta]
+    _sem_flags(
+        [r for r in rows if r["conversion_action_id"] not in na_consulta],
+        _MOTIVO_ID_FORA_DA_CONSULTA,
+    )
+    if not consultados:
+        return
+    ctx = get_current()
+    gaql_flags, _ = conversion_action_flags_query(consultados)
+    try:
+        flags = await run_report(
+            manager_id=ctx.manager_id,
+            session_id=ctx.session_id,
+            customer_id=customer_id,
+            query=gaql_flags,
+            row_formatter=_flag_da_acao,
+            operation_name="get_performance_breakdown",
+        )
+    except AccountAccessDeniedError:
+        raise  # acesso negado nao e flag desconhecida: o envelope do servidor responde `denied`
+    except (GoogleAdsFriendlyError, QuotaExhausted) as e:
+        log.info("flags_das_acoes_falharam", customer_id=customer_id, error=str(e))
+        _sem_flags(dentro, f"{_MOTIVO_CONSULTA_FALHOU}: {e}")
+        return
+    except Exception:
+        log.exception("flags_das_acoes_falharam", customer_id=customer_id)
+        _sem_flags(dentro, _MOTIVO_CONSULTA_FALHOU)
+        return
+    _junta_flags(dentro, {f["conversion_action_id"]: f for f in flags})
+
 
 @register_tool(
     name="get_performance_breakdown",
     description=(
         "[CORE] Performance Google quebrada por nivel + dimensao opcional. "
         "level: campaign|ad_group|ad|keyword|audience (rows por entidade) OU "
-        "account+breakdown (device|geo|hourly). Metricas: impressions, clicks, "
+        "account+breakdown (device|geo|hourly|conversion_action). Metricas: impressions, clicks, "
         "cost_brl, conversions, conversions_value_brl, ctr, cpc_brl. Ordenado por "
         "custo desc. Excecao: level='campaign'+breakdown='hourly' tambem funciona, "
         "mas exige `campaign_ids` (ate 20) — a conjunta dia x hora e cara e nao roda "
@@ -118,7 +218,8 @@ _CELULAS_DA_GRADE = 7 * 24
         "`limit` maior nao muda nada, a grade vem INTEIRA, ordenada por campanha, dia "
         "e hora (F188), e `truncated` fica `false`. Nos DEMAIS niveis `truncated: "
         "true` diz que havia MAIS linhas do que o teto e a lista foi cortada no topo "
-        "de gasto — la sim peca um `limit` maior ou filtre. EXCECAO: em "
+        "da ordenacao (custo; all_conversions no recorte por acao) — la sim peca um "
+        "`limit` maior ou filtre. EXCECAO: em "
         "`account+hourly` o teto tambem e ESTRUTURAL (168 celulas, 7 dias x 24h) e o "
         "`limit` NAO se aplica — a grade vem inteira, em ordem cronologica. "
         "ATENCAO (F56): em `level='keyword'` a resposta "
@@ -128,6 +229,24 @@ _CELULAS_DA_GRADE = 7 * 24
         "devolve negativa, mas por outro motivo: ele exige `quality_score IS NOT "
         "NULL`, e criterio negativo nao tem indice de qualidade). Para visao geral da "
         "conta com comparativo use get_account_overview."
+        " As linhas de level='campaign' sem breakdown trazem a parcela de impressao de"
+        " pesquisa (fracao"
+        " 0-1): parcela_impressao, perdida_orcamento, perdida_classificacao, parcela_topo,"
+        " parcela_topo_absoluto — null quando o Google nao a mede (campanha que nao e de"
+        " pesquisa, ou sem impressao); 0.0999 e o '< 10%' do Google."
+        " breakdown='conversion_action' (level account ou campaign): uma linha por acao de"
+        " conversao (em campaign, uma por par campanha x acao — o `limit` e o `truncated`"
+        " contam pares), com conversions, all_conversions e os dois valores — sem custo: a"
+        " API nao cruza custo com acao, entao nao ha CPA por acao. conta_em_conversoes e"
+        " primary_for_goal vem do cadastro da acao, que segue as metas padrao da conta: no"
+        " recorte da conta, `conversions` soma so as acoes com conta_em_conversoes=true e"
+        " all_conversions soma todas. Numa campanha com meta propria (nao medido) a flag"
+        " da conta pode nao valer: conversions > 0 com a flag false indica que a acao conta"
+        " para aquela campanha; nao corrija a flag por isso (ela muda a conta inteira)."
+        " Flag que nao se mediu vem null e flags_motivo explica (acao fora do cadastro,"
+        " flag nao informada, ou falha da consulta ao cadastro). Ordenado por"
+        " all_conversions desc. `status` filtra so em level=campaign (em account e"
+        " ignorado)."
         " Razao com denominador zero vem null (indefinida), nao 0."
         " Com level=campaign e breakdown=hourly a resposta nao traz filters_applied"
         " (grade dia x hora)."
@@ -245,6 +364,10 @@ async def get_performance_breakdown(args: dict[str, Any]) -> dict[str, Any]:
 
     teto = _CELULAS_DA_GRADE if breakdown == "hourly" else limit
     rows, truncado = aplicar_limite(rows, teto)
+
+    # Depois do corte: a sentinela nao entra na consulta das flags.
+    if breakdown == "conversion_action" and rows:
+        await _flags_das_acoes(customer_id, rows)
 
     if breakdown == "geo":
         country_ids = {r["breakdown"]["country_criterion_id"] for r in rows}
