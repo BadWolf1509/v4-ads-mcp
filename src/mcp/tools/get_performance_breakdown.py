@@ -16,6 +16,7 @@ from src.google_ads.performance_breakdown import (
 )
 from src.google_ads.queries._common import resolve_date_window
 from src.google_ads.queries.ad_schedule import day_hour_metrics_query, parse_day_hour_row
+from src.google_ads.queries.performance import conversion_action_flags_query
 from src.google_ads.reports import lookup_country_names, run_report
 from src.mcp.context import get_current
 from src.mcp.tools._common import aplicar_limite
@@ -45,8 +46,8 @@ _SCHEMA: dict[str, Any] = {
         },
         "breakdown": {
             "type": "string",
-            "enum": ["device", "geo", "hourly"],
-            "description": "Dimensao secundaria. So em level=account no v0, e (Task 5) tambem em level=campaign.",
+            "enum": ["device", "geo", "hourly", "conversion_action"],
+            "description": "Dimensao secundaria. device/geo/hourly em level=account; hourly (com campaign_ids) e conversion_action tambem em level=campaign.",
         },
         "campaign_ids": {
             "type": "array",
@@ -99,6 +100,35 @@ _ORDEM_DO_DIA: dict[str, int] = {dia: i for i, dia in enumerate(DIAS)}
 # `teto = 168 * len(campaign_ids)`, teto da grade, nao do gestor.
 _CELULAS_DA_GRADE = 7 * 24
 
+# Acao que o recurso `conversion_action` nao devolve (medido em 02/10: "Conversation
+# started", gerenciada pelo Google ou de outra conta). Flag `null` com este motivo — nunca
+# `false`: ausencia de medicao nao e resposta (F191). Spec 2026-10-02 §3.1.
+_MOTIVO_SEM_FLAG = (
+    "acao nao listada em conversion_action (gerenciada pelo Google ou de outra conta)"
+)
+
+
+def _flag_da_acao(row: Any) -> dict[str, Any]:
+    ca = row.conversion_action
+    return {
+        "conversion_action_id": str(ca.id),
+        "include_in_conversions_metric": bool(ca.include_in_conversions_metric),
+        "primary_for_goal": bool(ca.primary_for_goal),
+    }
+
+
+def _junta_flags(rows: list[dict[str, Any]], flags: dict[str, dict[str, Any]]) -> None:
+    for r in rows:
+        f = flags.get(r["conversion_action_id"])
+        if f is None:
+            r["conta_em_conversoes"] = None
+            r["primary_for_goal"] = None
+            r["flags_motivo"] = _MOTIVO_SEM_FLAG
+        else:
+            r["conta_em_conversoes"] = f["include_in_conversions_metric"]
+            r["primary_for_goal"] = f["primary_for_goal"]
+            r["flags_motivo"] = None
+
 
 @register_tool(
     name="get_performance_breakdown",
@@ -128,6 +158,17 @@ _CELULAS_DA_GRADE = 7 * 24
         "devolve negativa, mas por outro motivo: ele exige `quality_score IS NOT "
         "NULL`, e criterio negativo nao tem indice de qualidade). Para visao geral da "
         "conta com comparativo use get_account_overview."
+        " As linhas de level='campaign' trazem a parcela de impressao de pesquisa (fracao"
+        " 0-1): parcela_impressao, perdida_orcamento, perdida_classificacao, parcela_topo,"
+        " parcela_topo_absoluto — null quando o Google nao a mede (campanha que nao e de"
+        " pesquisa, ou sem impressao); 0.0999 e o '< 10%' do Google."
+        " breakdown='conversion_action' (level account ou campaign): uma linha por acao de"
+        " conversao (por campanha x acao em campaign), com conversions, all_conversions e os"
+        " dois valores — sem custo: a API nao cruza custo com acao, entao nao ha CPA por"
+        " acao. `conversions` so soma as acoes com conta_em_conversoes=true; all_conversions"
+        " soma todas. conta_em_conversoes e primary_for_goal vem do cadastro da acao; acao"
+        " fora do cadastro traz os dois null e flags_motivo explica. Ordenado por"
+        " all_conversions desc."
         " Razao com denominador zero vem null (indefinida), nao 0."
         " Com level=campaign e breakdown=hourly a resposta nao traz filters_applied"
         " (grade dia x hora)."
@@ -245,6 +286,20 @@ async def get_performance_breakdown(args: dict[str, Any]) -> dict[str, Any]:
 
     teto = _CELULAS_DA_GRADE if breakdown == "hourly" else limit
     rows, truncado = aplicar_limite(rows, teto)
+
+    # Depois do corte: a sentinela nao entra na consulta das flags.
+    if breakdown == "conversion_action" and rows:
+        ids = list(dict.fromkeys(r["conversion_action_id"] for r in rows))
+        gaql_flags, _ = conversion_action_flags_query(ids)
+        flags = await run_report(
+            manager_id=ctx.manager_id,
+            session_id=ctx.session_id,
+            customer_id=customer_id,
+            query=gaql_flags,
+            row_formatter=_flag_da_acao,
+            operation_name="get_performance_breakdown",
+        )
+        _junta_flags(rows, {f["conversion_action_id"]: f for f in flags})
 
     if breakdown == "geo":
         country_ids = {r["breakdown"]["country_criterion_id"] for r in rows}
