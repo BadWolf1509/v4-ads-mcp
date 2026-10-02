@@ -34,6 +34,8 @@ from __future__ import annotations
 from datetime import date
 from types import SimpleNamespace
 
+from freezegun import freeze_time
+
 from src.google_ads.drift_detection import (
     ChangeEventRow,
     detect_drift,
@@ -227,9 +229,14 @@ def test_ponta_a_ponta_formatter_converter_detector() -> None:
 # --- pelo TOOL inteiro: a serializacao e manual, campo a campo ----------------
 
 
+@freeze_time("2026-09-03 12:00:00")
 async def test_a_transicao_e_a_flag_chegam_ao_json_do_detect_drift() -> None:
     """detect_drift monta o dict de cada change a mao. Se esquecer os campos novos,
     o dataclass tem a transicao e o gestor nao ve. So um teste pelo tool pega isso.
+
+    Relogio congelado no dia seguinte a medicao: a janela fixa 01-02/09 cai fora da
+    retencao de 30 dias do change_event (F23) com o relogio real, e o teste quebrou em
+    02/10 sem mudanca nenhuma no codigo.
     """
     from unittest.mock import patch
     from uuid import uuid4

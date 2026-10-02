@@ -5883,8 +5883,11 @@ fica contado duas vezes). Defeito anterior a este, frente própria.
   936 onde os logs davam 153; foi descartada.
 - **Job das 09:00 UTC de 29/09**, o primeiro com o pool novo e o desempate por `id`: `success` em 37 s,
   sem retry.
-- **Primeiro acesso da manhã:** sem 500 — mas o cenário do F76 não foi exercitado: o
-  `/health?deep=1` bate a cada ~50 s, e não houve conexão ociosa por horas.
+- **Primeiro acesso da manhã:** sem 500 — mas o cenário do F76 não foi exercitado nas 24 h: o
+  `/health?deep=1` bate a cada ~50 s. **Exercitado logo depois:** em 30/09 02:22 UTC o Supabase
+  derrubou uma conexão ociosa (`connection was closed in the middle of operation`), o `SELECT 1` da
+  retirada a pegou (`db_conexao_testada_reconectou`) e o `/health?deep=1` daquele instante devolveu
+  200 em 90 ms.
 - O que o teste da retirada ainda não cobria (socket buraco-negro, na retirada e no meio do uso)
   foi medido no mesmo dia e virou o **F203**.
 
