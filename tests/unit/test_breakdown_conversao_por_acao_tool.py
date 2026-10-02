@@ -134,10 +134,18 @@ def test_description_nao_generaliza_a_flag_da_conta_para_a_campanha() -> None:
     """Revisao final I2: `include_in_conversions_metric` segue as metas PADRAO da conta (medido
     na conta, spec §2). Campanha com meta propria conta em `conversions` as acoes da meta dela —
     a description nao pode afirmar a regra da conta para a linha campanha x acao."""
-    d = _description()
+    d = _description().replace("`", "")
     assert "metas padrao da conta" in d
-    assert "meta propria" in d
-    assert "conversions so soma" not in d.replace("`", "")
+    # a regra medida (spec §2) so aparece amarrada ao recorte da conta
+    assert "no recorte da conta, conversions soma so as acoes com conta_em_conversoes=true" in d
+    assert d.count("conta_em_conversoes=true") == 1
+    # a campanha com meta propria nunca foi medida (re-revisao N3): indica, nao afirma
+    assert "meta propria" in d and "indica" in d and "nao medido" in d
+
+
+def test_description_diz_que_status_so_filtra_em_campanha() -> None:
+    """Re-revisao (t3-t4 M3 parcial): em account o `status` e ignorado sem aviso."""
+    assert "status filtra so em level=campaign" in _description().replace("`", "")
 
 
 def test_cabeca_da_description_lista_o_recorte_novo_e_a_ordem_dele() -> None:
@@ -228,20 +236,27 @@ async def test_id_nao_numerico_nao_vai_a_consulta_e_fica_null() -> None:
 
 
 async def test_acima_de_1000_acoes_a_consulta_leva_as_1000_primeiras() -> None:
+    import re
+
     from src.mcp.tools.get_performance_breakdown import _MOTIVO_ID_FORA_DA_CONSULTA
 
     linhas = [_acao(str(10_000 + i), f"a{i}", 1.0, 1.0) for i in range(1001)]
     out, rr = await _chamar([linhas, []], limit=2000)
     consulta = rr.await_args_list[1].kwargs["query"]
-    assert "10999" in consulta and "11000" not in consulta
+    lista = re.search(r"IN \(([^)]*)\)", consulta)
+    assert lista is not None
+    assert lista.group(1).split(", ") == [str(10_000 + i) for i in range(1000)]
     assert out["rows"][-1]["flags_motivo"] == _MOTIVO_ID_FORA_DA_CONSULTA
     assert len(out["rows"]) == 1001
 
 
-async def test_falha_da_consulta_das_flags_devolve_as_linhas_com_null() -> None:
+async def test_falha_interna_da_consulta_nao_vaza_a_mensagem() -> None:
+    """Re-revisao N1: o texto de erro cru (host do banco, SQL, driver) nao chega ao gestor —
+    o mesmo scrub do `_error_envelope` do servidor. O motivo e fixo."""
     from src.mcp.tools.get_performance_breakdown import _MOTIVO_CONSULTA_FALHOU
 
-    out, _ = await _chamar([_LINHAS, RuntimeError("quota")])
+    erro = ConnectionRefusedError("connect failed ('10.8.0.5', 5432)")
+    out, _ = await _chamar([_LINHAS, erro])
     assert [r["conversion_action_id"] for r in out["rows"]] == [
         "6827189000",
         "7028680990",
@@ -250,8 +265,40 @@ async def test_falha_da_consulta_das_flags_devolve_as_linhas_com_null() -> None:
     for r in out["rows"]:
         assert r["conta_em_conversoes"] is None
         assert r["primary_for_goal"] is None
-        assert r["flags_motivo"].startswith(_MOTIVO_CONSULTA_FALHOU)
-        assert "quota" in r["flags_motivo"]
+        assert r["flags_motivo"] == _MOTIVO_CONSULTA_FALHOU
+        assert "10.8.0.5" not in r["flags_motivo"]
+
+
+async def test_falha_amigavel_da_consulta_leva_a_mensagem_pt_br() -> None:
+    """Erro amigavel (Google em PT-BR, quota) foi escrito para o gestor: ele vai no motivo."""
+    from src.governance.rate_limit import QuotaExhausted
+    from src.mcp.tools.get_performance_breakdown import _MOTIVO_CONSULTA_FALHOU
+
+    out, _ = await _chamar([_LINHAS[:1], QuotaExhausted("cota diaria esgotada")])
+    r = out["rows"][0]
+    assert r["flags_motivo"].startswith(_MOTIVO_CONSULTA_FALHOU)
+    assert "cota diaria esgotada" in r["flags_motivo"]
+
+
+async def test_acesso_negado_na_consulta_das_flags_propaga() -> None:
+    """Acesso negado nao e flag desconhecida: o envelope do servidor responde `denied`."""
+    from src.google_ads.access import AccountAccessDeniedError
+
+    with pytest.raises(AccountAccessDeniedError):
+        await _chamar([_LINHAS[:1], AccountAccessDeniedError("sem acesso")])
+
+
+async def test_falha_so_marca_as_linhas_consultadas() -> None:
+    """Re-revisao N2: id invalido nunca foi consultado — o motivo dele e o seu, nao a falha."""
+    from src.mcp.tools.get_performance_breakdown import (
+        _MOTIVO_CONSULTA_FALHOU,
+        _MOTIVO_ID_FORA_DA_CONSULTA,
+    )
+
+    linhas = [_LINHAS[0], _acao("", "sem recurso", 1.0, 1.0)]
+    out, _ = await _chamar([linhas, RuntimeError("x")])
+    assert out["rows"][0]["flags_motivo"] == _MOTIVO_CONSULTA_FALHOU
+    assert out["rows"][1]["flags_motivo"] == _MOTIVO_ID_FORA_DA_CONSULTA
 
 
 # --- level='campaign' (revisao t3-t4 M2) ---------------------------------------------------

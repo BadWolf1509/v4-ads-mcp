@@ -7,8 +7,12 @@ meta_get_performance_breakdown (M.4): level + breakdown opcional.
 
 from typing import Any
 
+import structlog
+
+from src.google_ads.access import AccountAccessDeniedError
 from src.google_ads.account_clock import resolve_account_today
 from src.google_ads.ad_schedule import BLOCOS_PADRAO, DIAS, MetricCell, partition_by_blocks
+from src.google_ads.errors import GoogleAdsFriendlyError
 from src.google_ads.performance_breakdown import (
     _validate_combo,
     build_performance_breakdown_query,
@@ -18,9 +22,12 @@ from src.google_ads.queries._common import resolve_date_window
 from src.google_ads.queries.ad_schedule import day_hour_metrics_query, parse_day_hour_row
 from src.google_ads.queries.performance import conversion_action_flags_query
 from src.google_ads.reports import lookup_country_names, run_report
+from src.governance.rate_limit import QuotaExhausted
 from src.mcp.context import get_current
 from src.mcp.tools._common import aplicar_limite
 from src.mcp.tools._registry import register_tool
+
+log = structlog.get_logger(__name__)
 
 _DATE_PRESETS = [
     "TODAY",
@@ -114,7 +121,9 @@ _MOTIVO_FLAG_NAO_INFORMADA = "flag nao informada pelo Google para esta acao"
 _MOTIVO_ID_FORA_DA_CONSULTA = (
     "acao fora da consulta ao cadastro (id invalido ou alem de 1000 acoes)"
 )
-_MOTIVO_CONSULTA_FALHOU = "consulta ao cadastro das acoes falhou: "
+# Motivo FIXO: o texto cru do erro (host do banco, SQL, driver) nao chega ao gestor — o mesmo
+# scrub do `_error_envelope` do servidor. So o erro escrito para ele (friendly, quota) vai junto.
+_MOTIVO_CONSULTA_FALHOU = "consulta ao cadastro das acoes falhou"
 _TETO_DE_ACOES = 1000
 
 
@@ -159,26 +168,36 @@ async def _flags_das_acoes(customer_id: str, rows: list[dict[str, Any]]) -> None
     """
     ids = list(dict.fromkeys(r["conversion_action_id"] for r in rows))
     consultados = [i for i in ids if i.isascii() and i.isdigit()][:_TETO_DE_ACOES]
-    if consultados:
-        ctx = get_current()
-        gaql_flags, _ = conversion_action_flags_query(consultados)
-        try:
-            flags = await run_report(
-                manager_id=ctx.manager_id,
-                session_id=ctx.session_id,
-                customer_id=customer_id,
-                query=gaql_flags,
-                row_formatter=_flag_da_acao,
-                operation_name="get_performance_breakdown",
-            )
-        except Exception as e:
-            _sem_flags(rows, _MOTIVO_CONSULTA_FALHOU + str(e)[:200])
-            return
-        _junta_flags(rows, {f["conversion_action_id"]: f for f in flags})
-    fora = set(consultados)
+    na_consulta = set(consultados)
+    dentro = [r for r in rows if r["conversion_action_id"] in na_consulta]
     _sem_flags(
-        [r for r in rows if r["conversion_action_id"] not in fora], _MOTIVO_ID_FORA_DA_CONSULTA
+        [r for r in rows if r["conversion_action_id"] not in na_consulta],
+        _MOTIVO_ID_FORA_DA_CONSULTA,
     )
+    if not consultados:
+        return
+    ctx = get_current()
+    gaql_flags, _ = conversion_action_flags_query(consultados)
+    try:
+        flags = await run_report(
+            manager_id=ctx.manager_id,
+            session_id=ctx.session_id,
+            customer_id=customer_id,
+            query=gaql_flags,
+            row_formatter=_flag_da_acao,
+            operation_name="get_performance_breakdown",
+        )
+    except AccountAccessDeniedError:
+        raise  # acesso negado nao e flag desconhecida: o envelope do servidor responde `denied`
+    except (GoogleAdsFriendlyError, QuotaExhausted) as e:
+        log.info("flags_das_acoes_falharam", customer_id=customer_id, error=str(e))
+        _sem_flags(dentro, f"{_MOTIVO_CONSULTA_FALHOU}: {e}")
+        return
+    except Exception:
+        log.exception("flags_das_acoes_falharam", customer_id=customer_id)
+        _sem_flags(dentro, _MOTIVO_CONSULTA_FALHOU)
+        return
+    _junta_flags(dentro, {f["conversion_action_id"]: f for f in flags})
 
 
 @register_tool(
@@ -221,11 +240,13 @@ async def _flags_das_acoes(customer_id: str, rows: list[dict[str, Any]]) -> None
         " API nao cruza custo com acao, entao nao ha CPA por acao. conta_em_conversoes e"
         " primary_for_goal vem do cadastro da acao, que segue as metas padrao da conta: no"
         " recorte da conta, `conversions` soma so as acoes com conta_em_conversoes=true e"
-        " all_conversions soma todas. Numa campanha com meta propria vale a linha —"
-        " conversions > 0 diz que a acao conta para aquela campanha, mesmo com a flag"
-        " false; nao corrija a flag por isso (ela muda a conta inteira). Flag que nao se"
-        " mediu vem null e flags_motivo explica (acao fora do cadastro, flag nao"
-        " informada, ou falha da consulta ao cadastro). Ordenado por all_conversions desc."
+        " all_conversions soma todas. Numa campanha com meta propria (nao medido) a flag"
+        " da conta pode nao valer: conversions > 0 com a flag false indica que a acao conta"
+        " para aquela campanha; nao corrija a flag por isso (ela muda a conta inteira)."
+        " Flag que nao se mediu vem null e flags_motivo explica (acao fora do cadastro,"
+        " flag nao informada, ou falha da consulta ao cadastro). Ordenado por"
+        " all_conversions desc. `status` filtra so em level=campaign (em account e"
+        " ignorado)."
         " Razao com denominador zero vem null (indefinida), nao 0."
         " Com level=campaign e breakdown=hourly a resposta nao traz filters_applied"
         " (grade dia x hora)."
