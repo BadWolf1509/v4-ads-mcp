@@ -6,19 +6,24 @@
 > que fechou sai daqui:** o defeito vai para o catálogo, a narrativa para o arquivo
 > ([`_archive/`](../_archive/varredura-2026-09-06-frentes.md)), e aqui fica uma linha.
 
-> **Última sessão:** [`session-2026-09-29-handoff.md`](session-2026-09-29-handoff.md) — 29–30/09: a
-> verificação da infra e guards (F200), a saída das 4 contas Meta do BM, e o **F203** (pool) e o
-> **F202** (pacing), deployados na noite de 29/09. Antes:
-> [`session-2026-09-28-noite-handoff.md`](session-2026-09-28-noite-handoff.md) (F199, erro de data,
-> infra e guards).
+> **Última sessão:** [`session-2026-10-02-handoff.md`](session-2026-10-02-handoff.md) — 30/09–02/10:
+> revogação das 4 contas Meta e smoke do dia 1, o uso real de 30 dias, e a frente **conversões por
+> ação e parcela de impressão** (implementada e em revisão, **sem push**). Antes:
+> [`session-2026-09-29-handoff.md`](session-2026-09-29-handoff.md) (F200 verificado, F203, F202).
+
+> 🔴 **Frente em curso — retomar por aqui:** branch `spec/conversoes-e-parcela` no worktree
+> `D:/v4-ads-mcp-wt/conversoes`, **nada pushed**. O mapa de retomada (commits, revisões, achados a
+> corrigir, próximos passos) é o ledger
+> `.superpowers/sdd/2026-10-02-conversoes-e-parcela-de-impressao/progress.md` — no worktree e com
+> cópia no checkout principal. Spec e plano estão na branch.
 
 ---
 
-## Produção — medido em 2026-09-30
+## Produção — medido em 2026-10-02
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00141-2gn`**, 100% do tráfego (30/09 ~00:40 UTC) — o **#139** (F202, run `36652602902`), sobre o **#138** (F203, `00140-8xb`, run `36651474629`) e o **#133** (`00139`, infra e guards). Smokes de leitura dos dois: `/health?deep=1` ok com 68 tools; `get_my_rate_limit_status` e `list_my_accounts` sobre o pool novo; `get_budget_pacing` na Mestre da Obra – João Pessoa com o bloco do orçamento em R$ 8.795,07 / 94,6%. ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186) |
+| Revisão servindo | **`v4-ads-mcp-00142-fcx`**, 100% do tráfego (02/10) — o **#141** (só teste e docs: o teste do `detect_drift` com data fixa que quebrou sozinho em 02/10), sobre o **#139** (F202, `00141`) e o **#138** (F203, `00140`). ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186) |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
 | Catálogo | até **F203** (~6.000 linhas, 601 KB) |
@@ -29,11 +34,6 @@
 p95 80,2 → 95,1) — o A/B limpo. Latência se mede **por rota, pelos logs de request**
 (`latencia_por_rota.py`); a métrica do serviço agrega percentil entre séries e não compara. Scripts
 em `.superpowers/verificacao-2026-09-29/` (`latencia_por_rota.py`, `contas_no_bm.py`).
-
-**Novo em produção desde 29/09 à noite:** o **F203** — prazo de 2 s no `SELECT 1` da retirada com
-`terminate()`, e a conexão que sai do corpo por timeout ou cancelamento é descartada (as duas travas
-eram sem limite) — e o **F202** — o pacing mede orçamento compartilhado pelo orçamento
-(percentuais `null` na campanha, bloco `orcamentos_compartilhados`).
 
 **Conferido em 30/09–01/10:** as 4 contas Meta que saíram do BM foram **desativadas no job de 01/10,
 com os 16 grants revogados** (ausências em 29 e 30/09; zero grant vivo). **Smoke do dia 1** (Mestre da
@@ -48,8 +48,10 @@ Obra – João Pessoa, 01/10 22h): `THIS_MONTH` devolve `01/10–01/10` com dado
 **Uso real, 30 dias até 30/09** (`audit_log`): 1.896 chamadas, 4 gestores (uso de verdade: Wellington
 e `pedro.vytor`). O **`run_gaql` é 38%** (725) — 259 do Pedro em rajadas de ~38 por sessão, roteiro
 que o skill `analise-performance-google-ads` do plugin prescreve em GAQL cru: **conversões por ação
-de conversão** (94 consultas), totais da conta em janela longa e **parcela de impressão** — nenhuma
-tool curada cobre as duas primeiras dimensões. É a próxima frente (ordem de ataque abaixo).
+de conversão** (94 consultas), totais da conta em janela longa e **parcela de impressão**. É a frente
+em curso (acima). Medido no caminho: a nota do plugin de que "`metrics.conversions` por ação retorna
+mesmo se Secondary" está **errada** — por ação, `conversions` segue `include_in_conversions_metric`
+(a correção vai no texto do plugin 0.5.0, já redigido no ledger).
 
 ⚠️ **`deploy: skipped` não significa "PR de documentação":** o gate do F138 pula só push
 exclusivamente em `docs/` e markdown; `tests/` publica revisão. **Cheque a revisão servindo.**
@@ -106,7 +108,7 @@ Relatórios e destino de cada achado em
 
 Medir a exposição, dar dado às decisões, consertos pequenos, e só então specs — um por vez.
 
-1. **Conversões por ação e parcela de impressão curadas** — spec; a lacuna que o uso real mede.
+1. **Conversões por ação e parcela de impressão curadas** — implementada, em revisão (ledger acima).
 2. **Plugin na fonte** (com o Wellington): ajuste do `null` e troca do GAQL cru do skill pelas tools
    curadas — destrava também a Fase 2B.
 3. **Fase 2B** — em 04/10, o uso por gestor, junto dos buckets.
