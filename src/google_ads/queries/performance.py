@@ -24,7 +24,12 @@ def campaign_performance_query(
           campaign.id, campaign.name, campaign.status,
           campaign.advertising_channel_type,
           metrics.impressions, metrics.clicks, metrics.cost_micros,
-          metrics.conversions, metrics.conversions_value
+          metrics.conversions, metrics.conversions_value,
+          metrics.search_impression_share,
+          metrics.search_budget_lost_impression_share,
+          metrics.search_rank_lost_impression_share,
+          metrics.search_top_impression_share,
+          metrics.search_absolute_top_impression_share
         FROM campaign
         WHERE {gaql_date_clause(start, end)} {status_clause}
         ORDER BY metrics.cost_micros DESC

@@ -207,6 +207,21 @@ def arredondado(valor: float | None, casas: int) -> float | None:
     return None if valor is None else round(valor, casas)
 
 
+def metrica_opcional(m: Any, campo: str) -> float | None:
+    """Metrica `optional` do proto: o valor quando o Google a mandou, `None` quando nao.
+
+    Os `search_*impression_share` sao `optional` (v24): campanha que nao e de pesquisa, ou
+    de pesquisa sem impressao, vem SEM o campo — e ler o atributo direto devolve `0.0`, o
+    zero falso (medido em 02/10, spec 2026-10-02 §3.2). Presenca no proto-plus e `campo in
+    m`; os testes do modulo usam `SimpleNamespace`, onde `in` nao funciona e vale o atributo.
+    """
+    try:
+        presente = campo in m
+    except TypeError:
+        presente = hasattr(m, campo)
+    return float(getattr(m, campo)) if presente else None
+
+
 def em_moeda(valor_micros: float | None) -> float | None:
     """`micros_to_currency` que deixa `None` passar."""
     return None if valor_micros is None else micros_to_currency(valor_micros)

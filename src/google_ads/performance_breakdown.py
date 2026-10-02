@@ -8,7 +8,13 @@ SimpleNamespace). Espelha src/meta_ads/insights.py (M.4).
 from datetime import date
 from typing import Any
 
-from src.google_ads.queries._common import arredondado, em_moeda, micros_to_currency, razao
+from src.google_ads.queries._common import (
+    arredondado,
+    em_moeda,
+    metrica_opcional,
+    micros_to_currency,
+    razao,
+)
 from src.google_ads.queries.performance import (
     ad_group_performance_query,
     campaign_performance_query,
@@ -65,6 +71,21 @@ def _common_metrics(m: Any) -> dict[str, Any]:
         "conversions_value_brl": round(float(m.conversions_value), 2),
         "ctr": arredondado(razao(clicks, impr), 4),
         "cpc_brl": em_moeda(razao(cost_micros, clicks)),
+    }
+
+
+def _parcela_de_impressao(m: Any) -> dict[str, float | None]:
+    """Os cinco campos de parcela de impressao da campanha (spec 2026-10-02, §3.2).
+
+    Campo ausente no proto (campanha que nao e de pesquisa, ou sem impressao) vira `None`,
+    nunca `0`. O Google informa "< 10%" como 0,0999, e o valor vai como veio.
+    """
+    return {
+        "parcela_impressao": metrica_opcional(m, "search_impression_share"),
+        "perdida_orcamento": metrica_opcional(m, "search_budget_lost_impression_share"),
+        "perdida_classificacao": metrica_opcional(m, "search_rank_lost_impression_share"),
+        "parcela_topo": metrica_opcional(m, "search_top_impression_share"),
+        "parcela_topo_absoluto": metrica_opcional(m, "search_absolute_top_impression_share"),
     }
 
 
@@ -139,6 +160,7 @@ def parse_performance_row(row: Any, level: str, breakdown: str | None) -> dict[s
             "status": row.campaign.status.name,
             "type": row.campaign.advertising_channel_type.name,
             **base,
+            **_parcela_de_impressao(row.metrics),
         }
     if level == "ad_group":
         return {
