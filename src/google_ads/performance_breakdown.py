@@ -18,6 +18,7 @@ from src.google_ads.queries._common import (
 from src.google_ads.queries.performance import (
     ad_group_performance_query,
     campaign_performance_query,
+    conversion_action_breakdown_query,
     device_performance_query,
     geo_performance_query,
     hourly_performance_query,
@@ -48,11 +49,15 @@ def _validate_combo(level: str, breakdown: str | None) -> str | None:
     # merge (geoTargetConstant duplicado), nao nivel.
     if level == "campaign" and breakdown == "hourly":
         return None
-    # entity level (exceto campaign+hourly, tratado acima)
+    # Conversao por acao (spec 2026-10-02 §3.1): conta e campanha.
+    if level == "campaign" and breakdown == "conversion_action":
+        return None
+    # entity level (exceto campaign+hourly e campaign+conversion_action, tratados acima)
     if breakdown is not None:
         return (
-            f"breakdown só é suportado em level='account' (device/geo/hourly) ou em "
-            f"level='campaign' com breakdown='hourly' (exige campaign_ids) — você pediu "
+            f"breakdown só é suportado em level='account' (device/geo/hourly/"
+            f"conversion_action) ou em level='campaign' com breakdown='hourly' (exige "
+            f"campaign_ids) ou 'conversion_action' — você pediu "
             f"level='{level}'+breakdown='{breakdown}'. Use uma dessas combinações, ou "
             "remova o breakdown."
         )
@@ -106,12 +111,16 @@ def build_performance_breakdown_query(
             return geo_performance_query(start, end, limit)
         if breakdown == "hourly":
             return hourly_performance_query(start, end)
+        if breakdown == "conversion_action":
+            return conversion_action_breakdown_query("account", start, end, status, limit)
         raise ValueError(f"breakdown invalido pra account: {breakdown!r}")
     if level == "campaign" and breakdown == "hourly":
         raise ValueError(
             "campaign+hourly nao passa por este builder: a tool monta a conjunta "
             "com day_hour_metrics_query, que exige campaign_ids explicitos."
         )
+    if level == "campaign" and breakdown == "conversion_action":
+        return conversion_action_breakdown_query("campaign", start, end, status, limit)
     if level == "campaign":
         return campaign_performance_query(start, end, status, limit)
     if level == "ad_group":
@@ -125,12 +134,40 @@ def build_performance_breakdown_query(
     raise ValueError(f"level invalido: {level!r}")
 
 
+def _parse_conversion_action_row(row: Any, level: str) -> dict[str, Any]:
+    """Linha do recorte por acao: so metricas de conversao (o recorte recusa custo).
+
+    As flags (`conta_em_conversoes`, `primary_for_goal`) nao vem daqui: a tool as le do
+    recurso `conversion_action` e as junta pela id.
+    """
+    s, m = row.segments, row.metrics
+    out: dict[str, Any] = {}
+    if level == "campaign":
+        out["campaign_id"] = str(row.campaign.id)
+        out["campaign_name"] = row.campaign.name
+    out.update(
+        {
+            "conversion_action_id": str(s.conversion_action).rsplit("/", 1)[-1],
+            "conversion_action_name": s.conversion_action_name,
+            "categoria": s.conversion_action_category.name,
+            "conversions": round(float(m.conversions), 2),
+            "all_conversions": round(float(m.all_conversions), 2),
+            "conversions_value_brl": round(float(m.conversions_value), 2),
+            "all_conversions_value_brl": round(float(m.all_conversions_value), 2),
+        }
+    )
+    return out
+
+
 def parse_performance_row(row: Any, level: str, breakdown: str | None) -> dict[str, Any]:
     """Transforma uma linha GAQL (proto) em dict com unit conversions.
 
     Cobre os 5 entity levels (campaign/ad_group/ad/keyword/audience).
     Task 4 cobre account+breakdown.
     """
+    if breakdown == "conversion_action":
+        return _parse_conversion_action_row(row, level)
+
     base = _common_metrics(row.metrics)
 
     if level == "account":
