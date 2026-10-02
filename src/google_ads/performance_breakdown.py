@@ -33,13 +33,13 @@ from src.google_ads.queries.tactical import (
 def _validate_combo(level: str, breakdown: str | None) -> str | None:
     """Retorna mensagem PT-BR se o combo (level, breakdown) for inválido, senão None.
 
-    Matriz válida (8 = os 8 reports atuais): entity+sem-breakdown; account+breakdown.
-    Exceção: campaign+hourly (Task 4).
+    Matriz válida: entity+sem-breakdown; account+{device,geo,hourly,conversion_action}.
+    Exceções em campaign: hourly (exige campaign_ids) e conversion_action.
     """
     if level == "account":
         if breakdown is None:
             return (
-                "level='account' exige um breakdown (device/geo/hourly). "
+                "level='account' exige um breakdown (device/geo/hourly/conversion_action). "
                 "Pra visão geral da conta com comparativo de período use get_account_overview."
             )
         return None

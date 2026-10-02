@@ -64,8 +64,11 @@ def test_flags_por_id_inteiro_com_teto_estrutural() -> None:
     gaql, filtros = conversion_action_flags_query(["6827189000", "6826176642"])
     assert "FROM conversion_action" in gaql
     assert "conversion_action.id IN (6827189000, 6826176642)" in gaql
-    for campo in ("include_in_conversions_metric", "primary_for_goal", "status", "type"):
+    for campo in ("include_in_conversions_metric", "primary_for_goal"):
         assert f"conversion_action.{campo}" in gaql
+    # status e type nao tem leitor na linha: pedir e descartar e campo fantasma (revisao final M8)
+    assert "conversion_action.status" not in gaql
+    assert "conversion_action.type" not in gaql
     assert "LIMIT 1000" in gaql
     assert filtros == {"conversion_action_ids": ["6827189000", "6826176642"]}
 
@@ -120,6 +123,9 @@ def test_combinacoes_validas_e_invalidas() -> None:
     assert _validate_combo("campaign", "conversion_action") is None
     msg = _validate_combo("ad_group", "conversion_action")
     assert msg is not None and "conversion_action" in msg
+    # account sem breakdown: a mensagem que o LLM recebe lista o recorte novo (revisao final M3)
+    msg_conta = _validate_combo("account", None)
+    assert msg_conta is not None and "conversion_action" in msg_conta
 
 
 def test_o_despachante_leva_o_recorte_ao_construtor_novo() -> None:

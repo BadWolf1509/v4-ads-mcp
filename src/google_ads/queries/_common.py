@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 from datetime import date, timedelta
+from types import SimpleNamespace
 from typing import Any
 from uuid import UUID
 
@@ -213,12 +214,11 @@ def metrica_opcional(m: Any, campo: str) -> float | None:
     Os `search_*impression_share` sao `optional` (v24): campanha que nao e de pesquisa, ou
     de pesquisa sem impressao, vem SEM o campo — e ler o atributo direto devolve `0.0`, o
     zero falso (medido em 02/10, spec 2026-10-02 §3.2). Presenca no proto-plus e `campo in
-    m`; os testes do modulo usam `SimpleNamespace`, onde `in` nao funciona e vale o atributo.
+    m` (e tambem no protobuf cru, sondado). O fallback por atributo e SO do `SimpleNamespace`
+    dos testes: qualquer outro objeto sem `in` levanta, porque `hasattr` seria sempre
+    verdadeiro e o zero falso voltaria em silencio (revisao 02/10, M6).
     """
-    try:
-        presente = campo in m
-    except TypeError:
-        presente = hasattr(m, campo)
+    presente = hasattr(m, campo) if isinstance(m, SimpleNamespace) else campo in m
     return float(getattr(m, campo)) if presente else None
 
 

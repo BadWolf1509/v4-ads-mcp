@@ -78,11 +78,14 @@ def _parcela(rows: list[dict[str, Any]]) -> dict[str, float | None]:
     """
     if len(rows) != 1:
         return dict.fromkeys(_PARCELA)
-    return {k: rows[0][k] for k in _PARCELA}
+    return {k: rows[0].get(k) for k in _PARCELA}
 
 
 def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    """Sum the per-day rows into single totals + computed ratios.
+    """Sum the rows into single totals + computed ratios.
+
+    `customer` sem segmento devolve uma linha so; a soma cobre o caso de mais de uma,
+    e a parcela de impressao (que nao soma) fica com `_parcela`.
 
     Razao sem denominador vem `None` (indefinida), nao 0.0 (spec 2026-09-25,
     §4.2). Periodo sem nenhuma linha traz as contagens em 0 — verdade: nao houve

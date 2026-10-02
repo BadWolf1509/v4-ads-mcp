@@ -149,9 +149,7 @@ def conversion_action_flags_query(ids: list[str]) -> tuple[str, dict[str, Any]]:
         SELECT
           conversion_action.id,
           conversion_action.include_in_conversions_metric,
-          conversion_action.primary_for_goal,
-          conversion_action.status,
-          conversion_action.type
+          conversion_action.primary_for_goal
         FROM conversion_action
         WHERE conversion_action.id IN ({lista})
         LIMIT 1000

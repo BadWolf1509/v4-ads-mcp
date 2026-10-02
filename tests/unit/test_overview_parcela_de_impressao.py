@@ -55,6 +55,65 @@ def test_periodo_sem_linha_traz_none() -> None:
     assert agg["parcela_impressao"] is None
 
 
+def test_description_diz_o_contrato_da_parcela() -> None:
+    """Revisao t1-t2 (Important): o contrato da parcela so existe no texto — o schema nao o diz."""
+    from src.mcp.tools._registry import get_tool, import_all_tools
+
+    import_all_tools()
+    tool = get_tool("get_account_overview")
+    assert tool is not None
+    d = tool.description
+    for ancora in (
+        "parcela_impressao",
+        "perdida_orcamento",
+        "perdida_classificacao",
+        "null quando o Google nao a mede",
+        "0.0999",
+        "get_performance_breakdown",
+    ):
+        assert ancora in d, ancora
+
+
+async def test_a_parcela_chega_ao_current_e_ao_previous_pela_tool() -> None:
+    """Revisao t1-t2 M4: nenhum teste levava valor nao-nulo pela tool ate os dois periodos."""
+    from unittest.mock import AsyncMock, patch
+    from uuid import uuid4
+
+    from src.mcp.context import McpRequestContext, clear_current, set_current
+    from src.mcp.tools.get_account_overview import get_account_overview
+
+    atual = _row_formatter(_row(search_impression_share=0.55))
+    anterior = _row_formatter(_row(search_impression_share=0.41))
+    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
+    try:
+        with (
+            patch("src.mcp.tools.get_account_overview.run_report", new_callable=AsyncMock) as rr,
+            patch(
+                "src.mcp.tools.get_account_overview.resolve_account_today",
+                new_callable=AsyncMock,
+            ) as hoje,
+        ):
+            hoje.return_value = date(2026, 10, 2)
+            rr.side_effect = [[atual], [anterior]]
+            out = await get_account_overview({"customer_id": "7862230676"})
+    finally:
+        clear_current()
+    assert out["current"]["parcela_impressao"] == 0.55
+    assert out["previous"]["parcela_impressao"] == 0.41
+
+
+def test_linha_sem_as_chaves_da_parcela_nao_quebra_o_agregado() -> None:
+    """Revisao t1-t2 M3: `_parcela` le com `.get` — linha sem a chave e `None`, nao KeyError."""
+    linha = {
+        "impressions": 1,
+        "clicks": 0,
+        "cost_micros": 0,
+        "conversions": 0.0,
+        "conversions_value": 0.0,
+    }
+    assert _aggregate([linha])["parcela_impressao"] is None
+
+
 def test_mais_de_uma_linha_nao_soma_parcela() -> None:
     a = _row_formatter(_row(search_impression_share=0.5))
     b = _row_formatter(_row(search_impression_share=0.3))

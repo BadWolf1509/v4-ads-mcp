@@ -39,13 +39,12 @@ def _acao(aid: str, nome: str, conv: float, todas: float) -> dict[str, Any]:
     }
 
 
-def _flag(aid: str, conta: bool, primaria: bool) -> dict[str, Any]:
+def _flag(aid: str, conta: bool | None, primaria: bool | None) -> dict[str, Any]:
+    """O formato que `_flag_da_acao` devolve — sem campo que o formatter real nao produz."""
     return {
         "conversion_action_id": aid,
         "include_in_conversions_metric": conta,
         "primary_for_goal": primaria,
-        "status": "ENABLED",
-        "type": "WEBPAGE",
     }
 
 
@@ -114,15 +113,164 @@ async def test_filters_applied_e_period_do_recorte() -> None:
     assert "FROM customer" in rr.await_args_list[0].kwargs["query"]
 
 
-def test_description_diz_os_dois_contratos() -> None:
+def _description() -> str:
     from src.mcp.tools._registry import get_tool, import_all_tools
 
     import_all_tools()
     tool = get_tool("get_performance_breakdown")
     assert tool is not None
-    d = tool.description
+    return tool.description
+
+
+def test_description_diz_os_dois_contratos() -> None:
+    d = _description()
     assert "conversion_action" in d
     assert "conta_em_conversoes" in d and "all_conversions" in d
     assert "flags_motivo" in d
-    assert "sem custo" in d.lower() or "nao ha custo" in d.lower()
-    assert "parcela_impressao" in d
+    assert "sem custo" in d.lower()
+
+
+def test_description_nao_generaliza_a_flag_da_conta_para_a_campanha() -> None:
+    """Revisao final I2: `include_in_conversions_metric` segue as metas PADRAO da conta (medido
+    na conta, spec §2). Campanha com meta propria conta em `conversions` as acoes da meta dela —
+    a description nao pode afirmar a regra da conta para a linha campanha x acao."""
+    d = _description()
+    assert "metas padrao da conta" in d
+    assert "meta propria" in d
+    assert "conversions so soma" not in d.replace("`", "")
+
+
+def test_cabeca_da_description_lista_o_recorte_novo_e_a_ordem_dele() -> None:
+    """Revisao final M1: a matriz da cabeca e o 'cortada no topo de gasto' valiam para tudo."""
+    d = _description()
+    assert "account+breakdown (device|geo|hourly|conversion_action)" in d
+    assert "cortada no topo de gasto" not in d
+    assert "no topo da ordenacao" in d
+
+
+def test_parcela_so_nas_linhas_de_campanha_sem_breakdown() -> None:
+    """Revisao final M2: campaign+hourly e campaign+conversion_action nao trazem a parcela."""
+    assert "level='campaign' sem breakdown trazem a parcela" in _description()
+
+
+def test_limit_em_campanha_conta_pares() -> None:
+    """Revisao t3-t4 M3: no nivel campaign o limit e o truncated valem por par campanha x acao."""
+    assert "par campanha x acao" in _description()
+
+
+def test_schema_diz_onde_vale_cada_breakdown_e_que_campaign_ids_e_ignorado() -> None:
+    """Revisao final M4."""
+    from src.mcp.tools.get_performance_breakdown import _SCHEMA
+
+    props = _SCHEMA["properties"]
+    assert (
+        "device/geo/hourly/conversion_action em level=account" in props["breakdown"]["description"]
+    )
+    assert "campaign+conversion_action" in props["campaign_ids"]["description"]
+
+
+# --- o formatter real das flags (revisao t3-t4 I2 = final I1) -----------------------------
+# Os testes acima mockam o `run_report` inteiro, entao o formatter nunca rodava. Aqui ele roda
+# sobre a mensagem REAL do SDK: as duas flags sao `optional` no v24, e o atributo de campo
+# ausente le `False` — o falso que a spec §3.1 proibe.
+
+
+def _row_real(**campos: Any) -> Any:
+    from google.ads.googleads.v24.resources.types.conversion_action import ConversionAction
+    from google.ads.googleads.v24.services.types.google_ads_service import GoogleAdsRow
+
+    return GoogleAdsRow(conversion_action=ConversionAction(id=6826176642, **campos))
+
+
+def test_formatter_le_as_flags_por_presenca() -> None:
+    from src.mcp.tools.get_performance_breakdown import _flag_da_acao
+
+    setadas = _flag_da_acao(_row_real(include_in_conversions_metric=False, primary_for_goal=True))
+    assert setadas == {
+        "conversion_action_id": "6826176642",
+        "include_in_conversions_metric": False,
+        "primary_for_goal": True,
+    }
+    vazia = _row_real()
+    assert vazia.conversion_action.primary_for_goal is False  # o falso que o atributo daria
+    lida = _flag_da_acao(vazia)
+    assert lida["include_in_conversions_metric"] is None
+    assert lida["primary_for_goal"] is None
+
+
+async def test_flag_nao_informada_fica_null_com_motivo_proprio() -> None:
+    from src.mcp.tools.get_performance_breakdown import (
+        _MOTIVO_FLAG_NAO_INFORMADA,
+        _MOTIVO_SEM_FLAG,
+    )
+
+    out, _ = await _chamar([_LINHAS[2:], [_flag("6826176642", False, None)]])
+    r = out["rows"][0]
+    assert r["conta_em_conversoes"] is False  # a medida que veio continua valendo
+    assert r["primary_for_goal"] is None
+    assert r["flags_motivo"] == _MOTIVO_FLAG_NAO_INFORMADA
+    assert _MOTIVO_FLAG_NAO_INFORMADA != _MOTIVO_SEM_FLAG
+
+
+# --- a consulta das flags nunca derruba a resposta (revisao t3-t4 I1 + final M5) -----------
+
+
+async def test_id_nao_numerico_nao_vai_a_consulta_e_fica_null() -> None:
+    from src.mcp.tools.get_performance_breakdown import _MOTIVO_ID_FORA_DA_CONSULTA
+
+    linhas = [_LINHAS[0], _acao("", "sem recurso", 1.0, 1.0)]
+    out, rr = await _chamar([linhas, [_flag("6827189000", True, True)]])
+    assert "conversion_action.id IN (6827189000)" in rr.await_args_list[1].kwargs["query"]
+    sem_id = out["rows"][1]
+    assert sem_id["conta_em_conversoes"] is None
+    assert sem_id["flags_motivo"] == _MOTIVO_ID_FORA_DA_CONSULTA
+    assert out["rows"][0]["conta_em_conversoes"] is True
+
+
+async def test_acima_de_1000_acoes_a_consulta_leva_as_1000_primeiras() -> None:
+    from src.mcp.tools.get_performance_breakdown import _MOTIVO_ID_FORA_DA_CONSULTA
+
+    linhas = [_acao(str(10_000 + i), f"a{i}", 1.0, 1.0) for i in range(1001)]
+    out, rr = await _chamar([linhas, []], limit=2000)
+    consulta = rr.await_args_list[1].kwargs["query"]
+    assert "10999" in consulta and "11000" not in consulta
+    assert out["rows"][-1]["flags_motivo"] == _MOTIVO_ID_FORA_DA_CONSULTA
+    assert len(out["rows"]) == 1001
+
+
+async def test_falha_da_consulta_das_flags_devolve_as_linhas_com_null() -> None:
+    from src.mcp.tools.get_performance_breakdown import _MOTIVO_CONSULTA_FALHOU
+
+    out, _ = await _chamar([_LINHAS, RuntimeError("quota")])
+    assert [r["conversion_action_id"] for r in out["rows"]] == [
+        "6827189000",
+        "7028680990",
+        "6826176642",
+    ]
+    for r in out["rows"]:
+        assert r["conta_em_conversoes"] is None
+        assert r["primary_for_goal"] is None
+        assert r["flags_motivo"].startswith(_MOTIVO_CONSULTA_FALHOU)
+        assert "quota" in r["flags_motivo"]
+
+
+# --- level='campaign' (revisao t3-t4 M2) ---------------------------------------------------
+
+
+async def test_campanha_mesma_acao_em_duas_campanhas_recebe_a_flag_nas_duas() -> None:
+    def _na(cid: str, aid: str, todas: float) -> dict[str, Any]:
+        return {**_acao(aid, "x", todas, todas), "campaign_id": cid, "campaign_name": cid}
+
+    linhas = [
+        _na("1", "6827189000", 50.0),
+        _na("2", "6827189000", 40.0),
+        _na("1", "6826176642", 30.0),  # sentinela com limit=2
+    ]
+    out, rr = await _chamar([linhas, [_flag("6827189000", True, True)]], level="campaign", limit=2)
+    assert out["truncated"] is True
+    assert [(r["campaign_id"], r["conta_em_conversoes"]) for r in out["rows"]] == [
+        ("1", True),
+        ("2", True),
+    ]
+    assert "conversion_action.id IN (6827189000)" in rr.await_args_list[1].kwargs["query"]
+    assert "FROM campaign" in rr.await_args_list[0].kwargs["query"]

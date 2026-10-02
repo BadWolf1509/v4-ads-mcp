@@ -12,6 +12,7 @@ from __future__ import annotations
 from datetime import date
 from types import SimpleNamespace
 
+import pytest
 from google.ads.googleads.v24.common.types.metrics import Metrics
 
 from src.google_ads.performance_breakdown import parse_performance_row
@@ -63,6 +64,23 @@ def test_objeto_falso_sem_o_atributo_vira_none() -> None:
         metrica_opcional(SimpleNamespace(search_impression_share=0.3), "search_impression_share")
         == 0.3
     )
+
+
+def test_protobuf_cru_tambem_le_por_presenca() -> None:
+    """Revisao final M6: protobuf cru (sem proto-plus) aceita `in` — sondado em 02/10."""
+    cru = Metrics.pb(Metrics(impressions=0))
+    assert metrica_opcional(cru, "search_impression_share") is None
+
+
+def test_objeto_sem_presenca_que_nao_e_o_fake_dos_testes_levanta() -> None:
+    """Revisao final M6: o fallback por atributo e so do `SimpleNamespace` dos testes. Qualquer
+    outro objeto sem `in` daria `hasattr` verdadeiro e o zero falso de volta, em silencio."""
+
+    class SemPresenca:
+        search_impression_share = 0.0
+
+    with pytest.raises(TypeError):
+        metrica_opcional(SemPresenca(), "search_impression_share")
 
 
 def test_linha_de_campanha_traz_a_parcela_de_impressao() -> None:
