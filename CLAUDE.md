@@ -18,7 +18,7 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 
 ## Estado atual
 
-**2026-10-02.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`,
+**2026-10-03.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`,
 **68 MCP tools** (62 Google + 6 Meta), CI gated + deploy automático. Catálogo até **F203**.
 **Detalhe, pendências, o que aguarda deploy e decision gates vivem em
 [`estado-atual.md`](docs/operacao/estado-atual.md)** — atualize AQUELE no fecho, não este.
@@ -33,6 +33,9 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 - Fase 2B (tombstone dos 8 reports antigos) segue **travada** no soak — não tombstonar.
 - **Tool nova só aparece pra sessão nova** (F140): o catálogo é negociado no handshake do
   MCP, e o sintoma é a tool "não existir", não um erro de versão. Reconecte antes do smoke.
+  **E o schema que o cliente mostra pode seguir velho mesmo assim** (03/10: o
+  `get_performance_breakdown` sem `conversion_action` no enum, depois da reconexão, e o servidor
+  aceitou o valor novo) — o smoke prova chamando, não lendo o schema.
 - **Docker** para o full sweep: se o engine não responde, abra o Docker Desktop (o engine sobe em
   ~15 s mesmo com `com.docker.service` em `Stopped`, medido em 29/09).
 - **Gate pelo Python do `.venv`:** `D:/v4-ads-mcp/.venv/Scripts/python.exe scripts/check_pre_push.py`
