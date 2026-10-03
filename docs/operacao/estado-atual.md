@@ -8,22 +8,19 @@
 
 > **Última sessão:** [`session-2026-10-02-handoff.md`](session-2026-10-02-handoff.md) — 30/09–02/10:
 > revogação das 4 contas Meta e smoke do dia 1, o uso real de 30 dias, e a frente **conversões por
-> ação e parcela de impressão** (implementada e em revisão, **sem push**). Antes:
+> ação e parcela de impressão** (no ar desde 03/10, #143). Antes:
 > [`session-2026-09-29-handoff.md`](session-2026-09-29-handoff.md) (F200 verificado, F203, F202).
 
-> 🔴 **Frente em curso — retomar por aqui:** branch `spec/conversoes-e-parcela` no worktree
-> `D:/v4-ads-mcp-wt/conversoes`, **nada pushed**. O mapa de retomada (commits, revisões, achados a
-> corrigir, próximos passos) é o ledger
-> `.superpowers/sdd/2026-10-02-conversoes-e-parcela-de-impressao/progress.md` — no worktree e com
-> cópia no checkout principal. Spec e plano estão na branch.
+> Sem frente em curso. A de conversões por ação e parcela de impressão fechou em 03/10 (#143,
+> smoke abaixo); o texto do plugin 0.5.0 está com o Wellington.
 
 ---
 
-## Produção — medido em 2026-10-02
+## Produção — medido em 2026-10-03
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00142-fcx`**, 100% do tráfego (02/10) — o **#141** (só teste e docs: o teste do `detect_drift` com data fixa que quebrou sozinho em 02/10), sobre o **#139** (F202, `00141`) e o **#138** (F203, `00140`). ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186) |
+| Revisão servindo | **`v4-ads-mcp-00143-dz6`**, 100% do tráfego (03/10) — o **#143** (conversões por ação e parcela de impressão), sobre o **#141** (`00142`, o teste do `detect_drift` com relógio congelado). ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186) |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
 | Catálogo | até **F203** (~6.000 linhas, 601 KB) |
@@ -48,10 +45,15 @@ Obra – João Pessoa, 01/10 22h): `THIS_MONTH` devolve `01/10–01/10` com dado
 **Uso real, 30 dias até 30/09** (`audit_log`): 1.896 chamadas, 4 gestores (uso de verdade: Wellington
 e `pedro.vytor`). O **`run_gaql` é 38%** (725) — 259 do Pedro em rajadas de ~38 por sessão, roteiro
 que o skill `analise-performance-google-ads` do plugin prescreve em GAQL cru: **conversões por ação
-de conversão** (94 consultas), totais da conta em janela longa e **parcela de impressão**. É a frente
-em curso (acima). Medido no caminho: a nota do plugin de que "`metrics.conversions` por ação retorna
-mesmo se Secondary" está **errada** — por ação, `conversions` segue `include_in_conversions_metric`
-(a correção vai no texto do plugin 0.5.0, já redigido no ledger).
+de conversão** (94 consultas), totais da conta em janela longa e **parcela de impressão**. As duas
+viraram recorte curado no **#143**: `get_performance_breakdown(breakdown='conversion_action')`
+(conta e campanha; flags do cadastro `null` com `flags_motivo` quando não medidas) e a parcela nas
+linhas de `level='campaign'` sem breakdown e no `get_account_overview`. **Smoke de 03/10** (Mestre
+da Obra, setembro): conta e campanha somam igual; "Conversation started" `null` com motivo;
+parcela bit a bit com o `run_gaql` (campanhas, conta e período anterior); `audit_log` com uma linha
+por chamada. **Não medido:** campanha com meta própria — as duas ativas da MO-JP usam as metas da
+conta (`goal_config_level: CUSTOMER`); a description diz "indica", não afirma. A nota do plugin
+sobre a ação secundária estava **errada** — a correção está no texto do plugin 0.5.0.
 
 ⚠️ **`deploy: skipped` não significa "PR de documentação":** o gate do F138 pula só push
 exclusivamente em `docs/` e markdown; `tests/` publica revisão. **Cheque a revisão servindo.**

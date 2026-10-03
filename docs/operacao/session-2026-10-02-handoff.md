@@ -9,7 +9,7 @@
 |---|---|---|
 | #140 | F200 verificado; F203 e F202 no ar | docs |
 | #141 | teste do `detect_drift` com data fixa (quebrou sozinho em 02/10: a janela 01–02/09 saiu da retenção de 30 dias) + docs do fechamento de 01/10 | `00142-fcx` |
-| `spec/conversoes-e-parcela` | spec, 4 tasks, plano gerado dos commits | **sem push** — em revisão |
+| #143 | spec, 4 tasks, plano gerado dos commits, 2 rodadas de correção | `00143-dz6` (03/10) |
 
 ## O que foi medido
 
@@ -32,11 +32,19 @@
 - A revisão das tasks 3-4 pegou o padrão F191 num formatter que nenhum teste exercitava: os testes
   mockavam o `run_report` inteiro, então `bool(campo_optional)` nunca rodou.
 
+## Fecho (03/10)
+
+- Duas rodadas de correção. A 1ª fechou as três revisões; a re-revisão achou o `str(e)` da
+  consulta das flags levando host/porta do banco ao `flags_motivo` — motivo fixo, só o erro
+  amigável vai junto, acesso negado propaga. 16 sabotagens de cópia caem.
+- O #143 ficou ~40 min com CI verde e auto-merge parado: branch `BEHIND` (regra em
+  `convencoes/processo.md`).
+- Smoke de leitura na MO-JP ok (detalhe no `estado-atual`); a meta própria de campanha segue não
+  medida — não há campanha ativa com ela nesta conta.
+
 ## Pendente
 
-- A rodada de correção da frente nova e o deploy — o ledger
-  `.superpowers/sdd/2026-10-02-conversoes-e-parcela-de-impressao/progress.md` diz tudo.
-- Texto do plugin 0.5.0 (na mesma pasta) para o Wellington aplicar depois do deploy.
+- Texto do plugin 0.5.0 com o Wellington (ledger da frente, `plugin-0.5.0.md`).
 - **04/10:** buckets e Fase 2B por gestor.
 
 ## Lições operacionais
