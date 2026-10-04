@@ -130,7 +130,7 @@ oauthlib==3.3.1
     # via requests-oauthlib
 opentelemetry-api==1.45.0
     # via google-api-core
-propcache==0.5.2
+propcache==0.5.4
     # via
     #   aiohttp
     #   yarl
