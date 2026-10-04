@@ -77,7 +77,7 @@ google-crc32c==1.9.0
     # via
     #   google-cloud-storage
     #   google-resumable-media
-google-resumable-media==2.10.0
+google-resumable-media==2.11.0
     # via google-cloud-storage
 googleapis-common-protos==1.75.0
     # via
