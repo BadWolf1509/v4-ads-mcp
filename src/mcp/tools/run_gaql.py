@@ -8,6 +8,7 @@ GROUP BY + COUNT (resolve B5 token overflow em queries densas).
 from typing import Any
 
 from src.google_ads.aggregation import aggregate_rows
+from src.google_ads.gaql_compacto import campos_do_select, linha_compacta
 from src.google_ads.reports import execute_gaql_raw
 from src.mcp.context import get_current
 from src.mcp.tools._registry import register_tool
@@ -45,6 +46,14 @@ _SCHEMA: dict[str, Any] = {
                 "DESC ao inves de rows[]. Limite hard: 10k raw rows antes de agregar."
             ),
         },
+        "compact": {
+            "type": "boolean",
+            "default": False,
+            "description": (
+                'Linhas planas com chave pontilhada ({"campaign.id": ...}) e sem os '
+                "resource_name que o SELECT nao pediu. Ignorado com aggregate_by."
+            ),
+        },
     },
     "required": ["customer_id", "query"],
     "additionalProperties": False,
@@ -67,6 +76,11 @@ _MAX_RAW_ROWS_FOR_AGGREGATE = 10_000
         "chame list_gaql_resources (catálogo válido) ou validate_gaql (valida sem "
         "executar) ANTES — métricas existem só em certos recursos e auction insights "
         "(overlap/position-above/outranking share) não existem na GAQL."
+        ' `compact: true` devolve linhas planas (`{"campaign.id": ..., "metrics.clicks":'
+        " ...}`) sem os `resource_name` que o Google manda em todo objeto da linha mesmo"
+        " fora do SELECT (o pedido no SELECT fica): -39% medido em 05/10 numa consulta de"
+        " campaign_criterion — o ganho depende da consulta (linha cheia de metricas ganha"
+        " menos). Use quando a resposta estoura o limite do cliente."
     ),
     input_schema=_SCHEMA,
     bucket="always",
@@ -107,11 +121,15 @@ async def run_gaql(args: dict[str, Any]) -> dict[str, Any]:
         }
 
     truncated = len(rows) > limit
+    linhas = rows[:limit]
+    if args.get("compact", False):
+        pedidos = campos_do_select(query)
+        linhas = [linha_compacta(r, pedidos) for r in linhas]
     result: dict[str, Any] = {
         "customer_id": customer_id,
         "row_count": len(rows),
         "truncated": truncated,
-        "rows": rows[:limit],
+        "rows": linhas,
         "returned": min(len(rows), limit),
     }
     if truncated:
