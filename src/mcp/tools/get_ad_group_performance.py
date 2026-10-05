@@ -1,4 +1,4 @@
-# bucket: always
+# bucket: defer
 """Tool: get_ad_group_performance - metrics per ad group."""
 
 from typing import Any
@@ -89,7 +89,7 @@ def _row_formatter(row: Any) -> dict[str, Any]:
 @register_tool(
     name="get_ad_group_performance",
     description=(
-        "[CORE] Prefira get_performance_breakdown(level=ad_group) — este report sera "
+        "[DEFER] Prefira get_performance_breakdown(level=ad_group) — este report sera "
         "arquivado (Fase 2B). Performance por grupo de anuncios: impressoes, clicks, custo, conversoes. "
         "Ordenado por custo desc. Filtros: status, limit. `truncated: true` avisa "
         "que a conta tinha MAIS grupos do que o limit e a lista foi cortada no topo "
@@ -98,7 +98,7 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         " filters_applied diz o recorte que a query aplicou."
     ),
     input_schema=_SCHEMA,
-    bucket="always",
+    bucket="defer",
 )
 async def get_ad_group_performance(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()
