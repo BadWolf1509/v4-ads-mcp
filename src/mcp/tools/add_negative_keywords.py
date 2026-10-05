@@ -94,12 +94,6 @@ def _planejar(
             continue
         lote.append(kw)
         conhecidas.append(kw)
-    # Cobertura DEPOIS do lote montado: contra a campanha e o resto do pedido, em qualquer
-    # ordem — `[PHRASE x, BROAD x]` e `[BROAD x, PHRASE x]` dizem o mesmo.
-    for kw in lote:
-        estado, existente = classificar(kw, [c for c in conhecidas if c is not kw])
-        if estado == "coberta":
-            avisos.append({"tipo": "coberta", **kw, "coberta_por": existente})
     vistas: set[tuple[str, str]] = set()
     for kw in pedidas:
         if (chave(kw["text"]), kw["match_type"]) in vistas:
@@ -117,6 +111,13 @@ def _planejar(
             variantes.append({**par, "variante_de": kw["text"]})
         else:
             avisos.append({"tipo": "sem_variante_sem_acento", **kw, "sugestao": texto})
+    # Cobertura DEPOIS do lote completo, variantes do opt-in inclusive: contra a campanha e o
+    # resto do lote, em qualquer ordem — `[PHRASE x, BROAD x]` e `[BROAD x, PHRASE x]` dizem o
+    # mesmo, e a BROAD sem acento gravada pelo opt-in cobre a EXACT pedida (re-revisao 05/10).
+    for kw in lote:
+        estado, existente = classificar(kw, [c for c in conhecidas if c is not kw])
+        if estado == "coberta":
+            avisos.append({"tipo": "coberta", **kw, "coberta_por": existente})
     return {
         "lote": lote,
         "ja_existia": ja_existia,

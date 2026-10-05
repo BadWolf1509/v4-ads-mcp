@@ -212,3 +212,27 @@ def test_m9_description_diz_amostra_de_linhas() -> None:
     t = get_tool("run_gaql")
     assert t is not None
     assert "numa amostra de linhas de campaign_criterion" in t.description
+
+
+# --- re-revisão da rodada (05/10) ----------------------------------------------------------
+
+
+@pytest.mark.usefixtures("_ctx")
+async def test_n1_variante_do_opt_in_entra_na_cobertura() -> None:
+    out, _ = await _ank(
+        [],
+        [
+            {"text": "construcao", "match_type": "EXACT"},
+            {"text": "construção", "match_type": "BROAD"},
+        ],
+        incluir_variante_sem_acento=True,
+    )
+    cobertas = [(a["text"], a["match_type"]) for a in out["avisos"] if a["tipo"] == "coberta"]
+    assert cobertas == [("construcao", "EXACT")]
+
+
+def test_n2_prefixo_do_campo_pedido_nao_casa_vizinho_de_nome() -> None:
+    from src.google_ads.gaql_compacto import linha_compacta
+
+    linha = {"campaign": {"resource_name": "c"}, "campaign_budget": {"resource_name": "b"}}
+    assert linha_compacta(linha, {"campaign"}) == {"campaign.resource_name": "c"}
