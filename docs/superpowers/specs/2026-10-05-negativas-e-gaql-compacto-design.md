@@ -114,9 +114,11 @@ variante gravada sai no `added[]` com `variante_de: <termo original>`. Não há 
 
 ### 3.5 Descriptions do `detect_drift` e do `get_change_history`
 
-Uma frase em cada uma: recomendação aceita à mão (app ou web) sai com o `client_type` do cliente e o
-e-mail do gestor, igual a uma edição manual (sondado em 05/10). Só o auto-apply sai como
-`GOOGLE_ADS_RECOMMENDATIONS`.
+Uma frase em cada uma: recomendação aceita à mão **pelo app de celular** sai com
+`client_type: GOOGLE_ADS_MOBILE_APP` e o e-mail do gestor, igual a uma edição manual (sondado em
+05/10). A aceitação pela UI web de Recomendações **não foi medida**: o comentário existente no
+`get_change_history` diz que ela pode sair como `GOOGLE_ADS_RECOMMENDATIONS`, igual ao auto-apply,
+e a description não afirma nada sobre ela.
 
 ## 4. Testes e guards
 
