@@ -35,7 +35,7 @@ certifi==2026.7.22
     #   requests
 cffi==2.1.1 ; platform_python_implementation != 'PyPy'
     # via cryptography
-charset-normalizer==3.4.9
+charset-normalizer==3.5.2
     # via requests
 click==8.5.0
     # via uvicorn
@@ -77,9 +77,9 @@ google-crc32c==1.9.0
     # via
     #   google-cloud-storage
     #   google-resumable-media
-google-resumable-media==2.10.0
+google-resumable-media==2.11.0
     # via google-cloud-storage
-googleapis-common-protos==1.75.0
+googleapis-common-protos==1.75.5
     # via
     #   google-ads
     #   google-api-core
@@ -130,7 +130,7 @@ oauthlib==3.3.1
     # via requests-oauthlib
 opentelemetry-api==1.45.0
     # via google-api-core
-propcache==0.5.2
+propcache==0.5.4
     # via
     #   aiohttp
     #   yarl
@@ -224,7 +224,7 @@ typing-inspection==0.4.2
     #   pydantic-settings
 tzdata==2026.3
     # via v4-ads-mcp (pyproject.toml)
-urllib3==2.7.0
+urllib3==2.8.0
     # via requests
 uvicorn==0.51.0
     # via
