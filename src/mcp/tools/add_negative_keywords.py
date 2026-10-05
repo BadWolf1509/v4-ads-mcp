@@ -1,4 +1,4 @@
-# bucket: always
+# bucket: defer
 """Tool: add_negative_keywords - add campaign-level negative keywords. Auto-applies."""
 
 from typing import Any
@@ -40,12 +40,12 @@ _SCHEMA: dict[str, Any] = {
 @register_tool(
     name="add_negative_keywords",
     description=(
-        "[CORE] Adiciona palavras-chave negativas em nivel de campanha. Sempre auto-aplica "
+        "[DEFER] Adiciona palavras-chave negativas em nivel de campanha. Sempre auto-aplica "
         "(negativas raramente quebram coisas - spec §7.1). Aceita ate 500 negativas "
         "por chamada com match_type EXACT, PHRASE ou BROAD."
     ),
     input_schema=_SCHEMA,
-    bucket="always",
+    bucket="defer",
 )
 async def add_negative_keywords(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

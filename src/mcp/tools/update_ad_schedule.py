@@ -1,4 +1,4 @@
-# bucket: always
+# bucket: defer
 """Tool: update_ad_schedule — define a GRADE COMPLETA de veiculacao (spec §4).
 
 Conjunto, nao incremento: o que fica de fora para de servir (§4.1). O diff e
@@ -122,7 +122,7 @@ _SCHEMA: dict[str, Any] = {
 }
 
 _DESCRIPTION = (
-    "[CORE] Define a GRADE COMPLETA de veiculacao (ad schedule) de 1-20 campanhas. "
+    "[DEFER] Define a GRADE COMPLETA de veiculacao (ad schedule) de 1-20 campanhas. "
     "CONJUNTO, nao incremento: `windows[]` e a grade inteira desejada; o que nao "
     "estiver nela DEIXA DE SERVIR (mandar so 'seg-sex 07-17' numa campanha que servia "
     "24x7 desliga o fim de semana). Always-CONFIRM: devolve preview + confirmation_token; "
@@ -151,7 +151,7 @@ _DESCRIPTION = (
 
 
 @register_tool(
-    name="update_ad_schedule", description=_DESCRIPTION, input_schema=_SCHEMA, bucket="always"
+    name="update_ad_schedule", description=_DESCRIPTION, input_schema=_SCHEMA, bucket="defer"
 )
 async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

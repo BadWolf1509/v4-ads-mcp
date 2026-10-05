@@ -1,4 +1,4 @@
-# bucket: always
+# bucket: defer
 """Tool: validate_gaql - dry-run validate a GAQL query without consuming quota for data."""
 
 import time
@@ -77,12 +77,12 @@ def _augment_error_hint(query: str, friendly_message: str) -> str:
 @register_tool(
     name="validate_gaql",
     description=(
-        "[CORE] Valida sintaxe + nomes de campos de um GAQL sem consumir quota de "
+        "[DEFER] Valida sintaxe + nomes de campos de um GAQL sem consumir quota de "
         "dados. Retorna {valid: bool, error: str|null}. Use antes de run_gaql "
         "pra evitar gastar quota com queries quebradas."
     ),
     input_schema=_SCHEMA,
-    bucket="always",
+    bucket="defer",
 )
 async def validate_gaql(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

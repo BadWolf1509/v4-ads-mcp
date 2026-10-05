@@ -87,9 +87,9 @@ def _metrica(cid="1", day="MONDAY", hour=9, cost=100.0, conv=5.0) -> dict[str, A
     }
 
 
-def test_tool_registrada_como_always() -> None:
+def test_tool_registrada_como_defer() -> None:
     t = get_tool("get_ad_schedule")
-    assert t is not None and t.bucket == "always"
+    assert t is not None and t.bucket == "defer"
 
 
 def test_schema_sem_composicao() -> None:
