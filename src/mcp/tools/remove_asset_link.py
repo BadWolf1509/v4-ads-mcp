@@ -1,4 +1,4 @@
-# bucket: always
+# bucket: defer
 """Tool: remove_asset_link — desvincula asset, sem tocar na entidade.
 
 Inverso do `create_and_link_assets`, que existia sem contraparte e custava idas
@@ -50,7 +50,7 @@ _SCHEMA: dict[str, Any] = {
 }
 
 _DESCRIPTION = (
-    "[CORE] Desvincula assets: remove o vínculo (customer_asset / campaign_asset "
+    "[DEFER] Desvincula assets: remove o vínculo (customer_asset / campaign_asset "
     "/ ad_group_asset) e **não remove o asset** em si — asset órfão é inerte, e a "
     "entidade pode estar linkada onde a varredura não alcançou. Recebe `level` + "
     "`resource_name` exatamente como o `get_assets` devolve em cada linha; use "
@@ -103,7 +103,7 @@ def _preflight_validate(customer_id: str, links: list[dict[str, Any]]) -> str | 
     name="remove_asset_link",
     description=_DESCRIPTION,
     input_schema=_SCHEMA,
-    bucket="always",
+    bucket="defer",
 )
 async def remove_asset_link(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

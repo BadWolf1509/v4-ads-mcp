@@ -1,4 +1,4 @@
-# bucket: always
+# bucket: defer
 """Tool: get_ad_schedule — grade de veiculacao (dia x hora) por campanha (spec §3).
 
 Campanha SEM criterio de AD_SCHEDULE serve 24x7. Essa distincao nao pode
@@ -70,7 +70,7 @@ _SCHEMA: dict[str, Any] = {
 }
 
 _DESCRIPTION = (
-    "[CORE] Grade de veiculacao (ad schedule) por campanha: uma linha por janela "
+    "[DEFER] Grade de veiculacao (ad schedule) por campanha: uma linha por janela "
     "(day_of_week, start_hour/minute, end_hour/minute, bid_modifier, status, "
     "criterion_id, resource_name) e um `schedule_summary` por campanha com "
     "`has_schedule`, `hours_per_week`, `budget_is_shared` e `campaign_status` "
@@ -227,7 +227,7 @@ def anular_resumos_incertos(
 
 
 @register_tool(
-    name="get_ad_schedule", description=_DESCRIPTION, input_schema=_SCHEMA, bucket="always"
+    name="get_ad_schedule", description=_DESCRIPTION, input_schema=_SCHEMA, bucket="defer"
 )
 async def get_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()

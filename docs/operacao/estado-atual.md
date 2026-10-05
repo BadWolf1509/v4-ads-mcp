@@ -22,7 +22,7 @@
 |---|---|
 | Revisão servindo | **`v4-ads-mcp-00143-dz6`**, 100% do tráfego (03/10) — o **#143** (conversões por ação e parcela de impressão), sobre o **#141** (`00142`, o teste do `detect_drift` com relógio congelado). ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186) |
 | Tools | **68** (62 Google + 6 Meta) |
-| Buckets | 22 always + 46 defer — **próxima remedição 04/10** ([método](tool-buckets-2026-09-04.md)) |
+| Buckets | **13 always + 55 defer** (05/10, 9 desceram sem uso de gestor) — [remedição](tool-buckets-2026-10-05.md); próxima com a Fase 2B, ~15/10 |
 | Catálogo | até **F203** (~6.000 linhas, 601 KB) |
 
 **Infra e guards verificada em produção (F200, 24 h até 30/09 00:08 UTC):** zero reconexão, zero
@@ -40,7 +40,7 @@ Obra – João Pessoa, 01/10 22h): `THIS_MONTH` devolve `01/10–01/10` com dado
 02:22 UTC, `db_conexao_testada_reconectou` (`connection was closed in the middle of operation`) e o
 `/health?deep=1` daquele instante devolveu 200 em 90 ms (F200).
 
-**Com data:** **04/10** — remedição dos buckets e do uso da Fase 2B por gestor.
+**Com data:** **~15/10** — remedir a Fase 2B por gestor com o plugin 0.5.0 (aplicado em 05/10) em uso.
 
 **Uso real, 30 dias até 30/09** (`audit_log`): 1.896 chamadas, 4 gestores (uso de verdade: Wellington
 e `pedro.vytor`). O **`run_gaql` é 38%** (725) — 259 do Pedro em rajadas de ~38 por sessão, roteiro
@@ -71,7 +71,9 @@ a revogação é soft (`revoked_at`) e o painel reconcede com um clique.
 `get_performance_breakdown`. Medido em 25/09: `get_campaign_performance` 148 chamadas de 3
 gestores contra 33 do breakdown (1 gestor) em 30 dias, com o plugin 0.4.1 (que já manda usar o
 breakdown) instalado desde 20/09 — o motor está na versão do plugin dos outros gestores ou no LLM
-escolhendo pelo nome. Separar por gestor é a medida de 04/10.
+escolhendo pelo nome. **Remedido em 05/10:** `get_campaign_performance` 120 (Pedro 96, Anderson 24) e
+`get_keyword_performance` 70 contra **1** do breakdown — nada mudou; espera o plugin 0.5.0
+([detalhe](tool-buckets-2026-10-05.md)).
 
 ## Pendências que dependem do Wellington
 

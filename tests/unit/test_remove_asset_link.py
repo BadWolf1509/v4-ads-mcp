@@ -33,10 +33,10 @@ def _ctx():
     clear_current()
 
 
-def test_tool_registrada_como_always() -> None:
+def test_tool_registrada_como_defer() -> None:
     t = get_tool("remove_asset_link")
     assert t is not None
-    assert t.bucket == "always"
+    assert t.bucket == "defer"
 
 
 def test_schema_aceita_o_resource_name_que_o_get_assets_devolve() -> None:
