@@ -27,13 +27,21 @@ def linha_compacta(linha: dict[str, Any], pedidos: set[str] | None) -> dict[str,
     """`{"campaign": {"id": "1"}}` → `{"campaign.id": "1"}`, sem os `resource_name` implícitos."""
     plana: dict[str, Any] = {}
 
+    def _pedido(caminho: str) -> bool:
+        # O campo pedido E tudo o que mora dentro dele: `SELECT change_event.old_resource`
+        # pede o `old_resource.campaign.resource_name` junto (revisao 05/10, I1).
+        c = caminho.lower()
+        return pedidos is None or any(c == p or c.startswith(p + ".") for p in pedidos)
+
     def _desce(no: dict[str, Any], prefixo: str) -> None:
         for k, v in no.items():
             caminho = f"{prefixo}{k}"
-            if isinstance(v, dict):
+            if isinstance(v, dict) and v:
                 _desce(v, f"{caminho}.")
                 continue
-            if k == "resource_name" and pedidos is not None and caminho.lower() not in pedidos:
+            if isinstance(v, dict) and not _pedido(caminho):
+                continue  # mensagem vazia que ninguem pediu
+            if k == "resource_name" and not _pedido(caminho):
                 continue
             plana[caminho] = v
 

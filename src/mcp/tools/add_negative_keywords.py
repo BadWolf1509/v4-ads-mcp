@@ -15,7 +15,7 @@ import structlog
 from src.google_ads.access import AccountAccessDeniedError
 from src.google_ads.errors import GoogleAdsFriendlyError
 from src.google_ads.mutations import run_mutation
-from src.google_ads.negativas import classificar, sem_acento
+from src.google_ads.negativas import chave, classificar, sem_acento
 from src.google_ads.queries.tactical import campaign_negative_keywords_query
 from src.google_ads.reports import run_report
 from src.governance.blast_radius import classify
@@ -89,13 +89,22 @@ def _planejar(
     for kw in pedidas:
         estado, existente = classificar(kw, conhecidas)
         if estado == "repetida":
-            ja_existia.append({**kw, "existente": existente})
+            origem = "campanha" if any(existente is e for e in existentes) else "pedido"
+            ja_existia.append({**kw, "existente": existente, "origem": origem})
             continue
-        if estado == "coberta":
-            avisos.append({"tipo": "coberta", **kw, "coberta_por": existente})
         lote.append(kw)
         conhecidas.append(kw)
+    # Cobertura DEPOIS do lote montado: contra a campanha e o resto do pedido, em qualquer
+    # ordem — `[PHRASE x, BROAD x]` e `[BROAD x, PHRASE x]` dizem o mesmo.
+    for kw in lote:
+        estado, existente = classificar(kw, [c for c in conhecidas if c is not kw])
+        if estado == "coberta":
+            avisos.append({"tipo": "coberta", **kw, "coberta_por": existente})
+    vistas: set[tuple[str, str]] = set()
     for kw in pedidas:
+        if (chave(kw["text"]), kw["match_type"]) in vistas:
+            continue
+        vistas.add((chave(kw["text"]), kw["match_type"]))
         texto = sem_acento(kw["text"])
         if texto is None:
             continue
@@ -156,7 +165,9 @@ async def _negativas_da_campanha(
         " PHRASE e EXACT; PHRASE cobre EXACT) e gravada e vem em `avisos`. A acentuada sem a"
         " grafia sem acento vem em `avisos` com a `sugestao`; com"
         " `incluir_variante_sem_acento: true` o par e gravado e listado em"
-        " `variantes_incluidas`. Plural e erro de digitacao NAO sao tratados."
+        " `variantes_incluidas` — o opt-in pode dobrar o lote (ate 1000 operacoes por"
+        " chamada). `ja_existia[].origem` diz se a repetida ja estava na `campanha` ou"
+        " veio duas vezes no `pedido`. Plural e erro de digitacao NAO sao tratados."
         " `cobertura_verificada: false` (com `cobertura_motivo`) diz que a leitura previa"
         " falhou e a tool gravou sem conferir. Nada a gravar responde `status: no_changes`."
     ),

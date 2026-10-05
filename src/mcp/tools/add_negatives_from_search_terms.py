@@ -3,15 +3,16 @@
 
 Workflow: gestor calls get_search_terms_report -> picks bad terms -> passes them
 here with scope (campaign / ad_group / shared_set) for each. Auto-applies
-(negatives are safe per spec §7.1). Up to 500 per call. Returns per-row status
-including 'already_exists' for terms that were already negatives (idempotent).
+(negatives are safe per spec §7.1). Up to 500 per call. Returns per-row status;
+'already_exists' only when Google reports the duplicate — it usually drops it
+silently and the row comes back 'added' (catalogo A1, revisao 05/10).
 """
 
 from collections import Counter
 from typing import Any
 
 from src.google_ads.mutations import run_mutation
-from src.google_ads.negativas import classificar, sem_acento
+from src.google_ads.negativas import chave, classificar, sem_acento
 from src.governance.blast_radius import classify
 from src.mcp.context import get_current
 from src.mcp.tools._common import classify_partial
@@ -94,11 +95,16 @@ def _variantes_sem_acento(
         )
     variantes: list[dict[str, Any]] = []
     avisos: list[dict[str, Any]] = []
+    vistos: set[tuple[str, str, str, str]] = set()
     for n in negatives:
+        mt = n.get("match_type", "EXACT")
+        visto = (n["scope"], n["scope_id"], chave(n["search_term"]), mt)
+        if visto in vistos:
+            continue
+        vistos.add(visto)
         texto = sem_acento(n["search_term"])
         if texto is None:
             continue
-        mt = n.get("match_type", "EXACT")
         conhecidas = escopos[(n["scope"], n["scope_id"])]
         if classificar({"text": texto, "match_type": mt}, conhecidas)[0] != "nova":
             continue
@@ -132,13 +138,15 @@ def _variantes_sem_acento(
     description=(
         "[DEFER] Adiciona negativas derivadas do search_terms_report em batch. Aceita "
         "ate 500 termos com scope campaign|ad_group|shared_set. Sempre auto-aplica "
-        "(spec §7.1) — idempotente: termos ja existentes retornam status "
-        "'already_exists' sem falha. Use apos get_search_terms_report pra picar "
-        "termos performando mal e exclui-los do leilao."
+        "(spec §7.1). Termo que ja e negativa: o Google normalmente o descarta em silencio "
+        "(catalogo A1) e ele volta como 'added', nao 'already_exists' — 'already_exists' "
+        "so aparece quando o Google reporta a duplicata. Use apos get_search_terms_report "
+        "pra picar termos performando mal e exclui-los do leilao."
         " O Google NAO aplica variante proxima em negativa: termo acentuado sem a grafia"
         " sem acento no mesmo pedido e escopo vem em `avisos` com a `sugestao`; com"
         " `incluir_variante_sem_acento: true` o par e gravado e sai em `added` com"
-        " `variante_de`. A tool nao le as negativas existentes: o par so e conferido"
+        " `variante_de` — o opt-in pode dobrar o lote (ate 1000 operacoes por chamada)."
+        " A tool nao le as negativas existentes: o par so e conferido"
         " dentro do proprio pedido. Plural e erro de digitacao NAO sao tratados."
     ),
     input_schema=_SCHEMA,
@@ -209,7 +217,9 @@ async def add_negatives_from_search_terms(args: dict[str, Any]) -> dict[str, Any
     return applied_envelope(
         "add_negatives_from_search_terms",
         customer_id,
-        f"Adicionar {target_count} negativa(s) derivada(s) do search_terms_report: "
+        f"Adicionar {target_count - len(variantes)} negativa(s) derivada(s) do "
+        f"search_terms_report"
+        f"{f' + {len(variantes)} variante(s) sem acento' if variantes else ''}: "
         f"{result['applied_count']} aceita(s) pelo Google, {ja_existiam} ja existia(m), "
         f"{recusadas} recusada(s).",
         applied_count=result["applied_count"],

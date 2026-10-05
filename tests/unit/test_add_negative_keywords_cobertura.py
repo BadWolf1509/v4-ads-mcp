@@ -106,7 +106,9 @@ async def test_repetida_sai_do_lote_e_vem_em_ja_existia() -> None:
         [e], [{"text": "patrol", "match_type": "BROAD"}, {"text": "brita", "match_type": "BROAD"}]
     )
     assert _lote(rm) == [{"text": "brita", "match_type": "BROAD"}]
-    assert out["ja_existia"] == [{"text": "patrol", "match_type": "BROAD", "existente": e}]
+    assert out["ja_existia"] == [
+        {"text": "patrol", "match_type": "BROAD", "existente": e, "origem": "campanha"}
+    ]
     assert out["cobertura_verificada"] is True
     assert out["status"] == "applied"
 

@@ -25,8 +25,12 @@ def sem_acento(texto: str) -> str | None:
 
 
 def chave(texto: str) -> str:
-    """Chave de comparação: minúsculas e espaços colapsados — o acento fica."""
-    return " ".join(texto.lower().split())
+    """Chave de comparação: NFC, minúsculas e espaços colapsados — o acento fica.
+
+    NFC porque o mesmo `ç` chega composto ou decomposto (NFD), e os dois são a mesma
+    negativa para o Google.
+    """
+    return " ".join(unicodedata.normalize("NFC", texto).lower().split())
 
 
 def classificar(
@@ -37,13 +41,13 @@ def classificar(
     `nova` e cada existente têm `text` e `match_type`. Repetida vence coberta.
     """
     alvo = chave(nova["text"])
-    amplitude = AMPLITUDE[nova["match_type"]]
+    amplitude = AMPLITUDE[nova["match_type"]]  # o schema restringe ao enum
     cobre: dict[str, Any] | None = None
     for e in existentes:
         if chave(e["text"]) != alvo:
             continue
         if e["match_type"] == nova["match_type"]:
             return "repetida", e
-        if cobre is None and AMPLITUDE[e["match_type"]] > amplitude:
+        if cobre is None and AMPLITUDE.get(e["match_type"], -1) > amplitude:
             cobre = e
     return ("coberta", cobre) if cobre is not None else ("nova", None)
