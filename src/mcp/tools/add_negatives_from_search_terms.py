@@ -3,14 +3,16 @@
 
 Workflow: gestor calls get_search_terms_report -> picks bad terms -> passes them
 here with scope (campaign / ad_group / shared_set) for each. Auto-applies
-(negatives are safe per spec §7.1). Up to 500 per call. Returns per-row status
-including 'already_exists' for terms that were already negatives (idempotent).
+(negatives are safe per spec §7.1). Up to 500 per call. Returns per-row status;
+'already_exists' only when Google reports the duplicate — it usually drops it
+silently and the row comes back 'added' (catalogo A1, revisao 05/10).
 """
 
 from collections import Counter
 from typing import Any
 
 from src.google_ads.mutations import run_mutation
+from src.google_ads.negativas import chave, classificar, sem_acento
 from src.governance.blast_radius import classify
 from src.mcp.context import get_current
 from src.mcp.tools._common import classify_partial
@@ -44,6 +46,15 @@ _SCHEMA: dict[str, Any] = {
                 "additionalProperties": False,
             },
         },
+        "incluir_variante_sem_acento": {
+            "type": "boolean",
+            "default": False,
+            "description": (
+                "Grava tambem a grafia sem acento de cada termo acentuado (mesmo match type e "
+                "escopo), quando ela nao esta no proprio pedido — o Google nao aplica variante "
+                "proxima em negativa."
+            ),
+        },
     },
     "required": ["customer_id", "negatives"],
     "additionalProperties": False,
@@ -69,14 +80,74 @@ def _build_params_summary(negatives: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _variantes_sem_acento(
+    negatives: list[dict[str, Any]], incluir: bool
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Os pares sem acento a gravar (opt-in) e os avisos (spec 2026-10-05, §3.3).
+
+    O "par ja existe" so e conferido DENTRO do pedido, no mesmo escopo: esta tool nao le as
+    negativas existentes antes de gravar.
+    """
+    escopos: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for n in negatives:
+        escopos.setdefault((n["scope"], n["scope_id"]), []).append(
+            {"text": n["search_term"], "match_type": n.get("match_type", "EXACT")}
+        )
+    variantes: list[dict[str, Any]] = []
+    avisos: list[dict[str, Any]] = []
+    vistos: set[tuple[str, str, str, str]] = set()
+    for n in negatives:
+        mt = n.get("match_type", "EXACT")
+        visto = (n["scope"], n["scope_id"], chave(n["search_term"]), mt)
+        if visto in vistos:
+            continue
+        vistos.add(visto)
+        texto = sem_acento(n["search_term"])
+        if texto is None:
+            continue
+        conhecidas = escopos[(n["scope"], n["scope_id"])]
+        if classificar({"text": texto, "match_type": mt}, conhecidas)[0] != "nova":
+            continue
+        if incluir:
+            conhecidas.append({"text": texto, "match_type": mt})
+            variantes.append(
+                {
+                    "search_term": texto,
+                    "match_type": mt,
+                    "scope": n["scope"],
+                    "scope_id": n["scope_id"],
+                    "variante_de": n["search_term"],
+                }
+            )
+        else:
+            avisos.append(
+                {
+                    "tipo": "sem_variante_sem_acento",
+                    "search_term": n["search_term"],
+                    "match_type": mt,
+                    "scope": n["scope"],
+                    "scope_id": n["scope_id"],
+                    "sugestao": texto,
+                }
+            )
+    return variantes, avisos
+
+
 @register_tool(
     name="add_negatives_from_search_terms",
     description=(
         "[DEFER] Adiciona negativas derivadas do search_terms_report em batch. Aceita "
         "ate 500 termos com scope campaign|ad_group|shared_set. Sempre auto-aplica "
-        "(spec §7.1) — idempotente: termos ja existentes retornam status "
-        "'already_exists' sem falha. Use apos get_search_terms_report pra picar "
-        "termos performando mal e exclui-los do leilao."
+        "(spec §7.1). Termo que ja e negativa: o Google normalmente o descarta em silencio "
+        "(catalogo A1) e ele volta como 'added', nao 'already_exists' — 'already_exists' "
+        "so aparece quando o Google reporta a duplicata. Use apos get_search_terms_report "
+        "pra picar termos performando mal e exclui-los do leilao."
+        " O Google NAO aplica variante proxima em negativa: termo acentuado sem a grafia"
+        " sem acento no mesmo pedido e escopo vem em `avisos` com a `sugestao`; com"
+        " `incluir_variante_sem_acento: true` o par e gravado e sai em `added` com"
+        " `variante_de` — o opt-in pode dobrar o lote (ate 1000 operacoes por chamada)."
+        " A tool nao le as negativas existentes: o par so e conferido"
+        " dentro do proprio pedido. Plural e erro de digitacao NAO sao tratados."
     ),
     input_schema=_SCHEMA,
     bucket="defer",
@@ -84,7 +155,10 @@ def _build_params_summary(negatives: list[dict[str, Any]]) -> dict[str, Any]:
 async def add_negatives_from_search_terms(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()
     customer_id = args["customer_id"]
-    negatives = args["negatives"]
+    variantes, avisos = _variantes_sem_acento(
+        args["negatives"], args.get("incluir_variante_sem_acento", False)
+    )
+    negatives = [*args["negatives"], *variantes]
     target_count = len(negatives)
 
     risk = classify(
@@ -92,7 +166,7 @@ async def add_negatives_from_search_terms(args: dict[str, Any]) -> dict[str, Any
         params={"target_count": target_count},
     )
 
-    payload = {"negatives": negatives}
+    payload = {"negatives": [{k: v for k, v in n.items() if k != "variante_de"} for n in negatives]}
     params_summary = _build_params_summary(negatives)
 
     result = await run_mutation(
@@ -126,6 +200,8 @@ async def add_negatives_from_search_terms(args: dict[str, Any]) -> dict[str, Any
             "scope_id": n["scope_id"],
             "status": row_status,
         }
+        if "variante_de" in n:
+            item["variante_de"] = n["variante_de"]
         if per_op and per_op["error"] and row_status == "failed":
             item["error"] = per_op["error"]
         added.append(item)
@@ -141,11 +217,14 @@ async def add_negatives_from_search_terms(args: dict[str, Any]) -> dict[str, Any
     return applied_envelope(
         "add_negatives_from_search_terms",
         customer_id,
-        f"Adicionar {target_count} negativa(s) derivada(s) do search_terms_report: "
+        f"Adicionar {target_count - len(variantes)} negativa(s) derivada(s) do "
+        f"search_terms_report"
+        f"{f' + {len(variantes)} variante(s) sem acento' if variantes else ''}: "
         f"{result['applied_count']} aceita(s) pelo Google, {ja_existiam} ja existia(m), "
         f"{recusadas} recusada(s).",
         applied_count=result["applied_count"],
         provider_request_id=result["provider_request_id"],
         auto_applied_reason=risk.reason,
         added=added,
+        avisos=avisos,
     )

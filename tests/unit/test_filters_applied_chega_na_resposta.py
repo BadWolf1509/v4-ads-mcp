@@ -193,7 +193,10 @@ _MODULOS_DE_QUERY = {
 }
 # O preview do bulk_pause_by_query e um dry-run de mutacao (grava token no banco):
 # o eco dele e conferido em tests/unit/test_bulk_pause_tool.py.
-_FORA_DO_ECO_DE_LEITURA = {"bulk_pause_by_query"}
+# O add_negative_keywords le as negativas da campanha INTEIRA antes de gravar (spec
+# 2026-10-05 §3.2): leitura previa de mutate, sem recorte a declarar — a resposta
+# e o envelope do mutate, nao um relatorio.
+_FORA_DO_ECO_DE_LEITURA = {"bulk_pause_by_query", "add_negative_keywords"}
 
 
 def _tools_que_usam_as_funcoes_de_query() -> set[str]:

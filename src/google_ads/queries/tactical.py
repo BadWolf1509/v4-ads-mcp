@@ -104,6 +104,31 @@ def negative_keywords_audit_query() -> tuple[str, dict[str, Any]]:
     return gaql, filtros
 
 
+def campaign_negative_keywords_query(campaign_id: str) -> tuple[str, dict[str, Any]]:
+    """As negativas de keyword de UMA campanha — a leitura previa do `add_negative_keywords`.
+
+    Sem LIMIT: a cobertura so vale sobre a lista inteira (a campanha JPA da MO-JP tinha 262
+    em 05/10). `int()` no id (F163). Spec 2026-10-05 §3.2.
+    """
+    gaql = f"""
+        SELECT
+          campaign_criterion.criterion_id,
+          campaign_criterion.keyword.text,
+          campaign_criterion.keyword.match_type
+        FROM campaign_criterion
+        WHERE campaign_criterion.negative = true
+          AND campaign_criterion.type = 'KEYWORD'
+          AND campaign.id = {int(campaign_id)}
+    """.strip()
+    filtros: dict[str, Any] = {
+        "nivel": "campanha",
+        "negative": True,
+        "criterion_type": "KEYWORD",
+        "campaign_ids": [campaign_id],
+    }
+    return gaql, filtros
+
+
 def ad_performance_query(
     start: date, end: date, status: str, limit: int
 ) -> tuple[str, dict[str, Any]]:
