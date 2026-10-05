@@ -16,11 +16,11 @@
 
 ---
 
-## Produção — medido em 2026-10-03
+## Produção — medido em 2026-10-05
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00143-dz6`**, 100% do tráfego (03/10) — o **#143** (conversões por ação e parcela de impressão), sobre o **#141** (`00142`, o teste do `detect_drift` com relógio congelado). ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186) |
+| Revisão servindo | **`v4-ads-mcp-00145-s2k`**, 100% do tráfego (05/10) — o **#152** (5 bumps de patch do Dependabot), sobre o **#151** (`00144`, buckets de 05/10) e o **#143** (`00143`, conversões por ação e parcela de impressão), sobre o **#141** (`00142`, o teste do `detect_drift` com relógio congelado). ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186) |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | **13 always + 55 defer** (05/10, 9 desceram sem uso de gestor) — [remedição](tool-buckets-2026-10-05.md); próxima com a Fase 2B, ~15/10 |
 | Catálogo | até **F203** (~6.000 linhas, 601 KB) |
