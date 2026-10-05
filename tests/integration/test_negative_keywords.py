@@ -36,6 +36,13 @@ async def session_ctx(db):
     clear_current()
 
 
+@pytest.fixture
+def sem_negativas():
+    """A leitura previa (spec 2026-10-05 §3.2) acha a campanha sem negativas."""
+    with patch("src.mcp.tools.add_negative_keywords.run_report", AsyncMock(return_value=[])) as rr:
+        yield rr
+
+
 def _fake_client():
     fc = MagicMock()
     fs = MagicMock()
@@ -47,7 +54,7 @@ def _fake_client():
 
 
 @pytest.mark.integration
-async def test_add_negative_keywords_auto_applies_single(db, session_ctx):
+async def test_add_negative_keywords_auto_applies_single(db, session_ctx, sem_negativas):
     from src.mcp.tools.add_negative_keywords import add_negative_keywords
 
     with (
@@ -77,7 +84,7 @@ async def test_add_negative_keywords_auto_applies_single(db, session_ctx):
 
 
 @pytest.mark.integration
-async def test_add_negative_keywords_auto_applies_bulk(db, session_ctx):
+async def test_add_negative_keywords_auto_applies_bulk(db, session_ctx, sem_negativas):
     """Even 100+ negatives auto-apply (spec §7.1: negatives are safe)."""
     from src.mcp.tools.add_negative_keywords import add_negative_keywords
 
@@ -110,7 +117,7 @@ async def test_add_negative_keywords_auto_applies_bulk(db, session_ctx):
 
 
 @pytest.mark.integration
-async def test_add_negative_keywords_summary_lists_match_types(db, session_ctx):
+async def test_add_negative_keywords_summary_lists_match_types(db, session_ctx, sem_negativas):
     from src.mcp.tools.add_negative_keywords import add_negative_keywords
 
     with (

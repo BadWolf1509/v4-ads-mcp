@@ -169,6 +169,7 @@ def _chamadas() -> dict[str, Callable[[], tuple[str, dict[str, Any]]]]:
             _S, _E, 10, min_cost_brl=10.0, min_clicks=5, min_conversions=1.0
         ),
         "negative_keywords_audit_query": lambda: t.negative_keywords_audit_query(),
+        "campaign_negative_keywords_query": lambda: t.campaign_negative_keywords_query("123"),
         "conversion_actions_query": lambda: t.conversion_actions_query(limit=10),
         "funnel_query": lambda: c.funnel_query(_S, _E),
         "top_keywords_query": lambda: c.top_keywords_query(_S, _E, 10, metric="cost"),
