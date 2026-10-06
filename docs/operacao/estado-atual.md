@@ -6,21 +6,20 @@
 > que fechou sai daqui:** o defeito vai para o catálogo, a narrativa para o arquivo
 > ([`_archive/`](../_archive/varredura-2026-09-06-frentes.md)), e aqui fica uma linha.
 
-> **Última sessão:** [`session-2026-10-02-handoff.md`](session-2026-10-02-handoff.md) — 30/09–02/10:
-> revogação das 4 contas Meta e smoke do dia 1, o uso real de 30 dias, e a frente **conversões por
-> ação e parcela de impressão** (no ar desde 03/10, #143). Antes:
-> [`session-2026-09-29-handoff.md`](session-2026-09-29-handoff.md) (F200 verificado, F203, F202).
+> **Última sessão:** [`session-2026-10-06-handoff.md`](session-2026-10-06-handoff.md) — 03/10–06/10:
+> remedição de 30 dias (buckets 22 → 13 always; Fase 2B parada), deps e a frente **negativas com
+> acento e cobertura + `run_gaql` compacto** (no ar desde 05/10, #154). Antes:
+> [`session-2026-10-02-handoff.md`](session-2026-10-02-handoff.md) (conversões por ação e parcela).
 
-> Sem frente em curso. A de conversões por ação e parcela de impressão fechou em 03/10 (#143,
-> smoke abaixo); o texto do plugin 0.5.0 está com o Wellington.
+> Sem frente em curso. Pendências pequenas da última frente estão no handoff de 06/10.
 
 ---
 
-## Produção — medido em 2026-10-05
+## Produção — medido em 2026-10-06
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00145-s2k`**, 100% do tráfego (05/10) — o **#152** (5 bumps de patch do Dependabot), sobre o **#151** (`00144`, buckets de 05/10) e o **#143** (`00143`, conversões por ação e parcela de impressão), sobre o **#141** (`00142`, o teste do `detect_drift` com relógio congelado). ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186) |
+| Revisão servindo | **`v4-ads-mcp-00146-qv5`**, 100% do tráfego (05/10) — o **#154** (negativas com acento e cobertura, `run_gaql` compacto), sobre o **#152** (`00145`, 5 bumps de patch do Dependabot), sobre o **#151** (`00144`, buckets de 05/10) e o **#143** (`00143`, conversões por ação e parcela de impressão), sobre o **#141** (`00142`, o teste do `detect_drift` com relógio congelado). ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186) |
 | Tools | **68** (62 Google + 6 Meta) |
 | Buckets | **13 always + 55 defer** (05/10, 9 desceram sem uso de gestor) — [remedição](tool-buckets-2026-10-05.md); próxima com a Fase 2B, ~15/10 |
 | Catálogo | até **F203** (~6.000 linhas, 601 KB) |
