@@ -38,9 +38,8 @@
 
 ## Pendente
 
-- **Negativa de teste** `consulta nutricional grátis` (PHRASE) na campanha pausada
-  `[3b.24.4] T5.3 - manual_cpc` da conta Rayane Ribeiro (critério `2385165706260`): remover ou
-  deixar, a critério do Wellington.
+- A negativa de teste do smoke (conta Rayane Ribeiro, campanha pausada de teste) foi
+  **removida** em 06/10 e conferida no Google.
 - **Decisões abertas, sem dado que as peça agora:**
   - chamada `no_changes` do `add_negative_keywords` não deixa linha no `audit_log` (igual ao
     `update_ad_schedule`);
