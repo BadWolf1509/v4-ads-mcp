@@ -44,14 +44,6 @@
       </thead>
       <tbody>
         {% for inv in invites %}
-        {% set onboarding_message -%}
-Oi{{ " " ~ inv.full_name.split(" ")[0] if inv.full_name else "" }}! Te convidei pro V4 Ads MCP (nosso painel de Google/Meta Ads via IA).
-
-1. Acessa {{ panel_url }}/login e entra com seu email @v4company.com (botão "Entrar com Google V4").
-2. Depois segue o guia de configuração: {{ panel_url }}/help
-
-Qualquer coisa me chama.
-        {%- endset %}
         <tr>
           <td><strong>{{ inv.email }}</strong></td>
           <td>{{ inv.full_name or "—" }}</td>
@@ -65,7 +57,9 @@ Qualquer coisa me chama.
           <td class="text-right">
             <button type="button" class="v4-btn v4-btn--small v4-btn--secondary"
                     data-v4-action="copy"
-                    data-v4-copy-text="{{ onboarding_message|trim }}"
+                    {#- str montada em mensagem_onboarding(), nunca {% set %} em bloco:
+                        o bloco vira Markup e as aspas do texto fecham o atributo. #}
+                    data-v4-copy-text="{{ inv.onboarding_message }}"
                     data-v4-copy-toast="Mensagem copiada — cola no WhatsApp/Slack do gestor.">Copiar mensagem</button>
             <button type="button" class="v4-btn v4-btn--small v4-btn--ghost"
                     data-v4-action="confirm"

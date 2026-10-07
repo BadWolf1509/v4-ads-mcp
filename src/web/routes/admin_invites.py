@@ -14,6 +14,28 @@ from src.web.routes._shared import _admin_flash, _audit_admin, _require_admin, t
 router = APIRouter(tags=["web"])
 
 
+def mensagem_onboarding(full_name: str | None, panel_url: str) -> str:
+    """Texto que o admin copia e manda pro convidado.
+
+    Monta-se aqui, como `str`, e não num `{% set %}` em bloco no template: sob
+    autoescape o bloco vira `Markup`, que o Jinja não re-escapa ao cair no
+    atributo `data-v4-copy-text` — a primeira `"` do texto fechava o atributo
+    e a mensagem copiada saía cortada em `(botão `. Como `str`, o autoescape
+    a escapa uma vez, no ponto em que ela é emitida.
+    """
+    primeiro_nome = full_name.split()[0] if full_name and full_name.strip() else ""
+    saudacao = f"Oi {primeiro_nome}!" if primeiro_nome else "Oi!"
+    return (
+        f"{saudacao} Te convidei pro V4 Ads MCP (nosso painel de Google/Meta Ads via IA).\n"
+        "\n"
+        f"1. Acessa {panel_url}/login e entra com seu email @v4company.com"
+        ' (botão "Entrar com Google V4").\n'
+        f"2. Depois segue o guia de configuração: {panel_url}/help\n"
+        "\n"
+        "Qualquer coisa me chama."
+    )
+
+
 @router.get("/admin/invites", response_class=HTMLResponse)
 async def admin_invites(
     request: Request,
@@ -33,10 +55,12 @@ async def admin_invites(
     )
     pending = await pending_invites_count()
     now = datetime.now(UTC)
+    panel_url = get_settings().public_base_url
     invites_with_age = []
     for r in invites:
         inv = dict(r)
         inv["days_pending"] = (now - inv["invited_at"]).days if inv["invited_at"] else 0
+        inv["onboarding_message"] = mensagem_onboarding(inv["full_name"], panel_url)
         invites_with_age.append(inv)
     return templates.TemplateResponse(
         request,
@@ -45,7 +69,6 @@ async def admin_invites(
             "current_user": user,
             "invites": invites_with_age,
             "pending_invites_count": pending,
-            "panel_url": get_settings().public_base_url,
             "flash": _admin_flash(request, ok_message="Convite criado."),
         },
     )
