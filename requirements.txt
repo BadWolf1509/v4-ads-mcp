@@ -198,7 +198,7 @@ rpds-py==2026.6.3
     #   referencing
 six==1.17.0
     # via facebook-business
-sse-starlette==3.4.10
+sse-starlette==3.5.0
     # via mcp
 starlette==1.6.0
     # via
