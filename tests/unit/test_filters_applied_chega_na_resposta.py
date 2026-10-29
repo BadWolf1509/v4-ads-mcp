@@ -94,6 +94,14 @@ CASOS: list[Caso] = [
     Caso("get_funnel_metrics", ("funnel_query",), _unico("funnel_query")),
     Caso("get_budget_pacing", ("budget_pacing_query",), _unico("budget_pacing_query")),
     Caso(
+        "get_account_balance",
+        ("saldo_orcamento_conta_query", "gasto_diario_conta_query"),
+        lambda r: {
+            "orcamento": r["saldo_orcamento_conta_query"][0][1],
+            "gasto": r["gasto_diario_conta_query"][0][1],
+        },
+    ),
+    Caso(
         "get_top_keywords_creatives",
         ("top_keywords_query", "top_creatives_query"),
         lambda r: {

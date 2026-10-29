@@ -131,3 +131,46 @@ def budget_pacing_orcamentos_query(
         "date_range": janela_aplicada(date_start, date_end),
     }
     return gaql, filtros
+
+
+def saldo_orcamento_conta_query() -> tuple[str, dict[str, Any]]:
+    """Orcamentos de conta APROVADOS, o de inicio mais recente primeiro (spec saldo §3.2).
+
+    `LIMIT 50` e teto estrutural: conta com mais de 50 orcamentos aprovados nao existe na
+    pratica, e o modulo so usa o mais recente. `pending_proposal` so sinaliza que ha
+    proposta de mudanca esperando aprovacao (o saldo lido ainda e o aprovado).
+    """
+    gaql = """
+        SELECT
+          account_budget.id,
+          account_budget.approved_spending_limit_type,
+          account_budget.adjusted_spending_limit_micros,
+          account_budget.amount_served_micros,
+          account_budget.total_adjustments_micros,
+          account_budget.approved_start_date_time,
+          account_budget.approved_end_date_time,
+          account_budget.approved_end_time_type,
+          account_budget.pending_proposal.account_budget_proposal
+        FROM account_budget
+        WHERE account_budget.status = 'APPROVED'
+        ORDER BY account_budget.approved_start_date_time DESC
+        LIMIT 50
+    """.strip()
+    return gaql, {"status": "APPROVED"}
+
+
+def gasto_diario_conta_query(inicio: date, fim: date) -> tuple[str, dict[str, Any]]:
+    """Gasto por dia da conta (recurso `customer`) na janela; base da media de gasto.
+
+    `LIMIT 40` e teto estrutural: uma linha por dia e a janela da tool tem 30 dias.
+    """
+    gaql = f"""
+        SELECT
+          segments.date,
+          metrics.cost_micros
+        FROM customer
+        WHERE {gaql_date_clause(inicio, fim)}
+        ORDER BY segments.date
+        LIMIT 40
+    """.strip()
+    return gaql, {"date_range": janela_aplicada(inicio, fim)}

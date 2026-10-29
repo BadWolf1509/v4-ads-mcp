@@ -63,6 +63,8 @@ CAMPO_PARA_CHAVE = {
     "campaign_budget.id": "budget_ids",
     # spec 2026-10-02: as flags so das acoes que o recorte por acao trouxe
     "conversion_action.id": "conversion_action_ids",
+    # spec 2026-10-28: so orcamentos de conta aprovados entram no saldo
+    "account_budget.status": "status",
 }
 
 
@@ -180,6 +182,8 @@ def _chamadas() -> dict[str, Callable[[], tuple[str, dict[str, Any]]]]:
         "budget_pacing_orcamentos_query": lambda: o.budget_pacing_orcamentos_query(
             _S, _E, ["1", "2"]
         ),
+        "saldo_orcamento_conta_query": lambda: o.saldo_orcamento_conta_query(),
+        "gasto_diario_conta_query": lambda: o.gasto_diario_conta_query(_S, _E),
         "bulk_pause_query": lambda: bulk_pause_query(
             target_type="keyword",
             filter_clause="ad_group_criterion.status = 'ENABLED'",
