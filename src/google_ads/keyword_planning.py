@@ -29,6 +29,7 @@ from src.google_ads.errors import to_friendly
 from src.google_ads.request_id import get_request_id, reset_request_id
 from src.governance.bookkeeping import best_effort
 from src.governance.rate_limit import (
+    QuotaExhausted,
     before_call,
     hash_developer_token,
     record_actual,
@@ -101,6 +102,19 @@ async def run_keyword_planning[T](
         resultado = await run_blocking(_executar)
         if isinstance(resultado, Sized):
             target_count = len(resultado)
+    except QuotaExhausted as e:
+        # Negacao por quota e esperada e a mensagem PT-BR ja e curada (qual
+        # cota, usado/limite, reset): sobe INTACTA, sem to_friendly (que a
+        # trocaria por "Erro inesperado"), igual a run_report.
+        status = "error"
+        error_message = str(e)
+        log.warning(
+            "run_keyword_planning_quota_exhausted",
+            customer_id=customer_id,
+            operation=operation_name,
+        )
+        friendly_error = e
+        original_error = None
     except Exception as e:
         status = "error"
         error_message = str(e)
@@ -162,5 +176,7 @@ async def run_keyword_planning[T](
             )
 
     if friendly_error is not None:
+        if original_error is None:
+            raise friendly_error
         raise friendly_error from original_error
     return resultado  # type: ignore[return-value]

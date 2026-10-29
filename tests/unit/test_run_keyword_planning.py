@@ -12,6 +12,7 @@ from uuid import uuid4
 
 import pytest
 
+from src.config import get_settings
 from src.google_ads.access import AccountAccessDeniedError
 from src.google_ads.errors import GoogleAdsFriendlyError
 from src.governance.rate_limit import QuotaExhausted
@@ -84,16 +85,22 @@ async def test_nega_sem_acesso(ctx, gov) -> None:
 async def test_reserva_unica_com_estimated_ops(ctx, gov) -> None:
     from src.google_ads.keyword_planning import run_keyword_planning
 
+    gov["before_call"].side_effect = [11, 22]
     resultado = await run_keyword_planning(**ctx, chamadas=lambda client: ["a", "b", "c"])
 
     assert resultado == ["a", "b", "c"]
     assert gov["before_call"].await_count == 2
+    from src.governance.rate_limit import hash_developer_token
+
+    token_id = hash_developer_token(get_settings().google_ads_developer_token)
     chaves = [c.args[1] for c in gov["before_call"].await_args_list]
-    assert any(str(k).startswith("mgr:") for k in chaves)
+    assert chaves == [token_id, f"mgr:{ctx['manager_id']}"]
     for c in gov["before_call"].await_args_list:
         assert c.kwargs["estimated_ops"] == 7
     # reconcilia as duas, com actual = estimated em sucesso
     assert gov["record_actual"].await_count == 2
+    reconciliados = [(c.args[1], c.kwargs["dia"]) for c in gov["record_actual"].await_args_list]
+    assert reconciliados == [(token_id, 11), (f"mgr:{ctx['manager_id']}", 22)]
     for c in gov["record_actual"].await_args_list:
         assert c.kwargs["actual_ops"] == 7
     audit = gov["audit"].await_args.kwargs
@@ -119,10 +126,10 @@ async def test_quota_esgotada_nao_reconcilia_e_audita(ctx, gov) -> None:
     """F73: sem reserva persistida nao ha o que reconciliar; o audit roda."""
     from src.google_ads.keyword_planning import run_keyword_planning
 
-    gov["before_call"].side_effect = QuotaExhausted("cota")
+    gov["before_call"].side_effect = QuotaExhausted("quota diaria esgotada: 9/10")
     chamadas = MagicMock()
 
-    with pytest.raises(GoogleAdsFriendlyError):
+    with pytest.raises(QuotaExhausted, match="quota diaria esgotada: 9/10"):
         await run_keyword_planning(**ctx, chamadas=chamadas)
 
     chamadas.assert_not_called()
