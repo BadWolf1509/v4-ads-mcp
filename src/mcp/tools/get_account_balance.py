@@ -6,6 +6,7 @@ from typing import Any
 
 from src.google_ads.account_clock import resolve_account_today
 from src.google_ads.errors import GoogleAdsFriendlyError
+from src.google_ads.queries._common import micros_to_currency
 from src.google_ads.queries.overview import gasto_diario_conta_query, saldo_orcamento_conta_query
 from src.google_ads.reports import run_report
 from src.google_ads.saldo import montar_saldo_google
@@ -29,10 +30,12 @@ _SCHEMA: dict[str, Any] = {
 
 def _row_formatter_orcamento(row: Any) -> dict[str, Any]:
     b = row.account_budget
-    limite = int(b.adjusted_spending_limit_micros or 0)
+    tipo = b.approved_spending_limit_type.name
     return {
-        "tipo_limite": b.approved_spending_limit_type.name,
-        "limite_ajustado_micros": limite or None,
+        "tipo_limite": tipo,
+        "limite_ajustado_micros": (
+            None if tipo == "INFINITE" else int(b.adjusted_spending_limit_micros)
+        ),
         "gasto_micros": int(b.amount_served_micros),
         "ajustes_micros": int(b.total_adjustments_micros),
         "inicio": str(b.approved_start_date_time),
@@ -45,7 +48,7 @@ def _row_formatter_orcamento(row: Any) -> dict[str, Any]:
 def _row_formatter_gasto(row: Any) -> dict[str, Any]:
     return {
         "data": datetime.strptime(str(row.segments.date), "%Y-%m-%d").date(),
-        "custo": int(row.metrics.cost_micros) / 1_000_000.0,
+        "custo": micros_to_currency(int(row.metrics.cost_micros)),
     }
 
 
@@ -55,10 +58,10 @@ def _row_formatter_gasto(row: Any) -> dict[str, Any]:
         "[DEFER] Saldo restante do orçamento de conta de UMA conta Google Ads (uma conta por "
         "chamada). `restante_brl` é o 'Fundos disponíveis' do Faturamento: limite ajustado "
         "menos gasto acumulado. `situacao` tem 6 valores: "
-        "ok = saldo e prazo confortáveis; "
-        "atencao = saldo ou prazo ficando curto; "
-        "critico = saldo ou prazo quase no fim; "
-        "esgotada = sem saldo (ou orçamento encerrado); "
+        "com_saldo = dias restantes acima de 7; "
+        "acabando = dias restantes até 7; "
+        "sem_gasto = há saldo mas não houve gasto nos últimos 7 dias; "
+        "esgotada = sem saldo, menos de um dia de gasto ou orçamento encerrado; "
         "sem_teto = orçamento de conta sem limite; "
         "indeterminada = não foi possível calcular (veja `motivo`). "
         "`sem_teto` não tem número e não diz a forma de pagamento (cartão, boleto ou "
@@ -95,7 +98,9 @@ async def get_account_balance(args: dict[str, Any]) -> dict[str, Any]:
         if exc.code != "AUTHORIZATION_ERROR":
             raise
         saldo = montar_saldo_google([], {}, hoje=hoje)
+        # nada foi medido: nenhum numero pode ir como zero (nao medido nao e zero)
         saldo["motivo"] = "sem permissão de faturamento nesta conta"
+        saldo["media_diaria_7d_brl"] = None
         return {
             **saldo,
             "customer_id": customer_id,
