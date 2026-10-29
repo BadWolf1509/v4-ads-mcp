@@ -90,6 +90,7 @@ def build_insights_call(
     end: date,
     limit: int,
     breakdowns: list[str] | None = None,
+    time_increment: int | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Build Graph API edge path + params dict for a /insights call.
 
@@ -144,6 +145,13 @@ def build_insights_call(
     }
     if breakdowns:
         params["breakdowns"] = ",".join(breakdowns)
+    if time_increment is not None:
+        # Uma linha por periodo de `time_increment` dias (1 = diario), usado pelo gasto
+        # diario do saldo da conta. Sondado com controle em 29/10: `abc` volta HTTP 400
+        # ("must be one of the following values: monthly, all_days"), entao a API le o
+        # param; `1` volta 200 com uma linha por dia COM entrega (dia sem entrega nao
+        # aparece), ordenadas por gasto, nao por data (`scripts/probe_meta_time_increment.py`).
+        params["time_increment"] = str(time_increment)
     return edge, params
 
 
