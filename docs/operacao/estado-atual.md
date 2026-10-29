@@ -90,6 +90,11 @@ escolhendo pelo nome. **Remedido em 05/10:** `get_campaign_performance` 120 (Ped
 - **Identidade `@v4company.com` sem caixa postal no TI** — desbloqueia o **F186** inteiro. Emitir
   token sob um manager existente está recusado (~38 contas Google e 26 Meta no GitHub Actions).
 - **F129** (governança do system user Meta) e **F67** (custom domain via LB).
+- **Alerta de saldo acabando** (28/10) — o [desenho do saldo](../superpowers/specs/2026-10-28-saldo-da-conta-design.md)
+  entrega só a consulta por conta; o job diário que avisa quando faltam menos de N dias ficou fora
+  por decisão. Até ele existir, descobrir conta parando ainda depende de alguém consultar (sondagem
+  de 28/10: Cantina sem saldo no Google, 3 Lagoas e Cotia paradas pelo limite na Meta). Falta
+  decidir canal e limiar; o cálculo vive em módulo puro, reaproveitável pelo job.
 - **`recommendation_subscription`** — recomendada a tool de LEITURA, varrendo só o que o gestor
   alcança e contando os opacos (F185: 4 de 11 sem chave); a de escrita, não.
 
