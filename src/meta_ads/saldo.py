@@ -15,7 +15,9 @@ from typing import Any
 from src.meta_ads.labels import META_ACCOUNT_STATUS_LABELS
 from src.saldo import classificar, media_7d, media_dias_com_gasto
 
-_PADRAO_SALDO = re.compile(r"Saldo disponível \(R\$\s?(\d{1,3}(?:\.\d{3})*,\d{2}) BRL\)")
+# Os separadores sao `\s`, nao espaco literal: a Graph manda U+00A0 antes de "BRL" (repr da
+# resposta crua, 29/10). Fixture transcrita da saida impressa perde o U+00A0 — o smoke pegou.
+_PADRAO_SALDO = re.compile(r"Saldo\sdisponível\s\(R\$\s?(\d{1,3}(?:\.\d{3})*,\d{2})\sBRL\)")
 
 
 def saldo_do_texto(display_string: str | None) -> Decimal | None:

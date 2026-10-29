@@ -24,7 +24,7 @@ CANTINA: dict[str, Any] = {
     "currency": "BRL",
     "funding_source_details": {
         "id": "29013939138295436",
-        "display_string": "Saldo disponível (R$633,45 BRL)",
+        "display_string": "Saldo disponível (R$633,45 BRL)",
         "type": 20,
     },
     "id": "act_3709029949237406",
@@ -40,7 +40,7 @@ LAGOAS: dict[str, Any] = {
     "currency": "BRL",
     "funding_source_details": {
         "id": "28737589395932228",
-        "display_string": "Saldo disponível (R$0,00 BRL)",
+        "display_string": "Saldo disponível (R$0,00 BRL)",
         "type": 20,
     },
     "id": "act_1470682461507188",
@@ -56,7 +56,7 @@ MDO: dict[str, Any] = {
     "currency": "BRL",
     "funding_source_details": {
         "id": "27991254403897884",
-        "display_string": "Saldo disponível (R$0,00 BRL)",
+        "display_string": "Saldo disponível (R$0,00 BRL)",
         "type": 20,
     },
     "id": "act_27798855556414269",
@@ -108,22 +108,22 @@ DERICK: dict[str, Any] = {
 
 
 def test_texto_medido() -> None:
-    assert saldo_do_texto("Saldo disponível (R$633,45 BRL)") == Decimal("633.45")
+    assert saldo_do_texto("Saldo disponível (R$633,45 BRL)") == Decimal("633.45")
 
 
 def test_milhar() -> None:
-    assert saldo_do_texto("Saldo disponível (R$1.234,56 BRL)") == Decimal("1234.56")
+    assert saldo_do_texto("Saldo disponível (R$1.234,56 BRL)") == Decimal("1234.56")
 
 
 def test_zero() -> None:
-    assert saldo_do_texto("Saldo disponível (R$0,00 BRL)") == Decimal("0.00")
+    assert saldo_do_texto("Saldo disponível (R$0,00 BRL)") == Decimal("0.00")
 
 
 def test_ingles_e_none() -> None:
-    assert saldo_do_texto("Available balance (R$633.45 BRL)") is None
+    assert saldo_do_texto("Available balance (R$633.45 BRL)") is None
 
 
-@pytest.mark.parametrize("texto", ["", None, "VISA *6522", "Saldo disponível (R$633,4 BRL)"])
+@pytest.mark.parametrize("texto", ["", None, "VISA *6522", "Saldo disponível (R$633,4 BRL)"])
 def test_vazio_e_none(texto: str | None) -> None:
     assert saldo_do_texto(texto) is None
 
@@ -135,7 +135,7 @@ def test_cantina_limite_trava_antes() -> None:
     assert r["trava_primeiro"] == "limite_de_gastos"
     assert r["restante_brl"] == 556.49
     assert r["forma_de_pagamento"] == "pre_pago"
-    assert r["forma_de_pagamento_texto"] == "Saldo disponível (R$633,45 BRL)"
+    assert r["forma_de_pagamento_texto"] == "Saldo disponível (R$633,45 BRL)"
     assert r["a_faturar_brl"] is None
     assert r["aproximado"] is True
     assert r["situacao"] in ("com_saldo", "acabando")
@@ -162,7 +162,7 @@ def test_empate_prefere_saldo_prepago() -> None:
     conta = {**CANTINA, "spend_cap": "30000", "amount_spent": "0"}
     conta["funding_source_details"] = {
         **CANTINA["funding_source_details"],
-        "display_string": "Saldo disponível (R$300,00 BRL)",
+        "display_string": "Saldo disponível (R$300,00 BRL)",
     }
     r = montar_saldo_meta(conta, GASTOS, hoje=HOJE)
     assert r["trava_primeiro"] == "saldo_prepago"
@@ -204,7 +204,7 @@ def test_pos_pago_com_limite_classifica_sobre_o_limite() -> None:
 def test_ilegivel_com_limite_e_indeterminada() -> None:
     conta = {
         **CANTINA,
-        "funding_source_details": {"id": "1", "display_string": "Available balance (R$633.45 BRL)"},
+        "funding_source_details": {"id": "1", "display_string": "Available balance (R$633.45 BRL)"},
     }
     r = montar_saldo_meta(conta, GASTOS, hoje=HOJE)
     assert r["situacao"] == "indeterminada"
@@ -212,7 +212,7 @@ def test_ilegivel_com_limite_e_indeterminada() -> None:
     assert r["teto_pelo_limite_brl"] == 556.49
     assert r["restante_brl"] is None
     assert r["dias_restantes"] is None
-    assert r["saldo_prepago_texto"] == "Available balance (R$633.45 BRL)"
+    assert r["saldo_prepago_texto"] == "Available balance (R$633.45 BRL)"
     assert "saldo_prepago_ilegivel" in r["avisos"]
 
 
@@ -239,10 +239,21 @@ def test_moeda_diferente_de_brl_levanta() -> None:
 def test_chaves_identicas_em_todos_os_cenarios() -> None:
     ilegivel = {
         **CANTINA,
-        "funding_source_details": {"id": "1", "display_string": "Available balance (R$633.45 BRL)"},
+        "funding_source_details": {"id": "1", "display_string": "Available balance (R$633.45 BRL)"},
     }
     chaves = [
         set(montar_saldo_meta(c, GASTOS, hoje=HOJE)) for c in (CANTINA, MI_IMPORTSS, ilegivel)
     ]
     assert chaves[0] == chaves[1] == chaves[2]
     assert {"saldo_prepago_texto", "teto_pelo_limite_brl"} <= chaves[0]
+
+
+def test_texto_cru_da_api_tem_espaco_nao_separavel() -> None:
+    """Forma CRUA medida em 29/10 (repr da resposta da Graph): U+00A0 antes de BRL.
+
+    O smoke de 29/10 pegou a Cantina e a 3 Lagoas como `indeterminada`: as fixtures tinham
+    sido transcritas da saida impressa da sondagem, que mostra o U+00A0 como espaco comum.
+    """
+    assert saldo_do_texto("Saldo disponível (R$631,96 BRL)") == Decimal("631.96")
+    assert saldo_do_texto("Saldo disponível (R$0,00 BRL)") == Decimal("0.00")
+    assert saldo_do_texto("Saldo disponível (R$631,96 BRL)") == Decimal("631.96")
