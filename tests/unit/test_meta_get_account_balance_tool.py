@@ -158,7 +158,7 @@ async def test_payload_de_sucesso_cantina() -> None:
         "currency": "BRL",
         "funding_source_details": {
             "id": "29013939138295436",
-            "display_string": "Saldo disponível (R$633,45 BRL)",
+            "display_string": "Saldo disponível (R$633,45 BRL)",
             "type": 20,
         },
         "min_daily_budget": 513,
