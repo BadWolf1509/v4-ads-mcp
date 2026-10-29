@@ -103,7 +103,8 @@ escolhendo pelo nome. **Remedido em 05/10:** `get_campaign_performance` 120 (Ped
 - **`ads_get_field_context` não rodado nos 9 fields de `GET /act_<id>`** (saldo Meta, 29/10) — o MCP oficial da
   Meta estava indisponível na sessão de 29/10. Evidência substituta: leitura ao vivo com as 9 chaves e controle
   de campo inexistente → 400. A regra F53/F54/F55 do [`nucleo.md`](../convencoes/nucleo.md) pede a checagem
-  antes de shippar — decisão do Wellington.
+  antes de shippar. **Decidido em 29/10:** o Wellington aceitou a evidência ao vivo para shippar; rodar o
+  `ads_get_field_context` quando o MCP oficial voltar à sessão, para fechar a regra no sentido literal.
 - **`recommendation_subscription`** — recomendada a tool de LEITURA, varrendo só o que o gestor
   alcança e contando os opacos (F185: 4 de 11 sem chave); a de escrita, não.
 
