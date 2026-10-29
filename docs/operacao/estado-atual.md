@@ -13,6 +13,11 @@
 
 > Sem frente em curso. Pendências pequenas da última frente estão no handoff de 06/10.
 
+> **Em curso (29/10):** frente **saldo da conta** — `get_account_balance` (Google) e `meta_get_account_balance`
+> (Meta), ambas de leitura, bucket `defer`, **construídas na branch `feat/saldo-da-conta` e aguardando merge,
+> deploy e smoke** ([roteiro](smoke-saldo-da-conta.md); [desenho](../superpowers/specs/2026-10-28-saldo-da-conta-design.md)).
+> Os números de produção abaixo (68 tools) só mudam depois do deploy.
+
 ---
 
 ## Produção — medido em 2026-10-06
@@ -95,6 +100,10 @@ escolhendo pelo nome. **Remedido em 05/10:** `get_campaign_performance` 120 (Ped
   por decisão. Até ele existir, descobrir conta parando ainda depende de alguém consultar (sondagem
   de 28/10: Cantina sem saldo no Google, 3 Lagoas e Cotia paradas pelo limite na Meta). Falta
   decidir canal e limiar; o cálculo vive em módulo puro, reaproveitável pelo job.
+- **`ads_get_field_context` não rodado nos 9 fields de `GET /act_<id>`** (saldo Meta, 29/10) — o MCP oficial da
+  Meta estava indisponível na sessão de 29/10. Evidência substituta: leitura ao vivo com as 9 chaves e controle
+  de campo inexistente → 400. A regra F53/F54/F55 do [`nucleo.md`](../convencoes/nucleo.md) pede a checagem
+  antes de shippar — decisão do Wellington.
 - **`recommendation_subscription`** — recomendada a tool de LEITURA, varrendo só o que o gestor
   alcança e contando os opacos (F185: 4 de 11 sem chave); a de escrita, não.
 

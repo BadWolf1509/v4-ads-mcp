@@ -18,8 +18,8 @@ Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jin
 
 ## Estado atual
 
-**2026-10-06.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`,
-**68 MCP tools** (62 Google + 6 Meta), CI gated + deploy automático. Catálogo até **F203**.
+**2026-10-29.** Produção em `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`,
+**70 MCP tools** (63 Google + 7 Meta), CI gated + deploy automático. Catálogo até **F203**.
 **Detalhe, pendências, o que aguarda deploy e decision gates vivem em
 [`estado-atual.md`](docs/operacao/estado-atual.md)** — atualize AQUELE no fecho, não este.
 
