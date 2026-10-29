@@ -21,7 +21,7 @@ from src.google_ads.cidades import (
     rotulo,
     separar_uf,
 )
-from src.google_ads.errors import to_friendly
+from src.google_ads.errors import GoogleAdsFriendlyError, to_friendly
 from src.google_ads.keyword_planning import run_keyword_planning
 from src.google_ads.planejador import (
     Metricas,
@@ -39,6 +39,7 @@ _IDIOMA = "languageConstants/1014"
 _BRASIL = "geoTargetConstants/2076"
 _REDE = "GOOGLE_SEARCH"
 _CHAVE_BRASIL = "Brasil"
+_CODIGO_CIDADE = "CIDADE_NAO_RESOLVIDA"
 # Erros que derrubam a requisicao inteira: a proxima chamada falharia igual.
 _CODIGOS_FATAIS = frozenset({"QUOTA_ERROR", "AUTHORIZATION_ERROR", "AUTHENTICATION_ERROR"})
 
@@ -51,10 +52,10 @@ _SCHEMA: dict[str, Any] = {
             "items": {"type": "string", "minLength": 1},
             "maxItems": 20,
         },
-        "site": {"type": "string", "format": "uri"},
+        "site": {"type": "string", "minLength": 1},
         "concorrentes": {
             "type": "array",
-            "items": {"type": "string", "format": "uri"},
+            "items": {"type": "string", "minLength": 1},
             "maxItems": 5,
         },
         "cidades": {
@@ -72,9 +73,24 @@ _SCHEMA: dict[str, Any] = {
 _Origem = tuple[str, list[str] | None, str | None]
 
 
+def _com_esquema(url: str) -> str:
+    """`mestredaobra.com.br` -> `https://mestredaobra.com.br`; o Google quer URL completa."""
+    u = url.strip()
+    return u if "://" in u else f"https://{u}"
+
+
 def _dominio(url: str) -> str:
-    host = urlparse(url).netloc or url
-    return host.removeprefix("www.")
+    return urlparse(_com_esquema(url)).netloc.removeprefix("www.")
+
+
+def _nao_resolvida(e: CidadeNaoResolvida) -> GoogleAdsFriendlyError:
+    cand = "; ".join(e.candidatos) if e.candidatos else "nenhum"
+    return GoogleAdsFriendlyError(
+        f"Não achei uma cidade para {e.pedido!r}. Candidatos do Google: {cand}. "
+        "Confira o nome ou acrescente a UF (ex.: 'Campina Grande, PB').",
+        code=_CODIGO_CIDADE,
+        original=e,
+    )
 
 
 @dataclass
@@ -82,7 +98,7 @@ class _Resultado:
     cidades: list[Cidade] = field(default_factory=list)
     lotes: list[tuple[str, str, list[tuple[str, Metricas]]]] = field(default_factory=list)
     falhas: list[dict[str, Any]] = field(default_factory=list)
-    nao_resolvida: CidadeNaoResolvida | None = None
+    avisos: list[str] = field(default_factory=list)
 
 
 def _resolver_cidades(client: Any, pedidos: list[str]) -> list[Cidade]:
@@ -94,12 +110,17 @@ def _resolver_cidades(client: Any, pedidos: list[str]) -> list[Cidade]:
     req.location_names.names.extend(nome for nome, _ in partes)
     resp = svc.suggest_geo_target_constants(request=req)
     sugestoes = list(resp.geo_target_constant_suggestions)
+    # `search_term` ecoa o nome pedido (medido em 29/10): diz a qual pedido cada
+    # sugestao responde.
+    rotuladas = any(s.search_term for s in sugestoes)
+    if not rotuladas and len(partes) > 1:
+        raise CidadeNaoResolvida(
+            ", ".join(nome for nome, _ in partes),
+            [s.geo_target_constant.canonical_name for s in sugestoes],
+        )
     cidades: list[Cidade] = []
     for nome, uf in partes:
         alvo = normalizar_termo(nome)
-        # `search_term` diz a qual nome pedido a sugestao responde; sem ele em
-        # nenhuma sugestao, a lista toda e dos candidatos.
-        rotuladas = any(s.search_term for s in sugestoes)
         dele = [s for s in sugestoes if normalizar_termo(s.search_term) == alvo]
         try:
             cidades.append(escolher_cidade(nome, uf, dele if rotuladas else sugestoes))
@@ -131,7 +152,7 @@ def _ideias_da_origem(
     if sementes is not None:
         req.keyword_seed.keywords.extend(sementes)
     else:
-        req.url_seed.url = url
+        req.url_seed.url = _com_esquema(url or "")
     itens: list[tuple[str, Metricas]] = []
     for r in svc.generate_keyword_ideas(request=req):
         m = r.keyword_idea_metrics if "keyword_idea_metrics" in r else None
@@ -145,10 +166,17 @@ def _montar_chamadas(
     def chamadas(client: Any) -> _Resultado:
         res = _Resultado()
         try:
-            res.cidades = _resolver_cidades(client, pedidos) if pedidos else []
+            resolvidas = _resolver_cidades(client, pedidos) if pedidos else []
         except CidadeNaoResolvida as e:
-            res.nao_resolvida = e
-            return res
+            # sobe como erro: o executor audita "error" e nao cobra a quota reservada
+            raise _nao_resolvida(e) from e
+        vistas: set[str] = set()
+        for c in resolvidas:
+            if c.resource_name in vistas:
+                res.avisos.append(f"cidade repetida ignorada: '{c.pedido}' ({rotulo(c)})")
+                continue
+            vistas.add(c.resource_name)
+            res.cidades.append(c)
         alvos = (
             [(rotulo(c), c.resource_name) for c in res.cidades]
             if res.cidades
@@ -213,35 +241,35 @@ async def plan_keyword_ideas(args: dict[str, Any]) -> dict[str, Any]:
     for url in concorrentes:
         origens.append((f"concorrente:{_dominio(url)}", None, url))
 
-    estimated_ops = (1 if pedidos else 0) + len(origens) * max(1, len(pedidos))
-    resultado: _Resultado = await run_keyword_planning(
-        manager_id=ctx.manager_id,
-        session_id=ctx.session_id,
-        customer_id=customer_id,
-        operation_name=_OPERACAO,
-        estimated_ops=estimated_ops,
-        params_summary={
-            "sementes": len(sementes),
-            "site": _dominio(site) if site else None,
-            "concorrentes": [_dominio(u) for u in concorrentes],
-            "cidades": pedidos,
-            "limit": limit,
-        },
-        chamadas=_montar_chamadas(customer_id, pedidos, origens),
-    )
-    if resultado.nao_resolvida is not None:
-        e = resultado.nao_resolvida
-        cand = "; ".join(e.candidatos) if e.candidatos else "nenhum"
-        return _erro(
-            f"Não achei uma cidade para {e.pedido!r}. Candidatos do Google: {cand}. "
-            "Confira o nome ou acrescente a UF (ex.: 'Campina Grande, PB')."
+    # 2 por chamada de ideias: o SDK pagina (page_size=1000) e 2 sementes ja deram 2 paginas
+    # (1.923 ideias), cada pagina um RPC.
+    estimated_ops = (1 if pedidos else 0) + 2 * len(origens) * max(1, len(pedidos))
+    try:
+        resultado: _Resultado = await run_keyword_planning(
+            manager_id=ctx.manager_id,
+            session_id=ctx.session_id,
+            customer_id=customer_id,
+            operation_name=_OPERACAO,
+            estimated_ops=estimated_ops,
+            params_summary={
+                "sementes": len(sementes),
+                "site": _dominio(site) if site else None,
+                "concorrentes": [_dominio(u) for u in concorrentes],
+                "cidades": pedidos,
+                "limit": limit,
+            },
+            chamadas=_montar_chamadas(customer_id, pedidos, origens),
         )
+    except GoogleAdsFriendlyError as e:
+        if e.code != _CODIGO_CIDADE:
+            raise
+        return _erro(str(e))
 
     avisos = [
         f"cidade pedida '{c.pedido}' resolvida como '{c.nome}'"
         for c in resultado.cidades
         if c.nome_difere
-    ]
+    ] + resultado.avisos
     todas = unir(resultado.lotes)
     ideias, truncated = ordenar_e_cortar(todas, limit)
     cidades_recorte: Any = (

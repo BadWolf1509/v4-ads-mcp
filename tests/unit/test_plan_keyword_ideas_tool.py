@@ -9,12 +9,15 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 from google.ads.googleads.errors import GoogleAdsException
 from google.ads.googleads.v25.common.types.keyword_plan_common import KeywordPlanHistoricalMetrics
+from google.ads.googleads.v25.enums.types.keyword_plan_network import KeywordPlanNetworkEnum
+from google.ads.googleads.v25.errors.types.authentication_error import AuthenticationErrorEnum
+from google.ads.googleads.v25.errors.types.authorization_error import AuthorizationErrorEnum
 from google.ads.googleads.v25.errors.types.errors import ErrorCode, GoogleAdsError, GoogleAdsFailure
 from google.ads.googleads.v25.errors.types.quota_error import QuotaErrorEnum
 from google.ads.googleads.v25.resources.types.geo_target_constant import GeoTargetConstant
@@ -78,6 +81,14 @@ def _falha(codigo: str) -> GoogleAdsException:
     erro = GoogleAdsError(message="x")
     if codigo == "QUOTA_ERROR":
         erro.error_code = ErrorCode(quota_error=QuotaErrorEnum.QuotaError.RESOURCE_EXHAUSTED)
+    elif codigo == "AUTHORIZATION_ERROR":
+        erro.error_code = ErrorCode(
+            authorization_error=AuthorizationErrorEnum.AuthorizationError.USER_PERMISSION_DENIED
+        )
+    elif codigo == "AUTHENTICATION_ERROR":
+        erro.error_code = ErrorCode(
+            authentication_error=AuthenticationErrorEnum.AuthenticationError.OAUTH_TOKEN_REVOKED
+        )
     else:
         erro.error_code = ErrorCode(internal_error=2)
     failure = GoogleAdsFailure(errors=[erro])
@@ -97,7 +108,9 @@ class _Falso:
         self._ideias = ideias or (lambda req: [_ideia("aluguel de andaime", 40)])
         self._sugestoes = _GEO if sugestoes is None else sugestoes
         self.enums = SimpleNamespace(
-            KeywordPlanNetworkEnum=SimpleNamespace(GOOGLE_SEARCH="GOOGLE_SEARCH")
+            KeywordPlanNetworkEnum=SimpleNamespace(
+                GOOGLE_SEARCH=KeywordPlanNetworkEnum.KeywordPlanNetwork.GOOGLE_SEARCH
+            )
         )
 
     def get_type(self, nome: str) -> Any:
@@ -246,7 +259,7 @@ def test_estimated_ops() -> None:
             "cidades": ["João Pessoa"],
         },
     )
-    assert cap["estimated_ops"] == 5
+    assert cap["estimated_ops"] == 9
     assert cap["operation_name"] == "plan_keyword_ideas"
     assert cap["params_summary"]["cidades"] == ["João Pessoa"]
     assert cap["params_summary"]["concorrentes"] == ["a.com.br", "b.com.br"]
@@ -254,7 +267,7 @@ def test_estimated_ops() -> None:
 
 def test_estimated_ops_sem_cidade() -> None:
     _, cap = _roda(_Falso(), {"sementes": ["a"], "site": "https://x.com.br"})
-    assert cap["estimated_ops"] == 2
+    assert cap["estimated_ops"] == 4
 
 
 def test_ordem_limit_e_nao_medido_nao_e_zero() -> None:
@@ -291,3 +304,78 @@ def test_description_diz_degraus_null_e_estimativa() -> None:
         "não depende da conta",
     ):
         assert frase in d
+
+
+@pytest.mark.parametrize("codigo", ["AUTHORIZATION_ERROR", "AUTHENTICATION_ERROR"])
+def test_autorizacao_e_autenticacao_na_url_derrubam_tudo(codigo: str) -> None:
+    def ideias(req: Any) -> list[Any]:
+        if GenerateKeywordIdeasRequest.pb(req).WhichOneof("seed") == "url_seed":
+            raise _falha(codigo)
+        return [_ideia("andaime", 90)]
+
+    with pytest.raises(GoogleAdsException):
+        _roda(_Falso(ideias), {"sementes": ["a"], "site": "https://x.com.br"})
+
+
+def test_rede_e_o_enum_real_do_sdk() -> None:
+    falso = _Falso()
+    _roda(falso, {"sementes": ["a"]})
+    assert (
+        falso.requests[0].keyword_plan_network
+        == KeywordPlanNetworkEnum.KeywordPlanNetwork.GOOGLE_SEARCH
+    )
+
+
+def test_dominio_sem_esquema_ganha_https() -> None:
+    falso = _Falso()
+    resp, cap = _roda(falso, {"site": "mestredaobra.com.br", "concorrentes": ["www.rival.com.br"]})
+    assert [r.url_seed.url for r in falso.requests] == [
+        "https://mestredaobra.com.br",
+        "https://www.rival.com.br",
+    ]
+    assert cap["params_summary"]["concorrentes"] == ["rival.com.br"]
+    assert resp["ideias"][0]["origens"] == ["site", "concorrente:rival.com.br"]
+
+
+def test_cidade_repetida_nao_e_chamada_duas_vezes() -> None:
+    falso = _Falso()
+    resp, _ = _roda(falso, {"sementes": ["a"], "cidades": ["João Pessoa", "Joao Pessoa, PB"]})
+    assert len(falso.requests) == 1
+    assert len(resp["recorte"]["cidades"]) == 1
+    assert any("repetida" in a for a in resp["avisos"])
+
+
+def test_varias_cidades_sem_search_term_nao_resolve_tudo_para_a_primeira() -> None:
+    sug = [
+        _sug(1001622, "João Pessoa", "City", "Joao Pessoa,State of Paraiba,Brazil", ""),
+        _sug(1001621, "Campina Grande", "City", "Campina Grande,State of Paraiba,Brazil", ""),
+    ]
+    falso = _Falso(sugestoes=sug)
+    resp, _ = _roda(falso, {"sementes": ["a"], "cidades": ["João Pessoa", "Campina Grande"]})
+    assert resp["status"] == "error"
+    assert falso.requests == []
+
+
+@pytest.mark.asyncio
+async def test_cidade_nao_resolvida_audita_erro_e_nao_cobra_quota() -> None:
+    """Executor REAL: a falha de cidade e erro de auditoria, sem consumo de quota."""
+    from tests.unit.test_run_keyword_planning import _pool_with_transactable_conn
+
+    mod = "src.google_ads.keyword_planning"
+    falso = _Falso(sugestoes=[_GEO[0]])
+    with (
+        patch(f"{mod}.before_call", AsyncMock(return_value=1)),
+        patch(f"{mod}.record_actual", AsyncMock()) as rec,
+        patch(f"{mod}.audit_log.record", AsyncMock(return_value=1)) as audit,
+        patch(f"{mod}.ensure_account_access", AsyncMock()),
+        patch(f"{mod}.connection.get_pool", return_value=_pool_with_transactable_conn()),
+        patch(f"{mod}.build_client_for_manager", AsyncMock(return_value=falso)),
+    ):
+        resp = await modulo.plan_keyword_ideas(
+            {"customer_id": _CONTA, "sementes": ["a"], "cidades": ["Atlantida"]}
+        )
+    assert resp["status"] == "error"
+    assert "Atlantida" in resp["error_message"]
+    assert audit.await_args.kwargs["status"] == "error"
+    assert all(c.kwargs["actual_ops"] == 0 for c in rec.await_args_list)
+    assert rec.await_count == 2
