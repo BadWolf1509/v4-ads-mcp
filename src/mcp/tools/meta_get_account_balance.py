@@ -47,7 +47,15 @@ _DESCRIPTION = (
     "ficam fora do restante e aparecem em `cupons`. Conta com status diferente de ativa "
     "traz um aviso em `avisos`: os anúncios podem estar parados independente do saldo. "
     "`dias_restantes` = restante ÷ média diária dos 7 dias fechados; dia sem entrega conta "
-    "como zero. O valor é aproximado (`aproximado: true`). Só contas em BRL. "
+    "como zero. `situacao` tem 6 valores: "
+    "com_saldo = dias restantes acima de 7; "
+    "acabando = dias restantes até 7; "
+    "sem_gasto = há saldo mas não houve gasto nos últimos 7 dias; "
+    "esgotada = sem saldo ou menos de um dia de gasto; "
+    "sem_teto = pós-paga sem limite de gastos: não para por falta de saldo, mas pode parar "
+    "por status de pagamento; "
+    "indeterminada = não foi possível calcular (veja `motivo`), inclusive saldo pré-pago "
+    "ilegível. O valor é aproximado (`aproximado: true`). Só contas em BRL. "
     "Do contrato de métricas da Meta, só `spend_brl` é usado aqui: " + CONTRATO_NA_DESCRIPTION
 )
 
@@ -104,12 +112,19 @@ async def meta_get_account_balance(args: dict[str, Any]) -> dict[str, Any]:
         return {"status": "error", "error_message": meta_error_message(e)}
 
     gastos: dict[date, float] = {}
-    for linha in insights.get("data") or []:
-        gasto = metricas_da_linha(linha)["spend_brl"]
-        if gasto is not None:
-            gastos[date.fromisoformat(linha["date_start"])] = float(gasto)
     try:
+        for linha in insights.get("data") or []:
+            gasto = metricas_da_linha(linha)["spend_brl"]
+            # spend_brl None = a Meta nao reportou gasto: conta como sem entrega no dia, igual
+            # ao dia ausente (que o calculo trata como zero).
+            if gasto is not None:
+                gastos[date.fromisoformat(linha["date_start"])] = float(gasto)
         saldo = montar_saldo_meta(conta, gastos, hoje=hoje)
+    except KeyError as e:
+        return {
+            "status": "error",
+            "error_message": f"resposta da Meta sem o campo {e.args[0]!r}: saldo não calculado",
+        }
     except ValueError as e:
         return {"status": "error", "error_message": str(e)}
     return {

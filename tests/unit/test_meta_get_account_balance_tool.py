@@ -108,3 +108,60 @@ async def test_erro_do_executor_vira_erro() -> None:
         resp = await modulo.meta_get_account_balance({"ad_account_id": _CONTA})
     assert resp["status"] == "error"
     assert resp["error_message"]
+
+
+@pytest.mark.parametrize("nome", ["get_account_balance", "meta_get_account_balance"])
+def test_description_lista_as_seis_situacoes(nome: str) -> None:
+    import re
+    from typing import get_args
+
+    from src.mcp.tools._registry import get_tool, import_all_tools
+    from src.saldo import Situacao
+
+    import_all_tools()
+    tool = get_tool(nome)
+    assert tool is not None
+    for valor in get_args(Situacao):
+        assert re.search(rf"(?<![\w]){valor}(?![\w])", tool.description), valor
+
+
+@pytest.mark.asyncio
+async def test_campo_ausente_na_resposta_vira_erro_claro() -> None:
+    conta = _conta()
+    del conta["spend_cap"]
+    g, p1, p2 = _patches([conta, {"data": []}])
+    with p1, p2:
+        resp = await modulo.meta_get_account_balance({"ad_account_id": _CONTA})
+    assert resp["status"] == "error"
+    assert "spend_cap" in resp["error_message"]
+
+
+@pytest.mark.asyncio
+async def test_linha_de_insights_sem_date_start_vira_erro_claro() -> None:
+    g, p1, p2 = _patches([_conta(), {"data": [{"spend": "5.00"}]}])
+    with p1, p2:
+        resp = await modulo.meta_get_account_balance({"ad_account_id": _CONTA})
+    assert resp["status"] == "error"
+    assert "date_start" in resp["error_message"]
+
+
+@pytest.mark.asyncio
+async def test_payload_de_sucesso_cantina() -> None:
+    import json
+    from pathlib import Path
+
+    arq = Path(__file__).parents[2] / (
+        ".superpowers/sdd/2026-10-29-saldo-da-conta/meta-sondagem-2026-10-28.jsonl"
+    )
+    cantina = json.loads(arq.read_text(encoding="utf-8").splitlines()[0])
+    insights = {"data": [{"date_start": "2026-10-27", "spend": "10.00"}]}
+    g, p1, p2 = _patches([cantina, insights])
+    with p1, p2:
+        resp = await modulo.meta_get_account_balance({"ad_account_id": "act_3709029949237406"})
+    assert resp["status"] == "success"
+    assert resp["aproximado"] is True
+    assert resp["ad_account_id"] == "act_3709029949237406"
+    assert resp["period"] == {"from": "2026-09-28", "to": "2026-10-27"}
+    assert resp["trava_primeiro"] == "limite_de_gastos"
+    assert resp["restante_brl"] == 556.49
+    assert resp["situacao"] == "com_saldo"
