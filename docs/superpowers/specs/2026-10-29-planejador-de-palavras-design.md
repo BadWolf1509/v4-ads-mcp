@@ -18,8 +18,11 @@ Sondagem só de leitura em 29/10: script local com o OAuth do Wellington, conta 
    70, 90, 110, 170, 210, 260, 390, 480, 880, 1600, 4400, 8100. É o mesmo arredondamento do
    Planejador na interface.
 3. **Só com termos-semente** (`keyword_seed`), "aluguel de andaime" + "locação de equipamentos"
-   devolveram **1.923 ideias**. **Com uma URL junto** (`keyword_and_url_seed`), **40**. A URL estreita
-   a busca.
+   devolveram **1.923 ideias**. **Com uma URL junto** (`keyword_and_url_seed`), **40**: a combinação
+   estreita a busca. **Só a URL** (`url_seed`, mestredaobra.com.br) deu **964 ideias** (JP e Brasil),
+   **sem "aluguel de andaime"**, e as primeiras são de **financiamento imobiliário**: a URL puxa o
+   conteúdo da página, não o negócio (medido na sonda versionada da Task 1, 29/10). Por isso cada ideia
+   diz a origem, para o gestor ou a skill filtrarem as que vieram do site.
 4. **O recorte por cidade funciona e muda muito o número.** Mesmo termo: 8.100 no Brasil
    (`geoTargetConstants/2076`), 40 em João Pessoa. A lista de ideias para as mesmas sementes teve o
    mesmo tamanho (1.923) nos dois recortes.

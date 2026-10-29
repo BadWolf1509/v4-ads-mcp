@@ -18,6 +18,8 @@
 > pré-pago Meta). Smoke 6/6 depois do #165 ([roteiro e medido](smoke-saldo-da-conta.md);
 > [desenho](../superpowers/specs/2026-10-28-saldo-da-conta-design.md)). Não medidos: gestor comum e `audit_log`.
 
+> **Em curso (29/10):** frente **planejador de palavras-chave** — `plan_keyword_ideas` e `get_keyword_metrics` (leitura, bucket `defer`) construídas na branch `feat/planejador-palavras`, aguardando merge, deploy e smoke ([roteiro](smoke-planejador-de-palavras.md); [desenho](../superpowers/specs/2026-10-29-planejador-de-palavras-design.md)). A tabela de produção abaixo segue em 70 tools até o deploy.
+
 ---
 
 ## Produção — medido em 2026-10-06
@@ -105,6 +107,7 @@ escolhendo pelo nome. **Remedido em 05/10:** `get_campaign_performance` 120 (Ped
   de campo inexistente → 400. A regra F53/F54/F55 do [`nucleo.md`](../convencoes/nucleo.md) pede a checagem
   antes de shippar. **Decidido em 29/10:** o Wellington aceitou a evidência ao vivo para shippar; rodar o
   `ads_get_field_context` quando o MCP oficial voltar à sessão, para fechar a regra no sentido literal.
+- **`QuotaExhausted` vira "Erro inesperado" fora do planejador** (achado de passagem na revisão, 29/10) — `customer_match.run_offline_user_data_job` passa `QuotaExhausted` por `to_friendly`, então a recusa de cota chega ao gestor como "Erro inesperado" sem dizer qual cota (F110). O executor novo do planejador trata certo. Checar também `conversions.run_conversion_upload`. Fora do escopo da frente.
 - **`recommendation_subscription`** — recomendada a tool de LEITURA, varrendo só o que o gestor
   alcança e contando os opacos (F185: 4 de 11 sem chave); a de escrita, não.
 
