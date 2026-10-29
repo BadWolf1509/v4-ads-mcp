@@ -172,6 +172,7 @@ def test_all_phase_2_tools_registered():
         "get_account_overview",
         "get_budget_pacing",
         "get_account_balance",
+        "meta_get_account_balance",
         "get_recommendations",
         # performance
         "get_campaign_performance",
@@ -253,6 +254,7 @@ def test_no_unexpected_tools():
         "get_account_overview",
         "get_budget_pacing",
         "get_account_balance",
+        "meta_get_account_balance",
         "get_recommendations",
         "get_campaign_performance",
         "get_change_history",
