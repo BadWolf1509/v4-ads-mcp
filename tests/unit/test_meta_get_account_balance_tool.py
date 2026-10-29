@@ -147,13 +147,23 @@ async def test_linha_de_insights_sem_date_start_vira_erro_claro() -> None:
 
 @pytest.mark.asyncio
 async def test_payload_de_sucesso_cantina() -> None:
-    import json
-    from pathlib import Path
-
-    arq = Path(__file__).parents[2] / (
-        ".superpowers/sdd/2026-10-29-saldo-da-conta/meta-sondagem-2026-10-28.jsonl"
-    )
-    cantina = json.loads(arq.read_text(encoding="utf-8").splitlines()[0])
+    cantina = {
+        "name": "CA - Cantina Sabores da Vila",
+        "account_status": 1,
+        "disable_reason": 0,
+        "is_prepay_account": True,
+        "spend_cap": "80001",
+        "amount_spent": "24352",
+        "balance": "2167",
+        "currency": "BRL",
+        "funding_source_details": {
+            "id": "29013939138295436",
+            "display_string": "Saldo disponível (R$633,45 BRL)",
+            "type": 20,
+        },
+        "min_daily_budget": 513,
+        "id": "act_3709029949237406",
+    }
     insights = {"data": [{"date_start": "2026-10-27", "spend": "10.00"}]}
     g, p1, p2 = _patches([cantina, insights])
     with p1, p2:
