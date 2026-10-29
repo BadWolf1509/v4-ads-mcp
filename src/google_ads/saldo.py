@@ -57,11 +57,31 @@ def montar_saldo_google(
     avisos: list[str] = []
     if sum(1 for o in orcamentos if _vigente(o, hoje)) >= 2:
         avisos.append(_AVISO_VIGENTES)
+    vigentes = [o for o in orcamentos if _vigente(o, hoje)]
+    if not vigentes:
+        # nenhum vigente hoje: nao ha orcamento a classificar como se estivesse ativo
+        futuros = [o for o in orcamentos if _data(o["inicio"]) > hoje]
+        if futuros:
+            proximo = min(futuros, key=lambda o: _data(o["inicio"]))
+            inicio = _data(proximo["inicio"]).isoformat()
+            return {
+                **base,
+                "motivo": "orçamento da conta ainda não começou",
+                "avisos": [*avisos, f"orçamento da conta começa em {inicio}"],
+                "orcamento_pendente": bool(proximo["pendente"]),
+            }
+        ultimo = max(orcamentos, key=lambda o: _data(o["inicio"]))
+        return {
+            **base,
+            "situacao": "esgotada",
+            "motivo": "orçamento da conta encerrado",
+            "avisos": avisos,
+            "orcamento_pendente": bool(ultimo["pendente"]),
+            "data_fim": ultimo["fim"],
+        }
     # a query ja ordena, mas o modulo nao depende disso: escolhe pelo inicio mais recente
-    # entre os vigentes; sem nenhum (ex.: todos encerrados) cai no mais recente de todos,
-    # e o encerrado sai como esgotada. Inicio futuro nunca esconde o vigente.
-    candidatos = [o for o in orcamentos if _vigente(o, hoje)] or orcamentos
-    atual = max(candidatos, key=lambda o: _data(o["inicio"]))
+    # entre os vigentes. Inicio futuro nunca esconde o vigente.
+    atual = max(vigentes, key=lambda o: _data(o["inicio"]))
     base = {
         **base,
         "avisos": avisos,

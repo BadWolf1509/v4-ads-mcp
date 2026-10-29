@@ -80,3 +80,15 @@ def test_com_saldo():
 def test_restante_negativo_e_esgotada():
     c = classificar(restante=-5.0, media7=50.0, media_com_gasto=50.0)
     assert c.situacao == "esgotada"
+
+
+def test_limiar_acabando_usa_o_valor_arredondado():
+    # 7.04 dias aparece como 7.0: tem de ser "acabando", nao "com_saldo" mostrando 7.0
+    c = classificar(restante=352.0, media7=50.0, media_com_gasto=50.0)
+    assert c.dias_restantes == 7.0
+    assert c.situacao == "acabando"
+
+
+def test_restante_zero_tem_motivo():
+    c = classificar(restante=0.0, media7=10.0, media_com_gasto=None)
+    assert (c.situacao, c.motivo) == ("esgotada", "sem saldo restante")

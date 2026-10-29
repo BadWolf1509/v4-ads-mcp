@@ -68,7 +68,9 @@ def _row_formatter_gasto(row: Any) -> dict[str, Any]:
         "faturamento mensal). `dias_restantes` = restante ÷ média diária dos 7 dias fechados; "
         "a data de fim do orçamento conta como freio: `trava_primeiro` diz se o que limita é "
         "o 'saldo' ou a 'data_fim'. O valor é aproximado: o gasto atrasa algumas horas "
-        "(`aproximado: true`). Sem permissão de faturamento a resposta vem indeterminada."
+        "(`aproximado: true`). Se o Google recusar a leitura por autorização (sem permissão de "
+        "faturamento ou sem acesso à conta) a resposta vem indeterminada, sem números. "
+        "Os campos _brl assumem que a moeda da conta é BRL."
         " filters_applied diz o recorte que a query aplicou."
     ),
     input_schema=_SCHEMA,
@@ -99,7 +101,10 @@ async def get_account_balance(args: dict[str, Any]) -> dict[str, Any]:
             raise
         saldo = montar_saldo_google([], {}, hoje=hoje)
         # nada foi medido: nenhum numero pode ir como zero (nao medido nao e zero)
-        saldo["motivo"] = "sem permissão de faturamento nesta conta"
+        saldo["motivo"] = (
+            "erro de autorização do Google ao ler o orçamento da conta "
+            "(sem permissão de faturamento ou sem acesso à conta)"
+        )
         saldo["media_diaria_7d_brl"] = None
         return {
             **saldo,

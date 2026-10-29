@@ -41,7 +41,10 @@ async def test_authorization_error_vira_indeterminada() -> None:
     with p1, p2:
         resp = await modulo.get_account_balance({"customer_id": _CONTA})
     assert resp["situacao"] == "indeterminada"
-    assert resp["motivo"] == "sem permissão de faturamento nesta conta"
+    assert resp["motivo"] == (
+        "erro de autorização do Google ao ler o orçamento da conta "
+        "(sem permissão de faturamento ou sem acesso à conta)"
+    )
     assert rr.await_count == 1
     for campo in (
         "restante_brl",
@@ -161,3 +164,14 @@ async def test_ponta_a_ponta_com_formatadores_reais_hosp_ocular() -> None:
     assert resp["restante_brl"] == 313.22
     assert resp["situacao"] == "com_saldo"
     assert resp["tipo_de_teto"] == "finito"
+
+
+def test_descricao_declara_moeda_brl_e_autorizacao() -> None:
+    from src.mcp.tools._registry import get_tool, import_all_tools
+
+    import_all_tools()
+    tool = get_tool("get_account_balance")
+    assert tool is not None
+    desc = tool.description
+    assert "moeda da conta é BRL" in desc
+    assert "sem acesso à conta" in desc

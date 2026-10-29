@@ -93,6 +93,31 @@ def test_orcamento_encerrado_e_esgotada() -> None:
     orc = {**HOSP, "fim": "2026-10-20 00:00:00"}
     r = montar_saldo_google([orc], {}, hoje=HOJE)
     assert (r["situacao"], r["dias_restantes"]) == ("esgotada", None)
+    assert r["motivo"] == "orçamento da conta encerrado"
+
+
+def test_so_futuro_e_indeterminada_com_data_de_inicio() -> None:
+    # o antigo acabou e o novo so comeca amanha: hoje nao ha orcamento vigente
+    antigo = {**HOSP, "inicio": "2020-01-01 00:00:00", "fim": "2026-10-20 00:00:00"}
+    novo = {**HOSP, "inicio": "2026-10-29 00:00:00"}
+    r = montar_saldo_google([novo, antigo], {}, hoje=HOJE)
+    assert r["situacao"] == "indeterminada"
+    assert r["motivo"] == "orçamento da conta ainda não começou"
+    assert "2026-10-29" in " ".join(r["avisos"])
+    assert r["restante_brl"] is None and r["dias_restantes"] is None
+
+
+def test_infinito_encerrado_e_esgotada_nao_sem_teto() -> None:
+    orc = {
+        **HOSP,
+        "tipo_limite": "INFINITE",
+        "limite_ajustado_micros": None,
+        "fim": "2026-10-20 00:00:00",
+    }
+    r = montar_saldo_google([orc], {}, hoje=HOJE)
+    assert r["situacao"] == "esgotada"
+    assert r["motivo"] == "orçamento da conta encerrado"
+    assert r["restante_brl"] is None and r["dias_restantes"] is None
 
 
 def test_pendente_e_repassado() -> None:

@@ -63,7 +63,7 @@ def classificar(
     if dias_ate_fim is not None and dias_ate_fim < 0:
         return _esgotada("orçamento da conta encerrado")
     if restante <= 0:
-        return _esgotada(None)
+        return _esgotada("sem saldo restante")
     # "menos de um dia de gasto" usa a media dos dias com gasto em 30 dias: a conta que
     # acabou tem media de 7 dias ~0 e a regra de 7 dias nunca a chamaria de esgotada.
     if media_com_gasto is not None and restante < media_com_gasto:
@@ -76,10 +76,12 @@ def classificar(
     dias_restantes = (
         float(dias_ate_fim) if trava_por_data and dias_ate_fim is not None else dias_pelo_dinheiro
     )
-    situacao: Situacao = "acabando" if dias_restantes <= _LIMITE_ACABANDO else "com_saldo"
+    # decide sobre o valor MOSTRADO (1 casa): 7.04 aparece como 7.0 e tem de ser "acabando"
+    dias_mostrados = round(dias_restantes, 1)
+    situacao: Situacao = "acabando" if dias_mostrados <= _LIMITE_ACABANDO else "com_saldo"
     return Classificacao(
         situacao,
-        round(dias_restantes, 1),
+        dias_mostrados,
         round(dias_pelo_dinheiro, 1),
         trava_por_data,
         None,

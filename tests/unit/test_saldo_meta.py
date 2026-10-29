@@ -234,3 +234,15 @@ def test_cupom_nao_entra_no_restante() -> None:
 def test_moeda_diferente_de_brl_levanta() -> None:
     with pytest.raises(ValueError, match="USD"):
         montar_saldo_meta({**CANTINA, "currency": "USD"}, GASTOS, hoje=HOJE)
+
+
+def test_chaves_identicas_em_todos_os_cenarios() -> None:
+    ilegivel = {
+        **CANTINA,
+        "funding_source_details": {"id": "1", "display_string": "Available balance (R$633.45 BRL)"},
+    }
+    chaves = [
+        set(montar_saldo_meta(c, GASTOS, hoje=HOJE)) for c in (CANTINA, MI_IMPORTSS, ilegivel)
+    ]
+    assert chaves[0] == chaves[1] == chaves[2]
+    assert {"saldo_prepago_texto", "teto_pelo_limite_brl"} <= chaves[0]

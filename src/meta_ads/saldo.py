@@ -77,6 +77,8 @@ def montar_saldo_meta(
         "freio_saldo_brl": None,
         "freio_limite_brl": freio_limite,
         "media_diaria_7d_brl": media7,
+        "saldo_prepago_texto": None,
+        "teto_pelo_limite_brl": None,
         "aproximado": True,
         "avisos": avisos,
     }
