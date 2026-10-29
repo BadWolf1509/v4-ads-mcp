@@ -6,11 +6,15 @@ Monta o cliente como `build_client_for_manager` (refresh token do gestor lido do
 transacao `readonly`, decifrado com `decrypt_refresh_token`; developer token, client id/secret
 e login customer id vem dos mesmos secrets do servico).
 
-Resultado de 29/10 (conta Conta Interna - 02, 6728568947):
-  1. sementes ["aluguel de andaime", "locacao de equipamentos"]: 1.923 ideias no Brasil e em
-     JP (1001622); o volume de "aluguel de andaime" muda (Brasil 8.100, JP 40).
-  2. com url_seed https://www.mestredaobra.com.br: 40 ideias.
-  3. "aluguel de andaime": JP 40 / Campina Grande (1001621) 20 / as duas numa chamada 50.
+Resultado de 29/10 (Conta Interna - 02, 6728568947):
+  1. keyword_seed ["aluguel de andaime", "locacao de equipamentos"]: 1.923 ideias no Brasil e
+     em JP (1001622); volume de "aluguel de andaime": Brasil 8.100, JP 40.
+  2a. url_seed SOZINHO (https://www.mestredaobra.com.br), JP e Brasil: 964 ideias em JP e
+     964 no Brasil; "aluguel de andaime" ausente; primeiros termos sobre financiamento de
+     construcao. O desenho depende deste caminho (uma chamada por URL).
+  2b. keyword_and_url_seed (sementes + URL), so registro: 40 ideias em JP.
+  3. keyword_seed ["aluguel de andaime"]: JP 40 / Campina Grande (1001621) 20 / as duas
+     numa chamada 50.
   4. generate_keyword_historical_metrics: o termo inexistente volta SEM `keyword_metrics`.
   5. suggest_geo_target_constants: `1001622` e City "Joao Pessoa,State of Paraiba,Brazil".
 O volume pode variar mes a mes; a forma, nao.
@@ -135,9 +139,17 @@ def main() -> None:
         r = ideias(client, customer_id, [geo], sementes=SEMENTES)
         print(f"  {rotulo}: ideias={len(r)} volume({TERMO!r})={volume(r, TERMO)}")
 
-    print("== 2. sementes + url_seed")
+    print("== 2a. url_seed SOZINHO")
+    for rotulo, geo in (("JP", JOAO_PESSOA), ("BR", BRASIL)):
+        r = ideias(client, customer_id, [geo], url=URL)
+        print(
+            f"  {rotulo}: ideias={len(r)} volume({TERMO!r})={volume(r, TERMO)} "
+            f"primeiros5={[x.text for x in r[:5]]}"
+        )
+
+    print("== 2b. keyword_and_url_seed (so registro)")
     r = ideias(client, customer_id, [JOAO_PESSOA], sementes=SEMENTES, url=URL)
-    print(f"  keyword_and_url_seed: ideias={len(r)}")
+    print(f"  keyword_and_url_seed JP: ideias={len(r)}")
 
     print("== 3. varias cidades numa chamada")
     for rotulo, geos in (
@@ -168,6 +180,7 @@ def main() -> None:
         req.location_names.names.append(nome)
         print(f"  -- {nome}")
         for s in geo_svc.suggest_geo_target_constants(request=req).geo_target_constant_suggestions:
+            print("  RAW " + repr(s))
             g = s.geo_target_constant
             print(
                 "  "
