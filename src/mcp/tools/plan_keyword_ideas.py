@@ -14,34 +14,21 @@ from urllib.parse import urlparse
 
 from google.ads.googleads.errors import GoogleAdsException
 
-from src.google_ads.cidades import (
-    Cidade,
-    CidadeNaoResolvida,
-    escolher_cidade,
-    rotulo,
-    separar_uf,
-)
+from src.google_ads.cidades import Cidade
 from src.google_ads.errors import GoogleAdsFriendlyError, to_friendly
 from src.google_ads.keyword_planning import run_keyword_planning
 from src.google_ads.planejador import (
     Metricas,
     metricas_do_proto,
-    normalizar_termo,
     ordenar_e_cortar,
     unir,
     volume_maximo,
 )
 from src.mcp.context import get_current
+from src.mcp.tools import _planejador_common as comum
 from src.mcp.tools._registry import register_tool
 
 _OPERACAO = "plan_keyword_ideas"
-_IDIOMA = "languageConstants/1014"
-_BRASIL = "geoTargetConstants/2076"
-_REDE = "GOOGLE_SEARCH"
-_CHAVE_BRASIL = "Brasil"
-_CODIGO_CIDADE = "CIDADE_NAO_RESOLVIDA"
-# Erros que derrubam a requisicao inteira: a proxima chamada falharia igual.
-_CODIGOS_FATAIS = frozenset({"QUOTA_ERROR", "AUTHORIZATION_ERROR", "AUTHENTICATION_ERROR"})
 
 _SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -83,55 +70,12 @@ def _dominio(url: str) -> str:
     return urlparse(_com_esquema(url)).netloc.removeprefix("www.")
 
 
-def _nao_resolvida(e: CidadeNaoResolvida) -> GoogleAdsFriendlyError:
-    cand = "; ".join(e.candidatos) if e.candidatos else "nenhum"
-    return GoogleAdsFriendlyError(
-        f"Não achei uma cidade para {e.pedido!r}. Candidatos do Google: {cand}. "
-        "Confira o nome ou acrescente a UF (ex.: 'Campina Grande, PB').",
-        code=_CODIGO_CIDADE,
-        original=e,
-    )
-
-
 @dataclass
 class _Resultado:
     cidades: list[Cidade] = field(default_factory=list)
     lotes: list[tuple[str, str, list[tuple[str, Metricas]]]] = field(default_factory=list)
     falhas: list[dict[str, Any]] = field(default_factory=list)
     avisos: list[str] = field(default_factory=list)
-
-
-def _resolver_cidades(client: Any, pedidos: list[str]) -> list[Cidade]:
-    partes = [separar_uf(p) for p in pedidos]
-    svc = client.get_service("GeoTargetConstantService")
-    req = client.get_type("SuggestGeoTargetConstantsRequest")
-    req.locale = "pt"
-    req.country_code = "BR"
-    req.location_names.names.extend(nome for nome, _ in partes)
-    resp = svc.suggest_geo_target_constants(request=req)
-    sugestoes = list(resp.geo_target_constant_suggestions)
-    # `search_term` ecoa o nome pedido (medido em 29/10): diz a qual pedido cada
-    # sugestao responde.
-    rotuladas = any(s.search_term for s in sugestoes)
-    if not rotuladas and len(partes) > 1:
-        raise CidadeNaoResolvida(
-            ", ".join(nome for nome, _ in partes),
-            [s.geo_target_constant.canonical_name for s in sugestoes],
-        )
-    cidades: list[Cidade] = []
-    for nome, uf in partes:
-        alvo = normalizar_termo(nome)
-        dele = [s for s in sugestoes if normalizar_termo(s.search_term) == alvo]
-        try:
-            cidades.append(escolher_cidade(nome, uf, dele if rotuladas else sugestoes))
-        except CidadeNaoResolvida as e:
-            if dele:
-                raise
-            # nenhuma sugestao respondeu a este nome: mostra o que o Google devolveu
-            raise CidadeNaoResolvida(
-                e.pedido, [s.geo_target_constant.canonical_name for s in sugestoes]
-            ) from e
-    return cidades
 
 
 def _ideias_da_origem(
@@ -145,7 +89,7 @@ def _ideias_da_origem(
     svc = client.get_service("KeywordPlanIdeaService")
     req = client.get_type("GenerateKeywordIdeasRequest")
     req.customer_id = customer_id
-    req.language = _IDIOMA
+    req.language = comum.IDIOMA
     req.geo_target_constants.append(geo)
     req.keyword_plan_network = client.enums.KeywordPlanNetworkEnum.GOOGLE_SEARCH
     req.page_size = 1000
@@ -165,30 +109,15 @@ def _montar_chamadas(
 ) -> Callable[[Any], _Resultado]:
     def chamadas(client: Any) -> _Resultado:
         res = _Resultado()
-        try:
-            resolvidas = _resolver_cidades(client, pedidos) if pedidos else []
-        except CidadeNaoResolvida as e:
-            # sobe como erro: o executor audita "error" e nao cobra a quota reservada
-            raise _nao_resolvida(e) from e
-        vistas: set[str] = set()
-        for c in resolvidas:
-            if c.resource_name in vistas:
-                res.avisos.append(f"cidade repetida ignorada: '{c.pedido}' ({rotulo(c)})")
-                continue
-            vistas.add(c.resource_name)
-            res.cidades.append(c)
-        alvos = (
-            [(rotulo(c), c.resource_name) for c in res.cidades]
-            if res.cidades
-            else [(_CHAVE_BRASIL, _BRASIL)]
-        )
+        res.cidades, res.avisos = comum.resolver_unicas(client, pedidos)
+        alvos = comum.alvos(res.cidades)
         for origem, sementes, url in origens:
             for chave, geo in alvos:
                 try:
                     itens = _ideias_da_origem(client, customer_id, geo, sementes=sementes, url=url)
                 except GoogleAdsException as e:
                     friendly = to_friendly(e)
-                    if sementes is not None or friendly.code in _CODIGOS_FATAIS:
+                    if sementes is not None or friendly.code in comum.CODIGOS_FATAIS:
                         raise
                     res.falhas.append({"origem": origem, "cidade": chave, "erro": str(friendly)})
                     continue
@@ -196,10 +125,6 @@ def _montar_chamadas(
         return res
 
     return chamadas
-
-
-def _erro(mensagem: str) -> dict[str, Any]:
-    return {"status": "error", "error_message": mensagem, "operation": _OPERACAO}
 
 
 @register_tool(
@@ -231,7 +156,9 @@ async def plan_keyword_ideas(args: dict[str, Any]) -> dict[str, Any]:
     pedidos: list[str] = list(args.get("cidades") or [])
     limit = int(args.get("limit", 200))
     if not (sementes or site or concorrentes):
-        return _erro("Informe pelo menos um entre `sementes`, `site` e `concorrentes`.")
+        return comum.erro(
+            _OPERACAO, "Informe pelo menos um entre `sementes`, `site` e `concorrentes`."
+        )
 
     origens: list[_Origem] = []
     if sementes:
@@ -261,33 +188,20 @@ async def plan_keyword_ideas(args: dict[str, Any]) -> dict[str, Any]:
             chamadas=_montar_chamadas(customer_id, pedidos, origens),
         )
     except GoogleAdsFriendlyError as e:
-        if e.code != _CODIGO_CIDADE:
+        if e.code != comum.CODIGO_CIDADE:
             raise
-        return _erro(str(e))
+        return comum.erro(_OPERACAO, str(e))
 
-    avisos = [
-        f"cidade pedida '{c.pedido}' resolvida como '{c.nome}'"
-        for c in resultado.cidades
-        if c.nome_difere
-    ] + resultado.avisos
+    avisos = comum.avisos_nome_difere(resultado.cidades) + resultado.avisos
     todas = unir(resultado.lotes)
     ideias, truncated = ordenar_e_cortar(todas, limit)
-    cidades_recorte: Any = (
-        [
-            {
-                "pedido": c.pedido,
-                "resource_name": c.resource_name,
-                "canonical_name": c.canonical_name,
-                "rotulo": rotulo(c),
-            }
-            for c in resultado.cidades
-        ]
-        if resultado.cidades
-        else f"Brasil ({_BRASIL})"
-    )
     return {
         "customer_id": customer_id,
-        "recorte": {"cidades": cidades_recorte, "idioma": _IDIOMA, "rede": _REDE},
+        "recorte": {
+            "cidades": comum.recorte_cidades(resultado.cidades),
+            "idioma": comum.IDIOMA,
+            "rede": comum.REDE,
+        },
         "volume_em_degraus": True,
         "ideias": [
             {
