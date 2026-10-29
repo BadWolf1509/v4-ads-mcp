@@ -13,10 +13,10 @@
 
 > Sem frente em curso. Pendências pequenas da última frente estão no handoff de 06/10.
 
-> **Em curso (29/10):** frente **saldo da conta** — `get_account_balance` (Google) e `meta_get_account_balance`
-> (Meta), ambas de leitura, bucket `defer`, **construídas na branch `feat/saldo-da-conta` e aguardando merge,
-> deploy e smoke** ([roteiro](smoke-saldo-da-conta.md); [desenho](../superpowers/specs/2026-10-28-saldo-da-conta-design.md)).
-> Os números de produção abaixo (68 tools) só mudam depois do deploy.
+> **No ar (29/10):** frente **saldo da conta** — `get_account_balance` (Google) e `meta_get_account_balance`
+> (Meta), ambas de leitura, bucket `defer`, pelo **#164**, com o fix do **#165** (U+00A0 no texto do saldo
+> pré-pago Meta). Smoke 6/6 depois do #165 ([roteiro e medido](smoke-saldo-da-conta.md);
+> [desenho](../superpowers/specs/2026-10-28-saldo-da-conta-design.md)). Não medidos: gestor comum e `audit_log`.
 
 ---
 
@@ -25,8 +25,8 @@
 | | |
 |---|---|
 | Revisão servindo | **`v4-ads-mcp-00146-qv5`**, 100% do tráfego (05/10) — o **#154** (negativas com acento e cobertura, `run_gaql` compacto), sobre o **#152** (`00145`, 5 bumps de patch do Dependabot), sobre o **#151** (`00144`, buckets de 05/10) e o **#143** (`00143`, conversões por ação e parcela de impressão), sobre o **#141** (`00142`, o teste do `detect_drift` com relógio congelado). ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186) |
-| Tools | **68** (62 Google + 6 Meta) |
-| Buckets | **13 always + 55 defer** (05/10, 9 desceram sem uso de gestor) — [remedição](tool-buckets-2026-10-05.md); próxima com a Fase 2B, ~15/10 |
+| Tools | **70** (63 Google + 7 Meta) — desde 29/10 (`v4-ads-mcp-00150-2fs`, #164 + #165); as 2 novas em `defer` |
+| Buckets | **13 always + 57 defer** (05/10, 9 desceram sem uso de gestor; +2 defer do saldo em 29/10) — [remedição](tool-buckets-2026-10-05.md); próxima com a Fase 2B, ~15/10 |
 | Catálogo | até **F203** (~6.000 linhas, 601 KB) |
 
 **Infra e guards verificada em produção (F200, 24 h até 30/09 00:08 UTC):** zero reconexão, zero
