@@ -58,7 +58,10 @@ def montar_saldo_google(
     if sum(1 for o in orcamentos if _vigente(o, hoje)) >= 2:
         avisos.append(_AVISO_VIGENTES)
     # a query ja ordena, mas o modulo nao depende disso: escolhe pelo inicio mais recente
-    atual = max(orcamentos, key=lambda o: _data(o["inicio"]))
+    # entre os vigentes; sem nenhum (ex.: todos encerrados) cai no mais recente de todos,
+    # e o encerrado sai como esgotada. Inicio futuro nunca esconde o vigente.
+    candidatos = [o for o in orcamentos if _vigente(o, hoje)] or orcamentos
+    atual = max(candidatos, key=lambda o: _data(o["inicio"]))
     base = {
         **base,
         "avisos": avisos,
@@ -72,7 +75,7 @@ def montar_saldo_google(
     limite = atual["limite_ajustado_micros"]
     if limite is None:
         return {**base, "motivo": "orçamento de conta sem limite lido"}
-    restante = (limite - atual["gasto_micros"]) / 1_000_000
+    restante = micros_to_currency(limite - atual["gasto_micros"])
     dias_ate_fim = (_data(atual["fim"]) - hoje).days if atual["fim"] else None
     c = classificar(
         restante=restante,
@@ -84,8 +87,8 @@ def montar_saldo_google(
         **base,
         "situacao": c.situacao,
         "motivo": c.motivo,
-        "tipo_de_teto": "orcamento_de_conta",
-        "restante_brl": round(restante, 2),
+        "tipo_de_teto": "finito",
+        "restante_brl": restante,
         "limite_ajustado_brl": micros_to_currency(limite),
         "gasto_acumulado_brl": micros_to_currency(atual["gasto_micros"]),
         "ajustes_brl": micros_to_currency(atual["ajustes_micros"]),

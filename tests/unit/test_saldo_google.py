@@ -25,6 +25,7 @@ def test_hosp_ocular_bate_com_fundos_disponiveis() -> None:
     assert r["limite_ajustado_brl"] == 34782.19
     assert r["ajustes_brl"] == 161.19
     assert r["aproximado"] is True
+    assert r["tipo_de_teto"] == "finito"
 
 
 def test_infinite_e_sem_teto() -> None:
@@ -56,6 +57,13 @@ def test_um_encerrado_e_um_vigente_usa_o_vigente_sem_aviso() -> None:
     r = montar_saldo_google([HOSP, encerrado], {}, hoje=HOJE)
     assert r["avisos"] == []
     assert r["restante_brl"] == 313.22
+
+
+def test_inicio_futuro_nao_esconde_o_vigente() -> None:
+    futuro = {**HOSP, "inicio": "2026-12-01 00:00:00", "limite_ajustado_micros": 999_000_000_000}
+    r = montar_saldo_google([futuro, HOSP], {}, hoje=HOJE)
+    assert r["limite_ajustado_brl"] == 34782.19
+    assert r["avisos"] == []
 
 
 def test_data_de_fim_trava_primeiro() -> None:
@@ -95,6 +103,7 @@ def test_queries_sao_validas_e_declaram_filtros() -> None:
     gaql, filtros = saldo_orcamento_conta_query()
     assert "adjusted_spending_limit_micros" in gaql and "ORDER BY" in gaql
     assert "account_budget.status = 'APPROVED'" in gaql
+    assert "approved_spending_limit_micros" not in gaql
     assert filtros == {"status": "APPROVED"}
 
 
