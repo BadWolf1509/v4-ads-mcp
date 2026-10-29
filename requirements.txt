@@ -56,12 +56,12 @@ frozenlist==1.8.0
     #   aiosignal
 google-ads==31.4.0
     # via v4-ads-mcp (pyproject.toml)
-google-api-core==2.38.0
+google-api-core==2.42.0
     # via
     #   google-ads
     #   google-cloud-core
     #   google-cloud-storage
-google-auth==2.58.0
+google-auth==2.61.0
     # via
     #   google-api-core
     #   google-auth-oauthlib
@@ -104,7 +104,7 @@ httpx==0.28.1
     #   mcp
 httpx-sse==0.4.3
     # via mcp
-idna==3.19
+idna==3.20
     # via
     #   anyio
     #   httpx
@@ -126,7 +126,7 @@ multidict==6.7.1
     # via
     #   aiohttp
     #   yarl
-oauthlib==3.3.1
+oauthlib==4.0.0
     # via requests-oauthlib
 opentelemetry-api==1.45.0
     # via google-api-core
@@ -198,7 +198,7 @@ rpds-py==2026.6.3
     #   referencing
 six==1.17.0
     # via facebook-business
-sse-starlette==3.4.10
+sse-starlette==3.5.0
     # via mcp
 starlette==1.6.0
     # via
