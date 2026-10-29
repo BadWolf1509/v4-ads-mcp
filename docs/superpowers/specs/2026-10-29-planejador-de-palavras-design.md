@@ -195,6 +195,7 @@ variantes.
 ## 8. Deixado ao builder
 
 - Nomes finais das tools e dos campos, mantendo os conceitos.
+  - Nomes escolhidos na implementação: `volume_por_cidade` virou `por_cidade` (métricas completas por cidade, sempre com todas as cidades pedidas, `null` onde não voltou); `volume_maximo` por ideia; `total_ideias` = contagem após a união por termo, antes do `limit`; `customer_id` ecoado; em `get_keyword_metrics`, `sem_dado` (devolvido sem métricas), `sem_resultado` (não devolvido) e `agrupado_em` (termo casado por variante próxima).
 - Teto de `termos` em `get_keyword_metrics`.
 - `estimated_ops` por requisição.
 - Normalização para unir ideias de origens diferentes (caixa, acento, espaços).

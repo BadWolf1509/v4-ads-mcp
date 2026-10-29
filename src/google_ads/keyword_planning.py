@@ -47,10 +47,13 @@ async def run_keyword_planning[T](
     estimated_ops: int,
     params_summary: dict[str, Any],
     chamadas: Callable[[Any], T],
+    resumo_do_resultado: Callable[[T], dict[str, Any]] | None = None,
 ) -> T:
     """Roda `chamadas(client)` numa thread, sob gate de leitura + quota + audit.
 
     Erros do SDK sobem como `GoogleAdsFriendlyError` depois do bookkeeping.
+    `resumo_do_resultado`, se dado, roda so em sucesso e seu dict e MESCLADO em
+    `params_summary` do audit (o que so se sabe depois da chamada, ex.: falhas parciais).
     """
     settings = get_settings()
     # F91 — gate a cada request MCP; negacao levanta antes de qualquer reserva.
@@ -102,6 +105,16 @@ async def run_keyword_planning[T](
         resultado = await run_blocking(_executar)
         if isinstance(resultado, Sized):
             target_count = len(resultado)
+        if resumo_do_resultado is not None:
+            try:
+                params_summary = {**params_summary, **resumo_do_resultado(resultado)}
+            except Exception:
+                # O resumo e enfeite do audit: nao pode transformar leitura boa em erro.
+                log.exception(
+                    "run_keyword_planning_resumo_failed",
+                    customer_id=customer_id,
+                    operation=operation_name,
+                )
     except QuotaExhausted as e:
         # Negacao por quota e esperada e a mensagem PT-BR ja e curada (qual
         # cota, usado/limite, reset): sobe INTACTA, sem to_friendly (que a

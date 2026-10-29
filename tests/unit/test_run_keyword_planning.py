@@ -181,3 +181,46 @@ async def test_erro_vira_friendly_e_audit_error(ctx, gov) -> None:
     assert audit["target_count"] is None
     for c in gov["record_actual"].await_args_list:
         assert c.kwargs["actual_ops"] == 0
+
+
+@pytest.mark.asyncio
+async def test_resumo_do_resultado_e_mesclado_no_audit(ctx, gov) -> None:
+    from src.google_ads.keyword_planning import run_keyword_planning
+
+    await run_keyword_planning(
+        **ctx,
+        chamadas=lambda client: ["a"],
+        resumo_do_resultado=lambda r: {"falhas": 2},
+    )
+    assert gov["audit"].await_args.kwargs["params_summary"] == {"seed_count": 2, "falhas": 2}
+
+
+@pytest.mark.asyncio
+async def test_resumo_que_levanta_nao_derruba_a_leitura(ctx, gov) -> None:
+    from src.google_ads.keyword_planning import run_keyword_planning
+
+    def ruim(r: Any) -> dict[str, Any]:
+        raise RuntimeError("boom")
+
+    resultado = await run_keyword_planning(
+        **ctx, chamadas=lambda client: ["a"], resumo_do_resultado=ruim
+    )
+    assert resultado == ["a"]
+    audit = gov["audit"].await_args.kwargs
+    assert audit["status"] == "success"
+    assert audit["params_summary"] == {"seed_count": 2}
+
+
+@pytest.mark.asyncio
+async def test_resumo_nao_roda_em_erro(ctx, gov) -> None:
+    from src.google_ads.keyword_planning import run_keyword_planning
+
+    resumo = MagicMock(return_value={"x": 1})
+
+    def quebra(client: Any) -> Any:
+        raise RuntimeError("falhou")
+
+    with pytest.raises(GoogleAdsFriendlyError):
+        await run_keyword_planning(**ctx, chamadas=quebra, resumo_do_resultado=resumo)
+    resumo.assert_not_called()
+    assert gov["audit"].await_args.kwargs["params_summary"] == {"seed_count": 2}

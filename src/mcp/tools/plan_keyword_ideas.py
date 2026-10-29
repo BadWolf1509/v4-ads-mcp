@@ -20,6 +20,7 @@ from src.google_ads.keyword_planning import run_keyword_planning
 from src.google_ads.planejador import (
     Metricas,
     metricas_do_proto,
+    normalizar_termo,
     ordenar_e_cortar,
     unir,
     volume_maximo,
@@ -36,13 +37,14 @@ _SCHEMA: dict[str, Any] = {
         "customer_id": {"type": "string", "pattern": "^[0-9]{10}$"},
         "sementes": {
             "type": "array",
-            "items": {"type": "string", "minLength": 1},
+            # 80: limite do Google para uma palavra-chave.
+            "items": {"type": "string", "minLength": 1, "maxLength": 80},
             "maxItems": 20,
         },
-        "site": {"type": "string", "minLength": 1},
+        "site": {"type": "string", "minLength": 1, "maxLength": 2048},
         "concorrentes": {
             "type": "array",
-            "items": {"type": "string", "minLength": 1},
+            "items": {"type": "string", "minLength": 1, "maxLength": 2048},
             "maxItems": 5,
         },
         "cidades": {
@@ -67,7 +69,26 @@ def _com_esquema(url: str) -> str:
 
 
 def _dominio(url: str) -> str:
-    return urlparse(_com_esquema(url)).netloc.removeprefix("www.")
+    return urlparse(_com_esquema(url)).netloc.lower().removeprefix("www.")
+
+
+def _concorrentes_unicos(site: str | None, concorrentes: list[str]) -> tuple[list[str], list[str]]:
+    """Concorrentes sem repeticao por dominio (e sem o proprio site), com um aviso por descarte."""
+    vistos: dict[str, str] = {}
+    if site:
+        vistos[_dominio(site)] = site
+    saida: list[str] = []
+    avisos: list[str] = []
+    for url in concorrentes:
+        d = _dominio(url)
+        if d in vistos:
+            avisos.append(
+                f"concorrente '{url}' repetido de '{vistos[d]}' (mesmo domínio), ignorado"
+            )
+            continue
+        vistos[d] = url
+        saida.append(url)
+    return saida, avisos
 
 
 @dataclass
@@ -76,6 +97,14 @@ class _Resultado:
     lotes: list[tuple[str, str, list[tuple[str, Metricas]]]] = field(default_factory=list)
     falhas: list[dict[str, Any]] = field(default_factory=list)
     avisos: list[str] = field(default_factory=list)
+
+    def total_ideias(self) -> int:
+        """Ideias distintas depois da uniao por termo normalizado."""
+        return len({normalizar_termo(t) for _, _, itens in self.lotes for t, _ in itens})
+
+    def __len__(self) -> int:
+        # Vira o `target_count` do audit: o que a uniao devolve, nao o que o `limit` cortou.
+        return self.total_ideias()
 
 
 def _ideias_da_origem(
@@ -152,7 +181,7 @@ async def plan_keyword_ideas(args: dict[str, Any]) -> dict[str, Any]:
     customer_id: str = args["customer_id"]
     sementes: list[str] = list(args.get("sementes") or [])
     site: str | None = args.get("site")
-    concorrentes: list[str] = list(args.get("concorrentes") or [])
+    concorrentes, avisos_urls = _concorrentes_unicos(site, list(args.get("concorrentes") or []))
     pedidos: list[str] = list(args.get("cidades") or [])
     limit = int(args.get("limit", 200))
     if not (sementes or site or concorrentes):
@@ -186,13 +215,18 @@ async def plan_keyword_ideas(args: dict[str, Any]) -> dict[str, Any]:
                 "limit": limit,
             },
             chamadas=_montar_chamadas(customer_id, pedidos, origens),
+            resumo_do_resultado=lambda r: {
+                "total_ideias": r.total_ideias(),
+                "origens_com_falha": len(r.falhas),
+            },
         )
     except GoogleAdsFriendlyError as e:
         if e.code != comum.CODIGO_CIDADE:
             raise
         return comum.erro(_OPERACAO, str(e))
 
-    avisos = comum.avisos_nome_difere(resultado.cidades) + resultado.avisos
+    avisos = avisos_urls + comum.avisos_nome_difere(resultado.cidades) + resultado.avisos
+    chaves = [chave for chave, _ in comum.alvos(resultado.cidades)]
     todas = unir(resultado.lotes)
     ideias, truncated = ordenar_e_cortar(todas, limit)
     return {
@@ -208,7 +242,9 @@ async def plan_keyword_ideas(args: dict[str, Any]) -> dict[str, Any]:
                 "termo": i.termo,
                 "origens": i.origens,
                 "volume_maximo": volume_maximo(i),
-                "por_cidade": i.por_cidade,
+                # Toda cidade pedida aparece; a que nao devolveu a ideia vem com tudo `None`
+                # (nao devolvida = sem dado, nunca zero), igual a get_keyword_metrics.
+                "por_cidade": {c: i.por_cidade.get(c) or metricas_do_proto(None) for c in chaves},
             }
             for i in ideias
         ],

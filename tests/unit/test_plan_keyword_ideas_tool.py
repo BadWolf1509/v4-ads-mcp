@@ -379,3 +379,81 @@ async def test_cidade_nao_resolvida_audita_erro_e_nao_cobra_quota() -> None:
     assert audit.await_args.kwargs["status"] == "error"
     assert all(c.kwargs["actual_ops"] == 0 for c in rec.await_args_list)
     assert rec.await_count == 2
+
+
+def test_toda_cidade_pedida_aparece_em_por_cidade() -> None:
+    def ideias(req: Any) -> list[Any]:
+        if req.geo_target_constants[0] == "geoTargetConstants/1001622":
+            return [_ideia("andaime", 90)]
+        return [_ideia("outra", 10)]
+
+    resp, _ = _roda(
+        _Falso(ideias), {"sementes": ["a"], "cidades": ["João Pessoa", "Campina Grande"]}
+    )
+    por_termo = {i["termo"]: i for i in resp["ideias"]}
+    pc = por_termo["andaime"]["por_cidade"]
+    assert set(pc) == {"João Pessoa (PB)", "Campina Grande (PB)"}
+    assert pc["João Pessoa (PB)"]["volume_mensal"] == 90
+    assert pc["Campina Grande (PB)"]["volume_mensal"] is None
+    assert pc["Campina Grande (PB)"]["cpc_topo_min_brl"] is None
+
+
+def test_concorrente_repetido_por_dominio_e_igual_ao_site_vira_aviso() -> None:
+    falso = _Falso()
+    resp, cap = _roda(
+        falso,
+        {
+            "site": "https://www.meu.com.br",
+            "concorrentes": [
+                "https://rival.com.br/a",
+                "RIVAL.com.br",
+                "http://www.rival.com.br",
+                "meu.com.br/produtos",
+            ],
+        },
+    )
+    assert [r.url_seed.url for r in falso.requests] == [
+        "https://www.meu.com.br",
+        "https://rival.com.br/a",
+    ]
+    assert cap["params_summary"]["concorrentes"] == ["rival.com.br"]
+    assert cap["estimated_ops"] == 4
+    avisos = resp["avisos"]
+    assert sum("repetido" in a for a in avisos) == 3
+    assert any("RIVAL.com.br" in a for a in avisos)
+    assert any("meu.com.br/produtos" in a for a in avisos)
+
+
+def test_schema_limita_tamanho_de_semente_e_url() -> None:
+    p = modulo._SCHEMA["properties"]
+    assert p["sementes"]["items"]["maxLength"] == 80
+    assert p["site"]["maxLength"] == 2048
+    assert p["concorrentes"]["items"]["maxLength"] == 2048
+
+
+@pytest.mark.asyncio
+async def test_audit_recebe_target_count_e_falhas_parciais() -> None:
+    from tests.unit.test_run_keyword_planning import _pool_with_transactable_conn
+
+    def ideias(req: Any) -> list[Any]:
+        if req.url_seed.url == "https://rival.com.br":
+            raise _falha("INTERNAL_ERROR")
+        return [_ideia("andaime", 90), _ideia("Andaime", 10)]
+
+    mod = "src.google_ads.keyword_planning"
+    with (
+        patch(f"{mod}.before_call", AsyncMock(return_value=1)),
+        patch(f"{mod}.record_actual", AsyncMock()),
+        patch(f"{mod}.audit_log.record", AsyncMock(return_value=1)) as audit,
+        patch(f"{mod}.ensure_account_access", AsyncMock()),
+        patch(f"{mod}.connection.get_pool", return_value=_pool_with_transactable_conn()),
+        patch(f"{mod}.build_client_for_manager", AsyncMock(return_value=_Falso(ideias))),
+    ):
+        await modulo.plan_keyword_ideas(
+            {"customer_id": _CONTA, "sementes": ["a"], "concorrentes": ["https://rival.com.br"]}
+        )
+    kw = audit.await_args.kwargs
+    assert kw["status"] == "success"
+    assert kw["target_count"] == 1
+    assert kw["params_summary"]["origens_com_falha"] == 1
+    assert kw["params_summary"]["total_ideias"] == 1

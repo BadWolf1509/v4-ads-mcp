@@ -215,6 +215,8 @@ def test_description_diz_degraus_null_e_estimativa() -> None:
         "assumem conta BRL",
         "não depende da conta",
         "sem soma",
+        "sem_resultado",
+        "agrupado_em",
     ):
         assert frase in d
 
@@ -243,3 +245,58 @@ async def test_cidade_nao_resolvida_audita_erro_e_nao_cobra_quota() -> None:
     assert audit.await_args.kwargs["status"] == "error"
     assert all(c.kwargs["actual_ops"] == 0 for c in rec.await_args_list)
     assert falso.requests == []
+
+
+def test_variante_proxima_casa_os_dois_termos_pedidos() -> None:
+    """Google dedupe 'andaime'/'andaimes' em UM resultado; os dois pedidos tem dado."""
+
+    def resultados(req: Any) -> list[Any]:
+        return [_res("andaimes", 90, ("andaime", "andaimes"))]
+
+    resp, _ = _roda(_Falso(resultados), {"termos": ["andaime", "andaimes"]})
+    por_termo = {t["termo"]: t for t in resp["termos"]}
+    assert resp["sem_dado"] == []
+    assert resp["sem_resultado"] == []
+    assert por_termo["andaime"]["por_cidade"]["Brasil"]["volume_mensal"] == 90
+    assert por_termo["andaimes"]["por_cidade"]["Brasil"]["volume_mensal"] == 90
+    assert por_termo["andaime"]["agrupado_em"] == "andaimes"
+    assert por_termo["andaimes"]["agrupado_em"] is None
+
+
+def test_sem_resultado_difere_de_sem_dado() -> None:
+    def resultados(req: Any) -> list[Any]:
+        return [_res("a", None)]
+
+    resp, _ = _roda(_Falso(resultados), {"termos": ["a", "ausente"]})
+    assert resp["sem_dado"] == ["a"]
+    assert resp["sem_resultado"] == ["ausente"]
+    por_termo = {t["termo"]: t for t in resp["termos"]}
+    assert por_termo["ausente"]["por_cidade"]["Brasil"]["volume_mensal"] is None
+
+
+def test_termo_repetido_ou_vazio_vira_aviso() -> None:
+    resp, _ = _roda(_Falso(), {"termos": ["Andaime", "andaime", "  ", "b"]})
+    assert [t["termo"] for t in resp["termos"]] == ["Andaime", "b"]
+    assert "termo 'andaime' repetido de 'Andaime', ignorado" in resp["avisos"]
+    assert "termo vazio ignorado" in resp["avisos"]
+
+
+@pytest.mark.asyncio
+async def test_audit_recebe_target_count_e_contagens() -> None:
+    from tests.unit.test_run_keyword_planning import _pool_with_transactable_conn
+
+    mod = "src.google_ads.keyword_planning"
+    falso = _Falso(lambda req: [_res("a", 5)])
+    with (
+        patch(f"{mod}.before_call", AsyncMock(return_value=1)),
+        patch(f"{mod}.record_actual", AsyncMock()),
+        patch(f"{mod}.audit_log.record", AsyncMock(return_value=1)) as audit,
+        patch(f"{mod}.ensure_account_access", AsyncMock()),
+        patch(f"{mod}.connection.get_pool", return_value=_pool_with_transactable_conn()),
+        patch(f"{mod}.build_client_for_manager", AsyncMock(return_value=falso)),
+    ):
+        await modulo.get_keyword_metrics({"customer_id": _CONTA, "termos": ["a", "b"]})
+    kw = audit.await_args.kwargs
+    assert kw["target_count"] == 2
+    assert kw["params_summary"]["sem_resultado"] == 1
+    assert kw["params_summary"]["sem_dado"] == 0

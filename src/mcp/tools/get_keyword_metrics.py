@@ -43,17 +43,30 @@ _SCHEMA: dict[str, Any] = {
 
 
 @dataclass
+class _Achado:
+    metricas: Metricas
+    variantes: list[str]
+    tem_metricas: bool  # o resultado veio COM `keyword_metrics`
+    texto: str  # o texto que o Google devolveu (pode ser o de uma variante proxima)
+
+
+@dataclass
 class _Resultado:
     cidades: list[Cidade] = field(default_factory=list)
-    # chave do recorte -> chave normalizada do termo -> (metricas, variantes)
-    por_alvo: dict[str, dict[str, tuple[Metricas, list[str], bool]]] = field(default_factory=dict)
+    # chave do recorte -> chave normalizada do termo -> achado
+    por_alvo: dict[str, dict[str, _Achado]] = field(default_factory=dict)
     chaves: list[str] = field(default_factory=list)
     avisos: list[str] = field(default_factory=list)
+    termos_pedidos: int = 0
+
+    def __len__(self) -> int:
+        # Tamanho do que a tool devolve (um item por termo): vira o `target_count` do audit.
+        return self.termos_pedidos
 
 
 def _metricas_do_alvo(
     client: Any, customer_id: str, geo: str, termos: list[str]
-) -> dict[str, tuple[Metricas, list[str], bool]]:
+) -> dict[str, _Achado]:
     svc = client.get_service("KeywordPlanIdeaService")
     req = client.get_type("GenerateKeywordHistoricalMetricsRequest")
     req.customer_id = customer_id
@@ -62,19 +75,26 @@ def _metricas_do_alvo(
     req.keyword_plan_network = client.enums.KeywordPlanNetworkEnum.GOOGLE_SEARCH
     req.keywords.extend(termos)
     resp = svc.generate_keyword_historical_metrics(request=req)
-    saida: dict[str, tuple[Metricas, list[str], bool]] = {}
+    saida: dict[str, _Achado] = {}
+    achados: list[tuple[Any, _Achado]] = []
     for r in resp.results:
         tem = "keyword_metrics" in r
         m = r.keyword_metrics if tem else None
-        saida.setdefault(
-            normalizar_termo(r.text), (metricas_do_proto(m), list(r.close_variants), tem)
-        )
+        achados.append((r, _Achado(metricas_do_proto(m), list(r.close_variants), tem, r.text)))
+    # O Google agrupa variantes proximas ("andaime"/"andaimes") em UM resultado, cujo
+    # `close_variants` lista os termos pedidos que ele cobre. Duas passadas: o texto exato
+    # de qualquer resultado vence a variante de outro; entre variantes, a primeira vence.
+    for r, achado in achados:
+        saida.setdefault(normalizar_termo(r.text), achado)
+    for r, achado in achados:
+        for v in r.close_variants:
+            saida.setdefault(normalizar_termo(v), achado)
     return saida
 
 
 def _montar_chamadas(customer_id: str, pedidos: list[str], termos: list[str]) -> Any:
     def chamadas(client: Any) -> _Resultado:
-        res = _Resultado()
+        res = _Resultado(termos_pedidos=len(termos))
         res.cidades, res.avisos = comum.resolver_unicas(client, pedidos)
         for chave, geo in comum.alvos(res.cidades):
             res.chaves.append(chave)
@@ -84,15 +104,68 @@ def _montar_chamadas(customer_id: str, pedidos: list[str], termos: list[str]) ->
     return chamadas
 
 
-def _sem_repeticao(termos: list[str]) -> list[str]:
-    vistos: set[str] = set()
+def _sem_repeticao(termos: list[str]) -> tuple[list[str], list[str]]:
+    """Termos unicos (por forma normalizada) e o aviso de cada um descartado."""
+    vistos: dict[str, str] = {}
     saida: list[str] = []
+    avisos: list[str] = []
     for t in termos:
         k = normalizar_termo(t)
-        if k and k not in vistos:
-            vistos.add(k)
+        if not k:
+            avisos.append("termo vazio ignorado")
+        elif k in vistos:
+            avisos.append(f"termo '{t}' repetido de '{vistos[k]}', ignorado")
+        else:
+            vistos[k] = t
             saida.append(t)
-    return saida
+    return saida, avisos
+
+
+def _classificar(
+    resultado: _Resultado, termos: list[str]
+) -> tuple[list[dict[str, Any]], list[str], list[str]]:
+    """`(termos, sem_dado, sem_resultado)`.
+
+    `sem_resultado`: nenhum resultado casou o termo em nenhuma cidade (nao medido).
+    `sem_dado`: casou, mas veio sem `keyword_metrics` em todas as cidades (Google sem dado).
+    """
+    saida: list[dict[str, Any]] = []
+    sem_dado: list[str] = []
+    sem_resultado: list[str] = []
+    for termo in termos:
+        k = normalizar_termo(termo)
+        por_cidade: dict[str, Metricas] = {}
+        variantes: list[str] = []
+        agrupado_em: str | None = None
+        casou = False
+        tem_dado = False
+        for chave in resultado.chaves:
+            achado = resultado.por_alvo[chave].get(k)
+            por_cidade[chave] = achado.metricas if achado else metricas_do_proto(None)
+            if achado:
+                casou = True
+                tem_dado = tem_dado or achado.tem_metricas
+                variantes = variantes or achado.variantes
+                if agrupado_em is None and normalizar_termo(achado.texto) != k:
+                    agrupado_em = achado.texto
+        if not casou:
+            sem_resultado.append(termo)
+        elif not tem_dado:
+            sem_dado.append(termo)
+        saida.append(
+            {
+                "termo": termo,
+                "variantes": variantes,
+                "agrupado_em": agrupado_em,
+                "por_cidade": por_cidade,
+            }
+        )
+    return saida, sem_dado, sem_resultado
+
+
+def _resumo(resultado: _Resultado, termos: list[str]) -> dict[str, Any]:
+    _, sem_dado, sem_resultado = _classificar(resultado, termos)
+    return {"sem_dado": len(sem_dado), "sem_resultado": len(sem_resultado)}
 
 
 @register_tool(
@@ -101,8 +174,11 @@ def _sem_repeticao(termos: list[str]) -> list[str]:
         "[DEFER] Métricas do Planejador do Google para uma lista pronta de termos: volume "
         "mensal, concorrência, faixa de CPC e sazonalidade, por cidade. O volume vem em "
         "degraus do Google (10, 20, 50, 110...), não é exato; `null` significa que o Google "
-        "não tem dado, não zero, e os termos sem dado em todas as cidades listam em "
-        "`sem_dado`. O CPC é estimativa de topo de página, uma faixa (`cpc_topo_min_brl` a "
+        "não tem dado, não zero: os termos que o Google devolveu sem métricas em todas as "
+        "cidades listam em `sem_dado`, e os que ele nem devolveu, em `sem_resultado` (não "
+        "medido). O Google agrupa variantes próximas (ex.: andaime/andaimes) num só "
+        "resultado: o termo pedido que entrou por variante traz `agrupado_em` com o texto do "
+        "Google e as mesmas métricas do grupo. O CPC é estimativa de topo de página, uma faixa (`cpc_topo_min_brl` a "
         "`cpc_topo_max_brl`), não o que a conta paga; os campos _brl assumem conta BRL. O "
         "resultado não depende da conta usada: use qualquer conta sua (ex.: a interna "
         "6728568947). Até 1000 termos, na ordem pedida; `variantes` ecoa as variantes "
@@ -116,7 +192,7 @@ def _sem_repeticao(termos: list[str]) -> list[str]:
 async def get_keyword_metrics(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()
     customer_id: str = args["customer_id"]
-    termos = _sem_repeticao(list(args["termos"]))
+    termos, avisos_termos = _sem_repeticao(list(args["termos"]))
     pedidos: list[str] = list(args.get("cidades") or [])
     if not termos:
         return comum.erro(_OPERACAO, "Informe pelo menos um termo não vazio em `termos`.")
@@ -132,29 +208,14 @@ async def get_keyword_metrics(args: dict[str, Any]) -> dict[str, Any]:
             estimated_ops=estimated_ops,
             params_summary={"termos": len(termos), "cidades": pedidos},
             chamadas=_montar_chamadas(customer_id, pedidos, termos),
+            resumo_do_resultado=lambda r: _resumo(r, termos),
         )
     except GoogleAdsFriendlyError as e:
         if e.code != comum.CODIGO_CIDADE:
             raise
         return comum.erro(_OPERACAO, str(e))
 
-    saida: list[dict[str, Any]] = []
-    sem_dado: list[str] = []
-    for termo in termos:
-        k = normalizar_termo(termo)
-        por_cidade: dict[str, Metricas] = {}
-        variantes: list[str] = []
-        tem_dado = False
-        for chave in resultado.chaves:
-            achado = resultado.por_alvo[chave].get(k)
-            metricas = achado[0] if achado else metricas_do_proto(None)
-            por_cidade[chave] = metricas
-            if achado:
-                tem_dado = tem_dado or achado[2]
-                variantes = variantes or achado[1]
-        if not tem_dado:
-            sem_dado.append(termo)
-        saida.append({"termo": termo, "variantes": variantes, "por_cidade": por_cidade})
+    saida, sem_dado, sem_resultado = _classificar(resultado, termos)
 
     return {
         "customer_id": customer_id,
@@ -166,5 +227,6 @@ async def get_keyword_metrics(args: dict[str, Any]) -> dict[str, Any]:
         "volume_em_degraus": True,
         "termos": saida,
         "sem_dado": sem_dado,
-        "avisos": comum.avisos_nome_difere(resultado.cidades) + resultado.avisos,
+        "sem_resultado": sem_resultado,
+        "avisos": avisos_termos + comum.avisos_nome_difere(resultado.cidades) + resultado.avisos,
     }
