@@ -350,11 +350,10 @@ def test_f57_acusa_a_violacao_e_so_ela(fonte: str, acusa: bool) -> None:
 # plausibilidade; dois viraram cobertura, o resto virou limite DECLARADO (ver
 # a docstring do teste — despacho dinâmico não é perseguido aqui):
 #
-#   - `aiohttp.ClientSession()` — plausibilidade ALTA: `aiohttp` já é
-#     dependência instalada (`pyproject.toml`, pin de segurança
-#     PYSEC-2026-3545/3546/3547, transitiva via `facebook-business`) — quem
-#     escrever `import aiohttp` não instala nada novo nem sente que está
-#     fazendo algo diferente.
+#   - `aiohttp.ClientSession()` — plausibilidade menor desde que o
+#     `facebook-business` saiu: `aiohttp` deixou de ser dependência (nem direta
+#     nem transitiva), então `import aiohttp` exigiria adicioná-la de novo. Segue
+#     coberto porque é o cliente async óbvio de quem adicionar a dependência.
 #   - `urllib.request.urlopen(...)` — stdlib, custo zero, reflexo comum de
 #     quick fix.
 _METODOS_CLIENTE_HTTP = frozenset(

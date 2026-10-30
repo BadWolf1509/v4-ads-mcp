@@ -17,8 +17,9 @@ jobs:
     # F138: o `deploy` passa a exigir esta saida. Ver o passo `detectar_mudanca`.
     outputs:
       code_changed: ${{ steps.detectar_mudanca.outputs.code_changed }}
-    # concurrency no nível do JOB (não do workflow): cancela testes redundantes de
-    # pushes rápidos SEM matar o job `deploy` (que chama deploy.yml) no meio. A
+    # concurrency no nível do JOB (não do workflow): em PR cancela testes redundantes
+    # de pushes rápidos; na `main` não cancela (ver `cancel-in-progress` abaixo).
+    # Em nenhum caso mata o job `deploy` (que chama deploy.yml) no meio. A
     # serialização de deploys fica na concurrency `deploy-prod` do deploy.yml.
     concurrency:
       group: ci-${{ github.ref }}
