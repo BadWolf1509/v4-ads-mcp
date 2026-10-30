@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 from datetime import date, timedelta
+from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 from uuid import UUID
@@ -184,6 +185,11 @@ def micros_to_currency(micros: int | float) -> float:
     return round(micros / 1_000_000.0, 2)
 
 
+def brl_para_micros(valor: float) -> int:
+    """BRL -> micros, ARREDONDADO. truncar o produto float de 2.01 da 2_009_999."""
+    return round(Decimal(str(valor)) * 1_000_000)
+
+
 def razao(numerador: float | None, denominador: float | None) -> float | None:
     """`numerador / denominador`, ou `None` quando nao ha o que dividir.
 
@@ -246,7 +252,7 @@ def _clausula_e_eco_de_metrica(
     clauses: list[str] = []
     ecos: dict[str, float | int] = {}
     if min_cost_brl is not None:
-        clauses.append(f"AND metrics.cost_micros >= {int(min_cost_brl * 1_000_000)}")
+        clauses.append(f"AND metrics.cost_micros >= {brl_para_micros(min_cost_brl)}")
         ecos["min_cost_brl"] = min_cost_brl
     if min_clicks is not None:
         clauses.append(f"AND metrics.clicks >= {int(min_clicks)}")

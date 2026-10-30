@@ -200,17 +200,17 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
             "create_conversion_value_rule_set: criacao de RuleSet com rules — sempre CONFIRM (spec §7.1)",
         )
 
-    # Update conversion action — AUTO single rename; CONFIRM otherwise
-    # (Sprint 3b.27). Disabling primary_for_goal turns off Smart Bidding signal —
-    # high impact, always CONFIRM.
+    # Update conversion action — AUTO so para renomear 1 acao; CONFIRM otherwise
+    # (Sprint 3b.27). QUALQUER primary_for_goal (ligar ou desligar) muda o sinal
+    # do Smart Bidding de todas as campanhas da conta — alto impacto, CONFIRM.
     # F44 (3b.27.1): include_in_conversions_metric removed from V0 (immutable in v24).
     elif operation == "update_conversion_action":
         updates = params.get("updates", [])
-        has_unsafe_disable = any(u.get("primary_for_goal") is False for u in updates)
-        if len(updates) == 1 and not has_unsafe_disable:
+        toca_primary = any("primary_for_goal" in u for u in updates)
+        if len(updates) == 1 and not toca_primary:
             return RiskClassification(
                 RiskLevel.AUTO,
-                "update_conversion_action: 1 entity sem desligar Smart Bidding signal",
+                "update_conversion_action: 1 entity so renomeia, sem tocar no Smart Bidding signal",
             )
         return RiskClassification(
             RiskLevel.CONFIRM,

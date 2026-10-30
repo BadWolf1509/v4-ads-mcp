@@ -6,6 +6,7 @@ from typing import Any
 from src.db import connection
 from src.google_ads.mutations import run_mutation
 from src.google_ads.queries._common import (
+    brl_para_micros,
     micros_to_currency,
     validate_manual_cpc_strategy,
 )
@@ -104,7 +105,7 @@ async def update_ad_group_bid(args: dict[str, Any]) -> dict[str, Any]:
     for b in bids_input:
         agid = b["ad_group_id"]
         new_brl = float(b["new_cpc_bid_brl"])
-        new_micros = int(new_brl * 1_000_000)
+        new_micros = brl_para_micros(new_brl)
         current_micros = by_id[agid]["current_cpc_bid_micros"]
         if current_micros > 0:
             delta_pct = abs(new_micros - current_micros) / current_micros * 100

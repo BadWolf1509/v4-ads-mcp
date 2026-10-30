@@ -106,6 +106,7 @@ async def run_conversion_upload(
     error_message: str | None = None
     err_text: str | None = None
     reserved = False
+    status_audit = "success"  # reatribuido no finally a partir de `status`
 
     try:
         # Reserve quota: global (developer token) + per-manager cap. Transacao
@@ -232,6 +233,20 @@ async def run_conversion_upload(
             ),
             pool.acquire() as conn,
         ):
+            # Upload com 100% de recusa nao e sucesso na trilha. `status_audit` e so da
+            # trilha: o `status` acima decide o envelope e segue "applied", para a
+            # resposta continuar trazendo as falhas por linha.
+            # So e MEDIDO se o Google contou todas as linhas: `results` vazio ou
+            # curto da applied=0/failed=0, que nao e "nenhuma aceita".
+            status_audit = status
+            medido = status == "success" and applied_count + failed_count == target_count
+            if medido and applied_count == 0 and target_count > 0:
+                status_audit = "error"
+                error_message = f"0 de {target_count} conversões aceitas"
+            resumo = dict(params_summary or {"conversion_count": target_count})
+            if medido:
+                resumo["applied_count"] = applied_count
+                resumo["failed_count"] = failed_count
             await audit_log.record(
                 conn,
                 manager_id=manager_id,
@@ -240,9 +255,10 @@ async def run_conversion_upload(
                 action_type="mutate",
                 operation=operation_type,
                 target_count=target_count,
-                params_summary=params_summary or {"conversion_count": target_count},
+                params_summary=resumo,
                 provider_request_id=provider_request_id or "",
-                status=status,
+                status=status_audit,
+                had_effect=(applied_count > 0) if medido else None,
                 error_message=error_message,
                 duration_ms=duration_ms,
             )
@@ -263,7 +279,7 @@ async def run_conversion_upload(
         target_count=target_count,
         applied_count=applied_count,
         failed_count=failed_count,
-        status=status,
+        status=status_audit,
     )
 
     return {

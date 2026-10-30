@@ -4,7 +4,13 @@
 from typing import Any
 
 from src.db import connection
-from src.google_ads.queries._common import arredondado, micros_to_currency, percentual, razao
+from src.google_ads.queries._common import (
+    arredondado,
+    brl_para_micros,
+    micros_to_currency,
+    percentual,
+    razao,
+)
 from src.google_ads.queries.ad_schedule import (
     campaigns_on_budgets_query,
     parse_campaign_on_budget_row,
@@ -119,7 +125,7 @@ async def update_campaign_budget(args: dict[str, Any]) -> dict[str, Any]:
     customer_id = args["customer_id"]
     campaign_id = args["campaign_id"]
     new_amount_brl = float(args["new_daily_budget_brl"])
-    new_amount_micros = int(new_amount_brl * 1_000_000)
+    new_amount_micros = brl_para_micros(new_amount_brl)
 
     # Resolve current budget + resource name via GAQL.
     # `campaign_budget.id` e `.explicitly_shared` sao superficie ja probada por

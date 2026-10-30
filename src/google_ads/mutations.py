@@ -263,6 +263,8 @@ async def run_mutation(
     # `None` significa "a mutacao nao chegou a responder", que e diferente de
     # "respondeu zero": o audit omite o resultado nesse caso em vez de inventar.
     resultado_audit: dict[str, Any] | None = None
+    # None = nao medido (ou a mutacao nem chegou ao Google): had_effect fica nulo.
+    changed_audit: int | None = None
 
     try:
         # Reserve quota: global (developer token) + per-manager cap. Transacao
@@ -370,6 +372,8 @@ async def run_mutation(
             sum(1 for rn in resource_names if rn is not None) if resource_names else None
         )
 
+        changed_audit = changed_count
+
         # R1-I2 — a trilha passa a carregar o resultado. Atribuido ANTES do
         # `return` porque o `finally` que grava o audit roda depois dele.
         resultado_audit = resultado_para_audit(
@@ -456,6 +460,7 @@ async def run_mutation(
                 status=status,
                 error_message=error_message,
                 duration_ms=duration_ms,
+                had_effect=None if changed_audit is None else changed_audit > 0,
             )
         log.info(
             "mutation_executed",

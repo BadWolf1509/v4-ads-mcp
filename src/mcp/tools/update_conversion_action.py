@@ -89,10 +89,11 @@ def _validate_payload_shape(args: dict[str, Any]) -> str | None:
 @register_tool(
     name="update_conversion_action",
     description=(
-        "[DEFER] Atualiza ConversionAction: name, primary_for_goal (off = action vira "
-        "non-biddable em todas as campaigns). 2 fields V0 — todos opcionais por "
-        "item (forneça ao menos 1). Single item rename auto-aplica. Batch > 1 "
-        "OU primary_for_goal=False retorna preview dry-run com "
+        "[DEFER] Atualiza ConversionAction: name, primary_for_goal (muda o sinal do "
+        "Smart Bidding: off = action vira non-biddable em todas as campaigns). "
+        "2 fields V0 — todos opcionais por "
+        "item (forneça ao menos 1). So rename de 1 item auto-aplica. Batch > 1 "
+        "OU qualquer primary_for_goal (true ou false) retorna preview dry-run com "
         "`confirmation_token` (UUID string, expires em 10 min). Fluxo: 1) chame "
         "esta tool -> recebe response com status='dry_run' + confirmation_token. "
         "2) revise `changes` (lista de fields_updated por ID). 3) chame "
