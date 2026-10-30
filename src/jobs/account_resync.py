@@ -387,7 +387,10 @@ async def run() -> int:
         except Exception as e:  # noqa: BLE001
             falhou = True
             log.warning("meta_reconcile_failed", error=str(e))
-            print(f"WARN: Meta reconcile falhou (non-fatal): {e}", file=sys.stderr)
+            print(
+                f"WARN: Meta reconcile falhou (o job termina e sai com 1): {e}",
+                file=sys.stderr,
+            )
             # F93 pela terceira porta (I2 da revisão de branch): `record_job_crash`
             # vivia só dentro de `meta_resync.run()`, que SÓ o entry point
             # `python -m src.jobs.meta_resync` alcança. O Cloud Run Job diário

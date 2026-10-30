@@ -45,16 +45,30 @@ async def contagem_por_dia(
     O filtro é um intervalo sobre `occurred_at` (sargável: usa o índice); o
     `AT TIME ZONE` só aparece no GROUP BY, onde converte a linha já filtrada.
     """
-    rows = await conn.fetch(
-        """SELECT (occurred_at AT TIME ZONE 'America/Sao_Paulo')::date AS d, count(*) AS c
-           FROM audit_log
-           WHERE occurred_at >= $1 AND occurred_at < $2
-             AND ($3::uuid IS NULL OR manager_id = $3)
-           GROUP BY 1""",
-        inicio_do_dia(dias[0]),
-        inicio_do_dia(dias[-1] + timedelta(days=1)),
-        manager_id,
-    )
+    inicio = inicio_do_dia(dias[0])
+    fim = inicio_do_dia(dias[-1] + timedelta(days=1))
+    # Duas queries, nao `($3::uuid IS NULL OR manager_id = $3)`: o OR faz o
+    # planner tratar o gestor como filtro, e `idx_audit_manager_time` so serve
+    # a igualdade direta em `manager_id` seguida do intervalo em `occurred_at`.
+    if manager_id is None:
+        rows = await conn.fetch(
+            """SELECT (occurred_at AT TIME ZONE 'America/Sao_Paulo')::date AS d, count(*) AS c
+               FROM audit_log
+               WHERE occurred_at >= $1 AND occurred_at < $2
+               GROUP BY 1""",
+            inicio,
+            fim,
+        )
+    else:
+        rows = await conn.fetch(
+            """SELECT (occurred_at AT TIME ZONE 'America/Sao_Paulo')::date AS d, count(*) AS c
+               FROM audit_log
+               WHERE manager_id = $3 AND occurred_at >= $1 AND occurred_at < $2
+               GROUP BY 1""",
+            inicio,
+            fim,
+            manager_id,
+        )
     por_dia = {r["d"]: r["c"] for r in rows}
     return [por_dia.get(d, 0) for d in dias]
 

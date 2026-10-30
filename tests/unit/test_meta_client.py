@@ -45,14 +45,18 @@ def test_meta_access_denied_error_stores_message():
 
 
 def test_versao_do_graph_so_vive_na_constante():
-    """Nenhum literal de versao antiga em src/ ou scripts/: a constante e a fonte."""
+    """Nenhum literal `vNN.0` de versao do Graph em src/ ou scripts/ fora da constante."""
+    import re
     from pathlib import Path
 
     raiz = Path(__file__).resolve().parents[2]
-    achados = [
-        str(p.relative_to(raiz))
-        for pasta in ("src", "scripts")
-        for p in (raiz / pasta).rglob("*.py")
-        if "v22.0" in p.read_text(encoding="utf-8")
-    ]
+    padrao = re.compile(r"\bv\d+\.0\b")
+    constante = raiz / "src" / "meta_ads" / "client.py"
+    achados = []
+    for pasta in ("src", "scripts"):
+        for p in (raiz / pasta).rglob("*.py"):
+            if p == constante:
+                continue
+            if padrao.search(p.read_text(encoding="utf-8")):
+                achados.append(str(p.relative_to(raiz)))
     assert achados == []

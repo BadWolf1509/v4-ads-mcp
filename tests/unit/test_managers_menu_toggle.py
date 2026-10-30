@@ -71,3 +71,13 @@ def test_status_inactive_nao_oferece_toggle(is_active: bool) -> None:
         r'<[^>]*role="menuitem"[^>]*aria-disabled="true"[^>]*>[^<]*Inativo por status', html
     )
     assert item is not None
+
+
+def test_despromover_a_gestor_pede_confirmacao() -> None:
+    m = _gestor(True, "active")
+    m.role = "admin"
+    html = _html(m)
+    botoes = re.findall(r"<button[^>]*toggle-role[^>]*>[^<]*</button>", html)
+    assert len(botoes) == 1
+    assert "Despromover a gestor" in botoes[0]
+    assert "data-v4-confirm-title" in botoes[0]

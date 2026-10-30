@@ -20,6 +20,7 @@
     <h1 class="text-3xl font-extrabold tracking-tight font-mono break-words min-w-0">{{ event.operation }}</h1>
     {% if event.status == "success" %}{{ badge("✓ OK", "success") }}
     {% elif event.status == "error" %}{{ badge("✗ Erro", "error") }}
+    {% elif event.status == "denied" %}{{ badge("⊘ Negado", "error") }}
     {% else %}{{ badge(event.status, "neutral") }}{% endif %}
   </header>
 

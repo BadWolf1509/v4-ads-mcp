@@ -71,7 +71,7 @@
             {{ dropdown("dd-" ~ loop.index, [
               {"label": "Promover a admin" if m.role == "gestor" else "Despromover a gestor",
                "post_url": "/admin/managers/" ~ m.id|string ~ "/toggle-role",
-               "confirm": {"title": "Promover a admin?", "message": m.email ~ " passará a administrar gestores, convites e acessos.", "ok": "Promover"} if m.role == "gestor" else None},
+               "confirm": {"title": "Promover a admin?", "message": m.email ~ " passará a administrar gestores, convites e acessos.", "ok": "Promover"} if m.role == "gestor" else {"title": "Despromover a gestor?", "message": m.email ~ " perde a administração de gestores, convites e acessos.", "ok": "Despromover"}},
               {"label": "Inativo por status", "disabled": true} if m.status == "inactive" else
               {"label": "Desativar" if m.is_active else "Reativar",
                "post_url": "/admin/managers/" ~ m.id|string ~ "/toggle-active",

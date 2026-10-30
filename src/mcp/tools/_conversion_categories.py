@@ -17,7 +17,8 @@ CATEGORIAS_CRIAVEIS = [
     # - "DOWNLOAD" (F19): INVALID_VALUE em WEBPAGE + UPLOAD_CLICKS types —
     #   provavelmente requer GOOGLE_PLAY_DOWNLOAD type (app-install workflow,
     #   niche excluido do _TYPE_ENUM v0).
-    # Final whitelist: 13 categorias V4-focused empirically validated.
+    # Final whitelist: 13 categorias criaveis V4-focused empirically validated
+    # (17 no total contando as 4 so de leitura em CATEGORIAS_AUDITAVEIS).
     "DEFAULT",
     "PURCHASE",
     "SIGNUP",

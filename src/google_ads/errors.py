@@ -97,6 +97,13 @@ def to_friendly(exc: Exception) -> GoogleAdsFriendlyError:
     # invalid_grant prova acesso revogado ou token expirado: RefreshError tambem vem
     # de falha passageira, e ali mandar reconectar afirmaria o que nao se mediu.
     if isinstance(exc, RefreshError):
+        # Client id/secret DO SERVIDOR recusados: nao e passageiro nem do gestor.
+        if "invalid_client" in str(exc) or "unauthorized_client" in str(exc):
+            return GoogleAdsFriendlyError(
+                "Credencial OAuth do servidor recusada pelo Google. Avise o administrador.",
+                code="OAUTH_CLIENT_REJECTED",
+                original=exc,
+            )
         if "invalid_grant" in str(exc):
             return GoogleAdsFriendlyError(
                 "A conexão Google Ads deste gestor expirou ou foi revogada. "

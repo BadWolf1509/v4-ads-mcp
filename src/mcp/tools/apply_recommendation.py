@@ -307,6 +307,14 @@ async def apply_recommendation(args: dict[str, Any]) -> dict[str, Any]:
     customer_id = args["customer_id"]
     rec_resource = args["recommendation_resource_name"]
 
+    if not rec_resource.startswith(f"customers/{customer_id}/"):
+        return error_envelope(
+            "apply_recommendation",
+            "resource_name pertence a outra conta (esperado prefixo "
+            f"customers/{customer_id}/, recebido '{rec_resource}')",
+            customer_id=customer_id,
+        )
+
     async def _consulta(gaql: str, parser: Any) -> list[dict[str, Any]]:
         return await run_report(
             manager_id=ctx.manager_id,

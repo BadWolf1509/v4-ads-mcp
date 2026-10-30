@@ -137,3 +137,15 @@ async def test_refresh_transitorio_chega_ao_gestor(
     with pytest.raises(GoogleAdsFriendlyError) as ei:
         await client_mod.build_client_for_manager(manager_id=uuid4())
     assert _error_envelope("x", ei.value)["error_message"] == TEXTO_TRANSITORIO
+
+
+@pytest.mark.parametrize("motivo", ["invalid_client", "unauthorized_client"])
+def test_credencial_do_servidor_recusada_nao_e_temporaria(motivo: str) -> None:
+    """Client id/secret do servidor recusados: repetir nao resolve, so o admin."""
+    from src.google_ads.errors import to_friendly
+
+    amigavel = to_friendly(RefreshError(f"{motivo}: Unauthorized", {"error": motivo}))
+    assert (
+        str(amigavel) == "Credencial OAuth do servidor recusada pelo Google. Avise o administrador."
+    )
+    assert amigavel.code == "OAUTH_CLIENT_REJECTED"
