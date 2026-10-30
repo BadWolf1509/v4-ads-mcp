@@ -32,13 +32,16 @@ Passos:
    ```powershell
    gcloud storage cp -r "gs://v4-ads-mcp-backups/2026-07-04/*" .\restore\
    ```
-2. **Descompactar** cada `.csv.gz` (gzip).
-3. **Restaurar via `COPY FROM`** com um script Python + asyncpg (padrão do projeto — sem psql). Ordem importa por causa das FKs: restaure na ordem de criação das tabelas (`managers` → `google_oauth_connections`/`google_ads_accounts`/`mcp_sessions` → `manager_account_access`/`pending_confirmations`/`audit_log`/`rate_counters` → tabelas Meta). Cada tabela:
-   ```python
-   # por tabela, contra um DB LIMPO (schema já migrado via `python -m src.db.migrate`):
-   with open("managers.csv", "rb") as f:
-       await conn.copy_to_table("managers", source=f, format="csv", header=True)
+2. **Não precisa descompactar:** o módulo do passo 3 lê `.csv.gz` direto.
+3. **Restaurar** contra um DB **limpo** com o schema já migrado (`python -m src.db.migrate`):
+   ```powershell
+   python -m src.jobs.restore .\restore\
    ```
+   O módulo ([`src/jobs/restore.py`](../../src/jobs/restore.py)) restaura na ordem de FK (`managers` → `google_oauth_connections`/`google_ads_accounts`/`mcp_sessions` → `manager_account_access`/`pending_confirmations`/`audit_log`/`rate_counters` → tabelas Meta), **numa transação só**, e recusa pasta incompleta ou com tabela fora da ordem **antes** do primeiro COPY. Três coisas que o procedimento manual antigo errava e o módulo faz:
+   - **Pula `_migrations`**: o dump a inclui, mas ela conflita com o schema já migrado.
+   - **Recoloca a sequence do `audit_log`** (`setval` no fim; única tabela com SERIAL). Sem isso o COPY grava `id` explícito, a sequence fica em 1 e o INSERT seguinte do app falha com `UniqueViolationError (id)=(1)` — medido em Postgres 16.
+   - **COPY sem `command_timeout`** (`timeout=None`): o limite padrão de 30 s do pool não vale para uma tabela grande.
+
    Colunas `BYTEA` (ex. `google_oauth_connections.refresh_token_enc`) são serializadas pelo Postgres em hex (`\x...`) no CSV e re-lidas corretamente pelo `COPY FROM ... FORMAT CSV` — sem transformação no meio.
 4. **Validar:** `SELECT count(*)` por tabela vs o esperado; `/health?deep=1` db=ok; um login no painel + um `tools/list` autenticado.
 
@@ -48,8 +51,10 @@ Passos:
 
 Contra um Postgres descartável (testcontainer local com Docker, OU um DB temporário no Supabase):
 1. `python -m src.db.migrate` no DB limpo (cria o schema).
-2. Restaure 1 tabela pequena com FK (ex. `google_oauth_connections`, que depende de `managers`) seguindo os passos acima.
-3. Confirme count + que o `refresh_token_enc` (BYTEA) sobreviveu ao roundtrip (decifra com a chave correspondente).
+2. Rode `python -m src.jobs.restore <pasta>` (passo 3 acima) e confira as contagens que ele imprime.
+3. Confirme que o `refresh_token_enc` (BYTEA) sobreviveu ao roundtrip (decifra com a chave correspondente) e que um INSERT em `audit_log` funciona (a sequence foi recolocada).
+
+O roundtrip completo (dump → restore → contagens → INSERT no `audit_log`) é coberto por `tests/integration/test_backup_restore.py`.
 
 ## Alertas relacionados (Onda 2.1)
 

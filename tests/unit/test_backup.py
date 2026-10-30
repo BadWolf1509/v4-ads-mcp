@@ -42,7 +42,7 @@ def _fake_conn(tables: list[str]) -> MagicMock:
     conn = MagicMock()
     conn.fetch = AsyncMock(return_value=[{"table_name": t} for t in tables])
 
-    async def _copy_from_query(query, *, output, format, header):  # noqa: A002
+    async def _copy_from_query(query, *, output, format, header, **_kw):  # noqa: A002
         await output(b"col_a,col_b\r\nval1,val2\r\n")
         return "COPY 1"
 
@@ -189,11 +189,11 @@ async def test_run_continues_after_one_table_fails_and_returns_1() -> None:
     call_count = {"n": 0}
     orig_copy = conn.copy_from_query
 
-    async def _copy_with_failure(query, *, output, format, header):  # noqa: A002
+    async def _copy_with_failure(query, *, output, format, header, **kw):  # noqa: A002
         call_count["n"] += 1
         if "broken_table" in query:
             raise RuntimeError("boom")
-        return await orig_copy(query, output=output, format=format, header=header)
+        return await orig_copy(query, output=output, format=format, header=header, **kw)
 
     conn.copy_from_query = AsyncMock(side_effect=_copy_with_failure)
     pool = _fake_pool(conn)
