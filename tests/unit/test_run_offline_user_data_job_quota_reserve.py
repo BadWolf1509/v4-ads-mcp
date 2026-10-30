@@ -62,7 +62,6 @@ async def test_quota_exhausted_blocks_and_skips_record_actual():
     """F73: se before_call (reserva GLOBAL) levanta QuotaExhausted, record_actual
     NAO deve ser chamado (nao ha reserva persistida pra reconciliar)."""
     from src.google_ads.customer_match import run_offline_user_data_job
-    from src.google_ads.errors import GoogleAdsFriendlyError
 
     before_call_mock = AsyncMock(side_effect=QuotaExhausted("quota diaria esgotada"))
     record_actual_mock = AsyncMock()
@@ -77,7 +76,9 @@ async def test_quota_exhausted_blocks_and_skips_record_actual():
             "src.google_ads.customer_match.connection.get_pool",
             return_value=_pool_with_transactable_conn(),
         ),
-        pytest.raises(GoogleAdsFriendlyError),
+        # F110: sobe o QuotaExhausted original (o server.py o devolve com a mensagem),
+        # nao o "Erro inesperado" que o to_friendly fazia dele.
+        pytest.raises(QuotaExhausted, match="quota diaria esgotada"),
     ):
         await run_offline_user_data_job(
             manager_id=uuid4(),

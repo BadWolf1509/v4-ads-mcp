@@ -30,6 +30,7 @@ from src.google_ads.partial_failure import erros_por_indice
 from src.google_ads.request_id import get_request_id, reset_request_id
 from src.governance.bookkeeping import best_effort
 from src.governance.rate_limit import (
+    QuotaExhausted,
     before_call,
     hash_developer_token,
     record_actual,
@@ -357,6 +358,19 @@ async def run_offline_user_data_job(
 
         await run_blocking(_rodar_job)
 
+    except QuotaExhausted as e:
+        # F110: a mensagem da recusa ja diz qual cota, usado/limite e o reset; o
+        # to_friendly a trocava por "Erro inesperado ao falar com o Google Ads". A
+        # recusa vem da reserva, antes do passo 1, entao nada subiu ao Google.
+        status = "error"
+        error_message = str(e)
+        log.warning(
+            "run_offline_user_data_job_quota_exhausted",
+            customer_id=customer_id,
+            user_list_id=user_list_id,
+        )
+        friendly_error = e
+        original_error = None
     except Exception as e:
         status = "error"
         error_message = str(e)

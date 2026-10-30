@@ -427,3 +427,36 @@ async def test_dispatcher_audits_and_raises_on_api_error(fake_ctx, gov_mocks):
     assert gov_mocks["audit"].call_args.kwargs["status"] == "error"
     # rate counter reconciliado com actual_ops=0 (reserva liberada)
     assert gov_mocks["record_actual"].call_args.kwargs["actual_ops"] == 0
+
+
+@pytest.mark.asyncio
+async def test_quota_esgotada_sobe_intacta_e_diz_qual_quota(fake_ctx, gov_mocks):
+    """F110: a recusa da reserva nao passa pelo `to_friendly` — chegava ao gestor como
+    "Erro inesperado ao falar com o Google Ads (QuotaExhausted)", sem dizer qual cota nem
+    quando reseta. Sobe o `QuotaExhausted` original, auditado como erro, sem reconciliar."""
+    from src.google_ads.customer_match import run_offline_user_data_job
+    from src.governance.rate_limit import QuotaExhausted
+
+    gov_mocks["before_call"].side_effect = QuotaExhausted(
+        "quota diaria esgotada: 5000/5000 (mgr:x). Reset a meia-noite UTC."
+    )
+    with (
+        patch(
+            "src.google_ads.customer_match.connection.get_pool",
+            return_value=_pool_with_transactable_conn(),
+        ),
+        patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
+        pytest.raises(QuotaExhausted, match="quota diaria esgotada: 5000/5000"),
+    ):
+        await run_offline_user_data_job(
+            manager_id=fake_ctx["manager_id"],
+            session_id=fake_ctx["session_id"],
+            customer_id=fake_ctx["customer_id"],
+            user_list_id="1234567890",
+            operation_type="add",
+            hashed_members=[{"hashed_email": "abc"}],
+        )
+
+    gov_mocks["audit"].assert_awaited_once()
+    assert gov_mocks["audit"].call_args.kwargs["status"] == "error"
+    gov_mocks["record_actual"].assert_not_awaited()
