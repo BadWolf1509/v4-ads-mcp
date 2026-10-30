@@ -100,7 +100,7 @@ escolhendo pelo nome. **Remedido em 05/10:** `get_campaign_performance` 120 (Ped
 - **Alerta de saldo acabando — decidido em 30/10:** não haverá job central. **Cada gestor monta a
   própria automação** (ex.: tarefa agendada no Claude) sobre `get_account_balance` /
   `meta_get_account_balance` nas contas que administra, avisando em `acabando`/`esgotada`. Guia para os
-  gestores: pendente.
+  gestores: [guia-alerta-de-saldo.md](guia-alerta-de-saldo.md).
 - **`ads_get_field_context` não rodado nos 9 fields de `GET /act_<id>`** (saldo Meta, 29/10) — o MCP oficial da
   Meta estava indisponível na sessão de 29/10. Evidência substituta: leitura ao vivo com as 9 chaves e controle
   de campo inexistente → 400. A regra F53/F54/F55 do [`nucleo.md`](../convencoes/nucleo.md) pede a checagem
