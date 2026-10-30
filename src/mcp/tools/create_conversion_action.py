@@ -31,35 +31,11 @@ from src.google_ads.queries._common import validate_conversion_action_create
 from src.governance.blast_radius import classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
+from src.mcp.tools._conversion_categories import CATEGORIAS_CRIAVEIS
 from src.mcp.tools._mutate_common import error_envelope, preview_envelope
 from src.mcp.tools._registry import register_tool
 
-_CATEGORY_ENUM = [
-    # Sprint 3b.19A removed values (validated empiricamente em smoke runbook,
-    # including per-value probe em 3b.19A.1):
-    # - "LEAD" (F17): removido do SDK v20 — era value 6 historicamente.
-    # - "IMPORTED_LEAD" (F18): ENUM_VALUE_NOT_PERMITTED — system-managed pelo
-    #   Google Lead Form / CRM import workflow.
-    # - "QUALIFIED_LEAD" (F18): INVALID_VALUE — system-managed (lead lifecycle).
-    # - "CONVERTED_LEAD" (F18): INVALID_VALUE — system-managed (lead lifecycle).
-    # - "DOWNLOAD" (F19): INVALID_VALUE em WEBPAGE + UPLOAD_CLICKS types —
-    #   provavelmente requer GOOGLE_PLAY_DOWNLOAD type (app-install workflow,
-    #   niche excluido do _TYPE_ENUM v0).
-    # Final whitelist: 13 categorias V4-focused empirically validated.
-    "DEFAULT",
-    "PURCHASE",
-    "SIGNUP",
-    "SUBMIT_LEAD_FORM",
-    "BOOK_APPOINTMENT",
-    "REQUEST_QUOTE",
-    "PHONE_CALL_LEAD",
-    "ADD_TO_CART",
-    "BEGIN_CHECKOUT",
-    "SUBSCRIBE_PAID",
-    "CONTACT",
-    "ENGAGEMENT",
-    "PAGE_VIEW",
-]
+_CATEGORY_ENUM = CATEGORIAS_CRIAVEIS
 
 _TYPE_ENUM = ["WEBPAGE", "UPLOAD_CLICKS", "UPLOAD_CALLS"]
 

@@ -25,24 +25,10 @@ from src.google_ads.queries.audit_goal_attribution import (
 )
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
+from src.mcp.tools._conversion_categories import CATEGORIAS_AUDITAVEIS
 from src.mcp.tools._registry import register_tool
 
-# Sprint 3b.19A whitelist — 13 V4-focused categorias (após F17/F18/F19 fixes)
-_V4_CATEGORIES = [
-    "DEFAULT",
-    "PAGE_VIEW",
-    "PURCHASE",
-    "SIGNUP",
-    "SUBMIT_LEAD_FORM",
-    "BOOK_APPOINTMENT",
-    "REQUEST_QUOTE",
-    "GET_DIRECTIONS",
-    "OUTBOUND_CLICK",
-    "CONTACT",
-    "ENGAGEMENT",
-    "STORE_VISIT",
-    "STORE_SALE",
-]
+_V4_CATEGORIES = CATEGORIAS_AUDITAVEIS
 
 _SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -54,8 +40,9 @@ _SCHEMA: dict[str, Any] = {
             "description": (
                 "Opcional. Filtra audit a uma única ConversionAction.category. "
                 "Default sem filtro = retorna todas categories da conta agrupadas "
-                "por (category, origin). Whitelist V4 13 valores (mesma de "
-                "create_conversion_action 3b.19A — F17/F18/F19-safe)."
+                "por (category, origin). Todas as categorias que "
+                "create_conversion_action cria, mais 4 só de leitura (GET_DIRECTIONS, "
+                "OUTBOUND_CLICK, STORE_VISIT, STORE_SALE)."
             ),
         },
     },
@@ -74,7 +61,7 @@ _SCHEMA: dict[str, Any] = {
         "actions split. biddable=true significa que promover Secondary→Primary "
         "AFETA Smart Bidding em todas campaigns que usam esta category+origin — "
         "NÃO é cosmético KPI (lição 47 dogfood MO-JP). Filter opcional por "
-        "category (whitelist 13 V4 valores). Apenas actions com status=ENABLED. "
+        "category (as de create_conversion_action + 4 só de leitura). Apenas actions com status=ENABLED. "
         "Sempre auditado."
     ),
     input_schema=_SCHEMA,

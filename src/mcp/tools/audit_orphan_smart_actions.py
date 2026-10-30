@@ -18,24 +18,10 @@ from src.google_ads.queries.audit_orphan_smart_actions import (
 )
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
+from src.mcp.tools._conversion_categories import CATEGORIAS_AUDITAVEIS
 from src.mcp.tools._registry import register_tool
 
-# Sprint 3b.19A whitelist — 13 V4-focused categorias (idêntica audit_goal_attribution 3b.35)
-_V4_CATEGORIES = [
-    "DEFAULT",
-    "PAGE_VIEW",
-    "PURCHASE",
-    "SIGNUP",
-    "SUBMIT_LEAD_FORM",
-    "BOOK_APPOINTMENT",
-    "REQUEST_QUOTE",
-    "GET_DIRECTIONS",
-    "OUTBOUND_CLICK",
-    "CONTACT",
-    "ENGAGEMENT",
-    "STORE_VISIT",
-    "STORE_SALE",
-]
+_V4_CATEGORIES = CATEGORIAS_AUDITAVEIS
 
 _SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -46,8 +32,9 @@ _SCHEMA: dict[str, Any] = {
             "enum": _V4_CATEGORIES,
             "description": (
                 "Opcional. Filtra audit a uma única ConversionAction.category. "
-                "Whitelist V4 13 valores (F17/F18/F19-safe — mesma de "
-                "create_conversion_action 3b.19A e audit_goal_attribution 3b.35)."
+                "Todas as categorias que "
+                "create_conversion_action cria, mais 4 só de leitura (GET_DIRECTIONS, "
+                "OUTBOUND_CLICK, STORE_VISIT, STORE_SALE)."
             ),
         },
         "limit": {
@@ -95,7 +82,7 @@ _SCHEMA: dict[str, Any] = {
         "obsoletos, ações de campanhas removidas, conversion actions criadas "
         "em testes que continuam ENABLED sem trackar nada útil. Output flat "
         "list ordenada por (category, origin, name) ASC pra agrupar "
-        "visualmente. Filtros: category opcional (whitelist 13 V4 valores), "
+        "visualmente. Filtros: category opcional (as de create_conversion_action + 4 só de leitura), "
         "limit (default 100, max 500), date_range preset OR start_date+"
         "end_date custom. Server-side hardcoded: status=ENABLED. Sempre auditado."
     ),
