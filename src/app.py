@@ -55,6 +55,10 @@ def create_app(skip_db_init: bool = False) -> FastAPI:
         title="V4 Ads MCP",
         version=__version__,
         lifespan=lifespan,
+        # Tool interna: o schema das rotas não é público (e nenhum consumidor o lê).
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
     )
 
     # NOTE: /healthz is intercepted by Google Front End on Cloud Run before
