@@ -2,8 +2,8 @@
 # supply-chain num workflow com id-token: write / WIF pra prod). pip agora controla
 # de fato o que prod roda: existe requirements.txt pinado (uv pip compile do
 # pyproject), instalado pelo buildpack CNB e pelo CI — os PRs do dependabot movem
-# os pins, não só o range do pyproject. Majors de google-ads/facebook-business
-# removem versões de API Google Ads/Graph, e major de `mcp` troca o protocolo do
+# os pins, não só o range do pyproject. Major de google-ads
+# remove versões da API Google Ads, e major de `mcp` troca o protocolo do
 # servidor — bump major deve ser deliberado, daí o ignore.
 version: 2
 updates:
@@ -24,8 +24,6 @@ updates:
         patterns: ["grpcio*"]
     ignore:
       - dependency-name: "google-ads"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "facebook-business"
         update-types: ["version-update:semver-major"]
       # `mcp` é o transporte inteiro do servidor (Streamable HTTP + SSE) — major
       # aqui não é bump de dependência, é troca de protocolo. Medido em 08/09:

@@ -127,3 +127,53 @@ def test_o_guard_recusa_escopo_vazio() -> None:
     """Sem step de job nenhum, a ausencia de violacao seria vacuidade."""
     with pytest.raises(EscopoVazioError):
         _mapa([{"run": "echo nada a ver"}])
+
+
+# --- Imagem dos jobs de agenda so depois do smoke verde ----------------------
+#
+# `resync` e `backup` rodam sozinhos, pelo Cloud Scheduler. Com a imagem
+# atualizada ANTES do smoke, um commit que o smoke rejeita (e cujo trafego e
+# revertido) deixava o job das 06:00 rodando o codigo rejeitado. So o `migrate`
+# precisa da imagem cedo, porque e executado aqui dentro.
+
+
+def _indice_do_smoke(steps: list[dict[str, Any]]) -> int:
+    achados = [i for i, s in enumerate(steps) if s.get("name") == "Smoke test"]
+    assert len(achados) == 1, "o step `Smoke test` sumiu ou duplicou"
+    return achados[0]
+
+
+def _jobs_de_agenda_antes_do_smoke(steps: list[dict[str, Any]]) -> list[str]:
+    atualiza, executa = _mapa(steps)
+    i_smoke = _indice_do_smoke(steps)
+    return [
+        f"`{job}` recebe a imagem (step {i}) antes do smoke (step {i_smoke})"
+        for job, i in atualiza.items()
+        if job not in executa and i < i_smoke
+    ]
+
+
+def test_jobs_de_agenda_so_recebem_imagem_depois_do_smoke() -> None:
+    assert _jobs_de_agenda_antes_do_smoke(_steps()) == []
+
+
+def test_o_guard_enxerga_job_de_agenda_antes_do_smoke() -> None:
+    pre_fix = [
+        {"run": "gcloud run jobs update v4-ads-mcp-migrate --image=x"},
+        {"run": "gcloud run jobs execute v4-ads-mcp-migrate --wait"},
+        {"run": "gcloud run jobs update v4-ads-mcp-resync --image=x"},
+        {"name": "Smoke test", "run": "curl x"},
+    ]
+    assert len(_jobs_de_agenda_antes_do_smoke(pre_fix)) == 1
+
+
+def test_update_dos_jobs_nao_dispara_o_rollback_de_trafego() -> None:
+    """Falha ao trocar a imagem de um job nao pode tirar do ar a revisao saudavel.
+
+    O rollback e `failure()`; um step que falhe DEPOIS dele nunca o aciona.
+    """
+    steps = _steps()
+    atualiza, executa = _mapa(steps)
+    i_rollback = next(i for i, s in enumerate(steps) if s.get("name") == "Rollback on failure")
+    tardios = [job for job, i in atualiza.items() if job not in executa and i < i_rollback]
+    assert tardios == [], f"{tardios} rodam antes do rollback e o disparariam"

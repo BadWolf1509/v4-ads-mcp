@@ -114,11 +114,20 @@ def _bash_que_funciona() -> str | None:
 _BASH = _bash_que_funciona()
 
 
-def _rodar(arquivos: list[str] | None, *, base: str = "abc123") -> str:
+def _rodar(
+    arquivos: list[str] | None,
+    *,
+    base: str = "abc123",
+    gh: str | None = "completed/success",
+) -> str:
     """Executa o script do passo com a lista de arquivos injetada.
 
     Substitui as duas chamadas de git para o teste nao depender de SHA real nem
     do estado do repo — o que importa aqui e a CLASSIFICACAO da lista.
+
+    `gh` simula a saida (ja filtrada pelo `--jq`) da consulta a run do commit base:
+    `None` = a consulta falha (exit 1); `""` = lista vazia. Shim no PATH nao
+    sombreia executavel no Git Bash, entao o `gh` falso entra por caminho absoluto.
     """
     script = _passo_de_deteccao()["run"]
     script = script.replace("${{ github.event.before }}", base)
@@ -130,6 +139,12 @@ def _rodar(arquivos: list[str] | None, *, base: str = "abc123") -> str:
     script = script.replace('git diff --name-only "$BASE" "$HEAD_SHA"', listagem)
 
     with tempfile.TemporaryDirectory() as d:
+        fake_gh = Path(d) / "gh_falso"
+        corpo = "exit 1" if gh is None else f"printf '%s' '{gh}'"
+        fake_gh.write_text("#!/usr/bin/env bash\n" + corpo + "\n", encoding="utf-8")
+        fake_gh.chmod(0o755)
+        assert "gh run list" in script, "o passo deixou de consultar a run do commit base"
+        script = script.replace("gh run list", f"'{fake_gh.as_posix()}' run list")
         sh = Path(d) / "step.sh"
         sh.write_text(script, encoding="utf-8")
         saida = Path(d) / "out"
@@ -193,3 +208,117 @@ def test_sem_base_confiavel_deploya_fail_open() -> None:
 @pytestmark_bash
 def test_diff_vazio_deploya_fail_open() -> None:
     assert _rodar(None) == "true"
+
+
+@pytestmark_bash
+def test_base_com_run_falha_deploya() -> None:
+    """Se o push de codigo anterior falhou, o de docs nao herda o 'pulado'."""
+    assert _rodar(["docs/x.md"], gh="completed/failure") == "true"
+
+
+@pytestmark_bash
+def test_base_com_run_cancelada_ou_em_andamento_deploya() -> None:
+    assert _rodar(["docs/x.md"], gh="completed/cancelled") == "true"
+    assert _rodar(["docs/x.md"], gh="in_progress/") == "true"
+
+
+@pytestmark_bash
+def test_consulta_da_base_falha_deploya_fail_open() -> None:
+    assert _rodar(["docs/x.md"], gh=None) == "true"
+
+
+@pytestmark_bash
+def test_base_sem_run_deploya_fail_open() -> None:
+    assert _rodar(["docs/x.md"], gh="") == "true"
+
+
+def test_job_test_le_actions_e_nao_escreve() -> None:
+    perms = _workflow()["jobs"]["test"]["permissions"]
+    assert perms["actions"] == "read"
+    assert perms["contents"] == "read"
+    assert not any(v == "write" for v in perms.values())
+    env = _passo_de_deteccao().get("env") or {}
+    assert env.get("GH_TOKEN") == "${{ github.token }}"
+
+
+# --- Concorrencia: push so de docs nao pode matar o teste do push de codigo ---
+
+
+def test_cancel_in_progress_falso_na_main() -> None:
+    """Push de docs logo depois de um de codigo cancelava o `test` do primeiro.
+
+    O deploy depende desse `test`; cancelado, ele nunca roda, e o push de docs
+    (que nao deploya) nao o repoe: o codigo ficava sem deploy. Sem cancelar, a
+    fila do grupo guarda 1 pendente (o run mais novo substitui o pendente anterior,
+    nao o em andamento); o caso em que o pendente de codigo e substituido por um
+    de docs fecha na reconciliacao do `detectar_mudanca`, que so pula o deploy se
+    a run do commit base deu certo. Fora da `main` (PRs) o cancelamento vale.
+    """
+    conc = _workflow()["jobs"]["test"]["concurrency"]
+    assert conc["cancel-in-progress"] == "${{ github.ref != 'refs/heads/main' }}"
+
+
+# --- Captura da revisao que serve (rollback) ---------------------------------
+
+_DEPLOY = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "deploy.yml"
+
+
+def _passo_de_captura() -> str:
+    steps = yaml.safe_load(_DEPLOY.read_text(encoding="utf-8"))["jobs"]["deploy"]["steps"]
+    achados = [s for s in steps if s.get("name", "").startswith("Capture serving revision")]
+    assert len(achados) == 1
+    return achados[0]["run"]
+
+
+def test_captura_nao_engole_erro_com_or_true() -> None:
+    corpo = _passo_de_captura()
+    assert "|| true" not in corpo
+    assert "2>/dev/null" not in corpo
+
+
+def _rodar_captura(gcloud_script: str) -> tuple[int, str]:
+    with tempfile.TemporaryDirectory() as d:
+        dp = Path(d)
+        fake = dp / "gcloud"
+        fake.write_text("#!/usr/bin/env bash\n" + gcloud_script + "\n", encoding="utf-8")
+        fake.chmod(0o755)
+        sh = dp / "step.sh"
+        sh.write_text(_passo_de_captura(), encoding="utf-8")
+        env_file = dp / "env"
+        env_file.touch()
+        assert _BASH is not None
+        env = {
+            **os.environ,
+            "PATH": dp.as_posix() + os.pathsep + os.environ["PATH"],
+            "GITHUB_ENV": env_file.as_posix(),
+            "REGION": "r",
+        }
+        r = subprocess.run(
+            [_BASH, "-e", sh.as_posix()], env=env, check=False, capture_output=True, text=True
+        )
+        return r.returncode, env_file.read_text(encoding="utf-8")
+
+
+@pytestmark_bash
+def test_captura_devolve_a_revisao_que_serve() -> None:
+    rc, env = _rodar_captura("echo v4-ads-mcp-00042-abc")
+    assert rc == 0
+    assert "SERVING_REVISION=v4-ads-mcp-00042-abc" in env
+
+
+@pytestmark_bash
+def test_captura_servico_inexistente_fica_vazio_e_segue() -> None:
+    rc, env = _rodar_captura(
+        "echo 'ERROR: (gcloud.run.services.describe) Cannot find service [v4-ads-mcp]' >&2; exit 1"
+    )
+    assert rc == 0
+    assert "SERVING_REVISION=\n" in env + "\n"
+
+
+@pytestmark_bash
+def test_captura_qualquer_outro_erro_falha_o_passo() -> None:
+    """Permissao negada nao pode virar 'primeiro deploy' e apagar o rollback."""
+    rc, _ = _rodar_captura(
+        "echo 'ERROR: PERMISSION_DENIED: caller lacks run.services.get' >&2; exit 1"
+    )
+    assert rc != 0

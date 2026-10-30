@@ -2,8 +2,8 @@
 
 Este módulo já foi a fábrica do `FacebookAdsApi`. Depois do F190 o transporte
 Meta é `httpx` direto (`reports.py::run_meta_graph_get`, token em
-`Authorization: Bearer`), e **nenhum caminho de request constrói cliente do
-SDK `facebook_business`**. Sobraram aqui os três nomes que o resto do código
+`Authorization: Bearer`), e o SDK `facebook_business` saiu das
+dependências: nenhum caminho de request o usa. Sobraram aqui os três nomes que o resto do código
 importa:
 
 - `META_GRAPH_API_VERSION` — a versão do Graph usada por `reports.py` e
