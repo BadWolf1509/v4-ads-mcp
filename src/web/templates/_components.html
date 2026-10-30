@@ -165,7 +165,7 @@
 {% endmacro %}
 
 {% macro dropdown(id, items, trigger_label="⋯") %}
-{# items: list of dicts with keys: label, url (optional), post_url (optional), kind (optional, 'danger'), separator (optional, true => render <hr>), confirm (optional, dict title/message/ok => pede confirmacao antes do POST, mesmo padrao de data-v4-action="confirm") #}
+{# items: list of dicts with keys: label, url (optional), post_url (optional), kind (optional, 'danger'), separator (optional, true => render <hr>), confirm (optional, dict title/message/ok => pede confirmacao antes do POST, mesmo padrao de data-v4-action="confirm"), disabled (optional, true => item sem acao: role=menuitem + aria-disabled, sem url/post_url) #}
 <div class="v4-dropdown" id="{{ id }}">
   <button type="button" class="v4-dropdown__trigger" aria-haspopup="menu" aria-expanded="false"
           data-v4-action="dropdown-toggle" data-v4-target="{{ id }}">{{ trigger_label }}</button>
@@ -173,6 +173,8 @@
     {% for item in items %}
       {% if item.separator %}
         <div class="v4-dropdown__divider" role="separator"></div>
+      {% elif item.disabled %}
+        <span class="v4-dropdown__item v4-dropdown__item--disabled" role="menuitem" aria-disabled="true">{{ item.label }}</span>
       {% elif item.url %}
         <a class="v4-dropdown__item {% if item.kind == 'danger' %}v4-dropdown__item--danger{% endif %}"
            href="{{ item.url }}" role="menuitem">{{ item.label }}</a>
