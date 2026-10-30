@@ -309,11 +309,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.body.addEventListener('htmx:afterRequest', (e) => {
     const el = e.target;
     if (!el.matches?.('[data-v4-access-toggle]')) return;
-    if (e.detail.successful) {
-      showToast(el.checked ? 'Acesso liberado' : 'Acesso revogado', 'success');
-    } else {
-      el.checked = !el.checked;
-    }
+    // O toast de sucesso vem do servidor (HX-Trigger): so ele sabe se o pedido
+    // mudou algo. `el.checked` diz o que o clique pediu, nao o que aconteceu.
+    if (!e.detail.successful) el.checked = !el.checked;
   });
 });
 

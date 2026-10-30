@@ -7,7 +7,7 @@
 <section class="max-w-3xl mx-auto py-6 px-4">
   {{ breadcrumb([
     {"label": "Audit", "url": "/audit"},
-    {"label": event.occurred_at.strftime("%d/%m %H:%M:%S")}
+    {"label": event.occurred_at|hora_brasilia("%d/%m %H:%M:%S")}
   ]) }}
 
   <header class="mb-6 flex items-center gap-3 flex-wrap">
@@ -20,6 +20,7 @@
     <h1 class="text-3xl font-extrabold tracking-tight font-mono break-words min-w-0">{{ event.operation }}</h1>
     {% if event.status == "success" %}{{ badge("✓ OK", "success") }}
     {% elif event.status == "error" %}{{ badge("✗ Erro", "error") }}
+    {% elif event.status == "denied" %}{{ badge("⊘ Negado", "error") }}
     {% else %}{{ badge(event.status, "neutral") }}{% endif %}
   </header>
 

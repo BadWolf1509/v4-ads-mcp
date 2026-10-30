@@ -19,7 +19,7 @@
       {% endif %}
       {% if current_user.last_seen_at %}
       <span>·</span>
-      <span>último acesso {{ current_user.last_seen_at.strftime("%d/%m %H:%M") }}</span>
+      <span>último acesso {{ current_user.last_seen_at|hora_brasilia("%d/%m %H:%M") }}</span>
       {% endif %}
     </div>
   </header>
@@ -43,7 +43,7 @@
       <div class="v4-stat__label">Conexão Google</div>
       {% if oauth_email %}
         <div class="text-sm font-semibold mt-1 truncate" title="{{ oauth_email }}">{{ oauth_email }}</div>
-        <div class="v4-stat__sublabel">conectado em {{ oauth_connected_at.strftime("%d/%m") }}</div>
+        <div class="v4-stat__sublabel">conectado em {{ oauth_connected_at|hora_brasilia("%d/%m") }}</div>
       {% else %}
         <div class="text-sm font-semibold mt-1 text-v4-red">Não conectada</div>
         <div class="v4-stat__sublabel"><a href="/accounts" class="underline">conectar</a></div>
@@ -91,7 +91,7 @@
       <tbody>
         {% for r in recent_calls %}
         <tr>
-          <td class="col-mono">{{ r.occurred_at.strftime("%d/%m %H:%M") }}</td>
+          <td class="col-mono">{{ r.occurred_at|hora_brasilia("%d/%m %H:%M") }}</td>
           <td class="col-mono">{{ r.operation }}</td>
           <td>{{ r.account_name or r.customer_id or "—" }}</td>
           <td>
@@ -117,7 +117,7 @@
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
       <div>
         <div class="text-xs text-v4-gray-700 uppercase font-semibold">Convites pendentes</div>
-        <div class="text-2xl font-bold {% if admin_ops.pending_invites > 0 %}text-v4-gold{% endif %}">
+        <div class="text-2xl font-bold {% if admin_ops.pending_invites > 0 %}text-v4-gold-text{% endif %}">
           {{ admin_ops.pending_invites }}
         </div>
         {% if admin_ops.pending_invites > 0 %}
@@ -130,7 +130,7 @@
       </div>
       <div>
         <div class="text-xs text-v4-gray-700 uppercase font-semibold">Erros últ. 24h</div>
-        <div class="text-2xl font-bold {% if admin_ops.errors_24h > 0 %}text-v4-red{% else %}text-v4-green{% endif %}">
+        <div class="text-2xl font-bold {% if admin_ops.errors_24h > 0 %}text-v4-red{% else %}text-v4-green-text{% endif %}">
           {{ admin_ops.errors_24h }}
         </div>
         {% if admin_ops.errors_24h > 0 %}

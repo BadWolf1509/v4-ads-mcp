@@ -94,7 +94,7 @@ def _validate_payload_shape(args: dict[str, Any]) -> str | None:
         "2 fields V0 — todos opcionais por "
         "item (forneça ao menos 1). So rename de 1 item auto-aplica. Batch > 1 "
         "OU qualquer primary_for_goal (true ou false) retorna preview dry-run com "
-        "`confirmation_token` (UUID string, expires em 10 min). Fluxo: 1) chame "
+        "`confirmation_token` (8 caracteres, expira em 10 min). Fluxo: 1) chame "
         "esta tool -> recebe response com status='dry_run' + confirmation_token. "
         "2) revise `changes` (lista de fields_updated por ID). 3) chame "
         "`apply_change(confirmation_token=<token>)` pra executar. Pra desligar "

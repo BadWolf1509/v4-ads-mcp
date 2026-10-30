@@ -111,7 +111,7 @@ async def test_admin_access_meta_toggle_grant_then_revoke(client: AsyncClient):
     # First toggle → should grant access → checkbox has "checked"
     response1 = await client.post(
         "/admin/access/meta/toggle",
-        data={"manager_id": str(gestor_id), "ad_account_id": ad_account_id},
+        data={"manager_id": str(gestor_id), "ad_account_id": ad_account_id, "desejado": "grant"},
         cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
     )
     assert response1.status_code == 200
@@ -136,7 +136,7 @@ async def test_admin_access_meta_toggle_grant_then_revoke(client: AsyncClient):
     # Second toggle → should revoke access → checkbox does NOT have "checked"
     response2 = await client.post(
         "/admin/access/meta/toggle",
-        data={"manager_id": str(gestor_id), "ad_account_id": ad_account_id},
+        data={"manager_id": str(gestor_id), "ad_account_id": ad_account_id, "desejado": "revoke"},
         cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
     )
     assert response2.status_code == 200

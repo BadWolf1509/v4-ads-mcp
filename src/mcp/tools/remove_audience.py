@@ -78,7 +78,9 @@ def _build_params_summary(target_type: str, target_id: str, criterion_count: int
         "(F182/F184). Nao existe status "
         "por-linha de dominio: criterion ja removido volta como `failed` com a "
         "mensagem NOT_FOUND do Google. Pega criterion_id da response de "
-        "get_audience_performance ou Google Ads UI."
+        "get_audience_performance (so lista audiencia de ad_group) ou da Google Ads UI: "
+        "audiência de campanha NAO aparece em get_audience_performance, entao o "
+        "criterion_id dela tem que vir da UI."
     ),
     input_schema=_SCHEMA,
     bucket="defer",

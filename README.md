@@ -8,7 +8,7 @@ Ferramenta **interna da V4 Company** que conecta as contas **Google Ads** e **Me
 
 ## O que faz
 
-- **~64 ferramentas MCP** (Google Ads + Meta Ads) — leitura (performance, search terms, funil, geo/device/hora, auditorias) e mutação (status, lances, orçamento, keywords, RSAs, conversões, audiências…).
+- **72 ferramentas MCP** (Google Ads + Meta Ads) — leitura (performance, search terms, funil, geo/device/hora, auditorias) e mutação (status, lances, orçamento, keywords, RSAs, conversões, audiências…).
 - **Governança em toda chamada:** registro no `audit_log` (quem, quando, qual conta, operação, status), rate-limit por token, e **dry-run + confirmação** (`apply_change`) para mutações de blast radius alto.
 - **Autorização por conta:** a matriz `manager_account_access` / `manager_meta_account_access` é **enforçada na camada MCP** — um gestor só lê/altera contas que o admin liberou (Google e Meta).
 - **Painel web** (FastAPI + HTMX): login Google OAuth (allowlist `@v4company.com`, invite-only), gestão de sessões/tokens MCP, visão das contas acessíveis, audit log com filtros/CSV, e área admin (convites, matriz de acesso, métricas).
@@ -16,7 +16,7 @@ Ferramenta **interna da V4 Company** que conecta as contas **Google Ads** e **Me
 
 ## Stack
 
-Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jinja2 + Tailwind (CSS gerado offline e commitado) + HTMX 2 · `mcp` Streamable HTTP · `google-ads` (v24) · Supabase Postgres via `asyncpg` (SQL cru, sem ORM) · Cloud Run (`southamerica-east1`) · GitHub Actions + Workload Identity Federation · pytest + testcontainers · ruff + mypy strict.
+Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jinja2 + Tailwind (CSS gerado offline e commitado) + HTMX 2 · `mcp` Streamable HTTP · `google-ads` (API v25) · Supabase Postgres via `asyncpg` (SQL cru, sem ORM) · Cloud Run (`southamerica-east1`) · GitHub Actions + Workload Identity Federation · pytest + testcontainers · ruff + mypy strict.
 
 Sem build step no runtime nem no deploy: o CSS do Tailwind e **gerado offline** (`python scripts/build_tailwind.py`, pin 3.4.17) e **commitado**, com guard de diff no CI. HTMX vem de CDN com SRI. A CSP roda **sem nenhuma diretiva `unsafe-*`**.
 

@@ -82,6 +82,11 @@ async def test_admin_access_toggle_nao_persiste_grant_se_audit_falha(db) -> None
             user=admin,
             manager_id=str(gestor.id),
             customer_id="1110000001",
+            # Chamada direta, sem FastAPI: `desejado` omitido seria o objeto
+            # `Form(...)` (nem "grant" nem None) e a rota leria "revoke", que e
+            # no-op sem acesso previo - nada gravado, audit nunca chamado, e o
+            # teste deixaria de exercitar a transacao.
+            desejado="grant",
         )
 
     async with db.acquire() as conn:

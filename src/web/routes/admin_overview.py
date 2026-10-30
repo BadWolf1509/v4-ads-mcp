@@ -6,6 +6,7 @@ serem administração geral de gestor, no mesmo espírito do overview — ver o
 relatório da Task 2 para a decisão.
 """
 
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -14,6 +15,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from src.db import connection
 from src.db.repositories import google_oauth_connections, meta_oauth_connections
+from src.db.repositories import managers as managers_repo
+from src.web import numeros
 from src.web.deps import CurrentUser, current_manager, pending_invites_count
 from src.web.routes._shared import _audit_admin, _require_admin, meta_expiry_signals, templates
 
@@ -33,44 +36,17 @@ async def admin_index(
         conn: asyncpg.Connection,
     ) -> tuple[
         int,
-        int,
-        int,
-        int,
-        int,
-        list[asyncpg.Record],
+        dict[str, Any],
+        list[int],
         list[asyncpg.Record],
         list[asyncpg.Record],
         list[asyncpg.Record],
         google_oauth_connections.OAuthConnection | None,
         meta_oauth_connections.MetaOAuthConnection | None,
     ]:
-        from src.db.repositories import managers as managers_repo
-
         pending = await managers_repo.count_invited(conn)
-        active_mgrs = (
-            await conn.fetchval("SELECT count(*) FROM managers WHERE status = 'active'") or 0
-        )
-        total_mgrs = await conn.fetchval("SELECT count(*) FROM managers") or 0
-        quota_used = (
-            await conn.fetchval(
-                "SELECT COALESCE(SUM(operations_used), 0) FROM rate_counters WHERE date = current_date"
-            )
-            or 0
-        )
-        errors_24h = (
-            await conn.fetchval(
-                "SELECT count(*) FROM audit_log WHERE status='error' AND occurred_at > now() - interval '24 hours'"
-            )
-            or 0
-        )
-
-        # Usage 30d sparkline
-        rows_30 = await conn.fetch(
-            """SELECT (occurred_at::date) AS d, count(*) AS c
-               FROM audit_log
-               WHERE occurred_at > now() - interval '30 days'
-               GROUP BY 1 ORDER BY 1"""
-        )
+        ops = await numeros.admin_ops(conn)
+        usage_30d = await numeros.contagem_por_dia(conn, numeros.dias_do_painel(30))
 
         # Top operations 7d
         top_ops = await conn.fetch(
@@ -97,11 +73,8 @@ async def admin_index(
 
         return (
             pending,
-            active_mgrs,
-            total_mgrs,
-            quota_used,
-            errors_24h,
-            rows_30,
+            ops,
+            usage_30d,
             top_ops,
             top_mgrs,
             onboarding,
@@ -111,18 +84,14 @@ async def admin_index(
 
     (
         pending,
-        active_mgrs,
-        total_mgrs,
-        quota_used,
-        errors_24h,
-        rows_30,
+        ops,
+        usage_30d,
         top_ops,
         top_mgrs,
         onboarding,
         google_conn,
         meta_conn,
     ) = await connection.run_with_reconnect(_load)
-    usage_30d = [r["c"] for r in rows_30]
 
     meta_expiry = meta_expiry_signals(meta_conn.token_expires_at if meta_conn else None)
 
@@ -136,11 +105,11 @@ async def admin_index(
             "current_user": user,
             "pending_invites": pending,
             "pending_invites_count": pending,
-            "active_managers": active_mgrs,
-            "total_managers": total_mgrs,
-            "quota_used": quota_used,
+            "active_managers": ops["active_managers"],
+            "total_managers": ops["total_managers"],
+            "quota_used": ops["quota_used"],
             "quota_max": 15000,
-            "errors_24h": errors_24h,
+            "errors_24h": ops["errors_24h"],
             "usage_30d": usage_30d,
             "top_operations": [dict(r) for r in top_ops],
             "top_managers": [dict(r) for r in top_mgrs],
@@ -164,18 +133,28 @@ async def admin_managers(
 ) -> HTMLResponse:
     _require_admin(user)
     # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
-    rows = await connection.run_with_reconnect(
-        lambda conn: conn.fetch(
-            "SELECT id, email, full_name, role, is_active, status, created_at, last_seen_at FROM managers ORDER BY email"
-        )
-    )
+    rows = await connection.run_with_reconnect(managers_repo.list_all)
     pending = await pending_invites_count()
     return templates.TemplateResponse(
         request,
         "admin/managers.html",
         {
             "current_user": user,
-            "managers": [dict(r) for r in rows],
+            "managers": [
+                {
+                    "id": m.id,
+                    "email": m.email,
+                    "full_name": m.full_name,
+                    "role": m.role,
+                    "is_active": m.is_active,
+                    "status": m.status,
+                    "created_at": m.created_at,
+                    "last_seen_at": m.last_seen_at,
+                    # F84: um predicado só — o badge e o filtro não decidem por conta própria.
+                    "is_deactivated": m.is_deactivated,
+                }
+                for m in rows
+            ],
             "pending_invites_count": pending,
         },
     )

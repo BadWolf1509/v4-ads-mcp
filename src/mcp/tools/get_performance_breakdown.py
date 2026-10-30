@@ -81,7 +81,7 @@ _SCHEMA: dict[str, Any] = {
         "raw_grid": {
             "type": "boolean",
             "default": False,
-            "description": "So com level=campaign+breakdown=hourly: devolve as 168 celulas dia x hora por campanha em vez da particao de 3 blocos. Caro; exige campaign_ids curto.",
+            "description": "So com level=campaign+breakdown=hourly: devolve as 168 celulas dia x hora por campanha em vez da particao em blocos nomeados (comercial/fora_de_hora/fim_de_semana/outros). Caro; exige campaign_ids curto.",
         },
     },
     "required": ["customer_id", "level"],

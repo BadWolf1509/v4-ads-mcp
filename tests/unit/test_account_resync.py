@@ -441,7 +441,10 @@ async def test_falha_do_piggyback_meta_deixa_rastro_no_audit(
     assert kwargs["exc"] is boom
     # A falha original continua visível mesmo com a auditoria no caminho — o
     # audit OBSERVA o crash, não o substitui.
-    assert "client_ad_accounts mudou de permissao" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "client_ad_accounts mudou de permissao" in err
+    # O job sai com 1: o texto nao pode chamar isso de "non-fatal".
+    assert "non-fatal" not in err
 
 
 @pytest.mark.asyncio

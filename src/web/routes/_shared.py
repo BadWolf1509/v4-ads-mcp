@@ -11,9 +11,11 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
+from zoneinfo import ZoneInfo
 
 import structlog
 from fastapi import HTTPException, Request
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from src.db.repositories import audit_log
@@ -150,13 +152,52 @@ def _toggle_checkbox_fragment(
     chegam no form, então template e fragmento não têm como divergir.
     """
     state = "checked " if checked else ""
-    vals = {"manager_id": manager_id, account_field: account_id}
+    # O pedido leva o estado DESEJADO, calculado aqui na renderização: o próximo
+    # clique inverte o que esta tela mostra. Decidir pelo estado do banco fazia
+    # uma aba velha inverter o acesso em vez de aplicá-lo.
+    vals = {
+        "manager_id": manager_id,
+        account_field: account_id,
+        "desejado": "revoke" if checked else "grant",
+    }
     hx_vals = html.escape(json.dumps(vals), quote=True)
     rotulo = html.escape(f"v4-mgr-{manager_id} v4-acc-{account_id}", quote=True)
     return (
         f'<input type="checkbox" {state}hx-post="{post_url}" '
         f'hx-vals=\'{hx_vals}\' hx-trigger="change" hx-swap="outerHTML" '
         f'data-v4-access-toggle aria-labelledby="{rotulo}">'
+    )
+
+
+def _toggle_acesso_response(
+    *,
+    post_url: str,
+    manager_id: str,
+    account_id: str,
+    account_field: str,
+    granted: bool,
+    mudou: bool,
+) -> HTMLResponse:
+    """Fragmento + toast (HX-Trigger) do toggle de acesso.
+
+    O toast vem do SERVIDOR porque só ele sabe se algo mudou: `el.checked` no
+    cliente diz o que o clique pediu, não o que aconteceu (aba velha, pedido
+    repetido). `json.dumps` escapa o não-ASCII, então o header é latin-1 seguro.
+    """
+    if mudou:
+        mensagem = "Acesso liberado" if granted else "Acesso revogado"
+    else:
+        mensagem = "O acesso já estava liberado" if granted else "O acesso já estava revogado"
+    trigger = json.dumps({"toast": {"message": mensagem, "kind": "success"}})
+    return HTMLResponse(
+        _toggle_checkbox_fragment(
+            post_url=post_url,
+            manager_id=manager_id,
+            account_id=account_id,
+            account_field=account_field,
+            checked=granted,
+        ),
+        headers={"HX-Trigger": trigger},
     )
 
 
@@ -206,6 +247,24 @@ def meta_status_label(status: int | None) -> str:
 
 
 templates.env.filters["meta_status_label"] = meta_status_label
+
+_BRASILIA = ZoneInfo("America/Sao_Paulo")
+
+
+def hora_brasilia(valor: datetime | None, formato: str = "%d/%m %H:%M") -> str:
+    """Jinja filter: datetime (UTC no banco) -> texto no horario de Brasilia.
+
+    `strftime` direto no template imprimia UTC como se fosse hora local (3h
+    adiantado). Naive e tratado como UTC, que e o que o banco grava.
+    """
+    if valor is None:
+        return "—"
+    if valor.tzinfo is None:
+        valor = valor.replace(tzinfo=UTC)
+    return valor.astimezone(_BRASILIA).strftime(formato)
+
+
+templates.env.filters["hora_brasilia"] = hora_brasilia
 
 # Cache-busting dos estaticos: muda a cada revisao do Cloud Run, o que torna
 # seguro o Cache-Control imutavel de CachedStaticFiles.

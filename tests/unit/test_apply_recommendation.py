@@ -1094,3 +1094,21 @@ def test_tipo_sem_derivacao_nao_ganha_frase() -> None:
     detalhe.recommended_budget_amount_micros = 180_000_000
     info = parse_recommendation_detail_row(linha)
     assert frase_do_produto_derivado(info) is None
+
+
+async def test_resource_name_de_outra_conta_e_recusado_sem_consultar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mesma checagem de prefixo do `dismiss_recommendation`, com a mesma mensagem."""
+    capturado = _wire(monkeypatch, tipo="CAMPAIGN_BUDGET")
+    alheio = "customers/9999999999/recommendations/abc"
+    env = await mod.apply_recommendation(
+        {"customer_id": _CUSTOMER, "recommendation_resource_name": alheio}
+    )
+    assert env["status"] == "error"
+    assert env["error_message"] == (
+        "resource_name pertence a outra conta (esperado prefixo "
+        f"customers/{_CUSTOMER}/, recebido '{alheio}')"
+    )
+    assert capturado["queries"] == []
+    assert capturado["aplicou"] is False

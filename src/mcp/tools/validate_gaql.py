@@ -77,8 +77,8 @@ def _augment_error_hint(query: str, friendly_message: str) -> str:
 @register_tool(
     name="validate_gaql",
     description=(
-        "[DEFER] Valida sintaxe + nomes de campos de um GAQL sem consumir quota de "
-        "dados. Retorna {valid: bool, error: str|null}. Use antes de run_gaql "
+        "[DEFER] Valida sintaxe + nomes de campos de um GAQL sem trazer dados, mas "
+        "consome 1 operação da quota diária da API. Retorna {valid: bool, error: str|null}. Use antes de run_gaql "
         "pra evitar gastar quota com queries quebradas."
     ),
     input_schema=_SCHEMA,

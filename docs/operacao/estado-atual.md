@@ -6,17 +6,12 @@
 > que fechou sai daqui:** o defeito vai para o catálogo, a narrativa para o arquivo
 > ([`_archive/`](../_archive/varredura-2026-09-06-frentes.md)), e aqui fica uma linha.
 
-> **Última sessão:** [`session-2026-10-30-handoff.md`](session-2026-10-30-handoff.md) — 28/10–30/10:
-> frentes **saldo da conta** (#164/#165) e **planejador de palavras-chave** (#167), F110 no `customer_match`
-> e nas conversões (#169), request-id do planejador (#170), guia do alerta de saldo (#171), rótulos de status
-> da Meta (#172). Textos prontos para o `/findings-add` estão no handoff. Antes:
-> [`session-2026-10-06-handoff.md`](session-2026-10-06-handoff.md).
+> **Última sessão:** [`session-2026-10-31-handoff.md`](session-2026-10-31-handoff.md) — 30/10, tarde:
+> a **varredura de correções** em 6 blocos (#174 a #184): OAuth, restore e job bloqueado, governança de
+> mutação, Graph v25, deps e deploy, painel e contratos das tools. Textos prontos para o
+> `/findings-add` estão no handoff. Antes: [`session-2026-10-30-handoff.md`](session-2026-10-30-handoff.md).
 
 > Sem frente em curso. Próxima candidata: previsão de orçamento no planejador.
-
-> **No ar:** saldo da conta (smoke 6/6, [roteiro](smoke-saldo-da-conta.md)) e planejador de palavras-chave
-> (smoke 30/10, [roteiro](smoke-planejador-de-palavras.md)). Desenhos em
-> [`specs/`](../superpowers/specs/) (2026-10-28 e 2026-10-29).
 
 ---
 
@@ -24,40 +19,28 @@
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00154-gq4`**, 100% do tráfego (30/10) — o **#172** (rótulos de status da Meta), sobre o **#170** (request-id do planejador), o **#169** (F110 no `customer_match` e nas conversões) e o **#167** (`00151-qk7`, planejador de palavras-chave). ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186) |
-| Tools | **72** (65 Google + 7 Meta) — desde 30/10 (`v4-ads-mcp-00151-qk7`, #167: planejador de palavras-chave); antes 70 em 29/10 (#164 + #165, saldo) |
-| Buckets | **13 always + 59 defer** (05/10, 9 desceram sem uso de gestor; +2 defer do saldo em 29/10, +2 do planejador em 30/10) — [remedição](tool-buckets-2026-10-05.md); próxima com a Fase 2B, ~15/10 |
-| Catálogo | até **F203** (~6.000 linhas, 601 KB) |
+| Revisão servindo | **`v4-ads-mcp-00159-2zs`** (#178), 100% do tráfego. O **#184** (este PR, fecho da varredura) deploya ao mesclar: **revisão seguinte à `00159-2zs`, conferir**. Sequência do dia: #174 `00155-flr`, #175 `00156-2lh`, #176 `00157-n24`, #177 `00158-bxt`, #178 `00159-2zs`. O smoke do pipeline segue sem handshake MCP **autenticado** (F186); o pipeline novo (smoke antes dos jobs, rollback pulado) rodou de verdade no #178 |
+| Tools | **72** (65 Google + 7 Meta) |
+| Buckets | **13 always + 59 defer** — [remedição](tool-buckets-2026-10-05.md) |
+| Catálogo | até **F203** (~6.000 linhas, 601 KB); os defeitos da varredura aguardam o `/findings-add` |
+| Meta Graph | **v25.0**, constante única. A v22 expirou em 19/02/2026 |
+| Google Ads | API **v25**; sunset estimado em ago/2027 (busca, **não lido** na página oficial) |
 
-**Infra e guards verificada em produção (F200, 24 h até 30/09 00:08 UTC):** zero reconexão, zero
-`severity>=ERROR`, zero 5xx em ~2.500 requests (o filtro acha os 2 eventos da base); job de 29/09
-`success`. **Custo do `SELECT 1` na retirada: +8 ms no p50** do `/health?deep=1` (16,0 → 24,1 ms;
-p95 80,2 → 95,1) — o A/B limpo. Latência se mede **por rota, pelos logs de request**
-(`latencia_por_rota.py`); a métrica do serviço agrega percentil entre séries e não compara. Scripts
-em `.superpowers/verificacao-2026-09-29/` (`latencia_por_rota.py`, `contas_no_bm.py`).
+**Uso real, 30 dias até 30/10** (`audit_log`): **2.211 chamadas**, 5 gestores — `pedro.vytor` 801,
+`luizfelipe` 773 (entrou em 07/10), Wellington 590, `lucassoares` 37 (só admin), Anderson 4. Google
+1.752, Meta 459. Por mês: mai 361, jun 654, jul 1.071, ago 1.484, set 1.896, out 2.211.
+`run_gaql` 757 (34%). Falhas quase só do Wellington (42 de 349; Pedro 1 erro + 10 recusas em 238;
+Luiz 0 em 170). **27 tools sem chamada em 90 dias** (`apply_change` fora: é registrado na tool de
+origem, ausência não provada).
 
-**Conferido em 30/09–01/10:** as 4 contas Meta que saíram do BM foram **desativadas no job de 01/10,
-com os 16 grants revogados** (ausências em 29 e 30/09; zero grant vivo). **Smoke do dia 1** (Mestre da
-Obra – João Pessoa, 01/10 22h): `THIS_MONTH` devolve `01/10–01/10` com dados (F196); pacing com
-`inclui_dia_corrente: true` e projeção `null` (F199), também no bloco do orçamento compartilhado
-(F202, R$ 299,42 = a soma das duas campanhas). **1ª queda real pega pelo pool validado:** 30/09
-02:22 UTC, `db_conexao_testada_reconectou` (`connection was closed in the middle of operation`) e o
-`/health?deep=1` daquele instante devolveu 200 em 90 ms (F200).
+**Fase 2B, por gestor:** breakdown × antigo — Luiz 138 × 28; Pedro 5 × 106; Wellington 12 × 113.
+Segue travada no soak; não tombstonar.
 
-**Com data:** **~15/10** — remedir a Fase 2B por gestor com o plugin 0.5.0 (aplicado em 05/10) em uso.
+**Memória e erros:** pico de p99 horário 50% em 30 dias; um único 5xx (503 em `/health?deep=1`,
+01/10 17:09 UTC, causa desconhecida, sem deploy no dia).
 
-**Uso real, 30 dias até 30/09** (`audit_log`): 1.896 chamadas, 4 gestores (uso de verdade: Wellington
-e `pedro.vytor`). O **`run_gaql` é 38%** (725) — 259 do Pedro em rajadas de ~38 por sessão, roteiro
-que o skill `analise-performance-google-ads` do plugin prescreve em GAQL cru: **conversões por ação
-de conversão** (94 consultas), totais da conta em janela longa e **parcela de impressão**. As duas
-viraram recorte curado no **#143**: `get_performance_breakdown(breakdown='conversion_action')`
-(conta e campanha; flags do cadastro `null` com `flags_motivo` quando não medidas) e a parcela nas
-linhas de `level='campaign'` sem breakdown e no `get_account_overview`. **Smoke de 03/10** (Mestre
-da Obra, setembro): conta e campanha somam igual; "Conversation started" `null` com motivo;
-parcela bit a bit com o `run_gaql` (campanhas, conta e período anterior); `audit_log` com uma linha
-por chamada. **Não medido:** campanha com meta própria — as duas ativas da MO-JP usam as metas da
-conta (`goal_config_level: CUSTOMER`); a description diz "indica", não afirma. A nota do plugin
-sobre a ação secundária estava **errada** — a correção está no texto do plugin 0.5.0.
+**Smoke da varredura:** leitura Meta real após o #177, sem aviso de versão. **Não feito:** login real
+no painel e convite (ver Pendências).
 
 ⚠️ **`deploy: skipped` não significa "PR de documentação":** o gate do F138 pula só push
 exclusivamente em `docs/` e markdown; `tests/` publica revisão. **Cheque a revisão servindo.**
@@ -65,86 +48,49 @@ Contagens de tool e bucket vêm do registry (`import_all_tools()`), nunca de `gr
 
 ## Decision gates abertos
 
-**As duas reconciliações revogam** — Meta desde 05/09, Google desde 26/09 (22 execuções de soak
-antes; conferidas depois 26/09 `removed=3`/`revoked_grants=46` e 28/09 `removed=1`/`4`, zero grant
-vivo em conta inativa). **Para desligar:** `false` nas **duas** linhas do
-`.github/workflows/deploy.yml` (o `JOB_ENV_VARS`, que o job lê, e o `--set-env-vars` do serviço);
-a revogação é soft (`revoked_at`) e o painel reconcede com um clique.
+**As duas reconciliações revogam** — Meta desde 05/09, Google desde 26/09. **Para desligar:** `false`
+nas **duas** linhas do `.github/workflows/deploy.yml` (o `JOB_ENV_VARS`, que o job lê, e o
+`--set-env-vars` do serviço); a revogação é soft (`revoked_at`) e o painel reconcede com um clique.
 
 **Fase 2B travada no soak** — o tombstone dos 8 reports antigos espera os gestores migrarem para
-`get_performance_breakdown`. Medido em 25/09: `get_campaign_performance` 148 chamadas de 3
-gestores contra 33 do breakdown (1 gestor) em 30 dias, com o plugin 0.4.1 (que já manda usar o
-breakdown) instalado desde 20/09 — o motor está na versão do plugin dos outros gestores ou no LLM
-escolhendo pelo nome. **Remedido em 05/10:** `get_campaign_performance` 120 (Pedro 96, Anderson 24) e
-`get_keyword_performance` 70 contra **1** do breakdown — nada mudou; espera o plugin 0.5.0
-([detalhe](tool-buckets-2026-10-05.md)).
+`get_performance_breakdown`; só o Luiz migrou. O plugin 0.5.0 já manda usar o breakdown.
 
 ## Pendências que dependem do Wellington
 
-- **Duas recomendações restantes da revisão final da infra e guards** (`expire_connections` na
-  primeira queda; repetir a retirada em qualquer erro do teste): **sem dado que as peça** — zero
-  quedas desde o deploy. A terceira virou o F203.
-- **Ajuste do `null` no plugin `v4-trafego-google-ads`** — seis pontos fazem conta com campos que
-  podem vir `null` desde 26/09 (`analise-performance-google-ads/SKILL.md:44,137`;
-  `relatorio-cliente-google-ads/SKILL.md:33,76-89,112-116`; `shared/v4-brand.md:43`); com o F202,
-  também `spent_pct_of_monthly_budget` e `projection_vs_budget_pct` do pacing em orçamento
-  compartilhado. A cópia instalada é upload do app: o ajuste é na fonte. Até lá o relatório de
-  cliente pode imprimir `None`.
+- **Rodar: login real no painel e convite** — o bloco 1 mudou o `state` do OAuth (nonce em cookie) e
+  passou a recusar `verified_email=False`; nada disso foi exercitado contra o Google de verdade.
+- **Alertas do Dependabot** do repositório: ajuste do repositório, feito por você.
+- **Plugin `v4-trafego-google-ads`:** aplicar as correções de
+  [`plugin-correcoes-2026-10-30.md`](plugin-correcoes-2026-10-30.md) na fonte. O `null` já foi tratado
+  no 0.5.0; **resta `shared/v4-brand.md:43`**.
+- **Pedro: 45 recusas** (Google `4493906974` e Meta `act_4051924171730156`, de 07/10 a 27/10):
+  conceder o acesso ou orientar. Decisão sua, no painel.
+- **`hd` do login Google sem conferência** (decisão do Wellington, registrada no handoff).
 - **Nível de acesso da API Meta** — `ads_api_access_tier: development_access` (26/09); a regra do
-  D1 pede 500 chamadas em 15 dias, o uso é ~200. Pedir agora ou esperar.
-- **Identidade `@v4company.com` sem caixa postal no TI** — desbloqueia o **F186** inteiro. Emitir
-  token sob um manager existente está recusado (~38 contas Google e 26 Meta no GitHub Actions).
+  D1 pede 500 chamadas em 15 dias; Meta fez 459 em 30 dias. Pedir agora ou esperar.
+- **Identidade `@v4company.com` sem caixa postal no TI** — desbloqueia o **F186** inteiro.
 - **F129** (governança do system user Meta) e **F67** (custom domain via LB).
-- **Alerta de saldo: decidido em 30/10** — sem job central; cada gestor monta a própria automação ([guia](guia-alerta-de-saldo.md)).
-- **`ads_get_field_context` não rodado nos 9 fields de `GET /act_<id>`** (saldo Meta, 29/10) — o MCP oficial da
-  Meta estava indisponível na sessão de 29/10. Evidência substituta: leitura ao vivo com as 9 chaves e controle
-  de campo inexistente → 400. A regra F53/F54/F55 do [`nucleo.md`](../convencoes/nucleo.md) pede a checagem
-  antes de shippar. **Decidido em 29/10:** o Wellington aceitou a evidência ao vivo para shippar; rodar o
-  `ads_get_field_context` quando o MCP oficial voltar à sessão, para fechar a regra no sentido literal.
-- **`recommendation_subscription`** — recomendada a tool de LEITURA, varrendo só o que o gestor
-  alcança e contando os opacos (F185: 4 de 11 sem chave); a de escrita, não.
+- **`ads_get_field_context` não rodado nos 9 fields de `GET /act_<id>`** (saldo Meta): evidência ao
+  vivo aceita em 29/10; rodar quando o MCP oficial da Meta voltar à sessão.
+- **Duas recomendações da revisão final da infra** (`expire_connections` na primeira queda; repetir a
+  retirada em qualquer erro do teste): sem dado que as peça.
+- **`recommendation_subscription`** — a tool de LEITURA, contando os opacos (F185); a de escrita, não.
 
 ## Findings abertos
 
-### Varredura de 21/09 (5 agentes, 4 sub-projetos)
-
-Relatórios e destino de cada achado em
-[`_archive/varredura-2026-09-21/`](../_archive/varredura-2026-09-21/README.md).
-
-| sub-projeto | status |
-|---|---|
-| 1 · credencial + contratos do SDK Meta | fechado — **F190** |
-| 2 · respostas que afirmam mais do que mediram | fechado — **F191** e **F193** (as métricas Meta, fora dele, no **F194**) |
-| 3 · infra de dados | **fechado** — CSV no F191; o resto no **F200**, verificado em produção em 30/09 ([spec](../superpowers/specs/2026-09-28-infra-e-guards-design.md)) |
-| 4 · guards que não cobrem | **fechado** — mock no F191; o resto no **F200**: o pool valida a conexão num ponto só |
-
-### Ordem de ataque (atualizada em 29/09)
-
-Medir a exposição, dar dado às decisões, consertos pequenos, e só então specs — um por vez.
-
-1. **Conversões por ação e parcela de impressão curadas** — implementada, em revisão (ledger acima).
-2. **Plugin na fonte** (com o Wellington): ajuste do `null` e troca do GAQL cru do skill pelas tools
-   curadas — destrava também a Fase 2B.
-3. **Fase 2B** — em 04/10, o uso por gestor, junto dos buckets.
-4. **`recommendation_subscription`** — spec da tool de leitura.
-5. **F187** — o remédio do resumo × detalhe.
-
-### Os abertos, um por linha
-
 | ID | o que é |
 |---|---|
-| **F180** | **em parte, provavelmente para sempre** — o Google aceita operação impossível em vez de errar, então `failed_count` é constante zero: leia `efeito` e `changed_count`. O único gatilho conhecido (variação de experimento) o **F181** bloqueia no pre-flight |
+| **F180** | **em parte, provavelmente para sempre** — o Google aceita operação impossível em vez de errar, então `failed_count` é constante zero: leia `efeito` e `changed_count` |
 | **F185** | `recommendation_subscription`: 4 de 11 opacos e sem chave — limitação da API |
 | **F187** | o **resumo no topo** decide e o **detalhe embaixo** é a verdade — 4 instâncias; remédio: derivar o resumo, ou guard da igualdade |
-| **F186** | 🔴 smoke autenticado do `/mcp` **desarmado**, risco ACEITO até a identidade do TI; no lugar, `tools` no `/health?deep=1` e o `::warning::` em todo deploy |
-| — | *negativas de grupo e listas compartilhadas na auditoria de negativas* (frente própria) |
+| **F186** | 🔴 smoke autenticado do `/mcp` **desarmado**, risco ACEITO até a identidade do TI |
+| — | negativas de grupo e listas compartilhadas na auditoria de negativas (frente própria) |
 | — | follow-ups Minor do **F193** (corpo do [#111](https://github.com/BadWolf1509/v4-ads-mcp/pull/111)) |
-| — | **`export_csv_rows(manager_id=None)` exporta o audit de todos os gestores por default** — falha aberta latente (as duas rotas passam o gestor explícito); chip de 28/09 |
-| — | **orçamento de período fixo** (`CUSTOM_PERIOD`) no `get_budget_pacing` — a tool não o trata (Fora do F202) |
+| — | `export_csv_rows(manager_id=None)` exporta o audit de todos os gestores por default — falha aberta latente (as rotas passam o gestor) |
+| — | orçamento de período fixo (`CUSTOM_PERIOD`) no `get_budget_pacing` (Fora do F202) |
+| — | o que ficou fora da varredura de 30/10: seção "O que ficou fora" do [handoff](session-2026-10-31-handoff.md) |
 
-**Fechados de 20 a 29/09:** **F154**, **F179**, **F181–F184**, **F188–F191**, **F193–F199**,
-**F200–F203**. O
-defeito de cada um está no [catálogo](findings-catalog.md); a narrativa desses dias, em
-[`_archive/estado-atual-2026-09-20-a-26.md`](../_archive/estado-atual-2026-09-20-a-26.md) e
-[`_archive/estado-atual-2026-09-27-a-28.md`](../_archive/estado-atual-2026-09-27-a-28.md). 🔑 A
-lição que atravessa todos: **existia a regra e não existia o mecanismo**.
+**Fechados de 20/09 a 30/10:** F154, F179, F181–F184, F188–F191, F193–F203 e os da varredura de
+30/10 (textos no handoff). O defeito de cada um está no [catálogo](findings-catalog.md); a narrativa
+antiga, em [`_archive/`](../_archive/estado-atual-2026-09-27-a-28.md). 🔑 A lição que atravessa todos:
+**existia a regra e não existia o mecanismo**.

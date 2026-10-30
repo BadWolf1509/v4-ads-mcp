@@ -633,6 +633,8 @@
 }
 .v4-dropdown__item:hover { background: var(--v4-gray-50); }
 .v4-dropdown__item--danger { color: var(--v4-red); }
+.v4-dropdown__item--disabled { color: var(--v4-gray-500); cursor: default; }
+.v4-dropdown__item--disabled:hover { background: transparent; }
 .v4-dropdown__divider {
   height: 1px;
   background: var(--v4-gray-100);
