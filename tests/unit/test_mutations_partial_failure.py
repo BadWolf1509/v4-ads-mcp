@@ -375,3 +375,58 @@ async def test_run_mutation_marca_op_que_o_google_aceitou_e_nao_executou(monkeyp
     # O veredito do Google segue intacto — `efeito` acrescenta, nao reescreve.
     assert result["partial_failures"][1]["status"] == "success"
     assert result["changed_count"] == 1
+
+
+async def _roda_e_captura_audit(monkeypatch, per_op_errors, *, nomes=None):
+    from src.google_ads import mutations
+
+    monkeypatch.setattr(mutations, "import_all_builders", lambda: None)
+    monkeypatch.setattr(
+        mutations,
+        "get_builder",
+        lambda _op: lambda c, cid, p: [MagicMock() for _ in per_op_errors],
+    )
+    monkeypatch.setattr(
+        mutations,
+        "build_client_for_manager",
+        AsyncMock(return_value=_client_with_partial_failure(per_op_errors)),
+    )
+    if nomes is not None:
+        monkeypatch.setattr(mutations, "_extract_resource_names", lambda _r: nomes)
+    monkeypatch.setattr(mutations, "get_request_id", lambda: "req-he")
+    registro = AsyncMock()
+    with (
+        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(mutations, "ensure_account_access", AsyncMock()),
+        patch.object(mutations, "before_call", AsyncMock()),
+        patch.object(mutations, "record_actual", AsyncMock()),
+        patch.object(mutations.audit_log, "record", registro),
+    ):
+        await run_mutation(
+            manager_id=uuid4(),
+            session_id=uuid4(),
+            customer_id="1234567890",
+            operation_type="add_negatives_from_search_terms",
+            payload={"negatives": [{}] * len(per_op_errors)},
+            target_count=len(per_op_errors),
+            partial_failure=True,
+        )
+    return registro.await_args.kwargs
+
+
+@pytest.mark.asyncio
+async def test_audit_had_effect_true_quando_mudou(monkeypatch):
+    kw = await _roda_e_captura_audit(monkeypatch, [None, None, None])
+    assert kw["had_effect"] is True
+
+
+@pytest.mark.asyncio
+async def test_audit_had_effect_false_quando_nada_mudou(monkeypatch):
+    kw = await _roda_e_captura_audit(monkeypatch, ["X", "Y"], nomes=[None, None])
+    assert kw["had_effect"] is False
+
+
+@pytest.mark.asyncio
+async def test_audit_had_effect_none_quando_nao_medido(monkeypatch):
+    kw = await _roda_e_captura_audit(monkeypatch, [None, None], nomes=[])
+    assert kw["had_effect"] is None
