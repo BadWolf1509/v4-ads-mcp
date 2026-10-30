@@ -6,7 +6,7 @@ from typing import Any
 from src.google_ads.mutations import run_recommendation_action
 from src.governance.blast_radius import classify
 from src.mcp.context import get_current
-from src.mcp.tools._mutate_common import applied_envelope
+from src.mcp.tools._mutate_common import applied_envelope, error_envelope
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -35,6 +35,14 @@ async def dismiss_recommendation(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()
     customer_id = args["customer_id"]
     rec_resource = args["recommendation_resource_name"]
+
+    if not rec_resource.startswith(f"customers/{customer_id}/"):
+        return error_envelope(
+            "dismiss_recommendation",
+            "resource_name pertence a outra conta (esperado prefixo "
+            f"customers/{customer_id}/, recebido '{rec_resource}')",
+            customer_id=customer_id,
+        )
 
     risk = classify(operation="dismiss_recommendation", params={"target_count": 1})
 

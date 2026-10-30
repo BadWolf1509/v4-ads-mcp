@@ -178,13 +178,13 @@ class TestUpdateConversionActionClassify:
         )
         assert result.level == RiskLevel.CONFIRM
 
-    def test_set_primary_for_goal_true_is_auto_for_single(self):
-        """Setting True (enable) is safe — only False (disable) needs CONFIRM."""
+    def test_set_primary_for_goal_true_exige_confirmacao(self):
+        """Ligar muda o sinal do Smart Bidding tanto quanto desligar: CONFIRM."""
         result = classify(
             operation="update_conversion_action",
             params={"updates": [{"conversion_action_id": "123", "primary_for_goal": True}]},
         )
-        assert result.level == RiskLevel.AUTO
+        assert result.level == RiskLevel.CONFIRM
 
 
 class TestUploadCustomerMatchListClassify:

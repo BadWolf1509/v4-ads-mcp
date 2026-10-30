@@ -118,3 +118,39 @@ async def test_disable_primary_for_goal_returns_dry_run(db, session_ctx):
     assert result["status"] == "dry_run"
     assert "confirmation_token" in result
     assert result["changes"][0]["fields_updated"] == ["primary_for_goal"]
+
+
+@pytest.mark.integration
+async def test_primary_for_goal_true_preview_e_apply_ponta_a_ponta(db, session_ctx):
+    """primary_for_goal=True (1 item) agora e CONFIRM: preview devolve token e o
+    apply_change consome esse token e executa a MESMA operacao e payload."""
+    from src.mcp.tools.apply_change import apply_change
+    from src.mcp.tools.update_conversion_action import update_conversion_action
+
+    args = {
+        "customer_id": "1163862076",
+        "updates": [{"conversion_action_id": "123", "primary_for_goal": True}],
+    }
+    with patch(
+        "src.mcp.tools.update_conversion_action.validate_conversion_actions_exist",
+        AsyncMock(return_value=None),
+    ):
+        preview = await update_conversion_action(args)
+    assert preview["status"] == "dry_run"
+    assert "confirmation_token" in preview
+
+    run = AsyncMock(
+        return_value={
+            "applied_count": 1,
+            "provider_request_id": "req-1",
+            "changed_count": 1,
+            "partial_failures": [],
+            "resource_names": ["customers/1163862076/conversionActions/123"],
+        }
+    )
+    with patch("src.mcp.tools.apply_change.run_mutation", run):
+        applied = await apply_change({"confirmation_token": preview["confirmation_token"]})
+    assert applied["status"] == "applied"
+    kw = run.await_args.kwargs
+    assert kw["operation_type"] == "update_conversion_action"
+    assert kw["payload"]["updates"] == args["updates"]
