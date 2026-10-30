@@ -148,6 +148,12 @@ $body = @'
 }
 '@
 
+$arquivo = "$env:TEMP\google_accounts_sem_grant_query.json"
+$body | Set-Content -Encoding ascii -Path $arquivo
+$token = gcloud auth print-access-token
+curl.exe -s -H "Authorization: Bearer $token" -H "Content-Type: application/json" "https://logging.googleapis.com/v2/entries:list" -d "@$arquivo"
+```
+
 🔴 **DOIS ERROS DESTE RUNBOOK QUE SÓ A EXECUÇÃO REVELOU (corrigidos acima em 2026-09-05).**
 Ele foi escrito para ser executado por um humano e nunca tinha sido rodado — as verificações
 da task que o escreveu foram chamadas de leitura e POSTs com token inválido, que falham na
@@ -170,12 +176,6 @@ da task que o escreveu foram chamadas de leitura e POSTs com token inválido, qu
 **Nota sobre `thresholdValue: 0`:** a resposta da API **omite** o campo, porque em proto3
 zero é o default e não é serializado. Não é bug: `COMPARISON_GT` com threshold ausente é
 `> 0`, que é o que se quer.
-
-$arquivo = "$env:TEMP\google_accounts_sem_grant_query.json"
-$body | Set-Content -Encoding ascii -Path $arquivo
-$token = gcloud auth print-access-token
-curl.exe -s -H "Authorization: Bearer $token" -H "Content-Type: application/json" "https://logging.googleapis.com/v2/entries:list" -d "@$arquivo"
-```
 
 ---
 
