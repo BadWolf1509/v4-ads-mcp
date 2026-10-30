@@ -264,7 +264,7 @@ async def test_admin_access_toggle_grants_then_revokes(client: AsyncClient):
     # First toggle: grants
     response = await client.post(
         "/admin/access/toggle",
-        data={"manager_id": str(gestor_id), "customer_id": "1234567890"},
+        data={"manager_id": str(gestor_id), "customer_id": "1234567890", "desejado": "grant"},
         cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
     )
     assert response.status_code == 200
@@ -292,7 +292,7 @@ async def test_admin_access_toggle_grants_then_revokes(client: AsyncClient):
     # Second toggle: revokes
     response = await client.post(
         "/admin/access/toggle",
-        data={"manager_id": str(gestor_id), "customer_id": "1234567890"},
+        data={"manager_id": str(gestor_id), "customer_id": "1234567890", "desejado": "revoke"},
         cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
     )
     assert response.status_code == 200
@@ -329,20 +329,20 @@ async def test_admin_access_toggle_reconcede_apos_revogar(client: AsyncClient):
     # 1) concede
     await client.post(
         "/admin/access/toggle",
-        data={"manager_id": str(gestor_id), "customer_id": "1234567890"},
+        data={"manager_id": str(gestor_id), "customer_id": "1234567890", "desejado": "grant"},
         cookies={PANEL_SESSION_COOKIE_NAME: cookie},
     )
     # 2) revoga (soft — a linha fica, com revoked_at preenchido)
     await client.post(
         "/admin/access/toggle",
-        data={"manager_id": str(gestor_id), "customer_id": "1234567890"},
+        data={"manager_id": str(gestor_id), "customer_id": "1234567890", "desejado": "revoke"},
         cookies={PANEL_SESSION_COOKIE_NAME: cookie},
     )
     # 3) reconcede — sem o fix, o SELECT do handler acha a linha revogada
     # (`exists` = true) e revoga de novo em vez de conceder.
     response = await client.post(
         "/admin/access/toggle",
-        data={"manager_id": str(gestor_id), "customer_id": "1234567890"},
+        data={"manager_id": str(gestor_id), "customer_id": "1234567890", "desejado": "grant"},
         cookies={PANEL_SESSION_COOKIE_NAME: cookie},
     )
     assert response.status_code == 200

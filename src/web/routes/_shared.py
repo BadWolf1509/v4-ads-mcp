@@ -14,6 +14,7 @@ from typing import Any, Literal, NamedTuple
 
 import structlog
 from fastapi import HTTPException, Request
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from src.db.repositories import audit_log
@@ -150,13 +151,52 @@ def _toggle_checkbox_fragment(
     chegam no form, então template e fragmento não têm como divergir.
     """
     state = "checked " if checked else ""
-    vals = {"manager_id": manager_id, account_field: account_id}
+    # O pedido leva o estado DESEJADO, calculado aqui na renderização: o próximo
+    # clique inverte o que esta tela mostra. Decidir pelo estado do banco fazia
+    # uma aba velha inverter o acesso em vez de aplicá-lo.
+    vals = {
+        "manager_id": manager_id,
+        account_field: account_id,
+        "desejado": "revoke" if checked else "grant",
+    }
     hx_vals = html.escape(json.dumps(vals), quote=True)
     rotulo = html.escape(f"v4-mgr-{manager_id} v4-acc-{account_id}", quote=True)
     return (
         f'<input type="checkbox" {state}hx-post="{post_url}" '
         f'hx-vals=\'{hx_vals}\' hx-trigger="change" hx-swap="outerHTML" '
         f'data-v4-access-toggle aria-labelledby="{rotulo}">'
+    )
+
+
+def _toggle_acesso_response(
+    *,
+    post_url: str,
+    manager_id: str,
+    account_id: str,
+    account_field: str,
+    granted: bool,
+    mudou: bool,
+) -> HTMLResponse:
+    """Fragmento + toast (HX-Trigger) do toggle de acesso.
+
+    O toast vem do SERVIDOR porque só ele sabe se algo mudou: `el.checked` no
+    cliente diz o que o clique pediu, não o que aconteceu (aba velha, pedido
+    repetido). `json.dumps` escapa o não-ASCII, então o header é latin-1 seguro.
+    """
+    if mudou:
+        mensagem = "Acesso liberado" if granted else "Acesso revogado"
+    else:
+        mensagem = "O acesso já estava liberado" if granted else "O acesso já estava revogado"
+    trigger = json.dumps({"toast": {"message": mensagem, "kind": "success"}})
+    return HTMLResponse(
+        _toggle_checkbox_fragment(
+            post_url=post_url,
+            manager_id=manager_id,
+            account_id=account_id,
+            account_field=account_field,
+            checked=granted,
+        ),
+        headers={"HX-Trigger": trigger},
     )
 
 

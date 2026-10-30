@@ -66,7 +66,7 @@
                    aria-labelledby="v4-mgr-{{ m.id }} v4-acc-{{ a.ad_account_id }}"
                    {% if (m.id|string, a.ad_account_id) in access_set %}checked{% endif %}
                    hx-post="/admin/access/meta/toggle"
-                   hx-vals='{"manager_id": "{{ m.id }}", "ad_account_id": "{{ a.ad_account_id }}"}'
+                   hx-vals='{"manager_id": "{{ m.id }}", "ad_account_id": "{{ a.ad_account_id }}", "desejado": "{{ 'revoke' if (m.id|string, a.ad_account_id) in access_set else 'grant' }}"}'
                    hx-trigger="change"
                    hx-swap="outerHTML"
                    data-v4-access-toggle>

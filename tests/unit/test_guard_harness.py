@@ -198,7 +198,7 @@ def test_html_em_python_default_encontra_os_alvos_conhecidos() -> None:
     """
     achados = h.html_em_python()
 
-    assert {a.name for a in achados} == {"_shared.py:157"}
+    assert {a.name for a in achados} == {"_shared.py:165"}
 
 
 def test_html_em_python_ignora_docstring(tmp_path: Path) -> None:
