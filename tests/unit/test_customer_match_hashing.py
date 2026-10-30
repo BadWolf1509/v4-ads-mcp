@@ -83,3 +83,35 @@ def test_normalize_and_hash_phone_handles_international_prefix():
     result_us = _normalize_and_hash_phone("+14155552671")
     expected = hashlib.sha256(b"+14155552671").hexdigest()
     assert result_us == expected
+
+
+def _h(s: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(s.encode()).hexdigest()
+
+
+def test_phone_com_ddi_sem_mais_nao_duplica_55():
+    from src.google_ads.customer_match import _normalize_and_hash_phone
+
+    assert _normalize_and_hash_phone("5583999998888") == _h("+5583999998888")
+    assert _normalize_and_hash_phone("558399998888") == _h("+558399998888")  # fixo, 12 digitos
+
+
+def test_phone_sem_ddi_recebe_55():
+    from src.google_ads.customer_match import _normalize_and_hash_phone
+
+    assert _normalize_and_hash_phone("83999998888") == _h("+5583999998888")
+
+
+def test_phone_ddd_55_de_11_digitos_nao_vira_ddi_falso():
+    """DDD 55 (RS) com 11 digitos comeca com '55' mas NAO tem DDI."""
+    from src.google_ads.customer_match import _normalize_and_hash_phone
+
+    assert _normalize_and_hash_phone("55999998888") == _h("+5555999998888")
+
+
+def test_phone_com_mais_fica_inalterado():
+    from src.google_ads.customer_match import _normalize_and_hash_phone
+
+    assert _normalize_and_hash_phone("+5583999998888") == _h("+5583999998888")

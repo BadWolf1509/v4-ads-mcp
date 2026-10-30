@@ -55,10 +55,18 @@ def _normalize_and_hash_phone(plaintext: str) -> str:
     V4 invariant: phone sem country code prefix (+) → assume +55 (BR).
     Strip non-digit chars except leading +. Numero BR começando com 0 (DDD
     legacy) tem 0 removido antes de adicionar +55.
+
+    DDI sem `+`: so digitos, 12 ou 13 caracteres, comecando em 55 → ja tem o
+    DDI (so ganha o `+`). Com 10 ou 11 digitos o numero e nacional, mesmo que
+    o DDD seja 55 (RS): `55999998888` e DDD 55, nao DDI.
     """
     digits = re.sub(r"[^\d+]", "", plaintext)
     if not digits.startswith("+"):
-        digits = "+55" + digits.lstrip("0")
+        nacional = digits.lstrip("0")
+        if len(nacional) in (12, 13) and nacional.startswith("55"):
+            digits = "+" + nacional
+        else:
+            digits = "+55" + nacional
     return hashlib.sha256(digits.encode()).hexdigest()
 
 
