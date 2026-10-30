@@ -1,6 +1,7 @@
 """Web panel admin pages tests."""
 
 import json
+import re
 from uuid import uuid4
 
 import pytest
@@ -1216,3 +1217,28 @@ async def test_admin_accounts_meta_flash_restored(client: AsyncClient) -> None:
     )
     assert response.status_code == 200
     assert "alert(1)" not in response.text
+
+
+@pytest.mark.integration
+async def test_desativar_e_promover_pedem_confirmacao(client: AsyncClient):
+    """Task 19: as duas ações de admin mais caras não disparam no primeiro clique."""
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+
+    response = await client.get(
+        "/admin/managers", cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)}
+    )
+    assert response.status_code == 200
+    for rota, rotulo, titulo in (
+        ("toggle-active", "Desativar", "Desativar gestor?"),
+        ("toggle-role", "Promover a admin", "Promover a admin?"),
+    ):
+        botao = re.search(
+            rf'<button[^>]*data-v4-post="/admin/managers/{gestor_id}/{rota}"[^>]*>',
+            response.text,
+        )
+        assert botao, rota
+        assert 'data-v4-action="confirm"' in botao.group(0)
+        assert f'data-v4-confirm-title="{titulo}"' in botao.group(0)
+        assert "hx-post" not in botao.group(0)
+        assert f">{rotulo}</button>" in response.text[botao.start() :]
