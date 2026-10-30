@@ -13,14 +13,10 @@ dependencies = [
     "structlog>=24.4.0",
     "httpx>=0.27.0",
     "google-ads>=27.0.0",
-    "facebook-business>=21.0.0",
     # Piso de seguranca (PYSEC-2026-3552). Dep direta nossa.
     "cryptography>=50.0.0",
-    # Piso de seguranca (PYSEC-2026-3545/3546/3547). NAO importamos aiohttp: ele
-    # entra transitivo pelo facebook-business, que nao poe teto nenhum. Declarar
-    # o piso aqui e o unico lugar em que o resolver o respeita — sem isso a
-    # correcao depende de o uv sempre escolher a mais nova, que nao e garantia.
-    "aiohttp>=3.14.3",
+    # Piso de seguranca: certifi 2026.10.18 (dep transitiva do httpx).
+    "certifi>=2026.10.18",
     "jsonschema>=4.0",
     "jinja2>=3.1.0",
     "google-cloud-storage>=2.18.0",
@@ -67,11 +63,6 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["google.ads.*", "google.protobuf.*", "google.protobuf.field_mask_pb2"]
-ignore_missing_imports = true
-ignore_errors = true
-
-[[tool.mypy.overrides]]
-module = ["facebook_business.*"]
 ignore_missing_imports = true
 ignore_errors = true
 
