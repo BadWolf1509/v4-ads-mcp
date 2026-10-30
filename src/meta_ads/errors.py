@@ -7,14 +7,15 @@ from dataclasses import dataclass
 #   4     — limite da aplicacao (app-level rate limit)
 #   17    — limite do usuario (user-level rate limit)
 #   613   — limite de chamadas do endpoint ("calls to this api have exceeded")
+#   80000 — limite de Ads Insights (BUC)
 #   80004 — limite especifico de ads management
 # Ate a PR 6 so o 4 (e o subcode 2635) eram reconhecidos; os outros tres caiam
 # no ramo generico com retryable=False, e um throttle de minutos chegava ao
 # gestor como falha permanente.
-CODIGOS_DE_THROTTLE = frozenset({4, 17, 613, 80004})
+CODIGOS_DE_THROTTLE = frozenset({4, 17, 613, 80000, 80004})
 
 # Subcodes de token invalidado server-side ANTES do expiry natural — o Meta faz
-# isso, e o gestor precisa reconectar pelo painel em vez de esperar.
+# isso. No Modelo B o token e UM (system user), entao quem age e o admin.
 SUBCODES_DE_CONEXAO_EXPIRADA = frozenset({458, 467, 460, 463})
 
 # F190 — qualquer coisa que pareca credencial numa query string sai ANTES de a
@@ -129,7 +130,8 @@ def _do_envelope_de_erro(
         return None
     if subcode in SUBCODES_DE_CONEXAO_EXPIRADA:
         return MetaAdsFriendlyError(
-            "Sua conexão Meta expirou ou foi revogada. Reconecte via painel admin.",
+            "O token do system user Meta expirou ou foi revogado. O admin precisa gerar "
+            "outro e subir o secret meta-system-user-token.",
             retryable=False,
         )
     if subcode == 2635 or code in CODIGOS_DE_THROTTLE:
@@ -139,7 +141,8 @@ def _do_envelope_de_erro(
         )
     if code == 190:
         return MetaAdsFriendlyError(
-            "Permissão insuficiente. Verifique se aceitou ads_read + ads_management.",
+            "O token do system user Meta é inválido ou não tem permissão. O admin precisa "
+            "rotacionar o token e subir o secret meta-system-user-token.",
             retryable=False,
         )
     if code == 100:

@@ -71,7 +71,7 @@ def test_conexao_expirada_manda_reconectar(subcode: int) -> None:
     """
     result = to_friendly_meta_error(_erro(subcode=subcode))
     assert isinstance(result, MetaAdsFriendlyError)
-    assert "expirou" in result.message.lower() or "reconecte" in result.message.lower()
+    assert "expirou" in result.message.lower()
     assert result.retryable is False
 
 
@@ -86,10 +86,27 @@ def test_rate_limit_code_4() -> None:
     assert result.retryable is True
 
 
-def test_permission_denied_code_190() -> None:
+def test_code_190_manda_rotacionar_o_token_do_system_user() -> None:
+    """Modelo B: nao ha conexao por gestor pra "reconectar" — o token e um so."""
     result = to_friendly_meta_error(_erro(code=190))
-    assert "permissão" in result.message.lower() or "permissao" in result.message.lower()
+    msg = result.message.lower()
+    assert "system user" in msg
+    assert "meta-system-user-token" in msg
+    assert "reconecte" not in msg
     assert result.retryable is False
+
+
+def test_code_80000_e_limite_meta_retryable() -> None:
+    result = to_friendly_meta_error(_erro(code=80000))
+    assert "Limite Meta atingido" in result.message
+    assert result.retryable is True
+
+
+@pytest.mark.parametrize("subcode", sorted(SUBCODES_DE_CONEXAO_EXPIRADA))
+def test_token_invalidado_nao_manda_reconectar_no_painel(subcode: int) -> None:
+    msg = to_friendly_meta_error(_erro(subcode=subcode)).message.lower()
+    assert "reconecte" not in msg
+    assert "system user" in msg
 
 
 def test_invalid_field_code_100() -> None:

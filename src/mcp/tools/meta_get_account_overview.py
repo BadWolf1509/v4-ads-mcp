@@ -41,7 +41,8 @@ _DESCRIPTION = (
     "inclui_dia_corrente: true quando a atual contem hoje, que ainda nao fechou — "
     "a variacao entao compara um dia parcial com dias cheios. " + CONTRATO_NA_DESCRIPTION + " "
     "Inclui warnings PT-BR pra account_status problemático. "
-    "Requer conexão Meta ativa (gestor deve ter conectado via /oauth/meta/start). "
+    "Requer acesso do gestor à conta (liberado pelo admin no painel); a leitura usa o "
+    "token do system user compartilhado, sem conexão por gestor. "
     "Use meta_list_my_ad_accounts pra listar IDs disponíveis."
 )
 
