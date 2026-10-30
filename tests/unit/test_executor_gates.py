@@ -177,6 +177,7 @@ async def test_run_offline_user_data_job_denies_without_access():
 CALL_SITES_DO_GATE = {
     ("google_ads/conversions.py", "run_conversion_upload", "write"),
     ("google_ads/customer_match.py", "run_offline_user_data_job", "write"),
+    ("google_ads/keyword_planning.py", "run_keyword_planning", "read"),
     ("google_ads/mutations.py", "run_mutation", "write"),
     ("google_ads/mutations.py", "run_recommendation_action", "write"),
     ("google_ads/reports.py", "run_report", "read"),
@@ -289,6 +290,15 @@ _ARGUMENTOS_POR_EXECUTOR: dict[str, tuple[str, dict[str, Any]]] = {
         "src.google_ads.customer_match",
         {"user_list_id": "1", "operation_type": "add", "hashed_members": []},
     ),
+    "run_keyword_planning": (
+        "src.google_ads.keyword_planning",
+        {
+            "operation_name": "generate_keyword_ideas",
+            "estimated_ops": 1,
+            "params_summary": {},
+            "chamadas": lambda client: [],
+        },
+    ),
     "run_report": (
         "src.google_ads.reports",
         {"query": "SELECT 1", "row_formatter": lambda r: {}, "operation_name": "test_op"},
@@ -340,6 +350,7 @@ async def _kwargs_do_gate(executor: str) -> dict[str, Any]:
         ("run_recommendation_action", "write"),
         ("run_conversion_upload", "write"),
         ("run_offline_user_data_job", "write"),
+        ("run_keyword_planning", "read"),
         ("run_report", "read"),
     ],
 )

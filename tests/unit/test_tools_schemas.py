@@ -172,6 +172,8 @@ def test_all_phase_2_tools_registered():
         "get_account_overview",
         "get_budget_pacing",
         "get_account_balance",
+        "plan_keyword_ideas",
+        "get_keyword_metrics",
         "meta_get_account_balance",
         "get_recommendations",
         # performance
@@ -254,6 +256,8 @@ def test_no_unexpected_tools():
         "get_account_overview",
         "get_budget_pacing",
         "get_account_balance",
+        "plan_keyword_ideas",
+        "get_keyword_metrics",
         "meta_get_account_balance",
         "get_recommendations",
         "get_campaign_performance",
