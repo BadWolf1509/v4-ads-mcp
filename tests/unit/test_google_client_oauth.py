@@ -8,8 +8,15 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+from google.auth.exceptions import RefreshError
 
 from src.google_ads import client as client_mod
+from src.google_ads.errors import GoogleAdsFriendlyError
+from src.mcp.server import _error_envelope
+
+TEXTO_REFRESH = (
+    "A conexão Google Ads deste gestor expirou ou foi revogada. Reconecte em /oauth/google/start."
+)
 
 
 @pytest.fixture
@@ -51,3 +58,31 @@ async def test_build_client_nao_roda_no_event_loop(
     out = await client_mod.build_client_for_manager(manager_id=uuid4())
     assert out == "client"
     assert visto and visto[0] is not threading.main_thread()
+
+
+@pytest.mark.asyncio
+async def test_sem_oauth_chega_ao_gestor() -> None:
+    env = _error_envelope("x", client_mod.NoOAuthConnectionError("sem conexao /oauth/google/start"))
+    assert env["status"] == "error"
+    assert "/oauth/google/start" in env["error_message"]
+
+
+@pytest.mark.asyncio
+async def test_refresh_revogado_chega_ao_gestor(
+    monkeypatch: pytest.MonkeyPatch, _oauth_ativo: None
+) -> None:
+    def _revoga(**_kw: Any) -> Any:
+        raise RefreshError("invalid_grant")
+
+    monkeypatch.setattr(client_mod, "build_client", _revoga)
+    with pytest.raises(GoogleAdsFriendlyError) as ei:
+        await client_mod.build_client_for_manager(manager_id=uuid4())
+    assert str(ei.value) == TEXTO_REFRESH
+    env = _error_envelope("x", ei.value)
+    assert env["error_message"] == TEXTO_REFRESH
+
+
+def test_to_friendly_refresh_error() -> None:
+    from src.google_ads.errors import to_friendly
+
+    assert str(to_friendly(RefreshError("invalid_grant"))) == TEXTO_REFRESH
