@@ -6,27 +6,25 @@
 > que fechou sai daqui:** o defeito vai para o catálogo, a narrativa para o arquivo
 > ([`_archive/`](../_archive/varredura-2026-09-06-frentes.md)), e aqui fica uma linha.
 
-> **Última sessão:** [`session-2026-10-06-handoff.md`](session-2026-10-06-handoff.md) — 03/10–06/10:
-> remedição de 30 dias (buckets 22 → 13 always; Fase 2B parada), deps e a frente **negativas com
-> acento e cobertura + `run_gaql` compacto** (no ar desde 05/10, #154). Antes:
-> [`session-2026-10-02-handoff.md`](session-2026-10-02-handoff.md) (conversões por ação e parcela).
+> **Última sessão:** [`session-2026-10-30-handoff.md`](session-2026-10-30-handoff.md) — 28/10–30/10:
+> frentes **saldo da conta** (#164/#165) e **planejador de palavras-chave** (#167), F110 no `customer_match`
+> e nas conversões (#169), request-id do planejador (#170), guia do alerta de saldo (#171), rótulos de status
+> da Meta (#172). Textos prontos para o `/findings-add` estão no handoff. Antes:
+> [`session-2026-10-06-handoff.md`](session-2026-10-06-handoff.md).
 
-> Sem frente em curso. Pendências pequenas da última frente estão no handoff de 06/10.
+> Sem frente em curso. Próxima candidata: previsão de orçamento no planejador.
 
-> **No ar (29/10):** frente **saldo da conta** — `get_account_balance` (Google) e `meta_get_account_balance`
-> (Meta), ambas de leitura, bucket `defer`, pelo **#164**, com o fix do **#165** (U+00A0 no texto do saldo
-> pré-pago Meta). Smoke 6/6 depois do #165 ([roteiro e medido](smoke-saldo-da-conta.md);
-> [desenho](../superpowers/specs/2026-10-28-saldo-da-conta-design.md)). Não medidos: gestor comum e `audit_log`.
-
-> **No ar (30/10):** frente **planejador de palavras-chave** — `plan_keyword_ideas` e `get_keyword_metrics` (leitura, bucket `defer`) pelo **#167**. Smoke 30/10: 8 de 9 casos ok; o 9º (variante de grafia) tinha o esperado errado no roteiro ([roteiro e medido](smoke-planejador-de-palavras.md); [desenho](../superpowers/specs/2026-10-29-planejador-de-palavras-design.md)). Achado do smoke: `provider_request_id` vazio nas chamadas do planejador — **corrigido em 30/10** (os serviços não levavam o interceptor do `request-id`, e o executor trocava o não medido por `""`).
+> **No ar:** saldo da conta (smoke 6/6, [roteiro](smoke-saldo-da-conta.md)) e planejador de palavras-chave
+> (smoke 30/10, [roteiro](smoke-planejador-de-palavras.md)). Desenhos em
+> [`specs/`](../superpowers/specs/) (2026-10-28 e 2026-10-29).
 
 ---
 
-## Produção — medido em 2026-10-06
+## Produção — medido em 2026-10-30
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00146-qv5`**, 100% do tráfego (05/10) — o **#154** (negativas com acento e cobertura, `run_gaql` compacto), sobre o **#152** (`00145`, 5 bumps de patch do Dependabot), sobre o **#151** (`00144`, buckets de 05/10) e o **#143** (`00143`, conversões por ação e parcela de impressão), sobre o **#141** (`00142`, o teste do `detect_drift` com relógio congelado). ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186) |
+| Revisão servindo | **`v4-ads-mcp-00154-gq4`**, 100% do tráfego (30/10) — o **#172** (rótulos de status da Meta), sobre o **#170** (request-id do planejador), o **#169** (F110 no `customer_match` e nas conversões) e o **#167** (`00151-qk7`, planejador de palavras-chave). ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186) |
 | Tools | **72** (65 Google + 7 Meta) — desde 30/10 (`v4-ads-mcp-00151-qk7`, #167: planejador de palavras-chave); antes 70 em 29/10 (#164 + #165, saldo) |
 | Buckets | **13 always + 59 defer** (05/10, 9 desceram sem uso de gestor; +2 defer do saldo em 29/10, +2 do planejador em 30/10) — [remedição](tool-buckets-2026-10-05.md); próxima com a Fase 2B, ~15/10 |
 | Catálogo | até **F203** (~6.000 linhas, 601 KB) |
@@ -97,16 +95,12 @@ escolhendo pelo nome. **Remedido em 05/10:** `get_campaign_performance` 120 (Ped
 - **Identidade `@v4company.com` sem caixa postal no TI** — desbloqueia o **F186** inteiro. Emitir
   token sob um manager existente está recusado (~38 contas Google e 26 Meta no GitHub Actions).
 - **F129** (governança do system user Meta) e **F67** (custom domain via LB).
-- **Alerta de saldo acabando — decidido em 30/10:** não haverá job central. **Cada gestor monta a
-  própria automação** (ex.: tarefa agendada no Claude) sobre `get_account_balance` /
-  `meta_get_account_balance` nas contas que administra, avisando em `acabando`/`esgotada`. Guia para os
-  gestores: [guia-alerta-de-saldo.md](guia-alerta-de-saldo.md).
+- **Alerta de saldo: decidido em 30/10** — sem job central; cada gestor monta a própria automação ([guia](guia-alerta-de-saldo.md)).
 - **`ads_get_field_context` não rodado nos 9 fields de `GET /act_<id>`** (saldo Meta, 29/10) — o MCP oficial da
   Meta estava indisponível na sessão de 29/10. Evidência substituta: leitura ao vivo com as 9 chaves e controle
   de campo inexistente → 400. A regra F53/F54/F55 do [`nucleo.md`](../convencoes/nucleo.md) pede a checagem
   antes de shippar. **Decidido em 29/10:** o Wellington aceitou a evidência ao vivo para shippar; rodar o
   `ads_get_field_context` quando o MCP oficial voltar à sessão, para fechar a regra no sentido literal.
-- **`QuotaExhausted` vira "Erro inesperado" fora do planejador** — **corrigido em 30/10** (branch `fix/quota-exhausted-executores`): `customer_match.run_offline_user_data_job` e `conversions.run_conversion_upload` ganharam o ramo próprio do F110, com teste que falha contra o código anterior. `run_report`, `run_mutation` e `run_recommendation_action` já estavam certos (o `to_friendly` envolve só o SDK).
 - **`recommendation_subscription`** — recomendada a tool de LEITURA, varrendo só o que o gestor
   alcança e contando os opacos (F185: 4 de 11 sem chave); a de escrita, não.
 
