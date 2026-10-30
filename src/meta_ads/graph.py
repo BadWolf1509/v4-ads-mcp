@@ -12,6 +12,24 @@ import structlog
 
 log = structlog.get_logger(__name__)
 
+# Textos de `x-ad-api-version-warning` ja alarmados neste processo. `log.error`
+# aciona a policy `severity>=ERROR`: sem deduplicar, cada resposta de cada
+# chamada abriria um incidente. Um aviso por texto distinto por processo basta.
+_avisos_vistos: set[str] = set()
+
+
+def avisar_versao_meta(headers: httpx.Headers) -> None:
+    """Alarma (ERROR, uma vez por texto) quando a Meta avisa sobre a versao do Graph.
+
+    O header real, medido, e `x-ad-api-version-warning` (ex.: auto-upgrade de uma
+    versao expirada). Ausente e o caso normal e nao faz nada.
+    """
+    aviso = headers.get("x-ad-api-version-warning")
+    if not aviso or aviso in _avisos_vistos:
+        return
+    _avisos_vistos.add(aviso)
+    log.error("meta_api_version_warning", aviso=aviso)
+
 
 class PagedFetch(NamedTuple):
     """`complete=False` significa leitura TRUNCADA — página falhou ou cap estourou.
@@ -45,6 +63,7 @@ async def fetch_paginated(
         assert proxima is not None
         resp = await http.get(proxima, params=params if primeira else None, headers=headers)
         primeira = False
+        avisar_versao_meta(resp.headers)
         if resp.status_code != 200:
             log.warning(
                 "meta_graph_page_failed",

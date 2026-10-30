@@ -28,6 +28,7 @@ from src.meta_ads.client import (
     MetaSystemUserTokenMissingError,
 )
 from src.meta_ads.errors import to_friendly_meta_error
+from src.meta_ads.graph import avisar_versao_meta
 
 log = structlog.get_logger(__name__)
 
@@ -94,6 +95,7 @@ async def _paginar_graph(
     params: dict[str, Any],
     cabecalhos: dict[str, str],
     max_pages: int,
+    capturados: list[httpx.Headers],
 ) -> tuple[dict[str, Any], list[Any], httpx.Headers, int]:
     """Segue `paging.next` ate `max_pages`.
 
@@ -104,6 +106,10 @@ async def _paginar_graph(
     rate counter (BUC) conta chamadas de verdade, nao a estimativa do caller
     (F88) — sem isto o contador ficaria impreciso pro primeiro caller que
     setar `max_pages > 1` (hoje nenhum seta; _MAX_PAGES das tools Meta e 1).
+
+    `capturados` recebe os headers de CADA resposta, ANTES de qualquer raise: uma
+    chamada throttled (429) levanta aqui e perderia o BUC — justamente a que mais
+    importa pro contador. Cada resposta tambem passa pelo alarme de versao.
 
     F189: a URL do `next` vai como STRING. Foi embrulhada em lista uma vez, e o
     SDK — que so trata string como URL completa — concatenou na base e produziu
@@ -121,6 +127,8 @@ async def _paginar_graph(
             # `paging.next` ja carrega cursor e fields na propria URL.
             resp = await http.get(proxima, headers=cabecalhos)
         headers = resp.headers
+        capturados.append(headers)
+        avisar_versao_meta(headers)
         if resp.status_code != 200:
             raise MetaGraphHTTPError(resp.status_code, resp.text)
         bruto = resp.json()
@@ -134,6 +142,31 @@ async def _paginar_graph(
         if not proxima:
             break
     return corpo, linhas, headers, lidas
+
+
+async def _contabilizar_uso(
+    headers: httpx.Headers, *, ad_account_id: str, calls: int, app_id: str
+) -> None:
+    """Alimenta o contador BUC/quota a partir dos headers de uma resposta.
+
+    Roda nos DOIS caminhos (sucesso e erro): a chamada throttled aconteceu e conta.
+    Registra se QUALQUER dos dois cabecalhos vier; o que nao veio e "nao sei",
+    nunca 0 (spec 2026-09-26 §5). Falha aqui nunca decide o resultado da leitura.
+    """
+    buc_header = headers.get("x-business-use-case-usage")
+    throttle_insights = headers.get("x-fb-ads-insights-throttle")
+    if not (buc_header or throttle_insights):
+        return
+    try:
+        await record_actual_meta(
+            app_id=app_id,
+            ad_account_id=ad_account_id,
+            buc_header=buc_header,
+            insights_throttle_header=throttle_insights,
+            calls=calls,
+        )
+    except Exception as e:  # noqa: BLE001
+        log.warning("meta_rate_counter_update_failed", error=str(e))
 
 
 async def run_meta_graph_get(
@@ -260,6 +293,7 @@ async def run_meta_graph_get(
     log.info("meta_graph_get_start", edge=edge, operation=operation_name)
     started = time.monotonic()
 
+    capturados: list[httpx.Headers] = []
     try:
         # F190 — token no HEADER, nunca na query. Mesma postura de
         # `graph.py::fetch_paginated`, que ja rodava assim em producao: e a
@@ -268,15 +302,32 @@ async def run_meta_graph_get(
         url = f"https://graph.facebook.com/{META_GRAPH_API_VERSION}{edge}"
         async with httpx.AsyncClient(timeout=_TIMEOUT_GRAPH) as http:
             body, linhas, headers_ultima, paginas_lidas = await _paginar_graph(
-                http, url, params or {}, cabecalhos, max_pages
+                http, url, params or {}, cabecalhos, max_pages, capturados
             )
         if "data" in body or linhas:
             body = {**body, "data": linhas}
     except Exception as e:  # noqa: BLE001 — catch all to map to friendly
         elapsed_ms = int((time.monotonic() - started) * 1000)
         friendly = to_friendly_meta_error(e)
+        if capturados:
+            await _contabilizar_uso(
+                capturados[-1],
+                ad_account_id=ad_account_id,
+                calls=max(estimated_calls, len(capturados)),
+                app_id=settings.meta_app_id,
+            )
         if audit_this_call:
-            async with connection.get_pool().acquire() as conn:
+            # best_effort: audit falho no caminho de erro nao pode trocar a
+            # mensagem amigavel por uma excecao crua de banco.
+            async with (
+                best_effort(
+                    "meta_report_audit_write_failed",
+                    operation=operation_name,
+                    ad_account_id=ad_account_id,
+                    status="error",
+                ),
+                connection.get_pool().acquire() as conn,
+            ):
                 await audit_log.record(
                     conn,
                     manager_id=manager_id,
@@ -311,23 +362,24 @@ async def run_meta_graph_get(
     # do APP em chamada /insights (o `x-app-usage` nao vem ali — medido). Registra se
     # QUALQUER dos dois vier: a chamada aconteceu e conta, e o que nao veio e "nao
     # sei", nunca 0.
-    buc_header = headers_ultima.get("x-business-use-case-usage")
-    throttle_insights = headers_ultima.get("x-fb-ads-insights-throttle")
-    if buc_header or throttle_insights:
-        try:
-            await record_actual_meta(
-                app_id=settings.meta_app_id,
-                ad_account_id=ad_account_id,
-                buc_header=buc_header,
-                insights_throttle_header=throttle_insights,
-                # F88: contabiliza as chamadas REALMENTE feitas, não a estimativa.
-                calls=max(estimated_calls, paginas_lidas),
-            )
-        except Exception as e:  # noqa: BLE001
-            log.warning("meta_rate_counter_update_failed", error=str(e))
+    # F88: contabiliza as chamadas REALMENTE feitas, não a estimativa.
+    await _contabilizar_uso(
+        headers_ultima,
+        ad_account_id=ad_account_id,
+        calls=max(estimated_calls, paginas_lidas),
+        app_id=settings.meta_app_id,
+    )
 
     if audit_this_call:
-        async with connection.get_pool().acquire() as conn:
+        async with (
+            best_effort(
+                "meta_report_audit_write_failed",
+                operation=operation_name,
+                ad_account_id=ad_account_id,
+                status="success",
+            ),
+            connection.get_pool().acquire() as conn,
+        ):
             await audit_log.record(
                 conn,
                 manager_id=manager_id,
