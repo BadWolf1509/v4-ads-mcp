@@ -10,6 +10,7 @@ from typing import Any
 from google.protobuf.field_mask_pb2 import FieldMask
 
 from src.google_ads.mutates._common import register_builder
+from src.google_ads.queries._common import brl_para_micros
 
 
 @register_builder("update_campaign_status")
@@ -99,7 +100,7 @@ def _brl_to_micros(brl: float) -> int:
     Sprint 3b.24 — used by build_create_campaign for budget + bidding strategy
     targets. Other create patterns use similar conversion (e.g., create_conversion_action).
     """
-    return int(brl * 1_000_000)
+    return brl_para_micros(brl)
 
 
 @register_builder("create_campaign")

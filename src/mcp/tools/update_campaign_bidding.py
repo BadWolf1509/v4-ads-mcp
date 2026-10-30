@@ -4,6 +4,7 @@
 from typing import Any
 
 from src.db import connection
+from src.google_ads.queries._common import brl_para_micros
 from src.governance.blast_radius import classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
@@ -66,7 +67,7 @@ async def update_campaign_bidding(args: dict[str, Any]) -> dict[str, Any]:
                 customer_id=customer_id,
             )
         target_brl = float(args["target_cpa_brl"])
-        payload["target_value_micros"] = int(target_brl * 1_000_000)
+        payload["target_value_micros"] = brl_para_micros(target_brl)
         summary_parts.append(f"com Target CPA R$ {target_brl:.2f}")
     elif strategy == "TARGET_ROAS":
         if "target_roas" not in args:

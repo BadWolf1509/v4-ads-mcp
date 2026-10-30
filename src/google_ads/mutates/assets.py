@@ -30,6 +30,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.google_ads.mutates._common import register_builder
+from src.google_ads.queries._common import brl_para_micros
 
 
 @register_builder("create_and_link_assets")
@@ -96,7 +97,7 @@ def build_create_and_link_assets(
                 promo.percent_off = int(a["percent_off"] * 10_000)
             else:
                 # 1 BRL = 1_000_000 micros
-                promo.money_amount_off.amount_micros = int(a["money_amount_off_brl"] * 1_000_000)
+                promo.money_amount_off.amount_micros = brl_para_micros(a["money_amount_off_brl"])
                 promo.money_amount_off.currency_code = "BRL"  # V4 invariant
             promo.language_code = (
                 "pt-BR"  # V4 invariant (F39 Sprint 3b.25.1: BCP 47 region-qualified)
