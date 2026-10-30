@@ -33,7 +33,9 @@ import sys
 
 import httpx
 
-BASE = "https://graph.facebook.com/v22.0"
+from src.meta_ads.client import META_GRAPH_API_VERSION
+
+BASE = f"https://graph.facebook.com/{META_GRAPH_API_VERSION}"
 
 
 def secret(nome: str) -> str:

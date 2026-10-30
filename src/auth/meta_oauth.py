@@ -38,12 +38,13 @@ from src.db.repositories import (
     audit_log,
     meta_oauth_connections,
 )
+from src.meta_ads.client import META_GRAPH_API_VERSION
 from src.web.deps import CurrentUser, current_manager
 
 log = structlog.get_logger(__name__)
 
-META_FB_AUTH_URL = "https://www.facebook.com/v22.0/dialog/oauth"
-META_GRAPH_BASE = "https://graph.facebook.com/v22.0"
+META_FB_AUTH_URL = f"https://www.facebook.com/{META_GRAPH_API_VERSION}/dialog/oauth"
+META_GRAPH_BASE = f"https://graph.facebook.com/{META_GRAPH_API_VERSION}"
 
 META_REQUIRED_SCOPES = [
     "email",

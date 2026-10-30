@@ -32,7 +32,9 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 
-BASE = "https://graph.facebook.com/v22.0"
+from src.meta_ads.client import META_GRAPH_API_VERSION
+
+BASE = f"https://graph.facebook.com/{META_GRAPH_API_VERSION}"
 
 # Nome de campanha em PT-BR nao cabe no cp1252 do console do Windows.
 if hasattr(sys.stdout, "reconfigure"):

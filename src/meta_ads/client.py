@@ -21,7 +21,7 @@ mas não há mais call site que a aplique.
 """
 
 # Meta Graph API version used across all Meta Graph call sites.
-META_GRAPH_API_VERSION = "v22.0"
+META_GRAPH_API_VERSION = "v25.0"
 
 
 class MetaSystemUserTokenMissingError(Exception):

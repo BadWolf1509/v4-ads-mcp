@@ -29,10 +29,12 @@ from typing import Any
 import asyncpg
 import httpx
 
+from src.meta_ads.client import META_GRAPH_API_VERSION
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-BASE = "https://graph.facebook.com/v22.0"
+BASE = f"https://graph.facebook.com/{META_GRAPH_API_VERSION}"
 FIM = date.today() - timedelta(days=1)
 INICIO = FIM - timedelta(days=29)
 JANELA = json.dumps({"since": INICIO.isoformat(), "until": FIM.isoformat()})

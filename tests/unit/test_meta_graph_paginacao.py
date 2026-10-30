@@ -7,7 +7,7 @@ import respx
 
 from src.meta_ads.graph import fetch_paginated
 
-URL = "https://graph.facebook.com/v22.0/x/edge"
+URL = "https://graph.facebook.com/v25.0/x/edge"
 
 
 @pytest.mark.asyncio

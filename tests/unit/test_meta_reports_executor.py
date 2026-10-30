@@ -117,7 +117,7 @@ async def test_run_meta_graph_get_happy_path_parses_and_audits() -> None:
     # intactos e o token no HEADER — nunca na URL (F82/F190).
     assert len(vistos) == 1
     req = vistos[0]
-    assert req.url.path == "/v22.0/act_999/insights"
+    assert req.url.path == "/v25.0/act_999/insights"
     assert dict(req.url.params) == {"level": "campaign", "fields": "spend,campaign_id"}
     assert "access_token" not in str(req.url)
     assert req.headers.get("authorization", "").startswith("Bearer ")

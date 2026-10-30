@@ -27,7 +27,7 @@ from src.meta_ads.client import (
 
 def test_meta_graph_api_version_constant_pinned():
     """META_GRAPH_API_VERSION must be explicit string (not env var, not auto)."""
-    assert META_GRAPH_API_VERSION == "v22.0"
+    assert META_GRAPH_API_VERSION == "v25.0"
 
 
 def test_meta_system_user_token_missing_error_is_exception():
@@ -42,3 +42,17 @@ def test_meta_access_denied_error_stores_message():
     err = MetaAccessDeniedError("sem acesso à conta 123")
     assert err.message == "sem acesso à conta 123"
     assert str(err) == "sem acesso à conta 123"
+
+
+def test_versao_do_graph_so_vive_na_constante():
+    """Nenhum literal de versao antiga em src/ ou scripts/: a constante e a fonte."""
+    from pathlib import Path
+
+    raiz = Path(__file__).resolve().parents[2]
+    achados = [
+        str(p.relative_to(raiz))
+        for pasta in ("src", "scripts")
+        for p in (raiz / pasta).rglob("*.py")
+        if "v22.0" in p.read_text(encoding="utf-8")
+    ]
+    assert achados == []

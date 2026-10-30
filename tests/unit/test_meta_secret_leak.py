@@ -63,12 +63,12 @@ def test_httpx_realmente_logaria_a_query_string_sem_o_silenciamento(
     logging.getLogger("httpx").setLevel(logging.INFO)
     try:
         with respx.mock:
-            respx.get("https://graph.facebook.com/v22.0/oauth/access_token").mock(
+            respx.get("https://graph.facebook.com/v25.0/oauth/access_token").mock(
                 return_value=httpx.Response(200, json={"access_token": "x"})
             )
             with caplog.at_level(logging.INFO, logger="httpx"), httpx.Client() as client:
                 client.get(
-                    "https://graph.facebook.com/v22.0/oauth/access_token",
+                    "https://graph.facebook.com/v25.0/oauth/access_token",
                     params={"client_secret": _FAKE_APP_SECRET},
                 )
     finally:
@@ -88,7 +88,7 @@ async def test_troca_long_lived_nao_poe_client_secret_na_url() -> None:
     from src.auth.meta_oauth import _exchange_for_long_lived_token
 
     with respx.mock:
-        route = respx.post("https://graph.facebook.com/v22.0/oauth/access_token").mock(
+        route = respx.post("https://graph.facebook.com/v25.0/oauth/access_token").mock(
             return_value=httpx.Response(200, json={"access_token": "long", "expires_in": 5184000})
         )
         async with httpx.AsyncClient() as http:
