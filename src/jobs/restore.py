@@ -2,7 +2,8 @@
 
 A pasta e a de uma data (`<tabela>.csv.gz`, ou `.csv` ja descompactado) baixada
 do GCS, e o banco de destino precisa ser LIMPO e ja migrado
-(`python -m src.db.migrate`). O restore e deliberadamente manual: automatizar
+(`python -m src.db.migrate`); destino com linha em qualquer tabela e recusado, e
+o CLI exige `--confirmar-host <host do DATABASE_URL>` antes de conectar. O restore e deliberadamente manual: automatizar
 restore e perigoso.
 
 Tres fatos medidos que o runbook antigo nao cobria:
@@ -22,6 +23,7 @@ import io
 import sys
 from pathlib import Path
 from typing import IO
+from urllib.parse import urlsplit
 
 import asyncpg
 import structlog
@@ -107,6 +109,13 @@ def _validar_pasta(pasta: Path) -> dict[str, Path]:
 async def restaurar_tabelas(conn: asyncpg.Connection, pasta: Path) -> dict[str, int]:
     """Restaura a pasta num banco migrado e limpo; devolve linhas por tabela."""
     _validar_pasta(pasta)  # antes de qualquer COPY: pasta ruim nao toca o banco
+    for tabela in ORDEM_RESTORE:
+        # Destino com dado nao e "limpo": o COPY somaria ao que existe (ou colidiria).
+        if await conn.fetchval(f'SELECT EXISTS (SELECT 1 FROM "{tabela}")'):
+            raise ValueError(
+                f"destino nao esta vazio: a tabela {tabela!r} ja tem linhas — "
+                "restore so roda num banco recem-migrado e limpo; nada foi alterado"
+            )
     contagens: dict[str, int] = {}
     async with conn.transaction():
         for tabela in ORDEM_RESTORE:
@@ -122,7 +131,10 @@ async def restaurar_tabelas(conn: asyncpg.Connection, pasta: Path) -> dict[str, 
                     header=True,
                     timeout=None,
                 )
-            contagens[tabela] = int(await conn.fetchval(f'SELECT count(*) FROM "{tabela}"'))
+            # timeout=None tambem aqui: estourar o limite do pool desfaria o restore inteiro.
+            contagens[tabela] = int(
+                await conn.fetchval(f'SELECT count(*) FROM "{tabela}"', timeout=None)
+            )
         await conn.execute(_SETVAL_AUDIT)
     log.info("restore_complete", tabelas=contagens)
     return contagens
@@ -141,12 +153,34 @@ async def run(pasta: Path) -> int:
     return 0
 
 
+def _host_do_dsn(dsn: str) -> str:
+    """So o host do DSN: usuario e senha nunca chegam a uma mensagem."""
+    return urlsplit(dsn).hostname or "<desconhecido>"
+
+
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
-    if len(args) != 1:
-        print("uso: python -m src.jobs.restore <pasta>", file=sys.stderr)
+    uso = "uso: python -m src.jobs.restore <pasta> --confirmar-host <host-do-DATABASE_URL>"
+    confirmado: str | None = None
+    posicionais: list[str] = []
+    it = iter(args)
+    for a in it:
+        if a == "--confirmar-host":
+            confirmado = next(it, None)
+        else:
+            posicionais.append(a)
+    if len(posicionais) != 1:
+        print(uso, file=sys.stderr)
         return 2
-    return asyncio.run(run(Path(args[0])))
+    host = _host_do_dsn(get_settings().database_url)
+    if confirmado != host:
+        print(
+            f"restore recusado: o DATABASE_URL aponta para o host {host!r}. "
+            f"Se e esse o destino, repita com --confirmar-host {host}\n{uso}",
+            file=sys.stderr,
+        )
+        return 2
+    return asyncio.run(run(Path(posicionais[0])))
 
 
 if __name__ == "__main__":

@@ -157,6 +157,8 @@ async def test_restore_com_audit_vazio(db, pg, tmp_path) -> None:
     async with _clone_db(pg) as dsn:
         destino = await asyncpg.connect(dsn)
         try:
+            # Sequence do destino avancada: sem o setval(1, false) o proximo id nao seria 1.
+            await destino.fetchval("SELECT nextval(pg_get_serial_sequence('audit_log', 'id'))")
             contagens = await restaurar_tabelas(destino, tmp_path)
             assert contagens["audit_log"] == 0
             novo = await audit_log.record(
@@ -168,6 +170,29 @@ async def test_restore_com_audit_vazio(db, pg, tmp_path) -> None:
                 operation="pos_restore",
             )
             assert novo == 1
+        finally:
+            await destino.close()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_restore_recusa_destino_nao_vazio_sem_mudar_nada(db, pg, tmp_path) -> None:
+    async with db.acquire() as origem:
+        await _popular(origem, com_audit=True)
+        await _dump_tudo(origem, tmp_path)
+
+    async with _clone_db(pg) as dsn:
+        destino = await asyncpg.connect(dsn)
+        try:
+            await destino.execute(
+                "INSERT INTO google_ads_accounts (customer_id, mcc_id, descriptive_name) "
+                "VALUES ('9999999999', '9', 'Existente')"
+            )
+            with pytest.raises(ValueError, match="google_ads_accounts"):
+                await restaurar_tabelas(destino, tmp_path)
+            for tabela in ORDEM_RESTORE:
+                esperado = 1 if tabela == "google_ads_accounts" else 0
+                assert await destino.fetchval(f'SELECT count(*) FROM "{tabela}"') == esperado
         finally:
             await destino.close()
 
