@@ -44,6 +44,8 @@ Sondagem só de leitura em 29/10: script local com o OAuth do Wellington, conta 
 9. **A conta usada na chamada não muda o resultado.** As mesmas sementes em João Pessoa, na Conta
    Interna - 02 e na conta de cliente MDO JP (`7862230676`): as mesmas 1.923 ideias, com volume e
    faixa de CPC idênticos em todos os termos (29/10).
+   **Ajuste do smoke de 30/10:** termos, ordem e volumes iguais; o CPC variou em centavos em 28 de 689
+   ideias entre duas chamadas — variação do Google entre chamadas, não da conta.
 10. **Várias cidades numa chamada dão um volume que não fecha com nenhuma delas.** "aluguel de
     andaime": João Pessoa 40, Campina Grande 20, as duas numa chamada **50** (não 60). O degrau é
     aplicado depois da soma.
