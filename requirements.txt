@@ -38,7 +38,7 @@ fastapi==0.139.2
     # via v4-ads-mcp (pyproject.toml)
 google-ads==31.4.0
     # via v4-ads-mcp (pyproject.toml)
-google-api-core==2.42.0
+google-api-core==2.43.0
     # via
     #   google-ads
     #   google-cloud-core
