@@ -6,8 +6,11 @@ caching across managers risks privilege confusion. The construction cost
 is small.
 """
 
+from functools import partial
 from typing import Any
 from uuid import UUID
+
+from src.blocking import run_blocking
 
 # Imported lazily inside the factory to keep this module unit-testable
 # without the heavy google-ads SDK import.
@@ -75,10 +78,15 @@ async def build_client_for_manager(*, manager_id: UUID) -> Any:
         # o erro vazaria cru pro dispatcher e viraria "Erro interno" (F70).
         raise to_friendly(e) from e
 
-    return build_client(
-        refresh_token=refresh_token,
-        developer_token=settings.google_ads_developer_token,
-        client_id=settings.google_oauth_client_id,
-        client_secret=settings.google_oauth_client_secret,
-        login_customer_id=settings.google_ads_login_customer_id,
+    # `load_from_dict` faz o HTTP sincrono do refresh do OAuth: fora do event
+    # loop (F86), senao congela a instancia inteira ate o Google responder.
+    return await run_blocking(
+        partial(
+            build_client,
+            refresh_token=refresh_token,
+            developer_token=settings.google_ads_developer_token,
+            client_id=settings.google_oauth_client_id,
+            client_secret=settings.google_oauth_client_secret,
+            login_customer_id=settings.google_ads_login_customer_id,
+        )
     )
