@@ -41,6 +41,11 @@ def build_client(
     return GoogleAdsClient.load_from_dict(config)
 
 
+TEXTO_SEM_OAUTH = (
+    "Gestor nao tem conexao Google Ads ativa. Pede pra ele conectar pelo painel (Conectar Google)."
+)
+
+
 class NoOAuthConnectionError(GoogleAdsFriendlyError):
     """Raised by build_client_for_manager when the manager has no active OAuth."""
 
@@ -66,10 +71,7 @@ async def build_client_for_manager(*, manager_id: UUID) -> Any:
         lambda conn: google_oauth_connections.get_active_for_manager(conn, manager_id)
     )
     if oc is None:
-        raise NoOAuthConnectionError(
-            "Gestor nao tem conexao Google Ads ativa. Pede pra ele conectar via "
-            "/oauth/google/start."
-        )
+        raise NoOAuthConnectionError(TEXTO_SEM_OAUTH)
 
     master_key = derive_master_key_from_settings(settings.aes_master_key)
     try:

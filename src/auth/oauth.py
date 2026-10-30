@@ -335,6 +335,8 @@ async def _concluir_callback(
 
     # `is False`, não `is not True`: o discovery do oauth2 v2 declara o campo com
     # `default: true` (conferido em 30/10), então ausente é verificado no contrato.
+    if userinfo.get("verified_email") is None:
+        log.warning("oauth_verified_email_ausente")
     if userinfo.get("verified_email") is False:
         return _error_page(
             request,

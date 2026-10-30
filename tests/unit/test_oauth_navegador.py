@@ -313,10 +313,24 @@ def test_email_nao_verificado_e_recusado(navegador: TestClient, banco: _Banco) -
 
 
 @respx.mock
-def test_verified_email_ausente_segue(navegador: TestClient, banco: _Banco) -> None:
+def test_verified_email_ausente_segue(
+    navegador: TestClient, banco: _Banco, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """O discovery do oauth2 v2 declara `verified_email` com `default: true` (conferido
     em 30/10), entao ausente e verificado no contrato do Google. Exigir `True` trancaria
     todos os gestores se a resposta omitir o default."""
+    from src.auth import oauth as oauth_mod
+
+    avisos: list[tuple[str, dict[str, Any]]] = []
+
+    class _Log:
+        def warning(self, evento: str, **kw: Any) -> None:
+            avisos.append((evento, kw))
+
+        def __getattr__(self, _nome: str) -> Any:
+            return lambda *_a, **_k: None
+
+    monkeypatch.setattr(oauth_mod, "log", _Log())
     _mock_google({"email": _EMAIL})
     state = _state_de(navegador.get("/oauth/google/start?mode=panel_login"))
 
@@ -324,6 +338,9 @@ def test_verified_email_ausente_segue(navegador: TestClient, banco: _Banco) -> N
 
     assert resp.status_code == 302
     assert resp.headers["location"] == "/"
+    # Ausente segue, mas deixa rastro; o e-mail nao entra no log.
+    assert [e for e, _ in avisos] == ["oauth_verified_email_ausente"]
+    assert _EMAIL not in repr(avisos)
 
 
 # --- superficie publica -------------------------------------------------------

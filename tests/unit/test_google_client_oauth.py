@@ -15,7 +15,8 @@ from src.google_ads.errors import GoogleAdsFriendlyError
 from src.mcp.server import _error_envelope
 
 TEXTO_REFRESH = (
-    "A conexão Google Ads deste gestor expirou ou foi revogada. Reconecte em /oauth/google/start."
+    "A conexão Google Ads deste gestor expirou ou foi revogada. "
+    "Reconecte pelo painel (Conectar Google)."
 )
 
 
@@ -62,9 +63,10 @@ async def test_build_client_nao_roda_no_event_loop(
 
 @pytest.mark.asyncio
 async def test_sem_oauth_chega_ao_gestor() -> None:
-    env = _error_envelope("x", client_mod.NoOAuthConnectionError("sem conexao /oauth/google/start"))
+    env = _error_envelope("x", client_mod.NoOAuthConnectionError(client_mod.TEXTO_SEM_OAUTH))
     assert env["status"] == "error"
-    assert "/oauth/google/start" in env["error_message"]
+    assert "painel (Conectar Google)" in env["error_message"]
+    assert "/oauth/google/start" not in env["error_message"]
 
 
 @pytest.mark.asyncio

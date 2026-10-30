@@ -100,7 +100,7 @@ def to_friendly(exc: Exception) -> GoogleAdsFriendlyError:
         if "invalid_grant" in str(exc):
             return GoogleAdsFriendlyError(
                 "A conexão Google Ads deste gestor expirou ou foi revogada. "
-                "Reconecte em /oauth/google/start.",
+                "Reconecte pelo painel (Conectar Google).",
                 code="OAUTH_REFRESH_FAILED",
                 original=exc,
             )
