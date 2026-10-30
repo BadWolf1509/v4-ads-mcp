@@ -128,59 +128,8 @@ jobs:
         run: |
           gcloud run jobs execute v4-ads-mcp-migrate --region=${REGION} --wait
 
-      # A ORDEM daqui pra baixo e load-bearing, nao arrumacao (M2 da revisao
-      # final da branch pr2/reconciliacao-idempotente):
-      #
-      # 1. `Update migration job image` vem ANTES do execute acima porque e o
-      #    job `v4-ads-mcp-migrate` que aquele step roda: com a imagem velha,
-      #    as migrations do commit novo nem existem no container, e o step
-      #    passa verde sem aplicar nada.
-      # 2. `resync` e `backup` vem DEPOIS porque nenhum dos dois e executado
-      #    aqui — quem os dispara e o Cloud Scheduler, sozinho. Atualiza-los
-      #    antes abria uma janela (1-3 min por deploy) em que o job diario ja
-      #    rodava codigo NOVO contra o schema VELHO: a 009 estreou
-      #    `SELECT ... last_missed_on` em `list_inventory_rows`, que le com
-      #    lista EXPLICITA de colunas e falha alto se a coluna nao existe.
-      #    Pior que a janela: se o execute FALHAR, a imagem nova fica no job
-      #    para sempre com o schema velho — `Rollback on failure` reverte o
-      #    TRAFEGO do servico, nunca a imagem de um Cloud Run Job.
-      # 3. O sentido inverso (schema novo + codigo velho) e seguro, e foi
-      #    verificado: nenhum leitor de `last_missed_on` existe no codigo
-      #    anterior, e os demais reads sao `SELECT *` mapeados por NOME
-      #    (`_row_to_account`), imunes a coluna nova.
-      #
-      # Preso por `tests/unit/test_deploy_job_image_order.py`.
-
-      - name: Update resync job image
-        env:
-          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-          REGION: ${{ secrets.GCP_REGION }}
-        run: |
-          gcloud run jobs update v4-ads-mcp-resync \
-            --image=southamerica-east1-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
-            --command=/cnb/process/resync \
-            --args="" \
-            --region=${REGION} \
-            --update-env-vars="${JOB_ENV_VARS}" \
-            --update-secrets="${JOB_SECRETS},META_SYSTEM_USER_TOKEN=meta-system-user-token:latest"
-
-      # Job de backup semanal (dump csv.gz por tabela → GCS). Re-aponta imagem +
-      # process a cada deploy (self-healing contra drift, igual migrate/resync).
-      # Env/secrets vem de JOB_ENV_VARS/JOB_SECRETS (merge): `backup` chama
-      # get_settings() como os outros, entao NAO basta DATABASE_URL — precisa
-      # dos 8 obrigatorios. O comentario anterior dizia o contrario.
-      - name: Update backup job image
-        env:
-          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-          REGION: ${{ secrets.GCP_REGION }}
-        run: |
-          gcloud run jobs update v4-ads-mcp-backup \
-            --image=southamerica-east1-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
-            --command=/cnb/process/backup \
-            --args="" \
-            --region=${REGION} \
-            --update-env-vars="${JOB_ENV_VARS}" \
-            --update-secrets="${JOB_SECRETS}"
+      # `resync` e `backup` NAO recebem a imagem aqui: so depois do smoke verde
+      # (ver o fim do arquivo). Aqui fica apenas o que o proprio deploy executa.
 
       - name: Capture serving revision (para rollback)
         env:
@@ -192,9 +141,21 @@ jobs:
           # disso (imagem inexistente, por exemplo) deixava a deducao deslocada
           # em um, e o rollback tirava o trafego da revisao saudavel pra pousar
           # numa mais velha. Servico inexistente (1o deploy) -> vazio -> pula.
-          SERVING=$(gcloud run services describe v4-ads-mcp \
+          # Servico inexistente continua valendo vazio; QUALQUER outro erro
+          # (permissao, rede, quota) falha o passo: engolir o erro aqui o transformava
+          # isso em "primeiro deploy" e apagava a revisao do rollback.
+          ERR=$(mktemp)
+          if ! SERVING=$(gcloud run services describe v4-ads-mcp \
             --region=${REGION} \
-            --format='value(status.traffic[0].revisionName)' 2>/dev/null || true)
+            --format='value(status.traffic[0].revisionName)' 2>"$ERR"); then
+            if grep -qiE 'cannot find service|NOT_FOUND' "$ERR"; then
+              SERVING=""
+            else
+              echo "Falha ao descobrir a revisao em servico:" >&2
+              cat "$ERR" >&2
+              exit 1
+            fi
+          fi
           echo "Revisao servindo antes do deploy: ${SERVING:-<nenhuma>}"
           echo "SERVING_REVISION=${SERVING}" >> "$GITHUB_ENV"
 
@@ -364,3 +325,54 @@ jobs:
           else
             echo "Sem revisao capturada (1o deploy?) — nada a reverter."
           fi
+
+      # A ORDEM destes dois steps e load-bearing, nao arrumacao:
+      #
+      # 1. `resync` e `backup` nao sao executados aqui — quem os dispara e o
+      #    Cloud Scheduler, sozinho. Atualiza-los antes das migrations abria
+      #    uma janela de codigo NOVO contra schema VELHO (a 009 estreou
+      #    `SELECT ... last_missed_on` em `list_inventory_rows`, que le com lista
+      #    EXPLICITA de colunas e falha alto). Por isso vem DEPOIS do `migrate`.
+      # 2. Tambem vem DEPOIS do smoke verde: com a imagem trocada antes, um
+      #    commit que o smoke rejeita (e cujo trafego o rollback reverte) deixava
+      #    o job das 06:00 rodando codigo rejeitado — `Rollback on failure`
+      #    reverte o TRAFEGO do servico, nunca a imagem de um Cloud Run Job.
+      # 3. Vem DEPOIS do `Rollback on failure` de proposito: ele e `failure()`,
+      #    entao uma falha ao trocar a imagem de um job nao o aciona e nao tira do
+      #    ar uma revisao saudavel. A falha aparece no run; o job fica na imagem
+      #    anterior, coerente com o schema (schema novo + codigo velho e seguro:
+      #    nenhum leitor de `last_missed_on` no codigo anterior, e os demais reads
+      #    sao `SELECT *` mapeados por NOME, imunes a coluna nova).
+      #
+      # Preso por `tests/unit/test_deploy_job_image_order.py`.
+
+      - name: Update resync job image
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          REGION: ${{ secrets.GCP_REGION }}
+        run: |
+          gcloud run jobs update v4-ads-mcp-resync \
+            --image=southamerica-east1-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
+            --command=/cnb/process/resync \
+            --args="" \
+            --region=${REGION} \
+            --update-env-vars="${JOB_ENV_VARS}" \
+            --update-secrets="${JOB_SECRETS},META_SYSTEM_USER_TOKEN=meta-system-user-token:latest"
+
+      # Job de backup semanal (dump csv.gz por tabela → GCS). Re-aponta imagem +
+      # process a cada deploy (self-healing contra drift, igual migrate/resync).
+      # Env/secrets vem de JOB_ENV_VARS/JOB_SECRETS (merge): `backup` chama
+      # get_settings() como os outros, entao NAO basta DATABASE_URL — precisa
+      # dos 8 obrigatorios. O comentario anterior dizia o contrario.
+      - name: Update backup job image
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          REGION: ${{ secrets.GCP_REGION }}
+        run: |
+          gcloud run jobs update v4-ads-mcp-backup \
+            --image=southamerica-east1-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
+            --command=/cnb/process/backup \
+            --args="" \
+            --region=${REGION} \
+            --update-env-vars="${JOB_ENV_VARS}" \
+            --update-secrets="${JOB_SECRETS}"

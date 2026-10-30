@@ -193,3 +193,83 @@ def test_sem_base_confiavel_deploya_fail_open() -> None:
 @pytestmark_bash
 def test_diff_vazio_deploya_fail_open() -> None:
     assert _rodar(None) == "true"
+
+
+# --- Concorrencia: push so de docs nao pode matar o teste do push de codigo ---
+
+
+def test_cancel_in_progress_falso_na_main() -> None:
+    """Push de docs logo depois de um de codigo cancelava o `test` do primeiro.
+
+    O deploy depende desse `test`; cancelado, ele nunca roda, e o push de docs
+    (que nao deploya) nao o repoe: o codigo ficava sem deploy. Fora da `main`
+    (PRs) o cancelamento continua valendo.
+    """
+    conc = _workflow()["jobs"]["test"]["concurrency"]
+    assert conc["cancel-in-progress"] == "${{ github.ref != 'refs/heads/main' }}"
+
+
+# --- Captura da revisao que serve (rollback) ---------------------------------
+
+_DEPLOY = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "deploy.yml"
+
+
+def _passo_de_captura() -> str:
+    steps = yaml.safe_load(_DEPLOY.read_text(encoding="utf-8"))["jobs"]["deploy"]["steps"]
+    achados = [s for s in steps if s.get("name", "").startswith("Capture serving revision")]
+    assert len(achados) == 1
+    return achados[0]["run"]
+
+
+def test_captura_nao_engole_erro_com_or_true() -> None:
+    corpo = _passo_de_captura()
+    assert "|| true" not in corpo
+    assert "2>/dev/null" not in corpo
+
+
+def _rodar_captura(gcloud_script: str) -> tuple[int, str]:
+    with tempfile.TemporaryDirectory() as d:
+        dp = Path(d)
+        fake = dp / "gcloud"
+        fake.write_text("#!/usr/bin/env bash\n" + gcloud_script + "\n", encoding="utf-8")
+        fake.chmod(0o755)
+        sh = dp / "step.sh"
+        sh.write_text(_passo_de_captura(), encoding="utf-8")
+        env_file = dp / "env"
+        env_file.touch()
+        assert _BASH is not None
+        env = {
+            **os.environ,
+            "PATH": dp.as_posix() + os.pathsep + os.environ["PATH"],
+            "GITHUB_ENV": env_file.as_posix(),
+            "REGION": "r",
+        }
+        r = subprocess.run(
+            [_BASH, "-e", sh.as_posix()], env=env, check=False, capture_output=True, text=True
+        )
+        return r.returncode, env_file.read_text(encoding="utf-8")
+
+
+@pytestmark_bash
+def test_captura_devolve_a_revisao_que_serve() -> None:
+    rc, env = _rodar_captura("echo v4-ads-mcp-00042-abc")
+    assert rc == 0
+    assert "SERVING_REVISION=v4-ads-mcp-00042-abc" in env
+
+
+@pytestmark_bash
+def test_captura_servico_inexistente_fica_vazio_e_segue() -> None:
+    rc, env = _rodar_captura(
+        "echo 'ERROR: (gcloud.run.services.describe) Cannot find service [v4-ads-mcp]' >&2; exit 1"
+    )
+    assert rc == 0
+    assert "SERVING_REVISION=\n" in env + "\n"
+
+
+@pytestmark_bash
+def test_captura_qualquer_outro_erro_falha_o_passo() -> None:
+    """Permissao negada nao pode virar 'primeiro deploy' e apagar o rollback."""
+    rc, _ = _rodar_captura(
+        "echo 'ERROR: PERMISSION_DENIED: caller lacks run.services.get' >&2; exit 1"
+    )
+    assert rc != 0

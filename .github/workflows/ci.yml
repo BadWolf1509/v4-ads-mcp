@@ -18,7 +18,10 @@ jobs:
     # serialização de deploys fica na concurrency `deploy-prod` do deploy.yml.
     concurrency:
       group: ci-${{ github.ref }}
-      cancel-in-progress: true
+      # Na `main` NAO cancela: push so de docs logo apos um push de codigo
+      # cancelava o `test` do primeiro, o `deploy` dele (needs: test) nunca rodava,
+      # e o de docs nao deploya — o codigo ficava sem deploy. Em PR cancela.
+      cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
     # (o `services: postgres` foi removido — era peso morto: os testes DB usam
     # testcontainers, que sobem o próprio container; o DSN localhost do conftest é
     # dummy e nunca é discado.)
@@ -49,9 +52,11 @@ jobs:
         # job `deploy` passa a exigir esta saida.
         #
         # Efeito colateral aceito: com o deploy pulado, o SHA em producao deixa de
-        # ser o HEAD da `main`. Verificado que e benigno — a imagem e taggeada com
+        # ser o HEAD da `main`. O pulo em si e benigno — a imagem e taggeada com
         # github.sha e os 3 Cloud Run Jobs apontam pra mesma tag, entao tudo fica
         # coerente no ultimo commit DE CODIGO, e nada no pipeline assere a igualdade.
+        # (O que NAO era benigno: o `cancel-in-progress` do `test` matar o teste do
+        # push de codigo anterior — ver a `concurrency` do job, falsa na `main`.)
         run: |
           BASE="${{ github.event.before }}"
           HEAD_SHA="${{ github.sha }}"
