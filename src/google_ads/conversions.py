@@ -232,6 +232,15 @@ async def run_conversion_upload(
             ),
             pool.acquire() as conn,
         ):
+            # Upload com 100% de recusa nao e sucesso na trilha. `status_audit` e so da
+            # trilha: o `status` acima decide o envelope e segue "applied", para a
+            # resposta continuar trazendo as falhas por linha.
+            medido = status == "success"
+            status_audit = "error" if medido and applied_count == 0 and target_count > 0 else status
+            resumo = dict(params_summary or {"conversion_count": target_count})
+            if medido:
+                resumo["applied_count"] = applied_count
+                resumo["failed_count"] = failed_count
             await audit_log.record(
                 conn,
                 manager_id=manager_id,
@@ -240,9 +249,10 @@ async def run_conversion_upload(
                 action_type="mutate",
                 operation=operation_type,
                 target_count=target_count,
-                params_summary=params_summary or {"conversion_count": target_count},
+                params_summary=resumo,
                 provider_request_id=provider_request_id or "",
-                status=status,
+                status=status_audit,
+                had_effect=(applied_count > 0) if medido else None,
                 error_message=error_message,
                 duration_ms=duration_ms,
             )
