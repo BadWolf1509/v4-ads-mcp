@@ -60,6 +60,11 @@ async def get_by_id(conn: asyncpg.Connection, manager_id: UUID) -> Manager | Non
     return _row_to_manager(row) if row else None
 
 
+async def list_all(conn: asyncpg.Connection) -> list[Manager]:
+    rows = await conn.fetch("SELECT * FROM managers ORDER BY email")
+    return [_row_to_manager(r) for r in rows]
+
+
 async def get_by_email(conn: asyncpg.Connection, email: str) -> Manager | None:
     row = await conn.fetchrow("SELECT * FROM managers WHERE email = $1", email)
     return _row_to_manager(row) if row else None

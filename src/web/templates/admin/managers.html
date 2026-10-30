@@ -51,7 +51,7 @@
       </thead>
       <tbody>
         {% for m in managers %}
-        <tr data-email="{{ m.email|lower }}" data-role="{{ m.role }}" data-status="{{ m.status or ('active' if m.is_active else 'inactive') }}">
+        <tr data-email="{{ m.email|lower }}" data-role="{{ m.role }}" data-status="{{ 'inactive' if m.is_deactivated else m.status }}">
           <td><strong>{{ m.email }}</strong></td>
           <td>{{ m.full_name or "—" }}</td>
           <td>
@@ -59,10 +59,10 @@
             {% else %}{{ badge("Gestor", "neutral") }}{% endif %}
           </td>
           <td>
-            {% set s = m.status or ('active' if m.is_active else 'inactive') %}
-            {% if s == "active" %}{{ badge("Ativo", "success") }}
-            {% elif s == "invited" %}{{ badge("Convidado", "warning") }}
-            {% else %}{{ badge("Desativado", "neutral") }}{% endif %}
+            {# F84: is_active e status divergem; o predicado é Manager.is_deactivated. #}
+            {% if m.is_deactivated %}{{ badge("Desativado", "neutral") }}
+            {% elif m.status == "invited" %}{{ badge("Convidado", "warning") }}
+            {% else %}{{ badge("Ativo", "success") }}{% endif %}
           </td>
           <td class="col-mono">{{ m.created_at.strftime("%d/%m/%Y") }}</td>
           <td class="col-mono">{{ m.last_seen_at.strftime("%d/%m %H:%M") if m.last_seen_at else "—" }}</td>

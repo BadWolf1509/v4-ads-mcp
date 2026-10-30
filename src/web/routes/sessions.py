@@ -6,7 +6,6 @@ do brief da Task 2, e este é o módulo mais próximo em espírito (entrada do
 painel / auth, sem escopo admin). Ver o relatório da Task 2 para a decisão.
 """
 
-from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 from uuid import UUID
@@ -21,6 +20,7 @@ from src.config import get_settings
 from src.db import connection
 from src.db.repositories import google_oauth_connections, manager_account_access, mcp_sessions
 from src.db.repositories.mcp_sessions import DEFAULT_TTL_DAYS
+from src.web import numeros
 from src.web.deps import CurrentUser, current_manager, optional_current_manager
 from src.web.routes._shared import templates
 
@@ -169,57 +169,21 @@ async def dashboard(
             user.id,
         )
 
-        # Calls today (count + sparkline of last 7 days)
-        today = datetime.now(UTC).date()
-        calls_today = (
-            await conn.fetchval(
-                "SELECT count(*) FROM audit_log WHERE manager_id = $1 AND occurred_at::date = $2",
-                user.id,
-                today,
-            )
-            or 0
+        # Calls today (count + sparkline of last 7 days). O dia é o do painel
+        # (America/Sao_Paulo), não o do banco (UTC) — ver src/web/numeros.py.
+        sparkline_values = await numeros.contagem_por_dia(
+            conn, numeros.dias_do_painel(7), manager_id=user.id
         )
-        sparkline_rows = await conn.fetch(
-            """SELECT (occurred_at::date) as d, count(*) AS c
-               FROM audit_log
-               WHERE manager_id = $1 AND occurred_at >= $2
-               GROUP BY 1 ORDER BY 1""",
-            user.id,
-            today - timedelta(days=6),
-        )
-        # Build 7-day series, filling zeros for missing days
-        days = [today - timedelta(days=i) for i in range(6, -1, -1)]
-        counts_by_day = {r["d"]: r["c"] for r in sparkline_rows}
-        sparkline_values = [counts_by_day.get(d, 0) for d in days]
+        calls_today = sparkline_values[-1]
 
         admin_ops = None
         if user.is_admin:
             from src.db.repositories import managers as managers_repo
 
-            pending = await managers_repo.count_invited(conn)
-            errors_24h = (
-                await conn.fetchval(
-                    "SELECT count(*) FROM audit_log WHERE status='error' AND occurred_at > now() - interval '24 hours'",
-                )
-                or 0
-            )
-            quota_used = (
-                await conn.fetchval(
-                    "SELECT COALESCE(SUM(operations_used), 0) FROM rate_counters WHERE date = current_date",
-                )
-                or 0
-            )
-            active_mgrs = (
-                await conn.fetchval("SELECT count(*) FROM managers WHERE status = 'active'") or 0
-            )
-            total_mgrs = await conn.fetchval("SELECT count(*) FROM managers") or 0
             admin_ops = {
-                "pending_invites": pending,
-                "quota_used": quota_used,
+                "pending_invites": await managers_repo.count_invited(conn),
+                **await numeros.admin_ops(conn),
                 "quota_max": 15000,
-                "errors_24h": errors_24h,
-                "active_managers": active_mgrs,
-                "total_managers": total_mgrs,
             }
 
         return (
