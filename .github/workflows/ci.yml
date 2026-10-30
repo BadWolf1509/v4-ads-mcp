@@ -10,6 +10,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # `actions: read` so aqui: o passo `detectar_mudanca` consulta a run do commit base.
+    permissions:
+      contents: read
+      actions: read
     # F138: o `deploy` passa a exigir esta saida. Ver o passo `detectar_mudanca`.
     outputs:
       code_changed: ${{ steps.detectar_mudanca.outputs.code_changed }}
@@ -20,7 +24,10 @@ jobs:
       group: ci-${{ github.ref }}
       # Na `main` NAO cancela: push so de docs logo apos um push de codigo
       # cancelava o `test` do primeiro, o `deploy` dele (needs: test) nunca rodava,
-      # e o de docs nao deploya — o codigo ficava sem deploy. Em PR cancela.
+      # e o de docs nao deploya — o codigo ficava sem deploy. Sem cancelar, a fila
+      # guarda 1 pendente (um run novo substitui o pendente, nao o em andamento);
+      # se o pendente de codigo for substituido por um de docs, o `detectar_mudanca`
+      # reconcilia: so pula o deploy se a run do commit base deu certo. Em PR cancela.
       cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
     # (o `services: postgres` foi removido — era peso morto: os testes DB usam
     # testcontainers, que sobem o próprio container; o DSN localhost do conftest é
@@ -57,6 +64,8 @@ jobs:
         # coerente no ultimo commit DE CODIGO, e nada no pipeline assere a igualdade.
         # (O que NAO era benigno: o `cancel-in-progress` do `test` matar o teste do
         # push de codigo anterior — ver a `concurrency` do job, falsa na `main`.)
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           BASE="${{ github.event.before }}"
           HEAD_SHA="${{ github.sha }}"
@@ -76,8 +85,17 @@ jobs:
             elif printf '%s\n' "$ARQUIVOS" | grep -qvE '^docs/|\.md$'; then
               MOTIVO="ha mudanca fora de docs/"
             else
-              DECISAO=false
-              MOTIVO="o push mexeu apenas em docs/ e markdown"
+              # So confia no `before` se a run dele deu certo: se o push anterior
+              # (de codigo) falhou, foi cancelado ou ainda roda, o deploy dele nao
+              # aconteceu e este push so de docs nao pode herdar o "pulado".
+              # Qualquer duvida (consulta falhou, lista vazia) e fail-open.
+              ESTADO_BASE=$(gh run list --workflow CI --commit "$BASE" --event push --limit 1 --json status,conclusion --jq '.[0] | select(. != null) | "\(.status)/\(.conclusion)"') || ESTADO_BASE="consulta-falhou"
+              if [ "$ESTADO_BASE" = "completed/success" ]; then
+                DECISAO=false
+                MOTIVO="o push mexeu apenas em docs/ e markdown"
+              else
+                MOTIVO="a run do commit base nao esta completed/success (${ESTADO_BASE:-sem run}) — fail-open"
+              fi
             fi
           fi
 

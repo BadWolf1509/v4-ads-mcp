@@ -114,11 +114,20 @@ def _bash_que_funciona() -> str | None:
 _BASH = _bash_que_funciona()
 
 
-def _rodar(arquivos: list[str] | None, *, base: str = "abc123") -> str:
+def _rodar(
+    arquivos: list[str] | None,
+    *,
+    base: str = "abc123",
+    gh: str | None = "completed/success",
+) -> str:
     """Executa o script do passo com a lista de arquivos injetada.
 
     Substitui as duas chamadas de git para o teste nao depender de SHA real nem
     do estado do repo — o que importa aqui e a CLASSIFICACAO da lista.
+
+    `gh` simula a saida (ja filtrada pelo `--jq`) da consulta a run do commit base:
+    `None` = a consulta falha (exit 1); `""` = lista vazia. Shim no PATH nao
+    sombreia executavel no Git Bash, entao o `gh` falso entra por caminho absoluto.
     """
     script = _passo_de_deteccao()["run"]
     script = script.replace("${{ github.event.before }}", base)
@@ -130,6 +139,12 @@ def _rodar(arquivos: list[str] | None, *, base: str = "abc123") -> str:
     script = script.replace('git diff --name-only "$BASE" "$HEAD_SHA"', listagem)
 
     with tempfile.TemporaryDirectory() as d:
+        fake_gh = Path(d) / "gh_falso"
+        corpo = "exit 1" if gh is None else f"printf '%s' '{gh}'"
+        fake_gh.write_text("#!/usr/bin/env bash\n" + corpo + "\n", encoding="utf-8")
+        fake_gh.chmod(0o755)
+        assert "gh run list" in script, "o passo deixou de consultar a run do commit base"
+        script = script.replace("gh run list", f"'{fake_gh.as_posix()}' run list")
         sh = Path(d) / "step.sh"
         sh.write_text(script, encoding="utf-8")
         saida = Path(d) / "out"
@@ -195,6 +210,37 @@ def test_diff_vazio_deploya_fail_open() -> None:
     assert _rodar(None) == "true"
 
 
+@pytestmark_bash
+def test_base_com_run_falha_deploya() -> None:
+    """Se o push de codigo anterior falhou, o de docs nao herda o 'pulado'."""
+    assert _rodar(["docs/x.md"], gh="completed/failure") == "true"
+
+
+@pytestmark_bash
+def test_base_com_run_cancelada_ou_em_andamento_deploya() -> None:
+    assert _rodar(["docs/x.md"], gh="completed/cancelled") == "true"
+    assert _rodar(["docs/x.md"], gh="in_progress/") == "true"
+
+
+@pytestmark_bash
+def test_consulta_da_base_falha_deploya_fail_open() -> None:
+    assert _rodar(["docs/x.md"], gh=None) == "true"
+
+
+@pytestmark_bash
+def test_base_sem_run_deploya_fail_open() -> None:
+    assert _rodar(["docs/x.md"], gh="") == "true"
+
+
+def test_job_test_le_actions_e_nao_escreve() -> None:
+    perms = _workflow()["jobs"]["test"]["permissions"]
+    assert perms["actions"] == "read"
+    assert perms["contents"] == "read"
+    assert not any(v == "write" for v in perms.values())
+    env = _passo_de_deteccao().get("env") or {}
+    assert env.get("GH_TOKEN") == "${{ github.token }}"
+
+
 # --- Concorrencia: push so de docs nao pode matar o teste do push de codigo ---
 
 
@@ -202,8 +248,11 @@ def test_cancel_in_progress_falso_na_main() -> None:
     """Push de docs logo depois de um de codigo cancelava o `test` do primeiro.
 
     O deploy depende desse `test`; cancelado, ele nunca roda, e o push de docs
-    (que nao deploya) nao o repoe: o codigo ficava sem deploy. Fora da `main`
-    (PRs) o cancelamento continua valendo.
+    (que nao deploya) nao o repoe: o codigo ficava sem deploy. Sem cancelar, a
+    fila do grupo guarda 1 pendente (o run mais novo substitui o pendente anterior,
+    nao o em andamento); o caso em que o pendente de codigo e substituido por um
+    de docs fecha na reconciliacao do `detectar_mudanca`, que so pula o deploy se
+    a run do commit base deu certo. Fora da `main` (PRs) o cancelamento vale.
     """
     conc = _workflow()["jobs"]["test"]["concurrency"]
     assert conc["cancel-in-progress"] == "${{ github.ref != 'refs/heads/main' }}"
