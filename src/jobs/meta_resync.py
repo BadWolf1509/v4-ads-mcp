@@ -253,7 +253,9 @@ async def run() -> int:
             f"remove={len(plano.to_remove)} reset={len(plano.to_reset)} "
             f"unreachable={len(plano.unreachable)} blocked={plano.blocked_reason}"
         )
-        return 0
+        # Bloqueio auditado como erro precisa tambem falhar a execucao, ou a
+        # policy de Cloud Run Job failed (a unica que existe) nunca o ve.
+        return 1 if plano.blocked_reason is not None else 0
     except Exception as e:
         # F93: sem isto, um crash aqui nao deixa NENHUMA linha no audit — o job
         # some da trilha e a quebra so aparece em quem for ler o Cloud Run.

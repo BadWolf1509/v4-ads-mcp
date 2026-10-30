@@ -360,8 +360,12 @@ async def test_run_passes_google_reconcile_apply_setting_through() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_meta_failure_is_non_fatal() -> None:
-    """Piggyback do Meta explode → run() ainda retorna 0 (best-effort, não quebra Google)."""
+async def test_run_meta_failure_termina_o_job_e_sai_com_1() -> None:
+    """Piggyback do Meta explode → o job TERMINA (purge roda, pool fecha) e sai com 1.
+
+    Antes devolvia 0: a policy de alerta so enxerga execucao FALHADA, entao a
+    reconciliacao Meta morta ficava silenciosa (Task 5).
+    """
     conn = MagicMock()
     pool = _fake_pool(conn)
     oc = SimpleNamespace(refresh_token_enc=b"enc")
@@ -388,7 +392,7 @@ async def test_run_meta_failure_is_non_fatal() -> None:
     ):
         rc = await account_resync.run()
 
-    assert rc == 0
+    assert rc == 1
     close_pool.assert_awaited_once()
 
 
@@ -429,7 +433,7 @@ async def test_falha_do_piggyback_meta_deixa_rastro_no_audit(
     ):
         rc = await account_resync.run()
 
-    assert rc == 0, "auditar o crash nao pode tornar o piggyback fatal"
+    assert rc == 1, "crash do piggyback tem que falhar a execucao, depois de auditar"
     crash.assert_awaited_once()
     kwargs = crash.await_args.kwargs
     assert kwargs["operation"] == "meta_reconcile"
@@ -678,3 +682,101 @@ def test_main_wraps_run_in_asyncio_run() -> None:
 
     assert rc == 0
     asyncio_run.assert_called_once_with("sentinel-coro")
+
+
+def _stack_do_job(mocks: dict[str, Any], plano_meta: Plan) -> Any:
+    """Os patches comuns + o piggyback Meta devolvendo `plano_meta`."""
+    from contextlib import ExitStack
+
+    stack = ExitStack()
+    for chave in (
+        "init_pool",
+        "close_pool",
+        "get_pool",
+        "pick",
+        "derive",
+        "decrypt",
+        "build_client",
+        "list_customers",
+        "fetch",
+        "reconcile_google",
+        "avisar_sem_grant",
+        "record",
+        "purge",
+    ):
+        stack.enter_context(mocks[chave])
+    stack.enter_context(
+        patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=plano_meta))
+    )
+    return stack
+
+
+@pytest.mark.asyncio
+async def test_bloqueio_google_sai_com_1_depois_de_terminar_o_resto() -> None:
+    """`blocked_reason` do Google: audit gravado, Meta e purge rodam, e SO ENTAO exit 1."""
+    pool = _fake_pool(MagicMock())
+    oc = SimpleNamespace(refresh_token_enc=b"enc")
+    mocks = _base_patches(
+        pool=pool,
+        oc=oc,
+        reconcile_result=_reconcile_result(blocked_reason="queda de 40% no inventario"),
+    )
+    with _stack_do_job(mocks, Plan()):
+        rc = await account_resync.run()
+        mocks_record = mocks["record"].new  # AsyncMock do record_job_run
+        operacoes = [c.kwargs["operation"] for c in mocks_record.await_args_list]
+
+    assert rc == 1
+    assert operacoes == ["google_reconcile", "db_purge"], "audit e purge ficam ANTES do exit 1"
+    assert mocks["purge"].new.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_bloqueio_meta_no_piggyback_sai_com_1() -> None:
+    pool = _fake_pool(MagicMock())
+    oc = SimpleNamespace(refresh_token_enc=b"enc")
+    mocks = _base_patches(pool=pool, oc=oc)
+    with _stack_do_job(mocks, Plan(blocked_reason="parceria truncada")):
+        rc = await account_resync.run()
+        purge = mocks["purge"].new
+
+    assert rc == 1
+    assert purge.await_count == 1, "o purge roda antes do exit 1"
+
+
+@pytest.mark.asyncio
+async def test_sem_bloqueio_sai_com_0() -> None:
+    pool = _fake_pool(MagicMock())
+    oc = SimpleNamespace(refresh_token_enc=b"enc")
+    mocks = _base_patches(pool=pool, oc=oc)
+    with _stack_do_job(mocks, Plan()):
+        rc = await account_resync.run()
+
+    assert rc == 0
+
+
+@pytest.mark.asyncio
+async def test_segunda_execucao_no_mesmo_dia_repete_o_bloqueio_sem_acumular_efeito() -> None:
+    """Review Focus 4: o Cloud Run reexecuta o job que saiu com 1 (`maxRetries: 3`).
+
+    Cada execucao audita a SUA linha (e o que se quer: uma por tentativa), mas o
+    desfecho e o mesmo e nada alem do audit/purge e escrito de novo — a
+    idempotencia da reconciliacao em si esta provada contra banco real em
+    `test_retry_de_job_bloqueado_no_mesmo_dia_nao_muda_o_inventario`.
+    """
+    pool = _fake_pool(MagicMock())
+    oc = SimpleNamespace(refresh_token_enc=b"enc")
+    mocks = _base_patches(
+        pool=pool,
+        oc=oc,
+        reconcile_result=_reconcile_result(blocked_reason="queda de 40% no inventario"),
+    )
+    with _stack_do_job(mocks, Plan()):
+        primeira = await account_resync.run()
+        segunda = await account_resync.run()
+        reconcile = mocks["reconcile_google"].new
+
+    assert (primeira, segunda) == (1, 1)
+    chamadas = reconcile.await_args_list
+    assert len(chamadas) == 2
+    assert chamadas[0].kwargs == chamadas[1].kwargs

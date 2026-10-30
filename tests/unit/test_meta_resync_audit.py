@@ -9,6 +9,7 @@ grava UMA linha de audit com operation/platform/target_count corretos —
 continua coberta abaixo, contra `reconcile_meta()`.
 """
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -128,3 +129,34 @@ async def test_reconcile_meta_record_job_run_failure_is_non_fatal(
         "a reconciliação já tinha commitado o plano — falha do bookkeeping "
         "pós-commit não pode impedir reconcile_meta de devolvê-lo normalmente"
     )
+
+
+def _preparar_run(monkeypatch: pytest.MonkeyPatch, plano: Any) -> None:
+    settings = MagicMock()
+    settings.log_level = "INFO"
+    settings.app_env = "development"
+    monkeypatch.setattr(meta_resync, "get_settings", lambda: settings)
+    monkeypatch.setattr(meta_resync, "configure_logging", MagicMock())
+    monkeypatch.setattr(meta_resync.connection, "init_pool", AsyncMock())
+    monkeypatch.setattr(meta_resync.connection, "close_pool", AsyncMock())
+    monkeypatch.setattr(meta_resync.connection, "get_pool", lambda: _FakePool())
+    monkeypatch.setattr(meta_resync, "reconcile_meta", AsyncMock(return_value=plano))
+
+
+@pytest.mark.asyncio
+async def test_run_com_bloqueio_sai_com_1(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`blocked_reason` e auditado como erro, mas so o exit code alerta (Task 5)."""
+    from src.meta_ads.reconcile import Plan
+
+    _preparar_run(monkeypatch, Plan(blocked_reason="parceria truncada"))
+
+    assert await meta_resync.run() == 1
+
+
+@pytest.mark.asyncio
+async def test_run_sem_bloqueio_sai_com_0(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.meta_ads.reconcile import Plan
+
+    _preparar_run(monkeypatch, Plan())
+
+    assert await meta_resync.run() == 0
