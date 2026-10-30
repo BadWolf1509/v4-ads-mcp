@@ -224,3 +224,24 @@ async def test_resumo_nao_roda_em_erro(ctx, gov) -> None:
         await run_keyword_planning(**ctx, chamadas=quebra, resumo_do_resultado=resumo)
     resumo.assert_not_called()
     assert gov["audit"].await_args.kwargs["params_summary"] == {"seed_count": 2}
+
+
+@pytest.mark.asyncio
+async def test_request_id_nao_capturado_audita_none_e_nao_vazio(ctx, gov) -> None:
+    """Nao medido e `None`, nunca `""`: o executor trocava o id ausente por string vazia,
+    e o audit afirmava um id vazio onde nao havia medicao."""
+    from src.google_ads.keyword_planning import run_keyword_planning
+
+    await run_keyword_planning(**ctx, chamadas=lambda client: [1])
+
+    assert gov["audit"].await_args.kwargs["provider_request_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_request_id_capturado_vai_para_o_audit(ctx, gov) -> None:
+    from src.google_ads.keyword_planning import run_keyword_planning
+
+    with patch(f"{_MOD}.get_request_id", return_value="JjxAVnjh1bUgtd4KrxWk5Q"):
+        await run_keyword_planning(**ctx, chamadas=lambda client: [1])
+
+    assert gov["audit"].await_args.kwargs["provider_request_id"] == "JjxAVnjh1bUgtd4KrxWk5Q"

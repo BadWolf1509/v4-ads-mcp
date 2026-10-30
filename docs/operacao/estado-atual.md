@@ -18,7 +18,7 @@
 > pré-pago Meta). Smoke 6/6 depois do #165 ([roteiro e medido](smoke-saldo-da-conta.md);
 > [desenho](../superpowers/specs/2026-10-28-saldo-da-conta-design.md)). Não medidos: gestor comum e `audit_log`.
 
-> **No ar (30/10):** frente **planejador de palavras-chave** — `plan_keyword_ideas` e `get_keyword_metrics` (leitura, bucket `defer`) pelo **#167**. Smoke 30/10: 8 de 9 casos ok; o 9º (variante de grafia) tinha o esperado errado no roteiro ([roteiro e medido](smoke-planejador-de-palavras.md); [desenho](../superpowers/specs/2026-10-29-planejador-de-palavras-design.md)). Achado do smoke: `provider_request_id` vazio nas chamadas do planejador (follow-up).
+> **No ar (30/10):** frente **planejador de palavras-chave** — `plan_keyword_ideas` e `get_keyword_metrics` (leitura, bucket `defer`) pelo **#167**. Smoke 30/10: 8 de 9 casos ok; o 9º (variante de grafia) tinha o esperado errado no roteiro ([roteiro e medido](smoke-planejador-de-palavras.md); [desenho](../superpowers/specs/2026-10-29-planejador-de-palavras-design.md)). Achado do smoke: `provider_request_id` vazio nas chamadas do planejador — **corrigido em 30/10** (os serviços não levavam o interceptor do `request-id`, e o executor trocava o não medido por `""`).
 
 ---
 
@@ -97,11 +97,10 @@ escolhendo pelo nome. **Remedido em 05/10:** `get_campaign_performance` 120 (Ped
 - **Identidade `@v4company.com` sem caixa postal no TI** — desbloqueia o **F186** inteiro. Emitir
   token sob um manager existente está recusado (~38 contas Google e 26 Meta no GitHub Actions).
 - **F129** (governança do system user Meta) e **F67** (custom domain via LB).
-- **Alerta de saldo acabando** (28/10) — o [desenho do saldo](../superpowers/specs/2026-10-28-saldo-da-conta-design.md)
-  entrega só a consulta por conta; o job diário que avisa quando faltam menos de N dias ficou fora
-  por decisão. Até ele existir, descobrir conta parando ainda depende de alguém consultar (sondagem
-  de 28/10: Cantina sem saldo no Google, 3 Lagoas e Cotia paradas pelo limite na Meta). Falta
-  decidir canal e limiar; o cálculo vive em módulo puro, reaproveitável pelo job.
+- **Alerta de saldo acabando — decidido em 30/10:** não haverá job central. **Cada gestor monta a
+  própria automação** (ex.: tarefa agendada no Claude) sobre `get_account_balance` /
+  `meta_get_account_balance` nas contas que administra, avisando em `acabando`/`esgotada`. Guia para os
+  gestores: pendente.
 - **`ads_get_field_context` não rodado nos 9 fields de `GET /act_<id>`** (saldo Meta, 29/10) — o MCP oficial da
   Meta estava indisponível na sessão de 29/10. Evidência substituta: leitura ao vivo com as 9 chaves e controle
   de campo inexistente → 400. A regra F53/F54/F55 do [`nucleo.md`](../convencoes/nucleo.md) pede a checagem

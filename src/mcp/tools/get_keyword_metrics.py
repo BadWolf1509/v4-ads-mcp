@@ -67,7 +67,7 @@ class _Resultado:
 def _metricas_do_alvo(
     client: Any, customer_id: str, geo: str, termos: list[str]
 ) -> dict[str, _Achado]:
-    svc = client.get_service("KeywordPlanIdeaService")
+    svc = comum.servico(client, "KeywordPlanIdeaService")
     req = client.get_type("GenerateKeywordHistoricalMetricsRequest")
     req.customer_id = customer_id
     req.language = comum.IDIOMA
