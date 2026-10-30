@@ -95,7 +95,7 @@ async def build_client_for_manager(*, manager_id: UUID) -> Any:
             )
         )
     except RefreshError as e:
-        # invalid_grant: o gestor revogou o acesso ou o token expirou. Mesmo molde
+        # to_friendly separa invalid_grant de falha passageira. Mesmo molde
         # do F70 — converte na origem, porque este factory roda FORA do to_friendly
         # dos executores e o erro cru viraria "Erro interno".
         raise to_friendly(e) from e

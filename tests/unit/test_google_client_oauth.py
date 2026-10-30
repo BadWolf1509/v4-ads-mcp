@@ -86,3 +86,52 @@ def test_to_friendly_refresh_error() -> None:
     from src.google_ads.errors import to_friendly
 
     assert str(to_friendly(RefreshError("invalid_grant"))) == TEXTO_REFRESH
+
+
+TEXTO_TRANSITORIO = "Falha temporária ao renovar a credencial Google. Tente de novo em instantes."
+
+
+@pytest.mark.parametrize(
+    "excecao",
+    [
+        RefreshError("invalid_grant"),
+        RefreshError("invalid_grant: Token has been expired or revoked.", {"error": "x"}),
+    ],
+)
+def test_invalid_grant_manda_reconectar(excecao: RefreshError) -> None:
+    from src.google_ads.errors import to_friendly
+
+    amigavel = to_friendly(excecao)
+    assert str(amigavel) == TEXTO_REFRESH
+    assert amigavel.code == "OAUTH_REFRESH_FAILED"
+
+
+@pytest.mark.parametrize(
+    "excecao",
+    [
+        RefreshError("Unable to acquire impersonated credentials"),
+        RefreshError("503 backendError", {"error": "backendError"}),
+        RefreshError(),
+    ],
+)
+def test_refresh_sem_invalid_grant_e_transitorio(excecao: RefreshError) -> None:
+    """RefreshError tambem vem de falha passageira: "revogada" afirmaria o que nao se
+    mediu e mandaria o gestor refazer um OAuth que esta bom."""
+    from src.google_ads.errors import to_friendly
+
+    amigavel = to_friendly(excecao)
+    assert str(amigavel) == TEXTO_TRANSITORIO
+    assert amigavel.code == "OAUTH_REFRESH_TRANSIENT"
+
+
+@pytest.mark.asyncio
+async def test_refresh_transitorio_chega_ao_gestor(
+    monkeypatch: pytest.MonkeyPatch, _oauth_ativo: None
+) -> None:
+    def _falha(**_kw: Any) -> Any:
+        raise RefreshError("503 backendError")
+
+    monkeypatch.setattr(client_mod, "build_client", _falha)
+    with pytest.raises(GoogleAdsFriendlyError) as ei:
+        await client_mod.build_client_for_manager(manager_id=uuid4())
+    assert _error_envelope("x", ei.value)["error_message"] == TEXTO_TRANSITORIO
