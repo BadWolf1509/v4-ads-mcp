@@ -24,7 +24,7 @@
 
 | | |
 |---|---|
-| Revisão servindo | **a do #172** (rótulos de status da Meta, 30/10) — nome **não medido**: `gcloud` sem credencial no fecho; a última medida foi `v4-ads-mcp-00151-qk7` (#167). Depois do #167 deployaram #169, #170 e #172. ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186) |
+| Revisão servindo | **`v4-ads-mcp-00154-gq4`**, 100% do tráfego (30/10) — o **#172** (rótulos de status da Meta), sobre o **#170** (request-id do planejador), o **#169** (F110 no `customer_match` e nas conversões) e o **#167** (`00151-qk7`, planejador de palavras-chave). ⚠️ O smoke do pipeline segue sem handshake MCP **autenticado** (F186) |
 | Tools | **72** (65 Google + 7 Meta) — desde 30/10 (`v4-ads-mcp-00151-qk7`, #167: planejador de palavras-chave); antes 70 em 29/10 (#164 + #165, saldo) |
 | Buckets | **13 always + 59 defer** (05/10, 9 desceram sem uso de gestor; +2 defer do saldo em 29/10, +2 do planejador em 30/10) — [remedição](tool-buckets-2026-10-05.md); próxima com a Fase 2B, ~15/10 |
 | Catálogo | até **F203** (~6.000 linhas, 601 KB) |

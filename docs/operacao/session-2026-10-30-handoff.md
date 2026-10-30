@@ -16,7 +16,7 @@
 | #169 | F110 fora do planejador: `customer_match` e `conversions` diziam "Erro inesperado" na quota esgotada | deploy ✅ |
 | #170 | `provider_request_id` do planejador (interceptor ausente + `""` no lugar de `None`); decisão do alerta de saldo | deploy ✅ |
 | #171 | [guia do gestor para o alerta de saldo](guia-alerta-de-saldo.md) | docs |
-| #172 | rótulos de `account_status` corrigidos pela referência da Meta + `disable_reason_label` | deploy ✅ (nome da revisão não medido: `gcloud` sem credencial em 30/10) |
+| #172 | rótulos de `account_status` corrigidos pela referência da Meta + `disable_reason_label` | deploy ✅ (`00154-gq4`, servindo 100% em 30/10) |
 
 ## Decisões do Wellington
 
