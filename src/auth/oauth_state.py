@@ -10,7 +10,8 @@ Used in /oauth/google/start to encode {manager_id, kind} so the callback
 can recover them WITHOUT a server-side session lookup. Stateless across
 Cloud Run instances. Defende contra CSRF (atacante não forja HMAC) e LIMITA
 replay a STATE_TTL_SECONDS. A audiência impede que o token valha para outro
-propósito.
+propósito. O vínculo com o navegador NÃO está aqui: quem precisa dele embute um
+nonce no payload e o confere contra um cookie (`oauth.py`, `OAUTH_NONCE_COOKIE`).
 """
 
 import base64

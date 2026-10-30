@@ -1273,6 +1273,9 @@ _METODOS_BLOQUEANTES = frozenset(
         "apply_recommendation",
         "dismiss_recommendation",
         "list_accessible_customers",
+        # `GoogleAdsClient.load_from_dict` faz o HTTP sincrono do refresh do OAuth;
+        # o fecho transitivo faz de `build_client` um helper bloqueante.
+        "load_from_dict",
     }
 )
 

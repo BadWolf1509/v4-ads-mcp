@@ -8,6 +8,8 @@ The `invite` token is an HMAC-signed payload with manager_id (created
 by the bootstrap CLI). Phase 1b will replace this with a panel session.
 """
 
+import hmac
+import secrets
 from dataclasses import dataclass
 from typing import Any, Literal
 from urllib.parse import urlencode
@@ -19,7 +21,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from src.auth.domain_check import is_allowed_email
-from src.auth.oauth_state import InvalidStateError, sign_state, verify_state
+from src.auth.oauth_state import STATE_TTL_SECONDS, InvalidStateError, sign_state, verify_state
 from src.auth.tokens import derive_master_key_from_settings, encrypt_refresh_token
 from src.config import get_settings
 from src.db import connection
@@ -116,6 +118,16 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
 
+# Double-submit do `state`: o HMAC prova que o servidor emitiu o state, não quem
+# iniciou o login. O nonce vai no state e neste cookie, e o callback exige os dois
+# iguais. Sem isso, o atacante consente com a conta dele e faz a vítima abrir o
+# callback (login CSRF). `lax`, nunca `strict`: o retorno vem do domínio do Google,
+# e só o Lax acompanha navegação top-level; por isso o retorno também tem de ser GET
+# (sem `response_mode=form_post`). Dura o mesmo que o state.
+OAUTH_NONCE_COOKIE = "v4_oauth_nonce"
+_OAUTH_NONCE_PATH = "/oauth/google"
+
+
 router = APIRouter(prefix="/oauth/google", tags=["oauth"])
 
 
@@ -150,12 +162,13 @@ async def oauth_start(
     - invite=<token>: CLI invite flow with signed manager_id.
     """
     settings = get_settings()
+    nonce = secrets.token_urlsafe(32)
 
     if mode == "panel_login":
         # Self-onboarding: no invite required. Manager will be looked up or
         # created in the callback by email.
         callback_state = sign_state(
-            {"mode": "panel_login"},
+            {"mode": "panel_login", "nonce": nonce},
             settings.session_signing_key,
             aud="google_oauth",
         )
@@ -187,7 +200,7 @@ async def oauth_start(
                 raise HTTPException(status_code=404, detail="manager not found or inactive")
 
         callback_state = sign_state(
-            {"manager_id": manager_id_str},
+            {"manager_id": manager_id_str, "nonce": nonce},
             settings.session_signing_key,
             aud="google_oauth",
         )
@@ -204,7 +217,30 @@ async def oauth_start(
     }
     url = f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
     log.info("oauth_start", mode=mode)
-    return RedirectResponse(url=url, status_code=302)
+    response = RedirectResponse(url=url, status_code=302)
+    response.set_cookie(
+        OAUTH_NONCE_COOKIE,
+        nonce,
+        max_age=STATE_TTL_SECONDS,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path=_OAUTH_NONCE_PATH,
+    )
+    return response
+
+
+def _nonce_confere(request: Request, payload: dict[str, Any]) -> bool:
+    """O nonce do state assinado é o do cookie deste navegador?
+
+    Compara bytes: `hmac.compare_digest` levanta TypeError em str não ASCII, e o
+    valor do cookie é do cliente.
+    """
+    do_state = payload.get("nonce")
+    do_cookie = request.cookies.get(OAUTH_NONCE_COOKIE)
+    if not isinstance(do_state, str) or not do_state or not do_cookie:
+        return False
+    return hmac.compare_digest(do_state.encode("utf-8"), do_cookie.encode("utf-8"))
 
 
 @router.get("/callback", name="oauth_callback", response_model=None)
@@ -228,6 +264,33 @@ async def oauth_callback(
     except InvalidStateError as e:
         return _error_page(request, f"State inválido ou expirado: {e}", status=400)
 
+    if not _nonce_confere(request, payload):
+        log.warning("oauth_nonce_recusado", cookie_presente=OAUTH_NONCE_COOKIE in request.cookies)
+        return _error_page(
+            request,
+            "Este login não foi iniciado neste navegador, ou já foi concluído. "
+            "Volte à tela de entrada e tente de novo.",
+            status=400,
+        )
+
+    response = await _concluir_callback(request, code, payload)
+    # Uso único. Só depois de o nonce conferir: recusa não apaga o cookie, senão um
+    # link forjado derrubaria o login em curso de quem o abrisse.
+    response.delete_cookie(
+        OAUTH_NONCE_COOKIE,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path=_OAUTH_NONCE_PATH,
+    )
+    return response
+
+
+async def _concluir_callback(
+    request: Request, code: str, payload: dict[str, Any]
+) -> HTMLResponse | RedirectResponse:
+    """Troca o code, valida a conta e persiste. O state já foi conferido."""
+    settings = get_settings()
     mode = payload.get("mode")
     manager_id_str = payload.get("manager_id")
 
@@ -269,6 +332,17 @@ async def oauth_callback(
         )
         userinfo = userinfo_resp.json() if userinfo_resp.status_code == 200 else {}
         google_email = userinfo.get("email") or "unknown"
+
+    # `is False`, não `is not True`: o discovery do oauth2 v2 declara o campo com
+    # `default: true` (conferido em 30/10), então ausente é verificado no contrato.
+    if userinfo.get("verified_email") is None:
+        log.warning("oauth_verified_email_ausente")
+    if userinfo.get("verified_email") is False:
+        return _error_page(
+            request,
+            f"O e-mail da conta {google_email} não está verificado no Google.",
+            status=403,
+        )
 
     if not is_allowed_email(google_email):
         return _error_page(

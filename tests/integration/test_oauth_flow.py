@@ -7,6 +7,7 @@ import pytest
 import respx
 from httpx import AsyncClient, Response
 
+from src.auth.oauth import OAUTH_NONCE_COOKIE
 from src.auth.oauth_state import sign_state, verify_state
 from src.auth.panel_session import PANEL_SESSION_COOKIE_NAME, verify_panel_session
 from src.db import connection
@@ -15,6 +16,15 @@ from tests.integration._audiencia import audiencia_crua, state_da_url
 
 _SIGNING_KEY = "x" * 32
 _AES_MASTER = "y" * 43  # urlsafe base64 source for 32 bytes
+
+# O cliente daqui fala http e o cookie é `Secure`, então vai direto no cabeçalho. O
+# vínculo com o navegador em si é coberto em `tests/unit/test_oauth_navegador.py`.
+_NONCE = "nonce-de-teste"
+_COOKIE_DO_NONCE = {"cookie": f"{OAUTH_NONCE_COOKIE}={_NONCE}"}
+
+
+def _state_com_nonce(payload: dict[str, str]) -> str:
+    return sign_state({**payload, "nonce": _NONCE}, _SIGNING_KEY, aud="google_oauth")
 
 
 @pytest.mark.integration
@@ -53,7 +63,7 @@ async def test_callback_persists_encrypted_refresh_token(client: AsyncClient) ->
         mid = uuid4()
         await managers.create(conn, manager_id=mid, email="cb@v4.com", full_name=None)
 
-    state = sign_state({"manager_id": str(mid)}, _SIGNING_KEY, aud="google_oauth")
+    state = _state_com_nonce({"manager_id": str(mid)})
 
     # Mock Google's token + userinfo endpoints.
     respx.post("https://oauth2.googleapis.com/token").mock(
@@ -74,6 +84,7 @@ async def test_callback_persists_encrypted_refresh_token(client: AsyncClient) ->
 
     response = await client.get(
         f"/oauth/google/callback?code=fake-code&state={state}",
+        headers=_COOKIE_DO_NONCE,
         follow_redirects=False,
     )
     assert response.status_code == 200
@@ -94,7 +105,7 @@ async def test_callback_rejects_missing_refresh_token(client: AsyncClient) -> No
     async with pool.acquire() as conn:
         mid = uuid4()
         await managers.create(conn, manager_id=mid, email="nr@v4.com", full_name=None)
-    state = sign_state({"manager_id": str(mid)}, _SIGNING_KEY, aud="google_oauth")
+    state = _state_com_nonce({"manager_id": str(mid)})
 
     with respx.mock:
         respx.post("https://oauth2.googleapis.com/token").mock(
@@ -102,6 +113,7 @@ async def test_callback_rejects_missing_refresh_token(client: AsyncClient) -> No
         )
         response = await client.get(
             f"/oauth/google/callback?code=fake&state={state}",
+            headers=_COOKIE_DO_NONCE,
             follow_redirects=False,
         )
     assert response.status_code == 400
@@ -126,7 +138,7 @@ async def test_callback_rejects_non_v4_email(client: AsyncClient) -> None:
     async with pool.acquire() as conn:
         mid = uuid4()
         await managers.create(conn, manager_id=mid, email="d@v4.com", full_name=None)
-    state = sign_state({"manager_id": str(mid)}, _SIGNING_KEY, aud="google_oauth")
+    state = _state_com_nonce({"manager_id": str(mid)})
 
     respx.post("https://oauth2.googleapis.com/token").mock(
         return_value=Response(
@@ -146,6 +158,7 @@ async def test_callback_rejects_non_v4_email(client: AsyncClient) -> None:
 
     response = await client.get(
         f"/oauth/google/callback?code=fake&state={state}",
+        headers=_COOKIE_DO_NONCE,
         follow_redirects=False,
     )
     assert response.status_code == 403
@@ -195,7 +208,7 @@ async def test_start_panel_login_assina_state_com_audiencia_google_oauth(
     state = state_da_url(response.headers["location"])
     assert audiencia_crua(state) == "google_oauth"
     # E o par fecha: quem confere aceita o que este lado assinou.
-    assert verify_state(state, _SIGNING_KEY, aud="google_oauth") == {"mode": "panel_login"}
+    assert verify_state(state, _SIGNING_KEY, aud="google_oauth")["mode"] == "panel_login"
 
 
 @pytest.mark.integration
@@ -221,7 +234,7 @@ async def test_start_com_invite_assina_state_com_audiencia_google_oauth(
     state = state_da_url(response.headers["location"])
     assert audiencia_crua(state) == "google_oauth"
     assert state != invite, "o convite não pode ser repassado verbatim como state do callback"
-    assert verify_state(state, _SIGNING_KEY, aud="google_oauth") == {"manager_id": str(mid)}
+    assert verify_state(state, _SIGNING_KEY, aud="google_oauth")["manager_id"] == str(mid)
 
 
 @pytest.mark.integration
@@ -240,7 +253,7 @@ async def test_callback_panel_login_emite_cookie_com_audiencia_panel(client: Asy
             conn, manager_id=mid, email="painel@v4company.com", full_name="Painel"
         )
 
-    state = sign_state({"mode": "panel_login"}, _SIGNING_KEY, aud="google_oauth")
+    state = _state_com_nonce({"mode": "panel_login"})
 
     respx.post("https://oauth2.googleapis.com/token").mock(
         return_value=Response(
@@ -260,6 +273,7 @@ async def test_callback_panel_login_emite_cookie_com_audiencia_panel(client: Asy
 
     response = await client.get(
         f"/oauth/google/callback?code=fake-code&state={state}",
+        headers=_COOKIE_DO_NONCE,
         follow_redirects=False,
     )
     assert response.status_code == 302

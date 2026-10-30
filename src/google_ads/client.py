@@ -6,8 +6,14 @@ caching across managers risks privilege confusion. The construction cost
 is small.
 """
 
+from functools import partial
 from typing import Any
 from uuid import UUID
+
+from google.auth.exceptions import RefreshError
+
+from src.blocking import run_blocking
+from src.google_ads.errors import GoogleAdsFriendlyError
 
 # Imported lazily inside the factory to keep this module unit-testable
 # without the heavy google-ads SDK import.
@@ -35,7 +41,12 @@ def build_client(
     return GoogleAdsClient.load_from_dict(config)
 
 
-class NoOAuthConnectionError(Exception):
+TEXTO_SEM_OAUTH = (
+    "Gestor nao tem conexao Google Ads ativa. Pede pra ele conectar pelo painel (Conectar Google)."
+)
+
+
+class NoOAuthConnectionError(GoogleAdsFriendlyError):
     """Raised by build_client_for_manager when the manager has no active OAuth."""
 
 
@@ -60,10 +71,7 @@ async def build_client_for_manager(*, manager_id: UUID) -> Any:
         lambda conn: google_oauth_connections.get_active_for_manager(conn, manager_id)
     )
     if oc is None:
-        raise NoOAuthConnectionError(
-            "Gestor nao tem conexao Google Ads ativa. Pede pra ele conectar via "
-            "/oauth/google/start."
-        )
+        raise NoOAuthConnectionError(TEXTO_SEM_OAUTH)
 
     master_key = derive_master_key_from_settings(settings.aes_master_key)
     try:
@@ -75,10 +83,21 @@ async def build_client_for_manager(*, manager_id: UUID) -> Any:
         # o erro vazaria cru pro dispatcher e viraria "Erro interno" (F70).
         raise to_friendly(e) from e
 
-    return build_client(
-        refresh_token=refresh_token,
-        developer_token=settings.google_ads_developer_token,
-        client_id=settings.google_oauth_client_id,
-        client_secret=settings.google_oauth_client_secret,
-        login_customer_id=settings.google_ads_login_customer_id,
-    )
+    # `load_from_dict` faz o HTTP sincrono do refresh do OAuth: fora do event
+    # loop (F86), senao congela a instancia inteira ate o Google responder.
+    try:
+        return await run_blocking(
+            partial(
+                build_client,
+                refresh_token=refresh_token,
+                developer_token=settings.google_ads_developer_token,
+                client_id=settings.google_oauth_client_id,
+                client_secret=settings.google_oauth_client_secret,
+                login_customer_id=settings.google_ads_login_customer_id,
+            )
+        )
+    except RefreshError as e:
+        # to_friendly separa invalid_grant de falha passageira. Mesmo molde
+        # do F70 — converte na origem, porque este factory roda FORA do to_friendly
+        # dos executores e o erro cru viraria "Erro interno".
+        raise to_friendly(e) from e

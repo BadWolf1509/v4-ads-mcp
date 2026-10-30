@@ -6,6 +6,8 @@ can hit. Future phases extend this dict.
 
 from typing import Any
 
+from google.auth.exceptions import RefreshError
+
 from src.auth.tokens import InvalidCiphertextError
 from src.config import get_settings
 
@@ -88,6 +90,23 @@ def to_friendly(exc: Exception) -> GoogleAdsFriendlyError:
             "mudaram (migração) e o token salvo não pode mais ser lido. Acesse "
             f"{base_url} e reconecte sua conta Google no painel.",
             code="TOKEN_DECRYPT_FAILED",
+            original=exc,
+        )
+
+    # Refresh do OAuth falhou. Sem isto vira "Erro interno" no dispatcher. So o
+    # invalid_grant prova acesso revogado ou token expirado: RefreshError tambem vem
+    # de falha passageira, e ali mandar reconectar afirmaria o que nao se mediu.
+    if isinstance(exc, RefreshError):
+        if "invalid_grant" in str(exc):
+            return GoogleAdsFriendlyError(
+                "A conexão Google Ads deste gestor expirou ou foi revogada. "
+                "Reconecte pelo painel (Conectar Google).",
+                code="OAUTH_REFRESH_FAILED",
+                original=exc,
+            )
+        return GoogleAdsFriendlyError(
+            "Falha temporária ao renovar a credencial Google. Tente de novo em instantes.",
+            code="OAUTH_REFRESH_TRANSIENT",
             original=exc,
         )
 
