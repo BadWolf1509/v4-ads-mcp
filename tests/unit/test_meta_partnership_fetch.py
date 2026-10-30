@@ -10,7 +10,7 @@ import respx
 
 from src.meta_ads.partnership import fetch_partnership
 
-BASE = "https://graph.facebook.com/v22.0/619664032237208"
+BASE = "https://graph.facebook.com/v25.0/619664032237208"
 
 
 @pytest.mark.asyncio

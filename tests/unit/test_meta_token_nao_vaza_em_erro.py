@@ -59,7 +59,7 @@ async def _falha_de_transporte_carregando_o_token() -> tuple[str, list[Any], lis
     # A forma REAL da excecao: o transporte falha e a URL — com a query string —
     # vem dentro da mensagem. E assim que requests e httpx reportam.
     url_com_token = (
-        f"https://graph.facebook.com/v22.0/act_1/insights?access_token={SENTINELA}&level=campaign"
+        f"https://graph.facebook.com/v25.0/act_1/insights?access_token={SENTINELA}&level=campaign"
     )
     erro = ConnectionError(f"Max retries exceeded with url: {url_com_token}")
 
@@ -158,7 +158,7 @@ def test_o_redator_preserva_o_nome_do_parametro_e_o_resto_da_url() -> None:
     from src.meta_ads.errors import _redigir
 
     redigido = _redigir(
-        f"url: https://graph.facebook.com/v22.0/act_1/insights"
+        f"url: https://graph.facebook.com/v25.0/act_1/insights"
         f"?access_token={SENTINELA}&level=campaign&limit=5"
     )
     assert SENTINELA not in redigido
@@ -302,7 +302,7 @@ def test_o_redator_cobre_client_secret_isolado() -> None:
     from src.meta_ads.errors import _redigir
 
     redigido = _redigir(
-        f"POST https://graph.facebook.com/v22.0/oauth/access_token"
+        f"POST https://graph.facebook.com/v25.0/oauth/access_token"
         f"?client_id=123456&client_secret={SENTINELA}&redirect_uri=https://x"
     )
     assert SENTINELA not in redigido

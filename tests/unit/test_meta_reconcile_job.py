@@ -388,7 +388,7 @@ async def test_alcance_vem_da_sonda_e_o_indice_nao_e_chamado() -> None:
 
     from src.jobs import meta_resync as job
 
-    grafo = "https://graph.facebook.com/v22.0"
+    grafo = "https://graph.facebook.com/v25.0"
     contas = {
         "data": [
             {"id": "act_1", "name": "Lida", "timezone_name": "America/Sao_Paulo"},

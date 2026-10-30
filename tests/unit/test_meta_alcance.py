@@ -20,7 +20,7 @@ from src.meta_ads.alcance import (
     sondar_alcance,
 )
 
-_BASE = "https://graph.facebook.com/v22.0"
+_BASE = "https://graph.facebook.com/v25.0"
 _RECUSA = {
     "error": {
         "message": "(#200) Ad account owner has NOT grant ads_management or ads_read permission",
