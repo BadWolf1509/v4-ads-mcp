@@ -13,7 +13,7 @@
 | #176 | 3 · governança de mutação | micros sem truncar (helper único, guard por AST); `had_effect` no audit; upload de conversões conta aceitas e recusadas; `primary_for_goal` exige confirmação; `dismiss_recommendation` presa à conta; telefone com DDI sem `+` | `00157-n24` |
 | #177 | 4 · Meta v25 | Graph em `v25.0` numa constante; `x-ad-api-version-warning` vira `log.error` e alerta; erro também conta no BUC; código 80000; mensagens do Modelo B | `00158-bxt` |
 | #178 | 5 · deps e deploy | `facebook-business` (morto) sai com `aiohttp` e `multidict`; `certifi`, `pyjwt`, `opentelemetry-api` sobem; Actions por SHA; `resync` e `backup` só recebem a imagem após o smoke; deploy pulado em silêncio fechado; rollback sem `|| true`; guard de migration destrutiva | `00159-2zs` |
-| #179 | 6 · painel e contratos + este fecho | números do painel; confirmação de desativar/promover; matriz de acesso idempotente; textos, hora de Brasília e contraste; enums e descriptions das tools; achados da revisão final | deploya ao mesclar: **revisão seguinte à `00159-2zs`, conferir** |
+| #184 | 6 · painel e contratos + este fecho | números do painel; confirmação de desativar/promover; matriz de acesso idempotente; textos, hora de Brasília e contraste; enums e descriptions das tools; achados da revisão final | deploya ao mesclar: **revisão seguinte à `00159-2zs`, conferir** |
 
 Medido: leitura Meta real após o #177 sem aviso de versão; o pipeline novo rodou no #178 (smoke, rollback
 pulado, jobs na imagem nova). **Não medido:** login real e convite (primeira pendência abaixo).
@@ -41,13 +41,13 @@ pulado, jobs na imagem nova). **Não medido:** login real e convite (primeira pe
 ## Pendente (nesta ordem)
 
 1. **Rodar: login real no painel e convite.** O `state` com nonce em cookie e a recusa de
-   `verified_email=False` nunca viram um Google de verdade. Fazer logo após o deploy do #179.
+   `verified_email=False` nunca viram um Google de verdade. Fazer logo após o deploy do #184.
 2. **Alertas do Dependabot**: ajuste do repositório, feito por você.
 3. **Aplicar as correções do plugin**: [`plugin-correcoes-2026-10-30.md`](plugin-correcoes-2026-10-30.md)
    (a fonte não está no disco). Resta `v4-brand:43` do `null`.
 4. **`hd` do login Google sem conferência** (herdado do Task 3, decisão sua): hoje a trava é o e-mail
    verificado + a lista de gestores, não o domínio hospedado.
-5. **Conferir a revisão que o #179 gera** e, se a run mostrou o `migrate`/jobs na imagem nova, fechar.
+5. **Conferir a revisão que o #184 gera** e, se a run mostrou o `migrate`/jobs na imagem nova, fechar.
 6. Decisão do Pedro: ver acima.
 
 ## O que ficou fora
@@ -104,7 +104,7 @@ resposta ao gestor continua `applied`. A resposta não mudou; o audit passou a d
    (`had_effect`); o upload de conversões não contava recusas — 100% de recusa saía como sucesso.
    Agora `had_effect` gravado, aceitas e recusadas contadas, 100% recusa vira `error` com motivo; contagem
    incompleta é não medida, não zero. Fora: `apply_change` sem recheck de orçamento/lance não verificado.
-8. **(HIGH, corrigido 30/10, #176 e #179)** `update_conversion_action` mudava `primary_for_goal` (meta de
+8. **(HIGH, corrigido 30/10, #176 e #184)** `update_conversion_action` mudava `primary_for_goal` (meta de
    lance do Smart Bidding) sem confirmação; `dismiss_recommendation` aceitava `resource_name` de outra
    conta (e, achado na revisão final, `apply_recommendation` também). Agora CONFIRM para qualquer
    `primary_for_goal` e recusa por prefixo `customers/<id>/`. Fora: `dismiss` sem teste real contra o Google.
@@ -123,19 +123,19 @@ resposta ao gestor continua `applied`. A resposta não mudou; o audit passou a d
 12. **(LOW, corrigido 30/10, #178)** `facebook-business` morto desde o F190 seguia como dependência (com
     `aiohttp` e `multidict`); `certifi`, `pyjwt`, `opentelemetry-api` desatualizados. `pip-audit` limpo.
     Mais um guard contra migration destrutiva acima da 011. Fora: `mcp` 2.x e `google-ads` novos.
-13. **(MEDIUM, corrigido 30/10, #179)** Painel: "Quota MCP hoje" contava a mutação em dobro
+13. **(MEDIUM, corrigido 30/10, #184)** Painel: "Quota MCP hoje" contava a mutação em dobro
     (`developer_token_id NOT LIKE 'mgr:%'`); gestor `is_active=False` aparecia ativo; série de 30 dias sem
     zeros nos dias vazios; dia em UTC em vez de `America/Sao_Paulo`. Fora: o F84 proíbe sincronizar as
     colunas de status.
-14. **(MEDIUM, corrigido 30/10, #179)** Matriz de acesso decidia pelo estado do banco: aba velha invertia o
+14. **(MEDIUM, corrigido 30/10, #184)** Matriz de acesso decidia pelo estado do banco: aba velha invertia o
     acesso, e o toast lia `el.checked`. Agora o checkbox envia `desejado=grant|revoke`; pedido igual ao
     estado atual não muda nada nem grava audit; sem `desejado` → 422. Desativar e promover/despromover
     gestor passam a pedir confirmação. Fora: `confirm` sempre `kind danger`; toast "já estava" como success.
-15. **(LOW, corrigido 30/10, #179)** Textos falsos e hora do painel: `strftime` em UTC, "Reconectar via
+15. **(LOW, corrigido 30/10, #184)** Textos falsos e hora do painel: `strftime` em UTC, "Reconectar via
     /admin" (Modelo B), aviso de `meta_connected` ausente, `text-v4-green` com contraste insuficiente em
     texto pequeno; `denied` não traduzido no detalhe do audit; numerador Meta sem filtrar conta ativa.
     Fora: comentário de categorias.
-16. **(LOW, corrigido 30/10, #179)** Contratos das tools: o enum de `audit_orphan_smart_actions` e
+16. **(LOW, corrigido 30/10, #184)** Contratos das tools: o enum de `audit_orphan_smart_actions` e
     `audit_goal_attribution` não tinha `PHONE_CALL_LEAD`, `ADD_TO_CART`, `BEGIN_CHECKOUT`, `SUBSCRIBE_PAID`;
     `validate_gaql` dizia "sem consumir quota" (consome 1 operação); token de "8 caracteres"; `raw_grid`
     "blocos nomeados"; `remove_audience` sem avisar que audiência de campanha não vem de
