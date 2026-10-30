@@ -587,3 +587,35 @@ async def test_lote_com_duas_contas_carimba_cada_uma_no_seu_fuso(db) -> None:
     assert (fortaleza_retry["missed_syncs"], manaus_retry["missed_syncs"]) == (1, 1), (
         "o retry no mesmo dia contou de novo em alguma das duas linhas"
     )
+
+
+@pytest.mark.integration
+async def test_retry_de_job_bloqueado_no_mesmo_dia_nao_muda_o_inventario(db) -> None:
+    """Task 5, Review Focus 4: o job bloqueado sai com 1 e o Cloud Run o REEXECUTA.
+
+    Com `inventario vazio` (`complete=False`) a reconciliacao fica bloqueada. A
+    segunda execucao do mesmo dia tem que devolver o mesmo bloqueio e deixar a
+    conta exatamente como a primeira deixou: nem carencia contada de novo, nem
+    desativacao, nem revogacao — senao o retry que o exit 1 dispara nao seria
+    inofensivo.
+    """
+    async with db.acquire() as conn:
+        await _semear_conta(conn, "1234567890")
+
+        primeira = await account_resync.reconcile_google(
+            conn, accounts=[], complete=False, apply=True, now=INSTANTE_DO_BUG
+        )
+        depois_da_primeira = await _linha(conn, "1234567890")
+        segunda = await account_resync.reconcile_google(
+            conn, accounts=[], complete=False, apply=True, now=INSTANTE_DO_BUG
+        )
+        depois_da_segunda = await _linha(conn, "1234567890")
+        ativa = await conn.fetchval(
+            "SELECT is_active FROM google_ads_accounts WHERE customer_id = '1234567890'"
+        )
+
+    assert primeira["blocked_reason"] and segunda["blocked_reason"] == primeira["blocked_reason"]
+    assert segunda["removed"] == 0 and segunda["revoked_grants"] == 0
+    assert depois_da_segunda["missed_syncs"] == depois_da_primeira["missed_syncs"]
+    assert depois_da_segunda["last_missed_on"] == depois_da_primeira["last_missed_on"]
+    assert ativa is True

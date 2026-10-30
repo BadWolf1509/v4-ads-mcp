@@ -114,6 +114,7 @@ class _Conn:
         self.transacoes: list[dict[str, Any]] = []
         self.dentro_da_transacao = False
         self.copies: list[tuple[str, bool]] = []
+        self.timeouts: list[Any] = []
         # Quantos bytes ja tinham chegado ao blob quando o 1o chunk foi enviado.
         self.bytes_no_blob_apos_1o_chunk: int | None = None
         self._blob_atual: _Blob | None = None
@@ -127,8 +128,17 @@ class _Conn:
     def espiar_blob(self, blob: _Blob) -> None:
         self._blob_atual = blob
 
-    async def copy_from_query(self, query: str, *, output: Any, format: str, header: bool) -> str:
+    async def copy_from_query(
+        self,
+        query: str,
+        *,
+        output: Any,
+        format: str,
+        header: bool,
+        timeout: Any = "ausente",  # noqa: ASYNC109 - espelha a assinatura do asyncpg
+    ) -> str:
         self.copies.append((query, self.dentro_da_transacao))
+        self.timeouts.append(timeout)
         for i in range(self._linhas):
             await output(f"col_a,col_b\r\nlinha{i},valor{i}\r\n".encode())
             if i == 0 and self._blob_atual is not None:
@@ -280,3 +290,23 @@ async def test_erro_de_banco_interrompe_o_snapshot_em_vez_de_fingir() -> None:
     kwargs = record.call_args.kwargs  # type: ignore[attr-defined]
     assert kwargs["status"] == "error"
     assert kwargs["params_summary"]["failed_tables"] == ["b_table", "c_table"]
+
+
+@freeze_time("2026-08-15")
+@pytest.mark.asyncio
+async def test_copy_do_backup_nao_herda_o_command_timeout_do_pool() -> None:
+    """`command_timeout=30` do pool valeria para o COPY INTEIRO de uma tabela grande.
+
+    `timeout=None` e a unica forma de o asyncpg liberar o COPY desse limite.
+    """
+    conn = _Conn(["audit_log", "managers"])
+    client, _ = _storage_falso()
+
+    for p in _patches(_pool_falso(conn), client):
+        p.start()
+    try:
+        await backup.run()
+    finally:
+        patch.stopall()
+
+    assert conn.timeouts == [None, None]

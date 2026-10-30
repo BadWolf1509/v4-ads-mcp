@@ -142,8 +142,9 @@ async def test_job_com_inventario_vazio_pula_desativacao_e_audita_erro() -> None
         mocks["purge"],
         patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan())),
     ):
-        await account_resync.run()
+        rc = await account_resync.run()
 
+    assert rc == 1, "inventario vazio e bloqueio: a execucao tem que falhar para alertar"
     assert reconcile_google.call_args.kwargs["complete"] is False, (
         "inventario vazio tem que chegar em reconcile_google como complete=False "
         "— e esse valor que faz build_plan recusar to_remove"

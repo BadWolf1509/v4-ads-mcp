@@ -91,6 +91,9 @@ async def _dump_table_to_blob(conn: asyncpg.Connection, table_name: str, blob: A
                 output=_sink,
                 format="csv",
                 header=True,
+                # O pool nasce com `command_timeout=30`, que valeria para o COPY
+                # INTEIRO de uma tabela grande (audit_log cresce sem teto).
+                timeout=None,
             )
     return contador.total
 

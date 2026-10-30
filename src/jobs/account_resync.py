@@ -357,6 +357,13 @@ async def run() -> int:
 
         log.info("resync_complete", **resumo)
         print(f"OK: google reconcile — {resumo}")
+        # Exit code != 0 e o UNICO sinal que a policy "Cloud Run Job: execucao
+        # FALHOU" enxerga (`completed_execution_count{result=failed}`): um
+        # `blocked_reason` auditado como erro e devolvido com 0 nunca alertava.
+        # O job TERMINA o que faz (piggyback Meta, purge) e so entao sai com 1 —
+        # o retry do Cloud Run (`maxRetries: 3`) reexecuta a reconciliacao, que
+        # e idempotente por dia (F157), entao repetir um bloqueio e inofensivo.
+        falhou = resumo["blocked_reason"] is not None
 
         # Piggyback: refresh do inventário Meta no MESMO job/scheduler, pra conta
         # nova aparecer zero-touch. Best-effort — falha Meta não quebra o resync
@@ -375,7 +382,10 @@ async def run() -> int:
                 f"add={len(plano_meta.to_add)} remove={len(plano_meta.to_remove)} "
                 f"blocked={plano_meta.blocked_reason}"
             )
+            if plano_meta.blocked_reason is not None:
+                falhou = True
         except Exception as e:  # noqa: BLE001
+            falhou = True
             log.warning("meta_reconcile_failed", error=str(e))
             print(f"WARN: Meta reconcile falhou (non-fatal): {e}", file=sys.stderr)
             # F93 pela terceira porta (I2 da revisão de branch): `record_job_crash`
@@ -410,7 +420,7 @@ async def run() -> int:
             log.warning("db_purge_failed", error=str(e))
             print(f"WARN: purge falhou (non-fatal): {e}", file=sys.stderr)
 
-        return 0
+        return 1 if falhou else 0
     except Exception as e:
         # F93: crash inesperado (build_client, fetch_account_details, upsert_many)
         # nao pode sumir da trilha — o rastro ficaria so no Cloud Run.
