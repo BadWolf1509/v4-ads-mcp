@@ -257,3 +257,24 @@ def test_texto_cru_da_api_tem_espaco_nao_separavel() -> None:
     assert saldo_do_texto("Saldo disponível (R$631,96 BRL)") == Decimal("631.96")
     assert saldo_do_texto("Saldo disponível (R$0,00 BRL)") == Decimal("0.00")
     assert saldo_do_texto("Saldo disponível (R$631,96 BRL)") == Decimal("631.96")
+
+
+def test_disable_reason_vem_com_rotulo() -> None:
+    """Spec 2026-10-28 §3.3 pede `disable_reason` + rotulo; so o valor cru saia (R6)."""
+    from datetime import date
+
+    from src.meta_ads.saldo import montar_saldo_meta
+
+    conta = {**MI_IMPORTSS, "disable_reason": 3}
+    r = montar_saldo_meta(conta, {}, hoje=date(2026, 10, 30))
+    assert r["disable_reason"] == 3
+    assert r["disable_reason_label"] == "RISCO_DE_PAGAMENTO"
+
+
+def test_disable_reason_desconhecido_vira_o_numero() -> None:
+    from datetime import date
+
+    from src.meta_ads.saldo import montar_saldo_meta
+
+    r = montar_saldo_meta({**MI_IMPORTSS, "disable_reason": 99}, {}, hoje=date(2026, 10, 30))
+    assert r["disable_reason_label"] == "99"

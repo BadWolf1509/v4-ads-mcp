@@ -12,7 +12,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
-from src.meta_ads.labels import META_ACCOUNT_STATUS_LABELS
+from src.meta_ads.labels import META_ACCOUNT_STATUS_LABELS, META_DISABLE_REASON_LABELS
 from src.saldo import classificar, media_7d, media_dias_com_gasto
 
 # Os separadores sao `\s`, nao espaco literal: a Graph manda U+00A0 antes de "BRL" (repr da
@@ -69,6 +69,14 @@ def montar_saldo_meta(
         "status_conta": status,
         "status_conta_label": label,
         "disable_reason": conta.get("disable_reason"),
+        # Sem o campo, None (nao medido); codigo fora da tabela vira o proprio numero.
+        "disable_reason_label": (
+            None
+            if conta.get("disable_reason") is None
+            else META_DISABLE_REASON_LABELS.get(
+                conta["disable_reason"], str(conta["disable_reason"])
+            )
+        ),
         "forma_de_pagamento": "pre_pago" if prepago else "pos_pago",
         "forma_de_pagamento_texto": texto,
         "a_faturar_brl": None if prepago else _brl(int(conta["balance"])),

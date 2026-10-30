@@ -46,6 +46,7 @@ _DESCRIPTION = (
     "Em conta pós-paga, `a_faturar_brl` é o que ainda será cobrado, não é saldo. Cupons "
     "ficam fora do restante e aparecem em `cupons`. Conta com status diferente de ativa "
     "traz um aviso em `avisos`: os anúncios podem estar parados independente do saldo. "
+    "`status_conta_label` e `disable_reason_label` dão o status e o motivo de bloqueio em texto. "
     "`dias_restantes` = restante ÷ média diária dos 7 dias fechados; dia sem entrega conta "
     "como zero. `situacao` tem 6 valores: "
     "com_saldo = dias restantes acima de 7; "
