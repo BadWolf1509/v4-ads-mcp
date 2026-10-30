@@ -11,6 +11,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
+from zoneinfo import ZoneInfo
 
 import structlog
 from fastapi import HTTPException, Request
@@ -246,6 +247,24 @@ def meta_status_label(status: int | None) -> str:
 
 
 templates.env.filters["meta_status_label"] = meta_status_label
+
+_BRASILIA = ZoneInfo("America/Sao_Paulo")
+
+
+def hora_brasilia(valor: datetime | None, formato: str = "%d/%m %H:%M") -> str:
+    """Jinja filter: datetime (UTC no banco) -> texto no horario de Brasilia.
+
+    `strftime` direto no template imprimia UTC como se fosse hora local (3h
+    adiantado). Naive e tratado como UTC, que e o que o banco grava.
+    """
+    if valor is None:
+        return "—"
+    if valor.tzinfo is None:
+        valor = valor.replace(tzinfo=UTC)
+    return valor.astimezone(_BRASILIA).strftime(formato)
+
+
+templates.env.filters["hora_brasilia"] = hora_brasilia
 
 # Cache-busting dos estaticos: muda a cada revisao do Cloud Run, o que torna
 # seguro o Cache-Control imutavel de CachedStaticFiles.

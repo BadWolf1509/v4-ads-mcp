@@ -34,7 +34,7 @@
         <tr>
           <td class="col-mono">{{ a.customer_id }}</td>
           <td><strong>{{ a.descriptive_name }}</strong></td>
-          <td class="text-xs text-v4-gray-500">{{ a.synced_at.strftime('%d/%m %H:%M') }}</td>
+          <td class="text-xs text-v4-gray-500">{{ a.synced_at|hora_brasilia('%d/%m %H:%M') }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -109,7 +109,7 @@
           <td>{{ a.currency_code or "—" }}</td>
           <td>{{ a.time_zone or "—" }}</td>
           <td>{% if a.is_test_account %}{{ badge("Test", "warning") }}{% else %}—{% endif %}</td>
-          <td class="col-mono">{{ a.synced_at.strftime("%d/%m %H:%M") }}</td>
+          <td class="col-mono">{{ a.synced_at|hora_brasilia("%d/%m %H:%M") }}</td>
         </tr>
         {% endfor %}
       </tbody>

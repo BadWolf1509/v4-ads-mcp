@@ -110,7 +110,8 @@ def build_warnings(
         if days_left < 7:
             iso_date = token_expires_at.date().isoformat()
             out.append(
-                f"Token OAuth Meta expira em {days_left} dias ({iso_date}). "
-                f"Reconectar via /admin → 'Conectar Meta' pra evitar interrupção das tools."
+                f"Token do system user Meta expira em {days_left} dias ({iso_date}). "
+                f"O admin precisa gerar outro e subir o secret meta-system-user-token "
+                f"antes disso, pra evitar interrupção das tools."
             )
     return out

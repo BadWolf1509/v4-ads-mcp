@@ -53,6 +53,7 @@
         <option value="all" {% if filter_status == "all" %}selected{% endif %}>Todos</option>
         <option value="success" {% if filter_status == "success" %}selected{% endif %}>OK</option>
         <option value="error" {% if filter_status == "error" %}selected{% endif %}>Erros</option>
+        <option value="denied" {% if filter_status == "denied" %}selected{% endif %}>Negados</option>
       </select>
     </div>
     <div class="v4-form__group m-0">
@@ -96,7 +97,7 @@
           <tr id="row-{{ r.id }}" class="is-expandable"
               data-v4-action="row-toggle" data-v4-target="row-{{ r.id }}"
               tabindex="0" aria-expanded="false">
-            <td class="col-mono">{{ r.occurred_at.strftime("%H:%M:%S") }}</td>
+            <td class="col-mono">{{ r.occurred_at|hora_brasilia("%H:%M:%S") }}</td>
             <td class="col-mono">{{ r.operation }}</td>
             <td>
               {% if r.customer_id %}

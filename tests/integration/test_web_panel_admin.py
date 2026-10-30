@@ -1242,3 +1242,80 @@ async def test_desativar_e_promover_pedem_confirmacao(client: AsyncClient):
         assert f'data-v4-confirm-title="{titulo}"' in botao.group(0)
         assert "hx-post" not in botao.group(0)
         assert f">{rotulo}</button>" in response.text[botao.start() :]
+
+
+@pytest.mark.integration
+async def test_admin_index_mostra_aviso_de_meta_conectada_e_revogada(client: AsyncClient):
+    pool = connection.get_pool()
+    admin_id, _ = await _bootstrap_admin_and_gestor(pool)
+    cookies = {PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)}
+
+    r = await client.get("/admin?meta_connected=1", cookies=cookies)
+    assert r.status_code == 200
+    assert "Conexão Meta" in r.text and "conectada" in r.text
+
+    r = await client.get("/admin?meta_revoked=1", cookies=cookies)
+    assert r.status_code == 200
+    assert "Conexão Meta revogada" in r.text
+
+    r = await client.get("/admin", cookies=cookies)
+    assert "Conexão Meta conectada" not in r.text
+    assert "Conexão Meta revogada" not in r.text
+
+
+@pytest.mark.integration
+async def test_audit_filtro_negado_existe_e_denied_sai_traduzido(client: AsyncClient):
+    pool = connection.get_pool()
+    admin_id, _ = await _bootstrap_admin_and_gestor(pool)
+    cookies = {PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)}
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """INSERT INTO audit_log (manager_id, operation, action_type, status, platform)
+               VALUES ($1, 'update_campaign_status', 'mutate', 'denied', 'google')""",
+            admin_id,
+        )
+    for url in ("/admin/audit?days=7", "/audit?days=7"):
+        r = await client.get(url, cookies=cookies)
+        assert r.status_code == 200, url
+        assert 'value="denied"' in r.text, url
+    r = await client.get("/admin/audit?days=7&status=denied", cookies=cookies)
+    assert "Negado" in r.text
+    assert ">denied<" not in r.text
+
+
+@pytest.mark.integration
+async def test_admin_access_meta_by_manager_numerador_exclui_conta_inativa(
+    client: AsyncClient,
+):
+    """Espelho Meta do numerador Google: grant vivo em conta inativa nao conta."""
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        await meta_ad_accounts.upsert_many(
+            conn,
+            [
+                {
+                    "ad_account_id": ad_id,
+                    "business_id": "b1",
+                    "business_name": "B",
+                    "account_name": ad_id,
+                    "currency": "BRL",
+                    "timezone_name": "America/Sao_Paulo",
+                    "account_status": 1,
+                }
+                for ad_id in ("act_1", "act_2")
+            ],
+        )
+        await manager_meta_account_access.grant(conn, manager_id=gestor_id, ad_account_id="act_1")
+        await manager_meta_account_access.grant(conn, manager_id=gestor_id, ad_account_id="act_2")
+        await conn.execute(
+            "UPDATE meta_ad_accounts SET is_active = false WHERE ad_account_id = 'act_2'"
+        )
+
+    r = await client.get(
+        "/admin/access/meta/by-manager",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert r.status_code == 200
+    assert "1 / 1 contas" in r.text
+    assert "2 / 1 contas" not in r.text

@@ -49,7 +49,7 @@
           <td>{{ inv.full_name or "—" }}</td>
           <td class="col-mono">{{ inv.invited_by_email or "?" }}</td>
           <td>
-            <span class="col-mono">{{ inv.invited_at.strftime("%d/%m/%Y %H:%M") }}</span>
+            <span class="col-mono">{{ inv.invited_at|hora_brasilia("%d/%m/%Y %H:%M") }}</span>
             {% if inv.days_pending > 7 %}
               {{ badge("há " ~ inv.days_pending ~ " dias", "warning") }}
             {% endif %}

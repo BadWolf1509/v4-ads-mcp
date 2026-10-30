@@ -55,6 +55,7 @@
         <option value="all" {% if filter_status == "all" %}selected{% endif %}>Todos</option>
         <option value="success" {% if filter_status == "success" %}selected{% endif %}>OK</option>
         <option value="error" {% if filter_status == "error" %}selected{% endif %}>Erros</option>
+        <option value="denied" {% if filter_status == "denied" %}selected{% endif %}>Negados</option>
       </select>
     </div>
     <div class="v4-form__group m-0">
@@ -91,7 +92,7 @@
     <tbody>
       {% for r in rows %}
       <tr>
-        <td class="col-mono">{{ r.occurred_at.strftime("%d/%m %H:%M:%S") }}</td>
+        <td class="col-mono">{{ r.occurred_at|hora_brasilia("%d/%m %H:%M:%S") }}</td>
         <td><strong>{{ r.manager_email or "?" }}</strong></td>
         <td class="col-mono">{{ r.operation }}</td>
         <td>{{ r.account_name or r.customer_id or "—" }}</td>
@@ -103,6 +104,7 @@
         <td>
           {% if r.status == "success" %}{{ badge("✓ OK", "success") }}
           {% elif r.status == "error" %}{{ badge("✗ Erro", "error") }}
+          {% elif r.status == "denied" %}{{ badge("⊘ Negado", "error") }}
           {% else %}{{ badge(r.status, "neutral") }}{% endif %}
         </td>
         <td>{{ r.target_count or "—" }}</td>

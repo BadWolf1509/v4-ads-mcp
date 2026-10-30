@@ -64,8 +64,8 @@
             {% elif m.status == "invited" %}{{ badge("Convidado", "warning") }}
             {% else %}{{ badge("Ativo", "success") }}{% endif %}
           </td>
-          <td class="col-mono">{{ m.created_at.strftime("%d/%m/%Y") }}</td>
-          <td class="col-mono">{{ m.last_seen_at.strftime("%d/%m %H:%M") if m.last_seen_at else "—" }}</td>
+          <td class="col-mono">{{ m.created_at|hora_brasilia("%d/%m/%Y") }}</td>
+          <td class="col-mono">{{ m.last_seen_at|hora_brasilia("%d/%m %H:%M") if m.last_seen_at else "—" }}</td>
           <td class="text-right">
             {% if m.id != current_user.id %}
             {{ dropdown("dd-" ~ loop.index, [

@@ -33,8 +33,8 @@ module.exports = {
           800: 'var(--v4-gray-800)',
           900: 'var(--v4-gray-900)',
         },
-        'v4-green': { DEFAULT: 'var(--v4-green)', soft: 'var(--v4-green-soft)' },
-        'v4-gold': { DEFAULT: 'var(--v4-gold)', soft: 'var(--v4-gold-soft)' },
+        'v4-green': { DEFAULT: 'var(--v4-green)', soft: 'var(--v4-green-soft)', text: 'var(--v4-green-text)' },
+        'v4-gold': { DEFAULT: 'var(--v4-gold)', soft: 'var(--v4-gold-soft)', text: 'var(--v4-gold-text)' },
       },
       fontFamily: {
         sans: ['Montserrat', 'system-ui', 'sans-serif'],

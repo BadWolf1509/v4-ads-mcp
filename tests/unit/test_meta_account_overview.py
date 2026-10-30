@@ -180,7 +180,8 @@ class TestBuildWarnings:
         assert len(warnings) == 1
         assert "5 dias" in warnings[0]
         assert "2026-05-30" in warnings[0]
-        assert "Reconectar" in warnings[0]
+        assert "meta-system-user-token" in warnings[0]
+        assert "Reconectar" not in warnings[0]
 
     def test_build_warnings_token_expires_in_6_days_still_warns(self):
         now = datetime(2026, 5, 25, 12, 0, tzinfo=UTC)

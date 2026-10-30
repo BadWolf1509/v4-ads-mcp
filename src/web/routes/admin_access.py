@@ -247,10 +247,12 @@ async def admin_access_meta_by_manager(
         # revogado e contradizia a pagina de detalhe (que ja filtra).
         managers_with_counts = await conn.fetch(
             """SELECT m.id, m.email, m.full_name,
-                      count(mmaa.ad_account_id) AS access_count
+                      count(a.ad_account_id) AS access_count
                FROM managers m
                LEFT JOIN manager_meta_account_access mmaa
                       ON mmaa.manager_id = m.id AND mmaa.revoked_at IS NULL
+               LEFT JOIN meta_ad_accounts a
+                      ON a.ad_account_id = mmaa.ad_account_id AND a.is_active = true
                WHERE m.is_active = true
                GROUP BY m.id ORDER BY m.email"""
         )

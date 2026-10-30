@@ -26,12 +26,12 @@
             {{ s.label or "(sem nome)" }}
           </a>
         </td>
-        <td class="col-mono">{{ s.created_at.strftime("%d/%m/%Y %H:%M") }}</td>
+        <td class="col-mono">{{ s.created_at|hora_brasilia("%d/%m/%Y %H:%M") }}</td>
         <td class="col-mono">
-          {% if s.last_used_at %}{{ s.last_used_at.strftime("%d/%m %H:%M") }}{% else %}<span class="text-v4-gray-500">nunca</span>{% endif %}
+          {% if s.last_used_at %}{{ s.last_used_at|hora_brasilia("%d/%m %H:%M") }}{% else %}<span class="text-v4-gray-500">nunca</span>{% endif %}
         </td>
         <td class="col-mono">
-          {% if s.expires_at %}{{ s.expires_at.strftime("%d/%m/%Y") }}{% else %}<em>—</em>{% endif %}
+          {% if s.expires_at %}{{ s.expires_at|hora_brasilia("%d/%m/%Y") }}{% else %}<em>—</em>{% endif %}
         </td>
         {% if include_revoked %}
         <td>
