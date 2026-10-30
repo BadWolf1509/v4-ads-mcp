@@ -430,3 +430,37 @@ async def test_audit_had_effect_false_quando_nada_mudou(monkeypatch):
 async def test_audit_had_effect_none_quando_nao_medido(monkeypatch):
     kw = await _roda_e_captura_audit(monkeypatch, [None, None], nomes=[])
     assert kw["had_effect"] is None
+
+
+@pytest.mark.asyncio
+async def test_audit_had_effect_none_quando_excecao(monkeypatch):
+    from src.google_ads import mutations
+
+    monkeypatch.setattr(mutations, "import_all_builders", lambda: None)
+    monkeypatch.setattr(
+        mutations, "get_builder", lambda _op: lambda c, cid, p: [MagicMock(), MagicMock()]
+    )
+    monkeypatch.setattr(
+        mutations, "build_client_for_manager", AsyncMock(side_effect=RuntimeError("boom"))
+    )
+    registro = AsyncMock()
+    with (
+        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(mutations, "ensure_account_access", AsyncMock()),
+        patch.object(mutations, "before_call", AsyncMock()),
+        patch.object(mutations, "record_actual", AsyncMock()),
+        patch.object(mutations.audit_log, "record", registro),
+        pytest.raises(RuntimeError, match="boom"),
+    ):  # o executor relanca; o audit grava antes
+        await run_mutation(
+            manager_id=uuid4(),
+            session_id=uuid4(),
+            customer_id="1234567890",
+            operation_type="add_negatives_from_search_terms",
+            payload={"negatives": [{}, {}]},
+            target_count=2,
+            partial_failure=True,
+        )
+    kw = registro.await_args.kwargs
+    assert kw["status"] == "error"
+    assert kw["had_effect"] is None

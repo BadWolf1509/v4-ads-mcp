@@ -77,3 +77,53 @@ async def test_100_aceitas_had_effect_true():
     assert kw["status"] == "success"
     assert kw["had_effect"] is True
     assert kw["params_summary"]["failed_count"] == 0
+
+
+def _client_results_vazio():
+    client = _mock_client_with_partial_failure(0, 0)
+    return client
+
+
+@pytest.mark.asyncio
+async def test_results_vazio_para_100_linhas_e_nao_medido():
+    result, kw = await _roda(_client_results_vazio(), 100)
+    assert kw["had_effect"] is None
+    assert kw["status"] == "success"
+    assert "applied_count" not in kw["params_summary"]
+    assert "failed_count" not in kw["params_summary"]
+    assert kw["params_summary"]["conversion_count"] == 100
+    assert kw["error_message"] is None
+    # o envelope ao gestor nao muda
+    assert result["status"] == "applied"
+    assert result["applied_count"] == 0
+    assert result["failed_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_results_curto_e_nao_medido():
+    _, kw = await _roda(_mock_client_with_partial_failure(30, 20), 100)
+    assert kw["had_effect"] is None
+    assert "applied_count" not in kw["params_summary"]
+    assert "failed_count" not in kw["params_summary"]
+
+
+@pytest.mark.asyncio
+async def test_100_recusadas_grava_error_message_e_loga_status_do_audit():
+    with patch("src.google_ads.conversions.log") as log:
+        _, kw = await _roda(_mock_client_with_partial_failure(0, 100), 100)
+    assert kw["status"] == "error"
+    assert kw["error_message"] == "0 de 100 conversões aceitas"
+    executado = [c for c in log.info.call_args_list if c.args[0] == "conversion_upload_executed"]
+    assert len(executado) == 1
+    assert executado[0].kwargs["status"] == "error"
+
+
+@pytest.mark.asyncio
+async def test_excecao_no_upload_had_effect_none():
+    client = _mock_client_with_partial_failure(0, 0)
+    client.get_service.return_value.upload_click_conversions.side_effect = RuntimeError("boom")
+    result, kw = await _roda(client, 5)
+    assert result["status"] == "error"
+    assert kw["status"] == "error"
+    assert kw["had_effect"] is None
+    assert "applied_count" not in kw["params_summary"]

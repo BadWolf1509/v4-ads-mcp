@@ -187,7 +187,7 @@ def micros_to_currency(micros: int | float) -> float:
 
 def brl_para_micros(valor: float) -> int:
     """BRL -> micros, ARREDONDADO. truncar o produto float de 2.01 da 2_009_999."""
-    return int(round(Decimal(str(valor)) * 1_000_000))
+    return round(Decimal(str(valor)) * 1_000_000)
 
 
 def razao(numerador: float | None, denominador: float | None) -> float | None:

@@ -143,6 +143,23 @@ def test_builder_promotion_percent_off_sets_micros_with_10000_factor():
     assert asset_op.field("asset_operation.create.promotion_asset.percent_off") == 200_000
 
 
+def test_builder_promotion_percent_off_arredonda_em_vez_de_truncar():
+    """0.57 * 10_000 em float da 5699.999...; truncar grava 5699."""
+    from src.google_ads.mutates.assets import build_create_and_link_assets
+
+    asset = {
+        "type": "PROMOTION",
+        "attachment_level": "CAMPAIGN",
+        "attachment_id": "customers/1234567890/campaigns/99999",
+        "promotion_target": "Verão 2026",
+        "percent_off": 0.57,
+        "final_urls": ["https://example.com/promo"],
+    }
+    client = make_capture_client()
+    ops = build_create_and_link_assets(client, "1234567890", _payload_with_assets([asset]))
+    assert ops[0].field("asset_operation.create.promotion_asset.percent_off") == 5700
+
+
 def test_builder_promotion_money_amount_off_sets_amount_micros_and_brl():
     """V4 invariant: currency_code hardcoded BRL."""
     from src.google_ads.mutates.assets import build_create_and_link_assets

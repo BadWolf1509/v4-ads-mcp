@@ -106,6 +106,7 @@ async def run_conversion_upload(
     error_message: str | None = None
     err_text: str | None = None
     reserved = False
+    status_audit = "success"  # reatribuido no finally a partir de `status`
 
     try:
         # Reserve quota: global (developer token) + per-manager cap. Transacao
@@ -235,8 +236,13 @@ async def run_conversion_upload(
             # Upload com 100% de recusa nao e sucesso na trilha. `status_audit` e so da
             # trilha: o `status` acima decide o envelope e segue "applied", para a
             # resposta continuar trazendo as falhas por linha.
-            medido = status == "success"
-            status_audit = "error" if medido and applied_count == 0 and target_count > 0 else status
+            # So e MEDIDO se o Google contou todas as linhas: `results` vazio ou
+            # curto da applied=0/failed=0, que nao e "nenhuma aceita".
+            status_audit = status
+            medido = status == "success" and applied_count + failed_count == target_count
+            if medido and applied_count == 0 and target_count > 0:
+                status_audit = "error"
+                error_message = f"0 de {target_count} conversões aceitas"
             resumo = dict(params_summary or {"conversion_count": target_count})
             if medido:
                 resumo["applied_count"] = applied_count
@@ -273,7 +279,7 @@ async def run_conversion_upload(
         target_count=target_count,
         applied_count=applied_count,
         failed_count=failed_count,
-        status=status,
+        status=status_audit,
     )
 
     return {

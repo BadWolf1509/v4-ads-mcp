@@ -27,6 +27,7 @@ on 2026-05-18:
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any
 
 from src.google_ads.mutates._common import register_builder
@@ -94,7 +95,7 @@ def build_create_and_link_assets(
                 promo.discount_modifier = discount_mod_enum[a["discount_modifier"]]
             if "percent_off" in a:
                 # 1_000_000 micros = 100% per Google spec; multiply by 10_000
-                promo.percent_off = int(a["percent_off"] * 10_000)
+                promo.percent_off = int(round(Decimal(str(a["percent_off"])) * 10_000))
             else:
                 # 1 BRL = 1_000_000 micros
                 promo.money_amount_off.amount_micros = brl_para_micros(a["money_amount_off_brl"])
