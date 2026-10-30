@@ -107,7 +107,7 @@ escolhendo pelo nome. **Remedido em 05/10:** `get_campaign_performance` 120 (Ped
   de campo inexistente → 400. A regra F53/F54/F55 do [`nucleo.md`](../convencoes/nucleo.md) pede a checagem
   antes de shippar. **Decidido em 29/10:** o Wellington aceitou a evidência ao vivo para shippar; rodar o
   `ads_get_field_context` quando o MCP oficial voltar à sessão, para fechar a regra no sentido literal.
-- **`QuotaExhausted` vira "Erro inesperado" fora do planejador** (achado de passagem na revisão, 29/10) — `customer_match.run_offline_user_data_job` passa `QuotaExhausted` por `to_friendly`, então a recusa de cota chega ao gestor como "Erro inesperado" sem dizer qual cota (F110). O executor novo do planejador trata certo. Checar também `conversions.run_conversion_upload`. Fora do escopo da frente.
+- **`QuotaExhausted` vira "Erro inesperado" fora do planejador** — **corrigido em 30/10** (branch `fix/quota-exhausted-executores`): `customer_match.run_offline_user_data_job` e `conversions.run_conversion_upload` ganharam o ramo próprio do F110, com teste que falha contra o código anterior. `run_report`, `run_mutation` e `run_recommendation_action` já estavam certos (o `to_friendly` envolve só o SDK).
 - **`recommendation_subscription`** — recomendada a tool de LEITURA, varrendo só o que o gestor
   alcança e contando os opacos (F185: 4 de 11 sem chave); a de escrita, não.
 

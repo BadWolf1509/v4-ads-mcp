@@ -35,6 +35,7 @@ from src.google_ads.request_id import (
 )
 from src.governance.bookkeeping import best_effort
 from src.governance.rate_limit import (
+    QuotaExhausted,
     before_call,
     hash_developer_token,
     record_actual,
@@ -167,6 +168,17 @@ async def run_conversion_upload(
             response, payload, client
         )
 
+    except QuotaExhausted as e:
+        # F110: a mensagem da recusa ja diz qual cota, usado/limite e o reset; o
+        # to_friendly a trocava por "Erro inesperado ao falar com o Google Ads".
+        status = "error"
+        error_message = str(e)
+        log.warning(
+            "conversion_upload_quota_exhausted",
+            operation=operation_type,
+            customer_id=customer_id,
+        )
+        err_text = str(e)
     except Exception as e:
         status = "error"
         error_message = str(e)

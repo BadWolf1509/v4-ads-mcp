@@ -112,6 +112,9 @@ async def test_quota_exhausted_blocks_and_skips_record_actual():
     audit_mock.assert_awaited_once()
     assert audit_mock.call_args.kwargs["status"] == "error"
     assert result["status"] == "error"
+    # F110: a mensagem diz QUAL cota esgotou — antes saia "Erro inesperado ao falar com o
+    # Google Ads (QuotaExhausted)", porque o `QuotaExhausted` passava pelo `to_friendly`.
+    assert result["error_message"] == "quota diaria esgotada"
 
 
 @pytest.mark.asyncio
