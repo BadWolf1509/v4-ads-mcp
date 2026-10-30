@@ -17,6 +17,7 @@ from src.google_ads.cidades import (
 )
 from src.google_ads.errors import GoogleAdsFriendlyError
 from src.google_ads.planejador import normalizar_termo
+from src.google_ads.request_id import get_capture_interceptor
 
 IDIOMA = "languageConstants/1014"
 BRASIL = "geoTargetConstants/2076"
@@ -37,9 +38,18 @@ def nao_resolvida(e: CidadeNaoResolvida) -> GoogleAdsFriendlyError:
     )
 
 
+def servico(client: Any, nome: str) -> Any:
+    """Servico do SDK com o interceptor que captura o `request-id` do Google.
+
+    Sem ele o id nunca e lido (medido ao vivo em 30/10: `None` sem, o id com) e o audit
+    perde o rastro da chamada. Mesmo padrao de `mutations.py`.
+    """
+    return client.get_service(nome, interceptors=[get_capture_interceptor()])
+
+
 def resolver_cidades(client: Any, pedidos: list[str]) -> list[Cidade]:
     partes = [separar_uf(p) for p in pedidos]
-    svc = client.get_service("GeoTargetConstantService")
+    svc = servico(client, "GeoTargetConstantService")
     req = client.get_type("SuggestGeoTargetConstantsRequest")
     req.locale = "pt"
     req.country_code = "BR"

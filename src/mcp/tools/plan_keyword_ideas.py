@@ -115,7 +115,7 @@ def _ideias_da_origem(
     sementes: list[str] | None,
     url: str | None,
 ) -> list[tuple[str, Metricas]]:
-    svc = client.get_service("KeywordPlanIdeaService")
+    svc = comum.servico(client, "KeywordPlanIdeaService")
     req = client.get_type("GenerateKeywordIdeasRequest")
     req.customer_id = customer_id
     req.language = comum.IDIOMA

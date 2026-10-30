@@ -119,7 +119,8 @@ class _Falso:
             "SuggestGeoTargetConstantsRequest": SuggestGeoTargetConstantsRequest,
         }[nome]()
 
-    def get_service(self, nome: str) -> Any:
+    def get_service(self, nome: str, interceptors: Any = None) -> Any:
+        self.__dict__.setdefault("servicos", []).append((nome, list(interceptors or [])))
         if nome == "KeywordPlanIdeaService":
             return SimpleNamespace(generate_keyword_ideas=self._gerar)
         return SimpleNamespace(suggest_geo_target_constants=self._sugerir)
@@ -457,3 +458,17 @@ async def test_audit_recebe_target_count_e_falhas_parciais() -> None:
     assert kw["target_count"] == 1
     assert kw["params_summary"]["origens_com_falha"] == 1
     assert kw["params_summary"]["total_ideias"] == 1
+
+
+def test_servicos_pedidos_com_o_interceptor_do_request_id() -> None:
+    """Sem o interceptor o `request-id` do Google nunca e capturado e o audit perdia o
+    rastro de toda chamada (medido em 30/10: `provider_request_id` vazio; com o
+    interceptor, a mesma chamada ao vivo devolveu o id)."""
+    from src.google_ads.request_id import get_capture_interceptor
+
+    falso = _Falso()
+    _roda(falso, {"sementes": ["aluguel de andaime"], "cidades": ["João Pessoa"]})
+    pedidos = dict(falso.servicos)
+    assert set(pedidos) == {"KeywordPlanIdeaService", "GeoTargetConstantService"}
+    for nome, interceptors in falso.servicos:
+        assert get_capture_interceptor() in interceptors, nome

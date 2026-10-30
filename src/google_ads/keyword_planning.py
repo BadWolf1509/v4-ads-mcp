@@ -78,7 +78,7 @@ async def run_keyword_planning[T](
     reserved = False
     resultado: T | None = None
     # Lido DENTRO do closure: o ContextVar do interceptor nao volta da thread.
-    request_id: list[str] = []
+    request_id: list[str | None] = []
     target_count: int | None = None
 
     try:
@@ -100,7 +100,7 @@ async def run_keyword_planning[T](
             try:
                 return chamadas(client)
             finally:
-                request_id.append(get_request_id() or "")
+                request_id.append(get_request_id())
 
         resultado = await run_blocking(_executar)
         if isinstance(resultado, Sized):
@@ -182,7 +182,8 @@ async def run_keyword_planning[T](
                 operation=operation_name,
                 target_count=target_count,
                 params_summary=params_summary,
-                provider_request_id=request_id[-1] if request_id else "",
+                # Nao capturado e `None` (nao medido), nunca "".
+                provider_request_id=request_id[-1] if request_id else None,
                 status=status,
                 error_message=error_message,
                 duration_ms=duration_ms,
