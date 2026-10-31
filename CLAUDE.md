@@ -114,7 +114,7 @@ Solo dev on `main` (admin bypass). Commits: `feat(scope): …` / `fix(scope): �
 - **Secret Manager:** `gcloud secrets versions access latest --secret=<NAME> --project=v4-ads-mcp`. Secret novo entra no serviço e no `--set-secrets` do `deploy.yml`; lista em `convencoes/processo.md`.
 - **No psql no Windows** — `python+asyncpg` pra DB direto.
 - **Supabase MCP** + **Meta MCP oficial** (`ads_get_field_context` pra validar fields Meta) em config. **Claude in Chrome** disponível pra smoke visual.
-- **Hooks:** PostToolUse auto-format ruff em .py + PreToolUse guard contra editar migration commitada + `guard-bash` (gate sem `&&` antes do commit, `gcloud` com stderr mudo, `git checkout` de arquivo). Bloqueio de hook não se contorna: pare e pergunte. PowerShell pipe converte LF→CRLF mesmo binary (F47).
+- **Hooks:** PostToolUse auto-format ruff em .py + PreToolUse guard contra editar migration commitada + `guard-bash` (gate sem `&&` antes do commit, `gcloud` com stderr mudo, `git checkout` de arquivo, espera sem `timeout`). Bloqueio de hook não se contorna: pare e pergunte. PowerShell pipe converte LF→CRLF mesmo binary (F47).
 
 ## Padrão de solução
 

@@ -1,4 +1,4 @@
-# PreToolUse hook: bloqueia tres formas de comando que ja causaram dano aqui e
+# PreToolUse hook: bloqueia quatro formas de comando que ja causaram dano aqui e
 # que a regra escrita nao impediu de voltar (ver Don't do do CLAUDE.md):
 #
 #   1. gate ligado ao `git commit` por algo que nao seja `&&`: o commit roda
@@ -6,6 +6,8 @@
 #   2. `gcloud` com stderr silenciado: a reautenticacao pendura em silencio
 #      (9h39 em uma vez).
 #   3. `git checkout` de arquivo: descarta trabalho nao commitado.
+#   4. espera sem limite de tempo: um `until grep` num log apagado rodou por
+#      23h30 em 30/10, porque falhar parecia "ainda nao terminou".
 #
 # Stdin: JSON com tool_input.command.
 # Fora de escopo e erro de parse falham ABERTO: este guard roda em todo comando,
@@ -47,6 +49,11 @@ if ($cmd -match "gcloud\b[^\n|;&]*2>\s*(/dev/null|\`$null|NUL)") {
 $arquivo = "git\s+checkout\b[^\n|;&]*(\s--\s|\s\.(\s|$)|\s[^\s-][^\s]*\.[A-Za-z0-9]{1,6}(\s|$))"
 if ($cmd -match $arquivo) {
     Write-Deny "git checkout de arquivo descarta trabalho nao commitado. Para sabotar um teste, copie o arquivo e restaure da copia. Se for mesmo necessario, peca ao humano."
+}
+
+$espera = "(?m)(^|[;&|(]\s*)(until\s|while\s+(true|:)\b)"
+if ($cmd -match $espera -and $cmd -notmatch "\btimeout\s+\d") {
+    Write-Deny "Espera sem limite de tempo nunca termina se a condicao nao vier. Use: timeout 590 bash -c 'until ...; do sleep 20; done'. Nao descarte o erro da condicao com 2>/dev/null."
 }
 
 exit 0
