@@ -19,6 +19,17 @@
             "statusMessage": "guard migrations"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& (Join-Path (git rev-parse --show-toplevel) '.claude/hooks/guard-bash.ps1')\"",
+            "timeout": 10,
+            "statusMessage": "guard bash"
+          }
+        ]
       }
     ],
     "PostToolUse": [
