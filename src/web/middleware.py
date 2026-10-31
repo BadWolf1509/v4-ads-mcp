@@ -52,12 +52,13 @@ def _rota_isenta_de_csrf(path: str) -> bool:
 # Complete inventory of external origins the panel loads (verified 2026-05-29 via
 # grep of templates + static; promoted from Report-Only to enforcing after smoke
 # confirmed zero CSP violations in the browser console across all panel pages):
-#   - https://unpkg.com            → script (htmx.org@2.0.3, SRI-pinned)
 #   - https://fonts.bunny.net      → stylesheet + font files (loaded via <link
 #                                     rel="preconnect"|"stylesheet"> in _base.html
 #                                     head since 2026-07-04 — was @import in
 #                                     v4-base.css; policy below is unchanged)
 # No Google Fonts, no image CDNs. All other assets are self-hosted under /static/.
+# 2026-10-31: o htmx saiu do unpkg e passou a /static/htmx-2.0.3.min.js; o hash
+# do arquivo e fixado em test_frontend_a11y_guards.py.
 #
 # 2026-08-11: o Tailwind deixou de ser CDN. O CSS passou a ser gerado offline
 # (scripts/build_tailwind.py) e servido de /static, o que permitiu remover
@@ -81,7 +82,7 @@ def _rota_isenta_de_csrf(path: str) -> bool:
 # o overflow do drawer e a medicao sticky seguem funcionando.
 _CSP_POLICY = (
     "default-src 'self'; "
-    "script-src 'self' https://unpkg.com; "
+    "script-src 'self'; "
     "style-src 'self' https://fonts.bunny.net; "
     "font-src 'self' https://fonts.bunny.net; "
     "img-src 'self' data:; "

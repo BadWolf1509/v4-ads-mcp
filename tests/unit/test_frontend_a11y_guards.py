@@ -5,6 +5,8 @@ reincidencia de classes de bug que so apareceriam num browser. Cada guard
 referencia a medicao que o motivou (investigacao de frontend 2026-08-11).
 """
 
+import base64
+import hashlib
 import re
 from pathlib import Path
 
@@ -566,3 +568,13 @@ def test_erro_de_alvo_do_htmx_nao_morre_calado():
     """A falha acima nao mostrou nada: so responseError e sendError tinham aviso."""
     js = (_STATIC / "v4-panel.js").read_text(encoding="utf-8")
     assert re.search(r"addEventListener\('htmx:targetError',[^\n]*showToast\(", js)
+
+
+def test_htmx_servido_localmente_com_o_hash_auditado():
+    """O hash e o SRI que o unpkg servia em producao ate 31/10."""
+    arquivo = _STATIC / "htmx-2.0.3.min.js"
+    digest = base64.b64encode(hashlib.sha384(arquivo.read_bytes()).digest()).decode()
+    assert digest == "0895/pl2MU10Hqc6jd4RvrthNlDiE9U1tWmX7WRESftEDRosgxNsQG/Ze9YMRzHq"
+    base = (_TEMPLATES / "_base.html").read_text(encoding="utf-8")
+    assert "/static/htmx-2.0.3.min.js" in base
+    assert "unpkg.com" not in base

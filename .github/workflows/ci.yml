@@ -205,6 +205,12 @@ jobs:
       - name: Unit + non-DB integration tests
         run: pytest tests/unit tests/integration -m "not integration" -v
 
+      # Cliques reais no painel: o defeito de 31/10 morava entre o HTML e a rota.
+      - name: Browser smoke (Playwright)
+        run: |
+          python -m playwright install --with-deps chromium
+          pytest tests/browser -v
+
       - name: DB integration tests
         env:
           TESTCONTAINERS_RYUK_DISABLED: "true"
