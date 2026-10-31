@@ -19,7 +19,7 @@
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00163-qwq`** (#179), 100% do tráfego, conferida em 31/10. Sequência da varredura: #174 `00155-flr`, #175 `00156-2lh`, #176 `00157-n24`, #177 `00158-bxt`, #178 `00159-2zs`, #184 `00160-bcd`. Dependências de 31/10, uma por deploy, com leitura real no Google Ads depois de cada uma: #186 `00161-nfg`, #183 `00162-dqd` (`websockets` 17), #179 `00163-qwq` (`grpcio` 1.85). O smoke do pipeline segue sem handshake MCP **autenticado** (F186); o pipeline novo (smoke antes dos jobs, rollback pulado) rodou de verdade no #178 |
+| Revisão servindo | **`v4-ads-mcp-00164-x6w`** (#188), 100% do tráfego, conferida em 31/10. Sequência da varredura: #174 `00155-flr`, #175 `00156-2lh`, #176 `00157-n24`, #177 `00158-bxt`, #178 `00159-2zs`, #184 `00160-bcd`. Dependências de 31/10, uma por deploy, com leitura real no Google Ads depois de cada uma: #186 `00161-nfg`, #183 `00162-dqd` (`websockets` 17), #179 `00163-qwq` (`grpcio` 1.85). Confirmação do painel: #188 `00164-x6w`. O smoke do pipeline segue sem handshake MCP **autenticado** (F186); o pipeline novo (smoke antes dos jobs, rollback pulado) rodou de verdade no #178 |
 | Tools | **72** (65 Google + 7 Meta) |
 | Buckets | **13 always + 59 defer** — [remedição](tool-buckets-2026-10-05.md) |
 | Catálogo | até **F203** (~6.000 linhas, 601 KB); os defeitos da varredura aguardam o `/findings-add` |
@@ -39,8 +39,8 @@ Segue travada no soak; não tombstonar.
 **Memória e erros:** pico de p99 horário 50% em 30 dias; um único 5xx (503 em `/health?deep=1`,
 01/10 17:09 UTC, causa desconhecida, sem deploy no dia).
 
-**Smoke da varredura:** leitura Meta real após o #177, sem aviso de versão. **Não feito:** login real
-no painel e convite (ver Pendências).
+**Smoke da varredura:** leitura Meta real após o #177, sem aviso de versão. Login real feito pelo
+Wellington em 31/10. **Não feito:** convite (ver Pendências).
 
 ⚠️ **`deploy: skipped` não significa "PR de documentação":** o gate do F138 pula só push
 exclusivamente em `docs/` e markdown; `tests/` publica revisão. **Cheque a revisão servindo.**
@@ -53,18 +53,18 @@ nas **duas** linhas do `.github/workflows/deploy.yml` (o `JOB_ENV_VARS`, que o j
 `--set-env-vars` do serviço); a revogação é soft (`revoked_at`) e o painel reconcede com um clique.
 
 **Fase 2B travada no soak** — o tombstone dos 8 reports antigos espera os gestores migrarem para
-`get_performance_breakdown`; só o Luiz migrou. O plugin 0.5.0 já manda usar o breakdown.
+`get_performance_breakdown`; só o Luiz migrou, e o Pedro, que mais usava os antigos, saiu em 31/10. O plugin 0.5.0 já manda usar o breakdown.
 
 ## Pendências que dependem do Wellington
 
-- **Rodar: login real no painel e convite** — o bloco 1 mudou o `state` do OAuth (nonce em cookie) e
-  passou a recusar `verified_email=False`; nada disso foi exercitado contra o Google de verdade.
+- **Rodar: convite e cancelamento de convite** — o login real passou em 31/10; o convite segue sem
+  teste, e o clique em "Cancelar" só foi corrigido no #188.
+- **Desligamento do Pedro:** desativado em 31/10 no painel. Falta contar conexões OAuth, acessos e
+  sessões que ficaram guardados; a leitura do banco foi barrada e precisa de aval explícito.
 - **Alertas do Dependabot** do repositório: ajuste do repositório, feito por você.
 - **Plugin `v4-trafego-google-ads`:** aplicar as correções de
   [`plugin-correcoes-2026-10-30.md`](plugin-correcoes-2026-10-30.md) na fonte. O `null` já foi tratado
   no 0.5.0; **resta `shared/v4-brand.md:43`**.
-- **Pedro: 45 recusas** (Google `4493906974` e Meta `act_4051924171730156`, de 07/10 a 27/10):
-  conceder o acesso ou orientar. Decisão sua, no painel.
 - **`hd` do login Google sem conferência** (decisão do Wellington, registrada no handoff).
 - **Nível de acesso da API Meta** — `ads_api_access_tier: development_access` (26/09); a regra do
   D1 pede 500 chamadas em 15 dias; Meta fez 459 em 30 dias. Pedir agora ou esperar.
