@@ -19,7 +19,7 @@
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00160-bcd`** (#184), 100% do tráfego, conferida em 31/10. Sequência da varredura: #174 `00155-flr`, #175 `00156-2lh`, #176 `00157-n24`, #177 `00158-bxt`, #178 `00159-2zs`, #184 `00160-bcd`. O smoke do pipeline segue sem handshake MCP **autenticado** (F186); o pipeline novo (smoke antes dos jobs, rollback pulado) rodou de verdade no #178 |
+| Revisão servindo | **`v4-ads-mcp-00163-qwq`** (#179), 100% do tráfego, conferida em 31/10. Sequência da varredura: #174 `00155-flr`, #175 `00156-2lh`, #176 `00157-n24`, #177 `00158-bxt`, #178 `00159-2zs`, #184 `00160-bcd`. Dependências de 31/10, uma por deploy, com leitura real no Google Ads depois de cada uma: #186 `00161-nfg`, #183 `00162-dqd` (`websockets` 17), #179 `00163-qwq` (`grpcio` 1.85). O smoke do pipeline segue sem handshake MCP **autenticado** (F186); o pipeline novo (smoke antes dos jobs, rollback pulado) rodou de verdade no #178 |
 | Tools | **72** (65 Google + 7 Meta) |
 | Buckets | **13 always + 59 defer** — [remedição](tool-buckets-2026-10-05.md) |
 | Catálogo | até **F203** (~6.000 linhas, 601 KB); os defeitos da varredura aguardam o `/findings-add` |
