@@ -140,3 +140,7 @@ resposta ao gestor continua `applied`. A resposta não mudou; o audit passou a d
     "blocos nomeados"; `remove_audience` sem avisar que audiência de campanha não vem de
     `get_audience_performance`. Constante única, guard `test_contratos_enum`. Fora: buckets e descriptions
     dependem da remedição de uso.
+
+## Adendo de 31/10: confirmação do painel sem envio
+
+Texto para o `/findings-add`: `htmx.ajax` sem `source` termina em `htmx:targetError` no htmx 2.0.3 e não envia nada. O erro não tinha aviso, então a confirmação fechava sem efeito. O `6ebed64` (#184) levou "Desativar" e "Promover" para esse caminho; o padrão vem de agosto e alcança também revogar conexão, restaurar conta Meta, cancelar convite e revogar sessão no detalhe. Os testes liam HTML e chamavam a rota, e nenhum clicava. Fix no #188 (`00164-x6w`): `source: el`, aviso para `htmx:targetError` e dois guards. Fora: teste de navegador no CI. Smoke: clique em "Desativar" com o envio bloqueado gerou `POST toggle-active`; o fluxo completo com resposta não foi exercitado depois do fix.
