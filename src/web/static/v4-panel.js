@@ -237,7 +237,8 @@ const ACOES = {
     onConfirm: () => {
       // F75: o `target` do htmx.ajax resolve via querySelector — nada de
       // "closest tr" aqui. Sem alvo, swap:"none".
-      const opts = { swap: el.dataset.v4Swap || 'none' };
+      // Sem `source` o htmx para em htmx:targetError e nao envia nada.
+      const opts = { source: el, swap: el.dataset.v4Swap || 'none' };
       if (el.dataset.v4Target) opts.target = el.dataset.v4Target;
       // Recarregar depois da acao e responsabilidade da ROTA, via HX-Refresh.
       htmx.ajax('POST', el.dataset.v4Post, opts);
@@ -302,6 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Requisicao que falha (4xx/5xx/rede) nao morre calada.
   document.body.addEventListener('htmx:responseError', () => showToast('Erro na requisição — a ação pode não ter sido aplicada.', 'error'));
   document.body.addEventListener('htmx:sendError', () => showToast('Falha de rede — a ação não foi aplicada.', 'error'));
+  document.body.addEventListener('htmx:targetError', () => showToast('Erro no painel — a ação não foi enviada.', 'error'));
 
   // Checkbox da matriz de acessos: toast no sucesso, reverte no erro.
   // Delegado de proposito — o fragmento de reposicao servido pela rota nao

@@ -545,3 +545,24 @@ def test_panel_js_nao_le_atributo_que_ninguem_emite():
     js = (_STATIC / "v4-panel.js").read_text(encoding="utf-8")
     for atributo in ("v4Reload", "v4ConfirmKind"):
         assert atributo not in js, f"{atributo} nao e emitido por nenhuma template"
+
+
+def test_htmx_ajax_sempre_declara_a_origem():
+    """Sem `source`, o htmx 2.0.3 para em `htmx:targetError` e nao envia nada.
+
+    Medido em producao em 31/10: "Desativar" fechava a confirmacao sem POST
+    nenhum. So `swap: 'none'` nao basta; `source` e o que da um elemento ao htmx.
+    """
+    js = (_STATIC / "v4-panel.js").read_text(encoding="utf-8")
+    chamadas = re.findall(r"htmx\.ajax\(\s*'[A-Z]+',\s*[^,]+,\s*(\w+)\s*\)", js)
+    assert chamadas, "nenhum htmx.ajax achado: o guard perdeu o alvo"
+    for nome in chamadas:
+        literal = re.search(rf"const {nome} = \{{(.*?)\}};", js, re.S)
+        assert literal, f"opcoes do htmx.ajax nao achadas: {nome}"
+        assert re.search(r"\bsource:", literal.group(1)), f"htmx.ajax sem source: {nome}"
+
+
+def test_erro_de_alvo_do_htmx_nao_morre_calado():
+    """A falha acima nao mostrou nada: so responseError e sendError tinham aviso."""
+    js = (_STATIC / "v4-panel.js").read_text(encoding="utf-8")
+    assert re.search(r"addEventListener\('htmx:targetError',[^\n]*showToast\(", js)
