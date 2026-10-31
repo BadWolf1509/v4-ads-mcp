@@ -33,6 +33,7 @@ dev = [
     "testcontainers[postgres]>=4.8.0",
     "respx>=0.21.0",
     "freezegun>=1.5.0",
+    "playwright>=1.49.0",
 ]
 
 [tool.ruff]

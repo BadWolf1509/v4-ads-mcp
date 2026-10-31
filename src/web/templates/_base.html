@@ -31,7 +31,7 @@
      Gerado por scripts/build_tailwind.py — nao editar a mao. #}
   <link rel="stylesheet" href="/static/v4-tailwind.css?v={{ asset_version }}">
   <link rel="icon" type="image/svg+xml" href="/static/logo/logo_v4_puro_round.svg?v={{ asset_version }}">
-  <script src="https://unpkg.com/htmx.org@2.0.3" integrity="sha384-0895/pl2MU10Hqc6jd4RvrthNlDiE9U1tWmX7WRESftEDRosgxNsQG/Ze9YMRzHq" crossorigin="anonymous" defer></script>
+  <script src="/static/htmx-2.0.3.min.js?v={{ asset_version }}" defer></script>
   {# Todo o comportamento do painel. Externo, e nao inline, pra que a CSP possa
      rodar sem script-src 'unsafe-inline'. defer garante DOM pronto e mantem a
      ordem: htmx primeiro. #}
