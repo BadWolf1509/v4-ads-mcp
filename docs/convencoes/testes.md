@@ -11,6 +11,10 @@
 
 ---
 
+### Smoke de navegador (`tests/browser`)
+
+Playwright com templates, estáticos e CSP reais, e rotas de teste. Fluxo novo de clique no painel entra aqui: teste que lê arquivo ou chama rota não alcança o que mora entre os dois (31/10, "Desativar" sem envio). Roda no CI, não no gate; localmente exige `playwright install chromium`.
+
 ### Test fixture pattern (integration)
 
 
