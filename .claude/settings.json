@@ -25,6 +25,17 @@
             "statusMessage": "guard migrations"
           }
         ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File ${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-bash.ps1",
+            "timeout": 10,
+            "statusMessage": "guard bash"
+          }
+        ]
       }
     ]
   }
