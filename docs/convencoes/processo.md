@@ -52,6 +52,10 @@ Sprint que shippa ou muda uma tool mutante não fecha com os passos de **APPLY**
 - **O lock é FECHADO (F198):** toda dependência de toda linha tem linha própria — o passo "Lockfile fechado" do CI e o full sweep conferem (`scripts/check_lockfile_fechado.py`: venv limpo, `--no-deps`, `pip check`). Bump do Dependabot que traz dependência nova **exige regerar o lock**; aplicar só a linha dele deixa a nova entrar por resolução, sem pin (foi o `opentelemetry-api` de 20/09 a 27/09).
 - **Dependência nova de PROD:** edite `pyproject.toml` E regenere `requirements.txt` no MESMO commit com `uv pip compile pyproject.toml -o requirements.txt --universal` — sem markers de plataforma o `pywin32` win-only quebra o build Linux/CNB; buildpack e CI instalam desse lockfile.
 
+## Espera com limite
+
+Todo `until` ou `while true` roda sob `timeout`, e o erro da condição não é descartado: em 30/10 um `until grep ... 2>/dev/null` num log apagado rodou por 23h30, porque falhar parecia "ainda não terminou". O `guard-bash` nega a forma sem `timeout`.
+
 ## Detalhe dos tripwires do `CLAUDE.md`
 
 Texto integral, com as medições, das regras encurtadas em 31/10.

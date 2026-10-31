@@ -41,6 +41,9 @@ def _negado(comando: str) -> bool:
         "git checkout HEAD -- src/a.py",
         "git checkout src/web/v4-panel.js",
         "git checkout .",
+        "until grep -q ok log 2>/dev/null; do sleep 4; done",
+        "cd x && until test -f y; do sleep 1; done",
+        "while true; do sleep 5; done",
     ],
 )
 def test_comando_perigoso_e_negado(comando: str) -> None:
@@ -59,6 +62,10 @@ def test_comando_perigoso_e_negado(comando: str) -> None:
         "git checkout -b fix/confirm-sem-alvo",
         "git checkout feat/htmx-local",
         "ls | grep x && echo ok",
+        "timeout 590 bash -c 'until gh pr view 1; do sleep 20; done'",
+        "for i in 1 2 3; do sleep 1; done",
+        "while read l; do echo $l; done < arquivo",
+        "echo until amanha",
     ],
 )
 def test_comando_legitimo_passa(comando: str) -> None:
