@@ -13,7 +13,7 @@
 | #176 | 3 · governança de mutação | micros sem truncar (helper único, guard por AST); `had_effect` no audit; upload de conversões conta aceitas e recusadas; `primary_for_goal` exige confirmação; `dismiss_recommendation` presa à conta; telefone com DDI sem `+` | `00157-n24` |
 | #177 | 4 · Meta v25 | Graph em `v25.0` numa constante; `x-ad-api-version-warning` vira `log.error` e alerta; erro também conta no BUC; código 80000; mensagens do Modelo B | `00158-bxt` |
 | #178 | 5 · deps e deploy | `facebook-business` (morto) sai com `aiohttp` e `multidict`; `certifi`, `pyjwt`, `opentelemetry-api` sobem; Actions por SHA; `resync` e `backup` só recebem a imagem após o smoke; deploy pulado em silêncio fechado; rollback sem `|| true`; guard de migration destrutiva | `00159-2zs` |
-| #184 | 6 · painel e contratos + este fecho | números do painel; confirmação de desativar/promover; matriz de acesso idempotente; textos, hora de Brasília e contraste; enums e descriptions das tools; achados da revisão final | deploya ao mesclar: **revisão seguinte à `00159-2zs`, conferir** |
+| #184 | 6 · painel e contratos + este fecho | números do painel; confirmação de desativar/promover; matriz de acesso idempotente; textos, hora de Brasília e contraste; enums e descriptions das tools; achados da revisão final | `00160-bcd`, servindo 100% |
 
 Medido: leitura Meta real após o #177 sem aviso de versão; o pipeline novo rodou no #178 (smoke, rollback
 pulado, jobs na imagem nova). **Não medido:** login real e convite (primeira pendência abaixo).
@@ -47,8 +47,7 @@ pulado, jobs na imagem nova). **Não medido:** login real e convite (primeira pe
    (a fonte não está no disco). Resta `v4-brand:43` do `null`.
 4. **`hd` do login Google sem conferência** (herdado do Task 3, decisão sua): hoje a trava é o e-mail
    verificado + a lista de gestores, não o domínio hospedado.
-5. **Conferir a revisão que o #184 gera** e, se a run mostrou o `migrate`/jobs na imagem nova, fechar.
-6. Decisão do Pedro: ver acima.
+5. Decisão do Pedro: ver acima.
 
 ## O que ficou fora
 

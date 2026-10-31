@@ -19,7 +19,7 @@
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00159-2zs`** (#178), 100% do tráfego. O **#184** (este PR, fecho da varredura) deploya ao mesclar: **revisão seguinte à `00159-2zs`, conferir**. Sequência do dia: #174 `00155-flr`, #175 `00156-2lh`, #176 `00157-n24`, #177 `00158-bxt`, #178 `00159-2zs`. O smoke do pipeline segue sem handshake MCP **autenticado** (F186); o pipeline novo (smoke antes dos jobs, rollback pulado) rodou de verdade no #178 |
+| Revisão servindo | **`v4-ads-mcp-00160-bcd`** (#184), 100% do tráfego, conferida em 31/10. Sequência da varredura: #174 `00155-flr`, #175 `00156-2lh`, #176 `00157-n24`, #177 `00158-bxt`, #178 `00159-2zs`, #184 `00160-bcd`. O smoke do pipeline segue sem handshake MCP **autenticado** (F186); o pipeline novo (smoke antes dos jobs, rollback pulado) rodou de verdade no #178 |
 | Tools | **72** (65 Google + 7 Meta) |
 | Buckets | **13 always + 59 defer** — [remedição](tool-buckets-2026-10-05.md) |
 | Catálogo | até **F203** (~6.000 linhas, 601 KB); os defeitos da varredura aguardam o `/findings-add` |
