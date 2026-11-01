@@ -54,6 +54,12 @@ _DESCRIPTION = (
     "VITALÍCIO (`tipo_orcamento: 'vitalicio'`) não tem projeção mensal (null) e a linha "
     "avisa. Só entidades ativas contam (`escopo`); pausadas ficam fora. Campanha ativa sem "
     "linha de gasto no período gastou zero; gasto que a Meta não reportou vem null. "
+    "`total.gasto_fechado_ativas_brl` soma SÓ as campanhas ativas; o gasto do mês de campanhas "
+    "fora da lista (pausadas, encerradas) vem em `total.gasto_fora_do_escopo_brl` (null se a "
+    "leitura foi truncada ou no dia 1), então some os dois para o gasto da conta. Conjunto ou "
+    "campanha ACTIVE com data final (`end_time`/`stop_time`) já vencida é excluído e contado "
+    "em `excluidos_por_data_final`. Orçamento ilegível não esconde o gasto: `gasto_fechado_brl` "
+    "e a projeção seguem na linha. "
     "`truncated: true` = lista de campanhas, conjuntos ou gasto incompleta: o `total` vem "
     "null, porque soma parcial não é total. Só contas em BRL. Somente leitura. "
     "Do contrato de métricas da Meta, só `spend_brl` é usado aqui: " + CONTRATO_NA_DESCRIPTION
@@ -78,7 +84,12 @@ def _orcamento_da_campanha(
     if ilegivel:
         return {"diario": None, "vitalicio": None, "em": "conjuntos"}
     if any(c.get("lifetime_budget_brl") is not None for c in conjuntos):
-        return {"diario": None, "vitalicio": True, "em": "conjuntos"}
+        return {
+            "diario": None,
+            "vitalicio": None,
+            "vitalicio_em_conjuntos": True,
+            "em": "conjuntos",
+        }
     return {
         "diario": orcamento_total(
             campanha=None, conjuntos=[c.get("daily_budget_brl") for c in conjuntos]
@@ -100,14 +111,16 @@ def _linha(
     orc = _orcamento_da_campanha(camp, conjuntos, conjuntos_truncados=conjuntos_truncados)
     ritmo = ritmo_de(
         daily_budget=orc["diario"],
-        lifetime_budget=orc["vitalicio"] if isinstance(orc["vitalicio"], float) else None,
+        lifetime_budget=orc["vitalicio"],
         gasto_fechado=gasto,
         dias_fechados=dias_fechados,
         dias_no_mes=dias_no_mes,
     )
     tipo = ritmo["tipo_orcamento"]
     observacao = ritmo["observacao"]
-    if orc["vitalicio"] is True:  # vitalicio nos conjuntos: nao ha valor unico para mostrar
+    if orc.get(
+        "vitalicio_em_conjuntos"
+    ):  # vitalicio nos conjuntos: nao ha valor unico para mostrar
         tipo = "vitalicio"
         observacao = "conjunto com orçamento vitalício: sem projeção mensal"
         ritmo = {**ritmo, "projecao": None, "projecao_vs_orcamento_pct": None}
@@ -123,9 +136,7 @@ def _linha(
         "tipo_orcamento": tipo,
         "orcamento_em": orc["em"],
         "orcamento_diario_brl": orc["diario"],
-        "orcamento_vitalicio_brl": orc["vitalicio"]
-        if isinstance(orc["vitalicio"], float)
-        else None,
+        "orcamento_vitalicio_brl": orc["vitalicio"],
         "orcamento_mensal_brl": ritmo["orcamento_mensal_brl"],
         "gasto_fechado_brl": gasto,
         "media_diaria_brl": ritmo["media_diaria"],
@@ -137,19 +148,32 @@ def _linha(
 
 
 def _total(
-    linhas: list[dict[str, Any]], *, truncated: bool, dias_fechados: int, dias_no_mes: int
+    linhas: list[dict[str, Any]],
+    *,
+    truncated: bool,
+    gasto_fora: float | None,
+    dias_fechados: int,
+    dias_no_mes: int,
 ) -> dict[str, Any]:
-    """Soma so quando a lista esta completa e cada parcela e legivel."""
-    vazio: dict[str, Any] = {
-        "gasto_fechado_brl": None,
+    """Total das campanhas ATIVAS; soma so quando a lista esta completa e cada parcela legivel.
+
+    `gasto_fora_do_escopo_brl` e o gasto do mes de campanhas que nao estao na lista (pausadas,
+    encerradas): sem ele o total das ativas se leria como o gasto da conta.
+    """
+    total: dict[str, Any] = {
+        "gasto_fechado_ativas_brl": None,
+        "gasto_fora_do_escopo_brl": gasto_fora,
         "orcamento_diario_brl": None,
         "orcamento_mensal_brl": None,
         "media_diaria_brl": None,
         "projecao_mensal_brl": None,
         "projecao_vs_orcamento_pct": None,
     }
-    if truncated or not linhas:
-        return vazio
+    if truncated or dias_fechados == 0:
+        return total
+    if not linhas:
+        total["gasto_fechado_ativas_brl"] = 0.0  # nenhuma ativa, lista completa
+        return total
     gastos = [ln["gasto_fechado_brl"] for ln in linhas]
     orcs = [ln["orcamento_diario_brl"] for ln in linhas]
     gasto = None if any(g is None for g in gastos) else round(sum(gastos), 2)
@@ -162,14 +186,28 @@ def _total(
         dias_fechados=dias_fechados,
         dias_no_mes=dias_no_mes,
     )
-    return {
-        "gasto_fechado_brl": gasto,
-        "orcamento_diario_brl": orcamento,
-        "orcamento_mensal_brl": ritmo["orcamento_mensal_brl"],
-        "media_diaria_brl": ritmo["media_diaria"],
-        "projecao_mensal_brl": ritmo["projecao"],
-        "projecao_vs_orcamento_pct": ritmo["projecao_vs_orcamento_pct"],
-    }
+    total.update(
+        {
+            "gasto_fechado_ativas_brl": gasto,
+            "orcamento_diario_brl": orcamento,
+            "orcamento_mensal_brl": ritmo["orcamento_mensal_brl"],
+            "media_diaria_brl": ritmo["media_diaria"],
+            "projecao_mensal_brl": ritmo["projecao"],
+            "projecao_vs_orcamento_pct": ritmo["projecao_vs_orcamento_pct"],
+        }
+    )
+    return total
+
+
+def _encerrada(linha: dict[str, Any], campo: str, hoje: date) -> bool:
+    """Data final ja vencida: a entidade pode seguir ACTIVE sem entregar nem orcar."""
+    valor = linha.get(campo)
+    if not isinstance(valor, str) or len(valor) < 10:
+        return False
+    try:
+        return date.fromisoformat(valor[:10]) < hoje
+    except ValueError:
+        return False
 
 
 @register_tool(
@@ -212,6 +250,11 @@ async def meta_get_budget_pacing(args: dict[str, Any]) -> dict[str, Any]:
         conjuntos, adset_trunc = await listar_entidades(
             ctx, ad_account_id, "adset", "ACTIVE", _LIMITE_ENTIDADES
         )
+        n_camp_total, n_adset_total = len(campanhas), len(conjuntos)
+        campanhas = [c for c in campanhas if not _encerrada(c, "stop_time", hoje)]
+        conjuntos = [c for c in conjuntos if not _encerrada(c, "end_time", hoje)]
+        n_camp_enc = n_camp_total - len(campanhas)
+        n_adset_enc = n_adset_total - len(conjuntos)
         gastos: dict[str, float | None] = {}
         insights_trunc = False
         if dias_fechados:
@@ -272,6 +315,12 @@ async def meta_get_budget_pacing(args: dict[str, Any]) -> dict[str, Any]:
         )
     linhas.sort(key=lambda ln: -(ln["gasto_fechado_brl"] or 0.0))
     truncated = camp_trunc or adset_trunc or insights_trunc
+    ativas = {c["id"] for c in campanhas}
+    fora = [v for k, v in gastos.items() if k not in ativas]
+    gasto_fora: float | None = None
+    if dias_fechados and not insights_trunc and not camp_trunc:
+        valores = [v for v in fora if v is not None]
+        gasto_fora = round(sum(valores), 2) if len(valores) == len(fora) else None
     resposta: dict[str, Any] = {
         "status": "success",
         "ad_account_id": ad_account_id,
@@ -281,11 +330,19 @@ async def meta_get_budget_pacing(args: dict[str, Any]) -> dict[str, Any]:
         "dias_no_mes": dias_no_mes,
         "dias_fechados": dias_fechados,
         "dias_restantes": dias_restantes,
-        "escopo": _ESCOPO,
+        "escopo": (
+            f"{_ESCOPO} Excluídos por data final já vencida, apesar de ACTIVE: {n_camp_enc} "
+            f"campanha(s) (stop_time) e {n_adset_enc} conjunto(s) (end_time)."
+        ),
+        "excluidos_por_data_final": {"campanhas": n_camp_enc, "conjuntos": n_adset_enc},
         "truncated": truncated,
         "campaigns": linhas,
         "total": _total(
-            linhas, truncated=truncated, dias_fechados=dias_fechados, dias_no_mes=dias_no_mes
+            linhas,
+            truncated=truncated,
+            gasto_fora=gasto_fora,
+            dias_fechados=dias_fechados,
+            dias_no_mes=dias_no_mes,
         ),
     }
     if truncated:

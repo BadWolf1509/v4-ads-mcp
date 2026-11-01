@@ -285,7 +285,7 @@ async def test_truncamento_de_campanhas_anula_o_total() -> None:
     assert r["truncated"] is True
     assert r["total"]["projecao_mensal_brl"] is None
     assert r["total"]["orcamento_diario_brl"] is None
-    assert r["total"]["gasto_fechado_brl"] is None
+    assert r["total"]["gasto_fechado_ativas_brl"] is None
 
 
 @pytest.mark.asyncio
@@ -328,7 +328,7 @@ async def test_total_soma_quando_tudo_legivel() -> None:
         insights={"data": [_insight("1", "1000.00"), _insight("2", "500.00")]},
     )
     t = r["total"]
-    assert t["gasto_fechado_brl"] == 1500.0
+    assert t["gasto_fechado_ativas_brl"] == 1500.0
     assert t["orcamento_diario_brl"] == 150.0
     assert t["projecao_mensal_brl"] == 4650.0
 
@@ -354,3 +354,141 @@ async def test_falha_da_graph_vira_erro() -> None:
     ):
         r = await modulo.meta_get_budget_pacing({"ad_account_id": _CONTA})
     assert r["status"] == "error"
+
+
+@pytest.mark.asyncio
+async def test_campanha_pausada_com_gasto_aparece_fora_do_escopo() -> None:
+    r, _ = await _roda(
+        hoje=date(2026, 10, 11),
+        campanhas=[_camp("1", daily=100.0)],
+        conjuntos=[],
+        insights={"data": [_insight("1", "1000.00"), _insight("9", "400.00")]},
+    )
+    t = r["total"]
+    assert [c["campaign_id"] for c in r["campaigns"]] == ["1"]
+    assert t["gasto_fechado_ativas_brl"] == 1000.0
+    assert t["gasto_fora_do_escopo_brl"] == 400.0
+    assert "gasto_fechado_brl" not in t
+
+
+@pytest.mark.asyncio
+async def test_todas_pausadas_nao_esconde_o_gasto_do_mes() -> None:
+    r, _ = await _roda(
+        hoje=date(2026, 10, 11),
+        campanhas=[],
+        conjuntos=[],
+        insights={"data": [_insight("9", "400.00"), _insight("8", "100.50")]},
+    )
+    assert r["campaigns"] == []
+    assert r["total"]["gasto_fechado_ativas_brl"] == 0.0
+    assert r["total"]["gasto_fora_do_escopo_brl"] == 500.5
+
+
+@pytest.mark.asyncio
+async def test_gasto_fora_do_escopo_e_null_com_insights_truncado() -> None:
+    r, _ = await _roda(
+        hoje=date(2026, 10, 11),
+        campanhas=[_camp("1", daily=100.0)],
+        conjuntos=[],
+        insights={"data": [_insight("9", "400.00")], "paging": {"next": "https://x"}},
+    )
+    assert r["total"]["gasto_fora_do_escopo_brl"] is None
+
+
+@pytest.mark.asyncio
+async def test_gasto_fora_do_escopo_e_null_com_campanhas_truncadas_ou_dia_1() -> None:
+    r, _ = await _roda(
+        hoje=date(2026, 10, 11),
+        campanhas=[_camp("1", daily=100.0)],
+        conjuntos=[],
+        insights={"data": [_insight("9", "400.00")]},
+        trunc_camp=True,
+    )
+    assert r["total"]["gasto_fora_do_escopo_brl"] is None
+    r, _ = await _roda(hoje=date(2026, 10, 1), campanhas=[], conjuntos=[], insights=None)
+    assert r["total"]["gasto_fora_do_escopo_brl"] is None
+    assert r["total"]["gasto_fechado_ativas_brl"] is None
+
+
+@pytest.mark.asyncio
+async def test_spend_nao_reportado_fora_do_escopo_torna_o_total_fora_null() -> None:
+    r, _ = await _roda(
+        hoje=date(2026, 10, 11),
+        campanhas=[],
+        conjuntos=[],
+        insights={"data": [_insight("9", None), _insight("8", "10.00")]},
+    )
+    assert r["total"]["gasto_fora_do_escopo_brl"] is None
+
+
+@pytest.mark.asyncio
+async def test_orcamento_nulo_nao_esconde_gasto_nem_projecao() -> None:
+    r, _ = await _roda(
+        hoje=date(2026, 10, 11),
+        campanhas=[_camp("1")],
+        conjuntos=[_adset("a", "1")],
+        insights={"data": [_insight("1", "1000.00")]},
+    )
+    c = r["campaigns"][0]
+    assert c["orcamento_diario_brl"] is None
+    assert c["gasto_fechado_brl"] == 1000.0
+    assert c["media_diaria_brl"] == 100.0
+    assert c["projecao_mensal_brl"] == 3100.0
+    assert c["projecao_vs_orcamento_pct"] is None
+
+
+@pytest.mark.asyncio
+async def test_conjunto_com_end_time_vencido_sai_do_orcamento_e_e_contado() -> None:
+    vencido = {**_adset("b", "1", daily=900.0), "end_time": "2026-10-05T23:59:59-0300"}
+    futuro = {**_adset("a", "1", daily=100.0), "end_time": "2026-10-20T23:59:59-0300"}
+    r, _ = await _roda(
+        hoje=date(2026, 10, 11),
+        campanhas=[_camp("1")],
+        conjuntos=[vencido, futuro],
+        insights={"data": [_insight("1", "10.00")]},
+    )
+    assert r["campaigns"][0]["orcamento_diario_brl"] == 100.0
+    assert r["excluidos_por_data_final"] == {"campanhas": 0, "conjuntos": 1}
+    assert "1 conjunto" in r["escopo"]
+
+
+@pytest.mark.asyncio
+async def test_campanha_com_stop_time_vencido_sai_da_lista_e_o_gasto_vai_para_fora() -> None:
+    velha = {**_camp("1", daily=100.0), "stop_time": "2026-10-03T00:00:00-0300"}
+    r, _ = await _roda(
+        hoje=date(2026, 10, 11),
+        campanhas=[velha, _camp("2", daily=50.0)],
+        conjuntos=[],
+        insights={"data": [_insight("1", "300.00"), _insight("2", "100.00")]},
+    )
+    assert [c["campaign_id"] for c in r["campaigns"]] == ["2"]
+    assert r["excluidos_por_data_final"] == {"campanhas": 1, "conjuntos": 0}
+    assert r["total"]["gasto_fechado_ativas_brl"] == 100.0
+    assert r["total"]["gasto_fora_do_escopo_brl"] == 300.0
+
+
+@pytest.mark.asyncio
+async def test_data_final_de_hoje_ou_futura_nao_exclui_e_ilegivel_nao_exclui() -> None:
+    hoje_ = {**_camp("1", daily=10.0), "stop_time": "2026-10-11T23:59:59-0300"}
+    lixo = {**_camp("2", daily=10.0), "stop_time": "amanha"}
+    r, _ = await _roda(
+        hoje=date(2026, 10, 11),
+        campanhas=[hoje_, lixo],
+        conjuntos=[],
+        insights={"data": []},
+    )
+    assert len(r["campaigns"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_vitalicio_em_conjunto_usa_flag_propria_sem_valor_unico() -> None:
+    r, _ = await _roda(
+        hoje=date(2026, 10, 11),
+        campanhas=[_camp("1")],
+        conjuntos=[_adset("a", "1", lifetime=500.0)],
+        insights={"data": [_insight("1", "100.00")]},
+    )
+    c = r["campaigns"][0]
+    assert c["tipo_orcamento"] == "vitalicio"
+    assert c["orcamento_vitalicio_brl"] is None
+    assert c["gasto_fechado_brl"] == 100.0
