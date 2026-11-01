@@ -88,6 +88,11 @@ async def meta_get_entities(args: dict[str, Any]) -> dict[str, Any]:
     level = args["level"]
     status = args.get("status")
     limit = int(args.get("limit", 100))
+    if not 1 <= limit <= 500:
+        return {
+            "status": "error",
+            "error_message": f"`limit` deve estar entre 1 e 500 (recebido {limit}).",
+        }
     try:
         conta = await run_meta_graph_get(
             manager_id=ctx.manager_id,

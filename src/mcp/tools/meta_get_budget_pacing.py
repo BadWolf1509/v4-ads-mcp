@@ -219,12 +219,12 @@ def _encerrada(linha: dict[str, Any], campo: str, hoje: date) -> bool:
 async def meta_get_budget_pacing(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()
     ad_account_id = args["ad_account_id"]
-    hoje: date = await resolve_meta_account_today(ad_account_id)
-    dias_no_mes, dias_fechados, dias_restantes = calendario_do_mes(hoje)
-    inicio = hoje.replace(day=1)
-    ontem = hoje - timedelta(days=1)
-    janela = {"from": inicio.isoformat(), "to": ontem.isoformat()} if dias_fechados else None
     try:
+        hoje: date = await resolve_meta_account_today(ad_account_id)
+        dias_no_mes, dias_fechados, dias_restantes = calendario_do_mes(hoje)
+        inicio = hoje.replace(day=1)
+        ontem = hoje - timedelta(days=1)
+        janela = {"from": inicio.isoformat(), "to": ontem.isoformat()} if dias_fechados else None
         conta = await run_meta_graph_get(
             manager_id=ctx.manager_id,
             session_id=ctx.session_id,

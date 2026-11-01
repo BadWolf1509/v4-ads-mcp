@@ -1,6 +1,8 @@
 # bucket: defer
 """Tool: meta_get_delivery_estimate - estimativa de entrega para uma segmentacao."""
 
+import contextlib
+import json
 from typing import Any
 
 from src.mcp.context import get_current
@@ -74,6 +76,9 @@ async def meta_get_delivery_estimate(args: dict[str, Any]) -> dict[str, Any]:
     ad_account_id = args["ad_account_id"]
     spec = args.get("targeting_spec")
     objetivo = args.get("optimization_goal") or "REACH"
+    if isinstance(spec, str):  # o cliente pode serializar o objeto como texto (F1)
+        with contextlib.suppress(ValueError):
+            spec = json.loads(spec)
     if not isinstance(spec, dict):
         return {
             "status": "error",

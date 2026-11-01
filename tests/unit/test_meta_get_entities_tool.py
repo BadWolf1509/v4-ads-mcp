@@ -151,3 +151,15 @@ def test_registrada_no_bucket_always() -> None:
     t = get_tool("meta_get_entities")
     assert t is not None and t.bucket == "always"
     assert t.input_schema["properties"]["ad_account_id"]["pattern"] == r"^act_\d+$"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("limit", [0, -1, 501])
+async def test_limit_fora_da_faixa_erra_sem_chamar_a_graph(limit: int) -> None:
+    g, p1, p2 = _patches([{"currency": "BRL"}, {"data": []}])
+    with p1, p2:
+        r = await modulo.meta_get_entities(
+            {"ad_account_id": _CONTA, "level": "campaign", "limit": limit}
+        )
+    assert r["status"] == "error" and "entre 1 e 500" in r["error_message"]
+    g.assert_not_awaited()

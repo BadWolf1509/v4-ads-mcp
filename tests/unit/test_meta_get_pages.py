@@ -110,6 +110,15 @@ async def test_limite_menor_que_o_total_marca_truncated() -> None:
 
 
 @pytest.mark.asyncio
+async def test_limit_100_com_exatamente_100_linhas_nao_trunca() -> None:
+    g, p = _graph({"data": _paginas(100)})
+    with p:
+        r = await modulo.meta_get_pages({"ad_account_id": _CONTA, "limit": 100})
+    assert r["truncated"] is False and len(r["pages"]) == 100
+    assert "truncated_hint" not in r
+
+
+@pytest.mark.asyncio
 async def test_paging_next_marca_truncated() -> None:
     g, p = _graph({"data": _paginas(5), "paging": {"next": "https://x"}})
     with p:

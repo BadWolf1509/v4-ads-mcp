@@ -80,6 +80,19 @@ def test_sem_orcamento_nao_tem_percentual():
     assert r["projecao"] == 3000.0  # o gasto projeta mesmo sem orcamento
 
 
+def test_vitalicio_em_conjunto_marca_a_flag_em_orcamento_da_campanha() -> None:
+    orc = modulo._orcamento_da_campanha(
+        {"id": "1"},
+        [
+            {"id": "a", "daily_budget_brl": 50.0, "lifetime_budget_brl": None},
+            {"id": "b", "daily_budget_brl": None, "lifetime_budget_brl": 500.0},
+        ],
+        conjuntos_truncados=False,
+    )
+    assert orc["vitalicio_em_conjuntos"] is True
+    assert orc["diario"] is None and orc["vitalicio"] is None
+
+
 # ---------- fluxo da tool ----------
 
 
@@ -492,3 +505,17 @@ async def test_vitalicio_em_conjunto_usa_flag_propria_sem_valor_unico() -> None:
     assert c["tipo_orcamento"] == "vitalicio"
     assert c["orcamento_vitalicio_brl"] is None
     assert c["gasto_fechado_brl"] == 100.0
+
+
+@pytest.mark.asyncio
+async def test_falha_ao_resolver_o_relogio_da_conta_vira_erro() -> None:
+    g = AsyncMock()
+    with (
+        patch.object(modulo, "run_meta_graph_get", g),
+        patch.object(
+            modulo, "resolve_meta_account_today", AsyncMock(side_effect=RuntimeError("db fora"))
+        ),
+    ):
+        r = await modulo.meta_get_budget_pacing({"ad_account_id": _CONTA})
+    assert r["status"] == "error" and "db fora" in r["error_message"]
+    g.assert_not_awaited()

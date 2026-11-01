@@ -188,7 +188,7 @@ async def test_estimativa_objetivo_explicito_vai_na_chamada() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("spec", ["texto", '{"a": 1}', [1], 5, None])
+@pytest.mark.parametrize("spec", ["texto", "[1]", '"x"', "5", "null", [1], 5, None])
 async def test_estimativa_spec_que_nao_e_objeto_erra_sem_chamar_a_graph(spec: Any) -> None:
     g, p = _graph({"data": []})
     with p:
@@ -197,6 +197,30 @@ async def test_estimativa_spec_que_nao_e_objeto_erra_sem_chamar_a_graph(spec: An
         )
     assert r["status"] == "error" and "objeto JSON" in r["error_message"]
     g.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_estimativa_spec_como_texto_json_de_objeto_e_aceito() -> None:
+    g, p = _graph({"data": [_LINHA]})
+    with p:
+        r = await estimativa.meta_get_delivery_estimate(
+            {"ad_account_id": _CONTA, "targeting_spec": json.dumps(_SPEC)}
+        )
+    assert r["status"] == "success"
+    assert json.loads(g.await_args_list[0].kwargs["params"]["targeting_spec"]) == _SPEC
+
+
+@pytest.mark.asyncio
+async def test_estimativa_limite_inferior_zero_e_dau_zero_ficam_zero() -> None:
+    linha = {"estimate_mau_lower_bound": 0, "estimate_dau": 0, "estimate_ready": True}
+    g, p = _graph({"data": [linha]})
+    with p:
+        r = await estimativa.meta_get_delivery_estimate(
+            {"ad_account_id": _CONTA, "targeting_spec": _SPEC}
+        )
+    assert r["estimate"]["alcance_mensal_minimo"] == 0
+    assert r["estimate"]["alcance_diario"] == 0
+    assert r["estimate"]["alcance_mensal_maximo"] is None
 
 
 @pytest.mark.asyncio
