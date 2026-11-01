@@ -49,8 +49,8 @@ _SCHEMA: dict[str, Any] = {
 
 _DESCRIPTION = (
     "[DEFER] Histórico de alterações de UMA conta Meta Ads (uma conta por chamada): quem "
-    "mudou o quê e quando. Cada registro traz `ocorrido_em`, `ator_id`, `ator_nome`, `tipo` "
-    "(event_type da Meta), `objeto_id`, `objeto_tipo` (campanha, conjunto, anuncio, conta; "
+    "mudou o quê e quando. Cada registro traz `ocorrido_em` (UTC), `ocorrido_em_fuso_conta` (texto no fuso da conta, como a Meta devolve), `ator_id`, `ator_nome`, `tipo` "
+    "(event_type da Meta), `objeto_id`, `objeto_nome`, `objeto_tipo` (campanha, conjunto, anuncio, conta; "
     "tipo desconhecido passa como a Meta devolve) e `detalhe` (o `extra_data` decodificado; "
     "texto quando não for JSON). `null` = a Meta não informou (por exemplo, alteração feita "
     "pelo sistema sem ator). A janela é fechada e termina hoje no fuso da conta: padrão 7 "

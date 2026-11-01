@@ -1,8 +1,9 @@
 """Entidades Meta (campanha, conjunto, anuncio) com status e orcamento.
 
 Leitura pura das edges `/{act}/campaigns|adsets|ads`. O orcamento da Graph e string em
-centavos; `"0"` (ou ausente) significa "nao tem" e vira `None`, nunca `0.0`. Campo que a
-Meta nao devolveu tambem e `None`.
+centavos; orcamento diario/vitalicio `"0"` (ou ausente) significa "nao tem" e vira `None`.
+`budget_remaining` `"0"` e zero MEDIDO (0.0) quando a entidade tem orcamento proprio; sem
+orcamento proprio, `None`. Campo que a Meta nao devolveu tambem e `None`.
 """
 
 from __future__ import annotations
@@ -103,6 +104,19 @@ def _centavos_para_brl(valor: Any) -> float | None:
     return None if centavos == 0 else centavos / 100
 
 
+def _restante_para_brl(valor: Any, *, tem_orcamento: bool) -> float | None:
+    """`budget_remaining`: `"0"` com orcamento proprio esgotado e 0.0; sem orcamento, None."""
+    brl = _centavos_para_brl(valor)
+    if brl is not None:
+        return brl
+    if tem_orcamento and valor is not None:
+        try:
+            return 0.0 if int(str(valor)) == 0 else None
+        except ValueError:
+            return None
+    return None
+
+
 def build_entities_call(
     level: Nivel, ad_account_id: str, *, status: str | None, limit: int
 ) -> tuple[str, dict[str, Any]]:
@@ -125,7 +139,10 @@ def parse_entity(level: str, linha: dict[str, Any]) -> dict[str, Any]:
     if level in ("campaign", "adset"):
         saida["daily_budget_brl"] = _centavos_para_brl(linha.get("daily_budget"))
         saida["lifetime_budget_brl"] = _centavos_para_brl(linha.get("lifetime_budget"))
-        saida["budget_remaining_brl"] = _centavos_para_brl(linha.get("budget_remaining"))
+        tem = saida["daily_budget_brl"] is not None or saida["lifetime_budget_brl"] is not None
+        saida["budget_remaining_brl"] = _restante_para_brl(
+            linha.get("budget_remaining"), tem_orcamento=tem
+        )
     if level == "adset":
         proprio = saida["daily_budget_brl"] is not None or saida["lifetime_budget_brl"] is not None
         saida["orcamento_em"] = "conjunto" if proprio else "campanha"
@@ -136,9 +153,17 @@ def parse_entity(level: str, linha: dict[str, Any]) -> dict[str, Any]:
 
 
 async def listar_entidades(
-    ctx: Any, ad_account_id: str, level: Nivel, status: str | None, limit: int
+    ctx: Any,
+    ad_account_id: str,
+    level: Nivel,
+    status: str | None,
+    limit: int,
+    operacao: str = _OPERACAO,
 ) -> tuple[list[dict[str, Any]], bool]:
-    """Le as entidades seguindo `paging.next`. Devolve `(entidades, truncated)`."""
+    """Le as entidades seguindo `paging.next`. Devolve `(entidades, truncated)`.
+
+    `operacao` e o nome sob o qual a leitura e auditada: o chamador passa o seu.
+    """
     edge, params = build_entities_call(level, ad_account_id, status=status, limit=limit)
     pagina = int(params["limit"])
     max_pages = -(-(limit + 1) // pagina)
@@ -148,7 +173,7 @@ async def listar_entidades(
         ad_account_id=ad_account_id,
         edge=edge,
         params=params,
-        operation_name=_OPERACAO,
+        operation_name=operacao,
         estimated_calls=max_pages,
         max_pages=max_pages,
         audit_this_call=True,

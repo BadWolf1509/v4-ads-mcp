@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from src.meta_ads import entidades
 from src.meta_ads.entidades import build_entities_call, parse_entity
 
 
@@ -39,6 +42,31 @@ def test_zero_e_ausente_viram_null() -> None:
     assert r["budget_remaining_brl"] is None
     sem = parse_entity("campaign", {"id": "1"})
     assert sem["daily_budget_brl"] is None and sem["budget_remaining_brl"] is None
+
+
+def test_restante_zero_com_orcamento_proprio_e_zero_medido() -> None:
+    vitalicio = parse_entity(
+        "campaign", {"id": "1", "lifetime_budget": "200000", "budget_remaining": "0"}
+    )
+    assert vitalicio["budget_remaining_brl"] == 0.0
+    diario = parse_entity("adset", {"id": "1", "daily_budget": "5000", "budget_remaining": "0"})
+    assert diario["budget_remaining_brl"] == 0.0
+
+
+def test_restante_zero_sem_orcamento_proprio_e_null() -> None:
+    r = parse_entity("campaign", {"id": "1", "budget_remaining": "0"})
+    assert r["budget_remaining_brl"] is None
+
+
+def test_restante_ausente_com_orcamento_proprio_continua_null() -> None:
+    r = parse_entity("campaign", {"id": "1", "lifetime_budget": "200000"})
+    assert r["budget_remaining_brl"] is None
+
+
+def test_orcamento_ilegivel_e_null() -> None:
+    r = parse_entity("campaign", {"id": "1", "daily_budget": "abc", "budget_remaining": "1,5"})
+    assert r["daily_budget_brl"] is None
+    assert r["budget_remaining_brl"] is None
 
 
 def test_conjunto_sem_orcamento_proprio_diz_a_origem() -> None:
@@ -109,6 +137,19 @@ def test_status_filtra_por_effective_status() -> None:
     assert json.loads(p["filtering"]) == [
         {"field": "effective_status", "operator": "IN", "value": ["PAUSED"]}
     ]
+
+
+@pytest.mark.asyncio
+async def test_operacao_de_auditoria_e_a_do_chamador() -> None:
+    g = AsyncMock(return_value={"data": []})
+    ctx = SimpleNamespace(manager_id="m", session_id="s")
+    with patch.object(entidades, "run_meta_graph_get", g):
+        await entidades.listar_entidades(ctx, "act_1", "campaign", None, 10)
+        assert g.await_args.kwargs["operation_name"] == "meta_get_entities"
+        await entidades.listar_entidades(
+            ctx, "act_1", "campaign", None, 10, operacao="meta_get_budget_pacing"
+        )
+        assert g.await_args.kwargs["operation_name"] == "meta_get_budget_pacing"
 
 
 def test_limit_vira_tamanho_de_pagina_limitado() -> None:

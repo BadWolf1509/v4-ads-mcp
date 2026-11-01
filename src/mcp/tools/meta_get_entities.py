@@ -45,7 +45,8 @@ _SCHEMA: dict[str, Any] = {
             "type": "string",
             "enum": _STATUS,
             "description": (
-                "Filtra pelo status EFETIVO (`effective_status`). Omitido, traz todos."
+                "Filtra pelo status EFETIVO (`effective_status`). Omitido, vale o padrão da "
+                "Meta, que pode deixar de fora itens arquivados ou apagados."
             ),
         },
         "limit": {
@@ -63,8 +64,9 @@ _SCHEMA: dict[str, Any] = {
 _DESCRIPTION = (
     "[CORE] Lista campanhas, conjuntos ou anúncios de UMA conta Meta Ads (uma conta por chamada), "
     "com status e orçamento, que as tools de desempenho não mostram. `status` é o status "
-    "configurado e `effective_status` o efetivo: uma campanha ACTIVE pode estar parada "
-    "porque o pai está pausado (ex.: ADSET_PAUSED, CAMPAIGN_PAUSED); leia os dois. "
+    "configurado e `effective_status` o efetivo: um conjunto ou anúncio "
+    "ACTIVE pode estar parado porque o pai está pausado (ex.: CAMPAIGN_PAUSED, ADSET_PAUSED); "
+    "a campanha não tem pai, mas seu efetivo também pode diferir do configurado; leia os dois. "
     "Orçamentos em BRL: `daily_budget_brl`, `lifetime_budget_brl` e `budget_remaining_brl`; "
     "`null` = a Meta não reportou ou a entidade não tem orçamento próprio (nunca zero). "
     "Em conjunto, `orcamento_em` diz onde está o orçamento: 'conjunto' quando ele tem o "

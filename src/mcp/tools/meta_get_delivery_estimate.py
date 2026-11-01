@@ -1,8 +1,6 @@
 # bucket: defer
 """Tool: meta_get_delivery_estimate - estimativa de entrega para uma segmentacao."""
 
-import contextlib
-import json
 from typing import Any
 
 from src.mcp.context import get_current
@@ -60,9 +58,22 @@ _DESCRIPTION = (
     "`alcance_diario` e `estimativa_pronta`. A estimativa é sempre aproximada "
     "(`aproximado: true`): a Meta devolve faixas, não valores exatos. `null` = a Meta não "
     "informou, não é zero. `estimativa_pronta: false` = a Meta ainda não terminou de "
-    "calcular; os valores vêm como a Meta devolveu. Sem dados, `estimate` é `null` com o "
+    "calcular; os valores vêm como a Meta devolveu. Recusa `targeting_spec` com "
+    "`custom_audiences` ou `excluded_custom_audiences` (em qualquer nível). Sem dados, `estimate` é `null` com o "
     "motivo em `reason`. Somente leitura."
 )
+
+
+_CHAVES_PUBLICO = ("custom_audiences", "excluded_custom_audiences")
+
+
+def _usa_publico_personalizado(no: Any) -> bool:
+    """True se qualquer nivel do spec traz uma chave de publico personalizado."""
+    if isinstance(no, dict):
+        return any(k in _CHAVES_PUBLICO or _usa_publico_personalizado(v) for k, v in no.items())
+    if isinstance(no, list):
+        return any(_usa_publico_personalizado(v) for v in no)
+    return False
 
 
 @register_tool(
@@ -76,15 +87,22 @@ async def meta_get_delivery_estimate(args: dict[str, Any]) -> dict[str, Any]:
     ad_account_id = args["ad_account_id"]
     spec = args.get("targeting_spec")
     objetivo = args.get("optimization_goal") or "REACH"
-    if isinstance(spec, str):  # o cliente pode serializar o objeto como texto (F1)
-        with contextlib.suppress(ValueError):
-            spec = json.loads(spec)
     if not isinstance(spec, dict):
         return {
             "status": "error",
             "error_message": (
                 "`targeting_spec` precisa ser um objeto JSON (por exemplo "
                 '{"geo_locations": {"countries": ["BR"]}}), não texto, lista ou número.'
+            ),
+        }
+    if _usa_publico_personalizado(spec):
+        return {
+            "status": "error",
+            "error_message": (
+                "`targeting_spec` não pode conter público personalizado "
+                "(`custom_audiences` ou `excluded_custom_audiences`, nem dentro de "
+                "`flexible_spec` ou `exclusions`): não foi medido se a Meta restringe o "
+                "público à conta consultada. Use localização, idade, gênero e interesses."
             ),
         }
     if objetivo not in _OBJETIVOS:

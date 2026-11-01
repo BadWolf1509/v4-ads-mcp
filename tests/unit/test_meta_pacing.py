@@ -107,6 +107,7 @@ def _camp(i: str, daily: float | None = None, lifetime: float | None = None) -> 
     return {
         "id": i,
         "name": f"C{i}",
+        "effective_status": "ACTIVE",
         "daily_budget_brl": daily,
         "lifetime_budget_brl": lifetime,
     }
@@ -118,6 +119,7 @@ def _adset(
     return {
         "id": i,
         "name": f"A{i}",
+        "effective_status": "ACTIVE",
         "campaign_id": camp,
         "daily_budget_brl": daily,
         "lifetime_budget_brl": lifetime,
@@ -144,9 +146,10 @@ async def _roda(
     g = AsyncMock(side_effect=[{"currency": moeda}, insights or {"data": []}])
 
     async def listar(
-        ctx: Any, act: str, level: str, status: str | None, limit: int
+        ctx: Any, act: str, level: str, status: str | None, limit: int, operacao: str = ""
     ) -> tuple[list[dict[str, Any]], bool]:
         assert status == "ACTIVE"
+        assert operacao == "meta_get_budget_pacing"
         if level == "campaign":
             return campanhas, trunc_camp
         return conjuntos, trunc_adset
@@ -382,6 +385,20 @@ async def test_campanha_pausada_com_gasto_aparece_fora_do_escopo() -> None:
     assert t["gasto_fechado_ativas_brl"] == 1000.0
     assert t["gasto_fora_do_escopo_brl"] == 400.0
     assert "gasto_fechado_brl" not in t
+
+
+@pytest.mark.asyncio
+async def test_linha_nao_ativa_devolvida_apesar_do_filtro_e_descartada() -> None:
+    pausada_c = {**_camp("2", daily=500.0), "effective_status": "PAUSED"}
+    pausado_a = {**_adset("20", "1", daily=300.0), "effective_status": "ADSET_PAUSED"}
+    r, _ = await _roda(
+        hoje=date(2026, 10, 11),
+        campanhas=[_camp("1"), pausada_c],
+        conjuntos=[_adset("10", "1", daily=100.0), pausado_a],
+        insights={"data": [_insight("1", "1000.00")]},
+    )
+    assert [c["campaign_id"] for c in r["campaigns"]] == ["1"]
+    assert r["campaigns"][0]["orcamento_diario_brl"] == 100.0
 
 
 @pytest.mark.asyncio

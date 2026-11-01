@@ -48,10 +48,12 @@ def parse_atividade(linha: dict[str, Any]) -> dict[str, Any]:
     tipo_objeto = linha.get("object_type")
     return {
         "ocorrido_em": linha.get("event_time"),
+        "ocorrido_em_fuso_conta": linha.get("date_time_in_timezone"),
         "ator_id": linha.get("actor_id"),
         "ator_nome": linha.get("actor_name"),
         "tipo": linha.get("event_type"),
         "objeto_id": linha.get("object_id"),
+        "objeto_nome": linha.get("object_name"),
         "objeto_tipo": _TIPOS_OBJETO.get(tipo_objeto, tipo_objeto)
         if isinstance(tipo_objeto, str)
         else None,

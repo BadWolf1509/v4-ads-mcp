@@ -30,6 +30,19 @@ def test_mapeia_a_forma_medida() -> None:
     assert r["objeto_id"] == "555"
     assert r["objeto_tipo"] == "campanha"
     assert r["detalhe"] == {"old_value": 1000, "new_value": 2000}
+    assert r["ocorrido_em_fuso_conta"] == "11/01/2026 at 9:15 AM"
+    assert r["objeto_nome"] == "Camp A"
+    assert set(r) == {
+        "ocorrido_em",
+        "ocorrido_em_fuso_conta",
+        "ator_id",
+        "ator_nome",
+        "tipo",
+        "objeto_id",
+        "objeto_nome",
+        "objeto_tipo",
+        "detalhe",
+    }
 
 
 def test_ator_ausente_e_null_nunca_vazio() -> None:

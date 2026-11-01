@@ -245,11 +245,14 @@ async def meta_get_budget_pacing(args: dict[str, Any]) -> dict[str, Any]:
                 ),
             }
         campanhas, camp_trunc = await listar_entidades(
-            ctx, ad_account_id, "campaign", "ACTIVE", _LIMITE_ENTIDADES
+            ctx, ad_account_id, "campaign", "ACTIVE", _LIMITE_ENTIDADES, operacao=_OPERACAO
         )
         conjuntos, adset_trunc = await listar_entidades(
-            ctx, ad_account_id, "adset", "ACTIVE", _LIMITE_ENTIDADES
+            ctx, ad_account_id, "adset", "ACTIVE", _LIMITE_ENTIDADES, operacao=_OPERACAO
         )
+        # A Graph ignora filtro invalido em silencio: confere o status aqui tambem.
+        campanhas = [c for c in campanhas if c.get("effective_status") == "ACTIVE"]
+        conjuntos = [c for c in conjuntos if c.get("effective_status") == "ACTIVE"]
         n_camp_total, n_adset_total = len(campanhas), len(conjuntos)
         campanhas = [c for c in campanhas if not _encerrada(c, "stop_time", hoje)]
         conjuntos = [c for c in conjuntos if not _encerrada(c, "end_time", hoje)]

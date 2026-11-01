@@ -200,14 +200,27 @@ async def test_estimativa_spec_que_nao_e_objeto_erra_sem_chamar_a_graph(spec: An
 
 
 @pytest.mark.asyncio
-async def test_estimativa_spec_como_texto_json_de_objeto_e_aceito() -> None:
+@pytest.mark.parametrize(
+    "spec",
+    [
+        {"geo_locations": {"countries": ["BR"]}, "custom_audiences": [{"id": "1"}]},
+        {"geo_locations": {"countries": ["BR"]}, "excluded_custom_audiences": [{"id": "1"}]},
+        {"flexible_spec": [{"interests": [{"id": "6"}], "custom_audiences": [{"id": "1"}]}]},
+        {"exclusions": {"excluded_custom_audiences": [{"id": "1"}]}},
+        {"flexible_spec": [{"interests": [{"id": "6"}]}], "exclusions": {"custom_audiences": []}},
+    ],
+)
+async def test_estimativa_recusa_publico_personalizado_sem_chamar_a_graph(
+    spec: dict[str, Any],
+) -> None:
     g, p = _graph({"data": [_LINHA]})
     with p:
         r = await estimativa.meta_get_delivery_estimate(
-            {"ad_account_id": _CONTA, "targeting_spec": json.dumps(_SPEC)}
+            {"ad_account_id": _CONTA, "targeting_spec": spec}
         )
-    assert r["status"] == "success"
-    assert json.loads(g.await_args_list[0].kwargs["params"]["targeting_spec"]) == _SPEC
+    assert r["status"] == "error"
+    assert "público personalizado" in r["error_message"]
+    g.assert_not_awaited()
 
 
 @pytest.mark.asyncio
