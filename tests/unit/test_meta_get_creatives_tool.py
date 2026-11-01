@@ -234,6 +234,12 @@ async def test_argumentos_invalidos_sao_recusados_sem_chamar_a_graph(
         '<iframe src="http://business.facebook.com/x"></iframe>',
         '<iframe src="javascript:alert(1)"></iframe>',
         '<iframe src="https://user@evil.com#@business.facebook.com/x"></iframe>',
+        r'<iframe src="https://evil.com\.facebook.com/x"></iframe>',
+        '<iframe src="https://evil.com%2f.facebook.com/x"></iframe>',
+        '<iframe src="https://evil.com%5c.facebook.com/x"></iframe>',
+        '<iframe src="https://business.facebook.com:8443/x"></iframe>',
+        '<iframe src="https://facebook.com@evil.com/"></iframe>',
+        '<iframe src=" https://business.facebook.com/x"></iframe>',
         "<iframe></iframe>",
         "<div>sem iframe</div>",
         "",
@@ -277,3 +283,47 @@ def test_preview_registrada_como_defer_com_enum() -> None:
     ]
     assert props["ad_id"]["pattern"] == r"^\d+$"
     assert props["creative_id"]["pattern"] == r"^\d+$"
+
+
+@pytest.mark.asyncio
+async def test_ad_id_com_mais_de_mil_anuncios_marca_truncated() -> None:
+    ads = {**_ADS, "paging": {"next": "https://x"}}
+    g, p = _graph([ads, {"data": [{"id": "900"}]}])
+    with p:
+        r = await crea.meta_get_creatives({"ad_account_id": _CONTA, "ad_id": "11"})
+    assert r["status"] == "success" and r["truncated"] is True and r["truncated_hint"]
+
+
+@pytest.mark.asyncio
+async def test_ad_id_sem_truncamento_nao_marca() -> None:
+    g, p = _graph([_ADS, {"data": [{"id": "900"}]}])
+    with p:
+        r = await crea.meta_get_creatives({"ad_account_id": _CONTA, "ad_id": "11"})
+    assert r["truncated"] is False and "truncated_hint" not in r
+
+
+@pytest.mark.asyncio
+async def test_anuncio_sem_creative_nao_quebra_vinculos() -> None:
+    ads = {"data": [{"id": "10"}, {"id": "11", "creative": {"id": "900"}}]}
+    g, p = _graph([ads, {"data": [{"id": "900"}]}])
+    with p:
+        r = await crea.meta_get_creatives({"ad_account_id": _CONTA, "ad_id": "11"})
+    assert r["creatives"][0]["ads_vinculados"] == ["11"]
+
+
+@pytest.mark.asyncio
+async def test_ad_id_alvo_sem_creative_e_erro() -> None:
+    g, p = _graph([{"data": [{"id": "10"}]}])
+    with p:
+        r = await crea.meta_get_creatives({"ad_account_id": _CONTA, "ad_id": "10"})
+    assert r["status"] == "error"
+    assert _edges(g) == ["/act_1/ads"]
+
+
+@pytest.mark.asyncio
+async def test_preview_por_ad_id_sem_creative_nao_gera() -> None:
+    g, p = _graph([{"data": [{"id": "10"}]}, {"data": [{"body": _IFRAME}]}])
+    with p:
+        r = await prev.meta_get_ad_preview({"ad_account_id": _CONTA, "ad_id": "10"})
+    assert r["status"] == "error"
+    assert _edges(g) == ["/act_1/ads"]

@@ -86,6 +86,9 @@ async def meta_get_creatives(args: dict[str, Any]) -> dict[str, Any]:
     }
     if truncated:
         resposta["truncated_hint"] = (
-            f"Há mais criativos que o limite de {limit}. Aumente `limit` (máximo 500)."
+            "A lista de anúncios da conta passou do que a busca cobre (1000): "
+            "`ads_vinculados` pode estar incompleto."
+            if ad_id is not None
+            else f"Há mais criativos que o limite de {limit}. Aumente `limit` (máximo 500)."
         )
     return resposta

@@ -10,6 +10,7 @@ depois de provar, fail-closed, que o ID pertence a conta: percorre `/{act}/ads` 
 from __future__ import annotations
 
 import json
+import re
 from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urlsplit
@@ -59,7 +60,8 @@ def parse_criativo(linha: dict[str, Any], ads_vinculados: list[str] | None) -> d
 
 async def _percorrer(
     ctx: Any, ad_account_id: str, edge: str, fields: str, operacao: str
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], bool]:
+    """Linhas da varredura e se ainda havia mais paginas (`paging.next`)."""
     resp = await run_meta_graph_get(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
@@ -72,7 +74,8 @@ async def _percorrer(
         audit_this_call=True,
         params_summary={"ad_account_id": ad_account_id, "call": f"posse_{edge}"},
     )
-    return [linha for linha in (resp.get("data") or []) if isinstance(linha, dict)]
+    linhas = [linha for linha in (resp.get("data") or []) if isinstance(linha, dict)]
+    return linhas, bool((resp.get("paging") or {}).get("next"))
 
 
 def _criativo_de(linha: dict[str, Any]) -> str | None:
@@ -81,7 +84,9 @@ def _criativo_de(linha: dict[str, Any]) -> str | None:
     return str(cid) if cid is not None else None
 
 
-async def ler_anuncios(ctx: Any, ad_account_id: str, operacao: str) -> list[dict[str, Any]]:
+async def ler_anuncios(
+    ctx: Any, ad_account_id: str, operacao: str
+) -> tuple[list[dict[str, Any]], bool]:
     return await _percorrer(ctx, ad_account_id, "ads", "id,creative{id}", operacao)
 
 
@@ -97,7 +102,8 @@ async def provar_posse(
     if (ad_id is None) == (creative_id is None):
         raise PosseNaoProvada("informe exatamente um de ad_id ou creative_id")
     if ad_id is not None:
-        for linha in await ler_anuncios(ctx, ad_account_id, operacao):
+        anuncios, _ = await ler_anuncios(ctx, ad_account_id, operacao)
+        for linha in anuncios:
             if str(linha.get("id")) == ad_id:
                 cid = _criativo_de(linha)
                 if cid is None:
@@ -106,7 +112,8 @@ async def provar_posse(
         raise PosseNaoProvada(
             "anúncio não encontrado nesta conta; " + MSG_GRANDE.format(n=_POSSE_LIMIT * 5)
         )
-    for linha in await _percorrer(ctx, ad_account_id, "adcreatives", "id", operacao):
+    criativos, _ = await _percorrer(ctx, ad_account_id, "adcreatives", "id", operacao)
+    for linha in criativos:
         if str(linha.get("id")) == creative_id:
             return str(creative_id)
     raise PosseNaoProvada(
@@ -119,9 +126,10 @@ async def listar_criativos(
 ) -> tuple[list[dict[str, Any]], bool]:
     """Lista criativos. Com `ad_id`, so o criativo daquele anuncio, com `ads_vinculados`."""
     vinculos: dict[str, list[str]] | None = None
+    ads_truncados = False
     alvo: str | None = None
     if ad_id is not None:
-        anuncios = await ler_anuncios(ctx, ad_account_id, operacao)
+        anuncios, ads_truncados = await ler_anuncios(ctx, ad_account_id, operacao)
         vinculos = {}
         for linha in anuncios:
             cid = _criativo_de(linha)
@@ -159,7 +167,7 @@ async def listar_criativos(
                 "criativo do anúncio não encontrado; " + MSG_GRANDE.format(n=_POSSE_LIMIT * 5)
             )
         assert vinculos is not None
-        return [parse_criativo(achados[0], vinculos.get(alvo, []))], False
+        return [parse_criativo(achados[0], vinculos.get(alvo, []))], ads_truncados
     truncated = len(linhas) > limit or sobrou_next
     return [parse_criativo(x, None) for x in linhas[:limit]], truncated
 
@@ -195,7 +203,16 @@ def extrair_src_iframe(html: Any) -> str | None:
         host = (partes.hostname or "").lower()
     except ValueError:
         return None
+    if "\\" in src or src != src.strip() or any(ord(c) < 33 for c in src):
+        return None
     if partes.scheme != "https" or partes.username or partes.password:
+        return None
+    try:
+        if partes.port is not None:
+            return None
+    except ValueError:
+        return None
+    if not re.fullmatch(r"[a-z0-9.-]+", host):
         return None
     if host != "facebook.com" and not host.endswith(".facebook.com"):
         return None
