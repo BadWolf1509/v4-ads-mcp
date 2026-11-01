@@ -73,6 +73,8 @@ leads. Cada um volta como decisão própria se surgir demanda.
 ### Da Onda 1 e 2
 
 - Cada campo novo validado com `ads_get_field_context` do MCP oficial da Meta antes do ship.
+  **Não rodou na Onda 1** (o MCP oficial não estava na sessão); os campos foram provados por sonda GET
+  (`docs/operacao/sonda-meta-onda1-2026-10-31.md`) e a validação segue pendente.
 - **F129, primeira metade:** reduzir o system user para só análise enquanto só há leitura, testado em uma
   conta antes das demais. Ação do Wellington no BM. Se a redução quebrar alguma leitura, reverter e
   registrar; isso não bloqueia as Ondas 1 e 2.
@@ -87,7 +89,12 @@ leads. Cada um volta como decisão própria se surgir demanda.
    Se o pedido não sair, a Onda 3 pode ir ao ar com aviso de limite, por decisão do Wellington.
 4. **Executor de escrita** e governança (seção Onda 3).
 
-## Onda 1: leitura (10 tools)
+## Onda 1: leitura (10 tools planejadas, 8 entregues)
+
+> **Resultado (01/11):** `meta_get_custom_audiences` e `meta_get_signal_health` foram retiradas: duas contas
+> (a interna e `act_27798855556414269`) devolveram 0 linhas em `customaudiences` e `adspixels`, o que não
+> distingue "não tem" de "o token não enxerga"; sem endpoint provado a tool sai, como esta seção manda.
+> `reachestimate` foi descartado (veio vazio); `meta_get_delivery_estimate` usa só `delivery_estimate`.
 
 | Tool | Entrega | Origem |
 |---|---|---|

@@ -4,6 +4,8 @@
 
 **Goal:** Entregar as 10 tools de leitura da Onda 1, começando por `meta_get_entities`, que dá status e orçamento.
 
+> **Resultado (01/11): 8 tools entregues, 2 retiradas.** `meta_get_custom_audiences` (Task 6) e `meta_get_signal_health` (Task 9) saíram: duas contas devolveram 0 linhas em `customaudiences` e `adspixels`, o que não distingue "sem público/pixel" de "token não enxerga" (ver `docs/operacao/sonda-meta-onda1-2026-10-31.md`); a spec manda retirar a tool sem endpoint provado. `reachestimate` foi descartado (veio vazio); `meta_get_delivery_estimate` usa só `delivery_estimate`.
+
 **Architecture:** Cada tool segue `src/mcp/tools/meta_get_account_balance.py`: schema, description, `run_meta_graph_get`, envelope `status`. A lógica pura fica em `src/meta_ads/`, testável sem rede. A sonda da Task 1 decide o contrato real antes de qualquer tool.
 
 **Tech Stack:** Python 3.13, Graph API v25 por `httpx`, pytest, `AsyncMock` na fronteira do executor.

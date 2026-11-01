@@ -12,6 +12,14 @@
 > `/findings-add` estão no handoff. Antes: [`session-2026-10-30-handoff.md`](session-2026-10-30-handoff.md).
 
 > Sem frente em curso. Próxima candidata: previsão de orçamento no planejador.
+>
+> **Branch `feat/meta-onda-1-leitura` (01/11), aguarda revisão, merge e deploy com aval nominal:** 8 tools de
+> leitura Meta, todas somente leitura: `meta_get_entities`, `meta_get_change_history`, `meta_get_creatives`,
+> `meta_get_ad_preview`, `meta_get_budget_pacing`, `meta_search_targeting`, `meta_get_delivery_estimate`,
+> `meta_get_pages`. Retiradas do plano: `meta_get_custom_audiences` e `meta_get_signal_health` (sem prova de
+> que o token enxerga público e pixel; ver [sonda](sonda-meta-onda1-2026-10-31.md)). As descriptions de
+> desempenho agora apontam para `meta_get_entities`. **Não feito:** deploy, chamada real em sessão nova em
+> duas contas, comparação com o Gerenciador, `ads_get_field_context`.
 
 ---
 
@@ -19,9 +27,9 @@
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00166-692`** (#193, sem mudança de produto; o htmx em `/static` veio no #190), 100% do tráfego, conferida em 31/10. Sequência da varredura: #174 `00155-flr`, #175 `00156-2lh`, #176 `00157-n24`, #177 `00158-bxt`, #178 `00159-2zs`, #184 `00160-bcd`. Dependências de 31/10, uma por deploy, com leitura real no Google Ads depois de cada uma: #186 `00161-nfg`, #183 `00162-dqd` (`websockets` 17), #179 `00163-qwq` (`grpcio` 1.85). Confirmação do painel: #188 `00164-x6w`; htmx local e smoke de navegador: #190 `00165-n4w`; teste do hook publicou a `00166-692`. O smoke do pipeline segue sem handshake MCP **autenticado** (F186); o pipeline novo (smoke antes dos jobs, rollback pulado) rodou de verdade no #178 |
-| Tools | **72** (65 Google + 7 Meta) |
-| Buckets | **13 always + 59 defer** — [remedição](tool-buckets-2026-10-05.md) |
+| Revisão servindo | **`v4-ads-mcp-00167-b57`** (corrigida em 01/11 a partir da `00166-692` do #193; sem mudança de produto desde o htmx em `/static` do #190), 100% do tráfego. Sequência da varredura: #174 `00155-flr`, #175 `00156-2lh`, #176 `00157-n24`, #177 `00158-bxt`, #178 `00159-2zs`, #184 `00160-bcd`. Dependências de 31/10, uma por deploy, com leitura real no Google Ads depois de cada uma: #186 `00161-nfg`, #183 `00162-dqd` (`websockets` 17), #179 `00163-qwq` (`grpcio` 1.85). Confirmação do painel: #188 `00164-x6w`; htmx local e smoke de navegador: #190 `00165-n4w`; teste do hook publicou a `00166-692`; a `00167-b57` veio depois. O smoke do pipeline segue sem handshake MCP **autenticado** (F186); o pipeline novo (smoke antes dos jobs, rollback pulado) rodou de verdade no #178 |
+| Tools | **72 em produção** (65 Google + 7 Meta). Na branch `feat/meta-onda-1-leitura` (fora de `main`, **sem deploy**): **80** (65 Google + 15 Meta), contagem do registry |
+| Buckets | **13 always + 59 defer** em produção — [remedição](tool-buckets-2026-10-05.md). Branch da Onda 1: 14 always + 66 defer (registry), tokens **não remedidos** |
 | Catálogo | até **F203** (~6.000 linhas, 601 KB); os defeitos da varredura aguardam o `/findings-add` |
 | Meta Graph | **v25.0**, constante única. A v22 expirou em 19/02/2026 |
 | Google Ads | API **v25**; sunset estimado em ago/2027 (busca, **não lido** na página oficial) |

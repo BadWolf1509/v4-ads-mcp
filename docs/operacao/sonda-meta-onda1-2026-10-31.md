@@ -47,4 +47,7 @@ conjunto, `ADGROUP` = anúncio, `ACCOUNT` = conta.
 ## Não medido
 
 - `customaudiences` e `adspixels` com linhas: a conta interna não tem nenhum.
+- A conta `act_27798855556414269` (autorizada pelo Wellington, somente GET) também devolveu 0 linhas em
+  `customaudiences` e `adspixels`. Isso não distingue "não tem pixel" de "o token não enxerga", então as duas
+  tools (`meta_get_custom_audiences`, `meta_get_signal_health`) saíram da onda, conforme a spec.
 - `ads_get_field_context`: o MCP oficial da Meta não está nesta sessão, então não rodou.

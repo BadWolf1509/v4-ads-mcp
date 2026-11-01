@@ -20,8 +20,8 @@ _DESCRIPTION = (
     "Inclui ad_set_id/name + campaign_id/name parents. "
     "Ordenado por spend desc **no servidor**, entao o topo devolvido E o topo real da conta; `truncated:true` significa que ficou cauda de MENOR gasto de fora, nao que o ranking esteja incompleto. Filtros: limit (max 500). "
     "[Limitação] Metadata de entidade (effective_status, creative_id) NÃO vem: a "
-    "Meta Insights API só serve métricas — esses campos vivem em /ads. Retorna "
-    "anúncios de qualquer status; pra saber o status, consulte o Gerenciador."
+    "Meta Insights API só serve métricas. Retorna anúncios de qualquer status; "
+    "pra ler status, orçamento e criativo, use `meta_get_entities`."
 )
 
 _INPUT_SCHEMA: dict[str, Any] = {

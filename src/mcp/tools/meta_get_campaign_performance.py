@@ -22,8 +22,8 @@ _DESCRIPTION = (
     "[Limitação] Retorna campanhas de QUALQUER status (ACTIVE/PAUSED/ARCHIVED) e "
     "o status NÃO vem na resposta: a Meta Insights API não aceita effective_status "
     "nem em fields nem em filtering (é metadata de /campaigns). Portanto não dá "
-    "pra filtrar por status nem aqui nem client-side — pra saber o status, consulte "
-    "o Gerenciador de Anúncios. Campanha pausada com gasto no período APARECE aqui."
+    "pra filtrar por status nem aqui nem client-side — pra ler status e orçamento, "
+    "use `meta_get_entities`. Campanha pausada com gasto no período APARECE aqui."
 )
 
 _INPUT_SCHEMA: dict[str, Any] = {
