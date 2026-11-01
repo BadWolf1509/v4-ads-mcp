@@ -1,0 +1,50 @@
+# Sonda Meta da Onda 1 (01/11/2026)
+
+Graph v25, token do system user, só GET. Script: `scripts/probe_meta_onda1.py`. Conta interna
+`act_1903626271072552`. Uma chamada de prévia saiu na conta de cliente `act_27798855556414269`,
+fora do aval de "uma conta interna": usou um criativo da conta interna, e só a forma foi registrada.
+
+## O que mudou o desenho
+
+1. **Na edge de coleção, campo inexistente NÃO dá erro.** `fields=id,campo_que_nao_existe_v4` em
+   `/{act}/campaigns` devolve 200 sem o campo. No objeto (`/{id}?fields=...`) o mesmo campo dá
+   `(#100) Tried accessing nonexisting field` em campanha, conjunto e anúncio. Logo, 200 na edge não
+   valida campo, e a validação foi feita campo a campo no objeto. `metadata=1` devolveu lista vazia.
+   No objeto de criativo o campo inválido não deu erro, então ali a validação é fraca: vale a
+   presença da chave, medida em `adcreatives`.
+2. **`/{act}/generatepreviews` aceita criativo de outra conta.** Com o criativo da conta A, a edge
+   da conta B devolveu 200 com prévia. O amarramento do F190 não protege aqui: sem prova de posse,
+   um gestor veria criativo de conta sem grant. A Task 4 presumia o contrário.
+3. **`activities` sem `since` e `until` devolve vazio, sem erro.** `time_range` também é ignorado e
+   devolve vazio. Com `since`/`until` veio dado, e `paging.next` funciona.
+4. **`lifetime_budget: "0"` significa "não tem".** Conjunto com orçamento diário traz vitalício `"0"`.
+   Campanha sem orçamento próprio omite `daily_budget` e traz `budget_remaining: "0"`. Orçamento é
+   string em centavos (`"1000"` = R$ 10,00, a conferir no Gerenciador no smoke).
+5. **`filtering` por `id` em `adcreatives` não é suportado** (`(#100) ... operation 'in' is not
+   supported`). `filtering` por `effective_status` em `campaigns` funciona.
+
+## Uma linha por edge
+
+| Edge | Resultado | Observação |
+|---|---|---|
+| `/{act}/campaigns` | 200, 1 linha | Todos os campos válidos no objeto |
+| `/{act}/adsets` | 200, 1 linha | Idem, inclusive `learning_stage_info`, `promoted_object`, `targeting` |
+| `/{act}/ads` | 200, 1 linha | `creative{id}`, `ad_review_feedback`, `issues_info` válidos |
+| `/{act}/activities` | 200, 25 linhas com período | Todos os valores são string; `extra_data` é JSON em string; `application_name` às vezes falta |
+| `/{act}/adcreatives` | 200, 5 linhas | `title`, `body`, `image_url` e `call_to_action_type` podem faltar |
+| `/{act}/generatepreviews` | 200 | `data[0].body` é `<iframe ...>` com `src` em `business.facebook.com`; `ad_format` inválido lista os valores aceitos |
+| `/{act}/customaudiences` | 200, 0 linhas | **Forma não medida** |
+| `/{act}/delivery_estimate` | 200, 1 linha | Inteiros `estimate_mau_lower_bound`, `estimate_mau_upper_bound`, `estimate_dau`, bool `estimate_ready`, lista `daily_outcomes_curve`; JSON inválido dá 400 |
+| `/{act}/reachestimate` | 200, vazio | Não serve; a tool usa só `delivery_estimate` |
+| `/{act}/targetingsearch` | 200, 4 linhas | `id`, `name`, `type`, `path`, `audience_size_lower_bound/upper_bound`, `description` opcional; sem `q` dá 400 |
+| `/{act}/promote_pages` | 200, 1 linha | `id`, `name`, `instagram_business_account{id}`, `connected_instagram_account{id}`: **a Task 8 fica** |
+| `/{act}/instagram_accounts`, `connected_instagram_accounts` | 200, vazio | Sem uso |
+| `/{act}/adspixels` | 200, 0 linhas | **Forma, stats e qualidade não medidos** |
+
+Em `activities`, `object_type` usa os nomes antigos: `CAMPAIGN_GROUP` = campanha, `CAMPAIGN` =
+conjunto, `ADGROUP` = anúncio, `ACCOUNT` = conta.
+
+## Não medido
+
+- `customaudiences` e `adspixels` com linhas: a conta interna não tem nenhum.
+- `ads_get_field_context`: o MCP oficial da Meta não está nesta sessão, então não rodou.

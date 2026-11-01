@@ -205,3 +205,18 @@ def test_orcamento_vitalicio_nao_entra_em_projecao_mensal():
 
 - Sessão nova, chamada real de cada tool em duas contas.
 - Comparar `meta_get_entities` e `meta_get_budget_pacing` com o Gerenciador em uma conta.
+
+---
+
+## Medido na Task 1 (vale sobre o texto das tasks acima)
+
+Fonte: `docs/operacao/sonda-meta-onda1-2026-10-31.md`.
+
+- **Campos da Task 2.** `campaigns`: `id,name,status,effective_status,configured_status,objective,buying_type,daily_budget,lifetime_budget,budget_remaining,bid_strategy,special_ad_categories,start_time,stop_time,created_time,updated_time,issues_info`. `adsets`: `id,name,campaign_id,status,effective_status,configured_status,daily_budget,lifetime_budget,budget_remaining,bid_strategy,bid_amount,billing_event,optimization_goal,destination_type,start_time,end_time,created_time,updated_time,issues_info,learning_stage_info`. `ads`: `id,name,adset_id,campaign_id,status,effective_status,configured_status,creative{id},created_time,updated_time,issues_info,ad_review_feedback`.
+- **Orçamento:** string em centavos. `"0"` é "não tem" e vira `null`. Conjunto cujos dois orçamentos são `null` ou `"0"` traz `orcamento_em: "campanha"`.
+- **Task 3:** `since` e `until` obrigatórios em toda chamada (sem eles, ou com `time_range`, a Meta devolve vazio sem erro). Campos: `actor_id,actor_name,application_id,application_name,date_time_in_timezone,event_time,event_type,extra_data,object_id,object_name,object_type,translated_event_type`. `extra_data` é JSON em string: tentar decodificar e, se falhar, devolver o texto. `objeto_tipo` traduz `CAMPAIGN_GROUP`→`campanha`, `CAMPAIGN`→`conjunto`, `ADGROUP`→`anuncio`, `ACCOUNT`→`conta`; desconhecido passa como veio.
+- **Task 4:** a edge NÃO recusa criativo de outra conta, então o teste "recusado porque a edge é..." sai. Prova de posse obrigatória antes da prévia, fail-closed: percorrer `/{act}/ads` (`fields=id,creative{id}`) ou `/{act}/adcreatives` (`fields=id`), `limit=200`, `max_pages=5`; sem achar o ID, recusar sem chamar `generatepreviews` e dizer que pode ser conta grande. Com `ad_id`, o criativo vem da linha achada. Chamada: `ad_format` + `creative={"id": "<id>"}`. Resposta: só o `src` do iframe de `data[0].body`, recusando domínio fora de `*.facebook.com`. Enum: `MOBILE_FEED_STANDARD`, `INSTAGRAM_STANDARD`, `INSTAGRAM_STORY`, `INSTAGRAM_REELS`, `FACEBOOK_STORY_MOBILE`, `FACEBOOK_REELS_MOBILE`. Campos: `id,name,status,object_type,title,body,image_url,thumbnail_url,call_to_action_type,object_story_id,effective_object_story_id,instagram_permalink_url`.
+- **Task 7:** só `delivery_estimate` (`reachestimate` veio vazio). Parâmetros `targeting_spec` (JSON) e `optimization_goal`. Devolver `estimate_mau_lower_bound`, `estimate_mau_upper_bound`, `estimate_dau`, `estimate_ready` e não devolver a curva. Busca: `q`; campos `id,name,type,path,audience_size_lower_bound,audience_size_upper_bound,description`.
+- **Task 8:** edge `/{act}/promote_pages`, campos `id,name,instagram_business_account,connected_instagram_account`. `instagram_id` vem de `instagram_business_account.id`, depois `connected_instagram_account.id`.
+- **Tasks 6 e 9:** forma não medida; a conta interna não tem público nem pixel.
+- **Guards por commit:** `tests/unit/test_tools_schemas.py` lista tools nominalmente. Cada task atualiza o que o gate cobrar, para todo commit ficar verde.
