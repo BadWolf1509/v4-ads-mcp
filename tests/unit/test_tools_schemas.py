@@ -180,6 +180,8 @@ def test_all_phase_2_tools_registered():
         "meta_get_creatives",
         "meta_get_ad_preview",
         "meta_get_budget_pacing",
+        "meta_search_targeting",
+        "meta_get_delivery_estimate",
         "get_recommendations",
         # performance
         "get_campaign_performance",
@@ -269,6 +271,8 @@ def test_no_unexpected_tools():
         "meta_get_creatives",
         "meta_get_ad_preview",
         "meta_get_budget_pacing",
+        "meta_search_targeting",
+        "meta_get_delivery_estimate",
         "get_recommendations",
         "get_campaign_performance",
         "get_change_history",
