@@ -40,13 +40,14 @@
 
 | Arquivo | Responsabilidade |
 |---|---|
-| `scripts/sonda_meta_onda1.py` | Sonda de campos da Task 1 |
+| `scripts/probe_meta_onda1.py` | Sonda de campos da Task 1 |
 | `src/meta_ads/entidades.py` | Campos, filtros e parser de campanha, conjunto e anúncio |
 | `src/meta_ads/historico.py` | Parser de `activities` |
 | `src/meta_ads/criativos.py` | Parser de criativo e prévia |
 | `src/meta_ads/pacing.py` | Cálculo de ritmo |
-| `src/meta_ads/publicos.py` | Parser de públicos |
+| `src/meta_ads/paginas.py` | Páginas e contas Instagram |
 | `src/meta_ads/segmentacao.py` | Busca e estimativa |
+| ~~`src/meta_ads/publicos.py`~~ | Retirado com a Task 6 (não criado) |
 | `src/mcp/tools/meta_get_*.py`, `meta_search_targeting.py` | Uma tool por arquivo |
 
 ### Task 1: Sonda da API real (bloqueia as demais)
@@ -54,7 +55,7 @@
 **Precisa de aval nominal do Wellington:** usa o token de produção, só com GET, em uma conta interna.
 
 **Files:**
-- Create: `scripts/sonda_meta_onda1.py`
+- Create: `scripts/probe_meta_onda1.py`
 - Create: `docs/operacao/sonda-meta-onda1-2026-10-31.md`
 
 - [ ] **Step 1: Escrever a sonda.** Para uma conta, fazer GET com `fields` e registrar status e chaves devolvidas, sem valores de cliente, nas edges: `/{act}/campaigns`, `/adsets`, `/ads`, `/activities`, `/adcreatives`, `/generatepreviews`, `/customaudiences`, `/delivery_estimate`, `/reachestimate`, `/targetingsearch`, `/promote_pages`, `/adspixels`, e o campo `instagram_accounts`.
@@ -220,5 +221,5 @@ Fonte: `docs/operacao/sonda-meta-onda1-2026-10-31.md`.
 - **Task 4:** a edge NÃO recusa criativo de outra conta, então o teste "recusado porque a edge é..." sai. Prova de posse obrigatória antes da prévia, fail-closed: percorrer `/{act}/ads` (`fields=id,creative{id}`) ou `/{act}/adcreatives` (`fields=id`), `limit=200`, `max_pages=5`; sem achar o ID, recusar sem chamar `generatepreviews` e dizer que pode ser conta grande. Com `ad_id`, o criativo vem da linha achada. Chamada: `ad_format` + `creative={"id": "<id>"}`. Resposta: só o `src` do iframe de `data[0].body`, recusando domínio fora de `*.facebook.com`. Enum: `MOBILE_FEED_STANDARD`, `INSTAGRAM_STANDARD`, `INSTAGRAM_STORY`, `INSTAGRAM_REELS`, `FACEBOOK_STORY_MOBILE`, `FACEBOOK_REELS_MOBILE`. Campos: `id,name,status,object_type,title,body,image_url,thumbnail_url,call_to_action_type,object_story_id,effective_object_story_id,instagram_permalink_url`.
 - **Task 7:** só `delivery_estimate` (`reachestimate` veio vazio). Parâmetros `targeting_spec` (JSON) e `optimization_goal`. Devolver `estimate_mau_lower_bound`, `estimate_mau_upper_bound`, `estimate_dau`, `estimate_ready` e não devolver a curva. Busca: `q`; campos `id,name,type,path,audience_size_lower_bound,audience_size_upper_bound,description`.
 - **Task 8:** edge `/{act}/promote_pages`, campos `id,name,instagram_business_account,connected_instagram_account`. `instagram_id` vem de `instagram_business_account.id`, depois `connected_instagram_account.id`.
-- **Tasks 6 e 9:** forma não medida; a conta interna não tem público nem pixel.
+- **Tasks 6 e 9:** forma não medida; a conta interna devolveu 0 linhas, sem distinguir ausência de falta de acesso.
 - **Guards por commit:** `tests/unit/test_tools_schemas.py` lista tools nominalmente. Cada task atualiza o que o gate cobrar, para todo commit ficar verde.

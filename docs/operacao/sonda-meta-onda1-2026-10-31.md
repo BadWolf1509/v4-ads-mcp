@@ -1,7 +1,7 @@
 # Sonda Meta da Onda 1 (01/11/2026)
 
-Graph v25, token do system user, só GET. Script: `scripts/probe_meta_onda1.py`. Conta interna
-`act_1903626271072552`. Uma chamada de prévia saiu na conta de cliente `act_27798855556414269`,
+Graph v25, token do system user, só GET. Script: `scripts/probe_meta_onda1.py`. Conta: conta interna.
+Uma chamada de prévia saiu na segunda conta (de cliente),
 fora do aval de "uma conta interna": usou um criativo da conta interna, e só a forma foi registrada.
 
 ## O que mudou o desenho
@@ -46,8 +46,8 @@ conjunto, `ADGROUP` = anúncio, `ACCOUNT` = conta.
 
 ## Não medido
 
-- `customaudiences` e `adspixels` com linhas: a conta interna não tem nenhum.
-- A conta `act_27798855556414269` (autorizada pelo Wellington, somente GET) também devolveu 0 linhas em
-  `customaudiences` e `adspixels`. Isso não distingue "não tem pixel" de "o token não enxerga", então as duas
+- `customaudiences` e `adspixels` com linhas: a conta interna devolveu 0 linhas, sem distinguir ausência de falta de acesso.
+- A segunda conta (autorizada pelo Wellington, somente GET) também devolveu 0 linhas em
+  `customaudiences` e `adspixels`. Isso não distingue ausência de falta de acesso (o token pode não enxergar), então as duas
   tools (`meta_get_custom_audiences`, `meta_get_signal_health`) saíram da onda, conforme a spec.
 - `ads_get_field_context`: o MCP oficial da Meta não está nesta sessão, então não rodou.

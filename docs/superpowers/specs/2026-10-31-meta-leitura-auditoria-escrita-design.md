@@ -15,7 +15,7 @@ Tool que não usa esse diferencial não entra.
 
 ## Metas
 
-- Dar leitura de metadados, histórico, criativos, públicos e sinais (Onda 1).
+- Dar leitura de metadados, histórico, criativos, páginas, segmentação e ritmo de orçamento (Onda 1). Públicos e sinais (pixel) foram retiradas da onda: `meta_get_custom_audiences` e `meta_get_signal_health` não foram entregues (ver Resultado abaixo).
 - Dar auditorias que apontem o que corrigir (Onda 2).
 - Permitir pausar, ativar, ajustar orçamento e criar campanha completa, com confirmação (Onda 3).
 
@@ -92,7 +92,7 @@ leads. Cada um volta como decisão própria se surgir demanda.
 ## Onda 1: leitura (10 tools planejadas, 8 entregues)
 
 > **Resultado (01/11):** `meta_get_custom_audiences` e `meta_get_signal_health` foram retiradas: duas contas
-> (a interna e `act_27798855556414269`) devolveram 0 linhas em `customaudiences` e `adspixels`, o que não
+> (a interna e uma segunda conta) devolveram 0 linhas em `customaudiences` e `adspixels`, o que não
 > distingue "não tem" de "o token não enxerga"; sem endpoint provado a tool sai, como esta seção manda.
 > `reachestimate` foi descartado (veio vazio); `meta_get_delivery_estimate` usa só `delivery_estimate`.
 
@@ -103,11 +103,11 @@ leads. Cada um volta como decisão própria se surgir demanda.
 | `meta_get_creatives` | Criativos e anúncios que os usam | `adcreatives` |
 | `meta_get_ad_preview` | Prévia por posicionamento | `generatepreviews` |
 | `meta_get_budget_pacing` | Gasto x orçamento e projeção, com as regras do `get_budget_pacing` Google (dia corrente não conta como dia inteiro, F199) | metadados + insights |
-| `meta_get_custom_audiences` | Públicos, tamanho e status | `customaudiences` |
-| `meta_get_delivery_estimate` | Alcance estimado para uma segmentação | `delivery_estimate`, `reachestimate` |
+| ~~`meta_get_custom_audiences`~~ **(retirada)** | Públicos, tamanho e status | `customaudiences` (0 linhas, sem provar acesso) |
+| `meta_get_delivery_estimate` | Alcance estimado para uma segmentação | `delivery_estimate` (`reachestimate` descartado: veio vazio) |
 | `meta_search_targeting` | Busca de interesses e segmentações | `targetingsearch` |
 | `meta_get_pages` | Páginas e contas Instagram utilizáveis | a confirmar |
-| `meta_get_signal_health` | Pixel/dataset: eventos, deduplicação e qualidade | a confirmar |
+| ~~`meta_get_signal_health`~~ **(retirada)** | Pixel/dataset: eventos, deduplicação e qualidade | `adspixels` (0 linhas, sem provar acesso) |
 
 Endpoint marcado "a confirmar": se não houver caminho pela Graph com o token atual, a tool é retirada e o
 motivo registrado, sem substituir por dado inferido.
