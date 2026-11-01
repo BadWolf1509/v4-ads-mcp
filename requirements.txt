@@ -34,7 +34,7 @@ cryptography==50.0.1
     #   v4-ads-mcp (pyproject.toml)
     #   google-auth
     #   pyjwt
-fastapi==0.139.2
+fastapi==0.162.0
     # via v4-ads-mcp (pyproject.toml)
 google-ads==31.4.0
     # via v4-ads-mcp (pyproject.toml)
