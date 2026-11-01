@@ -175,6 +175,7 @@ def test_all_phase_2_tools_registered():
         "plan_keyword_ideas",
         "get_keyword_metrics",
         "meta_get_account_balance",
+        "meta_get_entities",
         "get_recommendations",
         # performance
         "get_campaign_performance",
@@ -259,6 +260,7 @@ def test_no_unexpected_tools():
         "plan_keyword_ideas",
         "get_keyword_metrics",
         "meta_get_account_balance",
+        "meta_get_entities",
         "get_recommendations",
         "get_campaign_performance",
         "get_change_history",
