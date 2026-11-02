@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Entregar as 4 auditorias Meta da Onda 2, que apontam o que corrigir e dizem o que não foi possível medir.
+**Goal:** Entregar as 3 auditorias Meta da Onda 2, que apontam o que corrigir e dizem o que não foi possível medir.
 
 **Architecture:** As tools leem pelas funções da Onda 1 (`listar_entidades`, `listar_atividades`, insights por `build_insights_call`). A regra de cada auditoria é pura e fica em `src/meta_ads/`, com limiares em constantes nomeadas e devolvidos na resposta. A sonda da Task 2 fixa o formato real antes das regras.
 
@@ -27,9 +27,8 @@
 
 1. Conta com entidades pausadas ou sem entrega: `problemas: []` e cobertura que mostra o que foi examinado, sem parecer "conta saudável" quando nada rodou.
 2. Anúncio com impressões baixas nas duas janelas: fora da fadiga, contado em `sem_medicao`, nunca como "sem fadiga".
-3. Conjunto sem orçamento próprio (CBO): em `meta_audit_budget_limited` vai para `sem_medicao` com motivo, sem comparar gasto com `null`.
-4. Janela com mais de uma página: `truncated` em `cobertura`, e `drift: 0` com leitura truncada não vira veredito.
-5. Campanha encerrada com `effective_status` ACTIVE, e conjunto ativo sob ela: fora da avaliação, contados em `ignoradas`, sem aparecer como problema nem como saudável.
+3. Janela com mais de uma página: `truncated` em `cobertura`, e `drift: 0` com leitura truncada não vira veredito.
+4. Campanha encerrada com `effective_status` ACTIVE, e conjunto ativo sob ela: fora da avaliação, contados em `ignoradas`, sem aparecer como problema nem como saudável.
 
 ---
 
@@ -41,7 +40,6 @@
 | `src/meta_ads/auditoria.py` | `montar_cobertura` e o envelope comum |
 | `src/meta_ads/entrega.py` | Regras de `meta_audit_delivery_health` |
 | `src/meta_ads/fadiga.py` | Regras de `meta_audit_creative_fatigue` |
-| `src/meta_ads/limite_orcamento.py` | Regras de `meta_audit_budget_limited` |
 | `src/meta_ads/drift.py` | Classificação de eventos de `meta_detect_drift` |
 | `src/mcp/tools/meta_audit_*.py`, `meta_detect_drift.py` | Uma tool por arquivo |
 
@@ -65,12 +63,12 @@ Usa o token de produção, só GET, nas contas autorizadas. A conta interna não
 
 **Files:** Create `scripts/probe_meta_onda2.py`, `docs/operacao/sonda-meta-onda2.md`.
 
-- [ ] **Step 1: Medir em conjunto ativo:** conteúdo de `learning_stage_info`, `issues_info`, `recommendations`, valores de `effective_status`. No smoke, `learning_stage_info` veio sem `status`, só com `attribution_windows` e, na maioria dos conjuntos, `last_sig_edit_ts`. A sonda procura `status` em conjunto em aprendizado; sem esse valor, a regra de aprendizado limitado sai.
+- [ ] **Step 1: Medir em conjunto ativo:** conteúdo de `learning_stage_info`, `issues_info`, `recommendations`, valores de `effective_status`. No smoke, `learning_stage_info` veio sem `status`, só com `attribution_windows` e, na maioria dos conjuntos, `last_sig_edit_ts`. A sonda procura `status` em conjunto em aprendizado e testa `delivery_sub_status` (`FAIL` = aprendizado limitado) e `delivery` (`completed`), que o catálogo do MCP da Meta lista, sem prova de que vêm pela Graph. Sem nenhum desses valores, a regra de aprendizado limitado sai.
 - [ ] **Step 2: Medir em anúncio:** `ad_review_feedback`, `issues_info`, `effective_status` de reprovado e limitado.
-- [ ] **Step 3: Medir insights:** `frequency`, `ctr`, `impressions` por anúncio em duas janelas, e gasto por conjunto com `time_increment=1`.
+- [ ] **Step 3: Medir insights:** `frequency`, `ctr`, `impressions` por anúncio em duas janelas.
 - [ ] **Step 4: Medir `activities`:** `event_type` de orçamento e status, inclusive `update_campaign_budget_scheduling_state`, `actor_id` de humano e do system user, e se `application_id` de ação pela API é o `META_APP_ID`. Registrar forma, sem nome de pessoa.
-- [ ] **Step 5: Procurar sinal direto de limite de orçamento** em `issues_info` e `recommendations`, e medir se `adset_schedule` devolve a programação de anúncios por dia. O gasto zero de domingo no smoke vem dela: o Gerenciador mostrou domingo desligado em um conjunto.
-- [ ] **Step 6:** Atualizar as constantes de valor medido das Tasks 3 a 7 e commitar.
+- [ ] **Step 5:** Rodar `ads_get_field_context` nos campos novos das Tasks 4 a 6.
+- [ ] **Step 6:** Atualizar as constantes de valor medido das Tasks 3 a 6 e commitar.
 
 Expected: documento com uma linha por sinal, dizendo medido ou não medido. **Sinal não medido sai da regra**, e a resposta declara essa ausência em `nao_medido`.
 
@@ -157,23 +155,7 @@ Na tool: anúncio presente em só uma janela vai para `sem_medicao`; `limit` pad
 - [ ] **Step 4: Passar.**
 - [ ] **Step 5: Commit** `feat(meta_ads): meta_audit_creative_fatigue`.
 
-### Task 6: `meta_audit_budget_limited`
-
-**Files:** Create `src/meta_ads/limite_orcamento.py`, a tool. Test `tests/unit/test_meta_audit_budget.py`.
-
-**Interfaces:** Produces `avaliar_limite(gastos_por_dia: list[float | None], orcamento_diario: float | None) -> dict[str, Any]`.
-
-Sem sinal direto medido na Task 2, a regra é uma aproximação e a resposta diz isso com `aproximado: true`: `USO_ALTO = 0.90` do orçamento diário em ao menos `DIAS_MINIMOS = 5` de 7 dias fechados. Se a Task 2 achar sinal direto, ele substitui a regra.
-
-Conta com muito orçamento vitalício fica quase toda em `sem_medicao`: no smoke, 6 de 7 campanhas. Se a Task 2 mostrar a programação de anúncios legível, dia desligado sai da conta dos 7 dias; se não, a resposta declara a programação em `nao_medido`.
-
-- [ ] **Step 1: Testes.** 5 dias a 90% limita e 4 não; orçamento `null` dá `sem_medicao`; orçamento vitalício dá `sem_medicao` com motivo; dia ausente conta como dia sem uso alto; conjunto com orçamento na campanha dá `sem_medicao`; conjunto encerrado conta em `ignoradas`.
-- [ ] **Step 2: Ver falhar.**
-- [ ] **Step 3: Implementar.** A Meta pode gastar acima do diário em um dia, então a regra usa `>=`, sem teto.
-- [ ] **Step 4: Passar.**
-- [ ] **Step 5: Commit** `feat(meta_ads): meta_audit_budget_limited`.
-
-### Task 7: `meta_detect_drift`
+### Task 6: `meta_detect_drift`
 
 **Files:** Create `src/meta_ads/drift.py`, a tool. Modify `src/meta_ads/historico.py`. Test `tests/unit/test_meta_detect_drift.py`.
 
@@ -187,17 +169,17 @@ Conta com muito orçamento vitalício fica quase toda em `sem_medicao`: no smoke
 - [ ] **Step 4: Passar.**
 - [ ] **Step 5: Commit** `feat(meta_ads): meta_detect_drift`.
 
-### Task 8: Fechamento
+### Task 7: Fechamento
 
 **Files:** Modify `README.md` se o guard pedir, `docs/operacao/estado-atual.md`.
 
-- [ ] **Step 1:** Atualizar contagens pelo registry (84 tools esperadas).
-- [ ] **Step 2:** Rodar `mcp-tool-quality-reviewer` nas 4 tools e corrigir o que proceder.
+- [ ] **Step 1:** Atualizar contagens pelo registry (83 tools esperadas).
+- [ ] **Step 2:** Rodar `mcp-tool-quality-reviewer` nas 3 tools e corrigir o que proceder.
 - [ ] **Step 3:** Rodar o gate. Expected: `All pre-push checks passed`.
 - [ ] **Step 4:** Rodar o full sweep. Expected: exit 0.
 - [ ] **Step 5: Commit** `docs(meta_ads): fecha a onda 2`.
 
 ### Depois do merge (com aval nominal de merge e deploy)
 
-- Sessão nova, chamada real das 4 auditorias em duas contas.
+- Sessão nova, chamada real das 3 auditorias em duas contas.
 - Conferir um problema apontado de cada auditoria no Gerenciador.
