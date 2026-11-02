@@ -23,6 +23,13 @@ MOTIVO_TRUNCATED_DESCONHECIDO = (
     "`limit` e a ausência de próxima página não prova que a lista está completa."
 )
 
+# Medido: `estimate_dau` 0 em 4 estimativas validas, com alcance mensal de 23 mil a 162 milhoes.
+# O valor cru nao foi medido, entao o 0 ao lado de alcance mensal nao se le como alcance zero.
+MOTIVO_ALCANCE_DIARIO = (
+    "A Meta informou alcance diário 0 com alcance mensal acima de 0: os dois não fecham, então "
+    "o valor é tratado como não informado. Isso não é zero de alcance."
+)
+
 _CAMPOS_BUSCA = "id,name,type,path,audience_size_lower_bound,audience_size_upper_bound,description"
 
 
@@ -98,12 +105,18 @@ def build_estimate_call(
 def parse_estimativa(linha: dict[str, Any]) -> dict[str, Any]:
     """Uma linha de `delivery_estimate`. A curva `daily_outcomes_curve` nao e devolvida."""
     pronta = linha.get("estimate_ready")
-    return {
+    maximo = _inteiro(linha.get("estimate_mau_upper_bound"))
+    diario = _inteiro(linha.get("estimate_dau"))
+    registro: dict[str, Any] = {
         "alcance_mensal_minimo": _inteiro(linha.get("estimate_mau_lower_bound")),
-        "alcance_mensal_maximo": _inteiro(linha.get("estimate_mau_upper_bound")),
-        "alcance_diario": _inteiro(linha.get("estimate_dau")),
+        "alcance_mensal_maximo": maximo,
+        "alcance_diario": diario,
         "estimativa_pronta": pronta if isinstance(pronta, bool) else None,
     }
+    if diario == 0 and maximo:
+        registro["alcance_diario"] = None
+        registro["alcance_diario_motivo"] = MOTIVO_ALCANCE_DIARIO
+    return registro
 
 
 async def estimar_entrega(

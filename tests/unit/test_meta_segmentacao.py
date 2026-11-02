@@ -263,6 +263,43 @@ async def test_estimativa_limite_inferior_zero_e_dau_zero_ficam_zero() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("maximo", [23_000, 162_000_000, "23000"])
+async def test_estimativa_dau_zero_com_alcance_mensal_vira_null_com_motivo(maximo: Any) -> None:
+    # Medido: `alcance_diario` 0 em 4 estimativas validas, com alcance mensal de 23 mil a 162 mi.
+    linha = {**_LINHA, "estimate_mau_upper_bound": maximo, "estimate_dau": 0}
+    g, p = _graph({"data": [linha]})
+    with p:
+        r = await estimativa.meta_get_delivery_estimate(
+            {"ad_account_id": _CONTA, "targeting_spec": _SPEC}
+        )
+    assert r["estimate"]["alcance_diario"] is None
+    assert "não é zero" in r["estimate"]["alcance_diario_motivo"]
+
+
+@pytest.mark.asyncio
+async def test_estimativa_dau_positivo_passa_sem_motivo() -> None:
+    g, p = _graph({"data": [{**_LINHA, "estimate_dau": 1}]})
+    with p:
+        r = await estimativa.meta_get_delivery_estimate(
+            {"ad_account_id": _CONTA, "targeting_spec": _SPEC}
+        )
+    assert r["estimate"]["alcance_diario"] == 1
+    assert "alcance_diario_motivo" not in r["estimate"]
+
+
+@pytest.mark.asyncio
+async def test_estimativa_dau_zero_com_limite_mensal_zero_fica_zero() -> None:
+    linha = {**_LINHA, "estimate_mau_upper_bound": 0, "estimate_dau": 0}
+    g, p = _graph({"data": [linha]})
+    with p:
+        r = await estimativa.meta_get_delivery_estimate(
+            {"ad_account_id": _CONTA, "targeting_spec": _SPEC}
+        )
+    assert r["estimate"]["alcance_diario"] == 0
+    assert "alcance_diario_motivo" not in r["estimate"]
+
+
+@pytest.mark.asyncio
 async def test_estimativa_objetivo_invalido_erra_sem_chamar_a_graph() -> None:
     g, p = _graph({"data": []})
     with p:
