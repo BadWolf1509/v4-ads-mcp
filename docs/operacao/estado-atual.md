@@ -31,9 +31,14 @@
 > foram provados em conta real.
 >
 > **Não medido na Onda 1:** paginação de `meta_get_entities` além de uma página, render da prévia, objetivos
-> além de REACH, causa do `estimate_dau` 0, causa do gasto zero de domingo nas campanhas vitalícias, texto
+> além de REACH, causa do `estimate_dau` 0, texto
 > publicado das descriptions depois do #203, uso das tools desde o deploy, `ads_get_field_context`.
-> **Pendente com o Wellington:** conferir `meta_get_entities` e `meta_get_budget_pacing` no Gerenciador.
+> **Conferência no Gerenciador (02/11, conta de cliente):** gasto e impressões da semana, gasto e
+> impressões do dia, orçamentos e a cobrança de 30/10 bateram com o MCP, o que cumpre a definição de
+> pronto da Onda 1. O gasto zero de domingo vem da programação de anúncios do conjunto, vista em uma
+> das 6 campanhas vitalícias. O saldo restante não foi lido na tela. Orçamento menos gasto fica um pouco
+> abaixo do valor do MCP nas 6, o que combina com gasto depois da leitura, sem provar. Das 12 campanhas
+> encerradas, só 1 foi lida individualmente.
 
 ---
 
@@ -82,9 +87,10 @@ nas **duas** linhas do `.github/workflows/deploy.yml` (o `JOB_ENV_VARS`, que o j
 - **Rodar: convite e cancelamento de convite** — o login real passou em 31/10; o convite segue sem
   teste, e o clique em "Cancelar" só foi corrigido no #188.
 - **Desligamento do Pedro:** desativado em 31/10; conexão Google e sessão MCP revogadas no banco, com
-  auditoria (`admin_manager_offboarding_revoke`). Os 50 acessos a contas ficaram, de propósito. **Falta
-  conferir e tirar o acesso direto dele no MCC e no BM**, fora do MCP. O token segue válido no Google
-  até lá, mas o MCP não o usa mais.
+  auditoria (`admin_manager_offboarding_revoke`). Os 50 acessos a contas ficaram, de propósito. Conferido em
+  02/11: ele não está em Pessoas no BM. **No MCC segue admin, com a remoção pedida em 02/11 aguardando
+  análise de admin.** O token segue válido no Google até lá, mas o MCP não o usa mais. Conferir também as
+  2 contas de e-mail pessoal com admin no MCC, convidadas por ele.
 - **Alertas do Dependabot** do repositório: ajuste do repositório, feito por você.
 - **Plugin `v4-trafego-google-ads`:** aplicar as correções de
   [`plugin-correcoes-2026-10-30.md`](plugin-correcoes-2026-10-30.md) na fonte. O `null` já foi tratado
