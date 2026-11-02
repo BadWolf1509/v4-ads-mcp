@@ -52,7 +52,7 @@ A Onda 2 é construída sobre tools que nunca rodaram contra a API. O smoke vem 
 Rodado em 02/11 em três contas. Os 4 defeitos achados foram corrigidos no #203 (`00169-h9n`) e reconferidos em produção. Resultado em `docs/operacao/estado-atual.md`.
 
 - [x] **Step 1:** Em sessão nova, chamar as 8 tools. As 8 rodaram na conta interna; a conta de cliente com campanha ativa rodou 4 delas, mais `meta_get_campaign_performance`.
-- [ ] **Step 2:** Conferir `meta_get_entities` e `meta_get_budget_pacing` no Gerenciador em uma conta. **Com o Wellington; não bloqueia a Task 2.**
+- [x] **Step 2:** Conferir `meta_get_entities` e `meta_get_budget_pacing` no Gerenciador em uma conta. Feito em 02/11: os números bateram.
 - [x] **Step 3:** Conferir filtro de status em conjunto e anúncio, paginação, e se `until` inclui o último dia. Paginação de `meta_get_entities` além de uma página segue não medida: a maior lista teve 19 linhas.
 - [x] **Step 4:** Registrar o resultado em `docs/operacao/estado-atual.md`. Defeito achado vira correção antes da Task 2.
 - [ ] **Step 5:** Registrar o uso das 8 tools desde o deploy. Não medido, e o período é curto demais para decidir: o deploy foi em 02/11. A decisão de seguir sem essa medição é do Wellington.
@@ -68,8 +68,8 @@ Usa o token de produção, só GET, nas contas autorizadas. A conta interna não
 - [ ] **Step 1: Medir em conjunto ativo:** conteúdo de `learning_stage_info`, `issues_info`, `recommendations`, valores de `effective_status`. No smoke, `learning_stage_info` veio sem `status`, só com `attribution_windows` e, na maioria dos conjuntos, `last_sig_edit_ts`. A sonda procura `status` em conjunto em aprendizado; sem esse valor, a regra de aprendizado limitado sai.
 - [ ] **Step 2: Medir em anúncio:** `ad_review_feedback`, `issues_info`, `effective_status` de reprovado e limitado.
 - [ ] **Step 3: Medir insights:** `frequency`, `ctr`, `impressions` por anúncio em duas janelas, e gasto por conjunto com `time_increment=1`.
-- [ ] **Step 4: Medir `activities`:** `event_type` de orçamento e status, inclusive `update_campaign_budget_scheduling_state`, a unidade de `new_value`, `actor_id` de humano e do system user, e se `application_id` de ação pela API é o `META_APP_ID`. Registrar forma, sem nome de pessoa.
-- [ ] **Step 5: Procurar sinal direto de limite de orçamento** em `issues_info` e `recommendations`, e medir se dá para ler a programação de orçamento por dia. Ela muda o orçamento do dia, e a causa do gasto zero de domingo no smoke ficou sem medição.
+- [ ] **Step 4: Medir `activities`:** `event_type` de orçamento e status, inclusive `update_campaign_budget_scheduling_state`, `actor_id` de humano e do system user, e se `application_id` de ação pela API é o `META_APP_ID`. Registrar forma, sem nome de pessoa.
+- [ ] **Step 5: Procurar sinal direto de limite de orçamento** em `issues_info` e `recommendations`, e medir se `adset_schedule` devolve a programação de anúncios por dia. O gasto zero de domingo no smoke vem dela: o Gerenciador mostrou domingo desligado em um conjunto.
 - [ ] **Step 6:** Atualizar as constantes de valor medido das Tasks 3 a 7 e commitar.
 
 Expected: documento com uma linha por sinal, dizendo medido ou não medido. **Sinal não medido sai da regra**, e a resposta declara essa ausência em `nao_medido`.
@@ -165,7 +165,7 @@ Na tool: anúncio presente em só uma janela vai para `sem_medicao`; `limit` pad
 
 Sem sinal direto medido na Task 2, a regra é uma aproximação e a resposta diz isso com `aproximado: true`: `USO_ALTO = 0.90` do orçamento diário em ao menos `DIAS_MINIMOS = 5` de 7 dias fechados. Se a Task 2 achar sinal direto, ele substitui a regra.
 
-Conta com muito orçamento vitalício fica quase toda em `sem_medicao`: no smoke, 6 de 7 campanhas. Se a Task 2 mostrar programação de orçamento legível, a regra usa o orçamento daquele dia; se não, a resposta declara a programação em `nao_medido`.
+Conta com muito orçamento vitalício fica quase toda em `sem_medicao`: no smoke, 6 de 7 campanhas. Se a Task 2 mostrar a programação de anúncios legível, dia desligado sai da conta dos 7 dias; se não, a resposta declara a programação em `nao_medido`.
 
 - [ ] **Step 1: Testes.** 5 dias a 90% limita e 4 não; orçamento `null` dá `sem_medicao`; orçamento vitalício dá `sem_medicao` com motivo; dia ausente conta como dia sem uso alto; conjunto com orçamento na campanha dá `sem_medicao`; conjunto encerrado conta em `ignoradas`.
 - [ ] **Step 2: Ver falhar.**
