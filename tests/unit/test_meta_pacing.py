@@ -350,6 +350,88 @@ async def test_total_soma_quando_tudo_legivel() -> None:
 
 
 @pytest.mark.asyncio
+async def test_total_com_tudo_legivel_nao_traz_motivo() -> None:
+    r, _ = await _roda(
+        hoje=date(2026, 10, 11),
+        campanhas=[_camp("1", daily=100.0)],
+        conjuntos=[],
+        insights={"data": [_insight("1", "1000.00")]},
+    )
+    assert "total_motivo" not in r
+
+
+@pytest.mark.asyncio
+async def test_vitalicio_na_mistura_mantem_media_anula_projecao_e_explica() -> None:
+    # Medido em 02/11: 1 dia fechado, gasto R$ 7,27, 7 campanhas ativas, 6 vitalicias.
+    r, _ = await _roda(
+        hoje=date(2026, 11, 2),
+        campanhas=[_camp("1", daily=10.0), *(_camp(str(i), lifetime=100.0) for i in range(2, 8))],
+        conjuntos=[],
+        insights={"data": [_insight("1", "5.27"), _insight("2", "2.00")]},
+    )
+    t = r["total"]
+    assert t["gasto_fechado_ativas_brl"] == 7.27
+    assert t["media_diaria_brl"] == 7.27
+    assert t["projecao_mensal_brl"] is None and t["orcamento_diario_brl"] is None
+    assert "6 de 7" in r["total_motivo"] and "vitalício" in r["total_motivo"]
+
+
+@pytest.mark.asyncio
+async def test_vitalicio_nos_conjuntos_conta_no_motivo() -> None:
+    r, _ = await _roda(
+        hoje=date(2026, 10, 11),
+        campanhas=[_camp("1")],
+        conjuntos=[_adset("a", "1", lifetime=500.0)],
+        insights={"data": [_insight("1", "100.00")]},
+    )
+    assert r["total"]["media_diaria_brl"] == 10.0
+    assert "1 de 1" in r["total_motivo"] and "vitalício" in r["total_motivo"]
+
+
+@pytest.mark.asyncio
+async def test_motivo_de_gasto_nao_reportado() -> None:
+    r, _ = await _roda(
+        hoje=date(2026, 10, 11),
+        campanhas=[_camp("1", daily=100.0), _camp("2", daily=50.0)],
+        conjuntos=[],
+        insights={"data": [_insight("1", None), _insight("2", "10.00")]},
+    )
+    assert r["total"]["media_diaria_brl"] is None
+    assert "1 de 2" in r["total_motivo"] and "gasto" in r["total_motivo"]
+
+
+@pytest.mark.asyncio
+async def test_motivo_de_orcamento_ilegivel_mantem_a_projecao() -> None:
+    r, _ = await _roda(
+        hoje=date(2026, 10, 11),
+        campanhas=[_camp("1"), _camp("2", daily=50.0)],
+        conjuntos=[],
+        insights={"data": [_insight("1", "10.00"), _insight("2", "10.00")]},
+    )
+    assert r["total"]["orcamento_diario_brl"] is None
+    assert r["total"]["projecao_mensal_brl"] == 62.0
+    assert "1 de 2" in r["total_motivo"] and "não legível" in r["total_motivo"]
+
+
+@pytest.mark.asyncio
+async def test_motivo_no_dia_1_truncado_e_sem_ativas() -> None:
+    dia_1, _ = await _roda(
+        hoje=date(2026, 10, 1), campanhas=[_camp("1", daily=1.0)], conjuntos=[], insights=None
+    )
+    assert "dia fechado" in dia_1["total_motivo"]
+    cortada, _ = await _roda(
+        hoje=date(2026, 10, 11),
+        campanhas=[_camp("1", daily=1.0)],
+        conjuntos=[],
+        insights=None,
+        trunc_camp=True,
+    )
+    assert "incompleta" in cortada["total_motivo"]
+    vazia, _ = await _roda(hoje=date(2026, 10, 11), campanhas=[], conjuntos=[], insights=None)
+    assert "Nenhuma campanha ativa" in vazia["total_motivo"]
+
+
+@pytest.mark.asyncio
 async def test_moeda_diferente_de_brl_e_erro() -> None:
     r, g = await _roda(
         hoje=date(2026, 10, 11), campanhas=[], conjuntos=[], insights=None, moeda="USD"
