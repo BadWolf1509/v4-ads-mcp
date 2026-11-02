@@ -11,15 +11,29 @@
 > mutação, Graph v25, deps e deploy, painel e contratos das tools. Textos prontos para o
 > `/findings-add` estão no handoff. Antes: [`session-2026-10-30-handoff.md`](session-2026-10-30-handoff.md).
 
-> Sem frente em curso. Próxima candidata: previsão de orçamento no planejador.
+> **Frente em curso: Onda 2 Meta**, 4 auditorias, plano em
+> [`2026-11-02-meta-onda-2-auditorias.md`](../superpowers/plans/2026-11-02-meta-onda-2-auditorias.md). A
+> sonda (Task 2) espera aval nominal, digitado na sessão que a rodar, com as contas. Depois dela: previsão
+> de orçamento no planejador.
 >
-> **Onda 1 Meta publicada em 02/11 (#201, `00168-jxv`), falta o smoke real em sessão nova, em duas contas, com `meta_get_entities` e `meta_get_budget_pacing` conferidos no Gerenciador:** 8 tools de
+> **Onda 1 Meta em produção, com smoke real feito em 02/11 (#201 `00168-jxv`, correções no #203 `00169-h9n`):** 8 tools de
 > leitura Meta, todas somente leitura: `meta_get_entities`, `meta_get_change_history`, `meta_get_creatives`,
 > `meta_get_ad_preview`, `meta_get_budget_pacing`, `meta_search_targeting`, `meta_get_delivery_estimate`,
 > `meta_get_pages`. Retiradas do plano: `meta_get_custom_audiences` e `meta_get_signal_health` (sem prova de
 > que o token enxerga público e pixel; ver [sonda](sonda-meta-onda1-2026-10-31.md)). As descriptions de
-> desempenho agora apontam para `meta_get_entities`. **Não feito:** chamada real em sessão nova em
-> duas contas, comparação com o Gerenciador, `ads_get_field_context`.
+> desempenho agora apontam para `meta_get_entities`.
+>
+> **Smoke:** as 8 tools rodaram na conta interna; 4 delas, mais `meta_get_campaign_performance`, rodaram na
+> conta de cliente com campanha ativa; a terceira conta veio vazia, sem distinguir conta vazia de falta de
+> alcance do token. Achou 4 defeitos, todos corrigidos no #203 e reconferidos em produção: `truncated` da
+> busca, janela do histórico fora do fuso da conta, `alcance_diario` 0 parecendo medição e totais do pacing
+> sem explicação. Com a correção, o corte de fuso, o último dia do histórico e a paginação do histórico
+> foram provados em conta real.
+>
+> **Não medido na Onda 1:** paginação de `meta_get_entities` além de uma página, render da prévia, objetivos
+> além de REACH, causa do `estimate_dau` 0, causa do gasto zero de domingo nas campanhas vitalícias, texto
+> publicado das descriptions depois do #203, uso das tools desde o deploy, `ads_get_field_context`.
+> **Pendente com o Wellington:** conferir `meta_get_entities` e `meta_get_budget_pacing` no Gerenciador.
 
 ---
 
@@ -27,7 +41,7 @@
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00168-jxv`** (#201, Onda 1 Meta, 02/11), 100% do tráfego, `/health?deep=1` com 80 tools. Sequência da varredura: #174 `00155-flr`, #175 `00156-2lh`, #176 `00157-n24`, #177 `00158-bxt`, #178 `00159-2zs`, #184 `00160-bcd`. Dependências de 31/10, uma por deploy, com leitura real no Google Ads depois de cada uma: #186 `00161-nfg`, #183 `00162-dqd` (`websockets` 17), #179 `00163-qwq` (`grpcio` 1.85). Confirmação do painel: #188 `00164-x6w`; htmx local e smoke de navegador: #190 `00165-n4w`; teste do hook publicou a `00166-692`; a `00167-b57` veio depois, sem mudança de produto. O smoke do pipeline segue sem handshake MCP **autenticado** (F186); o pipeline novo (smoke antes dos jobs, rollback pulado) rodou de verdade no #178 |
+| Revisão servindo | **`v4-ads-mcp-00169-h9n`** (#203, correções do smoke da Onda 1 Meta, 02/11), 100% do tráfego, `/health?deep=1` com 80 tools. Antes: #201 `00168-jxv`, Onda 1 Meta. Sequência da varredura: #174 `00155-flr`, #175 `00156-2lh`, #176 `00157-n24`, #177 `00158-bxt`, #178 `00159-2zs`, #184 `00160-bcd`. Dependências de 31/10, uma por deploy, com leitura real no Google Ads depois de cada uma: #186 `00161-nfg`, #183 `00162-dqd` (`websockets` 17), #179 `00163-qwq` (`grpcio` 1.85). Confirmação do painel: #188 `00164-x6w`; htmx local e smoke de navegador: #190 `00165-n4w`; teste do hook publicou a `00166-692`; a `00167-b57` veio depois, sem mudança de produto. O smoke do pipeline segue sem handshake MCP **autenticado** (F186); o pipeline novo (smoke antes dos jobs, rollback pulado) rodou de verdade no #178 |
 | Tools | **80 em produção** (65 Google + 15 Meta), contagem do registry e do `/health?deep=1` |
 | Buckets | **14 always + 66 defer** em produção (registry); tokens **não remedidos** desde a [remedição](tool-buckets-2026-10-05.md) de 13 + 59 |
 | Catálogo | até **F203** (~6.000 linhas, 601 KB); os defeitos da varredura aguardam o `/findings-add` |
