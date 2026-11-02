@@ -16,6 +16,13 @@ _OP_BUSCA = "meta_search_targeting"
 _OP_ESTIMATIVA = "meta_get_delivery_estimate"
 _TAMANHO_MAX_PAGINA = 100
 
+# Medido com q=futebol: a Meta muda o conjunto devolvido conforme `limit` (72 pedidos vieram 54,
+# 100 vieram 72, sem `paging.next`), entao a ausencia de sinal de corte nao prova lista completa.
+MOTIVO_TRUNCATED_DESCONHECIDO = (
+    "A Meta não informa se existem mais resultados nesta busca: o conjunto muda conforme o "
+    "`limit` e a ausência de próxima página não prova que a lista está completa."
+)
+
 _CAMPOS_BUSCA = "id,name,type,path,audience_size_lower_bound,audience_size_upper_bound,description"
 
 
@@ -44,7 +51,7 @@ def parse_interesse(linha: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_search_call(ad_account_id: str, *, q: str, limit: int) -> tuple[str, dict[str, Any]]:
-    """Edge e params. Pede uma linha a mais que `limit` para provar o truncamento."""
+    """Edge e params. Pede uma linha a mais que `limit`: sobrar linha e evidencia de corte."""
     return f"/{ad_account_id}/targetingsearch", {
         "q": q,
         "fields": _CAMPOS_BUSCA,
@@ -54,8 +61,12 @@ def build_search_call(ad_account_id: str, *, q: str, limit: int) -> tuple[str, d
 
 async def buscar_segmentacao(
     ctx: Any, ad_account_id: str, q: str, limit: int
-) -> tuple[list[dict[str, Any]], bool]:
-    """Busca por texto. A API pode ignorar `limit`: corta aqui e declara `truncated`."""
+) -> tuple[list[dict[str, Any]], bool | None]:
+    """Busca por texto. Corta em `limit` e declara `truncated`.
+
+    `True` so com evidencia de corte (linhas alem do limite, no limite, ou `paging.next`). Sem
+    evidencia e `None`, nunca `False`: a Meta nao informa se ha mais (ver constante acima).
+    """
     edge, params = build_search_call(ad_account_id, q=q, limit=limit)
     resp = await run_meta_graph_get(
         manager_id=ctx.manager_id,
@@ -71,7 +82,7 @@ async def buscar_segmentacao(
     )
     linhas = resp.get("data") or []
     sobrou_next = bool((resp.get("paging") or {}).get("next"))
-    truncated = len(linhas) > limit or sobrou_next
+    truncated = True if len(linhas) >= limit or sobrou_next else None
     return [parse_interesse(linha) for linha in linhas[:limit]], truncated
 
 
