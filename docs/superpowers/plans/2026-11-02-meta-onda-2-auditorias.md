@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Pausado em 02/11:** retomada depende do teste de 30 dias registrado em `docs/operacao/estado-atual.md`.
+
 **Goal:** Entregar as 3 auditorias Meta da Onda 2, que apontam o que corrigir e dizem o que não foi possível medir.
 
 **Architecture:** As tools leem pelas funções da Onda 1 (`listar_entidades`, `listar_atividades`, insights por `build_insights_call`). A regra de cada auditoria é pura e fica em `src/meta_ads/`, com limiares em constantes nomeadas e devolvidos na resposta. A sonda da Task 2 fixa o formato real antes das regras.
