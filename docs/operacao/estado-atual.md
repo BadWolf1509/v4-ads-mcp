@@ -14,10 +14,20 @@
 > **Direção Meta (02/11): híbrida.** O nosso MCP mantém Google, leitura Meta e governança. A Onda 3 está
 > congelada; escrita, públicos e pixel ficam com o MCP oficial da Meta, ligado à conta do usuário.
 >
-> **Frente em curso: Onda 2 Meta**, 3 auditorias, plano em
-> [`2026-11-02-meta-onda-2-auditorias.md`](../superpowers/plans/2026-11-02-meta-onda-2-auditorias.md). A
-> sonda (Task 2) espera aval nominal, digitado na sessão que a rodar, com as contas. Depois dela: previsão
-> de orçamento no planejador.
+> **Teste de 30 dias, até 02/12 (decisão de 02/11):** evolução Meta pausada, com Google e governança
+> mantidos. Em 02/12: 3 ou mais gestores ativos por semana e escritas Google recorrentes, continua; uso alto
+> só em leitura, reduz ao mínimo; menos de 2 gestores ativos, encerra a evolução e migra para os oficiais.
+> **Não medido na decisão:** uso depois de 30/10, custo de infra e satisfação dos gestores.
+>
+> **MCP oficial da Meta (02/11):** a lista segue a atribuição do usuário no BM, com efeito imediato; alcançou
+> todas as contas ativas do portfólio depois da atribuição. Em uma conta de cliente, gasto, impressões, cliques
+> e alcance bateram com o nosso MCP. `adset_schedule` e `delivery` vieram; `learning_stage_info` veio sem
+> `status` e `delivery_sub_status` não veio. Escrita não testada. Escrita liberada por padrão nas contas:
+> bloqueio pendente de decisão.
+>
+> **Onda 2 Meta pausada**, 3 auditorias, plano em
+> [`2026-11-02-meta-onda-2-auditorias.md`](../superpowers/plans/2026-11-02-meta-onda-2-auditorias.md). Retomada
+> só se o teste de 30 dias pedir.
 >
 > **Onda 1 Meta em produção, com smoke real feito em 02/11 (#201 `00168-jxv`, correções no #203 `00169-h9n`):** 8 tools de
 > leitura Meta, todas somente leitura: `meta_get_entities`, `meta_get_change_history`, `meta_get_creatives`,
