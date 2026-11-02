@@ -73,12 +73,12 @@ def parse_atividade(linha: dict[str, Any]) -> dict[str, Any]:
 def build_activities_call(
     ad_account_id: str, *, since: date, until: date, limit: int
 ) -> tuple[str, dict[str, Any]]:
-    """Edge e params. Pede uma linha a mais que `limit` para provar o truncamento."""
+    """Edge e params de uma pagina. `limit` e o tamanho da pagina, no teto da Graph."""
     return f"/{ad_account_id}/activities", {
         "fields": _CAMPOS,
         "since": since.isoformat(),
         "until": until.isoformat(),
-        "limit": min(limit + 1, _TAMANHO_MAX_PAGINA),
+        "limit": min(limit, _TAMANHO_MAX_PAGINA),
     }
 
 
@@ -99,18 +99,13 @@ async def listar_atividades(
     """Atividades de `since` a `until` no fuso da conta. Devolve `(registros, truncated)`.
 
     Filtra antes de cortar em `limit`: linha da margem nao consome o limite nem marca
-    `truncated`. Sem o fuso da conta, levanta: a janela nao teria como ser conferida. Evento sem
-    data legivel fica, com `data_nao_verificada`: sumir com ele esconderia uma alteracao.
+    `truncated`. Sem o fuso da conta, levanta, mas so DEPOIS da Graph: o gate de acesso mora em
+    `run_meta_graph_get`, e gestor sem grant tem de ver a negacao e gerar a linha `denied`, com
+    ou sem fuso. Evento sem data legivel fica, com `data_nao_verificada`: sumir com ele
+    esconderia uma alteracao.
     `paging.next` sobrando marca `truncated` mesmo abaixo do limite, porque a ordem das linhas
     nao foi medida e o que ficou para tras pode estar dentro da janela.
     """
-    fuso = await resolve_meta_account_zone(ad_account_id)
-    if not fuso:
-        raise ValueError(
-            f"Conta {ad_account_id} sem fuso legível no inventário: não dá para conferir a "
-            "janela do histórico no fuso da conta."
-        )
-    zona = ZoneInfo(fuso)
     since_graph, until_graph = since - _MARGEM_DIAS, until + _MARGEM_DIAS
     edge, params = build_activities_call(
         ad_account_id, since=since_graph, until=until_graph, limit=_TAMANHO_MAX_PAGINA
@@ -134,6 +129,13 @@ async def listar_atividades(
             "until_graph": until_graph.isoformat(),
         },
     )
+    fuso = await resolve_meta_account_zone(ad_account_id)
+    if not fuso:
+        raise ValueError(
+            f"Conta {ad_account_id} sem fuso legível no inventário: não dá para conferir a "
+            "janela do histórico no fuso da conta."
+        )
+    zona = ZoneInfo(fuso)
     registros: list[dict[str, Any]] = []
     for linha in resp.get("data") or []:
         dia = _data_local(linha.get("event_time"), zona)

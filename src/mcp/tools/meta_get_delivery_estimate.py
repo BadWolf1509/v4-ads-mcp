@@ -58,9 +58,9 @@ _DESCRIPTION = (
     "`alcance_diario` e `estimativa_pronta`. A estimativa é sempre aproximada "
     "(`aproximado: true`): a Meta devolve faixas, não valores exatos. `null` = a Meta não "
     "informou, não é zero. `alcance_diario` 0 com alcance mensal acima de 0 vem `null` com "
-    "`alcance_diario_motivo`: o 0 não fecha com o mensal e é tratado como não informado; 0 só fica quando o limite "
-    "mensal também é 0 ou ausente. `estimativa_pronta: false` = a Meta ainda não terminou de "
-    "calcular; os valores vêm como a Meta devolveu. Recusa `targeting_spec` com "
+    "`alcance_diario_motivo`: o 0 não fecha com o mensal e é tratado como não informado; 0 só fica quando nenhum limite "
+    "mensal passa de 0. `estimativa_pronta: false` = a Meta ainda não terminou de "
+    "calcular; os valores podem mudar e seguem as regras acima. Recusa `targeting_spec` com "
     "`custom_audiences` ou `excluded_custom_audiences` (em qualquer nível). Sem dados, `estimate` é `null` com o "
     "motivo em `reason`. Somente leitura."
 )

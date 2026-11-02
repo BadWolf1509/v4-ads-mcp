@@ -5,14 +5,14 @@ from __future__ import annotations
 from collections.abc import Iterator
 from datetime import date
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
 from src.mcp.context import McpRequestContext, clear_current, set_current
 from src.mcp.tools import meta_get_change_history as modulo
-from src.meta_ads import historico
+from src.meta_ads import historico, reports
 
 _CONTA = "act_1"
 _HOJE = date(2026, 11, 1)
@@ -188,12 +188,47 @@ async def test_next_sobrando_marca_truncated_mesmo_abaixo_do_limite() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fuso", [None, ""])
-async def test_sem_fuso_da_conta_erra_sem_chamar_a_graph(fuso: str | None) -> None:
+async def test_sem_fuso_da_conta_erra_depois_da_graph(fuso: str | None) -> None:
     g, p1, p2, p3 = _patches([{"data": _linhas(1)}], fuso=fuso)
     with p1, p2, p3:
         r = await modulo.meta_get_change_history({"ad_account_id": _CONTA})
     assert r["status"] == "error" and "fuso" in r["error_message"]
-    g.assert_not_awaited()
+    g.assert_awaited_once()  # o gate mora na Graph: tem de rodar antes da exigencia do fuso
+
+
+class _Aquisicao:
+    async def __aenter__(self) -> MagicMock:
+        return MagicMock()
+
+    async def __aexit__(self, *exc: object) -> bool:
+        return False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fuso", [None, "America/Sao_Paulo"])
+async def test_gestor_sem_acesso_ve_a_negacao_e_gera_auditoria_com_ou_sem_fuso(
+    fuso: str | None,
+) -> None:
+    # Sem mock de `run_meta_graph_get`: a ordem so se prova com o gate verdadeiro.
+    pool = MagicMock()
+    pool.acquire.return_value = _Aquisicao()
+    gravar = AsyncMock(return_value=1)
+    with (
+        patch.object(reports.connection, "get_pool", return_value=pool),
+        patch.object(
+            reports.manager_meta_account_access,
+            "can_manager_access",
+            AsyncMock(return_value=False),
+        ),
+        patch.object(reports.audit_log, "record", gravar),
+        patch.object(modulo, "resolve_meta_account_today", AsyncMock(return_value=_HOJE)),
+        patch.object(historico, "resolve_meta_account_zone", AsyncMock(return_value=fuso)),
+    ):
+        r = await modulo.meta_get_change_history({"ad_account_id": _CONTA})
+    assert r["status"] == "error" and "não tem acesso" in r["error_message"]
+    gravar.assert_awaited_once()
+    assert gravar.await_args.kwargs["status"] == "denied"
+    assert gravar.await_args.kwargs["operation"] == "meta_get_change_history"
 
 
 @pytest.mark.asyncio

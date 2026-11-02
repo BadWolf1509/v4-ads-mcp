@@ -418,7 +418,8 @@ async def test_motivo_no_dia_1_truncado_e_sem_ativas() -> None:
     dia_1, _ = await _roda(
         hoje=date(2026, 10, 1), campanhas=[_camp("1", daily=1.0)], conjuntos=[], insights=None
     )
-    assert "dia fechado" in dia_1["total_motivo"]
+    assert "dia fechado" in dia_1["total_motivo"] and "orçamento" in dia_1["total_motivo"]
+    assert dia_1["total"]["orcamento_diario_brl"] is None
     cortada, _ = await _roda(
         hoje=date(2026, 10, 11),
         campanhas=[_camp("1", daily=1.0)],

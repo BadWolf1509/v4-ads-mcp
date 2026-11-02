@@ -210,7 +210,9 @@ def _motivo_do_total(
     if truncated:
         return "Leitura incompleta: soma parcial não é total, então o total vem null."
     if dias_fechados == 0:
-        return "Ainda não há dia fechado no mês: gasto, média e projeção do total vêm null."
+        return (
+            "Ainda não há dia fechado no mês: gasto, orçamento, média e projeção do total vêm null."
+        )
     if not linhas:
         return "Nenhuma campanha ativa: não há orçamento, média nem projeção a somar."
     n = len(linhas)

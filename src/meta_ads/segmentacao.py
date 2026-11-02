@@ -105,15 +105,16 @@ def build_estimate_call(
 def parse_estimativa(linha: dict[str, Any]) -> dict[str, Any]:
     """Uma linha de `delivery_estimate`. A curva `daily_outcomes_curve` nao e devolvida."""
     pronta = linha.get("estimate_ready")
+    minimo = _inteiro(linha.get("estimate_mau_lower_bound"))
     maximo = _inteiro(linha.get("estimate_mau_upper_bound"))
     diario = _inteiro(linha.get("estimate_dau"))
     registro: dict[str, Any] = {
-        "alcance_mensal_minimo": _inteiro(linha.get("estimate_mau_lower_bound")),
+        "alcance_mensal_minimo": minimo,
         "alcance_mensal_maximo": maximo,
         "alcance_diario": diario,
         "estimativa_pronta": pronta if isinstance(pronta, bool) else None,
     }
-    if diario == 0 and maximo:
+    if diario == 0 and (minimo or maximo):
         registro["alcance_diario"] = None
         registro["alcance_diario_motivo"] = MOTIVO_ALCANCE_DIARIO
     return registro
