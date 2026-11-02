@@ -52,7 +52,8 @@ async def test_busca_forma_e_faixa_com_limites_separados() -> None:
     g, p = _graph({"data": _interesses(1)})
     with p:
         r = await busca.meta_search_targeting({"ad_account_id": _CONTA, "q": "futebol"})
-    assert r["status"] == "success" and r["truncated"] is False
+    assert r["status"] == "success" and r["truncated"] is None
+    assert "não informa" in r["truncated_motivo"]
     item = r["results"][0]
     assert item["audiencia_minima"] == 1000 and item["audiencia_maxima"] == 2000
     assert item["caminho"] == ["Interests", "Sports"] and item["descricao"] is None
@@ -65,7 +66,7 @@ async def test_busca_edge_params_e_auditoria() -> None:
         r = await busca.meta_search_targeting(
             {"ad_account_id": _CONTA, "q": "  futebol ", "limit": 10}
         )
-    assert r["status"] == "success" and r["results"] == [] and r["truncated"] is False
+    assert r["status"] == "success" and r["results"] == [] and r["truncated"] is None
     kw = g.await_args_list[0].kwargs
     assert kw["edge"] == "/act_1/targetingsearch"
     assert kw["ad_account_id"] == "act_1"
@@ -100,6 +101,31 @@ async def test_busca_paging_next_marca_truncated() -> None:
     with p:
         r = await busca.meta_search_targeting({"ad_account_id": _CONTA, "q": "ab", "limit": 5})
     assert r["truncated"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("limit", "linhas", "truncated"),
+    [  # medido com q=futebol: `limit` muda o conjunto e a ausencia de `paging.next` nao prova nada
+        (2, 3, True),
+        (10, 11, True),
+        (25, 25, True),
+        (72, 54, None),
+        (100, 72, None),
+    ],
+)
+async def test_busca_so_afirma_corte_com_evidencia_e_nunca_diz_false(
+    limit: int, linhas: int, truncated: bool | None
+) -> None:
+    g, p = _graph({"data": _interesses(linhas)})
+    with p:
+        r = await busca.meta_search_targeting({"ad_account_id": _CONTA, "q": "ab", "limit": limit})
+    assert r["truncated"] is truncated
+    assert len(r["results"]) == min(limit, linhas)
+    if truncated is None:
+        assert "não informa" in r["truncated_motivo"] and "truncated_hint" not in r
+    else:
+        assert r["truncated_hint"] and "truncated_motivo" not in r
 
 
 @pytest.mark.asyncio
@@ -234,6 +260,61 @@ async def test_estimativa_limite_inferior_zero_e_dau_zero_ficam_zero() -> None:
     assert r["estimate"]["alcance_mensal_minimo"] == 0
     assert r["estimate"]["alcance_diario"] == 0
     assert r["estimate"]["alcance_mensal_maximo"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("maximo", [23_000, 162_000_000, "23000"])
+async def test_estimativa_dau_zero_com_alcance_mensal_vira_null_com_motivo(maximo: Any) -> None:
+    # Medido: `alcance_diario` 0 em 4 estimativas validas, com alcance mensal de 23 mil a 162 mi.
+    linha = {**_LINHA, "estimate_mau_upper_bound": maximo, "estimate_dau": 0}
+    g, p = _graph({"data": [linha]})
+    with p:
+        r = await estimativa.meta_get_delivery_estimate(
+            {"ad_account_id": _CONTA, "targeting_spec": _SPEC}
+        )
+    assert r["estimate"]["alcance_diario"] is None
+    assert "não é zero" in r["estimate"]["alcance_diario_motivo"]
+
+
+@pytest.mark.asyncio
+async def test_estimativa_dau_zero_com_limite_inferior_e_superior_ausente_vira_null() -> None:
+    linha = {"estimate_mau_lower_bound": 500, "estimate_dau": 0, "estimate_ready": True}
+    g, p = _graph({"data": [linha]})
+    with p:
+        r = await estimativa.meta_get_delivery_estimate(
+            {"ad_account_id": _CONTA, "targeting_spec": _SPEC}
+        )
+    assert r["estimate"]["alcance_mensal_maximo"] is None
+    assert r["estimate"]["alcance_diario"] is None
+    assert "não é zero" in r["estimate"]["alcance_diario_motivo"]
+
+
+@pytest.mark.asyncio
+async def test_estimativa_dau_positivo_passa_sem_motivo() -> None:
+    g, p = _graph({"data": [{**_LINHA, "estimate_dau": 1}]})
+    with p:
+        r = await estimativa.meta_get_delivery_estimate(
+            {"ad_account_id": _CONTA, "targeting_spec": _SPEC}
+        )
+    assert r["estimate"]["alcance_diario"] == 1
+    assert "alcance_diario_motivo" not in r["estimate"]
+
+
+@pytest.mark.asyncio
+async def test_estimativa_dau_zero_com_limite_mensal_zero_fica_zero() -> None:
+    linha = {
+        **_LINHA,
+        "estimate_mau_lower_bound": 0,
+        "estimate_mau_upper_bound": 0,
+        "estimate_dau": 0,
+    }
+    g, p = _graph({"data": [linha]})
+    with p:
+        r = await estimativa.meta_get_delivery_estimate(
+            {"ad_account_id": _CONTA, "targeting_spec": _SPEC}
+        )
+    assert r["estimate"]["alcance_diario"] == 0
+    assert "alcance_diario_motivo" not in r["estimate"]
 
 
 @pytest.mark.asyncio

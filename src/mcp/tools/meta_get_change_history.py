@@ -54,8 +54,11 @@ _DESCRIPTION = (
     "tipo desconhecido passa como a Meta devolve) e `detalhe` (o `extra_data` decodificado; "
     "texto quando não for JSON). `null` = a Meta não informou (por exemplo, alteração feita "
     "pelo sistema sem ator). A janela é fechada e termina hoje no fuso da conta: padrão 7 "
-    "dias, máximo 30; a resposta declara a janela efetiva em `date_range`. `truncated: true` "
-    "= existem mais alterações que o `limit`; aumente o limite ou reduza `days`. Somente leitura."
+    "dias, máximo 30; a resposta declara a janela efetiva em `date_range` e só devolve evento "
+    "cuja data no fuso da conta está nela. Evento com data ilegível não é descartado: vem com "
+    "`data_nao_verificada: true`, fora da garantia da janela. Sem o fuso da conta a tool "
+    "devolve erro. `truncated: true` = há ou pode haver mais alterações na janela além das "
+    "devolvidas; aumente o limite ou reduza `days`. Somente leitura."
 )
 
 
@@ -91,7 +94,7 @@ async def meta_get_change_history(args: dict[str, Any]) -> dict[str, Any]:
     }
     if truncated:
         resposta["truncated_hint"] = (
-            f"Há mais alterações que o limite de {limit}. Aumente `limit` (máximo 500) "
-            "ou reduza `days`."
+            f"Pode haver mais alterações na janela além das {len(registros)} devolvidas "
+            f"(limite {limit}). Aumente `limit` (máximo 500) ou reduza `days`."
         )
     return resposta

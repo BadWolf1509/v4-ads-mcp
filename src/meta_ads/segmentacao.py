@@ -16,6 +16,20 @@ _OP_BUSCA = "meta_search_targeting"
 _OP_ESTIMATIVA = "meta_get_delivery_estimate"
 _TAMANHO_MAX_PAGINA = 100
 
+# Medido com q=futebol: a Meta muda o conjunto devolvido conforme `limit` (72 pedidos vieram 54,
+# 100 vieram 72, sem `paging.next`), entao a ausencia de sinal de corte nao prova lista completa.
+MOTIVO_TRUNCATED_DESCONHECIDO = (
+    "A Meta não informa se existem mais resultados nesta busca: o conjunto muda conforme o "
+    "`limit` e a ausência de próxima página não prova que a lista está completa."
+)
+
+# Medido: `estimate_dau` 0 em 4 estimativas validas, com alcance mensal de 23 mil a 162 milhoes.
+# O valor cru nao foi medido, entao o 0 ao lado de alcance mensal nao se le como alcance zero.
+MOTIVO_ALCANCE_DIARIO = (
+    "A Meta informou alcance diário 0 com alcance mensal acima de 0: os dois não fecham, então "
+    "o valor é tratado como não informado. Isso não é zero de alcance."
+)
+
 _CAMPOS_BUSCA = "id,name,type,path,audience_size_lower_bound,audience_size_upper_bound,description"
 
 
@@ -44,7 +58,7 @@ def parse_interesse(linha: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_search_call(ad_account_id: str, *, q: str, limit: int) -> tuple[str, dict[str, Any]]:
-    """Edge e params. Pede uma linha a mais que `limit` para provar o truncamento."""
+    """Edge e params. Pede uma linha a mais que `limit`: sobrar linha e evidencia de corte."""
     return f"/{ad_account_id}/targetingsearch", {
         "q": q,
         "fields": _CAMPOS_BUSCA,
@@ -54,8 +68,12 @@ def build_search_call(ad_account_id: str, *, q: str, limit: int) -> tuple[str, d
 
 async def buscar_segmentacao(
     ctx: Any, ad_account_id: str, q: str, limit: int
-) -> tuple[list[dict[str, Any]], bool]:
-    """Busca por texto. A API pode ignorar `limit`: corta aqui e declara `truncated`."""
+) -> tuple[list[dict[str, Any]], bool | None]:
+    """Busca por texto. Corta em `limit` e declara `truncated`.
+
+    `True` so com evidencia de corte (linhas alem do limite, no limite, ou `paging.next`). Sem
+    evidencia e `None`, nunca `False`: a Meta nao informa se ha mais (ver constante acima).
+    """
     edge, params = build_search_call(ad_account_id, q=q, limit=limit)
     resp = await run_meta_graph_get(
         manager_id=ctx.manager_id,
@@ -71,7 +89,7 @@ async def buscar_segmentacao(
     )
     linhas = resp.get("data") or []
     sobrou_next = bool((resp.get("paging") or {}).get("next"))
-    truncated = len(linhas) > limit or sobrou_next
+    truncated = True if len(linhas) >= limit or sobrou_next else None
     return [parse_interesse(linha) for linha in linhas[:limit]], truncated
 
 
@@ -87,12 +105,19 @@ def build_estimate_call(
 def parse_estimativa(linha: dict[str, Any]) -> dict[str, Any]:
     """Uma linha de `delivery_estimate`. A curva `daily_outcomes_curve` nao e devolvida."""
     pronta = linha.get("estimate_ready")
-    return {
-        "alcance_mensal_minimo": _inteiro(linha.get("estimate_mau_lower_bound")),
-        "alcance_mensal_maximo": _inteiro(linha.get("estimate_mau_upper_bound")),
-        "alcance_diario": _inteiro(linha.get("estimate_dau")),
+    minimo = _inteiro(linha.get("estimate_mau_lower_bound"))
+    maximo = _inteiro(linha.get("estimate_mau_upper_bound"))
+    diario = _inteiro(linha.get("estimate_dau"))
+    registro: dict[str, Any] = {
+        "alcance_mensal_minimo": minimo,
+        "alcance_mensal_maximo": maximo,
+        "alcance_diario": diario,
         "estimativa_pronta": pronta if isinstance(pronta, bool) else None,
     }
+    if diario == 0 and (minimo or maximo):
+        registro["alcance_diario"] = None
+        registro["alcance_diario_motivo"] = MOTIVO_ALCANCE_DIARIO
+    return registro
 
 
 async def estimar_entrega(

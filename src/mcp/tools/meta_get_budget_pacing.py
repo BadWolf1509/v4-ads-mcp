@@ -12,7 +12,7 @@ from src.meta_ads.account_clock import resolve_meta_account_today
 from src.meta_ads.entidades import listar_entidades
 from src.meta_ads.insights import build_insights_call
 from src.meta_ads.metricas import CONTRATO_NA_DESCRIPTION, metricas_da_linha
-from src.meta_ads.pacing import orcamento_total, ritmo_de
+from src.meta_ads.pacing import orcamento_total, projetar, ritmo_de
 from src.meta_ads.reports import run_meta_graph_get
 
 _OPERACAO = "meta_get_budget_pacing"
@@ -61,7 +61,10 @@ _DESCRIPTION = (
     "em `excluidos_por_data_final`. Orçamento ilegível não esconde o gasto: `gasto_fechado_brl` "
     "e a projeção seguem na linha. "
     "`truncated: true` = lista de campanhas, conjuntos ou gasto incompleta: o `total` vem "
-    "null, porque soma parcial não é total. Só contas em BRL. Somente leitura. "
+    "null, porque soma parcial não é total. Com orçamento vitalício na mistura, "
+    "`total.media_diaria_brl` sai do gasto, mas orçamento e projeção do total vêm null: uma "
+    "projeção mensal somada só valeria para parte das campanhas. Quando algum campo do total "
+    "vem null, `total_motivo` diz por quê. Só contas em BRL. Somente leitura. "
     "Do contrato de métricas da Meta, só `spend_brl` é usado aqui: " + CONTRATO_NA_DESCRIPTION
 )
 
@@ -179,6 +182,7 @@ def _total(
     gasto = None if any(g is None for g in gastos) else round(sum(gastos), 2)
     orcamento = None if any(o is None for o in orcs) else round(sum(orcs), 2)
     projetavel = all(ln["projecao_mensal_brl"] is not None for ln in linhas)
+    media = projetar(gasto_fechado=gasto, dias_fechados=dias_fechados, dias_no_mes=dias_no_mes)
     ritmo = ritmo_de(
         daily_budget=orcamento,
         lifetime_budget=None,
@@ -191,12 +195,47 @@ def _total(
             "gasto_fechado_ativas_brl": gasto,
             "orcamento_diario_brl": orcamento,
             "orcamento_mensal_brl": ritmo["orcamento_mensal_brl"],
-            "media_diaria_brl": ritmo["media_diaria"],
+            "media_diaria_brl": media["media_diaria"],
             "projecao_mensal_brl": ritmo["projecao"],
             "projecao_vs_orcamento_pct": ritmo["projecao_vs_orcamento_pct"],
         }
     )
     return total
+
+
+def _motivo_do_total(
+    linhas: list[dict[str, Any]], *, truncated: bool, dias_fechados: int
+) -> str | None:
+    """Por que algum campo do total vem null, ou `None` quando nada precisa de explicacao."""
+    if truncated:
+        return "Leitura incompleta: soma parcial não é total, então o total vem null."
+    if dias_fechados == 0:
+        return (
+            "Ainda não há dia fechado no mês: gasto, orçamento, média e projeção do total vêm null."
+        )
+    if not linhas:
+        return "Nenhuma campanha ativa: não há orçamento, média nem projeção a somar."
+    n = len(linhas)
+    vitalicias = sum(ln["tipo_orcamento"] == "vitalicio" for ln in linhas)
+    sem_gasto = sum(ln["gasto_fechado_brl"] is None for ln in linhas)
+    ilegiveis = sum(ln["tipo_orcamento"] is None for ln in linhas)
+    partes: list[str] = []
+    if vitalicias:
+        partes.append(
+            f"{vitalicias} de {n} campanha(s) com orçamento vitalício: ele não tem valor "
+            "diário nem projeção mensal, então orçamento e projeção do total vêm null."
+        )
+    if sem_gasto:
+        partes.append(
+            f"{sem_gasto} de {n} campanha(s) sem gasto reportado: gasto, média e projeção do "
+            "total vêm null."
+        )
+    if ilegiveis:
+        partes.append(
+            f"{ilegiveis} de {n} campanha(s) com orçamento não legível: o orçamento do total "
+            "vem null."
+        )
+    return " ".join(partes) or None
 
 
 def _encerrada(linha: dict[str, Any], campo: str, hoje: date) -> bool:
@@ -324,6 +363,7 @@ async def meta_get_budget_pacing(args: dict[str, Any]) -> dict[str, Any]:
     if dias_fechados and not insights_trunc and not camp_trunc:
         valores = [v for v in fora if v is not None]
         gasto_fora = round(sum(valores), 2) if len(valores) == len(fora) else None
+    motivo_total = _motivo_do_total(linhas, truncated=truncated, dias_fechados=dias_fechados)
     resposta: dict[str, Any] = {
         "status": "success",
         "ad_account_id": ad_account_id,
@@ -348,6 +388,8 @@ async def meta_get_budget_pacing(args: dict[str, Any]) -> dict[str, Any]:
             dias_no_mes=dias_no_mes,
         ),
     }
+    if motivo_total:
+        resposta["total_motivo"] = motivo_total
     if truncated:
         resposta["truncated_hint"] = (
             "Leitura incompleta (campanhas, conjuntos ou gasto passaram do limite): "

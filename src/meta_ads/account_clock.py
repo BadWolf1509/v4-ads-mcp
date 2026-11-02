@@ -24,16 +24,37 @@ Leitura idempotente em hot path -> `run_with_reconnect` (F76/F77).
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from src.clock import account_today
 from src.db import connection
 from src.db.repositories import meta_ad_accounts
 
 
-async def resolve_meta_account_today(ad_account_id: str, *, now: datetime | None = None) -> date:
-    """Dia corrente no fuso da conta `ad_account_id`. `now` injetavel para teste."""
+async def _timezone_name(ad_account_id: str) -> str | None:
     account = await connection.run_with_reconnect(
         lambda conn: meta_ad_accounts.get_by_id(conn, ad_account_id)
     )
-    time_zone = account.timezone_name if account is not None else None
+    return account.timezone_name if account is not None else None
+
+
+async def resolve_meta_account_today(ad_account_id: str, *, now: datetime | None = None) -> date:
+    """Dia corrente no fuso da conta `ad_account_id`. `now` injetavel para teste."""
+    time_zone = await _timezone_name(ad_account_id)
     return account_today(time_zone, now=now if now is not None else datetime.now(UTC))
+
+
+async def resolve_meta_account_zone(ad_account_id: str) -> str | None:
+    """Nome IANA do fuso da conta, ou None se ausente ou invalido, sem cair em UTC.
+
+    Mesmo contrato do `resolve_account_zone` do Google: quem decide o que fazer sem fuso e o
+    chamador. O fallback UTC serve para `hoje`, nao para decidir se um evento esta na janela.
+    """
+    time_zone = await _timezone_name(ad_account_id)
+    if not time_zone:
+        return None
+    try:
+        ZoneInfo(time_zone)
+    except (ZoneInfoNotFoundError, ValueError):
+        return None
+    return time_zone

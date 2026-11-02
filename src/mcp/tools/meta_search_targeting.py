@@ -6,7 +6,7 @@ from typing import Any
 from src.mcp.context import get_current
 from src.mcp.tools._meta_common import meta_error_message
 from src.mcp.tools._registry import register_tool
-from src.meta_ads.segmentacao import buscar_segmentacao
+from src.meta_ads.segmentacao import MOTIVO_TRUNCATED_DESCONHECIDO, buscar_segmentacao
 
 _OPERACAO = "meta_search_targeting"
 _LIMIT_PADRAO = 25
@@ -44,9 +44,11 @@ _DESCRIPTION = (
     "[DEFER] Busca interesses e segmentações de UMA conta Meta Ads por texto (uma conta por "
     "chamada). Cada resultado traz `id`, `nome`, `tipo`, `caminho` (hierarquia), "
     "`audiencia_minima` e `audiencia_maxima` (faixa de alcance, limites separados) e "
-    "`descricao`. `null` = a Meta não informou, não é zero. `truncated: true` = existem "
-    "mais resultados que o `limit`; refine o texto ou aumente o limite (máximo 100). "
-    "Somente leitura."
+    "`descricao`. `null` = a Meta não informou, não é zero. `truncated: true` = há "
+    "evidência de corte (a Meta devolveu o `limit` ou mais, ou indicou próxima página); refine "
+    "o texto ou aumente o limite (máximo 100). `truncated: null` = sem evidência de corte, mas "
+    "a Meta não informa se existem mais resultados (`truncated_motivo`): o conjunto muda "
+    "conforme o `limit`, então nunca há `false`. Somente leitura."
 )
 
 
@@ -85,7 +87,9 @@ async def meta_search_targeting(args: dict[str, Any]) -> dict[str, Any]:
     }
     if truncated:
         resposta["truncated_hint"] = (
-            f"Há mais resultados que o limite de {limit}. Refine `q` ou aumente `limit` "
-            f"(máximo {_LIMIT_MAX})."
+            f"A busca chegou ao limite de {limit}, então pode haver mais resultados. "
+            f"Refine `q` ou aumente `limit` (máximo {_LIMIT_MAX})."
         )
+    else:
+        resposta["truncated_motivo"] = MOTIVO_TRUNCATED_DESCONHECIDO
     return resposta
