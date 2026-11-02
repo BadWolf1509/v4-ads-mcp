@@ -48,6 +48,11 @@ leads. Cada um volta como decisão própria se surgir demanda.
 6. **Papel de anunciante só nas contas operadas, com token permanente.** Não há job de renovação nesta
    frente; o risco de vazamento segue aberto no F129.
 
+7. **Direção híbrida (02/11).** Depois de conectar o MCP oficial da Meta: o nosso MCP mantém Google, a
+   leitura Meta e a governança; a Onda 2 fica com 3 auditorias, sem `meta_audit_budget_limited`; a Onda 3
+   fica congelada, e escrita, públicos e pixel ficam com o MCP oficial. Comparação das duas respostas em
+   dados reais: não medida.
+
 ## Decisões minhas (revisar ao ler)
 
 - **Toda escrita Meta exige confirmação.** Não há auto-apply por quantidade, ao contrário do Google até
@@ -115,7 +120,7 @@ motivo registrado, sem substituir por dado inferido.
 `meta_get_entities` substitui o aviso atual das tools de desempenho de que status não vem. As descriptions
 passam a apontar para ela.
 
-## Onda 2: auditorias (4 tools)
+## Onda 2: auditorias (3 tools)
 
 Só leitura, com limiares em constantes nomeadas e devolvidos na resposta.
 
@@ -123,7 +128,7 @@ Só leitura, com limiares em constantes nomeadas e devolvidos na resposta.
 |---|---|
 | `meta_audit_delivery_health` | Aprendizado travado, frequência alta, anúncio reprovado ou com entrega limitada |
 | `meta_audit_creative_fatigue` | Queda de CTR com alta de frequência por anúncio |
-| `meta_audit_budget_limited` | Conjunto limitado por orçamento |
+| ~~`meta_audit_budget_limited`~~ **(cortada em 02/11)** | Conjunto limitado por orçamento |
 | `meta_detect_drift` | Mudança de quem não está autorizado, sobre `meta_get_change_history` |
 
 **`meta_detect_drift` tem limite que precisa aparecer na resposta:** toda ação pelo MCP sai como o system
@@ -132,7 +137,7 @@ user, então cruzar a autoria real exige o `audit_log`. Ação do system user se
 Toda auditoria distingue "sem problema" de "não foi possível medir": dado ausente é `null` com motivo, e o
 resultado traz a cobertura.
 
-## Onda 3: escrita (7 tools)
+## Onda 3: escrita (7 tools) (congelada em 02/11)
 
 ### Infraestrutura
 

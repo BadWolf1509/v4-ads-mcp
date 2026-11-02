@@ -11,7 +11,10 @@
 > mutação, Graph v25, deps e deploy, painel e contratos das tools. Textos prontos para o
 > `/findings-add` estão no handoff. Antes: [`session-2026-10-30-handoff.md`](session-2026-10-30-handoff.md).
 
-> **Frente em curso: Onda 2 Meta**, 4 auditorias, plano em
+> **Direção Meta (02/11): híbrida.** O nosso MCP mantém Google, leitura Meta e governança. A Onda 3 está
+> congelada; escrita, públicos e pixel ficam com o MCP oficial da Meta, ligado à conta do usuário.
+>
+> **Frente em curso: Onda 2 Meta**, 3 auditorias, plano em
 > [`2026-11-02-meta-onda-2-auditorias.md`](../superpowers/plans/2026-11-02-meta-onda-2-auditorias.md). A
 > sonda (Task 2) espera aval nominal, digitado na sessão que a rodar, com as contas. Depois dela: previsão
 > de orçamento no planejador.
