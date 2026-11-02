@@ -12,7 +12,7 @@ from src.google_ads.queries.overview import (
     budget_pacing_query,
 )
 from src.google_ads.reports import run_report
-from src.janelas import janela_do_preset
+from src.janelas import calendario_do_mes, janela_do_preset
 from src.mcp.context import get_current
 from src.mcp.tools._registry import register_tool
 
@@ -60,23 +60,9 @@ def _row_formatter_orcamento(row: Any) -> dict[str, Any]:
     return {"budget_id": str(row.campaign_budget.id), "cost_micros": int(row.metrics.cost_micros)}
 
 
-def _calendario(today: date) -> tuple[int, int, int]:
-    """(dias do mes, dias fechados, dias restantes) no dia `today` da conta.
-
-    F199: fechados sao os `today.day - 1` dias ate ontem; os restantes incluem hoje.
-    """
-    if today.month == 12:
-        next_month_first = today.replace(year=today.year + 1, month=1, day=1)
-    else:
-        next_month_first = today.replace(month=today.month + 1, day=1)
-    days_in_month = (next_month_first - today.replace(day=1)).days
-    dias_fechados = today.day - 1
-    return days_in_month, dias_fechados, days_in_month - dias_fechados
-
-
 def _ritmo(mtd: float, daily_budget: float, *, today: date) -> dict[str, Any]:
     """Projecao pelos dias fechados e os dois percentuais contra o orcamento do mes."""
-    days_in_month, dias_fechados, _ = _calendario(today)
+    days_in_month, dias_fechados, _ = calendario_do_mes(today)
     daily_avg = razao(mtd, dias_fechados)
     projected = arredondado(None if daily_avg is None else daily_avg * days_in_month, 2)
     budget_monthly = round(daily_budget * days_in_month, 2)
@@ -109,7 +95,7 @@ def _project(
     campanhas que juntas estavam em 94,6%. O percentual dela esta em
     `orcamentos_compartilhados` (`_projeta_orcamentos`).
     """
-    _, dias_fechados, days_remaining = _calendario(today)
+    _, dias_fechados, days_remaining = calendario_do_mes(today)
 
     by_campaign: dict[str, dict[str, Any]] = {}
     for r in rows:
@@ -172,7 +158,7 @@ def _projeta_orcamentos(
     que a query rodou e nao trouxe e gasto zero medido, como o gasto de hoje (F199). No
     dia 1 a janela e hoje, e o gasto de hoje e o da janela.
     """
-    _, dias_fechados, _ = _calendario(today)
+    _, dias_fechados, _ = calendario_do_mes(today)
     por_orcamento: dict[str, dict[str, Any]] = {}
     for r in rows:
         if not r["orcamento_compartilhado"]:

@@ -19,8 +19,8 @@ _DESCRIPTION = (
     "Filtros: limit (max 500). "
     "[Limitação] Metadata de entidade (effective_status, billing_event, "
     "daily_budget) NÃO vem: a Meta Insights API só serve métricas — esses campos "
-    "vivem em /adsets. Retorna ad sets de qualquer status; pra saber o status, "
-    "consulte o Gerenciador de Anúncios."
+    "vivem em /adsets. Retorna ad sets de qualquer status; pra ler status e "
+    "orçamento, use `meta_get_entities`."
 )
 
 _INPUT_SCHEMA: dict[str, Any] = {

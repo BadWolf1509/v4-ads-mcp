@@ -90,3 +90,18 @@ def _janela_crua(preset: str, *, today: date) -> tuple[date, date]:
     raise ValueError(
         f"preset de data desconhecido: {preset!r}. Validos: {', '.join(sorted(PRESETS))}"
     )
+
+
+def calendario_do_mes(today: date) -> tuple[int, int, int]:
+    """(dias do mes, dias fechados, dias restantes) no dia `today` da conta.
+
+    F199: fechados sao os `today.day - 1` dias ate ontem; os restantes incluem hoje.
+    Corpo unico do pacing Google e Meta.
+    """
+    if today.month == 12:
+        next_month_first = today.replace(year=today.year + 1, month=1, day=1)
+    else:
+        next_month_first = today.replace(month=today.month + 1, day=1)
+    days_in_month = (next_month_first - today.replace(day=1)).days
+    dias_fechados = today.day - 1
+    return days_in_month, dias_fechados, days_in_month - dias_fechados
