@@ -44,6 +44,17 @@ fora do aval de "uma conta interna": usou um criativo da conta interna, e só a 
 Em `activities`, `object_type` usa os nomes antigos: `CAMPAIGN_GROUP` = campanha, `CAMPAIGN` =
 conjunto, `ADGROUP` = anúncio, `ACCOUNT` = conta.
 
+## O que o smoke real e a medição de `until` provaram (02/11/2026)
+
+- `activities`: `since` e `until` valem por data UTC, não pelo fuso da conta. A base é um evento só.
+- `until` é exclusivo: com um evento de 23/10, `since=22/10 until=23/10` trouxe 0 linhas e
+  `since=23/10 until=24/10` trouxe 4. `since` é inclusivo.
+- `until` no futuro é aceito sem erro em +1 dia. **+2 dias, que é o que a tool envia, não foi medido.**
+- `targetingsearch`: o conjunto muda conforme `limit`. Com um termo só, `limit` 72 trouxe 54 linhas e
+  100 trouxe 72, sem `paging.next`, então a ausência de próxima página não prova lista completa.
+- `delivery_estimate`: `estimate_dau` saiu 0 em 4 estimativas válidas com alcance mensal positivo. O
+  valor cru não foi medido.
+
 ## Não medido
 
 - `customaudiences` e `adspixels` com linhas: a conta interna devolveu 0 linhas, sem distinguir ausência de falta de acesso.

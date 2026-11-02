@@ -4,9 +4,9 @@ Leitura pura. `since` e `until` (YYYY-MM-DD) sao obrigatorios em TODA chamada: s
 ou com `time_range`, a Meta devolve vazio sem erro (sonda de 2026-10-31). Campo ausente
 vira `None`, nunca string vazia.
 
-`since` e `until` da edge se comportam como UTC (medido no smoke de 02/11: `days=3` com
+`since` e `until` da edge se comportam como data UTC (medido no smoke de 02/11: `days=3` com
 inicio 31/10 devolveu evento de 30/10 22:25 no fuso da conta). A janela declarada e a do fuso
-da conta, entao a chamada pede um dia a mais de cada lado e o filtro por data local decide.
+da conta, entao a chamada pede margem dos dois lados e o filtro por data local decide.
 """
 
 from __future__ import annotations
@@ -21,7 +21,13 @@ from src.meta_ads.reports import run_meta_graph_get
 
 _OPERACAO = "meta_get_change_history"
 _TAMANHO_MAX_PAGINA = 100
-_MARGEM_DIAS = timedelta(days=1)
+# Medido com um evento de 23/10 10:24 UTC: since=22/10 until=23/10 trouxe 0 linhas e
+# since=23/10 until=24/10 trouxe 4, entao `since` e inclusivo e `until` e EXCLUSIVO, ambos por
+# data UTC. `until` futuro foi aceito em +1 dia, sem erro; +2 nao foi medido.
+# Antes: o dia UTC anterior cobre conta a leste de UTC. Depois: +1 cobre o dia UTC seguinte,
+# onde cai a noite local a oeste de UTC, e +1 compensa o `until` exclusivo.
+_MARGEM_ANTES = timedelta(days=1)
+_MARGEM_DEPOIS = timedelta(days=2)
 # Paginas alem das necessarias para `limit`, para as linhas fora da janela: uma por lado.
 _PAGINAS_DE_MARGEM = 2
 
@@ -106,7 +112,7 @@ async def listar_atividades(
     `paging.next` sobrando marca `truncated` mesmo abaixo do limite, porque a ordem das linhas
     nao foi medida e o que ficou para tras pode estar dentro da janela.
     """
-    since_graph, until_graph = since - _MARGEM_DIAS, until + _MARGEM_DIAS
+    since_graph, until_graph = since - _MARGEM_ANTES, until + _MARGEM_DEPOIS
     edge, params = build_activities_call(
         ad_account_id, since=since_graph, until=until_graph, limit=_TAMANHO_MAX_PAGINA
     )

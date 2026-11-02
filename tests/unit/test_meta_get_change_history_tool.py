@@ -49,6 +49,16 @@ def _graph_paginada(linhas: list[dict[str, Any]]) -> Any:
     return chamada
 
 
+def _graph_como_medida(linhas: list[dict[str, Any]]) -> Any:
+    """`since` e `until` como medidos: data UTC do evento, `since` inclusivo, `until` exclusivo."""
+
+    async def chamada(**kw: Any) -> dict[str, Any]:
+        since, until = kw["params"]["since"], kw["params"]["until"]
+        return {"data": [ln for ln in linhas if since <= ln["event_time"][:10] < until]}
+
+    return chamada
+
+
 def _evento(event_time: Any, objeto: str = "1") -> dict[str, Any]:
     return {"event_time": event_time, "event_type": "t", "object_id": objeto}
 
@@ -85,8 +95,8 @@ async def test_edge_params_since_until_e_auditoria() -> None:
     assert kw["ad_account_id"] == "act_1"
     assert kw["operation_name"] == "meta_get_change_history"
     assert kw["audit_this_call"] is True
-    assert kw["params"]["since"] == "2026-10-02"  # um dia a mais de cada lado
-    assert kw["params"]["until"] == "2026-11-02"
+    assert kw["params"]["since"] == "2026-10-02"  # um dia antes
+    assert kw["params"]["until"] == "2026-11-03"  # dois depois: `until` e exclusivo
     assert kw["params"]["limit"] == 100
     assert kw["max_pages"] == 3
     assert kw["params_summary"]["since"] == "2026-10-03"  # a auditoria guarda as duas janelas
@@ -134,6 +144,26 @@ async def test_janela_e_a_data_local_da_conta_nos_dois_lados() -> None:
     assert [c["objeto_id"] for c in r["changes"]] == ["borda_fim", "borda_inicio"]
     assert r["total_returned"] == 2 and r["truncated"] is False
     assert all("data_nao_verificada" not in c for c in r["changes"])
+
+
+@pytest.mark.asyncio
+async def test_noite_do_ultimo_dia_no_oeste_de_utc_cai_no_dia_utc_seguinte_e_fica() -> None:
+    noite = _evento("2026-11-03T02:30:00+0000", "noite")  # 02/11 23:30 em Sao Paulo
+    g, p1, p2, p3 = _patches(_graph_como_medida([noite]), hoje=date(2026, 11, 2))
+    with p1, p2, p3:
+        r = await modulo.meta_get_change_history({"ad_account_id": _CONTA, "days": 3})
+    assert g.await_args_list[0].kwargs["params"]["until"] == "2026-11-04"
+    assert [c["objeto_id"] for c in r["changes"]] == ["noite"]
+
+
+@pytest.mark.asyncio
+async def test_inicio_do_primeiro_dia_no_leste_de_utc_cai_no_dia_utc_anterior_e_fica() -> None:
+    cedo = _evento("2026-10-30T15:30:00+0000", "cedo")  # 31/10 00:30 em Toquio
+    g, p1, p2, p3 = _patches(_graph_como_medida([cedo]), hoje=date(2026, 11, 2), fuso="Asia/Tokyo")
+    with p1, p2, p3:
+        r = await modulo.meta_get_change_history({"ad_account_id": _CONTA, "days": 3})
+    assert g.await_args_list[0].kwargs["params"]["since"] == "2026-10-30"
+    assert [c["objeto_id"] for c in r["changes"]] == ["cedo"]
 
 
 @pytest.mark.asyncio
