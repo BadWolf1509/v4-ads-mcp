@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.meta_ads.account_clock import resolve_meta_account_today
+from src.meta_ads.account_clock import resolve_meta_account_today, resolve_meta_account_zone
 
 # 02:30Z de 10/03 = 23:30 de 09/03 em Sao_Paulo. UTC e conta discordam.
 INSTANTE = datetime(2026, 3, 10, 2, 30, tzinfo=UTC)
@@ -28,6 +28,28 @@ async def test_usa_o_fuso_da_conta_e_nao_o_do_servidor() -> None:
         AsyncMock(return_value=conta),
     ):
         assert await resolve_meta_account_today("act_1", now=INSTANTE) == date(2026, 3, 9)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("conta", "esperado"),
+    [
+        (SimpleNamespace(timezone_name="America/Manaus"), "America/Manaus"),
+        (SimpleNamespace(timezone_name=None), None),
+        (SimpleNamespace(timezone_name=""), None),
+        (SimpleNamespace(timezone_name="Nao/Existe"), None),
+        (SimpleNamespace(timezone_name="../etc/passwd"), None),
+        (None, None),
+    ],
+)
+async def test_zona_devolve_o_nome_e_none_sem_cair_em_utc(
+    conta: SimpleNamespace | None, esperado: str | None
+) -> None:
+    with patch(
+        "src.meta_ads.account_clock.connection.run_with_reconnect",
+        AsyncMock(return_value=conta),
+    ):
+        assert await resolve_meta_account_zone("act_1") == esperado
 
 
 @pytest.mark.asyncio
