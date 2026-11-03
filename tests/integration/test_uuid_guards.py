@@ -131,3 +131,25 @@ async def test_post_bulk_copy_com_uuid_malformado_da_422(client: AsyncClient, ur
         follow_redirects=False,
     )
     assert response.status_code == 422
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("url", ["/admin/audit", "/admin/audit/export.csv"])
+async def test_admin_audit_manager_id_malformado_da_422(client: AsyncClient, url: str) -> None:
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        admin_id = await _create_manager(conn, email="uuid-guard-aud@v4company.com", role="admin")
+    cookie = sign_panel_session(
+        manager_id=str(admin_id),
+        email="uuid-guard-aud@v4company.com",
+        signing_key=_SIGNING_KEY,
+        aud="panel",
+    )
+    cookies = {PANEL_SESSION_COOKIE_NAME: cookie}
+    ruim = await client.get(url, params={"manager_id": "zzz"}, cookies=cookies)
+    assert ruim.status_code == 422
+    # "Todos" (vazio) e UUID valido seguem funcionando.
+    vazio = await client.get(url, params={"manager_id": ""}, cookies=cookies)
+    assert vazio.status_code == 200
+    valido = await client.get(url, params={"manager_id": str(admin_id)}, cookies=cookies)
+    assert valido.status_code == 200

@@ -71,7 +71,7 @@ async def accounts_revoke_connection(
             connection_id,
         )
         if owner != user.id:
-            raise HTTPException(status_code=404, detail="Connection not found")
+            raise HTTPException(status_code=404, detail="Conexão não encontrada")
         await google_oauth_connections.revoke(conn, connection_id)
 
     # F96 — o XHR do htmx SEGUE o 303; `resposta_hx` devolve 204 + HX-Refresh,

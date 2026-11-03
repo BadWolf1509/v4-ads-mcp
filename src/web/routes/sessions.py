@@ -337,7 +337,7 @@ async def sessions_revoke(
         all_sessions = await mcp_sessions.list_for_manager(conn, user.id, include_revoked=True)
         target = next((s for s in all_sessions if s.id == session_id), None)
         if target is None:
-            raise HTTPException(status_code=404, detail="Session not found")
+            raise HTTPException(status_code=404, detail="Sessão não encontrada")
         if target.revoked_at is None:
             await mcp_sessions.revoke(conn, session_id)
 

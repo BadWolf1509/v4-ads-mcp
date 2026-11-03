@@ -2,13 +2,14 @@
 
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import urlencode
 from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
+from pydantic import BeforeValidator
 
 from src.db import connection
 from src.db.repositories import audit_log, google_ads_accounts
@@ -18,11 +19,16 @@ from src.web.routes._shared import _TETO_DIAS_EXPORT_AUDIT, _require_admin, temp
 router = APIRouter(tags=["web"])
 
 
+# O <select> do filtro manda `manager_id=` (vazio) para "Todos": vazio vira None,
+# qualquer outro valor precisa ser UUID (senao 422, nao 500).
+_ManagerIdFiltro = Annotated[UUID | None, BeforeValidator(lambda v: v or None)]
+
+
 @router.get("/admin/audit", response_class=HTMLResponse)
 async def admin_audit(
     request: Request,
     user: CurrentUser = Depends(current_manager),  # noqa: B008
-    manager_id: str | None = None,
+    manager_id: _ManagerIdFiltro = None,
     customer_id: str | None = None,
     action_type: str = "all",
     status: str = "all",
@@ -52,7 +58,7 @@ async def admin_audit(
         rows, next_cursor = await audit_log.list_page_admin(
             conn,
             days=days,
-            manager_id=UUID(manager_id) if manager_id else None,
+            manager_id=manager_id,
             customer_id=customer_id,
             action_type=action_type,
             status=status,
@@ -73,7 +79,7 @@ async def admin_audit(
     # Build query_string for CSV export link
     qparams: dict[str, str | int] = {}
     if manager_id:
-        qparams["manager_id"] = manager_id
+        qparams["manager_id"] = str(manager_id)
     if customer_id:
         qparams["customer_id"] = customer_id
     if action_type != "all":
@@ -92,7 +98,7 @@ async def admin_audit(
             "rows": rows,
             "managers_list": [dict(r) for r in managers_rows],
             "accounts": accs,
-            "filter_manager_id": manager_id or "",
+            "filter_manager_id": str(manager_id) if manager_id else "",
             "filter_customer_id": customer_id or "",
             "filter_action_type": action_type,
             "filter_status": status,
@@ -110,7 +116,7 @@ async def admin_audit(
 async def admin_audit_export_csv(
     request: Request,
     user: CurrentUser = Depends(current_manager),  # noqa: B008
-    manager_id: str | None = None,
+    manager_id: _ManagerIdFiltro = None,
     action_type: str = "all",
     customer_id: str | None = None,
     status: str = "all",
@@ -123,7 +129,7 @@ async def admin_audit_export_csv(
     """
     _require_admin(user)
     pool = connection.get_pool()
-    scope_manager_id = UUID(manager_id) if manager_id else None
+    scope_manager_id = manager_id
 
     async def stream() -> AsyncIterator[bytes]:
         async with pool.acquire() as conn:
