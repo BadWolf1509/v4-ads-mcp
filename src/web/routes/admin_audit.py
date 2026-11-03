@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BeforeValidator
 
 from src.db import connection
-from src.db.repositories import audit_log, google_ads_accounts
+from src.db.repositories import audit_log, google_ads_accounts, managers
 from src.web.deps import CurrentUser, current_manager, pending_invites_count
 from src.web.routes._shared import _TETO_DIAS_EXPORT_AUDIT, _require_admin, templates
 
@@ -67,9 +67,7 @@ async def admin_audit(
             limit=limit,
         )
 
-        managers_rows = await conn.fetch(
-            "SELECT id, email FROM managers WHERE is_active = true ORDER BY email"
-        )
+        managers_rows = await managers.list_active(conn)
         accs = await google_ads_accounts.list_all(conn)
         return rows, next_cursor, managers_rows, accs
 
