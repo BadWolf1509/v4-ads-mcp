@@ -635,3 +635,18 @@ async def test_sessao_do_contexto_e_a_que_consome(monkeypatch: pytest.MonkeyPatc
     trilha, _, _ = _wire(monkeypatch, "padrao_sem_flag", token_invalido=True)
     await mod.apply_change({"confirmation_token": _TOKEN})
     assert trilha == [("consumo", _TOKEN, str(outra))]
+
+
+@pytest.mark.asyncio
+async def test_payload_de_grade_inconsistente_levanta_antes_de_ler_e_de_escrever(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`windows` e `windows_bid_modifiers` sao paralelas (zip strict). Payload torto
+    levanta ANTES da escrita — se a derivacao fosse so para a confirmacao, a excecao
+    nasceria com a mutacao ja aplicada (F83/F91)."""
+    trilha, kwargs_escrita, saved = _wire(monkeypatch, "update_ad_schedule")
+    saved.payload["windows_bid_modifiers"] = []
+    with pytest.raises(ValueError, match="zip"):
+        await mod.apply_change({"confirmation_token": _TOKEN})
+    assert trilha == [_CONSUMO]
+    assert kwargs_escrita == {}
