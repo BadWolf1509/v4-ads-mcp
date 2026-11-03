@@ -58,7 +58,7 @@ async def test_paginas_limit_mais_um_corta_e_marca_truncated() -> None:
     g = _falso({"data": _linhas_pag(11)})
     with patch.object(paginas, "run_meta_graph_get", g):
         regs, truncated = await paginas.listar_paginas(CTX, ACT, 10)
-    assert len(regs) == 10
+    assert [r["page_id"] for r in regs] == [str(i) for i in range(10)]
     assert truncated is True
 
 
@@ -123,7 +123,7 @@ async def test_segmentacao_limit_mais_um_corta_e_marca_truncated() -> None:
     g = _falso({"data": _linhas_seg(11)})
     with patch.object(segmentacao, "run_meta_graph_get", g):
         regs, truncated = await segmentacao.buscar_segmentacao(CTX, ACT, "q", 10)
-    assert len(regs) == 10
+    assert [r["id"] for r in regs] == [str(i) for i in range(10)]
     assert truncated is True
 
 
@@ -218,7 +218,7 @@ async def test_historico_limit_mais_um_corta_e_marca_truncated() -> None:
     p1, p2 = _patch_hist(g)
     with p1, p2:
         regs, truncated = await historico.listar_atividades(CTX, ACT, SINCE, UNTIL, 10)
-    assert len(regs) == 10
+    assert [r["objeto_id"] for r in regs] == [str(i) for i in range(10)]
     assert truncated is True
 
 
@@ -314,7 +314,7 @@ async def test_criativos_limit_mais_um_corta_e_marca_truncated() -> None:
     g = _falso({"data": _linhas_cri(11)})
     with patch.object(criativos, "run_meta_graph_get", g):
         regs, truncated = await criativos.listar_criativos(CTX, ACT, 10, None, "op")
-    assert len(regs) == 10
+    assert [r["id"] for r in regs] == [str(i) for i in range(10)]
     assert truncated is True
 
 
@@ -367,3 +367,120 @@ async def test_percorrer_sem_next_nao_tem_mais() -> None:
         _, tem_mais = await criativos._percorrer(CTX, ACT, "adcreatives", "id", "op")
     assert tem_mais is False
     assert _kw(g)["params_summary"]["call"] == "posse_adcreatives"
+
+
+# ------------------------------------------------- Fix round 1: limit=100 distingue limit de limit+1
+
+
+async def test_paginas_limit_100_pede_duas_paginas() -> None:
+    g = _falso({"data": []})
+    with patch.object(paginas, "run_meta_graph_get", g):
+        await paginas.listar_paginas(CTX, ACT, 100)
+    kw = _kw(g)
+    assert kw["params"]["limit"] == 100
+    assert kw["estimated_calls"] == 2 and kw["max_pages"] == 2  # ceil(101/100)
+
+
+async def test_historico_limit_100_pede_quatro_paginas() -> None:
+    g = _falso({"data": []})
+    p1, p2 = _patch_hist(g)
+    with p1, p2:
+        await historico.listar_atividades(CTX, ACT, SINCE, UNTIL, 100)
+    kw = _kw(g)
+    assert kw["estimated_calls"] == 4 and kw["max_pages"] == 4  # ceil(101/100)=2, +2 de margem
+
+
+async def test_historico_evento_no_dia_since_fica() -> None:
+    # 10/10 12:00 UTC = 10/10 09:00 em Maceio: exatamente o dia `since`.
+    g = _falso({"data": [_ev(1, "2026-10-10T12:00:00+0000")]})
+    p1, p2 = _patch_hist(g)
+    with p1, p2:
+        regs, _ = await historico.listar_atividades(CTX, ACT, SINCE, UNTIL, 10)
+    assert [r["objeto_id"] for r in regs] == ["1"]
+    assert "data_nao_verificada" not in regs[0]
+
+
+def test_criativos_pagina_e_max_pages_100() -> None:
+    assert criativos._pagina_e_max(100) == (100, 2)
+
+
+# ------------------------------------------------- Fix round 1: listar_criativos com ad_id
+
+
+def _ads(*pares: tuple[str, str | None]) -> list[dict[str, Any]]:
+    return [{"id": a, **({"creative": {"id": c}} if c is not None else {})} for a, c in pares]
+
+
+async def test_criativos_com_ad_id_kwargs_do_ramo_alvo() -> None:
+    g = AsyncMock(
+        side_effect=[
+            {"data": _ads(("a1", "c1"), ("a2", "c1"), ("a3", "c2"))},
+            {"data": [{"id": "c0"}, {"id": "c1", "name": "alvo"}]},
+        ]
+    )
+    with patch.object(criativos, "run_meta_graph_get", g):
+        regs, truncated = await criativos.listar_criativos(CTX, ACT, 10, "a1", "op")
+    assert g.await_count == 2
+    posse, alvo = g.await_args_list[0].kwargs, g.await_args_list[1].kwargs
+    assert posse["edge"] == "/act_1/ads"
+    assert posse["params_summary"] == {"ad_account_id": ACT, "call": "posse_ads"}
+    assert alvo["edge"] == "/act_1/adcreatives"
+    assert alvo["params"]["limit"] == 200  # _POSSE_LIMIT, nao limit+1
+    assert alvo["estimated_calls"] == 5 and alvo["max_pages"] == 5
+    assert alvo["audit_this_call"] is True
+    assert alvo["operation_name"] == "op"
+    assert alvo["params_summary"] == {"ad_account_id": ACT, "ad_id": "a1"}
+    assert [r["id"] for r in regs] == ["c1"]
+    assert regs[0]["ads_vinculados"] == ["a1", "a2"]
+    assert truncated is False
+
+
+async def test_criativos_com_ad_id_truncated_vem_de_ads_truncados() -> None:
+    # `paging.next` na leitura de criativos NAO conta neste ramo; so o dos anuncios.
+    g = AsyncMock(
+        side_effect=[
+            {"data": _ads(("a1", "c1")), "paging": {"next": "https://x"}},
+            {"data": [{"id": "c1"}], "paging": {"next": "https://y"}},
+        ]
+    )
+    with patch.object(criativos, "run_meta_graph_get", g):
+        _, truncated = await criativos.listar_criativos(CTX, ACT, 10, "a1", "op")
+    assert truncated is True
+    g2 = AsyncMock(
+        side_effect=[
+            {"data": _ads(("a1", "c1"))},
+            {"data": [{"id": "c1"}], "paging": {"next": "https://y"}},
+        ]
+    )
+    with patch.object(criativos, "run_meta_graph_get", g2):
+        _, truncated = await criativos.listar_criativos(CTX, ACT, 10, "a1", "op")
+    assert truncated is False
+
+
+async def test_criativos_com_ad_id_sem_criativo_recusa() -> None:
+    g = _falso({"data": _ads(("a1", None))})
+    with (
+        patch.object(criativos, "run_meta_graph_get", g),
+        pytest.raises(criativos.PosseNaoProvada, match="sem criativo|não tem criativo"),
+    ):
+        await criativos.listar_criativos(CTX, ACT, 10, "a1", "op")
+    g.assert_awaited_once()  # nao chegou a ler adcreatives
+
+
+async def test_criativos_com_ad_id_inexistente_recusa() -> None:
+    g = _falso({"data": _ads(("a9", "c1"))})
+    with (
+        patch.object(criativos, "run_meta_graph_get", g),
+        pytest.raises(criativos.PosseNaoProvada, match="anúncio não encontrado"),
+    ):
+        await criativos.listar_criativos(CTX, ACT, 10, "a1", "op")
+    g.assert_awaited_once()
+
+
+async def test_criativos_com_ad_id_criativo_fora_da_pagina_recusa() -> None:
+    g = AsyncMock(side_effect=[{"data": _ads(("a1", "c1"))}, {"data": [{"id": "outro"}]}])
+    with (
+        patch.object(criativos, "run_meta_graph_get", g),
+        pytest.raises(criativos.PosseNaoProvada, match="criativo do anúncio não encontrado"),
+    ):
+        await criativos.listar_criativos(CTX, ACT, 10, "a1", "op")
