@@ -104,10 +104,8 @@ async def test_moeda_diferente_de_brl_vira_erro() -> None:
 @pytest.mark.asyncio
 async def test_erro_do_executor_vira_erro() -> None:
     g, p1, p2 = _patches(RuntimeError("boom"))
-    with p1, p2:
-        resp = await modulo.meta_get_account_balance({"ad_account_id": _CONTA})
-    assert resp["status"] == "error"
-    assert resp["error_message"]
+    with p1, p2, pytest.raises(RuntimeError, match="boom"):
+        await modulo.meta_get_account_balance({"ad_account_id": _CONTA})
 
 
 @pytest.mark.parametrize("nome", ["get_account_balance", "meta_get_account_balance"])

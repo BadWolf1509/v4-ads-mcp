@@ -255,7 +255,7 @@ async def test_gestor_sem_acesso_ve_a_negacao_e_gera_auditoria_com_ou_sem_fuso(
         patch.object(historico, "resolve_meta_account_zone", AsyncMock(return_value=fuso)),
     ):
         r = await modulo.meta_get_change_history({"ad_account_id": _CONTA})
-    assert r["status"] == "error" and "não tem acesso" in r["error_message"]
+    assert r["status"] == "denied" and "não tem acesso" in r["error_message"]
     gravar.assert_awaited_once()
     assert gravar.await_args.kwargs["status"] == "denied"
     assert gravar.await_args.kwargs["operation"] == "meta_get_change_history"
@@ -287,9 +287,8 @@ async def test_days_acima_de_30_e_recusado() -> None:
 @pytest.mark.asyncio
 async def test_erro_da_graph_vira_erro_em_pt() -> None:
     g, p1, p2, p3 = _patches(RuntimeError("boom"))
-    with p1, p2, p3:
-        r = await modulo.meta_get_change_history({"ad_account_id": _CONTA})
-    assert r["status"] == "error" and r["error_message"]
+    with p1, p2, p3, pytest.raises(RuntimeError, match="boom"):
+        await modulo.meta_get_change_history({"ad_account_id": _CONTA})
 
 
 def test_registrada_como_defer_e_somente_leitura() -> None:

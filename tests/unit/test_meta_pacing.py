@@ -450,9 +450,9 @@ async def test_falha_da_graph_vira_erro() -> None:
         patch.object(
             modulo, "resolve_meta_account_today", AsyncMock(return_value=date(2026, 10, 11))
         ),
+        pytest.raises(RuntimeError, match="boom"),
     ):
-        r = await modulo.meta_get_budget_pacing({"ad_account_id": _CONTA})
-    assert r["status"] == "error"
+        await modulo.meta_get_budget_pacing({"ad_account_id": _CONTA})
 
 
 @pytest.mark.asyncio
@@ -615,7 +615,7 @@ async def test_falha_ao_resolver_o_relogio_da_conta_vira_erro() -> None:
         patch.object(
             modulo, "resolve_meta_account_today", AsyncMock(side_effect=RuntimeError("db fora"))
         ),
+        pytest.raises(RuntimeError, match="db fora"),
     ):
-        r = await modulo.meta_get_budget_pacing({"ad_account_id": _CONTA})
-    assert r["status"] == "error" and "db fora" in r["error_message"]
+        await modulo.meta_get_budget_pacing({"ad_account_id": _CONTA})
     g.assert_not_awaited()

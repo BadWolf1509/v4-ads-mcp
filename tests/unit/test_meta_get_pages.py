@@ -12,6 +12,7 @@ import pytest
 from src.mcp.context import McpRequestContext, clear_current, set_current
 from src.mcp.tools import meta_get_pages as modulo
 from src.meta_ads import paginas
+from src.meta_ads.errors import MetaAdsFriendlyError
 
 _CONTA = "act_1"
 
@@ -144,8 +145,8 @@ async def test_limit_fora_da_faixa_erra_sem_chamar_a_graph() -> None:
 
 
 @pytest.mark.asyncio
-async def test_erro_da_graph_vira_envelope() -> None:
-    g, p = _graph([RuntimeError("falhou")])
+async def test_erro_amigavel_da_graph_vira_envelope() -> None:
+    g, p = _graph([MetaAdsFriendlyError("falhou", retryable=False)])
     with p:
         r = await modulo.meta_get_pages({"ad_account_id": _CONTA})
     assert r == {"status": "error", "error_message": "falhou"}

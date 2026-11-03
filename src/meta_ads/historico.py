@@ -17,6 +17,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from src.meta_ads.account_clock import resolve_meta_account_zone
+from src.meta_ads.errors import MetaAdsFriendlyError
 from src.meta_ads.reports import run_meta_graph_get
 
 _OPERACAO = "meta_get_change_history"
@@ -105,7 +106,7 @@ async def listar_atividades(
     """Atividades de `since` a `until` no fuso da conta. Devolve `(registros, truncated)`.
 
     Filtra antes de cortar em `limit`: linha da margem nao consome o limite nem marca
-    `truncated`. Sem o fuso da conta, levanta, mas so DEPOIS da Graph: o gate de acesso mora em
+    `truncated`. Sem o fuso da conta, levanta `MetaAdsFriendlyError` (a tool mostra a mensagem), mas so DEPOIS da Graph: o gate de acesso mora em
     `run_meta_graph_get`, e gestor sem grant tem de ver a negacao e gerar a linha `denied`, com
     ou sem fuso. Evento sem data legivel fica, com `data_nao_verificada`: sumir com ele
     esconderia uma alteracao.
@@ -137,9 +138,10 @@ async def listar_atividades(
     )
     fuso = await resolve_meta_account_zone(ad_account_id)
     if not fuso:
-        raise ValueError(
+        raise MetaAdsFriendlyError(
             f"Conta {ad_account_id} sem fuso legível no inventário: não dá para conferir a "
-            "janela do histórico no fuso da conta."
+            "janela do histórico no fuso da conta.",
+            retryable=False,
         )
     zona = ZoneInfo(fuso)
     registros: list[dict[str, Any]] = []

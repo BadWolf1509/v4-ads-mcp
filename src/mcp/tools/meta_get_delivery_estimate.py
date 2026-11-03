@@ -4,8 +4,10 @@
 from typing import Any
 
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import meta_error_message
+from src.mcp.tools._meta_common import meta_erro
 from src.mcp.tools._registry import register_tool
+from src.meta_ads.client import MetaAccessDeniedError
+from src.meta_ads.errors import MetaAdsFriendlyError
 from src.meta_ads.segmentacao import estimar_entrega
 
 _OPERACAO = "meta_get_delivery_estimate"
@@ -116,8 +118,8 @@ async def meta_get_delivery_estimate(args: dict[str, Any]) -> dict[str, Any]:
         }
     try:
         estimativa = await estimar_entrega(ctx, ad_account_id, spec, objetivo)
-    except Exception as e:  # noqa: BLE001
-        return {"status": "error", "error_message": meta_error_message(e)}
+    except (MetaAccessDeniedError, MetaAdsFriendlyError) as e:
+        return meta_erro(e)
     resposta: dict[str, Any] = {
         "status": "success",
         "ad_account_id": ad_account_id,
