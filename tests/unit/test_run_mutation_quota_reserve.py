@@ -57,8 +57,8 @@ async def test_quota_exhausted_blocks_before_builder_and_skips_record_actual():
 
     with (
         patch.object(mutations, "ensure_account_access", AsyncMock()),
-        patch.object(mutations, "before_call", before_call_mock),
-        patch.object(mutations, "record_actual", record_actual_mock),
+        patch("src.governance.reserva.before_call", before_call_mock),
+        patch("src.governance.reserva.record_actual", record_actual_mock),
         patch.object(mutations.audit_log, "record", AsyncMock(return_value=1)) as audit_mock,
         patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
         pytest.raises(QuotaExhausted),
@@ -93,8 +93,8 @@ async def test_success_reserves_and_reconciles_both_global_and_manager_keys():
 
     with (
         patch.object(mutations, "ensure_account_access", AsyncMock()),
-        patch.object(mutations, "before_call", before_call_mock),
-        patch.object(mutations, "record_actual", record_actual_mock),
+        patch("src.governance.reserva.before_call", before_call_mock),
+        patch("src.governance.reserva.record_actual", record_actual_mock),
         patch.object(mutations.audit_log, "record", AsyncMock(return_value=1)),
         patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
         patch.object(mutations, "build_client_for_manager", AsyncMock(return_value=client)),
@@ -123,3 +123,110 @@ async def test_success_reserves_and_reconciles_both_global_and_manager_keys():
         assert call.kwargs["estimated_ops"] == 3
     reconciled_keys = {c.args[1] for c in record_actual_mock.await_args_list}
     assert f"mgr:{manager_id}" in reconciled_keys
+
+
+def _patches_recomendacao(before_call_mock, record_actual_mock, client, executar):
+    from src.google_ads import mutations
+
+    return (
+        patch.object(mutations, "ensure_account_access", AsyncMock()),
+        patch("src.governance.reserva.before_call", before_call_mock),
+        patch("src.governance.reserva.record_actual", record_actual_mock),
+        patch.object(mutations.audit_log, "record", AsyncMock(return_value=1)),
+        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(mutations, "build_client_for_manager", AsyncMock(return_value=client)),
+        patch("src.google_ads.mutates.recommendations.execute_apply_recommendation", executar),
+        patch.object(mutations, "get_request_id", lambda: "fake-req-id"),
+        patch.object(mutations, "reset_request_id", lambda: None),
+    )
+
+
+@pytest.mark.asyncio
+async def test_recommendation_reserva_uma_e_reconcilia_uma_por_chave():
+    """Sucesso: reserva 1 op nas duas chaves e reconcilia 1 op nas duas."""
+    from contextlib import ExitStack
+
+    from src.google_ads.mutations import run_recommendation_action
+
+    manager_id = uuid4()
+    before_call_mock = AsyncMock()
+    record_actual_mock = AsyncMock()
+    with ExitStack() as stack:
+        for p in _patches_recomendacao(
+            before_call_mock, record_actual_mock, MagicMock(), MagicMock()
+        ):
+            stack.enter_context(p)
+        result = await run_recommendation_action(
+            manager_id=manager_id,
+            session_id=uuid4(),
+            customer_id="1234567890",
+            operation_type="apply_recommendation",
+            payload={},
+        )
+
+    assert result["applied_count"] == 1
+    assert before_call_mock.await_count == 2
+    assert {c.args[1] for c in before_call_mock.await_args_list}.issuperset({f"mgr:{manager_id}"})
+    assert all(c.kwargs["estimated_ops"] == 1 for c in before_call_mock.await_args_list)
+    assert record_actual_mock.await_count == 2
+    for call in record_actual_mock.await_args_list:
+        assert call.kwargs["actual_ops"] == 1
+        assert call.kwargs["estimated_ops"] == 1
+
+
+@pytest.mark.asyncio
+async def test_recommendation_falha_da_api_ainda_reconcilia():
+    """Erro da API depois da reserva: o finally reconcilia as duas chaves."""
+    from contextlib import ExitStack
+
+    from src.google_ads.mutations import run_recommendation_action
+
+    before_call_mock = AsyncMock()
+    record_actual_mock = AsyncMock()
+    with ExitStack() as stack:
+        for p in _patches_recomendacao(
+            before_call_mock,
+            record_actual_mock,
+            MagicMock(),
+            MagicMock(side_effect=RuntimeError("api caiu")),
+        ):
+            stack.enter_context(p)
+        with pytest.raises(Exception):  # noqa: B017, PT011 - to_friendly converte o tipo
+            await run_recommendation_action(
+                manager_id=uuid4(),
+                session_id=uuid4(),
+                customer_id="1234567890",
+                operation_type="apply_recommendation",
+                payload={},
+            )
+
+    assert before_call_mock.await_count == 2
+    assert record_actual_mock.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_recommendation_cota_esgotada_nao_reconcilia():
+    """QuotaExhausted na reserva: nada persistido, nada a reconciliar."""
+    from contextlib import ExitStack
+
+    from src.google_ads.mutations import run_recommendation_action
+
+    record_actual_mock = AsyncMock()
+    with ExitStack() as stack:
+        for p in _patches_recomendacao(
+            AsyncMock(side_effect=QuotaExhausted("esgotada")),
+            record_actual_mock,
+            MagicMock(),
+            MagicMock(),
+        ):
+            stack.enter_context(p)
+        with pytest.raises(QuotaExhausted):
+            await run_recommendation_action(
+                manager_id=uuid4(),
+                session_id=uuid4(),
+                customer_id="1234567890",
+                operation_type="apply_recommendation",
+                payload={},
+            )
+
+    record_actual_mock.assert_not_awaited()

@@ -144,8 +144,8 @@ async def test_run_mutation_partial_failure_returns_per_op_status(monkeypatch):
     with (
         patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
-        patch.object(mutations, "before_call", AsyncMock()),
-        patch.object(mutations, "record_actual", AsyncMock()),
+        patch("src.governance.reserva.before_call", AsyncMock()),
+        patch("src.governance.reserva.record_actual", AsyncMock()),
         patch.object(mutations.audit_log, "record", AsyncMock()),
     ):
         result = await run_mutation(
@@ -209,8 +209,8 @@ async def test_run_mutation_uses_custom_params_summary(monkeypatch):
     with (
         patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
-        patch.object(mutations, "before_call", AsyncMock()),
-        patch.object(mutations, "record_actual", AsyncMock()),
+        patch("src.governance.reserva.before_call", AsyncMock()),
+        patch("src.governance.reserva.record_actual", AsyncMock()),
         patch.object(mutations.audit_log, "record", audit_mock),
     ):
         await run_mutation(
@@ -270,8 +270,8 @@ async def test_status_por_op_nao_afirma_o_verbo_da_operacao(monkeypatch) -> None
     with (
         patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
-        patch.object(mutations, "before_call", AsyncMock()),
-        patch.object(mutations, "record_actual", AsyncMock()),
+        patch("src.governance.reserva.before_call", AsyncMock()),
+        patch("src.governance.reserva.record_actual", AsyncMock()),
         patch.object(mutations.audit_log, "record", AsyncMock()),
     ):
         result = await run_mutation(
@@ -356,8 +356,8 @@ async def test_run_mutation_marca_op_que_o_google_aceitou_e_nao_executou(monkeyp
     with (
         patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
-        patch.object(mutations, "before_call", AsyncMock()),
-        patch.object(mutations, "record_actual", AsyncMock()),
+        patch("src.governance.reserva.before_call", AsyncMock()),
+        patch("src.governance.reserva.record_actual", AsyncMock()),
         patch.object(mutations.audit_log, "record", AsyncMock()),
     ):
         result = await run_mutation(
@@ -398,8 +398,8 @@ async def _roda_e_captura_audit(monkeypatch, per_op_errors, *, nomes=None):
     with (
         patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
-        patch.object(mutations, "before_call", AsyncMock()),
-        patch.object(mutations, "record_actual", AsyncMock()),
+        patch("src.governance.reserva.before_call", AsyncMock()),
+        patch("src.governance.reserva.record_actual", AsyncMock()),
         patch.object(mutations.audit_log, "record", registro),
     ):
         await run_mutation(
@@ -447,8 +447,8 @@ async def test_audit_had_effect_none_quando_excecao(monkeypatch):
     with (
         patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
-        patch.object(mutations, "before_call", AsyncMock()),
-        patch.object(mutations, "record_actual", AsyncMock()),
+        patch("src.governance.reserva.before_call", AsyncMock()),
+        patch("src.governance.reserva.record_actual", AsyncMock()),
         patch.object(mutations.audit_log, "record", registro),
         pytest.raises(RuntimeError, match="boom"),
     ):  # o executor relanca; o audit grava antes
