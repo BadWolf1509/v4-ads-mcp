@@ -69,8 +69,8 @@ async def test_quota_exhausted_blocks_and_skips_record_actual():
 
     with (
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
-        patch("src.google_ads.customer_match.before_call", before_call_mock),
-        patch("src.google_ads.customer_match.record_actual", record_actual_mock),
+        patch("src.governance.reserva.before_call", before_call_mock),
+        patch("src.governance.reserva.record_actual", record_actual_mock),
         patch("src.google_ads.customer_match.audit_log.record", audit_mock),
         patch(
             "src.google_ads.customer_match.connection.get_pool",
@@ -108,8 +108,8 @@ async def test_success_reserves_and_reconciles_both_global_and_manager_keys():
 
     with (
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
-        patch("src.google_ads.customer_match.before_call", before_call_mock),
-        patch("src.google_ads.customer_match.record_actual", record_actual_mock),
+        patch("src.governance.reserva.before_call", before_call_mock),
+        patch("src.governance.reserva.record_actual", record_actual_mock),
         patch("src.google_ads.customer_match.audit_log.record", AsyncMock(return_value=1)),
         patch(
             "src.google_ads.customer_match.connection.get_pool",
@@ -138,3 +138,36 @@ async def test_success_reserves_and_reconciles_both_global_and_manager_keys():
     assert record_actual_mock.await_count == 2
     reconciled_keys = {c.args[1] for c in record_actual_mock.await_args_list}
     assert f"mgr:{manager_id}" in reconciled_keys
+
+
+@pytest.mark.asyncio
+async def test_audit_sem_request_id_grava_none():
+    """Nao medido e `None` no audit, nunca `""` (recusa de cota: nada subiu ao Google)."""
+    from src.google_ads.customer_match import run_offline_user_data_job
+
+    audit_mock = AsyncMock(return_value=1)
+
+    with (
+        patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
+        patch(
+            "src.governance.reserva.before_call",
+            AsyncMock(side_effect=QuotaExhausted("quota diaria esgotada")),
+        ),
+        patch("src.governance.reserva.record_actual", AsyncMock()),
+        patch("src.google_ads.customer_match.audit_log.record", audit_mock),
+        patch(
+            "src.google_ads.customer_match.connection.get_pool",
+            return_value=_pool_with_transactable_conn(),
+        ),
+        pytest.raises(QuotaExhausted),
+    ):
+        await run_offline_user_data_job(
+            manager_id=uuid4(),
+            session_id=uuid4(),
+            customer_id="1163862076",
+            user_list_id="1234567890",
+            operation_type="add",
+            hashed_members=[{"hashed_email": "abc123"}],
+        )
+
+    assert audit_mock.call_args.kwargs["provider_request_id"] is None

@@ -366,8 +366,8 @@ async def _rodar_job(
             return_value=_pool_cm(),
         ),
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
-        patch("src.google_ads.customer_match.before_call", AsyncMock()),
-        patch("src.google_ads.customer_match.record_actual", AsyncMock()),
+        patch("src.governance.reserva.before_call", AsyncMock()),
+        patch("src.governance.reserva.record_actual", AsyncMock()),
         patch("src.google_ads.customer_match.audit_log.record", audit),
     ):
         try:
