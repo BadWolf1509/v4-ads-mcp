@@ -1259,7 +1259,7 @@ async def test_admin_index_nao_tem_mais_oauth_pessoal_da_meta(client: AsyncClien
     for url in ("/admin", "/admin?meta_connected=1", "/admin?meta_revoked=1"):
         r = await client.get(url, cookies=cookies)
         assert r.status_code == 200
-        assert "Suas conexões OAuth" in r.text and "Google Ads" in r.text
+        assert "Sua conexão OAuth" in r.text and "Google Ads" in r.text
         assert "/oauth/meta/" not in r.text
         assert "Conexão Meta" not in r.text
         assert "meta-revoke-modal" not in r.text
