@@ -3,12 +3,10 @@
 
 from typing import Any
 
-from src.db import connection
 from src.google_ads.mutations import run_mutation
 from src.governance.blast_radius import RiskLevel, classify
-from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
-from src.mcp.tools._mutate_common import applied_envelope, preview_envelope
+from src.mcp.tools._mutate_common import applied_envelope, emitir_preview
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -87,21 +85,11 @@ async def update_campaign_status(args: dict[str, Any]) -> dict[str, Any]:
         )
 
     # Confirm path
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
-        token = await create_pending(
-            conn,
-            manager_id=ctx.manager_id,
-            session_id=ctx.session_id,
-            customer_id=customer_id,
-            operation_type="update_campaign_status",
-            payload=payload,
-            blast_summary=summary,
-        )
-    return preview_envelope(
-        "update_campaign_status",
-        customer_id,
-        summary,
-        token,
-        confirmation_reason=risk.reason,
+    return await emitir_preview(
+        ctx,
+        operation="update_campaign_status",
+        customer_id=customer_id,
+        payload=payload,
+        summary=summary,
+        risk=risk,
     )
