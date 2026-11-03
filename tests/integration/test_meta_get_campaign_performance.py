@@ -5,11 +5,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.db.repositories import (
-    manager_meta_account_access,
-    managers,
-    meta_ad_accounts,
-)
+from tests.integration._seed import seed_manager, seed_meta_account
 
 pytestmark = pytest.mark.asyncio
 
@@ -19,24 +15,9 @@ async def _seed_manager_with_meta_access(
     *,
     account_status: int = 1,  # ATIVO
 ):
-    mid = uuid4()
     async with db.acquire() as conn:
-        await managers.create(conn, manager_id=mid, email="t@v4company.com", full_name="Tester")
-        await meta_ad_accounts.upsert_many(
-            conn,
-            [
-                {
-                    "ad_account_id": "act_123456",
-                    "business_id": "bm_test",
-                    "business_name": "Test BM",
-                    "account_name": "Test Account",
-                    "currency": "BRL",
-                    "timezone_name": "America/Sao_Paulo",
-                    "account_status": account_status,
-                }
-            ],
-        )
-        await manager_meta_account_access.grant(conn, manager_id=mid, ad_account_id="act_123456")
+        mid = await seed_manager(conn)
+        await seed_meta_account(conn, mid, account_status=account_status)
     return mid
 
 
@@ -161,9 +142,8 @@ async def test_account_not_found_returns_error(db):
         meta_get_campaign_performance,
     )
 
-    mid = uuid4()
     async with db.acquire() as conn:
-        await managers.create(conn, manager_id=mid, email="t@v4company.com", full_name="Tester")
+        mid = await seed_manager(conn)
 
     result = await meta_get_campaign_performance(
         manager_id=mid,
