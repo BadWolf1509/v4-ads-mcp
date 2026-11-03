@@ -76,6 +76,34 @@ async def get_active_for_manager(
     return _row_to_conn(row) if row else None
 
 
+async def pick_admin_active(conn: asyncpg.Connection) -> OAuthConnection | None:
+    """Conexão ativa do primeiro admin ativo que tem uma.
+
+    `m.id` desempata admins criados no mesmo instante, e `oc.id` as conexões do mesmo
+    admin: escolher uma linha é determinístico (spec 2026-09-28 §3.2.2).
+    """
+    row = await conn.fetchrow(
+        """
+        SELECT oc.*
+        FROM google_oauth_connections oc
+        JOIN managers m ON m.id = oc.manager_id
+        WHERE m.role = 'admin' AND m.is_active = true AND oc.revoked_at IS NULL
+        ORDER BY m.created_at, m.id, oc.connected_at DESC, oc.id DESC
+        LIMIT 1
+        """
+    )
+    return _row_to_conn(row) if row else None
+
+
+async def pick_latest_active(conn: asyncpg.Connection) -> OAuthConnection | None:
+    """Conexão ativa mais recente de qualquer gestor (fallback quando nenhum admin tem uma)."""
+    row = await conn.fetchrow(
+        "SELECT * FROM google_oauth_connections WHERE revoked_at IS NULL"
+        " ORDER BY connected_at DESC, id DESC LIMIT 1"
+    )
+    return _row_to_conn(row) if row else None
+
+
 async def revoke(conn: asyncpg.Connection, connection_id: UUID) -> None:
     await conn.execute(
         "UPDATE google_oauth_connections SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL",

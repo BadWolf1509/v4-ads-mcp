@@ -45,26 +45,12 @@ async def _pick_oauth_connection(conn: asyncpg.Connection) -> tuple[Any, Any]:
 
     Falls back to any active connection if no admin has one.
     """
-    admins = await conn.fetch(
-        # `id` desempata admins criados no mesmo instante: o laço pega o PRIMEIRO com OAuth
-        # (spec 2026-09-28 §3.2.2 — escolher uma linha é determinístico).
-        "SELECT id FROM managers WHERE role = 'admin' AND is_active = true ORDER BY created_at, id"
-    )
-    for row in admins:
-        oc = await google_oauth_connections.get_active_for_manager(conn, row["id"])
-        if oc is not None:
-            m = await managers.get_by_id(conn, row["id"])
-            return m, oc
-
-    # Fallback: any active connection.
-    row = await conn.fetchrow(
-        "SELECT manager_id FROM google_oauth_connections WHERE revoked_at IS NULL"
-        " ORDER BY connected_at DESC, id DESC LIMIT 1"
-    )
-    if row is None:
+    oc = await google_oauth_connections.pick_admin_active(conn)
+    if oc is None:
+        oc = await google_oauth_connections.pick_latest_active(conn)
+    if oc is None:
         return None, None
-    oc = await google_oauth_connections.get_active_for_manager(conn, row["manager_id"])
-    m = await managers.get_by_id(conn, row["manager_id"])
+    m = await managers.get_by_id(conn, oc.manager_id)
     return m, oc
 
 
