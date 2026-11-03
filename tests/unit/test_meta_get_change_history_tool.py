@@ -299,3 +299,17 @@ def test_registrada_como_defer_e_somente_leitura() -> None:
     assert t.bucket == "defer"
     assert t.description.startswith("[DEFER]")
     assert t.input_schema["properties"]["ad_account_id"]["pattern"] == r"^act_\d+$"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fuso", [None, ""])
+async def test_sem_fuso_levanta_friendly_e_a_tool_mostra_a_mensagem(fuso: str | None) -> None:
+    from src.meta_ads.errors import MetaAdsFriendlyError
+
+    g, p1, p2, p3 = _patches([{"data": _linhas(1)}] * 2, fuso=fuso)
+    with p1, p2, p3:
+        with pytest.raises(MetaAdsFriendlyError) as info:
+            await historico.listar_atividades(MagicMock(), _CONTA, _HOJE, _HOJE, 10)
+        r = await modulo.meta_get_change_history({"ad_account_id": _CONTA})
+    assert "sem fuso legível" in info.value.message
+    assert r == {"status": "error", "error_message": info.value.message}

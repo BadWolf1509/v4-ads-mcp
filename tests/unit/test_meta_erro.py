@@ -59,3 +59,18 @@ def test_nenhuma_tool_meta_usa_meta_error_message() -> None:
     pasta = Path(__file__).resolve().parents[2] / "src" / "mcp" / "tools"
     usam = [p.name for p in pasta.glob("*.py") if "meta_error_message" in p.read_text("utf-8")]
     assert usam == []
+
+
+@pytest.mark.asyncio
+async def test_token_ausente_chega_ao_gestor_como_error() -> None:
+    from src.meta_ads.client import MetaSystemUserTokenMissingError
+
+    msg = "Token do system user Meta não configurado. O admin precisa subir o secret."
+    exc = MetaSystemUserTokenMissingError(msg)
+    assert isinstance(exc, MetaAdsFriendlyError)
+    assert exc.message == msg and exc.retryable is False
+    with (
+        patch.object(modulo, "run_meta_graph_get", AsyncMock(side_effect=exc)),
+    ):
+        r = await modulo.meta_get_entities({"ad_account_id": "act_1", "level": "campaign"})
+    assert r == {"status": "error", "error_message": msg}

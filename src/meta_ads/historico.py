@@ -106,9 +106,9 @@ async def listar_atividades(
     """Atividades de `since` a `until` no fuso da conta. Devolve `(registros, truncated)`.
 
     Filtra antes de cortar em `limit`: linha da margem nao consome o limite nem marca
-    `truncated`. Sem o fuso da conta, levanta `MetaAdsFriendlyError` (a tool mostra a mensagem), mas so DEPOIS da Graph: o gate de acesso mora em
-    `run_meta_graph_get`, e gestor sem grant tem de ver a negacao e gerar a linha `denied`, com
-    ou sem fuso. Evento sem data legivel fica, com `data_nao_verificada`: sumir com ele
+    `truncated`. Sem o fuso da conta, levanta `MetaAdsFriendlyError` (a tool mostra a
+    mensagem), mas so DEPOIS da Graph: o gate de acesso mora em `run_meta_graph_get`, e
+    gestor sem grant tem de ver a negacao e gerar a linha `denied`, com ou sem fuso. Evento sem data legivel fica, com `data_nao_verificada`: sumir com ele
     esconderia uma alteracao.
     `paging.next` sobrando marca `truncated` mesmo abaixo do limite, porque a ordem das linhas
     nao foi medida e o que ficou para tras pode estar dentro da janela.

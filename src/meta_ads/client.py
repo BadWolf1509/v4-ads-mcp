@@ -20,12 +20,23 @@ registrada no catálogo: ela vale se alguém algum dia trouxer o SDK de volta,
 mas não há mais call site que a aplique.
 """
 
+from dataclasses import dataclass
+
+from src.meta_ads.errors import MetaAdsFriendlyError
+
 # Meta Graph API version used across all Meta Graph call sites.
 META_GRAPH_API_VERSION = "v25.0"
 
 
-class MetaSystemUserTokenMissingError(Exception):
-    """Raised when the shared system-user token secret isn't configured."""
+@dataclass(slots=True, frozen=True)
+class MetaSystemUserTokenMissingError(MetaAdsFriendlyError):
+    """Raised when the shared system-user token secret isn't configured.
+
+    É um `MetaAdsFriendlyError`: a mensagem PT-BR (acionável pro admin) chega ao
+    gestor como `error` pelas tools Meta, em vez de "Erro interno". Não é transitório.
+    """
+
+    retryable: bool = False
 
 
 class MetaAccessDeniedError(Exception):
