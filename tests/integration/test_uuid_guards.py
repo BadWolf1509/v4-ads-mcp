@@ -78,3 +78,56 @@ async def test_data_deletion_status_invalid_uuid_returns_422(client: AsyncClient
         follow_redirects=False,
     )
     assert response.status_code == 422
+
+
+_POSTS_ADMIN_ACCESS_COM_MANAGER_ID = [
+    ("/admin/access/toggle", {"customer_id": "1234567890", "desejado": "grant"}),
+    ("/admin/access/meta/toggle", {"ad_account_id": "act_1", "desejado": "grant"}),
+    ("/admin/access/bulk-grant", {"customer_ids": ["1234567890"]}),
+    ("/admin/access/meta/bulk-grant", {"ad_account_ids": ["act_1"]}),
+]
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(("url", "extra"), _POSTS_ADMIN_ACCESS_COM_MANAGER_ID)
+async def test_post_com_manager_id_malformado_da_422(
+    client: AsyncClient, url: str, extra: dict
+) -> None:
+    """`manager_id` malformado e erro de validacao (422), nao ValueError/500."""
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        admin_id = await _create_manager(conn, email="uuid-guard-post@v4company.com", role="admin")
+    cookie = sign_panel_session(
+        manager_id=str(admin_id),
+        email="uuid-guard-post@v4company.com",
+        signing_key=_SIGNING_KEY,
+        aud="panel",
+    )
+    response = await client.post(
+        url,
+        data={"manager_id": "not-a-uuid", **extra},
+        cookies={PANEL_SESSION_COOKIE_NAME: cookie},
+        follow_redirects=False,
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("url", ["/admin/access/bulk-copy", "/admin/access/meta/bulk-copy"])
+async def test_post_bulk_copy_com_uuid_malformado_da_422(client: AsyncClient, url: str) -> None:
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        admin_id = await _create_manager(conn, email="uuid-guard-copy@v4company.com", role="admin")
+    cookie = sign_panel_session(
+        manager_id=str(admin_id),
+        email="uuid-guard-copy@v4company.com",
+        signing_key=_SIGNING_KEY,
+        aud="panel",
+    )
+    response = await client.post(
+        url,
+        data={"from_manager_id": "not-a-uuid", "to_manager_id": str(uuid4())},
+        cookies={PANEL_SESSION_COOKIE_NAME: cookie},
+        follow_redirects=False,
+    )
+    assert response.status_code == 422

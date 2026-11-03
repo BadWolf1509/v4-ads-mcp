@@ -111,13 +111,13 @@ async def admin_access_meta(
 async def admin_access_meta_toggle(
     request: Request,
     user: CurrentUser = Depends(current_manager),  # noqa: B008
-    manager_id: str = Form(...),
+    manager_id: UUID = Form(...),  # noqa: B008
     ad_account_id: str = Form(...),
     desejado: Literal["grant", "revoke"] = Form(...),
 ) -> HTMLResponse:
     _require_admin(user)
     pool = connection.get_pool()
-    target_mid = UUID(manager_id)
+    target_mid = manager_id
     async with pool.acquire() as conn:
         # revoked_at IS NULL: linha revogada não conta como "tem acesso" — senão
         # o clique num checkbox desmarcado (grant revogado) chamaria revoke() de
@@ -156,12 +156,12 @@ async def admin_access_meta_toggle(
                     operation="admin_access_grant" if granted else "admin_access_revoke",
                     customer_id=ad_account_id,
                     platform="meta",
-                    target_manager_id=manager_id,
+                    target_manager_id=str(manager_id),
                     granted=granted,
                 )
     return _toggle_acesso_response(
         post_url="/admin/access/meta/toggle",
-        manager_id=manager_id,
+        manager_id=str(manager_id),
         account_id=ad_account_id,
         account_field="ad_account_id",
         granted=granted,
@@ -173,7 +173,7 @@ async def admin_access_meta_toggle(
 async def admin_access_meta_bulk_grant(
     request: Request,
     user: CurrentUser = Depends(current_manager),  # noqa: B008
-    manager_id: str = Form(...),  # noqa: B008
+    manager_id: UUID = Form(...),  # noqa: B008
     ad_account_ids: list[str] = Form(...),  # noqa: B008
 ) -> RedirectResponse:
     _require_admin(user)
@@ -182,7 +182,7 @@ async def admin_access_meta_bulk_grant(
     async with pool.acquire() as conn, conn.transaction():
         await manager_meta_account_access.bulk_grant(
             conn,
-            manager_id=UUID(manager_id),
+            manager_id=manager_id,
             ad_account_ids=ad_account_ids,
             granted_by=user.id,
         )
@@ -191,7 +191,7 @@ async def admin_access_meta_bulk_grant(
             admin=user,
             operation="admin_access_bulk_grant",
             platform="meta",
-            target_manager_id=manager_id,
+            target_manager_id=str(manager_id),
             count=len(ad_account_ids),
             ids=ad_account_ids[:20],
         )
@@ -202,8 +202,8 @@ async def admin_access_meta_bulk_grant(
 async def admin_access_meta_bulk_copy(
     request: Request,
     user: CurrentUser = Depends(current_manager),  # noqa: B008
-    from_manager_id: str = Form(...),
-    to_manager_id: str = Form(...),
+    from_manager_id: UUID = Form(...),  # noqa: B008
+    to_manager_id: UUID = Form(...),  # noqa: B008
 ) -> RedirectResponse:
     _require_admin(user)
     if from_manager_id == to_manager_id:
@@ -215,8 +215,8 @@ async def admin_access_meta_bulk_copy(
     async with pool.acquire() as conn, conn.transaction():
         await manager_meta_account_access.copy_access(
             conn,
-            from_manager_id=UUID(from_manager_id),
-            to_manager_id=UUID(to_manager_id),
+            from_manager_id=from_manager_id,
+            to_manager_id=to_manager_id,
             granted_by=user.id,
         )
         await _audit_admin(
@@ -224,8 +224,8 @@ async def admin_access_meta_bulk_copy(
             admin=user,
             operation="admin_access_bulk_copy",
             platform="meta",
-            from_manager_id=from_manager_id,
-            to_manager_id=to_manager_id,
+            from_manager_id=str(from_manager_id),
+            to_manager_id=str(to_manager_id),
         )
     return RedirectResponse(url="/admin/access/meta", status_code=303)
 
@@ -292,7 +292,7 @@ async def admin_access_meta_manager_detail(
     try:
         parsed_manager_id = UUID(manager_id)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Gestor not found") from None
+        raise HTTPException(status_code=404, detail="Gestor não encontrado") from None
 
     # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
     # `HTTPException` (mgr_row ausente) propaga direto: run_with_reconnect só
@@ -304,7 +304,7 @@ async def admin_access_meta_manager_detail(
             "SELECT id, email, full_name FROM managers WHERE id = $1", parsed_manager_id
         )
         if mgr_row is None:
-            raise HTTPException(status_code=404, detail="Gestor not found")
+            raise HTTPException(status_code=404, detail="Gestor não encontrado")
         accs = await meta_ad_accounts.list_all(conn)
         access_rows = await conn.fetch(
             "SELECT ad_account_id FROM manager_meta_account_access "
@@ -335,7 +335,7 @@ async def admin_access_meta_manager_detail(
 async def admin_access_bulk_grant(
     request: Request,
     user: CurrentUser = Depends(current_manager),  # noqa: B008
-    manager_id: str = Form(...),  # noqa: B008
+    manager_id: UUID = Form(...),  # noqa: B008
     customer_ids: list[str] = Form(...),  # noqa: B008
 ) -> RedirectResponse:
     _require_admin(user)
@@ -344,7 +344,7 @@ async def admin_access_bulk_grant(
     async with pool.acquire() as conn, conn.transaction():
         await manager_account_access.bulk_grant(
             conn,
-            manager_id=UUID(manager_id),
+            manager_id=manager_id,
             customer_ids=customer_ids,
             granted_by=user.id,
         )
@@ -352,7 +352,7 @@ async def admin_access_bulk_grant(
             conn,
             admin=user,
             operation="admin_access_bulk_grant",
-            target_manager_id=manager_id,
+            target_manager_id=str(manager_id),
             count=len(customer_ids),
             ids=customer_ids[:20],
         )
@@ -363,8 +363,8 @@ async def admin_access_bulk_grant(
 async def admin_access_bulk_copy(
     request: Request,
     user: CurrentUser = Depends(current_manager),  # noqa: B008
-    from_manager_id: str = Form(...),
-    to_manager_id: str = Form(...),
+    from_manager_id: UUID = Form(...),  # noqa: B008
+    to_manager_id: UUID = Form(...),  # noqa: B008
 ) -> RedirectResponse:
     _require_admin(user)
     if from_manager_id == to_manager_id:
@@ -376,16 +376,16 @@ async def admin_access_bulk_copy(
     async with pool.acquire() as conn, conn.transaction():
         await manager_account_access.copy_access(
             conn,
-            from_manager_id=UUID(from_manager_id),
-            to_manager_id=UUID(to_manager_id),
+            from_manager_id=from_manager_id,
+            to_manager_id=to_manager_id,
             granted_by=user.id,
         )
         await _audit_admin(
             conn,
             admin=user,
             operation="admin_access_bulk_copy",
-            from_manager_id=from_manager_id,
-            to_manager_id=to_manager_id,
+            from_manager_id=str(from_manager_id),
+            to_manager_id=str(to_manager_id),
         )
     return RedirectResponse(url="/admin/access", status_code=303)
 
@@ -458,7 +458,7 @@ async def admin_access_manager_detail(
     try:
         parsed_manager_id = UUID(manager_id)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Gestor not found") from None
+        raise HTTPException(status_code=404, detail="Gestor não encontrado") from None
 
     # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
     # `HTTPException` (mgr_row ausente) propaga direto: run_with_reconnect só
@@ -470,7 +470,7 @@ async def admin_access_manager_detail(
             "SELECT id, email, full_name FROM managers WHERE id = $1", parsed_manager_id
         )
         if mgr_row is None:
-            raise HTTPException(status_code=404, detail="Gestor not found")
+            raise HTTPException(status_code=404, detail="Gestor não encontrado")
         accs = await google_ads_accounts.list_all(conn)
         # Task 3 (achado extra): mesmo raciocínio do admin_access — grant
         # revogado é soft, a linha fica, então sem o filtro o checkbox
@@ -505,13 +505,13 @@ async def admin_access_manager_detail(
 async def admin_access_toggle(
     request: Request,
     user: CurrentUser = Depends(current_manager),  # noqa: B008
-    manager_id: str = Form(...),
+    manager_id: UUID = Form(...),  # noqa: B008
     customer_id: str = Form(...),
     desejado: Literal["grant", "revoke"] = Form(...),
 ) -> HTMLResponse:
     _require_admin(user)
     pool = connection.get_pool()
-    target_mid = UUID(manager_id)
+    target_mid = manager_id
     async with pool.acquire() as conn:
         # Task 3, decisão 1: revogação virou soft — a linha FICA depois do
         # revoke. Sem `revoked_at IS NULL` aqui, `exists` continuaria true numa
@@ -548,14 +548,14 @@ async def admin_access_toggle(
                     admin=user,
                     operation="admin_access_grant" if granted else "admin_access_revoke",
                     customer_id=customer_id,
-                    target_manager_id=manager_id,
+                    target_manager_id=str(manager_id),
                     granted=granted,
                 )
 
     # Return a tiny HTMX-friendly fragment that swaps the cell (+ toast via HX-Trigger)
     return _toggle_acesso_response(
         post_url="/admin/access/toggle",
-        manager_id=manager_id,
+        manager_id=str(manager_id),
         account_id=customer_id,
         account_field="customer_id",
         granted=granted,

@@ -3,6 +3,7 @@
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlencode
 from uuid import UUID
 
 import asyncpg
@@ -70,17 +71,17 @@ async def admin_audit(
     next_cursor_at, next_cursor_id = next_cursor if next_cursor else (None, None)
 
     # Build query_string for CSV export link
-    qparts = []
+    qparams: dict[str, str | int] = {}
     if manager_id:
-        qparts.append(f"manager_id={manager_id}")
+        qparams["manager_id"] = manager_id
     if customer_id:
-        qparts.append(f"customer_id={customer_id}")
+        qparams["customer_id"] = customer_id
     if action_type != "all":
-        qparts.append(f"action_type={action_type}")
+        qparams["action_type"] = action_type
     if status != "all":
-        qparts.append(f"status={status}")
-    qparts.append(f"days={days}")
-    query_string = "&".join(qparts)
+        qparams["status"] = status
+    qparams["days"] = days
+    query_string = urlencode(qparams)
 
     pending = await pending_invites_count()
     return templates.TemplateResponse(
@@ -126,8 +127,6 @@ async def admin_audit_export_csv(
 
     async def stream() -> AsyncIterator[bytes]:
         async with pool.acquire() as conn:
-            from src.db.repositories import audit_log
-
             async for line in audit_log.export_csv_rows(
                 conn,
                 manager_id=scope_manager_id,

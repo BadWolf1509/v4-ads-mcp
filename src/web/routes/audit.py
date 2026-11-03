@@ -4,6 +4,7 @@ from collections import OrderedDict
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import urlencode
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -73,15 +74,15 @@ async def audit(
         grouped.setdefault(label, []).append(r)
 
     # Preserve query string for CSV export link
-    qparts = []
+    qparams: dict[str, str | int] = {}
     if action_type != "all":
-        qparts.append(f"action_type={action_type}")
+        qparams["action_type"] = action_type
     if customer_id:
-        qparts.append(f"customer_id={customer_id}")
+        qparams["customer_id"] = customer_id
     if status != "all":
-        qparts.append(f"status={status}")
-    qparts.append(f"days={days}")
-    query_string = "&".join(qparts)
+        qparams["status"] = status
+    qparams["days"] = days
+    query_string = urlencode(qparams)
 
     return templates.TemplateResponse(
         request,
@@ -120,8 +121,6 @@ async def audit_export_csv(
 
     async def stream() -> AsyncIterator[bytes]:
         async with pool.acquire() as conn:
-            from src.db.repositories import audit_log
-
             async for line in audit_log.export_csv_rows(
                 conn,
                 manager_id=user.id,
@@ -150,15 +149,15 @@ async def audit_detail(
 
     # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
     async def _load(conn: asyncpg.Connection) -> dict[str, Any] | None:
-        from src.db.repositories import audit_log
-
         # Gestores see only their own; admins see any
         scope_id = None if user.is_admin else user.id
         return await audit_log.get_by_id(conn, audit_id=audit_id, manager_id=scope_id)
 
     event = await connection.run_with_reconnect(_load)
     if event is None:
-        raise HTTPException(status_code=404, detail="Audit event not found or out of scope")
+        raise HTTPException(
+            status_code=404, detail="Evento de auditoria não encontrado ou fora do seu escopo"
+        )
     return templates.TemplateResponse(
         request,
         "audit_detail.html",
