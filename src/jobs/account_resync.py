@@ -267,7 +267,6 @@ async def run() -> int:
 
         client = build_client(
             refresh_token=refresh_token,
-            developer_token=settings.google_ads_developer_token,
             client_id=settings.google_oauth_client_id,
             client_secret=settings.google_oauth_client_secret,
             login_customer_id=settings.google_ads_login_customer_id,

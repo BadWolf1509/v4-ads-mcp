@@ -25,6 +25,13 @@
 > `status` e `delivery_sub_status` não veio. Escrita não testada. Escrita liberada por padrão nas contas:
 > bloqueio pendente de decisão.
 >
+> **Google Ads, validado em 02/11:** o MCC `6436352492` é da V4 Lima Soares & Co. O nível de acesso do projeto
+> `v4-ads-mcp` é **Básico** (15.000 operações por dia), dono do cliente OAuth. Em 30 dias até 02/11: 2.537
+> requisições, pico de 326 por dia, 64 `Mutate`. O developer token foi aposentado pelo Google em 09/09: o código
+> deixa de usá-lo, com `google-ads` 33.0.0. A política de 31/08 proíbe proxy e MCP que só reexpõem o Google Ads a
+> empresas independentes; uso interno da unidade fica fora, pela nossa leitura. Abrir a outra unidade ou a cliente
+> pede revisão antes. MCP oficial v0.0.6: 7 tools, escrita só em ativos e rótulos.
+>
 > **Onda 2 Meta pausada**, 3 auditorias, plano em
 > [`2026-11-02-meta-onda-2-auditorias.md`](../superpowers/plans/2026-11-02-meta-onda-2-auditorias.md). Retomada
 > só se o teste de 30 dias pedir.

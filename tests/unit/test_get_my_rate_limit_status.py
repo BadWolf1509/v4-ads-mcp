@@ -58,7 +58,7 @@ async def test_returns_zero_usage_when_no_calls_today(_ctx) -> None:
     assert conta["pct_display"] == "0.0%"
     assert result["warning_threshold_pct"] == 80
     assert "date_utc" in result
-    assert "developer_token_id_hash" in conta
+    assert conta["chave_cota"] == "google-cloud-project"
 
 
 @pytest.mark.asyncio

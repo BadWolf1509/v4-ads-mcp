@@ -3,7 +3,7 @@
 Read-only. Registra os fatos medidos em 29/10 que sustentam o desenho das tools do
 planejador (spec `2026-10-29-planejador-de-palavras-design.md`, secao 1, fatos 2-6, 9 e 10).
 Monta o cliente como `build_client_for_manager` (refresh token do gestor lido do banco em
-transacao `readonly`, decifrado com `decrypt_refresh_token`; developer token, client id/secret
+transacao `readonly`, decifrado com `decrypt_refresh_token`; client id/secret
 e login customer id vem dos mesmos secrets do servico).
 
 Resultado de 29/10 (Conta Interna - 02, 6728568947):
@@ -128,7 +128,6 @@ def main() -> None:
     )
     client = build_client(
         refresh_token=asyncio.run(refresh_token_do_gestor(manager_id)),
-        developer_token=secret("google-ads-developer-token"),
         client_id=secret("google-oauth-client-id"),
         client_secret=secret("google-oauth-client-secret"),
         login_customer_id=secret("google-ads-login-customer-id"),

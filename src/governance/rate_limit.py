@@ -1,6 +1,6 @@
 """Daily Google Ads API rate limit tracking.
 
-Counts operations per developer-token-hash per UTC day. Defaults to
+Counts operations per quota key per UTC day. Defaults to
 Basic Access quota (15,000 ops/day). Use record_actual() after API
 responds to reconcile the estimate against Google's actual usage
 (taken from the SearchGoogleAdsResponse query_resource_consumption
@@ -18,6 +18,9 @@ from typing import NamedTuple
 import asyncpg
 import structlog
 
+# Desde 09/09/2026 a cota do Google e do projeto dono do cliente OAuth, nao do
+# developer token. A coluna `developer_token_id` guarda esta chave (ou `mgr:<uuid>`).
+CHAVE_COTA_PROJETO = "google-cloud-project"
 DAILY_QUOTA_BASIC = 15_000
 DAILY_QUOTA_STANDARD = 1_000_000
 WARN_THRESHOLD_PCT = 80
@@ -161,17 +164,6 @@ async def get_today_usage(
     )
     used = int(row["operations_used"]) if row else 0
     return Usage(used=used, limit=daily_limit, pct=used / daily_limit if daily_limit else 0.0)
-
-
-def hash_developer_token(token: str) -> str:
-    """SHA-256 hex of the dev token; used as the row key in rate_counters.
-
-    Allows future multi-token setups (e.g., test vs prod tokens) without
-    leaking the actual token value into the row key.
-    """
-    import hashlib
-
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()[:32]
 
 
 # ============================================================================

@@ -32,8 +32,8 @@ from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
 from src.governance.bookkeeping import best_effort
 from src.governance.rate_limit import (
+    CHAVE_COTA_PROJETO,
     before_call,
-    hash_developer_token,
     record_actual,
 )
 
@@ -72,7 +72,7 @@ async def run_report(
             level="read",
         )
     )
-    token_id = hash_developer_token(settings.google_ads_developer_token)
+    token_id = CHAVE_COTA_PROJETO
     started = time.monotonic()
     actual_ops = 0
     status = "success"

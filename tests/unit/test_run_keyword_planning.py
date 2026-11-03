@@ -12,7 +12,6 @@ from uuid import uuid4
 
 import pytest
 
-from src.config import get_settings
 from src.google_ads.access import AccountAccessDeniedError
 from src.google_ads.errors import GoogleAdsFriendlyError
 from src.governance.rate_limit import QuotaExhausted
@@ -90,9 +89,9 @@ async def test_reserva_unica_com_estimated_ops(ctx, gov) -> None:
 
     assert resultado == ["a", "b", "c"]
     assert gov["before_call"].await_count == 2
-    from src.governance.rate_limit import hash_developer_token
+    from src.governance.rate_limit import CHAVE_COTA_PROJETO
 
-    token_id = hash_developer_token(get_settings().google_ads_developer_token)
+    token_id = CHAVE_COTA_PROJETO
     chaves = [c.args[1] for c in gov["before_call"].await_args_list]
     assert chaves == [token_id, f"mgr:{ctx['manager_id']}"]
     for c in gov["before_call"].await_args_list:

@@ -41,7 +41,6 @@ class Settings(BaseSettings):
     google_oauth_client_secret: str
 
     # Google Ads API
-    google_ads_developer_token: str
     google_ads_login_customer_id: str
 
     # Meta Ads API (Sprint M.1 foundation)
@@ -74,7 +73,7 @@ class Settings(BaseSettings):
     public_base_url: str = "https://v4-ads-mcp-299432068772.southamerica-east1.run.app"
 
     # Governance: F73 — cap diario por gestor (rate_counters chave "mgr:<uuid>",
-    # paralelo ao cap global por developer_token_id).
+    # paralelo ao cap global do projeto).
     manager_daily_quota: int = 5000
 
     # Backup semanal do DB -> GCS (Cloud Run Job src/jobs/backup.py). Bucket

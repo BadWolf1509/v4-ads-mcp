@@ -7,7 +7,7 @@ Auto-loaded by Claude Code. Read first.
 Interno only, não SaaS, sem terceiros. Substitui Supermetrics.
 
 - **Production:** `https://v4-ads-mcp-299432068772.southamerica-east1.run.app` — projeto GCP **`v4-ads-mcp`** (Wellington é **owner**; migrado 2026-06-30 do antigo `v4-ads-mcp-prod`). Custom domain `mcpv4.fluxocerto.dev.br` pendente (via LB).
-- **MCC Google Ads:** `6436352492` (V4 Maceió, 26 client accounts em 04/09)
+- **MCC Google Ads:** `6436352492` (V4 Lima Soares & Co, 26 client accounts em 04/09)
 - **BM Meta Ads:** V4 Lima Soares & Co (`619664032237208`; **24 ad accounts alcançáveis pelo SU** em 19 BMs, verificado 15/08 — via **system-user token all-targets**, Modelo B)
 - **Unidade operacional:** V4 Lima Soares & Co (João Pessoa, PB) — Wellington dev + gestores da unidade
 - **Admin:** `wellington.ribeiro@v4company.com`
