@@ -30,14 +30,12 @@ is kept but may not fire in practice.
 from collections import Counter
 from typing import Any
 
-from src.db import connection
 from src.google_ads.mutations import run_mutation
 from src.google_ads.reports import run_report
 from src.governance.blast_radius import RiskLevel, classify
-from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
 from src.mcp.tools._common import classify_partial
-from src.mcp.tools._mutate_common import applied_envelope, error_envelope, preview_envelope
+from src.mcp.tools._mutate_common import applied_envelope, emitir_preview, error_envelope
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -321,23 +319,13 @@ async def apply_audience(args: dict[str, Any]) -> dict[str, Any]:
             attachments_result=attachments_result,
         )
 
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
-        token = await create_pending(
-            conn,
-            manager_id=ctx.manager_id,
-            session_id=ctx.session_id,
-            customer_id=customer_id,
-            operation_type="apply_audience",
-            payload=payload,
-            blast_summary=summary,
-        )
-    return preview_envelope(
-        "apply_audience",
-        customer_id,
-        summary,
-        token,
-        confirmation_reason=risk.reason,
+    return await emitir_preview(
+        ctx,
+        operation="apply_audience",
+        customer_id=customer_id,
+        payload=payload,
+        summary=summary,
+        risk=risk,
         target_type=target_type,
         mode=mode,
     )

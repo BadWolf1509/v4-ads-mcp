@@ -54,6 +54,12 @@ _EXECUTORES = {
     "run_offline_user_data_job",
 }
 
+# Quem emite token. `emitir_preview` (G4, 03/11) e o `create_pending` + envelope
+# num helper: a tool que o chama sem ler `.level` tem caminho fixo CONFIRM, como
+# tinha quando chamava o `create_pending` direto. Sem este nome, as 20 tools
+# convertidas cairiam em `caminho_ambiguo` (nem token nem executor no source).
+_EMISSORES_DE_TOKEN = ("create_pending", "emitir_preview")
+
 # Varia o bastante pra atravessar todos os limiares do modulo (1, 5, 20).
 _CONTAGENS = (0, 1, 5, 20, 100, 500)
 
@@ -256,7 +262,7 @@ def _particionar(raiz: Path | None = None) -> _Particao:
             sem_operacao_literal.append(p.name)
             continue
 
-        emite_token = h.chama(arvore, "create_pending", arv=arvore)
+        emite_token = any(h.chama(arvore, e, arv=arvore) for e in _EMISSORES_DE_TOKEN)
         aplica_direto = any(h.chama(arvore, e, arv=arvore) for e in _EXECUTORES)
         if emite_token and not aplica_direto:
             caminho_fixo.append((p.name, operacao, RiskLevel.CONFIRM))

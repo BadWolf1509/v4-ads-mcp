@@ -124,8 +124,8 @@ async def test_confirm_path_over_threshold():
     from src.mcp.tools.add_keywords import add_keywords
 
     with (
-        patch("src.mcp.tools.add_keywords.create_pending", AsyncMock(return_value="ABC12345")),
-        patch("src.mcp.tools.add_keywords.connection") as conn_module,
+        patch("src.mcp.tools._mutate_common.create_pending", AsyncMock(return_value="ABC12345")),
+        patch("src.mcp.tools._mutate_common.connection") as conn_module,
     ):
         conn_module.get_pool.return_value.acquire.return_value.__aenter__ = AsyncMock(
             return_value=AsyncMock()

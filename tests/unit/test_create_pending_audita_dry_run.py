@@ -121,6 +121,13 @@ async def test_sem_acesso_nao_grava_linha_de_dry_run():
     record.assert_not_called()
 
 
+_CRIAM_PENDENCIA = ("create_pending", "emitir_preview")
+
+
+def _cria_pendencia(texto: str) -> bool:
+    return any(nome in texto for nome in _CRIAM_PENDENCIA)
+
+
 def test_toda_tool_que_cria_pendencia_declara_o_target_count_planejado():
     """Guard do 25o call-site: quem chama `create_pending` tem que passar o numero.
 
@@ -142,10 +149,15 @@ def test_toda_tool_que_cria_pendencia_declara_o_target_count_planejado():
     (derivado de `__file__` via `h.SRC`) e `EscopoVazioError` se o resultado
     vier vazio, em vez de lista vazia silenciosa.
     """
+    # G4 (03/11): 20 tools passaram a criar a pendencia via `emitir_preview`, e
+    # o texto `create_pending` sumiu delas. Sem o segundo nome, essas 20 saiam
+    # da cobranca CALADAS. O dono do helper repassa o payload da tool e nao o
+    # monta — por isso fica de fora, e e o unico.
     faltando = [
         p.name
         for p in h.fontes_py(h.SRC / "mcp" / "tools")
-        if "create_pending" in (texto := p.read_text(encoding="utf-8"))
+        if p.name != "_mutate_common.py"
+        and _cria_pendencia(texto := p.read_text(encoding="utf-8"))
         and "__target_count__" not in texto
     ]
     assert not faltando, (
