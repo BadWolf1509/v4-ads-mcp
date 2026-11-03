@@ -73,7 +73,7 @@ OAuth pessoal da Meta, e `meta_get_account_overview.py` parou de ler o relogio
   nenhuma, entao nao sao F141.
 - `src/db/repositories/managers.py`, `src/governance/dry_run.py`,
   `src/web/routes/admin_invites.py` (carimbo de registro — idade do convite) e
-  `src/web/routes/sessions.py` (carimbo de sessao — "chamadas hoje" do
+  `src/web/routes/dashboard.py` (carimbo de sessao — "chamadas hoje" do
   dashboard): idem. `src/web/routes.py` virou pacote na PR 5 (F171); os dois
   arquivos acima sao os que de fato leem o relogio hoje — grep por
   `datetime.now` ou `date.today` em `src/web/routes/` confirma.

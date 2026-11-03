@@ -1,6 +1,6 @@
 """Números do painel que o dashboard e o overview de admin mostram — um corpo só.
 
-O dashboard (`routes/sessions.py`) e o overview (`routes/admin_overview.py`)
+O dashboard (`routes/dashboard.py`) e o overview (`routes/admin_overview.py`)
 liam as mesmas contas por cópia, e cada cópia carregava o mesmo erro:
 
 - "Quota MCP hoje" somava TODAS as linhas de `rate_counters`. Uma mutação reserva
