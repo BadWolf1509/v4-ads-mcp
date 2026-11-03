@@ -7,9 +7,11 @@ Each report tool calls `run_report` with:
   - an optional row_formatter to shape SDK rows into JSON-serializable dicts
 
 run_report handles the boilerplate:
-  - rate limit: before_call -> record_actual
+  - gate: ensure_account_access (nivel `read`) no topo, antes de qualquer reserva
+  - cota diaria: reservar_cota -> reconciliar_cota, nas DUAS chaves (a do projeto
+    dono do cliente OAuth e `mgr:<uuid>`, o teto por gestor)
   - build the client per manager
-  - execute search_stream over the GAQL
+  - execute search_stream over the GAQL (fora do event loop, capturando o request-id)
   - call the formatter on each row
   - return the list
 
@@ -24,18 +26,14 @@ from uuid import UUID
 import structlog
 
 from src.blocking import run_blocking
-from src.config import get_settings
 from src.db import connection
 from src.db.repositories import audit_log
 from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
+from src.google_ads.request_id import get_capture_interceptor, get_request_id, reset_request_id
 from src.governance.bookkeeping import best_effort
-from src.governance.rate_limit import (
-    CHAVE_COTA_PROJETO,
-    before_call,
-    record_actual,
-)
+from src.governance.reserva import Reserva, reconciliar_cota, reservar_cota
 
 log = structlog.get_logger(__name__)
 
@@ -59,7 +57,6 @@ async def run_report(
         GoogleAdsFriendlyError: if Google API errored (PT-BR message)
         NoOAuthConnectionError: if the manager has no OAuth connection
     """
-    settings = get_settings()
     # F91 — gate roda a cada request MCP e e read pre-operacao (o audit de
     # negacao so acontece no caminho de erro, que ja levanta e nao e retentado).
     await connection.run_with_reconnect(
@@ -72,33 +69,26 @@ async def run_report(
             level="read",
         )
     )
-    token_id = CHAVE_COTA_PROJETO
     started = time.monotonic()
     actual_ops = 0
     status = "success"
     error_message: str | None = None
+    # Lido DENTRO do closure: o ContextVar do interceptor nao volta da thread (F86).
+    request_id: list[str | None] = []
 
     pool = connection.get_pool()
     results: list[dict[str, Any]] = []
-    reserved = False
+    reserva: Reserva | None = None
     try:
-        # Reserve quota: global (developer token) + per-manager cap. Transacao
-        # EXTERNA torna as duas reservas tudo-ou-nada (before_call's internal
-        # conn.transaction() vira SAVEPOINT; raise em qualquer uma desfaz ambas).
-        async with pool.acquire() as conn, conn.transaction():
-            dia = await before_call(conn, token_id, estimated_ops=estimated_ops)
-            dia_do_gestor = await before_call(
-                conn,
-                f"mgr:{manager_id}",
-                estimated_ops=estimated_ops,
-                daily_limit=settings.manager_daily_quota,
-            )
-        reserved = True
+        # Reserva tudo-ou-nada das duas chaves de cota (projeto + gestor).
+        reserva = await reservar_cota(pool, manager_id=manager_id, estimated_ops=estimated_ops)
 
         client = await build_client_for_manager(manager_id=manager_id)
 
         try:
-            ga_service = client.get_service("GoogleAdsService")
+            ga_service = client.get_service(
+                "GoogleAdsService", interceptors=[get_capture_interceptor()]
+            )
             request = client.get_type("SearchGoogleAdsStreamRequest")
             request.customer_id = customer_id
             request.query = query
@@ -109,10 +99,14 @@ async def run_report(
             def _consumir_stream() -> tuple[int, list[dict[str, Any]]]:
                 lidos = 0
                 linhas: list[dict[str, Any]] = []
-                for batch in ga_service.search_stream(request=request):
-                    lidos += 1
-                    for row in batch.results:
-                        linhas.append(row_formatter(row))
+                reset_request_id()
+                try:
+                    for batch in ga_service.search_stream(request=request):
+                        lidos += 1
+                        for row in batch.results:
+                            linhas.append(row_formatter(row))
+                finally:
+                    request_id.append(get_request_id())
                 return lidos, linhas
 
             batches, linhas = await run_blocking(_consumir_stream)
@@ -127,35 +121,21 @@ async def run_report(
         raise
     finally:
         # Reconcile counters even on failure (we made API calls before erroring) —
-        # SO se a reserva foi persistida (reserved=True). Sem reserva nao ha nada
-        # pra reconciliar; reconciliar mesmo assim decrementaria o contador sem
-        # contrapartida (F73 — o quota leak original).
+        # SO se a reserva foi persistida. Sem reserva nao ha nada pra reconciliar;
+        # reconciliar mesmo assim decrementaria o contador sem contrapartida
+        # (F73 — o quota leak original).
         # F83: best-effort e independentes — falha de conexao aqui descartaria o
         # `return` de um relatorio ja lido com sucesso.
-        if reserved:
-            async with (
-                best_effort(
-                    "report_quota_reconcile_failed",
-                    operation=operation_name,
-                    customer_id=customer_id,
-                ),
-                pool.acquire() as conn,
-                conn.transaction(),
-            ):
-                await record_actual(
-                    conn,
-                    token_id,
-                    dia=dia,
-                    actual_ops=actual_ops,
-                    estimated_ops=estimated_ops,
-                )
-                await record_actual(
-                    conn,
-                    f"mgr:{manager_id}",
-                    dia=dia_do_gestor,
-                    actual_ops=actual_ops,
-                    estimated_ops=estimated_ops,
-                )
+        if reserva is not None:
+            await reconciliar_cota(
+                pool,
+                reserva,
+                manager_id=manager_id,
+                actual_ops=actual_ops,
+                evento="report_quota_reconcile_failed",
+                operation=operation_name,
+                customer_id=customer_id,
+            )
         # O `if` vem ANTES do acquire: sem opt-in de audit nao ha por que pegar
         # conexao (era um ponto de falha gratuito dentro do finally).
         if audit_this_call:
@@ -178,6 +158,8 @@ async def run_report(
                     operation=operation_name,
                     target_count=len(results) if status == "success" else None,
                     params_summary=params_summary,
+                    # Nao capturado e `None` (nao medido), nunca "".
+                    provider_request_id=request_id[-1] if request_id else None,
                     status=status,
                     error_message=error_message,
                     duration_ms=duration_ms,

@@ -50,8 +50,8 @@ def _common_patches(*, before_call_mock: AsyncMock, record_actual_mock: AsyncMoc
     mock_pool, _ = _pool_with_conn()
     return [
         patch("src.google_ads.reports.ensure_account_access", AsyncMock(return_value=None)),
-        patch("src.google_ads.reports.before_call", before_call_mock),
-        patch("src.google_ads.reports.record_actual", record_actual_mock),
+        patch("src.governance.reserva.before_call", before_call_mock),
+        patch("src.governance.reserva.record_actual", record_actual_mock),
         patch("src.google_ads.reports.audit_log.record", AsyncMock(return_value=1)),
         patch("src.google_ads.reports.connection.get_pool", return_value=mock_pool),
     ]
@@ -70,6 +70,54 @@ def _fake_client_streaming(rows: list[Any]) -> MagicMock:
     client.get_service = MagicMock(return_value=ga_service)
     client.get_type = MagicMock(return_value=MagicMock())
     return client, _row_formatter
+
+
+@pytest.mark.asyncio
+async def test_run_report_audita_request_id():
+    """O request-id do Google, gravado pelo interceptor DENTRO da thread do stream,
+    chega ao audit como `provider_request_id` (F86: ContextVar nao volta da thread)."""
+    from src.google_ads.reports import run_report
+    from src.google_ads.request_id import _last_request_id, get_capture_interceptor
+
+    client, row_formatter = _fake_client_streaming([1])
+
+    def _search_stream(request: Any) -> list[Any]:
+        _last_request_id.set("req-do-stream")  # o que o interceptor faria
+        batch = MagicMock()
+        batch.results = [1]
+        return [batch]
+
+    client.get_service.return_value.search_stream = _search_stream
+    audit_mock = AsyncMock(return_value=1)
+
+    patches = [
+        patch("src.google_ads.reports.ensure_account_access", AsyncMock(return_value=None)),
+        patch("src.governance.reserva.before_call", AsyncMock()),
+        patch("src.governance.reserva.record_actual", AsyncMock()),
+        patch("src.google_ads.reports.audit_log.record", audit_mock),
+        patch("src.google_ads.reports.connection.get_pool", return_value=_pool_with_conn()[0]),
+        patch("src.google_ads.reports.build_client_for_manager", AsyncMock(return_value=client)),
+    ]
+    for p in patches:
+        p.start()
+    try:
+        await run_report(
+            manager_id=uuid4(),
+            session_id=uuid4(),
+            customer_id="1234567890",
+            query="SELECT campaign.id FROM campaign",
+            row_formatter=row_formatter,
+            operation_name="run_gaql",
+            audit_this_call=True,
+        )
+    finally:
+        for p in patches:
+            p.stop()
+
+    assert audit_mock.call_args.kwargs["provider_request_id"] == "req-do-stream"
+    client.get_service.assert_called_once_with(
+        "GoogleAdsService", interceptors=[get_capture_interceptor()]
+    )
 
 
 @pytest.mark.asyncio
@@ -117,8 +165,8 @@ async def test_quota_exhausted_still_audits_with_status_error_when_opted_in():
 
     patches = [
         patch("src.google_ads.reports.ensure_account_access", AsyncMock(return_value=None)),
-        patch("src.google_ads.reports.before_call", before_call_mock),
-        patch("src.google_ads.reports.record_actual", record_actual_mock),
+        patch("src.governance.reserva.before_call", before_call_mock),
+        patch("src.governance.reserva.record_actual", record_actual_mock),
         patch("src.google_ads.reports.audit_log.record", audit_mock),
         patch("src.google_ads.reports.connection.get_pool", return_value=_pool_with_conn()[0]),
     ]
@@ -158,8 +206,8 @@ async def test_success_reserves_and_reconciles_both_global_and_manager_keys():
 
     patches = [
         patch("src.google_ads.reports.ensure_account_access", AsyncMock(return_value=None)),
-        patch("src.google_ads.reports.before_call", before_call_mock),
-        patch("src.google_ads.reports.record_actual", record_actual_mock),
+        patch("src.governance.reserva.before_call", before_call_mock),
+        patch("src.governance.reserva.record_actual", record_actual_mock),
         patch("src.google_ads.reports.audit_log.record", AsyncMock(return_value=1)),
         patch("src.google_ads.reports.connection.get_pool", return_value=_pool_with_conn()[0]),
         patch("src.google_ads.reports.build_client_for_manager", AsyncMock(return_value=client)),

@@ -85,8 +85,8 @@ async def test_read_nao_congela_o_event_loop() -> None:
 
     with (
         patch("src.google_ads.reports.ensure_account_access", AsyncMock(return_value=None)),
-        patch("src.google_ads.reports.before_call", AsyncMock()),
-        patch("src.google_ads.reports.record_actual", AsyncMock()),
+        patch("src.governance.reserva.before_call", AsyncMock()),
+        patch("src.governance.reserva.record_actual", AsyncMock()),
         patch("src.google_ads.reports.audit_log.record", AsyncMock(return_value=1)),
         patch("src.google_ads.reports.connection.get_pool", return_value=_pool()),
         patch("src.google_ads.reports.build_client_for_manager", AsyncMock(return_value=client)),
