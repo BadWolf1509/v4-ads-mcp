@@ -109,7 +109,7 @@ async def run_gaql(args: dict[str, Any]) -> dict[str, Any]:
         if len(rows) > _MAX_RAW_ROWS_FOR_AGGREGATE:
             raise EntradaInvalidaError(
                 f"Query retornou {len(rows)} rows (>{_MAX_RAW_ROWS_FOR_AGGREGATE}). "
-                "Refine WHERE clause antes de agregar (limite hard pra evitar OOM)."
+                "Refine a cláusula WHERE antes de agregar (limite hard pra evitar OOM)."
             )
         groups = aggregate_rows(rows, aggregate_by)
         truncated = len(groups) > _MAX_ROWS

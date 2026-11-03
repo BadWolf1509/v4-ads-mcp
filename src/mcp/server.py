@@ -68,7 +68,8 @@ def _error_envelope(tool_name: str, exc: Exception) -> dict[str, Any]:
     if isinstance(exc, AccountAccessDeniedError | MetaAccessDeniedError):
         log.warning("tool_access_denied", tool=tool_name, error=str(exc))
         return {"status": "denied", "error_message": str(exc)}
-    # EntradaInvalidaError (e InvalidDateRangeError, filha): periodo invalido e erro de ENTRADA — sem a mensagem, o LLM
+    # EntradaInvalidaError (e InvalidDateRangeError, filha): periodo invalido e erro de
+    # ENTRADA — sem a mensagem, o LLM
     # recebia "Erro interno" e nao tinha com que se corrigir (so 2 das ~23 chamadas de
     # `resolve_date_window` o capturavam). O ValueError cru segue scrubado abaixo.
     if isinstance(exc, GoogleAdsFriendlyError | QuotaExhausted | EntradaInvalidaError):

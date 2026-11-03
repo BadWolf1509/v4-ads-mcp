@@ -1,6 +1,5 @@
 """Boundary de erro do dispatcher MCP: exceções viram envelope seguro (sem vazar internals)."""
 
-import inspect
 from datetime import date, timedelta
 from uuid import uuid4
 
@@ -80,8 +79,25 @@ async def test_change_history_janela_inteira_fora_da_retencao() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_gaql_agregacao_com_rows_demais_chega_ao_gestor() -> None:
+async def test_run_gaql_agregacao_com_rows_demais_chega_ao_gestor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import src.mcp.tools.run_gaql as run_gaql
 
-    codigo = inspect.getsource(run_gaql)
-    assert "raise EntradaInvalidaError(" in codigo
+    async def _rows_demais(**_kw: object) -> list[dict[str, object]]:
+        return [{"campaign.id": 1}] * (run_gaql._MAX_RAW_ROWS_FOR_AGGREGATE + 1)
+
+    monkeypatch.setattr(run_gaql, "execute_gaql_raw", _rows_demais)
+    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
+    try:
+        with pytest.raises(EntradaInvalidaError) as info:
+            await run_gaql.run_gaql(
+                {
+                    "customer_id": "1234567890",
+                    "query": "SELECT campaign.id FROM campaign",
+                    "aggregate_by": ["campaign.id"],
+                }
+            )
+    finally:
+        clear_current()
+    assert type(info.value) is EntradaInvalidaError
