@@ -11,11 +11,9 @@ estar linkada onde a varredura nao alcancou.
 
 from typing import Any
 
-from src.db import connection
 from src.governance.blast_radius import classify
-from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
-from src.mcp.tools._mutate_common import error_envelope, preview_envelope
+from src.mcp.tools._mutate_common import emitir_preview, error_envelope
 from src.mcp.tools._registry import register_tool
 
 # O segmento de path e' derivavel do `level` — usado no pre-flight pra pegar
@@ -134,22 +132,12 @@ async def remove_asset_link(args: dict[str, Any]) -> dict[str, Any]:
     niveis = ", ".join(f"{n}×{c}" for n, c in sorted(por_nivel.items()))
     summary = f"Desvincular {target_count} asset(s) ({niveis}). A entidade Asset NÃO é removida."
 
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
-        token = await create_pending(
-            conn,
-            manager_id=ctx.manager_id,
-            session_id=ctx.session_id,
-            customer_id=customer_id,
-            operation_type="remove_asset_link",
-            payload=payload,
-            blast_summary=summary,
-        )
-    return preview_envelope(
-        "remove_asset_link",
-        customer_id,
-        summary,
-        token,
-        confirmation_reason=risk.reason,
+    return await emitir_preview(
+        ctx,
+        operation="remove_asset_link",
+        customer_id=customer_id,
+        payload=payload,
+        summary=summary,
+        risk=risk,
         target_count=target_count,
     )

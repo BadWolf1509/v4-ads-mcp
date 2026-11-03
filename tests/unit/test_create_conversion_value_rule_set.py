@@ -54,10 +54,10 @@ async def test_dry_run_happy_path_customer_device(_ctx) -> None:
             AsyncMock(return_value=None),
         ),
         patch(
-            "src.mcp.tools.create_conversion_value_rule_set.create_pending",
+            "src.mcp.tools._mutate_common.create_pending",
             AsyncMock(return_value="TOKEN1"),
         ),
-        patch("src.mcp.tools.create_conversion_value_rule_set.connection.get_pool") as mock_pool,
+        patch("src.mcp.tools._mutate_common.connection.get_pool") as mock_pool,
     ):
         mock_pool.return_value.acquire.return_value.__aenter__ = AsyncMock(return_value=None)
         mock_pool.return_value.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
@@ -97,10 +97,10 @@ async def test_dry_run_happy_path_campaign_with_geo(_ctx) -> None:
             geo_validator,
         ),
         patch(
-            "src.mcp.tools.create_conversion_value_rule_set.create_pending",
+            "src.mcp.tools._mutate_common.create_pending",
             AsyncMock(return_value="T"),
         ),
-        patch("src.mcp.tools.create_conversion_value_rule_set.connection.get_pool") as mock_pool,
+        patch("src.mcp.tools._mutate_common.connection.get_pool") as mock_pool,
     ):
         mock_pool.return_value.acquire.return_value.__aenter__ = AsyncMock(return_value=None)
         mock_pool.return_value.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
@@ -196,10 +196,10 @@ async def test_blast_summary_format_mixed_batch(_ctx) -> None:
             AsyncMock(return_value=None),
         ),
         patch(
-            "src.mcp.tools.create_conversion_value_rule_set.create_pending",
+            "src.mcp.tools._mutate_common.create_pending",
             AsyncMock(return_value="T"),
         ),
-        patch("src.mcp.tools.create_conversion_value_rule_set.connection.get_pool") as mock_pool,
+        patch("src.mcp.tools._mutate_common.connection.get_pool") as mock_pool,
     ):
         mock_pool.return_value.acquire.return_value.__aenter__ = AsyncMock(return_value=None)
         mock_pool.return_value.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
@@ -236,10 +236,10 @@ async def test_preview_includes_attachment_and_filter_flags(_ctx) -> None:
             AsyncMock(return_value=None),
         ),
         patch(
-            "src.mcp.tools.create_conversion_value_rule_set.create_pending",
+            "src.mcp.tools._mutate_common.create_pending",
             AsyncMock(return_value="T"),
         ),
-        patch("src.mcp.tools.create_conversion_value_rule_set.connection.get_pool") as mock_pool,
+        patch("src.mcp.tools._mutate_common.connection.get_pool") as mock_pool,
     ):
         mock_pool.return_value.acquire.return_value.__aenter__ = AsyncMock(return_value=None)
         mock_pool.return_value.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
@@ -279,10 +279,10 @@ async def test_customer_attachment_does_not_call_campaign_validator(_ctx) -> Non
             geo_validator,
         ),
         patch(
-            "src.mcp.tools.create_conversion_value_rule_set.create_pending",
+            "src.mcp.tools._mutate_common.create_pending",
             AsyncMock(return_value="T"),
         ),
-        patch("src.mcp.tools.create_conversion_value_rule_set.connection.get_pool") as mock_pool,
+        patch("src.mcp.tools._mutate_common.connection.get_pool") as mock_pool,
     ):
         mock_pool.return_value.acquire.return_value.__aenter__ = AsyncMock(return_value=None)
         mock_pool.return_value.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
@@ -318,10 +318,10 @@ async def test_geo_paths_dedup_cross_rules(_ctx) -> None:
             geo_validator,
         ),
         patch(
-            "src.mcp.tools.create_conversion_value_rule_set.create_pending",
+            "src.mcp.tools._mutate_common.create_pending",
             AsyncMock(return_value="T"),
         ),
-        patch("src.mcp.tools.create_conversion_value_rule_set.connection.get_pool") as mock_pool,
+        patch("src.mcp.tools._mutate_common.connection.get_pool") as mock_pool,
     ):
         mock_pool.return_value.acquire.return_value.__aenter__ = AsyncMock(return_value=None)
         mock_pool.return_value.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
@@ -458,10 +458,10 @@ async def test_no_geo_rules_skips_geo_validator(_ctx) -> None:
             geo_validator,
         ),
         patch(
-            "src.mcp.tools.create_conversion_value_rule_set.create_pending",
+            "src.mcp.tools._mutate_common.create_pending",
             AsyncMock(return_value="T"),
         ),
-        patch("src.mcp.tools.create_conversion_value_rule_set.connection.get_pool") as mock_pool,
+        patch("src.mcp.tools._mutate_common.connection.get_pool") as mock_pool,
     ):
         mock_pool.return_value.acquire.return_value.__aenter__ = AsyncMock(return_value=None)
         mock_pool.return_value.acquire.return_value.__aexit__ = AsyncMock(return_value=None)

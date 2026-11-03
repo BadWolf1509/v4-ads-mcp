@@ -134,8 +134,8 @@ async def test_devolve_preview_com_token_e_nunca_aplica_direto(monkeypatch) -> N
         def acquire(self) -> Any:
             return _FakeConn()
 
-    monkeypatch.setattr(mod.connection, "get_pool", lambda: _FakePool())
-    monkeypatch.setattr(mod, "create_pending", _create_pending)
+    monkeypatch.setattr("src.db.connection.get_pool", lambda: _FakePool())
+    monkeypatch.setattr("src.mcp.tools._mutate_common.create_pending", _create_pending)
 
     links = [
         {
@@ -183,7 +183,7 @@ async def test_rejeita_level_incompativel_com_resource_name(monkeypatch) -> None
     levanta, e `apply_change` descarta `partial_failures`, entao o gestor veria
     status: "applied" com applied_count: 0 e nenhum motivo. O pre-flight tem
     que barrar antes de mintar o token."""
-    monkeypatch.setattr(mod.connection, "get_pool", _boom_get_pool)
+    monkeypatch.setattr("src.db.connection.get_pool", _boom_get_pool)
     links = [
         {
             "level": "CUSTOMER",
@@ -202,7 +202,7 @@ async def test_rejeita_level_incompativel_com_resource_name(monkeypatch) -> None
 async def test_rejeita_resource_name_de_outra_conta(monkeypatch) -> None:
     """resource_name com customer_id diferente do argumento — mesma familia do
     mismatch de level, mas no segmento de conta em vez do de nivel."""
-    monkeypatch.setattr(mod.connection, "get_pool", _boom_get_pool)
+    monkeypatch.setattr("src.db.connection.get_pool", _boom_get_pool)
     links = [
         {
             "level": "CAMPAIGN",
@@ -220,7 +220,7 @@ async def test_rejeita_resource_name_de_outra_conta(monkeypatch) -> None:
 async def test_segundo_link_invalido_e_apontado_pelo_indice(monkeypatch) -> None:
     """O primeiro link e' valido; so o segundo (indice 1) tem o mismatch — a
     mensagem tem que apontar o indice certo, nao só "algum link esta errado"."""
-    monkeypatch.setattr(mod.connection, "get_pool", _boom_get_pool)
+    monkeypatch.setattr("src.db.connection.get_pool", _boom_get_pool)
     links = [
         {"level": "CAMPAIGN", "resource_name": "customers/1234567890/campaignAssets/7~9~CALLOUT"},
         {"level": "AD_GROUP", "resource_name": "customers/1234567890/campaignAssets/7~9~CALLOUT"},
@@ -260,8 +260,8 @@ async def test_par_correto_ainda_minta_token_em_cada_nivel(
         def acquire(self) -> Any:
             return _FakeConn()
 
-    monkeypatch.setattr(mod.connection, "get_pool", lambda: _FakePool())
-    monkeypatch.setattr(mod, "create_pending", _create_pending)
+    monkeypatch.setattr("src.db.connection.get_pool", lambda: _FakePool())
+    monkeypatch.setattr("src.mcp.tools._mutate_common.create_pending", _create_pending)
 
     r = await mod.remove_asset_link(
         {

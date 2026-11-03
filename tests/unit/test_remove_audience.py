@@ -83,10 +83,10 @@ async def test_classify_always_confirms_count_one():
 
     with (
         patch(
-            "src.mcp.tools.remove_audience.create_pending",
+            "src.mcp.tools._mutate_common.create_pending",
             AsyncMock(return_value="TOKEN001"),
         ),
-        patch("src.mcp.tools.remove_audience.connection") as conn_module,
+        patch("src.mcp.tools._mutate_common.connection") as conn_module,
     ):
         conn_module.get_pool.return_value.acquire.return_value.__aenter__ = AsyncMock(
             return_value=AsyncMock()
@@ -108,10 +108,10 @@ async def test_classify_always_confirms_bulk():
 
     with (
         patch(
-            "src.mcp.tools.remove_audience.create_pending",
+            "src.mcp.tools._mutate_common.create_pending",
             AsyncMock(return_value="TOKEN050"),
         ),
-        patch("src.mcp.tools.remove_audience.connection") as conn_module,
+        patch("src.mcp.tools._mutate_common.connection") as conn_module,
     ):
         conn_module.get_pool.return_value.acquire.return_value.__aenter__ = AsyncMock(
             return_value=AsyncMock()
@@ -145,10 +145,10 @@ async def test_confirm_path_payload_includes_partial_failure_flag():
 
     with (
         patch(
-            "src.mcp.tools.remove_audience.create_pending",
+            "src.mcp.tools._mutate_common.create_pending",
             AsyncMock(side_effect=fake_create_pending),
         ),
-        patch("src.mcp.tools.remove_audience.connection") as conn_module,
+        patch("src.mcp.tools._mutate_common.connection") as conn_module,
     ):
         conn_module.get_pool.return_value.acquire.return_value.__aenter__ = AsyncMock(
             return_value=AsyncMock()
