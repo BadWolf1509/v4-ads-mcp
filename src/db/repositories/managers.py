@@ -164,3 +164,18 @@ async def count_all(conn: asyncpg.Connection) -> int:
     """Total managers (any status). Used by OAuth bootstrap path."""
     n = await conn.fetchval("SELECT count(*) FROM managers")
     return n or 0
+
+
+async def list_active(conn: asyncpg.Connection) -> list[asyncpg.Record]:
+    """Gestores com `is_active = true`, por e-mail (grade de acesso do painel)."""
+    rows = await conn.fetch(
+        "SELECT id, email, full_name, role FROM managers WHERE is_active = true ORDER BY email"
+    )
+    return list(rows)
+
+
+async def get_summary(conn: asyncpg.Connection, manager_id: UUID) -> asyncpg.Record | None:
+    """`id, email, full_name` do gestor (qualquer status), ou None."""
+    return await conn.fetchrow(
+        "SELECT id, email, full_name FROM managers WHERE id = $1", manager_id
+    )

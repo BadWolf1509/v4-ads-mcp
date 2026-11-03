@@ -12,6 +12,7 @@ from src.db.repositories import (
     google_ads_accounts,
     manager_account_access,
     manager_meta_account_access,
+    managers,
     meta_ad_accounts,
 )
 from src.web.deps import CurrentUser, current_manager, pending_invites_count
@@ -39,9 +40,7 @@ async def admin_access(
     ) -> tuple[
         list[asyncpg.Record], list[google_ads_accounts.GoogleAdsAccount], list[asyncpg.Record]
     ]:
-        managers_rows = await conn.fetch(
-            "SELECT id, email, full_name, role FROM managers WHERE is_active = true ORDER BY email"
-        )
+        managers_rows = await managers.list_active(conn)
         accs = await google_ads_accounts.list_all(conn)
         # Task 3 (achado extra): revogação virou soft, então a linha do grant
         # revogado FICA — sem o filtro, a célula continuaria marcada mesmo
@@ -80,9 +79,7 @@ async def admin_access_meta(
     async def _load(
         conn: asyncpg.Connection,
     ) -> tuple[list[asyncpg.Record], list[meta_ad_accounts.MetaAdAccount], list[asyncpg.Record]]:
-        managers_rows = await conn.fetch(
-            "SELECT id, email, full_name, role FROM managers WHERE is_active = true ORDER BY email"
-        )
+        managers_rows = await managers.list_active(conn)
         accounts = await meta_ad_accounts.list_all(conn)
         access_rows = await conn.fetch(
             "SELECT manager_id, ad_account_id FROM manager_meta_account_access "
@@ -300,9 +297,7 @@ async def admin_access_meta_manager_detail(
     async def _load(
         conn: asyncpg.Connection,
     ) -> tuple[asyncpg.Record, list[meta_ad_accounts.MetaAdAccount], set[str]]:
-        mgr_row = await conn.fetchrow(
-            "SELECT id, email, full_name FROM managers WHERE id = $1", parsed_manager_id
-        )
+        mgr_row = await managers.get_summary(conn, parsed_manager_id)
         if mgr_row is None:
             raise HTTPException(status_code=404, detail="Gestor não encontrado")
         accs = await meta_ad_accounts.list_all(conn)
@@ -466,9 +461,7 @@ async def admin_access_manager_detail(
     async def _load(
         conn: asyncpg.Connection,
     ) -> tuple[asyncpg.Record, list[google_ads_accounts.GoogleAdsAccount], set[str]]:
-        mgr_row = await conn.fetchrow(
-            "SELECT id, email, full_name FROM managers WHERE id = $1", parsed_manager_id
-        )
+        mgr_row = await managers.get_summary(conn, parsed_manager_id)
         if mgr_row is None:
             raise HTTPException(status_code=404, detail="Gestor não encontrado")
         accs = await google_ads_accounts.list_all(conn)
