@@ -23,10 +23,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from src.auth.domain_check import is_allowed_email
 from src.auth.oauth_state import STATE_TTL_SECONDS, InvalidStateError, sign_state, verify_state
 from src.auth.tokens import derive_master_key_from_settings, encrypt_refresh_token
+from src.auth.urls import https_url_for
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import google_oauth_connections, managers
-from src.web.routes._shared import templates
+from src.web.templating import templates
 
 log = structlog.get_logger(__name__)
 
@@ -66,8 +67,9 @@ async def handle_callback_decision(
     """
     email_norm = email.strip().lower()
 
-    # 1. Domain gate
-    if not email_norm.endswith("@v4company.com"):
+    # 1. Domain gate — a mesma regra do painel. O `endswith("@v4company.com")`
+    # que vivia aqui aceitava "a@b@v4company.com"; `is_allowed_email` recusa.
+    if not is_allowed_email(email_norm):
         return CallbackDecision(kind="redirect", location="/access-denied?reason=domain")
 
     # 2. Email in managers table?
@@ -132,21 +134,12 @@ router = APIRouter(prefix="/oauth/google", tags=["oauth"])
 
 
 def _build_redirect_uri(request: Request) -> str:
-    """Construct the absolute callback URL based on the running host.
+    """URL absoluta do callback, com https forçado (ver `https_url_for`).
 
-    Cloud Run terminates TLS at the GFE; the container sees HTTP internally,
-    so request.url.scheme is "http" even when the client used HTTPS. We force
-    https here because the OAuth Client in Google Cloud Console is registered
-    with the public https:// URL — sending http:// causes redirect_uri_mismatch.
-
-    --proxy-headers / X-Forwarded-Proto were tried but didn't take effect
-    reliably under Cloud Run's CNB-launched uvicorn. Forcing https in code is
-    bulletproof and the only callable URL externally is https anyway.
+    O start e a troca do code mandam o mesmo redirect_uri: o Google exige os
+    dois idênticos.
     """
-    url = str(request.url_for("oauth_callback"))
-    if url.startswith("http://"):
-        url = "https://" + url[len("http://") :]
-    return url
+    return https_url_for(request, "oauth_callback")
 
 
 @router.get("/start")

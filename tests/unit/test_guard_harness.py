@@ -195,10 +195,14 @@ def test_html_em_python_default_encontra_os_alvos_conhecidos() -> None:
     template (`oauth_conectado.html` e `error.html`). A âncora é `arquivo:linha`,
     então código novo ACIMA do fragmento em `_shared.py` também a desloca —
     confira com `h.html_em_python()` antes de reescrever o número.
+
+    205 -> 203 na F7 (2026-11-03): o bloco de imports de `_shared.py` perdeu
+    duas linhas quando `templates` foi para `src/web/templating.py`; o
+    fragmento é o mesmo (medido com `h.html_em_python()`).
     """
     achados = h.html_em_python()
 
-    assert {a.name for a in achados} == {"_shared.py:205"}
+    assert {a.name for a in achados} == {"_shared.py:203"}
 
 
 def test_html_em_python_ignora_docstring(tmp_path: Path) -> None:
