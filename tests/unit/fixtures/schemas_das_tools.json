@@ -1,0 +1,4186 @@
+[
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Cria N novas palavras-chave positivas em 1 ad_group. Cada keyword tem text + match_type (EXACT|PHRASE|BROAD) + cpc_bid_micros opcional (herda do ad_group se omitido). Ate 500 por chamada. AUTO se ≤20 (spec §7.1), CONFIRM se >20. Idempotente state-wise (Google deduplica server-side se rodar 2x com mesmo text+match_type — sem criar criterion duplicada). Use com update_keyword_status (pausar antigas) + add_negatives_from_search_terms (bloquear termos ruins) pra workflow completo de 'pausa + adiciona' da skill analise-performance.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ad_group_id": {
+          "pattern": "^[0-9]+$",
+          "type": "string"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "keywords": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "cpc_bid_micros": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "match_type": {
+                "enum": [
+                  "EXACT",
+                  "PHRASE",
+                  "BROAD"
+                ],
+                "type": "string"
+              },
+              "text": {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "text",
+              "match_type"
+            ],
+            "type": "object"
+          },
+          "maxItems": 500,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "customer_id",
+        "ad_group_id",
+        "keywords"
+      ],
+      "type": "object"
+    },
+    "name": "add_keywords"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Adiciona palavras-chave negativas em nivel de campanha. Sempre auto-aplica (negativas raramente quebram coisas - spec §7.1). Aceita ate 500 negativas por chamada com match_type EXACT, PHRASE ou BROAD. O Google NAO aplica variante proxima em negativa: acento, plural e erro de digitacao sao negativas distintas (medido em 05/10: `material de construção` deixou passar `material de construcao`). Antes de gravar a tool le as negativas da campanha: a de mesmo texto e mesmo tipo sai do lote e vem em `ja_existia` (o Google a descartaria em silencio); a coberta por uma mais ampla do mesmo texto (BROAD cobre PHRASE e EXACT; PHRASE cobre EXACT) e gravada e vem em `avisos`. A acentuada sem a grafia sem acento vem em `avisos` com a `sugestao`; com `incluir_variante_sem_acento: true` o par e gravado e listado em `variantes_incluidas` — o opt-in pode dobrar o lote (ate 1000 operacoes por chamada). `ja_existia[].origem` diz se a repetida ja estava na `campanha` ou veio duas vezes no `pedido`. Plural e erro de digitacao NAO sao tratados. `cobertura_verificada: false` (com `cobertura_motivo`) diz que a leitura previa falhou e a tool gravou sem conferir. Nada a gravar responde `status: no_changes`.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "campaign_id": {
+          "pattern": "^[0-9]+$",
+          "type": "string"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "incluir_variante_sem_acento": {
+          "default": false,
+          "description": "Grava tambem a grafia sem acento de cada negativa acentuada (mesmo match type), quando ela ainda nao existe — o Google nao aplica variante proxima em negativa.",
+          "type": "boolean"
+        },
+        "keywords": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "match_type": {
+                "enum": [
+                  "EXACT",
+                  "PHRASE",
+                  "BROAD"
+                ],
+                "type": "string"
+              },
+              "text": {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "text",
+              "match_type"
+            ],
+            "type": "object"
+          },
+          "maxItems": 500,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "customer_id",
+        "campaign_id",
+        "keywords"
+      ],
+      "type": "object"
+    },
+    "name": "add_negative_keywords"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Adiciona negativas derivadas do search_terms_report em batch. Aceita ate 500 termos com scope campaign|ad_group|shared_set. Sempre auto-aplica (spec §7.1). Termo que ja e negativa: o Google normalmente o descarta em silencio (catalogo A1) e ele volta como 'added', nao 'already_exists' — 'already_exists' so aparece quando o Google reporta a duplicata. Use apos get_search_terms_report pra picar termos performando mal e exclui-los do leilao. O Google NAO aplica variante proxima em negativa: termo acentuado sem a grafia sem acento no mesmo pedido e escopo vem em `avisos` com a `sugestao`; com `incluir_variante_sem_acento: true` o par e gravado e sai em `added` com `variante_de` — o opt-in pode dobrar o lote (ate 1000 operacoes por chamada). A tool nao le as negativas existentes: o par so e conferido dentro do proprio pedido. Plural e erro de digitacao NAO sao tratados.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "incluir_variante_sem_acento": {
+          "default": false,
+          "description": "Grava tambem a grafia sem acento de cada termo acentuado (mesmo match type e escopo), quando ela nao esta no proprio pedido — o Google nao aplica variante proxima em negativa.",
+          "type": "boolean"
+        },
+        "negatives": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "match_type": {
+                "default": "EXACT",
+                "enum": [
+                  "EXACT",
+                  "PHRASE",
+                  "BROAD"
+                ],
+                "type": "string"
+              },
+              "scope": {
+                "enum": [
+                  "campaign",
+                  "ad_group",
+                  "shared_set"
+                ],
+                "type": "string"
+              },
+              "scope_id": {
+                "pattern": "^[0-9]+$",
+                "type": "string"
+              },
+              "search_term": {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "search_term",
+              "scope",
+              "scope_id"
+            ],
+            "type": "object"
+          },
+          "maxItems": 500,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "customer_id",
+        "negatives"
+      ],
+      "type": "object"
+    },
+    "name": "add_negatives_from_search_terms"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Anexa audience criteria (user_list ou user_interest) a 1+ ad_groups OU campaigns existentes. target_type top-level (ad_group|campaign) + mode top-level (observation|exclusion) + ate 100 attachments. Observation = positive attach (negative=False, bid_modifier opcional 0.1-10.0). Exclusion = negative=True (delivery exclusion, bid_modifier nao permitido). IMPORTANT: user_list exclusion em campaign nao funciona (Google silently drops negative flag) — use target_type='ad_group' pra Customer Match exclusion. user_interest exclusion em campaign funciona normalmente. Classification: observation ≤20 AUTO, >20 CONFIRM; exclusion sempre CONFIRM (delivery impact). Idempotente state-wise (Google deduplica server-side). Use com get_audience_performance pra ver attachments existentes + escolher user_list ou user_interest resource_names existentes.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "attachments": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "audience_resource_name": {
+                "pattern": "^customers/[0-9]{10}/(userLists|userInterests)/[0-9]+$",
+                "type": "string"
+              },
+              "audience_type": {
+                "enum": [
+                  "user_list",
+                  "user_interest"
+                ],
+                "type": "string"
+              },
+              "bid_modifier": {
+                "maximum": 10.0,
+                "minimum": 0.1,
+                "type": "number"
+              },
+              "target_id": {
+                "pattern": "^[0-9]+$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "target_id",
+              "audience_type",
+              "audience_resource_name"
+            ],
+            "type": "object"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "observation",
+            "exclusion"
+          ],
+          "type": "string"
+        },
+        "target_type": {
+          "enum": [
+            "ad_group",
+            "campaign"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "target_type",
+        "mode",
+        "attachments"
+      ],
+      "type": "object"
+    },
+    "name": "apply_audience"
+  },
+  {
+    "_meta": {
+      "anthropic/alwaysLoad": true,
+      "com.v4company/bucket": "always"
+    },
+    "description": "[CORE] Confirma e aplica uma mutacao previamente previewed via dry-run. Token expira em 10 minutos. Cada token e consumivel apenas 1 vez e amarrado a sessao MCP que o gerou. A RESPOSTA DIZ sob qual regime rodou: `partial_failure: true` traz `partial_failures` (motivo por linha) e `failed_count` medido; `partial_failure: false` traz `partial_failures` VAZIA e `failed_count: null` — null significa NAO MEDIDO, nao 'nenhuma falhou' (F182). O regime e decisao da tool de origem, nao um parametro seu. `partial_failures[].error` tambem pode vir `null`: a linha FALHOU (a contagem e medida, via WhichOneof/heuristica), so o MOTIVO que nao foi lido — nao e 'sem motivo', e 'nao consegui ler'. `motivos_medidos` (bool; `null` quando `partial_failure: false`) resume isso pra resposta inteira de uma vez: `false` explica todo `error: null` sem exigir conferencia linha a linha. ATENCAO (F184): `status: success` numa linha NAO prova que ela mudou algo — o Google aceita operacao e nao a executa. Cada linha traz `efeito`: 'mudou', 'sem_efeito' (passou sem mudar nada), ou null (desconhecido, ou a linha falhou). Para 'aplicou de verdade', leia `efeito` e `changed_count`. NUNCA leia `failed_count` — ele mede ACEITACAO, nao execucao: em tres modos de falha medidos em producao (campanha removida, URL invalida, anuncio apagado entre o preview e o apply) o Google aceitou tudo, e `failed_count` veio 0 nos tres. Zero ali costuma significar 'ele nao reportou', nao 'nada falhou', e o `partial_failure: true` ao lado so diz que a pergunta foi feita, nao que houve resposta. `applied_count` tem UMA leitura legitima, a subtracao: `applied_count` - `changed_count` = quantas linhas passaram sem efeito. Isolado ele afirma aceitacao como se fosse execucao, e engana igual ao `failed_count`.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "confirmation_token": {
+          "description": "Token de 8 chars retornado por uma tool de mutacao em modo dry-run.",
+          "pattern": "^[A-Z0-9]{8}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "confirmation_token"
+      ],
+      "type": "object"
+    },
+    "name": "apply_change"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Aplica uma recomendacao pendente do Google Ads. O caminho depende do TIPO: recomendacao que mexe em ORCAMENTO ou LANCE (CAMPAIGN_BUDGET, FORECASTING_CAMPAIGN_BUDGET, TARGET_CPA_OPT_IN, SET_TARGET_ROAS, USE_BROAD_MATCH_KEYWORD e mais 13) devolve preview com confirmation_token — valor atual, valor recomendado e a campanha atingida — e so aplica via apply_change; mesma regra do update_campaign_budget, que produz o mesmo efeito. Os 5 tipos que MIGRAM a campanha para Performance Max (PERFORMANCE_MAX_OPT_IN, UPGRADE_*_TO_PERFORMANCE_MAX, MIGRATE_*, SHOPPING_MIGRATE_*) tambem confirmam, com aviso de que a conversao e IRREVERSIVEL. Tipo que o SDK v24 nao conhece tambem confirma. Os demais tipos (keyword, sitelink, RSA...) seguem auto-aplicando. O apply_change recusa se o Google tiver revisado o valor entre o preview e a confirmacao. Quando o alvo e de uma estrategia de lance de PORTFOLIO (RAISE_TARGET_CPA e LOWER_TARGET_ROAS de nivel portfolio), o preview traz `portfolio` com as campanhas irmas que a mudanca ATINGE alem da nomeada — avisa, nao recusa. Use get_recommendations primeiro para listar as disponiveis.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "recommendation_resource_name": {
+          "description": "Resource name completo da recomendacao (ex: 'customers/1234567890/recommendations/abc123'). Use get_recommendations pra listar as pendentes.",
+          "minLength": 10,
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "recommendation_resource_name"
+      ],
+      "type": "object"
+    },
+    "name": "apply_recommendation"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Detecta gasto em concorrência: keywords positivas ENABLED com text matching competitor brands + search terms entregues no date window que matched brand competidora. Output: 2 listas + summary (total cost wasted real) + suggested_negatives (EXACT + PHRASE per matched brand). Filtros: competitor_brands[] required (3-50 chars cada, 1-20 brands), date_range preset OR start_date+end_date custom (default LAST_7_DAYS), limit (default 200, max 1000). Match: substring case-insensitive em keyword text + search term. Sempre auditado. Nota: cost data Google pode lagar entre queries — re-query se decisão crítica. ATENÇÃO (F133): `total_cost_wasted_brl` é CUSTO, não veredito — cada search term traz `conversions`/`conversions_value_brl` e cada `suggested_negative` traz `conversions` agregado por brand. **Sugestão com `conversions > 0` NÃO deve ser aplicada sem cross-check de catálogo/ERP**: termo de concorrente pode ser o melhor CPA da conta (caso real: R$ 155,25 / 9 conv = CPA R$ 17,25 contra ~R$ 20 da média). A tool sinaliza, não decide. ATENÇÃO (F90/F52): cada positive_keyword traz `ad_group_status`. Keyword ENABLED dentro de ad_group PAUSED/REMOVED NÃO compete em leilão e não gasta — filtre `ad_group_status='ENABLED'` antes de agir ou de reportar gasto em concorrência pro cliente, senão a narrativa infla com item inerte.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "competitor_brands": {
+          "description": "Lista de brand names competidoras pra detectar match. Min 3 chars cada pra evitar false positives. Max 20 brands. Match: substring case-insensitive em keyword text + search term.",
+          "items": {
+            "maxLength": 50,
+            "minLength": 3,
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "type": "array"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "date_range": {
+          "default": "LAST_7_DAYS",
+          "description": "Preset. Override por start_date+end_date se ambos passados.",
+          "enum": [
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 200,
+          "description": "Máximo entries por lista (positive_keywords e search_terms). truncated:true se exceder.",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "start_date": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "competitor_brands"
+      ],
+      "type": "object"
+    },
+    "name": "audit_competitor_keywords"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Pre-flight check antes de mexer em ConversionAction.primary_for_goal. Cruza conversion_action com customer_conversion_goal pra revelar biddable flag por (category, origin). Output: origin_summary dict com biddable + warning PT-BR (null se biddable=false) + primary/secondary actions split. biddable=true significa que promover Secondary→Primary AFETA Smart Bidding em todas campaigns que usam esta category+origin — NÃO é cosmético KPI (lição 47 dogfood MO-JP). Filter opcional por category (as de create_conversion_action + 4 só de leitura). Apenas actions com status=ENABLED. Sempre auditado.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "description": "Opcional. Filtra audit a uma única ConversionAction.category. Default sem filtro = retorna todas categories da conta agrupadas por (category, origin). Todas as categorias que create_conversion_action cria, mais 4 só de leitura (GET_DIRECTIONS, OUTBOUND_CLICK, STORE_VISIT, STORE_SALE).",
+          "enum": [
+            "DEFAULT",
+            "PURCHASE",
+            "SIGNUP",
+            "SUBMIT_LEAD_FORM",
+            "BOOK_APPOINTMENT",
+            "REQUEST_QUOTE",
+            "PHONE_CALL_LEAD",
+            "ADD_TO_CART",
+            "BEGIN_CHECKOUT",
+            "SUBSCRIBE_PAID",
+            "CONTACT",
+            "ENGAGEMENT",
+            "PAGE_VIEW",
+            "GET_DIRECTIONS",
+            "OUTBOUND_CLICK",
+            "STORE_VISIT",
+            "STORE_SALE"
+          ],
+          "type": "string"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "audit_goal_attribution"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Detecta ConversionActions orphan: ENABLED com zero conversions (metrics.all_conversions=0.0) em window LAST_30_DAYS (default). Pre-cleanup decision tool — use pra identificar tracking pixels obsoletos, ações de campanhas removidas, conversion actions criadas em testes que continuam ENABLED sem trackar nada útil. Output flat list ordenada por (category, origin, name) ASC pra agrupar visualmente. Filtros: category opcional (as de create_conversion_action + 4 só de leitura), limit (default 100, max 500), date_range preset OR start_date+end_date custom. Server-side hardcoded: status=ENABLED. Sempre auditado.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "description": "Opcional. Filtra audit a uma única ConversionAction.category. Todas as categorias que create_conversion_action cria, mais 4 só de leitura (GET_DIRECTIONS, OUTBOUND_CLICK, STORE_VISIT, STORE_SALE).",
+          "enum": [
+            "DEFAULT",
+            "PURCHASE",
+            "SIGNUP",
+            "SUBMIT_LEAD_FORM",
+            "BOOK_APPOINTMENT",
+            "REQUEST_QUOTE",
+            "PHONE_CALL_LEAD",
+            "ADD_TO_CART",
+            "BEGIN_CHECKOUT",
+            "SUBSCRIBE_PAID",
+            "CONTACT",
+            "ENGAGEMENT",
+            "PAGE_VIEW",
+            "GET_DIRECTIONS",
+            "OUTBOUND_CLICK",
+            "STORE_VISIT",
+            "STORE_SALE"
+          ],
+          "type": "string"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "date_range": {
+          "default": "LAST_30_DAYS",
+          "description": "Preset. Override por start_date+end_date se ambos passados.",
+          "enum": [
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 100,
+          "description": "Máximo orphans retornados. truncated:true se exceder. Default 100 (lição 3b.36: limit=200 estourou MCP cap em conta com 500+ entries).",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "start_date": {
+          "description": "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, sobrepoe date_range preset. Obriga end_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "audit_orphan_smart_actions"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Identifica keywords problemáticas com 3 flags acionáveis: candidate_pause (QS<=2 + impressions>=threshold + clicks=0 = waste), candidate_promote_exact (QS>=7 + BROAD + conv>=1 = promote pra EXACT reduz CPC), duplicate_intent (mesma keyword text em multi ad_groups, amplification only — só com outra flag ativa). Output flat list ordenada QS ASC + impressions DESC tie-break. Filtros: ad_group_ids[], min_impressions (default 10), limit (default 200, max 1000), date_range preset OR start_date+end_date custom (default LAST_30_DAYS). Sempre auditado. Nota: QS pode lagar entre queries (cache Google) — re-query se decisão crítica baseada em QS. ATENÇÃO (F52): keywords flagged podem estar em ad_groups REMOVED (órfãs cosméticas — não competem em leilão, não impactam QS/Smart Bidding). Cada row tem field `ad_group_status` — filtre `ad_group_status='ENABLED'` no consumer pra cleanup de impacto técnico real, OU mantenha tudo pra inventário cosmético.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ad_group_ids": {
+          "description": "Opcional. Filtra audit a estes ad_group_ids. Default: conta inteira.",
+          "items": {
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "type": "array"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "date_range": {
+          "default": "LAST_30_DAYS",
+          "description": "Preset. Override por start_date+end_date se ambos passados.",
+          "enum": [
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 200,
+          "description": "Máximo keywords retornadas. truncated:true se exceder.",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "min_impressions": {
+          "default": 10,
+          "description": "Threshold mínimo de impressions pra candidate_pause flag. Default 10. Reduza pra ~3 em contas low-volume.",
+          "maximum": 10000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "start_date": {
+          "description": "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, sobrepoe date_range preset. Obriga end_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "audit_quality_score"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Detecta keywords zumbis: ENABLED com zero activity (impressions=0 AND clicks=0) em window LAST_30_DAYS (default). Pre-cleanup decision tool — use pra identificar waste antes de pausar/remover em massa. Output flat list ordenada por ad_group_name ASC + keyword_text ASC pra agrupar visualmente. Filtros: ad_group_ids[] opcional, limit (default 200, max 1000), date_range preset OR start_date+end_date custom. Server-side hardcoded: status=ENABLED + negative=FALSE. Sempre auditado. ATENÇÃO (F52): zumbis incluem keywords em ad_groups REMOVED (órfãs cosméticas — não competem em leilão, não impactam QS/Smart Bidding). Filtre pelo campo `ad_group_status='ENABLED'` no consumer pra cleanup de impacto técnico real, OU mantenha tudo pra inventário cosmético.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ad_group_ids": {
+          "description": "Opcional. Filtra audit a estes ad_group_ids. Default: conta inteira.",
+          "items": {
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "type": "array"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "date_range": {
+          "default": "LAST_30_DAYS",
+          "description": "Preset. Override por start_date+end_date se ambos passados.",
+          "enum": [
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 200,
+          "description": "Máximo zombies retornados. truncated:true se exceder.",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "start_date": {
+          "description": "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, sobrepoe date_range preset. Obriga end_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "audit_zombie_keywords"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Pausa em batch entidades (keyword|ad|campaign|ad_group) matched por um GAQL filter. Sempre dry-run obrigatório (spec §7.1): retorna preview com até 10 amostras + custo total + confirmation_token (TTL 10min). Apply via apply_change(token). Limite hard: 100 entidades por chamada (se exceder, rejeita pedindo refinar). filter eh apenas o corpo da WHERE clause (sem SELECT/FROM/LIMIT). date_range (default LAST_30_DAYS) entra SEMPRE como segments.date BETWEEN, exceto quando o filter ja traz segments.date: o custo do preview e o do periodo, nao o da vida da entidade. RECOMENDACAO: pra evitar incluir entidades ja pausadas, adicione `AND <target>.status = 'ENABLED'` no filter (ex: `ad_group_criterion.status = 'ENABLED'` pra keywords). Nota: <entity>.status pode lagar alguns minutos entre queries Google Ads — preview pode mostrar entidades ja pausadas/REMOVED. Re-query antes de apply. filters_applied diz o recorte que a query aplicou.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "date_range": {
+          "default": "LAST_30_DAYS",
+          "description": "Periodo via preset. Para periodo custom, use start_date+end_date.",
+          "enum": [
+            "TODAY",
+            "YESTERDAY",
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS",
+            "THIS_MONTH",
+            "LAST_MONTH",
+            "THIS_WEEK",
+            "LAST_WEEK"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "filter": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "type": "string"
+        },
+        "start_date": {
+          "description": "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, sobrepoe date_range preset. Obriga end_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "target_type": {
+          "enum": [
+            "keyword",
+            "ad",
+            "campaign",
+            "ad_group"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "target_type",
+        "filter"
+      ],
+      "type": "object"
+    },
+    "name": "bulk_pause_by_query"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Cria 1-10 novos ad_groups em campaigns existentes. Cada ad_group tem campaign_id (parent) + name (1-255 chars) + type opcional (SEARCH_STANDARD default | SHOPPING_PRODUCT_ADS) + status opcional (PAUSED default | ENABLED) + cpc_bid_micros opcional (so valido em campaigns MANUAL_CPC/ENHANCED_CPC). Sempre CONFIRM (creates sensitive per spec §7.1). Pre-flight rejeita campaign inexistente, REMOVED, ou channel/strategy incompativel. NAO idempotente do lado MCP, mas Google enforces name uniqueness within campaign — re-running com mesmo (campaign_id, name) retorna error em apply_change. Idempotency-by-error effective. Apos criar, use add_keywords + add ads pra setup completo.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ad_groups": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "campaign_id": {
+                "pattern": "^[0-9]+$",
+                "type": "string"
+              },
+              "cpc_bid_micros": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "name": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              "status": {
+                "default": "PAUSED",
+                "enum": [
+                  "ENABLED",
+                  "PAUSED"
+                ],
+                "type": "string"
+              },
+              "type": {
+                "default": "SEARCH_STANDARD",
+                "enum": [
+                  "SEARCH_STANDARD",
+                  "SHOPPING_PRODUCT_ADS"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "campaign_id",
+              "name"
+            ],
+            "type": "object"
+          },
+          "maxItems": 10,
+          "minItems": 1,
+          "type": "array"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "ad_groups"
+      ],
+      "type": "object"
+    },
+    "name": "create_ad_group"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Cria N text-assets novos (1-20 por call) e linka cada um ao escopo solicitado (CUSTOMER/CAMPAIGN/AD_GROUP) em chained mutation atomic. Always-CONFIRM. Tipos suportados v0: SITELINK, CALLOUT, STRUCTURED_SNIPPET, CALL, PROMOTION (text-extension family, SEARCH-relevant). V4 invariants hardcoded: country_code=BR para CALL, language_code=pt para PROMOTION, currency_code=BRL para PROMOTION.money_amount_off. Cada item de `assets` carrega type + attachment_level + attachment_id + payload type-specific. Builder usa chained mutation (N CreateAssetOp + N Create{Customer,Campaign,AdGroup}AssetOp em single MutateGoogleAdsRequest com temp resource_names). F13 auto-retorna 2N resource_names. attachment_id formato: customer_id (CUSTOMER), 'customers/X/campaigns/Y' (CAMPAIGN), 'customers/X/adGroups/Y' (AD_GROUP). PROMOTION requer exatamente um de percent_off OU money_amount_off_brl.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "assets": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "attachment_id": {
+                "type": "string"
+              },
+              "attachment_level": {
+                "enum": [
+                  "CUSTOMER",
+                  "CAMPAIGN",
+                  "AD_GROUP"
+                ],
+                "type": "string"
+              },
+              "callout_text": {
+                "maxLength": 25,
+                "minLength": 1,
+                "type": "string"
+              },
+              "description1": {
+                "maxLength": 35,
+                "minLength": 1,
+                "type": "string"
+              },
+              "description2": {
+                "maxLength": 35,
+                "minLength": 1,
+                "type": "string"
+              },
+              "discount_modifier": {
+                "enum": [
+                  "UP_TO"
+                ],
+                "type": "string"
+              },
+              "end_date": {
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "type": "string"
+              },
+              "final_urls": {
+                "items": {
+                  "format": "uri",
+                  "type": "string"
+                },
+                "maxItems": 5,
+                "minItems": 1,
+                "type": "array"
+              },
+              "header": {
+                "enum": [
+                  "Comodidades",
+                  "Cursos",
+                  "Destinos",
+                  "Estilos",
+                  "Hotéis em destaque",
+                  "Marcas",
+                  "Modelos",
+                  "Programas",
+                  "Serviços",
+                  "Tipos"
+                ],
+                "type": "string"
+              },
+              "link_text": {
+                "maxLength": 25,
+                "minLength": 1,
+                "type": "string"
+              },
+              "money_amount_off_brl": {
+                "minimum": 0.01,
+                "type": "number"
+              },
+              "percent_off": {
+                "maximum": 100.0,
+                "minimum": 0.01,
+                "type": "number"
+              },
+              "phone_number": {
+                "pattern": "^[\\d\\s\\(\\)\\-]{10,20}$",
+                "type": "string"
+              },
+              "promotion_target": {
+                "maxLength": 20,
+                "minLength": 1,
+                "type": "string"
+              },
+              "start_date": {
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "SITELINK",
+                  "CALLOUT",
+                  "STRUCTURED_SNIPPET",
+                  "CALL",
+                  "PROMOTION"
+                ],
+                "type": "string"
+              },
+              "values": {
+                "items": {
+                  "maxLength": 25,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 10,
+                "minItems": 3,
+                "type": "array"
+              }
+            },
+            "required": [
+              "type",
+              "attachment_level",
+              "attachment_id"
+            ],
+            "type": "object"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "type": "array"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "assets"
+      ],
+      "type": "object"
+    },
+    "name": "create_and_link_assets"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Cria 1 SEARCH campaign nova em uma conta V4. Always-CONFIRM. Schema requer name + bidding_strategy + daily_budget_brl + geo_targets (lista de geoTargetConstants resource paths, validados como BR via pre-flight V4). Status sempre PAUSED on create — gestor liga manualmente apos review. Language defaults Portuguese. Search Partners + Display Network OFF (V4 defaults). Bidding strategies suportadas v0: MAXIMIZE_CONVERSIONS, MAXIMIZE_CONVERSION_VALUE, TARGET_CPA (requer target_cpa_brl), TARGET_ROAS (requer target_roas), MANUAL_CPC, MAXIMIZE_CLICKS (opcional cpc_bid_ceiling_brl). Conversion goals inherit account-default (override fica pra v1). Channel SEARCH only v0 (PMAX/DISPLAY/SHOPPING v1). F13 resource_names auto-retorna paths criados (budget + campaign + N geo criterions + PT language criterion).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bidding_strategy": {
+          "additionalProperties": false,
+          "properties": {
+            "cpc_bid_ceiling_brl": {
+              "minimum": 0.01,
+              "type": "number"
+            },
+            "target_cpa_brl": {
+              "minimum": 0.01,
+              "type": "number"
+            },
+            "target_roas": {
+              "minimum": 0.01,
+              "type": "number"
+            },
+            "type": {
+              "enum": [
+                "MAXIMIZE_CONVERSIONS",
+                "MAXIMIZE_CONVERSION_VALUE",
+                "TARGET_CPA",
+                "TARGET_ROAS",
+                "MANUAL_CPC",
+                "MAXIMIZE_CLICKS"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "daily_budget_brl": {
+          "minimum": 1.0,
+          "type": "number"
+        },
+        "end_date": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "geo_targets": {
+          "items": {
+            "pattern": "^geoTargetConstants/[0-9]+$",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "start_date": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "name",
+        "bidding_strategy",
+        "daily_budget_brl",
+        "geo_targets"
+      ],
+      "type": "object"
+    },
+    "name": "create_campaign"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Cria 1-5 ConversionActions no nivel customer. Cada action: name (1-100 chars) + category + type. Always-CONFIRM. Categorias suportadas (13 V4-focused, empirically validated em smoke 3b.19A + per-value probe 3b.19A.1; LEAD/IMPORTED_LEAD/QUALIFIED_LEAD/CONVERTED_LEAD/DOWNLOAD excluidos por SDK gap ou system-managed): PURCHASE, SIGNUP, DEFAULT, SUBMIT_LEAD_FORM (form submit, WhatsApp), BOOK_APPOINTMENT, REQUEST_QUOTE, PHONE_CALL_LEAD (call lead), ADD_TO_CART, BEGIN_CHECKOUT, SUBSCRIBE_PAID, CONTACT, ENGAGEMENT, PAGE_VIEW. Tipos: WEBPAGE (tag manual install fora do escopo MCP), UPLOAD_CLICKS (offline conversion import — Standard Access required pra usar), UPLOAD_CALLS (offline call import). Defaults: status=ENABLED, currency=BRL, counting_type=ONE_PER_CLICK. value_settings opcional com default_value_brl + always_use_default_value. Pre-flight rejeita nome duplicado (unico por customer). Para tag/import setup, use Google Ads UI ou tools especificas (sprints futuras).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "conversion_actions": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "category": {
+                "enum": [
+                  "DEFAULT",
+                  "PURCHASE",
+                  "SIGNUP",
+                  "SUBMIT_LEAD_FORM",
+                  "BOOK_APPOINTMENT",
+                  "REQUEST_QUOTE",
+                  "PHONE_CALL_LEAD",
+                  "ADD_TO_CART",
+                  "BEGIN_CHECKOUT",
+                  "SUBSCRIBE_PAID",
+                  "CONTACT",
+                  "ENGAGEMENT",
+                  "PAGE_VIEW"
+                ],
+                "type": "string"
+              },
+              "counting_type": {
+                "enum": [
+                  "ONE_PER_CLICK",
+                  "MANY_PER_CLICK"
+                ],
+                "type": "string"
+              },
+              "name": {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "WEBPAGE",
+                  "UPLOAD_CLICKS",
+                  "UPLOAD_CALLS"
+                ],
+                "type": "string"
+              },
+              "value_settings": {
+                "additionalProperties": false,
+                "properties": {
+                  "always_use_default_value": {
+                    "type": "boolean"
+                  },
+                  "default_value_brl": {
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "name",
+              "category",
+              "type"
+            ],
+            "type": "object"
+          },
+          "maxItems": 5,
+          "minItems": 1,
+          "type": "array"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "conversion_actions"
+      ],
+      "type": "object"
+    },
+    "name": "create_conversion_action"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Cria 1 ConversionValueRuleSet (customer-level ou campaign-level) com 1-10 ConversionValueRule(s) nested. Always-CONFIRM. Rules condicionais ajustam o valor de conversao por device (MOBILE/DESKTOP/TABLET) ou geo (geo_target_constants resource paths). Action operations: ADD (soma valor fixo), MULTIPLY (multiplica), SET (sobrescreve). attachment_type=CAMPAIGN requer campaign_id; CUSTOMER aplica conta inteira (Google limita 1 RuleSet CUSTOMER-level por conta — sprint 3b.19B F26). v0 NAO suporta AUDIENCE/ITINERARY conditions nem categorias filter (Google API restringe filter a STORE_VISIT/STORE_SALE — out of scope v0). Geo targets validados como BR-only (V4 invariant).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "attachment_type": {
+          "enum": [
+            "CUSTOMER",
+            "CAMPAIGN"
+          ],
+          "type": "string"
+        },
+        "campaign_id": {
+          "pattern": "^[0-9]+$",
+          "type": "string"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "rules": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "additionalProperties": false,
+                "properties": {
+                  "operation": {
+                    "enum": [
+                      "ADD",
+                      "MULTIPLY",
+                      "SET"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "operation",
+                  "value"
+                ],
+                "type": "object"
+              },
+              "condition_type": {
+                "enum": [
+                  "DEVICE",
+                  "GEO_LOCATION"
+                ],
+                "type": "string"
+              },
+              "device_condition": {
+                "additionalProperties": false,
+                "properties": {
+                  "device_types": {
+                    "items": {
+                      "enum": [
+                        "MOBILE",
+                        "DESKTOP",
+                        "TABLET"
+                      ],
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  }
+                },
+                "required": [
+                  "device_types"
+                ],
+                "type": "object"
+              },
+              "geo_condition": {
+                "additionalProperties": false,
+                "properties": {
+                  "geo_match_type": {
+                    "enum": [
+                      "ANY",
+                      "LOCATION_OF_PRESENCE"
+                    ],
+                    "type": "string"
+                  },
+                  "geo_target_constants": {
+                    "items": {
+                      "pattern": "^geoTargetConstants/[0-9]+$",
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  }
+                },
+                "required": [
+                  "geo_target_constants"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "action",
+              "condition_type"
+            ],
+            "type": "object"
+          },
+          "maxItems": 10,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "customer_id",
+        "attachment_type",
+        "rules"
+      ],
+      "type": "object"
+    },
+    "name": "create_conversion_value_rule_set"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Cria 1-5 Responsive Search Ads (RSAs) em ad_groups existentes. Cada RSA tem ad_group_id (parent) + headlines (3-15 strings, max 30 chars cada) + descriptions (2-4 strings, max 90 chars cada) + final_urls (1+ URLs) + path1/path2 opcionais (display URL paths, max 15 chars cada) + status opcional (PAUSED default | ENABLED). Sempre CONFIRM (creates sensitive). Pre-flight rejeita ad_group inexistente, REMOVED, ou em campaign non-SEARCH. NOT idempotente — Google permite multiple RSAs com mesmo content. Lote PARCIAL: se o Google recusar um anuncio, os demais sao criados e o apply_change devolve partial_failures com o motivo por linha — mas recusar e o caso RARO: o padrao medido e o Google ACEITAR e nao executar (F180/F184), entao confirme pelo `efeito` de cada linha, nunca por ausencia de falha. RSAs aparecem no Google Ads UI imediatamente apos apply mas serving so comeca apos approval (geralmente minutos).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "rsas": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "ad_group_id": {
+                "pattern": "^[0-9]+$",
+                "type": "string"
+              },
+              "descriptions": {
+                "items": {
+                  "maxLength": 90,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 4,
+                "minItems": 2,
+                "type": "array"
+              },
+              "final_urls": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              "headlines": {
+                "items": {
+                  "maxLength": 30,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 15,
+                "minItems": 3,
+                "type": "array"
+              },
+              "path1": {
+                "maxLength": 15,
+                "type": "string"
+              },
+              "path2": {
+                "maxLength": 15,
+                "type": "string"
+              },
+              "status": {
+                "default": "PAUSED",
+                "enum": [
+                  "ENABLED",
+                  "PAUSED"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "ad_group_id",
+              "headlines",
+              "descriptions",
+              "final_urls"
+            ],
+            "type": "object"
+          },
+          "maxItems": 5,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "customer_id",
+        "rsas"
+      ],
+      "type": "object"
+    },
+    "name": "create_rsa"
+  },
+  {
+    "_meta": {
+      "anthropic/alwaysLoad": true,
+      "com.v4company/bucket": "always"
+    },
+    "description": "[CORE] Detecta mudanças NÃO-autorizadas em conta Google Ads (workflow co-management V4 pós-batch). Compara change_event com lista de responsible_user_emails: tudo NÃO-listado conta como drift. Auto-apply Recommendations sempre conta como drift. Recomendacao aceita a mao pelo APP de celular sai com client_type GOOGLE_ADS_MOBILE_APP e o e-mail do gestor, igual a uma edicao manual (sondado em 05/10: nenhum campo do change_event a distingue) — se o gestor esta na lista, ela nao conta como drift. Output: summary (count + by_user/resource/operation) + freshness (fronteira de indexacao medida) + flags[] (auto_apply_detected, multiple_users_detected, structural_change, status_change_detected) + changes[] (até limit, default 100 max 500). ATENCAO: roda sobre change_event, que e audit log LAGGING com lag SEM contrato (medido de ~3h a >4 dias na mesma conta) — por isso a resposta traz `freshness.status`. ZERO DRIFT COM status != confiavel NAO significa conta intacta: pode ser mudanca de terceiro ainda nao indexada. Pra validar estado atual, use run_gaql FROM campaign como leading indicator. COBERTURA (F136/F145): remover campanha ou grupo no Google NAO e uma operacao REMOVE — e UPDATE de status para REMOVED; a flag structural_change (high) cobre as duas formas em CAMPAIGN e AD_GROUP, e cada change traz old_status/new_status. status_change_detected (medium) levanta em ENABLED<->PAUSED por nao-autorizado — reativar campanha alheia comeca gasto, pausar para entrega. NAO cobre conversion action — nem o change_event nem o change_status rastreiam esse recurso, entao remocao de conversion action (que quebra Smart Bidding) NAO aparece aqui e nao seria detectada por esta tool. Para o estado atual das conversion actions, use get_conversion_actions. COBERTURA DA VARREDURA: a tool le a janela inteira numa consulta e, se ela nao couber no cap de 10k do change_event, RE-LE dia a dia — o recurso nao tem OFFSET nem cursor (sondado 2026-09-07), entao a unica particao possivel e a do tempo, e a mais fina alcancavel aqui e UM DIA. O bloco `cobertura` diz o que a leitura de fato viu (inclusive `aviso_de_janela`, o texto do clamp de retencao F23 quando a janela pedida caiu fora dos 30 dias — `null` quando nao houve clamp): `eventos_examinados` (quantos entraram na classificacao), `janelas_consultadas` (1 quando a janela coube; uma por dia quando nao), `janela_efetiva` (a janela realmente VARRIDA, que pode ser menor que a pedida em `period` por dois motivos: o clamp de retencao F23 na ponta antiga, e o teto total parando a particao antes de chegar la — com `varredura_truncada: true`, o que esta em `period` e nao esta aqui e exatamente o que NUNCA foi consultado) e `dias_no_teto_da_api` (dias que sozinhos bateram nos 10k: ali a particao chegou ao fim da granularidade disponivel e o que ficou de fora e limite da API — estreite a janela ou filtre por resource_type). NAO confunda os dois truncados: `truncated` (topo) fala do SEU `limit` e diz que `changes[]` foi cortada, com a classificacao feita sobre tudo; `cobertura.varredura_truncada` fala da LEITURA e diz que existe evento na janela que NUNCA foi classificado — com ele true, 'zero drift' nao e veredito, e amostra. Sempre auditado.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "date_range": {
+          "default": "LAST_2_DAYS",
+          "description": "Periodo via preset. LAST_2_DAYS sane default pra D+1/D+2 pos-batch. Para periodo custom, use start_date+end_date.",
+          "enum": [
+            "LAST_2_DAYS",
+            "TODAY",
+            "YESTERDAY",
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 100,
+          "description": "Cap em changes[] na response. Summary + flags refletem o total bruto EXAMINADO — quanto foi examinado, e o que ficou de fora, sai em `cobertura`, nao aqui.",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "responsible_user_emails": {
+          "description": "Emails AUTORIZADOS pra mexer na conta (gestor responsável + co-gestores V4). Changes com user_email NESSA lista NÃO contam como drift. Lista vazia = incident mode (todos os changes contam como drift). Auto-apply (client_type=GOOGLE_ADS_RECOMMENDATIONS) sempre conta como drift (não tem user_email).",
+          "items": {
+            "format": "email",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "type": "array"
+        },
+        "start_date": {
+          "description": "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, sobrepoe date_range preset. Obriga end_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "detect_drift"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Dispensa (rejeita) uma recomendacao pendente do Google Ads. Auto-aplica.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "recommendation_resource_name": {
+          "minLength": 10,
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "recommendation_resource_name"
+      ],
+      "type": "object"
+    },
+    "name": "dismiss_recommendation"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Saldo restante do orçamento de conta de UMA conta Google Ads (uma conta por chamada). `restante_brl` é o 'Fundos disponíveis' do Faturamento: limite ajustado menos gasto acumulado. `situacao` tem 6 valores: com_saldo = dias restantes acima de 7; acabando = dias restantes até 7; sem_gasto = há saldo mas não houve gasto nos últimos 7 dias; esgotada = sem saldo, menos de um dia de gasto ou orçamento encerrado; sem_teto = orçamento de conta sem limite; indeterminada = não foi possível calcular (veja `motivo`). `sem_teto` não tem número e não diz a forma de pagamento (cartão, boleto ou faturamento mensal). `dias_restantes` = restante ÷ média diária dos 7 dias fechados; a data de fim do orçamento conta como freio: `trava_primeiro` diz se o que limita é o 'saldo' ou a 'data_fim'. O valor é aproximado: o gasto atrasa algumas horas (`aproximado: true`). Se o Google recusar a leitura por autorização (sem permissão de faturamento ou sem acesso à conta) a resposta vem indeterminada, sem números. Os campos _brl assumem que a moeda da conta é BRL. filters_applied diz o recorte que a query aplicou.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_account_balance"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] KPIs consolidados de uma conta Google Ads (impressoes, clicks, custo, conversoes, valor, CTR, CPC, CPA, ROAS) para um periodo, com comparativo do periodo imediatamente anterior de mesma duracao. Parcela de impressao de pesquisa da conta (fracao 0-1): `parcela_impressao`, `perdida_orcamento`, `perdida_classificacao` — null quando o Google nao a mede (conta sem pesquisa, periodo sem impressao); 0.0999 e o '< 10%' do Google. Topo e topo absoluto nao existem no nivel da conta: estao nas linhas de get_performance_breakdown(level='campaign'). Razao com denominador zero vem null (indefinida), nao 0. filters_applied diz o recorte que a query aplicou.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "description": "ID da conta Google Ads (10 digitos, sem tracos)",
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "date_range": {
+          "default": "LAST_30_DAYS",
+          "description": "Periodo via preset. Para periodo custom, use start_date+end_date.",
+          "enum": [
+            "TODAY",
+            "YESTERDAY",
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS",
+            "THIS_MONTH",
+            "LAST_MONTH",
+            "THIS_WEEK",
+            "LAST_WEEK"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "start_date": {
+          "description": "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, sobrepoe date_range preset. Obriga end_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_account_overview"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Prefira get_performance_breakdown(level=ad_group) — este report sera arquivado (Fase 2B). Performance por grupo de anuncios: impressoes, clicks, custo, conversoes. Ordenado por custo desc. Filtros: status, limit. `truncated: true` avisa que a conta tinha MAIS grupos do que o limit e a lista foi cortada no topo de gasto — peca um limit maior ou filtre. Razao com denominador zero vem null (indefinida), nao 0. filters_applied diz o recorte que a query aplicou.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "date_range": {
+          "default": "LAST_30_DAYS",
+          "description": "Periodo via preset. Para periodo custom, use start_date+end_date.",
+          "enum": [
+            "TODAY",
+            "YESTERDAY",
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS",
+            "THIS_MONTH",
+            "LAST_MONTH",
+            "THIS_WEEK",
+            "LAST_WEEK"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 100,
+          "maximum": 10000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "start_date": {
+          "description": "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, sobrepoe date_range preset. Obriga end_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "status": {
+          "default": "enabled",
+          "enum": [
+            "enabled",
+            "paused",
+            "removed",
+            "all"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_ad_group_performance"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Prefira get_performance_breakdown(level=ad) — este report sera arquivado (Fase 2B). Performance por anuncio (RSA) com headlines, descriptions, final_urls e ad_strength (POOR|AVERAGE|GOOD|EXCELLENT). Filtros: status, limit. `truncated: true` avisa que a conta tinha MAIS anuncios do que o limit e a lista foi cortada no topo de gasto — peca um limit maior ou filtre. Razao com denominador zero vem null (indefinida), nao 0. filters_applied diz o recorte que a query aplicou.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "date_range": {
+          "default": "LAST_30_DAYS",
+          "description": "Periodo via preset. Para periodo custom, use start_date+end_date.",
+          "enum": [
+            "TODAY",
+            "YESTERDAY",
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS",
+            "THIS_MONTH",
+            "LAST_MONTH",
+            "THIS_WEEK",
+            "LAST_WEEK"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 100,
+          "maximum": 10000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "start_date": {
+          "description": "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, sobrepoe date_range preset. Obriga end_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "status": {
+          "default": "enabled",
+          "enum": [
+            "enabled",
+            "paused",
+            "removed",
+            "all"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_ad_performance"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Grade de veiculacao (ad schedule) por campanha: uma linha por janela (day_of_week, start_hour/minute, end_hour/minute, bid_modifier, status, criterion_id, resource_name) e um `schedule_summary` por campanha com `has_schedule`, `hours_per_week`, `budget_is_shared` e `campaign_status` (grade de campanha PAUSED nao afeta entrega). ATENCAO: campanha SEM nenhuma janela serve 24x7 — `has_schedule: false` e `hours_per_week: 168` dizem isso explicitamente; nao leia lista vazia como 'nao serve'. Isso vale SO quando a resposta nao veio cortada NEM filtrada: sob `truncated: true`, tem `has_schedule: null`, `hours_per_week: null`, `windows: null` e `schedule_desconhecida_por_truncamento: true` no resumo (1) toda campanha cuja grade caiu inteira alem do corte do `limit` e (2) a campanha da BORDA do corte — a ultima que ainda tem linha na resposta, cuja grade pode ter sido cortada no meio; as linhas vem ordenadas por campanha, entao havendo corte existe sempre exatamente uma nessa posicao, e nao da para saber se ela veio inteira — e tambem quando `status` e diferente de `enabled`, caso em que o conjunto lido nao e o de entrega e vem `schedule_desconhecida_por_filtro: true`. `null` significa 'nao sei se tem grade ou nao, aumente o `limit` ou peca `status='enabled'`', nunca leia `null` como false nem como 24x7. Janela cobre [inicio, fim); `end_hour: 24` = ate o fim do dia; minutos so 0/15/30/45 (API). Uma campanha pode ter ate 7x24 janelas: `limit` (default 200, teto 1000) corta e `truncated: true` avisa. `budget_is_shared` vem de campaign_budget.explicitly_shared — importa porque desligar faixa em orcamento compartilhado REALOCA gasto, nao economiza (ver update_ad_schedule). `include_metrics: true` acrescenta `metrics_por_bloco` por campanha — custo/conversoes/CPA particionados em comercial (seg-sex 08-18h), fora_de_hora e fim_de_semana (BLOCOS_PADRAO) mais um balde `outros` — a mesma conjunta cara dia x hora que antes so aparecia no dry-run do update_ad_schedule, agora sem exigir intencao de mutar. Exige `campaign_ids` (a conjunta nao roda sobre a conta inteira); janela default 30 dias, override por date_range/start_date+end_date. Com a flag, o retorno tambem traz `period` (from/to) com a janela concreta que o preset resolveu no fuso da conta. SEM a flag nenhuma consulta dia x hora sai, e `period` tambem fica de fora — metade do valor da flag e essa ausencia.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "campaign_ids": {
+          "description": "Opcional. Default: conta inteira.",
+          "items": {
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "type": "array"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "date_range": {
+          "default": "LAST_30_DAYS",
+          "description": "Janela das metricas de include_metrics (ignorado sem a flag); override por start_date+end_date.",
+          "enum": [
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "include_metrics": {
+          "default": false,
+          "description": "Traz CPA por bloco horario (comercial / fora de hora / fim de semana) por campanha. Custa uma consulta conjunta dia x hora a mais.",
+          "type": "boolean"
+        },
+        "limit": {
+          "default": 200,
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "start_date": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "status": {
+          "default": "enabled",
+          "description": "Status dos CRITERIOS de agenda (nao da campanha).",
+          "enum": [
+            "enabled",
+            "paused",
+            "removed",
+            "all"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_ad_schedule"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Lista vínculos de asset nas TRÊS camadas — customer_asset, campaign_asset e ad_group_asset — numa resposta só, cada linha com `level` e `resource_name` (o mesmo que `remove_asset_link` recebe). Traz `primary_status` + `primary_status_reasons`, que é o veredito do Google sobre servir (ELIGIBLE|PAUSED|REMOVED|PENDING|LIMITED|NOT_ELIGIBLE, e UNSPECIFIED — que aparece de verdade em produção, então trate a lista como aberta). **`primary_status_reasons` carrega mais que remoção:** além de ASSET_LINK_REMOVED vêm ASSET_DISAPPROVED e ASSET_UNDER_REVIEW, ou seja reprovação de política e revisão pendente ficam visíveis aqui sem outra query. **`asset_name` vem VAZIO nas famílias de texto** (SITELINK, CALLOUT, CALL, STRUCTURED_SNIPPET, PROMOTION, BUSINESS_NAME, BUSINESS_MESSAGE): o Google só popula `name` para algumas famílias, então string vazia ali NÃO significa asset sem conteúdo — para o texto use `run_gaql` no campo do tipo (ex.: asset.callout_asset.callout_text). **NÃO filtra status por default**: linha REMOVED é a única prova positiva de que uma remoção funcionou — contagem não distingue, porque o vínculo removido continua na tabela. ATENÇÃO: não existe campo de precedência entre camadas na API do Google (o enum de razões não tem nenhum valor de ofuscamento), então esta tool não afirma qual vínculo 'vence' — ela mostra os três e o veredito de cada um. Filtros: field_type opcional (default todos), campaign_ids opcional, limit (default 200, teto 1000). **O default de 200 trunca em conta real:** medido na 786-223-0676 são 735 vínculos, dos quais 598 (81%) são AD_IMAGE de RSA — a família de imagem domina a contagem e afoga as extensões de texto. Para inventário de conta use `limit: 1000`; para trabalhar extensões use `field_type`. Truncado traz `truncated: true` na raiz (espelhado em `summary.truncated`), e a ordem é por `asset_id`, não por relevância. **Detecção de órfão exige chamada SEM filtro**: numa chamada sem field_type e sem campaign_ids, `summary.assets_sem_vinculo_ativo` lista os assets sem vínculo ENABLED em NENHUMA camada (inclui os que só têm vínculo PAUSED ou REMOVED) e `summary.orphan_scope` vem `conta_completa`. Com QUALQUER filtro ativo (field_type OU campaign_ids), a chave `assets_sem_vinculo_ativo` NÃO aparece — campaign_ids restringe só a camada de campanha, então um asset com o único vínculo ENABLED fora do recorte pareceria órfão por engano; `orphan_scope` vem `nao_calculado_com_filtro` explicando por quê.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "campaign_ids": {
+          "description": "Opcional. Restringe a camada de campanha a estes ids.",
+          "items": {
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "type": "array"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "field_type": {
+          "description": "Opcional. Filtra por tipo (CALLOUT, SITELINK, STRUCTURED_SNIPPET, CALL, PROMOTION, BUSINESS_LOGO...). Default: TODOS os tipos.",
+          "type": "string"
+        },
+        "limit": {
+          "default": 200,
+          "description": "Máximo de vínculos retornados. truncated:true se exceder.",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_assets"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Prefira get_performance_breakdown(level=audience) — este report sera arquivado (Fase 2B). Performance por audiencia/segmento aplicado em ad groups: listas de remarketing (user_list) ou interesses (user_interest_category) + metricas. `truncated: true` avisa que a conta tinha MAIS audiencias do que o limit e a lista foi cortada no topo de gasto — peca um limit maior. Razao com denominador zero vem null (indefinida), nao 0. filters_applied diz o recorte que a query aplicou.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "date_range": {
+          "default": "LAST_30_DAYS",
+          "description": "Periodo via preset. Para periodo custom, use start_date+end_date.",
+          "enum": [
+            "TODAY",
+            "YESTERDAY",
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS",
+            "THIS_MONTH",
+            "LAST_MONTH",
+            "THIS_WEEK",
+            "LAST_WEEK"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 200,
+          "maximum": 10000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "start_date": {
+          "description": "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, sobrepoe date_range preset. Obriga end_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_audience_performance"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Por campanha ativa: orcamento diario, gasto no mes ATE ONTEM (`spent_mtd_brl`, dias fechados), projecao de fim de mes pela media dos dias fechados, % consumido do orcamento mensal, e o gasto parcial de hoje em `gasto_hoje_brl` — dia ainda aberto, fora da projecao; serve de sinal de estouro no dia. No dia 1 nao ha dia fechado: a janela e so hoje (`inclui_dia_corrente: true`) e a projecao vem null. `days_elapsed` conta os dias fechados; `days_remaining` inclui hoje. ORCAMENTO COMPARTILHADO (`orcamento_compartilhado: true`): a campanha nao tem orcamento proprio, entao os dois percentuais dela vem null e o ritmo esta em `orcamentos_compartilhados`, um por orcamento, com o gasto lido do proprio orcamento — inclui campanha pausada ou fora da lista, entao pode passar da soma das campanhas listadas. Nao some `daily_budget_brl` das campanhas: as que dividem orcamento repetem o mesmo valor. Util pra ver no inicio do dia se alguma campanha esta acelerada/lenta demais. Ordenado por gasto no mes desc; limit (default 100, max 1000) corta a cauda e `truncated:true` avisa. Razao com denominador zero vem null (indefinida), nao 0. filters_applied diz o recorte que a query aplicou.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 100,
+          "description": "Máximo de campanhas retornadas, das que MAIS gastaram no mes. truncated:true se exceder.",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_budget_pacing"
+  },
+  {
+    "_meta": {
+      "anthropic/alwaysLoad": true,
+      "com.v4company/bucket": "always"
+    },
+    "description": "[CORE] Prefira get_performance_breakdown(level=campaign) — este report sera arquivado (Fase 2B). Performance por campanha: impressoes, clicks, custo, conversoes, valor, CTR, CPC. Ordenado por custo desc. Filtros opcionais: status (enabled|paused|removed|all), limit (default 100). `truncated: true` avisa que a conta tinha MAIS campanhas do que o limit e a lista foi cortada no topo de gasto — peca um limit maior ou filtre. Nota: campaign.status pode lagar alguns minutos entre queries (cache Google) — se decisao critica baseada em status, re-query antes de agir. Razao com denominador zero vem null (indefinida), nao 0. filters_applied diz o recorte que a query aplicou.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "date_range": {
+          "default": "LAST_30_DAYS",
+          "description": "Periodo via preset. Para periodo custom, use start_date+end_date.",
+          "enum": [
+            "TODAY",
+            "YESTERDAY",
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS",
+            "THIS_MONTH",
+            "LAST_MONTH",
+            "THIS_WEEK",
+            "LAST_WEEK"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 100,
+          "maximum": 10000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "start_date": {
+          "description": "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, sobrepoe date_range preset. Obriga end_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "status": {
+          "default": "enabled",
+          "enum": [
+            "enabled",
+            "paused",
+            "removed",
+            "all"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_campaign_performance"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Historico de mudancas (change_event) na conta nos ultimos 7-30 dias com filtros opcionais (resource_types, operation_types, user_emails, client_types). Util pra auditoria 'CRITICO antes de tudo': detectar auto-apply Recommendations, mudancas estruturais, e quem mexeu no que. Recomendacao aceita a mao pelo APP de celular sai com client_type GOOGLE_ADS_MOBILE_APP e o e-mail do gestor, igual a uma edicao manual (sondado em 05/10: nenhum campo do change_event a distingue). ATENCAO: change_event e audit log LAGGING e o lag NAO tem contrato — medido de ~3h a >4 dias na MESMA conta. Por isso a resposta traz `freshness` com a fronteira MEDIDA: `account_frontier` (evento mais recente indexado na conta, sem filtro), `slice_frontier` (das linhas devolvidas) e `status` (confiavel|ambiguo|nao_coberto|em_curso|indeterminado). `nao_coberto` = fronteira anterior ao fim da janela (lag OU conta parada — nao afirma qual); `em_curso` = a janela alcanca o dia corrente DA CONTA, que ainda nao fechou, entao `confiavel` nao e alcancavel. Presets de data resolvem no fuso da conta (F141). Leia o status antes de concluir que nada mudou: lista vazia com status != confiavel NAO e prova de ausencia. Pra validar estado atual (revert/incident), use `run_gaql FROM campaign` como leading indicator. Inclui summary com totais por usuario/resource/operation. `truncated: true` avisa que a janela tinha MAIS mudancas do que o limit e a lista foi cortada pelas mais RECENTES — as mais antigas da janela ficaram de fora, entao suba o limit ou estreite o periodo antes de concluir que uma mudanca nao existiu. E ortogonal ao `freshness`: `truncated` fala do que o limit cortou, `freshness` do que o Google ainda nao indexou. No teto (`limit: 10000`, cap duro do change_event) nao ha linha sentinela para comparar, entao `truncated: true` ali le-se 'pode haver mais' e pode significar que coube exato — estreite a janela pra ter certeza. Janela maxima 30 dias (Google retention exclusivo — start_date alem disso e auto-clampado pra today-28 com warning F23, preset OU custom; janela inteira fora da retencao da erro claro). Audited.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "client_types": {
+          "items": {
+            "enum": [
+              "UNSPECIFIED",
+              "UNKNOWN",
+              "GOOGLE_ADS_WEB_CLIENT",
+              "GOOGLE_ADS_AUTOMATED_RULE",
+              "GOOGLE_ADS_SCRIPTS",
+              "GOOGLE_ADS_BULK_UPLOAD",
+              "GOOGLE_ADS_API",
+              "GOOGLE_ADS_EDITOR",
+              "GOOGLE_ADS_MOBILE_APP",
+              "GOOGLE_ADS_RECOMMENDATIONS",
+              "GOOGLE_ADS_RECOMMENDATIONS_SUBSCRIPTION",
+              "SEARCH_ADS_360_SYNC",
+              "SEARCH_ADS_360_POST",
+              "INTERNAL_TOOL",
+              "OTHER"
+            ],
+            "type": "string"
+          },
+          "maxItems": 15,
+          "type": "array"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "date_range": {
+          "default": "LAST_7_DAYS",
+          "description": "Periodo via preset. Para periodo custom, use start_date+end_date.",
+          "enum": [
+            "TODAY",
+            "YESTERDAY",
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS",
+            "THIS_MONTH",
+            "LAST_MONTH",
+            "THIS_WEEK",
+            "LAST_WEEK"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 200,
+          "maximum": 10000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "operation_types": {
+          "items": {
+            "enum": [
+              "CREATE",
+              "UPDATE",
+              "REMOVE"
+            ],
+            "type": "string"
+          },
+          "maxItems": 3,
+          "type": "array"
+        },
+        "resource_types": {
+          "items": {
+            "enum": [
+              "AD",
+              "AD_GROUP",
+              "AD_GROUP_AD",
+              "AD_GROUP_ASSET",
+              "AD_GROUP_BID_MODIFIER",
+              "AD_GROUP_CRITERION",
+              "AD_GROUP_FEED",
+              "ASSET",
+              "ASSET_SET",
+              "ASSET_SET_ASSET",
+              "CAMPAIGN",
+              "CAMPAIGN_ASSET",
+              "CAMPAIGN_ASSET_SET",
+              "CAMPAIGN_BUDGET",
+              "CAMPAIGN_CRITERION",
+              "CAMPAIGN_FEED",
+              "CUSTOMER_ASSET",
+              "FEED",
+              "FEED_ITEM"
+            ],
+            "type": "string"
+          },
+          "maxItems": 19,
+          "type": "array"
+        },
+        "start_date": {
+          "description": "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, sobrepoe date_range preset. Obriga end_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "user_emails": {
+          "items": {
+            "format": "email",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "type": "array"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_change_history"
+  },
+  {
+    "_meta": {
+      "anthropic/alwaysLoad": true,
+      "com.v4company/bucket": "always"
+    },
+    "description": "[CORE] Acoes de conversao configuradas na conta com status, categoria, tipo, atribuicao, valor default, primary_for_goal (Smart Bidding optimization) e include_in_conversions_metric (dashboard 'Conversions' metric). Util pra auditoria de tracking + decisao de promocao Secondary->Primary. limit (default 100, max 1000); `truncated:true` avisa quando cortou. filters_applied diz o recorte que a query aplicou.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 100,
+          "description": "Máximo de acoes retornadas. truncated:true se exceder.",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_conversion_actions"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Prefira get_performance_breakdown(level=account, breakdown=device) — este report sera arquivado (Fase 2B). Performance segmentada por device (MOBILE, DESKTOP, TABLET, CONNECTED_TV, OTHER). Util pra ajustar bid adjustments por dispositivo. Razao com denominador zero vem null (indefinida), nao 0. filters_applied diz o recorte que a query aplicou.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "date_range": {
+          "default": "LAST_30_DAYS",
+          "description": "Periodo via preset. Para periodo custom, use start_date+end_date.",
+          "enum": [
+            "TODAY",
+            "YESTERDAY",
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS",
+            "THIS_MONTH",
+            "LAST_MONTH",
+            "THIS_WEEK",
+            "LAST_WEEK"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "start_date": {
+          "description": "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, sobrepoe date_range preset. Obriga end_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_device_performance"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Funil completo da conta: impressoes -> clicks -> conversoes -> valor (receita), com taxas de conversao entre etapas e KPIs derivados (ROAS, AOV, CPA). Util pra relatorio cliente. Razao com denominador zero vem null (indefinida), nao 0. filters_applied diz o recorte que a query aplicou.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "date_range": {
+          "default": "LAST_30_DAYS",
+          "description": "Periodo via preset. Para periodo custom, use start_date+end_date.",
+          "enum": [
+            "TODAY",
+            "YESTERDAY",
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS",
+            "THIS_MONTH",
+            "LAST_MONTH",
+            "THIS_WEEK",
+            "LAST_WEEK"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "start_date": {
+          "description": "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, sobrepoe date_range preset. Obriga end_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_funnel_metrics"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Prefira get_performance_breakdown(level=account, breakdown=geo) — este report sera arquivado (Fase 2B). Performance por pais (com nome resolvido via geo_target_constant). Util pra identificar regioes underperformantes. `truncated: true` avisa que a conta tinha MAIS paises do que o limit e a lista foi cortada no topo de gasto — peca um limit maior. Razao com denominador zero vem null (indefinida), nao 0. filters_applied diz o recorte que a query aplicou.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "date_range": {
+          "default": "LAST_30_DAYS",
+          "description": "Periodo via preset. Para periodo custom, use start_date+end_date.",
+          "enum": [
+            "TODAY",
+            "YESTERDAY",
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS",
+            "THIS_MONTH",
+            "LAST_MONTH",
+            "THIS_WEEK",
+            "LAST_WEEK"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 100,
+          "maximum": 10000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "start_date": {
+          "description": "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, sobrepoe date_range preset. Obriga end_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_geo_performance"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Prefira get_performance_breakdown(level=account, breakdown=hourly) — este report sera arquivado (Fase 2B). Performance segmentada por hora (0-23) e dia da semana (MONDAY-SUNDAY). Util pra encontrar janelas de melhor/pior performance e ajustar bid adjustments por horario. Razao com denominador zero vem null (indefinida), nao 0. filters_applied diz o recorte que a query aplicou.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "date_range": {
+          "default": "LAST_30_DAYS",
+          "description": "Periodo via preset. Para periodo custom, use start_date+end_date.",
+          "enum": [
+            "TODAY",
+            "YESTERDAY",
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS",
+            "THIS_MONTH",
+            "LAST_MONTH",
+            "THIS_WEEK",
+            "LAST_WEEK"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "start_date": {
+          "description": "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, sobrepoe date_range preset. Obriga end_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_hourly_performance"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Métricas do Planejador do Google para uma lista pronta de termos: volume mensal, concorrência, faixa de CPC e sazonalidade, por cidade. O volume vem em degraus do Google (10, 20, 50, 110...), não é exato; `null` significa que o Google não tem dado, não zero: os termos que o Google devolveu sem métricas em todas as cidades listam em `sem_dado`, e os que ele nem devolveu, em `sem_resultado` (não medido). O Google agrupa variantes próximas (ex.: andaime/andaimes) num só resultado: o termo pedido que entrou por variante traz `agrupado_em` com o texto do Google e as mesmas métricas do grupo. O CPC é estimativa de topo de página, uma faixa (`cpc_topo_min_brl` a `cpc_topo_max_brl`), não o que a conta paga; os campos _brl assumem conta BRL. O resultado não depende da conta usada: use qualquer conta sua (ex.: a interna 6728568947). Até 1000 termos, na ordem pedida; `variantes` ecoa as variantes próximas que o Google agrupa ao termo. Cidades por nome, com UF para desambiguar (ex.: 'João Pessoa, PB'), até 5; sem cidade o recorte é o Brasil. As métricas vêm por cidade em `por_cidade`, sem soma entre cidades.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "cidades": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 5,
+          "type": "array"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "termos": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "customer_id",
+        "termos"
+      ],
+      "type": "object"
+    },
+    "name": "get_keyword_metrics"
+  },
+  {
+    "_meta": {
+      "anthropic/alwaysLoad": true,
+      "com.v4company/bucket": "always"
+    },
+    "description": "[CORE] Prefira get_performance_breakdown(level=keyword) — este report sera arquivado (Fase 2B). Performance por palavra-chave com Quality Score completo (3 componentes: creative, post_click, search_predicted_ctr) + estimativas de first_page_cpc e top_of_page_cpc. Filtros: status (enabled|paused|removed|all), limit. `truncated: true` avisa que a conta tinha MAIS palavras-chave do que o limit e a lista foi cortada no topo de gasto — peca um limit maior ou use os filtros de metrica (min_cost_brl/min_clicks/min_conversions). ATENÇÃO (F56): retorna positive E negative ad_group_criterion indistintamente. Cada row tem field `negative: bool` — filtre `negative=false` no consumer pra workflows de PAUSE/análise QS, OU use `audit_zombie_keywords` (filtra `negative = FALSE` server-side). `audit_quality_score` também não devolve negativa, mas por outro mecanismo: exige `quality_score IS NOT NULL`, e critério negativo não tem índice de qualidade. Razao com denominador zero vem null (indefinida), nao 0. filters_applied diz o recorte que a query aplicou.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "date_range": {
+          "default": "LAST_30_DAYS",
+          "description": "Periodo via preset. Para periodo custom, use start_date+end_date.",
+          "enum": [
+            "TODAY",
+            "YESTERDAY",
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS",
+            "THIS_MONTH",
+            "LAST_MONTH",
+            "THIS_WEEK",
+            "LAST_WEEK"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 200,
+          "maximum": 10000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "min_clicks": {
+          "description": "Filtro server-side: só linhas com clicks >= este valor.",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "min_conversions": {
+          "description": "Filtro server-side: só linhas com conversions ESTRITAMENTE acima deste valor (GAQL não aceita >= em conversions). Use 0 pra 'tem ao menos uma conversão'.",
+          "minimum": 0,
+          "type": "number"
+        },
+        "min_cost_brl": {
+          "description": "Filtro server-side: só linhas com custo (BRL) >= este valor. Corta a cauda de baixo gasto (reduz payload).",
+          "minimum": 0,
+          "type": "number"
+        },
+        "start_date": {
+          "description": "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, sobrepoe date_range preset. Obriga end_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "status": {
+          "default": "enabled",
+          "enum": [
+            "enabled",
+            "paused",
+            "removed",
+            "all"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_keyword_performance"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Historico das proprias operacoes do gestor via MCP (mutations + audited reads), com filtros por janela de tempo, conta, e tipo de acao. Retorna ordenado por occurred_at DESC. Scoped automaticamente ao gestor logado. `truncated: true` avisa que a janela tinha MAIS eventos do que o limit e a lista foi cortada pelos mais RECENTES — os mais antigos ficaram de fora, entao suba o limit ou estreite `days` antes de concluir que uma operacao nao aconteceu. **`dry_run` separa TENTATIVA de APLICACAO** (F148): `true` = preview que mintou token e pode nunca ter sido aplicado; `false`/ausente = mutacao real ou linha anterior ao fix. Sem esse campo os dois casos sao identicos, porque ambos gravam `action_type: mutate` com o `target_count` planejado — nao tente distinguir por `duration_ms`. Um mesmo preview tambem deixa uma linha `read` ao lado, que e a consulta GAQL que ele fez, nao o preview.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "action_type": {
+          "default": "all",
+          "description": "Filtrar por tipo de acao. 'all' = sem filtro.",
+          "enum": [
+            "mutate",
+            "read",
+            "auth",
+            "system",
+            "all"
+          ],
+          "type": "string"
+        },
+        "customer_id": {
+          "description": "Filtrar por uma conta especifica (opcional).",
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "days": {
+          "default": 7,
+          "description": "Janela de tempo em dias (1-30, default 7).",
+          "maximum": 30,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "limit": {
+          "default": 100,
+          "description": "Numero maximo de eventos retornados (1-1000, default 100).",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "name": "get_my_audit_log"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Quota diaria do dia UTC atual em DOIS niveis: `manager` (seu cap pessoal) e `account` (projeto Google Cloud da V4, compartilhado por todos os gestores e todas as contas). `blocking_scope` diz qual dos dois esgota primeiro — normalmente o seu, que e menor. Sem parametros. Reset a meia-noite UTC.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "name": "get_my_rate_limit_status"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Lista palavras-chave negativas aplicadas em nivel de campanha, com data de criacao e usuario que adicionou (quando rastreavel via change_event, retention ~30 dias). Util pra auditoria de cobertura de negativas, identificar duplicacoes ou gaps, e narrar 'X negativas adicionadas no periodo' em report semanal. Bloco additions_summary no root agrega counts por janela (7d / 30d / pre-30d-ou-desconhecido) — sobre todas as negativas DE CAMPANHA, nao so a pagina. by_campaign retorna max `limit` negativas (default 100, max 1000) ordenadas por adicao recente primeiro. Quando truncado, response inclui `truncated: true`; `total_negatives` conta todas as negativas de campanha. Negativas de grupo e listas compartilhadas NAO entram (`filters_applied.nivel`). filters_applied diz o recorte que a query aplicou.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 100,
+          "description": "Maximo de negativas retornadas em by_campaign (ordenadas recentes primeiro). total_negatives + additions_summary contam todas as negativas DE CAMPANHA da conta, nao so as da pagina. Default 100; aumentar so se necessario (contas grandes podem exceder MCP response cap acima de ~125 rows).",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_negative_keywords_audit"
+  },
+  {
+    "_meta": {
+      "anthropic/alwaysLoad": true,
+      "com.v4company/bucket": "always"
+    },
+    "description": "[CORE] Performance Google quebrada por nivel + dimensao opcional. level: campaign|ad_group|ad|keyword|audience (rows por entidade) OU account+breakdown (device|geo|hourly|conversion_action). Metricas: impressions, clicks, cost_brl, conversions, conversions_value_brl, ctr, cpc_brl. Ordenado por custo desc. Excecao: level='campaign'+breakdown='hourly' tambem funciona, mas exige `campaign_ids` (ate 20) — a conjunta dia x hora e cara e nao roda sobre a conta inteira. Por default devolve a particao em blocos nomeados (comercial/fora_de_hora/fim_de_semana/outros — BLOCOS_PADRAO), uma linha por bloco x campanha com cost_brl/conversions/cpa_brl/cells: a grade crua tem 168 celulas por campanha e o `limit` default (100) truncaria antes de terminar UMA campanha. `raw_grid: true` troca pela grade crua, com teto ESTRUTURAL de 168 x len(campaign_ids): o `limit` NAO entra nessa conta — pedir um `limit` maior nao muda nada, a grade vem INTEIRA, ordenada por campanha, dia e hora (F188), e `truncated` fica `false`. Nos DEMAIS niveis `truncated: true` diz que havia MAIS linhas do que o teto e a lista foi cortada no topo da ordenacao (custo; all_conversions no recorte por acao) — la sim peca um `limit` maior ou filtre. EXCECAO: em `account+hourly` o teto tambem e ESTRUTURAL (168 celulas, 7 dias x 24h) e o `limit` NAO se aplica — a grade vem inteira, em ordem cronologica. ATENCAO (F56): em `level='keyword'` a resposta traz keyword POSITIVA e NEGATIVA indistintamente — cada row tem `negative: bool`, filtre `negative=false` no consumer, ou use audit_zombie_keywords, que filtra `negative = FALSE` server-side (audit_quality_score tambem nao devolve negativa, mas por outro motivo: ele exige `quality_score IS NOT NULL`, e criterio negativo nao tem indice de qualidade). Para visao geral da conta com comparativo use get_account_overview. As linhas de level='campaign' sem breakdown trazem a parcela de impressao de pesquisa (fracao 0-1): parcela_impressao, perdida_orcamento, perdida_classificacao, parcela_topo, parcela_topo_absoluto — null quando o Google nao a mede (campanha que nao e de pesquisa, ou sem impressao); 0.0999 e o '< 10%' do Google. breakdown='conversion_action' (level account ou campaign): uma linha por acao de conversao (em campaign, uma por par campanha x acao — o `limit` e o `truncated` contam pares), com conversions, all_conversions e os dois valores — sem custo: a API nao cruza custo com acao, entao nao ha CPA por acao. conta_em_conversoes e primary_for_goal vem do cadastro da acao, que segue as metas padrao da conta: no recorte da conta, `conversions` soma so as acoes com conta_em_conversoes=true e all_conversions soma todas. Numa campanha com meta propria (nao medido) a flag da conta pode nao valer: conversions > 0 com a flag false indica que a acao conta para aquela campanha; nao corrija a flag por isso (ela muda a conta inteira). Flag que nao se mediu vem null e flags_motivo explica (acao fora do cadastro, flag nao informada, ou falha da consulta ao cadastro). Ordenado por all_conversions desc. `status` filtra so em level=campaign (em account e ignorado). Razao com denominador zero vem null (indefinida), nao 0. Com level=campaign e breakdown=hourly a resposta nao traz filters_applied (grade dia x hora). filters_applied diz o recorte que a query aplicou.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "breakdown": {
+          "description": "Dimensao secundaria. device/geo/hourly/conversion_action em level=account; hourly (exige campaign_ids) e conversion_action em level=campaign.",
+          "enum": [
+            "device",
+            "geo",
+            "hourly",
+            "conversion_action"
+          ],
+          "type": "string"
+        },
+        "campaign_ids": {
+          "description": "Obrigatorio so pra level='campaign'+breakdown='hourly': a conjunta dia x hora e cara e nao roda sobre a conta inteira. Ignorado em qualquer outra combinacao, inclusive campaign+conversion_action (que traz todas as campanhas).",
+          "items": {
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "date_range": {
+          "default": "LAST_30_DAYS",
+          "description": "Periodo via preset. Para periodo custom, use start_date+end_date.",
+          "enum": [
+            "TODAY",
+            "YESTERDAY",
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS",
+            "THIS_MONTH",
+            "LAST_MONTH",
+            "THIS_WEEK",
+            "LAST_WEEK"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "level": {
+          "description": "Granularidade primaria (required).",
+          "enum": [
+            "campaign",
+            "ad_group",
+            "ad",
+            "keyword",
+            "audience",
+            "account"
+          ],
+          "type": "string"
+        },
+        "limit": {
+          "default": 100,
+          "maximum": 10000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "raw_grid": {
+          "default": false,
+          "description": "So com level=campaign+breakdown=hourly: devolve as 168 celulas dia x hora por campanha em vez da particao em blocos nomeados (comercial/fora_de_hora/fim_de_semana/outros). Caro; exige campaign_ids curto.",
+          "type": "boolean"
+        },
+        "start_date": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "status": {
+          "default": "enabled",
+          "description": "So entity levels com status (campaign/ad_group/ad/keyword).",
+          "enum": [
+            "enabled",
+            "paused",
+            "removed",
+            "all"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "level"
+      ],
+      "type": "object"
+    },
+    "name": "get_performance_breakdown"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Recomendacoes pendentes do Google Ads pra conta: tipo (com type_pt em PT-BR quando reconhecido, null caso contrario) e resource_name pra aplicar via apply_recommendation ou dispensar via dismiss_recommendation. Para ver impacto detalhado de uma recomendacao especifica, use run_gaql filtrando por recommendation.type. limit (default 100, max 1000): as recomendacoes escalam com o nº de ad_groups, entao contas grandes truncam — `truncated:true` avisa.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 100,
+          "description": "Máximo de recomendacoes retornadas. truncated:true se exceder.",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_recommendations"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Termos de busca reais que dispararam anuncios. Status indica se ja foi adicionado como palavra-chave (ADDED) ou negativa (EXCLUDED) ou nem um nem outro (NONE). Util pra encontrar negativas pra adicionar e termos performantes pra promover. `truncated: true` avisa que a conta tinha MAIS termos do que o limit (default 50, baixo) e a lista foi cortada no topo de gasto — a cauda de termos ruins costuma estar ABAIXO do corte, entao suba o limit ou use min_cost_brl/min_clicks antes de concluir que nao ha o que negativar. Razao com denominador zero vem null (indefinida), nao 0. filters_applied diz o recorte que a query aplicou.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "date_range": {
+          "default": "LAST_30_DAYS",
+          "description": "Periodo via preset. Para periodo custom, use start_date+end_date.",
+          "enum": [
+            "TODAY",
+            "YESTERDAY",
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS",
+            "THIS_MONTH",
+            "LAST_MONTH",
+            "THIS_WEEK",
+            "LAST_WEEK"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 50,
+          "maximum": 10000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "min_clicks": {
+          "description": "Clicks minimos no periodo. Filtra server-side (GAQL WHERE). Omitir = sem filtro de clicks.",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "min_conversions": {
+          "description": "Conversoes minimas no periodo (exclusive: > valor). Filtra server-side (GAQL WHERE). Use 0 pra exigir pelo menos 1 conversao. Omitir = sem filtro.",
+          "minimum": 0,
+          "type": "number"
+        },
+        "min_cost_brl": {
+          "description": "Custo minimo em BRL no periodo. Filtra server-side (GAQL WHERE). Omitir = sem filtro de custo.",
+          "minimum": 0,
+          "type": "number"
+        },
+        "start_date": {
+          "description": "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, sobrepoe date_range preset. Obriga end_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_search_terms_report"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Top N palavras-chave + top N anuncios (RSAs) ranqueados por metrica configuravel (cost, conversions, clicks, impressions). Default top_n=10, metric=cost. Util pra relatorio cliente — secao de destaques. filters_applied diz o recorte que a query aplicou.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "date_range": {
+          "default": "LAST_30_DAYS",
+          "description": "Periodo via preset. Para periodo custom, use start_date+end_date.",
+          "enum": [
+            "TODAY",
+            "YESTERDAY",
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS",
+            "THIS_MONTH",
+            "LAST_MONTH",
+            "THIS_WEEK",
+            "LAST_WEEK"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "metric": {
+          "default": "cost",
+          "enum": [
+            "cost",
+            "conversions",
+            "clicks",
+            "impressions"
+          ],
+          "type": "string"
+        },
+        "start_date": {
+          "description": "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, sobrepoe date_range preset. Obriga end_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "top_n": {
+          "default": 10,
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_top_keywords_creatives"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Importa N conversões offline (1-100 por call) match-by-gclid pra Google Ads attribuir ROAS + alimentar Smart Bidding. Always-CONFIRM. Workflow V4 lead-gen: gestor captura gclid no URL da landing → salva no CRM → quando lead converte (WhatsApp confirmation, contrato assinado, pagamento) → chama tool com batch de gclids + datas + valores. V4 invariants hardcoded: currency_code=BRL; timezone = o da CONTA no inventario (F146: era -03:00 fixo), consent.ad_user_data=GRANTED (LGPD V4-aligned). Pre-flight valida conversion_action_id existe + tem type=UPLOAD_CLICKS. partial_failure=True: conversões individuais com erro (gclid expirado, data inválida) são reportadas em response.failures[] mas não bloqueiam o batch. Sprint 3b.26 introduz dispatcher run_conversion_upload paralelo a run_mutation.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "conversion_action_id": {
+          "description": "ID numérico (NOT resource path) da ConversionAction com type=UPLOAD_CLICKS. Pre-flight valida via GAQL.",
+          "pattern": "^[0-9]+$",
+          "type": "string"
+        },
+        "conversions": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "conversion_date_time": {
+                "description": "Timestamp no relogio LOCAL da conta (fuso do inventario; o builder anexa o offset — F146). Format: YYYY-MM-DD HH:MM:SS",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
+                "type": "string"
+              },
+              "conversion_value_brl": {
+                "description": "Valor BRL da conversão (V4 invariant currency=BRL).",
+                "minimum": 0.01,
+                "type": "number"
+              },
+              "gclid": {
+                "description": "Google Click ID capturado no URL da landing. String opaque — trust Google validation.",
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "order_id": {
+                "description": "Optional CRM lead ID pra dedupe Google-side. Google rejeita conversion com mesmo (gclid, conversion_date_time, order_id) já uploaded.",
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "gclid",
+              "conversion_date_time",
+              "conversion_value_brl"
+            ],
+            "type": "object"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "conversion_action_id",
+        "conversions"
+      ],
+      "type": "object"
+    },
+    "name": "import_offline_conversions"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Catalogo curado de resources GAQL (15+) com seus campos comumente usados. Inclui tambem a lista de segments aplicaveis. Use junto com run_gaql ou validate_gaql pra construir queries customizadas.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "name": "list_gaql_resources"
+  },
+  {
+    "_meta": {
+      "anthropic/alwaysLoad": true,
+      "com.v4company/bucket": "always"
+    },
+    "description": "[CORE] Lista as contas Google Ads que o gestor logado tem permissão pra operar. Retorna o customer_id (sem traços), nome, moeda, fuso e flag de conta de teste. Sem parâmetros — usa a sessão MCP pra identificar o gestor.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "name": "list_my_accounts"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Saldo restante de UMA conta Meta Ads (uma conta por chamada). A conta tem dois freios: o saldo pré-pago (`freio_saldo_brl`, só em conta pré-paga) e o limite de gastos (`freio_limite_brl`, quando há teto); `restante_brl` é o menor dos dois e `trava_primeiro` diz qual limita ('saldo_prepago' ou 'limite_de_gastos'). O saldo pré-pago é lido do texto de `funding_source_details` da Meta; se o formato mudar, ele vem `null` com o texto original em `saldo_prepago_texto` e situação indeterminada. Em conta pós-paga, `a_faturar_brl` é o que ainda será cobrado, não é saldo. Cupons ficam fora do restante e aparecem em `cupons`. Conta com status diferente de ativa traz um aviso em `avisos`: os anúncios podem estar parados independente do saldo. `status_conta_label` e `disable_reason_label` dão o status e o motivo de bloqueio em texto. `dias_restantes` = restante ÷ média diária dos 7 dias fechados; dia sem entrega conta como zero. `situacao` tem 6 valores: com_saldo = dias restantes acima de 7; acabando = dias restantes até 7; sem_gasto = há saldo mas não houve gasto nos últimos 7 dias; esgotada = sem saldo ou menos de um dia de gasto; sem_teto = pós-paga sem limite de gastos: não para por falta de saldo, mas pode parar por status de pagamento; indeterminada = não foi possível calcular (veja `motivo`), inclusive saldo pré-pago ilegível. O valor é aproximado (`aproximado: true`). Só contas em BRL. Do contrato de métricas da Meta, só `spend_brl` é usado aqui: Metricas (chaves da resposta): spend_brl, impressions, clicks, ctr, cpc_brl, reach, frequency, purchases, purchases_value_brl, purchase_roas, leads, messaging_conversations_started; messaging_conversations_started = conversas iniciadas. Metrica null = a Meta nao reportou: zero ou nao rastreado (a API nao distingue). ctr em fracao (0.0283 = 2,83%), como no Google. Atribuicao unificada: a do conjunto de anuncios, como no Gerenciador. LAST_N_DAYS = os N dias completos ate ontem, no fuso da conta (como no Gerenciador); TODAY = o dia corrente, ainda aberto.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ad_account_id": {
+          "description": "Meta ad account ID (formato act_<numeric>). Use meta_list_my_ad_accounts pra descobrir IDs disponíveis.",
+          "pattern": "^act_\\d+$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ad_account_id"
+      ],
+      "type": "object"
+    },
+    "name": "meta_get_account_balance"
+  },
+  {
+    "_meta": {
+      "anthropic/alwaysLoad": true,
+      "com.v4company/bucket": "always"
+    },
+    "description": "[CORE] Overview de uma conta Meta Ads: as métricas do período selecionado, com comparativo do período anterior de mesma duração. Conversoes saem por evento (compras, leads, conversas iniciadas), nunca somadas: a mesma compra vem sob varios nomes na Meta. Cada periodo traz sem_dados_no_periodo: true quando a Meta nao devolveu linha (sem entrega). Traz as duas janelas (date_range e previous_date_range) e inclui_dia_corrente: true quando a atual contem hoje, que ainda nao fechou — a variacao entao compara um dia parcial com dias cheios. Metricas (chaves da resposta): spend_brl, impressions, clicks, ctr, cpc_brl, reach, frequency, purchases, purchases_value_brl, purchase_roas, leads, messaging_conversations_started; messaging_conversations_started = conversas iniciadas. Metrica null = a Meta nao reportou: zero ou nao rastreado (a API nao distingue). ctr em fracao (0.0283 = 2,83%), como no Google. Atribuicao unificada: a do conjunto de anuncios, como no Gerenciador. LAST_N_DAYS = os N dias completos ate ontem, no fuso da conta (como no Gerenciador); TODAY = o dia corrente, ainda aberto. Inclui warnings PT-BR pra account_status problemático. Requer acesso do gestor à conta (liberado pelo admin no painel); a leitura usa o token do system user compartilhado, sem conexão por gestor. Use meta_list_my_ad_accounts pra listar IDs disponíveis.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ad_account_id": {
+          "description": "Meta ad account ID (formato act_<numeric>). Use meta_list_my_ad_accounts pra descobrir IDs disponíveis.",
+          "pattern": "^act_\\d+$",
+          "type": "string"
+        },
+        "date_range": {
+          "description": "Janela temporal preset. Default LAST_7_DAYS se start_date+end_date não fornecidos.",
+          "enum": [
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS",
+            "TODAY",
+            "YESTERDAY"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "description": "Custom range end (YYYY-MM-DD). Sobrescreve preset. Requires start_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "start_date": {
+          "description": "Custom range start (YYYY-MM-DD). Sobrescreve preset. Requires end_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ad_account_id"
+      ],
+      "type": "object"
+    },
+    "name": "meta_get_account_overview"
+  },
+  {
+    "_meta": {
+      "anthropic/alwaysLoad": true,
+      "com.v4company/bucket": "always"
+    },
+    "description": "[CORE] Performance por anúncio (ad) Meta Ads, uma linha por anúncio. Metricas (chaves da resposta): spend_brl, impressions, clicks, ctr, cpc_brl, reach, frequency, purchases, purchases_value_brl, purchase_roas, leads, messaging_conversations_started; messaging_conversations_started = conversas iniciadas. Metrica null = a Meta nao reportou: zero ou nao rastreado (a API nao distingue). ctr em fracao (0.0283 = 2,83%), como no Google. Atribuicao unificada: a do conjunto de anuncios, como no Gerenciador. LAST_N_DAYS = os N dias completos ate ontem, no fuso da conta (como no Gerenciador); TODAY = o dia corrente, ainda aberto. Inclui ad_set_id/name + campaign_id/name parents. Ordenado por spend desc **no servidor**, entao o topo devolvido E o topo real da conta; `truncated:true` significa que ficou cauda de MENOR gasto de fora, nao que o ranking esteja incompleto. Filtros: limit (max 500). [Limitação] Metadata de entidade (effective_status, creative_id) NÃO vem: a Meta Insights API só serve métricas. Retorna anúncios de qualquer status; pra ler status e criativo, use `meta_get_entities`.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ad_account_id": {
+          "description": "Meta ad account ID (formato act_<numeric>). Use meta_list_my_ad_accounts pra descobrir IDs disponíveis.",
+          "pattern": "^act_\\d+$",
+          "type": "string"
+        },
+        "date_range": {
+          "description": "Preset. Default LAST_30_DAYS se start_date+end_date não fornecidos.",
+          "enum": [
+            "TODAY",
+            "YESTERDAY",
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "description": "Custom range end. Sobrescreve preset. Requires start_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 100,
+          "description": "Max rows. Meta API cap = 500/page.",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "start_date": {
+          "description": "Custom range start. Sobrescreve preset. Requires end_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ad_account_id"
+      ],
+      "type": "object"
+    },
+    "name": "meta_get_ad_performance"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Prévia de um anúncio ou criativo de UMA conta Meta Ads (uma conta por chamada). Informe exatamente um de `ad_id` ou `creative_id`. Devolve `preview_url`, o endereço (facebook.com) da prévia para abrir no navegador, nunca o HTML. Antes de gerar, a tool prova que o ID pertence à conta (a Meta serviria o criativo de outra conta): olha até 1000 registros e, se não achar o ID, recusa com erro (pode ser conta grande). Somente leitura.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ad_account_id": {
+          "description": "Meta ad account ID (formato act_<numeric>). Use meta_list_my_ad_accounts pra descobrir IDs disponíveis.",
+          "pattern": "^act_\\d+$",
+          "type": "string"
+        },
+        "ad_format": {
+          "default": "MOBILE_FEED_STANDARD",
+          "description": "Formato da prévia (padrão MOBILE_FEED_STANDARD).",
+          "enum": [
+            "MOBILE_FEED_STANDARD",
+            "INSTAGRAM_STANDARD",
+            "INSTAGRAM_STORY",
+            "INSTAGRAM_REELS",
+            "FACEBOOK_STORY_MOBILE",
+            "FACEBOOK_REELS_MOBILE"
+          ],
+          "type": "string"
+        },
+        "ad_id": {
+          "description": "ID de um anúncio da conta. Informe este OU `creative_id`, nunca os dois.",
+          "pattern": "^\\d+$",
+          "type": "string"
+        },
+        "creative_id": {
+          "description": "ID de um criativo da conta. Informe este OU `ad_id`, nunca os dois.",
+          "pattern": "^\\d+$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ad_account_id"
+      ],
+      "type": "object"
+    },
+    "name": "meta_get_ad_preview"
+  },
+  {
+    "_meta": {
+      "anthropic/alwaysLoad": true,
+      "com.v4company/bucket": "always"
+    },
+    "description": "[CORE] Performance por ad set Meta Ads, uma linha por ad set. Metricas (chaves da resposta): spend_brl, impressions, clicks, ctr, cpc_brl, reach, frequency, purchases, purchases_value_brl, purchase_roas, leads, messaging_conversations_started; messaging_conversations_started = conversas iniciadas. Metrica null = a Meta nao reportou: zero ou nao rastreado (a API nao distingue). ctr em fracao (0.0283 = 2,83%), como no Google. Atribuicao unificada: a do conjunto de anuncios, como no Gerenciador. LAST_N_DAYS = os N dias completos ate ontem, no fuso da conta (como no Gerenciador); TODAY = o dia corrente, ainda aberto. Inclui campaign_id/name parent + optimization_goal. Ordenado por spend desc **no servidor**, entao o topo devolvido E o topo real da conta; `truncated:true` significa que ficou cauda de MENOR gasto de fora, nao que o ranking esteja incompleto. Filtros: limit (max 500). [Limitação] Metadata de entidade (effective_status, billing_event, daily_budget) NÃO vem: a Meta Insights API só serve métricas — esses campos vivem em /adsets. Retorna ad sets de qualquer status; pra ler status e orçamento, use `meta_get_entities`.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ad_account_id": {
+          "description": "Meta ad account ID (formato act_<numeric>). Use meta_list_my_ad_accounts pra descobrir IDs disponíveis.",
+          "pattern": "^act_\\d+$",
+          "type": "string"
+        },
+        "date_range": {
+          "description": "Preset. Default LAST_30_DAYS se start_date+end_date não fornecidos.",
+          "enum": [
+            "TODAY",
+            "YESTERDAY",
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "description": "Custom range end. Sobrescreve preset. Requires start_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 100,
+          "description": "Max rows. Meta API cap = 500/page.",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "start_date": {
+          "description": "Custom range start. Sobrescreve preset. Requires end_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ad_account_id"
+      ],
+      "type": "object"
+    },
+    "name": "meta_get_ad_set_performance"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Ritmo de gasto do mês contra o orçamento, por campanha ATIVA de UMA conta Meta (uma conta por chamada). `gasto_fechado_brl` é o gasto do mês até ONTEM (`date_range`): o dia corrente, parcial, fica fora. `media_diaria_brl` = gasto ÷ dias fechados; `projecao_mensal_brl` = média × dias do mês; no dia 1 não há dia fechado e gasto, média e projeção vêm null. Orçamento: a campanha com orçamento próprio vale uma vez só (`orcamento_em: 'campanha'`) e os conjuntos dela não são somados; sem orçamento na campanha, soma os conjuntos ativos (`orcamento_em: 'conjuntos'`) e, se algum conjunto não tem orçamento legível, o orçamento da campanha vem null. Orçamento VITALÍCIO (`tipo_orcamento: 'vitalicio'`) não tem projeção mensal (null) e a linha avisa. Só entidades ativas contam (`escopo`); pausadas ficam fora. Campanha ativa sem linha de gasto no período gastou zero; gasto que a Meta não reportou vem null. `total.gasto_fechado_ativas_brl` soma SÓ as campanhas ativas; o gasto do mês de campanhas fora da lista (pausadas, encerradas) vem em `total.gasto_fora_do_escopo_brl` (null se a leitura foi truncada ou no dia 1), então some os dois para o gasto da conta. Conjunto ou campanha ACTIVE com data final (`end_time`/`stop_time`) já vencida é excluído e contado em `excluidos_por_data_final`. Orçamento ilegível não esconde o gasto: `gasto_fechado_brl` e a projeção seguem na linha. `truncated: true` = lista de campanhas, conjuntos ou gasto incompleta: o `total` vem null, porque soma parcial não é total. Com orçamento vitalício na mistura, `total.media_diaria_brl` sai do gasto, mas orçamento e projeção do total vêm null: uma projeção mensal somada só valeria para parte das campanhas. Quando algum campo do total vem null, `total_motivo` diz por quê. Só contas em BRL. Somente leitura. Do contrato de métricas da Meta, só `spend_brl` é usado aqui: Metricas (chaves da resposta): spend_brl, impressions, clicks, ctr, cpc_brl, reach, frequency, purchases, purchases_value_brl, purchase_roas, leads, messaging_conversations_started; messaging_conversations_started = conversas iniciadas. Metrica null = a Meta nao reportou: zero ou nao rastreado (a API nao distingue). ctr em fracao (0.0283 = 2,83%), como no Google. Atribuicao unificada: a do conjunto de anuncios, como no Gerenciador. LAST_N_DAYS = os N dias completos ate ontem, no fuso da conta (como no Gerenciador); TODAY = o dia corrente, ainda aberto.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ad_account_id": {
+          "description": "Meta ad account ID (formato act_<numeric>). Use meta_list_my_ad_accounts pra descobrir IDs disponíveis.",
+          "pattern": "^act_\\d+$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ad_account_id"
+      ],
+      "type": "object"
+    },
+    "name": "meta_get_budget_pacing"
+  },
+  {
+    "_meta": {
+      "anthropic/alwaysLoad": true,
+      "com.v4company/bucket": "always"
+    },
+    "description": "[CORE] Performance por campanha Meta Ads, uma linha por campanha. Metricas (chaves da resposta): spend_brl, impressions, clicks, ctr, cpc_brl, reach, frequency, purchases, purchases_value_brl, purchase_roas, leads, messaging_conversations_started; messaging_conversations_started = conversas iniciadas. Metrica null = a Meta nao reportou: zero ou nao rastreado (a API nao distingue). ctr em fracao (0.0283 = 2,83%), como no Google. Atribuicao unificada: a do conjunto de anuncios, como no Gerenciador. LAST_N_DAYS = os N dias completos ate ontem, no fuso da conta (como no Gerenciador); TODAY = o dia corrente, ainda aberto. Ordenado por spend desc **no servidor**, entao o topo devolvido E o topo real da conta; `truncated:true` significa que ficou cauda de MENOR gasto de fora, nao que o ranking esteja incompleto. Filtros: limit (max 500). Use meta_list_my_ad_accounts pra listar ad_account_ids disponíveis. [Limitação] Retorna campanhas de QUALQUER status (ACTIVE/PAUSED/ARCHIVED) e o status NÃO vem na resposta: a Meta Insights API não aceita effective_status nem em fields nem em filtering (é metadata de /campaigns). Portanto não dá pra filtrar por status nem aqui nem client-side — pra ler status e orçamento, use `meta_get_entities`. Campanha pausada com gasto no período APARECE aqui.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ad_account_id": {
+          "description": "Meta ad account ID (formato act_<numeric>). Use meta_list_my_ad_accounts pra descobrir IDs disponíveis.",
+          "pattern": "^act_\\d+$",
+          "type": "string"
+        },
+        "date_range": {
+          "description": "Preset. Default LAST_30_DAYS se start_date+end_date não fornecidos.",
+          "enum": [
+            "TODAY",
+            "YESTERDAY",
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "description": "Custom range end. Sobrescreve preset. Requires start_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 100,
+          "description": "Max rows. Meta API cap = 500/page.",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "start_date": {
+          "description": "Custom range start. Sobrescreve preset. Requires end_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ad_account_id"
+      ],
+      "type": "object"
+    },
+    "name": "meta_get_campaign_performance"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Histórico de alterações de UMA conta Meta Ads (uma conta por chamada): quem mudou o quê e quando. Cada registro traz `ocorrido_em` (UTC), `ocorrido_em_fuso_conta` (texto no fuso da conta, como a Meta devolve), `ator_id`, `ator_nome`, `tipo` (event_type da Meta), `objeto_id`, `objeto_nome`, `objeto_tipo` (campanha, conjunto, anuncio, conta; tipo desconhecido passa como a Meta devolve) e `detalhe` (o `extra_data` decodificado; texto quando não for JSON). `null` = a Meta não informou (por exemplo, alteração feita pelo sistema sem ator). A janela é fechada e termina hoje no fuso da conta: padrão 7 dias, máximo 30; a resposta declara a janela efetiva em `date_range` e só devolve evento cuja data no fuso da conta está nela. Evento com data ilegível não é descartado: vem com `data_nao_verificada: true`, fora da garantia da janela. Sem o fuso da conta a tool devolve erro. `truncated: true` = há ou pode haver mais alterações na janela além das devolvidas; aumente o limite ou reduza `days`. Somente leitura.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ad_account_id": {
+          "description": "Meta ad account ID (formato act_<numeric>). Use meta_list_my_ad_accounts pra descobrir IDs disponíveis.",
+          "pattern": "^act_\\d+$",
+          "type": "string"
+        },
+        "days": {
+          "default": 7,
+          "description": "Quantos dias olhar para trás, contando hoje (padrão 7, máximo 30), no fuso da conta.",
+          "maximum": 30,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "limit": {
+          "default": 100,
+          "description": "Máximo de alterações devolvidas (padrão 100, máximo 500).",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ad_account_id"
+      ],
+      "type": "object"
+    },
+    "name": "meta_get_change_history"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Criativos de UMA conta Meta Ads (uma conta por chamada): `id`, `name`, `status`, `object_type`, `title`, `body`, `image_url`, `thumbnail_url`, `call_to_action_type`, `object_story_id`, `effective_object_story_id`, `instagram_permalink_url`. `null` = a Meta não informou (criativo sem imagem ou sem texto traz esses campos nulos). Com `ad_id` (anúncio da conta), devolve só o criativo daquele anúncio e `ads_vinculados` lista os anúncios da conta que o usam (sem `ad_id`, `ads_vinculados` é `null`). A busca do `ad_id` olha até 1000 anúncios; se não achar, devolve erro (pode ser conta grande). `truncated: true` = existem mais criativos que o `limit`. Somente leitura.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ad_account_id": {
+          "description": "Meta ad account ID (formato act_<numeric>). Use meta_list_my_ad_accounts pra descobrir IDs disponíveis.",
+          "pattern": "^act_\\d+$",
+          "type": "string"
+        },
+        "ad_id": {
+          "description": "Opcional. ID de um anúncio DESTA conta: devolve só o criativo dele, com `ads_vinculados` (os anúncios da conta que usam o mesmo criativo).",
+          "pattern": "^\\d+$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 100,
+          "description": "Máximo de criativos devolvidos (padrão 100, máximo 500).",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ad_account_id"
+      ],
+      "type": "object"
+    },
+    "name": "meta_get_creatives"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Estimativa de entrega de UMA conta Meta Ads para uma segmentação (uma conta por chamada). Devolve em `estimate`: `alcance_mensal_minimo`, `alcance_mensal_maximo`, `alcance_diario` e `estimativa_pronta`. A estimativa é sempre aproximada (`aproximado: true`): a Meta devolve faixas, não valores exatos. `null` = a Meta não informou, não é zero. `alcance_diario` 0 com alcance mensal acima de 0 vem `null` com `alcance_diario_motivo`: o 0 não fecha com o mensal e é tratado como não informado; 0 só fica quando nenhum limite mensal passa de 0. `estimativa_pronta: false` = a Meta ainda não terminou de calcular; os valores podem mudar e seguem as regras acima. Recusa `targeting_spec` com `custom_audiences` ou `excluded_custom_audiences` (em qualquer nível). Sem dados, `estimate` é `null` com o motivo em `reason`. Somente leitura.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ad_account_id": {
+          "description": "Meta ad account ID (formato act_<numeric>). Use meta_list_my_ad_accounts pra descobrir IDs disponíveis.",
+          "pattern": "^act_\\d+$",
+          "type": "string"
+        },
+        "optimization_goal": {
+          "default": "REACH",
+          "description": "Objetivo de otimização da estimativa (padrão REACH). Somente REACH foi medido contra a API; os demais podem ser recusados pela Meta.",
+          "enum": [
+            "REACH",
+            "LINK_CLICKS",
+            "LANDING_PAGE_VIEWS",
+            "LEAD_GENERATION",
+            "CONVERSATIONS",
+            "OFFSITE_CONVERSIONS",
+            "IMPRESSIONS"
+          ],
+          "type": "string"
+        },
+        "targeting_spec": {
+          "description": "Segmentação como objeto JSON no formato da Meta, por exemplo {\"geo_locations\": {\"countries\": [\"BR\"]}, \"age_min\": 25}. Use meta_search_targeting para achar IDs de interesses.",
+          "type": "object"
+        }
+      },
+      "required": [
+        "ad_account_id",
+        "targeting_spec"
+      ],
+      "type": "object"
+    },
+    "name": "meta_get_delivery_estimate"
+  },
+  {
+    "_meta": {
+      "anthropic/alwaysLoad": true,
+      "com.v4company/bucket": "always"
+    },
+    "description": "[CORE] Lista campanhas, conjuntos ou anúncios de UMA conta Meta Ads (uma conta por chamada), com status e orçamento, que as tools de desempenho não mostram. `status` é o status configurado e `effective_status` o efetivo: um conjunto ou anúncio ACTIVE pode estar parado porque o pai está pausado (ex.: CAMPAIGN_PAUSED, ADSET_PAUSED); a campanha não tem pai, mas seu efetivo também pode diferir do configurado; leia os dois. Orçamentos em BRL: `daily_budget_brl`, `lifetime_budget_brl` e `budget_remaining_brl`; `null` = a Meta não reportou ou a entidade não tem orçamento próprio (nunca zero). Em conjunto, `orcamento_em` diz onde está o orçamento: 'conjunto' quando ele tem o seu, 'campanha' quando não tem e vale o da campanha. `issues_info`, `learning_stage_info` e `ad_review_feedback` vêm como a Meta devolve, `null` quando ausentes. O filtro `status` age sobre o status efetivo. `truncated: true` = existem mais entidades que o `limit`; aumente o limite ou filtre por status. Conta vazia devolve `entities: []`. Só contas em BRL. Somente leitura.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ad_account_id": {
+          "description": "Meta ad account ID (formato act_<numeric>). Use meta_list_my_ad_accounts pra descobrir IDs disponíveis.",
+          "pattern": "^act_\\d+$",
+          "type": "string"
+        },
+        "level": {
+          "description": "campaign = campanhas, adset = conjuntos de anúncios, ad = anúncios.",
+          "enum": [
+            "campaign",
+            "adset",
+            "ad"
+          ],
+          "type": "string"
+        },
+        "limit": {
+          "default": 100,
+          "description": "Máximo de entidades devolvidas (padrão 100, máximo 500).",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "status": {
+          "description": "Filtra pelo status EFETIVO (`effective_status`). Omitido, vale o padrão da Meta, que pode deixar de fora itens arquivados ou apagados.",
+          "enum": [
+            "ACTIVE",
+            "PAUSED",
+            "ARCHIVED",
+            "DELETED",
+            "IN_PROCESS",
+            "WITH_ISSUES",
+            "CAMPAIGN_PAUSED",
+            "ADSET_PAUSED",
+            "PENDING_REVIEW",
+            "DISAPPROVED",
+            "PENDING_BILLING_INFO"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "ad_account_id",
+        "level"
+      ],
+      "type": "object"
+    },
+    "name": "meta_get_entities"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Páginas do Facebook que UMA conta Meta Ads pode promover (uma conta por chamada), com o Instagram vinculado. Cada página traz `page_id`, `nome`, `instagram_id` e `instagram_origem` (`instagram_business_account` ou `connected_instagram_account`, o campo da Meta de onde o ID veio). Página sem Instagram traz `instagram_id: null` e `instagram_origem: null`. Conta sem páginas devolve lista vazia com sucesso. `truncated: true` = existem mais páginas que o `limit`. Somente leitura.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ad_account_id": {
+          "description": "Meta ad account ID (formato act_<numeric>). Use meta_list_my_ad_accounts pra descobrir IDs disponíveis.",
+          "pattern": "^act_\\d+$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 100,
+          "description": "Máximo de páginas devolvidas (padrão 100, máximo 500).",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ad_account_id"
+      ],
+      "type": "object"
+    },
+    "name": "meta_get_pages"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Performance Meta Ads quebrada por UMA dimensão: platform (Facebook/Instagram/Audience Network), device (iOS/Android/desktop), geo (país) ou hourly (hora do dia). level = campaign|adset|ad (default campaign). O breakdown hourly nao traz reach nem frequency: vem null. Metricas (chaves da resposta): spend_brl, impressions, clicks, ctr, cpc_brl, reach, frequency, purchases, purchases_value_brl, purchase_roas, leads, messaging_conversations_started; messaging_conversations_started = conversas iniciadas. Metrica null = a Meta nao reportou: zero ou nao rastreado (a API nao distingue). ctr em fracao (0.0283 = 2,83%), como no Google. Atribuicao unificada: a do conjunto de anuncios, como no Gerenciador. LAST_N_DAYS = os N dias completos ate ontem, no fuso da conta (como no Gerenciador); TODAY = o dia corrente, ainda aberto. Cada row traz o valor da dimensão em `breakdown`. Ordenado por spend desc **no servidor**, entao o topo devolvido E o topo real da conta; `truncated:true` significa que ficou cauda de MENOR gasto de fora, nao que o ranking esteja incompleto. 1 breakdown por chamada. Use meta_list_my_ad_accounts pros IDs.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ad_account_id": {
+          "description": "Meta ad account ID (act_<numeric>). Use meta_list_my_ad_accounts.",
+          "pattern": "^act_\\d+$",
+          "type": "string"
+        },
+        "breakdown": {
+          "description": "Dimensão do corte: platform (publisher_platform), device, geo (país), hourly (hora no fuso do anunciante). 1 por chamada.",
+          "enum": [
+            "platform",
+            "device",
+            "geo",
+            "hourly"
+          ],
+          "type": "string"
+        },
+        "date_range": {
+          "description": "Preset. Default LAST_30_DAYS se start_date+end_date não fornecidos.",
+          "enum": [
+            "TODAY",
+            "YESTERDAY",
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "description": "Custom range end. Sobrescreve preset. Requires start_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "level": {
+          "description": "Nível de agregação. Default campaign.",
+          "enum": [
+            "campaign",
+            "adset",
+            "ad"
+          ],
+          "type": "string"
+        },
+        "limit": {
+          "default": 100,
+          "description": "Max rows. Meta API cap = 500/page.",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "start_date": {
+          "description": "Custom range start. Sobrescreve preset. Requires end_date.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ad_account_id",
+        "breakdown"
+      ],
+      "type": "object"
+    },
+    "name": "meta_get_performance_breakdown"
+  },
+  {
+    "_meta": {
+      "anthropic/alwaysLoad": true,
+      "com.v4company/bucket": "always"
+    },
+    "description": "[CORE] Lista as contas de anúncio Meta às quais o gestor tem acesso. Fonte: o inventário local (a parceria do BM da V4, sincronizada pelo resync diário das 06:00, horário de Brasília) cruzado com os acessos que o admin concedeu ao gestor. Conta nova entra na execução seguinte do resync; se faltar alguma, peça ao admin. Retorna: ad_account_id ('act_<numeric>'), account_name, business_id/name (NULL se personal), currency, timezone_name, account_status (Meta enum) + account_status_label (PT-BR).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "name": "meta_list_my_ad_accounts"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Busca interesses e segmentações de UMA conta Meta Ads por texto (uma conta por chamada). Cada resultado traz `id`, `nome`, `tipo`, `caminho` (hierarquia), `audiencia_minima` e `audiencia_maxima` (faixa de alcance, limites separados) e `descricao`. `null` = a Meta não informou, não é zero. `truncated: true` = há evidência de corte (a Meta devolveu o `limit` ou mais, ou indicou próxima página); refine o texto ou aumente o limite (máximo 100). `truncated: null` = sem evidência de corte, mas a Meta não informa se existem mais resultados (`truncated_motivo`): o conjunto muda conforme o `limit`, então nunca há `false`. Somente leitura.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ad_account_id": {
+          "description": "Meta ad account ID (formato act_<numeric>). Use meta_list_my_ad_accounts pra descobrir IDs disponíveis.",
+          "pattern": "^act_\\d+$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 25,
+          "description": "Máximo de resultados (padrão 25, máximo 100).",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "q": {
+          "description": "Texto da busca (ao menos 2 caracteres), por exemplo `futebol`.",
+          "minLength": 2,
+          "type": "string"
+        }
+      },
+      "required": [
+        "ad_account_id",
+        "q"
+      ],
+      "type": "object"
+    },
+    "name": "meta_search_targeting"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Ideias de palavras-chave do Planejador do Google a partir de sementes, do site do cliente e de sites de concorrentes, com volume, concorrência, faixa de CPC e sazonalidade. O volume vem em degraus do Google (10, 20, 50, 110...), não é exato; `null` significa que o Google não tem dado, não zero. O CPC é estimativa de topo de página, uma faixa (`cpc_topo_min_brl` a `cpc_topo_max_brl`), não o que a conta paga; os campos _brl assumem conta BRL. O resultado não depende da conta usada: use qualquer conta sua (ex.: a interna 6728568947). Site e concorrentes ampliam a lista por origem: cada ideia traz `origens` (semente, site, concorrente:<domínio>), e ideias vindas de URL podem fugir do negócio, então filtre por origem. Cidades por nome, com UF para desambiguar (ex.: 'João Pessoa, PB'), até 5; sem cidade o recorte é o Brasil. As métricas vêm por cidade em `por_cidade`, sem soma entre cidades. Ordem por maior volume; `limit` (padrão 200, máximo 1000) corta a cauda e `truncated` avisa. Uma origem de URL que falha não derruba as outras: aparece em `origens_com_falha`.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "cidades": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 5,
+          "type": "array"
+        },
+        "concorrentes": {
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 5,
+          "type": "array"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 200,
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "sementes": {
+          "items": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 20,
+          "type": "array"
+        },
+        "site": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "plan_keyword_ideas"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Desvincula assets: remove o vínculo (customer_asset / campaign_asset / ad_group_asset) e **não remove o asset** em si — asset órfão é inerte, e a entidade pode estar linkada onde a varredura não alcançou. Recebe `level` + `resource_name` exatamente como o `get_assets` devolve em cada linha; use aquela tool para descobrir o que remover, inclusive na camada de conta, que não aparece para quem olha só campanha. Sempre CONFIRM: devolve preview com confirmation_token, aplique via apply_change. Idempotente: vínculo já removido volta graciosamente via partial_failure. **Para confirmar a remoção, cheque `status == REMOVED` no registro alvo** — contagem de linhas NÃO distingue sucesso de falha, porque o vínculo removido continua na tabela.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "links": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "level": {
+                "enum": [
+                  "CUSTOMER",
+                  "CAMPAIGN",
+                  "AD_GROUP"
+                ],
+                "type": "string"
+              },
+              "resource_name": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "level",
+              "resource_name"
+            ],
+            "type": "object"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "customer_id",
+        "links"
+      ],
+      "type": "object"
+    },
+    "name": "remove_asset_link"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Remove audience criteria (user_list ou user_interest) previamente anexadas a 1 ad_group ou campaign. Aceita target_type (ad_group|campaign) + target_id singular + criterion_ids array com ate 100 criteria do mesmo target. Sempre CONFIRM (spec §7.1 remove). Roda em partial_failure mode: criterion que o Google recusar (ja removido, id inexistente) NAO derruba o lote, e o apply_change devolve `partial_failures` com {index, status, error} por linha. Confirme pelo `efeito` de cada linha, nao pela contagem do lote (F182/F184). Nao existe status por-linha de dominio: criterion ja removido volta como `failed` com a mensagem NOT_FOUND do Google. Pega criterion_id da response de get_audience_performance (so lista audiencia de ad_group) ou da Google Ads UI: audiência de campanha NAO aparece em get_audience_performance, entao o criterion_id dela tem que vir da UI.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "criterion_ids": {
+          "items": {
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[0-9]+$",
+          "type": "string"
+        },
+        "target_type": {
+          "enum": [
+            "ad_group",
+            "campaign"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "target_type",
+        "target_id",
+        "criterion_ids"
+      ],
+      "type": "object"
+    },
+    "name": "remove_audience"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Remove palavras-chave negativas em nivel de campanha. Sempre auto-aplica (negativas raramente quebram coisas - spec §7.1). Aceita ate 500 remocoes por chamada via criterion_id.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "campaign_id": {
+          "pattern": "^[0-9]+$",
+          "type": "string"
+        },
+        "criterion_ids": {
+          "items": {
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "maxItems": 500,
+          "minItems": 1,
+          "type": "array"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "campaign_id",
+        "criterion_ids"
+      ],
+      "type": "object"
+    },
+    "name": "remove_negative_keywords"
+  },
+  {
+    "_meta": {
+      "anthropic/alwaysLoad": true,
+      "com.v4company/bucket": "always"
+    },
+    "description": "[CORE] Escape hatch: executa qualquer GAQL contra a conta. Use apenas quando as tools curadas nao cobrem o caso. Sempre auditado (incl. a query). Suporta limit (default 100, teto 1000) pra controlar o tamanho da resposta — resultado truncado inclui truncated:true + hint. Suporta aggregate_by (client-side GROUP BY+COUNT) pra queries com cardinalidade alta — retorna groups[] ordenado por count DESC (corte fixo em 1000 groups, independente de limit). Campos/métricas incertos: chame list_gaql_resources (catálogo válido) ou validate_gaql (valida sem executar) ANTES — métricas existem só em certos recursos e auction insights (overlap/position-above/outranking share) não existem na GAQL. `compact: true` devolve linhas planas (`{\"campaign.id\": ..., \"metrics.clicks\": ...}`) sem os `resource_name` que o Google manda em todo objeto da linha mesmo fora do SELECT (o pedido no SELECT fica, com tudo o que mora dentro dele): -39% medido em 05/10 numa amostra de linhas de campaign_criterion — o ganho depende da consulta (linha cheia de metricas ganha menos). Use quando a resposta estoura o limite do cliente.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "aggregate_by": {
+          "description": "Opcional. Lista de field paths (dotted) pra agrupar rows e contar. Ex: ['field_type','asset.type']. Retorna groups[] ordenado por count DESC ao inves de rows[]. Limite hard: 10k raw rows antes de agregar.",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 5,
+          "minItems": 1,
+          "type": "array"
+        },
+        "compact": {
+          "default": false,
+          "description": "Linhas planas com chave pontilhada ({\"campaign.id\": ...}) e sem os resource_name que o SELECT nao pediu. Ignorado com aggregate_by.",
+          "type": "boolean"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "limit": {
+          "default": 100,
+          "description": "Maximo de rows retornadas (default 100, teto 1000). Resultado truncado inclui truncated:true + hint.",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "query": {
+          "description": "GAQL query string. Sempre auditado. Use list_gaql_resources pra ver o catalogo de campos.",
+          "minLength": 10,
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "query"
+      ],
+      "type": "object"
+    },
+    "name": "run_gaql"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Atualiza CPC bid de um ou mais grupos de anuncios. Ate 5 grupos com variacao maxima <=20% auto-aplica; senao retorna preview com token.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bids": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "ad_group_id": {
+                "pattern": "^[0-9]+$",
+                "type": "string"
+              },
+              "new_cpc_bid_brl": {
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "required": [
+              "ad_group_id",
+              "new_cpc_bid_brl"
+            ],
+            "type": "object"
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "type": "array"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "bids"
+      ],
+      "type": "object"
+    },
+    "name": "update_ad_group_bid"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Pausa ou ativa um ou mais grupos de anuncios. Ate 5 ad_groups auto-aplica; >5 retorna preview com confirmation_token. Para REMOVER ad_groups, use Google Ads UI (tool dedicada `remove_ad_group` pode ser adicionada em sprint futura se demanda real surgir).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ad_group_ids": {
+          "items": {
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "new_status": {
+          "enum": [
+            "ENABLED",
+            "PAUSED"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "ad_group_ids",
+        "new_status"
+      ],
+      "type": "object"
+    },
+    "name": "update_ad_group_status"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Define a GRADE COMPLETA de veiculacao (ad schedule) de 1-20 campanhas. CONJUNTO, nao incremento: `windows[]` e a grade inteira desejada; o que nao estiver nela DEIXA DE SERVIR (mandar so 'seg-sex 07-17' numa campanha que servia 24x7 desliga o fim de semana). Always-CONFIRM: devolve preview + confirmation_token; aplique via apply_change. O preview mostra, por campanha, as janelas que entram e que saem e — regra normativa — cost_brl, conversions e CPA do que SAI lado a lado com o CPA do que FICA (custo sozinho nao responde 'o que estou desligando e melhor ou pior do que fica?'; na MO-JP o fim de semana tinha CPA R$18,59 contra R$23,59). Campanha REMOVED e recusada; PAUSED passa com `aviso_status` (metricas historicas, grade sem efeito em entrega enquanto pausada). Metricas por hora cheia (janelas com minutos sao aproximadas), janela default de 30 dias com override por date_range/start_date+end_date. Grade identica a atual = `status: no_changes`, ZERO operacoes, sem token (recriar criterios identicos custa ~14 dias de re-learning). Mudar so bid_modifier faz UPDATE do criterio, nao recria — o modificador tambem pode vir POR JANELA em `windows[].bid_modifier`, que vence o bid_modifier da chamada; este ultimo vale como default para quem nao trouxer o seu. Orcamento compartilhado: desligar faixa NAO economiza, REALOCA gasto para as faixas e campanhas irmas do mesmo orcamento (inclusive as fora do lote) — o preview lista `shared_budgets` com as irmas; nao recusa. Minutos so 0/15/30/45 (API); `end_hour: 24` = ate o fim do dia. Lote com partial_failure: cada campanha reportada; sem rollback. Pos-apply, apply_change reconsulta a grade por GAQL e devolve `resulting_schedule`. Para DESFAZER: `clear_schedule: true` (exclusivo com windows) apaga a agenda inteira e devolve a campanha ao 24x7 natural (`has_schedule: false`) — a grade 7x24 explicita cobre as mesmas 168h mas deixa 7 criterios existindo, estado diferente. Apagar a agenda NAO desliga a campanha: ela volta a servir o tempo todo.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bid_modifier": {
+          "description": "Opcional; serve de DEFAULT para as janelas que nao trouxerem seu proprio bid_modifier em windows[].bid_modifier, que VENCE quando presente. Aplica as janelas novas e ATUALIZA (sem recriar) as existentes cujo valor efetivo (o da janela, ou este default) divirja do atual.",
+          "maximum": 10.0,
+          "minimum": 0.1,
+          "type": "number"
+        },
+        "campaign_ids": {
+          "items": {
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "type": "array"
+        },
+        "clear_schedule": {
+          "default": false,
+          "description": "Apaga a agenda inteira e devolve a campanha ao 24x7 natural (has_schedule: false). Exclusivo com windows; um dos dois e obrigatorio.",
+          "type": "boolean"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "date_range": {
+          "default": "LAST_30_DAYS",
+          "description": "Janela das metricas do preview (decisao 03/09: 30 dias com override).",
+          "enum": [
+            "LAST_7_DAYS",
+            "LAST_14_DAYS",
+            "LAST_30_DAYS",
+            "LAST_90_DAYS"
+          ],
+          "type": "string"
+        },
+        "end_date": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "start_date": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        "windows": {
+          "description": "A GRADE COMPLETA desejada. O que nao estiver aqui deixa de servir. Exclusivo com clear_schedule.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "bid_modifier": {
+                "description": "Opcional, POR JANELA. Vence o bid_modifier da chamada, que vale como default das janelas sem o seu. Ausente nos dois = preserva o valor atual.",
+                "maximum": 10.0,
+                "minimum": 0.1,
+                "type": "number"
+              },
+              "day_of_week": {
+                "enum": [
+                  "MONDAY",
+                  "TUESDAY",
+                  "WEDNESDAY",
+                  "THURSDAY",
+                  "FRIDAY",
+                  "SATURDAY",
+                  "SUNDAY"
+                ],
+                "type": "string"
+              },
+              "end_hour": {
+                "maximum": 24,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "end_minute": {
+                "default": 0,
+                "enum": [
+                  0,
+                  15,
+                  30,
+                  45
+                ],
+                "type": "integer"
+              },
+              "start_hour": {
+                "maximum": 23,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "start_minute": {
+                "default": 0,
+                "enum": [
+                  0,
+                  15,
+                  30,
+                  45
+                ],
+                "type": "integer"
+              }
+            },
+            "required": [
+              "day_of_week",
+              "start_hour",
+              "end_hour"
+            ],
+            "type": "object"
+          },
+          "maxItems": 168,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "customer_id",
+        "campaign_ids"
+      ],
+      "type": "object"
+    },
+    "name": "update_ad_schedule"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Pausa ou ativa um ou mais anuncios. Cada anuncio e identificado por (ad_group_id, ad_id). Ate 5 anuncios auto-aplica; >5 retorna preview com confirmation_token. Para REMOVER anuncios, use Google Ads UI (tool dedicada `remove_ad` pode ser adicionada em sprint futura se demanda real surgir).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ads": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "ad_group_id": {
+                "pattern": "^[0-9]+$",
+                "type": "string"
+              },
+              "ad_id": {
+                "pattern": "^[0-9]+$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "ad_group_id",
+              "ad_id"
+            ],
+            "type": "object"
+          },
+          "maxItems": 500,
+          "minItems": 1,
+          "type": "array"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "new_status": {
+          "enum": [
+            "ENABLED",
+            "PAUSED"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "ads",
+        "new_status"
+      ],
+      "type": "object"
+    },
+    "name": "update_ad_status"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Muda a estrategia de bidding de uma campanha (TARGET_CPA, TARGET_ROAS, MAXIMIZE_CONVERSIONS). Sempre exige confirmacao via apply_change.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "campaign_id": {
+          "pattern": "^[0-9]+$",
+          "type": "string"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "strategy": {
+          "enum": [
+            "TARGET_CPA",
+            "TARGET_ROAS",
+            "MAXIMIZE_CONVERSIONS"
+          ],
+          "type": "string"
+        },
+        "target_cpa_brl": {
+          "description": "Target CPA em BRL (apenas para TARGET_CPA ou MAXIMIZE_CONVERSIONS).",
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "target_roas": {
+          "description": "Target ROAS (apenas para TARGET_ROAS, ex: 4.0 = 400%).",
+          "exclusiveMinimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "customer_id",
+        "campaign_id",
+        "strategy"
+      ],
+      "type": "object"
+    },
+    "name": "update_campaign_bidding"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Atualiza o orcamento diario de uma campanha. Sempre exige confirmacao via apply_change (mudancas de orcamento sao sensiveis - spec §7.1). Retorna preview com valor atual + novo + delta percentual. A mutacao e no recurso ORCAMENTO, nao na campanha: quando ele e do portfolio (campaign_budget.explicitly_shared), o preview traz `shared_budget` com as campanhas irmas que a mudanca ATINGE alem da nomeada — avisa, nao recusa. Orcamento exclusivo devolve `shared_budget: null`.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "campaign_id": {
+          "pattern": "^[0-9]+$",
+          "type": "string"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "new_daily_budget_brl": {
+          "description": "Novo orcamento diario em BRL (ex: 150.50).",
+          "exclusiveMinimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "customer_id",
+        "campaign_id",
+        "new_daily_budget_brl"
+      ],
+      "type": "object"
+    },
+    "name": "update_campaign_budget"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Pausa ou ativa uma ou mais campanhas. Ate 5 campanhas auto-aplica; >5 retorna preview com confirmation_token (chamar apply_change pra aplicar). Para REMOVER campanhas, use Google Ads UI (tool dedicada `remove_campaign` pode ser adicionada em sprint futura se demanda real surgir). Nota: campaign.status pode lagar alguns minutos entre queries Google Ads — se decisao critica (ex: pausar campanha REMOVED), re-query antes de agir.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "campaign_ids": {
+          "items": {
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "type": "array"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "new_status": {
+          "enum": [
+            "ENABLED",
+            "PAUSED"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "campaign_ids",
+        "new_status"
+      ],
+      "type": "object"
+    },
+    "name": "update_campaign_status"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Atualiza ConversionAction: name, primary_for_goal (muda o sinal do Smart Bidding: off = action vira non-biddable em todas as campaigns). 2 fields V0 — todos opcionais por item (forneça ao menos 1). So rename de 1 item auto-aplica. Batch > 1 OU qualquer primary_for_goal (true ou false) retorna preview dry-run com `confirmation_token` (8 caracteres, expira em 10 min). Fluxo: 1) chame esta tool -> recebe response com status='dry_run' + confirmation_token. 2) revise `changes` (lista de fields_updated por ID). 3) chame `apply_change(confirmation_token=<token>)` pra executar. Pra desligar include_in_conversions_metric, use Google Ads UI (Google v24 marca o field como immutable — F44).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "updates": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "conversion_action_id": {
+                "pattern": "^[0-9]+$",
+                "type": "string"
+              },
+              "name": {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              "primary_for_goal": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "conversion_action_id"
+            ],
+            "type": "object"
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "customer_id",
+        "updates"
+      ],
+      "type": "object"
+    },
+    "name": "update_conversion_action"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Atualiza CPC bid de uma ou mais palavras-chave. Cada keyword identificada por (ad_group_id, criterion_id). Ate 5 keywords com variacao maxima <=20% auto-aplica; senao retorna preview com token.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bids": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "ad_group_id": {
+                "pattern": "^[0-9]+$",
+                "type": "string"
+              },
+              "criterion_id": {
+                "pattern": "^[0-9]+$",
+                "type": "string"
+              },
+              "new_cpc_bid_brl": {
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "required": [
+              "ad_group_id",
+              "criterion_id",
+              "new_cpc_bid_brl"
+            ],
+            "type": "object"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array"
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "bids"
+      ],
+      "type": "object"
+    },
+    "name": "update_keyword_bid"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Pausa ou ativa uma ou mais palavras-chave. Cada keyword e identificada por (ad_group_id, criterion_id). Ate 5 keywords auto-aplica; >5 retorna preview com confirmation_token. Para REMOVER keywords, use Google Ads UI (tool dedicada `remove_keyword` pode ser adicionada em sprint futura se demanda real surgir).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "keywords": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "ad_group_id": {
+                "pattern": "^[0-9]+$",
+                "type": "string"
+              },
+              "criterion_id": {
+                "pattern": "^[0-9]+$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "ad_group_id",
+              "criterion_id"
+            ],
+            "type": "object"
+          },
+          "maxItems": 500,
+          "minItems": 1,
+          "type": "array"
+        },
+        "new_status": {
+          "enum": [
+            "ENABLED",
+            "PAUSED"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "keywords",
+        "new_status"
+      ],
+      "type": "object"
+    },
+    "name": "update_keyword_status"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Modifica 1-5 RSAs existentes. Cada update tem ad_id + pelo menos 1 dos campos mutaveis: headlines (3-15 × 30 chars), descriptions (2-4 × 90 chars), final_urls (1+), path1/path2 (15 chars cada). Listas fornecidas SUBSTITUEM as existentes (semantics proto-plus + field_mask). Sempre CONFIRM. Pre-flight rejeita ad inexistente, type != RESPONSIVE_SEARCH_AD, ad_group REMOVED, campaign non-SEARCH, ou anuncio que e variacao de Ad Variation (gerenciado pelo Google — edite o anuncio base, que a variacao herda em minutos). Para mudar status, use update_ad_status. Lote PARCIAL: se o Google recusar um ad_id, os demais sao aplicados e o apply_change devolve partial_failures com o motivo por linha — mas recusar e o caso RARO: o padrao medido e o Google ACEITAR e nao executar (F180/F184), entao confirme pelo `efeito` de cada linha, nunca por ausencia de falha. Atualizacoes afetam serving immediately mas Google pode re-aprovar (geralmente minutos).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "updates": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "ad_id": {
+                "pattern": "^[0-9]+$",
+                "type": "string"
+              },
+              "descriptions": {
+                "items": {
+                  "maxLength": 90,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 4,
+                "minItems": 2,
+                "type": "array"
+              },
+              "final_urls": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              "headlines": {
+                "items": {
+                  "maxLength": 30,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 15,
+                "minItems": 3,
+                "type": "array"
+              },
+              "path1": {
+                "maxLength": 15,
+                "type": "string"
+              },
+              "path2": {
+                "maxLength": 15,
+                "type": "string"
+              }
+            },
+            "required": [
+              "ad_id"
+            ],
+            "type": "object"
+          },
+          "maxItems": 5,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "customer_id",
+        "updates"
+      ],
+      "type": "object"
+    },
+    "name": "update_rsa"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Upload members (email/phone) pra Customer Match user list. SHA-256 hash client-side (PII nunca sai unhashed). LGPD invariants: consent GRANTED + audit log sem plaintext. Operation: 'add' (incluir) ou 'remove' (excluir — opt-out LGPD). User list deve existir (CRM_BASED + Customer Match policy aceita). Esta chamada so devolve o PREVIEW (dry-run); apos apply_change a resposta traz job_resource_name + hint pra checar status (jobs processam em horas no backend Google), mais members_submitted (o que o Google ACEITOU) + members_failed + failures[] (motivo por membro recusado) + recusas_medidas (bool). Quando a leitura de quem foi recusado nao for confiavel, recusas_medidas vem `false` e os TRES campos anteriores (members_submitted, members_failed, failures) vem `null` JUNTOS — null ali significa 'nao consegui saber quantos/quais membros foram recusados', nunca 'nenhum foi' (lote de PII nao pode ser lido como 100% aceito so por ausencia de leitura).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "members": {
+          "items": {
+            "additionalProperties": false,
+            "minProperties": 1,
+            "properties": {
+              "email": {
+                "maxLength": 254,
+                "minLength": 3,
+                "type": "string"
+              },
+              "phone_number": {
+                "maxLength": 30,
+                "minLength": 8,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "type": "array"
+        },
+        "operation": {
+          "enum": [
+            "add",
+            "remove"
+          ],
+          "type": "string"
+        },
+        "user_list_id": {
+          "pattern": "^[0-9]+$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "user_list_id",
+        "operation",
+        "members"
+      ],
+      "type": "object"
+    },
+    "name": "upload_customer_match_list"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
+    "description": "[DEFER] Valida sintaxe + nomes de campos de um GAQL sem trazer dados, mas consome 1 operação da quota diária da API. Retorna {valid: bool, error: str|null}. Use antes de run_gaql pra evitar gastar quota com queries quebradas.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "query": {
+          "minLength": 10,
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "query"
+      ],
+      "type": "object"
+    },
+    "name": "validate_gaql"
+  }
+]
