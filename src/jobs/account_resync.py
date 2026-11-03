@@ -17,7 +17,7 @@ import structlog
 
 from src.auth.tokens import decrypt_refresh_token, derive_master_key_from_settings
 from src.clock import account_today
-from src.config import get_settings
+from src.config import Settings, get_settings
 from src.db import connection
 from src.db.repositories import (
     google_ads_accounts,
@@ -33,6 +33,7 @@ from src.google_ads.client import build_client
 from src.google_ads.reconcile import build_plan
 from src.governance.bookkeeping import best_effort
 from src.jobs._audit import record_access_revocation, record_job_crash, record_job_run
+from src.jobs._runner import executar_job
 from src.jobs.purge import purge_expired
 from src.logging import configure_logging
 
@@ -242,204 +243,244 @@ async def run() -> int:
     # "2026-09-05 09:00:24 [info] resync_complete ..."), não só por leitura —
     # sem este fix a métrica nunca teria uma entrada JSON pra casar.
     configure_logging(level=settings.log_level, json_output=settings.app_env != "development")
-    await connection.init_pool(settings.database_url)
-    try:
+
+    async def _corpo() -> int:
         pool = connection.get_pool()
-        async with pool.acquire() as conn:
-            manager, oc = await _pick_oauth_connection(conn)
-            if oc is None:
-                log.error("resync_no_oauth_connection")
-                print(
-                    "No active OAuth connection — bootstrap an admin and have them complete /oauth/google/start first.",
-                    file=sys.stderr,
-                )
-                await record_job_run(
-                    conn,
-                    operation="google_reconcile",
-                    platform="google",
-                    status="error",
-                    error_message="no active OAuth connection",
-                )
-                return 1
+        falhou_google = await _etapa_google(pool, settings)
+        if falhou_google is None:
+            return 1
+        falhou_meta = await _etapa_meta(pool)
+        # O purge NÃO entra no exit code: falha dele é non-fatal desde sempre
+        # (o retorno fica para quem quiser observá-lo, não para o Cloud Run).
+        await _etapa_purge(pool)
+        return 1 if falhou_google or falhou_meta else 0
 
-        master_key = derive_master_key_from_settings(settings.aes_master_key)
-        refresh_token = decrypt_refresh_token(oc.refresh_token_enc, master_key)
+    # F93: crash inesperado (build_client, fetch_account_details, upsert_many)
+    # nao pode sumir da trilha — o rastro ficaria so no Cloud Run.
+    # `executar_job` grava `record_job_crash` e RE-LEVANTA, com o pool fechado
+    # no `finally`.
+    #
+    # I2 (revisão de branch, 2026-09-05): `operation` unificado com o
+    # caminho de sucesso/bloqueio (`google_reconcile`, espelhando
+    # `meta_reconcile` dos dois lados no gêmeo) — era `account_resync`
+    # aqui e no "sem OAuth connection", string DIFERENTE da que o
+    # run bem-sucedido grava. Pra job diário atrás de trava, é o dia em
+    # que o job MORREU que interessa: com operação diferente por caminho,
+    # a query de triagem do soak (`WHERE operation='google_reconcile'`) só
+    # mostrava os dias em que o job chegava ao fim, e o dia ausente da
+    # série ficava indistinguível de "rodou e não achou nada".
+    #
+    # `registrar_crash` resolvido AQUI: é neste namespace que os testes o
+    # substituem.
+    return await executar_job(
+        operation="google_reconcile",
+        platform="google",
+        database_url=settings.database_url,
+        corpo=_corpo,
+        registrar_crash=record_job_crash,
+    )
 
-        client = build_client(
-            refresh_token=refresh_token,
-            client_id=settings.google_oauth_client_id,
-            client_secret=settings.google_oauth_client_secret,
-            login_customer_id=settings.google_ads_login_customer_id,
-        )
 
-        # Discover accessible customers (mostly: just the MCC itself).
-        resource_names = list_accessible_customer_resource_names(client)
-        log.info("resync_accessible_customers", count=len(resource_names))
+async def _etapa_google(pool: connection.PoolValidado, settings: Settings) -> bool | None:
+    """Reconcilia o inventário Google contra o MCC. True = falhou (bloqueio).
 
-        # Pull descriptive details for all child customers under the MCC.
-        accounts = fetch_account_details(
-            client,
-            login_customer_id=settings.google_ads_login_customer_id,
-            customer_ids=[],  # empty → all
-        )
+    Três desfechos, e o terceiro ENCERRA o job (Meta e purge não rodam):
+    `False` (ok), `True` (bloqueio auditado como erro — o job termina o resto
+    e sai com 1) e `None` (sem OAuth connection: auditado e exit 1 imediato).
+    Exceção aqui sobe para `executar_job` (crash F93) — também sem Meta/purge.
 
-        # F85: `[]` sem exceção é anomalia de leitura, não "o MCC ficou vazio".
-        # Agir nisso desativaria o inventário inteiro (25 contas) por 24h. Espelha
-        # a decisão do lado Meta (F65/F93): inventário suspeito não alimenta
-        # deletion detection, e o run é auditado como erro pra não passar batido.
-        #
-        # Task 5: a proteção mudou de forma, não de intenção. Antes era um branch
-        # aqui mesmo (`if inventario_ok: mark_inactive_except(...)`); agora
-        # `inventario_ok` vira o `complete=` de `reconcile_google` → `build_plan`,
-        # que com `complete=False` devolve `to_remove` vazio e `blocked_reason`
-        # preenchido — zero desativação E zero revogação, mesmo com a trava
-        # (`google_reconcile_apply`) ligada.
-        inventario_ok = bool(accounts)
-        if not inventario_ok:
-            log.error("resync_empty_account_list", mcc_id=settings.google_ads_login_customer_id)
+    F85: `[]` sem exceção é anomalia de leitura, não "o MCC ficou vazio".
+    Agir nisso desativaria o inventário inteiro (25 contas) por 24h. Espelha a
+    decisão do lado Meta (F65/F93): inventário suspeito não alimenta deletion
+    detection, e o run é auditado como erro pra não passar batido.
 
-        async with pool.acquire() as conn:
-            resumo = await reconcile_google(
-                conn,
-                accounts=accounts,
-                complete=inventario_ok,
-                apply=settings.google_reconcile_apply,
-            )
-            # Task 4/F83: `record_job_run` roda DEPOIS do `return` de
-            # `reconcile_google` — a transação da reconciliação já fechou
-            # (commitou) antes desta linha, então uma exceção aqui é falha de
-            # BOOKKEEPING sobre uma operação que já aconteceu, não da
-            # reconciliação em si. Sem `best_effort` ela subia pro `except`
-            # externo (~:373+), que grava um `record_job_crash` e RE-LEVANTA —
-            # o Cloud Run Job (`maxRetries: 3`) reexecutava a reconciliação
-            # INTEIRA só porque o audit da vez anterior não gravou. Com as
-            # Tasks 2/3 esse retry já não corrompe nada; isto fecha a causa do
-            # retry. Mesma classe do F83 dos executores de mutação
-            # (src/google_ads/mutations.py), só que aqui o bookkeeping roda
-            # numa chamada solta, não num `finally` — por isso o guard
-            # estrutural do F83 (test_finally_bookkeeping_is_best_effort) não
-            # alcança este ponto (ver task-4-report.md).
-            async with best_effort("job_run_audit_failed", operation="google_reconcile"):
-                await record_job_run(
-                    conn,
-                    operation="google_reconcile",
-                    platform="google",
-                    target_count=resumo["upserted"],
-                    status="success" if resumo["blocked_reason"] is None else "error",
-                    error_message=resumo["blocked_reason"],
-                    params_summary={
-                        k: v for k, v in resumo.items() if k not in ("upserted", "blocked_reason")
-                    },
-                )
-            # Task 7: depois do record_job_run, na MESMA conexão — lê o
-            # inventário já reconciliado por esta execução.
-            #
-            # Best-effort SIM se aplica aqui — ao contrário do que este
-            # comentário dizia antes (revisão de branch, 2026-09-05: "é só um
-            # SELECT + log, nada a proteger"). Verdade só sobre escrita
-            # parcial, não sobre o que importa: sem isolar, uma falha
-            # transitória em `list_queues` (i) escapa do `async with
-            # pool.acquire()` acima e pula INTEIRAMENTE o piggyback Meta e o
-            # purge diário abaixo — que já são best-effort próprios —, e (ii)
-            # cai no `except` externo, que grava um SEGUNDO record_job_run
-            # como crash logo depois do sucesso já commitado linhas acima:
-            # duas linhas de auditoria contraditórias pra mesma execução.
-            # Isolado no mesmo padrão dos dois vizinhos (Meta/purge).
-            try:
-                await avisar_contas_sem_grant(conn)
-            except Exception as e:  # noqa: BLE001
-                log.warning("avisar_contas_sem_grant_failed", error=str(e))
-                print(
-                    f"WARN: avisar_contas_sem_grant falhou (non-fatal): {e}",
-                    file=sys.stderr,
-                )
+    Task 5: a proteção mudou de forma, não de intenção. Antes era um branch
+    aqui mesmo (`if inventario_ok: mark_inactive_except(...)`); agora
+    `inventario_ok` vira o `complete=` de `reconcile_google` → `build_plan`,
+    que com `complete=False` devolve `to_remove` vazio e `blocked_reason`
+    preenchido — zero desativação E zero revogação, mesmo com a trava
+    (`google_reconcile_apply`) ligada.
 
-        log.info("resync_complete", **resumo)
-        print(f"OK: google reconcile — {resumo}")
-        # Exit code != 0 e o UNICO sinal que a policy "Cloud Run Job: execucao
-        # FALHOU" enxerga (`completed_execution_count{result=failed}`): um
-        # `blocked_reason` auditado como erro e devolvido com 0 nunca alertava.
-        # O job TERMINA o que faz (piggyback Meta, purge) e so entao sai com 1 —
-        # o retry do Cloud Run (`maxRetries: 3`) reexecuta a reconciliacao, que
-        # e idempotente por dia (F157), entao repetir um bloqueio e inofensivo.
-        falhou = resumo["blocked_reason"] is not None
+    Task 4/F83: `record_job_run` roda DEPOIS do `return` de `reconcile_google`
+    — a transação da reconciliação já fechou (commitou) antes, então uma
+    exceção ali é falha de BOOKKEEPING sobre uma operação que já aconteceu, não
+    da reconciliação em si. Sem `best_effort` ela subia pro `executar_job`, que
+    grava um `record_job_crash` e RE-LEVANTA — o Cloud Run Job (`maxRetries:
+    3`) reexecutava a reconciliação INTEIRA só porque o audit da vez anterior
+    não gravou. Com as Tasks 2/3 esse retry já não corrompe nada; isto fecha a
+    causa do retry. Mesma classe do F83 dos executores de mutação
+    (src/google_ads/mutations.py), só que aqui o bookkeeping roda numa chamada
+    solta, não num `finally` — por isso o guard estrutural do F83
+    (test_finally_bookkeeping_is_best_effort) não alcança este ponto (ver
+    task-4-report.md).
 
-        # Piggyback: refresh do inventário Meta no MESMO job/scheduler, pra conta
-        # nova aparecer zero-touch. Best-effort — falha Meta não quebra o resync
-        # Google (e é no-op se o system-user token não estiver no job).
-        try:
-            from src.jobs.meta_resync import reconcile_meta
-
-            # `conn` explícito (revisão da Task 3): `reconcile_meta` deixou de
-            # aceitar `None` e adquirir a própria conexão. Este `acquire` está
-            # FORA de qualquer transação aberta — que é justamente a garantia
-            # que o default `None` não conseguia dar a call-site nenhum.
-            async with pool.acquire() as conn_meta:
-                plano_meta = await reconcile_meta(conn_meta)
+    Exit code != 0 e o UNICO sinal que a policy "Cloud Run Job: execucao
+    FALHOU" enxerga (`completed_execution_count{result=failed}`): um
+    `blocked_reason` auditado como erro e devolvido com 0 nunca alertava. O job
+    TERMINA o que faz (piggyback Meta, purge) e so entao sai com 1 — o retry do
+    Cloud Run (`maxRetries: 3`) reexecuta a reconciliacao, que e idempotente
+    por dia (F157), entao repetir um bloqueio e inofensivo.
+    """
+    async with pool.acquire() as conn:
+        manager, oc = await _pick_oauth_connection(conn)
+        if oc is None:
+            log.error("resync_no_oauth_connection")
             print(
-                "OK: Meta reconcile — "
-                f"add={len(plano_meta.to_add)} remove={len(plano_meta.to_remove)} "
-                f"blocked={plano_meta.blocked_reason}"
-            )
-            if plano_meta.blocked_reason is not None:
-                falhou = True
-        except Exception as e:  # noqa: BLE001
-            falhou = True
-            log.warning("meta_reconcile_failed", error=str(e))
-            print(
-                f"WARN: Meta reconcile falhou (o job termina e sai com 1): {e}",
+                "No active OAuth connection — bootstrap an admin and have them complete /oauth/google/start first.",
                 file=sys.stderr,
             )
-            # F93 pela terceira porta (I2 da revisão de branch): `record_job_crash`
-            # vivia só dentro de `meta_resync.run()`, que SÓ o entry point
-            # `python -m src.jobs.meta_resync` alcança. O Cloud Run Job diário
-            # roda por aqui, e este `except` engolia tudo — a edge de parceria
-            # podia mudar de forma ou de permissão (risco nº 1 da §13) e a
-            # reconciliação ficaria morta por dias sem UMA linha no audit_log,
-            # nem status=error. Fica DEPOIS do log/print de propósito: o rastro
-            # da falha original é registrado primeiro, e `record_job_crash` já
-            # embrulha o próprio I/O em `best_effort` (F83), então o audit não
-            # vira um segundo crash por cima do primeiro.
-            await record_job_crash(operation="meta_reconcile", platform="meta", exc=e)
+            await record_job_run(
+                conn,
+                operation="google_reconcile",
+                platform="google",
+                status="error",
+                error_message="no active OAuth connection",
+            )
+            return None
 
-        # Purge diário de tabelas transientes (pending_confirmations, rate_counters,
-        # meta_rate_counters). Best-effort: falha de purge não derruba o resync.
-        # audit_log NUNCA é purgado (compliance) — não faz parte deste escopo.
-        try:
-            counts = await purge_expired(pool)
-            total_purged = sum(counts.values())
-            async with pool.acquire() as conn:
-                await record_job_run(
-                    conn,
-                    operation="db_purge",
-                    platform="google",
-                    status="success",
-                    target_count=total_purged,
-                    params_summary=counts,
-                )
-            print(f"OK: purged {total_purged} rows ({counts})")
-        except Exception as e:  # noqa: BLE001
-            log.warning("db_purge_failed", error=str(e))
-            print(f"WARN: purge falhou (non-fatal): {e}", file=sys.stderr)
+    master_key = derive_master_key_from_settings(settings.aes_master_key)
+    refresh_token = decrypt_refresh_token(oc.refresh_token_enc, master_key)
 
-        return 1 if falhou else 0
-    except Exception as e:
-        # F93: crash inesperado (build_client, fetch_account_details, upsert_many)
-        # nao pode sumir da trilha — o rastro ficaria so no Cloud Run.
+    client = build_client(
+        refresh_token=refresh_token,
+        client_id=settings.google_oauth_client_id,
+        client_secret=settings.google_oauth_client_secret,
+        login_customer_id=settings.google_ads_login_customer_id,
+    )
+
+    # Discover accessible customers (mostly: just the MCC itself).
+    resource_names = list_accessible_customer_resource_names(client)
+    log.info("resync_accessible_customers", count=len(resource_names))
+
+    # Pull descriptive details for all child customers under the MCC.
+    accounts = fetch_account_details(
+        client,
+        login_customer_id=settings.google_ads_login_customer_id,
+        customer_ids=[],  # empty → all
+    )
+
+    # F85 (ver docstring): inventário vazio chega como `complete=False`.
+    inventario_ok = bool(accounts)
+    if not inventario_ok:
+        log.error("resync_empty_account_list", mcc_id=settings.google_ads_login_customer_id)
+
+    async with pool.acquire() as conn:
+        resumo = await reconcile_google(
+            conn,
+            accounts=accounts,
+            complete=inventario_ok,
+            apply=settings.google_reconcile_apply,
+        )
+        # Task 4/F83 (ver docstring): bookkeeping pós-commit é best-effort.
+        async with best_effort("job_run_audit_failed", operation="google_reconcile"):
+            await record_job_run(
+                conn,
+                operation="google_reconcile",
+                platform="google",
+                target_count=resumo["upserted"],
+                status="success" if resumo["blocked_reason"] is None else "error",
+                error_message=resumo["blocked_reason"],
+                params_summary={
+                    k: v for k, v in resumo.items() if k not in ("upserted", "blocked_reason")
+                },
+            )
+        # Task 7: depois do record_job_run, na MESMA conexão — lê o
+        # inventário já reconciliado por esta execução.
         #
-        # I2 (revisão de branch, 2026-09-05): `operation` unificado com o
-        # caminho de sucesso/bloqueio (`google_reconcile`, espelhando
-        # `meta_reconcile` dos dois lados no gêmeo) — era `account_resync`
-        # aqui e no "sem OAuth connection" acima, string DIFERENTE da que o
-        # run bem-sucedido grava. Pra job diário atrás de trava, é o dia em
-        # que o job MORREU que interessa: com operação diferente por caminho,
-        # a query de triagem do soak (`WHERE operation='google_reconcile'`) só
-        # mostrava os dias em que o job chegava ao fim, e o dia ausente da
-        # série ficava indistinguível de "rodou e não achou nada".
-        await record_job_crash(operation="google_reconcile", platform="google", exc=e)
-        raise
-    finally:
-        await connection.close_pool()
+        # Best-effort SIM se aplica aqui — ao contrário do que este
+        # comentário dizia antes (revisão de branch, 2026-09-05: "é só um
+        # SELECT + log, nada a proteger"). Verdade só sobre escrita
+        # parcial, não sobre o que importa: sem isolar, uma falha
+        # transitória em `list_queues` (i) escapa desta etapa e pula
+        # INTEIRAMENTE o piggyback Meta e o purge diário — que já são
+        # best-effort próprios —, e (ii) cai no `executar_job`, que grava um
+        # SEGUNDO record_job_run como crash logo depois do sucesso já
+        # commitado linhas acima: duas linhas de auditoria contraditórias
+        # pra mesma execução. Isolado no mesmo padrão dos dois vizinhos
+        # (Meta/purge).
+        try:
+            await avisar_contas_sem_grant(conn)
+        except Exception as e:  # noqa: BLE001
+            log.warning("avisar_contas_sem_grant_failed", error=str(e))
+            print(
+                f"WARN: avisar_contas_sem_grant falhou (non-fatal): {e}",
+                file=sys.stderr,
+            )
+
+    log.info("resync_complete", **resumo)
+    print(f"OK: google reconcile — {resumo}")
+    return resumo["blocked_reason"] is not None
+
+
+async def _etapa_meta(pool: connection.PoolValidado) -> bool:
+    """Piggyback: refresh do inventário Meta no MESMO job. True = falhou.
+
+    Roda no MESMO job/scheduler pra conta nova aparecer zero-touch.
+    Best-effort — falha Meta não quebra o resync Google nem impede o purge
+    (e é no-op se o system-user token não estiver no job), mas bloqueio ou
+    crash fazem o job sair com 1.
+
+    F93 pela terceira porta (I2 da revisão de branch): `record_job_crash`
+    vivia só dentro de `meta_resync.run()`, que SÓ o entry point
+    `python -m src.jobs.meta_resync` alcança. O Cloud Run Job diário roda por
+    aqui, e o `except` engolia tudo — a edge de parceria podia mudar de forma
+    ou de permissão (risco nº 1 da §13) e a reconciliação ficaria morta por
+    dias sem UMA linha no audit_log, nem status=error. O audit fica DEPOIS do
+    log/print de propósito: o rastro da falha original é registrado primeiro,
+    e `record_job_crash` já embrulha o próprio I/O em `best_effort` (F83),
+    então o audit não vira um segundo crash por cima do primeiro.
+    """
+    try:
+        from src.jobs.meta_resync import reconcile_meta
+
+        # `conn` explícito (revisão da Task 3): `reconcile_meta` deixou de
+        # aceitar `None` e adquirir a própria conexão. Este `acquire` está
+        # FORA de qualquer transação aberta — que é justamente a garantia
+        # que o default `None` não conseguia dar a call-site nenhum.
+        async with pool.acquire() as conn_meta:
+            plano_meta = await reconcile_meta(conn_meta)
+        print(
+            "OK: Meta reconcile — "
+            f"add={len(plano_meta.to_add)} remove={len(plano_meta.to_remove)} "
+            f"blocked={plano_meta.blocked_reason}"
+        )
+        return plano_meta.blocked_reason is not None
+    except Exception as e:  # noqa: BLE001
+        log.warning("meta_reconcile_failed", error=str(e))
+        print(
+            f"WARN: Meta reconcile falhou (o job termina e sai com 1): {e}",
+            file=sys.stderr,
+        )
+        await record_job_crash(operation="meta_reconcile", platform="meta", exc=e)
+        return True
+
+
+async def _etapa_purge(pool: connection.PoolValidado) -> bool:
+    """Purge diário de tabelas transientes. True = falhou.
+
+    Limpa pending_confirmations, rate_counters e meta_rate_counters.
+    Best-effort: falha de purge não derruba o resync e NÃO entra no exit code
+    (quem chama ignora o retorno de propósito). audit_log NUNCA é purgado
+    (compliance) — não faz parte deste escopo.
+    """
+    try:
+        counts = await purge_expired(pool)
+        total_purged = sum(counts.values())
+        async with pool.acquire() as conn:
+            await record_job_run(
+                conn,
+                operation="db_purge",
+                platform="google",
+                status="success",
+                target_count=total_purged,
+                params_summary=counts,
+            )
+        print(f"OK: purged {total_purged} rows ({counts})")
+        return False
+    except Exception as e:  # noqa: BLE001
+        log.warning("db_purge_failed", error=str(e))
+        print(f"WARN: purge falhou (non-fatal): {e}", file=sys.stderr)
+        return True
 
 
 def main() -> int:
