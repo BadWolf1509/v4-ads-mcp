@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from src.meta_ads.colecao import ContextoMeta
 from src.meta_ads.reports import run_meta_graph_get
 
 _OP_BUSCA = "meta_search_targeting"
@@ -67,7 +68,7 @@ def build_search_call(ad_account_id: str, *, q: str, limit: int) -> tuple[str, d
 
 
 async def buscar_segmentacao(
-    ctx: Any, ad_account_id: str, q: str, limit: int
+    ctx: ContextoMeta, ad_account_id: str, q: str, limit: int
 ) -> tuple[list[dict[str, Any]], bool | None]:
     """Busca por texto. Corta em `limit` e declara `truncated`.
 
@@ -121,7 +122,7 @@ def parse_estimativa(linha: dict[str, Any]) -> dict[str, Any]:
 
 
 async def estimar_entrega(
-    ctx: Any, ad_account_id: str, targeting_spec: dict[str, Any], optimization_goal: str
+    ctx: ContextoMeta, ad_account_id: str, targeting_spec: dict[str, Any], optimization_goal: str
 ) -> dict[str, Any] | None:
     """Estimativa de entrega, ou `None` quando a Meta devolve `data` vazio."""
     edge, params = build_estimate_call(

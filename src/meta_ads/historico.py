@@ -17,6 +17,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from src.meta_ads.account_clock import resolve_meta_account_zone
+from src.meta_ads.colecao import ContextoMeta
 from src.meta_ads.errors import MetaAdsFriendlyError
 from src.meta_ads.reports import run_meta_graph_get
 
@@ -101,7 +102,7 @@ def _data_local(event_time: Any, zona: ZoneInfo) -> date | None:
 
 
 async def listar_atividades(
-    ctx: Any, ad_account_id: str, since: date, until: date, limit: int
+    ctx: ContextoMeta, ad_account_id: str, since: date, until: date, limit: int
 ) -> tuple[list[dict[str, Any]], bool]:
     """Atividades de `since` a `until` no fuso da conta. Devolve `(registros, truncated)`.
 
