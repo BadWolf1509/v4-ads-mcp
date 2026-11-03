@@ -56,6 +56,10 @@ jobs:
       # `--set-env-vars` do servico): a revogacao e soft (`revoked_at`) e o
       # painel restaura com um clique.
       JOB_ENV_VARS: "APP_ENV=production,META_BUSINESS_ID=619664032237208,META_RECONCILE_APPLY=true,GOOGLE_RECONCILE_APPLY=true"
+      # `--update-secrets` so ACRESCENTA: secret que sai de JOB_SECRETS fica montado no
+      # job para sempre. Os aposentados saem aqui, a cada deploy (retirar o que ja nao
+      # existe nao da erro, medido em 03/11). O developer token saiu em 11/2026.
+      JOB_SECRETS_RETIRADOS: "GOOGLE_ADS_DEVELOPER_TOKEN"
       JOB_SECRETS: "DATABASE_URL=database-url:latest,SESSION_SIGNING_KEY=session-signing-key:latest,AES_MASTER_KEY=aes-master-key:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,GOOGLE_ADS_LOGIN_CUSTOMER_ID=google-ads-login-customer-id:latest"
 
     steps:
@@ -118,7 +122,8 @@ jobs:
             --args="" \
             --region=${REGION} \
             --update-env-vars="${JOB_ENV_VARS}" \
-            --update-secrets="${JOB_SECRETS}"
+            --update-secrets="${JOB_SECRETS}" \
+            --remove-secrets="${JOB_SECRETS_RETIRADOS}"
 
       # F66 resolvido: com o job invocando o process `migrate` real, o execute
       # aplica migrations pendentes (idempotente — no-op se o schema já bate) e
@@ -360,7 +365,8 @@ jobs:
             --args="" \
             --region=${REGION} \
             --update-env-vars="${JOB_ENV_VARS}" \
-            --update-secrets="${JOB_SECRETS},META_SYSTEM_USER_TOKEN=meta-system-user-token:latest"
+            --update-secrets="${JOB_SECRETS},META_SYSTEM_USER_TOKEN=meta-system-user-token:latest" \
+            --remove-secrets="${JOB_SECRETS_RETIRADOS}"
 
       # Job de backup semanal (dump csv.gz por tabela → GCS). Re-aponta imagem +
       # process a cada deploy (self-healing contra drift, igual migrate/resync).
@@ -378,4 +384,5 @@ jobs:
             --args="" \
             --region=${REGION} \
             --update-env-vars="${JOB_ENV_VARS}" \
-            --update-secrets="${JOB_SECRETS}"
+            --update-secrets="${JOB_SECRETS}" \
+            --remove-secrets="${JOB_SECRETS_RETIRADOS}"
