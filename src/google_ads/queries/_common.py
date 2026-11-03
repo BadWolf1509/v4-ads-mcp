@@ -37,9 +37,6 @@ class InvalidDateRangeError(EntradaInvalidaError):
 
 # Os presets e a janela de cada um moram em `src.janelas` (F195): uma regra so para
 # o Google e a Meta.
-_PRESETS = PRESETS
-
-
 log = structlog.get_logger(__name__)
 
 # `account_today` MUDOU DE CASA em 2026-09-06: vive em `src/clock.py`.
@@ -82,13 +79,13 @@ def parse_date_range(arg: str | dict[str, str], *, today: date) -> tuple[date, d
     if not isinstance(arg, str):
         raise InvalidDateRangeError(
             f"date_range invalido ({type(arg).__name__}): use um preset "
-            f"({', '.join(sorted(_PRESETS))}) ou start_date + end_date."
+            f"({', '.join(sorted(PRESETS))}) ou start_date + end_date."
         )
 
     preset = arg.upper()
-    if preset not in _PRESETS:
+    if preset not in PRESETS:
         raise InvalidDateRangeError(
-            f"date_range '{preset}' desconhecido. Presets validos: {', '.join(sorted(_PRESETS))}; "
+            f"date_range '{preset}' desconhecido. Presets validos: {', '.join(sorted(PRESETS))}; "
             "ou use start_date + end_date (AAAA-MM-DD)."
         )
 

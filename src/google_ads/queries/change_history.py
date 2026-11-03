@@ -14,7 +14,7 @@ get_negative_keywords_audit (via negative_criterion_creations_query), detect_dri
 
 from datetime import date, timedelta
 
-from src.google_ads.queries._gaql import gaql_escape, gaql_in_list
+from src.google_ads.queries._gaql import gaql_in_list
 
 
 class RangeTooWideError(ValueError):
@@ -50,20 +50,6 @@ def _format_change_date_between(start: date, end: date) -> str:
         f"change_event.change_date_time BETWEEN "
         f"'{start.isoformat()}' AND '{end_inclusive.isoformat()}'"
     )
-
-
-def _quote_literal(s: str) -> str:
-    """Escape do conteúdo de um string literal GAQL (F87 — barra invertida, não doubling)."""
-    return gaql_escape(s)
-
-
-def _format_in_clause(values: list[str]) -> str:
-    """Format ('val1', 'val2', ...) for a GAQL IN clause.
-
-    F87: `user_emails` chega aqui como texto livre — o `format: "email"` do schema
-    NÃO é enforced, porque `jsonschema.validate` roda sem `format_checker`.
-    """
-    return gaql_in_list(values)
 
 
 def change_event_frontier_query(*, today: date) -> str:
@@ -132,15 +118,13 @@ def change_history_query(
     where: list[str] = [_format_change_date_between(start, end)]
 
     if resource_types:
-        where.append(f"change_event.change_resource_type IN {_format_in_clause(resource_types)}")
+        where.append(f"change_event.change_resource_type IN {gaql_in_list(resource_types)}")
     if operation_types:
-        where.append(
-            f"change_event.resource_change_operation IN {_format_in_clause(operation_types)}"
-        )
+        where.append(f"change_event.resource_change_operation IN {gaql_in_list(operation_types)}")
     if user_emails:
-        where.append(f"change_event.user_email IN {_format_in_clause(user_emails)}")
+        where.append(f"change_event.user_email IN {gaql_in_list(user_emails)}")
     if client_types:
-        where.append(f"change_event.client_type IN {_format_in_clause(client_types)}")
+        where.append(f"change_event.client_type IN {gaql_in_list(client_types)}")
 
     where_clause = " AND ".join(where)
 

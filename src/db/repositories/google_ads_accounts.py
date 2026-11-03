@@ -213,9 +213,9 @@ async def mark_inactive_except(
     Task 5 (2026-09-05): o job diário (`src/jobs/account_resync.py`) PAROU de
     chamar esta função — a decisão de quem remover passou para `build_plan()` +
     `deactivate()` acima, com carência por conta em vez de "primeira ausência já
-    desativa". Ela continua existindo, coberta pelos testes abaixo, como caminho
-    de emergência (`allow_full_deactivation=True`) para quem precisar zerar o
-    inventário de um MCC à mão.
+    desativa". Ela fica SEM chamador por design (decisão registrada, ver F85): uso
+    manual de emergência (`allow_full_deactivation=True`) para quem precisar zerar
+    o inventário de um MCC à mão, coberta pelos testes de integração.
 
     F85 — keep-list vazia é NO-OP por default. `fetch_account_details` pode
     devolver `[]` sem levantar exceção (search com 0 linhas, mudança de semântica
