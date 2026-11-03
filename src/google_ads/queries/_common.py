@@ -17,7 +17,16 @@ from src.google_ads.reports import run_report
 from src.janelas import PRESETS, janela_do_preset
 
 
-class InvalidDateRangeError(ValueError):
+class EntradaInvalidaError(ValueError):
+    """Erro de ENTRADA de quem chamou, com mensagem escrita para o gestor/LLM.
+
+    O `_error_envelope` do servidor repassa o texto ao cliente MCP; um `ValueError`
+    cru segue scrubado como "Erro interno". Levante esta classe so quando a mensagem
+    ja e PT-BR, sem SQL/driver/internals, e diz o que mandar no lugar.
+    """
+
+
+class InvalidDateRangeError(EntradaInvalidaError):
     """Periodo pedido que nao da para resolver — erro de ENTRADA de quem chamou.
 
     O `_error_envelope` do servidor devolve a mensagem ao cliente MCP, entao ela e

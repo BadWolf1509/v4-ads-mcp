@@ -9,6 +9,7 @@ from typing import Any
 
 from src.google_ads.aggregation import aggregate_rows
 from src.google_ads.gaql_compacto import campos_do_select, linha_compacta
+from src.google_ads.queries._common import EntradaInvalidaError
 from src.google_ads.reports import execute_gaql_raw
 from src.mcp.context import get_current
 from src.mcp.tools._registry import register_tool
@@ -106,7 +107,7 @@ async def run_gaql(args: dict[str, Any]) -> dict[str, Any]:
 
     if aggregate_by:
         if len(rows) > _MAX_RAW_ROWS_FOR_AGGREGATE:
-            raise ValueError(
+            raise EntradaInvalidaError(
                 f"Query retornou {len(rows)} rows (>{_MAX_RAW_ROWS_FOR_AGGREGATE}). "
                 "Refine WHERE clause antes de agregar (limite hard pra evitar OOM)."
             )
