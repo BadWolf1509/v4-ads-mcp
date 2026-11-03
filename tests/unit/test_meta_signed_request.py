@@ -5,7 +5,7 @@ import hashlib
 import hmac
 import json
 
-from src.auth.meta_oauth import _verify_meta_signed_request  # noqa: E402
+from src.auth.meta_data_deletion import _verify_meta_signed_request  # noqa: E402
 
 APP_SECRET = "test_app_secret_xyz"
 
