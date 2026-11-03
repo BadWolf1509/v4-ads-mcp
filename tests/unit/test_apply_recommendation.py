@@ -42,6 +42,7 @@ from src.google_ads.queries.recommendations import (
 )
 from src.governance.blast_radius import RiskLevel, classify
 from src.mcp.tools import apply_recommendation as mod
+from tests.unit.fixtures.fake_pool import FakePool
 
 _CUSTOMER = "1171969590"
 _CAMPANHA_ID = "22922100363"
@@ -216,19 +217,6 @@ def _linha_de_irma(campaign_id: str, nome: str, status: str) -> Any:
     return SimpleNamespace(campaign=SimpleNamespace(id=int(campaign_id), name=nome, status=status))
 
 
-class _FakeConn:
-    async def __aenter__(self) -> _FakeConn:
-        return self
-
-    async def __aexit__(self, *a: Any) -> bool:
-        return False
-
-
-class _FakePool:
-    def acquire(self) -> _FakeConn:
-        return _FakeConn()
-
-
 def _wire(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -274,7 +262,7 @@ def _wire(
     monkeypatch.setattr(mod, "run_report", _run)
     monkeypatch.setattr(mod, "run_recommendation_action", _executar)
     monkeypatch.setattr("src.mcp.tools._mutate_common.create_pending", _create_pending)
-    monkeypatch.setattr(connection, "get_pool", lambda: _FakePool())
+    monkeypatch.setattr(connection, "get_pool", lambda: FakePool())
     return capturado
 
 

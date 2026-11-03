@@ -11,6 +11,7 @@ from src.google_ads.queries.ad_schedule import GRADE_LIMIT
 from src.governance.blast_radius import RiskLevel, classify
 from src.mcp.tools import update_ad_schedule as mod
 from src.mcp.tools._registry import get_tool
+from tests.unit.fixtures.fake_pool import FakePool, patch_pool
 
 
 def test_classify_conhece_a_operacao_e_confirma() -> None:
@@ -27,19 +28,6 @@ def _ctx():
     set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
     yield
     clear_current()
-
-
-class _FakeConn:
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *a):
-        return False
-
-
-class _FakePool:
-    def acquire(self):
-        return _FakeConn()
 
 
 def _janela_row(cid="1", day="MONDAY", sh=7, eh=17, crit="9", bm=None) -> dict[str, Any]:
@@ -104,7 +92,7 @@ def _wire(monkeypatch, *, grade, orcamentos, metricas, irmas=None):
 
     monkeypatch.setattr("src.mcp.tools.update_ad_schedule.run_report", _run)
     monkeypatch.setattr("src.mcp.tools._mutate_common.create_pending", _create_pending)
-    monkeypatch.setattr("src.mcp.tools._mutate_common.connection.get_pool", lambda: _FakePool())
+    patch_pool(monkeypatch, FakePool(), "src.mcp.tools._mutate_common.connection.get_pool")
     return captured
 
 

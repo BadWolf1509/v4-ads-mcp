@@ -12,6 +12,7 @@ from uuid import uuid4
 import pytest
 
 from src.mcp.tools import apply_change as mod
+from tests.unit.fixtures.fake_pool import FakePool
 
 
 @pytest.fixture(autouse=True)
@@ -21,19 +22,6 @@ def _ctx():
     set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
     yield
     clear_current()
-
-
-class _FakeConn:
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *a):
-        return False
-
-
-class _FakePool:
-    def acquire(self):
-        return _FakeConn()
 
 
 def _janela(day: str = "MONDAY", sh: int = 7, eh: int = 17) -> dict[str, Any]:
@@ -156,7 +144,7 @@ def _wire(
     monkeypatch.setattr(mod, "consume", _consume)
     monkeypatch.setattr(mod, "run_mutation", _run_mutation)
     monkeypatch.setattr(mod, "run_report", _run_report)
-    monkeypatch.setattr(mod.connection, "get_pool", lambda: _FakePool())
+    monkeypatch.setattr(mod.connection, "get_pool", lambda: FakePool())
     return visto
 
 

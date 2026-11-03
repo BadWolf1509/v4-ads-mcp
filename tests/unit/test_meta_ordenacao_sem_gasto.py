@@ -9,13 +9,14 @@ call-site voltar a ordenar por `r["spend_brl"]` (revisao final do F194).
 from contextlib import ExitStack
 from datetime import date
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
 
 from src.mcp.tools._meta_performance import run_meta_level_performance
 from src.mcp.tools.meta_get_performance_breakdown import meta_get_performance_breakdown
+from tests.unit.fixtures.fake_pool import FakePool
 
 _RESPOSTA = {
     "data": [
@@ -26,26 +27,13 @@ _RESPOSTA = {
 }
 
 
-class _Acquire:
-    async def __aenter__(self) -> Any:
-        return MagicMock()
-
-    async def __aexit__(self, *exc: object) -> bool:
-        return False
-
-
-class _Pool:
-    def acquire(self) -> _Acquire:
-        return _Acquire()
-
-
 class _Conta:
     account_name = "Conta Teste"
     currency = "BRL"
 
 
 def _dubles(pilha: ExitStack, modulo: str) -> None:
-    pilha.enter_context(patch(f"{modulo}.connection.get_pool", return_value=_Pool()))
+    pilha.enter_context(patch(f"{modulo}.connection.get_pool", return_value=FakePool()))
     pilha.enter_context(
         patch(f"{modulo}.meta_ad_accounts.get_by_id", AsyncMock(return_value=_Conta()))
     )

@@ -17,24 +17,14 @@ import pytest
 from src.jobs import meta_resync
 from src.meta_ads.alcance import Alcance
 from src.meta_ads.partnership import PartnershipSnapshot
+from tests.unit.fixtures.fake_pool import FakePool
 
 
-class _FakeAcquire:
-    async def __aenter__(self) -> MagicMock:
-        conn = MagicMock()
-        # A transacao do bloco de apply (Req. 1) precisa de um `conn` que
-        # suporte `async with conn.transaction():` — MagicMock ja suporta
-        # __aenter__/__aexit__ magicos por padrao, sem setup extra.
-        conn.execute = AsyncMock(return_value="UPDATE 0")
-        return conn
-
-    async def __aexit__(self, *exc: object) -> bool:
-        return False
-
-
-class _FakePool:
-    def acquire(self) -> _FakeAcquire:
-        return _FakeAcquire()
+def _conn() -> MagicMock:
+    """Conexão do pool falso. A transacao do bloco de apply precisa de `async with conn.transaction()` (MagicMock ja suporta) e de um `execute` awaitable."""
+    conn = MagicMock()
+    conn.execute = AsyncMock(return_value="UPDATE 0")
+    return conn
 
 
 @pytest.mark.asyncio
@@ -139,7 +129,7 @@ def _preparar_run(monkeypatch: pytest.MonkeyPatch, plano: Any) -> None:
     monkeypatch.setattr(meta_resync, "configure_logging", MagicMock())
     monkeypatch.setattr(meta_resync.connection, "init_pool", AsyncMock())
     monkeypatch.setattr(meta_resync.connection, "close_pool", AsyncMock())
-    monkeypatch.setattr(meta_resync.connection, "get_pool", lambda: _FakePool())
+    monkeypatch.setattr(meta_resync.connection, "get_pool", lambda: FakePool(_conn()))
     monkeypatch.setattr(meta_resync, "reconcile_meta", AsyncMock(return_value=plano))
 
 

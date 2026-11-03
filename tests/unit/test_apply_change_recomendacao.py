@@ -27,6 +27,7 @@ import pytest
 
 from src.db import connection
 from src.mcp.tools import apply_change as mod
+from tests.unit.fixtures.fake_pool import FakePool
 
 _CUSTOMER = "1234567890"
 _REC_RN = f"customers/{_CUSTOMER}/recommendations/abc"
@@ -39,19 +40,6 @@ def _ctx() -> Any:
     set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
     yield
     clear_current()
-
-
-class _FakeConn:
-    async def __aenter__(self) -> _FakeConn:
-        return self
-
-    async def __aexit__(self, *a: Any) -> bool:
-        return False
-
-
-class _FakePool:
-    def acquire(self) -> _FakeConn:
-        return _FakeConn()
 
 
 def _impressao(**over: Any) -> dict[str, Any]:
@@ -129,7 +117,7 @@ def _wire(
     # modulo (o `apply_change` faz `from src.db import connection`), e o acesso
     # via atributo do modulo importador e o unico erro de `mypy --strict` que este
     # PR acrescentou num arquivo seu.
-    monkeypatch.setattr(connection, "get_pool", lambda: _FakePool())
+    monkeypatch.setattr(connection, "get_pool", lambda: FakePool())
     return visto
 
 

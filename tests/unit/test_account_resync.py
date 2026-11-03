@@ -22,7 +22,6 @@ vazio de propósito: nenhum teste aqui inspeciona o conteúdo do plano — só q
 piggyback foi chamado e que uma falha nele não derruba o resync do Google.
 """
 
-from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -31,6 +30,7 @@ import pytest
 
 from src.jobs import account_resync
 from src.meta_ads.reconcile import Plan
+from tests.unit.fixtures.fake_pool import FakePool
 
 _M = "src.jobs.account_resync"
 
@@ -51,18 +51,6 @@ def _reconcile_result(**overrides: Any) -> dict[str, Any]:
     }
     base.update(overrides)
     return base
-
-
-def _fake_pool(conn: MagicMock) -> MagicMock:
-    """Pool mock cujo acquire() é um async context manager que devolve `conn`."""
-    pool = MagicMock()
-
-    @asynccontextmanager
-    async def _acquire():
-        yield conn
-
-    pool.acquire = _acquire
-    return pool
 
 
 def _base_patches(
@@ -134,7 +122,7 @@ def _base_patches(
 async def test_run_returns_1_when_no_oauth_connection() -> None:
     """Sem OAuth connection ativa → early return 1 (nada de client/upsert)."""
     conn = MagicMock()
-    pool = _fake_pool(conn)
+    pool = FakePool(conn)
     mocks = _base_patches(pool=pool, oc=None)
 
     with (
@@ -169,7 +157,7 @@ async def test_run_returns_1_when_no_oauth_connection() -> None:
 @pytest.mark.asyncio
 async def test_run_happy_path_returns_0_and_orchestrates() -> None:
     conn = MagicMock()
-    pool = _fake_pool(conn)
+    pool = FakePool(conn)
     oc = SimpleNamespace(refresh_token_enc=b"enc")
     mocks = _base_patches(
         pool=pool, oc=oc, reconcile_result=_reconcile_result(upserted=2, removed=1)
@@ -217,7 +205,7 @@ async def test_run_records_job_run_with_operation_and_reconcile_summary() -> Non
     dentro do summary não acrescentaria nada pra quem lê o audit.
     """
     conn = MagicMock()
-    pool = _fake_pool(conn)
+    pool = FakePool(conn)
     oc = SimpleNamespace(refresh_token_enc=b"enc")
     resumo = _reconcile_result(
         added=1,
@@ -276,7 +264,7 @@ async def test_run_passes_fetched_accounts_and_inventory_ok_to_reconcile_google(
     tests/integration/test_repositories.py).
     """
     conn = MagicMock()
-    pool = _fake_pool(conn)
+    pool = FakePool(conn)
     oc = SimpleNamespace(refresh_token_enc=b"enc")
     accounts = [{"customer_id": "111"}, {"customer_id": "222"}, {"customer_id": "333"}]
     mocks = _base_patches(pool=pool, oc=oc, accounts=accounts)
@@ -310,7 +298,7 @@ async def test_run_passes_google_reconcile_apply_setting_through() -> None:
     override de env ela é `False` (default de `Settings.google_reconcile_apply`).
     """
     conn = MagicMock()
-    pool = _fake_pool(conn)
+    pool = FakePool(conn)
     oc = SimpleNamespace(refresh_token_enc=b"enc")
     mocks = _base_patches(pool=pool, oc=oc)
 
@@ -335,7 +323,7 @@ async def test_run_passes_google_reconcile_apply_setting_through() -> None:
     assert reconcile_google.call_args.kwargs["apply"] is False
 
     conn2 = MagicMock()
-    pool2 = _fake_pool(conn2)
+    pool2 = FakePool(conn2)
     mocks2 = _base_patches(pool=pool2, oc=oc)
     with (
         patch.dict("os.environ", {"GOOGLE_RECONCILE_APPLY": "true"}),
@@ -367,7 +355,7 @@ async def test_run_meta_failure_termina_o_job_e_sai_com_1() -> None:
     reconciliacao Meta morta ficava silenciosa (Task 5).
     """
     conn = MagicMock()
-    pool = _fake_pool(conn)
+    pool = FakePool(conn)
     oc = SimpleNamespace(refresh_token_enc=b"enc")
     mocks = _base_patches(pool=pool, oc=oc)
 
@@ -409,7 +397,7 @@ async def test_falha_do_piggyback_meta_deixa_rastro_no_audit(
     `status=error`. É a mesma classe do F93, na rota que de fato executa.
     """
     conn = MagicMock()
-    pool = _fake_pool(conn)
+    pool = FakePool(conn)
     oc = SimpleNamespace(refresh_token_enc=b"enc")
     mocks = _base_patches(pool=pool, oc=oc)
     boom = RuntimeError("client_ad_accounts mudou de permissao")
@@ -463,7 +451,7 @@ async def test_crash_inesperado_no_corpo_do_job_audita_como_google_reconcile() -
     no corpo do PRÓPRIO job Google — `run()` re-levanta depois de auditar.
     """
     conn = MagicMock()
-    pool = _fake_pool(conn)
+    pool = FakePool(conn)
     oc = SimpleNamespace(refresh_token_enc=b"enc")
     mocks = _base_patches(pool=pool, oc=oc)
     boom = RuntimeError("build_client explodiu")
@@ -494,7 +482,7 @@ async def test_crash_inesperado_no_corpo_do_job_audita_como_google_reconcile() -
 async def test_run_calls_purge_expired_and_records_db_purge() -> None:
     """purge_expired() é chamado no fim do job e o resultado é auditado como db_purge."""
     conn = MagicMock()
-    pool = _fake_pool(conn)
+    pool = FakePool(conn)
     oc = SimpleNamespace(refresh_token_enc=b"enc")
     mocks = _base_patches(pool=pool, oc=oc)
     counts = {"pending_confirmations": 12, "rate_counters": 3, "meta_rate_counters": 1}
@@ -530,7 +518,7 @@ async def test_run_calls_purge_expired_and_records_db_purge() -> None:
 async def test_run_purge_failure_is_non_fatal() -> None:
     """purge_expired() explode → run() ainda retorna 0 (best-effort, não quebra o resync)."""
     conn = MagicMock()
-    pool = _fake_pool(conn)
+    pool = FakePool(conn)
     oc = SimpleNamespace(refresh_token_enc=b"enc")
     mocks = _base_patches(pool=pool, oc=oc)
 
@@ -573,7 +561,7 @@ async def test_run_avisar_sem_grant_failure_is_non_fatal() -> None:
     execução.
     """
     conn = MagicMock()
-    pool = _fake_pool(conn)
+    pool = FakePool(conn)
     oc = SimpleNamespace(refresh_token_enc=b"enc")
     mocks = _base_patches(pool=pool, oc=oc)
 
@@ -627,7 +615,7 @@ async def test_run_record_job_run_failure_after_reconcile_is_non_fatal() -> None
     nenhum estado deixado pela primeira falha.
     """
     conn = MagicMock()
-    pool = _fake_pool(conn)
+    pool = FakePool(conn)
     oc = SimpleNamespace(refresh_token_enc=b"enc")
     mocks = _base_patches(pool=pool, oc=oc)
 
@@ -717,7 +705,7 @@ def _stack_do_job(mocks: dict[str, Any], plano_meta: Plan) -> Any:
 @pytest.mark.asyncio
 async def test_bloqueio_google_sai_com_1_depois_de_terminar_o_resto() -> None:
     """`blocked_reason` do Google: audit gravado, Meta e purge rodam, e SO ENTAO exit 1."""
-    pool = _fake_pool(MagicMock())
+    pool = FakePool(MagicMock())
     oc = SimpleNamespace(refresh_token_enc=b"enc")
     mocks = _base_patches(
         pool=pool,
@@ -736,7 +724,7 @@ async def test_bloqueio_google_sai_com_1_depois_de_terminar_o_resto() -> None:
 
 @pytest.mark.asyncio
 async def test_bloqueio_meta_no_piggyback_sai_com_1() -> None:
-    pool = _fake_pool(MagicMock())
+    pool = FakePool(MagicMock())
     oc = SimpleNamespace(refresh_token_enc=b"enc")
     mocks = _base_patches(pool=pool, oc=oc)
     with _stack_do_job(mocks, Plan(blocked_reason="parceria truncada")):
@@ -749,7 +737,7 @@ async def test_bloqueio_meta_no_piggyback_sai_com_1() -> None:
 
 @pytest.mark.asyncio
 async def test_sem_bloqueio_sai_com_0() -> None:
-    pool = _fake_pool(MagicMock())
+    pool = FakePool(MagicMock())
     oc = SimpleNamespace(refresh_token_enc=b"enc")
     mocks = _base_patches(pool=pool, oc=oc)
     with _stack_do_job(mocks, Plan()):
@@ -767,7 +755,7 @@ async def test_segunda_execucao_no_mesmo_dia_repete_o_bloqueio_sem_acumular_efei
     idempotencia da reconciliacao em si esta provada contra banco real em
     `test_retry_de_job_bloqueado_no_mesmo_dia_nao_muda_o_inventario`.
     """
-    pool = _fake_pool(MagicMock())
+    pool = FakePool(MagicMock())
     oc = SimpleNamespace(refresh_token_enc=b"enc")
     mocks = _base_patches(
         pool=pool,

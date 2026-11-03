@@ -29,7 +29,8 @@ import pytest
 
 from src.jobs import _audit, account_resync, meta_resync
 from src.meta_ads.reconcile import Plan
-from tests.unit.test_account_resync import _base_patches, _fake_pool, _reconcile_result
+from tests.unit.fixtures.fake_pool import FakePool
+from tests.unit.test_account_resync import _base_patches, _reconcile_result
 
 _M = "src.jobs.account_resync"
 _CHAVES = (
@@ -66,7 +67,7 @@ def _entrar(
 @pytest.mark.asyncio
 async def test_ordem_das_etapas_e_google_meta_purge() -> None:
     ordem: list[str] = []
-    mocks = _base_patches(pool=_fake_pool(MagicMock()), oc=SimpleNamespace(refresh_token_enc=b"e"))
+    mocks = _base_patches(pool=FakePool(MagicMock()), oc=SimpleNamespace(refresh_token_enc=b"e"))
 
     async def _google(*_a: Any, **_k: Any) -> dict[str, Any]:
         ordem.append("google")
@@ -95,7 +96,7 @@ async def test_ordem_das_etapas_e_google_meta_purge() -> None:
 
 @pytest.mark.asyncio
 async def test_crash_no_corpo_google_nao_roda_meta_nem_purge() -> None:
-    mocks = _base_patches(pool=_fake_pool(MagicMock()), oc=SimpleNamespace(refresh_token_enc=b"e"))
+    mocks = _base_patches(pool=FakePool(MagicMock()), oc=SimpleNamespace(refresh_token_enc=b"e"))
     meta = AsyncMock(return_value=Plan())
     with ExitStack() as stack:
         _entrar(stack, mocks, sem=("reconcile_google",))
@@ -118,7 +119,7 @@ async def test_crash_no_corpo_google_nao_roda_meta_nem_purge() -> None:
 
 @pytest.mark.asyncio
 async def test_sem_oauth_encerra_sem_meta_sem_purge_e_sem_crash() -> None:
-    mocks = _base_patches(pool=_fake_pool(MagicMock()), oc=None)
+    mocks = _base_patches(pool=FakePool(MagicMock()), oc=None)
     meta = AsyncMock(return_value=Plan())
     with ExitStack() as stack:
         _entrar(stack, mocks)
@@ -137,7 +138,7 @@ async def test_sem_oauth_encerra_sem_meta_sem_purge_e_sem_crash() -> None:
 
 @pytest.mark.asyncio
 async def test_meta_e_purge_falhando_juntos_sai_com_1_e_purge_e_tentado() -> None:
-    mocks = _base_patches(pool=_fake_pool(MagicMock()), oc=SimpleNamespace(refresh_token_enc=b"e"))
+    mocks = _base_patches(pool=FakePool(MagicMock()), oc=SimpleNamespace(refresh_token_enc=b"e"))
     purge = AsyncMock(side_effect=RuntimeError("db down"))
     with ExitStack() as stack:
         _entrar(stack, mocks, sem=("purge",))
@@ -158,7 +159,7 @@ async def test_meta_e_purge_falhando_juntos_sai_com_1_e_purge_e_tentado() -> Non
 @pytest.mark.asyncio
 async def test_bloqueio_google_com_purge_falhando_sai_com_1() -> None:
     mocks = _base_patches(
-        pool=_fake_pool(MagicMock()),
+        pool=FakePool(MagicMock()),
         oc=SimpleNamespace(refresh_token_enc=b"e"),
         reconcile_result=_reconcile_result(blocked_reason="queda de 40%"),
     )
@@ -175,7 +176,7 @@ async def test_bloqueio_google_com_purge_falhando_sai_com_1() -> None:
 
 @pytest.mark.asyncio
 async def test_so_o_purge_falhando_nao_muda_o_exit_code_nem_grava_crash() -> None:
-    mocks = _base_patches(pool=_fake_pool(MagicMock()), oc=SimpleNamespace(refresh_token_enc=b"e"))
+    mocks = _base_patches(pool=FakePool(MagicMock()), oc=SimpleNamespace(refresh_token_enc=b"e"))
     with ExitStack() as stack:
         _entrar(stack, mocks, sem=("purge",))
         stack.enter_context(patch(f"{_M}.purge_expired", AsyncMock(side_effect=RuntimeError("x"))))
@@ -192,7 +193,7 @@ async def test_so_o_purge_falhando_nao_muda_o_exit_code_nem_grava_crash() -> Non
 @pytest.mark.asyncio
 async def test_logging_configurado_antes_do_pool_no_job_google() -> None:
     ordem: list[str] = []
-    mocks = _base_patches(pool=_fake_pool(MagicMock()), oc=None)
+    mocks = _base_patches(pool=FakePool(MagicMock()), oc=None)
     with ExitStack() as stack:
         _entrar(stack, mocks, sem=("init_pool",), log=False)
         stack.enter_context(
@@ -209,19 +210,6 @@ async def test_logging_configurado_antes_do_pool_no_job_google() -> None:
     assert ordem == ["log", "pool"]
 
 
-class _FakeAcquire:
-    async def __aenter__(self) -> MagicMock:
-        return MagicMock()
-
-    async def __aexit__(self, *exc: object) -> bool:
-        return False
-
-
-class _FakePool:
-    def acquire(self) -> _FakeAcquire:
-        return _FakeAcquire()
-
-
 def _preparar_meta(monkeypatch: pytest.MonkeyPatch, reconcile: AsyncMock) -> dict[str, Any]:
     ordem: list[str] = []
     settings = MagicMock()
@@ -234,7 +222,7 @@ def _preparar_meta(monkeypatch: pytest.MonkeyPatch, reconcile: AsyncMock) -> dic
     close_pool = AsyncMock()
     monkeypatch.setattr(meta_resync.connection, "init_pool", init_pool)
     monkeypatch.setattr(meta_resync.connection, "close_pool", close_pool)
-    monkeypatch.setattr(meta_resync.connection, "get_pool", lambda: _FakePool())
+    monkeypatch.setattr(meta_resync.connection, "get_pool", lambda: FakePool())
     monkeypatch.setattr(meta_resync, "reconcile_meta", reconcile)
     rec = AsyncMock(return_value=1)
     monkeypatch.setattr(_audit, "record_job_run", rec)
