@@ -5,6 +5,7 @@ reusada por quem não tem nada a ver com OAuth (o resync). Duplicar paginação 
 o tipo de cópia que apodrece: a correção entra numa das duas e a outra fica.
 """
 
+from collections.abc import AsyncIterator
 from typing import Any, NamedTuple
 
 import httpx
@@ -42,6 +43,43 @@ class PagedFetch(NamedTuple):
     complete: bool
 
 
+async def paginas_graph(
+    http: httpx.AsyncClient,
+    url: str,
+    params: dict[str, Any],
+    headers: dict[str, str],
+    max_pages: int,
+) -> AsyncIterator[httpx.Response]:
+    """O laço único de `paging.next`: entrega cada resposta, sem decidir sobre ela.
+
+    RECEBE o cliente, nunca o constrói (o executor é o único construtor, já
+    gateado). Cada resposta passa pelo alarme de versão antes de sair. O
+    chamador decide o que fazer com o status: parar (`break`/`raise`/`return`)
+    fecha o gerador; se seguir, o gerador lê o `paging.next` e pede a próxima.
+    Resposta não-200 ou sem objeto JSON encerra a iteração depois de entregue.
+
+    `params` vai só na primeira chamada: a URL de `paging.next` já carrega
+    cursor e fields. `headers` (Authorization) vai em CADA página (F82). A URL
+    do `next` segue como STRING (F189).
+    """
+    proxima: str | None = None
+    for _ in range(max_pages):
+        if proxima is None:
+            resp = await http.get(url, params=params, headers=headers)
+        else:
+            resp = await http.get(proxima, headers=headers)
+        avisar_versao_meta(resp.headers)
+        yield resp
+        if resp.status_code != 200:
+            return
+        bruto = resp.json()
+        if not isinstance(bruto, dict):
+            return
+        proxima = (bruto.get("paging") or {}).get("next")
+        if not proxima:
+            return
+
+
 async def fetch_paginated(
     http: httpx.AsyncClient,
     url: str,
@@ -53,17 +91,9 @@ async def fetch_paginated(
     rows: list[dict[str, Any]] = []
     # F82 — token no HEADER, nunca na query: quem lê a URL num log contorna tudo.
     headers = {"Authorization": f"Bearer {access_token}"}
-    proxima: str | None = url
-    primeira = True
-    for _ in range(max_pages):
-        # mypy nao carrega o narrowing do `if not proxima` (linha ~53) atraves da
-        # volta do loop — a entrada aqui e o join de "antes do for" (proxima=url,
-        # sempre str) com "fim da iteracao anterior" (so reentra se proxima era
-        # truthy). O assert documenta o invariante e restaura o narrowing.
-        assert proxima is not None
-        resp = await http.get(proxima, params=params if primeira else None, headers=headers)
-        primeira = False
-        avisar_versao_meta(resp.headers)
+    lidas = 0
+    async for resp in paginas_graph(http, url, params, headers, max_pages):
+        lidas += 1
         if resp.status_code != 200:
             log.warning(
                 "meta_graph_page_failed",
@@ -74,8 +104,7 @@ async def fetch_paginated(
             return PagedFetch(rows, False)
         body = resp.json()
         rows.extend(body.get("data", []))
-        proxima = (body.get("paging") or {}).get("next")
-        if not proxima:
+        if not (body.get("paging") or {}).get("next"):
             return PagedFetch(rows, True)
-    log.warning("meta_graph_page_cap", fetched=len(rows))
+    log.warning("meta_graph_page_cap", fetched=len(rows), pages=lidas)
     return PagedFetch(rows, False)

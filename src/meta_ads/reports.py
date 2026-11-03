@@ -28,7 +28,7 @@ from src.meta_ads.client import (
     MetaSystemUserTokenMissingError,
 )
 from src.meta_ads.errors import to_friendly_meta_error
-from src.meta_ads.graph import avisar_versao_meta
+from src.meta_ads.graph import paginas_graph
 
 log = structlog.get_logger(__name__)
 
@@ -117,18 +117,11 @@ async def _paginar_graph(
     """
     linhas: list[Any] = []
     corpo: dict[str, Any] = {}
-    proxima: str | None = None
     headers = httpx.Headers()
     lidas = 0
-    for _ in range(max_pages):
-        if proxima is None:
-            resp = await http.get(url, params=params, headers=cabecalhos)
-        else:
-            # `paging.next` ja carrega cursor e fields na propria URL.
-            resp = await http.get(proxima, headers=cabecalhos)
+    async for resp in paginas_graph(http, url, params, cabecalhos, max_pages):
         headers = resp.headers
         capturados.append(headers)
-        avisar_versao_meta(headers)
         if resp.status_code != 200:
             raise MetaGraphHTTPError(resp.status_code, resp.text)
         bruto = resp.json()
@@ -138,9 +131,6 @@ async def _paginar_graph(
         corpo = bruto
         lidas += 1
         linhas.extend(corpo.get("data") or [])
-        proxima = (corpo.get("paging") or {}).get("next")
-        if not proxima:
-            break
     return corpo, linhas, headers, lidas
 
 

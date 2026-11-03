@@ -161,3 +161,100 @@ async def test_audit_quebrando_no_erro_preserva_a_mensagem_amigavel() -> None:
         await _rodar(handler, audit=audit)
     assert "conexao stale" not in exc.value.message
     audit.assert_awaited_once()
+
+
+# --- Caracterizacao dos dois laços de paginacao (Task D4) ---------------------
+# Escritos ANTES de unificar o laço: fixam o comportamento observável dos dois
+# adaptadores (levantar x devolver complete=False) para a refatoração não mudá-lo.
+
+
+def _paginas(statuses: list[int]) -> tuple[Any, list[httpx.Request]]:
+    vistos: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        vistos.append(request)
+        i = len(vistos)
+        status = statuses[i - 1] if i <= len(statuses) else 200
+        if status != 200:
+            return httpx.Response(
+                status,
+                json={"error": {"code": 80004, "message": "too many calls"}},
+                headers={"x-business-use-case-usage": f"p{i}"},
+            )
+        return httpx.Response(
+            200,
+            json={"data": [{"i": i}], "paging": {"next": f"https://graph.facebook.com/v25.0/p{i}"}},
+            headers={"x-business-use-case-usage": f"p{i}"},
+        )
+
+    return handler, vistos
+
+
+@pytest.mark.asyncio
+async def test_paginar_graph_429_na_segunda_pagina_levanta_e_guarda_headers() -> None:
+    handler, vistos = _paginas([200, 429])
+    capturados: list[httpx.Headers] = []
+    async with _cliente(handler) as http:
+        with pytest.raises(reports.MetaGraphHTTPError) as ei:
+            await reports._paginar_graph(
+                http,
+                "https://graph.facebook.com/v25.0/x",
+                {"fields": "id"},
+                {"Authorization": "Bearer tok"},
+                5,
+                capturados,
+            )
+    assert ei.value.status == 429
+    assert ei.value.retryable is True
+    assert ei.value.code == 80004
+    assert [h["x-business-use-case-usage"] for h in capturados] == ["p1", "p2"]
+    # F82: o Authorization vai em CADA pagina; params so na primeira.
+    assert all(r.headers["Authorization"] == "Bearer tok" for r in vistos)
+    assert "fields=id" in str(vistos[0].url)
+    assert "fields" not in str(vistos[1].url)
+
+
+@pytest.mark.asyncio
+async def test_paginar_graph_para_no_max_pages_e_devolve_o_paging_da_ultima() -> None:
+    handler, vistos = _paginas([])
+    async with _cliente(handler) as http:
+        corpo, linhas, headers, lidas = await reports._paginar_graph(
+            http, "https://graph.facebook.com/v25.0/x", {}, {}, 2, []
+        )
+    assert (lidas, len(vistos), len(linhas)) == (2, 2, 2)
+    assert corpo["paging"]["next"].endswith("/p2")
+    assert headers["x-business-use-case-usage"] == "p2"
+
+
+@pytest.mark.asyncio
+async def test_paginar_graph_corpo_nao_json_objeto_levanta() -> None:
+    def handler(_r: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=[1, 2])
+
+    async with _cliente(handler) as http:
+        with pytest.raises(reports.MetaGraphHTTPError):
+            await reports._paginar_graph(http, "https://graph.facebook.com/v25.0/x", {}, {}, 2, [])
+
+
+@pytest.mark.asyncio
+async def test_fetch_paginated_erro_na_segunda_pagina_devolve_incompleto_com_o_que_veio() -> None:
+    handler, vistos = _paginas([200, 429])
+    async with _cliente(handler) as http:
+        out = await graph.fetch_paginated(
+            http, "https://graph.facebook.com/v25.0/x", access_token="tok", params={"fields": "id"}
+        )
+    assert out.complete is False
+    assert [r["i"] for r in out.rows] == [1]
+    assert all(r.headers["Authorization"] == "Bearer tok" for r in vistos)
+    assert "fields" not in str(vistos[1].url)
+
+
+@pytest.mark.asyncio
+async def test_fetch_paginated_estourar_max_pages_devolve_incompleto() -> None:
+    handler, vistos = _paginas([])
+    async with _cliente(handler) as http:
+        out = await graph.fetch_paginated(
+            http, "https://graph.facebook.com/v25.0/x", access_token="tok", params={}, max_pages=3
+        )
+    assert out.complete is False
+    assert (len(out.rows), len(vistos)) == (3, 3)
