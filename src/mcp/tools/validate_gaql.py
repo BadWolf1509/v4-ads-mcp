@@ -13,9 +13,9 @@ from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
 from src.governance.bookkeeping import best_effort
 from src.governance.rate_limit import (
+    CHAVE_COTA_PROJETO,
     QuotaExhausted,
     before_call,
-    hash_developer_token,
     record_actual,
 )
 from src.mcp.context import get_current
@@ -110,7 +110,7 @@ async def validate_gaql(args: dict[str, Any]) -> dict[str, Any]:
     # reserva precisa acontecer ANTES do search() -- antes desta task o gate
     # citava rate-limit como motivacao mas o rate-limit nao estava no caminho.
     settings = get_settings()
-    token_id = hash_developer_token(settings.google_ads_developer_token)
+    token_id = CHAVE_COTA_PROJETO
     started = time.monotonic()
     estimated_ops = 1
     actual_ops = 0

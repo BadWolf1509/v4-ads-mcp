@@ -30,9 +30,9 @@ from src.google_ads.partial_failure import erros_por_indice
 from src.google_ads.request_id import get_request_id, reset_request_id
 from src.governance.bookkeeping import best_effort
 from src.governance.rate_limit import (
+    CHAVE_COTA_PROJETO,
     QuotaExhausted,
     before_call,
-    hash_developer_token,
     record_actual,
 )
 
@@ -255,7 +255,7 @@ async def run_offline_user_data_job(
         member_count=len(hashed_members),
     )
 
-    token_id = hash_developer_token(settings.google_ads_developer_token)
+    token_id = CHAVE_COTA_PROJETO
     started = time.monotonic()
     pool = connection.get_pool()
     member_count = len(hashed_members)

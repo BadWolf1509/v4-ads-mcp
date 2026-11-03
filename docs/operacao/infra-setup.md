@@ -10,7 +10,7 @@ This document records the cloud-console actions performed once to bootstrap the 
 
 - **Projeto GCP:** `v4-ads-mcp` (project number **`299432068772`**), **Wellington owner**, billing própria. Região `southamerica-east1`.
 - **URL do serviço:** `https://v4-ads-mcp-299432068772.southamerica-east1.run.app` (`PUBLIC_BASE_URL` no `deploy.yml`; OAuth redirect_uri usa `request.url_for`, não deriva daqui — F68). Revisão corrente em 2026-07-23: `v4-ads-mcp-00028-lvc`, 100% do tráfego.
-- **Secret Manager (13 secrets):** `database-url`, `aes-master-key`, `session-signing-key`, `google-oauth-client-id`, `google-oauth-client-secret`, `google-ads-developer-token`, `google-ads-login-customer-id`, `supabase-url`, `supabase-anon-key`, `supabase-service-key`, `meta-app-id`, `meta-app-secret`, `meta-system-user-token`. A `aes-master-key`/`session-signing-key` foram **regeneradas** na migração (→ gestores reconectam Google; token cifrado com chave antiga cai na mensagem amigável F70).
+- **Secret Manager (13 secrets):** `database-url`, `aes-master-key`, `session-signing-key`, `google-oauth-client-id`, `google-oauth-client-secret`, `google-ads-developer-token` (não montado desde 11/2026), `google-ads-login-customer-id`, `supabase-url`, `supabase-anon-key`, `supabase-service-key`, `meta-app-id`, `meta-app-secret`, `meta-system-user-token`. A `aes-master-key`/`session-signing-key` foram **regeneradas** na migração (→ gestores reconectam Google; token cifrado com chave antiga cai na mensagem amigável F70).
 - **Service accounts:** `v4-ads-mcp-runtime` (identidade do Cloud Run + jobs; tem `roles/storage.objectCreator` no bucket de backup), `github-deployer` (deploy via WIF), `v4-ads-mcp-scheduler` (invoca os jobs via Scheduler, least-privilege `run.invoker`).
 - **Cloud Run Jobs** (todos com process CNB `/cnb/process/<type>` — F66; criar/atualizar com arg iniciando em `/` **em PowerShell**, Git Bash mangla o path):
   - `v4-ads-mcp-migrate` (`/cnb/process/migrate`) — roda no deploy.
@@ -199,7 +199,7 @@ zero é o default e não é serializado. Não é bug: `COMPARISON_GT` com thresh
 - [x] Connection string in Secret Manager: `database-url` (uses Shared Pooler `aws-1-sa-east-1.pooler.supabase.com:5432`, IPv4)
 
 ## Google Ads
-- [x] Developer token: `<set in Secret Manager — see 1Password "v4-ads-mcp / google-ads-dev-token">` (Test Account mode at MVP; submit Standard Access during Phase 1)
+- [x] Developer token: aposentado pelo Google em 09/09/2026 e não usado desde 11/2026. O nível de acesso é do projeto dono do cliente OAuth (`v4-ads-mcp`); veja em Console > Google Ads API > Níveis de acesso.
 - [x] V4 MCC ID: `6436352492` (was previously misidentified as `7862230676` which is actually a child account "Mestre da Obra - João Pessoa")
 - [x] OAuth Client created in GCP Console with redirect URI `https://v4-ads-mcp-jf26mmrgqa-rj.a.run.app/oauth/google/callback`
 
@@ -213,12 +213,11 @@ zero é o default e não é serializado. Não é bug: `COMPARISON_GT` com thresh
 - E2E verified: wellinton.ribeiro@v4company.com bootstrapped → OAuth flow completed → 23 V4 client accounts populated via resync → granted access → MCP session created → Codex CLI configured + connected → `list_my_accounts` returned all 23 accounts → audit_log captured 2 calls (6ms + 7ms duration each).
 - Known limitations carried into Phase 1b:
   - Userinfo endpoint failed during OAuth (scope `adwords` alone doesn't include email); google_email is currently "unknown". Add `email` scope in Phase 1b.
-  - Developer token still in Test mode (15k ops/day quota). Submit for Standard Access when quota becomes constraining.
-
+  
 ### Phase 2 — Read tools (2026-05-04)
 - 16 curated read tools (visao geral, performance, tactical, client report) + 3 GAQL utilities (run_gaql, validate_gaql, list_gaql_resources) shipped.
 - Total tools registered: 20 (incl. list_my_accounts from Phase 1a).
-- Rate limit module enforces 15k ops/day per developer token (Basic Access). Warning at 80%, block at 100%.
+- Rate limit module enforces 15k ops/day per Google Cloud project key (`google-cloud-project`). Warning at 80%, block at 100%.
 - Audit log captures sensitive reads only (recommendations, run_gaql, conversion_actions).
 - jsonschema input validation in MCP call_tool (defense in depth).
 - 114 tests passing (unit + integration with testcontainers Postgres + mocked Google Ads SDK).

@@ -4,7 +4,7 @@ Ferramenta **interna da V4 Company** que conecta as contas **Google Ads** e **Me
 
 - **Produção:** `https://v4-ads-mcp-299432068772.southamerica-east1.run.app`
 - **Onboarding (como conectar seu cliente de IA):** [`/help`](https://v4-ads-mcp-299432068772.southamerica-east1.run.app/help)
-- **MCC Google Ads:** `6436352492` (V4 Maceió) · **BM Meta:** V4 Lima Soares & Co
+- **MCC Google Ads:** `6436352492` (V4 Lima Soares & Co) · **BM Meta:** V4 Lima Soares & Co
 
 ## O que faz
 

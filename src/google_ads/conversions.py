@@ -35,9 +35,9 @@ from src.google_ads.request_id import (
 )
 from src.governance.bookkeeping import best_effort
 from src.governance.rate_limit import (
+    CHAVE_COTA_PROJETO,
     QuotaExhausted,
     before_call,
-    hash_developer_token,
     record_actual,
 )
 
@@ -91,7 +91,7 @@ async def run_conversion_upload(
             "provider_request_id": "",
         }
     zone = ZoneInfo(tz_name)
-    token_id = hash_developer_token(settings.google_ads_developer_token)
+    token_id = CHAVE_COTA_PROJETO
     started = time.monotonic()
     pool = connection.get_pool()
     provider_request_id: str | None = None

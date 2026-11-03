@@ -27,7 +27,6 @@ _TEST_ENV = {
     "AES_MASTER_KEY": "y" * 32,
     "GOOGLE_OAUTH_CLIENT_ID": "test-client.apps.googleusercontent.com",
     "GOOGLE_OAUTH_CLIENT_SECRET": "test-secret",
-    "GOOGLE_ADS_DEVELOPER_TOKEN": "test-dev-token",
     "GOOGLE_ADS_LOGIN_CUSTOMER_ID": "1234567890",
     "LOG_LEVEL": "warning",
     "META_APP_ID": "test_meta_app_123456789",

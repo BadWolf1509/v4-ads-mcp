@@ -19,7 +19,7 @@
 - `audit_log.provider_request_id` (renomeado de `google_request_id` em M.2a): genérico.
 - `managers.id` UUID sem DEFAULT — caller provê `uuid4()`. `managers.status`: `'invited'|'active'|'inactive'` (+ `is_active` bool).
 - `mcp_sessions.id` UUID DEFAULT `gen_random_uuid()`.
-- `rate_counters` tem `operations_used` (NÃO `used_today`), PK `(developer_token_id, date)`.
+- `rate_counters` tem `operations_used` (NÃO `used_today`), PK `(developer_token_id, date)`. O nome da coluna é histórico: desde o fim do developer token (09/09/2026) ela guarda `google-cloud-project` (`CHAVE_COTA_PROJETO`) ou `mgr:<uuid>`.
 - `pending_confirmations.token` (NÃO `id`) é PK; `payload` é jsonb.
 - **JOIN + coluna duplicada (F59):** `audit_log` E `managers` têm coluna `status` → qualifique TODA clause com alias (`al.status`) em queries com JOIN — nunca deixe coluna sem alias nesse cenário: o nome ambíguo só estoura em runtime, quando as duas tabelas de fato colidem no nome da coluna.
 - **asyncpg cursor exige transação (F58):** `async for row in conn.cursor(...)` PRECISA de `async with conn.transaction():` — nunca use `conn.cursor(...)` fora dessa transação explícita.

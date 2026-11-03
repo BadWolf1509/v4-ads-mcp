@@ -12,7 +12,7 @@ dependencies = [
     "pydantic-settings>=2.6.0",
     "structlog>=24.4.0",
     "httpx>=0.27.0",
-    "google-ads>=27.0.0",
+    "google-ads>=33.0.0",
     # Piso de seguranca (PYSEC-2026-3552). Dep direta nossa.
     "cryptography>=50.0.0",
     # Piso de seguranca: certifi 2026.10.18 (dep transitiva do httpx).

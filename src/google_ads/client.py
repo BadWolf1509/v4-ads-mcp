@@ -22,7 +22,6 @@ from src.google_ads.errors import GoogleAdsFriendlyError
 def build_client(
     *,
     refresh_token: str,
-    developer_token: str,
     client_id: str,
     client_secret: str,
     login_customer_id: str,
@@ -31,7 +30,6 @@ def build_client(
     from google.ads.googleads.client import GoogleAdsClient
 
     config = {
-        "developer_token": developer_token,
         "refresh_token": refresh_token,
         "client_id": client_id,
         "client_secret": client_secret,
@@ -90,7 +88,6 @@ async def build_client_for_manager(*, manager_id: UUID) -> Any:
             partial(
                 build_client,
                 refresh_token=refresh_token,
-                developer_token=settings.google_ads_developer_token,
                 client_id=settings.google_oauth_client_id,
                 client_secret=settings.google_oauth_client_secret,
                 login_customer_id=settings.google_ads_login_customer_id,

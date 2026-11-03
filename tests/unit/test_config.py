@@ -15,7 +15,6 @@ def test_settings_loads_required_envs():
         "AES_MASTER_KEY": "y" * 32,
         "GOOGLE_OAUTH_CLIENT_ID": "client.apps.googleusercontent.com",
         "GOOGLE_OAUTH_CLIENT_SECRET": "secret",
-        "GOOGLE_ADS_DEVELOPER_TOKEN": "dev-token",
         "GOOGLE_ADS_LOGIN_CUSTOMER_ID": "1234567890",
     }
     with patch.dict(os.environ, env, clear=True):
@@ -33,7 +32,6 @@ def test_settings_rejects_short_signing_key():
         "AES_MASTER_KEY": "y" * 32,
         "GOOGLE_OAUTH_CLIENT_ID": "client",
         "GOOGLE_OAUTH_CLIENT_SECRET": "secret",
-        "GOOGLE_ADS_DEVELOPER_TOKEN": "dev-token",
         "GOOGLE_ADS_LOGIN_CUSTOMER_ID": "1234567890",
     }
     with patch.dict(os.environ, env, clear=True), pytest.raises(ValidationError):
@@ -48,7 +46,6 @@ def test_login_customer_id_must_be_digits():
         "AES_MASTER_KEY": "y" * 32,
         "GOOGLE_OAUTH_CLIENT_ID": "client",
         "GOOGLE_OAUTH_CLIENT_SECRET": "secret",
-        "GOOGLE_ADS_DEVELOPER_TOKEN": "dev-token",
         "GOOGLE_ADS_LOGIN_CUSTOMER_ID": "123-456-7890",  # has dashes
     }
     with patch.dict(os.environ, env, clear=True), pytest.raises(ValidationError):

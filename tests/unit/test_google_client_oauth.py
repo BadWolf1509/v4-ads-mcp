@@ -36,7 +36,6 @@ def _oauth_ativo(monkeypatch: pytest.MonkeyPatch) -> None:
         "src.config.get_settings",
         lambda: SimpleNamespace(
             aes_master_key="m",
-            google_ads_developer_token="d",
             google_oauth_client_id="i",
             google_oauth_client_secret="s",
             google_ads_login_customer_id="1",
@@ -149,3 +148,18 @@ def test_credencial_do_servidor_recusada_nao_e_temporaria(motivo: str) -> None:
         str(amigavel) == "Credencial OAuth do servidor recusada pelo Google. Avise o administrador."
     )
     assert amigavel.code == "OAUTH_CLIENT_REJECTED"
+
+
+def test_cliente_nao_envia_developer_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Token aposentado em 09/09/2026: o SDK real monta o cliente sem ele."""
+    from google.ads.googleads import oauth2
+
+    monkeypatch.setattr(oauth2, "get_credentials", lambda _cfg: object())
+    cliente = client_mod.build_client(
+        refresh_token="r",
+        client_id="i",
+        client_secret="s",
+        login_customer_id="1234567890",
+    )
+
+    assert cliente.developer_token is None

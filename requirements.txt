@@ -36,7 +36,7 @@ cryptography==50.0.1
     #   pyjwt
 fastapi==0.139.2
     # via v4-ads-mcp (pyproject.toml)
-google-ads==31.4.0
+google-ads==33.0.0
     # via v4-ads-mcp (pyproject.toml)
 google-api-core==2.43.0
     # via
