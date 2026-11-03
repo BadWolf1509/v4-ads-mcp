@@ -1151,6 +1151,37 @@ def test_queries_nao_importa_executor() -> None:
     )
 
 
+def test_dominio_google_nao_importa_a_camada_mcp() -> None:
+    """Task G3: `src/google_ads/` nao depende de `src.mcp` (tools, contexto, registry).
+
+    O dominio recebe `manager_id`/`session_id`/`today` de quem o chama; o contexto da
+    request (`get_current`) e resolvido na tool. Um import de `src.mcp` aqui inverte a
+    camada e prende o dominio ao handshake MCP. AST: cobre `import`, `from ... import`
+    e a forma `from src import mcp`.
+    """
+    offenders = []
+    examinados = 0
+    for p in sorted((SRC / "google_ads").rglob("*.py")):
+        examinados += 1
+        tree = ast.parse(p.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                mod = node.module or ""
+                ruim = mod == "src.mcp" or mod.startswith("src.mcp.")
+                ruim = ruim or (mod == "src" and any(a.name == "mcp" for a in node.names))
+            elif isinstance(node, ast.Import):
+                ruim = any(a.name == "src.mcp" or a.name.startswith("src.mcp.") for a in node.names)
+            else:
+                continue
+            if ruim:
+                offenders.append(f"{p.relative_to(SRC)}:{node.lineno}")
+    assert examinados > 30, "controle: o guard precisa enxergar o pacote inteiro"
+    assert not offenders, (
+        f"src/google_ads/ importa a camada MCP: {offenders}. "
+        "Receba manager_id/session_id/today como parametro; get_current() fica na tool."
+    )
+
+
 def test_finally_bookkeeping_is_best_effort() -> None:
     """F83: I/O de bookkeeping (audit/quota) dentro de `finally` precisa estar sob
     best_effort.

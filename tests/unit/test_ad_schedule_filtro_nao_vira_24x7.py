@@ -1,6 +1,6 @@
 """Filtro de status nao pode virar afirmacao sobre entrega."""
 
-from src.mcp.tools.get_ad_schedule import campanhas_com_grade_incerta
+from src.google_ads.ad_schedule import campanhas_com_grade_incerta
 
 
 def test_filtro_paused_torna_toda_campanha_incerta() -> None:

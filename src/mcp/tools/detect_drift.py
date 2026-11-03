@@ -9,15 +9,16 @@ Use case primário: co-management (lição 46 dogfood).
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
+from uuid import UUID
 
 from src.google_ads.account_clock import resolve_account_today
+from src.google_ads.change_scan import CAP_CHANGE_EVENT, consultar_change_history
 from src.google_ads.drift_detection import detect_drift as _detect_drift_pure
 from src.google_ads.drift_detection import dict_to_change_event_row
 from src.google_ads.queries._common import resolve_date_window
 from src.mcp.context import get_current
 from src.mcp.tools._common import aplicar_limite
 from src.mcp.tools._registry import register_tool
-from src.mcp.tools.get_change_history import _CAP_CHANGE_EVENT, consultar_change_history
 
 # Teto de eventos POR sub-janela. E o cap DURO do recurso `change_event`, nao
 # uma escolha nossa: `LIMIT` e obrigatorio e acima de 10k a API recusa com
@@ -29,7 +30,7 @@ from src.mcp.tools.get_change_history import _CAP_CHANGE_EVENT, consultar_change
 #
 # Ate a Task 5 este teto era `500` escrito no meio da chamada. Vinte vezes
 # menor que o que a API aceita, sem aparecer em lugar nenhum da resposta.
-_TETO_POR_JANELA = _CAP_CHANGE_EVENT
+_TETO_POR_JANELA = CAP_CHANGE_EVENT
 
 # Teto TOTAL de eventos examinados numa chamada, somando todas as sub-janelas.
 # Duas janelas cheias: o bastante para a particao valer alguma coisa, pouco o
@@ -190,7 +191,14 @@ class _Varredura:
 
 
 async def _ler(
-    customer_id: str, *, inicio: date, fim: date, teto: int, hoje: date
+    customer_id: str,
+    *,
+    inicio: date,
+    fim: date,
+    teto: int,
+    hoje: date,
+    manager_id: UUID,
+    session_id: UUID,
 ) -> dict[str, Any]:
     """Uma leitura de `get_change_history` (audit_this_call=True herdado).
 
@@ -209,10 +217,20 @@ async def _ler(
             "limit": teto,
         },
         today=hoje,
+        manager_id=manager_id,
+        session_id=session_id,
     )
 
 
-async def _varrer(customer_id: str, *, inicio: date, fim: date, hoje: date) -> _Varredura:
+async def _varrer(
+    customer_id: str,
+    *,
+    inicio: date,
+    fim: date,
+    hoje: date,
+    manager_id: UUID,
+    session_id: UUID,
+) -> _Varredura:
     """Le a janela inteira; se ela nao couber no cap do `change_event`, re-le dia a dia.
 
     Padrao: **particionamento de janela temporal** (range splitting), que e a
@@ -234,7 +252,15 @@ async def _varrer(customer_id: str, *, inicio: date, fim: date, hoje: date) -> _
     multiplicaria por ate 30 a quota de toda chamada de uma tool que roda em
     D+1 de todo batch.
     """
-    primeira = await _ler(customer_id, inicio=inicio, fim=fim, teto=_TETO_POR_JANELA, hoje=hoje)
+    primeira = await _ler(
+        customer_id,
+        inicio=inicio,
+        fim=fim,
+        teto=_TETO_POR_JANELA,
+        hoje=hoje,
+        manager_id=manager_id,
+        session_id=session_id,
+    )
 
     # A janela EFETIVA e a que a leitura devolveu, nao a que pedimos: o clamp
     # de retencao (F23) pode ter movido o inicio, e varrer dia a dia a partir
@@ -276,7 +302,15 @@ async def _varrer(customer_id: str, *, inicio: date, fim: date, hoje: date) -> _
             # o da API, que parou a varredura.
             teto_total_atingido = True
             break
-        parcial = await _ler(customer_id, inicio=dia, fim=dia, teto=_TETO_POR_JANELA, hoje=hoje)
+        parcial = await _ler(
+            customer_id,
+            inicio=dia,
+            fim=dia,
+            teto=_TETO_POR_JANELA,
+            hoje=hoje,
+            manager_id=manager_id,
+            session_id=session_id,
+        )
         janelas += 1
         mais_antigo_lido = dia
         # Costura das sub-janelas, dita em voz alta: o `BETWEEN` do Google e
@@ -369,7 +403,7 @@ async def _varrer(customer_id: str, *, inicio: date, fim: date, hoje: date) -> _
     bucket="always",
 )
 async def detect_drift(args: dict[str, Any]) -> dict[str, Any]:
-    get_current()  # ensure context is bound (programmer-error guard)
+    ctx = get_current()  # tambem garante o contexto ligado (erro de programacao)
     customer_id = args["customer_id"]
     responsible_user_emails = args.get("responsible_user_emails", [])
     limit = args.get("limit", 100)
@@ -391,7 +425,14 @@ async def detect_drift(args: dict[str, Any]) -> dict[str, Any]:
     # enum do schema de lá. O teto interno de 500 morreu aqui: quem decide
     # quanto se le e `_TETO_POR_JANELA`/`_TETO_EXAMINADO`, e o que ficou de
     # fora sai declarado em `cobertura`.
-    varredura = await _varrer(customer_id, inicio=start_date_obj, fim=end_date_obj, hoje=today)
+    varredura = await _varrer(
+        customer_id,
+        inicio=start_date_obj,
+        fim=end_date_obj,
+        hoje=today,
+        manager_id=ctx.manager_id,
+        session_id=ctx.session_id,
+    )
 
     # Boundary conversion: dict → dataclass
     rows = [dict_to_change_event_row(d) for d in varredura.linhas]

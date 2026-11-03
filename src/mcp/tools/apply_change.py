@@ -19,6 +19,8 @@ from src.db import connection
 from src.google_ads.ad_schedule import (
     CurrentWindow,
     bid_modifier_diverge,
+    campanhas_com_grade_incerta,
+    rows_to_current,
     schedule_fingerprint,
     summarize_current,
     window_from_input,
@@ -46,7 +48,6 @@ from src.mcp.tools._mutate_common import (
     submitted_envelope,
 )
 from src.mcp.tools._registry import register_tool
-from src.mcp.tools.get_ad_schedule import campanhas_com_grade_incerta, rows_to_current
 
 log = structlog.get_logger(__name__)
 

@@ -50,12 +50,13 @@ import importlib
 
 from google.ads.googleads.client import _DEFAULT_VERSION
 
+from src.google_ads.change_scan import _build_summary
 from src.google_ads.drift_detection import (
     AUTO_APPLY_CLIENT_TYPES,
     ChangeEventRow,
     detect_drift,
 )
-from src.mcp.tools.get_change_history import _CLIENT_TYPES, _SCHEMA, _build_summary
+from src.mcp.tools.get_change_history import _CLIENT_TYPES, _SCHEMA
 
 # Dump verificado em 2026-09-02 com o SDK instalado (v24). Tripwire de upgrade:
 # se o `google-ads` ganhar ou perder valor, este teste falha com causa distinta

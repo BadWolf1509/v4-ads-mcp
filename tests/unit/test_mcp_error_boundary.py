@@ -6,12 +6,12 @@ from uuid import uuid4
 import pytest
 
 from src.google_ads.access import AccountAccessDeniedError
+from src.google_ads.change_scan import consultar_change_history
 from src.google_ads.errors import GoogleAdsFriendlyError
 from src.google_ads.queries._common import EntradaInvalidaError
 from src.governance.rate_limit import QuotaExhausted
 from src.mcp.context import McpRequestContext, clear_current, set_current
 from src.mcp.server import _error_envelope
-from src.mcp.tools.get_change_history import consultar_change_history
 from src.meta_ads.client import MetaAccessDeniedError
 
 
@@ -72,6 +72,8 @@ async def test_change_history_janela_inteira_fora_da_retencao() -> None:
                     "end_date": (hoje - timedelta(days=40)).isoformat(),
                 },
                 today=hoje,
+                manager_id=uuid4(),
+                session_id=uuid4(),
             )
     finally:
         clear_current()

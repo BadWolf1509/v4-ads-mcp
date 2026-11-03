@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import pytest
 
+from src.google_ads.ad_schedule import rows_to_current
 from src.mcp.tools import get_ad_schedule as mod
 from src.mcp.tools._registry import get_tool
 
@@ -105,7 +106,7 @@ def test_rows_to_current_popula_bid_modifier_no_window_e_no_currentwindow() -> N
     valor real — estado duplicado que convida ao erro. `modificador_efetivo`
     aceita qualquer `Window`; passar `c.window` por engano em vez de `c`
     devolveria o escalar em silencio, sem TypeError e sem teste vermelho."""
-    atual = mod.rows_to_current([_janela(day="MONDAY", bm=1.3)])
+    atual = rows_to_current([_janela(day="MONDAY", bm=1.3)])
     c = atual["1"][0]
     assert c.bid_modifier == 1.3
     assert c.window.bid_modifier == 1.3

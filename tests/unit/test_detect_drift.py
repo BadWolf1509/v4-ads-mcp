@@ -90,7 +90,9 @@ class _HistoricoFalso:
         # que aceitasse a chamada sem ele deixaria o defeito indistinguivel.
         self.hojes: list[date] = []
 
-    async def __call__(self, args: dict[str, Any], *, today: date) -> dict[str, Any]:
+    async def __call__(
+        self, args: dict[str, Any], *, today: date, manager_id: Any, session_id: Any
+    ) -> dict[str, Any]:
         inicio = date.fromisoformat(args["start_date"])
         fim = date.fromisoformat(args["end_date"])
         limite = args["limit"]
@@ -342,10 +344,14 @@ async def test_a_varredura_segue_a_janela_efetiva_nao_a_pedida(
     monkeypatch.setattr("src.mcp.tools.detect_drift._TETO_POR_JANELA", 10)
 
     class _ComClamp(_HistoricoFalso):
-        async def __call__(self, args: dict[str, Any], *, today: date) -> dict[str, Any]:
+        async def __call__(
+            self, args: dict[str, Any], *, today: date, manager_id: Any, session_id: Any
+        ) -> dict[str, Any]:
             if args["start_date"] < "2026-09-06":
                 args = {**args, "start_date": "2026-09-06"}
-            return await super().__call__(args, today=today)
+            return await super().__call__(
+                args, today=today, manager_id=manager_id, session_id=session_id
+            )
 
     clampado = _ComClamp({date(2026, 9, 7): 8, date(2026, 9, 6): 8})
 
@@ -417,10 +423,10 @@ def test_os_tetos_sao_constantes_nomeadas_e_maiores_que_o_defeito() -> None:
     suite inteira continuaria verde — que e exatamente o defeito que a Task 5
     fecha.
     """
+    from src.google_ads.change_scan import CAP_CHANGE_EVENT
     from src.mcp.tools.detect_drift import _TETO_EXAMINADO, _TETO_POR_JANELA
-    from src.mcp.tools.get_change_history import _CAP_CHANGE_EVENT
 
-    assert _TETO_POR_JANELA == _CAP_CHANGE_EVENT == 10_000
+    assert _TETO_POR_JANELA == CAP_CHANGE_EVENT == 10_000
     assert _TETO_POR_JANELA > 500
     assert _TETO_EXAMINADO >= _TETO_POR_JANELA
 
@@ -459,7 +465,7 @@ async def test_o_aviso_do_clamp_de_retencao_chega_ao_gestor(monkeypatch, _ctx) -
     """
     aviso = "start_date fora da retencao de 30 dias; ajustado para 2026-08-11"
 
-    async def _fake(args, *, today):
+    async def _fake(args, *, today, **_):
         return {
             "rows": [],
             "truncated": False,
@@ -485,7 +491,7 @@ async def test_sem_clamp_o_aviso_vem_null_e_nao_ausente(monkeypatch, _ctx) -> No
     por ela — e tira o retorno da forma de dict literal, que e a unica que o
     guard do truncamento consegue conferir."""
 
-    async def _fake(args, *, today):
+    async def _fake(args, *, today, **_):
         return {
             "rows": [],
             "truncated": False,

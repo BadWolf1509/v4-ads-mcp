@@ -78,7 +78,14 @@ def _linha_change(i: int) -> dict[str, Any]:
 
 @contextmanager
 def _mock_run_report(modulo: str, linhas: list[dict[str, Any]]) -> Iterator[None]:
-    with patch(f"src.mcp.tools.{modulo}.run_report", new_callable=AsyncMock) as m:
+    # `get_change_history` delega o corpo a `src.google_ads.change_scan` (Task G3): e
+    # la que `run_report` e LIDO, entao e la que o patch tem que mirar.
+    alvo = (
+        "src.google_ads.change_scan"
+        if modulo == "get_change_history"
+        else f"src.mcp.tools.{modulo}"
+    )
+    with patch(f"{alvo}.run_report", new_callable=AsyncMock) as m:
         m.return_value = linhas
         yield
 

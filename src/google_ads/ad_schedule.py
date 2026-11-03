@@ -10,7 +10,7 @@ minutos so 0/15/30/45; dias MONDAY..SUNDAY.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -339,3 +339,91 @@ def summarize_current(current: list[CurrentWindow]) -> dict[str, Any]:
         "windows": len(current),
         "hours_per_week": hours_per_week(c.window for c in current),
     }
+
+
+def rows_to_current(rows: list[dict[str, Any]]) -> dict[str, list[CurrentWindow]]:
+    """Linhas do parser -> CurrentWindow por campanha (reusado pelo update_ad_schedule)."""
+    por_campanha: dict[str, list[CurrentWindow]] = {}
+    for r in rows:
+        # Fix M6 (revisao final): popular o bid_modifier tambem no `Window`, nao
+        # so no `CurrentWindow` que o envolve — antes ficava sempre `None` aqui
+        # enquanto `CurrentWindow.bid_modifier` tinha o valor real. Nenhum
+        # call-site le `c.window.bid_modifier` hoje, mas `modificador_efetivo`
+        # aceita qualquer `Window` e devolveria o escalar em silencio se algum
+        # dia alguem passasse `c.window` por engano em vez de `c`.
+        w = Window(
+            r["day_of_week"],
+            r["start_hour"],
+            r["start_minute"],
+            r["end_hour"],
+            r["end_minute"],
+            r["bid_modifier"],
+        )
+        por_campanha.setdefault(r["campaign_id"], []).append(
+            CurrentWindow(
+                window=w,
+                resource_name=r["resource_name"],
+                criterion_id=r["criterion_id"],
+                bid_modifier=r["bid_modifier"],
+            )
+        )
+    return por_campanha
+
+
+def campanhas_com_grade_incerta(
+    rows: list[dict[str, Any]],
+    *,
+    truncated: bool,
+    # `Collection`, nao `Iterable`: o corpo le `campanhas` DUAS vezes, e um
+    # gerador viria vazio na segunda — a intersecao zeraria e a regra da borda
+    # se desligaria em silencio, sem teste vermelho e sem excecao. Nenhum
+    # call-site de hoje passa gerador (um manda dict, outro manda lista), mas
+    # `Iterable` CONVIDA a isso e o mypy aceita.
+    campanhas: Collection[str],
+    status: str,
+) -> set[str]:
+    """Campanhas cuja grade NAO pode ser afirmada depois de uma leitura cortada
+    ou filtrada.
+
+    `rows` sao as linhas que SOBREVIVERAM ao corte (pos-`aplicar_limite`).
+    Tres familias, e a segunda e a que faltava (residuo do F147):
+
+    - a **ausente**: nenhuma linha dela sobreviveu, entao `summarize_current([])`
+      a chamaria de "sem grade" — que na §3 quer dizer 24x7, o oposto do que a
+      grade dela pode dizer;
+    - a da **borda**: a dona da ULTIMA linha lida. `ad_schedule_query` ordena por
+      `campaign.id`, entao as linhas chegam agrupadas e o corte cai DENTRO da
+      grade de exatamente uma campanha — sempre existe uma nessa posicao quando
+      houve corte. O resumo dela sairia calculado sobre a PARTE lida:
+      `hours_per_week` subestimado, sem `null` e sem sinal nenhum.
+    - a **filtrada**: `status` diferente de `enabled` faz a query devolver um
+      conjunto que nao e o de entrega. Vale mesmo sem truncamento.
+
+    Nao ha como saber se o corte caiu no fim da grade da campanha da borda ou no
+    meio dela — a resposta so tem as linhas que couberam. Adivinhar "esta
+    completa" e o defeito original com outra roupa, entao a borda entra SEMPRE
+    que houve corte.
+
+    Fora de truncamento e com `status='enabled'` devolve conjunto vazio: nada
+    aqui muda a leitura completa.
+    """
+    # TERCEIRA familia (2026-09-21). As duas de baixo tratam o vazio por CORTE;
+    # esta trata o vazio por FILTRO. Entrega e determinada pelos criterios
+    # ENABLED, e so `status='enabled'` devolve exatamente esse conjunto:
+    # `paused`/`removed` excluem as janelas que restringem, e `all` inclui
+    # criterios que nao restringem. Nos tres casos o resumo deixa de ser uma
+    # afirmacao sobre entrega.
+    #
+    # Deliberadamente pessimista em `all`: daria para derivar o subconjunto
+    # enabled client-side, e isso exigiria um segundo argumento de corretude
+    # que nada testa. A clausula entra AQUI, junto das outras duas — separar
+    # as familias de novo e como o F128 nasceu.
+    if status != "enabled":
+        return set(campanhas)
+    if not truncated:
+        return set()
+    lidas = {r["campaign_id"] for r in rows}
+    incertas = {cid for cid in campanhas if cid not in lidas}
+    if rows:
+        incertas.add(rows[-1]["campaign_id"])
+    return incertas & set(campanhas)

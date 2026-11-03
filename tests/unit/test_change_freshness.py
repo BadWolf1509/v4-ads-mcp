@@ -178,7 +178,7 @@ async def test_zero_linhas_ainda_traz_veredito_de_frescor(_ctx) -> None:
         return date(2026, 9, 2)
 
     with (
-        patch("src.mcp.tools.get_change_history.run_report", run),
+        patch("src.google_ads.change_scan.run_report", run),
         patch("src.mcp.tools.get_change_history.resolve_account_today", _hoje),
     ):
         result = await get_change_history({"customer_id": "1234567890", "date_range": "TODAY"})
@@ -203,7 +203,7 @@ async def test_detect_drift_propaga_a_fronteira(_ctx) -> None:
         return date(2026, 9, 2)
 
     with (
-        patch("src.mcp.tools.get_change_history.run_report", run),
+        patch("src.google_ads.change_scan.run_report", run),
         patch("src.mcp.tools.detect_drift.resolve_account_today", _hoje),
     ):
         result = await detect_drift({"customer_id": "1234567890", "date_range": "TODAY"})
@@ -251,7 +251,7 @@ async def test_sonda_de_fronteira_nao_herda_a_janela_do_usuario(_ctx) -> None:
     async def _sonda_para(date_range: str) -> str:
         run, queries = _fake_run_report(main_rows=[], frontier_dt="2026-08-31 10:52:36.708927")
         with (
-            patch("src.mcp.tools.get_change_history.run_report", run),
+            patch("src.google_ads.change_scan.run_report", run),
             patch("src.mcp.tools.get_change_history.resolve_account_today", _hoje),
         ):
             await get_change_history({"customer_id": "1234567890", "date_range": date_range})

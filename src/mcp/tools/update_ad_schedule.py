@@ -18,6 +18,7 @@ from src.google_ads.ad_schedule import (
     hours_per_week,
     modificador_efetivo,
     partition_metrics,
+    rows_to_current,
     schedule_fingerprint,
     summarize_current,
     validate_windows,
@@ -41,7 +42,6 @@ from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
 from src.mcp.tools._mutate_common import error_envelope, preview_envelope
 from src.mcp.tools._registry import register_tool
-from src.mcp.tools.get_ad_schedule import rows_to_current
 
 _JANELA = {
     "type": "object",
