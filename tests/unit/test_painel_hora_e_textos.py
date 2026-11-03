@@ -43,7 +43,8 @@ def test_texto_pequeno_nao_usa_green_ou_gold_puros():
 def test_textos_falsos_do_modelo_b_nao_voltam():
     index = (_TEMPLATES / "admin" / "index.html").read_text("utf-8")
     assert "Vai desativar todas as tools Meta" not in index
-    access_meta = (_TEMPLATES / "admin" / "access_meta.html").read_text("utf-8")
-    assert "Rode o refresh" not in access_meta
+    # F5: a matriz Meta mora no mesmo template da Google desde 03/11.
+    access = (_TEMPLATES / "admin" / "access.html").read_text("utf-8")
+    assert "Rode o refresh" not in access
     src = (_ROOT / "src" / "meta_ads" / "account_overview.py").read_text("utf-8")
     assert "Conectar Meta" not in src

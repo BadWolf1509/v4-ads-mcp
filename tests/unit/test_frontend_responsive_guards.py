@@ -185,9 +185,7 @@ def test_dropdown_escapa_do_contentor_de_scroll():
     [
         "audit_detail.html",
         "admin/access_manager_detail.html",
-        "admin/access_manager_detail_meta.html",
         "admin/access_by_manager.html",
-        "admin/access_by_manager_meta.html",
     ],
 )
 def test_email_longo_quebra_em_vez_de_estourar(caminho: str):

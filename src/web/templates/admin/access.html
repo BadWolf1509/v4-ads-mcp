@@ -1,7 +1,11 @@
 {% extends "_base.html" %}
 {% from "_components.html" import empty_state, alert, search_input %}
+{# Matriz de acessos, Google e Meta. `plataforma` (PlataformaAcesso, em
+   routes/_acesso.py) diz a coluna da conta, a raiz das rotas e o sufixo dos
+   ids dos modais; badge de status e Business Manager só existem no Meta. #}
+{% set p = plataforma %}
 
-{% block title %}Admin · Acessos — V4 Ads MCP{% endblock %}
+{% block title %}Admin · Acessos{% if p.e_meta %} Meta{% endif %} — V4 Ads MCP{% endblock %}
 
 {% block content %}
 <section class="max-w-7xl mx-auto py-6 px-4">
@@ -19,7 +23,11 @@
       action='<a href="/admin/invites" class="v4-btn v4-btn--primary">Convidar gestor</a>'
     ) }}
   {% elif not accounts %}
+    {% if p.e_meta %}
+    {{ empty_state("Nenhuma conta Meta sincronizada.", "Aguarde o resync diário (06:00, horário de Brasília).") }}
+    {% else %}
     {{ empty_state("Nenhuma conta sincronizada.", "Aguarde o resync diário ou verifique o setup do MCC.") }}
+    {% endif %}
   {% else %}
 
   {# Search + bulk toolbar #}
@@ -35,7 +43,7 @@
     </div>
   </div>
 
-  <div class="overflow-x-auto v4-card p-0" tabindex="0" role="region" aria-label="Matriz de acessos Google">
+  <div class="overflow-x-auto v4-card p-0" tabindex="0" role="region" aria-label="Matriz de acessos {{ p.rotulo }}">
     <table class="v4-table v4-table--compact" id="access-matrix">
       <thead>
         <tr>
@@ -49,18 +57,28 @@
       </thead>
       <tbody>
         {% for a in accounts %}
-        <tr data-account-name="{{ a.descriptive_name|lower }}" data-account-id="{{ a.customer_id }}">
-          <th scope="row" id="v4-acc-{{ a.customer_id }}" class="sticky left-0 bg-white whitespace-nowrap">
-            <strong>{{ a.descriptive_name }}</strong>
-            <div class="text-xs text-v4-gray-500 font-mono">{{ a.customer_id }}</div>
+        {% set conta_id = a[p.coluna_conta] %}
+        {% set conta_nome = a[p.campo_nome_conta] %}
+        <tr data-account-name="{{ conta_nome|lower }}" data-account-id="{{ conta_id }}">
+          <th scope="row" id="v4-acc-{{ conta_id }}" class="sticky left-0 bg-white whitespace-nowrap">
+            <strong>{{ conta_nome }}</strong>
+            {% if p.e_meta %}
+            {% if a.account_status == 1 %}
+              <span class="text-xs text-v4-green-text">● {{ a.account_status | meta_status_label }}</span>
+            {% else %}
+              <span class="text-xs text-v4-red-medium">● {{ a.account_status | meta_status_label }}</span>
+            {% endif %}
+            <div class="text-xs text-v4-gray-500">{{ a.business_name or "—" }}</div>
+            {% endif %}
+            <div class="text-xs text-v4-gray-500 font-mono">{{ conta_id }}</div>
           </th>
           {% for m in managers_list %}
           <td class="text-center" data-manager-id="{{ m.id }}">
             <input type="checkbox"
-                   aria-labelledby="v4-mgr-{{ m.id }} v4-acc-{{ a.customer_id }}"
-                   {% if (m.id|string, a.customer_id) in access_set %}checked{% endif %}
-                   hx-post="/admin/access/toggle"
-                   hx-vals='{"manager_id": "{{ m.id }}", "customer_id": "{{ a.customer_id }}", "desejado": "{{ 'revoke' if (m.id|string, a.customer_id) in access_set else 'grant' }}"}'
+                   aria-labelledby="v4-mgr-{{ m.id }} v4-acc-{{ conta_id }}"
+                   {% if (m.id|string, conta_id) in access_set %}checked{% endif %}
+                   hx-post="{{ p.prefixo_url }}/toggle"
+                   hx-vals='{"manager_id": "{{ m.id }}", "{{ p.coluna_conta }}": "{{ conta_id }}", "desejado": "{{ 'revoke' if (m.id|string, conta_id) in access_set else 'grant' }}"}'
                    hx-trigger="change"
                    hx-swap="outerHTML"
                    data-v4-access-toggle>
@@ -73,24 +91,24 @@
   </div>
 
   <p class="text-sm text-v4-gray-700 mt-4">
-    Em mobile, use <a href="/admin/access/by-manager" class="underline">visão por gestor</a>.
+    Em mobile, use <a href="{{ p.prefixo_url }}/by-manager" class="underline">visão por gestor</a>.
   </p>
 
   {# Bulk grant modal #}
-  <dialog class="v4-modal" id="bulk-grant-modal" aria-labelledby="bulk-grant-title">
+  <dialog class="v4-modal" id="bulk-grant-modal" aria-labelledby="bulk-grant{{ p.sufixo_id }}-title">
     <div class="v4-modal__header">
-      <h3 class="v4-modal__title" id="bulk-grant-title">Selecionar todas as contas pra gestor</h3>
+      <h3 class="v4-modal__title" id="bulk-grant{{ p.sufixo_id }}-title">Selecionar todas as contas pra gestor</h3>
       <button type="button" class="v4-modal__close" aria-label="Fechar" data-v4-action="dialog-close" data-v4-target="bulk-grant-modal">×</button>
     </div>
-    <form method="POST" action="/admin/access/bulk-grant" class="v4-modal__body grid gap-3">
-      <label class="v4-form__label" for="bulk-grant-mgr">Gestor</label>
-      <select id="bulk-grant-mgr" name="manager_id" class="v4-select" required>
+    <form method="POST" action="{{ p.prefixo_url }}/bulk-grant" class="v4-modal__body grid gap-3">
+      <label class="v4-form__label" for="bulk-grant-mgr{{ p.sufixo_id }}">Gestor</label>
+      <select id="bulk-grant-mgr{{ p.sufixo_id }}" name="manager_id" class="v4-select" required>
         <option value="">Selecione...</option>
         {% for m in managers_list %}<option value="{{ m.id }}">{{ m.email }}</option>{% endfor %}
       </select>
       {# All visible account ids hidden as multiple inputs #}
       {% for a in accounts %}
-        <input type="hidden" name="customer_ids" value="{{ a.customer_id }}">
+        <input type="hidden" name="{{ p.campo_lista }}" value="{{ a[p.coluna_conta] }}">
       {% endfor %}
       <div class="text-sm text-v4-gray-700">Vai liberar acesso a todas as {{ accounts|length }} contas.</div>
       <div class="flex justify-end gap-2 mt-2">
@@ -101,19 +119,19 @@
   </dialog>
 
   {# Copy modal #}
-  <dialog class="v4-modal" id="copy-modal" aria-labelledby="copy-title">
+  <dialog class="v4-modal" id="copy-modal" aria-labelledby="copy{{ p.sufixo_id }}-title">
     <div class="v4-modal__header">
-      <h3 class="v4-modal__title" id="copy-title">Copiar acessos</h3>
+      <h3 class="v4-modal__title" id="copy{{ p.sufixo_id }}-title">Copiar acessos</h3>
       <button type="button" class="v4-modal__close" aria-label="Fechar" data-v4-action="dialog-close" data-v4-target="copy-modal">×</button>
     </div>
-    <form method="POST" action="/admin/access/bulk-copy" class="v4-modal__body grid gap-3">
-      <label class="v4-form__label" for="copy-from">De</label>
-      <select id="copy-from" name="from_manager_id" class="v4-select" required>
+    <form method="POST" action="{{ p.prefixo_url }}/bulk-copy" class="v4-modal__body grid gap-3">
+      <label class="v4-form__label" for="copy-from{{ p.sufixo_id }}">De</label>
+      <select id="copy-from{{ p.sufixo_id }}" name="from_manager_id" class="v4-select" required>
         <option value="">Selecione gestor de origem...</option>
         {% for m in managers_list %}<option value="{{ m.id }}">{{ m.email }}</option>{% endfor %}
       </select>
-      <label class="v4-form__label" for="copy-to">Para</label>
-      <select id="copy-to" name="to_manager_id" class="v4-select" required>
+      <label class="v4-form__label" for="copy-to{{ p.sufixo_id }}">Para</label>
+      <select id="copy-to{{ p.sufixo_id }}" name="to_manager_id" class="v4-select" required>
         <option value="">Selecione gestor de destino...</option>
         {% for m in managers_list %}<option value="{{ m.id }}">{{ m.email }}</option>{% endfor %}
       </select>

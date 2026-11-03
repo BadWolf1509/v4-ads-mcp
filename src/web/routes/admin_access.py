@@ -53,6 +53,7 @@ async def admin_access(
         "admin/access.html",
         {
             "current_user": user,
+            "plataforma": PLATAFORMAS["google"],
             "managers_list": [dict(r) for r in managers_rows],
             "accounts": accs,
             "access_set": access_set,
@@ -86,9 +87,10 @@ async def admin_access_meta(
     pending = await pending_invites_count()
     return templates.TemplateResponse(
         request,
-        "admin/access_meta.html",
+        "admin/access.html",
         {
             "current_user": user,
+            "plataforma": PLATAFORMAS["meta"],
             "managers_list": [dict(r) for r in managers_rows],
             "accounts": accounts,
             "access_set": access_set,
@@ -207,9 +209,10 @@ async def admin_access_meta_by_manager(
     pending = await pending_invites_count()
     return templates.TemplateResponse(
         request,
-        "admin/access_by_manager_meta.html",
+        "admin/access_by_manager.html",
         {
             "current_user": user,
+            "plataforma": PLATAFORMAS["meta"],
             "managers_with_counts": [dict(r) for r in managers_with_counts],
             "total_accounts": total_accounts,
             "pending_invites_count": pending,
@@ -253,9 +256,10 @@ async def admin_access_meta_manager_detail(
     pending = await pending_invites_count()
     return templates.TemplateResponse(
         request,
-        "admin/access_manager_detail_meta.html",
+        "admin/access_manager_detail.html",
         {
             "current_user": user,
+            "plataforma": PLATAFORMAS["meta"],
             "manager": dict(mgr_row),
             "accounts": accs,
             "access_set": access_set,
@@ -353,6 +357,7 @@ async def admin_access_by_manager(
         "admin/access_by_manager.html",
         {
             "current_user": user,
+            "plataforma": PLATAFORMAS["google"],
             "managers_with_counts": [dict(r) for r in managers_with_counts],
             "total_accounts": total_accounts,
             "pending_invites_count": pending,
@@ -403,6 +408,7 @@ async def admin_access_manager_detail(
         "admin/access_manager_detail.html",
         {
             "current_user": user,
+            "plataforma": PLATAFORMAS["google"],
             "manager": dict(mgr_row),
             "accounts": accs,
             "access_set": access_set,

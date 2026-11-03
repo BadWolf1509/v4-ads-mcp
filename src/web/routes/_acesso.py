@@ -35,6 +35,11 @@ class PlataformaAcesso:
     sql_acesso_vivo: SELECT do grant vivo (`revoked_at IS NULL`) do par
         (gestor, conta) — linha revogada é soft e fica, então sem o filtro o
         toggle chamaria revoke() de novo em vez de reconceder.
+    campo_nome_conta: atributo da conta com o nome exibido nos templates.
+    rotulo: nome da plataforma no texto da página (aria-label da matriz).
+    sufixo_id: entra nos ids dos modais da matriz (`copy-from-meta`). As duas
+        matrizes já não convivem numa página, mas o id é contrato do browser
+        test e do snapshot; mudá-lo é decisão, não efeito da unificação.
     """
 
     repositorio: ModuleType
@@ -43,6 +48,14 @@ class PlataformaAcesso:
     plataforma_audit: Literal["google", "meta"]
     prefixo_url: str
     sql_acesso_vivo: str
+    campo_nome_conta: Literal["descriptive_name", "account_name"]
+    rotulo: str
+    sufixo_id: str
+
+    @property
+    def e_meta(self) -> bool:
+        """Badge de status e Business Manager só existem na conta Meta."""
+        return self.plataforma_audit == "meta"
 
 
 PLATAFORMAS: dict[Literal["google", "meta"], PlataformaAcesso] = {
@@ -56,6 +69,9 @@ PLATAFORMAS: dict[Literal["google", "meta"], PlataformaAcesso] = {
             "SELECT 1 FROM manager_account_access "
             "WHERE manager_id = $1 AND customer_id = $2 AND revoked_at IS NULL"
         ),
+        campo_nome_conta="descriptive_name",
+        rotulo="Google",
+        sufixo_id="",
     ),
     "meta": PlataformaAcesso(
         repositorio=manager_meta_account_access,
@@ -67,6 +83,9 @@ PLATAFORMAS: dict[Literal["google", "meta"], PlataformaAcesso] = {
             "SELECT 1 FROM manager_meta_account_access "
             "WHERE manager_id = $1 AND ad_account_id = $2 AND revoked_at IS NULL"
         ),
+        campo_nome_conta="account_name",
+        rotulo="Meta",
+        sufixo_id="-meta",
     ),
 }
 
