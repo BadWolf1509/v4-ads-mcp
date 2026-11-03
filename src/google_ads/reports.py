@@ -31,7 +31,6 @@ from src.db.repositories import audit_log
 from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
-from src.google_ads.request_id import get_capture_interceptor, get_request_id, reset_request_id
 from src.governance.bookkeeping import best_effort
 from src.governance.reserva import Reserva, reconciliar_cota, reservar_cota
 
@@ -73,8 +72,10 @@ async def run_report(
     actual_ops = 0
     status = "success"
     error_message: str | None = None
-    # Lido DENTRO do closure: o ContextVar do interceptor nao volta da thread (F86).
-    request_id: list[str | None] = []
+    # Request-id do Google: vem no proto de cada lote do stream (o interceptor de
+    # request_id.py so cobre unary-unary, nao o `search_stream`). Lote sem o campo
+    # = nao medido = None. Escrito de dentro da thread (lista, nao ContextVar).
+    request_id: list[str] = []
 
     pool = connection.get_pool()
     results: list[dict[str, Any]] = []
@@ -86,9 +87,7 @@ async def run_report(
         client = await build_client_for_manager(manager_id=manager_id)
 
         try:
-            ga_service = client.get_service(
-                "GoogleAdsService", interceptors=[get_capture_interceptor()]
-            )
+            ga_service = client.get_service("GoogleAdsService")
             request = client.get_type("SearchGoogleAdsStreamRequest")
             request.customer_id = customer_id
             request.query = query
@@ -99,14 +98,12 @@ async def run_report(
             def _consumir_stream() -> tuple[int, list[dict[str, Any]]]:
                 lidos = 0
                 linhas: list[dict[str, Any]] = []
-                reset_request_id()
-                try:
-                    for batch in ga_service.search_stream(request=request):
-                        lidos += 1
-                        for row in batch.results:
-                            linhas.append(row_formatter(row))
-                finally:
-                    request_id.append(get_request_id())
+                for batch in ga_service.search_stream(request=request):
+                    lidos += 1
+                    if isinstance(batch.request_id, str) and batch.request_id:
+                        request_id.append(batch.request_id)
+                    for row in batch.results:
+                        linhas.append(row_formatter(row))
                 return lidos, linhas
 
             batches, linhas = await run_blocking(_consumir_stream)

@@ -72,22 +72,28 @@ def _fake_client_streaming(rows: list[Any]) -> MagicMock:
     return client, _row_formatter
 
 
+@pytest.mark.parametrize(
+    ("ids_dos_lotes", "esperado"),
+    [
+        (["req-1", "req-2"], "req-2"),  # o do ultimo lote nao vazio
+        (["req-1", ""], "req-1"),  # lote sem o campo nao apaga o medido
+        ([], None),  # sem lotes: nao medido, nunca ""
+    ],
+)
 @pytest.mark.asyncio
-async def test_run_report_audita_request_id():
-    """O request-id do Google, gravado pelo interceptor DENTRO da thread do stream,
-    chega ao audit como `provider_request_id` (F86: ContextVar nao volta da thread)."""
+async def test_run_report_audita_request_id(ids_dos_lotes, esperado):
+    """O `request_id` do proto de cada lote do stream chega ao audit como
+    `provider_request_id` (o interceptor so cobre unary-unary, nao o search_stream)."""
     from src.google_ads.reports import run_report
-    from src.google_ads.request_id import _last_request_id, get_capture_interceptor
 
-    client, row_formatter = _fake_client_streaming([1])
-
-    def _search_stream(request: Any) -> list[Any]:
-        _last_request_id.set("req-do-stream")  # o que o interceptor faria
+    client, row_formatter = _fake_client_streaming([])
+    lotes = []
+    for rid in ids_dos_lotes:
         batch = MagicMock()
         batch.results = [1]
-        return [batch]
-
-    client.get_service.return_value.search_stream = _search_stream
+        batch.request_id = rid
+        lotes.append(batch)
+    client.get_service.return_value.search_stream = MagicMock(return_value=lotes)
     audit_mock = AsyncMock(return_value=1)
 
     patches = [
@@ -114,10 +120,7 @@ async def test_run_report_audita_request_id():
         for p in patches:
             p.stop()
 
-    assert audit_mock.call_args.kwargs["provider_request_id"] == "req-do-stream"
-    client.get_service.assert_called_once_with(
-        "GoogleAdsService", interceptors=[get_capture_interceptor()]
-    )
+    assert audit_mock.call_args.kwargs["provider_request_id"] == esperado
 
 
 @pytest.mark.asyncio
