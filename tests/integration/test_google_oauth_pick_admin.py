@@ -11,8 +11,10 @@ from src.db.repositories import google_oauth_connections, managers
 _MOMENTO = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 
 
-async def _admin(conn: asyncpg.Connection, email: str, *, com_oauth: bool = True) -> UUID:
-    mid = uuid4()
+async def _admin(
+    conn: asyncpg.Connection, email: str, *, com_oauth: bool = True, mid: UUID | None = None
+) -> UUID:
+    mid = mid or uuid4()
     await managers.create(conn, manager_id=mid, email=email, full_name=email, role="admin")
     # Mesmo created_at nos dois: só o desempate por id separa os candidatos.
     await conn.execute("UPDATE managers SET created_at = $2 WHERE id = $1", mid, _MOMENTO)
@@ -31,9 +33,22 @@ async def _admin(conn: asyncpg.Connection, email: str, *, com_oauth: bool = True
 async def test_dois_admins_ativos_escolhem_sempre_o_mesmo(db) -> None:
     pool = db
     async with pool.acquire() as conn:
-        a = await _admin(conn, "admin-a@v4.com")
-        b = await _admin(conn, "admin-b@v4.com")
-        esperado = min(a, b)  # created_at empata: o menor id vence
+        menor, maior = sorted([uuid4(), uuid4()])
+        await _admin(conn, "admin-a@v4.com", mid=maior)
+        await _admin(conn, "admin-b@v4.com", mid=menor)
+        # A conexao do id MAIOR e a mais nova: sem desempate por `m.id`, o criterio seguinte
+        # (`connected_at DESC`) escolheria o admin errado.
+        await conn.execute(
+            "UPDATE google_oauth_connections SET connected_at = $2 WHERE manager_id = $1",
+            maior,
+            _MOMENTO,
+        )
+        await conn.execute(
+            "UPDATE google_oauth_connections SET connected_at = $2 WHERE manager_id = $1",
+            menor,
+            _MOMENTO.replace(year=2025),
+        )
+        esperado = menor  # created_at empata: o menor id vence
 
         escolhas = [await google_oauth_connections.pick_admin_active(conn) for _ in range(5)]
 
@@ -59,3 +74,19 @@ async def test_sem_admin_com_oauth_devolve_none(db) -> None:
     pool = db
     async with pool.acquire() as conn:
         assert await google_oauth_connections.pick_admin_active(conn) is None
+
+
+@pytest.mark.integration
+async def test_admin_mais_antigo_vence(db) -> None:
+    async with db.acquire() as conn:
+        novo = await _admin(conn, "novo@v4.com")
+        antigo = await _admin(conn, "antigo@v4.com")
+        await conn.execute(
+            "UPDATE managers SET created_at = $2 WHERE id = $1", antigo, _MOMENTO.replace(year=2025)
+        )
+
+        escolhida = await google_oauth_connections.pick_admin_active(conn)
+
+    assert escolhida is not None
+    assert escolhida.manager_id == antigo
+    assert escolhida.manager_id != novo
