@@ -8,17 +8,11 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from src.db import connection
-from src.db.repositories import (
-    google_ads_accounts,
-    manager_account_access,
-    manager_meta_account_access,
-    managers,
-    meta_ad_accounts,
-)
+from src.db.repositories import google_ads_accounts, managers, meta_ad_accounts
 from src.web.deps import CurrentUser, current_manager, pending_invites_count
+from src.web.routes._acesso import PLATAFORMAS, aplicar_toggle, conceder_em_massa, copiar_acessos
 from src.web.routes._shared import (
     _admin_flash,
-    _audit_admin,
     _require_admin,
     _toggle_acesso_response,
     templates,
@@ -113,55 +107,22 @@ async def admin_access_meta_toggle(
     desejado: Literal["grant", "revoke"] = Form(...),
 ) -> HTMLResponse:
     _require_admin(user)
-    pool = connection.get_pool()
-    target_mid = manager_id
-    async with pool.acquire() as conn:
-        # revoked_at IS NULL: linha revogada não conta como "tem acesso" — senão
-        # o clique num checkbox desmarcado (grant revogado) chamaria revoke() de
-        # novo em vez de restaurar, e o toggle ficaria preso sem nunca marcar.
-        exists = await conn.fetchval(
-            "SELECT 1 FROM manager_meta_account_access "
-            "WHERE manager_id=$1 AND ad_account_id=$2 AND revoked_at IS NULL",
-            target_mid,
-            ad_account_id,
+    plataforma = PLATAFORMAS["meta"]
+    async with connection.get_pool().acquire() as conn:
+        mudou = await aplicar_toggle(
+            conn,
+            plataforma,
+            admin=user,
+            manager_id=manager_id,
+            conta=ad_account_id,
+            desejado=desejado == "grant",
         )
-        # Task 5: acesso e audit na mesma transação — se _audit_admin falhar
-        # depois do grant/revoke, os dois desfazem juntos (F91: isto não é
-        # retry, é transação; run_with_reconnect NÃO pode envolver escrita).
-        # Idempotente: aplica o ESTADO PEDIDO (`desejado`), não "o contrário do
-        # que o banco tem". Aba velha ou duplo clique pedem o que já é verdade,
-        # e isso não muda nada nem grava audit.
-        granted = desejado == "grant"
-        mudou = granted != bool(exists)
-        async with conn.transaction():
-            if mudou:
-                if granted:
-                    await manager_meta_account_access.grant(
-                        conn,
-                        manager_id=target_mid,
-                        ad_account_id=ad_account_id,
-                        access_level="write",
-                        granted_by=user.id,
-                    )
-                else:
-                    await manager_meta_account_access.revoke(
-                        conn, manager_id=target_mid, ad_account_id=ad_account_id
-                    )
-                await _audit_admin(
-                    conn,
-                    admin=user,
-                    operation="admin_access_grant" if granted else "admin_access_revoke",
-                    customer_id=ad_account_id,
-                    platform="meta",
-                    target_manager_id=str(manager_id),
-                    granted=granted,
-                )
     return _toggle_acesso_response(
-        post_url="/admin/access/meta/toggle",
+        post_url=f"{plataforma.prefixo_url}/toggle",
         manager_id=str(manager_id),
         account_id=ad_account_id,
-        account_field="ad_account_id",
-        granted=granted,
+        account_field=plataforma.coluna_conta,
+        granted=desejado == "grant",
         mudou=mudou,
     )
 
@@ -174,25 +135,12 @@ async def admin_access_meta_bulk_grant(
     ad_account_ids: list[str] = Form(...),  # noqa: B008
 ) -> RedirectResponse:
     _require_admin(user)
-    pool = connection.get_pool()
-    # Task 5: acesso e audit na mesma transação (ver admin_access_meta_toggle).
-    async with pool.acquire() as conn, conn.transaction():
-        await manager_meta_account_access.bulk_grant(
-            conn,
-            manager_id=manager_id,
-            ad_account_ids=ad_account_ids,
-            granted_by=user.id,
+    plataforma = PLATAFORMAS["meta"]
+    async with connection.get_pool().acquire() as conn:
+        await conceder_em_massa(
+            conn, plataforma, admin=user, manager_id=manager_id, contas=ad_account_ids
         )
-        await _audit_admin(
-            conn,
-            admin=user,
-            operation="admin_access_bulk_grant",
-            platform="meta",
-            target_manager_id=str(manager_id),
-            count=len(ad_account_ids),
-            ids=ad_account_ids[:20],
-        )
-    return RedirectResponse(url="/admin/access/meta", status_code=303)
+    return RedirectResponse(url=plataforma.prefixo_url, status_code=303)
 
 
 @router.post("/admin/access/meta/bulk-copy", response_class=HTMLResponse, response_model=None)
@@ -203,28 +151,18 @@ async def admin_access_meta_bulk_copy(
     to_manager_id: UUID = Form(...),  # noqa: B008
 ) -> RedirectResponse:
     _require_admin(user)
+    plataforma = PLATAFORMAS["meta"]
     if from_manager_id == to_manager_id:
-        return RedirectResponse(url="/admin/access/meta?error=same_manager", status_code=303)
-    pool = connection.get_pool()
-    # Task 5: acesso e audit na mesma transação (ver admin_access_meta_toggle).
-    # `copy_access` já abre a própria `conn.transaction()` — aninhar vira
-    # SAVEPOINT (idioma padrão asyncpg), não conflita com esta.
-    async with pool.acquire() as conn, conn.transaction():
-        await manager_meta_account_access.copy_access(
+        return RedirectResponse(url=f"{plataforma.prefixo_url}?error=same_manager", status_code=303)
+    async with connection.get_pool().acquire() as conn:
+        await copiar_acessos(
             conn,
-            from_manager_id=from_manager_id,
-            to_manager_id=to_manager_id,
-            granted_by=user.id,
-        )
-        await _audit_admin(
-            conn,
+            plataforma,
             admin=user,
-            operation="admin_access_bulk_copy",
-            platform="meta",
-            from_manager_id=str(from_manager_id),
-            to_manager_id=str(to_manager_id),
+            de_manager_id=from_manager_id,
+            para_manager_id=to_manager_id,
         )
-    return RedirectResponse(url="/admin/access/meta", status_code=303)
+    return RedirectResponse(url=plataforma.prefixo_url, status_code=303)
 
 
 # IMPORTANT: keep /by-manager BEFORE /{manager_id} (literal must match before the path param).
@@ -334,24 +272,12 @@ async def admin_access_bulk_grant(
     customer_ids: list[str] = Form(...),  # noqa: B008
 ) -> RedirectResponse:
     _require_admin(user)
-    pool = connection.get_pool()
-    # Task 5: acesso e audit na mesma transação (ver admin_access_meta_toggle).
-    async with pool.acquire() as conn, conn.transaction():
-        await manager_account_access.bulk_grant(
-            conn,
-            manager_id=manager_id,
-            customer_ids=customer_ids,
-            granted_by=user.id,
+    plataforma = PLATAFORMAS["google"]
+    async with connection.get_pool().acquire() as conn:
+        await conceder_em_massa(
+            conn, plataforma, admin=user, manager_id=manager_id, contas=customer_ids
         )
-        await _audit_admin(
-            conn,
-            admin=user,
-            operation="admin_access_bulk_grant",
-            target_manager_id=str(manager_id),
-            count=len(customer_ids),
-            ids=customer_ids[:20],
-        )
-    return RedirectResponse(url="/admin/access", status_code=303)
+    return RedirectResponse(url=plataforma.prefixo_url, status_code=303)
 
 
 @router.post("/admin/access/bulk-copy", response_class=HTMLResponse, response_model=None)
@@ -362,27 +288,18 @@ async def admin_access_bulk_copy(
     to_manager_id: UUID = Form(...),  # noqa: B008
 ) -> RedirectResponse:
     _require_admin(user)
+    plataforma = PLATAFORMAS["google"]
     if from_manager_id == to_manager_id:
-        return RedirectResponse(url="/admin/access?error=same_manager", status_code=303)
-    pool = connection.get_pool()
-    # Task 5: acesso e audit na mesma transação (ver admin_access_meta_toggle).
-    # `copy_access` já abre a própria `conn.transaction()` — aninhar vira
-    # SAVEPOINT (idioma padrão asyncpg), não conflita com esta.
-    async with pool.acquire() as conn, conn.transaction():
-        await manager_account_access.copy_access(
+        return RedirectResponse(url=f"{plataforma.prefixo_url}?error=same_manager", status_code=303)
+    async with connection.get_pool().acquire() as conn:
+        await copiar_acessos(
             conn,
-            from_manager_id=from_manager_id,
-            to_manager_id=to_manager_id,
-            granted_by=user.id,
-        )
-        await _audit_admin(
-            conn,
+            plataforma,
             admin=user,
-            operation="admin_access_bulk_copy",
-            from_manager_id=str(from_manager_id),
-            to_manager_id=str(to_manager_id),
+            de_manager_id=from_manager_id,
+            para_manager_id=to_manager_id,
         )
-    return RedirectResponse(url="/admin/access", status_code=303)
+    return RedirectResponse(url=plataforma.prefixo_url, status_code=303)
 
 
 @router.get("/admin/access/by-manager", response_class=HTMLResponse)
@@ -503,54 +420,21 @@ async def admin_access_toggle(
     desejado: Literal["grant", "revoke"] = Form(...),
 ) -> HTMLResponse:
     _require_admin(user)
-    pool = connection.get_pool()
-    target_mid = manager_id
-    async with pool.acquire() as conn:
-        # Task 3, decisão 1: revogação virou soft — a linha FICA depois do
-        # revoke. Sem `revoked_at IS NULL` aqui, `exists` continuaria true numa
-        # linha revogada, e o clique seguinte (reconceder) chamaria revoke()
-        # de novo em vez de grant() — nunca mais daria pra reconceder pelo
-        # painel (espelha o gêmeo Meta, admin_access_meta_toggle).
-        exists = await conn.fetchval(
-            "SELECT 1 FROM manager_account_access "
-            "WHERE manager_id = $1 AND customer_id = $2 AND revoked_at IS NULL",
-            target_mid,
-            customer_id,
+    plataforma = PLATAFORMAS["google"]
+    async with connection.get_pool().acquire() as conn:
+        mudou = await aplicar_toggle(
+            conn,
+            plataforma,
+            admin=user,
+            manager_id=manager_id,
+            conta=customer_id,
+            desejado=desejado == "grant",
         )
-        # Task 5: acesso e audit na mesma transação (ver admin_access_meta_toggle).
-        granted = desejado == "grant"
-        mudou = granted != bool(exists)
-        async with conn.transaction():
-            if mudou:
-                if granted:
-                    await manager_account_access.grant(
-                        conn,
-                        manager_id=target_mid,
-                        customer_id=customer_id,
-                        access_level="write",
-                        granted_by=user.id,
-                    )
-                else:
-                    await manager_account_access.revoke(
-                        conn,
-                        manager_id=target_mid,
-                        customer_id=customer_id,
-                    )
-                await _audit_admin(
-                    conn,
-                    admin=user,
-                    operation="admin_access_grant" if granted else "admin_access_revoke",
-                    customer_id=customer_id,
-                    target_manager_id=str(manager_id),
-                    granted=granted,
-                )
-
-    # Return a tiny HTMX-friendly fragment that swaps the cell (+ toast via HX-Trigger)
     return _toggle_acesso_response(
-        post_url="/admin/access/toggle",
+        post_url=f"{plataforma.prefixo_url}/toggle",
         manager_id=str(manager_id),
         account_id=customer_id,
-        account_field="customer_id",
-        granted=granted,
+        account_field=plataforma.coluna_conta,
+        granted=desejado == "grant",
         mudou=mudou,
     )

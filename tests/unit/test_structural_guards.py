@@ -1585,16 +1585,14 @@ def _audit_admin_esta_na_transacao(escopo: ast.AST, arv: ast.Module) -> bool:
 # diz `is_active`, não `access`; a outra exigia chamada de repositório e
 # perdia as duas de SQL cru). O que o guard não aceita calado é um desses 12
 # nomes sumir do código — ver a asserção de `faltando` no teste abaixo.
+#
+# F4 (2026-11-03): as 6 rotas de `admin_access.py` (toggle, bulk-grant e
+# bulk-copy, Google e Meta) passaram a delegar a escrita aos 3 helpers de
+# `_acesso.py`. A transação com o audit mora no helper; a rota tem que chamar
+# o helper dela — ver `_ROTAS_DE_ACESSO_QUE_DELEGAM`.
 _ROTAS_ACESSO_E_AUDIT_ATOMICOS: dict[Path, frozenset[str]] = {
-    h.SRC / "web" / "routes" / "admin_access.py": frozenset(
-        {
-            "admin_access_meta_toggle",
-            "admin_access_meta_bulk_grant",
-            "admin_access_meta_bulk_copy",
-            "admin_access_bulk_grant",
-            "admin_access_bulk_copy",
-            "admin_access_toggle",
-        }
+    h.SRC / "web" / "routes" / "_acesso.py": frozenset(
+        {"aplicar_toggle", "conceder_em_massa", "copiar_acessos"}
     ),
     h.SRC / "web" / "routes" / "admin_accounts.py": frozenset(
         {"admin_accounts_google_restore", "admin_accounts_meta_restore"}
@@ -1605,6 +1603,18 @@ _ROTAS_ACESSO_E_AUDIT_ATOMICOS: dict[Path, frozenset[str]] = {
     h.SRC / "web" / "routes" / "admin_invites.py": frozenset(
         {"admin_invites_new", "admin_invites_cancel"}
     ),
+}
+
+# Rota -> helper de `_acesso.py` que ela TEM que chamar. Sem esta checagem, a
+# rota que voltasse a escrever sozinha (ou deixasse de delegar) sairia da
+# cobertura do guard de atomicidade sem ninguém notar.
+_ROTAS_DE_ACESSO_QUE_DELEGAM: dict[str, str] = {
+    "admin_access_meta_toggle": "aplicar_toggle",
+    "admin_access_toggle": "aplicar_toggle",
+    "admin_access_meta_bulk_grant": "conceder_em_massa",
+    "admin_access_bulk_grant": "conceder_em_massa",
+    "admin_access_meta_bulk_copy": "copiar_acessos",
+    "admin_access_bulk_copy": "copiar_acessos",
 }
 
 
@@ -1649,6 +1659,26 @@ def test_acesso_e_audit_abrem_a_mesma_transacao_nas_12_rotas() -> None:
             if not _audit_admin_esta_na_transacao(func, arv):
                 audit_fora_da_transacao.append(f"{h.rel(caminho)}::{nome}")
 
+    caminho_rotas = h.SRC / "web" / "routes" / "admin_access.py"
+    arv_rotas = h.arvore(caminho_rotas)
+    rotas = {
+        no.name: no
+        for no in arv_rotas.body
+        if isinstance(no, ast.AsyncFunctionDef | ast.FunctionDef)
+    }
+    nao_delega: list[str] = []
+    for nome, helper in sorted(_ROTAS_DE_ACESSO_QUE_DELEGAM.items()):
+        func = rotas.get(nome)
+        if func is None:
+            faltando.append(f"{h.rel(caminho_rotas)}::{nome}")
+        elif not h.chama(func, helper, arv=arv_rotas):
+            nao_delega.append(f"{h.rel(caminho_rotas)}::{nome} -> {helper}")
+
+    assert not nao_delega, (
+        f"rota de acesso não chama o helper transacional de `_acesso.py`: {nao_delega}. "
+        "A atomicidade acesso+audit dessas rotas é provada no helper; rota que "
+        "escreve por conta própria sai da cobertura."
+    )
     assert not faltando, (
         f"rota da Task 5 sumiu do código: {faltando}. Rename ou move tira a "
         "cobertura deste guard em silêncio — enumerar os 12 nomes só vale "
