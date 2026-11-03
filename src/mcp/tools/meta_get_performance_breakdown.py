@@ -17,11 +17,11 @@ from src.mcp.tools._meta_common import meta_erro
 from src.mcp.tools._meta_performance import (
     _MAX_PAGES,
     _gasto_para_ordenar,
+    datas_invalidas_error,
     meta_account_not_found_error,
+    resolver_janela_meta,
 )
 from src.mcp.tools._registry import register_tool
-from src.meta_ads.account_clock import resolve_meta_account_today
-from src.meta_ads.account_overview import resolve_meta_date_window
 from src.meta_ads.client import MetaAccessDeniedError
 from src.meta_ads.errors import MetaAdsFriendlyError
 from src.meta_ads.insights import (
@@ -112,7 +112,6 @@ async def meta_get_performance_breakdown(
 ) -> dict[str, Any]:
     """Core logic — testable by integration tests."""
     pool = connection.get_pool()
-    today = await resolve_meta_account_today(ad_account_id)
 
     breakdown_params = BREAKDOWN_META_PARAM.get(breakdown)
     if breakdown_params is None:
@@ -124,11 +123,12 @@ async def meta_get_performance_breakdown(
         }
 
     try:
-        start, end = resolve_meta_date_window(
-            date_range or "LAST_30_DAYS", start_date, end_date, today
+        start, end, _ = await resolver_janela_meta(
+            {"date_range": date_range, "start_date": start_date, "end_date": end_date},
+            ad_account_id,
         )
     except ValueError as e:
-        return {"status": "error", "error_message": f"Datas inválidas: {e}"}
+        return datas_invalidas_error(e)
 
     async with pool.acquire() as conn:
         account = await meta_ad_accounts.get_by_id(conn, ad_account_id)

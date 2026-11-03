@@ -15,14 +15,16 @@ from src.db import connection
 from src.db.repositories import meta_ad_accounts
 from src.mcp.context import get_current
 from src.mcp.tools._meta_common import meta_erro
-from src.mcp.tools._meta_performance import meta_account_not_found_error
+from src.mcp.tools._meta_performance import (
+    datas_invalidas_error,
+    meta_account_not_found_error,
+    resolver_janela_meta,
+)
 from src.mcp.tools._registry import register_tool
-from src.meta_ads.account_clock import resolve_meta_account_today
 from src.meta_ads.account_overview import (
     build_warnings,
     compute_deltas,
     parse_insights_response,
-    resolve_meta_date_window,
     shift_to_previous_period,
 )
 from src.meta_ads.client import MetaAccessDeniedError
@@ -110,13 +112,14 @@ async def meta_get_account_overview(
     pool = connection.get_pool()
 
     # 1. Resolve date window
-    today = await resolve_meta_account_today(ad_account_id)
     try:
-        current_start, current_end = resolve_meta_date_window(
-            date_range, start_date, end_date, today
+        current_start, current_end, today = await resolver_janela_meta(
+            {"date_range": date_range, "start_date": start_date, "end_date": end_date},
+            ad_account_id,
+            preset_padrao="LAST_7_DAYS",
         )
     except ValueError as e:
-        return {"status": "error", "error_message": f"Parâmetros de data inválidos: {e}"}
+        return datas_invalidas_error(e)
     prev_start, prev_end = shift_to_previous_period(current_start, current_end)
 
     # 2. Get account metadata
