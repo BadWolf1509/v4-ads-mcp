@@ -94,8 +94,8 @@ async def test_confirm_path_bulk_over_threshold():
     from src.mcp.tools.update_ad_status import update_ad_status
 
     with (
-        patch("src.mcp.tools.update_ad_status.create_pending", AsyncMock(return_value="ABC12345")),
-        patch("src.mcp.tools.update_ad_status.connection") as conn_module,
+        patch("src.mcp.tools._mutate_common.create_pending", AsyncMock(return_value="ABC12345")),
+        patch("src.mcp.tools._mutate_common.connection") as conn_module,
     ):
         conn_module.get_pool.return_value.acquire.return_value.__aenter__ = AsyncMock(
             return_value=AsyncMock()

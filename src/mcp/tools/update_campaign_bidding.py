@@ -3,12 +3,10 @@
 
 from typing import Any
 
-from src.db import connection
 from src.google_ads.queries._common import brl_para_micros
 from src.governance.blast_radius import classify
-from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
-from src.mcp.tools._mutate_common import error_envelope, preview_envelope
+from src.mcp.tools._mutate_common import emitir_preview, error_envelope
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -87,21 +85,11 @@ async def update_campaign_bidding(args: dict[str, Any]) -> dict[str, Any]:
         params={"target_count": 1},
     )
 
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
-        token = await create_pending(
-            conn,
-            manager_id=ctx.manager_id,
-            session_id=ctx.session_id,
-            customer_id=customer_id,
-            operation_type="update_campaign_bidding",
-            payload=payload,
-            blast_summary=summary,
-        )
-    return preview_envelope(
-        "update_campaign_bidding",
-        customer_id,
-        summary,
-        token,
-        confirmation_reason=risk.reason,
+    return await emitir_preview(
+        ctx,
+        operation="update_campaign_bidding",
+        customer_id=customer_id,
+        payload=payload,
+        summary=summary,
+        risk=risk,
     )

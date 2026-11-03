@@ -103,8 +103,8 @@ def _wire(monkeypatch, *, grade, orcamentos, metricas, irmas=None):
         return "TOKEN123"
 
     monkeypatch.setattr("src.mcp.tools.update_ad_schedule.run_report", _run)
-    monkeypatch.setattr("src.mcp.tools.update_ad_schedule.create_pending", _create_pending)
-    monkeypatch.setattr("src.mcp.tools.update_ad_schedule.connection.get_pool", lambda: _FakePool())
+    monkeypatch.setattr("src.mcp.tools._mutate_common.create_pending", _create_pending)
+    monkeypatch.setattr("src.mcp.tools._mutate_common.connection.get_pool", lambda: _FakePool())
     return captured
 
 
