@@ -19,11 +19,9 @@ import hashlib
 from typing import Any
 
 from src.db import connection
-from src.google_ads.account_clock import resolve_account_today
 from src.google_ads.queries._common import (
     InvalidDateRangeError,
     micros_to_currency,
-    resolve_date_window,
 )
 from src.google_ads.queries.bulk_pause import (
     FilterValidationError,
@@ -33,6 +31,7 @@ from src.google_ads.queries.bulk_pause import (
 from src.google_ads.reports import run_report
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
+from src.mcp.tools._common import janela_da_conta, propriedades_de_data
 from src.mcp.tools._mutate_common import error_envelope, preview_envelope
 from src.mcp.tools._registry import register_tool
 
@@ -41,18 +40,6 @@ _SAMPLE_SIZE = 10
 
 _TARGET_TYPES = ["keyword", "ad", "campaign", "ad_group"]
 
-_DATE_PRESETS = [
-    "TODAY",
-    "YESTERDAY",
-    "LAST_7_DAYS",
-    "LAST_14_DAYS",
-    "LAST_30_DAYS",
-    "LAST_90_DAYS",
-    "THIS_MONTH",
-    "LAST_MONTH",
-    "THIS_WEEK",
-    "LAST_WEEK",
-]
 
 _SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -60,25 +47,7 @@ _SCHEMA: dict[str, Any] = {
         "customer_id": {"type": "string", "pattern": "^[0-9]{10}$"},
         "target_type": {"type": "string", "enum": _TARGET_TYPES},
         "filter": {"type": "string", "minLength": 1, "maxLength": 1000},
-        "date_range": {
-            "type": "string",
-            "enum": _DATE_PRESETS,
-            "default": "LAST_30_DAYS",
-            "description": "Periodo via preset. Para periodo custom, use start_date+end_date.",
-        },
-        "start_date": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-            "description": (
-                "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, "
-                "sobrepoe date_range preset. Obriga end_date."
-            ),
-        },
-        "end_date": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-            "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
-        },
+        **propriedades_de_data(),
     },
     "required": ["customer_id", "target_type", "filter"],
     "additionalProperties": False,
@@ -210,9 +179,6 @@ async def bulk_pause_by_query(args: dict[str, Any]) -> dict[str, Any]:
     customer_id = args["customer_id"]
     target_type = args["target_type"]
     filter_clause = args["filter"]
-    date_range_arg = args.get("date_range", "LAST_30_DAYS")
-    start_date_arg = args.get("start_date")
-    end_date_arg = args.get("end_date")
 
     # Pre-flight filter validation (raises FilterValidationError → friendly PT-BR)
     try:
@@ -221,13 +187,7 @@ async def bulk_pause_by_query(args: dict[str, Any]) -> dict[str, Any]:
         return error_envelope("bulk_pause_by_query", str(e))
 
     try:
-        today = await resolve_account_today(customer_id)
-        start, end = resolve_date_window(
-            date_range=date_range_arg,
-            start_date=start_date_arg,
-            end_date=end_date_arg,
-            today=today,
-        )
+        start, end, _ = await janela_da_conta(ctx, args, customer_id)
     except InvalidDateRangeError as e:
         return error_envelope("bulk_pause_by_query", f"periodo invalido: {e}")
     query, filtros = bulk_pause_query(

@@ -3,49 +3,18 @@
 
 from typing import Any
 
-from src.google_ads.account_clock import resolve_account_today
-from src.google_ads.queries._common import micros_to_currency, resolve_date_window
+from src.google_ads.queries._common import micros_to_currency
 from src.google_ads.queries.client_report import top_creatives_query, top_keywords_query
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
+from src.mcp.tools._common import janela_da_conta, propriedades_de_data
 from src.mcp.tools._registry import register_tool
-
-_DATE_PRESETS = [
-    "TODAY",
-    "YESTERDAY",
-    "LAST_7_DAYS",
-    "LAST_14_DAYS",
-    "LAST_30_DAYS",
-    "LAST_90_DAYS",
-    "THIS_MONTH",
-    "LAST_MONTH",
-    "THIS_WEEK",
-    "LAST_WEEK",
-]
 
 _SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "customer_id": {"type": "string", "pattern": "^[0-9]{10}$"},
-        "date_range": {
-            "type": "string",
-            "enum": _DATE_PRESETS,
-            "default": "LAST_30_DAYS",
-            "description": "Periodo via preset. Para periodo custom, use start_date+end_date.",
-        },
-        "start_date": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-            "description": (
-                "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, "
-                "sobrepoe date_range preset. Obriga end_date."
-            ),
-        },
-        "end_date": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-            "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
-        },
+        **propriedades_de_data(),
         "top_n": {"type": "integer", "minimum": 1, "maximum": 100, "default": 10},
         "metric": {
             "type": "string",
@@ -115,13 +84,7 @@ def _ad_formatter(row: Any) -> dict[str, Any]:
 async def get_top_keywords_creatives(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()
     customer_id = args["customer_id"]
-    today = await resolve_account_today(customer_id)
-    start, end = resolve_date_window(
-        date_range=args.get("date_range", "LAST_30_DAYS"),
-        start_date=args.get("start_date"),
-        end_date=args.get("end_date"),
-        today=today,
-    )
+    start, end, _ = await janela_da_conta(ctx, args, customer_id)
     top_n = args.get("top_n", 10)
     metric = args.get("metric", "cost")
 

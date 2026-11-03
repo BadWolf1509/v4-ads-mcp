@@ -10,7 +10,6 @@ from typing import Any
 import structlog
 
 from src.google_ads.access import AccountAccessDeniedError
-from src.google_ads.account_clock import resolve_account_today
 from src.google_ads.ad_schedule import BLOCOS_PADRAO, DIAS, MetricCell, partition_by_blocks
 from src.google_ads.errors import GoogleAdsFriendlyError
 from src.google_ads.performance_breakdown import (
@@ -18,13 +17,12 @@ from src.google_ads.performance_breakdown import (
     build_performance_breakdown_query,
     parse_performance_row,
 )
-from src.google_ads.queries._common import resolve_date_window
 from src.google_ads.queries.ad_schedule import day_hour_metrics_query, parse_day_hour_row
 from src.google_ads.queries.performance import conversion_action_flags_query
 from src.google_ads.reports import lookup_country_names, run_report
 from src.governance.rate_limit import QuotaExhausted
 from src.mcp.context import get_current
-from src.mcp.tools._common import aplicar_limite
+from src.mcp.tools._common import aplicar_limite, janela_da_conta
 from src.mcp.tools._registry import register_tool
 
 log = structlog.get_logger(__name__)
@@ -265,13 +263,7 @@ async def get_performance_breakdown(args: dict[str, Any]) -> dict[str, Any]:
     if err:
         return {"status": "error", "error_message": err}
 
-    today = await resolve_account_today(customer_id)
-    start, end = resolve_date_window(
-        date_range=args.get("date_range", "LAST_30_DAYS"),
-        start_date=args.get("start_date"),
-        end_date=args.get("end_date"),
-        today=today,
-    )
+    start, end, _ = await janela_da_conta(ctx, args, customer_id)
     status = args.get("status", "enabled")
     limit = args.get("limit", 100)
 

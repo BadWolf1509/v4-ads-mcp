@@ -17,7 +17,7 @@ def _ctx():
 
     set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
     # F141: a tool resolve `hoje` no fuso da conta lendo o DB; aqui nao ha pool.
-    with patch("src.mcp.tools.get_account_overview.resolve_account_today", _hoje):
+    with patch("src.mcp.tools._common.resolve_account_today", _hoje):
         yield
     clear_current()
 

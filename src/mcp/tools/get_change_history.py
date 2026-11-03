@@ -54,7 +54,7 @@ from src.google_ads.queries.change_history import (
 )
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
-from src.mcp.tools._common import aplicar_limite
+from src.mcp.tools._common import aplicar_limite, propriedades_de_data
 from src.mcp.tools._registry import register_tool
 
 # F23 fix Sprint 3b.38: Google's change_event retention is 30 days exclusive
@@ -75,18 +75,6 @@ _RETENTION_SAFETY_DAYS = 28
 # os outros builders desta frente nao tem nada a ajustar.
 _CAP_CHANGE_EVENT = 10_000
 
-_DATE_PRESETS = [
-    "TODAY",
-    "YESTERDAY",
-    "LAST_7_DAYS",
-    "LAST_14_DAYS",
-    "LAST_30_DAYS",
-    "LAST_90_DAYS",
-    "THIS_MONTH",
-    "LAST_MONTH",
-    "THIS_WEEK",
-    "LAST_WEEK",
-]
 
 # F135: espelha ChangeEventResourceType do SDK (v24, verificado 2026-09-02).
 # NAO edite a mao sem rodar tests/unit/test_change_event_enum_guards.py — ele
@@ -160,25 +148,7 @@ _SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "customer_id": {"type": "string", "pattern": "^[0-9]{10}$"},
-        "date_range": {
-            "type": "string",
-            "enum": _DATE_PRESETS,
-            "default": "LAST_7_DAYS",
-            "description": "Periodo via preset. Para periodo custom, use start_date+end_date.",
-        },
-        "start_date": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-            "description": (
-                "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, "
-                "sobrepoe date_range preset. Obriga end_date."
-            ),
-        },
-        "end_date": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-            "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
-        },
+        **propriedades_de_data(default="LAST_7_DAYS"),
         # F183: array sem teto vira clausula IN de GAQL sem teto. Nos tres que sao
         # enum o teto e DERIVADO da propria lista (`len(...)`) — numero escrito a mao
         # seria segunda fonte de verdade e passaria a mentir quando o enum mudasse.

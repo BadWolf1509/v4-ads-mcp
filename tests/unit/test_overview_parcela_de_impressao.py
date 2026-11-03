@@ -89,7 +89,7 @@ async def test_a_parcela_chega_ao_current_e_ao_previous_pela_tool() -> None:
         with (
             patch("src.mcp.tools.get_account_overview.run_report", new_callable=AsyncMock) as rr,
             patch(
-                "src.mcp.tools.get_account_overview.resolve_account_today",
+                "src.mcp.tools._common.resolve_account_today",
                 new_callable=AsyncMock,
             ) as hoje,
         ):

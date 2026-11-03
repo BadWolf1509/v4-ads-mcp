@@ -54,7 +54,7 @@ async def _chamar(respostas: list[list[dict[str, Any]]], **args: Any) -> tuple[A
     with (
         patch("src.mcp.tools.get_performance_breakdown.run_report", new_callable=AsyncMock) as rr,
         patch(
-            "src.mcp.tools.get_performance_breakdown.resolve_account_today",
+            "src.mcp.tools._common.resolve_account_today",
             new_callable=AsyncMock,
         ) as hoje,
     ):
