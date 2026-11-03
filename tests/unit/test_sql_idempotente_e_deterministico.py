@@ -144,9 +144,12 @@ def _escolhas_sem_desempate(literais: list[tuple[str, str]], tabelas: set[str]) 
 def test_toda_revogacao_so_pega_linha_viva() -> None:
     literais = _literais(h.SRC)
     populacao = _revogacoes(literais)
-    assert len(populacao) >= 9, (
-        f"piso medido em 28/09: 9 revogações em src/; achou {len(populacao)} — "
-        "o casador parou de casar?"
+    # 8 desde 11/2026: a revogação de `meta_oauth_connections` saiu com o
+    # repositório do OAuth pessoal da Meta (9 medidas em 28/09). Piso que desce
+    # junto com uma remoção deliberada.
+    assert len(populacao) >= 8, (
+        f"piso: 8 revogações em src/ (9 em 28/09, menos a do OAuth pessoal da Meta "
+        f"removido em 11/2026); achou {len(populacao)} — o casador parou de casar?"
     )
     faltam = _revogacoes_sem_predicado(literais)
     assert not faltam, (
@@ -160,9 +163,11 @@ def test_toda_escolha_de_uma_linha_desempata_por_id() -> None:
     assert {"google_oauth_connections", "meta_oauth_connections", "audit_log"} <= tabelas
     literais = _literais(h.SRC)
     populacao = _escolhas_de_uma_linha(literais, tabelas)
-    assert len(populacao) >= 3, (
-        f"piso medido em 28/09: 3 `ORDER BY … LIMIT 1` sobre tabela do banco; achou "
-        f"{len(populacao)}"
+    # 2 desde 11/2026: o `get_active_for_manager` de `meta_oauth_connections`
+    # saiu com o repositório do OAuth pessoal da Meta (3 medidas em 28/09).
+    assert len(populacao) >= 2, (
+        f"piso: 2 `ORDER BY … LIMIT 1` sobre tabela do banco (3 em 28/09, menos o do "
+        f"OAuth pessoal da Meta removido em 11/2026); achou {len(populacao)}"
     )
     faltam = _escolhas_sem_desempate(literais, tabelas)
     assert not faltam, (

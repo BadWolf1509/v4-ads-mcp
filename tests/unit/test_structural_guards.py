@@ -327,9 +327,11 @@ def test_f57_acusa_a_violacao_e_so_ela(fonte: str, acusa: bool) -> None:
 #   A) concatenação: `"https://graph." + "facebook.com/v22.0"` — nenhum
 #      Constant sozinho contém o literal, e `_texto_logico` não junta
 #      literais através de um `BinOp`.
-#   B) reuso de constante JÁ autorizada: `from src.auth.meta_oauth import
-#      META_GRAPH_BASE` num arquivo novo — o literal nunca é REESCRITO, zero
-#      ocorrências no arquivo, guard verde.
+#   B) reuso de constante JÁ autorizada: `from <modulo> import
+#      META_GRAPH_BASE` num arquivo novo (a constante morava no OAuth pessoal,
+#      removido em 11/2026; hoje `_GRAPH` em `alcance.py`/`partnership.py`
+#      serve igual) — o literal nunca é REESCRITO, zero ocorrências no
+#      arquivo, guard verde.
 #
 # Os dois probes tinham `httpx.AsyncClient()` no arquivo novo — é isso que
 # efetivamente ALCANÇA a Graph API, não importa como a URL foi montada depois.
@@ -424,11 +426,10 @@ def _raizes_cliente_http_meta() -> list[Path]:
     FICAM DE FORA, apesar de construírem `httpx.AsyncClient` de verdade e
     falarem com a Graph API — cada um por motivo medido, não por esquecimento:
 
-    - `src/auth/meta_oauth.py` (1 construção real: `meta_oauth_callback`; a do
-      botão de sincronizar contas saiu no F197) — o roteador OAuth inteiro. Não é onde
-      uma TOOL nova nasce; é arquivo estável, tocado só quando o fluxo OAuth
-      muda. Era allowlist no guard anterior (literal, por módulo inteiro);
-      aqui fica de FORA do escopo por decisão, não por buraco herdado.
+    - (até 11/2026) `src/auth/meta_oauth.py`, o OAuth pessoal da Meta, com 1
+      construção real no callback. Saiu com o fluxo; `src/auth/` não constrói
+      mais cliente HTTP para a Graph (`meta_data_deletion.py` só valida HMAC,
+      não faz requisição).
     - `src/jobs/meta_resync.py` (1 construção real) — o job de resync roda
       com o token de system-user direto, automação privilegiada sem
       manager_id no caminho. Mesma classe de "anterior ao gate por natureza".
@@ -669,10 +670,10 @@ _FORMAS_F57_META = [
         # constante é importada, não reescrita) — a varredura por LITERAL
         # ficava verde. A varredura por MECANISMO não precisa do literal.
         "src/meta_ads/_qualquer_novo.py",
-        "from src.auth.meta_oauth import META_GRAPH_BASE\n"
+        "from src.meta_ads.partnership import _GRAPH\n"
         "async def ler(edge):\n"
         "    async with httpx.AsyncClient() as http:\n"
-        "        return await http.get(META_GRAPH_BASE + edge)\n",
+        "        return await http.get(_GRAPH + edge)\n",
         True,
     ),
     (

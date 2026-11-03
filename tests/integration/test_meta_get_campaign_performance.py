@@ -1,6 +1,5 @@
 """Integration tests Sprint M.3 Task 3: meta_get_campaign_performance."""
 
-from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -10,31 +9,19 @@ from src.db.repositories import (
     manager_meta_account_access,
     managers,
     meta_ad_accounts,
-    meta_oauth_connections,
 )
 
 pytestmark = pytest.mark.asyncio
 
 
-async def _seed_manager_with_meta_conn(
+async def _seed_manager_with_meta_access(
     db,
     *,
-    token_expires_in_days: int = 60,
     account_status: int = 1,  # ATIVO
 ):
     mid = uuid4()
     async with db.acquire() as conn:
         await managers.create(conn, manager_id=mid, email="t@v4company.com", full_name="Tester")
-        token_expires = datetime.now(UTC) + timedelta(days=token_expires_in_days)
-        await meta_oauth_connections.upsert(
-            conn,
-            manager_id=mid,
-            fb_user_id="fb_user_test",
-            fb_email="t@v4company.com",
-            access_token_enc=b"fake_enc_bytes",
-            token_expires_at=token_expires,
-            scopes=["ads_read", "ads_management"],
-        )
         await meta_ad_accounts.upsert_many(
             conn,
             [
@@ -60,7 +47,7 @@ async def test_happy_path_returns_sorted_rows(db):
         meta_get_campaign_performance,
     )
 
-    mid = await _seed_manager_with_meta_conn(db)
+    mid = await _seed_manager_with_meta_access(db)
 
     body = {
         "data": [
@@ -145,7 +132,7 @@ async def test_never_injects_filtering(db):
         meta_get_campaign_performance,
     )
 
-    mid = await _seed_manager_with_meta_conn(db)
+    mid = await _seed_manager_with_meta_access(db)
 
     captured_params: dict = {}
 
@@ -197,7 +184,7 @@ async def test_meta_api_error_returns_friendly_pt_br(db):
     )
     from src.meta_ads.errors import MetaAdsFriendlyError
 
-    mid = await _seed_manager_with_meta_conn(db)
+    mid = await _seed_manager_with_meta_access(db)
 
     with patch(
         "src.mcp.tools._meta_performance.run_meta_graph_get",
@@ -225,7 +212,7 @@ async def test_date_range_custom_overrides_preset(db):
         meta_get_campaign_performance,
     )
 
-    mid = await _seed_manager_with_meta_conn(db)
+    mid = await _seed_manager_with_meta_access(db)
 
     captured_params: dict = {}
 

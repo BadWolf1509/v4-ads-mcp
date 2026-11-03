@@ -1,7 +1,8 @@
 """Callback de exclusao de dados da Meta (exigencia do App Review).
 
-Movido sem mudanca de `src/auth/meta_oauth.py`: o OAuth pessoal da Meta sai do
-produto, mas a Meta continua exigindo este endpoint. O path literal
+Movido sem mudanca do antigo modulo do OAuth pessoal da Meta, removido em
+11/2026 (a execucao Meta usa so o token do system user); a Meta continua
+exigindo este endpoint. O path literal
 `/oauth/meta/data-deletion-callback` segue isento de CSRF em
 `_CSRF_EXEMPT_ROUTES` (a autenticacao e o HMAC do `signed_request`).
 """
@@ -22,7 +23,7 @@ from src.db.repositories import audit_log
 
 log = structlog.get_logger(__name__)
 
-router = APIRouter(prefix="/oauth/meta", tags=["meta_oauth"])
+router = APIRouter(prefix="/oauth/meta", tags=["meta_data_deletion"])
 
 
 def _verify_meta_signed_request(signed_request: str, app_secret: str) -> dict[str, object] | None:

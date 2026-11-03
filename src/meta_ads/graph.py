@@ -1,7 +1,7 @@
 """Paginação da Graph API — o único lugar que sabe seguir `paging.next`.
 
-Existe porque a lógica nasceu dentro de `src/auth/meta_oauth.py` e passou a ser
-reusada por quem não tem nada a ver com OAuth (o resync). Duplicar paginação é
+Existe porque a lógica nasceu dentro do OAuth pessoal da Meta (removido em
+11/2026) e passou a ser reusada por quem não tem nada a ver com OAuth (o resync). Duplicar paginação é
 o tipo de cópia que apodrece: a correção entra numa das duas e a outra fica.
 """
 

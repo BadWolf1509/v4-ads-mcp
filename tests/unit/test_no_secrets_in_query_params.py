@@ -6,9 +6,9 @@ mas isso e uma camada: qualquer outra biblioteca que registre a URL, um proxy,
 ou um `Referer` reintroduz a exposicao. O lado Google ja faz certo — `data=` no
 corpo do POST e `Authorization` no header, nada na URL.
 
-Este guard impede call-site NOVO com segredo na query. Os 3 remanescentes estao
-na allowlist com motivo e condicao de saida explicitos — allowlist que encolhe,
-nao que cresce.
+Este guard impede call-site NOVO com segredo na query. A allowlist encolheu ate
+zero: o ultimo residuo (`input_token` do `/debug_token`) saiu com o OAuth
+pessoal da Meta em 11/2026. Allowlist que encolhe, nao que cresce.
 """
 
 from __future__ import annotations
@@ -49,7 +49,11 @@ _CHAVES_SECRETAS = {
 # Residuo conhecido, por (funcao, chave) — nao por funcao inteira, senao
 # reintroduzir `access_token` numa funcao ja allowlistada passaria batido.
 #
-# `input_token` do `/debug_token` FICA na query porque nao ha alternativa:
+# VAZIA desde 11/2026: a unica entrada era `("meta_oauth_callback",
+# "input_token")`, e a funcao saiu com o OAuth pessoal da Meta. O motivo dela
+# fica abaixo como registro, porque e o que valeria se o fluxo voltasse:
+#
+# `input_token` do `/debug_token` FICAVA na query porque nao ha alternativa:
 # ele nao e credencial do chamador (e o objeto sendo inspecionado, logo nao
 # cabe no header `Authorization`) e o endpoint NAO aceita POST — verificado
 # contra o Graph real: HTTP 400, code 100, subcode 33 "Unsupported post
@@ -58,9 +62,7 @@ _CHAVES_SECRETAS = {
 # O que saiu da URL na mesma migracao foi o `app_id|app_secret` desse mesmo
 # request — o segredo PERMANENTE. O `input_token` e um token de gestor, que
 # expira. Sobra risco, mas de outra ordem de grandeza.
-_RESIDUO_CONHECIDO = {
-    ("meta_oauth_callback", "input_token"),
-}
+_RESIDUO_CONHECIDO: set[tuple[str, str]] = set()
 
 
 def _funcao_que_contem(arvore: ast.Module, alvo: ast.AST) -> str | None:
@@ -187,8 +189,8 @@ def test_a_allowlist_descreve_a_realidade() -> None:
 # (id, fonte, acusa?) — contrato de `_chaves_secretas`, forma a forma.
 #
 # Onda final do F190: ate aqui o detector so era exercitado pela arvore real, que
-# tem UM residuo conhecido (`input_token`). Isso prova que ele nao esta vazio, e
-# nao prova mais nada — nenhuma forma NOVA (chave nova, `dict(...)`, maiuscula)
+# tinha UM residuo conhecido (`input_token`; zero desde 11/2026). Isso provava
+# que ele nao estava vazio, e nao provava mais nada — nenhuma forma NOVA (chave nova, `dict(...)`, maiuscula)
 # tinha asserção, e os NEGATIVOS nao tinham nenhuma. Os negativos importam tanto
 # quanto: sao os sites reais que uma versao "reforcada" pra qualquer dict passaria
 # a acusar, incluindo o proprio fix do F190 em `headers=`.

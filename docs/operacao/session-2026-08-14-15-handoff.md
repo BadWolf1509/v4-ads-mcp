@@ -106,7 +106,7 @@ O **F82 foi destravado na 2ª onda** por probe — e o resultado justificou a es
 | `gaql_string_literal` | [`queries/_gaql.py`](../../src/google_ads/queries/_gaql.py) | Escape GAQL correto, sem dependências (F87) |
 | `record_job_crash` | [`jobs/_audit.py`](../../src/jobs/_audit.py) | Crash de job deixa linha no audit (F93) |
 | `Manager.is_deactivated` | [`repositories/managers.py`](../../src/db/repositories/managers.py) | Predicado único de desativação (F84) |
-| `AdAccountsFetch` | [`auth/meta_oauth.py`](../../src/auth/meta_oauth.py) | Inventário parcial não se passa por completo (F93) |
+| `AdAccountsFetch` | `auth/meta_oauth.py` | Inventário parcial não se passa por completo (F93) |
 
 **4 guards estruturais novos** em `tests/unit/test_structural_guards.py` (todos AST, todos verificados contra o código pré-fix): `finally` sem `best_effort`, doubling de aspas em GAQL, helper auto-adquirente dentro de `acquire`, e o de parser lendo campo não pedido (este em `test_insights_no_phantom_fields.py`).
 

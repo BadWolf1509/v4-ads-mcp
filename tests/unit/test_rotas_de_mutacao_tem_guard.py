@@ -17,11 +17,11 @@ Duas decisões medidas antes de escrever o casador (não assumidas):
    sugeria) falha com `ImportError` antes de examinar rota nenhuma.
 
 2. **O casador precisa olhar dependências E corpo da função — corpo não é
-   opcional.** `_require_admin` tem 26 call sites hoje (25 em
-   `src/web/routes/admin_*.py` + 1 em `src/auth/meta_oauth.py`, que ganhou o
+   opcional.** `_require_admin` tinha 26 call sites (25 em
+   `src/web/routes/admin_*.py` + 1 no antigo OAuth pessoal da Meta, que ganhou o
    seu depois desta frase ter sido escrita — ver F172 em
-   `docs/operacao/findings-catalog.md` — e o perdeu com a rota no F197) e NENHUM
-   é `Depends(_require_admin)`:
+   `docs/operacao/findings-catalog.md` —, o perdeu com a rota no F197, e saiu
+   inteiro em 11/2026) e NENHUM é `Depends(_require_admin)`:
    todas as rotas admin do painel chamam
    `_require_admin(user)` como primeira linha do corpo (padrão visível em
    `src/web/routes/admin_*.py`). Um casador que olha só
@@ -36,15 +36,16 @@ Duas decisões medidas antes de escrever o casador (não assumidas):
 
 Também medido: `app.routes` no nível superior expõe só `/mcp`, `/health`,
 `/docs` etc. como `APIRoute` puro — os três routers de verdade (`oauth`,
-`meta_oauth`, o `web_router` de 8 módulos) chegam envolvidos em
+`meta_data_deletion` — `meta_oauth` até 11/2026 —, o `web_router` de 8
+módulos) chegam envolvidos em
 `_IncludedRouter`, mesmo sem nenhum `prefix`/`dependencies` explícito nesta
 versão do FastAPI. `test_tabela_de_rotas_e_estavel.py` já resolveu esse
 problema (`_flatten`, via `effective_candidates()`) para `src.web.routes.router`
 — este teste reusa a MESMA função contra `app.routes` inteiro, porque
-`refresh-accounts` mora em `src.auth.meta_oauth`, fora daquele router (por
-isso não está no snapshot da tabela de rotas — confirmado por inspeção: o
-snapshot é gerado a partir de `src.web.routes.router`, que nunca inclui
-`meta_oauth_module.router`). Reimplementar o resolvedor aqui arriscaria
+o callback de exclusão da Meta mora em `src.auth.meta_data_deletion`, fora
+daquele router (por isso não está no snapshot da tabela de rotas — o snapshot
+é gerado a partir de `src.web.routes.router`, que nunca inclui os routers de
+`src/auth/`). Reimplementar o resolvedor aqui arriscaria
 divergir dele silenciosamente; importar mantém os dois sincronizados por
 construção.
 """
@@ -74,11 +75,6 @@ _SEM_ADMIN_COM_MOTIVO = {
         "`current_manager` — quem chama é o servidor do Meta, autenticado "
         "via HMAC do `signed_request` assinado com `meta_app_secret`, não "
         "por sessão de gestor."
-    ),
-    "/oauth/meta/revoke": (
-        "Autosserviço: revoga a conexão Meta ATIVA do próprio "
-        "`user.id` (`get_active_for_manager(conn, user.id)`) — não aceita "
-        "alvo de terceiro, não há o que um admin precisaria autorizar."
     ),
     "/sessions/new": (
         "Autosserviço: cria uma sessão MCP com `manager_id=user.id`, sempre a do próprio chamador."
@@ -132,6 +128,7 @@ def test_toda_rota_post_do_painel_exige_admin_ou_tem_motivo() -> None:
     app = create_app(skip_db_init=True)
     ofensores: list[str] = []
     examinadas = 0
+    vistas: set[str] = set()
     for r in _flatten(app.routes):
         if not isinstance(r, APIRoute) and not hasattr(r, "dependant"):
             continue
@@ -145,6 +142,7 @@ def test_toda_rota_post_do_painel_exige_admin_ou_tem_motivo() -> None:
         if r.path == "/mcp":
             continue
         examinadas += 1
+        vistas.add(r.path)
         deps = {
             d.call.__name__
             for d in r.dependant.dependencies
@@ -158,13 +156,21 @@ def test_toda_rota_post_do_painel_exige_admin_ou_tem_motivo() -> None:
             continue
         ofensores.append(f"{r.path} ({r.name})")
 
-    # 18 desde o F197: `POST /oauth/meta/refresh-accounts` saiu (so o resync diario
-    # escreve o inventario). Piso que desce junto com uma remocao deliberada.
-    assert examinadas >= 18, (
-        f"o scanner viu {examinadas} rotas POST (esperava >= 18) — guard que "
+    # 17 desde 11/2026: `POST /oauth/meta/revoke` saiu com o OAuth pessoal da
+    # Meta (18 desde o F197, quando `refresh-accounts` saiu). Piso que desce
+    # junto com uma remocao deliberada.
+    assert examinadas >= 17, (
+        f"o scanner viu {examinadas} rotas POST (esperava >= 17) — guard que "
         "varre de menos passa por vacuidade. Confira se create_app() registra "
-        "os três routers (oauth, meta_oauth, web) e se _flatten resolve os "
-        "wrappers _IncludedRouter."
+        "os três routers (oauth, meta_data_deletion, web) e se _flatten resolve "
+        "os wrappers _IncludedRouter."
+    )
+    # Isencao sem rota e isencao esperando a proxima rota com o mesmo caminho:
+    # quem a registrar de novo herda o motivo antigo sem escrever o seu.
+    obsoletas = sorted(set(_SEM_ADMIN_COM_MOTIVO) - vistas)
+    assert not obsoletas, (
+        f"isencao em _SEM_ADMIN_COM_MOTIVO sem rota POST correspondente: {obsoletas}. "
+        "Remova a entrada."
     )
     assert not ofensores, (
         f"rota POST sem `_require_admin` (corpo ou dependência) e sem motivo "

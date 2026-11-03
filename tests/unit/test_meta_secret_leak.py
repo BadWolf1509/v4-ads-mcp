@@ -12,10 +12,16 @@ Gravidade especifica deste projeto: o token system-user NAO expira e da acesso a
 camada MCP — quem le o Cloud Logging contorna a matriz inteira sem passar por
 gate nenhum.
 
-Duas camadas cobertas aqui:
+Camadas cobertas aqui:
 1. o logger do httpx nao emite INFO (mata a classe, inclusive pra call-sites
    que ainda carregam segredo na URL);
-2. a troca short->long-lived manda o `client_secret` no CORPO, nao na URL.
+2. (removida em 11/2026) a troca short->long-lived mandava o `client_secret` no
+   CORPO; a troca saiu com o OAuth pessoal da Meta, e com ela o unico call-site
+   que enviava o `meta_app_secret` pela rede. O que resta de segredo da Meta em
+   `src/auth/` e o HMAC do `signed_request` em `meta_data_deletion.py`, que nao
+   faz requisicao — e segue no escopo da camada 4;
+3. o token vai no header e acompanha a paginacao;
+4. propriedade sobre todo arquivo de `src/meta_ads/` e `src/auth/`.
 
 O lado Google ja era correto e serve de referencia: `data=` no POST do token e
 header `Authorization: Bearer` no userinfo — nada na URL.
@@ -31,7 +37,6 @@ import pytest
 import respx
 
 _FAKE_APP_SECRET = "s3cr3t-do-app-que-nao-pode-vazar"  # noqa: S105 — valor de teste
-_FAKE_SHORT_TOKEN = "short-token-de-teste"  # noqa: S105 — valor de teste
 
 
 def test_configure_logging_silencia_o_logger_do_httpx() -> None:
@@ -78,38 +83,6 @@ def test_httpx_realmente_logaria_a_query_string_sem_o_silenciamento(
     assert vazou, "premissa do F82 invalida: httpx nao esta logando a query string"
 
 
-@pytest.mark.asyncio
-async def test_troca_long_lived_nao_poe_client_secret_na_url() -> None:
-    """F82 camada 2: o `client_secret` vai no corpo, nunca na query string.
-
-    A troca code->short (mesmo endpoint, ja em producao) sempre usou POST com
-    `data=`; a short->long-lived era o GET destoante.
-    """
-    from src.auth.meta_oauth import _exchange_for_long_lived_token
-
-    with respx.mock:
-        route = respx.post("https://graph.facebook.com/v25.0/oauth/access_token").mock(
-            return_value=httpx.Response(200, json={"access_token": "long", "expires_in": 5184000})
-        )
-        async with httpx.AsyncClient() as http:
-            resp = await _exchange_for_long_lived_token(
-                http,
-                app_id="123",
-                app_secret=_FAKE_APP_SECRET,
-                short_token=_FAKE_SHORT_TOKEN,
-            )
-
-    assert resp.status_code == 200
-    request = route.calls[0].request
-    url = str(request.url)
-    assert _FAKE_APP_SECRET not in url, f"client_secret vazou na URL: {url}"
-    assert _FAKE_SHORT_TOKEN not in url, f"fb_exchange_token vazou na URL: {url}"
-
-    body = request.content.decode()
-    assert _FAKE_APP_SECRET in body, "o secret precisa seguir no corpo — so mudou de lugar"
-    assert "grant_type=fb_exchange_token" in body
-
-
 # ---------------------------------------------------------------------------
 # Camada 3 (2026-08-15): o token sai da URL e vai pro header `Authorization`.
 #
@@ -141,10 +114,10 @@ async def test_header_acompanha_a_paginacao_ate_o_fim() -> None:
     paginador (`fetch_paginated`) desde o F197 — o wrapper de `/me/adaccounts`
     que ele exercitava saiu, e a parceria do BM pagina pelo mesmo caminho.
     """
-    from src.auth.meta_oauth import META_GRAPH_BASE
+    from src.meta_ads.client import META_GRAPH_API_VERSION
     from src.meta_ads.graph import fetch_paginated
 
-    edge = f"{META_GRAPH_BASE}/619664032237208/client_ad_accounts"
+    edge = f"https://graph.facebook.com/{META_GRAPH_API_VERSION}/619664032237208/client_ad_accounts"
     proxima = f"{edge}?after=cursor2&fields=id"
     respx.get(edge).mock(
         side_effect=[
@@ -170,8 +143,9 @@ async def test_header_acompanha_a_paginacao_ate_o_fim() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Camada 4 (2026-09-21, F190 Task 5): os testes acima cobrem a invariante
-# exercitando FUNÇÕES especificas de `src/auth/meta_oauth.py` — nenhum deles
+# Camada 4 (2026-09-21, F190 Task 5): os testes acima cobriam a invariante
+# exercitando FUNÇÕES especificas do antigo `src/auth/meta_oauth.py` (removido
+# em 11/2026) — nenhum deles
 # toca `src/meta_ads/`. Foi assim que `reports.py` (que fala com a Graph API
 # pelo SDK `facebook_business`, e o SDK assa o token na query por baixo dos
 # panos) ficou fora do alcance por meses: nao havia teste que sequer abrisse
@@ -185,14 +159,15 @@ def test_nenhum_caminho_meta_poe_credencial_em_query() -> None:
     """Propriedade, nao lista: TODO arquivo de `src/meta_ads/` e `src/auth/` obedece.
 
     A versao anterior cobria a invariante enumerando funcoes de UM arquivo
-    (`meta_oauth.py`, nos testes acima). `reports.py` falava com a Graph API
+    (o antigo `meta_oauth.py`, removido em 11/2026). `reports.py` falava com a Graph API
     pelo SDK, que assa o token na query — e ficou fora do escopo por nao estar
     na lista. Guard que enumera absolve o arquivo que ninguem lembrou de
     listar, que e precisamente o arquivo onde o bug mora.
 
     Escopo cobre as DUAS pastas onde codigo Meta roda — `src/meta_ads/`
-    (SDK/Graph/relatorios) e `src/auth/` (OAuth, onde o F82 original morava
-    em `meta_oauth.py`). Varrer so uma das duas repetiria, no eixo do escopo
+    (SDK/Graph/relatorios) e `src/auth/` (onde o F82 original morava, no OAuth
+    pessoal removido em 11/2026, e onde o `meta_app_secret` segue em uso no
+    HMAC de `meta_data_deletion.py`). Varrer so uma das duas repetiria, no eixo do escopo
     de diretorio, o mesmo defeito que esta propriedade existe para corrigir
     no eixo da lista de arquivos — por isso o piso abaixo soma as duas.
 
@@ -279,16 +254,22 @@ def test_nenhum_caminho_meta_poe_credencial_em_query() -> None:
     )
     # Afirma os DIRETORIOS, nao a contagem: um piso numerico sozinho expira
     # sem avisar quando `meta_ads/` (a area mais ativa do repo) crescer o
-    # bastante pra compensar `auth/` sumindo do scan — e `auth/meta_oauth.py`
-    # e onde o F82 original morava. Verificado contra os caminhos reais que
+    # bastante pra compensar `auth/` sumindo do scan — e `auth/` e onde o F82
+    # original morava. Verificado contra os caminhos reais que
     # `fontes_py` devolve (absolutos, resolvidos): `p.relative_to(h.SRC)` da
     # `meta_ads\arquivo.py` ou `auth\arquivo.py`, e `.parts[0]` isola a raiz.
     diretorios = {p.relative_to(h.SRC).parts[0] for p in arquivos}
     assert diretorios == {"meta_ads", "auth"}, (
         f"a varredura perdeu uma das duas raizes: achou {diretorios}. O F82 "
-        "morava em `auth/meta_oauth.py` — varrer so `meta_ads/` reproduz o "
-        "defeito."
+        "morava em `auth/` — varrer so `meta_ads/` reproduz o defeito."
     )
+    # E afirma o ARQUIVO onde o segredo da Meta segue em uso em `auth/` desde
+    # 11/2026: o `meta_app_secret` do HMAC do callback de exclusao. Sem isto,
+    # `auth/` poderia continuar no escopo so com o OAuth do Google e o guard
+    # deixaria de olhar justamente o arquivo Meta que sobrou ali.
+    assert (h.SRC / "auth" / "meta_data_deletion.py").resolve() in {
+        p.resolve() for p in arquivos
+    }, "src/auth/meta_data_deletion.py saiu da varredura do F82"
     ofensores: list[str] = []
     for arq in arquivos:
         arv = h.arvore(arq)

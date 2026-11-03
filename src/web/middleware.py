@@ -18,13 +18,11 @@ _SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 #   - /oauth/meta/data-deletion-callback: POST server-to-server da Meta, que valida
 #     o proprio HMAC no signed_request;
 #   - /mcp: auth por Bearer, nao por cookie.
-# O prefixo `/oauth/` inteiro era largo demais. Os endpoints OAuth de verdade sao
-# GET (start, callback) — metodo seguro, nunca checado —, mas `/oauth/meta/revoke` e
-# mutacao do PAINEL autenticada por cookie (Depends(current_manager)), disparada por
-# <form method="post"> em admin/index.html (a outra, a de sincronizar contas, saiu
-# no F197).
-# Vivem ali por acidente de roteamento (o APIRouter tem prefix /oauth/meta) e ficavam
-# de fora da unica checagem de origem que existe.
+# O prefixo `/oauth/` inteiro era largo demais: `/oauth/meta/revoke` era mutacao
+# do PAINEL autenticada por cookie que vivia ali por acidente de roteamento e
+# ficava de fora da unica checagem de origem que existe. Ela saiu com o OAuth
+# pessoal da Meta (11/2026); a isencao continua por rota literal para que a
+# proxima vizinha sob /oauth/meta nao a herde.
 #
 # /mcp como caminho LITERAL (nao prefixo) e decisao MEDIDA, nao suposta —
 # rodar `create_app()` e listar `app.routes` (task-4-report.md, Step 1) mostra

@@ -36,7 +36,7 @@ log = structlog.get_logger(__name__)
 # repassava a `requests`, que bloqueia indefinidamente; como a chamada ia por
 # `run_blocking`, uma conexao pendurada prendia um slot do pool de threads do
 # anyio, compartilhado com os cinco executores Google. Espelha o valor que os
-# outros call sites Meta em httpx ja usam (`auth/meta_oauth.py`).
+# outros call sites Meta em httpx usavam (o OAuth pessoal, removido em 11/2026).
 _TIMEOUT_GRAPH = 30.0
 
 

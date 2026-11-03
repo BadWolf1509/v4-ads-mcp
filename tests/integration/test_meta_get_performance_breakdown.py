@@ -1,6 +1,5 @@
 """Integration tests Sprint M.4: meta_get_performance_breakdown."""
 
-from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -10,7 +9,6 @@ from src.db.repositories import (
     manager_meta_account_access,
     managers,
     meta_ad_accounts,
-    meta_oauth_connections,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -20,15 +18,6 @@ async def _seed(db):
     mid = uuid4()
     async with db.acquire() as conn:
         await managers.create(conn, manager_id=mid, email="t@v4company.com", full_name="T")
-        await meta_oauth_connections.upsert(
-            conn,
-            manager_id=mid,
-            fb_user_id="fb_test",
-            fb_email="t@v4company.com",
-            access_token_enc=b"fake",
-            token_expires_at=datetime.now(UTC) + timedelta(days=60),
-            scopes=["ads_read"],
-        )
         await meta_ad_accounts.upsert_many(
             conn,
             [
