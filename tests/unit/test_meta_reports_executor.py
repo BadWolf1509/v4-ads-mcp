@@ -384,3 +384,114 @@ async def test_run_meta_graph_get_registra_quando_so_a_quota_do_app_vem() -> Non
     kwargs = mock_record_actual_meta.call_args.kwargs
     assert kwargs["insights_throttle_header"] == throttle
     assert kwargs["buc_header"] is None
+
+
+# --- Caracterizacao do audit de leitura (D5): campos EXATOS dos dois ramos ---
+# Os testes acima afirmam so alguns campos. Estes fixam o conjunto inteiro antes
+# de extrair `_gravar_audit_leitura`: o que muda entre os ramos (status,
+# error_message, target_count, provider_request_id) e o que e comum.
+
+_CAMPOS_COMUNS = {
+    "action_type": "read",
+    "operation": "meta_get_campaign_performance",
+    "customer_id": "act_999",
+    "platform": "meta",
+    "params_summary": {"ad_account_id": "act_999", "level": "campaign"},
+}
+
+
+async def _roda_com_audit(
+    handler: Any, audit: AsyncMock, *, espera_erro: bool
+) -> tuple[Any, Any, Any]:
+    mid, sid = uuid4(), uuid4()
+    with (
+        patch.object(reports.connection, "get_pool", return_value=_patch_allowed_pool()),
+        patch.object(
+            reports.manager_meta_account_access,
+            "can_manager_access",
+            AsyncMock(return_value=True),
+        ),
+        patch.object(reports.httpx, "AsyncClient", MagicMock(return_value=_cliente_httpx(handler))),
+        patch.object(reports.audit_log, "record", audit),
+        patch.object(reports, "record_actual_meta", AsyncMock()),
+    ):
+        chamada = reports.run_meta_graph_get(
+            manager_id=mid,
+            session_id=sid,
+            ad_account_id="act_999",
+            edge="/act_999/insights",
+            params={"level": "campaign"},
+            operation_name="meta_get_campaign_performance",
+            audit_this_call=True,
+            params_summary=dict(_CAMPOS_COMUNS["params_summary"]),
+        )
+        if espera_erro:
+            with pytest.raises(MetaAdsFriendlyError) as exc:
+                await chamada
+            return mid, sid, exc.value
+        return mid, sid, await chamada
+
+
+@pytest.mark.asyncio
+async def test_audit_de_sucesso_grava_o_conjunto_exato_de_campos() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"data": [{"a": 1}, {"a": 2}]}, headers={"x-fb-trace-id": "trace-xyz"}
+        )
+
+    audit = AsyncMock(return_value=1)
+    mid, sid, _ = await _roda_com_audit(handler, audit, espera_erro=False)
+
+    audit.assert_awaited_once()
+    kw = audit.call_args.kwargs
+    # o helper passa os opcionais ausentes como None (== default de `record`)
+    assert kw.get("error_message") is None
+    for chave, valor in _CAMPOS_COMUNS.items():
+        assert kw[chave] == valor
+    assert kw["manager_id"] == mid
+    assert kw["session_id"] == sid
+    assert kw["status"] == "success"
+    assert kw["target_count"] == 2
+    assert kw["provider_request_id"] == "trace-xyz"
+    assert isinstance(kw["duration_ms"], int)
+
+
+@pytest.mark.asyncio
+async def test_audit_de_erro_grava_o_conjunto_exato_de_campos() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        raise RuntimeError("boom")
+
+    audit = AsyncMock(return_value=1)
+    mid, sid, friendly = await _roda_com_audit(handler, audit, espera_erro=True)
+
+    audit.assert_awaited_once()
+    kw = audit.call_args.kwargs
+    # ramo de erro nao grava contagem nem trace-id (None == default de `record`)
+    assert kw.get("target_count") is None
+    assert kw.get("provider_request_id") is None
+    for chave, valor in _CAMPOS_COMUNS.items():
+        assert kw[chave] == valor
+    assert kw["manager_id"] == mid
+    assert kw["session_id"] == sid
+    assert kw["status"] == "error"
+    assert kw["error_message"] == friendly.message
+    assert isinstance(kw["duration_ms"], int)
+
+
+@pytest.mark.asyncio
+async def test_audit_que_falha_nao_derruba_a_leitura_nem_troca_o_erro() -> None:
+    """best_effort nos DOIS ramos: excecao do banco no audit nao propaga."""
+
+    def ok(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": []})
+
+    def falha(_request: httpx.Request) -> httpx.Response:
+        raise RuntimeError("boom")
+
+    _, _, corpo = await _roda_com_audit(ok, AsyncMock(side_effect=OSError("db")), espera_erro=False)
+    assert corpo == {"data": []}
+
+    _, _, friendly = await _roda_com_audit(
+        falha, AsyncMock(side_effect=OSError("db")), espera_erro=True
+    )
+    assert "Erro inesperado" in friendly.message
