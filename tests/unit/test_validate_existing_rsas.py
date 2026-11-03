@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.google_ads.queries._common import validate_existing_rsas_for_update
+from src.google_ads.preflight import validate_existing_rsas_for_update
 
 
 @pytest.mark.asyncio
@@ -29,7 +29,7 @@ async def test_returns_none_when_all_valid(monkeypatch) -> None:
             }
         ]
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_existing_rsas_for_update(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -46,7 +46,7 @@ async def test_rejects_missing_ad(monkeypatch) -> None:
     async def fake_run_report(**kwargs: Any) -> list[dict[str, str]]:
         return []
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_existing_rsas_for_update(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -77,7 +77,7 @@ async def test_rejects_non_rsa_type(monkeypatch) -> None:
             }
         ]
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_existing_rsas_for_update(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -108,7 +108,7 @@ async def test_rejects_removed_ad_group(monkeypatch) -> None:
             }
         ]
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_existing_rsas_for_update(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -133,7 +133,7 @@ async def test_recusa_ad_id_nao_numerico(monkeypatch) -> None:
     async def fake_run_report(**kwargs: Any) -> list[dict[str, str]]:
         raise AssertionError("run_report chamado com ad_id nao-numerico")
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     with pytest.raises(ValueError):
         await validate_existing_rsas_for_update(
             manager_id=uuid4(),
@@ -162,7 +162,7 @@ async def test_rejects_non_search_channel(monkeypatch) -> None:
             }
         ]
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_existing_rsas_for_update(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -197,7 +197,7 @@ async def test_rejeita_variacao_de_ad_variation(monkeypatch) -> None:
             }
         ]
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_existing_rsas_for_update(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -233,7 +233,7 @@ async def test_ad_normal_nao_e_confundido_com_variacao(monkeypatch) -> None:
             }
         ]
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_existing_rsas_for_update(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -252,7 +252,7 @@ async def test_query_do_preflight_pede_o_campo_de_system_managed(monkeypatch) ->
         capturado["query"] = kwargs["query"]
         return []
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     await validate_existing_rsas_for_update(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -272,7 +272,7 @@ def test_formatter_le_o_campo_pelo_caminho_certo_do_proto() -> None:
     """
     from types import SimpleNamespace
 
-    from src.google_ads.queries._common import _format_rsa_preflight_row
+    from src.google_ads.preflight import _format_rsa_preflight_row
 
     row = SimpleNamespace(
         ad_group_ad=SimpleNamespace(
@@ -320,7 +320,7 @@ async def test_mensagem_nomeia_o_ad_base_quando_ele_e_unico(monkeypatch) -> None
             {"ad_id": "825281476311", "system_managed_source": "AD_VARIATIONS"},
         ]
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_existing_rsas_for_update(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -364,7 +364,7 @@ async def test_sem_base_unico_a_mensagem_nao_inventa_id(monkeypatch) -> None:
             }
         ]
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_existing_rsas_for_update(
         manager_id=uuid4(),
         session_id=uuid4(),

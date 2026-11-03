@@ -80,8 +80,8 @@ async def test_preflight_de_conversion_action_escapa_o_nome(monkeypatch) -> None
         capturado["query"] = kwargs["query"]
         return []
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
-    from src.google_ads.queries._common import validate_conversion_action_create
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
+    from src.google_ads.preflight import validate_conversion_action_create
 
     await validate_conversion_action_create(
         manager_id=uuid4(),

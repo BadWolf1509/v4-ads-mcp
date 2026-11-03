@@ -30,11 +30,11 @@ def _make_row(
 
 @pytest.mark.asyncio
 async def test_user_list_exists_crm_based_enabled_returns_none(fake_ctx):
-    from src.google_ads.queries._common import validate_user_list_for_upload
+    from src.google_ads.preflight import validate_user_list_for_upload
 
     rows = [_make_row("123")]
     with patch(
-        "src.google_ads.queries._common.run_report",
+        "src.google_ads.preflight.run_report",
         AsyncMock(return_value=rows),
     ):
         result = await validate_user_list_for_upload(
@@ -48,10 +48,10 @@ async def test_user_list_exists_crm_based_enabled_returns_none(fake_ctx):
 
 @pytest.mark.asyncio
 async def test_missing_user_list_returns_error_with_id(fake_ctx):
-    from src.google_ads.queries._common import validate_user_list_for_upload
+    from src.google_ads.preflight import validate_user_list_for_upload
 
     with patch(
-        "src.google_ads.queries._common.run_report",
+        "src.google_ads.preflight.run_report",
         AsyncMock(return_value=[]),
     ):
         result = await validate_user_list_for_upload(
@@ -67,11 +67,11 @@ async def test_missing_user_list_returns_error_with_id(fake_ctx):
 
 @pytest.mark.asyncio
 async def test_wrong_type_returns_error_with_type_name(fake_ctx):
-    from src.google_ads.queries._common import validate_user_list_for_upload
+    from src.google_ads.preflight import validate_user_list_for_upload
 
     rows = [_make_row("123", list_type="LOGICAL_USER_LIST")]
     with patch(
-        "src.google_ads.queries._common.run_report",
+        "src.google_ads.preflight.run_report",
         AsyncMock(return_value=rows),
     ):
         result = await validate_user_list_for_upload(
@@ -87,11 +87,11 @@ async def test_wrong_type_returns_error_with_type_name(fake_ctx):
 
 @pytest.mark.asyncio
 async def test_read_only_returns_error_mentioning_policy_acceptance(fake_ctx):
-    from src.google_ads.queries._common import validate_user_list_for_upload
+    from src.google_ads.preflight import validate_user_list_for_upload
 
     rows = [_make_row("123", read_only=True)]
     with patch(
-        "src.google_ads.queries._common.run_report",
+        "src.google_ads.preflight.run_report",
         AsyncMock(return_value=rows),
     ):
         result = await validate_user_list_for_upload(
@@ -107,11 +107,11 @@ async def test_read_only_returns_error_mentioning_policy_acceptance(fake_ctx):
 
 @pytest.mark.asyncio
 async def test_membership_status_closed_returns_error(fake_ctx):
-    from src.google_ads.queries._common import validate_user_list_for_upload
+    from src.google_ads.preflight import validate_user_list_for_upload
 
     rows = [_make_row("123", membership_status="CLOSED")]
     with patch(
-        "src.google_ads.queries._common.run_report",
+        "src.google_ads.preflight.run_report",
         AsyncMock(return_value=rows),
     ):
         result = await validate_user_list_for_upload(

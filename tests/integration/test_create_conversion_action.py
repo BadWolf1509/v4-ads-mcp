@@ -6,7 +6,7 @@ resource_names matching mocked ConversionAction ID. F13 cross-cutting
 (third resource type after AdGroup/Ad) also returns resource_names correctly.
 
 Mocks validate_conversion_action_create per Sprint 3b.11 "Pre-flight test
-convention" — helper's run_report import lives in _common.py namespace,
+convention" — helper's run_report import lives in preflight.py namespace,
 NOT in the tool's namespace. Patch at tool module namespace to bypass real
 OAuth calls in CI.
 """

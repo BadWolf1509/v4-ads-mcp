@@ -223,7 +223,7 @@ def test_o_scan_ve_as_duas_formas_na_arvore_real() -> None:
     Falha contra: **implementacao cega a uma das formas**. O piso de 22 nao
     pega isso sozinho — perder a forma B inteira derruba o total para 18, que
     passa folgado no piso de 10. `queries/ad_schedule.py` so tem sitios da
-    forma B (3) e `queries/_common.py` so tem da forma A (8), entao cada
+    forma B (3) e `preflight.py` so tem da forma A (8), entao cada
     arquivo isola uma metade do casador.
     """
     forma_b = _joins_em_clausula_in(h.SRC / "google_ads" / "queries" / "ad_schedule.py")
@@ -231,9 +231,9 @@ def test_o_scan_ve_as_duas_formas_na_arvore_real() -> None:
         "ad_schedule.py so tem `IN ({','.join(...)})` INLINE: lista vazia aqui "
         f"significa que o guard perdeu a forma B por inteiro. {forma_b}"
     )
-    forma_a = _joins_em_clausula_in(h.SRC / "google_ads" / "queries" / "_common.py")
+    forma_a = _joins_em_clausula_in(h.SRC / "google_ads" / "preflight.py")
     assert len(forma_a) >= 8, (
-        "_common.py so tem a forma com nome intermediario: lista vazia aqui "
+        "preflight.py so tem a forma com nome intermediario: lista vazia aqui "
         f"significa que o guard perdeu a forma A por inteiro. {forma_a}"
     )
     assert all(seguro for _, _, seguro in forma_a + forma_b)

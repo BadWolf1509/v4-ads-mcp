@@ -23,11 +23,11 @@ def _make_row(ad_group_id: str, criterion_id: str, negative: bool, type_name: st
 
 @pytest.mark.asyncio
 async def test_all_positive_returns_none(fake_ctx):
-    from src.google_ads.queries._common import validate_keyword_criterion_types
+    from src.google_ads.preflight import validate_keyword_criterion_types
 
     rows = [_make_row("1", "11", False), _make_row("1", "12", False)]
     with patch(
-        "src.google_ads.queries._common.run_report",
+        "src.google_ads.preflight.run_report",
         AsyncMock(return_value=rows),
     ):
         result = await validate_keyword_criterion_types(
@@ -41,11 +41,11 @@ async def test_all_positive_returns_none(fake_ctx):
 
 @pytest.mark.asyncio
 async def test_all_negative_returns_blocked_list_with_empty_safe(fake_ctx):
-    from src.google_ads.queries._common import validate_keyword_criterion_types
+    from src.google_ads.preflight import validate_keyword_criterion_types
 
     rows = [_make_row("1", "11", True), _make_row("1", "12", True)]
     with patch(
-        "src.google_ads.queries._common.run_report",
+        "src.google_ads.preflight.run_report",
         AsyncMock(return_value=rows),
     ):
         result = await validate_keyword_criterion_types(
@@ -62,7 +62,7 @@ async def test_all_negative_returns_blocked_list_with_empty_safe(fake_ctx):
 
 @pytest.mark.asyncio
 async def test_mixed_returns_split_response(fake_ctx):
-    from src.google_ads.queries._common import validate_keyword_criterion_types
+    from src.google_ads.preflight import validate_keyword_criterion_types
 
     rows = [
         _make_row("1", "11", False),
@@ -70,7 +70,7 @@ async def test_mixed_returns_split_response(fake_ctx):
         _make_row("2", "21", False),
     ]
     with patch(
-        "src.google_ads.queries._common.run_report",
+        "src.google_ads.preflight.run_report",
         AsyncMock(return_value=rows),
     ):
         result = await validate_keyword_criterion_types(
@@ -89,11 +89,11 @@ async def test_mixed_returns_split_response(fake_ctx):
 
 @pytest.mark.asyncio
 async def test_missing_id_returns_missing_dict_curto_circuit(fake_ctx):
-    from src.google_ads.queries._common import validate_keyword_criterion_types
+    from src.google_ads.preflight import validate_keyword_criterion_types
 
     rows = [_make_row("1", "11", False)]
     with patch(
-        "src.google_ads.queries._common.run_report",
+        "src.google_ads.preflight.run_report",
         AsyncMock(return_value=rows),
     ):
         result = await validate_keyword_criterion_types(
@@ -110,11 +110,11 @@ async def test_missing_id_returns_missing_dict_curto_circuit(fake_ctx):
 
 @pytest.mark.asyncio
 async def test_pt_br_messages(fake_ctx):
-    from src.google_ads.queries._common import validate_keyword_criterion_types
+    from src.google_ads.preflight import validate_keyword_criterion_types
 
     rows = [_make_row("1", "11", True)]
     with patch(
-        "src.google_ads.queries._common.run_report",
+        "src.google_ads.preflight.run_report",
         AsyncMock(return_value=rows),
     ):
         result = await validate_keyword_criterion_types(
@@ -130,11 +130,11 @@ async def test_pt_br_messages(fake_ctx):
 
 @pytest.mark.asyncio
 async def test_to_retry_with_includes_positive_ids(fake_ctx):
-    from src.google_ads.queries._common import validate_keyword_criterion_types
+    from src.google_ads.preflight import validate_keyword_criterion_types
 
     rows = [_make_row("1", "11", False), _make_row("1", "12", True)]
     with patch(
-        "src.google_ads.queries._common.run_report",
+        "src.google_ads.preflight.run_report",
         AsyncMock(return_value=rows),
     ):
         result = await validate_keyword_criterion_types(
@@ -149,10 +149,10 @@ async def test_to_retry_with_includes_positive_ids(fake_ctx):
 
 @pytest.mark.asyncio
 async def test_empty_input_returns_none_without_calling_run_report(fake_ctx):
-    from src.google_ads.queries._common import validate_keyword_criterion_types
+    from src.google_ads.preflight import validate_keyword_criterion_types
 
     with patch(
-        "src.google_ads.queries._common.run_report",
+        "src.google_ads.preflight.run_report",
         AsyncMock(return_value=[]),
     ) as mock_run:
         result = await validate_keyword_criterion_types(

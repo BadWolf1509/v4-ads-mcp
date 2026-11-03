@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.google_ads.queries._common import validate_parent_ad_groups_for_rsa_create
+from src.google_ads.preflight import validate_parent_ad_groups_for_rsa_create
 
 
 @pytest.mark.asyncio
@@ -26,7 +26,7 @@ async def test_returns_none_when_all_valid(monkeypatch) -> None:
             }
         ]
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_parent_ad_groups_for_rsa_create(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -43,7 +43,7 @@ async def test_rejects_missing_ad_group(monkeypatch) -> None:
     async def fake_run_report(**kwargs: Any) -> list[dict[str, str]]:
         return []
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_parent_ad_groups_for_rsa_create(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -71,7 +71,7 @@ async def test_rejects_removed_ad_group(monkeypatch) -> None:
             }
         ]
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_parent_ad_groups_for_rsa_create(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -99,7 +99,7 @@ async def test_rejects_non_search_channel(monkeypatch) -> None:
             }
         ]
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_parent_ad_groups_for_rsa_create(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -124,7 +124,7 @@ async def test_recusa_ad_group_id_nao_numerico(monkeypatch) -> None:
     async def fake_run_report(**kwargs: Any) -> list[dict[str, str]]:
         raise AssertionError("run_report chamado com ad_group_id nao-numerico")
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     with pytest.raises(ValueError):
         await validate_parent_ad_groups_for_rsa_create(
             manager_id=uuid4(),
@@ -158,7 +158,7 @@ async def test_handles_batch_with_multiple_ad_groups(monkeypatch) -> None:
             },
         ]
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_parent_ad_groups_for_rsa_create(
         manager_id=uuid4(),
         session_id=uuid4(),

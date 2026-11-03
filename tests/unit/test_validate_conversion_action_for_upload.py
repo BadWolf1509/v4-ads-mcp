@@ -13,10 +13,10 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_validate_returns_none_when_action_exists_with_upload_clicks_type():
-    from src.google_ads.queries._common import validate_conversion_action_for_upload
+    from src.google_ads.preflight import validate_conversion_action_for_upload
 
     with patch(
-        "src.google_ads.queries._common.run_report",
+        "src.google_ads.preflight.run_report",
         AsyncMock(
             return_value=[
                 {
@@ -41,10 +41,10 @@ async def test_validate_returns_none_when_action_exists_with_upload_clicks_type(
 
 @pytest.mark.asyncio
 async def test_validate_returns_error_when_action_not_found():
-    from src.google_ads.queries._common import validate_conversion_action_for_upload
+    from src.google_ads.preflight import validate_conversion_action_for_upload
 
     with patch(
-        "src.google_ads.queries._common.run_report",
+        "src.google_ads.preflight.run_report",
         AsyncMock(return_value=[]),
     ):
         result = await validate_conversion_action_for_upload(
@@ -62,10 +62,10 @@ async def test_validate_returns_error_when_action_not_found():
 
 @pytest.mark.asyncio
 async def test_validate_returns_error_when_type_is_webpage():
-    from src.google_ads.queries._common import validate_conversion_action_for_upload
+    from src.google_ads.preflight import validate_conversion_action_for_upload
 
     with patch(
-        "src.google_ads.queries._common.run_report",
+        "src.google_ads.preflight.run_report",
         AsyncMock(
             return_value=[
                 {
@@ -92,10 +92,10 @@ async def test_validate_returns_error_when_type_is_webpage():
 
 @pytest.mark.asyncio
 async def test_validate_returns_error_when_action_is_removed():
-    from src.google_ads.queries._common import validate_conversion_action_for_upload
+    from src.google_ads.preflight import validate_conversion_action_for_upload
 
     with patch(
-        "src.google_ads.queries._common.run_report",
+        "src.google_ads.preflight.run_report",
         AsyncMock(
             return_value=[
                 {

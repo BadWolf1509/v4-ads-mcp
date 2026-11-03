@@ -68,7 +68,7 @@ async def test_preflight_missing_user_list_returns_error(db, session_ctx):
     """Mock preflight at TOOL's namespace (convention pós-3b.5/3b.8).
 
     Patching src.mcp.tools.upload_customer_match_list.validate_user_list_for_upload
-    — NOT src.google_ads.queries._common.validate_user_list_for_upload.
+    — NOT src.google_ads.preflight.validate_user_list_for_upload.
     """
     from src.mcp.tools.upload_customer_match_list import upload_customer_match_list
 
