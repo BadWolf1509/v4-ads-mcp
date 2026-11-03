@@ -10,19 +10,11 @@ na forma canônica: cláusula presente num gêmeo (`grant`, e no `bulk_grant`
 Google já corrigido), ausente aqui.
 """
 
-from uuid import UUID, uuid4
-
 import asyncpg
 import pytest
 
-from src.db.repositories import manager_meta_account_access, managers, meta_ad_accounts
-
-
-async def _make_manager(conn: asyncpg.Connection, email: str) -> UUID:
-    """Shared helper: create a manager row with a fresh id, return the id."""
-    mid = uuid4()
-    await managers.create(conn, manager_id=mid, email=email, full_name=None)
-    return mid
+from src.db.repositories import manager_meta_account_access, meta_ad_accounts
+from tests.integration._seed import seed_manager
 
 
 async def _make_account(conn: asyncpg.Connection, ad_account_id: str) -> None:
@@ -44,7 +36,7 @@ async def test_bulk_grant_promove_read_para_write(db) -> None:
     a parte cara.
     """
     async with db.acquire() as conn:
-        manager_id = await _make_manager(conn, "mbulk@v4company.com")
+        manager_id = await seed_manager(conn, email="mbulk@v4company.com")
         await _make_account(conn, "act_1111111111")
         await manager_meta_account_access.grant(
             conn,
@@ -77,7 +69,7 @@ async def test_bulk_grant_promove_read_para_write(db) -> None:
 async def test_bulk_grant_continua_limpando_a_revogacao(db) -> None:
     """Contraprova: o comportamento que o ON CONFLICT já tinha não regride."""
     async with db.acquire() as conn:
-        manager_id = await _make_manager(conn, "mbulk2@v4company.com")
+        manager_id = await seed_manager(conn, email="mbulk2@v4company.com")
         await _make_account(conn, "act_2222222222")
         await manager_meta_account_access.grant(
             conn,
@@ -116,7 +108,7 @@ async def test_revogar_de_novo_nao_tira_a_linha_do_restore(db) -> None:
     que filtra por esse motivo — deixa de devolver o acesso quando a parceria volta.
     """
     async with db.acquire() as conn:
-        manager_id = await _make_manager(conn, "mrevoga2x@v4company.com")
+        manager_id = await seed_manager(conn, email="mrevoga2x@v4company.com")
         await _make_account(conn, "act_3333333333")
         await manager_meta_account_access.grant(
             conn,
