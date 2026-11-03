@@ -22,7 +22,7 @@ from src.db.repositories import google_oauth_connections, manager_account_access
 from src.db.repositories.mcp_sessions import DEFAULT_TTL_DAYS
 from src.web import numeros
 from src.web.deps import CurrentUser, current_manager, optional_current_manager
-from src.web.routes._shared import templates
+from src.web.routes._shared import eh_htmx, resposta_hx, templates, toast_trigger
 
 router = APIRouter(tags=["web"])
 
@@ -341,20 +341,18 @@ async def sessions_revoke(
         if target.revoked_at is None:
             await mcp_sessions.revoke(conn, session_id)
 
-    _toast_trigger = '{"toast": {"message": "Sessão revogada.", "kind": "success"}}'
+    _toast_trigger = toast_trigger("Sessão revogada.")
 
     # If HTMX request, decide by the originating page.
     # Detail page (/sessions/<id>) → send HX-Redirect so HTMX navigates cleanly.
     # List page (/sessions) → swap table fragment in-place (existing behaviour).
-    is_htmx = request.headers.get("HX-Request") == "true"
-    if is_htmx:
+    if eh_htmx(request):
         current_url = request.headers.get("HX-Current-URL", "")
         current_path = urlparse(current_url).path
         if current_path.startswith("/sessions/") and current_path.rstrip("/") != "/sessions":
             # Came from the detail page — redirect without flashing the fragment.
-            return Response(
-                status_code=204,
-                headers={"HX-Redirect": "/sessions", "HX-Trigger": _toast_trigger},
+            return resposta_hx(
+                request, destino="/sessions", hx="redirect", toast="Sessão revogada."
             )
         # Came from the list page — return fresh table fragment for in-place swap.
         # Preserve include_revoked from the originating page's query string.

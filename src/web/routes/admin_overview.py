@@ -11,14 +11,19 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, Response
 
 from src.db import connection
 from src.db.repositories import google_oauth_connections
 from src.db.repositories import managers as managers_repo
 from src.web import numeros
 from src.web.deps import CurrentUser, current_manager, pending_invites_count
-from src.web.routes._shared import _audit_admin, _require_admin, templates
+from src.web.routes._shared import (
+    _audit_admin,
+    _require_admin,
+    resposta_hx,
+    templates,
+)
 
 router = APIRouter(tags=["web"])
 
@@ -169,17 +174,9 @@ async def admin_managers_toggle_active(
             target_manager_id=str(manager_id),
             target_email=row["email"] if row else None,
         )
-    if request.headers.get("HX-Request") == "true":
-        return Response(
-            status_code=204,
-            headers={
-                "HX-Redirect": "/admin/managers",
-                "HX-Trigger": (
-                    '{"toast": {"message": "Status do gestor atualizado.", "kind": "success"}}'
-                ),
-            },
-        )
-    return RedirectResponse(url="/admin/managers", status_code=303)
+    return resposta_hx(
+        request, destino="/admin/managers", hx="redirect", toast="Status do gestor atualizado."
+    )
 
 
 @router.post("/admin/managers/{manager_id}/toggle-role", response_class=HTMLResponse)
@@ -210,14 +207,6 @@ async def admin_managers_toggle_role(
             target_manager_id=str(manager_id),
             target_email=row["email"] if row else None,
         )
-    if request.headers.get("HX-Request") == "true":
-        return Response(
-            status_code=204,
-            headers={
-                "HX-Redirect": "/admin/managers",
-                "HX-Trigger": (
-                    '{"toast": {"message": "Role do gestor atualizado.", "kind": "success"}}'
-                ),
-            },
-        )
-    return RedirectResponse(url="/admin/managers", status_code=303)
+    return resposta_hx(
+        request, destino="/admin/managers", hx="redirect", toast="Role do gestor atualizado."
+    )

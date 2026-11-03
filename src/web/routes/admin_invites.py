@@ -9,7 +9,13 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from src.config import get_settings
 from src.db import connection
 from src.web.deps import CurrentUser, current_manager, pending_invites_count
-from src.web.routes._shared import _admin_flash, _audit_admin, _require_admin, templates
+from src.web.routes._shared import (
+    _admin_flash,
+    _audit_admin,
+    _require_admin,
+    resposta_hx,
+    templates,
+)
 
 router = APIRouter(tags=["web"])
 
@@ -154,14 +160,7 @@ async def admin_invites_cancel(
         # navega (HX-Redirect), e um toast reagendado por cima de uma
         # navegação pisca por uma fração de segundo — pouco confiável para um
         # aviso que o admin precisa mesmo ver.
-        if request.headers.get("HX-Request"):
-            return Response(
-                status_code=204,
-                headers={"HX-Redirect": "/admin/invites?error=invite_ja_aceito"},
-            )
-        return RedirectResponse(url="/admin/invites?error=invite_ja_aceito", status_code=303)
-    if request.headers.get("HX-Request"):
-        # Full-page refresh (browser reload) picks up the updated pending
-        # count + subnav badge for free — cheaper than hand-updating both.
-        return Response(status_code=204, headers={"HX-Refresh": "true"})
-    return RedirectResponse(url="/admin/invites", status_code=303)
+        return resposta_hx(request, destino="/admin/invites?error=invite_ja_aceito", hx="redirect")
+    # Full-page refresh (browser reload) picks up the updated pending
+    # count + subnav badge for free — cheaper than hand-updating both.
+    return resposta_hx(request, destino="/admin/invites")

@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 import structlog
 from fastapi import HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from src.db.repositories import audit_log
@@ -93,6 +93,45 @@ def _admin_flash(
     if ok_message and ok == "1":
         return {"kind": "success", "message": ok_message}
     return None
+
+
+def eh_htmx(request: Request) -> bool:
+    """True quando o pedido veio do htmx (que manda `HX-Request: true`).
+
+    Uma só definição: antes cada rota decidia à mão, e o valor aceito variava
+    (qualquer truthy aqui, `== "true"` ali).
+    """
+    return request.headers.get("HX-Request") == "true"
+
+
+def toast_trigger(mensagem: str, kind: str = "success") -> str:
+    """Valor do header `HX-Trigger` que o v4-panel.js transforma em toast.
+
+    `json.dumps` escapa aspas e não-ASCII, então o header é latin-1 seguro.
+    """
+    return json.dumps({"toast": {"message": mensagem, "kind": kind}})
+
+
+def resposta_hx(
+    request: Request,
+    *,
+    destino: str,
+    hx: Literal["redirect", "refresh"] = "refresh",
+    toast: str | None = None,
+) -> Response:
+    """Fecha uma mutação do painel: 204 + header HTMX, ou 303 sem HTMX.
+
+    O XHR do htmx SEGUE um 303 e entregaria a página inteira ao swap (F96),
+    então o pedido HTMX recebe 204 com `HX-Redirect` (navega para `destino`,
+    preservando o query param) ou `HX-Refresh` (recarrega a página atual).
+    O 303 sem HTMX é o POST-redirect-GET de sempre, sempre para `destino`.
+    """
+    if not eh_htmx(request):
+        return RedirectResponse(url=destino, status_code=303)
+    headers = {"HX-Redirect": destino} if hx == "redirect" else {"HX-Refresh": "true"}
+    if toast is not None:
+        headers["HX-Trigger"] = toast_trigger(toast)
+    return Response(status_code=204, headers=headers)
 
 
 async def _audit_admin(
@@ -188,7 +227,7 @@ def _toggle_acesso_response(
         mensagem = "Acesso liberado" if granted else "Acesso revogado"
     else:
         mensagem = "O acesso já estava liberado" if granted else "O acesso já estava revogado"
-    trigger = json.dumps({"toast": {"message": mensagem, "kind": "success"}})
+    trigger = toast_trigger(mensagem)
     return HTMLResponse(
         _toggle_checkbox_fragment(
             post_url=post_url,
