@@ -105,10 +105,17 @@ def run_steps(steps: list[Step]) -> int:
     return 0
 
 
+# Teto do `docker info` no pre-check. Com o engine de pe ele levou 2,5-3,4 s
+# (medido em 03/11); daemon desligado erra na hora, entao o teto so pesa no
+# daemon pendurado.
+DOCKER_INFO_TIMEOUT_S = 15
+
+
 def check_docker() -> tuple[bool, str]:
     """Probe Docker daemon. Returns (ok, hint_if_not_ok).
 
-    Returns (True, "") if daemon responds to 'docker info' within 2s.
+    Returns (True, "") if daemon responds to 'docker info' within
+    DOCKER_INFO_TIMEOUT_S.
     Returns (False, hint) for FileNotFoundError (CLI missing),
     TimeoutExpired (daemon hung), or non-zero exit (daemon off).
     """
@@ -119,13 +126,16 @@ def check_docker() -> tuple[bool, str]:
     try:
         result = subprocess.run(
             ["docker", "info"],
-            timeout=2,
+            timeout=DOCKER_INFO_TIMEOUT_S,
             capture_output=True,
         )
     except FileNotFoundError:
         return False, "Docker CLI nao encontrado no PATH. Instale Docker Desktop."
     except subprocess.TimeoutExpired:
-        return False, hint_off
+        return False, (
+            f"Docker nao respondeu a 'docker info' em {DOCKER_INFO_TIMEOUT_S}s "
+            "(daemon pendurado ou subindo). Espere e re-rode."
+        )
     if result.returncode == 0:
         return True, ""
     return False, hint_off
