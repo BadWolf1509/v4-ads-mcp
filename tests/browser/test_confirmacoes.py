@@ -4,6 +4,7 @@ Em 31/10 "Desativar" fechava a confirmacao sem enviar nada: o defeito morava ent
 o HTML e a rota, onde nenhum teste que le arquivo ou chama rota alcanca.
 """
 
+import asyncio
 import socket
 import threading
 import time
@@ -27,6 +28,11 @@ _STATIC = Path(__file__).resolve().parents[2] / "src" / "web" / "static"
 _ADMIN = SimpleNamespace(id="admin", email="admin@v4company.com", is_admin=True)
 _GESTOR_ID = "00000000-0000-0000-0000-0000000000aa"
 _CONVITE_ID = "00000000-0000-0000-0000-0000000000bb"
+# O POST leva mais que alguns frames, como em producao. Com POST instantaneo a espera
+# por expressao em string passava por sorte: o Playwright reavalia a string com eval a
+# cada frame, o CSP (sem unsafe-eval) barra do segundo poll em diante, e a recarga
+# chegava antes dele. Flaky no CI desde 03/11; com 0.5 s o helper antigo falha sempre.
+_ATRASO_DO_POST_S = 0.5
 
 
 @dataclass
@@ -91,11 +97,13 @@ def _app(posts: list[tuple[str, str | None]]) -> FastAPI:
 
     @app.post("/admin/managers/{gestor}/toggle-active")
     async def alternar(gestor: str, request: Request) -> Response:
+        await asyncio.sleep(_ATRASO_DO_POST_S)
         posts.append((request.url.path, request.headers.get("HX-Request")))
         return Response(status_code=204, headers={"HX-Redirect": "/admin/managers"})
 
     @app.post("/admin/invites/{convite}/cancel")
     async def cancelar(convite: str, request: Request) -> Response:
+        await asyncio.sleep(_ATRASO_DO_POST_S)
         posts.append((request.url.path, request.headers.get("HX-Request")))
         return Response(status_code=204, headers={"HX-Refresh": "true"})
 
@@ -149,7 +157,9 @@ def aba(navegador: Browser) -> Iterator[Aba]:
 def _confirma_e_espera_recarga(page: Page) -> None:
     page.evaluate("window.__antesDoPost = true")
     page.locator("#v4-confirm-dialog [data-confirm-ok]").click()
-    page.wait_for_function("window.__antesDoPost === undefined")
+    # Funcao, nao expressao: a funcao e avaliada uma vez, no primeiro poll, que o CSP
+    # deixa passar; a expressao em string volta ao eval a cada frame e o CSP a barra.
+    page.wait_for_function("() => window.__antesDoPost === undefined")
 
 
 def test_desativar_gestor_pelo_menu_envia_e_recarrega(painel: Painel, aba: Aba) -> None:
