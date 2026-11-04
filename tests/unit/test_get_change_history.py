@@ -64,7 +64,7 @@ def test_schema_rejects_unknown_client_type():
 
 def test_summary_aggregation_with_mixed_events():
     """Given 8 mock rows (3 auto-apply, 5 manual), summary must aggregate correctly."""
-    from src.mcp.tools.get_change_history import _build_summary
+    from src.google_ads.change_scan import _build_summary
 
     rows = [
         {
@@ -135,7 +135,7 @@ def test_summary_aggregation_with_mixed_events():
 
 
 def test_summary_empty_input():
-    from src.mcp.tools.get_change_history import _build_summary
+    from src.google_ads.change_scan import _build_summary
 
     summary = _build_summary([])
     assert summary == {
@@ -155,13 +155,13 @@ async def test_tool_returns_period_and_rows(monkeypatch):
     async def fake_run_report(**kwargs):
         return []
 
-    monkeypatch.setattr(mod, "run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.change_scan.run_report", fake_run_report)
 
     # _resolve_names is async — replace with an async stub returning empty dict
     async def fake_resolve_names(**kwargs):
         return {}
 
-    monkeypatch.setattr(mod, "_resolve_names", fake_resolve_names)
+    monkeypatch.setattr("src.google_ads.change_scan._resolve_names", fake_resolve_names)
 
     result = await mod.get_change_history(
         {"customer_id": "1234567890", "date_range": "LAST_7_DAYS"}
@@ -184,11 +184,11 @@ async def test_custom_old_start_date_clamped(monkeypatch):
     from datetime import UTC, datetime, timedelta
     from unittest.mock import AsyncMock
 
+    from src.google_ads.change_scan import _RETENTION_SAFETY_DAYS
     from src.mcp.tools import get_change_history as mod
-    from src.mcp.tools.get_change_history import _RETENTION_SAFETY_DAYS
 
-    monkeypatch.setattr(mod, "run_report", AsyncMock(return_value=[]))
-    monkeypatch.setattr(mod, "_resolve_names", AsyncMock(return_value={}))
+    monkeypatch.setattr("src.google_ads.change_scan.run_report", AsyncMock(return_value=[]))
+    monkeypatch.setattr("src.google_ads.change_scan._resolve_names", AsyncMock(return_value={}))
 
     today = datetime.now(UTC).date()
     result = await mod.get_change_history(
@@ -213,8 +213,8 @@ async def test_custom_window_entirely_outside_retention_errors(monkeypatch):
 
     from src.mcp.tools import get_change_history as mod
 
-    monkeypatch.setattr(mod, "run_report", AsyncMock(return_value=[]))
-    monkeypatch.setattr(mod, "_resolve_names", AsyncMock(return_value={}))
+    monkeypatch.setattr("src.google_ads.change_scan.run_report", AsyncMock(return_value=[]))
+    monkeypatch.setattr("src.google_ads.change_scan._resolve_names", AsyncMock(return_value={}))
 
     today = datetime.now(UTC).date()
     with pytest.raises(ValueError, match="retenção"):
@@ -244,12 +244,12 @@ async def test_f23_last_30_days_clamped_with_warning(monkeypatch):
     async def fake_run_report(**kwargs):
         return []
 
-    monkeypatch.setattr(mod, "run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.change_scan.run_report", fake_run_report)
 
     async def fake_resolve_names(**kwargs):
         return {}
 
-    monkeypatch.setattr(mod, "_resolve_names", fake_resolve_names)
+    monkeypatch.setattr("src.google_ads.change_scan._resolve_names", fake_resolve_names)
 
     result = await mod.get_change_history(
         {"customer_id": "1234567890", "date_range": "LAST_30_DAYS"}
@@ -275,12 +275,12 @@ async def test_f23_no_warning_when_within_retention_window(monkeypatch):
     async def fake_run_report(**kwargs):
         return []
 
-    monkeypatch.setattr(mod, "run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.change_scan.run_report", fake_run_report)
 
     async def fake_resolve_names(**kwargs):
         return {}
 
-    monkeypatch.setattr(mod, "_resolve_names", fake_resolve_names)
+    monkeypatch.setattr("src.google_ads.change_scan._resolve_names", fake_resolve_names)
 
     result = await mod.get_change_history(
         {"customer_id": "1234567890", "date_range": "LAST_7_DAYS"}
@@ -331,7 +331,6 @@ def _linha_de_mudanca(i: int) -> dict:
 
 
 def _mock_run_report(monkeypatch, linhas: list[dict], capturadas: list[str]) -> None:
-    from src.mcp.tools import get_change_history as mod
 
     async def fake_run_report(**kwargs):
         capturadas.append(kwargs["query"])
@@ -339,7 +338,7 @@ def _mock_run_report(monkeypatch, linhas: list[dict], capturadas: list[str]) -> 
             return linhas
         return []  # a sonda de fronteira
 
-    monkeypatch.setattr(mod, "run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.change_scan.run_report", fake_run_report)
 
 
 def test_limit_maximo_do_schema_continua_10000():

@@ -115,7 +115,7 @@ async def test_get_change_history_aggregates_with_auto_apply(db, session_ctx):
             AsyncMock(return_value=fake_client),
         ),
         patch(
-            "src.mcp.tools.get_change_history._resolve_names",
+            "src.google_ads.change_scan._resolve_names",
             fake_resolve_names,
         ),
     ):

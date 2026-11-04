@@ -25,20 +25,22 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-PRESETS = frozenset(
-    {
-        "TODAY",
-        "YESTERDAY",
-        "LAST_7_DAYS",
-        "LAST_14_DAYS",
-        "LAST_30_DAYS",
-        "LAST_90_DAYS",
-        "THIS_MONTH",
-        "LAST_MONTH",
-        "THIS_WEEK",
-        "LAST_WEEK",
-    }
+# A ordem importa so para o schema: e a do `enum` que o cliente MCP ve no handshake
+# (`propriedades_de_data`, em `src/mcp/tools/_common.py`). O conjunto sai dela, para
+# nao haver duas listas que divirjam.
+PRESETS_EM_ORDEM: tuple[str, ...] = (
+    "TODAY",
+    "YESTERDAY",
+    "LAST_7_DAYS",
+    "LAST_14_DAYS",
+    "LAST_30_DAYS",
+    "LAST_90_DAYS",
+    "THIS_MONTH",
+    "LAST_MONTH",
+    "THIS_WEEK",
+    "LAST_WEEK",
 )
+PRESETS = frozenset(PRESETS_EM_ORDEM)
 
 _ULTIMOS_N_DIAS = {"LAST_7_DAYS": 7, "LAST_14_DAYS": 14, "LAST_30_DAYS": 30, "LAST_90_DAYS": 90}
 

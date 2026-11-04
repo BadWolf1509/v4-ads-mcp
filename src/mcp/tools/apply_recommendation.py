@@ -32,7 +32,6 @@ reexibir "R$ 50,00 -> R$ 180,00" e aterrissar outro numero.
 
 from typing import Any
 
-from src.db import connection
 from src.google_ads.mutations import run_recommendation_action
 from src.google_ads.queries._common import arredondado, percentual, razao
 from src.google_ads.queries.recommendations import (
@@ -50,9 +49,8 @@ from src.google_ads.queries.recommendations import (
 )
 from src.google_ads.reports import run_report
 from src.governance.blast_radius import RiskLevel, classify
-from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
-from src.mcp.tools._mutate_common import applied_envelope, error_envelope, preview_envelope
+from src.mcp.tools._mutate_common import applied_envelope, emitir_preview, error_envelope
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -392,23 +390,13 @@ async def apply_recommendation(args: dict[str, Any]) -> dict[str, Any]:
     # update_ad_schedule). So o caminho de confirmacao a grava: no caminho auto a
     # leitura e a escrita acontecem na mesma chamada, sem TTL no meio.
     payload_pendente = {**payload, "valores_do_preview": recommendation_fingerprint(info)}
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
-        token = await create_pending(
-            conn,
-            manager_id=ctx.manager_id,
-            session_id=ctx.session_id,
-            customer_id=customer_id,
-            operation_type="apply_recommendation",
-            payload=payload_pendente,
-            blast_summary=summary,
-        )
-    return preview_envelope(
-        "apply_recommendation",
-        customer_id,
-        summary,
-        token,
-        confirmation_reason=risk.reason,
+    return await emitir_preview(
+        ctx,
+        operation="apply_recommendation",
+        customer_id=customer_id,
+        payload=payload_pendente,
+        summary=summary,
+        risk=risk,
         recommendation_type=info["type"],
         type_pt=info["type_pt"],
         current_amount_brl=info["current_amount_brl"],

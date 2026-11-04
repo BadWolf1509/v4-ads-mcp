@@ -13,12 +13,10 @@ NOT idempotent — Google permits multiple RSAs with same content in same ad_gro
 from collections import Counter
 from typing import Any
 
-from src.db import connection
 from src.google_ads.preflight import validate_parent_ad_groups_for_rsa_create
 from src.governance.blast_radius import classify
-from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
-from src.mcp.tools._mutate_common import error_envelope, preview_envelope
+from src.mcp.tools._mutate_common import emitir_preview, error_envelope
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -149,18 +147,6 @@ async def create_rsa(args: dict[str, Any]) -> dict[str, Any]:
         "__partial_failure__": True,
     }
 
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
-        token = await create_pending(
-            conn,
-            manager_id=ctx.manager_id,
-            session_id=ctx.session_id,
-            customer_id=customer_id,
-            operation_type="create_rsa",
-            payload=payload,
-            blast_summary=summary,
-        )
-
     preview = [
         {
             "ad_group_id": r["ad_group_id"],
@@ -174,11 +160,12 @@ async def create_rsa(args: dict[str, Any]) -> dict[str, Any]:
         for r in rsas
     ]
 
-    return preview_envelope(
-        "create_rsa",
-        customer_id,
-        summary,
-        token,
-        confirmation_reason=risk.reason,
+    return await emitir_preview(
+        ctx,
+        operation="create_rsa",
+        customer_id=customer_id,
+        payload=payload,
+        summary=summary,
+        risk=risk,
         rsas_preview=preview,
     )

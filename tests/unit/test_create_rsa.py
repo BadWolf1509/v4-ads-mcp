@@ -40,10 +40,10 @@ async def test_returns_dry_run_with_token_on_happy_path(_ctx) -> None:
             AsyncMock(return_value=None),
         ),
         patch(
-            "src.mcp.tools.create_rsa.create_pending",
+            "src.mcp.tools._mutate_common.create_pending",
             AsyncMock(return_value="TOKENRSA"),
         ),
-        patch("src.mcp.tools.create_rsa.connection.get_pool") as mock_pool,
+        patch("src.mcp.tools._mutate_common.connection.get_pool") as mock_pool,
     ):
         mock_pool.return_value.acquire.return_value.__aenter__ = AsyncMock(return_value=None)
         mock_pool.return_value.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
@@ -90,10 +90,10 @@ async def test_builds_correct_blast_summary_for_mixed_batch(_ctx) -> None:
             AsyncMock(return_value=None),
         ),
         patch(
-            "src.mcp.tools.create_rsa.create_pending",
+            "src.mcp.tools._mutate_common.create_pending",
             AsyncMock(return_value="TOKEN"),
         ),
-        patch("src.mcp.tools.create_rsa.connection.get_pool") as mock_pool,
+        patch("src.mcp.tools._mutate_common.connection.get_pool") as mock_pool,
     ):
         mock_pool.return_value.acquire.return_value.__aenter__ = AsyncMock(return_value=None)
         mock_pool.return_value.acquire.return_value.__aexit__ = AsyncMock(return_value=None)

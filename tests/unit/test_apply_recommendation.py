@@ -273,7 +273,7 @@ def _wire(
 
     monkeypatch.setattr(mod, "run_report", _run)
     monkeypatch.setattr(mod, "run_recommendation_action", _executar)
-    monkeypatch.setattr(mod, "create_pending", _create_pending)
+    monkeypatch.setattr("src.mcp.tools._mutate_common.create_pending", _create_pending)
     monkeypatch.setattr(connection, "get_pool", lambda: _FakePool())
     return capturado
 

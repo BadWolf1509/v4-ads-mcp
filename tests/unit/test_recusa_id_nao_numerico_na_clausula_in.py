@@ -150,7 +150,7 @@ async def _validate_user_interest() -> Any:
 
 
 async def _resolve_names_campaign() -> Any:
-    from src.mcp.tools.get_change_history import _resolve_names
+    from src.google_ads.change_scan import _resolve_names
 
     return await _resolve_names(
         manager_id=uuid4(),
@@ -215,7 +215,7 @@ async def _update_keyword_bid() -> Any:
         ),
         (
             "get_change_history.py::_resolve_names (campaign_ids)",
-            "src.mcp.tools.get_change_history.run_report",
+            "src.google_ads.change_scan.run_report",
             _resolve_names_campaign,
         ),
         (
@@ -271,7 +271,7 @@ async def test_resolve_names_recusa_ad_group_id_depois_de_resolver_campanha(
     virar texto de query. So o `ValueError` nao diria de qual das duas
     clausulas ele veio.
     """
-    from src.mcp.tools.get_change_history import _resolve_names
+    from src.google_ads.change_scan import _resolve_names
 
     emitidas: list[str] = []
 
@@ -279,7 +279,7 @@ async def test_resolve_names_recusa_ad_group_id_depois_de_resolver_campanha(
         emitidas.append(str(kwargs.get("query")))
         return []
 
-    monkeypatch.setattr("src.mcp.tools.get_change_history.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.change_scan.run_report", fake_run_report)
     recusou = False
     try:
         await _resolve_names(

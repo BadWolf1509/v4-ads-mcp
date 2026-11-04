@@ -90,3 +90,72 @@ async def test_apply_change_returns_error_on_invalid_token(db, session_ctx):
     assert result["status"] == "error"
     assert result["operation"] == "apply_change"
     assert "not found" in result["error_message"]
+
+
+async def _token(pool, ctx, operation_type: str, payload: dict) -> str:
+    with patch("src.governance.dry_run.ensure_account_access", AsyncMock(return_value=None)):
+        async with pool.acquire() as conn:
+            return await create_pending(
+                conn,
+                manager_id=ctx.manager_id,
+                session_id=ctx.session_id,
+                customer_id="1234567890",
+                operation_type=operation_type,
+                payload=payload,
+                blast_summary="resumo",
+            )
+
+
+@pytest.mark.integration
+async def test_token_e_consumido_uma_vez_e_antes_da_escrita(db, session_ctx):
+    """Caracterizacao G5: a escrita sai uma vez; o mesmo token nao escreve de novo."""
+    from src.mcp.tools.apply_change import apply_change
+
+    token = await _token(
+        db, session_ctx, "update_campaign_status", {"campaign_ids": ["1"], "__target_count__": 1}
+    )
+    escrita = AsyncMock(return_value={"provider_request_id": "r", "applied_count": 1})
+    with patch("src.mcp.tools.apply_change.run_mutation", escrita):
+        primeira = await apply_change({"confirmation_token": token})
+        segunda = await apply_change({"confirmation_token": token})
+
+    assert primeira["status"] == "applied"
+    assert escrita.await_count == 1
+    assert segunda["status"] == "error"
+    assert "already consumed" in segunda["error_message"]
+
+
+@pytest.mark.integration
+async def test_pre_check_que_recusa_ja_encontrou_o_token_consumido(db, session_ctx):
+    """Caracterizacao G5: o consumo vem ANTES do pre-check. Uma recusa nao escreve, e
+    o token recusado nao serve mais — a mensagem manda gerar um novo."""
+    from src.mcp.tools.apply_change import apply_change
+
+    token = await _token(
+        db,
+        session_ctx,
+        "apply_recommendation",
+        {
+            "recommendation_resource_name": "customers/1234567890/recommendations/abc",
+            "__target_count__": 1,
+            "valores_do_preview": {
+                "type": "CAMPAIGN_BUDGET",
+                "current_amount_brl": 50.0,
+                "recommended_amount_brl": 180.0,
+                "valores": {},
+            },
+        },
+    )
+    escrita = AsyncMock(return_value={"provider_request_id": "r", "applied_count": 1})
+    with (
+        patch("src.mcp.tools.apply_change.run_report", AsyncMock(return_value=[])),
+        patch("src.mcp.tools.apply_change.run_recommendation_action", escrita),
+    ):
+        recusa = await apply_change({"confirmation_token": token})
+        de_novo = await apply_change({"confirmation_token": token})
+
+    assert recusa["status"] == "error"
+    assert "nao esta mais pendente" in recusa["error_message"]
+    assert escrita.await_count == 0
+    assert de_novo["status"] == "error"
+    assert "already consumed" in de_novo["error_message"]

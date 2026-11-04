@@ -218,8 +218,8 @@ async def test_preflight_allows_campaign_user_interest_exclusion():
     fake_run_report = AsyncMock(return_value=[{"id": "91501", "taxonomy_type": "IN_MARKET"}])
     with (
         patch("src.mcp.tools.apply_audience.run_report", fake_run_report),
-        patch("src.mcp.tools.apply_audience.create_pending", AsyncMock(return_value="TOKEN123")),
-        patch("src.mcp.tools.apply_audience.connection") as conn_module,
+        patch("src.mcp.tools._mutate_common.create_pending", AsyncMock(return_value="TOKEN123")),
+        patch("src.mcp.tools._mutate_common.connection") as conn_module,
     ):
         conn_module.get_pool.return_value.acquire.return_value.__aenter__ = AsyncMock(
             return_value=AsyncMock()
@@ -310,8 +310,8 @@ async def test_confirm_path_exclusion_count_one():
     fake_run_report = AsyncMock(return_value=[{"id": "91501", "taxonomy_type": "IN_MARKET"}])
     with (
         patch("src.mcp.tools.apply_audience.run_report", fake_run_report),
-        patch("src.mcp.tools.apply_audience.create_pending", AsyncMock(return_value="ABC12345")),
-        patch("src.mcp.tools.apply_audience.connection") as conn_module,
+        patch("src.mcp.tools._mutate_common.create_pending", AsyncMock(return_value="ABC12345")),
+        patch("src.mcp.tools._mutate_common.connection") as conn_module,
     ):
         conn_module.get_pool.return_value.acquire.return_value.__aenter__ = AsyncMock(
             return_value=AsyncMock()

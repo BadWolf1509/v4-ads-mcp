@@ -36,13 +36,13 @@ from types import SimpleNamespace
 
 from freezegun import freeze_time
 
+from src.google_ads.change_scan import _row_formatter
 from src.google_ads.drift_detection import (
     ChangeEventRow,
     detect_drift,
     dict_to_change_event_row,
 )
 from src.google_ads.queries.change_history import change_history_query
-from src.mcp.tools.get_change_history import _row_formatter
 
 TERCEIRO = "terceiro@exemplo.com"
 AUTORIZADO = "wellington.ribeiro@v4company.com"
@@ -269,7 +269,7 @@ async def test_a_transicao_e_a_flag_chegam_ao_json_do_detect_drift() -> None:
 
     set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
     try:
-        with patch("src.mcp.tools.get_change_history.run_report", _run):
+        with patch("src.google_ads.change_scan.run_report", _run):
             out = await tool(
                 {
                     "customer_id": "1163862076",

@@ -21,7 +21,7 @@ from src.google_ads.reports import run_report
 from src.governance.blast_radius import classify
 from src.governance.rate_limit import QuotaExhausted
 from src.mcp.context import get_current
-from src.mcp.tools._mutate_common import applied_envelope
+from src.mcp.tools._mutate_common import applied_envelope, no_changes_envelope
 from src.mcp.tools._registry import register_tool
 
 log = structlog.get_logger(__name__)
@@ -196,13 +196,7 @@ async def add_negative_keywords(args: dict[str, Any]) -> dict[str, Any]:
         relato["cobertura_motivo"] = motivo
 
     if not keywords:
-        return {
-            "status": "no_changes",
-            "operation": "add_negative_keywords",
-            "customer_id": customer_id,
-            "applied_count": 0,
-            **relato,
-        }
+        return no_changes_envelope("add_negative_keywords", customer_id, applied_count=0, **relato)
 
     target_count = len(keywords)
     risk = classify(

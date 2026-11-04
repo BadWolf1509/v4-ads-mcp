@@ -131,7 +131,7 @@ def _wire(
         return "TOKEN123"
 
     monkeypatch.setattr(mod, "run_report", _run)
-    monkeypatch.setattr(mod, "create_pending", _create_pending)
+    monkeypatch.setattr("src.mcp.tools._mutate_common.create_pending", _create_pending)
     monkeypatch.setattr(connection, "get_pool", lambda: _FakePool())
     return captured
 
@@ -346,7 +346,7 @@ async def test_a_query_das_irmas_nao_sai_quando_o_orcamento_e_exclusivo(
     async def _create_pending(conn: Any, **kwargs: Any) -> str:
         return "TOKEN123"
 
-    monkeypatch.setattr(mod, "create_pending", _create_pending)
+    monkeypatch.setattr("src.mcp.tools._mutate_common.create_pending", _create_pending)
     monkeypatch.setattr(connection, "get_pool", lambda: _FakePool())
     await mod.update_campaign_budget(
         {"customer_id": _CUSTOMER, "campaign_id": _ALVO_ID, "new_daily_budget_brl": 100.0}

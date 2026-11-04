@@ -37,6 +37,9 @@ _QUERIES = (h.SRC / "google_ads" / "queries").resolve()
 # novo so faz subir. Existem porque `EscopoVazioError` so dispara com ZERO:
 # um scanner de f-string que parasse de casar devolveria "nenhum ofensor" e
 # ficaria verde para sempre, que e a forma mais silenciosa de um guard morrer.
+# Modulos de dominio que guardam o CORPO de uma tool com `limit` (a tool so delega).
+_CORPOS_DE_DOMINIO = {(h.SRC / "google_ads" / "change_scan.py").resolve()}
+
 _PISO_DE_FUNCOES = 20  # observadas 33
 _PISO_DE_LIMITES = 8  # observados 12
 
@@ -53,9 +56,16 @@ def _funcoes_de_query_de_tool_com_limite() -> list[tuple[Path, ast.AST]]:
     for _, arquivo, _handler in h.tools_com_limite():
         for helper, fn in h.funcoes_chamadas_de_src(arquivo):
             resolvido = helper.resolve()
-            if _QUERIES not in resolvido.parents:
-                continue
-            achadas[(str(resolvido), fn.name)] = (resolvido, fn)
+            if _QUERIES in resolvido.parents:
+                achadas[(str(resolvido), fn.name)] = (resolvido, fn)
+            elif resolvido in _CORPOS_DE_DOMINIO:
+                # Segundo salto, so para os corpos que as tools delegam (Task G3:
+                # `consultar_change_history` saiu de `get_change_history.py` para
+                # `change_scan.py`, e o builder passou a dois saltos da tool).
+                for helper2, fn2 in h.funcoes_chamadas_de_src(resolvido):
+                    r2 = helper2.resolve()
+                    if _QUERIES in r2.parents:
+                        achadas[(str(r2), fn2.name)] = (r2, fn2)
     if len(achadas) < _PISO_DE_FUNCOES:
         raise h.EscopoVazioError(
             f"so {len(achadas)} funcoes de queries/ alcancadas por tool com "
@@ -221,6 +231,11 @@ def test_mordida_o_escopo_ignora_o_que_nao_e_query() -> None:
         (helper.resolve(), fn.name)
         for _, arquivo, _handler in h.tools_com_limite()
         for helper, fn in h.funcoes_chamadas_de_src(arquivo)
+    } | {
+        # o segundo salto dos corpos de dominio tambem e "salto" (Task G3)
+        (h2.resolve(), f2.name)
+        for corpo in _CORPOS_DE_DOMINIO
+        for h2, f2 in h.funcoes_chamadas_de_src(corpo)
     }
     assert (reports, "run_report") in saltos, (
         "controle: tool com `limit` TEM que saltar para reports.py::run_report — "

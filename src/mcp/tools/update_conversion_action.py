@@ -15,13 +15,11 @@ Descoberto em smoke T7 2026-05-20. Pra desligar conv metric tracking, use Google
 
 from typing import Any
 
-from src.db import connection
 from src.google_ads.mutations import run_mutation
 from src.google_ads.preflight import validate_conversion_actions_exist
 from src.governance.blast_radius import RiskLevel, classify
-from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
-from src.mcp.tools._mutate_common import applied_envelope, error_envelope, preview_envelope
+from src.mcp.tools._mutate_common import applied_envelope, emitir_preview, error_envelope
 from src.mcp.tools._registry import register_tool
 
 _MUTABLE_FIELDS = ("name", "primary_for_goal")
@@ -164,22 +162,12 @@ async def update_conversion_action(args: dict[str, Any]) -> dict[str, Any]:
             changes=changes_preview,
         )
 
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
-        token = await create_pending(
-            conn,
-            manager_id=ctx.manager_id,
-            session_id=ctx.session_id,
-            customer_id=customer_id,
-            operation_type="update_conversion_action",
-            payload=payload,
-            blast_summary=summary,
-        )
-    return preview_envelope(
-        "update_conversion_action",
-        customer_id,
-        summary,
-        token,
-        confirmation_reason=risk.reason,
+    return await emitir_preview(
+        ctx,
+        operation="update_conversion_action",
+        customer_id=customer_id,
+        payload=payload,
+        summary=summary,
+        risk=risk,
         changes=changes_preview,
     )

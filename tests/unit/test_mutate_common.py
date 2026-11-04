@@ -288,3 +288,116 @@ def test_a_description_do_apply_change_diz_o_ttl_que_vale() -> None:
         f"a description do apply_change nao anuncia o TTL real "
         f"({DEFAULT_TTL_MINUTES} min): {descricao!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# emitir_preview / no_changes_envelope (G4)
+# ---------------------------------------------------------------------------
+
+
+class _Ctx:
+    manager_id = "mgr-uuid"
+    session_id = "sess-uuid"
+
+
+class _Pool:
+    def __init__(self, ordem: list[str]) -> None:
+        self.ordem = ordem
+
+    def acquire(self) -> "_Pool":
+        return self
+
+    async def __aenter__(self) -> str:
+        self.ordem.append("acquire")
+        return "CONN"
+
+    async def __aexit__(self, *exc: object) -> None:
+        self.ordem.append("release")
+
+
+async def test_emitir_preview_e_igual_ao_bloco_que_substitui(monkeypatch) -> None:
+    """Mesmas chaves, MESMA ordem, mesmo token, mesmos kwargs do create_pending.
+
+    A comparacao e contra `preview_envelope` chamado como as tools chamavam —
+    `list(...)` das chaves pega a ordem, que o `==` de dict nao pega.
+    """
+    import src.mcp.tools._mutate_common as mc
+    from src.governance.blast_radius import RiskClassification, RiskLevel
+
+    ordem: list[str] = []
+    chamadas: list[tuple[object, dict[str, object]]] = []
+
+    async def _fake_create_pending(conn: object, **kwargs: object) -> str:
+        ordem.append("create_pending")
+        chamadas.append((conn, kwargs))
+        return "TOK12345"
+
+    monkeypatch.setattr(mc, "create_pending", _fake_create_pending)
+    monkeypatch.setattr(mc.connection, "get_pool", lambda: _Pool(ordem))
+    risk = RiskClassification(level=RiskLevel.CONFIRM, reason="motivo do classify")
+    payload = {"x": 1, "__target_count__": 1}
+
+    got = await mc.emitir_preview(
+        _Ctx(),
+        operation="update_ad_status",
+        customer_id="1234567890",
+        payload=payload,
+        summary="Mudar 1 anuncio",
+        risk=risk,
+        changes=[{"a": 1}],
+        max_delta_pct=2.5,
+    )
+    esperado = preview_envelope(
+        "update_ad_status",
+        "1234567890",
+        "Mudar 1 anuncio",
+        "TOK12345",
+        confirmation_reason="motivo do classify",
+        changes=[{"a": 1}],
+        max_delta_pct=2.5,
+    )
+    assert got == esperado
+    assert list(got) == list(esperado)
+    assert ordem == ["acquire", "create_pending", "release"]
+    assert chamadas == [
+        (
+            "CONN",
+            {
+                "manager_id": "mgr-uuid",
+                "session_id": "sess-uuid",
+                "customer_id": "1234567890",
+                "operation_type": "update_ad_status",
+                "payload": payload,
+                "blast_summary": "Mudar 1 anuncio",
+            },
+        )
+    ]
+
+
+def test_no_changes_envelope_preserva_os_dois_shapes_em_uso() -> None:
+    """Os dois no-op vivos (update_ad_schedule e add_negative_keywords) tem
+    nucleo comum `status/operation/customer_id` e corpos DIFERENTES — o helper
+    so fixa o nucleo, e a ordem das chaves segue a do dict a mao."""
+    from src.mcp.tools._mutate_common import no_changes_envelope
+
+    agenda = no_changes_envelope(
+        "update_ad_schedule", "1234567890", no_changes=True, message="m", current_schedule={}
+    )
+    assert list(agenda.items()) == [
+        ("status", "no_changes"),
+        ("operation", "update_ad_schedule"),
+        ("customer_id", "1234567890"),
+        ("no_changes", True),
+        ("message", "m"),
+        ("current_schedule", {}),
+    ]
+    negativas = no_changes_envelope(
+        "add_negative_keywords", "1234567890", applied_count=0, ja_existia=[]
+    )
+    assert list(negativas.items()) == [
+        ("status", "no_changes"),
+        ("operation", "add_negative_keywords"),
+        ("customer_id", "1234567890"),
+        ("applied_count", 0),
+        ("ja_existia", []),
+    ]

@@ -48,7 +48,8 @@ def test_update_ad_schedule_usa_envelope_e_classify_do_compartilhado() -> None:
     """Spec §8.10 (espirito do F112): nem envelope a mao, nem nivel fixado sem classify."""
     src = (h.SRC / "mcp" / "tools" / "update_ad_schedule.py").read_text(encoding="utf-8")
     assert _chamadas(src, "classify") >= 1
-    assert _chamadas(src, "preview_envelope") >= 1 and _chamadas(src, "error_envelope") >= 1
+    # G4 (03/11): o dry-run sai por `emitir_preview` (create_pending + preview_envelope).
+    assert _chamadas(src, "emitir_preview") >= 1 and _chamadas(src, "error_envelope") >= 1
     assert "DEFAULT_TTL_MINUTES" not in src and "expires_in_minutes" not in src, (
         "TTL vem do envelope, nao da tool"
     )
@@ -85,14 +86,14 @@ def _in_nested_function(
 
 
 def _e_chamada_a(expr: ast.expr, nomes: set[str]) -> bool:
+    if isinstance(expr, ast.Await):  # `return await emitir_preview(...)`
+        expr = expr.value
     return isinstance(expr, ast.Call) and isinstance(expr.func, ast.Name) and expr.func.id in nomes
 
 
-def _e_dict_de_no_changes(expr: ast.expr) -> bool:
-    """A unica resposta montada a mao que a spec sanciona (§4.4): o no-op sem token."""
-    return isinstance(expr, ast.Dict) and any(
-        isinstance(k, ast.Constant) and k.value == "no_changes" for k in expr.keys
-    )
+# G4 (03/11): o no-op sem token (spec §4.4), antes o unico dict a mao sancionado,
+# saiu por `no_changes_envelope` — e o dict a mao deixou de ser aceito aqui.
+_ENVELOPES_DO_COMPARTILHADO = {"emitir_preview", "error_envelope", "no_changes_envelope"}
 
 
 def test_todo_return_de_update_ad_schedule_e_envelope_do_compartilhado_ou_o_no_changes() -> None:
@@ -101,9 +102,5 @@ def test_todo_return_de_update_ad_schedule_e_envelope_do_compartilhado_ou_o_no_c
     src = (h.SRC / "mcp" / "tools" / "update_ad_schedule.py").read_text(encoding="utf-8")
     returns = _returns_da_funcao(src, "update_ad_schedule")
     assert returns, "a funcao tem que ter returns"
-    ruins = [
-        ast.dump(r)[:80]
-        for r in returns
-        if not (_e_chamada_a(r, {"preview_envelope", "error_envelope"}) or _e_dict_de_no_changes(r))
-    ]
+    ruins = [ast.dump(r)[:80] for r in returns if not _e_chamada_a(r, _ENVELOPES_DO_COMPARTILHADO)]
     assert ruins == [], f"return fora do envelope compartilhado (e nao e o no_changes): {ruins}"

@@ -9,9 +9,7 @@ terms com cost + sugere negative keywords EXACT+PHRASE per matched brand.
 import asyncio
 from typing import Any
 
-from src.google_ads.account_clock import resolve_account_today
 from src.google_ads.competitor_analysis import match_competitor_brands
-from src.google_ads.queries._common import resolve_date_window
 from src.google_ads.queries.audit_competitor_keywords import (
     build_positive_keywords_query,
     build_search_terms_query,
@@ -22,6 +20,7 @@ from src.google_ads.queries.audit_competitor_keywords import (
 )
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
+from src.mcp.tools._common import janela_da_conta
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -101,12 +100,8 @@ async def audit_competitor_keywords(args: dict[str, Any]) -> dict[str, Any]:
     competitor_brands = args["competitor_brands"]
     limit = args.get("limit", 200)
 
-    today = await resolve_account_today(customer_id)
-    start_date_obj, end_date_obj = resolve_date_window(
-        date_range=args.get("date_range", "LAST_7_DAYS"),
-        start_date=args.get("start_date"),
-        end_date=args.get("end_date"),
-        today=today,
+    start_date_obj, end_date_obj, _ = await janela_da_conta(
+        ctx, args, customer_id, default="LAST_7_DAYS"
     )
     start_date = start_date_obj.isoformat()
     end_date = end_date_obj.isoformat()

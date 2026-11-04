@@ -9,7 +9,6 @@ Dry-run normativo (§4.2): CPA do que sai lado a lado com o que fica.
 
 from typing import Any
 
-from src.db import connection
 from src.google_ads.account_clock import resolve_account_today
 from src.google_ads.ad_schedule import (
     MetricCell,
@@ -18,6 +17,7 @@ from src.google_ads.ad_schedule import (
     hours_per_week,
     modificador_efetivo,
     partition_metrics,
+    rows_to_current,
     schedule_fingerprint,
     summarize_current,
     validate_windows,
@@ -37,11 +37,9 @@ from src.google_ads.queries.ad_schedule import (
 )
 from src.google_ads.reports import run_report
 from src.governance.blast_radius import classify
-from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
-from src.mcp.tools._mutate_common import error_envelope, preview_envelope
+from src.mcp.tools._mutate_common import emitir_preview, error_envelope, no_changes_envelope
 from src.mcp.tools._registry import register_tool
-from src.mcp.tools.get_ad_schedule import rows_to_current
 
 _JANELA = {
     "type": "object",
@@ -357,17 +355,16 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
         ]
 
     if not ops:
-        return {
-            "status": "no_changes",
-            "operation": "update_ad_schedule",
-            "customer_id": customer_id,
-            "no_changes": True,
-            "message": (
+        return no_changes_envelope(
+            "update_ad_schedule",
+            customer_id,
+            no_changes=True,
+            message=(
                 "A grade desejada e identica a atual em todas as campanhas: nenhuma "
                 "operacao emitida (recriar criterios identicos custaria re-learning)."
             ),
-            "current_schedule": {cid: preview[cid]["current"] for cid in campaign_ids},
-        }
+            current_schedule={cid: preview[cid]["current"] for cid in campaign_ids},
+        )
 
     shared_budgets = await _blocos_de_orcamento_compartilhado(_consulta, orcamentos, campaign_ids)
 
@@ -420,23 +417,13 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
             "window_days": (end - start).days + 1,
         },
     }
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
-        token = await create_pending(
-            conn,
-            manager_id=ctx.manager_id,
-            session_id=ctx.session_id,
-            customer_id=customer_id,
-            operation_type="update_ad_schedule",
-            payload=payload,
-            blast_summary=resumo,
-        )
-    return preview_envelope(
-        "update_ad_schedule",
-        customer_id,
-        resumo,
-        token,
-        confirmation_reason=risk.reason,
+    return await emitir_preview(
+        ctx,
+        operation="update_ad_schedule",
+        customer_id=customer_id,
+        payload=payload,
+        summary=resumo,
+        risk=risk,
         target_count=target_count,
         preview=preview,
         shared_budgets=shared_budgets,

@@ -129,6 +129,12 @@ JOBS = h.SRC / "jobs"
 PRIMITIVOS = [
     h.SRC / "google_ads" / "queries" / "_common.py",
     h.SRC / "google_ads" / "change_freshness.py",
+    # Task G3: o corpo do `get_change_history` (clamp F23, sonda de fronteira) e a
+    # logica da grade de agenda moveram das tools para o dominio. As tools estavam
+    # no escopo (`TOOLS`); o dominio nao — sem estas linhas, um `date.today()` no
+    # corpo movido passaria verde so por ter mudado de diretorio.
+    h.SRC / "google_ads" / "change_scan.py",
+    h.SRC / "google_ads" / "ad_schedule.py",
     # `account_today` SAIU do `_common.py` em 2026-09-06 (mora em `src/clock.py`,
     # neutro entre os dois provedores). O guard segue o CODIGO, nao o caminho:
     # sem esta linha, a funcao que resolve `hoje` sairia do escopo do guard so

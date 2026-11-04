@@ -8,9 +8,7 @@ conversions em window LAST_30_DAYS, pausa/remove pra reduzir noise no dashboard.
 
 from typing import Any
 
-from src.google_ads.account_clock import resolve_account_today
 from src.google_ads.flag_orphan_smart_actions import flag_orphan_smart_actions
-from src.google_ads.queries._common import resolve_date_window
 from src.google_ads.queries.audit_orphan_smart_actions import (
     build_audit_orphan_smart_actions_query,
     dict_to_conversion_action_row,
@@ -18,6 +16,7 @@ from src.google_ads.queries.audit_orphan_smart_actions import (
 )
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
+from src.mcp.tools._common import janela_da_conta
 from src.mcp.tools._conversion_categories import CATEGORIAS_AUDITAVEIS
 from src.mcp.tools._registry import register_tool
 
@@ -95,13 +94,7 @@ async def audit_orphan_smart_actions(args: dict[str, Any]) -> dict[str, Any]:
     category = args.get("category")
     limit = args.get("limit", 100)
 
-    today = await resolve_account_today(customer_id)
-    start_date_obj, end_date_obj = resolve_date_window(
-        date_range=args.get("date_range", "LAST_30_DAYS"),
-        start_date=args.get("start_date"),
-        end_date=args.get("end_date"),
-        today=today,
-    )
+    start_date_obj, end_date_obj, _ = await janela_da_conta(ctx, args, customer_id)
 
     start_date = start_date_obj.isoformat()
     end_date = end_date_obj.isoformat()

@@ -1,20 +1,88 @@
 """Helpers compartilhados pelas tools MCP (partial-failure classification etc.)."""
 
+import copy
+from collections.abc import Sequence
+from datetime import date
+from typing import Any
 
-def aplicar_limite[T](linhas: list[T], limite: int) -> tuple[list[T], bool]:
-    """Devolve (linhas cortadas, truncated). Único lugar que decide o corte.
+from src.google_ads.account_clock import resolve_account_today
+from src.google_ads.limite import aplicar_limite as aplicar_limite  # reexport
+from src.google_ads.queries._common import resolve_date_window
+from src.janelas import PRESETS_EM_ORDEM
 
-    **Contrato:** `linhas` tem que vir de uma consulta pedida com `limite + 1`.
-    É a única forma de distinguir "vieram exatamente `limite`" de "havia mais".
-    Pedir `LIMIT {limite}` e comparar `len(linhas) > limite` aqui devolve
-    `False` SEMPRE, e o detector morre calado — que é o defeito que este
-    primitivo existe para fechar, não uma sutileza de estilo.
+_PADRAO_DE_DATA = "^\\d{4}-\\d{2}-\\d{2}$"
 
-    O `+1` já é o idioma do repo: `ad_schedule`, `overview` e `recommendations`
-    o usam desde que ganharam `truncated`. As 9 tools desta frente usavam
-    `LIMIT {limit}` — daí a mentira.
+_START_E_END: dict[str, Any] = {
+    "start_date": {
+        "type": "string",
+        "pattern": _PADRAO_DE_DATA,
+        "description": (
+            "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, "
+            "sobrepoe date_range preset. Obriga end_date."
+        ),
+    },
+    "end_date": {
+        "type": "string",
+        "pattern": _PADRAO_DE_DATA,
+        "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
+    },
+}
+
+
+def propriedades_de_data(
+    default: str = "LAST_30_DAYS", presets: Sequence[str] = PRESETS_EM_ORDEM
+) -> dict[str, Any]:
+    """O trio `date_range` + `start_date` + `end_date` do schema de uma tool Google.
+
+    Preset com `type: "string"` + `enum` e o par custom com `type` explicito (F1: sem
+    `type`, o Claude serializava o dict como string). Serve so as tools cujo trio JA e
+    este, literal: tool com enum, default ou description proprios fica com o dela, porque
+    o schema e contrato do handshake (`test_schemas_snapshot.py`). Devolve copia nova a
+    cada chamada — um schema nao pode mexer no do vizinho.
     """
-    return linhas[:limite], len(linhas) > limite
+    enum = list(presets)
+    if default not in enum:
+        raise ValueError(f"default {default!r} fora dos presets do schema: {enum}")
+    return {
+        "date_range": {
+            "type": "string",
+            "enum": enum,
+            "default": default,
+            "description": "Periodo via preset. Para periodo custom, use start_date+end_date.",
+        },
+        **copy.deepcopy(_START_E_END),
+    }
+
+
+async def janela_da_conta(
+    ctx: Any,
+    args: dict[str, Any],
+    customer_id: str,
+    *,
+    default: str = "LAST_30_DAYS",
+) -> tuple[date, date, date]:
+    """(inicio, fim, hoje) da janela pedida, com `hoje` no fuso da CONTA (F141).
+
+    `hoje` sai de `resolve_account_today`, uma vez por chamada, nunca do relogio do
+    servidor (guard `test_no_server_clock_in_google_tools`). A ordem e a que as tools
+    ja tinham: resolve `hoje` e so entao valida a janela, com as mensagens de
+    `resolve_date_window` (`InvalidDateRangeError`, uma `EntradaInvalidaError`).
+    Quem ja tem um `hoje` desta request (o corpo do `get_change_history`, chamado em
+    serie pelo `detect_drift`) nao usa este helper: resolver de novo daria um segundo
+    `hoje` no meio da varredura.
+
+    `ctx` e o contexto da request, recebido para a assinatura ficar a mesma das
+    tools que o chamam; a janela nao depende dele.
+    """
+    del ctx
+    hoje = await resolve_account_today(customer_id)
+    inicio, fim = resolve_date_window(
+        date_range=args.get("date_range", default),
+        start_date=args.get("start_date"),
+        end_date=args.get("end_date"),
+        today=hoje,
+    )
+    return inicio, fim, hoje
 
 
 def classify_partial(

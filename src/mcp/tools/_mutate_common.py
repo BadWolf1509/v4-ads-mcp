@@ -12,7 +12,9 @@ está sempre presente no envelope de erro.
 
 from typing import Any
 
-from src.governance.dry_run import DEFAULT_TTL_MINUTES
+from src.db import connection
+from src.governance.blast_radius import RiskClassification
+from src.governance.dry_run import DEFAULT_TTL_MINUTES, create_pending
 
 _APPLY_HINT = "Chame apply_change(confirmation_token=<token>) para aplicar."
 
@@ -138,5 +140,70 @@ def preview_envelope(
     }
     if confirmation_reason is not None:
         result["confirmation_reason"] = confirmation_reason
+    result.update(extra)
+    return result
+
+
+async def emitir_preview(
+    ctx: Any,
+    *,
+    operation: str,
+    customer_id: str,
+    payload: dict[str, Any],
+    summary: str,
+    risk: RiskClassification,
+    **extra: Any,
+) -> dict[str, Any]:
+    """Grava a pendencia e devolve o envelope de dry-run — o bloco que 20 tools copiavam.
+
+    A ordem de efeitos e a do bloco substituido: `create_pending` (que gateia o
+    acesso de ESCRITA e grava a trilha do F148 na mesma transacao) e so depois
+    o envelope. O helper nao chama `ensure_account_access` por conta propria:
+    quem gateia e o `create_pending`, como antes.
+
+    `risk` e o retorno do `classify` da tool, e daqui sai so o `.reason` (como
+    `confirmation_reason`). A DECISAO de emitir token — o `.level` (F112) —
+    continua no source da tool: ou ela ramifica em `risk.level`, ou chama este
+    helper incondicionalmente e o guard de `test_blast_radius_bate_com_as_tools`
+    cobra que a politica concorde com esse caminho fixo.
+
+    `operation` vira tambem o `operation_type` da pendencia: nas 20 tools os
+    dois eram o mesmo literal.
+    """
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        token = await create_pending(
+            conn,
+            manager_id=ctx.manager_id,
+            session_id=ctx.session_id,
+            customer_id=customer_id,
+            operation_type=operation,
+            payload=payload,
+            blast_summary=summary,
+        )
+    return preview_envelope(
+        operation,
+        customer_id,
+        summary,
+        token,
+        confirmation_reason=risk.reason,
+        **extra,
+    )
+
+
+def no_changes_envelope(operation: str, customer_id: str, **extra: Any) -> dict[str, Any]:
+    """Envelope do no-op sem token (status=no_changes): nada a gravar, nada emitido.
+
+    So o nucleo e fixo. Os dois no-op vivos divergem no corpo e cada um e
+    contrato publicado da sua tool: `update_ad_schedule` devolve
+    `no_changes/message/current_schedule`; `add_negative_keywords` devolve
+    `applied_count: 0` e o relato da cobertura. Por isso nao ha `motivo`
+    canonico aqui — impor uma chave de texto mudaria o shape das duas.
+    """
+    result: dict[str, Any] = {
+        "status": "no_changes",
+        "operation": operation,
+        "customer_id": customer_id,
+    }
     result.update(extra)
     return result

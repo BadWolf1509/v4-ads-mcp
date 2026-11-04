@@ -16,12 +16,10 @@ Anthropic Messages API; schema can't express it declaratively).
 from collections import Counter
 from typing import Any
 
-from src.db import connection
 from src.google_ads.preflight import validate_existing_rsas_for_update
 from src.governance.blast_radius import classify
-from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
-from src.mcp.tools._mutate_common import error_envelope, preview_envelope
+from src.mcp.tools._mutate_common import emitir_preview, error_envelope
 from src.mcp.tools._registry import register_tool
 
 _MUTABLE_FIELDS = ("headlines", "descriptions", "final_urls", "path1", "path2")
@@ -173,18 +171,6 @@ async def update_rsa(args: dict[str, Any]) -> dict[str, Any]:
         "__partial_failure__": True,
     }
 
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
-        token = await create_pending(
-            conn,
-            manager_id=ctx.manager_id,
-            session_id=ctx.session_id,
-            customer_id=customer_id,
-            operation_type="update_rsa",
-            payload=payload,
-            blast_summary=summary,
-        )
-
     preview = [
         {
             "ad_id": u["ad_id"],
@@ -193,11 +179,12 @@ async def update_rsa(args: dict[str, Any]) -> dict[str, Any]:
         for u in updates
     ]
 
-    return preview_envelope(
-        "update_rsa",
-        customer_id,
-        summary,
-        token,
-        confirmation_reason=risk.reason,
+    return await emitir_preview(
+        ctx,
+        operation="update_rsa",
+        customer_id=customer_id,
+        payload=payload,
+        summary=summary,
+        risk=risk,
         updates_preview=preview,
     )
