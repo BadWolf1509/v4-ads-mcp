@@ -1,16 +1,12 @@
 """Login, logout e sessões MCP do gestor.
 
-Também aqui: o dashboard (`/`) e as páginas públicas (help, legal/*,
-access-denied) — nenhuma tem responsabilidade própria na tabela de dez módulos
-do brief da Task 2, e este é o módulo mais próximo em espírito (entrada do
-painel / auth, sem escopo admin). Ver o relatório da Task 2 para a decisão.
+O dashboard (`dashboard.py`) e as páginas públicas (`pages.py`) saíram daqui na
+varredura de 11/2026 (Task F6).
 """
 
-from typing import Any
 from urllib.parse import parse_qs, urlparse
 from uuid import UUID
 
-import asyncpg
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
@@ -18,11 +14,10 @@ from src.auth.panel_session import PANEL_SESSION_COOKIE_NAME
 from src.auth.sessions import generate_session_token, hash_session_token
 from src.config import get_settings
 from src.db import connection
-from src.db.repositories import google_oauth_connections, manager_account_access, mcp_sessions
+from src.db.repositories import mcp_sessions
 from src.db.repositories.mcp_sessions import DEFAULT_TTL_DAYS
-from src.web import numeros
 from src.web.deps import CurrentUser, current_manager, optional_current_manager
-from src.web.routes._shared import templates
+from src.web.routes._shared import eh_htmx, resposta_hx, templates, toast_trigger
 
 router = APIRouter(tags=["web"])
 
@@ -48,171 +43,6 @@ async def logout() -> RedirectResponse:
     response = RedirectResponse(url="/login", status_code=302)
     response.delete_cookie(key=PANEL_SESSION_COOKIE_NAME, path="/")
     return response
-
-
-@router.get("/help", response_class=HTMLResponse)
-async def help_page(
-    request: Request,
-    user: CurrentUser | None = Depends(optional_current_manager),  # noqa: B008
-) -> HTMLResponse:
-    """Onboarding consolidated. Accessible logged-in or out (login link is included)."""
-    # mcp_url injetado no contexto (não hardcoded no template) pra os snippets de
-    # conexão nunca driftarem da URL real do serviço — mesmo padrão do /sessions.
-    mcp_url = f"{get_settings().public_base_url}/mcp"
-    return templates.TemplateResponse(
-        request, "help.html", {"current_user": user, "mcp_url": mcp_url}
-    )
-
-
-@router.get("/legal/privacy", response_class=HTMLResponse)
-async def legal_privacy(
-    request: Request,
-    user: CurrentUser | None = Depends(optional_current_manager),  # noqa: B008
-) -> HTMLResponse:
-    """Public Privacy Policy. Required by Meta Marketing API App Settings."""
-    return templates.TemplateResponse(request, "legal/privacy.html", {"current_user": user})
-
-
-@router.get("/legal/terms", response_class=HTMLResponse)
-async def legal_terms(
-    request: Request,
-    user: CurrentUser | None = Depends(optional_current_manager),  # noqa: B008
-) -> HTMLResponse:
-    """Public Terms of Service. Required by Meta Marketing API App Settings."""
-    return templates.TemplateResponse(request, "legal/terms.html", {"current_user": user})
-
-
-@router.get(
-    "/legal/data-deletion-status/{code}", response_class=HTMLResponse, name="data_deletion_status"
-)
-async def data_deletion_status(
-    request: Request,
-    code: UUID,
-    user: CurrentUser | None = Depends(optional_current_manager),  # noqa: B008
-) -> HTMLResponse:
-    """Public data deletion confirmation status page. Meta App Review requirement."""
-    return templates.TemplateResponse(
-        request,
-        "legal/data_deletion_status.html",
-        {"current_user": user, "confirmation_code": str(code)},
-    )
-
-
-@router.get("/access-denied", response_class=HTMLResponse, response_model=None)
-async def access_denied(
-    request: Request,
-    reason: str = "not_invited",
-) -> HTMLResponse:
-    """Q8 invite-only landing page. No auth required.
-
-    Reads a transient `v4_attempted_email` cookie set by the OAuth callback
-    before redirect, so the page can show which email was rejected. Cookie is
-    cleared on read so it doesn't persist or leak across logins.
-
-    Os params `email`, `detail` e `missing` (e os ramos `meta_*` do template)
-    sairam com o OAuth pessoal da Meta em 11/2026: só aquele callback os
-    preenchia.
-    """
-    attempted_email = request.cookies.get("v4_attempted_email")
-    response = templates.TemplateResponse(
-        request,
-        "access_denied.html",
-        {
-            "current_user": None,
-            "reason": reason,
-            "attempted_email": attempted_email,
-        },
-    )
-    response.delete_cookie("v4_attempted_email", path="/access-denied")
-    return response
-
-
-@router.get("/", response_class=HTMLResponse)
-async def dashboard(
-    request: Request,
-    user: CurrentUser = Depends(current_manager),  # noqa: B008
-) -> HTMLResponse:
-    """Dashboard: editorial hero + operational stats + admin extras."""
-
-    # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
-    async def _load(
-        conn: asyncpg.Connection,
-    ) -> tuple[
-        list[Any],
-        list[mcp_sessions.McpSession],
-        google_oauth_connections.OAuthConnection | None,
-        list[asyncpg.Record],
-        int,
-        list[int],
-        dict[str, Any] | None,
-    ]:
-        accounts = await manager_account_access.list_accounts_for_manager(conn, user.id)
-        active_sessions = await mcp_sessions.list_for_manager(conn, user.id, include_revoked=False)
-        oauth_conn = await google_oauth_connections.get_active_for_manager(conn, user.id)
-
-        # Recent calls (last 5 by this manager)
-        recent = await conn.fetch(
-            """SELECT occurred_at, operation, customer_id, status,
-                      (SELECT descriptive_name FROM google_ads_accounts a
-                       WHERE a.customer_id = al.customer_id LIMIT 1) AS account_name
-               FROM audit_log al
-               WHERE manager_id = $1
-               ORDER BY occurred_at DESC, id DESC LIMIT 5""",
-            user.id,
-        )
-
-        # Calls today (count + sparkline of last 7 days). O dia é o do painel
-        # (America/Sao_Paulo), não o do banco (UTC) — ver src/web/numeros.py.
-        sparkline_values = await numeros.contagem_por_dia(
-            conn, numeros.dias_do_painel(7), manager_id=user.id
-        )
-        calls_today = sparkline_values[-1]
-
-        admin_ops = None
-        if user.is_admin:
-            from src.db.repositories import managers as managers_repo
-
-            admin_ops = {
-                "pending_invites": await managers_repo.count_invited(conn),
-                **await numeros.admin_ops(conn),
-                "quota_max": 15000,
-            }
-
-        return (
-            accounts,
-            active_sessions,
-            oauth_conn,
-            recent,
-            calls_today,
-            sparkline_values,
-            admin_ops,
-        )
-
-    (
-        accounts,
-        active_sessions,
-        oauth_conn,
-        recent,
-        calls_today,
-        sparkline_values,
-        admin_ops,
-    ) = await connection.run_with_reconnect(_load)
-
-    return templates.TemplateResponse(
-        request,
-        "dashboard.html",
-        {
-            "current_user": user,
-            "accounts_count": len(accounts),
-            "sessions_count": len(active_sessions),
-            "oauth_email": oauth_conn.google_email if oauth_conn else None,
-            "oauth_connected_at": oauth_conn.connected_at if oauth_conn else None,
-            "calls_today": calls_today,
-            "calls_sparkline": sparkline_values,
-            "recent_calls": [dict(r) for r in recent],
-            "admin_ops": admin_ops,
-        },
-    )
 
 
 @router.get("/sessions", response_class=HTMLResponse)
@@ -337,24 +167,22 @@ async def sessions_revoke(
         all_sessions = await mcp_sessions.list_for_manager(conn, user.id, include_revoked=True)
         target = next((s for s in all_sessions if s.id == session_id), None)
         if target is None:
-            raise HTTPException(status_code=404, detail="Session not found")
+            raise HTTPException(status_code=404, detail="Sessão não encontrada")
         if target.revoked_at is None:
             await mcp_sessions.revoke(conn, session_id)
 
-    _toast_trigger = '{"toast": {"message": "Sessão revogada.", "kind": "success"}}'
+    _toast_trigger = toast_trigger("Sessão revogada.")
 
     # If HTMX request, decide by the originating page.
     # Detail page (/sessions/<id>) → send HX-Redirect so HTMX navigates cleanly.
     # List page (/sessions) → swap table fragment in-place (existing behaviour).
-    is_htmx = request.headers.get("HX-Request") == "true"
-    if is_htmx:
+    if eh_htmx(request):
         current_url = request.headers.get("HX-Current-URL", "")
         current_path = urlparse(current_url).path
         if current_path.startswith("/sessions/") and current_path.rstrip("/") != "/sessions":
             # Came from the detail page — redirect without flashing the fragment.
-            return Response(
-                status_code=204,
-                headers={"HX-Redirect": "/sessions", "HX-Trigger": _toast_trigger},
+            return resposta_hx(
+                request, destino="/sessions", hx="redirect", toast="Sessão revogada."
             )
         # Came from the list page — return fresh table fragment for in-place swap.
         # Preserve include_revoked from the originating page's query string.

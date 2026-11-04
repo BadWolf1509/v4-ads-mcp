@@ -617,7 +617,7 @@ async def test_admin_access_bulk_grant_records_audit(client: AsyncClient):
     async with pool.acquire() as conn:
         accs = await manager_account_access.list_accounts_for_manager(conn, gestor_id)
         row = await conn.fetchrow(
-            """SELECT operation, action_type, manager_id, customer_id, params_summary
+            """SELECT operation, action_type, manager_id, customer_id, platform, params_summary
                FROM audit_log WHERE operation = $1 ORDER BY occurred_at DESC LIMIT 1""",
             "admin_access_bulk_grant",
         )
@@ -626,6 +626,7 @@ async def test_admin_access_bulk_grant_records_audit(client: AsyncClient):
     assert row["action_type"] == "mutate"
     assert row["manager_id"] == admin_id
     assert row["customer_id"] is None
+    assert row["platform"] == "google"
     summary = json.loads(row["params_summary"])
     assert summary["target_manager_id"] == str(gestor_id)
     assert summary["count"] == 2
@@ -660,7 +661,7 @@ async def test_admin_access_bulk_copy_records_audit(client: AsyncClient):
 
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            """SELECT operation, action_type, manager_id, customer_id, params_summary
+            """SELECT operation, action_type, manager_id, customer_id, platform, params_summary
                FROM audit_log WHERE operation = $1 ORDER BY occurred_at DESC LIMIT 1""",
             "admin_access_bulk_copy",
         )
@@ -668,6 +669,7 @@ async def test_admin_access_bulk_copy_records_audit(client: AsyncClient):
     assert row["action_type"] == "mutate"
     assert row["manager_id"] == admin_id
     assert row["customer_id"] is None
+    assert row["platform"] == "google"
     summary = json.loads(row["params_summary"])
     assert summary["from_manager_id"] == str(gestor_id)
     assert summary["to_manager_id"] == str(other_id)

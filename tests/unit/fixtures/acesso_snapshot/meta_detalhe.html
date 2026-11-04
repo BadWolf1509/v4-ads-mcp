@@ -1,0 +1,214 @@
+
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Painel interno da V4 Company para conectar contas Google Ads e Meta Ads ao Claude, Codex e Cursor via MCP.">
+  <meta name="theme-color" content="#e50914">
+  
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false}'>
+  <title>Admin · Acessos Meta · ana.teste@v4company.com — V4 Ads MCP</title>
+  <link rel="preconnect" href="https://fonts.bunny.net">
+  
+  <link rel="stylesheet" href="https://fonts.bunny.net/css?family=montserrat:400,500,600,700,800|jetbrains-mono:400,700&display=swap">
+  
+  <link rel="stylesheet" href="/static/v4-tokens.css?v=snap">
+  <link rel="stylesheet" href="/static/v4-base.css?v=snap">
+  <link rel="stylesheet" href="/static/v4-components.css?v=snap">
+  <link rel="stylesheet" href="/static/v4-motion.css?v=snap">
+  
+  <link rel="stylesheet" href="/static/v4-tailwind.css?v=snap">
+  <link rel="icon" type="image/svg+xml" href="/static/logo/logo_v4_puro_round.svg?v=snap">
+  <script src="/static/htmx-2.0.3.min.js?v=snap" defer></script>
+  
+  <script src="/static/v4-panel.js?v=snap" defer></script>
+  
+  
+</head>
+<body>
+
+
+
+  
+<a class="v4-skip-link" href="#conteudo">Pular para o conteúdo</a>
+  <header class="v4-header">
+    
+    <button class="v4-header__hamburger" type="button" aria-label="Abrir menu" aria-controls="mobile-drawer" aria-expanded="false" data-v4-action="drawer-toggle">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    
+    <a class="v4-header__brand" href="/">
+      <img src="/static/logo/logo_v4_puro_round.svg?v=snap" class="v4-header__logo" alt="V4">
+      <span class="v4-header__title">Ads MCP</span>
+    </a>
+
+    
+    <nav class="v4-header__nav">
+      
+      <a href="/" >Dashboard</a>
+      
+      <a href="/accounts" >Contas</a>
+      
+      <a href="/sessions" >Sessões</a>
+      
+      <a href="/audit" >Auditoria</a>
+      
+      <a href="/help" >Ajuda</a>
+      
+      <a href="/admin" aria-current="page">Admin</a>
+      
+    </nav>
+    <div class="v4-header__user">
+      <span>admin.teste@v4company.com</span>
+      <form method="POST" action="/logout" class="inline"><button type="submit" class="v4-btn v4-btn--ghost" ><span class="v4-btn__label">Sair</span></button>
+</form>
+    </div>
+    
+  </header>
+  
+    
+<nav class="v4-subnav" aria-label="Admin">
+  <a href="/admin"
+     class="v4-subnav__link "
+     >Visão geral</a>
+  <a href="/admin/managers"
+     class="v4-subnav__link "
+     >Gestores</a>
+  <a href="/admin/invites"
+     class="v4-subnav__link "
+     >
+    Convites
+      <span class="v4-badge v4-badge--counter">2</span>
+    
+  </a>
+  <a href="/admin/accounts"
+     class="v4-subnav__link "
+     >Contas</a>
+  <a href="/admin/access"
+     class="v4-subnav__link is-active"
+     aria-current="page">Acessos</a>
+  <a href="/admin/audit"
+     class="v4-subnav__link "
+     >Auditoria global</a>
+</nav>
+  
+
+
+<div id="mobile-drawer" class="v4-drawer" role="dialog" aria-hidden="true" aria-label="Menu">
+  <div class="v4-drawer__backdrop" data-v4-action="drawer-toggle"></div>
+  <nav class="v4-drawer__panel" aria-label="Mobile">
+      <div class="v4-drawer__section">
+        
+        <a href="/" class="v4-drawer__link" >Dashboard</a>
+        
+        <a href="/accounts" class="v4-drawer__link" >Contas</a>
+        
+        <a href="/sessions" class="v4-drawer__link" >Sessões</a>
+        
+        <a href="/audit" class="v4-drawer__link" >Auditoria</a>
+        
+        <a href="/help" class="v4-drawer__link" >Ajuda</a>
+        
+        <a href="/admin" class="v4-drawer__link" aria-current="page">Admin</a>
+        
+      </div>
+      
+      <div class="v4-drawer__section">
+        <div class="v4-drawer__heading">Admin</div>
+        <a href="/admin" class="v4-drawer__link">Visão geral</a>
+        <a href="/admin/managers" class="v4-drawer__link">Gestores</a>
+        <a href="/admin/invites" class="v4-drawer__link">Convites</a>
+        <a href="/admin/accounts" class="v4-drawer__link">Contas</a>
+        <a href="/admin/access" class="v4-drawer__link">Acessos</a>
+        <a href="/admin/audit" class="v4-drawer__link">Auditoria global</a>
+      </div>
+      
+      <div class="v4-drawer__section">
+        <div class="v4-drawer__heading">admin.teste@v4company.com</div>
+        <form method="POST" action="/logout"><button type="submit" class="v4-drawer__link v4-drawer__link--button">Sair</button></form>
+      </div>
+  </nav>
+</div>
+
+
+  <main id="conteudo" tabindex="-1">
+    
+<section class="max-w-3xl mx-auto py-6 px-4">
+  
+
+<nav class="v4-breadcrumb" aria-label="Breadcrumb">
+  
+    
+      <a href="/admin/access/meta/by-manager">Acessos</a>
+      <span class="v4-breadcrumb__separator">/</span>
+    
+  
+    
+      <span class="v4-breadcrumb__current" aria-current="page">ana.teste@v4company.com</span>
+    
+  
+</nav>
+
+
+  <header class="mb-6">
+    <h1 class="text-2xl font-bold break-words" id="v4-mgr-11111111-1111-1111-1111-111111111111">ana.teste@v4company.com</h1>
+    <p class="text-sm text-v4-gray-700">Marque/desmarque pra liberar/revogar acesso. Mudanças instantâneas.</p>
+  </header>
+
+  <div class="grid gap-2">
+    
+    <label class="flex items-center gap-3 p-3 border border-v4-gray-100 rounded-md hover:bg-v4-gray-50 cursor-pointer">
+      <input type="checkbox"
+             aria-labelledby="v4-mgr-11111111-1111-1111-1111-111111111111 v4-acc-act_2000000001"
+             checked
+             hx-post="/admin/access/meta/toggle"
+             hx-vals='{"manager_id": "11111111-1111-1111-1111-111111111111", "ad_account_id": "act_2000000001", "desejado": "revoke"}'
+             hx-trigger="change"
+             hx-swap="outerHTML"
+             data-v4-access-toggle>
+      <div class="flex-1">
+        <strong id="v4-acc-act_2000000001">Padaria Fictícia &amp; &lt;Cia&gt;</strong>
+        <div class="text-xs text-v4-gray-500">BM Exemplo</div>
+        <div class="text-xs text-v4-gray-500 font-mono">act_2000000001</div>
+      </div>
+    </label>
+    
+    <label class="flex items-center gap-3 p-3 border border-v4-gray-100 rounded-md hover:bg-v4-gray-50 cursor-pointer">
+      <input type="checkbox"
+             aria-labelledby="v4-mgr-11111111-1111-1111-1111-111111111111 v4-acc-act_2000000002"
+             
+             hx-post="/admin/access/meta/toggle"
+             hx-vals='{"manager_id": "11111111-1111-1111-1111-111111111111", "ad_account_id": "act_2000000002", "desejado": "grant"}'
+             hx-trigger="change"
+             hx-swap="outerHTML"
+             data-v4-access-toggle>
+      <div class="flex-1">
+        <strong id="v4-acc-act_2000000002">Academia Exemplo</strong>
+        
+        <div class="text-xs text-v4-gray-500 font-mono">act_2000000002</div>
+      </div>
+    </label>
+    
+  </div>
+</section>
+
+  </main>
+
+  <footer class="v4-footer">
+    V4 Ads MCP — interno V4 Company
+  </footer>
+<dialog class="v4-confirm-dialog" id="v4-confirm-dialog" aria-labelledby="v4-confirm-title">
+  <form method="dialog" class="v4-confirm-dialog__body">
+    <h3 class="v4-confirm-dialog__title" id="v4-confirm-title"></h3>
+    <p class="v4-confirm-dialog__message" id="v4-confirm-message"></p>
+    <div class="v4-confirm-dialog__actions">
+      <button type="button" class="v4-btn v4-btn--secondary v4-btn--small" data-confirm-cancel>Cancelar</button>
+      <button type="button" class="v4-btn v4-btn--danger v4-btn--small" data-confirm-ok>Confirmar</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="v4-toast-region" id="v4-toast-region" aria-live="polite"></div>
+</body>
+</html>

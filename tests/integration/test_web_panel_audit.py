@@ -270,3 +270,28 @@ async def test_audit_pagination_follows_cursor_across_pages(client: AsyncClient)
     # Ultima pagina: sem mais linhas, o botao "Proxima" deve vir desabilitado
     # (sem href), nao um link pra um cursor que nao existe.
     assert "cursor_at=" not in page2.text
+
+
+@pytest.mark.integration
+async def test_link_de_exportacao_escapa_customer_id(client: AsyncClient):
+    """customer_id com `&`/`=` nao pode injetar parametro no link do CSV."""
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        mid = uuid4()
+        await managers.create(
+            conn, manager_id=mid, email="au-esc@v4company.com", full_name=None, role="gestor"
+        )
+    cookie = sign_panel_session(
+        manager_id=str(mid),
+        email="au-esc@v4company.com",
+        signing_key=_SIGNING_KEY,
+        aud="panel",
+    )
+    response = await client.get(
+        "/audit",
+        params={"customer_id": "1&status=x"},
+        cookies={PANEL_SESSION_COOKIE_NAME: cookie},
+    )
+    assert response.status_code == 200
+    assert "customer_id=1%26status%3Dx" in response.text
+    assert "customer_id=1&amp;status=x" not in response.text

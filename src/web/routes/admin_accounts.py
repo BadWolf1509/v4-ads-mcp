@@ -2,7 +2,7 @@
 
 import asyncpg
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, Response
 
 from src.config import get_settings
 from src.db import connection
@@ -19,6 +19,7 @@ from src.web.routes._shared import (
     _admin_flash,
     _audit_admin,
     _require_admin,
+    resposta_hx,
     templates,
 )
 
@@ -87,8 +88,8 @@ async def admin_accounts_google_restore(
         if conta is None or not conta.is_active:
             # Restaurar em conta inativa produz grant que o gate nega —
             # trabalho inútil apresentado como sucesso.
-            return RedirectResponse(
-                url="/admin/accounts?error=conta_inativa_google", status_code=303
+            return resposta_hx(
+                request, destino="/admin/accounts?error=conta_inativa_google", hx="redirect"
             )
         # Task 5: restauração e audit na mesma transação — se _audit_admin
         # falhar depois do restore, os grants reconcedidos e a linha de audit
@@ -104,7 +105,7 @@ async def admin_accounts_google_restore(
                 customer_id=customer_id,
                 restored_grants=len(restaurados),
             )
-    return RedirectResponse(url="/admin/accounts?ok=restored", status_code=303)
+    return resposta_hx(request, destino="/admin/accounts?ok=restored")
 
 
 @router.get("/admin/accounts/meta", response_class=HTMLResponse)
@@ -172,12 +173,11 @@ async def admin_accounts_meta_restore(
     async with pool.acquire() as conn:
         conta = await meta_ad_accounts.get_by_id(conn, ad_account_id)
         if conta is None or not conta.is_active:
-            destino = "/admin/accounts/meta?error=conta_inativa"
-            if request.headers.get("HX-Request"):
-                # HX-Redirect, nao HX-Refresh: o refresh perderia o query param
-                # e o admin nao veria por que nada aconteceu.
-                return Response(status_code=204, headers={"HX-Redirect": destino})
-            return RedirectResponse(url=destino, status_code=303)
+            # HX-Redirect, nao HX-Refresh: o refresh perderia o query param
+            # e o admin nao veria por que nada aconteceu.
+            return resposta_hx(
+                request, destino="/admin/accounts/meta?error=conta_inativa", hx="redirect"
+            )
         # Task 5: restauração e audit na mesma transação (ver
         # admin_accounts_google_restore).
         async with conn.transaction():
@@ -192,8 +192,5 @@ async def admin_accounts_meta_restore(
                 platform="meta",
                 restored_grants=restaurados,
             )
-    if request.headers.get("HX-Request"):
-        # Mesmo idioma de accounts_revoke_connection/admin_invites_cancel: full
-        # refresh do browser reconstroi as tres filas de graca, sem swap manual.
-        return Response(status_code=204, headers={"HX-Refresh": "true"})
-    return RedirectResponse(url="/admin/accounts/meta?ok=restored", status_code=303)
+    # Full refresh do browser reconstroi as tres filas de graca, sem swap manual.
+    return resposta_hx(request, destino="/admin/accounts/meta?ok=restored")

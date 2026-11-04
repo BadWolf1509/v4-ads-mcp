@@ -395,11 +395,13 @@ def test_templates_com_toggle_nao_fica_vazio():
     """Piso contra a mesma vacuidade que `_guard_harness.EscopoVazioError`
     cobre pro lado dos arquivos: `@pytest.mark.parametrize` sobre uma lista
     que colapsasse pra `[]` nao reprovaria teste nenhum — so rodaria ZERO
-    casos, calado. 4 e a contagem conhecida em 2026-08-19 (a lista fixa que
-    esta funcao substitui); queda abaixo disso e sinal de marcador renomeado
-    ou raiz errada, nao de o painel ter perdido a feature.
+    casos, calado. Eram 4 em 2026-08-19 (a lista fixa que esta funcao
+    substitui); a Task F5 (03/11) unificou os gemeos Google/Meta e sobraram
+    2 — `admin/access.html` e `admin/access_manager_detail.html`, cada um
+    servindo as duas plataformas. Queda abaixo disso e sinal de marcador
+    renomeado ou raiz errada, nao de o painel ter perdido a feature.
     """
-    assert len(_TEMPLATES_COM_TOGGLE) >= 4, (
+    assert len(_TEMPLATES_COM_TOGGLE) >= 2, (
         f"lista derivada de templates com toggle colapsou: {_TEMPLATES_COM_TOGGLE}"
     )
 

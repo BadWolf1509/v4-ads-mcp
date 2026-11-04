@@ -1,12 +1,14 @@
 {% extends "_base.html" %}
 {% from "_components.html" import breadcrumb %}
+{# Acessos de um gestor, Google e Meta — `plataforma` vem da rota (routes/_acesso.py). #}
+{% set p = plataforma %}
 
-{% block title %}Admin · Acessos · {{ manager.email }} — V4 Ads MCP{% endblock %}
+{% block title %}Admin · Acessos{% if p.e_meta %} Meta{% endif %} · {{ manager.email }} — V4 Ads MCP{% endblock %}
 
 {% block content %}
 <section class="max-w-3xl mx-auto py-6 px-4">
   {{ breadcrumb([
-    {"label": "Acessos", "url": "/admin/access/by-manager"},
+    {"label": "Acessos", "url": p.prefixo_url ~ "/by-manager"},
     {"label": manager.email}
   ]) }}
 
@@ -17,18 +19,20 @@
 
   <div class="grid gap-2">
     {% for a in accounts %}
+    {% set conta_id = a[p.coluna_conta] %}
     <label class="flex items-center gap-3 p-3 border border-v4-gray-100 rounded-md hover:bg-v4-gray-50 cursor-pointer">
       <input type="checkbox"
-             aria-labelledby="v4-mgr-{{ manager.id }} v4-acc-{{ a.customer_id }}"
-             {% if a.customer_id in access_set %}checked{% endif %}
-             hx-post="/admin/access/toggle"
-             hx-vals='{"manager_id": "{{ manager.id }}", "customer_id": "{{ a.customer_id }}", "desejado": "{{ 'revoke' if a.customer_id in access_set else 'grant' }}"}'
+             aria-labelledby="v4-mgr-{{ manager.id }} v4-acc-{{ conta_id }}"
+             {% if conta_id in access_set %}checked{% endif %}
+             hx-post="{{ p.prefixo_url }}/toggle"
+             hx-vals='{"manager_id": "{{ manager.id }}", "{{ p.coluna_conta }}": "{{ conta_id }}", "desejado": "{{ 'revoke' if conta_id in access_set else 'grant' }}"}'
              hx-trigger="change"
              hx-swap="outerHTML"
              data-v4-access-toggle>
       <div class="flex-1">
-        <strong id="v4-acc-{{ a.customer_id }}">{{ a.descriptive_name }}</strong>
-        <div class="text-xs text-v4-gray-500 font-mono">{{ a.customer_id }}</div>
+        <strong id="v4-acc-{{ conta_id }}">{{ a[p.campo_nome_conta] }}</strong>
+        {% if p.e_meta and a.business_name %}<div class="text-xs text-v4-gray-500">{{ a.business_name }}</div>{% endif %}
+        <div class="text-xs text-v4-gray-500 font-mono">{{ conta_id }}</div>
       </div>
     </label>
     {% endfor %}

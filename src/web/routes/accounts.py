@@ -5,7 +5,7 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, Response
 
 from src.db import connection
 from src.db.repositories import (
@@ -14,7 +14,7 @@ from src.db.repositories import (
     manager_meta_account_access,
 )
 from src.web.deps import CurrentUser, current_manager
-from src.web.routes._shared import templates
+from src.web.routes._shared import resposta_hx, templates
 
 router = APIRouter(tags=["web"])
 
@@ -71,12 +71,9 @@ async def accounts_revoke_connection(
             connection_id,
         )
         if owner != user.id:
-            raise HTTPException(status_code=404, detail="Connection not found")
+            raise HTTPException(status_code=404, detail="Conexão não encontrada")
         await google_oauth_connections.revoke(conn, connection_id)
 
-    if request.headers.get("HX-Request"):
-        # F96 — o XHR do htmx SEGUE o 303, então devolver redirect aqui entregava
-        # a página `/accounts` inteira pro swap. Full refresh do browser re-renderiza
-        # a lista de conexões (e o badge) de graça, como em `admin_invite_cancel`.
-        return Response(status_code=204, headers={"HX-Refresh": "true"})
-    return RedirectResponse(url="/accounts", status_code=303)
+    # F96 — o XHR do htmx SEGUE o 303; `resposta_hx` devolve 204 + HX-Refresh,
+    # e o refresh re-renderiza a lista de conexões (e o badge) de graça.
+    return resposta_hx(request, destino="/accounts")

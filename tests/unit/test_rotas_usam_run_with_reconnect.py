@@ -155,11 +155,21 @@ def _nomes_que_escrevem(arquivo: Path, *, raiz: Path | None = None) -> set[str]:
     módulo sobre o limite de UM salto. `raiz` existe só pro teste de mordida
     montar uma árvore `src.` falsa sob `tmp_path` (mesmo parâmetro que
     `h.funcoes_chamadas_de_src` já expõe pra isso).
+
+    F4 (2026-11-03): chamar `_audit_admin` também é marca de escrita — ele
+    grava a linha de `audit_log`. Os helpers de `src/web/routes/_acesso.py`
+    escrevem por `plataforma.repositorio.grant(...)` (despacho pelo
+    dataclass, que nenhum salto estático resolve) e auditam na mesma
+    transação; sem esta marca, as 6 rotas de acesso que delegam a eles
+    pareceriam "só leitura" e o guard cobraria `run_with_reconnect` de uma
+    escrita (F91). Direção do erro: só absolve quem audita, e quem audita
+    escreve.
     """
     return {
         fn.name
-        for _helper_arquivo, fn in h.funcoes_chamadas_de_src(arquivo, raiz=raiz)
+        for helper_arquivo, fn in h.funcoes_chamadas_de_src(arquivo, raiz=raiz)
         if _tem_marca_de_escrita_direta(fn)
+        or h.chama(fn, "_audit_admin", arv=h.arvore(helper_arquivo))
     }
 
 
@@ -364,3 +374,40 @@ def test_resolucao_de_um_salto_acusa_so_a_leitura_pura(tmp_path: Path) -> None:
     achados = dict(_ofensores_do_arquivo(rota, raiz=tmp_path))
 
     assert achados == {"so_le": 4}, achados
+
+
+def test_helper_que_audita_conta_como_escrita(tmp_path: Path) -> None:
+    """F4: helper a um salto que chama `_audit_admin` escreve (a linha do
+    `audit_log`), mesmo quando a escrita de acesso vai por despacho dinâmico
+    que o salto estático não resolve (`plataforma.repositorio.grant`).
+    Controle: helper irmão que só lê, pelo mesmo despacho, continua acusado.
+    """
+    helper = tmp_path / "src" / "acesso_fake.py"
+    helper.parent.mkdir(parents=True, exist_ok=True)
+    helper.write_text(
+        "from src.shared_fake import _audit_admin\n"
+        "\n"
+        "async def aplica(conn, plataforma):\n"
+        "    await plataforma.repositorio.grant(conn)\n"
+        "    await _audit_admin(conn)\n"
+        "\n"
+        "async def consulta(conn, plataforma):\n"
+        "    return await plataforma.repositorio.le(conn)\n",
+        encoding="utf-8",
+    )
+    rota = tmp_path / "rota_fake.py"
+    rota.write_text(
+        "from src.acesso_fake import aplica, consulta\n"
+        "\n"
+        "async def escreve():\n"
+        "    async with pool.acquire() as conn:\n"
+        "        await aplica(conn, p)\n"
+        "\n"
+        "async def le():\n"
+        "    async with pool.acquire() as conn:\n"
+        "        return await consulta(conn, p)\n",
+        encoding="utf-8",
+    )
+    achados = dict(_ofensores_do_arquivo(rota, raiz=tmp_path))
+
+    assert achados == {"le": 8}, achados

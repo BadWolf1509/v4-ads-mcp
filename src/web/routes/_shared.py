@@ -2,26 +2,24 @@
 
 Movido de `routes.py` no split da PR 5 (Task 2): tudo que mais de um módulo de
 rota consome — `_require_admin`, o helper de flash message, `_audit_admin`, o
-fragmento de toggle de acesso, e a instância compartilhada de `Jinja2Templates`
-(com os filtros/globals do Jinja registrados nela).
+fragmento de toggle de acesso, e a reexportação da instância compartilhada de
+`Jinja2Templates`, que mora em `src.web.templating` desde a F7 (com os
+filtros/globals do Jinja registrados nela).
 """
 
 import html
 import json
-from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any, Literal
-from zoneinfo import ZoneInfo
 
 import structlog
 from fastapi import HTTPException, Request
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from src.db.repositories import audit_log
-from src.meta_ads.labels import META_ACCOUNT_STATUS_LABELS
 from src.web.deps import CurrentUser
-from src.web.static_files import asset_version
+from src.web.templating import hora_brasilia as hora_brasilia  # reexporta
+from src.web.templating import meta_status_label as meta_status_label  # reexporta
+from src.web.templating import templates as templates  # reexporta
 
 log = structlog.get_logger(__name__)
 
@@ -93,6 +91,45 @@ def _admin_flash(
     if ok_message and ok == "1":
         return {"kind": "success", "message": ok_message}
     return None
+
+
+def eh_htmx(request: Request) -> bool:
+    """True quando o pedido veio do htmx (que manda `HX-Request: true`).
+
+    Uma só definição: antes cada rota decidia à mão, e o valor aceito variava
+    (qualquer truthy aqui, `== "true"` ali).
+    """
+    return request.headers.get("HX-Request") == "true"
+
+
+def toast_trigger(mensagem: str, kind: str = "success") -> str:
+    """Valor do header `HX-Trigger` que o v4-panel.js transforma em toast.
+
+    `json.dumps` escapa aspas e não-ASCII, então o header é latin-1 seguro.
+    """
+    return json.dumps({"toast": {"message": mensagem, "kind": kind}})
+
+
+def resposta_hx(
+    request: Request,
+    *,
+    destino: str,
+    hx: Literal["redirect", "refresh"] = "refresh",
+    toast: str | None = None,
+) -> Response:
+    """Fecha uma mutação do painel: 204 + header HTMX, ou 303 sem HTMX.
+
+    O XHR do htmx SEGUE um 303 e entregaria a página inteira ao swap (F96),
+    então o pedido HTMX recebe 204 com `HX-Redirect` (navega para `destino`,
+    preservando o query param) ou `HX-Refresh` (recarrega a página atual).
+    O 303 sem HTMX é o POST-redirect-GET de sempre, sempre para `destino`.
+    """
+    if not eh_htmx(request):
+        return RedirectResponse(url=destino, status_code=303)
+    headers = {"HX-Redirect": destino} if hx == "redirect" else {"HX-Refresh": "true"}
+    if toast is not None:
+        headers["HX-Trigger"] = toast_trigger(toast)
+    return Response(status_code=204, headers=headers)
 
 
 async def _audit_admin(
@@ -188,7 +225,7 @@ def _toggle_acesso_response(
         mensagem = "Acesso liberado" if granted else "Acesso revogado"
     else:
         mensagem = "O acesso já estava liberado" if granted else "O acesso já estava revogado"
-    trigger = json.dumps({"toast": {"message": mensagem, "kind": "success"}})
+    trigger = toast_trigger(mensagem)
     return HTMLResponse(
         _toggle_checkbox_fragment(
             post_url=post_url,
@@ -199,40 +236,3 @@ def _toggle_acesso_response(
         ),
         headers={"HX-Trigger": trigger},
     )
-
-
-# Um nivel a mais que no routes.py original: este arquivo mora em
-# src/web/routes/_shared.py, entao precisa subir DOIS parents (nao um) pra
-# chegar em src/web/templates.
-_TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
-templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
-
-
-def meta_status_label(status: int | None) -> str:
-    """Jinja filter: resolve Meta account_status int to PT-BR label."""
-    return META_ACCOUNT_STATUS_LABELS.get(status or 0, "DESCONHECIDO")
-
-
-templates.env.filters["meta_status_label"] = meta_status_label
-
-_BRASILIA = ZoneInfo("America/Sao_Paulo")
-
-
-def hora_brasilia(valor: datetime | None, formato: str = "%d/%m %H:%M") -> str:
-    """Jinja filter: datetime (UTC no banco) -> texto no horario de Brasilia.
-
-    `strftime` direto no template imprimia UTC como se fosse hora local (3h
-    adiantado). Naive e tratado como UTC, que e o que o banco grava.
-    """
-    if valor is None:
-        return "—"
-    if valor.tzinfo is None:
-        valor = valor.replace(tzinfo=UTC)
-    return valor.astimezone(_BRASILIA).strftime(formato)
-
-
-templates.env.filters["hora_brasilia"] = hora_brasilia
-
-# Cache-busting dos estaticos: muda a cada revisao do Cloud Run, o que torna
-# seguro o Cache-Control imutavel de CachedStaticFiles.
-templates.env.globals["asset_version"] = asset_version()
