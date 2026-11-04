@@ -28,7 +28,7 @@ from src.meta_ads.client import (
     MetaSystemUserTokenMissingError,
 )
 from src.meta_ads.errors import to_friendly_meta_error
-from src.meta_ads.graph import avisar_versao_meta
+from src.meta_ads.graph import paginas_graph
 
 log = structlog.get_logger(__name__)
 
@@ -117,18 +117,11 @@ async def _paginar_graph(
     """
     linhas: list[Any] = []
     corpo: dict[str, Any] = {}
-    proxima: str | None = None
     headers = httpx.Headers()
     lidas = 0
-    for _ in range(max_pages):
-        if proxima is None:
-            resp = await http.get(url, params=params, headers=cabecalhos)
-        else:
-            # `paging.next` ja carrega cursor e fields na propria URL.
-            resp = await http.get(proxima, headers=cabecalhos)
+    async for resp in paginas_graph(http, url, params, cabecalhos, max_pages):
         headers = resp.headers
         capturados.append(headers)
-        avisar_versao_meta(headers)
         if resp.status_code != 200:
             raise MetaGraphHTTPError(resp.status_code, resp.text)
         bruto = resp.json()
@@ -138,9 +131,6 @@ async def _paginar_graph(
         corpo = bruto
         lidas += 1
         linhas.extend(corpo.get("data") or [])
-        proxima = (corpo.get("paging") or {}).get("next")
-        if not proxima:
-            break
     return corpo, linhas, headers, lidas
 
 
@@ -167,6 +157,52 @@ async def _contabilizar_uso(
         )
     except Exception as e:  # noqa: BLE001
         log.warning("meta_rate_counter_update_failed", error=str(e))
+
+
+async def _gravar_audit_leitura(
+    *,
+    manager_id: UUID,
+    session_id: UUID,
+    ad_account_id: str,
+    operation_name: str,
+    status: str,
+    error_message: str | None,
+    target_count: int | None,
+    provider_request_id: str | None,
+    params_summary: dict[str, Any] | None,
+    duration_ms: int,
+) -> None:
+    """Grava o audit de uma leitura Graph (ramos de sucesso e de erro).
+
+    `best_effort`: audit falho nunca decide o resultado da leitura. Independente
+    da quota (`_contabilizar_uso`), que tem o proprio bloco. Nao constroi cliente
+    HTTP — so escreve no banco. A negacao de acesso (`denied`) NAO passa por aqui:
+    e gravada sempre, antes do gate, em bloco proprio.
+    """
+    async with (
+        best_effort(
+            "meta_report_audit_write_failed",
+            operation=operation_name,
+            ad_account_id=ad_account_id,
+            status=status,
+        ),
+        connection.get_pool().acquire() as conn,
+    ):
+        await audit_log.record(
+            conn,
+            manager_id=manager_id,
+            session_id=session_id,
+            customer_id=ad_account_id,
+            action_type="read",
+            operation=operation_name,
+            target_count=target_count,
+            params_summary=params_summary,
+            status=status,
+            error_message=error_message,
+            duration_ms=duration_ms,
+            platform="meta",
+            provider_request_id=provider_request_id,
+        )
 
 
 async def run_meta_graph_get(
@@ -317,30 +353,20 @@ async def run_meta_graph_get(
                 app_id=settings.meta_app_id,
             )
         if audit_this_call:
-            # best_effort: audit falho no caminho de erro nao pode trocar a
-            # mensagem amigavel por uma excecao crua de banco.
-            async with (
-                best_effort(
-                    "meta_report_audit_write_failed",
-                    operation=operation_name,
-                    ad_account_id=ad_account_id,
-                    status="error",
-                ),
-                connection.get_pool().acquire() as conn,
-            ):
-                await audit_log.record(
-                    conn,
-                    manager_id=manager_id,
-                    session_id=session_id,
-                    customer_id=ad_account_id,
-                    action_type="read",
-                    operation=operation_name,
-                    params_summary=params_summary,
-                    status="error",
-                    error_message=friendly.message,
-                    duration_ms=elapsed_ms,
-                    platform="meta",
-                )
+            # best_effort dentro do helper: audit falho no caminho de erro nao
+            # pode trocar a mensagem amigavel por uma excecao crua de banco.
+            await _gravar_audit_leitura(
+                manager_id=manager_id,
+                session_id=session_id,
+                ad_account_id=ad_account_id,
+                operation_name=operation_name,
+                status="error",
+                error_message=friendly.message,
+                target_count=None,
+                provider_request_id=None,
+                params_summary=params_summary,
+                duration_ms=elapsed_ms,
+            )
         log.warning(
             "meta_graph_get_error",
             edge=edge,
@@ -371,29 +397,18 @@ async def run_meta_graph_get(
     )
 
     if audit_this_call:
-        async with (
-            best_effort(
-                "meta_report_audit_write_failed",
-                operation=operation_name,
-                ad_account_id=ad_account_id,
-                status="success",
-            ),
-            connection.get_pool().acquire() as conn,
-        ):
-            await audit_log.record(
-                conn,
-                manager_id=manager_id,
-                session_id=session_id,
-                customer_id=ad_account_id,
-                action_type="read",
-                operation=operation_name,
-                target_count=len(body.get("data", [])) if isinstance(body, dict) else None,
-                params_summary=params_summary,
-                status="success",
-                duration_ms=elapsed_ms,
-                platform="meta",
-                provider_request_id=headers_ultima.get("x-fb-trace-id"),
-            )
+        await _gravar_audit_leitura(
+            manager_id=manager_id,
+            session_id=session_id,
+            ad_account_id=ad_account_id,
+            operation_name=operation_name,
+            status="success",
+            error_message=None,
+            target_count=len(body.get("data", [])) if isinstance(body, dict) else None,
+            provider_request_id=headers_ultima.get("x-fb-trace-id"),
+            params_summary=params_summary,
+            duration_ms=elapsed_ms,
+        )
 
     log.info(
         "meta_graph_get_done",

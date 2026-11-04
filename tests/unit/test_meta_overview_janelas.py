@@ -51,7 +51,10 @@ async def _overview(**janela: str) -> dict[str, Any]:
             )
         )
         pilha.enter_context(
-            patch(f"{_MODULO}.resolve_meta_account_today", AsyncMock(return_value=_HOJE))
+            patch(
+                "src.mcp.tools._meta_performance.resolve_meta_account_today",
+                AsyncMock(return_value=_HOJE),
+            )
         )
         resultado = await meta_get_account_overview(
             uuid4(), uuid4(), ad_account_id="act_1", **janela

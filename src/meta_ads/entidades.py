@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from typing import Any, Literal
 
+from src.meta_ads.colecao import ContextoMeta, ler_colecao
 from src.meta_ads.reports import run_meta_graph_get
 
 Nivel = Literal["campaign", "adset", "ad"]
@@ -153,7 +154,7 @@ def parse_entity(level: str, linha: dict[str, Any]) -> dict[str, Any]:
 
 
 async def listar_entidades(
-    ctx: Any,
+    ctx: ContextoMeta,
     ad_account_id: str,
     level: Nivel,
     status: str | None,
@@ -165,21 +166,15 @@ async def listar_entidades(
     `operacao` e o nome sob o qual a leitura e auditada: o chamador passa o seu.
     """
     edge, params = build_entities_call(level, ad_account_id, status=status, limit=limit)
-    pagina = int(params["limit"])
-    max_pages = -(-(limit + 1) // pagina)
-    resp = await run_meta_graph_get(
-        manager_id=ctx.manager_id,
-        session_id=ctx.session_id,
+    linhas, sobrou_next = await ler_colecao(
+        ctx,
+        leitor=run_meta_graph_get,
         ad_account_id=ad_account_id,
         edge=edge,
         params=params,
-        operation_name=operacao,
-        estimated_calls=max_pages,
-        max_pages=max_pages,
-        audit_this_call=True,
+        operacao=operacao,
+        limit=limit,
         params_summary={"ad_account_id": ad_account_id, "level": level, "status": status},
     )
-    linhas = resp.get("data") or []
-    sobrou_next = bool((resp.get("paging") or {}).get("next"))
     truncated = len(linhas) > limit or sobrou_next
     return [parse_entity(level, linha) for linha in linhas[:limit]], truncated

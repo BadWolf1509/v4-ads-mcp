@@ -17,6 +17,7 @@ repetida em 5 sites (os 3 deste trio + meta_get_account_overview +
 meta_get_performance_breakdown) — uma fonte única.
 """
 
+from datetime import date
 from typing import Any
 from uuid import UUID
 
@@ -75,6 +76,39 @@ def meta_account_not_found_error(ad_account_id: str) -> dict[str, Any]:
     }
 
 
+def datas_invalidas_error(detalhe: object) -> dict[str, Any]:
+    """Envelope de erro único para janela de datas inválida nas tools Meta."""
+    return {"status": "error", "error_message": f"Datas inválidas: {detalhe}"}
+
+
+async def resolver_janela_meta(
+    args: dict[str, Any],
+    ad_account_id: str,
+    *,
+    preset_padrao: str = "LAST_30_DAYS",
+) -> tuple[date, date, date]:
+    """Janela da request no fuso da conta: `(inicio, fim, hoje)`.
+
+    `args` traz `date_range`, `start_date`, `end_date` (ausentes valem None).
+    `hoje` volta junto porque o overview precisa dele (`inclui_dia_corrente`) e
+    deve ser o MESMO usado na janela (F141: um `hoje` por request).
+
+    Recebe o id, não a linha do inventário: o relógio da conta já lê o fuso de lá,
+    e a checagem de conta existente continua DEPOIS da data (a ordem dos erros não
+    muda). Levanta ValueError com o detalhe; o chamador converte em
+    `datas_invalidas_error(e)` — o `except` fica local porque cada tool decide o que
+    mais devolver.
+    """
+    hoje = await resolve_meta_account_today(ad_account_id)
+    inicio, fim = resolve_meta_date_window(
+        args.get("date_range") or preset_padrao,
+        args.get("start_date"),
+        args.get("end_date"),
+        hoje,
+    )
+    return inicio, fim, hoje
+
+
 async def run_meta_level_performance(
     *,
     level: Level,
@@ -104,14 +138,14 @@ async def run_meta_level_performance(
         tool retornava antes da dedup (paridade bit-a-bit).
     """
     pool = connection.get_pool()
-    today = await resolve_meta_account_today(ad_account_id)
 
     try:
-        start, end = resolve_meta_date_window(
-            date_range or "LAST_30_DAYS", start_date, end_date, today
+        start, end, _ = await resolver_janela_meta(
+            {"date_range": date_range, "start_date": start_date, "end_date": end_date},
+            ad_account_id,
         )
     except ValueError as e:
-        return {"status": "error", "error_message": f"Datas inválidas: {e}"}
+        return datas_invalidas_error(e)
 
     async with pool.acquire() as conn:
         account = await meta_ad_accounts.get_by_id(conn, ad_account_id)

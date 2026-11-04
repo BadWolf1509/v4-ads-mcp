@@ -29,10 +29,12 @@ def _chamadas_de_audit() -> list[ast.Call]:
 
 def test_ha_audit_no_executor_meta() -> None:
     """Se as chamadas sumirem, o teste abaixo passaria vazio."""
-    assert len(_chamadas_de_audit()) >= 3, "esperado denial + erro + sucesso"
+    assert len(_chamadas_de_audit()) >= 2, (
+        "esperado denial + _gravar_audit_leitura (erro e sucesso)"
+    )
 
 
-@pytest.mark.parametrize("indice", range(3))
+@pytest.mark.parametrize("indice", range(2))
 def test_audit_meta_grava_conta_do_kwarg(indice: int) -> None:
     """customer_id vem de `ad_account_id`, nunca de um dict opcional."""
     chamadas = _chamadas_de_audit()

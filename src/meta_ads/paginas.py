@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.meta_ads.colecao import ContextoMeta, ler_colecao
 from src.meta_ads.reports import run_meta_graph_get
 
 _OPERACAO = "meta_get_pages"
@@ -47,25 +48,19 @@ def build_pages_call(ad_account_id: str, *, limit: int) -> tuple[str, dict[str, 
 
 
 async def listar_paginas(
-    ctx: Any, ad_account_id: str, limit: int
+    ctx: ContextoMeta, ad_account_id: str, limit: int
 ) -> tuple[list[dict[str, Any]], bool]:
     """Le as paginas seguindo `paging.next`. Devolve `(registros, truncated)`."""
     edge, params = build_pages_call(ad_account_id, limit=limit)
-    pagina = int(params["limit"])
-    max_pages = -(-(limit + 1) // pagina)
-    resp = await run_meta_graph_get(
-        manager_id=ctx.manager_id,
-        session_id=ctx.session_id,
+    linhas, sobrou_next = await ler_colecao(
+        ctx,
+        leitor=run_meta_graph_get,
         ad_account_id=ad_account_id,
         edge=edge,
         params=params,
-        operation_name=_OPERACAO,
-        estimated_calls=max_pages,
-        max_pages=max_pages,
-        audit_this_call=True,
+        operacao=_OPERACAO,
+        limit=limit,
         params_summary={"ad_account_id": ad_account_id},
     )
-    linhas = resp.get("data") or []
-    sobrou_next = bool((resp.get("paging") or {}).get("next"))
     truncated = len(linhas) > limit or sobrou_next
     return [parse_pagina(linha) for linha in linhas[:limit]], truncated

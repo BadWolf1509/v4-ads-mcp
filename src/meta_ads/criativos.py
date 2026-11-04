@@ -15,6 +15,7 @@ from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urlsplit
 
+from src.meta_ads.colecao import ContextoMeta
 from src.meta_ads.reports import run_meta_graph_get
 
 _TAMANHO_MAX_PAGINA = 100
@@ -59,7 +60,7 @@ def parse_criativo(linha: dict[str, Any], ads_vinculados: list[str] | None) -> d
 
 
 async def _percorrer(
-    ctx: Any, ad_account_id: str, edge: str, fields: str, operacao: str
+    ctx: ContextoMeta, ad_account_id: str, edge: str, fields: str, operacao: str
 ) -> tuple[list[dict[str, Any]], bool]:
     """Linhas da varredura e se ainda havia mais paginas (`paging.next`)."""
     resp = await run_meta_graph_get(
@@ -85,13 +86,13 @@ def _criativo_de(linha: dict[str, Any]) -> str | None:
 
 
 async def ler_anuncios(
-    ctx: Any, ad_account_id: str, operacao: str
+    ctx: ContextoMeta, ad_account_id: str, operacao: str
 ) -> tuple[list[dict[str, Any]], bool]:
     return await _percorrer(ctx, ad_account_id, "ads", "id,creative{id}", operacao)
 
 
 async def provar_posse(
-    ctx: Any,
+    ctx: ContextoMeta,
     ad_account_id: str,
     operacao: str,
     *,
@@ -122,7 +123,7 @@ async def provar_posse(
 
 
 async def listar_criativos(
-    ctx: Any, ad_account_id: str, limit: int, ad_id: str | None, operacao: str
+    ctx: ContextoMeta, ad_account_id: str, limit: int, ad_id: str | None, operacao: str
 ) -> tuple[list[dict[str, Any]], bool]:
     """Lista criativos. Com `ad_id`, so o criativo daquele anuncio, com `ads_vinculados`."""
     vinculos: dict[str, list[str]] | None = None
@@ -220,7 +221,7 @@ def extrair_src_iframe(html: Any) -> str | None:
 
 
 async def gerar_previa(
-    ctx: Any, ad_account_id: str, creative_id: str, ad_format: str, operacao: str
+    ctx: ContextoMeta, ad_account_id: str, creative_id: str, ad_format: str, operacao: str
 ) -> Any:
     """Chama `generatepreviews`. SO depois de `provar_posse`."""
     resp = await run_meta_graph_get(

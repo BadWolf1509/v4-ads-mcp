@@ -52,7 +52,7 @@ def _dubles(pilha: ExitStack, modulo: str) -> None:
     pilha.enter_context(patch(f"{modulo}.run_meta_graph_get", AsyncMock(return_value=_RESPOSTA)))
     pilha.enter_context(
         patch(
-            f"{modulo}.resolve_meta_account_today",
+            "src.mcp.tools._meta_performance.resolve_meta_account_today",
             AsyncMock(return_value=date(2026, 9, 27)),
         )
     )
