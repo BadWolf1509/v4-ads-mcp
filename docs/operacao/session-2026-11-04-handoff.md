@@ -22,8 +22,9 @@
 
 Todos os dry-runs foram na conta interna, só preview: nenhum `apply_change`.
 
-**Não medido:** revisão servindo desde 03/11 (`gcloud` sem credencial); logs da execução agendada dos
-jobs depois da H; caminho `denied` da A; paginação Meta da D. O deploy do #217 aconteceu durante um
+**Revisão servindo** (medida no fim de 04/11): `v4-ads-mcp-00186-75k`, do #219, com os jobs na mesma imagem.
+
+**Não medido:** logs da execução agendada dos jobs depois da H (a primeira é 06:00 de 05/11); caminho `denied` da A; paginação Meta da D. O deploy do #217 aconteceu durante um
 incidente do GitHub Actions: os passos do job terminaram em `success` às 15:53 UTC, mas o job ficou
 `in_progress` por ~25 min na API — a conclusão veio dos passos, não do status do job.
 
@@ -42,7 +43,7 @@ incidente do GitHub Actions: os passos do job terminaram em `success` às 15:53 
 
 ## Pendente (nesta ordem)
 
-1. **`gcloud auth login`** (Wellington): medir a revisão servindo e ler os logs dos jobs das 06:00 de 05/11.
+1. **Ler os logs do resync das 06:00 de 05/11** (a revisão servindo já foi medida).
 2. **`/findings-add`** (Wellington): os achados acima.
 3. **Os 4 bugs dos jobs**: um TDD por bug, um PR, depois dos logs de 05/11.
 4. **C2**: whitelist dos 3 tipos de recomendação do v25 (decisão do Wellington).

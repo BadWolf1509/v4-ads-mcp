@@ -66,7 +66,7 @@
 
 | | |
 |---|---|
-| Revisão servindo | **não medida desde 03/11** (o `gcloud` ficou sem credencial): o último deploy é o do #219 (`384d149`, 04/11), com `deploy=success` e `/health?deep=1` `ok` com 80 tools depois de cada merge de #196 a #219. Última medida: **`v4-ads-mcp-00169-h9n`** (#203, correções do smoke da Onda 1 Meta, 02/11). Antes: #201 `00168-jxv`, Onda 1 Meta. Sequência da varredura: #174 `00155-flr`, #175 `00156-2lh`, #176 `00157-n24`, #177 `00158-bxt`, #178 `00159-2zs`, #184 `00160-bcd`. Dependências de 31/10, uma por deploy, com leitura real no Google Ads depois de cada uma: #186 `00161-nfg`, #183 `00162-dqd` (`websockets` 17), #179 `00163-qwq` (`grpcio` 1.85). Confirmação do painel: #188 `00164-x6w`; htmx local e smoke de navegador: #190 `00165-n4w`; teste do hook publicou a `00166-692`; a `00167-b57` veio depois, sem mudança de produto. O smoke do pipeline segue sem handshake MCP **autenticado** (F186); o pipeline novo (smoke antes dos jobs, rollback pulado) rodou de verdade no #178 |
+| Revisão servindo | **`v4-ads-mcp-00186-75k`** (#219, `384d149`), 100% do tráfego, medido em 04/11; resync, backup e migrate na imagem `app:384d149`. Varredura de 04/11, revisão casada com a run do `main` pelo horário (não por rótulo): #197 `00173-l6q`, #198 `00174-q6w`, #199 `00175-dvg`, #200 `00176-5jc`, #210 `00177-84s`, #211 `00178-ggj`, #212 `00179-j97`, #213 `00180-qbx`, #214 `00181-dkj`, #215 `00182-kph`, #216 `00183-fqf`, #217 `00184-cb7`, #218 `00185-8kf`. Antes: **`v4-ads-mcp-00169-h9n`** (#203, correções do smoke da Onda 1 Meta, 02/11); #201 `00168-jxv`, Onda 1 Meta. Sequência da varredura: #174 `00155-flr`, #175 `00156-2lh`, #176 `00157-n24`, #177 `00158-bxt`, #178 `00159-2zs`, #184 `00160-bcd`. Dependências de 31/10, uma por deploy, com leitura real no Google Ads depois de cada uma: #186 `00161-nfg`, #183 `00162-dqd` (`websockets` 17), #179 `00163-qwq` (`grpcio` 1.85). Confirmação do painel: #188 `00164-x6w`; htmx local e smoke de navegador: #190 `00165-n4w`; teste do hook publicou a `00166-692`; a `00167-b57` veio depois, sem mudança de produto. O smoke do pipeline segue sem handshake MCP **autenticado** (F186); o pipeline novo (smoke antes dos jobs, rollback pulado) rodou de verdade no #178 |
 | Tools | **80 em produção** (65 Google + 15 Meta), contagem do registry e do `/health?deep=1` |
 | Buckets | **14 always + 66 defer** em produção (registry); tokens **não remedidos** desde a [remedição](tool-buckets-2026-10-05.md) de 13 + 59 |
 | Catálogo | até **F203** (~6.000 linhas, 601 KB); os defeitos da varredura aguardam o `/findings-add` |
@@ -130,8 +130,8 @@ nas **duas** linhas do `.github/workflows/deploy.yml` (o `JOB_ENV_VARS`, que o j
 
 ## Pendências que dependem do Wellington
 
-- **`gcloud auth login`** — destrava a revisão servindo (não medida desde 03/11) e os logs da primeira
-  execução agendada dos jobs depois da parte H (06:00 de 05/11), a prova principal da H.
+- **Ler os logs da primeira execução agendada do resync depois da parte H** (06:00 de 05/11), a prova
+  principal da H; a última execução (09:00 UTC de 04/11) foi antes do deploy da H.
 - **Rodar: convite e cancelamento de convite** — o login real passou em 31/10; o convite segue sem
   teste, e o clique em "Cancelar" só foi corrigido no #188.
 - **Desligamento do Pedro:** desativado em 31/10; conexão Google e sessão MCP revogadas no banco, com
