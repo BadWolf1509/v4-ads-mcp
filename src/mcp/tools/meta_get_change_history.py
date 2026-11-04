@@ -5,9 +5,11 @@ from datetime import timedelta
 from typing import Any
 
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import meta_error_message
+from src.mcp.tools._meta_common import meta_erro
 from src.mcp.tools._registry import register_tool
 from src.meta_ads.account_clock import resolve_meta_account_today
+from src.meta_ads.client import MetaAccessDeniedError
+from src.meta_ads.errors import MetaAdsFriendlyError
 from src.meta_ads.historico import listar_atividades
 
 _OPERACAO = "meta_get_change_history"
@@ -82,8 +84,8 @@ async def meta_get_change_history(args: dict[str, Any]) -> dict[str, Any]:
         fim = await resolve_meta_account_today(ad_account_id)
         inicio = fim - timedelta(days=dias - 1)
         registros, truncated = await listar_atividades(ctx, ad_account_id, inicio, fim, limit)
-    except Exception as e:  # noqa: BLE001
-        return {"status": "error", "error_message": meta_error_message(e)}
+    except (MetaAccessDeniedError, MetaAdsFriendlyError) as e:
+        return meta_erro(e)
     resposta: dict[str, Any] = {
         "status": "success",
         "ad_account_id": ad_account_id,

@@ -4,9 +4,11 @@
 from typing import Any
 
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import meta_error_message
+from src.mcp.tools._meta_common import meta_erro
 from src.mcp.tools._registry import register_tool
+from src.meta_ads.client import MetaAccessDeniedError
 from src.meta_ads.criativos import PosseNaoProvada, listar_criativos
+from src.meta_ads.errors import MetaAdsFriendlyError
 
 _OPERACAO = "meta_get_creatives"
 
@@ -75,8 +77,8 @@ async def meta_get_creatives(args: dict[str, Any]) -> dict[str, Any]:
         criativos, truncated = await listar_criativos(ctx, ad_account_id, limit, ad_id, _OPERACAO)
     except PosseNaoProvada as e:
         return {"status": "error", "error_message": str(e)}
-    except Exception as e:  # noqa: BLE001
-        return {"status": "error", "error_message": meta_error_message(e)}
+    except (MetaAccessDeniedError, MetaAdsFriendlyError) as e:
+        return meta_erro(e)
     resposta: dict[str, Any] = {
         "status": "success",
         "ad_account_id": ad_account_id,

@@ -14,6 +14,7 @@ from src.mcp.context import McpRequestContext, clear_current, set_current
 from src.mcp.tools import meta_get_delivery_estimate as estimativa
 from src.mcp.tools import meta_search_targeting as busca
 from src.meta_ads import segmentacao
+from src.meta_ads.errors import MetaAdsFriendlyError
 
 _CONTA = "act_1"
 
@@ -139,7 +140,7 @@ async def test_busca_limit_fora_da_faixa_erra() -> None:
 
 @pytest.mark.asyncio
 async def test_busca_erro_da_graph_vira_envelope() -> None:
-    g, p = _graph([RuntimeError("falhou")])
+    g, p = _graph([MetaAdsFriendlyError("falhou", retryable=False)])
     with p:
         r = await busca.meta_search_targeting({"ad_account_id": _CONTA, "q": "ab"})
     assert r == {"status": "error", "error_message": "falhou"}
@@ -357,7 +358,7 @@ async def test_estimativa_data_vazio_e_null_com_motivo_nao_erro() -> None:
 
 @pytest.mark.asyncio
 async def test_estimativa_erro_da_graph_vira_envelope() -> None:
-    g, p = _graph([RuntimeError("400")])
+    g, p = _graph([MetaAdsFriendlyError("400", retryable=False)])
     with p:
         r = await estimativa.meta_get_delivery_estimate(
             {"ad_account_id": _CONTA, "targeting_spec": _SPEC}

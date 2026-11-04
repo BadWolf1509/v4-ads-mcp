@@ -13,7 +13,7 @@ from uuid import UUID
 from src.db import connection
 from src.db.repositories import meta_ad_accounts
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import meta_error_message
+from src.mcp.tools._meta_common import meta_erro
 from src.mcp.tools._meta_performance import (
     _MAX_PAGES,
     _gasto_para_ordenar,
@@ -22,6 +22,8 @@ from src.mcp.tools._meta_performance import (
 from src.mcp.tools._registry import register_tool
 from src.meta_ads.account_clock import resolve_meta_account_today
 from src.meta_ads.account_overview import resolve_meta_date_window
+from src.meta_ads.client import MetaAccessDeniedError
+from src.meta_ads.errors import MetaAdsFriendlyError
 from src.meta_ads.insights import (
     BREAKDOWN_META_PARAM,
     Level,
@@ -162,8 +164,8 @@ async def meta_get_performance_breakdown(
                 "end": end.isoformat(),
             },
         )
-    except Exception as e:  # noqa: BLE001
-        return {"status": "error", "error_message": meta_error_message(e)}
+    except (MetaAccessDeniedError, MetaAdsFriendlyError) as e:
+        return meta_erro(e)
 
     rows = [
         parse_insights_row(r, level_typed, breakdown_keys=breakdown_params)

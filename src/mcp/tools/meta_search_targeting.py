@@ -4,8 +4,10 @@
 from typing import Any
 
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import meta_error_message
+from src.mcp.tools._meta_common import meta_erro
 from src.mcp.tools._registry import register_tool
+from src.meta_ads.client import MetaAccessDeniedError
+from src.meta_ads.errors import MetaAdsFriendlyError
 from src.meta_ads.segmentacao import MOTIVO_TRUNCATED_DESCONHECIDO, buscar_segmentacao
 
 _OPERACAO = "meta_search_targeting"
@@ -75,8 +77,8 @@ async def meta_search_targeting(args: dict[str, Any]) -> dict[str, Any]:
         }
     try:
         resultados, truncated = await buscar_segmentacao(ctx, ad_account_id, q, limit)
-    except Exception as e:  # noqa: BLE001
-        return {"status": "error", "error_message": meta_error_message(e)}
+    except (MetaAccessDeniedError, MetaAdsFriendlyError) as e:
+        return meta_erro(e)
     resposta: dict[str, Any] = {
         "status": "success",
         "ad_account_id": ad_account_id,

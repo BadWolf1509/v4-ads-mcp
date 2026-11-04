@@ -14,7 +14,7 @@ import structlog
 from src.db import connection
 from src.db.repositories import meta_ad_accounts
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import meta_error_message
+from src.mcp.tools._meta_common import meta_erro
 from src.mcp.tools._meta_performance import meta_account_not_found_error
 from src.mcp.tools._registry import register_tool
 from src.meta_ads.account_clock import resolve_meta_account_today
@@ -25,6 +25,8 @@ from src.meta_ads.account_overview import (
     resolve_meta_date_window,
     shift_to_previous_period,
 )
+from src.meta_ads.client import MetaAccessDeniedError
+from src.meta_ads.errors import MetaAdsFriendlyError
 from src.meta_ads.insights import build_insights_call
 from src.meta_ads.labels import META_ACCOUNT_STATUS_LABELS
 from src.meta_ads.metricas import ATRIBUICAO, CONTRATO_NA_DESCRIPTION
@@ -175,8 +177,8 @@ async def meta_get_account_overview(
             estimated_calls=1,
             audit_this_call=False,
         )
-    except Exception as e:  # noqa: BLE001
-        return {"status": "error", "error_message": meta_error_message(e)}
+    except (MetaAccessDeniedError, MetaAdsFriendlyError) as e:
+        return meta_erro(e)
 
     # 4. Parse + compute
     current_metrics = parse_insights_response(current_resp)

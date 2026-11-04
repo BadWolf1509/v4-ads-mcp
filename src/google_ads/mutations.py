@@ -500,19 +500,21 @@ async def run_recommendation_action(
     target_count = 1  # one recommendation per call
     reserved = False
 
-    try:
-        # F91 — ver run_mutation: gate por request, read pre-operacao.
-        await connection.run_with_reconnect(
-            lambda conn: ensure_account_access(
-                conn,
-                manager_id=manager_id,
-                customer_id=customer_id,
-                session_id=session_id,
-                operation_name=operation_type,
-                level="write",
-            )
+    # F91 — ver run_mutation: gate por request, read pre-operacao. FORA do
+    # `try`: a negacao ja grava o audit `denied` no proprio gate; dentro do
+    # `try`, o `finally` gravaria um segundo audit (`error`).
+    await connection.run_with_reconnect(
+        lambda conn: ensure_account_access(
+            conn,
+            manager_id=manager_id,
+            customer_id=customer_id,
+            session_id=session_id,
+            operation_name=operation_type,
+            level="write",
         )
+    )
 
+    try:
         # Reserve quota: global (developer token) + per-manager cap. Transacao
         # EXTERNA torna as duas reservas tudo-ou-nada (F73 — mesmo padrao dos
         # outros 4 executores; sem a 2a chave o cap por gestor teria um buraco

@@ -4,8 +4,9 @@
 from typing import Any
 
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import meta_error_message
+from src.mcp.tools._meta_common import meta_erro
 from src.mcp.tools._registry import register_tool
+from src.meta_ads.client import MetaAccessDeniedError
 from src.meta_ads.criativos import (
     FORMATOS,
     PosseNaoProvada,
@@ -13,6 +14,7 @@ from src.meta_ads.criativos import (
     gerar_previa,
     provar_posse,
 )
+from src.meta_ads.errors import MetaAdsFriendlyError
 
 _OPERACAO = "meta_get_ad_preview"
 _PADRAO = "MOBILE_FEED_STANDARD"
@@ -94,8 +96,8 @@ async def meta_get_ad_preview(args: dict[str, Any]) -> dict[str, Any]:
         corpo = await gerar_previa(ctx, ad_account_id, cid, ad_format, _OPERACAO)
     except PosseNaoProvada as e:
         return _erro(str(e))
-    except Exception as e:  # noqa: BLE001
-        return _erro(meta_error_message(e))
+    except (MetaAccessDeniedError, MetaAdsFriendlyError) as e:
+        return meta_erro(e)
     src = extrair_src_iframe(corpo)
     if src is None:
         return _erro(

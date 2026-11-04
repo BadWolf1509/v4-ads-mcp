@@ -6,10 +6,12 @@ from typing import Any
 
 from src.janelas import calendario_do_mes
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import meta_error_message
+from src.mcp.tools._meta_common import meta_erro
 from src.mcp.tools._registry import register_tool
 from src.meta_ads.account_clock import resolve_meta_account_today
+from src.meta_ads.client import MetaAccessDeniedError
 from src.meta_ads.entidades import listar_entidades
+from src.meta_ads.errors import MetaAdsFriendlyError
 from src.meta_ads.insights import build_insights_call
 from src.meta_ads.metricas import CONTRATO_NA_DESCRIPTION, metricas_da_linha
 from src.meta_ads.pacing import orcamento_total, projetar, ritmo_de
@@ -327,8 +329,8 @@ async def meta_get_budget_pacing(args: dict[str, Any]) -> dict[str, Any]:
             insights_trunc = bool((resp.get("paging") or {}).get("next"))
             for linha in resp.get("data") or []:
                 gastos[str(linha.get("campaign_id"))] = metricas_da_linha(linha)["spend_brl"]
-    except Exception as e:  # noqa: BLE001
-        return {"status": "error", "error_message": meta_error_message(e)}
+    except (MetaAccessDeniedError, MetaAdsFriendlyError) as e:
+        return meta_erro(e)
 
     por_campanha: dict[str, list[dict[str, Any]]] = {}
     for c in conjuntos:

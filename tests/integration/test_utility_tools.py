@@ -494,7 +494,7 @@ async def test_run_gaql_rejects_more_than_10k_raw_rows(bound_context):
             "src.mcp.tools.run_gaql.execute_gaql_raw",
             AsyncMock(return_value=fake_rows),
         ),
-        pytest.raises(ValueError, match=r"(?i)refine WHERE clause"),
+        pytest.raises(ValueError, match=r"(?i)refine a cl.usula WHERE"),
     ):
         await run_gaql(
             {
