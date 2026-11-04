@@ -15,7 +15,6 @@ from uuid import UUID
 import structlog
 
 from src.blocking import run_blocking
-from src.config import get_settings
 from src.db import connection
 from src.db.repositories import audit_log
 from src.google_ads.access import ensure_account_access
@@ -29,11 +28,7 @@ from src.google_ads.request_id import (
     reset_request_id,
 )
 from src.governance.bookkeeping import best_effort
-from src.governance.rate_limit import (
-    CHAVE_COTA_PROJETO,
-    before_call,
-    record_actual,
-)
+from src.governance.reserva import Reserva, reconciliar_cota, reservar_cota
 
 log = structlog.get_logger(__name__)
 
@@ -237,7 +232,6 @@ async def run_mutation(
         params_summary: Optional override for audit_log.params_summary. When None,
             defaults to {"keys": sorted(payload.keys())}.
     """
-    settings = get_settings()
     # F91 — gate roda a cada request MCP e e read pre-operacao (o audit de
     # negacao so acontece no caminho de erro, que ja levanta e nao e retentado).
     await connection.run_with_reconnect(
@@ -250,13 +244,12 @@ async def run_mutation(
             level="write",
         )
     )
-    token_id = CHAVE_COTA_PROJETO
     started = time.monotonic()
     pool = connection.get_pool()
     provider_request_id: str | None = None
     error_message: str | None = None
     status = "success"
-    reserved = False
+    reserva: Reserva | None = None
     # R1-I2: o `finally` la embaixo grava a trilha, e precisa enxergar o
     # RESULTADO. Estes tres nascem aqui fora porque uma excecao antes da
     # resposta deixaria os nomes sem ligacao — e `finally` roda de todo jeito.
@@ -267,18 +260,9 @@ async def run_mutation(
     changed_audit: int | None = None
 
     try:
-        # Reserve quota: global (developer token) + per-manager cap. Transacao
-        # EXTERNA torna as duas reservas tudo-ou-nada (before_call's internal
-        # conn.transaction() vira SAVEPOINT; raise em qualquer uma desfaz ambas).
-        async with pool.acquire() as conn, conn.transaction():
-            dia = await before_call(conn, token_id, estimated_ops=max(1, target_count))
-            dia_do_gestor = await before_call(
-                conn,
-                f"mgr:{manager_id}",
-                estimated_ops=max(1, target_count),
-                daily_limit=settings.manager_daily_quota,
-            )
-        reserved = True
+        reserva = await reservar_cota(
+            pool, manager_id=manager_id, estimated_ops=max(1, target_count)
+        )
 
         builder = get_builder(operation_type)
         if builder is None:
@@ -401,33 +385,19 @@ async def run_mutation(
         # falha de conexao aqui descartaria o `return` de um mutate ja aplicado
         # no Google (e a falha da quota pularia o audit, por serem sequenciais).
         #
-        # Reconcile counters SO se a reserva foi persistida (reserved=True) —
-        # sem reserva nao ha nada pra reconciliar (F73 — reconciliar mesmo assim
-        # decrementaria o contador sem contrapartida).
-        if reserved:
-            async with (
-                best_effort(
-                    "mutation_quota_reconcile_failed",
-                    operation=operation_type,
-                    customer_id=customer_id,
-                ),
-                pool.acquire() as conn,
-                conn.transaction(),
-            ):
-                await record_actual(
-                    conn,
-                    token_id,
-                    dia=dia,
-                    actual_ops=target_count,
-                    estimated_ops=max(1, target_count),
-                )
-                await record_actual(
-                    conn,
-                    f"mgr:{manager_id}",
-                    dia=dia_do_gestor,
-                    actual_ops=target_count,
-                    estimated_ops=max(1, target_count),
-                )
+        # Reconcile counters SO se a reserva foi persistida — sem reserva nao ha
+        # nada pra reconciliar (F73 — reconciliar mesmo assim decrementaria o
+        # contador sem contrapartida).
+        if reserva is not None:
+            await reconciliar_cota(
+                pool,
+                reserva,
+                manager_id=manager_id,
+                actual_ops=target_count,
+                evento="mutation_quota_reconcile_failed",
+                operation=operation_type,
+                customer_id=customer_id,
+            )
         async with (
             best_effort(
                 "mutation_audit_write_failed",
@@ -490,42 +460,30 @@ async def run_recommendation_action(
         execute_dismiss_recommendation,
     )
 
-    settings = get_settings()
-    token_id = CHAVE_COTA_PROJETO
     started = time.monotonic()
     pool = connection.get_pool()
     provider_request_id: str | None = None
     error_message: str | None = None
     status = "success"
     target_count = 1  # one recommendation per call
-    reserved = False
+    reserva: Reserva | None = None
+
+    # F91 — ver run_mutation: gate por request, read pre-operacao. FORA do
+    # `try`: a negacao ja grava o audit `denied` no proprio gate; dentro do
+    # `try`, o `finally` gravaria um segundo audit (`error`).
+    await connection.run_with_reconnect(
+        lambda conn: ensure_account_access(
+            conn,
+            manager_id=manager_id,
+            customer_id=customer_id,
+            session_id=session_id,
+            operation_name=operation_type,
+            level="write",
+        )
+    )
 
     try:
-        # F91 — ver run_mutation: gate por request, read pre-operacao.
-        await connection.run_with_reconnect(
-            lambda conn: ensure_account_access(
-                conn,
-                manager_id=manager_id,
-                customer_id=customer_id,
-                session_id=session_id,
-                operation_name=operation_type,
-                level="write",
-            )
-        )
-
-        # Reserve quota: global (developer token) + per-manager cap. Transacao
-        # EXTERNA torna as duas reservas tudo-ou-nada (F73 — mesmo padrao dos
-        # outros 4 executores; sem a 2a chave o cap por gestor teria um buraco
-        # por onde apply/dismiss_recommendation passariam livres).
-        async with pool.acquire() as conn, conn.transaction():
-            dia = await before_call(conn, token_id, estimated_ops=1)
-            dia_do_gestor = await before_call(
-                conn,
-                f"mgr:{manager_id}",
-                estimated_ops=1,
-                daily_limit=settings.manager_daily_quota,
-            )
-        reserved = True
+        reserva = await reservar_cota(pool, manager_id=manager_id, estimated_ops=1)
 
         client = await build_client_for_manager(manager_id=manager_id)
 
@@ -566,20 +524,16 @@ async def run_recommendation_action(
         # Reconcile SO se reservou (F73). actual=estimated=1 da delta 0, mas o
         # gate mantem a simetria com os outros executores e nao decrementa se a
         # reserva falhou por QuotaExhausted.
-        if reserved:
-            async with (
-                best_effort(
-                    "recommendation_quota_reconcile_failed",
-                    operation=operation_type,
-                    customer_id=customer_id,
-                ),
-                pool.acquire() as conn,
-                conn.transaction(),
-            ):
-                await record_actual(conn, token_id, dia=dia, actual_ops=1, estimated_ops=1)
-                await record_actual(
-                    conn, f"mgr:{manager_id}", dia=dia_do_gestor, actual_ops=1, estimated_ops=1
-                )
+        if reserva is not None:
+            await reconciliar_cota(
+                pool,
+                reserva,
+                manager_id=manager_id,
+                actual_ops=1,
+                evento="recommendation_quota_reconcile_failed",
+                operation=operation_type,
+                customer_id=customer_id,
+            )
         async with (
             best_effort(
                 "recommendation_audit_write_failed",

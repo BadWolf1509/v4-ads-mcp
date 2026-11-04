@@ -13,7 +13,7 @@ from mcp.types import TextContent, Tool
 from mcp.server import Server
 from src.google_ads.access import AccountAccessDeniedError
 from src.google_ads.errors import GoogleAdsFriendlyError
-from src.google_ads.queries._common import InvalidDateRangeError
+from src.google_ads.queries._common import EntradaInvalidaError
 from src.governance.rate_limit import QuotaExhausted
 from src.mcp.session import UnauthorizedError, resolve_session_to_context
 from src.mcp.tools._registry import all_tools, get_tool, import_all_tools
@@ -68,10 +68,11 @@ def _error_envelope(tool_name: str, exc: Exception) -> dict[str, Any]:
     if isinstance(exc, AccountAccessDeniedError | MetaAccessDeniedError):
         log.warning("tool_access_denied", tool=tool_name, error=str(exc))
         return {"status": "denied", "error_message": str(exc)}
-    # InvalidDateRangeError: periodo invalido e erro de ENTRADA — sem a mensagem, o LLM
+    # EntradaInvalidaError (e InvalidDateRangeError, filha): periodo invalido e erro de
+    # ENTRADA — sem a mensagem, o LLM
     # recebia "Erro interno" e nao tinha com que se corrigir (so 2 das ~23 chamadas de
     # `resolve_date_window` o capturavam). O ValueError cru segue scrubado abaixo.
-    if isinstance(exc, GoogleAdsFriendlyError | QuotaExhausted | InvalidDateRangeError):
+    if isinstance(exc, GoogleAdsFriendlyError | QuotaExhausted | EntradaInvalidaError):
         log.info("tool_friendly_error", tool=tool_name, error=str(exc))
         return {"status": "error", "error_message": str(exc)}
     log.exception("tool_handler_error", tool=tool_name)

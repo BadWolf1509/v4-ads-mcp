@@ -19,6 +19,7 @@ from src.mcp.tools._meta_performance import (
     meta_account_not_found_error,
     run_meta_level_performance,
 )
+from src.meta_ads.errors import MetaAdsFriendlyError
 
 
 def test_meta_account_not_found_error_message() -> None:
@@ -194,9 +195,6 @@ async def test_run_meta_level_performance_success_shape_parity(level: str) -> No
 async def test_run_meta_level_performance_maps_graph_error_to_friendly_message() -> None:
     fake_pool = _FakePool(MagicMock())
 
-    class _BoomError(Exception):
-        message = "Erro Meta curado"
-
     with (
         patch("src.mcp.tools._meta_performance.connection.get_pool", return_value=fake_pool),
         patch(
@@ -205,7 +203,7 @@ async def test_run_meta_level_performance_maps_graph_error_to_friendly_message()
         ),
         patch(
             "src.mcp.tools._meta_performance.run_meta_graph_get",
-            AsyncMock(side_effect=_BoomError()),
+            AsyncMock(side_effect=MetaAdsFriendlyError("Erro Meta curado", retryable=False)),
         ),
         patch(
             "src.mcp.tools._meta_performance.resolve_meta_account_today",

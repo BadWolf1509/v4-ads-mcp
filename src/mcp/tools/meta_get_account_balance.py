@@ -5,9 +5,11 @@ from datetime import date, timedelta
 from typing import Any
 
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import meta_error_message
+from src.mcp.tools._meta_common import meta_erro
 from src.mcp.tools._registry import register_tool
 from src.meta_ads.account_clock import resolve_meta_account_today
+from src.meta_ads.client import MetaAccessDeniedError
+from src.meta_ads.errors import MetaAdsFriendlyError
 from src.meta_ads.insights import build_insights_call
 from src.meta_ads.metricas import CONTRATO_NA_DESCRIPTION, metricas_da_linha
 from src.meta_ads.reports import run_meta_graph_get
@@ -109,8 +111,8 @@ async def meta_get_account_balance(args: dict[str, Any]) -> dict[str, Any]:
             audit_this_call=True,
             params_summary={**resumo, "call": "gasto_diario"},
         )
-    except Exception as e:  # noqa: BLE001
-        return {"status": "error", "error_message": meta_error_message(e)}
+    except (MetaAccessDeniedError, MetaAdsFriendlyError) as e:
+        return meta_erro(e)
 
     gastos: dict[date, float] = {}
     try:

@@ -172,8 +172,8 @@ async def test_import_offline_conversions_full_cycle_returns_applied_count_and_a
         ),
         patch("src.google_ads.conversions.get_request_id", return_value="req-conv-int"),
         patch("src.google_ads.conversions.reset_request_id", return_value=None),
-        patch("src.google_ads.conversions.before_call", AsyncMock(return_value=None)),
-        patch("src.google_ads.conversions.record_actual", AsyncMock(return_value=None)),
+        patch("src.governance.reserva.before_call", AsyncMock(return_value=None)),
+        patch("src.governance.reserva.record_actual", AsyncMock(return_value=None)),
     ):
         conversions = [
             {

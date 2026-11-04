@@ -198,9 +198,8 @@ async def test_ad_id_fora_da_conta_nao_chama_generatepreviews() -> None:
 @pytest.mark.asyncio
 async def test_erro_na_leitura_de_posse_recusa_sem_gerar() -> None:
     g, p = _graph([RuntimeError("boom"), {"data": [{"body": _IFRAME}]}])
-    with p:
-        r = await prev.meta_get_ad_preview({"ad_account_id": _CONTA, "creative_id": "900"})
-    assert r["status"] == "error"
+    with p, pytest.raises(RuntimeError, match="boom"):
+        await prev.meta_get_ad_preview({"ad_account_id": _CONTA, "creative_id": "900"})
     assert _edges(g) == ["/act_1/adcreatives"]
 
 

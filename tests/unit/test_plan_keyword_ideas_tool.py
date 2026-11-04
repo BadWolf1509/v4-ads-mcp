@@ -365,8 +365,8 @@ async def test_cidade_nao_resolvida_audita_erro_e_nao_cobra_quota() -> None:
     mod = "src.google_ads.keyword_planning"
     falso = _Falso(sugestoes=[_GEO[0]])
     with (
-        patch(f"{mod}.before_call", AsyncMock(return_value=1)),
-        patch(f"{mod}.record_actual", AsyncMock()) as rec,
+        patch("src.governance.reserva.before_call", AsyncMock(return_value=1)),
+        patch("src.governance.reserva.record_actual", AsyncMock()) as rec,
         patch(f"{mod}.audit_log.record", AsyncMock(return_value=1)) as audit,
         patch(f"{mod}.ensure_account_access", AsyncMock()),
         patch(f"{mod}.connection.get_pool", return_value=_pool_with_transactable_conn()),
@@ -443,8 +443,8 @@ async def test_audit_recebe_target_count_e_falhas_parciais() -> None:
 
     mod = "src.google_ads.keyword_planning"
     with (
-        patch(f"{mod}.before_call", AsyncMock(return_value=1)),
-        patch(f"{mod}.record_actual", AsyncMock()),
+        patch("src.governance.reserva.before_call", AsyncMock(return_value=1)),
+        patch("src.governance.reserva.record_actual", AsyncMock()),
         patch(f"{mod}.audit_log.record", AsyncMock(return_value=1)) as audit,
         patch(f"{mod}.ensure_account_access", AsyncMock()),
         patch(f"{mod}.connection.get_pool", return_value=_pool_with_transactable_conn()),

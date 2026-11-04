@@ -49,8 +49,8 @@ def ctx() -> dict[str, Any]:
 @pytest.fixture
 def gov():
     with (
-        patch(f"{_MOD}.before_call", AsyncMock(return_value=1)) as before,
-        patch(f"{_MOD}.record_actual", AsyncMock()) as rec_actual,
+        patch("src.governance.reserva.before_call", AsyncMock(return_value=1)) as before,
+        patch("src.governance.reserva.record_actual", AsyncMock()) as rec_actual,
         patch(f"{_MOD}.audit_log.record", AsyncMock(return_value=1)) as audit,
         patch(f"{_MOD}.ensure_account_access", AsyncMock()) as gate,
         patch(f"{_MOD}.connection.get_pool", return_value=_pool_with_transactable_conn()),

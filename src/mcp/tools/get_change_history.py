@@ -43,7 +43,11 @@ from uuid import UUID
 from src.google_ads.account_clock import resolve_account_today
 from src.google_ads.change_freshness import assess_freshness
 from src.google_ads.drift_detection import AUTO_APPLY_CLIENT_TYPES
-from src.google_ads.queries._common import parse_resource_path, resolve_date_window
+from src.google_ads.queries._common import (
+    EntradaInvalidaError,
+    parse_resource_path,
+    resolve_date_window,
+)
 from src.google_ads.queries.change_history import (
     change_event_frontier_query,
     change_history_query,
@@ -434,7 +438,7 @@ async def consultar_change_history(args: dict[str, Any], *, today: date) -> dict
     earliest_allowed = today - timedelta(days=_RETENTION_SAFETY_DAYS)
     retention_warning: str | None = None
     if end < earliest_allowed:
-        raise ValueError(
+        raise EntradaInvalidaError(
             f"A janela pedida ({start.isoformat()}..{end.isoformat()}) está inteira fora "
             f"da retenção de 30 dias do change_event do Google (dados só a partir de "
             f"{earliest_allowed.isoformat()}). Peça uma janela dentro dos últimos 30 dias."

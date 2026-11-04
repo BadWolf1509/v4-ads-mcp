@@ -93,8 +93,8 @@ async def test_conexao_stale_no_proprio_acquire_do_finally_nao_derruba_o_mutate(
 
     with (
         patch.object(mutations, "ensure_account_access", AsyncMock()),
-        patch.object(mutations, "before_call", AsyncMock()),
-        patch.object(mutations, "record_actual", AsyncMock()),
+        patch("src.governance.reserva.before_call", AsyncMock()),
+        patch("src.governance.reserva.record_actual", AsyncMock()),
         patch.object(mutations.audit_log, "record", AsyncMock(return_value=1)),
         patch.object(mutations.connection, "get_pool", return_value=_pool_that_goes_stale_after(2)),
         patch.object(
@@ -124,8 +124,8 @@ async def test_mutation_aplicada_sobrevive_a_falha_de_audit():
 
     with (
         patch.object(mutations, "ensure_account_access", AsyncMock()),
-        patch.object(mutations, "before_call", AsyncMock()),
-        patch.object(mutations, "record_actual", AsyncMock()),
+        patch("src.governance.reserva.before_call", AsyncMock()),
+        patch("src.governance.reserva.record_actual", AsyncMock()),
         patch.object(
             mutations.audit_log, "record", AsyncMock(side_effect=_StaleConnectionError("stale"))
         ),
@@ -161,9 +161,10 @@ async def test_falha_na_reconciliacao_de_quota_nao_impede_o_audit():
 
     with (
         patch.object(mutations, "ensure_account_access", AsyncMock()),
-        patch.object(mutations, "before_call", AsyncMock()),
-        patch.object(
-            mutations, "record_actual", AsyncMock(side_effect=_StaleConnectionError("stale"))
+        patch("src.governance.reserva.before_call", AsyncMock()),
+        patch(
+            "src.governance.reserva.record_actual",
+            AsyncMock(side_effect=_StaleConnectionError("stale")),
         ),
         patch.object(mutations.audit_log, "record", audit_mock),
         patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
@@ -197,8 +198,8 @@ async def test_falha_de_bookkeeping_e_logada_como_erro():
 
     with (
         patch.object(mutations, "ensure_account_access", AsyncMock()),
-        patch.object(mutations, "before_call", AsyncMock()),
-        patch.object(mutations, "record_actual", AsyncMock()),
+        patch("src.governance.reserva.before_call", AsyncMock()),
+        patch("src.governance.reserva.record_actual", AsyncMock()),
         patch.object(
             mutations.audit_log, "record", AsyncMock(side_effect=_StaleConnectionError("stale"))
         ),

@@ -83,8 +83,8 @@ async def test_quota_exhausted_blocks_and_skips_record_actual():
 
     patches = [
         patch("src.google_ads.conversions.ensure_account_access", AsyncMock(return_value=None)),
-        patch("src.google_ads.conversions.before_call", before_call_mock),
-        patch("src.google_ads.conversions.record_actual", record_actual_mock),
+        patch("src.governance.reserva.before_call", before_call_mock),
+        patch("src.governance.reserva.record_actual", record_actual_mock),
         patch("src.google_ads.conversions.audit_log.record", audit_mock),
         patch(
             "src.google_ads.conversions.connection.get_pool",
@@ -130,8 +130,8 @@ async def test_success_reserves_and_reconciles_both_global_and_manager_keys():
 
     patches = [
         patch("src.google_ads.conversions.ensure_account_access", AsyncMock(return_value=None)),
-        patch("src.google_ads.conversions.before_call", before_call_mock),
-        patch("src.google_ads.conversions.record_actual", record_actual_mock),
+        patch("src.governance.reserva.before_call", before_call_mock),
+        patch("src.governance.reserva.record_actual", record_actual_mock),
         patch("src.google_ads.conversions.audit_log.record", AsyncMock(return_value=1)),
         patch(
             "src.google_ads.conversions.connection.get_pool",
@@ -169,3 +169,42 @@ async def test_success_reserves_and_reconciles_both_global_and_manager_keys():
     assert record_actual_mock.await_count == 2
     reconciled_keys = {c.args[1] for c in record_actual_mock.await_args_list}
     assert f"mgr:{manager_id}" in reconciled_keys
+
+
+@pytest.mark.asyncio
+async def test_audit_sem_request_id_grava_none():
+    """Nao medido e `None` no audit, nunca `""`; o retorno ao cliente segue com `""`."""
+    from src.google_ads.conversions import run_conversion_upload
+
+    audit_mock = AsyncMock(return_value=1)
+    patches = [
+        patch("src.google_ads.conversions.ensure_account_access", AsyncMock(return_value=None)),
+        patch(
+            "src.governance.reserva.before_call",
+            AsyncMock(side_effect=QuotaExhausted("quota diaria esgotada")),
+        ),
+        patch("src.governance.reserva.record_actual", AsyncMock()),
+        patch("src.google_ads.conversions.audit_log.record", audit_mock),
+        patch(
+            "src.google_ads.conversions.connection.get_pool",
+            return_value=_pool_with_transactable_conn(),
+        ),
+    ]
+    for p in patches:
+        p.start()
+    try:
+        result = await run_conversion_upload(
+            manager_id=uuid4(),
+            session_id=uuid4(),
+            customer_id="1234567890",
+            operation_type="import_offline_conversions",
+            payload=_payload(),
+            target_count=1,
+            params_summary={"conversion_count": 1},
+        )
+    finally:
+        for p in patches:
+            p.stop()
+
+    assert audit_mock.call_args.kwargs["provider_request_id"] is None
+    assert result["provider_request_id"] == ""

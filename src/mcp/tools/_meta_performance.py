@@ -22,9 +22,11 @@ from uuid import UUID
 
 from src.db import connection
 from src.db.repositories import meta_ad_accounts
-from src.mcp.tools._meta_common import meta_error_message
+from src.mcp.tools._meta_common import meta_erro
 from src.meta_ads.account_clock import resolve_meta_account_today
 from src.meta_ads.account_overview import resolve_meta_date_window
+from src.meta_ads.client import MetaAccessDeniedError
+from src.meta_ads.errors import MetaAdsFriendlyError
 from src.meta_ads.insights import Level, build_insights_call, parse_insights_row
 from src.meta_ads.metricas import ATRIBUICAO
 from src.meta_ads.reports import run_meta_graph_get
@@ -142,8 +144,8 @@ async def run_meta_level_performance(
                 "end": end.isoformat(),
             },
         )
-    except Exception as e:  # noqa: BLE001
-        return {"status": "error", "error_message": meta_error_message(e)}
+    except (MetaAccessDeniedError, MetaAdsFriendlyError) as e:
+        return meta_erro(e)
 
     # F88: a ordenação é SERVER-SIDE (`sort=spend_descending` em
     # build_insights_call), então as linhas já chegam do maior gasto pro menor e

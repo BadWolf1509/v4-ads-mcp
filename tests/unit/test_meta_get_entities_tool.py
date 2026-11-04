@@ -118,11 +118,10 @@ async def test_moeda_diferente_de_brl_vira_erro_sem_listar() -> None:
 
 
 @pytest.mark.asyncio
-async def test_erro_do_executor_vira_meta_error_message() -> None:
+async def test_erro_interno_do_executor_sobe_para_o_envelope_central() -> None:
     g, p1, p2 = _patches(RuntimeError("boom"))
-    with p1, p2:
-        r = await modulo.meta_get_entities({"ad_account_id": _CONTA, "level": "campaign"})
-    assert r == {"status": "error", "error_message": "boom"}
+    with p1, p2, pytest.raises(RuntimeError, match="boom"):
+        await modulo.meta_get_entities({"ad_account_id": _CONTA, "level": "campaign"})
 
 
 @pytest.mark.asyncio

@@ -85,8 +85,8 @@ async def test_read_nao_congela_o_event_loop() -> None:
 
     with (
         patch("src.google_ads.reports.ensure_account_access", AsyncMock(return_value=None)),
-        patch("src.google_ads.reports.before_call", AsyncMock()),
-        patch("src.google_ads.reports.record_actual", AsyncMock()),
+        patch("src.governance.reserva.before_call", AsyncMock()),
+        patch("src.governance.reserva.record_actual", AsyncMock()),
         patch("src.google_ads.reports.audit_log.record", AsyncMock(return_value=1)),
         patch("src.google_ads.reports.connection.get_pool", return_value=_pool()),
         patch("src.google_ads.reports.build_client_for_manager", AsyncMock(return_value=client)),
@@ -143,8 +143,8 @@ async def test_provider_request_id_sobrevive_ao_salto_de_thread() -> None:
     audit = AsyncMock(return_value=1)
     with (
         patch.object(mutations, "ensure_account_access", AsyncMock()),
-        patch.object(mutations, "before_call", AsyncMock()),
-        patch.object(mutations, "record_actual", AsyncMock()),
+        patch("src.governance.reserva.before_call", AsyncMock()),
+        patch("src.governance.reserva.record_actual", AsyncMock()),
         patch.object(mutations.audit_log, "record", audit),
         patch.object(mutations.connection, "get_pool", return_value=_pool()),
         patch.object(mutations, "build_client_for_manager", AsyncMock(return_value=client)),
@@ -186,8 +186,8 @@ async def test_mutate_nao_congela_o_event_loop() -> None:
 
     with (
         patch.object(mutations, "ensure_account_access", AsyncMock()),
-        patch.object(mutations, "before_call", AsyncMock()),
-        patch.object(mutations, "record_actual", AsyncMock()),
+        patch("src.governance.reserva.before_call", AsyncMock()),
+        patch("src.governance.reserva.record_actual", AsyncMock()),
         patch.object(mutations.audit_log, "record", AsyncMock(return_value=1)),
         patch.object(mutations.connection, "get_pool", return_value=_pool()),
         patch.object(mutations, "build_client_for_manager", AsyncMock(return_value=client)),
