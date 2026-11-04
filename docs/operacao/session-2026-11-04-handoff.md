@@ -28,7 +28,7 @@ Todos os dry-runs foram na conta interna, só preview: nenhum `apply_change`.
 incidente do GitHub Actions: os passos do job terminaram em `success` às 15:53 UTC, mas o job ficou
 `in_progress` por ~25 min na API — a conclusão veio dos passos, não do status do job.
 
-## Achados da sessão (para o `/findings-add`)
+## Achados da sessão (catalogados como F204–F207)
 
 - **`wait_for_function` com string sob CSP sem `unsafe-eval` (corrigido no #219).** O Playwright
   1.64 reavalia a expressão com `globalThis.eval` a cada frame (`waitForFunctionExpression`); só o
@@ -44,8 +44,8 @@ incidente do GitHub Actions: os passos do job terminaram em `success` às 15:53 
 ## Pendente (nesta ordem)
 
 1. **Ler os logs do resync das 06:00 de 05/11** (a revisão servindo já foi medida).
-2. **`/findings-add`** (Wellington): os achados acima.
-3. **Os 4 bugs dos jobs**: um TDD por bug, um PR, depois dos logs de 05/11.
+2. ~~`/findings-add`~~ feito em 04/11: F204–F207.
+3. **Os 4 bugs dos jobs (F207)**: um TDD por bug, um PR, depois dos logs de 05/11.
 4. **C2**: whitelist dos 3 tipos de recomendação do v25 (decisão do Wellington).
 5. Limpeza do worktree `meta-onda-1` (branch já mergeada) e das branches locais mergeadas.
 6. Escrita em produção, cada uma com aval próprio: apagar `meta_oauth_connections`; teste real de convite.

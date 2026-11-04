@@ -4,11 +4,11 @@
 >
 > **Maintainer note:** Add a new entry here whenever a finding is documented in a smoke runbook. Keep entries scannable — link to runbook for detail.
 >
-> **Last updated:** 2026-09-30 — **F200 verificado em produção** (24 h: zero reconexão, zero erro, +8 ms no p50 do health) e o "Fora" do **F203** corrigido na mesma branch; **F203** e **F202** em produção (`00140`, `00141`), com smoke de leitura. De 2026-09-29: **F202** (pacing de orçamento compartilhado) e **F203** (retirada do pool presa sem limite num socket mudo; corrige os "30 s" do F200), deployados em 30/09. De 2026-09-28: **F199** (pacing pelos dias fechados), **F200** (infra e guards) e **F201** (data inválida virava "Erro interno"), no fim do arquivo. De 2026-09-20: **F180–F185**: sprint de RSA (F180 em parte; F181/F182/F183/F184 corrigidos), a 2ª instância do F182, e dois ABERTOS: **F185** (limitação da API, sem correção possível deste lado) e **F186** (o smoke autenticado do `/mcp` está desarmado por token vencido). O resto deste parágrafo é de **2026-09-03** e não foi atualizado desde então — leia como de época: **F141–F146 fechados** em tres PRs (#28 bloco fuso+freshness; #29 structural_change; #30 fuso do upload offline) mais o F142 (whitelist de client_type) direto na main. Ontem, 02/09: **+F131–F140** da sessao de campo MO-JP, fechados no PR #27 e nos fixes seguintes. Narrativa completa e licoes de metodo no handoff [`session-2026-09-02-03-handoff.md`](session-2026-09-02-03-handoff.md); o historico anterior (F82–F130, 08/14 a 08/20) esta nos handoffs de 08-14-15 e 08-19.
+> **Last updated:** 2026-11-04 — **F204–F207** da varredura de refatoração de 03/11 (no fim do arquivo): F204 (teste do painel corrida sob CSP, #219), F205 (export do audit aberto por default, #220), F206 (três desvios de contrato de erro, #210) e **F207 ABERTO** (quatro falhas silenciosas nos jobs). De 2026-09-30: **F200 verificado em produção** (24 h: zero reconexão, zero erro, +8 ms no p50 do health) e o "Fora" do **F203** corrigido na mesma branch; **F203** e **F202** em produção (`00140`, `00141`), com smoke de leitura. De 2026-09-29: **F202** (pacing de orçamento compartilhado) e **F203** (retirada do pool presa sem limite num socket mudo; corrige os "30 s" do F200), deployados em 30/09. De 2026-09-28: **F199** (pacing pelos dias fechados), **F200** (infra e guards) e **F201** (data inválida virava "Erro interno"), no fim do arquivo. De 2026-09-20: **F180–F185**: sprint de RSA (F180 em parte; F181/F182/F183/F184 corrigidos), a 2ª instância do F182, e dois ABERTOS: **F185** (limitação da API, sem correção possível deste lado) e **F186** (o smoke autenticado do `/mcp` está desarmado por token vencido). O resto deste parágrafo é de **2026-09-03** e não foi atualizado desde então — leia como de época: **F141–F146 fechados** em tres PRs (#28 bloco fuso+freshness; #29 structural_change; #30 fuso do upload offline) mais o F142 (whitelist de client_type) direto na main. Ontem, 02/09: **+F131–F140** da sessao de campo MO-JP, fechados no PR #27 e nos fixes seguintes. Narrativa completa e licoes de metodo no handoff [`session-2026-09-02-03-handoff.md`](session-2026-09-02-03-handoff.md); o historico anterior (F82–F130, 08/14 a 08/20) esta nos handoffs de 08-14-15 e 08-19.
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~6000 linhas, 601 KB, IDs de **F1 a F203** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 55 têm; 56 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~6000 linhas, 601 KB, IDs de **F1 a F207** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 55 têm; 56 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -196,6 +196,7 @@
 | Sessão 2026-08-14/15 | F82-F100 (investigação ampla, 6 auditorias paralelas — **F83-F90, F92 e F93 fechados, F82 com o vazamento fechado e causa raiz parcial; 7 abertos**): F82-F84 segurança/integridade · F85-F90 correção dos dados entregues ao gestor · F91-F94 infra/jobs/resiliência · F95-F99 higiene, dívida e doc-drift |
 | Sessão 2026-08-19 | F101-F117 (três investigações no mesmo dia: frontend F101-F108, backend F109-F112, infra/CI F113-F117 — todas fechadas) |
 | Sessão 2026-08-20 | F118-F127 (revisão de responsividade: 9 telas com scroll horizontal em 375px, header estourando em 768px, scrollers sem teclado — todos fechados) · F128 (conta Meta que sai da parceria nunca saía do inventário; superado no mesmo dia pela reconciliação) · **F129** e **F130**, abertos (governança do system user; gate do Google sem `is_active`) |
+| Sessão 2026-11-03/04 | F204-F207 (varredura de refatoração A→H: F204 teste do CSP, F205 export do audit, F206 contrato de erro — fechados; **F207 aberto**, falhas silenciosas dos jobs) |
 
 ---
 
@@ -6018,3 +6019,90 @@ cada parte) derrubam cada uma o seu par.
 **Fora, com o motivo:** as outras duas recomendações da revisão final (`expire_connections` na
 primeira queda; repetir em qualquer erro) seguem sem dado que as peça: zero quedas em 24 h de
 produção com o pool validado (verificação do F200).
+
+## F204 (LOW, ✅ CORRIGIDO 2026-11-04, #219, revisão `00186-75k`) — `wait_for_function` com string sob CSP estrito é corrida, e o teste de confirmação dependia dela
+
+**Sintoma:** `tests/browser/test_confirmacoes.py::test_cancelar_convite_envia_e_recarrega` falhava às
+vezes no CI com `EvalError: Evaluating a string as JavaScript violates ... 'unsafe-eval'` e passava no
+re-run (pediu re-run nos merges do #200 e do #210).
+
+**Causa (medida):** o Playwright 1.64 (`waitForFunctionExpression`, `coreBundle.js`) reavalia uma
+expressão em string com `globalThis.eval` **a cada frame**. Só o primeiro poll, que roda dentro da
+chamada CDP, passa pelo CSP `script-src 'self'`; do segundo em diante o CSP barra. O teste passava
+quando a recarga começava antes do segundo poll — ou seja, quando o POST era rápido. Probe isolado
+(CSP `script-src 'self'`, condição verdadeira em 300 ms): string 3/3 falhou, função 3/3 passou.
+
+**A primeira hipótese estava errada:** "recarga lenta" não reproduzia — atrasar o GET da recarga
+manteve o teste verde, porque o Chrome para o rAF do documento que está saindo. A janela é o POST em
+voo, entre o início da espera e o começo do reload.
+
+**✅ O que foi feito:** a espera virou função (`"() => window.__antesDoPost === undefined"`),
+avaliada uma vez e reusada. **Guard:** os POSTs do servidor de teste levam 0,5 s; com o helper
+antigo, os dois testes de recarga falharam 3/3, com o novo passaram 5/5. Se a espera voltar cedo, o
+`assert painel.posts == [...]` reprova, porque o POST só grava depois do atraso.
+
+**🔑 Lição:** sob CSP estrito, a forma função do `wait_for_function` é avaliada uma vez; a forma
+string, a cada frame — espera por string só passa por sorte.
+
+## F205 (MEDIUM, ✅ CORRIGIDO 2026-11-04, #220) — o export CSV do audit exportava todos os gestores por default
+
+**Sintoma:** latente, sem vazamento conhecido. `export_csv_rows(conn, *, manager_id: UUID | None = None, ...)`
+— e `None` quer dizer "todos os gestores", o export global do admin. Uma chamada que esquecesse o
+argumento exportava o audit da unidade inteira, sem aviso (falha aberta). As duas rotas
+(`/audit/export.csv` com `user.id`, `/admin/audit/export.csv` com o filtro) sempre passaram o gestor;
+o risco era o próximo chamador.
+
+**✅ O que foi feito:** *deny by default* — `manager_id` passa a ser obrigatório; o export global
+continua, mas só escrito (`manager_id=None`). **Guard:**
+`tests/unit/test_export_csv_escopo_explicito.py::test_export_sem_manager_id_falha_na_chamada`,
+vermelho contra o default antigo (`DID NOT RAISE TypeError`) e verde agora.
+
+**Fora, com o motivo:** um sentinela tipado para "todos" (`TODOS_OS_GESTORES`) no lugar de `None` —
+fecharia também o `None` por acidente (um `user.id` nulo), mas nenhum chamador produz `None` sem
+escrevê-lo hoje; fica se aparecer o terceiro chamador.
+
+## F206 (MEDIUM, ✅ CORRIGIDO 2026-11-04, #210, revisão `00177-84s`) — três desvios de contrato de erro achados na varredura de 03/11
+
+Três bugs de causa comum — o caminho de erro dizia uma coisa e fazia outra —, corrigidos na parte A
+do plano [`2026-11-03-varredura-refatoracao.md`](../superpowers/plans/2026-11-03-varredura-refatoracao.md):
+
+- **Audit duplicado na negação de `run_recommendation_action`:** a negação de acesso deve gravar
+  exatamente **uma** linha `denied`, a do gate; o executor gravava outra. Guard
+  `test_negacao_nao_grava_audit_do_executor` (gate trocado, contador de `audit_log.record` em zero,
+  `before_call` nunca chamado).
+- **`ValueError` acionável engolido pelo `_error_envelope`:** a janela inteira fora da retenção no
+  `get_change_history` e a entrada inválida do `run_gaql` levantavam `ValueError` cru, que o envelope
+  central esconde como "Erro interno" — o gestor não sabia o que corrigir. `EntradaInvalidaError`
+  (ao lado de `InvalidDateRangeError`) entra na lista de erros amigáveis; `ValueError` cru segue
+  escondido. Guards `test_entrada_invalida_repassa_mensagem` e `test_value_error_cru_segue_escondido`.
+- **Tools Meta com `error` em vez de `denied`, vazando `str(exc)`:** negação Meta voltava como
+  `status: "error"` (a Google devolve `denied`) e o `except Exception` + `meta_error_message`
+  repassava a mensagem de qualquer exceção interna. `meta_erro()` em `_meta_common.py`:
+  `MetaAccessDeniedError` → `denied`, `MetaAdsFriendlyError` → `error` com a mensagem dela, o resto
+  re-levanta para o envelope central esconder (exceção deliberada: `MetaSystemUserTokenMissingError`
+  mantém a mensagem curada, acionável para o admin). Guard por grep: nenhuma tool usa
+  `meta_error_message` (a sabotagem estava no plano; o ledger não a registra).
+
+**Prova em produção:** entrada inválida chega com texto acionável. **Não medido:** o caminho
+`denied` Meta em produção.
+
+## F207 (MEDIUM, ABERTO) — quatro falhas silenciosas pré-existentes nos jobs, achadas na parte H
+
+Achados ao extrair o esqueleto comum dos jobs (`executar_job`, Task H1 da varredura de 03/11); o
+revisor confirmou que **nenhum foi introduzido nem agravado** pela refatoração. Mesmo padrão: o job
+falha e o sinal não chega a quem vigia.
+
+- **Falha do purge não muda o exit code nem grava audit** (`_etapa_purge` em
+  `src/jobs/account_resync.py`): o retorno `True` é descartado de propósito ("non-fatal desde
+  sempre"), e o `except` só loga. O alerta de job, que olha exit code e audit, não vê.
+- **Mensagem enganosa do purge:** o mesmo `try` cobre o `purge_expired` e o `record_job_run`; se o
+  purge apaga e o audit falha, o job imprime "purge falhou" com as linhas já apagadas.
+- **Falha do audit no caminho "sem OAuth" vira crash** em vez de exit 1: o desfecho previsto vira
+  `record_job_crash`, com outra classificação no audit e no alerta.
+- **Falha no `init_pool` não deixa linha no audit:** `executar_job` (`src/jobs/_runner.py`) chama
+  `init_pool` fora do `try`; sem pool não há como gravar no banco, e o único rastro é o log do Cloud
+  Run.
+
+**Próximo passo:** um TDD por bug num PR só, depois de ler os logs da primeira execução agendada com
+o código da H (resync de 05/11, 06:00). O 4º pede decisão: sem banco, o rastro possível é log
+estruturado com alerta log-based, não o audit.

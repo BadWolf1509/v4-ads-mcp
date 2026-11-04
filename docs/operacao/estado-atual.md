@@ -69,7 +69,7 @@
 | Revisão servindo | **`v4-ads-mcp-00186-75k`** (#219, `384d149`), 100% do tráfego, medido em 04/11; resync, backup e migrate na imagem `app:384d149`. Varredura de 04/11, revisão casada com a run do `main` pelo horário (não por rótulo): #197 `00173-l6q`, #198 `00174-q6w`, #199 `00175-dvg`, #200 `00176-5jc`, #210 `00177-84s`, #211 `00178-ggj`, #212 `00179-j97`, #213 `00180-qbx`, #214 `00181-dkj`, #215 `00182-kph`, #216 `00183-fqf`, #217 `00184-cb7`, #218 `00185-8kf`. Antes: **`v4-ads-mcp-00169-h9n`** (#203, correções do smoke da Onda 1 Meta, 02/11); #201 `00168-jxv`, Onda 1 Meta. Sequência da varredura: #174 `00155-flr`, #175 `00156-2lh`, #176 `00157-n24`, #177 `00158-bxt`, #178 `00159-2zs`, #184 `00160-bcd`. Dependências de 31/10, uma por deploy, com leitura real no Google Ads depois de cada uma: #186 `00161-nfg`, #183 `00162-dqd` (`websockets` 17), #179 `00163-qwq` (`grpcio` 1.85). Confirmação do painel: #188 `00164-x6w`; htmx local e smoke de navegador: #190 `00165-n4w`; teste do hook publicou a `00166-692`; a `00167-b57` veio depois, sem mudança de produto. O smoke do pipeline segue sem handshake MCP **autenticado** (F186); o pipeline novo (smoke antes dos jobs, rollback pulado) rodou de verdade no #178 |
 | Tools | **80 em produção** (65 Google + 15 Meta), contagem do registry e do `/health?deep=1` |
 | Buckets | **14 always + 66 defer** em produção (registry); tokens **não remedidos** desde a [remedição](tool-buckets-2026-10-05.md) de 13 + 59 |
-| Catálogo | até **F203** (~6.000 linhas, 601 KB); os defeitos da varredura aguardam o `/findings-add` |
+| Catálogo | até **F207** (~6.100 linhas, 603 KB); a varredura de 03/11 entrou como F204–F207 (F207 aberto) |
 | Meta Graph | **v25.0**, constante única. A v22 expirou em 19/02/2026 |
 | Google Ads | API **v25**; sunset estimado em ago/2027 (busca, **não lido** na página oficial) |
 
@@ -117,7 +117,7 @@ lento.
 
 **Pendente seu:** C2; os 4 bugs pré-existentes dos jobs achados na H1 (falha do purge não muda o exit code
 nem audita; mensagem do purge enganosa; falha de audit no caminho "sem OAuth" vira crash; falha no
-`init_pool` não deixa audit); `/findings-add` dos 3 bugs da parte A, dos 4 dos jobs e do teste do CSP.
+`init_pool` não deixa audit) — **F207**. Os 3 bugs da parte A são o F206; o teste do CSP, o F204; o export, o F205.
 
 ## Decision gates abertos
 
