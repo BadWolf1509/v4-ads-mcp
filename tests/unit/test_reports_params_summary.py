@@ -59,8 +59,8 @@ async def test_run_report_uses_custom_params_summary(monkeypatch):
     with (
         patch.object(reports.connection, "get_pool", return_value=_pool_with_transactable_conn()),
         patch.object(reports, "ensure_account_access", AsyncMock()),
-        patch.object(reports, "before_call", AsyncMock()),
-        patch.object(reports, "record_actual", AsyncMock()),
+        patch("src.governance.reserva.before_call", AsyncMock()),
+        patch("src.governance.reserva.record_actual", AsyncMock()),
         patch.object(reports.audit_log, "record", audit_mock),
     ):
         await reports.run_report(
@@ -93,8 +93,8 @@ async def test_run_report_default_params_summary_is_none(monkeypatch):
     with (
         patch.object(reports.connection, "get_pool", return_value=_pool_with_transactable_conn()),
         patch.object(reports, "ensure_account_access", AsyncMock()),
-        patch.object(reports, "before_call", AsyncMock()),
-        patch.object(reports, "record_actual", AsyncMock()),
+        patch("src.governance.reserva.before_call", AsyncMock()),
+        patch("src.governance.reserva.record_actual", AsyncMock()),
         patch.object(reports.audit_log, "record", audit_mock),
     ):
         await reports.run_report(

@@ -62,7 +62,7 @@ async def test_negacao_nao_grava_audit_do_executor():
             AsyncMock(side_effect=AccountAccessDeniedError("sem acesso")),
         ),
         patch("src.google_ads.mutations.audit_log.record", audit_record),
-        patch("src.google_ads.mutations.before_call", before_call),
+        patch("src.governance.reserva.before_call", before_call),
         pytest.raises(AccountAccessDeniedError),
     ):
         await mutations.run_recommendation_action(

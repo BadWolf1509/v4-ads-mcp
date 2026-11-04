@@ -176,8 +176,8 @@ async def _rodar_mutation(
             return_value=_pool_with_transactable_conn(),
         ),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
-        patch.object(mutations, "before_call", AsyncMock()),
-        patch.object(mutations, "record_actual", AsyncMock()),
+        patch("src.governance.reserva.before_call", AsyncMock()),
+        patch("src.governance.reserva.record_actual", AsyncMock()),
         patch("src.google_ads.mutations.audit_log.record", audit),
     ):
         result: dict[str, Any] = await mutations.run_mutation(
@@ -238,8 +238,8 @@ async def test_audit_nao_perde_o_params_summary_da_tool(
             return_value=_pool_with_transactable_conn(),
         ),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
-        patch.object(mutations, "before_call", AsyncMock()),
-        patch.object(mutations, "record_actual", AsyncMock()),
+        patch("src.governance.reserva.before_call", AsyncMock()),
+        patch("src.governance.reserva.record_actual", AsyncMock()),
         patch("src.google_ads.mutations.audit_log.record", audit),
     ):
         await mutations.run_mutation(
@@ -366,8 +366,8 @@ async def _rodar_job(
             return_value=_pool_cm(),
         ),
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
-        patch("src.google_ads.customer_match.before_call", AsyncMock()),
-        patch("src.google_ads.customer_match.record_actual", AsyncMock()),
+        patch("src.governance.reserva.before_call", AsyncMock()),
+        patch("src.governance.reserva.record_actual", AsyncMock()),
         patch("src.google_ads.customer_match.audit_log.record", audit),
     ):
         try:
