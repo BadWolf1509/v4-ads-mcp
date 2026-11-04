@@ -13,7 +13,7 @@ import pytest
 # Make scripts/ importable for tests
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
 
-from _runner import Step, check_docker, run_steps  # noqa: E402
+from _runner import DOCKER_INFO_TIMEOUT_S, Step, check_docker, run_steps  # noqa: E402
 
 
 def test_step_is_frozen() -> None:
@@ -88,11 +88,30 @@ def test_check_docker_not_installed(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_check_docker_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
-    """docker info timeout (>2s) → (False, hint)."""
+    """docker info timeout → (False, hint que diz que o daemon nao respondeu)."""
 
     def hang(*a: object, **kw: object) -> SimpleNamespace:
-        raise subprocess.TimeoutExpired(cmd="docker", timeout=2)
+        raise subprocess.TimeoutExpired(cmd="docker", timeout=DOCKER_INFO_TIMEOUT_S)
 
     monkeypatch.setattr("subprocess.run", hang)
     ok, hint = check_docker()
     assert ok is False
+    assert f"{DOCKER_INFO_TIMEOUT_S}s" in hint
+
+
+def test_check_docker_espera_o_daemon_lento(monkeypatch: pytest.MonkeyPatch) -> None:
+    """O timeout passado ao docker info cobre o engine de pe medido em 03/11.
+
+    Com o engine respondendo, `docker info` levou 2,5-3,4 s nesta maquina; o
+    teto antigo de 2 s abortava o full sweep com o Docker funcionando.
+    """
+    vistos: list[object] = []
+
+    def fake_run(*a: object, **kw: object) -> SimpleNamespace:
+        vistos.append(kw.get("timeout"))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    assert check_docker() == (True, "")
+    assert vistos == [DOCKER_INFO_TIMEOUT_S]
+    assert DOCKER_INFO_TIMEOUT_S >= 10
