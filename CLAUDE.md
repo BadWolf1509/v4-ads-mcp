@@ -55,8 +55,8 @@ tripwires do `Don't do`. O resto é roteado — carregue sob demanda:
 [`findings-catalog.md`](docs/operacao/findings-catalog.md) pela área ou sintoma — **F1–F207, ~6100 linhas, 603 KB**. Grep por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `CSP`); ler
 integral não cabe em contexto nenhum. Cada entrada corrigida traz o que foi feito **e o que ficou deliberadamente de fora**.
 
-A última sessão de cada frente está em `docs/operacao/session-*-handoff.md`; o handoff é o
-mapa da sessão, o catálogo é a enciclopédia dos bugs.
+Os 3 handoffs mais recentes ficam em `docs/operacao/session-*-handoff.md` (os antigos, em
+`docs/_archive/handoffs/`); o handoff é o mapa da sessão, o catálogo é a enciclopédia dos bugs.
 
 Não grep `docs/_archive/` — é histórico (runbooks de sprint, dogfoods, specs e planos
 antigos). Abra um arquivo de lá só quando um link vivo apontar para ele.
@@ -113,7 +113,7 @@ Solo dev on `main` (admin bypass). Commits: `feat(scope): …` / `fix(scope): �
 - **gh** authed `BadWolf1509`.
 - **Secret Manager:** `gcloud secrets versions access latest --secret=<NAME> --project=v4-ads-mcp`. Secret novo entra no serviço e no `--set-secrets` do `deploy.yml`; lista em `convencoes/processo.md`.
 - **No psql no Windows** — `python+asyncpg` pra DB direto.
-- **Supabase MCP** em config; **Meta MCP oficial** (`ads_get_field_context` pra validar fields Meta) é conector da conta, com OAuth do usuário. **Claude in Chrome** disponível pra smoke visual.
+- **Supabase MCP** em config; **Meta MCP oficial** (`ads_get_field_context` pra validar fields Meta) é conector da conta, com OAuth do usuário. **Claude in Chrome** disponível pra smoke visual — podem estar conectados dois Chromes; use o que tem a sessão do painel (`list_connected_browsers` → `select_browser`).
 - **Hooks:** PostToolUse auto-format ruff em .py + PreToolUse guard contra editar migration commitada + `guard-bash` (gate sem `&&` antes do commit, `gcloud` com stderr mudo, `git checkout` de arquivo, espera sem `timeout`). Bloqueio de hook não se contorna: pare e pergunte. PowerShell pipe converte LF→CRLF mesmo binary (F47).
 
 ## Padrão de solução

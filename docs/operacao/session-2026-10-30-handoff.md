@@ -1,7 +1,7 @@
 # Sessão 2026-10-28 a 10-30 — Handoff (saldo da conta, planejador de palavras-chave, F110, rótulos Meta)
 
 > Mapa da sessão. Estado vivo no [`estado-atual`](estado-atual.md); defeitos no
-> [catálogo](findings-catalog.md). Anterior: [`session-2026-10-06-handoff.md`](session-2026-10-06-handoff.md).
+> [catálogo](findings-catalog.md). Anterior: [`session-2026-10-06-handoff.md`](../_archive/handoffs/session-2026-10-06-handoff.md).
 
 ## O que entrou
 

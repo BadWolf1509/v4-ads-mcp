@@ -6,7 +6,7 @@ This document records the cloud-console actions performed once to bootstrap the 
 
 ## ⚠️ ESTADO ATUAL (autoritativo) — projeto novo pós-migração, atualizado 2026-07-23
 
-> **A seção "GCP project" mais abaixo descreve o projeto ANTIGO `v4-ads-mcp-prod` (a decomissionar) — é histórico. Num DR real, siga ESTA seção.** A migração 2026-06-30 lift-and-shift criou um projeto novo com Wellington como owner (o antigo estava sem owner humano — motivo da migração). Detalhe: [`session-2026-06-30-handoff.md`](session-2026-06-30-handoff.md).
+> **A seção "GCP project" mais abaixo descreve o projeto ANTIGO `v4-ads-mcp-prod` (a decomissionar) — é histórico. Num DR real, siga ESTA seção.** A migração 2026-06-30 lift-and-shift criou um projeto novo com Wellington como owner (o antigo estava sem owner humano — motivo da migração). Detalhe: [`session-2026-06-30-handoff.md`](../_archive/handoffs/session-2026-06-30-handoff.md).
 
 - **Projeto GCP:** `v4-ads-mcp` (project number **`299432068772`**), **Wellington owner**, billing própria. Região `southamerica-east1`.
 - **URL do serviço:** `https://v4-ads-mcp-299432068772.southamerica-east1.run.app` (`PUBLIC_BASE_URL` no `deploy.yml`; OAuth redirect_uri usa `request.url_for`, não deriva daqui — F68). Revisão corrente em 2026-07-23: `v4-ads-mcp-00028-lvc`, 100% do tráfego.
