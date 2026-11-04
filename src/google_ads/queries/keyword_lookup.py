@@ -1,13 +1,10 @@
 """GAQL helper pra resolver criterion_id → keyword_text + match_type.
 
-Usado por update_keyword_status dry-run preview (Sprint 3b.40 A1).
-Returns partial dict if some pairs not found (no exception).
+Usado por update_keyword_status dry-run preview (Sprint 3b.40 A1). So monta a query e
+formata a linha; a execucao (`fetch_keyword_texts`) vive em `src/google_ads/preflight.py`.
 """
 
 from typing import Any
-from uuid import UUID
-
-from src.google_ads.reports import run_report
 
 
 def build_keyword_text_lookup_query(
@@ -56,41 +53,4 @@ def _lookup_row_formatter(row: Any) -> dict[str, Any]:
         "criterion_id": str(row.ad_group_criterion.criterion_id),
         "keyword_text": row.ad_group_criterion.keyword.text,
         "match_type": row.ad_group_criterion.keyword.match_type.name,
-    }
-
-
-async def fetch_keyword_texts(
-    *,
-    manager_id: UUID,
-    session_id: UUID,
-    customer_id: str,
-    keyword_pairs: list[tuple[str, str]],
-) -> dict[tuple[str, str], dict[str, str]]:
-    """Resolve (ad_group_id, criterion_id) → {keyword_text, match_type}.
-
-    Used by update_keyword_status DRY_RUN path pra preview sample.
-    Graceful: returns partial dict if some pairs not found (no exception).
-
-    Returns:
-        dict keyed by (ad_group_id, criterion_id) tuple. Missing pairs
-        simply absent from dict — caller iterates pairs e checks presence
-        via `.get()`.
-    """
-    if not keyword_pairs:
-        return {}
-    query = build_keyword_text_lookup_query(keyword_pairs)
-    rows = await run_report(
-        manager_id=manager_id,
-        session_id=session_id,
-        customer_id=customer_id,
-        query=query,
-        row_formatter=_lookup_row_formatter,
-        operation_name="keyword_text_lookup",
-    )
-    return {
-        (r["ad_group_id"], r["criterion_id"]): {
-            "keyword_text": r["keyword_text"],
-            "match_type": r["match_type"],
-        }
-        for r in rows
     }

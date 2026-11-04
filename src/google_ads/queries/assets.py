@@ -11,7 +11,7 @@ Status NAO e filtrado: linha `REMOVED` e a unica prova positiva de remocao
 
 from typing import Any
 
-from src.google_ads.queries._gaql import gaql_escape
+from src.google_ads.queries._gaql import gaql_string_literal
 
 _CAMPOS_COMUNS = "field_type, status, primary_status, primary_status_reasons, resource_name"
 
@@ -19,7 +19,7 @@ _CAMPOS_COMUNS = "field_type, status, primary_status, primary_status_reasons, re
 def _clausula_field_type(recurso: str, field_type: str | None) -> str:
     if field_type is None:
         return ""
-    return f" WHERE {recurso}.field_type = '{gaql_escape(field_type)}'"
+    return f" WHERE {recurso}.field_type = {gaql_string_literal(field_type)}"
 
 
 def build_customer_asset_query(*, field_type: str | None) -> str:
@@ -34,7 +34,7 @@ def build_campaign_asset_query(*, field_type: str | None, campaign_ids: list[str
     q = f"SELECT {campos}, asset.id, asset.name, campaign.id, campaign.name FROM campaign_asset"
     filtros = []
     if field_type is not None:
-        filtros.append(f"campaign_asset.field_type = '{gaql_escape(field_type)}'")
+        filtros.append(f"campaign_asset.field_type = {gaql_string_literal(field_type)}")
     if campaign_ids:
         # `str(int(c))` e a defesa, nao o `pattern` do schema (F87): o
         # builder e publico e o proximo chamador pode nao ter schema nenhum.

@@ -23,7 +23,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.db import connection
-from src.google_ads.queries._common import validate_geo_target_constants_br_only
+from src.google_ads.preflight import validate_geo_target_constants_br_only
 from src.governance.blast_radius import classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current

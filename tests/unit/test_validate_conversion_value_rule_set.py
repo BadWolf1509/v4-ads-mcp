@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.google_ads.queries._common import (
+from src.google_ads.preflight import (
     validate_campaign_for_value_rule_set,
     validate_geo_target_constants_br_only,
 )
@@ -26,7 +26,7 @@ async def test_validate_campaign_happy_path(monkeypatch) -> None:
             }
         ]
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_campaign_for_value_rule_set(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -43,7 +43,7 @@ async def test_validate_campaign_not_found(monkeypatch) -> None:
     async def fake_run_report(**kwargs: Any) -> list[dict[str, str]]:
         return []
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_campaign_for_value_rule_set(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -68,7 +68,7 @@ async def test_validate_campaign_removed_status(monkeypatch) -> None:
             }
         ]
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_campaign_for_value_rule_set(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -98,7 +98,7 @@ async def test_validate_geo_targets_happy_path_all_br(monkeypatch) -> None:
             },
         ]
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_geo_target_constants_br_only(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -126,7 +126,7 @@ async def test_validate_geo_targets_first_offender_non_br(monkeypatch) -> None:
             },
         ]
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_geo_target_constants_br_only(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -146,7 +146,7 @@ async def test_validate_geo_targets_empty_list_returns_none(monkeypatch) -> None
     async def fake_run_report(**kwargs: Any) -> list[dict[str, str]]:
         raise AssertionError("run_report should not be called for empty input")
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_geo_target_constants_br_only(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -165,7 +165,7 @@ async def test_validate_geo_targets_single_quote_escape(monkeypatch) -> None:
         captured_query.append(kwargs["query"])
         return []  # Force not-found path
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_geo_target_constants_br_only(
         manager_id=uuid4(),
         session_id=uuid4(),

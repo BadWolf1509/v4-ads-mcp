@@ -5,11 +5,8 @@ from typing import Any
 
 from src.db import connection
 from src.google_ads.mutations import run_mutation
-from src.google_ads.queries._common import (
-    brl_para_micros,
-    micros_to_currency,
-    validate_manual_cpc_strategy,
-)
+from src.google_ads.preflight import validate_manual_cpc_strategy
+from src.google_ads.queries._common import brl_para_micros, micros_to_currency
 from src.google_ads.reports import run_report
 from src.governance.blast_radius import RiskLevel, classify
 from src.governance.dry_run import create_pending

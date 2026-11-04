@@ -21,7 +21,7 @@ from collections import Counter
 from typing import Any
 
 from src.db import connection
-from src.google_ads.queries._common import (
+from src.google_ads.preflight import (
     validate_campaign_for_value_rule_set,
     validate_geo_target_constants_br_only,
 )

@@ -1120,6 +1120,36 @@ def test_gaql_nao_usa_doubling_de_aspas() -> None:
     )
 
 
+def test_queries_nao_importa_executor() -> None:
+    """Task C3: `src/google_ads/queries/` so constroi GAQL (datas, micros, filtros).
+
+    Quem executa (`run_report`, em `src.google_ads.reports`) fica acima; os pre-flights
+    `validate_*` que o chamam vivem em `src/google_ads/preflight.py`. Um import de
+    `reports` dentro de `queries/` inverte a camada e traz o executor de volta para o
+    modulo mais importado do pacote. AST: cobre `import`, `from ... import` e a forma
+    `from src.google_ads import reports`.
+    """
+    offenders = []
+    for p in sorted((SRC / "google_ads" / "queries").glob("*.py")):
+        tree = ast.parse(p.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                mod = node.module or ""
+                importa_reports = mod == "src.google_ads.reports" or (
+                    mod == "src.google_ads" and any(a.name == "reports" for a in node.names)
+                )
+            elif isinstance(node, ast.Import):
+                importa_reports = any(a.name == "src.google_ads.reports" for a in node.names)
+            else:
+                continue
+            if importa_reports:
+                offenders.append(f"{p.relative_to(SRC)}:{node.lineno}")
+    assert not offenders, (
+        f"queries/ importa o executor (src.google_ads.reports): {offenders}. "
+        "Pre-flight que chama run_report vai em src/google_ads/preflight.py."
+    )
+
+
 def test_finally_bookkeeping_is_best_effort() -> None:
     """F83: I/O de bookkeeping (audit/quota) dentro de `finally` precisa estar sob
     best_effort.

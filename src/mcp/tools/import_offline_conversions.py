@@ -33,7 +33,7 @@ from zoneinfo import ZoneInfo
 from src.db import connection
 from src.google_ads.account_clock import resolve_account_zone
 from src.google_ads.conversions import utc_offset
-from src.google_ads.queries._common import validate_conversion_action_for_upload
+from src.google_ads.preflight import validate_conversion_action_for_upload
 from src.governance.blast_radius import classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current

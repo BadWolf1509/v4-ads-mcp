@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.google_ads.queries._common import validate_conversion_action_create
+from src.google_ads.preflight import validate_conversion_action_create
 
 
 @pytest.mark.asyncio
@@ -17,7 +17,7 @@ async def test_returns_none_when_all_names_unique(monkeypatch) -> None:
     async def fake_run_report(**kwargs: Any) -> list[dict[str, str]]:
         return []  # No matches
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_conversion_action_create(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -37,7 +37,7 @@ async def test_rejects_single_duplicate_name(monkeypatch) -> None:
     async def fake_run_report(**kwargs: Any) -> list[dict[str, str]]:
         return [{"conversion_action_name": "Lead WhatsApp"}]
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_conversion_action_create(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -59,7 +59,7 @@ async def test_rejects_first_offender_when_multiple_duplicates(monkeypatch) -> N
             {"conversion_action_name": "Lead WhatsApp"},
         ]
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_conversion_action_create(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -81,7 +81,7 @@ async def test_empty_list_returns_none(monkeypatch) -> None:
     async def fake_run_report(**kwargs: Any) -> list[dict[str, str]]:
         raise AssertionError("run_report should not be called for empty input")
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_conversion_action_create(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -98,7 +98,7 @@ async def test_gaql_exception_propagates(monkeypatch) -> None:
     async def fake_run_report(**kwargs: Any) -> list[dict[str, str]]:
         raise RuntimeError("GAQL boom")
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     with pytest.raises(RuntimeError, match="GAQL boom"):
         await validate_conversion_action_create(
             manager_id=uuid4(),

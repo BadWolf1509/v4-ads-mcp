@@ -80,8 +80,8 @@ async def test_preflight_de_conversion_action_escapa_o_nome(monkeypatch) -> None
         capturado["query"] = kwargs["query"]
         return []
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
-    from src.google_ads.queries._common import validate_conversion_action_create
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
+    from src.google_ads.preflight import validate_conversion_action_create
 
     await validate_conversion_action_create(
         manager_id=uuid4(),
@@ -97,7 +97,7 @@ async def test_preflight_de_conversion_action_escapa_o_nome(monkeypatch) -> None
 def test_in_clause_do_change_history_escapa_com_barra() -> None:
     """`user_emails` chega como texto livre (o `format: email` do schema NAO e
     enforced — jsonschema.validate roda sem format_checker)."""
-    from src.google_ads.queries.change_history import _format_in_clause
+    from src.google_ads.queries._gaql import gaql_in_list
 
-    out = _format_in_clause(["o'brien@v4company.com"])
+    out = gaql_in_list(["o'brien@v4company.com"])
     assert out == r"('o\'brien@v4company.com')"

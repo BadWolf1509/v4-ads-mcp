@@ -5,8 +5,7 @@ from typing import Any
 
 from src.db import connection
 from src.google_ads.mutations import run_mutation
-from src.google_ads.queries._common import validate_keyword_criterion_types
-from src.google_ads.queries.keyword_lookup import fetch_keyword_texts
+from src.google_ads.preflight import fetch_keyword_texts, validate_keyword_criterion_types
 from src.governance.blast_radius import RiskLevel, classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current

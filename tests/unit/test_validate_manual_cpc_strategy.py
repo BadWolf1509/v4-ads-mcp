@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.google_ads.queries._common import validate_manual_cpc_strategy
+from src.google_ads.preflight import validate_manual_cpc_strategy
 
 
 @pytest.mark.asyncio
@@ -42,7 +42,7 @@ async def test_returns_none_when_all_manual_cpc(monkeypatch: pytest.MonkeyPatch)
             },
         ]
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_manual_cpc_strategy(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -68,7 +68,7 @@ async def test_returns_none_when_all_enhanced_cpc(
             },
         ]
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_manual_cpc_strategy(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -100,7 +100,7 @@ async def test_rejects_mixed_batch_with_first_offender(
             },
         ]
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_manual_cpc_strategy(
         manager_id=uuid4(),
         session_id=uuid4(),
@@ -127,7 +127,7 @@ async def test_recusa_ad_group_id_nao_numerico(monkeypatch: pytest.MonkeyPatch) 
         raise AssertionError("run_report chamado com ad_group_id nao-numerico")
 
     monkeypatch.setattr(
-        "src.google_ads.queries._common.run_report",
+        "src.google_ads.preflight.run_report",
         _run_report_nao_deveria_ser_chamado,
     )
     with pytest.raises(ValueError):
@@ -153,7 +153,7 @@ async def test_rejects_when_target_cpa(monkeypatch: pytest.MonkeyPatch) -> None:
             },
         ]
 
-    monkeypatch.setattr("src.google_ads.queries._common.run_report", fake_run_report)
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
     result = await validate_manual_cpc_strategy(
         manager_id=uuid4(),
         session_id=uuid4(),

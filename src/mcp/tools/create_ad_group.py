@@ -18,9 +18,7 @@ from collections import Counter
 from typing import Any
 
 from src.db import connection
-from src.google_ads.queries._common import (
-    validate_parent_campaigns_for_ad_group_create,
-)
+from src.google_ads.preflight import validate_parent_campaigns_for_ad_group_create
 from src.governance.blast_radius import classify
 from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
