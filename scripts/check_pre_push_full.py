@@ -2,7 +2,7 @@
 """Full pre-push gate. Base steps + DB integration tests (Docker required).
 
 Sequence (fail-fast):
-    pre-check: docker info (timeout 2s)
+    pre-check: docker info (timeout DOCKER_INFO_TIMEOUT_S, 15s)
     1-6:       base steps (ruff/format/mypy/unit/non-DB integration/tailwind)
     7:         lockfile fechado (F198: venv limpo, --no-deps, pip check; precisa de rede)
     8:         pytest tests/integration -m integration -q  (testcontainers)
