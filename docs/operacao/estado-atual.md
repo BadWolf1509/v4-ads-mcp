@@ -6,10 +6,10 @@
 > que fechou sai daqui:** o defeito vai para o catálogo, a narrativa para o arquivo
 > ([`_archive/`](../_archive/varredura-2026-09-06-frentes.md)), e aqui fica uma linha.
 
-> **Última sessão:** [`session-2026-10-31-handoff.md`](session-2026-10-31-handoff.md) — 30/10, tarde:
-> a **varredura de correções** em 6 blocos (#174 a #184): OAuth, restore e job bloqueado, governança de
-> mutação, Graph v25, deps e deploy, painel e contratos das tools. Textos prontos para o
-> `/findings-add` estão no handoff. Antes: [`session-2026-10-30-handoff.md`](session-2026-10-30-handoff.md).
+> **Última sessão:** [`session-2026-11-04-handoff.md`](session-2026-11-04-handoff.md) — 03 e 04/11:
+> a **varredura de refatoração** A→H em produção (#210 a #218), dependências (#196 a #200), timeout do
+> pre-check Docker (#212) e o teste instável do CSP (#219). Antes:
+> [`session-2026-10-31-handoff.md`](session-2026-10-31-handoff.md) (varredura de correções, #174 a #184).
 
 > **Direção Meta (02/11): híbrida.** O nosso MCP mantém Google, leitura Meta e governança. A Onda 3 está
 > congelada; escrita, públicos e pixel ficam com o MCP oficial da Meta, ligado à conta do usuário.
@@ -66,10 +66,10 @@
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00169-h9n`** (#203, correções do smoke da Onda 1 Meta, 02/11), 100% do tráfego, `/health?deep=1` com 80 tools. Antes: #201 `00168-jxv`, Onda 1 Meta. Sequência da varredura: #174 `00155-flr`, #175 `00156-2lh`, #176 `00157-n24`, #177 `00158-bxt`, #178 `00159-2zs`, #184 `00160-bcd`. Dependências de 31/10, uma por deploy, com leitura real no Google Ads depois de cada uma: #186 `00161-nfg`, #183 `00162-dqd` (`websockets` 17), #179 `00163-qwq` (`grpcio` 1.85). Confirmação do painel: #188 `00164-x6w`; htmx local e smoke de navegador: #190 `00165-n4w`; teste do hook publicou a `00166-692`; a `00167-b57` veio depois, sem mudança de produto. O smoke do pipeline segue sem handshake MCP **autenticado** (F186); o pipeline novo (smoke antes dos jobs, rollback pulado) rodou de verdade no #178 |
+| Revisão servindo | **`v4-ads-mcp-00186-75k`** (#219, `384d149`), 100% do tráfego, medido em 04/11; resync, backup e migrate na imagem `app:384d149`. Varredura de 04/11, revisão casada com a run do `main` pelo horário (não por rótulo): #197 `00173-l6q`, #198 `00174-q6w`, #199 `00175-dvg`, #200 `00176-5jc`, #210 `00177-84s`, #211 `00178-ggj`, #212 `00179-j97`, #213 `00180-qbx`, #214 `00181-dkj`, #215 `00182-kph`, #216 `00183-fqf`, #217 `00184-cb7`, #218 `00185-8kf`. Antes: **`v4-ads-mcp-00169-h9n`** (#203, correções do smoke da Onda 1 Meta, 02/11); #201 `00168-jxv`, Onda 1 Meta. Sequência da varredura: #174 `00155-flr`, #175 `00156-2lh`, #176 `00157-n24`, #177 `00158-bxt`, #178 `00159-2zs`, #184 `00160-bcd`. Dependências de 31/10, uma por deploy, com leitura real no Google Ads depois de cada uma: #186 `00161-nfg`, #183 `00162-dqd` (`websockets` 17), #179 `00163-qwq` (`grpcio` 1.85). Confirmação do painel: #188 `00164-x6w`; htmx local e smoke de navegador: #190 `00165-n4w`; teste do hook publicou a `00166-692`; a `00167-b57` veio depois, sem mudança de produto. O smoke do pipeline segue sem handshake MCP **autenticado** (F186); o pipeline novo (smoke antes dos jobs, rollback pulado) rodou de verdade no #178 |
 | Tools | **80 em produção** (65 Google + 15 Meta), contagem do registry e do `/health?deep=1` |
 | Buckets | **14 always + 66 defer** em produção (registry); tokens **não remedidos** desde a [remedição](tool-buckets-2026-10-05.md) de 13 + 59 |
-| Catálogo | até **F203** (~6.000 linhas, 601 KB); os defeitos da varredura aguardam o `/findings-add` |
+| Catálogo | até **F207** (~6.100 linhas, 603 KB); a varredura de 03/11 entrou como F204–F207 (F207 aberto) |
 | Meta Graph | **v25.0**, constante única. A v22 expirou em 19/02/2026 |
 | Google Ads | API **v25**; sunset estimado em ago/2027 (busca, **não lido** na página oficial) |
 
@@ -93,28 +93,31 @@ Wellington em 31/10. **Não feito:** convite (ver Pendências).
 exclusivamente em `docs/` e markdown; `tests/` publica revisão. **Cheque a revisão servindo.**
 Contagens de tool e bucket vêm do registry (`import_all_tools()`), nunca de `grep` (F183).
 
-## Aguardando merge — varredura de refatoração de 03/11
+## Em produção — varredura de refatoração de 03/11 (merge em 04/11)
 
 Plano [`2026-11-03-varredura-refatoracao.md`](../superpowers/plans/2026-11-03-varredura-refatoracao.md),
-executado em 03/11 no worktree `meta-onda-1`, em 8 branches **empilhadas** (cada uma parte da anterior;
-merge na ordem). Nada foi empurrado. Revisão final da branch inteira: 0 Critical, 0 Important.
+8 branches empilhadas, mergeadas na ordem, cada uma com gate, full sweep, CI verde, deploy `success` e
+`/health?deep=1` `ok` antes da seguinte. Revisão final da pilha: 0 Critical, 0 Important.
 
-| Parte | Branch | O que entrega |
-|---|---|---|
-| A | `fix/bugs-varredura` (5) | os 3 bugs: audit duplicado em `run_recommendation_action`; `ValueError` acionável engolido pelo `_error_envelope`; tools Meta com `error` em vez de `denied` e vazando `str(exc)` |
-| B | `refactor/reserva-de-cota` (5) | reserva e reconcile de cota em `src/governance/reserva.py`, usados pelos 6 executores Google |
-| C | `refactor/limpezas-google` (2) | limpezas mecânicas; **C2 (import v24 em `recommendations.py`) estacionada**: o v25 traz 3 tipos de recomendação novos, e a whitelist é decisão sua |
-| D | `refactor/meta-colecao` (6) | leitura de coleção Meta num caminho só |
-| E | `refactor/sem-oauth-meta-pessoal` (3) | OAuth pessoal da Meta removido; `data-deletion-callback` mantido em módulo próprio |
-| F | `refactor/painel` (11) | acesso Google/Meta com um helper e um template por par, `pages.py`/`dashboard.py`, `templating.py` único, `https_url_for` |
-| G | `refactor/tools-mcp` (9) | snapshot dos schemas das 80 tools; janela de datas comum; domínio Google sem import de `src.mcp`; `emitir_preview` em 20 mutações; `apply_change` como despachante |
-| H | `refactor/jobs-e-testes` (10) | `executar_job` comum; `rate_limit` com parâmetro `chave`; seeds e fake pool compartilhados; trio Meta de performance parametrizado; guard do F83 para o reconcile |
+| Parte | PR | O que entrega | Prova em produção |
+|---|---|---|---|
+| A | #210 | os 3 bugs: audit duplicado em `run_recommendation_action`; `ValueError` acionável engolido pelo `_error_envelope`; tools Meta com `error` em vez de `denied` e vazando `str(exc)` | entrada inválida chega com texto acionável; caminho `denied` **não medido** |
+| B | #211 | reserva e reconcile de cota em `src/governance/reserva.py`, usados pelos 6 executores Google | dry-run de orçamento (sem apply), audit `dry_run: true`; `provider_request_id` do `run_report` agora gravado |
+| C | #213 | limpezas mecânicas; **C2 (import v24 em `recommendations.py`) estacionada**: o v25 traz 3 tipos de recomendação novos, e a whitelist é decisão sua | deploy e health |
+| D | #214 | leitura de coleção Meta num caminho só | leitura Meta real; paginação além de uma página **não medida** |
+| E | #215 | OAuth pessoal da Meta removido; `data-deletion-callback` mantido em módulo próprio | `/oauth/meta/start` e `/callback` 404; callback de exclusão 400 sem assinatura válida. Linhas de `meta_oauth_connections` **não apagadas** |
+| F | #216 | acesso Google/Meta com um helper e um template por par, `pages.py`/`dashboard.py`, `templating.py` único, `https_url_for` | logado como admin: 8 páginas 200 sem erro de console, `export.csv` 200, `manager_id` inválido 422 (não 500), filtro da auditoria |
+| G | #217 | snapshot dos schemas das 80 tools; janela de datas comum; domínio Google sem import de `src.mcp`; `emitir_preview` em 20 mutações; `apply_change` como despachante | dry-run de `update_campaign_budget` e `bulk_pause_by_query` (sem apply), audit `dry_run: true` |
+| H | #218 | `executar_job` comum; `rate_limit` com parâmetro `chave`; seeds e fake pool compartilhados; trio Meta de performance parametrizado; guard do F83 para o reconcile | dry-run e cota com a chave nova; **logs da execução agendada dos jobs não lidos** (pedem `gcloud`) |
 
-**Antes do merge:** a parte F pede `tests/browser` e clique em produção; as partes com query/transação,
-o full sweep no CI. **Pendente seu:** C2; 4 bugs pré-existentes dos jobs achados na H1 (falha do purge não
-muda o exit code nem audita; mensagem do purge enganosa; falha de audit no caminho "sem OAuth" vira crash;
-falha no `init_pool` não deixa audit); o pre-check `docker info` de `check_pre_push_full.py` com timeout de
-2 s, curto para o engine (2,5 a 3,5 s medidos). Os 3 bugs da parte A vão para o `/findings-add`.
+Também em 04/11: deps do Dependabot (#196 a #200); timeout do pre-check `docker info` de 2 s para 15 s
+(#212); teste instável `test_cancelar_convite_envia_e_recarrega` (#219): o `wait_for_function` com string
+reavalia por `eval` a cada frame e o CSP barra do segundo poll em diante — virou função, com guard de POST
+lento.
+
+**Pendente seu:** C2; os 4 bugs pré-existentes dos jobs achados na H1 (falha do purge não muda o exit code
+nem audita; mensagem do purge enganosa; falha de audit no caminho "sem OAuth" vira crash; falha no
+`init_pool` não deixa audit) — **F207**. Os 3 bugs da parte A são o F206; o teste do CSP, o F204; o export, o F205.
 
 ## Decision gates abertos
 
@@ -127,6 +130,8 @@ nas **duas** linhas do `.github/workflows/deploy.yml` (o `JOB_ENV_VARS`, que o j
 
 ## Pendências que dependem do Wellington
 
+- **Ler os logs da primeira execução agendada do resync depois da parte H** (06:00 de 05/11), a prova
+  principal da H; a última execução (09:00 UTC de 04/11) foi antes do deploy da H.
 - **Rodar: convite e cancelamento de convite** — o login real passou em 31/10; o convite segue sem
   teste, e o clique em "Cancelar" só foi corrigido no #188.
 - **Desligamento do Pedro:** desativado em 31/10; conexão Google e sessão MCP revogadas no banco, com
@@ -159,7 +164,7 @@ nas **duas** linhas do `.github/workflows/deploy.yml` (o `JOB_ENV_VARS`, que o j
 | **F186** | 🔴 smoke autenticado do `/mcp` **desarmado**, risco ACEITO até a identidade do TI |
 | — | negativas de grupo e listas compartilhadas na auditoria de negativas (frente própria) |
 | — | follow-ups Minor do **F193** (corpo do [#111](https://github.com/BadWolf1509/v4-ads-mcp/pull/111)) |
-| — | `export_csv_rows(manager_id=None)` exporta o audit de todos os gestores por default — falha aberta latente (as rotas passam o gestor) |
+| — | `export_csv_rows(manager_id=None)` exportava o audit de todos os gestores por default — corrigido na branch `fix/export-audit-escopo-explicito` (`manager_id` obrigatório), **aguardando merge** |
 | — | orçamento de período fixo (`CUSTOM_PERIOD`) no `get_budget_pacing` (Fora do F202) |
 | — | o que ficou fora da varredura de 30/10: seção "O que ficou fora" do [handoff](session-2026-10-31-handoff.md) |
 

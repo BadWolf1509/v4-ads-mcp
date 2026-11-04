@@ -67,7 +67,9 @@ class _Conn:
 async def _exportar(n: int) -> tuple[str, _Conn, list[dict[str, Any]]]:
     conn = _Conn(n)
     with capture_logs() as logs:
-        texto = "".join([x async for x in audit_log.export_csv_rows(conn, days=365)])  # type: ignore[arg-type]
+        texto = "".join(
+            [x async for x in audit_log.export_csv_rows(conn, manager_id=None, days=365)]
+        )  # type: ignore[arg-type]
     return texto, conn, logs
 
 
