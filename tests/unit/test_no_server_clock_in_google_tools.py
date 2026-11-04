@@ -47,10 +47,9 @@ fora e por que:
   chave que `governance/rate_limit._today`); o campo se chama `date_utc`.
 - `import_offline_conversions`: ver F146 abaixo.
 - `backup.py`: ver o comentario na propria entrada.
-- `meta_get_account_overview.py`: le o relogio UMA vez para carimbar o
-  INSTANTE do aviso de `build_warnings`, nao a data da conta — ver o
-  comentario na propria entrada e a secao abaixo (PR 6 pagou o resto da
-  divida do gemeo Meta e a isencao por NOME que existia aqui **caiu**).
+- (`meta_get_account_overview.py` saiu desta lista em 11/2026: a unica
+  leitura de relogio dele carimbava o aviso de expiracao do token pessoal,
+  que saiu com o OAuth pessoal da Meta. O arquivo voltou ao regime estrito.)
 
 ## O escopo ainda e listado a mao, e isso e uma folga MEDIDA
 
@@ -62,9 +61,13 @@ estar sob nenhum dos dois regimes — eram 13 antes desta PR; os dois sitios
 Meta que pararam de ler o relogio saem da contagem (nao migram para outro
 bucket, porque nao leem mais nada).
 
-Quatro ja tem motivo escrito (`FORA_COM_MOTIVO`). Dos sete restantes:
+Quatro tinham motivo escrito (`FORA_COM_MOTIVO`) e sete nao. Em 11/2026 saem
+dois, por remocao e nao por nova medicao: `meta_oauth.py` foi apagado com o
+OAuth pessoal da Meta, e `meta_get_account_overview.py` parou de ler o relogio
+(sua isencao caiu). Os restantes:
 
-- `src/auth/oauth_state.py`, `panel_session.py`, `meta_oauth.py` e
+- `src/auth/oauth_state.py`, `panel_session.py` (o `meta_oauth.py` saiu em
+  11/2026) e
   `src/governance/rate_limit.py`: `time.time()`/epoch para TTL e bucket de
   quota. Comparam AGORA com um instante absoluto — nao derivam DATA de conta
   nenhuma, entao nao sao F141.
@@ -84,9 +87,10 @@ spec da varredura atribuia ao PR 6 (o inventario Meta ja tinha
 `meta_get_performance_breakdown.py` pararam de ler o relogio: chamam
 `resolve_meta_account_today(ad_account_id)` e amarram o retorno a `today`,
 igual ao lado Google — saem da contagem do topo desta secao porque nao leem
-mais nada. `meta_get_account_overview.py` continua lendo — a linha do
-`build_warnings`, que carimba o INSTANTE do aviso, nao a data da conta — e por
-isso entrou em `FORA_COM_MOTIVO`, com o motivo escrito ao lado da entrada.
+mais nada. `meta_get_account_overview.py` continuou lendo — a linha do
+`build_warnings`, que carimbava o INSTANTE do aviso, nao a data da conta — e
+ficou em `FORA_COM_MOTIVO` ate 11/2026, quando o aviso de expiracao saiu com o
+OAuth pessoal e a isencao caiu junto.
 
 A isencao por NOME que cobria os tres (`meta_*` / `_meta_*` em
 `src/mcp/tools/`) **caiu**: o que sobra e isencao por ARQUIVO, com motivo,
@@ -203,13 +207,6 @@ FORA_COM_MOTIVO = {
     # UTC aqui e a escolha certa — nome de objeto de storage precisa ser estavel
     # e comparavel entre runs, nao relativo ao fuso de um cliente.
     "backup.py",
-    # le o relogio UMA vez, na linha do `build_warnings`, para carimbar o
-    # INSTANTE em que o aviso foi gerado — timestamp de registro, nao data de
-    # conta. A janela do mesmo arquivo passou a usar
-    # `resolve_meta_account_today` (PR 6). Contraste com o F146: em MUTATE que
-    # grava timestamp no provedor, fuso chutado e corrupcao; aqui o carimbo e
-    # do servidor por definicao.
-    "meta_get_account_overview.py",
 }
 
 # O par `(objeto, atributo)` que fecha o caminho, DEPOIS de resolver alias.

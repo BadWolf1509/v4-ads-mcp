@@ -2,10 +2,9 @@
 """meta_get_account_overview — 1ª tool Meta com Graph API real call (Sprint M.2b).
 
 Single ad_account, fields essenciais, comparativo período anterior,
-warnings PT-BR pra account_status problemático + token expiry <7d.
+warnings PT-BR pra account_status problemático.
 """
 
-from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -187,13 +186,10 @@ async def meta_get_account_overview(
     current_metrics = parse_insights_response(current_resp)
     previous_metrics = parse_insights_response(previous_resp)
     deltas = compute_deltas(current_metrics, previous_metrics)
-    # Modelo B: acesso via system-user token — sem personal token expiry warning.
-    # NAO e data de conta: e o instante em que o aviso foi gerado (timestamp de
-    # registro). O fuso da conta nao se aplica — trocar por
-    # `resolve_meta_account_today` aqui seria carimbar um evento do servidor com
-    # o calendario do anunciante. Contraste com a linha 103, que resolve a
-    # JANELA e por isso e da conta (F141).
-    warnings = build_warnings(account_status_label, None, datetime.now(UTC))
+    # Modelo B: acesso via system-user token. O aviso de expiracao do token
+    # pessoal saiu com o OAuth pessoal (11/2026) e, com ele, a unica leitura de
+    # relogio deste arquivo.
+    warnings = build_warnings(account_status_label)
 
     return {
         "status": "success",

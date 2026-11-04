@@ -14,11 +14,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from src.db import connection
-from src.db.repositories import google_oauth_connections, meta_oauth_connections
+from src.db.repositories import google_oauth_connections
 from src.db.repositories import managers as managers_repo
 from src.web import numeros
 from src.web.deps import CurrentUser, current_manager, pending_invites_count
-from src.web.routes._shared import _audit_admin, _require_admin, meta_expiry_signals, templates
+from src.web.routes._shared import _audit_admin, _require_admin, templates
 
 router = APIRouter(tags=["web"])
 
@@ -42,7 +42,6 @@ async def admin_index(
         list[asyncpg.Record],
         list[asyncpg.Record],
         google_oauth_connections.OAuthConnection | None,
-        meta_oauth_connections.MetaOAuthConnection | None,
     ]:
         pending = await managers_repo.count_invited(conn)
         ops = await numeros.admin_ops(conn)
@@ -67,9 +66,8 @@ async def admin_index(
                FROM managers ORDER BY coalesce(invited_at, created_at) DESC LIMIT 10"""
         )
 
-        # Load OAuth connections
+        # Load OAuth connection (Google; o OAuth pessoal da Meta saiu em 11/2026)
         google_conn = await google_oauth_connections.get_active_for_manager(conn, user.id)
-        meta_conn = await meta_oauth_connections.get_active_for_manager(conn, user.id)
 
         return (
             pending,
@@ -79,7 +77,6 @@ async def admin_index(
             top_mgrs,
             onboarding,
             google_conn,
-            meta_conn,
         )
 
     (
@@ -90,13 +87,7 @@ async def admin_index(
         top_mgrs,
         onboarding,
         google_conn,
-        meta_conn,
     ) = await connection.run_with_reconnect(_load)
-
-    meta_expiry = meta_expiry_signals(meta_conn.token_expires_at if meta_conn else None)
-
-    meta_connected = request.query_params.get("meta_connected") == "1"
-    meta_revoked = request.query_params.get("meta_revoked") == "1"
 
     return templates.TemplateResponse(
         request,
@@ -115,13 +106,6 @@ async def admin_index(
             "top_managers": [dict(r) for r in top_mgrs],
             "recent_onboarding": [dict(r) for r in onboarding],
             "google_conn": google_conn,
-            "meta_conn": meta_conn,
-            "meta_token_expired": meta_expiry.expired,
-            "meta_token_expiring_soon": meta_expiry.expiring_soon,
-            "meta_days_until_expiry": meta_expiry.days_until,
-            "meta_days_since_expiry": meta_expiry.days_since,
-            "meta_connected": meta_connected,
-            "meta_revoked": meta_revoked,
         },
     )
 

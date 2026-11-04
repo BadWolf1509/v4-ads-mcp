@@ -1,6 +1,5 @@
 """Integration tests Sprint M.3 Task 5: meta_get_ad_performance."""
 
-from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -10,25 +9,15 @@ from src.db.repositories import (
     manager_meta_account_access,
     managers,
     meta_ad_accounts,
-    meta_oauth_connections,
 )
 
 pytestmark = pytest.mark.asyncio
 
 
-async def _seed_manager_with_meta_conn(db):
+async def _seed_manager_with_meta_access(db):
     mid = uuid4()
     async with db.acquire() as conn:
         await managers.create(conn, manager_id=mid, email="t@v4company.com", full_name="Tester")
-        await meta_oauth_connections.upsert(
-            conn,
-            manager_id=mid,
-            fb_user_id="fb_user_test",
-            fb_email="t@v4company.com",
-            access_token_enc=b"fake_enc_bytes",
-            token_expires_at=datetime.now(UTC) + timedelta(days=60),
-            scopes=["ads_read", "ads_management"],
-        )
         await meta_ad_accounts.upsert_many(
             conn,
             [
@@ -58,7 +47,7 @@ async def test_happy_path_returns_ad_rows_sorted(db):
     """
     from src.mcp.tools.meta_get_ad_performance import meta_get_ad_performance
 
-    mid = await _seed_manager_with_meta_conn(db)
+    mid = await _seed_manager_with_meta_access(db)
 
     body = {
         "data": [
@@ -120,7 +109,7 @@ async def test_metadata_de_entidade_nunca_vaza_pra_resposta(db):
     """
     from src.mcp.tools.meta_get_ad_performance import meta_get_ad_performance
 
-    mid = await _seed_manager_with_meta_conn(db)
+    mid = await _seed_manager_with_meta_access(db)
 
     body = {
         "data": [
@@ -161,7 +150,7 @@ async def test_level_ad_in_params(db):
     """Confirma level='ad' passado à Graph API."""
     from src.mcp.tools.meta_get_ad_performance import meta_get_ad_performance
 
-    mid = await _seed_manager_with_meta_conn(db)
+    mid = await _seed_manager_with_meta_access(db)
 
     captured_params: dict = {}
 

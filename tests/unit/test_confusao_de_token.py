@@ -118,11 +118,15 @@ def test_cookie_de_painel_nao_vale_como_state_de_oauth() -> None:
         verify_state(cookie, CHAVE, aud="google_oauth")
 
 
-def test_state_do_google_nao_vale_como_state_do_meta() -> None:
-    """As duas audiências de OAuth também são distintas entre si."""
+def test_state_do_google_nao_vale_como_convite_de_cli() -> None:
+    """As duas audiências de `state` também são distintas entre si.
+
+    Até 11/2026 o par era Google × Meta; `"meta_oauth"` saiu com o OAuth
+    pessoal da Meta, e o par que sobra dentro da família é Google × CLI.
+    """
     google = sign_state({"manager_id": GESTOR}, CHAVE, aud="google_oauth")
     with pytest.raises(InvalidStateError, match=AUD_INVALIDA):
-        verify_state(google, CHAVE, aud="meta_oauth")
+        verify_state(google, CHAVE, aud="cli_invite")
 
 
 @pytest.mark.parametrize(
@@ -242,10 +246,10 @@ def test_aud_e_keyword_only_sem_default_e_tipado_pela_familia(
     de dentro não são cobertos pelo `Literal` em gate nenhum: medido em
     2026-09-06, um `aud="pannel"` plantado neste arquivo passou VERDE no
     `mypy src` e no pytest, porque a asserção daquele teste não dependia do
-    valor. O que prende as audiências que de fato viajam são os cinco testes de
-    assinatura (`test_oauth_flow.py`, `test_meta_oauth_flow.py`,
-    `test_admin_script.py`), que leem a claim do corpo do token vindo do
-    caminho real.
+    valor. O que prende as audiências que de fato viajam são os testes de
+    assinatura (`test_oauth_flow.py`, `test_admin_script.py`; o
+    `test_meta_oauth_flow.py` saiu com o OAuth pessoal da Meta, 11/2026), que
+    leem a claim do corpo do token vindo do caminho real.
     """
     parametro = inspect.signature(funcao).parameters["aud"]
     assert parametro.kind is inspect.Parameter.KEYWORD_ONLY
@@ -254,7 +258,7 @@ def test_aud_e_keyword_only_sem_default_e_tipado_pela_familia(
     assert get_type_hints(funcao)["aud"] != Audience
 
 
-def test_familias_de_audiencia_sao_disjuntas_e_cobrem_as_quatro() -> None:
+def test_familias_de_audiencia_sao_disjuntas_e_cobrem_as_tres() -> None:
     """As duas famílias particionam `Audience`: nada em comum, nada de fora.
 
     Mutação que derruba: pôr `"panel"` de volta em `StateAudience` (ou qualquer
@@ -262,27 +266,31 @@ def test_familias_de_audiencia_sao_disjuntas_e_cobrem_as_quatro() -> None:
     cruzamento entre famílias volta a passar no `mypy`. Também derruba tirar uma
     audiência de uma família sem pôr em outra, que a deixaria inalcançável.
 
-    O teste irmão (`test_audiencias_sao_exatamente_quatro`) afirma o total; este
+    O teste irmão (`test_audiencias_sao_exatamente_tres`) afirma o total; este
     afirma a PARTIÇÃO, e os dois juntos são o que impede a divisão de virar
-    decorativa. Sozinho, o total sobrevive a `StateAudience` com as quatro.
+    decorativa. Sozinho, o total sobrevive a `StateAudience` com as três.
     """
     de_state = set(get_args(StateAudience))
     de_painel = set(get_args(PanelAudience))
-    assert de_state == {"google_oauth", "cli_invite", "meta_oauth"}
+    assert de_state == {"google_oauth", "cli_invite"}
     assert de_painel == {"panel"}
     assert de_state & de_painel == set()
     assert de_state | de_painel == set(get_args(Audience))
 
 
-def test_audiencias_sao_exatamente_quatro() -> None:
+def test_audiencias_sao_exatamente_tres() -> None:
     """A Global Constraint nº 3 ("quatro audiências, exatamente") como mecanismo.
 
-    Mutação que derruba: acrescentar uma quinta audiência ao `Literal`.
+    Eram quatro até 11/2026: `"meta_oauth"` saiu com o OAuth pessoal da Meta, e
+    o total desceu por decisão registrada, não por descuido.
+
+    Mutação que derruba: acrescentar uma audiência ao `Literal` (inclusive
+    devolver `"meta_oauth"` sem o fluxo que a usava).
 
     Cada audiência a mais é uma família de token a mais dividindo a mesma
     chave. A lista cresce por descuido, não por decisão, se ninguém a afirmar.
     """
-    assert get_args(Audience) == ("google_oauth", "cli_invite", "meta_oauth", "panel")
+    assert get_args(Audience) == ("google_oauth", "cli_invite", "panel")
 
 
 def test_state_sem_a_claim_aud_e_recusado() -> None:
@@ -357,8 +365,8 @@ def test_verify_state_nao_devolve_aud_nem_iat() -> None:
 
     Mutação que derruba: parar de fazer o `pop` das duas antes do `return`.
 
-    É interface declarada e é load-bearing: `meta_oauth.py:247` conferia
-    `payload.get("aud")` à mão, e a Task 4 removeu aquela linha PORQUE `aud`
+    É interface declarada e é load-bearing: o callback do OAuth pessoal da
+    Meta (removido em 11/2026) conferia `payload.get("aud")` à mão, e a Task 4 removeu aquela linha PORQUE `aud`
     não vem mais no payload — mantida, ela leria `None` e mandaria TODO
     callback do Meta para /access-denied. Contrato do qual outra task depende
     para raciocinar precisa de asserção. A igualdade é exata de propósito: pega tanto a claim
@@ -556,8 +564,9 @@ def test_o_kwarg_aud_vence_o_que_vier_no_payload() -> None:
     `full.setdefault("aud", aud)` em `sign_state`. Medida em 2026-09-06: ela
     sobrevive à suíte inteira, 42/42 verdes.
 
-    Importa porque a forma antiga é a que alguém copiaria: `meta_oauth.py:189`
-    passava `{"aud": "meta_oauth", ...}` DENTRO do dict até esta branch, e a
+    Importa porque a forma antiga é a que alguém copiaria: o start do OAuth
+    pessoal da Meta (removido em 11/2026) passava `{"aud": "meta_oauth", ...}`
+    DENTRO do dict até esta branch, e a
     tabela do F156 exibe aquela forma como prática anterior. Sob o mutante, um
     chamador que mande `aud` no payload sobrescreve o kwarg em silêncio — e o
     kwarg é justamente o que o tipo protege (`StateAudience`); o dict é

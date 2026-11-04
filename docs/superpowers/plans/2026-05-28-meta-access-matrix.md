@@ -349,7 +349,7 @@ Expected: FAIL (ainda faz auto-grant / usa token pessoal)
 
 - [ ] **Step 3: Implementar**
 
-Em `meta_oauth_refresh_accounts` ([`src/auth/meta_oauth.py:466`](../../../src/auth/meta_oauth.py)):
+Em `meta_oauth_refresh_accounts` (`src/auth/meta_oauth.py:466`):
 1. Trocar a obtenção do token: em vez de `get_active_for_manager` + `decrypt_refresh_token`, usar `settings.meta_system_user_token` direto na chamada `/me/adaccounts` (o `/me` aqui é o system user). Se vazio → HTTP 422 PT-BR "token do system user não configurado".
 2. Remover o bloco `for a in accounts_payload: await manager_meta_account_access.grant(...)` (linhas ~526-531) — no Modelo B o grant é da matriz, não do sync.
 3. Manter `upsert_many` + audit (`operation="meta_refresh_accounts"`).

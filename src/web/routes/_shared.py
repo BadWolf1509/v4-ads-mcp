@@ -10,7 +10,7 @@ import html
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal, NamedTuple
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 import structlog
@@ -206,39 +206,6 @@ def _toggle_acesso_response(
 # chegar em src/web/templates.
 _TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
-
-
-class MetaExpirySignals(NamedTuple):
-    """Sinais de expiração do OAuth pessoal Meta pro painel admin."""
-
-    expired: bool
-    expiring_soon: bool
-    days_until: int | None
-    days_since: int | None
-
-
-def meta_expiry_signals(
-    token_expires_at: datetime | None, *, agora: datetime | None = None
-) -> MetaExpirySignals:
-    """Traduz a data de expiração nos sinais que o template consome.
-
-    Separado da rota pra ser testável sem DB. O cálculo antigo era
-    `max(0, delta.days)`, que achatava vencido em 0 e fazia o painel dizer
-    "expira em <data passada> (0 dias)".
-
-    Os dias são contados sempre na direção positiva: `timedelta` negativo
-    arredonda pra baixo (`-15,4 dias` vira `.days == -16`), então medir
-    `agora - expiração` evita o off-by-one no "há N dias".
-    """
-    if token_expires_at is None:
-        return MetaExpirySignals(False, False, None, None)
-
-    agora = agora or datetime.now(UTC)
-    if token_expires_at <= agora:
-        return MetaExpirySignals(True, False, None, (agora - token_expires_at).days)
-
-    dias = (token_expires_at - agora).days
-    return MetaExpirySignals(False, dias < 7, dias, None)
 
 
 def meta_status_label(status: int | None) -> str:

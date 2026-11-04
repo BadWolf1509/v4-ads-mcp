@@ -30,8 +30,8 @@ def _app() -> FastAPI:
     async def oauth_callback() -> dict[str, bool]:
         return {"ok": True}
 
-    @a.post("/oauth/meta/revoke")
-    async def meta_revoke() -> dict[str, bool]:
+    @a.post("/oauth/meta/vizinha-sintetica")
+    async def meta_vizinha() -> dict[str, bool]:
         return {"ok": True}
 
     @a.post("/oauth/meta/data-deletion-callback")
@@ -110,13 +110,14 @@ async def test_csrf_nao_isenta_o_prefixo_oauth_inteiro() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("rota", ["/oauth/meta/revoke"])
+@pytest.mark.parametrize("rota", ["/oauth/meta/vizinha-sintetica"])
 async def test_mutacao_do_painel_sob_oauth_nao_e_isenta(rota: str) -> None:
-    """revoke e acao do PAINEL autenticada por cookie (a de sincronizar contas saiu no F197).
+    """Um POST vizinho do callback isento, sob o MESMO prefixo, nao herda a isencao.
 
-    Vivem sob /oauth por acidente de roteamento (o APIRouter tem prefix
-    /oauth/meta), nao porque precisem da isencao. Origin divergente tem que
-    bater no 403 como qualquer outro POST de cookie.
+    Ate 11/2026 a vizinha era real (`/oauth/meta/revoke`, mutacao do painel por
+    cookie); saiu com o OAuth pessoal da Meta, e a rota sintetica segura a mesma
+    propriedade: isencao por rota literal, nunca por prefixo (F106). Origin
+    divergente tem que bater no 403 como qualquer outro POST de cookie.
     """
     async with AsyncClient(transport=ASGITransport(app=_app()), base_url="http://testserver") as c:
         r = await c.post(rota, headers={"origin": "http://evil.com", "host": "testserver"})

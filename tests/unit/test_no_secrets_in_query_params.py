@@ -6,9 +6,9 @@ mas isso e uma camada: qualquer outra biblioteca que registre a URL, um proxy,
 ou um `Referer` reintroduz a exposicao. O lado Google ja faz certo — `data=` no
 corpo do POST e `Authorization` no header, nada na URL.
 
-Este guard impede call-site NOVO com segredo na query. Os 3 remanescentes estao
-na allowlist com motivo e condicao de saida explicitos — allowlist que encolhe,
-nao que cresce.
+Este guard impede call-site NOVO com segredo na query. A allowlist encolheu ate
+zero: o ultimo residuo (`input_token` do `/debug_token`) saiu com o OAuth
+pessoal da Meta em 11/2026. Allowlist que encolhe, nao que cresce.
 """
 
 from __future__ import annotations
@@ -49,7 +49,11 @@ _CHAVES_SECRETAS = {
 # Residuo conhecido, por (funcao, chave) — nao por funcao inteira, senao
 # reintroduzir `access_token` numa funcao ja allowlistada passaria batido.
 #
-# `input_token` do `/debug_token` FICA na query porque nao ha alternativa:
+# VAZIA desde 11/2026: a unica entrada era `("meta_oauth_callback",
+# "input_token")`, e a funcao saiu com o OAuth pessoal da Meta. O motivo dela
+# fica abaixo como registro, porque e o que valeria se o fluxo voltasse:
+#
+# `input_token` do `/debug_token` FICAVA na query porque nao ha alternativa:
 # ele nao e credencial do chamador (e o objeto sendo inspecionado, logo nao
 # cabe no header `Authorization`) e o endpoint NAO aceita POST — verificado
 # contra o Graph real: HTTP 400, code 100, subcode 33 "Unsupported post
@@ -58,9 +62,7 @@ _CHAVES_SECRETAS = {
 # O que saiu da URL na mesma migracao foi o `app_id|app_secret` desse mesmo
 # request — o segredo PERMANENTE. O `input_token` e um token de gestor, que
 # expira. Sobra risco, mas de outra ordem de grandeza.
-_RESIDUO_CONHECIDO = {
-    ("meta_oauth_callback", "input_token"),
-}
+_RESIDUO_CONHECIDO: set[tuple[str, str]] = set()
 
 
 def _funcao_que_contem(arvore: ast.Module, alvo: ast.AST) -> str | None:
@@ -150,13 +152,50 @@ def _achados_na_arvore(arvore: ast.Module, rel: str) -> list[tuple[str, int, str
     return fora
 
 
+def _arquivos_examinados() -> list[Path]:
+    """Os arquivos que `_achados()` abre — a varredura REAL, exposta pro controle positivo."""
+    return sorted(_SRC.rglob("*.py"))
+
+
 def _achados() -> list[tuple[str, int, str, str]]:
     """`_achados_na_arvore` sobre `src/` inteiro."""
     fora: list[tuple[str, int, str, str]] = []
-    for caminho in _SRC.rglob("*.py"):
+    for caminho in _arquivos_examinados():
         arvore = ast.parse(caminho.read_text(encoding="utf-8"))
         fora.extend(_achados_na_arvore(arvore, str(caminho.relative_to(_SRC))))
     return fora
+
+
+# Medido em 2026-11-03: 236 arquivos .py sob src/. Piso conservador bem abaixo
+# disso e bem acima de qualquer subdiretorio sozinho (src/mcp/tools/ e o maior).
+_PISO_ARQUIVOS_EXAMINADOS = 150
+
+# Arquivos que a varredura TEM que abrir: o unico lugar de `src/auth/` onde o
+# segredo da Meta segue em uso, e o paginador da Graph (que monta `params=`).
+_ARQUIVOS_OBRIGATORIOS = (
+    Path("auth") / "meta_data_deletion.py",
+    Path("meta_ads") / "graph.py",
+)
+
+
+def test_a_varredura_real_abre_src() -> None:
+    """Controle positivo da arvore real (Fix round 1 da Task E2, 11/2026).
+
+    Ate o OAuth pessoal da Meta sair, `test_a_allowlist_descreve_a_realidade`
+    so passava se `_achados()` achasse o residuo `input_token` em `src/` — o que
+    provava, de tabela, que a varredura abria arquivos. Com a allowlist vazia
+    essa prova sumiu: se `_SRC` apontasse pro lugar errado, `_achados()`
+    devolveria `[]` e os dois testes passariam por vacuidade. Este teste devolve
+    a prova afirmando o que a varredura EXAMINOU, nao o que ela achou.
+    """
+    examinados = _arquivos_examinados()
+    assert len(examinados) >= _PISO_ARQUIVOS_EXAMINADOS, (
+        f"a varredura abriu {len(examinados)} arquivos (piso {_PISO_ARQUIVOS_EXAMINADOS}, "
+        "236 medidos em 2026-11-03) — `_SRC` aponta pro lugar certo?"
+    )
+    relativos = {p.relative_to(_SRC) for p in examinados}
+    faltam = [str(a) for a in _ARQUIVOS_OBRIGATORIOS if a not in relativos]
+    assert not faltam, f"a varredura nao abriu: {faltam}"
 
 
 def test_nenhum_segredo_novo_na_query_string() -> None:
@@ -187,8 +226,8 @@ def test_a_allowlist_descreve_a_realidade() -> None:
 # (id, fonte, acusa?) — contrato de `_chaves_secretas`, forma a forma.
 #
 # Onda final do F190: ate aqui o detector so era exercitado pela arvore real, que
-# tem UM residuo conhecido (`input_token`). Isso prova que ele nao esta vazio, e
-# nao prova mais nada — nenhuma forma NOVA (chave nova, `dict(...)`, maiuscula)
+# tinha UM residuo conhecido (`input_token`; zero desde 11/2026). Isso provava
+# que ele nao estava vazio, e nao provava mais nada — nenhuma forma NOVA (chave nova, `dict(...)`, maiuscula)
 # tinha asserção, e os NEGATIVOS nao tinham nenhuma. Os negativos importam tanto
 # quanto: sao os sites reais que uma versao "reforcada" pra qualquer dict passaria
 # a acusar, incluindo o proprio fix do F190 em `headers=`.

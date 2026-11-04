@@ -120,11 +120,14 @@ async def test_invalid_cookie_redirects_to_login(client: AsyncClient):
 
 
 @pytest.mark.integration
-async def test_access_denied_meta_state_invalid_shows_friendly_message(client: AsyncClient):
-    """B3: internal meta OAuth error codes must NOT be shown raw; friendly PT-BR message instead."""
-    response = await client.get("/access-denied?reason=meta_state_invalid")
+async def test_access_denied_reason_meta_antigo_cai_no_texto_padrao(client: AsyncClient):
+    """Os ramos `meta_*` sairam com o OAuth pessoal da Meta (11/2026).
+
+    Um link antigo com `reason=meta_*` cai no texto padrao, nao mostra o codigo
+    cru e nao oferece mais o `/oauth/meta/start`.
+    """
+    response = await client.get("/access-denied?reason=meta_state_invalid&detail=x&missing=a,b")
     assert response.status_code == 200
-    assert "Reason:" not in response.text
-    assert "Ocorreu um erro inesperado durante a autenticação" in response.text
-    # Raw reason is preserved in an HTML comment for debugging, not in visible content.
-    assert "<!-- reason: meta_state_invalid -->" in response.text
+    assert "Você ainda não tem acesso." in response.text
+    assert "meta_state_invalid" not in response.text
+    assert "/oauth/meta/" not in response.text

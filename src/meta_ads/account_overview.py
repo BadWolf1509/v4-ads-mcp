@@ -3,7 +3,7 @@
 Zero IO. Date math + Graph response parsing + deltas + warnings.
 """
 
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any
 
 from src.janelas import janela_do_preset
@@ -92,12 +92,13 @@ def compute_deltas(current: dict[str, Any], previous: dict[str, Any]) -> dict[st
     return out
 
 
-def build_warnings(
-    account_status_label: str,
-    token_expires_at: datetime | None,
-    now: datetime,
-) -> list[str]:
-    """Returns lista PT-BR warnings ativos (account_status problema + token <7d)."""
+def build_warnings(account_status_label: str) -> list[str]:
+    """Lista PT-BR de avisos ativos (account_status problemático).
+
+    O ramo de expiração de token saiu com o OAuth pessoal da Meta (11/2026): o
+    único chamador sempre passava `None`, porque o token do system user não traz
+    data de expiração que o MCP leia.
+    """
     out: list[str] = []
     if account_status_label != "ATIVO":
         out.append(
@@ -105,13 +106,4 @@ def build_warnings(
             f"métricas podem estar desatualizadas ou ad serving suspenso. "
             f"Verificar billing/status no Meta Business Suite."
         )
-    if token_expires_at is not None:
-        days_left = (token_expires_at - now).days
-        if days_left < 7:
-            iso_date = token_expires_at.date().isoformat()
-            out.append(
-                f"Token do system user Meta expira em {days_left} dias ({iso_date}). "
-                f"O admin precisa gerar outro e subir o secret meta-system-user-token "
-                f"antes disso, pra evitar interrupção das tools."
-            )
     return out

@@ -1,6 +1,6 @@
 """Unit tests pure module src/meta_ads/account_overview.py (Sprint M.2b)."""
 
-from datetime import UTC, date, datetime
+from datetime import date
 
 import pytest
 
@@ -153,63 +153,26 @@ class TestComputeDeltas:
 class TestBuildWarnings:
     """build_warnings tests."""
 
-    def test_build_warnings_ativo_token_fresh_returns_empty(self):
-        now = datetime(2026, 5, 25, 12, 0, tzinfo=UTC)
-        token_expires = datetime(2026, 7, 24, 12, 0, tzinfo=UTC)
-        warnings = build_warnings("ATIVO", token_expires, now)
-        assert warnings == []
+    def test_build_warnings_ativo_returns_empty(self):
+        assert build_warnings("ATIVO") == []
 
     def test_build_warnings_account_pagamento_pendente(self):
-        now = datetime(2026, 5, 25, 12, 0, tzinfo=UTC)
-        token_expires = datetime(2026, 7, 24, 12, 0, tzinfo=UTC)
-        warnings = build_warnings("PAGAMENTO_PENDENTE", token_expires, now)
+        warnings = build_warnings("PAGAMENTO_PENDENTE")
         assert len(warnings) == 1
         assert "PAGAMENTO_PENDENTE" in warnings[0]
 
     def test_build_warnings_account_fechado(self):
-        now = datetime(2026, 5, 25, 12, 0, tzinfo=UTC)
-        token_expires = datetime(2026, 7, 24, 12, 0, tzinfo=UTC)
-        warnings = build_warnings("FECHADO", token_expires, now)
+        warnings = build_warnings("FECHADO")
         assert len(warnings) == 1
         assert "FECHADO" in warnings[0]
 
-    def test_build_warnings_token_expires_in_5_days(self):
-        now = datetime(2026, 5, 25, 12, 0, tzinfo=UTC)
-        token_expires = datetime(2026, 5, 30, 12, 0, tzinfo=UTC)
-        warnings = build_warnings("ATIVO", token_expires, now)
-        assert len(warnings) == 1
-        assert "5 dias" in warnings[0]
-        assert "2026-05-30" in warnings[0]
-        assert "meta-system-user-token" in warnings[0]
-        assert "Reconectar" not in warnings[0]
-
-    def test_build_warnings_token_expires_in_6_days_still_warns(self):
-        now = datetime(2026, 5, 25, 12, 0, tzinfo=UTC)
-        token_expires = datetime(2026, 5, 31, 12, 0, tzinfo=UTC)
-        warnings = build_warnings("ATIVO", token_expires, now)
-        assert len(warnings) == 1
-
-    def test_build_warnings_token_expires_in_7_days_no_warn(self):
-        """7d exactly → não warning ainda (strictly less than)."""
-        now = datetime(2026, 5, 25, 12, 0, tzinfo=UTC)
-        token_expires = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
-        warnings = build_warnings("ATIVO", token_expires, now)
-        assert warnings == []
-
-    def test_build_warnings_token_none_no_warn(self):
-        now = datetime(2026, 5, 25, 12, 0, tzinfo=UTC)
-        warnings = build_warnings("ATIVO", None, now)
-        assert warnings == []
-
-    def test_build_warnings_both_warnings_present(self):
-        now = datetime(2026, 5, 25, 12, 0, tzinfo=UTC)
-        token_expires = datetime(2026, 5, 28, 12, 0, tzinfo=UTC)
-        warnings = build_warnings("PAGAMENTO_PENDENTE", token_expires, now)
-        assert len(warnings) == 2
-
     def test_build_warnings_account_suspenso(self):
-        now = datetime(2026, 5, 25, 12, 0, tzinfo=UTC)
-        token_expires = datetime(2026, 7, 24, 12, 0, tzinfo=UTC)
-        warnings = build_warnings("SUSPENSO", token_expires, now)
+        warnings = build_warnings("SUSPENSO")
         assert len(warnings) == 1
         assert "SUSPENSO" in warnings[0]
+
+    def test_build_warnings_nao_fala_mais_de_token(self):
+        """O ramo de expiração do token saiu com o OAuth pessoal (11/2026)."""
+        import inspect
+
+        assert list(inspect.signature(build_warnings).parameters) == ["account_status_label"]

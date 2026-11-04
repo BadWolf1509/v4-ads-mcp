@@ -1245,22 +1245,24 @@ async def test_desativar_e_promover_pedem_confirmacao(client: AsyncClient):
 
 
 @pytest.mark.integration
-async def test_admin_index_mostra_aviso_de_meta_conectada_e_revogada(client: AsyncClient):
+async def test_admin_index_nao_tem_mais_oauth_pessoal_da_meta(client: AsyncClient):
+    """O card, os avisos e o modal do OAuth pessoal da Meta sairam em 11/2026.
+
+    Os query params antigos (`meta_connected`, `meta_revoked`) nao acendem mais
+    nada, e nenhum link ou form aponta para as rotas removidas. O card do Google
+    continua (controle: a pagina renderizou o bloco de conexoes).
+    """
     pool = connection.get_pool()
     admin_id, _ = await _bootstrap_admin_and_gestor(pool)
     cookies = {PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)}
 
-    r = await client.get("/admin?meta_connected=1", cookies=cookies)
-    assert r.status_code == 200
-    assert "Conexão Meta" in r.text and "conectada" in r.text
-
-    r = await client.get("/admin?meta_revoked=1", cookies=cookies)
-    assert r.status_code == 200
-    assert "Conexão Meta revogada" in r.text
-
-    r = await client.get("/admin", cookies=cookies)
-    assert "Conexão Meta conectada" not in r.text
-    assert "Conexão Meta revogada" not in r.text
+    for url in ("/admin", "/admin?meta_connected=1", "/admin?meta_revoked=1"):
+        r = await client.get(url, cookies=cookies)
+        assert r.status_code == 200
+        assert "Sua conexão OAuth" in r.text and "Google Ads" in r.text
+        assert "/oauth/meta/" not in r.text
+        assert "Conexão Meta" not in r.text
+        assert "meta-revoke-modal" not in r.text
 
 
 @pytest.mark.integration

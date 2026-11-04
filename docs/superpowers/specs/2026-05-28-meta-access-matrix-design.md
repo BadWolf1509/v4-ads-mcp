@@ -11,7 +11,7 @@
 
 O controle de acesso por-conta hoje é **só Google**: `/admin/accounts` e `/admin/access` gerenciam `manager_account_access` (gestor × `customer_id`). O Meta ficou de fora do painel admin, mesmo com as tabelas já existentes desde a M.1 (`meta_ad_accounts` + `manager_meta_account_access`).
 
-Hoje o acesso Meta de um gestor é **auto-concedido ao conectar** o próprio Facebook ([`meta_oauth.py:353`](../../../src/auth/meta_oauth.py)): o callback puxa `/me/adaccounts` do token pessoal e concede tudo que o token vê. Não há UI admin pra conceder/revogar, e as tools de performance **não checam grant** — só verificam que a conta existe no inventário ([`meta_get_campaign_performance.py:98`](../../../src/mcp/tools/meta_get_campaign_performance.py)) e chamam a Graph API com o token de quem chamou ([`reports.py:59`](../../../src/meta_ads/reports.py)).
+Hoje o acesso Meta de um gestor é **auto-concedido ao conectar** o próprio Facebook (`meta_oauth.py:353`): o callback puxa `/me/adaccounts` do token pessoal e concede tudo que o token vê. Não há UI admin pra conceder/revogar, e as tools de performance **não checam grant** — só verificam que a conta existe no inventário ([`meta_get_campaign_performance.py:98`](../../../src/mcp/tools/meta_get_campaign_performance.py)) e chamam a Graph API com o token de quem chamou ([`reports.py:59`](../../../src/meta_ads/reports.py)).
 
 Driver: chegada de **3 colaboradores V4 LS&Co**. Sem painel de acesso Meta, cada um teria que conectar o próprio FB e reconectar a cada ~60d, sem o admin poder escopar quem vê o quê.
 
@@ -79,7 +79,7 @@ Repo `manager_meta_account_access.py` já tem `grant` / `revoke` / `bulk_grant` 
 
 ## 6. Sync de inventário
 
-- `meta_oauth_refresh_accounts` ([`meta_oauth.py:466`](../../../src/auth/meta_oauth.py)) passa a sincronizar `/me/adaccounts` via **token do system user** (não o pessoal). Vira ação admin: re-popula `meta_ad_accounts` com as contas atribuídas ao system user.
+- `meta_oauth_refresh_accounts` (`meta_oauth.py:466`) passa a sincronizar `/me/adaccounts` via **token do system user** (não o pessoal). Vira ação admin: re-popula `meta_ad_accounts` com as contas atribuídas ao system user.
 - Remove o auto-`grant` por-gestor que existe no fim do sync (no Modelo B o grant é responsabilidade da matriz, não do sync).
 
 ## 7. Acesso = opt-in + migração

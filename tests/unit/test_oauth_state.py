@@ -17,9 +17,10 @@ _SIGNING_KEY = "x" * 32
 _AUD: StateAudience = "google_oauth"
 
 # Só a família `state`. `sign_state`/`verify_state` não aceitam mais `"panel"`:
-# varrer as quatro aqui afirmaria como comportamento suportado justamente o
-# cruzamento entre famílias que o tipo passou a proibir.
-_AUDIENCIAS_DE_STATE: list[StateAudience] = ["google_oauth", "cli_invite", "meta_oauth"]
+# varrer as três aqui afirmaria como comportamento suportado justamente o
+# cruzamento entre famílias que o tipo passou a proibir. (`"meta_oauth"` saiu
+# com o OAuth pessoal da Meta, 11/2026.)
+_AUDIENCIAS_DE_STATE: list[StateAudience] = ["google_oauth", "cli_invite"]
 
 
 @pytest.mark.parametrize("aud", _AUDIENCIAS_DE_STATE)
