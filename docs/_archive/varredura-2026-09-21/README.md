@@ -30,7 +30,7 @@ conserta.
 | 4 | guards que não cobrem | o mock que bloqueava o conserto · testes que enumeram em vez de afirmar a propriedade | mock fechado no F191; o resto na *infra e guards* (spec 2026-09-28) |
 
 Ainda em 21/09 os achados foram **reclassificados por forma de defeito** (classes A, B, C —
-ver a abertura do [spec do F191](../../superpowers/specs/2026-09-21-terceiro-estado-nao-medido-design.md));
+ver a abertura do [spec do F191](../specs/2026-09-21-terceiro-estado-nao-medido-design.md));
 o F191 é a classe A. Os IDs F<n> citados abaixo estão no
 [catálogo](../../operacao/findings-catalog.md).
 

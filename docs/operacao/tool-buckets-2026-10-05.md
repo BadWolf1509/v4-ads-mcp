@@ -1,6 +1,6 @@
 # Classificação de buckets — 2026-10-05
 
-**Substitui** [`tool-buckets-2026-09-04.md`](tool-buckets-2026-09-04.md), que fica como referência
+**Substitui** [`tool-buckets-2026-09-04.md`](../_archive/runbooks/tool-buckets-2026-09-04.md), que fica como referência
 do método: as armadilhas de nome, o controle da sessão de desenvolvimento e o guard
 bucket × prefixo continuam valendo.
 

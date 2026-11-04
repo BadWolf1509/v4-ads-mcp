@@ -12,10 +12,15 @@ Cleanup 2026-05-27 moveu 113 files (104k → 30k lines visíveis no scope normal
 
 | Pasta | Files | O que tem |
 |---|---|---|
-| `plans/` | 40 | Implementation plans de sprints Phase 0/1a/2 + Sprints 3b.1 → 3b.37 SHIPPED. Execution scripts que serviram durante deploy — agora apenas rastreabilidade. |
-| `specs/` | 35 | Design specs de sprints SHIPPED ≥14 dias. Decisional rationale preservado pra auditoria futura. |
-| `runbooks/` | 29 | `phase-XX-bootstrap.md` smoke runbooks de sprints SHIPPED ≥7 dias. Validação already-done, smoke results captados em sprint-history.md. |
-| `setup/` | 3 | `frontend-audit-2026-05.md` (FE pré-redesign baseline) + `gcp-mcp-setup.md` (failed attempt GCP MCP — reverted) + `standard-access-design-doc.md` (Google Ads Standard Access application doc). |
+| `plans/` | 83 | Planos de implementação de frentes entregues (Phase 0 → 3b.40 em 27/05; o resto em 04/11). |
+| `specs/` | 58 | Specs de design de frentes entregues; a decisão e o porquê ficam preservados. |
+| `runbooks/` | 38 | Runbooks de smoke de sprints entregues, `tool-buckets` antigos. Os de 3b.41–3b.44 ficam em `docs/operacao/`: o `test_resumo_bate_com_o_detalhe` os varre. |
+| `handoffs/` | 22 | Handoffs de sessão de 29/05 a 06/10. Os 3 mais recentes ficam em `docs/operacao/`. |
+| `setup/`, `dogfood/`, `varredura-2026-09-21/` | — | Material de setup, dogfood e da varredura de 21/09. |
+
+**2ª limpeza, 2026-11-04:** 91 arquivos saíram da doc viva: planos e specs entregues há mais de 7 dias,
+handoffs anteriores aos 3 últimos, o runbook do RSA e os `tool-buckets` antigos. Os
+links da doc viva foram reescritos por script e conferidos pelo `tests/unit/test_docs_links.py`.
 
 ## Quando usar
 

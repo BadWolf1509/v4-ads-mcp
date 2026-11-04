@@ -25,7 +25,7 @@ Os desvios da previsão têm causa: `added` em 09/09 e 18/09 (contas novas no MC
 `bumped=3` em 24 e 25/09 — **três contas sumiram do MCC** e estão a uma ausência do limiar
 de 3. Se seguirem fora, a execução de **26/09** reporta `removed=3` e `revoke_candidates=46`
 (+12 grants): o primeiro exercício real do caminho de remoção em dry-run. O PR 3 do
-[spec do gate](../superpowers/specs/2026-09-05-gate-google-design.md) — filas no painel,
+[spec do gate](specs/2026-09-05-gate-google-design.md) — filas no painel,
 sinal do alerta, runbook — **já está feito** (Tasks 6 e 7 do plano de 05/09; métrica e
 policy executadas em 05/09, ver `infra-setup.md`). **A execução de 26/09 confirmou a previsão:**
 `removed=3` e `revoke_candidates=46` (34 do backlog + 12 das três contas), `applied=False`,
@@ -99,6 +99,6 @@ no fix round. Detalhe completo no catálogo.
 > A narrativa do sprint de RSA **saiu daqui**, pela regra do cabeçalho: ela ocupava 42
 > das 111 linhas descrevendo trabalho já fechado. O detalhe de cada finding vive no
 > [`findings-catalog.md`](../operacao/findings-catalog.md), e o smoke em
-> [`phase-rsa-f180-f181-smoke.md`](../operacao/phase-rsa-f180-f181-smoke.md) — nada se perdeu, mudou
+> [`phase-rsa-f180-f181-smoke.md`](runbooks/phase-rsa-f180-f181-smoke.md) — nada se perdeu, mudou
 > de endereço. **Foi a primeira aplicação da regra contra o trabalho da própria sessão
 > que a escreveu**, que é onde esse tipo de regra costuma morrer.

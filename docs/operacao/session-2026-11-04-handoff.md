@@ -18,11 +18,12 @@
 | #216 | parte F: painel | clique logado em produção (8 páginas, CSV, 422, filtro) |
 | #217 | parte G: tools MCP | dry-run de orçamento e de `bulk_pause_by_query` |
 | #218 | parte H: jobs e testes | dry-run e cota com a chave nova |
-| #219 | teste instável do CSP | guard de POST lento: antigo 3/3 vermelho, novo 5/5 verde |
+| #219 | teste instável do CSP (F204) | guard de POST lento: antigo 3/3 vermelho, novo 5/5 verde |
+| #220 | export do audit com escopo explícito (F205), docs de fecho e F204–F207 | guard unitário; export em produção **não baixado** |
 
 Todos os dry-runs foram na conta interna, só preview: nenhum `apply_change`.
 
-**Revisão servindo** (medida no fim de 04/11): `v4-ads-mcp-00186-75k`, do #219, com os jobs na mesma imagem.
+**Revisão servindo** (medida no fim de 04/11): `v4-ads-mcp-00187-wnq`, do #220 (`31905a2`), com os jobs na mesma imagem.
 
 **Não medido:** logs da execução agendada dos jobs depois da H (a primeira é 06:00 de 05/11); caminho `denied` da A; paginação Meta da D. O deploy do #217 aconteceu durante um
 incidente do GitHub Actions: os passos do job terminaram em `success` às 15:53 UTC, mas o job ficou
@@ -36,8 +37,8 @@ incidente do GitHub Actions: os passos do job terminaram em `success` às 15:53 
   do segundo poll, ou seja, quando o POST era rápido. A primeira hipótese (recarga lenta) estava errada:
   atrasar a recarga não reproduzia, porque o Chrome para o rAF do documento que sai. Lição: **a forma
   função é avaliada uma vez; a string, a cada frame** — sob CSP estrito, espera por string é corrida.
-- **`export_csv_rows(manager_id=None)` como default** era falha aberta latente: corrigido na branch
-  `fix/export-audit-escopo-explicito` (argumento obrigatório), aguardando merge.
+- **`export_csv_rows(manager_id=None)` como default** era falha aberta latente (F205): corrigido no #220
+  (argumento obrigatório).
 - Os 3 bugs da parte A e os 4 bugs pré-existentes dos jobs (achados na H1) estão descritos no plano e
   no [`estado-atual`](estado-atual.md).
 
@@ -47,5 +48,7 @@ incidente do GitHub Actions: os passos do job terminaram em `success` às 15:53 
 2. ~~`/findings-add`~~ feito em 04/11: F204–F207.
 3. **Os 4 bugs dos jobs (F207)**: um TDD por bug, um PR, depois dos logs de 05/11.
 4. **C2**: whitelist dos 3 tipos de recomendação do v25 (decisão do Wellington).
-5. Limpeza do worktree `meta-onda-1` (branch já mergeada) e das branches locais mergeadas.
+5. ~~Limpeza do worktree `meta-onda-1` e das branches locais mergeadas~~ feita em 04/11; os ledgers dos
+   planos foram copiados para `.superpowers/sdd/` do checkout principal. Na pasta `D:/v4-ads-mcp-wt/`
+   sobraram 5 arquivos soltos (`fix5*.py`, `gate-t5.log`) de origem desconhecida, não tocados.
 6. Escrita em produção, cada uma com aval próprio: apagar `meta_oauth_connections`; teste real de convite.

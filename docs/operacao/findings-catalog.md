@@ -4,7 +4,7 @@
 >
 > **Maintainer note:** Add a new entry here whenever a finding is documented in a smoke runbook. Keep entries scannable — link to runbook for detail.
 >
-> **Last updated:** 2026-11-04 — **F204–F207** da varredura de refatoração de 03/11 (no fim do arquivo): F204 (teste do painel corrida sob CSP, #219), F205 (export do audit aberto por default, #220), F206 (três desvios de contrato de erro, #210) e **F207 ABERTO** (quatro falhas silenciosas nos jobs). De 2026-09-30: **F200 verificado em produção** (24 h: zero reconexão, zero erro, +8 ms no p50 do health) e o "Fora" do **F203** corrigido na mesma branch; **F203** e **F202** em produção (`00140`, `00141`), com smoke de leitura. De 2026-09-29: **F202** (pacing de orçamento compartilhado) e **F203** (retirada do pool presa sem limite num socket mudo; corrige os "30 s" do F200), deployados em 30/09. De 2026-09-28: **F199** (pacing pelos dias fechados), **F200** (infra e guards) e **F201** (data inválida virava "Erro interno"), no fim do arquivo. De 2026-09-20: **F180–F185**: sprint de RSA (F180 em parte; F181/F182/F183/F184 corrigidos), a 2ª instância do F182, e dois ABERTOS: **F185** (limitação da API, sem correção possível deste lado) e **F186** (o smoke autenticado do `/mcp` está desarmado por token vencido). O resto deste parágrafo é de **2026-09-03** e não foi atualizado desde então — leia como de época: **F141–F146 fechados** em tres PRs (#28 bloco fuso+freshness; #29 structural_change; #30 fuso do upload offline) mais o F142 (whitelist de client_type) direto na main. Ontem, 02/09: **+F131–F140** da sessao de campo MO-JP, fechados no PR #27 e nos fixes seguintes. Narrativa completa e licoes de metodo no handoff [`session-2026-09-02-03-handoff.md`](session-2026-09-02-03-handoff.md); o historico anterior (F82–F130, 08/14 a 08/20) esta nos handoffs de 08-14-15 e 08-19.
+> **Last updated:** 2026-11-04 — **F204–F207** da varredura de refatoração de 03/11 (no fim do arquivo): F204 (teste do painel corrida sob CSP, #219), F205 (export do audit aberto por default, #220), F206 (três desvios de contrato de erro, #210) e **F207 ABERTO** (quatro falhas silenciosas nos jobs). De 2026-09-30: **F200 verificado em produção** (24 h: zero reconexão, zero erro, +8 ms no p50 do health) e o "Fora" do **F203** corrigido na mesma branch; **F203** e **F202** em produção (`00140`, `00141`), com smoke de leitura. De 2026-09-29: **F202** (pacing de orçamento compartilhado) e **F203** (retirada do pool presa sem limite num socket mudo; corrige os "30 s" do F200), deployados em 30/09. De 2026-09-28: **F199** (pacing pelos dias fechados), **F200** (infra e guards) e **F201** (data inválida virava "Erro interno"), no fim do arquivo. De 2026-09-20: **F180–F185**: sprint de RSA (F180 em parte; F181/F182/F183/F184 corrigidos), a 2ª instância do F182, e dois ABERTOS: **F185** (limitação da API, sem correção possível deste lado) e **F186** (o smoke autenticado do `/mcp` está desarmado por token vencido). O resto deste parágrafo é de **2026-09-03** e não foi atualizado desde então — leia como de época: **F141–F146 fechados** em tres PRs (#28 bloco fuso+freshness; #29 structural_change; #30 fuso do upload offline) mais o F142 (whitelist de client_type) direto na main. Ontem, 02/09: **+F131–F140** da sessao de campo MO-JP, fechados no PR #27 e nos fixes seguintes. Narrativa completa e licoes de metodo no handoff [`session-2026-09-02-03-handoff.md`](../_archive/handoffs/session-2026-09-02-03-handoff.md); o historico anterior (F82–F130, 08/14 a 08/20) esta nos handoffs de 08-14-15 e 08-19.
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
@@ -236,7 +236,7 @@
 
 ## Sessão 2026-07-04 (2ª) — painel web UI/UX (findings F74/F75)
 
-> Pacote de UI/UX do painel (templates Jinja2 + design system + rotas + HTMX; sem novas MCP tools). Detalhe: [`session-2026-07-04-ui-ux-handoff.md`](session-2026-07-04-ui-ux-handoff.md). Padrões novos no CLAUDE.md `Conventions → Design system`.
+> Pacote de UI/UX do painel (templates Jinja2 + design system + rotas + HTMX; sem novas MCP tools). Detalhe: [`session-2026-07-04-ui-ux-handoff.md`](../_archive/handoffs/session-2026-07-04-ui-ux-handoff.md). Padrões novos no CLAUDE.md `Conventions → Design system`.
 
 - **F74 (MED) — fragmento HTMX de reposição perde `hx-on`/`aria-label` após o 1º swap:** `_toggle_checkbox_fragment` (`routes.py`) devolvia o checkbox de reposição SEM o `hx-on::after-request` (toast + revert-on-fail) e sem `aria-label` → após o 1º toggle o feedback sumia e o input ficava sem label acessível. O HTML de origem nos 4 templates de matriz TINHA o `hx-on`; o fragmento servido pela rota, não. Fix: o fragmento re-emite o mesmo `hx-on` (string estática — sem vetor XSS novo; `hx-vals` seguem com `html.escape(quote=True)`) + `aria-label`. **Lição:** todo HTML de reposição servido por rota (não só o template inicial) DEVE reproduzir os handlers/atributos do original — senão o comportamento degrada silenciosamente após o 1º swap. Um unit test de escaping pré-existente quebrou legitimamente (o fragmento agora contém `this.checked`) → asserts migrados de substring frouxo (`"checked" in`) pra posicional (`'"checkbox" checked'`).
 - **F75 (MED) — `htmx.ajax(url, { target: "closest tr" })` cai no `body` e pode apagar a página:** em `openConfirm` do cancelar-convite, o `target` string do `htmx.ajax` (API JS) resolve via `document.querySelector` — a sintaxe estendida `"closest tr"` NÃO é válida aí (só em atributos `hx-target`) → `querySelector` retorna `null` → o HTMX cai no fallback `document.body`; com `swap:"outerHTML"` isso **substituiria o `<body>` inteiro** pela resposta. Fix: `htmx.ajax("POST", url, { swap: "none" })` + a rota `cancel` virou HX-aware (`204` + `HX-Refresh: true`, que recarrega e atualiza contador + badge de graça). **Lição:** `htmx.ajax` (JS) ≠ atributo `hx-target` (HTML) — o primeiro não entende `closest/find/next`; passe um seletor CSS absoluto ou `swap:"none"`. O revoke de sessões já usava `target:"#sessions-table"` (por isso funcionava).
@@ -249,13 +249,13 @@
 
 ## Sessão 2026-07-23 — deep health resiliente (finding F77)
 
-> Alerta de produção investigado a partir do e-mail do Cloud Monitoring. Detalhe e queries de validação: [`session-2026-07-23-handoff.md`](session-2026-07-23-handoff.md).
+> Alerta de produção investigado a partir do e-mail do Cloud Monitoring. Detalhe e queries de validação: [`session-2026-07-23-handoff.md`](../_archive/handoffs/session-2026-07-23-handoff.md).
 
 - **F77 (MED) — `/health?deep=1` bypassava a resiliência F76 e gerava 503 transitório em conexão stale:** o handler fazia `pool.acquire()` + `SELECT 1` diretamente. Quando o Supabase já havia fechado o socket ocioso, o probe falhava em 4-5ms com `connection was closed in the middle of operation`, embora um request MCP entre os probes retornasse 200. O alerta log-based amplo (`severity>=ERROR`) disparou por dois request logs 503; a policy de uptime, que exige falha sustentada, não abriu incidente. `max_inactive_connection_lifetime=120` reduz a chance, mas **não faz pre-ping** e não eliminou o caso: três falhas do health ocorreram depois do F76. **Fix (`23fccfe`):** o deep health passou a executar o `SELECT 1` via `connection.run_with_reconnect(...)`, com deadline global de 5s — menor que o timeout externo de 10s — e mantém 503 quando as duas tentativas falham ou o prazo estoura. Três testes cobrem stale→healthy (200/2 acquires), stale→stale (503/2 acquires) e timeout (503). CI com integração DB e deploy verdes; revisão `v4-ads-mcp-00028-lvc`, 100% do tráfego, sem ERROR após o deploy. **Lição:** todo probe/read idempotente que toca o pool precisa usar o mesmo boundary de reconnect dos hot paths; lifetime do pool é mitigação, não substituto de retry. Não aplicar retry cego a mutações.
 
 ## Sessão 2026-08-11 — pacote de frontend + smoke autenticado (findings F78-F80)
 
-> Investigação de frontend com hipóteses **medidas no DOM de produção** (não deduzidas de leitura de código), seguida de smoke autenticado das telas admin via Claude in Chrome. Detalhe: [`session-2026-08-11-frontend-handoff.md`](session-2026-08-11-frontend-handoff.md).
+> Investigação de frontend com hipóteses **medidas no DOM de produção** (não deduzidas de leitura de código), seguida de smoke autenticado das telas admin via Claude in Chrome. Detalhe: [`session-2026-08-11-frontend-handoff.md`](../_archive/handoffs/session-2026-08-11-frontend-handoff.md).
 
 - **F78 (MED) — hambúrguer e drawer renderizados deslogado, abrindo gaveta vazia e travando o scroll:** o `<button class="v4-header__hamburger">` e o `<div id="mobile-drawer">` ficavam fora do `{% if current_user %}` (só o *conteúdo* do drawer era condicional). A 375px, no `/login`, o botão aparecia (`display:block` pela media query), abria um painel com **0 links** e ainda aplicava `document.body.style.overflow='hidden'` — scroll travado numa gaveta vazia, na primeira tela que todo gestor novo vê. No mesmo header, o `justify-content: space-between` com `nav`/`user` ocultos jogava a marca pro canto direito (medido: x=241–359 em vez de x=16). **Fix (`aebdb8f`):** botão, drawer e o `<script>` do `toggleDrawer` passaram a exigir `current_user`; guard `if (!drawer) return;`; `.v4-header__brand { margin-right: auto }` **só** dentro da media query mobile (desktop intacto). **Lição:** um elemento cuja *visibilidade* é controlada por media query ainda precisa da condição de *existência* no servidor — CSS esconde, não remove; e `space-between` num container cujo número de filhos visíveis muda por breakpoint precisa de âncora explícita.
 
@@ -268,7 +268,7 @@
 
 ## Sessão 2026-08-11 (cont.) — CSP sem script inline (finding F81)
 
-> Refatoração dos handlers inline pra permitir `script-src` sem `'unsafe-inline'`. Detalhe: [`session-2026-08-11-frontend-handoff.md`](session-2026-08-11-frontend-handoff.md).
+> Refatoração dos handlers inline pra permitir `script-src` sem `'unsafe-inline'`. Detalhe: [`session-2026-08-11-frontend-handoff.md`](../_archive/handoffs/session-2026-08-11-frontend-handoff.md).
 
 - **F81 (MED) — os 4 filtros de tabela do painel estavam mortos em produção:** `filterManagers()`, `filterAccounts()`, `filterAccs()` e `filterMetaAccs()` começavam com `document.getElementById('<id>').value`, mas o input vinha da macro `search_input`, que emite **`name=`, não `id=`**. Resultado: `getElementById` retornava `null` e a função lançava `Cannot read properties of null (reading 'value')` a cada tecla. Como os selects de role/status/MCC chamavam a MESMA função, eles caíam junto — a tela de Gestores tinha três controles de filtro e nenhum funcionava. Passou despercebido porque falha em silêncio (exceção em handler inline não quebra a página) e nenhum teste exercita JS. **Fix (`bfd438d`):** o mecanismo declarativo novo mira o controle pelo atributo `data-v4-filter`, não por id — o acoplamento que quebrava deixou de existir. Verificado em produção: buscar "wellington" filtra 4→1 linhas, o select de role idem, e limpar restaura. **Lição:** handler inline que chama função global falha mudo; e macro que gera markup precisa emitir o que o consumidor assume (aqui, `id`). Um guard grep-based não pegaria — o que pegaria é um teste que exercita o JS, que o projeto não tem.
 
@@ -405,7 +405,7 @@
 
 ## Investigação de frontend 2026-08-19 (F101-F108)
 
-> Varredura do painel sem escopo prévio, uma semana depois do pacote de 08-11. Método: três varreduras mecânicas (variáveis exigidas por template × contexto passado pelas rotas; classes `v4-*` usadas × definidas; URLs das templates × rotas declaradas) mais leitura dirigida. **Os 8 estão fechados.** Detalhe: [`session-2026-08-19-frontend-handoff.md`](session-2026-08-19-frontend-handoff.md).
+> Varredura do painel sem escopo prévio, uma semana depois do pacote de 08-11. Método: três varreduras mecânicas (variáveis exigidas por template × contexto passado pelas rotas; classes `v4-*` usadas × definidas; URLs das templates × rotas declaradas) mais leitura dirigida. **Os 8 estão fechados.** Detalhe: [`session-2026-08-19-frontend-handoff.md`](../_archive/handoffs/session-2026-08-19-frontend-handoff.md).
 >
 > **O padrão que une os mais graves: cada um caía num ponto cego de um guard que existia e estava VERDE.** O guard do fragmento de toggle checava só a ausência de `hx-on`; o de caching assertava o header da resposta e nunca a cobertura do `?v=`; o de offset sticky citava uma página pelo nome. Guard que passa não é guard que cobre — a pergunta certa é "o que este guard NÃO olha".
 
@@ -441,7 +441,7 @@
 
 ## Investigação de backend 2026-08-19 (F109-F112)
 
-> Varredura do núcleo (tools MCP, executores Google/Meta, DB, auth, jobs, governança) no mesmo dia da investigação de frontend, e cinco dias depois da varredura ampla de 08-14/15. Método: varreduras AST **transitivas** sobre `src/`, mais leitura dirigida e verificação empírica na fonte instalada das libs. **Os 4 estão fechados.** Detalhe: [`session-2026-08-19-backend-handoff.md`](session-2026-08-19-backend-handoff.md).
+> Varredura do núcleo (tools MCP, executores Google/Meta, DB, auth, jobs, governança) no mesmo dia da investigação de frontend, e cinco dias depois da varredura ampla de 08-14/15. Método: varreduras AST **transitivas** sobre `src/`, mais leitura dirigida e verificação empírica na fonte instalada das libs. **Os 4 estão fechados.** Detalhe: [`session-2026-08-19-backend-handoff.md`](../_archive/handoffs/session-2026-08-19-backend-handoff.md).
 >
 > **O achado que organiza a sessão: o F86 foi fechado sem guard nenhum.** `run_blocking` não aparecia em lugar algum de `tests/` — nem guard estrutural, nem teste — e três caminhos que atendem request ficaram bloqueando o event loop por cinco dias. É a contraparte exata da lição da investigação de frontend do mesmo dia ("guard verde não é cobertura"): aqui não havia nem guard verde.
 
@@ -468,7 +468,7 @@
 
 ## Investigação de infra e CI 2026-08-19 (F113-F117)
 
-> Terceira varredura do dia (depois de frontend e backend), agora nos workflows, no deploy, nos Cloud Run Jobs, nos scripts de gate e nas migrations. **Os 5 estão fechados.** Detalhe: [`session-2026-08-19-infra-ci-handoff.md`](session-2026-08-19-infra-ci-handoff.md).
+> Terceira varredura do dia (depois de frontend e backend), agora nos workflows, no deploy, nos Cloud Run Jobs, nos scripts de gate e nas migrations. **Os 5 estão fechados.** Detalhe: [`session-2026-08-19-infra-ci-handoff.md`](../_archive/handoffs/session-2026-08-19-infra-ci-handoff.md).
 >
 > **Limite declarado da investigação:** o `gcloud` estava sem credencial válida (`Reauthentication failed. cannot prompt during non-interactive execution`), então a auditoria foi da **configuração declarativa do repo**. Estado vivo — env real dos jobs, crons do Scheduler, alert policies, IAM — **não foi verificado**. Os fixes foram desenhados para serem seguros sem esse conhecimento (ver F114).
 
@@ -669,7 +669,7 @@ Vão para spec própria, revisada antes de virar sprint. Registrados aqui só pa
   🔴 **Guarda obrigatória de desenho: `ad_schedule` é CONJUNTO, não incremento.** O criterion define as janelas em que a campanha serve, e **o que fica fora para de servir** — mesma semântica de "substitui a lista inteira" do `update_rsa`. Quem adicionar "seg–sex 07–17" achando que soma a uma grade existente **desliga a conta no resto**.
   🔴 **Com orçamento compartilhado, desligar janela não economiza — REALOCA.** A verba volta no mesmo dia pelas janelas que seguem servindo, então o efeito real do corte proposto seria mover gasto de CPA R$ 18,59 para CPA R$ 23,59: não é neutro, é negativo. **Não é hipótese nesta conta** — `campaign_budget.explicitly_shared` é `true` nos dois orçamentos ENABLED, e o ativo é o portfólio JPA+CAB a R$ 310/dia (verificado 02/09). O campo é válido em GAQL e barato de ler, então o dry-run deve **detectar e declarar** isso em vez de deixar o operador supor economia.
   **Conjunta dia × hora deliberadamente NÃO levantada:** a copy nova entrou em 02/09 e o portfólio acabou de sair do re-learning, então medir agora entregaria dado velho para a decisão. As marginais acima bastam para desenhar o formato; a conjunta se levanta na hora de codar, com a janela madura. **Consequência operacional que sai do escopo desta seção e é do campo:** o ajuste agendado para depois de 16/09 precisa ser reavaliado antes de executado — a tool que o faria continua justificada, o corte específico não.
-- **Sem tool de leitura de assets — decidido: todos os `field_type`, precedência calculada.** `get_assets(customer_id, field_type?)` devolvendo `customer_asset` + `campaign_asset` + `ad_group_asset` juntos. **Todos os tipos**, com `field_type` opcional e sem filtro no default: limitar à família text-extension que o `create_and_link_assets` cobre repetiria o erro do checklist de 02/09, que previu uma camada quando existiam duas. ~~**Precedência como campo calculado** (`effective`, `shadowed_by`)~~ — **caiu na probe de 02/09.** O conceito não existe na API: `AssetLinkPrimaryStatusReason` tem seis valores e nenhum é de precedência, e dois vínculos coexistentes do mesmo asset voltam ambos `primary_status: ELIGIBLE`. O campo certo já existe e é melhor — `primary_status` + `primary_status_reasons`, veredito do próprio Google, que ainda cobre reprovação, revisão pendente e `LIMITED`. Detalhe na spec [`2026-09-02-ad-schedule-e-assets-design.md`](../superpowers/specs/2026-09-02-ad-schedule-e-assets-design.md) §5.1. **`status` por linha e sem filtrar status no default.** **Bônus pedido:** marcar assets **sem nenhum vínculo** (órfãos) — inventário sem gesto destrutivo.
+- **Sem tool de leitura de assets — decidido: todos os `field_type`, precedência calculada.** `get_assets(customer_id, field_type?)` devolvendo `customer_asset` + `campaign_asset` + `ad_group_asset` juntos. **Todos os tipos**, com `field_type` opcional e sem filtro no default: limitar à família text-extension que o `create_and_link_assets` cobre repetiria o erro do checklist de 02/09, que previu uma camada quando existiam duas. ~~**Precedência como campo calculado** (`effective`, `shadowed_by`)~~ — **caiu na probe de 02/09.** O conceito não existe na API: `AssetLinkPrimaryStatusReason` tem seis valores e nenhum é de precedência, e dois vínculos coexistentes do mesmo asset voltam ambos `primary_status: ELIGIBLE`. O campo certo já existe e é melhor — `primary_status` + `primary_status_reasons`, veredito do próprio Google, que ainda cobre reprovação, revisão pendente e `LIMITED`. Detalhe na spec [`2026-09-02-ad-schedule-e-assets-design.md`](../_archive/specs/2026-09-02-ad-schedule-e-assets-design.md) §5.1. **`status` por linha e sem filtrar status no default.** **Bônus pedido:** marcar assets **sem nenhum vínculo** (órfãos) — inventário sem gesto destrutivo.
 - **Sem tool de remover/desvincular asset — decidido: só unlink.** `create_and_link_assets` existe, o inverso não; custou duas idas à UI. `remove_audience.py` é o formato precedente. **Não remover a entidade `Asset`:** o que serve na SERP é o vínculo, asset órfão é inerte, e remover é irreversível numa entidade que pode estar linkada onde a varredura não alcançou — o registro tem caso de "órfão" que era ativo vivo. Com órfãos visíveis no `get_assets`, o lixo fica auditável sem tool destrutiva.
   🔴 **Restrição obrigatória no smoke desta tool — só a asserção por id + status é incondicional.** Confirmar remoção **contando linhas não distingue os dois estados**, e a reprodução de campo mostra por quê: o vínculo removido **continua na tabela** com `status: REMOVED`, então a lista completa tem o mesmo tamanho antes e depois. Medido na `786-223-0676` em 02/09 (assets `144113768040` e `144113768046`, CALLOUT), comparando o momento em que a remoção **falhou** com o momento em que **funcionou**:
 
@@ -1787,7 +1787,7 @@ que pede migration.
 
 > **Como apareceu:** na varredura de 8 revisores paralelos sobre todo o repositorio (05/09,
 > 86 achados brutos — 9 Criticos, 33 Importantes, 44 Menores), registrada em
-> [`2026-09-06-correcoes-varredura-design.md`](../superpowers/specs/2026-09-06-correcoes-varredura-design.md).
+> [`2026-09-06-correcoes-varredura-design.md`](../_archive/specs/2026-09-06-correcoes-varredura-design.md).
 > Tres familias explicavam a maioria dos 86; esta e a Familia 1.
 
 **O padrao, nao a lista de sintomas.** O projeto tinha 17 guards estruturais — testes que
@@ -2027,9 +2027,9 @@ tambem tem motivo, so que mais tecnico que "e a mesma familia de PR":**
 
 > **Como apareceu:** registrado como C3 no PR 1 da varredura de 8 revisores paralelos sobre
 > todo o repositório (05/09), em
-> [`2026-09-06-correcoes-varredura-design.md`](../superpowers/specs/2026-09-06-correcoes-varredura-design.md).
+> [`2026-09-06-correcoes-varredura-design.md`](../_archive/specs/2026-09-06-correcoes-varredura-design.md).
 > Plano e ledger de execução em
-> [`2026-09-06-pr1-audiencia-de-token.md`](../superpowers/plans/2026-09-06-pr1-audiencia-de-token.md),
+> [`2026-09-06-pr1-audiencia-de-token.md`](../_archive/plans/2026-09-06-pr1-audiencia-de-token.md),
 > branch `pr1/audiencia-de-token`.
 
 **O projeto assina quatro tipos de token com a mesma chave (`settings.session_signing_key`)
@@ -2197,9 +2197,9 @@ o prazo em si não foi revisto; merece conversa própria com o Wellington.
 ## F157 (HIGH, CORRIGIDO em 2026-09-06/07) — a ausência contava por execução, não por dia
 
 > **Como apareceu:** planejado como PR 2 da varredura de 8 revisores (spec
-> [`2026-09-06-correcoes-varredura-design.md`](../superpowers/specs/2026-09-06-correcoes-varredura-design.md),
+> [`2026-09-06-correcoes-varredura-design.md`](../_archive/specs/2026-09-06-correcoes-varredura-design.md),
 > seção 4; plano completo em
-> [`2026-09-06-pr2-reconciliacao-idempotente.md`](../superpowers/plans/2026-09-06-pr2-reconciliacao-idempotente.md)),
+> [`2026-09-06-pr2-reconciliacao-idempotente.md`](../_archive/plans/2026-09-06-pr2-reconciliacao-idempotente.md)),
 > não achado em incidente. O segundo defeito abaixo — o mais grave dos dois —
 > só apareceu porque a revisão da Task 3 mediu contra Postgres real em vez de
 > aceitar que "o contador ficou idempotente" implicava "a operação ficou
@@ -2352,9 +2352,9 @@ registrados nos respectivos `task-N-review.md`.
 ## F158 (HIGH, CORRIGIDO em 2026-09-07) — o orçamento mudava por duas portas com governança oposta
 
 > **Como apareceu:** planejado como PR 3 da varredura de 8 revisores (spec
-> [`2026-09-06-correcoes-varredura-design.md`](../superpowers/specs/2026-09-06-correcoes-varredura-design.md),
+> [`2026-09-06-correcoes-varredura-design.md`](../_archive/specs/2026-09-06-correcoes-varredura-design.md),
 > seção 4; plano completo em
-> [`2026-09-07-pr3-governanca-de-orcamento.md`](../superpowers/plans/2026-09-07-pr3-governanca-de-orcamento.md)),
+> [`2026-09-07-pr3-governanca-de-orcamento.md`](../_archive/plans/2026-09-07-pr3-governanca-de-orcamento.md)),
 > não achado em incidente — mas a probe que abriu a Task 2 mediu o efeito vivo
 > numa conta real antes de qualquer linha de código mudar.
 
@@ -3469,7 +3469,7 @@ Google recebe a mutação em modo atômico e recusa o lote.
 2026-05-11 (`f156d99`); o `update_rsa` shippou em 13/05 (sprint 3b.18) sem usá-la.
 Não há comentário no código, nota de sprint nem spec que mencione atomicidade
 para RSA — o 3b.18 registra só "Batch up to 5 updates". A correção R1-I1
-(setembro, [plano PR3](../superpowers/plans/2026-09-07-pr3-governanca-de-orcamento.md))
+(setembro, [plano PR3](../_archive/plans/2026-09-07-pr3-governanca-de-orcamento.md))
 foi de RELATO — "`apply_change` descarta `partial_failures` no caminho default, 5
 tools perdem o motivo de cada falha" — e consertou quem já tinha a flag; nunca
 revisitou **quem deveria ter**.
@@ -4793,8 +4793,8 @@ Classe A de uma reclassificação feita no mesmo dia: os achados não se agrupav
 sintoma — a divisão original era "respostas / infra / guards" — e sim por **forma de
 defeito**. Todo membro abaixo tem a mesma: *um retorno que responde "teve efeito?" é
 descartado, e a ausência que sobra é lida como zero.* Spec:
-[`2026-09-21-terceiro-estado-nao-medido-design.md`](../superpowers/specs/2026-09-21-terceiro-estado-nao-medido-design.md);
-plano: [`2026-09-21-terceiro-estado-nao-medido.md`](../superpowers/plans/2026-09-21-terceiro-estado-nao-medido.md).
+[`2026-09-21-terceiro-estado-nao-medido-design.md`](../_archive/specs/2026-09-21-terceiro-estado-nao-medido-design.md);
+plano: [`2026-09-21-terceiro-estado-nao-medido.md`](../_archive/plans/2026-09-21-terceiro-estado-nao-medido.md).
 Um dos seis membros já tinha entrada própria — **F179**, agora fechada e apontando pra cá.
 
 ⚠️ **Nota de numeração:** a entrada do F190 chama de "sub-projeto 2 da mesma varredura" um
@@ -5210,8 +5210,8 @@ via. Nove commits, um por task (`e134a3c`, `951dfa9`, `2934cce`, `1b15e6b`→`be
 ## F192 (MED, ✅ CORRIGIDO 2026-09-22) — o pedido era "eficiência de contexto"; a dor real era 24 bytes de folga, e o scan que garantiu a separação tinha um ponto cego por construção: regra sem âncora é invisível
 
 **Origem:** pedido para "ajustar a documentação para eficiência máxima de contexto". Spec:
-[`2026-09-22-orcamento-do-claude-md-design.md`](../superpowers/specs/2026-09-22-orcamento-do-claude-md-design.md);
-plano: [`2026-09-22-orcamento-do-claude-md.md`](../superpowers/plans/2026-09-22-orcamento-do-claude-md.md);
+[`2026-09-22-orcamento-do-claude-md-design.md`](../_archive/specs/2026-09-22-orcamento-do-claude-md-design.md);
+plano: [`2026-09-22-orcamento-do-claude-md.md`](../_archive/plans/2026-09-22-orcamento-do-claude-md.md);
 ledger de execução (8 tasks, 11 rulings do coordenador):
 `.superpowers/sdd/2026-09-22-orcamento-do-claude-md/progress.md`.
 
@@ -5407,7 +5407,7 @@ resolvem). Ambos rodam no `check_pre_push.py`.
 ## F193 (HIGH, ✅ CORRIGIDO 2026-09-26) — respostas Google que afirmavam mais do que o recorte que mediram
 
 **Origem:** varredura de 21/09, relatórios 01 e 02 (índice: [índice](../_archive/varredura-2026-09-21/README.md)).
-Spec: [`2026-09-25-respostas-google-dizem-o-recorte-design.md`](../superpowers/specs/2026-09-25-respostas-google-dizem-o-recorte-design.md); plano: [`2026-09-26-respostas-google-dizem-o-recorte.md`](../superpowers/plans/2026-09-26-respostas-google-dizem-o-recorte.md).
+Spec: [`2026-09-25-respostas-google-dizem-o-recorte-design.md`](../_archive/specs/2026-09-25-respostas-google-dizem-o-recorte-design.md); plano: [`2026-09-26-respostas-google-dizem-o-recorte.md`](../_archive/plans/2026-09-26-respostas-google-dizem-o-recorte.md).
 
 **A classe.** A do F187 — resumo como superfície de decisão, detalhe como verdade —,
 dentro da resposta das tools: filtro aplicado que a resposta não dizia; razão sem
@@ -5494,7 +5494,7 @@ a leitura nos dois casos.
 ## F194 (HIGH, ✅ CORRIGIDO 2026-09-27) — métricas Meta que afirmavam mais do que a Meta mediu
 
 **Origem:** varredura de 21/09, relatórios 01 (item 4) e 03 (itens 4 a 7, 9 e 10) — [índice](../_archive/varredura-2026-09-21/README.md); o F190 deixou estes itens explicitamente para cá.
-Spec: [`2026-09-26-metricas-meta-dizem-o-que-mediram-design.md`](../superpowers/specs/2026-09-26-metricas-meta-dizem-o-que-mediram-design.md); plano: [`2026-09-26-metricas-meta-dizem-o-que-mediram.md`](../superpowers/plans/2026-09-26-metricas-meta-dizem-o-que-mediram.md).
+Spec: [`2026-09-26-metricas-meta-dizem-o-que-mediram-design.md`](../_archive/specs/2026-09-26-metricas-meta-dizem-o-que-mediram-design.md); plano: [`2026-09-26-metricas-meta-dizem-o-que-mediram.md`](../_archive/plans/2026-09-26-metricas-meta-dizem-o-que-mediram.md).
 
 **A classe.** A do F191 e do F193 — uma resposta que afirma mais do que mediu —, agora no
 lado Meta, e com a forma do F189/F190: os mesmos campos saíam por **duas regras**, uma em
@@ -5841,8 +5841,8 @@ fica contado duas vezes). Defeito anterior a este, frente própria.
 > (teto de `days`) já tinha fechado em 25/09.
 
 **✅ O que foi feito** ([#133](https://github.com/BadWolf1509/v4-ads-mcp/pull/133), revisão
-`00139`; [spec](../superpowers/specs/2026-09-28-infra-e-guards-design.md) e
-[plano](../superpowers/plans/2026-09-28-infra-e-guards.md)):
+`00139`; [spec](../_archive/specs/2026-09-28-infra-e-guards-design.md) e
+[plano](../_archive/plans/2026-09-28-infra-e-guards.md)):
 
 - **05#2 e sub-projeto 4 — conexão testada na retirada do pool.** `setup` = `SELECT 1`, e o
   `PoolValidado` repete a **retirada** uma vez em conexão derrubada — antes de o chamador
