@@ -134,13 +134,17 @@ _TETO_LINHAS_EXPORT = 50_000
 async def export_csv_rows(
     conn: asyncpg.Connection,
     *,
-    manager_id: UUID | None = None,
+    manager_id: UUID | None,
     customer_id: str | None = None,
     action_type: str | None = None,
     status: str | None = None,
     days: int = 7,
 ) -> AsyncIterator[str]:
-    """Yield CSV lines (header + data) for streaming response."""
+    """Yield CSV lines (header + data) for streaming response.
+
+    `manager_id` nao tem default: `None` e o export de TODOS os gestores (admin), e
+    esse escopo so vale escrito por quem chama, nunca por esquecimento.
+    """
     # All WHERE clauses qualified with the `al` alias: the SELECT joins `managers m`,
     # which ALSO has a `status` column → unqualified `status` is ambiguous (asyncpg
     # AmbiguousColumnError). Qualify everything for safety/consistency with the SELECT.

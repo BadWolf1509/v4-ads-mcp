@@ -72,7 +72,7 @@ async def test_falha_no_meio_marca_o_arquivo() -> None:
     conn = _ConnFake(_CursorQueExplode(ate=3))
     linhas: list[str] = []
     with pytest.raises(ConnectionError):
-        async for linha in audit_log.export_csv_rows(conn, days=7):
+        async for linha in audit_log.export_csv_rows(conn, manager_id=None, days=7):
             linhas.append(linha)
     texto = "".join(linhas)
     assert MARCA_RUIM in texto, (
@@ -121,6 +121,8 @@ async def test_caminho_feliz_marca_completude() -> None:
                 }
 
     conn = _ConnFake(_CursorOk())
-    texto = "".join([linha async for linha in audit_log.export_csv_rows(conn, days=7)])
+    texto = "".join(
+        [linha async for linha in audit_log.export_csv_rows(conn, manager_id=None, days=7)]
+    )
     assert f"{MARCA_OK}, 2 linhas" in texto
     assert MARCA_RUIM not in texto
