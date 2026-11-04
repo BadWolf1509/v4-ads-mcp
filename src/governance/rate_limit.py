@@ -45,7 +45,7 @@ def _today() -> datetime:
 
 async def before_call(
     conn: asyncpg.Connection,
-    developer_token_id: str,
+    chave: str,
     *,
     estimated_ops: int,
     daily_limit: int = DAILY_QUOTA_BASIC,
@@ -61,14 +61,14 @@ async def before_call(
     today = _today().date()
 
     async with conn.transaction():
-        # Lock the row for this dev_token+day. ON CONFLICT does the upsert.
+        # Trava a linha desta chave+dia. ON CONFLICT does the upsert.
         await conn.execute(
             """
             INSERT INTO rate_counters (developer_token_id, date, operations_used, last_alert_pct)
             VALUES ($1, $2, 0, 0)
             ON CONFLICT (developer_token_id, date) DO NOTHING
             """,
-            developer_token_id,
+            chave,
             today,
         )
         row = await conn.fetchrow(
@@ -78,7 +78,7 @@ async def before_call(
             WHERE developer_token_id = $1 AND date = $2
             FOR UPDATE
             """,
-            developer_token_id,
+            chave,
             today,
         )
         assert row is not None
@@ -97,7 +97,7 @@ async def before_call(
         if new_pct >= WARN_THRESHOLD_PCT and last_alert < WARN_THRESHOLD_PCT:
             log.warning(
                 "rate_limit_80pct_reached",
-                developer_token_id=developer_token_id,
+                chave=chave,
                 used=new_used,
                 limit=daily_limit,
                 pct=new_pct,
@@ -110,7 +110,7 @@ async def before_call(
             SET operations_used = $3, last_alert_pct = $4
             WHERE developer_token_id = $1 AND date = $2
             """,
-            developer_token_id,
+            chave,
             today,
             new_used,
             new_alert,
@@ -120,7 +120,7 @@ async def before_call(
 
 async def record_actual(
     conn: asyncpg.Connection,
-    developer_token_id: str,
+    chave: str,
     *,
     dia: date,
     actual_ops: int,
@@ -140,7 +140,7 @@ async def record_actual(
         SET operations_used = GREATEST(0, operations_used + $3)
         WHERE developer_token_id = $1 AND date = $2
         """,
-        developer_token_id,
+        chave,
         dia,
         delta,
     )
@@ -148,7 +148,7 @@ async def record_actual(
 
 async def get_today_usage(
     conn: asyncpg.Connection,
-    developer_token_id: str,
+    chave: str,
     *,
     daily_limit: int = DAILY_QUOTA_BASIC,
 ) -> Usage:
@@ -159,7 +159,7 @@ async def get_today_usage(
         SELECT operations_used FROM rate_counters
         WHERE developer_token_id = $1 AND date = $2
         """,
-        developer_token_id,
+        chave,
         today,
     )
     used = int(row["operations_used"]) if row else 0

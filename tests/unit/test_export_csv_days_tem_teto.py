@@ -16,10 +16,9 @@ isso a recusa afirma o `loc` do erro, nao so o status.
 """
 
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -27,6 +26,7 @@ from httpx import ASGITransport, AsyncClient
 
 from src.db.repositories.managers import Manager
 from src.web.deps import CurrentUser, current_manager
+from tests.unit.fixtures.fake_pool import FakePool
 
 ROTAS = ["/audit/export.csv", "/admin/audit/export.csv"]
 
@@ -70,12 +70,6 @@ async def test_days_fora_do_teto_e_recusado(
     assert [e["loc"] for e in resp.json()["detail"]] == [["query", "days"]]
 
 
-class _Pool:
-    @asynccontextmanager
-    async def acquire(self) -> AsyncIterator[Any]:
-        yield MagicMock()
-
-
 @pytest.mark.parametrize("rota", ROTAS)
 async def test_days_no_teto_chega_ao_export(gestor_client: AsyncClient, rota: str) -> None:
     """Controle: o teto nao pode recusar o proprio teto, e o valor tem que CHEGAR
@@ -87,7 +81,7 @@ async def test_days_no_teto_chega_ao_export(gestor_client: AsyncClient, rota: st
         yield "occurred_at,operation\n"
 
     with (
-        patch("src.db.connection.get_pool", return_value=_Pool()),
+        patch("src.db.connection.get_pool", return_value=FakePool()),
         patch("src.db.repositories.audit_log.export_csv_rows", _linhas),
     ):
         resp = await gestor_client.get(rota, params={"days": 365})

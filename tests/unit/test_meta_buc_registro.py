@@ -15,6 +15,7 @@ import pytest
 from structlog.testing import capture_logs
 
 from src.governance import rate_limit
+from tests.unit.fixtures.fake_pool import FakePool
 
 
 class _FakeTransacao:
@@ -30,23 +31,10 @@ class _FakeConn:
         return _FakeTransacao()
 
 
-class _FakeAcquire:
-    async def __aenter__(self) -> object:
-        return _FakeConn()
-
-    async def __aexit__(self, *exc: object) -> None:
-        return None
-
-
-class _FakePool:
-    def acquire(self) -> _FakeAcquire:
-        return _FakeAcquire()
-
-
 async def _registrar(**kwargs: Any) -> tuple[AsyncMock, AsyncMock, list[dict[str, Any]]]:
     incrementa, atualiza = AsyncMock(), AsyncMock()
     with (
-        patch("src.db.connection.get_pool", return_value=_FakePool()),
+        patch("src.db.connection.get_pool", return_value=FakePool(_FakeConn())),
         patch("src.db.repositories.meta_rate_counters.increment_calls", incrementa),
         patch("src.db.repositories.meta_rate_counters.update_throttle", atualiza),
         capture_logs() as logs,

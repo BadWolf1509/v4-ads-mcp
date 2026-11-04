@@ -29,6 +29,7 @@ from src.auth import oauth
 from src.auth.oauth_state import STATE_TTL_SECONDS, sign_state, verify_state
 from src.auth.panel_session import PANEL_SESSION_COOKIE_NAME, verify_panel_session
 from src.config import get_settings
+from tests.unit.fixtures.fake_pool import FakePool
 
 _NONCE_COOKIE = "v4_oauth_nonce"
 _EMAIL = "gestor@v4company.com"
@@ -40,19 +41,6 @@ class _Banco:
 
     gestor_id: UUID = field(default_factory=uuid4)
     conexoes: list[dict[str, Any]] = field(default_factory=list)
-
-
-class _Conn:
-    async def __aenter__(self) -> _Conn:
-        return self
-
-    async def __aexit__(self, *_exc: object) -> None:
-        return None
-
-
-class _Pool:
-    def acquire(self) -> _Conn:
-        return _Conn()
 
 
 @pytest.fixture
@@ -74,7 +62,7 @@ def banco(monkeypatch: pytest.MonkeyPatch) -> _Banco:
     async def _upsert(_c: Any, **kw: Any) -> None:
         b.conexoes.append(kw)
 
-    monkeypatch.setattr(oauth.connection, "get_pool", lambda: _Pool())
+    monkeypatch.setattr(oauth.connection, "get_pool", lambda: FakePool())
     monkeypatch.setattr(oauth.managers, "get_by_id", _get_by_id)
     monkeypatch.setattr(oauth.managers, "get_by_email", _get_by_email)
     monkeypatch.setattr(oauth.managers, "count_all", _count_all)

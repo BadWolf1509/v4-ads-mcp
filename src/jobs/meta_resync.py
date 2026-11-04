@@ -27,7 +27,8 @@ from src.config import get_settings
 from src.db import connection
 from src.db.repositories import manager_meta_account_access, meta_ad_accounts
 from src.governance.bookkeeping import best_effort
-from src.jobs._audit import record_access_revocation, record_job_crash, record_job_run
+from src.jobs._audit import record_access_revocation, record_job_run
+from src.jobs._runner import executar_job
 from src.logging import configure_logging
 from src.meta_ads.alcance import sondar_alcance
 from src.meta_ads.partnership import fetch_partnership
@@ -238,31 +239,37 @@ async def run() -> int:
     # métrica log-based por severidade. O lado que faltava era o que revoga
     # de verdade em produção desde 05/09.
     configure_logging(level=settings.log_level, json_output=settings.app_env != "development")
-    await connection.init_pool(settings.database_url)
-    try:
-        # A conexão nasce AQUI, no topo do job, e não dentro de
-        # `reconcile_meta`: quem chama é dono da unidade de trabalho (espelha
-        # `account_resync.run()`). Assim nenhum call-site futuro abre uma
-        # segunda transação por baixo de uma que já esteja aberta.
-        pool = connection.get_pool()
-        async with pool.acquire() as conn:
-            plano = await reconcile_meta(conn)
-        print(
-            "OK: Meta reconcile — "
-            f"add={len(plano.to_add)} bump={len(plano.to_bump)} "
-            f"remove={len(plano.to_remove)} reset={len(plano.to_reset)} "
-            f"unreachable={len(plano.unreachable)} blocked={plano.blocked_reason}"
-        )
-        # Bloqueio auditado como erro precisa tambem falhar a execucao, ou a
-        # policy de Cloud Run Job failed (a unica que existe) nunca o ve.
-        return 1 if plano.blocked_reason is not None else 0
-    except Exception as e:
-        # F93: sem isto, um crash aqui nao deixa NENHUMA linha no audit — o job
-        # some da trilha e a quebra so aparece em quem for ler o Cloud Run.
-        await record_job_crash(operation="meta_reconcile", platform="meta", exc=e)
-        raise
-    finally:
-        await connection.close_pool()
+    return await executar_job(
+        operation="meta_reconcile",
+        platform="meta",
+        database_url=settings.database_url,
+        corpo=_corpo,
+    )
+
+
+async def _corpo() -> int:
+    """Uma reconciliação Meta; exit 1 em bloqueio.
+
+    Crash aqui é o F93: `executar_job` grava a linha `error` no audit e
+    re-levanta — sem isso o job sumiria da trilha e a quebra só apareceria em
+    quem fosse ler o Cloud Run.
+    """
+    # A conexão nasce AQUI, no topo do job, e não dentro de
+    # `reconcile_meta`: quem chama é dono da unidade de trabalho (espelha
+    # `account_resync.run()`). Assim nenhum call-site futuro abre uma
+    # segunda transação por baixo de uma que já esteja aberta.
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        plano = await reconcile_meta(conn)
+    print(
+        "OK: Meta reconcile — "
+        f"add={len(plano.to_add)} bump={len(plano.to_bump)} "
+        f"remove={len(plano.to_remove)} reset={len(plano.to_reset)} "
+        f"unreachable={len(plano.unreachable)} blocked={plano.blocked_reason}"
+    )
+    # Bloqueio auditado como erro precisa tambem falhar a execucao, ou a
+    # policy de Cloud Run Job failed (a unica que existe) nunca o ve.
+    return 1 if plano.blocked_reason is not None else 0
 
 
 def main() -> int:

@@ -8,28 +8,16 @@ que a variação compara um dia parcial com dias cheios.
 from contextlib import ExitStack
 from datetime import date
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
 
 from src.mcp.tools.meta_get_account_overview import meta_get_account_overview
+from tests.unit.fixtures.fake_pool import FakePool
 
 _MODULO = "src.mcp.tools.meta_get_account_overview"
 _HOJE = date(2026, 9, 27)
-
-
-class _Acquire:
-    async def __aenter__(self) -> Any:
-        return MagicMock()
-
-    async def __aexit__(self, *exc: object) -> bool:
-        return False
-
-
-class _Pool:
-    def acquire(self) -> _Acquire:
-        return _Acquire()
 
 
 class _Conta:
@@ -40,7 +28,7 @@ class _Conta:
 
 async def _overview(**janela: str) -> dict[str, Any]:
     with ExitStack() as pilha:
-        pilha.enter_context(patch(f"{_MODULO}.connection.get_pool", return_value=_Pool()))
+        pilha.enter_context(patch(f"{_MODULO}.connection.get_pool", return_value=FakePool()))
         pilha.enter_context(
             patch(f"{_MODULO}.meta_ad_accounts.get_by_id", AsyncMock(return_value=_Conta()))
         )

@@ -40,6 +40,7 @@ import pytest
 
 from src.db.repositories import google_ads_accounts
 from src.meta_ads.reconcile import Plan
+from tests.unit.fixtures.fake_pool import FakePool
 
 
 def _conn(update_result: str = "UPDATE 25") -> MagicMock:
@@ -115,9 +116,9 @@ async def test_job_com_inventario_vazio_pula_desativacao_e_audita_erro() -> None
     from types import SimpleNamespace
 
     from src.jobs import account_resync
-    from tests.unit.test_account_resync import _base_patches, _fake_pool, _reconcile_result
+    from tests.unit.test_account_resync import _base_patches, _reconcile_result
 
-    pool = _fake_pool(MagicMock())
+    pool = FakePool(MagicMock())
     oc = SimpleNamespace(refresh_token_enc=b"enc")
     # O que `reconcile_google` de fato devolve pra complete=False (build_plan
     # recusa to_remove e preenche blocked_reason) — não é um valor arbitrário.

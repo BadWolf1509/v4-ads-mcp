@@ -14,27 +14,15 @@ test_backup_snapshot_and_stream.py.
 from __future__ import annotations
 
 import io
-from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from freezegun import freeze_time
 
 from src.jobs import backup
+from tests.unit.fixtures.fake_pool import FakePool
 
 _M = "src.jobs.backup"
-
-
-def _fake_pool(conn: MagicMock) -> MagicMock:
-    """Pool mock cujo acquire() é um async context manager que devolve `conn`."""
-    pool = MagicMock()
-
-    @asynccontextmanager
-    async def _acquire():
-        yield conn
-
-    pool.acquire = _acquire
-    return pool
 
 
 def _fake_conn(tables: list[str]) -> MagicMock:
@@ -114,7 +102,7 @@ def _fake_storage_client() -> tuple[MagicMock, dict[str, MagicMock]]:
 async def test_run_uploads_one_blob_per_table_and_records_audit() -> None:
     tables = ["_migrations", "audit_log", "managers"]
     conn = _fake_conn(tables)
-    pool = _fake_pool(conn)
+    pool = FakePool(conn)
     client, blobs = _fake_storage_client()
     mocks = _base_patches(pool=pool, storage_client=client)
 
@@ -159,7 +147,7 @@ async def test_run_uploads_one_blob_per_table_and_records_audit() -> None:
 async def test_run_discovers_tables_via_information_schema() -> None:
     """A query de descoberta filtra public + BASE TABLE e ordena por nome."""
     conn = _fake_conn(["zzz_table", "aaa_table"])
-    pool = _fake_pool(conn)
+    pool = FakePool(conn)
     client, _ = _fake_storage_client()
     mocks = _base_patches(pool=pool, storage_client=client)
 
@@ -196,7 +184,7 @@ async def test_run_continues_after_one_table_fails_and_returns_1() -> None:
         return await orig_copy(query, output=output, format=format, header=header, **kw)
 
     conn.copy_from_query = AsyncMock(side_effect=_copy_with_failure)
-    pool = _fake_pool(conn)
+    pool = FakePool(conn)
     client, blobs = _fake_storage_client()
     mocks = _base_patches(pool=pool, storage_client=client)
 
@@ -232,7 +220,7 @@ async def test_run_closes_pool_even_when_discovery_fails() -> None:
     """close_pool() no finally roda mesmo se a descoberta de tabelas explodir."""
     conn = MagicMock()
     conn.fetch = AsyncMock(side_effect=RuntimeError("db down"))
-    pool = _fake_pool(conn)
+    pool = FakePool(conn)
     client, _ = _fake_storage_client()
     mocks = _base_patches(pool=pool, storage_client=client)
 

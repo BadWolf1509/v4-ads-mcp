@@ -1,30 +1,18 @@
 """A negação de acesso Meta deve emitir log.warning (espelha o gate Google)."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 from structlog.testing import capture_logs
 
 from src.meta_ads import reports as meta_reports
-
-
-class _FakeAcquire:
-    async def __aenter__(self) -> MagicMock:
-        return MagicMock()
-
-    async def __aexit__(self, *exc: object) -> bool:
-        return False
-
-
-class _FakePool:
-    def acquire(self) -> _FakeAcquire:
-        return _FakeAcquire()
+from tests.unit.fixtures.fake_pool import FakePool
 
 
 @pytest.mark.asyncio
 async def test_meta_denial_emits_warning_log(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(meta_reports.connection, "get_pool", lambda: _FakePool())
+    monkeypatch.setattr(meta_reports.connection, "get_pool", lambda: FakePool())
     monkeypatch.setattr(
         meta_reports.manager_meta_account_access,
         "can_manager_access",

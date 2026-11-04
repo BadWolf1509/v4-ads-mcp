@@ -93,6 +93,29 @@ Wellington em 31/10. **Não feito:** convite (ver Pendências).
 exclusivamente em `docs/` e markdown; `tests/` publica revisão. **Cheque a revisão servindo.**
 Contagens de tool e bucket vêm do registry (`import_all_tools()`), nunca de `grep` (F183).
 
+## Aguardando merge — varredura de refatoração de 03/11
+
+Plano [`2026-11-03-varredura-refatoracao.md`](../superpowers/plans/2026-11-03-varredura-refatoracao.md),
+executado em 03/11 no worktree `meta-onda-1`, em 8 branches **empilhadas** (cada uma parte da anterior;
+merge na ordem). Nada foi empurrado. Revisão final da branch inteira: 0 Critical, 0 Important.
+
+| Parte | Branch | O que entrega |
+|---|---|---|
+| A | `fix/bugs-varredura` (5) | os 3 bugs: audit duplicado em `run_recommendation_action`; `ValueError` acionável engolido pelo `_error_envelope`; tools Meta com `error` em vez de `denied` e vazando `str(exc)` |
+| B | `refactor/reserva-de-cota` (5) | reserva e reconcile de cota em `src/governance/reserva.py`, usados pelos 6 executores Google |
+| C | `refactor/limpezas-google` (2) | limpezas mecânicas; **C2 (import v24 em `recommendations.py`) estacionada**: o v25 traz 3 tipos de recomendação novos, e a whitelist é decisão sua |
+| D | `refactor/meta-colecao` (6) | leitura de coleção Meta num caminho só |
+| E | `refactor/sem-oauth-meta-pessoal` (3) | OAuth pessoal da Meta removido; `data-deletion-callback` mantido em módulo próprio |
+| F | `refactor/painel` (11) | acesso Google/Meta com um helper e um template por par, `pages.py`/`dashboard.py`, `templating.py` único, `https_url_for` |
+| G | `refactor/tools-mcp` (9) | snapshot dos schemas das 80 tools; janela de datas comum; domínio Google sem import de `src.mcp`; `emitir_preview` em 20 mutações; `apply_change` como despachante |
+| H | `refactor/jobs-e-testes` (10) | `executar_job` comum; `rate_limit` com parâmetro `chave`; seeds e fake pool compartilhados; trio Meta de performance parametrizado; guard do F83 para o reconcile |
+
+**Antes do merge:** a parte F pede `tests/browser` e clique em produção; as partes com query/transação,
+o full sweep no CI. **Pendente seu:** C2; 4 bugs pré-existentes dos jobs achados na H1 (falha do purge não
+muda o exit code nem audita; mensagem do purge enganosa; falha de audit no caminho "sem OAuth" vira crash;
+falha no `init_pool` não deixa audit); o pre-check `docker info` de `check_pre_push_full.py` com timeout de
+2 s, curto para o engine (2,5 a 3,5 s medidos). Os 3 bugs da parte A vão para o `/findings-add`.
+
 ## Decision gates abertos
 
 **As duas reconciliações revogam** — Meta desde 05/09, Google desde 26/09. **Para desligar:** `false`

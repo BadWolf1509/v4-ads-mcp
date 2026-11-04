@@ -6,11 +6,11 @@ import pytest
 
 from src.db.repositories import (
     manager_meta_account_access,
-    managers,
     meta_ad_accounts,
 )
 from src.mcp.context import McpRequestContext, set_current
 from src.mcp.tools._registry import get_tool, import_all_tools
+from tests.integration._seed import seed_manager
 
 
 @pytest.fixture(autouse=True)
@@ -27,8 +27,7 @@ def _tools_registered(db):
 async def test_full_pipeline(db):
     """Manager + ad accounts + grants → tool returns sorted list."""
     async with db.acquire() as conn:
-        mid = uuid4()
-        await managers.create(conn, manager_id=mid, email="t@v4.com", full_name=None)
+        mid = await seed_manager(conn)
         await meta_ad_accounts.upsert_many(
             conn,
             [
@@ -65,8 +64,7 @@ async def test_full_pipeline(db):
 async def test_account_status_label_translation(db):
     """account_status int → PT-BR label."""
     async with db.acquire() as conn:
-        mid = uuid4()
-        await managers.create(conn, manager_id=mid, email="l@v4.com", full_name=None)
+        mid = await seed_manager(conn)
         await meta_ad_accounts.upsert_many(
             conn,
             [
@@ -104,8 +102,7 @@ async def test_account_status_label_translation(db):
 async def test_empty_when_no_grants(db):
     """Manager sem grants → lista vazia."""
     async with db.acquire() as conn:
-        mid = uuid4()
-        await managers.create(conn, manager_id=mid, email="e@v4.com", full_name=None)
+        mid = await seed_manager(conn)
 
     set_current(McpRequestContext(manager_id=mid, session_id=uuid4()))
     tool = get_tool("meta_list_my_ad_accounts")
@@ -118,10 +115,8 @@ async def test_empty_when_no_grants(db):
 async def test_isolation_per_manager(db):
     """Manager A vê só act_a; Manager B vê só act_b."""
     async with db.acquire() as conn:
-        ma = uuid4()
-        mb = uuid4()
-        await managers.create(conn, manager_id=ma, email="a@v4.com", full_name=None)
-        await managers.create(conn, manager_id=mb, email="b@v4.com", full_name=None)
+        ma = await seed_manager(conn)
+        mb = await seed_manager(conn)
         await meta_ad_accounts.upsert_many(
             conn,
             [

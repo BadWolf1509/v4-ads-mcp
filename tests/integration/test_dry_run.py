@@ -5,7 +5,6 @@ from uuid import uuid4
 
 import pytest
 
-from src.db.repositories import managers, mcp_sessions
 from src.governance.dry_run import (
     ConsumeResult,
     InvalidTokenError,
@@ -13,6 +12,7 @@ from src.governance.dry_run import (
     create_pending,
     generate_token,
 )
+from tests.integration._seed import seed_manager_with_session
 
 
 @pytest.fixture
@@ -20,15 +20,8 @@ async def session_id(db):
     """Create a manager + session for the tests."""
     pool = db
     async with pool.acquire() as conn:
-        mid = uuid4()
-        await managers.create(conn, manager_id=mid, email="t@v4.com", full_name=None)
-        from src.auth.sessions import generate_session_token, hash_session_token
-
-        token = generate_session_token()
-        sess = await mcp_sessions.create(
-            conn, manager_id=mid, token_hash=hash_session_token(token), label="t"
-        )
-        yield sess.id, mid
+        mid, sid, _ = await seed_manager_with_session(conn)
+        yield sid, mid
 
 
 @pytest.mark.integration

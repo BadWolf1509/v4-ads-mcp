@@ -40,6 +40,7 @@ import pytest
 from freezegun import freeze_time
 
 from src.mcp.tools.import_offline_conversions import _validate_payload_shape
+from tests.unit.fixtures.fake_pool import FakePool
 from tests.unit.test_run_conversion_upload import (
     _capture_client_with_success_response,
     _common_patches,
@@ -189,7 +190,7 @@ async def _dry_run(monkeypatch_zone: str | None) -> tuple[dict[str, Any], dict[s
                 mod, "validate_conversion_action_for_upload", AsyncMock(return_value=None)
             ),
             patch.object(mod, "create_pending", _create_pending),
-            patch.object(mod.connection, "get_pool", lambda: _FakePool()),
+            patch.object(mod.connection, "get_pool", lambda: FakePool()),
         ):
             out = await mod.import_offline_conversions(
                 {
@@ -201,19 +202,6 @@ async def _dry_run(monkeypatch_zone: str | None) -> tuple[dict[str, Any], dict[s
     finally:
         clear_current()
     return out, (captured or None)
-
-
-class _FakeConn:
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *a):
-        return False
-
-
-class _FakePool:
-    def acquire(self):
-        return _FakeConn()
 
 
 @pytest.mark.asyncio
@@ -275,7 +263,7 @@ async def _dry_run_com(
                 mod, "validate_conversion_action_for_upload", AsyncMock(return_value=None)
             ),
             patch.object(mod, "create_pending", _create_pending),
-            patch("src.mcp.tools.import_offline_conversions.connection.get_pool", _FakePool),
+            patch("src.mcp.tools.import_offline_conversions.connection.get_pool", FakePool),
         ):
             out: dict[str, Any] = await mod.import_offline_conversions(
                 {

@@ -10,19 +10,11 @@ Meta (`manager_meta_account_access.bulk_grant`) — coberta em
 `test_manager_meta_account_access.py`, não aqui.
 """
 
-from uuid import UUID, uuid4
-
 import asyncpg
 import pytest
 
-from src.db.repositories import google_ads_accounts, manager_account_access, managers
-
-
-async def _make_manager(conn: asyncpg.Connection, email: str) -> UUID:
-    """Shared helper: create a manager row with a fresh id, return the id."""
-    mid = uuid4()
-    await managers.create(conn, manager_id=mid, email=email, full_name=None)
-    return mid
+from src.db.repositories import google_ads_accounts, manager_account_access
+from tests.integration._seed import seed_manager
 
 
 async def _make_account(conn: asyncpg.Connection, customer_id: str) -> None:
@@ -43,7 +35,7 @@ async def test_bulk_grant_promove_read_para_write(db) -> None:
     a parte cara.
     """
     async with db.acquire() as conn:
-        manager_id = await _make_manager(conn, "bulk@v4company.com")
+        manager_id = await seed_manager(conn, email="bulk@v4company.com")
         await _make_account(conn, "1111111111")
         await manager_account_access.grant(
             conn,
@@ -76,7 +68,7 @@ async def test_bulk_grant_promove_read_para_write(db) -> None:
 async def test_bulk_grant_continua_limpando_a_revogacao(db) -> None:
     """Contraprova: o comportamento que o ON CONFLICT ja tinha nao regride."""
     async with db.acquire() as conn:
-        manager_id = await _make_manager(conn, "bulk2@v4company.com")
+        manager_id = await seed_manager(conn, email="bulk2@v4company.com")
         await _make_account(conn, "2222222222")
         await manager_account_access.grant(
             conn,
@@ -119,7 +111,7 @@ async def test_grant_all_active_promove_read_para_write(db) -> None:
     passados via parâmetro (caso do `bulk_grant`).
     """
     async with db.acquire() as conn:
-        manager_id = await _make_manager(conn, "grant-all@v4company.com")
+        manager_id = await seed_manager(conn, email="grant-all@v4company.com")
         await _make_account(conn, "3333333333")
         await manager_account_access.grant(
             conn,
@@ -147,7 +139,7 @@ async def test_grant_all_active_promove_read_para_write(db) -> None:
 async def test_grant_all_active_continua_limpando_a_revogacao(db) -> None:
     """Contraprova: o comportamento que o ON CONFLICT já tinha não regride."""
     async with db.acquire() as conn:
-        manager_id = await _make_manager(conn, "grant-all2@v4company.com")
+        manager_id = await seed_manager(conn, email="grant-all2@v4company.com")
         await _make_account(conn, "4444444444")
         await manager_account_access.grant(
             conn,

@@ -27,6 +27,7 @@ import pytest
 from src.db import connection
 from src.mcp.tools import update_ad_schedule as ad_schedule_mod
 from src.mcp.tools import update_campaign_budget as mod
+from tests.unit.fixtures.fake_pool import FakePool
 
 _CUSTOMER = "7862230676"
 _ALVO_ID = "21359547724"
@@ -96,19 +97,6 @@ def _valores_irma(irma: dict[str, str]) -> dict[str, Any]:
     }
 
 
-class _FakeConn:
-    async def __aenter__(self) -> _FakeConn:
-        return self
-
-    async def __aexit__(self, *a: Any) -> bool:
-        return False
-
-
-class _FakePool:
-    def acquire(self) -> _FakeConn:
-        return _FakeConn()
-
-
 def _wire(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -132,7 +120,7 @@ def _wire(
 
     monkeypatch.setattr(mod, "run_report", _run)
     monkeypatch.setattr("src.mcp.tools._mutate_common.create_pending", _create_pending)
-    monkeypatch.setattr(connection, "get_pool", lambda: _FakePool())
+    monkeypatch.setattr(connection, "get_pool", lambda: FakePool())
     return captured
 
 
@@ -347,7 +335,7 @@ async def test_a_query_das_irmas_nao_sai_quando_o_orcamento_e_exclusivo(
         return "TOKEN123"
 
     monkeypatch.setattr("src.mcp.tools._mutate_common.create_pending", _create_pending)
-    monkeypatch.setattr(connection, "get_pool", lambda: _FakePool())
+    monkeypatch.setattr(connection, "get_pool", lambda: FakePool())
     await mod.update_campaign_budget(
         {"customer_id": _CUSTOMER, "campaign_id": _ALVO_ID, "new_daily_budget_brl": 100.0}
     )

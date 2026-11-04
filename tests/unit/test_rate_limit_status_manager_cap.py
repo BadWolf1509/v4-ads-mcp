@@ -13,19 +13,7 @@ import pytest
 from src.governance.rate_limit import Usage
 from src.mcp.context import McpRequestContext
 from src.mcp.tools.get_my_rate_limit_status import get_my_rate_limit_status
-
-
-class _FakeConn:
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *_):
-        return False
-
-
-class _FakePool:
-    def acquire(self):
-        return _FakeConn()
+from tests.unit.fixtures.fake_pool import FakePool
 
 
 @pytest.mark.asyncio
@@ -49,7 +37,7 @@ async def test_reporta_o_cap_por_gestor_alem_da_quota_global() -> None:
         patch("src.mcp.tools.get_my_rate_limit_status.get_current", return_value=ctx),
         patch(
             "src.mcp.tools.get_my_rate_limit_status.connection.get_pool",
-            return_value=_FakePool(),
+            return_value=FakePool(),
         ),
         patch("src.mcp.tools.get_my_rate_limit_status.get_today_usage", side_effect=_usage),
         patch(
@@ -86,7 +74,7 @@ async def test_aponta_o_global_quando_e_ele_que_esgota_primeiro() -> None:
         patch("src.mcp.tools.get_my_rate_limit_status.get_current", return_value=ctx),
         patch(
             "src.mcp.tools.get_my_rate_limit_status.connection.get_pool",
-            return_value=_FakePool(),
+            return_value=FakePool(),
         ),
         patch("src.mcp.tools.get_my_rate_limit_status.get_today_usage", side_effect=_usage),
         patch(

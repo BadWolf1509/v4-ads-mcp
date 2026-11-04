@@ -5,36 +5,19 @@ meta_rate_counters → purge_expired deleta só as velhas, nunca toca audit_log
 (compliance — não há assertion de purge nele, propositalmente).
 """
 
-from uuid import uuid4
-
 import pytest
 
 from src.jobs.purge import purge_expired
+from tests.integration._seed import seed_manager_with_session
 
 pytestmark = pytest.mark.asyncio
-
-
-async def _seed_manager_and_session(conn):
-    """pending_confirmations exige FK pra mcp_sessions -> managers."""
-    mid = uuid4()
-    sid = uuid4()
-    await conn.execute(
-        "INSERT INTO managers (id, email, status, role) VALUES ($1, 'a@v4company.com', 'active', 'gestor')",
-        mid,
-    )
-    await conn.execute(
-        "INSERT INTO mcp_sessions (id, manager_id, label, token_hash) VALUES ($1, $2, 'test', 'h')",
-        sid,
-        mid,
-    )
-    return mid, sid
 
 
 @pytest.mark.integration
 async def test_purge_expired_deletes_only_old_pending_confirmations(db):
     pool = db
     async with pool.acquire() as conn:
-        _mid, sid = await _seed_manager_and_session(conn)
+        _mid, sid, _ = await seed_manager_with_session(conn)
 
         # Velha: expirou há mais de 7 dias -> deve ser purgada (consumida ou não).
         await conn.execute(

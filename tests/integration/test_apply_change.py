@@ -1,28 +1,20 @@
 """apply_change end-to-end with mocked Google Ads SDK."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
 
 import pytest
 
-from src.db.repositories import managers, mcp_sessions
 from src.governance.dry_run import create_pending
 from src.mcp.context import McpRequestContext, clear_current, set_current
+from tests.integration._seed import seed_manager_with_session
 
 
 @pytest.fixture
 async def session_ctx(db):
     pool = db
     async with pool.acquire() as conn:
-        mid = uuid4()
-        await managers.create(conn, manager_id=mid, email="t@v4.com", full_name=None)
-        from src.auth.sessions import generate_session_token, hash_session_token
-
-        token = generate_session_token()
-        sess = await mcp_sessions.create(
-            conn, manager_id=mid, token_hash=hash_session_token(token), label="t"
-        )
-    ctx = McpRequestContext(manager_id=mid, session_id=sess.id)
+        mid, sid, _ = await seed_manager_with_session(conn)
+    ctx = McpRequestContext(manager_id=mid, session_id=sid)
     set_current(ctx)
     yield ctx
     clear_current()

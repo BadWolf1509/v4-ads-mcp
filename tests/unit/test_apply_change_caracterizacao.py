@@ -31,6 +31,7 @@ from src.db import connection
 from src.governance.dry_run import InvalidTokenError
 from src.mcp.context import McpRequestContext, clear_current, set_current
 from src.mcp.tools import apply_change as mod
+from tests.unit.fixtures.fake_pool import FakePool
 
 _CID = "1234567890"
 _REC_RN = f"customers/{_CID}/recommendations/abc"
@@ -43,19 +44,6 @@ def _ctx() -> Any:
     set_current(McpRequestContext(manager_id=_MANAGER, session_id=_SESSION))
     yield
     clear_current()
-
-
-class _FakeConn:
-    async def __aenter__(self) -> _FakeConn:
-        return self
-
-    async def __aexit__(self, *a: Any) -> bool:
-        return False
-
-
-class _FakePool:
-    def acquire(self) -> _FakeConn:
-        return _FakeConn()
 
 
 def _janela() -> dict[str, Any]:
@@ -260,7 +248,7 @@ def _wire(
         "src.google_ads.customer_match.run_offline_user_data_job",
         _escrita("run_offline_user_data_job"),
     )
-    monkeypatch.setattr(connection, "get_pool", lambda: _FakePool())
+    monkeypatch.setattr(connection, "get_pool", lambda: FakePool())
     return trilha, kwargs_escrita, saved
 
 

@@ -27,23 +27,14 @@ import pytest
 from src.jobs import _audit, meta_resync
 from src.meta_ads.partnership import PartnershipSnapshot
 from src.meta_ads.reconcile import InventoryRow
+from tests.unit.fixtures.fake_pool import FakePool
 
 
-class _FakeAcquire:
-    async def __aenter__(self) -> MagicMock:
-        conn = MagicMock()
-        # F128: o caminho `complete=True` passou a escrever pelo conn (contador
-        # de ausencias), entao a dublê precisa de um execute awaitable.
-        conn.execute = AsyncMock(return_value="UPDATE 0")
-        return conn
-
-    async def __aexit__(self, *exc: object) -> bool:
-        return False
-
-
-class _FakePool:
-    def acquire(self) -> _FakeAcquire:
-        return _FakeAcquire()
+def _conn() -> MagicMock:
+    """Conexão do pool falso. F128: o caminho `complete=True` escreve pelo conn (contador de ausencias), entao precisa de um `execute` awaitable."""
+    conn = MagicMock()
+    conn.execute = AsyncMock(return_value="UPDATE 0")
+    return conn
 
 
 def _patch_resync(
@@ -169,7 +160,7 @@ async def test_crash_do_job_grava_audit_e_repropaga(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(meta_resync, "configure_logging", MagicMock())
     monkeypatch.setattr(meta_resync.connection, "init_pool", AsyncMock())
     monkeypatch.setattr(meta_resync.connection, "close_pool", AsyncMock())
-    monkeypatch.setattr(meta_resync.connection, "get_pool", lambda: _FakePool())
+    monkeypatch.setattr(meta_resync.connection, "get_pool", lambda: FakePool(_conn()))
     monkeypatch.setattr(
         meta_resync, "reconcile_meta", AsyncMock(side_effect=RuntimeError("upsert explodiu"))
     )
@@ -178,7 +169,7 @@ async def test_crash_do_job_grava_audit_e_repropaga(monkeypatch: pytest.MonkeyPa
     # armadilha de mock-target que o CLAUDE.md documenta pra pre-flight).
     rec = AsyncMock(return_value=1)
     monkeypatch.setattr(_audit, "record_job_run", rec)
-    monkeypatch.setattr(_audit.connection, "get_pool", lambda: _FakePool())
+    monkeypatch.setattr(_audit.connection, "get_pool", lambda: FakePool(_conn()))
 
     with pytest.raises(RuntimeError, match="upsert explodiu"):
         await meta_resync.run()

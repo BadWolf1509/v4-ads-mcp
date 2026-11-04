@@ -1217,6 +1217,120 @@ def test_finally_bookkeeping_is_best_effort() -> None:
     )
 
 
+def _io_de_cota_fora_do_best_effort(fn: ast.AsyncFunctionDef) -> list[int]:
+    """Linhas de `acquire`/`record_actual` em `fn` que NAO estao sob `best_effort`.
+
+    Num `async with A, B, C:` os itens entram em ordem: um `best_effort` so cobre o
+    `__aenter__` dos itens que vem DEPOIS dele (e o corpo). Por isso a protecao e
+    propagada item a item, nao por "o `with` menciona best_effort em algum lugar".
+    """
+    alvos = {"acquire", "record_actual"}
+    nomes_best_effort = {"best_effort"}
+    achados: list[int] = []
+
+    def nome_da_chamada(no: ast.AST) -> str | None:
+        if not isinstance(no, ast.Call):
+            return None
+        f = no.func
+        if isinstance(f, ast.Name):
+            return f.id
+        if isinstance(f, ast.Attribute):
+            return f.attr
+        return None
+
+    def visita(no: ast.AST, protegido: bool) -> None:
+        if isinstance(no, ast.AsyncWith | ast.With):
+            prot = protegido
+            for item in no.items:
+                visita(item.context_expr, prot)
+                if any(
+                    nome_da_chamada(n) in nomes_best_effort for n in ast.walk(item.context_expr)
+                ):
+                    prot = True
+            for filho in no.body:
+                visita(filho, prot)
+            return
+        if nome_da_chamada(no) in alvos and not protegido:
+            achados.append(no.lineno)  # type: ignore[attr-defined]
+        for filho in ast.iter_child_nodes(no):
+            visita(filho, protegido)
+
+    for stmt in fn.body:
+        visita(stmt, False)
+    return achados
+
+
+def test_reconciliar_cota_faz_todo_io_sob_best_effort() -> None:
+    """F83: o reconcile de cota vive em `reconciliar_cota`, nao mais no `finally`.
+
+    O guard `test_finally_bookkeeping_is_best_effort` so enxerga `acquire` escrito no
+    `finally`; desde que os executores passaram a chamar `reconciliar_cota(...)` ali,
+    ele nao ve mais nada, e tirar o `best_effort` de dentro da funcao deixava tudo
+    verde. Este fecha as duas pontas:
+
+    1. dentro de `reconciliar_cota`, todo `acquire`/`record_actual` esta sob
+       `best_effort` (e o best_effort vem ANTES do `pool.acquire()` na lista de itens,
+       porque e o `__aenter__` do acquire que falha numa conexao stale — F76);
+    2. cada executor Google continua chamando `reconciliar_cota` num `finally`, e
+       nenhum chama `record_actual` cru em `src/google_ads/`.
+    """
+    arq = h.SRC / "governance" / "reserva.py"
+    arv = ast.parse(arq.read_text(encoding="utf-8"))
+    fns = [
+        n
+        for n in ast.walk(arv)
+        if isinstance(n, ast.AsyncFunctionDef) and n.name == "reconciliar_cota"
+    ]
+    assert len(fns) == 1, "controle: reconciliar_cota tem que existir em governance/reserva.py"
+    io = [
+        n
+        for n in ast.walk(fns[0])
+        if isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Attribute | ast.Name)
+        and (n.func.attr if isinstance(n.func, ast.Attribute) else n.func.id)
+        in {"acquire", "record_actual"}
+    ]
+    assert io, "controle: o guard precisa enxergar o I/O de cota dentro da funcao"
+    fora = _io_de_cota_fora_do_best_effort(fns[0])
+    assert not fora, (
+        f"F83 — I/O de cota em reconciliar_cota fora do best_effort (reserva.py:{fora}). "
+        "O best_effort tem que abrir ANTES do pool.acquire(), no mesmo `async with`: "
+        "falha aqui descarta o return da operacao ja aplicada."
+    )
+
+    executores = [
+        "keyword_planning.py",
+        "mutations.py",
+        "customer_match.py",
+        "conversions.py",
+        "reports.py",
+    ]
+    sem_finally = []
+    for nome in executores:
+        p = h.SRC / "google_ads" / nome
+        tree = ast.parse(p.read_text(encoding="utf-8"))
+        if not any(
+            isinstance(n, ast.Try)
+            and any(h.chama(s, "reconciliar_cota", arv=tree) for s in n.finalbody)
+            for n in ast.walk(tree)
+        ):
+            sem_finally.append(nome)
+    assert not sem_finally, (
+        f"executores sem reconciliar_cota no finally: {sem_finally}. "
+        "Reconcile de cota passa por src/governance/reserva.py (F73/F83)."
+    )
+
+    crus = []
+    for p in h.fontes_py(h.SRC / "google_ads"):
+        tree = ast.parse(p.read_text(encoding="utf-8"))
+        if h.chama(tree, "record_actual", arv=tree):
+            crus.append(str(p.relative_to(h.SRC)))
+    assert not crus, (
+        f"record_actual cru em src/google_ads/: {crus}. Use reconciliar_cota "
+        "(best_effort embutido), senao o F83 volta pelo caminho que o guard antigo nao ve."
+    )
+
+
 # Metodos de `DockerContainer` (testcontainers) que, JUNTOS, dao os dois
 # ingredientes pra montar um DSN a mao sem passar por
 # `PostgresContainer.get_connection_url()` — e portanto sem passar pela

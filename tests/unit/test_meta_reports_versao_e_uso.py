@@ -21,6 +21,7 @@ from structlog.testing import capture_logs
 
 from src.meta_ads import graph, reports
 from src.meta_ads.errors import MetaAdsFriendlyError
+from tests.unit.fixtures.fake_pool import FakePool
 
 AVISO = "Graph v22.0 was auto-upgraded to v25.0"
 BUC = '{"999": [{"call_count": 5}]}'
@@ -29,19 +30,6 @@ BUC = '{"999": [{"call_count": 5}]}'
 @pytest.fixture(autouse=True)
 def _zera_avisos() -> None:
     graph._avisos_vistos.clear()
-
-
-class _Acq:
-    async def __aenter__(self) -> Any:
-        return MagicMock()
-
-    async def __aexit__(self, *exc: object) -> bool:
-        return False
-
-
-class _Pool:
-    def acquire(self) -> _Acq:
-        return _Acq()
 
 
 def _cliente(handler: Any) -> httpx.AsyncClient:
@@ -101,7 +89,7 @@ async def test_fetch_paginated_avisa_versao() -> None:
 
 async def _rodar(handler: Any, *, audit: AsyncMock, rec: AsyncMock | None = None) -> Any:
     with (
-        patch.object(reports.connection, "get_pool", return_value=_Pool()),
+        patch.object(reports.connection, "get_pool", return_value=FakePool()),
         patch.object(
             reports.manager_meta_account_access, "can_manager_access", AsyncMock(return_value=True)
         ),

@@ -9,7 +9,6 @@ parametrização aqui É a prova de paridade).
 """
 
 from datetime import date
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -20,6 +19,7 @@ from src.mcp.tools._meta_performance import (
     run_meta_level_performance,
 )
 from src.meta_ads.errors import MetaAdsFriendlyError
+from tests.unit.fixtures.fake_pool import FakePool
 
 
 def test_meta_account_not_found_error_message() -> None:
@@ -33,25 +33,6 @@ def test_meta_account_not_found_error_message() -> None:
     assert "/oauth/meta/start" not in err["error_message"]
 
 
-class _FakeAcquire:
-    def __init__(self, conn: Any) -> None:
-        self._conn = conn
-
-    async def __aenter__(self) -> Any:
-        return self._conn
-
-    async def __aexit__(self, *exc: object) -> bool:
-        return False
-
-
-class _FakePool:
-    def __init__(self, conn: Any) -> None:
-        self._conn = conn
-
-    def acquire(self) -> _FakeAcquire:
-        return _FakeAcquire(self._conn)
-
-
 class _FakeAccount:
     account_name = "Conta Teste"
     currency = "BRL"
@@ -59,7 +40,7 @@ class _FakeAccount:
 
 @pytest.mark.asyncio
 async def test_run_meta_level_performance_account_not_found() -> None:
-    fake_pool = _FakePool(MagicMock())
+    fake_pool = FakePool(MagicMock())
 
     with (
         patch("src.mcp.tools._meta_performance.connection.get_pool", return_value=fake_pool),
@@ -93,7 +74,7 @@ async def test_run_meta_level_performance_invalid_dates() -> None:
     """connection.get_pool() é resolvido ANTES da validação de datas (paridade
     com o comportamento pré-dedup dos 3 tools — pool sempre eager, mesmo que a
     validação falhe depois) → precisa de um pool fake mesmo neste caminho."""
-    fake_pool = _FakePool(MagicMock())
+    fake_pool = FakePool(MagicMock())
 
     with (
         patch("src.mcp.tools._meta_performance.connection.get_pool", return_value=fake_pool),
@@ -123,7 +104,7 @@ async def test_run_meta_level_performance_success_shape_parity(level: str) -> No
     """Paridade de shape entre os 3 levels: mesmo envelope de sucesso, rows
     ordenadas por spend_brl desc, independente do level. `operation_name`
     (audit_log) e o `level` passado pro parser são os únicos pontos que variam."""
-    fake_pool = _FakePool(MagicMock())
+    fake_pool = FakePool(MagicMock())
     fake_resp = {
         "data": [
             {"campaign_id": "1", "campaign_name": "A", "spend": "5"},
@@ -193,7 +174,7 @@ async def test_run_meta_level_performance_success_shape_parity(level: str) -> No
 
 @pytest.mark.asyncio
 async def test_run_meta_level_performance_maps_graph_error_to_friendly_message() -> None:
-    fake_pool = _FakePool(MagicMock())
+    fake_pool = FakePool(MagicMock())
 
     with (
         patch("src.mcp.tools._meta_performance.connection.get_pool", return_value=fake_pool),
@@ -229,7 +210,7 @@ async def test_run_meta_level_performance_maps_graph_error_to_friendly_message()
 async def test_run_meta_level_performance_defaults_to_last_30_days() -> None:
     """date_range=None (sem preset explícito) → default LAST_30_DAYS, não LAST_7_DAYS
     (o trio de performance usa 30 dias default, diferente do account_overview)."""
-    fake_pool = _FakePool(MagicMock())
+    fake_pool = FakePool(MagicMock())
     mock_run_graph_get = AsyncMock(return_value={"data": []})
 
     with (

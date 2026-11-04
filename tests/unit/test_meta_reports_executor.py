@@ -27,30 +27,12 @@ import pytest
 from src.meta_ads import reports
 from src.meta_ads.client import MetaSystemUserTokenMissingError
 from src.meta_ads.errors import MetaAdsFriendlyError
+from tests.unit.fixtures.fake_pool import FakePool
 
 
-class _FakeAcquire:
-    def __init__(self, conn: Any) -> None:
-        self._conn = conn
-
-    async def __aenter__(self) -> Any:
-        return self._conn
-
-    async def __aexit__(self, *exc: object) -> bool:
-        return False
-
-
-class _FakePool:
-    def __init__(self, conn: Any) -> None:
-        self._conn = conn
-
-    def acquire(self) -> _FakeAcquire:
-        return _FakeAcquire(self._conn)
-
-
-def _patch_allowed_pool() -> _FakePool:
+def _patch_allowed_pool() -> FakePool:
     """Pool fake — usado tanto pro hard-gate quanto pro audit_log.record."""
-    return _FakePool(MagicMock())
+    return FakePool(MagicMock())
 
 
 def _cliente_httpx(handler: Any) -> httpx.AsyncClient:

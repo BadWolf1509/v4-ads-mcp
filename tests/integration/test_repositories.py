@@ -6,9 +6,8 @@ zero confidence in column names, constraints, or upsert behavior.
 """
 
 import json
-from uuid import UUID, uuid4
+from uuid import uuid4
 
-import asyncpg
 import pytest
 from structlog.testing import capture_logs
 
@@ -24,14 +23,7 @@ from src.db.repositories import (
     meta_rate_counters,
 )
 from src.jobs import account_resync
-
-
-async def _make_manager(conn: asyncpg.Connection, email: str) -> UUID:
-    """Shared helper: create a manager row with a fresh id, return the id."""
-    mid = uuid4()
-    await managers.create(conn, manager_id=mid, email=email, full_name=None)
-    return mid
-
+from tests.integration._seed import seed_manager
 
 # ---------- managers ----------
 
@@ -329,7 +321,7 @@ async def test_grant_all_active_restaura_grant_revogado(db) -> None:
     clique (espelha test_meta_access_grant_all_active_restaura_grant_revogado).
     """
     async with db.acquire() as conn:
-        mid = await _make_manager(conn, "restaura-all@v4company.com")
+        mid = await seed_manager(conn, email="restaura-all@v4company.com")
         await google_ads_accounts.upsert_many(
             conn,
             [
@@ -360,7 +352,7 @@ async def test_gate_nega_conta_inativa_com_grant_vivo(db) -> None:
     O gate antigo aprovava os 34 — quem os negava era o Google, não nós.
     """
     async with db.acquire() as conn:
-        mid = await _make_manager(conn, "gate@v4company.com")
+        mid = await seed_manager(conn, email="gate@v4company.com")
         await google_ads_accounts.upsert_many(
             conn,
             [{"customer_id": "555", "mcc_id": "6436352492", "descriptive_name": "Ex-cliente"}],
@@ -382,7 +374,7 @@ async def test_gate_nega_conta_inativa_com_grant_vivo(db) -> None:
 @pytest.mark.integration
 async def test_revoke_e_soft_e_o_gate_nega(db) -> None:
     async with db.acquire() as conn:
-        mid = await _make_manager(conn, "soft@v4company.com")
+        mid = await seed_manager(conn, email="soft@v4company.com")
         await google_ads_accounts.upsert_many(
             conn, [{"customer_id": "601", "mcc_id": "1", "descriptive_name": "X"}]
         )
@@ -405,7 +397,7 @@ async def test_revoke_e_soft_e_o_gate_nega(db) -> None:
 async def test_reconceder_limpa_a_revogacao(db) -> None:
     """Sem isto, o `ON CONFLICT DO NOTHING` deixa o gestor bloqueado pra sempre."""
     async with db.acquire() as conn:
-        mid = await _make_manager(conn, "regrant@v4company.com")
+        mid = await seed_manager(conn, email="regrant@v4company.com")
         await google_ads_accounts.upsert_many(
             conn, [{"customer_id": "602", "mcc_id": "1", "descriptive_name": "Y"}]
         )
@@ -426,7 +418,7 @@ async def test_revoke_for_inactive_pega_o_legado_nao_so_o_novo(db) -> None:
     Um plano que parte de `ativos` nunca os alcançaria.
     """
     async with db.acquire() as conn:
-        mid = await _make_manager(conn, "legado@v4company.com")
+        mid = await seed_manager(conn, email="legado@v4company.com")
         await google_ads_accounts.upsert_many(
             conn, [{"customer_id": "603", "mcc_id": "1", "descriptive_name": "Ex"}]
         )
@@ -446,8 +438,8 @@ async def test_revoke_for_inactive_pega_o_legado_nao_so_o_novo(db) -> None:
 @pytest.mark.integration
 async def test_restore_devolve_so_o_churn(db) -> None:
     async with db.acquire() as conn:
-        a = await _make_manager(conn, "churn@v4company.com")
-        b = await _make_manager(conn, "punido@v4company.com")
+        a = await seed_manager(conn, email="churn@v4company.com")
+        b = await seed_manager(conn, email="punido@v4company.com")
         await google_ads_accounts.upsert_many(
             conn, [{"customer_id": "604", "mcc_id": "1", "descriptive_name": "Z"}]
         )
@@ -477,7 +469,7 @@ async def test_count_grants_on_inactive_accounts(db) -> None:
     aqui porque o brief a declarava como interface sem dono.
     """
     async with db.acquire() as conn:
-        mid = await _make_manager(conn, "contagem@v4company.com")
+        mid = await seed_manager(conn, email="contagem@v4company.com")
         await google_ads_accounts.upsert_many(
             conn, [{"customer_id": "605", "mcc_id": "1", "descriptive_name": "W"}]
         )
@@ -520,7 +512,7 @@ async def test_fila_de_restauracao_aparece_quando_a_conta_volta(db) -> None:
     pela saída literal do pytest com a sabotagem aplicada.
     """
     async with db.acquire() as conn:
-        mid = await _make_manager(conn, "volta@v4company.com")
+        mid = await seed_manager(conn, email="volta@v4company.com")
         await google_ads_accounts.upsert_many(
             conn, [{"customer_id": "702", "mcc_id": "1", "descriptive_name": "Voltou"}]
         )
@@ -552,7 +544,7 @@ async def test_fila_de_restauracao_ignora_revogacao_administrativa(db) -> None:
     Espelha `test_fila_saiu_ignora_conta_sem_revogacao_por_churn` do gêmeo Meta.
     """
     async with db.acquire() as conn:
-        mid = await _make_manager(conn, "admin-revoke@v4company.com")
+        mid = await seed_manager(conn, email="admin-revoke@v4company.com")
         await google_ads_accounts.upsert_many(
             conn, [{"customer_id": "703", "mcc_id": "1", "descriptive_name": "Punida"}]
         )
@@ -579,7 +571,7 @@ async def test_fila_delegacao_ignora_conta_inativa(db) -> None:
     literal do pytest com a sabotagem aplicada.
     """
     async with db.acquire() as conn:
-        mid = await _make_manager(conn, "inativa@v4company.com")
+        mid = await seed_manager(conn, email="inativa@v4company.com")
         await google_ads_accounts.upsert_many(
             conn,
             [
@@ -650,7 +642,7 @@ async def test_conta_reativada_zera_missed_syncs_e_sobrevive_a_ausencia_seguinte
     para as contas que mais oscilam.
     """
     async with db.acquire() as conn:
-        mid = await _make_manager(conn, "reativada@v4company.com")
+        mid = await seed_manager(conn, email="reativada@v4company.com")
         await google_ads_accounts.upsert_many(
             conn, [{"customer_id": "901", "mcc_id": "1", "descriptive_name": "Oscila"}]
         )
@@ -693,7 +685,7 @@ async def test_conta_reativada_zera_missed_syncs_e_sobrevive_a_ausencia_seguinte
 async def test_trava_desligada_nao_revoga_mas_reporta(db) -> None:
     """O dry-run tem de OBSERVAR o que a virada fará, senão o soak não serve."""
     async with db.acquire() as conn:
-        mid = await _make_manager(conn, "dry@v4company.com")
+        mid = await seed_manager(conn, email="dry@v4company.com")
         await google_ads_accounts.upsert_many(
             conn, [{"customer_id": "802", "mcc_id": "1", "descriptive_name": "Sai"}]
         )
@@ -733,7 +725,7 @@ async def test_revoke_candidates_preve_o_que_esta_execucao_vai_revogar(db) -> No
     o soak reportava zero na véspera de revogar.
     """
     async with db.acquire() as conn:
-        mid = await _make_manager(conn, "candidato@v4company.com")
+        mid = await seed_manager(conn, email="candidato@v4company.com")
         await google_ads_accounts.upsert_many(
             conn, [{"customer_id": "903", "mcc_id": "1", "descriptive_name": "Vai_Sair"}]
         )
@@ -774,7 +766,7 @@ async def test_revogacao_automatica_grava_trilha_por_conta(db) -> None:
     humano foi retirado, e por quê. Espelha `meta_resync` (`meta_access_cleanup`).
     """
     async with db.acquire() as conn:
-        mid = await _make_manager(conn, "trilha-google@v4company.com")
+        mid = await seed_manager(conn, email="trilha-google@v4company.com")
         await google_ads_accounts.upsert_many(
             conn, [{"customer_id": "904", "mcc_id": "1", "descriptive_name": "Sai_Google"}]
         )
@@ -806,7 +798,7 @@ async def test_dry_run_nao_revoga_e_nao_audita_revogacao(db) -> None:
     revogação (`google_access_cleanup`) não pode aparecer vazia de propósito,
     senão o audit mentiria sobre uma revogação que não aconteceu."""
     async with db.acquire() as conn:
-        mid = await _make_manager(conn, "dry-trilha@v4company.com")
+        mid = await seed_manager(conn, email="dry-trilha@v4company.com")
         await google_ads_accounts.upsert_many(
             conn, [{"customer_id": "905", "mcc_id": "1", "descriptive_name": "Sai_Dry"}]
         )
@@ -845,7 +837,7 @@ async def test_inventario_vazio_nao_desativa_nem_revoga_mesmo_com_trava_ligada(d
     (complete=False) fica VERDE; a variante sabotada fica VERMELHA.
     """
     async with db.acquire() as conn:
-        mid = await _make_manager(conn, "sabotagem@v4company.com")
+        mid = await seed_manager(conn, email="sabotagem@v4company.com")
         await google_ads_accounts.upsert_many(
             conn,
             [
@@ -902,8 +894,8 @@ async def test_copy_access_nao_ressuscita_grant_revogado(db) -> None:
     `test_copy_access_nao_apaga_a_trilha_de_left_mcc_do_destino` pra isso.
     """
     async with db.acquire() as conn:
-        origem = await _make_manager(conn, "copia-origem@v4company.com")
-        destino = await _make_manager(conn, "copia-destino@v4company.com")
+        origem = await seed_manager(conn, email="copia-origem@v4company.com")
+        destino = await seed_manager(conn, email="copia-destino@v4company.com")
         await google_ads_accounts.upsert_many(
             conn, [{"customer_id": "608", "mcc_id": "1", "descriptive_name": "Copiada"}]
         )
@@ -934,8 +926,8 @@ async def test_copy_access_nao_apaga_a_trilha_de_left_mcc_do_destino(db) -> None
     permanentemente.
     """
     async with db.acquire() as conn:
-        origem = await _make_manager(conn, "trilha-origem@v4company.com")
-        destino = await _make_manager(conn, "trilha-destino@v4company.com")
+        origem = await seed_manager(conn, email="trilha-origem@v4company.com")
+        destino = await seed_manager(conn, email="trilha-destino@v4company.com")
         await google_ads_accounts.upsert_many(
             conn,
             [
@@ -998,7 +990,7 @@ async def test_copy_access_recusa_origem_igual_ao_destino(db) -> None:
     quem chamar o repositório de outro lugar não herda a checagem da rota.
     """
     async with db.acquire() as conn:
-        mid = await _make_manager(conn, "self-copy@v4company.com")
+        mid = await seed_manager(conn, email="self-copy@v4company.com")
         await google_ads_accounts.upsert_many(
             conn, [{"customer_id": "611", "mcc_id": "1", "descriptive_name": "Self"}]
         )
@@ -1048,7 +1040,7 @@ async def test_nao_avisa_quando_todas_tem_grant(db) -> None:
     VERDE; a variante sabotada (sempre emite) fica VERMELHA.
     """
     async with db.acquire() as conn:
-        mid = await _make_manager(conn, "tem@v4company.com")
+        mid = await seed_manager(conn, email="tem@v4company.com")
         await google_ads_accounts.upsert_many(
             conn, [{"customer_id": "903", "mcc_id": "1", "descriptive_name": "Com gestor"}]
         )
@@ -1073,7 +1065,7 @@ async def test_meta_reconcile_grava_meta_access_cleanup_no_audit(db) -> None:
     Sabotagem 1: hardcodar `operation="google_access_cleanup"` no helper ficaria vermelha.
     """
     async with db.acquire() as conn:
-        mid = await _make_manager(conn, "trilha-meta@v4company.com")
+        mid = await seed_manager(conn, email="trilha-meta@v4company.com")
         await meta_ad_accounts.upsert_many(
             conn,
             [

@@ -27,25 +27,7 @@ from httpx import AsyncClient
 
 from src.db import connection
 from src.mcp.tools._registry import all_tools
-
-
-class _Acquire:
-    def __init__(self, conn: object) -> None:
-        self._conn = conn
-
-    async def __aenter__(self) -> object:
-        return self._conn
-
-    async def __aexit__(self, *exc: object) -> bool:
-        return False
-
-
-class _Pool:
-    def __init__(self, conn: object) -> None:
-        self._conn = conn
-
-    def acquire(self) -> _Acquire:
-        return _Acquire(self._conn)
+from tests.unit.fixtures.fake_pool import FakePool
 
 
 class _ConexaoSa:
@@ -63,7 +45,7 @@ async def test_deep_health_reporta_a_contagem_do_registry(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(connection, "_pool", _Pool(_ConexaoSa()))
+    monkeypatch.setattr(connection, "_pool", FakePool(_ConexaoSa()))
 
     corpo = (await client.get("/health?deep=1")).json()
 
@@ -84,7 +66,7 @@ async def test_registry_vazio_degrada_em_vez_de_devolver_200(
     Sem isto o `?deep=1` devolveria 200 com `tools: 0`, e o smoke do deploy leria
     sucesso — um verde afirmando mais do que mediu, que é a família do F182/F184/F186.
     """
-    monkeypatch.setattr(connection, "_pool", _Pool(_ConexaoSa()))
+    monkeypatch.setattr(connection, "_pool", FakePool(_ConexaoSa()))
     monkeypatch.setattr(sys.modules["src.app"], "all_tools", list)
 
     resposta = await client.get("/health?deep=1")
@@ -104,7 +86,7 @@ async def test_o_campo_existe_mesmo_quando_o_db_falha(
     degradado, "não reportou" pareceria "registry vazio" — a confusão exata que o
     F182 (`failed_count` vs `null`) documenta.
     """
-    monkeypatch.setattr(connection, "_pool", _Pool(_ConexaoMorta()))
+    monkeypatch.setattr(connection, "_pool", FakePool(_ConexaoMorta()))
 
     corpo = (await client.get("/health?deep=1")).json()
 
