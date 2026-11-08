@@ -111,7 +111,7 @@ proto-plus==1.28.1
     # via
     #   google-ads
     #   google-api-core
-protobuf==7.35.1
+protobuf==7.36.2
     # via
     #   google-ads
     #   google-api-core
