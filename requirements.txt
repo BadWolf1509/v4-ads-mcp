@@ -167,7 +167,7 @@ rpds-py==2026.9.1
     #   referencing
 sse-starlette==3.5.0
     # via mcp
-starlette==1.6.0
+starlette==1.10.0
     # via
     #   fastapi
     #   mcp
