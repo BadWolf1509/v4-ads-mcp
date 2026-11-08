@@ -189,7 +189,7 @@ typing-inspection==0.4.4
     #   mcp
     #   pydantic
     #   pydantic-settings
-tzdata==2026.3
+tzdata==2026.6
     # via v4-ads-mcp (pyproject.toml)
 urllib3==2.8.0
     # via requests
