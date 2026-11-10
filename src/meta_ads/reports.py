@@ -238,7 +238,9 @@ async def run_meta_graph_get(
         edge: Graph API edge path, e.g., "/act_<id>/insights"
         params: query parameters dict
         operation_name: for audit log + rate limit operation field
-        estimated_calls: how many API calls this counts as
+        estimated_calls: previsao de chamadas do caller. NAO entra no contador:
+            ele grava so as paginas realmente lidas (decisao de 10/11); nao ha
+            reserva/reconciliacao nesta funcao.
         max_pages: quantas páginas seguir via `paging.next` (F88). Default 1
             preserva o comportamento antigo pros callers que leem 1 objeto só
             (ex.: overview). Edges de coleção passam >1: sem isso, a resposta é a
@@ -353,7 +355,7 @@ async def run_meta_graph_get(
             await _contabilizar_uso(
                 capturados[-1],
                 ad_account_id=ad_account_id,
-                calls=max(estimated_calls, len(capturados)),
+                calls=len(capturados),
                 app_id=settings.meta_app_id,
             )
         if audit_this_call:
@@ -392,11 +394,12 @@ async def run_meta_graph_get(
     # do APP em chamada /insights (o `x-app-usage` nao vem ali — medido). Registra se
     # QUALQUER dos dois vier: a chamada aconteceu e conta, e o que nao veio e "nao
     # sei", nunca 0.
-    # F88: contabiliza as chamadas REALMENTE feitas, não a estimativa.
+    # F88 + decisao de 10/11 ("contar so o lido"): contabiliza as paginas REALMENTE
+    # lidas, nunca `max(estimativa, lidas)` — `estimated_calls` e so a reserva/previsao.
     await _contabilizar_uso(
         headers_ultima,
         ad_account_id=ad_account_id,
-        calls=max(estimated_calls, paginas_lidas),
+        calls=paginas_lidas,
         app_id=settings.meta_app_id,
     )
 
