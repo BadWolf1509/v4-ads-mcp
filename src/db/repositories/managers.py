@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Literal
 from uuid import UUID
 
 import asyncpg
@@ -25,11 +26,13 @@ class Manager:
         """True se QUALQUER das duas colunas disser que o gestor está desativado.
 
         F84 — as duas divergem e nada as sincroniza: o toggle do painel escreve
-        só `is_active`, e nenhum código escreve `status='inactive'` (só
-        `mark_active`, invited→active). O gate de login já checava as duas; os de
-        sessão viva (MCP e painel) checavam só `is_active`, então um offboarding
-        feito por SQL direto — o único caminho que escreve `status` — bloqueava o
-        login mas deixava o Bearer MCP vivo até expirar (90 dias por padrão).
+        só `is_active`, e `status` é escrito por `mark_active` (invited→active) e
+        pelo CLI `bootstrap-admin` (inactive→active; reativar um admin). Nenhum
+        código escreve `status='inactive'` (só SQL direto). O gate de login já
+        checava as duas; os de sessão viva (MCP e painel) checavam só `is_active`,
+        então um offboarding feito por SQL direto — o único caminho que escreve
+        `inactive` — bloqueava o login mas deixava o Bearer MCP vivo até expirar
+        (90 dias por padrão).
 
         Predicado único de propósito: o bug foi três sites decidindo isso por
         conta própria. Quem precisar decidir de novo, chama isto.
@@ -67,6 +70,13 @@ async def list_all(conn: asyncpg.Connection) -> list[Manager]:
 
 async def get_by_email(conn: asyncpg.Connection, email: str) -> Manager | None:
     row = await conn.fetchrow("SELECT * FROM managers WHERE email = $1", email)
+    return _row_to_manager(row) if row else None
+
+
+async def get_by_email_for_update(conn: asyncpg.Connection, email: str) -> Manager | None:
+    """Como `get_by_email`, mas trava a linha até o fim da transação. Rode dentro
+    de uma: o chamador decide "mudou?" sobre a linha que ele mesmo vai escrever."""
+    row = await conn.fetchrow("SELECT * FROM managers WHERE email = $1 FOR UPDATE", email)
     return _row_to_manager(row) if row else None
 
 
@@ -179,3 +189,38 @@ async def get_summary(conn: asyncpg.Connection, manager_id: UUID) -> asyncpg.Rec
     return await conn.fetchrow(
         "SELECT id, email, full_name FROM managers WHERE id = $1", manager_id
     )
+
+
+async def definir_ativo(
+    conn: asyncpg.Connection, *, manager_id: UUID, ativo: bool
+) -> tuple[str, bool] | None:
+    """Põe `is_active` no valor pedido. `None` se o gestor não existe; senão
+    `(email, mudou)`. Idempotente: já estando assim, não escreve (a rota audita com had_effect=False).
+
+    Não toca `status` (F84: sincronizar destruiria o estado `invited`). Rode dentro
+    da transação da rota; o `FOR UPDATE` serializa dois cliques concorrentes.
+    """
+    row = await conn.fetchrow(
+        "SELECT email, is_active FROM managers WHERE id = $1 FOR UPDATE", manager_id
+    )
+    if row is None:
+        return None
+    if row["is_active"] == ativo:
+        return row["email"], False
+    await conn.execute("UPDATE managers SET is_active = $2 WHERE id = $1", manager_id, ativo)
+    return row["email"], True
+
+
+async def definir_role(
+    conn: asyncpg.Connection, *, manager_id: UUID, role: Literal["admin", "gestor"]
+) -> tuple[str, bool] | None:
+    """Põe `role` no valor pedido; mesma semântica de `definir_ativo`."""
+    row = await conn.fetchrow(
+        "SELECT email, role FROM managers WHERE id = $1 FOR UPDATE", manager_id
+    )
+    if row is None:
+        return None
+    if row["role"] == role:
+        return row["email"], False
+    await conn.execute("UPDATE managers SET role = $2 WHERE id = $1", manager_id, role)
+    return row["email"], True

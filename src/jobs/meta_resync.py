@@ -37,6 +37,24 @@ from src.meta_ads.reconcile import Plan, build_plan
 log = structlog.get_logger(__name__)
 
 
+async def _abortar_sem_configuracao(conn: asyncpg.Connection, motivo: str) -> Plan:
+    """Configuração faltando: não reconcilia, mas GRAVA a execução como erro.
+
+    Mesma regra do `_etapa_google` (`account_resync.py`) ao abortar: o job sai com
+    código 1 e a trilha precisa da linha que explica por quê. `best_effort`, como
+    no fim de `reconcile_meta`: o audit que falha não troca o `Plan` devolvido."""
+    plano = Plan(blocked_reason=motivo)
+    async with best_effort("job_run_audit_failed", operation="meta_reconcile"):
+        await record_job_run(
+            conn,
+            operation="meta_reconcile",
+            platform="meta",
+            status="error",
+            error_message=motivo,
+        )
+    return plano
+
+
 async def reconcile_meta(conn: asyncpg.Connection, *, now: datetime | None = None) -> Plan:
     """Lê a parceria, planeja e aplica na conexão que RECEBE.
 
@@ -68,10 +86,10 @@ async def reconcile_meta(conn: asyncpg.Connection, *, now: datetime | None = Non
     settings = get_settings()
     if not settings.meta_system_user_token:
         log.warning("meta_reconcile_no_token")
-        return Plan(blocked_reason="token do system user nao configurado")
+        return await _abortar_sem_configuracao(conn, "token do system user nao configurado")
     if not settings.meta_business_id:
         log.warning("meta_reconcile_no_business_id")
-        return Plan(blocked_reason="meta_business_id nao configurado")
+        return await _abortar_sem_configuracao(conn, "meta_business_id nao configurado")
 
     # Lido antes da rede: a sonda resolve "ontem" no fuso de cada conta sobre este
     # mesmo instante, e o carimbo das ausências abaixo também (C4/F141).

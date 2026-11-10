@@ -238,6 +238,42 @@ async def test_fetch_paginated_erro_na_segunda_pagina_devolve_incompleto_com_o_q
 
 
 @pytest.mark.asyncio
+async def test_fetch_paginated_corpo_lista_devolve_incompleto() -> None:
+    vistos: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        vistos.append(request)
+        if len(vistos) == 1:
+            return httpx.Response(
+                200,
+                json={
+                    "data": [{"id": "1"}],
+                    "paging": {"next": "https://graph.facebook.com/v25.0/p1"},
+                },
+            )
+        return httpx.Response(200, json=[1, 2])
+
+    async with _cliente(handler) as http:
+        out = await graph.fetch_paginated(
+            http, "https://graph.facebook.com/v25.0/x", access_token="tok", params={}
+        )
+    assert out == graph.PagedFetch(rows=[{"id": "1"}], complete=False)
+    assert len(vistos) == 2
+
+
+@pytest.mark.asyncio
+async def test_fetch_paginated_corpo_lista_na_primeira() -> None:
+    def handler(_r: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=[1, 2])
+
+    async with _cliente(handler) as http:
+        out = await graph.fetch_paginated(
+            http, "https://graph.facebook.com/v25.0/x", access_token="tok", params={}
+        )
+    assert out == graph.PagedFetch(rows=[], complete=False)
+
+
+@pytest.mark.asyncio
 async def test_fetch_paginated_estourar_max_pages_devolve_incompleto() -> None:
     handler, vistos = _paginas([])
     async with _cliente(handler) as http:

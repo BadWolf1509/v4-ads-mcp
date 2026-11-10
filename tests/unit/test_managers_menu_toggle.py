@@ -1,7 +1,7 @@
 """O menu do gestor só oferece o toggle que de fato muda o estado real.
 
 F84: `is_active` e `status` divergem e nada os sincroniza. O badge segue
-`Manager.is_deactivated`; a rota `toggle-active` só inverte `is_active`. Com
+`Manager.is_deactivated`; a rota `toggle-active` só aplica `is_active` (o estado pedido). Com
 `status='inactive'` o toggle não muda nada, então o menu não pode oferecer
 "Desativar" nem "Reativar" ali.
 """
@@ -81,3 +81,17 @@ def test_despromover_a_gestor_pede_confirmacao() -> None:
     assert len(botoes) == 1
     assert "Despromover a gestor" in botoes[0]
     assert "data-v4-confirm-title" in botoes[0]
+
+
+@pytest.mark.parametrize(("is_active", "esperado"), [(True, "inativo"), (False, "ativo")])
+def test_toggle_active_pede_o_estado_oposto_ao_atual(is_active: bool, esperado: str) -> None:
+    botao = _toggle_buttons(_html(_gestor(is_active, "active")))[0]
+    assert f"toggle-active?desejado={esperado}" in botao
+
+
+@pytest.mark.parametrize(("role", "esperado"), [("gestor", "admin"), ("admin", "gestor")])
+def test_toggle_role_pede_o_role_oposto_ao_atual(role: str, esperado: str) -> None:
+    m = _gestor(True, "active")
+    m.role = role
+    botoes = re.findall(r"<button[^>]*toggle-role[^>]*>[^<]*</button>", _html(m))
+    assert f"toggle-role?desejado={esperado}" in botoes[0]

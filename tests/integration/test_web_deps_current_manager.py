@@ -72,7 +72,7 @@ async def test_deactivated_manager_with_valid_cookie_redirects_to_login(
 
     # Admin desativa o manager via a rota real.
     toggle_response = await client.post(
-        f"/admin/managers/{target_id}/toggle-active",
+        f"/admin/managers/{target_id}/toggle-active?desejado=inativo",
         cookies={PANEL_SESSION_COOKIE_NAME: admin_cookie},
         follow_redirects=False,
     )

@@ -33,6 +33,7 @@ from src.auth.sessions import generate_session_token, hash_session_token
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import (
+    audit_log,
     manager_account_access,
     managers,
     mcp_sessions,
@@ -45,21 +46,45 @@ async def cmd_bootstrap_admin(args: argparse.Namespace) -> int:
     try:
         pool = connection.get_pool()
         async with pool.acquire() as conn:
-            existing = await managers.get_by_email(conn, args.email)
-            if existing:
-                print(f"Manager already exists: {existing.id} ({existing.role})")
-                if existing.role != "admin":
-                    await conn.execute(
-                        "UPDATE managers SET role = 'admin', is_active = true WHERE id = $1",
-                        existing.id,
+            # Leitura, decisão "mudou?" e escrita na MESMA transação, com a
+            # linha travada (FOR UPDATE): `had_effect` sai de uma linha que
+            # ninguém mexe entre o SELECT e o UPDATE (F179).
+            async with conn.transaction():
+                manager = await managers.get_by_email_for_update(conn, args.email)
+                criado = manager is None
+                if manager is None:
+                    manager = await managers.create(
+                        conn,
+                        manager_id=uuid4(),
+                        email=args.email,
+                        full_name=args.name,
+                        role="admin",
                     )
-                    print("Promoted to admin.")
-                return 0
-            new_id = uuid4()
-            m = await managers.create(
-                conn, manager_id=new_id, email=args.email, full_name=args.name, role="admin"
-            )
-            print(f"Created admin: {m.id} ({m.email})")
+                    mudou = True
+                else:
+                    mudou = manager.role != "admin" or manager.is_deactivated
+                    # F84: só 'inactive' vira 'active'; 'invited' fica como está.
+                    await conn.execute(
+                        "UPDATE managers SET role = 'admin', is_active = true, "
+                        "status = CASE WHEN status = 'inactive' THEN 'active' ELSE status END "
+                        "WHERE id = $1",
+                        manager.id,
+                    )
+                await audit_log.record(
+                    conn,
+                    manager_id=manager.id,
+                    session_id=None,
+                    customer_id=None,
+                    action_type="system",
+                    operation="cli_bootstrap_admin",
+                    had_effect=mudou,
+                )
+            if criado:
+                print(f"Created admin: {manager.id} ({manager.email})")
+            else:
+                print(f"Manager already exists: {manager.id} ({manager.role})")
+                if mudou:
+                    print("Promoted/reactivated as admin.")
             return 0
     finally:
         await connection.close_pool()
@@ -124,9 +149,23 @@ async def cmd_grant_all(args: argparse.Namespace) -> int:
             if m is None:
                 print(f"Manager not found: {args.email}", file=sys.stderr)
                 return 1
-            n = await manager_account_access.grant_all_active(
-                conn, manager_id=m.id, granted_by=m.id
-            )
+            async with conn.transaction():
+                n = await manager_account_access.grant_all_active(
+                    conn, manager_id=m.id, granted_by=m.id
+                )
+                await audit_log.record(
+                    conn,
+                    manager_id=m.id,
+                    session_id=None,
+                    customer_id=None,
+                    action_type="system",
+                    operation="cli_grant_all",
+                    target_count=n,
+                    # `n` conta linhas TOCADAS por grant_all_active (inclui
+                    # re-concessões, F167), não só concessões novas: n > 0 é
+                    # "tocou alguma linha", não "mudou o acesso".
+                    had_effect=n > 0,
+                )
         # I3 (revisão de branch): `n` é linhas TOCADAS pelo `ON CONFLICT DO
         # UPDATE` (Task 3) — inclui contas já concedidas e restauradas, não só
         # as genuinamente novas. Rodar grant-all duas vezes num gestor com

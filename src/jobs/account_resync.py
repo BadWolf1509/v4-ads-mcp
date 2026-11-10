@@ -403,8 +403,9 @@ async def _etapa_meta(pool: connection.PoolValidado) -> bool:
 
     Roda no MESMO job/scheduler pra conta nova aparecer zero-touch.
     Best-effort — falha Meta não quebra o resync Google nem impede o purge
-    (e é no-op se o system-user token não estiver no job), mas bloqueio ou
-    crash fazem o job sair com 1.
+    (sem o system-user token no job, `reconcile_meta` grava uma execução com
+    erro e devolve plano bloqueado, não é no-op), e bloqueio ou crash fazem o
+    job sair com 1.
 
     F93 pela terceira porta (I2 da revisão de branch): `record_job_crash`
     vivia só dentro de `meta_resync.run()`, que SÓ o entry point

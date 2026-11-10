@@ -2,6 +2,7 @@
 
 import html
 import re
+from datetime import UTC, date, datetime
 from uuid import uuid4
 
 import pytest
@@ -199,6 +200,28 @@ async def test_audit_export_csv_filters_by_status(client: AsyncClient):
 
 
 @pytest.mark.integration
+async def test_audit_export_csv_nome_usa_o_dia_de_brasilia(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    """O nome do arquivo segue o dia do painel (Brasília), não o dia UTC: entre
+    21h e 24h em Brasília o UTC já virou o dia e o nome saía com a data de amanhã."""
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="csv_nome@v4company.com", full_name=None)
+    monkeypatch.setattr("src.web.routes.audit.dias_do_painel", lambda n: [date(2001, 2, 3)])
+    cookie = sign_panel_session(
+        manager_id=str(mid),
+        email="csv_nome@v4company.com",
+        signing_key=_SIGNING_KEY,
+        aud="panel",
+    )
+    response = await client.get("/audit/export.csv", cookies={PANEL_SESSION_COOKIE_NAME: cookie})
+    assert response.status_code == 200
+    assert 'filename="audit-2001-02-03.csv"' in response.headers["content-disposition"]
+
+
+@pytest.mark.integration
 async def test_audit_pagination_follows_cursor_across_pages(client: AsyncClient):
     """Task 7 (PR 5): HTTP round-trip of the keyset cursor, not just the repo
     call in isolation. Exercises the part `test_audit_keyset.py` doesn't —
@@ -295,3 +318,43 @@ async def test_link_de_exportacao_escapa_customer_id(client: AsyncClient):
     assert response.status_code == 200
     assert "customer_id=1%26status%3Dx" in response.text
     assert "customer_id=1&amp;status=x" not in response.text
+
+
+@pytest.mark.integration
+async def test_audit_agrupa_pelo_dia_de_brasilia(client: AsyncClient, monkeypatch):
+    """Uma linha das 22h de Brasília (01h UTC do dia seguinte) é "Hoje", não "10/11".
+
+    O relógio é fixado no do painel (`dias_do_painel`), não com freezegun: o
+    freezegun congela `time.monotonic` e pode pendurar asyncio/asyncpg.
+    """
+    monkeypatch.setattr("src.web.routes.audit.dias_do_painel", lambda n, **kw: [date(2026, 11, 9)])
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="au-brt@v4company.com", full_name=None)
+        for op, quando in (
+            ("op_brt_22h", datetime(2026, 11, 10, 1, 0, tzinfo=UTC)),
+            ("op_brt_09h", datetime(2026, 11, 9, 12, 0, tzinfo=UTC)),
+        ):
+            await conn.execute(
+                "INSERT INTO audit_log (manager_id, action_type, operation, status, occurred_at) "
+                "VALUES ($1, 'read', $2, 'success', $3)",
+                mid,
+                op,
+                quando,
+            )
+
+    cookie = sign_panel_session(
+        manager_id=str(mid),
+        email="au-brt@v4company.com",
+        signing_key=_SIGNING_KEY,
+        aud="panel",
+    )
+    # days largo: as datas sao fixas e a janela padrao (7 dias) e movel.
+    response = await client.get("/audit?days=36500", cookies={PANEL_SESSION_COOKIE_NAME: cookie})
+    assert response.status_code == 200
+    assert "Hoje" in response.text
+    assert "Ontem" not in response.text
+    assert "10/11/2026" not in response.text
+    assert "op_brt_22h" in response.text
+    assert "op_brt_09h" in response.text

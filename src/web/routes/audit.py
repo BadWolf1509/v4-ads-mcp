@@ -2,7 +2,7 @@
 
 from collections import OrderedDict
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode
 
@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from src.db import connection
 from src.db.repositories import audit_log, manager_account_access
 from src.web.deps import CurrentUser, current_manager
+from src.web.numeros import FUSO_PAINEL, dias_do_painel
 from src.web.routes._shared import _TETO_DIAS_EXPORT_AUDIT, templates
 
 router = APIRouter(tags=["web"])
@@ -62,9 +63,9 @@ async def audit(
 
     # Group by day for sticky day headers
     grouped: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
-    today = datetime.now(UTC).date()
+    today = dias_do_painel(1)[0]
     for r in rows:
-        d = r["occurred_at"].date()
+        d = r["occurred_at"].astimezone(FUSO_PAINEL).date()
         if d == today:
             label = "Hoje"
         elif d == today - timedelta(days=1):
@@ -131,7 +132,7 @@ async def audit_export_csv(
             ):
                 yield line.encode("utf-8")
 
-    filename = f"audit-{datetime.now(UTC).strftime('%Y-%m-%d')}.csv"
+    filename = f"audit-{dias_do_painel(1)[0].isoformat()}.csv"
     return StreamingResponse(
         stream(),
         media_type="text/csv",
