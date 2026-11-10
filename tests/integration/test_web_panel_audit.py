@@ -328,7 +328,8 @@ async def test_audit_agrupa_pelo_dia_de_brasilia(client: AsyncClient, monkeypatc
         signing_key=_SIGNING_KEY,
         aud="panel",
     )
-    response = await client.get("/audit", cookies={PANEL_SESSION_COOKIE_NAME: cookie})
+    # days largo: as datas sao fixas e a janela padrao (7 dias) e movel.
+    response = await client.get("/audit?days=36500", cookies={PANEL_SESSION_COOKIE_NAME: cookie})
     assert response.status_code == 200
     assert "Hoje" in response.text
     assert "Ontem" not in response.text
