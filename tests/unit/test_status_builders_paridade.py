@@ -15,22 +15,22 @@ from src.google_ads.mutates.ads import build_update_ad_status
 from src.google_ads.mutates.bulk import build_bulk_pause
 from src.google_ads.mutates.campaigns import build_update_campaign_status
 from src.google_ads.mutates.keywords import build_update_keyword_status
-from tests.unit.fixtures.proto_capture import (
-    CapturedOp,
-    _RepeatedCapture,
-    _SubCapture,
-    make_capture_client,
-)
+from tests.unit.fixtures.proto_capture import make_capture_client, to_plain
 
 CID = "1234567890"
 
 
 class _Enum:
+    """Stub por NOME de enum: o valor carrega o enum e o status, para pinar os dois."""
+
+    def __init__(self, nome: str) -> None:
+        self._nome = nome
+
     def __getitem__(self, key: str) -> str:
-        return key
+        return f"{self._nome}.{key}"
 
     def __getattr__(self, key: str) -> str:
-        return key
+        return f"{self._nome}.{key}"
 
 
 def _client() -> Any:
@@ -41,23 +41,21 @@ def _client() -> Any:
         "AdGroupAdStatusEnum",
         "AdGroupCriterionStatusEnum",
     ):
-        setattr(client.enums, nome, _Enum())
+        setattr(client.enums, nome, _Enum(nome))
     client.copy_from.reset_mock()
     return client
 
 
-def _plano(valor: Any) -> Any:
-    if isinstance(valor, (CapturedOp, _SubCapture)):
-        return {k: _plano(v) for k, v in sorted(valor._captured.items())}
-    if isinstance(valor, _RepeatedCapture):
-        return [_plano(v) for v in valor]
-    return valor
-
-
 def _serializa(client: Any, ops: list[Any]) -> dict[str, Any]:
+    chamadas = client.copy_from.call_args_list
+    assert len(chamadas) == len(ops)
+    for op, chamada in zip(ops, chamadas, strict=True):
+        # A mascara tem de ir para o update_mask da operacao (o oneof desse alvo).
+        (campo,) = op._captured
+        assert chamada.args[0] is op._captured[campo]._captured["update_mask"]
     return {
-        "ops": [_plano(op) for op in ops],
-        "mascaras": [list(c.args[1].paths) for c in client.copy_from.call_args_list],
+        "ops": [to_plain(op) for op in ops],
+        "mascaras": [list(c.args[1].paths) for c in chamadas],
     }
 
 
@@ -104,7 +102,7 @@ ESPERADO: dict[str, Any] = {
                 "ad_group_ad_operation": {
                     "update": {
                         "resource_name": "customers/1234567890/adGroupAds/5~6",
-                        "status": "REMOVED",
+                        "status": "AdGroupAdStatusEnum.REMOVED",
                     },
                     "update_mask": {},
                 }
@@ -118,7 +116,7 @@ ESPERADO: dict[str, Any] = {
                 "ad_group_operation": {
                     "update": {
                         "resource_name": "customers/1234567890/adGroups/33",
-                        "status": "ENABLED",
+                        "status": "AdGroupStatusEnum.ENABLED",
                     },
                     "update_mask": {},
                 }
@@ -127,7 +125,7 @@ ESPERADO: dict[str, Any] = {
                 "ad_group_operation": {
                     "update": {
                         "resource_name": "customers/1234567890/adGroups/44",
-                        "status": "ENABLED",
+                        "status": "AdGroupStatusEnum.ENABLED",
                     },
                     "update_mask": {},
                 }
@@ -141,7 +139,7 @@ ESPERADO: dict[str, Any] = {
                 "ad_group_ad_operation": {
                     "update": {
                         "resource_name": "customers/1234567890/adGroupAds/5~6",
-                        "status": "PAUSED",
+                        "status": "AdGroupAdStatusEnum.PAUSED",
                     },
                     "update_mask": {},
                 }
@@ -155,7 +153,7 @@ ESPERADO: dict[str, Any] = {
                 "ad_group_operation": {
                     "update": {
                         "resource_name": "customers/1234567890/adGroups/33",
-                        "status": "PAUSED",
+                        "status": "AdGroupStatusEnum.PAUSED",
                     },
                     "update_mask": {},
                 }
@@ -169,7 +167,7 @@ ESPERADO: dict[str, Any] = {
                 "campaign_operation": {
                     "update": {
                         "resource_name": "customers/1234567890/campaigns/11",
-                        "status": "PAUSED",
+                        "status": "CampaignStatusEnum.PAUSED",
                     },
                     "update_mask": {},
                 }
@@ -178,7 +176,7 @@ ESPERADO: dict[str, Any] = {
                 "campaign_operation": {
                     "update": {
                         "resource_name": "customers/1234567890/campaigns/22",
-                        "status": "PAUSED",
+                        "status": "CampaignStatusEnum.PAUSED",
                     },
                     "update_mask": {},
                 }
@@ -192,7 +190,7 @@ ESPERADO: dict[str, Any] = {
                 "ad_group_criterion_operation": {
                     "update": {
                         "resource_name": "customers/1234567890/adGroupCriteria/7~8",
-                        "status": "PAUSED",
+                        "status": "AdGroupCriterionStatusEnum.PAUSED",
                     },
                     "update_mask": {},
                 }
@@ -206,7 +204,7 @@ ESPERADO: dict[str, Any] = {
                 "campaign_operation": {
                     "update": {
                         "resource_name": "customers/1234567890/campaigns/11",
-                        "status": "PAUSED",
+                        "status": "CampaignStatusEnum.PAUSED",
                     },
                     "update_mask": {},
                 }
@@ -215,7 +213,7 @@ ESPERADO: dict[str, Any] = {
                 "campaign_operation": {
                     "update": {
                         "resource_name": "customers/1234567890/campaigns/22",
-                        "status": "PAUSED",
+                        "status": "CampaignStatusEnum.PAUSED",
                     },
                     "update_mask": {},
                 }
@@ -229,7 +227,7 @@ ESPERADO: dict[str, Any] = {
                 "ad_group_criterion_operation": {
                     "update": {
                         "resource_name": "customers/1234567890/adGroupCriteria/7~8",
-                        "status": "PAUSED",
+                        "status": "AdGroupCriterionStatusEnum.PAUSED",
                     },
                     "update_mask": {},
                 }

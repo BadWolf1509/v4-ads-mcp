@@ -14,8 +14,6 @@ from google.protobuf.field_mask_pb2 import FieldMask
 from src.google_ads.mutates._common import register_builder
 from src.google_ads.mutates._status import (
     ALVOS_DE_STATUS,
-    enum_de_status,
-    funcao_de_caminho,
     operacao_de_status,
 )
 
@@ -51,8 +49,8 @@ def build_bulk_pause(client: Any, customer_id: str, payload: dict[str, Any]) -> 
 
     entities = payload["entities"]
     alvo = ALVOS_DE_STATUS[target_type]
-    caminho = funcao_de_caminho(client, alvo)
-    status_enum = enum_de_status(client, alvo)
+    caminho = getattr(client.get_service(alvo.servico), alvo.caminho)
+    status_enum = getattr(client.enums, alvo.enum)
     mascara = FieldMask(paths=["status"])
     ids_de = _IDS_POR_ALVO[target_type]
     return [

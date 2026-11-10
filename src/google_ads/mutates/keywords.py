@@ -7,8 +7,6 @@ from google.protobuf.field_mask_pb2 import FieldMask
 from src.google_ads.mutates._common import register_builder
 from src.google_ads.mutates._status import (
     ALVOS_DE_STATUS,
-    enum_de_status,
-    funcao_de_caminho,
     operacao_de_status,
 )
 
@@ -20,8 +18,8 @@ def build_update_keyword_status(
     """payload: {keywords: [{ad_group_id: str, criterion_id: str}], new_status: 'ENABLED'|'PAUSED'|'REMOVED'}"""
     new_status = payload["new_status"].upper()
     alvo = ALVOS_DE_STATUS["keyword"]
-    caminho = funcao_de_caminho(client, alvo)
-    status_enum = enum_de_status(client, alvo)
+    caminho = getattr(client.get_service(alvo.servico), alvo.caminho)
+    status_enum = getattr(client.enums, alvo.enum)
     mascara = FieldMask(paths=["status"])
     return [
         operacao_de_status(

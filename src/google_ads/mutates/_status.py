@@ -37,15 +37,6 @@ ALVOS_DE_STATUS: dict[str, AlvoDeStatus] = {
 }
 
 
-def funcao_de_caminho(client: Any, alvo: AlvoDeStatus) -> Any:
-    """O helper de caminho do servico do alvo (ex.: `campaign_path`)."""
-    return getattr(client.get_service(alvo.servico), alvo.caminho)
-
-
-def enum_de_status(client: Any, alvo: AlvoDeStatus) -> Any:
-    return getattr(client.enums, alvo.enum)
-
-
 def operacao_de_status(
     client: Any, alvo: AlvoDeStatus, resource_name: str, status: Any, mascara: Any
 ) -> Any:
