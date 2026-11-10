@@ -218,26 +218,74 @@ async def test_com_apply_ligado_desativa_e_revoga_e_audita_a_conta() -> None:
     assert plano.to_remove == ["act_2"]
 
 
-@pytest.mark.asyncio
-async def test_sem_business_id_o_job_nao_reconcilia() -> None:
-    """Config faltando vira no-op explícito, não exceção no meio da noite."""
+async def _reconcilia_sem_config(*, token: str, business_id: str, gravar_run: AsyncMock):
+    """Roda `reconcile_meta` com a configuração faltando e `record_job_run`
+    trocado pelo `gravar_run` recebido. O `conn` não é tocado além da gravação
+    da execução (que está mockada)."""
     from src.jobs import meta_resync as job
 
-    with patch.object(
-        job,
-        "get_settings",
-        MagicMock(
-            return_value=MagicMock(
-                meta_system_user_token="tok", meta_business_id="", meta_reconcile_apply=True
-            )
+    with (
+        patch.object(
+            job,
+            "get_settings",
+            MagicMock(
+                return_value=MagicMock(
+                    meta_system_user_token=token,
+                    meta_business_id=business_id,
+                    meta_reconcile_apply=True,
+                )
+            ),
         ),
+        patch.object(job, "record_job_run", gravar_run),
     ):
-        # O `conn` chega e nao e tocado: a guarda de config devolve antes de
-        # qualquer leitura. `MagicMock` sem `execute` awaitable e de proposito
-        # — se algum dia o no-op passar a escrever, o teste quebra alto.
-        plano = await job.reconcile_meta(MagicMock())
+        return await job.reconcile_meta(MagicMock())
+
+
+@pytest.mark.asyncio
+async def test_sem_business_id_o_job_nao_reconcilia() -> None:
+    """Config faltando não reconcilia, mas GRAVA a execução como erro — o mesmo
+    que `_etapa_google` faz ao abortar (`account_resync.py`). Sem a linha, o job
+    que sai com código 1 não deixava rastro no audit."""
+    gravar_run = AsyncMock()
+
+    plano = await _reconcilia_sem_config(token="tok", business_id="", gravar_run=gravar_run)
 
     assert plano.blocked_reason == "meta_business_id nao configurado"
+    gravar_run.assert_awaited_once()
+    kwargs = gravar_run.await_args.kwargs
+    assert kwargs["operation"] == "meta_reconcile"
+    assert kwargs["platform"] == "meta"
+    assert kwargs["status"] == "error"
+    assert kwargs["error_message"] == "meta_business_id nao configurado"
+
+
+@pytest.mark.asyncio
+async def test_sem_token_o_job_nao_reconcilia() -> None:
+    from src.jobs import meta_resync as job  # noqa: F401
+
+    gravar_run = AsyncMock()
+
+    plano = await _reconcilia_sem_config(token="", business_id="bm", gravar_run=gravar_run)
+
+    assert plano.blocked_reason == "token do system user nao configurado"
+    gravar_run.assert_awaited_once()
+    kwargs = gravar_run.await_args.kwargs
+    assert kwargs["operation"] == "meta_reconcile"
+    assert kwargs["platform"] == "meta"
+    assert kwargs["status"] == "error"
+    assert kwargs["error_message"] == "token do system user nao configurado"
+
+
+@pytest.mark.asyncio
+async def test_falha_ao_gravar_a_execucao_sem_config_nao_muda_o_plano() -> None:
+    """A gravação é `best_effort`: o audit que falha não troca o `Plan` devolvido
+    (o código de saída 1 vem do `blocked_reason`, não da gravação)."""
+    gravar_run = AsyncMock(side_effect=RuntimeError("audit fora do ar"))
+
+    plano = await _reconcilia_sem_config(token="", business_id="bm", gravar_run=gravar_run)
+
+    gravar_run.assert_awaited_once()
+    assert plano.blocked_reason == "token do system user nao configurado"
 
 
 @pytest.mark.asyncio
