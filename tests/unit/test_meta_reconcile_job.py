@@ -24,7 +24,7 @@ import pytest
 from src.db.repositories.manager_meta_account_access import PARTNERSHIP_ENDED_REASON
 from src.meta_ads.alcance import Alcance
 from src.meta_ads.partnership import PartnershipSnapshot
-from src.meta_ads.reconcile import InventoryRow
+from src.meta_ads.reconcile import InventoryRow, Plan
 
 
 def _patches(job, *, apply: bool, parceria: list[str]):
@@ -218,7 +218,7 @@ async def test_com_apply_ligado_desativa_e_revoga_e_audita_a_conta() -> None:
     assert plano.to_remove == ["act_2"]
 
 
-async def _reconcilia_sem_config(*, token: str, business_id: str, gravar_run: AsyncMock):
+async def _reconcilia_sem_config(*, token: str, business_id: str, gravar_run: AsyncMock) -> Plan:
     """Roda `reconcile_meta` com a configuração faltando e `record_job_run`
     trocado pelo `gravar_run` recebido. O `conn` não é tocado além da gravação
     da execução (que está mockada)."""
@@ -261,8 +261,6 @@ async def test_sem_business_id_o_job_nao_reconcilia() -> None:
 
 @pytest.mark.asyncio
 async def test_sem_token_o_job_nao_reconcilia() -> None:
-    from src.jobs import meta_resync as job  # noqa: F401
-
     gravar_run = AsyncMock()
 
     plano = await _reconcilia_sem_config(token="", business_id="bm", gravar_run=gravar_run)

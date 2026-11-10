@@ -1,7 +1,7 @@
 """O menu do gestor só oferece o toggle que de fato muda o estado real.
 
 F84: `is_active` e `status` divergem e nada os sincroniza. O badge segue
-`Manager.is_deactivated`; a rota `toggle-active` só inverte `is_active`. Com
+`Manager.is_deactivated`; a rota `toggle-active` só aplica `is_active` (o estado pedido). Com
 `status='inactive'` o toggle não muda nada, então o menu não pode oferecer
 "Desativar" nem "Reativar" ali.
 """

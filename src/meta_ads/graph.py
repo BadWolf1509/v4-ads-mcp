@@ -105,7 +105,11 @@ async def fetch_paginated(
         body = resp.json()
         if not isinstance(body, dict):
             # 200 sem objeto: leitura truncada, nao churn (F93). Guarda o que veio.
-            log.warning("meta_graph_body_nao_objeto", fetched_so_far=len(rows))
+            log.warning(
+                "meta_graph_body_nao_objeto",
+                tipo=type(body).__name__,
+                fetched_so_far=len(rows),
+            )
             return PagedFetch(rows, False)
         rows.extend(body.get("data", []))
         if not (body.get("paging") or {}).get("next"):

@@ -200,6 +200,28 @@ async def test_audit_export_csv_filters_by_status(client: AsyncClient):
 
 
 @pytest.mark.integration
+async def test_audit_export_csv_nome_usa_o_dia_de_brasilia(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    """O nome do arquivo segue o dia do painel (Brasília), não o dia UTC: entre
+    21h e 24h em Brasília o UTC já virou o dia e o nome saía com a data de amanhã."""
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="csv_nome@v4company.com", full_name=None)
+    monkeypatch.setattr("src.web.routes.audit.dias_do_painel", lambda n: [date(2001, 2, 3)])
+    cookie = sign_panel_session(
+        manager_id=str(mid),
+        email="csv_nome@v4company.com",
+        signing_key=_SIGNING_KEY,
+        aud="panel",
+    )
+    response = await client.get("/audit/export.csv", cookies={PANEL_SESSION_COOKIE_NAME: cookie})
+    assert response.status_code == 200
+    assert 'filename="audit-2001-02-03.csv"' in response.headers["content-disposition"]
+
+
+@pytest.mark.integration
 async def test_audit_pagination_follows_cursor_across_pages(client: AsyncClient):
     """Task 7 (PR 5): HTTP round-trip of the keyset cursor, not just the repo
     call in isolation. Exercises the part `test_audit_keyset.py` doesn't —

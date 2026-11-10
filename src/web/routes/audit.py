@@ -2,7 +2,7 @@
 
 from collections import OrderedDict
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode
 
@@ -132,7 +132,7 @@ async def audit_export_csv(
             ):
                 yield line.encode("utf-8")
 
-    filename = f"audit-{datetime.now(UTC).strftime('%Y-%m-%d')}.csv"
+    filename = f"audit-{dias_do_painel(1)[0].isoformat()}.csv"
     return StreamingResponse(
         stream(),
         media_type="text/csv",
