@@ -1,4 +1,4 @@
-"""Caracterizacao dos builders de status: o proto gerado nao pode mudar.
+"""Caracterizacao dos builders de status: a operacao montada nao pode mudar.
 
 Os valores esperados em ESPERADO foram capturados do codigo ANTES da refatoracao
 table-driven (`mutates/_status.py`). Se um deles mudar, a operacao enviada ao
@@ -10,9 +10,10 @@ from typing import Any
 
 import pytest
 
+from src.google_ads.mutates._status import ALVOS_DE_STATUS
 from src.google_ads.mutates.ad_groups import build_update_ad_group_status
 from src.google_ads.mutates.ads import build_update_ad_status
-from src.google_ads.mutates.bulk import build_bulk_pause
+from src.google_ads.mutates.bulk import _IDS_POR_ALVO, _SUPPORTED_TARGETS, build_bulk_pause
 from src.google_ads.mutates.campaigns import build_update_campaign_status
 from src.google_ads.mutates.keywords import build_update_keyword_status
 from tests.unit.fixtures.proto_capture import make_capture_client, to_plain
@@ -243,3 +244,8 @@ def test_proto_igual_ao_de_antes(nome: str) -> None:
     client = _client()
     ops = builder(client, CID, payload)
     assert _serializa(client, ops) == ESPERADO[nome]
+
+
+def test_tabelas_de_alvos_do_bulk_tem_as_mesmas_chaves() -> None:
+    """Alvo so em `_SUPPORTED_TARGETS` passaria na validacao e daria KeyError."""
+    assert set(_SUPPORTED_TARGETS) == set(_IDS_POR_ALVO) == set(ALVOS_DE_STATUS)

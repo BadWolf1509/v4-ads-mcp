@@ -56,7 +56,7 @@ async def test_chaves_do_resultado_bate_com_o_tipo_mutacao(monkeypatch):
             target_count=2,
             partial_failure=True,
         )
-    assert set(result) == set(ResultadoMutacao.__annotations__)
+    assert set(result) == ResultadoMutacao.__required_keys__ | ResultadoMutacao.__optional_keys__
 
 
 @pytest.mark.asyncio
@@ -89,7 +89,10 @@ async def test_chaves_do_resultado_bate_com_o_tipo_recomendacao():
             operation_type="apply_recommendation",
             payload={"recommendation_resource_name": "customers/1234567890/recommendations/1"},
         )
-    assert set(result) == set(ResultadoRecomendacao.__annotations__)
+    assert (
+        set(result)
+        == ResultadoRecomendacao.__required_keys__ | ResultadoRecomendacao.__optional_keys__
+    )
 
 
 async def _upload(client, payload):
@@ -117,7 +120,10 @@ async def _upload(client, payload):
 async def test_chaves_do_resultado_bate_com_o_tipo_upload_aplicado():
     result = await _upload(t_conv._mock_client_with_success_response(1), t_conv._payload())
     assert result["status"] == "applied"
-    assert set(result) == set(ResultadoUploadAplicado.__annotations__)
+    assert (
+        set(result)
+        == ResultadoUploadAplicado.__required_keys__ | ResultadoUploadAplicado.__optional_keys__
+    )
 
 
 @pytest.mark.asyncio
@@ -126,7 +132,9 @@ async def test_chaves_do_resultado_bate_com_o_tipo_upload_erro_sem_fuso():
     del payload["__time_zone__"]
     result = await _upload(t_conv._mock_client_with_success_response(1), payload)
     assert result["status"] == "error"
-    assert set(result) == set(ResultadoUploadErro.__annotations__)
+    assert (
+        set(result) == ResultadoUploadErro.__required_keys__ | ResultadoUploadErro.__optional_keys__
+    )
 
 
 @pytest.mark.asyncio
@@ -135,7 +143,9 @@ async def test_chaves_do_resultado_bate_com_o_tipo_upload_erro_do_google():
     client.get_service.return_value.upload_click_conversions.side_effect = RuntimeError("boom")
     result = await _upload(client, t_conv._payload())
     assert result["status"] == "error"
-    assert set(result) == set(ResultadoUploadErro.__annotations__)
+    assert (
+        set(result) == ResultadoUploadErro.__required_keys__ | ResultadoUploadErro.__optional_keys__
+    )
 
 
 @pytest.mark.asyncio
@@ -165,4 +175,7 @@ async def test_chaves_do_resultado_bate_com_o_tipo_customer_match():
             operation_type="add",
             hashed_members=[{"hashed_email": "abc"}],
         )
-    assert set(result) == set(ResultadoCustomerMatch.__annotations__)
+    assert (
+        set(result)
+        == ResultadoCustomerMatch.__required_keys__ | ResultadoCustomerMatch.__optional_keys__
+    )
