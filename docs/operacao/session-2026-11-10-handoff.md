@@ -47,11 +47,9 @@ CLI não gravava audit (B4); `reconcile_meta` sem configuração saía sem linha
 - **Dry-run com o gestor presente** das tools de status (`update_*_status`, `bulk_pause_by_query`, builders
   refeitos na C1) e das 3 que passaram para o `emitir_preview` na D3 (`create_and_link_assets`,
   `import_offline_conversions`, `upload_customer_match_list`).
-- **Decisões pendentes do plano:** `granted_at`/`granted_by` na re-concessão (Google × Meta); motivo padrão
-  do `revoke` (`admin_revoked` × `manual`); fonte da moeda Meta; `estimated_calls` nas leituras Meta; sonda
-  do `alcance.py` sem `avisar_versao_meta`; linha de audit Meta sem nome de conta.
-- **`classify`** devolve "unknown operation — default seguro: confirmar" para `create_and_link_assets` e
-  `import_offline_conversions` (seguro, mas as duas não estão na classificação de risco).
+- **As 8 decisões pendentes foram tomadas em 10/11** (todas pela recomendação) e viraram tasks do plano:
+  E3 Step 2, E6, E7, E8, G0, G5 e K1 — tabela na seção "Decisões do Wellington" do plano. Só a C2 (K1)
+  volta a ele, com o levantamento dos 3 tipos de recomendação do v25.
 - **`SMOKE_MCP_BEARER` expirado:** o check de handshake do smoke do deploy não roda (F186).
 - **Starlette 1.10** avisa que `httpx` no `TestClient` está deprecated (`httpx2`); nada quebra hoje.
 - **Parte J e F207** numa sessão com ele, começando pelos logs de produção do resync.

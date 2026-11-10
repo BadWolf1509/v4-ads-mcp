@@ -71,8 +71,9 @@ que mais usava os antigos, saiu em 31/10). O plugin 0.5.0 já manda usar o break
 
 - **Da varredura de 10/11** (lista completa no [handoff](session-2026-11-10-handoff.md)): clique nos
   toggles de gestor em produção; dry-run com gestor das tools de status e das 3 migradas para o
-  `emitir_preview`; 6 decisões pendentes do plano; `classify` sem `create_and_link_assets` e
-  `import_offline_conversions`; reemitir o `SMOKE_MCP_BEARER` (expirado: o handshake do smoke não roda).
+  `emitir_preview`; reemitir o `SMOKE_MCP_BEARER` (expirado: o handshake do smoke não roda); decidir a
+  whitelist da C2 quando o levantamento K1 chegar. As outras 7 decisões do plano foram tomadas em 10/11 e
+  são tasks (E3, E6–E8, G0, G5).
 - **Escrita em produção, com aval próprio:** apagar as linhas de `meta_oauth_connections` (o OAuth
   pessoal saiu no #215); **teste real de convite e cancelamento** (pendente desde 31/10).
 - **Desligamento do Pedro:** desativado em 31/10, conexão e sessão revogadas com auditoria; fora do BM.
