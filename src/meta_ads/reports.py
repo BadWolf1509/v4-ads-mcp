@@ -107,7 +107,8 @@ async def _paginar_graph(
     rate counter (BUC) conta chamadas de verdade, nao a estimativa do caller
     (F88) — sem isto o contador ficaria impreciso pro primeiro caller que
     setar `max_pages > 1` (hoje os callers de colecao o setam: `ler_colecao`, que deriva
-    `max_pages` do `limit` pedido, historico, criativos, insights/performance e pacing).
+    `max_pages` do `limit` pedido, historico, criativos e pacing; as tools de performance
+    leem uma pagina de proposito).
 
     `capturados` recebe os headers de CADA resposta, ANTES de qualquer raise: uma
     chamada throttled (429) levanta aqui e perderia o BUC — justamente a que mais
