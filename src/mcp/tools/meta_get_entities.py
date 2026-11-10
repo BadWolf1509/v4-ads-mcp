@@ -9,7 +9,7 @@ from src.mcp.tools._registry import register_tool
 from src.meta_ads.client import MetaAccessDeniedError
 from src.meta_ads.entidades import listar_entidades
 from src.meta_ads.errors import MetaAdsFriendlyError
-from src.meta_ads.reports import run_meta_graph_get
+from src.meta_ads.moeda import exigir_brl
 
 _OPERACAO = "meta_get_entities"
 
@@ -88,22 +88,14 @@ async def meta_get_entities(args: dict[str, Any]) -> dict[str, Any]:
     if not 1 <= limit <= 500:
         return erro_de_entrada(f"`limit` deve estar entre 1 e 500 (recebido {limit}).")
     try:
-        conta = await run_meta_graph_get(
+        nao_brl = await exigir_brl(
+            ad_account_id,
             manager_id=ctx.manager_id,
             session_id=ctx.session_id,
-            ad_account_id=ad_account_id,
-            edge=f"/{ad_account_id}",
-            params={"fields": "currency"},
-            operation_name=_OPERACAO,
-            estimated_calls=1,
-            audit_this_call=True,
-            params_summary={"ad_account_id": ad_account_id, "call": "moeda"},
+            proposito="as entidades só são lidas",
         )
-        moeda = conta.get("currency")
-        if moeda != "BRL":
-            return erro_de_entrada(
-                f"conta Meta em moeda {moeda!r}: as entidades só são lidas para contas em BRL"
-            )
+        if nao_brl is not None:
+            return nao_brl
         entidades, truncated = await listar_entidades(ctx, ad_account_id, level, status, limit)
     except (MetaAccessDeniedError, MetaAdsFriendlyError) as e:
         return meta_erro(e)

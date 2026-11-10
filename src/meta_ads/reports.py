@@ -3,10 +3,11 @@
 Mirror semantics of src/google_ads/reports.py:
 - Rate limit post-call only (Meta tem BUC header, sem global counter pre-flight)
 - Audit log opt-in (sensitive reads, mutates)
-- PT-BR errors via to_friendly_meta_error()
+- Erros PT-BR via to_friendly_meta_error(): o executor LEVANTA `MetaAdsFriendlyError` e
+  `MetaAccessDeniedError`; quem os transforma em envelope são as tools (`meta_erro`)
 
-V0 (Sprint M.2a) covers simple GET edges (/me/adaccounts etc).
-M.3+ adds Insights API support (paginação, async jobs).
+Cobre qualquer edge GET da Graph API (objeto simples ou coleção); a paginação por
+`paging.next` é opt-in via `max_pages`.
 """
 
 import json
@@ -23,12 +24,12 @@ from src.db.repositories import audit_log, manager_meta_account_access
 from src.governance.bookkeeping import best_effort
 from src.governance.rate_limit import record_actual_meta
 from src.meta_ads.client import (
-    META_GRAPH_API_VERSION,
+    META_GRAPH_BASE_URL,
     MetaAccessDeniedError,
     MetaSystemUserTokenMissingError,
 )
 from src.meta_ads.errors import to_friendly_meta_error
-from src.meta_ads.graph import paginas_graph
+from src.meta_ads.graph import CorpoIlegivel, paginas_graph
 
 log = structlog.get_logger(__name__)
 
@@ -105,7 +106,9 @@ async def _paginar_graph(
     BUC os le. `paginas_lidas` e o numero de requests REALMENTE feitos: o
     rate counter (BUC) conta chamadas de verdade, nao a estimativa do caller
     (F88) — sem isto o contador ficaria impreciso pro primeiro caller que
-    setar `max_pages > 1` (hoje nenhum seta; _MAX_PAGES das tools Meta e 1).
+    setar `max_pages > 1` (hoje os callers de colecao o setam: `ler_colecao`, que deriva
+    `max_pages` do `limit` pedido, historico, criativos e pacing; as tools de performance
+    leem uma pagina de proposito).
 
     `capturados` recebe os headers de CADA resposta, ANTES de qualquer raise: uma
     chamada throttled (429) levanta aqui e perderia o BUC — justamente a que mais
@@ -119,12 +122,13 @@ async def _paginar_graph(
     corpo: dict[str, Any] = {}
     headers = httpx.Headers()
     lidas = 0
-    async for resp in paginas_graph(http, url, params, cabecalhos, max_pages):
+    async for resp, bruto in paginas_graph(http, url, params, cabecalhos, max_pages):
         headers = resp.headers
         capturados.append(headers)
         if resp.status_code != 200:
             raise MetaGraphHTTPError(resp.status_code, resp.text)
-        bruto = resp.json()
+        if isinstance(bruto, CorpoIlegivel):
+            raise bruto.erro
         if not isinstance(bruto, dict):
             # Nao e `cast`: o cast satisfaz o mypy e nao existe em runtime.
             raise MetaGraphHTTPError(resp.status_code, f"corpo nao-JSON: {type(bruto).__name__}")
@@ -231,10 +235,12 @@ async def run_meta_graph_get(
             opcional, então um caller que esquecesse a chave gravava a linha com
             conta NULA — na plataforma onde o token é compartilhado e a matriz é
             o único freio, é a última linha que pode ficar sem a conta.
-        edge: Graph API edge path, e.g., "/me/adaccounts"
+        edge: Graph API edge path, e.g., "/act_<id>/insights"
         params: query parameters dict
         operation_name: for audit log + rate limit operation field
-        estimated_calls: how many API calls this counts as
+        estimated_calls: previsao de chamadas do caller. NAO entra no contador:
+            ele grava so as paginas realmente lidas (decisao de 10/11); nao ha
+            reserva/reconciliacao nesta funcao.
         max_pages: quantas páginas seguir via `paging.next` (F88). Default 1
             preserva o comportamento antigo pros callers que leem 1 objeto só
             (ex.: overview). Edges de coleção passam >1: sem isso, a resposta é a
@@ -335,7 +341,7 @@ async def run_meta_graph_get(
         # `graph.py::fetch_paginated`, que ja rodava assim em producao: e a
         # evidencia empirica de que este app nao exige `appsecret_proof`.
         cabecalhos = {"Authorization": f"Bearer {token}"}
-        url = f"https://graph.facebook.com/{META_GRAPH_API_VERSION}{edge}"
+        url = f"{META_GRAPH_BASE_URL}{edge}"
         async with httpx.AsyncClient(timeout=_TIMEOUT_GRAPH) as http:
             body, linhas, headers_ultima, paginas_lidas = await _paginar_graph(
                 http, url, params or {}, cabecalhos, max_pages, capturados
@@ -349,7 +355,7 @@ async def run_meta_graph_get(
             await _contabilizar_uso(
                 capturados[-1],
                 ad_account_id=ad_account_id,
-                calls=max(estimated_calls, len(capturados)),
+                calls=len(capturados),
                 app_id=settings.meta_app_id,
             )
         if audit_this_call:
@@ -388,11 +394,12 @@ async def run_meta_graph_get(
     # do APP em chamada /insights (o `x-app-usage` nao vem ali — medido). Registra se
     # QUALQUER dos dois vier: a chamada aconteceu e conta, e o que nao veio e "nao
     # sei", nunca 0.
-    # F88: contabiliza as chamadas REALMENTE feitas, não a estimativa.
+    # F88 + decisao de 10/11 ("contar so o lido"): contabiliza as paginas REALMENTE
+    # lidas, nunca `max(estimativa, lidas)` — `estimated_calls` e so previsao (nao ha reserva).
     await _contabilizar_uso(
         headers_ultima,
         ad_account_id=ad_account_id,
-        calls=max(estimated_calls, paginas_lidas),
+        calls=paginas_lidas,
         app_id=settings.meta_app_id,
     )
 

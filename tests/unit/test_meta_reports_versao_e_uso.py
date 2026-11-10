@@ -87,7 +87,9 @@ async def test_fetch_paginated_avisa_versao() -> None:
     assert len(_avisos(logs)) == 1
 
 
-async def _rodar(handler: Any, *, audit: AsyncMock, rec: AsyncMock | None = None) -> Any:
+async def _rodar(
+    handler: Any, *, audit: AsyncMock, rec: AsyncMock | None = None, **extra: Any
+) -> Any:
     with (
         patch.object(reports.connection, "get_pool", return_value=FakePool()),
         patch.object(
@@ -106,7 +108,80 @@ async def _rodar(handler: Any, *, audit: AsyncMock, rec: AsyncMock | None = None
             operation_name="meta_get_campaign_performance",
             audit_this_call=True,
             params_summary={"ad_account_id": "act_999"},
+            **extra,
         )
+
+
+# --- E6: o contador conta as paginas LIDAS, nao a estimativa -------------------
+# Decisao de 10/11 ("contar so o lido"): `calls` do contador BUC e o numero de
+# respostas recebidas. Uma pagina que chegou e falhou (429, 200 ilegivel) conta:
+# o request foi feito e consumiu quota da Meta.
+
+
+def _handler_n_paginas(total: int, *, ultima: Any = None) -> Any:
+    n = 0
+
+    def handler(_r: httpx.Request) -> httpx.Response:
+        nonlocal n
+        n += 1
+        if n == total and ultima is not None:
+            return ultima
+        corpo: dict[str, Any] = {"data": [{"i": n}]}
+        if n < total or ultima is not None:
+            corpo["paging"] = {"next": f"https://graph.facebook.com/v25.0/p{n}"}
+        return httpx.Response(200, json=corpo, headers={"x-business-use-case-usage": BUC})
+
+    return handler
+
+
+@pytest.mark.asyncio
+async def test_contador_grava_2_quando_so_2_paginas_vieram_de_max_pages_5() -> None:
+    rec = AsyncMock()
+    audit = AsyncMock(return_value=1)
+    await _rodar(_handler_n_paginas(2), audit=audit, rec=rec, estimated_calls=5, max_pages=5)
+    assert rec.call_args.kwargs["calls"] == 2
+    # target_count do audit e o numero de LINHAS, nao de chamadas: nao muda.
+    assert audit.call_args.kwargs["target_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_contador_grava_o_teto_quando_max_pages_estoura() -> None:
+    rec = AsyncMock()
+    await _rodar(
+        _handler_n_paginas(10), audit=AsyncMock(return_value=1), rec=rec,
+        estimated_calls=5, max_pages=3,
+    )  # fmt: skip
+    assert rec.call_args.kwargs["calls"] == 3
+
+
+@pytest.mark.asyncio
+async def test_contador_erro_na_pagina_2_conta_as_2_respostas_recebidas() -> None:
+    rec = AsyncMock()
+    ruim = httpx.Response(
+        429,
+        json={"error": {"code": 80004, "message": "too many calls"}},
+        headers={"x-business-use-case-usage": BUC},
+    )
+    with pytest.raises(MetaAdsFriendlyError):
+        await _rodar(
+            _handler_n_paginas(2, ultima=ruim), audit=AsyncMock(return_value=1), rec=rec,
+            estimated_calls=5, max_pages=5,
+        )  # fmt: skip
+    assert rec.call_args.kwargs["calls"] == 2
+
+
+@pytest.mark.asyncio
+async def test_contador_pagina_2_200_ilegivel_conta_porque_o_request_foi_feito() -> None:
+    rec = AsyncMock()
+    ilegivel = httpx.Response(
+        200, content=b"<html>nao e json", headers={"x-business-use-case-usage": BUC}
+    )
+    with pytest.raises(MetaAdsFriendlyError):
+        await _rodar(
+            _handler_n_paginas(2, ultima=ilegivel), audit=AsyncMock(return_value=1), rec=rec,
+            estimated_calls=5, max_pages=5,
+        )  # fmt: skip
+    assert rec.call_args.kwargs["calls"] == 2
 
 
 @pytest.mark.asyncio
@@ -282,3 +357,33 @@ async def test_fetch_paginated_estourar_max_pages_devolve_incompleto() -> None:
         )
     assert out.complete is False
     assert (len(out.rows), len(vistos)) == (3, 3)
+
+
+@pytest.mark.asyncio
+async def test_paginar_graph_200_json_invalido_captura_headers_e_levanta() -> None:
+    """Como antes da E2: os headers da página entram em `capturados` ANTES do raise."""
+
+    def handler(_r: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, content=b"<html>nao e json", headers={"x-business-use-case-usage": "p1"}
+        )
+
+    capturados: list[httpx.Headers] = []
+    async with _cliente(handler) as http:
+        with pytest.raises(ValueError):
+            await reports._paginar_graph(
+                http, "https://graph.facebook.com/v25.0/x", {}, {}, 2, capturados
+            )
+    assert [h["x-business-use-case-usage"] for h in capturados] == ["p1"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_paginated_200_json_invalido_levanta_como_antes() -> None:
+    def handler(_r: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"<html>nao e json")
+
+    async with _cliente(handler) as http:
+        with pytest.raises(ValueError):
+            await graph.fetch_paginated(
+                http, "https://graph.facebook.com/v25.0/x", access_token="tok", params={}
+            )

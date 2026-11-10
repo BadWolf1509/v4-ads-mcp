@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from contextlib import ExitStack
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -24,11 +25,56 @@ def _ctx() -> Iterator[None]:
     clear_current()
 
 
+class _ConnComMoeda:
+    """Conexao falsa: devolve a moeda da linha de `meta_ad_accounts` (None = sem linha)."""
+
+    def __init__(self, moeda_na_tabela: str | None) -> None:
+        self._moeda = moeda_na_tabela
+
+    async def fetchval(self, *_a: Any, **_k: Any) -> str | None:
+        return self._moeda
+
+
+def _inventario(moeda_na_tabela: str | None, *, acesso: bool = True) -> Any:
+    async def run(op: Any, **_k: Any) -> Any:
+        return await op(_ConnComMoeda(moeda_na_tabela))
+
+    pilha = ExitStack()
+    pilha.enter_context(patch("src.db.connection.run_with_reconnect", run))
+    pilha.enter_context(
+        patch(
+            "src.db.repositories.manager_meta_account_access.can_manager_access",
+            AsyncMock(return_value=acesso),
+        )
+    )
+    return pilha
+
+
+def _negacao_real(tool: Any, args: dict[str, Any], moeda_na_tabela: str | None) -> Any:
+    """Gestor sem acesso: gate REAL da Graph (`run_meta_graph_get`) com audit mockado."""
+
+    async def corre() -> tuple[dict[str, Any], AsyncMock]:
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=MagicMock())
+        cm.__aexit__ = AsyncMock(return_value=False)
+        pool = MagicMock()
+        pool.acquire = MagicMock(return_value=cm)
+        audit = AsyncMock()
+        with (
+            _inventario(moeda_na_tabela, acesso=False),
+            patch("src.meta_ads.reports.connection.get_pool", return_value=pool),
+            patch("src.meta_ads.reports.audit_log.record", audit),
+        ):
+            return await tool(args), audit
+
+    return corre()
+
+
 def _patches(side_effect: Any) -> Any:
     g = AsyncMock(side_effect=side_effect)
     return (
         g,
-        patch.object(modulo, "run_meta_graph_get", g),
+        _inventario("BRL"),
         patch.object(entidades, "run_meta_graph_get", g),
     )
 
@@ -39,7 +85,7 @@ def _linhas(n: int) -> list[dict[str, Any]]:
 
 @pytest.mark.asyncio
 async def test_conta_sem_entidade_e_sucesso_com_lista_vazia() -> None:
-    g, p1, p2 = _patches([{"currency": "BRL"}, {"data": []}])
+    g, p1, p2 = _patches([{"data": []}])
     with p1, p2:
         r = await modulo.meta_get_entities({"ad_account_id": _CONTA, "level": "campaign"})
     assert r["status"] == "success"
@@ -48,14 +94,12 @@ async def test_conta_sem_entidade_e_sucesso_com_lista_vazia() -> None:
 
 @pytest.mark.asyncio
 async def test_envia_edge_e_params_certos_e_audita() -> None:
-    g, p1, p2 = _patches([{"currency": "BRL"}, {"data": _linhas(1)}])
+    g, p1, p2 = _patches([{"data": _linhas(1)}])
     with p1, p2:
         await modulo.meta_get_entities(
             {"ad_account_id": _CONTA, "level": "adset", "status": "PAUSED", "limit": 20}
         )
-    moeda, lista = g.await_args_list[0].kwargs, g.await_args_list[1].kwargs
-    assert moeda["edge"] == "/act_1"
-    assert moeda["params"] == {"fields": "currency"}
+    lista = g.await_args_list[0].kwargs
     assert lista["edge"] == "/act_1/adsets"
     assert lista["ad_account_id"] == "act_1"
     assert lista["operation_name"] == "meta_get_entities"
@@ -67,7 +111,7 @@ async def test_envia_edge_e_params_certos_e_audita() -> None:
 
 @pytest.mark.asyncio
 async def test_limite_menor_que_o_total_marca_truncated() -> None:
-    g, p1, p2 = _patches([{"currency": "BRL"}, {"data": _linhas(6)}])
+    g, p1, p2 = _patches([{"data": _linhas(6)}])
     with p1, p2:
         r = await modulo.meta_get_entities(
             {"ad_account_id": _CONTA, "level": "campaign", "limit": 5}
@@ -79,7 +123,7 @@ async def test_limite_menor_que_o_total_marca_truncated() -> None:
 
 @pytest.mark.asyncio
 async def test_exatamente_o_limite_nao_e_truncado() -> None:
-    g, p1, p2 = _patches([{"currency": "BRL"}, {"data": _linhas(5)}])
+    g, p1, p2 = _patches([{"data": _linhas(5)}])
     with p1, p2:
         r = await modulo.meta_get_entities(
             {"ad_account_id": _CONTA, "level": "campaign", "limit": 5}
@@ -89,9 +133,7 @@ async def test_exatamente_o_limite_nao_e_truncado() -> None:
 
 @pytest.mark.asyncio
 async def test_next_remanescente_sem_linha_extra_marca_truncated() -> None:
-    g, p1, p2 = _patches(
-        [{"currency": "BRL"}, {"data": _linhas(5), "paging": {"next": "https://x"}}]
-    )
+    g, p1, p2 = _patches([{"data": _linhas(5), "paging": {"next": "https://x"}}])
     with p1, p2:
         r = await modulo.meta_get_entities(
             {"ad_account_id": _CONTA, "level": "campaign", "limit": 5}
@@ -101,20 +143,20 @@ async def test_next_remanescente_sem_linha_extra_marca_truncated() -> None:
 
 @pytest.mark.asyncio
 async def test_limite_grande_segue_paginas_ate_o_necessario() -> None:
-    g, p1, p2 = _patches([{"currency": "BRL"}, {"data": _linhas(3)}])
+    g, p1, p2 = _patches([{"data": _linhas(3)}])
     with p1, p2:
         await modulo.meta_get_entities({"ad_account_id": _CONTA, "level": "ad", "limit": 500})
-    assert g.await_args_list[1].kwargs["max_pages"] == 6
-    assert g.await_args_list[1].kwargs["params"]["limit"] == 100
+    assert g.await_args_list[0].kwargs["max_pages"] == 6
+    assert g.await_args_list[0].kwargs["params"]["limit"] == 100
 
 
 @pytest.mark.asyncio
 async def test_moeda_diferente_de_brl_vira_erro_sem_listar() -> None:
-    g, p1, p2 = _patches([{"currency": "USD"}, {"data": _linhas(2)}])
-    with p1, p2:
+    g, p1, p2 = _patches([{"data": _linhas(2)}])
+    with p1, p2, _inventario("USD"):
         r = await modulo.meta_get_entities({"ad_account_id": _CONTA, "level": "campaign"})
     assert r["status"] == "error" and "BRL" in r["error_message"]
-    assert g.await_count == 1
+    g.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -134,7 +176,7 @@ async def test_payload_de_sucesso() -> None:
         "effective_status": "CAMPAIGN_PAUSED",
         "daily_budget": "2500",
     }
-    g, p1, p2 = _patches([{"currency": "BRL"}, {"data": [linha]}])
+    g, p1, p2 = _patches([{"data": [linha]}])
     with p1, p2:
         r = await modulo.meta_get_entities({"ad_account_id": _CONTA, "level": "adset"})
     assert r["level"] == "adset" and r["ad_account_id"] == _CONTA
@@ -155,10 +197,62 @@ def test_registrada_no_bucket_always() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("limit", [0, -1, 501])
 async def test_limit_fora_da_faixa_erra_sem_chamar_a_graph(limit: int) -> None:
-    g, p1, p2 = _patches([{"currency": "BRL"}, {"data": []}])
+    g, p1, p2 = _patches([{"data": []}])
     with p1, p2:
         r = await modulo.meta_get_entities(
             {"ad_account_id": _CONTA, "level": "campaign", "limit": limit}
         )
     assert r["status"] == "error" and "entre 1 e 500" in r["error_message"]
     g.assert_not_awaited()
+
+
+# ---------- moeda lida do inventario (decisao de 10/11): sem chamada de moeda a Graph ----------
+
+
+def _graph_sem_moeda() -> AsyncMock:
+    async def graph(**kw: Any) -> dict[str, Any]:
+        assert kw["params"] != {"fields": "currency"}, "a moeda nao vem mais da Graph"
+        return {"data": _linhas(1)}
+
+    return AsyncMock(side_effect=graph)
+
+
+@pytest.mark.asyncio
+async def test_conta_brl_no_inventario_responde_sem_chamar_a_graph_de_moeda() -> None:
+    g = _graph_sem_moeda()
+    with _inventario("BRL"), patch.object(entidades, "run_meta_graph_get", g):
+        r = await modulo.meta_get_entities({"ad_account_id": _CONTA, "level": "campaign"})
+    assert r["status"] == "success" and r["total_returned"] == 1
+    assert g.await_count == 1  # so a listagem
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("moeda_na_tabela", ["USD", None])
+async def test_conta_nao_brl_no_inventario_devolve_o_envelope_de_moeda_sem_listar(
+    moeda_na_tabela: str | None,
+) -> None:
+    g = _graph_sem_moeda()
+    with _inventario(moeda_na_tabela), patch.object(entidades, "run_meta_graph_get", g):
+        r = await modulo.meta_get_entities({"ad_account_id": _CONTA, "level": "campaign"})
+    assert r == {
+        "status": "error",
+        "error_message": (
+            f"conta Meta em moeda {moeda_na_tabela!r}: as entidades só são lidas para contas em BRL"
+        ),
+    }
+    g.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("moeda_na_tabela", ["USD", "BRL"])
+async def test_sem_acesso_a_negacao_do_gate_vale_e_a_moeda_nao_vaza(
+    moeda_na_tabela: str,
+) -> None:
+    r, audit = await _negacao_real(
+        modulo.meta_get_entities, {"ad_account_id": _CONTA, "level": "campaign"}, moeda_na_tabela
+    )
+    assert r["status"] == "denied" and "moeda" not in r["error_message"]
+    audit.assert_awaited_once()
+    k = audit.call_args.kwargs
+    assert k["status"] == "denied" and k["operation"] == "meta_get_entities"
+    assert k["customer_id"] == _CONTA and k["platform"] == "meta"

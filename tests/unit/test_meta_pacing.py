@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from contextlib import ExitStack
 from datetime import date
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -133,6 +134,51 @@ def _insight(camp: str, spend: str | None) -> dict[str, Any]:
     return linha
 
 
+class _ConnComMoeda:
+    """Conexao falsa: devolve a moeda da linha de `meta_ad_accounts` (None = sem linha)."""
+
+    def __init__(self, moeda_na_tabela: str | None) -> None:
+        self._moeda = moeda_na_tabela
+
+    async def fetchval(self, *_a: Any, **_k: Any) -> str | None:
+        return self._moeda
+
+
+def _inventario(moeda_na_tabela: str | None, *, acesso: bool = True) -> Any:
+    async def run(op: Any, **_k: Any) -> Any:
+        return await op(_ConnComMoeda(moeda_na_tabela))
+
+    pilha = ExitStack()
+    pilha.enter_context(patch("src.db.connection.run_with_reconnect", run))
+    pilha.enter_context(
+        patch(
+            "src.db.repositories.manager_meta_account_access.can_manager_access",
+            AsyncMock(return_value=acesso),
+        )
+    )
+    return pilha
+
+
+def _negacao_real(tool: Any, args: dict[str, Any], moeda_na_tabela: str | None) -> Any:
+    """Gestor sem acesso: gate REAL da Graph (`run_meta_graph_get`) com audit mockado."""
+
+    async def corre() -> tuple[dict[str, Any], AsyncMock]:
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=MagicMock())
+        cm.__aexit__ = AsyncMock(return_value=False)
+        pool = MagicMock()
+        pool.acquire = MagicMock(return_value=cm)
+        audit = AsyncMock()
+        with (
+            _inventario(moeda_na_tabela, acesso=False),
+            patch("src.meta_ads.reports.connection.get_pool", return_value=pool),
+            patch("src.meta_ads.reports.audit_log.record", audit),
+        ):
+            return await tool(args), audit
+
+    return corre()
+
+
 async def _roda(
     *,
     hoje: date,
@@ -143,7 +189,7 @@ async def _roda(
     trunc_adset: bool = False,
     moeda: str = "BRL",
 ) -> tuple[dict[str, Any], AsyncMock]:
-    g = AsyncMock(side_effect=[{"currency": moeda}, insights or {"data": []}])
+    g = AsyncMock(side_effect=[insights or {"data": []}])
 
     async def listar(
         ctx: Any, act: str, level: str, status: str | None, limit: int, operacao: str = ""
@@ -156,6 +202,7 @@ async def _roda(
 
     with (
         patch.object(modulo, "run_meta_graph_get", g),
+        _inventario(moeda),
         patch.object(modulo, "listar_entidades", AsyncMock(side_effect=listar)),
         patch.object(modulo, "resolve_meta_account_today", AsyncMock(return_value=hoje)),
     ):
@@ -172,7 +219,7 @@ async def test_projeta_pelos_dias_fechados_e_exclui_hoje() -> None:
         insights={"data": [_insight("1", "1000.00")]},
     )
     assert r["status"] == "success"
-    ins = g.await_args_list[1].kwargs
+    ins = g.await_args_list[0].kwargs
     assert ins["edge"] == "/act_1/insights"
     assert '"since":"2026-10-01"' in ins["params"]["time_range"]
     assert '"until":"2026-10-10"' in ins["params"]["time_range"]
@@ -195,7 +242,7 @@ async def test_dia_1_nao_chama_insights_e_projecao_e_null() -> None:
         conjuntos=[],
         insights=None,
     )
-    assert g.await_count == 1  # so a moeda
+    g.assert_not_awaited()  # sem dia fechado nao ha insights, e a moeda nao vem da Graph
     c = r["campaigns"][0]
     assert c["gasto_fechado_brl"] is None
     assert c["media_diaria_brl"] is None and c["projecao_mensal_brl"] is None
@@ -439,14 +486,16 @@ async def test_moeda_diferente_de_brl_e_erro() -> None:
     )
     assert r["status"] == "error"
     assert "USD" in r["error_message"]
-    assert g.await_count == 1
+    g.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_falha_da_graph_vira_erro() -> None:
     g = AsyncMock(side_effect=RuntimeError("boom"))
     with (
+        _inventario("BRL"),
         patch.object(modulo, "run_meta_graph_get", g),
+        patch.object(modulo, "listar_entidades", AsyncMock(return_value=([], False))),
         patch.object(
             modulo, "resolve_meta_account_today", AsyncMock(return_value=date(2026, 10, 11))
         ),
@@ -619,3 +668,64 @@ async def test_falha_ao_resolver_o_relogio_da_conta_vira_erro() -> None:
     ):
         await modulo.meta_get_budget_pacing({"ad_account_id": _CONTA})
     g.assert_not_awaited()
+
+
+# ---------- moeda lida do inventario (decisao de 10/11): sem chamada de moeda a Graph ----------
+
+
+async def _roda_com_inventario(moeda_na_tabela: str | None) -> tuple[dict[str, Any], AsyncMock]:
+    async def graph(**kw: Any) -> dict[str, Any]:
+        assert kw["params"] != {"fields": "currency"}, "a moeda nao vem mais da Graph"
+        return {"data": []}
+
+    g = AsyncMock(side_effect=graph)
+    listar = AsyncMock(return_value=([], False))
+    with (
+        _inventario(moeda_na_tabela),
+        patch.object(modulo, "run_meta_graph_get", g),
+        patch.object(modulo, "listar_entidades", listar),
+        patch.object(
+            modulo, "resolve_meta_account_today", AsyncMock(return_value=date(2026, 10, 1))
+        ),
+    ):
+        r = await modulo.meta_get_budget_pacing({"ad_account_id": _CONTA})
+    return r, listar
+
+
+@pytest.mark.asyncio
+async def test_conta_brl_no_inventario_calcula_sem_chamar_a_graph_de_moeda() -> None:
+    r, _ = await _roda_com_inventario("BRL")
+    assert r["status"] == "success"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("moeda_na_tabela", ["USD", None])
+async def test_conta_nao_brl_no_inventario_devolve_o_envelope_de_moeda(
+    moeda_na_tabela: str | None,
+) -> None:
+    r, listar = await _roda_com_inventario(moeda_na_tabela)
+    assert r == {
+        "status": "error",
+        "error_message": (
+            f"conta Meta em moeda {moeda_na_tabela!r}: o pacing só é calculado para contas em BRL"
+        ),
+    }
+    listar.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("moeda_na_tabela", ["USD", "BRL"])
+async def test_sem_acesso_a_negacao_do_gate_vale_e_a_moeda_nao_vaza(
+    moeda_na_tabela: str,
+) -> None:
+    with patch.object(
+        modulo, "resolve_meta_account_today", AsyncMock(return_value=date(2026, 10, 11))
+    ):
+        r, audit = await _negacao_real(
+            modulo.meta_get_budget_pacing, {"ad_account_id": _CONTA}, moeda_na_tabela
+        )
+    assert r["status"] == "denied" and "moeda" not in r["error_message"]
+    audit.assert_awaited_once()
+    k = audit.call_args.kwargs
+    assert k["status"] == "denied" and k["operation"] == "meta_get_budget_pacing"
+    assert k["customer_id"] == _CONTA and k["platform"] == "meta"

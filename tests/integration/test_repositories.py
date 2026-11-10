@@ -1212,6 +1212,23 @@ async def test_meta_accounts_get_by_id(db) -> None:
         assert missing is None
 
 
+@pytest.mark.integration
+async def test_meta_accounts_currency_of(db) -> None:
+    async with db.acquire() as conn:
+        await meta_ad_accounts.upsert_many(
+            conn,
+            [
+                {"ad_account_id": "act_brl", "account_name": "B", "currency": "BRL"},
+                {"ad_account_id": "act_usd", "account_name": "U", "currency": "USD"},
+                {"ad_account_id": "act_sem_moeda", "account_name": "S"},
+            ],
+        )
+        assert await meta_ad_accounts.currency_of(conn, "act_brl") == "BRL"
+        assert await meta_ad_accounts.currency_of(conn, "act_usd") == "USD"
+        assert await meta_ad_accounts.currency_of(conn, "act_sem_moeda") is None
+        assert await meta_ad_accounts.currency_of(conn, "act_nao_existe") is None
+
+
 # ---------- manager_meta_account_access ----------
 
 

@@ -45,7 +45,7 @@ def test_erro_interno_sobe() -> None:
 @pytest.mark.asyncio
 async def test_tool_meta_negada_devolve_denied() -> None:
     with (
-        patch.object(modulo, "run_meta_graph_get", AsyncMock(return_value={"currency": "BRL"})),
+        patch.object(modulo, "exigir_brl", AsyncMock(return_value=None)),
         patch.object(
             modulo, "listar_entidades", AsyncMock(side_effect=MetaAccessDeniedError("sem grant"))
         ),
@@ -70,7 +70,8 @@ async def test_token_ausente_chega_ao_gestor_como_error() -> None:
     assert isinstance(exc, MetaAdsFriendlyError)
     assert exc.message == msg and exc.retryable is False
     with (
-        patch.object(modulo, "run_meta_graph_get", AsyncMock(side_effect=exc)),
+        patch.object(modulo, "exigir_brl", AsyncMock(return_value=None)),
+        patch.object(modulo, "listar_entidades", AsyncMock(side_effect=exc)),
     ):
         r = await modulo.meta_get_entities({"ad_account_id": "act_1", "level": "campaign"})
     assert r == {"status": "error", "error_message": msg}

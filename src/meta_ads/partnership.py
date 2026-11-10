@@ -11,10 +11,9 @@ from typing import Any, NamedTuple
 
 import httpx
 
-from src.meta_ads.client import META_GRAPH_API_VERSION
+from src.meta_ads.client import META_GRAPH_BASE_URL
 from src.meta_ads.graph import fetch_paginated
 
-_GRAPH = f"https://graph.facebook.com/{META_GRAPH_API_VERSION}"
 # currency e timezone_name são OBRIGATÓRIOS aqui: `upsert_many` escreve
 # `currency = EXCLUDED.currency`, então pedir menos campos do que a tabela
 # guarda APAGA os que faltarem nas 24 contas. Verificado por probe em
@@ -69,7 +68,7 @@ async def fetch_partnership(
     for edge in _EDGES:
         out = await fetch_paginated(
             http,
-            f"{_GRAPH}/{business_id}/{edge}",
+            f"{META_GRAPH_BASE_URL}/{business_id}/{edge}",
             access_token=access_token,
             params={"fields": _FIELDS, "limit": 200},
         )

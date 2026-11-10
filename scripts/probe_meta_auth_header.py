@@ -1,10 +1,10 @@
 """Probe F82 — fecha a validacao empirica antes de migrar os 3 call-sites Meta.
 
-Os `access_token`/`client_secret`/`input_token` de `src/auth/meta_oauth.py`
-viajam na QUERY STRING, logo aparecem em qualquer log de URL. O vazamento
-observado ja foi fechado silenciando os loggers httpx/httpcore, mas a causa
-raiz e o transporte. A migracao pro header `Authorization` esta bloqueada em
-UMA duvida — e este script a resolve.
+Probe historico, mantido como evidencia. O `access_token` (e, no OAuth pessoal da Meta,
+que ja saiu do projeto, o `client_secret` e o `input_token`) viajava na QUERY STRING e
+aparecia em qualquer log de URL. O transporte Meta atual manda o token no header
+`Authorization: Bearer` (`src/meta_ads/reports.py`); este script foi o que validou o
+header antes da migracao, com a duvida abaixo.
 
 **O que ja esta provado** (sem gastar segredo, so mandando um token falso):
 `Bearer <lixo>` e `OAuth <lixo>` devolvem code 190 "Cannot parse access

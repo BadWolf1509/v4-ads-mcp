@@ -1,8 +1,7 @@
 """Meta enum -> PT-BR label lookups. Domínio puro, zero SDK imports.
 
-Movido de src.mcp.tools._meta_common (Sprint M.2a) — mesmo dado, lugar certo:
-labels de domínio Meta, não helper de tool. `_meta_common` re-exporta pra
-manter os call-sites antigos funcionando.
+Labels de domínio Meta, não helper de tool: quem precisa importa daqui direto
+(tools, `saldo.py` e o painel).
 """
 
 # Codigos conferidos na referencia oficial do Ad Account (campos `account_status` e

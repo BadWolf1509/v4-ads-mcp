@@ -363,3 +363,15 @@ async def get_by_id(conn: asyncpg.Connection, ad_account_id: str) -> MetaAdAccou
         ad_account_id,
     )
     return _row_to_account(row) if row else None
+
+
+async def currency_of(conn: asyncpg.Connection, ad_account_id: str) -> str | None:
+    """Moeda da conta no inventario (`meta_ad_accounts.currency`); None sem linha ou sem moeda.
+
+    Nao filtra `is_active`, como `get_by_id`: quem decide acesso e o gate, nao esta leitura.
+    """
+    moeda: str | None = await conn.fetchval(
+        "SELECT currency FROM meta_ad_accounts WHERE ad_account_id = $1",
+        ad_account_id,
+    )
+    return moeda

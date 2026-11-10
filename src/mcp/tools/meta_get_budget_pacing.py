@@ -6,7 +6,7 @@ from typing import Any
 
 from src.janelas import calendario_do_mes
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import PROPRIEDADE_AD_ACCOUNT_ID, erro_de_entrada, meta_erro
+from src.mcp.tools._meta_common import PROPRIEDADE_AD_ACCOUNT_ID, meta_erro
 from src.mcp.tools._registry import register_tool
 from src.meta_ads.account_clock import resolve_meta_account_today
 from src.meta_ads.client import MetaAccessDeniedError
@@ -14,6 +14,7 @@ from src.meta_ads.entidades import listar_entidades
 from src.meta_ads.errors import MetaAdsFriendlyError
 from src.meta_ads.insights import build_insights_call
 from src.meta_ads.metricas import CONTRATO_NA_DESCRIPTION, metricas_da_linha
+from src.meta_ads.moeda import exigir_brl
 from src.meta_ads.pacing import orcamento_total, projetar, ritmo_de
 from src.meta_ads.reports import run_meta_graph_get
 
@@ -259,22 +260,14 @@ async def meta_get_budget_pacing(args: dict[str, Any]) -> dict[str, Any]:
         inicio = hoje.replace(day=1)
         ontem = hoje - timedelta(days=1)
         janela = {"from": inicio.isoformat(), "to": ontem.isoformat()} if dias_fechados else None
-        conta = await run_meta_graph_get(
+        nao_brl = await exigir_brl(
+            ad_account_id,
             manager_id=ctx.manager_id,
             session_id=ctx.session_id,
-            ad_account_id=ad_account_id,
-            edge=f"/{ad_account_id}",
-            params={"fields": "currency"},
-            operation_name=_OPERACAO,
-            estimated_calls=1,
-            audit_this_call=True,
-            params_summary={"ad_account_id": ad_account_id, "call": "moeda"},
+            proposito="o pacing só é calculado",
         )
-        moeda = conta.get("currency")
-        if moeda != "BRL":
-            return erro_de_entrada(
-                f"conta Meta em moeda {moeda!r}: o pacing só é calculado para contas em BRL"
-            )
+        if nao_brl is not None:
+            return nao_brl
         campanhas, camp_trunc = await listar_entidades(
             ctx, ad_account_id, "campaign", "ACTIVE", _LIMITE_ENTIDADES, operacao=_OPERACAO
         )

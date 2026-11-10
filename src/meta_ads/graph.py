@@ -43,20 +43,35 @@ class PagedFetch(NamedTuple):
     complete: bool
 
 
+class CorpoIlegivel(NamedTuple):
+    """Corpo de um 200 que não decodifica como JSON (`erro` é a exceção original).
+
+    Entregue no lugar do corpo para que o consumidor capture os headers da página
+    ANTES de decidir; o consumidor re-levanta `erro` (comportamento de sempre).
+    """
+
+    erro: ValueError
+
+
 async def paginas_graph(
     http: httpx.AsyncClient,
     url: str,
     params: dict[str, Any],
     headers: dict[str, str],
     max_pages: int,
-) -> AsyncIterator[httpx.Response]:
-    """O laço único de `paging.next`: entrega cada resposta, sem decidir sobre ela.
+) -> AsyncIterator[tuple[httpx.Response, Any]]:
+    """O laço único de `paging.next`: entrega cada `(resposta, corpo)`, sem decidir sobre ela.
 
     RECEBE o cliente, nunca o constrói (o executor é o único construtor, já
-    gateado). Cada resposta passa pelo alarme de versão antes de sair. O
-    chamador decide o que fazer com o status: parar (`break`/`raise`/`return`)
-    fecha o gerador; se seguir, o gerador lê o `paging.next` e pede a próxima.
-    Resposta não-200 ou sem objeto JSON encerra a iteração depois de entregue.
+    gateado). Cada resposta passa pelo alarme de versão antes de sair. O corpo
+    é decodificado UMA vez, aqui: em 200 vem o JSON (qualquer tipo — o gerador
+    não decide o que fazer com corpo que não é objeto, só para de paginar);
+    fora de 200 vem `None`, sem tentar decodificar; 200 que não decodifica vem
+    como `CorpoIlegivel` (a exceção NÃO sai do gerador, senão a página perderia
+    os headers do BUC) e encerra a iteração. O chamador decide o que
+    fazer: parar (`break`/`raise`/`return`) fecha o gerador; se seguir, o
+    gerador pede a próxima. Resposta não-200 ou sem objeto JSON encerra a
+    iteração depois de entregue.
 
     `params` vai só na primeira chamada: a URL de `paging.next` já carrega
     cursor e fields. `headers` (Authorization) vai em CADA página (F82). A URL
@@ -69,10 +84,15 @@ async def paginas_graph(
         else:
             resp = await http.get(proxima, headers=headers)
         avisar_versao_meta(resp.headers)
-        yield resp
         if resp.status_code != 200:
+            yield resp, None
             return
-        bruto = resp.json()
+        try:
+            bruto = resp.json()
+        except ValueError as erro:
+            yield resp, CorpoIlegivel(erro)
+            return
+        yield resp, bruto
         if not isinstance(bruto, dict):
             return
         proxima = (bruto.get("paging") or {}).get("next")
@@ -92,7 +112,7 @@ async def fetch_paginated(
     # F82 — token no HEADER, nunca na query: quem lê a URL num log contorna tudo.
     headers = {"Authorization": f"Bearer {access_token}"}
     lidas = 0
-    async for resp in paginas_graph(http, url, params, headers, max_pages):
+    async for resp, body in paginas_graph(http, url, params, headers, max_pages):
         lidas += 1
         if resp.status_code != 200:
             log.warning(
@@ -102,7 +122,8 @@ async def fetch_paginated(
                 fetched_so_far=len(rows),
             )
             return PagedFetch(rows, False)
-        body = resp.json()
+        if isinstance(body, CorpoIlegivel):
+            raise body.erro
         if not isinstance(body, dict):
             # 200 sem objeto: leitura truncada, nao churn (F93). Guarda o que veio.
             log.warning(

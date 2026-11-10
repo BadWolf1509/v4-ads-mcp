@@ -162,3 +162,33 @@ async def test_id_repetido_e_sondado_uma_vez() -> None:
 
     assert len(pedidos) == 1
     assert alcance == Alcance(le=frozenset({"act_1"}))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [200, 400])
+async def test_sonda_avisa_a_versao_uma_vez_por_texto(status: int) -> None:
+    """A sonda passa pelo mesmo alarme de versao dos outros caminhos (E7): duas contas com o
+    mesmo aviso alarmam uma vez, nao uma por resposta. A chamada ao alarme vem antes de
+    qualquer ramo de status, entao a resposta 400 tambem avisa."""
+    from structlog.testing import capture_logs
+
+    from src.meta_ads import graph
+
+    graph._avisos_vistos.clear()
+    aviso = "Graph v22.0 was auto-upgraded to v25.0"
+
+    async def responder(_pedido: httpx.Request) -> httpx.Response:
+        corpo = {"data": []} if status == 200 else {"error": {"code": 100}}
+        return httpx.Response(status, json=corpo, headers={"x-ad-api-version-warning": aviso})
+
+    with capture_logs() as logs:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(responder)) as http:
+            await sondar_alcance(
+                http,
+                access_token="tok_su",
+                contas=[("act_1", "America/Sao_Paulo"), ("act_2", "America/Sao_Paulo")],
+                agora=_AGORA,
+            )
+    avisos = [e for e in logs if e["event"] == "meta_api_version_warning"]
+    assert len(avisos) == 1
+    assert avisos[0]["aviso"] == aviso

@@ -329,7 +329,7 @@ def test_f57_acusa_a_violacao_e_so_ela(fonte: str, acusa: bool) -> None:
 #      literais através de um `BinOp`.
 #   B) reuso de constante JÁ autorizada: `from <modulo> import
 #      META_GRAPH_BASE` num arquivo novo (a constante morava no OAuth pessoal,
-#      removido em 11/2026; hoje `_GRAPH` em `alcance.py`/`partnership.py`
+#      removido em 11/2026; hoje `META_GRAPH_BASE_URL` em `client.py`
 #      serve igual) — o literal nunca é REESCRITO, zero ocorrências no
 #      arquivo, guard verde.
 #
@@ -1835,4 +1835,39 @@ def test_acesso_e_audit_abrem_a_mesma_transacao_nas_12_rotas() -> None:
         "Se a função abre a transação e audita depois de sair dela (ou não audita "
         "nesse bloco nenhum), a segunda escrita (audit) falhando depois da primeira "
         "já commitada deixa o acesso mudado sem registro de quem mudou."
+    )
+
+
+def test_host_da_graph_so_no_client() -> None:
+    """O host `graph.facebook.com` é montado num lugar só: `META_GRAPH_BASE_URL`,
+    em `src/meta_ads/client.py`. Quem precisa da base importa a constante.
+
+    Antes, `alcance.py`, `partnership.py` e `reports.py` remontavam o f-string
+    com a versão; trocar o host (ou o esquema) pedia lembrar dos quatro sítios.
+    A invariante é sobre CÓDIGO: o scanner olha literais de string, e o que
+    é docstring fica de fora (o próprio `client.py` cita o host na prosa).
+    Comentário nem entra na AST. `dentro_do_client == 1` prova que o alvo
+    existe: se a constante sumir ou for renomeada, o guard não passa por
+    vacuidade.
+    """
+    client = h.SRC / "meta_ads" / "client.py"
+    ofensores: list[str] = []
+    dentro_do_client = 0
+    for arquivo in h.fontes_py():
+        arv = h.arvore(arquivo)
+        docstrings = h._nos_de_docstring(arv)
+        for lit in h._literais_de_string(arv):
+            if id(lit) in docstrings or "graph.facebook.com" not in h._texto_logico(lit):
+                continue
+            if arquivo == client:
+                dentro_do_client += 1
+            else:
+                ofensores.append(f"{h.rel(arquivo)}:{lit.lineno}")
+    assert not ofensores, (
+        f"host da Graph montado fora de `client.py`: {ofensores}. "
+        "Importe `META_GRAPH_BASE_URL` de `src.meta_ads.client`."
+    )
+    assert dentro_do_client == 1, (
+        "`client.py` deveria montar o host da Graph exatamente uma vez "
+        f"(`META_GRAPH_BASE_URL`); achei {dentro_do_client} — guard sem alvo."
     )

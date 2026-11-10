@@ -1,6 +1,8 @@
 """O paginador e o unico lugar que sabe seguir paging.next — e o unico que
 decide se a leitura ficou COMPLETA (F93)."""
 
+from typing import Any
+
 import httpx
 import pytest
 import respx
@@ -63,3 +65,33 @@ async def test_token_vai_no_header_nunca_na_query() -> None:
     pedido = rota.calls[0].request
     assert pedido.headers["Authorization"] == "Bearer segredo"
     assert "segredo" not in str(pedido.url)
+
+
+class _RespostaContada(httpx.Response):
+    """`httpx.Response` que conta quantas vezes o corpo foi decodificado."""
+
+    leituras = 0
+
+    def json(self, **kwargs: Any) -> Any:
+        type(self).leituras += 1
+        return super().json(**kwargs)
+
+
+@pytest.mark.asyncio
+async def test_corpo_lido_uma_vez() -> None:
+    """Cada página da Graph é decodificada UMA vez (o gerador entrega o corpo)."""
+    paginas = [
+        _RespostaContada(200, json={"data": [{"id": "1"}], "paging": {"next": f"{URL}?after=abc"}}),
+        _RespostaContada(200, json={"data": [{"id": "2"}]}),
+    ]
+
+    def responder(request: httpx.Request) -> httpx.Response:
+        return paginas.pop(0)
+
+    _RespostaContada.leituras = 0
+    async with httpx.AsyncClient(transport=httpx.MockTransport(responder)) as http:
+        out = await fetch_paginated(http, URL, access_token="tok", params={"fields": "id"})
+
+    assert [r["id"] for r in out.rows] == ["1", "2"]
+    assert out.complete is True
+    assert _RespostaContada.leituras == 2

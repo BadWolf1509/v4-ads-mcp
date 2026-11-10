@@ -508,3 +508,66 @@ def test_casador_de_level_so_conta_o_resultado_do_classify(fonte: str, le_level:
     assert _le_level_do_classify(ast.parse(fonte)) is le_level, (
         f"veredito errado: esperado {le_level} para:\n{fonte}"
     )
+
+
+# --- Operacoes sem entrada propria (E8, decisao de 10/11: "Registrar, sempre confirmar") ---
+#
+# `create_and_link_assets` e `import_offline_conversions` cairam ate 10/11 no
+# fallback "unknown operation — default seguro". O nivel (CONFIRM) ja estava
+# certo; faltava o registro: o motivo que o gestor le no preview era generico e
+# a intencao nao ficava escrita. O guard abaixo cobra que nenhuma operacao de
+# mutate conhecida dependa do fallback.
+
+_OPERACOES_SEM_REGISTRO = (
+    "create_and_link_assets",
+    "import_offline_conversions",
+    "create_campaign",  # mesma decisao de 10/11, estendida pelo controlador
+)
+
+
+_SENTINELA = "__sentinela__"
+
+
+def _cai_no_fallback(operacao: str, params: dict[str, object]) -> bool:
+    """True se `classify` devolve para `operacao` o MESMO motivo do fallback medido.
+
+    O fallback e medido com uma operacao sentinela (que nunca tera entrada), nao por um
+    trecho de texto fixo: reescrever a mensagem do fallback nao deixa operacao sem entrada
+    passar. O nome da operacao entra no motivo, entao troca-se a sentinela pelo nome.
+    """
+    fallback = classify(operation=_SENTINELA, params=params).reason
+    assert _SENTINELA in fallback, "o fallback deixou de citar a operacao: a medicao quebrou"
+    return classify(operation=operacao, params=params).reason == fallback.replace(
+        _SENTINELA, operacao
+    )
+
+
+@pytest.mark.parametrize("operacao", _OPERACOES_SEM_REGISTRO)
+def test_operacao_sem_registro_confirma_sempre_com_motivo_proprio(operacao: str) -> None:
+    for n in _CONTAGENS:
+        veredito = classify(operation=operacao, params={"target_count": n})
+        assert veredito.level is RiskLevel.CONFIRM
+        assert not _cai_no_fallback(operacao, {"target_count": n})
+        assert operacao in veredito.reason
+        assert "sempre CONFIRM" in veredito.reason
+
+
+def test_toda_operacao_de_mutate_conhecida_tem_entrada_explicita_no_classify() -> None:
+    """Operacao registrada no `CONFIRMADORES` ou chamada por uma tool nao cai no fallback.
+
+    O universo junta duas fontes: as chaves do `CONFIRMADORES` (o registro de
+    quem confirma o apply) e a operacao literal de cada tool que chama
+    `classify` (derivada do source). Cair no fallback (medido com uma operacao
+    sentinela, nao por trecho de texto) e o sinal de que a operacao foi criada sem a politica saber dela.
+    """
+    from src.google_ads.confirmadores import CONFIRMADORES
+
+    do_registro = set(CONFIRMADORES)
+    das_tools = {op for _, op, _ in _CASOS}
+    universo = do_registro | das_tools | set(_OPERACOES_SEM_REGISTRO)
+    assert do_registro, "CONFIRMADORES vazio: o guard passaria por vacuidade"
+    assert das_tools, "nenhuma operacao derivada das tools: o guard passaria por vacuidade"
+    sem_entrada = sorted(op for op in universo if _cai_no_fallback(op, {"target_count": 1}))
+    assert not sem_entrada, (
+        f"operacoes sem entrada explicita no classify (caem no fallback): {sem_entrada}"
+    )

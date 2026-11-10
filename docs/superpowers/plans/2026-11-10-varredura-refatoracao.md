@@ -261,9 +261,10 @@ Cada linha tem teste na task dona (B1/G4, A2, A5, H1, D5/I2/I3).
 
 **Files:** Create `src/meta_ads/moeda.py`; Modify `src/mcp/tools/meta_get_entities.py:101-119`, `meta_get_budget_pacing.py:269-287`.
 
-**Interfaces — Produces:** `async def exigir_brl(ad_account_id: str, *, manager_id: UUID, session_id: UUID) -> dict[str, Any] | None` — `None` quando a conta é BRL; senão o envelope de erro que as tools devolvem hoje, idêntico. A fonte continua a chamada Graph `fields=currency` (trocar pela tabela é decisão pendente).
+**Interfaces — Produces:** `async def exigir_brl(ad_account_id: str, *, manager_id: UUID, session_id: UUID) -> dict[str, Any] | None` — `None` quando a conta é BRL; senão o envelope de erro que as tools devolvem hoje, idêntico. **Decisão do Wellington (10/11):** a fonte passa a ser a coluna `meta_ad_accounts.currency` (lida pelo repositório, sem chamada à Graph); o gate Meta roda dentro de `run_meta_graph_get`, depois do helper; por isso o helper consulta `can_manager_access` antes de ler a moeda (decisão do controlador durante a execução; o texto original, "a conta já passou pelo gate", estava errado).
 
-- [ ] **Step 1:** os testes "moeda não-BRL" das duas tools são a rede: PASS antes. Extrair; rodar de novo. Expected: PASS. Commit `refactor(meta_ads): pré-condição de BRL num helper`.
+- [ ] **Step 1:** os testes "moeda não-BRL" das duas tools são a rede: PASS antes. Extrair o helper com a fonte de hoje; rodar de novo. Expected: PASS. Commit `refactor(meta_ads): pré-condição de BRL num helper`.
+- [ ] **Step 2 (decisão de 10/11):** teste que falha: com o fake da Graph trocado por um que levanta ao ser chamado, a tool com conta BRL na tabela responde normalmente e a com conta USD na tabela devolve o envelope de hoje. Trocar a fonte para o repositório (função `currency_of(conn, ad_account_id) -> str | None` em `meta_ad_accounts.py`; `None` → o mesmo envelope de "moeda não confirmada" que a tool já usa quando a Graph não responde, se existir; se não existir, o de não-BRL). Rodar os testes das duas tools e o full sweep. Commit `feat(meta_ads): moeda da conta lida do inventário`.
 
 ### Task E4: docstrings desatualizadas
 
@@ -278,6 +279,24 @@ Cada linha tem teste na task dona (B1/G4, A2, A5, H1, D5/I2/I3).
 **Interfaces — Produces:** `@asynccontextmanager async def _conexao() -> AsyncIterator[asyncpg.Connection]` — abre o pool, entrega uma conexão, fecha o pool no `finally`.
 
 - [ ] **Step 1:** os 6 comandos usam `_conexao()`. Rodar `tests/integration/test_admin_script.py`. Expected: PASS. Commit `refactor(admin): um gerenciador de conexão no CLI`.
+
+### Task E6: o contador das leituras Meta conta só as páginas lidas (decisão de 10/11)
+
+**Files:** Modify `src/meta_ads/reports.py` (~L352 e ~L395, o `max(estimated, lidas)`). Test: `tests/unit/test_meta_reports_versao_e_uso.py`.
+
+- [ ] **Step 1: teste que falha.** Leitura com `max_pages=5` que traz 2 páginas: o valor gravado no audit (`target_count` ou o campo que hoje recebe o `max`) e o reconciliado na cota é **2**, não 5. Rodar: FAIL. Trocar o `max(estimated, lidas)` por `lidas` nos dois sítios; a Meta não tem reserva (só o Google); `estimated` fica só como previsão. Rodar o arquivo e `test_meta_graph_paginacao.py`. Commit `fix(meta_ads): cota e audit gravam as páginas lidas`.
+
+### Task E7: a sonda de alcance passa pelo aviso de versão (decisão de 10/11)
+
+**Files:** Modify `src/meta_ads/alcance.py` (~L102). Test: o arquivo de teste da sonda (`tests/unit/test_meta_alcance*.py`).
+
+- [ ] **Step 1: teste que falha.** Resposta da Graph com o cabeçalho de versão descontinuada que os outros dois caminhos já tratam: a sonda chama `avisar_versao_meta` uma vez. Rodar: FAIL. Chamar o aviso como `reports.py`/`graph.py` fazem. Rodar o teste e os de versão existentes. Commit `fix(meta_ads): sonda de alcance avisa a versão da API`.
+
+### Task E8: `classify` conhece as duas operações sem registro (decisão de 10/11)
+
+**Files:** Modify o módulo de classificação de risco (`src/governance/blast_radius.py` ou onde `classify` vive), `tests/unit/test_preview_caracterizacao.py` (o texto "unknown operation" congelado na D3). Test: `tests/unit/test_blast_radius_bate_com_as_tools.py`.
+
+- [ ] **Step 1: teste que falha.** `classify` de `create_and_link_assets` e `import_offline_conversions` devolve "sempre confirmar" com motivo próprio em PT-BR (não "unknown operation"); e um guard: toda operação de mutate registrada no `CONFIRMADORES` tem entrada explícita na classificação. Rodar: FAIL. Registrar as duas como sempre-confirmar; atualizar o texto esperado na caracterização da D3 (mudança deliberada, citada no commit). Rodar o arquivo, a caracterização e `test_envelope_applied_e_unico.py`. Commit `fix(mcp): classify registra create_and_link_assets e import_offline_conversions`.
 
 ---
 
@@ -318,6 +337,14 @@ Cada linha tem teste na task dona (B1/G4, A2, A5, H1, D5/I2/I3).
 
 ## Parte G — Acesso e audit (PR `refactor/acesso-varredura-10-11`, full sweep, `tests/browser` e clique em produção)
 
+### Task G0: as decisões de 10/11 sobre acesso, antes do núcleo
+
+**Files:** Modify `src/db/repositories/manager_account_access.py` (`grant_all_active`, `bulk_grant`), `manager_meta_account_access.py` (`bulk_grant`, `revoke`), `tests/unit/test_acesso_gemeos_conformes.py`. Test: `tests/integration/test_manager_account_access.py`, `test_manager_meta_account_access.py`.
+
+- [ ] **Step 1: medir.** grep em `src/` e `tests/` por `"manual"` como motivo de revogação: listar cada leitor (fila, painel, relatório) e o que ele faz com o valor. Se algum código depende de `manual`, PARE e registre no ledger (decisão volta ao Wellington). Linhas antigas no banco ficam como estão (histórico; leitura direta do banco de produção é barrada).
+- [ ] **Step 2: testes que falham (integração).** Re-concessão de conta revogada por `grant_all_active` (Google) e por `bulk_grant` (Google e Meta) atualiza `granted_at` e `granted_by`; `revoke` Meta sem motivo explícito grava `admin_revoked`. Rodar: FAIL.
+- [ ] **Step 3:** `ON CONFLICT` dos três com `granted_at = now(), granted_by = EXCLUDED.granted_by`; default de `revoke` Meta = `ADMIN_REVOKED_REASON` (constante movida para `motivos.py` na F4). B2: sai do registro e do snapshot o que deixou de divergir (`grant_all_active`, `revoke`); fica `can_manager_access`. Rodar os testes, B2 e o full sweep. Commit `fix(db): re-concessão registra quem e quando, e revogação manual unificada`.
+
 ### Task G1: escritas dos repositórios de acesso num núcleo
 
 **Files:** Create `src/db/repositories/_acesso_comum.py`; Modify `manager_account_access.py`, `manager_meta_account_access.py`. Consumes: B2.
@@ -345,6 +372,17 @@ Cada linha tem teste na task dona (B1/G4, A2, A5, H1, D5/I2/I3).
 - [ ] **Step 1: caracterização.** Para cada um dos 4 construtores e para `get_by_id`, uma matriz de combinações de filtro (nenhum, todos, cada um sozinho, com cursor): gravar no teste o SQL normalizado (espaços colapsados) e os `params` de hoje; PASS.
 - [ ] **Step 2:** os 4 construtores usam `_Filtros`, **cada um na sua ordem de filtros de hoje** (o admin põe `customer_id` antes de `action_type`, o de gestor não); `get_by_id` vira uma consulta com o filtro de gestor opcional. `export_csv_rows` mantém `manager_id` sem default (F205).
 - [ ] **Step 3:** rodar a caracterização, `test_audit_keyset.py` (EXPLAIN) e o full sweep. Expected: verde. Commit `refactor(db): montador de filtros do audit`.
+
+> **Nota de 10/11 para a G1:** com a G0 feita, os dois lados escrevem igual; o descritor fica só com os
+> campos de nome (`tabela`, `coluna_conta`, `inventario`), sem `atualiza_concessao_no_grant_all` nem
+> `motivo_revoke_padrao`, e o teste de campos divergentes do Step 3 afirma que eles são só os de nome.
+
+### Task G5: nome da conta Meta no audit (decisão de 10/11)
+
+**Files:** Modify `src/db/repositories/audit_log.py` (`_SQL_NOME_DA_CONTA` da G3 e o `get_by_id`), `src/web/routes/dashboard.py` (subquery do nome). Consumes: G3. Test: `tests/integration/test_web_panel_audit.py`, `tests/integration/test_audit_keyset.py`.
+
+- [ ] **Step 1: teste que falha.** Linha de audit com `customer_id = act_<id>` presente em `meta_ad_accounts`: a página `/audit` e o dashboard mostram o `account_name`; linha Google segue com o `descriptive_name`. Rodar: FAIL.
+- [ ] **Step 2:** `LEFT JOIN meta_ad_accounts` ao lado do de `google_ads_accounts`, nome = `COALESCE` dos dois. Rodar os testes, o EXPLAIN de `test_audit_keyset.py` (o JOIN novo não pode tirar o uso do índice), `tests/browser` e o full sweep. Commit `feat(web): audit mostra o nome da conta Meta`. Depois do deploy: abrir `/audit` em produção (só leitura).
 
 ### Task G4: núcleo da regra de reconciliação
 
@@ -443,13 +481,24 @@ Cada linha tem teste na task dona (B1/G4, A2, A5, H1, D5/I2/I3).
 
 ---
 
-## Decisões pendentes (do Wellington, fora das tasks)
+## Decisões do Wellington (10/11, por menu) e onde entram
 
-- **`granted_at`/`granted_by` na re-concessão** (`grant_all_active` Google × Meta; `bulk_grant` em nenhum dos dois): unificar para "re-concessão atualiza quem e quando concedeu" ou manter. Até lá, G1 preserva o comportamento pelo descritor.
-- **Motivo padrão do `revoke`** (`admin_revoked` × `manual`): unificar o valor gravado ou manter.
-- **Fonte da moeda Meta** (E3): chamada Graph por tool, ou a coluna `meta_ad_accounts.currency` da parceria.
-- **`estimated_calls` nas leituras Meta**: o contador conta a mais quando chegam menos páginas; tirar o parâmetro muda o número gravado.
-- **Sonda `alcance.py` sem `avisar_versao_meta`** e **linha de audit Meta sem nome de conta**: mudança de comportamento, cada uma no seu PR.
+| # | decisão | task |
+|---|---|---|
+| 1 | re-concessão sempre atualiza `granted_at`/`granted_by`, nas duas plataformas e em todas as funções | G0 |
+| 2 | motivo padrão do `revoke` unificado em `admin_revoked` (medindo antes quem lê `manual`) | G0 |
+| 3 | moeda Meta lida de `meta_ad_accounts.currency` | E3, Step 2 |
+| 4 | cota e audit das leituras Meta gravam só as páginas lidas | E6 |
+| 5 | a sonda de alcance passa pelo `avisar_versao_meta` | E7 |
+| 6 | audit mostra o nome da conta Meta | G5 |
+| 7 | `classify` registra `create_and_link_assets` e `import_offline_conversions` como sempre-confirmar | E8 |
+| 8 | C2: levantar os 3 tipos de recomendação novos do v25 e decidir depois | K1 |
+
+## Parte K — Levantamento (sem código)
+
+### Task K1: os 3 tipos de recomendação novos do v25
+
+- [ ] Agente só de leitura: comparar o enum `RecommendationType` do SDK v24 × v25 (instalado no `.venv`), achar os 3 tipos novos, e para cada um dizer o que `apply` faz na conta, o risco e se algo no código já os trata (`src/google_ads/queries/recommendations.py`, ~L151 importa `v24`). O relatório volta ao Wellington para decidir a whitelist; só depois se troca o import. Nenhum commit de código.
 
 ## Fecho
 
