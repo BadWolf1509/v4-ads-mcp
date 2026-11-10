@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import ast
 import re
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -150,24 +151,81 @@ def _assinatura(
     return itens
 
 
-def _diferencas(nome: str) -> list[str]:
+_SEPARADOR = re.compile(
+    r",\s+|\s+AND\s+|\s+(?=(?:SELECT|FROM|WHERE|VALUES|ON CONFLICT|SET|JOIN|INNER JOIN|ORDER BY)\b)"
+)
+
+
+def _fragmentos(texto: str) -> list[str]:
+    """Quebra o texto normalizado em cláusulas (vírgula e AND fora de parênteses,
+    mais as palavras-chave de cláusula). Dá a granularidade que a diferença
+    esperada precisa: uma linha de `SET` ou um predicado de `WHERE` por item."""
+    mascarado: list[str] = []
+    profundidade = 0
+    for c in texto:
+        if c == "(":
+            profundidade += 1
+        elif c == ")":
+            profundidade -= 1
+        mascarado.append("\x01" if c == "," and profundidade > 0 else c)
+    partes = _SEPARADOR.split("".join(mascarado))
+    return [p.replace("\x01", ",").strip() for p in partes if p.strip()]
+
+
+def _comparar(g: list[str], m: list[str], rotulo: str) -> set[str]:
+    """Diferença entre duas listas de itens: o que só um lado tem (multiconjunto,
+    então reordenar não conta) e, quando os itens são os mesmos em outra ordem,
+    um marcador de reordenação — assim troca de coluna do INSERT não passa."""
+    cg, cm = Counter(g), Counter(m)
+    diffs = {f"{rotulo} só google: {x}" for x in (cg - cm)}
+    diffs |= {f"{rotulo} só meta: {x}" for x in (cm - cg)}
+    if not diffs and g != m:
+        diffs.add(f"{rotulo}: mesmos fragmentos em ordem diferente")
+    return diffs
+
+
+def _diferencas(nome: str) -> frozenset[str]:
     arv_g, arv_m = h.arvore(_GOOGLE), h.arvore(_META)
     fn_g, fn_m = _funcao(arv_g, nome, _GOOGLE), _funcao(arv_m, nome, _META)
-    diffs: list[str] = []
 
     ass_g = _assinatura(fn_g, _constantes_do_modulo(arv_g), meta=False)
     ass_m = _assinatura(fn_m, _constantes_do_modulo(arv_m), meta=True)
-    if ass_g != ass_m:
-        diffs.append(f"assinatura/defaults: google={ass_g} meta={ass_m}")
+    diffs = _comparar(ass_g, ass_m, "assinatura")
 
     sql_g = [_normalizar(s, meta=False) for s in _strings_da_funcao(fn_g, _GOOGLE)]
     sql_m = [_normalizar(s, meta=True) for s in _strings_da_funcao(fn_m, _META)]
     if len(sql_g) != len(sql_m):
-        diffs.append(f"nº de literais: google={len(sql_g)} meta={len(sql_m)}")
+        diffs.add(f"nº de literais: google={len(sql_g)} meta={len(sql_m)}")
     for i, (g, m) in enumerate(zip(sql_g, sql_m, strict=False)):
-        if g != m:
-            diffs.append(f"literal #{i}: google={g!r} meta(normalizado)={m!r}")
-    return diffs
+        diffs |= _comparar(_fragmentos(g), _fragmentos(m), f"literal #{i}")
+    return frozenset(diffs)
+
+
+# Diferença EXATA esperada por função registrada (o que `_diferencas` mede hoje).
+# Mudar o conjunto — para mais OU para menos — falha: um segundo defeito dentro
+# de uma função registrada não se esconde atrás do registro.
+_DIFERENCAS_ESPERADAS: dict[str, frozenset[str]] = {
+    "grant_all_active": frozenset(
+        {
+            "literal #0 só meta: granted_at = now()",
+            "literal #0 só meta: granted_by = EXCLUDED.granted_by",
+        }
+    ),
+    "revoke": frozenset(
+        {
+            "assinatura só google: reason='admin_revoked'",
+            "assinatura só meta: reason='manual'",
+        }
+    ),
+    "can_manager_access": frozenset({"literal #0: mesmos fragmentos em ordem diferente"}),
+}
+
+_NOMES_GOOGLE = re.compile(
+    r"\b(?:customer_ids?|google_ads_accounts|descriptive_name|manager_account_access)\b"
+)
+_NOMES_META = re.compile(
+    r"\b(?:ad_account_ids?|meta_ad_accounts|account_name|manager_meta_account_access)\b"
+)
 
 
 def test_escopo_dos_gemeos_nao_vazio() -> None:
@@ -182,25 +240,46 @@ def test_escopo_dos_gemeos_nao_vazio() -> None:
 
 def test_scanner_de_sql_nao_passa_por_vacuidade() -> None:
     """Função sem literal levanta `EscopoVazioError` em vez de devolver []."""
-    arv = ast.parse('async def f():\n    """doc"""\n    return 1\n')
+    arv = ast.parse("async def f():\n    '''doc'''\n    return 1\n")
     fn = arv.body[0]
     assert isinstance(fn, ast.AsyncFunctionDef)
     with pytest.raises(h.EscopoVazioError):
         _strings_da_funcao(fn, _GOOGLE)
 
 
-@pytest.mark.parametrize("nome", [n for n in _GEMEOS if n not in _DIVERGENCIAS_REGISTRADAS])
-def test_gemeos_iguais_fora_do_registrado(nome: str) -> None:
-    diffs = _diferencas(nome)
-    assert not diffs, (
-        f"`{nome}` divergiu entre manager_account_access e manager_meta_account_access "
-        "(classe F167: cláusula corrigida num gêmeo e não no outro). Alinhe o gêmeo ou, se a "
-        "diferença for deliberada, registre em _DIVERGENCIAS_REGISTRADAS com o motivo:\n  "
-        + "\n  ".join(diffs)
+@pytest.mark.parametrize("nome", _GEMEOS)
+def test_texto_cru_so_tem_os_nomes_do_proprio_lado(nome: str) -> None:
+    """A normalização só renomeia o Meta; sem esta checagem, SQL Meta que citasse
+    por engano `customer_id`/`google_ads_accounts` passaria como igual."""
+    for caminho, proibido, lado in (
+        (_GOOGLE, _NOMES_META, "Google"),
+        (_META, _NOMES_GOOGLE, "Meta"),
+    ):
+        fn = _funcao(h.arvore(caminho), nome, caminho)
+        for texto in _strings_da_funcao(fn, caminho):
+            achados = proibido.findall(texto)
+            assert not achados, (
+                f"{nome} ({lado}): o SQL cita nome do outro lado {achados}; a normalização "
+                "esconderia a troca"
+            )
+
+
+@pytest.mark.parametrize("nome", _GEMEOS)
+def test_gemeos_conformes_ao_snapshot(nome: str) -> None:
+    esperado = _DIFERENCAS_ESPERADAS.get(nome, frozenset())
+    medido = _diferencas(nome)
+    assert medido == esperado, (
+        f"`{nome}`: diferença entre manager_account_access e manager_meta_account_access "
+        "mudou (classe F167: cláusula corrigida num gêmeo e não no outro). Alinhe o gêmeo ou, "
+        "se for deliberada, atualize _DIVERGENCIAS_REGISTRADAS e _DIFERENCAS_ESPERADAS.\n"
+        f"  novas: {sorted(medido - esperado)}\n  sumiram:{sorted(esperado - medido)}"
     )
 
 
 def test_registro_descreve_a_realidade() -> None:
+    assert set(_DIVERGENCIAS_REGISTRADAS) == set(_DIFERENCAS_ESPERADAS), (
+        "_DIVERGENCIAS_REGISTRADAS e _DIFERENCAS_ESPERADAS têm que ter as mesmas chaves"
+    )
     desconhecidas = set(_DIVERGENCIAS_REGISTRADAS) - set(_GEMEOS)
     assert not desconhecidas, f"registro cita função que não é gêmea: {sorted(desconhecidas)}"
     obsoletas = [n for n in _DIVERGENCIAS_REGISTRADAS if not _diferencas(n)]
