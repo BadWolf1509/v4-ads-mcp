@@ -23,7 +23,7 @@ from src.db.repositories import audit_log, manager_meta_account_access
 from src.governance.bookkeeping import best_effort
 from src.governance.rate_limit import record_actual_meta
 from src.meta_ads.client import (
-    META_GRAPH_API_VERSION,
+    META_GRAPH_BASE_URL,
     MetaAccessDeniedError,
     MetaSystemUserTokenMissingError,
 )
@@ -335,7 +335,7 @@ async def run_meta_graph_get(
         # `graph.py::fetch_paginated`, que ja rodava assim em producao: e a
         # evidencia empirica de que este app nao exige `appsecret_proof`.
         cabecalhos = {"Authorization": f"Bearer {token}"}
-        url = f"https://graph.facebook.com/{META_GRAPH_API_VERSION}{edge}"
+        url = f"{META_GRAPH_BASE_URL}{edge}"
         async with httpx.AsyncClient(timeout=_TIMEOUT_GRAPH) as http:
             body, linhas, headers_ultima, paginas_lidas = await _paginar_graph(
                 http, url, params or {}, cabecalhos, max_pages, capturados

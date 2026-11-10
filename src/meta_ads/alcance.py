@@ -22,12 +22,10 @@ import httpx
 import structlog
 
 from src.clock import account_today
-from src.meta_ads.client import META_GRAPH_API_VERSION
+from src.meta_ads.client import META_GRAPH_BASE_URL
 from src.meta_ads.insights import build_insights_call
 
 log = structlog.get_logger(__name__)
-
-_GRAPH = f"https://graph.facebook.com/{META_GRAPH_API_VERSION}"
 
 # O cliente do job usa 60 s; 25 contas penduradas seriam 25 minutos de job.
 TIMEOUT_DA_SONDA = 15.0
@@ -100,7 +98,10 @@ async def sondar_alcance(
         async with semaforo:
             try:
                 resposta = await http.get(
-                    _GRAPH + edge, params=params, headers=cabecalho, timeout=TIMEOUT_DA_SONDA
+                    META_GRAPH_BASE_URL + edge,
+                    params=params,
+                    headers=cabecalho,
+                    timeout=TIMEOUT_DA_SONDA,
                 )
             except httpx.HTTPError:
                 return "nao_medido"

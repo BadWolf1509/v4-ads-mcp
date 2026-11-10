@@ -3,11 +3,12 @@
 Este módulo já foi a fábrica do `FacebookAdsApi`. Depois do F190 o transporte
 Meta é `httpx` direto (`reports.py::run_meta_graph_get`, token em
 `Authorization: Bearer`), e o SDK `facebook_business` saiu das
-dependências: nenhum caminho de request o usa. Sobraram aqui os três nomes que o resto do código
+dependências: nenhum caminho de request o usa. Sobraram aqui os nomes que o resto do código
 importa:
 
-- `META_GRAPH_API_VERSION` — a versão do Graph usada por `reports.py` e
-  `partnership.py`;
+- `META_GRAPH_API_VERSION` — a versão do Graph;
+- `META_GRAPH_BASE_URL` — host + versão, a base que `reports.py`,
+  `partnership.py` e `alcance.py` usam (o host só é escrito aqui);
 - `MetaSystemUserTokenMissingError` e `MetaAccessDeniedError` — erros do gate
   do Modelo B, levantados por `reports.py` e tratados em `src/mcp/server.py`.
 
@@ -26,6 +27,11 @@ from src.meta_ads.errors import MetaAdsFriendlyError
 
 # Meta Graph API version used across all Meta Graph call sites.
 META_GRAPH_API_VERSION = "v25.0"
+
+# A base da Graph, montada UMA vez aqui (guard `test_host_da_graph_so_no_client`):
+# `alcance.py`, `partnership.py` e `reports.py` importam esta constante em vez de
+# remontar o host com a versão.
+META_GRAPH_BASE_URL = f"https://graph.facebook.com/{META_GRAPH_API_VERSION}"
 
 
 @dataclass(slots=True, frozen=True)
