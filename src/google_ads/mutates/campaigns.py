@@ -10,6 +10,12 @@ from typing import Any
 from google.protobuf.field_mask_pb2 import FieldMask
 
 from src.google_ads.mutates._common import register_builder
+from src.google_ads.mutates._status import (
+    ALVOS_DE_STATUS,
+    enum_de_status,
+    funcao_de_caminho,
+    operacao_de_status,
+)
 from src.google_ads.queries._common import brl_para_micros
 
 
@@ -19,22 +25,16 @@ def build_update_campaign_status(
 ) -> list[Any]:
     """payload: {campaign_ids: [str], new_status: 'ENABLED'|'PAUSED'|'REMOVED'}"""
     new_status = payload["new_status"].upper()
-    operations = []
-    campaign_service = client.get_service("CampaignService")
-    status_enum = client.enums.CampaignStatusEnum
-    for cid in payload["campaign_ids"]:
-        op = client.get_type("MutateOperation")
-        campaign_op = op.campaign_operation
-        campaign = campaign_op.update
-        campaign.resource_name = campaign_service.campaign_path(customer_id, cid)
-        campaign.status = status_enum[new_status]
-        # Set field mask
-        client.copy_from(
-            campaign_op.update_mask,
-            FieldMask(paths=["status"]),
+    alvo = ALVOS_DE_STATUS["campaign"]
+    caminho = funcao_de_caminho(client, alvo)
+    status_enum = enum_de_status(client, alvo)
+    mascara = FieldMask(paths=["status"])
+    return [
+        operacao_de_status(
+            client, alvo, caminho(customer_id, cid), status_enum[new_status], mascara
         )
-        operations.append(op)
-    return operations
+        for cid in payload["campaign_ids"]
+    ]
 
 
 @register_builder("update_campaign_budget")
