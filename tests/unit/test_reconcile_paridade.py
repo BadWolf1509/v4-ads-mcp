@@ -175,14 +175,50 @@ def _campos(p: google.Plan | meta.Plan) -> tuple[object, ...]:
     return (p.to_add, p.to_bump, p.to_remove, p.to_reset, p.blocked_reason)
 
 
-# Paridade de `unreachable` (refused_ids) fica em tests/unit/test_meta_reconcile_plan.py:
-# só o Meta tem o campo, aqui ele é fixado em [] com refused_ids=set().
+# Aqui `refused_ids=set()` fixa `unreachable` em []: o campo só existe no Meta, e o
+# plano BARRADO (que nenhum outro teste cobre) é guardado em
+# `test_plano_barrado_do_meta_carrega_unreachable`, logo abaixo.
 @pytest.mark.parametrize("cenario", CENARIOS, ids=lambda c: c.nome)
 def test_mesma_entrada_mesmo_plano(cenario: Cenario) -> None:
     g = _plano_google(cenario)
     m = _plano_meta(cenario)
     assert _campos(g) == _campos(m)
     assert m.unreachable == []
+
+
+_POR_NOME = {c.nome: c for c in CENARIOS}
+
+
+# O plano barrado do Meta tem de levar `unreachable`: é o sinal de conta recusada,
+# e um bloqueio (leitura incompleta, remoção em massa) não deixa de medi-la. As
+# recusas incluem uma conta já no inventário, uma conta NOVA (em `to_add` no mesmo
+# ciclo) e uma fora da parceria, que não entra no sinal.
+@pytest.mark.parametrize("nome", ["leitura_incompleta", "remocao_em_massa_acima_do_teto"])
+def test_plano_barrado_do_meta_carrega_unreachable(nome: str) -> None:
+    c = _POR_NOME[nome]
+    existente = sorted(c.na_origem - {"nova"})[0]
+    refused_ids = {existente, "nova", "fora_da_parceria"}
+    inv = [
+        meta.InventoryRow(
+            ad_account_id=r.id,
+            is_active=r.ativo,
+            missed_syncs=r.faltas,
+            timezone_name=r.fuso,
+            last_missed_on=r.ultima_falta,
+        )
+        for r in c.linhas
+    ]
+    m = meta.build_plan(
+        partnership_ids=c.na_origem,
+        refused_ids=refused_ids,
+        inventory=inv,
+        complete=c.completo,
+        now=AGORA,
+    )
+    assert m.blocked_reason is not None
+    assert "nova" in m.to_add
+    assert m.unreachable == sorted(c.na_origem & refused_ids)
+    assert m.unreachable == sorted([existente, "nova"])
 
 
 # Cada cenário tem de exercitar um ramo DIFERENTE: se dois dessem o mesmo plano,
