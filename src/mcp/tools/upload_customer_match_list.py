@@ -18,16 +18,14 @@ Layer 3 (async): validate_user_list_for_upload — exists + CRM_BASED + writable
 import re
 from typing import Any
 
-from src.db import connection
 from src.google_ads.customer_match import (
     _normalize_and_hash_email,
     _normalize_and_hash_phone,
 )
 from src.google_ads.preflight import validate_user_list_for_upload
 from src.governance.blast_radius import classify
-from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
-from src.mcp.tools._mutate_common import error_envelope, preview_envelope
+from src.mcp.tools._mutate_common import emitir_preview, error_envelope
 from src.mcp.tools._registry import register_tool
 
 _SHA256_HEX_RE = re.compile(r"^[a-f0-9]{64}$")
@@ -203,24 +201,13 @@ async def upload_customer_match_list(args: dict[str, Any]) -> dict[str, Any]:
     )
 
     # Always CONFIRM (PII upload)
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
-        token = await create_pending(
-            conn,
-            manager_id=ctx.manager_id,
-            session_id=ctx.session_id,
-            customer_id=customer_id,
-            operation_type="upload_customer_match_list",
-            payload=payload,
-            blast_summary=summary,
-        )
-
-    return preview_envelope(
-        "upload_customer_match_list",
-        customer_id,
-        summary,
-        token,
-        confirmation_reason=risk.reason,
+    return await emitir_preview(
+        ctx,
+        operation="upload_customer_match_list",
+        customer_id=customer_id,
+        payload=payload,
+        resumo=summary,
+        risk=risk,
         user_list_id=user_list_id,
         operation_type=operation_type,
         members_count=len(members),

@@ -90,6 +90,6 @@ async def update_campaign_bidding(args: dict[str, Any]) -> dict[str, Any]:
         operation="update_campaign_bidding",
         customer_id=customer_id,
         payload=payload,
-        summary=summary,
+        resumo=summary,
         risk=risk,
     )

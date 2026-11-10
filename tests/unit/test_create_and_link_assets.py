@@ -226,11 +226,11 @@ async def test_tool_returns_dry_run_with_token_and_summary():
 
         with (
             patch(
-                "src.mcp.tools.create_and_link_assets.create_pending",
+                "src.mcp.tools._mutate_common.create_pending",
                 AsyncMock(return_value="test-token-123"),
             ),
             patch(
-                "src.mcp.tools.create_and_link_assets.connection.get_pool",
+                "src.mcp.tools._mutate_common.connection.get_pool",
                 return_value=mock_pool,
             ),
         ):
@@ -265,11 +265,11 @@ async def test_tool_summary_includes_counts_by_type_and_level():
 
         with (
             patch(
-                "src.mcp.tools.create_and_link_assets.create_pending",
+                "src.mcp.tools._mutate_common.create_pending",
                 AsyncMock(return_value="test-token-456"),
             ),
             patch(
-                "src.mcp.tools.create_and_link_assets.connection.get_pool",
+                "src.mcp.tools._mutate_common.connection.get_pool",
                 return_value=mock_pool,
             ),
         ):

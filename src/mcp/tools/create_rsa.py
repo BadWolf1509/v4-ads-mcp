@@ -165,7 +165,7 @@ async def create_rsa(args: dict[str, Any]) -> dict[str, Any]:
         operation="create_rsa",
         customer_id=customer_id,
         payload=payload,
-        summary=summary,
+        resumo=summary,
         risk=risk,
         rsas_preview=preview,
     )

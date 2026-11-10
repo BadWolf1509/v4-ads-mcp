@@ -93,6 +93,6 @@ async def update_ad_status(args: dict[str, Any]) -> dict[str, Any]:
         operation="update_ad_status",
         customer_id=customer_id,
         payload=payload,
-        summary=summary,
+        resumo=summary,
         risk=risk,
     )

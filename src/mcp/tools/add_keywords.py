@@ -162,7 +162,7 @@ async def add_keywords(args: dict[str, Any]) -> dict[str, Any]:
         operation="add_keywords",
         customer_id=customer_id,
         payload=payload,
-        summary=summary,
+        resumo=summary,
         risk=risk,
         ad_group_id=ad_group_id,
     )

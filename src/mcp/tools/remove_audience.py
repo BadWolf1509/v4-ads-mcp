@@ -113,7 +113,7 @@ async def remove_audience(args: dict[str, Any]) -> dict[str, Any]:
         operation="remove_audience",
         customer_id=customer_id,
         payload=payload,
-        summary=summary,
+        resumo=summary,
         risk=risk,
         target_type=target_type,
         target_id=target_id,

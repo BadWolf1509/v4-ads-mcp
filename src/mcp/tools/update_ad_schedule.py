@@ -422,7 +422,7 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
         operation="update_ad_schedule",
         customer_id=customer_id,
         payload=payload,
-        summary=resumo,
+        resumo=resumo,
         risk=risk,
         target_count=target_count,
         preview=preview,

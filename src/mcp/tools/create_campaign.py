@@ -208,7 +208,7 @@ async def create_campaign(args: dict[str, Any]) -> dict[str, Any]:
         operation="create_campaign",
         customer_id=customer_id,
         payload=payload,
-        summary=summary,
+        resumo=summary,
         risk=risk,
         preview=preview,
     )

@@ -206,11 +206,11 @@ async def test_tool_returns_dry_run_with_token_and_summary():
                 AsyncMock(return_value=None),
             ),
             patch(
-                "src.mcp.tools.import_offline_conversions.create_pending",
+                "src.mcp.tools._mutate_common.create_pending",
                 AsyncMock(return_value="TOKEN001"),
             ),
             patch(
-                "src.mcp.tools.import_offline_conversions.connection.get_pool",
+                "src.mcp.tools._mutate_common.connection.get_pool",
                 return_value=mock_pool,
             ),
         ):
@@ -253,11 +253,11 @@ async def test_tool_summary_includes_sum_value_and_date_range():
                 AsyncMock(return_value=None),
             ),
             patch(
-                "src.mcp.tools.import_offline_conversions.create_pending",
+                "src.mcp.tools._mutate_common.create_pending",
                 AsyncMock(return_value="TOKEN002"),
             ),
             patch(
-                "src.mcp.tools.import_offline_conversions.connection.get_pool",
+                "src.mcp.tools._mutate_common.connection.get_pool",
                 return_value=mock_pool,
             ),
         ):
@@ -304,11 +304,11 @@ async def test_tool_summary_counts_order_ids_present():
                 AsyncMock(return_value=None),
             ),
             patch(
-                "src.mcp.tools.import_offline_conversions.create_pending",
+                "src.mcp.tools._mutate_common.create_pending",
                 AsyncMock(return_value="TOKEN003"),
             ),
             patch(
-                "src.mcp.tools.import_offline_conversions.connection.get_pool",
+                "src.mcp.tools._mutate_common.connection.get_pool",
                 return_value=mock_pool,
             ),
         ):

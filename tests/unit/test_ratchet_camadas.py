@@ -67,10 +67,7 @@ _SQL_EM_ROTA_CONHECIDO: dict[tuple[str, str], int] = {
 # (arquivo, função) -> número de chamadas a `create_pending` fora de `_mutate_common.py`.
 _CREATE_PENDING_FORA_DO_HELPER: dict[tuple[str, str], int] = {
     ("src/mcp/tools/bulk_pause_by_query.py", "bulk_pause_by_query"): 1,
-    ("src/mcp/tools/create_and_link_assets.py", "create_and_link_assets"): 1,
-    ("src/mcp/tools/import_offline_conversions.py", "import_offline_conversions"): 1,
     ("src/mcp/tools/update_keyword_status.py", "update_keyword_status"): 1,
-    ("src/mcp/tools/upload_customer_match_list.py", "upload_customer_match_list"): 1,
 }
 
 # (arquivo, função) -> número de textos GAQL (`SELECT ... FROM <recurso>`) nas tools.

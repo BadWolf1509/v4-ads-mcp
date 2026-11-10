@@ -395,7 +395,7 @@ async def apply_recommendation(args: dict[str, Any]) -> dict[str, Any]:
         operation="apply_recommendation",
         customer_id=customer_id,
         payload=payload_pendente,
-        summary=summary,
+        resumo=summary,
         risk=risk,
         recommendation_type=info["type"],
         type_pt=info["type_pt"],

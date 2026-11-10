@@ -207,7 +207,7 @@ async def update_campaign_budget(args: dict[str, Any]) -> dict[str, Any]:
         operation="update_campaign_budget",
         customer_id=customer_id,
         payload=payload,
-        summary=summary,
+        resumo=summary,
         risk=risk,
         current_amount_brl=current_brl,
         new_amount_brl=new_amount_brl,

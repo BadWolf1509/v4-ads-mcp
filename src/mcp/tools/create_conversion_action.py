@@ -161,7 +161,7 @@ async def create_conversion_action(args: dict[str, Any]) -> dict[str, Any]:
         operation="create_conversion_action",
         customer_id=customer_id,
         payload=payload,
-        summary=summary,
+        resumo=summary,
         risk=risk,
         actions_preview=preview,
     )

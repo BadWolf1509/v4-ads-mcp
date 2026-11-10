@@ -137,7 +137,7 @@ async def remove_asset_link(args: dict[str, Any]) -> dict[str, Any]:
         operation="remove_asset_link",
         customer_id=customer_id,
         payload=payload,
-        summary=summary,
+        resumo=summary,
         risk=risk,
         target_count=target_count,
     )

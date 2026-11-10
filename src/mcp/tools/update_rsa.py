@@ -184,7 +184,7 @@ async def update_rsa(args: dict[str, Any]) -> dict[str, Any]:
         operation="update_rsa",
         customer_id=customer_id,
         payload=payload,
-        summary=summary,
+        resumo=summary,
         risk=risk,
         updates_preview=preview,
     )

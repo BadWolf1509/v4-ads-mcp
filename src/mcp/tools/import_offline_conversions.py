@@ -30,14 +30,12 @@ from datetime import datetime, timedelta, tzinfo
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from src.db import connection
 from src.google_ads.account_clock import resolve_account_zone
 from src.google_ads.conversions import utc_offset
 from src.google_ads.preflight import validate_conversion_action_for_upload
 from src.governance.blast_radius import classify
-from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
-from src.mcp.tools._mutate_common import error_envelope, preview_envelope
+from src.mcp.tools._mutate_common import emitir_preview, error_envelope
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -298,23 +296,12 @@ async def import_offline_conversions(args: dict[str, Any]) -> dict[str, Any]:
         "__time_zone__": tz_name,  # F146: preview e upload usam o MESMO fuso
     }
 
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
-        token = await create_pending(
-            conn,
-            manager_id=ctx.manager_id,
-            session_id=ctx.session_id,
-            customer_id=customer_id,
-            operation_type="import_offline_conversions",
-            payload=payload,
-            blast_summary=blast_summary,
-        )
-
-    return preview_envelope(
-        "import_offline_conversions",
-        customer_id,
-        blast_summary,
-        token,
-        confirmation_reason=risk.reason,
+    return await emitir_preview(
+        ctx,
+        operation="import_offline_conversions",
+        customer_id=customer_id,
+        payload=payload,
+        resumo=blast_summary,
+        risk=risk,
         summary=summary,
     )
