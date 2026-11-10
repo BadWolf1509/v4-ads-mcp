@@ -23,6 +23,7 @@ import structlog
 
 from src.clock import account_today
 from src.meta_ads.client import META_GRAPH_BASE_URL
+from src.meta_ads.graph import avisar_versao_meta
 from src.meta_ads.insights import build_insights_call
 
 log = structlog.get_logger(__name__)
@@ -105,6 +106,7 @@ async def sondar_alcance(
                 )
             except httpx.HTTPError:
                 return "nao_medido"
+        avisar_versao_meta(resposta.headers)
         try:
             corpo = resposta.json()
         except ValueError:
