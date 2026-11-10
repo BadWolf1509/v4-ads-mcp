@@ -11,13 +11,13 @@ from datetime import date
 from typing import Any
 
 from src.google_ads.flag_orphan_smart_actions import ConversionActionRow
-from src.google_ads.queries._common import gaql_date_clause
+from src.google_ads.queries._common import gaql_date_clause, janela_aplicada
 
 
 def build_audit_orphan_smart_actions_query(
     *,
-    start_date: str,
-    end_date: str,
+    start_date: date,
+    end_date: date,
     category: str | None,
 ) -> tuple[str, dict[str, Any]]:
     """GAQL pra conversion_action com metrics aggregadas em window, MAIS os
@@ -30,9 +30,7 @@ def build_audit_orphan_smart_actions_query(
     chamada e divergiu: declarava 2 filtros e a query cortava 3. Derivar fecha
     a classe — filtro novo aqui aparece na resposta sem ninguem lembrar.
     """
-    start = date.fromisoformat(start_date)
-    end = date.fromisoformat(end_date)
-    date_clause = gaql_date_clause(start, end)
+    date_clause = gaql_date_clause(start_date, end_date)
 
     category_clause = ""
     if category:
@@ -54,7 +52,7 @@ def build_audit_orphan_smart_actions_query(
     filtros: dict[str, Any] = {
         "category": category,
         "conversion_action_status": "ENABLED",
-        "date_range": {"start": start_date, "end": end_date},
+        "date_range": janela_aplicada(start_date, end_date),
     }
     return gaql, filtros
 

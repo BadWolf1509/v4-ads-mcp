@@ -1,5 +1,6 @@
 """Unit tests for audit_orphan_smart_actions GAQL builder + boundary parser (Sprint 3b.37)."""
 
+from datetime import date
 from types import SimpleNamespace
 
 from src.google_ads.queries.audit_orphan_smart_actions import (
@@ -11,8 +12,8 @@ from src.google_ads.queries.audit_orphan_smart_actions import (
 
 def test_build_query_includes_required_fields():
     q, _filtros = build_audit_orphan_smart_actions_query(
-        start_date="2026-04-21",
-        end_date="2026-05-21",
+        start_date=date(2026, 4, 21),
+        end_date=date(2026, 5, 21),
         category=None,
     )
     required_fields = [
@@ -31,8 +32,8 @@ def test_build_query_includes_required_fields():
 
 def test_build_query_filters_enabled():
     q, _filtros = build_audit_orphan_smart_actions_query(
-        start_date="2026-04-21",
-        end_date="2026-05-21",
+        start_date=date(2026, 4, 21),
+        end_date=date(2026, 5, 21),
         category=None,
     )
     assert "conversion_action.status = 'ENABLED'" in q
@@ -40,8 +41,8 @@ def test_build_query_filters_enabled():
 
 def test_build_query_category_filter():
     q, _filtros = build_audit_orphan_smart_actions_query(
-        start_date="2026-04-21",
-        end_date="2026-05-21",
+        start_date=date(2026, 4, 21),
+        end_date=date(2026, 5, 21),
         category="CONTACT",
     )
     assert "conversion_action.category = 'CONTACT'" in q

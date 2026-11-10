@@ -82,10 +82,7 @@ _GAQL_NAS_TOOLS: dict[tuple[str, str], int] = {
 }
 
 # (arquivo, função) -> número de textos com `segments.date BETWEEN` fora de `_common.py`.
-_JANELA_FORA_DO_COMMON: dict[tuple[str, str], int] = {
-    ("src/google_ads/queries/audit_competitor_keywords.py", "build_search_terms_query"): 1,
-    ("src/google_ads/queries/audit_quality_score.py", "build_audit_quality_score_query"): 1,
-}
+_JANELA_FORA_DO_COMMON: dict[tuple[str, str], int] = {}
 
 _COMMON = h.SRC / "google_ads" / "queries" / "_common.py"
 # "Texto GAQL" = o texto lógico de uma EXPRESSÃO de string (literais, f-strings,

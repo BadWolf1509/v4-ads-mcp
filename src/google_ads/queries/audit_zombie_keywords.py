@@ -11,13 +11,13 @@ from datetime import date
 from typing import Any
 
 from src.google_ads.flag_zombie_keywords import KeywordRow
-from src.google_ads.queries._common import gaql_date_clause, micros_to_currency
+from src.google_ads.queries._common import gaql_date_clause, janela_aplicada, micros_to_currency
 
 
 def build_audit_zombie_keywords_query(
     *,
-    start_date: str,
-    end_date: str,
+    start_date: date,
+    end_date: date,
     ad_group_ids: list[str] | None,
 ) -> tuple[str, dict[str, Any]]:
     """GAQL pra keyword_view, MAIS os filtros que ela aplica.
@@ -26,9 +26,7 @@ def build_audit_zombie_keywords_query(
     chamada e divergiu: declarava 2 filtros e a query cortava 4. Derivar fecha
     a classe — filtro novo aqui aparece na resposta sem ninguem lembrar.
     """
-    start = date.fromisoformat(start_date)
-    end = date.fromisoformat(end_date)
-    date_clause = gaql_date_clause(start, end)
+    date_clause = gaql_date_clause(start_date, end_date)
 
     ad_group_clause = ""
     if ad_group_ids:
@@ -58,7 +56,7 @@ def build_audit_zombie_keywords_query(
         "ad_group_ids": ad_group_ids,
         "criterion_status": "ENABLED",
         "negative": False,
-        "date_range": {"start": start_date, "end": end_date},
+        "date_range": janela_aplicada(start_date, end_date),
     }
     return gaql, filtros
 

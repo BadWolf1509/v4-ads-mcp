@@ -100,8 +100,8 @@ async def audit_orphan_smart_actions(args: dict[str, Any]) -> dict[str, Any]:
     end_date = end_date_obj.isoformat()
 
     query, filtros_da_query = build_audit_orphan_smart_actions_query(
-        start_date=start_date,
-        end_date=end_date,
+        start_date=start_date_obj,
+        end_date=end_date_obj,
         category=category,
     )
 

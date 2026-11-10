@@ -106,8 +106,8 @@ async def audit_quality_score(args: dict[str, Any]) -> dict[str, Any]:
     end_date = end_date_obj.isoformat()
 
     query, filtros_da_query = build_audit_quality_score_query(
-        start_date=start_date,
-        end_date=end_date,
+        start_date=start_date_obj,
+        end_date=end_date_obj,
         ad_group_ids=ad_group_ids,
     )
 

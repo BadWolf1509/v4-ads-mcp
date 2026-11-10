@@ -17,21 +17,23 @@ from tests.unit import _guard_harness as h
 
 def test_zombie_declara_os_cortes_server_side() -> None:
     _gaql, filtros = build_audit_zombie_keywords_query(
-        start_date="2026-09-01", end_date="2026-09-30", ad_group_ids=None
+        start_date=date(2026, 9, 1), end_date=date(2026, 9, 30), ad_group_ids=None
     )
     assert filtros["criterion_status"] == "ENABLED"
     assert filtros["negative"] is False
 
 
 def test_quality_score_declara_o_corte_de_qs_nulo() -> None:
-    _gaql, filtros = build_audit_quality_score_query(start_date="2026-09-01", end_date="2026-09-30")
+    _gaql, filtros = build_audit_quality_score_query(
+        start_date=date(2026, 9, 1), end_date=date(2026, 9, 30)
+    )
     assert filtros["criterion_status"] == "ENABLED"
     assert filtros["quality_score_nao_nulo"] is True
 
 
 def test_orphan_declara_o_corte_de_status() -> None:
     _gaql, filtros = build_audit_orphan_smart_actions_query(
-        start_date="2026-09-01", end_date="2026-09-30", category=None
+        start_date=date(2026, 9, 1), end_date=date(2026, 9, 30), category=None
     )
     assert filtros["conversion_action_status"] == "ENABLED"
 
@@ -102,13 +104,13 @@ def test_todo_campo_cortado_aparece_em_filters_applied() -> None:
     """A assercao DERIVADA: nao confere uma lista, confere a propriedade."""
     construidos = [
         build_audit_zombie_keywords_query(
-            start_date="2026-09-01", end_date="2026-09-30", ad_group_ids=["1"]
+            start_date=date(2026, 9, 1), end_date=date(2026, 9, 30), ad_group_ids=["1"]
         ),
         build_audit_quality_score_query(
-            start_date="2026-09-01", end_date="2026-09-30", ad_group_ids=["1"]
+            start_date=date(2026, 9, 1), end_date=date(2026, 9, 30), ad_group_ids=["1"]
         ),
         build_audit_orphan_smart_actions_query(
-            start_date="2026-09-01", end_date="2026-09-30", category="PURCHASE"
+            start_date=date(2026, 9, 1), end_date=date(2026, 9, 30), category="PURCHASE"
         ),
     ]
     assert len(construidos) == 3, "piso: as tres tools que publicam filters_applied"

@@ -1,5 +1,7 @@
 """Unit tests for src.google_ads.queries.audit_competitor_keywords (Sprint 3b.31)."""
 
+from datetime import date
+
 from src.google_ads.queries.audit_competitor_keywords import (
     build_positive_keywords_query,
     build_search_terms_query,
@@ -21,7 +23,7 @@ def test_positive_keywords_query_no_date_filter():
 
 
 def test_search_terms_query_includes_date_between():
-    query = build_search_terms_query(start_date="2026-05-13", end_date="2026-05-19")
+    query = build_search_terms_query(start_date=date(2026, 5, 13), end_date=date(2026, 5, 19))
     assert "FROM search_term_view" in query
     assert "segments.date BETWEEN '2026-05-13' AND '2026-05-19'" in query
 
@@ -43,7 +45,7 @@ def test_positive_keywords_query_selects_required_fields():
 
 def test_search_terms_query_selects_required_fields():
     """6 fields necessários pra SearchTermRow."""
-    query = build_search_terms_query(start_date="2026-05-13", end_date="2026-05-19")
+    query = build_search_terms_query(start_date=date(2026, 5, 13), end_date=date(2026, 5, 19))
     expected_fields = [
         "search_term_view.search_term",
         "ad_group.name",
