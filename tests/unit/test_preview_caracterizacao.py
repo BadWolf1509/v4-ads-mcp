@@ -222,7 +222,10 @@ async def test_upload_customer_match_list(
 _RESUMO_ASSETS = (
     "Criar 1 asset(s) text-extension + 1 link(s). Tipos: SITELINK:1. Níveis: CAMPAIGN:1."
 )
-_MOTIVO_ASSETS = "create_and_link_assets: unknown operation — default seguro: confirmar"
+_MOTIVO_ASSETS = (
+    "create_and_link_assets: cria asset(s) e vincula a campanha/grupo — "
+    "muda o que veicula, sempre CONFIRM (spec §7.1 creates)"
+)
 _SUMMARY_ASSETS: dict[str, Any] = {
     "asset_count": 1,
     "by_type": {"SITELINK": 1},
@@ -231,7 +234,10 @@ _SUMMARY_ASSETS: dict[str, Any] = {
     "total_ops_chained": 2,
 }
 _RESUMO_IMPORT = "Importar 1 conversões offline (sum R$ 100.00, range 2026-11-10 08:30:00 → 2026-11-10 08:30:00) pra conversion_action_id=987654321"
-_MOTIVO_IMPORT = "import_offline_conversions: unknown operation — default seguro: confirmar"
+_MOTIVO_IMPORT = (
+    "import_offline_conversions: importa conversoes que entram no sinal do "
+    "Smart Bidding e nao tem volta — sempre CONFIRM (spec §7.1 tracking)"
+)
 _SUMMARY_IMPORT: dict[str, Any] = {
     "conversion_count": 1,
     "sum_value_brl": 100.0,

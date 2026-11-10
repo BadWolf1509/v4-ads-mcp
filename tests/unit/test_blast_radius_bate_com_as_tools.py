@@ -508,3 +508,62 @@ def test_casador_de_level_so_conta_o_resultado_do_classify(fonte: str, le_level:
     assert _le_level_do_classify(ast.parse(fonte)) is le_level, (
         f"veredito errado: esperado {le_level} para:\n{fonte}"
     )
+
+
+# --- Operacoes sem entrada propria (E8, decisao de 10/11: "Registrar, sempre confirmar") ---
+#
+# `create_and_link_assets` e `import_offline_conversions` cairam ate 10/11 no
+# fallback "unknown operation — default seguro". O nivel (CONFIRM) ja estava
+# certo; faltava o registro: o motivo que o gestor le no preview era generico e
+# a intencao nao ficava escrita. O guard abaixo cobra que nenhuma operacao de
+# mutate conhecida dependa do fallback.
+
+_OPERACOES_SEM_REGISTRO = ("create_and_link_assets", "import_offline_conversions")
+
+# Fora da decisao de 10/11 (que nomeou so as duas acima): `create_campaign`
+# tambem cai no fallback, sempre com CONFIRM. Fica declarada aqui, nao calada.
+_AINDA_SEM_ENTRADA = frozenset({"create_campaign"})
+
+
+@pytest.mark.parametrize("operacao", _OPERACOES_SEM_REGISTRO)
+def test_operacao_sem_registro_confirma_sempre_com_motivo_proprio(operacao: str) -> None:
+    for n in _CONTAGENS:
+        veredito = classify(operation=operacao, params={"target_count": n})
+        assert veredito.level is RiskLevel.CONFIRM
+        assert "unknown operation" not in veredito.reason
+        assert operacao in veredito.reason
+        assert "sempre CONFIRM" in veredito.reason
+
+
+def test_toda_operacao_de_mutate_conhecida_tem_entrada_explicita_no_classify() -> None:
+    """Operacao registrada no `CONFIRMADORES` ou chamada por uma tool nao cai no fallback.
+
+    O universo junta duas fontes: as chaves do `CONFIRMADORES` (o registro de
+    quem confirma o apply) e a operacao literal de cada tool que chama
+    `classify` (derivada do source). Cair no fallback "unknown operation" e o
+    sinal de que a operacao foi criada sem a politica saber dela.
+    """
+    from src.google_ads.confirmadores import CONFIRMADORES
+
+    do_registro = set(CONFIRMADORES)
+    das_tools = {op for _, op, _ in _CASOS}
+    universo = do_registro | das_tools | set(_OPERACOES_SEM_REGISTRO)
+    assert do_registro, "CONFIRMADORES vazio: o guard passaria por vacuidade"
+    assert das_tools, "nenhuma operacao derivada das tools: o guard passaria por vacuidade"
+    caem_no_fallback = {
+        op
+        for op in universo
+        if "unknown operation" in classify(operation=op, params={"target_count": 1}).reason
+    }
+    sem_entrada = sorted(caem_no_fallback - _AINDA_SEM_ENTRADA)
+    assert not sem_entrada, (
+        f"operacoes sem entrada explicita no classify (caem no fallback): {sem_entrada}"
+    )
+
+
+def test_allowlist_de_sem_entrada_so_encolhe() -> None:
+    """Quem ganhar entrada no classify tem que sair de `_AINDA_SEM_ENTRADA`."""
+    for op in _AINDA_SEM_ENTRADA:
+        assert "unknown operation" in classify(operation=op, params={"target_count": 1}).reason, (
+            f"{op} ja tem entrada no classify: tire-a de _AINDA_SEM_ENTRADA"
+        )
