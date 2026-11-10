@@ -26,7 +26,11 @@ DATABASE_URL must be set in env (e.g. via Secret Manager fetch).
 import argparse
 import asyncio
 import sys
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from uuid import uuid4
+
+import asyncpg
 
 from src.auth.oauth_state import sign_state
 from src.auth.sessions import generate_session_token, hash_session_token
@@ -40,205 +44,178 @@ from src.db.repositories import (
 )
 
 
-async def cmd_bootstrap_admin(args: argparse.Namespace) -> int:
-    settings = get_settings()
-    await connection.init_pool(settings.database_url)
+@asynccontextmanager
+async def _conexao() -> AsyncIterator[asyncpg.Connection]:
+    """Abre o pool, entrega uma conexão e fecha o pool no `finally` (mesmo se o comando levantar)."""
+    await connection.init_pool(get_settings().database_url)
     try:
-        pool = connection.get_pool()
-        async with pool.acquire() as conn:
-            # Leitura, decisão "mudou?" e escrita na MESMA transação, com a
-            # linha travada (FOR UPDATE): `had_effect` sai de uma linha que
-            # ninguém mexe entre o SELECT e o UPDATE (F179).
-            async with conn.transaction():
-                manager = await managers.get_by_email_for_update(conn, args.email)
-                criado = manager is None
-                if manager is None:
-                    manager = await managers.create(
-                        conn,
-                        manager_id=uuid4(),
-                        email=args.email,
-                        full_name=args.name,
-                        role="admin",
-                    )
-                    mudou = True
-                else:
-                    mudou = manager.role != "admin" or manager.is_deactivated
-                    # F84: só 'inactive' vira 'active'; 'invited' fica como está.
-                    await conn.execute(
-                        "UPDATE managers SET role = 'admin', is_active = true, "
-                        "status = CASE WHEN status = 'inactive' THEN 'active' ELSE status END "
-                        "WHERE id = $1",
-                        manager.id,
-                    )
-                await audit_log.record(
-                    conn,
-                    manager_id=manager.id,
-                    session_id=None,
-                    customer_id=None,
-                    action_type="system",
-                    operation="cli_bootstrap_admin",
-                    had_effect=mudou,
-                )
-            if criado:
-                print(f"Created admin: {manager.id} ({manager.email})")
-            else:
-                print(f"Manager already exists: {manager.id} ({manager.role})")
-                if mudou:
-                    print("Promoted/reactivated as admin.")
-            return 0
+        async with connection.get_pool().acquire() as conn:
+            yield conn
     finally:
         await connection.close_pool()
+
+
+async def cmd_bootstrap_admin(args: argparse.Namespace) -> int:
+    async with _conexao() as conn:
+        # Leitura, decisão "mudou?" e escrita na MESMA transação, com a
+        # linha travada (FOR UPDATE): `had_effect` sai de uma linha que
+        # ninguém mexe entre o SELECT e o UPDATE (F179).
+        async with conn.transaction():
+            manager = await managers.get_by_email_for_update(conn, args.email)
+            criado = manager is None
+            if manager is None:
+                manager = await managers.create(
+                    conn,
+                    manager_id=uuid4(),
+                    email=args.email,
+                    full_name=args.name,
+                    role="admin",
+                )
+                mudou = True
+            else:
+                mudou = manager.role != "admin" or manager.is_deactivated
+                # F84: só 'inactive' vira 'active'; 'invited' fica como está.
+                await conn.execute(
+                    "UPDATE managers SET role = 'admin', is_active = true, "
+                    "status = CASE WHEN status = 'inactive' THEN 'active' ELSE status END "
+                    "WHERE id = $1",
+                    manager.id,
+                )
+            await audit_log.record(
+                conn,
+                manager_id=manager.id,
+                session_id=None,
+                customer_id=None,
+                action_type="system",
+                operation="cli_bootstrap_admin",
+                had_effect=mudou,
+            )
+        if criado:
+            print(f"Created admin: {manager.id} ({manager.email})")
+        else:
+            print(f"Manager already exists: {manager.id} ({manager.role})")
+            if mudou:
+                print("Promoted/reactivated as admin.")
+        return 0
 
 
 async def cmd_create_manager(args: argparse.Namespace) -> int:
-    settings = get_settings()
-    await connection.init_pool(settings.database_url)
-    try:
-        pool = connection.get_pool()
-        async with pool.acquire() as conn:
-            existing = await managers.get_by_email(conn, args.email)
-            if existing:
-                print(
-                    f"Manager already exists: {existing.id} "
-                    f"({existing.role}, status={existing.status})"
-                )
-                return 0
-            new_id = uuid4()
-            m = await managers.create(
-                conn, manager_id=new_id, email=args.email, full_name=args.name, role="gestor"
+    async with _conexao() as conn:
+        existing = await managers.get_by_email(conn, args.email)
+        if existing:
+            print(
+                f"Manager already exists: {existing.id} ({existing.role}, status={existing.status})"
             )
-            print(f"Created manager: {m.id} ({m.email}, role={m.role}, status={m.status})")
-            print("No account grants issued (zero blast radius).")
             return 0
-    finally:
-        await connection.close_pool()
+        new_id = uuid4()
+        m = await managers.create(
+            conn, manager_id=new_id, email=args.email, full_name=args.name, role="gestor"
+        )
+        print(f"Created manager: {m.id} ({m.email}, role={m.role}, status={m.status})")
+        print("No account grants issued (zero blast radius).")
+        return 0
 
 
 async def cmd_invite(args: argparse.Namespace) -> int:
     settings = get_settings()
-    await connection.init_pool(settings.database_url)
-    try:
-        pool = connection.get_pool()
-        async with pool.acquire() as conn:
-            m = await managers.get_by_email(conn, args.email)
-            if m is None:
-                print(f"Manager not found: {args.email}", file=sys.stderr)
-                return 1
-        invite = sign_state(
-            {"manager_id": str(m.id)},
-            settings.session_signing_key,
-            aud="cli_invite",
-        )
-        url = f"{args.base_url.rstrip('/')}/oauth/google/start?invite={invite}"
-        print("Open this URL in a browser (logged into the desired Google account):")
-        print(url)
-        print()
-        print("⚠️  Invite expires in 10 minutes.")
-        return 0
-    finally:
-        await connection.close_pool()
+    async with _conexao() as conn:
+        m = await managers.get_by_email(conn, args.email)
+        if m is None:
+            print(f"Manager not found: {args.email}", file=sys.stderr)
+            return 1
+    invite = sign_state(
+        {"manager_id": str(m.id)},
+        settings.session_signing_key,
+        aud="cli_invite",
+    )
+    url = f"{args.base_url.rstrip('/')}/oauth/google/start?invite={invite}"
+    print("Open this URL in a browser (logged into the desired Google account):")
+    print(url)
+    print()
+    print("⚠️  Invite expires in 10 minutes.")
+    return 0
 
 
 async def cmd_grant_all(args: argparse.Namespace) -> int:
-    settings = get_settings()
-    await connection.init_pool(settings.database_url)
-    try:
-        pool = connection.get_pool()
-        async with pool.acquire() as conn:
-            m = await managers.get_by_email(conn, args.email)
-            if m is None:
-                print(f"Manager not found: {args.email}", file=sys.stderr)
-                return 1
-            async with conn.transaction():
-                n = await manager_account_access.grant_all_active(
-                    conn, manager_id=m.id, granted_by=m.id
-                )
-                await audit_log.record(
-                    conn,
-                    manager_id=m.id,
-                    session_id=None,
-                    customer_id=None,
-                    action_type="system",
-                    operation="cli_grant_all",
-                    target_count=n,
-                    # `n` conta linhas TOCADAS por grant_all_active (inclui
-                    # re-concessões, F167), não só concessões novas: n > 0 é
-                    # "tocou alguma linha", não "mudou o acesso".
-                    had_effect=n > 0,
-                )
-        # I3 (revisão de branch): `n` é linhas TOCADAS pelo `ON CONFLICT DO
-        # UPDATE` (Task 3) — inclui contas já concedidas e restauradas, não só
-        # as genuinamente novas. Rodar grant-all duas vezes num gestor com
-        # tudo concedido tocava 0 linhas novas e ainda imprimia "N new
-        # accounts". Mensagem não afirma mais "new".
-        print(f"Access granted for {n} active accounts (includes accounts already granted).")
-        return 0
-    finally:
-        await connection.close_pool()
+    async with _conexao() as conn:
+        m = await managers.get_by_email(conn, args.email)
+        if m is None:
+            print(f"Manager not found: {args.email}", file=sys.stderr)
+            return 1
+        async with conn.transaction():
+            n = await manager_account_access.grant_all_active(
+                conn, manager_id=m.id, granted_by=m.id
+            )
+            await audit_log.record(
+                conn,
+                manager_id=m.id,
+                session_id=None,
+                customer_id=None,
+                action_type="system",
+                operation="cli_grant_all",
+                target_count=n,
+                # `n` conta linhas TOCADAS por grant_all_active (inclui
+                # re-concessões, F167), não só concessões novas: n > 0 é
+                # "tocou alguma linha", não "mudou o acesso".
+                had_effect=n > 0,
+            )
+    # I3 (revisão de branch): `n` é linhas TOCADAS pelo `ON CONFLICT DO
+    # UPDATE` (Task 3) — inclui contas já concedidas e restauradas, não só
+    # as genuinamente novas. Rodar grant-all duas vezes num gestor com
+    # tudo concedido tocava 0 linhas novas e ainda imprimia "N new
+    # accounts". Mensagem não afirma mais "new".
+    print(f"Access granted for {n} active accounts (includes accounts already granted).")
+    return 0
 
 
 async def cmd_create_session(args: argparse.Namespace) -> int:
-    settings = get_settings()
-    await connection.init_pool(settings.database_url)
-    try:
-        pool = connection.get_pool()
-        async with pool.acquire() as conn:
-            m = await managers.get_by_email(conn, args.email)
-            if m is None:
-                print(f"Manager not found: {args.email}", file=sys.stderr)
-                return 1
-            token = generate_session_token()
-            sess = await mcp_sessions.create(
-                conn,
-                manager_id=m.id,
-                token_hash=hash_session_token(token),
-                label=args.label,
-                ttl_days=args.ttl_days,
-            )
-        print(f"Session created: {sess.id} (expires {sess.expires_at})")
-        print()
-        print("⚠️  TOKEN — copy it now, won't be shown again:")
-        print()
-        print(token)
-        print()
-        print("MCP client config snippet (Claude Desktop):")
-        print(
-            f'  "v4-ads": {{ "url": "<SERVICE_URL>/mcp", "headers": {{ "Authorization": "Bearer {token}" }} }}'
+    async with _conexao() as conn:
+        m = await managers.get_by_email(conn, args.email)
+        if m is None:
+            print(f"Manager not found: {args.email}", file=sys.stderr)
+            return 1
+        token = generate_session_token()
+        sess = await mcp_sessions.create(
+            conn,
+            manager_id=m.id,
+            token_hash=hash_session_token(token),
+            label=args.label,
+            ttl_days=args.ttl_days,
         )
-        return 0
-    finally:
-        await connection.close_pool()
+    print(f"Session created: {sess.id} (expires {sess.expires_at})")
+    print()
+    print("⚠️  TOKEN — copy it now, won't be shown again:")
+    print()
+    print(token)
+    print()
+    print("MCP client config snippet (Claude Desktop):")
+    print(
+        f'  "v4-ads": {{ "url": "<SERVICE_URL>/mcp", "headers": {{ "Authorization": "Bearer {token}" }} }}'
+    )
+    return 0
 
 
 async def cmd_list_sessions(args: argparse.Namespace) -> int:
-    settings = get_settings()
-    await connection.init_pool(settings.database_url)
-    try:
-        pool = connection.get_pool()
-        async with pool.acquire() as conn:
-            m = await managers.get_by_email(conn, args.email)
-            if m is None:
-                print(f"Manager not found: {args.email}", file=sys.stderr)
-                return 1
-            sessions = await mcp_sessions.list_for_manager(conn, m.id, include_revoked=args.all)
-        if not sessions:
-            print("(no sessions)")
-            return 0
-        print(
-            f"{'ID':38}  {'Label':20}  {'Created':25}  {'Last used':25}  {'Expires':25}  Revoked?"
-        )
-        for s in sessions:
-            print(
-                f"{str(s.id):38}  "
-                f"{(s.label or '-'):20}  "
-                f"{s.created_at.isoformat():25}  "
-                f"{(s.last_used_at.isoformat() if s.last_used_at else '-'):25}  "
-                f"{(s.expires_at.isoformat() if s.expires_at else '-'):25}  "
-                f"{'Y' if s.revoked_at else 'N'}"
-            )
+    async with _conexao() as conn:
+        m = await managers.get_by_email(conn, args.email)
+        if m is None:
+            print(f"Manager not found: {args.email}", file=sys.stderr)
+            return 1
+        sessions = await mcp_sessions.list_for_manager(conn, m.id, include_revoked=args.all)
+    if not sessions:
+        print("(no sessions)")
         return 0
-    finally:
-        await connection.close_pool()
+    print(f"{'ID':38}  {'Label':20}  {'Created':25}  {'Last used':25}  {'Expires':25}  Revoked?")
+    for s in sessions:
+        print(
+            f"{str(s.id):38}  "
+            f"{(s.label or '-'):20}  "
+            f"{s.created_at.isoformat():25}  "
+            f"{(s.last_used_at.isoformat() if s.last_used_at else '-'):25}  "
+            f"{(s.expires_at.isoformat() if s.expires_at else '-'):25}  "
+            f"{'Y' if s.revoked_at else 'N'}"
+        )
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
