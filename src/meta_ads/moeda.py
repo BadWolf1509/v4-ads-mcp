@@ -1,9 +1,11 @@
 """Pre-condicao de moeda das tools Meta que devolvem valores em BRL.
 
 `exigir_brl` devolve `None` quando a conta e BRL e o envelope de erro quando nao e. A moeda
-vem da coluna `meta_ad_accounts.currency` (decisao de 10/11: a conta ja esta no inventario
-que o gate exige, entao nao ha chamada a Graph so para isto). Conta sem linha ou sem moeda
-no inventario recebe o mesmo envelope de moeda nao-BRL, com `None` no lugar da moeda.
+vem da coluna `meta_ad_accounts.currency` (decisao de 10/11: o inventario ja guarda a moeda,
+entao nao ha chamada a Graph so para isto). O gate de acesso so roda depois, dentro de
+`run_meta_graph_get`; por isso a leitura consulta antes `can_manager_access`. Conta sem linha
+ou sem moeda no inventario recebe o mesmo envelope de moeda nao-BRL, com `None` no lugar
+da moeda.
 
 Leitura idempotente em hot path -> `run_with_reconnect` (F76/F77).
 """

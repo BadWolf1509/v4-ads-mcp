@@ -1,4 +1,4 @@
-"""Admin CLI for Phase 1a (no panel UI yet).
+"""CLI de administração: bootstrap, convite, grants e sessões MCP (o painel web cobre o uso diário).
 
 Usage (run from project root with venv active):
 

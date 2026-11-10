@@ -3,10 +3,11 @@
 Mirror semantics of src/google_ads/reports.py:
 - Rate limit post-call only (Meta tem BUC header, sem global counter pre-flight)
 - Audit log opt-in (sensitive reads, mutates)
-- PT-BR errors via to_friendly_meta_error()
+- Erros PT-BR via to_friendly_meta_error(): o executor LEVANTA `MetaAdsFriendlyError` e
+  `MetaAccessDeniedError`; quem os transforma em envelope são as tools (`meta_erro`)
 
-V0 (Sprint M.2a) covers simple GET edges (/me/adaccounts etc).
-M.3+ adds Insights API support (paginação, async jobs).
+Cobre qualquer edge GET da Graph API (objeto simples ou coleção); a paginação por
+`paging.next` é opt-in via `max_pages`.
 """
 
 import json
@@ -105,7 +106,8 @@ async def _paginar_graph(
     BUC os le. `paginas_lidas` e o numero de requests REALMENTE feitos: o
     rate counter (BUC) conta chamadas de verdade, nao a estimativa do caller
     (F88) — sem isto o contador ficaria impreciso pro primeiro caller que
-    setar `max_pages > 1` (hoje nenhum seta; _MAX_PAGES das tools Meta e 1).
+    setar `max_pages > 1` (hoje quem seta e `ler_colecao`, que deriva `max_pages` do
+    `limit` pedido, e o pacing de insights).
 
     `capturados` recebe os headers de CADA resposta, ANTES de qualquer raise: uma
     chamada throttled (429) levanta aqui e perderia o BUC — justamente a que mais
@@ -232,7 +234,7 @@ async def run_meta_graph_get(
             opcional, então um caller que esquecesse a chave gravava a linha com
             conta NULA — na plataforma onde o token é compartilhado e a matriz é
             o único freio, é a última linha que pode ficar sem a conta.
-        edge: Graph API edge path, e.g., "/me/adaccounts"
+        edge: Graph API edge path, e.g., "/act_<id>/insights"
         params: query parameters dict
         operation_name: for audit log + rate limit operation field
         estimated_calls: how many API calls this counts as
