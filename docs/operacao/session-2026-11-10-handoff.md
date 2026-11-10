@@ -60,7 +60,7 @@ CLI não gravava audit (B4); `reconcile_meta` sem configuração saía sem linha
 - `SERVING_REVISION` do log do deploy é a revisão anterior — armadilha de verificação.
 - Os 4 guards da Parte B nasceram mais estreitos que a invariante (registro binário, allowlist sem
   contagem, regex de literal, stub de enum único); todos fechados por revisão antes do merge.
-- `classify` sem as duas operações acima.
+- `classify` sem entrada para `create_and_link_assets`, `import_offline_conversions` e `create_campaign` (as três caíam no fallback "unknown operation"); fechado na Parte E, e o guard agora compara com o fallback medido.
 
 ## Não medido
 

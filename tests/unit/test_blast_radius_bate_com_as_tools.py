@@ -525,12 +525,29 @@ _OPERACOES_SEM_REGISTRO = (
 )
 
 
+_SENTINELA = "__sentinela__"
+
+
+def _cai_no_fallback(operacao: str, params: dict[str, object]) -> bool:
+    """True se `classify` devolve para `operacao` o MESMO motivo do fallback medido.
+
+    O fallback e medido com uma operacao sentinela (que nunca tera entrada), nao por um
+    trecho de texto fixo: reescrever a mensagem do fallback nao deixa operacao sem entrada
+    passar. O nome da operacao entra no motivo, entao troca-se a sentinela pelo nome.
+    """
+    fallback = classify(operation=_SENTINELA, params=params).reason
+    assert _SENTINELA in fallback, "o fallback deixou de citar a operacao: a medicao quebrou"
+    return classify(operation=operacao, params=params).reason == fallback.replace(
+        _SENTINELA, operacao
+    )
+
+
 @pytest.mark.parametrize("operacao", _OPERACOES_SEM_REGISTRO)
 def test_operacao_sem_registro_confirma_sempre_com_motivo_proprio(operacao: str) -> None:
     for n in _CONTAGENS:
         veredito = classify(operation=operacao, params={"target_count": n})
         assert veredito.level is RiskLevel.CONFIRM
-        assert "unknown operation" not in veredito.reason
+        assert not _cai_no_fallback(operacao, {"target_count": n})
         assert operacao in veredito.reason
         assert "sempre CONFIRM" in veredito.reason
 
@@ -540,8 +557,8 @@ def test_toda_operacao_de_mutate_conhecida_tem_entrada_explicita_no_classify() -
 
     O universo junta duas fontes: as chaves do `CONFIRMADORES` (o registro de
     quem confirma o apply) e a operacao literal de cada tool que chama
-    `classify` (derivada do source). Cair no fallback "unknown operation" e o
-    sinal de que a operacao foi criada sem a politica saber dela.
+    `classify` (derivada do source). Cair no fallback (medido com uma operacao
+    sentinela, nao por trecho de texto) e o sinal de que a operacao foi criada sem a politica saber dela.
     """
     from src.google_ads.confirmadores import CONFIRMADORES
 
@@ -550,11 +567,7 @@ def test_toda_operacao_de_mutate_conhecida_tem_entrada_explicita_no_classify() -
     universo = do_registro | das_tools | set(_OPERACOES_SEM_REGISTRO)
     assert do_registro, "CONFIRMADORES vazio: o guard passaria por vacuidade"
     assert das_tools, "nenhuma operacao derivada das tools: o guard passaria por vacuidade"
-    sem_entrada = sorted(
-        op
-        for op in universo
-        if "unknown operation" in classify(operation=op, params={"target_count": 1}).reason
-    )
+    sem_entrada = sorted(op for op in universo if _cai_no_fallback(op, {"target_count": 1}))
     assert not sem_entrada, (
         f"operacoes sem entrada explicita no classify (caem no fallback): {sem_entrada}"
     )

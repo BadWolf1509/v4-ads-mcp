@@ -261,7 +261,7 @@ Cada linha tem teste na task dona (B1/G4, A2, A5, H1, D5/I2/I3).
 
 **Files:** Create `src/meta_ads/moeda.py`; Modify `src/mcp/tools/meta_get_entities.py:101-119`, `meta_get_budget_pacing.py:269-287`.
 
-**Interfaces — Produces:** `async def exigir_brl(ad_account_id: str, *, manager_id: UUID, session_id: UUID) -> dict[str, Any] | None` — `None` quando a conta é BRL; senão o envelope de erro que as tools devolvem hoje, idêntico. **Decisão do Wellington (10/11):** a fonte passa a ser a coluna `meta_ad_accounts.currency` (lida pelo repositório, sem chamada à Graph); a conta já passou pelo gate, que exige a linha ativa no inventário.
+**Interfaces — Produces:** `async def exigir_brl(ad_account_id: str, *, manager_id: UUID, session_id: UUID) -> dict[str, Any] | None` — `None` quando a conta é BRL; senão o envelope de erro que as tools devolvem hoje, idêntico. **Decisão do Wellington (10/11):** a fonte passa a ser a coluna `meta_ad_accounts.currency` (lida pelo repositório, sem chamada à Graph); o gate Meta roda dentro de `run_meta_graph_get`, depois do helper; por isso o helper consulta `can_manager_access` antes de ler a moeda (decisão do controlador durante a execução; o texto original, "a conta já passou pelo gate", estava errado).
 
 - [ ] **Step 1:** os testes "moeda não-BRL" das duas tools são a rede: PASS antes. Extrair o helper com a fonte de hoje; rodar de novo. Expected: PASS. Commit `refactor(meta_ads): pré-condição de BRL num helper`.
 - [ ] **Step 2 (decisão de 10/11):** teste que falha: com o fake da Graph trocado por um que levanta ao ser chamado, a tool com conta BRL na tabela responde normalmente e a com conta USD na tabela devolve o envelope de hoje. Trocar a fonte para o repositório (função `currency_of(conn, ad_account_id) -> str | None` em `meta_ad_accounts.py`; `None` → o mesmo envelope de "moeda não confirmada" que a tool já usa quando a Graph não responde, se existir; se não existir, o de não-BRL). Rodar os testes das duas tools e o full sweep. Commit `feat(meta_ads): moeda da conta lida do inventário`.
@@ -284,7 +284,7 @@ Cada linha tem teste na task dona (B1/G4, A2, A5, H1, D5/I2/I3).
 
 **Files:** Modify `src/meta_ads/reports.py` (~L352 e ~L395, o `max(estimated, lidas)`). Test: `tests/unit/test_meta_reports_versao_e_uso.py`.
 
-- [ ] **Step 1: teste que falha.** Leitura com `max_pages=5` que traz 2 páginas: o valor gravado no audit (`target_count` ou o campo que hoje recebe o `max`) e o reconciliado na cota é **2**, não 5. Rodar: FAIL. Trocar o `max(estimated, lidas)` por `lidas` nos dois sítios; a reserva antes da chamada continua usando `estimated`. Rodar o arquivo e `test_meta_graph_paginacao.py`. Commit `fix(meta_ads): cota e audit gravam as páginas lidas`.
+- [ ] **Step 1: teste que falha.** Leitura com `max_pages=5` que traz 2 páginas: o valor gravado no audit (`target_count` ou o campo que hoje recebe o `max`) e o reconciliado na cota é **2**, não 5. Rodar: FAIL. Trocar o `max(estimated, lidas)` por `lidas` nos dois sítios; a Meta não tem reserva (só o Google); `estimated` fica só como previsão. Rodar o arquivo e `test_meta_graph_paginacao.py`. Commit `fix(meta_ads): cota e audit gravam as páginas lidas`.
 
 ### Task E7: a sonda de alcance passa pelo aviso de versão (decisão de 10/11)
 

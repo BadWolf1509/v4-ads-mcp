@@ -395,7 +395,7 @@ async def run_meta_graph_get(
     # QUALQUER dos dois vier: a chamada aconteceu e conta, e o que nao veio e "nao
     # sei", nunca 0.
     # F88 + decisao de 10/11 ("contar so o lido"): contabiliza as paginas REALMENTE
-    # lidas, nunca `max(estimativa, lidas)` — `estimated_calls` e so a reserva/previsao.
+    # lidas, nunca `max(estimativa, lidas)` — `estimated_calls` e so previsao (nao ha reserva).
     await _contabilizar_uso(
         headers_ultima,
         ad_account_id=ad_account_id,

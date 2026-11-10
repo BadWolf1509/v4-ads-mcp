@@ -24,12 +24,11 @@ async def exigir_brl(
     *,
     manager_id: UUID,
     session_id: UUID,
-    operacao: str,
     proposito: str,
 ) -> dict[str, Any] | None:
     """`None` se a conta esta em BRL; senao o envelope de erro de entrada.
 
-    `operacao` e o nome da tool; `proposito` completa a frase
+    `proposito` completa a frase
     "conta Meta em moeda X: <proposito> para contas em BRL".
 
     A moeda vem do inventario, lido ANTES do gate de `run_meta_graph_get`. Para nao revelar

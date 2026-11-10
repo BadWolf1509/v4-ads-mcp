@@ -165,9 +165,11 @@ async def test_id_repetido_e_sondado_uma_vez() -> None:
 
 
 @pytest.mark.asyncio
-async def test_sonda_avisa_a_versao_uma_vez_por_texto() -> None:
+@pytest.mark.parametrize("status", [200, 400])
+async def test_sonda_avisa_a_versao_uma_vez_por_texto(status: int) -> None:
     """A sonda passa pelo mesmo alarme de versao dos outros caminhos (E7): duas contas com o
-    mesmo aviso alarmam uma vez, nao uma por resposta."""
+    mesmo aviso alarmam uma vez, nao uma por resposta. A chamada ao alarme vem antes de
+    qualquer ramo de status, entao a resposta 400 tambem avisa."""
     from structlog.testing import capture_logs
 
     from src.meta_ads import graph
@@ -176,7 +178,8 @@ async def test_sonda_avisa_a_versao_uma_vez_por_texto() -> None:
     aviso = "Graph v22.0 was auto-upgraded to v25.0"
 
     async def responder(_pedido: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"data": []}, headers={"x-ad-api-version-warning": aviso})
+        corpo = {"data": []} if status == 200 else {"error": {"code": 100}}
+        return httpx.Response(status, json=corpo, headers={"x-ad-api-version-warning": aviso})
 
     with capture_logs() as logs:
         async with httpx.AsyncClient(transport=httpx.MockTransport(responder)) as http:

@@ -92,7 +92,6 @@ async def meta_get_entities(args: dict[str, Any]) -> dict[str, Any]:
             ad_account_id,
             manager_id=ctx.manager_id,
             session_id=ctx.session_id,
-            operacao=_OPERACAO,
             proposito="as entidades só são lidas",
         )
         if nao_brl is not None:

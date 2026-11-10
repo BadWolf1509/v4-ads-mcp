@@ -264,7 +264,6 @@ async def meta_get_budget_pacing(args: dict[str, Any]) -> dict[str, Any]:
             ad_account_id,
             manager_id=ctx.manager_id,
             session_id=ctx.session_id,
-            operacao=_OPERACAO,
             proposito="o pacing só é calculado",
         )
         if nao_brl is not None:
