@@ -128,6 +128,16 @@ def get_comparison_range(start: date, end: date) -> tuple[date, date]:
     return prev_start, prev_end
 
 
+def nome_do_enum(valor: Any) -> str:
+    """proto-plus IntEnum -> nome; str/int continuam str (mocks de teste).
+
+    `hasattr` e deliberado: o SDK devolve enum com `.name`, os mocks de teste
+    passam str/int puros. Unico lugar de `src/` com esse idioma (guard em
+    `tests/unit/test_nome_do_enum.py`).
+    """
+    return str(valor.name) if hasattr(valor, "name") else str(valor)
+
+
 def gaql_date_clause(start: date, end: date) -> str:
     """Format a GAQL `segments.date BETWEEN '...' AND '...'` clause."""
     return f"segments.date BETWEEN '{start.isoformat()}' AND '{end.isoformat()}'"

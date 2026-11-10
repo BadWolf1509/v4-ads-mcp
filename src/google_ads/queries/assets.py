@@ -11,6 +11,7 @@ Status NAO e filtrado: linha `REMOVED` e a unica prova positiva de remocao
 
 from typing import Any
 
+from src.google_ads.queries._common import nome_do_enum
 from src.google_ads.queries._gaql import gaql_string_literal
 
 _CAMPOS_COMUNS = "field_type, status, primary_status, primary_status_reasons, resource_name"
@@ -50,20 +51,16 @@ def build_ad_group_asset_query(*, field_type: str | None) -> str:
     ) + _clausula_field_type("ad_group_asset", field_type)
 
 
-def _nome(enum_ou_none: Any) -> str:
-    return enum_ou_none.name if hasattr(enum_ou_none, "name") else str(enum_ou_none)
-
-
 def _base(link: Any, asset: Any, level: str) -> dict[str, Any]:
     return {
         "level": level,
         "resource_name": str(link.resource_name),
         "asset_id": str(asset.id),
         "asset_name": str(asset.name),
-        "field_type": _nome(link.field_type),
-        "status": _nome(link.status),
-        "primary_status": _nome(link.primary_status),
-        "primary_status_reasons": [_nome(r) for r in link.primary_status_reasons],
+        "field_type": nome_do_enum(link.field_type),
+        "status": nome_do_enum(link.status),
+        "primary_status": nome_do_enum(link.primary_status),
+        "primary_status_reasons": [nome_do_enum(r) for r in link.primary_status_reasons],
         "campaign_id": None,
         "campaign_name": None,
         "ad_group_id": None,

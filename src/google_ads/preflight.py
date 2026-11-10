@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
+from src.google_ads.queries._common import nome_do_enum
 from src.google_ads.queries._gaql import gaql_string_literal
 from src.google_ads.queries.keyword_lookup import (
     _lookup_row_formatter,
@@ -594,12 +595,8 @@ async def validate_conversion_action_for_upload(
         return {
             "conversion_action": {
                 "id": str(row.conversion_action.id),
-                "type": row.conversion_action.type.name
-                if hasattr(row.conversion_action.type, "name")
-                else str(row.conversion_action.type),
-                "status": row.conversion_action.status.name
-                if hasattr(row.conversion_action.status, "name")
-                else str(row.conversion_action.status),
+                "type": nome_do_enum(row.conversion_action.type),
+                "status": nome_do_enum(row.conversion_action.status),
             }
         }
 
@@ -659,9 +656,7 @@ async def validate_conversion_actions_exist(
         return {
             "conversion_action": {
                 "id": str(row.conversion_action.id),
-                "status": row.conversion_action.status.name
-                if hasattr(row.conversion_action.status, "name")
-                else str(row.conversion_action.status),
+                "status": nome_do_enum(row.conversion_action.status),
             }
         }
 
@@ -739,9 +734,7 @@ async def validate_keyword_criterion_types(
             "ad_group_id": str(row.ad_group.id),
             "criterion_id": str(row.ad_group_criterion.criterion_id),
             "negative": bool(row.ad_group_criterion.negative),
-            "type": row.ad_group_criterion.type.name
-            if hasattr(row.ad_group_criterion.type, "name")
-            else str(row.ad_group_criterion.type),
+            "type": nome_do_enum(row.ad_group_criterion.type),
         }
 
     rows = await run_report(
@@ -837,13 +830,9 @@ async def validate_user_list_for_upload(
             "user_list": {
                 "id": str(row.user_list.id),
                 "name": row.user_list.name,
-                "type": row.user_list.type.name
-                if hasattr(row.user_list.type, "name")
-                else str(row.user_list.type),
+                "type": nome_do_enum(row.user_list.type),
                 "read_only": bool(row.user_list.read_only),
-                "membership_status": row.user_list.membership_status.name
-                if hasattr(row.user_list.membership_status, "name")
-                else str(row.user_list.membership_status),
+                "membership_status": nome_do_enum(row.user_list.membership_status),
             }
         }
 

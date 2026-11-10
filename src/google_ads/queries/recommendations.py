@@ -150,7 +150,7 @@ from typing import Any, Literal
 
 from google.ads.googleads.v24.enums.types.recommendation_type import RecommendationTypeEnum
 
-from src.google_ads.queries._common import micros_to_currency
+from src.google_ads.queries._common import micros_to_currency, nome_do_enum
 from src.google_ads.queries._gaql import gaql_string_literal
 
 # Unidade de cada valor lido do detalhe:
@@ -676,13 +676,8 @@ def parse_campaign_on_bidding_strategy_row(row: Any) -> dict[str, Any]:
     return {
         "campaign_id": str(row.campaign.id),
         "campaign_name": str(row.campaign.name),
-        "status": _nome_do_enum(row.campaign.status),
+        "status": nome_do_enum(row.campaign.status),
     }
-
-
-def _nome_do_enum(valor: Any) -> str:
-    """proto-plus IntEnum -> nome; str continua str (mocks de teste)."""
-    return str(valor.name) if hasattr(valor, "name") else str(valor)
 
 
 def _ler(msg: Any, caminho: str) -> Any:
@@ -850,7 +845,7 @@ def parse_recommendation_detail_row(row: Any) -> dict[str, Any]:
     preenchido".
     """
     rec = row.recommendation
-    tipo = _nome_do_enum(rec.type)
+    tipo = nome_do_enum(rec.type)
     spec = CAMPOS_DE_DETALHE.get(tipo)
 
     atual: float | None = None
@@ -892,8 +887,8 @@ def parse_campaign_context_row(row: Any) -> dict[str, Any]:
     return {
         "campaign_id": str(row.campaign.id),
         "campaign_name": str(row.campaign.name),
-        "status": _nome_do_enum(row.campaign.status),
-        "bidding_strategy_type": _nome_do_enum(row.campaign.bidding_strategy_type),
+        "status": nome_do_enum(row.campaign.status),
+        "bidding_strategy_type": nome_do_enum(row.campaign.bidding_strategy_type),
         "daily_budget_brl": micros_to_currency(int(row.campaign_budget.amount_micros)),
     }
 
