@@ -6,11 +6,11 @@ serem administração geral de gestor, no mesmo espírito do overview — ver o
 relatório da Task 2 para a decisão.
 """
 
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
 
 from src.db import connection
@@ -153,60 +153,60 @@ async def admin_managers(
 async def admin_managers_toggle_active(
     request: Request,
     manager_id: UUID,
+    desejado: Literal["ativo", "inativo"] = Query(...),  # noqa: B008
     user: CurrentUser = Depends(current_manager),  # noqa: B008
 ) -> Response:
     _require_admin(user)
-    if manager_id == user.id:
+    if manager_id == user.id and desejado == "inativo":
         raise HTTPException(status_code=400, detail="Nao pode desativar voce mesmo")
     pool = connection.get_pool()
-    # Task 5: UPDATE cru e audit na mesma transação — se _audit_admin falhar
-    # depois do UPDATE já commitado, o gestor muda de status sem registro de
-    # quem mudou (F91: isto é transação, não retry).
+    # UPDATE e audit na mesma transação — se _audit_admin falhar depois do UPDATE
+    # já commitado, o gestor muda de status sem registro de quem mudou (F91: isto
+    # é transação, não retry). O estado vem do pedido, não é invertido: um segundo
+    # clique (ou aba velha) não desfaz o primeiro.
     async with pool.acquire() as conn, conn.transaction():
-        row = await conn.fetchrow(
-            "UPDATE managers SET is_active = NOT is_active WHERE id = $1 RETURNING email",
-            manager_id,
+        resultado = await managers_repo.definir_ativo(
+            conn, manager_id=manager_id, ativo=desejado == "ativo"
         )
-        await _audit_admin(
-            conn,
-            admin=user,
-            operation="admin_manager_toggle_active",
-            target_manager_id=str(manager_id),
-            target_email=row["email"] if row else None,
-        )
-    return resposta_hx(
-        request, destino="/admin/managers", hx="redirect", toast="Status do gestor atualizado."
-    )
+        if resultado is None:
+            raise HTTPException(status_code=404, detail="Gestor nao encontrado")
+        email, mudou = resultado
+        if mudou:
+            await _audit_admin(
+                conn,
+                admin=user,
+                operation="admin_manager_toggle_active",
+                target_manager_id=str(manager_id),
+                target_email=email,
+            )
+    toast = "Status do gestor atualizado." if mudou else "O gestor já estava assim."
+    return resposta_hx(request, destino="/admin/managers", hx="redirect", toast=toast)
 
 
 @router.post("/admin/managers/{manager_id}/toggle-role", response_class=HTMLResponse)
 async def admin_managers_toggle_role(
     request: Request,
     manager_id: UUID,
+    desejado: Literal["admin", "gestor"] = Query(...),  # noqa: B008
     user: CurrentUser = Depends(current_manager),  # noqa: B008
 ) -> Response:
     _require_admin(user)
     if manager_id == user.id:
         raise HTTPException(status_code=400, detail="Nao pode mudar seu proprio role")
     pool = connection.get_pool()
-    # Task 5: UPDATE cru e audit na mesma transação (ver admin_managers_toggle_active).
+    # UPDATE e audit na mesma transação (ver admin_managers_toggle_active).
     async with pool.acquire() as conn, conn.transaction():
-        row = await conn.fetchrow(
-            """
-            UPDATE managers SET role =
-              CASE WHEN role = 'admin' THEN 'gestor' ELSE 'admin' END
-            WHERE id = $1
-            RETURNING email
-            """,
-            manager_id,
-        )
-        await _audit_admin(
-            conn,
-            admin=user,
-            operation="admin_manager_toggle_role",
-            target_manager_id=str(manager_id),
-            target_email=row["email"] if row else None,
-        )
-    return resposta_hx(
-        request, destino="/admin/managers", hx="redirect", toast="Role do gestor atualizado."
-    )
+        resultado = await managers_repo.definir_role(conn, manager_id=manager_id, role=desejado)
+        if resultado is None:
+            raise HTTPException(status_code=404, detail="Gestor nao encontrado")
+        email, mudou = resultado
+        if mudou:
+            await _audit_admin(
+                conn,
+                admin=user,
+                operation="admin_manager_toggle_role",
+                target_manager_id=str(manager_id),
+                target_email=email,
+            )
+    toast = "Role do gestor atualizado." if mudou else "O gestor já estava assim."
+    return resposta_hx(request, destino="/admin/managers", hx="redirect", toast=toast)

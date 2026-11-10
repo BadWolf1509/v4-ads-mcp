@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Literal
 from uuid import UUID
 
 import asyncpg
@@ -179,3 +180,38 @@ async def get_summary(conn: asyncpg.Connection, manager_id: UUID) -> asyncpg.Rec
     return await conn.fetchrow(
         "SELECT id, email, full_name FROM managers WHERE id = $1", manager_id
     )
+
+
+async def definir_ativo(
+    conn: asyncpg.Connection, *, manager_id: UUID, ativo: bool
+) -> tuple[str, bool] | None:
+    """Põe `is_active` no valor pedido. `None` se o gestor não existe; senão
+    `(email, mudou)`. Idempotente: já estando assim, não escreve (nem há o que auditar).
+
+    Não toca `status` (F84: sincronizar destruiria o estado `invited`). Rode dentro
+    da transação da rota; o `FOR UPDATE` serializa dois cliques concorrentes.
+    """
+    row = await conn.fetchrow(
+        "SELECT email, is_active FROM managers WHERE id = $1 FOR UPDATE", manager_id
+    )
+    if row is None:
+        return None
+    if row["is_active"] == ativo:
+        return row["email"], False
+    await conn.execute("UPDATE managers SET is_active = $2 WHERE id = $1", manager_id, ativo)
+    return row["email"], True
+
+
+async def definir_role(
+    conn: asyncpg.Connection, *, manager_id: UUID, role: Literal["admin", "gestor"]
+) -> tuple[str, bool] | None:
+    """Põe `role` no valor pedido; mesma semântica de `definir_ativo`."""
+    row = await conn.fetchrow(
+        "SELECT email, role FROM managers WHERE id = $1 FOR UPDATE", manager_id
+    )
+    if row is None:
+        return None
+    if row["role"] == role:
+        return row["email"], False
+    await conn.execute("UPDATE managers SET role = $2 WHERE id = $1", manager_id, role)
+    return row["email"], True

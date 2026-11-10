@@ -70,11 +70,11 @@
             {% if m.id != current_user.id %}
             {{ dropdown("dd-" ~ loop.index, [
               {"label": "Promover a admin" if m.role == "gestor" else "Despromover a gestor",
-               "post_url": "/admin/managers/" ~ m.id|string ~ "/toggle-role",
+               "post_url": "/admin/managers/" ~ m.id|string ~ "/toggle-role?desejado=" ~ ("admin" if m.role == "gestor" else "gestor"),
                "confirm": {"title": "Promover a admin?", "message": m.email ~ " passará a administrar gestores, convites e acessos.", "ok": "Promover"} if m.role == "gestor" else {"title": "Despromover a gestor?", "message": m.email ~ " perde a administração de gestores, convites e acessos.", "ok": "Despromover"}},
               {"label": "Inativo por status", "disabled": true} if m.status == "inactive" else
               {"label": "Desativar" if m.is_active else "Reativar",
-               "post_url": "/admin/managers/" ~ m.id|string ~ "/toggle-active",
+               "post_url": "/admin/managers/" ~ m.id|string ~ "/toggle-active?desejado=" ~ ("inativo" if m.is_active else "ativo"),
                "kind": "danger" if m.is_active else None,
                "confirm": {"title": "Desativar gestor?", "message": m.email ~ " perde o acesso ao painel e ao MCP.", "ok": "Desativar"} if m.is_active else None},
             ]) }}

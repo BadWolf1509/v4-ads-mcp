@@ -152,6 +152,7 @@ async def test_admin_managers_toggle_active_nao_persiste_se_audit_falha(db) -> N
         await admin_overview.admin_managers_toggle_active(
             _FakeRequest(),
             manager_id=gestor.id,
+            desejado="inativo",
             user=admin,
         )
 

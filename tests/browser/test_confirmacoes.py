@@ -98,7 +98,8 @@ def _app(posts: list[tuple[str, str | None]]) -> FastAPI:
     @app.post("/admin/managers/{gestor}/toggle-active")
     async def alternar(gestor: str, request: Request) -> Response:
         await asyncio.sleep(_ATRASO_DO_POST_S)
-        posts.append((request.url.path, request.headers.get("HX-Request")))
+        # A query string e o contrato: `desejado` e o estado pedido, nao uma inversao.
+        posts.append((f"{request.url.path}?{request.url.query}", request.headers.get("HX-Request")))
         return Response(status_code=204, headers={"HX-Redirect": "/admin/managers"})
 
     @app.post("/admin/invites/{convite}/cancel")
@@ -167,7 +168,9 @@ def test_desativar_gestor_pelo_menu_envia_e_recarrega(painel: Painel, aba: Aba) 
     aba.page.locator(".v4-dropdown__trigger").click()
     aba.page.get_by_role("menuitem", name="Desativar").click()
     _confirma_e_espera_recarga(aba.page)
-    assert painel.posts == [(f"/admin/managers/{_GESTOR_ID}/toggle-active", "true")]
+    assert painel.posts == [
+        (f"/admin/managers/{_GESTOR_ID}/toggle-active?desejado=inativo", "true")
+    ]
     assert aba.erros == []
 
 

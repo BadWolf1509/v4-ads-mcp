@@ -507,7 +507,7 @@ async def test_admin_managers_toggle_active_records_audit(client: AsyncClient):
     admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
 
     response = await client.post(
-        f"/admin/managers/{gestor_id}/toggle-active",
+        f"/admin/managers/{gestor_id}/toggle-active?desejado=inativo",
         cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
     )
     assert response.status_code == 303
@@ -533,7 +533,7 @@ async def test_admin_managers_toggle_role_records_audit(client: AsyncClient):
     admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
 
     response = await client.post(
-        f"/admin/managers/{gestor_id}/toggle-role",
+        f"/admin/managers/{gestor_id}/toggle-role?desejado=admin",
         cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
     )
     assert response.status_code == 303
@@ -564,7 +564,7 @@ async def test_admin_managers_toggle_htmx_returns_hx_redirect(client: AsyncClien
     assert before is not None
 
     response = await client.post(
-        f"/admin/managers/{gestor_id}/toggle-active",
+        f"/admin/managers/{gestor_id}/toggle-active?desejado=inativo",
         cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
         headers={"HX-Request": "true"},
     )
@@ -580,7 +580,7 @@ async def test_admin_managers_toggle_htmx_returns_hx_redirect(client: AsyncClien
     assert after_active["is_active"] != before["is_active"]
 
     response = await client.post(
-        f"/admin/managers/{gestor_id}/toggle-role",
+        f"/admin/managers/{gestor_id}/toggle-role?desejado=admin",
         cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
         headers={"HX-Request": "true"},
     )
@@ -592,6 +592,117 @@ async def test_admin_managers_toggle_htmx_returns_hx_redirect(client: AsyncClien
         after_role = await conn.fetchrow("SELECT role FROM managers WHERE id = $1", gestor_id)
     assert after_role is not None
     assert after_role["role"] != before["role"]
+
+
+async def _audits(pool, operation: str) -> int:
+    async with pool.acquire() as conn:
+        return await conn.fetchval("SELECT count(*) FROM audit_log WHERE operation = $1", operation)
+
+
+@pytest.mark.integration
+async def test_toggle_active_e_idempotente(client: AsyncClient):
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    cookies = {PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)}
+
+    for _ in range(2):
+        r = await client.post(
+            f"/admin/managers/{gestor_id}/toggle-active?desejado=inativo", cookies=cookies
+        )
+        assert r.status_code == 303
+
+    async with pool.acquire() as conn:
+        ativo = await conn.fetchval("SELECT is_active FROM managers WHERE id = $1", gestor_id)
+    assert ativo is False
+    assert await _audits(pool, "admin_manager_toggle_active") == 1
+
+    r = await client.post(
+        f"/admin/managers/{gestor_id}/toggle-active?desejado=ativo",
+        cookies=cookies,
+        headers={"HX-Request": "true"},
+    )
+    assert r.status_code == 204
+    async with pool.acquire() as conn:
+        ativo = await conn.fetchval("SELECT is_active FROM managers WHERE id = $1", gestor_id)
+    assert ativo is True
+
+
+@pytest.mark.integration
+async def test_toggle_role_e_idempotente(client: AsyncClient):
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    cookies = {PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)}
+
+    for _ in range(2):
+        r = await client.post(
+            f"/admin/managers/{gestor_id}/toggle-role?desejado=admin", cookies=cookies
+        )
+        assert r.status_code == 303
+
+    async with pool.acquire() as conn:
+        role = await conn.fetchval("SELECT role FROM managers WHERE id = $1", gestor_id)
+    assert role == "admin"
+    assert await _audits(pool, "admin_manager_toggle_role") == 1
+
+
+@pytest.mark.integration
+async def test_toggle_ja_estava_assim_avisa_sem_audit(client: AsyncClient):
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    r = await client.post(
+        f"/admin/managers/{gestor_id}/toggle-active?desejado=ativo",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+        headers={"HX-Request": "true"},
+    )
+    assert r.status_code == 204
+    assert "O gestor já estava assim." in json.dumps(
+        json.loads(r.headers["HX-Trigger"]), ensure_ascii=False
+    )
+    assert await _audits(pool, "admin_manager_toggle_active") == 0
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("rota", "desejado", "operacao"),
+    [
+        ("toggle-active", "inativo", "admin_manager_toggle_active"),
+        ("toggle-role", "admin", "admin_manager_toggle_role"),
+    ],
+)
+async def test_toggle_de_gestor_inexistente_da_404_sem_audit(
+    client: AsyncClient, rota: str, desejado: str, operacao: str
+):
+    pool = connection.get_pool()
+    admin_id, _ = await _bootstrap_admin_and_gestor(pool)
+    r = await client.post(
+        f"/admin/managers/{uuid4()}/{rota}?desejado={desejado}",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert r.status_code == 404
+    assert await _audits(pool, operacao) == 0
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("rota", ["toggle-active", "toggle-role"])
+async def test_toggle_sem_desejado_da_422(client: AsyncClient, rota: str):
+    pool = connection.get_pool()
+    admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
+    r = await client.post(
+        f"/admin/managers/{gestor_id}/{rota}",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert r.status_code == 422
+
+
+@pytest.mark.integration
+async def test_nao_desativa_a_si_mesmo(client: AsyncClient):
+    pool = connection.get_pool()
+    admin_id, _ = await _bootstrap_admin_and_gestor(pool)
+    r = await client.post(
+        f"/admin/managers/{admin_id}/toggle-active?desejado=inativo",
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert r.status_code == 400
 
 
 @pytest.mark.integration
@@ -1232,11 +1343,11 @@ async def test_desativar_e_promover_pedem_confirmacao(client: AsyncClient):
     )
     assert response.status_code == 200
     for rota, rotulo, titulo in (
-        ("toggle-active", "Desativar", "Desativar gestor?"),
-        ("toggle-role", "Promover a admin", "Promover a admin?"),
+        ("toggle-active?desejado=inativo", "Desativar", "Desativar gestor?"),
+        ("toggle-role?desejado=admin", "Promover a admin", "Promover a admin?"),
     ):
         botao = re.search(
-            rf'<button[^>]*data-v4-post="/admin/managers/{gestor_id}/{rota}"[^>]*>',
+            rf'<button[^>]*data-v4-post="/admin/managers/{gestor_id}/{re.escape(rota)}"[^>]*>',
             response.text,
         )
         assert botao, rota
