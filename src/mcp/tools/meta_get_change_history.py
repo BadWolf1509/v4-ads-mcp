@@ -5,7 +5,7 @@ from datetime import timedelta
 from typing import Any
 
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import meta_erro
+from src.mcp.tools._meta_common import PROPRIEDADE_AD_ACCOUNT_ID, meta_erro
 from src.mcp.tools._registry import register_tool
 from src.meta_ads.account_clock import resolve_meta_account_today
 from src.meta_ads.client import MetaAccessDeniedError
@@ -19,14 +19,7 @@ _DIAS_MAX = 30
 _SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        "ad_account_id": {
-            "type": "string",
-            "pattern": r"^act_\d+$",
-            "description": (
-                "Meta ad account ID (formato act_<numeric>). "
-                "Use meta_list_my_ad_accounts pra descobrir IDs disponíveis."
-            ),
-        },
+        "ad_account_id": dict(PROPRIEDADE_AD_ACCOUNT_ID),
         "days": {
             "type": "integer",
             "minimum": 1,

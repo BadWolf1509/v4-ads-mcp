@@ -5,6 +5,18 @@ from typing import Any
 from src.meta_ads.client import MetaAccessDeniedError
 from src.meta_ads.errors import MetaAdsFriendlyError
 
+# Propriedade `ad_account_id` do input schema, idêntica em 13 tools Meta. Cada tool
+# usa `dict(PROPRIEDADE_AD_ACCOUNT_ID)` (cópia rasa) para ninguém mutar o compartilhado.
+# `meta_get_performance_breakdown` tem description própria (contrato) e não a usa.
+PROPRIEDADE_AD_ACCOUNT_ID: dict[str, Any] = {
+    "type": "string",
+    "pattern": r"^act_\d+$",
+    "description": (
+        "Meta ad account ID (formato act_<numeric>). "
+        "Use meta_list_my_ad_accounts pra descobrir IDs disponíveis."
+    ),
+}
+
 
 def meta_erro(exc: Exception) -> dict[str, Any]:
     """Envelope de erro de uma tool Meta, só para os dois erros que ela PODE explicar.

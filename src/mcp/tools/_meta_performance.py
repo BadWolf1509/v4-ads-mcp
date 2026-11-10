@@ -23,7 +23,7 @@ from uuid import UUID
 
 from src.db import connection
 from src.db.repositories import meta_ad_accounts
-from src.mcp.tools._meta_common import meta_erro
+from src.mcp.tools._meta_common import PROPRIEDADE_AD_ACCOUNT_ID, meta_erro
 from src.meta_ads.account_clock import resolve_meta_account_today
 from src.meta_ads.account_overview import resolve_meta_date_window
 from src.meta_ads.client import MetaAccessDeniedError
@@ -43,6 +43,47 @@ from src.meta_ads.reports import run_meta_graph_get
 # Com uma página, `truncated` = "sobrou `next`" significa exatamente o que a
 # description promete — ficou cauda de menor gasto — e `rows[:limit]` vira no-op.
 _MAX_PAGES = 1
+
+# Input schema idêntico nos 3 tools do trio (campaign/ad_set/ad). Cada tool faz
+# `copy.deepcopy(SCHEMA_PERFORMANCE_META)`: nada o muta hoje (o registry só repassa
+# o dict), mas a cópia profunda garante que um tool não vaze mutação para os outros.
+SCHEMA_PERFORMANCE_META: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "ad_account_id": dict(PROPRIEDADE_AD_ACCOUNT_ID),
+        "date_range": {
+            "type": "string",
+            "enum": [
+                "TODAY",
+                "YESTERDAY",
+                "LAST_7_DAYS",
+                "LAST_14_DAYS",
+                "LAST_30_DAYS",
+                "LAST_90_DAYS",
+            ],
+            "description": ("Preset. Default LAST_30_DAYS se start_date+end_date não fornecidos."),
+        },
+        "start_date": {
+            "type": "string",
+            "pattern": r"^\d{4}-\d{2}-\d{2}$",
+            "description": "Custom range start. Sobrescreve preset. Requires end_date.",
+        },
+        "end_date": {
+            "type": "string",
+            "pattern": r"^\d{4}-\d{2}-\d{2}$",
+            "description": "Custom range end. Sobrescreve preset. Requires start_date.",
+        },
+        "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "default": 100,
+            "description": "Max rows. Meta API cap = 500/page.",
+        },
+    },
+    "required": ["ad_account_id"],
+    "additionalProperties": False,
+}
 
 
 def _gasto_para_ordenar(linha: dict[str, Any]) -> float:

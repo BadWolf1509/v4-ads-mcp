@@ -4,7 +4,7 @@
 from typing import Any
 
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import meta_erro
+from src.mcp.tools._meta_common import PROPRIEDADE_AD_ACCOUNT_ID, meta_erro
 from src.mcp.tools._registry import register_tool
 from src.meta_ads.client import MetaAccessDeniedError
 from src.meta_ads.errors import MetaAdsFriendlyError
@@ -17,14 +17,7 @@ _LIMIT_MAX = 500
 _SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        "ad_account_id": {
-            "type": "string",
-            "pattern": r"^act_\d+$",
-            "description": (
-                "Meta ad account ID (formato act_<numeric>). "
-                "Use meta_list_my_ad_accounts pra descobrir IDs disponíveis."
-            ),
-        },
+        "ad_account_id": dict(PROPRIEDADE_AD_ACCOUNT_ID),
         "limit": {
             "type": "integer",
             "minimum": 1,
