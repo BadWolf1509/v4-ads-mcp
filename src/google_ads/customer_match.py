@@ -27,6 +27,7 @@ from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
 from src.google_ads.partial_failure import erros_por_indice
 from src.google_ads.request_id import get_request_id, reset_request_id
+from src.google_ads.resultados import ResultadoCustomerMatch
 from src.governance.bookkeeping import best_effort
 from src.governance.rate_limit import QuotaExhausted
 from src.governance.reserva import Reserva, reconciliar_cota, reservar_cota
@@ -207,7 +208,7 @@ async def run_offline_user_data_job(
     user_list_id: str,
     operation_type: str,
     hashed_members: list[dict[str, Any]],
-) -> dict[str, Any]:
+) -> ResultadoCustomerMatch:
     """3-step Google API sequence pra Customer Match upload:
 
     1. create_offline_user_data_job → job_resource

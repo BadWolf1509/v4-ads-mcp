@@ -27,6 +27,7 @@ from src.google_ads.request_id import (
     get_request_id,
     reset_request_id,
 )
+from src.google_ads.resultados import ResultadoMutacao, ResultadoRecomendacao
 from src.governance.bookkeeping import best_effort
 from src.governance.reserva import Reserva, reconciliar_cota, reservar_cota
 
@@ -217,7 +218,7 @@ async def run_mutation(
     target_count: int,
     partial_failure: bool = False,
     params_summary: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+) -> ResultadoMutacao:
     """Execute a mutation. Returns {provider_request_id, applied_count, partial_failures}.
 
     Args:
@@ -448,7 +449,7 @@ async def run_recommendation_action(
     customer_id: str,
     operation_type: str,  # 'apply_recommendation' | 'dismiss_recommendation'
     payload: dict[str, Any],
-) -> dict[str, Any]:
+) -> ResultadoRecomendacao:
     """Execute a recommendation action via RecommendationService.
 
     Different from run_mutation because recommendations use a dedicated
