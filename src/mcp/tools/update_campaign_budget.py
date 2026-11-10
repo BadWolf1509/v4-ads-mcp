@@ -3,6 +3,7 @@
 
 from typing import Any
 
+from src.google_ads.orcamento_compartilhado import montar_bloco
 from src.google_ads.queries._common import (
     arredondado,
     brl_para_micros,
@@ -72,36 +73,20 @@ async def _bloco_de_orcamento_compartilhado(
     )
     # No `update_ad_schedule` o "lote" e a lista `campaign_ids`; aqui e a campanha
     # unica que o gestor nomeou. Fica vazio se ela for REMOVED — a query so devolve viva.
-    dentro = [c["campaign_id"] for c in todas if c["campaign_id"] == campaign_id]
-    fora = [
-        {
-            "campaign_id": c["campaign_id"],
-            "campaign_name": c["campaign_name"],
-            "status": c["status"],
-        }
-        for c in todas
-        if c["campaign_id"] != campaign_id
-    ]
-    ativas = sum(1 for c in todas if c["status"] == "ENABLED")
-    ativas_fora_do_lote = sum(1 for c in fora if c["status"] == "ENABLED")
-    return {
-        "budget_id": info["budget_id"],
-        "budget_resource_name": rn,
-        "explicitly_shared": True,
-        "amount_brl": amount_brl,
-        "campaigns_in_batch": dentro,
-        "campaigns_outside_batch": fora,
-        "ativas_fora_do_lote": ativas_fora_do_lote,
-        "warning_pt": (
-            f"Orcamento compartilhado {info['budget_id']} (R$ {amount_brl:.2f}/dia) "
-            f"e de {len(todas)} campanha(s), {ativas} ativa(s); {len(dentro)} no lote, "
-            f"{len(fora)} fora ({ativas_fora_do_lote} ativa(s)). Mudar o valor aqui "
+    return montar_bloco(
+        budget_id=info["budget_id"],
+        budget_resource_name=rn,
+        amount_brl=amount_brl,
+        irmas=todas,
+        no_lote=lambda cid: cid == campaign_id,
+        sufixo_aviso=(
+            "Mudar o valor aqui "
             "ATINGE todas elas: a mutacao e no recurso ORCAMENTO, nao na campanha "
             "nomeada no resumo — as irmas fora do lote passam a dividir o valor NOVO. "
             "Como a verba se reparte entre elas e pacing do Google — nao ha como "
             "medir por API."
         ),
-    }
+    )
 
 
 @register_tool(
