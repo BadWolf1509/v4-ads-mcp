@@ -119,12 +119,11 @@ async def _paginar_graph(
     corpo: dict[str, Any] = {}
     headers = httpx.Headers()
     lidas = 0
-    async for resp in paginas_graph(http, url, params, cabecalhos, max_pages):
+    async for resp, bruto in paginas_graph(http, url, params, cabecalhos, max_pages):
         headers = resp.headers
         capturados.append(headers)
         if resp.status_code != 200:
             raise MetaGraphHTTPError(resp.status_code, resp.text)
-        bruto = resp.json()
         if not isinstance(bruto, dict):
             # Nao e `cast`: o cast satisfaz o mypy e nao existe em runtime.
             raise MetaGraphHTTPError(resp.status_code, f"corpo nao-JSON: {type(bruto).__name__}")

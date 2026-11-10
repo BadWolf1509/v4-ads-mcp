@@ -49,14 +49,17 @@ async def paginas_graph(
     params: dict[str, Any],
     headers: dict[str, str],
     max_pages: int,
-) -> AsyncIterator[httpx.Response]:
-    """O laço único de `paging.next`: entrega cada resposta, sem decidir sobre ela.
+) -> AsyncIterator[tuple[httpx.Response, Any]]:
+    """O laço único de `paging.next`: entrega cada `(resposta, corpo)`, sem decidir sobre ela.
 
     RECEBE o cliente, nunca o constrói (o executor é o único construtor, já
-    gateado). Cada resposta passa pelo alarme de versão antes de sair. O
-    chamador decide o que fazer com o status: parar (`break`/`raise`/`return`)
-    fecha o gerador; se seguir, o gerador lê o `paging.next` e pede a próxima.
-    Resposta não-200 ou sem objeto JSON encerra a iteração depois de entregue.
+    gateado). Cada resposta passa pelo alarme de versão antes de sair. O corpo
+    é decodificado UMA vez, aqui: em 200 vem o JSON (qualquer tipo — o gerador
+    não decide o que fazer com corpo que não é objeto, só para de paginar);
+    fora de 200 vem `None`, sem tentar decodificar. O chamador decide o que
+    fazer: parar (`break`/`raise`/`return`) fecha o gerador; se seguir, o
+    gerador pede a próxima. Resposta não-200 ou sem objeto JSON encerra a
+    iteração depois de entregue.
 
     `params` vai só na primeira chamada: a URL de `paging.next` já carrega
     cursor e fields. `headers` (Authorization) vai em CADA página (F82). A URL
@@ -69,10 +72,11 @@ async def paginas_graph(
         else:
             resp = await http.get(proxima, headers=headers)
         avisar_versao_meta(resp.headers)
-        yield resp
         if resp.status_code != 200:
+            yield resp, None
             return
         bruto = resp.json()
+        yield resp, bruto
         if not isinstance(bruto, dict):
             return
         proxima = (bruto.get("paging") or {}).get("next")
@@ -92,7 +96,7 @@ async def fetch_paginated(
     # F82 — token no HEADER, nunca na query: quem lê a URL num log contorna tudo.
     headers = {"Authorization": f"Bearer {access_token}"}
     lidas = 0
-    async for resp in paginas_graph(http, url, params, headers, max_pages):
+    async for resp, body in paginas_graph(http, url, params, headers, max_pages):
         lidas += 1
         if resp.status_code != 200:
             log.warning(
@@ -102,7 +106,6 @@ async def fetch_paginated(
                 fetched_so_far=len(rows),
             )
             return PagedFetch(rows, False)
-        body = resp.json()
         if not isinstance(body, dict):
             # 200 sem objeto: leitura truncada, nao churn (F93). Guarda o que veio.
             log.warning(
