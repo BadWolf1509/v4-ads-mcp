@@ -518,11 +518,11 @@ def test_casador_de_level_so_conta_o_resultado_do_classify(fonte: str, le_level:
 # a intencao nao ficava escrita. O guard abaixo cobra que nenhuma operacao de
 # mutate conhecida dependa do fallback.
 
-_OPERACOES_SEM_REGISTRO = ("create_and_link_assets", "import_offline_conversions")
-
-# Fora da decisao de 10/11 (que nomeou so as duas acima): `create_campaign`
-# tambem cai no fallback, sempre com CONFIRM. Fica declarada aqui, nao calada.
-_AINDA_SEM_ENTRADA = frozenset({"create_campaign"})
+_OPERACOES_SEM_REGISTRO = (
+    "create_and_link_assets",
+    "import_offline_conversions",
+    "create_campaign",  # mesma decisao de 10/11, estendida pelo controlador
+)
 
 
 @pytest.mark.parametrize("operacao", _OPERACOES_SEM_REGISTRO)
@@ -550,20 +550,11 @@ def test_toda_operacao_de_mutate_conhecida_tem_entrada_explicita_no_classify() -
     universo = do_registro | das_tools | set(_OPERACOES_SEM_REGISTRO)
     assert do_registro, "CONFIRMADORES vazio: o guard passaria por vacuidade"
     assert das_tools, "nenhuma operacao derivada das tools: o guard passaria por vacuidade"
-    caem_no_fallback = {
+    sem_entrada = sorted(
         op
         for op in universo
         if "unknown operation" in classify(operation=op, params={"target_count": 1}).reason
-    }
-    sem_entrada = sorted(caem_no_fallback - _AINDA_SEM_ENTRADA)
+    )
     assert not sem_entrada, (
         f"operacoes sem entrada explicita no classify (caem no fallback): {sem_entrada}"
     )
-
-
-def test_allowlist_de_sem_entrada_so_encolhe() -> None:
-    """Quem ganhar entrada no classify tem que sair de `_AINDA_SEM_ENTRADA`."""
-    for op in _AINDA_SEM_ENTRADA:
-        assert "unknown operation" in classify(operation=op, params={"target_count": 1}).reason, (
-            f"{op} ja tem entrada no classify: tire-a de _AINDA_SEM_ENTRADA"
-        )

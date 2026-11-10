@@ -345,6 +345,15 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
             "Smart Bidding e nao tem volta — sempre CONFIRM (spec §7.1 tracking)",
         )
 
+    # Criar campanha — sempre CONFIRM (mesma decisao de 10/11). Cria campanha
+    # SEARCH + orcamento, sempre PAUSED; o gasto so comeca quando o gestor liga.
+    elif operation == "create_campaign":
+        return RiskClassification(
+            RiskLevel.CONFIRM,
+            "create_campaign: cria campanha SEARCH + orcamento (nasce PAUSED; gasta "
+            "quando o gestor ligar) — sempre CONFIRM (spec §7.1 creates)",
+        )
+
     # Unknown operation — default safe to confirm
     return RiskClassification(
         RiskLevel.CONFIRM,
