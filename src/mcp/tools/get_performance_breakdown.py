@@ -21,24 +21,14 @@ from src.google_ads.queries.ad_schedule import day_hour_metrics_query, parse_day
 from src.google_ads.queries.performance import conversion_action_flags_query
 from src.google_ads.reports import lookup_country_names, run_report
 from src.governance.rate_limit import QuotaExhausted
+from src.janelas import PRESETS_EM_ORDEM
 from src.mcp.context import get_current
 from src.mcp.tools._common import aplicar_limite, janela_da_conta
 from src.mcp.tools._registry import register_tool
 
 log = structlog.get_logger(__name__)
 
-_DATE_PRESETS = [
-    "TODAY",
-    "YESTERDAY",
-    "LAST_7_DAYS",
-    "LAST_14_DAYS",
-    "LAST_30_DAYS",
-    "LAST_90_DAYS",
-    "THIS_MONTH",
-    "LAST_MONTH",
-    "THIS_WEEK",
-    "LAST_WEEK",
-]
+_DATE_PRESETS = list(PRESETS_EM_ORDEM)
 
 _SCHEMA: dict[str, Any] = {
     "type": "object",

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from src.mcp.tools.get_budget_pacing import _project
+from src.google_ads.pacing import projetar_linhas
 
 LINHA = {
     "campaign_id": "1",
@@ -34,7 +34,7 @@ LINHA = {
 
 def test_ultimo_dia_do_mes_na_conta_nao_vira_dia_um_do_servidor() -> None:
     """31/08 na conta: 30 dias fechados a R$ 100, projecao R$ 3.100 (31 dias)."""
-    (c,) = _project([LINHA], today=date(2026, 8, 31))
+    (c,) = projetar_linhas([LINHA], today=date(2026, 8, 31))
     assert c["days_elapsed"] == 30
     assert c["days_remaining"] == 1
     assert c["projected_monthly_brl"] == 3100.0
@@ -42,7 +42,7 @@ def test_ultimo_dia_do_mes_na_conta_nao_vira_dia_um_do_servidor() -> None:
 
 def test_dia_um_do_servidor_apaga_a_projecao() -> None:
     """O que o dia UTC faria com o dado de 31/08 as 21h30 da conta: sem dia fechado."""
-    (c,) = _project([LINHA], today=date(2026, 9, 1))
+    (c,) = projetar_linhas([LINHA], today=date(2026, 9, 1))
     assert c["days_elapsed"] == 0
     assert c["projected_monthly_brl"] is None
 
@@ -51,4 +51,4 @@ def test_project_exige_today() -> None:
     import pytest
 
     with pytest.raises(TypeError):
-        _project([LINHA])  # type: ignore[call-arg]
+        projetar_linhas([LINHA])  # type: ignore[call-arg]

@@ -18,11 +18,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.db import connection
 from src.governance.blast_radius import classify
-from src.governance.dry_run import create_pending
 from src.mcp.context import get_current
-from src.mcp.tools._mutate_common import error_envelope, preview_envelope
+from src.mcp.tools._mutate_common import emitir_preview, error_envelope
 from src.mcp.tools._registry import register_tool
 
 _ASSET_TYPES = ["SITELINK", "CALLOUT", "STRUCTURED_SNIPPET", "CALL", "PROMOTION"]
@@ -306,23 +304,12 @@ async def create_and_link_assets(args: dict[str, Any]) -> dict[str, Any]:
         "__params_summary__": summary,
     }
 
-    pool = connection.get_pool()
-    async with pool.acquire() as conn:
-        token = await create_pending(
-            conn,
-            manager_id=ctx.manager_id,
-            session_id=ctx.session_id,
-            customer_id=customer_id,
-            operation_type="create_and_link_assets",
-            payload=payload,
-            blast_summary=blast_summary,
-        )
-
-    return preview_envelope(
-        "create_and_link_assets",
-        customer_id,
-        blast_summary,
-        token,
-        confirmation_reason=risk.reason,
+    return await emitir_preview(
+        ctx,
+        operation="create_and_link_assets",
+        customer_id=customer_id,
+        payload=payload,
+        resumo=blast_summary,
+        risk=risk,
         summary=summary,
     )

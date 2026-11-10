@@ -244,7 +244,7 @@ async def create_conversion_value_rule_set(args: dict[str, Any]) -> dict[str, An
         operation="create_conversion_value_rule_set",
         customer_id=customer_id,
         payload=payload,
-        summary=summary,
+        resumo=summary,
         risk=risk,
         preview=preview,
     )

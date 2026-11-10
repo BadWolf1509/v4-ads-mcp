@@ -70,7 +70,7 @@ def test_builder_emite_limit_com_a_linha_sentinela(builder: Any, gaql_de: Any) -
 def test_budget_pacing_ordena_antes_de_cortar() -> None:
     """F98 + classe F88: cortar sem ordenar produz um "top" que nao e top.
 
-    `_project` ordena por gasto DESC no fim. Se o `LIMIT` cortasse um conjunto
+    `projetar_linhas` ordena por gasto DESC no fim. Se o `LIMIT` cortasse um conjunto
     nao-ordenado, o gestor receberia N campanhas arbitrarias reordenadas entre
     si — parecendo o topo de gasto da conta sem ser. Os outros dois tools sao
     inventario (nao ha ranking implicito), entao so este precisa do ORDER BY.

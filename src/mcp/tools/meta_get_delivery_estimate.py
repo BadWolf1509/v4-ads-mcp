@@ -4,7 +4,7 @@
 from typing import Any
 
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import meta_erro
+from src.mcp.tools._meta_common import PROPRIEDADE_AD_ACCOUNT_ID, erro_de_entrada, meta_erro
 from src.mcp.tools._registry import register_tool
 from src.meta_ads.client import MetaAccessDeniedError
 from src.meta_ads.errors import MetaAdsFriendlyError
@@ -24,14 +24,7 @@ _OBJETIVOS = [
 _SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        "ad_account_id": {
-            "type": "string",
-            "pattern": r"^act_\d+$",
-            "description": (
-                "Meta ad account ID (formato act_<numeric>). "
-                "Use meta_list_my_ad_accounts pra descobrir IDs disponíveis."
-            ),
-        },
+        "ad_account_id": dict(PROPRIEDADE_AD_ACCOUNT_ID),
         "targeting_spec": {
             "type": "object",
             "description": (
@@ -92,30 +85,21 @@ async def meta_get_delivery_estimate(args: dict[str, Any]) -> dict[str, Any]:
     spec = args.get("targeting_spec")
     objetivo = args.get("optimization_goal") or "REACH"
     if not isinstance(spec, dict):
-        return {
-            "status": "error",
-            "error_message": (
-                "`targeting_spec` precisa ser um objeto JSON (por exemplo "
-                '{"geo_locations": {"countries": ["BR"]}}), não texto, lista ou número.'
-            ),
-        }
+        return erro_de_entrada(
+            "`targeting_spec` precisa ser um objeto JSON (por exemplo "
+            '{"geo_locations": {"countries": ["BR"]}}), não texto, lista ou número.'
+        )
     if _usa_publico_personalizado(spec):
-        return {
-            "status": "error",
-            "error_message": (
-                "`targeting_spec` não pode conter público personalizado "
-                "(`custom_audiences` ou `excluded_custom_audiences`, nem dentro de "
-                "`flexible_spec` ou `exclusions`): não foi medido se a Meta restringe o "
-                "público à conta consultada. Use localização, idade, gênero e interesses."
-            ),
-        }
+        return erro_de_entrada(
+            "`targeting_spec` não pode conter público personalizado "
+            "(`custom_audiences` ou `excluded_custom_audiences`, nem dentro de "
+            "`flexible_spec` ou `exclusions`): não foi medido se a Meta restringe o "
+            "público à conta consultada. Use localização, idade, gênero e interesses."
+        )
     if objetivo not in _OBJETIVOS:
-        return {
-            "status": "error",
-            "error_message": (
-                f"`optimization_goal` inválido ({objetivo!r}). Valores: {', '.join(_OBJETIVOS)}."
-            ),
-        }
+        return erro_de_entrada(
+            f"`optimization_goal` inválido ({objetivo!r}). Valores: {', '.join(_OBJETIVOS)}."
+        )
     try:
         estimativa = await estimar_entrega(ctx, ad_account_id, spec, objetivo)
     except (MetaAccessDeniedError, MetaAdsFriendlyError) as e:

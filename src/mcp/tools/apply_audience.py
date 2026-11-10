@@ -324,7 +324,7 @@ async def apply_audience(args: dict[str, Any]) -> dict[str, Any]:
         operation="apply_audience",
         customer_id=customer_id,
         payload=payload,
-        summary=summary,
+        resumo=summary,
         risk=risk,
         target_type=target_type,
         mode=mode,

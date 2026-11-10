@@ -23,6 +23,7 @@ from src.google_ads.ad_schedule import (
     validate_windows,
     window_from_input,
 )
+from src.google_ads.orcamento_compartilhado import montar_bloco
 from src.google_ads.queries._common import InvalidDateRangeError, resolve_date_window
 from src.google_ads.queries.ad_schedule import (
     GRADE_LIMIT,
@@ -422,7 +423,7 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
         operation="update_ad_schedule",
         customer_id=customer_id,
         payload=payload,
-        summary=resumo,
+        resumo=resumo,
         risk=risk,
         target_count=target_count,
         preview=preview,
@@ -492,37 +493,20 @@ async def _blocos_de_orcamento_compartilhado(
     no_lote = set(campaign_ids)
     blocos: list[dict[str, Any]] = []
     for rn, o in compartilhados.items():
-        todas = [i for i in irmas if i["budget_resource_name"] == rn]
-        dentro = sorted(i["campaign_id"] for i in todas if i["campaign_id"] in no_lote)
-        fora = [
-            {
-                "campaign_id": i["campaign_id"],
-                "campaign_name": i["campaign_name"],
-                "status": i["status"],
-            }
-            for i in todas
-            if i["campaign_id"] not in no_lote
-        ]
-        ativas = sum(1 for i in todas if i["status"] == "ENABLED")
-        ativas_fora_do_lote = sum(1 for i in fora if i["status"] == "ENABLED")
-        blocos.append(
-            {
-                "budget_id": o["budget_id"],
-                "budget_resource_name": rn,
-                "explicitly_shared": True,
-                "amount_brl": o["amount_brl"],
-                "campaigns_in_batch": dentro,
-                "campaigns_outside_batch": fora,
-                "ativas_fora_do_lote": ativas_fora_do_lote,
-                "warning_pt": (
-                    f"Orcamento compartilhado {o['budget_id']} (R$ {o['amount_brl']:.2f}/dia) "
-                    f"e de {len(todas)} campanha(s), {ativas} ativa(s); {len(dentro)} no lote, "
-                    f"{len(fora)} fora ({ativas_fora_do_lote} ativa(s)). Desligar faixas aqui "
-                    "NAO devolve dinheiro: realoca a pressao para as faixas e campanhas irmas "
-                    "ATIVAS que sobram, inclusive as fora do lote. Em quanto tempo e com que "
-                    "completude a verba se redistribui e pacing do Google — nao ha como medir "
-                    "por API."
-                ),
-            }
+        bloco = montar_bloco(
+            budget_id=o["budget_id"],
+            budget_resource_name=rn,
+            amount_brl=o["amount_brl"],
+            irmas=[i for i in irmas if i["budget_resource_name"] == rn],
+            no_lote=no_lote.__contains__,
+            sufixo_aviso=(
+                "Desligar faixas aqui "
+                "NAO devolve dinheiro: realoca a pressao para as faixas e campanhas irmas "
+                "ATIVAS que sobram, inclusive as fora do lote. Em quanto tempo e com que "
+                "completude a verba se redistribui e pacing do Google — nao ha como medir "
+                "por API."
+            ),
         )
+        bloco["campaigns_in_batch"] = sorted(bloco["campaigns_in_batch"])
+        blocos.append(bloco)
     return blocos

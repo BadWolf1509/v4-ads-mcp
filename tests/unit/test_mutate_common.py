@@ -342,7 +342,7 @@ async def test_emitir_preview_e_igual_ao_bloco_que_substitui(monkeypatch) -> Non
         operation="update_ad_status",
         customer_id="1234567890",
         payload=payload,
-        summary="Mudar 1 anuncio",
+        resumo="Mudar 1 anuncio",
         risk=risk,
         changes=[{"a": 1}],
         max_delta_pct=2.5,

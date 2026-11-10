@@ -159,7 +159,7 @@ async def update_ad_group_bid(args: dict[str, Any]) -> dict[str, Any]:
         operation="update_ad_group_bid",
         customer_id=customer_id,
         payload=payload,
-        summary=summary,
+        resumo=summary,
         risk=risk,
         changes=changes,
         max_delta_pct=round(max_delta_pct, 2),

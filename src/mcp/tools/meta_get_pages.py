@@ -4,7 +4,7 @@
 from typing import Any
 
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import meta_erro
+from src.mcp.tools._meta_common import PROPRIEDADE_AD_ACCOUNT_ID, erro_de_entrada, meta_erro
 from src.mcp.tools._registry import register_tool
 from src.meta_ads.client import MetaAccessDeniedError
 from src.meta_ads.errors import MetaAdsFriendlyError
@@ -17,14 +17,7 @@ _LIMIT_MAX = 500
 _SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        "ad_account_id": {
-            "type": "string",
-            "pattern": r"^act_\d+$",
-            "description": (
-                "Meta ad account ID (formato act_<numeric>). "
-                "Use meta_list_my_ad_accounts pra descobrir IDs disponíveis."
-            ),
-        },
+        "ad_account_id": dict(PROPRIEDADE_AD_ACCOUNT_ID),
         "limit": {
             "type": "integer",
             "minimum": 1,
@@ -58,10 +51,7 @@ async def meta_get_pages(args: dict[str, Any]) -> dict[str, Any]:
     ad_account_id = args["ad_account_id"]
     limit = int(args.get("limit", _LIMIT_PADRAO))
     if not 1 <= limit <= _LIMIT_MAX:
-        return {
-            "status": "error",
-            "error_message": f"`limit` deve estar entre 1 e {_LIMIT_MAX} (recebido {limit}).",
-        }
+        return erro_de_entrada(f"`limit` deve estar entre 1 e {_LIMIT_MAX} (recebido {limit}).")
     try:
         paginas, truncated = await listar_paginas(ctx, ad_account_id, limit)
     except (MetaAccessDeniedError, MetaAdsFriendlyError) as e:

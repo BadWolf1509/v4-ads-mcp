@@ -150,7 +150,7 @@ async def emitir_preview(
     operation: str,
     customer_id: str,
     payload: dict[str, Any],
-    summary: str,
+    resumo: str,
     risk: RiskClassification,
     **extra: Any,
 ) -> dict[str, Any]:
@@ -179,12 +179,12 @@ async def emitir_preview(
             customer_id=customer_id,
             operation_type=operation,
             payload=payload,
-            blast_summary=summary,
+            blast_summary=resumo,
         )
     return preview_envelope(
         operation,
         customer_id,
-        summary,
+        resumo,
         token,
         confirmation_reason=risk.reason,
         **extra,

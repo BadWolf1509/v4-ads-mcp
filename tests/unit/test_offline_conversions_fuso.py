@@ -170,6 +170,7 @@ async def test_builder_sem_fuso_no_payload_recusa_e_nao_chama_o_google() -> None
 async def _dry_run(monkeypatch_zone: str | None) -> tuple[dict[str, Any], dict[str, Any] | None]:
     from unittest.mock import AsyncMock, patch
 
+    import src.mcp.tools._mutate_common as mc
     from src.mcp.context import McpRequestContext, clear_current, set_current
     from src.mcp.tools import import_offline_conversions as mod
 
@@ -189,8 +190,8 @@ async def _dry_run(monkeypatch_zone: str | None) -> tuple[dict[str, Any], dict[s
             patch.object(
                 mod, "validate_conversion_action_for_upload", AsyncMock(return_value=None)
             ),
-            patch.object(mod, "create_pending", _create_pending),
-            patch.object(mod.connection, "get_pool", lambda: FakePool()),
+            patch.object(mc, "create_pending", _create_pending),
+            patch.object(mc.connection, "get_pool", lambda: FakePool()),
         ):
             out = await mod.import_offline_conversions(
                 {
@@ -243,6 +244,7 @@ async def _dry_run_com(
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
     from unittest.mock import AsyncMock, patch
 
+    import src.mcp.tools._mutate_common as mc
     from src.mcp.context import McpRequestContext, clear_current, set_current
     from src.mcp.tools import import_offline_conversions as mod
 
@@ -262,8 +264,8 @@ async def _dry_run_com(
             patch.object(
                 mod, "validate_conversion_action_for_upload", AsyncMock(return_value=None)
             ),
-            patch.object(mod, "create_pending", _create_pending),
-            patch("src.mcp.tools.import_offline_conversions.connection.get_pool", FakePool),
+            patch.object(mc, "create_pending", _create_pending),
+            patch("src.mcp.tools._mutate_common.connection.get_pool", FakePool),
         ):
             out: dict[str, Any] = await mod.import_offline_conversions(
                 {

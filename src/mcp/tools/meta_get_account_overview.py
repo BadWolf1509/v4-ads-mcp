@@ -13,7 +13,7 @@ import structlog
 from src.db import connection
 from src.db.repositories import meta_ad_accounts
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import meta_erro
+from src.mcp.tools._meta_common import PROPRIEDADE_AD_ACCOUNT_ID, meta_erro
 from src.mcp.tools._meta_performance import (
     datas_invalidas_error,
     meta_account_not_found_error,
@@ -52,14 +52,7 @@ _DESCRIPTION = (
 _INPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        "ad_account_id": {
-            "type": "string",
-            "pattern": r"^act_\d+$",
-            "description": (
-                "Meta ad account ID (formato act_<numeric>). "
-                "Use meta_list_my_ad_accounts pra descobrir IDs disponíveis."
-            ),
-        },
+        "ad_account_id": dict(PROPRIEDADE_AD_ACCOUNT_ID),
         "date_range": {
             "type": "string",
             "enum": [

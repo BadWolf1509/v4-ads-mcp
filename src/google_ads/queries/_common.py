@@ -12,6 +12,9 @@ from typing import Any
 import structlog
 
 from src.janelas import PRESETS, janela_do_preset
+from src.razoes import arredondado as arredondado  # reexport: o ponto de import de ~18 modulos
+from src.razoes import percentual as percentual
+from src.razoes import razao as razao
 
 
 class EntradaInvalidaError(ValueError):
@@ -203,30 +206,6 @@ def brl_para_micros(valor: float) -> int:
     return round(Decimal(str(valor)) * 1_000_000)
 
 
-def razao(numerador: float | None, denominador: float | None) -> float | None:
-    """`numerador / denominador`, ou `None` quando nao ha o que dividir.
-
-    Razao sem denominador e INDEFINIDA, nao zero: CPA R$ 0,00 com gasto e zero
-    conversao se le como o melhor CPA possivel; CPC R$ 0,00 sem clique, como
-    clique de graca. `None` e o terceiro estado do F191 — distinto do zero
-    medido. E a UNICA regra de denominador zero das tools Google: o guard
-    `test_nenhuma_razao_vira_zero_quando_o_denominador_some` acusa a expressao
-    condicional nas duas orientacoes (`x / y if y else 0` e tambem
-    `0 if not y else x / y`), com `0`, `0.0` ou `None` no ramo constante, em
-    `src/mcp/tools/` e `src/google_ads/`. A forma em instrucoes (`if ...:
-    return None`) o guard nao ve — `apply_recommendation._delta_pct` foi
-    migrada a mao (F4).
-    """
-    if numerador is None or not denominador:
-        return None
-    return numerador / denominador
-
-
-def arredondado(valor: float | None, casas: int) -> float | None:
-    """`round` que deixa `None` passar: a razao indefinida continua indefinida."""
-    return None if valor is None else round(valor, casas)
-
-
 def metrica_opcional(m: Any, campo: str) -> float | None:
     """Metrica `optional` do proto: o valor quando o Google a mandou, `None` quando nao.
 
@@ -244,15 +223,6 @@ def metrica_opcional(m: Any, campo: str) -> float | None:
 def em_moeda(valor_micros: float | None) -> float | None:
     """`micros_to_currency` que deixa `None` passar."""
     return None if valor_micros is None else micros_to_currency(valor_micros)
-
-
-def percentual(valor: float | None) -> float | None:
-    """`valor * 100` que deixa `None` passar.
-
-    Mantem a ordem `a / b * 100` das contas de antes: `a * 100 / b` muda o ultimo
-    bit e pode virar o arredondamento na casa decimal.
-    """
-    return None if valor is None else valor * 100
 
 
 def _clausula_e_eco_de_metrica(
