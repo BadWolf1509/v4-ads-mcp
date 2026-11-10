@@ -10,7 +10,10 @@ importa:
 - `META_GRAPH_BASE_URL` — host + versão, a base que `reports.py`,
   `partnership.py` e `alcance.py` usam (o host só é escrito aqui);
 - `MetaSystemUserTokenMissingError` e `MetaAccessDeniedError` — erros do gate
-  do Modelo B, levantados por `reports.py` e tratados em `src/mcp/server.py`.
+  do Modelo B, levantados por `reports.py`. As tools os capturam primeiro
+  (`meta_erro`, em `src/mcp/tools/_meta_common.py`); `src/mcp/server.py` é só o
+  fallback central e trata apenas o `MetaAccessDeniedError` (o de token ausente,
+  que é um `MetaAdsFriendlyError`, ali cairia no erro genérico).
 
 `build_meta_api` e `build_facebook_ads_api` foram **removidos** (F190, Tasks 6 e
 onda final): depois da troca de transporte os dois ficaram com **zero
