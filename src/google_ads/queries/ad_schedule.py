@@ -12,7 +12,7 @@ from datetime import date
 from typing import Any
 
 from src.google_ads.ad_schedule import ENUM_MINUTO
-from src.google_ads.queries._common import gaql_date_clause, nome_do_enum
+from src.google_ads.queries._common import gaql_date_clause, micros_to_currency, nome_do_enum
 from src.google_ads.queries._gaql import gaql_in_list
 
 _STATUS_FILTER = {"enabled": "ENABLED", "paused": "PAUSED", "removed": "REMOVED"}
@@ -91,7 +91,7 @@ def parse_campaign_budget_row(row: Any) -> dict[str, Any]:
         "budget_resource_name": str(row.campaign.campaign_budget),
         "budget_id": str(row.campaign_budget.id),
         "explicitly_shared": bool(row.campaign_budget.explicitly_shared),
-        "amount_brl": round(int(row.campaign_budget.amount_micros) / 1_000_000, 2),
+        "amount_brl": micros_to_currency(int(row.campaign_budget.amount_micros)),
         # Com `campaign_ids` o WHERE nao derruba REMOVED: sem este campo o chamador
         # nao distingue campanha viva de removida, nem sabe que a alvo esta PAUSED
         # (F52/F90 — keyword ENABLED em ad_group PAUSED e a mesma familia).

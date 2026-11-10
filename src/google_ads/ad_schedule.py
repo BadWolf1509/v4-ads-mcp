@@ -14,7 +14,7 @@ from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from typing import Any
 
-from src.google_ads.queries._common import arredondado, razao
+from src.google_ads.queries._common import arredondado, micros_to_currency, razao
 
 DIAS: tuple[str, ...] = (
     "MONDAY",
@@ -249,7 +249,7 @@ def covers(windows: list[Window] | None, day_of_week: str, hour: int) -> bool:
 def _agrega(cells: list[MetricCell]) -> dict[str, Any]:
     cost = sum(c.cost_micros for c in cells)
     conv = sum(c.conversions for c in cells)
-    cost_brl = round(cost / 1_000_000, 2)
+    cost_brl = micros_to_currency(cost)
     return {
         "cost_brl": cost_brl,
         "conversions": round(conv, 2),
