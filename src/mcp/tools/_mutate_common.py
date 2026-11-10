@@ -47,7 +47,7 @@ def applied_envelope(
     blast_summary: str,
     *,
     applied_count: int,
-    provider_request_id: str,
+    provider_request_id: str | None,
     auto_applied_reason: str | None = None,
     **extra: Any,
 ) -> dict[str, Any]:

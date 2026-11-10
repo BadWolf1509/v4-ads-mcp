@@ -27,9 +27,9 @@ que viaja no token e um retrato de ate `DEFAULT_TTL_MINUTES` atras.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 from uuid import UUID
 
 from src.google_ads.ad_schedule import (
@@ -54,7 +54,7 @@ from src.google_ads.queries.recommendations import (
     recommendation_fingerprint,
 )
 
-Executor = Callable[..., Awaitable[dict[str, Any]]]
+Executor = Callable[..., Awaitable[Mapping[str, Any]]]
 Envelope = Callable[..., dict[str, Any]]
 
 
@@ -97,10 +97,10 @@ class Portas:
 class Confirmador(Protocol):
     async def pre_check(self, p: Pendente, portas: Portas) -> dict[str, Any] | None: ...
 
-    async def executar(self, p: Pendente, portas: Portas) -> dict[str, Any]: ...
+    async def executar(self, p: Pendente, portas: Portas) -> Mapping[str, Any]: ...
 
     async def pos_check(
-        self, p: Pendente, portas: Portas, resultado: dict[str, Any]
+        self, p: Pendente, portas: Portas, resultado: Mapping[str, Any]
     ) -> dict[str, Any]: ...
 
 
@@ -115,7 +115,7 @@ class _SemPreCheck:
 class _ConversoesOffline(_SemPreCheck):
     """Sprint 3b.26: ConversionUploadService, NAO GoogleAdsService.mutate."""
 
-    async def executar(self, p: Pendente, portas: Portas) -> dict[str, Any]:
+    async def executar(self, p: Pendente, portas: Portas) -> Mapping[str, Any]:
         return await portas.run_conversion_upload(
             manager_id=p.manager_id,
             session_id=p.session_id,
@@ -127,11 +127,12 @@ class _ConversoesOffline(_SemPreCheck):
         )
 
     async def pos_check(
-        self, p: Pendente, portas: Portas, resultado: dict[str, Any]
+        self, p: Pendente, portas: Portas, resultado: Mapping[str, Any]
     ) -> dict[str, Any]:
         # Erro do executor volta como veio.
         if resultado.get("status") == "error":
-            return resultado
+            # `cast`, nao copia: o contrato e devolver O MESMO objeto (identidade).
+            return cast(dict[str, Any], resultado)
         # Resposta de upload de conversao — forma diferente da de mutacao.
         return portas.applied_envelope(
             p.operation_type,
@@ -221,7 +222,7 @@ class _Recomendacao:
             )
         return None
 
-    async def executar(self, p: Pendente, portas: Portas) -> dict[str, Any]:
+    async def executar(self, p: Pendente, portas: Portas) -> Mapping[str, Any]:
         return await portas.run_recommendation_action(
             manager_id=p.manager_id,
             session_id=p.session_id,
@@ -231,7 +232,7 @@ class _Recomendacao:
         )
 
     async def pos_check(
-        self, p: Pendente, portas: Portas, resultado: dict[str, Any]
+        self, p: Pendente, portas: Portas, resultado: Mapping[str, Any]
     ) -> dict[str, Any]:
         return portas.applied_envelope(
             p.operation_type,
@@ -248,7 +249,7 @@ class _Recomendacao:
 class _CustomerMatch(_SemPreCheck):
     """Sprint 3b.28: OfflineUserDataJobService."""
 
-    async def executar(self, p: Pendente, portas: Portas) -> dict[str, Any]:
+    async def executar(self, p: Pendente, portas: Portas) -> Mapping[str, Any]:
         return await portas.run_customer_match(
             manager_id=p.manager_id,
             session_id=p.session_id,
@@ -259,7 +260,7 @@ class _CustomerMatch(_SemPreCheck):
         )
 
     async def pos_check(
-        self, p: Pendente, portas: Portas, resultado: dict[str, Any]
+        self, p: Pendente, portas: Portas, resultado: Mapping[str, Any]
     ) -> dict[str, Any]:
         job_id = resultado["job_resource_name"].rsplit("/", 1)[-1]
         # `submitted`, nao `applied`: o job roda no backend do Google por horas.
@@ -389,7 +390,7 @@ class _AdSchedule:
             )
         return None
 
-    async def executar(self, p: Pendente, portas: Portas) -> dict[str, Any]:
+    async def executar(self, p: Pendente, portas: Portas) -> Mapping[str, Any]:
         return await portas.run_mutation(
             manager_id=p.manager_id,
             session_id=p.session_id,
@@ -402,7 +403,7 @@ class _AdSchedule:
         )
 
     async def pos_check(
-        self, p: Pendente, portas: Portas, resultado: dict[str, Any]
+        self, p: Pendente, portas: Portas, resultado: Mapping[str, Any]
     ) -> dict[str, Any]:
         # Nao levanta aqui: o `pre_check` ja derivou os dois do mesmo payload antes da
         # escrita, e payload ruim parou la.
@@ -541,7 +542,7 @@ class _AdSchedule:
 class _Padrao(_SemPreCheck):
     """Mutacao encadeada via GoogleAdsService.mutate."""
 
-    async def executar(self, p: Pendente, portas: Portas) -> dict[str, Any]:
+    async def executar(self, p: Pendente, portas: Portas) -> Mapping[str, Any]:
         return await portas.run_mutation(
             manager_id=p.manager_id,
             session_id=p.session_id,
@@ -554,7 +555,7 @@ class _Padrao(_SemPreCheck):
         )
 
     async def pos_check(
-        self, p: Pendente, portas: Portas, resultado: dict[str, Any]
+        self, p: Pendente, portas: Portas, resultado: Mapping[str, Any]
     ) -> dict[str, Any]:
         partial_failure = _partial_failure(p)
         # R1-I1: cinco tools chegam aqui com `__partial_failure__` ligado —

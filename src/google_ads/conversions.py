@@ -32,6 +32,7 @@ from src.google_ads.request_id import (
     get_request_id,
     reset_request_id,
 )
+from src.google_ads.resultados import ResultadoUploadAplicado, ResultadoUploadErro
 from src.governance.bookkeeping import best_effort
 from src.governance.rate_limit import QuotaExhausted
 from src.governance.reserva import Reserva, reconciliar_cota, reservar_cota
@@ -48,7 +49,7 @@ async def run_conversion_upload(
     payload: dict[str, Any],
     target_count: int,
     params_summary: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+) -> ResultadoUploadAplicado | ResultadoUploadErro:
     """Execute an offline conversion upload via ConversionUploadService.
 
     Returns {status, operation, customer_id, applied_count, failed_count,

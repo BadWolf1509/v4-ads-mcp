@@ -1,15 +1,16 @@
 """GAQL builder + row parser for audit_quality_score tool (Sprint 3b.30)."""
 
+from datetime import date
 from typing import Any
 
 from src.google_ads.flag_keywords import KeywordRow
-from src.google_ads.queries._common import micros_to_currency
+from src.google_ads.queries._common import gaql_date_clause, janela_aplicada, micros_to_currency
 
 
 def build_audit_quality_score_query(
     *,
-    start_date: str,
-    end_date: str,
+    start_date: date,
+    end_date: date,
     ad_group_ids: list[str] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Build GAQL query for keyword_view, MAIS os filtros que ela aplica.
@@ -23,7 +24,7 @@ def build_audit_quality_score_query(
     NAO entra aqui — e client-side, aplicado depois em `flag_keywords`).
 
     Args:
-        start_date, end_date: YYYY-MM-DD (resolved via resolve_date_window upstream).
+        start_date, end_date: janela ja resolvida (date) upstream.
         ad_group_ids: optional filter — None means scan account-wide.
 
     Returns:
@@ -40,7 +41,7 @@ def build_audit_quality_score_query(
         "metrics.conversions, metrics.cost_micros "
         "FROM keyword_view "
         "WHERE ad_group_criterion.status = 'ENABLED' "
-        f"AND segments.date BETWEEN '{start_date}' AND '{end_date}' "
+        f"AND {gaql_date_clause(start_date, end_date)} "
         "AND ad_group_criterion.quality_info.quality_score IS NOT NULL"
     )
     if ad_group_ids:
@@ -50,7 +51,7 @@ def build_audit_quality_score_query(
         "ad_group_ids": ad_group_ids,
         "criterion_status": "ENABLED",
         "quality_score_nao_nulo": True,
-        "date_range": {"start": start_date, "end": end_date},
+        "date_range": janela_aplicada(start_date, end_date),
     }
     return query, filtros
 

@@ -1,9 +1,10 @@
 """GAQL builders + row parsers for audit_competitor_keywords (Sprint 3b.31)."""
 
+from datetime import date
 from typing import Any
 
 from src.google_ads.competitor_analysis import KeywordRow, SearchTermRow
-from src.google_ads.queries._common import micros_to_currency
+from src.google_ads.queries._common import gaql_date_clause, micros_to_currency
 
 
 def build_positive_keywords_query() -> str:
@@ -29,11 +30,11 @@ def build_positive_keywords_query() -> str:
     )
 
 
-def build_search_terms_query(*, start_date: str, end_date: str) -> str:
+def build_search_terms_query(*, start_date: date, end_date: date) -> str:
     """GAQL pra search_term_view: search terms entregues no date window.
 
     Args:
-        start_date, end_date: YYYY-MM-DD (resolved via resolve_date_window upstream).
+        start_date, end_date: janela ja resolvida (date) upstream.
     """
     return (
         "SELECT "
@@ -42,7 +43,7 @@ def build_search_terms_query(*, start_date: str, end_date: str) -> str:
         "metrics.impressions, metrics.clicks, metrics.cost_micros, "
         "metrics.conversions, metrics.conversions_value "
         "FROM search_term_view "
-        f"WHERE segments.date BETWEEN '{start_date}' AND '{end_date}'"
+        f"WHERE {gaql_date_clause(start_date, end_date)}"
     )
 
 

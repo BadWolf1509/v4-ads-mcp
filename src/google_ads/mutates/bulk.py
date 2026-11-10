@@ -6,13 +6,26 @@ entity is mutated with update_mask=['status'] and the appropriate
 StatusEnum.PAUSED.
 """
 
+from collections.abc import Callable
 from typing import Any
 
 from google.protobuf.field_mask_pb2 import FieldMask
 
 from src.google_ads.mutates._common import register_builder
+from src.google_ads.mutates._status import (
+    ALVOS_DE_STATUS,
+    operacao_de_status,
+)
 
 _SUPPORTED_TARGETS = ("keyword", "ad", "campaign", "ad_group")
+
+# Como achar os ids do caminho do recurso em cada entidade do payload persistido.
+_IDS_POR_ALVO: dict[str, Callable[[dict[str, Any]], tuple[str, ...]]] = {
+    "keyword": lambda e: (e["ad_group_id"], e["criterion_id"]),
+    "ad": lambda e: (e["ad_group_id"], e["ad_id"]),
+    "campaign": lambda e: (e["campaign_id"],),
+    "ad_group": lambda e: (e["ad_group_id"],),
+}
 
 
 @register_builder("bulk_pause_by_query")
@@ -35,56 +48,14 @@ def build_bulk_pause(client: Any, customer_id: str, payload: dict[str, Any]) -> 
         )
 
     entities = payload["entities"]
-    operations: list[Any] = []
-    mask = FieldMask(paths=["status"])
-
-    if target_type == "keyword":
-        service = client.get_service("AdGroupCriterionService")
-        status_enum = client.enums.AdGroupCriterionStatusEnum
-        for e in entities:
-            op = client.get_type("MutateOperation")
-            crit_op = op.ad_group_criterion_operation
-            crit = crit_op.update
-            crit.resource_name = service.ad_group_criterion_path(
-                customer_id, e["ad_group_id"], e["criterion_id"]
-            )
-            crit.status = status_enum.PAUSED
-            client.copy_from(crit_op.update_mask, mask)
-            operations.append(op)
-    elif target_type == "ad":
-        service = client.get_service("AdGroupAdService")
-        status_enum = client.enums.AdGroupAdStatusEnum
-        for e in entities:
-            op = client.get_type("MutateOperation")
-            ad_op = op.ad_group_ad_operation
-            ad_obj = ad_op.update
-            ad_obj.resource_name = service.ad_group_ad_path(
-                customer_id, e["ad_group_id"], e["ad_id"]
-            )
-            ad_obj.status = status_enum.PAUSED
-            client.copy_from(ad_op.update_mask, mask)
-            operations.append(op)
-    elif target_type == "campaign":
-        service = client.get_service("CampaignService")
-        status_enum = client.enums.CampaignStatusEnum
-        for e in entities:
-            op = client.get_type("MutateOperation")
-            camp_op = op.campaign_operation
-            camp = camp_op.update
-            camp.resource_name = service.campaign_path(customer_id, e["campaign_id"])
-            camp.status = status_enum.PAUSED
-            client.copy_from(camp_op.update_mask, mask)
-            operations.append(op)
-    elif target_type == "ad_group":
-        service = client.get_service("AdGroupService")
-        status_enum = client.enums.AdGroupStatusEnum
-        for e in entities:
-            op = client.get_type("MutateOperation")
-            ag_op = op.ad_group_operation
-            ag = ag_op.update
-            ag.resource_name = service.ad_group_path(customer_id, e["ad_group_id"])
-            ag.status = status_enum.PAUSED
-            client.copy_from(ag_op.update_mask, mask)
-            operations.append(op)
-
-    return operations
+    alvo = ALVOS_DE_STATUS[target_type]
+    caminho = getattr(client.get_service(alvo.servico), alvo.caminho)
+    status_enum = getattr(client.enums, alvo.enum)
+    mascara = FieldMask(paths=["status"])
+    ids_de = _IDS_POR_ALVO[target_type]
+    return [
+        operacao_de_status(
+            client, alvo, caminho(customer_id, *ids_de(e)), status_enum.PAUSED, mascara
+        )
+        for e in entities
+    ]

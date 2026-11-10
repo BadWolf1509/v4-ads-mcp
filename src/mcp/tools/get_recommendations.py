@@ -3,6 +3,7 @@
 
 from typing import Any
 
+from src.google_ads.queries._common import nome_do_enum
 from src.google_ads.queries.recommendations import TYPE_PT, recommendations_query
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
@@ -40,7 +41,7 @@ def _row_formatter(row: Any) -> dict[str, Any]:
     # proto-plus IntEnum: str(v) returns the int as string ("29"); .name gives "SITELINK_ASSET".
     # Fall back to str() for plain strings (used by unit-test mocks).
     rec_type = rec.type
-    type_str = rec_type.name if hasattr(rec_type, "name") else str(rec_type)
+    type_str = nome_do_enum(rec_type)
     return {
         "resource_name": rec.resource_name,
         "type": type_str,

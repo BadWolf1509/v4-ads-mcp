@@ -177,6 +177,15 @@ class CapturedOp:
         return 0
 
 
+def to_plain(value: Any) -> Any:
+    """Convert a captured op tree into plain dicts/lists/scalars (for equality asserts)."""
+    if isinstance(value, (CapturedOp, _SubCapture)):
+        return {k: to_plain(v) for k, v in sorted(value._captured.items())}
+    if isinstance(value, _RepeatedCapture):
+        return [to_plain(v) for v in value]
+    return value
+
+
 def make_capture_client() -> MagicMock:
     """Mock SDK client whose get_type() returns CapturedOp instances.
 

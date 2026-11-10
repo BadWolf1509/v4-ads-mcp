@@ -1,5 +1,7 @@
 """Unit tests for src.google_ads.queries.audit_quality_score (Sprint 3b.30)."""
 
+from datetime import date
+
 import pytest
 
 from src.google_ads.queries.audit_quality_score import build_audit_quality_score_query
@@ -7,8 +9,8 @@ from src.google_ads.queries.audit_quality_score import build_audit_quality_score
 
 def test_query_without_ad_group_filter():
     query, _filtros = build_audit_quality_score_query(
-        start_date="2026-04-20",
-        end_date="2026-05-20",
+        start_date=date(2026, 4, 20),
+        end_date=date(2026, 5, 20),
         ad_group_ids=None,
     )
     assert "FROM keyword_view" in query
@@ -20,8 +22,8 @@ def test_query_without_ad_group_filter():
 
 def test_query_with_ad_group_filter_three_ids():
     query, _filtros = build_audit_quality_score_query(
-        start_date="2026-04-20",
-        end_date="2026-05-20",
+        start_date=date(2026, 4, 20),
+        end_date=date(2026, 5, 20),
         ad_group_ids=["1001", "1002", "1003"],
     )
     assert "ad_group.id IN (1001, 1002, 1003)" in query
@@ -34,8 +36,8 @@ def test_recusa_ad_group_id_nao_numerico() -> None:
     nao ter schema nenhum (F87)."""
     with pytest.raises(ValueError):
         build_audit_quality_score_query(
-            start_date="2026-04-20",
-            end_date="2026-05-20",
+            start_date=date(2026, 4, 20),
+            end_date=date(2026, 5, 20),
             ad_group_ids=["1001", "1) OR 1=1 --"],
         )
 
@@ -43,8 +45,8 @@ def test_recusa_ad_group_id_nao_numerico() -> None:
 def test_query_includes_status_enabled_and_qs_not_null():
     """Hardcoded filters MUST always be present (no opt-out)."""
     query, _filtros = build_audit_quality_score_query(
-        start_date="2026-04-20",
-        end_date="2026-05-20",
+        start_date=date(2026, 4, 20),
+        end_date=date(2026, 5, 20),
         ad_group_ids=None,
     )
     assert "status = 'ENABLED'" in query
@@ -53,8 +55,8 @@ def test_query_includes_status_enabled_and_qs_not_null():
 
 def test_query_with_custom_date_range_yyyy_mm_dd():
     query, _filtros = build_audit_quality_score_query(
-        start_date="2026-05-01",
-        end_date="2026-05-14",
+        start_date=date(2026, 5, 1),
+        end_date=date(2026, 5, 14),
         ad_group_ids=None,
     )
     assert "segments.date BETWEEN '2026-05-01' AND '2026-05-14'" in query
@@ -63,8 +65,8 @@ def test_query_with_custom_date_range_yyyy_mm_dd():
 def test_query_selects_all_required_fields():
     """Output must include all fields needed by KeywordRow dataclass."""
     query, _filtros = build_audit_quality_score_query(
-        start_date="2026-04-20",
-        end_date="2026-05-20",
+        start_date=date(2026, 4, 20),
+        end_date=date(2026, 5, 20),
         ad_group_ids=None,
     )
     expected_fields = [

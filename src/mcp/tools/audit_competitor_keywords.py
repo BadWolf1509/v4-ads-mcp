@@ -107,7 +107,7 @@ async def audit_competitor_keywords(args: dict[str, Any]) -> dict[str, Any]:
     end_date = end_date_obj.isoformat()
 
     pos_query = build_positive_keywords_query()
-    st_query = build_search_terms_query(start_date=start_date, end_date=end_date)
+    st_query = build_search_terms_query(start_date=start_date_obj, end_date=end_date_obj)
 
     # Parallel via asyncio.gather (latency reduction — 2 queries independent)
     pos_raw, st_raw = await asyncio.gather(

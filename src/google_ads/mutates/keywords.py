@@ -5,6 +5,10 @@ from typing import Any
 from google.protobuf.field_mask_pb2 import FieldMask
 
 from src.google_ads.mutates._common import register_builder
+from src.google_ads.mutates._status import (
+    ALVOS_DE_STATUS,
+    operacao_de_status,
+)
 
 
 @register_builder("update_keyword_status")
@@ -13,23 +17,20 @@ def build_update_keyword_status(
 ) -> list[Any]:
     """payload: {keywords: [{ad_group_id: str, criterion_id: str}], new_status: 'ENABLED'|'PAUSED'|'REMOVED'}"""
     new_status = payload["new_status"].upper()
-    operations = []
-    criterion_service = client.get_service("AdGroupCriterionService")
-    status_enum = client.enums.AdGroupCriterionStatusEnum
-    for kw in payload["keywords"]:
-        op = client.get_type("MutateOperation")
-        crit_op = op.ad_group_criterion_operation
-        crit = crit_op.update
-        crit.resource_name = criterion_service.ad_group_criterion_path(
-            customer_id, kw["ad_group_id"], kw["criterion_id"]
+    alvo = ALVOS_DE_STATUS["keyword"]
+    caminho = getattr(client.get_service(alvo.servico), alvo.caminho)
+    status_enum = getattr(client.enums, alvo.enum)
+    mascara = FieldMask(paths=["status"])
+    return [
+        operacao_de_status(
+            client,
+            alvo,
+            caminho(customer_id, kw["ad_group_id"], kw["criterion_id"]),
+            status_enum[new_status],
+            mascara,
         )
-        crit.status = status_enum[new_status]
-        client.copy_from(
-            crit_op.update_mask,
-            FieldMask(paths=["status"]),
-        )
-        operations.append(op)
-    return operations
+        for kw in payload["keywords"]
+    ]
 
 
 @register_builder("update_keyword_bid")

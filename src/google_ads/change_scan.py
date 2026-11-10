@@ -16,6 +16,7 @@ from src.google_ads.drift_detection import AUTO_APPLY_CLIENT_TYPES
 from src.google_ads.limite import aplicar_limite
 from src.google_ads.queries._common import (
     EntradaInvalidaError,
+    nome_do_enum,
     parse_resource_path,
     resolve_date_window,
 )
@@ -58,11 +59,11 @@ def _row_formatter(row: Any) -> dict[str, Any]:
     _, ad_group_id = parse_resource_path(ad_group_path) if ad_group_path else (None, None)
 
     op_enum = ce.resource_change_operation
-    op_str = op_enum.name if hasattr(op_enum, "name") else str(op_enum)
+    op_str = nome_do_enum(op_enum)
     rtype_enum = ce.change_resource_type
-    rtype_str = rtype_enum.name if hasattr(rtype_enum, "name") else str(rtype_enum)
+    rtype_str = nome_do_enum(rtype_enum)
     ct_enum = ce.client_type
-    ct_str = ct_enum.name if hasattr(ct_enum, "name") else str(ct_enum)
+    ct_str = nome_do_enum(ct_enum)
     old_status, new_status = _status_transition(ce, rtype_str)
 
     return {

@@ -1,5 +1,6 @@
 """Unit tests for audit_zombie_keywords GAQL builder + boundary parser (Sprint 3b.36)."""
 
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
@@ -13,8 +14,8 @@ from src.google_ads.queries.audit_zombie_keywords import (
 
 def test_build_query_includes_required_fields():
     q, _filtros = build_audit_zombie_keywords_query(
-        start_date="2026-04-21",
-        end_date="2026-05-21",
+        start_date=date(2026, 4, 21),
+        end_date=date(2026, 5, 21),
         ad_group_ids=None,
     )
     required_fields = [
@@ -38,8 +39,8 @@ def test_build_query_includes_required_fields():
 
 def test_build_query_filters_enabled_and_not_negative():
     q, _filtros = build_audit_zombie_keywords_query(
-        start_date="2026-04-21",
-        end_date="2026-05-21",
+        start_date=date(2026, 4, 21),
+        end_date=date(2026, 5, 21),
         ad_group_ids=None,
     )
     assert "ad_group_criterion.status = 'ENABLED'" in q
@@ -48,8 +49,8 @@ def test_build_query_filters_enabled_and_not_negative():
 
 def test_build_query_ad_group_ids_filter():
     q, _filtros = build_audit_zombie_keywords_query(
-        start_date="2026-04-21",
-        end_date="2026-05-21",
+        start_date=date(2026, 4, 21),
+        end_date=date(2026, 5, 21),
         ad_group_ids=["123", "456"],
     )
     assert "ad_group.id IN (123, 456)" in q
@@ -61,8 +62,8 @@ def test_recusa_ad_group_id_nao_numerico():
     um lugar, e o proximo chamador pode nao ter schema nenhum (F87)."""
     with pytest.raises(ValueError):
         build_audit_zombie_keywords_query(
-            start_date="2026-04-21",
-            end_date="2026-05-21",
+            start_date=date(2026, 4, 21),
+            end_date=date(2026, 5, 21),
             ad_group_ids=["123", "1) OR 1=1 --"],
         )
 

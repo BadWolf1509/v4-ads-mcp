@@ -33,6 +33,8 @@ freio que manda abrir o ERP, nao o veredito.
 
 from __future__ import annotations
 
+from datetime import date
+
 from src.google_ads.competitor_analysis import (
     SearchTermRow,
     match_competitor_brands,
@@ -64,7 +66,7 @@ def _st(
 
 def test_query_de_search_terms_pede_conversao() -> None:
     """A metrica esta na MESMA tabela que a query ja visita — custo era uma linha."""
-    q = build_search_terms_query(start_date="2026-06-01", end_date="2026-06-30")
+    q = build_search_terms_query(start_date=date(2026, 6, 1), end_date=date(2026, 6, 30))
     assert "metrics.conversions" in q
     assert "metrics.conversions_value" in q
 

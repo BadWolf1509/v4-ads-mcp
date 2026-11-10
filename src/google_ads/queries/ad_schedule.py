@@ -12,7 +12,7 @@ from datetime import date
 from typing import Any
 
 from src.google_ads.ad_schedule import ENUM_MINUTO
-from src.google_ads.queries._common import gaql_date_clause
+from src.google_ads.queries._common import gaql_date_clause, micros_to_currency, nome_do_enum
 from src.google_ads.queries._gaql import gaql_in_list
 
 _STATUS_FILTER = {"enabled": "ENABLED", "paused": "PAUSED", "removed": "REMOVED"}
@@ -22,10 +22,6 @@ _STATUS_FILTER = {"enabled": "ENABLED", "paused": "PAUSED", "removed": "REMOVED"
 # corta; quem corta tem que perceber (F98) — os dois lados checam a sentinela
 # `len(rows) > GRADE_LIMIT` em vez de diffar grade truncada.
 GRADE_LIMIT = 1000
-
-
-def _nome(x: Any) -> str:
-    return x.name if hasattr(x, "name") else str(x)
 
 
 def ad_schedule_query(*, campaign_ids: list[str] | None, status: str, limit: int) -> str:
@@ -62,13 +58,13 @@ def parse_ad_schedule_row(row: Any) -> dict[str, Any]:
         "campaign_name": str(row.campaign.name),
         "criterion_id": str(cc.criterion_id),
         "resource_name": str(cc.resource_name),
-        "day_of_week": _nome(s.day_of_week),
+        "day_of_week": nome_do_enum(s.day_of_week),
         "start_hour": int(s.start_hour),
-        "start_minute": ENUM_MINUTO.get(_nome(s.start_minute), 0),
+        "start_minute": ENUM_MINUTO.get(nome_do_enum(s.start_minute), 0),
         "end_hour": int(s.end_hour),
-        "end_minute": ENUM_MINUTO.get(_nome(s.end_minute), 0),
+        "end_minute": ENUM_MINUTO.get(nome_do_enum(s.end_minute), 0),
         "bid_modifier": float(cc.bid_modifier) if cc.bid_modifier else None,
-        "status": _nome(cc.status),
+        "status": nome_do_enum(cc.status),
     }
 
 
@@ -95,11 +91,11 @@ def parse_campaign_budget_row(row: Any) -> dict[str, Any]:
         "budget_resource_name": str(row.campaign.campaign_budget),
         "budget_id": str(row.campaign_budget.id),
         "explicitly_shared": bool(row.campaign_budget.explicitly_shared),
-        "amount_brl": round(int(row.campaign_budget.amount_micros) / 1_000_000, 2),
+        "amount_brl": micros_to_currency(int(row.campaign_budget.amount_micros)),
         # Com `campaign_ids` o WHERE nao derruba REMOVED: sem este campo o chamador
         # nao distingue campanha viva de removida, nem sabe que a alvo esta PAUSED
         # (F52/F90 — keyword ENABLED em ad_group PAUSED e a mesma familia).
-        "status": _nome(row.campaign.status),
+        "status": nome_do_enum(row.campaign.status),
     }
 
 
@@ -119,7 +115,7 @@ def parse_campaign_on_budget_row(row: Any) -> dict[str, Any]:
         "campaign_id": str(row.campaign.id),
         "campaign_name": str(row.campaign.name),
         "budget_resource_name": str(row.campaign.campaign_budget),
-        "status": _nome(row.campaign.status),
+        "status": nome_do_enum(row.campaign.status),
     }
 
 
@@ -149,7 +145,7 @@ def day_hour_metrics_query(*, campaign_ids: list[str], start: date, end: date) -
 def parse_day_hour_row(row: Any) -> dict[str, Any]:
     return {
         "campaign_id": str(row.campaign.id),
-        "day_of_week": _nome(row.segments.day_of_week),
+        "day_of_week": nome_do_enum(row.segments.day_of_week),
         "hour": int(row.segments.hour),
         "cost_micros": int(row.metrics.cost_micros),
         "conversions": float(row.metrics.conversions),

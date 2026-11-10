@@ -10,6 +10,10 @@ from typing import Any
 from google.protobuf.field_mask_pb2 import FieldMask
 
 from src.google_ads.mutates._common import register_builder
+from src.google_ads.mutates._status import (
+    ALVOS_DE_STATUS,
+    operacao_de_status,
+)
 from src.google_ads.queries._common import brl_para_micros
 
 
@@ -19,22 +23,16 @@ def build_update_campaign_status(
 ) -> list[Any]:
     """payload: {campaign_ids: [str], new_status: 'ENABLED'|'PAUSED'|'REMOVED'}"""
     new_status = payload["new_status"].upper()
-    operations = []
-    campaign_service = client.get_service("CampaignService")
-    status_enum = client.enums.CampaignStatusEnum
-    for cid in payload["campaign_ids"]:
-        op = client.get_type("MutateOperation")
-        campaign_op = op.campaign_operation
-        campaign = campaign_op.update
-        campaign.resource_name = campaign_service.campaign_path(customer_id, cid)
-        campaign.status = status_enum[new_status]
-        # Set field mask
-        client.copy_from(
-            campaign_op.update_mask,
-            FieldMask(paths=["status"]),
+    alvo = ALVOS_DE_STATUS["campaign"]
+    caminho = getattr(client.get_service(alvo.servico), alvo.caminho)
+    status_enum = getattr(client.enums, alvo.enum)
+    mascara = FieldMask(paths=["status"])
+    return [
+        operacao_de_status(
+            client, alvo, caminho(customer_id, cid), status_enum[new_status], mascara
         )
-        operations.append(op)
-    return operations
+        for cid in payload["campaign_ids"]
+    ]
 
 
 @register_builder("update_campaign_budget")
@@ -92,15 +90,6 @@ def build_update_campaign_bidding(
     else:
         raise ValueError(f"Unsupported bidding strategy: {strategy}")
     return [op]
-
-
-def _brl_to_micros(brl: float) -> int:
-    """Convert BRL to micros (1 BRL = 1_000_000 micros).
-
-    Sprint 3b.24 — used by build_create_campaign for budget + bidding strategy
-    targets. Other create patterns use similar conversion (e.g., create_conversion_action).
-    """
-    return brl_para_micros(brl)
 
 
 @register_builder("create_campaign")
@@ -173,7 +162,7 @@ def build_create_campaign(client: Any, customer_id: str, payload: dict[str, Any]
     budget = budget_op.create
     budget.resource_name = budget_temp_path
     budget.name = f"{payload['name']} - budget"
-    budget.amount_micros = _brl_to_micros(payload["daily_budget_brl"])
+    budget.amount_micros = brl_para_micros(payload["daily_budget_brl"])
     budget.delivery_method = budget_delivery_enum.STANDARD
     budget.explicitly_shared = False  # V4 invariant — standalone budget; shared=True is only
     # for portfolio bidding strategies. Standalone strategies (MAX_CONVERSIONS, TARGET_CPA, etc)
@@ -224,7 +213,7 @@ def build_create_campaign(client: Any, customer_id: str, payload: dict[str, Any]
     bs_type = bs["type"]
     if bs_type == "MAXIMIZE_CONVERSIONS":
         if "target_cpa_brl" in bs:
-            campaign.maximize_conversions.target_cpa_micros = _brl_to_micros(bs["target_cpa_brl"])
+            campaign.maximize_conversions.target_cpa_micros = brl_para_micros(bs["target_cpa_brl"])
         else:
             # No optional fields — assign instance to mark the oneof.
             # F33 reversal (Sprint 3b.24.4): get_type returns INSTANCE directly; no parens.
@@ -237,7 +226,7 @@ def build_create_campaign(client: Any, customer_id: str, payload: dict[str, Any]
             # F33 reversal (Sprint 3b.24.4): get_type returns INSTANCE directly; no parens.
             campaign.maximize_conversion_value = client.get_type("MaximizeConversionValue")
     elif bs_type == "TARGET_CPA":
-        campaign.target_cpa.target_cpa_micros = _brl_to_micros(bs["target_cpa_brl"])
+        campaign.target_cpa.target_cpa_micros = brl_para_micros(bs["target_cpa_brl"])
     elif bs_type == "TARGET_ROAS":
         campaign.target_roas.target_roas = bs["target_roas"]
     elif bs_type == "MANUAL_CPC":
@@ -248,7 +237,9 @@ def build_create_campaign(client: Any, customer_id: str, payload: dict[str, Any]
     elif bs_type == "MAXIMIZE_CLICKS":
         # MAXIMIZE_CLICKS maps to TargetSpend proto message (Google's naming).
         if "cpc_bid_ceiling_brl" in bs:
-            campaign.target_spend.cpc_bid_ceiling_micros = _brl_to_micros(bs["cpc_bid_ceiling_brl"])
+            campaign.target_spend.cpc_bid_ceiling_micros = brl_para_micros(
+                bs["cpc_bid_ceiling_brl"]
+            )
         else:
             # No optional fields — assign instance to mark the oneof.
             # F33 reversal (Sprint 3b.24.4): get_type returns INSTANCE directly; no parens.
