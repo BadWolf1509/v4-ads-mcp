@@ -249,7 +249,7 @@ def _tools_com_razao() -> set[str]:
             if isinstance(no, ast.ImportFrom) and (
                 no.module in {"src.google_ads.performance_breakdown", "src.google_ads.pacing"}
                 or (
-                    no.module == "src.google_ads.queries._common"
+                    no.module in {"src.google_ads.queries._common", "src.razoes"}
                     and any(a.name == "razao" for a in no.names)
                 )
             ):

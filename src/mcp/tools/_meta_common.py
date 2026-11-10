@@ -19,7 +19,12 @@ PROPRIEDADE_AD_ACCOUNT_ID: dict[str, Any] = {
 
 
 def erro_de_entrada(mensagem: str) -> dict[str, Any]:
-    """Envelope de erro de entrada de uma tool Meta: só `status` e `error_message`."""
+    """Envelope de erro de duas chaves, `{"status": "error", "error_message": ...}`.
+
+    Serve a qualquer erro não-`denied` de tool Meta que o cliente deve ler: erro
+    de entrada, conta só em BRL, campo ausente, preview inutilizável. O nome é
+    histórico (nasceu só para entrada); renomear tocaria 25 pontos sem ganho de contrato.
+    """
     return {"status": "error", "error_message": mensagem}
 
 
