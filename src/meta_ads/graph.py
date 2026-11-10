@@ -43,6 +43,16 @@ class PagedFetch(NamedTuple):
     complete: bool
 
 
+class CorpoIlegivel(NamedTuple):
+    """Corpo de um 200 que não decodifica como JSON (`erro` é a exceção original).
+
+    Entregue no lugar do corpo para que o consumidor capture os headers da página
+    ANTES de decidir; o consumidor re-levanta `erro` (comportamento de sempre).
+    """
+
+    erro: ValueError
+
+
 async def paginas_graph(
     http: httpx.AsyncClient,
     url: str,
@@ -56,7 +66,9 @@ async def paginas_graph(
     gateado). Cada resposta passa pelo alarme de versão antes de sair. O corpo
     é decodificado UMA vez, aqui: em 200 vem o JSON (qualquer tipo — o gerador
     não decide o que fazer com corpo que não é objeto, só para de paginar);
-    fora de 200 vem `None`, sem tentar decodificar. O chamador decide o que
+    fora de 200 vem `None`, sem tentar decodificar; 200 que não decodifica vem
+    como `CorpoIlegivel` (a exceção NÃO sai do gerador, senão a página perderia
+    os headers do BUC) e encerra a iteração. O chamador decide o que
     fazer: parar (`break`/`raise`/`return`) fecha o gerador; se seguir, o
     gerador pede a próxima. Resposta não-200 ou sem objeto JSON encerra a
     iteração depois de entregue.
@@ -75,7 +87,11 @@ async def paginas_graph(
         if resp.status_code != 200:
             yield resp, None
             return
-        bruto = resp.json()
+        try:
+            bruto = resp.json()
+        except ValueError as erro:
+            yield resp, CorpoIlegivel(erro)
+            return
         yield resp, bruto
         if not isinstance(bruto, dict):
             return
@@ -106,6 +122,8 @@ async def fetch_paginated(
                 fetched_so_far=len(rows),
             )
             return PagedFetch(rows, False)
+        if isinstance(body, CorpoIlegivel):
+            raise body.erro
         if not isinstance(body, dict):
             # 200 sem objeto: leitura truncada, nao churn (F93). Guarda o que veio.
             log.warning(

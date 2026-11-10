@@ -28,7 +28,7 @@ from src.meta_ads.client import (
     MetaSystemUserTokenMissingError,
 )
 from src.meta_ads.errors import to_friendly_meta_error
-from src.meta_ads.graph import paginas_graph
+from src.meta_ads.graph import CorpoIlegivel, paginas_graph
 
 log = structlog.get_logger(__name__)
 
@@ -124,6 +124,8 @@ async def _paginar_graph(
         capturados.append(headers)
         if resp.status_code != 200:
             raise MetaGraphHTTPError(resp.status_code, resp.text)
+        if isinstance(bruto, CorpoIlegivel):
+            raise bruto.erro
         if not isinstance(bruto, dict):
             # Nao e `cast`: o cast satisfaz o mypy e nao existe em runtime.
             raise MetaGraphHTTPError(resp.status_code, f"corpo nao-JSON: {type(bruto).__name__}")

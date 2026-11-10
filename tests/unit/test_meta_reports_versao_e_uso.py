@@ -282,3 +282,33 @@ async def test_fetch_paginated_estourar_max_pages_devolve_incompleto() -> None:
         )
     assert out.complete is False
     assert (len(out.rows), len(vistos)) == (3, 3)
+
+
+@pytest.mark.asyncio
+async def test_paginar_graph_200_json_invalido_captura_headers_e_levanta() -> None:
+    """Como antes da E2: os headers da página entram em `capturados` ANTES do raise."""
+
+    def handler(_r: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, content=b"<html>nao e json", headers={"x-business-use-case-usage": "p1"}
+        )
+
+    capturados: list[httpx.Headers] = []
+    async with _cliente(handler) as http:
+        with pytest.raises(ValueError):
+            await reports._paginar_graph(
+                http, "https://graph.facebook.com/v25.0/x", {}, {}, 2, capturados
+            )
+    assert [h["x-business-use-case-usage"] for h in capturados] == ["p1"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_paginated_200_json_invalido_levanta_como_antes() -> None:
+    def handler(_r: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"<html>nao e json")
+
+    async with _cliente(handler) as http:
+        with pytest.raises(ValueError):
+            await graph.fetch_paginated(
+                http, "https://graph.facebook.com/v25.0/x", access_token="tok", params={}
+            )
