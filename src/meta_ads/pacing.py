@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.google_ads.queries._common import arredondado, percentual, razao
+from src.razoes import arredondado, percentual, razao
 
 OBS_VITALICIO = (
     "orçamento vitalício: o valor vale para a vida da campanha, não por dia; sem projeção mensal"

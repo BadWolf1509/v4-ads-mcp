@@ -209,9 +209,9 @@ def test_funil_distingue_zero_medido_de_indefinido() -> None:
 
 
 def test_pacing_sem_orcamento_nao_vira_zero_porcento() -> None:
-    from src.mcp.tools.get_budget_pacing import _project
+    from src.google_ads.pacing import projetar_linhas
 
-    (c,) = _project(
+    (c,) = projetar_linhas(
         [
             {
                 "campaign_id": "1",
@@ -242,12 +242,12 @@ _MUTACAO_COM_RAZAO = {"update_campaign_budget", "apply_recommendation"}
 
 def _tools_com_razao() -> set[str]:
     """Tool cuja resposta carrega razao: o modulo importa `razao`, ou monta a linha
-    pelo `performance_breakdown`, que calcula a razao la dentro."""
+    pelo `performance_breakdown` ou pelo `google_ads.pacing`, que calculam a razao la dentro."""
     achadas = set()
     for p in h.fontes_py(h.SRC / "mcp" / "tools"):
         for no in ast.walk(h.arvore(p)):
             if isinstance(no, ast.ImportFrom) and (
-                no.module == "src.google_ads.performance_breakdown"
+                no.module in {"src.google_ads.performance_breakdown", "src.google_ads.pacing"}
                 or (
                     no.module == "src.google_ads.queries._common"
                     and any(a.name == "razao" for a in no.names)
