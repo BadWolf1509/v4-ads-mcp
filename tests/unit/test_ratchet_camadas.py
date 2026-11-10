@@ -82,26 +82,39 @@ _JANELA_FORA_DO_COMMON: dict[tuple[str, str], int] = {
 }
 
 _COMMON = h.SRC / "google_ads" / "queries" / "_common.py"
-_GAQL = re.compile(r"\bSELECT\b.+\bFROM\s+[a-z_]+", re.DOTALL)
-_JANELA = re.compile(r"segments\.date BETWEEN")
-
-# Regra estrutural que separa GAQL de TEXTO que a cita. Nas tools, GAQL real e
-# sempre atribuido a uma variavel (`query = f"""SELECT ..."""`); o texto que so
-# MENCIONA `SELECT/FROM` ou `segments.date BETWEEN` viaja como valor de keyword
-# de prosa numa chamada: `description=` do `register_tool` (bulk_pause_by_query)
-# e `to_apply=` do envelope de preview (upload_customer_match_list, uma dica de
-# `run_gaql ... 'SELECT ... FROM ...'`). Docstring e comentario nao chegam aqui
-# (`_nos_de_docstring`; comentario nem e literal). A lista e FECHADA de proposito:
-# `query=f"SELECT ..."` passado a um executor continua sendo GAQL e continua pego.
-_KWARGS_DE_PROSA = frozenset({"description", "to_apply"})
+# "Texto GAQL" = o texto logico de uma EXPRESSAO de string (literais, f-strings,
+# concatenacao implicita e cadeias de `+`; o `{expr}` e o operando nao-literal
+# viram `X`; `.format()` tem receptor literal e conta como esta) que COMECA com
+# `select` (qualquer caixa) e contem `from` como palavra. Prosa que apenas
+# MENCIONA SELECT/FROM nao comeca com SELECT, entao nao precisa de excecao por
+# nome de keyword.
+_GAQL = re.compile(r"\s*select\b(?=.*\bfrom\b)", re.DOTALL | re.IGNORECASE)
+_JANELA = re.compile(r"segments\.date\s+between", re.IGNORECASE)
 
 
-def _literais_por_funcao(arquivo: Path) -> list[tuple[str, str]]:
-    """`(funcao mais externa, texto logico)` de cada literal que NAO e prosa.
+def _folhas_de_soma(no: ast.expr) -> list[ast.expr]:
+    """Operandos de uma cadeia `a + b + c`, na ordem."""
+    if isinstance(no, ast.BinOp) and isinstance(no.op, ast.Add):
+        return [*_folhas_de_soma(no.left), *_folhas_de_soma(no.right)]
+    return [no]
 
-    Fora: docstring e valor de keyword em `_KWARGS_DE_PROSA`. Literais
-    adjacentes (`"SELECT a " "FROM b"`) e f-strings ja chegam fundidos pelo
-    parser, e `_texto_logico` troca os `{expr}` por `X`.
+
+def _e_literal_de_string(no: ast.AST) -> bool:
+    return isinstance(no, ast.JoinedStr) or (
+        isinstance(no, ast.Constant) and isinstance(no.value, str)
+    )
+
+
+def _literais_por_funcao(
+    arquivo: Path, *, pular_description: bool = False
+) -> list[tuple[str, str]]:
+    """`(funcao mais externa, texto logico)` de cada expressao de string.
+
+    Fora: docstring. Cadeia `+` com ao menos um literal de string vira UM texto
+    (operando nao-literal -> `X`); adjacentes e f-strings ja chegam fundidos pelo
+    parser. `pular_description` (so o scan de janela): ignora o valor de
+    `description=` de uma chamada, texto de tool que cita `segments.date BETWEEN`
+    sem ser query.
     """
     arv = h.arvore(arquivo)
     docstrings = h._nos_de_docstring(arv)
@@ -112,13 +125,25 @@ def _literais_por_funcao(arquivo: Path) -> list[tuple[str, str]]:
             nome = externa
             if externa == "<modulo>" and isinstance(filho, ast.FunctionDef | ast.AsyncFunctionDef):
                 nome = filho.name
-            if isinstance(filho, ast.keyword) and filho.arg in _KWARGS_DE_PROSA:
+            if pular_description and isinstance(filho, ast.keyword) and filho.arg == "description":
                 continue
-            if isinstance(filho, ast.JoinedStr) or (
-                isinstance(filho, ast.Constant) and isinstance(filho.value, str)
-            ):
+            if isinstance(filho, ast.BinOp) and isinstance(filho.op, ast.Add):
+                folhas = _folhas_de_soma(filho)
+                if any(_e_literal_de_string(f) for f in folhas):
+                    partes = [
+                        h._texto_logico(f)  # type: ignore[arg-type]
+                        if _e_literal_de_string(f)
+                        else "X"
+                        for f in folhas
+                    ]
+                    achados.append((nome, "".join(partes)))
+                    for f in folhas:  # operando nao-literal pode ter outra expressao
+                        if not _e_literal_de_string(f):
+                            visita(ast.Expression(body=f), nome)
+                    continue
+            if _e_literal_de_string(filho):
                 if id(filho) not in docstrings:
-                    achados.append((nome, h._texto_logico(filho)))
+                    achados.append((nome, h._texto_logico(filho)))  # type: ignore[arg-type]
                 continue
             visita(filho, nome)
 
@@ -126,22 +151,23 @@ def _literais_por_funcao(arquivo: Path) -> list[tuple[str, str]]:
     return achados
 
 
-def _literais_que_casam(arquivos: list[Path], padrao: re.Pattern[str]) -> Counter[tuple[str, str]]:
+def _gaql_nas_tools() -> Counter[tuple[str, str]]:
     return Counter(
         (h.rel(a), fn)
-        for a in arquivos
+        for a in h.fontes_py(_TOOLS)
         for fn, texto in _literais_por_funcao(a)
-        if padrao.search(texto)
+        if _GAQL.match(texto)
     )
-
-
-def _gaql_nas_tools() -> Counter[tuple[str, str]]:
-    return _literais_que_casam(h.fontes_py(_TOOLS), _GAQL)
 
 
 def _janela_fora_do_common() -> Counter[tuple[str, str]]:
     arquivos = [a for a in h.fontes_py(h.SRC) if a != _COMMON.resolve()]
-    return _literais_que_casam(arquivos, _JANELA)
+    return Counter(
+        (h.rel(a), fn)
+        for a in arquivos
+        for fn, texto in _literais_por_funcao(a, pular_description=True)
+        if _JANELA.search(texto)
+    )
 
 
 def _sitios(arquivo: Path, casa: Callable[[ast.Call], bool]) -> list[tuple[str, int]]:
