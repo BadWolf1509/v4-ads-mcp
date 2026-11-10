@@ -241,6 +241,152 @@ async def test_grant_all_manager_not_found_returns_error_code(migrated: None, ds
     """Email sem manager correspondente -> rc=1 (não crasha), sem criar grants órfãos."""
     rc = await cmd_grant_all(argparse.Namespace(email="ghost@v4company.com"))
     assert rc == 1
+    await connection.init_pool(dsn, min_size=1, max_size=4)
+    try:
+        pool = connection.get_pool()
+        async with pool.acquire() as conn:
+            n = await conn.fetchval(
+                "SELECT count(*) FROM audit_log WHERE operation = 'cli_grant_all'"
+            )
+    finally:
+        await connection.close_pool()
+    assert n == 0  # gestor inexistente: nenhuma trilha
+
+
+async def _criar_gestor(dsn: str, email: str, *, is_active: bool, status: str, role: str) -> None:
+    await connection.init_pool(dsn, min_size=1, max_size=4)
+    try:
+        pool = connection.get_pool()
+        async with pool.acquire() as conn:
+            m = await managers.create(conn, manager_id=uuid4(), email=email, full_name=None)
+            await conn.execute(
+                "UPDATE managers SET is_active = $2, status = $3, role = $4 WHERE id = $1",
+                m.id,
+                is_active,
+                status,
+                role,
+            )
+    finally:
+        await connection.close_pool()
+
+
+async def _ler_gestor(dsn: str, email: str) -> managers.Manager:
+    await connection.init_pool(dsn, min_size=1, max_size=4)
+    try:
+        pool = connection.get_pool()
+        async with pool.acquire() as conn:
+            m = await managers.get_by_email(conn, email)
+    finally:
+        await connection.close_pool()
+    assert m is not None
+    return m
+
+
+async def _linhas_audit(dsn: str, operation: str) -> list[dict[str, object]]:
+    await connection.init_pool(dsn, min_size=1, max_size=4)
+    try:
+        pool = connection.get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT manager_id, action_type, operation, target_count, params_summary "
+                "FROM audit_log WHERE operation = $1",
+                operation,
+            )
+    finally:
+        await connection.close_pool()
+    return [dict(r) for r in rows]
+
+
+@pytest.mark.integration
+async def test_bootstrap_admin_reativa_admin_inativo(migrated: None, dsn: str) -> None:
+    """Admin já existente, desativado: o runbook de recuperação precisa reativar."""
+    await _criar_gestor(
+        dsn, "inativo@v4company.com", is_active=False, status="inactive", role="admin"
+    )
+    rc = await cmd_bootstrap_admin(argparse.Namespace(email="inativo@v4company.com", name=None))
+    assert rc == 0
+    after = await _ler_gestor(dsn, "inativo@v4company.com")
+    assert after.role == "admin"
+    assert after.is_deactivated is False
+
+
+@pytest.mark.integration
+async def test_bootstrap_admin_nao_toca_convidado(migrated: None, dsn: str) -> None:
+    """F84: só 'inactive' vira 'active'; 'invited' não é destruído."""
+    await _criar_gestor(
+        dsn, "convidado@v4company.com", is_active=False, status="invited", role="gestor"
+    )
+    rc = await cmd_bootstrap_admin(argparse.Namespace(email="convidado@v4company.com", name=None))
+    assert rc == 0
+    after = await _ler_gestor(dsn, "convidado@v4company.com")
+    assert after.role == "admin"
+    assert after.is_active is True
+    assert after.status == "invited"
+
+
+@pytest.mark.integration
+async def test_bootstrap_admin_grava_audit(migrated: None, dsn: str) -> None:
+    await _criar_gestor(dsn, "audit@v4company.com", is_active=True, status="active", role="gestor")
+    rc = await cmd_bootstrap_admin(argparse.Namespace(email="audit@v4company.com", name=None))
+    assert rc == 0
+    alvo = await _ler_gestor(dsn, "audit@v4company.com")
+    linhas = await _linhas_audit(dsn, "cli_bootstrap_admin")
+    assert len(linhas) == 1
+    assert linhas[0]["action_type"] == "system"
+    assert linhas[0]["manager_id"] == alvo.id
+
+    # Gestor novo também deixa trilha.
+    rc = await cmd_bootstrap_admin(argparse.Namespace(email="novo@v4company.com", name="Novo"))
+    assert rc == 0
+    novo = await _ler_gestor(dsn, "novo@v4company.com")
+    linhas = await _linhas_audit(dsn, "cli_bootstrap_admin")
+    assert {ln["manager_id"] for ln in linhas} == {alvo.id, novo.id}
+
+    # Admin já ativo (nada mudou): ainda grava, e a trilha diz que não mudou.
+    rc = await cmd_bootstrap_admin(argparse.Namespace(email="audit@v4company.com", name=None))
+    assert rc == 0
+    linhas = [
+        ln for ln in await _linhas_audit(dsn, "cli_bootstrap_admin") if ln["manager_id"] == alvo.id
+    ]
+    assert len(linhas) == 2
+    assert any('"mudou": false' in str(ln["params_summary"]).lower() for ln in linhas)
+
+
+@pytest.mark.integration
+async def test_grant_all_grava_audit(migrated: None, dsn: str) -> None:
+    await connection.init_pool(dsn, min_size=1, max_size=4)
+    try:
+        pool = connection.get_pool()
+        async with pool.acquire() as conn:
+            m = await managers.create(
+                conn, manager_id=uuid4(), email="ga-audit@v4company.com", full_name=None
+            )
+            await google_ads_accounts.upsert_many(
+                conn,
+                [
+                    {
+                        "customer_id": "1112223330",
+                        "mcc_id": "6436352492",
+                        "descriptive_name": "Conta 1",
+                    },
+                    {
+                        "customer_id": "4445556660",
+                        "mcc_id": "6436352492",
+                        "descriptive_name": "Conta 2",
+                    },
+                ],
+            )
+            manager_id = m.id
+    finally:
+        await connection.close_pool()
+
+    rc = await cmd_grant_all(argparse.Namespace(email="ga-audit@v4company.com"))
+    assert rc == 0
+    linhas = await _linhas_audit(dsn, "cli_grant_all")
+    assert len(linhas) == 1
+    assert linhas[0]["action_type"] == "system"
+    assert linhas[0]["manager_id"] == manager_id
+    assert linhas[0]["target_count"] == 2
 
 
 @pytest.mark.integration

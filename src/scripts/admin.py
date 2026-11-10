@@ -33,6 +33,7 @@ from src.auth.sessions import generate_session_token, hash_session_token
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import (
+    audit_log,
     manager_account_access,
     managers,
     mcp_sessions,
@@ -48,17 +49,41 @@ async def cmd_bootstrap_admin(args: argparse.Namespace) -> int:
             existing = await managers.get_by_email(conn, args.email)
             if existing:
                 print(f"Manager already exists: {existing.id} ({existing.role})")
-                if existing.role != "admin":
+                mudou = existing.role != "admin" or existing.is_deactivated
+                # F84: só 'inactive' vira 'active'; 'invited' fica como está.
+                async with conn.transaction():
                     await conn.execute(
-                        "UPDATE managers SET role = 'admin', is_active = true WHERE id = $1",
+                        "UPDATE managers SET role = 'admin', is_active = true, "
+                        "status = CASE WHEN status = 'inactive' THEN 'active' ELSE status END "
+                        "WHERE id = $1",
                         existing.id,
                     )
-                    print("Promoted to admin.")
+                    await audit_log.record(
+                        conn,
+                        manager_id=existing.id,
+                        session_id=None,
+                        customer_id=None,
+                        action_type="system",
+                        operation="cli_bootstrap_admin",
+                        params_summary={"mudou": mudou},
+                    )
+                if mudou:
+                    print("Promoted/reactivated as admin.")
                 return 0
             new_id = uuid4()
-            m = await managers.create(
-                conn, manager_id=new_id, email=args.email, full_name=args.name, role="admin"
-            )
+            async with conn.transaction():
+                m = await managers.create(
+                    conn, manager_id=new_id, email=args.email, full_name=args.name, role="admin"
+                )
+                await audit_log.record(
+                    conn,
+                    manager_id=m.id,
+                    session_id=None,
+                    customer_id=None,
+                    action_type="system",
+                    operation="cli_bootstrap_admin",
+                    params_summary={"mudou": True},
+                )
             print(f"Created admin: {m.id} ({m.email})")
             return 0
     finally:
@@ -124,9 +149,19 @@ async def cmd_grant_all(args: argparse.Namespace) -> int:
             if m is None:
                 print(f"Manager not found: {args.email}", file=sys.stderr)
                 return 1
-            n = await manager_account_access.grant_all_active(
-                conn, manager_id=m.id, granted_by=m.id
-            )
+            async with conn.transaction():
+                n = await manager_account_access.grant_all_active(
+                    conn, manager_id=m.id, granted_by=m.id
+                )
+                await audit_log.record(
+                    conn,
+                    manager_id=m.id,
+                    session_id=None,
+                    customer_id=None,
+                    action_type="system",
+                    operation="cli_grant_all",
+                    target_count=n,
+                )
         # I3 (revisão de branch): `n` é linhas TOCADAS pelo `ON CONFLICT DO
         # UPDATE` (Task 3) — inclui contas já concedidas e restauradas, não só
         # as genuinamente novas. Rodar grant-all duas vezes num gestor com
