@@ -7,6 +7,7 @@ from src.google_ads.queries._common import micros_to_currency
 from src.google_ads.queries.tactical import conversion_actions_query
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
+from src.mcp.tools._common import aplicar_limite
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -75,8 +76,7 @@ async def get_conversion_actions(args: dict[str, Any]) -> dict[str, Any]:
         audit_this_call=True,  # sensitive: lists conversion config
     )
     # F98 — a sentinela (`limit + 1`) denuncia o corte e não chega ao gestor.
-    truncated = len(rows) > limit
-    rows = rows[:limit]
+    rows, truncated = aplicar_limite(rows, limit)
     return {
         "customer_id": customer_id,
         "filters_applied": filtros,

@@ -14,6 +14,7 @@ from src.google_ads.queries.overview import (
 from src.google_ads.reports import run_report
 from src.janelas import calendario_do_mes, janela_do_preset
 from src.mcp.context import get_current
+from src.mcp.tools._common import aplicar_limite
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -258,8 +259,7 @@ async def get_budget_pacing(args: dict[str, Any]) -> dict[str, Any]:
         operation_name="get_budget_pacing",
     )
     # F98 — a sentinela é uma campanha a mais e não pode entrar na projeção.
-    truncated = len(rows) > limit
-    rows = rows[:limit]
+    rows, truncated = aplicar_limite(rows, limit)
     inclui_dia_corrente = fim == today
     gasto_hoje: dict[str, int] = {}
     if rows and not inclui_dia_corrente:

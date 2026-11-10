@@ -7,6 +7,7 @@ from src.google_ads.queries._common import nome_do_enum
 from src.google_ads.queries.recommendations import TYPE_PT, recommendations_query
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
+from src.mcp.tools._common import aplicar_limite
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -78,8 +79,7 @@ async def get_recommendations(args: dict[str, Any]) -> dict[str, Any]:
     )
     # F98 — a query pede `limit + 1`; a linha sentinela denuncia o corte e NÃO
     # pode chegar ao gestor.
-    truncated = len(rows) > limit
-    rows = rows[:limit]
+    rows, truncated = aplicar_limite(rows, limit)
     return {
         "customer_id": customer_id,
         "count": len(rows),
