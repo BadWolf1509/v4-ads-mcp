@@ -45,6 +45,18 @@ def _muitas(n: int, *, ausentes: int, faltas: int) -> list[Linha]:
     return [Linha(f"c{i:02d}", faltas=faltas if i >= n - ausentes else 0) for i in range(n)]
 
 
+def _massa() -> list[Linha]:
+    """10 ativas: c00 volta (to_reset), c01..c04 ausentes, 3 delas além da carência."""
+    return [
+        Linha("c00", faltas=1),
+        Linha("c01"),
+        Linha("c02", faltas=2),
+        Linha("c03", faltas=2),
+        Linha("c04", faltas=2),
+        *[Linha(f"c{i:02d}") for i in range(5, 10)],
+    ]
+
+
 CENARIOS = [
     Cenario("conta_nova", [Linha("a")], {"a", "nova"}),
     Cenario("ausencia_dentro_da_carencia", [Linha("a"), Linha("b", faltas=0)], {"a"}),
@@ -57,14 +69,62 @@ CENARIOS = [
     Cenario("volta_depois_de_ausencia", [Linha("a", faltas=2)], {"a"}),
     Cenario(
         "leitura_incompleta",
-        [Linha("a"), Linha("b", faltas=9)],
+        [Linha("a", faltas=1), Linha("b", faltas=9)],
         {"a", "nova"},
         completo=False,
     ),
     Cenario(
         "remocao_em_massa_acima_do_teto",
-        _muitas(10, ausentes=3, faltas=2),
-        {f"c{i:02d}" for i in range(7)},
+        _massa(),
+        {"c00", "c05", "c06", "c07", "c08", "c09", "nova"},
+    ),
+    # 30 ativas, 6 ausentes além da carência: floor(30*0.2)=6, mas o teto
+    # absoluto (5) vence o percentual. Só aqui `max_removal_abs` decide.
+    Cenario(
+        "teto_absoluto_vence_o_percentual",
+        _muitas(30, ausentes=6, faltas=2),
+        {f"c{i:02d}" for i in range(24)},
+    ),
+    # Inativas: a que está na origem vira to_add; a ausente não é marcada nem
+    # removida. 4 inativas inflam o inventário para 10: quem contasse inativa
+    # em `len(ativos)` daria teto 2 (não 1) e deixaria de barrar as 2 remoções.
+    Cenario(
+        "inativas_nao_contam_no_teto_nem_viram_falta",
+        [
+            *[Linha(i) for i in ("a", "b", "c", "d")],
+            Linha("e", faltas=2),
+            Linha("f", faltas=2),
+            Linha("x1", ativo=False),
+            Linha("y1", ativo=False, faltas=2),
+            Linha("y2", ativo=False, faltas=2),
+            Linha("y3", ativo=False),
+        ],
+        {"a", "b", "c", "d", "x1"},
+    ),
+    Cenario(
+        "inativa_ausente_nao_marca_nem_remove",
+        [Linha("a"), Linha("y", ativo=False, faltas=2), Linha("z", ativo=False)],
+        {"a", "x"},
+    ),
+    # Falta de ONTEM no fuso da conta: não é retry, então a ausência de hoje soma.
+    Cenario(
+        "ultima_falta_ontem_nao_e_retry",
+        [Linha("a"), Linha("b", faltas=2, ultima_falta=date(2026, 9, 1))],
+        {"a"},
+    ),
+    # Ids fora de ordem alfabética na inserção: sem `sorted()` o plano sai trocado.
+    Cenario(
+        "ordenacao_com_varios_em_cada_lista",
+        [
+            *[Linha(f"c{i:02d}") for i in range(15)],
+            Linha("zb"),
+            Linha("zr", faltas=2),
+            Linha("zv", faltas=1),
+            Linha("mb"),
+            Linha("mr", faltas=2),
+            Linha("mv", faltas=1),
+        ],
+        {f"c{i:02d}" for i in range(15)} | {"zv", "mv", "zn", "mn"},
     ),
     Cenario("piso_do_teto_com_inventario_de_1", [Linha("a", faltas=2)], set()),
     # `last_missed_on` == dia UTC com fuso None: o fallback é UTC, então o retry
@@ -115,6 +175,8 @@ def _campos(p: google.Plan | meta.Plan) -> tuple[object, ...]:
     return (p.to_add, p.to_bump, p.to_remove, p.to_reset, p.blocked_reason)
 
 
+# Paridade de `unreachable` (refused_ids) fica em tests/unit/test_meta_reconcile_plan.py:
+# só o Meta tem o campo, aqui ele é fixado em [] com refused_ids=set().
 @pytest.mark.parametrize("cenario", CENARIOS, ids=lambda c: c.nome)
 def test_mesma_entrada_mesmo_plano(cenario: Cenario) -> None:
     g = _plano_google(cenario)
@@ -131,13 +193,38 @@ ESPERADO = {
     "ausencia_que_cruza_a_carencia": ([], [], ["b"], [], None),
     "retry_no_mesmo_dia_do_limiar": ([], ["b"], [], [], None),
     "volta_depois_de_ausencia": ([], [], [], ["a"], None),
-    "leitura_incompleta": (["nova"], [], [], [], "leitura incompleta"),
+    "leitura_incompleta": (["nova"], [], [], ["a"], "leitura incompleta"),
+    # O plano barrado não carrega `to_bump` (o `Plan` do bloqueio só leva
+    # to_add/to_reset), então só esses dois são observáveis aqui.
     "remocao_em_massa_acima_do_teto": (
+        ["nova"],
         [],
         [],
-        [],
-        [],
+        ["c00"],
         "remocao em massa barrada: 3 contas de 10 ativas (teto 2)",
+    ),
+    "teto_absoluto_vence_o_percentual": (
+        [],
+        [],
+        [],
+        [],
+        "remocao em massa barrada: 6 contas de 30 ativas (teto 5)",
+    ),
+    "inativas_nao_contam_no_teto_nem_viram_falta": (
+        ["x1"],
+        [],
+        [],
+        [],
+        "remocao em massa barrada: 2 contas de 6 ativas (teto 1)",
+    ),
+    "inativa_ausente_nao_marca_nem_remove": (["x"], [], [], [], None),
+    "ultima_falta_ontem_nao_e_retry": ([], [], ["b"], [], None),
+    "ordenacao_com_varios_em_cada_lista": (
+        ["mn", "zn"],
+        ["mb", "zb"],
+        ["mr", "zr"],
+        ["mv", "zv"],
+        None,
     ),
     "piso_do_teto_com_inventario_de_1": ([], [], ["a"], [], None),
     "fuso_none": ([], ["b"], [], [], None),
