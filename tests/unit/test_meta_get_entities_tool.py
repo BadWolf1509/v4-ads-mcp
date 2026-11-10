@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from contextlib import ExitStack
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -34,11 +35,39 @@ class _ConnComMoeda:
         return self._moeda
 
 
-def _inventario(moeda_na_tabela: str | None) -> Any:
+def _inventario(moeda_na_tabela: str | None, *, acesso: bool = True) -> Any:
     async def run(op: Any, **_k: Any) -> Any:
         return await op(_ConnComMoeda(moeda_na_tabela))
 
-    return patch("src.db.connection.run_with_reconnect", run)
+    pilha = ExitStack()
+    pilha.enter_context(patch("src.db.connection.run_with_reconnect", run))
+    pilha.enter_context(
+        patch(
+            "src.db.repositories.manager_meta_account_access.can_manager_access",
+            AsyncMock(return_value=acesso),
+        )
+    )
+    return pilha
+
+
+def _negacao_real(tool: Any, args: dict[str, Any], moeda_na_tabela: str | None) -> Any:
+    """Gestor sem acesso: gate REAL da Graph (`run_meta_graph_get`) com audit mockado."""
+
+    async def corre() -> tuple[dict[str, Any], AsyncMock]:
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=MagicMock())
+        cm.__aexit__ = AsyncMock(return_value=False)
+        pool = MagicMock()
+        pool.acquire = MagicMock(return_value=cm)
+        audit = AsyncMock()
+        with (
+            _inventario(moeda_na_tabela, acesso=False),
+            patch("src.meta_ads.reports.connection.get_pool", return_value=pool),
+            patch("src.meta_ads.reports.audit_log.record", audit),
+        ):
+            return await tool(args), audit
+
+    return corre()
 
 
 def _patches(side_effect: Any) -> Any:
@@ -212,3 +241,18 @@ async def test_conta_nao_brl_no_inventario_devolve_o_envelope_de_moeda_sem_lista
         ),
     }
     g.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("moeda_na_tabela", ["USD", "BRL"])
+async def test_sem_acesso_a_negacao_do_gate_vale_e_a_moeda_nao_vaza(
+    moeda_na_tabela: str,
+) -> None:
+    r, audit = await _negacao_real(
+        modulo.meta_get_entities, {"ad_account_id": _CONTA, "level": "campaign"}, moeda_na_tabela
+    )
+    assert r["status"] == "denied" and "moeda" not in r["error_message"]
+    audit.assert_awaited_once()
+    k = audit.call_args.kwargs
+    assert k["status"] == "denied" and k["operation"] == "meta_get_entities"
+    assert k["customer_id"] == _CONTA and k["platform"] == "meta"
