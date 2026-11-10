@@ -4,7 +4,7 @@
 from typing import Any
 
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import PROPRIEDADE_AD_ACCOUNT_ID, meta_erro
+from src.mcp.tools._meta_common import PROPRIEDADE_AD_ACCOUNT_ID, erro_de_entrada, meta_erro
 from src.mcp.tools._registry import register_tool
 from src.meta_ads.client import MetaAccessDeniedError
 from src.meta_ads.criativos import PosseNaoProvada, listar_criativos
@@ -60,16 +60,13 @@ async def meta_get_creatives(args: dict[str, Any]) -> dict[str, Any]:
     ad_id = args.get("ad_id")
     limit = int(args.get("limit", 100))
     if ad_id is not None and not (isinstance(ad_id, str) and ad_id.isascii() and ad_id.isdigit()):
-        return {"status": "error", "error_message": "`ad_id` deve ser numérico."}
+        return erro_de_entrada("`ad_id` deve ser numérico.")
     if not 1 <= limit <= 500:
-        return {
-            "status": "error",
-            "error_message": f"`limit` deve estar entre 1 e 500 (recebido {limit}).",
-        }
+        return erro_de_entrada(f"`limit` deve estar entre 1 e 500 (recebido {limit}).")
     try:
         criativos, truncated = await listar_criativos(ctx, ad_account_id, limit, ad_id, _OPERACAO)
     except PosseNaoProvada as e:
-        return {"status": "error", "error_message": str(e)}
+        return erro_de_entrada(str(e))
     except (MetaAccessDeniedError, MetaAdsFriendlyError) as e:
         return meta_erro(e)
     resposta: dict[str, Any] = {

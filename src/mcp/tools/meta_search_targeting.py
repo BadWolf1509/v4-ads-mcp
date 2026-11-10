@@ -4,7 +4,7 @@
 from typing import Any
 
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import PROPRIEDADE_AD_ACCOUNT_ID, meta_erro
+from src.mcp.tools._meta_common import PROPRIEDADE_AD_ACCOUNT_ID, erro_de_entrada, meta_erro
 from src.mcp.tools._registry import register_tool
 from src.meta_ads.client import MetaAccessDeniedError
 from src.meta_ads.errors import MetaAdsFriendlyError
@@ -59,15 +59,11 @@ async def meta_search_targeting(args: dict[str, Any]) -> dict[str, Any]:
     q = str(args.get("q") or "").strip()
     limit = int(args.get("limit", _LIMIT_PADRAO))
     if len(q) < 2:
-        return {
-            "status": "error",
-            "error_message": "`q` precisa ter ao menos 2 caracteres (sem contar espaços nas pontas).",
-        }
+        return erro_de_entrada(
+            "`q` precisa ter ao menos 2 caracteres (sem contar espaços nas pontas)."
+        )
     if not 1 <= limit <= _LIMIT_MAX:
-        return {
-            "status": "error",
-            "error_message": f"`limit` deve estar entre 1 e {_LIMIT_MAX} (recebido {limit}).",
-        }
+        return erro_de_entrada(f"`limit` deve estar entre 1 e {_LIMIT_MAX} (recebido {limit}).")
     try:
         resultados, truncated = await buscar_segmentacao(ctx, ad_account_id, q, limit)
     except (MetaAccessDeniedError, MetaAdsFriendlyError) as e:

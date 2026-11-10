@@ -13,7 +13,7 @@ from uuid import UUID
 from src.db import connection
 from src.db.repositories import meta_ad_accounts
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import meta_erro
+from src.mcp.tools._meta_common import erro_de_entrada, meta_erro
 from src.mcp.tools._meta_performance import (
     _MAX_PAGES,
     _gasto_para_ordenar,
@@ -115,12 +115,9 @@ async def meta_get_performance_breakdown(
 
     breakdown_params = BREAKDOWN_META_PARAM.get(breakdown)
     if breakdown_params is None:
-        return {
-            "status": "error",
-            "error_message": (
-                f"breakdown '{breakdown}' inválido. Aceitos: {sorted(BREAKDOWN_META_PARAM)}."
-            ),
-        }
+        return erro_de_entrada(
+            f"breakdown '{breakdown}' inválido. Aceitos: {sorted(BREAKDOWN_META_PARAM)}."
+        )
 
     try:
         start, end, _ = await resolver_janela_meta(

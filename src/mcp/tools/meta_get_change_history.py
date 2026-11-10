@@ -5,7 +5,7 @@ from datetime import timedelta
 from typing import Any
 
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import PROPRIEDADE_AD_ACCOUNT_ID, meta_erro
+from src.mcp.tools._meta_common import PROPRIEDADE_AD_ACCOUNT_ID, erro_de_entrada, meta_erro
 from src.mcp.tools._registry import register_tool
 from src.meta_ads.account_clock import resolve_meta_account_today
 from src.meta_ads.client import MetaAccessDeniedError
@@ -69,10 +69,7 @@ async def meta_get_change_history(args: dict[str, Any]) -> dict[str, Any]:
     dias = int(args.get("days", _DIAS_PADRAO))
     limit = int(args.get("limit", 100))
     if not 1 <= dias <= _DIAS_MAX:
-        return {
-            "status": "error",
-            "error_message": f"`days` deve estar entre 1 e {_DIAS_MAX} (recebido {dias}).",
-        }
+        return erro_de_entrada(f"`days` deve estar entre 1 e {_DIAS_MAX} (recebido {dias}).")
     try:
         fim = await resolve_meta_account_today(ad_account_id)
         inicio = fim - timedelta(days=dias - 1)

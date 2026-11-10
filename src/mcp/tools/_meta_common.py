@@ -18,6 +18,11 @@ PROPRIEDADE_AD_ACCOUNT_ID: dict[str, Any] = {
 }
 
 
+def erro_de_entrada(mensagem: str) -> dict[str, Any]:
+    """Envelope de erro de entrada de uma tool Meta: só `status` e `error_message`."""
+    return {"status": "error", "error_message": mensagem}
+
+
 def meta_erro(exc: Exception) -> dict[str, Any]:
     """Envelope de erro de uma tool Meta, só para os dois erros que ela PODE explicar.
 
@@ -29,5 +34,5 @@ def meta_erro(exc: Exception) -> dict[str, Any]:
     if isinstance(exc, MetaAccessDeniedError):
         return {"status": "denied", "error_message": exc.message}
     if isinstance(exc, MetaAdsFriendlyError):
-        return {"status": "error", "error_message": exc.message}
+        return erro_de_entrada(exc.message)
     raise exc

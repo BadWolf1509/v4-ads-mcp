@@ -4,7 +4,7 @@
 from typing import Any
 
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import PROPRIEDADE_AD_ACCOUNT_ID, meta_erro
+from src.mcp.tools._meta_common import PROPRIEDADE_AD_ACCOUNT_ID, erro_de_entrada, meta_erro
 from src.mcp.tools._registry import register_tool
 from src.meta_ads.client import MetaAccessDeniedError
 from src.meta_ads.criativos import (
@@ -54,10 +54,6 @@ _DESCRIPTION = (
 )
 
 
-def _erro(msg: str) -> dict[str, Any]:
-    return {"status": "error", "error_message": msg}
-
-
 def _numerico(v: Any) -> bool:
     return isinstance(v, str) and v.isascii() and v.isdigit()
 
@@ -75,25 +71,25 @@ async def meta_get_ad_preview(args: dict[str, Any]) -> dict[str, Any]:
     creative_id = args.get("creative_id")
     ad_format = args.get("ad_format", _PADRAO)
     if (ad_id is None) == (creative_id is None):
-        return _erro("informe exatamente um de `ad_id` ou `creative_id`.")
+        return erro_de_entrada("informe exatamente um de `ad_id` ou `creative_id`.")
     if (ad_id is not None and not _numerico(ad_id)) or (
         creative_id is not None and not _numerico(creative_id)
     ):
-        return _erro("`ad_id` e `creative_id` devem ser numéricos.")
+        return erro_de_entrada("`ad_id` e `creative_id` devem ser numéricos.")
     if ad_format not in FORMATOS:
-        return _erro(f"`ad_format` inválido; use um de: {', '.join(FORMATOS)}.")
+        return erro_de_entrada(f"`ad_format` inválido; use um de: {', '.join(FORMATOS)}.")
     try:
         cid = await provar_posse(
             ctx, ad_account_id, _OPERACAO, ad_id=ad_id, creative_id=creative_id
         )
         corpo = await gerar_previa(ctx, ad_account_id, cid, ad_format, _OPERACAO)
     except PosseNaoProvada as e:
-        return _erro(str(e))
+        return erro_de_entrada(str(e))
     except (MetaAccessDeniedError, MetaAdsFriendlyError) as e:
         return meta_erro(e)
     src = extrair_src_iframe(corpo)
     if src is None:
-        return _erro(
+        return erro_de_entrada(
             "a Meta não devolveu uma prévia utilizável (sem endereço facebook.com válido)."
         )
     return {

@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import PROPRIEDADE_AD_ACCOUNT_ID, meta_erro
+from src.mcp.tools._meta_common import PROPRIEDADE_AD_ACCOUNT_ID, erro_de_entrada, meta_erro
 from src.mcp.tools._registry import register_tool
 from src.meta_ads.account_clock import resolve_meta_account_today
 from src.meta_ads.client import MetaAccessDeniedError
@@ -117,12 +117,9 @@ async def meta_get_account_balance(args: dict[str, Any]) -> dict[str, Any]:
                 gastos[date.fromisoformat(linha["date_start"])] = float(gasto)
         saldo = montar_saldo_meta(conta, gastos, hoje=hoje)
     except KeyError as e:
-        return {
-            "status": "error",
-            "error_message": f"resposta da Meta sem o campo {e.args[0]!r}: saldo não calculado",
-        }
+        return erro_de_entrada(f"resposta da Meta sem o campo {e.args[0]!r}: saldo não calculado")
     except ValueError as e:
-        return {"status": "error", "error_message": str(e)}
+        return erro_de_entrada(str(e))
     return {
         "status": "success",
         **saldo,
