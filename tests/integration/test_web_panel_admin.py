@@ -594,6 +594,15 @@ async def test_admin_managers_toggle_htmx_returns_hx_redirect(client: AsyncClien
     assert after_role["role"] != before["role"]
 
 
+async def _had_effect(pool, operation: str) -> list[bool | None]:
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT had_effect FROM audit_log WHERE operation = $1 ORDER BY occurred_at, id",
+            operation,
+        )
+    return [r["had_effect"] for r in rows]
+
+
 async def _audits(pool, operation: str) -> int:
     async with pool.acquire() as conn:
         return await conn.fetchval("SELECT count(*) FROM audit_log WHERE operation = $1", operation)
@@ -614,7 +623,8 @@ async def test_toggle_active_e_idempotente(client: AsyncClient):
     async with pool.acquire() as conn:
         ativo = await conn.fetchval("SELECT is_active FROM managers WHERE id = $1", gestor_id)
     assert ativo is False
-    assert await _audits(pool, "admin_manager_toggle_active") == 1
+    # Dois POSTs idênticos: duas linhas; só a primeira mudou o estado (F179).
+    assert await _had_effect(pool, "admin_manager_toggle_active") == [True, False]
 
     r = await client.post(
         f"/admin/managers/{gestor_id}/toggle-active?desejado=ativo",
@@ -642,11 +652,11 @@ async def test_toggle_role_e_idempotente(client: AsyncClient):
     async with pool.acquire() as conn:
         role = await conn.fetchval("SELECT role FROM managers WHERE id = $1", gestor_id)
     assert role == "admin"
-    assert await _audits(pool, "admin_manager_toggle_role") == 1
+    assert await _had_effect(pool, "admin_manager_toggle_role") == [True, False]
 
 
 @pytest.mark.integration
-async def test_toggle_ja_estava_assim_avisa_sem_audit(client: AsyncClient):
+async def test_toggle_ja_estava_assim_avisa_e_audita_sem_efeito(client: AsyncClient):
     pool = connection.get_pool()
     admin_id, gestor_id = await _bootstrap_admin_and_gestor(pool)
     r = await client.post(
@@ -658,7 +668,7 @@ async def test_toggle_ja_estava_assim_avisa_sem_audit(client: AsyncClient):
     assert "O gestor já estava assim." in json.dumps(
         json.loads(r.headers["HX-Trigger"]), ensure_ascii=False
     )
-    assert await _audits(pool, "admin_manager_toggle_active") == 0
+    assert await _had_effect(pool, "admin_manager_toggle_active") == [False]
 
 
 @pytest.mark.integration

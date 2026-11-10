@@ -26,11 +26,13 @@ class Manager:
         """True se QUALQUER das duas colunas disser que o gestor está desativado.
 
         F84 — as duas divergem e nada as sincroniza: o toggle do painel escreve
-        só `is_active`, e nenhum código escreve `status='inactive'` (só
-        `mark_active`, invited→active). O gate de login já checava as duas; os de
-        sessão viva (MCP e painel) checavam só `is_active`, então um offboarding
-        feito por SQL direto — o único caminho que escreve `status` — bloqueava o
-        login mas deixava o Bearer MCP vivo até expirar (90 dias por padrão).
+        só `is_active`, e `status` é escrito por `mark_active` (invited→active) e
+        pelo CLI `bootstrap-admin` (inactive→active; reativar um admin). Nenhum
+        código escreve `status='inactive'` (só SQL direto). O gate de login já
+        checava as duas; os de sessão viva (MCP e painel) checavam só `is_active`,
+        então um offboarding feito por SQL direto — o único caminho que escreve
+        `inactive` — bloqueava o login mas deixava o Bearer MCP vivo até expirar
+        (90 dias por padrão).
 
         Predicado único de propósito: o bug foi três sites decidindo isso por
         conta própria. Quem precisar decidir de novo, chama isto.
@@ -68,6 +70,13 @@ async def list_all(conn: asyncpg.Connection) -> list[Manager]:
 
 async def get_by_email(conn: asyncpg.Connection, email: str) -> Manager | None:
     row = await conn.fetchrow("SELECT * FROM managers WHERE email = $1", email)
+    return _row_to_manager(row) if row else None
+
+
+async def get_by_email_for_update(conn: asyncpg.Connection, email: str) -> Manager | None:
+    """Como `get_by_email`, mas trava a linha até o fim da transação. Rode dentro
+    de uma: o chamador decide "mudou?" sobre a linha que ele mesmo vai escrever."""
+    row = await conn.fetchrow("SELECT * FROM managers WHERE email = $1 FOR UPDATE", email)
     return _row_to_manager(row) if row else None
 
 
@@ -186,7 +195,7 @@ async def definir_ativo(
     conn: asyncpg.Connection, *, manager_id: UUID, ativo: bool
 ) -> tuple[str, bool] | None:
     """Põe `is_active` no valor pedido. `None` se o gestor não existe; senão
-    `(email, mudou)`. Idempotente: já estando assim, não escreve (nem há o que auditar).
+    `(email, mudou)`. Idempotente: já estando assim, não escreve (a rota audita com had_effect=False).
 
     Não toca `status` (F84: sincronizar destruiria o estado `invited`). Rode dentro
     da transação da rota; o `FOR UPDATE` serializa dois cliques concorrentes.

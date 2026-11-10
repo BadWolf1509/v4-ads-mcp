@@ -46,45 +46,45 @@ async def cmd_bootstrap_admin(args: argparse.Namespace) -> int:
     try:
         pool = connection.get_pool()
         async with pool.acquire() as conn:
-            existing = await managers.get_by_email(conn, args.email)
-            if existing:
-                print(f"Manager already exists: {existing.id} ({existing.role})")
-                mudou = existing.role != "admin" or existing.is_deactivated
-                # F84: só 'inactive' vira 'active'; 'invited' fica como está.
-                async with conn.transaction():
+            # Leitura, decisão "mudou?" e escrita na MESMA transação, com a
+            # linha travada (FOR UPDATE): `had_effect` sai de uma linha que
+            # ninguém mexe entre o SELECT e o UPDATE (F179).
+            async with conn.transaction():
+                manager = await managers.get_by_email_for_update(conn, args.email)
+                criado = manager is None
+                if manager is None:
+                    manager = await managers.create(
+                        conn,
+                        manager_id=uuid4(),
+                        email=args.email,
+                        full_name=args.name,
+                        role="admin",
+                    )
+                    mudou = True
+                else:
+                    mudou = manager.role != "admin" or manager.is_deactivated
+                    # F84: só 'inactive' vira 'active'; 'invited' fica como está.
                     await conn.execute(
                         "UPDATE managers SET role = 'admin', is_active = true, "
                         "status = CASE WHEN status = 'inactive' THEN 'active' ELSE status END "
                         "WHERE id = $1",
-                        existing.id,
+                        manager.id,
                     )
-                    await audit_log.record(
-                        conn,
-                        manager_id=existing.id,
-                        session_id=None,
-                        customer_id=None,
-                        action_type="system",
-                        operation="cli_bootstrap_admin",
-                        params_summary={"mudou": mudou},
-                    )
-                if mudou:
-                    print("Promoted/reactivated as admin.")
-                return 0
-            new_id = uuid4()
-            async with conn.transaction():
-                m = await managers.create(
-                    conn, manager_id=new_id, email=args.email, full_name=args.name, role="admin"
-                )
                 await audit_log.record(
                     conn,
-                    manager_id=m.id,
+                    manager_id=manager.id,
                     session_id=None,
                     customer_id=None,
                     action_type="system",
                     operation="cli_bootstrap_admin",
-                    params_summary={"mudou": True},
+                    had_effect=mudou,
                 )
-            print(f"Created admin: {m.id} ({m.email})")
+            if criado:
+                print(f"Created admin: {manager.id} ({manager.email})")
+            else:
+                print(f"Manager already exists: {manager.id} ({manager.role})")
+                if mudou:
+                    print("Promoted/reactivated as admin.")
             return 0
     finally:
         await connection.close_pool()
@@ -161,6 +161,10 @@ async def cmd_grant_all(args: argparse.Namespace) -> int:
                     action_type="system",
                     operation="cli_grant_all",
                     target_count=n,
+                    # `n` conta linhas TOCADAS por grant_all_active (inclui
+                    # re-concessões, F167), não só concessões novas: n > 0 é
+                    # "tocou alguma linha", não "mudou o acesso".
+                    had_effect=n > 0,
                 )
         # I3 (revisão de branch): `n` é linhas TOCADAS pelo `ON CONFLICT DO
         # UPDATE` (Task 3) — inclui contas já concedidas e restauradas, não só

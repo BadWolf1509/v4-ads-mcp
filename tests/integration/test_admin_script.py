@@ -288,7 +288,8 @@ async def _linhas_audit(dsn: str, operation: str) -> list[dict[str, object]]:
         pool = connection.get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT manager_id, action_type, operation, target_count, params_summary "
+                "SELECT manager_id, action_type, operation, target_count, params_summary, "
+                "had_effect "
                 "FROM audit_log WHERE operation = $1",
                 operation,
             )
@@ -308,6 +309,8 @@ async def test_bootstrap_admin_reativa_admin_inativo(migrated: None, dsn: str) -
     after = await _ler_gestor(dsn, "inativo@v4company.com")
     assert after.role == "admin"
     assert after.is_deactivated is False
+    linhas = await _linhas_audit(dsn, "cli_bootstrap_admin")
+    assert [ln["had_effect"] for ln in linhas] == [True]  # reativado
 
 
 @pytest.mark.integration
@@ -334,6 +337,7 @@ async def test_bootstrap_admin_grava_audit(migrated: None, dsn: str) -> None:
     assert len(linhas) == 1
     assert linhas[0]["action_type"] == "system"
     assert linhas[0]["manager_id"] == alvo.id
+    assert linhas[0]["had_effect"] is True  # promovido gestor -> admin
 
     # Gestor novo também deixa trilha.
     rc = await cmd_bootstrap_admin(argparse.Namespace(email="novo@v4company.com", name="Novo"))
@@ -341,6 +345,7 @@ async def test_bootstrap_admin_grava_audit(migrated: None, dsn: str) -> None:
     novo = await _ler_gestor(dsn, "novo@v4company.com")
     linhas = await _linhas_audit(dsn, "cli_bootstrap_admin")
     assert {ln["manager_id"] for ln in linhas} == {alvo.id, novo.id}
+    assert [ln["had_effect"] for ln in linhas if ln["manager_id"] == novo.id] == [True]  # criado
 
     # Admin já ativo (nada mudou): ainda grava, e a trilha diz que não mudou.
     rc = await cmd_bootstrap_admin(argparse.Namespace(email="audit@v4company.com", name=None))
@@ -349,7 +354,9 @@ async def test_bootstrap_admin_grava_audit(migrated: None, dsn: str) -> None:
         ln for ln in await _linhas_audit(dsn, "cli_bootstrap_admin") if ln["manager_id"] == alvo.id
     ]
     assert len(linhas) == 2
-    assert any('"mudou": false' in str(ln["params_summary"]).lower() for ln in linhas)
+    # Ordem de inserção não é garantida sem ORDER BY: compara o multiconjunto.
+    assert sorted(ln["had_effect"] for ln in linhas) == [False, True]
+    assert all(ln["params_summary"] is None for ln in linhas)
 
 
 @pytest.mark.integration
@@ -387,6 +394,7 @@ async def test_grant_all_grava_audit(migrated: None, dsn: str) -> None:
     assert linhas[0]["action_type"] == "system"
     assert linhas[0]["manager_id"] == manager_id
     assert linhas[0]["target_count"] == 2
+    assert linhas[0]["had_effect"] is True
 
 
 @pytest.mark.integration

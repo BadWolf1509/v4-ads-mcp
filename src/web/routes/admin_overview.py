@@ -171,14 +171,15 @@ async def admin_managers_toggle_active(
         if resultado is None:
             raise HTTPException(status_code=404, detail="Gestor nao encontrado")
         email, mudou = resultado
-        if mudou:
-            await _audit_admin(
-                conn,
-                admin=user,
-                operation="admin_manager_toggle_active",
-                target_manager_id=str(manager_id),
-                target_email=email,
-            )
+        # F179: grava também quando nada mudou, com had_effect=False.
+        await _audit_admin(
+            conn,
+            admin=user,
+            operation="admin_manager_toggle_active",
+            target_manager_id=str(manager_id),
+            target_email=email,
+            had_effect=mudou,
+        )
     toast = "Status do gestor atualizado." if mudou else "O gestor já estava assim."
     return resposta_hx(request, destino="/admin/managers", hx="redirect", toast=toast)
 
@@ -200,13 +201,14 @@ async def admin_managers_toggle_role(
         if resultado is None:
             raise HTTPException(status_code=404, detail="Gestor nao encontrado")
         email, mudou = resultado
-        if mudou:
-            await _audit_admin(
-                conn,
-                admin=user,
-                operation="admin_manager_toggle_role",
-                target_manager_id=str(manager_id),
-                target_email=email,
-            )
+        # F179: grava também quando nada mudou, com had_effect=False.
+        await _audit_admin(
+            conn,
+            admin=user,
+            operation="admin_manager_toggle_role",
+            target_manager_id=str(manager_id),
+            target_email=email,
+            had_effect=mudou,
+        )
     toast = "Role do gestor atualizado." if mudou else "O gestor já estava assim."
     return resposta_hx(request, destino="/admin/managers", hx="redirect", toast=toast)
