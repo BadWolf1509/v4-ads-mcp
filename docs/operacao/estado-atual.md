@@ -5,9 +5,10 @@
 > chegou a 91 KB). **Trabalho que fechou sai daqui:** o defeito vai para o catálogo, a narrativa para o
 > handoff ou o [`_archive/`](../_archive/estado-atual-2026-10-30-a-11-04.md), e aqui fica uma linha.
 
-> **Última sessão:** [`session-2026-11-04-handoff.md`](session-2026-11-04-handoff.md) — 03 e 04/11:
-> varredura de refatoração A→H em produção (#210 a #218), deps (#196 a #200), #212, #219 e #220;
-> F204–F207 no catálogo. Antes: [`session-2026-10-31-handoff.md`](session-2026-10-31-handoff.md).
+> **Última sessão:** [`session-2026-11-10-handoff.md`](session-2026-11-10-handoff.md) — 10/11: deps
+> (#227, #223) e a [varredura de refatoração de 10/11](../superpowers/plans/2026-11-10-varredura-refatoracao.md),
+> Partes A a D em produção (#228 a #231); E a I pendentes, J pulada. Antes:
+> [`session-2026-11-04-handoff.md`](session-2026-11-04-handoff.md).
 
 ## Direção e restrições
 
@@ -26,16 +27,17 @@
   medido: paginação de `meta_get_entities` além de uma página, render da prévia, objetivos além de REACH.
   Detalhe no [arquivo](../_archive/estado-atual-2026-10-30-a-11-04.md).
 
-## Produção — medido em 2026-11-04
+## Produção — medido em 2026-11-10
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00187-wnq`** (#220, `31905a2`), 100% do tráfego; jobs resync, backup e migrate na imagem `app:31905a2`. Revisões anteriores, PR a PR, no [arquivo](../_archive/estado-atual-2026-10-30-a-11-04.md) |
+| Revisão servindo | **`v4-ads-mcp-00193-9rf`** (#231, `ba13ebf`), 100% do tráfego. Em 10/11: `00188-qbr` (#227), `00189-c2x` (#223), `00190-2zl` (#228), `00191-684` (#229), `00192-glq` (#230). A linha `SERVING_REVISION` do log do deploy é a revisão de **antes**; meça no `gcloud` |
+| Dependências | grpcio 1.85.1, protobuf 7.36.2, starlette 1.10.0 (avisa `httpx` deprecated no `TestClient`), sse-starlette 3.7.0, tzdata 2026.6 |
 | Tools | **80** (65 Google + 15 Meta), contagem do registry e do `/health?deep=1` |
 | Buckets | **14 always + 66 defer** (registry); tokens **não remedidos** desde a [remedição](tool-buckets-2026-10-05.md) |
 | Catálogo | até **F207** (~6.100 linhas, 603 KB) |
 | APIs | Meta Graph **v25.0** (constante única); Google Ads **v25**, sunset estimado em ago/2027 (**não lido** na página oficial) |
-| Smoke do pipeline | sem handshake MCP **autenticado** (F186) |
+| Smoke do pipeline | sem handshake MCP **autenticado** (F186); desde 10/11 o `SMOKE_MCP_BEARER` está **expirado** (401) e o deploy segue com aviso |
 
 **Uso real, 30 dias até 30/10** (`audit_log`): 2.211 chamadas, 5 gestores (Pedro 801, Luiz 773,
 Wellington 590, Lucas 37, Anderson 4); Google 1.752, Meta 459; `run_gaql` 34%. **27 tools sem chamada em
@@ -58,14 +60,19 @@ que mais usava os antigos, saiu em 31/10). O plugin 0.5.0 já manda usar o break
 
 ## Próximo trabalho (em ordem)
 
-1. **Ler os logs do resync de 05/11, 06:00** — primeira execução agendada com o código da parte H (a de
-   04/11, 09:00 UTC, foi antes do deploy). É a prova principal da H.
-2. **F207** — as 4 falhas silenciosas dos jobs, um TDD por bug, num PR.
-3. **C2** (decisão sua) — whitelist dos 3 tipos de recomendação novos do v25; depois, trocar o import
+1. **Varredura de 10/11, Partes E a I** — a execução por subagentes retoma na E1, com o aval já gravado no
+   ledger; o [handoff](session-2026-11-10-handoff.md) diz onde estão worktree, briefs e ledger.
+2. **Ler os logs do resync** — a prova da parte H de 03/11 segue não lida (pede `gcloud` com credencial).
+3. **F207** — as 4 falhas silenciosas dos jobs, um TDD por bug, num PR; depois a **Parte J** da varredura.
+4. **C2** (decisão sua) — whitelist dos 3 tipos de recomendação novos do v25; depois, trocar o import
    v24 de `recommendations.py`.
 
 ## Pendências que dependem do Wellington
 
+- **Da varredura de 10/11** (lista completa no [handoff](session-2026-11-10-handoff.md)): clique nos
+  toggles de gestor em produção; dry-run com gestor das tools de status e das 3 migradas para o
+  `emitir_preview`; 6 decisões pendentes do plano; `classify` sem `create_and_link_assets` e
+  `import_offline_conversions`; reemitir o `SMOKE_MCP_BEARER` (expirado: o handshake do smoke não roda).
 - **Escrita em produção, com aval próprio:** apagar as linhas de `meta_oauth_connections` (o OAuth
   pessoal saiu no #215); **teste real de convite e cancelamento** (pendente desde 31/10).
 - **Desligamento do Pedro:** desativado em 31/10, conexão e sessão revogadas com auditoria; fora do BM.

@@ -1,7 +1,7 @@
 # Sessão de 30/10, tarde — Handoff (varredura de correções, 6 blocos)
 
 > Mapa da sessão. Estado vivo no [`estado-atual`](estado-atual.md); defeitos no
-> [catálogo](findings-catalog.md). Anterior: [`session-2026-10-30-handoff.md`](session-2026-10-30-handoff.md).
+> [catálogo](findings-catalog.md). Anterior: [`session-2026-10-30-handoff.md`](../_archive/handoffs/session-2026-10-30-handoff.md).
 > Plano: [`2026-10-30-varredura-correcoes.md`](../superpowers/plans/2026-10-30-varredura-correcoes.md).
 
 ## O que entrou
