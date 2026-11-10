@@ -12,7 +12,7 @@ import pytest
 
 from src.mcp.context import McpRequestContext, clear_current, set_current
 from src.mcp.tools import meta_get_entities as modulo
-from src.meta_ads import entidades
+from src.meta_ads import entidades, moeda
 
 _CONTA = "act_1"
 
@@ -28,7 +28,7 @@ def _patches(side_effect: Any) -> Any:
     g = AsyncMock(side_effect=side_effect)
     return (
         g,
-        patch.object(modulo, "run_meta_graph_get", g),
+        patch.object(moeda, "run_meta_graph_get", g),
         patch.object(entidades, "run_meta_graph_get", g),
     )
 

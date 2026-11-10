@@ -12,6 +12,7 @@ import pytest
 
 from src.mcp.context import McpRequestContext, clear_current, set_current
 from src.mcp.tools import meta_get_budget_pacing as modulo
+from src.meta_ads import moeda as modulo_moeda
 from src.meta_ads.pacing import orcamento_total, projetar, ritmo_de
 
 _CONTA = "act_1"
@@ -156,6 +157,7 @@ async def _roda(
 
     with (
         patch.object(modulo, "run_meta_graph_get", g),
+        patch.object(modulo_moeda, "run_meta_graph_get", g),
         patch.object(modulo, "listar_entidades", AsyncMock(side_effect=listar)),
         patch.object(modulo, "resolve_meta_account_today", AsyncMock(return_value=hoje)),
     ):
@@ -446,7 +448,7 @@ async def test_moeda_diferente_de_brl_e_erro() -> None:
 async def test_falha_da_graph_vira_erro() -> None:
     g = AsyncMock(side_effect=RuntimeError("boom"))
     with (
-        patch.object(modulo, "run_meta_graph_get", g),
+        patch.object(modulo_moeda, "run_meta_graph_get", g),
         patch.object(
             modulo, "resolve_meta_account_today", AsyncMock(return_value=date(2026, 10, 11))
         ),
