@@ -4,11 +4,11 @@
 >
 > **Maintainer note:** Add a new entry here whenever a finding is documented in a smoke runbook. Keep entries scannable — link to runbook for detail.
 >
-> **Last updated:** 2026-11-04 — **F204–F207** da varredura de refatoração de 03/11 (no fim do arquivo): F204 (teste do painel corrida sob CSP, #219), F205 (export do audit aberto por default, #220), F206 (três desvios de contrato de erro, #210) e **F207 ABERTO** (quatro falhas silenciosas nos jobs). De 2026-09-30: **F200 verificado em produção** (24 h: zero reconexão, zero erro, +8 ms no p50 do health) e o "Fora" do **F203** corrigido na mesma branch; **F203** e **F202** em produção (`00140`, `00141`), com smoke de leitura. De 2026-09-29: **F202** (pacing de orçamento compartilhado) e **F203** (retirada do pool presa sem limite num socket mudo; corrige os "30 s" do F200), deployados em 30/09. De 2026-09-28: **F199** (pacing pelos dias fechados), **F200** (infra e guards) e **F201** (data inválida virava "Erro interno"), no fim do arquivo. De 2026-09-20: **F180–F185**: sprint de RSA (F180 em parte; F181/F182/F183/F184 corrigidos), a 2ª instância do F182, e dois ABERTOS: **F185** (limitação da API, sem correção possível deste lado) e **F186** (o smoke autenticado do `/mcp` está desarmado por token vencido). O resto deste parágrafo é de **2026-09-03** e não foi atualizado desde então — leia como de época: **F141–F146 fechados** em tres PRs (#28 bloco fuso+freshness; #29 structural_change; #30 fuso do upload offline) mais o F142 (whitelist de client_type) direto na main. Ontem, 02/09: **+F131–F140** da sessao de campo MO-JP, fechados no PR #27 e nos fixes seguintes. Narrativa completa e licoes de metodo no handoff [`session-2026-09-02-03-handoff.md`](../_archive/handoffs/session-2026-09-02-03-handoff.md); o historico anterior (F82–F130, 08/14 a 08/20) esta nos handoffs de 08-14-15 e 08-19.
+> **Last updated:** 2026-11-11 — **F208–F211** da varredura de 10/11 e da tarde de 11/11 (no fim do arquivo): F208 (cinco bugs de operação, #228), F209 (escrita de governança: `grant-all` e o tipo de app do v25, #239/#240), **F210 em parte** (codec de token: `iat` futuro e UTF-8 ABERTOS, reexport fechado no #240) e F211 (verde que não falava do que ia para produção: ruff/mypy fixados no #238, `SERVING_REVISION`, guards estreitos, premissa E3); F167 e F207 atualizados. De 2026-11-04: **F204–F207** da varredura de refatoração de 03/11 (no fim do arquivo): F204 (teste do painel corrida sob CSP, #219), F205 (export do audit aberto por default, #220), F206 (três desvios de contrato de erro, #210) e **F207 ABERTO** (quatro falhas silenciosas nos jobs). De 2026-09-30: **F200 verificado em produção** (24 h: zero reconexão, zero erro, +8 ms no p50 do health) e o "Fora" do **F203** corrigido na mesma branch; **F203** e **F202** em produção (`00140`, `00141`), com smoke de leitura. De 2026-09-29: **F202** (pacing de orçamento compartilhado) e **F203** (retirada do pool presa sem limite num socket mudo; corrige os "30 s" do F200), deployados em 30/09. De 2026-09-28: **F199** (pacing pelos dias fechados), **F200** (infra e guards) e **F201** (data inválida virava "Erro interno"), no fim do arquivo. De 2026-09-20: **F180–F185**: sprint de RSA (F180 em parte; F181/F182/F183/F184 corrigidos), a 2ª instância do F182, e dois ABERTOS: **F185** (limitação da API, sem correção possível deste lado) e **F186** (o smoke autenticado do `/mcp` está desarmado por token vencido). O resto deste parágrafo é de **2026-09-03** e não foi atualizado desde então — leia como de época: **F141–F146 fechados** em tres PRs (#28 bloco fuso+freshness; #29 structural_change; #30 fuso do upload offline) mais o F142 (whitelist de client_type) direto na main. Ontem, 02/09: **+F131–F140** da sessao de campo MO-JP, fechados no PR #27 e nos fixes seguintes. Narrativa completa e licoes de metodo no handoff [`session-2026-09-02-03-handoff.md`](../_archive/handoffs/session-2026-09-02-03-handoff.md); o historico anterior (F82–F130, 08/14 a 08/20) esta nos handoffs de 08-14-15 e 08-19.
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~6000 linhas, 601 KB, IDs de **F1 a F207** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 55 têm; 56 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~6300 linhas, 621 KB, IDs de **F1 a F211** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 55 têm; 56 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -197,6 +197,7 @@
 | Sessão 2026-08-19 | F101-F117 (três investigações no mesmo dia: frontend F101-F108, backend F109-F112, infra/CI F113-F117 — todas fechadas) |
 | Sessão 2026-08-20 | F118-F127 (revisão de responsividade: 9 telas com scroll horizontal em 375px, header estourando em 768px, scrollers sem teclado — todos fechados) · F128 (conta Meta que sai da parceria nunca saía do inventário; superado no mesmo dia pela reconciliação) · **F129** e **F130**, abertos (governança do system user; gate do Google sem `is_active`) |
 | Sessão 2026-11-03/04 | F204-F207 (varredura de refatoração A→H: F204 teste do CSP, F205 export do audit, F206 contrato de erro — fechados; **F207 aberto**, falhas silenciosas dos jobs) |
+| Sessão 2026-11-10/11 | F208-F211 (varredura de 10/11 A→I e a tarde de 11/11: F208 bugs de operação, F209 escrita de governança, F211 processo e guards — fechados; **F210 em parte**, codec de token) |
 
 ---
 
@@ -2881,6 +2882,12 @@ aviso em `build_warnings` — timestamp de registro, não data de conta — e po
 isso entrou em `FORA_COM_MOTIVO` com o motivo ao lado, não como exceção muda.
 
 > **✅ CORRIGIDO** (branch `pr6/cauda`).
+
+**Atualização (10 e 11/11):** a assimetria do 🔑 acima fechou em dois passos. G0 (#234, 10/11,
+decisão "atualizar sempre"): o `ON CONFLICT` comum (`src/db/repositories/_acesso_comum.py`) passou a
+gravar `granted_at = now()` e `granted_by = EXCLUDED.granted_by` nos quatro INSERTs dos dois
+provedores. E o `grant_all_active` saiu dessa regra no #240 (11/11, ver **F209**): só a linha nova,
+revogada ou promovida ganha procedência; a ativa no mesmo nível fica intacta.
 
 ---
 
@@ -6103,6 +6110,163 @@ falha e o sinal não chega a quem vigia.
   `init_pool` fora do `try`; sem pool não há como gravar no banco, e o único rastro é o log do Cloud
   Run.
 
-**Próximo passo:** um TDD por bug num PR só, depois de ler os logs da primeira execução agendada com
-o código da H (resync de 05/11, 06:00). O 4º pede decisão: sem banco, o rastro possível é log
+**Próximo passo:** um TDD por bug num PR só. Os logs foram lidos em 11/11: as 8 execuções de 04 a
+11/11 terminaram com sucesso, e o log de 11/11 mostra as três etapas (Google 24 contas, `complete:
+True`; Meta +2; purge de 5 linhas) e `exit(0)` — nenhuma das quatro falhas disparou no período. O 4º pede decisão: sem banco, o rastro possível é log
 estruturado com alerta log-based, não o audit.
+
+---
+
+## F208 (MEDIUM, ✅ CORRIGIDO 2026-11-10, #228, revisão `00190-2zl`) — cinco bugs de operação achados na varredura de 10/11
+
+Parte A da [varredura de 10/11](../superpowers/plans/2026-11-10-varredura-refatoracao.md). O padrão
+comum é **o caminho existia e entregava outra coisa em silêncio**:
+- um dia errado;
+- um estado invertido;
+- um admin que não voltava;
+- um job sem rastro;
+- uma exceção crua.
+
+### Os cinco bugs
+
+- **O audit agrupava "Hoje"/"Ontem" pelo dia UTC** (`src/web/routes/audit.py`).
+  - Sintoma: das 21h às 23h59 de Brasília, a linha caía no grupo do dia seguinte.
+  - Guard: `test_audit_agrupa_pelo_dia_de_brasilia`, com freezegun às 23h30 de Brasília.
+  - O nome do CSV também passou ao dia de Brasília.
+- **Os toggles de gestor invertiam o estado** (`src/web/routes/admin_overview.py`).
+  - Sintoma: o POST lia o valor atual e gravava o oposto, então dois cliques (ou um retry) desfaziam a ação. Gestor inexistente devolvia 204.
+  - Correção: a rota recebe `?desejado=`, e `definir_ativo`/`definir_role` (`FOR UPDATE`) só escrevem se o valor mudar. Gestor inexistente dá 404.
+  - Guards: `test_toggle_*_e_idempotente` e `test_toggle_de_gestor_inexistente_da_404_sem_audit`.
+- **O `bootstrap-admin` não reativava admin desligado, e os comandos do CLI não gravavam audit** (`src/scripts/admin.py`).
+  - Guards: `test_bootstrap_admin_reativa_admin_inativo`, `test_bootstrap_admin_grava_audit` e `test_grant_all_grava_audit`.
+  - O "não mudou" ficou numa convenção só, `had_effect`, como no F179.
+- **O `reconcile_meta` sem configuração saía sem gravar a execução** (`src/jobs/meta_resync.py`).
+  - Sintoma: sem business id ou sem token, o alerta de job não via o no-op.
+  - Guards: `test_sem_business_id_o_job_nao_reconcilia` e `test_sem_token_o_job_nao_reconcilia`.
+- **Um corpo 200 que não é objeto levantava `AttributeError` em `fetch_paginated`** (`src/meta_ads/graph.py`).
+  - Correção: devolve `complete=False`, o que bloqueia o lado destrutivo do reconcile (F93).
+  - Guards: `test_fetch_paginated_corpo_lista_*`.
+
+### Verificação
+
+- Cada guard foi visto vermelho contra o código antigo na task (ledger da Parte A).
+- Em produção: revisão `00190-2zl`, `/health?deep=1` e leituras Google e Meta.
+
+**Fora, com o motivo:**
+- **Clique real nos toggles em produção:** pendente, com o Wellington.
+- **`bootstrap-admin` concorrente sobre e-mail inexistente:** pode colidir por unique violation. Fica fora porque o operador roda à mão, o erro é alto e nada se corrompe.
+
+---
+
+## F209 (MEDIUM, ✅ CORRIGIDO 2026-11-11, #239 e #240, revisões `00200-8dj` e `00201-vwn`) — escrita de governança que não distinguia o que muda nem o que se pode aplicar
+
+Duas instâncias da mesma família: **a escrita fazia mais do que a decisão pedia**.
+
+### O `grant-all` reescrevia a procedência de toda concessão ativa
+
+**Sintoma.**
+- Desde a G0 (#234), o `ON CONFLICT` do `grant_all_active` gravava `granted_at = now()` e `granted_by` em toda linha, viva ou não.
+- O CLI passava o próprio gestor como autor de si mesmo.
+- Cada execução apagava quem tinha concedido o quê.
+- O `n` devolvido contava linhas tocadas, não mudanças, então o `had_effect` do audit mentia na segunda execução.
+
+**Correção.** Decisão do Wellington (11/11, "só tocar o que muda"):
+- o `DO UPDATE ... WHERE revoked_at IS NOT NULL OR access_level IS DISTINCT FROM EXCLUDED.access_level` pula a linha ativa no mesmo nível;
+- o CLI exige `--by <admin ativo>`, grava esse admin como autor e o põe no `params_summary`.
+
+**Guards.**
+- `test_grant_all_active_nao_toca_concessao_ativa_e_igual`: ficava vermelho com o código antigo, porque o `n == 0` falhava e o autor era reescrito.
+- `test_grant_all_active_promocao_read_para_write_registra_o_autor`.
+- `test_grant_all_recusa_autor_que_nao_e_admin[autor-inexistente|autor-nao-admin|admin-desligado]`.
+- `test_grant_all_grava_audit`: a segunda execução dá `target_count 0` e `had_effect false`.
+
+A revisão final pegou dois casos: o admin desligado, que ainda tem `role='admin'`, e o autor ausente do audit.
+
+### Um tipo de recomendação do v25 que troca a meta de conversão era aplicável
+
+**Sintoma.**
+- `CAMPAIGN_SPECIFIC_APP_GOAL` (v25.1) não tem parâmetro de apply e muda o que o Smart Bidding persegue.
+- Com o enum no v24, ele confirmava por ser desconhecido, e o token confirmado aplicava.
+
+**Correção.** Decisão do Wellington: só leitura. A recusa vale em dois pontos:
+- na tool;
+- no `pre_check` do `apply_change`. A revisão final mediu que um token emitido antes do deploy, com impressão `valores: {}`, passava pelo recheck de concorrência e aplicava.
+
+**Guards.**
+- `test_o_tipo_so_leitura_e_recusado_sem_escrever_nada`.
+- `test_token_de_tipo_so_leitura_recusa_sem_ler_nem_aplicar`: vermelho antes do conserto.
+- `test_o_tipo_so_leitura_nunca_e_auto_no_blast_radius`.
+- Guard de classe: `test_versao_do_sdk_em_src.py`. Todo import versionado do SDK em `src/` tem de falar a versão padrão do client.
+
+**Na mesma PR.**
+- Os dois tipos de lance do v25.2 entraram sob confirmação, com o alvo novo derivado.
+- O enum foi para o v25 **junto** com as entradas. O import sozinho poria os dois tipos de lance em AUTO ([levantamento K1](levantamento-recomendacoes-v25-2026-11-11.md)).
+
+**Fora, com o motivo:**
+- **Descrições de `apply_recommendation`/`get_recommendations`:** seguem dizendo "SDK v24" e não citam `so_leitura`. O snapshot de schemas não se regera sem decisão do Wellington.
+- **Preview dos 3 tipos novos com dado real:** não visto. Nenhuma conta V4 tinha esses tipos pendentes em 11/11 (medido na 1171969590).
+- **Promoção read→write com autor novo:** vai além do texto da decisão e aguarda confirmação.
+
+**🔑 Lição:** a recusa de política vive também no executor que **consome** o token, não só na porta que o emite. Entre emitir e consumir pode haver um deploy.
+
+---
+
+## F210 (LOW, em parte, achado em 2026-11-10) — o codec de token assinado aceita o que devia recusar
+
+Achados na revisão da Task H1 (#235). O probe diferencial entre o código antigo e o novo deu saída idêntica, então os três são **pré-existentes**. Todos exigem a chave de assinatura.
+
+- **`iat` futuro aceito sem limite — ABERTO** (`src/auth/token_assinado.py:131`).
+  - A checagem é só `(time.time() - iat) > ttl`, então um token com `iat=10**30` nunca expira.
+  - Remédio provável: recusar `iat` além de uma folga de relógio.
+- **Corpo não-UTF-8 com HMAC válido — ABERTO** (`token_assinado.py:118`, `body.decode("utf-8")`).
+  - Levanta `UnicodeDecodeError` cru em vez do erro do domínio (`MensagensDeErro`).
+- **Codec usável pelo reexport — ✅ CORRIGIDO 2026-11-11, #240.**
+  - Sintoma: `oauth_state` e `panel_session` importam `assinar`/`verificar`, que viram atributos deles. `from src.auth.oauth_state import assinar` cunhava token de audiência arbitrária, e o guard `test_token_assinado_privado` não via.
+  - Guard novo: `test_ninguem_usa_o_codec_pelo_reexport_dos_wrappers`, com os nomes derivados do AST dos wrappers.
+  - Sabotagem medida: um import pelo reexport num arquivo de `src/` derruba só o guard novo; o antigo seguia verde.
+
+**Fora, com o motivo:**
+- O scanner não trata import relativo nem formas dinâmicas (`getattr` com nome variável, `importlib`). Hoje o mypy strict com `no_implicit_reexport` recusa as formas diretas.
+- Os dois ABERTOS não têm teste fixo (minor da H1).
+
+---
+
+## F211 (MEDIUM, ✅ CORRIGIDO 2026-11-11, #238, revisão `00199-phh`) — sinal verde que não falava do que ia para produção
+
+Família de processo e de guard da varredura de 10/11: **o verde vinha de outro lugar, não do que seria entregue**.
+
+### Gate local e CI rodavam ferramentas diferentes
+
+- **Sintoma:** o `pyproject` pedia `ruff>=0.7.0` e `mypy>=1.13.0`. O CI resolvia para a versão mais nova (ruff 0.17.4 e mypy 2.4.1, medido no run 43002606115), e a `.venv` tinha 0.15.18 e 2.1.0. O #233 passou no gate e caiu no CI por SIM102.
+- **Correção:** as duas versões estão fixadas com `==`. O passo 1 do gate (`scripts/check_ferramentas_fixadas.py`) recusa `.venv` defasada e mostra o `pip install` que conserta.
+- **Guards:** `tests/unit/test_ferramentas_fixadas.py`, inclusive o teste que exercita o `main()` (a sabotagem `return 0` ficou vermelha).
+- Em 11/11 o passo já pegou um SIM102 no gate local.
+
+### O `SERVING_REVISION` do log do deploy é a revisão de antes
+
+- É a referência do rollback, não a revisão nova.
+- Medido em 10/11, quando o relato atribuiu revisões erradas ao #227 e ao #223.
+- A revisão nova sai da linha "has been deployed and is serving 100 percent" ou do `gcloud`.
+- Sem código: registrado em `estado-atual.md` e na memória.
+
+### Guards nascidos mais estreitos que a invariante
+
+Todos fechados antes do merge, pela revisão da task ou pela final:
+- **Parte B, quatro guards:** um registro binário de divergência, uma allowlist sem contagem, uma regex de GAQL que só via literal e um stub de enum único.
+- **E8:** o `classify` era testado pela ausência de uma substring do fallback, não comparado com o fallback medido.
+- **F4:** o guard de ciclo não pegava a volta inventário→acesso.
+- **G:** o EXPLAIN aceitava Bitmap Heap Scan com Sort.
+- **I3:** o teste do orçamento exclusivo só ficava vermelho por `TypeError` do `FakePool`.
+- **I4:** o guard de `dict_to_*` só via `.get(k, d)`. Foi ampliado no #240 para `or X`, `pop`, `setdefault` e mescla de defaults.
+
+### Premissa de segurança errada no plano (E3)
+
+- A premissa "a conta já passou pelo gate" era falsa, porque o gate Meta roda dentro de `run_meta_graph_get`.
+- Ler a moeda do inventário antes do gate vazaria a moeda de conta sem acesso.
+- A execução mediu isso e passou a chamar `can_manager_access` antes (#232).
+
+**Fora, com o motivo:**
+- O guard de `dict_to_*` ainda não pega `IfExp` (`d[k] if k in d else 0`), `dict(P, **d)` nem `d |= {...}`.
+- O lockfile de produção não inclui as ferramentas de dev, então não há nada a fixar ali.
+
+**🔑 Lição:** o gate só prova o que ele mesmo executa. Versão da ferramenta, revisão do deploy e premissa do plano são afirmações que precisam de medição própria.

@@ -106,7 +106,10 @@ antes do PR, merge com `--match-head-commit`, deploy verificado antes da parte s
 - **Parte J e F207** numa sessão com ele, começando pelos logs de produção do resync.
 - Filtro de conta do `/admin/audit` só lista contas Google.
 
-## Achados para o catálogo (`/findings-add`, que é dele)
+## Achados para o catálogo — catalogados em 11/11 como F208–F211
+
+F208 (Parte A), F209 (`grant-all` e tipo de app do v25), F210 (codec de token, em parte), F211
+(ruff/mypy, `SERVING_REVISION`, guards estreitos, E3); F167 atualizado. A lista de origem fica abaixo.
 
 - Os 6 bugs da Parte A; `SERVING_REVISION` é a revisão anterior.
 - Guards nascidos mais estreitos que a invariante, todos fechados antes do merge: B1–B4, E8 (substring
