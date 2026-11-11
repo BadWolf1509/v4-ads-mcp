@@ -4,6 +4,7 @@ from uuid import UUID
 
 import asyncpg
 
+from src.db.repositories._comum import linhas_afetadas
 from src.db.repositories.manager_account_access import NivelDeAcesso
 from src.db.repositories.meta_ad_accounts import MetaAdAccount, _row_to_account
 
@@ -91,7 +92,7 @@ async def grant_all_active(
         manager_id,
         granted_by,
     )
-    return int(result.split()[-1]) if result.startswith("INSERT") else 0
+    return linhas_afetadas(result)
 
 
 async def revoke(
@@ -325,4 +326,4 @@ async def copy_access(
             granted_by,
             from_manager_id,
         )
-    return int(result.rsplit(" ", 1)[-1])
+    return linhas_afetadas(result)

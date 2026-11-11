@@ -5,6 +5,7 @@ from uuid import UUID
 
 import asyncpg
 
+from src.db.repositories._comum import linhas_afetadas
 from src.db.repositories.google_ads_accounts import GoogleAdsAccount, _row_to_account
 
 # Motivos gravados por `revoke`/`revoke_for_inactive_accounts`. Constantes — não
@@ -93,7 +94,7 @@ async def grant_all_active(
         manager_id,
         granted_by,
     )
-    return int(result.split()[-1]) if result.startswith("INSERT") else 0
+    return linhas_afetadas(result)
 
 
 async def revoke(
@@ -319,7 +320,7 @@ async def copy_access(
             from_manager_id,
         )
     # asyncpg returns 'INSERT 0 N'
-    return int(result.rsplit(" ", 1)[-1])
+    return linhas_afetadas(result)
 
 
 async def revoke_for_inactive_accounts(

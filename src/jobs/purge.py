@@ -6,6 +6,7 @@ purge não deve derrubar o job de resync.
 """
 
 from src.db.connection import PoolValidado
+from src.db.repositories._comum import linhas_afetadas
 
 
 async def purge_expired(pool: PoolValidado) -> dict[str, int]:
@@ -34,4 +35,4 @@ async def purge_expired(pool: PoolValidado) -> dict[str, int]:
 
 
 def _parse_delete_count(result: str) -> int:
-    return int(result.split()[-1]) if result.startswith("DELETE") else 0
+    return linhas_afetadas(result)

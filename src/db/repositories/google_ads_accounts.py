@@ -7,6 +7,7 @@ from typing import Any
 import asyncpg
 import structlog
 
+from src.db.repositories._comum import linhas_afetadas
 from src.google_ads.reconcile import InventoryRow
 
 log = structlog.get_logger(__name__)
@@ -170,7 +171,7 @@ async def deactivate(conn: asyncpg.Connection, *, customer_ids: list[str]) -> in
         "WHERE customer_id = ANY($1::text[]) AND is_active = true",
         customer_ids,
     )
-    return int(result.split()[-1]) if result.startswith("UPDATE") else 0
+    return linhas_afetadas(result)
 
 
 async def list_inventory_rows(conn: asyncpg.Connection) -> list[InventoryRow]:
@@ -249,7 +250,7 @@ async def mark_inactive_except(
             keep_customer_ids,
         )
     # asyncpg.execute returns 'UPDATE N'
-    return int(result.split()[-1]) if result.startswith("UPDATE") else 0
+    return linhas_afetadas(result)
 
 
 async def list_all(conn: asyncpg.Connection) -> list[GoogleAdsAccount]:

@@ -6,12 +6,8 @@ from typing import Any
 
 import asyncpg
 
+from src.db.repositories._comum import linhas_afetadas
 from src.meta_ads.reconcile import InventoryRow
-
-
-def _rows_affected(result: str) -> int:
-    """asyncpg devolve o command tag ('UPDATE 3'); extrai a contagem."""
-    return int(result.split()[-1]) if result.startswith("UPDATE") else 0
 
 
 @dataclass(slots=True, frozen=True)
@@ -186,7 +182,7 @@ async def deactivate(conn: asyncpg.Connection, *, ad_account_ids: list[str]) -> 
     """
     if not ad_account_ids:
         return 0
-    return _rows_affected(
+    return linhas_afetadas(
         await conn.execute(
             "UPDATE meta_ad_accounts SET is_active = false "
             "WHERE ad_account_id = ANY($1::text[]) AND is_active = true",
