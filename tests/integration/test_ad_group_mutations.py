@@ -93,7 +93,7 @@ async def test_update_ad_group_bid_small_change_auto(db, session_ctx):
             AsyncMock(return_value=None),  # F12 pre-flight passes (Sprint 3b.8)
         ),
         patch(
-            "src.mcp.tools.update_ad_group_bid.run_report",
+            "src.google_ads.preflight.run_report",
             AsyncMock(return_value=fake_lookup),
         ),
         patch(
@@ -137,7 +137,7 @@ async def test_update_ad_group_bid_large_change_dry_runs(db, session_ctx):
             AsyncMock(return_value=None),  # F12 pre-flight passes (Sprint 3b.8)
         ),
         patch(
-            "src.mcp.tools.update_ad_group_bid.run_report",
+            "src.google_ads.preflight.run_report",
             AsyncMock(return_value=fake_lookup),
         ),
     ):
@@ -162,7 +162,7 @@ async def test_update_ad_group_bid_returns_error_for_missing(db, session_ctx):
             AsyncMock(return_value=None),  # F12 pre-flight passes (Sprint 3b.8)
         ),
         patch(
-            "src.mcp.tools.update_ad_group_bid.run_report",
+            "src.google_ads.preflight.run_report",
             AsyncMock(return_value=[]),  # ad group not found
         ),
     ):

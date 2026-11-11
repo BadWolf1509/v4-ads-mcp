@@ -31,7 +31,7 @@ from collections import Counter
 from typing import Any
 
 from src.google_ads.mutations import run_mutation
-from src.google_ads.reports import run_report
+from src.google_ads.preflight import buscar_interesses
 from src.governance.blast_radius import RiskLevel, classify
 from src.mcp.context import get_current
 from src.mcp.tools._common import classify_partial
@@ -162,23 +162,11 @@ async def _validate_user_interest_taxonomies(
         return None  # No user_interest attachments; skip GAQL lookup
 
     # `ui_id` sai de `audience_resource_name.rsplit("/")` — texto do gestor.
-    ids_clause = ", ".join(str(int(x)) for x in user_interest_ids)
-    query = (
-        f"SELECT user_interest.user_interest_id, user_interest.taxonomy_type "
-        f"FROM user_interest "
-        f"WHERE user_interest.user_interest_id IN ({ids_clause})"
-    )
-    rows = await run_report(
+    rows = await buscar_interesses(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
-        query=query,
-        row_formatter=lambda r: {
-            "id": str(r.user_interest.user_interest_id),
-            "taxonomy_type": r.user_interest.taxonomy_type.name,
-        },
-        operation_name="apply_audience_preflight_taxonomy_lookup",
-        audit_this_call=False,  # internal read for validation, not user-facing audit
+        ids=user_interest_ids,
     )
 
     taxonomy_by_id = {row["id"]: row["taxonomy_type"] for row in rows}

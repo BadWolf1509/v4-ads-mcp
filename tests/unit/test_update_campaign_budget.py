@@ -25,6 +25,7 @@ from uuid import uuid4
 import pytest
 
 from src.db import connection
+from src.google_ads import preflight
 from src.mcp.tools import update_ad_schedule as ad_schedule_mod
 from src.mcp.tools import update_campaign_budget as mod
 from tests.unit.fixtures.fake_pool import FakePool
@@ -118,7 +119,8 @@ def _wire(
         captured.update(kwargs)
         return "TOKEN123"
 
-    monkeypatch.setattr(mod, "run_report", _run)
+    monkeypatch.setattr(preflight, "run_report", _run)  # o lookup do orcamento
+    monkeypatch.setattr(mod, "run_report", _run)  # a leitura das irmas (fica na tool)
     monkeypatch.setattr("src.mcp.tools._mutate_common.create_pending", _create_pending)
     monkeypatch.setattr(connection, "get_pool", lambda: FakePool())
     return captured
@@ -310,7 +312,7 @@ async def test_campanha_inexistente_continua_error_envelope(
     async def _run(**kwargs: Any) -> list[dict[str, Any]]:
         return []
 
-    monkeypatch.setattr(mod, "run_report", _run)
+    monkeypatch.setattr(preflight, "run_report", _run)
     out = await mod.update_campaign_budget(
         {"customer_id": _CUSTOMER, "campaign_id": "999", "new_daily_budget_brl": 100.0}
     )
@@ -329,7 +331,7 @@ async def test_a_query_das_irmas_nao_sai_quando_o_orcamento_e_exclusivo(
         fmt = kwargs["row_formatter"]
         return [fmt(_linha(kwargs["query"], _valores_alvo(explicitly_shared=False)))]
 
-    monkeypatch.setattr(mod, "run_report", _run)
+    monkeypatch.setattr(preflight, "run_report", _run)
 
     async def _create_pending(conn: Any, **kwargs: Any) -> str:
         return "TOKEN123"
@@ -356,7 +358,7 @@ async def test_orcamento_atual_zero_nao_vira_variacao_de_zero_porcento(
         formatar = kwargs["row_formatter"]
         return [formatar(_linha(kwargs["query"], zerado))]
 
-    monkeypatch.setattr(mod, "run_report", _run)
+    monkeypatch.setattr(preflight, "run_report", _run)
     envelope: dict[str, Any] = await mod.update_campaign_budget(
         {"customer_id": _CUSTOMER, "campaign_id": _ALVO_ID, "new_daily_budget_brl": 100.0}
     )

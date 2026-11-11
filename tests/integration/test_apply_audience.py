@@ -127,7 +127,7 @@ async def test_apply_audience_full_cycle_audits(db, session_ctx):
             return_value="req-apply-aud",
         ),
         patch(
-            "src.mcp.tools.apply_audience.run_report",
+            "src.google_ads.preflight.run_report",
             AsyncMock(return_value=fake_taxonomy_rows),
         ),
     ):

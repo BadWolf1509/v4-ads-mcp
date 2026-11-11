@@ -4,6 +4,7 @@
 from typing import Any
 
 from src.google_ads.orcamento_compartilhado import montar_bloco
+from src.google_ads.preflight import buscar_orcamento_da_campanha
 from src.google_ads.queries._common import (
     arredondado,
     brl_para_micros,
@@ -35,19 +36,6 @@ _SCHEMA: dict[str, Any] = {
     "required": ["customer_id", "campaign_id", "new_daily_budget_brl"],
     "additionalProperties": False,
 }
-
-
-def _row_formatter(row: Any) -> dict[str, Any]:
-    return {
-        "campaign_budget_resource_name": row.campaign_budget.resource_name,
-        "current_amount_micros": int(row.campaign_budget.amount_micros),
-        "campaign_name": row.campaign.name,
-        "budget_id": str(row.campaign_budget.id),
-        # C1: sem este campo a tool escreve no recurso ORCAMENTO nomeando uma campanha
-        # so. Proto-plus devolve o zero-value do campo nao selecionado (F145), entao
-        # tirar `explicitly_shared` da GAQL apagaria o aviso em silencio.
-        "explicitly_shared": bool(row.campaign_budget.explicitly_shared),
-    }
 
 
 async def _bloco_de_orcamento_compartilhado(
@@ -110,22 +98,6 @@ async def update_campaign_budget(args: dict[str, Any]) -> dict[str, Any]:
     new_amount_brl = float(args["new_daily_budget_brl"])
     new_amount_micros = brl_para_micros(new_amount_brl)
 
-    # Resolve current budget + resource name via GAQL.
-    # `campaign_budget.id` e `.explicitly_shared` sao superficie ja probada por
-    # `validate_gaql` em 02/09 (ver docstring de src/google_ads/queries/ad_schedule.py).
-    query = f"""
-        SELECT
-          campaign.id,
-          campaign.name,
-          campaign_budget.id,
-          campaign_budget.resource_name,
-          campaign_budget.explicitly_shared,
-          campaign_budget.amount_micros
-        FROM campaign
-        WHERE campaign.id = {campaign_id}
-        LIMIT 1
-    """.strip()
-
     async def _consulta(gaql: str, parser: Any) -> list[dict[str, Any]]:
         return await run_report(
             manager_id=ctx.manager_id,
@@ -136,15 +108,20 @@ async def update_campaign_budget(args: dict[str, Any]) -> dict[str, Any]:
             operation_name="update_campaign_budget_lookup",
         )
 
-    rows = await _consulta(query, _row_formatter)
-    if not rows:
+    # Resolve current budget + resource name via GAQL.
+    info = await buscar_orcamento_da_campanha(
+        manager_id=ctx.manager_id,
+        session_id=ctx.session_id,
+        customer_id=customer_id,
+        campaign_id=campaign_id,
+    )
+    if info is None:
         return error_envelope(
             "update_campaign_budget",
             f"Campanha {campaign_id} nao encontrada na conta {customer_id}.",
             customer_id=customer_id,
         )
 
-    info = rows[0]
     current_micros = info["current_amount_micros"]
     current_brl = micros_to_currency(current_micros)
     delta_pct = percentual(razao(new_amount_micros - current_micros, current_micros))

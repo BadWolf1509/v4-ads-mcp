@@ -210,7 +210,7 @@ async def _update_keyword_bid() -> Any:
         ),
         (
             "apply_audience.py::_validate_user_interest_taxonomies",
-            "src.mcp.tools.apply_audience.run_report",
+            "src.google_ads.preflight.run_report",
             _validate_user_interest,
         ),
         (
@@ -220,12 +220,12 @@ async def _update_keyword_bid() -> Any:
         ),
         (
             "update_ad_group_bid.py::update_ad_group_bid",
-            "src.mcp.tools.update_ad_group_bid.run_report",
+            "src.google_ads.preflight.run_report",
             _update_ad_group_bid,
         ),
         (
             "update_keyword_bid.py::update_keyword_bid",
-            "src.mcp.tools.update_keyword_bid.run_report",
+            "src.google_ads.preflight.run_report",
             _update_keyword_bid,
         ),
     ],

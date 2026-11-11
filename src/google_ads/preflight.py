@@ -920,3 +920,173 @@ async def fetch_keyword_texts(
         }
         for r in rows
     }
+
+
+def _linha_de_lance_de_grupo(row: Any) -> dict[str, Any]:
+    return {
+        "ad_group_id": str(row.ad_group.id),
+        "ad_group_name": row.ad_group.name,
+        "current_cpc_bid_micros": int(row.ad_group.cpc_bid_micros),
+    }
+
+
+async def buscar_lances_de_grupo(
+    *,
+    manager_id: UUID,
+    session_id: UUID,
+    customer_id: str,
+    ad_group_ids: list[str],
+) -> dict[str, dict[str, Any]]:
+    """Lance atual (CPC) de cada grupo, indexado por `ad_group_id`.
+
+    1 lookup GAQL. Id ausente na conta simplesmente nao aparece no dict: quem chama
+    decide o que fazer. `int(x)` recusa id nao numerico antes de a query sair.
+    """
+    ids_clause = ", ".join(str(int(x)) for x in ad_group_ids)
+    query = f"""
+        SELECT ad_group.id, ad_group.name, ad_group.cpc_bid_micros
+        FROM ad_group
+        WHERE ad_group.id IN ({ids_clause})
+    """.strip()
+
+    rows = await run_report(
+        manager_id=manager_id,
+        session_id=session_id,
+        customer_id=customer_id,
+        query=query,
+        row_formatter=_linha_de_lance_de_grupo,
+        operation_name="update_ad_group_bid_lookup",
+    )
+    return {r["ad_group_id"]: r for r in rows}
+
+
+def _linha_de_lance_de_keyword(row: Any) -> dict[str, Any]:
+    return {
+        "ad_group_id": str(row.ad_group.id),
+        "criterion_id": str(row.ad_group_criterion.criterion_id),
+        "keyword_text": row.ad_group_criterion.keyword.text,
+        "current_cpc_bid_micros": int(row.ad_group_criterion.cpc_bid_micros),
+    }
+
+
+async def buscar_lances_de_keyword(
+    *,
+    manager_id: UUID,
+    session_id: UUID,
+    customer_id: str,
+    pares: list[tuple[str, str]],
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """Lance atual de cada keyword, indexado por `(ad_group_id, criterion_id)`.
+
+    `pares` e `(ad_group_id, criterion_id)`; a query filtra so por `criterion_id`
+    (como sempre), entao o par que nao volta e o que a conta nao tem naquele grupo.
+    `int(x)` recusa id nao numerico antes de a query sair.
+    """
+    crit_ids = [crit for _grupo, crit in pares]
+    ids_clause = ", ".join(str(int(x)) for x in crit_ids)
+    query = f"""
+        SELECT
+          ad_group.id,
+          ad_group_criterion.criterion_id,
+          ad_group_criterion.keyword.text,
+          ad_group_criterion.cpc_bid_micros
+        FROM keyword_view
+        WHERE ad_group_criterion.criterion_id IN ({ids_clause})
+    """.strip()
+
+    rows = await run_report(
+        manager_id=manager_id,
+        session_id=session_id,
+        customer_id=customer_id,
+        query=query,
+        row_formatter=_linha_de_lance_de_keyword,
+        operation_name="update_keyword_bid_lookup",
+    )
+    return {(r["ad_group_id"], r["criterion_id"]): r for r in rows}
+
+
+def _linha_de_orcamento_da_campanha(row: Any) -> dict[str, Any]:
+    return {
+        "campaign_budget_resource_name": row.campaign_budget.resource_name,
+        "current_amount_micros": int(row.campaign_budget.amount_micros),
+        "campaign_name": row.campaign.name,
+        "budget_id": str(row.campaign_budget.id),
+        # C1: sem este campo a tool escreve no recurso ORCAMENTO nomeando uma campanha
+        # so. Proto-plus devolve o zero-value do campo nao selecionado (F145), entao
+        # tirar `explicitly_shared` da GAQL apagaria o aviso em silencio.
+        "explicitly_shared": bool(row.campaign_budget.explicitly_shared),
+    }
+
+
+async def buscar_orcamento_da_campanha(
+    *,
+    manager_id: UUID,
+    session_id: UUID,
+    customer_id: str,
+    campaign_id: str,
+) -> dict[str, Any] | None:
+    """Orcamento atual da campanha (resource name, valor, compartilhamento), ou `None`
+    quando a campanha nao existe na conta.
+
+    `campaign_budget.id` e `.explicitly_shared` sao superficie ja probada por
+    `validate_gaql` em 02/09 (ver docstring de src/google_ads/queries/ad_schedule.py).
+    """
+    query = f"""
+        SELECT
+          campaign.id,
+          campaign.name,
+          campaign_budget.id,
+          campaign_budget.resource_name,
+          campaign_budget.explicitly_shared,
+          campaign_budget.amount_micros
+        FROM campaign
+        WHERE campaign.id = {campaign_id}
+        LIMIT 1
+    """.strip()
+
+    rows = await run_report(
+        manager_id=manager_id,
+        session_id=session_id,
+        customer_id=customer_id,
+        query=query,
+        row_formatter=_linha_de_orcamento_da_campanha,
+        operation_name="update_campaign_budget_lookup",
+    )
+    return rows[0] if rows else None
+
+
+def _linha_de_interesse(row: Any) -> dict[str, Any]:
+    return {
+        "id": str(row.user_interest.user_interest_id),
+        "taxonomy_type": row.user_interest.taxonomy_type.name,
+    }
+
+
+async def buscar_interesses(
+    *,
+    manager_id: UUID,
+    session_id: UUID,
+    customer_id: str,
+    ids: list[str],
+) -> list[dict[str, Any]]:
+    """`{id, taxonomy_type}` de cada `user_interest` pedido (1 lookup GAQL em lote).
+
+    Leitura interna de validacao: nao entra no audit do gestor (`audit_this_call=False`).
+    `ids` vem de `audience_resource_name.rsplit("/")` — texto do gestor —, entao `int(x)`
+    recusa id nao numerico antes de a query sair.
+    """
+    ids_clause = ", ".join(str(int(x)) for x in ids)
+    query = (
+        f"SELECT user_interest.user_interest_id, user_interest.taxonomy_type "
+        f"FROM user_interest "
+        f"WHERE user_interest.user_interest_id IN ({ids_clause})"
+    )
+    return await run_report(
+        manager_id=manager_id,
+        session_id=session_id,
+        customer_id=customer_id,
+        query=query,
+        row_formatter=_linha_de_interesse,
+        operation_name="apply_audience_preflight_taxonomy_lookup",
+        audit_this_call=False,  # internal read for validation, not user-facing audit
+    )

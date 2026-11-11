@@ -221,8 +221,51 @@ async def test_interesses_query_kwargs_e_retorno(ctx: McpRequestContext) -> None
     assert erro is not None and "VERTICAL_GEO" in erro
 
 
-# Alvos do patch: onde o nome e procurado (preflight, depois da Task I3).
-LOOKUP_GRUPO = "src.mcp.tools.update_ad_group_bid.run_report"
-LOOKUP_KEYWORD = "src.mcp.tools.update_keyword_bid.run_report"
-LOOKUP_ORCAMENTO = "src.mcp.tools.update_campaign_budget.run_report"
-LOOKUP_INTERESSES = "src.mcp.tools.apply_audience.run_report"
+# Alvos do patch: onde o nome e procurado (preflight, desde a Task I3).
+LOOKUP_GRUPO = "src.google_ads.preflight.run_report"
+LOOKUP_KEYWORD = "src.google_ads.preflight.run_report"
+LOOKUP_ORCAMENTO = "src.google_ads.preflight.run_report"
+LOOKUP_INTERESSES = "src.google_ads.preflight.run_report"
+
+
+@pytest.mark.asyncio
+async def test_funcoes_do_preflight_indexam_o_que_o_run_report_devolve() -> None:
+    from src.google_ads import preflight
+
+    mid, sid = uuid4(), uuid4()
+    base = {"manager_id": mid, "session_id": sid, "customer_id": _CUSTOMER}
+    grupo = {"ad_group_id": "1", "ad_group_name": "G", "current_cpc_bid_micros": 1}
+    kw = {"ad_group_id": "1", "criterion_id": "9", "keyword_text": "k", "current_cpc_bid_micros": 1}
+    orc = {"campaign_budget_resource_name": "rn", "current_amount_micros": 1}
+    with patch(LOOKUP_GRUPO, AsyncMock(return_value=[grupo])):
+        assert await preflight.buscar_lances_de_grupo(**base, ad_group_ids=["1"]) == {"1": grupo}
+    with patch(LOOKUP_KEYWORD, AsyncMock(return_value=[kw])):
+        assert await preflight.buscar_lances_de_keyword(**base, pares=[("1", "9")]) == {
+            ("1", "9"): kw
+        }
+    with patch(LOOKUP_ORCAMENTO, AsyncMock(return_value=[orc])):
+        assert await preflight.buscar_orcamento_da_campanha(**base, campaign_id="5") == orc
+    with patch(LOOKUP_ORCAMENTO, AsyncMock(return_value=[])):
+        assert await preflight.buscar_orcamento_da_campanha(**base, campaign_id="5") is None
+    with patch(LOOKUP_INTERESSES, AsyncMock(return_value=[])):
+        assert await preflight.buscar_interesses(**base, ids=["1"]) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("nome", ["grupo", "keyword", "interesses"])
+async def test_id_nao_numerico_recusa_antes_do_run_report(nome: str) -> None:
+    from src.google_ads import preflight
+
+    base = {"manager_id": uuid4(), "session_id": uuid4(), "customer_id": _CUSTOMER}
+    chamadas = {
+        "grupo": preflight.buscar_lances_de_grupo(**base, ad_group_ids=["1 OR 1=1"]),
+        "keyword": preflight.buscar_lances_de_keyword(**base, pares=[("1", "x")]),
+        "interesses": preflight.buscar_interesses(**base, ids=["x"]),
+    }
+    fake = AsyncMock()
+    with patch("src.google_ads.preflight.run_report", fake), pytest.raises(ValueError):
+        await chamadas[nome]
+    fake.assert_not_awaited()
+    for outra, coro in chamadas.items():
+        if outra != nome:
+            coro.close()
