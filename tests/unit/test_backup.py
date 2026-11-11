@@ -281,6 +281,8 @@ async def test_crash_do_backup_grava_e_fecha_o_pool() -> None:
 
     crash.assert_awaited_once()
     assert crash.await_args.kwargs["operation"] == "db_backup"
+    assert crash.await_args.kwargs["platform"] == "google"
+    assert str(crash.await_args.kwargs["exc"]) == "db down"
     close_pool.assert_awaited_once()
 
 

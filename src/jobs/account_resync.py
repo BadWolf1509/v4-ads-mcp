@@ -282,7 +282,7 @@ async def run() -> int:
 
 
 async def _etapa_google(pool: connection.PoolValidado, settings: Settings) -> Desfecho:
-    """Reconcilia o inventário Google contra o MCC. True = falhou (bloqueio).
+    """Reconcilia o inventário Google contra o MCC e devolve o `Desfecho`.
 
     Três desfechos (`Desfecho`), e o terceiro ENCERRA o job (Meta e purge não
     rodam): `OK`, `FALHOU` (bloqueio auditado como erro — o job termina o resto
