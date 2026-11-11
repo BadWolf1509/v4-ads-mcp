@@ -58,3 +58,16 @@ def test_divergencias_compara_instalada_com_fixada(
 def test_gate_confere_as_versoes_antes_do_ruff() -> None:
     nomes = [s.name for s in BASE_STEPS]
     assert nomes[0] == "ferramentas na versao fixada", nomes
+
+
+@pytest.mark.parametrize(("versao_ruff", "rc"), [("0.17.4", 0), ("0.15.18", 1)])
+def test_main_le_a_versao_instalada_e_falha_na_divergencia(
+    monkeypatch: pytest.MonkeyPatch, versao_ruff: str, rc: int
+) -> None:
+    """O fio inteiro: pyproject real + `importlib.metadata` + codigo de saida."""
+    import check_ferramentas_fixadas as modulo
+
+    pins = pins_do_pyproject(RAIZ / "pyproject.toml")
+    versoes = {**pins, "ruff": versao_ruff if rc else pins["ruff"]}
+    monkeypatch.setattr(modulo.metadata, "version", versoes.__getitem__)
+    assert modulo.main() == rc

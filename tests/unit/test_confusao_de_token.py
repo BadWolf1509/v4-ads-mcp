@@ -240,7 +240,7 @@ def test_aud_e_keyword_only_sem_default_e_tipado_pela_familia(
     O tipo fechado entra aqui pelo mesmo motivo: voltar para `str` não quebra
     nada em lugar nenhum, e o `mypy --strict` deixa de pegar o typo casado nos 9
     call-sites de `src/` — os únicos que o gate type-checa, porque ele roda
-    `mypy src` (`scripts/_runner.py:26`) e nunca `tests/`. Os call-sites daqui
+    `mypy src` (passo `mypy` de `scripts/_runner.py`) e nunca `tests/`. Os call-sites daqui
     de dentro não são cobertos pelo `Literal` em gate nenhum: medido em
     2026-09-06, um `aud="pannel"` plantado neste arquivo passou VERDE no
     `mypy src` e no pytest, porque a asserção daquele teste não dependia do
