@@ -170,6 +170,19 @@ def _casos() -> list[Any]:
             (nome, ver, exc, _cunha_corpo(bytes([0xFF, 0xFE]) + b" nao e utf-8"), msgs["json"]),
             (nome, ver, exc, _cunha(aud_ok(aud, **extra) | {"iat": 10**30}), msgs["iat"]),
             (nome, ver, exc, _cunha(aud_ok(aud, **extra) | {"iat": True}), msgs["iat"]),
+            # Revisao final do #245: a mesma classe em mais duas formas. `iat` com
+            # 400 digitos estourava `OverflowError` na conta com float; mais de
+            # 4300 digitos, `ValueError` do limite do `json.loads` (nao e
+            # `JSONDecodeError`). As duas viravam 500 em quem so trata `erro`.
+            (nome, ver, exc, _cunha(aud_ok(aud, **extra) | {"iat": 10**400}), msgs["iat"]),
+            (nome, ver, exc, _cunha(aud_ok(aud, **extra) | {"iat": -(10**400)}), msgs["iat"]),
+            (
+                nome,
+                ver,
+                exc,
+                _cunha_corpo(b'{"aud":"' + aud.encode() + b'","iat":1' + b"0" * 5000 + b"}"),
+                msgs["json"],
+            ),
         ]
     return casos
 

@@ -6229,6 +6229,9 @@ Achados na revisão da Task H1 (#235). O probe diferencial entre o código antig
 **Fora, com o motivo:**
 - O scanner não trata import relativo nem formas dinâmicas (`getattr` com nome variável, `importlib`). Hoje o mypy strict com `no_implicit_reexport` recusa as formas diretas.
 - Tokens com `iat` no futuro dentro da folga continuam válidos por `ttl + folga` a partir de agora (custo aceito do `leeway`).
+- A revisão final do #245 achou a mesma classe em mais duas formas, fechadas no mesmo PR: `iat` com centenas de dígitos (`OverflowError` na conta com float, ou "expirado" no negativo) e mais de 4300 dígitos (`ValueError` do limite do `json.loads`). Teto de magnitude `2**53` e `except ValueError`; casos novos no parametrizado, vermelhos antes.
+- O `iat` recusado por estar no futuro reusa a mensagem de `iat` de cada audiência — no painel ela diz "Missing iat", que engana no log (`panel_session_invalid`); mudar o texto mexeria no contrato das duas.
+- O convite do CLI de admin é assinado na máquina do operador: relógio mais de 5 min adiantado faz o convite ser recusado.
 
 ---
 
