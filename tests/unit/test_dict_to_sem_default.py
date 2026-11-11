@@ -41,7 +41,19 @@ def _inventa_valor(no: ast.AST) -> bool:
     - `d.setdefault(k, ...)` — grava o default no proprio dict;
     - `{**DEFAULTS, **d}` / `{"impressions": 0, **d}` — mescla com defaults:
       dict literal com desempacotamento E mais alguma entrada;
-    - `DEFAULTS | d` / `d | {...}` — a mesma mescla pelo operador.
+    - `DEFAULTS | d` / `d | {...}` — a mesma mescla pelo operador;
+    - `d |= {...}` — a mescla in-place (11/11, revisao do #240);
+    - `dict(P, **d)` / `dict(d, impressions=0)` — a mescla pelo construtor;
+    - `d[k] if k in d else 0` / `x if x is not None else 0` — o default num ramo
+      do `IfExp`: constante que nao e `None` de um lado, leitura do outro;
+    - `d.get(k) and d[k] or 0` — o `get` aninhado dentro do `or`.
+
+    Fica de fora, como limitacao declarada: duas etapas (`v = d.get(k)` e
+    depois `v or 0`), helper fora de `dict_to_*`, `getattr(obj, k, 0)`,
+    `ChainMap`/`defaultdict`, `max(d.get(k), 0)`, e default que nao e literal
+    (`... else -1`, `... else Decimal(0)`: o ramo precisa ser `ast.Constant`). E a excecao da colecao vazia
+    absolveria `len(d.get(x) or [])` — que inventa um 0 contavel; hoje nao
+    existe em `src/google_ads`.
     """
     if (_e_chamada(no, "get") or _e_chamada(no, "pop")) and isinstance(no, ast.Call):
         return (len(no.args) + len(no.keywords)) >= 2
@@ -53,12 +65,44 @@ def _inventa_valor(no: ast.AST) -> bool:
         # valor inventado, ha a colecao vazia que o proto ja quer dizer.
         if _colecao_vazia(no.values[-1]):
             return False
-        return any(_e_chamada(v, "get") for v in no.values[:-1])
+        return any(_e_chamada(sub, "get") for v in no.values[:-1] for sub in ast.walk(v))
     if isinstance(no, ast.Dict):
         return None in no.keys and len(no.keys) >= 2
     if isinstance(no, ast.BinOp) and isinstance(no.op, ast.BitOr):
         return isinstance(no.left, ast.Dict) or isinstance(no.right, ast.Dict)
+    if isinstance(no, ast.AugAssign) and isinstance(no.op, ast.BitOr):
+        return True
+    if isinstance(no, ast.Call) and isinstance(no.func, ast.Name) and no.func.id == "dict":
+        # `dict(a=1)` e literal honesto; mescla e posicional + keyword, ou dois posicionais.
+        return len(no.args) >= 2 or (len(no.args) >= 1 and bool(no.keywords))
+    if isinstance(no, ast.IfExp) and _pergunta_pela_ausencia(no.test):
+        return _default_num_ramo(no.body, no.orelse) or _default_num_ramo(no.orelse, no.body)
     return False
+
+
+def _pergunta_pela_ausencia(teste: ast.AST) -> bool:
+    """O `if` pergunta se o campo existe (`k in d`, `x is None`, `d.get(k)`)?
+
+    Sem isto, `d["nome"] if d["ativo"] else "N/A"` — rotulo honesto, com os dois
+    campos presentes — seria acusado (revisao do #246).
+    """
+    for sub in ast.walk(teste):
+        if isinstance(sub, ast.Compare) and any(
+            isinstance(op, ast.In | ast.NotIn | ast.Is | ast.IsNot) for op in sub.ops
+        ):
+            return True
+        if _e_chamada(sub, "get"):
+            return True
+    return False
+
+
+def _default_num_ramo(constante: ast.AST, leitura: ast.AST) -> bool:
+    """Um ramo e constante que nao e `None`; o outro le o dict (subscript ou `.get`)."""
+    if not isinstance(constante, ast.Constant) or constante.value is None:
+        return False
+    return any(
+        isinstance(sub, ast.Subscript) or _e_chamada(sub, "get") for sub in ast.walk(leitura)
+    )
 
 
 def _get_com_default(fonte: str) -> list[tuple[str, int]]:
@@ -115,6 +159,12 @@ def _fonte(corpo: str) -> str:
         '{"impressions": 0, **d}',
         'd | {"impressions": 0}',
         '_PADRAO | d if False else {**d, "clicks": 0}',
+        'd["impressions"] if "impressions" in d else 0',
+        'd.get("impressions") if "impressions" in d else 0',
+        '0 if d.get("impressions") is None else d["impressions"]',
+        "dict(_PADRAO, **d)",
+        "dict(d, impressions=0)",
+        'd.get("impressions") and d["impressions"] or 0',
     ],
 )
 def test_scanner_enxerga_as_formas_alem_do_get(corpo: str) -> None:
@@ -124,8 +174,23 @@ def test_scanner_enxerga_as_formas_alem_do_get(corpo: str) -> None:
 
 @pytest.mark.parametrize(
     "corpo",
-    ['d["impressions"]', 'd.get("campaign_id")', "{**d}", 'tuple(d.get("changed_fields") or [])'],
+    [
+        'd["impressions"]',
+        'd.get("campaign_id")',
+        "{**d}",
+        'tuple(d.get("changed_fields") or [])',
+        "dict(d)",
+        'd["a"] if "a" in d else None',
+        "dict(a=1)",
+        'd["nome"] if d["ativo"] else "N/A"',
+    ],
 )
 def test_scanner_nao_acusa_leitura_estrita(corpo: str) -> None:
     """Contraprova: copiar o dict, ler estrito e `.get` de um argumento passam."""
     assert not _get_com_default(_fonte(corpo)), corpo
+
+
+def test_scanner_enxerga_a_mescla_in_place() -> None:
+    """`d |= {...}` e instrucao, nao expressao: nao cabe no `_fonte` de `return`."""
+    fonte = 'def dict_to_x(d):\n    d |= {"impressions": 0}\n    return d\n'
+    assert _get_com_default(fonte) == [("dict_to_x", 2)]
