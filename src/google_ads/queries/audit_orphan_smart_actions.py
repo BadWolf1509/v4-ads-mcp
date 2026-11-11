@@ -77,13 +77,17 @@ def parse_conversion_action_row(row: Any) -> dict[str, Any]:
 
 
 def dict_to_conversion_action_row(d: dict[str, Any]) -> ConversionActionRow:
-    """Convert conversion_action row dict to ConversionActionRow dataclass (defensive)."""
+    """Convert conversion_action row dict to ConversionActionRow dataclass.
+
+    Estrito: campo ausente e bug do formatter (`parse_conversion_action_row`
+    sempre preenche os 7) e levanta `KeyError` — nao vira zero.
+    """
     return ConversionActionRow(
-        conversion_action_id=str(d.get("conversion_action_id", "")),
-        name=str(d.get("name", "")),
-        category=str(d.get("category", "")),
-        origin=str(d.get("origin", "")),
-        primary_for_goal=bool(d.get("primary_for_goal", False)),
-        status=str(d.get("status", "")),
-        all_conversions=float(d.get("all_conversions", 0.0)),
+        conversion_action_id=str(d["conversion_action_id"]),
+        name=str(d["name"]),
+        category=str(d["category"]),
+        origin=str(d["origin"]),
+        primary_for_goal=bool(d["primary_for_goal"]),
+        status=str(d["status"]),
+        all_conversions=float(d["all_conversions"]),
     )

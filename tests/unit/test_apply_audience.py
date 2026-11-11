@@ -217,7 +217,7 @@ async def test_preflight_allows_campaign_user_interest_exclusion():
 
     fake_run_report = AsyncMock(return_value=[{"id": "91501", "taxonomy_type": "IN_MARKET"}])
     with (
-        patch("src.mcp.tools.apply_audience.run_report", fake_run_report),
+        patch("src.google_ads.preflight.run_report", fake_run_report),
         patch("src.mcp.tools._mutate_common.create_pending", AsyncMock(return_value="TOKEN123")),
         patch("src.mcp.tools._mutate_common.connection") as conn_module,
     ):
@@ -270,7 +270,7 @@ async def test_auto_path_observation_under_threshold():
         return_value=[{"id": str(91500 + i), "taxonomy_type": "IN_MARKET"} for i in range(5)]
     )
     with (
-        patch("src.mcp.tools.apply_audience.run_report", fake_run_report),
+        patch("src.google_ads.preflight.run_report", fake_run_report),
         patch(
             "src.mcp.tools.apply_audience.run_mutation", AsyncMock(side_effect=fake_run_mutation)
         ),
@@ -309,7 +309,7 @@ async def test_confirm_path_exclusion_count_one():
 
     fake_run_report = AsyncMock(return_value=[{"id": "91501", "taxonomy_type": "IN_MARKET"}])
     with (
-        patch("src.mcp.tools.apply_audience.run_report", fake_run_report),
+        patch("src.google_ads.preflight.run_report", fake_run_report),
         patch("src.mcp.tools._mutate_common.create_pending", AsyncMock(return_value="ABC12345")),
         patch("src.mcp.tools._mutate_common.connection") as conn_module,
     ):
@@ -363,7 +363,7 @@ async def test_partial_failure_mapping_already_attached():
         ]
     )
     with (
-        patch("src.mcp.tools.apply_audience.run_report", fake_run_report),
+        patch("src.google_ads.preflight.run_report", fake_run_report),
         patch(
             "src.mcp.tools.apply_audience.run_mutation",
             AsyncMock(
@@ -427,7 +427,7 @@ async def test_custom_params_summary_aggregates_without_raw_resource_names():
         ]
     )
     with (
-        patch("src.mcp.tools.apply_audience.run_report", fake_run_report),
+        patch("src.google_ads.preflight.run_report", fake_run_report),
         patch(
             "src.mcp.tools.apply_audience.run_mutation", AsyncMock(side_effect=fake_run_mutation)
         ),
@@ -489,7 +489,7 @@ async def test_taxonomy_preflight_rejects_vertical_geo():
     from src.mcp.tools.apply_audience import apply_audience
 
     fake_run_report = AsyncMock(return_value=[{"id": "7", "taxonomy_type": "VERTICAL_GEO"}])
-    with patch("src.mcp.tools.apply_audience.run_report", fake_run_report):
+    with patch("src.google_ads.preflight.run_report", fake_run_report):
         result = await apply_audience(
             {
                 "customer_id": "1234567890",
@@ -528,7 +528,7 @@ async def test_taxonomy_preflight_allows_in_market():
         }
     )
     with (
-        patch("src.mcp.tools.apply_audience.run_report", fake_run_report),
+        patch("src.google_ads.preflight.run_report", fake_run_report),
         patch("src.mcp.tools.apply_audience.run_mutation", fake_run_mutation),
     ):
         result = await apply_audience(
@@ -565,7 +565,7 @@ async def test_taxonomy_preflight_allows_affinity():
         }
     )
     with (
-        patch("src.mcp.tools.apply_audience.run_report", fake_run_report),
+        patch("src.google_ads.preflight.run_report", fake_run_report),
         patch("src.mcp.tools.apply_audience.run_mutation", fake_run_mutation),
     ):
         result = await apply_audience(
@@ -602,7 +602,7 @@ async def test_taxonomy_preflight_skipped_when_no_user_interest():
         }
     )
     with (
-        patch("src.mcp.tools.apply_audience.run_report", fake_run_report),
+        patch("src.google_ads.preflight.run_report", fake_run_report),
         patch("src.mcp.tools.apply_audience.run_mutation", fake_run_mutation),
     ):
         result = await apply_audience(
@@ -648,7 +648,7 @@ async def test_taxonomy_preflight_batch_lookup_single_read():
         }
     )
     with (
-        patch("src.mcp.tools.apply_audience.run_report", fake_run_report),
+        patch("src.google_ads.preflight.run_report", fake_run_report),
         patch("src.mcp.tools.apply_audience.run_mutation", fake_run_mutation),
     ):
         result = await apply_audience(

@@ -1,0 +1,664 @@
+{
+ "a": {
+  "preview": {
+   "1": {
+    "was_24x7": true,
+    "campaign_status": "ENABLED",
+    "aviso_status": null,
+    "current": {
+     "has_schedule": false,
+     "windows": 0,
+     "hours_per_week": 168.0
+    },
+    "cobertura": {
+     "horas_antes": 168.0,
+     "horas_depois": 50.0,
+     "reduz": true
+    },
+    "aviso_cobertura": null,
+    "windows_added": [
+     {
+      "day_of_week": "MONDAY",
+      "start_hour": 7,
+      "start_minute": 0,
+      "end_hour": 17,
+      "end_minute": 0,
+      "bid_modifier": null
+     },
+     {
+      "day_of_week": "TUESDAY",
+      "start_hour": 7,
+      "start_minute": 0,
+      "end_hour": 17,
+      "end_minute": 0,
+      "bid_modifier": null
+     },
+     {
+      "day_of_week": "WEDNESDAY",
+      "start_hour": 7,
+      "start_minute": 0,
+      "end_hour": 17,
+      "end_minute": 0,
+      "bid_modifier": null
+     },
+     {
+      "day_of_week": "THURSDAY",
+      "start_hour": 7,
+      "start_minute": 0,
+      "end_hour": 17,
+      "end_minute": 0,
+      "bid_modifier": null
+     },
+     {
+      "day_of_week": "FRIDAY",
+      "start_hour": 7,
+      "start_minute": 0,
+      "end_hour": 17,
+      "end_minute": 0,
+      "bid_modifier": null
+     }
+    ],
+    "windows_removed": [],
+    "bid_modifier_updated": [],
+    "metrics": {
+     "leaving": {
+      "cost_brl": 130.0,
+      "conversions": 5.0,
+      "cpa_brl": 26.0,
+      "cells": 2
+     },
+     "staying": {
+      "cost_brl": 50.0,
+      "conversions": 2.0,
+      "cpa_brl": 25.0,
+      "cells": 1
+     },
+     "metrics_granularity": "hora cheia; janelas com minutos sao aproximadas a hora cheia"
+    }
+   }
+  },
+  "ops": [
+   {
+    "kind": "add",
+    "campaign_id": "1",
+    "window": {
+     "day_of_week": "MONDAY",
+     "start_hour": 7,
+     "start_minute": 0,
+     "end_hour": 17,
+     "end_minute": 0
+    },
+    "bid_modifier": null
+   },
+   {
+    "kind": "add",
+    "campaign_id": "1",
+    "window": {
+     "day_of_week": "TUESDAY",
+     "start_hour": 7,
+     "start_minute": 0,
+     "end_hour": 17,
+     "end_minute": 0
+    },
+    "bid_modifier": null
+   },
+   {
+    "kind": "add",
+    "campaign_id": "1",
+    "window": {
+     "day_of_week": "WEDNESDAY",
+     "start_hour": 7,
+     "start_minute": 0,
+     "end_hour": 17,
+     "end_minute": 0
+    },
+    "bid_modifier": null
+   },
+   {
+    "kind": "add",
+    "campaign_id": "1",
+    "window": {
+     "day_of_week": "THURSDAY",
+     "start_hour": 7,
+     "start_minute": 0,
+     "end_hour": 17,
+     "end_minute": 0
+    },
+    "bid_modifier": null
+   },
+   {
+    "kind": "add",
+    "campaign_id": "1",
+    "window": {
+     "day_of_week": "FRIDAY",
+     "start_hour": 7,
+     "start_minute": 0,
+     "end_hour": 17,
+     "end_minute": 0
+    },
+    "bid_modifier": null
+   }
+  ]
+ },
+ "b": {
+  "preview": {
+   "1": {
+    "was_24x7": false,
+    "campaign_status": "ENABLED",
+    "aviso_status": null,
+    "current": {
+     "has_schedule": true,
+     "windows": 5,
+     "hours_per_week": 50.0
+    },
+    "cobertura": {
+     "horas_antes": 50.0,
+     "horas_depois": 168.0,
+     "reduz": false
+    },
+    "aviso_cobertura": null,
+    "windows_added": [],
+    "windows_removed": [
+     {
+      "day_of_week": "MONDAY",
+      "start_hour": 7,
+      "start_minute": 0,
+      "end_hour": 17,
+      "end_minute": 0
+     },
+     {
+      "day_of_week": "TUESDAY",
+      "start_hour": 7,
+      "start_minute": 0,
+      "end_hour": 17,
+      "end_minute": 0
+     },
+     {
+      "day_of_week": "WEDNESDAY",
+      "start_hour": 7,
+      "start_minute": 0,
+      "end_hour": 17,
+      "end_minute": 0
+     },
+     {
+      "day_of_week": "THURSDAY",
+      "start_hour": 7,
+      "start_minute": 0,
+      "end_hour": 17,
+      "end_minute": 0
+     },
+     {
+      "day_of_week": "FRIDAY",
+      "start_hour": 7,
+      "start_minute": 0,
+      "end_hour": 17,
+      "end_minute": 0
+     }
+    ],
+    "bid_modifier_updated": [],
+    "metrics": {
+     "leaving": {
+      "cost_brl": 50.0,
+      "conversions": 2.0,
+      "cpa_brl": 25.0,
+      "cells": 1
+     },
+     "staying": {
+      "cost_brl": 0.0,
+      "conversions": 0,
+      "cpa_brl": null,
+      "cells": 0
+     },
+     "metrics_granularity": "hora cheia; janelas com minutos sao aproximadas a hora cheia"
+    }
+   }
+  },
+  "ops": [
+   {
+    "kind": "remove",
+    "resource_name": "customers/1234567890/campaignCriteria/1~0"
+   },
+   {
+    "kind": "remove",
+    "resource_name": "customers/1234567890/campaignCriteria/1~1"
+   },
+   {
+    "kind": "remove",
+    "resource_name": "customers/1234567890/campaignCriteria/1~2"
+   },
+   {
+    "kind": "remove",
+    "resource_name": "customers/1234567890/campaignCriteria/1~3"
+   },
+   {
+    "kind": "remove",
+    "resource_name": "customers/1234567890/campaignCriteria/1~4"
+   }
+  ]
+ },
+ "c": {
+  "preview": {
+   "1": {
+    "was_24x7": false,
+    "campaign_status": "ENABLED",
+    "aviso_status": null,
+    "current": {
+     "has_schedule": true,
+     "windows": 1,
+     "hours_per_week": 10.0
+    },
+    "cobertura": {
+     "horas_antes": 10.0,
+     "horas_depois": 10.0,
+     "reduz": false
+    },
+    "aviso_cobertura": null,
+    "windows_added": [],
+    "windows_removed": [],
+    "bid_modifier_updated": [
+     {
+      "day_of_week": "MONDAY",
+      "start_hour": 7,
+      "start_minute": 0,
+      "end_hour": 17,
+      "end_minute": 0,
+      "bid_modifier_antigo": 1.3,
+      "bid_modifier_novo": 0.8
+     }
+    ],
+    "metrics": {
+     "leaving": {
+      "cost_brl": 0.0,
+      "conversions": 0,
+      "cpa_brl": null,
+      "cells": 0
+     },
+     "staying": {
+      "cost_brl": 50.0,
+      "conversions": 2.0,
+      "cpa_brl": 25.0,
+      "cells": 1
+     },
+     "metrics_granularity": "hora cheia; janelas com minutos sao aproximadas a hora cheia"
+    }
+   }
+  },
+  "ops": [
+   {
+    "kind": "update",
+    "resource_name": "customers/1234567890/campaignCriteria/1~9",
+    "bid_modifier": 0.8
+   }
+  ]
+ },
+ "d": {
+  "preview": {
+   "1": {
+    "was_24x7": true,
+    "campaign_status": "PAUSED",
+    "aviso_status": "campanha PAUSED: as metricas abaixo sao historicas e a grade nao afeta entrega enquanto ela estiver pausada",
+    "current": {
+     "has_schedule": false,
+     "windows": 0,
+     "hours_per_week": 168.0
+    },
+    "cobertura": {
+     "horas_antes": 168.0,
+     "horas_depois": 50.0,
+     "reduz": true
+    },
+    "aviso_cobertura": null,
+    "windows_added": [
+     {
+      "day_of_week": "MONDAY",
+      "start_hour": 7,
+      "start_minute": 0,
+      "end_hour": 17,
+      "end_minute": 0,
+      "bid_modifier": null
+     },
+     {
+      "day_of_week": "TUESDAY",
+      "start_hour": 7,
+      "start_minute": 0,
+      "end_hour": 17,
+      "end_minute": 0,
+      "bid_modifier": null
+     },
+     {
+      "day_of_week": "WEDNESDAY",
+      "start_hour": 7,
+      "start_minute": 0,
+      "end_hour": 17,
+      "end_minute": 0,
+      "bid_modifier": null
+     },
+     {
+      "day_of_week": "THURSDAY",
+      "start_hour": 7,
+      "start_minute": 0,
+      "end_hour": 17,
+      "end_minute": 0,
+      "bid_modifier": null
+     },
+     {
+      "day_of_week": "FRIDAY",
+      "start_hour": 7,
+      "start_minute": 0,
+      "end_hour": 17,
+      "end_minute": 0,
+      "bid_modifier": null
+     }
+    ],
+    "windows_removed": [],
+    "bid_modifier_updated": [],
+    "metrics": {
+     "leaving": {
+      "cost_brl": 130.0,
+      "conversions": 5.0,
+      "cpa_brl": 26.0,
+      "cells": 2
+     },
+     "staying": {
+      "cost_brl": 50.0,
+      "conversions": 2.0,
+      "cpa_brl": 25.0,
+      "cells": 1
+     },
+     "metrics_granularity": "hora cheia; janelas com minutos sao aproximadas a hora cheia"
+    }
+   }
+  },
+  "ops": [
+   {
+    "kind": "add",
+    "campaign_id": "1",
+    "window": {
+     "day_of_week": "MONDAY",
+     "start_hour": 7,
+     "start_minute": 0,
+     "end_hour": 17,
+     "end_minute": 0
+    },
+    "bid_modifier": null
+   },
+   {
+    "kind": "add",
+    "campaign_id": "1",
+    "window": {
+     "day_of_week": "TUESDAY",
+     "start_hour": 7,
+     "start_minute": 0,
+     "end_hour": 17,
+     "end_minute": 0
+    },
+    "bid_modifier": null
+   },
+   {
+    "kind": "add",
+    "campaign_id": "1",
+    "window": {
+     "day_of_week": "WEDNESDAY",
+     "start_hour": 7,
+     "start_minute": 0,
+     "end_hour": 17,
+     "end_minute": 0
+    },
+    "bid_modifier": null
+   },
+   {
+    "kind": "add",
+    "campaign_id": "1",
+    "window": {
+     "day_of_week": "THURSDAY",
+     "start_hour": 7,
+     "start_minute": 0,
+     "end_hour": 17,
+     "end_minute": 0
+    },
+    "bid_modifier": null
+   },
+   {
+    "kind": "add",
+    "campaign_id": "1",
+    "window": {
+     "day_of_week": "FRIDAY",
+     "start_hour": 7,
+     "start_minute": 0,
+     "end_hour": 17,
+     "end_minute": 0
+    },
+    "bid_modifier": null
+   }
+  ]
+ },
+ "e": {
+  "preview": {
+   "1": {
+    "was_24x7": true,
+    "campaign_status": "ENABLED",
+    "aviso_status": null,
+    "current": {
+     "has_schedule": false,
+     "windows": 0,
+     "hours_per_week": 168.0
+    },
+    "cobertura": {
+     "horas_antes": 168.0,
+     "horas_depois": 50.0,
+     "reduz": true
+    },
+    "aviso_cobertura": "a campanha passa a servir menos horas E divide orcamento: as horas desligadas nao viram economia, o gasto REALOCA para as campanhas irmas do mesmo orcamento (ver shared_budgets)",
+    "windows_added": [
+     {
+      "day_of_week": "MONDAY",
+      "start_hour": 7,
+      "start_minute": 0,
+      "end_hour": 17,
+      "end_minute": 0,
+      "bid_modifier": null
+     },
+     {
+      "day_of_week": "TUESDAY",
+      "start_hour": 7,
+      "start_minute": 0,
+      "end_hour": 17,
+      "end_minute": 0,
+      "bid_modifier": null
+     },
+     {
+      "day_of_week": "WEDNESDAY",
+      "start_hour": 7,
+      "start_minute": 0,
+      "end_hour": 17,
+      "end_minute": 0,
+      "bid_modifier": null
+     },
+     {
+      "day_of_week": "THURSDAY",
+      "start_hour": 7,
+      "start_minute": 0,
+      "end_hour": 17,
+      "end_minute": 0,
+      "bid_modifier": null
+     },
+     {
+      "day_of_week": "FRIDAY",
+      "start_hour": 7,
+      "start_minute": 0,
+      "end_hour": 17,
+      "end_minute": 0,
+      "bid_modifier": null
+     }
+    ],
+    "windows_removed": [],
+    "bid_modifier_updated": [],
+    "metrics": {
+     "leaving": {
+      "cost_brl": 130.0,
+      "conversions": 5.0,
+      "cpa_brl": 26.0,
+      "cells": 2
+     },
+     "staying": {
+      "cost_brl": 50.0,
+      "conversions": 2.0,
+      "cpa_brl": 25.0,
+      "cells": 1
+     },
+     "metrics_granularity": "hora cheia; janelas com minutos sao aproximadas a hora cheia"
+    }
+   }
+  },
+  "ops": [
+   {
+    "kind": "add",
+    "campaign_id": "1",
+    "window": {
+     "day_of_week": "MONDAY",
+     "start_hour": 7,
+     "start_minute": 0,
+     "end_hour": 17,
+     "end_minute": 0
+    },
+    "bid_modifier": null
+   },
+   {
+    "kind": "add",
+    "campaign_id": "1",
+    "window": {
+     "day_of_week": "TUESDAY",
+     "start_hour": 7,
+     "start_minute": 0,
+     "end_hour": 17,
+     "end_minute": 0
+    },
+    "bid_modifier": null
+   },
+   {
+    "kind": "add",
+    "campaign_id": "1",
+    "window": {
+     "day_of_week": "WEDNESDAY",
+     "start_hour": 7,
+     "start_minute": 0,
+     "end_hour": 17,
+     "end_minute": 0
+    },
+    "bid_modifier": null
+   },
+   {
+    "kind": "add",
+    "campaign_id": "1",
+    "window": {
+     "day_of_week": "THURSDAY",
+     "start_hour": 7,
+     "start_minute": 0,
+     "end_hour": 17,
+     "end_minute": 0
+    },
+    "bid_modifier": null
+   },
+   {
+    "kind": "add",
+    "campaign_id": "1",
+    "window": {
+     "day_of_week": "FRIDAY",
+     "start_hour": 7,
+     "start_minute": 0,
+     "end_hour": 17,
+     "end_minute": 0
+    },
+    "bid_modifier": null
+   }
+  ]
+ },
+ "f": {
+  "preview": {
+   "1": {
+    "was_24x7": false,
+    "campaign_status": "ENABLED",
+    "aviso_status": null,
+    "current": {
+     "has_schedule": true,
+     "windows": 2,
+     "hours_per_week": 20.0
+    },
+    "cobertura": {
+     "horas_antes": 20.0,
+     "horas_depois": 14.0,
+     "reduz": true
+    },
+    "aviso_cobertura": null,
+    "windows_added": [
+     {
+      "day_of_week": "WEDNESDAY",
+      "start_hour": 8,
+      "start_minute": 0,
+      "end_hour": 12,
+      "end_minute": 0,
+      "bid_modifier": 1.5
+     }
+    ],
+    "windows_removed": [
+     {
+      "day_of_week": "TUESDAY",
+      "start_hour": 7,
+      "start_minute": 0,
+      "end_hour": 17,
+      "end_minute": 0
+     }
+    ],
+    "bid_modifier_updated": [
+     {
+      "day_of_week": "MONDAY",
+      "start_hour": 7,
+      "start_minute": 0,
+      "end_hour": 17,
+      "end_minute": 0,
+      "bid_modifier_antigo": 1.3,
+      "bid_modifier_novo": 0.8
+     }
+    ],
+    "metrics": {
+     "leaving": {
+      "cost_brl": 0.0,
+      "conversions": 0,
+      "cpa_brl": null,
+      "cells": 0
+     },
+     "staying": {
+      "cost_brl": 50.0,
+      "conversions": 2.0,
+      "cpa_brl": 25.0,
+      "cells": 1
+     },
+     "metrics_granularity": "hora cheia; janelas com minutos sao aproximadas a hora cheia"
+    }
+   }
+  },
+  "ops": [
+   {
+    "kind": "add",
+    "campaign_id": "1",
+    "window": {
+     "day_of_week": "WEDNESDAY",
+     "start_hour": 8,
+     "start_minute": 0,
+     "end_hour": 12,
+     "end_minute": 0
+    },
+    "bid_modifier": 1.5
+   },
+   {
+    "kind": "remove",
+    "resource_name": "customers/1234567890/campaignCriteria/1~2"
+   },
+   {
+    "kind": "update",
+    "resource_name": "customers/1234567890/campaignCriteria/1~1",
+    "bid_modifier": 0.8
+   }
+  ]
+ }
+}

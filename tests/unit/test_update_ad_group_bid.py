@@ -75,7 +75,7 @@ async def test_update_ad_group_bid_passes_preflight_when_manual_cpc() -> None:
             AsyncMock(return_value=None),
         ),
         patch(
-            "src.mcp.tools.update_ad_group_bid.run_report",
+            "src.google_ads.preflight.run_report",
             AsyncMock(side_effect=fake_run_report),
         ),
         patch(

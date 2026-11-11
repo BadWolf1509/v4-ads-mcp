@@ -4,9 +4,8 @@
 from typing import Any
 
 from src.google_ads.mutations import run_mutation
-from src.google_ads.preflight import validate_manual_cpc_strategy
+from src.google_ads.preflight import buscar_lances_de_keyword, validate_manual_cpc_strategy
 from src.google_ads.queries._common import brl_para_micros, micros_to_currency
-from src.google_ads.reports import run_report
 from src.governance.blast_radius import RiskLevel, classify
 from src.mcp.context import get_current
 from src.mcp.tools._mutate_common import applied_envelope, emitir_preview, error_envelope
@@ -37,15 +36,6 @@ _SCHEMA: dict[str, Any] = {
 }
 
 
-def _row_formatter(row: Any) -> dict[str, Any]:
-    return {
-        "ad_group_id": str(row.ad_group.id),
-        "criterion_id": str(row.ad_group_criterion.criterion_id),
-        "keyword_text": row.ad_group_criterion.keyword.text,
-        "current_cpc_bid_micros": int(row.ad_group_criterion.cpc_bid_micros),
-    }
-
-
 @register_tool(
     name="update_keyword_bid",
     description=(
@@ -74,28 +64,12 @@ async def update_keyword_bid(args: dict[str, Any]) -> dict[str, Any]:
     if strategy_error:
         return error_envelope("update_keyword_bid", strategy_error)
 
-    crit_ids = [b["criterion_id"] for b in bids_input]
-    ids_clause = ", ".join(str(int(x)) for x in crit_ids)
-    query = f"""
-        SELECT
-          ad_group.id,
-          ad_group_criterion.criterion_id,
-          ad_group_criterion.keyword.text,
-          ad_group_criterion.cpc_bid_micros
-        FROM keyword_view
-        WHERE ad_group_criterion.criterion_id IN ({ids_clause})
-    """.strip()
-
-    rows = await run_report(
+    by_key = await buscar_lances_de_keyword(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
-        query=query,
-        row_formatter=_row_formatter,
-        operation_name="update_keyword_bid_lookup",
+        pares=[(b["ad_group_id"], b["criterion_id"]) for b in bids_input],
     )
-
-    by_key = {(r["ad_group_id"], r["criterion_id"]): r for r in rows}
     missing = [
         f"({b['ad_group_id']},{b['criterion_id']})"
         for b in bids_input

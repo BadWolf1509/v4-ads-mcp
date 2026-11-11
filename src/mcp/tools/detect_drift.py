@@ -6,38 +6,17 @@ Wrapper sobre get_change_history + pure aggregator com 3 flags acionáveis.
 Use case primário: co-management (lição 46 dogfood).
 """
 
-from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
-from uuid import UUID
 
+from src.google_ads import change_scan
 from src.google_ads.account_clock import resolve_account_today
-from src.google_ads.change_scan import CAP_CHANGE_EVENT, consultar_change_history
+from src.google_ads.change_scan import varrer
 from src.google_ads.drift_detection import detect_drift as _detect_drift_pure
 from src.google_ads.drift_detection import dict_to_change_event_row
 from src.google_ads.queries._common import resolve_date_window
 from src.mcp.context import get_current
-from src.mcp.tools._common import aplicar_limite
 from src.mcp.tools._registry import register_tool
-
-# Teto de eventos POR sub-janela. E o cap DURO do recurso `change_event`, nao
-# uma escolha nossa: `LIMIT` e obrigatorio e acima de 10k a API recusa com
-# "Change event requests must specify a LIMIT in query and LIMIT should be less
-# than or equal to 10k" (sondado 2026-09-07 via `validate_gaql` na
-# 786-223-0676). IMPORTADO de `get_change_history` em vez de recopiado: o mesmo
-# numero escrito em dois lugares foi o vetor do F142, e aqui a divergencia
-# seria pior — a copia menor voltaria a esconder evento em silencio.
-#
-# Ate a Task 5 este teto era `500` escrito no meio da chamada. Vinte vezes
-# menor que o que a API aceita, sem aparecer em lugar nenhum da resposta.
-_TETO_POR_JANELA = CAP_CHANGE_EVENT
-
-# Teto TOTAL de eventos examinados numa chamada, somando todas as sub-janelas.
-# Duas janelas cheias: o bastante para a particao valer alguma coisa, pouco o
-# bastante para a resposta caber em memoria e nao torrar a quota da conta numa
-# tool que roda em D+1 de todo batch. Passando daqui, a resposta honesta e
-# "estreite a janela" — e e o que `cobertura.varredura_truncada` diz.
-_TETO_EXAMINADO = 2 * _TETO_POR_JANELA
 
 _DATE_PRESETS = [
     "LAST_2_DAYS",  # NEW — sane default for D+1/D+2 post-batch audit
@@ -143,209 +122,6 @@ def _resolve_date_window_local(
     )
 
 
-def _dias_desc(inicio: date, fim: date) -> list[date]:
-    """Os dias da janela, do mais RECENTE para o mais antigo.
-
-    A ordem e contrato, nao estilo: quando o teto total corta, o que fica de
-    fora tem que ser o PASSADO — a mesma direcao em que `get_change_history`
-    corta ("as mais recentes ficam"). Varrer do antigo para o novo faria o teto
-    esconder justamente a mudanca que acabou de acontecer, que e a que esta
-    tool existe para achar.
-    """
-    return [fim - timedelta(days=i) for i in range((fim - inicio).days + 1)]
-
-
-@dataclass(frozen=True, slots=True)
-class _Varredura:
-    """O que a varredura leu — e, sobretudo, o que ela NAO leu."""
-
-    linhas: list[dict[str, Any]]
-    janelas: int
-    # Dias que sozinhos bateram no cap do change_event: ali a particao chegou
-    # ao fim da granularidade disponivel (a tool so alcanca o DIA).
-    dias_no_cap: list[str]
-    teto_total_atingido: bool
-    # A janela DE FATO varrida, que e o que `cobertura.janela_efetiva` promete
-    # — nao a pedida (essa fica em `period`). Duas coisas a encurtam: o clamp de
-    # retencao do F23 na ponta antiga, e o teto total parando a particao antes
-    # de chegar la. A segunda faltava (A3 da revisao final): a janela inteira
-    # continuava anunciada com a varredura parada no segundo de 21 dias.
-    janela: tuple[date, date]
-    freshness: dict[str, Any]
-    # O aviso de clamp de retencao (F23) que `get_change_history` emite quando
-    # move o inicio da janela. `cobertura.janela_efetiva` ja mostra QUE a janela
-    # mudou; sem este texto o gestor ve as duas datas diferentes e nao sabe por
-    # que. Numa frente sobre honestidade dos numeros, descartar a explicacao do
-    # numero e o mesmo defeito, um nivel acima.
-    aviso_de_janela: str | None = None
-
-    @property
-    def truncada(self) -> bool:
-        """Existe evento na janela que esta varredura NUNCA examinou.
-
-        As duas causas contam igual para quem le o veredito: o teto total
-        parou a varredura, OU um dia estourou o cap da API. Nos dois casos
-        "zero drift" deixa de ser veredito e vira amostra.
-        """
-        return self.teto_total_atingido or bool(self.dias_no_cap)
-
-
-async def _ler(
-    customer_id: str,
-    *,
-    inicio: date,
-    fim: date,
-    teto: int,
-    hoje: date,
-    manager_id: UUID,
-    session_id: UUID,
-) -> dict[str, Any]:
-    """Uma leitura de `get_change_history` (audit_this_call=True herdado).
-
-    `hoje` vem de fora, resolvido UMA vez por request no fuso da conta: uma
-    varredura particionada faz ate 30 destas, e deixar cada uma resolver o
-    proprio relogio custaria uma leitura de banco por sub-janela e — pior —
-    poderia trocar de `hoje` no meio de um request que atravessasse a
-    meia-noite da conta. `account_clock.py` escreve essa regra na propria
-    docstring: "Um `hoje` por request; nunca dois relogios na mesma resposta".
-    """
-    return await consultar_change_history(
-        {
-            "customer_id": customer_id,
-            "start_date": inicio.isoformat(),
-            "end_date": fim.isoformat(),
-            "limit": teto,
-        },
-        today=hoje,
-        manager_id=manager_id,
-        session_id=session_id,
-    )
-
-
-async def _varrer(
-    customer_id: str,
-    *,
-    inicio: date,
-    fim: date,
-    hoje: date,
-    manager_id: UUID,
-    session_id: UUID,
-) -> _Varredura:
-    """Le a janela inteira; se ela nao couber no cap do `change_event`, re-le dia a dia.
-
-    Padrao: **particionamento de janela temporal** (range splitting), que e a
-    resposta consolidada para API com teto por consulta e sem cursor. Sondado
-    em 2026-09-07 (`validate_gaql`, conta 786-223-0676): o `change_event` EXIGE
-    `LIMIT`, recusa acima de 10k e NAO oferece OFFSET nem cursor — a unica
-    dimensao por onde passar do cap e o tempo. Como `get_change_history` recebe
-    data em granularidade de DIA, a sub-janela mais fina alcancavel por este
-    caminho e um dia; dia que estoura sozinho sai declarado em `dias_no_cap`,
-    porque limite de API declarado nao e mentira, teto escondido e.
-
-    **Adaptativo de proposito.** A janela inteira e lida PRIMEIRO e a particao
-    so acontece quando ela nao coube. O caso comum (na 786-223-0676 a janela
-    tipica tem ~141 eventos) segue custando UMA leitura, e o `freshness` da
-    resposta continua sendo o da janela inteira, medido contra o `window_end`
-    que o gestor pediu — exatamente como antes desta task. O preco e reler no
-    caminho raro: as linhas da primeira leitura sao descartadas quando a
-    particao entra. E o lado certo para errar, porque particionar sempre
-    multiplicaria por ate 30 a quota de toda chamada de uma tool que roda em
-    D+1 de todo batch.
-    """
-    primeira = await _ler(
-        customer_id,
-        inicio=inicio,
-        fim=fim,
-        teto=_TETO_POR_JANELA,
-        hoje=hoje,
-        manager_id=manager_id,
-        session_id=session_id,
-    )
-
-    # A janela EFETIVA e a que a leitura devolveu, nao a que pedimos: o clamp
-    # de retencao (F23) pode ter movido o inicio, e varrer dia a dia a partir
-    # do PEDIDO levantaria `ValueError` nos dias fora da retencao de 30 dias.
-    efetiva_de = date.fromisoformat(primeira["period"]["from"])
-    efetiva_ate = date.fromisoformat(primeira["period"]["to"])
-    dias = _dias_desc(efetiva_de, efetiva_ate)
-
-    if not primeira["truncated"] or len(dias) == 1:
-        # Coube — ou a janela ja e de UM dia e a particao nao tem para onde ir.
-        # No segundo caso o corte e da API, e repetir a mesma consulta so
-        # gastaria quota para trazer as mesmas linhas.
-        return _Varredura(
-            linhas=list(primeira["rows"]),
-            janelas=1,
-            dias_no_cap=[efetiva_ate.isoformat()] if primeira["truncated"] else [],
-            teto_total_atingido=False,
-            janela=(efetiva_de, efetiva_ate),
-            freshness=primeira["freshness"],
-            aviso_de_janela=primeira.get("date_range_warning"),
-        )
-
-    linhas: list[dict[str, Any]] = []
-    dias_no_cap: list[str] = []
-    janelas = 0
-    teto_total_atingido = False
-    # A3 (revisao final): o dia mais ANTIGO que a varredura chegou a consultar.
-    # `dias` vem do mais recente para o mais antigo, entao ele so anda para tras
-    # — e quando o teto total interrompe o laco, e ele que fecha a janela de
-    # fato varrida. Ate aqui `janela_efetiva` anunciava a janela inteira mesmo
-    # com a varredura parada no segundo dia de 21: o campo que o gestor le para
-    # saber QUANTO ficou de fora afirmava justamente o que nao foi lido, e os
-    # dias nao varridos nao apareciam em campo nenhum (`dias_no_teto_da_api`
-    # nomeia so os que FORAM lidos e estouraram).
-    mais_antigo_lido = efetiva_ate
-    for dia in dias:
-        if len(linhas) >= _TETO_EXAMINADO:
-            # Sobrou dia que nem chegou a ser consultado — e o teto total, nao
-            # o da API, que parou a varredura.
-            teto_total_atingido = True
-            break
-        parcial = await _ler(
-            customer_id,
-            inicio=dia,
-            fim=dia,
-            teto=_TETO_POR_JANELA,
-            hoje=hoje,
-            manager_id=manager_id,
-            session_id=session_id,
-        )
-        janelas += 1
-        mais_antigo_lido = dia
-        # Costura das sub-janelas, dita em voz alta: o `BETWEEN` do Google e
-        # inclusivo nas duas pontas e o builder soma +1 dia no fim (F46), entao
-        # dois dias vizinhos se sobrepoem em UM instante — `d+1 00:00:00`
-        # exato, ao microssegundo. Evento carimbado ali seria contado duas
-        # vezes. NAO ha dedup aqui de proposito: a chave disponivel
-        # (timestamp+recurso+operacao) nao distingue duas mudancas reais que
-        # coincidam nos tres, e trocar "duplicar visivelmente" por "descartar
-        # em silencio" e o oposto do que esta tool existe para fazer.
-        linhas.extend(parcial["rows"])
-        if parcial["truncated"]:
-            dias_no_cap.append(dia.isoformat())
-
-    # `aplicar_limite` pelo mesmo motivo de sempre: `len > teto` e a unica
-    # forma de distinguir "coube exato" de "havia mais". O contrato do helper
-    # (pedir `limite + 1`) e satisfeito aqui pela via da acumulacao — as
-    # sub-janelas entram INTEIRAS, entao ultrapassar o teto e prova de excesso.
-    linhas, estourou_o_teto = aplicar_limite(linhas, _TETO_EXAMINADO)
-
-    return _Varredura(
-        linhas=linhas,
-        janelas=janelas,
-        dias_no_cap=dias_no_cap,
-        teto_total_atingido=teto_total_atingido or estourou_o_teto,
-        # A janela DE FATO varrida, nao a pedida — a pedida continua em
-        # `period`. Sem teto atingido `mais_antigo_lido == efetiva_de` e as
-        # duas coincidem; com teto, a diferenca entre os dois campos e o que
-        # ficou sem varrer.
-        janela=(mais_antigo_lido, efetiva_ate),
-        freshness=primeira["freshness"],
-        aviso_de_janela=primeira.get("date_range_warning"),
-    )
-
-
 @register_tool(
     name="detect_drift",
     description=(
@@ -423,9 +199,9 @@ async def detect_drift(args: dict[str, Any]) -> dict[str, Any]:
     # Varredura da janela (audit_this_call=True herdado de get_change_history).
     # Passa start_date+end_date explícitos pra evitar acoplar LAST_2_DAYS ao
     # enum do schema de lá. O teto interno de 500 morreu aqui: quem decide
-    # quanto se le e `_TETO_POR_JANELA`/`_TETO_EXAMINADO`, e o que ficou de
+    # quanto se le e `TETO_POR_JANELA`/`TETO_EXAMINADO`, e o que ficou de
     # fora sai declarado em `cobertura`.
-    varredura = await _varrer(
+    varredura = await varrer(
         customer_id,
         inicio=start_date_obj,
         fim=end_date_obj,
@@ -509,8 +285,8 @@ async def detect_drift(args: dict[str, Any]) -> dict[str, Any]:
             # retorno como dict LITERAL, que e o que o guard do truncamento
             # consegue conferir.
             "aviso_de_janela": varredura.aviso_de_janela,
-            "teto_por_janela": _TETO_POR_JANELA,
-            "teto_examinado": _TETO_EXAMINADO,
+            "teto_por_janela": change_scan.TETO_POR_JANELA,
+            "teto_examinado": change_scan.TETO_EXAMINADO,
         },
         # F131: `detect_drift` e tool de seguranca — nao pode dizer "zero
         # drift" sem dizer ate quando a fonte esta indexada.

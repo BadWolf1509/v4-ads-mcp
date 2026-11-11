@@ -57,12 +57,7 @@ _CREATE_PENDING_FORA_DO_HELPER: dict[tuple[str, str], int] = {
 }
 
 # (arquivo, função) -> número de textos GAQL (`SELECT ... FROM <recurso>`) nas tools.
-_GAQL_NAS_TOOLS: dict[tuple[str, str], int] = {
-    ("src/mcp/tools/apply_audience.py", "_validate_user_interest_taxonomies"): 1,
-    ("src/mcp/tools/update_ad_group_bid.py", "update_ad_group_bid"): 1,
-    ("src/mcp/tools/update_campaign_budget.py", "update_campaign_budget"): 1,
-    ("src/mcp/tools/update_keyword_bid.py", "update_keyword_bid"): 1,
-}
+_GAQL_NAS_TOOLS: dict[tuple[str, str], int] = {}
 
 # (arquivo, função) -> número de textos com `segments.date BETWEEN` fora de `_common.py`.
 _JANELA_FORA_DO_COMMON: dict[tuple[str, str], int] = {}

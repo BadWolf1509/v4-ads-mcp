@@ -98,7 +98,7 @@ async def test_update_campaign_budget_dry_runs_with_delta(db, session_ctx):
         }
     ]
     with patch(
-        "src.mcp.tools.update_campaign_budget.run_report",
+        "src.google_ads.preflight.run_report",
         AsyncMock(return_value=fake_lookup_rows),
     ):
         result = await update_campaign_budget(
@@ -122,7 +122,7 @@ async def test_update_campaign_budget_returns_error_when_campaign_not_found(db, 
     from src.mcp.tools.update_campaign_budget import update_campaign_budget
 
     with patch(
-        "src.mcp.tools.update_campaign_budget.run_report",
+        "src.google_ads.preflight.run_report",
         AsyncMock(return_value=[]),
     ):
         result = await update_campaign_budget(

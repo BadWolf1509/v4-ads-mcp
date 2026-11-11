@@ -3,6 +3,8 @@
 from datetime import date
 from types import SimpleNamespace
 
+import pytest
+
 from src.google_ads.queries.audit_orphan_smart_actions import (
     build_audit_orphan_smart_actions_query,
     dict_to_conversion_action_row,
@@ -72,14 +74,8 @@ def test_parse_conversion_action_row_handles_enums_and_floats():
     assert result["name"] == "Whatsapp - JPA"
 
 
-def test_dict_to_conversion_action_row_handles_missing_fields():
-    """Boundary parser defensive defaults."""
+def test_dict_to_conversion_action_row_chave_ausente_levanta():
+    """Campo ausente e bug do formatter: estoura, nao vira zero."""
     d: dict = {"name": "test"}
-    row = dict_to_conversion_action_row(d)
-    assert row.name == "test"
-    assert row.conversion_action_id == ""
-    assert row.category == ""
-    assert row.origin == ""
-    assert row.primary_for_goal is False
-    assert row.status == ""
-    assert row.all_conversions == 0.0
+    with pytest.raises(KeyError):
+        dict_to_conversion_action_row(d)

@@ -427,3 +427,165 @@ def campanhas_com_grade_incerta(
     if rows:
         incertas.add(rows[-1]["campaign_id"])
     return incertas & set(campanhas)
+
+
+def janela_para_dict(w: Window) -> dict[str, Any]:
+    return {
+        "day_of_week": w.day_of_week,
+        "start_hour": w.start_hour,
+        "start_minute": w.start_minute,
+        "end_hour": w.end_hour,
+        "end_minute": w.end_minute,
+    }
+
+
+def _aviso_status(status: str) -> str | None:
+    """PAUSED nao recusa — avisa (F52/F90). Toda a narrativa de CPA da §4.2 pode estar
+    descrevendo campanha inerte, e a grade nova nao muda entrega enquanto ela nao voltar."""
+    if status == "ENABLED":
+        return None
+    if status == "PAUSED":
+        return (
+            "campanha PAUSED: as metricas abaixo sao historicas e a grade nao afeta "
+            "entrega enquanto ela estiver pausada"
+        )
+    return (
+        f"campanha {status}: nao esta servindo, entao as metricas abaixo sao historicas "
+        "e a grade nova nao afeta entrega enquanto o status nao voltar a ENABLED"
+    )
+
+
+def _aviso_cobertura(reduz: bool, orcamento_compartilhado: bool) -> str | None:
+    """Destaque so na combinacao em que o estrago tem duas metades.
+
+    A queda de cobertura sozinha e medicao neutra: ela aparece em quase todo
+    primeiro uso da tool, porque campanha sem grade serve 168 horas naturais.
+    Se essa linha soasse como alarme, as pessoas aprenderiam a passar por cima
+    dela — e ela deixaria de proteger justamente no dia em que fosse grave.
+    """
+    if not (reduz and orcamento_compartilhado):
+        return None
+    return (
+        "a campanha passa a servir menos horas E divide orcamento: as horas "
+        "desligadas nao viram economia, o gasto REALOCA para as campanhas irmas "
+        "do mesmo orcamento (ver shared_budgets)"
+    )
+
+
+def planejar_grade(
+    *,
+    atual: dict[str, list[CurrentWindow]],
+    desejada: list[Window],
+    bid_modifier: float | None,
+    campaign_ids: list[str],
+    metricas: list[dict[str, Any]],
+    limpar: bool,
+    status_da_campanha: dict[str, str],
+    orcamento_compartilhado: list[dict[str, Any]],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Plano da grade, puro: `(preview, ops)` por campanha, sem I/O nem relogio.
+
+    `atual` e a grade lida por campanha (`rows_to_current`), `desejada` a grade
+    pedida (a mesma para todo o lote), `metricas` as linhas dia x hora ja
+    parseadas (com `campaign_id`) e `orcamento_compartilhado` as linhas de
+    orcamento por campanha (`explicitly_shared`). Tres formatos de `op`:
+    `add` (campaign_id, window, bid_modifier), `remove` (resource_name) e
+    `update` (resource_name, bid_modifier) — o builder e burro, o que sai
+    daqui e exatamente o que se aplica.
+    """
+    compartilhado_por_campanha = {
+        o["campaign_id"]: o["explicitly_shared"] for o in orcamento_compartilhado
+    }
+    # `desejada` e a MESMA lista para todas as campanhas do lote (o parametro `windows`
+    # nao varia por campanha) — construir o indice uma vez fora do loop evita refazer
+    # o dict a cada `cid`. Chave por `.key()` (identidade de 5 posicoes, sem o
+    # modificador): e exatamente o que `c.window.key()` devolve para localizar de
+    # volta a janela DESEJADA correspondente a uma `CurrentWindow` do `to_update`.
+    desejada_por_chave = {w.key(): w for w in desejada}
+    ops: list[dict[str, Any]] = []
+    preview: dict[str, Any] = {}
+    for cid in campaign_ids:
+        current = atual.get(cid, [])
+        diff = diff_schedule(current, desejada, bid_modifier)
+        before = [c.window for c in current] if current else None  # None = 24x7
+        cells = [
+            MetricCell(m["day_of_week"], m["hour"], m["cost_micros"], m["conversions"])
+            for m in metricas
+            if m["campaign_id"] == cid
+        ]
+        resumo_atual = summarize_current(current)
+        # F151: grade vazia significa SEM AGENDA, logo 24x7, logo 168 — nunca zero.
+        # E a semantica em que a tool inteira se apoia (`summarize_current([])` devolve
+        # 168.0; `covers(None, ...)` e sempre verdadeiro), e era o unico lugar onde ela
+        # nao estava aplicada. O efeito era inverter o proposito do bloco: na UNICA
+        # operacao que RESTAURA entrega, o preview anunciava perda total, afastando o
+        # gestor da rota de restauracao que a propria descricao da tool recomenda.
+        horas_depois = 168.0 if limpar else hours_per_week(desejada)
+        cobertura = {
+            "horas_antes": resumo_atual["hours_per_week"],
+            "horas_depois": horas_depois,
+            "reduz": horas_depois < resumo_atual["hours_per_week"],
+        }
+        preview[cid] = {
+            "was_24x7": not current,
+            "campaign_status": status_da_campanha[cid],
+            "aviso_status": _aviso_status(status_da_campanha[cid]),
+            "current": resumo_atual,
+            # "5 janelas entram" e "a campanha passa a servir 50 de 168 horas" sao
+            # a mesma informacao, e so a segunda e acionavel. Sem limiar: qualquer
+            # % estaria errado em alguma conta, e a PRIMEIRA grade de qualquer
+            # campanha sempre reduz — o numero informa, o alarme nao.
+            "cobertura": cobertura,
+            "aviso_cobertura": _aviso_cobertura(
+                cobertura["reduz"], compartilhado_por_campanha.get(cid, False)
+            ),
+            "windows_added": [
+                {**janela_para_dict(w), "bid_modifier": modificador_efetivo(w, bid_modifier)}
+                for w in diff.to_add
+            ],
+            "windows_removed": [janela_para_dict(c.window) for c in diff.to_remove],
+            # O valor SOBRESCRITO ao lado do novo, como a §4.2 faz com o CPA do
+            # que sai. F149: `bid_modifier_novo` e o EFETIVO da janela (o dela
+            # mesma, se trouxe; senao o escalar da chamada como default) — quem
+            # nao ver o antigo aqui so descobre o que perdeu depois do apply_change.
+            "bid_modifier_updated": [
+                {
+                    **janela_para_dict(c.window),
+                    # Fix C1 (revisao final): o Google guarda bid_modifier em
+                    # proto.FLOAT (32 bits) e devolve 1.4 como 1.399999976158142
+                    # — 17 digitos numa resposta que o gestor le e ruido puro.
+                    # Arredondar SO na exibicao; a comparacao que decide
+                    # `to_update` (`diff_schedule`) usa o valor cru com
+                    # tolerancia via `bid_modifier_diverge`, nunca o arredondado.
+                    "bid_modifier_antigo": (
+                        round(c.bid_modifier, 2) if c.bid_modifier is not None else None
+                    ),
+                    "bid_modifier_novo": modificador_efetivo(
+                        desejada_por_chave[c.window.key()], bid_modifier
+                    ),
+                }
+                for c in diff.to_update
+            ],
+            "metrics": partition_metrics(cells, before, desejada),
+        }
+        ops += [
+            {
+                "kind": "add",
+                "campaign_id": cid,
+                "window": janela_para_dict(w),
+                "bid_modifier": modificador_efetivo(w, bid_modifier),
+            }
+            for w in diff.to_add
+        ]
+        ops += [{"kind": "remove", "resource_name": c.resource_name} for c in diff.to_remove]
+        ops += [
+            {
+                "kind": "update",
+                "resource_name": c.resource_name,
+                "bid_modifier": modificador_efetivo(
+                    desejada_por_chave[c.window.key()], bid_modifier
+                ),
+            }
+            for c in diff.to_update
+        ]
+    return preview, ops

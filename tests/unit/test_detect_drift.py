@@ -126,7 +126,7 @@ async def _rodar(historico: _HistoricoFalso, args: dict[str, Any]) -> dict[str, 
     from src.mcp.tools.detect_drift import detect_drift
 
     with (
-        patch("src.mcp.tools.detect_drift.consultar_change_history", historico),
+        patch("src.google_ads.change_scan.consultar_change_history", historico),
         patch("src.mcp.tools.detect_drift.resolve_account_today", _hoje_fixo),
     ):
         return await detect_drift(args)
@@ -171,8 +171,8 @@ async def test_particiona_por_dia_quando_a_janela_inteira_nao_cabe(
     sem materializar 10 mil linhas — o valor real dos dois fica prendido em
     `test_os_tetos_sao_constantes_nomeadas_e_maiores_que_o_defeito`.
     """
-    monkeypatch.setattr("src.mcp.tools.detect_drift._TETO_POR_JANELA", 10)
-    monkeypatch.setattr("src.mcp.tools.detect_drift._TETO_EXAMINADO", 100)
+    monkeypatch.setattr("src.google_ads.change_scan.TETO_POR_JANELA", 10)
+    monkeypatch.setattr("src.google_ads.change_scan.TETO_EXAMINADO", 100)
     historico = _HistoricoFalso({date(2026, 9, 7): 8, date(2026, 9, 6): 8, date(2026, 9, 5): 8})
 
     resultado = await _rodar(
@@ -204,8 +204,8 @@ async def test_teto_total_para_a_varredura_e_declara_o_numero(
 
     Contagem sem numero seria a mesma opacidade do teto de 500.
     """
-    monkeypatch.setattr("src.mcp.tools.detect_drift._TETO_POR_JANELA", 10)
-    monkeypatch.setattr("src.mcp.tools.detect_drift._TETO_EXAMINADO", 15)
+    monkeypatch.setattr("src.google_ads.change_scan.TETO_POR_JANELA", 10)
+    monkeypatch.setattr("src.google_ads.change_scan.TETO_EXAMINADO", 15)
     historico = _HistoricoFalso({date(2026, 9, 7): 8, date(2026, 9, 6): 8, date(2026, 9, 5): 8})
 
     resultado = await _rodar(
@@ -232,7 +232,7 @@ async def test_janela_efetiva_nao_declara_dia_que_nunca_foi_consultado(
     anunciar cobertura que nao houve.
 
     A description define `cobertura.janela_efetiva` como "a janela realmente
-    lida". Quando o teto total interrompia a particao, o `_Varredura` continuava
+    lida". Quando o teto total interrompia a particao, o `Varredura` continuava
     sendo construido com a janela INTEIRA: numa janela de 21 dias varrida por 2,
     `janela_efetiva` dizia `2026-08-18..2026-09-07`, `dias_no_teto_da_api`
     nomeava so os 2 lidos, e os 19 nao varridos nao apareciam em campo nenhum.
@@ -244,8 +244,8 @@ async def test_janela_efetiva_nao_declara_dia_que_nunca_foi_consultado(
     duas afirmacoes sao CRUZADAS: o dia que a varredura pulou nao pode estar
     dentro da janela que ela declara ter lido.
     """
-    monkeypatch.setattr("src.mcp.tools.detect_drift._TETO_POR_JANELA", 10)
-    monkeypatch.setattr("src.mcp.tools.detect_drift._TETO_EXAMINADO", 15)
+    monkeypatch.setattr("src.google_ads.change_scan.TETO_POR_JANELA", 10)
+    monkeypatch.setattr("src.google_ads.change_scan.TETO_EXAMINADO", 15)
     historico = _HistoricoFalso({date(2026, 9, 7): 8, date(2026, 9, 6): 8, date(2026, 9, 5): 8})
 
     resultado = await _rodar(
@@ -279,8 +279,8 @@ async def test_janela_que_coube_declara_a_janela_inteira(
     lida faria o gestor pedir de novo o que ja tem. O campo tem que se mover
     SO quando a varredura de fato parou antes.
     """
-    monkeypatch.setattr("src.mcp.tools.detect_drift._TETO_POR_JANELA", 10)
-    monkeypatch.setattr("src.mcp.tools.detect_drift._TETO_EXAMINADO", 100)
+    monkeypatch.setattr("src.google_ads.change_scan.TETO_POR_JANELA", 10)
+    monkeypatch.setattr("src.google_ads.change_scan.TETO_EXAMINADO", 100)
     historico = _HistoricoFalso({date(2026, 9, 7): 8, date(2026, 9, 6): 8, date(2026, 9, 5): 8})
 
     resultado = await _rodar(
@@ -301,7 +301,7 @@ async def test_dia_que_sozinho_estoura_o_cap_e_declarado(
     Nao ha sub-janela menor que um dia por este caminho, entao a resposta certa
     e dizer qual dia bateu no teto da API — e nao repetir a mesma consulta.
     """
-    monkeypatch.setattr("src.mcp.tools.detect_drift._TETO_POR_JANELA", 5)
+    monkeypatch.setattr("src.google_ads.change_scan.TETO_POR_JANELA", 5)
     historico = _HistoricoFalso({date(2026, 9, 8): 12})
 
     resultado = await _rodar(historico, {"customer_id": "7862230676", "date_range": "TODAY"})
@@ -318,8 +318,8 @@ async def test_dia_no_cap_dentro_de_janela_particionada(
     _ctx: McpRequestContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A particao ajudou e AINDA assim perdeu evento — os dois fatos convivem."""
-    monkeypatch.setattr("src.mcp.tools.detect_drift._TETO_POR_JANELA", 5)
-    monkeypatch.setattr("src.mcp.tools.detect_drift._TETO_EXAMINADO", 100)
+    monkeypatch.setattr("src.google_ads.change_scan.TETO_POR_JANELA", 5)
+    monkeypatch.setattr("src.google_ads.change_scan.TETO_EXAMINADO", 100)
     historico = _HistoricoFalso({date(2026, 9, 7): 3, date(2026, 9, 6): 12})
 
     resultado = await _rodar(historico, {"customer_id": "7862230676", "date_range": "LAST_2_DAYS"})
@@ -341,7 +341,7 @@ async def test_a_varredura_segue_a_janela_efetiva_nao_a_pedida(
     clampada quebraria a tool; derivando do `period` que a leitura devolveu, ela
     varre exatamente o que existe.
     """
-    monkeypatch.setattr("src.mcp.tools.detect_drift._TETO_POR_JANELA", 10)
+    monkeypatch.setattr("src.google_ads.change_scan.TETO_POR_JANELA", 10)
 
     class _ComClamp(_HistoricoFalso):
         async def __call__(
@@ -384,8 +384,8 @@ async def test_a_varredura_inteira_usa_um_hoje_so(
     A assercao e sobre a propriedade, nao sobre a contagem de chamadas: TODA
     leitura tem que ter recebido o MESMO `hoje`, e ele tem que ser o da conta.
     """
-    monkeypatch.setattr("src.mcp.tools.detect_drift._TETO_POR_JANELA", 10)
-    monkeypatch.setattr("src.mcp.tools.detect_drift._TETO_EXAMINADO", 100)
+    monkeypatch.setattr("src.google_ads.change_scan.TETO_POR_JANELA", 10)
+    monkeypatch.setattr("src.google_ads.change_scan.TETO_EXAMINADO", 100)
     historico = _HistoricoFalso({date(2026, 9, 7): 8, date(2026, 9, 6): 8, date(2026, 9, 5): 8})
 
     # Relogio proprio (nao o `_rodar`) porque aqui a CONTAGEM importa: as duas
@@ -400,7 +400,7 @@ async def test_a_varredura_inteira_usa_um_hoje_so(
     from src.mcp.tools.detect_drift import detect_drift
 
     with (
-        patch("src.mcp.tools.detect_drift.consultar_change_history", historico),
+        patch("src.google_ads.change_scan.consultar_change_history", historico),
         patch("src.mcp.tools.detect_drift.resolve_account_today", _hoje_contado),
     ):
         await detect_drift(
@@ -423,12 +423,11 @@ def test_os_tetos_sao_constantes_nomeadas_e_maiores_que_o_defeito() -> None:
     suite inteira continuaria verde — que e exatamente o defeito que a Task 5
     fecha.
     """
-    from src.google_ads.change_scan import CAP_CHANGE_EVENT
-    from src.mcp.tools.detect_drift import _TETO_EXAMINADO, _TETO_POR_JANELA
+    from src.google_ads.change_scan import CAP_CHANGE_EVENT, TETO_EXAMINADO, TETO_POR_JANELA
 
-    assert _TETO_POR_JANELA == CAP_CHANGE_EVENT == 10_000
-    assert _TETO_POR_JANELA > 500
-    assert _TETO_EXAMINADO >= _TETO_POR_JANELA
+    assert TETO_POR_JANELA == CAP_CHANGE_EVENT == 10_000
+    assert TETO_POR_JANELA > 500
+    assert TETO_EXAMINADO >= TETO_POR_JANELA
 
 
 def test_a_description_distingue_os_dois_truncados() -> None:
@@ -476,7 +475,7 @@ async def test_o_aviso_do_clamp_de_retencao_chega_ao_gestor(monkeypatch, _ctx) -
 
     import src.mcp.tools.detect_drift as mod
 
-    monkeypatch.setattr(mod, "consultar_change_history", _fake)
+    monkeypatch.setattr("src.google_ads.change_scan.consultar_change_history", _fake)
     monkeypatch.setattr(mod, "resolve_account_today", _hoje_fixo)
 
     out = await mod.detect_drift(
@@ -501,7 +500,7 @@ async def test_sem_clamp_o_aviso_vem_null_e_nao_ausente(monkeypatch, _ctx) -> No
 
     import src.mcp.tools.detect_drift as mod
 
-    monkeypatch.setattr(mod, "consultar_change_history", _fake)
+    monkeypatch.setattr("src.google_ads.change_scan.consultar_change_history", _fake)
     monkeypatch.setattr(mod, "resolve_account_today", _hoje_fixo)
 
     out = await mod.detect_drift({"customer_id": "1234567890"})

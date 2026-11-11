@@ -68,18 +68,11 @@ def test_recusa_ad_group_id_nao_numerico():
         )
 
 
-def test_dict_to_keyword_row_handles_missing_fields():
-    """Boundary parser defensive defaults."""
+def test_dict_to_keyword_row_chave_ausente_levanta():
+    """Campo ausente e bug do formatter: estoura, nao vira zero."""
     d: dict = {"keyword_text": "test"}
-    row = dict_to_keyword_row(d)
-    assert row.keyword_text == "test"
-    assert row.ad_group_id == ""
-    assert row.ad_group_status == ""  # F52
-    assert row.impressions == 0
-    assert row.clicks == 0
-    assert row.cost_brl == 0.0
-    assert row.conversions == 0
-    assert row.status == ""
+    with pytest.raises(KeyError):
+        dict_to_keyword_row(d)
 
 
 def test_parse_keyword_view_row_handles_enums_and_micros():
@@ -176,5 +169,20 @@ def test_dict_to_keyword_row_conversoes_fracionadas_nao_viram_zero():
     """Segundo andar do mesmo truncamento: `int(d.get("conversions", 0))` no
     boundary parser apaga a fracao de novo, mesmo se o GAQL row parser acima
     ja preservar."""
-    row = dict_to_keyword_row({"conversions": 0.9})
+    row = dict_to_keyword_row(
+        {
+            "ad_group_id": "1",
+            "ad_group_name": "AG1",
+            "ad_group_status": "ENABLED",
+            "campaign_name": "C1",
+            "keyword_id": "1",
+            "keyword_text": "kw",
+            "match_type": "BROAD",
+            "impressions": 0,
+            "clicks": 0,
+            "cost_brl": 0.0,
+            "conversions": 0.9,
+            "status": "ENABLED",
+        }
+    )
     assert row.conversions == 0.9

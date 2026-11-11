@@ -4,9 +4,8 @@
 from typing import Any
 
 from src.google_ads.mutations import run_mutation
-from src.google_ads.preflight import validate_manual_cpc_strategy
+from src.google_ads.preflight import buscar_lances_de_grupo, validate_manual_cpc_strategy
 from src.google_ads.queries._common import brl_para_micros, micros_to_currency
-from src.google_ads.reports import run_report
 from src.governance.blast_radius import RiskLevel, classify
 from src.mcp.context import get_current
 from src.mcp.tools._mutate_common import applied_envelope, emitir_preview, error_envelope
@@ -34,14 +33,6 @@ _SCHEMA: dict[str, Any] = {
     "required": ["customer_id", "bids"],
     "additionalProperties": False,
 }
-
-
-def _row_formatter(row: Any) -> dict[str, Any]:
-    return {
-        "ad_group_id": str(row.ad_group.id),
-        "ad_group_name": row.ad_group.name,
-        "current_cpc_bid_micros": int(row.ad_group.cpc_bid_micros),
-    }
 
 
 @register_tool(
@@ -72,24 +63,12 @@ async def update_ad_group_bid(args: dict[str, Any]) -> dict[str, Any]:
         return error_envelope("update_ad_group_bid", strategy_error)
 
     # Resolve current bids via GAQL
-    ag_ids = [b["ad_group_id"] for b in bids_input]
-    ids_clause = ", ".join(str(int(x)) for x in ag_ids)
-    query = f"""
-        SELECT ad_group.id, ad_group.name, ad_group.cpc_bid_micros
-        FROM ad_group
-        WHERE ad_group.id IN ({ids_clause})
-    """.strip()
-
-    rows = await run_report(
+    by_id = await buscar_lances_de_grupo(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
-        query=query,
-        row_formatter=_row_formatter,
-        operation_name="update_ad_group_bid_lookup",
+        ad_group_ids=[b["ad_group_id"] for b in bids_input],
     )
-
-    by_id = {r["ad_group_id"]: r for r in rows}
     missing = [b["ad_group_id"] for b in bids_input if b["ad_group_id"] not in by_id]
     if missing:
         return error_envelope("update_ad_group_bid", f"Ad groups nao encontrados: {missing}")
