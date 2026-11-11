@@ -429,6 +429,13 @@ async def test_grant_all_grava_audit(migrated: None, dsn: str) -> None:
             m = await managers.create(
                 conn, manager_id=uuid4(), email="ga-audit@v4company.com", full_name=None
             )
+            await managers.create(
+                conn,
+                manager_id=uuid4(),
+                email="admin-audit@v4company.com",
+                full_name=None,
+                role="admin",
+            )
             await google_ads_accounts.upsert_many(
                 conn,
                 [
@@ -448,7 +455,8 @@ async def test_grant_all_grava_audit(migrated: None, dsn: str) -> None:
     finally:
         await connection.close_pool()
 
-    rc = await cmd_grant_all(argparse.Namespace(email="ga-audit@v4company.com"))
+    args = argparse.Namespace(email="ga-audit@v4company.com", by="admin-audit@v4company.com")
+    rc = await cmd_grant_all(args)
     assert rc == 0
     linhas = await _linhas_audit(dsn, "cli_grant_all")
     assert len(linhas) == 1
@@ -456,6 +464,11 @@ async def test_grant_all_grava_audit(migrated: None, dsn: str) -> None:
     assert linhas[0]["manager_id"] == manager_id
     assert linhas[0]["target_count"] == 2
     assert linhas[0]["had_effect"] is True
+
+    # Decisao de 11/11: a segunda execucao nao muda nada, e o audit diz isso.
+    assert await cmd_grant_all(args) == 0
+    duas = await _linhas_audit(dsn, "cli_grant_all")
+    assert {(r["target_count"], r["had_effect"]) for r in duas} == {(2, True), (0, False)}
 
 
 @pytest.mark.integration
