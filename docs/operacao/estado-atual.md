@@ -7,7 +7,8 @@
 
 > **Última sessão:** [`session-2026-11-10-handoff.md`](session-2026-11-10-handoff.md) — 10 e 11/11: deps
 > (#227, #223) e a [varredura de refatoração de 10/11](../superpowers/plans/2026-11-10-varredura-refatoracao.md),
-> **Partes A a I em produção** (#228 a #236); J pulada (depende do F207); K1 entregue, decisão sua. Antes:
+> **Partes A a I em produção** (#228 a #236); J pulada (depende do F207). À tarde de 11/11: ruff/mypy
+> fixados (#238), **C2** (#239) e follow-ups (#240). Antes:
 > [`session-2026-11-04-handoff.md`](session-2026-11-04-handoff.md).
 
 ## Direção e restrições
@@ -31,8 +32,8 @@
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00198-t94`** (#236, `d8cdb14`), 100% do tráfego pelo log do deploy (o `gcloud` estava sem credencial às 10h de 11/11; confira no próximo login). De 10 a 11/11: `00188` a `00197` (tabela no [handoff](session-2026-11-10-handoff.md)). A linha `SERVING_REVISION` do log do deploy é a revisão de **antes**; meça no `gcloud` |
-| Comportamento novo (10–11/11) | moeda Meta lida do inventário; contador BUC conta só o lido; re-concessão grava `granted_at`/`granted_by`; revoke Meta grava `admin_revoked`; audit mostra o nome da conta Meta; `classify` com motivo próprio para `create_and_link_assets`, `import_offline_conversions`, `create_campaign`; `APP_TIMEZONE` saiu do deploy |
+| Revisão servindo | **`v4-ads-mcp-00201-vwn`** (#240), 100% do tráfego medido no `gcloud`. De 10 a 11/11: `00188` a `00201` (tabela no [handoff](session-2026-11-10-handoff.md)). A linha `SERVING_REVISION` do log do deploy é a revisão de **antes**; meça no `gcloud` |
+| Comportamento novo (10–11/11) | moeda Meta lida do inventário; contador BUC conta só o lido; re-concessão grava `granted_at`/`granted_by`; revoke Meta grava `admin_revoked`; audit mostra o nome da conta Meta; `classify` com motivo próprio para `create_and_link_assets`, `import_offline_conversions`, `create_campaign`; `APP_TIMEZONE` saiu do deploy; **enum de recomendação no v25** (2 tipos de lance confirmam, `CAMPAIGN_SPECIFIC_APP_GOAL` só leitura); `grant-all` exige `--by` e só toca o que muda |
 | Dependências | grpcio 1.85.1, protobuf 7.36.2, starlette 1.10.0 (avisa `httpx` deprecated no `TestClient`), sse-starlette 3.7.0, tzdata 2026.6 |
 | Tools | **80** (65 Google + 15 Meta), contagem do registry e do `/health?deep=1` |
 | Buckets | **14 always + 66 defer** (registry); tokens **não remedidos** desde a [remedição](tool-buckets-2026-10-05.md) |
@@ -61,22 +62,21 @@ que mais usava os antigos, saiu em 31/10). O plugin 0.5.0 já manda usar o break
 
 ## Próximo trabalho (em ordem)
 
-1. **C2** (decisão sua) — whitelist dos 3 tipos de recomendação do v25, pelo
-   [levantamento K1](levantamento-recomendacoes-v25-2026-11-11.md); só então trocar o import v24 de
-   `recommendations.py`, **junto com as entradas dos 3** (sozinho, os dois de lance cairiam em AUTO).
-2. **Ler os logs do resync** — a prova da parte H de 03/11 segue não lida (pede `gcloud` com credencial).
-3. **F207** — as 4 falhas silenciosas dos jobs, um TDD por bug, num PR; depois a **Parte J** da varredura.
-4. **Follow-ups da varredura** (lista no [handoff](session-2026-11-10-handoff.md)):
-   `granted_by` do CLI `grant-all`; `estimated_calls` morto; guard de `token_assinado` por
-   reexport; guard do I4 que só pega `.get(k, default)`.
+1. **F207** — as 4 falhas silenciosas dos jobs, um TDD por bug, num PR; depois a **Parte J** da
+   varredura. Numa sessão com você. (Os logs do resync de 04 a 11/11 já foram lidos: as três etapas
+   rodam e saem com `exit(0)`.)
+2. **Decisões suas da tarde de 11/11** ([handoff](session-2026-11-10-handoff.md)): regerar o snapshot
+   para atualizar as descrições de `apply_recommendation`/`get_recommendations`; confirmar que a
+   promoção read→write no `grant-all` ganha autor novo.
+3. Minors registrados no handoff (âncora `optional` que vira zero, guards de versão/reexport/I4).
 
 ## Pendências que dependem do Wellington
 
-- **Da varredura de 10/11** (lista completa no [handoff](session-2026-11-10-handoff.md)): decidir a
-  whitelist da C2; clique nos toggles de gestor em produção; login novo pelo Google (Parte H); dry-run
-  com gestor das tools de status, das 3 do `emitir_preview` e das 5 de mutate da Parte I; reemitir o
-  `SMOKE_MCP_BEARER` (expirado: o handshake do smoke não roda); o que o CLI `grant-all` grava em
-  `granted_by`; achados novos para o `/findings-add`.
+- **Da varredura de 10/11** (lista completa no [handoff](session-2026-11-10-handoff.md)): clique nos
+  toggles de gestor em produção; login novo pelo Google (Parte H); dry-run com gestor das tools de
+  status, das 3 do `emitir_preview`, das 5 de mutate da Parte I e do `apply_recommendation` num tipo de
+  lance do v25; reemitir o `SMOKE_MCP_BEARER` (expirado: o handshake do smoke não roda); achados novos
+  para o `/findings-add`. **`grant-all` agora pede `--by <seu e-mail>`.**
 - **Escrita em produção, com aval próprio:** apagar as linhas de `meta_oauth_connections` (o OAuth
   pessoal saiu no #215); **teste real de convite e cancelamento** (pendente desde 31/10).
 - **Desligamento do Pedro:** desativado em 31/10, conexão e sessão revogadas com auditoria; fora do BM.
