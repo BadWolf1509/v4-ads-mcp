@@ -86,13 +86,37 @@ def caminhos_reexportados() -> set[str]:
     return caminhos
 
 
-def usos_do_reexport(arv: ast.Module, proibidos: set[str]) -> list[int]:
-    """Linhas que chegam a um nome do codec PELO wrapper, em qualquer forma."""
+def _modulo_absoluto(no: ast.ImportFrom, pacote: list[str]) -> str | None:
+    """`from .x import y` resolvido contra o pacote do arquivo (11/11, revisao do #240).
+
+    Antes o scanner pulava todo `ImportFrom` com `level`: `from .oauth_state import
+    assinar` dentro de `src/auth/` passava. O harness diz que `src/` nao tem import
+    relativo, mas nada aplica isso — o guard nao pode depender da convencao.
+    """
+    if not no.level:
+        return no.module
+    if no.level - 1 > len(pacote):
+        return None
+    ancora = pacote[: len(pacote) - (no.level - 1)]
+    return ".".join([*ancora, *([no.module] if no.module else [])])
+
+
+def usos_do_reexport(
+    arv: ast.Module, proibidos: set[str], pacote: list[str] | None = None
+) -> list[int]:
+    """Linhas que chegam a um nome do codec PELO wrapper, em qualquer forma estatica.
+
+    Fora, como limitacao declarada (despacho dinamico vence qualquer varredura
+    sintatica): `getattr(modulo, nome_variavel)`, `importlib.import_module(...)`,
+    `vars(modulo)[...]`, `sys.modules[...]` e `from ... import *`. O mypy strict com
+    `no_implicit_reexport` cobre as formas diretas por outro caminho.
+    """
     origens = h.origens_de_import(arv)
     linhas: list[int] = []
     for no in ast.walk(arv):
-        if isinstance(no, ast.ImportFrom) and no.module and not no.level:
-            if any(f"{no.module}.{a.name}" in proibidos for a in no.names):
+        if isinstance(no, ast.ImportFrom):
+            modulo = _modulo_absoluto(no, pacote or [])
+            if modulo and any(f"{modulo}.{a.name}" in proibidos for a in no.names):
                 linhas.append(no.lineno)
         elif (
             isinstance(no, ast.Attribute | ast.Name)
@@ -108,7 +132,14 @@ def test_ninguem_usa_o_codec_pelo_reexport_dos_wrappers() -> None:
     achados = {
         h.rel(arq): ls
         for arq in h.fontes_py()
-        if h.rel(arq) not in _PERMITIDOS and (ls := usos_do_reexport(h.arvore(arq), proibidos))
+        if h.rel(arq) not in _PERMITIDOS
+        and (
+            ls := usos_do_reexport(
+                h.arvore(arq),
+                proibidos,
+                list(arq.relative_to(h.RAIZ).with_suffix("").parts[:-1]),
+            )
+        )
     }
     assert not achados, f"codec usado pelo reexport de oauth_state/panel_session: {achados}"
 
@@ -131,3 +162,17 @@ def test_o_scanner_do_reexport_pega_cada_forma() -> None:
         "from src.auth import oauth_state\noauth_state.sign_state(1)",
     ):
         assert not usos_do_reexport(ast.parse(limpo), proibidos), limpo
+
+
+def test_o_scanner_do_reexport_pega_o_import_relativo() -> None:
+    """Como se o arquivo morasse em `src/auth/`: o scanner antigo devolvia [] aqui."""
+    proibidos = caminhos_reexportados()
+    for trecho in (
+        "from .oauth_state import assinar",
+        "from .panel_session import verificar as v",
+        "from ..auth.oauth_state import assinar",
+    ):
+        assert usos_do_reexport(ast.parse(trecho), proibidos, ["src", "auth"]), trecho
+    assert not usos_do_reexport(
+        ast.parse("from .oauth_state import sign_state"), proibidos, ["src", "auth"]
+    )
