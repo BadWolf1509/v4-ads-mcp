@@ -27,6 +27,60 @@ def _csv_safe(value: str) -> str:
     return value
 
 
+# Fonte ÚNICA do nome da conta em toda leitura do audit (página do gestor, detalhe,
+# admin, dashboard): os JOINs e a coluna, com aliases fixos `gaa` e `maa`. Quem lê
+# tem de ter `audit_log` com alias `al`. O audit guarda em `customer_id` o id
+# Google (10 dígitos) OU o `ad_account_id` Meta (`act_<id>`), então os dois JOINs
+# são disjuntos e cada linha casa com no máximo uma conta. Ambos são por PK
+# (`google_ads_accounts.customer_id`, `meta_ad_accounts.ad_account_id`): nenhum
+# JOIN multiplica linha. Conta em nenhum inventário: `account_name` NULL e a
+# tela cai no `customer_id`.
+_SQL_NOME_DA_CONTA = (
+    "LEFT JOIN google_ads_accounts gaa ON gaa.customer_id = al.customer_id "
+    "LEFT JOIN meta_ad_accounts maa ON maa.ad_account_id = al.customer_id"
+)
+_SQL_COLUNA_NOME_DA_CONTA = "COALESCE(gaa.descriptive_name, maa.account_name) AS account_name"
+
+
+class _Filtros:
+    """Monta o WHERE de uma consulta do audit com `$n` numerados em ordem.
+
+    Cada `add` troca o `{}` do fragmento pelo próximo `$n` e guarda o valor em
+    `params`, então a numeração nunca sai do compasso dos valores — o descuido
+    que o `idx += 1` à mão deixava aberto em cada construtor. A ordem dos
+    `add` é a ordem dos filtros no SQL e dos `params`.
+    """
+
+    def __init__(self) -> None:
+        self._fragmentos: list[str] = []
+        self.params: list[Any] = []
+
+    def _proximo(self) -> int:
+        return len(self.params) + 1
+
+    def add(self, fragmento: str, valor: Any) -> None:
+        self._fragmentos.append(fragmento.replace("{}", f"${self._proximo()}"))
+        self.params.append(valor)
+
+    def add_cursor(self, occurred_at: datetime | None, cursor_id: int | None) -> None:
+        """Seek keyset `(occurred_at, id) < cursor`; sem cursor (ambos None) não filtra."""
+        n = self._proximo()
+        self._fragmentos.append(
+            f"(${n}::timestamptz IS NULL OR (al.occurred_at, al.id) < (${n}, ${n + 1}))"
+        )
+        self.params.extend([occurred_at, cursor_id])
+
+    def add_limit(self, limite: int) -> str:
+        """Guarda o LIMIT como último param e devolve o `$n` dele para o SQL."""
+        n = self._proximo()
+        self.params.append(limite)
+        return f"${n}"
+
+    @property
+    def sql(self) -> str:
+        return " AND ".join(self._fragmentos) or "TRUE"
+
+
 async def record(
     conn: asyncpg.Connection,
     *,
@@ -98,31 +152,21 @@ async def get_by_id(
     If manager_id is provided, scoped to that gestor (returns None if event belongs to another).
     If manager_id is None (admin context), returns any event by id.
     """
-    if manager_id is None:
-        row = await conn.fetchrow(
-            """SELECT al.*, m.email AS manager_email,
-                      s.label AS session_label,
-                      a.descriptive_name AS account_name
-               FROM audit_log al
-               LEFT JOIN managers m ON m.id = al.manager_id
-               LEFT JOIN mcp_sessions s ON s.id = al.session_id
-               LEFT JOIN google_ads_accounts a ON a.customer_id = al.customer_id
-               WHERE al.id = $1""",
-            audit_id,
-        )
-    else:
-        row = await conn.fetchrow(
-            """SELECT al.*, m.email AS manager_email,
-                      s.label AS session_label,
-                      a.descriptive_name AS account_name
-               FROM audit_log al
-               LEFT JOIN managers m ON m.id = al.manager_id
-               LEFT JOIN mcp_sessions s ON s.id = al.session_id
-               LEFT JOIN google_ads_accounts a ON a.customer_id = al.customer_id
-               WHERE al.id = $1 AND al.manager_id = $2""",
-            audit_id,
-            manager_id,
-        )
+    filtros = _Filtros()
+    filtros.add("al.id = {}", audit_id)
+    if manager_id is not None:
+        filtros.add("al.manager_id = {}", manager_id)
+    row = await conn.fetchrow(
+        f"""SELECT al.*, m.email AS manager_email,
+                   s.label AS session_label,
+                   {_SQL_COLUNA_NOME_DA_CONTA}
+            FROM audit_log al
+            LEFT JOIN managers m ON m.id = al.manager_id
+            LEFT JOIN mcp_sessions s ON s.id = al.session_id
+            {_SQL_NOME_DA_CONTA}
+            WHERE {filtros.sql}""",
+        *filtros.params,
+    )
     return dict(row) if row else None
 
 
@@ -148,35 +192,27 @@ async def export_csv_rows(
     # All WHERE clauses qualified with the `al` alias: the SELECT joins `managers m`,
     # which ALSO has a `status` column → unqualified `status` is ambiguous (asyncpg
     # AmbiguousColumnError). Qualify everything for safety/consistency with the SELECT.
-    where = ["al.occurred_at > now() - ($1 || ' days')::interval"]
-    params: list[Any] = [str(days)]
-    idx = 2
+    filtros = _Filtros()
+    filtros.add("al.occurred_at > now() - ({} || ' days')::interval", str(days))
     if manager_id is not None:
-        where.append(f"al.manager_id = ${idx}")
-        params.append(manager_id)
-        idx += 1
+        filtros.add("al.manager_id = {}", manager_id)
     if customer_id:
-        where.append(f"al.customer_id = ${idx}")
-        params.append(customer_id)
-        idx += 1
+        filtros.add("al.customer_id = {}", customer_id)
     if action_type and action_type != "all":
-        where.append(f"al.action_type = ${idx}")
-        params.append(action_type)
-        idx += 1
+        filtros.add("al.action_type = {}", action_type)
     if status and status != "all":
-        where.append(f"al.status = ${idx}")
-        params.append(status)
-        idx += 1
+        filtros.add("al.status = {}", status)
     teto = _TETO_LINHAS_EXPORT
     # F98: pede teto + 1 — a linha extra é o que revela que havia mais.
-    params.append(teto + 1)
+    limite = filtros.add_limit(teto + 1)
+    params = filtros.params
     sql = f"""SELECT al.occurred_at, m.email, al.operation, al.customer_id,
                      al.action_type, al.status, al.target_count, al.duration_ms,
                      al.error_message, al.provider_request_id
               FROM audit_log al LEFT JOIN managers m ON m.id = al.manager_id
-              WHERE {" AND ".join(where)}
+              WHERE {filtros.sql}
               ORDER BY al.occurred_at DESC, al.id DESC
-              LIMIT ${idx}"""
+              LIMIT {limite}"""
 
     # Header
     header = [
@@ -279,26 +315,22 @@ async def list_for_manager(
     Subset of columns (omits params_summary to keep response compact; use
     get_by_id() for full detail).
     """
-    where = ["manager_id = $1", "occurred_at > now() - ($2 || ' days')::interval"]
-    params: list[Any] = [manager_id, str(days)]
-    idx = 3
+    filtros = _Filtros()
+    filtros.add("manager_id = {}", manager_id)
+    filtros.add("occurred_at > now() - ({} || ' days')::interval", str(days))
     if customer_id:
-        where.append(f"customer_id = ${idx}")
-        params.append(customer_id)
-        idx += 1
+        filtros.add("customer_id = {}", customer_id)
     if action_type and action_type != "all":
-        where.append(f"action_type = ${idx}")
-        params.append(action_type)
-        idx += 1
-    params.append(limit)
+        filtros.add("action_type = {}", action_type)
+    limite = filtros.add_limit(limit)
     sql = f"""SELECT id, occurred_at, operation, customer_id, action_type,
                      target_count, status, duration_ms, provider_request_id,
                      error_message, platform, dry_run
               FROM audit_log
-              WHERE {" AND ".join(where)}
+              WHERE {filtros.sql}
               ORDER BY occurred_at DESC, id DESC
-              LIMIT ${idx}"""
-    rows = await conn.fetch(sql, *params)
+              LIMIT {limite}"""
+    rows = await conn.fetch(sql, *filtros.params)
     return [
         {
             "id": int(r["id"]),
@@ -342,37 +374,24 @@ def _build_manager_page_sql(
     function. `list_page_for_manager` is the only other caller; there is no
     second copy of this SQL to diverge from it.
     """
-    where = ["al.manager_id = $1", "al.occurred_at > now() - ($2 || ' days')::interval"]
-    params: list[Any] = [manager_id, str(days)]
-    idx = 3
+    filtros = _Filtros()
+    filtros.add("al.manager_id = {}", manager_id)
+    filtros.add("al.occurred_at > now() - ({} || ' days')::interval", str(days))
     if action_type and action_type != "all":
-        where.append(f"al.action_type = ${idx}")
-        params.append(action_type)
-        idx += 1
+        filtros.add("al.action_type = {}", action_type)
     if customer_id:
-        where.append(f"al.customer_id = ${idx}")
-        params.append(customer_id)
-        idx += 1
+        filtros.add("al.customer_id = {}", customer_id)
     if status and status != "all":
-        where.append(f"al.status = ${idx}")
-        params.append(status)
-        idx += 1
+        filtros.add("al.status = {}", status)
+    filtros.add_cursor(cursor_occurred_at, cursor_id)
+    limite = filtros.add_limit(limit + 1)
 
-    cursor_at_idx = idx
-    where.append(
-        f"(${cursor_at_idx}::timestamptz IS NULL OR "
-        f"(al.occurred_at, al.id) < (${cursor_at_idx}, ${cursor_at_idx + 1}))"
-    )
-    params.extend([cursor_occurred_at, cursor_id, limit + 1])
-    limit_idx = cursor_at_idx + 2
-
-    sql = f"""SELECT al.*, a.descriptive_name AS account_name
-              FROM audit_log al LEFT JOIN google_ads_accounts a
-                ON a.customer_id = al.customer_id
-              WHERE {" AND ".join(where)}
+    sql = f"""SELECT al.*, {_SQL_COLUNA_NOME_DA_CONTA}
+              FROM audit_log al {_SQL_NOME_DA_CONTA}
+              WHERE {filtros.sql}
               ORDER BY al.occurred_at DESC, al.id DESC
-              LIMIT ${limit_idx}"""
-    return sql, params
+              LIMIT {limite}"""
+    return sql, filtros.params
 
 
 def _recusa_limite_menor_que_um(limit: int) -> None:
@@ -456,45 +475,30 @@ def _build_admin_page_sql(
     rodada 1, Achado 1) — see its docstring. `list_page_admin` is the only
     other caller.
     """
-    where = ["al.occurred_at > now() - ($1 || ' days')::interval"]
-    params: list[Any] = [str(days)]
-    idx = 2
+    filtros = _Filtros()
+    filtros.add("al.occurred_at > now() - ({} || ' days')::interval", str(days))
     if manager_id:
-        where.append(f"al.manager_id = ${idx}")
-        params.append(manager_id)
-        idx += 1
+        filtros.add("al.manager_id = {}", manager_id)
     if customer_id:
-        where.append(f"al.customer_id = ${idx}")
-        params.append(customer_id)
-        idx += 1
+        filtros.add("al.customer_id = {}", customer_id)
     if action_type and action_type != "all":
-        where.append(f"al.action_type = ${idx}")
-        params.append(action_type)
-        idx += 1
+        filtros.add("al.action_type = {}", action_type)
     if status and status != "all":
-        where.append(f"al.status = ${idx}")
-        params.append(status)
-        idx += 1
-
-    cursor_at_idx = idx
-    where.append(
-        f"(${cursor_at_idx}::timestamptz IS NULL OR "
-        f"(al.occurred_at, al.id) < (${cursor_at_idx}, ${cursor_at_idx + 1}))"
-    )
-    params.extend([cursor_occurred_at, cursor_id, limit + 1])
-    limit_idx = cursor_at_idx + 2
+        filtros.add("al.status = {}", status)
+    filtros.add_cursor(cursor_occurred_at, cursor_id)
+    limite = filtros.add_limit(limit + 1)
 
     sql = f"""SELECT al.id, al.occurred_at, al.action_type, al.operation,
                      al.customer_id, al.target_count, al.status, al.duration_ms,
                      m.email AS manager_email,
-                     gaa.descriptive_name AS account_name
+                     {_SQL_COLUNA_NOME_DA_CONTA}
               FROM audit_log al
               LEFT JOIN managers m ON m.id = al.manager_id
-              LEFT JOIN google_ads_accounts gaa ON gaa.customer_id = al.customer_id
-              WHERE {" AND ".join(where)}
+              {_SQL_NOME_DA_CONTA}
+              WHERE {filtros.sql}
               ORDER BY al.occurred_at DESC, al.id DESC
-              LIMIT ${limit_idx}"""
-    return sql, params
+              LIMIT {limite}"""
+    return sql, filtros.params
 
 
 async def list_page_admin(
@@ -533,3 +537,39 @@ async def list_page_admin(
     page = fetched[:limit]
     next_cursor = (page[-1]["occurred_at"], int(page[-1]["id"])) if len(fetched) > limit else None
     return [dict(r) for r in page], next_cursor
+
+
+async def top_operations_7d(conn: asyncpg.Connection) -> list[asyncpg.Record]:
+    """As 5 operações mais chamadas nos últimos 7 dias (overview do admin)."""
+    rows = await conn.fetch(
+        """SELECT operation, count(*) AS count FROM audit_log
+           WHERE occurred_at > now() - interval '7 days'
+           GROUP BY operation ORDER BY count DESC LIMIT 5"""
+    )
+    return list(rows)
+
+
+async def top_managers_7d(conn: asyncpg.Connection) -> list[asyncpg.Record]:
+    """Os 5 gestores com mais chamadas nos últimos 7 dias (overview do admin)."""
+    rows = await conn.fetch(
+        """SELECT m.email, count(*) AS count
+           FROM audit_log al JOIN managers m ON m.id = al.manager_id
+           WHERE al.occurred_at > now() - interval '7 days'
+           GROUP BY m.email ORDER BY count DESC LIMIT 5"""
+    )
+    return list(rows)
+
+
+async def list_recent_for_manager(
+    conn: asyncpg.Connection, manager_id: UUID
+) -> list[asyncpg.Record]:
+    """As 5 últimas chamadas do gestor, com o nome da conta, Google ou Meta (dashboard)."""
+    rows = await conn.fetch(
+        f"""SELECT al.occurred_at, al.operation, al.customer_id, al.status,
+                  {_SQL_COLUNA_NOME_DA_CONTA}
+           FROM audit_log al {_SQL_NOME_DA_CONTA}
+           WHERE al.manager_id = $1
+           ORDER BY al.occurred_at DESC, al.id DESC LIMIT 5""",
+        manager_id,
+    )
+    return list(rows)

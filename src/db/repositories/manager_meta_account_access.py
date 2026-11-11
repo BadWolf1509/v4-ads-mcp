@@ -4,10 +4,14 @@ from uuid import UUID
 
 import asyncpg
 
-from src.db.repositories._comum import linhas_afetadas
+from src.db.repositories import _acesso_comum
+from src.db.repositories._acesso_comum import META
 from src.db.repositories.manager_account_access import NivelDeAcesso
 from src.db.repositories.meta_ad_accounts import MetaAdAccount, row_to_account
-from src.db.repositories.motivos import BULK_COPY_REPLACED_REASON, PARTNERSHIP_ENDED_REASON
+from src.db.repositories.motivos import (
+    ADMIN_REVOKED_REASON,
+    PARTNERSHIP_ENDED_REASON,
+)
 
 # Motivo gravado quando o reconciliador (job) revoga acesso por a conta ter
 # saido da parceria: vive em `motivos.py` (módulo neutro) e é reexportado daqui,
@@ -27,23 +31,15 @@ async def grant(
     revogada (`revoke` agora é soft), o ON CONFLICT limpa `revoked_at`/
     `revoked_reason` em vez de só atualizar `access_level` — senão o toggle do
     painel "concede" e o gate continua negando, porque a linha segue revogada.
+    SQL no núcleo (`_acesso_comum.grant`), o mesmo do gêmeo Google.
     """
-    await conn.execute(
-        """
-        INSERT INTO manager_meta_account_access
-            (manager_id, ad_account_id, access_level, granted_by)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (manager_id, ad_account_id) DO UPDATE SET
-            access_level = EXCLUDED.access_level,
-            granted_at = now(),
-            granted_by = EXCLUDED.granted_by,
-            revoked_at = NULL,
-            revoked_reason = NULL
-        """,
-        manager_id,
-        ad_account_id,
-        access_level,
-        granted_by,
+    await _acesso_comum.grant(
+        conn,
+        META,
+        manager_id=manager_id,
+        conta=ad_account_id,
+        access_level=access_level,
+        granted_by=granted_by,
     )
 
 
@@ -69,29 +65,13 @@ async def grant_all_active(
     forma, e a §8 do desenho da matriz de acesso já prevê o "Conceder todas" no
     painel — apagar aqui só criaria assimetria entre os dois lados.
 
-    F167: esta cláusula atualiza `granted_at`/`granted_by`; o gêmeo Google
-    (`manager_account_access.grant_all_active`) não atualiza os dois — só
-    `access_level`/`revoked_at`/`revoked_reason`. Assimetria conhecida, não
-    corrigida (as duas direções se defendem); ver F167 no catálogo.
+    F167 (decisão de 10/11, "atualizar sempre"): esta cláusula atualiza
+    `granted_at`/`granted_by`, e o gêmeo Google passou a fazer o mesmo.
+    SQL no núcleo (`_acesso_comum.grant_all_active`).
     """
-    result = await conn.execute(
-        """
-        INSERT INTO manager_meta_account_access
-            (manager_id, ad_account_id, access_level, granted_by)
-        SELECT $1, ad_account_id, 'write', $2
-        FROM meta_ad_accounts
-        WHERE is_active = true
-        ON CONFLICT (manager_id, ad_account_id) DO UPDATE SET
-            access_level = EXCLUDED.access_level,
-            granted_at = now(),
-            granted_by = EXCLUDED.granted_by,
-            revoked_at = NULL,
-            revoked_reason = NULL
-        """,
-        manager_id,
-        granted_by,
+    return await _acesso_comum.grant_all_active(
+        conn, META, manager_id=manager_id, granted_by=granted_by
     )
-    return linhas_afetadas(result)
 
 
 async def revoke(
@@ -99,7 +79,7 @@ async def revoke(
     *,
     manager_id: UUID,
     ad_account_id: str,
-    reason: str = "manual",
+    reason: str = ADMIN_REVOKED_REASON,
 ) -> None:
     """Revogação SOFT (spec 2026-08-20): a linha fica, só marca `revoked_at`.
 
@@ -108,17 +88,11 @@ async def revoke(
 
     Só pega linha viva (spec 2026-09-28 §3.2.1): revogar de novo uma linha que o churn
     já revogou trocaria `partnership_ended` pelo motivo novo, e o `restore_for_account`
-    deixaria de devolvê-la quando a parceria voltasse.
+    deixaria de devolvê-la quando a parceria voltasse. SQL no núcleo
+    (`_acesso_comum.revoke`).
     """
-    await conn.execute(
-        """
-        UPDATE manager_meta_account_access
-           SET revoked_at = now(), revoked_reason = $3
-         WHERE manager_id = $1 AND ad_account_id = $2 AND revoked_at IS NULL
-        """,
-        manager_id,
-        ad_account_id,
-        reason,
+    await _acesso_comum.revoke(
+        conn, META, manager_id=manager_id, conta=ad_account_id, reason=reason
     )
 
 
@@ -246,21 +220,16 @@ async def bulk_grant(
     (`manager_account_access.bulk_grant`) já corrigiu. Sem isso, quem já tinha
     'read' numa conta continuava com 'read' depois de um "conceder tudo" — a
     chamada devolve sucesso, mas o nível antigo sobrevive em silêncio.
+    SQL no núcleo (`_acesso_comum.bulk_grant`).
     """
-    if not ad_account_ids:
-        return 0
-    rows = [(manager_id, aid, access_level, granted_by) for aid in ad_account_ids]
-    await conn.executemany(
-        """INSERT INTO manager_meta_account_access
-               (manager_id, ad_account_id, access_level, granted_by)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (manager_id, ad_account_id) DO UPDATE SET
-               access_level = EXCLUDED.access_level,
-               revoked_at = NULL,
-               revoked_reason = NULL""",
-        rows,
+    return await _acesso_comum.bulk_grant(
+        conn,
+        META,
+        manager_id=manager_id,
+        contas=ad_account_ids,
+        granted_by=granted_by,
+        access_level=access_level,
     )
-    return len(rows)
 
 
 async def copy_access(
@@ -291,39 +260,85 @@ async def copy_access(
     `revoked_at IS NULL`, já não acha nada pra reconceder. A rota checa antes
     (`src/web/routes/admin_access.py:204`, `admin_access_meta_bulk_copy`),
     mas a defesa não pode viver só lá: quem chamar o repositório de outro
-    lugar não herda a checagem.
+    lugar não herda a checagem. A recusa e o SQL vivem no núcleo
+    (`_acesso_comum.copy_access`), os mesmos do gêmeo Google.
     """
-    if from_manager_id == to_manager_id:
-        raise ValueError("copy_access: origem e destino sao o mesmo gestor")
-    async with conn.transaction():
-        # "Replace" primeiro revoga (soft) o que o destino tinha de vivo — sem
-        # isso, uma conta que só a destino tinha (fora do conjunto da origem)
-        # ficaria viva pra sempre, e nunca seria "substituição" de verdade.
-        await conn.execute(
-            """
-            UPDATE manager_meta_account_access
-               SET revoked_at = now(), revoked_reason = $2
-             WHERE manager_id = $1 AND revoked_at IS NULL
-            """,
-            to_manager_id,
-            BULK_COPY_REPLACED_REASON,
-        )
-        result = await conn.execute(
-            """
-            INSERT INTO manager_meta_account_access
-                   (manager_id, ad_account_id, access_level, granted_by)
-            SELECT $1, ad_account_id, access_level, $2
-              FROM manager_meta_account_access
-             WHERE manager_id = $3 AND revoked_at IS NULL
-            ON CONFLICT (manager_id, ad_account_id) DO UPDATE SET
-                access_level = EXCLUDED.access_level,
-                granted_at = now(),
-                granted_by = EXCLUDED.granted_by,
-                revoked_at = NULL,
-                revoked_reason = NULL
-            """,
-            to_manager_id,
-            granted_by,
-            from_manager_id,
-        )
-    return linhas_afetadas(result)
+    return await _acesso_comum.copy_access(
+        conn,
+        META,
+        from_manager_id=from_manager_id,
+        to_manager_id=to_manager_id,
+        granted_by=granted_by,
+    )
+
+
+async def list_live_grants(conn: asyncpg.Connection) -> list[asyncpg.Record]:
+    """`(manager_id, ad_account_id)` de todo grant vivo — a matriz de `/admin/access/meta`.
+
+    Revogação é soft (a linha fica), então sem `revoked_at IS NULL` a célula
+    continuaria marcada depois do admin revogar.
+    """
+    rows = await conn.fetch(
+        "SELECT manager_id, ad_account_id FROM manager_meta_account_access WHERE revoked_at IS NULL"
+    )
+    return list(rows)
+
+
+async def list_live_grants_for_manager(
+    conn: asyncpg.Connection, manager_id: UUID
+) -> list[asyncpg.Record]:
+    """`ad_account_id` dos grants vivos de UM gestor (detalhe do gestor no painel)."""
+    rows = await conn.fetch(
+        "SELECT ad_account_id FROM manager_meta_account_access "
+        "WHERE manager_id = $1 AND revoked_at IS NULL",
+        manager_id,
+    )
+    return list(rows)
+
+
+async def list_managers_with_counts(conn: asyncpg.Connection) -> list[asyncpg.Record]:
+    """Gestores ativos com `access_count` (`/admin/access/meta/by-manager`).
+
+    `revoked_at` entra na CONDIÇÃO do LEFT JOIN, não no WHERE: o WHERE excluiria o
+    gestor inteiro (o LEFT viraria INNER) quando todos os grants dele estão
+    revogados, e ele tem que continuar aparecendo com "0 / total".
+    """
+    rows = await conn.fetch(
+        """SELECT m.id, m.email, m.full_name,
+                  count(a.ad_account_id) AS access_count
+           FROM managers m
+           LEFT JOIN manager_meta_account_access mmaa
+                  ON mmaa.manager_id = m.id AND mmaa.revoked_at IS NULL
+           LEFT JOIN meta_ad_accounts a
+                  ON a.ad_account_id = mmaa.ad_account_id AND a.is_active = true
+           WHERE m.is_active = true
+           GROUP BY m.id ORDER BY m.email"""
+    )
+    return list(rows)
+
+
+async def count_active_accounts(conn: asyncpg.Connection) -> int:
+    """Contas ATIVAS do inventário: o denominador de `list_managers_with_counts`.
+
+    O detalhe do gestor monta a matriz por `list_all`, que já filtra `is_active`;
+    sem o filtro aqui o denominador crescia a cada conta desativada pelo
+    offboarding automático e as duas telas voltavam a discordar.
+    """
+    n = await conn.fetchval("SELECT count(*) FROM meta_ad_accounts WHERE is_active = true")
+    return int(n or 0)
+
+
+async def has_live_grant(conn: asyncpg.Connection, manager_id: UUID, ad_account_id: str) -> bool:
+    """O par (gestor, conta) tem grant VIVO (`revoked_at IS NULL`)?
+
+    Linha revogada é soft e fica: sem o filtro o toggle do painel chamaria
+    `revoke` de novo em vez de reconceder. Não cruza com o inventário (isso é o
+    gate, `can_manager_access`): aqui é só o estado da linha de grant.
+    """
+    existe = await conn.fetchval(
+        "SELECT 1 FROM manager_meta_account_access "
+        "WHERE manager_id = $1 AND ad_account_id = $2 AND revoked_at IS NULL",
+        manager_id,
+        ad_account_id,
+    )
+    return bool(existe)

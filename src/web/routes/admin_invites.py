@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from src.config import get_settings
 from src.db import connection
+from src.db.repositories import managers as managers_repo
 from src.web.deps import CurrentUser, current_manager, pending_invites_count
 from src.web.routes._shared import (
     _admin_flash,
@@ -49,16 +50,7 @@ async def admin_invites(
 ) -> HTMLResponse:
     _require_admin(user)
     # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
-    invites = await connection.run_with_reconnect(
-        lambda conn: conn.fetch(
-            """SELECT m.id, m.email, m.full_name, m.invited_at,
-                      inviter.email AS invited_by_email
-               FROM managers m
-               LEFT JOIN managers inviter ON inviter.id = m.invited_by
-               WHERE m.status = 'invited'
-               ORDER BY m.invited_at DESC"""
-        )
-    )
+    invites = await connection.run_with_reconnect(managers_repo.list_invited_with_inviter)
     pending = await pending_invites_count()
     now = datetime.now(UTC)
     panel_url = get_settings().public_base_url
@@ -95,11 +87,8 @@ async def admin_invites_new(
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         # Idempotency: if email already exists in any status, don't double-invite
-        existing = await conn.fetchval("SELECT 1 FROM managers WHERE email = $1", email)
-        if existing:
+        if await managers_repo.email_exists(conn, email):
             return RedirectResponse(url="/admin/invites?error=exists", status_code=303)
-
-        from src.db.repositories import managers as managers_repo
 
         # Task 5: criação do convite e audit na mesma transação — se
         # _audit_admin falhar depois do INSERT já commitado, o convite existe
@@ -133,9 +122,7 @@ async def admin_invites_cancel(
         raise HTTPException(status_code=404, detail="Não encontrado") from None
     pool = connection.get_pool()
     async with pool.acquire() as conn:
-        from src.db.repositories import managers as managers_repo
-
-        email = await conn.fetchval("SELECT email FROM managers WHERE id = $1", parsed_invite_id)
+        email = await managers_repo.get_email(conn, parsed_invite_id)
         # Task 5: cancelamento do convite e audit na mesma transação (ver
         # admin_invites_new).
         async with conn.transaction():

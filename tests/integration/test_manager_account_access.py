@@ -162,3 +162,78 @@ async def test_grant_all_active_continua_limpando_a_revogacao(db) -> None:
         )
         assert linha["revoked_at"] is None, "a revogacao deveria ter sido limpa"
         assert linha["access_level"] == "write"
+
+
+# --- G0 (decisão de 10/11): re-conceder registra quem e quando ----------------
+
+
+async def _carimbar_antigo(conn, manager_id, customer_id: str, quem) -> None:
+    """Põe `granted_at`/`granted_by` num estado reconhecível, no passado."""
+    await conn.execute(
+        "UPDATE manager_account_access SET granted_at = '2020-01-01T00:00:00+00:00', "
+        "       granted_by = $3 "
+        " WHERE manager_id = $1 AND customer_id = $2",
+        manager_id,
+        customer_id,
+        quem,
+    )
+
+
+async def _procedencia(conn, manager_id, customer_id: str):
+    return await conn.fetchrow(
+        "SELECT granted_at, granted_by, revoked_at FROM manager_account_access "
+        " WHERE manager_id = $1 AND customer_id = $2",
+        manager_id,
+        customer_id,
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("revogar", [True, False], ids=["revogada", "ativa"])
+async def test_grant_all_active_reconceder_atualiza_granted_at_e_by(db, revogar: bool) -> None:
+    """G0: "Atualizar sempre" — re-concessão (linha revogada OU ativa) carimba
+    `granted_at = now()` e `granted_by` de quem concedeu agora."""
+    async with db.acquire() as conn:
+        gestor = await seed_manager(conn, email=f"ga-g0-{revogar}@v4company.com")
+        antigo = await seed_manager(conn, email=f"ga-g0-antigo-{revogar}@v4company.com")
+        novo = await seed_manager(conn, email=f"ga-g0-novo-{revogar}@v4company.com")
+        await _make_account(conn, "5555555555")
+        await manager_account_access.grant(
+            conn, manager_id=gestor, customer_id="5555555555", granted_by=antigo
+        )
+        await _carimbar_antigo(conn, gestor, "5555555555", antigo)
+        if revogar:
+            await manager_account_access.revoke(conn, manager_id=gestor, customer_id="5555555555")
+
+        await manager_account_access.grant_all_active(conn, manager_id=gestor, granted_by=novo)
+
+        linha = await _procedencia(conn, gestor, "5555555555")
+        assert linha["revoked_at"] is None
+        assert linha["granted_by"] == novo, "granted_by nao foi atualizado na re-concessao"
+        assert linha["granted_at"].year > 2020, "granted_at nao foi atualizado na re-concessao"
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("revogar", [True, False], ids=["revogada", "ativa"])
+async def test_bulk_grant_reconceder_atualiza_granted_at_e_by(db, revogar: bool) -> None:
+    """G0: o mesmo para `bulk_grant` (Google)."""
+    async with db.acquire() as conn:
+        gestor = await seed_manager(conn, email=f"bg-g0-{revogar}@v4company.com")
+        antigo = await seed_manager(conn, email=f"bg-g0-antigo-{revogar}@v4company.com")
+        novo = await seed_manager(conn, email=f"bg-g0-novo-{revogar}@v4company.com")
+        await _make_account(conn, "6666666666")
+        await manager_account_access.grant(
+            conn, manager_id=gestor, customer_id="6666666666", granted_by=antigo
+        )
+        await _carimbar_antigo(conn, gestor, "6666666666", antigo)
+        if revogar:
+            await manager_account_access.revoke(conn, manager_id=gestor, customer_id="6666666666")
+
+        await manager_account_access.bulk_grant(
+            conn, manager_id=gestor, customer_ids=["6666666666"], granted_by=novo
+        )
+
+        linha = await _procedencia(conn, gestor, "6666666666")
+        assert linha["revoked_at"] is None
+        assert linha["granted_by"] == novo, "granted_by nao foi atualizado na re-concessao"
+        assert linha["granted_at"].year > 2020, "granted_at nao foi atualizado na re-concessao"

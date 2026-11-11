@@ -224,3 +224,36 @@ async def definir_role(
         return row["email"], False
     await conn.execute("UPDATE managers SET role = $2 WHERE id = $1", manager_id, role)
     return row["email"], True
+
+
+async def list_invited_with_inviter(conn: asyncpg.Connection) -> list[asyncpg.Record]:
+    """Convites pendentes (`status = 'invited'`) com o e-mail de quem convidou, do mais novo."""
+    rows = await conn.fetch(
+        """SELECT m.id, m.email, m.full_name, m.invited_at,
+                  inviter.email AS invited_by_email
+           FROM managers m
+           LEFT JOIN managers inviter ON inviter.id = m.invited_by
+           WHERE m.status = 'invited'
+           ORDER BY m.invited_at DESC"""
+    )
+    return list(rows)
+
+
+async def email_exists(conn: asyncpg.Connection, email: str) -> bool:
+    """Já existe gestor com este e-mail, em QUALQUER status? (idempotência do convite)"""
+    return bool(await conn.fetchval("SELECT 1 FROM managers WHERE email = $1", email))
+
+
+async def get_email(conn: asyncpg.Connection, manager_id: UUID) -> str | None:
+    """E-mail do gestor (qualquer status), ou None se o id não existe."""
+    email: str | None = await conn.fetchval("SELECT email FROM managers WHERE id = $1", manager_id)
+    return email
+
+
+async def list_recent_onboarding(conn: asyncpg.Connection) -> list[asyncpg.Record]:
+    """Os 10 gestores mais recentes por `coalesce(invited_at, created_at)` (overview do admin)."""
+    rows = await conn.fetch(
+        """SELECT email, status, created_at, invited_at
+           FROM managers ORDER BY coalesce(invited_at, created_at) DESC LIMIT 10"""
+    )
+    return list(rows)

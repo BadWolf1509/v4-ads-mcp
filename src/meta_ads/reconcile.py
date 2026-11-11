@@ -4,11 +4,10 @@ Separar decisão de efeito é o que torna testável a única parte que pode revo
 acesso indevidamente. O repositório aplica; este módulo escolhe.
 """
 
-import math
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from src.clock import account_today
+from src.reconciliacao import LinhaNeutra, plano_neutro
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,30 +52,6 @@ class Plan:
     blocked_reason: str | None = None
 
 
-def _faltas_com_esta_execucao(r: InventoryRow, *, now: datetime) -> int:
-    """`missed_syncs` já incluindo a ausência DESTA execução — o `+1` condicional.
-
-    O `+1` era incondicional, com o comentário "esta execução é a próxima".
-    Deixou de ser verdade no C4: `apply_absences` passou a contar uma ausência
-    por DIA (no fuso da conta), não uma por execução, então num retry do mesmo
-    dia a ausência de hoje JÁ está no contador. Somar de novo aqui queima um
-    dia de carência sem gravar nada — e na execução da fronteira desativa a
-    conta e REVOGA os grants dos gestores um dia antes da hora, com o contador
-    parado no valor certo (o sintoma não aparece na coluna). Deste lado a
-    trava `meta_reconcile_apply` está ligada desde 05/09: era dano vivo.
-
-    O dia é o da CONTA (F141), derivado do mesmo instante que o job vai
-    carimbar: comparar com o dia do SERVIDOR erraria justamente das 21h à
-    meia-noite locais, que é a janela em que ninguém testa. `account_today` só
-    é chamado quando há data gravada — hoje `last_missed_on` é NULL no
-    inventário inteiro (a 009 subiu sem backfill), e o curto-circuito evita
-    resolver fuso de conta que não tem série de ausências.
-    """
-    if r.last_missed_on is not None and r.last_missed_on == account_today(r.timezone_name, now=now):
-        return r.missed_syncs
-    return r.missed_syncs + 1
-
-
 def build_plan(
     *,
     partnership_ids: set[str],
@@ -97,14 +72,14 @@ def build_plan(
     esquecesse voltaria em silêncio a somar `+1` por execução, que é o defeito
     que este parâmetro existe para fechar (a família F150/F151 — caminho não
     tratado que três revisões deixam passar porque revisão lê o código
-    ESCRITO). Continua puro: recebe o instante, não lê relógio, e a única
-    dependência nova é `src.clock.account_today`, que é função pura de
-    (nome de fuso, instante).
-    """
-    ativos = [r for r in inventory if r.is_active]
-    ids_ativos = {r.ad_account_id for r in ativos}
+    ESCRITO).
 
-    to_add = sorted(partnership_ids - ids_ativos)
+    Adaptador: a regra (carência, retry do mesmo dia, teto, leitura incompleta)
+    mora em `src.reconciliacao.plano_neutro`, a MESMA do Google. Aqui ficam a
+    tradução de `InventoryRow` (colunas de `meta_ad_accounts`), os limites
+    default e a única diferença deliberada entre os dois lados: `unreachable`,
+    que sai em TODO plano — inclusive o barrado.
+    """
     # T3c (revisão de branch): o sinal da §3 é `in_partnership ∧ recusada` —
     # sem interseção com o inventário. Intersectar com `ids_ativos` (lido ANTES
     # do upsert) apagaria justamente a conta nova-e-recusada: ela entra por
@@ -117,42 +92,32 @@ def build_plan(
     # lido — a CHUTE 07, lida pelo system user e ausente de `/me/adaccounts`, saia como
     # inalcancavel todo dia. Conta nao medida fica fora: nao medido nao e resposta.
     unreachable = sorted(partnership_ids & refused_ids)
-    to_reset = sorted(
-        r.ad_account_id for r in ativos if r.missed_syncs and r.ad_account_id in partnership_ids
+    p = plano_neutro(
+        presentes=partnership_ids,
+        inventario=[
+            LinhaNeutra(
+                conta=r.ad_account_id,
+                is_active=r.is_active,
+                missed_syncs=r.missed_syncs,
+                fuso=r.timezone_name,
+                last_missed_on=r.last_missed_on,
+            )
+            for r in inventory
+        ],
+        complete=complete,
+        now=now,
+        threshold=threshold,
+        max_removal_ratio=max_removal_ratio,
+        max_removal_abs=max_removal_abs,
     )
-
-    if not complete:
-        # Metade da lista não sustenta a afirmação "esta conta saiu da parceria".
-        return Plan(
-            to_add=to_add,
-            to_reset=to_reset,
-            unreachable=unreachable,
-            blocked_reason="leitura incompleta",
-        )
-
-    ausentes = [r for r in ativos if r.ad_account_id not in partnership_ids]
-    # `missed_syncs` conta as ausências JÁ GRAVADAS; a desta execução entra
-    # aqui — e SÓ se ainda não estiver lá. É por isso que a soma é condicional:
-    # ver `_faltas_com_esta_execucao`.
-    faltas = [(r.ad_account_id, _faltas_com_esta_execucao(r, now=now)) for r in ausentes]
-    remover = sorted(aid for aid, n in faltas if n >= threshold)
-    marcar = sorted(aid for aid, n in faltas if n < threshold)
-
-    # `max(1, ...)`: sem o piso, inventário pequeno zera o teto (2 ativas → 20% →
-    # floor 0) e o guard barraria ATÉ a saída de uma conta só — o recurso nunca
-    # dispararia. O guard existe contra remoção em massa, não contra o caso normal.
-    teto = max(1, min(max_removal_abs, math.floor(len(ativos) * max_removal_ratio)))
-    if remover and len(remover) > teto:
-        return Plan(
-            to_add=to_add,
-            to_reset=to_reset,
-            unreachable=unreachable,
-            blocked_reason=(
-                f"remocao em massa barrada: {len(remover)} contas de {len(ativos)} ativas "
-                f"(teto {teto})"
-            ),
-        )
-
+    # Plano barrado (leitura incompleta ou remoção em massa) já vem do núcleo sem
+    # to_bump/to_remove; `unreachable` entra igual nos dois casos — um bloqueio
+    # não deixa de medir a recusa (`test_plano_barrado_do_meta_carrega_unreachable`).
     return Plan(
-        to_add=to_add, to_bump=marcar, to_remove=remover, to_reset=to_reset, unreachable=unreachable
+        to_add=p.to_add,
+        to_bump=p.to_bump,
+        to_remove=p.to_remove,
+        to_reset=p.to_reset,
+        unreachable=unreachable,
+        blocked_reason=p.blocked_reason,
     )

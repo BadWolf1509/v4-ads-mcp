@@ -1,9 +1,10 @@
 """Paridade das duas regras de reconciliação (Google × Meta).
 
-As duas decidem quais contas PERDEM acesso e hoje são cópias uma da outra
-(`_faltas_com_esta_execucao`, o teto `max(1, min(abs, floor(n * ratio)))`). Este
-teste é a rede de quem for extrair o núcleo comum: a mesma situação, montada nos
-dois, tem de dar o mesmo plano. Divergência aqui é uma das duas regras mudando de
+As duas decidem quais contas PERDEM acesso. Eram cópias uma da outra
+(`_faltas_com_esta_execucao`, o teto `max(1, min(abs, floor(n * ratio)))`) até o
+G4 (11/11) extrair o núcleo comum para `src/reconciliacao.py`; hoje cada
+`build_plan` é adaptador dele. Este teste segue sendo a rede: a mesma situação,
+montada nos dois, tem de dar o mesmo plano. Divergência aqui é uma das duas regras mudando de
 comportamento em silêncio — e o que muda é quem perde acesso.
 """
 
@@ -127,6 +128,8 @@ CENARIOS = [
         {f"c{i:02d}" for i in range(15)} | {"zv", "mv", "zn", "mn"},
     ),
     Cenario("piso_do_teto_com_inventario_de_1", [Linha("a", faltas=2)], set()),
+    # Inventario vazio e origem povoada: tudo vira to_add; sem ativas nao ha o que marcar/remover.
+    Cenario("inventario_vazio_origem_povoada", [], {"a", "b", "c"}),
     # `last_missed_on` == dia UTC com fuso None: o fallback é UTC, então o retry
     # é reconhecido (2 faltas, não 3) e a conta só é marcada, não removida.
     Cenario(
@@ -263,6 +266,7 @@ ESPERADO = {
         None,
     ),
     "piso_do_teto_com_inventario_de_1": ([], [], ["a"], [], None),
+    "inventario_vazio_origem_povoada": (["a", "b", "c"], [], [], [], None),
     "fuso_none": ([], ["b"], [], [], None),
 }
 
@@ -270,3 +274,12 @@ ESPERADO = {
 @pytest.mark.parametrize("cenario", CENARIOS, ids=lambda c: c.nome)
 def test_plano_esperado_de_cada_cenario(cenario: Cenario) -> None:
     assert _campos(_plano_google(cenario)) == ESPERADO[cenario.nome]
+
+
+# O mesmo esperado, LITERAL, do lado Meta. A paridade acima já o implica, mas só
+# por transitividade: se as duas regras mudassem juntas (o risco de um núcleo
+# comum), a paridade seguiria verde. Aqui o texto de cada `blocked_reason` do
+# Meta fica preso byte a byte, independente do Google.
+@pytest.mark.parametrize("cenario", CENARIOS, ids=lambda c: c.nome)
+def test_plano_esperado_de_cada_cenario_no_meta(cenario: Cenario) -> None:
+    assert _campos(_plano_meta(cenario)) == ESPERADO[cenario.nome]

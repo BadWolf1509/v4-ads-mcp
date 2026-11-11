@@ -145,11 +145,14 @@ def test_toda_revogacao_so_pega_linha_viva() -> None:
     literais = _literais(h.SRC)
     populacao = _revogacoes(literais)
     # 8 desde 11/2026: a revogação de `meta_oauth_connections` saiu com o
-    # repositório do OAuth pessoal da Meta (9 medidas em 28/09). Piso que desce
+    # repositório do OAuth pessoal da Meta (9 medidas em 28/09). 6 desde a G1
+    # (10/11): `revoke` e o UPDATE de `copy_access` dos dois gêmeos de acesso
+    # viraram UM literal cada em `_acesso_comum.py` (4 -> 2). Piso que desce
     # junto com uma remoção deliberada.
-    assert len(populacao) >= 8, (
-        f"piso: 8 revogações em src/ (9 em 28/09, menos a do OAuth pessoal da Meta "
-        f"removido em 11/2026); achou {len(populacao)} — o casador parou de casar?"
+    assert len(populacao) >= 6, (
+        f"piso: 6 revogações em src/ (9 em 28/09, menos a do OAuth pessoal da Meta "
+        f"removido em 11/2026, menos as 2 que o núcleo de acesso da G1 unificou); "
+        f"achou {len(populacao)} — o casador parou de casar?"
     )
     faltam = _revogacoes_sem_predicado(literais)
     assert not faltam, (

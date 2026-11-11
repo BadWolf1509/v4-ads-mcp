@@ -10,7 +10,7 @@ from httpx import AsyncClient
 
 from src.auth.panel_session import PANEL_SESSION_COOKIE_NAME, sign_panel_session
 from src.db import connection
-from src.db.repositories import audit_log, google_ads_accounts, managers
+from src.db.repositories import audit_log, google_ads_accounts, managers, meta_ad_accounts
 
 _SIGNING_KEY = "x" * 32
 
@@ -69,6 +69,39 @@ async def test_audit_lists_managers_own_events(client: AsyncClient):
     assert "get_account_overview" in response.text
     assert "update_campaign_status" in response.text
     assert "Cliente Alpha" in response.text  # account name shown
+
+
+@pytest.mark.integration
+async def test_audit_mostra_o_nome_da_conta_meta_e_o_id_quando_nao_ha_cadastro(
+    client: AsyncClient,
+):
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="aum@v4company.com", full_name=None)
+        await meta_ad_accounts.upsert_many(
+            conn, [{"ad_account_id": "act_777", "account_name": "Cliente Meta Beta"}]
+        )
+        for cid, op in (("act_777", "meta_get_account_overview"), ("act_000", "meta_sem_conta")):
+            await audit_log.record(
+                conn,
+                manager_id=mid,
+                session_id=None,
+                customer_id=cid,
+                action_type="read",
+                operation=op,
+                target_count=1,
+                status="success",
+                duration_ms=10,
+            )
+
+    cookie = sign_panel_session(
+        manager_id=str(mid), email="aum@v4company.com", signing_key=_SIGNING_KEY, aud="panel"
+    )
+    response = await client.get("/audit", cookies={PANEL_SESSION_COOKIE_NAME: cookie})
+    assert response.status_code == 200
+    assert "Cliente Meta Beta" in response.text
+    assert "act_000" in response.text  # sem cadastro: cai no id, como antes
 
 
 @pytest.mark.integration

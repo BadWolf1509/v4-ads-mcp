@@ -138,3 +138,69 @@ async def test_revogar_de_novo_nao_tira_a_linha_do_restore(db) -> None:
             conn, ad_account_id="act_3333333333"
         )
         assert restauradas == 1
+
+
+# --- G0 (decisão de 10/11): re-conceder registra quem e quando; motivo unificado --
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("revogar", [True, False], ids=["revogada", "ativa"])
+async def test_bulk_grant_reconceder_atualiza_granted_at_e_by(db, revogar: bool) -> None:
+    """G0: "Atualizar sempre" — re-concessão (linha revogada OU ativa) carimba
+    `granted_at = now()` e `granted_by` de quem concedeu agora."""
+    async with db.acquire() as conn:
+        gestor = await seed_manager(conn, email=f"mbg-g0-{revogar}@v4company.com")
+        antigo = await seed_manager(conn, email=f"mbg-g0-antigo-{revogar}@v4company.com")
+        novo = await seed_manager(conn, email=f"mbg-g0-novo-{revogar}@v4company.com")
+        await _make_account(conn, "act_4444444444")
+        await manager_meta_account_access.grant(
+            conn, manager_id=gestor, ad_account_id="act_4444444444", granted_by=antigo
+        )
+        await conn.execute(
+            "UPDATE manager_meta_account_access SET granted_at = '2020-01-01T00:00:00+00:00'::timestamptz "
+            " WHERE manager_id = $1 AND ad_account_id = $2",
+            gestor,
+            "act_4444444444",
+        )
+        if revogar:
+            await manager_meta_account_access.revoke(
+                conn, manager_id=gestor, ad_account_id="act_4444444444"
+            )
+
+        await manager_meta_account_access.bulk_grant(
+            conn, manager_id=gestor, ad_account_ids=["act_4444444444"], granted_by=novo
+        )
+
+        linha = await conn.fetchrow(
+            "SELECT granted_at, granted_by, revoked_at FROM manager_meta_account_access "
+            " WHERE manager_id = $1 AND ad_account_id = $2",
+            gestor,
+            "act_4444444444",
+        )
+        assert linha["revoked_at"] is None
+        assert linha["granted_by"] == novo, "granted_by nao foi atualizado na re-concessao"
+        assert linha["granted_at"].year > 2020, "granted_at nao foi atualizado na re-concessao"
+
+
+@pytest.mark.integration
+async def test_revoke_sem_motivo_grava_admin_revoked(db) -> None:
+    """G0: motivo unificado — `revoke` Meta sem motivo explícito grava o mesmo
+    `admin_revoked` do Google (era `manual`)."""
+    async with db.acquire() as conn:
+        gestor = await seed_manager(conn, email="mrev-g0@v4company.com")
+        await _make_account(conn, "act_5555555555")
+        await manager_meta_account_access.grant(
+            conn, manager_id=gestor, ad_account_id="act_5555555555", granted_by=gestor
+        )
+
+        await manager_meta_account_access.revoke(
+            conn, manager_id=gestor, ad_account_id="act_5555555555"
+        )
+
+        motivo = await conn.fetchval(
+            "SELECT revoked_reason FROM manager_meta_account_access "
+            " WHERE manager_id = $1 AND ad_account_id = $2",
+            gestor,
+            "act_5555555555",
+        )
+        assert motivo == "admin_revoked"

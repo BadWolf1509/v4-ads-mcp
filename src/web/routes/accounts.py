@@ -29,15 +29,7 @@ async def accounts_page(
     # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
     async def _load(conn: asyncpg.Connection) -> tuple[list[asyncpg.Record], list[Any], list[Any]]:
         # All connections (including revoked, sorted most-recent first)
-        all_conns = await conn.fetch(
-            """
-            SELECT id, google_email, scopes, connected_at, revoked_at
-            FROM google_oauth_connections
-            WHERE manager_id = $1
-            ORDER BY connected_at DESC
-            """,
-            user.id,
-        )
+        all_conns = await google_oauth_connections.list_for_manager(conn, user.id)
         accounts = await manager_account_access.list_accounts_for_manager(conn, user.id)
         meta_accounts = await manager_meta_account_access.list_accounts_for_manager(conn, user.id)
         return all_conns, accounts, meta_accounts
@@ -66,10 +58,7 @@ async def accounts_revoke_connection(
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         # Verify ownership
-        owner = await conn.fetchval(
-            "SELECT manager_id FROM google_oauth_connections WHERE id = $1",
-            connection_id,
-        )
+        owner = await google_oauth_connections.get_owner(conn, connection_id)
         if owner != user.id:
             raise HTTPException(status_code=404, detail="Conexão não encontrada")
         await google_oauth_connections.revoke(conn, connection_id)

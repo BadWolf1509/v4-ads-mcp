@@ -109,3 +109,26 @@ async def revoke(conn: asyncpg.Connection, connection_id: UUID) -> None:
         "UPDATE google_oauth_connections SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL",
         connection_id,
     )
+
+
+async def list_for_manager(conn: asyncpg.Connection, manager_id: UUID) -> list[asyncpg.Record]:
+    """TODAS as conexões do gestor (inclusive revogadas), a mais recente primeiro (`/accounts`)."""
+    rows = await conn.fetch(
+        """
+        SELECT id, google_email, scopes, connected_at, revoked_at
+        FROM google_oauth_connections
+        WHERE manager_id = $1
+        ORDER BY connected_at DESC
+        """,
+        manager_id,
+    )
+    return list(rows)
+
+
+async def get_owner(conn: asyncpg.Connection, connection_id: UUID) -> UUID | None:
+    """`manager_id` dono da conexão, ou None se ela não existe (checagem de posse)."""
+    owner: UUID | None = await conn.fetchval(
+        "SELECT manager_id FROM google_oauth_connections WHERE id = $1",
+        connection_id,
+    )
+    return owner
