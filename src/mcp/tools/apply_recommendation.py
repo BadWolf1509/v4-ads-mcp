@@ -15,7 +15,8 @@ ramifica em `risk.level`:
 * tipo dos 23 que mexem em orcamento ou lance, ou que MIGRAM a campanha ->
   `create_pending` + `preview_envelope`, com os valores em BRL e com o contexto
   da campanha;
-* tipo que o SDK v24 nao conhece -> tambem confirma (ver `blast_radius`);
+* tipo que o SDK nao conhece -> tambem confirma (ver `blast_radius`);
+* tipo SO LEITURA (`TIPOS_SO_LEITURA`) -> recusado, sem token nem escrita;
 * qualquer outro tipo conhecido -> o caminho de antes (auto-aplica).
 
 **C1 (07/09) — irreversibilidade e um eixo proprio.** A primeira versao deste gate
@@ -37,6 +38,7 @@ from src.google_ads.queries._common import arredondado, percentual, razao
 from src.google_ads.queries.recommendations import (
     TIPOS_CONHECIDOS,
     TIPOS_DE_MIGRACAO,
+    TIPOS_SO_LEITURA,
     campaign_context_query,
     campaigns_on_bidding_strategy_query,
     chave_do_produto_derivado,
@@ -238,13 +240,13 @@ def _trecho_dos_valores(info: dict[str, Any], campanha: dict[str, Any] | None) -
     if partes:
         return "; ".join(partes)
 
-    # Tipo que o SDK v24 nao sabe nomear (o Google lancou depois desta versao).
+    # Tipo que o SDK nao sabe nomear (o Google lancou depois desta versao).
     # NAO da pra dizer "ela troca a estrategia de lance" como nos dois opt-ins
     # vazios: aqui nao se sabe o que ela faz, e afirmar o contrario e pior do que
     # nao dizer nada — o gestor confirmaria uma frase inventada.
     if info["type"] not in TIPOS_CONHECIDOS:
         aviso = (
-            "tipo de recomendacao que esta versao do SDK (v24) nao conhece — nao da "
+            "tipo de recomendacao que esta versao do SDK (v25) nao conhece — nao da "
             "pra dizer o que ela muda nem quanto custa; confira no painel do Google "
             "Ads antes de confirmar"
         )
@@ -335,6 +337,18 @@ async def apply_recommendation(args: dict[str, Any]) -> dict[str, Any]:
             customer_id=customer_id,
         )
     info = linhas[0]
+
+    # C2 (11/11): tipo SO LEITURA e recusado antes do gate — nada de token, nada de
+    # pendencia, nada de escrita. Ver `TIPOS_SO_LEITURA`.
+    if info["type"] in TIPOS_SO_LEITURA:
+        return error_envelope(
+            "apply_recommendation",
+            f"Recomendacao {info['type']} ({info['type_pt']}) e so leitura neste MCP: ela "
+            "troca a meta de conversao que a campanha otimiza e a API nao tem parametro "
+            "de apply para ela. Revise e aplique no painel do Google Ads, ou dispense com "
+            "dismiss_recommendation.",
+            customer_id=customer_id,
+        )
 
     risk = classify(
         operation="apply_recommendation",

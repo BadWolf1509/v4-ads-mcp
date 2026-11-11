@@ -3,7 +3,7 @@
 **A superficie que a GAQL aceita nao e a do proto (classe F87/F89).** Cada tipo
 de recomendacao guarda seus numeros num campo de detalhe proprio
 (`recommendation.campaign_budget_recommendation` e irmaos). O proto do SDK expoe
-as FOLHAS desse campo (`google/ads/googleads/v24/resources/types/recommendation.py`
+as FOLHAS desse campo (`google/ads/googleads/v25/resources/types/recommendation.py`
 :575,580 — `current_budget_amount_micros`, `recommended_budget_amount_micros`),
 mas a GAQL **nao** as expoe individualmente. Probado em 07/09 na conta
 `1171969590` via `validate_gaql`:
@@ -15,9 +15,10 @@ mas a GAQL **nao** as expoe individualmente. Probado em 07/09 na conta
 Seleciona-se a MENSAGEM; o SDK a popula; o Python le a folha do objeto. Quem
 escrever a query olhando o proto erra.
 
-`CAMPOS_DE_DETALHE` tem os 23 tipos que mexem em ORCAMENTO ou LANCE, ou que
+`CAMPOS_DE_DETALHE` tem os 25 tipos que mexem em ORCAMENTO ou LANCE, ou que
 MIGRAM a campanha. Os campos de detalhe foram validados por `validate_gaql` em
-07/09, um a um e todos juntos; a linha viva da 1171969590 (`CAMPAIGN_BUDGET`,
+07/09, um a um e todos juntos (os dois do v25.2 em 11/11, junto com os outros 23,
+na 1171969590); a linha viva da 1171969590 (`CAMPAIGN_BUDGET`,
 campanha 22922100363) devolveu `current_budget_amount_micros: 50000000` e
 `recommended_budget_amount_micros: 180000000` — o aumento de 3,6x que ate 07/09
 se aplicava sem preview nenhum.
@@ -41,7 +42,7 @@ e um eixo proprio: "quanto muda" e "da pra desfazer" sao perguntas diferentes, e
 segunda nao se responde olhando os campos da mensagem.
 
 **O criterio, por extenso.** O criterio e o PROTO
-(`v24/resources/types/recommendation.py`) lido campo a campo, mais o enum de tipos
+(`v25/resources/types/recommendation.py`) lido campo a campo, mais o enum de tipos
 de campanha do mesmo SDK. Entra na tabela o tipo que satisfaz **qualquer** um dos
 dois eixos:
 
@@ -148,7 +149,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from google.ads.googleads.v24.enums.types.recommendation_type import RecommendationTypeEnum
+from google.ads.googleads.v25.enums.types.recommendation_type import RecommendationTypeEnum
 
 from src.google_ads.queries._common import micros_to_currency, nome_do_enum
 from src.google_ads.queries._gaql import gaql_string_literal
@@ -368,6 +369,19 @@ CAMPOS_DE_DETALHE: dict[str, DetalheDoTipo] = {
             "target_cpa_novo_brl", "current_amount_brl", "multiplicador_recomendado", "brl"
         ),
     ),
+    # C2 (11/11): o irmao do v25.2, "raise Target CPA when bids are too low for
+    # Search campaigns to enter auctions". Mesma forma do de cima (ancora em
+    # micros + fator > 1), outro nome de campo para a ancora. Sobe o alvo: o gasto
+    # sobe ate o teto do orcamento sem o orcamento mudar.
+    "RAISE_TARGET_CPA_PERFORMANCE_BID_TOO_LOW": DetalheDoTipo(
+        "raise_target_cpa_performance_bid_too_low_recommendation",
+        "current_average_target_cpa_micros",
+        None,
+        (("multiplicador_recomendado", "recommended_target_multiplier", "numero"),),
+        ProdutoDerivado(
+            "target_cpa_novo_brl", "current_amount_brl", "multiplicador_recomendado", "brl"
+        ),
+    ),
     # --- alvos de ROAS (razao: nunca vira "R$") ---
     "TARGET_ROAS_OPT_IN": DetalheDoTipo(
         "target_roas_opt_in_recommendation",
@@ -401,6 +415,22 @@ CAMPOS_DE_DETALHE: dict[str, DetalheDoTipo] = {
             ("estrategia_de_portfolio", "target_adjustment.shared_set", "texto"),
         ),
         # ROAS e RAZAO: o produto sai como 3.6, nunca como "R$ 3,60".
+        ProdutoDerivado(
+            "target_roas_novo", "target_roas_atual", "multiplicador_recomendado", "razao"
+        ),
+    ),
+    # C2 (11/11), v25.2: AFROUXA a meta de retorno (fator < 1). Diferente do
+    # LOWER_TARGET_ROAS, a ancora `current_average_target_roas` e `double` CRU —
+    # 4.5 e 4,5x, nao micros —, por isso a unidade e `numero`, nao `razao`.
+    # Converter por 1e6 aqui mostraria um ROAS de 0,0000045 ao gestor.
+    "LOWER_TARGET_ROAS_PERFORMANCE_BID_TOO_LOW": DetalheDoTipo(
+        "lower_target_roas_performance_bid_too_low_recommendation",
+        None,
+        None,
+        (
+            ("target_roas_atual", "current_average_target_roas", "numero"),
+            ("multiplicador_recomendado", "recommended_target_multiplier", "numero"),
+        ),
         ProdutoDerivado(
             "target_roas_novo", "target_roas_atual", "multiplicador_recomendado", "razao"
         ),
@@ -480,7 +510,7 @@ CAMPOS_DE_DETALHE: dict[str, DetalheDoTipo] = {
     ),
 }
 
-# DERIVADO, nao enumerado de novo: a lista dos 23 vive num lugar so. Acrescentar
+# DERIVADO, nao enumerado de novo: a lista dos 25 vive num lugar so. Acrescentar
 # um tipo a tabela acima ja o poe sob confirmacao.
 TIPOS_QUE_CONFIRMAM: frozenset[str] = frozenset(CAMPOS_DE_DETALHE)
 
@@ -502,7 +532,17 @@ TIPOS_DE_MIGRACAO: frozenset[str] = frozenset(
     }
 )
 
-# Todo tipo que o SDK v24 sabe nomear. `UNSPECIFIED` e `UNKNOWN` ficam de FORA de
+# SO LEITURA (C2, decisao de 11/11): listados no `get_recommendations`, RECUSADOS
+# pelo `apply_recommendation` antes de qualquer escrita. `CAMPAIGN_SPECIFIC_APP_GOAL`
+# (v25.1) troca a META de conversao que o Smart Bidding otimiza e nao tem
+# parametro de apply no `ApplyRecommendationOperation` do v25. Nao declara alavanca
+# de gasto, entao sem esta lista cairia no AUTO — "nao mexe em orcamento nem
+# lance" e verdade e nao e a pergunta: mexe no que a campanha persegue. O
+# `blast_radius` tambem o manda confirmar, como segunda barreira.
+TIPOS_SO_LEITURA: frozenset[str] = frozenset({"CAMPAIGN_SPECIFIC_APP_GOAL"})
+
+# Todo tipo que o SDK v25 sabe nomear (a versao do client — guard em
+# `test_versao_do_sdk_em_src.py`). `UNSPECIFIED` e `UNKNOWN` ficam de FORA de
 # proposito: sao os dois valores com que o proprio proto diz "nao sei o que isto
 # e" — o mesmo estado epistemico de um numero de enum que o v24 nao conhece.
 #
@@ -569,6 +609,14 @@ TYPE_PT = {
     "RAISE_TARGET_CPA": "Aumentar o Target CPA",
     "RAISE_TARGET_CPA_BID_TOO_LOW": "Aumentar o Target CPA (lance baixo demais)",
     "LOWER_TARGET_ROAS": "Reduzir o Target ROAS",
+    # C2 (11/11) — os tres do v25.
+    "RAISE_TARGET_CPA_PERFORMANCE_BID_TOO_LOW": (
+        "Aumentar o Target CPA (lance baixo demais para entrar nos leiloes)"
+    ),
+    "LOWER_TARGET_ROAS_PERFORMANCE_BID_TOO_LOW": (
+        "Reduzir o Target ROAS (lance baixo demais para entrar nos leiloes)"
+    ),
+    "CAMPAIGN_SPECIFIC_APP_GOAL": "Definir meta de conversao de app da campanha",
 }
 
 
@@ -597,12 +645,12 @@ def recommendations_query(limit: int = 100) -> str:
 
 
 def _campos_de_detalhe_selecionados() -> list[str]:
-    """Os 23 campos de detalhe, ordenados — a lista sai da tabela, nao de uma copia."""
+    """Os 25 campos de detalhe, ordenados — a lista sai da tabela, nao de uma copia."""
     return sorted({f"recommendation.{d.campo}" for d in CAMPOS_DE_DETALHE.values()})
 
 
 def recommendation_detail_query(resource_name: str) -> str:
-    """Uma recomendacao pelo resource_name, com tipo + o detalhe de todos os 23 tipos.
+    """Uma recomendacao pelo resource_name, com tipo + o detalhe de todos os 25 tipos.
 
     **Sem join com `campaign` de proposito.** Selecionar `campaign.*` daqui faria
     um join implicito, e nao ha como medir (em 07/09 nenhuma conta do MCC tinha

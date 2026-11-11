@@ -4,7 +4,11 @@
 from typing import Any
 
 from src.google_ads.queries._common import nome_do_enum
-from src.google_ads.queries.recommendations import TYPE_PT, recommendations_query
+from src.google_ads.queries.recommendations import (
+    TIPOS_SO_LEITURA,
+    TYPE_PT,
+    recommendations_query,
+)
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
 from src.mcp.tools._common import aplicar_limite
@@ -47,6 +51,8 @@ def _row_formatter(row: Any) -> dict[str, Any]:
         "resource_name": rec.resource_name,
         "type": type_str,
         "type_pt": _TYPE_PT.get(type_str),  # None when no PT-BR mapping exists
+        # C2: o apply_recommendation recusa estes; o gestor sabe antes de pedir.
+        "so_leitura": type_str in TIPOS_SO_LEITURA,
     }
 
 

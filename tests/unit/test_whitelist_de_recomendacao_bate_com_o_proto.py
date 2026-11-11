@@ -1,4 +1,4 @@
-"""Guard derivado: a whitelist de recomendacoes que CONFIRMAM sai do proto do v24.
+"""Guard derivado: a whitelist de recomendacoes que CONFIRMAM sai do proto do v25.
 
 **Por que este guard existe (I2 da revisao da Task 2).** A primeira lista dos
 tipos que exigem confirmacao foi montada com um `grep` do enum por
@@ -37,11 +37,11 @@ import re
 from typing import Any
 
 import pytest
-from google.ads.googleads.v24.enums.types.advertising_channel_type import (
+from google.ads.googleads.v25.enums.types.advertising_channel_type import (
     AdvertisingChannelTypeEnum,
 )
-from google.ads.googleads.v24.enums.types.bidding_strategy_type import BiddingStrategyTypeEnum
-from google.ads.googleads.v24.resources.types.recommendation import Recommendation
+from google.ads.googleads.v25.enums.types.bidding_strategy_type import BiddingStrategyTypeEnum
+from google.ads.googleads.v25.resources.types.recommendation import Recommendation
 
 from src.google_ads.queries.recommendations import (
     CAMPOS_DE_DETALHE,
@@ -101,7 +101,7 @@ _DETALHES = {
     if f.message_type is not None and f.name.endswith("_recommendation")
 }
 _ESTRATEGIAS_DE_LANCE = set(BiddingStrategyTypeEnum.BiddingStrategyType.__members__)
-# Os TIPOS DE CAMPANHA que o v24 conhece. `UNSPECIFIED`/`UNKNOWN` ficam fora pelo
+# Os TIPOS DE CAMPANHA que o v25 conhece. `UNSPECIFIED`/`UNKNOWN` ficam fora pelo
 # mesmo motivo de sempre: sao os dois valores com que o proto diz "nao sei".
 _CANAIS = {
     nome
@@ -187,7 +187,7 @@ def _migra_a_campanha(tipo: str) -> bool:
 
 
 def _o_que_o_proto_manda_confirmar() -> set[str]:
-    """Os DOIS EIXOS, aplicados a TODOS os tipos que o v24 sabe nomear."""
+    """Os DOIS EIXOS, aplicados a TODOS os tipos que o v25 sabe nomear."""
     saida: set[str] = set()
     for tipo in TIPOS_CONHECIDOS:
         campos = _campos_do_tipo(tipo)
@@ -206,14 +206,14 @@ def _o_que_o_proto_manda_confirmar() -> set[str]:
 
 def test_a_varredura_do_proto_ve_a_populacao_inteira() -> None:
     """Sem isto o guard passaria verde varrendo zero tipos (F155, vacuidade)."""
-    assert len(TIPOS_CONHECIDOS) >= 54, f"so {len(TIPOS_CONHECIDOS)} tipos no enum do v24"
+    assert len(TIPOS_CONHECIDOS) >= 57, f"so {len(TIPOS_CONHECIDOS)} tipos no enum do v25"
     faltando = sorted(t for t in TIPOS_CONHECIDOS if t.lower() + "_recommendation" not in _DETALHES)
     assert not faltando, f"tipos do enum sem mensagem de detalhe no proto: {faltando}"
 
 
 def test_a_varredura_do_eixo_2_ve_a_populacao_de_canais() -> None:
     """Sem isto, `_CANAIS` vazio faria `_migra_a_campanha` devolver False sempre."""
-    assert len(_CANAIS) >= 12, f"so {len(_CANAIS)} canais no enum do v24"
+    assert len(_CANAIS) >= 12, f"so {len(_CANAIS)} canais no enum do v25"
     assert "PERFORMANCE_MAX" in _CANAIS
 
 
@@ -258,7 +258,7 @@ def test_o_eixo_da_irreversibilidade_nao_arrasta_os_quase_casos(tipo: str) -> No
     arrastaria estes tipos, e confirmar o que nao precisa treina o gestor a clicar
     sem ler (o mesmo motivo escrito para deixar `KEYWORD` de fora).
     """
-    assert tipo in TIPOS_CONHECIDOS, f"{tipo} sumiu do enum do v24 — rever o caso"
+    assert tipo in TIPOS_CONHECIDOS, f"{tipo} sumiu do enum do v25 — rever o caso"
     assert not _migra_a_campanha(tipo), f"{tipo} classificado como migracao"
     assert tipo not in TIPOS_DE_MIGRACAO
 
@@ -296,7 +296,7 @@ def test_todo_caminho_da_tabela_resolve_no_proto(tipo: str) -> None:
     campos = set(_campos_do_tipo(tipo))
     for caminho in _caminhos_da_tabela(tipo):
         nu = caminho.replace("[]", "")
-        assert nu in campos, f"{tipo}: {spec.campo}.{nu} nao existe no proto do v24"
+        assert nu in campos, f"{tipo}: {spec.campo}.{nu} nao existe no proto do v25"
 
 
 @pytest.mark.parametrize("tipo", sorted(CAMPOS_DE_DETALHE))
@@ -307,7 +307,7 @@ def test_a_cardinalidade_de_cada_segmento_bate_com_o_proto(tipo: str) -> None:
     marca segmento repetido com `[]`. Sem esta asserção o teste acima passaria
     verde com `options.required_campaign_budget_amount_micros` — a forma que a
     revisao sugeriu para o `TARGET_CPA_OPT_IN` — e a tool quebraria em producao,
-    porque `options` e REPEATED no v24. O contrario tambem morde: `[]` num campo
+    porque `options` e REPEATED no v25. O contrario tambem morde: `[]` num campo
     singular faria a leitura iterar sobre o que nao e lista.
     """
     for caminho in _caminhos_da_tabela(tipo):

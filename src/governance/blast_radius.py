@@ -12,6 +12,7 @@ from src.google_ads.queries.recommendations import (
     TIPOS_CONHECIDOS,
     TIPOS_DE_MIGRACAO,
     TIPOS_QUE_CONFIRMAM,
+    TIPOS_SO_LEITURA,
 )
 
 
@@ -282,13 +283,21 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
                 "campanha e o Google nao expoe operacao de volta — confirmar sempre "
                 "(eixo da irreversibilidade, spec §7.1)",
             )
+        # So leitura (C2): o `apply_recommendation` recusa antes de chegar aqui;
+        # este ramo e a segunda barreira, para que tirar a recusa nunca vire AUTO.
+        if tipo in TIPOS_SO_LEITURA:
+            return RiskClassification(
+                RiskLevel.CONFIRM,
+                f"apply_recommendation ({tipo}): troca a meta de conversao da campanha e "
+                "nao tem parametro de apply na API — aplique no painel do Google Ads",
+            )
         if tipo in TIPOS_QUE_CONFIRMAM:
             return RiskClassification(
                 RiskLevel.CONFIRM,
                 f"apply_recommendation ({tipo}): mexe em orcamento ou lance — "
                 "confirmar sempre, mesma regra do update_campaign_budget (spec §7.1 budget)",
             )
-        # Tipo que o SDK v24 nao sabe nomear. Ate 07/09 ele caia no AUTO abaixo:
+        # Tipo que o SDK nao sabe nomear. Ate 07/09 ele caia no AUTO abaixo:
         # `type_ = 999` parseava como a string "999", `type_pt` vinha None, e a
         # tool aplicava com o resumo "Aplicar recomendacao 999" — sem gate e sem
         # rotulo. Este modulo declara na linha 3 que "unknown operations always
@@ -303,7 +312,7 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
         if tipo not in TIPOS_CONHECIDOS:
             return RiskClassification(
                 RiskLevel.CONFIRM,
-                f"apply_recommendation ({tipo}): tipo que o SDK v24 nao conhece — "
+                f"apply_recommendation ({tipo}): tipo que esta versao do SDK nao conhece — "
                 "nao da pra afirmar que nao mexe em orcamento nem lance, entao confirmar",
             )
         return RiskClassification(
