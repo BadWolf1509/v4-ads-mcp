@@ -7,8 +7,9 @@
 
 > **Última sessão:** [`session-2026-11-10-handoff.md`](session-2026-11-10-handoff.md) — 10 e 11/11: deps
 > (#227, #223) e a [varredura de refatoração de 10/11](../superpowers/plans/2026-11-10-varredura-refatoracao.md),
-> **Partes A a I em produção** (#228 a #236); J pulada (depende do F207). À tarde de 11/11: ruff/mypy
-> fixados (#238), **C2** (#239) e follow-ups (#240). Antes:
+> **Partes A a J em produção** (#228 a #236, J no #247). À tarde de 11/11: ruff/mypy
+> fixados (#238), **C2** (#239) e follow-ups (#240); à noite, rodada autônoma: descrições v25 (#243),
+> **F207** (#244), **Parte J** (#247), **F210** (#245) e guards (#246). Antes:
 > [`session-2026-11-04-handoff.md`](session-2026-11-04-handoff.md).
 
 ## Direção e restrições
@@ -32,7 +33,7 @@
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00201-vwn`** (#240), 100% do tráfego medido no `gcloud`. De 10 a 11/11: `00188` a `00201` (tabela no [handoff](session-2026-11-10-handoff.md)). A linha `SERVING_REVISION` do log do deploy é a revisão de **antes**; meça no `gcloud` |
+| Revisão servindo | **`v4-ads-mcp-00206-24r`** (#246), 100% do tráfego medido no `gcloud`. De 10 a 11/11: `00188` a `00206-24r` (tabela no [handoff](session-2026-11-10-handoff.md)). A linha `SERVING_REVISION` do log do deploy é a revisão de **antes**; meça no `gcloud` |
 | Comportamento novo (10–11/11) | moeda Meta lida do inventário; contador BUC conta só o lido; re-concessão grava `granted_at`/`granted_by`; revoke Meta grava `admin_revoked`; audit mostra o nome da conta Meta; `classify` com motivo próprio para `create_and_link_assets`, `import_offline_conversions`, `create_campaign`; `APP_TIMEZONE` saiu do deploy; **enum de recomendação no v25** (2 tipos de lance confirmam, `CAMPAIGN_SPECIFIC_APP_GOAL` só leitura); `grant-all` exige `--by` e só toca o que muda |
 | Dependências | grpcio 1.85.1, protobuf 7.36.2, starlette 1.10.0 (avisa `httpx` deprecated no `TestClient`), sse-starlette 3.7.0, tzdata 2026.6 |
 | Tools | **80** (65 Google + 15 Meta), contagem do registry e do `/health?deep=1` |
@@ -62,13 +63,15 @@ que mais usava os antigos, saiu em 31/10). O plugin 0.5.0 já manda usar o break
 
 ## Próximo trabalho (em ordem)
 
-1. **F207** — as 4 falhas silenciosas dos jobs, um TDD por bug, num PR; depois a **Parte J** da
-   varredura. Numa sessão com você. (Os logs do resync de 04 a 11/11 já foram lidos: as três etapas
-   rodam e saem com `exit(0)`.)
-2. **Decisões suas da tarde de 11/11** ([handoff](session-2026-11-10-handoff.md)): regerar o snapshot
-   para atualizar as descrições de `apply_recommendation`/`get_recommendations`; confirmar que a
-   promoção read→write no `grant-all` ganha autor novo.
-3. Minors registrados no handoff (âncora `optional` que vira zero, guards de versão/reexport/I4).
+1. **Conferir o primeiro resync agendado com o F207 e a Parte J** (06:00 de 12/11): exit code, as
+   três etapas no log e as linhas `google_reconcile`/`meta_reconcile`/`db_purge` no `audit_log`; e o
+   backup semanal, agora com log JSON.
+2. **Alerta log-based** sobre `job_init_pool_failed` (decisão sua, 11/11: fica com você).
+3. **Retry no `playwright install --with-deps`** do CI (proposta): em 11/11 o DNS dos mirrors Ubuntu
+   no runner travou todos os PRs por ~3 h (problema conhecido do `actions/runner-images`).
+4. Minors registrados no [handoff](session-2026-11-10-handoff.md) (âncora `optional` que vira zero no
+   preview; guard de versão do SDK não pega `importlib`; parâmetro `manager` morto no helper de teste
+   do resync).
 
 ## Pendências que dependem do Wellington
 

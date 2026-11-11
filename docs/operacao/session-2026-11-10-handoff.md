@@ -72,7 +72,38 @@ Google omite a âncora `optional` (padrão herdado, família F145); guard de ver
 `importlib`; scanner do reexport não trata import relativo (mypy cobre); guard do I4 não pega
 `IfExp`, `dict(P, **d)` nem `d |= {...}`.
 
-## Método (o que funcionou)
+## 11/11 à noite — rodada autônoma (aval por menu antes de ele sair)
+
+| PR | o quê | revisão |
+|---|---|---|
+| #242 | catálogo F208–F211 | — (só docs) |
+| #243 | descrições de `apply_recommendation`/`get_recommendations` no v25 e com o tipo só leitura; snapshot regerado (aval); guard amarrando a descrição ao código | `00202-7dv` |
+| #244 | **F207** — purge que falha sai com 1 e grava `db_purge`/`error`; purge e audit separados; audit do sem-OAuth em `best_effort`; `job_init_pool_failed` estruturado | `00203-jdm` |
+| #247 | **Parte J** — backup no `executar_job` + `configure_logging`; `Desfecho` na etapa Google; `_pick_oauth_connection` sem a leitura de `managers` | `00204-qd7` |
+| #245 | **F210** — `iat` > 300 s no futuro, `iat` booleano, magnitude > 2**53, corpo não-UTF-8 e limite de dígitos viram o erro do domínio | `00205-lpn` |
+| #246 | guards: I4 (IfExp que pergunta pela ausência, `dict(P, **d)`, `\|=`, `get` aninhado) e import relativo no reexport | `00206-24r` |
+
+Medido: cada deploy com revisão no `gcloud`, `/health?deep=1` e leitura real (Google ou Meta); os
+jobs `resync` e `backup` na mesma imagem do serviço depois do #244 e do #247; `/login` 200 depois do
+#245. Antes de escolher o desenho do F207, as policies de alerta: só a de job falho (exit code) vê
+um job. Revisões finais no opus (sonnet nos PRs pequenos); todo Important reproduzido com teste
+vermelho antes do conserto.
+
+Não medido:
+- cookie de painel válido aceito pelo codec novo em produção — o do Chrome tinha mais de 24 h (TTL)
+  e não foi enviado; nenhum `panel_session_invalid` desde o deploy (o evento é logado: há registros
+  de 04/11). Pede login novo, que é seu;
+- o resync e o backup rodando com o código novo (próxima execução agendada).
+
+Rulings da noite:
+- falha do purge ENTRA no exit code (a única policy que vê job olha o exit code; retry idempotente,
+  F157 — conferido pela revisão);
+- `iat` no futuro reusa a mensagem de `iat` de cada audiência (no painel, "Missing iat" no log);
+- mock `pick` do helper de teste acompanha a interface nova da J2 (o plano dizia "sem alteração");
+- a Parte J foi preparada sobre a branch do F207 e só virou PR depois do merge dele;
+- o CI travou ~3 h pelo DNS dos mirrors Ubuntu no runner: reruns, sem contorno no código.
+
+
 
 Implementador e revisor por task (mínimo sonnet; opus em auth, acesso, reconciliação e revisões finais),
 **caracterização gravada no código antigo antes de cada refactor** (o revisor a roda num worktree temporário
