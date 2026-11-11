@@ -41,16 +41,6 @@ _GEMEOS = (
 
 # função -> motivo. Só encolhe: entrada nova exige decisão consciente.
 _DIVERGENCIAS_REGISTRADAS: dict[str, str] = {
-    "grant_all_active": (
-        "decisão pendente do Wellington (re-concessão atualiza quem e quando concedeu?): "
-        "o ON CONFLICT do Meta também seta `granted_at = now()` e "
-        "`granted_by = EXCLUDED.granted_by`, o do Google só `access_level`, "
-        "`revoked_at` e `revoked_reason` (F167)"
-    ),
-    "revoke": (
-        "valor gravado no banco e lido pelas filas; unificar é decisão pendente: "
-        "motivo padrão `admin_revoked` (Google, ADMIN_REVOKED_REASON) × `manual` (Meta)"
-    ),
     "can_manager_access": (
         "ordem equivalente dos predicados do WHERE: Google "
         "`a.is_active = true AND m.revoked_at IS NULL`, Meta "
@@ -236,18 +226,6 @@ def _diferencas(nome: str) -> frozenset[str]:
 # Mudar o conjunto — para mais OU para menos — falha: um segundo defeito dentro
 # de uma função registrada não se esconde atrás do registro.
 _DIFERENCAS_ESPERADAS: dict[str, frozenset[str]] = {
-    "grant_all_active": frozenset(
-        {
-            "literal #0 só meta: granted_at = now()",
-            "literal #0 só meta: granted_by = EXCLUDED.granted_by",
-        }
-    ),
-    "revoke": frozenset(
-        {
-            "assinatura só google: reason='admin_revoked'",
-            "assinatura só meta: reason='manual'",
-        }
-    ),
     "can_manager_access": frozenset({"literal #0: mesmos fragmentos em ordem diferente"}),
 }
 

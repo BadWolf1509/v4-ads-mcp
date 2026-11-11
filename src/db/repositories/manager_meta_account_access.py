@@ -7,7 +7,11 @@ import asyncpg
 from src.db.repositories._comum import linhas_afetadas
 from src.db.repositories.manager_account_access import NivelDeAcesso
 from src.db.repositories.meta_ad_accounts import MetaAdAccount, row_to_account
-from src.db.repositories.motivos import BULK_COPY_REPLACED_REASON, PARTNERSHIP_ENDED_REASON
+from src.db.repositories.motivos import (
+    ADMIN_REVOKED_REASON,
+    BULK_COPY_REPLACED_REASON,
+    PARTNERSHIP_ENDED_REASON,
+)
 
 # Motivo gravado quando o reconciliador (job) revoga acesso por a conta ter
 # saido da parceria: vive em `motivos.py` (módulo neutro) e é reexportado daqui,
@@ -69,10 +73,8 @@ async def grant_all_active(
     forma, e a §8 do desenho da matriz de acesso já prevê o "Conceder todas" no
     painel — apagar aqui só criaria assimetria entre os dois lados.
 
-    F167: esta cláusula atualiza `granted_at`/`granted_by`; o gêmeo Google
-    (`manager_account_access.grant_all_active`) não atualiza os dois — só
-    `access_level`/`revoked_at`/`revoked_reason`. Assimetria conhecida, não
-    corrigida (as duas direções se defendem); ver F167 no catálogo.
+    F167 (decisão de 10/11, "atualizar sempre"): esta cláusula atualiza
+    `granted_at`/`granted_by`, e o gêmeo Google passou a fazer o mesmo.
     """
     result = await conn.execute(
         """
@@ -99,7 +101,7 @@ async def revoke(
     *,
     manager_id: UUID,
     ad_account_id: str,
-    reason: str = "manual",
+    reason: str = ADMIN_REVOKED_REASON,
 ) -> None:
     """Revogação SOFT (spec 2026-08-20): a linha fica, só marca `revoked_at`.
 
@@ -256,6 +258,8 @@ async def bulk_grant(
            VALUES ($1, $2, $3, $4)
            ON CONFLICT (manager_id, ad_account_id) DO UPDATE SET
                access_level = EXCLUDED.access_level,
+               granted_at = now(),
+               granted_by = EXCLUDED.granted_by,
                revoked_at = NULL,
                revoked_reason = NULL""",
         rows,

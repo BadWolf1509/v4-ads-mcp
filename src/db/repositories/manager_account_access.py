@@ -77,10 +77,9 @@ async def grant_all_active(
     independente de vir de parâmetro ou literal — por isso a cláusula também
     promove aqui, não só no `bulk_grant` (que recebe `access_level` de fora).
 
-    F167: esta cláusula NÃO atualiza `granted_at`/`granted_by` — o gêmeo Meta
-    (`manager_meta_account_access.grant_all_active`) atualiza os dois. As duas
-    direções se defendem (nenhuma promete procedência num "conceder tudo" em
-    lote), então a assimetria fica; ver F167 no catálogo pro resto da família.
+    F167 (decisão de 10/11, "atualizar sempre"): reconceder registra quem e quando
+    — o ON CONFLICT seta `granted_at = now()` e `granted_by = EXCLUDED.granted_by`,
+    como o gêmeo Meta, tanto em linha revogada quanto em linha ativa.
     """
     result = await conn.execute(
         """
@@ -90,6 +89,8 @@ async def grant_all_active(
         WHERE is_active = true
         ON CONFLICT (manager_id, customer_id) DO UPDATE SET
             access_level = EXCLUDED.access_level,
+            granted_at = now(),
+            granted_by = EXCLUDED.granted_by,
             revoked_at = NULL,
             revoked_reason = NULL
         """,
@@ -125,11 +126,9 @@ async def revoke(
     job diário (`src/jobs/account_resync.py`) chama as duas, na MESMA
     transação — antes disso a função não tinha chamador em produção e a
     revogação automática não deixava trilha nenhuma (C2 da revisão de branch).
-    E `bulk_grant`/`grant_all_active` reconcedem sem tocar `granted_at`/
-    `granted_by` — a linha restaurada por esses dois caminhos lê "concedida
-    há muito tempo, nunca revogada", indistinguível de uma que nunca saiu do
-    ar; só `grant()` (o toggle do painel) e `copy_access` atualizam os dois
-    campos ao reconceder.
+    Desde a decisão de 10/11 todo caminho de re-concessão (`grant`,
+    `bulk_grant`, `grant_all_active`, `copy_access`) atualiza `granted_at`/
+    `granted_by`: a linha restaurada lê "concedida agora, por quem restaurou".
     """
     await conn.execute(
         """
@@ -236,6 +235,8 @@ async def bulk_grant(
            VALUES ($1, $2, $3, $4)
            ON CONFLICT (manager_id, customer_id) DO UPDATE SET
                access_level = EXCLUDED.access_level,
+               granted_at = now(),
+               granted_by = EXCLUDED.granted_by,
                revoked_at = NULL,
                revoked_reason = NULL""",
         rows,
