@@ -1,29 +1,25 @@
 """CRUD for `manager_account_access` (which manager can operate which account)."""
 
-from dataclasses import dataclass
-from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 import asyncpg
 
-from src.db.repositories.google_ads_accounts import GoogleAdsAccount, _row_to_account
+from src.db.repositories._comum import linhas_afetadas
+from src.db.repositories.google_ads_accounts import GoogleAdsAccount, row_to_account
+from src.db.repositories.motivos import (
+    ADMIN_REVOKED_REASON,
+    BULK_COPY_REPLACED_REASON,
+    LEFT_MCC_REASON,
+)
 
-# Motivos gravados por `revoke`/`revoke_for_inactive_accounts`. Constantes — não
-# string livre — porque `restore_for_account` filtra por ESTE MESMO valor
-# (`LEFT_MCC_REASON`): um typo ou refactor que passasse outro texto faria o
-# restore filtrar por um motivo que nenhuma linha tem e devolver zero em
-# silêncio, sem erro (mesmo raciocínio do gêmeo Meta, PARTNERSHIP_ENDED_REASON).
-LEFT_MCC_REASON = "left_mcc"
-ADMIN_REVOKED_REASON = "admin_revoked"
+# Motivos gravados por `revoke`/`revoke_for_inactive_accounts` vivem em
+# `motivos.py` (módulo neutro) e são reexportados daqui: `restore_for_account`
+# filtra por ESTE MESMO valor (`LEFT_MCC_REASON`), então não pode ser string livre.
+__all__ = ["ADMIN_REVOKED_REASON", "LEFT_MCC_REASON"]
 
 
-@dataclass(slots=True, frozen=True)
-class AccountAccess:
-    manager_id: UUID
-    customer_id: str
-    access_level: str  # 'read' | 'write'
-    granted_at: datetime
-    granted_by: UUID | None
+NivelDeAcesso = Literal["read", "write"]
 
 
 async def grant(
@@ -100,7 +96,7 @@ async def grant_all_active(
         manager_id,
         granted_by,
     )
-    return int(result.split()[-1]) if result.startswith("INSERT") else 0
+    return linhas_afetadas(result)
 
 
 async def revoke(
@@ -163,11 +159,15 @@ async def list_accounts_for_manager(
         """,
         manager_id,
     )
-    return [_row_to_account(r) for r in rows]
+    return [row_to_account(r) for r in rows]
 
 
 async def can_manager_access(
-    conn: asyncpg.Connection, manager_id: UUID, customer_id: str, *, level: str = "read"
+    conn: asyncpg.Connection,
+    manager_id: UUID,
+    customer_id: str,
+    *,
+    level: NivelDeAcesso = "read",
 ) -> bool:
     """Gate por conta — e, como no Meta, é a ÚNICA fronteira que sobra.
 
@@ -298,10 +298,11 @@ async def copy_access(
         await conn.execute(
             """
             UPDATE manager_account_access
-               SET revoked_at = now(), revoked_reason = 'bulk_copy_replaced'
+               SET revoked_at = now(), revoked_reason = $2
              WHERE manager_id = $1 AND revoked_at IS NULL
             """,
             to_manager_id,
+            BULK_COPY_REPLACED_REASON,
         )
         result = await conn.execute(
             """
@@ -322,7 +323,7 @@ async def copy_access(
             from_manager_id,
         )
     # asyncpg returns 'INSERT 0 N'
-    return int(result.rsplit(" ", 1)[-1])
+    return linhas_afetadas(result)
 
 
 async def revoke_for_inactive_accounts(

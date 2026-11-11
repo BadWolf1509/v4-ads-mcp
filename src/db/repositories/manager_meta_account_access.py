@@ -4,14 +4,15 @@ from uuid import UUID
 
 import asyncpg
 
-from src.db.repositories.meta_ad_accounts import MetaAdAccount, _row_to_account
+from src.db.repositories._comum import linhas_afetadas
+from src.db.repositories.manager_account_access import NivelDeAcesso
+from src.db.repositories.meta_ad_accounts import MetaAdAccount, row_to_account
+from src.db.repositories.motivos import BULK_COPY_REPLACED_REASON, PARTNERSHIP_ENDED_REASON
 
 # Motivo gravado quando o reconciliador (job) revoga acesso por a conta ter
-# saido da parceria. Constante — nao string livre — porque `restore_for_account`
-# filtra por este MESMO valor: se o caller de `revoke_for_account` passasse
-# outro texto (typo, refactor), o restore filtraria por um motivo que nenhuma
-# linha tem e devolveria zero silenciosamente, sem erro.
-PARTNERSHIP_ENDED_REASON = "partnership_ended"
+# saido da parceria: vive em `motivos.py` (módulo neutro) e é reexportado daqui,
+# porque `restore_for_account` filtra por este MESMO valor.
+__all__ = ["PARTNERSHIP_ENDED_REASON"]
 
 
 async def grant(
@@ -90,7 +91,7 @@ async def grant_all_active(
         manager_id,
         granted_by,
     )
-    return int(result.split()[-1]) if result.startswith("INSERT") else 0
+    return linhas_afetadas(result)
 
 
 async def revoke(
@@ -184,7 +185,7 @@ async def list_accounts_for_manager(
         """,
         manager_id,
     )
-    return [_row_to_account(r) for r in rows]
+    return [row_to_account(r) for r in rows]
 
 
 async def can_manager_access(
@@ -192,7 +193,7 @@ async def can_manager_access(
     manager_id: UUID,
     ad_account_id: str,
     *,
-    level: str = "read",
+    level: NivelDeAcesso = "read",
 ) -> bool:
     """Gate do Modelo B — e a ÚNICA fronteira que sobra.
 
@@ -301,10 +302,11 @@ async def copy_access(
         await conn.execute(
             """
             UPDATE manager_meta_account_access
-               SET revoked_at = now(), revoked_reason = 'bulk_copy_replaced'
+               SET revoked_at = now(), revoked_reason = $2
              WHERE manager_id = $1 AND revoked_at IS NULL
             """,
             to_manager_id,
+            BULK_COPY_REPLACED_REASON,
         )
         result = await conn.execute(
             """
@@ -324,4 +326,4 @@ async def copy_access(
             granted_by,
             from_manager_id,
         )
-    return int(result.rsplit(" ", 1)[-1])
+    return linhas_afetadas(result)

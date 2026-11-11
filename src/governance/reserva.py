@@ -18,6 +18,7 @@ from typing import Any
 from uuid import UUID
 
 from src.config import get_settings
+from src.db.connection import PoolValidado
 from src.governance.bookkeeping import best_effort
 from src.governance.rate_limit import CHAVE_COTA_PROJETO, before_call, record_actual
 
@@ -31,7 +32,7 @@ class Reserva:
     estimated_ops: int
 
 
-async def reservar_cota(pool: Any, *, manager_id: UUID, estimated_ops: int) -> Reserva:
+async def reservar_cota(pool: PoolValidado, *, manager_id: UUID, estimated_ops: int) -> Reserva:
     """Reserva `estimated_ops` na chave do projeto e na do gestor, tudo-ou-nada.
 
     `QuotaExhausted` sobe intacto (nada fica reservado).
@@ -49,7 +50,7 @@ async def reservar_cota(pool: Any, *, manager_id: UUID, estimated_ops: int) -> R
 
 
 async def reconciliar_cota(
-    pool: Any,
+    pool: PoolValidado,
     reserva: Reserva,
     *,
     manager_id: UUID,

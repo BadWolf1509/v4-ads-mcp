@@ -1426,6 +1426,15 @@ async def test_meta_copy_access_replaces_destination(db) -> None:
         assert {a.ad_account_id for a in accts} == {
             "act_1"
         }  # destination replaced with source's grants
+        # a linha substituída é soft-revogada com a razão própria, não apagada.
+        substituidas = await conn.fetch(
+            "SELECT ad_account_id, revoked_reason FROM manager_meta_account_access "
+            "WHERE manager_id = $1 AND revoked_at IS NOT NULL",
+            m_b,
+        )
+        assert {r["ad_account_id"]: r["revoked_reason"] for r in substituidas} == {
+            "act_2": "bulk_copy_replaced"
+        }
 
 
 # ---------- meta_rate_counters ----------

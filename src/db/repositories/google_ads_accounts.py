@@ -7,6 +7,8 @@ from typing import Any
 import asyncpg
 import structlog
 
+from src.db.repositories._comum import linhas_afetadas
+from src.db.repositories.motivos import LEFT_MCC_REASON
 from src.google_ads.reconcile import InventoryRow
 
 log = structlog.get_logger(__name__)
@@ -24,7 +26,7 @@ class GoogleAdsAccount:
     synced_at: datetime
 
 
-def _row_to_account(row: asyncpg.Record) -> GoogleAdsAccount:
+def row_to_account(row: asyncpg.Record) -> GoogleAdsAccount:
     return GoogleAdsAccount(
         customer_id=row["customer_id"],
         mcc_id=row["mcc_id"],
@@ -170,7 +172,7 @@ async def deactivate(conn: asyncpg.Connection, *, customer_ids: list[str]) -> in
         "WHERE customer_id = ANY($1::text[]) AND is_active = true",
         customer_ids,
     )
-    return int(result.split()[-1]) if result.startswith("UPDATE") else 0
+    return linhas_afetadas(result)
 
 
 async def list_inventory_rows(conn: asyncpg.Connection) -> list[InventoryRow]:
@@ -249,14 +251,14 @@ async def mark_inactive_except(
             keep_customer_ids,
         )
     # asyncpg.execute returns 'UPDATE N'
-    return int(result.split()[-1]) if result.startswith("UPDATE") else 0
+    return linhas_afetadas(result)
 
 
 async def list_all(conn: asyncpg.Connection) -> list[GoogleAdsAccount]:
     rows = await conn.fetch(
         "SELECT * FROM google_ads_accounts WHERE is_active = true ORDER BY descriptive_name"
     )
-    return [_row_to_account(r) for r in rows]
+    return [row_to_account(r) for r in rows]
 
 
 async def get_by_customer_id(conn: asyncpg.Connection, customer_id: str) -> GoogleAdsAccount | None:
@@ -268,7 +270,7 @@ async def get_by_customer_id(conn: asyncpg.Connection, customer_id: str) -> Goog
     row = await conn.fetchrow(
         "SELECT * FROM google_ads_accounts WHERE customer_id = $1", customer_id
     )
-    return _row_to_account(row) if row is not None else None
+    return row_to_account(row) if row is not None else None
 
 
 @dataclass(slots=True, frozen=True)
@@ -297,8 +299,6 @@ async def list_queues(conn: asyncpg.Connection) -> ReconcileQueues:
     voltou satisfaz as duas (está ativa e sem grant VIVO), e sem a exclusão o
     admin seria convidado a refazer à mão o que um clique devolve.
     """
-    from src.db.repositories.manager_account_access import LEFT_MCC_REASON
-
     voltaram = await conn.fetch(
         """
         SELECT a.customer_id, a.descriptive_name,

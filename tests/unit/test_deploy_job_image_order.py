@@ -17,7 +17,7 @@ dois modos de falha, um transitorio e um permanente:
 
 A direcao inversa (schema novo + codigo velho) e segura e foi verificada: no
 codigo anterior nenhum caminho le `last_missed_on`, e os demais reads sao
-`SELECT *` mapeados por NOME (`_row_to_account`), imunes a coluna nova.
+`SELECT *` mapeados por NOME (`row_to_account`), imunes a coluna nova.
 
 **O guard afirma a PROPRIEDADE, nao a lista de steps.** Um quarto Cloud Run Job
 que alguem acrescente amanha entra no escopo sozinho; enumerar `resync` e

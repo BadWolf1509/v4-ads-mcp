@@ -32,6 +32,7 @@ async def test_com_gestor_o_predicado_e_igualdade_direta() -> None:
     assert "manager_id = $3" in query
     assert "IS NULL" not in query
     assert args[2] == mid
+    assert args[3] == numeros.FUSO_PAINEL.key  # fuso e $4 nesta query
 
 
 @pytest.mark.asyncio
@@ -40,4 +41,6 @@ async def test_sem_gestor_nao_filtra_por_gestor() -> None:
     await numeros.contagem_por_dia(conn, [date(2026, 10, 30)])  # type: ignore[arg-type]
     query, args = conn.chamadas[0]
     assert "manager_id" not in query
-    assert len(args) == 2
+    # O fuso vai como parametro ($3), nao como literal no SQL.
+    assert args[2] == numeros.FUSO_PAINEL.key
+    assert len(args) == 3
