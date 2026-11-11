@@ -98,7 +98,6 @@ que mais usava os antigos, saiu em 31/10). O plugin 0.5.0 já manda usar o break
 
 | ID | o que é |
 |---|---|
-| **F207** | quatro falhas silenciosas pré-existentes nos jobs (purge sem exit code nem audit, mensagem enganosa, audit "sem OAuth" vira crash, `init_pool` sem audit) |
 | **F180** | **em parte, provavelmente para sempre** — o Google aceita operação impossível em vez de errar, então `failed_count` é constante zero: leia `efeito` e `changed_count` |
 | **F185** | `recommendation_subscription`: 4 de 11 opacos e sem chave — limitação da API |
 | **F187** | o **resumo no topo** decide e o **detalhe embaixo** é a verdade — 4 instâncias; remédio: derivar o resumo, ou guard da igualdade |

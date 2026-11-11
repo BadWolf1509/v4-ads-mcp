@@ -1,8 +1,9 @@
 """Purge diário de rows transientes velhas nas tabelas de estado operacional.
 
 NUNCA toca audit_log (decisão de produto: trilha de compliance, retenção
-indefinida). Chamado best-effort no fim de account_resync.run() — falha de
-purge não deve derrubar o job de resync.
+indefinida). Chamado no fim de account_resync.run(): falha de purge não
+interrompe as outras etapas, mas desde 11/11 (F207) entra no exit code e grava
+`db_purge`/`error` no audit.
 """
 
 from src.db.connection import PoolValidado

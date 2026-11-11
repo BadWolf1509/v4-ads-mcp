@@ -6093,7 +6093,7 @@ do plano [`2026-11-03-varredura-refatoracao.md`](../superpowers/plans/2026-11-03
 **Prova em produção:** entrada inválida chega com texto acionável. **Não medido:** o caminho
 `denied` Meta em produção.
 
-## F207 (MEDIUM, ABERTO) — quatro falhas silenciosas pré-existentes nos jobs, achadas na parte H
+## F207 (MEDIUM, ✅ CORRIGIDO 2026-11-11, #244) — quatro falhas silenciosas pré-existentes nos jobs, achadas na parte H
 
 Achados ao extrair o esqueleto comum dos jobs (`executar_job`, Task H1 da varredura de 03/11); o
 revisor confirmou que **nenhum foi introduzido nem agravado** pela refatoração. Mesmo padrão: o job
@@ -6112,8 +6112,32 @@ falha e o sinal não chega a quem vigia.
 
 **Próximo passo:** um TDD por bug num PR só. Os logs foram lidos em 11/11: as 8 execuções de 04 a
 11/11 terminaram com sucesso, e o log de 11/11 mostra as três etapas (Google 24 contas, `complete:
-True`; Meta +2; purge de 5 linhas) e `exit(0)` — nenhuma das quatro falhas disparou no período. O 4º pede decisão: sem banco, o rastro possível é log
-estruturado com alerta log-based, não o audit.
+True`; Meta +2; purge de 5 linhas) e `exit(0)` — nenhuma das quatro falhas disparou no período.
+
+**✅ O que foi feito (11/11, #244).** Medido antes: a única policy que enxerga um Cloud Run Job é
+"Cloud Run Job: execucao FALHOU" (exit code); a `severity>=ERROR` é do serviço, não do job. Padrão:
+desfecho observável — todo desfecho sai no exit code e no audit, e a falha da operação fica separada
+da falha do bookkeeping (o corte do F83).
+- **Purge:** falha sai com exit 1 (como o bloqueio e a falha Meta da Task 5; o retry é inofensivo,
+  F157 — conferido pela revisão: carência e revogação se baseiam em estado) e grava
+  `db_purge`/`error`. A policy vê a execução **depois dos retries**: falha que passa no retry não
+  alerta e fica só a linha no audit, como o bloqueio.
+- **Mensagem do purge:** purge e audit em etapas separadas; audit que falha depois do purge é
+  `db_purge_audit_failed` (best-effort) e o desfecho continua "OK: purged".
+- **Sem OAuth:** o audit desse desfecho entrou em `best_effort`; falhando, o job sai com 1 em vez de
+  virar crash.
+- **`init_pool`:** `executar_job` emite `job_init_pool_failed` (ERROR, `operation`, `platform`,
+  `error`) e re-levanta.
+
+Guards em `tests/unit/test_f207_jobs_silenciosos.py`, os quatro vermelhos contra o código anterior
+(rodados com as versões de `origin/main` copiadas por cima) e verdes agora. Os dois testes de
+caracterização que fixavam o exit 0 do purge mudaram de propósito.
+
+**Fora, com o motivo:** o `backup.py` tem a mesma lacuna do `init_pool` e não chama
+`configure_logging` (logs em texto puro) — vai na Parte J (J1, backup no esqueleto comum). O alerta
+log-based sobre `job_init_pool_failed` não foi criado (configuração
+de infra fora do repositório; decisão do Wellington, 11/11). A execução que falha no `init_pool` já
+dispara a policy de job falho pelo exit code; o evento é o rastro forense.
 
 ---
 

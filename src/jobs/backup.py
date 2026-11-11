@@ -28,6 +28,8 @@ from google.cloud import storage  # type: ignore[import-untyped]
 from src.config import get_settings
 from src.db import connection
 from src.jobs._audit import record_job_crash, record_job_run
+from src.jobs._runner import executar_job
+from src.logging import configure_logging
 
 log = structlog.get_logger(__name__)
 
@@ -100,8 +102,11 @@ async def _dump_table_to_blob(conn: asyncpg.Connection, table_name: str, blob: A
 
 async def run() -> int:
     settings = get_settings()
-    await connection.init_pool(settings.database_url)
-    try:
+    # Parte J1 (11/11): sem isto o backup logava em texto puro, e nenhuma metrica
+    # `jsonPayload.event` casaria em `backup_table_failed`/`backup_partial_failure`.
+    configure_logging(level=settings.log_level, json_output=settings.app_env != "development")
+
+    async def _corpo() -> int:
         pool = connection.get_pool()
         date_prefix = datetime.now(UTC).date().isoformat()
         # Cliente GCS montado ANTES da transação: o snapshot deve durar o mínimo
@@ -173,13 +178,19 @@ async def run() -> int:
             f"OK: backup de {len(uploaded)} tabelas ({total_bytes} bytes) -> {settings.backup_bucket}/{date_prefix}/"
         )
         return 0
-    except Exception as e:
-        # F93: crash antes do record_job_run (ex.: _list_tables, storage.Client())
-        # deixaria o backup — artefato de compliance — sem linha nenhuma no audit.
-        await record_job_crash(operation="db_backup", platform="google", exc=e)
-        raise
-    finally:
-        await connection.close_pool()
+
+    # Parte J1: o mesmo esqueleto dos dois resyncs — `init_pool` com rastro
+    # estruturado (F207), crash auditado e re-levantado (F93: sem isto o backup,
+    # artefato de compliance, ficaria sem linha no audit) e `close_pool` no
+    # `finally`. `registrar_crash` resolvido aqui: e neste namespace que os
+    # testes o substituem.
+    return await executar_job(
+        operation="db_backup",
+        platform="google",
+        database_url=settings.database_url,
+        corpo=_corpo,
+        registrar_crash=record_job_crash,
+    )
 
 
 def main() -> int:
