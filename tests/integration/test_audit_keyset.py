@@ -9,6 +9,7 @@ Ver `src/db/repositories/audit_log.py::list_page_for_manager`/`list_page_admin`
 e o brief em `.superpowers/sdd/2026-09-17-pr5-painel/task-7-brief.md`.
 """
 
+import json
 from uuid import uuid4
 
 import asyncpg
@@ -168,6 +169,37 @@ async def test_keyset_admin_tambem_pagina_por_cursor_sem_sobreposicao(db):
     assert cursor2 is None
 
 
+def _nos_do_audit_log(plano_json: str) -> list[dict]:
+    """Os nos do plano (EXPLAIN FORMAT JSON) que varrem `audit_log`.
+
+    So esses importam pro guard de indice: o planner pode legitimamente fazer
+    Seq Scan nas tabelas de inventario (pequenas), mas nunca em `audit_log`.
+    """
+    achados: list[dict] = []
+
+    def caminha(no: dict) -> None:
+        if no.get("Relation Name") == "audit_log":
+            achados.append(no)
+        for filho in no.get("Plans", []):
+            caminha(filho)
+
+    caminha(json.loads(plano_json)[0]["Plan"])
+    return achados
+
+
+def _afirma_indice_no_audit_log(plano_json: str, *, indices: set[str], rotulo: str) -> None:
+    nos = _nos_do_audit_log(plano_json)
+    assert nos, f"{rotulo}: nenhum no varre audit_log — o plano mudou de forma:\n{plano_json}"
+    for no in nos:
+        assert no["Node Type"] in {"Index Scan", "Index Only Scan", "Bitmap Heap Scan"}, (
+            f"{rotulo}: audit_log lido por {no['Node Type']}, nao por indice:\n{plano_json}"
+        )
+        if no["Node Type"] != "Bitmap Heap Scan":
+            assert no["Index Name"] in indices, (
+                f"{rotulo}: indice inesperado {no['Index Name']!r}:\n{plano_json}"
+            )
+
+
 @pytest.mark.integration
 async def test_keyset_query_usa_indice_nao_seq_scan(db):
     """Step 5 do brief: um keyset que nao usa indice e mais lento que o OFFSET
@@ -216,7 +248,21 @@ async def test_keyset_query_usa_indice_nao_seq_scan(db):
             m2,
             m3,
         )
+        # Os dois inventarios com volume realista (~25 contas cada): o plano
+        # medido e o de producao, com os LEFT JOINs de nome da conta apontando
+        # pra tabelas povoadas, nao vazias.
+        await conn.execute(
+            "INSERT INTO google_ads_accounts (customer_id, mcc_id, descriptive_name) "
+            "SELECT lpad(g::text, 10, '0'), '6436352492', 'G ' || g "
+            "FROM generate_series(1, 25) g"
+        )
+        await conn.execute(
+            "INSERT INTO meta_ad_accounts (ad_account_id, account_name) "
+            "SELECT 'act_' || g, 'M ' || g FROM generate_series(1, 25) g"
+        )
         await conn.execute("ANALYZE audit_log")
+        await conn.execute("ANALYZE google_ads_accounts")
+        await conn.execute("ANALYZE meta_ad_accounts")
 
         # Cursor de uma linha real (por volta da metade), pra simular pagina
         # 2+ de verdade — nao a primeira pagina (cursor NULL), que e um plano
@@ -242,7 +288,9 @@ async def test_keyset_query_usa_indice_nao_seq_scan(db):
             cursor_id=cursor_row["id"],
             limit=50,
         )
-        plano_admin = await conn.fetch(f"EXPLAIN (ANALYZE, BUFFERS) {sql_admin}", *params_admin)
+        plano_admin = await conn.fetch(
+            f"EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) {sql_admin}", *params_admin
+        )
         texto_admin = "\n".join(r["QUERY PLAN"] for r in plano_admin)
 
         # Mesma query, cursor NULL — a PRIMEIRA pagina (o caminho mais comum
@@ -261,7 +309,7 @@ async def test_keyset_query_usa_indice_nao_seq_scan(db):
             limit=50,
         )
         plano_admin_pagina1 = await conn.fetch(
-            f"EXPLAIN (ANALYZE, BUFFERS) {sql_admin_p1}", *params_admin_p1
+            f"EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) {sql_admin_p1}", *params_admin_p1
         )
         texto_admin_pagina1 = "\n".join(r["QUERY PLAN"] for r in plano_admin_pagina1)
 
@@ -280,7 +328,7 @@ async def test_keyset_query_usa_indice_nao_seq_scan(db):
             limit=50,
         )
         plano_manager = await conn.fetch(
-            f"EXPLAIN (ANALYZE, BUFFERS) {sql_manager}", *params_manager
+            f"EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) {sql_manager}", *params_manager
         )
         texto_manager = "\n".join(r["QUERY PLAN"] for r in plano_manager)
 
@@ -290,16 +338,18 @@ async def test_keyset_query_usa_indice_nao_seq_scan(db):
     # Achado 1). Nao grava em disco daqui: caminho de scratchpad e por
     # sessao, gravar um literal aqui quebraria em CI (Linux) e em qualquer
     # outra maquina/sessao.
-    assert "Seq Scan" not in texto_admin, f"scan sequencial na query global:\n{texto_admin}"
-    assert "idx_audit_occurred_at" in texto_admin, (
-        f"a query global (sem filtro de manager) tem que usar o indice que a "
-        f"migration 010 criou pra ela:\n{texto_admin}"
+    _afirma_indice_no_audit_log(
+        texto_admin, indices={"idx_audit_occurred_at"}, rotulo="query global (admin, cursor)"
     )
-    assert "Seq Scan" not in texto_admin_pagina1, (
-        f"scan sequencial na primeira pagina (cursor NULL):\n{texto_admin_pagina1}"
+    _afirma_indice_no_audit_log(
+        texto_admin_pagina1,
+        indices={"idx_audit_occurred_at"},
+        rotulo="primeira pagina (cursor NULL)",
     )
-    assert "idx_audit_occurred_at" in texto_admin_pagina1, (
-        f"a primeira pagina tambem tem que usar o indice — o ramo `IS NULL OR` "
-        f"nao pode derrubar o planner pra Seq Scan:\n{texto_admin_pagina1}"
+    # Por gestor: idx_audit_manager_time (001) tambem cobre o filtro; o que
+    # importa e audit_log nunca cair em Seq Scan.
+    _afirma_indice_no_audit_log(
+        texto_manager,
+        indices={"idx_audit_occurred_at", "idx_audit_manager_time"},
+        rotulo="query por gestor",
     )
-    assert "Seq Scan" not in texto_manager, f"scan sequencial na query por gestor:\n{texto_manager}"

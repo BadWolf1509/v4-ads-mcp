@@ -563,7 +563,7 @@ async def top_managers_7d(conn: asyncpg.Connection) -> list[asyncpg.Record]:
 async def list_recent_for_manager(
     conn: asyncpg.Connection, manager_id: UUID
 ) -> list[asyncpg.Record]:
-    """As 5 últimas chamadas do gestor, com o nome da conta Google (dashboard)."""
+    """As 5 últimas chamadas do gestor, com o nome da conta, Google ou Meta (dashboard)."""
     rows = await conn.fetch(
         f"""SELECT al.occurred_at, al.operation, al.customer_id, al.status,
                   {_SQL_COLUNA_NOME_DA_CONTA}

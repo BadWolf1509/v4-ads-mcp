@@ -128,6 +128,8 @@ CENARIOS = [
         {f"c{i:02d}" for i in range(15)} | {"zv", "mv", "zn", "mn"},
     ),
     Cenario("piso_do_teto_com_inventario_de_1", [Linha("a", faltas=2)], set()),
+    # Inventario vazio e origem povoada: tudo vira to_add; sem ativas nao ha o que marcar/remover.
+    Cenario("inventario_vazio_origem_povoada", [], {"a", "b", "c"}),
     # `last_missed_on` == dia UTC com fuso None: o fallback é UTC, então o retry
     # é reconhecido (2 faltas, não 3) e a conta só é marcada, não removida.
     Cenario(
@@ -264,6 +266,7 @@ ESPERADO = {
         None,
     ),
     "piso_do_teto_com_inventario_de_1": ([], [], ["a"], [], None),
+    "inventario_vazio_origem_povoada": (["a", "b", "c"], [], [], [], None),
     "fuso_none": ([], ["b"], [], [], None),
 }
 
