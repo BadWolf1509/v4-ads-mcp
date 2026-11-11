@@ -2,11 +2,13 @@
 """Fast pre-push gate. Runs lint + format + mypy + unit + non-DB integration.
 
 Sequence (fail-fast):
-    1. ruff check src tests
-    2. ruff format --check src tests
-    3. mypy src
-    4. pytest tests/unit -m "not integration" -q
-    5. pytest tests/integration -m "not integration" -q
+    1. ruff e mypy instalados = os fixados no pyproject
+    2. ruff check src tests
+    3. ruff format --check src tests
+    4. mypy src
+    5. pytest tests/unit -m "not integration" -q
+    6. pytest tests/integration -m "not integration" -q
+    7. tailwind css sincronizado
 
 For full sweep including DB integration tests (requires Docker), use:
     python scripts/check_pre_push_full.py

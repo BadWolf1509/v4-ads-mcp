@@ -56,7 +56,7 @@ lados) funciona, passa em todo teste e grava a audiência errada nos tokens.
 Com o `Literal`, o `mypy --strict` do gate pega esse typo nos **7 call-sites
 de `src/`** (eram 9 até a saída do OAuth pessoal da Meta, 11/2026) — que são
 os que ele olha. O gate roda `mypy src`
-(`scripts/_runner.py:26`, `ci.yml:170`) e **nunca** `tests/`; lá o typo não é
+(passo `mypy` de `scripts/_runner.py`, `ci.yml:170`) e **nunca** `tests/`; lá o typo não é
 erro de tipo, e nem sempre vira teste vermelho. Medido em 2026-09-06 com dois
 `aud="pannel"` plantados em `tests/`: `mypy src` ficou limpo nos dois, e o
 pytest só pegou aquele cuja asserção dependia do valor.
