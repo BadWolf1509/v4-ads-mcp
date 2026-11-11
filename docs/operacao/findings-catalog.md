@@ -6211,15 +6211,15 @@ A revisão final pegou dois casos: o admin desligado, que ainda tem `role='admin
 
 ---
 
-## F210 (LOW, ✅ CORRIGIDO 2026-11-11, #240 e #__PR__) — o codec de token assinado aceita o que devia recusar
+## F210 (LOW, ✅ CORRIGIDO 2026-11-11, #240 e #245) — o codec de token assinado aceita o que devia recusar
 
 Achados na revisão da Task H1 (#235). O probe diferencial entre o código antigo e o novo deu saída idêntica, então os três são **pré-existentes**. Todos exigem a chave de assinatura.
 
-- **`iat` futuro aceito sem limite — ✅ CORRIGIDO 2026-11-11, #__PR__** (`src/auth/token_assinado.py`).
+- **`iat` futuro aceito sem limite — ✅ CORRIGIDO 2026-11-11, #245** (`src/auth/token_assinado.py`).
   - A checagem é só `(time.time() - iat) > ttl`, então um token com `iat=10**30` nunca expira.
   - Correção: `iat` além de `FOLGA_DE_RELOGIO_S = 300` no futuro é recusado (o `leeway` dos validadores de JWT, RFC 7519/PyJWT); `iat` booleano também (subclasse de `int`, passava como o instante 1).
   - Guards: casos novos em `test_mensagens_de_erro_iguais` e `test_iat_no_futuro_vale_so_dentro_da_folga_de_relogio` (`now + 300` vale, `+ 301` recusa), vermelhos antes do conserto.
-- **Corpo não-UTF-8 com HMAC válido — ✅ CORRIGIDO 2026-11-11, #__PR__** (`body.decode("utf-8")`).
+- **Corpo não-UTF-8 com HMAC válido — ✅ CORRIGIDO 2026-11-11, #245** (`body.decode("utf-8")`).
   - Levantava `UnicodeDecodeError` cru em vez do erro do domínio; agora dá a mensagem de JSON inválido de cada audiência. Guard: caso novo em `test_mensagens_de_erro_iguais`.
 - **Codec usável pelo reexport — ✅ CORRIGIDO 2026-11-11, #240.**
   - Sintoma: `oauth_state` e `panel_session` importam `assinar`/`verificar`, que viram atributos deles. `from src.auth.oauth_state import assinar` cunhava token de audiência arbitrária, e o guard `test_token_assinado_privado` não via.
