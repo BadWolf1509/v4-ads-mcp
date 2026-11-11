@@ -175,7 +175,8 @@ async def test_bloqueio_google_com_purge_falhando_sai_com_1() -> None:
 
 
 @pytest.mark.asyncio
-async def test_so_o_purge_falhando_nao_muda_o_exit_code_nem_grava_crash() -> None:
+async def test_so_o_purge_falhando_sai_com_1_sem_crash() -> None:
+    """F207 (11/11): era a caracterização do exit 0; o contrato mudou de propósito."""
     mocks = _base_patches(pool=FakePool(MagicMock()), oc=SimpleNamespace(refresh_token_enc=b"e"))
     with ExitStack() as stack:
         _entrar(stack, mocks, sem=("purge",))
@@ -186,7 +187,7 @@ async def test_so_o_purge_falhando_nao_muda_o_exit_code_nem_grava_crash() -> Non
         crash = stack.enter_context(patch(f"{_M}.record_job_crash", AsyncMock()))
         rc = await account_resync.run()
 
-    assert rc == 0
+    assert rc == 1
     crash.assert_not_awaited()
 
 

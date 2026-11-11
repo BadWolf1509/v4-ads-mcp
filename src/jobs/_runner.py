@@ -15,8 +15,12 @@ próprio job — `structlog.configure` é estado global do processo pytest
 from collections.abc import Awaitable, Callable
 from typing import Literal
 
+import structlog
+
 from src.db import connection
 from src.jobs._audit import record_job_crash
+
+log = structlog.get_logger(__name__)
 
 RegistrarCrash = Callable[..., Awaitable[None]]
 
@@ -39,7 +43,16 @@ async def executar_job(
     `registrar_crash` existe para o job passar o nome resolvido no PRÓPRIO
     namespace: é lá que os testes do job o substituem.
     """
-    await connection.init_pool(database_url)
+    # F207 (11/11): sem pool nao ha banco para o audit. O rastro possivel e uma
+    # linha ERROR estruturada (`event`, `operation`, `platform`) — o job ja
+    # chamou `configure_logging` antes daqui, entao sai como jsonPayload, pronta
+    # para uma metrica log-based. A excecao sobe: o Cloud Run ve a execucao
+    # falhar, que e o que a policy de job enxerga.
+    try:
+        await connection.init_pool(database_url)
+    except Exception as e:
+        log.error("job_init_pool_failed", operation=operation, platform=platform, error=str(e))
+        raise
     try:
         return await corpo()
     except Exception as e:
