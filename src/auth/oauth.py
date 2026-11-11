@@ -13,7 +13,7 @@ import secrets
 from dataclasses import dataclass
 from typing import Any, Literal
 from urllib.parse import urlencode
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 import structlog
@@ -22,9 +22,14 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from src.auth.domain_check import is_allowed_email
 from src.auth.oauth_state import STATE_TTL_SECONDS, InvalidStateError, sign_state, verify_state
+from src.auth.panel_session import (
+    PANEL_SESSION_COOKIE_NAME,
+    PANEL_SESSION_TTL_SECONDS,
+    sign_panel_session,
+)
 from src.auth.tokens import derive_master_key_from_settings, encrypt_refresh_token
 from src.auth.urls import https_url_for
-from src.config import get_settings
+from src.config import Settings, get_settings
 from src.db import connection
 from src.db.repositories import google_oauth_connections, managers
 from src.web.templating import templates
@@ -45,11 +50,9 @@ class CallbackDecision:
     action: Literal["promote_invited", "bootstrap_admin"] | None = None
 
 
-async def handle_callback_decision(
+def handle_callback_decision(
     *,
     email: str,
-    google_id: str,
-    google_email: str,
     managers_table_empty: bool,
     bootstrap_emails: set[str],
     existing_manager: dict[str, Any] | None,
@@ -62,8 +65,6 @@ async def handle_callback_decision(
 
     `existing_manager` is a dict (or None) with keys 'status', 'is_active',
     'id', 'role'. We use .get() so callers can pass partial dicts in tests.
-    `google_id` and `google_email` are accepted for symmetry / future use even
-    though the current decision logic uses only `email`.
     """
     email_norm = email.strip().lower()
 
@@ -279,143 +280,214 @@ async def oauth_callback(
     return response
 
 
+class _RespostaAntecipada(Exception):  # noqa: N818 - nome do contrato; não é erro, é saída
+    """Recusa do callback: carrega a resposta pronta (status, corpo e cookies).
+
+    `_concluir_callback` a captura e a devolve; nada além dela é capturado.
+    """
+
+    def __init__(self, resposta: HTMLResponse | RedirectResponse) -> None:
+        super().__init__()
+        self.resposta = resposta
+
+
+async def _trocar_code(
+    http: httpx.AsyncClient, code: str, settings: Settings, *, request: Request
+) -> tuple[str, str, bool | None, dict[str, Any]]:
+    """Troca o code por tokens e lê o userinfo da conta que acabou de autorizar.
+
+    Devolve (refresh_token, e-mail, verified_email, userinfo cru). Levanta
+    `_RespostaAntecipada` se o Google recusar a troca ou não devolver refresh_token.
+    """
+    token_resp = await http.post(
+        GOOGLE_TOKEN_URL,
+        data={
+            "client_id": settings.google_oauth_client_id,
+            "client_secret": settings.google_oauth_client_secret,
+            "code": code,
+            "grant_type": "authorization_code",
+            "redirect_uri": _build_redirect_uri(request),
+        },
+    )
+    if token_resp.status_code != 200:
+        log.warning(
+            "oauth_token_exchange_failed", status=token_resp.status_code, body=token_resp.text
+        )
+        raise _RespostaAntecipada(
+            _error_page(
+                request,
+                f"Troca do code falhou (HTTP {token_resp.status_code}). Tente conectar de novo.",
+                status=502,
+            )
+        )
+    tokens = token_resp.json()
+    refresh_token = tokens.get("refresh_token")
+    access_token = tokens.get("access_token")
+    if not refresh_token:
+        raise _RespostaAntecipada(
+            _error_page(
+                request,
+                "O Google não devolveu refresh_token. Isso geralmente significa que a conta já tinha autorizado o app antes; revogue em https://myaccount.google.com/permissions e tente de novo.",
+                status=400,
+            )
+        )
+
+    # Fetch the email of the Google account that just authorized.
+    userinfo_resp = await http.get(
+        GOOGLE_USERINFO_URL,
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    userinfo = userinfo_resp.json() if userinfo_resp.status_code == 200 else {}
+    google_email = userinfo.get("email") or "unknown"
+    return refresh_token, google_email, userinfo.get("verified_email"), userinfo
+
+
+async def _resolver_gestor_do_painel(
+    email: str, *, userinfo: dict[str, Any], settings: Settings
+) -> UUID:
+    """Login do painel: acha (ou cria/promove) o gestor da conta Google.
+
+    Self-onboarding via allowlist (Phase 2 — Q8). A árvore de decisão do gestor
+    existente fica em `handle_callback_decision`, testável sem I/O de banco.
+    Levanta `_RespostaAntecipada` com o redirect de acesso negado.
+    """
+    pool_resolve = connection.get_pool()
+    async with pool_resolve.acquire() as conn:
+        existing = await managers.get_by_email(conn, email)
+        existing_dict: dict[str, Any] | None
+        if existing is None:
+            existing_dict = None
+        else:
+            existing_dict = {
+                "id": existing.id,
+                "status": existing.status,
+                "is_active": existing.is_active,
+                "role": existing.role,
+            }
+        table_empty = (await managers.count_all(conn)) == 0
+
+    decision = handle_callback_decision(
+        email=email,
+        managers_table_empty=table_empty,
+        bootstrap_emails=settings.bootstrap_admin_emails_set,
+        existing_manager=existing_dict,
+    )
+
+    if decision.kind == "redirect":
+        assert decision.location is not None
+        response = RedirectResponse(url=decision.location, status_code=302)
+        # Pass the attempted email via short-lived cookie so /access-denied
+        # can show a useful message without persisting anything.
+        response.set_cookie(
+            "v4_attempted_email",
+            email,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            max_age=60,
+            path="/access-denied",
+        )
+        raise _RespostaAntecipada(response)
+
+    # decision.kind == "login" — apply the action and resolve manager_id
+    async with pool_resolve.acquire() as conn:
+        if decision.action == "promote_invited":
+            assert existing is not None
+            await managers.mark_active(conn, manager_id=existing.id)
+            return existing.id
+        if decision.action == "bootstrap_admin":
+            new_id = uuid4()
+            full_name = userinfo.get("name") or None
+            await managers.create(
+                conn,
+                manager_id=new_id,
+                email=email,
+                full_name=full_name,
+                role="admin",
+            )
+            return new_id
+        # status='active' login — manager_id from existing
+        assert existing is not None
+        return existing.id
+
+
+def _cookie_do_painel(
+    resposta: RedirectResponse, *, manager_id: UUID, email: str, settings: Settings
+) -> None:
+    """Põe na resposta o cookie de sessão do painel."""
+    cookie_value = sign_panel_session(
+        manager_id=str(manager_id),
+        email=email,
+        signing_key=settings.session_signing_key,
+        aud="panel",
+    )
+    resposta.set_cookie(
+        key=PANEL_SESSION_COOKIE_NAME,
+        value=cookie_value,
+        max_age=PANEL_SESSION_TTL_SECONDS,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path="/",
+    )
+
+
 async def _concluir_callback(
     request: Request, code: str, payload: dict[str, Any]
 ) -> HTMLResponse | RedirectResponse:
     """Troca o code, valida a conta e persiste. O state já foi conferido."""
+    try:
+        return await _passos_do_callback(request, code, payload)
+    except _RespostaAntecipada as antecipada:
+        return antecipada.resposta
+
+
+async def _passos_do_callback(
+    request: Request, code: str, payload: dict[str, Any]
+) -> HTMLResponse | RedirectResponse:
     settings = get_settings()
     mode = payload.get("mode")
     manager_id_str = payload.get("manager_id")
 
     # Exchange code → tokens.
     async with httpx.AsyncClient(timeout=30.0) as http:
-        token_resp = await http.post(
-            GOOGLE_TOKEN_URL,
-            data={
-                "client_id": settings.google_oauth_client_id,
-                "client_secret": settings.google_oauth_client_secret,
-                "code": code,
-                "grant_type": "authorization_code",
-                "redirect_uri": _build_redirect_uri(request),
-            },
+        refresh_token, google_email, verified_email, userinfo = await _trocar_code(
+            http, code, settings, request=request
         )
-        if token_resp.status_code != 200:
-            log.warning(
-                "oauth_token_exchange_failed", status=token_resp.status_code, body=token_resp.text
-            )
-            return _error_page(
-                request,
-                f"Troca do code falhou (HTTP {token_resp.status_code}). Tente conectar de novo.",
-                status=502,
-            )
-        tokens = token_resp.json()
-        refresh_token = tokens.get("refresh_token")
-        access_token = tokens.get("access_token")
-        if not refresh_token:
-            return _error_page(
-                request,
-                "O Google não devolveu refresh_token. Isso geralmente significa que a conta já tinha autorizado o app antes; revogue em https://myaccount.google.com/permissions e tente de novo.",
-                status=400,
-            )
-
-        # Fetch the email of the Google account that just authorized.
-        userinfo_resp = await http.get(
-            GOOGLE_USERINFO_URL,
-            headers={"Authorization": f"Bearer {access_token}"},
-        )
-        userinfo = userinfo_resp.json() if userinfo_resp.status_code == 200 else {}
-        google_email = userinfo.get("email") or "unknown"
 
     # `is False`, não `is not True`: o discovery do oauth2 v2 declara o campo com
     # `default: true` (conferido em 30/10), então ausente é verificado no contrato.
-    if userinfo.get("verified_email") is None:
+    if verified_email is None:
         log.warning("oauth_verified_email_ausente")
-    if userinfo.get("verified_email") is False:
-        return _error_page(
-            request,
-            f"O e-mail da conta {google_email} não está verificado no Google.",
-            status=403,
+    if verified_email is False:
+        raise _RespostaAntecipada(
+            _error_page(
+                request,
+                f"O e-mail da conta {google_email} não está verificado no Google.",
+                status=403,
+            )
         )
 
     if not is_allowed_email(google_email):
-        return _error_page(
-            request,
-            f"Conta {google_email} nao autorizada — apenas @v4company.com.",
-            status=403,
+        raise _RespostaAntecipada(
+            _error_page(
+                request,
+                f"Conta {google_email} nao autorizada — apenas @v4company.com.",
+                status=403,
+            )
         )
 
     # Resolve manager_id based on flow mode.
-    pool_resolve = connection.get_pool()
     if mode == "panel_login":
-        # Self-onboarding via allowlist (Phase 2 — Q8). The existing-manager
-        # decision tree is centralised in handle_callback_decision so it can
-        # be unit-tested independently from DB I/O.
-        async with pool_resolve.acquire() as conn:
-            existing = await managers.get_by_email(conn, google_email)
-            existing_dict: dict[str, Any] | None
-            if existing is None:
-                existing_dict = None
-            else:
-                existing_dict = {
-                    "id": existing.id,
-                    "status": existing.status,
-                    "is_active": existing.is_active,
-                    "role": existing.role,
-                }
-            table_empty = (await managers.count_all(conn)) == 0
-
-        decision = await handle_callback_decision(
-            email=google_email,
-            google_id=str(userinfo.get("id", "")),
-            google_email=google_email,
-            managers_table_empty=table_empty,
-            bootstrap_emails=settings.bootstrap_admin_emails_set,
-            existing_manager=existing_dict,
+        manager_id = await _resolver_gestor_do_painel(
+            google_email, userinfo=userinfo, settings=settings
         )
-
-        if decision.kind == "redirect":
-            assert decision.location is not None
-            response = RedirectResponse(url=decision.location, status_code=302)
-            # Pass the attempted email via short-lived cookie so /access-denied
-            # can show a useful message without persisting anything.
-            response.set_cookie(
-                "v4_attempted_email",
-                google_email,
-                httponly=True,
-                secure=True,
-                samesite="lax",
-                max_age=60,
-                path="/access-denied",
-            )
-            return response
-
-        # decision.kind == "login" — apply the action and resolve manager_id
-        async with pool_resolve.acquire() as conn:
-            if decision.action == "promote_invited":
-                assert existing is not None
-                await managers.mark_active(conn, manager_id=existing.id)
-                manager_id = existing.id
-            elif decision.action == "bootstrap_admin":
-                from uuid import uuid4
-
-                new_id = uuid4()
-                full_name = userinfo.get("name") or None
-                await managers.create(
-                    conn,
-                    manager_id=new_id,
-                    email=google_email,
-                    full_name=full_name,
-                    role="admin",
-                )
-                manager_id = new_id
-            else:
-                # status='active' login — manager_id from existing
-                assert existing is not None
-                manager_id = existing.id
     elif manager_id_str:
         manager_id = UUID(manager_id_str)
     else:
-        return _error_page(request, "State payload missing both manager_id and mode.", status=400)
+        raise _RespostaAntecipada(
+            _error_page(request, "State payload missing both manager_id and mode.", status=400)
+        )
 
     # Encrypt + persist.
     master_key = derive_master_key_from_settings(settings.aes_master_key)
@@ -432,28 +504,8 @@ async def _concluir_callback(
 
     if mode == "panel_login":
         # Issue panel session cookie + redirect to dashboard.
-        from src.auth.panel_session import (
-            PANEL_SESSION_COOKIE_NAME,
-            PANEL_SESSION_TTL_SECONDS,
-            sign_panel_session,
-        )
-
-        cookie_value = sign_panel_session(
-            manager_id=str(manager_id),
-            email=google_email,
-            signing_key=settings.session_signing_key,
-            aud="panel",
-        )
         response = RedirectResponse(url="/", status_code=302)
-        response.set_cookie(
-            key=PANEL_SESSION_COOKIE_NAME,
-            value=cookie_value,
-            max_age=PANEL_SESSION_TTL_SECONDS,
-            httponly=True,
-            secure=True,
-            samesite="lax",
-            path="/",
-        )
+        _cookie_do_painel(response, manager_id=manager_id, email=google_email, settings=settings)
         log.info("oauth_panel_login_success", manager_id=str(manager_id), google_email=google_email)
         return response
 

@@ -153,8 +153,7 @@ async def test_painel_nega_gestor_com_status_inactive() -> None:
     assert exc.value.status_code == 302
 
 
-@pytest.mark.asyncio
-async def test_login_nega_convidado_desativado_antes_de_promover() -> None:
+def test_login_nega_convidado_desativado_antes_de_promover() -> None:
     """F84 no gate de LOGIN: o branch `invited` lia só `status`.
 
     `create_invited` grava `is_active=true`, mas o toggle do painel funciona em
@@ -166,10 +165,8 @@ async def test_login_nega_convidado_desativado_antes_de_promover() -> None:
     """
     from src.auth.oauth import handle_callback_decision
 
-    decisao = await handle_callback_decision(
+    decisao = handle_callback_decision(
         email="convidado@v4company.com",
-        google_id="g1",
-        google_email="convidado@v4company.com",
         existing_manager={"id": uuid4(), "status": "invited", "is_active": False},
         managers_table_empty=False,
         bootstrap_emails=set(),

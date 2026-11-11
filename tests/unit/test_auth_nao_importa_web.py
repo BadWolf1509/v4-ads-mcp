@@ -73,11 +73,9 @@ def test_https_url_for_preserva_https_e_path_params() -> None:
         assert c.get("/probe").json() == {"url": "https://testserver/status/abc"}
 
 
-async def _decisao(email: str) -> tuple[str, str | None]:
-    d = await handle_callback_decision(
+def _decisao(email: str) -> tuple[str, str | None]:
+    d = handle_callback_decision(
         email=email,
-        google_id="g",
-        google_email=email,
         managers_table_empty=False,
         bootstrap_emails=set(),
         existing_manager={"status": "active", "is_active": True},
@@ -85,7 +83,6 @@ async def _decisao(email: str) -> tuple[str, str | None]:
     return d.kind, d.location
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("email", "esperado"),
     [
@@ -98,5 +95,5 @@ async def _decisao(email: str) -> tuple[str, str | None]:
         ("a@b@v4company.com", ("redirect", "/access-denied?reason=domain")),
     ],
 )
-async def test_callback_gate_de_dominio(email: str, esperado: tuple[str, str | None]) -> None:
-    assert await _decisao(email) == esperado
+def test_callback_gate_de_dominio(email: str, esperado: tuple[str, str | None]) -> None:
+    assert _decisao(email) == esperado
