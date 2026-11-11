@@ -146,8 +146,8 @@ async def cmd_grant_all(args: argparse.Namespace) -> int:
         # (`--by`), não o próprio gestor. Até 11/11 o CLI gravava o gestor como
         # autor de si mesmo e, com a G0, reescrevia o autor de toda linha viva.
         autor = await managers.get_by_email(conn, args.by)
-        if autor is None or autor.role != "admin":
-            print(f"--by precisa ser um admin existente: {args.by}", file=sys.stderr)
+        if autor is None or autor.role != "admin" or autor.is_deactivated:
+            print(f"--by precisa ser um admin existente e ativo: {args.by}", file=sys.stderr)
             return 1
         async with conn.transaction():
             n = await manager_account_access.grant_all_active(
@@ -161,6 +161,9 @@ async def cmd_grant_all(args: argparse.Namespace) -> int:
                 action_type="system",
                 operation="cli_grant_all",
                 target_count=n,
+                # O autor fica na trilha mesmo com n=0 (nada mudou): o manager_id
+                # da linha e o gestor ALVO, nao quem rodou o CLI.
+                params_summary={"by": autor.email},
                 # Desde 11/11 `n` conta só o que MUDOU (nova, restaurada ou
                 # promovida): concessão ativa e igual não é tocada.
                 had_effect=n > 0,

@@ -11,6 +11,7 @@ só roda "quando tudo mais já quebrou".
 """
 
 import argparse
+import json
 from collections.abc import AsyncIterator
 from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
@@ -239,7 +240,7 @@ async def test_grant_all_grants_access_to_active_accounts(migrated: None, dsn: s
     # Decisão de 11/11: o autor é o admin de `--by`, não o próprio gestor.
     assert [r["granted_by"] for r in autores] == [admin_id]
 
-    # Segunda chamada não deve duplicar (ON CONFLICT DO NOTHING) nem falhar.
+    # Segunda chamada não duplica nem falha (e, desde 11/11, não toca nada).
     rc2 = await cmd_grant_all(
         argparse.Namespace(email="grantee@v4company.com", by="admin-cli@v4company.com")
     )
@@ -275,19 +276,24 @@ async def test_grant_all_manager_not_found_returns_error_code(migrated: None, ds
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    ("autor", "papel"),
-    [("ninguem@v4company.com", None), ("gestor-autor@v4company.com", "gestor")],
-    ids=["autor-inexistente", "autor-nao-admin"],
+    ("autor", "papel", "ativo"),
+    [
+        ("ninguem@v4company.com", None, True),
+        ("gestor-autor@v4company.com", "gestor", True),
+        ("admin-desligado@v4company.com", "admin", False),
+    ],
+    ids=["autor-inexistente", "autor-nao-admin", "admin-desligado"],
 )
 async def test_grant_all_recusa_autor_que_nao_e_admin(
-    migrated: None, dsn: str, autor: str, papel: str | None
+    migrated: None, dsn: str, autor: str, papel: str | None, ativo: bool
 ) -> None:
-    """`--by` tem que ser um admin existente: sem isso, nada é concedido nem auditado."""
+    """`--by` tem que ser um admin existente E ativo: sem isso, nada é concedido
+    nem auditado. Admin desligado ainda tem `role='admin'` (revisão de 11/11)."""
     await _criar_gestor(
         dsn, "alvo-by@v4company.com", is_active=True, status="active", role="gestor"
     )
     if papel is not None:
-        await _criar_gestor(dsn, autor, is_active=True, status="active", role=papel)
+        await _criar_gestor(dsn, autor, is_active=ativo, status="active", role=papel)
     await connection.init_pool(dsn, min_size=1, max_size=4)
     try:
         async with connection.get_pool().acquire() as conn:
@@ -464,6 +470,8 @@ async def test_grant_all_grava_audit(migrated: None, dsn: str) -> None:
     assert linhas[0]["manager_id"] == manager_id
     assert linhas[0]["target_count"] == 2
     assert linhas[0]["had_effect"] is True
+    # Quem rodou fica na trilha mesmo quando nada muda (revisao de 11/11).
+    assert json.loads(str(linhas[0]["params_summary"])) == {"by": "admin-audit@v4company.com"}
 
     # Decisao de 11/11: a segunda execucao nao muda nada, e o audit diz isso.
     assert await cmd_grant_all(args) == 0
