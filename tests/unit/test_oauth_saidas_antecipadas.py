@@ -142,3 +142,23 @@ def test_state_sem_manager_id_nem_mode_devolve_400(
     assert banco.conexoes == []
     assert PANEL_SESSION_COOKIE_NAME not in _cookies_apagados(resp)
     _assert_nonce_apagado(resp)
+
+
+@respx.mock
+def test_excecao_depois_das_saidas_antecipadas_propaga_sem_virar_resposta(
+    navegador: TestClient,  # noqa: F811
+    banco: _Banco,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_RespostaAntecipada` e o unico desvio capturado: um erro de verdade segue subindo."""
+
+    def _quebra(*_a: Any, **_k: Any) -> bytes:
+        raise RuntimeError("cifra quebrou")
+
+    monkeypatch.setattr(oauth, "encrypt_refresh_token", _quebra)
+    _mock_google()
+    state = _state_de(navegador.get("/oauth/google/start?mode=panel_login"))
+
+    with pytest.raises(RuntimeError, match="cifra quebrou"):
+        navegador.get("/oauth/google/callback", params={"code": "c", "state": state})
+    assert banco.conexoes == []

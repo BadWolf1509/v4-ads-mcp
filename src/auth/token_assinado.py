@@ -10,6 +10,10 @@ que agora é dado (`MensagensDeErro`) e não código.
 
 `verificar` confere, nesta ordem: formato → HMAC → JSON → dict → audiência →
 `iat` inteiro → TTL. A ordem importa: nada do payload é confiável antes do HMAC.
+
+Privado a `oauth_state` e `panel_session`: `assinar`/`verificar` aceitam a união de
+audiências, então só os wrappers tipados deles podem importá-lo. O guard
+`tests/unit/test_token_assinado_privado.py` falha se outro módulo de `src/` o importar.
 """
 
 from __future__ import annotations
