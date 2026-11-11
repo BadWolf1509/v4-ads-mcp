@@ -82,7 +82,9 @@ def _base_patches(
         "init_pool": patch(f"{_M}.connection.init_pool", AsyncMock()),
         "close_pool": patch(f"{_M}.connection.close_pool", AsyncMock()),
         "get_pool": patch(f"{_M}.connection.get_pool", MagicMock(return_value=pool)),
-        "pick": patch(f"{_M}._pick_oauth_connection", AsyncMock(return_value=(manager, oc))),
+        # Parte J2: `_pick_oauth_connection` devolve so a conexao (`manager` ficou
+        # no helper para nao mexer nos chamadores; nao e mais lido).
+        "pick": patch(f"{_M}._pick_oauth_connection", AsyncMock(return_value=oc)),
         "derive": patch(f"{_M}.derive_master_key_from_settings", MagicMock(return_value=b"k" * 32)),
         "decrypt": patch(f"{_M}.decrypt_refresh_token", MagicMock(return_value="refresh-tok")),
         "build_client": patch(f"{_M}.build_client", MagicMock(return_value=MagicMock())),
@@ -774,3 +776,15 @@ async def test_segunda_execucao_no_mesmo_dia_repete_o_bloqueio_sem_acumular_efei
     chamadas = reconcile.await_args_list
     assert len(chamadas) == 2
     assert chamadas[0].kwargs == chamadas[1].kwargs
+
+
+@pytest.mark.asyncio
+async def test_pick_oauth_connection_nao_le_o_gestor() -> None:
+    """Parte J2: a leitura de `managers.get_by_id` a cada resync nao tinha leitor."""
+    oc = SimpleNamespace(manager_id="m-1", refresh_token_enc=b"e")
+    with (
+        patch(f"{_M}.google_oauth_connections.pick_admin_active", AsyncMock(return_value=oc)),
+        patch("src.db.repositories.managers.get_by_id", AsyncMock()) as get_by_id,
+    ):
+        assert await account_resync._pick_oauth_connection(MagicMock()) is oc
+    get_by_id.assert_not_awaited()

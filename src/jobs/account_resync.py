@@ -10,6 +10,7 @@ Entry point: `python -m src.jobs.account_resync`
 import asyncio
 import sys
 from datetime import UTC, datetime
+from enum import Enum
 from typing import Any
 
 import asyncpg
@@ -23,7 +24,6 @@ from src.db.repositories import (
     google_ads_accounts,
     google_oauth_connections,
     manager_account_access,
-    managers,
 )
 from src.google_ads.accounts import (
     fetch_account_details,
@@ -40,18 +40,28 @@ from src.logging import configure_logging
 log = structlog.get_logger(__name__)
 
 
-async def _pick_oauth_connection(conn: asyncpg.Connection) -> tuple[Any, Any]:
-    """Return (manager, oauth_conn) for the first active admin's OAuth.
+class Desfecho(Enum):
+    """Desfecho da etapa Google (Parte J2, 11/11) — antes `bool | None`.
 
-    Falls back to any active connection if no admin has one.
+    `SEM_OAUTH` encerra o job (Meta e purge nao rodam); `FALHOU` e bloqueio
+    auditado como erro: o job termina o resto e sai com 1.
+    """
+
+    OK = "ok"
+    FALHOU = "falhou"
+    SEM_OAUTH = "sem_oauth"
+
+
+async def _pick_oauth_connection(conn: asyncpg.Connection) -> Any | None:
+    """A conexao OAuth do primeiro admin ativo; na falta, a mais recente ativa.
+
+    Parte J2: devolvia `(manager, conexao)` e lia `managers.get_by_id` a cada
+    execucao — o gestor nao era usado por ninguem.
     """
     oc = await google_oauth_connections.pick_admin_active(conn)
     if oc is None:
         oc = await google_oauth_connections.pick_latest_active(conn)
-    if oc is None:
-        return None, None
-    m = await managers.get_by_id(conn, oc.manager_id)
-    return m, oc
+    return oc
 
 
 async def reconcile_google(
@@ -232,9 +242,10 @@ async def run() -> int:
 
     async def _corpo() -> int:
         pool = connection.get_pool()
-        falhou_google = await _etapa_google(pool, settings)
-        if falhou_google is None:
+        desfecho_google = await _etapa_google(pool, settings)
+        if desfecho_google is Desfecho.SEM_OAUTH:
             return 1
+        falhou_google = desfecho_google is Desfecho.FALHOU
         falhou_meta = await _etapa_meta(pool)
         # F207 (11/11): o purge ENTRA no exit code. A unica policy que ve o job e
         # "Cloud Run Job: execucao FALHOU" (exit code); falha que so ia ao log
@@ -270,12 +281,12 @@ async def run() -> int:
     )
 
 
-async def _etapa_google(pool: connection.PoolValidado, settings: Settings) -> bool | None:
-    """Reconcilia o inventário Google contra o MCC. True = falhou (bloqueio).
+async def _etapa_google(pool: connection.PoolValidado, settings: Settings) -> Desfecho:
+    """Reconcilia o inventário Google contra o MCC e devolve o `Desfecho`.
 
-    Três desfechos, e o terceiro ENCERRA o job (Meta e purge não rodam):
-    `False` (ok), `True` (bloqueio auditado como erro — o job termina o resto
-    e sai com 1) e `None` (sem OAuth connection: auditado e exit 1 imediato).
+    Três desfechos (`Desfecho`), e o terceiro ENCERRA o job (Meta e purge não
+    rodam): `OK`, `FALHOU` (bloqueio auditado como erro — o job termina o resto
+    e sai com 1) e `SEM_OAUTH` (auditado e exit 1 imediato).
     Exceção aqui sobe para `executar_job` (crash F93) — também sem Meta/purge.
 
     F85: `[]` sem exceção é anomalia de leitura, não "o MCC ficou vazio".
@@ -311,7 +322,7 @@ async def _etapa_google(pool: connection.PoolValidado, settings: Settings) -> bo
     por dia (F157), entao repetir um bloqueio e inofensivo.
     """
     async with pool.acquire() as conn:
-        manager, oc = await _pick_oauth_connection(conn)
+        oc = await _pick_oauth_connection(conn)
         if oc is None:
             log.error("resync_no_oauth_connection")
             print(
@@ -329,7 +340,7 @@ async def _etapa_google(pool: connection.PoolValidado, settings: Settings) -> bo
                     status="error",
                     error_message="no active OAuth connection",
                 )
-            return None
+            return Desfecho.SEM_OAUTH
 
     master_key = derive_master_key_from_settings(settings.aes_master_key)
     refresh_token = decrypt_refresh_token(oc.refresh_token_enc, master_key)
@@ -402,7 +413,7 @@ async def _etapa_google(pool: connection.PoolValidado, settings: Settings) -> bo
 
     log.info("resync_complete", **resumo)
     print(f"OK: google reconcile — {resumo}")
-    return resumo["blocked_reason"] is not None
+    return Desfecho.FALHOU if resumo["blocked_reason"] is not None else Desfecho.OK
 
 
 async def _etapa_meta(pool: connection.PoolValidado) -> bool:

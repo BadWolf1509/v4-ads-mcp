@@ -1,6 +1,6 @@
-"""Esqueleto comum dos Cloud Run Jobs de reconciliação.
+"""Esqueleto comum dos Cloud Run Jobs (os dois de reconciliação e, desde a Parte J1, o backup).
 
-Os dois jobs (`account_resync`, `meta_resync`) repetiam o mesmo invólucro: abrir
+Os jobs (`account_resync`, `meta_resync`, `backup`) repetiam o mesmo invólucro: abrir
 o pool, rodar o corpo, auditar crash inesperado (F93) e re-levantar, e fechar o
 pool no `finally`. O invólucro vive aqui uma vez; o corpo de cada job decide o
 exit code.
