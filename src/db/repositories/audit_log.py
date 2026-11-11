@@ -27,9 +27,12 @@ def _csv_safe(value: str) -> str:
     return value
 
 
-# O JOIN que traz o nome da conta Google, com o alias `a` (o de admin usa `gaa`
-# e fica escrito no próprio construtor: trocar o alias mudaria o SQL emitido).
-_SQL_NOME_DA_CONTA = "LEFT JOIN google_ads_accounts a ON a.customer_id = al.customer_id"
+# Fonte ÚNICA do nome da conta em toda leitura do audit (página do gestor, detalhe,
+# admin, dashboard): o JOIN e a coluna, com alias fixo `gaa`. Quem lê tem de ter
+# `audit_log` com alias `al`. `google_ads_accounts.customer_id` é PK, então o
+# JOIN não multiplica linha.
+_SQL_NOME_DA_CONTA = "LEFT JOIN google_ads_accounts gaa ON gaa.customer_id = al.customer_id"
+_SQL_COLUNA_NOME_DA_CONTA = "gaa.descriptive_name AS account_name"
 
 
 class _Filtros:
@@ -149,7 +152,7 @@ async def get_by_id(
     row = await conn.fetchrow(
         f"""SELECT al.*, m.email AS manager_email,
                    s.label AS session_label,
-                   a.descriptive_name AS account_name
+                   {_SQL_COLUNA_NOME_DA_CONTA}
             FROM audit_log al
             LEFT JOIN managers m ON m.id = al.manager_id
             LEFT JOIN mcp_sessions s ON s.id = al.session_id
@@ -376,7 +379,7 @@ def _build_manager_page_sql(
     filtros.add_cursor(cursor_occurred_at, cursor_id)
     limite = filtros.add_limit(limit + 1)
 
-    sql = f"""SELECT al.*, a.descriptive_name AS account_name
+    sql = f"""SELECT al.*, {_SQL_COLUNA_NOME_DA_CONTA}
               FROM audit_log al {_SQL_NOME_DA_CONTA}
               WHERE {filtros.sql}
               ORDER BY al.occurred_at DESC, al.id DESC
@@ -481,10 +484,10 @@ def _build_admin_page_sql(
     sql = f"""SELECT al.id, al.occurred_at, al.action_type, al.operation,
                      al.customer_id, al.target_count, al.status, al.duration_ms,
                      m.email AS manager_email,
-                     gaa.descriptive_name AS account_name
+                     {_SQL_COLUNA_NOME_DA_CONTA}
               FROM audit_log al
               LEFT JOIN managers m ON m.id = al.manager_id
-              LEFT JOIN google_ads_accounts gaa ON gaa.customer_id = al.customer_id
+              {_SQL_NOME_DA_CONTA}
               WHERE {filtros.sql}
               ORDER BY al.occurred_at DESC, al.id DESC
               LIMIT {limite}"""
@@ -555,12 +558,11 @@ async def list_recent_for_manager(
 ) -> list[asyncpg.Record]:
     """As 5 últimas chamadas do gestor, com o nome da conta Google (dashboard)."""
     rows = await conn.fetch(
-        """SELECT occurred_at, operation, customer_id, status,
-                  (SELECT descriptive_name FROM google_ads_accounts a
-                   WHERE a.customer_id = al.customer_id LIMIT 1) AS account_name
-           FROM audit_log al
-           WHERE manager_id = $1
-           ORDER BY occurred_at DESC, id DESC LIMIT 5""",
+        f"""SELECT al.occurred_at, al.operation, al.customer_id, al.status,
+                  {_SQL_COLUNA_NOME_DA_CONTA}
+           FROM audit_log al {_SQL_NOME_DA_CONTA}
+           WHERE al.manager_id = $1
+           ORDER BY al.occurred_at DESC, al.id DESC LIMIT 5""",
         manager_id,
     )
     return list(rows)
