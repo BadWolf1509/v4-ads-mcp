@@ -27,14 +27,14 @@ from src.web.routes._shared import _audit_admin
 class PlataformaAcesso:
     """O que separa a rota Google da Meta.
 
-    repositorio: módulo com `grant`/`revoke`/`bulk_grant`/`copy_access`.
+    repositorio: módulo com `grant`/`revoke`/`bulk_grant`/`copy_access` e
+        `has_live_grant` (o grant vivo — `revoked_at IS NULL` — do par gestor,
+        conta; linha revogada é soft e fica, então sem o filtro o toggle
+        chamaria revoke() de novo em vez de reconceder).
     coluna_conta: nome da coluna (e do kwarg do repositório) da conta.
     campo_lista: kwarg de `bulk_grant` com a lista de contas.
     plataforma_audit: `platform` gravado em `audit_log`.
     prefixo_url: raiz das rotas no painel.
-    sql_acesso_vivo: SELECT do grant vivo (`revoked_at IS NULL`) do par
-        (gestor, conta) — linha revogada é soft e fica, então sem o filtro o
-        toggle chamaria revoke() de novo em vez de reconceder.
     campo_nome_conta: atributo da conta com o nome exibido nos templates.
     rotulo: nome da plataforma no texto da página (aria-label da matriz).
     sufixo_id: entra nos ids dos modais da matriz (`copy-from-meta`). As duas
@@ -47,7 +47,6 @@ class PlataformaAcesso:
     campo_lista: Literal["customer_ids", "ad_account_ids"]
     plataforma_audit: Literal["google", "meta"]
     prefixo_url: str
-    sql_acesso_vivo: str
     campo_nome_conta: Literal["descriptive_name", "account_name"]
     rotulo: str
     sufixo_id: str
@@ -65,10 +64,6 @@ PLATAFORMAS: dict[Literal["google", "meta"], PlataformaAcesso] = {
         campo_lista="customer_ids",
         plataforma_audit="google",
         prefixo_url="/admin/access",
-        sql_acesso_vivo=(
-            "SELECT 1 FROM manager_account_access "
-            "WHERE manager_id = $1 AND customer_id = $2 AND revoked_at IS NULL"
-        ),
         campo_nome_conta="descriptive_name",
         rotulo="Google",
         sufixo_id="",
@@ -79,10 +74,6 @@ PLATAFORMAS: dict[Literal["google", "meta"], PlataformaAcesso] = {
         campo_lista="ad_account_ids",
         plataforma_audit="meta",
         prefixo_url="/admin/access/meta",
-        sql_acesso_vivo=(
-            "SELECT 1 FROM manager_meta_account_access "
-            "WHERE manager_id = $1 AND ad_account_id = $2 AND revoked_at IS NULL"
-        ),
         campo_nome_conta="account_name",
         rotulo="Meta",
         sufixo_id="-meta",
@@ -104,8 +95,8 @@ async def aplicar_toggle(
     Aba velha ou duplo clique pedem o que já é verdade: nada muda e nada é
     auditado. Devolve `mudou`.
     """
-    existe = await conn.fetchval(plataforma.sql_acesso_vivo, manager_id, conta)
-    mudou = desejado != bool(existe)
+    existe = bool(await plataforma.repositorio.has_live_grant(conn, manager_id, conta))
+    mudou = desejado != existe
     async with conn.transaction():
         if mudou:
             alvo = {plataforma.coluna_conta: conta}

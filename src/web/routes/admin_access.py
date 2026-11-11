@@ -8,7 +8,13 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from src.db import connection
-from src.db.repositories import google_ads_accounts, managers, meta_ad_accounts
+from src.db.repositories import (
+    google_ads_accounts,
+    manager_account_access,
+    manager_meta_account_access,
+    managers,
+    meta_ad_accounts,
+)
 from src.web.deps import CurrentUser, current_manager, pending_invites_count
 from src.web.routes._acesso import PLATAFORMAS, aplicar_toggle, conceder_em_massa, copiar_acessos
 from src.web.routes._shared import (
@@ -39,9 +45,7 @@ async def admin_access(
         # Task 3 (achado extra): revogação virou soft, então a linha do grant
         # revogado FICA — sem o filtro, a célula continuaria marcada mesmo
         # depois do admin revogar (espelha o gêmeo Meta, admin_access_meta).
-        access_rows = await conn.fetch(
-            "SELECT manager_id, customer_id FROM manager_account_access WHERE revoked_at IS NULL"
-        )
+        access_rows = await manager_account_access.list_live_grants(conn)
         return managers_rows, accs, access_rows
 
     managers_rows, accs, access_rows = await connection.run_with_reconnect(_load)
@@ -76,10 +80,7 @@ async def admin_access_meta(
     ) -> tuple[list[asyncpg.Record], list[meta_ad_accounts.MetaAdAccount], list[asyncpg.Record]]:
         managers_rows = await managers.list_active(conn)
         accounts = await meta_ad_accounts.list_all(conn)
-        access_rows = await conn.fetch(
-            "SELECT manager_id, ad_account_id FROM manager_meta_account_access "
-            "WHERE revoked_at IS NULL"
-        )
+        access_rows = await manager_meta_account_access.list_live_grants(conn)
         return managers_rows, accounts, access_rows
 
     managers_rows, accounts, access_rows = await connection.run_with_reconnect(_load)
@@ -177,30 +178,10 @@ async def admin_access_meta_by_manager(
 
     # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
     async def _load(conn: asyncpg.Connection) -> tuple[list[asyncpg.Record], int]:
-        # I1 (fix round 1): revoked_at entra na CONDICAO do LEFT JOIN, nao no
-        # WHERE — WHERE excluiria o gestor inteiro (LEFT vira INNER na pratica)
-        # quando todos os grants dele estao revogados, e ele tem que continuar
-        # aparecendo com "0 / total". Sem este filtro a contagem incluia grant
-        # revogado e contradizia a pagina de detalhe (que ja filtra).
-        managers_with_counts = await conn.fetch(
-            """SELECT m.id, m.email, m.full_name,
-                      count(a.ad_account_id) AS access_count
-               FROM managers m
-               LEFT JOIN manager_meta_account_access mmaa
-                      ON mmaa.manager_id = m.id AND mmaa.revoked_at IS NULL
-               LEFT JOIN meta_ad_accounts a
-                      ON a.ad_account_id = mmaa.ad_account_id AND a.is_active = true
-               WHERE m.is_active = true
-               GROUP BY m.id ORDER BY m.email"""
-        )
-        # M8 (revisao de branch): so conta ATIVA. A pagina de detalhe monta a
-        # matriz por `list_all`, que ja filtra `is_active` — sem o filtro aqui o
-        # denominador crescia com cada conta desativada pelo offboarding
-        # automatico e as duas telas voltavam a discordar, que e exatamente a
-        # divergencia que o I1 da Task 5 fechou no numerador.
-        total_accounts = (
-            await conn.fetchval("SELECT count(*) FROM meta_ad_accounts WHERE is_active = true") or 0
-        )
+        # Os porquês do numerador (revoked_at na condição do LEFT JOIN) e do
+        # denominador (só conta ativa) vivem nas docstrings das funções.
+        managers_with_counts = await manager_meta_account_access.list_managers_with_counts(conn)
+        total_accounts = await manager_meta_account_access.count_active_accounts(conn)
         return managers_with_counts, total_accounts
 
     managers_with_counts, total_accounts = await connection.run_with_reconnect(_load)
@@ -242,10 +223,8 @@ async def admin_access_meta_manager_detail(
         if mgr_row is None:
             raise HTTPException(status_code=404, detail="Gestor não encontrado")
         accs = await meta_ad_accounts.list_all(conn)
-        access_rows = await conn.fetch(
-            "SELECT ad_account_id FROM manager_meta_account_access "
-            "WHERE manager_id = $1 AND revoked_at IS NULL",
-            parsed_manager_id,
+        access_rows = await manager_meta_account_access.list_live_grants_for_manager(
+            conn, parsed_manager_id
         )
         access_set = {r["ad_account_id"] for r in access_rows}
         return mgr_row, accs, access_set
@@ -315,37 +294,10 @@ async def admin_access_by_manager(
 
     # F76/F77/F91 — leitura idempotente, sobrevive a reconexão (Task 6, PR 5).
     async def _load(conn: asyncpg.Connection) -> tuple[list[asyncpg.Record], int]:
-        # Revisão final (item 1): numerador e denominador tem que viver no
-        # MESMO universo. O I4 abaixo corrigiu só o denominador — o numerador
-        # cru (`count(maa.customer_id)`) continuava contando grant vivo em
-        # conta que já saiu do MCC (is_active=false, nunca revogada), e a
-        # tela chegou a mostrar razão impossível (2/1, numerador > denominador
-        # — medido em container). O segundo LEFT JOIN faz o mesmo que o
-        # denominador faz sozinho: só conta grant vivo cuja conta AINDA está
-        # em `google_ads_accounts.is_active = true`. É LEFT (não JOIN puro)
-        # de propósito — um gestor cujos únicos grants apontam pra conta
-        # inativa tem que continuar aparecendo com "0 / total", não sumir da
-        # lista.
-        managers_with_counts = await conn.fetch(
-            """SELECT m.id, m.email, m.full_name,
-                      count(a.customer_id) AS access_count
-               FROM managers m
-               LEFT JOIN manager_account_access maa
-                      ON maa.manager_id = m.id AND maa.revoked_at IS NULL
-               LEFT JOIN google_ads_accounts a
-                      ON a.customer_id = maa.customer_id AND a.is_active = true
-               WHERE m.is_active = true
-               GROUP BY m.id ORDER BY m.email"""
-        )
-        # I4 (revisao de branch): so conta ATIVA. A pagina de detalhe monta a
-        # matriz por `list_all`, que ja filtra `is_active` — sem o filtro aqui
-        # o denominador crescia com cada conta desativada pelo offboarding
-        # automatico e as duas telas voltavam a discordar. Mesmo fix do M8
-        # (gemeo Meta, routes.py:1274).
-        total_accounts = (
-            await conn.fetchval("SELECT count(*) FROM google_ads_accounts WHERE is_active = true")
-            or 0
-        )
+        # Os porquês do numerador (só grant vivo em conta ativa) e do
+        # denominador (só conta ativa) vivem nas docstrings das funções.
+        managers_with_counts = await manager_account_access.list_managers_with_counts(conn)
+        total_accounts = await manager_account_access.count_active_accounts(conn)
         return managers_with_counts, total_accounts
 
     managers_with_counts, total_accounts = await connection.run_with_reconnect(_load)
@@ -387,14 +339,8 @@ async def admin_access_manager_detail(
         if mgr_row is None:
             raise HTTPException(status_code=404, detail="Gestor não encontrado")
         accs = await google_ads_accounts.list_all(conn)
-        # Task 3 (achado extra): mesmo raciocínio do admin_access — grant
-        # revogado é soft, a linha fica, então sem o filtro o checkbox
-        # continuaria marcado (espelha o gêmeo Meta, admin_access_manager_
-        # detail_meta, linha ~1307).
-        access_rows = await conn.fetch(
-            "SELECT customer_id FROM manager_account_access "
-            "WHERE manager_id = $1 AND revoked_at IS NULL",
-            parsed_manager_id,
+        access_rows = await manager_account_access.list_live_grants_for_manager(
+            conn, parsed_manager_id
         )
         access_set = {r["customer_id"] for r in access_rows}
         return mgr_row, accs, access_set

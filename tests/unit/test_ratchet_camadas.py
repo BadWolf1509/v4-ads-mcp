@@ -47,22 +47,8 @@ _TOOLS = h.SRC / "mcp" / "tools"
 _METODOS_DE_BANCO = frozenset({"fetch", "fetchrow", "fetchval", "execute", "executemany"})
 
 # (arquivo relativo à raiz, função de topo que contém a chamada).
-_SQL_EM_ROTA_CONHECIDO: dict[tuple[str, str], int] = {
-    ("src/web/routes/_acesso.py", "aplicar_toggle"): 1,
-    ("src/web/routes/accounts.py", "accounts_page"): 1,
-    ("src/web/routes/accounts.py", "accounts_revoke_connection"): 1,
-    ("src/web/routes/admin_access.py", "admin_access"): 1,
-    ("src/web/routes/admin_access.py", "admin_access_meta"): 1,
-    ("src/web/routes/admin_access.py", "admin_access_meta_by_manager"): 2,
-    ("src/web/routes/admin_access.py", "admin_access_meta_manager_detail"): 1,
-    ("src/web/routes/admin_access.py", "admin_access_by_manager"): 2,
-    ("src/web/routes/admin_access.py", "admin_access_manager_detail"): 1,
-    ("src/web/routes/admin_invites.py", "admin_invites"): 1,
-    ("src/web/routes/admin_invites.py", "admin_invites_new"): 1,
-    ("src/web/routes/admin_invites.py", "admin_invites_cancel"): 1,
-    ("src/web/routes/admin_overview.py", "admin_index"): 3,
-    ("src/web/routes/dashboard.py", "dashboard"): 1,
-}
+# Vazia desde a G2 (10/11): toda leitura das rotas mora num repositório.
+_SQL_EM_ROTA_CONHECIDO: dict[tuple[str, str], int] = {}
 
 # (arquivo, função) -> número de chamadas a `create_pending` fora de `_mutate_common.py`.
 _CREATE_PENDING_FORA_DO_HELPER: dict[tuple[str, str], int] = {

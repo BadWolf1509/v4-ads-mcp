@@ -60,12 +60,26 @@ _GEMEOS = (
     "can_manager_access",
     "bulk_grant",
     "copy_access",
+    "list_live_grants",
+    "list_live_grants_for_manager",
+    "list_managers_with_counts",
+    "count_active_accounts",
+    "has_live_grant",
 )
 
 # As escritas que delegam ao núcleo (SQL comparado em runtime) e os pares que
 # ficaram fora dele por decisão do plano (SQL comparado por AST).
 _NO_NUCLEO = ("grant", "grant_all_active", "revoke", "bulk_grant", "copy_access")
-_FORA_DO_NUCLEO = ("list_accounts_for_manager", "can_manager_access")
+_FORA_DO_NUCLEO = (
+    "list_accounts_for_manager",
+    "can_manager_access",
+    # Leituras do painel (G2): SQL escrito dos dois lados, comparado por AST.
+    "list_live_grants",
+    "list_live_grants_for_manager",
+    "list_managers_with_counts",
+    "count_active_accounts",
+    "has_live_grant",
+)
 
 # função -> motivo. Só encolhe: entrada nova exige decisão consciente.
 _DIVERGENCIAS_REGISTRADAS: dict[str, str] = {
@@ -85,6 +99,8 @@ _RENOMEAR_META_PARA_GOOGLE: tuple[tuple[re.Pattern[str], str], ...] = tuple(
         ("ad_account_ids", "customer_ids"),
         ("ad_account_id", "customer_id"),
         ("account_name", "descriptive_name"),
+        # Alias do JOIN em `list_managers_with_counts` (só nome de apelido).
+        ("mmaa", "maa"),
     )
 )
 

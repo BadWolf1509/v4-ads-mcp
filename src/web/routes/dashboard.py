@@ -7,7 +7,12 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 
 from src.db import connection
-from src.db.repositories import google_oauth_connections, manager_account_access, mcp_sessions
+from src.db.repositories import (
+    audit_log,
+    google_oauth_connections,
+    manager_account_access,
+    mcp_sessions,
+)
 from src.web import numeros
 from src.web.deps import CurrentUser, current_manager
 from src.web.routes._shared import templates
@@ -39,16 +44,7 @@ async def dashboard(
         oauth_conn = await google_oauth_connections.get_active_for_manager(conn, user.id)
 
         # Recent calls (last 5 by this manager)
-        recent = await conn.fetch(
-            """SELECT occurred_at, operation, customer_id, status,
-                      (SELECT descriptive_name FROM google_ads_accounts a
-                       WHERE a.customer_id = al.customer_id LIMIT 1) AS account_name
-               FROM audit_log al
-               WHERE manager_id = $1
-               ORDER BY occurred_at DESC, id DESC LIMIT 5""",
-            user.id,
-        )
-
+        recent = await audit_log.list_recent_for_manager(conn, user.id)
         # Calls today (count + sparkline of last 7 days). O dia é o do painel
         # (America/Sao_Paulo), não o do banco (UTC) — ver src/web/numeros.py.
         sparkline_values = await numeros.contagem_por_dia(

@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
 
 from src.db import connection
-from src.db.repositories import google_oauth_connections
+from src.db.repositories import audit_log, google_oauth_connections
 from src.db.repositories import managers as managers_repo
 from src.web import numeros
 from src.web.deps import CurrentUser, current_manager, pending_invites_count
@@ -53,23 +53,11 @@ async def admin_index(
         usage_30d = await numeros.contagem_por_dia(conn, numeros.dias_do_painel(30))
 
         # Top operations 7d
-        top_ops = await conn.fetch(
-            """SELECT operation, count(*) AS count FROM audit_log
-               WHERE occurred_at > now() - interval '7 days'
-               GROUP BY operation ORDER BY count DESC LIMIT 5"""
-        )
+        top_ops = await audit_log.top_operations_7d(conn)
         # Top managers 7d
-        top_mgrs = await conn.fetch(
-            """SELECT m.email, count(*) AS count
-               FROM audit_log al JOIN managers m ON m.id = al.manager_id
-               WHERE al.occurred_at > now() - interval '7 days'
-               GROUP BY m.email ORDER BY count DESC LIMIT 5"""
-        )
+        top_mgrs = await audit_log.top_managers_7d(conn)
         # Recent onboarding (last 10 managers by created_at)
-        onboarding = await conn.fetch(
-            """SELECT email, status, created_at, invited_at
-               FROM managers ORDER BY coalesce(invited_at, created_at) DESC LIMIT 10"""
-        )
+        onboarding = await managers_repo.list_recent_onboarding(conn)
 
         # Load OAuth connection (Google; o OAuth pessoal da Meta saiu em 11/2026)
         google_conn = await google_oauth_connections.get_active_for_manager(conn, user.id)

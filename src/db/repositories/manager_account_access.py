@@ -363,3 +363,76 @@ async def count_grants_on_accounts(conn: asyncpg.Connection, *, customer_ids: li
             customer_ids,
         )
     )
+
+
+async def list_live_grants(conn: asyncpg.Connection) -> list[asyncpg.Record]:
+    """`(manager_id, customer_id)` de todo grant vivo — a matriz de `/admin/access`.
+
+    Revogação é soft (a linha fica), então sem `revoked_at IS NULL` a célula
+    continuaria marcada depois do admin revogar.
+    """
+    rows = await conn.fetch(
+        "SELECT manager_id, customer_id FROM manager_account_access WHERE revoked_at IS NULL"
+    )
+    return list(rows)
+
+
+async def list_live_grants_for_manager(
+    conn: asyncpg.Connection, manager_id: UUID
+) -> list[asyncpg.Record]:
+    """`customer_id` dos grants vivos de UM gestor (detalhe do gestor no painel)."""
+    rows = await conn.fetch(
+        "SELECT customer_id FROM manager_account_access "
+        "WHERE manager_id = $1 AND revoked_at IS NULL",
+        manager_id,
+    )
+    return list(rows)
+
+
+async def list_managers_with_counts(conn: asyncpg.Connection) -> list[asyncpg.Record]:
+    """Gestores ativos com `access_count` (`/admin/access/by-manager`).
+
+    Numerador e denominador vivem no MESMO universo: o segundo LEFT JOIN só conta
+    grant vivo cuja conta AINDA está em `google_ads_accounts.is_active = true`. É
+    LEFT (não JOIN puro) de propósito — o gestor cujos únicos grants apontam pra
+    conta inativa continua aparecendo com "0 / total", não some da lista.
+    """
+    rows = await conn.fetch(
+        """SELECT m.id, m.email, m.full_name,
+                  count(a.customer_id) AS access_count
+           FROM managers m
+           LEFT JOIN manager_account_access maa
+                  ON maa.manager_id = m.id AND maa.revoked_at IS NULL
+           LEFT JOIN google_ads_accounts a
+                  ON a.customer_id = maa.customer_id AND a.is_active = true
+           WHERE m.is_active = true
+           GROUP BY m.id ORDER BY m.email"""
+    )
+    return list(rows)
+
+
+async def count_active_accounts(conn: asyncpg.Connection) -> int:
+    """Contas ATIVAS do inventário: o denominador de `list_managers_with_counts`.
+
+    O detalhe do gestor monta a matriz por `list_all`, que já filtra `is_active`;
+    sem o filtro aqui o denominador crescia a cada conta desativada pelo
+    offboarding automático e as duas telas voltavam a discordar.
+    """
+    n = await conn.fetchval("SELECT count(*) FROM google_ads_accounts WHERE is_active = true")
+    return int(n or 0)
+
+
+async def has_live_grant(conn: asyncpg.Connection, manager_id: UUID, customer_id: str) -> bool:
+    """O par (gestor, conta) tem grant VIVO (`revoked_at IS NULL`)?
+
+    Linha revogada é soft e fica: sem o filtro o toggle do painel chamaria
+    `revoke` de novo em vez de reconceder. Não cruza com o inventário (isso é o
+    gate, `can_manager_access`): aqui é só o estado da linha de grant.
+    """
+    existe = await conn.fetchval(
+        "SELECT 1 FROM manager_account_access "
+        "WHERE manager_id = $1 AND customer_id = $2 AND revoked_at IS NULL",
+        manager_id,
+        customer_id,
+    )
+    return bool(existe)

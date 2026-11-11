@@ -533,3 +533,40 @@ async def list_page_admin(
     page = fetched[:limit]
     next_cursor = (page[-1]["occurred_at"], int(page[-1]["id"])) if len(fetched) > limit else None
     return [dict(r) for r in page], next_cursor
+
+
+async def top_operations_7d(conn: asyncpg.Connection) -> list[asyncpg.Record]:
+    """As 5 operações mais chamadas nos últimos 7 dias (overview do admin)."""
+    rows = await conn.fetch(
+        """SELECT operation, count(*) AS count FROM audit_log
+           WHERE occurred_at > now() - interval '7 days'
+           GROUP BY operation ORDER BY count DESC LIMIT 5"""
+    )
+    return list(rows)
+
+
+async def top_managers_7d(conn: asyncpg.Connection) -> list[asyncpg.Record]:
+    """Os 5 gestores com mais chamadas nos últimos 7 dias (overview do admin)."""
+    rows = await conn.fetch(
+        """SELECT m.email, count(*) AS count
+           FROM audit_log al JOIN managers m ON m.id = al.manager_id
+           WHERE al.occurred_at > now() - interval '7 days'
+           GROUP BY m.email ORDER BY count DESC LIMIT 5"""
+    )
+    return list(rows)
+
+
+async def list_recent_for_manager(
+    conn: asyncpg.Connection, manager_id: UUID
+) -> list[asyncpg.Record]:
+    """As 5 últimas chamadas do gestor, com o nome da conta Google (dashboard)."""
+    rows = await conn.fetch(
+        """SELECT occurred_at, operation, customer_id, status,
+                  (SELECT descriptive_name FROM google_ads_accounts a
+                   WHERE a.customer_id = al.customer_id LIMIT 1) AS account_name
+           FROM audit_log al
+           WHERE manager_id = $1
+           ORDER BY occurred_at DESC, id DESC LIMIT 5""",
+        manager_id,
+    )
+    return list(rows)
