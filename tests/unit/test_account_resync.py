@@ -515,8 +515,11 @@ async def test_run_calls_purge_expired_and_records_db_purge() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_purge_failure_is_non_fatal() -> None:
-    """purge_expired() explode → run() ainda retorna 0 (best-effort, não quebra o resync)."""
+async def test_run_purge_failure_termina_o_job_e_sai_com_1() -> None:
+    """purge_expired() explode → o job termina e sai com 1 (F207, 11/11).
+
+    Antes saía com 0 ("non-fatal"): a única policy que vê o job olha o exit code,
+    e a falha ficava invisível. O pool continua fechado no `finally`."""
     conn = MagicMock()
     pool = FakePool(conn)
     oc = SimpleNamespace(refresh_token_enc=b"enc")
@@ -540,7 +543,7 @@ async def test_run_purge_failure_is_non_fatal() -> None:
     ):
         rc = await account_resync.run()
 
-    assert rc == 0
+    assert rc == 1
     close_pool.assert_awaited_once()
 
 
