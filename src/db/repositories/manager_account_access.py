@@ -6,15 +6,17 @@ from uuid import UUID
 import asyncpg
 
 from src.db.repositories._comum import linhas_afetadas
-from src.db.repositories.google_ads_accounts import GoogleAdsAccount, _row_to_account
+from src.db.repositories.google_ads_accounts import GoogleAdsAccount, row_to_account
+from src.db.repositories.motivos import (
+    ADMIN_REVOKED_REASON,
+    BULK_COPY_REPLACED_REASON,
+    LEFT_MCC_REASON,
+)
 
-# Motivos gravados por `revoke`/`revoke_for_inactive_accounts`. Constantes — não
-# string livre — porque `restore_for_account` filtra por ESTE MESMO valor
-# (`LEFT_MCC_REASON`): um typo ou refactor que passasse outro texto faria o
-# restore filtrar por um motivo que nenhuma linha tem e devolver zero em
-# silêncio, sem erro (mesmo raciocínio do gêmeo Meta, PARTNERSHIP_ENDED_REASON).
-LEFT_MCC_REASON = "left_mcc"
-ADMIN_REVOKED_REASON = "admin_revoked"
+# Motivos gravados por `revoke`/`revoke_for_inactive_accounts` vivem em
+# `motivos.py` (módulo neutro) e são reexportados daqui: `restore_for_account`
+# filtra por ESTE MESMO valor (`LEFT_MCC_REASON`), então não pode ser string livre.
+__all__ = ["ADMIN_REVOKED_REASON", "LEFT_MCC_REASON"]
 
 
 NivelDeAcesso = Literal["read", "write"]
@@ -157,7 +159,7 @@ async def list_accounts_for_manager(
         """,
         manager_id,
     )
-    return [_row_to_account(r) for r in rows]
+    return [row_to_account(r) for r in rows]
 
 
 async def can_manager_access(
@@ -296,10 +298,11 @@ async def copy_access(
         await conn.execute(
             """
             UPDATE manager_account_access
-               SET revoked_at = now(), revoked_reason = 'bulk_copy_replaced'
+               SET revoked_at = now(), revoked_reason = $2
              WHERE manager_id = $1 AND revoked_at IS NULL
             """,
             to_manager_id,
+            BULK_COPY_REPLACED_REASON,
         )
         result = await conn.execute(
             """

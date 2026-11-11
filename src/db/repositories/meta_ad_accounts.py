@@ -7,6 +7,7 @@ from typing import Any
 import asyncpg
 
 from src.db.repositories._comum import linhas_afetadas
+from src.db.repositories.motivos import PARTNERSHIP_ENDED_REASON
 from src.meta_ads.reconcile import InventoryRow
 
 
@@ -34,7 +35,7 @@ class MetaAdAccount:
     su_reachable: bool = True
 
 
-def _row_to_account(row: asyncpg.Record) -> MetaAdAccount:
+def row_to_account(row: asyncpg.Record) -> MetaAdAccount:
     return MetaAdAccount(
         ad_account_id=row["ad_account_id"],
         business_id=row["business_id"],
@@ -297,12 +298,8 @@ async def list_queues(conn: asyncpg.Connection) -> ReconcileQueues:
     convidado a refazer à mão o que um clique em Restaurar devolve. Delegar
     outro gestor continua possível pela matriz, linkada no alerta da fila 3.
     """
-    # Import local: `manager_meta_account_access` importa deste módulo
-    # (MetaAdAccount/_row_to_account), então importar de volta no topo fecharia
-    # ciclo. A razão tem de ser a MESMA que `restore_for_account` filtra — é o
-    # que faz a contagem exibida ser exatamente o que o botão devolve (I5).
-    from src.db.repositories.manager_meta_account_access import PARTNERSHIP_ENDED_REASON
-
+    # A razão tem de ser a MESMA que `restore_for_account` filtra — é o que faz a
+    # contagem exibida ser exatamente o que o botão devolve (I5).
     sem_delegacao = await conn.fetch(
         """
         SELECT a.* FROM meta_ad_accounts a
@@ -340,9 +337,9 @@ async def list_queues(conn: asyncpg.Connection) -> ReconcileQueues:
         PARTNERSHIP_ENDED_REASON,
     )
     return ReconcileQueues(
-        sem_delegacao=[_row_to_account(r) for r in sem_delegacao],
-        sem_su=[_row_to_account(r) for r in sem_su],
-        saiu_da_parceria=[(_row_to_account(r), r["revogados"]) for r in saiu],
+        sem_delegacao=[row_to_account(r) for r in sem_delegacao],
+        sem_su=[row_to_account(r) for r in sem_su],
+        saiu_da_parceria=[(row_to_account(r), r["revogados"]) for r in saiu],
     )
 
 
@@ -350,7 +347,7 @@ async def list_all(conn: asyncpg.Connection) -> list[MetaAdAccount]:
     rows = await conn.fetch(
         "SELECT * FROM meta_ad_accounts WHERE is_active = true ORDER BY account_name"
     )
-    return [_row_to_account(r) for r in rows]
+    return [row_to_account(r) for r in rows]
 
 
 async def get_by_id(conn: asyncpg.Connection, ad_account_id: str) -> MetaAdAccount | None:
@@ -358,7 +355,7 @@ async def get_by_id(conn: asyncpg.Connection, ad_account_id: str) -> MetaAdAccou
         "SELECT * FROM meta_ad_accounts WHERE ad_account_id = $1",
         ad_account_id,
     )
-    return _row_to_account(row) if row else None
+    return row_to_account(row) if row else None
 
 
 async def currency_of(conn: asyncpg.Connection, ad_account_id: str) -> str | None:
