@@ -5,11 +5,11 @@ from uuid import UUID
 
 import asyncpg
 
-from src.db.repositories._comum import linhas_afetadas
+from src.db.repositories import _acesso_comum
+from src.db.repositories._acesso_comum import GOOGLE
 from src.db.repositories.google_ads_accounts import GoogleAdsAccount, row_to_account
 from src.db.repositories.motivos import (
     ADMIN_REVOKED_REASON,
-    BULK_COPY_REPLACED_REASON,
     LEFT_MCC_REASON,
 )
 
@@ -34,22 +34,15 @@ async def grant(
     revogada (`revoke` agora é soft), o ON CONFLICT limpa `revoked_at`/
     `revoked_reason` em vez de só atualizar `access_level` — senão o toggle do
     painel "concede" e o gate continua negando, porque a linha segue revogada.
+    SQL no núcleo (`_acesso_comum.grant`), o mesmo do gêmeo Meta.
     """
-    await conn.execute(
-        """
-        INSERT INTO manager_account_access (manager_id, customer_id, access_level, granted_by)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (manager_id, customer_id) DO UPDATE SET
-            access_level = EXCLUDED.access_level,
-            granted_at = now(),
-            granted_by = EXCLUDED.granted_by,
-            revoked_at = NULL,
-            revoked_reason = NULL
-        """,
-        manager_id,
-        customer_id,
-        access_level,
-        granted_by,
+    await _acesso_comum.grant(
+        conn,
+        GOOGLE,
+        manager_id=manager_id,
+        conta=customer_id,
+        access_level=access_level,
+        granted_by=granted_by,
     )
 
 
@@ -80,24 +73,11 @@ async def grant_all_active(
     F167 (decisão de 10/11, "atualizar sempre"): reconceder registra quem e quando
     — o ON CONFLICT seta `granted_at = now()` e `granted_by = EXCLUDED.granted_by`,
     como o gêmeo Meta, tanto em linha revogada quanto em linha ativa.
+    SQL no núcleo (`_acesso_comum.grant_all_active`).
     """
-    result = await conn.execute(
-        """
-        INSERT INTO manager_account_access (manager_id, customer_id, access_level, granted_by)
-        SELECT $1, customer_id, 'write', $2
-        FROM google_ads_accounts
-        WHERE is_active = true
-        ON CONFLICT (manager_id, customer_id) DO UPDATE SET
-            access_level = EXCLUDED.access_level,
-            granted_at = now(),
-            granted_by = EXCLUDED.granted_by,
-            revoked_at = NULL,
-            revoked_reason = NULL
-        """,
-        manager_id,
-        granted_by,
+    return await _acesso_comum.grant_all_active(
+        conn, GOOGLE, manager_id=manager_id, granted_by=granted_by
     )
-    return linhas_afetadas(result)
 
 
 async def revoke(
@@ -129,16 +109,10 @@ async def revoke(
     Desde a decisão de 10/11 todo caminho de re-concessão (`grant`,
     `bulk_grant`, `grant_all_active`, `copy_access`) atualiza `granted_at`/
     `granted_by`: a linha restaurada lê "concedida agora, por quem restaurou".
+    SQL no núcleo (`_acesso_comum.revoke`).
     """
-    await conn.execute(
-        """
-        UPDATE manager_account_access
-           SET revoked_at = now(), revoked_reason = $3
-         WHERE manager_id = $1 AND customer_id = $2 AND revoked_at IS NULL
-        """,
-        manager_id,
-        customer_id,
-        reason,
+    await _acesso_comum.revoke(
+        conn, GOOGLE, manager_id=manager_id, conta=customer_id, reason=reason
     )
 
 
@@ -226,22 +200,16 @@ async def bulk_grant(
     espelhando o que `grant` (linha única) já fazia. Sem isso, quem já tinha
     'read' numa conta continuava com 'read' depois de um "conceder tudo" —
     a chamada devolve sucesso, mas o nível antigo sobrevive em silêncio.
+    SQL no núcleo (`_acesso_comum.bulk_grant`).
     """
-    if not customer_ids:
-        return 0
-    rows = [(manager_id, cid, access_level, granted_by) for cid in customer_ids]
-    await conn.executemany(
-        """INSERT INTO manager_account_access (manager_id, customer_id, access_level, granted_by)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (manager_id, customer_id) DO UPDATE SET
-               access_level = EXCLUDED.access_level,
-               granted_at = now(),
-               granted_by = EXCLUDED.granted_by,
-               revoked_at = NULL,
-               revoked_reason = NULL""",
-        rows,
+    return await _acesso_comum.bulk_grant(
+        conn,
+        GOOGLE,
+        manager_id=manager_id,
+        contas=customer_ids,
+        granted_by=granted_by,
+        access_level=access_level,
     )
-    return len(rows)
 
 
 async def copy_access(
@@ -285,46 +253,16 @@ async def copy_access(
     (`src/web/routes/admin_access.py:363`, `admin_access_bulk_copy`) já
     recusa antes de chamar, mas a defesa não pode viver só lá: esta branch
     acabou de acrescentar funções de repositório que outro código pode
-    chamar direto, sem herdar a checagem da rota.
+    chamar direto, sem herdar a checagem da rota. A recusa e o SQL vivem no
+    núcleo (`_acesso_comum.copy_access`), os mesmos do gêmeo Meta.
     """
-    if from_manager_id == to_manager_id:
-        raise ValueError("copy_access: origem e destino sao o mesmo gestor")
-    async with conn.transaction():
-        # "Replace" primeiro revoga (soft) o que o destino tinha de VIVO — sem
-        # isso, uma conta que só o destino tinha (fora do conjunto da origem)
-        # ficaria viva pra sempre, e nunca seria "substituição" de verdade. Só
-        # pega `revoked_at IS NULL`: quem já estava revogado no destino (por
-        # `left_mcc`, `admin_revoked`, ou uma cópia anterior) não é tocado, e
-        # é exatamente essa trilha que sobrevive à cópia.
-        await conn.execute(
-            """
-            UPDATE manager_account_access
-               SET revoked_at = now(), revoked_reason = $2
-             WHERE manager_id = $1 AND revoked_at IS NULL
-            """,
-            to_manager_id,
-            BULK_COPY_REPLACED_REASON,
-        )
-        result = await conn.execute(
-            """
-            INSERT INTO manager_account_access
-                   (manager_id, customer_id, access_level, granted_by)
-            SELECT $1, customer_id, access_level, $2
-              FROM manager_account_access
-             WHERE manager_id = $3 AND revoked_at IS NULL
-            ON CONFLICT (manager_id, customer_id) DO UPDATE SET
-                access_level = EXCLUDED.access_level,
-                granted_at = now(),
-                granted_by = EXCLUDED.granted_by,
-                revoked_at = NULL,
-                revoked_reason = NULL
-            """,
-            to_manager_id,
-            granted_by,
-            from_manager_id,
-        )
-    # asyncpg returns 'INSERT 0 N'
-    return linhas_afetadas(result)
+    return await _acesso_comum.copy_access(
+        conn,
+        GOOGLE,
+        from_manager_id=from_manager_id,
+        to_manager_id=to_manager_id,
+        granted_by=granted_by,
+    )
 
 
 async def revoke_for_inactive_accounts(

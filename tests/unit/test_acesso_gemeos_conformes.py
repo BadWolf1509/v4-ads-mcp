@@ -10,19 +10,42 @@ parâmetro e espaço em branco).
 
 Regra de uso: diferença nova entre os gêmeos FALHA. Diferença deliberada entra
 em `_DIVERGENCIAS_REGISTRADAS` com o motivo; quando o gêmeo é alinhado, a
-entrada tem que sair (`test_registro_descreve_a_realidade`). O registro é lido
-pela task que unificar o núcleo de escrita dos dois (G1).
+entrada tem que sair (`test_registro_descreve_a_realidade`).
+
+Duas metades desde a G1 (10/11), quando as cinco escritas foram para o núcleo
+`_acesso_comum.py` e os módulos ficaram com funções finas sem SQL:
+
+- **AST**: as assinaturas das sete funções gêmeas (nome, ordem e default de
+  cada parâmetro) e o SQL dos dois pares que ficaram FORA do núcleo
+  (`list_accounts_for_manager`, `can_manager_access`).
+- **Runtime**: o SQL das cinco escritas é CAPTURADO chamando a função fina de
+  cada módulo com uma conexão falsa — o que o banco receberia, depois do
+  descritor (`GOOGLE`/`META`) interpolado —, com a mesma normalização e o mesmo
+  `_DIFERENCAS_ESPERADAS`. Chamar a função FINA (não o núcleo direto) cobre
+  também a fiação: o módulo Meta passando o descritor Google, ou um argumento
+  trocado, aparece na captura. Cada escrita tem que emitir ao menos um
+  statement; entrada vazia não conta (a função pode voltar antes do banco).
 """
 
 from __future__ import annotations
 
 import ast
+import asyncio
+import dataclasses
 import re
 from collections import Counter
+from collections.abc import AsyncIterator, Callable, Coroutine
+from contextlib import asynccontextmanager
 from pathlib import Path
+from types import ModuleType
+from typing import Any
+from uuid import UUID
 
 import pytest
 
+from src.db.repositories import _acesso_comum
+from src.db.repositories import manager_account_access as _mod_google
+from src.db.repositories import manager_meta_account_access as _mod_meta
 from tests.unit import _guard_harness as h
 
 _REPOS = h.SRC / "db" / "repositories"
@@ -38,6 +61,11 @@ _GEMEOS = (
     "bulk_grant",
     "copy_access",
 )
+
+# As escritas que delegam ao núcleo (SQL comparado em runtime) e os pares que
+# ficaram fora dele por decisão do plano (SQL comparado por AST).
+_NO_NUCLEO = ("grant", "grant_all_active", "revoke", "bulk_grant", "copy_access")
+_FORA_DO_NUCLEO = ("list_accounts_for_manager", "can_manager_access")
 
 # função -> motivo. Só encolhe: entrada nova exige decisão consciente.
 _DIVERGENCIAS_REGISTRADAS: dict[str, str] = {
@@ -205,6 +233,101 @@ def _comparar(g: list[str], m: list[str], rotulo: str) -> set[str]:
     return diffs
 
 
+@dataclasses.dataclass(frozen=True)
+class _Evento:
+    metodo: str  # execute / executemany / fetch / fetchrow / fetchval / BEGIN / COMMIT
+    sql: str
+    args: tuple[Any, ...]
+
+
+_MARCADORES = frozenset({"BEGIN", "COMMIT"})
+
+
+class _ConexaoFalsa:
+    """Grava o que o banco receberia. Devolve tags e linhas neutras — o bastante
+    para a função terminar; o valor devolvido não é o que se compara aqui."""
+
+    def __init__(self) -> None:
+        self.eventos: list[_Evento] = []
+
+    async def execute(self, sql: str, *args: Any) -> str:
+        self.eventos.append(_Evento("execute", sql, args))
+        return "INSERT 0 1"
+
+    async def executemany(self, sql: str, rows: Any) -> None:
+        self.eventos.append(_Evento("executemany", sql, (list(rows),)))
+
+    async def fetch(self, sql: str, *args: Any) -> list[Any]:
+        self.eventos.append(_Evento("fetch", sql, args))
+        return []
+
+    async def fetchrow(self, sql: str, *args: Any) -> None:
+        self.eventos.append(_Evento("fetchrow", sql, args))
+
+    async def fetchval(self, sql: str, *args: Any) -> int:
+        self.eventos.append(_Evento("fetchval", sql, args))
+        return 0
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[None]:
+        self.eventos.append(_Evento("BEGIN", "", ()))
+        yield
+        self.eventos.append(_Evento("COMMIT", "", ()))
+
+
+_ID_GESTOR, _ID_ADMIN, _ID_DESTINO = UUID(int=1), UUID(int=2), UUID(int=3)
+
+# Entrada de cada escrita, nos nomes do Google; o Meta recebe os mesmos VALORES
+# com os nomes do seu lado (`_KWARG_META`). Não vazia: `bulk_grant([])` volta
+# antes de falar com o banco e não provaria nada.
+_ENTRADAS: dict[str, dict[str, Any]] = {
+    "grant": {"manager_id": _ID_GESTOR, "customer_id": "1111111111", "granted_by": _ID_ADMIN},
+    "grant_all_active": {"manager_id": _ID_GESTOR, "granted_by": _ID_ADMIN},
+    "revoke": {"manager_id": _ID_GESTOR, "customer_id": "1111111111"},
+    "bulk_grant": {
+        "manager_id": _ID_GESTOR,
+        "customer_ids": ["1111111111", "2222222222"],
+        "granted_by": _ID_ADMIN,
+    },
+    "copy_access": {
+        "from_manager_id": _ID_GESTOR,
+        "to_manager_id": _ID_DESTINO,
+        "granted_by": _ID_ADMIN,
+    },
+}
+_KWARG_META = {"customer_id": "ad_account_id", "customer_ids": "ad_account_ids"}
+
+
+def _capturar(nome: str, *, meta: bool) -> list[_Evento]:
+    modulo: ModuleType = _mod_meta if meta else _mod_google
+    fn: Callable[..., Coroutine[Any, Any, Any]] = getattr(modulo, nome)
+    kwargs = {(_KWARG_META.get(k, k) if meta else k): v for k, v in _ENTRADAS[nome].items()}
+    conn = _ConexaoFalsa()
+    asyncio.run(fn(conn, **kwargs))
+    if not [e for e in conn.eventos if e.metodo not in _MARCADORES]:
+        raise h.EscopoVazioError(
+            f"`{nome}` ({'Meta' if meta else 'Google'}) não emitiu statement nenhum com "
+            "entrada não vazia — comparar vazio com vazio passa por vacuidade."
+        )
+    return conn.eventos
+
+
+def _diferencas_em_runtime(nome: str) -> set[str]:
+    cap_g, cap_m = _capturar(nome, meta=False), _capturar(nome, meta=True)
+    diffs = _comparar([e.metodo for e in cap_g], [e.metodo for e in cap_m], "métodos")
+    if len(cap_g) != len(cap_m):
+        diffs.add(f"nº de eventos: google={len(cap_g)} meta={len(cap_m)}")
+    for i, (g, m) in enumerate(zip(cap_g, cap_m, strict=False)):
+        diffs |= _comparar(
+            _fragmentos(_normalizar(g.sql, meta=False)),
+            _fragmentos(_normalizar(m.sql, meta=True)),
+            f"statement #{i}",
+        )
+        if g.args != m.args:
+            diffs.add(f"statement #{i}: bind args google={g.args!r} meta={m.args!r}")
+    return diffs
+
+
 def _diferencas(nome: str) -> frozenset[str]:
     arv_g, arv_m = h.arvore(_GOOGLE), h.arvore(_META)
     fn_g, fn_m = _funcao(arv_g, nome, _GOOGLE), _funcao(arv_m, nome, _META)
@@ -213,6 +336,9 @@ def _diferencas(nome: str) -> frozenset[str]:
     ass_m = _assinatura(fn_m, _constantes_do_modulo(arv_m), meta=True)
     diffs = _comparar(ass_g, ass_m, "assinatura")
 
+    if nome in _NO_NUCLEO:
+        return frozenset(diffs | _diferencas_em_runtime(nome))
+
     sql_g = [_normalizar(s, meta=False) for s in _strings_da_funcao(fn_g, _GOOGLE)]
     sql_m = [_normalizar(s, meta=True) for s in _strings_da_funcao(fn_m, _META)]
     if len(sql_g) != len(sql_m):
@@ -220,6 +346,13 @@ def _diferencas(nome: str) -> frozenset[str]:
     for i, (g, m) in enumerate(zip(sql_g, sql_m, strict=False)):
         diffs |= _comparar(_fragmentos(g), _fragmentos(m), f"literal #{i}")
     return frozenset(diffs)
+
+
+def _sql_cru(nome: str, caminho: Path) -> list[str]:
+    """O SQL de um lado sem normalizar: capturado (núcleo) ou literal (AST)."""
+    if nome in _NO_NUCLEO:
+        return [e.sql for e in _capturar(nome, meta=caminho == _META) if e.sql]
+    return _strings_da_funcao(_funcao(h.arvore(caminho), nome, caminho), caminho)
 
 
 # Diferença EXATA esperada por função registrada (o que `_diferencas` mede hoje).
@@ -297,12 +430,85 @@ def test_constante_importada_resolve_ate_o_valor(tmp_path: Path) -> None:
 
 
 def test_escopo_dos_gemeos_nao_vazio() -> None:
-    """Os dois arquivos existem e cada um dos gêmeos tem SQL (não vacuidade)."""
+    """Os dois arquivos existem e cada um dos gêmeos tem SQL (não vacuidade): os
+    de fora do núcleo como literal, os do núcleo como statement capturado."""
+    assert set(_NO_NUCLEO) | set(_FORA_DO_NUCLEO) == set(_GEMEOS)
+    assert not set(_NO_NUCLEO) & set(_FORA_DO_NUCLEO)
+    assert set(_ENTRADAS) == set(_NO_NUCLEO)
     for caminho in (_GOOGLE, _META):
         assert caminho.is_file(), h.rel(caminho)
-    for nome in _GEMEOS:
+    for nome in _FORA_DO_NUCLEO:
         for caminho in (_GOOGLE, _META):
             assert _strings_da_funcao(_funcao(h.arvore(caminho), nome, caminho), caminho)
+    for nome in _NO_NUCLEO:
+        for meta in (False, True):
+            assert _capturar(nome, meta=meta)
+
+
+def test_captura_sem_statement_levanta() -> None:
+    """Controle da metade runtime: escrita que volta antes do banco (entrada vazia)
+    levanta em vez de passar comparando vazio com vazio."""
+    original = _ENTRADAS["bulk_grant"]
+    _ENTRADAS["bulk_grant"] = {**original, "customer_ids": []}
+    try:
+        with pytest.raises(h.EscopoVazioError):
+            _capturar("bulk_grant", meta=False)
+    finally:
+        _ENTRADAS["bulk_grant"] = original
+
+
+def test_descritores_diferem_so_nos_nomes() -> None:
+    """Desde a G0 os dois lados escrevem igual: o descritor só tem nomes, e é nos
+    nomes — e só neles — que GOOGLE e META diferem. Divergência de comportamento
+    não entra como campo calado: passa pelo registro acima."""
+    nomes = {"tabela", "coluna_conta", "inventario"}
+    campos = {c.name for c in dataclasses.fields(_acesso_comum.TabelaDeAcesso)}
+    assert campos == nomes
+    g, m = _acesso_comum.GOOGLE, _acesso_comum.META
+    divergentes = {
+        c: (getattr(g, c), getattr(m, c)) for c in campos if getattr(g, c) != getattr(m, c)
+    }
+    assert set(divergentes) == nomes, divergentes
+
+
+def test_revoke_grava_admin_revoked_nos_dois_lados() -> None:
+    """Bind args capturados: o `reason` default que `revoke` grava (decisão de
+    10/11, G0: Meta deixou de gravar `manual`)."""
+    for meta in (False, True):
+        (evento,) = _capturar("revoke", meta=meta)
+        assert evento.args == (_ID_GESTOR, "1111111111", "admin_revoked"), (meta, evento.args)
+
+
+def test_nucleo_so_aceita_os_descritores_do_modulo() -> None:
+    """Identificador no SQL só vem dos descritores do núcleo: nome que não é
+    identificador simples é recusado na construção, e descritor fora de
+    GOOGLE/META é recusado antes de qualquer statement."""
+    with pytest.raises(ValueError, match="identificador SQL"):
+        _acesso_comum.TabelaDeAcesso(
+            tabela="x; DROP TABLE y", coluna_conta="customer_id", inventario="z"
+        )
+    alheio = _acesso_comum.TabelaDeAcesso(tabela="outra", coluna_conta="c", inventario="i")
+    conn = _ConexaoFalsa()
+    with pytest.raises(ValueError, match="descritor de acesso desconhecido"):
+        asyncio.run(
+            _acesso_comum.revoke(
+                conn,
+                alheio,
+                manager_id=_ID_GESTOR,
+                conta="1",
+                reason="admin_revoked",
+            )
+        )
+    assert conn.eventos == []
+
+
+@pytest.mark.parametrize("nome", _NO_NUCLEO)
+def test_sql_capturado_nao_tem_interpolacao_pendente(nome: str) -> None:
+    """O SQL do núcleo é montado só com os campos do descritor: chave solta no
+    texto final seria interpolação que não aconteceu (ou que veio de fora)."""
+    for meta in (False, True):
+        for evento in _capturar(nome, meta=meta):
+            assert "{" not in evento.sql and "}" not in evento.sql, (nome, meta, evento.sql)
 
 
 def test_scanner_de_sql_nao_passa_por_vacuidade() -> None:
@@ -322,8 +528,7 @@ def test_texto_cru_so_tem_os_nomes_do_proprio_lado(nome: str) -> None:
         (_GOOGLE, _NOMES_META, "Google"),
         (_META, _NOMES_GOOGLE, "Meta"),
     ):
-        fn = _funcao(h.arvore(caminho), nome, caminho)
-        for texto in _strings_da_funcao(fn, caminho):
+        for texto in _sql_cru(nome, caminho):
             achados = proibido.findall(texto)
             assert not achados, (
                 f"{nome} ({lado}): o SQL cita nome do outro lado {achados}; a normalização "

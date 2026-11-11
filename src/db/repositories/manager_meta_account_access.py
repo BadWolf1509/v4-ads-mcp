@@ -4,12 +4,12 @@ from uuid import UUID
 
 import asyncpg
 
-from src.db.repositories._comum import linhas_afetadas
+from src.db.repositories import _acesso_comum
+from src.db.repositories._acesso_comum import META
 from src.db.repositories.manager_account_access import NivelDeAcesso
 from src.db.repositories.meta_ad_accounts import MetaAdAccount, row_to_account
 from src.db.repositories.motivos import (
     ADMIN_REVOKED_REASON,
-    BULK_COPY_REPLACED_REASON,
     PARTNERSHIP_ENDED_REASON,
 )
 
@@ -31,23 +31,15 @@ async def grant(
     revogada (`revoke` agora é soft), o ON CONFLICT limpa `revoked_at`/
     `revoked_reason` em vez de só atualizar `access_level` — senão o toggle do
     painel "concede" e o gate continua negando, porque a linha segue revogada.
+    SQL no núcleo (`_acesso_comum.grant`), o mesmo do gêmeo Google.
     """
-    await conn.execute(
-        """
-        INSERT INTO manager_meta_account_access
-            (manager_id, ad_account_id, access_level, granted_by)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (manager_id, ad_account_id) DO UPDATE SET
-            access_level = EXCLUDED.access_level,
-            granted_at = now(),
-            granted_by = EXCLUDED.granted_by,
-            revoked_at = NULL,
-            revoked_reason = NULL
-        """,
-        manager_id,
-        ad_account_id,
-        access_level,
-        granted_by,
+    await _acesso_comum.grant(
+        conn,
+        META,
+        manager_id=manager_id,
+        conta=ad_account_id,
+        access_level=access_level,
+        granted_by=granted_by,
     )
 
 
@@ -75,25 +67,11 @@ async def grant_all_active(
 
     F167 (decisão de 10/11, "atualizar sempre"): esta cláusula atualiza
     `granted_at`/`granted_by`, e o gêmeo Google passou a fazer o mesmo.
+    SQL no núcleo (`_acesso_comum.grant_all_active`).
     """
-    result = await conn.execute(
-        """
-        INSERT INTO manager_meta_account_access
-            (manager_id, ad_account_id, access_level, granted_by)
-        SELECT $1, ad_account_id, 'write', $2
-        FROM meta_ad_accounts
-        WHERE is_active = true
-        ON CONFLICT (manager_id, ad_account_id) DO UPDATE SET
-            access_level = EXCLUDED.access_level,
-            granted_at = now(),
-            granted_by = EXCLUDED.granted_by,
-            revoked_at = NULL,
-            revoked_reason = NULL
-        """,
-        manager_id,
-        granted_by,
+    return await _acesso_comum.grant_all_active(
+        conn, META, manager_id=manager_id, granted_by=granted_by
     )
-    return linhas_afetadas(result)
 
 
 async def revoke(
@@ -110,17 +88,11 @@ async def revoke(
 
     Só pega linha viva (spec 2026-09-28 §3.2.1): revogar de novo uma linha que o churn
     já revogou trocaria `partnership_ended` pelo motivo novo, e o `restore_for_account`
-    deixaria de devolvê-la quando a parceria voltasse.
+    deixaria de devolvê-la quando a parceria voltasse. SQL no núcleo
+    (`_acesso_comum.revoke`).
     """
-    await conn.execute(
-        """
-        UPDATE manager_meta_account_access
-           SET revoked_at = now(), revoked_reason = $3
-         WHERE manager_id = $1 AND ad_account_id = $2 AND revoked_at IS NULL
-        """,
-        manager_id,
-        ad_account_id,
-        reason,
+    await _acesso_comum.revoke(
+        conn, META, manager_id=manager_id, conta=ad_account_id, reason=reason
     )
 
 
@@ -248,23 +220,16 @@ async def bulk_grant(
     (`manager_account_access.bulk_grant`) já corrigiu. Sem isso, quem já tinha
     'read' numa conta continuava com 'read' depois de um "conceder tudo" — a
     chamada devolve sucesso, mas o nível antigo sobrevive em silêncio.
+    SQL no núcleo (`_acesso_comum.bulk_grant`).
     """
-    if not ad_account_ids:
-        return 0
-    rows = [(manager_id, aid, access_level, granted_by) for aid in ad_account_ids]
-    await conn.executemany(
-        """INSERT INTO manager_meta_account_access
-               (manager_id, ad_account_id, access_level, granted_by)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (manager_id, ad_account_id) DO UPDATE SET
-               access_level = EXCLUDED.access_level,
-               granted_at = now(),
-               granted_by = EXCLUDED.granted_by,
-               revoked_at = NULL,
-               revoked_reason = NULL""",
-        rows,
+    return await _acesso_comum.bulk_grant(
+        conn,
+        META,
+        manager_id=manager_id,
+        contas=ad_account_ids,
+        granted_by=granted_by,
+        access_level=access_level,
     )
-    return len(rows)
 
 
 async def copy_access(
@@ -295,39 +260,13 @@ async def copy_access(
     `revoked_at IS NULL`, já não acha nada pra reconceder. A rota checa antes
     (`src/web/routes/admin_access.py:204`, `admin_access_meta_bulk_copy`),
     mas a defesa não pode viver só lá: quem chamar o repositório de outro
-    lugar não herda a checagem.
+    lugar não herda a checagem. A recusa e o SQL vivem no núcleo
+    (`_acesso_comum.copy_access`), os mesmos do gêmeo Google.
     """
-    if from_manager_id == to_manager_id:
-        raise ValueError("copy_access: origem e destino sao o mesmo gestor")
-    async with conn.transaction():
-        # "Replace" primeiro revoga (soft) o que o destino tinha de vivo — sem
-        # isso, uma conta que só a destino tinha (fora do conjunto da origem)
-        # ficaria viva pra sempre, e nunca seria "substituição" de verdade.
-        await conn.execute(
-            """
-            UPDATE manager_meta_account_access
-               SET revoked_at = now(), revoked_reason = $2
-             WHERE manager_id = $1 AND revoked_at IS NULL
-            """,
-            to_manager_id,
-            BULK_COPY_REPLACED_REASON,
-        )
-        result = await conn.execute(
-            """
-            INSERT INTO manager_meta_account_access
-                   (manager_id, ad_account_id, access_level, granted_by)
-            SELECT $1, ad_account_id, access_level, $2
-              FROM manager_meta_account_access
-             WHERE manager_id = $3 AND revoked_at IS NULL
-            ON CONFLICT (manager_id, ad_account_id) DO UPDATE SET
-                access_level = EXCLUDED.access_level,
-                granted_at = now(),
-                granted_by = EXCLUDED.granted_by,
-                revoked_at = NULL,
-                revoked_reason = NULL
-            """,
-            to_manager_id,
-            granted_by,
-            from_manager_id,
-        )
-    return linhas_afetadas(result)
+    return await _acesso_comum.copy_access(
+        conn,
+        META,
+        from_manager_id=from_manager_id,
+        to_manager_id=to_manager_id,
+        granted_by=granted_by,
+    )
