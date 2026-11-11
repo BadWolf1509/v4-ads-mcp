@@ -52,22 +52,24 @@ async def contagem_por_dia(
     # a igualdade direta em `manager_id` seguida do intervalo em `occurred_at`.
     if manager_id is None:
         rows = await conn.fetch(
-            """SELECT (occurred_at AT TIME ZONE 'America/Sao_Paulo')::date AS d, count(*) AS c
+            """SELECT (occurred_at AT TIME ZONE $3)::date AS d, count(*) AS c
                FROM audit_log
                WHERE occurred_at >= $1 AND occurred_at < $2
                GROUP BY 1""",
             inicio,
             fim,
+            FUSO_PAINEL.key,
         )
     else:
         rows = await conn.fetch(
-            """SELECT (occurred_at AT TIME ZONE 'America/Sao_Paulo')::date AS d, count(*) AS c
+            """SELECT (occurred_at AT TIME ZONE $4)::date AS d, count(*) AS c
                FROM audit_log
                WHERE manager_id = $3 AND occurred_at >= $1 AND occurred_at < $2
                GROUP BY 1""",
             inicio,
             fim,
             manager_id,
+            FUSO_PAINEL.key,
         )
     por_dia = {r["d"]: r["c"] for r in rows}
     return [por_dia.get(d, 0) for d in dias]

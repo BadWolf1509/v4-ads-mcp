@@ -18,7 +18,6 @@ class Settings(BaseSettings):
 
     # App
     app_env: Literal["development", "staging", "production"]
-    app_timezone: str = "America/Sao_Paulo"
     log_level: Literal["debug", "info", "warning", "error"] = "info"
 
     # Database

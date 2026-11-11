@@ -20,7 +20,6 @@ def test_settings_loads_required_envs():
     with patch.dict(os.environ, env, clear=True):
         s = Settings()
         assert s.app_env == "development"
-        assert s.app_timezone == "America/Sao_Paulo"  # default
         assert s.log_level == "info"  # default
 
 
