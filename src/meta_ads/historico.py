@@ -126,7 +126,6 @@ async def listar_atividades(
         edge=edge,
         params=params,
         operation_name=_OPERACAO,
-        estimated_calls=max_pages,
         max_pages=max_pages,
         audit_this_call=True,
         params_summary={

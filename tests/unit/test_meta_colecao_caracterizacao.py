@@ -47,7 +47,7 @@ async def test_paginas_kwargs_e_truncated_abaixo_do_limite() -> None:
     assert kw["edge"] == "/act_1/promote_pages"
     assert kw["params"]["limit"] == 11
     assert kw["operation_name"] == "meta_get_pages"
-    assert kw["estimated_calls"] == 1 and kw["max_pages"] == 1
+    assert "estimated_calls" not in kw and kw["max_pages"] == 1
     assert kw["audit_this_call"] is True
     assert kw["params_summary"] == {"ad_account_id": ACT}
     assert len(regs) == 3
@@ -84,7 +84,7 @@ async def test_paginas_limit_grande_pagina_no_teto_e_calcula_max_pages() -> None
         await paginas.listar_paginas(CTX, ACT, 250)
     kw = _kw(g)
     assert kw["params"]["limit"] == 100
-    assert kw["estimated_calls"] == 3 and kw["max_pages"] == 3
+    assert "estimated_calls" not in kw and kw["max_pages"] == 3
 
 
 async def test_paginas_data_ausente_ou_nula_vira_vazio() -> None:
@@ -111,7 +111,7 @@ async def test_segmentacao_kwargs_e_truncated_none_abaixo_do_limite() -> None:
     assert kw["edge"] == "/act_1/targetingsearch"
     assert kw["params"]["q"] == "futebol" and kw["params"]["limit"] == 11
     assert kw["operation_name"] == "meta_search_targeting"
-    assert kw["estimated_calls"] == 1 and kw["max_pages"] == 1
+    assert "estimated_calls" not in kw and kw["max_pages"] == 1
     assert kw["audit_this_call"] is True
     assert kw["params_summary"] == {"ad_account_id": ACT, "q": "futebol"}
     assert len(regs) == 3
@@ -149,7 +149,7 @@ async def test_segmentacao_pagina_unica_mesmo_com_limit_grande() -> None:
         _, truncated = await segmentacao.buscar_segmentacao(CTX, ACT, "q", 250)
     kw = _kw(g)
     assert kw["params"]["limit"] == 100
-    assert kw["estimated_calls"] == 1 and kw["max_pages"] == 1
+    assert "estimated_calls" not in kw and kw["max_pages"] == 1
     assert truncated is None
 
 
@@ -191,7 +191,7 @@ async def test_historico_kwargs_e_truncated_abaixo_do_limite() -> None:
     assert kw["params"]["limit"] == 100
     assert kw["operation_name"] == "meta_get_change_history"
     # ceil(11/100)=1 pagina + 2 de margem
-    assert kw["estimated_calls"] == 3 and kw["max_pages"] == 3
+    assert "estimated_calls" not in kw and kw["max_pages"] == 3
     assert kw["audit_this_call"] is True
     assert kw["params_summary"] == {
         "ad_account_id": ACT,
@@ -210,7 +210,7 @@ async def test_historico_max_pages_cresce_com_limit() -> None:
     with p1, p2:
         await historico.listar_atividades(CTX, ACT, SINCE, UNTIL, 250)
     kw = _kw(g)
-    assert kw["estimated_calls"] == 5 and kw["max_pages"] == 5  # ceil(251/100)=3, +2
+    assert "estimated_calls" not in kw and kw["max_pages"] == 5  # ceil(251/100)=3, +2
 
 
 async def test_historico_limit_mais_um_corta_e_marca_truncated() -> None:
@@ -303,7 +303,7 @@ async def test_criativos_kwargs_e_truncated_abaixo_do_limite() -> None:
     assert kw["edge"] == "/act_1/adcreatives"
     assert kw["params"]["limit"] == 11
     assert kw["operation_name"] == "meta_get_creatives"
-    assert kw["estimated_calls"] == 1 and kw["max_pages"] == 1
+    assert "estimated_calls" not in kw and kw["max_pages"] == 1
     assert kw["audit_this_call"] is True
     assert kw["params_summary"] == {"ad_account_id": ACT, "ad_id": None}
     assert len(regs) == 3 and all(r["ads_vinculados"] is None for r in regs)
@@ -354,7 +354,7 @@ async def test_percorrer_kwargs_e_next() -> None:
     assert kw["edge"] == "/act_1/ads"
     assert kw["params"] == {"fields": "id,creative{id}", "limit": 200}
     assert kw["operation_name"] == "op"
-    assert kw["estimated_calls"] == 5 and kw["max_pages"] == 5
+    assert "estimated_calls" not in kw and kw["max_pages"] == 5
     assert kw["audit_this_call"] is True
     assert kw["params_summary"] == {"ad_account_id": ACT, "call": "posse_ads"}
     assert linhas == [{"id": "1"}]
@@ -378,7 +378,7 @@ async def test_paginas_limit_100_pede_duas_paginas() -> None:
         await paginas.listar_paginas(CTX, ACT, 100)
     kw = _kw(g)
     assert kw["params"]["limit"] == 100
-    assert kw["estimated_calls"] == 2 and kw["max_pages"] == 2  # ceil(101/100)
+    assert "estimated_calls" not in kw and kw["max_pages"] == 2  # ceil(101/100)
 
 
 async def test_historico_limit_100_pede_quatro_paginas() -> None:
@@ -387,7 +387,7 @@ async def test_historico_limit_100_pede_quatro_paginas() -> None:
     with p1, p2:
         await historico.listar_atividades(CTX, ACT, SINCE, UNTIL, 100)
     kw = _kw(g)
-    assert kw["estimated_calls"] == 4 and kw["max_pages"] == 4  # ceil(101/100)=2, +2 de margem
+    assert "estimated_calls" not in kw and kw["max_pages"] == 4  # ceil(101/100)=2, +2 de margem
 
 
 async def test_historico_evento_no_dia_since_fica() -> None:
@@ -426,7 +426,7 @@ async def test_criativos_com_ad_id_kwargs_do_ramo_alvo() -> None:
     assert posse["params_summary"] == {"ad_account_id": ACT, "call": "posse_ads"}
     assert alvo["edge"] == "/act_1/adcreatives"
     assert alvo["params"]["limit"] == 200  # _POSSE_LIMIT, nao limit+1
-    assert alvo["estimated_calls"] == 5 and alvo["max_pages"] == 5
+    assert "estimated_calls" not in alvo and alvo["max_pages"] == 5
     assert alvo["audit_this_call"] is True
     assert alvo["operation_name"] == "op"
     assert alvo["params_summary"] == {"ad_account_id": ACT, "ad_id": "a1"}

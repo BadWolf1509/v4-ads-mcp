@@ -65,8 +65,9 @@ async def grant_all_active(
     forma, e a §8 do desenho da matriz de acesso já prevê o "Conceder todas" no
     painel — apagar aqui só criaria assimetria entre os dois lados.
 
-    F167 (decisão de 10/11, "atualizar sempre"): esta cláusula atualiza
-    `granted_at`/`granted_by`, e o gêmeo Google passou a fazer o mesmo.
+    F167 e decisão de 11/11 ("só tocar o que muda"), igual ao gêmeo Google: só a
+    linha nova, revogada ou promovida ganha `granted_at`/`granted_by`; a ativa no
+    mesmo nível fica intacta e não entra na contagem.
     SQL no núcleo (`_acesso_comum.grant_all_active`).
     """
     return await _acesso_comum.grant_all_active(

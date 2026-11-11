@@ -83,7 +83,6 @@ async def buscar_segmentacao(
         edge=edge,
         params=params,
         operation_name=_OP_BUSCA,
-        estimated_calls=1,
         max_pages=1,
         audit_this_call=True,
         params_summary={"ad_account_id": ad_account_id, "q": q},
@@ -135,7 +134,6 @@ async def estimar_entrega(
         edge=edge,
         params=params,
         operation_name=_OP_ESTIMATIVA,
-        estimated_calls=1,
         max_pages=1,
         audit_this_call=True,
         params_summary={

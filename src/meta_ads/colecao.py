@@ -55,7 +55,6 @@ async def ler_colecao(
         edge=edge,
         params=params,
         operation_name=operacao,
-        estimated_calls=max_pages,
         max_pages=max_pages,
         audit_this_call=True,
         params_summary=params_summary,

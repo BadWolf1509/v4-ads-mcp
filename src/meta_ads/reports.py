@@ -217,7 +217,6 @@ async def run_meta_graph_get(
     edge: str,
     params: dict[str, Any] | None = None,
     operation_name: str,
-    estimated_calls: int = 1,
     max_pages: int = 1,
     audit_this_call: bool = False,
     params_summary: dict[str, Any] | None = None,
@@ -238,9 +237,6 @@ async def run_meta_graph_get(
         edge: Graph API edge path, e.g., "/act_<id>/insights"
         params: query parameters dict
         operation_name: for audit log + rate limit operation field
-        estimated_calls: previsao de chamadas do caller. NAO entra no contador:
-            ele grava so as paginas realmente lidas (decisao de 10/11); nao ha
-            reserva/reconciliacao nesta funcao.
         max_pages: quantas páginas seguir via `paging.next` (F88). Default 1
             preserva o comportamento antigo pros callers que leem 1 objeto só
             (ex.: overview). Edges de coleção passam >1: sem isso, a resposta é a
@@ -395,7 +391,7 @@ async def run_meta_graph_get(
     # QUALQUER dos dois vier: a chamada aconteceu e conta, e o que nao veio e "nao
     # sei", nunca 0.
     # F88 + decisao de 10/11 ("contar so o lido"): contabiliza as paginas REALMENTE
-    # lidas, nunca `max(estimativa, lidas)` — `estimated_calls` e so previsao (nao ha reserva).
+    # lidas, nunca `max(estimativa, lidas)` — nao ha reserva de cota na Meta.
     await _contabilizar_uso(
         headers_ultima,
         ad_account_id=ad_account_id,

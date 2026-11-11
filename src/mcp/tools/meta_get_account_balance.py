@@ -89,7 +89,6 @@ async def meta_get_account_balance(args: dict[str, Any]) -> dict[str, Any]:
             edge=f"/{ad_account_id}",
             params={"fields": _CAMPOS_CONTA},
             operation_name=_OPERACAO,
-            estimated_calls=1,
             audit_this_call=True,
             params_summary={**resumo, "call": "conta"},
         )
@@ -100,7 +99,6 @@ async def meta_get_account_balance(args: dict[str, Any]) -> dict[str, Any]:
             edge=edge_insights,
             params=params_insights,
             operation_name=_OPERACAO,
-            estimated_calls=1,
             audit_this_call=True,
             params_summary={**resumo, "call": "gasto_diario"},
         )

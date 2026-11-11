@@ -11,6 +11,7 @@ só roda "quando tudo mais já quebrou".
 """
 
 import argparse
+import json
 from collections.abc import AsyncIterator
 from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
@@ -193,6 +194,14 @@ async def test_grant_all_grants_access_to_active_accounts(migrated: None, dsn: s
                 full_name=None,
             )
             manager_id = m.id
+            admin = await managers.create(
+                conn,
+                manager_id=uuid4(),
+                email="admin-cli@v4company.com",
+                full_name=None,
+                role="admin",
+            )
+            admin_id = admin.id
             await google_ads_accounts.upsert_many(
                 conn,
                 [
@@ -211,7 +220,9 @@ async def test_grant_all_grants_access_to_active_accounts(migrated: None, dsn: s
     finally:
         await connection.close_pool()
 
-    rc = await cmd_grant_all(argparse.Namespace(email="grantee@v4company.com"))
+    rc = await cmd_grant_all(
+        argparse.Namespace(email="grantee@v4company.com", by="admin-cli@v4company.com")
+    )
     assert rc == 0
 
     await connection.init_pool(dsn, min_size=1, max_size=4)
@@ -219,12 +230,20 @@ async def test_grant_all_grants_access_to_active_accounts(migrated: None, dsn: s
         pool = connection.get_pool()
         async with pool.acquire() as conn:
             granted = await manager_account_access.list_accounts_for_manager(conn, manager_id)
+            autores = await conn.fetch(
+                "SELECT DISTINCT granted_by FROM manager_account_access WHERE manager_id = $1",
+                manager_id,
+            )
     finally:
         await connection.close_pool()
     assert {g.customer_id for g in granted} == {"1112223330", "4445556660"}
+    # Decisão de 11/11: o autor é o admin de `--by`, não o próprio gestor.
+    assert [r["granted_by"] for r in autores] == [admin_id]
 
-    # Segunda chamada não deve duplicar (ON CONFLICT DO NOTHING) nem falhar.
-    rc2 = await cmd_grant_all(argparse.Namespace(email="grantee@v4company.com"))
+    # Segunda chamada não duplica nem falha (e, desde 11/11, não toca nada).
+    rc2 = await cmd_grant_all(
+        argparse.Namespace(email="grantee@v4company.com", by="admin-cli@v4company.com")
+    )
     assert rc2 == 0
     await connection.init_pool(dsn, min_size=1, max_size=4)
     try:
@@ -239,7 +258,9 @@ async def test_grant_all_grants_access_to_active_accounts(migrated: None, dsn: s
 @pytest.mark.integration
 async def test_grant_all_manager_not_found_returns_error_code(migrated: None, dsn: str) -> None:
     """Email sem manager correspondente -> rc=1 (não crasha), sem criar grants órfãos."""
-    rc = await cmd_grant_all(argparse.Namespace(email="ghost@v4company.com"))
+    rc = await cmd_grant_all(
+        argparse.Namespace(email="ghost@v4company.com", by="admin-cli@v4company.com")
+    )
     assert rc == 1
     await connection.init_pool(dsn, min_size=1, max_size=4)
     try:
@@ -251,6 +272,52 @@ async def test_grant_all_manager_not_found_returns_error_code(migrated: None, ds
     finally:
         await connection.close_pool()
     assert n == 0  # gestor inexistente: nenhuma trilha
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("autor", "papel", "ativo"),
+    [
+        ("ninguem@v4company.com", None, True),
+        ("gestor-autor@v4company.com", "gestor", True),
+        ("admin-desligado@v4company.com", "admin", False),
+    ],
+    ids=["autor-inexistente", "autor-nao-admin", "admin-desligado"],
+)
+async def test_grant_all_recusa_autor_que_nao_e_admin(
+    migrated: None, dsn: str, autor: str, papel: str | None, ativo: bool
+) -> None:
+    """`--by` tem que ser um admin existente E ativo: sem isso, nada é concedido
+    nem auditado. Admin desligado ainda tem `role='admin'` (revisão de 11/11)."""
+    await _criar_gestor(
+        dsn, "alvo-by@v4company.com", is_active=True, status="active", role="gestor"
+    )
+    if papel is not None:
+        await _criar_gestor(dsn, autor, is_active=ativo, status="active", role=papel)
+    await connection.init_pool(dsn, min_size=1, max_size=4)
+    try:
+        async with connection.get_pool().acquire() as conn:
+            await google_ads_accounts.upsert_many(
+                conn,
+                [{"customer_id": "7778889990", "mcc_id": "6436352492", "descriptive_name": "X"}],
+            )
+    finally:
+        await connection.close_pool()
+
+    rc = await cmd_grant_all(argparse.Namespace(email="alvo-by@v4company.com", by=autor))
+
+    assert rc == 1
+    await connection.init_pool(dsn, min_size=1, max_size=4)
+    try:
+        async with connection.get_pool().acquire() as conn:
+            concessoes = await conn.fetchval("SELECT count(*) FROM manager_account_access")
+            trilha = await conn.fetchval(
+                "SELECT count(*) FROM audit_log WHERE operation = 'cli_grant_all'"
+            )
+    finally:
+        await connection.close_pool()
+    assert concessoes == 0
+    assert trilha == 0
 
 
 async def _criar_gestor(dsn: str, email: str, *, is_active: bool, status: str, role: str) -> None:
@@ -368,6 +435,13 @@ async def test_grant_all_grava_audit(migrated: None, dsn: str) -> None:
             m = await managers.create(
                 conn, manager_id=uuid4(), email="ga-audit@v4company.com", full_name=None
             )
+            await managers.create(
+                conn,
+                manager_id=uuid4(),
+                email="admin-audit@v4company.com",
+                full_name=None,
+                role="admin",
+            )
             await google_ads_accounts.upsert_many(
                 conn,
                 [
@@ -387,7 +461,8 @@ async def test_grant_all_grava_audit(migrated: None, dsn: str) -> None:
     finally:
         await connection.close_pool()
 
-    rc = await cmd_grant_all(argparse.Namespace(email="ga-audit@v4company.com"))
+    args = argparse.Namespace(email="ga-audit@v4company.com", by="admin-audit@v4company.com")
+    rc = await cmd_grant_all(args)
     assert rc == 0
     linhas = await _linhas_audit(dsn, "cli_grant_all")
     assert len(linhas) == 1
@@ -395,6 +470,13 @@ async def test_grant_all_grava_audit(migrated: None, dsn: str) -> None:
     assert linhas[0]["manager_id"] == manager_id
     assert linhas[0]["target_count"] == 2
     assert linhas[0]["had_effect"] is True
+    # Quem rodou fica na trilha mesmo quando nada muda (revisao de 11/11).
+    assert json.loads(str(linhas[0]["params_summary"])) == {"by": "admin-audit@v4company.com"}
+
+    # Decisao de 11/11: a segunda execucao nao muda nada, e o audit diz isso.
+    assert await cmd_grant_all(args) == 0
+    duas = await _linhas_audit(dsn, "cli_grant_all")
+    assert {(r["target_count"], r["had_effect"]) for r in duas} == {(2, True), (0, False)}
 
 
 @pytest.mark.integration

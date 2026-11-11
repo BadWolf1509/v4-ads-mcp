@@ -68,17 +68,30 @@ def _exigir_descritor(t: TabelaDeAcesso) -> None:
         raise ValueError("descritor de acesso desconhecido: use GOOGLE ou META")
 
 
-def _ao_conflitar_restaura(t: TabelaDeAcesso) -> str:
+def _ao_conflitar_restaura(t: TabelaDeAcesso, *, so_o_que_muda: bool = False) -> str:
     """Reconceder é a forma de restaurar: o conflito limpa a revogação, promove o
     nível (F128) e registra quem e quando (F167, decisão de 10/11) — a MESMA
-    cláusula para os quatro INSERTs, que é o ponto deste módulo."""
+    cláusula para os quatro INSERTs, que é o ponto deste módulo.
+
+    `so_o_que_muda` (decisão de 11/11, só o `grant_all_active`): o UPDATE pula a
+    linha ATIVA no mesmo nível — autor e data originais ficam, e a contagem
+    devolvida passa a ser só do que mudou (nova, restaurada ou promovida). Os
+    outros três concedem UMA escolha explícita do admin, e ali "atualizar sempre"
+    (G0) continua valendo."""
+    filtro = (
+        f"""
+         WHERE {t.tabela}.revoked_at IS NOT NULL
+            OR {t.tabela}.access_level IS DISTINCT FROM EXCLUDED.access_level"""
+        if so_o_que_muda
+        else ""
+    )
     return f"""
         ON CONFLICT (manager_id, {t.coluna_conta}) DO UPDATE SET
             access_level = EXCLUDED.access_level,
             granted_at = now(),
             granted_by = EXCLUDED.granted_by,
             revoked_at = NULL,
-            revoked_reason = NULL"""
+            revoked_reason = NULL{filtro}"""
 
 
 async def grant(
@@ -116,7 +129,7 @@ async def grant_all_active(
         INSERT INTO {t.tabela} (manager_id, {t.coluna_conta}, access_level, granted_by)
         SELECT $1, {t.coluna_conta}, 'write', $2
         FROM {t.inventario}
-        WHERE is_active = true{_ao_conflitar_restaura(t)}
+        WHERE is_active = true{_ao_conflitar_restaura(t, so_o_que_muda=True)}
         """,
         manager_id,
         granted_by,

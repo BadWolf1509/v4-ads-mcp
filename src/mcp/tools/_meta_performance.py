@@ -206,7 +206,6 @@ async def run_meta_level_performance(
             edge=edge,
             params=params,
             operation_name=operation_name,
-            estimated_calls=1,
             max_pages=_MAX_PAGES,
             audit_this_call=True,
             params_summary={
