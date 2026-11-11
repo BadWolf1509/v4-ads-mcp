@@ -25,6 +25,15 @@ from tests.unit.fixtures.fake_pool import FakePool
 _M = "src.jobs.backup"
 
 
+@pytest.fixture(autouse=True)
+def _sem_configurar_structlog():
+    """`structlog.configure` e estado GLOBAL do processo pytest: roda-lo de verdade
+    quebra o `capture_logs()` de outros arquivos (mesma armadilha documentada em
+    test_job_partial_failure_audit.py). Desde a Parte J1 o backup o chama."""
+    with patch("src.jobs.backup.configure_logging", MagicMock()):
+        yield
+
+
 def _fake_conn(tables: list[str]) -> MagicMock:
     """Connection mock: fetch() devolve as tabelas; copy_from_query grava algo no sink."""
     conn = MagicMock()
@@ -247,3 +256,71 @@ def test_main_wraps_run_in_asyncio_run() -> None:
 
     assert rc == 0
     asyncio_run.assert_called_once_with("sentinel-coro")
+
+
+# --- Parte J1 (11/11): backup no esqueleto comum dos jobs ----------------------------
+@pytest.mark.asyncio
+async def test_crash_do_backup_grava_e_fecha_o_pool() -> None:
+    """Falha forcada na leitura: uma linha db_backup/error (crash, F93) e pool fechado."""
+    conn = MagicMock()
+    conn.fetch = AsyncMock(side_effect=RuntimeError("db down"))
+    client, _ = _fake_storage_client()
+    mocks = _base_patches(pool=FakePool(conn), storage_client=client)
+
+    with (
+        mocks["init_pool"],
+        mocks["close_pool"] as close_pool,
+        mocks["get_pool"],
+        mocks["storage_client"],
+        mocks["record"],
+        patch(f"{_M}.configure_logging", MagicMock()),
+        patch(f"{_M}.record_job_crash", AsyncMock()) as crash,
+        pytest.raises(RuntimeError, match="db down"),
+    ):
+        await backup.run()
+
+    crash.assert_awaited_once()
+    assert crash.await_args.kwargs["operation"] == "db_backup"
+    close_pool.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_backup_configura_o_log_antes_do_pool() -> None:
+    """Revisao final do #244 (M5): sem `configure_logging` o backup logava em texto
+    puro, e nenhuma metrica `jsonPayload.event` casaria nos seus erros."""
+    ordem: list[str] = []
+    client, _ = _fake_storage_client()
+    mocks = _base_patches(pool=FakePool(_fake_conn([])), storage_client=client)
+
+    async def _init(*_a: object, **_k: object) -> None:
+        ordem.append("init_pool")
+
+    with (
+        patch(f"{_M}.connection.init_pool", AsyncMock(side_effect=_init)),
+        mocks["close_pool"],
+        mocks["get_pool"],
+        mocks["storage_client"],
+        mocks["record"],
+        patch(f"{_M}.configure_logging", MagicMock(side_effect=lambda **_: ordem.append("log"))),
+    ):
+        await backup.run()
+
+    assert ordem == ["log", "init_pool"]
+
+
+@pytest.mark.asyncio
+async def test_init_pool_do_backup_que_falha_deixa_rastro() -> None:
+    """O backup passa pelo `executar_job`: herda o `job_init_pool_failed` do F207."""
+    from src.jobs import _runner
+
+    with (
+        patch(f"{_M}.connection.init_pool", AsyncMock(side_effect=OSError("dns"))),
+        patch(f"{_M}.connection.close_pool", AsyncMock()),
+        patch(f"{_M}.configure_logging", MagicMock()),
+        patch.object(_runner, "log", MagicMock()) as log,
+        pytest.raises(OSError, match="dns"),
+    ):
+        await backup.run()
+
+    assert log.error.call_args.args == ("job_init_pool_failed",)
+    assert log.error.call_args.kwargs["operation"] == "db_backup"

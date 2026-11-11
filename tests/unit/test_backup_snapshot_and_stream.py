@@ -30,6 +30,15 @@ from src.jobs import backup
 _M = "src.jobs.backup"
 
 
+@pytest.fixture(autouse=True)
+def _sem_configurar_structlog():
+    """`structlog.configure` e estado GLOBAL do processo pytest: roda-lo de verdade
+    quebra o `capture_logs()` de outros arquivos (mesma armadilha documentada em
+    test_job_partial_failure_audit.py). Desde a Parte J1 o backup o chama."""
+    with patch("src.jobs.backup.configure_logging", MagicMock()):
+        yield
+
+
 class _Escritor:
     """Espelha o `BlobWriter` real de google-cloud-storage 3.12.0.
 
