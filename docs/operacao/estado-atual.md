@@ -37,7 +37,7 @@
 | Dependências | grpcio 1.85.1, protobuf 7.36.2, starlette 1.10.0 (avisa `httpx` deprecated no `TestClient`), sse-starlette 3.7.0, tzdata 2026.6 |
 | Tools | **80** (65 Google + 15 Meta), contagem do registry e do `/health?deep=1` |
 | Buckets | **14 always + 66 defer** (registry); tokens **não remedidos** desde a [remedição](tool-buckets-2026-10-05.md) |
-| Catálogo | até **F207** (~6.100 linhas, 603 KB) |
+| Catálogo | até **F211** (~6.300 linhas, 621 KB) |
 | APIs | Meta Graph **v25.0** (constante única); Google Ads **v25**, sunset estimado em ago/2027 (**não lido** na página oficial) |
 | Smoke do pipeline | sem handshake MCP **autenticado** (F186); desde 10/11 o `SMOKE_MCP_BEARER` está **expirado** (401) e o deploy segue com aviso |
 
@@ -75,8 +75,8 @@ que mais usava os antigos, saiu em 31/10). O plugin 0.5.0 já manda usar o break
 - **Da varredura de 10/11** (lista completa no [handoff](session-2026-11-10-handoff.md)): clique nos
   toggles de gestor em produção; login novo pelo Google (Parte H); dry-run com gestor das tools de
   status, das 3 do `emitir_preview`, das 5 de mutate da Parte I e do `apply_recommendation` num tipo de
-  lance do v25; reemitir o `SMOKE_MCP_BEARER` (expirado: o handshake do smoke não roda); achados novos
-  para o `/findings-add`. **`grant-all` agora pede `--by <seu e-mail>`.**
+  lance do v25; reemitir o `SMOKE_MCP_BEARER` (expirado: o handshake do smoke não roda). Achados
+  catalogados em 11/11: **F208–F211**. **`grant-all` agora pede `--by <seu e-mail>`.**
 - **Escrita em produção, com aval próprio:** apagar as linhas de `meta_oauth_connections` (o OAuth
   pessoal saiu no #215); **teste real de convite e cancelamento** (pendente desde 31/10).
 - **Desligamento do Pedro:** desativado em 31/10, conexão e sessão revogadas com auditoria; fora do BM.
@@ -98,6 +98,7 @@ que mais usava os antigos, saiu em 31/10). O plugin 0.5.0 já manda usar o break
 
 | ID | o que é |
 |---|---|
+| **F210** | **em parte** — codec de token: `iat` futuro aceito sem limite e corpo não-UTF-8 com HMAC válido levanta `UnicodeDecodeError` cru (os dois só com a chave) |
 | **F207** | quatro falhas silenciosas pré-existentes nos jobs (purge sem exit code nem audit, mensagem enganosa, audit "sem OAuth" vira crash, `init_pool` sem audit) |
 | **F180** | **em parte, provavelmente para sempre** — o Google aceita operação impossível em vez de errar, então `failed_count` é constante zero: leia `efeito` e `changed_count` |
 | **F185** | `recommendation_subscription`: 4 de 11 opacos e sem chave — limitação da API |
