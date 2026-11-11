@@ -44,6 +44,12 @@ class MensagensDeErro:
     expirado: str
 
 
+# F210 (11/11): `iat` no futuro alem disto e recusado. Sem limite, `iat=10**30`
+# nunca expirava (`now - iat` negativo). A folga cobre relogio adiantado entre a
+# instancia que assina e a que confere — o `leeway` dos validadores de JWT
+# (RFC 7519; PyJWT recusa `iat` no futuro alem dele).
+FOLGA_DE_RELOGIO_S = 300
+
 MENSAGENS_STATE = MensagensDeErro(
     malformado="Malformed state",
     hmac="HMAC mismatch (tampered or wrong key)",
@@ -116,7 +122,9 @@ def verificar(
 
     try:
         raw: Any = json.loads(body.decode("utf-8"))
-    except json.JSONDecodeError as e:
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        # F210: corpo nao-UTF-8 com HMAC valido levantava UnicodeDecodeError cru
+        # (fora do contrato de erro do chamador, que so trata `erro`).
         raise erro(mensagens.json) from e
 
     if not isinstance(raw, dict):
@@ -126,9 +134,13 @@ def verificar(
         raise erro(mensagens.audiencia.format(aud=aud))
 
     iat = raw.get("iat")
-    if not isinstance(iat, int):
+    # `bool` e subclasse de `int`: `"iat": true` passava como o instante 1.
+    if not isinstance(iat, int) or isinstance(iat, bool):
         raise erro(mensagens.iat)
-    if (time.time() - iat) > ttl:
+    agora = time.time()
+    if iat - agora > FOLGA_DE_RELOGIO_S:
+        raise erro(mensagens.iat)
+    if (agora - iat) > ttl:
         raise erro(mensagens.expirado)
 
     raw.pop("iat", None)

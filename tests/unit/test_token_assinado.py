@@ -165,6 +165,11 @@ def _casos() -> list[Any]:
             (nome, ver, exc, _cunha({"aud": aud, "iat": "123", **extra}), msgs["iat"]),
             (nome, ver, exc, _cunha({"aud": aud, "iat": 1.5, **extra}), msgs["iat"]),
             (nome, ver, exc, _cunha(aud_ok(aud, **extra) | {"iat": T0 - 10**6}), msgs["expirado"]),
+            # F210 (11/11): os tres passavam no codec — com HMAC valido, entao so
+            # quem tem a chave os produz, e mesmo assim nao sao tokens validos.
+            (nome, ver, exc, _cunha_corpo(bytes([0xFF, 0xFE]) + b" nao e utf-8"), msgs["json"]),
+            (nome, ver, exc, _cunha(aud_ok(aud, **extra) | {"iat": 10**30}), msgs["iat"]),
+            (nome, ver, exc, _cunha(aud_ok(aud, **extra) | {"iat": True}), msgs["iat"]),
         ]
     return casos
 
@@ -245,3 +250,29 @@ def test_codec_ida_e_volta_sem_aud_nem_iat(monkeypatch: pytest.MonkeyPatch) -> N
 def test_kwarg_de_audiencia_vence_o_payload() -> None:
     token = sign_state({"aud": "panel", "iat": 1}, CHAVE, aud="google_oauth", issued_at=T0)
     assert token == _cunha({"aud": "google_oauth", "iat": T0})
+
+
+@pytest.mark.parametrize(
+    ("ver", "aud", "extra"),
+    [
+        (_state, "google_oauth", {}),
+        (_painel, "panel", {"manager_id": "m-1", "email": "a@v4company.com"}),
+    ],
+    ids=["state", "painel"],
+)
+def test_iat_no_futuro_vale_so_dentro_da_folga_de_relogio(
+    monkeypatch: pytest.MonkeyPatch, ver: Any, aud: str, extra: dict[str, Any]
+) -> None:
+    """F210: `iat` no futuro alem da folga nunca expirava (`now - iat` negativo).
+
+    A folga existe porque quem assina e quem confere podem ser instancias
+    diferentes do Cloud Run com relogio um pouco adiantado — a mesma razao do
+    `leeway` dos validadores de JWT (RFC 7519, PyJWT). `iat == now + folga` vale;
+    `+ 1` recusa.
+    """
+    from src.auth.token_assinado import FOLGA_DE_RELOGIO_S
+
+    monkeypatch.setattr("time.time", lambda: T0)
+    ver(_cunha({"aud": aud, "iat": T0 + FOLGA_DE_RELOGIO_S, **extra}))
+    with pytest.raises(Exception, match="iat"):
+        ver(_cunha({"aud": aud, "iat": T0 + FOLGA_DE_RELOGIO_S + 1, **extra}))
