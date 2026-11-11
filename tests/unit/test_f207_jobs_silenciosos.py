@@ -84,6 +84,32 @@ async def test_purge_ok_com_audit_falhando_nao_diz_que_o_purge_falhou(
     assert "db_purge_audit_failed" in eventos, eventos
 
 
+# --- 1b. purge E o audit dele falhando: exit 1, nao crash -----------------------------
+@pytest.mark.asyncio
+async def test_purge_e_audit_do_purge_falhando_sai_com_1_sem_crash() -> None:
+    """Revisao final do #244 (I1): sem o `best_effort` no ramo de erro, o banco
+    caindo entre o purge e o audit dele virava crash — a classe do item 3."""
+    mocks = _base_patches(pool=FakePool(MagicMock()), oc=SimpleNamespace(refresh_token_enc=b"e"))
+    with ExitStack() as stack:
+        _entrar(stack, mocks, sem=("purge", "record"))
+        stack.enter_context(
+            patch(f"{_M}.purge_expired", AsyncMock(side_effect=RuntimeError("db down")))
+        )
+        stack.enter_context(
+            patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan()))
+        )
+        stack.enter_context(
+            patch(f"{_M}.record_job_run", AsyncMock(side_effect=_so_o_db_purge_falha))
+        )
+        crash = stack.enter_context(patch(f"{_M}.record_job_crash", AsyncMock()))
+        log_bk = stack.enter_context(patch("src.governance.bookkeeping.log", MagicMock()))
+        rc = await account_resync.run()
+
+    assert rc == 1
+    crash.assert_not_awaited()
+    assert "db_purge_audit_failed" in [c.args[0] for c in log_bk.exception.call_args_list]
+
+
 # --- 3. audit do "sem OAuth" que falha não vira crash ---------------------------------
 @pytest.mark.asyncio
 async def test_sem_oauth_com_audit_falhando_sai_com_1_sem_crash() -> None:
@@ -94,10 +120,14 @@ async def test_sem_oauth_com_audit_falhando_sai_com_1_sem_crash() -> None:
             patch(f"{_M}.record_job_run", AsyncMock(side_effect=RuntimeError("audit fora")))
         )
         crash = stack.enter_context(patch(f"{_M}.record_job_crash", AsyncMock()))
+        log_bk = stack.enter_context(patch("src.governance.bookkeeping.log", MagicMock()))
         rc = await account_resync.run()
 
     assert rc == 1
     crash.assert_not_awaited()
+    # O rastro da falha do audit (revisao do #244, M1): um `suppress` mudo tambem
+    # dava rc 1 sem crash. O nome e o mesmo do audit do caminho de sucesso.
+    assert "job_run_audit_failed" in [c.args[0] for c in log_bk.exception.call_args_list]
 
 
 # --- 4. init_pool que falha deixa rastro estruturado ----------------------------------

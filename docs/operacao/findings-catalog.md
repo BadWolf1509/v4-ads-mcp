@@ -6119,7 +6119,9 @@ True`; Meta +2; purge de 5 linhas) e `exit(0)` — nenhuma das quatro falhas dis
 desfecho observável — todo desfecho sai no exit code e no audit, e a falha da operação fica separada
 da falha do bookkeeping (o corte do F83).
 - **Purge:** falha sai com exit 1 (como o bloqueio e a falha Meta da Task 5; o retry é inofensivo,
-  F157) e grava `db_purge`/`error`.
+  F157 — conferido pela revisão: carência e revogação se baseiam em estado) e grava
+  `db_purge`/`error`. A policy vê a execução **depois dos retries**: falha que passa no retry não
+  alerta e fica só a linha no audit, como o bloqueio.
 - **Mensagem do purge:** purge e audit em etapas separadas; audit que falha depois do purge é
   `db_purge_audit_failed` (best-effort) e o desfecho continua "OK: purged".
 - **Sem OAuth:** o audit desse desfecho entrou em `best_effort`; falhando, o job sai com 1 em vez de
@@ -6131,10 +6133,11 @@ Guards em `tests/unit/test_f207_jobs_silenciosos.py`, os quatro vermelhos contra
 (rodados com as versões de `origin/main` copiadas por cima) e verdes agora. Os dois testes de
 caracterização que fixavam o exit 0 do purge mudaram de propósito.
 
-**Fora, com o motivo:** o alerta log-based sobre `job_init_pool_failed` não foi criado (configuração
+**Fora, com o motivo:** o `backup.py` tem a mesma lacuna do `init_pool` e não chama
+`configure_logging` (logs em texto puro) — vai na Parte J (J1, backup no esqueleto comum). O alerta
+log-based sobre `job_init_pool_failed` não foi criado (configuração
 de infra fora do repositório; decisão do Wellington, 11/11). A execução que falha no `init_pool` já
-dispara a policy de job falho pelo exit code; o evento é o rastro forense. O 4º pede decisão: sem banco, o rastro possível é log
-estruturado com alerta log-based, não o audit.
+dispara a policy de job falho pelo exit code; o evento é o rastro forense.
 
 ---
 

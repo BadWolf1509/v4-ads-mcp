@@ -321,7 +321,7 @@ async def _etapa_google(pool: connection.PoolValidado, settings: Settings) -> bo
             # F207 (11/11): o audit e bookkeeping do desfecho "sem OAuth", nao o
             # desfecho. Falhando, ele subia como excecao e o job virava CRASH
             # (outra classificacao no audit e no alerta) em vez do exit 1 previsto.
-            async with best_effort("job_audit_failed", operation="google_reconcile"):
+            async with best_effort("job_run_audit_failed", operation="google_reconcile"):
                 await record_job_run(
                     conn,
                     operation="google_reconcile",
