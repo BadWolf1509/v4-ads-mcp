@@ -270,3 +270,12 @@ ESPERADO = {
 @pytest.mark.parametrize("cenario", CENARIOS, ids=lambda c: c.nome)
 def test_plano_esperado_de_cada_cenario(cenario: Cenario) -> None:
     assert _campos(_plano_google(cenario)) == ESPERADO[cenario.nome]
+
+
+# O mesmo esperado, LITERAL, do lado Meta. A paridade acima já o implica, mas só
+# por transitividade: se as duas regras mudassem juntas (o risco de um núcleo
+# comum), a paridade seguiria verde. Aqui o texto de cada `blocked_reason` do
+# Meta fica preso byte a byte, independente do Google.
+@pytest.mark.parametrize("cenario", CENARIOS, ids=lambda c: c.nome)
+def test_plano_esperado_de_cada_cenario_no_meta(cenario: Cenario) -> None:
+    assert _campos(_plano_meta(cenario)) == ESPERADO[cenario.nome]
