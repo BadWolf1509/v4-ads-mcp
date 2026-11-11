@@ -50,11 +50,9 @@ class CallbackDecision:
     action: Literal["promote_invited", "bootstrap_admin"] | None = None
 
 
-async def handle_callback_decision(
+def handle_callback_decision(
     *,
     email: str,
-    google_id: str,
-    google_email: str,
     managers_table_empty: bool,
     bootstrap_emails: set[str],
     existing_manager: dict[str, Any] | None,
@@ -67,8 +65,6 @@ async def handle_callback_decision(
 
     `existing_manager` is a dict (or None) with keys 'status', 'is_active',
     'id', 'role'. We use .get() so callers can pass partial dicts in tests.
-    `google_id` and `google_email` are accepted for symmetry / future use even
-    though the current decision logic uses only `email`.
     """
     email_norm = email.strip().lower()
 
@@ -370,10 +366,8 @@ async def _resolver_gestor_do_painel(
             }
         table_empty = (await managers.count_all(conn)) == 0
 
-    decision = await handle_callback_decision(
+    decision = handle_callback_decision(
         email=email,
-        google_id=str(userinfo.get("id", "")),
-        google_email=email,
         managers_table_empty=table_empty,
         bootstrap_emails=settings.bootstrap_admin_emails_set,
         existing_manager=existing_dict,
