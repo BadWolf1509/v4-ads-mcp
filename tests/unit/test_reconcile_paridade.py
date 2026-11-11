@@ -1,9 +1,10 @@
 """Paridade das duas regras de reconciliação (Google × Meta).
 
-As duas decidem quais contas PERDEM acesso e hoje são cópias uma da outra
-(`_faltas_com_esta_execucao`, o teto `max(1, min(abs, floor(n * ratio)))`). Este
-teste é a rede de quem for extrair o núcleo comum: a mesma situação, montada nos
-dois, tem de dar o mesmo plano. Divergência aqui é uma das duas regras mudando de
+As duas decidem quais contas PERDEM acesso. Eram cópias uma da outra
+(`_faltas_com_esta_execucao`, o teto `max(1, min(abs, floor(n * ratio)))`) até o
+G4 (11/11) extrair o núcleo comum para `src/reconciliacao.py`; hoje cada
+`build_plan` é adaptador dele. Este teste segue sendo a rede: a mesma situação,
+montada nos dois, tem de dar o mesmo plano. Divergência aqui é uma das duas regras mudando de
 comportamento em silêncio — e o que muda é quem perde acesso.
 """
 
