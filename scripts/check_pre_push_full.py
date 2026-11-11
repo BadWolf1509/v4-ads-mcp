@@ -3,9 +3,9 @@
 
 Sequence (fail-fast):
     pre-check: docker info (timeout DOCKER_INFO_TIMEOUT_S, 15s)
-    1-6:       base steps (ruff/format/mypy/unit/non-DB integration/tailwind)
-    7:         lockfile fechado (F198: venv limpo, --no-deps, pip check; precisa de rede)
-    8:         pytest tests/integration -m integration -q  (testcontainers)
+    1-7:       base steps (versoes fixadas/ruff/format/mypy/unit/non-DB integration/tailwind)
+    8:         lockfile fechado (F198: venv limpo, --no-deps, pip check; precisa de rede)
+    9:         pytest tests/integration -m integration -q  (testcontainers)
 
 Exit codes:
     0  all checks passed

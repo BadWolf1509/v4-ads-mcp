@@ -21,6 +21,12 @@ class Step:
 
 # Pre-defined step lists
 BASE_STEPS: list[Step] = [
+    # Primeiro: com a .venv em outra versao, ruff e mypy abaixo aprovam o que o CI
+    # reprova (10/11, #233). O pin vive no pyproject; aqui so se confere.
+    Step(
+        "ferramentas na versao fixada",
+        [sys.executable, str(Path(__file__).resolve().parent / "check_ferramentas_fixadas.py")],
+    ),
     Step("ruff check", [sys.executable, "-m", "ruff", "check", "src", "tests"]),
     Step("ruff format check", [sys.executable, "-m", "ruff", "format", "--check", "src", "tests"]),
     Step("mypy", [sys.executable, "-m", "mypy", "src"]),
