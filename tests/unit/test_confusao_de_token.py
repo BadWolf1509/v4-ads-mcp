@@ -185,17 +185,15 @@ def test_ttl_do_state_nao_e_estendido_por_verificacao_de_outra_audiencia() -> No
 def test_payload_sem_manager_id_e_recusado() -> None:
     """`panel_session.py:85` devolvia `manager_id=""` em vez de recusar — sessão
     anônima válida é pior que sessão inválida."""
-    from src.auth.oauth_state import _b64url as _b64url_do_state  # noqa: PLC2701
-    from src.auth.panel_session import _b64url as _b64url_do_painel  # noqa: PLC2701
+    from src.auth.token_assinado import _b64url as _b64url_do_codec  # noqa: PLC2701
 
-    # O formato é literalmente o mesmo dos dois lados — é por isso que um token
-    # de um módulo é byte-compatível com o outro, e por isso a audiência precisa
-    # existir. Os bytes têm bit alto de propósito: `b"formato"` codificava IGUAL
+    # O formato é literalmente o mesmo dos dois lados (agora é um só codec) — é
+    # por isso que um token de um módulo é byte-compatível com o outro, e por
+    # isso a audiência precisa existir. Os bytes têm bit alto de propósito: `b"formato"` codificava IGUAL
     # nos dois alfabetos, urlsafe e padrão, então a igualdade era verdadeira
     # independente da implementação e não discriminava nada. Estes três são
     # `-__-` em urlsafe e `+//+` em base64 padrão.
-    assert _b64url_do_painel(b"\xfb\xff\xfe") == _b64url_do_state(b"\xfb\xff\xfe")
-    assert _b64url_do_painel(b"\xfb\xff\xfe") == "-__-"
+    assert _b64url_do_codec(b"\xfb\xff\xfe") == "-__-"
 
     # Audiência CERTA de propósito: aqui o que está sob teste é o `manager_id`.
     sem_id = sign_state({"mode": "panel_login"}, CHAVE, aud="panel")

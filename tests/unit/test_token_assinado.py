@@ -221,3 +221,27 @@ def test_token_de_uma_audiencia_nao_vale_na_outra(monkeypatch: pytest.MonkeyPatc
     with pytest.raises(InvalidStateError) as c:
         _state(TOKEN_CLI)
     assert str(c.value) == "Audiência inválida (esperada: google_oauth)"
+
+
+def test_codec_ida_e_volta_sem_aud_nem_iat(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.auth.token_assinado import MENSAGENS_STATE, assinar, verificar
+
+    class FalhaError(Exception):
+        pass
+
+    token = assinar({"a": 1}, CHAVE, aud="google_oauth", issued_at=T0)
+    assert token == _cunha({"a": 1, "aud": "google_oauth", "iat": T0})
+    monkeypatch.setattr("time.time", lambda: T0 + 1)
+    claims = verificar(
+        token, CHAVE, aud="google_oauth", ttl=10, erro=FalhaError, mensagens=MENSAGENS_STATE
+    )
+    assert claims == {"a": 1}
+    with pytest.raises(FalhaError, match="Audiência inválida"):
+        verificar(
+            token, CHAVE, aud="cli_invite", ttl=10, erro=FalhaError, mensagens=MENSAGENS_STATE
+        )
+
+
+def test_kwarg_de_audiencia_vence_o_payload() -> None:
+    token = sign_state({"aud": "panel", "iat": 1}, CHAVE, aud="google_oauth", issued_at=T0)
+    assert token == _cunha({"aud": "google_oauth", "iat": T0})
