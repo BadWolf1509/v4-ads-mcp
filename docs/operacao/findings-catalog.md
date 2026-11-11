@@ -6093,7 +6093,7 @@ do plano [`2026-11-03-varredura-refatoracao.md`](../superpowers/plans/2026-11-03
 **Prova em produção:** entrada inválida chega com texto acionável. **Não medido:** o caminho
 `denied` Meta em produção.
 
-## F207 (MEDIUM, ✅ CORRIGIDO 2026-11-11, #__PR__) — quatro falhas silenciosas pré-existentes nos jobs, achadas na parte H
+## F207 (MEDIUM, ✅ CORRIGIDO 2026-11-11, #244) — quatro falhas silenciosas pré-existentes nos jobs, achadas na parte H
 
 Achados ao extrair o esqueleto comum dos jobs (`executar_job`, Task H1 da varredura de 03/11); o
 revisor confirmou que **nenhum foi introduzido nem agravado** pela refatoração. Mesmo padrão: o job
@@ -6114,7 +6114,7 @@ falha e o sinal não chega a quem vigia.
 11/11 terminaram com sucesso, e o log de 11/11 mostra as três etapas (Google 24 contas, `complete:
 True`; Meta +2; purge de 5 linhas) e `exit(0)` — nenhuma das quatro falhas disparou no período.
 
-**✅ O que foi feito (11/11, #__PR__).** Medido antes: a única policy que enxerga um Cloud Run Job é
+**✅ O que foi feito (11/11, #244).** Medido antes: a única policy que enxerga um Cloud Run Job é
 "Cloud Run Job: execucao FALHOU" (exit code); a `severity>=ERROR` é do serviço, não do job. Padrão:
 desfecho observável — todo desfecho sai no exit code e no audit, e a falha da operação fica separada
 da falha do bookkeeping (o corte do F83).
