@@ -429,7 +429,7 @@ def campanhas_com_grade_incerta(
     return incertas & set(campanhas)
 
 
-def _w(w: Window) -> dict[str, Any]:
+def janela_para_dict(w: Window) -> dict[str, Any]:
     return {
         "day_of_week": w.day_of_week,
         "start_hour": w.start_hour,
@@ -540,16 +540,17 @@ def planejar_grade(
                 cobertura["reduz"], compartilhado_por_campanha.get(cid, False)
             ),
             "windows_added": [
-                {**_w(w), "bid_modifier": modificador_efetivo(w, bid_modifier)} for w in diff.to_add
+                {**janela_para_dict(w), "bid_modifier": modificador_efetivo(w, bid_modifier)}
+                for w in diff.to_add
             ],
-            "windows_removed": [_w(c.window) for c in diff.to_remove],
+            "windows_removed": [janela_para_dict(c.window) for c in diff.to_remove],
             # O valor SOBRESCRITO ao lado do novo, como a §4.2 faz com o CPA do
             # que sai. F149: `bid_modifier_novo` e o EFETIVO da janela (o dela
             # mesma, se trouxe; senao o escalar da chamada como default) — quem
             # nao ver o antigo aqui so descobre o que perdeu depois do apply_change.
             "bid_modifier_updated": [
                 {
-                    **_w(c.window),
+                    **janela_para_dict(c.window),
                     # Fix C1 (revisao final): o Google guarda bid_modifier em
                     # proto.FLOAT (32 bits) e devolve 1.4 como 1.399999976158142
                     # — 17 digitos numa resposta que o gestor le e ruido puro.
@@ -571,7 +572,7 @@ def planejar_grade(
             {
                 "kind": "add",
                 "campaign_id": cid,
-                "window": _w(w),
+                "window": janela_para_dict(w),
                 "bid_modifier": modificador_efetivo(w, bid_modifier),
             }
             for w in diff.to_add

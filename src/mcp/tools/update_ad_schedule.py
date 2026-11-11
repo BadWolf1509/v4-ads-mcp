@@ -11,7 +11,7 @@ from typing import Any
 
 from src.google_ads.account_clock import resolve_account_today
 from src.google_ads.ad_schedule import (
-    _w,
+    janela_para_dict,
     modificador_efetivo,
     planejar_grade,
     rows_to_current,
@@ -309,9 +309,9 @@ async def update_ad_schedule(args: dict[str, Any]) -> dict[str, Any]:
         # apply_change nao tem contra o que comparar a grade resultante (§4.6 + §7);
         # sem o segundo, ele aplica resource_names de ate 10 min atras contra um
         # estado que ninguem verificou (Ruling 10 — concorrencia otimista).
-        "windows": [_w(w) for w in desired],
+        "windows": [janela_para_dict(w) for w in desired],
         # Fix I2 (revisao final): chave PARALELA a `windows`, mesma ordem — nao
-        # dentro de `_w()`, que o builder tambem consome (`ops[*]["window"]` usa
+        # dentro de `janela_para_dict()`, que o builder tambem consome (`ops[*]["window"]` usa
         # a MESMA funcao, e ganhar um campo que o builder ignora e risco a toa).
         # Sem isto, `matches_requested` do apply_change so comparava a
         # IDENTIDADE da faixa, nunca conferia se o bid_modifier efetivamente

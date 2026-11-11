@@ -269,3 +269,14 @@ async def test_id_nao_numerico_recusa_antes_do_run_report(nome: str) -> None:
     for outra, coro in chamadas.items():
         if outra != nome:
             coro.close()
+
+
+@pytest.mark.asyncio
+async def test_campaign_id_nao_numerico_recusa_antes_do_run_report() -> None:
+    from src.google_ads import preflight
+
+    base = {"manager_id": uuid4(), "session_id": uuid4(), "customer_id": _CUSTOMER}
+    fake = AsyncMock()
+    with patch("src.google_ads.preflight.run_report", fake), pytest.raises(ValueError):
+        await preflight.buscar_orcamento_da_campanha(**base, campaign_id="1 OR 1=1")
+    fake.assert_not_awaited()

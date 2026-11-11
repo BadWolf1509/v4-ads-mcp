@@ -332,6 +332,9 @@ async def test_a_query_das_irmas_nao_sai_quando_o_orcamento_e_exclusivo(
         return [fmt(_linha(kwargs["query"], _valores_alvo(explicitly_shared=False)))]
 
     monkeypatch.setattr(preflight, "run_report", _run)
+    # A consulta das irmas sai por `mod.run_report`, nao pelo preflight: sem este patch
+    # a sabotagem do `if` cairia num TypeError do gate real e nao na contagem.
+    monkeypatch.setattr(mod, "run_report", _run)
 
     async def _create_pending(conn: Any, **kwargs: Any) -> str:
         return "TOKEN123"

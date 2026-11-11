@@ -1040,7 +1040,7 @@ async def buscar_orcamento_da_campanha(
           campaign_budget.explicitly_shared,
           campaign_budget.amount_micros
         FROM campaign
-        WHERE campaign.id = {campaign_id}
+        WHERE campaign.id = {int(campaign_id)}
         LIMIT 1
     """.strip()
 

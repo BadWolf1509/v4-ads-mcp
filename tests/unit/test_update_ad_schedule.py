@@ -289,7 +289,7 @@ async def test_payload_leva_o_bid_modifier_efetivo_por_janela_em_chave_paralela(
     """Fix I2 (revisao final): sem isto, `apply_change` nao tinha como confirmar
     `matches_requested` contra o bid_modifier pedido — so a identidade da faixa
     viajava no payload. Chave PARALELA a `windows`, mesma ordem — nao dentro de
-    `_w()`, que o builder tambem consome."""
+    `janela_para_dict()`, que o builder tambem consome."""
     captured = _wire(monkeypatch, grade=[], orcamentos=[_orc()], metricas=[])
     await mod.update_ad_schedule(
         {

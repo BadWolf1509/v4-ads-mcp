@@ -219,12 +219,12 @@ async def _update_keyword_bid() -> Any:
             _resolve_names_campaign,
         ),
         (
-            "update_ad_group_bid.py::update_ad_group_bid",
+            "preflight.py::buscar_lances_de_grupo",
             "src.google_ads.preflight.run_report",
             _update_ad_group_bid,
         ),
         (
-            "update_keyword_bid.py::update_keyword_bid",
+            "preflight.py::buscar_lances_de_keyword",
             "src.google_ads.preflight.run_report",
             _update_keyword_bid,
         ),
