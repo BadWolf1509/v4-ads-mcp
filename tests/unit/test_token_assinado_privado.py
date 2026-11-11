@@ -108,7 +108,10 @@ def usos_do_reexport(
 
     Fora, como limitacao declarada (despacho dinamico vence qualquer varredura
     sintatica): `getattr(modulo, nome_variavel)`, `importlib.import_module(...)`,
-    `vars(modulo)[...]`, `sys.modules[...]` e `from ... import *`. O mypy strict com
+    `vars(modulo)[...]`, `sys.modules[...]` e `from ... import *` — e o uso por
+    ATRIBUTO depois de import relativo do modulo (`from . import oauth_state` +
+    `oauth_state.assinar`), porque `origens_de_import` ignora `level`; `src/` nao
+    tem import relativo hoje. O mypy strict com
     `no_implicit_reexport` cobre as formas diretas por outro caminho.
     """
     origens = h.origens_de_import(arv)

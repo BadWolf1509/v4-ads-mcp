@@ -50,7 +50,8 @@ def _inventa_valor(no: ast.AST) -> bool:
 
     Fica de fora, como limitacao declarada: duas etapas (`v = d.get(k)` e
     depois `v or 0`), helper fora de `dict_to_*`, `getattr(obj, k, 0)`,
-    `ChainMap`/`defaultdict` e `max(d.get(k), 0)`. E a excecao da colecao vazia
+    `ChainMap`/`defaultdict`, `max(d.get(k), 0)`, e default que nao e literal
+    (`... else -1`, `... else Decimal(0)`: o ramo precisa ser `ast.Constant`). E a excecao da colecao vazia
     absolveria `len(d.get(x) or [])` — que inventa um 0 contavel; hoje nao
     existe em `src/google_ads`.
     """
@@ -72,9 +73,26 @@ def _inventa_valor(no: ast.AST) -> bool:
     if isinstance(no, ast.AugAssign) and isinstance(no.op, ast.BitOr):
         return True
     if isinstance(no, ast.Call) and isinstance(no.func, ast.Name) and no.func.id == "dict":
-        return len(no.args) >= 2 or bool(no.keywords)
-    if isinstance(no, ast.IfExp):
+        # `dict(a=1)` e literal honesto; mescla e posicional + keyword, ou dois posicionais.
+        return len(no.args) >= 2 or (len(no.args) >= 1 and bool(no.keywords))
+    if isinstance(no, ast.IfExp) and _pergunta_pela_ausencia(no.test):
         return _default_num_ramo(no.body, no.orelse) or _default_num_ramo(no.orelse, no.body)
+    return False
+
+
+def _pergunta_pela_ausencia(teste: ast.AST) -> bool:
+    """O `if` pergunta se o campo existe (`k in d`, `x is None`, `d.get(k)`)?
+
+    Sem isto, `d["nome"] if d["ativo"] else "N/A"` — rotulo honesto, com os dois
+    campos presentes — seria acusado (revisao do #246).
+    """
+    for sub in ast.walk(teste):
+        if isinstance(sub, ast.Compare) and any(
+            isinstance(op, ast.In | ast.NotIn | ast.Is | ast.IsNot) for op in sub.ops
+        ):
+            return True
+        if _e_chamada(sub, "get"):
+            return True
     return False
 
 
@@ -163,6 +181,8 @@ def test_scanner_enxerga_as_formas_alem_do_get(corpo: str) -> None:
         'tuple(d.get("changed_fields") or [])',
         "dict(d)",
         'd["a"] if "a" in d else None',
+        "dict(a=1)",
+        'd["nome"] if d["ativo"] else "N/A"',
     ],
 )
 def test_scanner_nao_acusa_leitura_estrita(corpo: str) -> None:
