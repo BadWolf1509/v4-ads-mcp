@@ -74,9 +74,8 @@ def _imports_do_modulo(arv: ast.Module, modulo: str) -> list[int]:
             nomes = [(no.module or "")] + [f"{no.module or ''}.{a.name}" for a in no.names]
             if any(n.split(".")[-1] == modulo for n in nomes):
                 linhas.append(no.lineno)
-        elif isinstance(no, ast.Import):
-            if any(a.name.split(".")[-1] == modulo for a in no.names):
-                linhas.append(no.lineno)
+        elif isinstance(no, ast.Import) and any(a.name.split(".")[-1] == modulo for a in no.names):
+            linhas.append(no.lineno)
     return sorted(linhas)
 
 
