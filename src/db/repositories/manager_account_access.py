@@ -1,7 +1,6 @@
 """CRUD for `manager_account_access` (which manager can operate which account)."""
 
-from dataclasses import dataclass
-from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 import asyncpg
@@ -17,13 +16,7 @@ LEFT_MCC_REASON = "left_mcc"
 ADMIN_REVOKED_REASON = "admin_revoked"
 
 
-@dataclass(slots=True, frozen=True)
-class AccountAccess:
-    manager_id: UUID
-    customer_id: str
-    access_level: str  # 'read' | 'write'
-    granted_at: datetime
-    granted_by: UUID | None
+NivelDeAcesso = Literal["read", "write"]
 
 
 async def grant(
@@ -167,7 +160,11 @@ async def list_accounts_for_manager(
 
 
 async def can_manager_access(
-    conn: asyncpg.Connection, manager_id: UUID, customer_id: str, *, level: str = "read"
+    conn: asyncpg.Connection,
+    manager_id: UUID,
+    customer_id: str,
+    *,
+    level: NivelDeAcesso = "read",
 ) -> bool:
     """Gate por conta — e, como no Meta, é a ÚNICA fronteira que sobra.
 

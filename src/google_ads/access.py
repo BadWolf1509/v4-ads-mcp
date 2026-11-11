@@ -12,6 +12,7 @@ import structlog
 
 from src.db.connection import _DROPPED_CONNECTION_ERRORS
 from src.db.repositories import audit_log, google_ads_accounts, manager_account_access
+from src.db.repositories.manager_account_access import NivelDeAcesso
 from src.governance.bookkeeping import best_effort
 
 log = structlog.get_logger(__name__)
@@ -32,7 +33,7 @@ async def ensure_account_access(
     customer_id: str,
     session_id: UUID,
     operation_name: str,
-    level: str = "read",
+    level: NivelDeAcesso = "read",
 ) -> None:
     """Raise AccountAccessDeniedError (PT-BR) + audit denied if the manager lacks
     `level` access to customer_id. No-op when access is granted.

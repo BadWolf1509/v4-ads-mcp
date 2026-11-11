@@ -4,6 +4,7 @@ from uuid import UUID
 
 import asyncpg
 
+from src.db.repositories.manager_account_access import NivelDeAcesso
 from src.db.repositories.meta_ad_accounts import MetaAdAccount, _row_to_account
 
 # Motivo gravado quando o reconciliador (job) revoga acesso por a conta ter
@@ -192,7 +193,7 @@ async def can_manager_access(
     manager_id: UUID,
     ad_account_id: str,
     *,
-    level: str = "read",
+    level: NivelDeAcesso = "read",
 ) -> bool:
     """Gate do Modelo B — e a ÚNICA fronteira que sobra.
 
