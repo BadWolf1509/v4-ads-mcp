@@ -66,8 +66,8 @@ que mais usava os antigos, saiu em 31/10). O plugin 0.5.0 já manda usar o break
    `recommendations.py`, **junto com as entradas dos 3** (sozinho, os dois de lance cairiam em AUTO).
 2. **Ler os logs do resync** — a prova da parte H de 03/11 segue não lida (pede `gcloud` com credencial).
 3. **F207** — as 4 falhas silenciosas dos jobs, um TDD por bug, num PR; depois a **Parte J** da varredura.
-4. **Follow-ups da varredura** (lista no [handoff](session-2026-11-10-handoff.md)): fixar a versão do
-   ruff do CI; `granted_by` do CLI `grant-all`; `estimated_calls` morto; guard de `token_assinado` por
+4. **Follow-ups da varredura** (lista no [handoff](session-2026-11-10-handoff.md)):
+   `granted_by` do CLI `grant-all`; `estimated_calls` morto; guard de `token_assinado` por
    reexport; guard do I4 que só pega `.get(k, default)`.
 
 ## Pendências que dependem do Wellington
