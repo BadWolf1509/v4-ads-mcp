@@ -93,3 +93,17 @@ def test_type_pt_includes_forecasting_set_target_cpa() -> None:
     assert result["type"] == "FORECASTING_SET_TARGET_CPA"
     assert result["type_pt"] is not None
     assert "Target CPA" in result["type_pt"]
+
+
+@pytest.mark.parametrize(
+    ("tipo", "so_leitura"),
+    [("CAMPAIGN_SPECIFIC_APP_GOAL", True), ("KEYWORD", False), ("CAMPAIGN_BUDGET", False)],
+)
+def test_a_listagem_marca_o_tipo_que_o_apply_recusa(tipo: str, so_leitura: bool) -> None:
+    """C2 (11/11): o gestor sabe ANTES de pedir que aquele tipo nao se aplica por aqui."""
+    from src.mcp.tools.get_recommendations import _row_formatter
+
+    linha = MagicMock()
+    linha.recommendation.resource_name = "customers/1234567890/recommendations/abc"
+    linha.recommendation.type = tipo
+    assert _row_formatter(linha)["so_leitura"] is so_leitura
