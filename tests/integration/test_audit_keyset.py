@@ -169,35 +169,42 @@ async def test_keyset_admin_tambem_pagina_por_cursor_sem_sobreposicao(db):
     assert cursor2 is None
 
 
-def _nos_do_audit_log(plano_json: str) -> list[dict]:
-    """Os nos do plano (EXPLAIN FORMAT JSON) que varrem `audit_log`.
+def _nos_do_audit_log(plano_json: str) -> list[tuple[dict, list[str]]]:
+    """Os nos do plano (EXPLAIN FORMAT JSON) que varrem `audit_log`, cada um com
+    os tipos dos nos ANCESTRAIS (da raiz ate o pai).
 
     So esses importam pro guard de indice: o planner pode legitimamente fazer
     Seq Scan nas tabelas de inventario (pequenas), mas nunca em `audit_log`.
     """
-    achados: list[dict] = []
+    achados: list[tuple[dict, list[str]]] = []
 
-    def caminha(no: dict) -> None:
+    def caminha(no: dict, ancestrais: list[str]) -> None:
         if no.get("Relation Name") == "audit_log":
-            achados.append(no)
+            achados.append((no, ancestrais))
         for filho in no.get("Plans", []):
-            caminha(filho)
+            caminha(filho, [*ancestrais, no["Node Type"]])
 
-    caminha(json.loads(plano_json)[0]["Plan"])
+    caminha(json.loads(plano_json)[0]["Plan"], [])
     return achados
 
 
 def _afirma_indice_no_audit_log(plano_json: str, *, indices: set[str], rotulo: str) -> None:
     nos = _nos_do_audit_log(plano_json)
     assert nos, f"{rotulo}: nenhum no varre audit_log — o plano mudou de forma:\n{plano_json}"
-    for no in nos:
-        assert no["Node Type"] in {"Index Scan", "Index Only Scan", "Bitmap Heap Scan"}, (
+    for no, ancestrais in nos:
+        # Bitmap Heap Scan fica de fora de proposito: num keyset ORDER BY ... LIMIT
+        # o bitmap perde a ordem e implica Sort sobre o audit_log inteiro.
+        assert no["Node Type"] in {"Index Scan", "Index Only Scan"}, (
             f"{rotulo}: audit_log lido por {no['Node Type']}, nao por indice:\n{plano_json}"
         )
-        if no["Node Type"] != "Bitmap Heap Scan":
-            assert no["Index Name"] in indices, (
-                f"{rotulo}: indice inesperado {no['Index Name']!r}:\n{plano_json}"
-            )
+        assert no["Index Name"] in indices, (
+            f"{rotulo}: indice inesperado {no['Index Name']!r}:\n{plano_json}"
+        )
+        sorts = [t for t in ancestrais if t in {"Sort", "Incremental Sort"}]
+        assert not sorts, (
+            f"{rotulo}: {sorts} acima do audit_log - o indice nao entrega a "
+            f"ordem do keyset:\n{plano_json}"
+        )
 
 
 @pytest.mark.integration
