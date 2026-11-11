@@ -48,6 +48,7 @@ from src.google_ads.queries.ad_schedule import (
     parse_ad_schedule_row,
 )
 from src.google_ads.queries.recommendations import (
+    TIPOS_SO_LEITURA,
     descrever_divergencia,
     parse_recommendation_detail_row,
     recommendation_detail_query,
@@ -191,6 +192,19 @@ class _Recomendacao:
                 "os valores previstos, entao nao da pra conferir se a recomendacao "
                 "mudou. Nada foi aplicado. Refaca o apply_recommendation para gerar "
                 "um token novo.",
+                customer_id=p.customer_id,
+            )
+        # C2 (revisao final, 11/11): tipo SO LEITURA nunca se aplica por aqui, nem
+        # com token valido. A recusa da tool nao basta: token emitido antes do
+        # deploy (no v24 o tipo era desconhecido e confirmava) traz `valores: {}`,
+        # a reconsulta recalcula a mesma impressao e o recheck acima passaria.
+        if esperado.get("type") in TIPOS_SO_LEITURA:
+            return portas.error_envelope(
+                "apply_recommendation",
+                f"Recomendacao {esperado.get('type')} e so leitura neste MCP: ela troca a "
+                "meta de conversao que a campanha otimiza e a API nao tem parametro de "
+                "apply para ela. Nada foi aplicado. Revise e aplique no painel do Google "
+                "Ads, ou dispense com dismiss_recommendation.",
                 customer_id=p.customer_id,
             )
         linhas = await portas.run_report(

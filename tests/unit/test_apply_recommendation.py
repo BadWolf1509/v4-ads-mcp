@@ -29,8 +29,8 @@ from typing import Any, cast
 from uuid import uuid4
 
 import pytest
-from google.ads.googleads.v24.enums.types.recommendation_type import RecommendationTypeEnum
-from google.ads.googleads.v24.resources.types.recommendation import Recommendation
+from google.ads.googleads.v25.enums.types.recommendation_type import RecommendationTypeEnum
+from google.ads.googleads.v25.resources.types.recommendation import Recommendation
 
 from src.db import connection
 from src.google_ads.queries.recommendations import (
@@ -49,7 +49,7 @@ _CAMPANHA_ID = "22922100363"
 _CAMPANHA_RN = f"customers/{_CUSTOMER}/campaigns/{_CAMPANHA_ID}"
 _REC_RN = f"customers/{_CUSTOMER}/recommendations/NzMyNjkxNjcxNC0xMDAtMTc4ODcxMDQ2NDg4My0"
 
-# A lista dos 23 e LITERAL de proposito. Parametrizar sobre
+# A lista dos 25 e LITERAL de proposito. Parametrizar sobre
 # `TIPOS_QUE_CONFIRMAM` faria a sabotagem "tirar um tipo da whitelist" APAGAR o
 # caso de teste em vez de deixa-lo vermelho — o modo de falha que o CLAUDE.md
 # chama de "asserir o adjacente".
@@ -65,7 +65,7 @@ _REC_RN = f"customers/{_CUSTOMER}/recommendations/NzMyNjkxNjcxNC0xMDAtMTc4ODcxMD
 # Os 5 ultimos entraram pelo EIXO 2 (C1 da revisao final): nao declaram alavanca
 # nenhuma — tres tem mensagem vazia — mas MIGRAM a campanha para Performance Max,
 # e migracao nao tem volta.
-_OS_VINTE_E_TRES = (
+_OS_VINTE_E_CINCO = (
     "CAMPAIGN_BUDGET",
     "FORECASTING_CAMPAIGN_BUDGET",
     "MARGINAL_ROI_CAMPAIGN_BUDGET",
@@ -80,7 +80,9 @@ _OS_VINTE_E_TRES = (
     "SET_TARGET_ROAS",
     "RAISE_TARGET_CPA",
     "RAISE_TARGET_CPA_BID_TOO_LOW",
+    "RAISE_TARGET_CPA_PERFORMANCE_BID_TOO_LOW",
     "LOWER_TARGET_ROAS",
+    "LOWER_TARGET_ROAS_PERFORMANCE_BID_TOO_LOW",
     "FORECASTING_SET_TARGET_CPA",
     "FORECASTING_SET_TARGET_ROAS",
     "USE_BROAD_MATCH_KEYWORD",
@@ -407,12 +409,12 @@ async def test_tipos_fora_da_familia_seguem_auto(
 
 
 # --------------------------------------------------------------------------- #
-# 3. Os 23 da probe do proto.
+# 3. Os 25 da probe do proto.
 # --------------------------------------------------------------------------- #
-def test_a_whitelist_e_exatamente_os_vinte_e_tres() -> None:
+def test_a_whitelist_e_exatamente_os_vinte_e_cinco() -> None:
     """A lista literal acima contra a tabela de producao — nos dois sentidos."""
-    assert frozenset(_OS_VINTE_E_TRES) == TIPOS_QUE_CONFIRMAM
-    assert len(_OS_VINTE_E_TRES) == 23
+    assert frozenset(_OS_VINTE_E_CINCO) == TIPOS_QUE_CONFIRMAM
+    assert len(_OS_VINTE_E_CINCO) == 25
 
 
 def test_as_cinco_migracoes_estao_na_whitelist() -> None:
@@ -480,23 +482,23 @@ async def test_a_razao_da_migracao_chega_ao_preview_do_gestor(
     assert "orcamento" not in env["confirmation_reason"].lower()
 
 
-def test_os_vinte_e_tres_existem_no_enum_do_google() -> None:
+def test_os_vinte_e_cinco_existem_no_enum_do_google() -> None:
     """Nome digitado errado (ou renomeado pelo Google) viraria buraco silencioso."""
     enum = RecommendationTypeEnum.RecommendationType
-    for tipo in _OS_VINTE_E_TRES:
-        assert tipo in enum.__members__, f"{tipo} nao existe no enum do v24"
+    for tipo in _OS_VINTE_E_CINCO:
+        assert tipo in enum.__members__, f"{tipo} nao existe no enum do v25"
 
 
-@pytest.mark.parametrize("tipo", sorted(_OS_VINTE_E_TRES))
+@pytest.mark.parametrize("tipo", sorted(_OS_VINTE_E_CINCO))
 async def test_todo_tipo_da_familia_confirma(monkeypatch: pytest.MonkeyPatch, tipo: str) -> None:
-    """Os 23 vem da leitura do proto, nao de memoria nem de grep no enum."""
+    """Os 25 vem da leitura do proto, nao de memoria nem de grep no enum."""
     env = await _aplicar(monkeypatch, tipo=tipo)
     assert env["status"] == "dry_run", f"{tipo} aplicado sem confirmacao"
     assert env["confirmation_token"]
     assert env["recommendation_type"] == tipo
 
 
-@pytest.mark.parametrize("tipo", sorted(_OS_VINTE_E_TRES))
+@pytest.mark.parametrize("tipo", sorted(_OS_VINTE_E_CINCO))
 def test_todo_tipo_da_familia_tem_traducao_pt(tipo: str) -> None:
     """Confirmar mudanca de lance lendo so o enum em ingles nao e confirmar."""
     from src.google_ads.queries.recommendations import TYPE_PT
@@ -974,7 +976,7 @@ async def test_o_bloco_de_portfolio_nao_entra_no_fingerprint(
 # --------------------------------------------------------------------------- #
 # (tipo, chave do produto, valor esperado com as sentinelas do fake)
 #
-# Literal de proposito, como os 23: derivar de `CAMPOS_DE_DETALHE.derivado`
+# Literal de proposito, como os 25: derivar de `CAMPOS_DE_DETALHE.derivado`
 # apagaria o caso quando alguem tirasse a derivacao da tabela, em vez de
 # reprova-la. As contas: CPA 50.00 x 1.35 = 67.50 (dinheiro, 2 casas);
 # ROAS 4.5 x 1.35 = 6.075 (razao, ate 4 casas — e sem "R$").
@@ -982,6 +984,11 @@ _OS_TRES_COM_PRODUTO = (
     ("RAISE_TARGET_CPA", "target_cpa_novo_brl", 67.5),
     ("RAISE_TARGET_CPA_BID_TOO_LOW", "target_cpa_novo_brl", 67.5),
     ("LOWER_TARGET_ROAS", "target_roas_novo", 6.075),
+    # C2 (11/11), os dois do v25.2. O CPA atual vem em micros (dinheiro); o ROAS
+    # atual vem como `double` CRU, nao em micros como no LOWER_TARGET_ROAS — por
+    # isso a sentinela e a de `numero` (1.35) e o produto 1.35 x 1.35 = 1.8225.
+    ("RAISE_TARGET_CPA_PERFORMANCE_BID_TOO_LOW", "target_cpa_novo_brl", 67.5),
+    ("LOWER_TARGET_ROAS_PERFORMANCE_BID_TOO_LOW", "target_roas_novo", 1.8225),
 )
 
 
@@ -1100,3 +1107,44 @@ async def test_resource_name_de_outra_conta_e_recusado_sem_consultar(
     )
     assert capturado["queries"] == []
     assert capturado["aplicou"] is False
+
+
+# --------------------------------------------------------------------------- #
+# 8. C2 (11/11) — o tipo do v25 que fica SO LEITURA.
+# --------------------------------------------------------------------------- #
+# `CAMPAIGN_SPECIFIC_APP_GOAL` troca a META de conversao que o Smart Bidding
+# otimiza e nao tem parametro de apply no `ApplyRecommendationOperation` do v25.
+# Nao declara alavanca de gasto, entao sem tratamento proprio cairia no AUTO.
+# Decisao do Wellington (11/11): listar, nunca aplicar por aqui.
+_SO_LEITURA = "CAMPAIGN_SPECIFIC_APP_GOAL"
+
+
+async def test_o_tipo_so_leitura_e_recusado_sem_escrever_nada(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capturado = _wire(monkeypatch, tipo=_SO_LEITURA)
+    env = await mod.apply_recommendation(
+        {"customer_id": _CUSTOMER, "recommendation_resource_name": _REC_RN}
+    )
+    assert env["status"] == "error", env
+    assert capturado["aplicou"] is False, "aplicou um tipo so leitura"
+    assert "confirmation_token" not in env, "emitiu token para um tipo so leitura"
+    assert "blast_summary" not in capturado, "gravou pendencia para um tipo so leitura"
+    assert "painel" in env["error_message"].lower()
+
+
+def test_o_tipo_so_leitura_nunca_e_auto_no_blast_radius() -> None:
+    """Defesa em profundidade: se a recusa da tool sumir, o gate ainda pede token."""
+    risk = classify(
+        operation="apply_recommendation",
+        params={"target_count": 1, "recommendation_type": _SO_LEITURA},
+    )
+    assert risk.level is RiskLevel.CONFIRM
+
+
+def test_o_tipo_so_leitura_existe_no_enum_e_tem_traducao() -> None:
+    from src.google_ads.queries.recommendations import TIPOS_SO_LEITURA, TYPE_PT
+
+    assert _SO_LEITURA in RecommendationTypeEnum.RecommendationType.__members__
+    assert frozenset({_SO_LEITURA}) == TIPOS_SO_LEITURA
+    assert TYPE_PT.get(_SO_LEITURA)
