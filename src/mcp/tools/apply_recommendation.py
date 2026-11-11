@@ -12,7 +12,7 @@ enquanto o `update_campaign_budget`, que produz o MESMO efeito, sempre confirmou
 Agora a tool le o tipo (e o detalhe daquele tipo) por GAQL ANTES de decidir, e
 ramifica em `risk.level`:
 
-* tipo dos 23 que mexem em orcamento ou lance, ou que MIGRAM a campanha ->
+* tipo dos 25 que mexem em orcamento ou lance, ou que MIGRAM a campanha ->
   `create_pending` + `preview_envelope`, com os valores em BRL e com o contexto
   da campanha;
 * tipo que o SDK nao conhece -> tambem confirma (ver `blast_radius`);

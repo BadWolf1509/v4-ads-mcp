@@ -49,7 +49,7 @@ _CAMPANHA_ID = "22922100363"
 _CAMPANHA_RN = f"customers/{_CUSTOMER}/campaigns/{_CAMPANHA_ID}"
 _REC_RN = f"customers/{_CUSTOMER}/recommendations/NzMyNjkxNjcxNC0xMDAtMTc4ODcxMDQ2NDg4My0"
 
-# A lista dos 23 e LITERAL de proposito. Parametrizar sobre
+# A lista dos 25 e LITERAL de proposito. Parametrizar sobre
 # `TIPOS_QUE_CONFIRMAM` faria a sabotagem "tirar um tipo da whitelist" APAGAR o
 # caso de teste em vez de deixa-lo vermelho — o modo de falha que o CLAUDE.md
 # chama de "asserir o adjacente".
@@ -409,7 +409,7 @@ async def test_tipos_fora_da_familia_seguem_auto(
 
 
 # --------------------------------------------------------------------------- #
-# 3. Os 23 da probe do proto.
+# 3. Os 25 da probe do proto.
 # --------------------------------------------------------------------------- #
 def test_a_whitelist_e_exatamente_os_vinte_e_cinco() -> None:
     """A lista literal acima contra a tabela de producao — nos dois sentidos."""
@@ -491,7 +491,7 @@ def test_os_vinte_e_cinco_existem_no_enum_do_google() -> None:
 
 @pytest.mark.parametrize("tipo", sorted(_OS_VINTE_E_CINCO))
 async def test_todo_tipo_da_familia_confirma(monkeypatch: pytest.MonkeyPatch, tipo: str) -> None:
-    """Os 23 vem da leitura do proto, nao de memoria nem de grep no enum."""
+    """Os 25 vem da leitura do proto, nao de memoria nem de grep no enum."""
     env = await _aplicar(monkeypatch, tipo=tipo)
     assert env["status"] == "dry_run", f"{tipo} aplicado sem confirmacao"
     assert env["confirmation_token"]
@@ -976,7 +976,7 @@ async def test_o_bloco_de_portfolio_nao_entra_no_fingerprint(
 # --------------------------------------------------------------------------- #
 # (tipo, chave do produto, valor esperado com as sentinelas do fake)
 #
-# Literal de proposito, como os 23: derivar de `CAMPOS_DE_DETALHE.derivado`
+# Literal de proposito, como os 25: derivar de `CAMPOS_DE_DETALHE.derivado`
 # apagaria o caso quando alguem tirasse a derivacao da tabela, em vez de
 # reprova-la. As contas: CPA 50.00 x 1.35 = 67.50 (dinheiro, 2 casas);
 # ROAS 4.5 x 1.35 = 6.075 (razao, ate 4 casas — e sem "R$").

@@ -204,7 +204,7 @@ class ProdutoDerivado:
     Constraint do PR ("confirmar sem ver o numero nao e confirmar") aplicada a um
     alvo de lance em vez de a um orcamento.
 
-    `unidade` NAO e detalhe: nos dois CPA o produto e DINHEIRO (2 casas, com
+    `unidade` NAO e detalhe: nos tres CPA o produto e DINHEIRO (2 casas, com
     "R$"), no ROAS e RAZAO (4 casas, nunca "R$"). Somar ou formatar os dois igual
     seria erro de unidade num numero que o gestor usa pra decidir.
 

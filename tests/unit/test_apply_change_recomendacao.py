@@ -242,3 +242,34 @@ async def test_a_impressao_sobrevive_a_ida_e_volta_por_json(
     out = await mod.apply_change({"confirmation_token": "ABCDEFGH"})
     assert out["status"] == "applied", f"divergencia falsa apos JSON: {out}"
     assert visto["aplicou"] is True
+
+
+@pytest.mark.asyncio
+async def test_token_de_tipo_so_leitura_recusa_sem_ler_nem_aplicar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """C2 (revisao final, 11/11): a recusa nao pode viver so na tool.
+
+    Um token emitido ANTES do deploy (no v24 o tipo era desconhecido e caia em
+    CONFIRM) carrega `valores: {}`, e a reconsulta recalcula a MESMA impressao —
+    o recheck de concorrencia passa e o apply_change aplicava (medido pela
+    revisao). Tirar a recusa da tool teria o mesmo efeito.
+    """
+    impressao = _impressao(
+        type="CAMPAIGN_SPECIFIC_APP_GOAL", current_amount_brl=None, recommended_amount_brl=None
+    )
+    visto = _wire(
+        monkeypatch,
+        saved=_saved(
+            {
+                "recommendation_resource_name": _REC_RN,
+                "__target_count__": 1,
+                "valores_do_preview": impressao,
+            }
+        ),
+    )
+    out = await mod.apply_change({"confirmation_token": "ABCDEFGH"})
+    assert out["status"] == "error", out
+    assert visto["aplicou"] is False, "aplicou um tipo so leitura pelo apply_change"
+    assert visto["queries"] == [], "recusa tem que vir antes de qualquer leitura"
+    assert "painel" in out["error_message"].lower()
