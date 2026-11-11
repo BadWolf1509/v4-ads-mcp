@@ -28,11 +28,18 @@ def _csv_safe(value: str) -> str:
 
 
 # Fonte ÚNICA do nome da conta em toda leitura do audit (página do gestor, detalhe,
-# admin, dashboard): o JOIN e a coluna, com alias fixo `gaa`. Quem lê tem de ter
-# `audit_log` com alias `al`. `google_ads_accounts.customer_id` é PK, então o
-# JOIN não multiplica linha.
-_SQL_NOME_DA_CONTA = "LEFT JOIN google_ads_accounts gaa ON gaa.customer_id = al.customer_id"
-_SQL_COLUNA_NOME_DA_CONTA = "gaa.descriptive_name AS account_name"
+# admin, dashboard): os JOINs e a coluna, com aliases fixos `gaa` e `maa`. Quem lê
+# tem de ter `audit_log` com alias `al`. O audit guarda em `customer_id` o id
+# Google (10 dígitos) OU o `ad_account_id` Meta (`act_<id>`), então os dois JOINs
+# são disjuntos e cada linha casa com no máximo uma conta. Ambos são por PK
+# (`google_ads_accounts.customer_id`, `meta_ad_accounts.ad_account_id`): nenhum
+# JOIN multiplica linha. Conta em nenhum inventário: `account_name` NULL e a
+# tela cai no `customer_id`.
+_SQL_NOME_DA_CONTA = (
+    "LEFT JOIN google_ads_accounts gaa ON gaa.customer_id = al.customer_id "
+    "LEFT JOIN meta_ad_accounts maa ON maa.ad_account_id = al.customer_id"
+)
+_SQL_COLUNA_NOME_DA_CONTA = "COALESCE(gaa.descriptive_name, maa.account_name) AS account_name"
 
 
 class _Filtros:

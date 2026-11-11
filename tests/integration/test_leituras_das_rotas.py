@@ -305,6 +305,33 @@ async def test_list_recent_for_manager_cinco_ultimas_com_nome_da_conta(db) -> No
 
 
 @pytest.mark.integration
+async def test_nome_da_conta_do_audit_vale_para_google_e_meta_em_toda_leitura(db) -> None:
+    """Fonte unica do nome (G5): Google -> descriptive_name, Meta (`act_...`) ->
+    account_name, conta em nenhum inventario -> None (a tela cai no customer_id).
+    Cobre as quatro leituras: dashboard, detalhe, pagina do gestor e do admin."""
+    async with db.acquire() as conn:
+        g = await seed_manager(conn)
+        await _conta_google(conn, "1111111111")
+        await _conta_meta(conn, "act_222")
+        ids = {}
+        for cid in ("1111111111", "act_222", "act_sem_cadastro"):
+            ids[cid] = await _registrar(conn, g, f"op_{cid}", customer_id=cid)
+
+        recentes = await audit_log.list_recent_for_manager(conn, g)
+        pagina, _ = await audit_log.list_page_for_manager(conn, manager_id=g)
+        admin, _ = await audit_log.list_page_admin(conn)
+        detalhes = {
+            cid: await audit_log.get_by_id(conn, audit_id=i, manager_id=g) for cid, i in ids.items()
+        }
+
+    esperado = {"1111111111": "G", "act_222": "M", "act_sem_cadastro": None}
+    for leitura in (recentes, pagina, admin):
+        assert len(leitura) == 3  # o JOIN novo nao multiplica linha
+        assert {r["customer_id"]: r["account_name"] for r in leitura} == esperado
+    assert {c: d["account_name"] for c, d in detalhes.items()} == esperado
+
+
+@pytest.mark.integration
 async def test_list_for_manager_todas_as_conexoes_a_mais_recente_primeiro(db) -> None:
     async with db.acquire() as conn:
         g = await seed_manager(conn)
