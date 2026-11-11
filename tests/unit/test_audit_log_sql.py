@@ -507,3 +507,31 @@ async def test_construtor_emite_o_mesmo_sql_e_params(
     sql, params = await _executa(construtor, kw)
     assert _norm(sql) == sql_esperado
     assert list(params) == params_esperados
+
+
+def test_filtros_vazio_vira_true() -> None:
+    f = audit_log._Filtros()
+    assert f.sql == "TRUE"
+    assert f.params == []
+
+
+def test_filtros_numera_os_placeholders_na_ordem_dos_params() -> None:
+    f = audit_log._Filtros()
+    f.add("a = {}", "x")
+    f.add("b > now() - ({} || ' days')::interval", "7")
+    f.add_cursor(_TS, 42)
+    limite = f.add_limit(51)
+    assert f.sql == (
+        "a = $1 AND b > now() - ($2 || ' days')::interval AND "
+        "($3::timestamptz IS NULL OR (al.occurred_at, al.id) < ($3, $4))"
+    )
+    assert limite == "$5"
+    assert f.params == ["x", "7", _TS, 42, 51]
+
+
+def test_filtros_sem_cursor_mantem_a_numeracao() -> None:
+    f = audit_log._Filtros()
+    f.add("a = {}", 1)
+    f.add_cursor(None, None)
+    assert f.add_limit(10) == "$4"
+    assert f.params == [1, None, None, 10]
