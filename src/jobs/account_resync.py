@@ -10,6 +10,7 @@ Entry point: `python -m src.jobs.account_resync`
 import asyncio
 import sys
 from datetime import UTC, datetime
+from enum import Enum
 from typing import Any
 
 import asyncpg
@@ -23,7 +24,6 @@ from src.db.repositories import (
     google_ads_accounts,
     google_oauth_connections,
     manager_account_access,
-    managers,
 )
 from src.google_ads.accounts import (
     fetch_account_details,
@@ -40,18 +40,28 @@ from src.logging import configure_logging
 log = structlog.get_logger(__name__)
 
 
-async def _pick_oauth_connection(conn: asyncpg.Connection) -> tuple[Any, Any]:
-    """Return (manager, oauth_conn) for the first active admin's OAuth.
+class Desfecho(Enum):
+    """Desfecho da etapa Google (Parte J2, 11/11) — antes `bool | None`.
 
-    Falls back to any active connection if no admin has one.
+    `SEM_OAUTH` encerra o job (Meta e purge nao rodam); `FALHOU` e bloqueio
+    auditado como erro: o job termina o resto e sai com 1.
+    """
+
+    OK = "ok"
+    FALHOU = "falhou"
+    SEM_OAUTH = "sem_oauth"
+
+
+async def _pick_oauth_connection(conn: asyncpg.Connection) -> Any | None:
+    """A conexao OAuth do primeiro admin ativo; na falta, a mais recente ativa.
+
+    Parte J2: devolvia `(manager, conexao)` e lia `managers.get_by_id` a cada
+    execucao — o gestor nao era usado por ninguem.
     """
     oc = await google_oauth_connections.pick_admin_active(conn)
     if oc is None:
         oc = await google_oauth_connections.pick_latest_active(conn)
-    if oc is None:
-        return None, None
-    m = await managers.get_by_id(conn, oc.manager_id)
-    return m, oc
+    return oc
 
 
 async def reconcile_google(
@@ -232,14 +242,18 @@ async def run() -> int:
 
     async def _corpo() -> int:
         pool = connection.get_pool()
-        falhou_google = await _etapa_google(pool, settings)
-        if falhou_google is None:
+        desfecho_google = await _etapa_google(pool, settings)
+        if desfecho_google is Desfecho.SEM_OAUTH:
             return 1
+        falhou_google = desfecho_google is Desfecho.FALHOU
         falhou_meta = await _etapa_meta(pool)
-        # O purge NÃO entra no exit code: falha dele é non-fatal desde sempre
-        # (o retorno fica para quem quiser observá-lo, não para o Cloud Run).
-        await _etapa_purge(pool)
-        return 1 if falhou_google or falhou_meta else 0
+        # F207 (11/11): o purge ENTRA no exit code. A unica policy que ve o job e
+        # "Cloud Run Job: execucao FALHOU" (exit code); falha que so ia ao log
+        # ficava invisivel. Como o bloqueio e a falha Meta (Task 5), o job termina
+        # o que faz e so entao sai com 1 — o retry reexecuta a reconciliacao, que
+        # e idempotente por dia (F157).
+        falhou_purge = await _etapa_purge(pool)
+        return 1 if falhou_google or falhou_meta or falhou_purge else 0
 
     # F93: crash inesperado (build_client, fetch_account_details, upsert_many)
     # nao pode sumir da trilha — o rastro ficaria so no Cloud Run.
@@ -267,12 +281,12 @@ async def run() -> int:
     )
 
 
-async def _etapa_google(pool: connection.PoolValidado, settings: Settings) -> bool | None:
-    """Reconcilia o inventário Google contra o MCC. True = falhou (bloqueio).
+async def _etapa_google(pool: connection.PoolValidado, settings: Settings) -> Desfecho:
+    """Reconcilia o inventário Google contra o MCC e devolve o `Desfecho`.
 
-    Três desfechos, e o terceiro ENCERRA o job (Meta e purge não rodam):
-    `False` (ok), `True` (bloqueio auditado como erro — o job termina o resto
-    e sai com 1) e `None` (sem OAuth connection: auditado e exit 1 imediato).
+    Três desfechos (`Desfecho`), e o terceiro ENCERRA o job (Meta e purge não
+    rodam): `OK`, `FALHOU` (bloqueio auditado como erro — o job termina o resto
+    e sai com 1) e `SEM_OAUTH` (auditado e exit 1 imediato).
     Exceção aqui sobe para `executar_job` (crash F93) — também sem Meta/purge.
 
     F85: `[]` sem exceção é anomalia de leitura, não "o MCC ficou vazio".
@@ -308,21 +322,25 @@ async def _etapa_google(pool: connection.PoolValidado, settings: Settings) -> bo
     por dia (F157), entao repetir um bloqueio e inofensivo.
     """
     async with pool.acquire() as conn:
-        manager, oc = await _pick_oauth_connection(conn)
+        oc = await _pick_oauth_connection(conn)
         if oc is None:
             log.error("resync_no_oauth_connection")
             print(
                 "No active OAuth connection — bootstrap an admin and have them complete /oauth/google/start first.",
                 file=sys.stderr,
             )
-            await record_job_run(
-                conn,
-                operation="google_reconcile",
-                platform="google",
-                status="error",
-                error_message="no active OAuth connection",
-            )
-            return None
+            # F207 (11/11): o audit e bookkeeping do desfecho "sem OAuth", nao o
+            # desfecho. Falhando, ele subia como excecao e o job virava CRASH
+            # (outra classificacao no audit e no alerta) em vez do exit 1 previsto.
+            async with best_effort("job_run_audit_failed", operation="google_reconcile"):
+                await record_job_run(
+                    conn,
+                    operation="google_reconcile",
+                    platform="google",
+                    status="error",
+                    error_message="no active OAuth connection",
+                )
+            return Desfecho.SEM_OAUTH
 
     master_key = derive_master_key_from_settings(settings.aes_master_key)
     refresh_token = decrypt_refresh_token(oc.refresh_token_enc, master_key)
@@ -395,7 +413,7 @@ async def _etapa_google(pool: connection.PoolValidado, settings: Settings) -> bo
 
     log.info("resync_complete", **resumo)
     print(f"OK: google reconcile — {resumo}")
-    return resumo["blocked_reason"] is not None
+    return Desfecho.FALHOU if resumo["blocked_reason"] is not None else Desfecho.OK
 
 
 async def _etapa_meta(pool: connection.PoolValidado) -> bool:
@@ -445,29 +463,41 @@ async def _etapa_meta(pool: connection.PoolValidado) -> bool:
 async def _etapa_purge(pool: connection.PoolValidado) -> bool:
     """Purge diário de tabelas transientes. True = falhou.
 
-    Limpa pending_confirmations, rate_counters e meta_rate_counters.
-    Best-effort: falha de purge não derruba o resync e NÃO entra no exit code
-    (quem chama ignora o retorno de propósito). audit_log NUNCA é purgado
-    (compliance) — não faz parte deste escopo.
+    Limpa pending_confirmations, rate_counters e meta_rate_counters. Falha do
+    purge não interrompe o resto e ENTRA no exit code (F207, 11/11), com linha
+    `db_purge`/`error` no audit. audit_log NUNCA é purgado (compliance).
+
+    O purge e o audit dele são etapas SEPARADAS (F207): até 11/11 um `try` só
+    cobria os dois, e um purge que apagou com o audit falhando saía como "purge
+    falhou". Audit que falha depois do purge é bookkeeping (F83): loga e não
+    muda o desfecho.
     """
     try:
         counts = await purge_expired(pool)
-        total_purged = sum(counts.values())
-        async with pool.acquire() as conn:
+    except Exception as e:  # noqa: BLE001
+        log.error("db_purge_failed", error=str(e))
+        print(f"ERRO: purge falhou: {e}", file=sys.stderr)
+        async with best_effort("db_purge_audit_failed"), pool.acquire() as conn:
             await record_job_run(
                 conn,
                 operation="db_purge",
                 platform="google",
-                status="success",
-                target_count=total_purged,
-                params_summary=counts,
+                status="error",
+                error_message=str(e)[:500],
             )
-        print(f"OK: purged {total_purged} rows ({counts})")
-        return False
-    except Exception as e:  # noqa: BLE001
-        log.warning("db_purge_failed", error=str(e))
-        print(f"WARN: purge falhou (non-fatal): {e}", file=sys.stderr)
         return True
+    total_purged = sum(counts.values())
+    async with best_effort("db_purge_audit_failed"), pool.acquire() as conn:
+        await record_job_run(
+            conn,
+            operation="db_purge",
+            platform="google",
+            status="success",
+            target_count=total_purged,
+            params_summary=counts,
+        )
+    print(f"OK: purged {total_purged} rows ({counts})")
+    return False
 
 
 def main() -> int:

@@ -1,6 +1,6 @@
-"""Esqueleto comum dos Cloud Run Jobs de reconciliação.
+"""Esqueleto comum dos Cloud Run Jobs (os dois de reconciliação e, desde a Parte J1, o backup).
 
-Os dois jobs (`account_resync`, `meta_resync`) repetiam o mesmo invólucro: abrir
+Os jobs (`account_resync`, `meta_resync`, `backup`) repetiam o mesmo invólucro: abrir
 o pool, rodar o corpo, auditar crash inesperado (F93) e re-levantar, e fechar o
 pool no `finally`. O invólucro vive aqui uma vez; o corpo de cada job decide o
 exit code.
@@ -15,8 +15,12 @@ próprio job — `structlog.configure` é estado global do processo pytest
 from collections.abc import Awaitable, Callable
 from typing import Literal
 
+import structlog
+
 from src.db import connection
 from src.jobs._audit import record_job_crash
+
+log = structlog.get_logger(__name__)
 
 RegistrarCrash = Callable[..., Awaitable[None]]
 
@@ -39,7 +43,16 @@ async def executar_job(
     `registrar_crash` existe para o job passar o nome resolvido no PRÓPRIO
     namespace: é lá que os testes do job o substituem.
     """
-    await connection.init_pool(database_url)
+    # F207 (11/11): sem pool nao ha banco para o audit. O rastro possivel e uma
+    # linha ERROR estruturada (`event`, `operation`, `platform`) — o job ja
+    # chamou `configure_logging` antes daqui, entao sai como jsonPayload, pronta
+    # para uma metrica log-based. A excecao sobe: o Cloud Run ve a execucao
+    # falhar, que e o que a policy de job enxerga.
+    try:
+        await connection.init_pool(database_url)
+    except Exception as e:
+        log.error("job_init_pool_failed", operation=operation, platform=platform, error=str(e))
+        raise
     try:
         return await corpo()
     except Exception as e:

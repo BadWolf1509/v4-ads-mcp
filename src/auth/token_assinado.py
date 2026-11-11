@@ -8,8 +8,10 @@ claims `aud` e `iat` embutidas. Dois módulos tinham cada um a sua cópia deste
 formato; as duas cópias eram idênticas salvo pelo texto das mensagens de erro,
 que agora é dado (`MensagensDeErro`) e não código.
 
-`verificar` confere, nesta ordem: formato → HMAC → JSON → dict → audiência →
-`iat` inteiro → TTL. A ordem importa: nada do payload é confiável antes do HMAC.
+`verificar` confere, nesta ordem: formato → HMAC → JSON (UTF-8, dígitos dentro do
+limite do `json.loads`) → dict → audiência → `iat` inteiro (não `bool`, magnitude
+até 2**53) e no máximo `FOLGA_DE_RELOGIO_S` no futuro → TTL. A ordem importa: nada
+do payload é confiável antes do HMAC. Toda recusa sai como `erro` (F210).
 
 Privado a `oauth_state` e `panel_session`: `assinar`/`verificar` aceitam a união de
 audiências, então só os wrappers tipados deles podem importá-lo. O guard
@@ -43,6 +45,19 @@ class MensagensDeErro:
     iat: str
     expirado: str
 
+
+# F210 (11/11): `iat` no futuro alem disto e recusado. Sem limite, `iat=10**30`
+# nunca expirava (`now - iat` negativo). A folga cobre relogio adiantado entre a
+# instancia que assina e a que confere — o `leeway` dos validadores de JWT
+# (RFC 7519; PyJWT recusa `iat` no futuro alem dele).
+FOLGA_DE_RELOGIO_S = 300
+# O CLI de admin (`src/scripts/admin.py`, convite) assina na maquina do operador:
+# relogio do notebook mais de 5 min adiantado faz o convite ser recusado.
+
+# Teto de magnitude do `iat`, antes de qualquer conta com `time.time()` (float):
+# `iat` com centenas de digitos estourava `OverflowError` ou caia em "expirado".
+# 2**53 e o maior inteiro exato num float — muito alem de qualquer instante real.
+_IAT_MAXIMO = 2**53
 
 MENSAGENS_STATE = MensagensDeErro(
     malformado="Malformed state",
@@ -116,7 +131,10 @@ def verificar(
 
     try:
         raw: Any = json.loads(body.decode("utf-8"))
-    except json.JSONDecodeError as e:
+    except ValueError as e:
+        # F210: `ValueError` cobre `JSONDecodeError`, `UnicodeDecodeError` (corpo
+        # nao-UTF-8) e o limite de 4300 digitos do `json.loads` — os tres saiam
+        # crus, fora do contrato de erro do chamador (que so trata `erro`).
         raise erro(mensagens.json) from e
 
     if not isinstance(raw, dict):
@@ -126,9 +144,13 @@ def verificar(
         raise erro(mensagens.audiencia.format(aud=aud))
 
     iat = raw.get("iat")
-    if not isinstance(iat, int):
+    # `bool` e subclasse de `int`: `"iat": true` passava como o instante 1.
+    if not isinstance(iat, int) or isinstance(iat, bool) or abs(iat) > _IAT_MAXIMO:
         raise erro(mensagens.iat)
-    if (time.time() - iat) > ttl:
+    agora = time.time()
+    if iat - agora > FOLGA_DE_RELOGIO_S:
+        raise erro(mensagens.iat)
+    if (agora - iat) > ttl:
         raise erro(mensagens.expirado)
 
     raw.pop("iat", None)

@@ -6093,7 +6093,7 @@ do plano [`2026-11-03-varredura-refatoracao.md`](../superpowers/plans/2026-11-03
 **Prova em produção:** entrada inválida chega com texto acionável. **Não medido:** o caminho
 `denied` Meta em produção.
 
-## F207 (MEDIUM, ABERTO) — quatro falhas silenciosas pré-existentes nos jobs, achadas na parte H
+## F207 (MEDIUM, ✅ CORRIGIDO 2026-11-11, #244) — quatro falhas silenciosas pré-existentes nos jobs, achadas na parte H
 
 Achados ao extrair o esqueleto comum dos jobs (`executar_job`, Task H1 da varredura de 03/11); o
 revisor confirmou que **nenhum foi introduzido nem agravado** pela refatoração. Mesmo padrão: o job
@@ -6112,8 +6112,32 @@ falha e o sinal não chega a quem vigia.
 
 **Próximo passo:** um TDD por bug num PR só. Os logs foram lidos em 11/11: as 8 execuções de 04 a
 11/11 terminaram com sucesso, e o log de 11/11 mostra as três etapas (Google 24 contas, `complete:
-True`; Meta +2; purge de 5 linhas) e `exit(0)` — nenhuma das quatro falhas disparou no período. O 4º pede decisão: sem banco, o rastro possível é log
-estruturado com alerta log-based, não o audit.
+True`; Meta +2; purge de 5 linhas) e `exit(0)` — nenhuma das quatro falhas disparou no período.
+
+**✅ O que foi feito (11/11, #244).** Medido antes: a única policy que enxerga um Cloud Run Job é
+"Cloud Run Job: execucao FALHOU" (exit code); a `severity>=ERROR` é do serviço, não do job. Padrão:
+desfecho observável — todo desfecho sai no exit code e no audit, e a falha da operação fica separada
+da falha do bookkeeping (o corte do F83).
+- **Purge:** falha sai com exit 1 (como o bloqueio e a falha Meta da Task 5; o retry é inofensivo,
+  F157 — conferido pela revisão: carência e revogação se baseiam em estado) e grava
+  `db_purge`/`error`. A policy vê a execução **depois dos retries**: falha que passa no retry não
+  alerta e fica só a linha no audit, como o bloqueio.
+- **Mensagem do purge:** purge e audit em etapas separadas; audit que falha depois do purge é
+  `db_purge_audit_failed` (best-effort) e o desfecho continua "OK: purged".
+- **Sem OAuth:** o audit desse desfecho entrou em `best_effort`; falhando, o job sai com 1 em vez de
+  virar crash.
+- **`init_pool`:** `executar_job` emite `job_init_pool_failed` (ERROR, `operation`, `platform`,
+  `error`) e re-levanta.
+
+Guards em `tests/unit/test_f207_jobs_silenciosos.py`, os quatro vermelhos contra o código anterior
+(rodados com as versões de `origin/main` copiadas por cima) e verdes agora. Os dois testes de
+caracterização que fixavam o exit 0 do purge mudaram de propósito.
+
+**Fora, com o motivo:** o `backup.py` tem a mesma lacuna do `init_pool` e não chama
+`configure_logging` (logs em texto puro) — vai na Parte J (J1, backup no esqueleto comum). O alerta
+log-based sobre `job_init_pool_failed` não foi criado (configuração
+de infra fora do repositório; decisão do Wellington, 11/11). A execução que falha no `init_pool` já
+dispara a policy de job falho pelo exit code; o evento é o rastro forense.
 
 ---
 
@@ -6211,15 +6235,16 @@ A revisão final pegou dois casos: o admin desligado, que ainda tem `role='admin
 
 ---
 
-## F210 (LOW, em parte, achado em 2026-11-10) — o codec de token assinado aceita o que devia recusar
+## F210 (LOW, ✅ CORRIGIDO 2026-11-11, #240 e #245) — o codec de token assinado aceita o que devia recusar
 
 Achados na revisão da Task H1 (#235). O probe diferencial entre o código antigo e o novo deu saída idêntica, então os três são **pré-existentes**. Todos exigem a chave de assinatura.
 
-- **`iat` futuro aceito sem limite — ABERTO** (`src/auth/token_assinado.py:131`).
+- **`iat` futuro aceito sem limite — ✅ CORRIGIDO 2026-11-11, #245** (`src/auth/token_assinado.py`).
   - A checagem é só `(time.time() - iat) > ttl`, então um token com `iat=10**30` nunca expira.
-  - Remédio provável: recusar `iat` além de uma folga de relógio.
-- **Corpo não-UTF-8 com HMAC válido — ABERTO** (`token_assinado.py:118`, `body.decode("utf-8")`).
-  - Levanta `UnicodeDecodeError` cru em vez do erro do domínio (`MensagensDeErro`).
+  - Correção: `iat` além de `FOLGA_DE_RELOGIO_S = 300` no futuro é recusado (o `leeway` dos validadores de JWT, RFC 7519/PyJWT); `iat` booleano também (subclasse de `int`, passava como o instante 1).
+  - Guards: casos novos em `test_mensagens_de_erro_iguais` e `test_iat_no_futuro_vale_so_dentro_da_folga_de_relogio` (`now + 300` vale, `+ 301` recusa), vermelhos antes do conserto.
+- **Corpo não-UTF-8 com HMAC válido — ✅ CORRIGIDO 2026-11-11, #245** (`body.decode("utf-8")`).
+  - Levantava `UnicodeDecodeError` cru em vez do erro do domínio; agora dá a mensagem de JSON inválido de cada audiência. Guard: caso novo em `test_mensagens_de_erro_iguais`.
 - **Codec usável pelo reexport — ✅ CORRIGIDO 2026-11-11, #240.**
   - Sintoma: `oauth_state` e `panel_session` importam `assinar`/`verificar`, que viram atributos deles. `from src.auth.oauth_state import assinar` cunhava token de audiência arbitrária, e o guard `test_token_assinado_privado` não via.
   - Guard novo: `test_ninguem_usa_o_codec_pelo_reexport_dos_wrappers`, com os nomes derivados do AST dos wrappers.
@@ -6227,7 +6252,10 @@ Achados na revisão da Task H1 (#235). O probe diferencial entre o código antig
 
 **Fora, com o motivo:**
 - O scanner não trata import relativo nem formas dinâmicas (`getattr` com nome variável, `importlib`). Hoje o mypy strict com `no_implicit_reexport` recusa as formas diretas.
-- Os dois ABERTOS não têm teste fixo (minor da H1).
+- Tokens com `iat` no futuro dentro da folga continuam válidos por `ttl + folga` a partir de agora (custo aceito do `leeway`).
+- A revisão final do #245 achou a mesma classe em mais duas formas, fechadas no mesmo PR: `iat` com centenas de dígitos (`OverflowError` na conta com float, ou "expirado" no negativo) e mais de 4300 dígitos (`ValueError` do limite do `json.loads`). Teto de magnitude `2**53` e `except ValueError`; casos novos no parametrizado, vermelhos antes.
+- O `iat` recusado por estar no futuro reusa a mensagem de `iat` de cada audiência — no painel ela diz "Missing iat", que engana no log (`panel_session_invalid`); mudar o texto mexeria no contrato das duas.
+- O convite do CLI de admin é assinado na máquina do operador: relógio mais de 5 min adiantado faz o convite ser recusado.
 
 ---
 
