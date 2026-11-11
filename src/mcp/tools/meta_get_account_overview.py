@@ -152,7 +152,6 @@ async def meta_get_account_overview(
             edge=edge,
             params=params_atual,
             operation_name="meta_get_account_overview",
-            estimated_calls=1,
             audit_this_call=True,
             params_summary={
                 "ad_account_id": ad_account_id,
@@ -169,7 +168,6 @@ async def meta_get_account_overview(
             edge=edge,
             params=params_anterior,
             operation_name="meta_get_account_overview",
-            estimated_calls=1,
             audit_this_call=False,
         )
     except (MetaAccessDeniedError, MetaAdsFriendlyError) as e:

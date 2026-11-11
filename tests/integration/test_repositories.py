@@ -303,13 +303,11 @@ async def test_access_grant_all_active(db) -> None:
         accounts = await manager_account_access.list_accounts_for_manager(conn, mid)
         assert len(accounts) == 2
 
-        # Task 3: a re-execução passou a TOCAR as 2 linhas (era `DO NOTHING`,
-        # que devolvia 0). Sob revogação soft a linha revogada persiste, e o
-        # `DO NOTHING` pulava em silêncio justo a conta que o gestor tinha
-        # perdido — reconceder tem que RESTAURAR, não ignorar (espelha o gêmeo
-        # Meta, test_meta_access_grant_all_active).
+        # Decisão de 11/11 ("só tocar o que muda"): a re-execução sobre
+        # concessões ativas e iguais não toca nada e devolve 0. Restaurar a
+        # revogada continua (test_grant_all_active_restaura_grant_revogado).
         n2 = await manager_account_access.grant_all_active(conn, manager_id=mid)
-        assert n2 == 2
+        assert n2 == 0
         assert len(await manager_account_access.list_accounts_for_manager(conn, mid)) == 2
 
 
@@ -1281,13 +1279,11 @@ async def test_meta_access_grant_all_active(db) -> None:
         accounts = await manager_meta_account_access.list_accounts_for_manager(conn, mid)
         assert len(accounts) == 2
 
-        # I4 (revisao de branch): a re-execucao passou a tocar as 2 linhas (era
-        # `DO NOTHING`, que devolvia 0). O que importa nao e o numero e sim que
-        # reconceder RESTAURA: sob revogacao soft a linha revogada persiste, e o
-        # `DO NOTHING` pulava em silencio justo a conta em que o gestor tinha
-        # perdido acesso — "conceder tudo" dava tudo MENOS o que ele ja perdera.
+        # Decisão de 11/11 ("só tocar o que muda"), igual ao gêmeo Google: a
+        # re-execução sobre concessões ativas e iguais devolve 0. Restaurar a
+        # revogada continua (..._restaura_grant_revogado, abaixo).
         n2 = await manager_meta_account_access.grant_all_active(conn, manager_id=mid)
-        assert n2 == 2
+        assert n2 == 0
         assert len(await manager_meta_account_access.list_accounts_for_manager(conn, mid)) == 2
 
 

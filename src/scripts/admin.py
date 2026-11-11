@@ -12,7 +12,7 @@ Usage (run from project root with venv active):
   python -m src.scripts.admin invite --email wellington.ribeiro@v4company.com [--base-url https://...]
 
   # Grant a manager access to all currently-active accounts
-  python -m src.scripts.admin grant-all --email wellington.ribeiro@v4company.com
+  python -m src.scripts.admin grant-all --email gestor@v4company.com --by wellington.ribeiro@v4company.com
 
   # Create an MCP session token (printed once)
   python -m src.scripts.admin create-session --email wellington.ribeiro@v4company.com --label "Claude Desktop"
@@ -142,9 +142,16 @@ async def cmd_grant_all(args: argparse.Namespace) -> int:
         if m is None:
             print(f"Manager not found: {args.email}", file=sys.stderr)
             return 1
+        # Decisão de 11/11: o autor da concessão é o ADMIN que roda o CLI
+        # (`--by`), não o próprio gestor. Até 11/11 o CLI gravava o gestor como
+        # autor de si mesmo e, com a G0, reescrevia o autor de toda linha viva.
+        autor = await managers.get_by_email(conn, args.by)
+        if autor is None or autor.role != "admin":
+            print(f"--by precisa ser um admin existente: {args.by}", file=sys.stderr)
+            return 1
         async with conn.transaction():
             n = await manager_account_access.grant_all_active(
-                conn, manager_id=m.id, granted_by=m.id
+                conn, manager_id=m.id, granted_by=autor.id
             )
             await audit_log.record(
                 conn,
@@ -154,17 +161,11 @@ async def cmd_grant_all(args: argparse.Namespace) -> int:
                 action_type="system",
                 operation="cli_grant_all",
                 target_count=n,
-                # `n` conta linhas TOCADAS por grant_all_active (inclui
-                # re-concessões, F167), não só concessões novas: n > 0 é
-                # "tocou alguma linha", não "mudou o acesso".
+                # Desde 11/11 `n` conta só o que MUDOU (nova, restaurada ou
+                # promovida): concessão ativa e igual não é tocada.
                 had_effect=n > 0,
             )
-    # I3 (revisão de branch): `n` é linhas TOCADAS pelo `ON CONFLICT DO
-    # UPDATE` (Task 3) — inclui contas já concedidas e restauradas, não só
-    # as genuinamente novas. Rodar grant-all duas vezes num gestor com
-    # tudo concedido tocava 0 linhas novas e ainda imprimia "N new
-    # accounts". Mensagem não afirma mais "new".
-    print(f"Access granted for {n} active accounts (includes accounts already granted).")
+    print(f"Access granted or restored for {n} accounts (unchanged grants were left as is).")
     return 0
 
 
@@ -242,6 +243,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_grant = sub.add_parser("grant-all", help="Grant a manager access to all active accounts")
     p_grant.add_argument("--email", required=True)
+    p_grant.add_argument("--by", required=True, help="Email of the admin granting the access")
 
     p_sess = sub.add_parser("create-session", help="Issue an MCP Bearer for a manager")
     p_sess.add_argument("--email", required=True)

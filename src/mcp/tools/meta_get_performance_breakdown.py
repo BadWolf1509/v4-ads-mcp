@@ -150,7 +150,6 @@ async def meta_get_performance_breakdown(
             edge=edge,
             params=params,
             operation_name="meta_get_performance_breakdown",
-            estimated_calls=1,
             max_pages=_MAX_PAGES,
             audit_this_call=True,
             params_summary={

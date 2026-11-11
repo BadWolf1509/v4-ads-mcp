@@ -70,9 +70,10 @@ async def grant_all_active(
     independente de vir de parâmetro ou literal — por isso a cláusula também
     promove aqui, não só no `bulk_grant` (que recebe `access_level` de fora).
 
-    F167 (decisão de 10/11, "atualizar sempre"): reconceder registra quem e quando
-    — o ON CONFLICT seta `granted_at = now()` e `granted_by = EXCLUDED.granted_by`,
-    como o gêmeo Meta, tanto em linha revogada quanto em linha ativa.
+    F167: reconceder registra quem e quando — o ON CONFLICT seta `granted_at =
+    now()` e `granted_by = EXCLUDED.granted_by`. Decisão de 11/11 ("só tocar o
+    que muda"): aqui só na linha nova, revogada ou promovida; a concessão ativa no
+    mesmo nível fica intacta e não entra na contagem devolvida.
     SQL no núcleo (`_acesso_comum.grant_all_active`).
     """
     return await _acesso_comum.grant_all_active(

@@ -10,26 +10,67 @@ from __future__ import annotations
 
 import ast
 
+import pytest
+
 from tests.unit import _guard_harness as h
 
 _GOOGLE_ADS = h.SRC / "google_ads"
 
 
+def _e_chamada(no: ast.AST, metodo: str) -> bool:
+    return (
+        isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute) and no.func.attr == metodo
+    )
+
+
+def _colecao_vazia(no: ast.AST) -> bool:
+    return (isinstance(no, ast.List | ast.Tuple) and not no.elts) or (
+        isinstance(no, ast.Call)
+        and isinstance(no.func, ast.Name)
+        and no.func.id in ("list", "tuple")
+        and not no.args
+    )
+
+
+def _inventa_valor(no: ast.AST) -> bool:
+    """As formas de preencher campo ausente que o guard ja viu ou que a revisao listou.
+
+    - `d.get(k, 0)` / `d.pop(k, 0)` — default explicito (a forma original);
+    - `d.get(k) or 0` — o `None` do ausente vira o valor do lado direito
+      (follow-up da Parte I, 11/11: passava no guard antigo);
+    - `d.setdefault(k, ...)` — grava o default no proprio dict;
+    - `{**DEFAULTS, **d}` / `{"impressions": 0, **d}` — mescla com defaults:
+      dict literal com desempacotamento E mais alguma entrada;
+    - `DEFAULTS | d` / `d | {...}` — a mesma mescla pelo operador.
+    """
+    if (_e_chamada(no, "get") or _e_chamada(no, "pop")) and isinstance(no, ast.Call):
+        return (len(no.args) + len(no.keywords)) >= 2
+    if _e_chamada(no, "setdefault"):
+        return True
+    if isinstance(no, ast.BoolOp) and isinstance(no.op, ast.Or):
+        # `d.get(k) or []`/`or ()` fica de fora: para campo REPETIDO do proto
+        # (FieldMask, listas) "ausente" e "vazio" sao o mesmo estado — nao ha
+        # valor inventado, ha a colecao vazia que o proto ja quer dizer.
+        if _colecao_vazia(no.values[-1]):
+            return False
+        return any(_e_chamada(v, "get") for v in no.values[:-1])
+    if isinstance(no, ast.Dict):
+        return None in no.keys and len(no.keys) >= 2
+    if isinstance(no, ast.BinOp) and isinstance(no.op, ast.BitOr):
+        return isinstance(no.left, ast.Dict) or isinstance(no.right, ast.Dict)
+    return False
+
+
 def _get_com_default(fonte: str) -> list[tuple[str, int]]:
-    """(funcao, linha) de cada `.get(...)` com 2+ argumentos dentro de `dict_to_*`."""
+    """(funcao, linha) de cada forma de inventar valor dentro de `dict_to_*`."""
     achados: list[tuple[str, int]] = []
     for fn in h.funcoes(ast.parse(fonte)):
         if not fn.name.startswith("dict_to_"):
             continue
         for no in ast.walk(fn):
-            if (
-                isinstance(no, ast.Call)
-                and isinstance(no.func, ast.Attribute)
-                and no.func.attr == "get"
-                and (len(no.args) + len(no.keywords)) >= 2
-            ):
+            if _inventa_valor(no):
                 achados.append((fn.name, no.lineno))
-    return achados
+    return sorted(set(achados))
 
 
 def _funcoes_dict_to(fonte: str) -> int:
@@ -58,3 +99,33 @@ def test_scanner_enxerga_get_com_default() -> None:
     assert _get_com_default(ruim) == [("dict_to_x", 2)]
     assert _get_com_default(bom) == []
     assert _get_com_default(fora) == []
+
+
+def _fonte(corpo: str) -> str:
+    return "def dict_to_x(d):\n    return " + corpo + "\n"
+
+
+@pytest.mark.parametrize(
+    "corpo",
+    [
+        'int(d.get("impressions") or 0)',
+        'int(d.pop("impressions", 0))',
+        'd.setdefault("impressions", 0)',
+        "{**_PADRAO, **d}",
+        '{"impressions": 0, **d}',
+        'd | {"impressions": 0}',
+        '_PADRAO | d if False else {**d, "clicks": 0}',
+    ],
+)
+def test_scanner_enxerga_as_formas_alem_do_get(corpo: str) -> None:
+    """O guard antigo (so `.get` com 2 args) devolvia [] para todas estas."""
+    assert _get_com_default(_fonte(corpo)), corpo
+
+
+@pytest.mark.parametrize(
+    "corpo",
+    ['d["impressions"]', 'd.get("campaign_id")', "{**d}", 'tuple(d.get("changed_fields") or [])'],
+)
+def test_scanner_nao_acusa_leitura_estrita(corpo: str) -> None:
+    """Contraprova: copiar o dict, ler estrito e `.get` de um argumento passam."""
+    assert not _get_com_default(_fonte(corpo)), corpo

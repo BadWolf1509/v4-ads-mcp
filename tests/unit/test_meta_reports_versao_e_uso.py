@@ -138,7 +138,7 @@ def _handler_n_paginas(total: int, *, ultima: Any = None) -> Any:
 async def test_contador_grava_2_quando_so_2_paginas_vieram_de_max_pages_5() -> None:
     rec = AsyncMock()
     audit = AsyncMock(return_value=1)
-    await _rodar(_handler_n_paginas(2), audit=audit, rec=rec, estimated_calls=5, max_pages=5)
+    await _rodar(_handler_n_paginas(2), audit=audit, rec=rec, max_pages=5)
     assert rec.call_args.kwargs["calls"] == 2
     # target_count do audit e o numero de LINHAS, nao de chamadas: nao muda.
     assert audit.call_args.kwargs["target_count"] == 2
@@ -149,7 +149,7 @@ async def test_contador_grava_o_teto_quando_max_pages_estoura() -> None:
     rec = AsyncMock()
     await _rodar(
         _handler_n_paginas(10), audit=AsyncMock(return_value=1), rec=rec,
-        estimated_calls=5, max_pages=3,
+        max_pages=3,
     )  # fmt: skip
     assert rec.call_args.kwargs["calls"] == 3
 
@@ -165,7 +165,7 @@ async def test_contador_erro_na_pagina_2_conta_as_2_respostas_recebidas() -> Non
     with pytest.raises(MetaAdsFriendlyError):
         await _rodar(
             _handler_n_paginas(2, ultima=ruim), audit=AsyncMock(return_value=1), rec=rec,
-            estimated_calls=5, max_pages=5,
+            max_pages=5,
         )  # fmt: skip
     assert rec.call_args.kwargs["calls"] == 2
 
@@ -179,7 +179,7 @@ async def test_contador_pagina_2_200_ilegivel_conta_porque_o_request_foi_feito()
     with pytest.raises(MetaAdsFriendlyError):
         await _rodar(
             _handler_n_paginas(2, ultima=ilegivel), audit=AsyncMock(return_value=1), rec=rec,
-            estimated_calls=5, max_pages=5,
+            max_pages=5,
         )  # fmt: skip
     assert rec.call_args.kwargs["calls"] == 2
 

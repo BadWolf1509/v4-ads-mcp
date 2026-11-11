@@ -299,7 +299,6 @@ async def meta_get_budget_pacing(args: dict[str, Any]) -> dict[str, Any]:
                 edge=edge,
                 params=params,
                 operation_name=_OPERACAO,
-                estimated_calls=_PAGINAS_INSIGHTS,
                 max_pages=_PAGINAS_INSIGHTS,
                 audit_this_call=True,
                 params_summary={

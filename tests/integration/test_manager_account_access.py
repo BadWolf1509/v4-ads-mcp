@@ -189,28 +189,74 @@ async def _procedencia(conn, manager_id, customer_id: str):
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("revogar", [True, False], ids=["revogada", "ativa"])
-async def test_grant_all_active_reconceder_atualiza_granted_at_e_by(db, revogar: bool) -> None:
-    """G0: "Atualizar sempre" — re-concessão (linha revogada OU ativa) carimba
-    `granted_at = now()` e `granted_by` de quem concedeu agora."""
+async def test_grant_all_active_reconceder_revogada_atualiza_granted_at_e_by(db) -> None:
+    """G0: re-concessão de linha REVOGADA carimba `granted_at = now()` e o autor novo."""
     async with db.acquire() as conn:
-        gestor = await seed_manager(conn, email=f"ga-g0-{revogar}@v4company.com")
-        antigo = await seed_manager(conn, email=f"ga-g0-antigo-{revogar}@v4company.com")
-        novo = await seed_manager(conn, email=f"ga-g0-novo-{revogar}@v4company.com")
+        gestor = await seed_manager(conn, email="ga-g0-rev@v4company.com")
+        antigo = await seed_manager(conn, email="ga-g0-antigo-rev@v4company.com")
+        novo = await seed_manager(conn, email="ga-g0-novo-rev@v4company.com")
         await _make_account(conn, "5555555555")
         await manager_account_access.grant(
             conn, manager_id=gestor, customer_id="5555555555", granted_by=antigo
         )
         await _carimbar_antigo(conn, gestor, "5555555555", antigo)
-        if revogar:
-            await manager_account_access.revoke(conn, manager_id=gestor, customer_id="5555555555")
+        await manager_account_access.revoke(conn, manager_id=gestor, customer_id="5555555555")
 
-        await manager_account_access.grant_all_active(conn, manager_id=gestor, granted_by=novo)
+        n = await manager_account_access.grant_all_active(conn, manager_id=gestor, granted_by=novo)
 
         linha = await _procedencia(conn, gestor, "5555555555")
+        assert n == 1
         assert linha["revoked_at"] is None
         assert linha["granted_by"] == novo, "granted_by nao foi atualizado na re-concessao"
         assert linha["granted_at"].year > 2020, "granted_at nao foi atualizado na re-concessao"
+
+
+@pytest.mark.integration
+async def test_grant_all_active_nao_toca_concessao_ativa_e_igual(db) -> None:
+    """Decisão de 11/11 ("só tocar o que muda"): a concessão ativa no MESMO nível
+    fica intacta — autor e data originais. Até 11/11 cada `grant-all` reescrevia
+    o autor de toda linha viva do gestor; e o `n` devolvido conta só o que mudou."""
+    async with db.acquire() as conn:
+        gestor = await seed_manager(conn, email="ga-intacta@v4company.com")
+        antigo = await seed_manager(conn, email="ga-intacta-antigo@v4company.com")
+        novo = await seed_manager(conn, email="ga-intacta-novo@v4company.com")
+        await _make_account(conn, "5555555556")
+        await manager_account_access.grant(
+            conn, manager_id=gestor, customer_id="5555555556", granted_by=antigo
+        )
+        await _carimbar_antigo(conn, gestor, "5555555556", antigo)
+
+        n = await manager_account_access.grant_all_active(conn, manager_id=gestor, granted_by=novo)
+
+        linha = await _procedencia(conn, gestor, "5555555556")
+        assert n == 0, "contou como mudanca uma concessao que ja existia igual"
+        assert linha["granted_by"] == antigo, "reescreveu o autor de concessao ativa"
+        assert linha["granted_at"].year == 2020, "reescreveu a data de concessao ativa"
+
+
+@pytest.mark.integration
+async def test_grant_all_active_promocao_read_para_write_registra_o_autor(db) -> None:
+    """Promover 'read' para 'write' MUDA o acesso: entra na contagem e ganha autor e data."""
+    async with db.acquire() as conn:
+        gestor = await seed_manager(conn, email="ga-promo@v4company.com")
+        antigo = await seed_manager(conn, email="ga-promo-antigo@v4company.com")
+        novo = await seed_manager(conn, email="ga-promo-novo@v4company.com")
+        await _make_account(conn, "5555555557")
+        await manager_account_access.grant(
+            conn,
+            manager_id=gestor,
+            customer_id="5555555557",
+            access_level="read",
+            granted_by=antigo,
+        )
+        await _carimbar_antigo(conn, gestor, "5555555557", antigo)
+
+        n = await manager_account_access.grant_all_active(conn, manager_id=gestor, granted_by=novo)
+
+        linha = await _procedencia(conn, gestor, "5555555557")
+        assert n == 1
+        assert linha["granted_by"] == novo
+        assert linha["granted_at"].year > 2020
 
 
 @pytest.mark.integration

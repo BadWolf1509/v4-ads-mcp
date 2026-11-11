@@ -70,7 +70,6 @@ async def _percorrer(
         edge=f"/{ad_account_id}/{edge}",
         params={"fields": fields, "limit": _POSSE_LIMIT},
         operation_name=operacao,
-        estimated_calls=_POSSE_MAX_PAGES,
         max_pages=_POSSE_MAX_PAGES,
         audit_this_call=True,
         params_summary={"ad_account_id": ad_account_id, "call": f"posse_{edge}"},
@@ -154,7 +153,6 @@ async def listar_criativos(
         edge=f"/{ad_account_id}/adcreatives",
         params={"fields": _CAMPOS, "limit": pagina},
         operation_name=operacao,
-        estimated_calls=max_pages,
         max_pages=max_pages,
         audit_this_call=True,
         params_summary={"ad_account_id": ad_account_id, "ad_id": ad_id},
@@ -231,7 +229,6 @@ async def gerar_previa(
         edge=f"/{ad_account_id}/generatepreviews",
         params={"ad_format": ad_format, "creative": json.dumps({"id": creative_id})},
         operation_name=operacao,
-        estimated_calls=1,
         audit_this_call=True,
         params_summary={
             "ad_account_id": ad_account_id,
