@@ -132,16 +132,18 @@ def _transicoes(rows: list[ChangeEventRow]) -> str:
 def dict_to_change_event_row(d: dict[str, Any]) -> ChangeEventRow:
     """Convert get_change_history row dict to ChangeEventRow dataclass.
 
-    Defensive: missing fields default to "" or None; changed_fields list → tuple.
+    Estrito nos 7 campos escalares (ausente = bug do formatter, `KeyError`).
+    Podem faltar de proposito, com `.get(k)` de um argumento: `changed_fields`
+    (lista -> tuple), `campaign_id`, `ad_group_id`, `old_status`, `new_status`.
     """
     return ChangeEventRow(
-        change_date_time=str(d.get("change_date_time", "")),
-        user_email=str(d.get("user_email", "")),
-        client_type=str(d.get("client_type", "")),
-        resource_type=str(d.get("resource_type", "")),
-        resource_id=str(d.get("resource_id", "")),
-        resource_name=str(d.get("resource_name", "")),
-        operation=str(d.get("operation", "")),
+        change_date_time=str(d["change_date_time"]),
+        user_email=str(d["user_email"]),
+        client_type=str(d["client_type"]),
+        resource_type=str(d["resource_type"]),
+        resource_id=str(d["resource_id"]),
+        resource_name=str(d["resource_name"]),
+        operation=str(d["operation"]),
         changed_fields=tuple(d.get("changed_fields") or []),
         campaign_id=d.get("campaign_id"),
         ad_group_id=d.get("ad_group_id"),

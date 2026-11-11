@@ -87,18 +87,22 @@ def parse_keyword_view_row(row: Any) -> dict[str, Any]:
 
 
 def dict_to_keyword_row(d: dict[str, Any]) -> KeywordRow:
-    """Convert keyword_view row dict to KeywordRow dataclass (defensive)."""
+    """Convert keyword_view row dict to KeywordRow dataclass.
+
+    Estrito: campo ausente e bug do formatter (`parse_keyword_view_row` sempre
+    preenche os 12) e levanta `KeyError` — nao vira zero.
+    """
     return KeywordRow(
-        ad_group_id=str(d.get("ad_group_id", "")),
-        ad_group_name=str(d.get("ad_group_name", "")),
-        ad_group_status=str(d.get("ad_group_status", "")),
-        campaign_name=str(d.get("campaign_name", "")),
-        keyword_id=str(d.get("keyword_id", "")),
-        keyword_text=str(d.get("keyword_text", "")),
-        match_type=str(d.get("match_type", "")),
-        impressions=int(d.get("impressions", 0)),
-        clicks=int(d.get("clicks", 0)),
-        cost_brl=float(d.get("cost_brl", 0.0)),
-        conversions=float(d.get("conversions", 0.0)),
-        status=str(d.get("status", "")),
+        ad_group_id=str(d["ad_group_id"]),
+        ad_group_name=str(d["ad_group_name"]),
+        ad_group_status=str(d["ad_group_status"]),
+        campaign_name=str(d["campaign_name"]),
+        keyword_id=str(d["keyword_id"]),
+        keyword_text=str(d["keyword_text"]),
+        match_type=str(d["match_type"]),
+        impressions=int(d["impressions"]),
+        clicks=int(d["clicks"]),
+        cost_brl=float(d["cost_brl"]),
+        conversions=float(d["conversions"]),
+        status=str(d["status"]),
     )

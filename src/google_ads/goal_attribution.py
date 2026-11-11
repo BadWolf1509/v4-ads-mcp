@@ -78,28 +78,28 @@ class GoalAttributionResult:
 def dict_to_conversion_action_row(d: dict[str, Any]) -> ConversionActionRow:
     """Convert conversion_action row dict to ConversionActionRow dataclass.
 
-    Defensive: missing fields default to "" or False.
+    Estrito: campo ausente e bug do formatter e levanta `KeyError`.
     """
     return ConversionActionRow(
-        id=str(d.get("id", "")),
-        name=str(d.get("name", "")),
-        category=str(d.get("category", "")),
-        origin=str(d.get("origin", "")),
-        primary_for_goal=bool(d.get("primary_for_goal", False)),
-        include_in_conversions_metric=bool(d.get("include_in_conversions_metric", False)),
-        status=str(d.get("status", "")),
+        id=str(d["id"]),
+        name=str(d["name"]),
+        category=str(d["category"]),
+        origin=str(d["origin"]),
+        primary_for_goal=bool(d["primary_for_goal"]),
+        include_in_conversions_metric=bool(d["include_in_conversions_metric"]),
+        status=str(d["status"]),
     )
 
 
 def dict_to_customer_conversion_goal_row(d: dict[str, Any]) -> CustomerConversionGoalRow:
     """Convert customer_conversion_goal row dict to CustomerConversionGoalRow dataclass.
 
-    Defensive: missing fields default to "" or False.
+    Estrito: campo ausente e bug do formatter e levanta `KeyError`.
     """
     return CustomerConversionGoalRow(
-        category=str(d.get("category", "")),
-        origin=str(d.get("origin", "")),
-        biddable=bool(d.get("biddable", False)),
+        category=str(d["category"]),
+        origin=str(d["origin"]),
+        biddable=bool(d["biddable"]),
     )
 
 

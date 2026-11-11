@@ -1,5 +1,7 @@
 """Unit tests for audit_goal_attribution GAQL builders + boundary parsers (Sprint 3b.35)."""
 
+import pytest
+
 from src.google_ads.goal_attribution import (
     dict_to_conversion_action_row,
     dict_to_customer_conversion_goal_row,
@@ -50,31 +52,45 @@ def test_build_customer_conversion_goal_query_no_filter():
 # === Boundary parser tests (4) ===
 
 
-def test_dict_to_conversion_action_row_handles_missing_status():
-    d: dict = {"id": "1", "name": "Test"}
-    row = dict_to_conversion_action_row(d)
+def _acao(**sobre) -> dict:
+    base = {
+        "id": "1",
+        "name": "Test",
+        "category": "CONTACT",
+        "origin": "WEBSITE",
+        "primary_for_goal": False,
+        "include_in_conversions_metric": False,
+        "status": "ENABLED",
+    }
+    return {**base, **sobre}
+
+
+def test_dict_to_conversion_action_row_chave_ausente_levanta():
+    """Campo ausente e bug do formatter: estoura, nao vira ''/False."""
+    with pytest.raises(KeyError):
+        dict_to_conversion_action_row({"id": "1", "name": "Test"})
+
+
+def test_dict_to_conversion_action_row_dict_completo():
+    row = dict_to_conversion_action_row(_acao())
     assert row.id == "1"
     assert row.name == "Test"
-    assert row.status == ""
-    assert (
-        row.primary_for_goal is False
-    )  # bool(None) = False, but bool({}) for missing key uses default
+    assert row.status == "ENABLED"
+    assert row.primary_for_goal is False
 
 
 def test_dict_to_conversion_action_row_bool_coercion_for_primary_for_goal():
     """primary_for_goal True/False preserved via bool()."""
-    d_true = {"primary_for_goal": True}
-    d_false = {"primary_for_goal": False}
+    d_true = _acao(primary_for_goal=True)
+    d_false = _acao(primary_for_goal=False)
     assert dict_to_conversion_action_row(d_true).primary_for_goal is True
     assert dict_to_conversion_action_row(d_false).primary_for_goal is False
 
 
-def test_dict_to_customer_conversion_goal_row_handles_missing_biddable():
+def test_dict_to_customer_conversion_goal_row_chave_ausente_levanta():
     d: dict = {"category": "CONTACT", "origin": "WEBSITE"}
-    row = dict_to_customer_conversion_goal_row(d)
-    assert row.category == "CONTACT"
-    assert row.origin == "WEBSITE"
-    assert row.biddable is False  # default
+    with pytest.raises(KeyError):
+        dict_to_customer_conversion_goal_row(d)
 
 
 def test_dict_to_customer_conversion_goal_row_full_dict():

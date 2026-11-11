@@ -1,5 +1,7 @@
 """Unit tests for drift_detection pure module (Sprint 3b.33)."""
 
+import pytest
+
 from src.google_ads.drift_detection import (
     ChangeEventRow,
     detect_drift,
@@ -210,9 +212,29 @@ def test_total_drift_vs_total_in_window_invariant():
 # === Boundary parser tests (3) ===
 
 
+def _linha(**sobre) -> dict:
+    """Dict como o formatter de change_event o entrega: os 7 escalares sempre presentes."""
+    base = {
+        "change_date_time": "2026-05-20 10:13:00",
+        "user_email": "p@v4.com",
+        "client_type": "GOOGLE_ADS_WEB_CLIENT",
+        "resource_type": "CAMPAIGN",
+        "resource_id": "1",
+        "resource_name": "C1",
+        "operation": "UPDATE",
+    }
+    return {**base, **sobre}
+
+
+def test_dict_to_change_event_row_escalar_ausente_levanta():
+    """Escalar ausente e bug do formatter: estoura, nao vira ''."""
+    with pytest.raises(KeyError):
+        dict_to_change_event_row({"change_date_time": "2026-05-20 10:13:00"})
+
+
 def test_dict_to_change_event_row_minimum():
-    """Parser handles minimum dict (missing fields → defaults)."""
-    d: dict = {"change_date_time": "2026-05-20 10:13:00", "user_email": "p@v4.com"}
+    """So os 7 escalares: os opcionais (changed_fields, ids, status) faltam de proposito."""
+    d = _linha()
     row = dict_to_change_event_row(d)
     assert row.change_date_time == "2026-05-20 10:13:00"
     assert row.user_email == "p@v4.com"
@@ -223,7 +245,7 @@ def test_dict_to_change_event_row_minimum():
 
 def test_dict_to_change_event_row_changed_fields_list_to_tuple():
     """changed_fields list converte pra tuple (frozen dataclass requirement)."""
-    d = {"changed_fields": ["a.b", "c.d"]}
+    d = _linha(changed_fields=["a.b", "c.d"])
     row = dict_to_change_event_row(d)
     assert row.changed_fields == ("a.b", "c.d")
     assert isinstance(row.changed_fields, tuple)
@@ -231,7 +253,7 @@ def test_dict_to_change_event_row_changed_fields_list_to_tuple():
 
 def test_dict_to_change_event_row_preserves_optional_ids():
     """campaign_id/ad_group_id preservados quando presentes."""
-    d = {"campaign_id": "123", "ad_group_id": "456"}
+    d = _linha(campaign_id="123", ad_group_id="456")
     row = dict_to_change_event_row(d)
     assert row.campaign_id == "123"
     assert row.ad_group_id == "456"
@@ -239,6 +261,6 @@ def test_dict_to_change_event_row_preserves_optional_ids():
 
 def test_dict_to_change_event_row_handles_none_changed_fields():
     """Parser defensive: changed_fields=None upstream → tuple() (não TypeError)."""
-    d = {"changed_fields": None}
+    d = _linha(changed_fields=None)
     row = dict_to_change_event_row(d)
     assert row.changed_fields == ()
