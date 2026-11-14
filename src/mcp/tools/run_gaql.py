@@ -9,6 +9,7 @@ from typing import Any
 
 from src.google_ads.aggregation import aggregate_rows
 from src.google_ads.gaql_compacto import campos_do_select, linha_compacta
+from src.google_ads.gaql_lint import avisos_gaql
 from src.google_ads.queries._common import EntradaInvalidaError
 from src.google_ads.reports import execute_gaql_raw
 from src.mcp.context import get_current
@@ -82,6 +83,8 @@ _MAX_RAW_ROWS_FOR_AGGREGATE = 10_000
         " fora do SELECT (o pedido no SELECT fica, com tudo o que mora dentro dele): -39% medido em 05/10 numa amostra de linhas de"
         " campaign_criterion — o ganho depende da consulta (linha cheia de metricas ganha"
         " menos). Use quando a resposta estoura o limite do cliente."
+        " A resposta traz `avisos` (lista, pode ser vazia): ex.: segments.date no SELECT"
+        " esconde entidade sem tráfego."
     ),
     input_schema=_SCHEMA,
     bucket="always",
@@ -105,6 +108,8 @@ async def run_gaql(args: dict[str, Any]) -> dict[str, Any]:
         limit=limit,
     )
 
+    avisos = avisos_gaql(query)
+
     if aggregate_by:
         if len(rows) > _MAX_RAW_ROWS_FOR_AGGREGATE:
             raise EntradaInvalidaError(
@@ -119,6 +124,7 @@ async def run_gaql(args: dict[str, Any]) -> dict[str, Any]:
             "group_count": len(groups),
             "truncated": truncated,
             "groups": groups[:_MAX_ROWS],
+            "avisos": avisos,
         }
 
     truncated = len(rows) > limit
@@ -132,6 +138,7 @@ async def run_gaql(args: dict[str, Any]) -> dict[str, Any]:
         "truncated": truncated,
         "rows": linhas,
         "returned": min(len(rows), limit),
+        "avisos": avisos,
     }
     if truncated:
         result["hint"] = "passe limit maior (max 1000) ou refine o WHERE"

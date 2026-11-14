@@ -3464,7 +3464,7 @@
       "anthropic/alwaysLoad": true,
       "com.v4company/bucket": "always"
     },
-    "description": "[CORE] Escape hatch: executa qualquer GAQL contra a conta. Use apenas quando as tools curadas nao cobrem o caso. Sempre auditado (incl. a query). Suporta limit (default 100, teto 1000) pra controlar o tamanho da resposta — resultado truncado inclui truncated:true + hint. Suporta aggregate_by (client-side GROUP BY+COUNT) pra queries com cardinalidade alta — retorna groups[] ordenado por count DESC (corte fixo em 1000 groups, independente de limit). Campos/métricas incertos: chame list_gaql_resources (catálogo válido) ou validate_gaql (valida sem executar) ANTES — métricas existem só em certos recursos e auction insights (overlap/position-above/outranking share) não existem na GAQL. `compact: true` devolve linhas planas (`{\"campaign.id\": ..., \"metrics.clicks\": ...}`) sem os `resource_name` que o Google manda em todo objeto da linha mesmo fora do SELECT (o pedido no SELECT fica, com tudo o que mora dentro dele): -39% medido em 05/10 numa amostra de linhas de campaign_criterion — o ganho depende da consulta (linha cheia de metricas ganha menos). Use quando a resposta estoura o limite do cliente.",
+    "description": "[CORE] Escape hatch: executa qualquer GAQL contra a conta. Use apenas quando as tools curadas nao cobrem o caso. Sempre auditado (incl. a query). Suporta limit (default 100, teto 1000) pra controlar o tamanho da resposta — resultado truncado inclui truncated:true + hint. Suporta aggregate_by (client-side GROUP BY+COUNT) pra queries com cardinalidade alta — retorna groups[] ordenado por count DESC (corte fixo em 1000 groups, independente de limit). Campos/métricas incertos: chame list_gaql_resources (catálogo válido) ou validate_gaql (valida sem executar) ANTES — métricas existem só em certos recursos e auction insights (overlap/position-above/outranking share) não existem na GAQL. `compact: true` devolve linhas planas (`{\"campaign.id\": ..., \"metrics.clicks\": ...}`) sem os `resource_name` que o Google manda em todo objeto da linha mesmo fora do SELECT (o pedido no SELECT fica, com tudo o que mora dentro dele): -39% medido em 05/10 numa amostra de linhas de campaign_criterion — o ganho depende da consulta (linha cheia de metricas ganha menos). Use quando a resposta estoura o limite do cliente. A resposta traz `avisos` (lista, pode ser vazia): ex.: segments.date no SELECT esconde entidade sem tráfego.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -4162,7 +4162,7 @@
     "_meta": {
       "com.v4company/bucket": "defer"
     },
-    "description": "[DEFER] Valida sintaxe + nomes de campos de um GAQL sem trazer dados, mas consome 1 operação da quota diária da API. Retorna {valid: bool, error: str|null}. Use antes de run_gaql pra evitar gastar quota com queries quebradas.",
+    "description": "[DEFER] Valida sintaxe + nomes de campos de um GAQL sem trazer dados, mas consome 1 operação da quota diária da API. Retorna {valid: bool, error: str|null, code, avisos: list[str]}; `avisos` (pode ser vazia) vem do lint estático, sem custo de API (ex.: segments.date no SELECT esconde entidade sem tráfego). Use antes de run_gaql pra evitar gastar quota com queries quebradas.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {

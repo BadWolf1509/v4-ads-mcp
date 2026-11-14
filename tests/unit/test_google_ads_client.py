@@ -222,3 +222,36 @@ def test_query_error_enriched_with_hint():
     # anexa a dica acionável apontando pras tools de validação
     assert "list_gaql_resources" in fe.message_pt
     assert "validate_gaql" in fe.message_pt
+
+
+def test_query_error_campo_ausente_no_select_troca_o_sufixo_generico():
+    """N2: "must be present in SELECT" ganha o hint especifico e NAO o sufixo sobre
+    metricas/auction insights (irrelevante aqui). Mensagem do Google segue crua."""
+    fe = to_friendly(
+        _FakeException(
+            [
+                _FakeError(
+                    "query_error",
+                    message="The following field must be present in SELECT clause: 'campaign.id'",
+                )
+            ]
+        )
+    )
+    assert fe.code == "QUERY_ERROR"
+    assert "'campaign.id'" in fe.message_pt
+    assert (
+        "→ Adicione ao SELECT o campo citado na mensagem: filtrar por um campo exige "
+        "seleciona-lo neste recurso." in fe.message_pt
+    )
+    assert "auction insights" not in fe.message_pt
+    assert "list_gaql_resources" not in fe.message_pt
+
+
+def test_query_error_must_be_present_e_case_insensitive():
+    fe = to_friendly(
+        _FakeException(
+            [_FakeError("query_error", message="Field MUST BE PRESENT IN SELECT clause: 'x'")]
+        )
+    )
+    assert "Adicione ao SELECT" in fe.message_pt
+    assert "auction insights" not in fe.message_pt
