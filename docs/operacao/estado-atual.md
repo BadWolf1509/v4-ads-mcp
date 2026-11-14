@@ -5,12 +5,10 @@
 > chegou a 91 KB). **Trabalho que fechou sai daqui:** o defeito vai para o catálogo, a narrativa para o
 > handoff ou o [`_archive/`](../_archive/estado-atual-2026-10-30-a-11-04.md), e aqui fica uma linha.
 
-> **Última sessão:** [`session-2026-11-10-handoff.md`](session-2026-11-10-handoff.md) — 10 e 11/11: deps
-> (#227, #223) e a [varredura de refatoração de 10/11](../superpowers/plans/2026-11-10-varredura-refatoracao.md),
-> **Partes A a J em produção** (#228 a #236, J no #247). À tarde de 11/11: ruff/mypy
-> fixados (#238), **C2** (#239) e follow-ups (#240); à noite, rodada autônoma: descrições v25 (#243),
-> **F207** (#244), **Parte J** (#247), **F210** (#245) e guards (#246). Antes:
-> [`session-2026-11-04-handoff.md`](session-2026-11-04-handoff.md).
+> **Última sessão:** [`session-2026-11-14-handoff.md`](session-2026-11-14-handoff.md) — 14/11: backlog
+> de tráfego da MO-JP, **7 itens em produção** (#249–#255), smoke 7/7, **contrato `conferencia`** no
+> `apply_change`. Antes: [`session-2026-11-10-handoff.md`](session-2026-11-10-handoff.md) (varredura de
+> refatoração de 10/11, #228–#247).
 
 ## Direção e restrições
 
@@ -29,15 +27,16 @@
   medido: paginação de `meta_get_entities` além de uma página, render da prévia, objetivos além de REACH.
   Detalhe no [arquivo](../_archive/estado-atual-2026-10-30-a-11-04.md).
 
-## Produção — medido em 2026-11-11
+## Produção — medido em 2026-11-11 e 14/11
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00206-24r`** (#246), 100% do tráfego medido no `gcloud`. De 10 a 11/11: `00188` a `00206-24r` (tabela no [handoff](session-2026-11-10-handoff.md)). A linha `SERVING_REVISION` do log do deploy é a revisão de **antes**; meça no `gcloud` |
+| Revisão servindo | **não medida em 14/11** (`gcloud` sem credencial). A última medida é **`v4-ads-mcp-00206-24r`** (#246, 11/11); depois dela entraram 8 deploys de 14/11 (#249–#255, #257), todos com `gh run view` = `success` e `/health?deep=1` ok. A linha `SERVING_REVISION` do log do deploy é a revisão de **antes**; meça no `gcloud` |
+| Comportamento novo (14/11) | **`conferencia`** no `apply_change` (veredito da releitura pós-write; `efeito`/`changed_count` = ACK do Google); `estado_revisao` em RSA; pinos em RSA; lote RSA até 50; `avisos[]` em `run_gaql`/`validate_gaql`; `get_experiments`, `update_recommendation_subscription`, `list_gaql_resources(resource, customer_id)`. Detalhe no [handoff](session-2026-11-14-handoff.md) |
 | Comportamento novo (10–11/11) | moeda Meta lida do inventário; contador BUC conta só o lido; re-concessão grava `granted_at`/`granted_by`; revoke Meta grava `admin_revoked`; audit mostra o nome da conta Meta; `classify` com motivo próprio para `create_and_link_assets`, `import_offline_conversions`, `create_campaign`; `APP_TIMEZONE` saiu do deploy; **enum de recomendação no v25** (2 tipos de lance confirmam, `CAMPAIGN_SPECIFIC_APP_GOAL` só leitura); `grant-all` exige `--by` e só toca o que muda |
 | Dependências | grpcio 1.85.1, protobuf 7.36.2, starlette 1.10.0 (avisa `httpx` deprecated no `TestClient`), sse-starlette 3.7.0, tzdata 2026.6 |
-| Tools | **80** (65 Google + 15 Meta), contagem do registry e do `/health?deep=1` |
-| Buckets | **14 always + 66 defer** (registry); tokens **não remedidos** desde a [remedição](tool-buckets-2026-10-05.md) |
+| Tools | **82** (67 Google + 15 Meta), registry e `/health?deep=1` (14/11) |
+| Buckets | **14 always + 68 defer** (registry, 14/11); tokens **não remedidos** desde a [remedição](tool-buckets-2026-10-05.md) |
 | Catálogo | até **F211** (~6.300 linhas, 621 KB) |
 | APIs | Meta Graph **v25.0** (constante única); Google Ads **v25**, sunset estimado em ago/2027 (**não lido** na página oficial) |
 | Smoke do pipeline | sem handshake MCP **autenticado** (F186); desde 10/11 o `SMOKE_MCP_BEARER` está **expirado** (401) e o deploy segue com aviso |
@@ -51,82 +50,18 @@ desconhecida).
 exclusivamente em `docs/` e markdown; `tests/` publica revisão. **Cheque a revisão servindo.**
 Contagens de tool e bucket vêm do registry (`import_all_tools()`), nunca de `grep` (F183).
 
-## Backlog de tráfego — 14/11 (#249 a #255)
+## Backlog de tráfego — 14/11 (#249–#255, smoke 7/7)
 
-Sete itens pedidos pela sessão "Gestor de Tráfego JP" ([desenho](../superpowers/specs/2026-11-14-backlog-trafego-design.md)).
-O `/health?deep=1` mede **82 tools** depois do #254. A revisão servindo **não foi medida** no `gcloud`.
+🔴 **Contrato do `apply_change` mudou no #255:** `efeito`/`changed_count` são o **ACK do Google**; o
+veredito da releitura pós-write vai em **`conferencia: {campo, pedido, relido, motivo}`** (RSA: `pinos`;
+N3: `status`; `null` = não lido). Em RSA o anúncio FOI gravado mesmo com `conferencia` divergente — não
+recriar. Narrativa, medições e rulings no [handoff](session-2026-11-14-handoff.md).
 
-🔴 **Contrato novo do `apply_change` (#255, decisão do Wellington, 14/11).**
-- **`efeito` e `changed_count` voltam a ser só o ACK do Google** e concordam com o `had_effect` do
-  `audit_log`.
-- **O veredito da releitura pós-write tem campo próprio, por linha:**
-  `conferencia: {campo, pedido, relido, motivo}`.
-  - Vale para o `_RSA` (campo `pinos`, em `create_rsa`/`update_rsa`) e para o
-    `_AssinaturaRecomendacao` (campo `status`, em `update_recommendation_subscription`).
-  - `motivo` diz `confere` ou diverge ("possível": F184, leitura defasada ou mudança concorrente).
-  - Não lido / ausente / ambíguo → `conferencia: null`.
-  - Divergência gera o log `conferencia_pos_write_divergiu`.
-- **Por quê:** entre o #253 e o #255, o G2 rebaixava para `sem_efeito` um anúncio que **tinha sido
-  gravado**. Um modelo que lê o contrato do `apply_change` ("sem_efeito = não mudou nada") recriaria o
-  RSA e duplicaria o anúncio. A divergência nunca foi vista ao vivo.
-- **Quem lia `efeito: sem_efeito` como "o pino não pegou" passa a ler `conferencia`.** As skills de
-  tráfego fora do repo **não foram auditadas** para isso. A description nova só chega em sessão nova
-  (F140).
-
-| PR | item | o que mudou | prova |
-|---|---|---|---|
-| #249 | M1 | `create_rsa`/`update_rsa`: `estado_revisao` (approval/review por anúncio e por asset), `lido_em`, `releitura` | ✅ smoke 14/11 (apply real) |
-| #250 | N1+N2 | `avisos[]` em `run_gaql`/`validate_gaql` (`segments.date` no SELECT); hint de "must be present in SELECT" | ✅ chamada real, 14/11 |
-| #251 | N3 | `update_recommendation_subscription` (pausa/reativa assinatura existente) | ✅ smoke 14/11: `RESPONSIVE_SEARCH_AD` da MO **PAUSED** |
-| #252 | G1 | `get_experiments` (atribuição por eliminação; comparativo base × variação) | ✅ smoke 14/11 (números = GAQL) |
-| #253 | G2 | `pinned_field` em `create_rsa`/`update_rsa`; recusa de perda de pino por posição; item de texto **sem `type`** | ✅ smoke 14/11 (catálogo carregou no Claude Code; apply real) |
-| #254 | M3 | `list_gaql_resources(resource, customer_id)` via `GoogleAdsFieldService`, com gate de leitura | ✅ smoke 14/11 |
-| #255 | M2 + fix | teto de lote RSA 5 → 50, preview compacto; `conferencia`; `ad_id` repetido recusado; lint avisa SELECT ilegível; G1 nega a eliminação com AD_VARIATION em outro estado | ✅ smoke 14/11 (lote de 27 só em dry-run) |
-
-**Smoke executado em 14/11, 21:25–21:45 UTC,** pela sessão de tráfego, reconectada, com aval
-nominal nos passos de escrita ([roteiro](smoke-2026-11-14-backlog-trafego.md)). As 7 entregas passaram.
-
-O que foi medido, e o que ficou fora:
-- **Catálogo:** carregou no **Claude Code**, sem 400. **Codex e Cursor: não medidos.**
-- **G2 + M1, `create_rsa` PAUSED com pino no CONTAINER (`831715335281`):**
-  - `efeito: mudou`;
-  - `estado_revisao` REVIEW_IN_PROGRESS;
-  - `conferencia` de pinos `confere`.
-- **Frescor da releitura pós-write:** 3 leituras (0, ~1,6 e ~8 min) iguais na escrita (status e
-  pino). **Sem defasagem medida.** O frescor da **aprovação** ficou **não medido**: o anúncio não saiu
-  de revisão na janela.
-  - O `approval_status` sai `null` enquanto a GAQL crua mostra `UNKNOWN`. É o comportamento esperado
-    (F145: não lido é `null`).
-- **N3:** `RESPONSIVE_SEARCH_AD` ENABLED → PAUSED, `conferencia` `confere`. A GAQL independente
-  confirma: **a MO fica com 0 assinaturas ENABLED** (conferido de novo pelo repo).
-- **M2:** dry-run com 27 RSAs, preview compacto de ~7,5 KB aceito sem truncar. O pior caso (50 com
-  textos) segue **não medido**.
-- **Recusas:** pino perdido, `ad_id` repetido e `type: "UNKNOWN"`.
-- **Sem token, como esperado:** "já está PAUSED".
-- **Limpeza:** o RSA de teste foi **removido pela UI**, com aval. A GAQL confirma REMOVED, e o
-  ENABLED do grupo ficou intacto.
-
-**Achados do smoke (baixa, abertos):**
-- **S1:** a lista estática `segments` do `list_gaql_resources` ainda traz `segments.hour` e
-  `segments.network_type`, que não existe (o nome é `ad_network_type`).
-- **S2:** o preview do `update_rsa` não acusa no-op. `final_urls` idêntica à atual aparece como
-  mudança (27/27).
-- **S3:** não há tool para remover anúncio. O `update_ad_status` só aceita ENABLED/PAUSED, então o
-  §2.5 do roteiro não roda como escrito.
-
-**`end_experiment` segue fora do escopo** (decisão de 14/11). Aplicar o resultado do teste de URL é
-`update_rsa` nos `base_ad_ids`.
-
-**Medido e descartado:** o "null silencioso" de `quality_info` + `segments.date` (19/09) não se
-reproduz. Com `segments.date` no SELECT, 404 de 500 linhas vêm com `quality_score` (MO, 14/11).
-
-**Minors adiados:** ficam no ledger `.superpowers/sdd/2026-11-14-backlog-trafego/progress.md`.
-Os principais:
-- a comparação de pinos é por contagem e não pega a troca entre posições;
-- `remover_pinos` não tem verificação pós-write;
-- o preview de 50 no pior caso não foi medido;
-- o N3 não refaz a checagem otimista entre o preview e o apply;
-- o G1 lê todos os RSAs ENABLED sem teto e não expõe `final_urls`.
+**Abertos (baixa):** **S1** lista estática `segments` do `list_gaql_resources` com `segments.hour` e
+`segments.network_type` inexistente · **S2** preview do `update_rsa` não acusa no-op (URL igual sai como
+mudança) · **S3** não há tool para remover anúncio. Minors adiados no ledger
+`.superpowers/sdd/2026-11-14-backlog-trafego/progress.md` (resumo no handoff).
+**Não medido:** catálogo no Codex/Cursor; frescor da **aprovação** pós-write; preview de 50 no pior caso.
 
 ## Decision gates abertos
 
@@ -185,7 +120,7 @@ que mais usava os antigos, saiu em 31/10). O plugin 0.5.0 já manda usar o break
 | — | negativas de grupo e listas compartilhadas na auditoria de negativas (frente própria) |
 | — | follow-ups Minor do **F193** (corpo do [#111](https://github.com/BadWolf1509/v4-ads-mcp/pull/111)) |
 | — | orçamento de período fixo (`CUSTOM_PERIOD`) no `get_budget_pacing` (Fora do F202) |
-| — | o que ficou fora da varredura de 30/10: seção "O que ficou fora" do [handoff](session-2026-10-31-handoff.md) |
+| — | o que ficou fora da varredura de 30/10: seção "O que ficou fora" do [handoff](../_archive/handoffs/session-2026-10-31-handoff.md) |
 
 **Fechados de 20/09 a 04/11:** F154, F179, F181–F184, F188–F191, F193–F206. O defeito de cada um está no
 [catálogo](findings-catalog.md). 🔑 A lição que atravessa todos: **existia a regra e não existia o
