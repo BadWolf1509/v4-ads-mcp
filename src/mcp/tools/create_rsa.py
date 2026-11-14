@@ -107,7 +107,9 @@ def _build_params_summary(rsas: list[dict[str, Any]]) -> dict[str, Any]:
         "o padrao medido e o Google ACEITAR e nao executar (F180/F184), entao confirme "
         "pelo `efeito` de cada linha, nunca por ausencia de falha. RSAs aparecem "
         "no Google Ads UI imediatamente apos apply mas serving so comeca apos approval "
-        "(geralmente minutos)."
+        "(geralmente minutos). O apply_change devolve `estado_revisao` (aprovacao/revisao "
+        "por anuncio, com os textos reprovados) — foto do instante, nao veredito: logo "
+        "apos o write o normal e 'em revisao'; use `releitura` depois."
     ),
     input_schema=_SCHEMA,
     bucket="defer",
