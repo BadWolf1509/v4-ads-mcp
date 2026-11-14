@@ -175,6 +175,7 @@ async def test_run_offline_user_data_job_denies_without_access():
 
 # (arquivo sob src/, funcao que envolve a chamada, level literal)
 CALL_SITES_DO_GATE = {
+    ("google_ads/campos_gaql.py", "compatibilidade", "read"),  # M3: metadado, so leitura
     ("google_ads/conversions.py", "run_conversion_upload", "write"),
     ("google_ads/customer_match.py", "run_offline_user_data_job", "write"),
     ("google_ads/keyword_planning.py", "run_keyword_planning", "read"),
@@ -182,6 +183,7 @@ CALL_SITES_DO_GATE = {
     ("google_ads/mutations.py", "run_recommendation_action", "write"),
     ("google_ads/reports.py", "run_report", "read"),
     ("governance/dry_run.py", "create_pending", "write"),
+    ("mcp/tools/list_gaql_resources.py", "_compativel", "read"),  # M3: so leitura
     ("mcp/tools/validate_gaql.py", "validate_gaql", "read"),
 }
 
