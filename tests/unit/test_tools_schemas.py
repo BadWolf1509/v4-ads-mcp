@@ -323,6 +323,7 @@ def test_no_unexpected_tools():
         "remove_asset_link",  # F134 Task 5
         "get_ad_schedule",  # ad_schedule Task 5
         "update_ad_schedule",  # ad_schedule Task 7
+        "get_experiments",  # G1 backlog trafego 2026-11-14
     }
     actual = {t.name for t in all_tools()}
     unexpected = actual - expected
