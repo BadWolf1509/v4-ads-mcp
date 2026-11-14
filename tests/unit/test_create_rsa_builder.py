@@ -120,3 +120,15 @@ def test_builder_preserves_utf8_accents_across_text_fields() -> None:
     # char ("Locacao"). The equality asserts above catch both; this makes the
     # "?"-injection case (the exact symptom reported) explicit.
     assert not any("?" in t for t in headline_texts + description_texts)
+
+
+def test_builder_pino_so_no_item_objeto() -> None:
+    """G2: `{text, pinned_field}` seta o pino; string NAO toca o campo (default UNSPECIFIED)."""
+    client = make_capture_client()
+    rsa = _sample_rsa(headlines=[{"text": "H1", "pinned_field": "HEADLINE_1"}, "H2", "H3"])
+    ops = build_create_rsa(client, "1234567890", {"rsas": [rsa]})
+    headlines = list(ops[0].field("ad_group_ad_operation.create.ad.responsive_search_ad.headlines"))
+    assert headlines[0].field("pinned_field") == "HEADLINE_1"
+    assert headlines[0].field("text") == "H1"
+    assert headlines[1].has("pinned_field") is False
+    assert headlines[2].has("pinned_field") is False

@@ -9,6 +9,28 @@ from src.google_ads.mutates._status import (
     ALVOS_DE_STATUS,
     operacao_de_status,
 )
+from src.google_ads.rsa_textos import POSICOES_POR_CAMPO, normalizar_textos
+
+
+def _anexar_textos(client: Any, rsa: Any, campo: str, itens: list[Any]) -> None:
+    """Anexa `AdTextAsset`s; item string ou `{text, pinned_field?}` (G2).
+
+    Sem pino o campo `pinned_field` NAO e tocado: fica no default UNSPECIFIED e o proto
+    sai byte a byte igual ao de antes do G2 (guard `test_item_string_payload_identico`).
+    O schema ja restringe a posicao ao campo; o builder e publico, entao confere de novo
+    (F87) — levanta ANTES de qualquer escrita, porque o build roda antes da chamada.
+    """
+    permitidas = POSICOES_POR_CAMPO[campo]
+    for item in normalizar_textos(itens):
+        a = client.get_type("AdTextAsset")
+        a.text = item["text"]
+        pino = item["pinned_field"]
+        if pino is not None:
+            if pino not in permitidas:
+                raise ValueError(f"pinned_field {pino!r} nao vale para {campo}: use {permitidas}")
+            a.pinned_field = client.enums.ServedAssetFieldTypeEnum[pino]
+        # `getattr` a cada append, como os lacos de antes: o repeated e relido do pai.
+        getattr(rsa, campo).append(a)
 
 
 @register_builder("update_ad_status")
@@ -36,6 +58,8 @@ def build_create_rsa(client: Any, customer_id: str, payload: dict[str, Any]) -> 
     """payload: {rsas: [{ad_group_id, headlines[], descriptions[], final_urls[],
                         path1?, path2?, status?}]}
 
+    headlines/descriptions: item string ou `{text, pinned_field?}` (G2).
+
     Defaults: status=PAUSED. Headlines/descriptions/final_urls counts validated
     by JSONSchema layer (3-15/2-4/1+). path1/path2 only set if provided.
     """
@@ -54,14 +78,8 @@ def build_create_rsa(client: Any, customer_id: str, payload: dict[str, Any]) -> 
         # .append() with new typed instance, NOT .add() (raw protobuf API).
         # Smoke test in Nutry caught this — tests passed with ProtoFieldCapture
         # mock supporting .add() but real google-ads SDK doesn't.
-        for headline_text in rsa_spec["headlines"]:
-            h = client.get_type("AdTextAsset")
-            h.text = headline_text
-            rsa.headlines.append(h)
-        for desc_text in rsa_spec["descriptions"]:
-            d = client.get_type("AdTextAsset")
-            d.text = desc_text
-            rsa.descriptions.append(d)
+        _anexar_textos(client, rsa, "headlines", rsa_spec["headlines"])
+        _anexar_textos(client, rsa, "descriptions", rsa_spec["descriptions"])
         for url in rsa_spec["final_urls"]:
             ad.final_urls.append(url)
         if "path1" in rsa_spec:
@@ -75,7 +93,10 @@ def build_create_rsa(client: Any, customer_id: str, payload: dict[str, Any]) -> 
 @register_builder("update_rsa")
 def build_update_rsa(client: Any, customer_id: str, payload: dict[str, Any]) -> list[Any]:
     """payload: {updates: [{ad_id, headlines?, descriptions?, final_urls?,
-                            path1?, path2?}]}
+                            path1?, path2?, remover_pinos?}]}
+
+    headlines/descriptions: item string ou `{text, pinned_field?}` (G2). `remover_pinos`
+    e so do pre-flight (libera a perda de pino); o builder o ignora.
 
     Uses AdService (not AdGroupAdService) — Ad resource holds RSA content.
     Builds update_mask from set fields. Provided list replaces existing
@@ -94,16 +115,10 @@ def build_update_rsa(client: Any, customer_id: str, payload: dict[str, Any]) -> 
         rsa = ad.responsive_search_ad
         mask_paths: list[str] = []
         if "headlines" in spec:
-            for headline_text in spec["headlines"]:
-                h = client.get_type("AdTextAsset")
-                h.text = headline_text
-                rsa.headlines.append(h)
+            _anexar_textos(client, rsa, "headlines", spec["headlines"])
             mask_paths.append("responsive_search_ad.headlines")
         if "descriptions" in spec:
-            for desc_text in spec["descriptions"]:
-                d = client.get_type("AdTextAsset")
-                d.text = desc_text
-                rsa.descriptions.append(d)
+            _anexar_textos(client, rsa, "descriptions", spec["descriptions"])
             mask_paths.append("responsive_search_ad.descriptions")
         if "final_urls" in spec:
             for url in spec["final_urls"]:

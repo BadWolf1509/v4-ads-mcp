@@ -141,3 +141,17 @@ def test_builder_preserves_utf8_accents_across_text_fields() -> None:
     assert op.field(f"{base}.path1") == "Promoção"
     assert op.field(f"{base}.path2") == "Serviços"
     assert not any("?" in t for t in headline_texts + description_texts)
+
+
+def test_builder_pino_no_update_e_remover_pinos_nao_vai_ao_proto() -> None:
+    """G2: pino do item objeto vai ao asset; `remover_pinos` e so do pre-flight."""
+    client = make_capture_client()
+    upd = _sample_update(
+        descriptions=["D1", {"text": "D2", "pinned_field": "DESCRIPTION_2"}], remover_pinos=True
+    )
+    ops = build_update_rsa(client, "1234567890", {"updates": [upd]})
+    descs = list(ops[0].field("ad_operation.update.responsive_search_ad.descriptions"))
+    assert descs[0].has("pinned_field") is False
+    assert descs[1].field("pinned_field") == "DESCRIPTION_2"
+    assert ops[0].has("ad_operation.update.remover_pinos") is False
+    assert ops[0].has("ad_operation.update.responsive_search_ad.remover_pinos") is False

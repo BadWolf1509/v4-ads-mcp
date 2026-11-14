@@ -149,3 +149,28 @@ async def test_builds_correct_blast_summary_for_mixed_batch(_ctx) -> None:
     assert "headlines(1)" in result["blast_summary"]
     assert "path1(1)" in result["blast_summary"]
     assert "final_urls(1)" in result["blast_summary"]
+
+
+@pytest.mark.asyncio
+async def test_remover_pinos_sozinho_nao_e_campo_mutavel(_ctx) -> None:
+    """G2: `remover_pinos` so libera a perda de pino; nao e mudanca por si."""
+    from src.mcp.tools.update_rsa import update_rsa
+
+    result = await update_rsa(
+        {"customer_id": "1234567890", "updates": [{"ad_id": "100", "remover_pinos": True}]}
+    )
+    assert result["status"] == "error"
+    assert "100" in result["error_message"]
+
+
+@pytest.mark.asyncio
+async def test_preflight_recebe_o_coletor_de_pinos(_ctx) -> None:
+    """G2: a tool passa `pinos_atuais` ao pre-flight (antes->depois sem round-trip novo)."""
+    from src.mcp.tools.update_rsa import update_rsa
+
+    preflight = AsyncMock(return_value="recusado")
+    with patch("src.mcp.tools.update_rsa.validate_existing_rsas_for_update", preflight):
+        await update_rsa(
+            {"customer_id": "1234567890", "updates": [{"ad_id": "100", "path1": "abc"}]}
+        )
+    assert preflight.await_args.kwargs["pinos_atuais"] == {}

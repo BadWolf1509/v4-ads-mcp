@@ -17,7 +17,15 @@ from src.google_ads.queries.keyword_lookup import (
     _lookup_row_formatter,
     build_keyword_text_lookup_query,
 )
+from src.google_ads.queries.rsa_estado import pinos_do_rsa
 from src.google_ads.reports import run_report
+from src.google_ads.rsa_textos import (
+    campos_de_texto,
+    pinos_pedidos,
+    posicoes_dos_campos,
+    posicoes_perdidas,
+    restringir,
+)
 
 
 async def validate_manual_cpc_strategy(
@@ -238,7 +246,7 @@ async def validate_parent_ad_groups_for_rsa_create(
     return None
 
 
-def _format_rsa_preflight_row(row: Any) -> dict[str, str]:
+def _format_rsa_preflight_row(row: Any) -> dict[str, Any]:
     """Uma linha de `ad_group_ad` -> dict do pre-flight de RSA.
 
     Nivel de modulo (nao aninhada) pra ser testavel com row proto-like: o
@@ -258,6 +266,8 @@ def _format_rsa_preflight_row(row: Any) -> dict[str, str]:
         "campaign_id": str(row.campaign.id),
         "campaign_name": row.campaign.name,
         "channel_type": row.campaign.advertising_channel_type.name,
+        # G2: pinos atuais por posicao; `None` = assets nao lidos (nao e "sem pino").
+        "pinos": pinos_do_rsa(row.ad_group_ad.ad.responsive_search_ad),
     }
 
 
@@ -305,6 +315,7 @@ async def validate_existing_rsas_for_update(
     session_id: UUID,
     customer_id: str,
     updates: list[dict[str, Any]],
+    pinos_atuais: dict[str, dict[str, list[str]] | None] | None = None,
 ) -> str | None:
     """Returns PT-BR error string if any ad fails validation; else None.
 
@@ -314,9 +325,16 @@ async def validate_existing_rsas_for_update(
     3. Parent ad_group.status != REMOVED
     4. Parent campaign.advertising_channel_type IN {SEARCH, SEARCH_PARTNERS}
     5. Ad nao e system-managed (variacao de Ad Variation nao aceita mutate — F181)
+    6. G2: update que traz headlines/descriptions nao tira o pino de uma POSICAO que
+       hoje tem pino, salvo `remover_pinos: true` naquele update. Checa so as posicoes
+       dos campos que o update traz (update so de descriptions nao perde pino de headline).
 
-    Performs 1 GAQL batch lookup for unique ad_ids.
-    Returns first-found offender error message.
+    Performs 1 GAQL batch lookup for unique ad_ids (os pinos vem nela: zero round-trip).
+    Returns first-found offender error message for 1-5; para 6, lista TODOS os ads que
+    perdem pino, depois que 1-5 passaram para o lote inteiro.
+
+    `pinos_atuais`, se passado, recebe `{ad_id: pinos}` lidos (None = nao lidos) para o
+    preview mostrar antes->depois sem reler.
     """
     ad_ids = list({u["ad_id"] for u in updates})
     if not ad_ids:
@@ -327,6 +345,9 @@ async def validate_existing_rsas_for_update(
         f"SELECT ad_group_ad.ad.id, ad_group_ad.ad.type, "
         # F181: custo zero — o campo entra na query que o pre-flight ja rodava.
         f"ad_group_ad.ad.system_managed_resource_source, "
+        # G2: custo zero — os pinos atuais vem na mesma query (posicao por asset).
+        f"ad_group_ad.ad.responsive_search_ad.headlines, "
+        f"ad_group_ad.ad.responsive_search_ad.descriptions, "
         f"ad_group.id, ad_group.name, ad_group.status, "
         f"campaign.id, campaign.name, campaign.advertising_channel_type "
         f"FROM ad_group_ad WHERE ad_group_ad.ad.id IN ({ids_clause})"
@@ -342,6 +363,8 @@ async def validate_existing_rsas_for_update(
     )
 
     by_id = {r["ad_id"]: r for r in rows}
+    if pinos_atuais is not None:
+        pinos_atuais.update({aid: r["pinos"] for aid, r in by_id.items()})
     valid_channels = {"SEARCH", "SEARCH_PARTNERS"}
 
     for u in updates:
@@ -400,7 +423,35 @@ async def validate_existing_rsas_for_update(
                 f"funcionam em campaigns SEARCH ou SEARCH_PARTNERS."
             )
 
+    perdas = [m for u in updates if (m := _perda_de_pino(u, by_id[u["ad_id"]])) is not None]
+    if perdas:
+        return (
+            "Update que tira pino de posicao recusado (os textos substituem a lista "
+            "inteira): "
+            + "; ".join(perdas)
+            + ". Para manter, repita o pino na lista nova ({text, pinned_field}); para "
+            "tirar de proposito, passe remover_pinos: true naquele update."
+        )
     return None
+
+
+def _perda_de_pino(u: dict[str, Any], ad: dict[str, Any]) -> str | None:
+    """Mensagem do ad que perde pino, ou None. So posicao, nunca texto (vai ao audit)."""
+    campos = campos_de_texto(u)
+    if not campos or u.get("remover_pinos", False):
+        return None
+    # Acesso por chave (como o F181): formatter que deixe de trazer `pinos` falha alto.
+    atuais = ad["pinos"]
+    if atuais is None:
+        return (
+            f"Ad {u['ad_id']}: os pinos atuais nao foram lidos, entao nao da para "
+            f"garantir que a lista nova nao tira nenhum"
+        )
+    posicoes = posicoes_dos_campos(campos)
+    perdidas = posicoes_perdidas(restringir(atuais, posicoes), pinos_pedidos(u))
+    if not perdidas:
+        return None
+    return f"Ad {u['ad_id']} perde o pino de {', '.join(perdidas)}"
 
 
 async def validate_conversion_action_create(
