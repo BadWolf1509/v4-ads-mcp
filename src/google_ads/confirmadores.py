@@ -49,6 +49,7 @@ from src.google_ads.queries.ad_schedule import (
     parse_ad_schedule_row,
 )
 from src.google_ads.queries.recommendation_subscription import (
+    STATUS_ALVO,
     assinatura_query,
     parse_assinatura_row,
 )
@@ -793,6 +794,11 @@ class _AssinaturaRecomendacao(_Padrao):
             elif len(rows) > 1:
                 # O tipo e a chave: mais de uma linha e a resposta ambigua do F185.
                 motivo = "mais_de_uma_linha_do_tipo"
+            elif rows[0]["status"] not in STATUS_ALVO:
+                # UNSPECIFIED = campo omitido (default 0 do proto); UNKNOWN = valor que
+                # o SDK nao conhece. Nenhum dos dois e status MEDIDO: tratar como
+                # divergencia afirmaria `sem_efeito` sem medicao (F184 do nosso lado).
+                motivo = "status_nao_lido_na_releitura"
             else:
                 status_resultante = rows[0]["status"]
                 if status_resultante != pedido:

@@ -65,7 +65,7 @@ def _wire(
     monkeypatch,
     *,
     saved,
-    releitura: list[str] | None = None,
+    releitura: list[str | None] | None = None,
     explode: bool = False,
 ) -> dict[str, Any]:
     cap: dict[str, Any] = {"queries": [], "mutou": False}
@@ -169,3 +169,18 @@ async def test_payload_sem_chave_levanta_antes_da_escrita(monkeypatch) -> None:
     with pytest.raises(KeyError):
         await mod.apply_change({"confirmation_token": "ABCDEFGH"})
     assert cap["mutou"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("relido", [None, "UNKNOWN"])
+async def test_status_nao_lido_nao_rebaixa_efeito(monkeypatch, relido) -> None:
+    """UNSPECIFIED (campo omitido, default 0) e UNKNOWN (valor que o SDK nao conhece)
+    nao sao status medido: afirmar `sem_efeito` deles seria o F184 do nosso lado."""
+    _wire(monkeypatch, saved=_saved("PAUSED"), releitura=[relido])
+    out = await mod.apply_change({"confirmation_token": "ABCDEFGH"})
+    assert out["status"] == "applied"
+    assert out["status_resultante"] is None
+    assert out["motivo_status_resultante"] == "status_nao_lido_na_releitura"
+    assert out["partial_failures"][0]["efeito"] == "mudou"
+    assert out["changed_count"] == 1
+    assert out["confirmation_error"] is None

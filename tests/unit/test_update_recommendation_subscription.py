@@ -50,13 +50,17 @@ def _campos_do_select(query: str) -> set[str]:
     return {c.strip() for c in m.group(1).split(",") if c.strip()}
 
 
-def linha_de_assinatura(query: str, tipo: str, status: str) -> Any:
-    """Row real do proto, so com o que o SELECT pediu."""
+def linha_de_assinatura(query: str, tipo: str, status: str | None) -> Any:
+    """Row real do proto, so com o que o SELECT pediu.
+
+    `status=None` deixa o campo no default do proto (0, UNSPECIFIED): e o que chega
+    quando o Google omite o campo — "nao lido", nao um status medido.
+    """
     pedidos = _campos_do_select(query)
     sub = RecommendationSubscription()
     if "recommendation_subscription.type" in pedidos:
         sub.type_ = RecommendationTypeEnum.RecommendationType[tipo]
-    if "recommendation_subscription.status" in pedidos:
+    if "recommendation_subscription.status" in pedidos and status is not None:
         sub.status = RecommendationSubscriptionStatusEnum.RecommendationSubscriptionStatus[status]
     if "recommendation_subscription.modify_date_time" in pedidos:
         sub.modify_date_time = "2024-06-06 10:17:54.382095"
