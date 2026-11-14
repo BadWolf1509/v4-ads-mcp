@@ -124,7 +124,9 @@ def _build_params_summary(updates: list[dict[str, Any]]) -> dict[str, Any]:
         "linha — mas recusar e o caso RARO: o padrao medido e o Google ACEITAR e nao "
         "executar (F180/F184), entao confirme pelo `efeito` de cada linha, nunca por "
         "ausencia de falha. Atualizacoes afetam serving immediately mas Google "
-        "pode re-aprovar (geralmente minutos)."
+        "pode re-aprovar (geralmente minutos). O apply_change devolve `estado_revisao` "
+        "(aprovacao/revisao por anuncio, com os textos reprovados) — foto do instante, "
+        "nao veredito: logo apos o write o normal e 'em revisao'; use `releitura` depois."
     ),
     input_schema=_SCHEMA,
     bucket="defer",

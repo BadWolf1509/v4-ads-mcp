@@ -29,6 +29,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Protocol, cast
 from uuid import UUID
 
@@ -53,6 +54,11 @@ from src.google_ads.queries.recommendations import (
     parse_recommendation_detail_row,
     recommendation_detail_query,
     recommendation_fingerprint,
+)
+from src.google_ads.queries.rsa_estado import (
+    ad_id_de_resource_name,
+    parse_rsa_estado_row,
+    rsa_estado_query,
 )
 
 Executor = Callable[..., Awaitable[Mapping[str, Any]]]
@@ -610,6 +616,108 @@ class _Padrao(_SemPreCheck):
         )
 
 
+# --- RSA: estado de revisao depois do write (M1) ------------------------------------
+
+_AVISO_REVISAO = (
+    "estado_revisao e FOTO do instante, não é veredito: logo apos o write o Google "
+    "responde quase sempre 'em revisao'. Para o estado atual, rode releitura.query no "
+    "run_gaql minutos depois."
+)
+
+
+def _ad_ids_a_reler(resultado: Mapping[str, Any]) -> list[str]:
+    """Ids dos anuncios gravados, sem repeticao e na ordem do pedido.
+
+    `resource_names` e indexado por operacao (string vazia/None na op que falhou). Se o
+    resultado traz `efeito` por linha, so entram as que MUDARAM — `sem_efeito` nao
+    gravou nada a reler; sem `efeito` nenhum, vale toda op com resource_name.
+    """
+    nomes = list(resultado.get("resource_names", []))
+    efeitos = {
+        pf["index"]: pf.get("efeito")
+        for pf in resultado.get("partial_failures", [])
+        if "index" in pf
+    }
+    ha_efeito = any(e is not None for e in efeitos.values())
+    ids: list[str] = []
+    for i, nome in enumerate(nomes):
+        if not nome:
+            continue
+        if ha_efeito and efeitos.get(i) != "mudou":
+            continue
+        ad_id = ad_id_de_resource_name(nome)
+        if ad_id not in ids:
+            ids.append(ad_id)
+    return ids
+
+
+class _RSA(_Padrao):
+    """create_rsa / update_rsa: o `_Padrao` mais a releitura da politica do anuncio.
+
+    Nenhuma tool expunha `approval_status`: anuncio reprovado passava sem ninguem ver.
+    A releitura e foto do instante (nao veredito) e roda DEPOIS da escrita — se falhar,
+    o sucesso da mutacao fica de pe (F83/F91).
+    """
+
+    async def pos_check(
+        self, p: Pendente, portas: Portas, resultado: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        base = await super().pos_check(p, portas, resultado)
+        estado: list[dict[str, Any]] | None = None
+        releitura: dict[str, Any] | None = None
+        confirmation_error: str | None = None
+        try:
+            ids = _ad_ids_a_reler(resultado)
+            if ids:
+                query = rsa_estado_query(ids)
+                releitura = {"tool": "run_gaql", "query": query}
+                rows = await portas.run_report(
+                    manager_id=p.manager_id,
+                    session_id=p.session_id,
+                    customer_id=p.customer_id,
+                    query=query,
+                    row_formatter=parse_rsa_estado_row,
+                    operation_name=f"{p.operation_type}_estado_revisao",
+                )
+                por_id = {r["ad_id"]: r for r in rows}
+                estado = [
+                    por_id.get(ad_id)
+                    or {
+                        "ad_id": ad_id,
+                        "approval_status": None,
+                        "review_status": None,
+                        "topicos": [],
+                        "assets_reprovados": [],
+                        "pinos": {},
+                        "motivo": "nao_encontrado_na_releitura",
+                    }
+                    for ad_id in ids
+                ]
+            else:
+                estado = []
+        except Exception as e:  # noqa: BLE001 — I/O apos escrita ja aplicada: nunca transformar sucesso em erro (F83/F91)
+            portas.log.warning(
+                "rsa_estado_revisao_failed",
+                customer_id=p.customer_id,
+                error=str(e),
+                error_type=e.__class__.__name__,
+            )
+            estado = None
+            confirmation_error = (
+                f"A mutacao foi aplicada (veja applied_count/provider_request_id), mas a "
+                f"releitura do estado de revisao falhou ({e.__class__.__name__}). Rode a "
+                f"releitura com run_gaql antes de confiar no estado do anuncio."
+            )
+        return {
+            **base,
+            "estado_revisao": estado,
+            "lido_em": datetime.now(UTC).isoformat(),
+            "aviso_revisao": _AVISO_REVISAO,
+            "releitura": releitura,
+            "confirmation_error": confirmation_error,
+        }
+
+
 def _partial_failure(p: Pendente) -> bool:
     return bool(p.payload.get("__partial_failure__", False))
 
@@ -619,6 +727,8 @@ CONFIRMADORES: dict[str, Confirmador] = {
     "apply_recommendation": _Recomendacao(),
     "upload_customer_match_list": _CustomerMatch(),
     "update_ad_schedule": _AdSchedule(),
+    "create_rsa": _RSA(),
+    "update_rsa": _RSA(),
 }
 
 # O padrao nao tem chave: e o que cobre todo `operation_type` fora do registro.
