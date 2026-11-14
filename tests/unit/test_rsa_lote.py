@@ -158,7 +158,12 @@ async def test_update_recusa_ad_id_repetido_antes_do_preflight() -> None:
     with (
         patch("src.mcp.tools.update_rsa.validate_existing_rsas_for_update", preflight),
         patch("src.mcp.tools._mutate_common.create_pending", pending),
+        # pool falso: sem a recusa, a tool chegaria ao preview e o teste vermelharia
+        # na ASSERCAO, nao num "pool not initialized" (vermelho pelo motivo certo).
+        patch("src.mcp.tools._mutate_common.connection.get_pool") as pool,
     ):
+        pool.return_value.acquire.return_value.__aenter__ = AsyncMock(return_value=None)
+        pool.return_value.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
         out = await update_rsa.update_rsa(
             {
                 "customer_id": "1234567890",
