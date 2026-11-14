@@ -11,7 +11,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.google_ads.gaql_lint import AVISO_N1, avisos_gaql
+from src.google_ads.gaql_lint import AVISO_N1, AVISO_SELECT_ILEGIVEL, avisos_gaql
 from src.mcp.context import McpRequestContext, clear_current, set_current
 
 
@@ -38,6 +38,18 @@ def test_outro_segmento_nao_avisa() -> None:
     # segments.week/month nao foram medidos: a regra cobre so segments.date.
     assert avisos_gaql("SELECT campaign.id, segments.month FROM campaign") == []
     assert avisos_gaql("SELECT campaign.id, segments.date_foo FROM campaign") == []
+
+
+@pytest.mark.parametrize(
+    "query",
+    ["campaign.id FROM campaign", "SELECT FROM campaign", "SELECT segments.date campaign"],
+)
+def test_select_ilegivel_avisa_que_nada_foi_verificado(query: str) -> None:
+    """Lista vazia diria 'nada a avisar' sobre uma query que o lint nem leu."""
+    assert avisos_gaql(query) == [AVISO_SELECT_ILEGIVEL]
+    assert AVISO_SELECT_ILEGIVEL == (
+        "o lint nao reconheceu a lista do SELECT; nenhum aviso foi verificado"
+    )
 
 
 def test_copy_fixa_do_aviso() -> None:

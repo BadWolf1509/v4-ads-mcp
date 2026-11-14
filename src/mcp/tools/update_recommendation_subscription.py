@@ -66,8 +66,9 @@ _SCHEMA: dict[str, Any] = {
         "assinatura ja esta no status pedido, responde no_changes sem token. Senao, "
         "SEMPRE devolve preview (antes -> depois) com confirmation_token; ENABLED vem "
         "com aviso de que o Google passa a aplicar sozinho. Aplicar via apply_change, "
-        "que rele o status e devolve status_resultante; se ele divergir do pedido, a "
-        "linha sai com efeito 'sem_efeito'."
+        "que rele o status e devolve status_resultante; o veredito vai em "
+        "`conferencia` na linha (divergente quando a releitura nao bate com o pedido), "
+        "e `efeito` segue sendo o ACK do Google."
     ),
     input_schema=_SCHEMA,
     bucket="defer",
@@ -149,8 +150,8 @@ async def update_recommendation_subscription(args: dict[str, Any]) -> dict[str, 
         "status": status,
         "status_antes": status_antes,
         "__target_count__": 1,
-        # Uma operacao so, mas com o relatorio por linha: e nele que vive o `efeito`
-        # que o pos-check rebaixa para `sem_efeito` quando a releitura diverge.
+        # Uma operacao so, mas com o relatorio por linha: e nele que vivem o `efeito`
+        # (ACK do Google) e a `conferencia` que o pos-check preenche com a releitura.
         "__partial_failure__": True,
         # Audit: so tipo e status, nada de texto livre.
         "__params_summary__": {"type": tipo, "status": status},

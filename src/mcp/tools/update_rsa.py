@@ -33,6 +33,8 @@ from src.mcp.tools._rsa_textos import (
     ITEM_TEXTO,
     POSICOES_DESCRIPTION,
     POSICOES_HEADLINE,
+    TETO_LOTE_RSA,
+    preview_do_lote,
     validar_textos,
 )
 
@@ -58,6 +60,15 @@ def _validate_updates_have_mutable_field(
     return None
 
 
+def _primeiro_ad_id_repetido(updates: list[dict[str, Any]]) -> str | None:
+    vistos: set[str] = set()
+    for u in updates:
+        if u["ad_id"] in vistos:
+            return str(u["ad_id"])
+        vistos.add(u["ad_id"])
+    return None
+
+
 _SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -65,7 +76,7 @@ _SCHEMA: dict[str, Any] = {
         "updates": {
             "type": "array",
             "minItems": 1,
-            "maxItems": 5,
+            "maxItems": TETO_LOTE_RSA,
             "items": {
                 "type": "object",
                 "properties": {
@@ -144,7 +155,8 @@ def _preview_do_update(
 @register_tool(
     name="update_rsa",
     description=(
-        "[DEFER] Modifica 1-5 RSAs existentes. Cada update tem ad_id + pelo menos 1 dos "
+        "[DEFER] Modifica 1-50 RSAs existentes, um update por ad_id (ad_id repetido "
+        "no lote e recusado). Cada update tem ad_id + pelo menos 1 dos "
         "campos mutaveis: headlines (3-15 × 30 chars), descriptions (2-4 × 90 "
         "chars), final_urls (1+), path1/path2 (15 chars cada). Listas fornecidas "
         "SUBSTITUEM as existentes (semantics proto-plus + field_mask). Item de "
@@ -153,8 +165,11 @@ def _preview_do_update(
         "anuncio pinado TIRA o pino: o pre-flight recusa quando uma posicao que hoje "
         "tem pino fica sem nenhum — repita o pino na lista nova ou passe "
         "remover_pinos: true naquele update. Reescrever o texto mantendo a posicao "
-        "segue; o preview mostra pinos antes->depois. Pinar reduz a forca do anuncio. "
-        "Pino que nao pegou volta com efeito sem_efeito e pinos_resultantes. Sempre "
+        "segue. Preview: ate 5 updates o preview mostra pinos antes->depois por "
+        "anuncio; acima de 5 ele e compacto, so com contagens (headlines, descriptions, "
+        "pinos) e o texto apenas do que muda. Pinar reduz a forca do anuncio. "
+        "Pino que nao pegou volta na linha com `conferencia` divergente e "
+        "pinos_resultantes (o anuncio foi gravado: nao refaca as cegas). Sempre "
         "CONFIRM. Pre-flight rejeita ad inexistente, type != RESPONSIVE_SEARCH_AD, "
         "ad_group REMOVED, campaign non-SEARCH, ou anuncio que e variacao de Ad "
         "Variation (gerenciado pelo Google — edite o anuncio base, que a variacao "
@@ -180,6 +195,18 @@ async def update_rsa(args: dict[str, Any]) -> dict[str, Any]:
     shape_error = _validate_updates_have_mutable_field(updates)
     if shape_error:
         return error_envelope("update_rsa", shape_error)
+
+    # Antes do pre-flight e do token: dois updates no mesmo ad_id viram duas operacoes
+    # sobre o mesmo anuncio no lote, com a ultima sobrescrevendo a primeira em silencio
+    # (as listas SUBSTITUEM), e o preview/antes->depois mostraria as duas como se
+    # valessem.
+    repetido = _primeiro_ad_id_repetido(updates)
+    if repetido is not None:
+        return error_envelope(
+            "update_rsa",
+            f"ad_id {repetido} repetido no lote: cada anuncio entra uma vez so. Junte as "
+            "mudancas desse anuncio num unico update.",
+        )
 
     # G2: o schema do item nao tem `type` (ver _rsa_textos); a regra roda aqui, antes
     # do pre-flight e do token.
@@ -223,7 +250,7 @@ async def update_rsa(args: dict[str, Any]) -> dict[str, Any]:
         "__partial_failure__": True,
     }
 
-    preview = [_preview_do_update(u, pinos_atuais) for u in updates]
+    preview = preview_do_lote(updates, lambda u: _preview_do_update(u, pinos_atuais))
     extra: dict[str, Any] = {}
     if params_summary["pinos_por_posicao_total"]:
         extra["aviso_pinos"] = AVISO_PINO

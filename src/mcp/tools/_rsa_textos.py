@@ -13,7 +13,7 @@ e e reexportada aqui.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from src.google_ads.rsa_textos import (
@@ -23,6 +23,7 @@ from src.google_ads.rsa_textos import (
     POSICOES_POR_CAMPO,
     campos_de_texto,
     normalizar_textos,
+    pinos_pedidos,
     pinos_por_posicao,
     posicoes_perdidas,
 )
@@ -30,13 +31,23 @@ from src.google_ads.rsa_textos import (
 __all__ = [
     "AVISO_PINO",
     "ITEM_TEXTO",
+    "LIMITE_PREVIEW_DETALHADO",
+    "TETO_LOTE_RSA",
     "POSICOES_DESCRIPTION",
     "POSICOES_HEADLINE",
     "normalizar_textos",
     "pinos_por_posicao",
     "posicoes_perdidas",
+    "preview_compacto",
+    "preview_do_lote",
     "validar_textos",
 ]
+
+# Teto de itens por chamada de create_rsa/update_rsa (M2; era 5). Unica fonte: os dois
+# schemas usam esta constante.
+TETO_LOTE_RSA: int = 50
+# Ate aqui o preview e o detalhado de sempre; acima, `preview_compacto`.
+LIMITE_PREVIEW_DETALHADO = 5
 
 # Teto de caracteres por campo (era o `maxLength` do schema antes do G2).
 MAX_LEN_POR_CAMPO: dict[str, int] = {"headlines": 30, "descriptions": 90}
@@ -96,3 +107,41 @@ def validar_textos(spec: Mapping[str, Any], rotulo: str) -> str | None:
             if erro is not None:
                 return f"{rotulo}: {campo}[{i}] invalido — {erro}."
     return None
+
+
+def preview_compacto(updates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Preview de update_rsa para lote grande: uma linha curta por anuncio.
+
+    Sem texto, exceto quando `headlines`/`descriptions` MUDAM naquele update; os pinos
+    viram contagem (o antes->depois detalhado so existe ate `LIMITE_PREVIEW_DETALHADO`).
+    """
+    saida: list[dict[str, Any]] = []
+    for u in updates:
+        item: dict[str, Any] = {
+            "ad_id": u["ad_id"],
+            "fields_updated": sorted(k for k in u if k not in ("ad_id", "remover_pinos")),
+            "contagens": {
+                "headlines": len(u.get("headlines", [])),
+                "descriptions": len(u.get("descriptions", [])),
+                "pinos": sum(len(t) for t in pinos_pedidos(u).values()),
+            },
+            "final_urls": u.get("final_urls"),
+            "path1": u.get("path1"),
+            "path2": u.get("path2"),
+        }
+        for campo in ("headlines", "descriptions"):
+            if campo in u:
+                item[campo] = u[campo]
+        if u.get("remover_pinos", False):
+            item["remover_pinos"] = True
+        saida.append(item)
+    return saida
+
+
+def preview_do_lote(
+    itens: list[dict[str, Any]], detalhado: Callable[[dict[str, Any]], dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Ate `LIMITE_PREVIEW_DETALHADO` itens: o preview detalhado atual; acima, o compacto."""
+    if len(itens) <= LIMITE_PREVIEW_DETALHADO:
+        return [detalhado(i) for i in itens]
+    return preview_compacto(itens)

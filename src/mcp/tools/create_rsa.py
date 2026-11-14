@@ -1,5 +1,5 @@
 # bucket: defer
-"""Tool: create_rsa - create 1-5 Responsive Search Ads in existing ad_groups.
+"""Tool: create_rsa - create 1-50 Responsive Search Ads in existing ad_groups.
 
 Always-CONFIRM (creates sensitive per spec §7.1). Pre-flight validates parent
 ad_groups: existence, not REMOVED, and parent campaign channel = SEARCH/SEARCH_PARTNERS.
@@ -22,8 +22,10 @@ from src.mcp.tools._registry import register_tool
 from src.mcp.tools._rsa_textos import (
     AVISO_PINO,
     ITEM_TEXTO,
+    LIMITE_PREVIEW_DETALHADO,
     POSICOES_DESCRIPTION,
     POSICOES_HEADLINE,
+    TETO_LOTE_RSA,
     validar_textos,
 )
 
@@ -34,7 +36,7 @@ _SCHEMA: dict[str, Any] = {
         "rsas": {
             "type": "array",
             "minItems": 1,
-            "maxItems": 5,
+            "maxItems": TETO_LOTE_RSA,
             "items": {
                 "type": "object",
                 "properties": {
@@ -96,15 +98,16 @@ def _build_params_summary(rsas: list[dict[str, Any]]) -> dict[str, Any]:
 @register_tool(
     name="create_rsa",
     description=(
-        "[DEFER] Cria 1-5 Responsive Search Ads (RSAs) em ad_groups existentes. "
+        "[DEFER] Cria 1-50 Responsive Search Ads (RSAs) em ad_groups existentes. "
         "Cada RSA tem ad_group_id (parent) + headlines (3-15 itens, max 30 chars cada) "
         "+ descriptions (2-4 itens, max 90 chars cada) + final_urls (1+ URLs) + "
         "path1/path2 opcionais (display URL paths, max 15 chars cada) + status opcional "
         "(PAUSED default | ENABLED). Item de headline/description e string (sem pino) "
         "ou {text, pinned_field} para pinar: HEADLINE_1..3 nas headlines, "
         "DESCRIPTION_1..2 nas descriptions. Pinar reduz a forca do anuncio (menos "
-        "combinacoes para o Google testar); pino que nao pegou volta com efeito "
-        "sem_efeito e pinos_resultantes na linha. Sempre CONFIRM (creates sensitive). Pre-flight "
+        "combinacoes para o Google testar); pino que nao pegou volta na linha com "
+        "`conferencia` divergente e pinos_resultantes (o anuncio foi criado: nao "
+        "recrie). Sempre CONFIRM (creates sensitive). Pre-flight "
         "rejeita ad_group inexistente, REMOVED, ou em campaign non-SEARCH. NOT "
         "idempotente — Google permite multiple RSAs com mesmo content. Lote PARCIAL: "
         "se o Google recusar um anuncio, os demais sao criados e o apply_change "
@@ -174,6 +177,10 @@ async def create_rsa(args: dict[str, Any]) -> dict[str, Any]:
         }
         for r in rsas
     ]
+    if len(rsas) > LIMITE_PREVIEW_DETALHADO:
+        # M2: acima de 5 o texto dos pinos sai; ficam so as contagens por posicao.
+        for item in preview:
+            item["pinos"] = {pos: len(t) for pos, t in item["pinos"].items()}
     extra: dict[str, Any] = {}
     if params_summary["pinos_por_posicao_total"]:
         extra["aviso_pinos"] = AVISO_PINO

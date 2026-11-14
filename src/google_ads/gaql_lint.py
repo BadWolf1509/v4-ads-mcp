@@ -12,10 +12,16 @@ AVISO_N1 = (
     "SELECT; no WHERE ele nao esconde nada (medido em 14/11)."
 )
 
+# Nao medido nao e zero: sem a lista do SELECT, `[]` diria "nada a avisar" sobre uma query
+# que o lint nem leu.
+AVISO_SELECT_ILEGIVEL = "o lint nao reconheceu a lista do SELECT; nenhum aviso foi verificado"
+
 
 def avisos_gaql(query: str) -> list[str]:
-    """Avisos estaticos da query. Lista vazia quando nao ha nada a dizer (ou o SELECT nao le)."""
-    campos = campos_do_select(query) or set()
+    """Avisos estaticos da query. Lista vazia so quando o SELECT foi lido e nao ha o que dizer."""
+    campos = campos_do_select(query)
+    if campos is None:
+        return [AVISO_SELECT_ILEGIVEL]
     avisos: list[str] = []
     # N1: medido so para segments.date (week/month/etc. nao foram medidos).
     if "segments.date" in campos:

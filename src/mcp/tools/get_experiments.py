@@ -5,7 +5,8 @@ A API nao liga braco a anuncio (F181): `experiment_arm` so traz `resource_name` 
 `experiment`. As variacoes de um experimento AD_VARIATION sao RSAs com
 `system_managed_resource_source = AD_VARIATIONS`, e a unica forma honesta de liga-las
 a um experimento e por ELIMINACAO: so quando a conta tem exatamente UM AD_VARIATION
-ENABLED. Com 0 ou 2+ a resposta diz `atribuicao: null` e o motivo — nunca chuta.
+ENABLED e nenhum outro AD_VARIATION fora de REMOVED. Senao a resposta diz
+`atribuicao: null` e o motivo — nunca chuta.
 """
 
 from __future__ import annotations
@@ -63,8 +64,9 @@ _DESCRIPTION = (
     "grupos com variacao ENABLED; grupo sem base ENABLED vem com `base: null`. Anuncio sem "
     "trafego na janela conta como zero (nao some). ATRIBUICAO: a API nao liga braco a "
     "anuncio (F181), entao as variacoes so se atribuem ao experimento por eliminacao — "
-    "quando a conta tem exatamente UM AD_VARIATION ENABLED (`atribuicao: "
-    "'inferida_por_eliminacao'`). Com 0 ou 2+, `atribuicao: null`, `atribuicao_motivo` "
+    "quando a conta tem exatamente UM AD_VARIATION ENABLED e nenhum outro AD_VARIATION "
+    "fora de REMOVED (`atribuicao: 'inferida_por_eliminacao'`). Com 0 ou 2+ ENABLED, ou "
+    "com um AD_VARIATION HALTED/SETUP/etc. na conta, `atribuicao: null`, `atribuicao_motivo` "
     "diz por que, e todo experimento vem com `grupos: null` — null e 'nao da para "
     "atribuir', nao 'sem grupos'. Experimento REMOVED, PAUSED ou de outro tipo (ex.: "
     "SEARCH_CUSTOM, de campanha) vem so na lista, com `grupos: null`. `experiment_id` "
@@ -144,10 +146,27 @@ async def get_experiments(args: dict[str, Any]) -> dict[str, Any]:
     ad_variation_enabled = [
         e for e in todos if e["tipo"] == "AD_VARIATION" and e["status"] == "ENABLED"
     ]
+    # Revisao final: o AD_VARIATION fora de ENABLED/REMOVED (HALTED, SETUP, INITIATED,
+    # PROMOTED, GRADUATED, UNKNOWN...) tambem pode ser dono de variacao AD_VARIATIONS
+    # ENABLED — so REMOVED sai da disputa. Com ele na conta, a eliminacao nao fecha.
+    disputam = [
+        e
+        for e in todos
+        if e["tipo"] == "AD_VARIATION" and e["status"] not in ("ENABLED", "REMOVED")
+    ]
     listados = [e for e in todos if experiment_id is None or e["experiment_id"] == experiment_id]
 
     alvo = ad_variation_enabled[0] if len(ad_variation_enabled) == 1 else None
-    if len(ad_variation_enabled) == 0:
+    if alvo is not None and disputam:
+        outros = ", ".join(f"{e['experiment_id']} ({e['status']})" for e in disputam)
+        motivo = (
+            f"A conta tem um AD_VARIATION ENABLED ({alvo['experiment_id']}), mas tambem "
+            f"AD_VARIATION em outro status que nao REMOVED: {outros}. As variacoes podem "
+            "ser desse outro experimento, e a API nao liga braco a anuncio (F181): nao da "
+            "para atribuir por eliminacao."
+        )
+        alvo = None
+    elif len(ad_variation_enabled) == 0:
         motivo = (
             "Nenhum experimento AD_VARIATION ENABLED na conta: nao ha variacao em teste "
             "para atribuir."
