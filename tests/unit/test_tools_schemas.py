@@ -57,6 +57,39 @@ def test_no_composition_keywords_in_any_schema():
     )
 
 
+def test_no_type_array_in_any_schema():
+    """`type: [..]` (lista) nunca entra em `input_schema` (G2, decisao de 14/11).
+
+    Nenhum dos schemas de producao usava `type` em lista (medido em origin/main), entao
+    a aceitacao pela API da Anthropic e por Codex/Cursor nao foi medida — e a falha
+    medida dessa familia (3b.18, 3b.19B) e um 400 que derruba a sessao INTEIRA do
+    gestor. Item com mais de uma forma vai sem `type`, e a regra mora no corpo da tool.
+    So conta `type` como palavra-chave de schema: `properties.type` (um campo chamado
+    "type") e nome de propriedade, nao `type`, e e percorrido como subschema.
+    """
+    offenders: list[tuple[str, str]] = []
+
+    def walk(tool_name: str, node: object, path: str, *, mapa_de_nomes: bool = False) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if not mapa_de_nomes and key == "type" and isinstance(value, list):
+                    offenders.append((tool_name, f"{path}.type"))
+                eh_mapa = not mapa_de_nomes and key in ("properties", "patternProperties", "$defs")
+                walk(tool_name, value, f"{path}.{key}", mapa_de_nomes=eh_mapa)
+        elif isinstance(node, list):
+            for i, item in enumerate(node):
+                walk(tool_name, item, f"{path}[{i}]")
+
+    tools = all_tools()
+    assert len(tools) >= 80, f"so {len(tools)} tools registradas: varredura vazia nao prova nada"
+    for tool in tools:
+        walk(tool.name, tool.input_schema, "input_schema")
+
+    assert not offenders, "Schemas com `type` em lista (nao medido na API):\n" + "\n".join(
+        f"  {name}: {path}" for name, path in offenders
+    )
+
+
 def test_builder_tests_use_capture_client_not_magicmock():
     """Builder tests DEVEM usar fixtures/proto_capture.make_capture_client, nunca
     um MagicMock client cru.

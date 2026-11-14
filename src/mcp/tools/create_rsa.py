@@ -24,6 +24,7 @@ from src.mcp.tools._rsa_textos import (
     ITEM_TEXTO,
     POSICOES_DESCRIPTION,
     POSICOES_HEADLINE,
+    validar_textos,
 )
 
 _SCHEMA: dict[str, Any] = {
@@ -123,6 +124,13 @@ async def create_rsa(args: dict[str, Any]) -> dict[str, Any]:
     customer_id = args["customer_id"]
     rsas = args["rsas"]
     target_count = len(rsas)
+
+    # G2: o schema do item nao tem `type` (ver _rsa_textos); a regra roda aqui, antes
+    # do pre-flight e do token.
+    for i, r in enumerate(rsas):
+        erro_texto = validar_textos(r, f"RSA {i} (ad_group {r['ad_group_id']})")
+        if erro_texto:
+            return error_envelope("create_rsa", erro_texto)
 
     error = await validate_parent_ad_groups_for_rsa_create(
         manager_id=ctx.manager_id,

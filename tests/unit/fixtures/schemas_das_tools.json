@@ -1189,30 +1189,7 @@
               },
               "descriptions": {
                 "items": {
-                  "additionalProperties": false,
-                  "maxLength": 90,
-                  "minLength": 1,
-                  "properties": {
-                    "pinned_field": {
-                      "enum": [
-                        "DESCRIPTION_1",
-                        "DESCRIPTION_2"
-                      ],
-                      "type": "string"
-                    },
-                    "text": {
-                      "maxLength": 90,
-                      "minLength": 1,
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "text"
-                  ],
-                  "type": [
-                    "string",
-                    "object"
-                  ]
+                  "description": "String de 1 a 90 caracteres (sem pino) OU objeto {\"text\": <1 a 90 caracteres>, \"pinned_field\": <opcional, um de DESCRIPTION_1, DESCRIPTION_2>} para pinar o texto nessa posicao. Nenhuma outra chave no objeto."
                 },
                 "maxItems": 4,
                 "minItems": 2,
@@ -1228,31 +1205,7 @@
               },
               "headlines": {
                 "items": {
-                  "additionalProperties": false,
-                  "maxLength": 30,
-                  "minLength": 1,
-                  "properties": {
-                    "pinned_field": {
-                      "enum": [
-                        "HEADLINE_1",
-                        "HEADLINE_2",
-                        "HEADLINE_3"
-                      ],
-                      "type": "string"
-                    },
-                    "text": {
-                      "maxLength": 30,
-                      "minLength": 1,
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "text"
-                  ],
-                  "type": [
-                    "string",
-                    "object"
-                  ]
+                  "description": "String de 1 a 30 caracteres (sem pino) OU objeto {\"text\": <1 a 30 caracteres>, \"pinned_field\": <opcional, um de HEADLINE_1, HEADLINE_2, HEADLINE_3>} para pinar o texto nessa posicao. Nenhuma outra chave no objeto."
                 },
                 "maxItems": 15,
                 "minItems": 3,
@@ -4184,30 +4137,7 @@
               },
               "descriptions": {
                 "items": {
-                  "additionalProperties": false,
-                  "maxLength": 90,
-                  "minLength": 1,
-                  "properties": {
-                    "pinned_field": {
-                      "enum": [
-                        "DESCRIPTION_1",
-                        "DESCRIPTION_2"
-                      ],
-                      "type": "string"
-                    },
-                    "text": {
-                      "maxLength": 90,
-                      "minLength": 1,
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "text"
-                  ],
-                  "type": [
-                    "string",
-                    "object"
-                  ]
+                  "description": "String de 1 a 90 caracteres (sem pino) OU objeto {\"text\": <1 a 90 caracteres>, \"pinned_field\": <opcional, um de DESCRIPTION_1, DESCRIPTION_2>} para pinar o texto nessa posicao. Nenhuma outra chave no objeto."
                 },
                 "maxItems": 4,
                 "minItems": 2,
@@ -4223,31 +4153,7 @@
               },
               "headlines": {
                 "items": {
-                  "additionalProperties": false,
-                  "maxLength": 30,
-                  "minLength": 1,
-                  "properties": {
-                    "pinned_field": {
-                      "enum": [
-                        "HEADLINE_1",
-                        "HEADLINE_2",
-                        "HEADLINE_3"
-                      ],
-                      "type": "string"
-                    },
-                    "text": {
-                      "maxLength": 30,
-                      "minLength": 1,
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "text"
-                  ],
-                  "type": [
-                    "string",
-                    "object"
-                  ]
+                  "description": "String de 1 a 30 caracteres (sem pino) OU objeto {\"text\": <1 a 30 caracteres>, \"pinned_field\": <opcional, um de HEADLINE_1, HEADLINE_2, HEADLINE_3>} para pinar o texto nessa posicao. Nenhuma outra chave no objeto."
                 },
                 "maxItems": 15,
                 "minItems": 3,

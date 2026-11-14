@@ -33,6 +33,7 @@ from src.mcp.tools._rsa_textos import (
     ITEM_TEXTO,
     POSICOES_DESCRIPTION,
     POSICOES_HEADLINE,
+    validar_textos,
 )
 
 _MUTABLE_FIELDS = ("headlines", "descriptions", "final_urls", "path1", "path2")
@@ -179,6 +180,13 @@ async def update_rsa(args: dict[str, Any]) -> dict[str, Any]:
     shape_error = _validate_updates_have_mutable_field(updates)
     if shape_error:
         return error_envelope("update_rsa", shape_error)
+
+    # G2: o schema do item nao tem `type` (ver _rsa_textos); a regra roda aqui, antes
+    # do pre-flight e do token.
+    for u in updates:
+        erro_texto = validar_textos(u, f"Update do ad_id {u['ad_id']}")
+        if erro_texto:
+            return error_envelope("update_rsa", erro_texto)
 
     # Preenchido pelo pre-flight com o que ele ja le (zero round-trip): antes->depois.
     pinos_atuais: dict[str, dict[str, list[str]] | None] = {}

@@ -28,6 +28,7 @@ from src.mcp.tools._rsa_textos import (
     normalizar_textos,
     pinos_por_posicao,
     posicoes_perdidas,
+    validar_textos,
 )
 
 # --- builder: proto real do SDK (offline; nenhuma chamada de rede) ----------------------
@@ -170,24 +171,54 @@ def test_posicoes_perdidas_por_posicao_nao_por_texto() -> None:
     assert posicoes_perdidas({}, {"HEADLINE_3": ["x"]}) == []
 
 
-def test_schema_do_item_aceita_string_e_objeto_e_recusa_o_resto() -> None:
-    schema = {"type": "array", "items": ITEM_TEXTO(30, POSICOES_HEADLINE)}
-    jsonschema.validate(["a", {"text": "b"}, {"text": "c", "pinned_field": "HEADLINE_3"}], schema)
-    for ruim in (
-        [{"text": "c", "pinned_field": "DESCRIPTION_1"}],  # posicao de outro campo
-        [{"text": "c", "pino": "HEADLINE_1"}],  # additionalProperties: false
-        [{"pinned_field": "HEADLINE_1"}],  # text obrigatorio
-        ["x" * 31],  # teto de string
-        [{"text": "x" * 31}],  # teto do text no objeto
-        [""],
-        [7],
-    ):
-        with pytest.raises(jsonschema.ValidationError):
-            jsonschema.validate(ruim, schema)
-    jsonschema.validate(
-        [{"text": "d", "pinned_field": "DESCRIPTION_2"}],
-        {"type": "array", "items": ITEM_TEXTO(90, POSICOES_DESCRIPTION)},
-    )
+def test_item_do_schema_sem_type_e_com_descricao() -> None:
+    """Sem `type` em array nem composicao: a regra mora no corpo da tool (3b.19B.1)."""
+    for max_len, posicoes in ((30, POSICOES_HEADLINE), (90, POSICOES_DESCRIPTION)):
+        item = ITEM_TEXTO(max_len, posicoes)
+        assert "type" not in item
+        assert not {"oneOf", "anyOf", "allOf"} & set(item)
+        assert str(max_len) in item["description"]
+        assert all(p in item["description"] for p in posicoes)
+        # O schema deixa passar tudo; quem recusa e `validar_textos`.
+        jsonschema.validate([7, {"x": 1}], {"type": "array", "items": item})
+
+
+def test_validar_textos_aceita_as_duas_formas() -> None:
+    spec = {
+        "headlines": ["a", {"text": "b"}, {"text": "c", "pinned_field": "HEADLINE_3"}],
+        "descriptions": ["d" * 90, {"text": "e", "pinned_field": "DESCRIPTION_2"}],
+    }
+    assert validar_textos(spec, "RSA 0") is None
+    assert validar_textos({"final_urls": ["https://x"]}, "update 0") is None
+
+
+@pytest.mark.parametrize(
+    ("campo", "item", "trecho"),
+    [
+        ("headlines", "x" * 31, "30"),
+        ("headlines", "", "1"),
+        ("descriptions", "x" * 91, "90"),
+        ("headlines", {"text": "x" * 31}, "30"),
+        ("headlines", {"text": ""}, "1"),
+        ("headlines", {"text": "c", "pino": "HEADLINE_1"}, "pino"),
+        ("headlines", {"pinned_field": "HEADLINE_1"}, "text"),
+        ("headlines", {"text": 5}, "text"),
+        ("headlines", {"text": "c", "pinned_field": "DESCRIPTION_1"}, "DESCRIPTION_1"),
+        ("descriptions", {"text": "c", "pinned_field": "HEADLINE_1"}, "HEADLINE_1"),
+        ("headlines", {"text": "c", "pinned_field": None}, "pinned_field"),
+        ("headlines", 7, "string"),
+        ("headlines", None, "string"),
+        ("headlines", ["a"], "string"),
+    ],
+)
+def test_validar_textos_recusa(campo: str, item: Any, trecho: str) -> None:
+    base = {"headlines": ["a", "b", "c"], "descriptions": ["d", "e"]}
+    spec = {**base, campo: [*base[campo][:-1], item]}
+    erro = validar_textos(spec, "RSA 3")
+    assert erro is not None
+    assert "RSA 3" in erro and campo in erro and trecho in erro
+    # Posicao do item (indice 0-based) na mensagem, para o gestor achar o culpado.
+    assert f"[{len(base[campo]) - 1}]" in erro
 
 
 def test_schemas_registrados_usam_o_item() -> None:
@@ -684,3 +715,82 @@ def test_parse_da_releitura_diz_se_leu_os_pinos() -> None:
     h = SimpleNamespace(text="a", pinned_field=_enum("UNSPECIFIED"), policy_summary_info=None)
     assert parse_rsa_estado_row(row([h]))["pinos_lidos"] is True
     assert parse_rsa_estado_row(row([]))["pinos_lidos"] is False
+
+
+# --- validacao no corpo da tool, ANTES do token ----------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ruim",
+    [
+        "x" * 31,
+        {"text": "c", "extra": 1},
+        {"text": "c", "pinned_field": "DESCRIPTION_1"},
+        7,
+    ],
+)
+async def test_create_recusa_item_invalido_antes_do_token(_ctx, ruim: Any) -> None:
+    from src.mcp.tools.create_rsa import create_rsa
+
+    preflight = AsyncMock(return_value=None)
+    pending = AsyncMock(return_value="T")
+    with (
+        patch("src.mcp.tools.create_rsa.validate_parent_ad_groups_for_rsa_create", preflight),
+        patch("src.mcp.tools._mutate_common.create_pending", pending),
+    ):
+        out = await create_rsa(
+            {
+                "customer_id": "1234567890",
+                "rsas": [
+                    {
+                        "ad_group_id": "5",
+                        "headlines": ["A", "B", "C"],
+                        "descriptions": ["d", "e"],
+                        "final_urls": ["https://exemplo.com.br/"],
+                    },
+                    {
+                        "ad_group_id": "6",
+                        "headlines": ["A", "B", ruim],
+                        "descriptions": ["d", "e"],
+                        "final_urls": ["https://exemplo.com.br/"],
+                    },
+                ],
+            }
+        )
+    assert out["status"] == "error"
+    assert "ad_group 6" in out["error_message"] and "headlines[2]" in out["error_message"]
+    pending.assert_not_awaited()
+    preflight.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("campo", "ruim"),
+    [
+        ("descriptions", "x" * 91),
+        ("headlines", {"text": "c", "extra": 1}),
+        ("headlines", {"text": "c", "pinned_field": "DESCRIPTION_1"}),
+        ("descriptions", 7),
+    ],
+)
+async def test_update_recusa_item_invalido_antes_do_token(_ctx, campo: str, ruim: Any) -> None:
+    from src.mcp.tools.update_rsa import update_rsa
+
+    base = {"headlines": ["A", "B", "C"], "descriptions": ["d", "e"]}
+    preflight = AsyncMock(return_value=None)
+    pending = AsyncMock(return_value="T")
+    with (
+        patch("src.mcp.tools.update_rsa.validate_existing_rsas_for_update", preflight),
+        patch("src.mcp.tools._mutate_common.create_pending", pending),
+    ):
+        out = await update_rsa(
+            {
+                "customer_id": "1234567890",
+                "updates": [{"ad_id": "777", campo: [*base[campo][:-1], ruim]}],
+            }
+        )
+    assert out["status"] == "error"
+    assert "ad_id 777" in out["error_message"] and campo in out["error_message"]
+    pending.assert_not_awaited()
+    preflight.assert_not_awaited()
