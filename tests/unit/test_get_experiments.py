@@ -151,6 +151,39 @@ async def test_dois_enabled_atribuicao_null(monkeypatch):
     assert not any("ad_group_ad" in c for c in chamadas)
 
 
+@pytest.mark.parametrize("status", ["HALTED", "SETUP", "INITIATED", "PROMOTED", "GRADUATED"])
+async def test_outro_ad_variation_fora_de_enabled_e_removed_nega_atribuicao(monkeypatch, status):
+    """A eliminacao so vale se nenhum OUTRO AD_VARIATION pode ser dono das variacoes: um
+    HALTED/SETUP/... da conta pode ter deixado variacao AD_VARIATIONS ENABLED."""
+    chamadas = _wire(
+        monkeypatch,
+        exps=[_exp("1", status=status), _exp("2"), _exp("3", status="REMOVED")],
+        ads=[_ad("11"), _ad("21", variacao=True)],
+    )
+    r = await _call()
+    assert r["atribuicao"] is None
+    assert "1" in r["atribuicao_motivo"] and status in r["atribuicao_motivo"]
+    assert "F181" in r["atribuicao_motivo"]
+    assert all(e["grupos"] is None for e in r["experimentos"])
+    assert r["janela"] is None
+    assert not any("ad_group_ad" in c for c in chamadas)
+
+
+async def test_ad_variation_removed_e_outro_tipo_nao_negam(monkeypatch):
+    """Controle: REMOVED e experimento de outro tipo (em qualquer status) nao disputam."""
+    _wire(
+        monkeypatch,
+        exps=[
+            _exp("1", status="REMOVED"),
+            _exp("2"),
+            _exp("4", tipo="SEARCH_CUSTOM", status="HALTED"),
+        ],
+        ads=[_ad("11"), _ad("21", variacao=True)],
+    )
+    r = await _call()
+    assert r["atribuicao"] == "inferida_por_eliminacao"
+
+
 async def test_filtro_nao_muda_regra_da_conta(monkeypatch):
     """A eliminacao e sobre a CONTA: filtrar um id nao faz dele o unico ENABLED."""
     _wire(monkeypatch, exps=[_exp("1"), _exp("2")], ads=[_ad("21", variacao=True)])
