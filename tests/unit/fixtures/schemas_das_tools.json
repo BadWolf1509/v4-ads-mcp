@@ -2688,10 +2688,19 @@
     "_meta": {
       "com.v4company/bucket": "defer"
     },
-    "description": "[DEFER] Catalogo curado de resources GAQL (15+) com seus campos comumente usados. Inclui tambem a lista de segments aplicaveis. Use junto com run_gaql ou validate_gaql pra construir queries customizadas.",
+    "description": "[DEFER] Catalogo curado de resources GAQL (15+) com seus campos comumente usados. Inclui tambem a lista de segments aplicaveis. Use junto com run_gaql ou validate_gaql pra construir queries customizadas. Com `resource` (ex.: keyword_view; exige `customer_id`, que passa pelo gate de acesso) devolve tambem `compativel` {segments, metrics, resources_atribuidos} lido do GoogleAdsFieldService (selectable_with; 1 operacao de quota, cacheado), com `fonte` e `compativel_motivo`; `compativel` null = nao foi possivel medir (veja o motivo), nunca lista vazia.",
     "inputSchema": {
       "additionalProperties": false,
-      "properties": {},
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "resource": {
+          "pattern": "^[a-z_]+$",
+          "type": "string"
+        }
+      },
       "type": "object"
     },
     "name": "list_gaql_resources"
