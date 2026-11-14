@@ -51,6 +51,54 @@ desconhecida).
 exclusivamente em `docs/` e markdown; `tests/` publica revisão. **Cheque a revisão servindo.**
 Contagens de tool e bucket vêm do registry (`import_all_tools()`), nunca de `grep` (F183).
 
+## Backlog de tráfego — 14/11 (#249 a #255)
+
+Sete itens pedidos pela sessão "Gestor de Tráfego JP" ([desenho](../superpowers/specs/2026-11-14-backlog-trafego-design.md)).
+O `/health?deep=1` mede **82 tools** depois do #254. A revisão servindo **não foi medida** no `gcloud`.
+
+🔴 **Contrato novo do `apply_change` (#255, decisão do Wellington, 14/11).**
+- **`efeito` e `changed_count` voltam a ser só o ACK do Google** e concordam com o `had_effect` do
+  `audit_log`.
+- **O veredito da releitura pós-write tem campo próprio, por linha:**
+  `conferencia: {campo, pedido, relido, motivo}`.
+  - Vale para o `_RSA` (campo `pinos`, em `create_rsa`/`update_rsa`) e para o
+    `_AssinaturaRecomendacao` (campo `status`, em `update_recommendation_subscription`).
+  - `motivo` diz `confere` ou diverge ("possível": F184, leitura defasada ou mudança concorrente).
+  - Não lido / ausente / ambíguo → `conferencia: null`.
+  - Divergência gera o log `conferencia_pos_write_divergiu`.
+- **Por quê:** entre o #253 e o #255, o G2 rebaixava para `sem_efeito` um anúncio que **tinha sido
+  gravado**. Um modelo que lê o contrato do `apply_change` ("sem_efeito = não mudou nada") recriaria o
+  RSA e duplicaria o anúncio. A divergência nunca foi vista ao vivo.
+- **Quem lia `efeito: sem_efeito` como "o pino não pegou" passa a ler `conferencia`.** As skills de
+  tráfego fora do repo **não foram auditadas** para isso. A description nova só chega em sessão nova
+  (F140).
+
+| PR | item | o que mudou | prova |
+|---|---|---|---|
+| #249 | M1 | `create_rsa`/`update_rsa`: `estado_revisao` (approval/review por anúncio e por asset), `lido_em`, `releitura` | pendente: dry-run com gestor |
+| #250 | N1+N2 | `avisos[]` em `run_gaql`/`validate_gaql` (`segments.date` no SELECT); hint de "must be present in SELECT" | ✅ chamada real, 14/11 |
+| #251 | N3 | `update_recommendation_subscription` (pausa/reativa assinatura existente) | pendente: pausar `RESPONSIVE_SEARCH_AD` na MO com gestor |
+| #252 | G1 | `get_experiments` (atribuição por eliminação; comparativo base × variação) | GAQLs medidas; chamada da tool pendente |
+| #253 | G2 | `pinned_field` em `create_rsa`/`update_rsa`; recusa de perda de pino por posição; item de texto **sem `type`** | pendente: cliente aceita o catálogo + apply real |
+| #254 | M3 | `list_gaql_resources(resource, customer_id)` via `GoogleAdsFieldService`, com gate de leitura | pendente: chamada real |
+| #255 | M2 + fix | teto de lote RSA 5 → 50, preview compacto; `conferencia`; `ad_id` repetido recusado; lint avisa SELECT ilegível; G1 nega a eliminação com AD_VARIATION em outro estado | pendente: smoke |
+
+**Smoke:** [`smoke-2026-11-14-backlog-trafego.md`](smoke-2026-11-14-backlog-trafego.md), executado
+pela sessão de tráfego, reconectada, com aval nominal nos passos 🔴. Ele mede também o **frescor
+da releitura logo após o write**, que **nunca foi medido**. Se a releitura vier defasada, o
+`conferencia` aponta divergência falsa.
+
+**Medido e descartado:** o "null silencioso" de `quality_info` + `segments.date` (19/09) não se
+reproduz. Com `segments.date` no SELECT, 404 de 500 linhas vêm com `quality_score` (MO, 14/11).
+
+**Minors adiados:** ficam no ledger `.superpowers/sdd/2026-11-14-backlog-trafego/progress.md`.
+Os principais:
+- a comparação de pinos é por contagem e não pega a troca entre posições;
+- `remover_pinos` não tem verificação pós-write;
+- o preview de 50 no pior caso não foi medido;
+- o N3 não refaz a checagem otimista entre o preview e o apply;
+- o G1 lê todos os RSAs ENABLED sem teto e não expõe `final_urls`.
+
 ## Decision gates abertos
 
 **As duas reconciliações revogam** — Meta desde 05/09, Google desde 26/09. **Para desligar:** `false`
