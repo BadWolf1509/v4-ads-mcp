@@ -337,4 +337,7 @@ def make_capture_client() -> MagicMock:
     # RecommendationSubscriptionStatusEnum (build_update_recommendation_subscription, N3).
     client.enums.RecommendationSubscriptionStatusEnum = _BareEnumDict()
 
+    # ServedAssetFieldTypeEnum (pinned_field de AdTextAsset em create/update_rsa, G2).
+    client.enums.ServedAssetFieldTypeEnum = _BareEnumDict()
+
     return client

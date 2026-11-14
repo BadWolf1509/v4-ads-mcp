@@ -14,10 +14,17 @@ from collections import Counter
 from typing import Any
 
 from src.google_ads.preflight import validate_parent_ad_groups_for_rsa_create
+from src.google_ads.rsa_textos import pinos_pedidos, pinos_por_posicao_total
 from src.governance.blast_radius import classify
 from src.mcp.context import get_current
 from src.mcp.tools._mutate_common import emitir_preview, error_envelope
 from src.mcp.tools._registry import register_tool
+from src.mcp.tools._rsa_textos import (
+    AVISO_PINO,
+    ITEM_TEXTO,
+    POSICOES_DESCRIPTION,
+    POSICOES_HEADLINE,
+)
 
 _SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -35,21 +42,13 @@ _SCHEMA: dict[str, Any] = {
                         "type": "array",
                         "minItems": 3,
                         "maxItems": 15,
-                        "items": {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 30,
-                        },
+                        "items": ITEM_TEXTO(30, POSICOES_HEADLINE),
                     },
                     "descriptions": {
                         "type": "array",
                         "minItems": 2,
                         "maxItems": 4,
-                        "items": {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 90,
-                        },
+                        "items": ITEM_TEXTO(90, POSICOES_DESCRIPTION),
                     },
                     "final_urls": {
                         "type": "array",
@@ -89,6 +88,7 @@ def _build_params_summary(rsas: list[dict[str, Any]]) -> dict[str, Any]:
         "with_path1": with_path1,
         "with_path2": with_path2,
         "unique_parent_ad_groups": len({r["ad_group_id"] for r in rsas}),
+        "pinos_por_posicao_total": pinos_por_posicao_total(rsas),
     }
 
 
@@ -96,10 +96,14 @@ def _build_params_summary(rsas: list[dict[str, Any]]) -> dict[str, Any]:
     name="create_rsa",
     description=(
         "[DEFER] Cria 1-5 Responsive Search Ads (RSAs) em ad_groups existentes. "
-        "Cada RSA tem ad_group_id (parent) + headlines (3-15 strings, max 30 chars cada) "
-        "+ descriptions (2-4 strings, max 90 chars cada) + final_urls (1+ URLs) + "
+        "Cada RSA tem ad_group_id (parent) + headlines (3-15 itens, max 30 chars cada) "
+        "+ descriptions (2-4 itens, max 90 chars cada) + final_urls (1+ URLs) + "
         "path1/path2 opcionais (display URL paths, max 15 chars cada) + status opcional "
-        "(PAUSED default | ENABLED). Sempre CONFIRM (creates sensitive). Pre-flight "
+        "(PAUSED default | ENABLED). Item de headline/description e string (sem pino) "
+        "ou {text, pinned_field} para pinar: HEADLINE_1..3 nas headlines, "
+        "DESCRIPTION_1..2 nas descriptions. Pinar reduz a forca do anuncio (menos "
+        "combinacoes para o Google testar); pino que nao pegou volta com efeito "
+        "sem_efeito e pinos_resultantes na linha. Sempre CONFIRM (creates sensitive). Pre-flight "
         "rejeita ad_group inexistente, REMOVED, ou em campaign non-SEARCH. NOT "
         "idempotente — Google permite multiple RSAs com mesmo content. Lote PARCIAL: "
         "se o Google recusar um anuncio, os demais sao criados e o apply_change "
@@ -158,9 +162,13 @@ async def create_rsa(args: dict[str, Any]) -> dict[str, Any]:
             "status": r.get("status", "PAUSED"),
             "has_path1": "path1" in r,
             "has_path2": "path2" in r,
+            "pinos": pinos_pedidos(r),
         }
         for r in rsas
     ]
+    extra: dict[str, Any] = {}
+    if params_summary["pinos_por_posicao_total"]:
+        extra["aviso_pinos"] = AVISO_PINO
 
     return await emitir_preview(
         ctx,
@@ -170,4 +178,5 @@ async def create_rsa(args: dict[str, Any]) -> dict[str, Any]:
         resumo=summary,
         risk=risk,
         rsas_preview=preview,
+        **extra,
     )

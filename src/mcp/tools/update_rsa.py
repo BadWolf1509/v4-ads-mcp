@@ -17,10 +17,23 @@ from collections import Counter
 from typing import Any
 
 from src.google_ads.preflight import validate_existing_rsas_for_update
+from src.google_ads.rsa_textos import (
+    campos_de_texto,
+    pinos_pedidos,
+    pinos_por_posicao_total,
+    posicoes_dos_campos,
+    restringir,
+)
 from src.governance.blast_radius import classify
 from src.mcp.context import get_current
 from src.mcp.tools._mutate_common import emitir_preview, error_envelope
 from src.mcp.tools._registry import register_tool
+from src.mcp.tools._rsa_textos import (
+    AVISO_PINO,
+    ITEM_TEXTO,
+    POSICOES_DESCRIPTION,
+    POSICOES_HEADLINE,
+)
 
 _MUTABLE_FIELDS = ("headlines", "descriptions", "final_urls", "path1", "path2")
 
@@ -60,21 +73,13 @@ _SCHEMA: dict[str, Any] = {
                         "type": "array",
                         "minItems": 3,
                         "maxItems": 15,
-                        "items": {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 30,
-                        },
+                        "items": ITEM_TEXTO(30, POSICOES_HEADLINE),
                     },
                     "descriptions": {
                         "type": "array",
                         "minItems": 2,
                         "maxItems": 4,
-                        "items": {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 90,
-                        },
+                        "items": ITEM_TEXTO(90, POSICOES_DESCRIPTION),
                     },
                     "final_urls": {
                         "type": "array",
@@ -83,6 +88,8 @@ _SCHEMA: dict[str, Any] = {
                     },
                     "path1": {"type": "string", "maxLength": 15},
                     "path2": {"type": "string", "maxLength": 15},
+                    # G2: libera, NESTE update, a perda de pino por posicao.
+                    "remover_pinos": {"type": "boolean", "default": False},
                 },
                 "required": ["ad_id"],
                 "additionalProperties": False,
@@ -105,7 +112,32 @@ def _build_params_summary(updates: list[dict[str, Any]]) -> dict[str, Any]:
         "count": len(updates),
         "fields_updated_distribution": dict(fields_updated),
         "unique_ads": len({u["ad_id"] for u in updates}),
+        "pinos_por_posicao_total": pinos_por_posicao_total(updates),
     }
+
+
+def _preview_do_update(
+    u: dict[str, Any], pinos_atuais: dict[str, dict[str, list[str]] | None]
+) -> dict[str, Any]:
+    """`pinos` so quando o update traz headlines/descriptions, restrito a esses campos.
+
+    `antes` None = nao lido (pre-flight sem a leitura), nunca `{}` (nao medido != zero).
+    """
+    item: dict[str, Any] = {
+        "ad_id": u["ad_id"],
+        "fields_updated": sorted(k for k in u if k not in ("ad_id", "remover_pinos")),
+    }
+    campos = campos_de_texto(u)
+    if campos:
+        atuais = pinos_atuais.get(u["ad_id"])
+        posicoes = posicoes_dos_campos(campos)
+        item["pinos"] = {
+            "antes": None if atuais is None else restringir(atuais, posicoes),
+            "depois": pinos_pedidos(u),
+        }
+        if u.get("remover_pinos", False):
+            item["remover_pinos"] = True
+    return item
 
 
 @register_tool(
@@ -114,7 +146,14 @@ def _build_params_summary(updates: list[dict[str, Any]]) -> dict[str, Any]:
         "[DEFER] Modifica 1-5 RSAs existentes. Cada update tem ad_id + pelo menos 1 dos "
         "campos mutaveis: headlines (3-15 × 30 chars), descriptions (2-4 × 90 "
         "chars), final_urls (1+), path1/path2 (15 chars cada). Listas fornecidas "
-        "SUBSTITUEM as existentes (semantics proto-plus + field_mask). Sempre "
+        "SUBSTITUEM as existentes (semantics proto-plus + field_mask). Item de "
+        "headline/description e string (sem pino) ou {text, pinned_field} "
+        "(HEADLINE_1..3 / DESCRIPTION_1..2). Como a lista substitui, string sobre "
+        "anuncio pinado TIRA o pino: o pre-flight recusa quando uma posicao que hoje "
+        "tem pino fica sem nenhum — repita o pino na lista nova ou passe "
+        "remover_pinos: true naquele update. Reescrever o texto mantendo a posicao "
+        "segue; o preview mostra pinos antes->depois. Pinar reduz a forca do anuncio. "
+        "Pino que nao pegou volta com efeito sem_efeito e pinos_resultantes. Sempre "
         "CONFIRM. Pre-flight rejeita ad inexistente, type != RESPONSIVE_SEARCH_AD, "
         "ad_group REMOVED, campaign non-SEARCH, ou anuncio que e variacao de Ad "
         "Variation (gerenciado pelo Google — edite o anuncio base, que a variacao "
@@ -141,11 +180,14 @@ async def update_rsa(args: dict[str, Any]) -> dict[str, Any]:
     if shape_error:
         return error_envelope("update_rsa", shape_error)
 
+    # Preenchido pelo pre-flight com o que ele ja le (zero round-trip): antes->depois.
+    pinos_atuais: dict[str, dict[str, list[str]] | None] = {}
     error = await validate_existing_rsas_for_update(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
         updates=updates,
+        pinos_atuais=pinos_atuais,
     )
     if error:
         return error_envelope("update_rsa", error)
@@ -173,13 +215,10 @@ async def update_rsa(args: dict[str, Any]) -> dict[str, Any]:
         "__partial_failure__": True,
     }
 
-    preview = [
-        {
-            "ad_id": u["ad_id"],
-            "fields_updated": sorted(k for k in u if k != "ad_id"),
-        }
-        for u in updates
-    ]
+    preview = [_preview_do_update(u, pinos_atuais) for u in updates]
+    extra: dict[str, Any] = {}
+    if params_summary["pinos_por_posicao_total"]:
+        extra["aviso_pinos"] = AVISO_PINO
 
     return await emitir_preview(
         ctx,
@@ -189,4 +228,5 @@ async def update_rsa(args: dict[str, Any]) -> dict[str, Any]:
         resumo=summary,
         risk=risk,
         updates_preview=preview,
+        **extra,
     )
