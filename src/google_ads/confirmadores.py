@@ -625,8 +625,11 @@ _AVISO_REVISAO = (
 )
 
 
-def _ad_ids_a_reler(resultado: Mapping[str, Any]) -> list[str]:
-    """Ids dos anuncios gravados, sem repeticao e na ordem do pedido.
+def _ad_ids_a_reler(resultado: Mapping[str, Any]) -> list[tuple[str | None, str]]:
+    """`(ad_id, resource_name)` dos anuncios gravados, sem repeticao, na ordem do pedido.
+
+    `ad_id` e `None` quando o resource_name tem formato desconhecido: um nome ruim nao
+    derruba a releitura dos demais (o item sai com `motivo`).
 
     `resource_names` e indexado por operacao (string vazia/None na op que falhou). Se o
     resultado traz `efeito` por linha, so entram as que MUDARAM — `sem_efeito` nao
@@ -639,16 +642,34 @@ def _ad_ids_a_reler(resultado: Mapping[str, Any]) -> list[str]:
         if "index" in pf
     }
     ha_efeito = any(e is not None for e in efeitos.values())
-    ids: list[str] = []
+    itens: list[tuple[str | None, str]] = []
     for i, nome in enumerate(nomes):
         if not nome:
             continue
         if ha_efeito and efeitos.get(i) != "mudou":
             continue
-        ad_id = ad_id_de_resource_name(nome)
-        if ad_id not in ids:
-            ids.append(ad_id)
-    return ids
+        try:
+            ad_id: str | None = ad_id_de_resource_name(nome)
+        except ValueError:
+            ad_id = None
+        if ad_id is None or all(ad_id != vis for vis, _ in itens):
+            itens.append((ad_id, nome))
+    return itens
+
+
+def _item_sem_leitura(ad_id: str | None, resource_name: str, motivo: str) -> dict[str, Any]:
+    item: dict[str, Any] = {
+        "ad_id": ad_id,
+        "approval_status": None,
+        "review_status": None,
+        "topicos": [],
+        "assets_reprovados": [],
+        "pinos": {},
+        "motivo": motivo,
+    }
+    if ad_id is None:
+        item["resource_name"] = resource_name
+    return item
 
 
 class _RSA(_Padrao):
@@ -665,9 +686,11 @@ class _RSA(_Padrao):
         base = await super().pos_check(p, portas, resultado)
         estado: list[dict[str, Any]] | None = None
         releitura: dict[str, Any] | None = None
+        lido_em: str | None = None
         confirmation_error: str | None = None
         try:
-            ids = _ad_ids_a_reler(resultado)
+            itens = _ad_ids_a_reler(resultado)
+            ids = [a for a, _ in itens if a is not None]
             if ids:
                 query = rsa_estado_query(ids)
                 releitura = {"tool": "run_gaql", "query": query}
@@ -679,22 +702,21 @@ class _RSA(_Padrao):
                     row_formatter=parse_rsa_estado_row,
                     operation_name=f"{p.operation_type}_estado_revisao",
                 )
+                lido_em = datetime.now(UTC).isoformat()
                 por_id = {r["ad_id"]: r for r in rows}
-                estado = [
-                    por_id.get(ad_id)
-                    or {
-                        "ad_id": ad_id,
-                        "approval_status": None,
-                        "review_status": None,
-                        "topicos": [],
-                        "assets_reprovados": [],
-                        "pinos": {},
-                        "motivo": "nao_encontrado_na_releitura",
-                    }
-                    for ad_id in ids
-                ]
-            else:
                 estado = []
+                for ad_id, nome in itens:
+                    if ad_id is None:
+                        estado.append(_item_sem_leitura(None, nome, "resource_name_irreconhecido"))
+                    elif ad_id in por_id:
+                        estado.append(por_id[ad_id])
+                    else:
+                        estado.append(_item_sem_leitura(ad_id, nome, "nao_encontrado_na_releitura"))
+            else:
+                estado = [
+                    _item_sem_leitura(None, nome, "resource_name_irreconhecido")
+                    for _, nome in itens
+                ]
         except Exception as e:  # noqa: BLE001 — I/O apos escrita ja aplicada: nunca transformar sucesso em erro (F83/F91)
             portas.log.warning(
                 "rsa_estado_revisao_failed",
@@ -703,15 +725,20 @@ class _RSA(_Padrao):
                 error_type=e.__class__.__name__,
             )
             estado = None
+            lido_em = None
             confirmation_error = (
                 f"A mutacao foi aplicada (veja applied_count/provider_request_id), mas a "
-                f"releitura do estado de revisao falhou ({e.__class__.__name__}). Rode a "
-                f"releitura com run_gaql antes de confiar no estado do anuncio."
+                f"releitura do estado de revisao falhou ({e.__class__.__name__}). "
+                + (
+                    "Rode a releitura com run_gaql antes de confiar no estado do anuncio."
+                    if releitura is not None
+                    else "Confira a aprovacao do anuncio antes de confiar no resultado."
+                )
             )
         return {
             **base,
             "estado_revisao": estado,
-            "lido_em": datetime.now(UTC).isoformat(),
+            "lido_em": lido_em,
             "aviso_revisao": _AVISO_REVISAO,
             "releitura": releitura,
             "confirmation_error": confirmation_error,

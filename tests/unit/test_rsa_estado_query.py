@@ -106,3 +106,11 @@ def test_parse_pinos() -> None:
         )
     )
     assert out["pinos"] == {"HEADLINE_1": ["a"], "DESCRIPTION_2": ["d"]}
+
+
+def test_parse_enum_unspecified_vira_none() -> None:
+    """Proto-plus real devolve o enum default com .name == "UNSPECIFIED", nao omite."""
+    ps = SimpleNamespace(approval_status=_enum("UNSPECIFIED"), review_status=_enum("UNSPECIFIED"))
+    out = parse_rsa_estado_row(_row(ps))
+    assert out["approval_status"] is None
+    assert out["review_status"] is None
