@@ -1,7 +1,7 @@
 # Sessão de 03 e 04/11 — Handoff (varredura de refatoração em produção)
 
 > Mapa da sessão. Estado vivo no [`estado-atual`](estado-atual.md); defeitos no
-> [catálogo](findings-catalog.md). Anterior: [`session-2026-10-31-handoff.md`](session-2026-10-31-handoff.md).
+> [catálogo](findings-catalog.md). Anterior: [`session-2026-10-31-handoff.md`](../_archive/handoffs/session-2026-10-31-handoff.md).
 > Plano: [`2026-11-03-varredura-refatoracao.md`](../superpowers/plans/2026-11-03-varredura-refatoracao.md).
 
 ## O que entrou
