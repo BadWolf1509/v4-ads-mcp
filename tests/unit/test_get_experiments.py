@@ -321,3 +321,10 @@ def test_schema_e_descricao():
     assert t.input_schema["required"] == ["customer_id"]
     assert t.input_schema["properties"]["experiment_id"]["pattern"] == "^[0-9]+$"
     assert t.input_schema["additionalProperties"] is False
+
+
+def test_anuncios_query_filtra_status_e_tipo():
+    """Restricao medida: a MO-JP tem 3 variacoes REMOVED que nao podem entrar no comparativo."""
+    _, _, where = q.anuncios_query().partition(" WHERE ")
+    assert "ad_group_ad.status = 'ENABLED'" in where
+    assert "ad_group_ad.ad.type = 'RESPONSIVE_SEARCH_AD'" in where
