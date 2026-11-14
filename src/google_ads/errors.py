@@ -159,13 +159,21 @@ def to_friendly(exc: Exception) -> GoogleAdsFriendlyError:
         # GAQL field/metric/resource error. run_gaql é escape hatch: clientes LLM
         # chutam nomes de campo. Mantém o campo cru E anexa uma dica acionável pro
         # próximo turno se autocorrigir em vez de repetir o chute.
-        msg = (
-            f"Google Ads retornou: {sdk_msg} → Chame list_gaql_resources pros campos "
-            "válidos e validate_gaql pra validar antes de rodar. Métricas existem só em "
-            "certos recursos (ex.: impression share não sai em CUSTOMER) e auction "
-            "insights (overlap rate, position above rate, outranking share) não existem "
-            "na GAQL, só na UI do Google Ads."
-        )
+        if "must be present in select" in str(sdk_msg).lower():
+            # N2: o Google ja nomeia o campo; o sufixo generico (metricas/auction
+            # insights) nao ajuda aqui e manda o cliente pro lugar errado.
+            msg = (
+                f"Google Ads retornou: {sdk_msg} → Adicione ao SELECT o campo citado na "
+                "mensagem: filtrar por um campo exige seleciona-lo neste recurso."
+            )
+        else:
+            msg = (
+                f"Google Ads retornou: {sdk_msg} → Chame list_gaql_resources pros campos "
+                "válidos e validate_gaql pra validar antes de rodar. Métricas existem só em "
+                "certos recursos (ex.: impression share não sai em CUSTOMER) e auction "
+                "insights (overlap rate, position above rate, outranking share) não existem "
+                "na GAQL, só na UI do Google Ads."
+            )
     elif populated == "POLICY_FINDING_ERROR":
         # RSA/anúncio reprovado por política. O sdk_msg genérico ("policy topics of
         # type PROHIBITED") não diz QUAL política — o gestor tentava às cegas (9x no

@@ -11,6 +11,7 @@ from src.db.repositories import audit_log
 from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
+from src.google_ads.gaql_lint import avisos_gaql
 from src.governance.bookkeeping import best_effort
 from src.governance.rate_limit import (
     CHAVE_COTA_PROJETO,
@@ -78,7 +79,9 @@ def _augment_error_hint(query: str, friendly_message: str) -> str:
     name="validate_gaql",
     description=(
         "[DEFER] Valida sintaxe + nomes de campos de um GAQL sem trazer dados, mas "
-        "consome 1 operação da quota diária da API. Retorna {valid: bool, error: str|null}. Use antes de run_gaql "
+        "consome 1 operação da quota diária da API. Retorna {valid: bool, error: str|null, "
+        "code, avisos: list[str]}; `avisos` (pode ser vazia) vem do lint estático, sem custo de "
+        "API (ex.: segments.date no SELECT esconde entidade sem tráfego). Use antes de run_gaql "
         "pra evitar gastar quota com queries quebradas."
     ),
     input_schema=_SCHEMA,
@@ -223,4 +226,7 @@ async def validate_gaql(args: dict[str, Any]) -> dict[str, Any]:
                 duration_ms=duration_ms,
             )
 
+    # N1: lint estatico, sempre presente (lista vazia quando nao ha aviso). Nao entra
+    # no params_summary do audit nem altera `valid`.
+    result["avisos"] = avisos_gaql(query)
     return result
