@@ -1988,6 +1988,31 @@
     "_meta": {
       "com.v4company/bucket": "defer"
     },
+    "description": "[DEFER] Experimentos Google Ads da conta (id, nome, tipo, status, inicio, fim) e, para o experimento de variacao de anuncio (AD_VARIATION) ENABLED, o comparativo por grupo: base (RSAs ENABLED sem AD_VARIATIONS) x variacao (RSAs ENABLED com system_managed_resource_source = AD_VARIATIONS), cada lado SOMADO com impressions, clicks, cost_brl, conversions e cpa_brl (null com 0 conversao). Lista todos os `base_ad_ids` e `variacao_ad_ids` do grupo, sem parear base com variacao; so entram grupos com variacao ENABLED; grupo sem base ENABLED vem com `base: null`. Anuncio sem trafego na janela conta como zero (nao some). ATRIBUICAO: a API nao liga braco a anuncio (F181), entao as variacoes so se atribuem ao experimento por eliminacao — quando a conta tem exatamente UM AD_VARIATION ENABLED (`atribuicao: 'inferida_por_eliminacao'`). Com 0 ou 2+, `atribuicao: null`, `atribuicao_motivo` diz por que, e todo experimento vem com `grupos: null` — null e 'nao da para atribuir', nao 'sem grupos'. Experimento REMOVED, PAUSED ou de outro tipo (ex.: SEARCH_CUSTOM, de campanha) vem so na lista, com `grupos: null`. `experiment_id` filtra a lista, mas a regra continua sendo sobre a conta. `janela` (inicio, fim) declara o periodo das metricas: inicio do experimento -> min(ontem no fuso da conta, fim do experimento); experimento que ainda nao comecou vem com `janela: null` e metricas null. Nao e o teste de significancia da UI (`aviso`); `como_aplicar` diz como aplicar o resultado (update_rsa nos base_ad_ids). Razao com denominador zero vem null (indefinida), nao 0.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "experiment_id": {
+          "description": "Opcional. Lista so este experimento; a regra de atribuicao continua sendo sobre a conta inteira.",
+          "pattern": "^[0-9]+$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_experiments"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
     "description": "[DEFER] Funil completo da conta: impressoes -> clicks -> conversoes -> valor (receita), com taxas de conversao entre etapas e KPIs derivados (ROAS, AOV, CPA). Util pra relatorio cliente. Razao com denominador zero vem null (indefinida), nao 0. filters_applied diz o recorte que a query aplicou.",
     "inputSchema": {
       "additionalProperties": false,
