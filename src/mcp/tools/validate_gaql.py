@@ -11,6 +11,7 @@ from src.db.repositories import audit_log
 from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
+from src.google_ads.gaql_lint import avisos_gaql
 from src.governance.bookkeeping import best_effort
 from src.governance.rate_limit import (
     CHAVE_COTA_PROJETO,
@@ -223,4 +224,7 @@ async def validate_gaql(args: dict[str, Any]) -> dict[str, Any]:
                 duration_ms=duration_ms,
             )
 
+    # N1: lint estatico, sempre presente (lista vazia quando nao ha aviso). Nao entra
+    # no params_summary do audit nem altera `valid`.
+    result["avisos"] = avisos_gaql(query)
     return result
