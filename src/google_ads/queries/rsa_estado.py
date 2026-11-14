@@ -50,6 +50,24 @@ def _enum_ou_none(obj: Any, campo: str) -> str | None:
     return str(nome)
 
 
+def pinos_do_rsa(rsa: Any) -> dict[str, list[str]] | None:
+    """`{posicao: [textos]}` dos assets pinados, ou `None` quando os assets nao vieram.
+
+    RSA tem sempre >= 3 headlines: lista vazia e campo NAO LIDO (fora do SELECT, linha
+    parcial), nunca "sem pino" — devolver `{}` ai afirmaria zero sem medir (F145).
+    Asset sem pino vem com `pinned_field` UNSPECIFIED (ou sem o campo): nao conta.
+    """
+    headlines = list(getattr(rsa, "headlines", None) or [])
+    if not headlines:
+        return None
+    pinos: dict[str, list[str]] = {}
+    for a in headlines + list(getattr(rsa, "descriptions", None) or []):
+        pino = _enum_ou_none(a, "pinned_field")
+        if pino is not None:
+            pinos.setdefault(pino, []).append(str(a.text))
+    return pinos
+
+
 def parse_rsa_estado_row(row: Any) -> dict[str, Any]:
     aga = row.ad_group_ad
     ps = getattr(aga, "policy_summary", None)
@@ -60,7 +78,6 @@ def parse_rsa_estado_row(row: Any) -> dict[str, Any]:
         if getattr(t, "topic", "")
     ]
     reprovados: list[dict[str, Any]] = []
-    pinos: dict[str, list[str]] = {}
     for campo, assets in (
         ("headline", getattr(rsa, "headlines", None) or []),
         ("description", getattr(rsa, "descriptions", None) or []),
@@ -69,14 +86,14 @@ def parse_rsa_estado_row(row: Any) -> dict[str, Any]:
             aprov = _enum_ou_none(getattr(a, "policy_summary_info", None), "approval_status")
             if aprov == "DISAPPROVED":
                 reprovados.append({"campo": campo, "texto": str(a.text), "approval_status": aprov})
-            pino = _enum_ou_none(a, "pinned_field")
-            if pino is not None:
-                pinos.setdefault(pino, []).append(str(a.text))
+    pinos = pinos_do_rsa(rsa)
     return {
         "ad_id": str(aga.ad.id),
         "approval_status": _enum_ou_none(ps, "approval_status"),
         "review_status": _enum_ou_none(ps, "review_status"),
         "topicos": topicos,
         "assets_reprovados": reprovados,
-        "pinos": pinos,
+        # `pinos` segue dict (contrato do M1); `pinos_lidos` diz se ele foi MEDIDO (G2).
+        "pinos": pinos or {},
+        "pinos_lidos": pinos is not None,
     }

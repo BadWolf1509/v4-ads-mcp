@@ -196,6 +196,8 @@ async def test_update_rsa_full_cycle_audits(db, session_ctx) -> None:
         "count": 1,
         "fields_updated_distribution": {"headlines": 1},
         "unique_ads": 1,
+        # G2: contagem de pinos por posicao (nunca texto); lote sem pino -> {}.
+        "pinos_por_posicao_total": {},
         # R1-I2: o executor acrescenta a chave reservada `resultado`
         # (o que ACONTECEU) ao lado do resumo que a tool monta.
         #

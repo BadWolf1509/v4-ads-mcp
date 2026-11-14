@@ -26,6 +26,8 @@ async def test_returns_none_when_all_valid(monkeypatch) -> None:
                 "campaign_id": "10",
                 "campaign_name": "C1",
                 "channel_type": "SEARCH",
+                # G2: o update traz headlines, entao o pre-flight le os pinos atuais.
+                "pinos": {},
             }
         ]
 
@@ -280,6 +282,7 @@ def test_formatter_le_o_campo_pelo_caminho_certo_do_proto() -> None:
                 id=825281476311,
                 type=SimpleNamespace(name="RESPONSIVE_SEARCH_AD"),
                 system_managed_resource_source=SimpleNamespace(name="AD_VARIATIONS"),
+                responsive_search_ad=SimpleNamespace(headlines=[], descriptions=[]),
             )
         ),
         ad_group=SimpleNamespace(
@@ -375,3 +378,37 @@ async def test_sem_base_unico_a_mensagem_nao_inventa_id(monkeypatch) -> None:
     assert "111" not in result
     assert "222" not in result
     assert "base" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_perda_de_pino_so_depois_dos_outros_filtros(monkeypatch) -> None:
+    """G2: ad inexistente no lote fala primeiro; a recusa de pino nao o mascara."""
+
+    async def fake_run_report(**kwargs: Any) -> list[dict[str, Any]]:
+        return [
+            {
+                "ad_id": "100",
+                "ad_type": "RESPONSIVE_SEARCH_AD",
+                "system_managed_source": "UNSPECIFIED",
+                "ad_group_id": "1",
+                "ad_group_name": "AG1",
+                "ad_group_status": "ENABLED",
+                "campaign_id": "10",
+                "campaign_name": "C1",
+                "channel_type": "SEARCH",
+                "pinos": {"HEADLINE_1": ["A"]},
+            }
+        ]
+
+    monkeypatch.setattr("src.google_ads.preflight.run_report", fake_run_report)
+    result = await validate_existing_rsas_for_update(
+        manager_id=uuid4(),
+        session_id=uuid4(),
+        customer_id="1234567890",
+        updates=[
+            {"ad_id": "100", "headlines": ["A", "B", "C"]},
+            {"ad_id": "999", "path1": "x"},
+        ],
+    )
+    assert result is not None
+    assert "999" in result and "nao encontrado" in result.lower()

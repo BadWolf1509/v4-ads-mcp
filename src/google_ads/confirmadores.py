@@ -65,6 +65,12 @@ from src.google_ads.queries.rsa_estado import (
     parse_rsa_estado_row,
     rsa_estado_query,
 )
+from src.google_ads.rsa_textos import (
+    campos_de_texto,
+    pinos_pedidos,
+    posicoes_dos_campos,
+    restringir,
+)
 
 Executor = Callable[..., Awaitable[Mapping[str, Any]]]
 Envelope = Callable[..., dict[str, Any]]
@@ -670,6 +676,7 @@ def _item_sem_leitura(ad_id: str | None, resource_name: str, motivo: str) -> dic
         "topicos": [],
         "assets_reprovados": [],
         "pinos": {},
+        "pinos_lidos": False,
         "motivo": motivo,
     }
     if ad_id is None:
@@ -693,6 +700,7 @@ class _RSA(_Padrao):
         releitura: dict[str, Any] | None = None
         lido_em: str | None = None
         confirmation_error: str | None = None
+        por_id_relido: dict[str, dict[str, Any]] = {}
         try:
             itens = _ad_ids_a_reler(resultado)
             ids = [a for a, _ in itens if a is not None]
@@ -710,6 +718,7 @@ class _RSA(_Padrao):
                 lido_em = datetime.now(UTC).isoformat()
                 por_id = {r["ad_id"]: r for r in rows}
                 estado = []
+                por_id_relido = por_id
                 for ad_id, nome in itens:
                     if ad_id is None:
                         estado.append(_item_sem_leitura(None, nome, "resource_name_irreconhecido"))
@@ -740,14 +749,85 @@ class _RSA(_Padrao):
                     else "Confira a aprovacao do anuncio antes de confiar no resultado."
                 )
             )
+        resposta: dict[str, Any] = {**base}
+        linhas: list[dict[str, Any]] | None = None
+        if por_id_relido:
+            try:
+                linhas = _rebaixar_pino_que_nao_pegou(p, resultado, base, por_id_relido)
+            except Exception as e:  # noqa: BLE001 — pos-escrita: payload estranho nao vira erro (F83/F91)
+                portas.log.warning(
+                    "rsa_pinos_comparacao_failed",
+                    customer_id=p.customer_id,
+                    error=str(e),
+                    error_type=e.__class__.__name__,
+                )
+            if linhas is not None:
+                resposta["partial_failures"] = linhas
+                if base.get("changed_count") is not None:
+                    resposta["changed_count"] = sum(
+                        1 for pf in linhas if pf.get("efeito") == "mudou"
+                    )
         return {
-            **base,
+            **resposta,
             "estado_revisao": estado,
             "lido_em": lido_em,
             "aviso_revisao": _AVISO_REVISAO,
             "releitura": releitura,
             "confirmation_error": confirmation_error,
         }
+
+
+def _contagem(pinos: Mapping[str, list[str]]) -> dict[str, int]:
+    return {pos: len(t) for pos, t in pinos.items() if t}
+
+
+def _rebaixar_pino_que_nao_pegou(
+    p: Pendente,
+    resultado: Mapping[str, Any],
+    base: Mapping[str, Any],
+    por_id: Mapping[str, Mapping[str, Any]],
+) -> list[dict[str, Any]] | None:
+    """G2 x M1: linha com pino PEDIDO cujo pino relido diverge -> `efeito: sem_efeito`.
+
+    Compara a CONTAGEM de pinos por posicao, so nas posicoes dos campos que o item
+    trouxe — nao o texto: normalizacao de texto pelo Google nao foi medida, e um
+    `sem_efeito` por espaco a mais seria afirmacao falsa. O texto relido vai em
+    `pinos_resultantes`. So a divergencia MEDIDA rebaixa: ad fora da releitura ou com
+    `pinos_lidos` falso e "nao sei", e rebaixar dai seria o F184 do nosso lado.
+
+    `resource_names[i]` e a operacao `i`, que o builder monta do item `i` do payload.
+    Devolve as linhas novas, ou None quando nada muda.
+    """
+    itens_pedidos = p.payload.get("rsas") or p.payload.get("updates") or []
+    nomes = list(resultado.get("resource_names", []))
+    rebaixar: dict[int, dict[str, list[str]]] = {}
+    for i, nome in enumerate(nomes):
+        if not nome or i >= len(itens_pedidos):
+            continue
+        item = itens_pedidos[i]
+        pedido = pinos_pedidos(item)
+        if not pedido:
+            continue
+        try:
+            ad_id = ad_id_de_resource_name(nome)
+        except ValueError:
+            continue
+        relido = por_id.get(ad_id)
+        if relido is None or relido.get("pinos_lidos") is not True:
+            continue
+        resultantes = restringir(relido["pinos"], posicoes_dos_campos(campos_de_texto(item)))
+        if _contagem(resultantes) != _contagem(pedido):
+            rebaixar[i] = resultantes
+    if not rebaixar:
+        return None
+    linhas: list[dict[str, Any]] = []
+    for pf in base.get("partial_failures", []):
+        i = pf.get("index")
+        if i in rebaixar and pf.get("status") == "success":
+            linhas.append({**pf, "efeito": "sem_efeito", "pinos_resultantes": rebaixar[i]})
+        else:
+            linhas.append(pf)
+    return linhas
 
 
 # --- update_recommendation_subscription: status relido depois do write (N3) ---------
