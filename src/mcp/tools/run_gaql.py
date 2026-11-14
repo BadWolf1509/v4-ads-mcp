@@ -83,6 +83,8 @@ _MAX_RAW_ROWS_FOR_AGGREGATE = 10_000
         " fora do SELECT (o pedido no SELECT fica, com tudo o que mora dentro dele): -39% medido em 05/10 numa amostra de linhas de"
         " campaign_criterion — o ganho depende da consulta (linha cheia de metricas ganha"
         " menos). Use quando a resposta estoura o limite do cliente."
+        " A resposta traz `avisos` (lista, pode ser vazia): ex.: segments.date no SELECT"
+        " esconde entidade sem tráfego."
     ),
     input_schema=_SCHEMA,
     bucket="always",

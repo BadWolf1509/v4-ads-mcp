@@ -79,7 +79,9 @@ def _augment_error_hint(query: str, friendly_message: str) -> str:
     name="validate_gaql",
     description=(
         "[DEFER] Valida sintaxe + nomes de campos de um GAQL sem trazer dados, mas "
-        "consome 1 operação da quota diária da API. Retorna {valid: bool, error: str|null}. Use antes de run_gaql "
+        "consome 1 operação da quota diária da API. Retorna {valid: bool, error: str|null, "
+        "code, avisos: list[str]}; `avisos` (pode ser vazia) vem do lint estático, sem custo de "
+        "API (ex.: segments.date no SELECT esconde entidade sem tráfego). Use antes de run_gaql "
         "pra evitar gastar quota com queries quebradas."
     ),
     input_schema=_SCHEMA,
