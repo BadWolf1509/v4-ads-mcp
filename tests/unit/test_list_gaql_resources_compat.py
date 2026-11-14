@@ -21,6 +21,8 @@ def _ctx_e_cache():
     campos_gaql.limpar_cache()
     _GATE_TOOL.reset_mock(side_effect=True)
     _GATE_CAMPOS.reset_mock(side_effect=True)
+    _BEFORE_CALL.reset_mock()
+    _RECORD_ACTUAL.reset_mock()
     yield
     campos_gaql.limpar_cache()
     clear_current()
@@ -28,6 +30,8 @@ def _ctx_e_cache():
 
 _GATE_TOOL = AsyncMock(return_value=None)
 _GATE_CAMPOS = AsyncMock(return_value=None)
+_BEFORE_CALL = AsyncMock()
+_RECORD_ACTUAL = AsyncMock()
 CID = "1234567890"
 
 
@@ -83,8 +87,8 @@ def _patches(servico: MagicMock, audit: AsyncMock | None = None):
         patch("src.mcp.tools.list_gaql_resources.ensure_account_access", _GATE_TOOL),
         patch("src.google_ads.campos_gaql.ensure_account_access", _GATE_CAMPOS),
         patch("src.mcp.tools.list_gaql_resources.connection.run_with_reconnect", _run_reconnect),
-        patch("src.mcp.tools.list_gaql_resources.before_call", AsyncMock()),
-        patch("src.mcp.tools.list_gaql_resources.record_actual", AsyncMock()),
+        patch("src.mcp.tools.list_gaql_resources.before_call", _BEFORE_CALL),
+        patch("src.mcp.tools.list_gaql_resources.record_actual", _RECORD_ACTUAL),
         patch(
             "src.mcp.tools.list_gaql_resources.audit_log.record",
             audit or AsyncMock(return_value=1),
@@ -169,6 +173,9 @@ async def test_cache_uma_chamada():
         p.start()
     try:
         a = await list_gaql_resources({"resource": "keyword_view", "customer_id": CID})
+        # miss: reserva de cota projeto + gestor, e reconcilia as duas
+        assert _BEFORE_CALL.await_count == 2
+        assert _RECORD_ACTUAL.await_count == 2
         servico.search_google_ads_fields.return_value = iter([])  # 2a chamada nao deve usar
         b = await list_gaql_resources({"resource": "keyword_view", "customer_id": CID})
     finally:
@@ -176,11 +183,14 @@ async def test_cache_uma_chamada():
             p.stop()
     assert servico.search_google_ads_fields.call_count == 1
     assert a["compativel"] == b["compativel"] is not None
-    audit.assert_awaited_once()  # cache hit nao gasta quota nem audita
+    audit.assert_awaited_once()  # cache hit nao audita
+    # cache hit nao reserva nem reconcilia cota: continua em 2 (so o miss)
+    assert _BEFORE_CALL.await_count == 2
+    assert _RECORD_ACTUAL.await_count == 2
 
 
 @pytest.mark.asyncio
-async def test_audit_com_customer_id_none_e_reserva_de_quota():
+async def test_audit_registra_customer_id_real():
     servico = _servico_ok()
     audit = AsyncMock(return_value=1)
     await _rodar(servico, {"resource": "keyword_view", "customer_id": CID}, audit)

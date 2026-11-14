@@ -2,7 +2,10 @@
 
 `selectable_with` do Google e a fonte autoritativa de quais segments/metrics
 combinam com um resource; o catalogo curado nao a replica (duas fontes
-divergem). Metadata de API, nao dado de conta: sem gate por conta.
+divergem). O metadado nao depende da conta, mas o acesso a esta consulta passa
+pelo hard-gate de leitura (`ensure_account_access`) em TODA chamada, inclusive cache
+hit, dentro de `compatibilidade` — e onde o guard F57 o enxerga. So a chamada ao
+Google e cacheada.
 """
 
 import re
