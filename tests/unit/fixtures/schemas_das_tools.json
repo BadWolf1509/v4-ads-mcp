@@ -4031,6 +4031,98 @@
     "_meta": {
       "com.v4company/bucket": "defer"
     },
+    "description": "[DEFER] Pausa (PAUSED) ou reativa (ENABLED) a aplicacao automatica de recomendacoes do Google Ads para UM tipo de recomendacao (assinatura). Util quando a UI nao lista o tipo (ex.: RESPONSIVE_SEARCH_AD, F185). So altera assinatura que ja existe: tipo sem assinatura e recusado (criar esta fora do escopo), e tipo UNKNOWN tambem (o Google devolve nome degenerado, F185). Se a assinatura ja esta no status pedido, responde no_changes sem token. Senao, SEMPRE devolve preview (antes -> depois) com confirmation_token; ENABLED vem com aviso de que o Google passa a aplicar sozinho. Aplicar via apply_change, que rele o status e devolve status_resultante; se ele divergir do pedido, a linha sai com efeito 'sem_efeito'.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "PAUSED",
+            "ENABLED"
+          ],
+          "type": "string"
+        },
+        "type": {
+          "description": "Tipo de recomendacao da assinatura (enum RecommendationType do Google Ads v25, sem UNKNOWN/UNSPECIFIED). Ex.: RESPONSIVE_SEARCH_AD. Para ver as assinaturas da conta: run_gaql com 'SELECT recommendation_subscription.type, recommendation_subscription.status FROM recommendation_subscription'.",
+          "enum": [
+            "CAMPAIGN_BUDGET",
+            "KEYWORD",
+            "TEXT_AD",
+            "TARGET_CPA_OPT_IN",
+            "MAXIMIZE_CONVERSIONS_OPT_IN",
+            "ENHANCED_CPC_OPT_IN",
+            "SEARCH_PARTNERS_OPT_IN",
+            "MAXIMIZE_CLICKS_OPT_IN",
+            "OPTIMIZE_AD_ROTATION",
+            "KEYWORD_MATCH_TYPE",
+            "MOVE_UNUSED_BUDGET",
+            "FORECASTING_CAMPAIGN_BUDGET",
+            "TARGET_ROAS_OPT_IN",
+            "RESPONSIVE_SEARCH_AD",
+            "MARGINAL_ROI_CAMPAIGN_BUDGET",
+            "USE_BROAD_MATCH_KEYWORD",
+            "RESPONSIVE_SEARCH_AD_ASSET",
+            "UPGRADE_SMART_SHOPPING_CAMPAIGN_TO_PERFORMANCE_MAX",
+            "RESPONSIVE_SEARCH_AD_IMPROVE_AD_STRENGTH",
+            "DISPLAY_EXPANSION_OPT_IN",
+            "UPGRADE_LOCAL_CAMPAIGN_TO_PERFORMANCE_MAX",
+            "RAISE_TARGET_CPA_BID_TOO_LOW",
+            "FORECASTING_SET_TARGET_ROAS",
+            "CALLOUT_ASSET",
+            "SITELINK_ASSET",
+            "CALL_ASSET",
+            "SHOPPING_ADD_AGE_GROUP",
+            "SHOPPING_ADD_COLOR",
+            "SHOPPING_ADD_GENDER",
+            "SHOPPING_ADD_GTIN",
+            "SHOPPING_ADD_MORE_IDENTIFIERS",
+            "SHOPPING_ADD_SIZE",
+            "SHOPPING_ADD_PRODUCTS_TO_CAMPAIGN",
+            "SHOPPING_FIX_DISAPPROVED_PRODUCTS",
+            "SHOPPING_TARGET_ALL_OFFERS",
+            "SHOPPING_FIX_SUSPENDED_MERCHANT_CENTER_ACCOUNT",
+            "SHOPPING_FIX_MERCHANT_CENTER_ACCOUNT_SUSPENSION_WARNING",
+            "SHOPPING_MIGRATE_REGULAR_SHOPPING_CAMPAIGN_OFFERS_TO_PERFORMANCE_MAX",
+            "DYNAMIC_IMAGE_EXTENSION_OPT_IN",
+            "RAISE_TARGET_CPA",
+            "LOWER_TARGET_ROAS",
+            "PERFORMANCE_MAX_OPT_IN",
+            "IMPROVE_PERFORMANCE_MAX_AD_STRENGTH",
+            "MIGRATE_DYNAMIC_SEARCH_ADS_CAMPAIGN_TO_PERFORMANCE_MAX",
+            "FORECASTING_SET_TARGET_CPA",
+            "SET_TARGET_CPA",
+            "SET_TARGET_ROAS",
+            "MAXIMIZE_CONVERSION_VALUE_OPT_IN",
+            "IMPROVE_GOOGLE_TAG_COVERAGE",
+            "PERFORMANCE_MAX_FINAL_URL_OPT_IN",
+            "REFRESH_CUSTOMER_MATCH_LIST",
+            "CUSTOM_AUDIENCE_OPT_IN",
+            "LEAD_FORM_ASSET",
+            "IMPROVE_DEMAND_GEN_AD_STRENGTH",
+            "CAMPAIGN_SPECIFIC_APP_GOAL",
+            "RAISE_TARGET_CPA_PERFORMANCE_BID_TOO_LOW",
+            "LOWER_TARGET_ROAS_PERFORMANCE_BID_TOO_LOW"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "type",
+        "status"
+      ],
+      "type": "object"
+    },
+    "name": "update_recommendation_subscription"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
     "description": "[DEFER] Modifica 1-5 RSAs existentes. Cada update tem ad_id + pelo menos 1 dos campos mutaveis: headlines (3-15 × 30 chars), descriptions (2-4 × 90 chars), final_urls (1+), path1/path2 (15 chars cada). Listas fornecidas SUBSTITUEM as existentes (semantics proto-plus + field_mask). Sempre CONFIRM. Pre-flight rejeita ad inexistente, type != RESPONSIVE_SEARCH_AD, ad_group REMOVED, campaign non-SEARCH, ou anuncio que e variacao de Ad Variation (gerenciado pelo Google — edite o anuncio base, que a variacao herda em minutos). Para mudar status, use update_ad_status. Lote PARCIAL: se o Google recusar um ad_id, os demais sao aplicados e o apply_change devolve partial_failures com o motivo por linha — mas recusar e o caso RARO: o padrao medido e o Google ACEITAR e nao executar (F180/F184), entao confirme pelo `efeito` de cada linha, nunca por ausencia de falha. Atualizacoes afetam serving immediately mas Google pode re-aprovar (geralmente minutos). O apply_change devolve `estado_revisao` (aprovacao/revisao por anuncio, com os textos reprovados) — foto do instante, nao veredito: logo apos o write o normal e 'em revisao'; use `releitura` depois.",
     "inputSchema": {
       "additionalProperties": false,
