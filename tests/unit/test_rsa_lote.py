@@ -73,12 +73,107 @@ def test_compacto_texto_so_quando_muda() -> None:
     assert "headlines" not in p[1] and "descriptions" not in p[1]
 
 
-def test_compacto_nao_e_aplicado_ate_5(monkeypatch) -> None:
+def test_compacto_nao_e_aplicado_ate_5() -> None:
     from src.mcp.tools._rsa_textos import preview_do_lote
 
     ups = _updates(5)
     assert preview_do_lote(ups, lambda u: {"x": u["ad_id"]}) == [{"x": u["ad_id"]} for u in ups]
-    assert preview_do_lote(_updates(6), lambda u: {"x": 1})[0]["contagens"]
+    # acima de 5 o detalhado nao roda: a forma e exatamente a do compacto de hoje
+    seis = preview_do_lote(_updates(6), lambda u: {"x": 1})
+    assert seis == preview_compacto(_updates(6))
+    assert seis[0] == {
+        "ad_id": "1",
+        "fields_updated": ["final_urls"],
+        "contagens": {"headlines": 0, "descriptions": 0, "pinos": 0},
+        "final_urls": ["https://x.com"],
+        "path1": None,
+        "path2": None,
+    }
+
+
+def _rsas_com_pino(n: int) -> list[dict]:
+    pinado = {
+        **_RSA_OK,
+        "headlines": [
+            {"text": "PinoSecretoA", "pinned_field": "HEADLINE_1"},
+            {"text": "PinoSecretoB", "pinned_field": "HEADLINE_1"},
+            "c",
+        ],
+        "descriptions": [{"text": "PinoSecretoD", "pinned_field": "DESCRIPTION_2"}, "d2"],
+    }
+    return [pinado] + [dict(_RSA_OK) for _ in range(n - 1)]
+
+
+async def _preview_create(rsas: list[dict]) -> dict:
+    from unittest.mock import AsyncMock, patch
+
+    with (
+        patch(
+            "src.mcp.tools.create_rsa.validate_parent_ad_groups_for_rsa_create",
+            AsyncMock(return_value=None),
+        ),
+        patch("src.mcp.tools._mutate_common.create_pending", AsyncMock(return_value="T")),
+        patch("src.mcp.tools._mutate_common.connection.get_pool") as pool,
+    ):
+        pool.return_value.acquire.return_value.__aenter__ = AsyncMock(return_value=None)
+        pool.return_value.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
+        return await create_rsa.create_rsa({"customer_id": "1234567890", "rsas": rsas})
+
+
+@pytest.mark.asyncio
+async def test_create_acima_de_5_pinos_viram_contagem_por_posicao() -> None:
+    out = await _preview_create(_rsas_com_pino(6))
+    assert out["status"] == "dry_run"
+    prev = out["rsas_preview"]
+    assert prev[0]["pinos"] == {"HEADLINE_1": 2, "DESCRIPTION_2": 1}
+    assert all(p["pinos"] == {} for p in prev[1:])
+    assert "PinoSecreto" not in json.dumps(prev)
+
+
+@pytest.mark.asyncio
+async def test_create_ate_5_pinos_seguem_com_texto() -> None:
+    """Controle: no detalhado (ate 5) o preview mostra o texto pinado."""
+    out = await _preview_create(_rsas_com_pino(5))
+    assert out["rsas_preview"][0]["pinos"] == {
+        "HEADLINE_1": ["PinoSecretoA", "PinoSecretoB"],
+        "DESCRIPTION_2": ["PinoSecretoD"],
+    }
+
+
+def test_update_description_nao_se_contradiz_sobre_o_preview() -> None:
+    import_all_tools()
+    desc = get_tool("update_rsa").description
+    # um so trecho fala do preview de pinos, e ele diz o limite dos dois lados
+    assert desc.count("antes->depois") == 1
+    assert "ate 5 updates o preview mostra pinos antes->depois" in desc
+    assert "acima de 5" in desc
+
+
+@pytest.mark.asyncio
+async def test_update_recusa_ad_id_repetido_antes_do_preflight() -> None:
+    from unittest.mock import AsyncMock, patch
+
+    preflight = AsyncMock(return_value=None)
+    pending = AsyncMock(return_value="T")
+    with (
+        patch("src.mcp.tools.update_rsa.validate_existing_rsas_for_update", preflight),
+        patch("src.mcp.tools._mutate_common.create_pending", pending),
+    ):
+        out = await update_rsa.update_rsa(
+            {
+                "customer_id": "1234567890",
+                "updates": [
+                    {"ad_id": "11", "path1": "a"},
+                    {"ad_id": "22", "path1": "b"},
+                    {"ad_id": "11", "path2": "c"},
+                ],
+            }
+        )
+    assert out["status"] == "error"
+    assert "ad_id 11" in out["error_message"] and "repetido" in out["error_message"]
+    assert "22" not in out["error_message"]
+    preflight.assert_not_awaited()
+    pending.assert_not_awaited()
 
 
 @pytest.mark.asyncio
