@@ -33,6 +33,8 @@ from src.mcp.tools._rsa_textos import (
     ITEM_TEXTO,
     POSICOES_DESCRIPTION,
     POSICOES_HEADLINE,
+    TETO_LOTE_RSA,
+    preview_do_lote,
     validar_textos,
 )
 
@@ -65,7 +67,7 @@ _SCHEMA: dict[str, Any] = {
         "updates": {
             "type": "array",
             "minItems": 1,
-            "maxItems": 5,
+            "maxItems": TETO_LOTE_RSA,
             "items": {
                 "type": "object",
                 "properties": {
@@ -144,7 +146,7 @@ def _preview_do_update(
 @register_tool(
     name="update_rsa",
     description=(
-        "[DEFER] Modifica 1-5 RSAs existentes. Cada update tem ad_id + pelo menos 1 dos "
+        "[DEFER] Modifica 1-50 RSAs existentes (acima de 5 o preview e compacto: contagens, sem pinos antes->depois). Cada update tem ad_id + pelo menos 1 dos "
         "campos mutaveis: headlines (3-15 × 30 chars), descriptions (2-4 × 90 "
         "chars), final_urls (1+), path1/path2 (15 chars cada). Listas fornecidas "
         "SUBSTITUEM as existentes (semantics proto-plus + field_mask). Item de "
@@ -223,7 +225,7 @@ async def update_rsa(args: dict[str, Any]) -> dict[str, Any]:
         "__partial_failure__": True,
     }
 
-    preview = [_preview_do_update(u, pinos_atuais) for u in updates]
+    preview = preview_do_lote(updates, lambda u: _preview_do_update(u, pinos_atuais))
     extra: dict[str, Any] = {}
     if params_summary["pinos_por_posicao_total"]:
         extra["aviso_pinos"] = AVISO_PINO

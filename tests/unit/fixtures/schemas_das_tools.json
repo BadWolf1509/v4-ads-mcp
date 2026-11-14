@@ -1171,7 +1171,7 @@
     "_meta": {
       "com.v4company/bucket": "defer"
     },
-    "description": "[DEFER] Cria 1-5 Responsive Search Ads (RSAs) em ad_groups existentes. Cada RSA tem ad_group_id (parent) + headlines (3-15 itens, max 30 chars cada) + descriptions (2-4 itens, max 90 chars cada) + final_urls (1+ URLs) + path1/path2 opcionais (display URL paths, max 15 chars cada) + status opcional (PAUSED default | ENABLED). Item de headline/description e string (sem pino) ou {text, pinned_field} para pinar: HEADLINE_1..3 nas headlines, DESCRIPTION_1..2 nas descriptions. Pinar reduz a forca do anuncio (menos combinacoes para o Google testar); pino que nao pegou volta com efeito sem_efeito e pinos_resultantes na linha. Sempre CONFIRM (creates sensitive). Pre-flight rejeita ad_group inexistente, REMOVED, ou em campaign non-SEARCH. NOT idempotente — Google permite multiple RSAs com mesmo content. Lote PARCIAL: se o Google recusar um anuncio, os demais sao criados e o apply_change devolve partial_failures com o motivo por linha — mas recusar e o caso RARO: o padrao medido e o Google ACEITAR e nao executar (F180/F184), entao confirme pelo `efeito` de cada linha, nunca por ausencia de falha. RSAs aparecem no Google Ads UI imediatamente apos apply mas serving so comeca apos approval (geralmente minutos). O apply_change devolve `estado_revisao` (aprovacao/revisao por anuncio, com os textos reprovados) — foto do instante, nao veredito: logo apos o write o normal e 'em revisao'; use `releitura` depois.",
+    "description": "[DEFER] Cria 1-50 Responsive Search Ads (RSAs) em ad_groups existentes. Cada RSA tem ad_group_id (parent) + headlines (3-15 itens, max 30 chars cada) + descriptions (2-4 itens, max 90 chars cada) + final_urls (1+ URLs) + path1/path2 opcionais (display URL paths, max 15 chars cada) + status opcional (PAUSED default | ENABLED). Item de headline/description e string (sem pino) ou {text, pinned_field} para pinar: HEADLINE_1..3 nas headlines, DESCRIPTION_1..2 nas descriptions. Pinar reduz a forca do anuncio (menos combinacoes para o Google testar); pino que nao pegou volta com efeito sem_efeito e pinos_resultantes na linha. Sempre CONFIRM (creates sensitive). Pre-flight rejeita ad_group inexistente, REMOVED, ou em campaign non-SEARCH. NOT idempotente — Google permite multiple RSAs com mesmo content. Lote PARCIAL: se o Google recusar um anuncio, os demais sao criados e o apply_change devolve partial_failures com o motivo por linha — mas recusar e o caso RARO: o padrao medido e o Google ACEITAR e nao executar (F180/F184), entao confirme pelo `efeito` de cada linha, nunca por ausencia de falha. RSAs aparecem no Google Ads UI imediatamente apos apply mas serving so comeca apos approval (geralmente minutos). O apply_change devolve `estado_revisao` (aprovacao/revisao por anuncio, com os textos reprovados) — foto do instante, nao veredito: logo apos o write o normal e 'em revisao'; use `releitura` depois.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1236,7 +1236,7 @@
             ],
             "type": "object"
           },
-          "maxItems": 5,
+          "maxItems": 50,
           "minItems": 1,
           "type": "array"
         }
@@ -4144,7 +4144,7 @@
     "_meta": {
       "com.v4company/bucket": "defer"
     },
-    "description": "[DEFER] Modifica 1-5 RSAs existentes. Cada update tem ad_id + pelo menos 1 dos campos mutaveis: headlines (3-15 × 30 chars), descriptions (2-4 × 90 chars), final_urls (1+), path1/path2 (15 chars cada). Listas fornecidas SUBSTITUEM as existentes (semantics proto-plus + field_mask). Item de headline/description e string (sem pino) ou {text, pinned_field} (HEADLINE_1..3 / DESCRIPTION_1..2). Como a lista substitui, string sobre anuncio pinado TIRA o pino: o pre-flight recusa quando uma posicao que hoje tem pino fica sem nenhum — repita o pino na lista nova ou passe remover_pinos: true naquele update. Reescrever o texto mantendo a posicao segue; o preview mostra pinos antes->depois. Pinar reduz a forca do anuncio. Pino que nao pegou volta com efeito sem_efeito e pinos_resultantes. Sempre CONFIRM. Pre-flight rejeita ad inexistente, type != RESPONSIVE_SEARCH_AD, ad_group REMOVED, campaign non-SEARCH, ou anuncio que e variacao de Ad Variation (gerenciado pelo Google — edite o anuncio base, que a variacao herda em minutos). Para mudar status, use update_ad_status. Lote PARCIAL: se o Google recusar um ad_id, os demais sao aplicados e o apply_change devolve partial_failures com o motivo por linha — mas recusar e o caso RARO: o padrao medido e o Google ACEITAR e nao executar (F180/F184), entao confirme pelo `efeito` de cada linha, nunca por ausencia de falha. Atualizacoes afetam serving immediately mas Google pode re-aprovar (geralmente minutos). O apply_change devolve `estado_revisao` (aprovacao/revisao por anuncio, com os textos reprovados) — foto do instante, nao veredito: logo apos o write o normal e 'em revisao'; use `releitura` depois.",
+    "description": "[DEFER] Modifica 1-50 RSAs existentes (acima de 5 o preview e compacto: contagens, sem pinos antes->depois). Cada update tem ad_id + pelo menos 1 dos campos mutaveis: headlines (3-15 × 30 chars), descriptions (2-4 × 90 chars), final_urls (1+), path1/path2 (15 chars cada). Listas fornecidas SUBSTITUEM as existentes (semantics proto-plus + field_mask). Item de headline/description e string (sem pino) ou {text, pinned_field} (HEADLINE_1..3 / DESCRIPTION_1..2). Como a lista substitui, string sobre anuncio pinado TIRA o pino: o pre-flight recusa quando uma posicao que hoje tem pino fica sem nenhum — repita o pino na lista nova ou passe remover_pinos: true naquele update. Reescrever o texto mantendo a posicao segue; o preview mostra pinos antes->depois. Pinar reduz a forca do anuncio. Pino que nao pegou volta com efeito sem_efeito e pinos_resultantes. Sempre CONFIRM. Pre-flight rejeita ad inexistente, type != RESPONSIVE_SEARCH_AD, ad_group REMOVED, campaign non-SEARCH, ou anuncio que e variacao de Ad Variation (gerenciado pelo Google — edite o anuncio base, que a variacao herda em minutos). Para mudar status, use update_ad_status. Lote PARCIAL: se o Google recusar um ad_id, os demais sao aplicados e o apply_change devolve partial_failures com o motivo por linha — mas recusar e o caso RARO: o padrao medido e o Google ACEITAR e nao executar (F180/F184), entao confirme pelo `efeito` de cada linha, nunca por ausencia de falha. Atualizacoes afetam serving immediately mas Google pode re-aprovar (geralmente minutos). O apply_change devolve `estado_revisao` (aprovacao/revisao por anuncio, com os textos reprovados) — foto do instante, nao veredito: logo apos o write o normal e 'em revisao'; use `releitura` depois.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -4202,7 +4202,7 @@
             ],
             "type": "object"
           },
-          "maxItems": 5,
+          "maxItems": 50,
           "minItems": 1,
           "type": "array"
         }
