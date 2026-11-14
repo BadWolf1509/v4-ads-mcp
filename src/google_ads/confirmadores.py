@@ -48,6 +48,11 @@ from src.google_ads.queries.ad_schedule import (
     ad_schedule_query,
     parse_ad_schedule_row,
 )
+from src.google_ads.queries.recommendation_subscription import (
+    STATUS_ALVO,
+    assinatura_query,
+    parse_assinatura_row,
+)
 from src.google_ads.queries.recommendations import (
     TIPOS_SO_LEITURA,
     descrever_divergencia,
@@ -745,6 +750,96 @@ class _RSA(_Padrao):
         }
 
 
+# --- update_recommendation_subscription: status relido depois do write (N3) ---------
+
+
+class _AssinaturaRecomendacao(_Padrao):
+    """O `_Padrao` mais a releitura do status da assinatura.
+
+    O Google aceita operacao e nao a executa (F184), e a UI nem lista o tipo que
+    motivou a tool (F185): o ACK da mutacao nao basta. A releitura diz o
+    `status_resultante`; divergente do pedido, a linha sai com `efeito: sem_efeito`.
+    Releitura que falha vira `confirmation_error` e o sucesso fica de pe (F83/F91).
+    """
+
+    async def pre_check(self, p: Pendente, portas: Portas) -> dict[str, Any] | None:
+        # Payload ruim levanta AQUI, antes da escrita — no `pos_check` a excecao
+        # nasceria com a mutacao ja aplicada (mesma regra do `_AdSchedule`).
+        # `assinatura_query` tambem recusa tipo fora do enum (F87) — antes da escrita.
+        _ = (assinatura_query(p.payload["type"]), p.payload["status"])
+        return None
+
+    async def pos_check(
+        self, p: Pendente, portas: Portas, resultado: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        base = await super().pos_check(p, portas, resultado)
+        tipo = p.payload["type"]
+        pedido = p.payload["status"]
+        status_resultante: str | None = None
+        motivo: str | None = None
+        confirmation_error: str | None = None
+        # Nao levanta: o `pre_check` ja montou a mesma query antes da escrita.
+        query = assinatura_query(tipo)
+        try:
+            rows = await portas.run_report(
+                manager_id=p.manager_id,
+                session_id=p.session_id,
+                customer_id=p.customer_id,
+                query=query,
+                row_formatter=parse_assinatura_row,
+                operation_name=f"{p.operation_type}_confirm",
+            )
+            if not rows:
+                motivo = "assinatura_nao_encontrada_na_releitura"
+            elif len(rows) > 1:
+                # O tipo e a chave: mais de uma linha e a resposta ambigua do F185.
+                motivo = "mais_de_uma_linha_do_tipo"
+            elif rows[0]["status"] not in STATUS_ALVO:
+                # UNSPECIFIED = campo omitido (default 0 do proto); UNKNOWN = valor que
+                # o SDK nao conhece. Nenhum dos dois e status MEDIDO: tratar como
+                # divergencia afirmaria `sem_efeito` sem medicao (F184 do nosso lado).
+                motivo = "status_nao_lido_na_releitura"
+            else:
+                status_resultante = rows[0]["status"]
+                if status_resultante != pedido:
+                    motivo = (
+                        f"a releitura diz {status_resultante}, nao o {pedido} pedido: o "
+                        "Google aceitou a operacao sem executa-la (F184)"
+                    )
+        except Exception as e:  # noqa: BLE001 — I/O apos escrita ja aplicada: nunca transformar sucesso em erro (F83/F91)
+            portas.log.warning(
+                "recommendation_subscription_confirm_failed",
+                customer_id=p.customer_id,
+                error=str(e),
+                error_type=e.__class__.__name__,
+            )
+            confirmation_error = (
+                f"A mutacao foi aplicada (veja applied_count/provider_request_id), mas a "
+                f"releitura do status da assinatura falhou ({e.__class__.__name__}). "
+                f"Confira com run_gaql: {query}"
+            )
+
+        resposta: dict[str, Any] = {**base}
+        if status_resultante is not None and status_resultante != pedido:
+            # So a divergencia MEDIDA rebaixa o efeito. Releitura ausente ou falha e
+            # "nao sei", e afirmar `sem_efeito` dela seria o F184 do nosso lado.
+            linhas = [
+                {**pf, "efeito": "sem_efeito"} if pf.get("status") == "success" else pf
+                for pf in base.get("partial_failures", [])
+            ]
+            resposta["partial_failures"] = linhas
+            if base.get("changed_count") is not None:
+                resposta["changed_count"] = sum(1 for pf in linhas if pf.get("efeito") == "mudou")
+        resposta.update(
+            status_pedido=pedido,
+            status_antes=p.payload.get("status_antes"),
+            status_resultante=status_resultante,
+            motivo_status_resultante=motivo,
+            confirmation_error=confirmation_error,
+        )
+        return resposta
+
+
 def _partial_failure(p: Pendente) -> bool:
     return bool(p.payload.get("__partial_failure__", False))
 
@@ -756,6 +851,7 @@ CONFIRMADORES: dict[str, Confirmador] = {
     "update_ad_schedule": _AdSchedule(),
     "create_rsa": _RSA(),
     "update_rsa": _RSA(),
+    "update_recommendation_subscription": _AssinaturaRecomendacao(),
 }
 
 # O padrao nao tem chave: e o que cobre todo `operation_type` fora do registro.

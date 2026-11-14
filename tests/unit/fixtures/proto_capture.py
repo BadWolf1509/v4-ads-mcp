@@ -334,4 +334,7 @@ def make_capture_client() -> MagicMock:
     client.enums.DayOfWeekEnum = _BareEnumDict()
     client.enums.MinuteOfHourEnum = _BareEnumDict()
 
+    # RecommendationSubscriptionStatusEnum (build_update_recommendation_subscription, N3).
+    client.enums.RecommendationSubscriptionStatusEnum = _BareEnumDict()
+
     return client

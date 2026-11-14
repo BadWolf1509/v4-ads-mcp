@@ -363,6 +363,25 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
             "quando o gestor ligar) — sempre CONFIRM (spec §7.1 creates)",
         )
 
+    # Assinatura de aplicacao automatica (N3) — sempre CONFIRM. Ligar entrega ao
+    # Google a decisao de aplicar toda recomendacao daquele tipo, sem token nem
+    # preview deste MCP; pausar e o lado seguro, mas tambem muda o que o Google faz
+    # sozinho na conta, e o gestor tem que ver o antes -> depois.
+    elif operation == "update_recommendation_subscription":
+        status = str(params.get("status") or "").upper()
+        if status == "ENABLED":
+            return RiskClassification(
+                RiskLevel.CONFIRM,
+                "update_recommendation_subscription (ENABLED): liga aplicacao automatica do "
+                "Google — ele passa a aplicar recomendacoes deste tipo sem confirmacao, "
+                "sempre CONFIRM",
+            )
+        return RiskClassification(
+            RiskLevel.CONFIRM,
+            f"update_recommendation_subscription ({status or 'status desconhecido'}): muda "
+            "a aplicacao automatica do Google na conta — sempre CONFIRM",
+        )
+
     # Unknown operation — default safe to confirm
     return RiskClassification(
         RiskLevel.CONFIRM,
