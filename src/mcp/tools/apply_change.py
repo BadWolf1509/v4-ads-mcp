@@ -77,7 +77,13 @@ _SCHEMA: dict[str, Any] = {
         "a pergunta foi feita, nao que houve resposta. `applied_count` tem UMA "
         "leitura legitima, a subtracao: `applied_count` - `changed_count` = quantas "
         "linhas passaram sem efeito. Isolado ele afirma aceitacao como se fosse "
-        "execucao, e engana igual ao `failed_count`."
+        "execucao, e engana igual ao `failed_count`. "
+        "Em create_rsa, update_rsa e update_recommendation_subscription cada linha traz "
+        "tambem `conferencia` ({campo, pedido, relido, motivo}; null = nada foi "
+        "comparado): o veredito da RELEITURA depois do write, com `motivo` 'confere' ou "
+        "a divergencia e suas causas possiveis. `efeito` e `changed_count` continuam "
+        "sendo o ACK do Google, o mesmo que o audit grava. Em RSA o anuncio FOI gravado "
+        "mesmo com conferencia divergente — veja estado_revisao; nao recrie."
     ),
     input_schema=_SCHEMA,
     bucket="always",

@@ -627,6 +627,60 @@ class _Padrao(_SemPreCheck):
         )
 
 
+# --- conferencia: o veredito da releitura pos-write -------------------------------
+#
+# Decisao do Wellington na revisao final (14/11, "Campo proprio"): `efeito` e
+# `changed_count` sao o ACK do Google — o mesmo numero que o `run_mutation` grava no
+# audit, e o que a description do `apply_change` promete. O que a releitura depois do
+# write achou vai em `conferencia`, campo proprio da linha, e NUNCA rebaixa o ACK:
+# rebaixar fazia a resposta discordar da trilha, e afirmava "nao mudou nada" sobre um
+# RSA que FOI gravado (o gestor recriaria o anuncio). Guard:
+# `test_conferencia_pos_write.py`.
+#
+# `conferencia` e `None` quando nada se comparou (sem leitura, ausente, ambigua, ou o
+# item nao pediu o que se confere); com a comparacao feita, `motivo` e "confere" ou
+# `MOTIVO_DIVERGE`. A divergencia nao afirma a causa: F184 e uma das possiveis.
+
+MOTIVO_CONFERE = "confere"
+MOTIVO_DIVERGE = (
+    "releitura diverge do pedido: possivel operacao aceita sem executar (F184), leitura "
+    "defasada ou mudanca concorrente"
+)
+
+
+def _conferencia(campo: str, pedido: Any, relido: Any) -> dict[str, Any]:
+    return {
+        "campo": campo,
+        "pedido": pedido,
+        "relido": relido,
+        "motivo": MOTIVO_CONFERE if pedido == relido else MOTIVO_DIVERGE,
+    }
+
+
+def _avisar_divergencia(p: Pendente, portas: Portas, campo: str) -> None:
+    portas.log.warning(
+        "conferencia_pos_write_divergiu",
+        operation_type=p.operation_type,
+        customer_id=p.customer_id,
+        campo=campo,
+    )
+
+
+def _com_conferencia(
+    linhas: list[dict[str, Any]], por_indice: Mapping[int, dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Cada linha ganha `conferencia` (None onde nada se comparou). `efeito` fica intocado."""
+    return [
+        {
+            **pf,
+            "conferencia": (
+                por_indice.get(pf.get("index", -1)) if pf.get("status") == "success" else None
+            ),
+        }
+        for pf in linhas
+    ]
+
+
 # --- RSA: estado de revisao depois do write (M1) ------------------------------------
 
 _AVISO_REVISAO = (
@@ -749,11 +803,11 @@ class _RSA(_Padrao):
                     else "Confira a aprovacao do anuncio antes de confiar no resultado."
                 )
             )
-        resposta: dict[str, Any] = {**base}
-        linhas: list[dict[str, Any]] | None = None
+        conferencias: dict[int, dict[str, Any]] = {}
+        resultantes: dict[int, dict[str, list[str]]] = {}
         if por_id_relido:
             try:
-                linhas = _rebaixar_pino_que_nao_pegou(p, resultado, base, por_id_relido)
+                conferencias, resultantes = _conferir_pinos(p, resultado, por_id_relido)
             except Exception as e:  # noqa: BLE001 — pos-escrita: payload estranho nao vira erro (F83/F91)
                 portas.log.warning(
                     "rsa_pinos_comparacao_failed",
@@ -761,14 +815,27 @@ class _RSA(_Padrao):
                     error=str(e),
                     error_type=e.__class__.__name__,
                 )
-            if linhas is not None:
-                resposta["partial_failures"] = linhas
-                if base.get("changed_count") is not None:
-                    resposta["changed_count"] = sum(
-                        1 for pf in linhas if pf.get("efeito") == "mudou"
-                    )
+                conferencias, resultantes = {}, {}
+                # Sem isto, `conferencia: null` em toda linha nao distinguiria "nao
+                # pedi pino" de "a comparacao quebrou".
+                confirmation_error = (
+                    "A mutacao foi aplicada (veja applied_count/provider_request_id) e o "
+                    "estado de revisao foi lido, mas os pinos nao foram conferidos (a "
+                    f"comparacao falhou: {e.__class__.__name__}). Confira os pinos com "
+                    "releitura.query no run_gaql."
+                )
+        for c in conferencias.values():
+            if c["motivo"] != MOTIVO_CONFERE:
+                _avisar_divergencia(p, portas, "pinos")
+        linhas = [
+            {**pf, "pinos_resultantes": resultantes[pf["index"]]}
+            if pf.get("index") in resultantes and pf.get("status") == "success"
+            else pf
+            for pf in _com_conferencia(base.get("partial_failures", []), conferencias)
+        ]
         return {
-            **resposta,
+            **base,
+            "partial_failures": linhas,
             "estado_revisao": estado,
             "lido_em": lido_em,
             "aviso_revisao": _AVISO_REVISAO,
@@ -781,26 +848,26 @@ def _contagem(pinos: Mapping[str, list[str]]) -> dict[str, int]:
     return {pos: len(t) for pos, t in pinos.items() if t}
 
 
-def _rebaixar_pino_que_nao_pegou(
+def _conferir_pinos(
     p: Pendente,
     resultado: Mapping[str, Any],
-    base: Mapping[str, Any],
     por_id: Mapping[str, Mapping[str, Any]],
-) -> list[dict[str, Any]] | None:
-    """G2 x M1: linha com pino PEDIDO cujo pino relido diverge -> `efeito: sem_efeito`.
+) -> tuple[dict[int, dict[str, Any]], dict[int, dict[str, list[str]]]]:
+    """G2 x M1: confere o pino PEDIDO de cada linha contra o pino relido.
 
-    Compara a CONTAGEM de pinos por posicao, so nas posicoes dos campos que o item
-    trouxe — nao o texto: normalizacao de texto pelo Google nao foi medida, e um
-    `sem_efeito` por espaco a mais seria afirmacao falsa. O texto relido vai em
-    `pinos_resultantes`. So a divergencia MEDIDA rebaixa: ad fora da releitura ou com
-    `pinos_lidos` falso e "nao sei", e rebaixar dai seria o F184 do nosso lado.
+    Devolve `(conferencias, resultantes)` por indice de operacao. Compara a CONTAGEM de
+    pinos por posicao, so nas posicoes dos campos que o item trouxe — nao o texto:
+    normalizacao de texto pelo Google nao foi medida, e uma divergencia por espaco a mais
+    seria afirmacao falsa. Na divergencia, o texto relido vai em `pinos_resultantes`. So
+    entra a linha cuja comparacao foi FEITA: item sem pino pedido, ad fora da releitura
+    ou com `pinos_lidos` falso e "nao sei" (sem chave -> `conferencia: None`).
 
     `resource_names[i]` e a operacao `i`, que o builder monta do item `i` do payload.
-    Devolve as linhas novas, ou None quando nada muda.
     """
     itens_pedidos = p.payload.get("rsas") or p.payload.get("updates") or []
     nomes = list(resultado.get("resource_names", []))
-    rebaixar: dict[int, dict[str, list[str]]] = {}
+    conferencias: dict[int, dict[str, Any]] = {}
+    resultantes: dict[int, dict[str, list[str]]] = {}
     for i, nome in enumerate(nomes):
         if not nome or i >= len(itens_pedidos):
             continue
@@ -815,19 +882,11 @@ def _rebaixar_pino_que_nao_pegou(
         relido = por_id.get(ad_id)
         if relido is None or relido.get("pinos_lidos") is not True:
             continue
-        resultantes = restringir(relido["pinos"], posicoes_dos_campos(campos_de_texto(item)))
-        if _contagem(resultantes) != _contagem(pedido):
-            rebaixar[i] = resultantes
-    if not rebaixar:
-        return None
-    linhas: list[dict[str, Any]] = []
-    for pf in base.get("partial_failures", []):
-        i = pf.get("index")
-        if i in rebaixar and pf.get("status") == "success":
-            linhas.append({**pf, "efeito": "sem_efeito", "pinos_resultantes": rebaixar[i]})
-        else:
-            linhas.append(pf)
-    return linhas
+        lidos = restringir(relido["pinos"], posicoes_dos_campos(campos_de_texto(item)))
+        conferencias[i] = _conferencia("pinos", _contagem(pedido), _contagem(lidos))
+        if conferencias[i]["motivo"] != MOTIVO_CONFERE:
+            resultantes[i] = lidos
+    return conferencias, resultantes
 
 
 # --- update_recommendation_subscription: status relido depois do write (N3) ---------
@@ -838,8 +897,9 @@ class _AssinaturaRecomendacao(_Padrao):
 
     O Google aceita operacao e nao a executa (F184), e a UI nem lista o tipo que
     motivou a tool (F185): o ACK da mutacao nao basta. A releitura diz o
-    `status_resultante`; divergente do pedido, a linha sai com `efeito: sem_efeito`.
-    Releitura que falha vira `confirmation_error` e o sucesso fica de pe (F83/F91).
+    `status_resultante`, e o veredito vai em `conferencia` na linha — `efeito` segue
+    sendo o ACK do Google (decisao "Campo proprio"). Releitura que falha vira
+    `confirmation_error` e o sucesso fica de pe (F83/F91).
     """
 
     async def pre_check(self, p: Pendente, portas: Portas) -> dict[str, Any] | None:
@@ -877,14 +937,14 @@ class _AssinaturaRecomendacao(_Padrao):
             elif rows[0]["status"] not in STATUS_ALVO:
                 # UNSPECIFIED = campo omitido (default 0 do proto); UNKNOWN = valor que
                 # o SDK nao conhece. Nenhum dos dois e status MEDIDO: tratar como
-                # divergencia afirmaria `sem_efeito` sem medicao (F184 do nosso lado).
+                # divergencia afirmaria o que nao se mediu (F184 do nosso lado).
                 motivo = "status_nao_lido_na_releitura"
             else:
                 status_resultante = rows[0]["status"]
                 if status_resultante != pedido:
                     motivo = (
-                        f"a releitura diz {status_resultante}, nao o {pedido} pedido: o "
-                        "Google aceitou a operacao sem executa-la (F184)"
+                        f"a releitura diz {status_resultante}, nao o {pedido} pedido — "
+                        f"{MOTIVO_DIVERGE}"
                     )
         except Exception as e:  # noqa: BLE001 — I/O apos escrita ja aplicada: nunca transformar sucesso em erro (F83/F91)
             portas.log.warning(
@@ -899,17 +959,21 @@ class _AssinaturaRecomendacao(_Padrao):
                 f"Confira com run_gaql: {query}"
             )
 
-        resposta: dict[str, Any] = {**base}
-        if status_resultante is not None and status_resultante != pedido:
-            # So a divergencia MEDIDA rebaixa o efeito. Releitura ausente ou falha e
-            # "nao sei", e afirmar `sem_efeito` dela seria o F184 do nosso lado.
-            linhas = [
-                {**pf, "efeito": "sem_efeito"} if pf.get("status") == "success" else pf
-                for pf in base.get("partial_failures", [])
-            ]
-            resposta["partial_failures"] = linhas
-            if base.get("changed_count") is not None:
-                resposta["changed_count"] = sum(1 for pf in linhas if pf.get("efeito") == "mudou")
+        # So o status MEDIDO vira conferencia. Releitura ausente, ambigua ou falha e
+        # "nao sei" (`conferencia: None`): afirmar divergencia dela seria o F184 do nosso
+        # lado. Nenhum ramo toca em `efeito`/`changed_count` (ACK do Google, = audit).
+        conferencias: dict[int, dict[str, Any]] = {}
+        if status_resultante is not None:
+            c = _conferencia("status", pedido, status_resultante)
+            if c["motivo"] != MOTIVO_CONFERE:
+                _avisar_divergencia(p, portas, "status")
+            conferencias = {
+                pf["index"]: c for pf in base.get("partial_failures", []) if "index" in pf
+            }
+        resposta: dict[str, Any] = {
+            **base,
+            "partial_failures": _com_conferencia(base.get("partial_failures", []), conferencias),
+        }
         resposta.update(
             status_pedido=pedido,
             status_antes=p.payload.get("status_antes"),

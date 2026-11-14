@@ -1,7 +1,8 @@
 """apply_change de update_recommendation_subscription: o pos-check relê o status (N3).
 
 O Google aceita operacao e pode nao executa-la (F184): a releitura e quem diz se a
-assinatura ficou no status pedido. Divergencia vira `efeito: sem_efeito`; releitura
+assinatura ficou no status pedido. O veredito vai em `conferencia` na linha; `efeito` e
+`changed_count` seguem o ACK do Google (decisao "Campo proprio", revisao final). Releitura
 quebrada nao transforma sucesso de escrita em erro (F83/F91).
 """
 
@@ -22,6 +23,20 @@ from tests.unit.fixtures.fake_pool import FakePool
 from tests.unit.test_update_recommendation_subscription import linha_de_assinatura
 
 _CID = "7862230676"
+_DIVERGE = (
+    "releitura diverge do pedido: possivel operacao aceita sem executar (F184), leitura "
+    "defasada ou mudanca concorrente"
+)
+
+
+class _Log:
+    def __init__(self) -> None:
+        self.eventos: list[tuple[str, dict[str, Any]]] = []
+
+    def warning(self, evento: str, **kw: Any) -> None:
+        self.eventos.append((evento, kw))
+
+
 _RN = f"customers/{_CID}/recommendationSubscriptions/RESPONSIVE_SEARCH_AD"
 
 
@@ -108,6 +123,12 @@ async def test_status_resultante(monkeypatch) -> None:
     assert out["motivo_status_resultante"] is None
     assert out["confirmation_error"] is None
     assert out["partial_failures"][0]["efeito"] == "mudou"
+    assert out["partial_failures"][0]["conferencia"] == {
+        "campo": "status",
+        "pedido": "PAUSED",
+        "relido": "PAUSED",
+        "motivo": "confere",
+    }
     assert out["changed_count"] == 1
     assert out["partial_failure"] is True
     assert cap["queries"] == [assinatura_query("RESPONSIVE_SEARCH_AD")]
@@ -119,16 +140,36 @@ async def test_status_resultante(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_divergencia_vira_sem_efeito(monkeypatch) -> None:
+async def test_divergencia_vai_em_conferencia(monkeypatch) -> None:
+    log = _Log()
+    monkeypatch.setattr(mod, "log", log)
     _wire(monkeypatch, saved=_saved("PAUSED"), releitura=["ENABLED"])
     out = await mod.apply_change({"confirmation_token": "ABCDEFGH"})
     assert out["status"] == "applied"
     assert out["status_resultante"] == "ENABLED"
-    assert out["partial_failures"][0]["efeito"] == "sem_efeito"
-    assert out["changed_count"] == 0
-    # o veredito do Google segue o que o Google disse
+    # efeito e changed_count sao o ACK do Google e batem com o audit
+    assert out["partial_failures"][0]["efeito"] == "mudou"
+    assert out["changed_count"] == 1
     assert out["partial_failures"][0]["status"] == "success"
-    assert out["motivo_status_resultante"] is not None
+    assert out["partial_failures"][0]["conferencia"] == {
+        "campo": "status",
+        "pedido": "PAUSED",
+        "relido": "ENABLED",
+        "motivo": _DIVERGE,
+    }
+    # a causa e POSSIVEL, nao afirmada
+    assert "possivel" in out["motivo_status_resultante"]
+    assert "sem executa-la" not in out["motivo_status_resultante"]
+    assert log.eventos == [
+        (
+            "conferencia_pos_write_divergiu",
+            {
+                "operation_type": "update_recommendation_subscription",
+                "customer_id": _CID,
+                "campo": "status",
+            },
+        )
+    ]
 
 
 @pytest.mark.asyncio
@@ -138,8 +179,9 @@ async def test_releitura_falha_preserva_sucesso(monkeypatch) -> None:
     assert out["status"] == "applied" and out["provider_request_id"] == "req-1"
     assert out["status_resultante"] is None
     assert "RuntimeError" in out["confirmation_error"]
-    # sem releitura, o efeito nao e rebaixado: nao saber nao e sem_efeito
+    # sem releitura nao ha conferencia: nao saber nao e divergir
     assert out["partial_failures"][0]["efeito"] == "mudou"
+    assert out["partial_failures"][0]["conferencia"] is None
 
 
 @pytest.mark.asyncio
@@ -151,6 +193,7 @@ async def test_assinatura_sumiu_na_releitura(monkeypatch) -> None:
     assert out["motivo_status_resultante"] == "assinatura_nao_encontrada_na_releitura"
     assert out["confirmation_error"] is None
     assert out["partial_failures"][0]["efeito"] == "mudou"
+    assert out["partial_failures"][0]["conferencia"] is None
 
 
 @pytest.mark.asyncio
@@ -159,6 +202,7 @@ async def test_releitura_ambigua(monkeypatch) -> None:
     out = await mod.apply_change({"confirmation_token": "ABCDEFGH"})
     assert out["status_resultante"] is None
     assert out["motivo_status_resultante"] == "mais_de_uma_linha_do_tipo"
+    assert out["partial_failures"][0]["conferencia"] is None
 
 
 @pytest.mark.asyncio
@@ -173,9 +217,9 @@ async def test_payload_sem_chave_levanta_antes_da_escrita(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("relido", [None, "UNKNOWN"])
-async def test_status_nao_lido_nao_rebaixa_efeito(monkeypatch, relido) -> None:
+async def test_status_nao_lido_nao_confere(monkeypatch, relido) -> None:
     """UNSPECIFIED (campo omitido, default 0) e UNKNOWN (valor que o SDK nao conhece)
-    nao sao status medido: afirmar `sem_efeito` deles seria o F184 do nosso lado."""
+    nao sao status medido: afirmar divergencia deles seria o F184 do nosso lado."""
     _wire(monkeypatch, saved=_saved("PAUSED"), releitura=[relido])
     out = await mod.apply_change({"confirmation_token": "ABCDEFGH"})
     assert out["status"] == "applied"
@@ -183,4 +227,5 @@ async def test_status_nao_lido_nao_rebaixa_efeito(monkeypatch, relido) -> None:
     assert out["motivo_status_resultante"] == "status_nao_lido_na_releitura"
     assert out["partial_failures"][0]["efeito"] == "mudou"
     assert out["changed_count"] == 1
+    assert out["partial_failures"][0]["conferencia"] is None
     assert out["confirmation_error"] is None

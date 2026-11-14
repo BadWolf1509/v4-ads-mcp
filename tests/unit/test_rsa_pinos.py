@@ -621,9 +621,33 @@ async def _apply() -> dict[str, Any]:
 
 _UPD_PINADO = {"ad_id": "1", "headlines": [{"text": "A", "pinned_field": "HEADLINE_1"}, "B", "C"]}
 
+# Decisao do Wellington (revisao final, "Campo proprio"): o veredito da releitura vive em
+# `conferencia`; `efeito`/`changed_count` sao o ACK do Google e batem com o audit.
+_DIVERGE = (
+    "releitura diverge do pedido: possivel operacao aceita sem executar (F184), leitura "
+    "defasada ou mudanca concorrente"
+)
+
+
+class _Log:
+    def __init__(self) -> None:
+        self.eventos: list[tuple[str, dict[str, Any]]] = []
+
+    def warning(self, evento: str, **kw: Any) -> None:
+        self.eventos.append((evento, kw))
+
+
+def _grava_log(monkeypatch) -> _Log:
+    from src.mcp.tools import apply_change as mod
+
+    log = _Log()
+    monkeypatch.setattr(mod, "log", log)
+    return log
+
 
 @pytest.mark.asyncio
-async def test_pino_nao_pegou_vira_sem_efeito(_ctx, monkeypatch) -> None:
+async def test_pino_nao_pegou_vai_em_conferencia(_ctx, monkeypatch) -> None:
+    log = _grava_log(monkeypatch)
     _wire(
         monkeypatch,
         op="update_rsa",
@@ -633,15 +657,31 @@ async def test_pino_nao_pegou_vira_sem_efeito(_ctx, monkeypatch) -> None:
     )
     out = await _apply()
     l0, l1 = out["partial_failures"]
-    assert l0["efeito"] == "sem_efeito"
+    # efeito e o ACK do Google: a releitura nao o rebaixa
+    assert l0["efeito"] == "mudou" and l1["efeito"] == "mudou"
+    assert out["changed_count"] == 2
+    assert l0["conferencia"] == {
+        "campo": "pinos",
+        "pedido": {"HEADLINE_1": 1},
+        "relido": {},
+        "motivo": _DIVERGE,
+    }
     assert l0["pinos_resultantes"] == {}
-    assert l1["efeito"] == "mudou" and "pinos_resultantes" not in l1
-    assert out["changed_count"] == 1
+    # sem pino pedido, nada se comparou
+    assert l1["conferencia"] is None and "pinos_resultantes" not in l1
     assert out["status"] == "applied"
+    assert out["confirmation_error"] is None
+    assert log.eventos == [
+        (
+            "conferencia_pos_write_divergiu",
+            {"operation_type": "update_rsa", "customer_id": "1234567890", "campo": "pinos"},
+        )
+    ]
 
 
 @pytest.mark.asyncio
 async def test_pino_que_pegou_segue_mudou(_ctx, monkeypatch) -> None:
+    log = _grava_log(monkeypatch)
     _wire(
         monkeypatch,
         op="update_rsa",
@@ -652,11 +692,19 @@ async def test_pino_que_pegou_segue_mudou(_ctx, monkeypatch) -> None:
     )
     out = await _apply()
     assert out["partial_failures"][0]["efeito"] == "mudou"
+    assert out["partial_failures"][0]["conferencia"] == {
+        "campo": "pinos",
+        "pedido": {"HEADLINE_1": 1},
+        "relido": {"HEADLINE_1": 1},
+        "motivo": "confere",
+    }
+    assert "pinos_resultantes" not in out["partial_failures"][0]
     assert out["changed_count"] == 1
+    assert log.eventos == []
 
 
 @pytest.mark.asyncio
-async def test_create_pino_nao_pegou_vira_sem_efeito(_ctx, monkeypatch) -> None:
+async def test_create_pino_nao_pegou_vai_em_conferencia(_ctx, monkeypatch) -> None:
     rsa = {
         "ad_group_id": "5",
         "headlines": ["A", "B", "C"],
@@ -671,13 +719,21 @@ async def test_create_pino_nao_pegou_vira_sem_efeito(_ctx, monkeypatch) -> None:
         rows=[_estado("77", {"DESCRIPTION_1": ["d"]})],
     )
     out = await _apply()
-    assert out["partial_failures"][0]["efeito"] == "sem_efeito"
-    assert out["partial_failures"][0]["pinos_resultantes"] == {"DESCRIPTION_1": ["d"]}
+    linha = out["partial_failures"][0]
+    assert linha["efeito"] == "mudou"
+    assert out["changed_count"] == 1
+    assert linha["conferencia"] == {
+        "campo": "pinos",
+        "pedido": {"DESCRIPTION_2": 1},
+        "relido": {"DESCRIPTION_1": 1},
+        "motivo": _DIVERGE,
+    }
+    assert linha["pinos_resultantes"] == {"DESCRIPTION_1": ["d"]}
 
 
 @pytest.mark.asyncio
-async def test_ad_ausente_ou_pinos_nao_lidos_nao_rebaixa(_ctx, monkeypatch) -> None:
-    """So divergencia MEDIDA rebaixa: ausencia e leitura vazia sao 'nao sei' (F184)."""
+async def test_ad_ausente_ou_pinos_nao_lidos_nao_confere(_ctx, monkeypatch) -> None:
+    """So a comparacao FEITA vira conferencia: ausencia e leitura vazia sao 'nao sei'."""
     _wire(
         monkeypatch,
         op="update_rsa",
@@ -687,6 +743,7 @@ async def test_ad_ausente_ou_pinos_nao_lidos_nao_rebaixa(_ctx, monkeypatch) -> N
     )
     out = await _apply()
     assert [pf["efeito"] for pf in out["partial_failures"]] == ["mudou", "mudou"]
+    assert [pf["conferencia"] for pf in out["partial_failures"]] == [None, None]
     assert out["changed_count"] == 2
 
 
@@ -701,6 +758,34 @@ async def test_sem_pino_pedido_nao_compara(_ctx, monkeypatch) -> None:
     )
     out = await _apply()
     assert out["partial_failures"][0]["efeito"] == "mudou"
+    assert out["partial_failures"][0]["conferencia"] is None
+
+
+@pytest.mark.asyncio
+async def test_comparacao_que_levanta_diz_que_pinos_nao_foram_conferidos(_ctx, monkeypatch) -> None:
+    """Excecao DENTRO da comparacao: o sucesso fica de pe, nenhuma linha diz
+    'confere', e `confirmation_error` diz que os pinos nao foram conferidos."""
+    from src.google_ads import confirmadores
+
+    def _explode(*a: Any, **k: Any) -> Any:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(confirmadores, "_conferir_pinos", _explode)
+    _wire(
+        monkeypatch,
+        op="update_rsa",
+        payload={"updates": [_UPD_PINADO]},
+        nomes=["customers/1234567890/ads/1"],
+        rows=[_estado("1", {"HEADLINE_1": ["A"]})],
+    )
+    out = await _apply()
+    assert out["status"] == "applied"
+    assert out["partial_failures"][0]["efeito"] == "mudou"
+    assert out["partial_failures"][0]["conferencia"] is None
+    assert "pinos nao foram conferidos" in out["confirmation_error"]
+    assert "RuntimeError" in out["confirmation_error"]
+    # o estado de revisao, lido antes da comparacao, continua na resposta
+    assert out["estado_revisao"][0]["ad_id"] == "1"
 
 
 def test_parse_da_releitura_diz_se_leu_os_pinos() -> None:
