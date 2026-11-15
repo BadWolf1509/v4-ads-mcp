@@ -60,6 +60,15 @@ _EXECUTORES = {
 # convertidas cairiam em `caminho_ambiguo` (nem token nem executor no source).
 _EMISSORES_DE_TOKEN = ("create_pending", "emitir_preview")
 
+# Quem RAMIFICA em `.level` por conta da tool (T5.1, 15/11). A tool que passa o
+# veredito do `classify` como `risk=` a um destes honra a politica em runtime,
+# como se lesse `.level` ela mesma: o helper decide entre o executor e o token.
+# Sem este nome, a tool migrada nao teria `.level`, executor nem emissor no
+# source e cairia em `caminho_ambiguo`. So conta o NOME ligado ao `classify` (ou
+# a chamada direta): `risk=RiskClassification(...)` literal e caminho fixo
+# disfarcado e nao sai da cobranca.
+_RAMIFICADORES = ("aplicar_ou_pedir_confirmacao",)
+
 # Varia o bastante pra atravessar todos os limiares do modulo (1, 5, 20).
 _CONTAGENS = (0, 1, 5, 20, 100, 500)
 
@@ -178,25 +187,37 @@ def _le_level_do_classify(arvore: ast.Module) -> bool:
     cadeia léxica e PARANDO no primeiro escopo que sombreia o nome.
     """
     nomes = h.nomes_locais(arvore, "classify")
+    ramificadores = {n for r in _RAMIFICADORES for n in h.nomes_locais(arvore, r)}
     ligados = _ligados_por_escopo(arvore)
     dono = _escopo_de_cada_no(arvore)
     pai = h.escopos_pais(arvore)
 
-    for no in ast.walk(arvore):
-        if not (isinstance(no, ast.Attribute) and no.attr == "level"):
-            continue
-        if _chamada_ao_classify(no.value, nomes) is not None:  # `classify(...).level` direto
+    def _e_o_veredito(valor: ast.expr, onde: ast.AST) -> bool:
+        """`valor`, lido em `onde`, e o resultado do `classify`?"""
+        if _chamada_ao_classify(valor, nomes) is not None:  # `classify(...)` direto
             return True
-        if not isinstance(no.value, ast.Name):
-            continue
-        escopo: ast.AST | None = dono.get(no)
+        if not isinstance(valor, ast.Name):
+            return False
+        escopo: ast.AST | None = dono.get(onde)
         while escopo is not None:
             do_classify, todos = ligados.get(escopo, (set(), set()))
-            if no.value.id in do_classify:
+            if valor.id in do_classify:
                 return True
-            if no.value.id in todos:
-                break  # sombreado por outra ligação: a de fora nao vale mais
+            if valor.id in todos:
+                return False  # sombreado por outra ligação: a de fora nao vale mais
             escopo = pai.get(escopo)
+        return False
+
+    for no in ast.walk(arvore):
+        if isinstance(no, ast.Attribute) and no.attr == "level" and _e_o_veredito(no.value, no):
+            return True
+        # `aplicar_ou_pedir_confirmacao(..., risk=<veredito>)`: o helper ramifica.
+        if (
+            isinstance(no, ast.Call)
+            and _chamada_ao_classify(no, ramificadores) is not None
+            and any(kw.arg == "risk" and _e_o_veredito(kw.value, no) for kw in no.keywords)
+        ):
+            return True
     return False
 
 
@@ -436,6 +457,41 @@ _FORMAS_LEVEL = [
         "        return risk.level is RiskLevel.AUTO\n"
         "    return _f()\n",
         True,
+    ),
+    (
+        "veredito_passado_ao_ramificador_conta",
+        # T5.1: a tool entrega o veredito ao helper que ramifica por ela.
+        "async def zz(args):\n"
+        "    risk = classify(operation='x', params={})\n"
+        "    return await aplicar_ou_pedir_confirmacao(ctx, operation='x', risk=risk)\n",
+        True,
+    ),
+    (
+        "classify_direto_no_ramificador_conta",
+        "async def zz(args):\n"
+        "    return await aplicar_ou_pedir_confirmacao(\n"
+        "        ctx, operation='x', risk=classify(operation='x', params={})\n"
+        "    )\n",
+        True,
+    ),
+    (
+        "risk_literal_no_ramificador_nao_conta",
+        # Caminho fixo disfarcado: o veredito do classify vai so pro texto, e o
+        # helper recebe um nivel escrito a mao.
+        "async def zz(args):\n"
+        "    risk = classify(operation='x', params={})\n"
+        "    return await aplicar_ou_pedir_confirmacao(\n"
+        "        ctx, operation='x',\n"
+        "        risk=RiskClassification(level=RiskLevel.AUTO, reason=risk.reason),\n"
+        "    )\n",
+        False,
+    ),
+    (
+        "outro_nome_no_ramificador_nao_conta",
+        "async def zz(args, janela):\n"
+        "    risk = classify(operation='x', params={})\n"
+        "    return await aplicar_ou_pedir_confirmacao(ctx, operation='x', risk=janela)\n",
+        False,
     ),
     (
         "walrus_sem_level",

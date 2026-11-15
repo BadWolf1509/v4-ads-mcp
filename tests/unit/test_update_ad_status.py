@@ -53,7 +53,7 @@ async def test_auto_path_paused_under_threshold():
     from src.mcp.tools.update_ad_status import update_ad_status
 
     with patch(
-        "src.mcp.tools.update_ad_status.run_mutation",
+        "src.mcp.tools._mutate_common.run_mutation",
         AsyncMock(
             return_value={
                 "provider_request_id": "req-1",

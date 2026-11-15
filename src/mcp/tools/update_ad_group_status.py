@@ -3,10 +3,9 @@
 
 from typing import Any
 
-from src.google_ads.mutations import run_mutation
-from src.governance.blast_radius import RiskLevel, classify
+from src.governance.blast_radius import classify
 from src.mcp.context import get_current
-from src.mcp.tools._mutate_common import applied_envelope, emitir_preview
+from src.mcp.tools._mutate_common import aplicar_ou_pedir_confirmacao
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -63,29 +62,12 @@ async def update_ad_group_status(args: dict[str, Any]) -> dict[str, Any]:
         f"para {new_status}."
     )
 
-    if risk.level == RiskLevel.AUTO:
-        result = await run_mutation(
-            manager_id=ctx.manager_id,
-            session_id=ctx.session_id,
-            customer_id=customer_id,
-            operation_type="update_ad_group_status",
-            payload=payload,
-            target_count=target_count,
-        )
-        return applied_envelope(
-            "update_ad_group_status",
-            customer_id,
-            summary,
-            applied_count=result["applied_count"],
-            provider_request_id=result["provider_request_id"],
-            auto_applied_reason=risk.reason,
-        )
-
-    return await emitir_preview(
+    return await aplicar_ou_pedir_confirmacao(
         ctx,
         operation="update_ad_group_status",
         customer_id=customer_id,
         payload=payload,
+        target_count=target_count,
         resumo=summary,
         risk=risk,
     )
