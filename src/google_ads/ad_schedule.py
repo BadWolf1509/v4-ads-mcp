@@ -137,12 +137,6 @@ class ScheduleDiff:
     to_remove: tuple[CurrentWindow, ...]
     to_update: tuple[CurrentWindow, ...]
 
-    def is_empty(self) -> bool:
-        return not (self.to_add or self.to_remove or self.to_update)
-
-    def op_count(self) -> int:
-        return len(self.to_add) + len(self.to_remove) + len(self.to_update)
-
 
 def diff_schedule(
     current: list[CurrentWindow], desired: list[Window], bid_modifier: float | None

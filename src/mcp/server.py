@@ -1,7 +1,7 @@
 """MCP server using the official Anthropic Python SDK with Streamable HTTP transport."""
 
 import json
-from collections.abc import Awaitable, Callable, MutableMapping
+from collections.abc import MutableMapping
 from typing import Any
 
 import anyio
@@ -47,11 +47,6 @@ def _build_tool_meta(bucket: str) -> dict[str, Any]:
         meta["anthropic/alwaysLoad"] = True
     return meta
 
-
-# ASGI callable types
-_Scope = MutableMapping[str, Any]
-_ASGIReceive = Callable[[], Awaitable[MutableMapping[str, Any]]]
-_ASGISend = Callable[[MutableMapping[str, Any]], Awaitable[None]]
 
 # Eagerly import all tool modules so their @register_tool decorators run.
 import_all_tools()

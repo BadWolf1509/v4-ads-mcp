@@ -57,7 +57,6 @@ def _base_patches(
     *,
     pool: MagicMock,
     oc: object,
-    manager: object = None,
     accounts: list | None = None,
     resource_names: list | None = None,
     reconcile_result: dict[str, Any] | None = None,
@@ -82,8 +81,6 @@ def _base_patches(
         "init_pool": patch(f"{_M}.connection.init_pool", AsyncMock()),
         "close_pool": patch(f"{_M}.connection.close_pool", AsyncMock()),
         "get_pool": patch(f"{_M}.connection.get_pool", MagicMock(return_value=pool)),
-        # Parte J2: `_pick_oauth_connection` devolve so a conexao (`manager` ficou
-        # no helper para nao mexer nos chamadores; nao e mais lido).
         "pick": patch(f"{_M}._pick_oauth_connection", AsyncMock(return_value=oc)),
         "derive": patch(f"{_M}.derive_master_key_from_settings", MagicMock(return_value=b"k" * 32)),
         "decrypt": patch(f"{_M}.decrypt_refresh_token", MagicMock(return_value="refresh-tok")),
