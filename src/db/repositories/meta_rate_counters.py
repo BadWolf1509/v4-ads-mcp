@@ -6,19 +6,9 @@ per ad_account + app-level + user-level (multi-dimensional). V0 tracks per
 before persisting for storage privacy.
 """
 
-from dataclasses import dataclass
 from datetime import date
 
 import asyncpg
-
-
-@dataclass(slots=True, frozen=True)
-class MetaRateCounter:
-    app_id: str
-    ad_account_id: str
-    date: date
-    calls_used: int
-    last_throttle_pct: int
 
 
 async def increment_calls(

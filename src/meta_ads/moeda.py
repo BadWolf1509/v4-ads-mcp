@@ -23,7 +23,6 @@ async def exigir_brl(
     ad_account_id: str,
     *,
     manager_id: UUID,
-    session_id: UUID,
     proposito: str,
 ) -> dict[str, Any] | None:
     """`None` se a conta esta em BRL; senao o envelope de erro de entrada.
@@ -34,7 +33,7 @@ async def exigir_brl(
     A moeda vem do inventario, lido ANTES do gate de `run_meta_graph_get`. Para nao revelar
     a moeda de conta que o gestor nao pode ver, consulta primeiro a mesma
     `can_manager_access` do gate; negado, devolve `None` sem ler a moeda e a leitura gateada
-    seguinte da tool nega e audita. `session_id` fica na assinatura do contrato.
+    seguinte da tool nega e audita.
     """
 
     async def _ler(conn: Any) -> tuple[bool, str | None]:
