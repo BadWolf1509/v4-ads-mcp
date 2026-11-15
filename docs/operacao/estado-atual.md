@@ -31,7 +31,7 @@
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00217-vzw`**, 100% (`gcloud`, 15/11, depois do #262). A linha `SERVING_REVISION` do log do deploy é a revisão de **antes**; meça no `gcloud` |
+| Revisão servindo | **`v4-ads-mcp-00224-9sn`**, 100% (`gcloud`, 15/11, depois do #270). A linha `SERVING_REVISION` do log do deploy é a revisão de **antes**; meça no `gcloud` |
 | Comportamento novo (14–15/11) | **`conferencia`** no `apply_change` (veredito da releitura pós-write; `efeito`/`changed_count` = ACK do Google); `estado_revisao` e pinos em RSA; lote RSA até 50; `update_rsa` igual ao atual fora do token; **`remove_ad`**; `avisos[]` em `run_gaql`/`validate_gaql`; `get_experiments`, `update_recommendation_subscription`, `list_gaql_resources(resource, customer_id)`. Detalhe nos handoffs de [14/11](session-2026-11-14-handoff.md) e [15/11](session-2026-11-15-handoff.md); o de 10–11/11 está no [handoff](session-2026-11-10-handoff.md) |
 | Dependências | grpcio 1.85.1, protobuf 7.36.2, starlette 1.10.0 (avisa `httpx` deprecated no `TestClient`), sse-starlette 3.7.0, tzdata 2026.6 |
 | Tools | **83** (68 Google + 15 Meta), registry e `/health?deep=1` (15/11) |
@@ -42,12 +42,37 @@
 
 **Uso real, 30 dias até 30/10** (`audit_log`): 2.211 chamadas, 5 gestores (Pedro 801, Luiz 773,
 Wellington 590, Lucas 37, Anderson 4); Google 1.752, Meta 459; `run_gaql` 34%. **27 tools sem chamada em
-90 dias.** Memória: pico de p99 horário 50%; um único 5xx em 30 dias (503 no health, 01/10, causa
+90 dias** — contagem errada: 7 leituras não gravavam audit no sucesso, corrigido no #264; remedir com
+`scripts/medir_uso_tools.py --dias 90` (exige `DATABASE_URL`, só leitura) depois do 02/12, antes de
+decidir remoção. Memória: pico de p99 horário 50%; um único 5xx em 30 dias (503 no health, 01/10, causa
 desconhecida).
 
 ⚠️ **`deploy: skipped` não significa "PR de documentação":** o gate do F138 pula só push
 exclusivamente em `docs/` e markdown; `tests/` publica revisão. **Cheque a revisão servindo.**
 Contagens de tool e bucket vêm do registry (`import_all_tools()`), nunca de `grep` (F183).
+
+## Faxina de 15/11 — fechada (#264–#270)
+
+Sem mudança no que o gestor vê, salvo o P0 (audit). Achados em
+[`varredura-faxina-2026-11-15.md`](varredura-faxina-2026-11-15.md); ledger com rulings e minors
+adiados em `.superpowers/sdd/2026-11-15-varredura-faxina/progress.md` (git-ignored).
+
+| PR | parte | o quê |
+|---|---|---|
+| [#264](https://github.com/BadWolf1509/v4-ads-mcp/pull/264) | P0 | 7 leituras gravam audit no sucesso; `scripts/medir_uso_tools.py` |
+| [#265](https://github.com/BadWolf1509/v4-ads-mcp/pull/265) | P1 | ~246 KB de docs para `_archive/`, fatos corrigidos |
+| [#266](https://github.com/BadWolf1509/v4-ads-mcp/pull/266) | P2 | guards AST memoizados: 48 s → ~8 s |
+| [#267](https://github.com/BadWolf1509/v4-ads-mcp/pull/267) | P3 | código morto pontual |
+| [#268](https://github.com/BadWolf1509/v4-ads-mcp/pull/268) | P4 | testes: schema guard global, `ctx_mcp`, fakes comuns (−1.000 linhas) |
+| [#269](https://github.com/BadWolf1509/v4-ads-mcp/pull/269) | P5 | duplicação em `src`: AUTO/CONFIRM (3 tools), janela de data, páginas de acesso, plano de reconciliação |
+| [#270](https://github.com/BadWolf1509/v4-ads-mcp/pull/270) | P6 | `finally` dos 6 executores Google em `encerrar_execucao` |
+
+**Medido depois do deploy (15/11):** as 6 páginas de acesso batem com o banco (4 gestores ativos × 24
+contas Google e × 26 Meta); `get_performance_breakdown` e `plan_keyword_ideas` reais gravaram audit
+`success`. **Não medido:** dry-run de mutação depois do P5/P6 (pede o gestor presente). **Aberto:** o
+log `conversion_upload_executed` diz `success` quando o audit falha num upload 100% recusado
+(comportamento antigo, candidato a finding); 2 gestores desativados têm grants vivos (o login barra
+`is_deactivated`; não sondado).
 
 ## Backlog de tráfego — fechado (14–15/11, #249–#262)
 
