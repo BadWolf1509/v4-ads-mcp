@@ -3,19 +3,8 @@
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
-
-from src.mcp.context import McpRequestContext, clear_current, set_current
-
-
-@pytest.fixture
-def _ctx():
-    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
-    set_current(ctx)
-    yield ctx
-    clear_current()
 
 
 def _device_rule(value=10.0):
@@ -38,7 +27,7 @@ def _geo_rule(value=30.0):
 
 
 @pytest.mark.asyncio
-async def test_dry_run_happy_path_customer_device(_ctx) -> None:
+async def test_dry_run_happy_path_customer_device(ctx_mcp) -> None:
     """CUSTOMER attachment + DEVICE rule → dry_run with token."""
     from src.mcp.tools.create_conversion_value_rule_set import (
         create_conversion_value_rule_set,
@@ -78,7 +67,7 @@ async def test_dry_run_happy_path_customer_device(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_dry_run_happy_path_campaign_with_geo(_ctx) -> None:
+async def test_dry_run_happy_path_campaign_with_geo(ctx_mcp) -> None:
     """CAMPAIGN + GEO rule → both pre-flights called, dry_run OK."""
     from src.mcp.tools.create_conversion_value_rule_set import (
         create_conversion_value_rule_set,
@@ -120,7 +109,7 @@ async def test_dry_run_happy_path_campaign_with_geo(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_preflight_rejects_invalid_campaign(_ctx) -> None:
+async def test_preflight_rejects_invalid_campaign(ctx_mcp) -> None:
     """Campaign pre-flight returns error → tool returns error, no token."""
     from src.mcp.tools.create_conversion_value_rule_set import (
         create_conversion_value_rule_set,
@@ -145,7 +134,7 @@ async def test_preflight_rejects_invalid_campaign(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_preflight_rejects_non_br_geo_target(_ctx) -> None:
+async def test_preflight_rejects_non_br_geo_target(ctx_mcp) -> None:
     """Geo pre-flight returns error → tool returns error PT-BR."""
     from src.mcp.tools.create_conversion_value_rule_set import (
         create_conversion_value_rule_set,
@@ -180,7 +169,7 @@ async def test_preflight_rejects_non_br_geo_target(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_blast_summary_format_mixed_batch(_ctx) -> None:
+async def test_blast_summary_format_mixed_batch(ctx_mcp) -> None:
     """Mixed rules → summary string with attachment_type + counter distributions."""
     from src.mcp.tools.create_conversion_value_rule_set import (
         create_conversion_value_rule_set,
@@ -220,7 +209,7 @@ async def test_blast_summary_format_mixed_batch(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_preview_includes_attachment_and_filter_flags(_ctx) -> None:
+async def test_preview_includes_attachment_and_filter_flags(ctx_mcp) -> None:
     """Preview structure includes attachment_type + rule_count + filter flag."""
     from src.mcp.tools.create_conversion_value_rule_set import (
         create_conversion_value_rule_set,
@@ -260,7 +249,7 @@ async def test_preview_includes_attachment_and_filter_flags(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_customer_attachment_does_not_call_campaign_validator(_ctx) -> None:
+async def test_customer_attachment_does_not_call_campaign_validator(ctx_mcp) -> None:
     """CUSTOMER attachment should NOT invoke campaign pre-flight."""
     from src.mcp.tools.create_conversion_value_rule_set import (
         create_conversion_value_rule_set,
@@ -300,7 +289,7 @@ async def test_customer_attachment_does_not_call_campaign_validator(_ctx) -> Non
 
 
 @pytest.mark.asyncio
-async def test_geo_paths_dedup_cross_rules(_ctx) -> None:
+async def test_geo_paths_dedup_cross_rules(ctx_mcp) -> None:
     """Two rules sharing same geo path → geo validator called with 1 unique path."""
     from src.mcp.tools.create_conversion_value_rule_set import (
         create_conversion_value_rule_set,
@@ -358,7 +347,7 @@ async def test_geo_paths_dedup_cross_rules(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_rejects_campaign_attachment_without_campaign_id(_ctx) -> None:
+async def test_rejects_campaign_attachment_without_campaign_id(ctx_mcp) -> None:
     """Sprint 3b.19B.1: schema-level allOf root removed (Anthropic API rejects).
     Constraint moved to runtime — attachment_type=CAMPAIGN without campaign_id
     returns structured PT-BR error before any pre-flight call.
@@ -389,7 +378,7 @@ async def test_rejects_campaign_attachment_without_campaign_id(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_rejects_device_condition_type_without_device_condition(_ctx) -> None:
+async def test_rejects_device_condition_type_without_device_condition(ctx_mcp) -> None:
     """Sprint 3b.19B.1: schema-level allOf-items removed. Runtime check
     enforces condition_type=DEVICE → device_condition required.
     """
@@ -415,7 +404,7 @@ async def test_rejects_device_condition_type_without_device_condition(_ctx) -> N
 
 
 @pytest.mark.asyncio
-async def test_rejects_geo_condition_type_without_geo_condition(_ctx) -> None:
+async def test_rejects_geo_condition_type_without_geo_condition(ctx_mcp) -> None:
     """Sprint 3b.19B.1: condition_type=GEO_LOCATION → geo_condition required
     via runtime check (was allOf-items before)."""
     from src.mcp.tools.create_conversion_value_rule_set import (
@@ -440,7 +429,7 @@ async def test_rejects_geo_condition_type_without_geo_condition(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_no_geo_rules_skips_geo_validator(_ctx) -> None:
+async def test_no_geo_rules_skips_geo_validator(ctx_mcp) -> None:
     """Only DEVICE rules → geo validator NOT called."""
     from src.mcp.tools.create_conversion_value_rule_set import (
         create_conversion_value_rule_set,

@@ -3,23 +3,12 @@
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
-
-
-@pytest.fixture
-def _ctx():
-    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
-    set_current(ctx)
-    yield ctx
-    clear_current()
-
 
 @pytest.mark.asyncio
-async def test_returns_dry_run_with_token_on_happy_path(_ctx) -> None:
+async def test_returns_dry_run_with_token_on_happy_path(ctx_mcp) -> None:
     """Pre-flight passes → CONFIRM dry_run with token + preview."""
     from src.mcp.tools.create_conversion_action import create_conversion_action
 
@@ -56,7 +45,7 @@ async def test_returns_dry_run_with_token_on_happy_path(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_returns_error_on_preflight_duplicate_name(_ctx) -> None:
+async def test_returns_error_on_preflight_duplicate_name(ctx_mcp) -> None:
     """Pre-flight rejects duplicate → tool returns error response without token."""
     from src.mcp.tools.create_conversion_action import create_conversion_action
 
@@ -80,7 +69,7 @@ async def test_returns_error_on_preflight_duplicate_name(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_blast_summary_format_single_action(_ctx) -> None:
+async def test_blast_summary_format_single_action(ctx_mcp) -> None:
     """blast_summary string follows pattern: 'Criar N conversion_action(s): categorias {...}, tipos {...}.'"""
     from src.mcp.tools.create_conversion_action import create_conversion_action
 
@@ -112,7 +101,7 @@ async def test_blast_summary_format_single_action(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_batch_3_actions_summary_distribution(_ctx) -> None:
+async def test_batch_3_actions_summary_distribution(ctx_mcp) -> None:
     """3 actions with mixed categories/types → distribution correct in summary."""
     from src.mcp.tools.create_conversion_action import create_conversion_action
 
@@ -150,7 +139,7 @@ async def test_batch_3_actions_summary_distribution(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_preview_includes_value_settings_flag(_ctx) -> None:
+async def test_preview_includes_value_settings_flag(ctx_mcp) -> None:
     """Preview indicates whether value_settings was provided."""
     from src.mcp.tools.create_conversion_action import create_conversion_action
 

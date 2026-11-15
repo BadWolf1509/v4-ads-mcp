@@ -7,19 +7,9 @@ from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
-
-
-@pytest.fixture
-def _ctx():
-    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
-    set_current(ctx)
-    yield ctx
-    clear_current()
-
 
 @pytest.mark.asyncio
-async def test_apply_change_propagates_resource_names(_ctx) -> None:
+async def test_apply_change_propagates_resource_names(ctx_mcp) -> None:
     """F13: resource_names from run_mutation flows through apply_change response."""
     from src.mcp.tools.apply_change import apply_change
 
@@ -226,7 +216,7 @@ def _pool() -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_lote_sem_partial_failure_nao_afirma_zero_falhas(_ctx) -> None:
+async def test_lote_sem_partial_failure_nao_afirma_zero_falhas(ctx_mcp) -> None:
     """F182: `failed_count: 0` com a flag DESLIGADA seria afirmar o que nao se mediu.
 
     Sem partial_failure o Google nao reporta nada por linha, entao `partial_failures`
@@ -257,7 +247,7 @@ async def test_lote_sem_partial_failure_nao_afirma_zero_falhas(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_lote_com_partial_failure_conta_as_falhas(_ctx) -> None:
+async def test_lote_com_partial_failure_conta_as_falhas(ctx_mcp) -> None:
     """Com a flag ligada o numero e medido, e a resposta diz que foi."""
     from src.mcp.tools import apply_change as mod
     from src.mcp.tools.apply_change import apply_change

@@ -24,7 +24,6 @@ from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
 from tests.unit.test_mutations_partial_failure import (
     _client_with_partial_failure,
     _pool_with_transactable_conn,
@@ -39,14 +38,6 @@ from tests.unit.test_run_offline_user_data_job import (
 # ---------------------------------------------------------------------------
 # R1-I1 — apply_change no caminho default devolve o motivo de cada falha
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def _ctx() -> Any:
-    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
-    set_current(ctx)
-    yield ctx
-    clear_current()
 
 
 def _saved(operation_type: str, payload: dict[str, Any]) -> MagicMock:
@@ -86,7 +77,7 @@ async def _apply(resultado_do_run_mutation: dict[str, Any]) -> dict[str, Any]:
 
 
 @pytest.mark.asyncio
-async def test_apply_change_default_devolve_o_motivo_de_cada_falha(_ctx: Any) -> None:
+async def test_apply_change_default_devolve_o_motivo_de_cada_falha(ctx_mcp: Any) -> None:
     """R1-I1: 5 tools operam em lote com `__partial_failure__`; quando o Google
     aceita parte, o motivo de cada recusa nao pode morrer no dispatcher.
 
@@ -117,7 +108,7 @@ async def test_apply_change_default_devolve_o_motivo_de_cada_falha(_ctx: Any) ->
 
 
 @pytest.mark.asyncio
-async def test_flag_ligada_com_lista_vazia_da_zero_e_nao_none(_ctx: Any) -> None:
+async def test_flag_ligada_com_lista_vazia_da_zero_e_nao_none(ctx_mcp: Any) -> None:
     """Com a flag LIGADA e nenhuma falha reportada, `failed_count` e 0 — medido e zero.
 
     F182 — o nome antigo (`..._sem_partial_failure_...`) e a docstring ("mutacao sem
@@ -599,7 +590,7 @@ async def test_customer_match_erro_sem_medicao_nao_diz_none_membros() -> None:
 
 
 @pytest.mark.asyncio
-async def test_apply_change_do_customer_match_devolve_o_envelope_inteiro(_ctx: Any) -> None:
+async def test_apply_change_do_customer_match_devolve_o_envelope_inteiro(ctx_mcp: Any) -> None:
     """A forma da resposta do ramo `upload_customer_match_list`, que ninguem afirmava.
 
     O ramo montava o envelope a mao e **nao devolvia `blast_summary`** — o eco do

@@ -3,23 +3,12 @@
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
-
-
-@pytest.fixture
-def _ctx():
-    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
-    set_current(ctx)
-    yield ctx
-    clear_current()
-
 
 @pytest.mark.asyncio
-async def test_returns_dry_run_with_token_on_happy_path(_ctx) -> None:
+async def test_returns_dry_run_with_token_on_happy_path(ctx_mcp) -> None:
     """Pre-flight passes → CONFIRM dry_run with token returned."""
     from src.mcp.tools.create_ad_group import create_ad_group
 
@@ -57,7 +46,7 @@ async def test_returns_dry_run_with_token_on_happy_path(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_returns_error_on_preflight_rejection(_ctx) -> None:
+async def test_returns_error_on_preflight_rejection(ctx_mcp) -> None:
     """Pre-flight returns error string → tool returns {status: 'error', error: ...}."""
     from src.mcp.tools.create_ad_group import create_ad_group
 
@@ -78,7 +67,7 @@ async def test_returns_error_on_preflight_rejection(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_builds_correct_blast_summary_for_mixed_batch(_ctx) -> None:
+async def test_builds_correct_blast_summary_for_mixed_batch(ctx_mcp) -> None:
     """Mixed batch (different types/statuses/campaigns) → summary reflects distribution."""
     from src.mcp.tools.create_ad_group import create_ad_group
 

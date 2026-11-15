@@ -7,16 +7,6 @@ from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
-
-
-@pytest.fixture
-def _ctx():
-    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
-    set_current(ctx)
-    yield ctx
-    clear_current()
-
 
 def _fake_event(
     operation: str,
@@ -38,7 +28,7 @@ def _fake_event(
 
 
 @pytest.mark.asyncio
-async def test_returns_events_with_default_params(_ctx) -> None:
+async def test_returns_events_with_default_params(ctx_mcp) -> None:
     """No filters → returns last 7 days events for the manager."""
     from src.mcp.tools.get_my_audit_log import get_my_audit_log
 
@@ -72,7 +62,7 @@ async def test_returns_events_with_default_params(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_filter_by_customer_id(_ctx) -> None:
+async def test_filter_by_customer_id(ctx_mcp) -> None:
     """customer_id filter passed through to repo function."""
     from src.mcp.tools.get_my_audit_log import get_my_audit_log
 
@@ -92,7 +82,7 @@ async def test_filter_by_customer_id(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_filter_by_action_type_mutate(_ctx) -> None:
+async def test_filter_by_action_type_mutate(ctx_mcp) -> None:
     """action_type='mutate' filter passed through."""
     from src.mcp.tools.get_my_audit_log import get_my_audit_log
 
@@ -112,7 +102,7 @@ async def test_filter_by_action_type_mutate(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_empty_result_when_no_events(_ctx) -> None:
+async def test_empty_result_when_no_events(ctx_mcp) -> None:
     """Fresh manager with zero audit events returns count=0, events=[]."""
     from src.mcp.tools.get_my_audit_log import get_my_audit_log
 
