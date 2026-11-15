@@ -166,21 +166,6 @@ def test_validate_rejects_conversion_at_exactly_91_days_old():
 
 
 # ============================================================================
-# No-composition-keywords regression guard (Sprint 3b.19B.1 convention)
-# ============================================================================
-
-
-def test_schema_has_no_composition_keywords():
-    """Anthropic API rejects oneOf/allOf/anyOf at any nesting level."""
-    import json
-
-    schema_json = json.dumps(_SCHEMA)
-    assert '"oneOf"' not in schema_json
-    assert '"allOf"' not in schema_json
-    assert '"anyOf"' not in schema_json
-
-
-# ============================================================================
 # Dry-run flow tests (Layer 1 + Layer 2 + Layer 3 + audit prep)
 # ============================================================================
 

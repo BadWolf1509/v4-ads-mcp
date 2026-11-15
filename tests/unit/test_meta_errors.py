@@ -24,9 +24,7 @@ um de quebra pela parametrizacao sobre o frozenset inteiro.
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -232,29 +230,13 @@ def test_errors_py_nao_depende_mais_do_sdk_facebook_business() -> None:
     )
 
 
-def test_meta_graph_http_error_retryable_mesmo_sem_o_sdk_instalado() -> None:
-    """F190/Task 3, fix round 1 (achado B da revisao): `MetaGraphHTTPError` nao
-    tem relacao NENHUMA com o SDK `facebook_business`.
+def test_5xx_sem_envelope_e_retryable() -> None:
+    """Um 5xx sem envelope `error` no corpo continua retryable e mantem o status.
 
-    Antes: o ramo que o mapeava vivia DEPOIS de um `try: from
-    facebook_business.exceptions import ... except ImportError: return ...`. Se
-    o import do SDK falhasse — ausente, quebrado, ou removido de vez — o
-    `return` antecipado do `except ImportError` engolia o ramo inteiro, e um 503
-    (retryable de verdade) virava "Erro inesperado" com `retryable=False`. O
-    MESMO bug que a task existia pra fechar, reaberto por um caminho diferente.
-
-    O `try/except` nao existe mais (ver o teste estrutural acima), entao o
-    acoplamento que este teste perseguia e hoje impossivel POR CONSTRUCAO. Ele
-    fica assim mesmo, porque a asserção de fundo — 5xx continua retryable — vale
-    por si, e o `patch.dict` continua sendo o detector barato se o import do SDK
-    algum dia voltar pra este modulo em posicao errada.
+    Sem `code` nao ha tabela curada: o veredito sai so do status HTTP, e um 503 e
+    transitorio por definicao.
     """
-    with patch.dict(sys.modules, {"facebook_business.exceptions": None}):
-        resultado = to_friendly_meta_error(MetaGraphHTTPError(503, "Service Unavailable"))
+    resultado = to_friendly_meta_error(MetaGraphHTTPError(503, "Service Unavailable"))
 
-    assert resultado.retryable is True, (
-        "um MetaGraphHTTPError 5xx tem que continuar retryable mesmo quando o "
-        "import do SDK falha — nenhum ramo pode ficar atras de um try/except "
-        "ImportError que nao tem nada a ver com ele"
-    )
+    assert resultado.retryable is True, "um MetaGraphHTTPError 5xx tem que continuar retryable"
     assert "503" in resultado.message

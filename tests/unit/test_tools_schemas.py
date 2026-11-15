@@ -57,6 +57,40 @@ def test_no_composition_keywords_in_any_schema():
     )
 
 
+def test_every_tool_has_explicit_property_types():
+    """Toda propriedade de todo `input_schema` declara `type` (licao F1).
+
+    Varre o registry inteiro com a mesma travessia que os testes por tool faziam
+    (`properties.*`, `items` e qualquer dict/lista aninhado), e acusa cada ofensor
+    com o nome da tool e o caminho da propriedade.
+    """
+    offenders: list[tuple[str, str]] = []
+
+    def walk(tool_name: str, node: object, path: str) -> None:
+        if isinstance(node, dict):
+            if "properties" in node:
+                for prop_name, prop_schema in node["properties"].items():
+                    prop_path = f"{path}.properties.{prop_name}"
+                    if "type" not in prop_schema:
+                        offenders.append((tool_name, prop_path))
+                    walk(tool_name, prop_schema, prop_path)
+            if "items" in node:
+                walk(tool_name, node["items"], f"{path}.items")
+            for key, value in node.items():
+                if isinstance(value, dict | list):
+                    walk(tool_name, value, f"{path}.{key}")
+        elif isinstance(node, list):
+            for i, item in enumerate(node):
+                walk(tool_name, item, f"{path}[{i}]")
+
+    for tool in all_tools():
+        walk(tool.name, tool.input_schema, "input_schema")
+
+    assert not offenders, "Propriedades sem `type` explicito:\n" + "\n".join(
+        sorted({f"  {name}: {path}" for name, path in offenders})
+    )
+
+
 def test_no_type_array_in_any_schema():
     """`type: [..]` (lista) nunca entra em `input_schema` (G2, decisao de 14/11).
 
@@ -182,100 +216,12 @@ def test_customer_id_pattern_is_consistent():
             )
 
 
-def test_all_phase_2_tools_registered():
-    """All 31 tools (20 Phase 2 + 3 campaign mutations + 2 ad group mutations + 2 keyword mutations + 1 negatives + 2 recommendations + 1 create_ad_group) registered."""
-    expected = {
-        "add_keywords",
-        "audit_competitor_keywords",
-        "audit_goal_attribution",  # Sprint 3b.35
-        "audit_orphan_smart_actions",  # Sprint 3b.37
-        "audit_quality_score",
-        "audit_zombie_keywords",  # Sprint 3b.36
-        "create_ad_group",
-        "add_negative_keywords",
-        "add_negatives_from_search_terms",
-        "apply_audience",
-        "apply_change",
-        "apply_recommendation",
-        "bulk_pause_by_query",
-        "detect_drift",  # Sprint 3b.33
-        "dismiss_recommendation",
-        "list_my_accounts",
-        # visao geral
-        "get_account_overview",
-        "get_budget_pacing",
-        "get_account_balance",
-        "plan_keyword_ideas",
-        "get_keyword_metrics",
-        "meta_get_account_balance",
-        "meta_get_entities",
-        "meta_get_change_history",
-        "meta_get_creatives",
-        "meta_get_ad_preview",
-        "meta_get_budget_pacing",
-        "meta_search_targeting",
-        "meta_get_delivery_estimate",
-        "meta_get_pages",
-        "get_recommendations",
-        # performance
-        "get_campaign_performance",
-        "get_change_history",
-        "get_ad_group_performance",
-        "get_device_performance",
-        "get_geo_performance",
-        "get_hourly_performance",
-        # tactical
-        "get_keyword_performance",
-        "get_search_terms_report",
-        "get_negative_keywords_audit",
-        "get_ad_performance",
-        "get_audience_performance",
-        "get_conversion_actions",
-        # client report
-        "get_funnel_metrics",
-        "get_top_keywords_creatives",
-        # utilities
-        "run_gaql",
-        "validate_gaql",
-        "list_gaql_resources",
-        # campaign mutations
-        "update_campaign_bidding",
-        "update_campaign_budget",
-        "update_campaign_status",
-        # ad group mutations
-        "update_ad_group_bid",
-        "update_ad_group_status",
-        # ad mutations
-        "update_ad_status",
-        "remove_ad",  # S3
-        # keyword mutations
-        "update_keyword_bid",
-        "update_keyword_status",
-        # audience mutations
-        "remove_audience",
-        # utilities
-        "get_my_rate_limit_status",
-        "get_my_audit_log",
-        # create patterns
-        "create_rsa",
-        "create_conversion_action",
-        "create_conversion_value_rule_set",
-        "create_campaign",  # Sprint 3b.24
-        "create_and_link_assets",  # Sprint 3b.25
-        "import_offline_conversions",  # Sprint 3b.26
-        "upload_customer_match_list",  # Sprint 3b.28
-        # update patterns
-        "update_rsa",
-        "update_conversion_action",  # Sprint 3b.27
-        "get_performance_breakdown",  # Fase 2A Task 5
-    }
-    actual = {t.name for t in all_tools()}
-    missing = expected - actual
-    assert not missing, f"Missing tools: {missing}"
+def test_registry_e_a_lista_escrita():
+    """O registry tem exatamente as tools desta lista: nem falta, nem sobra.
 
-
-def test_no_unexpected_tools():
-    """Catch accidental new tool registrations not in the expected set."""
+    Igualdade, nao subconjunto: tool removida sem querer acusa `faltando`, tool
+    registrada sem passar por aqui acusa `inesperadas`.
+    """
     expected = {
         "add_keywords",
         "audit_competitor_keywords",
@@ -362,8 +308,9 @@ def test_no_unexpected_tools():
         "remove_ad",  # S3 (smoke de 14/11)
     }
     actual = {t.name for t in all_tools()}
-    unexpected = actual - expected
-    assert not unexpected, f"Unexpected tools: {unexpected}"
+    assert actual == expected, (
+        f"faltando: {sorted(expected - actual)}; inesperadas: {sorted(actual - expected)}"
+    )
 
 
 def test_date_range_schemas_are_explicit():
