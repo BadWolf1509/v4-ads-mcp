@@ -42,6 +42,8 @@ async def test_coleta_roda_em_transacao_so_de_leitura(db: Any) -> None:
             # Preview de mutação e a aplicação 3 min depois (via apply_change).
             ("mutate", "update_ad_status", "success", True, _em(12, 10)),
             ("mutate", "update_ad_status", "success", None, _em(12, 10, 3)),
+            # Leitura de pré-voo sob o nome da tool de mutação: não é aplicação.
+            ("read", "update_ad_status", "success", None, _em(12, 9, 59)),
             # Fora da janela (dia anterior ao início, em Brasília): não conta.
             ("read", "get_funnel_metrics", "success", None, _em(1, 0) - timedelta(minutes=1)),
         ]
@@ -78,7 +80,8 @@ async def test_coleta_roda_em_transacao_so_de_leitura(db: Any) -> None:
         assert (funil.linhas, funil.linhas_preview, funil.sucesso, funil.gestores) == (1, 0, 1, 1)
         assert funil.primeira_sucesso == _em(10, 9)
         mutacao = uso["update_ad_status"]
-        assert (mutacao.linhas, mutacao.linhas_preview) == (1, 1)
+        assert (mutacao.linhas, mutacao.linhas_preview) == (2, 1)
+        assert (mutacao.linhas_mutacao, mutacao.sucesso_mutacao) == (1, 1)
         assert aplicacoes.via_pendencias == 1
         assert aplicacoes.gestores_pendencias == 1
         assert aplicacoes.ultima_pendencia == _em(12, 10, 3)
