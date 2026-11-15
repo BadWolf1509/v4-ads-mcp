@@ -81,6 +81,7 @@ def pinos_pedidos(spec: Mapping[str, Any]) -> dict[str, list[str]]:
     return pinos
 
 
+_CHAVES_NAO_CAMPO = ("ad_id", "remover_pinos")
 _CAMPOS_MUTAVEIS = ("headlines", "descriptions", "final_urls", "path1", "path2")
 
 
@@ -92,6 +93,10 @@ def campos_sem_mudanca(u: Mapping[str, Any], atuais: Mapping[str, Any] | None) -
     ordem; URL, lista exata; path pedido `None` vale `""`. `remover_pinos` nao e campo.
     """
     if atuais is None:
+        return None
+    # Fail-safe (I1): chave que esta funcao nao sabe comparar e MUDANCA, nunca no-op —
+    # campo novo no schema sem entrar aqui nao pode descartar o write em silencio.
+    if any(k not in _CAMPOS_MUTAVEIS and k not in _CHAVES_NAO_CAMPO for k in u):
         return None
     pedidos = [c for c in _CAMPOS_MUTAVEIS if c in u]
     if not pedidos:

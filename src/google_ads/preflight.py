@@ -278,7 +278,16 @@ def _textos_atuais(assets: Any) -> list[tuple[str, str | None]] | None:
     lista = list(assets or [])
     if not lista:
         return None
+    # UNKNOWN (valor que a versao do SDK nao conhece) nao e "sem pino": campo inteiro nao lido.
+    if any(_nome_do_pino(a) == "UNKNOWN" for a in lista):
+        return None
     return [(str(a.text), _enum_ou_none(a, "pinned_field")) for a in lista]
+
+
+def _nome_do_pino(asset: Any) -> str | None:
+    valor = getattr(asset, "pinned_field", None)
+    nome = getattr(valor, "name", None)
+    return nome if isinstance(nome, str) else (valor if isinstance(valor, str) else None)
 
 
 def _atuais_do_rsa(ad: Any) -> dict[str, Any]:
@@ -288,7 +297,9 @@ def _atuais_do_rsa(ad: Any) -> dict[str, Any]:
         "headlines": _textos_atuais(getattr(rsa, "headlines", None)),
         "descriptions": _textos_atuais(getattr(rsa, "descriptions", None)),
         "final_urls": [str(u) for u in urls] if urls else None,
-        # proto3 string nao distingue omitido de "": o campo esta no SELECT, entao "" e o valor.
+        # proto3 string nao distingue omitido de "": "" so e VALOR porque path1/path2 estao no
+        # SELECT de `validate_existing_rsas_for_update`, a unica query que usa este formatter.
+        # Query nova que o reutilize sem esses campos no SELECT faria o "" mentir.
         "path1": str(getattr(rsa, "path1", "") or ""),
         "path2": str(getattr(rsa, "path2", "") or ""),
     }
