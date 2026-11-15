@@ -3,12 +3,21 @@
 O catalogo curado em `src/google_ads/queries/meta.py` carregava
 `segments.network_type`, que a API recusa ("Unrecognized field"); o nome real
 e `segments.ad_network_type`. Este teste resolve cada campo pontuado contra
-`GoogleAdsRow` da mesma versao (v25) que o `src` usa.
+`GoogleAdsRow` da mesma versao que o `src` usa.
+
+O guard mede existencia do campo no proto, nao selectable_with por recurso.
 """
 
-from google.ads.googleads.v25.services.types.google_ads_service import GoogleAdsRow
+import importlib
 
+from src.google_ads.campos_gaql import VERSAO_API
 from src.google_ads.queries.meta import RESOURCES, SEGMENTS
+
+# Mesma versao que o src usa (`_DEFAULT_VERSION` do SDK, via campos_gaql): um
+# bump do SDK muda o proto contra o qual a lista e conferida.
+GoogleAdsRow = importlib.import_module(
+    f"google.ads.googleads.{VERSAO_API}.services.types.google_ads_service"
+).GoogleAdsRow
 
 
 def campo_existe_no_proto(caminho: str) -> bool:
@@ -19,7 +28,7 @@ def campo_existe_no_proto(caminho: str) -> bool:
         campos = classe.meta.fields
         # proto-plus renomeia campo que colide com palavra reservada do Python
         # (`type` vira `type_`); o nome na GAQL continua `type`.
-        if nome not in campos and f"{nome}_" in campos:
+        if nome == "type" and "type" not in campos and "type_" in campos:
             nome = f"{nome}_"
         if nome not in campos:
             return False
@@ -51,3 +60,5 @@ def test_resolvedor_recusa_campo_inventado() -> None:
     assert not campo_existe_no_proto("segments.network_type")
     assert campo_existe_no_proto("segments.ad_network_type")
     assert campo_existe_no_proto("ad_group_ad.ad.responsive_search_ad.headlines")
+    assert not campo_existe_no_proto("campaign.start_date")
+    assert campo_existe_no_proto("ad_group.type")
