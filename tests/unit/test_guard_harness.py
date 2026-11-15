@@ -769,3 +769,99 @@ def test_chama_no_corpo_proprio_vazio_para_funcao_que_nao_chama() -> None:
     sem_gate = next(f for f in h.funcoes(arv) if f.name == "sem_gate")
 
     assert h.chama_no_corpo_proprio(sem_gate, "gate", arv=arv) == []
+
+
+# --- memoização por árvore: aliases, nomes chamados e mapa de pais -----------
+
+
+def _nomes_locais_referencia(arv: ast.Module, alvo: str) -> set[str]:
+    """Corpo original de `nomes_locais` (um `ast.walk` por chamada): a referência
+    contra a qual a versão memoizada tem de dar sempre o mesmo conjunto."""
+    nomes = {alvo}
+    for no in ast.walk(arv):
+        if isinstance(no, ast.ImportFrom):
+            for a in no.names:
+                if a.name == alvo and a.asname:
+                    nomes.add(a.asname)
+        elif isinstance(no, ast.Import):
+            for a in no.names:
+                if a.name.rpartition(".")[2] == alvo and a.asname:
+                    nomes.add(a.asname)
+    return nomes
+
+
+def _nomes_importados(arv: ast.Module) -> set[str]:
+    achados: set[str] = set()
+    for no in ast.walk(arv):
+        if isinstance(no, ast.ImportFrom | ast.Import):
+            for a in no.names:
+                achados.add(a.name)
+                achados.add(a.name.rpartition(".")[2])
+    return achados
+
+
+def test_nomes_locais_equivale_a_referencia() -> None:
+    # Amostra: a referência refaz um walk por alvo (é o custo que o harness
+    # tirou), então cobre-se 1 árvore em 4 e os alvos importados mais os fixos.
+    caminhos = (h.fontes_py() + h.testes_py())[::4]
+    verificados = 0
+    com_alias = 0
+    for p in caminhos:
+        arv = h.arvore(p)
+        for alvo in sorted(_nomes_importados(arv))[:12] + ["ensure_account_access", "classify"]:
+            esperado = _nomes_locais_referencia(arv, alvo)
+            assert h.nomes_locais(arv, alvo) == esperado, alvo
+            verificados += 1
+            com_alias += len(esperado) > 1
+    assert verificados > 300, "escopo pequeno demais para provar equivalência"
+    assert com_alias, "controle positivo: alguma árvore tem de ter alias de import"
+
+
+def test_nomes_chamados_equivale_a_chama() -> None:
+    from src.google_ads.mutates._common import _BUILDERS, import_all_builders
+
+    import_all_builders()
+    builders = sorted(fn.__name__ for fn in _BUILDERS.values())
+    alvos = ["run_mutation", "create_pending", "build_campaign_status", builders[0], builders[-1]]
+    arvores = [h.arvore(p) for p in h.testes_py()[::3]]
+    positivos = 0
+    for arv in arvores:
+        chamados = h.nomes_chamados(arv)
+        for alvo in alvos:
+            esperado = h.chama(arv, alvo, arv=arv)
+            assert (alvo in chamados) == esperado, alvo
+            positivos += esperado
+    assert positivos, "controle positivo: algum alvo tem de ser chamado em algum teste"
+
+
+def test_nomes_chamados_resolve_alias_e_ignora_nao_chamada() -> None:
+    arv = ast.parse("from m import f as g\nimport a.b as c\nx = g(1)\nh = c\n")
+    chamados = h.nomes_chamados(arv)
+    assert "f" in chamados  # alias chamado devolve o nome original
+    assert "b" not in chamados  # `c` nunca é chamado
+    assert h.chama(arv, "f", arv=arv) and "f" in chamados
+    assert not h.chama(arv, "b", arv=arv)
+
+
+def test_pais_equivale_a_construcao_por_walk() -> None:
+    arvores = [h.arvore(p) for p in (h.fontes_py() + h.testes_py())[:20]]
+    for arv in arvores:
+        esperado = {f: n for n in ast.walk(arv) for f in ast.iter_child_nodes(n)}
+        assert dict(h.pais(arv)) == esperado
+    assert any(len(h.pais(a)) > 10 for a in arvores)
+
+
+def test_memo_e_por_arvore() -> None:
+    base = "from m import f\nx = f(1)\n"
+    a = ast.parse(base)
+    b = ast.parse(base + "from m import f as apelido\ny = apelido(2)\n")
+    assert h.nomes_locais(a, "f") == {"f"}
+    assert h.nomes_locais(b, "f") == {"f", "apelido"}
+    assert h.nomes_locais(a, "f") == {"f"}  # b não contaminou a
+    # conjunto devolvido é novo: mutar não contamina a chamada seguinte
+    h.nomes_locais(b, "f").add("intruso")
+    assert h.nomes_locais(b, "f") == {"f", "apelido"}
+    # alias novo adicionado à árvore depois de memoizada não é visto (memo morre
+    # com a árvore; quem edita arquivo reparseia via `h.arvore`)
+    assert "apelido" not in h.nomes_chamados(a)
+    assert len(h.pais(a)) != len(h.pais(b))

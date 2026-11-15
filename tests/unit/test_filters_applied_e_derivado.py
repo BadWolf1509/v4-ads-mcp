@@ -370,7 +370,7 @@ def _chamadas_sem_desempacotar(arv: ast.Module, nomes: set[str]) -> list[int]:
     resolve alias com `h.nomes_locais` antes de passar pra ca. Limite: chamada por
     nome local dinamico (`builder(...)` num parametrize) nao e vista.
     """
-    pais = {filho: no for no in ast.walk(arv) for filho in ast.iter_child_nodes(no)}
+    pais = h.pais(arv)
     ruins = []
     for no in ast.walk(arv):
         if not isinstance(no, ast.Call):
