@@ -1260,6 +1260,116 @@ def _io_de_cota_fora_do_best_effort(fn: ast.AsyncFunctionDef) -> list[int]:
     return achados
 
 
+# Os 5 arquivos com executor Google (6 executores: mutations.py tem dois).
+_ARQUIVOS_DE_EXECUTOR = frozenset(
+    {
+        "keyword_planning.py",
+        "mutations.py",
+        "customer_match.py",
+        "conversions.py",
+        "reports.py",
+    }
+)
+
+
+def _chama_audit_log_record(no: ast.AST, arv: ast.Module) -> bool:
+    """`audit_log.record(...)` (ou alias de `audit_log`); outro `.record()` nao conta."""
+    nomes = h.nomes_locais(arv, "audit_log")
+    return any(
+        isinstance(sub, ast.Call)
+        and isinstance(sub.func, ast.Attribute)
+        and sub.func.attr == "record"
+        and isinstance(sub.func.value, ast.Name)
+        and sub.func.value.id in nomes
+        for sub in ast.walk(no)
+    )
+
+
+def _finallys(arv: ast.Module) -> list[ast.stmt]:
+    return [s for n in ast.walk(arv) if isinstance(n, ast.Try) for s in n.finalbody]
+
+
+def _cobrar_encerramento_dos_executores() -> None:
+    """Parte 2 do guard de reconcile: o `finally` de cada executor (P6).
+
+    Cada arquivo de executor chama `encerrar_execucao` num `finally` e nao chama
+    `reconciliar_cota` em lugar nenhum; e nenhum arquivo de src/google_ads/ grava
+    `audit_log.record` dentro de `finally` (o audit de fim de execucao passa por
+    `encerrar_execucao`, sob best_effort).
+    """
+    problemas = []
+    for nome in sorted(_ARQUIVOS_DE_EXECUTOR):
+        tree = h.arvore(h.SRC / "google_ads" / nome)
+        finais = _finallys(tree)
+        assert finais, f"controle: {nome} tem que ter `finally`"
+        if not any(h.chama(s, "encerrar_execucao", arv=tree) for s in finais):
+            problemas.append(f"{nome}: sem encerrar_execucao no finally")
+        if h.chama(tree, "reconciliar_cota", arv=tree):
+            problemas.append(f"{nome}: chama reconciliar_cota direto")
+    for p in h.fontes_py(h.SRC / "google_ads"):
+        tree = h.arvore(p)
+        if any(_chama_audit_log_record(s, tree) for s in _finallys(tree)):
+            problemas.append(f"{p.name}: audit_log.record dentro de finally")
+    assert not problemas, (
+        f"encerramento dos executores Google: {problemas}. O `finally` de executor "
+        "e `encerrar_execucao` (src/governance/execucao.py), que reconcilia a cota e "
+        "grava o audit em blocos best_effort independentes (F73/F83/F91)."
+    )
+
+
+def test_lista_de_executores_descreve_a_realidade() -> None:
+    """Par do `_ARQUIVOS_DE_EXECUTOR`: a lista diz exatamente quem encerra pelo esqueleto.
+
+    Quem chama `encerrar_execucao` em src/google_ads/ e a lista (executor novo
+    que encerra pelo esqueleto entra nela, e a parte 2 passa a cobra-lo), e o
+    unico chamador de `reconciliar_cota` em src/ e `governance/execucao.py`.
+    """
+    chamam_encerrar = set()
+    for p in h.fontes_py(h.SRC / "google_ads"):
+        tree = h.arvore(p)
+        if h.chama(tree, "encerrar_execucao", arv=tree):
+            chamam_encerrar.add(p.name)
+    assert chamam_encerrar == set(_ARQUIVOS_DE_EXECUTOR), (
+        f"chamam encerrar_execucao: {sorted(chamam_encerrar)}; "
+        f"_ARQUIVOS_DE_EXECUTOR: {sorted(_ARQUIVOS_DE_EXECUTOR)}"
+    )
+
+    chamam_reconciliar = set()
+    for p in h.fontes_py():
+        tree = h.arvore(p)
+        if h.chama(tree, "reconciliar_cota", arv=tree):
+            chamam_reconciliar.add(p.relative_to(h.SRC).as_posix())
+    assert chamam_reconciliar == {"governance/execucao.py"}, (
+        f"reconciliar_cota chamado fora de governance/execucao.py: {sorted(chamam_reconciliar)}"
+    )
+
+
+def test_encerrar_execucao_faz_o_audit_sob_best_effort() -> None:
+    """F83: em `encerrar_execucao`, todo `acquire` esta sob um `best_effort` aberto ANTES.
+
+    E o `__aenter__` do acquire que falha numa conexao stale (F76); com o acquire
+    antes do best_effort na lista do `async with`, a falha escapa do `finally` e
+    descarta o `return` da operacao ja aplicada.
+    """
+    arq = h.SRC / "governance" / "execucao.py"
+    arv = h.arvore(arq)
+    fns = [
+        n
+        for n in ast.walk(arv)
+        if isinstance(n, ast.AsyncFunctionDef) and n.name == "encerrar_execucao"
+    ]
+    assert len(fns) == 1, "controle: encerrar_execucao tem que existir em governance/execucao.py"
+    assert h.chama(fns[0], "acquire", arv=arv), "controle: o guard precisa enxergar o acquire"
+    assert h.chama(fns[0], "reconciliar_cota", arv=arv), (
+        "controle: o reconcile de cota passa por reconciliar_cota (best_effort embutido)"
+    )
+    fora = _io_de_cota_fora_do_best_effort(fns[0])
+    assert not fora, (
+        f"F83 — acquire em encerrar_execucao fora do best_effort (execucao.py:{fora}). "
+        "O best_effort abre ANTES do pool.acquire(), no mesmo `async with`."
+    )
+
+
 def test_reconciliar_cota_faz_todo_io_sob_best_effort() -> None:
     """F83: o reconcile de cota vive em `reconciliar_cota`, nao mais no `finally`.
 
@@ -1271,8 +1381,9 @@ def test_reconciliar_cota_faz_todo_io_sob_best_effort() -> None:
     1. dentro de `reconciliar_cota`, todo `acquire`/`record_actual` esta sob
        `best_effort` (e o best_effort vem ANTES do `pool.acquire()` na lista de itens,
        porque e o `__aenter__` do acquire que falha numa conexao stale — F76);
-    2. cada executor Google continua chamando `reconciliar_cota` num `finally`, e
-       nenhum chama `record_actual` cru em `src/google_ads/`.
+    2. cada executor Google encerra por `encerrar_execucao` num `finally` (P6), que
+       e o unico chamador de `reconciliar_cota`, e nenhum chama `record_actual`
+       cru em `src/google_ads/`.
     """
     arq = h.SRC / "governance" / "reserva.py"
     arv = ast.parse(arq.read_text(encoding="utf-8"))
@@ -1298,27 +1409,7 @@ def test_reconciliar_cota_faz_todo_io_sob_best_effort() -> None:
         "falha aqui descarta o return da operacao ja aplicada."
     )
 
-    executores = [
-        "keyword_planning.py",
-        "mutations.py",
-        "customer_match.py",
-        "conversions.py",
-        "reports.py",
-    ]
-    sem_finally = []
-    for nome in executores:
-        p = h.SRC / "google_ads" / nome
-        tree = ast.parse(p.read_text(encoding="utf-8"))
-        if not any(
-            isinstance(n, ast.Try)
-            and any(h.chama(s, "reconciliar_cota", arv=tree) for s in n.finalbody)
-            for n in ast.walk(tree)
-        ):
-            sem_finally.append(nome)
-    assert not sem_finally, (
-        f"executores sem reconciliar_cota no finally: {sem_finally}. "
-        "Reconcile de cota passa por src/governance/reserva.py (F73/F83)."
-    )
+    _cobrar_encerramento_dos_executores()
 
     crus = []
     for p in h.fontes_py(h.SRC / "google_ads"):

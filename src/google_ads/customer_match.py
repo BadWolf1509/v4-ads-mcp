@@ -21,16 +21,15 @@ import structlog
 
 from src.blocking import run_blocking
 from src.db import connection
-from src.db.repositories import audit_log
 from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
 from src.google_ads.partial_failure import erros_por_indice
 from src.google_ads.request_id import get_request_id, reset_request_id
 from src.google_ads.resultados import ResultadoCustomerMatch
-from src.governance.bookkeeping import best_effort
+from src.governance.execucao import RegistroDeAudit, encerrar_execucao
 from src.governance.rate_limit import QuotaExhausted
-from src.governance.reserva import Reserva, reconciliar_cota, reservar_cota
+from src.governance.reserva import Reserva, reservar_cota
 
 log = structlog.get_logger(__name__)
 
@@ -382,33 +381,9 @@ async def run_offline_user_data_job(
         # nada pra reconciliar (F73 — reconciliar mesmo assim decrementaria o
         # contador sem contrapartida).
         actual_ops = estimated_ops if status == "success" else 0
-        # F83: best-effort e independentes — os membros ja foram enviados ao
-        # Google quando este bloco roda.
-        if reserva is not None:
-            await reconciliar_cota(
-                pool,
-                reserva,
-                manager_id=manager_id,
-                actual_ops=actual_ops,
-                evento="customer_match_quota_reconcile_failed",
-                operation="upload_customer_match_list",
-                customer_id=customer_id,
-            )
-        # Audit SEMPRE roda (mutate PII exige rastro; LGPD) — inclusive quando
-        # sem reserva (negacao por quota deve aparecer no audit). Se a escrita
-        # falhar, o best_effort garante rastro ERROR alertavel (F83) em vez de
-        # sumir junto com o resultado.
-        async with (
-            best_effort(
-                "customer_match_audit_write_failed",
-                operation="upload_customer_match_list",
-                customer_id=customer_id,
-                status=status,
-            ),
-            pool.acquire() as conn,
-        ):
-            await audit_log.record(
-                conn,
+
+        def _montar_audit() -> RegistroDeAudit:
+            return RegistroDeAudit(
                 manager_id=manager_id,
                 session_id=session_id,
                 customer_id=customer_id,
@@ -436,6 +411,24 @@ async def run_offline_user_data_job(
                 error_message=error_message,
                 duration_ms=duration_ms,
             )
+
+        # F83: best-effort e independentes — os membros ja foram enviados ao
+        # Google quando este bloco roda. Audit SEMPRE roda (mutate PII exige
+        # rastro; LGPD) — inclusive sem reserva (negacao por quota deve aparecer
+        # no audit). Se a escrita falhar, vira rastro ERROR alertavel (F83) em vez
+        # de sumir junto com o resultado.
+        await encerrar_execucao(
+            pool,
+            reserva,
+            manager_id=manager_id,
+            actual_ops=actual_ops,
+            operation="upload_customer_match_list",
+            customer_id=customer_id,
+            status=status,
+            evento_cota="customer_match_quota_reconcile_failed",
+            evento_audit="customer_match_audit_write_failed",
+            montar_audit=_montar_audit,
+        )
 
     if friendly_error is not None:
         # Raise (não retorna dict de erro): apply_change espera dict de sucesso;

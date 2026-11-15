@@ -130,7 +130,7 @@ async def test_run_mutation_partial_failure_returns_per_op_status(monkeypatch):
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch.object(mutations.audit_log, "record", AsyncMock()),
+        patch("src.db.repositories.audit_log.record", AsyncMock()),
     ):
         result = await run_mutation(
             manager_id=uuid4(),
@@ -195,7 +195,7 @@ async def test_run_mutation_uses_custom_params_summary(monkeypatch):
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch.object(mutations.audit_log, "record", audit_mock),
+        patch("src.db.repositories.audit_log.record", audit_mock),
     ):
         await run_mutation(
             manager_id=uuid4(),
@@ -256,7 +256,7 @@ async def test_status_por_op_nao_afirma_o_verbo_da_operacao(monkeypatch) -> None
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch.object(mutations.audit_log, "record", AsyncMock()),
+        patch("src.db.repositories.audit_log.record", AsyncMock()),
     ):
         result = await run_mutation(
             manager_id=uuid4(),
@@ -342,7 +342,7 @@ async def test_run_mutation_marca_op_que_o_google_aceitou_e_nao_executou(monkeyp
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch.object(mutations.audit_log, "record", AsyncMock()),
+        patch("src.db.repositories.audit_log.record", AsyncMock()),
     ):
         result = await run_mutation(
             manager_id=uuid4(),
@@ -384,7 +384,7 @@ async def _roda_e_captura_audit(monkeypatch, per_op_errors, *, nomes=None):
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch.object(mutations.audit_log, "record", registro),
+        patch("src.db.repositories.audit_log.record", registro),
     ):
         await run_mutation(
             manager_id=uuid4(),
@@ -433,7 +433,7 @@ async def test_audit_had_effect_none_quando_excecao(monkeypatch):
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch.object(mutations.audit_log, "record", registro),
+        patch("src.db.repositories.audit_log.record", registro),
         pytest.raises(RuntimeError, match="boom"),
     ):  # o executor relanca; o audit grava antes
         await run_mutation(

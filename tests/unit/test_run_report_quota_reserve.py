@@ -52,7 +52,7 @@ def _common_patches(*, before_call_mock: AsyncMock, record_actual_mock: AsyncMoc
         patch("src.google_ads.reports.ensure_account_access", AsyncMock(return_value=None)),
         patch("src.governance.reserva.before_call", before_call_mock),
         patch("src.governance.reserva.record_actual", record_actual_mock),
-        patch("src.google_ads.reports.audit_log.record", AsyncMock(return_value=1)),
+        patch("src.db.repositories.audit_log.record", AsyncMock(return_value=1)),
         patch("src.google_ads.reports.connection.get_pool", return_value=mock_pool),
     ]
 
@@ -100,7 +100,7 @@ async def test_run_report_audita_request_id(ids_dos_lotes, esperado):
         patch("src.google_ads.reports.ensure_account_access", AsyncMock(return_value=None)),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch("src.google_ads.reports.audit_log.record", audit_mock),
+        patch("src.db.repositories.audit_log.record", audit_mock),
         patch("src.google_ads.reports.connection.get_pool", return_value=_pool_with_conn()[0]),
         patch("src.google_ads.reports.build_client_for_manager", AsyncMock(return_value=client)),
     ]
@@ -170,7 +170,7 @@ async def test_quota_exhausted_still_audits_with_status_error_when_opted_in():
         patch("src.google_ads.reports.ensure_account_access", AsyncMock(return_value=None)),
         patch("src.governance.reserva.before_call", before_call_mock),
         patch("src.governance.reserva.record_actual", record_actual_mock),
-        patch("src.google_ads.reports.audit_log.record", audit_mock),
+        patch("src.db.repositories.audit_log.record", audit_mock),
         patch("src.google_ads.reports.connection.get_pool", return_value=_pool_with_conn()[0]),
     ]
     for p in patches:
@@ -211,7 +211,7 @@ async def test_success_reserves_and_reconciles_both_global_and_manager_keys():
         patch("src.google_ads.reports.ensure_account_access", AsyncMock(return_value=None)),
         patch("src.governance.reserva.before_call", before_call_mock),
         patch("src.governance.reserva.record_actual", record_actual_mock),
-        patch("src.google_ads.reports.audit_log.record", AsyncMock(return_value=1)),
+        patch("src.db.repositories.audit_log.record", AsyncMock(return_value=1)),
         patch("src.google_ads.reports.connection.get_pool", return_value=_pool_with_conn()[0]),
         patch("src.google_ads.reports.build_client_for_manager", AsyncMock(return_value=client)),
     ]

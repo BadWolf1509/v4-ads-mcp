@@ -44,7 +44,7 @@ async def test_chaves_do_resultado_bate_com_o_tipo_mutacao(monkeypatch):
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch.object(mutations.audit_log, "record", AsyncMock()),
+        patch("src.db.repositories.audit_log.record", AsyncMock()),
     ):
         result = await mutations.run_mutation(
             manager_id=uuid4(),
@@ -78,7 +78,7 @@ async def test_chaves_do_resultado_bate_com_o_tipo_recomendacao():
             "src.google_ads.mutates.recommendations.execute_apply_recommendation",
             MagicMock(return_value=MagicMock()),
         ),
-        patch.object(mutations.audit_log, "record", AsyncMock(return_value=1)),
+        patch("src.db.repositories.audit_log.record", AsyncMock(return_value=1)),
     ):
         mock_connection.get_pool.return_value = t_rec._mock_pool()
         result = await mutations.run_recommendation_action(
@@ -155,7 +155,7 @@ async def test_chaves_do_resultado_bate_com_o_tipo_customer_match():
     with (
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch("src.google_ads.customer_match.audit_log.record", AsyncMock(return_value=1)),
+        patch("src.db.repositories.audit_log.record", AsyncMock(return_value=1)),
         patch(
             "src.google_ads.customer_match.build_client_for_manager",
             AsyncMock(return_value=client),

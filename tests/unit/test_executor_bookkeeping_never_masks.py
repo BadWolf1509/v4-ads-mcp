@@ -70,7 +70,7 @@ async def test_conexao_stale_no_proprio_acquire_do_finally_nao_derruba_o_mutate(
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch.object(mutations.audit_log, "record", AsyncMock(return_value=1)),
+        patch("src.db.repositories.audit_log.record", AsyncMock(return_value=1)),
         patch.object(mutations.connection, "get_pool", return_value=_pool_that_goes_stale_after(2)),
         patch.object(
             mutations, "build_client_for_manager", AsyncMock(return_value=client_de_sucesso())
@@ -101,8 +101,9 @@ async def test_mutation_aplicada_sobrevive_a_falha_de_audit():
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch.object(
-            mutations.audit_log, "record", AsyncMock(side_effect=_StaleConnectionError("stale"))
+        patch(
+            "src.db.repositories.audit_log.record",
+            AsyncMock(side_effect=_StaleConnectionError("stale")),
         ),
         patch.object(mutations.connection, "get_pool", return_value=pool_com_transacao()),
         patch.object(
@@ -141,7 +142,7 @@ async def test_falha_na_reconciliacao_de_quota_nao_impede_o_audit():
             "src.governance.reserva.record_actual",
             AsyncMock(side_effect=_StaleConnectionError("stale")),
         ),
-        patch.object(mutations.audit_log, "record", audit_mock),
+        patch("src.db.repositories.audit_log.record", audit_mock),
         patch.object(mutations.connection, "get_pool", return_value=pool_com_transacao()),
         patch.object(
             mutations, "build_client_for_manager", AsyncMock(return_value=client_de_sucesso())
@@ -175,8 +176,9 @@ async def test_falha_de_bookkeeping_e_logada_como_erro():
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch.object(
-            mutations.audit_log, "record", AsyncMock(side_effect=_StaleConnectionError("stale"))
+        patch(
+            "src.db.repositories.audit_log.record",
+            AsyncMock(side_effect=_StaleConnectionError("stale")),
         ),
         patch.object(mutations.connection, "get_pool", return_value=pool_com_transacao()),
         patch.object(

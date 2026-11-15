@@ -37,7 +37,7 @@ def gov():
     with (
         patch("src.governance.reserva.before_call", AsyncMock(return_value=1)) as before,
         patch("src.governance.reserva.record_actual", AsyncMock()) as rec_actual,
-        patch(f"{_MOD}.audit_log.record", AsyncMock(return_value=1)) as audit,
+        patch("src.db.repositories.audit_log.record", AsyncMock(return_value=1)) as audit,
         patch(f"{_MOD}.ensure_account_access", AsyncMock()) as gate,
         patch(f"{_MOD}.connection.get_pool", return_value=pool_com_transacao()),
         patch(f"{_MOD}.build_client_for_manager", AsyncMock(return_value=MagicMock())) as build,

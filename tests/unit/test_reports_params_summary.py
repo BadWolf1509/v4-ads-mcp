@@ -41,7 +41,7 @@ async def test_run_report_uses_custom_params_summary(monkeypatch):
         patch.object(reports, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch.object(reports.audit_log, "record", audit_mock),
+        patch("src.db.repositories.audit_log.record", audit_mock),
     ):
         await reports.run_report(
             manager_id=uuid4(),
@@ -75,7 +75,7 @@ async def test_run_report_default_params_summary_is_none(monkeypatch):
         patch.object(reports, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch.object(reports.audit_log, "record", audit_mock),
+        patch("src.db.repositories.audit_log.record", audit_mock),
     ):
         await reports.run_report(
             manager_id=uuid4(),

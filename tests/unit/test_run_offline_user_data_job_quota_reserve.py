@@ -57,7 +57,7 @@ async def test_quota_exhausted_blocks_and_skips_record_actual():
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", before_call_mock),
         patch("src.governance.reserva.record_actual", record_actual_mock),
-        patch("src.google_ads.customer_match.audit_log.record", audit_mock),
+        patch("src.db.repositories.audit_log.record", audit_mock),
         patch(
             "src.google_ads.customer_match.connection.get_pool",
             return_value=pool_com_transacao(),
@@ -96,7 +96,7 @@ async def test_success_reserves_and_reconciles_both_global_and_manager_keys():
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", before_call_mock),
         patch("src.governance.reserva.record_actual", record_actual_mock),
-        patch("src.google_ads.customer_match.audit_log.record", AsyncMock(return_value=1)),
+        patch("src.db.repositories.audit_log.record", AsyncMock(return_value=1)),
         patch(
             "src.google_ads.customer_match.connection.get_pool",
             return_value=pool_com_transacao(),
@@ -140,7 +140,7 @@ async def test_audit_sem_request_id_grava_none():
             AsyncMock(side_effect=QuotaExhausted("quota diaria esgotada")),
         ),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch("src.google_ads.customer_match.audit_log.record", audit_mock),
+        patch("src.db.repositories.audit_log.record", audit_mock),
         patch(
             "src.google_ads.customer_match.connection.get_pool",
             return_value=pool_com_transacao(),

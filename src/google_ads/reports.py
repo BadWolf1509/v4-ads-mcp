@@ -8,7 +8,7 @@ Each report tool calls `run_report` with:
 
 run_report handles the boilerplate:
   - gate: ensure_account_access (nivel `read`) no topo, antes de qualquer reserva
-  - cota diaria: reservar_cota -> reconciliar_cota, nas DUAS chaves (a do projeto
+  - cota diaria: reservar_cota -> encerrar_execucao, nas DUAS chaves (a do projeto
     dono do cliente OAuth e `mgr:<uuid>`, o teto por gestor)
   - build the client per manager
   - execute search_stream over the GAQL (fora do event loop, capturando o request-id)
@@ -27,12 +27,11 @@ import structlog
 
 from src.blocking import run_blocking
 from src.db import connection
-from src.db.repositories import audit_log
 from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
-from src.governance.bookkeeping import best_effort
-from src.governance.reserva import Reserva, reconciliar_cota, reservar_cota
+from src.governance.execucao import RegistroDeAudit, encerrar_execucao
+from src.governance.reserva import Reserva, reservar_cota
 
 log = structlog.get_logger(__name__)
 
@@ -118,49 +117,40 @@ async def run_report(
         raise
     finally:
         # Reconcile counters even on failure (we made API calls before erroring) —
-        # SO se a reserva foi persistida. Sem reserva nao ha nada pra reconciliar;
-        # reconciliar mesmo assim decrementaria o contador sem contrapartida
-        # (F73 — o quota leak original).
-        # F83: best-effort e independentes — falha de conexao aqui descartaria o
-        # `return` de um relatorio ja lido com sucesso.
-        if reserva is not None:
-            await reconciliar_cota(
-                pool,
-                reserva,
+        # SO se a reserva foi persistida (F73). Reconcile e audit sao best-effort e
+        # independentes (F83): falha de conexao aqui descartaria o `return` de um
+        # relatorio ja lido com sucesso. Ver src/governance/execucao.py.
+        def _montar_audit() -> RegistroDeAudit:
+            duration_ms = int((time.monotonic() - started) * 1000)
+            return RegistroDeAudit(
                 manager_id=manager_id,
-                actual_ops=actual_ops,
-                evento="report_quota_reconcile_failed",
-                operation=operation_name,
+                session_id=session_id,
                 customer_id=customer_id,
+                action_type="read",
+                operation=operation_name,
+                target_count=len(results) if status == "success" else None,
+                params_summary=params_summary,
+                # Nao capturado e `None` (nao medido), nunca "".
+                provider_request_id=request_id[-1] if request_id else None,
+                status=status,
+                error_message=error_message,
+                duration_ms=duration_ms,
             )
-        # O `if` vem ANTES do acquire: sem opt-in de audit nao ha por que pegar
-        # conexao (era um ponto de falha gratuito dentro do finally).
-        if audit_this_call:
-            async with (
-                best_effort(
-                    "report_audit_write_failed",
-                    operation=operation_name,
-                    customer_id=customer_id,
-                    status=status,
-                ),
-                pool.acquire() as conn,
-            ):
-                duration_ms = int((time.monotonic() - started) * 1000)
-                await audit_log.record(
-                    conn,
-                    manager_id=manager_id,
-                    session_id=session_id,
-                    customer_id=customer_id,
-                    action_type="read",
-                    operation=operation_name,
-                    target_count=len(results) if status == "success" else None,
-                    params_summary=params_summary,
-                    # Nao capturado e `None` (nao medido), nunca "".
-                    provider_request_id=request_id[-1] if request_id else None,
-                    status=status,
-                    error_message=error_message,
-                    duration_ms=duration_ms,
-                )
+
+        await encerrar_execucao(
+            pool,
+            reserva,
+            manager_id=manager_id,
+            actual_ops=actual_ops,
+            operation=operation_name,
+            customer_id=customer_id,
+            status=status,
+            evento_cota="report_quota_reconcile_failed",
+            evento_audit="report_audit_write_failed",
+            # Sem opt-in de audit nao ha montador, e nenhuma conexao e pedida
+            # para audit (era um ponto de falha gratuito dentro do finally).
+            montar_audit=_montar_audit if audit_this_call else None,
+        )
 
     log.info(
         "report_complete",

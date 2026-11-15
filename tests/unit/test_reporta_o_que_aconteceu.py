@@ -166,7 +166,7 @@ async def _rodar_mutation(
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch("src.google_ads.mutations.audit_log.record", audit),
+        patch("src.db.repositories.audit_log.record", audit),
     ):
         result: dict[str, Any] = await mutations.run_mutation(
             manager_id=uuid4(),
@@ -228,7 +228,7 @@ async def test_audit_nao_perde_o_params_summary_da_tool(
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch("src.google_ads.mutations.audit_log.record", audit),
+        patch("src.db.repositories.audit_log.record", audit),
     ):
         await mutations.run_mutation(
             manager_id=uuid4(),
@@ -356,7 +356,7 @@ async def _rodar_job(
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch("src.google_ads.customer_match.audit_log.record", audit),
+        patch("src.db.repositories.audit_log.record", audit),
     ):
         try:
             out = await run_offline_user_data_job(

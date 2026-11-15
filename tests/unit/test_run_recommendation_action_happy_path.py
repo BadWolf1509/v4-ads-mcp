@@ -71,7 +71,7 @@ async def test_apply_recommendation_happy_path_audits_success_and_captures_reque
             "src.google_ads.mutates.recommendations.execute_apply_recommendation",
             MagicMock(return_value=MagicMock()),
         ) as execute_mock,
-        patch.object(mutations.audit_log, "record", AsyncMock(return_value=1)) as audit_mock,
+        patch("src.db.repositories.audit_log.record", AsyncMock(return_value=1)) as audit_mock,
     ):
         mock_connection.get_pool.return_value = _mock_pool()
 
@@ -146,7 +146,7 @@ async def test_dismiss_recommendation_happy_path_dispatches_to_dismiss_executor(
             "src.google_ads.mutates.recommendations.execute_dismiss_recommendation",
             MagicMock(return_value=MagicMock()),
         ) as dismiss_mock,
-        patch.object(mutations.audit_log, "record", AsyncMock(return_value=1)),
+        patch("src.db.repositories.audit_log.record", AsyncMock(return_value=1)),
     ):
         mock_connection.get_pool.return_value = _mock_pool()
 
@@ -182,7 +182,7 @@ async def test_unknown_operation_type_raises_friendly_error_and_still_audits_err
         patch.object(mutations, "build_client_for_manager", AsyncMock(return_value=MagicMock())),
         patch.object(mutations, "get_request_id", lambda: None),
         patch.object(mutations, "reset_request_id", lambda: None),
-        patch.object(mutations.audit_log, "record", AsyncMock(return_value=1)) as audit_mock,
+        patch("src.db.repositories.audit_log.record", AsyncMock(return_value=1)) as audit_mock,
     ):
         mock_connection.get_pool.return_value = _mock_pool()
 

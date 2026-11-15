@@ -31,7 +31,7 @@ async def _roda(client, total: int):
     for p in patches:
         p.start()
     try:
-        with patch("src.google_ads.conversions.audit_log.record", registro):
+        with patch("src.db.repositories.audit_log.record", registro):
             result = await run_conversion_upload(
                 manager_id=uuid4(),
                 session_id=uuid4(),
