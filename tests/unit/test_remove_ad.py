@@ -319,6 +319,22 @@ async def test_status_nao_lido_fica_no_lote(monkeypatch: pytest.MonkeyPatch) -> 
     out = await _chamar("11")
     assert out["status"] == "dry_run"
     assert cap["pending"]["payload"]["ads"] == [{"ad_group_id": "100", "ad_id": "11"}]
+    # campo nao lido e `None`, nao o nome cru do default do proto (F145)
+    assert _item(out, "11")["status_atual"] is None
+
+
+async def test_duplicata_depois_de_normalizar_recusa_sem_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`uniqueItems` compara a string crua: "22" e "022" passam no schema."""
+    cap = _wire(monkeypatch, [{"ad_id": "22", "ad_group_id": "100", "status": "ENABLED"}])
+    jsonschema.validate({"customer_id": _CID, "ad_ids": ["22", "022"]}, mod._SCHEMA)
+    out = await _chamar("22", "022")
+    assert out["status"] == "error"
+    assert "22" in out["error_message"]
+    assert "repetido" in out["error_message"]
+    assert cap["queries"] == []
+    assert cap["pending"] is None
 
 
 # --------------------------------------------------------------------------- #

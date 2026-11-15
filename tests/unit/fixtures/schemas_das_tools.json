@@ -3367,7 +3367,7 @@
     "_meta": {
       "com.v4company/bucket": "defer"
     },
-    "description": "[DEFER] Remove (REMOVED) ate 20 anuncios pelo ad_id. A remocao e irreversivel: anuncio REMOVED nao volta a ENABLED; para voltar, crie outro. Para so pausar, use update_ad_status. Recusa ad_id inexistente, anuncio em mais de um grupo e variacao de experimento (AD_VARIATIONS, gerenciada pelo Google — aponta o anuncio base). Anuncio que ja esta REMOVED sai do lote; se todos estao, responde no_changes sem token. Senao, SEMPRE devolve preview (grupo, campanha, status atual e aviso quando o lote tira o ultimo anuncio ENABLED do grupo) com confirmation_token. Aplicar via apply_change, que rele o status de cada anuncio; o veredito vai em `conferencia` na linha, e `efeito` segue sendo o ACK do Google.",
+    "description": "[DEFER] Remove (REMOVED) ate 20 anuncios pelo ad_id. A remocao e irreversivel: anuncio REMOVED nao volta a ENABLED; para voltar, crie outro. Para so pausar, use update_ad_status. Recusa ad_id inexistente, anuncio em mais de um grupo e variacao de experimento (AD_VARIATIONS, gerenciada pelo Google — aponta o anuncio base). Anuncio que ja esta REMOVED sai do lote; se todos estao, responde no_changes sem token. Senao, SEMPRE devolve preview (grupo, campanha, status atual e aviso quando o lote tira o ultimo anuncio ENABLED do grupo) com confirmation_token. Aplicar via apply_change, que rele o status de cada anuncio; o veredito vai em `conferencia` na linha, e `efeito` segue sendo o ACK do Google. Anuncio que muda de estado entre o preview e o apply volta na linha do apply_change (partial failure ou `conferencia`); nada e refeito as cegas.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {

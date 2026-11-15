@@ -1049,11 +1049,17 @@ class _RemocaoAnuncio(_Padrao):
             )
             if relido is not None:
                 conferencias[i] = _conferencia("status", "REMOVED", relido)
-        if any(c["motivo"] != MOTIVO_CONFERE for c in conferencias.values()):
+        # O log de divergencia quer dizer "o Google aceitou e nao executou" (F184): linha
+        # que FALHOU e continua ENABLED e falha parcial legitima, nao divergencia. Por isso
+        # so contam as linhas com `status == "success"` — as mesmas que o
+        # `_com_conferencia` deixa com conferencia na resposta.
+        linhas = base.get("partial_failures", [])
+        sucesso = {pf["index"] for pf in linhas if pf.get("status") == "success" and "index" in pf}
+        if any(c["motivo"] != MOTIVO_CONFERE for i, c in conferencias.items() if i in sucesso):
             _avisar_divergencia(p, portas, "status")
         resposta: dict[str, Any] = {
             **base,
-            "partial_failures": _com_conferencia(base.get("partial_failures", []), conferencias),
+            "partial_failures": _com_conferencia(linhas, conferencias),
         }
         resposta.update(
             status_resultante=status_resultante if relidos is not None else None,

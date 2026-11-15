@@ -35,13 +35,20 @@ def anuncios_query(ad_ids: Sequence[str]) -> str:
     )
 
 
+def _status_lido(valor: Any) -> str | None:
+    nome = nome_do_enum(valor)
+    return None if nome in ("UNSPECIFIED", "UNKNOWN") else nome
+
+
 def parse_anuncio_row(row: Any) -> dict[str, Any]:
     aga = row.ad_group_ad
     return {
         "ad_id": str(aga.ad.id),
         "ad_type": nome_do_enum(aga.ad.type_),
         "system_managed_source": nome_do_enum(aga.ad.system_managed_resource_source),
-        "status": nome_do_enum(aga.status),
+        # UNSPECIFIED (campo omitido, default 0) e UNKNOWN (valor que o SDK nao conhece)
+        # nao sao status medido: `None` = nao lido (F145), no preview e na releitura.
+        "status": _status_lido(aga.status),
         "ad_group_id": str(row.ad_group.id),
         "ad_group_name": row.ad_group.name,
         "campaign_name": row.campaign.name,

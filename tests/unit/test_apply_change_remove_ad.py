@@ -196,3 +196,132 @@ def test_classify_confirm_fixo() -> None:
         assert r.level is RiskLevel.CONFIRM
         assert "irreversivel" in r.reason
         assert "unknown operation" not in r.reason
+
+
+# --------------------------------------------------------------------------- #
+# Lote: cada linha recebe a conferencia do SEU anuncio (revisao I1)
+# --------------------------------------------------------------------------- #
+_ADS_DO_LOTE = [
+    {"ad_group_id": "100", "ad_id": "11"},
+    {"ad_group_id": "200", "ad_id": "22"},
+    {"ad_group_id": "300", "ad_id": "33"},
+]
+
+
+def _wire_lote(
+    monkeypatch,
+    *,
+    ads: list[dict[str, str]],
+    linhas: list[dict[str, Any]],
+    releitura: list[tuple[str, str, str]],
+) -> dict[str, Any]:
+    """`releitura`: (ad_id, ad_group_id, status), na ordem em que o Google devolve."""
+    saved = SimpleNamespace(
+        operation_type="remove_ad",
+        customer_id=_CID,
+        blast_summary="x",
+        payload={
+            "ads": ads,
+            "__target_count__": len(ads),
+            "__partial_failure__": True,
+            "__params_summary__": {"count": len(ads), "ad_ids": [a["ad_id"] for a in ads]},
+        },
+    )
+    cap: dict[str, Any] = {"queries": []}
+
+    async def _consume(conn, *, token, session_id):
+        return saved
+
+    async def _run_mutation(**kwargs: Any):
+        ok = [pf for pf in linhas if pf["status"] == "success"]
+        return {
+            "provider_request_id": "req-1",
+            "applied_count": len(ok),
+            "changed_count": len(ok),
+            "resource_names": [],
+            "partial_failures": linhas,
+            "motivos_medidos": True,
+        }
+
+    async def _run_report(**kwargs: Any):
+        cap["queries"].append(kwargs["query"])
+        fmt = kwargs["row_formatter"]
+        return [
+            fmt(linha_de_anuncio(kwargs["query"], ad_id=ad, ad_group_id=ag, status=s))
+            for ad, ag, s in releitura
+        ]
+
+    monkeypatch.setattr(mod, "consume", _consume)
+    monkeypatch.setattr(mod, "run_mutation", _run_mutation)
+    monkeypatch.setattr(mod, "run_report", _run_report)
+    monkeypatch.setattr(mod.connection, "get_pool", lambda: FakePool())
+    return cap
+
+
+@pytest.mark.asyncio
+async def test_lote_cada_linha_confere_o_seu_anuncio(monkeypatch) -> None:
+    """Tres anuncios, releitura FORA de ordem e com status distintos, falha no meio.
+
+    Pega: conferencia gravada sempre no indice 0; a mesma conferencia em todas as
+    linhas (a forma do molde `_AssinaturaRecomendacao`, que tem um item so); e a
+    releitura casada por posicao em vez de `(ad_group_id, ad_id)`.
+    """
+    log = _Log()
+    monkeypatch.setattr(mod, "log", log)
+    _wire_lote(
+        monkeypatch,
+        ads=_ADS_DO_LOTE,
+        linhas=[
+            {"index": 0, "status": "success", "error": None, "efeito": "mudou"},
+            {"index": 1, "status": "failed", "error": "recusada", "efeito": None},
+            {"index": 2, "status": "success", "error": None, "efeito": "mudou"},
+        ],
+        releitura=[("33", "300", "REMOVED"), ("11", "100", "ENABLED"), ("22", "200", "REMOVED")],
+    )
+    out = await mod.apply_change({"confirmation_token": "ABCDEFGH"})
+    assert out["status"] == "applied"
+    por_indice = {pf["index"]: pf for pf in out["partial_failures"]}
+    # 11 ficou ENABLED: a linha dele diverge, e o ACK segue intocado
+    assert por_indice[0]["conferencia"] == {
+        "campo": "status",
+        "pedido": "REMOVED",
+        "relido": "ENABLED",
+        "motivo": _DIVERGE,
+    }
+    assert por_indice[0]["efeito"] == "mudou"
+    # a linha que falhou nao traz conferencia
+    assert por_indice[1]["conferencia"] is None
+    assert por_indice[1]["status"] == "failed"
+    # 33 saiu: a linha dele confere
+    assert por_indice[2]["conferencia"] == {
+        "campo": "status",
+        "pedido": "REMOVED",
+        "relido": "REMOVED",
+        "motivo": "confere",
+    }
+    assert {s["ad_id"]: s["status"] for s in out["status_resultante"]} == {
+        "11": "ENABLED",
+        "22": "REMOVED",
+        "33": "REMOVED",
+    }
+    assert [e for e, _ in log.eventos] == ["conferencia_pos_write_divergiu"]
+
+
+@pytest.mark.asyncio
+async def test_linha_que_falhou_nao_loga_divergencia(monkeypatch) -> None:
+    """Op recusada e anuncio ainda ENABLED e falha parcial, nao F184: sem evento."""
+    log = _Log()
+    monkeypatch.setattr(mod, "log", log)
+    _wire_lote(
+        monkeypatch,
+        ads=_ADS_DO_LOTE[:2],
+        linhas=[
+            {"index": 0, "status": "success", "error": None, "efeito": "mudou"},
+            {"index": 1, "status": "failed", "error": "recusada", "efeito": None},
+        ],
+        releitura=[("11", "100", "REMOVED"), ("22", "200", "ENABLED")],
+    )
+    out = await mod.apply_change({"confirmation_token": "ABCDEFGH"})
+    assert out["status"] == "applied"
+    assert out["partial_failures"][1]["conferencia"] is None
+    assert log.eventos == []

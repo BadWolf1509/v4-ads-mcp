@@ -66,7 +66,9 @@ _SCHEMA: dict[str, Any] = {
         "responde no_changes sem token. Senao, SEMPRE devolve preview (grupo, campanha, "
         "status atual e aviso quando o lote tira o ultimo anuncio ENABLED do grupo) com "
         "confirmation_token. Aplicar via apply_change, que rele o status de cada anuncio; "
-        "o veredito vai em `conferencia` na linha, e `efeito` segue sendo o ACK do Google."
+        "o veredito vai em `conferencia` na linha, e `efeito` segue sendo o ACK do Google. "
+        "Anuncio que muda de estado entre o preview e o apply volta na linha do "
+        "apply_change (partial failure ou `conferencia`); nada e refeito as cegas."
     ),
     input_schema=_SCHEMA,
     bucket="defer",
@@ -74,7 +76,18 @@ _SCHEMA: dict[str, Any] = {
 async def remove_ad(args: dict[str, Any]) -> dict[str, Any]:
     ctx = get_current()
     customer_id = args["customer_id"]
+    # Normaliza ANTES de tudo: `uniqueItems` do schema compara a string crua, e "22" e
+    # "022" viram a mesma remocao duas vezes — a segunda voltaria `failed` para um
+    # anuncio que foi removido, o sinal que leva o gestor a tentar de novo.
     ad_ids: list[str] = [str(int(a)) for a in args["ad_ids"]]
+    duplicados = sorted({a for a in ad_ids if ad_ids.count(a) > 1}, key=int)
+    if duplicados:
+        return error_envelope(
+            _OPERACAO,
+            f"ad_id repetido depois de normalizar (zeros a esquerda): {', '.join(duplicados)}. "
+            "Mande cada anuncio uma vez so. Nada foi feito.",
+            customer_id=customer_id,
+        )
 
     linhas = await run_report(
         manager_id=ctx.manager_id,
