@@ -69,7 +69,7 @@ def _setup_run_mutation_mocks(monkeypatch, fake_response):
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch.object(mutations.audit_log, "record", AsyncMock(return_value=1)),
+        patch("src.db.repositories.audit_log.record", AsyncMock(return_value=1)),
     ):
         yield
 
@@ -102,7 +102,7 @@ async def test_extracts_resource_names_for_successful_ops(monkeypatch):
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch.object(mutations.audit_log, "record", AsyncMock(return_value=1)),
+        patch("src.db.repositories.audit_log.record", AsyncMock(return_value=1)),
     ):
         result = await run_mutation(
             manager_id=uuid4(),
@@ -147,7 +147,7 @@ async def test_returns_none_for_failed_ops_in_partial_failure(monkeypatch):
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch.object(mutations.audit_log, "record", AsyncMock(return_value=1)),
+        patch("src.db.repositories.audit_log.record", AsyncMock(return_value=1)),
     ):
         result = await run_mutation(
             manager_id=uuid4(),
@@ -196,7 +196,7 @@ async def test_handles_missing_mutate_operation_responses_field(monkeypatch):
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch.object(mutations.audit_log, "record", AsyncMock(return_value=1)),
+        patch("src.db.repositories.audit_log.record", AsyncMock(return_value=1)),
     ):
         result = await run_mutation(
             manager_id=uuid4(),
@@ -280,7 +280,7 @@ async def test_changed_count_separa_o_que_mudou_do_que_foi_tentado(monkeypatch):
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch.object(mutations.audit_log, "record", AsyncMock(return_value=1)),
+        patch("src.db.repositories.audit_log.record", AsyncMock(return_value=1)),
     ):
         result = await run_mutation(
             manager_id=uuid4(),

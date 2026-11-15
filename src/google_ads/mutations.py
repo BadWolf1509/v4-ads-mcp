@@ -16,7 +16,6 @@ import structlog
 
 from src.blocking import run_blocking
 from src.db import connection
-from src.db.repositories import audit_log
 from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
@@ -28,8 +27,8 @@ from src.google_ads.request_id import (
     reset_request_id,
 )
 from src.google_ads.resultados import ResultadoMutacao, ResultadoRecomendacao
-from src.governance.bookkeeping import best_effort
-from src.governance.reserva import Reserva, reconciliar_cota, reservar_cota
+from src.governance.execucao import RegistroDeAudit, encerrar_execucao
+from src.governance.reserva import Reserva, reservar_cota
 
 log = structlog.get_logger(__name__)
 
@@ -382,38 +381,13 @@ async def run_mutation(
         raise
     finally:
         duration_ms = int((time.monotonic() - started) * 1000)
-        # F83: os dois blocos abaixo sao best-effort e INDEPENDENTES. Sem isso,
-        # falha de conexao aqui descartaria o `return` de um mutate ja aplicado
-        # no Google (e a falha da quota pularia o audit, por serem sequenciais).
-        #
-        # Reconcile counters SO se a reserva foi persistida — sem reserva nao ha
-        # nada pra reconciliar (F73 — reconciliar mesmo assim decrementaria o
-        # contador sem contrapartida).
-        if reserva is not None:
-            await reconciliar_cota(
-                pool,
-                reserva,
-                manager_id=manager_id,
-                actual_ops=target_count,
-                evento="mutation_quota_reconcile_failed",
-                operation=operation_type,
-                customer_id=customer_id,
-            )
-        async with (
-            best_effort(
-                "mutation_audit_write_failed",
-                operation=operation_type,
-                customer_id=customer_id,
-                status=status,
-            ),
-            pool.acquire() as conn,
-        ):
+
+        def _montar_audit() -> RegistroDeAudit:
             # Always audit mutations (sensitive — every change is logged)
             base_summary = (
                 params_summary if params_summary is not None else {"keys": sorted(payload.keys())}
             )
-            await audit_log.record(
-                conn,
+            return RegistroDeAudit(
                 manager_id=manager_id,
                 session_id=session_id,
                 customer_id=customer_id,
@@ -433,6 +407,24 @@ async def run_mutation(
                 duration_ms=duration_ms,
                 had_effect=None if changed_audit is None else changed_audit > 0,
             )
+
+        # F83: reconcile e audit sao best-effort e INDEPENDENTES. Sem isso, falha
+        # de conexao aqui descartaria o `return` de um mutate ja aplicado no
+        # Google (e a falha da quota pularia o audit, por serem sequenciais).
+        # Reconcile SO se a reserva foi persistida (F73 — reconciliar mesmo assim
+        # decrementaria o contador sem contrapartida).
+        await encerrar_execucao(
+            pool,
+            reserva,
+            manager_id=manager_id,
+            actual_ops=target_count,
+            operation=operation_type,
+            customer_id=customer_id,
+            status=status,
+            evento_cota="mutation_quota_reconcile_failed",
+            evento_audit="mutation_audit_write_failed",
+            montar_audit=_montar_audit,
+        )
         log.info(
             "mutation_executed",
             operation=operation_type,
@@ -519,33 +511,9 @@ async def run_recommendation_action(
         raise
     finally:
         duration_ms = int((time.monotonic() - started) * 1000)
-        # F83: best-effort e independentes — falha aqui nao pode derrubar a acao
-        # ja aplicada no Google, nem a quota pular o audit.
-        #
-        # Reconcile SO se reservou (F73). actual=estimated=1 da delta 0, mas o
-        # gate mantem a simetria com os outros executores e nao decrementa se a
-        # reserva falhou por QuotaExhausted.
-        if reserva is not None:
-            await reconciliar_cota(
-                pool,
-                reserva,
-                manager_id=manager_id,
-                actual_ops=1,
-                evento="recommendation_quota_reconcile_failed",
-                operation=operation_type,
-                customer_id=customer_id,
-            )
-        async with (
-            best_effort(
-                "recommendation_audit_write_failed",
-                operation=operation_type,
-                customer_id=customer_id,
-                status=status,
-            ),
-            pool.acquire() as conn,
-        ):
-            await audit_log.record(
-                conn,
+
+        def _montar_audit() -> RegistroDeAudit:
+            return RegistroDeAudit(
                 manager_id=manager_id,
                 session_id=session_id,
                 customer_id=customer_id,
@@ -558,6 +526,25 @@ async def run_recommendation_action(
                 error_message=error_message,
                 duration_ms=duration_ms,
             )
+
+        # F83: best-effort e independentes — falha aqui nao pode derrubar a acao
+        # ja aplicada no Google, nem a quota pular o audit.
+        #
+        # Reconcile SO se reservou (F73). actual=estimated=1 da delta 0, mas o
+        # gate mantem a simetria com os outros executores e nao decrementa se a
+        # reserva falhou por QuotaExhausted.
+        await encerrar_execucao(
+            pool,
+            reserva,
+            manager_id=manager_id,
+            actual_ops=1,
+            operation=operation_type,
+            customer_id=customer_id,
+            status=status,
+            evento_cota="recommendation_quota_reconcile_failed",
+            evento_audit="recommendation_audit_write_failed",
+            montar_audit=_montar_audit,
+        )
         log.info(
             "recommendation_action_executed",
             operation=operation_type,
