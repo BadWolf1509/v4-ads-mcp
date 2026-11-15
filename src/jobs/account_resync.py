@@ -12,6 +12,7 @@ import sys
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Literal
+from uuid import UUID
 
 import asyncpg
 import structlog
@@ -483,6 +484,11 @@ _LADOS_DE_ACESSO: tuple[tuple[Literal["google", "meta"], Any], ...] = (
 )
 
 
+def _pares(linhas: list[tuple[UUID, str]]) -> list[list[str]]:
+    """`[[manager_id, conta], ...]` em texto, ordenado (o audit é JSON)."""
+    return sorted([str(manager_id), conta] for manager_id, conta in linhas)
+
+
 async def convergir_gestores(
     conn: asyncpg.Connection, *, apply: bool
 ) -> dict[Literal["google", "meta"], dict[str, Any]]:
@@ -496,7 +502,10 @@ async def convergir_gestores(
     terminou. O plano (`planejar_convergencia`) é contado SEMPRE, inclusive com a
     trava desligada: a trava governa a escrita, não a observação (mesma razão de
     `reconcile_google`). Com ela ligada, o plano é lido na MESMA transação e
-    logo antes das escritas, então plano e efeito descrevem o mesmo estado.
+    logo antes das escritas. Os gestores estão travados, mas grants e inventário
+    não (cada statement tem snapshot próprio em READ COMMITTED): um grant
+    concedido ou revogado entre o plano e o apply faz `a_revogar` diferir de
+    `revogados`. O efeito é o medido nas escritas; o plano é a contagem de antes.
 
     A trava dos gestores (`travar_todos_para_convergencia`) vem antes de tudo,
     para que uma desativação concorrente pela rota não seja desfeita aqui.
@@ -514,6 +523,14 @@ async def convergir_gestores(
                     "revogados": len(revogados),
                     "restaurados": len(restaurados),
                     "remarcados": len(remarcados),
+                    # Forense como as outras reconciliações (que gravam os
+                    # `manager_ids` por conta): reconceder zera o motivo, e a
+                    # restauração o zera na hora — sem os pares, não sobra rastro
+                    # de quem o job mexeu. Só com a trava ligada: sem ela nada
+                    # foi escrito, e o plano basta.
+                    "pares_revogados": _pares(revogados),
+                    "pares_restaurados": _pares(restaurados),
+                    "pares_remarcados": _pares(remarcados),
                 }
             resumos[plataforma] = resumo
     return resumos

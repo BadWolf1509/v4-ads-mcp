@@ -301,54 +301,48 @@ async def restore_for_account(conn: asyncpg.Connection, *, customer_id: str) -> 
     `manager_deactivated` e volta na reativação. Devolve os gestores restaurados
     de fato.
 
-    Dois UPDATEs na mesma conexão, sobre conjuntos disjuntos (gestor desativado
-    x não); a transação é do chamador:
+    UM UPDATE sobre as linhas de churn da conta, que decide por gestor (a
+    transação é do chamador):
 
-    1. gestor DESATIVADO com linha de churn e conta ATIVA: a linha continua
-       revogada e o motivo vira `manager_deactivated` — o bloqueio da conta saiu,
-       o do gestor ficou, e é a reativação dele que a devolve. Com a conta ainda
-       inativa vale o da conta, e a linha fica como churn;
-    2. gestor NÃO desativado com linha de churn: restaura. Conta ativa continua
-       sendo exigência do chamador (a rota recusa conta inativa), como antes.
+    - gestor DESATIVADO, conta ATIVA: a linha continua revogada e o motivo vira
+      `manager_deactivated` — o bloqueio da conta saiu, o do gestor ficou, e é a
+      reativação dele que a devolve. Com a conta ainda inativa vale o da conta, e
+      a linha fica como churn (não entra no WHERE);
+    - gestor NÃO desativado: restaura. Conta ativa continua sendo exigência do
+      chamador (a rota recusa conta inativa), como antes.
 
-    `manager_deactivated` não é churn e não é tocada pelo passo 2. Mesmo SQL do
+    Um statement só, não dois (fix da T4): com dois, a rota desativando o gestor
+    entre eles deixava a linha de churn presa em conta ativa — o 1º o via ativo e
+    não remarcava, o 2º o via desativado e não restaurava, e nada mais a
+    alcançava. Num statement a decisão sai de um snapshot só; a corrida que sobra
+    (desativação commitada depois do snapshot) produz grant VIVO de desativado,
+    que `revogar_de_desativados` (rota ou etapa do job) alcança.
+
+    `manager_deactivated` não é churn e fica fora do WHERE. Mesmo SQL do
     gêmeo (o par não é comparado por `test_acesso_gemeos_conformes.py` porque o
     retorno difere; quem amarra os dois lados é
     `tests/integration/test_revogacao_na_desativacao.py`, parametrizado por lado).
     """
-    await conn.execute(
+    rows = await conn.fetch(
         f"""
         UPDATE manager_account_access g
-           SET revoked_reason = $3
+           SET revoked_at = CASE WHEN {PREDICADO_DESATIVADO} THEN g.revoked_at END,
+               revoked_reason = CASE WHEN {PREDICADO_DESATIVADO} THEN $3 END
           FROM managers m, google_ads_accounts a
          WHERE m.id = g.manager_id
            AND a.customer_id = g.customer_id
            AND g.customer_id = $1
-           AND {PREDICADO_DESATIVADO}
-           AND a.is_active = true
            AND g.revoked_at IS NOT NULL
            AND g.revoked_reason = $2
+           AND (NOT {PREDICADO_DESATIVADO} OR a.is_active = true)
+        RETURNING g.manager_id, NOT {PREDICADO_DESATIVADO} AS restaurado
         """,
         customer_id,
         LEFT_MCC_REASON,
         MANAGER_DEACTIVATED_REASON,
     )
-    rows = await conn.fetch(
-        f"""
-        UPDATE manager_account_access g
-           SET revoked_at = NULL, revoked_reason = NULL
-          FROM managers m
-         WHERE m.id = g.manager_id
-           AND g.customer_id = $1
-           AND NOT {PREDICADO_DESATIVADO}
-           AND g.revoked_at IS NOT NULL
-           AND g.revoked_reason = $2
-        RETURNING g.manager_id
-        """,
-        customer_id,
-        LEFT_MCC_REASON,
-    )
-    return [str(r["manager_id"]) for r in rows]
+    restaurados = [r for r in rows if r["restaurado"]]
+    return [str(r["manager_id"]) for r in restaurados]
 
 
 async def count_grants_on_inactive_accounts(conn: asyncpg.Connection) -> int:

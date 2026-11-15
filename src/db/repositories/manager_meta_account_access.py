@@ -133,54 +133,48 @@ async def restore_for_account(conn: asyncpg.Connection, *, ad_account_id: str) -
     Gestor desativado não volta: a linha dele passa a `manager_deactivated` e
     volta na reativação. A contagem é só dos restaurados de fato.
 
-    Dois UPDATEs na mesma conexão, sobre conjuntos disjuntos (gestor desativado
-    x não); a transação é do chamador:
+    UM UPDATE sobre as linhas de churn da conta, que decide por gestor (a
+    transação é do chamador):
 
-    1. gestor DESATIVADO com linha de churn e conta ATIVA: a linha continua
-       revogada e o motivo vira `manager_deactivated` — o bloqueio da conta saiu,
-       o do gestor ficou, e é a reativação dele que a devolve. Com a conta ainda
-       inativa vale o da conta, e a linha fica como churn;
-    2. gestor NÃO desativado com linha de churn: restaura. Conta ativa continua
-       sendo exigência do chamador (a rota recusa conta inativa), como antes.
+    - gestor DESATIVADO, conta ATIVA: a linha continua revogada e o motivo vira
+      `manager_deactivated` — o bloqueio da conta saiu, o do gestor ficou, e é a
+      reativação dele que a devolve. Com a conta ainda inativa vale o da conta, e
+      a linha fica como churn (não entra no WHERE);
+    - gestor NÃO desativado: restaura. Conta ativa continua sendo exigência do
+      chamador (a rota recusa conta inativa), como antes.
 
-    `manager_deactivated` não é churn e não é tocada pelo passo 2. Mesmo SQL do
+    Um statement só, não dois (fix da T4): com dois, a rota desativando o gestor
+    entre eles deixava a linha de churn presa em conta ativa — o 1º o via ativo e
+    não remarcava, o 2º o via desativado e não restaurava, e nada mais a
+    alcançava. Num statement a decisão sai de um snapshot só; a corrida que sobra
+    (desativação commitada depois do snapshot) produz grant VIVO de desativado,
+    que `revogar_de_desativados` (rota ou etapa do job) alcança.
+
+    `manager_deactivated` não é churn e fica fora do WHERE. Mesmo SQL do
     gêmeo (o par não é comparado por `test_acesso_gemeos_conformes.py` porque o
     retorno difere; quem amarra os dois lados é
     `tests/integration/test_revogacao_na_desativacao.py`, parametrizado por lado).
     """
-    await conn.execute(
+    rows = await conn.fetch(
         f"""
         UPDATE manager_meta_account_access g
-           SET revoked_reason = $3
+           SET revoked_at = CASE WHEN {PREDICADO_DESATIVADO} THEN g.revoked_at END,
+               revoked_reason = CASE WHEN {PREDICADO_DESATIVADO} THEN $3 END
           FROM managers m, meta_ad_accounts a
          WHERE m.id = g.manager_id
            AND a.ad_account_id = g.ad_account_id
            AND g.ad_account_id = $1
-           AND {PREDICADO_DESATIVADO}
-           AND a.is_active = true
            AND g.revoked_at IS NOT NULL
            AND g.revoked_reason = $2
+           AND (NOT {PREDICADO_DESATIVADO} OR a.is_active = true)
+        RETURNING g.manager_id, NOT {PREDICADO_DESATIVADO} AS restaurado
         """,
         ad_account_id,
         PARTNERSHIP_ENDED_REASON,
         MANAGER_DEACTIVATED_REASON,
     )
-    rows = await conn.fetch(
-        f"""
-        UPDATE manager_meta_account_access g
-           SET revoked_at = NULL, revoked_reason = NULL
-          FROM managers m
-         WHERE m.id = g.manager_id
-           AND g.ad_account_id = $1
-           AND NOT {PREDICADO_DESATIVADO}
-           AND g.revoked_at IS NOT NULL
-           AND g.revoked_reason = $2
-        RETURNING g.manager_id
-        """,
-        ad_account_id,
-        PARTNERSHIP_ENDED_REASON,
-    )
-    return len(rows)
+    restaurados = [r for r in rows if r["restaurado"]]
+    return len(restaurados)
 
 
 async def list_accounts_for_manager(
