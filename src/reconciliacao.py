@@ -16,8 +16,9 @@ O que NÃO veio para cá, por decisão registrada no plano de 10/11:
 """
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from datetime import date, datetime
+from typing import Any
 
 from src.clock import account_today
 
@@ -44,6 +45,16 @@ class PlanoNeutro:
     to_remove: list[str] = field(default_factory=list)
     to_reset: list[str] = field(default_factory=list)
     blocked_reason: str | None = None
+
+
+def campos_do_plano(p: PlanoNeutro) -> dict[str, Any]:
+    """Os campos do `PlanoNeutro`, prontos para `Plan(**campos_do_plano(p))`.
+
+    Os dois adaptadores copiavam campo a campo; um campo novo no nucleo que um
+    deles esquecesse sumiria do plano dele. Cada `Plan` continua classe propria
+    (identidade de tipo e `repr` em log), e o Meta acrescenta `unreachable`.
+    """
+    return {f.name: getattr(p, f.name) for f in fields(p)}
 
 
 def faltas_com_esta_execucao(r: LinhaNeutra, *, now: datetime) -> int:

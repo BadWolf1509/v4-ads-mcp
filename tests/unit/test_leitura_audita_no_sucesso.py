@@ -129,6 +129,9 @@ _EXECUTORES_DE_MUTACAO = (
     "run_recommendation_action",
     "emitir_preview",
     "create_pending",
+    # Helper que escolhe entre `run_mutation` e `emitir_preview` (T5.1, 15/11):
+    # as tools de status chamam so ele, e continuam `mutacao`.
+    "aplicar_ou_pedir_confirmacao",
 )
 
 # Executor de leitura com opt-in de audit (`audit_this_call`, default False).

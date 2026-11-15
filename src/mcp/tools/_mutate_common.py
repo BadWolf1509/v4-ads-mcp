@@ -13,7 +13,8 @@ está sempre presente no envelope de erro.
 from typing import Any
 
 from src.db import connection
-from src.governance.blast_radius import RiskClassification
+from src.google_ads.mutations import run_mutation
+from src.governance.blast_radius import RiskClassification, RiskLevel
 from src.governance.dry_run import DEFAULT_TTL_MINUTES, create_pending
 
 _APPLY_HINT = "Chame apply_change(confirmation_token=<token>) para aplicar."
@@ -188,6 +189,61 @@ async def emitir_preview(
         token,
         confirmation_reason=risk.reason,
         **extra,
+    )
+
+
+async def aplicar_ou_pedir_confirmacao(
+    ctx: Any,
+    *,
+    operation: str,
+    customer_id: str,
+    payload: dict[str, Any],
+    target_count: int,
+    resumo: str,
+    risk: RiskClassification,
+    params_summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Ramifica no veredito do `classify`: AUTO aplica, CONFIRM emite token.
+
+    E o bloco que as tools de status (`update_campaign_status`,
+    `update_ad_group_status`, `update_ad_status`) copiavam: `risk.level == AUTO`
+    -> `run_mutation` + `applied_envelope` com `auto_applied_reason`; senao
+    `emitir_preview`. Serve so a tool cujos dois ramos sao EXATAMENTE esses, sem
+    campo por-tool no envelope nem pos-processamento do resultado — a que tem
+    (`changes`, `added[]`, `partial_failure`) segue ramificando a mao.
+
+    `operation` vira o `operation_type` do `run_mutation` e da pendencia, como
+    nas tools de origem. O gate de escrita continua onde estava: dentro do
+    `run_mutation` (AUTO) e do `create_pending` (CONFIRM).
+
+    O guard do F112 (`test_blast_radius_bate_com_as_tools`) conta a tool que
+    passa o veredito do `classify` como `risk=` aqui como tool que le `.level`.
+    """
+    if risk.level == RiskLevel.AUTO:
+        result = await run_mutation(
+            manager_id=ctx.manager_id,
+            session_id=ctx.session_id,
+            customer_id=customer_id,
+            operation_type=operation,
+            payload=payload,
+            target_count=target_count,
+            params_summary=params_summary,
+        )
+        return applied_envelope(
+            operation,
+            customer_id,
+            resumo,
+            applied_count=result["applied_count"],
+            provider_request_id=result["provider_request_id"],
+            auto_applied_reason=risk.reason,
+        )
+    return await emitir_preview(
+        ctx,
+        operation=operation,
+        customer_id=customer_id,
+        payload=payload,
+        resumo=resumo,
+        risk=risk,
     )
 
 

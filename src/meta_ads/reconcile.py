@@ -7,7 +7,7 @@ acesso indevidamente. O repositório aplica; este módulo escolhe.
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from src.reconciliacao import LinhaNeutra, plano_neutro
+from src.reconciliacao import LinhaNeutra, campos_do_plano, plano_neutro
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,11 +113,4 @@ def build_plan(
     # Plano barrado (leitura incompleta ou remoção em massa) já vem do núcleo sem
     # to_bump/to_remove; `unreachable` entra igual nos dois casos — um bloqueio
     # não deixa de medir a recusa (`test_plano_barrado_do_meta_carrega_unreachable`).
-    return Plan(
-        to_add=p.to_add,
-        to_bump=p.to_bump,
-        to_remove=p.to_remove,
-        to_reset=p.to_reset,
-        unreachable=unreachable,
-        blocked_reason=p.blocked_reason,
-    )
+    return Plan(**campos_do_plano(p), unreachable=unreachable)

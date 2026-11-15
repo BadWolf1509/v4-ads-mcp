@@ -13,7 +13,7 @@ from uuid import UUID
 from src.db import connection
 from src.db.repositories import meta_ad_accounts
 from src.mcp.context import get_current
-from src.mcp.tools._meta_common import erro_de_entrada, meta_erro
+from src.mcp.tools._meta_common import erro_de_entrada, meta_erro, propriedades_de_janela_meta
 from src.mcp.tools._meta_performance import (
     _MAX_PAGES,
     _gasto_para_ordenar,
@@ -63,35 +63,7 @@ _INPUT_SCHEMA: dict[str, Any] = {
             "enum": ["campaign", "adset", "ad"],
             "description": "Nível de agregação. Default campaign.",
         },
-        "date_range": {
-            "type": "string",
-            "enum": [
-                "TODAY",
-                "YESTERDAY",
-                "LAST_7_DAYS",
-                "LAST_14_DAYS",
-                "LAST_30_DAYS",
-                "LAST_90_DAYS",
-            ],
-            "description": "Preset. Default LAST_30_DAYS se start_date+end_date não fornecidos.",
-        },
-        "start_date": {
-            "type": "string",
-            "pattern": r"^\d{4}-\d{2}-\d{2}$",
-            "description": "Custom range start. Sobrescreve preset. Requires end_date.",
-        },
-        "end_date": {
-            "type": "string",
-            "pattern": r"^\d{4}-\d{2}-\d{2}$",
-            "description": "Custom range end. Sobrescreve preset. Requires start_date.",
-        },
-        "limit": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 500,
-            "default": 100,
-            "description": "Max rows. Meta API cap = 500/page.",
-        },
+        **propriedades_de_janela_meta(),
     },
     "required": ["ad_account_id", "breakdown"],
     "additionalProperties": False,

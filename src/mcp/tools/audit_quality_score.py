@@ -15,7 +15,7 @@ from src.google_ads.queries.audit_quality_score import (
 )
 from src.google_ads.reports import run_report
 from src.mcp.context import get_current
-from src.mcp.tools._common import janela_da_conta
+from src.mcp.tools._common import janela_da_conta, propriedades_start_end
 from src.mcp.tools._registry import register_tool
 
 _SCHEMA: dict[str, Any] = {
@@ -52,19 +52,7 @@ _SCHEMA: dict[str, Any] = {
             "default": "LAST_30_DAYS",
             "description": "Preset. Override por start_date+end_date se ambos passados.",
         },
-        "start_date": {
-            "type": "string",
-            "pattern": r"^\d{4}-\d{2}-\d{2}$",
-            "description": (
-                "Data inicial YYYY-MM-DD inclusive. Quando informado junto com end_date, "
-                "sobrepoe date_range preset. Obriga end_date."
-            ),
-        },
-        "end_date": {
-            "type": "string",
-            "pattern": r"^\d{4}-\d{2}-\d{2}$",
-            "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
-        },
+        **propriedades_start_end(),
     },
     "required": ["customer_id"],
     "additionalProperties": False,

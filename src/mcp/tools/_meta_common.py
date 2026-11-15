@@ -18,6 +18,48 @@ PROPRIEDADE_AD_ACCOUNT_ID: dict[str, Any] = {
 }
 
 
+def propriedades_de_janela_meta() -> dict[str, Any]:
+    """`date_range` + `start_date` + `end_date` + `limit` das tools Meta de desempenho.
+
+    O bloco era literal, igual, em `SCHEMA_PERFORMANCE_META` (campanha, conjunto,
+    anúncio) e no `meta_get_performance_breakdown`. `meta_get_account_overview`
+    tem enum, descrições e nenhum `limit` próprios e não usa este fragmento: o
+    schema é contrato do handshake (`test_schemas_snapshot.py`). Dict novo a cada
+    chamada — um schema não pode mexer no do vizinho.
+    """
+    return {
+        "date_range": {
+            "type": "string",
+            "enum": [
+                "TODAY",
+                "YESTERDAY",
+                "LAST_7_DAYS",
+                "LAST_14_DAYS",
+                "LAST_30_DAYS",
+                "LAST_90_DAYS",
+            ],
+            "description": "Preset. Default LAST_30_DAYS se start_date+end_date não fornecidos.",
+        },
+        "start_date": {
+            "type": "string",
+            "pattern": r"^\d{4}-\d{2}-\d{2}$",
+            "description": "Custom range start. Sobrescreve preset. Requires end_date.",
+        },
+        "end_date": {
+            "type": "string",
+            "pattern": r"^\d{4}-\d{2}-\d{2}$",
+            "description": "Custom range end. Sobrescreve preset. Requires start_date.",
+        },
+        "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "default": 100,
+            "description": "Max rows. Meta API cap = 500/page.",
+        },
+    }
+
+
 def erro_de_entrada(mensagem: str) -> dict[str, Any]:
     """Envelope de erro de duas chaves, `{"status": "error", "error_message": ...}`.
 

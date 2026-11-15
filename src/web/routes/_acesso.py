@@ -18,7 +18,12 @@ from uuid import UUID
 
 import asyncpg
 
-from src.db.repositories import manager_account_access, manager_meta_account_access
+from src.db.repositories import (
+    google_ads_accounts,
+    manager_account_access,
+    manager_meta_account_access,
+    meta_ad_accounts,
+)
 from src.web.deps import CurrentUser
 from src.web.routes._shared import _audit_admin
 
@@ -30,7 +35,10 @@ class PlataformaAcesso:
     repositorio: módulo com `grant`/`revoke`/`bulk_grant`/`copy_access` e
         `has_live_grant` (o grant vivo — `revoked_at IS NULL` — do par gestor,
         conta; linha revogada é soft e fica, então sem o filtro o toggle
-        chamaria revoke() de novo em vez de reconceder).
+        chamaria revoke() de novo em vez de reconceder). As páginas de leitura
+        usam `list_live_grants`, `list_live_grants_for_manager`,
+        `list_managers_with_counts` e `count_active_accounts`.
+    inventario: módulo do inventário de contas da plataforma (`list_all`).
     coluna_conta: nome da coluna (e do kwarg do repositório) da conta.
     campo_lista: kwarg de `bulk_grant` com a lista de contas.
     plataforma_audit: `platform` gravado em `audit_log`.
@@ -43,6 +51,7 @@ class PlataformaAcesso:
     """
 
     repositorio: ModuleType
+    inventario: ModuleType
     coluna_conta: Literal["customer_id", "ad_account_id"]
     campo_lista: Literal["customer_ids", "ad_account_ids"]
     plataforma_audit: Literal["google", "meta"]
@@ -60,6 +69,7 @@ class PlataformaAcesso:
 PLATAFORMAS: dict[Literal["google", "meta"], PlataformaAcesso] = {
     "google": PlataformaAcesso(
         repositorio=manager_account_access,
+        inventario=google_ads_accounts,
         coluna_conta="customer_id",
         campo_lista="customer_ids",
         plataforma_audit="google",
@@ -70,6 +80,7 @@ PLATAFORMAS: dict[Literal["google", "meta"], PlataformaAcesso] = {
     ),
     "meta": PlataformaAcesso(
         repositorio=manager_meta_account_access,
+        inventario=meta_ad_accounts,
         coluna_conta="ad_account_id",
         campo_lista="ad_account_ids",
         plataforma_audit="meta",
