@@ -33,7 +33,7 @@ import ast
 import asyncio
 import dataclasses
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -65,11 +65,25 @@ _GEMEOS = (
     "list_managers_with_counts",
     "count_active_accounts",
     "has_live_grant",
+    "revogar_de_desativados",
+    "restaurar_de_reativados",
+    "planejar_convergencia",
 )
 
 # As escritas que delegam ao núcleo (SQL comparado em runtime) e os pares que
 # ficaram fora dele por decisão do plano (SQL comparado por AST).
-_NO_NUCLEO = ("grant", "grant_all_active", "revoke", "bulk_grant", "copy_access")
+_NO_NUCLEO = (
+    "grant",
+    "grant_all_active",
+    "revoke",
+    "bulk_grant",
+    "copy_access",
+    # Desativação do gestor (15/11): o SQL é do núcleo; os módulos só passam o
+    # descritor e, na restauração, o motivo de churn do lado.
+    "revogar_de_desativados",
+    "restaurar_de_reativados",
+    "planejar_convergencia",
+)
 _FORA_DO_NUCLEO = (
     "list_accounts_for_manager",
     "can_manager_access",
@@ -87,6 +101,16 @@ _DIVERGENCIAS_REGISTRADAS: dict[str, str] = {
         "ordem equivalente dos predicados do WHERE: Google "
         "`a.is_active = true AND m.revoked_at IS NULL`, Meta "
         "`m.revoked_at IS NULL AND a.is_active = true` (mesmo conjunto, AND comutativo)"
+    ),
+    "revogar_de_desativados": (
+        "motivo de churn de cada lado (desenho de 15/11): grant vivo em conta já "
+        "inativa é revogado com o motivo da conta (com dois bloqueios, vale o da conta) "
+        "— Google `left_mcc`, Meta `partnership_ended`. Entra por parâmetro"
+    ),
+    "restaurar_de_reativados": (
+        "motivo de churn de cada lado (desenho de 15/11): em conta inativa a linha é "
+        "remarcada com o motivo que a volta da conta restaura — Google `left_mcc`, Meta "
+        "`partnership_ended`. Entra por parâmetro, não como campo do descritor"
     ),
 }
 
@@ -277,8 +301,11 @@ class _ConexaoFalsa:
         self.eventos.append(_Evento("fetch", sql, args))
         return []
 
-    async def fetchrow(self, sql: str, *args: Any) -> None:
+    async def fetchrow(self, sql: str, *args: Any) -> defaultdict[str, int]:
+        # Linha neutra (toda coluna lida vale 0): `planejar_convergencia` indexa a
+        # linha do `SELECT count`. Nenhuma outra função do núcleo usa `fetchrow`.
         self.eventos.append(_Evento("fetchrow", sql, args))
+        return defaultdict(int)
 
     async def fetchval(self, sql: str, *args: Any) -> int:
         self.eventos.append(_Evento("fetchval", sql, args))
@@ -310,6 +337,11 @@ _ENTRADAS: dict[str, dict[str, Any]] = {
         "to_manager_id": _ID_DESTINO,
         "granted_by": _ID_ADMIN,
     },
+    "revogar_de_desativados": {"manager_id": _ID_GESTOR},
+    "restaurar_de_reativados": {"manager_id": _ID_GESTOR},
+    # Sem argumento além da conexão: é o plano de todos (o job). Emite o SELECT
+    # de contagem, então não passa por vacuidade.
+    "planejar_convergencia": {},
 }
 _KWARG_META = {"customer_id": "ad_account_id", "customer_ids": "ad_account_ids"}
 
@@ -376,6 +408,20 @@ def _sql_cru(nome: str, caminho: Path) -> list[str]:
 # de uma função registrada não se esconde atrás do registro.
 _DIFERENCAS_ESPERADAS: dict[str, frozenset[str]] = {
     "can_manager_access": frozenset({"literal #0: mesmos fragmentos em ordem diferente"}),
+    "revogar_de_desativados": frozenset(
+        {
+            "statement #0: bind args google=('manager_deactivated', 'left_mcc', "
+            "UUID('00000000-0000-0000-0000-000000000001')) meta=('manager_deactivated', "
+            "'partnership_ended', UUID('00000000-0000-0000-0000-000000000001'))"
+        }
+    ),
+    "restaurar_de_reativados": frozenset(
+        {
+            "statement #0: bind args google=('left_mcc', 'manager_deactivated', "
+            "UUID('00000000-0000-0000-0000-000000000001')) meta=('partnership_ended', "
+            "'manager_deactivated', UUID('00000000-0000-0000-0000-000000000001'))"
+        }
+    ),
 }
 
 _NOMES_GOOGLE = re.compile(
@@ -400,6 +446,14 @@ _GEMEOS_EXCLUIDOS: dict[str, str] = {
     "restore_for_account": (
         "retorno difere por design: Google devolve `list[str]` (gestores restaurados), "
         "Meta devolve `int` (contagem); cada chamador usa o seu"
+    ),
+    # Revisão final (I1): o SQL que era de `restore_for_account`, agora com os
+    # retidos no retorno (`restore_for_account` virou o wrapper dela).
+    "restaurar_churn_da_conta": (
+        "mesmo SQL e mesmo retorno dos dois lados, mas o motivo de churn entra como "
+        "constante do módulo (Google `LEFT_MCC_REASON`, Meta `PARTNERSHIP_ENDED_REASON`); "
+        "quem amarra os dois lados é tests/integration/test_revogacao_na_desativacao.py, "
+        "parametrizado por lado"
     ),
 }
 

@@ -2,13 +2,15 @@
 
 Os dois jobs rodam em produção como Cloud Run Job, e o que o Cloud Run vê é
 contrato: o exit code de cada combinação de falha, a ordem Google → Meta →
-purge, que etapa ainda roda depois de outra falhar, o `record_job_crash` no
-crash e o `close_pool` no `finally`. `test_account_resync.py` cobre boa parte
-disso; aqui fica o que ele não afirmava e que uma refatoração do esqueleto
-poderia mudar sem nenhum teste notar:
+gestores → purge, que etapa ainda roda depois de outra falhar, o
+`record_job_crash` no crash e o `close_pool` no `finally`.
+`test_account_resync.py` cobre boa parte disso; aqui fica o que ele não afirmava
+e que uma refatoração do esqueleto poderia mudar sem nenhum teste notar:
 
-- crash no corpo Google e "sem OAuth" ENCERRAM o job — Meta e purge não rodam;
-- a ordem das três etapas (nenhum teste afirmava Meta antes do purge);
+- crash no corpo Google ENCERRA o job — Meta, gestores e purge não rodam;
+- "sem OAuth" não roda Meta, mas roda gestores e purge e sai com 1 (desenho de
+  15/11: era "sem Meta e sem purge"; as duas etapas não dependem do Google);
+- a ordem das etapas (nenhum teste afirmava Meta antes do purge);
 - combinações de falha (Meta e purge falhando juntos, bloqueio Google com purge
   falhando) e o exit code de cada uma;
 - `meta_resync.run()` fecha o pool nos três desfechos e não grava crash em
@@ -46,6 +48,7 @@ _CHAVES = (
     "reconcile_google",
     "avisar_sem_grant",
     "record",
+    "gestores",
     "purge",
 )
 
@@ -65,7 +68,7 @@ def _entrar(
 
 
 @pytest.mark.asyncio
-async def test_ordem_das_etapas_e_google_meta_purge() -> None:
+async def test_ordem_das_etapas_e_google_meta_gestores_purge() -> None:
     ordem: list[str] = []
     mocks = _base_patches(pool=FakePool(MagicMock()), oc=SimpleNamespace(refresh_token_enc=b"e"))
 
@@ -81,9 +84,14 @@ async def test_ordem_das_etapas_e_google_meta_purge() -> None:
         ordem.append("purge")
         return {"pending_confirmations": 0}
 
+    async def _gestores(*_a: Any, **_k: Any) -> bool:
+        ordem.append("gestores")
+        return False
+
     with ExitStack() as stack:
-        _entrar(stack, mocks, sem=("reconcile_google", "purge"))
+        _entrar(stack, mocks, sem=("reconcile_google", "purge", "gestores"))
         stack.enter_context(patch(f"{_M}.reconcile_google", AsyncMock(side_effect=_google)))
+        stack.enter_context(patch(f"{_M}._etapa_gestores", AsyncMock(side_effect=_gestores)))
         stack.enter_context(patch(f"{_M}.purge_expired", AsyncMock(side_effect=_purge)))
         stack.enter_context(
             patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(side_effect=_meta))
@@ -91,11 +99,13 @@ async def test_ordem_das_etapas_e_google_meta_purge() -> None:
         rc = await account_resync.run()
 
     assert rc == 0
-    assert ordem == ["google", "meta", "purge"]
+    # Desenho de 15/11: a convergência dos gestores vê o estado final do dia
+    # (depois de Google e Meta) e roda antes do purge.
+    assert ordem == ["google", "meta", "gestores", "purge"]
 
 
 @pytest.mark.asyncio
-async def test_crash_no_corpo_google_nao_roda_meta_nem_purge() -> None:
+async def test_crash_no_corpo_google_nao_roda_meta_nem_gestores_nem_purge() -> None:
     mocks = _base_patches(pool=FakePool(MagicMock()), oc=SimpleNamespace(refresh_token_enc=b"e"))
     meta = AsyncMock(return_value=Plan())
     with ExitStack() as stack:
@@ -108,9 +118,13 @@ async def test_crash_no_corpo_google_nao_roda_meta_nem_purge() -> None:
         with pytest.raises(RuntimeError, match="upsert caiu"):
             await account_resync.run()
         purge = mocks["purge"].new
+        gestores = mocks["gestores"].new
         close_pool = mocks["close_pool"].new
 
     meta.assert_not_awaited()
+    # O docstring do módulo promete "Meta, gestores e purge não rodam": sem esta
+    # linha, a etapa dos gestores podia rodar no crash e nada notava.
+    gestores.assert_not_awaited()
     purge.assert_not_awaited()
     crash.assert_awaited_once()
     assert crash.await_args.kwargs["operation"] == "google_reconcile"
@@ -118,7 +132,9 @@ async def test_crash_no_corpo_google_nao_roda_meta_nem_purge() -> None:
 
 
 @pytest.mark.asyncio
-async def test_sem_oauth_encerra_sem_meta_sem_purge_e_sem_crash() -> None:
+async def test_sem_oauth_nao_roda_meta_mas_roda_gestores_e_purge_sem_crash() -> None:
+    """Desenho de 15/11 (Task 4): era "sem Meta e sem purge". Gestores e purge não
+    dependem do Google, então rodam; o exit code continua 1."""
     mocks = _base_patches(pool=FakePool(MagicMock()), oc=None)
     meta = AsyncMock(return_value=Plan())
     with ExitStack() as stack:
@@ -127,11 +143,13 @@ async def test_sem_oauth_encerra_sem_meta_sem_purge_e_sem_crash() -> None:
         crash = stack.enter_context(patch(f"{_M}.record_job_crash", AsyncMock()))
         rc = await account_resync.run()
         purge = mocks["purge"].new
+        gestores = mocks["gestores"].new
         close_pool = mocks["close_pool"].new
 
     assert rc == 1
     meta.assert_not_awaited()
-    purge.assert_not_awaited()
+    gestores.assert_awaited_once()
+    purge.assert_awaited_once()
     crash.assert_not_awaited()
     close_pool.assert_awaited_once()
 
@@ -172,6 +190,24 @@ async def test_bloqueio_google_com_purge_falhando_sai_com_1() -> None:
 
     assert rc == 1
     meta.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_so_os_gestores_falhando_sai_com_1_e_o_purge_roda() -> None:
+    mocks = _base_patches(pool=FakePool(MagicMock()), oc=SimpleNamespace(refresh_token_enc=b"e"))
+    with ExitStack() as stack:
+        _entrar(stack, mocks, sem=("gestores",))
+        stack.enter_context(patch(f"{_M}._etapa_gestores", AsyncMock(return_value=True)))
+        stack.enter_context(
+            patch("src.jobs.meta_resync.reconcile_meta", AsyncMock(return_value=Plan()))
+        )
+        crash = stack.enter_context(patch(f"{_M}.record_job_crash", AsyncMock()))
+        rc = await account_resync.run()
+        purge = mocks["purge"].new
+
+    assert rc == 1
+    purge.assert_awaited_once()
+    crash.assert_not_awaited()
 
 
 @pytest.mark.asyncio

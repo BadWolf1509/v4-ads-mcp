@@ -211,6 +211,19 @@ async def definir_ativo(
     return row["email"], True
 
 
+async def travar_todos_para_convergencia(conn: asyncpg.Connection) -> None:
+    """`FOR SHARE` em todo gestor, em ordem de id, até o fim da transação do chamador.
+
+    Serializa a convergência do job (`_etapa_gestores`) com `definir_ativo`: o
+    `UPDATE … FROM managers` das funções de acesso lê o gestor sem travá-lo, e sem
+    isto o job podia restaurar o grant de quem a rota acabara de desativar (o job
+    via o gestor ainda ativo; a revogação da rota só via linha viva). Com a trava,
+    quem chega depois espera o outro commitar e lê o estado novo. `FOR SHARE`, não
+    `FOR KEY SHARE`: este não conflita com o `UPDATE` de `is_active`.
+    """
+    await conn.execute("SELECT 1 FROM managers ORDER BY id FOR SHARE")
+
+
 async def definir_role(
     conn: asyncpg.Connection, *, manager_id: UUID, role: Literal["admin", "gestor"]
 ) -> tuple[str, bool] | None:

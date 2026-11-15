@@ -236,3 +236,44 @@ def _toggle_acesso_response(
         ),
         headers={"HX-Trigger": trigger},
     )
+
+
+def destino_do_restore(base: str, *, retidos: int) -> str:
+    """Destino do Restaurar: `?ok=restored`, mais `&retidos=N` quando a conta tinha
+    churn de gestor desativado que ficou retido (revisão final, I1).
+
+    O formulário Google é POST sem HTMX (303), então o número só chega à página
+    pela URL; o toast do HTMX não o alcançaria.
+    """
+    destino = f"{base}?ok=restored"
+    return f"{destino}&retidos={retidos}" if retidos > 0 else destino
+
+
+def flash_do_restore(request: Request, *, ok_codes: dict[str, str]) -> dict[str, str] | None:
+    """`_admin_flash` das páginas de contas, com os retidos do Restaurar.
+
+    O valor de `retidos` nunca entra na mensagem como veio (a macro `alert`
+    renderiza `|safe`): só um inteiro positivo de até 4 dígitos ASCII, sem sinal,
+    espaço nem zero à esquerda, convertido por `int()` e formatado de novo
+    (`str.isdigit` sozinho aceitaria dígitos Unicode, que `int()` também converte).
+    Qualquer outra coisa é ignorada e fica a mensagem fixa do mapa.
+    """
+    flash = _admin_flash(request, ok_codes=ok_codes)
+    if flash is None or flash["kind"] != "success" or request.query_params.get("ok") != "restored":
+        return flash
+    bruto = request.query_params.get("retidos") or ""
+    valido = bruto.isascii() and bruto.isdigit() and len(bruto) <= 4 and bruto[0] != "0"
+    if not valido:
+        return flash
+    retidos = int(bruto)
+    if retidos == 1:
+        aviso = (
+            "1 acesso continua revogado porque o gestor está desativado; "
+            "volta quando ele for reativado."
+        )
+    else:
+        aviso = (
+            f"{retidos} acessos continuam revogados porque os gestores estão desativados; "
+            "voltam quando eles forem reativados."
+        )
+    return {"kind": "success", "message": f"{flash['message']} {aviso}"}

@@ -14,8 +14,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
 
 from src.db import connection
-from src.db.repositories import audit_log, google_oauth_connections
+from src.db.repositories import (
+    audit_log,
+    google_oauth_connections,
+    manager_account_access,
+    manager_meta_account_access,
+)
 from src.db.repositories import managers as managers_repo
+from src.db.repositories._acesso_comum import pares_em_texto
 from src.web import numeros
 from src.web.deps import CurrentUser, current_manager, pending_invites_count
 from src.web.routes._shared import (
@@ -148,17 +154,55 @@ async def admin_managers_toggle_active(
     if manager_id == user.id and desejado == "inativo":
         raise HTTPException(status_code=400, detail="Nao pode desativar voce mesmo")
     pool = connection.get_pool()
-    # UPDATE e audit na mesma transação — se _audit_admin falhar depois do UPDATE
-    # já commitado, o gestor muda de status sem registro de quem mudou (F91: isto
-    # é transação, não retry). O estado vem do pedido, não é invertido: um segundo
-    # clique (ou aba velha) não desfaz o primeiro.
+    ativar = desejado == "ativo"
+    # UPDATE, revogação/restauração dos grants e audit na mesma transação — se
+    # _audit_admin falhar depois, nem o status nem os acessos mudam sem registro
+    # de quem mudou (F91: isto é transação, não retry; nada externo foi feito,
+    # então não é best_effort). O estado vem do pedido, não é invertido: um
+    # segundo clique (ou aba velha) não desfaz o primeiro.
     async with pool.acquire() as conn, conn.transaction():
-        resultado = await managers_repo.definir_ativo(
-            conn, manager_id=manager_id, ativo=desejado == "ativo"
-        )
+        resultado = await managers_repo.definir_ativo(conn, manager_id=manager_id, ativo=ativar)
         if resultado is None:
             raise HTTPException(status_code=404, detail="Gestor nao encontrado")
         email, mudou = resultado
+        # Só quando o status mudou: o segundo clique não toca acesso. As funções
+        # operam sobre o estado (gestor desativado x grant), então o efeito é o
+        # mesmo que o job diário convergiria.
+        # Any: vai como **summary do _audit_admin, cujos kwargs nomeados não são int.
+        contagens: dict[str, Any] = {}
+        if mudou and ativar:
+            restaurados_g, remarcados_g = await manager_account_access.restaurar_de_reativados(
+                conn, manager_id=manager_id
+            )
+            restaurados_m, remarcados_m = await manager_meta_account_access.restaurar_de_reativados(
+                conn, manager_id=manager_id
+            )
+            contagens = {
+                "restaurados_google": len(restaurados_g),
+                "restaurados_meta": len(restaurados_m),
+                "remarcados_google": len(remarcados_g),
+                "remarcados_meta": len(remarcados_m),
+                # Forense como a etapa do job (revisão final, I2): a restauração
+                # zera o motivo na hora, então sem os pares não sobra rastro de
+                # quais contas voltaram. O toast usa só os números.
+                "pares_restaurados_google": pares_em_texto(restaurados_g),
+                "pares_restaurados_meta": pares_em_texto(restaurados_m),
+                "pares_remarcados_google": pares_em_texto(remarcados_g),
+                "pares_remarcados_meta": pares_em_texto(remarcados_m),
+            }
+        elif mudou:
+            revogados_g = await manager_account_access.revogar_de_desativados(
+                conn, manager_id=manager_id
+            )
+            revogados_m = await manager_meta_account_access.revogar_de_desativados(
+                conn, manager_id=manager_id
+            )
+            contagens = {
+                "revogados_google": len(revogados_g),
+                "revogados_meta": len(revogados_m),
+                "pares_revogados_google": pares_em_texto(revogados_g),
+                "pares_revogados_meta": pares_em_texto(revogados_m),
+            }
         # F179: grava também quando nada mudou, com had_effect=False.
         await _audit_admin(
             conn,
@@ -167,9 +211,29 @@ async def admin_managers_toggle_active(
             target_manager_id=str(manager_id),
             target_email=email,
             had_effect=mudou,
+            **contagens,
         )
-    toast = "Status do gestor atualizado." if mudou else "O gestor já estava assim."
+    toast = _toast_do_toggle_active(ativar, contagens) if mudou else "O gestor já estava assim."
     return resposta_hx(request, destino="/admin/managers", hx="redirect", toast=toast)
+
+
+def _acessos(n: int, participio: str) -> str:
+    """`1 acesso revogado` / `5 acessos revogados` (0 vai no plural)."""
+    return f"{n} acesso {participio}" if n == 1 else f"{n} acessos {participio}s"
+
+
+def _toast_do_toggle_active(ativar: bool, contagens: dict[str, int]) -> str:
+    if not ativar:
+        total = contagens["revogados_google"] + contagens["revogados_meta"]
+        return f"Gestor desativado: {_acessos(total, 'revogado')}."
+    restaurados = contagens["restaurados_google"] + contagens["restaurados_meta"]
+    remarcados = contagens["remarcados_google"] + contagens["remarcados_meta"]
+    toast = f"Gestor reativado: {_acessos(restaurados, 'restaurado')}."
+    if remarcados:
+        verbo = "continua revogado" if remarcados == 1 else "continuam revogados"
+        sujeito = "acesso" if remarcados == 1 else "acessos"
+        toast += f" {remarcados} {sujeito} {verbo} porque a conta saiu do inventário."
+    return toast
 
 
 @router.post("/admin/managers/{manager_id}/toggle-role", response_class=HTMLResponse)
