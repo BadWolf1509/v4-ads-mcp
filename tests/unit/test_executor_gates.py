@@ -221,6 +221,7 @@ def _call_sites_do_gate() -> set[tuple[str, str, str | None]]:
     for p in h.fontes_py():
         arv = h.arvore(p)
         dono = _funcao_dona(arv)
+        nomes_do_gate = h.nomes_locais(arv, "ensure_account_access")
         for no in ast.walk(arv):
             if not isinstance(no, ast.Call):
                 continue
@@ -230,7 +231,7 @@ def _call_sites_do_gate() -> set[tuple[str, str, str | None]]:
                 if isinstance(f, ast.Name)
                 else (f.attr if isinstance(f, ast.Attribute) else "")
             )
-            if nome not in h.nomes_locais(arv, "ensure_account_access"):
+            if nome not in nomes_do_gate:
                 continue
             nivel: str | None = None
             for kw in no.keywords:

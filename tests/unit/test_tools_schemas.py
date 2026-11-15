@@ -525,12 +525,12 @@ def test_every_mutate_builder_has_a_builder_test():
     import_all_builders()
 
     unit_dir = pathlib.Path(__file__).resolve().parent
-    arvores = [h.arvore(p) for p in h.testes_py(unit_dir)]
+    chamados_por_arvore = [h.nomes_chamados(h.arvore(p)) for p in h.testes_py(unit_dir)]
 
     missing = sorted(
         op
         for op, fn in _BUILDERS.items()
-        if not any(h.chama(arv, fn.__name__, arv=arv) for arv in arvores)
+        if not any(fn.__name__ in chamados for chamados in chamados_por_arvore)
     )
 
     assert not missing, (
