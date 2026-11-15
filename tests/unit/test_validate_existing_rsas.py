@@ -337,11 +337,11 @@ async def test_mensagem_nomeia_o_ad_base_quando_ele_e_unico(monkeypatch) -> None
 
 
 @pytest.mark.asyncio
-async def test_sem_base_unico_a_mensagem_nao_inventa_id(monkeypatch) -> None:
-    """Dois nao-variacao no grupo: a mensagem cai pro generico em vez de chutar.
+async def test_com_dois_bases_a_mensagem_lista_os_dois_sem_escolher(monkeypatch) -> None:
+    """Dois nao-variacao no grupo: a mensagem lista OS DOIS, sem escolher um.
 
-    Este e o teste que impede a correcao de virar afirmacao falsa: nomear o
-    anuncio errado e pior que nao nomear nenhum.
+    Escolher um seria afirmacao falsa (nomear o anuncio errado); listar todos os
+    nao-variacao e o fato medido. Smoke de 15/11: so o grupo nao bastava ao gestor.
     """
 
     async def fake_run_report(**kwargs: Any) -> list[dict[str, str]]:
@@ -375,9 +375,9 @@ async def test_sem_base_unico_a_mensagem_nao_inventa_id(monkeypatch) -> None:
         updates=[{"ad_id": "825281476311", "final_urls": ["https://exemplo.com.br"]}],
     )
     assert result is not None
-    assert "111" not in result
-    assert "222" not in result
-    assert "base" in result.lower()
+    assert "111, 222" in result
+    assert "o anuncio BASE 111" not in result
+    assert "825281476311, " not in result  # a variacao nunca entra na lista de bases
 
 
 @pytest.mark.asyncio
