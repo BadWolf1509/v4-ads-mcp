@@ -16,7 +16,7 @@ Ferramenta **interna da V4 Company** que conecta as contas **Google Ads** e **Me
 
 ## Stack
 
-Python 3.13 (`.python-version`; `requires-python >=3.12,<3.14`) · FastAPI + Jinja2 + Tailwind (CSS gerado offline e commitado) + HTMX 2 · `mcp` Streamable HTTP · `google-ads` (API v25) · Supabase Postgres via `asyncpg` (SQL cru, sem ORM) · Cloud Run (`southamerica-east1`) · GitHub Actions + Workload Identity Federation · pytest + testcontainers · ruff + mypy strict.
+A stack (linguagens, frameworks, bibliotecas e versões) tem fonte única: a seção [Stack do `CLAUDE.md`](CLAUDE.md#stack). A versão de cada dependência vive no `pyproject.toml`, não aqui.
 
 Sem build step no runtime nem no deploy: o CSS do Tailwind e **gerado offline** (`python scripts/build_tailwind.py`, pin 3.4.17) e **commitado**, com guard de diff no CI. HTMX vem de CDN com SRI. A CSP roda **sem nenhuma diretiva `unsafe-*`**.
 
@@ -31,8 +31,8 @@ Sem build step no runtime nem no deploy: o CSS do Tailwind e **gerado offline** 
 ## Verificação (antes de todo push)
 
 ```bash
-python scripts/check_pre_push.py        # ~50s: ruff + format + mypy + unit + integração não-DB + sync do Tailwind (sem Docker)
-python scripts/check_pre_push_full.py   # opcional: + integration via testcontainers (~60-90s, requer Docker)
+python scripts/check_pre_push.py        # ruff + format + mypy + unit + integração não-DB + sync do Tailwind (sem Docker)
+python scripts/check_pre_push_full.py   # opcional: + integration via testcontainers (requer Docker)
 ```
 
 O sweep completo é **obrigatório** ao mexer em fluxos de mutate, helpers de `_common`, ou migrations — `check_pre_push.py` não roda os testes de integração com banco (testcontainers); esses só validam no CI.
@@ -40,6 +40,8 @@ O sweep completo é **obrigatório** ao mexer em fluxos de mutate, helpers de `_
 ## Deploy
 
 `git push origin main` dispara o **CI** (ruff + format + mypy + pytest unit + integration); somente depois do job `test` verde, o job **Deploy** executa build Buildpacks → migrations via Cloud Run Job → deploy do serviço → smoke `/health` + `/mcp` 401. O deploy é gated por `needs: test`. Confirme a conclusão real via `gh run view <id> --json conclusion` (o exit code de `gh run watch` pode enganar).
+
+Push que mexe só em `docs/` ou em markdown **não deploya**: o job `deploy` pula e a produção segue na revisão do último commit de código (F138). Detalhe na seção "Git workflow + deploy" do [`CLAUDE.md`](CLAUDE.md).
 
 ## Estrutura
 
@@ -50,7 +52,7 @@ src/
   google_ads/            # client + executores (run_report, run_mutation, …) + gate de acesso
   meta_ads/              # client (system user) + executor Graph API + gate de acesso
   governance/            # rate limit + dry-run/confirmação
-  auth/                  # OAuth Google + Meta, sessões do painel, allowlist
+  auth/                  # OAuth Google, sessões do painel, allowlist, callback de exclusão de dados Meta
   db/                    # migrations (append-only) + repositories (asyncpg)
   web/                   # rotas + templates Jinja + design system (static/*.css)
 docs/
@@ -65,7 +67,7 @@ docs/
 - **Contexto do agente:** [`CLAUDE.md`](CLAUDE.md) — leia primeiro ao continuar o trabalho. Ele carrega em toda sessão e roteia o resto.
 - **Estado de produção, pendências e decision gates:** [`docs/operacao/estado-atual.md`](docs/operacao/estado-atual.md) — é o que se atualiza ao fim de cada sessão.
 - **Convenções por área:** [`docs/convencoes/`](docs/convencoes/) — núcleo, painel, testes, dados, processo.
-- **Taxonomia de bugs e lições:** [`docs/operacao/findings-catalog.md`](docs/operacao/findings-catalog.md) — 116 IDs; busca dirigida, nunca leitura integral.
+- **Taxonomia de bugs e lições:** [`docs/operacao/findings-catalog.md`](docs/operacao/findings-catalog.md) — busca dirigida (grep por área ou sintoma), nunca leitura integral.
 - **Infra / DR:** [`docs/operacao/infra-setup.md`](docs/operacao/infra-setup.md) · [`docs/operacao/backup-restore-runbook.md`](docs/operacao/backup-restore-runbook.md)
 - **Specs e planos:** [`docs/superpowers/`](docs/superpowers/) · histórico arquivado em `docs/_archive/`
 
