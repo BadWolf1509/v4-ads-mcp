@@ -145,6 +145,8 @@ async def get_account_overview(args: dict[str, Any]) -> dict[str, Any]:
         query=gaql_atual,
         row_formatter=_row_formatter,
         operation_name="get_account_overview",
+        # Uma linha por chamada: só a leitura principal audita (A-01).
+        audit_this_call=True,
     )
     rows_prev = await run_report(
         manager_id=ctx.manager_id,

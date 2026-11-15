@@ -110,6 +110,7 @@ async def get_search_terms_report(args: dict[str, Any]) -> dict[str, Any]:
         query=gaql,
         row_formatter=_row_formatter,
         operation_name="get_search_terms_report",
+        audit_this_call=True,
     )
     # A consulta pediu `limit + 1`; a linha extra e a sentinela que revela o
     # corte e nao pode chegar ao gestor.
