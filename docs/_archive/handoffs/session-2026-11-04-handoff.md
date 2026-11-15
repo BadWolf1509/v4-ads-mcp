@@ -1,8 +1,8 @@
 # Sessão de 03 e 04/11 — Handoff (varredura de refatoração em produção)
 
-> Mapa da sessão. Estado vivo no [`estado-atual`](estado-atual.md); defeitos no
-> [catálogo](findings-catalog.md). Anterior: [`session-2026-10-31-handoff.md`](../_archive/handoffs/session-2026-10-31-handoff.md).
-> Plano: [`2026-11-03-varredura-refatoracao.md`](../superpowers/plans/2026-11-03-varredura-refatoracao.md).
+> Mapa da sessão. Estado vivo no [`estado-atual`](../../operacao/estado-atual.md); defeitos no
+> [catálogo](../../operacao/findings-catalog.md). Anterior: [`session-2026-10-31-handoff.md`](session-2026-10-31-handoff.md).
+> Plano: [`2026-11-03-varredura-refatoracao.md`](../../superpowers/plans/2026-11-03-varredura-refatoracao.md).
 
 ## O que entrou
 
@@ -40,7 +40,7 @@ incidente do GitHub Actions: os passos do job terminaram em `success` às 15:53 
 - **`export_csv_rows(manager_id=None)` como default** era falha aberta latente (F205): corrigido no #220
   (argumento obrigatório).
 - Os 3 bugs da parte A e os 4 bugs pré-existentes dos jobs (achados na H1) estão descritos no plano e
-  no [`estado-atual`](estado-atual.md).
+  no [`estado-atual`](../../operacao/estado-atual.md).
 
 ## Pendente (nesta ordem)
 

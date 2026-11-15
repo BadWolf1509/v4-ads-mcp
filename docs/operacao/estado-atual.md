@@ -5,10 +5,10 @@
 > chegou a 91 KB). **Trabalho que fechou sai daqui:** o defeito vai para o catálogo, a narrativa para o
 > handoff ou o [`_archive/`](../_archive/estado-atual-2026-10-30-a-11-04.md), e aqui fica uma linha.
 
-> **Última sessão:** [`session-2026-11-14-handoff.md`](session-2026-11-14-handoff.md) — 14/11: backlog
-> de tráfego da MO-JP, **7 itens em produção** (#249–#255), smoke 7/7, **contrato `conferencia`** no
-> `apply_change`; em 15/11, S1–S3 (#259–#261) e `remove_ad`. Antes: [`session-2026-11-10-handoff.md`](session-2026-11-10-handoff.md) (varredura de
-> refatoração de 10/11, #228–#247).
+> **Última sessão:** [`session-2026-11-15-handoff.md`](session-2026-11-15-handoff.md) — 14–15/11: S1–S3
+> do smoke (#259–#261), tool **`remove_ad`**, recusa de variação lista os anúncios base (#262). Antes:
+> [`session-2026-11-14-handoff.md`](session-2026-11-14-handoff.md) (backlog de tráfego, #249–#255,
+> contrato `conferencia`).
 
 ## Direção e restrições
 
@@ -27,13 +27,12 @@
   medido: paginação de `meta_get_entities` além de uma página, render da prévia, objetivos além de REACH.
   Detalhe no [arquivo](../_archive/estado-atual-2026-10-30-a-11-04.md).
 
-## Produção — medido em 2026-11-11, 14/11 e 15/11
+## Produção — medido em 2026-11-11 e 15/11
 
 | | |
 |---|---|
-| Revisão servindo | **`v4-ads-mcp-00216-fbv`**, 100% (`gcloud`, 15/11, depois do #261). A linha `SERVING_REVISION` do log do deploy é a revisão de **antes**; meça no `gcloud` |
-| Comportamento novo (14/11) | **`conferencia`** no `apply_change` (veredito da releitura pós-write; `efeito`/`changed_count` = ACK do Google); `estado_revisao` em RSA; pinos em RSA; lote RSA até 50; `avisos[]` em `run_gaql`/`validate_gaql`; `get_experiments`, `update_recommendation_subscription`, `list_gaql_resources(resource, customer_id)`. Detalhe no [handoff](session-2026-11-14-handoff.md) |
-| Comportamento novo (10–11/11) | moeda Meta lida do inventário; contador BUC conta só o lido; re-concessão grava `granted_at`/`granted_by`; revoke Meta grava `admin_revoked`; audit mostra o nome da conta Meta; `classify` com motivo próprio para `create_and_link_assets`, `import_offline_conversions`, `create_campaign`; `APP_TIMEZONE` saiu do deploy; **enum de recomendação no v25** (2 tipos de lance confirmam, `CAMPAIGN_SPECIFIC_APP_GOAL` só leitura); `grant-all` exige `--by` e só toca o que muda |
+| Revisão servindo | **`v4-ads-mcp-00217-vzw`**, 100% (`gcloud`, 15/11, depois do #262). A linha `SERVING_REVISION` do log do deploy é a revisão de **antes**; meça no `gcloud` |
+| Comportamento novo (14–15/11) | **`conferencia`** no `apply_change` (veredito da releitura pós-write; `efeito`/`changed_count` = ACK do Google); `estado_revisao` e pinos em RSA; lote RSA até 50; `update_rsa` igual ao atual fora do token; **`remove_ad`**; `avisos[]` em `run_gaql`/`validate_gaql`; `get_experiments`, `update_recommendation_subscription`, `list_gaql_resources(resource, customer_id)`. Detalhe nos handoffs de [14/11](session-2026-11-14-handoff.md) e [15/11](session-2026-11-15-handoff.md); o de 10–11/11 está no [handoff](session-2026-11-10-handoff.md) |
 | Dependências | grpcio 1.85.1, protobuf 7.36.2, starlette 1.10.0 (avisa `httpx` deprecated no `TestClient`), sse-starlette 3.7.0, tzdata 2026.6 |
 | Tools | **83** (68 Google + 15 Meta), registry e `/health?deep=1` (15/11) |
 | Buckets | **14 always + 69 defer** (registry, 15/11); tokens **não remedidos** desde a [remedição](tool-buckets-2026-10-05.md) |
@@ -50,21 +49,14 @@ desconhecida).
 exclusivamente em `docs/` e markdown; `tests/` publica revisão. **Cheque a revisão servindo.**
 Contagens de tool e bucket vêm do registry (`import_all_tools()`), nunca de `grep` (F183).
 
-## Backlog de tráfego — 14/11 (#249–#255, smoke 7/7)
+## Backlog de tráfego — fechado (14–15/11, #249–#262)
 
-🔴 **Contrato do `apply_change` mudou no #255:** `efeito`/`changed_count` são o **ACK do Google**; o
-veredito da releitura pós-write vai em **`conferencia: {campo, pedido, relido, motivo}`** (RSA: `pinos`;
-N3: `status`; `null` = não lido). Em RSA o anúncio FOI gravado mesmo com `conferencia` divergente — não
-recriar. Narrativa, medições e rulings no [handoff](session-2026-11-14-handoff.md).
-
-**S1–S3 fechados em 15/11** (#259–#261, smoke na MO conferido por GAQL): lista estática do
-`list_gaql_resources` travada contra o proto (saíram `segments.network_type`, `campaign.start_date`/
-`end_date`); `update_rsa` igual ao atual sai do token (`sem_mudanca`/`no_changes`); tool nova
-**`remove_ad`** (irreversível, sempre token, `conferencia` de status). Recusa de variação (F181) lista
-todos os anúncios base do grupo. **Não medido:** o que o Google devolve quando o anúncio muda de estado
-entre o preview e o apply. Minors adiados nos ledgers
-`.superpowers/sdd/2026-11-14-backlog-trafego/progress.md` e `.superpowers/sdd/2026-11-14-s1-s3/progress.md`.
-**Não medido:** catálogo no Codex/Cursor; frescor da **aprovação** pós-write; preview de 50 no pior caso.
+🔴 **Contrato do `apply_change` (#255):** `efeito`/`changed_count` são o **ACK do Google**; o veredito da
+releitura pós-write vai em **`conferencia: {campo, pedido, relido, motivo}`** (RSA: `pinos`; N3 e
+`remove_ad`: `status`; `null` = não lido). Em RSA o anúncio FOI gravado mesmo com `conferencia`
+divergente — não recriar. **`remove_ad` é irreversível:** sempre token, smoke na MO em 15/11.
+**Não medido:** TOCTOU entre preview e apply da `remove_ad`; catálogo no Codex/Cursor; frescor da
+**aprovação** pós-write; preview de 50 no pior caso. Minors nos ledgers `.superpowers/sdd/2026-11-14-*`.
 
 ## Decision gates abertos
 
