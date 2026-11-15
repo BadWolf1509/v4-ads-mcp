@@ -25,7 +25,7 @@ from uuid import uuid4
 
 import pytest
 
-from tests.unit.fixtures.fake_google_client import client_de_sucesso
+from tests.fixtures.fake_google_client import client_de_sucesso
 from tests.unit.fixtures.fake_pool import pool_com_transacao
 
 

@@ -1,23 +1,12 @@
 """Integration tests for detect_drift (Sprint 3b.33)."""
 
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
-
-
-@pytest.fixture
-def bound_context():
-    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
-    set_current(ctx)
-    yield ctx
-    clear_current()
-
 
 @pytest.mark.asyncio
-async def test_co_management_filter_pedro_drift(bound_context):
+async def test_co_management_filter_pedro_drift(ctx_mcp):
     """T2 cenário smoke: 2 changes Wellington autorizado + 4 Pedro Vytor drift."""
     from src.mcp.tools.detect_drift import detect_drift
 
@@ -95,7 +84,7 @@ async def test_co_management_filter_pedro_drift(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_incident_mode_empty_responsible_list(bound_context):
+async def test_incident_mode_empty_responsible_list(ctx_mcp):
     """T1 cenário smoke: lista vazia → todos changes são drift."""
     from src.mcp.tools.detect_drift import detect_drift
 
@@ -141,7 +130,7 @@ async def test_incident_mode_empty_responsible_list(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_structural_change_flag_emitted(bound_context):
+async def test_structural_change_flag_emitted(ctx_mcp):
     """T5 cenário smoke: REMOVE em CAMPAIGN → structural_change flag."""
     from src.mcp.tools.detect_drift import detect_drift
 

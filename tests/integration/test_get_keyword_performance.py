@@ -1,23 +1,12 @@
 """Integration tests for get_keyword_performance (Sprint 3b.40 B9)."""
 
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
-
-
-@pytest.fixture
-def bound_context():
-    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
-    set_current(ctx)
-    yield ctx
-    clear_current()
-
 
 @pytest.mark.asyncio
-async def test_b9_negative_field_present_in_response(bound_context):
+async def test_b9_negative_field_present_in_response(ctx_mcp):
     """B9 (F56): cada row contém `negative: bool` field (true + false samples)."""
     from src.mcp.tools.get_keyword_performance import get_keyword_performance
 

@@ -1,19 +1,8 @@
 """Tests for utility tools — run_gaql, validate_gaql, list_gaql_resources."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
 
 import pytest
-
-from src.mcp.context import McpRequestContext, clear_current, set_current
-
-
-@pytest.fixture
-def bound_context():
-    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
-    set_current(ctx)
-    yield ctx
-    clear_current()
 
 
 @pytest.fixture
@@ -53,7 +42,7 @@ def bypass_gate():
 
 
 @pytest.mark.asyncio
-async def test_run_gaql_returns_rows_and_truncation_flag(bound_context):
+async def test_run_gaql_returns_rows_and_truncation_flag(ctx_mcp):
     from src.mcp.tools.run_gaql import run_gaql
 
     fake_rows = [{"customer.id": str(i)} for i in range(50)]
@@ -73,7 +62,7 @@ async def test_run_gaql_returns_rows_and_truncation_flag(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_run_gaql_truncates_above_1000(bound_context):
+async def test_run_gaql_truncates_above_1000(ctx_mcp):
     """limit explicito no teto (1000) -> 1500 rows corta em 1000."""
     from src.mcp.tools.run_gaql import run_gaql
 
@@ -97,7 +86,7 @@ async def test_run_gaql_truncates_above_1000(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_run_gaql_default_limit_is_100_when_absent(bound_context):
+async def test_run_gaql_default_limit_is_100_when_absent(ctx_mcp):
     """Sem `limit` no args -> default 100 (nao mais o teto de 1000 - F2/F22)."""
     from src.mcp.tools.run_gaql import run_gaql
 
@@ -120,7 +109,7 @@ async def test_run_gaql_default_limit_is_100_when_absent(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_run_gaql_custom_limit_truncates(bound_context):
+async def test_run_gaql_custom_limit_truncates(ctx_mcp):
     """limit customizado (10) corta corretamente + shape truncated true."""
     from src.mcp.tools.run_gaql import run_gaql
 
@@ -144,7 +133,7 @@ async def test_run_gaql_custom_limit_truncates(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_run_gaql_limit_equal_to_row_count_not_truncated(bound_context):
+async def test_run_gaql_limit_equal_to_row_count_not_truncated(ctx_mcp):
     """rows == limit -> truncated false (shape estavel, sem hint)."""
     from src.mcp.tools.run_gaql import run_gaql
 
@@ -167,7 +156,7 @@ async def test_run_gaql_limit_equal_to_row_count_not_truncated(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_run_gaql_limit_clamped_above_max(bound_context):
+async def test_run_gaql_limit_clamped_above_max(ctx_mcp):
     """limit acima de 1000 (defensivo, mesmo com schema maximum) clampa a 1000."""
     from src.mcp.tools.run_gaql import run_gaql
 
@@ -189,7 +178,7 @@ async def test_run_gaql_limit_clamped_above_max(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_run_gaql_passes_query_and_limit_to_execute_gaql_raw(bound_context):
+async def test_run_gaql_passes_query_and_limit_to_execute_gaql_raw(ctx_mcp):
     """execute_gaql_raw recebe limit (pra montar params_summary do audit)."""
     from src.mcp.tools.run_gaql import run_gaql
 
@@ -209,7 +198,7 @@ async def test_run_gaql_passes_query_and_limit_to_execute_gaql_raw(bound_context
 
 
 @pytest.mark.asyncio
-async def test_validate_gaql_returns_valid_when_no_error(bound_context, bypass_gate):
+async def test_validate_gaql_returns_valid_when_no_error(ctx_mcp, bypass_gate):
     from src.mcp.tools.validate_gaql import validate_gaql
 
     fake_client = MagicMock()
@@ -233,7 +222,7 @@ async def test_validate_gaql_returns_valid_when_no_error(bound_context, bypass_g
 
 
 @pytest.mark.asyncio
-async def test_validate_gaql_returns_invalid_with_error(bound_context, bypass_gate):
+async def test_validate_gaql_returns_invalid_with_error(ctx_mcp, bypass_gate):
     from src.mcp.tools.validate_gaql import validate_gaql
 
     fake_client = MagicMock()
@@ -257,7 +246,7 @@ async def test_validate_gaql_returns_invalid_with_error(bound_context, bypass_ga
 
 
 @pytest.mark.asyncio
-async def test_validate_gaql_appends_b2_hint_for_change_event_window(bound_context, bypass_gate):
+async def test_validate_gaql_appends_b2_hint_for_change_event_window(ctx_mcp, bypass_gate):
     """B2: error 'too old' on FROM change_event query should append window hint."""
     from src.google_ads.errors import GoogleAdsFriendlyError
     from src.mcp.tools.validate_gaql import validate_gaql
@@ -297,7 +286,7 @@ async def test_validate_gaql_appends_b2_hint_for_change_event_window(bound_conte
 
 @pytest.mark.asyncio
 async def test_validate_gaql_appends_b3_hint_for_conversion_action_cost_micros(
-    bound_context, bypass_gate
+    ctx_mcp, bypass_gate
 ):
     """B3: 'unsupported metric' with segments.conversion_action + cost_micros should append split-query hint."""
     from src.google_ads.errors import GoogleAdsFriendlyError
@@ -339,7 +328,7 @@ async def test_validate_gaql_appends_b3_hint_for_conversion_action_cost_micros(
 
 
 @pytest.mark.asyncio
-async def test_validate_gaql_denies_without_access(bound_context):
+async def test_validate_gaql_denies_without_access(ctx_mcp):
     """Hard-gate (F57 class): sem grant, validate_gaql levanta
     AccountAccessDeniedError e NUNCA chega a buildar o client — não vaza
     existência/schema da conta nem bypassa o rate-limit."""
@@ -395,7 +384,7 @@ async def test_list_gaql_resources_returns_catalog():
 
 
 @pytest.mark.asyncio
-async def test_run_gaql_without_aggregate_by_returns_rows_unchanged(bound_context):
+async def test_run_gaql_without_aggregate_by_returns_rows_unchanged(ctx_mcp):
     """Regression: shape original mantido quando aggregate_by ausente."""
     from src.mcp.tools.run_gaql import run_gaql
 
@@ -419,7 +408,7 @@ async def test_run_gaql_without_aggregate_by_returns_rows_unchanged(bound_contex
 
 
 @pytest.mark.asyncio
-async def test_run_gaql_with_aggregate_by_returns_groups_shape(bound_context):
+async def test_run_gaql_with_aggregate_by_returns_groups_shape(ctx_mcp):
     """aggregate_by ativo retorna groups[] + metadata, sem rows[]."""
     from src.mcp.tools.run_gaql import run_gaql
 
@@ -454,7 +443,7 @@ async def test_run_gaql_with_aggregate_by_returns_groups_shape(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_run_gaql_aggregate_truncates_at_1000_groups(bound_context):
+async def test_run_gaql_aggregate_truncates_at_1000_groups(ctx_mcp):
     """1500 grupos unicos -> truncado a 1000 com truncated:true.
 
     Tambem valida fix A2.1: group_count reporta 1500 (pre-slice), nao 1000.
@@ -483,7 +472,7 @@ async def test_run_gaql_aggregate_truncates_at_1000_groups(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_run_gaql_rejects_more_than_10k_raw_rows(bound_context):
+async def test_run_gaql_rejects_more_than_10k_raw_rows(ctx_mcp):
     """Safety net hard: >10k raw rows com aggregate_by raises ValueError."""
     from src.mcp.tools.run_gaql import run_gaql
 
