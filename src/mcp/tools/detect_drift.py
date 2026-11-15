@@ -16,6 +16,7 @@ from src.google_ads.drift_detection import detect_drift as _detect_drift_pure
 from src.google_ads.drift_detection import dict_to_change_event_row
 from src.google_ads.queries._common import resolve_date_window
 from src.mcp.context import get_current
+from src.mcp.tools._common import propriedades_start_end
 from src.mcp.tools._registry import register_tool
 
 _DATE_PRESETS = [
@@ -53,19 +54,7 @@ _SCHEMA: dict[str, Any] = {
                 "pos-batch. Para periodo custom, use start_date+end_date."
             ),
         },
-        "start_date": {
-            "type": "string",
-            "pattern": r"^\d{4}-\d{2}-\d{2}$",
-            "description": (
-                "Data inicial YYYY-MM-DD inclusive. Quando informado junto com "
-                "end_date, sobrepoe date_range preset. Obriga end_date."
-            ),
-        },
-        "end_date": {
-            "type": "string",
-            "pattern": r"^\d{4}-\d{2}-\d{2}$",
-            "description": "Data final YYYY-MM-DD inclusive. Obrigatorio se start_date informado.",
-        },
+        **propriedades_start_end(),
         "limit": {
             "type": "integer",
             "minimum": 1,

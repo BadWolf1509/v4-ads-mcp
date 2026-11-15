@@ -29,6 +29,15 @@ _START_E_END: dict[str, Any] = {
 }
 
 
+def propriedades_start_end() -> dict[str, Any]:
+    """O par `start_date` + `end_date` de uma tool Google, sem o `date_range`.
+
+    Para a tool cujo `date_range` e proprio (enum, default ou description) mas
+    cujo par custom e o canonico. Copia profunda a cada chamada.
+    """
+    return copy.deepcopy(_START_E_END)
+
+
 def propriedades_de_data(
     default: str = "LAST_30_DAYS", presets: Sequence[str] = PRESETS_EM_ORDEM
 ) -> dict[str, Any]:
@@ -50,7 +59,7 @@ def propriedades_de_data(
             "default": default,
             "description": "Periodo via preset. Para periodo custom, use start_date+end_date.",
         },
-        **copy.deepcopy(_START_E_END),
+        **propriedades_start_end(),
     }
 
 
