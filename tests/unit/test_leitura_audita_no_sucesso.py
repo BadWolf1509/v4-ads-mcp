@@ -29,6 +29,7 @@ from __future__ import annotations
 import ast
 import inspect
 import shutil
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -185,6 +186,33 @@ def _chama_audit_log_record(arv: ast.Module, escopo: ast.AST | None = None) -> b
     return False
 
 
+def _delega_a_encerrar_execucao(arv: ast.Module, escopo: ast.AST) -> bool:
+    """`encerrar_execucao(..., montar_audit=<montador>)` no corpo próprio (P6, 15/11).
+
+    Os executores Google passaram a gravar o audit por `encerrar_execucao`
+    (`src/governance/execucao.py`), que chama `audit_log.record` com o que o
+    montador devolve — `test_encerrar_execucao_grava_o_audit` confere esse elo.
+    Montador ausente, `None` literal ou condicional que pode dar `None` NÃO
+    conta: é o caminho que não audita (`run_report` sem opt-in).
+    """
+    nomes = h.nomes_locais(arv, "encerrar_execucao")
+    for no in h.nos_do_corpo_proprio(escopo):
+        if not isinstance(no, ast.Call):
+            continue
+        f = no.func
+        if not (
+            (isinstance(f, ast.Name) and f.id in nomes)
+            or (isinstance(f, ast.Attribute) and f.attr in nomes)
+        ):
+            continue
+        for kw in no.keywords:
+            if kw.arg == "montar_audit" and not any(
+                isinstance(n, ast.Constant) and n.value is None for n in ast.walk(kw.value)
+            ):
+                return True
+    return False
+
+
 def _sinais(arquivo: Path) -> set[str]:
     """Os sinais de audit do módulo do handler (AST, sem executar)."""
     arv = h.arvore(arquivo)
@@ -270,6 +298,8 @@ def test_delegada_audita_de_fato(tool: str, arquivo: str, funcao: str) -> None:
             return
         if h.chama_no_corpo_proprio(fn, "_gravar_audit_leitura", arv=arv):
             return
+        if _delega_a_encerrar_execucao(arv, fn):
+            return
         for no in h.nos_do_corpo_proprio(fn):
             if isinstance(no, ast.Call) and any(
                 kw.arg == "audit_this_call"
@@ -279,6 +309,41 @@ def test_delegada_audita_de_fato(tool: str, arquivo: str, funcao: str) -> None:
             ):
                 return
     pytest.fail(f"{tool}: src/{arquivo}:{funcao} não grava audit no corpo próprio")
+
+
+def test_encerrar_execucao_grava_o_audit() -> None:
+    """O elo que `_delega_a_encerrar_execucao` presume: a função grava de fato."""
+    arv = h.arvore(h.SRC / "governance" / "execucao.py")
+    fns = [f for f in h.funcoes(arv) if f.name == "encerrar_execucao"]
+    assert len(fns) == 1, "encerrar_execucao não existe em src/governance/execucao.py"
+    assert _chama_audit_log_record(arv, fns[0])
+
+
+@pytest.mark.parametrize(
+    ("montador", "audita"),
+    [
+        ("_montar", True),
+        ("None", False),
+        ("_montar if auditar else None", False),
+    ],
+)
+def test_scanner_ve_o_montador_de_encerrar_execucao(montador: str, audita: bool) -> None:
+    """Controle do scanner: só montador que não pode ser `None` conta como audit."""
+    fonte = textwrap.dedent(
+        f"""
+        from src.governance.execucao import encerrar_execucao
+        async def run_x(auditar):
+            try:
+                pass
+            finally:
+                def _montar():
+                    return None
+                await encerrar_execucao(None, None, montar_audit={montador})
+        """
+    )
+    arv = ast.parse(fonte)
+    fn = next(f for f in h.funcoes(arv) if f.name == "run_x")
+    assert _delega_a_encerrar_execucao(arv, fn) is audita
 
 
 def test_nenhuma_leitura_sem_trilha() -> None:

@@ -1274,7 +1274,7 @@ _ARQUIVOS_DE_EXECUTOR = frozenset(
 # P6 (T6.3-T6.5): os arquivos cujo `finally` ja e `encerrar_execucao`
 # (src/governance/execucao.py). So cresce; `test_esqueleto_descreve_a_realidade`
 # fica vermelho se a lista e o codigo divergirem para qualquer lado.
-_EXECUTORES_NO_ESQUELETO: frozenset[str] = frozenset()
+_EXECUTORES_NO_ESQUELETO: frozenset[str] = frozenset({"reports.py", "keyword_planning.py"})
 
 
 def _chama_audit_log_record(no: ast.AST, arv: ast.Module) -> bool:

@@ -21,14 +21,13 @@ import structlog
 
 from src.blocking import run_blocking
 from src.db import connection
-from src.db.repositories import audit_log
 from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
 from src.google_ads.request_id import get_request_id, reset_request_id
-from src.governance.bookkeeping import best_effort
+from src.governance.execucao import RegistroDeAudit, encerrar_execucao
 from src.governance.rate_limit import QuotaExhausted
-from src.governance.reserva import Reserva, reconciliar_cota, reservar_cota
+from src.governance.reserva import Reserva, reservar_cota
 
 log = structlog.get_logger(__name__)
 
@@ -126,29 +125,9 @@ async def run_keyword_planning[T](
     finally:
         duration_ms = int((time.monotonic() - started) * 1000)
         actual_ops = estimated_ops if status == "success" else 0
-        # F73: so reconcilia o que foi reservado.
-        if reserva is not None:
-            await reconciliar_cota(
-                pool,
-                reserva,
-                manager_id=manager_id,
-                actual_ops=actual_ops,
-                evento="keyword_planning_quota_reconcile_failed",
-                operation=operation_name,
-                customer_id=customer_id,
-            )
-        # Audit SEMPRE (inclusive negacao por quota); falha vira ERROR (F83).
-        async with (
-            best_effort(
-                "keyword_planning_audit_write_failed",
-                operation=operation_name,
-                customer_id=customer_id,
-                status=status,
-            ),
-            pool.acquire() as conn,
-        ):
-            await audit_log.record(
-                conn,
+
+        def _montar_audit() -> RegistroDeAudit:
+            return RegistroDeAudit(
                 manager_id=manager_id,
                 session_id=session_id,
                 customer_id=customer_id,
@@ -163,6 +142,21 @@ async def run_keyword_planning[T](
                 error_message=error_message,
                 duration_ms=duration_ms,
             )
+
+        # F73: so reconcilia o que foi reservado. Audit SEMPRE (inclusive negacao
+        # por quota); falha de qualquer um vira ERROR sem levantar (F83).
+        await encerrar_execucao(
+            pool,
+            reserva,
+            manager_id=manager_id,
+            actual_ops=actual_ops,
+            operation=operation_name,
+            customer_id=customer_id,
+            status=status,
+            evento_cota="keyword_planning_quota_reconcile_failed",
+            evento_audit="keyword_planning_audit_write_failed",
+            montar_audit=_montar_audit,
+        )
 
     if friendly_error is not None:
         if original_error is None:
