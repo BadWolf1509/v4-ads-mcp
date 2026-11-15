@@ -65,11 +65,23 @@ _GEMEOS = (
     "list_managers_with_counts",
     "count_active_accounts",
     "has_live_grant",
+    "revogar_de_desativados",
+    "restaurar_de_reativados",
 )
 
 # As escritas que delegam ao núcleo (SQL comparado em runtime) e os pares que
 # ficaram fora dele por decisão do plano (SQL comparado por AST).
-_NO_NUCLEO = ("grant", "grant_all_active", "revoke", "bulk_grant", "copy_access")
+_NO_NUCLEO = (
+    "grant",
+    "grant_all_active",
+    "revoke",
+    "bulk_grant",
+    "copy_access",
+    # Desativação do gestor (15/11): o SQL é do núcleo; os módulos só passam o
+    # descritor e, na restauração, o motivo de churn do lado.
+    "revogar_de_desativados",
+    "restaurar_de_reativados",
+)
 _FORA_DO_NUCLEO = (
     "list_accounts_for_manager",
     "can_manager_access",
@@ -87,6 +99,11 @@ _DIVERGENCIAS_REGISTRADAS: dict[str, str] = {
         "ordem equivalente dos predicados do WHERE: Google "
         "`a.is_active = true AND m.revoked_at IS NULL`, Meta "
         "`m.revoked_at IS NULL AND a.is_active = true` (mesmo conjunto, AND comutativo)"
+    ),
+    "restaurar_de_reativados": (
+        "motivo de churn de cada lado (desenho de 15/11): em conta inativa a linha é "
+        "remarcada com o motivo que a volta da conta restaura — Google `left_mcc`, Meta "
+        "`partnership_ended`. Entra por parâmetro, não como campo do descritor"
     ),
 }
 
@@ -310,6 +327,8 @@ _ENTRADAS: dict[str, dict[str, Any]] = {
         "to_manager_id": _ID_DESTINO,
         "granted_by": _ID_ADMIN,
     },
+    "revogar_de_desativados": {"manager_id": _ID_GESTOR},
+    "restaurar_de_reativados": {"manager_id": _ID_GESTOR},
 }
 _KWARG_META = {"customer_id": "ad_account_id", "customer_ids": "ad_account_ids"}
 
@@ -376,6 +395,13 @@ def _sql_cru(nome: str, caminho: Path) -> list[str]:
 # de uma função registrada não se esconde atrás do registro.
 _DIFERENCAS_ESPERADAS: dict[str, frozenset[str]] = {
     "can_manager_access": frozenset({"literal #0: mesmos fragmentos em ordem diferente"}),
+    "restaurar_de_reativados": frozenset(
+        {
+            "statement #0: bind args google=('left_mcc', 'manager_deactivated', "
+            "UUID('00000000-0000-0000-0000-000000000001')) meta=('partnership_ended', "
+            "'manager_deactivated', UUID('00000000-0000-0000-0000-000000000001'))"
+        }
+    ),
 }
 
 _NOMES_GOOGLE = re.compile(

@@ -26,7 +26,7 @@ from uuid import UUID
 import asyncpg
 
 from src.db.repositories._comum import linhas_afetadas
-from src.db.repositories.motivos import BULK_COPY_REPLACED_REASON
+from src.db.repositories.motivos import BULK_COPY_REPLACED_REASON, MANAGER_DEACTIVATED_REASON
 
 _IDENTIFICADOR = re.compile(r"[a-z_][a-z0-9_]*")
 
@@ -60,6 +60,13 @@ META = TabelaDeAcesso(
 )
 
 _DESCRITORES = (GOOGLE, META)
+
+# "Gestor desativado" em SQL, sobre o alias `m` de `managers`: a MESMA regra de
+# `Manager.is_deactivated` (F84), amarrada a ela por
+# `tests/integration/test_revogacao_na_desativacao.py::test_predicado_sql_igual_ao_python`.
+# `invited` não conta como desativado. As duas colunas são NOT NULL, então a
+# negação (`NOT ...`) não tem terceiro valor.
+PREDICADO_DESATIVADO = "(m.is_active = false OR m.status = 'inactive')"
 
 
 def _exigir_descritor(t: TabelaDeAcesso) -> None:
@@ -226,3 +233,145 @@ async def copy_access(
             from_manager_id,
         )
     return linhas_afetadas(result)
+
+
+async def revogar_de_desativados(
+    conn: asyncpg.Connection,
+    t: TabelaDeAcesso,
+    *,
+    manager_id: UUID | None = None,
+) -> list[tuple[UUID, str]]:
+    """Revoga (soft, `manager_deactivated`) todo grant VIVO de gestor desativado.
+
+    Opera sobre o ESTADO, não sobre o delta (lição do
+    `revoke_for_inactive_accounts`): pega também o grant concedido depois da
+    desativação e a desativação feita por SQL direto. Com `manager_id`, só
+    daquele gestor (a rota); sem, todos (o job). Linha já revogada não é tocada:
+    revogar de novo trocaria o motivo e a tiraria da restauração que lhe cabe.
+    Devolve `(manager_id, conta)` de cada grant revogado. A transação é do
+    chamador.
+    """
+    _exigir_descritor(t)
+    rows = await conn.fetch(
+        f"""
+        UPDATE {t.tabela} g
+           SET revoked_at = now(), revoked_reason = $1
+          FROM managers m
+         WHERE m.id = g.manager_id
+           AND {PREDICADO_DESATIVADO}
+           AND g.revoked_at IS NULL
+           AND ($2::uuid IS NULL OR g.manager_id = $2::uuid)
+        RETURNING g.manager_id, g.{t.coluna_conta} AS conta
+        """,
+        MANAGER_DEACTIVATED_REASON,
+        manager_id,
+    )
+    return [(r["manager_id"], r["conta"]) for r in rows]
+
+
+async def restaurar_de_reativados(
+    conn: asyncpg.Connection,
+    t: TabelaDeAcesso,
+    *,
+    motivo_churn: str,
+    manager_id: UUID | None = None,
+) -> tuple[list[tuple[UUID, str]], list[tuple[UUID, str]]]:
+    """Devolve só o que a desativação tirou, a gestor que não está desativado.
+
+    Só linhas `manager_deactivated`: revogação de admin, cópia e churn não voltam
+    por aqui. Dois UPDATEs na mesma conexão, sobre conjuntos disjuntos (conta
+    inativa x ativa):
+
+    1. conta INATIVA: a linha continua revogada e o motivo vira `motivo_churn`
+       (o de churn do lado: `left_mcc` / `partnership_ended`), para que a volta
+       da conta a devolva — com dois bloqueios, vale o da conta;
+    2. conta ATIVA: `revoked_at = NULL, revoked_reason = NULL`.
+
+    Devolve `(restaurados, remarcados_como_churn)`, cada um com
+    `(manager_id, conta)`. A transação é do chamador.
+    """
+    _exigir_descritor(t)
+    remarcados = await conn.fetch(
+        f"""
+        UPDATE {t.tabela} g
+           SET revoked_reason = $1
+          FROM managers m, {t.inventario} a
+         WHERE m.id = g.manager_id
+           AND a.{t.coluna_conta} = g.{t.coluna_conta}
+           AND NOT {PREDICADO_DESATIVADO}
+           AND a.is_active = false
+           AND g.revoked_at IS NOT NULL
+           AND g.revoked_reason = $2
+           AND ($3::uuid IS NULL OR g.manager_id = $3::uuid)
+        RETURNING g.manager_id, g.{t.coluna_conta} AS conta
+        """,
+        motivo_churn,
+        MANAGER_DEACTIVATED_REASON,
+        manager_id,
+    )
+    restaurados = await conn.fetch(
+        f"""
+        UPDATE {t.tabela} g
+           SET revoked_at = NULL, revoked_reason = NULL
+          FROM managers m, {t.inventario} a
+         WHERE m.id = g.manager_id
+           AND a.{t.coluna_conta} = g.{t.coluna_conta}
+           AND NOT {PREDICADO_DESATIVADO}
+           AND a.is_active = true
+           AND g.revoked_at IS NOT NULL
+           AND g.revoked_reason = $1
+           AND ($2::uuid IS NULL OR g.manager_id = $2::uuid)
+        RETURNING g.manager_id, g.{t.coluna_conta} AS conta
+        """,
+        MANAGER_DEACTIVATED_REASON,
+        manager_id,
+    )
+    return (
+        [(r["manager_id"], r["conta"]) for r in restaurados],
+        [(r["manager_id"], r["conta"]) for r in remarcados],
+    )
+
+
+async def planejar_convergencia(
+    conn: asyncpg.Connection,
+    t: TabelaDeAcesso,
+    *,
+    motivo_churn: str,
+) -> dict[str, int]:
+    """Quantas linhas `revogar_de_desativados` e `restaurar_de_reativados` (sem
+    `manager_id`) mudariam agora, sem escrever: o dry-run do job.
+
+    Mesmos predicados das duas funções, num `SELECT count` só. Os três conjuntos
+    são disjuntos (gestor desativado x não; conta ativa x inativa), então rodar as
+    duas em seguida muda exatamente essas contagens. `motivo_churn` não muda a
+    contagem (remarcar troca o motivo, não a população); é recebido para que o
+    chamador passe ao plano o MESMO par `(t, motivo_churn)` do apply.
+    """
+    _exigir_descritor(t)
+    row = await conn.fetchrow(
+        f"""
+        SELECT
+            count(*) FILTER (
+                WHERE {PREDICADO_DESATIVADO} AND g.revoked_at IS NULL
+            ) AS a_revogar,
+            count(*) FILTER (
+                WHERE NOT {PREDICADO_DESATIVADO}
+                  AND g.revoked_at IS NOT NULL AND g.revoked_reason = $1
+                  AND a.is_active = true
+            ) AS a_restaurar,
+            count(*) FILTER (
+                WHERE NOT {PREDICADO_DESATIVADO}
+                  AND g.revoked_at IS NOT NULL AND g.revoked_reason = $1
+                  AND a.is_active = false
+            ) AS a_remarcar
+          FROM {t.tabela} g
+          JOIN managers m ON m.id = g.manager_id
+          JOIN {t.inventario} a ON a.{t.coluna_conta} = g.{t.coluna_conta}
+        """,
+        MANAGER_DEACTIVATED_REASON,
+    )
+    return {
+        "a_revogar": int(row["a_revogar"]),
+        "a_restaurar": int(row["a_restaurar"]),
+        "a_remarcar": int(row["a_remarcar"]),
+    }
