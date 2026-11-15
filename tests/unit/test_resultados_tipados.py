@@ -155,7 +155,7 @@ async def test_chaves_do_resultado_bate_com_o_tipo_customer_match():
     with (
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch("src.google_ads.customer_match.audit_log.record", AsyncMock(return_value=1)),
+        patch("src.db.repositories.audit_log.record", AsyncMock(return_value=1)),
         patch(
             "src.google_ads.customer_match.build_client_for_manager",
             AsyncMock(return_value=client),

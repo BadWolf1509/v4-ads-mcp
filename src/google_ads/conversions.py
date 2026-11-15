@@ -23,7 +23,6 @@ import structlog
 
 from src.blocking import run_blocking
 from src.db import connection
-from src.db.repositories import audit_log
 from src.google_ads.access import ensure_account_access
 from src.google_ads.client import build_client_for_manager
 from src.google_ads.errors import to_friendly
@@ -33,9 +32,9 @@ from src.google_ads.request_id import (
     reset_request_id,
 )
 from src.google_ads.resultados import ResultadoUploadAplicado, ResultadoUploadErro
-from src.governance.bookkeeping import best_effort
+from src.governance.execucao import RegistroDeAudit, encerrar_execucao
 from src.governance.rate_limit import QuotaExhausted
-from src.governance.reserva import Reserva, reconciliar_cota, reservar_cota
+from src.governance.reserva import Reserva, reservar_cota
 
 log = structlog.get_logger(__name__)
 
@@ -100,7 +99,7 @@ async def run_conversion_upload(
     error_message: str | None = None
     err_text: str | None = None
     reserva: Reserva | None = None
-    status_audit = "success"  # reatribuido no finally a partir de `status`
+    status_audit = "success"  # reatribuido pelo montador do audit, no finally
 
     try:
         reserva = await reservar_cota(
@@ -183,43 +182,29 @@ async def run_conversion_upload(
         # nada pra reconciliar (F73 — reconciliar mesmo assim decrementaria o
         # contador sem contrapartida).
         actual_ops = len(payload["conversions"]) if status == "success" else 0
-        # F83: best-effort e independentes — o upload ja chegou no Google quando
-        # este bloco roda; falha de conexao aqui nao pode virar erro pro gestor.
-        if reserva is not None:
-            await reconciliar_cota(
-                pool,
-                reserva,
-                manager_id=manager_id,
-                actual_ops=actual_ops,
-                evento="conversion_upload_quota_reconcile_failed",
-                operation=operation_type,
-                customer_id=customer_id,
-            )
-        async with (
-            best_effort(
-                "conversion_upload_audit_write_failed",
-                operation=operation_type,
-                customer_id=customer_id,
-                status=status,
-            ),
-            pool.acquire() as conn,
-        ):
+
+        def _montar_audit() -> RegistroDeAudit:
+            # Roda DENTRO do best_effort de `encerrar_execucao` (P6): uma excecao
+            # neste calculo nao pode descartar o `return` de um upload ja feito.
+            #
             # Upload com 100% de recusa nao e sucesso na trilha. `status_audit` e so da
             # trilha: o `status` acima decide o envelope e segue "applied", para a
-            # resposta continuar trazendo as falhas por linha.
+            # resposta continuar trazendo as falhas por linha. `nonlocal` porque o
+            # `log.info` de sucesso, depois do `finally`, reporta o status da trilha.
             # So e MEDIDO se o Google contou todas as linhas: `results` vazio ou
             # curto da applied=0/failed=0, que nao e "nenhuma aceita".
+            nonlocal status_audit
             status_audit = status
+            erro_da_trilha = error_message
             medido = status == "success" and applied_count + failed_count == target_count
             if medido and applied_count == 0 and target_count > 0:
                 status_audit = "error"
-                error_message = f"0 de {target_count} conversões aceitas"
+                erro_da_trilha = f"0 de {target_count} conversões aceitas"
             resumo = dict(params_summary or {"conversion_count": target_count})
             if medido:
                 resumo["applied_count"] = applied_count
                 resumo["failed_count"] = failed_count
-            await audit_log.record(
-                conn,
+            return RegistroDeAudit(
                 manager_id=manager_id,
                 session_id=session_id,
                 customer_id=customer_id,
@@ -230,9 +215,24 @@ async def run_conversion_upload(
                 provider_request_id=provider_request_id,
                 status=status_audit,
                 had_effect=(applied_count > 0) if medido else None,
-                error_message=error_message,
+                error_message=erro_da_trilha,
                 duration_ms=duration_ms,
             )
+
+        # F83: best-effort e independentes — o upload ja chegou no Google quando
+        # este bloco roda; falha de conexao aqui nao pode virar erro pro gestor.
+        await encerrar_execucao(
+            pool,
+            reserva,
+            manager_id=manager_id,
+            actual_ops=actual_ops,
+            operation=operation_type,
+            customer_id=customer_id,
+            status=status,
+            evento_cota="conversion_upload_quota_reconcile_failed",
+            evento_audit="conversion_upload_audit_write_failed",
+            montar_audit=_montar_audit,
+        )
 
     if status == "error":
         return {

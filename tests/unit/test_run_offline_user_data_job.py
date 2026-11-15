@@ -102,7 +102,7 @@ def gov_mocks():
     with (
         patch("src.governance.reserva.before_call", AsyncMock()) as before,
         patch("src.governance.reserva.record_actual", AsyncMock()) as rec_actual,
-        patch("src.google_ads.customer_match.audit_log.record", AsyncMock(return_value=1)) as audit,
+        patch("src.db.repositories.audit_log.record", AsyncMock(return_value=1)) as audit,
     ):
         yield {"before_call": before, "record_actual": rec_actual, "audit": audit}
 

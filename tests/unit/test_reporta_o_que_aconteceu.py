@@ -356,7 +356,7 @@ async def _rodar_job(
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
-        patch("src.google_ads.customer_match.audit_log.record", audit),
+        patch("src.db.repositories.audit_log.record", audit),
     ):
         try:
             out = await run_offline_user_data_job(
