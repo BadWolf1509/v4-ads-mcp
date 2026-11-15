@@ -19,6 +19,7 @@ from typing import Any
 from src.google_ads.preflight import validate_existing_rsas_for_update
 from src.google_ads.rsa_textos import (
     campos_de_texto,
+    campos_sem_mudanca,
     pinos_pedidos,
     pinos_por_posicao_total,
     posicoes_dos_campos,
@@ -26,7 +27,7 @@ from src.google_ads.rsa_textos import (
 )
 from src.governance.blast_radius import classify
 from src.mcp.context import get_current
-from src.mcp.tools._mutate_common import emitir_preview, error_envelope
+from src.mcp.tools._mutate_common import emitir_preview, error_envelope, no_changes_envelope
 from src.mcp.tools._registry import register_tool
 from src.mcp.tools._rsa_textos import (
     AVISO_PINO,
@@ -173,7 +174,10 @@ def _preview_do_update(
         "CONFIRM. Pre-flight rejeita ad inexistente, type != RESPONSIVE_SEARCH_AD, "
         "ad_group REMOVED, campaign non-SEARCH, ou anuncio que e variacao de Ad "
         "Variation (gerenciado pelo Google — edite o anuncio base, que a variacao "
-        "herda em minutos). Para mudar status, use "
+        "herda em minutos). Update igual ao anuncio atual (mesmos textos e pinos na "
+        "mesma ordem, mesmas URLs e paths) sai do token e volta em `sem_mudanca`; se "
+        "todos forem iguais, responde no_changes sem token. Campo atual que nao foi "
+        "lido conta como diferente. Para mudar status, use "
         "update_ad_status. Lote PARCIAL: se o Google recusar um ad_id, os demais "
         "sao aplicados e o apply_change devolve partial_failures com o motivo por "
         "linha — mas recusar e o caso RARO: o padrao medido e o Google ACEITAR e nao "
@@ -217,23 +221,48 @@ async def update_rsa(args: dict[str, Any]) -> dict[str, Any]:
 
     # Preenchido pelo pre-flight com o que ele ja le (zero round-trip): antes->depois.
     pinos_atuais: dict[str, dict[str, list[str]] | None] = {}
+    atuais: dict[str, dict[str, Any]] = {}
     error = await validate_existing_rsas_for_update(
         manager_id=ctx.manager_id,
         session_id=ctx.session_id,
         customer_id=customer_id,
         updates=updates,
         pinos_atuais=pinos_atuais,
+        atuais=atuais,
     )
     if error:
         return error_envelope("update_rsa", error)
+
+    # S2: update igual ao anuncio atual nao e mudanca: sai do token (nao medido = diferente).
+    total_pedido = len(updates)
+    sem_mudanca: list[dict[str, Any]] = []
+    mudam: list[dict[str, Any]] = []
+    for u in updates:
+        campos = campos_sem_mudanca(u, atuais.get(u["ad_id"]))
+        if campos is None:
+            mudam.append(u)
+        else:
+            sem_mudanca.append({"ad_id": u["ad_id"], "campos": campos})
+    if not mudam:
+        return no_changes_envelope(
+            "update_rsa",
+            customer_id,
+            message=f"Os {total_pedido} RSA(s) ja estao como pedido. Nenhum token emitido.",
+            sem_mudanca=sem_mudanca,
+        )
+    updates = mudam
+    target_count = len(updates)
 
     risk = classify(operation="update_rsa", params={"target_count": target_count})
 
     params_summary = _build_params_summary(updates)
     fields_dist = params_summary["fields_updated_distribution"]
     unique_ads = params_summary["unique_ads"]
+    prefixo = (
+        f"{len(sem_mudanca)} de {total_pedido} sem mudanca (fora do token). " if sem_mudanca else ""
+    )
     summary = (
-        f"Atualizar {target_count} RSA(s) ({unique_ads} unicos). Campos: "
+        f"{prefixo}Atualizar {target_count} RSA(s) ({unique_ads} unicos). Campos: "
         f"{', '.join(f'{f}({n})' for f, n in sorted(fields_dist.items()))}."
     )
 
@@ -254,6 +283,8 @@ async def update_rsa(args: dict[str, Any]) -> dict[str, Any]:
     extra: dict[str, Any] = {}
     if params_summary["pinos_por_posicao_total"]:
         extra["aviso_pinos"] = AVISO_PINO
+    if sem_mudanca:
+        extra["sem_mudanca"] = sem_mudanca
 
     return await emitir_preview(
         ctx,
