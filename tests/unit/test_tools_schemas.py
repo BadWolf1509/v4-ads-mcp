@@ -247,6 +247,7 @@ def test_all_phase_2_tools_registered():
         "update_ad_group_status",
         # ad mutations
         "update_ad_status",
+        "remove_ad",  # S3
         # keyword mutations
         "update_keyword_bid",
         "update_keyword_status",
@@ -358,6 +359,7 @@ def test_no_unexpected_tools():
         "update_ad_schedule",  # ad_schedule Task 7
         "get_experiments",  # G1 backlog trafego 2026-11-14
         "update_recommendation_subscription",  # N3 (backlog de trafego 14/11)
+        "remove_ad",  # S3 (smoke de 14/11)
     }
     actual = {t.name for t in all_tools()}
     unexpected = actual - expected

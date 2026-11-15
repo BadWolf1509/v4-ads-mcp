@@ -251,6 +251,16 @@ def classify(*, operation: str, params: dict[str, Any]) -> RiskClassification:
             f"remove_asset_link ({target_count} vínculo(s)) — sempre confirma (spec §7.1 remove)",
         )
 
+    # Remover anuncio (S3) — sempre CONFIRM, qualquer contagem. Diferente do PAUSED do
+    # `update_ad_status` (reversivel, auto ate 5): anuncio REMOVED nao volta a ENABLED.
+    # Fallback de unknown ja daria CONFIRM, mas a razao ficaria ilegivel pro gestor.
+    if operation == "remove_ad":
+        return RiskClassification(
+            RiskLevel.CONFIRM,
+            f"remove_ad ({target_count} anuncio(s)) — remocao irreversivel, sempre "
+            "confirma (spec §7.1 remove)",
+        )
+
     # Recommendations — o veredito depende do TIPO da recomendacao (C2).
     #
     # "Sugestao do Google" nao e uma categoria de risco: `CAMPAIGN_BUDGET` medida

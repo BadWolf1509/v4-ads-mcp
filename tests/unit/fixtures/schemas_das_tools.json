@@ -262,7 +262,7 @@
       "anthropic/alwaysLoad": true,
       "com.v4company/bucket": "always"
     },
-    "description": "[CORE] Confirma e aplica uma mutacao previamente previewed via dry-run. Token expira em 10 minutos. Cada token e consumivel apenas 1 vez e amarrado a sessao MCP que o gerou. A RESPOSTA DIZ sob qual regime rodou: `partial_failure: true` traz `partial_failures` (motivo por linha) e `failed_count` medido; `partial_failure: false` traz `partial_failures` VAZIA e `failed_count: null` — null significa NAO MEDIDO, nao 'nenhuma falhou' (F182). O regime e decisao da tool de origem, nao um parametro seu. `partial_failures[].error` tambem pode vir `null`: a linha FALHOU (a contagem e medida, via WhichOneof/heuristica), so o MOTIVO que nao foi lido — nao e 'sem motivo', e 'nao consegui ler'. `motivos_medidos` (bool; `null` quando `partial_failure: false`) resume isso pra resposta inteira de uma vez: `false` explica todo `error: null` sem exigir conferencia linha a linha. ATENCAO (F184): `status: success` numa linha NAO prova que ela mudou algo — o Google aceita operacao e nao a executa. Cada linha traz `efeito`: 'mudou', 'sem_efeito' (passou sem mudar nada), ou null (desconhecido, ou a linha falhou). Para 'aplicou de verdade', leia `efeito` e `changed_count`. NUNCA leia `failed_count` — ele mede ACEITACAO, nao execucao: em tres modos de falha medidos em producao (campanha removida, URL invalida, anuncio apagado entre o preview e o apply) o Google aceitou tudo, e `failed_count` veio 0 nos tres. Zero ali costuma significar 'ele nao reportou', nao 'nada falhou', e o `partial_failure: true` ao lado so diz que a pergunta foi feita, nao que houve resposta. `applied_count` tem UMA leitura legitima, a subtracao: `applied_count` - `changed_count` = quantas linhas passaram sem efeito. Isolado ele afirma aceitacao como se fosse execucao, e engana igual ao `failed_count`. Em create_rsa, update_rsa e update_recommendation_subscription cada linha traz tambem `conferencia` ({campo, pedido, relido, motivo}; null = nada foi comparado): o veredito da RELEITURA depois do write, com `motivo` 'confere' ou a divergencia e suas causas possiveis. `efeito` e `changed_count` continuam sendo o ACK do Google, o mesmo que o audit grava. Em RSA o anuncio FOI gravado mesmo com conferencia divergente — veja estado_revisao; nao recrie.",
+    "description": "[CORE] Confirma e aplica uma mutacao previamente previewed via dry-run. Token expira em 10 minutos. Cada token e consumivel apenas 1 vez e amarrado a sessao MCP que o gerou. A RESPOSTA DIZ sob qual regime rodou: `partial_failure: true` traz `partial_failures` (motivo por linha) e `failed_count` medido; `partial_failure: false` traz `partial_failures` VAZIA e `failed_count: null` — null significa NAO MEDIDO, nao 'nenhuma falhou' (F182). O regime e decisao da tool de origem, nao um parametro seu. `partial_failures[].error` tambem pode vir `null`: a linha FALHOU (a contagem e medida, via WhichOneof/heuristica), so o MOTIVO que nao foi lido — nao e 'sem motivo', e 'nao consegui ler'. `motivos_medidos` (bool; `null` quando `partial_failure: false`) resume isso pra resposta inteira de uma vez: `false` explica todo `error: null` sem exigir conferencia linha a linha. ATENCAO (F184): `status: success` numa linha NAO prova que ela mudou algo — o Google aceita operacao e nao a executa. Cada linha traz `efeito`: 'mudou', 'sem_efeito' (passou sem mudar nada), ou null (desconhecido, ou a linha falhou). Para 'aplicou de verdade', leia `efeito` e `changed_count`. NUNCA leia `failed_count` — ele mede ACEITACAO, nao execucao: em tres modos de falha medidos em producao (campanha removida, URL invalida, anuncio apagado entre o preview e o apply) o Google aceitou tudo, e `failed_count` veio 0 nos tres. Zero ali costuma significar 'ele nao reportou', nao 'nada falhou', e o `partial_failure: true` ao lado so diz que a pergunta foi feita, nao que houve resposta. `applied_count` tem UMA leitura legitima, a subtracao: `applied_count` - `changed_count` = quantas linhas passaram sem efeito. Isolado ele afirma aceitacao como se fosse execucao, e engana igual ao `failed_count`. Em create_rsa, update_rsa, update_recommendation_subscription e remove_ad cada linha traz tambem `conferencia` ({campo, pedido, relido, motivo}; null = nada foi comparado): o veredito da RELEITURA depois do write, com `motivo` 'confere' ou a divergencia e suas causas possiveis. `efeito` e `changed_count` continuam sendo o ACK do Google, o mesmo que o audit grava. Em RSA o anuncio FOI gravado mesmo com conferencia divergente — veja estado_revisao; nao recrie.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -3367,6 +3367,38 @@
     "_meta": {
       "com.v4company/bucket": "defer"
     },
+    "description": "[DEFER] Remove (REMOVED) ate 20 anuncios pelo ad_id. A remocao e irreversivel: anuncio REMOVED nao volta a ENABLED; para voltar, crie outro. Para so pausar, use update_ad_status. Recusa ad_id inexistente, anuncio em mais de um grupo e variacao de experimento (AD_VARIATIONS, gerenciada pelo Google — aponta o anuncio base). Anuncio que ja esta REMOVED sai do lote; se todos estao, responde no_changes sem token. Senao, SEMPRE devolve preview (grupo, campanha, status atual e aviso quando o lote tira o ultimo anuncio ENABLED do grupo) com confirmation_token. Aplicar via apply_change, que rele o status de cada anuncio; o veredito vai em `conferencia` na linha, e `efeito` segue sendo o ACK do Google. Anuncio que muda de estado entre o preview e o apply volta na linha do apply_change (partial failure ou `conferencia`); nada e refeito as cegas.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ad_ids": {
+          "description": "ad_id dos anuncios a remover (ad_group_ad.ad.id). O grupo de cada um e lido pela tool.",
+          "items": {
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "customer_id": {
+          "pattern": "^[0-9]{10}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "ad_ids"
+      ],
+      "type": "object"
+    },
+    "name": "remove_ad"
+  },
+  {
+    "_meta": {
+      "com.v4company/bucket": "defer"
+    },
     "description": "[DEFER] Desvincula assets: remove o vínculo (customer_asset / campaign_asset / ad_group_asset) e **não remove o asset** em si — asset órfão é inerte, e a entidade pode estar linkada onde a varredura não alcançou. Recebe `level` + `resource_name` exatamente como o `get_assets` devolve em cada linha; use aquela tool para descobrir o que remover, inclusive na camada de conta, que não aparece para quem olha só campanha. Sempre CONFIRM: devolve preview com confirmation_token, aplique via apply_change. Idempotente: vínculo já removido volta graciosamente via partial_failure. **Para confirmar a remoção, cheque `status == REMOVED` no registro alvo** — contagem de linhas NÃO distingue sucesso de falha, porque o vínculo removido continua na tabela.",
     "inputSchema": {
       "additionalProperties": false,
@@ -3748,7 +3780,7 @@
     "_meta": {
       "com.v4company/bucket": "defer"
     },
-    "description": "[DEFER] Pausa ou ativa um ou mais anuncios. Cada anuncio e identificado por (ad_group_id, ad_id). Ate 5 anuncios auto-aplica; >5 retorna preview com confirmation_token. Para REMOVER anuncios, use Google Ads UI (tool dedicada `remove_ad` pode ser adicionada em sprint futura se demanda real surgir).",
+    "description": "[DEFER] Pausa ou ativa um ou mais anuncios. Cada anuncio e identificado por (ad_group_id, ad_id). Ate 5 anuncios auto-aplica; >5 retorna preview com confirmation_token. Para REMOVER anuncios, use remove_ad (sempre com token, irreversivel).",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {

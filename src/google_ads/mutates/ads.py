@@ -53,6 +53,24 @@ def build_update_ad_status(client: Any, customer_id: str, payload: dict[str, Any
     ]
 
 
+@register_builder("remove_ad")
+def build_remove_ad(client: Any, customer_id: str, payload: dict[str, Any]) -> list[Any]:
+    """payload: {ads: [{ad_group_id: str, ad_id: str}]} (S3).
+
+    `ad_group_ad_operation.remove` = resource_name do AdGroupAd; sem `update_mask` e sem
+    tocar `create`/`update`. Remocao e irreversivel: a tool `remove_ad` so chega aqui
+    pelo `apply_change`, com token (CONFIRM fixo no `blast_radius`).
+    """
+    alvo = ALVOS_DE_STATUS["ad"]
+    caminho = getattr(client.get_service(alvo.servico), alvo.caminho)
+    operations: list[Any] = []
+    for ad in payload["ads"]:
+        op = client.get_type("MutateOperation")
+        op.ad_group_ad_operation.remove = caminho(customer_id, ad["ad_group_id"], ad["ad_id"])
+        operations.append(op)
+    return operations
+
+
 @register_builder("create_rsa")
 def build_create_rsa(client: Any, customer_id: str, payload: dict[str, Any]) -> list[Any]:
     """payload: {rsas: [{ad_group_id, headlines[], descriptions[], final_urls[],

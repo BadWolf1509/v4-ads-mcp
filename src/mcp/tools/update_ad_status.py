@@ -42,8 +42,8 @@ _SCHEMA: dict[str, Any] = {
     description=(
         "[DEFER] Pausa ou ativa um ou mais anuncios. Cada anuncio e identificado por "
         "(ad_group_id, ad_id). Ate 5 anuncios auto-aplica; >5 retorna preview "
-        "com confirmation_token. Para REMOVER anuncios, use Google Ads UI (tool "
-        "dedicada `remove_ad` pode ser adicionada em sprint futura se demanda real surgir)."
+        "com confirmation_token. Para REMOVER anuncios, use remove_ad (sempre com "
+        "token, irreversivel)."
     ),
     input_schema=_SCHEMA,
     bucket="defer",

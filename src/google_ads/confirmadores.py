@@ -60,6 +60,7 @@ from src.google_ads.queries.recommendations import (
     recommendation_detail_query,
     recommendation_fingerprint,
 )
+from src.google_ads.queries.remover_anuncio import anuncios_query, parse_anuncio_row
 from src.google_ads.queries.rsa_estado import (
     ad_id_de_resource_name,
     parse_rsa_estado_row,
@@ -984,6 +985,89 @@ class _AssinaturaRecomendacao(_Padrao):
         return resposta
 
 
+class _RemocaoAnuncio(_Padrao):
+    """O `_Padrao` mais a releitura do status de cada anuncio removido (S3).
+
+    Mesmo contrato do `_AssinaturaRecomendacao`: o ACK do Google nao basta (F184), a
+    releitura diz o status de cada anuncio e o veredito vai em `conferencia` na linha
+    do `partial_failures` — `efeito`/`changed_count` seguem sendo o ACK (decisao "Campo
+    proprio"). Releitura que falha vira `confirmation_error` e o sucesso fica de pe
+    (F83/F91). A linha do relatorio casa com o anuncio pelo `index`, que e a posicao em
+    `payload["ads"]` (uma operacao por anuncio, na ordem do builder).
+    """
+
+    async def pre_check(self, p: Pendente, portas: Portas) -> dict[str, Any] | None:
+        # Payload ruim levanta AQUI, antes da escrita: `anuncios_query` faz `int()` de
+        # cada id (F87), e o `ad_group_id` e lido por chave.
+        ads = p.payload["ads"]
+        _ = (anuncios_query([a["ad_id"] for a in ads]), [int(a["ad_group_id"]) for a in ads])
+        return None
+
+    async def pos_check(
+        self, p: Pendente, portas: Portas, resultado: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        base = await super().pos_check(p, portas, resultado)
+        ads: list[dict[str, Any]] = p.payload["ads"]
+        # Nao levanta: o `pre_check` ja montou a mesma query antes da escrita.
+        query = anuncios_query([a["ad_id"] for a in ads])
+        relidos: dict[tuple[str, str], str] | None = None
+        confirmation_error: str | None = None
+        try:
+            rows = await portas.run_report(
+                manager_id=p.manager_id,
+                session_id=p.session_id,
+                customer_id=p.customer_id,
+                query=query,
+                row_formatter=parse_anuncio_row,
+                operation_name=f"{p.operation_type}_confirm",
+            )
+            relidos = {(r["ad_group_id"], r["ad_id"]): r["status"] for r in rows}
+        except Exception as e:  # noqa: BLE001 — I/O apos escrita ja aplicada: nunca transformar sucesso em erro (F83/F91)
+            portas.log.warning(
+                "remove_ad_confirm_failed",
+                customer_id=p.customer_id,
+                error=str(e),
+                error_type=e.__class__.__name__,
+            )
+            confirmation_error = (
+                f"A mutacao foi aplicada (veja applied_count/provider_request_id), mas a "
+                f"releitura do status dos anuncios falhou ({e.__class__.__name__}). "
+                f"Confira com run_gaql: {query}"
+            )
+
+        # So o status MEDIDO vira conferencia. Linha ausente na releitura, ou status
+        # UNSPECIFIED (campo omitido) / UNKNOWN (valor que o SDK nao conhece), e "nao
+        # sei" (`conferencia: None`). Nenhum ramo toca em `efeito`/`changed_count`.
+        conferencias: dict[int, dict[str, Any]] = {}
+        status_resultante: list[dict[str, Any]] = []
+        for i, ad in enumerate(ads):
+            relido = None if relidos is None else relidos.get((ad["ad_group_id"], ad["ad_id"]))
+            if relido in ("UNSPECIFIED", "UNKNOWN"):
+                relido = None
+            status_resultante.append(
+                {"ad_id": ad["ad_id"], "ad_group_id": ad["ad_group_id"], "status": relido}
+            )
+            if relido is not None:
+                conferencias[i] = _conferencia("status", "REMOVED", relido)
+        # O log de divergencia quer dizer "o Google aceitou e nao executou" (F184): linha
+        # que FALHOU e continua ENABLED e falha parcial legitima, nao divergencia. Por isso
+        # so contam as linhas com `status == "success"` — as mesmas que o
+        # `_com_conferencia` deixa com conferencia na resposta.
+        linhas = base.get("partial_failures", [])
+        sucesso = {pf["index"] for pf in linhas if pf.get("status") == "success" and "index" in pf}
+        if any(c["motivo"] != MOTIVO_CONFERE for i, c in conferencias.items() if i in sucesso):
+            _avisar_divergencia(p, portas, "status")
+        resposta: dict[str, Any] = {
+            **base,
+            "partial_failures": _com_conferencia(linhas, conferencias),
+        }
+        resposta.update(
+            status_resultante=status_resultante if relidos is not None else None,
+            confirmation_error=confirmation_error,
+        )
+        return resposta
+
+
 def _partial_failure(p: Pendente) -> bool:
     return bool(p.payload.get("__partial_failure__", False))
 
@@ -996,6 +1080,7 @@ CONFIRMADORES: dict[str, Confirmador] = {
     "create_rsa": _RSA(),
     "update_rsa": _RSA(),
     "update_recommendation_subscription": _AssinaturaRecomendacao(),
+    "remove_ad": _RemocaoAnuncio(),
 }
 
 # O padrao nao tem chave: e o que cobre todo `operation_type` fora do registro.
