@@ -4,15 +4,12 @@ no WHERE, 0 linhas com data no SELECT). Analisa so a lista entre SELECT e FROM."
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
 
 import pytest
 
 from src.google_ads.gaql_lint import AVISO_N1, AVISO_SELECT_ILEGIVEL, avisos_gaql
-from src.mcp.context import McpRequestContext, clear_current, set_current
 
 
 def test_data_no_select_avisa() -> None:
@@ -63,13 +60,6 @@ def test_copy_fixa_do_aviso() -> None:
 # ---------- run_gaql: a chave `avisos` existe sempre ----------
 
 
-@pytest.fixture
-def _ctx() -> Iterator[None]:
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
-
-
 async def _run(query: str, **args: Any) -> dict[str, Any]:
     from src.mcp.tools.run_gaql import run_gaql
 
@@ -79,14 +69,14 @@ async def _run(query: str, **args: Any) -> dict[str, Any]:
         return await run_gaql({"customer_id": "7862230676", "query": query, **args})
 
 
-@pytest.mark.usefixtures("_ctx")
+@pytest.mark.usefixtures("ctx_mcp")
 @pytest.mark.parametrize("extra", [{}, {"compact": True}, {"aggregate_by": ["a.b"]}])
 async def test_run_gaql_avisa_data_no_select_em_todos_os_modos(extra: dict[str, Any]) -> None:
     out = await _run("SELECT campaign.id, segments.date FROM campaign", **extra)
     assert out["avisos"] == [AVISO_N1]
 
 
-@pytest.mark.usefixtures("_ctx")
+@pytest.mark.usefixtures("ctx_mcp")
 @pytest.mark.parametrize("extra", [{}, {"compact": True}, {"aggregate_by": ["a.b"]}])
 async def test_run_gaql_sem_data_traz_avisos_vazio(extra: dict[str, Any]) -> None:
     out = await _run("SELECT campaign.id FROM campaign", **extra)
@@ -137,7 +127,7 @@ async def _validar(query: str, search: MagicMock) -> dict[str, Any]:
         return await validate_gaql({"customer_id": "1234567890", "query": query})
 
 
-@pytest.mark.usefixtures("_ctx")
+@pytest.mark.usefixtures("ctx_mcp")
 async def test_validate_valido_com_data_no_select_avisa() -> None:
     out = await _validar(
         "SELECT campaign.id, segments.date FROM campaign", MagicMock(return_value=iter([]))
@@ -146,14 +136,14 @@ async def test_validate_valido_com_data_no_select_avisa() -> None:
     assert out["avisos"] == [AVISO_N1]
 
 
-@pytest.mark.usefixtures("_ctx")
+@pytest.mark.usefixtures("ctx_mcp")
 async def test_validate_valido_sem_data_traz_avisos_vazio() -> None:
     out = await _validar("SELECT campaign.id FROM campaign", MagicMock(return_value=iter([])))
     assert out["valid"] is True
     assert out["avisos"] == []
 
 
-@pytest.mark.usefixtures("_ctx")
+@pytest.mark.usefixtures("ctx_mcp")
 async def test_validate_invalido_tambem_traz_avisos() -> None:
     out = await _validar(
         "SELECT campaign.id, segments.date FROM campaign",

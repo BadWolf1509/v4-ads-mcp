@@ -6,15 +6,11 @@ Cada teste nomeia o achado (I1, M1...) do `revisao-final.md` da frente.
 from __future__ import annotations
 
 import unicodedata
-from collections.abc import Iterator
 from typing import Any
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 from google.protobuf.json_format import MessageToDict
-
-from src.mcp.context import McpRequestContext, clear_current, set_current
 
 # --- negativas.py --------------------------------------------------------------------------
 
@@ -41,13 +37,6 @@ def test_m6_match_type_desconhecido_nao_derruba() -> None:
 _MOD = "src.mcp.tools.add_negative_keywords"
 
 
-@pytest.fixture
-def _ctx() -> Iterator[None]:
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
-
-
 async def _ank(
     existentes: list[dict[str, Any]] | Exception, keywords: list[dict[str, str]], **extra: Any
 ) -> tuple[dict[str, Any], AsyncMock]:
@@ -69,7 +58,7 @@ async def _ank(
     return out, rm
 
 
-@pytest.mark.usefixtures("_ctx")
+@pytest.mark.usefixtures("ctx_mcp")
 @pytest.mark.parametrize("ordem", [("PHRASE", "BROAD"), ("BROAD", "PHRASE")])
 async def test_m3_cobertura_no_pedido_nao_depende_da_ordem(ordem: tuple[str, str]) -> None:
     out, _ = await _ank([], [{"text": "x", "match_type": t} for t in ordem])
@@ -79,14 +68,14 @@ async def test_m3_cobertura_no_pedido_nao_depende_da_ordem(ordem: tuple[str, str
     ]
 
 
-@pytest.mark.usefixtures("_ctx")
+@pytest.mark.usefixtures("ctx_mcp")
 async def test_m4_aviso_de_acento_nao_duplica() -> None:
     kw = {"text": "construção", "match_type": "BROAD"}
     out, _ = await _ank([], [kw, dict(kw)])
     assert len([a for a in out["avisos"] if a["tipo"] == "sem_variante_sem_acento"]) == 1
 
 
-@pytest.mark.usefixtures("_ctx")
+@pytest.mark.usefixtures("ctx_mcp")
 async def test_m5_ja_existia_diz_a_origem() -> None:
     e = {"criterion_id": "9", "text": "brita", "match_type": "BROAD"}
     out, _ = await _ank(
@@ -103,7 +92,7 @@ async def test_m5_ja_existia_diz_a_origem() -> None:
     ]
 
 
-@pytest.mark.usefixtures("_ctx")
+@pytest.mark.usefixtures("ctx_mcp")
 async def test_m7_erro_amigavel_do_google_grava_com_a_mensagem() -> None:
     from src.google_ads.errors import GoogleAdsFriendlyError
 
@@ -145,13 +134,13 @@ def _n(termo: str) -> dict[str, str]:
     return {"search_term": termo, "match_type": "PHRASE", "scope": "campaign", "scope_id": "1"}
 
 
-@pytest.mark.usefixtures("_ctx")
+@pytest.mark.usefixtures("ctx_mcp")
 async def test_m4_search_terms_aviso_nao_duplica() -> None:
     out = await _st([_n("construção"), _n("construção")])
     assert len(out["avisos"]) == 1
 
 
-@pytest.mark.usefixtures("_ctx")
+@pytest.mark.usefixtures("ctx_mcp")
 async def test_m10_blast_summary_separa_as_variantes() -> None:
     out = await _st([_n("construção")], incluir_variante_sem_acento=True)
     assert "1 negativa(s) derivada(s) do search_terms_report" in out["blast_summary"]
@@ -217,7 +206,7 @@ def test_m9_description_diz_amostra_de_linhas() -> None:
 # --- re-revisão da rodada (05/10) ----------------------------------------------------------
 
 
-@pytest.mark.usefixtures("_ctx")
+@pytest.mark.usefixtures("ctx_mcp")
 async def test_n1_variante_do_opt_in_entra_na_cobertura() -> None:
     out, _ = await _ank(
         [],

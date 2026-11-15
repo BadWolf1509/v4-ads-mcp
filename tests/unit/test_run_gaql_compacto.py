@@ -6,16 +6,13 @@ o `resource_name` implícito que se quer tirar só existe na mensagem real.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from typing import Any
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 from google.protobuf.json_format import MessageToDict
 
 from src.google_ads.gaql_compacto import campos_do_select, linha_compacta
-from src.mcp.context import McpRequestContext, clear_current, set_current
 
 _Q = (
     "SELECT campaign.id, campaign_criterion.criterion_id, campaign_criterion.keyword.text "
@@ -68,13 +65,6 @@ def test_select_ilegivel_nao_tira_nada() -> None:
     assert plana["campaign_criterion.resource_name"] == "customers/1/campaignCriteria/2~3"
 
 
-@pytest.fixture
-def _ctx() -> Iterator[None]:
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
-
-
 async def _rodar(**args: Any) -> dict[str, Any]:
     from src.mcp.tools.run_gaql import run_gaql
 
@@ -83,7 +73,7 @@ async def _rodar(**args: Any) -> dict[str, Any]:
         return await run_gaql({"customer_id": "7862230676", "query": _Q, **args})
 
 
-@pytest.mark.usefixtures("_ctx")
+@pytest.mark.usefixtures("ctx_mcp")
 async def test_a_tool_compacta_e_conta_as_linhas_de_antes_do_corte() -> None:
     out = await _rodar(compact=True, limit=2)
     assert out["row_count"] == 3 and out["returned"] == 2 and out["truncated"] is True
@@ -94,7 +84,7 @@ async def test_a_tool_compacta_e_conta_as_linhas_de_antes_do_corte() -> None:
     }
 
 
-@pytest.mark.usefixtures("_ctx")
+@pytest.mark.usefixtures("ctx_mcp")
 async def test_sem_compact_a_resposta_nao_muda() -> None:
     out = await _rodar()
     assert out["rows"][0] == _linha_real()
