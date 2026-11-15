@@ -15,8 +15,9 @@ Todos sao reads pre-operacao, seguros de re-executar — o contrato exato de
 
 A tecnica de cada teste: a 1a chamada levanta o erro de producao, a 2a devolve
 o resultado normal. Sem o wrap, o erro de conexao escapa; com ele, o resultado
-da 2a tentativa e o que sai. E o mesmo `_FakePool` de `test_db_connection.py`,
-que conta acquires pra provar que a conexao nova e de fato NOVA.
+da 2a tentativa e o que sai. O `_FakePool` daqui faz o que o `PoolSequencial`
+de `fixtures/fake_pool.py` faz (conta acquires pra provar que a conexao nova e
+de fato NOVA), mas cria as proprias conexoes a partir de uma contagem.
 """
 
 from __future__ import annotations

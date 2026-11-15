@@ -13,31 +13,7 @@ import asyncpg
 import pytest
 
 from src.db import connection
-
-
-class _FakeAcquire:
-    def __init__(self, conn: object) -> None:
-        self._conn = conn
-
-    async def __aenter__(self) -> object:
-        return self._conn
-
-    async def __aexit__(self, *exc: object) -> bool:
-        return False
-
-
-class _FakePool:
-    """Minimal stand-in for asyncpg.Pool: hands out connections in sequence and
-    counts acquisitions so a test can assert a *fresh* acquire happened on retry."""
-
-    def __init__(self, conns: list[object]) -> None:
-        self._conns = conns
-        self.acquires = 0
-
-    def acquire(self) -> _FakeAcquire:
-        conn = self._conns[self.acquires]
-        self.acquires += 1
-        return _FakeAcquire(conn)
+from tests.unit.fixtures.fake_pool import PoolSequencial
 
 
 async def test_run_with_reconnect_recovers_from_dropped_connection(
@@ -45,7 +21,7 @@ async def test_run_with_reconnect_recovers_from_dropped_connection(
 ) -> None:
     """A dropped pooled connection (ConnectionDoesNotExistError — the exact
     production failure) is retried on a fresh acquire, and the op then succeeds."""
-    pool = _FakePool([object(), object()])
+    pool = PoolSequencial([object(), object()])
     monkeypatch.setattr(connection, "_pool", pool)
 
     calls = {"n": 0}
@@ -69,7 +45,7 @@ async def test_run_with_reconnect_does_not_retry_application_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Non-connection errors (e.g. an auth rejection) propagate immediately — no retry."""
-    pool = _FakePool([object(), object()])
+    pool = PoolSequencial([object(), object()])
     monkeypatch.setattr(connection, "_pool", pool)
 
     calls = {"n": 0}
@@ -89,7 +65,7 @@ async def test_run_with_reconnect_reraises_after_exhausting_attempts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """If every attempt hits a reset connection, the last error is re-raised (no infinite loop)."""
-    pool = _FakePool([object(), object(), object()])
+    pool = PoolSequencial([object(), object(), object()])
     monkeypatch.setattr(connection, "_pool", pool)
 
     async def op(conn: object) -> str:

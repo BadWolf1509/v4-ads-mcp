@@ -15,23 +15,9 @@ import pytest
 from src.google_ads.access import AccountAccessDeniedError
 from src.google_ads.errors import GoogleAdsFriendlyError
 from src.governance.rate_limit import QuotaExhausted
+from tests.unit.fixtures.fake_pool import pool_com_transacao
 
 _MOD = "src.google_ads.keyword_planning"
-
-
-def _pool_with_transactable_conn() -> MagicMock:
-    fake_conn = AsyncMock()
-    fake_txn_cm = MagicMock()
-    fake_txn_cm.__aenter__ = AsyncMock(return_value=None)
-    fake_txn_cm.__aexit__ = AsyncMock(return_value=None)
-    fake_conn.transaction = MagicMock(return_value=fake_txn_cm)
-
-    mock_pool = MagicMock()
-    mock_acquire_cm = MagicMock()
-    mock_acquire_cm.__aenter__ = AsyncMock(return_value=fake_conn)
-    mock_acquire_cm.__aexit__ = AsyncMock(return_value=None)
-    mock_pool.acquire.return_value = mock_acquire_cm
-    return mock_pool
 
 
 @pytest.fixture
@@ -53,7 +39,7 @@ def gov():
         patch("src.governance.reserva.record_actual", AsyncMock()) as rec_actual,
         patch(f"{_MOD}.audit_log.record", AsyncMock(return_value=1)) as audit,
         patch(f"{_MOD}.ensure_account_access", AsyncMock()) as gate,
-        patch(f"{_MOD}.connection.get_pool", return_value=_pool_with_transactable_conn()),
+        patch(f"{_MOD}.connection.get_pool", return_value=pool_com_transacao()),
         patch(f"{_MOD}.build_client_for_manager", AsyncMock(return_value=MagicMock())) as build,
     ):
         yield {

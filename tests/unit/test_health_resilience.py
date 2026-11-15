@@ -6,28 +6,7 @@ import pytest
 from httpx import AsyncClient
 
 from src.db import connection
-
-
-class _FakeAcquire:
-    def __init__(self, conn: object) -> None:
-        self._conn = conn
-
-    async def __aenter__(self) -> object:
-        return self._conn
-
-    async def __aexit__(self, *exc: object) -> bool:
-        return False
-
-
-class _FakePool:
-    def __init__(self, conns: list[object]) -> None:
-        self._conns = conns
-        self.acquires = 0
-
-    def acquire(self) -> _FakeAcquire:
-        conn = self._conns[self.acquires]
-        self.acquires += 1
-        return _FakeAcquire(conn)
+from tests.unit.fixtures.fake_pool import PoolSequencial
 
 
 class _StaleConnection:
@@ -55,7 +34,7 @@ async def test_health_deep_recovers_from_stale_pooled_connection(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    pool = _FakePool([_StaleConnection(), _HealthyConnection()])
+    pool = PoolSequencial([_StaleConnection(), _HealthyConnection()])
     monkeypatch.setattr(connection, "_pool", pool)
 
     response = await client.get("/health?deep=1")
@@ -69,7 +48,7 @@ async def test_health_deep_stays_degraded_when_retry_also_fails(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    pool = _FakePool([_StaleConnection(), _StaleConnection()])
+    pool = PoolSequencial([_StaleConnection(), _StaleConnection()])
     monkeypatch.setattr(connection, "_pool", pool)
 
     response = await client.get("/health?deep=1")
@@ -84,7 +63,7 @@ async def test_health_deep_times_out_before_external_probe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     app_module = sys.modules["src.app"]
-    pool = _FakePool([_SlowConnection()])
+    pool = PoolSequencial([_SlowConnection()])
     monkeypatch.setattr(connection, "_pool", pool)
     monkeypatch.setattr(app_module, "_HEALTH_DB_TIMEOUT_SECONDS", 0.01)
 

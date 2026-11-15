@@ -8,6 +8,8 @@ from uuid import uuid4
 
 import pytest
 
+from tests.unit.fixtures.fake_pool import pool_com_transacao
+
 
 def _fake_client_returning_rows(rows: list[dict]):
     """Mock SDK client whose search_stream yields one batch with the given rows."""
@@ -18,28 +20,6 @@ def _fake_client_returning_rows(rows: list[dict]):
     client.get_service = MagicMock(return_value=fake_service)
     client.get_type = MagicMock(return_value=MagicMock())
     return client
-
-
-def _pool_with_transactable_conn() -> MagicMock:
-    """Mock pool whose acquire()'d conn has a real conn.transaction() async CM.
-
-    F73: run_report now wraps both before_call reservations in an external
-    `async with pool.acquire() as conn, conn.transaction():` block, so any
-    mock conn needs `.transaction()` to return a usable async context manager
-    (not a bare MagicMock, which lacks __aenter__/__aexit__).
-    """
-    fake_conn = AsyncMock()
-    fake_txn_cm = MagicMock()
-    fake_txn_cm.__aenter__ = AsyncMock(return_value=None)
-    fake_txn_cm.__aexit__ = AsyncMock(return_value=None)
-    fake_conn.transaction = MagicMock(return_value=fake_txn_cm)
-
-    mock_pool = MagicMock()
-    mock_acquire_cm = MagicMock()
-    mock_acquire_cm.__aenter__ = AsyncMock(return_value=fake_conn)
-    mock_acquire_cm.__aexit__ = AsyncMock(return_value=None)
-    mock_pool.acquire.return_value = mock_acquire_cm
-    return mock_pool
 
 
 @pytest.mark.asyncio
@@ -57,7 +37,7 @@ async def test_run_report_uses_custom_params_summary(monkeypatch):
 
     audit_mock = AsyncMock()
     with (
-        patch.object(reports.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(reports.connection, "get_pool", return_value=pool_com_transacao()),
         patch.object(reports, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
@@ -91,7 +71,7 @@ async def test_run_report_default_params_summary_is_none(monkeypatch):
 
     audit_mock = AsyncMock()
     with (
-        patch.object(reports.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(reports.connection, "get_pool", return_value=pool_com_transacao()),
         patch.object(reports, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),

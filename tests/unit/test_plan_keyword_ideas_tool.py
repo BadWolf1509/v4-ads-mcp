@@ -354,7 +354,7 @@ def test_varias_cidades_sem_search_term_nao_resolve_tudo_para_a_primeira() -> No
 @pytest.mark.asyncio
 async def test_cidade_nao_resolvida_audita_erro_e_nao_cobra_quota() -> None:
     """Executor REAL: a falha de cidade e erro de auditoria, sem consumo de quota."""
-    from tests.unit.test_run_keyword_planning import _pool_with_transactable_conn
+    from tests.unit.fixtures.fake_pool import pool_com_transacao
 
     mod = "src.google_ads.keyword_planning"
     falso = _Falso(sugestoes=[_GEO[0]])
@@ -363,7 +363,7 @@ async def test_cidade_nao_resolvida_audita_erro_e_nao_cobra_quota() -> None:
         patch("src.governance.reserva.record_actual", AsyncMock()) as rec,
         patch(f"{mod}.audit_log.record", AsyncMock(return_value=1)) as audit,
         patch(f"{mod}.ensure_account_access", AsyncMock()),
-        patch(f"{mod}.connection.get_pool", return_value=_pool_with_transactable_conn()),
+        patch(f"{mod}.connection.get_pool", return_value=pool_com_transacao()),
         patch(f"{mod}.build_client_for_manager", AsyncMock(return_value=falso)),
     ):
         resp = await modulo.plan_keyword_ideas(
@@ -428,7 +428,7 @@ def test_schema_limita_tamanho_de_semente_e_url() -> None:
 
 @pytest.mark.asyncio
 async def test_audit_recebe_target_count_e_falhas_parciais() -> None:
-    from tests.unit.test_run_keyword_planning import _pool_with_transactable_conn
+    from tests.unit.fixtures.fake_pool import pool_com_transacao
 
     def ideias(req: Any) -> list[Any]:
         if req.url_seed.url == "https://rival.com.br":
@@ -441,7 +441,7 @@ async def test_audit_recebe_target_count_e_falhas_parciais() -> None:
         patch("src.governance.reserva.record_actual", AsyncMock()),
         patch(f"{mod}.audit_log.record", AsyncMock(return_value=1)) as audit,
         patch(f"{mod}.ensure_account_access", AsyncMock()),
-        patch(f"{mod}.connection.get_pool", return_value=_pool_with_transactable_conn()),
+        patch(f"{mod}.connection.get_pool", return_value=pool_com_transacao()),
         patch(f"{mod}.build_client_for_manager", AsyncMock(return_value=_Falso(ideias))),
     ):
         await modulo.plan_keyword_ideas(

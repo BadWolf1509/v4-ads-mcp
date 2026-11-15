@@ -16,21 +16,7 @@ from uuid import uuid4
 import pytest
 
 from src.governance.rate_limit import QuotaExhausted
-
-
-def _pool_with_transactable_conn() -> MagicMock:
-    fake_conn = AsyncMock()
-    fake_txn_cm = MagicMock()
-    fake_txn_cm.__aenter__ = AsyncMock(return_value=None)
-    fake_txn_cm.__aexit__ = AsyncMock(return_value=None)
-    fake_conn.transaction = MagicMock(return_value=fake_txn_cm)
-
-    mock_pool = MagicMock()
-    mock_acquire_cm = MagicMock()
-    mock_acquire_cm.__aenter__ = AsyncMock(return_value=fake_conn)
-    mock_acquire_cm.__aexit__ = AsyncMock(return_value=None)
-    mock_pool.acquire.return_value = mock_acquire_cm
-    return mock_pool
+from tests.unit.fixtures.fake_pool import pool_com_transacao
 
 
 def _make_capture_client_with_offline_user_data_job_service() -> tuple[MagicMock, MagicMock]:
@@ -74,7 +60,7 @@ async def test_quota_exhausted_blocks_and_skips_record_actual():
         patch("src.google_ads.customer_match.audit_log.record", audit_mock),
         patch(
             "src.google_ads.customer_match.connection.get_pool",
-            return_value=_pool_with_transactable_conn(),
+            return_value=pool_com_transacao(),
         ),
         # F110: sobe o QuotaExhausted original (o server.py o devolve com a mensagem),
         # nao o "Erro inesperado" que o to_friendly fazia dele.
@@ -113,7 +99,7 @@ async def test_success_reserves_and_reconciles_both_global_and_manager_keys():
         patch("src.google_ads.customer_match.audit_log.record", AsyncMock(return_value=1)),
         patch(
             "src.google_ads.customer_match.connection.get_pool",
-            return_value=_pool_with_transactable_conn(),
+            return_value=pool_com_transacao(),
         ),
         patch(
             "src.google_ads.customer_match.build_client_for_manager",
@@ -157,7 +143,7 @@ async def test_audit_sem_request_id_grava_none():
         patch("src.google_ads.customer_match.audit_log.record", audit_mock),
         patch(
             "src.google_ads.customer_match.connection.get_pool",
-            return_value=_pool_with_transactable_conn(),
+            return_value=pool_com_transacao(),
         ),
         pytest.raises(QuotaExhausted),
     ):

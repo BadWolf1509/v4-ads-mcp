@@ -24,15 +24,12 @@ from uuid import uuid4
 
 import pytest
 
+from tests.unit.fixtures.fake_pool import pool_com_transacao
 from tests.unit.test_mutations_partial_failure import (
     _client_with_partial_failure,
-    _pool_with_transactable_conn,
 )
 from tests.unit.test_run_offline_user_data_job import (
     _make_capture_client_with_offline_user_data_job_service,
-)
-from tests.unit.test_run_offline_user_data_job import (
-    _pool_with_transactable_conn as _pool_cm,
 )
 
 # ---------------------------------------------------------------------------
@@ -164,7 +161,7 @@ async def _rodar_mutation(
     with (
         patch(
             "src.google_ads.mutations.connection.get_pool",
-            return_value=_pool_with_transactable_conn(),
+            return_value=pool_com_transacao(),
         ),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
@@ -226,7 +223,7 @@ async def test_audit_nao_perde_o_params_summary_da_tool(
     with (
         patch(
             "src.google_ads.mutations.connection.get_pool",
-            return_value=_pool_with_transactable_conn(),
+            return_value=pool_com_transacao(),
         ),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
@@ -354,7 +351,7 @@ async def _rodar_job(
         ),
         patch(
             "src.google_ads.customer_match.connection.get_pool",
-            return_value=_pool_cm(),
+            return_value=pool_com_transacao(),
         ),
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),

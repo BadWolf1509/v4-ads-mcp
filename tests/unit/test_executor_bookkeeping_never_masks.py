@@ -25,33 +25,8 @@ from uuid import uuid4
 
 import pytest
 
-
-def _pool_with_transactable_conn() -> MagicMock:
-    """conn.transaction() precisa ser um async CM real (nao coroutine bare)."""
-    fake_conn = AsyncMock()
-    fake_txn_cm = MagicMock()
-    fake_txn_cm.__aenter__ = AsyncMock(return_value=None)
-    fake_txn_cm.__aexit__ = AsyncMock(return_value=None)
-    fake_conn.transaction = MagicMock(return_value=fake_txn_cm)
-
-    mock_pool = MagicMock()
-    mock_acquire_cm = MagicMock()
-    mock_acquire_cm.__aenter__ = AsyncMock(return_value=fake_conn)
-    mock_acquire_cm.__aexit__ = AsyncMock(return_value=None)
-    mock_pool.acquire.return_value = mock_acquire_cm
-    return mock_pool
-
-
-def _fake_success_client() -> MagicMock:
-    client = MagicMock()
-    fake_response = MagicMock()
-    fake_response.mutate_operation_responses = []
-    fake_response.partial_failure_error = MagicMock(code=0, details=[])
-    fake_service = MagicMock()
-    fake_service.mutate = MagicMock(return_value=fake_response)
-    client.get_service = MagicMock(return_value=fake_service)
-    client.get_type = MagicMock(return_value=MagicMock(mutate_operations=[]))
-    return client
+from tests.unit.fixtures.fake_google_client import client_de_sucesso
+from tests.unit.fixtures.fake_pool import pool_com_transacao
 
 
 class _StaleConnectionError(Exception):
@@ -67,7 +42,7 @@ def _pool_that_goes_stale_after(healthy_acquires: int) -> MagicMock:
     teste prova que o best_effort ainda captura excecao vinda do `__aenter__` do
     context manager seguinte (semantica de `with A(), B()` == aninhado).
     """
-    pool = _pool_with_transactable_conn()
+    pool = pool_com_transacao()
     healthy_cm = pool.acquire.return_value
     calls = {"n": 0}
 
@@ -98,7 +73,7 @@ async def test_conexao_stale_no_proprio_acquire_do_finally_nao_derruba_o_mutate(
         patch.object(mutations.audit_log, "record", AsyncMock(return_value=1)),
         patch.object(mutations.connection, "get_pool", return_value=_pool_that_goes_stale_after(2)),
         patch.object(
-            mutations, "build_client_for_manager", AsyncMock(return_value=_fake_success_client())
+            mutations, "build_client_for_manager", AsyncMock(return_value=client_de_sucesso())
         ),
         patch.object(mutations, "get_builder", lambda _op: lambda c, cid, p: [MagicMock()]),
         patch.object(mutations, "get_request_id", lambda: "fake-req-id"),
@@ -129,9 +104,9 @@ async def test_mutation_aplicada_sobrevive_a_falha_de_audit():
         patch.object(
             mutations.audit_log, "record", AsyncMock(side_effect=_StaleConnectionError("stale"))
         ),
-        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(mutations.connection, "get_pool", return_value=pool_com_transacao()),
         patch.object(
-            mutations, "build_client_for_manager", AsyncMock(return_value=_fake_success_client())
+            mutations, "build_client_for_manager", AsyncMock(return_value=client_de_sucesso())
         ),
         patch.object(mutations, "get_builder", lambda _op: lambda c, cid, p: [MagicMock()]),
         patch.object(mutations, "get_request_id", lambda: "fake-req-id"),
@@ -167,9 +142,9 @@ async def test_falha_na_reconciliacao_de_quota_nao_impede_o_audit():
             AsyncMock(side_effect=_StaleConnectionError("stale")),
         ),
         patch.object(mutations.audit_log, "record", audit_mock),
-        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(mutations.connection, "get_pool", return_value=pool_com_transacao()),
         patch.object(
-            mutations, "build_client_for_manager", AsyncMock(return_value=_fake_success_client())
+            mutations, "build_client_for_manager", AsyncMock(return_value=client_de_sucesso())
         ),
         patch.object(mutations, "get_builder", lambda _op: lambda c, cid, p: [MagicMock()]),
         patch.object(mutations, "get_request_id", lambda: "fake-req-id"),
@@ -203,9 +178,9 @@ async def test_falha_de_bookkeeping_e_logada_como_erro():
         patch.object(
             mutations.audit_log, "record", AsyncMock(side_effect=_StaleConnectionError("stale"))
         ),
-        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(mutations.connection, "get_pool", return_value=pool_com_transacao()),
         patch.object(
-            mutations, "build_client_for_manager", AsyncMock(return_value=_fake_success_client())
+            mutations, "build_client_for_manager", AsyncMock(return_value=client_de_sucesso())
         ),
         patch.object(mutations, "get_builder", lambda _op: lambda c, cid, p: [MagicMock()]),
         patch.object(mutations, "get_request_id", lambda: "fake-req-id"),

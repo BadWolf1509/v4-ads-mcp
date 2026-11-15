@@ -12,6 +12,7 @@ from uuid import uuid4
 
 import pytest
 
+from tests.unit.fixtures.fake_pool import pool_com_transacao
 from tests.unit.fixtures.proto_capture import CapturedOp, make_capture_client
 
 
@@ -38,23 +39,6 @@ class _OneoofCapture(CapturedOp):
             self._captured[key] = "__SET__"
         else:
             self._captured[key] = value
-
-
-def _pool_with_transactable_conn() -> MagicMock:
-    """conn.transaction() precisa ser um async CM real (F73 -- run_offline_user_data_job
-    agora reserva/reconcilia dentro de `async with pool.acquire() as conn, conn.transaction():`)."""
-    fake_conn = AsyncMock()
-    fake_txn_cm = MagicMock()
-    fake_txn_cm.__aenter__ = AsyncMock(return_value=None)
-    fake_txn_cm.__aexit__ = AsyncMock(return_value=None)
-    fake_conn.transaction = MagicMock(return_value=fake_txn_cm)
-
-    mock_pool = MagicMock()
-    mock_acquire_cm = MagicMock()
-    mock_acquire_cm.__aenter__ = AsyncMock(return_value=fake_conn)
-    mock_acquire_cm.__aexit__ = AsyncMock(return_value=None)
-    mock_pool.acquire.return_value = mock_acquire_cm
-    return mock_pool
 
 
 def _make_capture_client_with_offline_user_data_job_service() -> tuple[Any, MagicMock]:
@@ -136,7 +120,7 @@ async def test_dispatcher_creates_job_with_customer_match_metadata(fake_ctx):
         ),
         patch(
             "src.google_ads.customer_match.connection.get_pool",
-            return_value=_pool_with_transactable_conn(),
+            return_value=pool_com_transacao(),
         ),
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
     ):
@@ -174,7 +158,7 @@ async def test_dispatcher_consent_lgpd_invariants_granted(fake_ctx):
         ),
         patch(
             "src.google_ads.customer_match.connection.get_pool",
-            return_value=_pool_with_transactable_conn(),
+            return_value=pool_com_transacao(),
         ),
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
     ):
@@ -208,7 +192,7 @@ async def test_dispatcher_add_operations_partial_failure_true(fake_ctx):
         ),
         patch(
             "src.google_ads.customer_match.connection.get_pool",
-            return_value=_pool_with_transactable_conn(),
+            return_value=pool_com_transacao(),
         ),
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
     ):
@@ -241,7 +225,7 @@ async def test_dispatcher_user_data_uses_hashed_email_field(fake_ctx):
         ),
         patch(
             "src.google_ads.customer_match.connection.get_pool",
-            return_value=_pool_with_transactable_conn(),
+            return_value=pool_com_transacao(),
         ),
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
     ):
@@ -272,7 +256,7 @@ async def test_dispatcher_returns_job_resource_name_and_three_request_ids(fake_c
         ),
         patch(
             "src.google_ads.customer_match.connection.get_pool",
-            return_value=_pool_with_transactable_conn(),
+            return_value=pool_com_transacao(),
         ),
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
     ):
@@ -306,7 +290,7 @@ async def test_dispatcher_remove_operation_uses_remove_field(fake_ctx):
         ),
         patch(
             "src.google_ads.customer_match.connection.get_pool",
-            return_value=_pool_with_transactable_conn(),
+            return_value=pool_com_transacao(),
         ),
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
     ):
@@ -342,7 +326,7 @@ async def test_dispatcher_records_audit_and_rate_limit_on_success(
         ),
         patch(
             "src.google_ads.customer_match.connection.get_pool",
-            return_value=_pool_with_transactable_conn(),
+            return_value=pool_com_transacao(),
         ),
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
     ):
@@ -409,7 +393,7 @@ async def test_dispatcher_audits_and_raises_on_api_error(fake_ctx, gov_mocks):
         ),
         patch(
             "src.google_ads.customer_match.connection.get_pool",
-            return_value=_pool_with_transactable_conn(),
+            return_value=pool_com_transacao(),
         ),
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
         pytest.raises(GoogleAdsFriendlyError),
@@ -443,7 +427,7 @@ async def test_quota_esgotada_sobe_intacta_e_diz_qual_quota(fake_ctx, gov_mocks)
     with (
         patch(
             "src.google_ads.customer_match.connection.get_pool",
-            return_value=_pool_with_transactable_conn(),
+            return_value=pool_com_transacao(),
         ),
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
         pytest.raises(QuotaExhausted, match="quota diaria esgotada: 5000/5000"),

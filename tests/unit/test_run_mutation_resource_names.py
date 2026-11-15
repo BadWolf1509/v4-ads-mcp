@@ -8,6 +8,8 @@ from uuid import uuid4
 
 import pytest
 
+from tests.unit.fixtures.fake_pool import pool_com_transacao
+
 
 def _fake_op_resp_with_resource(field_name: str, resource_name: str) -> MagicMock:
     """Create a mock op_resp where WhichOneof returns field_name and
@@ -27,23 +29,6 @@ def _fake_op_resp_failed() -> MagicMock:
     op_resp = MagicMock()
     op_resp._pb = pb
     return op_resp
-
-
-def _pool_with_transactable_conn() -> MagicMock:
-    """conn.transaction() precisa ser um async CM real (F73 -- run_mutation agora
-    reserva/reconcilia dentro de `async with pool.acquire() as conn, conn.transaction():`)."""
-    fake_conn = AsyncMock()
-    fake_txn_cm = MagicMock()
-    fake_txn_cm.__aenter__ = AsyncMock(return_value=None)
-    fake_txn_cm.__aexit__ = AsyncMock(return_value=None)
-    fake_conn.transaction = MagicMock(return_value=fake_txn_cm)
-
-    mock_pool = MagicMock()
-    mock_acquire_cm = MagicMock()
-    mock_acquire_cm.__aenter__ = AsyncMock(return_value=fake_conn)
-    mock_acquire_cm.__aexit__ = AsyncMock(return_value=None)
-    mock_pool.acquire.return_value = mock_acquire_cm
-    return mock_pool
 
 
 def _setup_run_mutation_mocks(monkeypatch, fake_response):
@@ -80,7 +65,7 @@ def _setup_run_mutation_mocks(monkeypatch, fake_response):
     )
 
     with (
-        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(mutations.connection, "get_pool", return_value=pool_com_transacao()),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
@@ -113,7 +98,7 @@ async def test_extracts_resource_names_for_successful_ops(monkeypatch):
         patch.object(mutations, "get_builder", lambda _op: lambda c, cid, p: [MagicMock()]),
         patch.object(mutations, "get_request_id", lambda: "fake-req-id"),
         patch.object(mutations, "reset_request_id", lambda: None),
-        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(mutations.connection, "get_pool", return_value=pool_com_transacao()),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
@@ -158,7 +143,7 @@ async def test_returns_none_for_failed_ops_in_partial_failure(monkeypatch):
         patch.object(mutations, "get_builder", lambda _op: lambda c, cid, p: [MagicMock()]),
         patch.object(mutations, "get_request_id", lambda: "fake-req-id"),
         patch.object(mutations, "reset_request_id", lambda: None),
-        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(mutations.connection, "get_pool", return_value=pool_com_transacao()),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
@@ -207,7 +192,7 @@ async def test_handles_missing_mutate_operation_responses_field(monkeypatch):
         patch.object(mutations, "get_builder", lambda _op: lambda c, cid, p: [MagicMock()]),
         patch.object(mutations, "get_request_id", lambda: "fake-req-id"),
         patch.object(mutations, "reset_request_id", lambda: None),
-        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(mutations.connection, "get_pool", return_value=pool_com_transacao()),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
@@ -291,7 +276,7 @@ async def test_changed_count_separa_o_que_mudou_do_que_foi_tentado(monkeypatch):
         patch.object(mutations, "get_builder", lambda _op: lambda c, cid, p: [MagicMock()]),
         patch.object(mutations, "get_request_id", lambda: "fake-req-id"),
         patch.object(mutations, "reset_request_id", lambda: None),
-        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(mutations.connection, "get_pool", return_value=pool_com_transacao()),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
