@@ -36,7 +36,7 @@
 | Dependências | grpcio 1.85.1, protobuf 7.36.2, starlette 1.10.0 (avisa `httpx` deprecated no `TestClient`), sse-starlette 3.7.0, tzdata 2026.6 |
 | Tools | **83** (68 Google + 15 Meta), registry e `/health?deep=1` (15/11) |
 | Buckets | **14 always + 69 defer** (registry, 15/11); tokens **não remedidos** desde a [remedição](tool-buckets-2026-10-05.md) |
-| Catálogo | até **F211** (~6.300 linhas, 621 KB) |
+| Catálogo | até **F215** (~6.400 linhas, 631 KB) |
 | APIs | Meta Graph **v25.0** (constante única); Google Ads **v25**, sunset estimado em ago/2027 (**não lido** na página oficial) |
 | Smoke do pipeline | sem handshake MCP **autenticado** (F186); desde 10/11 o `SMOKE_MCP_BEARER` está **expirado** (401) e o deploy segue com aviso |
 
@@ -71,8 +71,8 @@ adiados em `.superpowers/sdd/2026-11-15-varredura-faxina/progress.md` (git-ignor
 contas Google e × 26 Meta); `get_performance_breakdown` e `plan_keyword_ideas` reais gravaram audit
 `success`. **Não medido:** dry-run de mutação depois do P5/P6 (pede o gestor presente). **Aberto:** o
 log `conversion_upload_executed` diz `success` quando o audit falha num upload 100% recusado
-(comportamento antigo, candidato a finding); 2 gestores desativados têm grants vivos (o login barra
-`is_deactivated`; não sondado).
+(comportamento antigo, **F214**); 2 gestores desativados têm grants vivos (o login barra
+`is_deactivated`; **F213**, correção em execução).
 
 ## Backlog de tráfego — fechado (14–15/11, #249–#262)
 
@@ -137,6 +137,8 @@ que mais usava os antigos, saiu em 31/10). O plugin 0.5.0 já manda usar o break
 | **F180** | **em parte, provavelmente para sempre** — o Google aceita operação impossível em vez de errar, então `failed_count` é constante zero: leia `efeito` e `changed_count` |
 | **F185** | `recommendation_subscription`: 4 de 11 opacos e sem chave — limitação da API |
 | **F187** | o **resumo no topo** decide e o **detalhe embaixo** é a verdade — 4 instâncias; remédio: derivar o resumo, ou guard da igualdade |
+| **F213** | gestor desativado mantém grants vivos e reativar devolve todos — desenho aprovado em 15/11, correção em execução |
+| **F214** | log `conversion_upload_executed` diz `success` num upload 100% recusado quando o audit não pega conexão (só observabilidade) |
 | **F186** | 🔴 smoke autenticado do `/mcp` **desarmado**, risco ACEITO até a identidade do TI |
 | — | negativas de grupo e listas compartilhadas na auditoria de negativas (frente própria) |
 | — | follow-ups Minor do **F193** (corpo do [#111](https://github.com/BadWolf1509/v4-ads-mcp/pull/111)) |
