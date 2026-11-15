@@ -2684,7 +2684,7 @@
     "_meta": {
       "com.v4company/bucket": "defer"
     },
-    "description": "[DEFER] Catalogo curado de resources GAQL (15+) com seus campos comumente usados. Inclui tambem a lista de segments aplicaveis. Use junto com run_gaql ou validate_gaql pra construir queries customizadas. Com `resource` (ex.: keyword_view; exige `customer_id`, que passa pelo gate de acesso) devolve tambem `compativel` {segments, metrics, resources_atribuidos} lido do GoogleAdsFieldService (selectable_with; 1 operacao de quota, cacheado), com `fonte` e `compativel_motivo`; `compativel` null = nao foi possivel medir (veja o motivo), nunca lista vazia.",
+    "description": "[DEFER] Catalogo curado de resources GAQL (15+) com seus campos comumente usados. Inclui tambem a lista de segments aplicaveis. Use junto com run_gaql ou validate_gaql pra construir queries customizadas. Com `resource` (ex.: keyword_view; exige `customer_id`, que passa pelo gate de acesso) devolve tambem `compativel` {segments, metrics, resources_atribuidos} lido do GoogleAdsFieldService (selectable_with; 1 operacao de quota, cacheado), com `fonte` e `compativel_motivo`; `compativel` null = nao foi possivel medir (veja o motivo), nunca lista vazia. A lista sem `resource` e generica: um campo dela pode nao valer em todo recurso (ex.: `segments.hour` nao vale em `ad_group_ad`). A compatibilidade por recurso vem de `resource` + `customer_id`.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {

@@ -1,8 +1,9 @@
 """Static catalog of GAQL resources + their commonly attributable fields.
 
-Used by list_gaql_resources tool. NOT a complete reflection of the SDK; this
-is a curated set covering the 15 most-used resources at V4. Future expansion
-can scrape from the SDK or Google's reference docs.
+Used by list_gaql_resources tool. A lista e curada (os recursos mais usados na
+V4), nao um espelho completo do SDK, e fica travada contra o proto de
+`GoogleAdsRow` pelo teste `tests/unit/test_catalogo_gaql_estatico.py`: campo
+que o proto nao tem derruba o teste.
 """
 
 from typing import Any
@@ -46,8 +47,8 @@ RESOURCES: dict[str, Any] = {
             "campaign.status",
             "campaign.advertising_channel_type",
             "campaign.bidding_strategy_type",
-            "campaign.start_date",
-            "campaign.end_date",
+            "campaign.start_date_time",
+            "campaign.end_date_time",
             "campaign_budget.amount_micros",
             "campaign_budget.delivery_method",
             "metrics.impressions",
@@ -254,5 +255,5 @@ SEGMENTS: list[str] = [
     "segments.click_type",
     "segments.conversion_action_category",
     "segments.conversion_action_name",
-    "segments.network_type",
+    "segments.ad_network_type",
 ]

@@ -142,7 +142,10 @@ async def _compativel(
         "que passa pelo gate de acesso) devolve tambem `compativel` {segments, metrics, resources_atribuidos} lido do "
         "GoogleAdsFieldService (selectable_with; 1 operacao de quota, cacheado), com `fonte` "
         "e `compativel_motivo`; `compativel` null = nao foi possivel medir (veja o motivo), "
-        "nunca lista vazia."
+        "nunca lista vazia. "
+        "A lista sem `resource` e generica: um campo dela pode nao valer em todo recurso "
+        "(ex.: `segments.hour` nao vale em `ad_group_ad`). A compatibilidade por recurso "
+        "vem de `resource` + `customer_id`."
     ),
     input_schema=_SCHEMA,
     bucket="defer",
