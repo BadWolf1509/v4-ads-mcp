@@ -71,8 +71,16 @@ adiados em `.superpowers/sdd/2026-11-15-varredura-faxina/progress.md` (git-ignor
 contas Google e × 26 Meta); `get_performance_breakdown` e `plan_keyword_ideas` reais gravaram audit
 `success`. **Não medido:** dry-run de mutação depois do P5/P6 (pede o gestor presente). **Aberto:** o
 log `conversion_upload_executed` diz `success` quando o audit falha num upload 100% recusado
-(comportamento antigo, **F214**); 2 gestores desativados têm grants vivos (o login barra
-`is_deactivated`; **F213**, correção em execução).
+(comportamento antigo, **F214**).
+
+## Revogação na desativação — em produção (15/11, #274, `00226-5p4`; F213)
+
+Desativar um gestor revoga os grants Google e Meta (motivo `manager_deactivated`); reativar devolve só
+esses. Medido: ciclo no painel num gestor ativo, 24+26 revogados e devolvidos, os 4 de churn intactos
+(audit 11272/11273). 🔴 **Trava `MANAGER_OFFBOARDING_APPLY` desligada:** os 2 gestores desativados antes
+do deploy seguem com grants vivos. **Próximo:** ler o audit `manager_offboarding_reconcile` da rodada das
+06:00 (espera-se os 2, ~95 grants, sem escrita) e ligar a trava com aval nominal. Minors no ledger
+`.superpowers/sdd/2026-11-15-revogacao-na-desativacao/progress.md`.
 
 ## Backlog de tráfego — fechado (14–15/11, #249–#262)
 
@@ -137,7 +145,6 @@ que mais usava os antigos, saiu em 31/10). O plugin 0.5.0 já manda usar o break
 | **F180** | **em parte, provavelmente para sempre** — o Google aceita operação impossível em vez de errar, então `failed_count` é constante zero: leia `efeito` e `changed_count` |
 | **F185** | `recommendation_subscription`: 4 de 11 opacos e sem chave — limitação da API |
 | **F187** | o **resumo no topo** decide e o **detalhe embaixo** é a verdade — 4 instâncias; remédio: derivar o resumo, ou guard da igualdade |
-| **F213** | gestor desativado mantém grants vivos e reativar devolve todos — desenho aprovado em 15/11, correção em execução |
 | **F214** | log `conversion_upload_executed` diz `success` num upload 100% recusado quando o audit não pega conexão (só observabilidade) |
 | **F186** | 🔴 smoke autenticado do `/mcp` **desarmado**, risco ACEITO até a identidade do TI |
 | — | negativas de grupo e listas compartilhadas na auditoria de negativas (frente própria) |
