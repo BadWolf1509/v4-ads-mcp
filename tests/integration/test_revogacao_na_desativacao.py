@@ -401,3 +401,138 @@ async def test_predicado_sql_igual_ao_python(db, status: str, is_active: bool) -
         esperado = (not is_active) or status == "inactive"
         assert manager.is_deactivated is esperado, (status, is_active)
         assert no_sql is esperado, (status, is_active, no_sql)
+
+
+# --- Task 2: a volta da conta (`restore_for_account`) respeita o gestor desativado ---
+
+
+async def _restaurar_conta(conn: asyncpg.Connection, lado: _Lado, conta: str) -> list[str] | int:
+    """`restore_for_account` do lado, com o retorno público de cada um (Google
+    `list[str]` de gestores, Meta `int`)."""
+    resultado: list[str] | int = await lado.modulo.restore_for_account(
+        conn, **{lado.kwarg_conta: conta}
+    )
+    return resultado
+
+
+def _restaurados_esperados(lado: _Lado, gestores: list[UUID]) -> list[str] | int:
+    if lado.nome == "google":
+        return sorted(str(g) for g in gestores)
+    return len(gestores)
+
+
+def _normalizar(resultado: list[str] | int) -> list[str] | int:
+    return sorted(resultado) if isinstance(resultado, list) else resultado
+
+
+async def _conta_ativa(conn: asyncpg.Connection, lado: _Lado, conta: str, ativa: bool) -> None:
+    await conn.execute(
+        f"UPDATE {lado.inventario} SET is_active = $2 WHERE {lado.coluna} = $1", conta, ativa
+    )
+
+
+async def _ativo(conn: asyncpg.Connection, gestor: UUID, ativo: bool) -> None:
+    await conn.execute("UPDATE managers SET is_active = $2 WHERE id = $1", gestor, ativo)
+
+
+@pytest.mark.integration
+async def test_volta_da_conta_nao_reabre_grant_de_desativado(db, lado: _Lado) -> None:
+    """Linha de churn de gestor desativado numa conta que voltou: continua
+    revogada, agora com `manager_deactivated` (o bloqueio que resta), e não entra
+    no retorno — que conta só o gestor ativo da mesma conta."""
+    async with db.acquire() as conn:
+        gestor = await _gestor(conn, is_active=False)
+        ativo = await _gestor(conn)
+        conta = lado.conta(1)
+        await _grant(conn, lado, gestor, conta, motivo=lado.motivo_churn)
+        await _grant(conn, lado, ativo, conta, motivo=lado.motivo_churn)
+        revoked_at_antes, _ = await _linha(conn, lado, gestor, conta)
+
+        resultado = await _restaurar_conta(conn, lado, conta)
+
+        assert _normalizar(resultado) == _restaurados_esperados(lado, [ativo])
+        assert await _linha(conn, lado, ativo, conta) == (None, None)
+        assert await _linha(conn, lado, gestor, conta) == (
+            revoked_at_antes,
+            MANAGER_DEACTIVATED_REASON,
+        )
+
+
+@pytest.mark.integration
+async def test_volta_da_conta_reabre_gestor_ativo(db, lado: _Lado) -> None:
+    """Controle: gestor ativo volta como sempre voltou, e linhas fora do churn
+    (admin, `manager_deactivated`) não são tocadas."""
+    async with db.acquire() as conn:
+        ativo = await _gestor(conn)
+        admin_revogado = await _gestor(conn)
+        ja_desativado = await _gestor(conn, is_active=False)
+        conta = lado.conta(1)
+        await _grant(conn, lado, ativo, conta, motivo=lado.motivo_churn)
+        await _grant(conn, lado, admin_revogado, conta, motivo=ADMIN_REVOKED_REASON)
+        await _grant(conn, lado, ja_desativado, conta, motivo=MANAGER_DEACTIVATED_REASON)
+        antes_admin = await _linha(conn, lado, admin_revogado, conta)
+        antes_desativado = await _linha(conn, lado, ja_desativado, conta)
+
+        resultado = await _restaurar_conta(conn, lado, conta)
+
+        assert _normalizar(resultado) == _restaurados_esperados(lado, [ativo])
+        assert await _linha(conn, lado, ativo, conta) == (None, None)
+        assert await _linha(conn, lado, admin_revogado, conta) == antes_admin
+        assert await _linha(conn, lado, ja_desativado, conta) == antes_desativado
+
+
+@pytest.mark.integration
+async def test_restaurar_conta_ainda_inativa_nao_reabre_desativado(db, lado: _Lado) -> None:
+    """Chamada sobre conta ainda inativa (a rota recusa, mas o repositório não
+    depende disso): dois bloqueios, vale o da conta — a linha do desativado fica
+    revogada e com o motivo de churn, para a volta de verdade decidir."""
+    async with db.acquire() as conn:
+        desativado = await _gestor(conn, is_active=False)
+        conta = lado.conta(1)
+        await _grant(conn, lado, desativado, conta, motivo=lado.motivo_churn, conta_ativa=False)
+        antes = await _linha(conn, lado, desativado, conta)
+
+        resultado = await _restaurar_conta(conn, lado, conta)
+
+        assert resultado == _restaurados_esperados(lado, [])
+        assert await _linha(conn, lado, desativado, conta) == antes
+
+
+@pytest.mark.integration
+async def test_ordem_conta_volta_depois_gestor_reativa(db, lado: _Lado) -> None:
+    async with db.acquire() as conn:
+        gestor = await _gestor(conn)
+        conta = lado.conta(1)
+        # conta sai: o churn revogou o grant.
+        await _grant(conn, lado, gestor, conta, motivo=lado.motivo_churn, conta_ativa=False)
+        # gestor desativa: a linha já está revogada, nada muda.
+        await _ativo(conn, gestor, False)
+        assert await lado.modulo.revogar_de_desativados(conn, manager_id=gestor) == []
+        # conta volta: o grant não reabre.
+        await _conta_ativa(conn, lado, conta, True)
+        assert await _restaurar_conta(conn, lado, conta) == _restaurados_esperados(lado, [])
+        assert (await _linha(conn, lado, gestor, conta))[1] == MANAGER_DEACTIVATED_REASON
+        # gestor reativa: agora volta.
+        await _ativo(conn, gestor, True)
+        restaurados, remarcados = await lado.modulo.restaurar_de_reativados(conn, manager_id=gestor)
+        assert (restaurados, remarcados) == ([(gestor, conta)], [])
+        assert await _linha(conn, lado, gestor, conta) == (None, None)
+
+
+@pytest.mark.integration
+async def test_ordem_gestor_reativa_depois_conta_volta(db, lado: _Lado) -> None:
+    async with db.acquire() as conn:
+        gestor = await _gestor(conn)
+        conta = lado.conta(1)
+        # conta sai.
+        await _grant(conn, lado, gestor, conta, motivo=lado.motivo_churn, conta_ativa=False)
+        # gestor desativa e reativa com a conta ainda fora: a linha segue churn.
+        await _ativo(conn, gestor, False)
+        assert await lado.modulo.revogar_de_desativados(conn, manager_id=gestor) == []
+        await _ativo(conn, gestor, True)
+        assert await lado.modulo.restaurar_de_reativados(conn, manager_id=gestor) == ([], [])
+        assert (await _linha(conn, lado, gestor, conta))[1] == lado.motivo_churn
+        # conta volta: o churn devolve.
+        await _conta_ativa(conn, lado, conta, True)
+        assert await _restaurar_conta(conn, lado, conta) == _restaurados_esperados(lado, [gestor])
+        assert await _linha(conn, lado, gestor, conta) == (None, None)

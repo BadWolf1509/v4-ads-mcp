@@ -5,11 +5,12 @@ from uuid import UUID
 import asyncpg
 
 from src.db.repositories import _acesso_comum
-from src.db.repositories._acesso_comum import META
+from src.db.repositories._acesso_comum import META, PREDICADO_DESATIVADO
 from src.db.repositories.manager_account_access import NivelDeAcesso
 from src.db.repositories.meta_ad_accounts import MetaAdAccount, row_to_account
 from src.db.repositories.motivos import (
     ADMIN_REVOKED_REASON,
+    MANAGER_DEACTIVATED_REASON,
     PARTNERSHIP_ENDED_REASON,
 )
 
@@ -128,15 +129,53 @@ async def restore_for_account(conn: asyncpg.Connection, *, ad_account_id: str) -
     "desfaça toda revogação que essa conta acumulou". Restore existe pra UMA
     coisa: desfazer exatamente o que `revoke_for_account` revogou quando a
     parceria saiu — por isso filtra a mesma razão que esse caminho grava.
+
+    Gestor desativado não volta: a linha dele passa a `manager_deactivated` e
+    volta na reativação. A contagem é só dos restaurados de fato.
+
+    Dois UPDATEs na mesma conexão, sobre conjuntos disjuntos (gestor desativado
+    x não); a transação é do chamador:
+
+    1. gestor DESATIVADO com linha de churn e conta ATIVA: a linha continua
+       revogada e o motivo vira `manager_deactivated` — o bloqueio da conta saiu,
+       o do gestor ficou, e é a reativação dele que a devolve. Com a conta ainda
+       inativa vale o da conta, e a linha fica como churn;
+    2. gestor NÃO desativado com linha de churn: restaura. Conta ativa continua
+       sendo exigência do chamador (a rota recusa conta inativa), como antes.
+
+    `manager_deactivated` não é churn e não é tocada pelo passo 2. Mesmo SQL do
+    gêmeo (o par não é comparado por `test_acesso_gemeos_conformes.py` porque o
+    retorno difere; quem amarra os dois lados é
+    `tests/integration/test_revogacao_na_desativacao.py`, parametrizado por lado).
     """
+    await conn.execute(
+        f"""
+        UPDATE manager_meta_account_access g
+           SET revoked_reason = $3
+          FROM managers m, meta_ad_accounts a
+         WHERE m.id = g.manager_id
+           AND a.ad_account_id = g.ad_account_id
+           AND g.ad_account_id = $1
+           AND {PREDICADO_DESATIVADO}
+           AND a.is_active = true
+           AND g.revoked_at IS NOT NULL
+           AND g.revoked_reason = $2
+        """,
+        ad_account_id,
+        PARTNERSHIP_ENDED_REASON,
+        MANAGER_DEACTIVATED_REASON,
+    )
     rows = await conn.fetch(
-        """
-        UPDATE manager_meta_account_access
+        f"""
+        UPDATE manager_meta_account_access g
            SET revoked_at = NULL, revoked_reason = NULL
-         WHERE ad_account_id = $1
-           AND revoked_at IS NOT NULL
-           AND revoked_reason = $2
-        RETURNING manager_id
+          FROM managers m
+         WHERE m.id = g.manager_id
+           AND g.ad_account_id = $1
+           AND NOT {PREDICADO_DESATIVADO}
+           AND g.revoked_at IS NOT NULL
+           AND g.revoked_reason = $2
+        RETURNING g.manager_id
         """,
         ad_account_id,
         PARTNERSHIP_ENDED_REASON,

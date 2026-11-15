@@ -6,11 +6,12 @@ from uuid import UUID
 import asyncpg
 
 from src.db.repositories import _acesso_comum
-from src.db.repositories._acesso_comum import GOOGLE
+from src.db.repositories._acesso_comum import GOOGLE, PREDICADO_DESATIVADO
 from src.db.repositories.google_ads_accounts import GoogleAdsAccount, row_to_account
 from src.db.repositories.motivos import (
     ADMIN_REVOKED_REASON,
     LEFT_MCC_REASON,
+    MANAGER_DEACTIVATED_REASON,
 )
 
 # Motivos gravados por `revoke`/`revoke_for_inactive_accounts` vivem em
@@ -295,15 +296,54 @@ async def revoke_for_inactive_accounts(
 
 
 async def restore_for_account(conn: asyncpg.Connection, *, customer_id: str) -> list[str]:
-    """Devolve o acesso revogado por CHURN. Revogação de admin não volta."""
+    """Devolve o acesso revogado por CHURN (`LEFT_MCC_REASON`). Revogação de admin
+    não volta, e gestor desativado também não: a linha dele passa a
+    `manager_deactivated` e volta na reativação. Devolve os gestores restaurados
+    de fato.
+
+    Dois UPDATEs na mesma conexão, sobre conjuntos disjuntos (gestor desativado
+    x não); a transação é do chamador:
+
+    1. gestor DESATIVADO com linha de churn e conta ATIVA: a linha continua
+       revogada e o motivo vira `manager_deactivated` — o bloqueio da conta saiu,
+       o do gestor ficou, e é a reativação dele que a devolve. Com a conta ainda
+       inativa vale o da conta, e a linha fica como churn;
+    2. gestor NÃO desativado com linha de churn: restaura. Conta ativa continua
+       sendo exigência do chamador (a rota recusa conta inativa), como antes.
+
+    `manager_deactivated` não é churn e não é tocada pelo passo 2. Mesmo SQL do
+    gêmeo (o par não é comparado por `test_acesso_gemeos_conformes.py` porque o
+    retorno difere; quem amarra os dois lados é
+    `tests/integration/test_revogacao_na_desativacao.py`, parametrizado por lado).
+    """
+    await conn.execute(
+        f"""
+        UPDATE manager_account_access g
+           SET revoked_reason = $3
+          FROM managers m, google_ads_accounts a
+         WHERE m.id = g.manager_id
+           AND a.customer_id = g.customer_id
+           AND g.customer_id = $1
+           AND {PREDICADO_DESATIVADO}
+           AND a.is_active = true
+           AND g.revoked_at IS NOT NULL
+           AND g.revoked_reason = $2
+        """,
+        customer_id,
+        LEFT_MCC_REASON,
+        MANAGER_DEACTIVATED_REASON,
+    )
     rows = await conn.fetch(
-        """
-        UPDATE manager_account_access
+        f"""
+        UPDATE manager_account_access g
            SET revoked_at = NULL, revoked_reason = NULL
-         WHERE customer_id = $1
-           AND revoked_at IS NOT NULL
-           AND revoked_reason = $2
-        RETURNING manager_id
+          FROM managers m
+         WHERE m.id = g.manager_id
+           AND g.customer_id = $1
+           AND NOT {PREDICADO_DESATIVADO}
+           AND g.revoked_at IS NOT NULL
+           AND g.revoked_reason = $2
+        RETURNING g.manager_id
         """,
         customer_id,
         LEFT_MCC_REASON,
