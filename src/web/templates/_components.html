@@ -52,14 +52,6 @@
 </label>
 {% endmacro %}
 
-{% macro radio(name, label, value, checked=false, attrs="") %}
-<label class="v4-radio">
-  <input type="radio" name="{{ name }}" value="{{ value }}"
-         {% if checked %}checked{% endif %} {{ attrs|safe }}>
-  <span>{{ label }}</span>
-</label>
-{% endmacro %}
-
 {% macro button(label, variant="primary", size="md", type="button", loading=false, icon=None, extra_classes="", attrs="") %}
   {%- set classes = "v4-btn v4-btn--" ~ variant -%}
   {%- if size == "small" %}{% set classes = classes ~ " v4-btn--small" %}{% endif -%}

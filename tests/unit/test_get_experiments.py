@@ -304,13 +304,6 @@ def test_metricas_query_f87_e_data_so_no_where():
         q.metricas_query([], start=date(2026, 10, 15), end=date(2026, 11, 13))
 
 
-def test_experimentos_query_filtra_id_com_f87():
-    assert "experiment.experiment_id = 42" in q.experimentos_query("42")
-    assert "WHERE" not in q.experimentos_query(None)
-    with pytest.raises(ValueError):
-        q.experimentos_query("42 OR 1=1")
-
-
 def test_parse_experimento_le_type_underscore():
     row = SimpleNamespace(
         experiment=SimpleNamespace(

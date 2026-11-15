@@ -21,21 +21,18 @@ from src.google_ads.queries._common import gaql_date_clause, nome_do_enum
 FONTE_VARIACAO = "AD_VARIATIONS"
 
 
-def experimentos_query(experiment_id: str | None) -> str:
-    base = (
+def experimentos_query() -> str:
+    return (
         "SELECT experiment.experiment_id, experiment.name, experiment.type, "
         "experiment.status, experiment.start_date, experiment.end_date FROM experiment"
     )
-    if experiment_id is None:
-        return base
-    return f"{base} WHERE experiment.experiment_id = {_id(experiment_id)}"
 
 
 def anuncios_query() -> str:
     """RSAs ENABLED da conta, base e variacao — a separacao e feita no parser."""
     return (
         "SELECT ad_group.id, ad_group.name, campaign.name, ad_group_ad.ad.id, "
-        "ad_group_ad.ad.system_managed_resource_source, ad_group_ad.ad.final_urls "
+        "ad_group_ad.ad.system_managed_resource_source "
         "FROM ad_group_ad WHERE ad_group_ad.ad.type = 'RESPONSIVE_SEARCH_AD' "
         "AND ad_group_ad.status = 'ENABLED'"
     )
@@ -55,13 +52,6 @@ def metricas_query(ad_group_ids: list[str], *, start: date, end: date) -> str:
         "AND ad_group_ad.status = 'ENABLED' "
         f"AND {gaql_date_clause(start, end)}"
     )
-
-
-def _id(valor: str) -> str:
-    try:
-        return str(int(valor))
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"id nao numerico: {valor!r}") from exc
 
 
 def _data(valor: Any) -> str | None:

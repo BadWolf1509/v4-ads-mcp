@@ -13,6 +13,7 @@ from src.google_ads.ad_schedule import (
     MINUTO_ENUM,
     CurrentWindow,
     MetricCell,
+    ScheduleDiff,
     Window,
     bid_modifier_diverge,
     covers,
@@ -126,14 +127,14 @@ def test_grade_identica_nao_emite_operacao_nenhuma() -> None:
     """Spec §8.9 — reenviar a grade atual e no-op; recriar identicos queima re-learning."""
     current = [_cur(day="MONDAY"), _cur(day="TUESDAY")]
     diff = diff_schedule(current, [c.window for c in current], None)
-    assert diff.is_empty() and diff.op_count() == 0
+    assert diff == ScheduleDiff((), (), ())
 
 
 def test_diff_e_por_conteudo_nao_por_criterion_id() -> None:
     """O id muda quando o Google recria; a chave e (dia, horas, minutos)."""
     current = [_cur(day="MONDAY", rn="customers/1/campaignCriteria/9~111")]
     diff = diff_schedule(current, [Window("MONDAY", 7, 0, 17, 0)], None)
-    assert diff.is_empty()
+    assert diff == ScheduleDiff((), (), ())
 
 
 def test_janela_nova_entra_e_janela_ausente_sai() -> None:
@@ -153,8 +154,8 @@ def test_bid_modifier_diferente_vira_update_nao_recria() -> None:
 
 def test_bid_modifier_igual_ou_nao_informado_nao_gera_update() -> None:
     current = [_cur(day="MONDAY", bm=1.2)]
-    assert diff_schedule(current, [Window("MONDAY", 7, 0, 17, 0)], 1.2).is_empty()
-    assert diff_schedule(current, [Window("MONDAY", 7, 0, 17, 0)], None).is_empty()
+    assert diff_schedule(current, [Window("MONDAY", 7, 0, 17, 0)], 1.2) == ScheduleDiff((), (), ())
+    assert diff_schedule(current, [Window("MONDAY", 7, 0, 17, 0)], None) == ScheduleDiff((), (), ())
 
 
 def _cell(day: str, hour: int, cost: float, conv: float) -> MetricCell:

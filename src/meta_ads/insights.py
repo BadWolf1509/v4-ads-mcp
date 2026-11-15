@@ -26,8 +26,6 @@ from src.meta_ads.metricas import metricas_da_linha
 Level = Literal["campaign", "adset", "ad"]
 NivelDaChamada = Literal["account", "campaign", "adset", "ad"]
 
-Breakdown = Literal["platform", "device", "geo", "hourly"]
-
 # Tool breakdown enum → Meta Insights `breakdowns` param value(s).
 # PROVISIONAL v0 (F53/F54/F55): `device`/`geo` variants são confirmados no smoke
 # (docs/operacao/phase-M-4-bootstrap.md). ads_get_field_context NÃO valida

@@ -142,7 +142,7 @@ async def get_experiments(args: dict[str, Any]) -> dict[str, Any]:
 
     # Sempre le TODOS os experimentos: a eliminacao e uma regra sobre a CONTA, nao sobre
     # o filtro. Filtrar no GAQL faria um experiment_id qualquer parecer o "unico ENABLED".
-    todos = await _consulta(experimentos_query(None), parse_experimento_row, audited=True)
+    todos = await _consulta(experimentos_query(), parse_experimento_row, audited=True)
     ad_variation_enabled = [
         e for e in todos if e["tipo"] == "AD_VARIATION" and e["status"] == "ENABLED"
     ]
