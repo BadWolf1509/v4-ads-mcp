@@ -100,6 +100,11 @@ _DIVERGENCIAS_REGISTRADAS: dict[str, str] = {
         "`a.is_active = true AND m.revoked_at IS NULL`, Meta "
         "`m.revoked_at IS NULL AND a.is_active = true` (mesmo conjunto, AND comutativo)"
     ),
+    "revogar_de_desativados": (
+        "motivo de churn de cada lado (desenho de 15/11): grant vivo em conta já "
+        "inativa é revogado com o motivo da conta (com dois bloqueios, vale o da conta) "
+        "— Google `left_mcc`, Meta `partnership_ended`. Entra por parâmetro"
+    ),
     "restaurar_de_reativados": (
         "motivo de churn de cada lado (desenho de 15/11): em conta inativa a linha é "
         "remarcada com o motivo que a volta da conta restaura — Google `left_mcc`, Meta "
@@ -395,6 +400,13 @@ def _sql_cru(nome: str, caminho: Path) -> list[str]:
 # de uma função registrada não se esconde atrás do registro.
 _DIFERENCAS_ESPERADAS: dict[str, frozenset[str]] = {
     "can_manager_access": frozenset({"literal #0: mesmos fragmentos em ordem diferente"}),
+    "revogar_de_desativados": frozenset(
+        {
+            "statement #0: bind args google=('manager_deactivated', 'left_mcc', "
+            "UUID('00000000-0000-0000-0000-000000000001')) meta=('manager_deactivated', "
+            "'partnership_ended', UUID('00000000-0000-0000-0000-000000000001'))"
+        }
+    ),
     "restaurar_de_reativados": frozenset(
         {
             "statement #0: bind args google=('left_mcc', 'manager_deactivated', "

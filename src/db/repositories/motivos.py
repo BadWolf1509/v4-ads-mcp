@@ -17,8 +17,8 @@ LEFT_MCC_REASON = "left_mcc"
 ADMIN_REVOKED_REASON = "admin_revoked"
 PARTNERSHIP_ENDED_REASON = "partnership_ended"
 BULK_COPY_REPLACED_REASON = "bulk_copy_replaced"
-# Gestor desativado (desenho de 15/11): grava `revogar_de_desativados`, e só
-# `restaurar_de_reativados` devolve. Se, na reativação, a conta também está fora
-# (MCC/parceria), o motivo vira o de churn do lado: o motivo nomeia o que bloqueia
-# agora, e com dois bloqueios vale o da conta.
+# Gestor desativado (desenho de 15/11): grava `revogar_de_desativados` em conta
+# ativa, e só `restaurar_de_reativados` devolve. Com a conta também fora
+# (MCC/parceria), vale o motivo de churn do lado, na revogação e na reativação: o
+# motivo nomeia o que bloqueia agora, e com dois bloqueios vale o da conta.
 MANAGER_DEACTIVATED_REASON = "manager_deactivated"

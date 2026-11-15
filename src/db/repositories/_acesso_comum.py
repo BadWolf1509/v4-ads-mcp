@@ -239,9 +239,15 @@ async def revogar_de_desativados(
     conn: asyncpg.Connection,
     t: TabelaDeAcesso,
     *,
+    motivo_churn: str,
     manager_id: UUID | None = None,
 ) -> list[tuple[UUID, str]]:
-    """Revoga (soft, `manager_deactivated`) todo grant VIVO de gestor desativado.
+    """Revoga (soft) todo grant VIVO de gestor desativado.
+
+    O motivo nomeia o que bloqueia agora, e com dois bloqueios vale o da conta:
+    conta ativa recebe `manager_deactivated`; conta já inativa recebe
+    `motivo_churn` (o de churn do lado), para que a volta da conta a trate como
+    churn e não fique presa a um motivo que a reativação não alcançaria.
 
     Opera sobre o ESTADO, não sobre o delta (lição do
     `revoke_for_inactive_accounts`): pega também o grant concedido depois da
@@ -255,15 +261,18 @@ async def revogar_de_desativados(
     rows = await conn.fetch(
         f"""
         UPDATE {t.tabela} g
-           SET revoked_at = now(), revoked_reason = $1
-          FROM managers m
+           SET revoked_at = now(),
+               revoked_reason = CASE WHEN a.is_active THEN $1 ELSE $2 END
+          FROM managers m, {t.inventario} a
          WHERE m.id = g.manager_id
+           AND a.{t.coluna_conta} = g.{t.coluna_conta}
            AND {PREDICADO_DESATIVADO}
            AND g.revoked_at IS NULL
-           AND ($2::uuid IS NULL OR g.manager_id = $2::uuid)
+           AND ($3::uuid IS NULL OR g.manager_id = $3::uuid)
         RETURNING g.manager_id, g.{t.coluna_conta} AS conta
         """,
         MANAGER_DEACTIVATED_REASON,
+        motivo_churn,
         manager_id,
     )
     return [(r["manager_id"], r["conta"]) for r in rows]

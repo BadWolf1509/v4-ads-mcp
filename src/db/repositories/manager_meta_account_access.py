@@ -348,9 +348,12 @@ async def has_live_grant(conn: asyncpg.Connection, manager_id: UUID, ad_account_
 async def revogar_de_desativados(
     conn: asyncpg.Connection, *, manager_id: UUID | None = None
 ) -> list[tuple[UUID, str]]:
-    """Revoga os grants vivos de gestor desativado (`manager_deactivated`).
-    SQL no núcleo (`_acesso_comum.revogar_de_desativados`)."""
-    return await _acesso_comum.revogar_de_desativados(conn, META, manager_id=manager_id)
+    """Revoga os grants vivos de gestor desativado: `manager_deactivated` em
+    conta ativa, `partnership_ended` em conta já inativa. SQL no núcleo
+    (`_acesso_comum.revogar_de_desativados`)."""
+    return await _acesso_comum.revogar_de_desativados(
+        conn, META, motivo_churn=PARTNERSHIP_ENDED_REASON, manager_id=manager_id
+    )
 
 
 async def restaurar_de_reativados(

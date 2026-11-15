@@ -197,6 +197,25 @@ async def test_status_inactive_tambem_e_desativado(db, lado: _Lado) -> None:
 
 
 @pytest.mark.integration
+async def test_revogar_em_conta_inativa_grava_motivo_de_churn(db, lado: _Lado) -> None:
+    """Dois bloqueios (gestor desativado e conta fora), vale o da conta: a linha
+    leva o motivo de churn do lado, que a volta da conta restaura."""
+    async with db.acquire() as conn:
+        gestor = await _gestor(conn, is_active=False)
+        ativa, inativa = lado.conta(1), lado.conta(2)
+        await _grant(conn, lado, gestor, ativa)
+        await _grant(conn, lado, gestor, inativa, conta_ativa=False)
+
+        revogados = await lado.modulo.revogar_de_desativados(conn)
+
+        assert sorted(revogados) == [(gestor, ativa), (gestor, inativa)]
+        revoked_at, motivo = await _linha(conn, lado, gestor, inativa)
+        assert revoked_at is not None
+        assert motivo == lado.motivo_churn
+        assert (await _linha(conn, lado, gestor, ativa))[1] == MANAGER_DEACTIVATED_REASON
+
+
+@pytest.mark.integration
 async def test_invited_nao_e_desativado(db, lado: _Lado) -> None:
     async with db.acquire() as conn:
         gestor = await _gestor(conn, is_active=True, status="invited")
@@ -228,8 +247,13 @@ async def test_restaura_so_manager_deactivated_em_conta_ativa(db, lado: _Lado) -
         await _grant(conn, lado, gestor, c1, motivo=MANAGER_DEACTIVATED_REASON)
         await _grant(conn, lado, gestor, c2, motivo=ADMIN_REVOKED_REASON)
         await _grant(conn, lado, gestor, c3, motivo=BULK_COPY_REPLACED_REASON)
+        # Churn em conta ATIVA (a conta voltou e a reconciliação ainda não
+        # restaurou): quem devolve é o `restore_for_account`, não a reativação.
+        c4 = lado.conta(4)
+        await _grant(conn, lado, gestor, c4, motivo=lado.motivo_churn)
         antes_c2 = await _linha(conn, lado, gestor, c2)
         antes_c3 = await _linha(conn, lado, gestor, c3)
+        antes_c4 = await _linha(conn, lado, gestor, c4)
 
         restaurados, remarcados = await lado.modulo.restaurar_de_reativados(conn)
 
@@ -238,6 +262,7 @@ async def test_restaura_so_manager_deactivated_em_conta_ativa(db, lado: _Lado) -
         assert await _linha(conn, lado, gestor, c1) == (None, None)
         assert await _linha(conn, lado, gestor, c2) == antes_c2
         assert await _linha(conn, lado, gestor, c3) == antes_c3
+        assert await _linha(conn, lado, gestor, c4) == antes_c4
 
 
 @pytest.mark.integration
@@ -304,7 +329,9 @@ async def test_duas_rodadas_a_segunda_nao_muda_nada(db, lado: _Lado) -> None:
 
         await conn.execute("UPDATE managers SET is_active = true WHERE id = $1", gestor)
         restaurados, remarcados = await lado.modulo.restaurar_de_reativados(conn)
-        assert (restaurados, remarcados) == ([(gestor, lado.conta(1))], [(gestor, lado.conta(2))])
+        # A conta inativa já saiu com o motivo de churn: nada a remarcar.
+        assert (restaurados, remarcados) == ([(gestor, lado.conta(1))], [])
+        assert (await _linha(conn, lado, gestor, lado.conta(2)))[1] == lado.motivo_churn
         foto = await _foto(conn, lado)
         assert await lado.modulo.restaurar_de_reativados(conn) == ([], [])
         assert await _foto(conn, lado) == foto
