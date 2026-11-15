@@ -21,6 +21,7 @@ from src.db.repositories import (
     manager_meta_account_access,
 )
 from src.db.repositories import managers as managers_repo
+from src.db.repositories._acesso_comum import pares_em_texto
 from src.web import numeros
 from src.web.deps import CurrentUser, current_manager, pending_invites_count
 from src.web.routes._shared import (
@@ -181,6 +182,13 @@ async def admin_managers_toggle_active(
                 "restaurados_meta": len(restaurados_m),
                 "remarcados_google": len(remarcados_g),
                 "remarcados_meta": len(remarcados_m),
+                # Forense como a etapa do job (revisão final, I2): a restauração
+                # zera o motivo na hora, então sem os pares não sobra rastro de
+                # quais contas voltaram. O toast usa só os números.
+                "pares_restaurados_google": pares_em_texto(restaurados_g),
+                "pares_restaurados_meta": pares_em_texto(restaurados_m),
+                "pares_remarcados_google": pares_em_texto(remarcados_g),
+                "pares_remarcados_meta": pares_em_texto(remarcados_m),
             }
         elif mudou:
             revogados_g = await manager_account_access.revogar_de_desativados(
@@ -189,7 +197,12 @@ async def admin_managers_toggle_active(
             revogados_m = await manager_meta_account_access.revogar_de_desativados(
                 conn, manager_id=manager_id
             )
-            contagens = {"revogados_google": len(revogados_g), "revogados_meta": len(revogados_m)}
+            contagens = {
+                "revogados_google": len(revogados_g),
+                "revogados_meta": len(revogados_m),
+                "pares_revogados_google": pares_em_texto(revogados_g),
+                "pares_revogados_meta": pares_em_texto(revogados_m),
+            }
         # F179: grava também quando nada mudou, com had_effect=False.
         await _audit_admin(
             conn,

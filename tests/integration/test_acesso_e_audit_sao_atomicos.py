@@ -221,3 +221,62 @@ async def test_toggle_active_nao_revoga_se_audit_falha(db) -> None:
     assert (vivos_google, vivos_meta) == (1, 1), (
         "a revogação não pode sobreviver a um audit_log.record que falhou"
     )
+
+
+@pytest.mark.integration
+async def test_toggle_active_nao_restaura_se_audit_falha(db) -> None:
+    """Espelho de `test_toggle_active_nao_revoga_se_audit_falha` no sentido de
+    reativar: audit que falha desfaz o UPDATE e a restauração. O gestor segue
+    desativado e os grants seguem revogados com `manager_deactivated`."""
+    async with db.acquire() as conn:
+        admin_manager = await _make_manager(conn, "admin.restaura@v4company.com", role="admin")
+        gestor = await _make_manager(conn, "gestor.restaura@v4company.com")
+        await _make_account(conn, "1110000005")
+        await meta_ad_accounts.upsert_many(
+            conn,
+            [{"ad_account_id": "act_1110000005", "business_id": "bm_t", "account_name": "T"}],
+        )
+        await manager_account_access.grant(
+            conn, manager_id=gestor.id, customer_id="1110000005", granted_by=admin_manager.id
+        )
+        await manager_meta_account_access.grant(
+            conn,
+            manager_id=gestor.id,
+            ad_account_id="act_1110000005",
+            granted_by=admin_manager.id,
+        )
+    admin = CurrentUser(admin_manager)
+    # Desativação de verdade (com audit), para partir do estado que a rota deixa.
+    await admin_overview.admin_managers_toggle_active(
+        _FakeRequest(), manager_id=gestor.id, desejado="inativo", user=admin
+    )
+
+    with (
+        patch(
+            "src.db.repositories.audit_log.record",
+            side_effect=_AuditLogWriteError("audit indisponível"),
+        ),
+        pytest.raises(_AuditLogWriteError),
+    ):
+        await admin_overview.admin_managers_toggle_active(
+            _FakeRequest(),
+            manager_id=gestor.id,
+            desejado="ativo",
+            user=admin,
+        )
+
+    async with db.acquire() as conn:
+        is_active = await conn.fetchval("SELECT is_active FROM managers WHERE id = $1", gestor.id)
+        motivos_google = await conn.fetch(
+            "SELECT revoked_reason FROM manager_account_access WHERE manager_id = $1",
+            gestor.id,
+        )
+        motivos_meta = await conn.fetch(
+            "SELECT revoked_reason FROM manager_meta_account_access WHERE manager_id = $1",
+            gestor.id,
+        )
+    assert is_active is False, "a reativação não pode sobreviver a um audit que falhou"
+    assert [r["revoked_reason"] for r in motivos_google] == ["manager_deactivated"]
+    assert [r["revoked_reason"] for r in motivos_meta] == ["manager_deactivated"], (
+        "a restauração não pode sobreviver a um audit_log.record que falhou"
+    )

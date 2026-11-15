@@ -68,6 +68,35 @@ _DESCRITORES = (GOOGLE, META)
 # negação (`NOT ...`) não tem terceiro valor.
 PREDICADO_DESATIVADO = "(m.is_active = false OR m.status = 'inactive')"
 
+# A negação de `PREDICADO_DESATIVADO` (colunas NOT NULL, então é exata), escrita
+# sem `is_active = ...`. Existe para as filas do painel (`list_queues` dos dois
+# inventários), que precisam contar só o que `restore_for_account` devolve: os
+# guards delas leem o SQL como LITERAL (não f-string) e proíbem `is_active =
+# false` no texto, então a fila copia este texto literal. Quem amarra a cópia a
+# esta constante é `tests/unit/test_filas_contam_o_que_o_restore_devolve.py`, e
+# quem amarra esta constante à negação é
+# `tests/integration/test_revogacao_na_desativacao.py::test_predicado_nao_desativado_e_a_negacao`.
+PREDICADO_NAO_DESATIVADO = "(m.is_active AND m.status <> 'inactive')"
+
+
+@dataclass(frozen=True, slots=True)
+class RestauracaoDeChurn:
+    """O que a volta da conta fez com as linhas de churn dela (`restaurar_churn_da_conta`).
+
+    `restaurados`: gestores que voltaram a ter acesso. `retidos`: gestores
+    desativados cuja linha continua revogada, agora como `manager_deactivated`
+    (volta na reativação). Ids em texto, ordenados.
+    """
+
+    restaurados: list[str]
+    retidos: list[str]
+
+
+def pares_em_texto(linhas: list[tuple[UUID, str]]) -> list[list[str]]:
+    """`[[manager_id, conta], ...]` em texto, ordenado: o formato dos pares no
+    audit (JSON), igual na rota `toggle-active` e na etapa do job."""
+    return sorted([str(manager_id), conta] for manager_id, conta in linhas)
+
 
 def _exigir_descritor(t: TabelaDeAcesso) -> None:
     # `if`/`raise`, não `assert`: `python -O` apagaria o assert.
@@ -341,14 +370,36 @@ async def restaurar_de_reativados(
     )
 
 
+# Os três baldes do plano, um texto cada: a contagem e a lista de gestores do
+# mesmo balde não podem divergir de predicado. São os mesmos de
+# `revogar_de_desativados` e `restaurar_de_reativados`; `$1` é
+# `MANAGER_DEACTIVATED_REASON`.
+_A_REVOGAR = f"{PREDICADO_DESATIVADO} AND g.revoked_at IS NULL"
+_A_RESTAURAR = (
+    f"NOT {PREDICADO_DESATIVADO} AND g.revoked_at IS NOT NULL AND g.revoked_reason = $1 "
+    "AND a.is_active = true"
+)
+_A_REMARCAR = (
+    f"NOT {PREDICADO_DESATIVADO} AND g.revoked_at IS NOT NULL AND g.revoked_reason = $1 "
+    "AND a.is_active = false"
+)
+
+
 async def planejar_convergencia(
     conn: asyncpg.Connection,
     t: TabelaDeAcesso,
     *,
     motivo_churn: str,
-) -> dict[str, int]:
+) -> dict[str, int | list[str]]:
     """Quantas linhas `revogar_de_desativados` e `restaurar_de_reativados` (sem
-    `manager_id`) mudariam agora, sem escrever: o dry-run do job.
+    `manager_id`) mudariam agora, e de quais gestores, sem escrever: o dry-run do
+    job.
+
+    Além das três contagens, os `manager_id` distintos de cada balde
+    (`gestores_a_revogar`, `gestores_a_restaurar`, `gestores_a_remarcar`, em texto
+    e ordenados): ligar a trava se apoia neste audit, e um gestor desativado por
+    engano tem de aparecer pelo id, não só como "+N" na contagem (revisão final,
+    I3).
 
     Mesmos predicados das duas funções, num `SELECT count` só. Os três conjuntos
     são disjuntos (gestor desativado x não; conta ativa x inativa), então rodar as
@@ -360,27 +411,24 @@ async def planejar_convergencia(
     row = await conn.fetchrow(
         f"""
         SELECT
-            count(*) FILTER (
-                WHERE {PREDICADO_DESATIVADO} AND g.revoked_at IS NULL
-            ) AS a_revogar,
-            count(*) FILTER (
-                WHERE NOT {PREDICADO_DESATIVADO}
-                  AND g.revoked_at IS NOT NULL AND g.revoked_reason = $1
-                  AND a.is_active = true
-            ) AS a_restaurar,
-            count(*) FILTER (
-                WHERE NOT {PREDICADO_DESATIVADO}
-                  AND g.revoked_at IS NOT NULL AND g.revoked_reason = $1
-                  AND a.is_active = false
-            ) AS a_remarcar
+            count(*) FILTER (WHERE {_A_REVOGAR}) AS a_revogar,
+            count(*) FILTER (WHERE {_A_RESTAURAR}) AS a_restaurar,
+            count(*) FILTER (WHERE {_A_REMARCAR}) AS a_remarcar,
+            array_agg(DISTINCT m.id) FILTER (WHERE {_A_REVOGAR}) AS gestores_a_revogar,
+            array_agg(DISTINCT m.id) FILTER (WHERE {_A_RESTAURAR}) AS gestores_a_restaurar,
+            array_agg(DISTINCT m.id) FILTER (WHERE {_A_REMARCAR}) AS gestores_a_remarcar
           FROM {t.tabela} g
           JOIN managers m ON m.id = g.manager_id
           JOIN {t.inventario} a ON a.{t.coluna_conta} = g.{t.coluna_conta}
         """,
         MANAGER_DEACTIVATED_REASON,
     )
+    # `array_agg` de balde vazio é NULL (e a linha neutra do guard dos gêmeos dá 0).
     return {
         "a_revogar": int(row["a_revogar"]),
         "a_restaurar": int(row["a_restaurar"]),
         "a_remarcar": int(row["a_remarcar"]),
+        "gestores_a_revogar": sorted(str(i) for i in row["gestores_a_revogar"] or []),
+        "gestores_a_restaurar": sorted(str(i) for i in row["gestores_a_restaurar"] or []),
+        "gestores_a_remarcar": sorted(str(i) for i in row["gestores_a_remarcar"] or []),
     }

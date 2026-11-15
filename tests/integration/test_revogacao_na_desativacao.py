@@ -43,7 +43,7 @@ from src.db.repositories.motivos import (
 )
 from src.jobs import _runner, account_resync
 from src.web.deps import CurrentUser
-from src.web.routes import admin_overview
+from src.web.routes import admin_accounts, admin_overview
 from tests.integration._seed import seed_manager
 
 
@@ -380,7 +380,15 @@ async def test_planejar_convergencia_conta_sem_escrever(db, lado: _Lado) -> None
         )
 
         assert await _foto(conn, lado) == antes, "planejar_convergencia escreveu"
-        assert plano == {"a_revogar": 2, "a_restaurar": 2, "a_remarcar": 1}
+        assert plano == {
+            "a_revogar": 2,
+            "a_restaurar": 2,
+            "a_remarcar": 1,
+            # Revisão final (I3): quem seria atingido, por balde (o `invited` fora).
+            "gestores_a_revogar": [str(desativado)],
+            "gestores_a_restaurar": [str(reativado)],
+            "gestores_a_remarcar": [str(reativado)],
+        }
 
         revogados = await lado.modulo.revogar_de_desativados(conn)
         restaurados, remarcados = await lado.modulo.restaurar_de_reativados(conn)
@@ -388,6 +396,9 @@ async def test_planejar_convergencia_conta_sem_escrever(db, lado: _Lado) -> None
             "a_revogar": len(revogados),
             "a_restaurar": len(restaurados),
             "a_remarcar": len(remarcados),
+            "gestores_a_revogar": sorted({str(g) for g, _ in revogados}),
+            "gestores_a_restaurar": sorted({str(g) for g, _ in restaurados}),
+            "gestores_a_remarcar": sorted({str(g) for g, _ in remarcados}),
         }
 
 
@@ -410,6 +421,25 @@ async def test_predicado_sql_igual_ao_python(db, status: str, is_active: bool) -
         esperado = (not is_active) or status == "inactive"
         assert manager.is_deactivated is esperado, (status, is_active)
         assert no_sql is esperado, (status, is_active, no_sql)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("status", ["invited", "active", "inactive"])
+@pytest.mark.parametrize("is_active", [True, False])
+async def test_predicado_nao_desativado_e_a_negacao(db, status: str, is_active: bool) -> None:
+    """`PREDICADO_NAO_DESATIVADO` (a forma que as filas do painel copiam) é a
+    negação exata de `PREDICADO_DESATIVADO` em toda combinação real, avaliado no
+    Postgres. A tabela esperada fica escrita: concordância sozinha não prova nada."""
+    async with db.acquire() as conn:
+        gestor = await _gestor(conn, is_active=is_active, status=status)
+        desativado, nao_desativado = await conn.fetchrow(
+            f"SELECT {_acesso_comum.PREDICADO_DESATIVADO}, "
+            f"{_acesso_comum.PREDICADO_NAO_DESATIVADO} FROM managers m WHERE m.id = $1",
+            gestor,
+        )
+    esperado = is_active and status != "inactive"
+    assert nao_desativado is esperado, (status, is_active, nao_desativado)
+    assert desativado is (not esperado), (status, is_active, desativado)
 
 
 # --- Task 2: a volta da conta (`restore_for_account`) respeita o gestor desativado ---
@@ -742,8 +772,9 @@ def _summary(audit: asyncpg.Record) -> dict[str, object]:
 
 
 def _contagens(audit: asyncpg.Record) -> dict[str, object]:
-    """O `params_summary` sem as listas de pares (afirmadas em teste próprio)."""
-    return {k: v for k, v in _summary(audit).items() if not k.startswith("pares_")}
+    """O `params_summary` sem as listas de pares e de gestores do plano (afirmadas
+    em teste próprio)."""
+    return {k: v for k, v in _summary(audit).items() if not k.startswith(("pares_", "gestores_"))}
 
 
 async def _dois_desativados_com_grants(conn: asyncpg.Connection) -> None:
@@ -778,12 +809,19 @@ async def test_etapa_com_trava_desligada_audita_e_nao_escreve(db) -> None:
         (audit,) = audits[plataforma]
         assert audit["status"] == "success"
         assert audit["target_count"] == 0
-        assert _summary(audit) == {
+        # Sem trava: as contagens e os gestores do plano (afirmados em
+        # `test_etapa_com_trava_desligada_diz_quem_seria_atingido`), nada de pares.
+        assert _contagens(audit) == {
             "apply": False,
             "a_revogar": a_revogar,
             "a_restaurar": 0,
             "a_remarcar": 0,
         }
+        assert sorted(k for k in _summary(audit) if k.startswith(("pares_", "gestores_"))) == [
+            "gestores_a_remarcar",
+            "gestores_a_restaurar",
+            "gestores_a_revogar",
+        ]
 
 
 @pytest.mark.integration
@@ -1103,3 +1141,259 @@ async def test_linha_da_corrida_do_restore_e_alcancada_pela_convergencia(db, lad
         revoked_at, motivo = await _linha(conn, lado, gestor, conta)
     assert revoked_at is not None
     assert motivo == MANAGER_DEACTIVATED_REASON
+
+
+# --- Revisão final (I1): a fila do painel conta o que o botão devolve ----------
+#
+# Depois da T2, `restore_for_account` não devolve a linha de churn de gestor
+# desativado (remarca como `manager_deactivated`), mas as filas `voltaram_ao_mcc`
+# (Google) e `saiu_da_parceria` (Meta) contavam toda linha de churn da conta.
+# Medido na revisão final: fila exibia 2, o botão devolvia 1.
+
+
+async def _na_fila_de_restauracao(conn: asyncpg.Connection, lado: _Lado, conta: str) -> int | None:
+    """A contagem que o painel exibe para a conta na fila de restauração do lado
+    (`None` = a conta não está na fila)."""
+    if lado.nome == "google":
+        filas_google = await google_ads_accounts.list_queues(conn)
+        contagens = {
+            r["customer_id"]: r["grants_restauraveis"] for r in filas_google.voltaram_ao_mcc
+        }
+    else:
+        filas_meta = await meta_ad_accounts.list_queues(conn)
+        contagens = {a.ad_account_id: n for a, n in filas_meta.saiu_da_parceria}
+    valor = contagens.get(conta)
+    return None if valor is None else int(valor)
+
+
+async def _na_fila_sem_delegacao(conn: asyncpg.Connection, lado: _Lado) -> set[str]:
+    if lado.nome == "google":
+        filas_google = await google_ads_accounts.list_queues(conn)
+        return {r["customer_id"] for r in filas_google.sem_delegacao}
+    filas_meta = await meta_ad_accounts.list_queues(conn)
+    return {a.ad_account_id for a in filas_meta.sem_delegacao}
+
+
+def _quantos_restaurados(resultado: list[str] | int) -> int:
+    return len(resultado) if isinstance(resultado, list) else resultado
+
+
+@pytest.mark.integration
+async def test_fila_conta_so_o_que_o_botao_devolve(db, lado: _Lado) -> None:
+    """O probe da revisão final: dois grants de churn na conta que voltou, um de
+    gestor ativo e um de desativado. A fila tem de exibir 1, o que o botão devolve."""
+    async with db.acquire() as conn:
+        desativado = await _gestor(conn, is_active=False)
+        ativo = await _gestor(conn)
+        conta = lado.conta(1)
+        await _grant(conn, lado, desativado, conta, motivo=lado.motivo_churn)
+        await _grant(conn, lado, ativo, conta, motivo=lado.motivo_churn)
+
+        exibido = await _na_fila_de_restauracao(conn, lado, conta)
+        resultado = await _restaurar_conta(conn, lado, conta)
+
+    assert _quantos_restaurados(resultado) == 1
+    assert exibido == 1, f"a fila exibe {exibido} e o botão devolve 1"
+
+
+@pytest.mark.integration
+async def test_conta_so_com_churn_de_desativado_vai_para_sem_delegacao(db, lado: _Lado) -> None:
+    """Consequência do filtro: a conta ativa cujo único churn é de gestor
+    desativado não tem o que o botão devolva, e sai da fila de restauração. Sem
+    grant vivo, ela tem de aparecer na fila de delegação: a precedência da fila de
+    restauração sobre `sem_delegacao` só vale quando há o que restaurar; sem isto
+    a conta sumiria das duas filas (e do aviso de conta sem grant)."""
+    async with db.acquire() as conn:
+        desativado = await _gestor(conn, is_active=False)
+        conta = lado.conta(1)
+        await _grant(conn, lado, desativado, conta, motivo=lado.motivo_churn)
+
+        assert await _na_fila_de_restauracao(conn, lado, conta) is None
+        assert conta in await _na_fila_sem_delegacao(conn, lado)
+
+
+class _FakeRequestForm:
+    """POST de formulário (sem HTMX): a rota responde 303 para `destino`."""
+
+    def __init__(self) -> None:
+        self.headers: dict[str, str] = {}
+
+
+async def _restore_pela_rota(admin: CurrentUser, lado: _Lado, conta: str) -> Response:
+    if lado.nome == "google":
+        return await admin_accounts.admin_accounts_google_restore(
+            _FakeRequestForm(),  # type: ignore[arg-type]
+            customer_id=conta,
+            user=admin,
+        )
+    return await admin_accounts.admin_accounts_meta_restore(
+        _FakeRequestForm(),  # type: ignore[arg-type]
+        ad_account_id=conta,
+        user=admin,
+    )
+
+
+_OPERACAO_DO_RESTORE = {
+    "google": "admin_accounts_google_restore",
+    "meta": "admin_accounts_meta_restore",
+}
+
+
+async def _audit_do_restore(conn: asyncpg.Connection, lado: _Lado) -> dict[str, object]:
+    audit = await conn.fetchrow(
+        "SELECT params_summary FROM audit_log WHERE operation = $1",
+        _OPERACAO_DO_RESTORE[lado.nome],
+    )
+    assert audit is not None
+    return dict(json.loads(audit["params_summary"]))
+
+
+@pytest.mark.integration
+async def test_restore_pela_rota_audita_e_avisa_os_retidos(db, lado: _Lado) -> None:
+    """O admin clica em Restaurar e um grant fica retido pela desativação do
+    gestor: o audit e o aviso dizem quantos, em vez do `?ok=restored` genérico."""
+    async with db.acquire() as conn:
+        admin = await _admin(conn)
+        desativado = await _gestor(conn, is_active=False)
+        ativo = await _gestor(conn)
+        conta = lado.conta(1)
+        await _grant(conn, lado, desativado, conta, motivo=lado.motivo_churn)
+        await _grant(conn, lado, ativo, conta, motivo=lado.motivo_churn)
+
+    resposta = await _restore_pela_rota(admin, lado, conta)
+
+    async with db.acquire() as conn:
+        summary = await _audit_do_restore(conn, lado)
+    assert summary["restored_grants"] == 1
+    assert summary["retidos_gestor_desativado"] == 1
+    assert resposta.status_code == 303
+    assert resposta.headers["location"].endswith("?ok=restored&retidos=1")
+
+
+@pytest.mark.integration
+async def test_restore_sem_retidos_mantem_o_destino(db, lado: _Lado) -> None:
+    """Sem gestor desativado na conta, nada muda para o admin: o destino é o
+    `?ok=restored` de sempre, e o audit diz zero retidos."""
+    async with db.acquire() as conn:
+        admin = await _admin(conn)
+        ativo = await _gestor(conn)
+        conta = lado.conta(1)
+        await _grant(conn, lado, ativo, conta, motivo=lado.motivo_churn)
+
+    resposta = await _restore_pela_rota(admin, lado, conta)
+
+    async with db.acquire() as conn:
+        summary = await _audit_do_restore(conn, lado)
+    assert (summary["restored_grants"], summary["retidos_gestor_desativado"]) == (1, 0)
+    assert resposta.headers["location"].endswith("?ok=restored")
+
+
+# --- Revisão final (M6): `restore_for_account` é idempotente --------------------
+
+
+@pytest.mark.integration
+async def test_restore_for_account_segunda_chamada_nao_muda_nada(db, lado: _Lado) -> None:
+    """Duplo clique em Restaurar (ou aba velha reenviada): a segunda chamada não
+    acha churn (nem o do ativo, já restaurado, nem o do desativado, já remarcado)
+    e não muda linha nenhuma."""
+    async with db.acquire() as conn:
+        desativado = await _gestor(conn, is_active=False)
+        ativo = await _gestor(conn)
+        conta = lado.conta(1)
+        await _grant(conn, lado, desativado, conta, motivo=lado.motivo_churn)
+        await _grant(conn, lado, ativo, conta, motivo=lado.motivo_churn)
+
+        primeira = await _restaurar_conta(conn, lado, conta)
+        foto = await _foto(conn, lado)
+        segunda = await _restaurar_conta(conn, lado, conta)
+
+        assert _quantos_restaurados(primeira) == 1
+        assert _quantos_restaurados(segunda) == 0
+        assert await _foto(conn, lado) == foto
+        assert await _linha(conn, lado, ativo, conta) == (None, None)
+        _, motivo = await _linha(conn, lado, desativado, conta)
+        assert motivo == MANAGER_DEACTIVATED_REASON
+
+
+# --- Revisão final (I2): o audit da rota leva os pares atingidos ----------------
+
+
+@pytest.mark.integration
+async def test_rota_audita_os_pares_que_mexeu(db) -> None:
+    """A reativação zera o motivo das linhas: sem os pares no audit, não sobra
+    rastro de quais contas a rota revogou e devolveu. Mesmo formato do job
+    (`[[manager_id, conta], ...]`), uma chave por balde e plataforma."""
+    google, meta = _LADOS["google"], _LADOS["meta"]
+    async with db.acquire() as conn:
+        admin = await _admin(conn)
+        gestor = await _gestor(conn)
+        await _grant(conn, google, gestor, google.conta(1))
+        await _grant(conn, google, gestor, google.conta(2))
+        await _grant(conn, meta, gestor, meta.conta(1))
+
+    await _toggle(admin, gestor, "inativo")
+    async with db.acquire() as conn:
+        await _conta_ativa(conn, google, google.conta(2), False)
+    await _toggle(admin, gestor, "ativo")
+
+    async with db.acquire() as conn:
+        desativar, reativar = await _audits_do_toggle(conn)
+    g = str(gestor)
+    resumo = json.loads(desativar["params_summary"])
+    assert resumo["pares_revogados_google"] == [[g, google.conta(1)], [g, google.conta(2)]]
+    assert resumo["pares_revogados_meta"] == [[g, meta.conta(1)]]
+    assert (resumo["revogados_google"], resumo["revogados_meta"]) == (2, 1)
+    resumo = json.loads(reativar["params_summary"])
+    assert resumo["pares_restaurados_google"] == [[g, google.conta(1)]]
+    assert resumo["pares_remarcados_google"] == [[g, google.conta(2)]]
+    assert resumo["pares_restaurados_meta"] == [[g, meta.conta(1)]]
+    assert resumo["pares_remarcados_meta"] == []
+    assert (resumo["restaurados_google"], resumo["remarcados_google"]) == (1, 1)
+    assert (resumo["restaurados_meta"], resumo["remarcados_meta"]) == (1, 0)
+
+
+# --- Revisão final (I3): o dry-run diz quem seria atingido ----------------------
+
+
+@pytest.mark.integration
+async def test_etapa_com_trava_desligada_diz_quem_seria_atingido(db) -> None:
+    """Ligar a trava é a decisão destrutiva, e ela se apoia neste audit: além das
+    contagens, os `manager_id` distintos de cada balde. Um gestor desativado por
+    engano aparece pelo id, não só como "+N" no número."""
+    google, meta = _LADOS["google"], _LADOS["meta"]
+    async with db.acquire() as conn:
+        a_revogar = await _gestor(conn, is_active=False)
+        await _grant(conn, google, a_revogar, google.conta(1))
+        await _grant(conn, google, a_revogar, google.conta(2))
+        await _grant(conn, meta, a_revogar, meta.conta(1))
+        reativado = await _gestor(conn)
+        await _grant(conn, google, reativado, google.conta(3), motivo=MANAGER_DEACTIVATED_REASON)
+        await _grant(
+            conn,
+            google,
+            reativado,
+            google.conta(4),
+            motivo=MANAGER_DEACTIVATED_REASON,
+            conta_ativa=False,
+        )
+        fotos = [await _foto(conn, lado) for lado in _LADOS.values()]
+
+    assert await account_resync._etapa_gestores(db, _settings(apply=False)) is False
+
+    async with db.acquire() as conn:
+        assert [await _foto(conn, lado) for lado in _LADOS.values()] == fotos
+        audits = await _audits_da_etapa(conn)
+    resumo_google = _summary(audits["google"][0])
+    resumo_meta = _summary(audits["meta"][0])
+    assert resumo_google["gestores_a_revogar"] == [str(a_revogar)]
+    assert resumo_google["gestores_a_restaurar"] == [str(reativado)]
+    assert resumo_google["gestores_a_remarcar"] == [str(reativado)]
+    assert (
+        resumo_google["a_revogar"],
+        resumo_google["a_restaurar"],
+        resumo_google["a_remarcar"],
+    ) == (2, 1, 1)
+    assert resumo_meta["gestores_a_revogar"] == [str(a_revogar)]
+    assert resumo_meta["gestores_a_restaurar"] == []
+    assert resumo_meta["gestores_a_remarcar"] == []
+    assert resumo_meta["a_revogar"] == 1

@@ -447,6 +447,14 @@ _GEMEOS_EXCLUIDOS: dict[str, str] = {
         "retorno difere por design: Google devolve `list[str]` (gestores restaurados), "
         "Meta devolve `int` (contagem); cada chamador usa o seu"
     ),
+    # Revisão final (I1): o SQL que era de `restore_for_account`, agora com os
+    # retidos no retorno (`restore_for_account` virou o wrapper dela).
+    "restaurar_churn_da_conta": (
+        "mesmo SQL e mesmo retorno dos dois lados, mas o motivo de churn entra como "
+        "constante do módulo (Google `LEFT_MCC_REASON`, Meta `PARTNERSHIP_ENDED_REASON`); "
+        "quem amarra os dois lados é tests/integration/test_revogacao_na_desativacao.py, "
+        "parametrizado por lado"
+    ),
 }
 
 

@@ -12,7 +12,6 @@ import sys
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Literal
-from uuid import UUID
 
 import asyncpg
 import structlog
@@ -28,6 +27,7 @@ from src.db.repositories import (
     manager_meta_account_access,
     managers,
 )
+from src.db.repositories._acesso_comum import pares_em_texto
 from src.google_ads.accounts import (
     fetch_account_details,
     list_accessible_customer_resource_names,
@@ -484,11 +484,6 @@ _LADOS_DE_ACESSO: tuple[tuple[Literal["google", "meta"], Any], ...] = (
 )
 
 
-def _pares(linhas: list[tuple[UUID, str]]) -> list[list[str]]:
-    """`[[manager_id, conta], ...]` em texto, ordenado (o audit é JSON)."""
-    return sorted([str(manager_id), conta] for manager_id, conta in linhas)
-
-
 async def convergir_gestores(
     conn: asyncpg.Connection, *, apply: bool
 ) -> dict[Literal["google", "meta"], dict[str, Any]]:
@@ -527,10 +522,11 @@ async def convergir_gestores(
                     # `manager_ids` por conta): reconceder zera o motivo, e a
                     # restauração o zera na hora — sem os pares, não sobra rastro
                     # de quem o job mexeu. Só com a trava ligada: sem ela nada
-                    # foi escrito, e o plano basta.
-                    "pares_revogados": _pares(revogados),
-                    "pares_restaurados": _pares(restaurados),
-                    "pares_remarcados": _pares(remarcados),
+                    # foi escrito, e o plano (contagens e gestores por balde,
+                    # revisão final I3) diz quem seria atingido.
+                    "pares_revogados": pares_em_texto(revogados),
+                    "pares_restaurados": pares_em_texto(restaurados),
+                    "pares_remarcados": pares_em_texto(remarcados),
                 }
             resumos[plataforma] = resumo
     return resumos

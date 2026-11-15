@@ -1004,6 +1004,30 @@ async def test_admin_invites_flash_messages(client: AsyncClient):
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize("pagina", ["/admin/accounts", "/admin/accounts/meta"])
+async def test_admin_accounts_flash_restored_diz_os_retidos(
+    client: AsyncClient, pagina: str
+) -> None:
+    """Revisão final (I1): as duas páginas de contas renderizam os retidos do
+    Restaurar (`&retidos=N`), e um valor fora do formato nunca é ecoado."""
+    pool = connection.get_pool()
+    admin_id, _ = await _bootstrap_admin_and_gestor(pool)
+    cookies = {PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)}
+
+    response = await client.get(f"{pagina}?ok=restored&retidos=2", cookies=cookies)
+    assert response.status_code == 200
+    assert "2 acessos continuam revogados porque os gestores estão desativados" in response.text
+
+    response = await client.get(
+        f"{pagina}?ok=restored&retidos=<script>alert(1)</script>", cookies=cookies
+    )
+    assert response.status_code == 200
+    assert "Acesso restaurado" in response.text
+    assert "alert(1)" not in response.text
+    assert "revogados porque os gestores" not in response.text
+
+
+@pytest.mark.integration
 async def test_admin_access_flash_same_manager(client: AsyncClient):
     pool = connection.get_pool()
     admin_id, _ = await _bootstrap_admin_and_gestor(pool)

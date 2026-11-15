@@ -6,7 +6,11 @@ from uuid import UUID
 import asyncpg
 
 from src.db.repositories import _acesso_comum
-from src.db.repositories._acesso_comum import GOOGLE, PREDICADO_DESATIVADO
+from src.db.repositories._acesso_comum import (
+    GOOGLE,
+    PREDICADO_DESATIVADO,
+    RestauracaoDeChurn,
+)
 from src.db.repositories.google_ads_accounts import GoogleAdsAccount, row_to_account
 from src.db.repositories.motivos import (
     ADMIN_REVOKED_REASON,
@@ -295,11 +299,14 @@ async def revoke_for_inactive_accounts(
     return atingidos
 
 
-async def restore_for_account(conn: asyncpg.Connection, *, customer_id: str) -> list[str]:
+async def restaurar_churn_da_conta(
+    conn: asyncpg.Connection, *, customer_id: str
+) -> RestauracaoDeChurn:
     """Devolve o acesso revogado por CHURN (`LEFT_MCC_REASON`). Revogação de admin
     não volta, e gestor desativado também não: a linha dele passa a
     `manager_deactivated` e volta na reativação. Devolve os gestores restaurados
-    de fato.
+    de fato e os retidos (os desativados cuja linha foi remarcada): o painel
+    diz quantos ficaram retidos (revisão final, I1).
 
     UM UPDATE sobre as linhas de churn da conta, que decide por gestor (a
     transação é do chamador):
@@ -319,8 +326,9 @@ async def restore_for_account(conn: asyncpg.Connection, *, customer_id: str) -> 
     que `revogar_de_desativados` (rota ou etapa do job) alcança.
 
     `manager_deactivated` não é churn e fica fora do WHERE. Mesmo SQL do
-    gêmeo (o par não é comparado por `test_acesso_gemeos_conformes.py` porque o
-    retorno difere; quem amarra os dois lados é
+    gêmeo (o par fica fora de `test_acesso_gemeos_conformes.py`, em
+    `_GEMEOS_EXCLUIDOS`, porque o motivo de churn de cada lado entra como
+    constante do módulo; quem amarra os dois lados é
     `tests/integration/test_revogacao_na_desativacao.py`, parametrizado por lado).
     """
     rows = await conn.fetch(
@@ -341,8 +349,17 @@ async def restore_for_account(conn: asyncpg.Connection, *, customer_id: str) -> 
         LEFT_MCC_REASON,
         MANAGER_DEACTIVATED_REASON,
     )
-    restaurados = [r for r in rows if r["restaurado"]]
-    return [str(r["manager_id"]) for r in restaurados]
+    return RestauracaoDeChurn(
+        restaurados=sorted(str(r["manager_id"]) for r in rows if r["restaurado"]),
+        retidos=sorted(str(r["manager_id"]) for r in rows if not r["restaurado"]),
+    )
+
+
+async def restore_for_account(conn: asyncpg.Connection, *, customer_id: str) -> list[str]:
+    """Os gestores que `restaurar_churn_da_conta` devolveu (o retorno público de
+    sempre, para quem não precisa dos retidos). Um statement só, o dela."""
+    resultado = await restaurar_churn_da_conta(conn, customer_id=customer_id)
+    return resultado.restaurados
 
 
 async def count_grants_on_inactive_accounts(conn: asyncpg.Connection) -> int:
@@ -495,7 +512,7 @@ async def restaurar_de_reativados(
     )
 
 
-async def planejar_convergencia(conn: asyncpg.Connection) -> dict[str, int]:
+async def planejar_convergencia(conn: asyncpg.Connection) -> dict[str, int | list[str]]:
     """Quantas linhas `revogar_de_desativados` e `restaurar_de_reativados` (sem
     `manager_id`) mudariam agora, sem escrever: o dry-run do job diário. Mesmo
     par `(descritor, motivo de churn)` do apply. SQL no núcleo

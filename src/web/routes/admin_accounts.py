@@ -16,9 +16,10 @@ from src.web.deps import CurrentUser, current_manager, pending_invites_count
 from src.web.routes._shared import (
     _GOOGLE_ACCOUNTS_FLASH_OK,
     _META_ACCOUNTS_FLASH_OK,
-    _admin_flash,
     _audit_admin,
     _require_admin,
+    destino_do_restore,
+    flash_do_restore,
     resposta_hx,
     templates,
 )
@@ -57,7 +58,7 @@ async def admin_accounts(
             "sem_delegacao": queues.sem_delegacao,
             "voltaram_ao_mcc": queues.voltaram_ao_mcc,
             "pending_invites_count": pending,
-            "flash": _admin_flash(request, ok_codes=_GOOGLE_ACCOUNTS_FLASH_OK),
+            "flash": flash_do_restore(request, ok_codes=_GOOGLE_ACCOUNTS_FLASH_OK),
         },
     )
 
@@ -95,7 +96,7 @@ async def admin_accounts_google_restore(
         # falhar depois do restore, os grants reconcedidos e a linha de audit
         # desfazem juntos (F91: isto é transação, não retry).
         async with conn.transaction():
-            restaurados = await manager_account_access.restore_for_account(
+            resultado = await manager_account_access.restaurar_churn_da_conta(
                 conn, customer_id=customer_id
             )
             await _audit_admin(
@@ -103,9 +104,14 @@ async def admin_accounts_google_restore(
                 admin=user,
                 operation="admin_accounts_google_restore",
                 customer_id=customer_id,
-                restored_grants=len(restaurados),
+                restored_grants=len(resultado.restaurados),
+                # Revisão final (I1): o grant de gestor desativado fica retido
+                # (remarcado `manager_deactivated`); o audit e o aviso dizem quantos.
+                retidos_gestor_desativado=len(resultado.retidos),
             )
-    return resposta_hx(request, destino="/admin/accounts?ok=restored")
+    return resposta_hx(
+        request, destino=destino_do_restore("/admin/accounts", retidos=len(resultado.retidos))
+    )
 
 
 @router.get("/admin/accounts/meta", response_class=HTMLResponse)
@@ -141,7 +147,7 @@ async def admin_accounts_meta(
             "saiu_da_parceria": queues.saiu_da_parceria,
             "token_configured": token_configured,
             "pending_invites_count": pending,
-            "flash": _admin_flash(request, ok_codes=_META_ACCOUNTS_FLASH_OK),
+            "flash": flash_do_restore(request, ok_codes=_META_ACCOUNTS_FLASH_OK),
         },
     )
 
@@ -181,7 +187,7 @@ async def admin_accounts_meta_restore(
         # Task 5: restauração e audit na mesma transação (ver
         # admin_accounts_google_restore).
         async with conn.transaction():
-            restaurados = await manager_meta_account_access.restore_for_account(
+            resultado = await manager_meta_account_access.restaurar_churn_da_conta(
                 conn, ad_account_id=ad_account_id
             )
             await _audit_admin(
@@ -190,7 +196,12 @@ async def admin_accounts_meta_restore(
                 operation="admin_accounts_meta_restore",
                 customer_id=ad_account_id,
                 platform="meta",
-                restored_grants=restaurados,
+                restored_grants=len(resultado.restaurados),
+                # Ver admin_accounts_google_restore (revisão final, I1).
+                retidos_gestor_desativado=len(resultado.retidos),
             )
     # Full refresh do browser reconstroi as tres filas de graca, sem swap manual.
-    return resposta_hx(request, destino="/admin/accounts/meta?ok=restored")
+    return resposta_hx(
+        request,
+        destino=destino_do_restore("/admin/accounts/meta", retidos=len(resultado.retidos)),
+    )

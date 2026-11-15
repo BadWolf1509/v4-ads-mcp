@@ -299,15 +299,25 @@ async def list_queues(conn: asyncpg.Connection) -> ReconcileQueues:
     voltou satisfaz as duas (está ativa e sem grant VIVO), e sem a exclusão o
     admin seria convidado a refazer à mão o que um clique devolve.
     """
+    # Revisão final (I1): as duas contam só o churn de gestor NÃO desativado — o
+    # que `restore_for_account` devolve. A linha de churn de desativado não volta
+    # pelo botão (é remarcada `manager_deactivated`), então contá-la fazia a fila
+    # prometer 2 e o botão devolver 1. A conta cujo único churn é de desativado
+    # não tem o que restaurar e cai em `sem_delegacao` (a precedência só vale
+    # quando há o que o botão devolva). O predicado é a cópia LITERAL de
+    # `_acesso_comum.PREDICADO_NAO_DESATIVADO` (os guards destas filas leem o SQL
+    # como literal), amarrada por `tests/unit/test_filas_contam_o_que_o_restore_devolve.py`.
     voltaram = await conn.fetch(
         """
         SELECT a.customer_id, a.descriptive_name,
-               count(m.manager_id) AS grants_restauraveis
+               count(g.manager_id) AS grants_restauraveis
           FROM google_ads_accounts a
-          JOIN manager_account_access m ON m.customer_id = a.customer_id
+          JOIN manager_account_access g ON g.customer_id = a.customer_id
+          JOIN managers m ON m.id = g.manager_id
          WHERE a.is_active = true
-           AND m.revoked_at IS NOT NULL
-           AND m.revoked_reason = $1
+           AND g.revoked_at IS NOT NULL
+           AND g.revoked_reason = $1
+           AND (m.is_active AND m.status <> 'inactive')
          GROUP BY a.customer_id, a.descriptive_name
          ORDER BY a.descriptive_name
         """,
@@ -319,12 +329,14 @@ async def list_queues(conn: asyncpg.Connection) -> ReconcileQueues:
           FROM google_ads_accounts a
          WHERE a.is_active = true
            AND NOT EXISTS (
-                 SELECT 1 FROM manager_account_access m
-                  WHERE m.customer_id = a.customer_id AND m.revoked_at IS NULL)
+                 SELECT 1 FROM manager_account_access g
+                  WHERE g.customer_id = a.customer_id AND g.revoked_at IS NULL)
            AND NOT EXISTS (
-                 SELECT 1 FROM manager_account_access m
-                  WHERE m.customer_id = a.customer_id
-                    AND m.revoked_reason = $1)
+                 SELECT 1 FROM manager_account_access g
+                  JOIN managers m ON m.id = g.manager_id
+                  WHERE g.customer_id = a.customer_id
+                    AND g.revoked_reason = $1
+                    AND (m.is_active AND m.status <> 'inactive'))
          ORDER BY a.descriptive_name
         """,
         LEFT_MCC_REASON,

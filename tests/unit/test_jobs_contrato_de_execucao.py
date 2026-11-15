@@ -105,7 +105,7 @@ async def test_ordem_das_etapas_e_google_meta_gestores_purge() -> None:
 
 
 @pytest.mark.asyncio
-async def test_crash_no_corpo_google_nao_roda_meta_nem_purge() -> None:
+async def test_crash_no_corpo_google_nao_roda_meta_nem_gestores_nem_purge() -> None:
     mocks = _base_patches(pool=FakePool(MagicMock()), oc=SimpleNamespace(refresh_token_enc=b"e"))
     meta = AsyncMock(return_value=Plan())
     with ExitStack() as stack:
@@ -118,9 +118,13 @@ async def test_crash_no_corpo_google_nao_roda_meta_nem_purge() -> None:
         with pytest.raises(RuntimeError, match="upsert caiu"):
             await account_resync.run()
         purge = mocks["purge"].new
+        gestores = mocks["gestores"].new
         close_pool = mocks["close_pool"].new
 
     meta.assert_not_awaited()
+    # O docstring do módulo promete "Meta, gestores e purge não rodam": sem esta
+    # linha, a etapa dos gestores podia rodar no crash e nada notava.
+    gestores.assert_not_awaited()
     purge.assert_not_awaited()
     crash.assert_awaited_once()
     assert crash.await_args.kwargs["operation"] == "google_reconcile"

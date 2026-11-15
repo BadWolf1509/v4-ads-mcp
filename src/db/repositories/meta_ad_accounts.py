@@ -299,7 +299,12 @@ async def list_queues(conn: asyncpg.Connection) -> ReconcileQueues:
     outro gestor continua possível pela matriz, linkada no alerta da fila 3.
     """
     # A razão tem de ser a MESMA que `restore_for_account` filtra — é o que faz a
-    # contagem exibida ser exatamente o que o botão devolve (I5).
+    # contagem exibida ser exatamente o que o botão devolve (I5). Pelo mesmo I5,
+    # só conta churn de gestor NÃO desativado (revisão final, I1): o de desativado
+    # o botão não devolve (remarca `manager_deactivated`), e a conta cujo único
+    # churn é dele cai em `sem_delegacao`. O predicado é a cópia LITERAL de
+    # `_acesso_comum.PREDICADO_NAO_DESATIVADO` (os guards destas filas leem o SQL
+    # como literal), amarrada por `tests/unit/test_filas_contam_o_que_o_restore_devolve.py`.
     sem_delegacao = await conn.fetch(
         """
         SELECT a.* FROM meta_ad_accounts a
@@ -311,9 +316,11 @@ async def list_queues(conn: asyncpg.Connection) -> ReconcileQueues:
            )
            AND NOT EXISTS (
                SELECT 1 FROM manager_meta_account_access r
+                 JOIN managers m ON m.id = r.manager_id
                 WHERE r.ad_account_id = a.ad_account_id
                   AND r.revoked_at IS NOT NULL
                   AND r.revoked_reason = $1
+                  AND (m.is_active AND m.status <> 'inactive')
            )
          ORDER BY a.account_name
         """,
@@ -326,11 +333,13 @@ async def list_queues(conn: asyncpg.Connection) -> ReconcileQueues:
     # F59: toda coluna aliasada em query com JOIN.
     saiu = await conn.fetch(
         """
-        SELECT a.*, count(m.manager_id) AS revogados
+        SELECT a.*, count(g.manager_id) AS revogados
           FROM meta_ad_accounts a
-          JOIN manager_meta_account_access m ON m.ad_account_id = a.ad_account_id
-         WHERE m.revoked_at IS NOT NULL
-           AND m.revoked_reason = $1
+          JOIN manager_meta_account_access g ON g.ad_account_id = a.ad_account_id
+          JOIN managers m ON m.id = g.manager_id
+         WHERE g.revoked_at IS NOT NULL
+           AND g.revoked_reason = $1
+           AND (m.is_active AND m.status <> 'inactive')
          GROUP BY a.ad_account_id
          ORDER BY a.is_active DESC, a.account_name
         """,
