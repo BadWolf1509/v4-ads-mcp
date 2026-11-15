@@ -4,11 +4,11 @@
 >
 > **Maintainer note:** Add a new entry here whenever a finding is documented in a smoke runbook. Keep entries scannable — link to runbook for detail.
 >
-> **Last updated:** 2026-11-11 — **F208–F211** da varredura de 10/11 e da tarde de 11/11 (no fim do arquivo): F208 (cinco bugs de operação, #228), F209 (escrita de governança: `grant-all` e o tipo de app do v25, #239/#240), **F210 em parte** (codec de token: `iat` futuro e UTF-8 ABERTOS, reexport fechado no #240) e F211 (verde que não falava do que ia para produção: ruff/mypy fixados no #238, `SERVING_REVISION`, guards estreitos, premissa E3); F167 e F207 atualizados. De 2026-11-04: **F204–F207** da varredura de refatoração de 03/11 (no fim do arquivo): F204 (teste do painel corrida sob CSP, #219), F205 (export do audit aberto por default, #220), F206 (três desvios de contrato de erro, #210) e **F207 ABERTO** (quatro falhas silenciosas nos jobs). De 2026-09-30: **F200 verificado em produção** (24 h: zero reconexão, zero erro, +8 ms no p50 do health) e o "Fora" do **F203** corrigido na mesma branch; **F203** e **F202** em produção (`00140`, `00141`), com smoke de leitura. De 2026-09-29: **F202** (pacing de orçamento compartilhado) e **F203** (retirada do pool presa sem limite num socket mudo; corrige os "30 s" do F200), deployados em 30/09. De 2026-09-28: **F199** (pacing pelos dias fechados), **F200** (infra e guards) e **F201** (data inválida virava "Erro interno"), no fim do arquivo. De 2026-09-20: **F180–F185**: sprint de RSA (F180 em parte; F181/F182/F183/F184 corrigidos), a 2ª instância do F182, e dois ABERTOS: **F185** (limitação da API, sem correção possível deste lado) e **F186** (o smoke autenticado do `/mcp` está desarmado por token vencido). O resto deste parágrafo é de **2026-09-03** e não foi atualizado desde então — leia como de época: **F141–F146 fechados** em tres PRs (#28 bloco fuso+freshness; #29 structural_change; #30 fuso do upload offline) mais o F142 (whitelist de client_type) direto na main. Ontem, 02/09: **+F131–F140** da sessao de campo MO-JP, fechados no PR #27 e nos fixes seguintes. Narrativa completa e licoes de metodo no handoff [`session-2026-09-02-03-handoff.md`](../_archive/handoffs/session-2026-09-02-03-handoff.md); o historico anterior (F82–F130, 08/14 a 08/20) esta nos handoffs de 08-14-15 e 08-19.
+> **Last updated:** 2026-11-15 — **F212–F215** da faxina de 15/11 (no fim do arquivo): F212 (contagem de tools ociosas que não via leitura sem audit no sucesso, #264), **F213 ABERTO** (gestor desativado mantém grants; correção em execução), **F214 ABERTO** (log `success` em upload 100% recusado quando o audit falha) e F215 (guard do P6 por arquivo, #272). De 2026-11-11: **F208–F211** da varredura de 10/11 e da tarde de 11/11 (no fim do arquivo): F208 (cinco bugs de operação, #228), F209 (escrita de governança: `grant-all` e o tipo de app do v25, #239/#240), **F210 em parte** (codec de token: `iat` futuro e UTF-8 ABERTOS, reexport fechado no #240) e F211 (verde que não falava do que ia para produção: ruff/mypy fixados no #238, `SERVING_REVISION`, guards estreitos, premissa E3); F167 e F207 atualizados. De 2026-11-04: **F204–F207** da varredura de refatoração de 03/11 (no fim do arquivo): F204 (teste do painel corrida sob CSP, #219), F205 (export do audit aberto por default, #220), F206 (três desvios de contrato de erro, #210) e **F207 ABERTO** (quatro falhas silenciosas nos jobs). De 2026-09-30: **F200 verificado em produção** (24 h: zero reconexão, zero erro, +8 ms no p50 do health) e o "Fora" do **F203** corrigido na mesma branch; **F203** e **F202** em produção (`00140`, `00141`), com smoke de leitura. De 2026-09-29: **F202** (pacing de orçamento compartilhado) e **F203** (retirada do pool presa sem limite num socket mudo; corrige os "30 s" do F200), deployados em 30/09. De 2026-09-28: **F199** (pacing pelos dias fechados), **F200** (infra e guards) e **F201** (data inválida virava "Erro interno"), no fim do arquivo. De 2026-09-20: **F180–F185**: sprint de RSA (F180 em parte; F181/F182/F183/F184 corrigidos), a 2ª instância do F182, e dois ABERTOS: **F185** (limitação da API, sem correção possível deste lado) e **F186** (o smoke autenticado do `/mcp` está desarmado por token vencido). O resto deste parágrafo é de **2026-09-03** e não foi atualizado desde então — leia como de época: **F141–F146 fechados** em tres PRs (#28 bloco fuso+freshness; #29 structural_change; #30 fuso do upload offline) mais o F142 (whitelist de client_type) direto na main. Ontem, 02/09: **+F131–F140** da sessao de campo MO-JP, fechados no PR #27 e nos fixes seguintes. Narrativa completa e licoes de metodo no handoff [`session-2026-09-02-03-handoff.md`](../_archive/handoffs/session-2026-09-02-03-handoff.md); o historico anterior (F82–F130, 08/14 a 08/20) esta nos handoffs de 08-14-15 e 08-19.
 >
 > **Abertos hoje:** **nenhum** do bloco F131–F146. Fora do bloco seguem os de sempre: A4, F67 (custom domain) e F129 (governanca do system user — acao humana). **F130 fechado em 05/09** ([#45](https://github.com/BadWolf1509/v4-ads-mcp/pull/45), merge `8ad7689`). **+F154 ABERTO** (`/me/adaccounts` nao e prova de alcance — a fila do painel pede acao impossivel em 2 contas, e isso reinterpreta a medicao de 20/08 que fundou o desenho). **+F153** aberto e fechado no mesmo dia: a correcao do F91 reabriu o F91, e o guard do F91 continuou verde porque a mesma onda lhe acrescentou um mock da leitura nova. **+F155** aberto e fechado no mesmo dia (branch `pr0/harness-de-guards`, ainda sem merge): 17 guards estruturais sem primitivo comum ganharam um harness so (`tests/unit/_guard_harness.py`, com `EscopoVazioError` contra guard que varre zero arquivos), e F58/F91 foram apertados depois de provar ausencia de violacao viva. **+F156** aberto e fechado em 06/09 (branch `pr1/audiencia-de-token`, ainda sem merge): os quatro tipos de token do projeto (state Google, convite de CLI, state Meta, cookie de painel) compartilhavam chave e formato e so um carregava claim de `aud` — o convite de CLI validava verbatim como cookie de painel, com o TTL passando de 10 min pra 24h (144x). Aud obrigatoria nas quatro funcoes fecha a confusao; chave continua unica. **+F157** aberto e fechado em 06-07/09 (branch `pr2/reconciliacao-idempotente`): `missed_syncs` contava uma ausencia por EXECUCAO, e o job de resync reexecuta em falha (`maxRetries: 3`, sem o `--max-retries=1` que o `migrate` recebeu) — retry no mesmo dia consumia a carencia de 3 dias em 2 execucoes. `last_missed_on` torna o incremento idempotente por dia; a revisao ainda achou que a DECISAO de remover nao tinha acompanhado o contador (Critico, corrigido). Medicao de producao em 07/09: nada precisou ser corrigido.
 >
-> **Como ler:** ~6300 linhas, 621 KB, IDs de **F1 a F211** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 55 têm; 56 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
+> **Como ler:** ~6400 linhas, 631 KB, IDs de **F1 a F215** (com lacunas), mais A1-A7 e D1-D3. **Sem contagem de IDs, de propósito:** um finding aparece em **três formas** — cabeçalho `## F<n>` (só 55 têm; 56 linhas, F182 aparece 2×), linha de tabela `| **F<n>** |` e item de lista `- **F<n> (SEV) —` dentro de outra entrada —, grep que não casa as três conta errado (F192), e toda contagem já tentada aqui deu número diferente conforme o critério — faixa e tamanho são reproduzíveis, contagem não. Faça busca dirigida por palavra-chave (`GAQL`, `pool`, `Meta`, `audit`, `ContextVar`), nunca leitura integral. Entradas corrigidas trazem um bloco **✅ CORRIGIDO** com o que foi feito **e o que ficou deliberadamente de fora**.
 
 ---
 
@@ -197,6 +197,7 @@
 | Sessão 2026-08-19 | F101-F117 (três investigações no mesmo dia: frontend F101-F108, backend F109-F112, infra/CI F113-F117 — todas fechadas) |
 | Sessão 2026-08-20 | F118-F127 (revisão de responsividade: 9 telas com scroll horizontal em 375px, header estourando em 768px, scrollers sem teclado — todos fechados) · F128 (conta Meta que sai da parceria nunca saía do inventário; superado no mesmo dia pela reconciliação) · **F129** e **F130**, abertos (governança do system user; gate do Google sem `is_active`) |
 | Sessão 2026-11-03/04 | F204-F207 (varredura de refatoração A→H: F204 teste do CSP, F205 export do audit, F206 contrato de erro — fechados; **F207 aberto**, falhas silenciosas dos jobs) |
+| Sessão 2026-11-15 | F212-F215 (faxina de 15/11, #264–#272: F212 contagem de uso das tools, F215 guard por executor — fechados; **F213 e F214 abertos**) |
 | Sessão 2026-11-10/11 | F208-F211 (varredura de 10/11 A→I e a tarde de 11/11: F208 bugs de operação, F209 escrita de governança, F211 processo e guards — fechados; **F210 em parte**, codec de token) |
 
 ---
@@ -6298,3 +6299,79 @@ Todos fechados antes do merge, pela revisão da task ou pela final:
 - O lockfile de produção não inclui as ferramentas de dev, então não há nada a fixar ali.
 
 **🔑 Lição:** o gate só prova o que ele mesmo executa. Versão da ferramenta, revisão do deploy e premissa do plano são afirmações que precisam de medição própria.
+
+## F212 (MEDIUM, ✅ CORRIGIDO 2026-11-15, #264, revisão `00218-dh5`) — "27 tools sem chamada em 90 dias" contava como ociosa tool que não grava audit no sucesso
+
+**Sintoma:**
+- O `estado-atual.md` trazia **27 tools sem chamada em 90 dias**, a lista que alimentaria a decisão de remover tools no 02/12.
+- A varredura de 15/11 (A-01) refez a conta tool a tool:
+  - **15** eram zero real;
+  - **8** não eram medíveis;
+  - **1** estava em uso.
+
+**Causa (medida):** a contagem lia a coluna `operation` do `audit_log` como se fosse o nome da tool. Ela não é, por três razões:
+- **Sucesso não gravava linha:** 6 leituras Google chamavam `run_report` sem `audit_this_call` (`src/google_ads/reports.py`, opt-in `False`). Só a negação do gate deixava rastro. São `get_account_overview`, `get_budget_pacing`, `get_funnel_metrics`, `get_search_terms_report`, `get_top_keywords_creatives` e `get_negative_keywords_audit`.
+- **Uma leitura não auditava nada:** `meta_list_my_ad_accounts`.
+- **Nome trocado:** `apply_change` grava sob o nome da tool aplicada, e `detect_drift` grava como `get_change_history`.
+
+**✅ O que foi feito (#264):**
+- As 7 leituras gravam audit no sucesso, sob `best_effort`: falha de audit não derruba a leitura.
+- **Guard:** o inventário `COMO_CADA_TOOL_AUDITA` em `tests/unit/test_leitura_audita_no_sucesso.py` diz, tool a tool, como cada uma audita. Tool nova fora do inventário fica vermelha. Na entrega, as 7 previstas ficaram vermelhas contra o código antigo.
+- **Script de medição:** `scripts/medir_uso_tools.py --dias 90` exige `DATABASE_URL`, roda em transação READ ONLY e mapeia tool → operation(s). O que não se mede vai para a lista `nao_medido`, nunca como zero. Rodou em produção com rc=0 em 15/11.
+
+**Fora, com o motivo:**
+- **Histórico:** antes do deploy, as 7 leituras só têm linha de `denied`. A janela útil começa em 15/11, e o script marca `janela_efetiva_desde`.
+- **Falha posterior não gravada:** a linha `success` é gravada pela leitura principal. Uma falha numa leitura secundária posterior não grava linha de erro (I3 da revisão; declarado em `NAO_MEDIDO`).
+- **Nomes trocados:** `detect_drift` e `apply_change` continuam sem linha própria.
+
+**🔑 Lição:** contagem de uso só vale com o mapeamento de quem grava o quê. Zero de uma coluna que não é a da pergunta é "não perguntei", não "não usaram" (família do F182).
+
+## F213 (MEDIUM, ABERTO 2026-11-15, correção em execução na branch `feat/revogacao-na-desativacao`) — gestor desativado mantém os grants vivos, e reativar devolve todos
+
+**Sintoma:** em 15/11, leitura READ ONLY no banco de produção, 2 gestores com `is_active=false` ainda tinham grants vivos:
+- 24 Google e 24 Meta num;
+- 24 Google e 23 Meta no outro.
+
+**Causa (medida):**
+- **O que a desativação faz:** o botão `POST /admin/managers/{id}/toggle-active` (`src/web/routes/admin_overview.py`) só troca `managers.is_active`, com `definir_ativo` e o audit na mesma transação. Nada toca `manager_account_access` nem `manager_meta_account_access`.
+- **Por que não vaza acesso hoje:** o gestor desativado é barrado em toda entrada pelo `Manager.is_deactivated` (F84), na sessão MCP (`src/mcp/session.py`), no painel (`src/web/deps.py`) e no OAuth (`src/auth/oauth.py`).
+- **Onde está o risco:** a reativação devolve, no mesmo clique, todo acesso que ele tinha. O desligamento completo depende de alguém lembrar de desmarcar cerca de 50 caixas: processo humano no lugar de mecanismo, a mesma forma do F128.
+
+**Em execução:** desenho aprovado em 15/11 (`docs/superpowers/specs/2026-11-15-revogacao-na-desativacao-design.md`).
+- **Na desativação:** revoga com o motivo `manager_deactivated`.
+- **Na reativação:** devolve só o que esse motivo marcou.
+- **Convergência diária:** o job converge o que escapou (SQL direto, os 2 de hoje), atrás da trava `manager_offboarding_apply`.
+
+**Não medido:** se algum caminho fora das três entradas lê grant de gestor desativado (jobs, exportações).
+
+## F214 (LOW, ABERTO 2026-11-15) — `conversion_upload_executed` loga `success` num envio 100% recusado quando o audit não consegue conexão
+
+**Sintoma:** em `run_conversion_upload` (`src/google_ads/conversions.py`), o log `conversion_upload_executed` sai com `status=success` mesmo quando o Google recusou todas as conversões, se o `acquire` do audit falhar.
+
+**Causa (lida no código, P6 da faxina):**
+- `status_audit` começa como `"success"`.
+- O cálculo de "0 de N aceitas" mora no montador do audit, que roda dentro do `best_effort` depois do `acquire`.
+- Sem conexão, o montador não roda, e o log depois do `finally` lê o valor inicial.
+- Já era assim antes do P6: o P6 (#270) preservou o comportamento de propósito, porque a faxina não podia mudar comportamento.
+- Há cobertura do caminho com audit bom: `test_100_recusadas_grava_error_message_e_loga_status_do_audit`.
+
+**Efeito:** só observabilidade. O envelope que o gestor recebe está certo, e a trilha do audit não existe nesse caso (o audit falhou). Quem lê só o log vê sucesso.
+
+**Não medido:** a frequência em produção. Exige o audit falhar no mesmo upload.
+
+## F215 (LOW, ✅ CORRIGIDO 2026-11-15, #272, revisão `00225-56m`) — guard do encerramento dos executores Google cobrava por arquivo, e `mutations.py` tem dois executores
+
+**Sintoma:** a revisão do P6 da faxina (#270) achou o problema por leitura. Se `run_recommendation_action` perdesse o `encerrar_execucao` inteiro (sem reconcile de cota e sem audit), o guard continuaria verde, porque `run_mutation`, no mesmo arquivo, o mantinha.
+
+**Causa (medida):** `_cobrar_encerramento_dos_executores` (`tests/unit/test_structural_guards.py`) perguntava se algum `finally` do arquivo chamava `encerrar_execucao`. Era a mesma classe do F57: medir por arquivo inteiro uma invariante que é por função.
+
+**✅ O que foi feito (#272):**
+- `_executores_sem_encerramento` cobra cada função que chama `ensure_account_access` no corpo próprio. O `lambda` do `run_with_reconnect` conta, como no F57. O `finally` também tem de ser do corpo próprio, não de uma closure irmã.
+- Um controle exige o total de **6** executores nos 5 arquivos.
+- **Guard:** `test_encerramento_e_cobrado_por_executor_nao_por_arquivo`, com fonte sintética de dois executores, ficou vermelho (`NameError`) antes da implementação.
+- **Sabotagem:** numa cópia do `mutations.py`, sem o encerramento só em `run_recommendation_action`, o guard novo acusa a função e a lógica antiga ficava verde.
+
+**Fora, com o motivo (minors da revisão, no ledger):**
+- Um `def` declarado dentro do `finally` que chamaria `encerrar_execucao` passa verde (`h.chama` desce na subárvore).
+- Não há caso sintético para "o `finally` de closure irmã não conta"; o comportamento foi medido, mas não está fixado.
+- Executor novo num arquivo fora de `_ARQUIVOS_DE_EXECUTOR` que não chame `encerrar_execucao` não é cobrado. A lacuna já existia antes.
