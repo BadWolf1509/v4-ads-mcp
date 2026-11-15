@@ -3,7 +3,7 @@
 **Data:** 2026-05-28
 **Status:** Proposto (aguardando review do gestor antes de `writing-plans`)
 **Origem:** Brainstorming sessão 2026-05-28 ("vamos trabalhar na interface e acesso dos usuários")
-**Specs relacionadas:** [`2026-05-24-meta-ads-incorporation-design.md`](../../superpowers/specs/2026-05-24-meta-ads-incorporation-design.md) (foundation M.1 criou as tabelas), [`2026-05-25-architecture-refactor-design.md`](../../superpowers/specs/2026-05-25-architecture-refactor-design.md)
+**Specs relacionadas:** [`2026-05-24-meta-ads-incorporation-design.md`](2026-05-24-meta-ads-incorporation-design.md) (foundation M.1 criou as tabelas), [`2026-05-25-architecture-refactor-design.md`](2026-05-25-architecture-refactor-design.md)
 
 ---
 

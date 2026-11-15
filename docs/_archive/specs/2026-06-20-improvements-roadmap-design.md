@@ -147,7 +147,7 @@ Fecha o boundary de erro, torna eventos invisíveis em greppáveis, e destrava o
 
 - **Execução da Fase 2B** (tombstone dos 8 reports + atualizar as 3 skills V4) — a Onda 1 só destrava o gate; o tombstone é sprint pós-soak próprio.
 - **Tombstone das 3 tools Meta** (pós Onda 4) e **dos reports antigos** — decisão pós-uso, não acoplada.
-- **Fases 3 e 4 do refactor** ([`2026-05-25-architecture-refactor-design.md`](../../superpowers/specs/2026-05-25-architecture-refactor-design.md)) — viram edição de doc (re-scope), não código. Fase 3 (zombie detection) só é data-driven **depois** do sinal de uso da Onda 1.
+- **Fases 3 e 4 do refactor** ([`2026-05-25-architecture-refactor-design.md`](2026-05-25-architecture-refactor-design.md)) — viram edição de doc (re-scope), não código. Fase 3 (zombie detection) só é data-driven **depois** do sinal de uso da Onda 1.
 - **Backlog não-priorizado:** `verify_campaign_state`, enriquecimento do `get_my_audit_log` (JOIN que `get_by_id` já tem) — ficam no backlog do CLAUDE.md, não entram neste roadmap.
 
 ## 9. Sequência & gates

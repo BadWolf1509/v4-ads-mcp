@@ -55,7 +55,7 @@ src/
   web/                   # rotas + templates Jinja + design system (static/*.css)
 docs/
   convencoes/            # convenção por área de trabalho (carregada sob demanda)
-  operacao/              # estado-atual, findings-catalog, sprint-history, runbooks de DR
+  operacao/              # estado-atual, findings-catalog, runbooks de DR
   superpowers/specs+plans # design docs + planos de implementação
   _archive/              # histórico: runbooks de sprint, dogfoods, specs e planos antigos
 ```
@@ -66,7 +66,6 @@ docs/
 - **Estado de produção, pendências e decision gates:** [`docs/operacao/estado-atual.md`](docs/operacao/estado-atual.md) — é o que se atualiza ao fim de cada sessão.
 - **Convenções por área:** [`docs/convencoes/`](docs/convencoes/) — núcleo, painel, testes, dados, processo.
 - **Taxonomia de bugs e lições:** [`docs/operacao/findings-catalog.md`](docs/operacao/findings-catalog.md) — 116 IDs; busca dirigida, nunca leitura integral.
-- **Cronologia de entregas e sessões:** [`docs/operacao/sprint-history.md`](docs/operacao/sprint-history.md)
 - **Infra / DR:** [`docs/operacao/infra-setup.md`](docs/operacao/infra-setup.md) · [`docs/operacao/backup-restore-runbook.md`](docs/operacao/backup-restore-runbook.md)
 - **Specs e planos:** [`docs/superpowers/`](docs/superpowers/) · histórico arquivado em `docs/_archive/`
 

@@ -26,7 +26,7 @@ links da doc viva foram reescritos por script e conferidos pelo `tests/unit/test
 
 ✅ **OK:** Debug deep histórico ("por que sprint 3b.X tomou approach Y?"), auditoria de decisão arquitetural antiga, recovery de pattern usado em sprint específica.
 
-❌ **NÃO usar pra:** Reference comum em sessão Claude (use `docs/operacao/sprint-history.md` que tem rows verbose com 1000+ chars per sprint), bug history (use `findings-catalog.md`), current sprint context (use active docs em `docs/superpowers/specs/` e `docs/operacao/`).
+❌ **NÃO usar pra:** Reference comum em sessão Claude (a cronologia de sprints de 05 a 08/2026 está em [`sprint-history.md`](sprint-history.md), arquivo morto; o estado corrente vive em `docs/operacao/estado-atual.md`), bug history (use `findings-catalog.md`), current sprint context (use active docs em `docs/superpowers/specs/` e `docs/operacao/`).
 
 ## Política
 

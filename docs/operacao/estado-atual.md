@@ -93,6 +93,7 @@ que mais usava os antigos, saiu em 31/10). O plugin 0.5.0 já manda usar o break
   **No MCC segue admin** (remoção pedida em 02/11, aguardando admin); conferir as 2 contas de e-mail
   pessoal com admin no MCC, convidadas por ele.
 - **Alertas do Dependabot** do repositório.
+- **Alerta de saldo:** manual do gestor em [`guia-alerta-de-saldo.md`](guia-alerta-de-saldo.md).
 - **Plugin `v4-trafego-google-ads`:** resta `shared/v4-brand.md:43` de
   [`plugin-correcoes-2026-10-30.md`](plugin-correcoes-2026-10-30.md).
 - **`hd` do login Google sem conferência** (decisão registrada).

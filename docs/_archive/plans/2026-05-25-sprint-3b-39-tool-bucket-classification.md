@@ -11,7 +11,7 @@
 
 **Tech Stack:** Python 3.12, MCP Python SDK 1.2.0+, asyncpg (audit_log query), pytest + ruff + mypy, V4 conventions (PT-BR errors, smoke runbook 3b.19A.1 per-value probe pattern).
 
-**Spec source:** [`docs/superpowers/specs/2026-05-25-architecture-refactor-design.md`](../../superpowers/specs/2026-05-25-architecture-refactor-design.md) §5 (Fase 1)
+**Spec source:** [`docs/superpowers/specs/2026-05-25-architecture-refactor-design.md`](../specs/2026-05-25-architecture-refactor-design.md) §5 (Fase 1)
 
 **Decision gate F1 → F2 (outcome-based, timeout 14d):**
 - ✅ Smoke 6/6 PASS + /health 200 + CI verde (auto)
@@ -763,7 +763,7 @@ Add new row pra Sprint 3b.39 (after 3b.38 row):
 Modify CLAUDE.md `### Pending / future`:
 
 ```markdown
-- **Refactor arquitetural Sprint 3b.39 ✅ shipped** (Fase 1 — tool bucket classification + Wellington config doc). Discovery D2: MCP defer_loading client-side, F1 reformulada server-metadata-only. **Próximo F2 Sprint 3b.40:** Caminho C consolidação `get_performance_breakdown(level, dimension)` substitui 9 reports = -9 tools permanente. Spec: [`2026-05-25-architecture-refactor-design.md`](../../superpowers/specs/2026-05-25-architecture-refactor-design.md). Gate F1→F2: outcome-based timeout 14d.
+- **Refactor arquitetural Sprint 3b.39 ✅ shipped** (Fase 1 — tool bucket classification + Wellington config doc). Discovery D2: MCP defer_loading client-side, F1 reformulada server-metadata-only. **Próximo F2 Sprint 3b.40:** Caminho C consolidação `get_performance_breakdown(level, dimension)` substitui 9 reports = -9 tools permanente. Spec: [`2026-05-25-architecture-refactor-design.md`](../specs/2026-05-25-architecture-refactor-design.md). Gate F1→F2: outcome-based timeout 14d.
 ```
 
 Update tool count line:
