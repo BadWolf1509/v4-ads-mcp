@@ -339,23 +339,70 @@ def rel(caminho: Path) -> str:
 _NAMESPACES_DE_EXCECAO = ("builtins", "asyncpg")
 
 
+def _aliases(arv: ast.Module) -> Mapping[str, frozenset[str]]:
+    """alvo -> asnames dos imports que o ligam, num único `ast.walk`.
+
+    Chave `a.name` em `ImportFrom` e `a.name.rpartition(".")[2]` em `Import`
+    (a mesma regra que `nomes_locais` sempre teve). Guardado NO PRÓPRIO NÓ da
+    árvore: morre com ela, não há cache global e `id` de objeto morto nunca é
+    reaproveitado por outra árvore.
+    """
+    memo = getattr(arv, "_h_aliases", None)
+    if memo is None:
+        brutos: dict[str, set[str]] = {}
+        for no in ast.walk(arv):
+            if isinstance(no, ast.ImportFrom):
+                for a in no.names:
+                    if a.asname:
+                        brutos.setdefault(a.name, set()).add(a.asname)
+            elif isinstance(no, ast.Import):
+                for a in no.names:
+                    if a.asname:
+                        brutos.setdefault(a.name.rpartition(".")[2], set()).add(a.asname)
+        memo = {k: frozenset(v) for k, v in brutos.items()}
+        arv._h_aliases = memo  # type: ignore[attr-defined]
+    return memo  # type: ignore[no-any-return]
+
+
 def nomes_locais(arv: ast.Module, alvo: str) -> set[str]:
     """`alvo` mais todo alias de import que aponte para ele.
 
     `from x import alvo as outro` fazia o guard antigo perder o call-site
-    inteiro — o nome escrito na chamada não é o nome do símbolo.
+    inteiro — o nome escrito na chamada não é o nome do símbolo. Devolve um
+    conjunto NOVO a cada chamada (quem recebe pode mutar sem contaminar).
     """
-    nomes = {alvo}
-    for no in ast.walk(arv):
-        if isinstance(no, ast.ImportFrom):
-            for a in no.names:
-                if a.name == alvo and a.asname:
-                    nomes.add(a.asname)
-        elif isinstance(no, ast.Import):
-            for a in no.names:
-                if a.name.rpartition(".")[2] == alvo and a.asname:
-                    nomes.add(a.asname)
-    return nomes
+    return {alvo, *_aliases(arv).get(alvo, ())}
+
+
+def nomes_chamados(arv: ast.Module) -> frozenset[str]:
+    """Todo nome que alguma `ast.Call` do módulo chama, mais o nome original de
+    cada alias chamado. `alvo in nomes_chamados(arv)` equivale a
+    `chama(arv, alvo, arv=arv)`, num único walk memoizado na árvore."""
+    memo = getattr(arv, "_h_chamados", None)
+    if memo is None:
+        chamados: set[str] = set()
+        for no in ast.walk(arv):
+            if isinstance(no, ast.Call):
+                f = no.func
+                if isinstance(f, ast.Name):
+                    chamados.add(f.id)
+                elif isinstance(f, ast.Attribute):
+                    chamados.add(f.attr)
+        for original, asnames in _aliases(arv).items():
+            if chamados & asnames:
+                chamados.add(original)
+        memo = frozenset(chamados)
+        arv._h_chamados = memo  # type: ignore[attr-defined]
+    return memo  # type: ignore[no-any-return]
+
+
+def pais(arv: ast.Module) -> Mapping[ast.AST, ast.AST]:
+    """filho -> pai de TODO nó da árvore, memoizado no nó. Somente leitura."""
+    memo = getattr(arv, "_h_pais", None)
+    if memo is None:
+        memo = {f: n for n in ast.walk(arv) for f in ast.iter_child_nodes(n)}
+        arv._h_pais = memo  # type: ignore[attr-defined]
+    return memo  # type: ignore[no-any-return]
 
 
 def origens_de_import(arv: ast.Module) -> dict[str, str]:
