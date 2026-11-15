@@ -17,7 +17,7 @@ from src.google_ads.queries.keyword_lookup import (
     _lookup_row_formatter,
     build_keyword_text_lookup_query,
 )
-from src.google_ads.queries.rsa_estado import pinos_do_rsa
+from src.google_ads.queries.rsa_estado import _enum_ou_none, pinos_do_rsa
 from src.google_ads.reports import run_report
 from src.google_ads.rsa_textos import (
     campos_de_texto,
@@ -268,6 +268,29 @@ def _format_rsa_preflight_row(row: Any) -> dict[str, Any]:
         "channel_type": row.campaign.advertising_channel_type.name,
         # G2: pinos atuais por posicao; `None` = assets nao lidos (nao e "sem pino").
         "pinos": pinos_do_rsa(row.ad_group_ad.ad.responsive_search_ad),
+        # S2: o anuncio como esta hoje, para o update igual sair do token.
+        "atuais": _atuais_do_rsa(row.ad_group_ad.ad),
+    }
+
+
+def _textos_atuais(assets: Any) -> list[tuple[str, str | None]] | None:
+    """`[(texto, pino)]` na ordem do anuncio; lista vazia = nao lido (F145), nunca "sem texto"."""
+    lista = list(assets or [])
+    if not lista:
+        return None
+    return [(str(a.text), _enum_ou_none(a, "pinned_field")) for a in lista]
+
+
+def _atuais_do_rsa(ad: Any) -> dict[str, Any]:
+    rsa = ad.responsive_search_ad
+    urls = list(getattr(ad, "final_urls", None) or [])
+    return {
+        "headlines": _textos_atuais(getattr(rsa, "headlines", None)),
+        "descriptions": _textos_atuais(getattr(rsa, "descriptions", None)),
+        "final_urls": [str(u) for u in urls] if urls else None,
+        # proto3 string nao distingue omitido de "": o campo esta no SELECT, entao "" e o valor.
+        "path1": str(getattr(rsa, "path1", "") or ""),
+        "path2": str(getattr(rsa, "path2", "") or ""),
     }
 
 
@@ -316,6 +339,7 @@ async def validate_existing_rsas_for_update(
     customer_id: str,
     updates: list[dict[str, Any]],
     pinos_atuais: dict[str, dict[str, list[str]] | None] | None = None,
+    atuais: dict[str, dict[str, Any]] | None = None,
 ) -> str | None:
     """Returns PT-BR error string if any ad fails validation; else None.
 
@@ -348,6 +372,10 @@ async def validate_existing_rsas_for_update(
         # G2: custo zero — os pinos atuais vem na mesma query (posicao por asset).
         f"ad_group_ad.ad.responsive_search_ad.headlines, "
         f"ad_group_ad.ad.responsive_search_ad.descriptions, "
+        # S2: custo zero — URLs e paths atuais na mesma query.
+        f"ad_group_ad.ad.final_urls, "
+        f"ad_group_ad.ad.responsive_search_ad.path1, "
+        f"ad_group_ad.ad.responsive_search_ad.path2, "
         f"ad_group.id, ad_group.name, ad_group.status, "
         f"campaign.id, campaign.name, campaign.advertising_channel_type "
         f"FROM ad_group_ad WHERE ad_group_ad.ad.id IN ({ids_clause})"
@@ -365,6 +393,8 @@ async def validate_existing_rsas_for_update(
     by_id = {r["ad_id"]: r for r in rows}
     if pinos_atuais is not None:
         pinos_atuais.update({aid: r["pinos"] for aid, r in by_id.items()})
+    if atuais is not None:
+        atuais.update({aid: r["atuais"] for aid, r in by_id.items()})
     valid_channels = {"SEARCH", "SEARCH_PARTNERS"}
 
     for u in updates:

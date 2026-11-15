@@ -81,6 +81,38 @@ def pinos_pedidos(spec: Mapping[str, Any]) -> dict[str, list[str]]:
     return pinos
 
 
+_CAMPOS_MUTAVEIS = ("headlines", "descriptions", "final_urls", "path1", "path2")
+
+
+def campos_sem_mudanca(u: Mapping[str, Any], atuais: Mapping[str, Any] | None) -> list[str] | None:
+    """Campos mutaveis pedidos, ordenados, quando TODOS ja sao o valor atual; senao `None`.
+
+    `None` tambem quando `atuais` e `None` ou quando o atual de algum campo pedido nao foi
+    lido (None): nao medido nao e igual (F145). Texto compara `(text, pinned_field)` na
+    ordem; URL, lista exata; path pedido `None` vale `""`. `remover_pinos` nao e campo.
+    """
+    if atuais is None:
+        return None
+    pedidos = [c for c in _CAMPOS_MUTAVEIS if c in u]
+    if not pedidos:
+        return None
+    for campo in pedidos:
+        atual = atuais.get(campo)
+        if atual is None:
+            return None
+        if campo in POSICOES_POR_CAMPO:
+            pedido: Any = [(i["text"], i["pinned_field"]) for i in normalizar_textos(u[campo])]
+            atual = [tuple(x) for x in atual]
+        elif campo == "final_urls":
+            pedido = list(u[campo])
+            atual = list(atual)
+        else:
+            pedido = u[campo] if u[campo] is not None else ""
+        if pedido != atual:
+            return None
+    return sorted(pedidos)
+
+
 def pinos_por_posicao_total(itens: Sequence[Mapping[str, Any]]) -> dict[str, int]:
     """Quantos assets pinados por posicao no lote inteiro — contagem, nunca texto.
 
