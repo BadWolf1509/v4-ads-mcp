@@ -21,7 +21,7 @@ não. Se algum dia entrar no inventário conta que ninguém consegue ler, o camp
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from src.reconciliacao import LinhaNeutra, plano_neutro
+from src.reconciliacao import LinhaNeutra, campos_do_plano, plano_neutro
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,10 +97,4 @@ def build_plan(
         max_removal_ratio=max_removal_ratio,
         max_removal_abs=max_removal_abs,
     )
-    return Plan(
-        to_add=p.to_add,
-        to_bump=p.to_bump,
-        to_remove=p.to_remove,
-        to_reset=p.to_reset,
-        blocked_reason=p.blocked_reason,
-    )
+    return Plan(**campos_do_plano(p))

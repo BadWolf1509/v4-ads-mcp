@@ -283,3 +283,31 @@ def test_plano_esperado_de_cada_cenario(cenario: Cenario) -> None:
 @pytest.mark.parametrize("cenario", CENARIOS, ids=lambda c: c.nome)
 def test_plano_esperado_de_cada_cenario_no_meta(cenario: Cenario) -> None:
     assert _campos(_plano_meta(cenario)) == ESPERADO[cenario.nome]
+
+
+def test_campos_do_plano_cobre_os_dois_planos() -> None:
+    """Os dois `Plan` aceitam todo campo do `PlanoNeutro`, e a cópia é exata (T5.4).
+
+    `campos_do_plano` copia campo a campo pelo `fields()` do núcleo; um campo
+    novo no `PlanoNeutro` que um dos `Plan` não tenha estoura aqui, não em
+    produção no meio da reconciliação.
+    """
+    from dataclasses import fields
+
+    from src.reconciliacao import PlanoNeutro, campos_do_plano
+
+    neutros = {f.name for f in fields(PlanoNeutro)}
+    assert neutros, "PlanoNeutro sem campos: o teste passaria por vacuidade"
+    assert neutros <= {f.name for f in fields(google.Plan)}
+    assert neutros <= {f.name for f in fields(meta.Plan)}
+
+    p = PlanoNeutro(
+        to_add=["a"], to_bump=["b"], to_remove=["r"], to_reset=["z"], blocked_reason="x"
+    )
+    assert campos_do_plano(p) == {
+        "to_add": ["a"],
+        "to_bump": ["b"],
+        "to_remove": ["r"],
+        "to_reset": ["z"],
+        "blocked_reason": "x",
+    }
