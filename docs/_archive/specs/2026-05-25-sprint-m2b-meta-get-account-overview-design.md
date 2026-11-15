@@ -6,7 +6,7 @@
 **Estimativa:** ~3-4 dias úteis
 
 **Companion specs:**
-- [Sprint family M design](../../superpowers/specs/2026-05-24-meta-ads-incorporation-design.md) (overall roadmap M.1-M.25)
+- [Sprint family M design](2026-05-24-meta-ads-incorporation-design.md) (overall roadmap M.1-M.25)
 - [Sprint M.2a design](2026-05-24-sprint-m2a-meta-oauth-first-tool-design.md) (predecessor — OAuth + first tool)
 - [Sprint M.2a plan](../plans/2026-05-24-sprint-m2a-meta-oauth-first-tool.md)
 

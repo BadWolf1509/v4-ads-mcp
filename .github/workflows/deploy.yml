@@ -41,7 +41,7 @@ jobs:
       # bumped=1, unreachable=2, removed=0), e desde 08-23 o dry-run reporta
       # `removed: 1` estavel. Raio medido na virada: 1 conta e 4 grants —
       # act_468463369497370 (Mestre da Obra Petrolina), fora da lista autoritativa
-      # da parceria desde 08-19, que e a pendencia 1b do estado-atual. Para
+      # da parceria desde 08-19. Para
       # desligar, volte para `false`: a revogacao e soft (`revoked_at`) e o painel
       # restaura com um clique.
       #
@@ -372,7 +372,7 @@ jobs:
       # process a cada deploy (self-healing contra drift, igual migrate/resync).
       # Env/secrets vem de JOB_ENV_VARS/JOB_SECRETS (merge): `backup` chama
       # get_settings() como os outros, entao NAO basta DATABASE_URL — precisa
-      # dos 8 obrigatorios. O comentario anterior dizia o contrario.
+      # dos 8 obrigatorios.
       - name: Update backup job image
         env:
           PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}

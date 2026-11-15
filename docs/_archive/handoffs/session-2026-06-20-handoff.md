@@ -52,6 +52,6 @@ Estava `enabledPlugins: true` (`~/.claude/.settings.json`) com histórico de uso
 
 ## Próximo
 
-- **Fase 2B** (tombstone dos 8 reports Google que a Fase 2A substituiu): §4.1 do [refactor design](../../superpowers/specs/2026-05-25-architecture-refactor-design.md). Gate de saída (§6.5): outcome-based, timeout 21d — **checar ~2026-07-11** que os 8 reports antigos têm zero retry no `audit_log` (a tool nova já audita pra semear o watch) + dogfood ≥3/sem da nova. Atualizar as 3 skills V4 (`auditoria/analise/relatorio-google-ads`) pra usar a tool nova durante o soak.
+- **Fase 2B** (tombstone dos 8 reports Google que a Fase 2A substituiu): §4.1 do [refactor design](../specs/2026-05-25-architecture-refactor-design.md). Gate de saída (§6.5): outcome-based, timeout 21d — **checar ~2026-07-11** que os 8 reports antigos têm zero retry no `audit_log` (a tool nova já audita pra semear o watch) + dogfood ≥3/sem da nova. Atualizar as 3 skills V4 (`auditoria/analise/relatorio-google-ads`) pra usar a tool nova durante o soak.
 - **M.5** (Meta audience + top_creatives) — alimenta o gate de volume Meta (checkpoint 25/06→10/07).
 - Backlog: `verify_campaign_state`; enrich `get_my_audit_log` (reusar o JOIN de `get_by_id`); polish do parser Meta (`effective_status=UNKNOWN` é ruído num breakdown).

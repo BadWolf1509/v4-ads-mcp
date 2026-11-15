@@ -142,5 +142,5 @@
 ## References
 
 - `tool-audit-2026-05-25.md` — **apagado** como redundante no commit `4ab8739`; a analise que sobreviveu esta neste proprio arquivo. Recuperavel por `git show 6d821da`.
-- [`sprint-history.md`](../../operacao/sprint-history.md) — Sprint 3b.33→3b.37 tool shipping timeline
+- [`sprint-history.md`](../sprint-history.md) — Sprint 3b.33→3b.37 tool shipping timeline
 - `docs/superpowers/specs/2026-05-25-architecture-refactor-design.md` §3 — 3-bucket strategy design

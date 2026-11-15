@@ -1,6 +1,6 @@
 # Smoke — planejador de palavras-chave (plan_keyword_ideas / get_keyword_metrics)
 
-Fonte: [§7 do desenho](../superpowers/specs/2026-10-29-planejador-de-palavras-design.md).
+Fonte: [§7 do desenho](../../superpowers/specs/2026-10-29-planejador-de-palavras-design.md).
 
 > **Roda em sessão NOVA, depois do merge e do deploy** (F140): tool nova só aparece para sessão
 > aberta depois da reconexão, e o schema mostrado pode seguir velho — o smoke prova **chamando**.

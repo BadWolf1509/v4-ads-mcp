@@ -2,7 +2,7 @@
 
 > **Status:** design aprovado (brainstorming 2026-06-20). Próximo: `superpowers:writing-plans`.
 > **Escopo:** Fase 2A apenas (tool nova, aditiva). O tombstone dos reports antigos é a **Fase 2B** (sprint separado, pós-soak) — fora deste design.
-> **Anchor:** espelha `meta_get_performance_breakdown` (M.4, shipado + smoke green 2026-06-20). Refina a §6 de [`2026-05-25-architecture-refactor-design.md`](2026-05-25-architecture-refactor-design.md).
+> **Anchor:** espelha `meta_get_performance_breakdown` (M.4, shipado + smoke green 2026-06-20). Refina a §6 de [`2026-05-25-architecture-refactor-design.md`](../../_archive/specs/2026-05-25-architecture-refactor-design.md).
 
 ## 1. Objetivo
 

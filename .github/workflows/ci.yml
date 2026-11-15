@@ -30,9 +30,6 @@ jobs:
       # se o pendente de codigo for substituido por um de docs, o `detectar_mudanca`
       # reconcilia: so pula o deploy se a run do commit base deu certo. Em PR cancela.
       cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
-    # (o `services: postgres` foi removido — era peso morto: os testes DB usam
-    # testcontainers, que sobem o próprio container; o DSN localhost do conftest é
-    # dummy e nunca é discado.)
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

@@ -1,5 +1,5 @@
 name = "smoke-runbook-generator"
-description = "Generates the skeleton docs/operacao/phase-3b-XX-bootstrap.md smoke runbook for a new V4 Ads MCP sprint. Pulls structure from the latest 3 existing runbooks (3b.24/3b.25/3b.26) and fills in tool-specific test scenarios from the sprint plan. Use at the start of a new sprint after the plan is finalized — saves ~30 min of manual scaffolding per sprint. Writes the file directly."
+description = "Generates the skeleton docs/operacao/phase-3b-XX-<tema>-smoke.md smoke runbook for a new V4 Ads MCP sprint. Pulls structure from the latest 3 existing runbooks (3b.42/3b.43/3b.44) and fills in tool-specific test scenarios from the sprint plan. Use at the start of a new sprint after the plan is finalized — saves ~30 min of manual scaffolding per sprint. Writes the file directly."
 developer_instructions = """
 # Smoke Runbook Generator\r
 \r
@@ -7,7 +7,7 @@ You scaffold a new smoke runbook for a V4 Ads MCP sprint following the establish
 \r
 ## Your job in one sentence\r
 \r
-Read the sprint plan + tool signature + an existing runbook as template, then write `docs/operacao/phase-3b-XX-bootstrap.md` with all sections filled in (Pre-flight, pre-smoke setup, test scenarios T1..TN, sign-off) — results columns left as `⬜ pending` placeholders.\r
+Read the sprint plan + tool signature + an existing runbook as template, then write `docs/operacao/phase-3b-XX-<tema>-smoke.md` with all sections filled in (Pre-flight, pre-smoke setup, test scenarios T1..TN, sign-off) — results columns left as `⬜ pending` placeholders.\r
 \r
 ## Required inputs (ask the caller if missing)\r
 \r
@@ -28,9 +28,9 @@ If any are missing, ask in a single question. Do not guess sprint number or tool
   - Pre-flight validations (Layer 1 schema / Layer 2 runtime / Layer 3 async)\r
   - V4 invariants hardcoded (BR/pt-BR/BRL/timezone/LGPD as applicable)\r
 - Read the latest 3 runbooks for structure reference:\r
-  - `docs/operacao/phase-3b-24-bootstrap.md` (create_campaign — has chained mutation pattern + per-strategy probe)\r
-  - `docs/operacao/phase-3b-25-bootstrap.md` (create_and_link_assets — has asset CRUD + multi-type + multi-level)\r
-  - `docs/operacao/phase-3b-26-bootstrap.md` (import_offline_conversions — first non-mutate dispatcher, has partial_failure path)\r
+  - `docs/operacao/phase-3b-42-ad-schedule-smoke.md` (get_ad_schedule/update_ad_schedule — smoke parcialmente executado: mostra a tabela de estado por passo, o bloqueio F140 de sessão nova e o par leitura+mutação)\r
+  - `docs/operacao/phase-3b-43-particao-horaria-smoke.md` (partição horária — 100% leitura: mostra passos sem mutação e checagem de campos novos nas tools)\r
+  - `docs/operacao/phase-3b-44-bid-modifier-smoke.md` (update_ad_schedule + apply_change — smoke que muta conta real: aviso de aval do gestor na própria sessão, dry-run e confirmação)\r
 - Use the runbook closest in shape to the new tool as your primary template.\r
 \r
 ### Step 2: Determine test count\r

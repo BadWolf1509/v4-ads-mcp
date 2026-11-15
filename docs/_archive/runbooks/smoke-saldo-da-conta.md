@@ -1,6 +1,6 @@
 # Smoke — saldo da conta (get_account_balance / meta_get_account_balance)
 
-Fonte: [§5 do desenho](../superpowers/specs/2026-10-28-saldo-da-conta-design.md).
+Fonte: [§5 do desenho](../../superpowers/specs/2026-10-28-saldo-da-conta-design.md).
 
 > **Roda em sessão NOVA, depois do merge e do deploy** (F140): tool nova só aparece para sessão
 > aberta depois da reconexão, e o schema mostrado pode seguir velho — o smoke prova **chamando**.
