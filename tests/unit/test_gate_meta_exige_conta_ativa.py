@@ -49,7 +49,7 @@ que o guard passava — verde — nas três ANTES deste round):
 
 Os três batem checagem por substring solta e só morrem nos testes de
 integração (nunca no gate local, que não sobe Docker). Fix:
-`_tem_predicado_bem_formado` para de casar substring e exige a FORMA — `AND
+`tem_predicado_bem_formado` para de casar substring e exige a FORMA — `AND
 [alias.]coluna valor` colado, sem NADA (parêntese incluso) entre o `AND` e a
 coluna. Mata as duas primeiras: (1) o valor exigido é literal (`true`/
 `NULL`), não "qualquer coisa depois do ="; (2) o `AND` tem que ser o token
@@ -68,11 +68,11 @@ olhar o que vem depois do valor" só é verdade pra quem escreve a sabotagem
 colando o `(` junto do `AND`. Ninguém precisa fazer isso: `AND revoked_at IS
 NULL OR TRUE`, sem NENHUM parêntese, já basta — `AND` liga mais forte que
 `OR`, então o WHERE inteiro vira `(...) OR TRUE` do mesmo jeito, e a
-substring "AND revoked_at IS NULL" que `_tem_predicado_bem_formado` exige
+substring "AND revoked_at IS NULL" que `tem_predicado_bem_formado` exige
 sobrevive INTACTA como prefixo do que foi escrito, porque a checagem é
 `re.search` — nunca olha o que vem DEPOIS do match. Confirmado empiricamente
 que o guard passava — verde — com essa variante ANTES deste round. Fix:
-`_e_conjuncao_pura` para de olhar a forma de CADA predicado isolado e afirma
+`e_conjuncao_pura` para de olhar a forma de CADA predicado isolado e afirma
 a propriedade que faltava — nenhum `OR` pode sobrar fora de parênteses
 (top-level) no SQL inteiro da função. As duas queries de hoje (Google e
 Meta) são cadeias puras de AND, sem nenhum parêntese, então qualquer `OR` de
@@ -83,42 +83,16 @@ import ast
 import re
 from pathlib import Path
 
+from tests.unit._guard_harness import (
+    achar_funcao,
+    e_conjuncao_pura,
+    sql_sem_docstring,
+    tem_join_puro_para,
+    tem_predicado_bem_formado,
+)
+
 _REPO = Path(__file__).resolve().parents[2] / "src" / "db" / "repositories"
 _ARQUIVO = _REPO / "manager_meta_account_access.py"
-
-
-def _achar_funcao(arvore: ast.Module, nome: str) -> ast.AsyncFunctionDef:
-    for node in ast.walk(arvore):
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == nome:
-            return node
-    raise AssertionError(f"{nome} sumiu ou mudou de nome")
-
-
-def _sql_sem_docstring(funcao: ast.AsyncFunctionDef) -> str:
-    """Concatena os literais de string do corpo da função, IGNORANDO a
-    docstring — comentário `#` nunca aparece aqui pra começo de conversa (o
-    `ast` descarta na tokenização, não é gramática), então só a docstring
-    precisa de exclusão explícita: é o único literal de string que pode ficar
-    solto como `Expr` isolado no topo do corpo.
-    """
-    corpo = funcao.body
-    docstring_node = None
-    if (
-        corpo
-        and isinstance(corpo[0], ast.Expr)
-        and isinstance(corpo[0].value, ast.Constant)
-        and isinstance(corpo[0].value.value, str)
-    ):
-        docstring_node = corpo[0].value
-
-    literais = [
-        node.value
-        for node in ast.walk(funcao)
-        if isinstance(node, ast.Constant)
-        and isinstance(node.value, str)
-        and node is not docstring_node
-    ]
-    return "\n".join(literais)
 
 
 def _sem_comentario_sql(sql: str) -> str:
@@ -133,98 +107,32 @@ def _sem_comentario_sql(sql: str) -> str:
     return "\n".join(re.sub(r"--.*$", "", linha) for linha in sql.splitlines())
 
 
-def _tem_join_puro_para(sql: str, tabela: str) -> bool:
-    """True se existir `JOIN <tabela>` sem LEFT/RIGHT/FULL/OUTER logo antes.
-
-    Round 1 proibia bigramas exatos (`LEFT JOIN`, `RIGHT JOIN`, `FULL JOIN`)
-    — `LEFT OUTER JOIN` e primos passavam, porque a palavra logo antes de
-    "JOIN" ali é "OUTER", não "LEFT". A forma certa é afirmativa: só um JOIN
-    puro (implicitamente INNER, com ou sem a palavra escrita) garante que a
-    condição do ON vira filtro de verdade — QUALQUER sabor de outer join
-    preserva a linha do lado esquerdo com colunas NULL da direita quando o ON
-    falha, em vez de excluir a linha.
-    """
-    for m in re.finditer(r"\bJOIN\s+" + re.escape(tabela) + r"\b", sql, re.IGNORECASE):
-        palavra_antes = re.findall(r"\w+", sql[: m.start()])[-1:]
-        if palavra_antes and palavra_antes[0].upper() in ("LEFT", "RIGHT", "FULL", "OUTER"):
-            continue
-        return True
-    return False
-
-
-def _tem_predicado_bem_formado(sql: str, coluna: str, comparacao: str) -> bool:
-    r"""True se existir `AND [alias.]<coluna><comparacao>` como AND de topo,
-    sem NADA (parenteses incluso) entre o `AND` e a coluna.
-
-    Round 3: ver o docstring do módulo pra história completa das três
-    sabotagens que substring solta deixava passar (inverter o valor, trocar
-    `AND` por `OR`, neutralizar com `OR TRUE`). A forma exigida — `AND`
-    imediatamente seguido (só espaço no meio) por `[alias.]coluna`, e a
-    coluna imediatamente seguida (só espaço no meio) pelo valor exato — mata
-    as duas primeiras de vez, e a terceira só quando ela cola o parêntese
-    junto do `AND`. Um `OR TRUE` solto, sem parêntese, sobrevive a ESTA
-    checagem — é o que `_e_conjuncao_pura` cobre (Round 4, docstring do
-    módulo).
-    """
-    padrao = r"\bAND\s+(?:\w+\.)?" + re.escape(coluna) + r"\s*" + comparacao + r"\b"
-    return re.search(padrao, sql, re.IGNORECASE) is not None
-
-
-def _e_conjuncao_pura(sql: str) -> bool:
-    r"""True se o SQL NAO tiver nenhum `OR` fora de parenteses (top-level).
-
-    Round 4 (docstring do módulo pra história completa): `_tem_predicado_bem_
-    formado` prova que cada predicado exigido aparece bem formado, mas é
-    checagem por `re.search` — nunca olha o que vem DEPOIS do match. Um `OR
-    TRUE` (ou qualquer outra coisa) colado sem parêntese ao final do WHERE
-    sobrevive: `AND` liga mais forte que `OR`, então `x AND y OR TRUE` já é
-    `(x AND y) OR TRUE`, e a substring "AND y" continua lá, intocada.
-
-    Esta função afirma a propriedade que falta, direto: nenhum `OR` pode
-    sobrar FORA de parênteses em NENHUM ponto do SQL. As duas queries de
-    hoje (Google e Meta) são cadeias puras de AND sem nenhum parêntese, então
-    qualquer `OR` de topo aqui já é sabotagem — nunca reformatação inócua.
-    Um `OR` genuinamente necessário no futuro teria que vir DENTRO de
-    parênteses (profundidade > 0), o que esta função já tolera.
-    """
-    profundidade = 0
-    for m in re.finditer(r"[()]|\bOR\b", sql, re.IGNORECASE):
-        token = m.group()
-        if token == "(":
-            profundidade += 1
-        elif token == ")":
-            profundidade -= 1
-        elif profundidade == 0:
-            return False
-    return True
-
-
 def test_can_manager_access_meta_consulta_estado_da_conta() -> None:
     fonte = _ARQUIVO.read_text(encoding="utf-8")
     arvore = ast.parse(fonte)
-    funcao = _achar_funcao(arvore, "can_manager_access")
-    sql = _sem_comentario_sql(_sql_sem_docstring(funcao))
+    funcao = achar_funcao(arvore, "can_manager_access")
+    sql = _sem_comentario_sql(sql_sem_docstring(funcao))
 
     assert "meta_ad_accounts" in sql, "o gate precisa cruzar com o inventario"
-    assert _tem_predicado_bem_formado(sql, "is_active", r"=\s*true"), (
+    assert tem_predicado_bem_formado(sql, "is_active", r"=\s*true"), (
         "conta fora da parceria tem que ser negada aqui tambem — como AND de "
         "topo colado na coluna, nao so a substring solta (que sobrevive "
         "intacta a `is_active = false`, a `OR is_active = true`, e a "
         "`is_active = true OR TRUE`)"
     )
-    assert _tem_predicado_bem_formado(sql, "revoked_at", r"IS\s*NULL"), (
+    assert tem_predicado_bem_formado(sql, "revoked_at", r"IS\s*NULL"), (
         "grant revogado nao pode dar acesso — mesma forma estrita"
     )
-    assert _tem_join_puro_para(sql, "meta_ad_accounts"), (
+    assert tem_join_puro_para(sql, "meta_ad_accounts"), (
         "so JOIN puro (sem LEFT/RIGHT/FULL/OUTER logo antes) garante que a "
         "condicao do ON exclui a linha de verdade — qualquer sabor de outer "
         "join preserva o lado esquerdo com colunas NULL da direita, deixando "
         "conta inativa (ou revogada) passar mesmo com o predicado escrito"
     )
-    assert _e_conjuncao_pura(sql), (
+    assert e_conjuncao_pura(sql), (
         "um OR fora de parenteses no fim do WHERE reescreve o predicado "
         "inteiro pra `(...) OR <resto>` (AND liga mais forte que OR) — "
         "`AND revoked_at IS NULL OR TRUE` sobrevive intacta a "
-        "`_tem_predicado_bem_formado`, que so olha o que vem ANTES do "
+        "`tem_predicado_bem_formado`, que so olha o que vem ANTES do "
         "match, nunca o que vem depois"
     )

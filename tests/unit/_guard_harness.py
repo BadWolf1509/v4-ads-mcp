@@ -837,3 +837,138 @@ def chama_no_corpo_proprio(escopo: ast.AST, alvo: str, *, arv: ast.Module) -> li
         ):
             linhas.append(no.lineno)
     return linhas
+
+
+# ---------------------------------------------------------------------------
+# SQL dos guards de "conta ativa" (gate Google/Meta, filas de churn)
+#
+# Detectores compartilhados por `test_gate_google_exige_conta_ativa.py`,
+# `test_gate_meta_exige_conta_ativa.py`, `test_list_queues_google_predicado_is_active.py`
+# e `test_fila_saiu_da_parceria_alcanca_a_volta.py`: um buraco corrigido aqui
+# fecha nos quatro (F155).
+# ---------------------------------------------------------------------------
+
+
+def achar_funcao(arvore: ast.Module, nome: str) -> ast.AsyncFunctionDef:
+    for node in ast.walk(arvore):
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == nome:
+            return node
+    raise AssertionError(f"{nome} sumiu ou mudou de nome")
+
+
+def sql_sem_docstring(funcao: ast.AsyncFunctionDef) -> str:
+    """Concatena os literais de string do corpo da função, IGNORANDO a
+    docstring — comentário `#` nunca aparece aqui pra começo de conversa (o
+    `ast` descarta na tokenização, não é gramática), então só a docstring
+    precisa de exclusão explícita: é o único literal de string que pode ficar
+    solto como `Expr` isolado no topo do corpo.
+    """
+    corpo = funcao.body
+    docstring_node = None
+    if (
+        corpo
+        and isinstance(corpo[0], ast.Expr)
+        and isinstance(corpo[0].value, ast.Constant)
+        and isinstance(corpo[0].value.value, str)
+    ):
+        docstring_node = corpo[0].value
+
+    literais = [
+        node.value
+        for node in ast.walk(funcao)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and node is not docstring_node
+    ]
+    return "\n".join(literais)
+
+
+def tem_join_puro_para(sql: str, tabela: str) -> bool:
+    """True se existir `JOIN <tabela>` sem LEFT/RIGHT/FULL/OUTER logo antes.
+
+    Bigrama exato (`LEFT JOIN`, `RIGHT JOIN`, `FULL JOIN`) não basta — `LEFT
+    OUTER JOIN` e primos passariam por baixo, porque a palavra logo antes de
+    "JOIN" ali é "OUTER". A forma certa é afirmativa: só um JOIN puro
+    (implicitamente INNER, com ou sem a palavra escrita) garante que a
+    condição do ON vira filtro de verdade — QUALQUER sabor de outer join
+    preserva a linha do lado esquerdo com colunas NULL da direita quando o ON
+    falha, em vez de excluir a linha.
+    """
+    for m in re.finditer(r"\bJOIN\s+" + re.escape(tabela) + r"\b", sql, re.IGNORECASE):
+        palavra_antes = re.findall(r"\w+", sql[: m.start()])[-1:]
+        if palavra_antes and palavra_antes[0].upper() in ("LEFT", "RIGHT", "FULL", "OUTER"):
+            continue
+        return True
+    return False
+
+
+def tem_predicado_bem_formado(sql: str, coluna: str, comparacao: str) -> bool:
+    r"""True se existir `AND [alias.]<coluna><comparacao>` como AND de topo,
+    sem NADA (parenteses incluso) entre o `AND` e a coluna.
+
+    Round 3 (revisão final da branch feat/gate-google, item 3 — verificação
+    por sabotagem achou tres variantes que passavam pelas checagens por
+    substring solta dos rounds 1/2, e as tres quebram o gate de verdade):
+
+    1. Inverter o valor (`is_active = false`) — a substring solta "is_active"
+       sobrevive intacta, so o valor virou o oposto do exigido. Fix: exigir
+       o VALOR colado no nome da coluna (`comparacao` inteiro, nao so o nome).
+    2. Trocar `AND` por `OR` antes do predicado (`OR revoked_at IS NULL`) — a
+       substring "revoked_at IS NULL" sobrevive IDENTICA; so a precedencia do
+       WHERE muda pra "(...) OR (revoked_at IS NULL)", que libera geral. Fix:
+       exigir que `AND` seja o token imediatamente anterior — um `OR` ali
+       nunca bate o padrao (nao ha outra ocorrencia da coluna sobrando pra
+       casar).
+    3. Neutralizar com disjuncao sempre-verdadeira (`is_active = true OR
+       TRUE`) — a frase exata "is_active = true" continua la, intocada. Fix:
+       nao tolerar NADA (nem parentese) entre o `AND` e o nome da coluna — a
+       forma exigida e `AND [alias.]coluna`, colada. Mata a variante que cola
+       o `(` logo apos o `AND` (`AND (is_active = true OR TRUE)`), onde a
+       adjacencia exigida quebra.
+
+    Round 4 (revisão final da branch feat/gate-google, item 2 — a conclusão
+    do round 3 pro caso 3 era falsa, e o guard seguia verde com a variante
+    REAL da sabotagem, mais simples de escrever — sem nenhum parentese):
+    ninguem precisa colar o `(` junto do `AND` pra neutralizar o predicado.
+    `AND revoked_at IS NULL OR TRUE`, sem NENHUM parentese, ja basta — `AND`
+    liga mais forte que `OR`, entao o WHERE inteiro vira `(...) OR TRUE` do
+    mesmo jeito, e a substring "AND revoked_at IS NULL" exigida aqui
+    sobrevive INTACTA como prefixo do que foi escrito, porque esta funcao e
+    `re.search` — nunca olha o que vem DEPOIS do match. Confirmado
+    empiricamente que este guard passava — verde — com essa variante ANTES
+    deste round. Fix: `e_conjuncao_pura`, abaixo, para de olhar a forma de
+    CADA predicado isolado e afirma a propriedade que faltava — nenhum `OR`
+    pode sobrar fora de parenteses (top-level) no SQL inteiro da funcao.
+    """
+    padrao = r"\bAND\s+(?:\w+\.)?" + re.escape(coluna) + r"\s*" + comparacao + r"\b"
+    return re.search(padrao, sql, re.IGNORECASE) is not None
+
+
+def e_conjuncao_pura(sql: str) -> bool:
+    r"""True se o SQL NAO tiver nenhum `OR` fora de parenteses (top-level).
+
+    Round 4 (ver docstring de `tem_predicado_bem_formado` acima pra história
+    completa): aquela função prova que cada predicado exigido aparece bem
+    formado, mas é checagem por `re.search` — nunca olha o que vem DEPOIS do
+    match. Um `OR TRUE` (ou qualquer outra coisa) colado sem parêntese ao
+    final do WHERE sobrevive: `AND` liga mais forte que `OR`, então `x AND y
+    OR TRUE` já é `(x AND y) OR TRUE`, e a substring "AND y" continua lá,
+    intocada.
+
+    Esta função afirma a propriedade que falta, direto: nenhum `OR` pode
+    sobrar FORA de parênteses em NENHUM ponto do SQL. As duas queries de
+    hoje (Google e Meta) são cadeias puras de AND sem nenhum parêntese, então
+    qualquer `OR` de topo aqui já é sabotagem — nunca reformatação inócua. Um
+    `OR` genuinamente necessário no futuro teria que vir DENTRO de
+    parênteses (profundidade > 0), o que esta função já tolera.
+    """
+    profundidade = 0
+    for m in re.finditer(r"[()]|\bOR\b", sql, re.IGNORECASE):
+        token = m.group()
+        if token == "(":
+            profundidade += 1
+        elif token == ")":
+            profundidade -= 1
+        elif profundidade == 0:
+            return False
+    return True

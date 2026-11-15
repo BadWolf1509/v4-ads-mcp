@@ -865,3 +865,61 @@ def test_memo_e_por_arvore() -> None:
     # com a árvore; quem edita arquivo reparseia via `h.arvore`)
     assert "apelido" not in h.nomes_chamados(a)
     assert len(h.pais(a)) != len(h.pais(b))
+
+
+# --- SQL dos guards de "conta ativa" ----------------------------------------
+# Casos tirados das sabotagens que os guards de gate (Google/Meta) e de fila
+# documentam: cada helper tem um caso que casa e um que nao casa.
+
+_SQL_GATE_BOM = """
+    SELECT 1 FROM manager_meta_account_access g
+    JOIN meta_ad_accounts m ON m.ad_account_id = g.ad_account_id
+    WHERE g.manager_id = $1
+      AND m.is_active = true
+      AND g.revoked_at IS NULL
+"""
+
+
+def test_achar_funcao_devolve_a_async_def_e_acusa_a_ausente() -> None:
+    arv = ast.parse("def alvo(): pass\nasync def alvo(): pass\n")
+    achada = h.achar_funcao(arv, "alvo")
+    assert isinstance(achada, ast.AsyncFunctionDef)
+    with pytest.raises(AssertionError, match="sumiu"):
+        h.achar_funcao(arv, "outra")
+
+
+def test_sql_sem_docstring_junta_os_literais_e_tira_a_docstring() -> None:
+    arv = ast.parse(
+        'async def f(conn):\n    """docstring com is_active = true"""\n'
+        '    return await conn.fetch("SELECT 1", "x")\n'
+    )
+    sql = h.sql_sem_docstring(h.achar_funcao(arv, "f"))
+    assert sql == "SELECT 1\nx"
+    assert "is_active" not in sql
+
+
+def test_tem_join_puro_para_aceita_inner_e_recusa_outer() -> None:
+    assert h.tem_join_puro_para(_SQL_GATE_BOM, "meta_ad_accounts")
+    assert h.tem_join_puro_para("FROM g INNER JOIN meta_ad_accounts m ON 1", "meta_ad_accounts")
+    for outer in ("LEFT JOIN", "LEFT OUTER JOIN", "RIGHT JOIN", "FULL OUTER JOIN"):
+        sql = f"FROM g {outer} meta_ad_accounts m ON 1"
+        assert not h.tem_join_puro_para(sql, "meta_ad_accounts"), outer
+
+
+def test_tem_predicado_bem_formado_casa_o_and_colado_e_recusa_as_sabotagens() -> None:
+    assert h.tem_predicado_bem_formado(_SQL_GATE_BOM, "is_active", r"=\s*true")
+    assert h.tem_predicado_bem_formado(_SQL_GATE_BOM, "revoked_at", r"IS\s*NULL")
+    sabotagens = (
+        "WHERE x AND m.is_active = false",  # valor invertido
+        "WHERE x OR m.is_active = true",  # AND trocado por OR
+        "WHERE x AND (m.is_active = true OR TRUE)",  # parentese entre AND e coluna
+    )
+    for sql in sabotagens:
+        assert not h.tem_predicado_bem_formado(sql, "is_active", r"=\s*true"), sql
+
+
+def test_e_conjuncao_pura_recusa_or_de_topo_e_tolera_or_entre_parenteses() -> None:
+    assert h.e_conjuncao_pura(_SQL_GATE_BOM)
+    assert h.e_conjuncao_pura("WHERE (a OR b) AND c")
+    assert not h.e_conjuncao_pura(_SQL_GATE_BOM + " OR TRUE")
+    assert not h.e_conjuncao_pura("WHERE a AND revoked_at IS NULL OR TRUE")
