@@ -6,11 +6,10 @@ Client falso com mensagens REAIS do SDK v25; o executor roda `chamadas` na hora.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 from google.ads.googleads.v25.common.types.keyword_plan_common import KeywordPlanHistoricalMetrics
@@ -27,17 +26,12 @@ from google.ads.googleads.v25.services.types.keyword_plan_idea_service import (
     GenerateKeywordHistoricalMetricsResult,
 )
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
 from src.mcp.tools import get_keyword_metrics as modulo
 
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
+
 _CONTA = "6728568947"
-
-
-@pytest.fixture(autouse=True)
-def _ctx() -> Iterator[None]:
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 def _sug(id_: int, nome: str, canonical: str) -> Any:
@@ -225,7 +219,7 @@ def test_description_diz_degraus_null_e_estimativa() -> None:
 @pytest.mark.asyncio
 async def test_cidade_nao_resolvida_audita_erro_e_nao_cobra_quota() -> None:
     """Executor REAL: cidade nao resolvida (modulo compartilhado) e erro de auditoria."""
-    from tests.unit.test_run_keyword_planning import _pool_with_transactable_conn
+    from tests.unit.fixtures.fake_pool import pool_com_transacao
 
     mod = "src.google_ads.keyword_planning"
     falso = _Falso(sugestoes=[_GEO[0]])
@@ -234,7 +228,7 @@ async def test_cidade_nao_resolvida_audita_erro_e_nao_cobra_quota() -> None:
         patch("src.governance.reserva.record_actual", AsyncMock()) as rec,
         patch(f"{mod}.audit_log.record", AsyncMock(return_value=1)) as audit,
         patch(f"{mod}.ensure_account_access", AsyncMock()),
-        patch(f"{mod}.connection.get_pool", return_value=_pool_with_transactable_conn()),
+        patch(f"{mod}.connection.get_pool", return_value=pool_com_transacao()),
         patch(f"{mod}.build_client_for_manager", AsyncMock(return_value=falso)),
     ):
         resp = await modulo.get_keyword_metrics(
@@ -284,7 +278,7 @@ def test_termo_repetido_ou_vazio_vira_aviso() -> None:
 
 @pytest.mark.asyncio
 async def test_audit_recebe_target_count_e_contagens() -> None:
-    from tests.unit.test_run_keyword_planning import _pool_with_transactable_conn
+    from tests.unit.fixtures.fake_pool import pool_com_transacao
 
     mod = "src.google_ads.keyword_planning"
     falso = _Falso(lambda req: [_res("a", 5)])
@@ -293,7 +287,7 @@ async def test_audit_recebe_target_count_e_contagens() -> None:
         patch("src.governance.reserva.record_actual", AsyncMock()),
         patch(f"{mod}.audit_log.record", AsyncMock(return_value=1)) as audit,
         patch(f"{mod}.ensure_account_access", AsyncMock()),
-        patch(f"{mod}.connection.get_pool", return_value=_pool_with_transactable_conn()),
+        patch(f"{mod}.connection.get_pool", return_value=pool_com_transacao()),
         patch(f"{mod}.build_client_for_manager", AsyncMock(return_value=falso)),
     ):
         await modulo.get_keyword_metrics({"customer_id": _CONTA, "termos": ["a", "b"]})

@@ -430,22 +430,13 @@ def test_formatter_sem_headlines_e_nao_lido_nao_zero() -> None:
 # --- tool: preview e audit -------------------------------------------------------------
 
 
-@pytest.fixture
-def _ctx():
-    from src.mcp.context import McpRequestContext, clear_current, set_current
-
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
-
-
 def _pool_patch():
     p = patch("src.mcp.tools._mutate_common.connection.get_pool")
     return p
 
 
 @pytest.mark.asyncio
-async def test_preview_update_mostra_pinos_antes_depois_e_aviso(_ctx) -> None:
+async def test_preview_update_mostra_pinos_antes_depois_e_aviso(ctx_mcp) -> None:
     from src.mcp.tools.update_rsa import update_rsa
 
     async def fake_preflight(**kwargs: Any) -> None:
@@ -480,7 +471,7 @@ async def test_preview_update_mostra_pinos_antes_depois_e_aviso(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_preview_update_antes_nao_lido_e_none(_ctx) -> None:
+async def test_preview_update_antes_nao_lido_e_none(ctx_mcp) -> None:
     """Pre-flight mockado/sem leitura: `antes` e None (nao medido), nunca {}."""
     from src.mcp.tools.update_rsa import update_rsa
 
@@ -502,7 +493,7 @@ async def test_preview_update_antes_nao_lido_e_none(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_preview_create_mostra_pinos_e_aviso(_ctx) -> None:
+async def test_preview_create_mostra_pinos_e_aviso(ctx_mcp) -> None:
     from src.mcp.tools.create_rsa import create_rsa
 
     with (
@@ -646,7 +637,7 @@ def _grava_log(monkeypatch) -> _Log:
 
 
 @pytest.mark.asyncio
-async def test_pino_nao_pegou_vai_em_conferencia(_ctx, monkeypatch) -> None:
+async def test_pino_nao_pegou_vai_em_conferencia(ctx_mcp, monkeypatch) -> None:
     log = _grava_log(monkeypatch)
     _wire(
         monkeypatch,
@@ -680,7 +671,7 @@ async def test_pino_nao_pegou_vai_em_conferencia(_ctx, monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_pino_que_pegou_segue_mudou(_ctx, monkeypatch) -> None:
+async def test_pino_que_pegou_segue_mudou(ctx_mcp, monkeypatch) -> None:
     log = _grava_log(monkeypatch)
     _wire(
         monkeypatch,
@@ -704,7 +695,7 @@ async def test_pino_que_pegou_segue_mudou(_ctx, monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_pino_nao_pegou_vai_em_conferencia(_ctx, monkeypatch) -> None:
+async def test_create_pino_nao_pegou_vai_em_conferencia(ctx_mcp, monkeypatch) -> None:
     rsa = {
         "ad_group_id": "5",
         "headlines": ["A", "B", "C"],
@@ -732,7 +723,7 @@ async def test_create_pino_nao_pegou_vai_em_conferencia(_ctx, monkeypatch) -> No
 
 
 @pytest.mark.asyncio
-async def test_ad_ausente_ou_pinos_nao_lidos_nao_confere(_ctx, monkeypatch) -> None:
+async def test_ad_ausente_ou_pinos_nao_lidos_nao_confere(ctx_mcp, monkeypatch) -> None:
     """So a comparacao FEITA vira conferencia: ausencia e leitura vazia sao 'nao sei'."""
     _wire(
         monkeypatch,
@@ -748,7 +739,7 @@ async def test_ad_ausente_ou_pinos_nao_lidos_nao_confere(_ctx, monkeypatch) -> N
 
 
 @pytest.mark.asyncio
-async def test_sem_pino_pedido_nao_compara(_ctx, monkeypatch) -> None:
+async def test_sem_pino_pedido_nao_compara(ctx_mcp, monkeypatch) -> None:
     _wire(
         monkeypatch,
         op="update_rsa",
@@ -762,7 +753,9 @@ async def test_sem_pino_pedido_nao_compara(_ctx, monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_comparacao_que_levanta_diz_que_pinos_nao_foram_conferidos(_ctx, monkeypatch) -> None:
+async def test_comparacao_que_levanta_diz_que_pinos_nao_foram_conferidos(
+    ctx_mcp, monkeypatch
+) -> None:
     """Excecao DENTRO da comparacao: o sucesso fica de pe, nenhuma linha diz
     'confere', e `confirmation_error` diz que os pinos nao foram conferidos."""
     from src.google_ads import confirmadores
@@ -815,7 +808,7 @@ def test_parse_da_releitura_diz_se_leu_os_pinos() -> None:
         7,
     ],
 )
-async def test_create_recusa_item_invalido_antes_do_token(_ctx, ruim: Any) -> None:
+async def test_create_recusa_item_invalido_antes_do_token(ctx_mcp, ruim: Any) -> None:
     from src.mcp.tools.create_rsa import create_rsa
 
     preflight = AsyncMock(return_value=None)
@@ -859,7 +852,7 @@ async def test_create_recusa_item_invalido_antes_do_token(_ctx, ruim: Any) -> No
         ("descriptions", 7),
     ],
 )
-async def test_update_recusa_item_invalido_antes_do_token(_ctx, campo: str, ruim: Any) -> None:
+async def test_update_recusa_item_invalido_antes_do_token(ctx_mcp, campo: str, ruim: Any) -> None:
     from src.mcp.tools.update_rsa import update_rsa
 
     base = {"headlines": ["A", "B", "C"], "descriptions": ["d", "e"]}

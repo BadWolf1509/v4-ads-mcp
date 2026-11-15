@@ -16,14 +16,12 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
 from src.google_ads.queries.overview import budget_pacing_query
 from src.google_ads.queries.recommendations import recommendations_query
 from src.google_ads.queries.tactical import conversion_actions_query
-from src.mcp.context import McpRequestContext, clear_current, set_current
 from src.mcp.tools.get_budget_pacing import _SCHEMA as SCHEMA_PACING
 from src.mcp.tools.get_budget_pacing import get_budget_pacing
 from src.mcp.tools.get_conversion_actions import _SCHEMA as SCHEMA_ACTIONS
@@ -31,18 +29,14 @@ from src.mcp.tools.get_conversion_actions import get_conversion_actions
 from src.mcp.tools.get_recommendations import _SCHEMA as SCHEMA_RECS
 from src.mcp.tools.get_recommendations import get_recommendations
 
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
+
 _S, _E = date(2026, 9, 1), date(2026, 9, 27)
 
 
 def _pacing_query(limit: int) -> str:
     return budget_pacing_query(_S, _E, limit=limit)[0]
-
-
-@pytest.fixture(autouse=True)
-def _ctx():
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 # --- Os builders passam a carregar teto -------------------------------------

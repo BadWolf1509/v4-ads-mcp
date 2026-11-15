@@ -9,24 +9,14 @@ faz, com side_effect por chave.
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
 from src.governance.rate_limit import Usage
-from src.mcp.context import McpRequestContext, clear_current, set_current
-
-
-@pytest.fixture
-def _ctx():
-    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
-    set_current(ctx)
-    yield ctx
-    clear_current()
 
 
 @pytest.mark.asyncio
-async def test_returns_zero_usage_when_no_calls_today(_ctx) -> None:
+async def test_returns_zero_usage_when_no_calls_today(ctx_mcp) -> None:
     """No rate_counters row → returns 0 used, limit unchanged, 0% pct."""
     from src.mcp.tools.get_my_rate_limit_status import get_my_rate_limit_status
 
@@ -62,7 +52,7 @@ async def test_returns_zero_usage_when_no_calls_today(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_returns_partial_usage(_ctx) -> None:
+async def test_returns_partial_usage(ctx_mcp) -> None:
     """1234 ops used → pct ~8.2%, formatted properly."""
     from src.mcp.tools.get_my_rate_limit_status import get_my_rate_limit_status
 
@@ -94,7 +84,7 @@ async def test_returns_partial_usage(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_returns_high_usage_near_warning(_ctx) -> None:
+async def test_returns_high_usage_near_warning(ctx_mcp) -> None:
     """13000 ops used → pct 86.7%, above 80% warning threshold."""
     from src.mcp.tools.get_my_rate_limit_status import get_my_rate_limit_status
 

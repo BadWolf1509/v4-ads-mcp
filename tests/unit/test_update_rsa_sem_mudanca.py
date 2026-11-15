@@ -5,21 +5,11 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
 from src.google_ads.preflight import _format_rsa_preflight_row
 from src.google_ads.rsa_textos import campos_sem_mudanca
-from src.mcp.context import McpRequestContext, clear_current, set_current
-
-
-@pytest.fixture
-def _ctx():
-    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
-    set_current(ctx)
-    yield ctx
-    clear_current()
 
 
 def _atual(**kw: Any) -> dict[str, Any]:
@@ -61,7 +51,7 @@ async def _rodar(updates: list[dict[str, Any]], atuais_por_ad: dict[str, dict[st
 
 
 @pytest.mark.asyncio
-async def test_lote_todo_igual_nao_emite_token(_ctx) -> None:
+async def test_lote_todo_igual_nao_emite_token(ctx_mcp) -> None:
     ids = [str(100 + i) for i in range(27)]
     updates = [{"ad_id": a, "final_urls": ["https://x/a"]} for a in ids]
     atuais = {a: _atual(final_urls=["https://x/a"]) for a in ids}
@@ -76,7 +66,7 @@ async def test_lote_todo_igual_nao_emite_token(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_lote_misto_token_so_com_os_diferentes(_ctx) -> None:
+async def test_lote_misto_token_so_com_os_diferentes(ctx_mcp) -> None:
     updates = [{"ad_id": a, "final_urls": ["https://x/a"]} for a in ("1", "2", "3")]
     updates[1]["final_urls"] = ["https://x/NOVA"]
     atuais = {a: _atual(final_urls=["https://x/a"]) for a in ("1", "2", "3")}
@@ -97,7 +87,7 @@ async def test_lote_misto_token_so_com_os_diferentes(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_atual_nao_lido_fica_no_token(_ctx) -> None:
+async def test_atual_nao_lido_fica_no_token(ctx_mcp) -> None:
     out, criar = await _rodar(
         [{"ad_id": "1", "final_urls": ["https://x/a"]}],
         {"1": _atual(final_urls=None)},

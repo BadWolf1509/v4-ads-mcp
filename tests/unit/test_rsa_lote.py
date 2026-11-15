@@ -13,12 +13,13 @@ from src.mcp.tools import create_rsa, update_rsa
 from src.mcp.tools._registry import get_tool, import_all_tools
 from src.mcp.tools._rsa_textos import TETO_LOTE_RSA, preview_compacto
 from tests.unit.test_apply_change_rsa_estado import (  # noqa: F401
-    _ctx,  # noqa: F401  (autouse fixture)
     _estado,
     _mutacao,
     _saved,
     _wire,
 )
+
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
 
 _RSA_OK = {
     "ad_group_id": "55",

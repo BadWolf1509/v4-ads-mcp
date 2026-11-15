@@ -5,25 +5,16 @@ result shape, audit recording) without spinning up Postgres.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
 
 import pytest
 
 from src.db.repositories.google_ads_accounts import GoogleAdsAccount
-from src.mcp.context import McpRequestContext, clear_current, set_current
+from src.mcp.context import clear_current
 from src.mcp.tools.list_my_accounts import list_my_accounts
 
 
-@pytest.fixture
-def bound_context():
-    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
-    set_current(ctx)
-    yield ctx
-    clear_current()
-
-
 @pytest.mark.asyncio
-async def test_returns_account_list_shape(bound_context):
+async def test_returns_account_list_shape(ctx_mcp):
     from datetime import UTC, datetime
 
     fake_account = GoogleAdsAccount(
@@ -64,7 +55,7 @@ async def test_returns_account_list_shape(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_empty_when_no_accounts(bound_context):
+async def test_empty_when_no_accounts(ctx_mcp):
     mock_pool = MagicMock()
     mock_conn_ctx = AsyncMock()
     mock_pool.acquire = MagicMock(return_value=mock_conn_ctx)

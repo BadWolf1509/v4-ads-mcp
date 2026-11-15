@@ -2,26 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
 from src.mcp.tools import meta_get_account_balance as modulo
+
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
 
 _CONTA = "act_1"
 _HOJE = date(2026, 10, 28)
-
-
-@pytest.fixture(autouse=True)
-def _ctx() -> Iterator[None]:
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 def _conta(**kw: Any) -> dict[str, Any]:

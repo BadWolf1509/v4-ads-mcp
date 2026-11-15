@@ -15,34 +15,8 @@ from uuid import uuid4
 import pytest
 
 from src.governance.rate_limit import QuotaExhausted
-
-
-def _pool_with_transactable_conn() -> MagicMock:
-    """conn.transaction() precisa ser um async CM real (nao coroutine bare)."""
-    fake_conn = AsyncMock()
-    fake_txn_cm = MagicMock()
-    fake_txn_cm.__aenter__ = AsyncMock(return_value=None)
-    fake_txn_cm.__aexit__ = AsyncMock(return_value=None)
-    fake_conn.transaction = MagicMock(return_value=fake_txn_cm)
-
-    mock_pool = MagicMock()
-    mock_acquire_cm = MagicMock()
-    mock_acquire_cm.__aenter__ = AsyncMock(return_value=fake_conn)
-    mock_acquire_cm.__aexit__ = AsyncMock(return_value=None)
-    mock_pool.acquire.return_value = mock_acquire_cm
-    return mock_pool
-
-
-def _fake_success_client() -> MagicMock:
-    client = MagicMock()
-    fake_response = MagicMock()
-    fake_response.mutate_operation_responses = []
-    fake_response.partial_failure_error = MagicMock(code=0, details=[])
-    fake_service = MagicMock()
-    fake_service.mutate = MagicMock(return_value=fake_response)
-    client.get_service = MagicMock(return_value=fake_service)
-    client.get_type = MagicMock(return_value=MagicMock(mutate_operations=[]))
-    return client
+from tests.unit.fixtures.fake_google_client import client_de_sucesso
+from tests.unit.fixtures.fake_pool import pool_com_transacao
 
 
 @pytest.mark.asyncio
@@ -60,7 +34,7 @@ async def test_quota_exhausted_blocks_before_builder_and_skips_record_actual():
         patch("src.governance.reserva.before_call", before_call_mock),
         patch("src.governance.reserva.record_actual", record_actual_mock),
         patch.object(mutations.audit_log, "record", AsyncMock(return_value=1)) as audit_mock,
-        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(mutations.connection, "get_pool", return_value=pool_com_transacao()),
         pytest.raises(QuotaExhausted),
     ):
         await run_mutation(
@@ -87,7 +61,7 @@ async def test_success_reserves_and_reconciles_both_global_and_manager_keys():
     from src.google_ads.mutations import run_mutation
 
     manager_id = uuid4()
-    client = _fake_success_client()
+    client = client_de_sucesso()
     before_call_mock = AsyncMock()
     record_actual_mock = AsyncMock()
 
@@ -96,7 +70,7 @@ async def test_success_reserves_and_reconciles_both_global_and_manager_keys():
         patch("src.governance.reserva.before_call", before_call_mock),
         patch("src.governance.reserva.record_actual", record_actual_mock),
         patch.object(mutations.audit_log, "record", AsyncMock(return_value=1)),
-        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(mutations.connection, "get_pool", return_value=pool_com_transacao()),
         patch.object(mutations, "build_client_for_manager", AsyncMock(return_value=client)),
         patch.object(mutations, "get_builder", lambda _op: lambda c, cid, p: [MagicMock()]),
         patch.object(mutations, "get_request_id", lambda: "fake-req-id"),
@@ -133,7 +107,7 @@ def _patches_recomendacao(before_call_mock, record_actual_mock, client, executar
         patch("src.governance.reserva.before_call", before_call_mock),
         patch("src.governance.reserva.record_actual", record_actual_mock),
         patch.object(mutations.audit_log, "record", AsyncMock(return_value=1)),
-        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(mutations.connection, "get_pool", return_value=pool_com_transacao()),
         patch.object(mutations, "build_client_for_manager", AsyncMock(return_value=client)),
         patch("src.google_ads.mutates.recommendations.execute_apply_recommendation", executar),
         patch.object(mutations, "get_request_id", lambda: "fake-req-id"),

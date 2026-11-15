@@ -2,28 +2,21 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from datetime import date
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
 from src.google_ads.errors import GoogleAdsFriendlyError
-from src.mcp.context import McpRequestContext, clear_current, set_current
 from src.mcp.tools import get_account_balance as modulo
+
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
 
 _CONTA = "1234567890"
 _HOJE = date(2026, 10, 28)
-
-
-@pytest.fixture(autouse=True)
-def _ctx() -> Iterator[None]:
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 def _patches(side_effect: Any) -> Any:

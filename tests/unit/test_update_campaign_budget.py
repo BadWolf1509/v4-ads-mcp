@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import re
 from typing import Any
-from uuid import uuid4
 
 import pytest
 
@@ -29,6 +28,9 @@ from src.google_ads import preflight
 from src.mcp.tools import update_ad_schedule as ad_schedule_mod
 from src.mcp.tools import update_campaign_budget as mod
 from tests.unit.fixtures.fake_pool import FakePool
+
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
 
 _CUSTOMER = "7862230676"
 _ALVO_ID = "21359547724"
@@ -124,15 +126,6 @@ def _wire(
     monkeypatch.setattr("src.mcp.tools._mutate_common.create_pending", _create_pending)
     monkeypatch.setattr(connection, "get_pool", lambda: FakePool())
     return captured
-
-
-@pytest.fixture(autouse=True)
-def _ctx() -> Any:
-    from src.mcp.context import McpRequestContext, clear_current, set_current
-
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 async def _preview_com(

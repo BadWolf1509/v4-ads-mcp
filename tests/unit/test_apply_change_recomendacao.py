@@ -21,7 +21,6 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any
-from uuid import uuid4
 
 import pytest
 
@@ -29,17 +28,11 @@ from src.db import connection
 from src.mcp.tools import apply_change as mod
 from tests.unit.fixtures.fake_pool import FakePool
 
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
+
 _CUSTOMER = "1234567890"
 _REC_RN = f"customers/{_CUSTOMER}/recommendations/abc"
-
-
-@pytest.fixture(autouse=True)
-def _ctx() -> Any:
-    from src.mcp.context import McpRequestContext, clear_current, set_current
-
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 def _impressao(**over: Any) -> dict[str, Any]:

@@ -2,20 +2,11 @@
 
 import re
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 from jsonschema import ValidationError, validate
 
-
-@pytest.fixture(autouse=True)
-def _ctx():
-    """Set MCP request context so get_current() works in the tool body."""
-    from src.mcp.context import McpRequestContext, clear_current, set_current
-
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
 
 
 def _good_payload():

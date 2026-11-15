@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import date
 from typing import Any
-from uuid import uuid4
 
 import pytest
 
@@ -12,14 +11,7 @@ from src.google_ads.ad_schedule import rows_to_current
 from src.mcp.tools import get_ad_schedule as mod
 from src.mcp.tools._registry import get_tool
 
-
-@pytest.fixture(autouse=True)
-def _ctx():
-    from src.mcp.context import McpRequestContext, clear_current, set_current
-
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
 
 
 def _fake_run_report(

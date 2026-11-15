@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from typing import Any
-from uuid import uuid4
 
 import pytest
 
@@ -13,21 +12,14 @@ from src.mcp.tools import update_ad_schedule as mod
 from src.mcp.tools._registry import get_tool
 from tests.unit.fixtures.fake_pool import FakePool, patch_pool
 
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
 
 def test_classify_conhece_a_operacao_e_confirma() -> None:
     """Sem entrada propria a tool cai no 'unknown operation — default seguro' (nota do estado-atual)."""
     r = classify(operation="update_ad_schedule", params={"target_count": 3})
     assert r.level is RiskLevel.CONFIRM
     assert "unknown" not in r.reason
-
-
-@pytest.fixture(autouse=True)
-def _ctx():
-    from src.mcp.context import McpRequestContext, clear_current, set_current
-
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 def _janela_row(cid="1", day="MONDAY", sh=7, eh=17, crit="9", bm=None) -> dict[str, Any]:

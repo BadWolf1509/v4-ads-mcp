@@ -21,15 +21,13 @@ Fatos MEDIDOS do recurso `change_event` (2026-09-07, conta 786-223-0676, via
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from datetime import date
 from typing import Any
 from unittest.mock import patch
-from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
+from src.mcp.context import McpRequestContext
 
 _HOJE = date(2026, 9, 8)
 
@@ -114,14 +112,6 @@ class _HistoricoFalso:
         }
 
 
-@pytest.fixture
-def _ctx() -> Iterator[McpRequestContext]:
-    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
-    set_current(ctx)
-    yield ctx
-    clear_current()
-
-
 async def _rodar(historico: _HistoricoFalso, args: dict[str, Any]) -> dict[str, Any]:
     from src.mcp.tools.detect_drift import detect_drift
 
@@ -137,7 +127,7 @@ def _dias(resultado: dict[str, Any]) -> list[str]:
 
 
 @pytest.mark.asyncio
-async def test_pagina_alem_do_teto_de_500(_ctx: McpRequestContext) -> None:
+async def test_pagina_alem_do_teto_de_500(ctx_mcp: McpRequestContext) -> None:
     """1200 eventos na janela: antes do fix, 700 sumiam sem ninguem dizer.
 
     O que o gestor via: um veredito de drift calculado sobre 500 das 1200
@@ -163,7 +153,7 @@ async def test_pagina_alem_do_teto_de_500(_ctx: McpRequestContext) -> None:
 
 @pytest.mark.asyncio
 async def test_particiona_por_dia_quando_a_janela_inteira_nao_cabe(
-    _ctx: McpRequestContext, monkeypatch: pytest.MonkeyPatch
+    ctx_mcp: McpRequestContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Sem cursor, a particao e do TEMPO: 3 dias viram 3 sub-janelas.
 
@@ -198,7 +188,7 @@ async def test_particiona_por_dia_quando_a_janela_inteira_nao_cabe(
 
 @pytest.mark.asyncio
 async def test_teto_total_para_a_varredura_e_declara_o_numero(
-    _ctx: McpRequestContext, monkeypatch: pytest.MonkeyPatch
+    ctx_mcp: McpRequestContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Teto total atingido: `varredura_truncada` sobe E o numero aparece.
 
@@ -226,7 +216,7 @@ async def test_teto_total_para_a_varredura_e_declara_o_numero(
 
 @pytest.mark.asyncio
 async def test_janela_efetiva_nao_declara_dia_que_nunca_foi_consultado(
-    _ctx: McpRequestContext, monkeypatch: pytest.MonkeyPatch
+    ctx_mcp: McpRequestContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A3 (revisao final): o campo que diz QUANTO ficou de fora nao pode
     anunciar cobertura que nao houve.
@@ -271,7 +261,7 @@ async def test_janela_efetiva_nao_declara_dia_que_nunca_foi_consultado(
 
 @pytest.mark.asyncio
 async def test_janela_que_coube_declara_a_janela_inteira(
-    _ctx: McpRequestContext, monkeypatch: pytest.MonkeyPatch
+    ctx_mcp: McpRequestContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Controle positivo do A3: sem teto atingido, `janela_efetiva == period`.
 
@@ -294,7 +284,7 @@ async def test_janela_que_coube_declara_a_janela_inteira(
 
 @pytest.mark.asyncio
 async def test_dia_que_sozinho_estoura_o_cap_e_declarado(
-    _ctx: McpRequestContext, monkeypatch: pytest.MonkeyPatch
+    ctx_mcp: McpRequestContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Janela de UM dia acima do cap: a particao chegou ao fim da granularidade.
 
@@ -315,7 +305,7 @@ async def test_dia_que_sozinho_estoura_o_cap_e_declarado(
 
 @pytest.mark.asyncio
 async def test_dia_no_cap_dentro_de_janela_particionada(
-    _ctx: McpRequestContext, monkeypatch: pytest.MonkeyPatch
+    ctx_mcp: McpRequestContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A particao ajudou e AINDA assim perdeu evento — os dois fatos convivem."""
     monkeypatch.setattr("src.google_ads.change_scan.TETO_POR_JANELA", 5)
@@ -332,7 +322,7 @@ async def test_dia_no_cap_dentro_de_janela_particionada(
 
 @pytest.mark.asyncio
 async def test_a_varredura_segue_a_janela_efetiva_nao_a_pedida(
-    _ctx: McpRequestContext, monkeypatch: pytest.MonkeyPatch
+    ctx_mcp: McpRequestContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """O clamp de retencao (F23) move o inicio, e a particao tem que obedece-lo.
 
@@ -369,7 +359,7 @@ async def test_a_varredura_segue_a_janela_efetiva_nao_a_pedida(
 
 @pytest.mark.asyncio
 async def test_a_varredura_inteira_usa_um_hoje_so(
-    _ctx: McpRequestContext, monkeypatch: pytest.MonkeyPatch
+    ctx_mcp: McpRequestContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A4 (revisao final): `hoje` e resolvido uma vez por request e passado.
 
@@ -450,7 +440,7 @@ def test_a_description_distingue_os_dois_truncados() -> None:
 
 
 @pytest.mark.asyncio
-async def test_o_aviso_do_clamp_de_retencao_chega_ao_gestor(monkeypatch, _ctx) -> None:
+async def test_o_aviso_do_clamp_de_retencao_chega_ao_gestor(monkeypatch, ctx_mcp) -> None:
     """`cobertura.janela_efetiva` ja dizia QUE a janela mudou; faltava POR QUE.
 
     `get_change_history` move o inicio da janela quando o pedido cai fora da
@@ -485,7 +475,7 @@ async def test_o_aviso_do_clamp_de_retencao_chega_ao_gestor(monkeypatch, _ctx) -
 
 
 @pytest.mark.asyncio
-async def test_sem_clamp_o_aviso_vem_null_e_nao_ausente(monkeypatch, _ctx) -> None:
+async def test_sem_clamp_o_aviso_vem_null_e_nao_ausente(monkeypatch, ctx_mcp) -> None:
     """Chave que so aparece quando ha problema treina o leitor a nao procurar
     por ela — e tira o retorno da forma de dict literal, que e a unica que o
     guard do truncamento consegue conferir."""

@@ -16,26 +16,19 @@ nosso, nao entrada errada de quem chamou.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
 from datetime import date
-from uuid import uuid4
 
 import pytest
 
 from src.google_ads.queries._common import InvalidDateRangeError, resolve_date_window
-from src.mcp.context import McpRequestContext, clear_current, set_current
 from src.mcp.server import _error_envelope
 from tests.unit.test_call_tool_valida_schema import _call_tool_do_servidor
 
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
+
 _INTERNO = "Erro interno ao executar a ferramenta. O time foi notificado."
 _HOJE = date(2026, 9, 28)
-
-
-@pytest.fixture(autouse=True)
-def _ctx() -> Iterator[None]:
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 def test_o_envelope_preserva_a_mensagem_do_erro_de_data() -> None:

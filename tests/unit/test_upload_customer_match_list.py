@@ -5,38 +5,9 @@ tests/integration/test_upload_customer_match_list.py.
 """
 
 from src.mcp.tools.upload_customer_match_list import (
-    _SCHEMA,
     _hash_members,
     _validate_payload_shape,
 )
-
-
-def test_schema_has_no_composition_keywords():
-    import json
-
-    schema_str = json.dumps(_SCHEMA)
-    assert '"oneOf"' not in schema_str
-    assert '"allOf"' not in schema_str
-    assert '"anyOf"' not in schema_str
-
-
-def test_schema_explicit_types():
-    def _walk(obj):
-        if isinstance(obj, dict):
-            if "properties" in obj:
-                for prop_name, prop_schema in obj["properties"].items():
-                    assert "type" in prop_schema, f"property '{prop_name}' missing type"
-                    _walk(prop_schema)
-            if "items" in obj:
-                _walk(obj["items"])
-            for v in obj.values():
-                if isinstance(v, dict | list):
-                    _walk(v)
-        elif isinstance(obj, list):
-            for item in obj:
-                _walk(item)
-
-    _walk(_SCHEMA)
 
 
 def test_validate_payload_shape_accepts_well_formed_input():

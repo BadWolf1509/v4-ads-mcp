@@ -10,7 +10,6 @@ from __future__ import annotations
 from datetime import date
 from types import SimpleNamespace
 from typing import Any
-from uuid import uuid4
 
 import pytest
 
@@ -18,16 +17,10 @@ from src.google_ads.queries import experiments as q
 from src.mcp.tools import get_experiments as mod
 from src.mcp.tools._registry import get_tool
 
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
+
 _HOJE = date(2026, 11, 14)
-
-
-@pytest.fixture(autouse=True)
-def _ctx():
-    from src.mcp.context import McpRequestContext, clear_current, set_current
-
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 @pytest.fixture(autouse=True)

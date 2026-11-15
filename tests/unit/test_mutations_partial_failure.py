@@ -6,23 +6,7 @@ from uuid import uuid4
 import pytest
 
 from src.google_ads.mutations import run_mutation
-
-
-def _pool_with_transactable_conn() -> MagicMock:
-    """conn.transaction() precisa ser um async CM real (F73 -- run_mutation agora
-    reserva/reconcilia dentro de `async with pool.acquire() as conn, conn.transaction():`)."""
-    fake_conn = AsyncMock()
-    fake_txn_cm = MagicMock()
-    fake_txn_cm.__aenter__ = AsyncMock(return_value=None)
-    fake_txn_cm.__aexit__ = AsyncMock(return_value=None)
-    fake_conn.transaction = MagicMock(return_value=fake_txn_cm)
-
-    mock_pool = MagicMock()
-    mock_acquire_cm = MagicMock()
-    mock_acquire_cm.__aenter__ = AsyncMock(return_value=fake_conn)
-    mock_acquire_cm.__aexit__ = AsyncMock(return_value=None)
-    mock_pool.acquire.return_value = mock_acquire_cm
-    return mock_pool
+from tests.unit.fixtures.fake_pool import pool_com_transacao
 
 
 def _client_with_partial_failure(per_op_errors: list[str | None]) -> MagicMock:
@@ -142,7 +126,7 @@ async def test_run_mutation_partial_failure_returns_per_op_status(monkeypatch):
 
     # Stub the DB hooks (before_call, record_actual, audit_log.record, access gate)
     with (
-        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(mutations.connection, "get_pool", return_value=pool_com_transacao()),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
@@ -207,7 +191,7 @@ async def test_run_mutation_uses_custom_params_summary(monkeypatch):
 
     audit_mock = AsyncMock()
     with (
-        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(mutations.connection, "get_pool", return_value=pool_com_transacao()),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
@@ -268,7 +252,7 @@ async def test_status_por_op_nao_afirma_o_verbo_da_operacao(monkeypatch) -> None
     monkeypatch.setattr(mutations, "get_request_id", lambda: "req-verbo")
 
     with (
-        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(mutations.connection, "get_pool", return_value=pool_com_transacao()),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
@@ -354,7 +338,7 @@ async def test_run_mutation_marca_op_que_o_google_aceitou_e_nao_executou(monkeyp
     monkeypatch.setattr(mutations, "get_request_id", lambda: "req-f184")
 
     with (
-        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(mutations.connection, "get_pool", return_value=pool_com_transacao()),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
@@ -396,7 +380,7 @@ async def _roda_e_captura_audit(monkeypatch, per_op_errors, *, nomes=None):
     monkeypatch.setattr(mutations, "get_request_id", lambda: "req-he")
     registro = AsyncMock()
     with (
-        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(mutations.connection, "get_pool", return_value=pool_com_transacao()),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
@@ -445,7 +429,7 @@ async def test_audit_had_effect_none_quando_excecao(monkeypatch):
     )
     registro = AsyncMock()
     with (
-        patch.object(mutations.connection, "get_pool", return_value=_pool_with_transactable_conn()),
+        patch.object(mutations.connection, "get_pool", return_value=pool_com_transacao()),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),

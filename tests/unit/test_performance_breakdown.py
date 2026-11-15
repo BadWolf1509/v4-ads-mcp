@@ -1,7 +1,6 @@
 from datetime import date
 from types import SimpleNamespace
 from typing import Any
-from uuid import uuid4
 
 import pytest
 
@@ -13,14 +12,7 @@ from src.google_ads.performance_breakdown import (
 )
 from src.mcp.tools import get_performance_breakdown as mod
 
-
-@pytest.fixture(autouse=True)
-def _ctx():
-    from src.mcp.context import McpRequestContext, clear_current, set_current
-
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
 
 
 def test_validate_combo_entity_without_breakdown_ok():

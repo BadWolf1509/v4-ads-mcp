@@ -15,7 +15,6 @@ from __future__ import annotations
 import re
 from types import SimpleNamespace
 from typing import Any
-from uuid import uuid4
 
 import jsonschema
 import pytest
@@ -35,6 +34,9 @@ from src.google_ads.queries.remover_anuncio import (
 )
 from src.mcp.tools import remove_ad as mod
 from tests.unit.fixtures.fake_pool import FakePool
+
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
 
 _CID = "7862230676"
 
@@ -79,15 +81,6 @@ def linha_de_anuncio(
     if "campaign.name" in pedidos:
         camp.name = "Campanha X"
     return SimpleNamespace(ad_group_ad=aga, ad_group=ag, campaign=camp)
-
-
-@pytest.fixture(autouse=True)
-def _ctx() -> Any:
-    from src.mcp.context import McpRequestContext, clear_current, set_current
-
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 def _wire(

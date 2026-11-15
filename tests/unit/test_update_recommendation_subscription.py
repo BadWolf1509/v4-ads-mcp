@@ -16,7 +16,6 @@ from __future__ import annotations
 import re
 from types import SimpleNamespace
 from typing import Any
-from uuid import uuid4
 
 import jsonschema
 import pytest
@@ -40,6 +39,9 @@ from src.governance.blast_radius import RiskLevel, classify
 from src.mcp.tools import update_recommendation_subscription as mod
 from tests.unit.fixtures.fake_pool import FakePool
 from tests.unit.fixtures.proto_capture import make_capture_client
+
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
 
 _CID = "7862230676"
 
@@ -65,15 +67,6 @@ def linha_de_assinatura(query: str, tipo: str, status: str | None) -> Any:
     if "recommendation_subscription.modify_date_time" in pedidos:
         sub.modify_date_time = "2024-06-06 10:17:54.382095"
     return SimpleNamespace(recommendation_subscription=sub)
-
-
-@pytest.fixture(autouse=True)
-def _ctx() -> Any:
-    from src.mcp.context import McpRequestContext, clear_current, set_current
-
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 def _wire(monkeypatch: pytest.MonkeyPatch, linhas: list[tuple[str, str]]) -> dict[str, Any]:

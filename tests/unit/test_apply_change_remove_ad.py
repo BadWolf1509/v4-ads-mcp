@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any
-from uuid import uuid4
 
 import pytest
 
@@ -19,6 +18,9 @@ from src.governance.blast_radius import RiskLevel, classify
 from src.mcp.tools import apply_change as mod
 from tests.unit.fixtures.fake_pool import FakePool
 from tests.unit.test_remove_ad import linha_de_anuncio
+
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
 
 _CID = "7862230676"
 _DIVERGE = (
@@ -33,15 +35,6 @@ class _Log:
 
     def warning(self, evento: str, **kw: Any) -> None:
         self.eventos.append((evento, kw))
-
-
-@pytest.fixture(autouse=True)
-def _ctx():
-    from src.mcp.context import McpRequestContext, clear_current, set_current
-
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 def _saved() -> SimpleNamespace:

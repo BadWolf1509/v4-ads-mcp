@@ -13,11 +13,9 @@ envelope; os de cima (B2/B3) seguem testando so a funcao pura _augment_error_hin
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
 from src.mcp.tools.validate_gaql import _augment_error_hint
 
 # ---------- B2: change_event 30-day window ----------
@@ -151,14 +149,6 @@ def test_empty_message_returns_empty():
 # ---------- Task 1.3: rate-limit (padrao 'reserved') + audit sempre ----------
 
 
-@pytest.fixture
-def bound_context():
-    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
-    set_current(ctx)
-    yield ctx
-    clear_current()
-
-
 def _pool_with_conn() -> tuple[MagicMock, AsyncMock]:
     """Mirrors test_run_report_quota_reserve.py's _pool_with_conn: pool.acquire()
     yields a fake conn whose .transaction() is a real async context manager."""
@@ -209,7 +199,7 @@ def _fake_client_invalid(error: Exception) -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_validate_gaql_quota_exhausted_returns_friendly_error_and_skips_record_actual(
-    bound_context,
+    ctx_mcp,
 ):
     """QuotaExhausted no before_call (reserva) -> validate_gaql NAO propaga a
     excecao pro caller MCP; retorna erro amigavel no mesmo shape {valid, error}.
@@ -248,7 +238,7 @@ async def test_validate_gaql_quota_exhausted_returns_friendly_error_and_skips_re
 
 @pytest.mark.asyncio
 async def test_validate_gaql_success_audits_with_query_and_valid_true_and_records_actual_twice(
-    bound_context,
+    ctx_mcp,
 ):
     """Sucesso: before_call 2x (global + mgr:<uuid>), record_actual 2x, e audit
     SEMPRE chamado com params_summary={'query':..., 'valid': True} status=success."""
@@ -280,7 +270,7 @@ async def test_validate_gaql_success_audits_with_query_and_valid_true_and_record
     assert result["valid"] is True
 
     settings = get_settings()
-    manager_id = bound_context.manager_id
+    manager_id = ctx_mcp.manager_id
     assert before_call_mock.await_count == 2
     keys_called = {c.args[1] for c in before_call_mock.await_args_list}
     assert f"mgr:{manager_id}" in keys_called
@@ -297,7 +287,7 @@ async def test_validate_gaql_success_audits_with_query_and_valid_true_and_record
 
 
 @pytest.mark.asyncio
-async def test_validate_gaql_invalid_query_still_audits_with_status_error(bound_context):
+async def test_validate_gaql_invalid_query_still_audits_with_status_error(ctx_mcp):
     """Query invalida (search levanta) -> resultado valid:False preservado (UX
     intacta) MAS o audit registra status='error' com valid:False + error_message."""
     from src.mcp.tools.validate_gaql import validate_gaql
@@ -340,7 +330,7 @@ async def test_validate_gaql_invalid_query_still_audits_with_status_error(bound_
 
 
 @pytest.mark.asyncio
-async def test_validate_gaql_denied_by_gate_not_duplicated_by_own_audit(bound_context):
+async def test_validate_gaql_denied_by_gate_not_duplicated_by_own_audit(ctx_mcp):
     """Hard-gate (ensure_account_access) ja audita 'denied' internamente --
     validate_gaql NAO deve chamar audit_log.record de novo quando o gate barra
     (evita duplicar o evento de negacao)."""
@@ -373,7 +363,7 @@ async def test_validate_gaql_denied_by_gate_not_duplicated_by_own_audit(bound_co
 
 @pytest.mark.asyncio
 async def test_validate_gaql_infra_failure_after_reserve_audits_error_and_reraises(
-    bound_context,
+    ctx_mcp,
 ):
     """build_client_for_manager (ou qualquer falha que NAO seja QuotaExhausted
     nem erro de validacao GAQL) apos a reserva -- audit registra status='error'

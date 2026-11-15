@@ -2,28 +2,21 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
 from src.mcp.tools import meta_get_change_history as modulo
 from src.meta_ads import historico, reports
+
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
 
 _CONTA = "act_1"
 _HOJE = date(2026, 11, 1)
 _FUSO = "America/Sao_Paulo"
-
-
-@pytest.fixture(autouse=True)
-def _ctx() -> Iterator[None]:
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 def _patches(side_effect: Any, *, hoje: date = _HOJE, fuso: str | None = _FUSO) -> Any:

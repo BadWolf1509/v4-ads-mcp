@@ -23,16 +23,11 @@ import ast
 import re
 from pathlib import Path
 
+from tests.unit._guard_harness import achar_funcao, tem_join_puro_para
+
 _ARQUIVO = (
     Path(__file__).resolve().parents[2] / "src" / "db" / "repositories" / "meta_ad_accounts.py"
 )
-
-
-def _achar_funcao(arvore: ast.Module, nome: str) -> ast.AsyncFunctionDef:
-    for node in ast.walk(arvore):
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == nome:
-            return node
-    raise AssertionError(f"{nome} sumiu ou mudou de nome")
 
 
 def _chamada_atribuida_a(funcao: ast.AsyncFunctionDef, alvo: str) -> ast.Call:
@@ -64,24 +59,9 @@ def _sql(chamada: ast.Call) -> str:
     return "\n".join(re.sub(r"--.*$", "", linha) for linha in primeiro.value.splitlines())
 
 
-def _tem_join_puro_para(sql: str, tabela: str) -> bool:
-    """True se existir `JOIN <tabela>` sem LEFT/RIGHT/FULL/OUTER logo antes.
-
-    Qualquer sabor de outer join preserva a linha da esquerda com colunas NULL
-    da direita — a fila listaria conta sem NENHUM grant revogado por churn, com
-    contagem 0 e um botao que nao tem o que restaurar.
-    """
-    for m in re.finditer(r"\bJOIN\s+" + re.escape(tabela) + r"\b", sql, re.IGNORECASE):
-        palavra_antes = re.findall(r"\w+", sql[: m.start()])[-1:]
-        if palavra_antes and palavra_antes[0].upper() in ("LEFT", "RIGHT", "FULL", "OUTER"):
-            continue
-        return True
-    return False
-
-
 def _fila_saiu() -> tuple[ast.Call, str]:
     arvore = ast.parse(_ARQUIVO.read_text(encoding="utf-8"))
-    chamada = _chamada_atribuida_a(_achar_funcao(arvore, "list_queues"), "saiu")
+    chamada = _chamada_atribuida_a(achar_funcao(arvore, "list_queues"), "saiu")
     return chamada, _sql(chamada)
 
 
@@ -124,7 +104,7 @@ def test_contagem_exibida_e_exatamente_o_que_o_restore_devolve() -> None:
         "a razao tem de vir da constante compartilhada com restore_for_account "
         "— string solta aqui e a forma de os dois lados divergirem em silencio"
     )
-    assert _tem_join_puro_para(sql, "manager_meta_account_access"), (
+    assert tem_join_puro_para(sql, "manager_meta_account_access"), (
         "so JOIN puro garante que a conta sem grant revogado por churn fique "
         "FORA da fila; outer join a traria com contagem 0 e botao inerte"
     )

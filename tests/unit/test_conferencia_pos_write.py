@@ -19,19 +19,11 @@ from src.mcp.tools import apply_change as mod
 from tests.unit import test_apply_change_assinatura as n3
 from tests.unit import test_rsa_pinos as g2
 
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
+
 _PINADO = g2._UPD_PINADO
 _ADS = ["customers/1234567890/ads/1", "customers/1234567890/ads/2"]
-
-
-@pytest.fixture(autouse=True)
-def _ctx():
-    from uuid import uuid4
-
-    from src.mcp.context import McpRequestContext, clear_current, set_current
-
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 def _ack_rsa(n: int) -> tuple[list[str], int]:

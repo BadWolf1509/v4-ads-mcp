@@ -22,6 +22,7 @@ from src.google_ads.resultados import (
 from tests.unit import test_mutations_partial_failure as t_mut
 from tests.unit import test_run_conversion_upload as t_conv
 from tests.unit import test_run_offline_user_data_job as t_cm
+from tests.unit.fixtures.fake_pool import pool_com_transacao
 
 
 @pytest.mark.asyncio
@@ -39,9 +40,7 @@ async def test_chaves_do_resultado_bate_com_o_tipo_mutacao(monkeypatch):
     )
     monkeypatch.setattr(mutations, "get_request_id", lambda: "req")
     with (
-        patch.object(
-            mutations.connection, "get_pool", return_value=t_mut._pool_with_transactable_conn()
-        ),
+        patch.object(mutations.connection, "get_pool", return_value=pool_com_transacao()),
         patch.object(mutations, "ensure_account_access", AsyncMock()),
         patch("src.governance.reserva.before_call", AsyncMock()),
         patch("src.governance.reserva.record_actual", AsyncMock()),
@@ -163,7 +162,7 @@ async def test_chaves_do_resultado_bate_com_o_tipo_customer_match():
         ),
         patch(
             "src.google_ads.customer_match.connection.get_pool",
-            return_value=t_cm._pool_with_transactable_conn(),
+            return_value=pool_com_transacao(),
         ),
         patch("src.google_ads.customer_match.ensure_account_access", AsyncMock()),
     ):

@@ -29,7 +29,6 @@ AMBIGUO deixar de se parecer com o confiavel.
 from __future__ import annotations
 
 from datetime import date, datetime
-from uuid import uuid4
 
 import pytest
 
@@ -140,15 +139,6 @@ def test_sonda_de_fronteira_pede_a_linha_mais_nova_com_limit() -> None:
 # --- Fiacao nas duas tools ----------------------------------------------------
 
 
-@pytest.fixture()
-def _ctx():
-    from src.mcp.context import McpRequestContext, clear_current, set_current
-
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
-
-
 def _fake_run_report(*, main_rows, frontier_dt):
     """Despacha por query: a sonda e a unica que termina em LIMIT 1."""
     queries: list[str] = []
@@ -166,7 +156,7 @@ def _fake_run_report(*, main_rows, frontier_dt):
 
 
 @pytest.mark.asyncio
-async def test_zero_linhas_ainda_traz_veredito_de_frescor(_ctx) -> None:
+async def test_zero_linhas_ainda_traz_veredito_de_frescor(ctx_mcp) -> None:
     """O caso que originou o F131: vazio sem selo e indistinguivel de intacto."""
     from unittest.mock import patch
 
@@ -191,7 +181,7 @@ async def test_zero_linhas_ainda_traz_veredito_de_frescor(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_detect_drift_propaga_a_fronteira(_ctx) -> None:
+async def test_detect_drift_propaga_a_fronteira(ctx_mcp) -> None:
     """`detect_drift` e tool de seguranca: nao pode dizer 'zero drift' calado."""
     from unittest.mock import patch
 
@@ -213,7 +203,7 @@ async def test_detect_drift_propaga_a_fronteira(_ctx) -> None:
 
 
 @pytest.mark.asyncio
-async def test_sonda_de_fronteira_nao_herda_a_janela_do_usuario(_ctx) -> None:
+async def test_sonda_de_fronteira_nao_herda_a_janela_do_usuario(ctx_mcp) -> None:
     """F131 bis: o guard anterior enumerou filtros e perdeu o que eu passava.
 
     O teste antigo (`test_sonda_de_fronteira_nao_herda_filtro_do_usuario`)

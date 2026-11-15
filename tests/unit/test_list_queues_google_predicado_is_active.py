@@ -16,15 +16,16 @@ O teste de comportamento (contas reais, banco real) vive em
 (`test_fila_delegacao_ignora_conta_inativa`), mas exige Docker. Este aqui roda
 em qualquer máquina e falha vermelho se alguém enfraquecer a query.
 
-`_achar_funcao`, `_chamada_atribuida_a` e `_sql` são cópia literal de
+`achar_funcao` vem de `_guard_harness`; `_chamada_atribuida_a` e `_sql` são cópia literal de
 `tests/unit/test_fila_saiu_da_parceria_alcanca_a_volta.py` (gêmeo Meta), que já
 resolve o problema de isolar UMA query dentro de uma função com mais de uma
 (`list_queues` do Google tem duas: `sem_delegacao` e `voltaram`) — derivar do
 ALVO (a variável), não da n-ésima query do corpo, é o que faz o guard não
 confundir as duas nem quebrar quando alguém reordenar.
 
-`_tem_predicado_bem_formado` e `_e_conjuncao_pura` são cópia (quase) literal de
-`tests/unit/test_gate_google_exige_conta_ativa.py` — aquele arquivo documenta
+`e_conjuncao_pura` vem de `_guard_harness`; `_tem_predicado_bem_formado` é a
+variante local do `tem_predicado_bem_formado` do harness (usado por
+`tests/unit/test_gate_google_exige_conta_ativa.py`) — aquele arquivo documenta
 quatro rodadas até chegar numa forma que resiste a `OR`: substring solta
 ("is_active" ou até a frase inteira "is_active = true") sobrevive intacta a
 `(is_active = true OR is_active = false)` — a sabotagem MEDIDA neste I-2— a
@@ -40,16 +41,11 @@ import ast
 import re
 from pathlib import Path
 
+from tests.unit._guard_harness import achar_funcao, e_conjuncao_pura
+
 _ARQUIVO = (
     Path(__file__).resolve().parents[2] / "src" / "db" / "repositories" / "google_ads_accounts.py"
 )
-
-
-def _achar_funcao(arvore: ast.Module, nome: str) -> ast.AsyncFunctionDef:
-    for node in ast.walk(arvore):
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == nome:
-            return node
-    raise AssertionError(f"{nome} sumiu ou mudou de nome")
 
 
 def _chamada_atribuida_a(funcao: ast.AsyncFunctionDef, alvo: str) -> ast.Call:
@@ -99,29 +95,9 @@ def _tem_predicado_bem_formado(sql: str, coluna: str, comparacao: str) -> bool:
     return re.search(padrao, sql, re.IGNORECASE) is not None
 
 
-def _e_conjuncao_pura(sql: str) -> bool:
-    r"""True se o SQL NÃO tiver nenhum `OR` fora de parênteses (top-level).
-
-    Cópia literal de `test_gate_google_exige_conta_ativa.py`: sem isto, `AND x
-    OR TRUE` (ou o `OR a.is_active = false` sem parênteses) sobrevive a
-    `_tem_predicado_bem_formado` — que só olha o que vem ANTES do match — e
-    neutraliza o WHERE inteiro, porque `AND` liga mais forte que `OR`.
-    """
-    profundidade = 0
-    for m in re.finditer(r"[()]|\bOR\b", sql, re.IGNORECASE):
-        token = m.group()
-        if token == "(":
-            profundidade += 1
-        elif token == ")":
-            profundidade -= 1
-        elif profundidade == 0:
-            return False
-    return True
-
-
 def _sql_da_fila(nome_variavel: str) -> str:
     arvore = ast.parse(_ARQUIVO.read_text(encoding="utf-8"))
-    funcao = _achar_funcao(arvore, "list_queues")
+    funcao = achar_funcao(arvore, "list_queues")
     chamada = _chamada_atribuida_a(funcao, nome_variavel)
     return _sql(chamada)
 
@@ -133,7 +109,7 @@ def test_sem_delegacao_exige_conta_ativa() -> None:
     As duas asserções são necessárias: `_tem_predicado_bem_formado` sozinha
     passaria (errado) com `WHERE a.is_active = true OR a.is_active = false
     AND NOT EXISTS(...)` — sem parênteses, "WHERE a.is_active = true" casa
-    intacto, e só `_e_conjuncao_pura` pega o `OR` solto que neutraliza a
+    intacto, e só `e_conjuncao_pura` pega o `OR` solto que neutraliza a
     cláusula inteira (AND liga mais forte que OR).
     """
     sql = _sql_da_fila("sem_delegacao")
@@ -144,7 +120,7 @@ def test_sem_delegacao_exige_conta_ativa() -> None:
         "(que sobrevive intacta a `(is_active = true OR is_active = false)`, "
         "a sabotagem medida no I-2)"
     )
-    assert _e_conjuncao_pura(sql), (
+    assert e_conjuncao_pura(sql), (
         "um OR fora de parênteses neutraliza o WHERE inteiro (`is_active = "
         "true OR is_active = false`, sem parênteses, ou `AND ... OR TRUE`) "
         "mesmo com a substring `is_active = true` intacta"

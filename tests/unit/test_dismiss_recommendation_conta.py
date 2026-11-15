@@ -1,19 +1,12 @@
 """dismiss_recommendation so dispensa recomendacao da conta informada."""
 
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
 from src.mcp.tools import dismiss_recommendation as mod
 
-
-@pytest.fixture(autouse=True)
-def _ctx():
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
 
 
 @pytest.mark.asyncio

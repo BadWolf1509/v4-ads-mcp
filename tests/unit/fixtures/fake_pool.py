@@ -7,17 +7,23 @@ dada) e conta quantas vezes foi chamado em `acquires`.
 `patch_pool` troca `get_pool` (ou outro atributo) de um ou mais módulos por uma
 função que devolve o pool — a forma dominante nos testes: `lambda: pool`.
 
+`PoolSequencial` entrega conexões em sequência e conta acquires, para provar o
+fresh-acquire no retry (`test_db_connection.py`, `test_health_resilience.py`).
+
+`pool_com_transacao` devolve um pool `MagicMock` cuja conexão tem
+`transaction()` como async context manager de verdade (os executores de
+mutação abrem transação).
+
 Fica de fora, por testar comportamento próprio do pool: o fake de
-`test_hot_reads_reconnect.py` (entrega conexões em sequência e conta acquires
-para provar o fresh-acquire no retry), `test_db_connection.py`,
-`test_health_resilience.py`, `test_pool_validado.py` e o `_Pool` de
+`test_hot_reads_reconnect.py` (sequencial, mas cria as próprias conexões a
+partir de uma contagem), `test_pool_validado.py` e o `_Pool` de
 `test_mutate_common.py` (que registra a ordem acquire/release).
 """
 
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -49,3 +55,42 @@ def patch_pool(monkeypatch: pytest.MonkeyPatch, pool: Any, *alvos: str) -> None:
     """Faz cada `alvo` ("modulo.atributo", ex. "src.db.connection.get_pool") devolver `pool`."""
     for alvo in alvos:
         monkeypatch.setattr(alvo, lambda *_a, **_k: pool)
+
+
+class PoolSequencial:
+    """Stand-in de `asyncpg.Pool` que entrega `conns` em sequencia.
+
+    Conta os acquires em `acquires`, para o teste afirmar que o retry pegou uma
+    conexao NOVA (fresh-acquire), nao a mesma morta.
+    """
+
+    def __init__(self, conns: list[object]) -> None:
+        self._conns = conns
+        self.acquires = 0
+
+    def acquire(self) -> _Acquire:
+        conn = self._conns[self.acquires]
+        self.acquires += 1
+        return _Acquire(conn)
+
+
+def pool_com_transacao(conn: Any | None = None) -> MagicMock:
+    """Pool `MagicMock` cujo `acquire()` entrega uma conexao com `transaction()` real.
+
+    `conn.transaction()` precisa ser um async context manager de verdade (nao
+    coroutine bare). Sem `conn`, monta um `AsyncMock` com esse `transaction()`;
+    com `conn`, entrega-a como veio.
+    """
+    if conn is None:
+        conn = AsyncMock()
+        txn_cm = MagicMock()
+        txn_cm.__aenter__ = AsyncMock(return_value=None)
+        txn_cm.__aexit__ = AsyncMock(return_value=None)
+        conn.transaction = MagicMock(return_value=txn_cm)
+
+    pool = MagicMock()
+    acquire_cm = MagicMock()
+    acquire_cm.__aenter__ = AsyncMock(return_value=conn)
+    acquire_cm.__aexit__ = AsyncMock(return_value=None)
+    pool.acquire.return_value = acquire_cm
+    return pool

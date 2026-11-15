@@ -5,25 +5,17 @@ O que vai ao Google se confere pelo `payload` do `run_mutation` — o lote real,
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from typing import Any
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
 
 _CONTA = "7862230676"
 _CAMPANHA = "21359547724"
 _MOD = "src.mcp.tools.add_negative_keywords"
-
-
-@pytest.fixture(autouse=True)
-def _ctx() -> Iterator[None]:
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 def _existente(texto: str, tipo: str, cid: str = "1745061730") -> dict[str, str]:
