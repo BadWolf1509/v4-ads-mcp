@@ -11,14 +11,17 @@ Regra dos motivos: o motivo nomeia o que bloqueia agora; com dois bloqueios,
 vale o da conta (por isso a restauração em conta inativa remarca como churn).
 """
 
+import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from types import ModuleType
-from uuid import UUID
+from unittest.mock import patch
+from uuid import UUID, uuid4
 
 import asyncpg
 import pytest
+from fastapi.responses import Response
 
 from src.db.repositories import (
     _acesso_comum,
@@ -35,6 +38,8 @@ from src.db.repositories.motivos import (
     MANAGER_DEACTIVATED_REASON,
     PARTNERSHIP_ENDED_REASON,
 )
+from src.web.deps import CurrentUser
+from src.web.routes import admin_overview
 from tests.integration._seed import seed_manager
 
 
@@ -536,3 +541,171 @@ async def test_ordem_gestor_reativa_depois_conta_volta(db, lado: _Lado) -> None:
         await _conta_ativa(conn, lado, conta, True)
         assert await _restaurar_conta(conn, lado, conta) == _restaurados_esperados(lado, [gestor])
         assert await _linha(conn, lado, gestor, conta) == (None, None)
+
+
+# --- Task 3: a rota `toggle-active` revoga e restaura ---------------------------
+#
+# A função da rota é chamada direto (como em test_acesso_e_audit_sao_atomicos.py),
+# com um request HTMX falso para o toast vir no `HX-Trigger`. Os dois lados
+# entram juntos em cada teste, porque a rota chama os dois.
+
+
+class _FakeRequestHtmx:
+    def __init__(self) -> None:
+        self.headers: dict[str, str] = {"HX-Request": "true"}
+
+
+async def _admin(conn: asyncpg.Connection) -> CurrentUser:
+    manager = await managers.create(
+        conn,
+        manager_id=uuid4(),
+        email=f"admin.{uuid4().hex[:8]}@v4company.com",
+        full_name=None,
+        role="admin",
+    )
+    return CurrentUser(manager)
+
+
+async def _toggle(admin: CurrentUser, gestor: UUID, desejado: str) -> Response:
+    return await admin_overview.admin_managers_toggle_active(
+        _FakeRequestHtmx(),  # type: ignore[arg-type]
+        manager_id=gestor,
+        desejado=desejado,  # type: ignore[arg-type]
+        user=admin,
+    )
+
+
+async def _audits_do_toggle(conn: asyncpg.Connection) -> list[asyncpg.Record]:
+    return await conn.fetch(
+        "SELECT params_summary, had_effect FROM audit_log "
+        "WHERE operation = 'admin_manager_toggle_active' ORDER BY occurred_at, id"
+    )
+
+
+def _toast(resposta: Response) -> str:
+    return str(json.loads(resposta.headers["HX-Trigger"])["toast"]["message"])
+
+
+async def _gestor_com_5_grants(conn: asyncpg.Connection) -> tuple[UUID, list[str], list[str]]:
+    google, meta = _LADOS["google"], _LADOS["meta"]
+    gestor = await _gestor(conn)
+    contas_google = [google.conta(n) for n in (1, 2, 3)]
+    contas_meta = [meta.conta(n) for n in (1, 2)]
+    for conta in contas_google:
+        await _grant(conn, google, gestor, conta)
+    for conta in contas_meta:
+        await _grant(conn, meta, gestor, conta)
+    return gestor, contas_google, contas_meta
+
+
+_CHAVES_DE_CONTAGEM = ("revogados_", "restaurados_", "remarcados_")
+
+
+@pytest.mark.integration
+async def test_desativar_pela_rota_revoga_e_audita_contagens(db) -> None:
+    async with db.acquire() as conn:
+        admin = await _admin(conn)
+        gestor, contas_google, contas_meta = await _gestor_com_5_grants(conn)
+
+    resposta = await _toggle(admin, gestor, "inativo")
+
+    async with db.acquire() as conn:
+        for lado, contas in ((_LADOS["google"], contas_google), (_LADOS["meta"], contas_meta)):
+            for conta in contas:
+                revoked_at, motivo = await _linha(conn, lado, gestor, conta)
+                assert revoked_at is not None
+                assert motivo == MANAGER_DEACTIVATED_REASON
+        (audit,) = await _audits_do_toggle(conn)
+    summary = json.loads(audit["params_summary"])
+    assert audit["had_effect"] is True
+    assert summary["revogados_google"] == 3
+    assert summary["revogados_meta"] == 2
+    assert summary["target_manager_id"] == str(gestor)
+    assert not any(k.startswith(("restaurados_", "remarcados_")) for k in summary)
+    assert _toast(resposta) == "Gestor desativado: 5 acessos revogados."
+
+
+@pytest.mark.integration
+async def test_reativar_pela_rota_devolve_so_o_que_tirou(db) -> None:
+    google = _LADOS["google"]
+    async with db.acquire() as conn:
+        admin = await _admin(conn)
+        gestor, contas_google, contas_meta = await _gestor_com_5_grants(conn)
+    await _toggle(admin, gestor, "inativo")
+    async with db.acquire() as conn:
+        extra = google.conta(9)
+        await _grant(conn, google, gestor, extra, motivo=ADMIN_REVOKED_REASON)
+        antes_extra = await _linha(conn, google, gestor, extra)
+
+    resposta = await _toggle(admin, gestor, "ativo")
+
+    async with db.acquire() as conn:
+        for lado, contas in ((google, contas_google), (_LADOS["meta"], contas_meta)):
+            for conta in contas:
+                assert await _linha(conn, lado, gestor, conta) == (None, None)
+        assert await _linha(conn, google, gestor, extra) == antes_extra
+        audits = await _audits_do_toggle(conn)
+    assert len(audits) == 2
+    summary = json.loads(audits[1]["params_summary"])
+    assert audits[1]["had_effect"] is True
+    assert summary["restaurados_google"] == 3
+    assert summary["restaurados_meta"] == 2
+    assert summary["remarcados_google"] == 0
+    assert summary["remarcados_meta"] == 0
+    assert not any(k.startswith("revogados_") for k in summary)
+    assert _toast(resposta) == "Gestor reativado: 5 acessos restaurados."
+
+
+@pytest.mark.integration
+async def test_reativar_com_conta_fora_do_inventario_conta_remarcados(db) -> None:
+    google = _LADOS["google"]
+    async with db.acquire() as conn:
+        admin = await _admin(conn)
+        gestor = await _gestor(conn)
+        await _grant(conn, google, gestor, google.conta(1))
+        await _grant(conn, google, gestor, google.conta(2))
+    await _toggle(admin, gestor, "inativo")
+    async with db.acquire() as conn:
+        await _conta_ativa(conn, google, google.conta(2), False)
+
+    resposta = await _toggle(admin, gestor, "ativo")
+
+    async with db.acquire() as conn:
+        assert await _linha(conn, google, gestor, google.conta(1)) == (None, None)
+        revoked_at, motivo = await _linha(conn, google, gestor, google.conta(2))
+        assert revoked_at is not None
+        assert motivo == LEFT_MCC_REASON
+        audits = await _audits_do_toggle(conn)
+    summary = json.loads(audits[1]["params_summary"])
+    assert (summary["restaurados_google"], summary["remarcados_google"]) == (1, 1)
+    assert _toast(resposta) == (
+        "Gestor reativado: 1 acesso restaurado. "
+        "1 acesso continua revogado porque a conta saiu do inventário."
+    )
+
+
+@pytest.mark.integration
+async def test_segundo_clique_nao_muda_nada(db) -> None:
+    async with db.acquire() as conn:
+        admin = await _admin(conn)
+        gestor, _, _ = await _gestor_com_5_grants(conn)
+    await _toggle(admin, gestor, "inativo")
+    async with db.acquire() as conn:
+        fotos = [await _foto(conn, lado) for lado in _LADOS.values()]
+
+    proibido = AssertionError("o segundo clique não pode chamar as funções de acesso")
+    with (
+        patch.object(manager_account_access, "revogar_de_desativados", side_effect=proibido),
+        patch.object(manager_meta_account_access, "revogar_de_desativados", side_effect=proibido),
+        patch.object(manager_account_access, "restaurar_de_reativados", side_effect=proibido),
+        patch.object(manager_meta_account_access, "restaurar_de_reativados", side_effect=proibido),
+    ):
+        resposta = await _toggle(admin, gestor, "inativo")
+
+    async with db.acquire() as conn:
+        assert [await _foto(conn, lado) for lado in _LADOS.values()] == fotos
+        audits = await _audits_do_toggle(conn)
+    assert [a["had_effect"] for a in audits] == [True, False]
+    summary = json.loads(audits[1]["params_summary"])
+    assert not any(k.startswith(_CHAVES_DE_CONTAGEM) for k in summary)
+    assert _toast(resposta) == "O gestor já estava assim."

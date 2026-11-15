@@ -27,7 +27,13 @@ from uuid import uuid4
 
 import pytest
 
-from src.db.repositories import google_ads_accounts, managers
+from src.db.repositories import (
+    google_ads_accounts,
+    manager_account_access,
+    manager_meta_account_access,
+    managers,
+    meta_ad_accounts,
+)
 from src.web.deps import CurrentUser
 from src.web.routes import admin_access, admin_overview
 
@@ -159,3 +165,59 @@ async def test_admin_managers_toggle_active_nao_persiste_se_audit_falha(db) -> N
     async with db.acquire() as conn:
         is_active = await conn.fetchval("SELECT is_active FROM managers WHERE id = $1", gestor.id)
     assert is_active is True, "o toggle nao pode sobreviver a um audit_log.record que falhou"
+
+
+@pytest.mark.integration
+async def test_toggle_active_nao_revoga_se_audit_falha(db) -> None:
+    """Desativar revoga os grants Google e Meta na mesma transação do UPDATE e do
+    audit (desenho de 15/11). Audit que falha desfaz as três escritas: o gestor
+    segue ativo e os grants seguem vivos — nada de acesso revogado sem autor."""
+    async with db.acquire() as conn:
+        admin_manager = await _make_manager(conn, "admin.revoga@v4company.com", role="admin")
+        gestor = await _make_manager(conn, "gestor.revoga@v4company.com")
+        await _make_account(conn, "1110000004")
+        await meta_ad_accounts.upsert_many(
+            conn,
+            [{"ad_account_id": "act_1110000004", "business_id": "bm_t", "account_name": "T"}],
+        )
+        await manager_account_access.grant(
+            conn, manager_id=gestor.id, customer_id="1110000004", granted_by=admin_manager.id
+        )
+        await manager_meta_account_access.grant(
+            conn,
+            manager_id=gestor.id,
+            ad_account_id="act_1110000004",
+            granted_by=admin_manager.id,
+        )
+    admin = CurrentUser(admin_manager)
+
+    with (
+        patch(
+            "src.db.repositories.audit_log.record",
+            side_effect=_AuditLogWriteError("audit indisponível"),
+        ),
+        pytest.raises(_AuditLogWriteError),
+    ):
+        await admin_overview.admin_managers_toggle_active(
+            _FakeRequest(),
+            manager_id=gestor.id,
+            desejado="inativo",
+            user=admin,
+        )
+
+    async with db.acquire() as conn:
+        is_active = await conn.fetchval("SELECT is_active FROM managers WHERE id = $1", gestor.id)
+        vivos_google = await conn.fetchval(
+            "SELECT count(*) FROM manager_account_access "
+            "WHERE manager_id = $1 AND revoked_at IS NULL",
+            gestor.id,
+        )
+        vivos_meta = await conn.fetchval(
+            "SELECT count(*) FROM manager_meta_account_access "
+            "WHERE manager_id = $1 AND revoked_at IS NULL",
+            gestor.id,
+        )
+    assert is_active is True
+    assert (vivos_google, vivos_meta) == (1, 1), (
+        "a revogação não pode sobreviver a um audit_log.record que falhou"
+    )
