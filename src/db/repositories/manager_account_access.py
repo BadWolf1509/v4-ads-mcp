@@ -499,3 +499,11 @@ async def restaurar_de_reativados(
     return await _acesso_comum.restaurar_de_reativados(
         conn, GOOGLE, motivo_churn=LEFT_MCC_REASON, manager_id=manager_id
     )
+
+
+async def planejar_convergencia(conn: asyncpg.Connection) -> dict[str, int]:
+    """Quantas linhas `revogar_de_desativados` e `restaurar_de_reativados` (sem
+    `manager_id`) mudariam agora, sem escrever: o dry-run do job diário. Mesmo
+    par `(descritor, motivo de churn)` do apply. SQL no núcleo
+    (`_acesso_comum.planejar_convergencia`)."""
+    return await _acesso_comum.planejar_convergencia(conn, GOOGLE, motivo_churn=LEFT_MCC_REASON)

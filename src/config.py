@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     # calcula e audita o plano sempre; só o lado destrutivo (deactivate +
     # revoke_for_inactive_accounts, em src/jobs/account_resync.py) depende disto.
     google_reconcile_apply: bool = False
+    # Trava da convergência de grants de gestor desativado/reativado
+    # (`_etapa_gestores` em src/jobs/account_resync.py, desenho de 15/11). O job
+    # calcula e audita o plano sempre; só revogar/restaurar depende disto. A rota
+    # `toggle-active` não lê a trava: ela age no clique, com autor no audit.
+    manager_offboarding_apply: bool = False
 
     # NOTA (F95): nao ha campos Supabase aqui. O banco e Postgres do Supabase,
     # mas o acesso e 100% via `database_url` (asyncpg cru, sem a lib supabase).

@@ -11,7 +11,7 @@ import asyncio
 import sys
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 import asyncpg
 import structlog
@@ -24,6 +24,8 @@ from src.db.repositories import (
     google_ads_accounts,
     google_oauth_connections,
     manager_account_access,
+    manager_meta_account_access,
+    managers,
 )
 from src.google_ads.accounts import (
     fetch_account_details,
@@ -43,8 +45,10 @@ log = structlog.get_logger(__name__)
 class Desfecho(Enum):
     """Desfecho da etapa Google (Parte J2, 11/11) — antes `bool | None`.
 
-    `SEM_OAUTH` encerra o job (Meta e purge nao rodam); `FALHOU` e bloqueio
-    auditado como erro: o job termina o resto e sai com 1.
+    `SEM_OAUTH` encerra a parte de inventario (Meta nao roda), mas a convergencia
+    dos gestores e o purge rodam antes do exit 1: nao dependem do Google (desenho
+    de 15/11). `FALHOU` e bloqueio auditado como erro: o job termina o resto e sai
+    com 1.
     """
 
     OK = "ok"
@@ -244,16 +248,23 @@ async def run() -> int:
         pool = connection.get_pool()
         desfecho_google = await _etapa_google(pool, settings)
         if desfecho_google is Desfecho.SEM_OAUTH:
+            # Desenho de 15/11: gestores e purge nao dependem do Google. O exit
+            # code ja e 1; as falhas deles ficam no audit de cada etapa.
+            await _etapa_gestores(pool, settings)
+            await _etapa_purge(pool)
             return 1
         falhou_google = desfecho_google is Desfecho.FALHOU
         falhou_meta = await _etapa_meta(pool)
+        # Depois de Google e Meta, para a convergencia ver o estado final do dia;
+        # antes do purge, como as outras reconciliacoes.
+        falhou_gestores = await _etapa_gestores(pool, settings)
         # F207 (11/11): o purge ENTRA no exit code. A unica policy que ve o job e
         # "Cloud Run Job: execucao FALHOU" (exit code); falha que so ia ao log
         # ficava invisivel. Como o bloqueio e a falha Meta (Task 5), o job termina
         # o que faz e so entao sai com 1 — o retry reexecuta a reconciliacao, que
         # e idempotente por dia (F157).
         falhou_purge = await _etapa_purge(pool)
-        return 1 if falhou_google or falhou_meta or falhou_purge else 0
+        return 1 if falhou_google or falhou_meta or falhou_gestores or falhou_purge else 0
 
     # F93: crash inesperado (build_client, fetch_account_details, upsert_many)
     # nao pode sumir da trilha — o rastro ficaria so no Cloud Run.
@@ -284,10 +295,11 @@ async def run() -> int:
 async def _etapa_google(pool: connection.PoolValidado, settings: Settings) -> Desfecho:
     """Reconcilia o inventário Google contra o MCC e devolve o `Desfecho`.
 
-    Três desfechos (`Desfecho`), e o terceiro ENCERRA o job (Meta e purge não
-    rodam): `OK`, `FALHOU` (bloqueio auditado como erro — o job termina o resto
-    e sai com 1) e `SEM_OAUTH` (auditado e exit 1 imediato).
-    Exceção aqui sobe para `executar_job` (crash F93) — também sem Meta/purge.
+    Três desfechos (`Desfecho`): `OK`, `FALHOU` (bloqueio auditado como erro — o
+    job termina o resto e sai com 1) e `SEM_OAUTH` (auditado; Meta não roda, a
+    convergência dos gestores e o purge rodam, e o job sai com 1).
+    Exceção aqui sobe para `executar_job` (crash F93) — sem Meta, gestores nem
+    purge.
 
     F85: `[]` sem exceção é anomalia de leitura, não "o MCC ficou vazio".
     Agir nisso desativaria o inventário inteiro (25 contas) por 24h. Espelha a
@@ -458,6 +470,103 @@ async def _etapa_meta(pool: connection.PoolValidado) -> bool:
         )
         await record_job_crash(operation="meta_reconcile", platform="meta", exc=e)
         return True
+
+
+_OPERACAO_GESTORES = "manager_offboarding_reconcile"
+
+# Plataforma -> (wrappers do módulo do lado). O motivo de churn de cada lado vem
+# do próprio módulo (Google `left_mcc`, Meta `partnership_ended`); a etapa nunca
+# chama o núcleo cru, que aceita qualquer motivo sem conferir o lado.
+_LADOS_DE_ACESSO: tuple[tuple[Literal["google", "meta"], Any], ...] = (
+    ("google", manager_account_access),
+    ("meta", manager_meta_account_access),
+)
+
+
+async def convergir_gestores(
+    conn: asyncpg.Connection, *, apply: bool
+) -> dict[Literal["google", "meta"], dict[str, Any]]:
+    """Converge os grants de gestor desativado/reativado nas duas tabelas.
+
+    Devolve, por plataforma, o `params_summary` do audit. Uma transação só para
+    as duas tabelas: com a trava ligada, ou os dois lados convergem, ou nenhum.
+
+    Sobre o ESTADO, não sobre o delta (desenho de 15/11): pega o grant concedido
+    a gestor já desativado, a (des)ativação por SQL direto e o que a rota não
+    terminou. O plano (`planejar_convergencia`) é contado SEMPRE, inclusive com a
+    trava desligada: a trava governa a escrita, não a observação (mesma razão de
+    `reconcile_google`). Com ela ligada, o plano é lido na MESMA transação e
+    logo antes das escritas, então plano e efeito descrevem o mesmo estado.
+
+    A trava dos gestores (`travar_todos_para_convergencia`) vem antes de tudo,
+    para que uma desativação concorrente pela rota não seja desfeita aqui.
+    """
+    resumos: dict[Literal["google", "meta"], dict[str, Any]] = {}
+    async with conn.transaction():
+        await managers.travar_todos_para_convergencia(conn)
+        for plataforma, modulo in _LADOS_DE_ACESSO:
+            plano = await modulo.planejar_convergencia(conn)
+            resumo: dict[str, Any] = {"apply": apply, **plano}
+            if apply:
+                revogados = await modulo.revogar_de_desativados(conn)
+                restaurados, remarcados = await modulo.restaurar_de_reativados(conn)
+                resumo |= {
+                    "revogados": len(revogados),
+                    "restaurados": len(restaurados),
+                    "remarcados": len(remarcados),
+                }
+            resumos[plataforma] = resumo
+    return resumos
+
+
+async def _etapa_gestores(pool: connection.PoolValidado, settings: Settings) -> bool:
+    """Convergência diária dos grants de gestor desativado/reativado. True = falhou.
+
+    Atrás da trava `manager_offboarding_apply` (desligada por padrão): desligada,
+    só calcula e audita quantos revogaria, restauraria e remarcaria. Uma linha
+    `manager_offboarding_reconcile` por plataforma, com `target_count` = revogados
+    + restaurados (0 com a trava desligada: nada foi escrito).
+
+    Falha da convergência entra no exit code (F207) e deixa uma linha `error` por
+    plataforma (a série de cada lado não fica com o dia em branco). O audit do
+    sucesso roda depois do commit, sob `best_effort` (F83): falha dele é
+    bookkeeping sobre uma convergência que já aconteceu, como no purge.
+    """
+    apply = settings.manager_offboarding_apply
+    try:
+        async with pool.acquire() as conn:
+            resumos = await convergir_gestores(conn, apply=apply)
+    except Exception as e:  # noqa: BLE001
+        log.error("manager_offboarding_reconcile_failed", error=str(e))
+        print(f"ERRO: convergência dos gestores falhou: {e}", file=sys.stderr)
+        async with (
+            best_effort("job_run_audit_failed", operation=_OPERACAO_GESTORES),
+            pool.acquire() as conn,
+        ):
+            for plataforma, _modulo in _LADOS_DE_ACESSO:
+                await record_job_run(
+                    conn,
+                    operation=_OPERACAO_GESTORES,
+                    platform=plataforma,
+                    status="error",
+                    error_message=str(e)[:500],
+                )
+        return True
+    async with (
+        best_effort("job_run_audit_failed", operation=_OPERACAO_GESTORES),
+        pool.acquire() as conn,
+    ):
+        for plataforma, resumo in resumos.items():
+            await record_job_run(
+                conn,
+                operation=_OPERACAO_GESTORES,
+                platform=plataforma,
+                status="success",
+                target_count=resumo.get("revogados", 0) + resumo.get("restaurados", 0),
+                params_summary=resumo,
+            )
+    print(f"OK: convergência dos gestores — {resumos}")
+    return False
 
 
 async def _etapa_purge(pool: connection.PoolValidado) -> bool:

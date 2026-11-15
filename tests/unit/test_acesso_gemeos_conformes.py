@@ -33,7 +33,7 @@ import ast
 import asyncio
 import dataclasses
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -67,6 +67,7 @@ _GEMEOS = (
     "has_live_grant",
     "revogar_de_desativados",
     "restaurar_de_reativados",
+    "planejar_convergencia",
 )
 
 # As escritas que delegam ao núcleo (SQL comparado em runtime) e os pares que
@@ -81,6 +82,7 @@ _NO_NUCLEO = (
     # descritor e, na restauração, o motivo de churn do lado.
     "revogar_de_desativados",
     "restaurar_de_reativados",
+    "planejar_convergencia",
 )
 _FORA_DO_NUCLEO = (
     "list_accounts_for_manager",
@@ -299,8 +301,11 @@ class _ConexaoFalsa:
         self.eventos.append(_Evento("fetch", sql, args))
         return []
 
-    async def fetchrow(self, sql: str, *args: Any) -> None:
+    async def fetchrow(self, sql: str, *args: Any) -> defaultdict[str, int]:
+        # Linha neutra (toda coluna lida vale 0): `planejar_convergencia` indexa a
+        # linha do `SELECT count`. Nenhuma outra função do núcleo usa `fetchrow`.
         self.eventos.append(_Evento("fetchrow", sql, args))
+        return defaultdict(int)
 
     async def fetchval(self, sql: str, *args: Any) -> int:
         self.eventos.append(_Evento("fetchval", sql, args))
@@ -334,6 +339,9 @@ _ENTRADAS: dict[str, dict[str, Any]] = {
     },
     "revogar_de_desativados": {"manager_id": _ID_GESTOR},
     "restaurar_de_reativados": {"manager_id": _ID_GESTOR},
+    # Sem argumento além da conexão: é o plano de todos (o job). Emite o SELECT
+    # de contagem, então não passa por vacuidade.
+    "planejar_convergencia": {},
 }
 _KWARG_META = {"customer_id": "ad_account_id", "customer_ids": "ad_account_ids"}
 

@@ -103,6 +103,11 @@ def _base_patches(
         # cobertura contra banco real em tests/integration/test_repositories.py.
         # Sem este mock, `conn` (MagicMock puro) faz `list_queues` explodir.
         "avisar_sem_grant": patch(f"{_M}.avisar_contas_sem_grant", AsyncMock(return_value=0)),
+        # Desenho de 15/11: a convergência dos gestores é mockada por INTEIRO, como
+        # `reconcile_google` — a lógica dela tem cobertura contra banco real em
+        # tests/integration/test_revogacao_na_desativacao.py. Com `conn`
+        # MagicMock puro, a etapa real falharia e o job sairia com 1.
+        "gestores": patch(f"{_M}._etapa_gestores", AsyncMock(return_value=False)),
         "purge": patch(
             f"{_M}.purge_expired",
             AsyncMock(
@@ -117,9 +122,21 @@ def _base_patches(
     return mocks
 
 
+@pytest.fixture(autouse=True)
+def _sem_etapa_gestores():
+    """Os testes deste arquivo entram nos mocks um a um (`with mocks[...]`); a
+    etapa dos gestores fica mockada para todos, pelo mesmo motivo da entrada
+    `gestores` de `_base_patches`. Quem precisa dela entra em `mocks["gestores"]`
+    e recebe o mock por cima deste."""
+    with patch(f"{_M}._etapa_gestores", AsyncMock(return_value=False)) as etapa:
+        yield etapa
+
+
 @pytest.mark.asyncio
 async def test_run_returns_1_when_no_oauth_connection() -> None:
-    """Sem OAuth connection ativa → early return 1 (nada de client/upsert)."""
+    """Sem OAuth connection ativa → exit 1 sem client/upsert. Desde o desenho de
+    15/11 (Task 4) os gestores e o purge rodam antes do exit (não dependem do
+    Google); eles têm audit próprio, e o do Google é o primeiro."""
     conn = MagicMock()
     pool = FakePool(conn)
     mocks = _base_patches(pool=pool, oc=None)
@@ -132,18 +149,23 @@ async def test_run_returns_1_when_no_oauth_connection() -> None:
         mocks["build_client"] as build_client,
         mocks["reconcile_google"] as reconcile_google,
         mocks["record"] as record,
+        mocks["purge"] as purge,
     ):
         rc = await account_resync.run()
 
     assert rc == 1
+    purge.assert_awaited_once()
     build_client.assert_not_called()
     reconcile_google.assert_not_awaited()
     # pool sempre fechado no finally.
     close_pool.assert_awaited_once()
 
     # F73: falha de OAuth deve ficar visível no /audit — status='error'.
-    record.assert_awaited_once()
-    kwargs = record.call_args.kwargs
+    assert [c.kwargs["operation"] for c in record.await_args_list] == [
+        "google_reconcile",
+        "db_purge",
+    ]
+    kwargs = record.await_args_list[0].kwargs
     # I2 (revisão de branch, 2026-09-05): unificado com o caminho de
     # sucesso/bloqueio e com o crash do except externo — os três gravavam
     # `operation` diferente ("account_resync" aqui e no crash, "google_reconcile"

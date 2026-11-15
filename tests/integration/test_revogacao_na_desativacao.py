@@ -11,18 +11,21 @@ Regra dos motivos: o motivo nomeia o que bloqueia agora; com dois bloqueios,
 vale o da conta (por isso a restauração em conta inativa remarca como churn).
 """
 
+import asyncio
 import json
 from collections.abc import Awaitable, Callable
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import datetime
 from types import ModuleType
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import asyncpg
 import pytest
 from fastapi.responses import Response
 
+from src.config import Settings, get_settings
 from src.db.repositories import (
     _acesso_comum,
     google_ads_accounts,
@@ -38,6 +41,7 @@ from src.db.repositories.motivos import (
     MANAGER_DEACTIVATED_REASON,
     PARTNERSHIP_ENDED_REASON,
 )
+from src.jobs import _runner, account_resync
 from src.web.deps import CurrentUser
 from src.web.routes import admin_overview
 from tests.integration._seed import seed_manager
@@ -709,3 +713,276 @@ async def test_segundo_clique_nao_muda_nada(db) -> None:
     summary = json.loads(audits[1]["params_summary"])
     assert not any(k.startswith(_CHAVES_DE_CONTAGEM) for k in summary)
     assert _toast(resposta) == "O gestor já estava assim."
+
+
+# --- Task 4: a etapa `_etapa_gestores` do job diário ----------------------------
+#
+# A etapa chama os wrappers dos dois módulos sem `manager_id`, numa transação só,
+# atrás da trava `manager_offboarding_apply`. Os dois lados entram juntos em cada
+# teste, porque a etapa converge os dois.
+
+
+def _settings(*, apply: bool) -> Settings:
+    return get_settings().model_copy(update={"manager_offboarding_apply": apply})
+
+
+async def _audits_da_etapa(conn: asyncpg.Connection) -> dict[str, list[asyncpg.Record]]:
+    rows = await conn.fetch(
+        "SELECT platform, status, target_count, params_summary, error_message FROM audit_log "
+        "WHERE operation = 'manager_offboarding_reconcile' ORDER BY occurred_at, id"
+    )
+    por_lado: dict[str, list[asyncpg.Record]] = {"google": [], "meta": []}
+    for r in rows:
+        por_lado[r["platform"]].append(r)
+    return por_lado
+
+
+def _summary(audit: asyncpg.Record) -> dict[str, object]:
+    return dict(json.loads(audit["params_summary"]))
+
+
+async def _dois_desativados_com_grants(conn: asyncpg.Connection) -> None:
+    """3 grants vivos Google e 2 Meta, em dois gestores desativados pelas duas
+    formas do predicado (`is_active=false` e `status='inactive'`)."""
+    google, meta = _LADOS["google"], _LADOS["meta"]
+    um = await _gestor(conn)
+    outro = await _gestor(conn)
+    await _grant(conn, google, um, google.conta(1))
+    await _grant(conn, google, um, google.conta(2))
+    await _grant(conn, meta, um, meta.conta(1))
+    await _grant(conn, google, outro, google.conta(3))
+    await _grant(conn, meta, outro, meta.conta(2))
+    await _ativo(conn, um, False)
+    await conn.execute("UPDATE managers SET status = 'inactive' WHERE id = $1", outro)
+
+
+@pytest.mark.integration
+async def test_etapa_com_trava_desligada_audita_e_nao_escreve(db) -> None:
+    async with db.acquire() as conn:
+        await _dois_desativados_com_grants(conn)
+        fotos = [await _foto(conn, lado) for lado in _LADOS.values()]
+
+    falhou = await account_resync._etapa_gestores(db, _settings(apply=False))
+
+    assert falhou is False
+    async with db.acquire() as conn:
+        assert [await _foto(conn, lado) for lado in _LADOS.values()] == fotos
+        audits = await _audits_da_etapa(conn)
+    esperado = {"google": 3, "meta": 2}
+    for plataforma, a_revogar in esperado.items():
+        (audit,) = audits[plataforma]
+        assert audit["status"] == "success"
+        assert audit["target_count"] == 0
+        assert _summary(audit) == {
+            "apply": False,
+            "a_revogar": a_revogar,
+            "a_restaurar": 0,
+            "a_remarcar": 0,
+        }
+
+
+@pytest.mark.integration
+async def test_etapa_com_trava_ligada_converge(db) -> None:
+    google, meta = _LADOS["google"], _LADOS["meta"]
+    async with db.acquire() as conn:
+        # Review Focus 1: grant concedido DEPOIS da desativação (admin marca a
+        # caixa na matriz) — nenhuma rota revogou, só a etapa o alcança.
+        tardio = await _gestor(conn, is_active=False)
+        await _grant(conn, google, tardio, google.conta(1))
+        await _grant(conn, meta, tardio, meta.conta(1))
+        # Review Focus 3: reativado por SQL direto (`status` inactive -> active,
+        # `is_active` já true), com as linhas que a desativação deixou.
+        por_sql = await _gestor(conn, status="inactive")
+        await _grant(conn, google, por_sql, google.conta(2), motivo=MANAGER_DEACTIVATED_REASON)
+        await _grant(conn, meta, por_sql, meta.conta(2), motivo=MANAGER_DEACTIVATED_REASON)
+        # conta fora do inventário: continua revogada, agora como churn.
+        await _grant(
+            conn,
+            google,
+            por_sql,
+            google.conta(3),
+            motivo=MANAGER_DEACTIVATED_REASON,
+            conta_ativa=False,
+        )
+        # revogação de admin não volta por esse caminho.
+        await _grant(conn, google, por_sql, google.conta(4), motivo=ADMIN_REVOKED_REASON)
+        antes_admin = await _linha(conn, google, por_sql, google.conta(4))
+        await conn.execute("UPDATE managers SET status = 'active' WHERE id = $1", por_sql)
+
+    falhou = await account_resync._etapa_gestores(db, _settings(apply=True))
+
+    assert falhou is False
+    async with db.acquire() as conn:
+        for lado in (google, meta):
+            revoked_at, motivo = await _linha(conn, lado, tardio, lado.conta(1))
+            assert revoked_at is not None
+            assert motivo == MANAGER_DEACTIVATED_REASON
+            assert await _linha(conn, lado, por_sql, lado.conta(2)) == (None, None)
+        revoked_at, motivo = await _linha(conn, google, por_sql, google.conta(3))
+        assert revoked_at is not None
+        assert motivo == LEFT_MCC_REASON
+        assert await _linha(conn, google, por_sql, google.conta(4)) == antes_admin
+        audits = await _audits_da_etapa(conn)
+    (audit_google,) = audits["google"]
+    (audit_meta,) = audits["meta"]
+    assert _summary(audit_google) == {
+        "apply": True,
+        "a_revogar": 1,
+        "a_restaurar": 1,
+        "a_remarcar": 1,
+        "revogados": 1,
+        "restaurados": 1,
+        "remarcados": 1,
+    }
+    assert audit_google["target_count"] == 2
+    assert _summary(audit_meta) == {
+        "apply": True,
+        "a_revogar": 1,
+        "a_restaurar": 1,
+        "a_remarcar": 0,
+        "revogados": 1,
+        "restaurados": 1,
+        "remarcados": 0,
+    }
+    assert audit_meta["target_count"] == 2
+
+    # Review Focus 4: a segunda rodada (retry do job) não muda nada.
+    async with db.acquire() as conn:
+        fotos = [await _foto(conn, lado) for lado in _LADOS.values()]
+    assert await account_resync._etapa_gestores(db, _settings(apply=True)) is False
+    async with db.acquire() as conn:
+        assert [await _foto(conn, lado) for lado in _LADOS.values()] == fotos
+        audits = await _audits_da_etapa(conn)
+    zeros = dict.fromkeys(
+        ("a_revogar", "a_restaurar", "a_remarcar", "revogados", "restaurados", "remarcados"), 0
+    )
+    for plataforma in ("google", "meta"):
+        segunda = audits[plataforma][1]
+        assert segunda["target_count"] == 0
+        assert _summary(segunda) == {"apply": True, **zeros}
+
+
+def _job_sobre_o_pool_do_teste(settings: Settings) -> ExitStack:
+    """`run()` de verdade sobre o pool que o fixture `db` já abriu: `init_pool` e
+    `close_pool` do esqueleto viram no-op (o fixture fecha o pool no teardown)."""
+    stack = ExitStack()
+    stack.enter_context(patch.object(_runner.connection, "init_pool", AsyncMock()))
+    stack.enter_context(patch.object(_runner.connection, "close_pool", AsyncMock()))
+    stack.enter_context(
+        patch.object(account_resync, "get_settings", MagicMock(return_value=settings))
+    )
+    stack.enter_context(patch.object(account_resync, "configure_logging", MagicMock()))
+    return stack
+
+
+async def _status_de(conn: asyncpg.Connection, operation: str) -> list[tuple[str, str]]:
+    rows = await conn.fetch(
+        "SELECT platform, status FROM audit_log WHERE operation = $1 ORDER BY platform, id",
+        operation,
+    )
+    return [(r["platform"], r["status"]) for r in rows]
+
+
+@pytest.mark.integration
+async def test_etapa_roda_mesmo_sem_oauth(db) -> None:
+    async with db.acquire() as conn:
+        assert await conn.fetchval("SELECT count(*) FROM google_oauth_connections") == 0
+        await _dois_desativados_com_grants(conn)
+
+    with _job_sobre_o_pool_do_teste(_settings(apply=True)):
+        rc = await account_resync.run()
+
+    assert rc == 1, "sem OAuth o job continua saindo com 1"
+    async with db.acquire() as conn:
+        for lado in _LADOS.values():
+            vivos = await conn.fetchval(
+                f"SELECT count(*) FROM {lado.tabela} WHERE revoked_at IS NULL"
+            )
+            assert vivos == 0, f"{lado.nome}: a etapa dos gestores não rodou sem OAuth"
+        assert await _status_de(conn, "google_reconcile") == [("google", "error")]
+        assert await _status_de(conn, "manager_offboarding_reconcile") == [
+            ("google", "success"),
+            ("meta", "success"),
+        ]
+        assert await _status_de(conn, "db_purge") == [("google", "success")]
+
+
+@pytest.mark.integration
+async def test_etapa_que_falha_entra_no_exit_code(db) -> None:
+    async with db.acquire() as conn:
+        await _dois_desativados_com_grants(conn)
+        fotos = [await _foto(conn, lado) for lado in _LADOS.values()]
+
+    # O lado Meta falha DEPOIS de o Google ter escrito: a transação única desfaz
+    # o Google também.
+    boom = RuntimeError("meta caiu no meio")
+    with _job_sobre_o_pool_do_teste(_settings(apply=True)) as stack:
+        stack.enter_context(
+            patch.object(
+                account_resync,
+                "_etapa_google",
+                AsyncMock(return_value=account_resync.Desfecho.OK),
+            )
+        )
+        stack.enter_context(
+            patch.object(account_resync, "_etapa_meta", AsyncMock(return_value=False))
+        )
+        stack.enter_context(
+            patch.object(
+                manager_meta_account_access,
+                "revogar_de_desativados",
+                AsyncMock(side_effect=boom),
+            )
+        )
+        crash = stack.enter_context(patch.object(account_resync, "record_job_crash", AsyncMock()))
+        rc = await account_resync.run()
+
+    assert rc == 1
+    crash.assert_not_awaited()
+    async with db.acquire() as conn:
+        assert [await _foto(conn, lado) for lado in _LADOS.values()] == fotos
+        assert await _status_de(conn, "manager_offboarding_reconcile") == [
+            ("google", "error"),
+            ("meta", "error"),
+        ]
+        mensagens = await conn.fetch(
+            "SELECT error_message FROM audit_log WHERE operation = 'manager_offboarding_reconcile'"
+        )
+        assert all("meta caiu no meio" in r["error_message"] for r in mensagens)
+        assert await _status_de(conn, "db_purge") == [("google", "success")]
+
+
+@pytest.mark.integration
+async def test_etapa_espera_desativacao_concorrente_e_nao_restaura(db) -> None:
+    """Corrida com a rota: o gestor foi reativado por SQL (o job ia restaurar) e a
+    rota o desativa no mesmo instante. Sem a trava dos gestores, o job lia o
+    gestor ainda ativo e restaurava, e a revogação da rota (que só vê linha viva)
+    não alcançava o que o job acabara de devolver: desativado com grant vivo."""
+    google = _LADOS["google"]
+    async with db.acquire() as conn:
+        gestor = await _gestor(conn)
+        await _grant(conn, google, gestor, google.conta(1), motivo=MANAGER_DEACTIVATED_REASON)
+
+    async with db.acquire() as rota:
+        tx = rota.transaction()
+        await tx.start()
+        try:
+            # A rota inteira, ainda sem commit: `definir_ativo` (FOR UPDATE +
+            # UPDATE) e a revogação, que não acha linha viva (a do gestor ainda
+            # está revogada). É a ordem que deixava o estado errado: o job
+            # restaurando DEPOIS da revogação da rota e antes do commit dela.
+            assert await managers.definir_ativo(rota, manager_id=gestor, ativo=False) is not None
+            assert (
+                await manager_account_access.revogar_de_desativados(rota, manager_id=gestor) == []
+            )
+            etapa = asyncio.create_task(account_resync._etapa_gestores(db, _settings(apply=True)))
+            await asyncio.sleep(0.5)
+            assert not etapa.done(), "a etapa não esperou a transação da rota"
+        finally:
+            await tx.commit()
+        assert await etapa is False
+
+    async with db.acquire() as conn:
+        revoked_at, motivo = await _linha(conn, google, gestor, google.conta(1))
+    assert revoked_at is not None, "o job restaurou o grant de quem a rota desativou"
+    assert motivo == MANAGER_DEACTIVATED_REASON
