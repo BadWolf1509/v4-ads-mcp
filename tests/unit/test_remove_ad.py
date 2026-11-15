@@ -94,7 +94,7 @@ def _wire(
     monkeypatch: pytest.MonkeyPatch,
     anuncios: list[dict[str, Any]],
     enabled: list[tuple[str, str]] | None = None,
-    base: str | None = "999",
+    base: list[str] | None = None,
 ) -> dict[str, Any]:
     """`anuncios`: kwargs de `linha_de_anuncio`; `enabled`: (ad_group_id, ad_id) ENABLED."""
     cap: dict[str, Any] = {"queries": [], "pending": None, "base_chamado": []}
@@ -110,16 +110,16 @@ def _wire(
             ]
         return [fmt(linha_de_anuncio(q, **a)) for a in anuncios]
 
-    async def _base(**kwargs: Any) -> str | None:
+    async def _base(**kwargs: Any) -> list[str]:
         cap["base_chamado"].append(kwargs["ad_group_id"])
-        return base
+        return ["999"] if base is None else base
 
     async def _create_pending(conn: Any, **kwargs: Any) -> str:
         cap["pending"] = kwargs
         return "TOKEN123"
 
     monkeypatch.setattr(mod, "run_report", _run)
-    monkeypatch.setattr(mod, "_buscar_ad_base_do_grupo", _base)
+    monkeypatch.setattr(mod, "buscar_ads_base_do_grupo", _base)
     monkeypatch.setattr("src.mcp.tools._mutate_common.create_pending", _create_pending)
     monkeypatch.setattr(connection, "get_pool", lambda: FakePool())
     return cap
@@ -150,7 +150,7 @@ async def test_variacao_recusa_apontando_o_base(monkeypatch: pytest.MonkeyPatch)
     cap = _wire(
         monkeypatch,
         [{"ad_id": "11", "ad_group_id": "100", "status": "ENABLED", "source": "AD_VARIATIONS"}],
-        base="999",
+        base=["999"],
     )
     out = await _chamar("11")
     assert out["status"] == "error"
@@ -161,11 +161,28 @@ async def test_variacao_recusa_apontando_o_base(monkeypatch: pytest.MonkeyPatch)
     assert cap["pending"] is None
 
 
-async def test_variacao_sem_base_unico_nomeia_o_grupo(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_variacao_com_dois_bases_lista_os_dois(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Smoke de 15/11 na MO: o MARTELETE tem 2 bases (730606848394, 807521122523) e a
+    recusa citava so o grupo. Os dois sao o fato medido; nenhum e escolhido."""
     cap = _wire(
         monkeypatch,
         [{"ad_id": "11", "ad_group_id": "100", "status": "ENABLED", "source": "AD_VARIATIONS"}],
-        base=None,
+        base=["730606848394", "807521122523"],
+    )
+    out = await _chamar("11")
+    assert out["status"] == "error"
+    msg = out["error_message"]
+    assert "730606848394, 807521122523" in msg
+    assert "o anuncio BASE 730606848394" not in msg
+    assert "encerre o experimento na UI" in msg
+    assert cap["pending"] is None
+
+
+async def test_variacao_sem_base_nomeia_o_grupo(monkeypatch: pytest.MonkeyPatch) -> None:
+    cap = _wire(
+        monkeypatch,
+        [{"ad_id": "11", "ad_group_id": "100", "status": "ENABLED", "source": "AD_VARIATIONS"}],
+        base=[],
     )
     out = await _chamar("11")
     assert out["status"] == "error"

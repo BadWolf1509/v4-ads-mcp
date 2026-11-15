@@ -14,7 +14,7 @@ fixo); o `apply_change` rele o status de cada anuncio depois da escrita.
 
 from typing import Any
 
-from src.google_ads.preflight import _buscar_ad_base_do_grupo
+from src.google_ads.preflight import buscar_ads_base_do_grupo, descrever_base
 from src.google_ads.queries.remover_anuncio import (
     anuncios_query,
     enabled_por_grupo_query,
@@ -127,25 +127,19 @@ async def remove_ad(args: dict[str, Any]) -> dict[str, Any]:
         ad = atuais[aid]
         # F181: comparacao por VALOR — em proto-plus o atributo existe sempre (F145).
         if ad["system_managed_source"] == "AD_VARIATIONS":
-            base_id = await _buscar_ad_base_do_grupo(
+            base_ids = await buscar_ads_base_do_grupo(
                 manager_id=ctx.manager_id,
                 session_id=ctx.session_id,
                 customer_id=customer_id,
                 ad_group_id=ad["ad_group_id"],
             )
-            alvo = (
-                f"o anuncio BASE {base_id}"
-                if base_id is not None
-                else (
-                    f"o anuncio BASE do grupo '{ad['ad_group_name']}' (id "
-                    f"{ad['ad_group_id']}) — o anuncio que nao e variacao"
-                )
-            )
+            alvo = descrever_base(base_ids, ad["ad_group_name"], ad["ad_group_id"])
             return error_envelope(
                 _OPERACAO,
                 f"O anuncio {aid} e uma variacao de experimento (AD_VARIATIONS, gerenciada "
-                f"pelo Google) e nao aceita remocao. Para mudar o que veicula, atue sobre "
-                f"{alvo} ou encerre o experimento. Nada foi feito.",
+                f"pelo Google) e nao aceita remocao. Para mudar o que veicula no grupo, "
+                f"atue sobre {alvo}: a variacao herda a mudanca. Para tirar a variacao, "
+                f"encerre o experimento na UI do Google Ads. Nada foi feito.",
                 customer_id=customer_id,
             )
 

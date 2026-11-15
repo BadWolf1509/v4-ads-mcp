@@ -305,18 +305,19 @@ def _atuais_do_rsa(ad: Any) -> dict[str, Any]:
     }
 
 
-async def _buscar_ad_base_do_grupo(
+async def buscar_ads_base_do_grupo(
     manager_id: UUID,
     session_id: UUID,
     customer_id: str,
     ad_group_id: str,
-) -> str | None:
-    """`ad_id` do unico RSA nao-variacao do grupo, ou None se ambiguo.
+) -> list[str]:
+    """`ad_id`s de TODOS os anuncios nao-variacao (nao REMOVED) do grupo, em ordem.
 
     So roda no caminho de falha do pre-flight (anuncio system-managed detectado),
-    entao o custo nao entra no caminho feliz. Devolve None — em vez de chutar o
-    primeiro — quando ha zero ou mais de um candidato: nomear o anuncio errado e
-    pior que nao nomear nenhum.
+    entao o custo nao entra no caminho feliz. Devolve a lista inteira, nunca um
+    escolhido: com dois bases (o teste de URL da MO tem 2 por grupo) chutar o
+    primeiro nomearia o anuncio errado; listar os dois e o fato medido. Vazia =
+    nenhum candidato (a mensagem cai para o grupo).
     """
     query = (
         f"SELECT ad_group_ad.ad.id, "
@@ -340,8 +341,24 @@ async def _buscar_ad_base_do_grupo(
         row_formatter=_format,
         operation_name="buscar_ad_base_do_grupo",
     )
-    candidatos = [r["ad_id"] for r in rows if r["system_managed_source"] != "AD_VARIATIONS"]
-    return candidatos[0] if len(candidatos) == 1 else None
+    return sorted(
+        (r["ad_id"] for r in rows if r["system_managed_source"] != "AD_VARIATIONS"), key=int
+    )
+
+
+def descrever_base(base_ids: list[str], ad_group_name: str, ad_group_id: str) -> str:
+    """Alvo da recusa de variacao (F181): o(s) anuncio(s) base pelo id, ou o grupo."""
+    if len(base_ids) == 1:
+        return f"o anuncio BASE {base_ids[0]}"
+    if base_ids:
+        return (
+            f"os anuncios BASE {', '.join(base_ids)} do grupo '{ad_group_name}' "
+            f"(id {ad_group_id}) — os {len(base_ids)} que nao sao variacao"
+        )
+    return (
+        f"o anuncio BASE do grupo '{ad_group_name}' (id {ad_group_id}) — o anuncio "
+        f"que nao e variacao"
+    )
 
 
 async def validate_existing_rsas_for_update(
@@ -422,20 +439,13 @@ async def validate_existing_rsas_for_update(
         # formatter que deixe de trazer a chave tem que falhar alto, nao pular a
         # checagem em silencio.
         if ad["system_managed_source"] == "AD_VARIATIONS":
-            base_id = await _buscar_ad_base_do_grupo(
+            base_ids = await buscar_ads_base_do_grupo(
                 manager_id=manager_id,
                 session_id=session_id,
                 customer_id=customer_id,
                 ad_group_id=ad["ad_group_id"],
             )
-            alvo = (
-                f"o anuncio BASE {base_id}"
-                if base_id is not None
-                else (
-                    f"o anuncio BASE do ad_group '{ad['ad_group_name']}' "
-                    f"(id {ad['ad_group_id']}) — o RSA que nao e variacao"
-                )
-            )
+            alvo = descrever_base(base_ids, ad["ad_group_name"], ad["ad_group_id"])
             return (
                 f"Ad {aid} e uma variacao de Ad Variation (gerenciada pelo Google) "
                 f"e nao aceita mutate. Edite {alvo}: a variacao herda a mudanca em "
