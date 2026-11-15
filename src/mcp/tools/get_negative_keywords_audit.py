@@ -144,6 +144,8 @@ async def get_negative_keywords_audit(args: dict[str, Any]) -> dict[str, Any]:
         query=gaql,
         row_formatter=_row_formatter_negatives,
         operation_name="get_negative_keywords_audit",
+        # Uma linha por chamada: só a leitura principal audita (A-01).
+        audit_this_call=True,
     )
     creates_task = run_report(
         manager_id=ctx.manager_id,

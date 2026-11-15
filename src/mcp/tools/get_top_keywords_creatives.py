@@ -100,6 +100,8 @@ async def get_top_keywords_creatives(args: dict[str, Any]) -> dict[str, Any]:
         query=gaql_kw,
         row_formatter=_kw_formatter,
         operation_name="get_top_keywords_creatives",
+        # Uma linha por chamada: só a leitura principal audita (A-01).
+        audit_this_call=True,
     )
     creatives = await run_report(
         manager_id=ctx.manager_id,

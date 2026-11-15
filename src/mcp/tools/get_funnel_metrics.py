@@ -102,6 +102,7 @@ async def get_funnel_metrics(args: dict[str, Any]) -> dict[str, Any]:
         query=gaql,
         row_formatter=_row_formatter,
         operation_name="get_funnel_metrics",
+        audit_this_call=True,
     )
     return {
         "customer_id": customer_id,

@@ -120,6 +120,8 @@ async def get_budget_pacing(args: dict[str, Any]) -> dict[str, Any]:
         query=gaql,
         row_formatter=_row_formatter,
         operation_name="get_budget_pacing",
+        # Uma linha por chamada: só a leitura principal audita (A-01).
+        audit_this_call=True,
     )
     # F98 — a sentinela é uma campanha a mais e não pode entrar na projeção.
     rows, truncated = aplicar_limite(rows, limit)
