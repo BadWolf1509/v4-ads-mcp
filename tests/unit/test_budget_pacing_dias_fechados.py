@@ -12,24 +12,16 @@ a mesma das outras tools, e o gasto de hoje vem num campo a parte.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from typing import Any
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 from freezegun import freeze_time
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
 
 _CONTA = "1234567890"
-
-
-@pytest.fixture(autouse=True)
-def _ctx() -> Iterator[None]:
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 def _linha(cid: str, custo_brl: float, orcamento: float = 310.0) -> dict[str, Any]:

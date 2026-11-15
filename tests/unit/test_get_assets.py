@@ -8,21 +8,13 @@ exatamente o erro de 02/09 (checklist previa 4 vinculos, eram 6).
 from __future__ import annotations
 
 from typing import Any
-from uuid import uuid4
 
 import pytest
 
 from src.mcp.tools._registry import get_tool
 from src.mcp.tools.get_assets import get_assets
 
-
-@pytest.fixture(autouse=True)
-def _ctx():
-    from src.mcp.context import McpRequestContext, clear_current, set_current
-
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
 
 
 def _fake_run_report(por_recurso: dict[str, list[dict[str, Any]]]):

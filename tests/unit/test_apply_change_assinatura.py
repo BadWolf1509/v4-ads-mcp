@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any
-from uuid import uuid4
 
 import pytest
 
@@ -21,6 +20,9 @@ from src.google_ads.queries.recommendation_subscription import (
 from src.mcp.tools import apply_change as mod
 from tests.unit.fixtures.fake_pool import FakePool
 from tests.unit.test_update_recommendation_subscription import linha_de_assinatura
+
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
 
 _CID = "7862230676"
 _DIVERGE = (
@@ -38,15 +40,6 @@ class _Log:
 
 
 _RN = f"customers/{_CID}/recommendationSubscriptions/RESPONSIVE_SEARCH_AD"
-
-
-@pytest.fixture(autouse=True)
-def _ctx():
-    from src.mcp.context import McpRequestContext, clear_current, set_current
-
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 def _saved(status: str = "PAUSED") -> SimpleNamespace:

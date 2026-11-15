@@ -7,21 +7,13 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any
-from uuid import uuid4
 
 import pytest
 
 from src.mcp.tools import apply_change as mod
 from tests.unit.fixtures.fake_pool import FakePool
 
-
-@pytest.fixture(autouse=True)
-def _ctx():
-    from src.mcp.context import McpRequestContext, clear_current, set_current
-
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
 
 
 def _janela(day: str = "MONDAY", sh: int = 7, eh: int = 17) -> dict[str, Any]:

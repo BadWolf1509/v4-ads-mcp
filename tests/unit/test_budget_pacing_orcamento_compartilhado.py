@@ -12,26 +12,18 @@ ali), nao da soma das linhas listadas: campanha pausada no meio do mes, ou corta
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 from freezegun import freeze_time
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
 
 _CONTA = "7862230676"
 _ORC = "15803241252"
-
-
-@pytest.fixture(autouse=True)
-def _ctx() -> Iterator[None]:
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 def _linha(

@@ -6,11 +6,10 @@ Client falso com mensagens REAIS do SDK v25; o executor roda `chamadas` na hora.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 from google.ads.googleads.v25.common.types.keyword_plan_common import KeywordPlanHistoricalMetrics
@@ -27,17 +26,12 @@ from google.ads.googleads.v25.services.types.keyword_plan_idea_service import (
     GenerateKeywordHistoricalMetricsResult,
 )
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
 from src.mcp.tools import get_keyword_metrics as modulo
 
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
+
 _CONTA = "6728568947"
-
-
-@pytest.fixture(autouse=True)
-def _ctx() -> Iterator[None]:
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 def _sug(id_: int, nome: str, canonical: str) -> Any:

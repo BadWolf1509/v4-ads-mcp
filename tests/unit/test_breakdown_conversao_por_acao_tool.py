@@ -8,23 +8,15 @@ fica com flag `null` e motivo: ausência de medição não é `false` (F191).
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from typing import Any
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
 
 _CONTA = "7862230676"
-
-
-@pytest.fixture(autouse=True)
-def _ctx() -> Iterator[None]:
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 def _acao(aid: str, nome: str, conv: float, todas: float) -> dict[str, Any]:

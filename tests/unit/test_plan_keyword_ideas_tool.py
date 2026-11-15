@@ -6,11 +6,10 @@ roda `chamadas` na hora, com o client falso.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
 
 import pytest
 from google.ads.googleads.errors import GoogleAdsException
@@ -31,17 +30,12 @@ from google.ads.googleads.v25.services.types.keyword_plan_idea_service import (
     GenerateKeywordIdeasRequest,
 )
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
 from src.mcp.tools import plan_keyword_ideas as modulo
 
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
+
 _CONTA = "6728568947"
-
-
-@pytest.fixture(autouse=True)
-def _ctx() -> Iterator[None]:
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 def _sug(id_: int, nome: str, tipo: str, canonical: str, termo: str) -> Any:

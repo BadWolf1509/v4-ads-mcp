@@ -26,7 +26,6 @@ from __future__ import annotations
 import re
 from types import SimpleNamespace
 from typing import Any, cast
-from uuid import uuid4
 
 import pytest
 from google.ads.googleads.v25.enums.types.recommendation_type import RecommendationTypeEnum
@@ -43,6 +42,9 @@ from src.google_ads.queries.recommendations import (
 from src.governance.blast_radius import RiskLevel, classify
 from src.mcp.tools import apply_recommendation as mod
 from tests.unit.fixtures.fake_pool import FakePool
+
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
 
 _CUSTOMER = "1171969590"
 _CAMPANHA_ID = "22922100363"
@@ -266,15 +268,6 @@ def _wire(
     monkeypatch.setattr("src.mcp.tools._mutate_common.create_pending", _create_pending)
     monkeypatch.setattr(connection, "get_pool", lambda: FakePool())
     return capturado
-
-
-@pytest.fixture(autouse=True)
-def _ctx() -> Any:
-    from src.mcp.context import McpRequestContext, clear_current, set_current
-
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 async def _aplicar(

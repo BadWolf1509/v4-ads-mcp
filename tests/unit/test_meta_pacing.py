@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from contextlib import ExitStack
 from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
 from src.mcp.tools import meta_get_budget_pacing as modulo
 from src.meta_ads.pacing import orcamento_total, projetar, ritmo_de
+
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
 
 _CONTA = "act_1"
 
@@ -95,13 +95,6 @@ def test_vitalicio_em_conjunto_marca_a_flag_em_orcamento_da_campanha() -> None:
 
 
 # ---------- fluxo da tool ----------
-
-
-@pytest.fixture(autouse=True)
-def _ctx() -> Iterator[None]:
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 def _camp(i: str, daily: float | None = None, lifetime: float | None = None) -> dict[str, Any]:

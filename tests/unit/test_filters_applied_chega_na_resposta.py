@@ -10,29 +10,23 @@ from __future__ import annotations
 import ast
 import copy
 import importlib
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
 from tests.unit import _guard_harness as h
+
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
 
 _CONTA = "1234567890"
 
 Registro = dict[str, list[tuple[str, dict[str, Any]]]]
 
 _FRASE_DO_ECO = "filters_applied diz o recorte que a query aplicou."
-
-
-@pytest.fixture(autouse=True)
-def _ctx() -> Iterator[None]:
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 @dataclass(frozen=True)

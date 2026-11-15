@@ -18,11 +18,12 @@ from src.mcp.tools import update_ad_schedule as mod
 from tests.unit.test_update_ad_schedule import (
     SEG_SEX,
     _cell,
-    _ctx,  # noqa: F401  (fixture autouse)
     _janela_row,
     _orc,
     _wire,
 )
+
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
 
 _GOLDEN = json.loads(
     (Path(__file__).parent / "fixtures" / "grade_de_horario_caracterizacao.json").read_text(

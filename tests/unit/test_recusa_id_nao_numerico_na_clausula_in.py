@@ -34,16 +34,10 @@ from uuid import uuid4
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
+
+
 _ID_RUIM = "1) OR 1=1 --"
-
-
-@pytest.fixture(autouse=True)
-def _ctx():
-    from src.mcp.context import McpRequestContext, clear_current, set_current
-
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
 
 
 # --------------------------------------------------------------------------

@@ -2,25 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
 from src.mcp.tools import meta_get_entities as modulo
 from src.mcp.tools._meta_common import meta_erro
 from src.meta_ads.client import MetaAccessDeniedError
 from src.meta_ads.errors import MetaAdsFriendlyError
 
-
-@pytest.fixture(autouse=True)
-def _ctx() -> Iterator[None]:
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
+pytestmark = pytest.mark.usefixtures("ctx_mcp")
 
 
 def test_negacao_vira_denied() -> None:
