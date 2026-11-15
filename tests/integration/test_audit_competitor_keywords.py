@@ -1,23 +1,12 @@
 """Integration tests for audit_competitor_keywords (Sprint 3b.31)."""
 
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
-
-
-@pytest.fixture
-def bound_context():
-    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
-    set_current(ctx)
-    yield ctx
-    clear_current()
-
 
 @pytest.mark.asyncio
-async def test_returns_full_shape_with_matched_brands(bound_context):
+async def test_returns_full_shape_with_matched_brands(ctx_mcp):
     """Wire-up: fake rows → output shape match spec section 3.2."""
     from src.mcp.tools.audit_competitor_keywords import audit_competitor_keywords
 
@@ -88,7 +77,7 @@ async def test_returns_full_shape_with_matched_brands(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_audit_this_call_true_in_both_calls(bound_context):
+async def test_audit_this_call_true_in_both_calls(ctx_mcp):
     """Verify ambas chamadas run_report têm audit_this_call=True."""
     from src.mcp.tools.audit_competitor_keywords import audit_competitor_keywords
 
@@ -110,7 +99,7 @@ async def test_audit_this_call_true_in_both_calls(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_2_queries_called_in_parallel_via_gather(bound_context):
+async def test_2_queries_called_in_parallel_via_gather(ctx_mcp):
     """Verify ambas queries chamadas (asyncio.gather usado em paralelo)."""
     from src.mcp.tools.audit_competitor_keywords import audit_competitor_keywords
 

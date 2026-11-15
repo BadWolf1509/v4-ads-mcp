@@ -13,11 +13,13 @@ from collections.abc import AsyncGenerator, Generator, Iterator
 from contextlib import ExitStack
 from datetime import UTC, date, datetime
 from unittest.mock import patch
+from uuid import uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 import src.mcp.tools as _tools_pkg
+from src.mcp.context import McpRequestContext, clear_current, set_current
 
 # Provide a complete env so `Settings()` validates everywhere.
 _TEST_ENV = {
@@ -121,3 +123,18 @@ def _relogio_da_conta_stubado() -> Iterator[None]:
             if hasattr(mod, "resolve_account_zone"):
                 stack.enter_context(patch(f"{full}.resolve_account_zone", _fuso_sp))
         yield
+
+
+@pytest.fixture
+def ctx_mcp() -> Iterator[McpRequestContext]:
+    """Contexto MCP com gestor e sessao aleatorios, limpo no teardown.
+
+    NAO e autouse de proposito: ha teste que depende da AUSENCIA de contexto
+    (`get_current()` levantando). Quem precisa pede por parametro ou declara
+    `pytestmark = pytest.mark.usefixtures("ctx_mcp")` no arquivo. Vive aqui, e
+    nao em tests/unit/, para a integracao enxergar a mesma fixture.
+    """
+    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
+    set_current(ctx)
+    yield ctx
+    clear_current()

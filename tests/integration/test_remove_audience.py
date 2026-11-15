@@ -15,8 +15,8 @@ import pytest
 
 from src.db import connection
 from src.mcp.context import McpRequestContext, clear_current, set_current
+from tests.fixtures.fake_google_client import client_com_respostas
 from tests.integration._seed import grant_google, seed_manager_with_session
-from tests.unit.fixtures.fake_google_client import client_com_respostas
 
 
 @pytest.fixture

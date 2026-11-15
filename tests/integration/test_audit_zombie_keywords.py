@@ -1,23 +1,12 @@
 """Integration tests for audit_zombie_keywords (Sprint 3b.36)."""
 
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
-
-
-@pytest.fixture
-def bound_context():
-    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
-    set_current(ctx)
-    yield ctx
-    clear_current()
-
 
 @pytest.mark.asyncio
-async def test_returns_zombies_shape(bound_context):
+async def test_returns_zombies_shape(ctx_mcp):
     """T1 cenário smoke: wire-up fake rows → response shape correto."""
     from src.mcp.tools.audit_zombie_keywords import audit_zombie_keywords
 
@@ -70,7 +59,7 @@ async def test_returns_zombies_shape(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_ad_group_ids_filter_passthrough(bound_context):
+async def test_ad_group_ids_filter_passthrough(ctx_mcp):
     """T2 cenário smoke: ad_group_ids passa ao GAQL builder."""
     from src.mcp.tools.audit_zombie_keywords import audit_zombie_keywords
 
@@ -90,7 +79,7 @@ async def test_ad_group_ids_filter_passthrough(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_conversoes_fracionadas_nao_viram_zero(bound_context):
+async def test_conversoes_fracionadas_nao_viram_zero(ctx_mcp):
     """Guard fim-a-fim: `int(0.9)` == 0. Numa tool que define zumbi como
     "zero atividade", truncar conversao fracionada em QUALQUER um dos andares
     (parser da linha GAQL, boundary dict->dataclass, ou o proprio campo do
@@ -125,7 +114,7 @@ async def test_conversoes_fracionadas_nao_viram_zero(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_truncation_when_total_exceeds_limit(bound_context):
+async def test_truncation_when_total_exceeds_limit(ctx_mcp):
     """T4 cenário smoke: 50 zombies + limit=10 → truncated=true."""
     from src.mcp.tools.audit_zombie_keywords import audit_zombie_keywords
 
@@ -158,7 +147,7 @@ async def test_truncation_when_total_exceeds_limit(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_f52_orphan_keywords_in_removed_ad_groups_exposed(bound_context):
+async def test_f52_orphan_keywords_in_removed_ad_groups_exposed(ctx_mcp):
     """F52 regression: keywords ENABLED em ad_groups REMOVED appear with
     ad_group_status='REMOVED' na response, permitting consumer-side filter.
 

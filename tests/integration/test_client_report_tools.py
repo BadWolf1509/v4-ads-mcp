@@ -2,23 +2,12 @@
 
 import re
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
-
-
-@pytest.fixture
-def bound_context():
-    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
-    set_current(ctx)
-    yield ctx
-    clear_current()
-
 
 @pytest.mark.asyncio
-async def test_funnel_metrics_computes_rates(bound_context):
+async def test_funnel_metrics_computes_rates(ctx_mcp):
     from src.mcp.tools.get_funnel_metrics import get_funnel_metrics
 
     fake_rows = [
@@ -44,7 +33,7 @@ async def test_funnel_metrics_computes_rates(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_funnel_handles_empty_data(bound_context):
+async def test_funnel_handles_empty_data(ctx_mcp):
     from src.mcp.tools.get_funnel_metrics import get_funnel_metrics
 
     with patch("src.mcp.tools.get_funnel_metrics.run_report", AsyncMock(return_value=[])):
@@ -54,7 +43,7 @@ async def test_funnel_handles_empty_data(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_top_keywords_creatives_default_metric_cost(bound_context):
+async def test_top_keywords_creatives_default_metric_cost(ctx_mcp):
     from src.mcp.tools.get_top_keywords_creatives import get_top_keywords_creatives
 
     fake_kws = [
@@ -103,7 +92,7 @@ async def test_top_keywords_creatives_default_metric_cost(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_top_keywords_creatives_custom_metric_ordena_no_google(bound_context):
+async def test_top_keywords_creatives_custom_metric_ordena_no_google(ctx_mcp):
     """C5: com `metric=conversions`, e o GOOGLE que ordena e corta.
 
     A versao anterior deste teste devolvia uma lista FIXA (`side_effect=[kws,

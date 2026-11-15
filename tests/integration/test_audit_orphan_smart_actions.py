@@ -1,23 +1,12 @@
 """Integration tests for audit_orphan_smart_actions (Sprint 3b.37)."""
 
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
-
-
-@pytest.fixture
-def bound_context():
-    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
-    set_current(ctx)
-    yield ctx
-    clear_current()
-
 
 @pytest.mark.asyncio
-async def test_returns_orphans_shape(bound_context):
+async def test_returns_orphans_shape(ctx_mcp):
     """T1 cenário smoke: wire-up fake rows → response shape correto."""
     from src.mcp.tools.audit_orphan_smart_actions import audit_orphan_smart_actions
 
@@ -58,7 +47,7 @@ async def test_returns_orphans_shape(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_category_filter_passthrough(bound_context):
+async def test_category_filter_passthrough(ctx_mcp):
     """T2 cenário smoke: category filter passa ao GAQL builder."""
     from src.mcp.tools.audit_orphan_smart_actions import audit_orphan_smart_actions
 
@@ -78,7 +67,7 @@ async def test_category_filter_passthrough(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_truncation_when_total_exceeds_limit(bound_context):
+async def test_truncation_when_total_exceeds_limit(ctx_mcp):
     """T4 cenário smoke: 50 orphans + limit=10 → truncated=true."""
     from src.mcp.tools.audit_orphan_smart_actions import audit_orphan_smart_actions
 

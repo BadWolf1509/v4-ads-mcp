@@ -5,25 +5,14 @@ tool's aggregate/format logic produces the expected response shape.
 """
 
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 from freezegun import freeze_time
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
-
-
-@pytest.fixture
-def bound_context():
-    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
-    set_current(ctx)
-    yield ctx
-    clear_current()
-
 
 @pytest.mark.asyncio
 @freeze_time("2026-05-15")
-async def test_account_overview_aggregates_and_compares(bound_context):
+async def test_account_overview_aggregates_and_compares(ctx_mcp):
     from src.mcp.tools.get_account_overview import get_account_overview
 
     side_effects = [
@@ -89,7 +78,7 @@ async def test_account_overview_aggregates_and_compares(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_account_overview_handles_zero_division(bound_context):
+async def test_account_overview_handles_zero_division(ctx_mcp):
     from src.mcp.tools.get_account_overview import get_account_overview
 
     with patch(
@@ -108,7 +97,7 @@ async def test_account_overview_handles_zero_division(bound_context):
 
 @pytest.mark.asyncio
 @freeze_time("2026-05-15 12:00:00")
-async def test_budget_pacing_projects_monthly(bound_context):
+async def test_budget_pacing_projects_monthly(ctx_mcp):
     from src.mcp.tools.get_budget_pacing import get_budget_pacing
 
     rows = [
@@ -139,7 +128,7 @@ async def test_budget_pacing_projects_monthly(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_recommendations_translates_known_types(bound_context):
+async def test_recommendations_translates_known_types(ctx_mcp):
     from src.mcp.tools.get_recommendations import get_recommendations
 
     fake_row = {
@@ -168,7 +157,7 @@ async def test_recommendations_translates_known_types(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_invalid_customer_id_format_in_schema(bound_context):
+async def test_invalid_customer_id_format_in_schema(ctx_mcp):
     from src.mcp.tools.get_account_overview import _SCHEMA
 
     assert _SCHEMA["properties"]["customer_id"]["pattern"] == "^[0-9]{10}$"

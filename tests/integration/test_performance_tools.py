@@ -1,23 +1,12 @@
 """Integration tests for the 5 performance tools — mock run_report, verify shape."""
 
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
-
-
-@pytest.fixture
-def bound_context():
-    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
-    set_current(ctx)
-    yield ctx
-    clear_current()
-
 
 @pytest.mark.asyncio
-async def test_campaign_performance_returns_rows(bound_context):
+async def test_campaign_performance_returns_rows(ctx_mcp):
     from src.mcp.tools.get_campaign_performance import get_campaign_performance
 
     fake_rows = [
@@ -52,7 +41,7 @@ async def test_campaign_performance_returns_rows(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_ad_group_performance_returns_rows(bound_context):
+async def test_ad_group_performance_returns_rows(ctx_mcp):
     from src.mcp.tools.get_ad_group_performance import get_ad_group_performance
 
     fake_rows = [
@@ -82,7 +71,7 @@ async def test_ad_group_performance_returns_rows(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_device_performance_returns_rows(bound_context):
+async def test_device_performance_returns_rows(ctx_mcp):
     from src.mcp.tools.get_device_performance import get_device_performance
 
     fake_rows = [
@@ -119,7 +108,7 @@ async def test_device_performance_returns_rows(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_geo_performance_returns_rows(bound_context):
+async def test_geo_performance_returns_rows(ctx_mcp):
     from src.mcp.tools.get_geo_performance import get_geo_performance
 
     fake_rows = [
@@ -153,7 +142,7 @@ async def test_geo_performance_returns_rows(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_geo_performance_unknown_country_falls_back_to_none(bound_context):
+async def test_geo_performance_unknown_country_falls_back_to_none(ctx_mcp):
     """If geo_target_constant doesn't return a row for an ID, country_name is None."""
     from src.mcp.tools.get_geo_performance import get_geo_performance
 
@@ -186,7 +175,7 @@ async def test_geo_performance_unknown_country_falls_back_to_none(bound_context)
 
 
 @pytest.mark.asyncio
-async def test_hourly_performance_returns_rows(bound_context):
+async def test_hourly_performance_returns_rows(ctx_mcp):
     from src.mcp.tools.get_hourly_performance import get_hourly_performance
 
     fake_rows = [

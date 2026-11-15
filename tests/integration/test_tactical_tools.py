@@ -1,23 +1,12 @@
 """Integration tests for the 6 tactical tools."""
 
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
-
-
-@pytest.fixture
-def bound_context():
-    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
-    set_current(ctx)
-    yield ctx
-    clear_current()
-
 
 @pytest.mark.asyncio
-async def test_keyword_performance_returns_qs(bound_context):
+async def test_keyword_performance_returns_qs(ctx_mcp):
     from src.mcp.tools.get_keyword_performance import get_keyword_performance
 
     fake_rows = [
@@ -54,7 +43,7 @@ async def test_keyword_performance_returns_qs(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_search_terms_report_includes_status(bound_context):
+async def test_search_terms_report_includes_status(ctx_mcp):
     from src.mcp.tools.get_search_terms_report import get_search_terms_report
 
     fake_rows = [
@@ -83,7 +72,7 @@ async def test_search_terms_report_includes_status(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_negative_keywords_audit_groups_by_campaign(bound_context):
+async def test_negative_keywords_audit_groups_by_campaign(ctx_mcp):
     from src.mcp.tools.get_negative_keywords_audit import get_negative_keywords_audit
 
     fake_rows = [
@@ -124,7 +113,7 @@ async def test_negative_keywords_audit_groups_by_campaign(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_ad_performance_includes_headlines(bound_context):
+async def test_ad_performance_includes_headlines(ctx_mcp):
     from src.mcp.tools.get_ad_performance import get_ad_performance
 
     fake_rows = [
@@ -156,7 +145,7 @@ async def test_ad_performance_includes_headlines(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_audience_performance_returns_rows(bound_context):
+async def test_audience_performance_returns_rows(ctx_mcp):
     from src.mcp.tools.get_audience_performance import get_audience_performance
 
     fake_rows = [
@@ -187,7 +176,7 @@ async def test_audience_performance_returns_rows(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_conversion_actions_returns_count(bound_context):
+async def test_conversion_actions_returns_count(ctx_mcp):
     from src.mcp.tools.get_conversion_actions import get_conversion_actions
 
     fake_rows = [

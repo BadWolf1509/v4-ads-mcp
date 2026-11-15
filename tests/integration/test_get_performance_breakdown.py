@@ -1,20 +1,10 @@
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
-
-
-@pytest.fixture
-def bound_context():
-    set_current(McpRequestContext(manager_id=uuid4(), session_id=uuid4()))
-    yield
-    clear_current()
-
 
 @pytest.mark.asyncio
-async def test_campaign_level_happy(bound_context):
+async def test_campaign_level_happy(ctx_mcp):
     from src.mcp.tools.get_performance_breakdown import get_performance_breakdown
 
     fake_rows = [{"campaign_id": "10", "cost_brl": 5.0}]
@@ -28,7 +18,7 @@ async def test_campaign_level_happy(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_invalid_combo_account_without_breakdown(bound_context):
+async def test_invalid_combo_account_without_breakdown(ctx_mcp):
     from src.mcp.tools.get_performance_breakdown import get_performance_breakdown
 
     out = await get_performance_breakdown({"customer_id": "1234567890", "level": "account"})
@@ -37,7 +27,7 @@ async def test_invalid_combo_account_without_breakdown(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_geo_breakdown_enriches_country(bound_context):
+async def test_geo_breakdown_enriches_country(ctx_mcp):
     from src.mcp.tools.get_performance_breakdown import get_performance_breakdown
 
     fake_rows = [{"breakdown": {"country_criterion_id": "2076"}, "cost_brl": 1.0}]

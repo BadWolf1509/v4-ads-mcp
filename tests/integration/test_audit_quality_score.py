@@ -1,23 +1,12 @@
 """Integration tests for audit_quality_score (Sprint 3b.30)."""
 
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
-from src.mcp.context import McpRequestContext, clear_current, set_current
-
-
-@pytest.fixture
-def bound_context():
-    ctx = McpRequestContext(manager_id=uuid4(), session_id=uuid4())
-    set_current(ctx)
-    yield ctx
-    clear_current()
-
 
 @pytest.mark.asyncio
-async def test_returns_flagged_keywords_shape(bound_context):
+async def test_returns_flagged_keywords_shape(ctx_mcp):
     """Wire-up: fake rows → output matches spec section 3.2."""
     from src.mcp.tools.audit_quality_score import audit_quality_score
 
@@ -77,7 +66,7 @@ async def test_returns_flagged_keywords_shape(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_audit_this_call_true_logs_to_audit(bound_context):
+async def test_audit_this_call_true_logs_to_audit(ctx_mcp):
     """Verify run_report called with audit_this_call=True (sensitive read)."""
     from src.mcp.tools.audit_quality_score import audit_quality_score
 
@@ -93,7 +82,7 @@ async def test_audit_this_call_true_logs_to_audit(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_respects_min_impressions_threshold(bound_context):
+async def test_respects_min_impressions_threshold(ctx_mcp):
     """min_impressions=50 → only flag candidate_pause em kw com imp >= 50."""
     from src.mcp.tools.audit_quality_score import audit_quality_score
 
@@ -147,7 +136,7 @@ async def test_respects_min_impressions_threshold(bound_context):
 
 
 @pytest.mark.asyncio
-async def test_a2_orphan_keywords_in_removed_ad_groups_exposed(bound_context):
+async def test_a2_orphan_keywords_in_removed_ad_groups_exposed(ctx_mcp):
     """A2 (espelha F52): keywords flagged em ad_groups REMOVED appear with
     ad_group_status='REMOVED' na response, permitting consumer-side filter.
 

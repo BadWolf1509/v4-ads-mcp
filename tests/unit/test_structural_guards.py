@@ -1289,6 +1289,27 @@ def _finallys(arv: ast.Module) -> list[ast.stmt]:
     return [s for n in ast.walk(arv) if isinstance(n, ast.Try) for s in n.finalbody]
 
 
+def _executores_sem_encerramento(arv: ast.Module) -> tuple[list[str], list[str]]:
+    """(executores, os que não encerram por `encerrar_execucao` num `finally` próprio).
+
+    Executor = função que chama `ensure_account_access` no corpo próprio (o
+    `lambda` do `run_with_reconnect` conta, como no F57). O `finally` também é
+    do corpo próprio: o de uma closure irmã não encerra este executor.
+    """
+    executores: list[str] = []
+    sem: list[str] = []
+    for fn in h.funcoes(arv):
+        if not h.chama_no_corpo_proprio(fn, "ensure_account_access", arv=arv):
+            continue
+        executores.append(fn.name)
+        finais = [
+            s for n in h.nos_do_corpo_proprio(fn) if isinstance(n, ast.Try) for s in n.finalbody
+        ]
+        if not any(h.chama(s, "encerrar_execucao", arv=arv) for s in finais):
+            sem.append(fn.name)
+    return executores, sem
+
+
 def _cobrar_encerramento_dos_executores() -> None:
     """Parte 2 do guard de reconcile: o `finally` de cada executor (P6).
 
@@ -1298,23 +1319,57 @@ def _cobrar_encerramento_dos_executores() -> None:
     `encerrar_execucao`, sob best_effort).
     """
     problemas = []
+    total_de_executores = 0
     for nome in sorted(_ARQUIVOS_DE_EXECUTOR):
         tree = h.arvore(h.SRC / "google_ads" / nome)
-        finais = _finallys(tree)
-        assert finais, f"controle: {nome} tem que ter `finally`"
-        if not any(h.chama(s, "encerrar_execucao", arv=tree) for s in finais):
-            problemas.append(f"{nome}: sem encerrar_execucao no finally")
+        executores, sem = _executores_sem_encerramento(tree)
+        assert executores, f"controle: {nome} tem que ter executor (chama ensure_account_access)"
+        total_de_executores += len(executores)
+        problemas.extend(f"{nome}:{fn}: sem encerrar_execucao no finally" for fn in sem)
         if h.chama(tree, "reconciliar_cota", arv=tree):
             problemas.append(f"{nome}: chama reconciliar_cota direto")
     for p in h.fontes_py(h.SRC / "google_ads"):
         tree = h.arvore(p)
         if any(_chama_audit_log_record(s, tree) for s in _finallys(tree)):
             problemas.append(f"{p.name}: audit_log.record dentro de finally")
+    assert total_de_executores == 6, (
+        f"controle: esperados 6 executores Google (mutations.py tem dois), achados "
+        f"{total_de_executores} — executor novo entra aqui e em _ARQUIVOS_DE_EXECUTOR"
+    )
     assert not problemas, (
         f"encerramento dos executores Google: {problemas}. O `finally` de executor "
         "e `encerrar_execucao` (src/governance/execucao.py), que reconcilia a cota e "
         "grava o audit em blocos best_effort independentes (F73/F83/F91)."
     )
+
+
+_DOIS_EXECUTORES_UM_SEM_ENCERRAMENTO = """
+async def run_a(pool):
+    await ensure_account_access(pool)
+    try:
+        return 1
+    finally:
+        await encerrar_execucao(pool)
+
+
+async def run_b(pool):
+    await ensure_account_access(pool)
+    try:
+        return 2
+    finally:
+        pass
+"""
+
+
+def test_encerramento_e_cobrado_por_executor_nao_por_arquivo() -> None:
+    """Minor 1 da revisão do P6 (classe F57): `mutations.py` tem dois executores.
+
+    Cobrar "algum `finally` do arquivo chama `encerrar_execucao`" deixava o
+    segundo executor perder o encerramento inteiro com o primeiro segurando o
+    verde. O guard cobra cada função que passa pelo gate.
+    """
+    arv = ast.parse(_DOIS_EXECUTORES_UM_SEM_ENCERRAMENTO)
+    assert _executores_sem_encerramento(arv) == (["run_a", "run_b"], ["run_b"])
 
 
 def test_lista_de_executores_descreve_a_realidade() -> None:

@@ -12,6 +12,7 @@ Contrato (F73/F83/F91):
 
 from __future__ import annotations
 
+import asyncio
 from datetime import date
 from typing import Any
 from uuid import UUID
@@ -255,3 +256,28 @@ async def test_sem_reserva_e_sem_montador_nao_faz_io(reg: _Registro) -> None:
 
     assert reg.eventos == []
     assert pool.acquires == 0
+
+
+@pytest.mark.asyncio
+async def test_cancelamento_no_reconcile_propaga_e_pula_o_audit(reg: _Registro) -> None:
+    """Minor 7 da revisão do P6: `CancelledError` é `BaseException`, e o
+    `best_effort` só engole `Exception` — cancelar a task tem que cancelar, não
+    virar log ERROR. O audit que viria depois não roda (como antes do P6)."""
+    reg.falha_record_actual = asyncio.CancelledError()
+
+    with pytest.raises(asyncio.CancelledError):
+        await _encerrar(_Pool(), _RESERVA, _registro)
+
+    assert reg.eventos == ["reconcile"]
+    assert reg.falhas_logadas == []
+
+
+@pytest.mark.asyncio
+async def test_cancelamento_no_audit_propaga(reg: _Registro) -> None:
+    reg.falha_audit = asyncio.CancelledError()
+
+    with pytest.raises(asyncio.CancelledError):
+        await _encerrar(_Pool(), _RESERVA, _registro)
+
+    assert reg.eventos == ["reconcile", "reconcile", "audit"]
+    assert reg.falhas_logadas == []
