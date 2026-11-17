@@ -6350,7 +6350,7 @@ Todos fechados antes do merge, pela revisão da task ou pela final:
 - `tests/browser` verde (4), mas a rota ali é falsa: prova o botão e a confirmação, não a revogação.
 
 **Fora, com o motivo:**
-- **Os 2 gestores desativados antes do deploy** continuam com os grants vivos até a trava ser ligada (aval nominal), depois da leitura da primeira rodada auditada do job.
+- ~~Os 2 gestores desativados antes do deploy~~ **convergidos em 17/11:** depois de 2 rodadas com `apply: false` (16 e 17/11) que bateram o plano, a trava foi ligada (#281, revisão `00227-7th`) e a execução manual `v4-ads-mcp-resync-sk5h7` revogou 48 Google + 47 Meta (audits 11628/11629); os 2 ficaram com 0 grants vivos e nenhum gestor ativo foi tocado.
 - **Corridas raras** (restauração de conta contra o botão; revogação contra a volta da conta) deixam no pior caso grant vivo de gestor desativado, que só a trava ligada converge.
 - **SQL da restauração repetido** nos dois `restore_for_account`: levar ao núcleo pede estender `test_rotas_usam_run_with_reconnect`; decisão do Wellington.
 - **Cosméticos:** toast "reativado" para gestor com `status='inactive'`; `platform='google'` no audit de uma ação que também mexe no Meta.

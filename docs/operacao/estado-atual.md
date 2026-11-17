@@ -78,8 +78,9 @@ Desativar um gestor revoga os grants Google e Meta (motivo `manager_deactivated`
 esses. Medido: ciclo no painel num gestor ativo, 24+26 revogados e devolvidos, os 4 de churn intactos
 (audit 11272/11273). Rodadas de 16 e 17/11 com `apply: false` bateram o plano (48 + 47, só os 2
 desativados). **Trava `MANAGER_OFFBOARDING_APPLY` ligada em 17/11** (`deploy.yml`, `JOB_ENV_VARS`).
-**Próximo:** na rodada das 06:00 seguinte ao deploy, ler o audit com `apply: true` e conferir 0 grants
-vivos para os 2. Minors no [handoff](session-2026-11-17-handoff.md).
+**Aplicada em 17/11** (revisão `00227-7th`, execução manual `v4-ads-mcp-resync-sk5h7`, audits 11628/11629):
+48 + 47 revogados, os 2 desativados com **0 grants vivos**, nenhum gestor ativo tocado. Minors no
+[handoff](session-2026-11-17-handoff.md).
 
 ## Backlog de tráfego — fechado (14–15/11, #249–#262)
 

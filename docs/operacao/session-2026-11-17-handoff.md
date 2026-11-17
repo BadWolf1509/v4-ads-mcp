@@ -55,15 +55,17 @@ Wellington mandou executar os 7 itens com aval nominal por menu em cada passo qu
   restaurar ou remarcar. Bateram entre si.
 
 **Não medido:**
-- o código de saída do job nas duas rodadas (o `gcloud` perdeu a credencial; o audit diz `success`);
 - o texto do toast em produção;
 - se algum caminho fora das três entradas lê grant de gestor desativado (com a trava ligada, a pergunta
   perde o objeto).
 
 ## Próximo
 
-1. **Depois da rodada das 06:00 seguinte ao deploy deste PR:** ler o `manager_offboarding_reconcile` com
-   `apply: true` e conferir 0 grants vivos para os 2 desativados.
+1. ~~Ler o `manager_offboarding_reconcile` com `apply: true`~~ **feito em 17/11:** revisão `00227-7th`
+   com a trava no job; execução manual `v4-ads-mcp-resync-sk5h7` (sucesso, aval nominal) revogou 48
+   Google + 47 Meta (audits 11628/11629), os 2 desativados ficaram com 0 grants vivos e nenhum ativo foi
+   tocado. Google e Meta reconcile na mesma execução: 0 revogados. Exit code das rodadas de 15–17/11:
+   sucesso (`gcloud`).
 2. **Item 2, bearer do smoke (F186):** só nasce em `/sessions` pela UI; fica com o Wellington.
 3. **Item 6:** em 02/12, `scripts/medir_uso_tools.py --dias 90` para a decisão do teste de 30 dias.
 4. **Decisões do Wellington:**
