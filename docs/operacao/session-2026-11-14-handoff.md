@@ -5,7 +5,7 @@
 > Smoke: [`smoke-2026-11-14-backlog-trafego.md`](smoke-2026-11-14-backlog-trafego.md).
 > Ledger da execução (git-ignored, com todos os rulings e os minors adiados):
 > `D:/v4-ads-mcp/.superpowers/sdd/2026-11-14-backlog-trafego/progress.md`.
-> Anterior: [`session-2026-11-10-handoff.md`](session-2026-11-10-handoff.md).
+> Anterior: [`session-2026-11-10-handoff.md`](../_archive/handoffs/session-2026-11-10-handoff.md).
 
 ## Origem
 
