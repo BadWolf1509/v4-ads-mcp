@@ -5,10 +5,9 @@
 > chegou a 91 KB). **Trabalho que fechou sai daqui:** o defeito vai para o catálogo, a narrativa para o
 > handoff ou o [`_archive/`](../_archive/estado-atual-2026-10-30-a-11-04.md), e aqui fica uma linha.
 
-> **Última sessão:** [`session-2026-11-15-handoff.md`](session-2026-11-15-handoff.md) — 14–15/11: S1–S3
-> do smoke (#259–#261), tool **`remove_ad`**, recusa de variação lista os anúncios base (#262). Antes:
-> [`session-2026-11-14-handoff.md`](session-2026-11-14-handoff.md) (backlog de tráfego, #249–#255,
-> contrato `conferencia`).
+> **Última sessão:** [`session-2026-11-17-handoff.md`](session-2026-11-17-handoff.md) — 15–17/11: faxina
+> P0–P6 (#264–#272), F212–F215 (#273), **revogação na desativação** (#274, F213) e a trava ligada. Antes:
+> [`session-2026-11-15-handoff.md`](session-2026-11-15-handoff.md) (S1–S3 do smoke, `remove_ad`).
 
 ## Direção e restrições
 
@@ -32,7 +31,7 @@
 | | |
 |---|---|
 | Revisão servindo | **`v4-ads-mcp-00224-9sn`**, 100% (`gcloud`, 15/11, depois do #270). A linha `SERVING_REVISION` do log do deploy é a revisão de **antes**; meça no `gcloud` |
-| Comportamento novo (14–15/11) | **`conferencia`** no `apply_change` (veredito da releitura pós-write; `efeito`/`changed_count` = ACK do Google); `estado_revisao` e pinos em RSA; lote RSA até 50; `update_rsa` igual ao atual fora do token; **`remove_ad`**; `avisos[]` em `run_gaql`/`validate_gaql`; `get_experiments`, `update_recommendation_subscription`, `list_gaql_resources(resource, customer_id)`. Detalhe nos handoffs de [14/11](session-2026-11-14-handoff.md) e [15/11](session-2026-11-15-handoff.md); o de 10–11/11 está no [handoff](session-2026-11-10-handoff.md) |
+| Comportamento novo (14–15/11) | **`conferencia`** no `apply_change` (veredito da releitura pós-write; `efeito`/`changed_count` = ACK do Google); `estado_revisao` e pinos em RSA; lote RSA até 50; `update_rsa` igual ao atual fora do token; **`remove_ad`**; `avisos[]` em `run_gaql`/`validate_gaql`; `get_experiments`, `update_recommendation_subscription`, `list_gaql_resources(resource, customer_id)`. Detalhe nos handoffs de [14/11](session-2026-11-14-handoff.md) e [15/11](session-2026-11-15-handoff.md); o de 10–11/11 está no [handoff](../_archive/handoffs/session-2026-11-10-handoff.md) |
 | Dependências | grpcio 1.85.1, protobuf 7.36.2, starlette 1.10.0 (avisa `httpx` deprecated no `TestClient`), sse-starlette 3.7.0, tzdata 2026.6 |
 | Tools | **83** (68 Google + 15 Meta), registry e `/health?deep=1` (15/11) |
 | Buckets | **14 always + 69 defer** (registry, 15/11); tokens **não remedidos** desde a [remedição](tool-buckets-2026-10-05.md) |
@@ -77,10 +76,10 @@ log `conversion_upload_executed` diz `success` quando o audit falha num upload 1
 
 Desativar um gestor revoga os grants Google e Meta (motivo `manager_deactivated`); reativar devolve só
 esses. Medido: ciclo no painel num gestor ativo, 24+26 revogados e devolvidos, os 4 de churn intactos
-(audit 11272/11273). 🔴 **Trava `MANAGER_OFFBOARDING_APPLY` desligada:** os 2 gestores desativados antes
-do deploy seguem com grants vivos. **Próximo:** ler o audit `manager_offboarding_reconcile` da rodada das
-06:00 (espera-se os 2, ~95 grants, sem escrita) e ligar a trava com aval nominal. Minors no ledger
-`.superpowers/sdd/2026-11-15-revogacao-na-desativacao/progress.md`.
+(audit 11272/11273). Rodadas de 16 e 17/11 com `apply: false` bateram o plano (48 + 47, só os 2
+desativados). **Trava `MANAGER_OFFBOARDING_APPLY` ligada em 17/11** (`deploy.yml`, `JOB_ENV_VARS`).
+**Próximo:** na rodada das 06:00 seguinte ao deploy, ler o audit com `apply: true` e conferir 0 grants
+vivos para os 2. Minors no [handoff](session-2026-11-17-handoff.md).
 
 ## Backlog de tráfego — fechado (14–15/11, #249–#262)
 
@@ -109,14 +108,13 @@ que mais usava os antigos, saiu em 31/10). O plugin 0.5.0 já manda usar o break
 2. **Alerta log-based** sobre `job_init_pool_failed` (decisão sua, 11/11: fica com você).
 3. **Retry no `playwright install --with-deps`** do CI (proposta): em 11/11 o DNS dos mirrors Ubuntu
    no runner travou todos os PRs por ~3 h (problema conhecido do `actions/runner-images`).
-4. Minors registrados no [handoff](session-2026-11-10-handoff.md) (âncora `optional` que vira zero no
+4. Minors registrados no [handoff](../_archive/handoffs/session-2026-11-10-handoff.md) (âncora `optional` que vira zero no
    preview; guard de versão do SDK não pega `importlib`; parâmetro `manager` morto no helper de teste
    do resync).
 
 ## Pendências que dependem do Wellington
 
-- **Da varredura de 10/11** (lista completa no [handoff](session-2026-11-10-handoff.md)): clique nos
-  toggles de gestor em produção; login novo pelo Google (Parte H); dry-run com gestor das tools de
+- **Da varredura de 10/11** (lista completa no [handoff](../_archive/handoffs/session-2026-11-10-handoff.md)): login novo pelo Google (Parte H); dry-run com gestor das tools de
   status, das 3 do `emitir_preview`, das 5 de mutate da Parte I e do `apply_recommendation` num tipo de
   lance do v25; reemitir o `SMOKE_MCP_BEARER` (expirado: o handshake do smoke não roda). Achados
   catalogados em 11/11: **F208–F211**. **`grant-all` agora pede `--by <seu e-mail>`.**

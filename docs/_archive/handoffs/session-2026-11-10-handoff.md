@@ -1,10 +1,10 @@
 # Sessão de 10 e 11/11 — Handoff (deps e varredura de refatoração de 10/11)
 
-> Plano: [`2026-11-10-varredura-refatoracao.md`](../superpowers/plans/2026-11-10-varredura-refatoracao.md) —
+> Plano: [`2026-11-10-varredura-refatoracao.md`](../../superpowers/plans/2026-11-10-varredura-refatoracao.md) —
 > **Partes A a I em produção; J pulada (depende do F207); K1 decidido e entregue como C2 (#239).**
 > Ledger da execução (git-ignored, mantido porque o plano não fechou):
 > `D:/v4-ads-mcp/.superpowers/sdd/2026-11-10-varredura-refatoracao/progress.md`.
-> Anterior: [`session-2026-11-04-handoff.md`](../_archive/handoffs/session-2026-11-04-handoff.md).
+> Anterior: [`session-2026-11-04-handoff.md`](session-2026-11-04-handoff.md).
 
 ## O que entrou em produção
 
