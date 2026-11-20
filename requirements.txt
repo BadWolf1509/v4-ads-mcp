@@ -197,7 +197,7 @@ uvicorn==0.51.0
     # via
     #   v4-ads-mcp (pyproject.toml)
     #   mcp
-uvloop==0.22.1 ; platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'
+uvloop==0.23.0 ; platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'
     # via uvicorn
 watchfiles==1.3.0
     # via uvicorn
