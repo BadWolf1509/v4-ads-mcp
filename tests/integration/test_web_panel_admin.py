@@ -823,6 +823,45 @@ async def test_admin_invites_new_records_audit(client: AsyncClient):
 
 
 @pytest.mark.integration
+async def test_admin_invites_aceita_gmail(client: AsyncClient):
+    """A trava de dominio saiu (24/11): o convite aceita qualquer dominio, normalizado."""
+    pool = connection.get_pool()
+    admin_id, _ = await _bootstrap_admin_and_gestor(pool)
+
+    response = await client.post(
+        "/admin/invites/new",
+        data={"email": "Novo.Gestor@Gmail.com", "full_name": "Novo Gestor"},
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/admin/invites?ok=1"
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT email, status FROM managers WHERE email = $1", "novo.gestor@gmail.com"
+        )
+    assert row is not None
+    assert row["status"] == "invited"
+
+
+@pytest.mark.integration
+async def test_admin_invites_recusa_email_mal_formado(client: AsyncClient):
+    pool = connection.get_pool()
+    admin_id, _ = await _bootstrap_admin_and_gestor(pool)
+    async with pool.acquire() as conn:
+        antes = await conn.fetchval("SELECT count(*) FROM managers")
+
+    response = await client.post(
+        "/admin/invites/new",
+        data={"email": "sem-arroba", "full_name": ""},
+        cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/admin/invites?error=bad_email"
+    async with pool.acquire() as conn:
+        assert await conn.fetchval("SELECT count(*) FROM managers") == antes
+
+
+@pytest.mark.integration
 async def test_admin_invites_cancel_records_audit(client: AsyncClient):
     pool = connection.get_pool()
     admin_id, _ = await _bootstrap_admin_and_gestor(pool)
@@ -974,11 +1013,11 @@ async def test_admin_invites_flash_messages(client: AsyncClient):
     admin_id, _ = await _bootstrap_admin_and_gestor(pool)
 
     response = await client.get(
-        "/admin/invites?error=bad_domain",
+        "/admin/invites?error=bad_email",
         cookies={PANEL_SESSION_COOKIE_NAME: _admin_cookie(admin_id)},
     )
     assert response.status_code == 200
-    assert "Só emails @v4company.com" in response.text
+    assert "E-mail inválido." in response.text
 
     response = await client.get(
         "/admin/invites?ok=1",

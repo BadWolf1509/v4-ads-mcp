@@ -7,7 +7,7 @@
 <section class="max-w-5xl mx-auto py-6 px-4">
   <header class="mb-6">
     <h1 class="text-3xl font-extrabold tracking-tight">Convites</h1>
-    <p class="text-sm text-v4-gray-700">Adicione gestores pelo email <code>@v4company.com</code> antes do primeiro login deles. Sem convite, o login é rejeitado.</p>
+    <p class="text-sm text-v4-gray-700">Adicione gestores pelo email Google antes do primeiro login deles. Sem convite, o login é rejeitado.</p>
   </header>
 
   {% if flash %}{{ alert(flash.message, flash.kind) }}{% endif %}
@@ -17,7 +17,7 @@
       <h3 class="v4-card__title">Adicionar gestor</h3>
     </div>
     <form method="POST" action="/admin/invites/new" class="grid grid-cols-1 md:grid-cols-[2fr_1fr_auto] gap-3 items-end">
-      {{ form_group("Email V4", "email", type="email", placeholder="gestor@v4company.com", required=true) }}
+      {{ form_group("Email", "email", type="email", placeholder="gestor@exemplo.com", required=true) }}
       {{ form_group("Nome (opcional)", "full_name", placeholder="Maria Silva") }}
       <button type="submit" class="v4-btn v4-btn--primary">Convidar</button>
     </form>

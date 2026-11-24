@@ -132,8 +132,8 @@ async def test_callback_rejects_google_error(client: AsyncClient) -> None:
 
 @pytest.mark.integration
 @respx.mock
-async def test_callback_rejects_non_v4_email(client: AsyncClient) -> None:
-    """OAuth callback must 403 when the userinfo email isn't @v4company.com."""
+async def test_callback_rejeita_email_mal_formado(client: AsyncClient) -> None:
+    """Callback de conexao recusa e-mail com dois "@" (a trava de dominio saiu em 24/11)."""
     pool = connection.get_pool()
     async with pool.acquire() as conn:
         mid = uuid4()
@@ -153,7 +153,7 @@ async def test_callback_rejects_non_v4_email(client: AsyncClient) -> None:
         )
     )
     respx.get("https://www.googleapis.com/oauth2/v2/userinfo").mock(
-        return_value=Response(200, json={"email": "attacker@gmail.com"}),
+        return_value=Response(200, json={"email": "a@b@gmail.com"}),
     )
 
     response = await client.get(
@@ -162,7 +162,48 @@ async def test_callback_rejects_non_v4_email(client: AsyncClient) -> None:
         follow_redirects=False,
     )
     assert response.status_code == 403
-    assert "v4company.com" in response.text
+    assert "inválido" in response.text
+    async with pool.acquire() as conn:
+        assert await google_oauth_connections.get_active_for_manager(conn, mid) is None
+
+
+@pytest.mark.integration
+@respx.mock
+async def test_callback_conecta_conta_gmail(client: AsyncClient) -> None:
+    """Sem trava de dominio: gestor conecta o Google Ads com uma conta Gmail."""
+    pool = connection.get_pool()
+    async with pool.acquire() as conn:
+        mid = uuid4()
+        await managers.create(conn, manager_id=mid, email="e@v4.com", full_name=None)
+    state = _state_com_nonce({"manager_id": str(mid)})
+
+    respx.post("https://oauth2.googleapis.com/token").mock(
+        return_value=Response(
+            200,
+            json={
+                "access_token": "ya29.fake",
+                "refresh_token": "1//06fake",
+                "expires_in": 3600,
+                "scope": "openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/adwords",
+                "token_type": "Bearer",
+            },
+        )
+    )
+    respx.get("https://www.googleapis.com/oauth2/v2/userinfo").mock(
+        return_value=Response(200, json={"email": "conta@gmail.com"}),
+    )
+
+    response = await client.get(
+        f"/oauth/google/callback?code=fake&state={state}",
+        headers=_COOKIE_DO_NONCE,
+        follow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert "Conectado" in response.text
+    async with pool.acquire() as conn:
+        c = await google_oauth_connections.get_active_for_manager(conn, mid)
+    assert c is not None
+    assert c.google_email == "conta@gmail.com"
 
 
 # ---------------------------------------------------------------------------
