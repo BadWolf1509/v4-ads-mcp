@@ -86,13 +86,11 @@ def _decisao(email: str) -> tuple[str, str | None]:
 @pytest.mark.parametrize(
     ("email", "esperado"),
     [
-        # Medido no código pré-F7 (endswith "@v4company.com"): os dois casos do
-        # brief dão o mesmo resultado que `is_allowed_email`.
-        ("a@sub.v4company.com", ("redirect", "/access-denied?reason=domain")),
+        # A trava de dominio saiu (24/11): subdominio e qualquer dominio passam
+        # o passo 1; a tabela `managers` decide. Dois "@" continuam recusados.
+        ("a@sub.v4company.com", ("login", None)),
         ("a@V4Company.com", ("login", None)),
-        # Divergência registrada: o endswith antigo aceitava dois "@"; o
-        # `is_allowed_email` recusa (mais estrito, fail-closed).
-        ("a@b@v4company.com", ("redirect", "/access-denied?reason=domain")),
+        ("a@b@v4company.com", ("redirect", "/access-denied?reason=email")),
     ],
 )
 def test_callback_gate_de_dominio(email: str, esperado: tuple[str, str | None]) -> None:

@@ -1,14 +1,16 @@
-"""Restrict panel access to @v4company.com emails."""
+"""Formato de e-mail aceito no login, na conexão do Google Ads e no convite.
 
-ALLOWED_DOMAIN = "v4company.com"
+Não é gate de acesso: quem decide quem entra é a tabela `managers` (convidado ou
+ativo). A trava fixa em `@v4company.com` saiu em 24/11/2026.
+"""
 
 
-def is_allowed_email(email: str | None) -> bool:
-    """Return True if email belongs to the allowed corporate domain."""
+def is_valid_email_shape(email: str | None) -> bool:
+    """True se há exatamente um `@`, com parte local e domínio não vazios."""
     if not email:
         return False
     parts = email.lower().strip().split("@")
     if len(parts) != 2:
         return False
-    _, domain = parts
-    return domain == ALLOWED_DOMAIN
+    local, domain = parts
+    return bool(local) and bool(domain)

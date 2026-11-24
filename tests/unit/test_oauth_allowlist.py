@@ -5,8 +5,20 @@ from uuid import uuid4
 from src.auth.oauth import handle_callback_decision
 
 
-def test_callback_rejects_non_v4_domain():
-    """Email outside @v4company.com → /access-denied?reason=domain"""
+def test_callback_gmail_convidado_promove():
+    """A trava de dominio saiu: convidado de qualquer dominio entra."""
+    response = handle_callback_decision(
+        email="wellington.ribeiro.eng@gmail.com",
+        managers_table_empty=False,
+        bootstrap_emails=set(),
+        existing_manager={"id": uuid4(), "status": "invited", "is_active": True},
+    )
+    assert response.kind == "login"
+    assert response.action == "promote_invited"
+
+
+def test_callback_gmail_nao_convidado_nao_entra():
+    """Fora da tabela `managers` continua barrado, qualquer que seja o dominio."""
     response = handle_callback_decision(
         email="alice@gmail.com",
         managers_table_empty=False,
@@ -14,7 +26,29 @@ def test_callback_rejects_non_v4_domain():
         existing_manager=None,
     )
     assert response.kind == "redirect"
-    assert response.location == "/access-denied?reason=domain"
+    assert response.location == "/access-denied?reason=not_invited"
+
+
+def test_callback_gmail_desativado_barrado():
+    response = handle_callback_decision(
+        email="alice@gmail.com",
+        managers_table_empty=False,
+        bootstrap_emails=set(),
+        existing_manager={"id": uuid4(), "status": "active", "is_active": False},
+    )
+    assert response.kind == "redirect"
+    assert response.location == "/access-denied?reason=deactivated"
+
+
+def test_callback_formato_invalido():
+    response = handle_callback_decision(
+        email="a@b@v4company.com",
+        managers_table_empty=False,
+        bootstrap_emails=set(),
+        existing_manager={"id": uuid4(), "status": "active", "is_active": True},
+    )
+    assert response.kind == "redirect"
+    assert response.location == "/access-denied?reason=email"
 
 
 def test_callback_active_email_logs_in():

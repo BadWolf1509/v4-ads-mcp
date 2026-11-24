@@ -20,7 +20,7 @@ import structlog
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from src.auth.domain_check import is_allowed_email
+from src.auth.domain_check import is_valid_email_shape
 from src.auth.oauth_state import STATE_TTL_SECONDS, InvalidStateError, sign_state, verify_state
 from src.auth.panel_session import (
     PANEL_SESSION_COOKIE_NAME,
@@ -68,10 +68,10 @@ def handle_callback_decision(
     """
     email_norm = email.strip().lower()
 
-    # 1. Domain gate — a mesma regra do painel. O `endswith("@v4company.com")`
-    # que vivia aqui aceitava "a@b@v4company.com"; `is_allowed_email` recusa.
-    if not is_allowed_email(email_norm):
-        return CallbackDecision(kind="redirect", location="/access-denied?reason=domain")
+    # 1. Formato. Não há trava de domínio desde 24/11/2026: a allowlist é a
+    # tabela `managers` (passos 2-4). Dois "@" continuam recusados (fail-closed).
+    if not is_valid_email_shape(email_norm):
+        return CallbackDecision(kind="redirect", location="/access-denied?reason=email")
 
     # 2. Email in managers table?
     if existing_manager is not None:
@@ -468,11 +468,11 @@ async def _passos_do_callback(
             )
         )
 
-    if not is_allowed_email(google_email):
+    if not is_valid_email_shape(google_email):
         raise _RespostaAntecipada(
             _error_page(
                 request,
-                f"Conta {google_email} nao autorizada — apenas @v4company.com.",
+                f"O e-mail {google_email} é inválido.",
                 status=403,
             )
         )

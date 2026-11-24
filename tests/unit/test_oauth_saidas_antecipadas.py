@@ -80,18 +80,35 @@ def test_sem_refresh_token_devolve_400(navegador: TestClient, banco: _Banco) -> 
 
 
 @respx.mock
-def test_dominio_nao_autorizado_devolve_403(navegador: TestClient, banco: _Banco) -> None:  # noqa: F811
-    _mock_google({"email": "alguem@outro.com", "verified_email": True})
+def test_email_mal_formado_devolve_403(navegador: TestClient, banco: _Banco) -> None:  # noqa: F811
+    _mock_google({"email": "a@b@outro.com", "verified_email": True})
     state = _state_de(navegador.get("/oauth/google/start?mode=panel_login"))
 
     resp = navegador.get("/oauth/google/callback", params={"code": "c", "state": state})
 
     assert resp.status_code == 403
-    assert "alguem@outro.com" in resp.text
-    assert "apenas @v4company.com" in resp.text
+    assert "a@b@outro.com" in resp.text
+    assert "inválido" in resp.text
     assert banco.conexoes == []
     assert PANEL_SESSION_COOKIE_NAME not in _cookies_apagados(resp)
     _assert_nonce_apagado(resp)
+
+
+@respx.mock
+def test_gmail_verificado_passa_da_trava(navegador: TestClient, banco: _Banco) -> None:  # noqa: F811
+    _mock_google({"email": "alguem@gmail.com", "verified_email": True})
+    state = _state_de(navegador.get("/oauth/google/start?mode=panel_login"))
+
+    resp = navegador.get(
+        "/oauth/google/callback", params={"code": "c", "state": state}, follow_redirects=False
+    )
+
+    # Caracterizado em 24/11: o `_Banco` devolve gestor ativo para qualquer e-mail, entao
+    # a conta Gmail verificada conclui o login (antes da mudanca era 403 por dominio).
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "/"
+    assert [c["google_email"] for c in banco.conexoes] == ["alguem@gmail.com"]
+    assert PANEL_SESSION_COOKIE_NAME in _cookies_apagados(resp)
 
 
 @respx.mock
