@@ -162,7 +162,7 @@ def _build_params_summary(payload: dict[str, Any]) -> dict[str, Any]:
         "inteira (Google limita 1 RuleSet CUSTOMER-level por conta — sprint 3b.19B "
         "F26). v0 NAO suporta AUDIENCE/ITINERARY conditions nem categorias filter "
         "(Google API restringe filter a STORE_VISIT/STORE_SALE — out of scope v0). "
-        "Geo targets validados como BR-only (V4 invariant)."
+        "Geo targets validados como BR-only (invariante do servidor)."
     ),
     input_schema=_SCHEMA,
     bucket="defer",

@@ -81,7 +81,7 @@ _SCHEMA: dict[str, Any] = {
                     "conversion_value_brl": {
                         "type": "number",
                         "minimum": 0.01,
-                        "description": "Valor BRL da conversão (V4 invariant currency=BRL).",
+                        "description": "Valor BRL da conversão (moeda fixa: BRL).",
                     },
                     "order_id": {
                         "type": "string",
@@ -206,11 +206,11 @@ def _build_summary(payload: dict[str, Any]) -> dict[str, Any]:
     description=(
         "[DEFER] Importa N conversões offline (1-100 por call) match-by-gclid pra "
         "Google Ads attribuir ROAS + alimentar Smart Bidding. Always-CONFIRM. "
-        "Workflow V4 lead-gen: gestor captura gclid no URL da landing → salva "
+        "Workflow lead-gen: gestor captura gclid no URL da landing → salva "
         "no CRM → quando lead converte (WhatsApp confirmation, contrato assinado, "
-        "pagamento) → chama tool com batch de gclids + datas + valores. V4 "
-        "invariants hardcoded: currency_code=BRL; timezone = o da CONTA no inventario (F146: era -03:00 fixo), "
-        "consent.ad_user_data=GRANTED (LGPD V4-aligned). Pre-flight valida "
+        "pagamento) → chama tool com batch de gclids + datas + valores. "
+        "Invariantes fixos: currency_code=BRL; timezone = o da CONTA no inventario (F146: era -03:00 fixo), "
+        "consent.ad_user_data=GRANTED (LGPD). Pre-flight valida "
         "conversion_action_id existe + tem type=UPLOAD_CLICKS. partial_failure=True: "
         "conversões individuais com erro (gclid expirado, data inválida) são "
         "reportadas em response.failures[] mas não bloqueiam o batch. Sprint 3b.26 "

@@ -136,12 +136,12 @@ def _build_params_summary(payload: dict[str, Any]) -> dict[str, Any]:
 @register_tool(
     name="create_campaign",
     description=(
-        "[DEFER] Cria 1 SEARCH campaign nova em uma conta V4. Always-CONFIRM. Schema "
+        "[DEFER] Cria 1 SEARCH campaign nova em uma conta. Always-CONFIRM. Schema "
         "requer name + bidding_strategy + daily_budget_brl + geo_targets (lista "
-        "de geoTargetConstants resource paths, validados como BR via pre-flight "
-        "V4). Status sempre PAUSED on create — gestor liga manualmente apos "
+        "de geoTargetConstants resource paths, validados como BR via pre-flight). "
+        "Status sempre PAUSED on create — gestor liga manualmente apos "
         "review. Language defaults Portuguese. Search Partners + Display Network "
-        "OFF (V4 defaults). Bidding strategies suportadas v0: MAXIMIZE_CONVERSIONS, "
+        "OFF (defaults do servidor). Bidding strategies suportadas v0: MAXIMIZE_CONVERSIONS, "
         "MAXIMIZE_CONVERSION_VALUE, TARGET_CPA (requer target_cpa_brl), "
         "TARGET_ROAS (requer target_roas), MANUAL_CPC, "
         "MAXIMIZE_CLICKS (opcional cpc_bid_ceiling_brl). Conversion goals "

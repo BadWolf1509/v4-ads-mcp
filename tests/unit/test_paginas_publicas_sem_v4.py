@@ -19,6 +19,8 @@ PROIBIDOS = (
     "Google V4",
     "admin V4",
     "clientes V4",
+    "da sua unidade",
+    "email corporativo",
 )
 
 
@@ -71,4 +73,23 @@ def test_templates_sem_v4() -> None:
         for termo in PROIBIDOS
         if termo in p.read_text(encoding="utf-8")
     ]
+    assert achados == []
+
+
+def test_descricoes_das_tools_sem_v4() -> None:
+    """O LLM do cliente lê as descrições: nada de "conta V4", "co-gestores V4" etc.
+
+    Lê o snapshot `schemas_das_tools.json`, que `test_schemas_snapshot` mantém igual ao vivo.
+    """
+    import json  # noqa: PLC0415
+    import re  # noqa: PLC0415
+
+    schemas = json.loads(
+        (RAIZ / "tests/unit/fixtures/schemas_das_tools.json").read_text(encoding="utf-8")
+    )
+    achados = sorted(
+        nome
+        for nome, texto in ((t["name"], json.dumps(t, ensure_ascii=False)) for t in schemas)
+        if re.search(r"\bV4\b", texto)
+    )
     assert achados == []

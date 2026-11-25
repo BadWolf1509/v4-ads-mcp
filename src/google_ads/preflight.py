@@ -666,8 +666,8 @@ async def validate_geo_target_constants_br_only(
         if row["country_code"] != "BR":
             return (
                 f"Geo target '{row['name']}' ({path}) tem country_code "
-                f"'{row['country_code']}', esperado 'BR' (V4 invariant: todas "
-                "contas V4 sao do Brasil)."
+                f"'{row['country_code']}', esperado 'BR' (invariante do servidor: todas "
+                "as contas operadas sao do Brasil)."
             )
 
     return None

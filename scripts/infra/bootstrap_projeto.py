@@ -351,6 +351,22 @@ def montar_comandos(
     return cmds
 
 
+def valores_para_o_github(*, project_id: str, project_number: str, region: str) -> dict[str, str]:
+    """Os 4 secrets `GCP_*` que o `deploy.yml` lê; o número do projeto só existe no `--apply`."""
+    return {
+        "GCP_PROJECT_ID": project_id,
+        "GCP_REGION": region,
+        "GCP_WIF_PROVIDER": f"projects/{project_number}/locations/global/workloadIdentityPools/github/providers/github-provider",
+        "GCP_DEPLOY_SA": f"v4-ads-mcp-deploy@{project_id}.iam.gserviceaccount.com",
+    }
+
+
+_PENDURADO = (
+    "gcloud não respondeu (timeout). Credencial vencida faz o gcloud tentar reautenticar e"
+    " pendurar: rode `gcloud auth login` com a conta dona do projeto e reexecute."
+)
+
+
 def _numero_do_projeto(gcloud: str, project_id: str) -> str:
     saida = subprocess.run(
         [gcloud, "projects", "describe", project_id, "--format=value(projectNumber)"],
@@ -379,6 +395,14 @@ def main(argv: list[str] | None = None) -> int:
     if gcloud is None:
         print("gcloud não encontrado no PATH", file=sys.stderr)
         return 2
+    try:
+        return _executar(a, gcloud)
+    except subprocess.TimeoutExpired:
+        print(_PENDURADO, file=sys.stderr)
+        return 1
+
+
+def _executar(a: argparse.Namespace, gcloud: str) -> int:
     numero = _numero_do_projeto(gcloud, a.project_id) if a.apply else "<PROJECT_NUMBER>"
     comandos = montar_comandos(
         project_id=a.project_id,
@@ -415,6 +439,14 @@ def main(argv: list[str] | None = None) -> int:
         f" canal de e-mail {a.alert_email} e as 5 policies (runbook REST do infra-setup.md);"
         " GitHub secrets GCP_* e vars PUBLIC_BASE_URL/META_BUSINESS_ID. Schedulers ficam PAUSADOS até o corte."
     )
+    print()
+    print(
+        "Secrets do GitHub (Settings > Secrets and variables > Actions), trocados JUNTO com as vars:"
+    )
+    for nome, valor in valores_para_o_github(
+        project_id=a.project_id, project_number=numero, region=a.region
+    ).items():
+        print(f"  {nome}={valor}")
     return 0
 
 

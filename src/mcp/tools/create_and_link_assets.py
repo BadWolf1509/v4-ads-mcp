@@ -258,7 +258,7 @@ def _build_summary(payload: dict[str, Any]) -> dict[str, Any]:
         "solicitado (CUSTOMER/CAMPAIGN/AD_GROUP) em chained mutation atomic. "
         "Always-CONFIRM. Tipos suportados v0: SITELINK, CALLOUT, "
         "STRUCTURED_SNIPPET, CALL, PROMOTION (text-extension family, "
-        "SEARCH-relevant). V4 invariants hardcoded: country_code=BR para CALL, "
+        "SEARCH-relevant). Invariantes fixos: country_code=BR para CALL, "
         "language_code=pt para PROMOTION, currency_code=BRL para "
         "PROMOTION.money_amount_off. Cada item de `assets` carrega type + "
         "attachment_level + attachment_id + payload type-specific. Builder usa "

@@ -197,3 +197,42 @@ def test_primeira_execucao_pausa_scheduler_novo(monkeypatch: pytest.MonkeyPatch)
     assert bp.main(_ARGS_APPLY) == 0
     pausados = [c[4] for c in rodada.chamadas if c[1:4] == ["scheduler", "jobs", "pause"]]
     assert pausados == ["v4-ads-mcp-resync-daily", "v4-ads-mcp-backup-weekly"]
+
+
+def test_valores_para_o_github() -> None:
+    """M3: o número do projeto só existe no `--apply`; o script imprime o que vai no GitHub."""
+    v = bp.valores_para_o_github(project_id="p", project_number="123", region="southamerica-east1")
+    assert v == {
+        "GCP_PROJECT_ID": "p",
+        "GCP_REGION": "southamerica-east1",
+        "GCP_WIF_PROVIDER": "projects/123/locations/global/workloadIdentityPools/github/providers/github-provider",
+        "GCP_DEPLOY_SA": "v4-ads-mcp-deploy@p.iam.gserviceaccount.com",
+    }
+
+
+def test_apply_imprime_os_valores_do_github(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(bp.shutil, "which", lambda _nome: "gcloud")
+    monkeypatch.setattr(bp.subprocess, "run", _Rodada())
+    assert bp.main(_ARGS_APPLY) == 0
+    saida = capsys.readouterr().out
+    assert (
+        "GCP_WIF_PROVIDER=projects/123/locations/global/workloadIdentityPools/github/providers/github-provider"
+        in saida
+    )
+    assert "GCP_DEPLOY_SA=v4-ads-mcp-deploy@p.iam.gserviceaccount.com" in saida
+
+
+def test_gcloud_pendurado_sai_1_sem_traceback(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """M4: credencial vencida faz o gcloud tentar reautenticar e pendurar (CLAUDE.md)."""
+
+    def _pendura(cmd: list[str], **_: Any) -> Any:
+        raise bp.subprocess.TimeoutExpired(cmd, 120)
+
+    monkeypatch.setattr(bp.shutil, "which", lambda _nome: "gcloud")
+    monkeypatch.setattr(bp.subprocess, "run", _pendura)
+    assert bp.main(_ARGS_APPLY) == 1
+    assert "gcloud auth login" in capsys.readouterr().err

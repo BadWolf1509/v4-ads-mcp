@@ -98,7 +98,7 @@ def _build_params_summary(actions: list[dict[str, Any]]) -> dict[str, Any]:
     description=(
         "[DEFER] Cria 1-5 ConversionActions no nivel customer. Cada action: name "
         "(1-100 chars) + category + type. Always-CONFIRM. Categorias suportadas "
-        "(13 V4-focused, empirically validated em smoke 3b.19A + per-value probe "
+        "(13 focadas em lead-gen, empirically validated em smoke 3b.19A + per-value probe "
         "3b.19A.1; LEAD/IMPORTED_LEAD/QUALIFIED_LEAD/CONVERTED_LEAD/DOWNLOAD "
         "excluidos por SDK gap ou system-managed): PURCHASE, SIGNUP, DEFAULT, "
         "SUBMIT_LEAD_FORM (form submit, WhatsApp), BOOK_APPOINTMENT, "

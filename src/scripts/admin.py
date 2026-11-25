@@ -9,7 +9,7 @@ Usage (run from project root with venv active):
   python -m src.scripts.admin create-manager --email smoke@exemplo.com --name "Smoke Test"
 
   # Generate the invite URL for a manager to do OAuth
-  python -m src.scripts.admin invite --email admin@exemplo.com [--base-url https://...]
+  python -m src.scripts.admin invite --email admin@exemplo.com --base-url https://<painel>
 
   # Grant a manager access to all currently-active accounts
   python -m src.scripts.admin grant-all --email gestor@exemplo.com --by admin@exemplo.com
@@ -238,11 +238,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_inv = sub.add_parser("invite", help="Print an OAuth invite URL")
     p_inv.add_argument("--email", required=True)
-    p_inv.add_argument(
-        "--base-url",
-        default="http://localhost:8000",
-        help="Service base URL",
-    )
+    # Obrigatório: sem default, um link de convite nunca sai apontando para o lugar errado
+    # (o default era a URL do projeto antigo; virar localhost geraria convite quebrado).
+    p_inv.add_argument("--base-url", required=True, help="URL pública do painel (PUBLIC_BASE_URL)")
 
     p_grant = sub.add_parser("grant-all", help="Grant a manager access to all active accounts")
     p_grant.add_argument("--email", required=True)
