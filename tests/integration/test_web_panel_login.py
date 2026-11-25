@@ -26,7 +26,8 @@ async def test_unauthenticated_dashboard_redirects_to_login(client: AsyncClient)
 async def test_login_page_renders(client: AsyncClient):
     response = await client.get("/login")
     assert response.status_code == 200
-    assert "Entrar com Google V4" in response.text
+    assert "Entrar com Google" in response.text
+    assert "Google V4" not in response.text
     assert "Acesso restrito a e-mails com convite ativo." in response.text
     assert "@v4company.com" not in response.text
 

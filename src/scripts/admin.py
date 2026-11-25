@@ -3,22 +3,22 @@
 Usage (run from project root with venv active):
 
   # Bootstrap admin (idempotent — uses email as upsert key)
-  python -m src.scripts.admin bootstrap-admin --email wellington.ribeiro@v4company.com --name "Wellington Ribeiro"
+  python -m src.scripts.admin bootstrap-admin --email admin@exemplo.com --name "Wellington Ribeiro"
 
   # Create an active manager with zero grants (e.g. for authenticated smoke tests)
-  python -m src.scripts.admin create-manager --email smoke@v4company.com --name "Smoke Test"
+  python -m src.scripts.admin create-manager --email smoke@exemplo.com --name "Smoke Test"
 
   # Generate the invite URL for a manager to do OAuth
-  python -m src.scripts.admin invite --email wellington.ribeiro@v4company.com [--base-url https://...]
+  python -m src.scripts.admin invite --email admin@exemplo.com --base-url https://<painel>
 
   # Grant a manager access to all currently-active accounts
-  python -m src.scripts.admin grant-all --email gestor@v4company.com --by wellington.ribeiro@v4company.com
+  python -m src.scripts.admin grant-all --email gestor@exemplo.com --by admin@exemplo.com
 
   # Create an MCP session token (printed once)
-  python -m src.scripts.admin create-session --email wellington.ribeiro@v4company.com --label "Claude Desktop"
+  python -m src.scripts.admin create-session --email admin@exemplo.com --label "Claude Desktop"
 
   # List sessions for a manager
-  python -m src.scripts.admin list-sessions --email wellington.ribeiro@v4company.com
+  python -m src.scripts.admin list-sessions --email admin@exemplo.com
 
 DATABASE_URL must be set in env (e.g. via Secret Manager fetch).
 """
@@ -223,7 +223,7 @@ async def cmd_list_sessions(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="admin", description="V4 Ads MCP admin CLI")
+    parser = argparse.ArgumentParser(prog="admin", description="Fluxo Certo Ads admin CLI")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_boot = sub.add_parser("bootstrap-admin", help="Create or promote an admin manager")
@@ -238,11 +238,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_inv = sub.add_parser("invite", help="Print an OAuth invite URL")
     p_inv.add_argument("--email", required=True)
-    p_inv.add_argument(
-        "--base-url",
-        default="https://v4-ads-mcp-299432068772.southamerica-east1.run.app",
-        help="Service base URL",
-    )
+    # Obrigatório: sem default, um link de convite nunca sai apontando para o lugar errado
+    # (o default era a URL do projeto antigo; virar localhost geraria convite quebrado).
+    p_inv.add_argument("--base-url", required=True, help="URL pública do painel (PUBLIC_BASE_URL)")
 
     p_grant = sub.add_parser("grant-all", help="Grant a manager access to all active accounts")
     p_grant.add_argument("--email", required=True)

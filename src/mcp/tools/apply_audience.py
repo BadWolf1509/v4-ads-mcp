@@ -184,7 +184,7 @@ async def _validate_user_interest_taxonomies(
         return (
             f"user_interest attachments com taxonomy_type incompativel detectados: "
             f"{details}. Apenas {', '.join(_COMPATIBLE_TAXONOMIES)} sao aceitas pra "
-            f"attachment em ad_group/campaign (V4 use case SEARCH). VERTICAL_GEO "
+            f"attachment em ad_group/campaign (caso de uso SEARCH). VERTICAL_GEO "
             f"(Display Topics, IDs 1-79999) eh silently dropado pelo Google."
         )
 

@@ -65,7 +65,7 @@ jobs:
       # 48 Google + 47 Meta, só de 2 gestores já desativados, 0 a restaurar.
       # Para desligar, volte para `false` nas DUAS linhas; reativar o gestor
       # no painel devolve o que esta etapa revogou.
-      JOB_ENV_VARS: "APP_ENV=production,META_BUSINESS_ID=619664032237208,META_RECONCILE_APPLY=true,GOOGLE_RECONCILE_APPLY=true,MANAGER_OFFBOARDING_APPLY=true"
+      JOB_ENV_VARS: "APP_ENV=production,META_BUSINESS_ID=${{ vars.META_BUSINESS_ID }},META_RECONCILE_APPLY=true,GOOGLE_RECONCILE_APPLY=true,MANAGER_OFFBOARDING_APPLY=true"
       # `--update-secrets` so ACRESCENTA: secret que sai de JOB_SECRETS fica montado no
       # job para sempre. Os aposentados saem aqui, a cada deploy (retirar o que ja nao
       # existe nao da erro, medido em 03/11). O developer token saiu em 11/2026.
@@ -84,6 +84,22 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
+      - name: Validar vars do repositorio
+        # Projeto, URL publica e BM vem de `vars` do repositorio (migracao para o projeto
+        # do Gmail, 25/11): URL vazia barra o deploy; BM vazio so avisa.
+        env:
+          PUBLIC_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
+          META_BUSINESS_ID: ${{ vars.META_BUSINESS_ID }}
+        run: |
+          if [ -z "${PUBLIC_BASE_URL}" ]; then
+            echo "::error::Defina vars.PUBLIC_BASE_URL em Settings > Secrets and variables > Actions > Variables."
+            exit 1
+          fi
+          # Sem BM a reconciliacao Meta e no-op (config.py): estado legitimo, mas nao calado.
+          if [ -z "${META_BUSINESS_ID}" ]; then
+            echo "::warning::vars.META_BUSINESS_ID vazia: reconciliacao Meta desligada ate o BM ser definido."
+          fi
+
       - name: Submit build via Buildpacks
         env:
           PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -93,7 +109,7 @@ jobs:
           # immediately with a build ID; we poll status ourselves. Build logs
           # remain visible in Cloud Build Console.
           BUILD_ID=$(gcloud builds submit \
-            --pack image=southamerica-east1-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
+            --pack image=${{ secrets.GCP_REGION }}-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
             --async \
             --format='value(id)' \
             .)
@@ -127,7 +143,7 @@ jobs:
           REGION: ${{ secrets.GCP_REGION }}
         run: |
           gcloud run jobs update v4-ads-mcp-migrate \
-            --image=southamerica-east1-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
+            --image=${{ secrets.GCP_REGION }}-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
             --command=/cnb/process/migrate \
             --args="" \
             --region=${REGION} \
@@ -199,7 +215,7 @@ jobs:
           # deixaria PUBLIC_BASE_URL/BOOTSTRAP_ADMIN_EMAILS antigos vivos para
           # sempre depois de qualquer troca de dominio.
           gcloud run deploy v4-ads-mcp \
-            --image=southamerica-east1-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
+            --image=${{ secrets.GCP_REGION }}-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
             --region=${REGION} \
             --service-account=v4-ads-mcp-runtime@${PROJECT_ID}.iam.gserviceaccount.com \
             --allow-unauthenticated \
@@ -209,7 +225,7 @@ jobs:
             --cpu=1 \
             --memory=512Mi \
             --timeout=300 \
-            --set-env-vars="APP_ENV=production,LOG_LEVEL=info,BOOTSTRAP_ADMIN_EMAILS=wellington.ribeiro.eng@gmail.com,PUBLIC_BASE_URL=https://v4-ads-mcp-299432068772.southamerica-east1.run.app,META_BUSINESS_ID=619664032237208,META_RECONCILE_APPLY=true,GOOGLE_RECONCILE_APPLY=true,MANAGER_OFFBOARDING_APPLY=true" \
+            --set-env-vars="APP_ENV=production,LOG_LEVEL=info,BOOTSTRAP_ADMIN_EMAILS=wellington.ribeiro.eng@gmail.com,PUBLIC_BASE_URL=${{ vars.PUBLIC_BASE_URL }},META_BUSINESS_ID=${{ vars.META_BUSINESS_ID }},META_RECONCILE_APPLY=true,GOOGLE_RECONCILE_APPLY=true,MANAGER_OFFBOARDING_APPLY=true" \
             --set-secrets="DATABASE_URL=database-url:latest,SESSION_SIGNING_KEY=session-signing-key:latest,AES_MASTER_KEY=aes-master-key:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,GOOGLE_ADS_LOGIN_CUSTOMER_ID=google-ads-login-customer-id:latest,META_APP_ID=meta-app-id:latest,META_APP_SECRET=meta-app-secret:latest,META_SYSTEM_USER_TOKEN=meta-system-user-token:latest"
 
       - name: Route 100% traffic to latest revision
@@ -370,7 +386,7 @@ jobs:
           REGION: ${{ secrets.GCP_REGION }}
         run: |
           gcloud run jobs update v4-ads-mcp-resync \
-            --image=southamerica-east1-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
+            --image=${{ secrets.GCP_REGION }}-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
             --command=/cnb/process/resync \
             --args="" \
             --region=${REGION} \
@@ -389,7 +405,7 @@ jobs:
           REGION: ${{ secrets.GCP_REGION }}
         run: |
           gcloud run jobs update v4-ads-mcp-backup \
-            --image=southamerica-east1-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
+            --image=${{ secrets.GCP_REGION }}-docker.pkg.dev/${PROJECT_ID}/v4-ads-mcp/app:${{ github.sha }} \
             --command=/cnb/process/backup \
             --args="" \
             --region=${REGION} \

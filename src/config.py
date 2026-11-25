@@ -14,6 +14,9 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
+        # Secret salvo no Notepad pode terminar em quebra de linha, e o Secret Manager recusa
+        # versão vazia: `" "` é como um secret diz "indisponível" (ex.: Meta antes do BM).
+        str_strip_whitespace=True,
     )
 
     # App
@@ -48,7 +51,7 @@ class Settings(BaseSettings):
     # Meta Ads — system user token (Modelo B, Secret Manager: meta-system-user-token).
     # Token NÃO expira; vazio = feature de execução Meta indisponível (erro PT-BR amigável).
     meta_system_user_token: str = ""
-    # ID do BM da V4 Lima Soares. Não é segredo (é identificador), então env var
+    # ID do BM do operador (o que tem a parceria com os BMs dos clientes). Não é segredo (é identificador), então env var
     # comum. Default vazio porque `/me/businesses` devolve 0 pro system user: sem
     # este valor não há como descobrir o BM, e o reconciliador vira no-op em vez
     # de derrubar o job (mesma escolha de meta_system_user_token).
@@ -74,7 +77,7 @@ class Settings(BaseSettings):
     # Public URL for MCP endpoint (used in /sessions + /help connection snippets).
     # Projeto GCP novo (v4-ads-mcp, migração 2026-06-30). Override via env
     # PUBLIC_BASE_URL no Cloud Run (deploy.yml --set-env-vars).
-    public_base_url: str = "https://v4-ads-mcp-299432068772.southamerica-east1.run.app"
+    public_base_url: str = "http://localhost:8000"
 
     # Governance: F73 — cap diario por gestor (rate_counters chave "mgr:<uuid>",
     # paralelo ao cap global do projeto).

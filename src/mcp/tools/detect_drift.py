@@ -38,7 +38,7 @@ _SCHEMA: dict[str, Any] = {
             "maxItems": 20,
             "description": (
                 "Emails AUTORIZADOS pra mexer na conta (gestor responsável + "
-                "co-gestores V4). Changes com user_email NESSA lista NÃO contam "
+                "co-gestores). Changes com user_email NESSA lista NÃO contam "
                 "como drift. Lista vazia = incident mode (todos os changes "
                 "contam como drift). Auto-apply "
                 "(client_type=GOOGLE_ADS_RECOMMENDATIONS) sempre conta como "
@@ -115,7 +115,7 @@ def _resolve_date_window_local(
     name="detect_drift",
     description=(
         "[CORE] Detecta mudanças NÃO-autorizadas em conta Google Ads (workflow "
-        "co-management V4 pós-batch). Compara change_event com lista de "
+        "co-gestão pós-batch). Compara change_event com lista de "
         "responsible_user_emails: tudo NÃO-listado conta como drift. Auto-apply "
         "Recommendations sempre conta como drift. Recomendacao aceita a mao pelo APP de "
         "celular sai com client_type GOOGLE_ADS_MOBILE_APP e o e-mail do gestor, igual a "

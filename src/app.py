@@ -52,7 +52,7 @@ def create_app(skip_db_init: bool = False) -> FastAPI:
             log.info("app_stopped")
 
     app = FastAPI(
-        title="V4 Ads MCP",
+        title="Fluxo Certo Ads",
         version=__version__,
         lifespan=lifespan,
         # Tool interna: o schema das rotas não é público (e nenhum consumidor o lê).

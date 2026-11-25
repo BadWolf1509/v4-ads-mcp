@@ -18,7 +18,7 @@ from src.meta_ads.labels import META_ACCOUNT_STATUS_LABELS
 
 _DESCRIPTION = (
     "[CORE] Lista as contas de anúncio Meta às quais o gestor tem acesso. "
-    "Fonte: o inventário local (a parceria do BM da V4, sincronizada pelo resync "
+    "Fonte: o inventário local (a parceria do Business Manager do servidor, sincronizada pelo resync "
     "diário das 06:00, horário de Brasília) cruzado com os acessos que o admin "
     "concedeu ao gestor. Conta nova entra na execução seguinte do resync; se faltar "
     "alguma, peça ao admin. "

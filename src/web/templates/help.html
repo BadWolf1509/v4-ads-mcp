@@ -1,7 +1,7 @@
 {% extends "_base.html" %}
 {% from "_components.html" import code_block %}
 
-{% block title %}Ajuda — V4 Ads MCP{% endblock %}
+{% block title %}Ajuda — {{ nome_produto }}{% endblock %}
 
 {% block head_extra %}
 <link rel="stylesheet" href="/static/v4-help.css?v={{ asset_version }}">
@@ -60,7 +60,7 @@ Authorization = "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
       Como <span class="text-v4-red">começar.</span>
     </h1>
     <p class="mt-4 text-base text-v4-gray-700 max-w-xl leading-relaxed">
-      Onboarding consolidado pra usar o V4 Ads MCP no seu cliente de IA preferido —
+      Onboarding consolidado pra usar o {{ nome_produto }} no seu cliente de IA preferido —
       Claude Desktop, Claude Code, Codex CLI ou Cursor.
     </p>
   </header>
@@ -98,9 +98,9 @@ Authorization = "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
 
       {# 1. O que é #}
       <section id="o-que-e" class="mb-16 scroll-mt-20">
-        <h2 class="text-2xl font-bold text-v4-gray-900 mb-4">1. O que é o V4 Ads MCP</h2>
+        <h2 class="text-2xl font-bold text-v4-gray-900 mb-4">1. O que é o {{ nome_produto }}</h2>
         <p class="text-v4-gray-700 leading-relaxed mb-3">
-          Servidor MCP (Model Context Protocol) interno V4 que conecta as contas <strong>Google Ads</strong>
+          Servidor MCP (Model Context Protocol) que conecta as contas <strong>Google Ads</strong>
           e <strong>Meta Ads</strong> que você gerencia ao seu cliente de IA. Você pede em linguagem
           natural — <em>"performance da conta X últimos 30 dias"</em>, <em>"pause keywords sem
           conversão"</em>, <em>"top campanhas Meta por gasto"</em> — e o assistente executa via
@@ -121,14 +121,14 @@ Authorization = "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
           <li>
             <strong class="text-v4-gray-900">Login no painel</strong> —
             acesse <a href="/login" class="underline text-v4-red hover:text-v4-red-medium">/login</a>
-            com sua conta <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">@v4company.com</code>.
-            Login só funciona se um admin V4 da sua unidade te tiver convidado previamente.
+            com a conta Google do email que recebeu o convite.
+            Login só funciona se um admin te tiver convidado previamente.
           </li>
           <li>
             <strong class="text-v4-gray-900">Espere o admin liberar contas</strong> —
             em <a href="/accounts" class="underline text-v4-red hover:text-v4-red-medium">/accounts</a>
             você vê as contas <strong>Google Ads</strong> e <strong>Meta Ads</strong> que pode operar. Se
-            uma lista estiver vazia, peça ao admin da sua unidade pra liberar acesso pra você.
+            uma lista estiver vazia, peça ao admin pra liberar acesso pra você.
           </li>
           <li>
             <strong class="text-v4-gray-900">Crie uma sessão MCP</strong> —
@@ -239,7 +239,7 @@ Authorization = "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
               <span class="v4-help__faq-arrow">▸</span>
             </summary>
             <div class="v4-help__faq-body">
-              Peça ao admin da sua unidade pra liberar acesso pra você.
+              Peça ao admin pra liberar acesso pra você.
               Em <a href="/accounts" class="underline text-v4-red hover:text-v4-red-medium">/accounts</a>
               você confirma quais contas Google Ads e Meta Ads estão no seu escopo.
             </div>
@@ -254,7 +254,7 @@ Authorization = "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
               Você só opera contas que o admin liberou pra você (Google Ads e Meta Ads). Se uma
               ferramenta retornou "você não tem acesso à conta", confirme seu escopo em
               <a href="/accounts" class="underline text-v4-red hover:text-v4-red-medium">/accounts</a>
-              e peça ao admin da sua unidade pra conceder a conta.
+              e peça ao admin pra conceder a conta.
             </div>
           </details>
 
@@ -264,8 +264,8 @@ Authorization = "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
               <span class="v4-help__faq-arrow">▸</span>
             </summary>
             <div class="v4-help__faq-body">
-              Seu email <code class="bg-v4-gray-50 px-1 py-0.5 rounded text-sm">@v4company.com</code> não
-              está na allowlist. Um admin V4 precisa te convidar previamente — sem convite,
+              Seu email não está na allowlist. Um admin precisa te convidar previamente
+              (com o mesmo email da conta Google que você usa no login) — sem convite,
               o login é rejeitado.
             </div>
           </details>
@@ -307,9 +307,9 @@ Authorization = "Bearer mcp_xxxxxxxxxxxxxxxxxxxx"
       <section id="suporte" class="mb-16 scroll-mt-20">
         <h2 class="text-2xl font-bold text-v4-gray-900 mb-3">8. Ainda com dúvida</h2>
         <p class="text-v4-gray-700 leading-relaxed">
-          Fala com o admin V4 da sua unidade — quem te convidou é o ponto
+          Fala com o admin — quem te convidou é o ponto
           de contato natural. Pra problemas de plataforma (servidor fora do ar, deploy quebrado),
-          o admin escala pro time central.
+          o admin fala com o operador ({{ contato_operador }}).
         </p>
         <a href="#topo" class="v4-help__topo">↑ Voltar ao topo</a>
       </section>

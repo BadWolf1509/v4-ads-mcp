@@ -1,7 +1,7 @@
 # bucket: defer
-"""Tool: get_my_rate_limit_status — quota diaria do gestor E da conta V4.
+"""Tool: get_my_rate_limit_status — quota diaria do gestor E do projeto.
 
-Desde o F73 cada chamada reserva contra DUAS chaves: a cota do projeto Google Cloud da V4
+Desde o F73 cada chamada reserva contra DUAS chaves: a cota do projeto Google Cloud
 (compartilhado por todos) e `mgr:<uuid>` (cap por gestor). Como o cap por
 gestor e menor, e quase sempre ELE que barra primeiro — e este tool so lia o
 global, entao respondia "34% usado, pode seguir" pra quem ja estava travado.
@@ -39,7 +39,7 @@ _INPUT_SCHEMA: dict[str, Any] = {
     name="get_my_rate_limit_status",
     description=(
         "[DEFER] Quota diaria do dia UTC atual em DOIS niveis: `manager` (seu cap "
-        "pessoal) e `account` (projeto Google Cloud da V4, compartilhado por todos os "
+        "pessoal) e `account` (projeto Google Cloud do servidor, compartilhado por todos os "
         "gestores e todas as contas). `blocking_scope` diz qual dos dois esgota "
         "primeiro — normalmente o seu, que e menor. Sem parametros. Reset a "
         "meia-noite UTC."

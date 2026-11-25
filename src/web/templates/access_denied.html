@@ -1,7 +1,7 @@
 {% extends "_base.html" %}
 {% from "_components.html" import button %}
 
-{% block title %}Acesso negado — V4 Ads MCP{% endblock %}
+{% block title %}Acesso negado — {{ nome_produto }}{% endblock %}
 
 {% block content %}
 <div class="max-w-xl mx-auto py-16 px-4 text-center">
@@ -17,14 +17,14 @@
       Conta desativada.
     </h1>
     <p class="mt-6 text-v4-gray-700">
-      Sua conta foi desativada por um admin. Entre em contato com o admin V4 da sua unidade pra reativar.
+      Sua conta foi desativada por um admin. Entre em contato com o admin pra reativar.
     </p>
   {% else %}
     <h1 class="text-4xl md:text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
       Você ainda não tem acesso.
     </h1>
     <p class="mt-6 text-v4-gray-700">
-      O V4 Ads MCP é uma ferramenta interna por convite. Peça pro admin V4 da sua unidade adicionar o seu email à allowlist:
+      O {{ nome_produto }} é uma ferramenta por convite. Peça pro admin adicionar o seu email à allowlist:
     </p>
     {% if attempted_email %}
     <div class="my-4 inline-block bg-v4-gray-50 px-4 py-2 rounded-md font-mono text-sm">
