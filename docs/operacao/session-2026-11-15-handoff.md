@@ -4,7 +4,7 @@
 > Plano: [`2026-11-14-s1-s3.md`](../superpowers/plans/2026-11-14-s1-s3.md).
 > Ledger da execução (git-ignored, com os rulings e os minors adiados):
 > `D:/v4-ads-mcp/.superpowers/sdd/2026-11-14-s1-s3/progress.md`.
-> Anterior (mesma sessão, parte 1): [`session-2026-11-14-handoff.md`](session-2026-11-14-handoff.md).
+> Anterior (mesma sessão, parte 1): [`session-2026-11-14-handoff.md`](../_archive/handoffs/session-2026-11-14-handoff.md).
 
 ## Origem
 

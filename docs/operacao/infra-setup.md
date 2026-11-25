@@ -4,7 +4,46 @@ This document records the cloud-console actions performed once to bootstrap the 
 
 ---
 
-## ⚠️ ESTADO ATUAL (autoritativo) — projeto novo pós-migração, atualizado 2026-07-23
+## ⚠️ ESTADO ATUAL (autoritativo) — projeto `fluxo-certo-ads`, desde 25/11/2026
+
+> Migração do projeto `v4-ads-mcp` (dentro da organização `v4company.com`, faturamento desligado em
+> 24/11) para um projeto do Gmail. Spec: [`2026-11-25-migracao-projeto-gmail-design.md`](../superpowers/specs/2026-11-25-migracao-projeto-gmail-design.md).
+> Recriado pelo script da seção seguinte; **num DR, rode o script** e siga esta seção.
+
+- **Projeto GCP:** `fluxo-certo-ads` (número **`505452482961`**), sem organização. Owner, faturamento
+  (conta de faturamento do próprio Gmail) e conta ativa do `gcloud`: `wellington.ribeiro.eng@gmail.com`.
+- **URL do serviço:** `https://v4-ads-mcp-505452482961.southamerica-east1.run.app` = `vars.PUBLIC_BASE_URL`
+  do GitHub e redirect do cliente OAuth (`/oauth/google/callback`). O endereço alternativo
+  `v4-ads-mcp-nbuw3bjhpq-rj.a.run.app` responde, mas o login por ele falha (redirect não cadastrado).
+- **Secret Manager (9):** `database-url` (Supabase, Session Pooler `:5432`), `session-signing-key` e
+  `aes-master-key` (**novas** em 25/11 — tokens cifrados com a chave antiga caem no F70),
+  `google-oauth-client-id`/`-secret` (cliente web do projeto novo), `google-ads-login-customer-id`
+  (**provisório `7862230676`**, a MDO, acesso direto), `meta-app-id`/`-secret`/`meta-system-user-token`
+  (**`" "`** = Meta indisponível; o `Settings` tira espaço das pontas). Valores entram por arquivo (F47).
+- **Service accounts, WIF, jobs, bucket:** iguais ao inventário do projeto antigo, conferidos recurso a
+  recurso depois do `--apply`: `v4-ads-mcp-runtime`, `v4-ads-mcp-deploy`, `v4-ads-mcp-scheduler`; pool
+  `github`/provider `github-provider` restrito a `BadWolf1509/v4-ads-mcp`; jobs `migrate`/`resync`/`backup`
+  com `--command=/cnb/process/<tipo>`; bucket `gs://fluxo-certo-ads-backups` (UBLA, lifecycle 90d).
+- **Cloud Scheduler:** `v4-ads-mcp-resync-daily` e `v4-ads-mcp-backup-weekly` **PAUSADOS** (gate da
+  reconciliação no [`estado-atual.md`](estado-atual.md)). Despausar: `gcloud scheduler jobs resume <nome>
+  --location=southamerica-east1 --project=fluxo-certo-ads`.
+- **Google Ads API:** nível **Básico** do projeto (Cloud Console → Google Ads API → Níveis de acesso,
+  `console.cloud.google.com/google/ads-apis/overview?project=fluxo-certo-ads`). Teste → Exploração →
+  Básico em 25/11; o Básico foi negado uma vez por falta de verificação de marca e aprovado depois.
+- **OAuth / marca:** tela de consentimento Externa; marca **não verificada** (Search Console do
+  `fluxocerto.dev.br` ainda sem o Gmail). Em Teste, refresh token expira em 7 dias.
+- **Observabilidade:** **nada criado ainda** — o canal de e-mail e as 5 policies do projeto antigo
+  (abaixo) precisam ser recriados aqui com o projeto e o e-mail trocados.
+- **GitHub:** secrets `GCP_PROJECT_ID=fluxo-certo-ads`, `GCP_REGION`, `GCP_WIF_PROVIDER`
+  (`projects/505452482961/.../providers/github-provider`), `GCP_DEPLOY_SA`
+  (`v4-ads-mcp-deploy@fluxo-certo-ads.iam.gserviceaccount.com`); vars `PUBLIC_BASE_URL` (obrigatória,
+  barra o deploy se vazia) e `META_BUSINESS_ID` (ausente → aviso, reconciliação Meta no-op).
+
+## Projeto anterior `v4-ads-mcp` (desligado em 24/11/2026) — referência
+
+> Faturamento desligado em 24/11, 21:30 BRT; serviço 503; bucket e Secret Manager inacessíveis. Fica
+> como inventário (foi a fonte do script) e pelos runbooks de alerta abaixo, que valem no projeto novo
+> trocando `--project` e o e-mail do canal.
 
 > **O projeto GCP ANTIGO (a decomissionar) é histórico e está em [`infra-setup-historico.md`](../_archive/setup/infra-setup-historico.md). Num DR real, siga ESTA seção.** A migração 2026-06-30 lift-and-shift criou um projeto novo com Wellington como owner (o antigo estava sem owner humano — motivo da migração). Detalhe: [`session-2026-06-30-handoff.md`](../_archive/handoffs/session-2026-06-30-handoff.md).
 
