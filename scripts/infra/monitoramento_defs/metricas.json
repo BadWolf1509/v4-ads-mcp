@@ -1,0 +1,42 @@
+[
+  {
+    "name": "google_accounts_sem_grant_total",
+    "description": "Quantas contas Google Ads ativas estao sem nenhum gestor com grant vivo (evento google_accounts_sem_grant do job v4-ads-mcp-resync, src/jobs/account_resync.py:avisar_contas_sem_grant).",
+    "filter": "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"v4-ads-mcp-resync\" AND jsonPayload.event=\"google_accounts_sem_grant\"",
+    "valueExtractor": "EXTRACT(jsonPayload.total)",
+    "bucketOptions": {
+      "linearBuckets": {
+        "numFiniteBuckets": 64,
+        "width": 1
+      }
+    },
+    "metricDescriptor": {
+      "metricKind": "DELTA",
+      "valueType": "DISTRIBUTION",
+      "unit": "1",
+      "description": "Quantas contas Google Ads ativas estao sem nenhum gestor com grant vivo (evento google_accounts_sem_grant do job v4-ads-mcp-resync, src/jobs/account_resync.py:avisar_contas_sem_grant).",
+      "displayName": "Contas Google sem grant (resync)"
+    }
+  },
+  {
+    "name": "meta_avisos_de_quota",
+    "description": "Avisos do limitador Meta no servico v4-ads-mcp: meta_rate_limit_warning (algum sinal de quota medido acima de 75%, campo acima_de_75) e meta_buc_nao_lido (cabecalho BUC ausente ou ilegivel). src/governance/rate_limit.py:record_actual_meta, F194.",
+    "filter": "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"v4-ads-mcp\" AND (jsonPayload.event=\"meta_rate_limit_warning\" OR jsonPayload.event=\"meta_buc_nao_lido\")",
+    "labelExtractors": {
+      "evento": "EXTRACT(jsonPayload.event)"
+    },
+    "metricDescriptor": {
+      "labels": [
+        {
+          "key": "evento",
+          "description": "meta_rate_limit_warning ou meta_buc_nao_lido"
+        }
+      ],
+      "metricKind": "DELTA",
+      "valueType": "INT64",
+      "unit": "1",
+      "description": "Avisos do limitador Meta no servico v4-ads-mcp: meta_rate_limit_warning (algum sinal de quota medido acima de 75%, campo acima_de_75) e meta_buc_nao_lido (cabecalho BUC ausente ou ilegivel). src/governance/rate_limit.py:record_actual_meta, F194.",
+      "displayName": "Avisos Meta de quota e BUC"
+    }
+  }
+]

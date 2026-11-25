@@ -1,0 +1,9 @@
+[
+  {
+    "type": "email",
+    "displayName": "Wellington (e-mail)",
+    "labels": {
+      "email_address": "{EMAIL}"
+    }
+  }
+]
