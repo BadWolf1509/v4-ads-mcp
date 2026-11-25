@@ -84,8 +84,10 @@ class Settings(BaseSettings):
     manager_daily_quota: int = 5000
 
     # Backup semanal do DB -> GCS (Cloud Run Job src/jobs/backup.py). Bucket
-    # southamerica-east1/UBLA/lifecycle delete>90d já provisionado fora deste código.
-    backup_bucket: str = "v4-ads-mcp-backups"
+    # `<projeto>-backups` criado pelo bootstrap (UBLA, lifecycle delete>90d) e
+    # passado pelo deploy.yml (JOB_ENV_VARS). Default VAZIO de propósito: o job
+    # falha fechado sem ele — o default antigo apontava o bucket do projeto da V4.
+    backup_bucket: str = ""
 
     # Phase 2: invite-only allowlist bootstrap
     # Comma-separated emails that get auto-promoted to admin on first OAuth login,
