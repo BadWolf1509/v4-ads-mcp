@@ -21,6 +21,7 @@ Uso:
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -80,6 +81,9 @@ class Comando:
 
     checagem: list[str] | None
     criacao: list[str]
+    # Roda só quando `criacao` acabou de rodar: pausar um scheduler que já existe (ENABLED
+    # depois do corte) pararia o resync e o backup de produção.
+    apos_criar: list[str] | None = None
 
 
 def montar_comandos(
@@ -283,7 +287,7 @@ def montar_comandos(
                     "create",
                     job,
                     f"--image={IMAGEM_PLACEHOLDER}",
-                    f"--args=/cnb/process/{tipo}",
+                    f"--command=/cnb/process/{tipo}",
                     f"--max-retries={retries}",
                     f"--task-timeout={timeout}",
                     "--memory=512Mi",
@@ -331,19 +335,25 @@ def montar_comandos(
                     f"--oauth-service-account-email={sa['v4-ads-mcp-scheduler']}",
                     p,
                 ],
+                apos_criar=[
+                    "gcloud",
+                    "scheduler",
+                    "jobs",
+                    "pause",
+                    nome,
+                    f"--location={region}",
+                    p,
+                ],
             )
-        )
-        cmds.append(
-            Comando(None, ["gcloud", "scheduler", "jobs", "pause", nome, f"--location={region}", p])
         )
 
     _ = alert_email  # usado só no lembrete impresso por `main` (canal e policies fora do script).
     return cmds
 
 
-def _numero_do_projeto(project_id: str) -> str:
+def _numero_do_projeto(gcloud: str, project_id: str) -> str:
     saida = subprocess.run(
-        ["gcloud", "projects", "describe", project_id, "--format=value(projectNumber)"],
+        [gcloud, "projects", "describe", project_id, "--format=value(projectNumber)"],
         capture_output=True,
         text=True,
         check=True,
@@ -363,7 +373,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--apply", action="store_true", help="executa (sem isto, só imprime)")
     a = ap.parse_args(argv)
 
-    numero = _numero_do_projeto(a.project_id) if a.apply else "<PROJECT_NUMBER>"
+    # No Windows o SDK só tem `gcloud.cmd`: `["gcloud", ...]` sem shell dá FileNotFoundError
+    # (o CreateProcess só completa `.exe`). `shutil.which` resolve o caminho com a extensão.
+    gcloud = shutil.which("gcloud") if a.apply else "gcloud"
+    if gcloud is None:
+        print("gcloud não encontrado no PATH", file=sys.stderr)
+        return 2
+    numero = _numero_do_projeto(gcloud, a.project_id) if a.apply else "<PROJECT_NUMBER>"
     comandos = montar_comandos(
         project_id=a.project_id,
         region=a.region,
@@ -372,19 +388,27 @@ def main(argv: list[str] | None = None) -> int:
         project_number=numero,
     )
 
+    def _exe(cmd: list[str]) -> list[str]:
+        return [gcloud, *cmd[1:]]
+
     for c in comandos:
         print(("$ " if a.apply else "") + " ".join(c.criacao))
+        if c.apos_criar is not None and not a.apply:
+            print("  (só se acabou de criar) " + " ".join(c.apos_criar))
         if not a.apply:
             continue
         if (
             c.checagem is not None
-            and subprocess.run(c.checagem, capture_output=True, timeout=120).returncode == 0
+            and subprocess.run(_exe(c.checagem), capture_output=True, timeout=120).returncode == 0
         ):
             print("  = já existe, pulado")
             continue
-        if subprocess.run(c.criacao, timeout=600).returncode != 0:
-            print("  ! falhou — corrija e rode de novo (o script é reexecutável)", file=sys.stderr)
-            return 1
+        for passo in (c.criacao, c.apos_criar):
+            if passo is not None and subprocess.run(_exe(passo), timeout=600).returncode != 0:
+                print(
+                    "  ! falhou — corrija e rode de novo (o script é reexecutável)", file=sys.stderr
+                )
+                return 1
 
     print(
         f"\nFaltam à mão: valores dos {len(SECRETS)} secrets (por arquivo, nunca por pipe — F47);"

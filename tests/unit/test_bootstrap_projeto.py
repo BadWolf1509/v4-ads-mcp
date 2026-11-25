@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -82,7 +83,9 @@ def test_jobs_com_args_cnb(
     [job] = [
         c for c in _criacoes(comandos, "run", "jobs", "create") if c[4] == f"v4-ads-mcp-{tipo}"
     ]
-    assert _flag(job, "--args") == f"/cnb/process/{tipo}"
+    # F66: imagem CNB com só `--args` sobe o process `web` e o job pendura; o deploy usa `--command`.
+    assert _flag(job, "--command") == f"/cnb/process/{tipo}"
+    assert _flag(job, "--args") is None
     assert _flag(job, "--max-retries") == retries
     assert _flag(job, "--task-timeout") == timeout
     assert _flag(job, "--memory") == "512Mi"
@@ -90,15 +93,17 @@ def test_jobs_com_args_cnb(
 
 
 def test_schedulers_nascem_pausados(comandos: list[bp.Comando]) -> None:
-    criados = [
-        (i, c.criacao[5])
-        for i, c in enumerate(comandos)
-        if c.criacao[1:5] == ["scheduler", "jobs", "create", "http"]
-    ]
-    assert {n for _, n in criados} == {"v4-ads-mcp-resync-daily", "v4-ads-mcp-backup-weekly"}
-    for i, nome in criados:
-        depois = [c.criacao for c in comandos[i + 1 :]]
-        assert any(c[1:4] == ["scheduler", "jobs", "pause"] and c[4] == nome for c in depois), nome
+    """O pause vem amarrado à criação: só roda quando o scheduler acabou de nascer."""
+    criados = [c for c in comandos if c.criacao[1:5] == ["scheduler", "jobs", "create", "http"]]
+    assert {c.criacao[5] for c in criados} == {
+        "v4-ads-mcp-resync-daily",
+        "v4-ads-mcp-backup-weekly",
+    }
+    for c in criados:
+        assert c.apos_criar is not None
+        assert c.apos_criar[1:4] == ["scheduler", "jobs", "pause"]
+        assert c.apos_criar[4] == c.criacao[5]
+    assert not any(c.criacao[1:4] == ["scheduler", "jobs", "pause"] for c in comandos)
 
 
 def test_cada_criacao_tem_checagem(comandos: list[bp.Comando]) -> None:
@@ -108,7 +113,6 @@ def test_cada_criacao_tem_checagem(comandos: list[bp.Comando]) -> None:
         ("iam", "service-accounts", "add-iam-policy-binding"),
         ("storage", "buckets", "add-iam-policy-binding"),
         ("run", "jobs", "add-iam-policy-binding"),
-        ("scheduler", "jobs", "pause"),
         ("storage", "buckets", "update"),
     }
     for c in comandos:
@@ -134,3 +138,62 @@ def test_dry_run_nao_executa(monkeypatch: pytest.MonkeyPatch) -> None:
     rc = bp.main(["--project-id", "p", "--region", "r", "--alert-email", "a@b.com"])
     assert rc == 0
     assert chamadas == []
+
+
+class _Rodada:
+    """Registra as chamadas; `existentes` = prefixos de checagem que devolvem 0 (recurso já existe)."""
+
+    def __init__(self, existentes: tuple[str, ...] = ()) -> None:
+        self.chamadas: list[list[str]] = []
+        self.existentes = existentes
+
+    def __call__(self, cmd: list[str], **_: Any) -> SimpleNamespace:
+        self.chamadas.append(cmd)
+        if cmd[1:3] == ["projects", "describe"]:
+            return SimpleNamespace(returncode=0, stdout="123")
+        texto = " ".join(cmd)
+        existe = "describe" in cmd and any(e in texto for e in self.existentes)
+        return SimpleNamespace(
+            returncode=0 if existe else (1 if "describe" in cmd else 0), stdout=""
+        )
+
+
+_ARGS_APPLY = ["--project-id", "p", "--region", "r", "--alert-email", "a@b.com", "--apply"]
+
+
+def test_apply_usa_o_executavel_resolvido(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No Windows o SDK só tem `gcloud.cmd`: `["gcloud", ...]` sem shell dá FileNotFoundError."""
+    rodada = _Rodada()
+    monkeypatch.setattr(
+        bp.shutil, "which", lambda nome: "C:/sdk/bin/gcloud.cmd" if nome == "gcloud" else None
+    )
+    monkeypatch.setattr(bp.subprocess, "run", rodada)
+    assert bp.main(_ARGS_APPLY) == 0
+    assert rodada.chamadas
+    assert {c[0] for c in rodada.chamadas} == {"C:/sdk/bin/gcloud.cmd"}
+
+
+def test_apply_sem_gcloud_no_path_sai_2(monkeypatch: pytest.MonkeyPatch) -> None:
+    rodada = _Rodada()
+    monkeypatch.setattr(bp.shutil, "which", lambda _nome: None)
+    monkeypatch.setattr(bp.subprocess, "run", rodada)
+    assert bp.main(_ARGS_APPLY) == 2
+    assert rodada.chamadas == []
+
+
+def test_reexecucao_nao_pausa_scheduler_existente(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Depois do corte os schedulers estão ENABLED: reexecutar não pode pausá-los."""
+    rodada = _Rodada(existentes=("scheduler jobs describe",))
+    monkeypatch.setattr(bp.shutil, "which", lambda _nome: "gcloud")
+    monkeypatch.setattr(bp.subprocess, "run", rodada)
+    assert bp.main(_ARGS_APPLY) == 0
+    assert not any(c[1:4] == ["scheduler", "jobs", "pause"] for c in rodada.chamadas)
+
+
+def test_primeira_execucao_pausa_scheduler_novo(monkeypatch: pytest.MonkeyPatch) -> None:
+    rodada = _Rodada()
+    monkeypatch.setattr(bp.shutil, "which", lambda _nome: "gcloud")
+    monkeypatch.setattr(bp.subprocess, "run", rodada)
+    assert bp.main(_ARGS_APPLY) == 0
+    pausados = [c[4] for c in rodada.chamadas if c[1:4] == ["scheduler", "jobs", "pause"]]
+    assert pausados == ["v4-ads-mcp-resync-daily", "v4-ads-mcp-backup-weekly"]

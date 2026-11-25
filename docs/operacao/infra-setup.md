@@ -41,6 +41,13 @@ dos secrets (por arquivo, F47), o canal de e-mail e as 5 policies (runbooks REST
 `GCP_*` e as vars `PUBLIC_BASE_URL`/`META_BUSINESS_ID` do GitHub. **Não medido:** se o SA padrão do
 Compute ganha papel sozinho num projeto novo — o script concede `cloudbuild.builds.builder` explícito.
 
+**Ordem do corte (as vars e os secrets do GitHub mudam JUNTOS):** o `deploy.yml` barra o deploy se
+`vars.PUBLIC_BASE_URL` ou `vars.META_BUSINESS_ID` estiverem vazias, e usa os secrets `GCP_*` para saber
+em qual projeto subir. Troque os quatro `GCP_*` e as duas vars no mesmo momento, com os valores do
+projeto de destino. Var nova com secret antigo sobe o serviço antigo com a URL errada nos snippets do
+`/help`, do `/sessions` e na mensagem de convite. O script é reexecutável: o `pause` dos schedulers só
+roda na criação, então reexecutá-lo depois do corte **não** pausa o resync de produção.
+
 ---
 
 ## Runbook: alerta de conta Google sem grant (Task 7)
