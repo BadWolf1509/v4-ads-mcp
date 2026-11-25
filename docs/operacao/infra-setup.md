@@ -38,8 +38,10 @@ Sem `--apply` só imprime; com `--apply` executa e é reexecutável (pula o que 
 inventário medido em 25/11 (APIs, Artifact Registry, 3 SAs e papéis, WIF restrito ao repo, bucket com
 lifecycle 90d, 9 secrets **vazios**, 3 jobs, 2 schedulers **pausados**). **Fica à mão:** os valores
 dos secrets (por arquivo, F47), o canal de e-mail e as 5 policies (runbooks REST abaixo), os secrets
-`GCP_*` e as vars `PUBLIC_BASE_URL`/`META_BUSINESS_ID` do GitHub. **Não medido:** se o SA padrão do
-Compute ganha papel sozinho num projeto novo — o script concede `cloudbuild.builds.builder` explícito.
+`GCP_*` e as vars `PUBLIC_BASE_URL`/`META_BUSINESS_ID` do GitHub. **Medido no `--apply` de 25/11 em
+`fluxo-certo-ads` (projeto sem organização, número `505452482961`):** os 46 comandos rodaram com exit 0
+e cada recurso foi conferido; o SA padrão do Compute já nasce com `roles/editor` (o
+`cloudbuild.builds.builder` explícito do script é redundante ali, inofensivo).
 
 **Ordem do corte (as vars e os secrets do GitHub mudam JUNTOS):** o `deploy.yml` barra o deploy se
 `vars.PUBLIC_BASE_URL` ou `vars.META_BUSINESS_ID` estiverem vazias, e usa os secrets `GCP_*` para saber
