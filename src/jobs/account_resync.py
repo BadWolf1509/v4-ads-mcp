@@ -451,15 +451,17 @@ async def _etapa_meta(pool: connection.PoolValidado, settings: Settings) -> bool
     if not settings.meta_habilitada:
         # Desligada de propósito (META_HABILITADA=false): não é falha, e não chama a Graph.
         # A linha no audit diz que a etapa foi pulada por decisão, não esquecida.
-        async with best_effort("job_run_audit_failed", operation="meta_reconcile"):
-            async with pool.acquire() as conn_meta:
-                await record_job_run(
-                    conn_meta,
-                    operation="meta_reconcile",
-                    platform="meta",
-                    status="success",
-                    params_summary={"desligada": True},
-                )
+        async with (
+            best_effort("job_run_audit_failed", operation="meta_reconcile"),
+            pool.acquire() as conn_meta,
+        ):
+            await record_job_run(
+                conn_meta,
+                operation="meta_reconcile",
+                platform="meta",
+                status="success",
+                params_summary={"desligada": True},
+            )
         print("OK: Meta desligada (META_HABILITADA=false) — etapa pulada")
         return False
     try:

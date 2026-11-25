@@ -36,13 +36,13 @@ from src.auth.oauth_state import sign_state
 from src.auth.sessions import generate_session_token, hash_session_token
 from src.config import get_settings
 from src.db import connection
-from src.scripts import desligamento
 from src.db.repositories import (
     audit_log,
     manager_account_access,
     managers,
     mcp_sessions,
 )
+from src.scripts import desligamento
 
 
 @asynccontextmanager

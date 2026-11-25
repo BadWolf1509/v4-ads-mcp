@@ -127,7 +127,7 @@ async def revoke_all_for_manager(conn: asyncpg.Connection, manager_id: UUID) -> 
 
 async def list_live_of_inactive_managers(conn: asyncpg.Connection) -> list[asyncpg.Record]:
     """Conexões vivas de gestor desativado (mesmo predicado da revogação de grants)."""
-    return await conn.fetch(
+    linhas: list[asyncpg.Record] = await conn.fetch(
         """
         SELECT oc.id, oc.manager_id, oc.google_email, m.email AS manager_email
           FROM google_oauth_connections oc
@@ -137,6 +137,7 @@ async def list_live_of_inactive_managers(conn: asyncpg.Connection) -> list[async
          ORDER BY m.email, oc.google_email
         """
     )
+    return linhas
 
 
 async def list_for_manager(conn: asyncpg.Connection, manager_id: UUID) -> list[asyncpg.Record]:
