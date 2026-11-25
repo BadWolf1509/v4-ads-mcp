@@ -236,3 +236,16 @@ def test_gcloud_pendurado_sai_1_sem_traceback(
     monkeypatch.setattr(bp.subprocess, "run", _pendura)
     assert bp.main(_ARGS_APPLY) == 1
     assert "gcloud auth login" in capsys.readouterr().err
+
+
+def test_comando_de_monitoramento_usa_o_host_deterministico_sem_apply() -> None:
+    cmd = bp.comando_monitoramento(
+        project_id="fluxo-certo-ads",
+        project_number="505452482961",
+        region="southamerica-east1",
+        alert_email="e@x.com",
+    )
+    assert "python -m scripts.infra.monitoramento" in cmd
+    assert "--host v4-ads-mcp-505452482961.southamerica-east1.run.app" in cmd
+    assert "--project-id fluxo-certo-ads" in cmd and "--alert-email e@x.com" in cmd
+    assert "--apply" not in cmd

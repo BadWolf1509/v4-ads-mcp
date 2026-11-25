@@ -1,0 +1,28 @@
+[
+  {
+    "displayName": "v4-ads-mcp /health deep",
+    "monitoredResource": {
+      "type": "uptime_url",
+      "labels": {
+        "host": "{HOST}",
+        "project_id": "{PROJECT}"
+      }
+    },
+    "httpCheck": {
+      "useSsl": true,
+      "path": "/health?deep=1",
+      "port": 443,
+      "validateSsl": true,
+      "requestMethod": "GET"
+    },
+    "period": "300s",
+    "timeout": "10s",
+    "contentMatchers": [
+      {
+        "content": "\"db\":\"ok\"",
+        "matcher": "CONTAINS_STRING"
+      }
+    ],
+    "checkerType": "STATIC_IP_CHECKERS"
+  }
+]

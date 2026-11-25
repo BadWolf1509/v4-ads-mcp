@@ -1,0 +1,159 @@
+[
+  {
+    "displayName": "Cloud Run Job: execucao FALHOU (qualquer job do projeto)",
+    "combiner": "OR",
+    "conditions": [
+      {
+        "conditionThreshold": {
+          "filter": "metric.type=\"run.googleapis.com/job/completed_execution_count\" AND metric.labels.result=\"failed\" AND resource.type=\"cloud_run_job\"",
+          "comparison": "COMPARISON_GT",
+          "duration": "0s",
+          "trigger": {
+            "count": 1
+          },
+          "aggregations": [
+            {
+              "alignmentPeriod": "300s",
+              "perSeriesAligner": "ALIGN_DELTA",
+              "crossSeriesReducer": "REDUCE_SUM",
+              "groupByFields": [
+                "resource.label.job_name"
+              ]
+            }
+          ]
+        },
+        "displayName": "completed_execution_count result=failed > 0"
+      }
+    ],
+    "notificationChannels": [
+      "{CHANNEL}"
+    ],
+    "enabled": true
+  },
+  {
+    "displayName": "Google Ads: conta sem grant apos resync",
+    "documentation": {
+      "content": "Uma ou mais contas Google Ads ativas no inventario nao tem NENHUM gestor com grant vivo (fila sem_delegacao). Delegue em /admin/access (ou manager_account_access.grant) assim que possivel -- e o mesmo buraco que deixou a Hust App dias sem ninguem responsavel. Ver docs/operacao/infra-setup.md, secao Runbook: alerta de conta Google sem grant.",
+      "mimeType": "text/markdown"
+    },
+    "combiner": "OR",
+    "conditions": [
+      {
+        "conditionThreshold": {
+          "filter": "metric.type=\"logging.googleapis.com/user/google_accounts_sem_grant_total\" AND resource.type=\"cloud_run_job\"",
+          "comparison": "COMPARISON_GT",
+          "duration": "0s",
+          "trigger": {
+            "count": 1
+          },
+          "aggregations": [
+            {
+              "alignmentPeriod": "300s",
+              "perSeriesAligner": "ALIGN_PERCENTILE_99"
+            }
+          ]
+        },
+        "displayName": "google_accounts_sem_grant_total > 0"
+      }
+    ],
+    "notificationChannels": [
+      "{CHANNEL}"
+    ],
+    "enabled": true,
+    "alertStrategy": {
+      "autoClose": "86400s"
+    }
+  },
+  {
+    "displayName": "Logs: severity>=ERROR no servico v4-ads-mcp",
+    "combiner": "OR",
+    "conditions": [
+      {
+        "displayName": "ERROR em cloud_run_revision/v4-ads-mcp",
+        "conditionMatchedLog": {
+          "filter": "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"v4-ads-mcp\" AND severity>=ERROR"
+        }
+      }
+    ],
+    "notificationChannels": [
+      "{CHANNEL}"
+    ],
+    "enabled": true,
+    "alertStrategy": {
+      "notificationRateLimit": {
+        "period": "3600s"
+      },
+      "autoClose": "86400s"
+    }
+  },
+  {
+    "displayName": "Meta Ads: quota acima de 75% ou BUC nao lido",
+    "documentation": {
+      "content": "O limitador Meta do servico avisou. meta_rate_limit_warning: algum sinal de quota medido passou de 75% (o log diz qual em acima_de_75) -- o token do system user e COMPARTILHADO por todas as contas, entao a proxima chamada pode ser limitada. meta_buc_nao_lido: o cabecalho X-Business-Use-Case-Usage veio ausente ou ilegivel (formato mudou?). Ver docs/operacao/infra-setup.md e o F194 no findings-catalog.",
+      "mimeType": "text/markdown"
+    },
+    "combiner": "OR",
+    "conditions": [
+      {
+        "conditionThreshold": {
+          "filter": "metric.type=\"logging.googleapis.com/user/meta_avisos_de_quota\" AND resource.type=\"cloud_run_revision\"",
+          "comparison": "COMPARISON_GT",
+          "duration": "0s",
+          "trigger": {
+            "count": 1
+          },
+          "aggregations": [
+            {
+              "alignmentPeriod": "300s",
+              "perSeriesAligner": "ALIGN_SUM",
+              "crossSeriesReducer": "REDUCE_SUM",
+              "groupByFields": [
+                "metric.label.evento"
+              ]
+            }
+          ]
+        },
+        "displayName": "meta_avisos_de_quota > 0"
+      }
+    ],
+    "notificationChannels": [
+      "{CHANNEL}"
+    ],
+    "enabled": true,
+    "alertStrategy": {
+      "autoClose": "86400s"
+    }
+  },
+  {
+    "displayName": "Uptime: v4-ads-mcp /health?deep=1 falhou",
+    "combiner": "OR",
+    "conditions": [
+      {
+        "conditionThreshold": {
+          "filter": "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.labels.check_id=\"{CHECK_ID}\" AND resource.type=\"uptime_url\"",
+          "comparison": "COMPARISON_GT",
+          "thresholdValue": 1,
+          "duration": "300s",
+          "trigger": {
+            "count": 1
+          },
+          "aggregations": [
+            {
+              "alignmentPeriod": "300s",
+              "perSeriesAligner": "ALIGN_NEXT_OLDER",
+              "crossSeriesReducer": "REDUCE_COUNT_FALSE",
+              "groupByFields": [
+                "resource.label.host"
+              ]
+            }
+          ]
+        },
+        "displayName": "check_passed false"
+      }
+    ],
+    "notificationChannels": [
+      "{CHANNEL}"
+    ],
+    "enabled": true
+  }
+]

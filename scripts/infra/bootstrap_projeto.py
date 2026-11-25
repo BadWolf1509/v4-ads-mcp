@@ -9,8 +9,8 @@ retorna 0, o recurso já existe e a criação é pulada — reexecutar é seguro
 
 Fica de FORA de propósito:
 - valores de secret: os secrets nascem vazios; o valor entra depois, por arquivo (F47);
-- canal de e-mail e as 5 policies de alerta: o runbook REST do `infra-setup.md` cria
-  (o componente `gcloud alpha monitoring` não está instalado); o script só lembra;
+- canal de e-mail, uptime check, métricas e as 5 policies: `scripts.infra.monitoramento`
+  cria depois do primeiro deploy (o uptime precisa do serviço no ar); o script imprime o comando;
 - os schedulers nascem PAUSADOS: um resync no projeto novo antes do corte revogaria
   grants do mesmo banco (spec, Fase 3 passo 2).
 
@@ -347,8 +347,19 @@ def montar_comandos(
             )
         )
 
-    _ = alert_email  # usado só no lembrete impresso por `main` (canal e policies fora do script).
+    _ = alert_email  # usado só no comando de monitoramento impresso por `main`.
     return cmds
+
+
+def comando_monitoramento(
+    *, project_id: str, project_number: str, region: str, alert_email: str
+) -> str:
+    """Comando do aplicador de monitoramento, com o host determinístico do Cloud Run, em dry-run."""
+    host = f"v4-ads-mcp-{project_number}.{region}.run.app"
+    return (
+        "python -m scripts.infra.monitoramento"
+        f" --project-id {project_id} --host {host} --alert-email {alert_email}"
+    )
 
 
 def valores_para_o_github(*, project_id: str, project_number: str, region: str) -> dict[str, str]:
@@ -436,8 +447,19 @@ def _executar(a: argparse.Namespace, gcloud: str) -> int:
 
     print(
         f"\nFaltam à mão: valores dos {len(SECRETS)} secrets (por arquivo, nunca por pipe — F47);"
-        f" canal de e-mail {a.alert_email} e as 5 policies (runbook REST do infra-setup.md);"
+        " monitoramento (comando abaixo, DEPOIS do primeiro deploy);"
         " GitHub secrets GCP_* e vars PUBLIC_BASE_URL/META_BUSINESS_ID. Schedulers ficam PAUSADOS até o corte."
+    )
+    print()
+    print("Monitoramento — depois do primeiro deploy, confira o plano e repita com --apply:")
+    print(
+        "  "
+        + comando_monitoramento(
+            project_id=a.project_id,
+            project_number=numero,
+            region=a.region,
+            alert_email=a.alert_email,
+        )
     )
     print()
     print(
