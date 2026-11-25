@@ -11,7 +11,7 @@ This document records the cloud-console actions performed once to bootstrap the 
 - **Projeto GCP:** `v4-ads-mcp` (project number **`299432068772`**), **Wellington owner**, billing própria. Região `southamerica-east1`.
 - **URL do serviço:** `https://v4-ads-mcp-299432068772.southamerica-east1.run.app` (`PUBLIC_BASE_URL` no `deploy.yml`; OAuth redirect_uri usa `request.url_for`, não deriva daqui — F68). Revisão corrente em 2026-07-23: `v4-ads-mcp-00028-lvc`, 100% do tráfego.
 - **Secret Manager (13 secrets):** `database-url`, `aes-master-key`, `session-signing-key`, `google-oauth-client-id`, `google-oauth-client-secret`, `google-ads-developer-token` (não montado desde 11/2026), `google-ads-login-customer-id`, `supabase-url`, `supabase-anon-key`, `supabase-service-key`, `meta-app-id`, `meta-app-secret`, `meta-system-user-token`. A `aes-master-key`/`session-signing-key` foram **regeneradas** na migração (→ gestores reconectam Google; token cifrado com chave antiga cai na mensagem amigável F70).
-- **Service accounts:** `v4-ads-mcp-runtime` (identidade do Cloud Run + jobs; tem `roles/storage.objectCreator` no bucket de backup), `github-deployer` (deploy via WIF), `v4-ads-mcp-scheduler` (invoca os jobs via Scheduler, least-privilege `run.invoker`).
+- **Service accounts:** `v4-ads-mcp-runtime` (identidade do Cloud Run + jobs; tem `roles/storage.objectCreator` no bucket de backup), `v4-ads-mcp-deploy` (deploy via WIF; o nome `github-deployer` que constava aqui estava errado — medido em 25/11), `v4-ads-mcp-scheduler` (invoca os jobs via Scheduler, least-privilege `run.invoker`).
 - **Cloud Run Jobs** (todos com process CNB `/cnb/process/<type>` — F66; criar/atualizar com arg iniciando em `/` **em PowerShell**, Git Bash mangla o path):
   - `v4-ads-mcp-migrate` (`/cnb/process/migrate`) — roda no deploy.
   - `v4-ads-mcp-resync` (`/cnb/process/resync`) — Google + Meta accounts + purge diário.
@@ -24,6 +24,22 @@ This document records the cloud-console actions performed once to bootstrap the 
 - **Alerta de conta Google sem grant (Task 7, 2026-09-05):** o job `v4-ads-mcp-resync` emite `log.warning("google_accounts_sem_grant", total=N, customer_ids=[...])` quando a fila `sem_delegacao` (`google_ads_accounts.list_queues`) não está vazia — conta ativa no MCC sem NENHUM gestor com grant vivo. ✅ **Métrica e policy CRIADAS em 2026-09-05** — métrica `logging.googleapis.com/user/google_accounts_sem_grant_total`, policy `alertPolicies/13901405017880842242` (*"Google Ads: conta sem grant apos resync"*), `enabled: true`, apontando o canal de e-mail `15226380074599878362` (Wellington). O projeto passou de 3 para 4 policies. Runbook na seção *"Runbook: alerta de conta Google sem grant"* abaixo — **corrigido em 05/09 depois de a execução real recusá-lo duas vezes**; ver a nota 🔴 lá.
 - **Job bloqueado alerta (Task 5, 2026-10-30):** `src/jobs/account_resync.py` (Google + piggyback Meta) e `src/jobs/meta_resync.py` saem com **exit 1** quando uma reconciliação tem `blocked_reason` ou quando o piggyback Meta quebra — antes devolviam 0 e a policy *Cloud Run Job: execucao FALHOU* (a única que vê o job, keyed em `completed_execution_count{result=failed}`) nunca disparava. O exit 1 vem **depois** de upsert, audit e purge. O job de resync tem `maxRetries: 3`: o bloqueio é determinístico, então o retry o repete até 4 execuções no dia (4 linhas `status=error` no `audit_log`, um único e-mail), e a reconciliação é idempotente por dia (F157), então repetir não consome carência nem revoga duas vezes. Desde 11/11 (F207) a falha do purge também sai com exit 1, com linha `db_purge`/`error` no `audit_log`; e `init_pool` que falha emite `jsonPayload.event="job_init_pool_failed"` (ERROR, com `operation`/`platform`) antes de a execução falhar — o alerta log-based sobre esse evento **não foi criado** (decisão do Wellington, 11/11: fica com ele).
 - **Alerta dos avisos Meta de quota (F194, 2026-09-27):** o serviço emite `meta_rate_limit_warning` (algum sinal de quota medido acima de 75%, com `acima_de_75`) e `meta_buc_nao_lido` (cabeçalho BUC ausente ou ilegível) em **WARNING** — a policy `severity>=ERROR` não os pega. ✅ **Criados em 2026-09-27**, com autorização nominal do Wellington: métrica `logging.googleapis.com/user/meta_avisos_de_quota` (contador `DELTA`/`INT64`, label `evento` = `EXTRACT(jsonPayload.event)`; filtro `resource.type="cloud_run_revision" AND resource.labels.service_name="v4-ads-mcp" AND (jsonPayload.event="meta_rate_limit_warning" OR jsonPayload.event="meta_buc_nao_lido")`) e policy `alertPolicies/3565996587605688856` (*"Meta Ads: quota acima de 75% ou BUC nao lido"*: soma em 5 min por `evento` > 0, auto-close 24h, canal de e-mail `15226380074599878362`). Criadas pela REST API como no runbook abaixo, mas do **Git Bash** (`curl -d @arquivo`, o `curl` real — as armadilhas de aspas e BOM do runbook são do PowerShell). O projeto passou de 4 para **5 policies**. Em 25–27/09 houve **zero** desses eventos em 34 chamadas Graph medidas: o normal é silêncio. **Não exercitado ponta a ponta** — nenhum evento real disparou a policy ainda.
+
+## Projeto novo: bootstrap reprodutível (25/11/2026)
+
+Para subir o serviço num projeto GCP novo (migração para o projeto do Gmail, spec
+[`2026-11-25-migracao-projeto-gmail-design.md`](../superpowers/specs/2026-11-25-migracao-projeto-gmail-design.md)):
+
+```powershell
+D:/v4-ads-mcp/.venv/Scripts/python.exe -m scripts.infra.bootstrap_projeto --project-id <ID> --region southamerica-east1 --alert-email <EMAIL>
+```
+
+Sem `--apply` só imprime; com `--apply` executa e é reexecutável (pula o que já existe). Reproduz o
+inventário medido em 25/11 (APIs, Artifact Registry, 3 SAs e papéis, WIF restrito ao repo, bucket com
+lifecycle 90d, 9 secrets **vazios**, 3 jobs, 2 schedulers **pausados**). **Fica à mão:** os valores
+dos secrets (por arquivo, F47), o canal de e-mail e as 5 policies (runbooks REST abaixo), os secrets
+`GCP_*` e as vars `PUBLIC_BASE_URL`/`META_BUSINESS_ID` do GitHub. **Não medido:** se o SA padrão do
+Compute ganha papel sozinho num projeto novo — o script concede `cloudbuild.builds.builder` explícito.
 
 ---
 
