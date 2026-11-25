@@ -31,14 +31,14 @@
 |---|---|
 | Projeto GCP | **`fluxo-certo-ads`** (número `505452482961`), sem organização, owner e faturamento do Gmail |
 | URL | **`https://v4-ads-mcp-505452482961.southamerica-east1.run.app`** — a única cadastrada no OAuth; o endereço alternativo `v4-ads-mcp-nbuw3bjhpq-rj.a.run.app` também responde, mas o login falha por ele |
-| Revisão | `v4-ads-mcp-00001-cr5`, 100% (primeiro deploy, run `45535510962`, commit `6968b27`) |
+| Revisão | `v4-ads-mcp-00002-d4c`, 100% (#286, run `45640999155`, commit `116086c`) |
 | Saúde | `/health?deep=1` ok (`db: ok`, 83 tools); `/mcp` sem token → 401 |
 | Google Ads API | nível **Básico** (15.000 ops/dia) no projeto; medido com `plan_keyword_ideas` real |
 | Login-customer-id | **`7862230676`** (a própria MDO, acesso direto do Gmail) — **provisório**, sem MCC próprio |
 | Admin | `wellington.ribeiro.eng@gmail.com` (`bootstrap-admin`, audit `cli_bootstrap_admin`) |
 | OAuth | cliente web do projeto novo; marca **não verificada**; publicação em Produção pedida ao Wellington (em Teste, o token expira em 7 dias) — **não conferido** |
-| Agendamentos | `v4-ads-mcp-resync-daily` e `v4-ads-mcp-backup-weekly` **PAUSADOS** |
-| Alertas | **nenhum** no projeto novo (canal e 5 policies não recriados) |
+| Agendamentos | `v4-ads-mcp-backup-weekly` **ligado** (25/11, depois do backup manual provado: 13 tabelas, audit 12853); `v4-ads-mcp-resync-daily` **PAUSADO** (gate 1) |
+| Alertas | canal do Gmail + uptime + 2 métricas + **5 policies** recriadas em 25/11 a partir do export do projeto antigo (IDs no `infra-setup.md`); e-mail de teste **não conferido** |
 | Banco | o mesmo Supabase (Session Pooler `:5432`), 11 migrations, `audit_log` íntegro |
 | Catálogo | até **F215** (~6.400 linhas, 631 KB); candidatos desta sessão no handoff |
 
@@ -52,9 +52,9 @@ Os backups de `gs://v4-ads-mcp-backups` e o Secret Manager de lá ficaram inaces
    só enxergaria a MDO e revogaria os grants das outras 25 contas do inventário (`GOOGLE_RECONCILE_APPLY=
    true`). **Não executado.** Decidir: MCC próprio, ou `false` nas DUAS linhas do `deploy.yml`, antes de
    despausar o resync.
-2. **Backup semanal pausado** → hoje **não há backup** do banco além do que o Supabase guarda. Despausar
-   o `v4-ads-mcp-backup-weekly` não depende do gate 1 (o job de backup não reconcilia), mas está pausado
-   junto: decidir em separado.
+2. ~~Backup semanal pausado~~ — **fechado em 25/11**: o job apontava o bucket do projeto antigo
+   (default em código); #286 passa `BACKUP_BUCKET` pelo deploy e falha fechado sem ele. Backup manual
+   provado e agendamento ligado.
 3. **Grants do Gmail:** 24 contas Google + 26 Meta liberadas por `admin_access_bulk_grant` em 25/11.
    Recomendado deixar só a MDO.
 4. **Gestores `@v4company`:** 6 linhas — **4 ativos** (Wellington `@v4company`, Anderson, Luiz, Lucas
@@ -63,9 +63,12 @@ Os backups de `gs://v4-ads-mcp-backups` e o Secret Manager de lá ficaram inaces
 
 ## Próximo trabalho (em ordem)
 
-1. **Alertas no projeto novo:** canal de e-mail do Gmail + as 5 policies (runbooks REST do
-   [`infra-setup.md`](infra-setup.md)). Hoje queda ou job falho não avisa ninguém.
-2. Gates 1–4 acima, com o Wellington.
+1. ~~Alertas no projeto novo~~ — criados em 25/11. Falta o Wellington confirmar que o e-mail do job
+   falho forçado (backup, 15:12 UTC) chegou. **A definição vive só no Monitoring:** levá-la para o
+   repositório (aplicador idempotente, como o bootstrap) evita depender de um export do projeto antigo.
+2. Gates 3 e 4 (limpeza de acessos, no painel) **antes** do gate 1: com o Gmail só na MDO, a revogação que
+   o resync faria deixa de ser risco. Depois, uma rodada do resync com `GOOGLE_RECONCILE_APPLY=false`
+   para medir o plano antes de ligar.
 3. **Meta:** BM e app próprios, system user all-targets (F64), parceria com o BM da MDO, 3 secrets e
    `vars.META_BUSINESS_ID`.
 4. **Domínio próprio** na frente do Cloud Run (F67) — pré-requisito da verificação de marca do OAuth

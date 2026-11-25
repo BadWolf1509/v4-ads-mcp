@@ -32,8 +32,17 @@ This document records the cloud-console actions performed once to bootstrap the 
   Básico em 25/11; o Básico foi negado uma vez por falta de verificação de marca e aprovado depois.
 - **OAuth / marca:** tela de consentimento Externa; marca **não verificada** (Search Console do
   `fluxocerto.dev.br` ainda sem o Gmail). Em Teste, refresh token expira em 7 dias.
-- **Observabilidade:** **nada criado ainda** — o canal de e-mail e as 5 policies do projeto antigo
-  (abaixo) precisam ser recriados aqui com o projeto e o e-mail trocados.
+- **Observabilidade (criada em 25/11, cópia exata do projeto antigo exportada pela REST API):** canal
+  e-mail `notificationChannels/10110565655084152842` (Gmail); uptime check
+  `v4-ads-mcp-health-deep-9XtDnsW6NAc` (`/health?deep=1`, `"db":"ok"`, 300 s); métricas log-based
+  `google_accounts_sem_grant_total` e `meta_avisos_de_quota`; 5 policies ligadas — job falhou
+  (`6773825326335248563`), conta sem grant (`16467679565630814675`), avisos Meta de quota
+  (`12935802224862145880`), `severity>=ERROR` do serviço (`15445270631082308889`) e uptime
+  (`12935802224862142879`). O job falhou foi exercitado em 25/11 com uma execução forçada do backup
+  sem bucket; a chegada do e-mail é conferência do Wellington.
+- **Backup:** bucket `gs://fluxo-certo-ads-backups`, passado ao job por `BACKUP_BUCKET` (#286; sem ele o
+  job falha fechado). Primeiro backup em 25/11 (13 tabelas, audit 12853); `v4-ads-mcp-backup-weekly`
+  **ligado** desde 25/11.
 - **GitHub:** secrets `GCP_PROJECT_ID=fluxo-certo-ads`, `GCP_REGION`, `GCP_WIF_PROVIDER`
   (`projects/505452482961/.../providers/github-provider`), `GCP_DEPLOY_SA`
   (`v4-ads-mcp-deploy@fluxo-certo-ads.iam.gserviceaccount.com`); vars `PUBLIC_BASE_URL` (obrigatória,

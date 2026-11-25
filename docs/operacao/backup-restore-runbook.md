@@ -1,12 +1,11 @@
 # Backup & Restore — runbook (V4 Ads MCP)
 
 
-> ⚠️ **25/11/2026 — projeto novo.** O serviço mudou para o projeto **`fluxo-certo-ads`**: o bucket agora é
+> ⚠️ **25/11/2026 — projeto novo.** O serviço mudou para o projeto **`fluxo-certo-ads`** e o bucket é
 > **`gs://fluxo-certo-ads-backups`** (os comandos abaixo já usam o projeto novo). O job recebe o bucket por
-> `BACKUP_BUCKET` (`deploy.yml`, `<projeto>-backups`) e falha fechado sem ele. O `v4-ads-mcp-backup-weekly` do projeto novo está **PAUSADO** —
-> enquanto estiver, não há backup além do do Supabase. Os backups antigos em `gs://v4-ads-mcp-backups`
-> estão inacessíveis (faturamento do projeto antigo desligado em 24/11). A policy de job falho citada no
-> fim ainda **não existe** no projeto novo.
+> `BACKUP_BUCKET` (`deploy.yml`, `<projeto>-backups`) e falha fechado sem ele (#286). Primeiro backup em
+> 25/11 e `v4-ads-mcp-backup-weekly` **ligado**; a policy de job falho existe de novo. Os backups antigos
+> em `gs://v4-ads-mcp-backups` estão inacessíveis (faturamento do projeto antigo desligado em 24/11).
 
 > DR do DB Supabase (Postgres). O DB guarda refresh tokens cifrados, a matriz de acesso e o audit trail de compliance — perder o DB é o pior cenário do sistema. Este runbook cobre o backup automático semanal e o restore manual.
 
