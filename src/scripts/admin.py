@@ -36,6 +36,7 @@ from src.auth.oauth_state import sign_state
 from src.auth.sessions import generate_session_token, hash_session_token
 from src.config import get_settings
 from src.db import connection
+from src.scripts import desligamento
 from src.db.repositories import (
     audit_log,
     manager_account_access,
@@ -222,6 +223,16 @@ async def cmd_list_sessions(args: argparse.Namespace) -> int:
     return 0
 
 
+async def cmd_revogar_conexoes_de_inativos(args: argparse.Namespace) -> int:
+    async with _conexao() as conn:
+        linhas = await desligamento.revogar_conexoes_de_inativos(conn, apply=args.apply)
+    verbo = "revogadas" if args.apply else "a revogar (dry-run; repita com --apply)"
+    print(f"{len(linhas)} conexão(ões) OAuth de gestor desativado {verbo}:")
+    for r in linhas:
+        print(f"  {r['manager_email']}  ->  {r['google_email']}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="admin", description="Fluxo Certo Ads admin CLI")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -255,6 +266,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_ls.add_argument("--email", required=True)
     p_ls.add_argument("--all", action="store_true", help="Include revoked sessions")
 
+    p_rci = sub.add_parser(
+        "revogar-conexoes-de-inativos",
+        help="Revoga as conexões OAuth vivas de gestores desativados (dry-run sem --apply)",
+    )
+    p_rci.add_argument("--apply", action="store_true", help="revoga de fato e audita")
+
     return parser
 
 
@@ -267,6 +284,7 @@ def main(argv: list[str] | None = None) -> int:
         "grant-all": cmd_grant_all,
         "create-session": cmd_create_session,
         "list-sessions": cmd_list_sessions,
+        "revogar-conexoes-de-inativos": cmd_revogar_conexoes_de_inativos,
     }[args.cmd]
     return asyncio.run(handler(args))
 

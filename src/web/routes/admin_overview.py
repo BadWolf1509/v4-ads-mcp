@@ -197,9 +197,13 @@ async def admin_managers_toggle_active(
             revogados_m = await manager_meta_account_access.revogar_de_desativados(
                 conn, manager_id=manager_id
             )
+            # JML: desligar revoga também a credencial. Reativar NÃO a devolve (o
+            # gestor reconecta pelo OAuth), por isso só este ramo mexe em conexão.
+            conexoes = await google_oauth_connections.revoke_all_for_manager(conn, manager_id)
             contagens = {
                 "revogados_google": len(revogados_g),
                 "revogados_meta": len(revogados_m),
+                "conexoes_revogadas": conexoes,
                 "pares_revogados_google": pares_em_texto(revogados_g),
                 "pares_revogados_meta": pares_em_texto(revogados_m),
             }

@@ -6,6 +6,8 @@ from uuid import UUID
 
 import asyncpg
 
+from src.db.repositories._comum import linhas_afetadas
+
 
 @dataclass(slots=True, frozen=True)
 class OAuthConnection:
@@ -108,6 +110,32 @@ async def revoke(conn: asyncpg.Connection, connection_id: UUID) -> None:
     await conn.execute(
         "UPDATE google_oauth_connections SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL",
         connection_id,
+    )
+
+
+async def revoke_all_for_manager(conn: asyncpg.Connection, manager_id: UUID) -> int:
+    """Revoga (soft) toda conexão viva do gestor; devolve quantas. Desligamento = credencial
+    revogada (JML): o gestor desativado não deixa refresh token utilizável para trás."""
+    return linhas_afetadas(
+        await conn.execute(
+            "UPDATE google_oauth_connections SET revoked_at = now() "
+            "WHERE manager_id = $1 AND revoked_at IS NULL",
+            manager_id,
+        )
+    )
+
+
+async def list_live_of_inactive_managers(conn: asyncpg.Connection) -> list[asyncpg.Record]:
+    """Conexões vivas de gestor desativado (mesmo predicado da revogação de grants)."""
+    return await conn.fetch(
+        """
+        SELECT oc.id, oc.manager_id, oc.google_email, m.email AS manager_email
+          FROM google_oauth_connections oc
+          JOIN managers m ON m.id = oc.manager_id
+         WHERE oc.revoked_at IS NULL
+           AND (m.is_active = false OR m.status = 'inactive')
+         ORDER BY m.email, oc.google_email
+        """
     )
 
 
