@@ -1,16 +1,15 @@
-# V4 Ads MCP — agent context
+# Fluxo Certo Ads (repo `v4-ads-mcp`) — agent context
 
 Auto-loaded by Claude Code. Read first.
 
-**V4 Ads MCP** é tool interna da V4 Company (marketing digital, BR) que conecta Google Ads + Meta Ads accounts a Claude/Codex/Cursor via Model Context Protocol. Gestores pedem em PT-BR — _"top 5 campanhas por gasto últimos 7 dias"_, _"pause keywords sem conversão"_ — e o assistente executa via tools curadas read/mutate com governança (audit_log, rate_limit, always-CONFIRM em mutates de blast radius alto, **hard-gate de acesso por conta**).
+**Fluxo Certo Ads** (nasceu como "V4 Ads MCP", tool interna da V4 Company; renomeado em 25/11/2026 no desligamento do Wellington da V4) conecta Google Ads + Meta Ads accounts a Claude/Codex/Cursor via Model Context Protocol. Gestores pedem em PT-BR — _"top 5 campanhas por gasto últimos 7 dias"_, _"pause keywords sem conversão"_ — e o assistente executa via tools curadas read/mutate com governança (audit_log, rate_limit, always-CONFIRM em mutates de blast radius alto, **hard-gate de acesso por conta**).
 
-Interno only, não SaaS, sem terceiros. Substitui Supermetrics.
+Operado pelo Wellington para **um único cliente**, a Mestre da Obra JP + Cabedelo. Não SaaS. O repositório, os service accounts, os jobs e a chave `com.v4company/bucket` mantêm o nome `v4-ads-mcp` de propósito.
 
-- **Production:** `https://v4-ads-mcp-299432068772.southamerica-east1.run.app` — projeto GCP **`v4-ads-mcp`** (Wellington é **owner**; migrado 2026-06-30 do antigo `v4-ads-mcp-prod`). Custom domain `mcpv4.fluxocerto.dev.br` pendente (via LB).
-- **MCC Google Ads:** `6436352492` (V4 Lima Soares & Co, 26 client accounts em 04/09)
-- **BM Meta Ads:** V4 Lima Soares & Co (`619664032237208`; **24 ad accounts alcançáveis pelo SU** em 19 BMs, verificado 15/08 — via **system-user token all-targets**, Modelo B)
-- **Unidade operacional:** V4 Lima Soares & Co (João Pessoa, PB) — Wellington dev + gestores da unidade
-- **Admin:** `wellington.ribeiro@v4company.com`
+- **Production:** `https://v4-ads-mcp-505452482961.southamerica-east1.run.app` — projeto GCP **`fluxo-certo-ads`** (Gmail do Wellington é owner e paga; migrado em 25/11 do `v4-ads-mcp`, que ficou na organização da V4 com faturamento desligado). Custom domain pendente (F67, via LB).
+- **Google Ads:** sem MCC próprio — login-customer-id **provisório** `7862230676` (a MDO, acesso direto do Gmail). API no nível **Básico** do projeto. O MCC `6436352492` é da V4.
+- **Meta Ads:** **desligada** até BM, app e system user próprios (secrets `" "`). O BM `619664032237208` e o app `1522411803012799` são da V4.
+- **Admin:** `wellington.ribeiro.eng@gmail.com` (os gestores `@v4company` estão sendo desativados — ver `estado-atual.md`)
 
 ## Stack
 
@@ -26,7 +25,7 @@ Produção, contagens, pendências, o que aguarda deploy e decision gates vivem 
 - `gcloud` pode estar **sem credencial válida** (perde durante a noite) — confirme antes de
   tarefa de infra, e **nunca com `2>/dev/null`**: ele tenta reautenticar e pendura em silêncio.
 - **As duas reconciliações REVOGAM** acesso de conta que sai do MCC/BM; churn sozinho não revoga. Detalhe em `convencoes/processo.md`.
-- Fase 2B (tombstone dos 8 reports antigos) segue **travada** no soak — não tombstonar.
+- **Resync e backup PAUSADOS** no projeto novo: com login-customer-id de conta (não MCC), a reconciliação Google revogaria o inventário — gate no `estado-atual.md`. **Não despause sem decisão.**
 - **Tool nova só aparece pra sessão nova** (F140), e parâmetro novo pede conversa nova: o catálogo vem do handshake. Reconecte antes do smoke e prove chamando, não lendo o schema. Detalhe em `convencoes/processo.md`.
 - **Docker** para o full sweep: se o engine não responde, abra o Docker Desktop (o engine sobe em
   ~15 s mesmo com `com.docker.service` em `Stopped`, medido em 29/09).
@@ -109,9 +108,9 @@ Solo dev on `main` (admin bypass). Commits: `feat(scope): …` / `fix(scope): �
 ## Tools available (this Claude session)
 
 
-- **gcloud** authed `wellington.ribeiro@v4company.com`, **owner** do projeto `v4-ads-mcp` (pós-migração 2026-06-30) — lê/grava secrets, Cloud Run, jobs, rollback direto (`--project=v4-ads-mcp`). `git push` → deploy (WIF/`GCP_DEPLOY_SA`). Antigo `v4-ads-mcp-prod` ainda existe sem owner (a decomissionar).
+- **gcloud** ativo como `wellington.ribeiro.eng@gmail.com`, **owner** do projeto `fluxo-certo-ads` (`--project=fluxo-certo-ads`). A conta `@v4company.com` ainda está no `gcloud auth list`, mas o projeto dela (`v4-ads-mcp`) está sem faturamento. `git push` → deploy (WIF/`GCP_DEPLOY_SA`). Bootstrap de projeto novo: `python -m scripts.infra.bootstrap_projeto` (`infra-setup.md`).
 - **gh** authed `BadWolf1509`.
-- **Secret Manager:** `gcloud secrets versions access latest --secret=<NAME> --project=v4-ads-mcp`. Secret novo entra no serviço e no `--set-secrets` do `deploy.yml`; lista em `convencoes/processo.md`.
+- **Secret Manager:** `gcloud secrets versions access latest --secret=<NAME> --project=fluxo-certo-ads`. Secret novo entra no serviço e no `--set-secrets` do `deploy.yml`; lista em `convencoes/processo.md`.
 - **No psql no Windows** — `python+asyncpg` pra DB direto.
 - **Supabase MCP** em config; **Meta MCP oficial** (`ads_get_field_context` pra validar fields Meta) é conector da conta, com OAuth do usuário. **Claude in Chrome** disponível pra smoke visual — podem estar conectados dois Chromes; use o que tem a sessão do painel (`list_connected_browsers` → `select_browser`).
 - **Hooks:** PostToolUse auto-format ruff em .py + PreToolUse guard contra editar migration commitada + `guard-bash` (gate sem `&&` antes do commit, `gcloud` com stderr mudo, `git checkout` de arquivo, espera sem `timeout`). Bloqueio de hook não se contorna: pare e pergunte. PowerShell pipe converte LF→CRLF mesmo binary (F47).
