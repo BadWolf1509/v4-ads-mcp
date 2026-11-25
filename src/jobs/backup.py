@@ -106,6 +106,13 @@ async def run() -> int:
     # `jsonPayload.event` casaria em `backup_table_failed`/`backup_partial_failure`.
     configure_logging(level=settings.log_level, json_output=settings.app_env != "development")
 
+    if not settings.backup_bucket:
+        # Falha fechada ANTES do banco e do GCS: sem bucket explícito não há
+        # destino confiável (o default antigo era o bucket de outro projeto).
+        log.error("backup_bucket_missing")
+        print("ERROR: BACKUP_BUCKET não configurado; nada foi feito.", file=sys.stderr)
+        return 1
+
     async def _corpo() -> int:
         pool = connection.get_pool()
         date_prefix = datetime.now(UTC).date().isoformat()

@@ -2,8 +2,8 @@
 
 
 > ⚠️ **25/11/2026 — projeto novo.** O serviço mudou para o projeto **`fluxo-certo-ads`**: o bucket agora é
-> **`gs://fluxo-certo-ads-backups`** e os comandos abaixo valem trocando `--project=v4-ads-mcp` por
-> `--project=fluxo-certo-ads` e o bucket. O `v4-ads-mcp-backup-weekly` do projeto novo está **PAUSADO** —
+> **`gs://fluxo-certo-ads-backups`** (os comandos abaixo já usam o projeto novo). O job recebe o bucket por
+> `BACKUP_BUCKET` (`deploy.yml`, `<projeto>-backups`) e falha fechado sem ele. O `v4-ads-mcp-backup-weekly` do projeto novo está **PAUSADO** —
 > enquanto estiver, não há backup além do do Supabase. Os backups antigos em `gs://v4-ads-mcp-backups`
 > estão inacessíveis (faturamento do projeto antigo desligado em 24/11). A policy de job falho citada no
 > fim ainda **não existe** no projeto novo.
@@ -12,9 +12,9 @@
 
 ## O que existe
 
-- **Job:** Cloud Run Job `v4-ads-mcp-backup` (projeto `v4-ads-mcp`, região `southamerica-east1`), process `/cnb/process/backup` (código em [`src/jobs/backup.py`](../../src/jobs/backup.py)).
+- **Job:** Cloud Run Job `v4-ads-mcp-backup` (projeto `fluxo-certo-ads`, região `southamerica-east1`), process `/cnb/process/backup` (código em [`src/jobs/backup.py`](../../src/jobs/backup.py)).
 - **Schedule:** Cloud Scheduler `v4-ads-mcp-backup-weekly` — **domingo 05:00 BRT** (`0 5 * * 0`, `America/Sao_Paulo`), invoca o job via SA `v4-ads-mcp-scheduler` (mesma do resync diário).
-- **Destino:** `gs://v4-ads-mcp-backups/<YYYY-MM-DD>/<tabela>.csv.gz` — um CSV gzipado por tabela do schema `public` (inclui `_migrations`). Bucket com **lifecycle: delete > 90 dias** (UBLA, southamerica-east1).
+- **Destino:** `gs://fluxo-certo-ads-backups/<YYYY-MM-DD>/<tabela>.csv.gz` — um CSV gzipado por tabela do schema `public` (inclui `_migrations`). Bucket com **lifecycle: delete > 90 dias** (UBLA, southamerica-east1).
 - **Auditoria:** cada execução grava `audit_log` via `record_job_run(operation="db_backup")` — visível no painel `/audit` e coberto pelo alerta de job-failed (Onda 2.1).
 - **Retenção:** 90 dias no GCS (o `audit_log` em si NÃO é purgado — decisão de compliance, ver `purge.py`).
 
@@ -23,9 +23,9 @@ O job usa a SA de runtime `v4-ads-mcp-runtime` (tem `roles/storage.objectCreator
 ## Rodar um backup sob demanda
 
 ```powershell
-gcloud run jobs execute v4-ads-mcp-backup --project=v4-ads-mcp --region=southamerica-east1 --wait
+gcloud run jobs execute v4-ads-mcp-backup --project=fluxo-certo-ads --region=southamerica-east1 --wait
 # conferir os objetos gerados:
-gcloud storage ls "gs://v4-ads-mcp-backups/$(Get-Date -Format yyyy-MM-dd)/"
+gcloud storage ls "gs://fluxo-certo-ads-backups/$(Get-Date -Format yyyy-MM-dd)/"
 ```
 
 ## Restore (manual — sem psql no Windows)
@@ -38,7 +38,7 @@ Passos:
 
 1. **Baixar** o snapshot do dia desejado:
    ```powershell
-   gcloud storage cp -r "gs://v4-ads-mcp-backups/2026-07-04/*" .\restore\
+   gcloud storage cp -r "gs://fluxo-certo-ads-backups/2026-07-04/*" .\restore\
    ```
 2. **Não precisa descompactar:** o módulo do passo 3 lê `.csv.gz` direto.
 3. **Restaurar** contra um DB **limpo** com o schema já migrado (`python -m src.db.migrate`):

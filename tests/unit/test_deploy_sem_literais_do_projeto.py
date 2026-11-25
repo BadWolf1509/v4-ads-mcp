@@ -63,3 +63,15 @@ def test_defaults_nao_apontam_projeto_antigo() -> None:
     assert "299432068772" not in str(Settings.model_fields["public_base_url"].default)
     admin = (RAIZ / "src/scripts/admin.py").read_text(encoding="utf-8")
     assert "299432068772" not in admin
+
+
+def test_jobs_recebem_o_bucket_de_backup_do_proprio_projeto() -> None:
+    """Mesma convenção do bootstrap (`gs://<projeto>-backups`), derivada do secret do projeto."""
+    [job_env] = re.findall(r'^      JOB_ENV_VARS: "([^"]*)"$', DEPLOY, re.M)
+    assert "BACKUP_BUCKET=${{ secrets.GCP_PROJECT_ID }}-backups" in job_env.split(",")
+    bootstrap = (RAIZ / "scripts/infra/bootstrap_projeto.py").read_text(encoding="utf-8")
+    assert 'bucket = f"gs://{project_id}-backups"' in bootstrap
+
+
+def test_default_do_bucket_de_backup_e_vazio() -> None:
+    assert Settings.model_fields["backup_bucket"].default == ""

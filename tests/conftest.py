@@ -31,6 +31,8 @@ _TEST_ENV = {
     "GOOGLE_OAUTH_CLIENT_SECRET": "test-secret",
     "GOOGLE_ADS_LOGIN_CUSTOMER_ID": "1234567890",
     "LOG_LEVEL": "warning",
+    # Sem default em código (falha fechada): o job de backup precisa dele explícito.
+    "BACKUP_BUCKET": "projeto-de-teste-backups",
     "META_APP_ID": "test_meta_app_123456789",
     "META_APP_SECRET": "test_meta_secret_dummy_value_at_least_32_chars_long",
     # F190/Task 3 (21/09): antes deste fix, `run_meta_graph_get` só tocava

@@ -108,7 +108,10 @@ def _fake_storage_client() -> tuple[MagicMock, dict[str, MagicMock]]:
 
 @freeze_time("2026-07-04")
 @pytest.mark.asyncio
-async def test_run_uploads_one_blob_per_table_and_records_audit() -> None:
+async def test_run_uploads_one_blob_per_table_and_records_audit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BACKUP_BUCKET", "projeto-de-teste-backups")
     tables = ["_migrations", "audit_log", "managers"]
     conn = _fake_conn(tables)
     pool = FakePool(conn)
@@ -147,7 +150,8 @@ async def test_run_uploads_one_blob_per_table_and_records_audit() -> None:
     assert kwargs["target_count"] == 3
     assert kwargs["status"] == "success"
     assert kwargs["params_summary"]["tables"] == tables
-    assert kwargs["params_summary"]["bucket"] == "v4-ads-mcp-backups"
+    assert kwargs["params_summary"]["bucket"] == "projeto-de-teste-backups"
+    client.bucket.assert_called_once_with("projeto-de-teste-backups")
     assert kwargs["params_summary"]["total_bytes"] > 0
 
 
@@ -326,3 +330,31 @@ async def test_init_pool_do_backup_que_falha_deixa_rastro() -> None:
 
     assert log.error.call_args.args == ("job_init_pool_failed",)
     assert log.error.call_args.kwargs["operation"] == "db_backup"
+
+
+@pytest.mark.asyncio
+async def test_run_sem_bucket_configurado_falha_antes_de_abrir_o_banco(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sem `BACKUP_BUCKET` o job falha fechado: nenhum default aponta bucket de outro projeto.
+
+    O default antigo era `v4-ads-mcp-backups`, o bucket do projeto da V4: no projeto
+    novo o dump iria para um bucket alheio (403 hoje; de quem registrar o nome, se o
+    projeto antigo for apagado).
+    """
+    monkeypatch.delenv("BACKUP_BUCKET", raising=False)
+    client, _ = _fake_storage_client()
+    mocks = _base_patches(pool=MagicMock(), storage_client=client)
+
+    with (
+        mocks["init_pool"] as init_pool,
+        mocks["close_pool"],
+        mocks["get_pool"],
+        mocks["storage_client"] as storage_cls,
+        mocks["record"],
+    ):
+        rc = await backup.run()
+
+    assert rc == 1
+    init_pool.assert_not_awaited()
+    storage_cls.assert_not_called()
