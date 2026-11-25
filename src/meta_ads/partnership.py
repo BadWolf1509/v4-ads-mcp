@@ -1,4 +1,4 @@
-"""Fonte autoritativa: quais contas a parceria do BM da V4 nos dá.
+"""Fonte autoritativa: quais contas a parceria do BM do operador nos dá.
 
 Substitui `/me/adaccounts` como definidor do inventário. A diferença medida em
 2026-08-20: a edge do BM devolveu 25 contas e `/me/adaccounts` 23 — porque esta

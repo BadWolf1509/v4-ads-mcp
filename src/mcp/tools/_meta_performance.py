@@ -85,7 +85,7 @@ def meta_account_not_found_error(ad_account_id: str) -> dict[str, Any]:
     """
     return erro_de_entrada(
         f"Conta Meta {ad_account_id} não está no inventário. O inventário é a "
-        "parceria do BM da V4, sincronizada pelo resync diário (06:00, horário de "
+        "parceria do Business Manager do servidor, sincronizada pelo resync diário (06:00, horário de "
         "Brasília): conta nova entra na execução seguinte. Se ela já deveria estar "
         "lá, peça ao admin para conferir a parceria no Business Manager."
     )

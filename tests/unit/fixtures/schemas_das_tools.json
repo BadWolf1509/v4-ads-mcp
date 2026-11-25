@@ -2321,7 +2321,7 @@
     "_meta": {
       "com.v4company/bucket": "defer"
     },
-    "description": "[DEFER] Quota diaria do dia UTC atual em DOIS niveis: `manager` (seu cap pessoal) e `account` (projeto Google Cloud da V4, compartilhado por todos os gestores e todas as contas). `blocking_scope` diz qual dos dois esgota primeiro — normalmente o seu, que e menor. Sem parametros. Reset a meia-noite UTC.",
+    "description": "[DEFER] Quota diaria do dia UTC atual em DOIS niveis: `manager` (seu cap pessoal) e `account` (projeto Google Cloud do servidor, compartilhado por todos os gestores e todas as contas). `blocking_scope` diz qual dos dois esgota primeiro — normalmente o seu, que e menor. Sem parametros. Reset a meia-noite UTC.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {},
@@ -3264,7 +3264,7 @@
       "anthropic/alwaysLoad": true,
       "com.v4company/bucket": "always"
     },
-    "description": "[CORE] Lista as contas de anúncio Meta às quais o gestor tem acesso. Fonte: o inventário local (a parceria do BM da V4, sincronizada pelo resync diário das 06:00, horário de Brasília) cruzado com os acessos que o admin concedeu ao gestor. Conta nova entra na execução seguinte do resync; se faltar alguma, peça ao admin. Retorna: ad_account_id ('act_<numeric>'), account_name, business_id/name (NULL se personal), currency, timezone_name, account_status (Meta enum) + account_status_label (PT-BR).",
+    "description": "[CORE] Lista as contas de anúncio Meta às quais o gestor tem acesso. Fonte: o inventário local (a parceria do Business Manager do servidor, sincronizada pelo resync diário das 06:00, horário de Brasília) cruzado com os acessos que o admin concedeu ao gestor. Conta nova entra na execução seguinte do resync; se faltar alguma, peça ao admin. Retorna: ad_account_id ('act_<numeric>'), account_name, business_id/name (NULL se personal), currency, timezone_name, account_status (Meta enum) + account_status_label (PT-BR).",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {},

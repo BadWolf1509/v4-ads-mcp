@@ -43,3 +43,11 @@ templates.env.filters["hora_brasilia"] = hora_brasilia
 # Cache-busting dos estaticos: muda a cada revisao do Cloud Run, o que torna
 # seguro o Cache-Control imutavel de CachedStaticFiles.
 templates.env.globals["asset_version"] = asset_version()
+# Nome do produto num lugar so (era "V4 Ads MCP" ate o desligamento da V4, 25/11/2026).
+NOME_PRODUTO = "Fluxo Certo Ads"
+templates.env.globals["nome_produto"] = NOME_PRODUTO
+# Operador e contato das paginas legais (rascunho de 25/11; texto juridico final e do operador).
+NOME_OPERADOR = "Wellington Ribeiro"
+CONTATO_OPERADOR = "wellington.ribeiro.eng@gmail.com"
+templates.env.globals["nome_operador"] = NOME_OPERADOR
+templates.env.globals["contato_operador"] = CONTATO_OPERADOR

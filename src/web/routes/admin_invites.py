@@ -34,10 +34,10 @@ def mensagem_onboarding(full_name: str | None, panel_url: str) -> str:
     primeiro_nome = full_name.split()[0] if full_name and full_name.strip() else ""
     saudacao = f"Oi {primeiro_nome}!" if primeiro_nome else "Oi!"
     return (
-        f"{saudacao} Te convidei pro V4 Ads MCP (nosso painel de Google/Meta Ads via IA).\n"
+        f"{saudacao} Te convidei pro Fluxo Certo Ads (painel de Google/Meta Ads via IA).\n"
         "\n"
         f"1. Acessa {panel_url}/login e entra com o email que recebeu este convite"
-        ' (botão "Entrar com Google V4").\n'
+        ' (botão "Entrar com Google").\n'
         f"2. Depois segue o guia de configuração: {panel_url}/help\n"
         "\n"
         "Qualquer coisa me chama."

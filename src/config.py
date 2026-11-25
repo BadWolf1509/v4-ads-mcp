@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     # Meta Ads — system user token (Modelo B, Secret Manager: meta-system-user-token).
     # Token NÃO expira; vazio = feature de execução Meta indisponível (erro PT-BR amigável).
     meta_system_user_token: str = ""
-    # ID do BM da V4 Lima Soares. Não é segredo (é identificador), então env var
+    # ID do BM do operador (o que tem a parceria com os BMs dos clientes). Não é segredo (é identificador), então env var
     # comum. Default vazio porque `/me/businesses` devolve 0 pro system user: sem
     # este valor não há como descobrir o BM, e o reconciliador vira no-op em vez
     # de derrubar o job (mesma escolha de meta_system_user_token).
