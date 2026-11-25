@@ -85,8 +85,14 @@ D:/v4-ads-mcp/.venv/Scripts/python.exe -m scripts.infra.bootstrap_projeto --proj
 Sem `--apply` só imprime; com `--apply` executa e é reexecutável (pula o que já existe). Reproduz o
 inventário medido em 25/11 (APIs, Artifact Registry, 3 SAs e papéis, WIF restrito ao repo, bucket com
 lifecycle 90d, 9 secrets **vazios**, 3 jobs, 2 schedulers **pausados**). **Fica à mão:** os valores
-dos secrets (por arquivo, F47), o canal de e-mail e as 5 policies (runbooks REST abaixo), os secrets
-`GCP_*` e as vars `PUBLIC_BASE_URL`/`META_BUSINESS_ID` do GitHub. **Medido no `--apply` de 25/11 em
+dos secrets (por arquivo, F47), os secrets `GCP_*` e as vars `PUBLIC_BASE_URL`/`META_BUSINESS_ID` do
+GitHub. **Monitoramento** (canal, uptime check, 2 métricas, 5 policies) vem de
+`python -m scripts.infra.monitoramento --project-id <ID> --host v4-ads-mcp-<número>.<região>.run.app
+--alert-email <EMAIL> [--apply]`, que o bootstrap imprime pronto: rode **depois do primeiro deploy** (o
+uptime check alarmaria sem o serviço no ar). As definições ficam em `scripts/infra/monitoramento_defs/`;
+o aplicador só cria o que falta e aponta (sem tocar) o que existir diferente, saindo com 1. Aceite em
+25/11 contra o `fluxo-certo-ads`: 9 recursos `igual`, rc 0; com host errado, o uptime saiu `diferente`.
+Os runbooks REST abaixo ficam como referência do formato da API. **Medido no `--apply` de 25/11 em
 `fluxo-certo-ads` (projeto sem organização, número `505452482961`):** os 46 comandos rodaram com exit 0
 e cada recurso foi conferido; o SA padrão do Compute já nasce com `roles/editor` (o
 `cloudbuild.builds.builder` explícito do script é redundante ali, inofensivo).

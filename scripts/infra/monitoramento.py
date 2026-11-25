@@ -12,8 +12,14 @@ Rode depois do primeiro deploy: o uptime check precisa do serviço no ar, senão
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
+import shutil
+import subprocess
+import sys
+import urllib.parse
+import urllib.request
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, NamedTuple, Protocol
@@ -139,3 +145,99 @@ def aplicar(api: Api, *, project_id: str, host: str, alert_email: str, apply: bo
 
 def codigo_de_saida(linhas: list[Linha]) -> int:
     return 1 if any(linha.acao == "diferente" for linha in linhas) else 0
+
+
+_BASES = {
+    "notificationChannels": "https://monitoring.googleapis.com/v3/projects/{p}/notificationChannels",
+    "uptimeCheckConfigs": "https://monitoring.googleapis.com/v3/projects/{p}/uptimeCheckConfigs",
+    "alertPolicies": "https://monitoring.googleapis.com/v3/projects/{p}/alertPolicies",
+    "metrics": "https://logging.googleapis.com/v2/projects/{p}/metrics",
+}
+
+
+class RestApi:
+    """Monitoring v3 + Logging v2 por REST. `listar` segue `nextPageToken`; chave ausente = []."""
+
+    def __init__(self, project_id: str, token: str) -> None:
+        self._p = project_id
+        self._token = token
+
+    def _req(self, url: str, corpo: dict[str, Any] | None = None) -> dict[str, Any]:
+        req = urllib.request.Request(
+            url,
+            method="GET" if corpo is None else "POST",
+            data=None if corpo is None else json.dumps(corpo).encode(),
+            headers={
+                "Authorization": f"Bearer {self._token}",
+                "Content-Type": "application/json",
+                "x-goog-user-project": self._p,
+            },
+        )
+        with urllib.request.urlopen(req, timeout=60) as r:
+            dados: dict[str, Any] = json.loads(r.read() or b"{}")
+            return dados
+
+    def listar(self, recurso: str) -> list[dict[str, Any]]:
+        base = _BASES[recurso].format(p=self._p)
+        itens: list[dict[str, Any]] = []
+        token = ""
+        while True:
+            url = base + (f"?pageToken={urllib.parse.quote(token)}" if token else "")
+            pagina = self._req(url)
+            itens.extend(pagina.get(recurso, []))
+            token = pagina.get("nextPageToken", "")
+            if not token:
+                return itens
+
+    def criar(self, recurso: str, corpo: dict[str, Any]) -> dict[str, Any]:
+        return self._req(_BASES[recurso].format(p=self._p), corpo)
+
+
+def _api_real(project_id: str, email: str) -> Api:
+    """Token do `gcloud` da conta do alerta (dona do projeto). Sem stderr mudo: se a credencial
+    venceu, o gcloud tenta reautenticar e o timeout corta em vez de pendurar calado."""
+    gcloud = shutil.which("gcloud")
+    if gcloud is None:
+        raise SystemExit("gcloud não encontrado no PATH")
+    token = subprocess.run(
+        [gcloud, "auth", "print-access-token"],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=60,
+    ).stdout.strip()
+    return RestApi(project_id, token)
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument("--project-id", required=True)
+    ap.add_argument(
+        "--host", required=True, help="host do serviço, ex. v4-ads-mcp-<n>.<região>.run.app"
+    )
+    ap.add_argument("--alert-email", required=True)
+    ap.add_argument("--apply", action="store_true", help="cria o que falta (sem isto, só o plano)")
+    a = ap.parse_args(argv)
+    try:
+        api = _api_real(a.project_id, a.alert_email)
+    except subprocess.TimeoutExpired:
+        print("gcloud não respondeu: rode `gcloud auth login` e repita.", file=sys.stderr)
+        return 1
+    linhas = aplicar(
+        api, project_id=a.project_id, host=a.host, alert_email=a.alert_email, apply=a.apply
+    )
+    for linha in linhas:
+        print(f"{linha.acao:<10} {linha.tipo:<22} {linha.chave}")
+    rc = codigo_de_saida(linhas)
+    if rc:
+        print(
+            "\nRecurso `diferente`: não foi tocado. Compare com scripts/infra/monitoramento_defs/.",
+            file=sys.stderr,
+        )
+    return rc
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

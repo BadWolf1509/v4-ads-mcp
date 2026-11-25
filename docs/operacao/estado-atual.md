@@ -64,8 +64,8 @@ Os backups de `gs://v4-ads-mcp-backups` e o Secret Manager de lá ficaram inaces
 ## Próximo trabalho (em ordem)
 
 1. ~~Alertas no projeto novo~~ — criados em 25/11. Falta o Wellington confirmar que o e-mail do job
-   falho forçado (backup, 15:12 UTC) chegou. **A definição vive só no Monitoring:** levá-la para o
-   repositório (aplicador idempotente, como o bootstrap) evita depender de um export do projeto antigo.
+   falho forçado (backup, 15:12 UTC) chegou. A definição está versionada em
+   `scripts/infra/monitoramento_defs/` e se reaplica com `python -m scripts.infra.monitoramento`.
 2. Gates 3 e 4 (limpeza de acessos, no painel) **antes** do gate 1: com o Gmail só na MDO, a revogação que
    o resync faria deixa de ser risco. Depois, uma rodada do resync com `GOOGLE_RECONCILE_APPLY=false`
    para medir o plano antes de ligar.

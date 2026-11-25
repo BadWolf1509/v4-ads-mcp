@@ -176,3 +176,69 @@ def test_diferente_nao_e_tocado_e_sai_1() -> None:
     assert len(api.posts) == 9
     assert api.dados["alertPolicies"][0]["enabled"] is False
     assert codigo_de_saida(linhas) == 1
+
+
+# --- Task 3: cliente REST e CLI ----------------------------------------------------------------
+
+
+class _Resp:
+    def __init__(self, corpo: dict[str, Any]) -> None:
+        self._b = json.dumps(corpo).encode()
+
+    def read(self) -> bytes:
+        return self._b
+
+    def __enter__(self) -> _Resp:
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        return None
+
+
+def test_rest_listar_segue_paginacao_e_trata_chave_ausente(monkeypatch: pytest.MonkeyPatch) -> None:
+    from scripts.infra import monitoramento as mon
+
+    pedidos: list[Any] = []
+    paginas: list[dict[str, Any]] = [
+        {"alertPolicies": [{"displayName": "a"}], "nextPageToken": "T2"},
+        {"alertPolicies": [{"displayName": "b"}]},
+        {},  # projeto sem nenhum canal: a API omite a chave
+    ]
+
+    def fake_urlopen(req: Any, timeout: float) -> _Resp:
+        pedidos.append(req)
+        return _Resp(paginas.pop(0))
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    api = mon.RestApi("proj-x", "tok")
+    assert [p["displayName"] for p in api.listar("alertPolicies")] == ["a", "b"]
+    assert "pageToken=T2" in pedidos[1].full_url
+    assert pedidos[0].get_header("X-goog-user-project") == "proj-x"
+    assert api.listar("notificationChannels") == []
+
+
+def test_rest_metricas_vao_para_o_logging(monkeypatch: pytest.MonkeyPatch) -> None:
+    from scripts.infra import monitoramento as mon
+
+    urls: list[str] = []
+
+    def fake_urlopen(req: Any, timeout: float) -> _Resp:
+        urls.append(req.full_url)
+        return _Resp({})
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    mon.RestApi("proj-x", "tok").listar("metrics")
+    assert urls[0].startswith("https://logging.googleapis.com/v2/projects/proj-x/metrics")
+
+
+def test_main_dry_run_nao_posta(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from scripts.infra import monitoramento as mon
+
+    api = FakeApi()
+    monkeypatch.setattr(mon, "_api_real", lambda project_id, email: api)
+    rc = mon.main(["--project-id", "p", "--host", "h", "--alert-email", "e@x.com"])
+    assert rc == 0
+    assert api.posts == []
+    assert capsys.readouterr().out.count("criar") == 9
