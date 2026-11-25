@@ -14,6 +14,9 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
+        # Secret salvo no Notepad pode terminar em quebra de linha, e o Secret Manager recusa
+        # versão vazia: `" "` é como um secret diz "indisponível" (ex.: Meta antes do BM).
+        str_strip_whitespace=True,
     )
 
     # App

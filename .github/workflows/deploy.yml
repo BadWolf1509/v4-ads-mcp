@@ -86,14 +86,18 @@ jobs:
 
       - name: Validar vars do repositorio
         # Projeto, URL publica e BM vem de `vars` do repositorio (migracao para o projeto
-        # do Gmail, 25/11): var vazia subiria o servico com `PUBLIC_BASE_URL=`.
+        # do Gmail, 25/11): URL vazia barra o deploy; BM vazio so avisa.
         env:
           PUBLIC_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
           META_BUSINESS_ID: ${{ vars.META_BUSINESS_ID }}
         run: |
-          if [ -z "${PUBLIC_BASE_URL}" ] || [ -z "${META_BUSINESS_ID}" ]; then
-            echo "::error::Defina vars.PUBLIC_BASE_URL e vars.META_BUSINESS_ID em Settings > Secrets and variables > Actions > Variables."
+          if [ -z "${PUBLIC_BASE_URL}" ]; then
+            echo "::error::Defina vars.PUBLIC_BASE_URL em Settings > Secrets and variables > Actions > Variables."
             exit 1
+          fi
+          # Sem BM a reconciliacao Meta e no-op (config.py): estado legitimo, mas nao calado.
+          if [ -z "${META_BUSINESS_ID}" ]; then
+            echo "::warning::vars.META_BUSINESS_ID vazia: reconciliacao Meta desligada ate o BM ser definido."
           fi
 
       - name: Submit build via Buildpacks
