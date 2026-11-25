@@ -242,3 +242,112 @@ def test_main_dry_run_nao_posta(
     assert rc == 0
     assert api.posts == []
     assert capsys.readouterr().out.count("criar") == 9
+
+
+# --- Revisão final: falha no meio, identidade do gcloud, duplicados, pai divergente -------------
+
+
+class FakeApiQueFalha(FakeApi):
+    def __init__(self, falha_no_post: int) -> None:
+        super().__init__()
+        self._falha = falha_no_post
+
+    def criar(self, recurso: str, corpo: dict[str, Any]) -> dict[str, Any]:
+        if len(self.posts) + 1 == self._falha:
+            from scripts.infra.monitoramento import MonitoramentoApiError
+
+            raise MonitoramentoApiError(
+                "POST alertPolicies -> 400: only log-based alert policies may ..."
+            )
+        return super().criar(recurso, corpo)
+
+
+def test_apply_que_falha_no_meio_ja_imprimiu_o_criado_e_mostra_o_corpo(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from scripts.infra import monitoramento as mon
+
+    api = FakeApiQueFalha(falha_no_post=6)
+    monkeypatch.setattr(mon, "_api_real", lambda project_id, email: api)
+    rc = mon.main(["--project-id", "p", "--host", "h", "--alert-email", "e@x.com", "--apply"])
+    saida = capsys.readouterr()
+    assert rc == 1
+    assert saida.out.count("criado") == 5
+    assert "only log-based alert policies" in saida.err
+
+
+def test_rest_http_error_vira_erro_com_o_corpo_do_google(monkeypatch: pytest.MonkeyPatch) -> None:
+    import email.message
+    import io
+    import urllib.error
+
+    from scripts.infra import monitoramento as mon
+
+    def fake_urlopen(req: Any, timeout: float) -> _Resp:
+        raise urllib.error.HTTPError(
+            req.full_url,
+            400,
+            "Bad Request",
+            email.message.Message(),
+            io.BytesIO(b'{"error": "detalhe do google"}'),
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    with pytest.raises(mon.MonitoramentoApiError, match="detalhe do google"):
+        mon.RestApi("p", "t").criar("alertPolicies", {"x": 1})
+
+
+def test_gcloud_que_falha_mostra_o_stderr_e_sai_1(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import subprocess
+
+    from scripts.infra import monitoramento as mon
+
+    def falha(*_a: Any, **_k: Any) -> Any:
+        raise subprocess.CalledProcessError(1, ["gcloud"], stderr="Reauthentication required")
+
+    monkeypatch.setattr("shutil.which", lambda _n: "gcloud")
+    monkeypatch.setattr("subprocess.run", falha)
+    rc = mon.main(["--project-id", "p", "--host", "h", "--alert-email", "e@x.com"])
+    assert rc == 1
+    assert "Reauthentication required" in capsys.readouterr().err
+
+
+def test_duplicado_e_apontado_e_sai_1() -> None:
+    api = FakeApi()
+    aplicar(api, **ARGS, apply=True)
+    api.dados["alertPolicies"].append(dict(api.dados["alertPolicies"][0], name="x/dup"))
+    linhas = aplicar(api, **ARGS, apply=True)
+    assert [linha.acao for linha in linhas].count("duplicado") == 1
+    assert codigo_de_saida(linhas) == 1
+    assert len(api.posts) == 9
+
+
+def test_check_divergente_bloqueia_so_a_policy_que_depende_dele() -> None:
+    api = FakeApi()
+    api.criar(
+        "uptimeCheckConfigs",
+        {
+            "displayName": "v4-ads-mcp /health deep",
+            "monitoredResource": {"labels": {"host": "errado"}},
+        },
+    )
+    api.posts.clear()
+    linhas = aplicar(api, **ARGS, apply=True)
+    por_chave = {linha.chave: linha.acao for linha in linhas}
+    assert por_chave["v4-ads-mcp /health deep"] == "diferente"
+    assert por_chave["Uptime: v4-ads-mcp /health?deep=1 falhou"] == "bloqueado"
+    assert [linha.acao for linha in linhas].count("criado") == 7  # canal, 2 métricas, 4 policies
+    assert codigo_de_saida(linhas) == 1
+
+
+def test_canal_divergente_bloqueia_todas_as_policies() -> None:
+    api = FakeApi()
+    api.criar(
+        "notificationChannels",
+        {"type": "email", "displayName": "outro nome", "labels": {"email_address": "e@x.com"}},
+    )
+    linhas = aplicar(api, **ARGS, apply=True)
+    assert [linha.acao for linha in linhas if linha.tipo == "alertPolicies"] == ["bloqueado"] * 5
+    assert not api.dados["alertPolicies"]
