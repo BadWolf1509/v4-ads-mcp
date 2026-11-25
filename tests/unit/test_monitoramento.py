@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 
-from scripts.infra.monitoramento import carregar_modelos, contem, renderizar
+from scripts.infra.monitoramento import (
+    aplicar,
+    carregar_modelos,
+    codigo_de_saida,
+    contem,
+    renderizar,
+)
 
 VALORES = {
     "PROJECT": "proj-x",
@@ -68,3 +75,104 @@ def test_contem_detecta_valor_e_tamanho_de_lista_diferentes() -> None:
     assert not contem({"l": [1, 2]}, {"l": [1]})
     assert not contem({"a": 1}, {})
     assert not contem({"a": {"b": 1}}, {"a": 1})
+
+
+# --- Task 2: plano e aplicação sobre API injetável -------------------------------------------
+
+ARGS: dict[str, Any] = {"project_id": "p", "host": "h.run.app", "alert_email": "e@x.com"}
+
+
+class FakeApi:
+    """Em memória, imitando o servidor: `criar` gera `name` e acrescenta campos que o modelo não tem."""
+
+    def __init__(self) -> None:
+        self.dados: dict[str, list[dict[str, Any]]] = {
+            "notificationChannels": [],
+            "uptimeCheckConfigs": [],
+            "metrics": [],
+            "alertPolicies": [],
+        }
+        self.posts: list[tuple[str, dict[str, Any]]] = []
+
+    def listar(self, recurso: str) -> list[dict[str, Any]]:
+        return [json.loads(json.dumps(r)) for r in self.dados[recurso]]
+
+    def criar(self, recurso: str, corpo: dict[str, Any]) -> dict[str, Any]:
+        self.posts.append((recurso, corpo))
+        real: dict[str, Any] = json.loads(json.dumps(corpo))
+        n = len(self.dados[recurso]) + 1
+        if recurso == "notificationChannels":
+            real["name"] = f"projects/p/notificationChannels/{n}"
+            real["verificationStatus"] = "X"
+        elif recurso == "uptimeCheckConfigs":
+            real["name"] = f"projects/p/uptimeCheckConfigs/chk-{n}"
+            real["isInternal"] = False
+        elif recurso == "alertPolicies":
+            real["name"] = f"projects/p/alertPolicies/{n}"
+            for i, c in enumerate(real["conditions"]):
+                c["name"] = f"{real['name']}/conditions/{i}"
+        self.dados[recurso].append(real)
+        return real
+
+
+def test_projeto_vazio_dry_run_planeja_9_criar_e_nao_posta() -> None:
+    api = FakeApi()
+    linhas = aplicar(api, **ARGS, apply=False)
+    assert [linha.acao for linha in linhas] == ["criar"] * 9
+    assert api.posts == []
+    assert codigo_de_saida(linhas) == 0
+
+
+def test_apply_cria_9_e_segunda_rodada_e_toda_igual() -> None:
+    api = FakeApi()
+    assert [linha.acao for linha in aplicar(api, **ARGS, apply=True)] == ["criado"] * 9
+    assert [linha.acao for linha in aplicar(api, **ARGS, apply=True)] == ["igual"] * 9
+    assert len(api.posts) == 9
+
+
+def test_ordem_canal_uptime_metricas_policies() -> None:
+    api = FakeApi()
+    aplicar(api, **ARGS, apply=True)
+    assert [r for r, _ in api.posts] == (
+        ["notificationChannels", "uptimeCheckConfigs"] + ["metrics"] * 2 + ["alertPolicies"] * 5
+    )
+
+
+def test_policies_apontam_o_canal_e_o_check_criados() -> None:
+    api = FakeApi()
+    aplicar(api, **ARGS, apply=True)
+    canal = api.dados["notificationChannels"][0]["name"]
+    check = api.dados["uptimeCheckConfigs"][0]["name"].rsplit("/", 1)[1]
+    assert all(p["notificationChannels"] == [canal] for p in api.dados["alertPolicies"])
+    up = next(p for p in api.dados["alertPolicies"] if p["displayName"].startswith("Uptime"))
+    assert check in up["conditions"][0]["conditionThreshold"]["filter"]
+    assert api.dados["notificationChannels"][0]["labels"]["email_address"] == "e@x.com"
+
+
+def test_canal_existente_e_reusado_pelas_policies() -> None:
+    api = FakeApi()
+    api.dados["notificationChannels"].append(
+        {
+            "type": "email",
+            "displayName": "Wellington (e-mail)",
+            "labels": {"email_address": "e@x.com"},
+            "name": "projects/p/notificationChannels/77",
+        }
+    )
+    linhas = aplicar(api, **ARGS, apply=True)
+    assert linhas[0].acao == "igual"
+    assert all(
+        p["notificationChannels"] == ["projects/p/notificationChannels/77"]
+        for p in api.dados["alertPolicies"]
+    )
+
+
+def test_diferente_nao_e_tocado_e_sai_1() -> None:
+    api = FakeApi()
+    aplicar(api, **ARGS, apply=True)
+    api.dados["alertPolicies"][0]["enabled"] = False
+    linhas = aplicar(api, **ARGS, apply=True)
+    assert [linha.acao for linha in linhas].count("diferente") == 1
+    assert len(api.posts) == 9
+    assert api.dados["alertPolicies"][0]["enabled"] is False
+    assert codigo_de_saida(linhas) == 1
