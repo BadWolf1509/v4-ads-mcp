@@ -233,6 +233,28 @@ async def cmd_revogar_conexoes_de_inativos(args: argparse.Namespace) -> int:
     return 0
 
 
+async def cmd_descomissionar(args: argparse.Namespace) -> int:
+    async with _conexao() as conn:
+        r = await desligamento.descomissionar(
+            conn, manter_google=args.manter_google, manter_meta=args.manter_meta, apply=args.apply
+        )
+    if r.invalidos:
+        print(
+            "Recusado, nada foi feito. Não são contas ATIVAS do inventário: "
+            + ", ".join(r.invalidos),
+            file=sys.stderr,
+        )
+        return 2
+    verbo = "descomissionadas" if args.apply else "a descomissionar (dry-run; repita com --apply)"
+    print(f"Google: {len(r.google)} conta(s) {verbo}, {r.grants_google} grant(s)")
+    for c in r.google:
+        print(f"  {c}")
+    print(f"Meta: {len(r.meta)} conta(s) {verbo}, {r.grants_meta} grant(s)")
+    for a in r.meta:
+        print(f"  {a}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="admin", description="Fluxo Certo Ads admin CLI")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -272,6 +294,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_rci.add_argument("--apply", action="store_true", help="revoga de fato e audita")
 
+    p_desc = sub.add_parser(
+        "descomissionar",
+        help="Desativa no inventário as contas fora das listas e revoga os grants nelas"
+        " (dry-run sem --apply)",
+    )
+    p_desc.add_argument("--manter-google", nargs="+", required=True, metavar="CUSTOMER_ID")
+    p_desc.add_argument("--manter-meta", nargs="+", required=True, metavar="ACT_ID")
+    p_desc.add_argument("--apply", action="store_true", help="descomissiona de fato e audita")
+
     return parser
 
 
@@ -285,6 +316,7 @@ def main(argv: list[str] | None = None) -> int:
         "create-session": cmd_create_session,
         "list-sessions": cmd_list_sessions,
         "revogar-conexoes-de-inativos": cmd_revogar_conexoes_de_inativos,
+        "descomissionar": cmd_descomissionar,
     }[args.cmd]
     return asyncio.run(handler(args))
 
