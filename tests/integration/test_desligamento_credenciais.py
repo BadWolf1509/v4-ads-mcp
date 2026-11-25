@@ -89,17 +89,18 @@ async def test_backfill_dry_run_nao_escreve_apply_revoga_e_segunda_rodada_sem_ef
         ativo = await seed_manager(conn)
         await _conexao(conn, ativo)
 
-        plano = await desligamento.revogar_conexoes_de_inativos(conn, apply=False)
+        admin = await seed_manager(conn, role="admin")
+        plano = await desligamento.revogar_conexoes_de_inativos(conn, apply=False, por=admin)
         assert len(plano) == 1
         assert await _vivas(conn, inativo) == 1
         assert await _audits(conn, "cli_revoke_inactive_connections") == []
 
-        feito = await desligamento.revogar_conexoes_de_inativos(conn, apply=True)
+        feito = await desligamento.revogar_conexoes_de_inativos(conn, apply=True, por=admin)
         assert len(feito) == 1
         assert await _vivas(conn, inativo) == 0
         assert await _vivas(conn, ativo) == 1
 
-        await desligamento.revogar_conexoes_de_inativos(conn, apply=True)
+        await desligamento.revogar_conexoes_de_inativos(conn, apply=True, por=admin)
         audits = await _audits(conn, "cli_revoke_inactive_connections")
     assert [a["had_effect"] for a in audits] == [True, False]
     assert audits[0]["target_count"] == 1
@@ -124,6 +125,7 @@ async def test_desativar_pela_rota_revoga_conexoes_e_reativar_nao_devolve(db) ->
     async with db.acquire() as conn:
         admin_id = await seed_manager(conn, role="admin")
         admin = CurrentUser(await managers.get_by_id(conn, admin_id))  # type: ignore[arg-type]
+        await _conexao(conn, admin_id)
         gestor = await seed_manager(conn)
         await _conexao(conn, gestor)
         await _conexao(conn, gestor)
@@ -131,9 +133,45 @@ async def test_desativar_pela_rota_revoga_conexoes_e_reativar_nao_devolve(db) ->
     await _toggle(admin, gestor, "inativo")
     async with db.acquire() as conn:
         assert await _vivas(conn, gestor) == 0
+        assert await _vivas(conn, admin_id) == 1, "revogou a conexão de quem clicou"
         (audit,) = await _audits(conn, "admin_manager_toggle_active")
     assert json.loads(audit["params_summary"])["conexoes_revogadas"] == 2
 
     await _toggle(admin, gestor, "ativo")
     async with db.acquire() as conn:
         assert await _vivas(conn, gestor) == 0
+
+
+@pytest.mark.integration
+async def test_fallback_do_job_nao_usa_conexao_de_gestor_desativado(db) -> None:
+    """`pick_latest_active` é o fallback do resync sem admin com conexão: nunca a credencial de
+    quem saiu (antes, a mais recente de QUALQUER gestor)."""
+    async with db.acquire() as conn:
+        ativo = await seed_manager(conn)
+        da_ativa = await _conexao(conn, ativo)
+        inativo = await _inativo(conn)
+        await _conexao(conn, inativo)  # mais recente, mas de gestor desativado
+        escolhida = await google_oauth_connections.pick_latest_active(conn)
+    assert escolhida is not None and escolhida.id == da_ativa
+
+
+@pytest.mark.integration
+async def test_convergencia_diaria_revoga_conexao_de_desativado_atras_da_trava(db) -> None:
+    """Pelo ESTADO, todo dia (como os grants): gestor desativado por qualquer caminho — SQL
+    direto incluído — não fica com credencial viva dependendo de alguém rodar o backfill."""
+    from src.jobs.account_resync import convergir_gestores
+
+    async with db.acquire() as conn:
+        inativo = await _inativo(conn)  # desativado por SQL, sem passar pela rota
+        await _conexao(conn, inativo)
+        ativo = await seed_manager(conn)
+        await _conexao(conn, ativo)
+
+        plano = await convergir_gestores(conn, apply=False)
+        assert plano["google"]["conexoes_a_revogar"] == 1
+        assert await _vivas(conn, inativo) == 1
+
+        feito = await convergir_gestores(conn, apply=True)
+        assert feito["google"]["conexoes_revogadas"] == 1
+        assert await _vivas(conn, inativo) == 0
+        assert await _vivas(conn, ativo) == 1

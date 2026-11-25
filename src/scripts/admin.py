@@ -28,7 +28,7 @@ import asyncio
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import asyncpg
 
@@ -223,9 +223,21 @@ async def cmd_list_sessions(args: argparse.Namespace) -> int:
     return 0
 
 
+async def _autor_admin(conn: asyncpg.Connection, email: str) -> UUID | None:
+    """O admin que roda o CLI (`--by`), como no `grant-all`: existente, admin e ativo."""
+    autor = await managers.get_by_email(conn, email)
+    if autor is None or autor.role != "admin" or autor.is_deactivated:
+        return None
+    return autor.id
+
+
 async def cmd_revogar_conexoes_de_inativos(args: argparse.Namespace) -> int:
     async with _conexao() as conn:
-        linhas = await desligamento.revogar_conexoes_de_inativos(conn, apply=args.apply)
+        por = await _autor_admin(conn, args.by)
+        if por is None:
+            print(f"--by precisa ser um admin existente e ativo: {args.by}", file=sys.stderr)
+            return 1
+        linhas = await desligamento.revogar_conexoes_de_inativos(conn, apply=args.apply, por=por)
     verbo = "revogadas" if args.apply else "a revogar (dry-run; repita com --apply)"
     print(f"{len(linhas)} conexão(ões) OAuth de gestor desativado {verbo}:")
     for r in linhas:
@@ -235,8 +247,16 @@ async def cmd_revogar_conexoes_de_inativos(args: argparse.Namespace) -> int:
 
 async def cmd_descomissionar(args: argparse.Namespace) -> int:
     async with _conexao() as conn:
+        por = await _autor_admin(conn, args.by)
+        if por is None:
+            print(f"--by precisa ser um admin existente e ativo: {args.by}", file=sys.stderr)
+            return 1
         r = await desligamento.descomissionar(
-            conn, manter_google=args.manter_google, manter_meta=args.manter_meta, apply=args.apply
+            conn,
+            manter_google=args.manter_google,
+            manter_meta=args.manter_meta,
+            apply=args.apply,
+            por=por,
         )
     if r.invalidos:
         print(
@@ -249,6 +269,11 @@ async def cmd_descomissionar(args: argparse.Namespace) -> int:
     print(f"Google: {len(r.google)} conta(s) {verbo}, {r.grants_google} grant(s)")
     for c in r.google:
         print(f"  {c}")
+    if r.google_backlog:
+        print(
+            f"  + grants vivos em {len(r.google_backlog)} conta(s) Google JÁ inativa(s),"
+            " revogados junto: " + ", ".join(r.google_backlog)
+        )
     print(f"Meta: {len(r.meta)} conta(s) {verbo}, {r.grants_meta} grant(s)")
     for a in r.meta:
         print(f"  {a}")
@@ -292,6 +317,7 @@ def build_parser() -> argparse.ArgumentParser:
         "revogar-conexoes-de-inativos",
         help="Revoga as conexões OAuth vivas de gestores desativados (dry-run sem --apply)",
     )
+    p_rci.add_argument("--by", required=True, help="e-mail do admin que roda o comando")
     p_rci.add_argument("--apply", action="store_true", help="revoga de fato e audita")
 
     p_desc = sub.add_parser(
@@ -299,6 +325,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Desativa no inventário as contas fora das listas e revoga os grants nelas"
         " (dry-run sem --apply)",
     )
+    p_desc.add_argument("--by", required=True, help="e-mail do admin que roda o comando")
     p_desc.add_argument("--manter-google", nargs="+", required=True, metavar="CUSTOMER_ID")
     p_desc.add_argument("--manter-meta", nargs="+", required=True, metavar="ACT_ID")
     p_desc.add_argument("--apply", action="store_true", help="descomissiona de fato e audita")

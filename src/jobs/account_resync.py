@@ -545,6 +545,16 @@ async def convergir_gestores(
                     "pares_remarcados": pares_em_texto(remarcados),
                 }
             resumos[plataforma] = resumo
+        # JML pelo ESTADO, como os grants: conexão OAuth viva de gestor desativado (por
+        # qualquer caminho, SQL direto incluído) é revogada aqui, atrás da mesma trava. Sem
+        # isto, o backfill do CLI dependeria de alguém lembrar de rodá-lo (revisão final, I5).
+        vivas = await google_oauth_connections.list_live_of_inactive_managers(conn)
+        resumos["google"]["conexoes_a_revogar"] = len(vivas)
+        if apply:
+            for linha in vivas:
+                await google_oauth_connections.revoke(conn, linha["id"])
+            resumos["google"]["conexoes_revogadas"] = len(vivas)
+            resumos["google"]["conexoes_de"] = sorted({str(r["manager_email"]) for r in vivas})
     return resumos
 
 
