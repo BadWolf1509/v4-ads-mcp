@@ -74,7 +74,7 @@ class Settings(BaseSettings):
     # Public URL for MCP endpoint (used in /sessions + /help connection snippets).
     # Projeto GCP novo (v4-ads-mcp, migração 2026-06-30). Override via env
     # PUBLIC_BASE_URL no Cloud Run (deploy.yml --set-env-vars).
-    public_base_url: str = "https://v4-ads-mcp-299432068772.southamerica-east1.run.app"
+    public_base_url: str = "http://localhost:8000"
 
     # Governance: F73 — cap diario por gestor (rate_counters chave "mgr:<uuid>",
     # paralelo ao cap global do projeto).

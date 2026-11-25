@@ -2,6 +2,7 @@
 
 import contextlib
 import secrets
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -74,14 +75,21 @@ def test_empty_errors_list_returns_generic():
     assert "sem detalhes" in fe.message_pt
 
 
-def test_ciphertext_error_gives_actionable_reconnect_message():
+def test_ciphertext_error_gives_actionable_reconnect_message(monkeypatch):
     """Decrypt-failure (chave AES rotacionada na migração) vira erro amigável
     apontando pra reconexão — senão o dispatcher scruba pra 'Erro interno' (F70)."""
+    import src.google_ads.errors as errors_mod
+
+    monkeypatch.setattr(
+        errors_mod,
+        "get_settings",
+        lambda: SimpleNamespace(public_base_url="https://painel.exemplo"),
+    )
     fe = to_friendly(InvalidCiphertextError("Ciphertext authentication failed"))
     assert fe.code == "TOKEN_DECRYPT_FAILED"
     assert "reconecte" in fe.message_pt.lower()
     # a URL do painel é interpolada pra a mensagem ser acionável de fato
-    assert "run.app" in fe.message_pt
+    assert "https://painel.exemplo" in fe.message_pt
 
 
 async def test_build_client_for_manager_decrypt_failure_is_friendly():

@@ -240,7 +240,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_inv.add_argument("--email", required=True)
     p_inv.add_argument(
         "--base-url",
-        default="https://v4-ads-mcp-299432068772.southamerica-east1.run.app",
+        default="http://localhost:8000",
         help="Service base URL",
     )
 
