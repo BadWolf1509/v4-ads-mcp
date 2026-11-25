@@ -94,7 +94,7 @@ ANCORAS = (
     "make_capture_client",  # 37
     "oneOf/allOf/anyOf",  # 38
     "facebook_business",  # 39
-    "is_allowed_email",  # 40
+    "is_valid_email_shape",  # 40
     "{{ button() }}",  # 41
     "sessions_revoke",  # 42
     "request.query_params",  # 43
@@ -179,7 +179,7 @@ PISO_DE_OCORRENCIAS = {
     "make_capture_client": 4,
     "oneOf/allOf/anyOf": 1,
     "facebook_business": 3,
-    "is_allowed_email": 1,
+    "is_valid_email_shape": 1,
     "{{ button() }}": 1,
     "sessions_revoke": 2,
     "request.query_params": 1,

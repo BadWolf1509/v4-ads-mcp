@@ -5,12 +5,12 @@
 
 {% block content %}
 <div class="max-w-xl mx-auto py-16 px-4 text-center">
-  {% if reason == "domain" %}
+  {% if reason == "email" %}
     <h1 class="text-4xl md:text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">
-      Domínio não permitido.
+      E-mail inválido.
     </h1>
     <p class="mt-6 text-v4-gray-700">
-      O V4 Ads MCP é restrito a contas <code>@v4company.com</code>. Use sua conta corporativa.
+      O Google devolveu um e-mail que não conseguimos ler. Tente de novo ou fale com o admin.
     </p>
   {% elif reason == "deactivated" %}
     <h1 class="text-4xl md:text-display font-sans font-extrabold leading-none tracking-tight text-v4-gray-900">

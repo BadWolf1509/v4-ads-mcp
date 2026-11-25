@@ -74,7 +74,7 @@ def test_mensagem_tem_os_dois_passos_e_o_fecho() -> None:
     msg = mensagem_onboarding("Luiz Felipe", PANEL_URL)
     assert msg.startswith("Oi Luiz! ")
     assert (
-        f'{PANEL_URL}/login e entra com seu email @v4company.com (botão "Entrar com Google V4").'
+        f'{PANEL_URL}/login e entra com o email que recebeu este convite (botão "Entrar com Google V4").'
         in msg
     )
     assert f"{PANEL_URL}/help" in msg

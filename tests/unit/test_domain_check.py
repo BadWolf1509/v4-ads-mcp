@@ -1,24 +1,23 @@
-"""Domain check tests."""
+"""Formato de e-mail — a allowlist de acesso e a tabela `managers`, nao o dominio."""
 
 import pytest
 
-from src.auth.domain_check import is_allowed_email
+from src.auth.domain_check import is_valid_email_shape
 
 
 @pytest.mark.parametrize(
     "email,expected",
     [
-        ("wellinton.ribeiro@v4company.com", True),
-        ("admin@v4company.com", True),
-        ("WELLINTON@V4COMPANY.COM", True),  # case-insensitive
-        ("attacker@gmail.com", False),
-        ("attacker@v4company.com.malicious.com", False),
-        ("malicious.v4company.com@gmail.com", False),
+        ("wellington.ribeiro.eng@gmail.com", True),
+        ("a@v4company.com", True),
+        ("A@GMAIL.COM", True),
+        ("two@signs@x.com", False),
         ("", False),
         (None, False),
         ("nodomain", False),
-        ("two@signs@v4company.com", False),
+        ("@x.com", False),
+        ("a@", False),
     ],
 )
-def test_is_allowed_email(email, expected):
-    assert is_allowed_email(email) is expected
+def test_is_valid_email_shape(email, expected):
+    assert is_valid_email_shape(email) is expected

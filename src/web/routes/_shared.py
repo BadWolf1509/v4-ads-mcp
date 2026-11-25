@@ -37,7 +37,7 @@ _TETO_DIAS_EXPORT_AUDIT = 365
 
 
 _ADMIN_FLASH_ERRORS: dict[str, str] = {
-    "bad_domain": "Só emails @v4company.com podem ser convidados.",
+    "bad_email": "E-mail inválido.",
     "exists": "Esse email já está cadastrado (convite pendente ou conta existente). Nada foi criado.",
     "same_manager": "Gestor de origem e destino são o mesmo — nada foi copiado.",
     "conta_inativa": (

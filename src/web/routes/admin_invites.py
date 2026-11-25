@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
+from src.auth.domain_check import is_valid_email_shape
 from src.config import get_settings
 from src.db import connection
 from src.db.repositories import managers as managers_repo
@@ -35,7 +36,7 @@ def mensagem_onboarding(full_name: str | None, panel_url: str) -> str:
     return (
         f"{saudacao} Te convidei pro V4 Ads MCP (nosso painel de Google/Meta Ads via IA).\n"
         "\n"
-        f"1. Acessa {panel_url}/login e entra com seu email @v4company.com"
+        f"1. Acessa {panel_url}/login e entra com o email que recebeu este convite"
         ' (botão "Entrar com Google V4").\n'
         f"2. Depois segue o guia de configuração: {panel_url}/help\n"
         "\n"
@@ -81,8 +82,9 @@ async def admin_invites_new(
 ) -> RedirectResponse:
     _require_admin(user)
     email = email.strip().lower()
-    if not email.endswith("@v4company.com"):
-        return RedirectResponse(url="/admin/invites?error=bad_domain", status_code=303)
+    # Sem trava de dominio desde 24/11/2026: a allowlist e a tabela `managers`.
+    if not is_valid_email_shape(email):
+        return RedirectResponse(url="/admin/invites?error=bad_email", status_code=303)
 
     pool = connection.get_pool()
     async with pool.acquire() as conn:
