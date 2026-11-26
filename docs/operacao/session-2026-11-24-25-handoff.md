@@ -1,4 +1,4 @@
-# Sessão 24–25/11/2026 — handoff: desligamento da V4 e migração para `fluxo-certo-ads`
+# Sessão 24–25/11/2026 — handoff: desligamento da V4, migração para `fluxo-certo-ads` e escopo de um cliente
 
 > Mapa da sessão. O estado vivo está no [`estado-atual.md`](estado-atual.md); a infra, no
 > [`infra-setup.md`](infra-setup.md) (seção autoritativa do projeto novo).
@@ -32,10 +32,9 @@ acessos `@v4company.com` e terminou com o serviço migrado para um projeto GCP d
 do Windows passa `==`, `'`, `,`, `(`, `)` e espaço intactos; recursos do projeto novo um a um;
 `/health?deep=1`, `/mcp` 401; Google Ads API Básico com keyword planner real.
 
-**Não medido:** comportamento da reconciliação Google com login-customer-id de conta (só leitura do
-código: revogaria o inventário — por isso os schedulers seguem **pausados**); publicação do OAuth em
-Produção; verificação de marca (falta o Search Console do `fluxocerto.dev.br` no Gmail); alertas do
-projeto novo (não criados).
+**Não medido (na parte 1):** a reconciliação Google com login-customer-id de conta, por isso os
+schedulers ficaram pausados (a parte 2 mediu e fechou); a publicação do OAuth em Produção; a
+verificação de marca (falta o Search Console do `fluxocerto.dev.br` no Gmail).
 
 ## Decisões que o Claude tomou (rulings)
 
@@ -69,7 +68,74 @@ Bootstrap: M1 (SA do Compute/consistência eventual), M5 (pool WIF em soft-delet
 `@`/espaços; teste HTTP de `not_invited` para domínio externo; helper `_cookies_apagados` com nome
 enganoso. Marca provisória "FC". Páginas legais do serviço são rascunho.
 
+## Parte 2 — 25/11, tarde: backup, alertas e resync com um cliente
+
+1. **#286 — o backup do projeto novo gravaria no bucket da V4.**
+   - **Causa:** default `backup_bucket = "v4-ads-mcp-backups"` em código, sem override no job nem no deploy.
+   - **Correção:** `BACKUP_BUCKET=<GCP_PROJECT_ID>-backups` pelo `deploy.yml`, e o job falha fechado sem ele.
+   - **Prova em produção:** a falha forçada sem bucket saiu antes do banco. O backup manual gravou 13 tabelas (audit 12853). O agendamento semanal foi ligado.
+2. **Alertas recriados** a partir do export REST do projeto antigo: canal, uptime, 2 métricas e 5 policies. O Wellington confirmou o e-mail do job falho forçado.
+   - **#288** versiona os alertas em `scripts/infra/monitoramento_defs/`. O aplicador só cria o que falta e marca `diferente`, `duplicado` ou `bloqueado` sem tocar em nada.
+   - Aceite: 9 recursos `igual`. No controle com host errado, o uptime saiu `diferente`.
+3. **Rodada do resync sem aplicar** (audits 12861–12880). Saiu com 1, por três causas:
+   - Meta desligada → erro "token do system user nao configurado". A afirmação "BM vazio = no-op" estava errada: o código aborta antes.
+   - Google: `bumped=23`. Pela leitura do código, o teto de 20% ou 5 bloquearia a remoção em 3 dias.
+   - 5 conexões OAuth vivas de gestores já desativados. O fallback de credencial do job pegaria qualquer uma delas.
+4. **#289 — três correções:**
+   - `META_HABILITADA` (var, padrão `true`).
+   - JML de credencial: o toggle e a convergência diária revogam conexões, e o fallback ignora gestor desativado.
+   - `admin descomissionar` auditado: soft, motivos de churn e trilha por conta.
+   - O guard F197 ganhou uma exceção estreita: só `deactivate`.
+5. **Aplicado em produção**, com aval por ação:
+   - a var mais o env do job;
+   - 5 conexões revogadas;
+   - 23 contas Google e 25 Meta descomissionadas, com 48 linhas `*_access_cleanup`.
+   - Uma rodada sem aplicar saiu com **0** (audits 12931–12935), e o resync diário foi ligado.
+
+### Rulings da parte 2
+
+- **Bucket:** derivado do `GCP_PROJECT_ID` no deploy, mesma convenção do bootstrap. Alternativa recusada: uma var nova.
+- **Bootstrap** imprime o comando de monitoramento, não o executa: o uptime check alarmaria antes do primeiro deploy.
+- **Descomissionamento reusa os motivos de churn** (`left_mcc`/`partnership_ended`) em vez de criar um novo. Assim a restauração existente devolve os acessos.
+- **Exceção no guard F197** em vez de mover o código para `src/jobs`. Mover só para passar seria fraudar o guard.
+
+### Candidatos a finding da parte 2 (só o Wellington cataloga)
+
+6. **Default de recurso de ambiente em código** (`backup_bucket`) sobreviveu à migração, e o teste de "sem literais do projeto" só olhava o `deploy.yml`. Família: guard mais estreito que a invariante.
+7. **"BM vazio = no-op" afirmado sem probe.** A reconciliação Meta aborta antes, na checagem do token, e o job sairia com 1 todo dia. Família: afirmação sem probe.
+8. **Desligamento revogava grants, mas não a credencial.**
+   - O fallback `pick_latest_active` escolhia conexão de gestor desativado.
+   - O painel só permite que o dono revogue a própria conexão.
+   - Família: JML incompleto.
+9. **Teto de segurança da reconciliação × login-customer-id de conta.** Reduzir o alcance da credencial faz o plano pedir remoção em massa, que o teto bloqueia, e o job falha todo dia.
+10. **Reincidência do falso gate:** `ruff check | tail && git commit` deixou entrar um commit com lint e mypy vermelhos (corrigido em `cedce32`). Família: regra sem mecanismo.
+
+### Minors adiados da parte 2
+
+**Monitoramento:**
+- `contem` não conhece os defaults proto3 (`false` e `0` omitidos).
+- O dry-run não explica o sentinela `<a criar>`.
+- `_MARCADOR` só casa `[A-Z_]`.
+- `displayName` fixo no modelo do canal.
+- `_ = alert_email` sobrando no bootstrap.
+- A paginação não tem teto.
+- Falta teste de `diferente` em lista aninhada.
+
+**#289:**
+- O toast do toggle não cita as conexões revogadas.
+- A contagem do backfill pode divergir sob concorrência.
+- `_ativos` monta SQL com f-string; trocar por `Literal`.
+- Não há backlog Meta simétrico (documentado como deliberado).
+
 ## Próxima sessão
 
-Ver "Decision gates", "Próximo trabalho" e "Pendências que dependem do Wellington" no
-[`estado-atual.md`](estado-atual.md). O primeiro item técnico é recriar os alertas no projeto novo.
+Primeiro: conferir o resync agendado de 26/11, 06:00 BRT. O esperado:
+- exit 0;
+- `google_reconcile` sem `bumped`;
+- `meta_reconcile` `{desligada: true}`;
+- `manager_offboarding_reconcile` com `conexoes_a_revogar=0`.
+
+Depois, o "Próximo trabalho" e as pendências do Wellington no [`estado-atual.md`](estado-atual.md):
+- Meta própria;
+- MCC próprio;
+- domínio e marca do OAuth.
