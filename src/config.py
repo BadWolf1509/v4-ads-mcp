@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     # este valor não há como descobrir o BM, e o reconciliador vira no-op em vez
     # de derrubar o job (mesma escolha de meta_system_user_token).
     meta_business_id: str = ""
+    # Meta desligada DE PROPÓSITO (projeto sem BM/app/system user próprios, 25/11): a etapa
+    # Meta do resync registra `desligada` e não derruba o job. Padrão `True`: configuração
+    # esquecida com a Meta ligada continua sendo erro alto, como antes.
+    meta_habilitada: bool = True
     # Trava do rollout: o job calcula e audita o plano, mas só executa o lado
     # destrutivo com isto ligado. Virar sem deploy de código.
     meta_reconcile_apply: bool = False

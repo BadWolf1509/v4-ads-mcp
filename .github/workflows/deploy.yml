@@ -67,7 +67,9 @@ jobs:
       # no painel devolve o que esta etapa revogou.
       # `BACKUP_BUCKET` segue a convenção do bootstrap (`gs://<projeto>-backups`);
       # sem ele o job de backup falha fechado (o default em código é vazio).
-      JOB_ENV_VARS: "APP_ENV=production,BACKUP_BUCKET=${{ secrets.GCP_PROJECT_ID }}-backups,META_BUSINESS_ID=${{ vars.META_BUSINESS_ID }},META_RECONCILE_APPLY=true,GOOGLE_RECONCILE_APPLY=true,MANAGER_OFFBOARDING_APPLY=true"
+      # `META_HABILITADA` (var do repo; ausente = `true`): `false` pula a etapa Meta do
+      # resync com uma linha `desligada` no audit, em vez de falhar todo dia (25/11).
+      JOB_ENV_VARS: "APP_ENV=production,BACKUP_BUCKET=${{ secrets.GCP_PROJECT_ID }}-backups,META_BUSINESS_ID=${{ vars.META_BUSINESS_ID }},META_HABILITADA=${{ vars.META_HABILITADA || 'true' }},META_RECONCILE_APPLY=true,GOOGLE_RECONCILE_APPLY=true,MANAGER_OFFBOARDING_APPLY=true"
       # `--update-secrets` so ACRESCENTA: secret que sai de JOB_SECRETS fica montado no
       # job para sempre. Os aposentados saem aqui, a cada deploy (retirar o que ja nao
       # existe nao da erro, medido em 03/11). O developer token saiu em 11/2026.
@@ -227,7 +229,7 @@ jobs:
             --cpu=1 \
             --memory=512Mi \
             --timeout=300 \
-            --set-env-vars="APP_ENV=production,LOG_LEVEL=info,BOOTSTRAP_ADMIN_EMAILS=wellington.ribeiro.eng@gmail.com,PUBLIC_BASE_URL=${{ vars.PUBLIC_BASE_URL }},META_BUSINESS_ID=${{ vars.META_BUSINESS_ID }},META_RECONCILE_APPLY=true,GOOGLE_RECONCILE_APPLY=true,MANAGER_OFFBOARDING_APPLY=true" \
+            --set-env-vars="APP_ENV=production,LOG_LEVEL=info,BOOTSTRAP_ADMIN_EMAILS=wellington.ribeiro.eng@gmail.com,PUBLIC_BASE_URL=${{ vars.PUBLIC_BASE_URL }},META_BUSINESS_ID=${{ vars.META_BUSINESS_ID }},META_HABILITADA=${{ vars.META_HABILITADA || 'true' }},META_RECONCILE_APPLY=true,GOOGLE_RECONCILE_APPLY=true,MANAGER_OFFBOARDING_APPLY=true" \
             --set-secrets="DATABASE_URL=database-url:latest,SESSION_SIGNING_KEY=session-signing-key:latest,AES_MASTER_KEY=aes-master-key:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,GOOGLE_ADS_LOGIN_CUSTOMER_ID=google-ads-login-customer-id:latest,META_APP_ID=meta-app-id:latest,META_APP_SECRET=meta-app-secret:latest,META_SYSTEM_USER_TOKEN=meta-system-user-token:latest"
 
       - name: Route 100% traffic to latest revision

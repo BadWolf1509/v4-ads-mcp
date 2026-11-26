@@ -79,13 +79,44 @@ def _chamadas_no_arquivo(arquivo: Path) -> list[int]:
     return _chamadas_do_escritor(h.arvore(arquivo))
 
 
+# Exceção ÚNICA e estreita (25/11): o descomissionamento auditado do CLI só DESATIVA — retira
+# do inventário, por decisão humana com trilha, o que saiu do escopo. Nunca reativa nem zera a
+# série de ausências (`upsert_many`, `apply_absences`, `set_reachable`), que é o que o F197
+# protege. Qualquer outro escritor ali, ou este arquivo chamando outro escritor, quebra o guard.
+_DESCOMISSIONAMENTO = h.SRC / "scripts" / "desligamento.py"
+_SO_DESATIVAR = frozenset(
+    {
+        "src.db.repositories.google_ads_accounts.deactivate",
+        "src.db.repositories.meta_ad_accounts.deactivate",
+    }
+)
+
+
+def _escritores_chamados(arquivo: Path) -> set[str]:
+    arv = h.arvore(arquivo)
+    origens = h.origens_de_import(arv)
+    return {
+        nome
+        for no in ast.walk(arv)
+        if isinstance(no, ast.Call)
+        and (nome := h.caminho_canonico(no.func, origens)) in _ESCRITORES
+    }
+
+
 def test_so_os_jobs_escrevem_o_inventario() -> None:
     fora = {
         h.rel(arquivo): linhas
         for arquivo in h.fontes_py(h.SRC)
-        if not arquivo.is_relative_to(_JOBS) and (linhas := _chamadas_no_arquivo(arquivo))
+        if not arquivo.is_relative_to(_JOBS)
+        and arquivo != _DESCOMISSIONAMENTO
+        and (linhas := _chamadas_no_arquivo(arquivo))
     }
     assert fora == {}, fora
+
+
+def test_o_descomissionamento_so_desativa() -> None:
+    """A exceção acima vale só para `deactivate`; controle de que ela enxerga as duas chamadas."""
+    assert _escritores_chamados(_DESCOMISSIONAMENTO) == _SO_DESATIVAR
 
 
 def test_sql_que_escreve_o_inventario_so_mora_nos_dois_repositorios() -> None:

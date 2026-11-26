@@ -28,7 +28,7 @@ import asyncio
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import asyncpg
 
@@ -42,6 +42,7 @@ from src.db.repositories import (
     managers,
     mcp_sessions,
 )
+from src.scripts import desligamento
 
 
 @asynccontextmanager
@@ -222,6 +223,63 @@ async def cmd_list_sessions(args: argparse.Namespace) -> int:
     return 0
 
 
+async def _autor_admin(conn: asyncpg.Connection, email: str) -> UUID | None:
+    """O admin que roda o CLI (`--by`), como no `grant-all`: existente, admin e ativo."""
+    autor = await managers.get_by_email(conn, email)
+    if autor is None or autor.role != "admin" or autor.is_deactivated:
+        return None
+    return autor.id
+
+
+async def cmd_revogar_conexoes_de_inativos(args: argparse.Namespace) -> int:
+    async with _conexao() as conn:
+        por = await _autor_admin(conn, args.by)
+        if por is None:
+            print(f"--by precisa ser um admin existente e ativo: {args.by}", file=sys.stderr)
+            return 1
+        linhas = await desligamento.revogar_conexoes_de_inativos(conn, apply=args.apply, por=por)
+    verbo = "revogadas" if args.apply else "a revogar (dry-run; repita com --apply)"
+    print(f"{len(linhas)} conexão(ões) OAuth de gestor desativado {verbo}:")
+    for r in linhas:
+        print(f"  {r['manager_email']}  ->  {r['google_email']}")
+    return 0
+
+
+async def cmd_descomissionar(args: argparse.Namespace) -> int:
+    async with _conexao() as conn:
+        por = await _autor_admin(conn, args.by)
+        if por is None:
+            print(f"--by precisa ser um admin existente e ativo: {args.by}", file=sys.stderr)
+            return 1
+        r = await desligamento.descomissionar(
+            conn,
+            manter_google=args.manter_google,
+            manter_meta=args.manter_meta,
+            apply=args.apply,
+            por=por,
+        )
+    if r.invalidos:
+        print(
+            "Recusado, nada foi feito. Não são contas ATIVAS do inventário: "
+            + ", ".join(r.invalidos),
+            file=sys.stderr,
+        )
+        return 2
+    verbo = "descomissionadas" if args.apply else "a descomissionar (dry-run; repita com --apply)"
+    print(f"Google: {len(r.google)} conta(s) {verbo}, {r.grants_google} grant(s)")
+    for c in r.google:
+        print(f"  {c}")
+    if r.google_backlog:
+        print(
+            f"  + grants vivos em {len(r.google_backlog)} conta(s) Google JÁ inativa(s),"
+            " revogados junto: " + ", ".join(r.google_backlog)
+        )
+    print(f"Meta: {len(r.meta)} conta(s) {verbo}, {r.grants_meta} grant(s)")
+    for a in r.meta:
+        print(f"  {a}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="admin", description="Fluxo Certo Ads admin CLI")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -255,6 +313,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_ls.add_argument("--email", required=True)
     p_ls.add_argument("--all", action="store_true", help="Include revoked sessions")
 
+    p_rci = sub.add_parser(
+        "revogar-conexoes-de-inativos",
+        help="Revoga as conexões OAuth vivas de gestores desativados (dry-run sem --apply)",
+    )
+    p_rci.add_argument("--by", required=True, help="e-mail do admin que roda o comando")
+    p_rci.add_argument("--apply", action="store_true", help="revoga de fato e audita")
+
+    p_desc = sub.add_parser(
+        "descomissionar",
+        help="Desativa no inventário as contas fora das listas e revoga os grants nelas"
+        " (dry-run sem --apply)",
+    )
+    p_desc.add_argument("--by", required=True, help="e-mail do admin que roda o comando")
+    p_desc.add_argument("--manter-google", nargs="+", required=True, metavar="CUSTOMER_ID")
+    p_desc.add_argument("--manter-meta", nargs="+", required=True, metavar="ACT_ID")
+    p_desc.add_argument("--apply", action="store_true", help="descomissiona de fato e audita")
+
     return parser
 
 
@@ -267,6 +342,8 @@ def main(argv: list[str] | None = None) -> int:
         "grant-all": cmd_grant_all,
         "create-session": cmd_create_session,
         "list-sessions": cmd_list_sessions,
+        "revogar-conexoes-de-inativos": cmd_revogar_conexoes_de_inativos,
+        "descomissionar": cmd_descomissionar,
     }[args.cmd]
     return asyncio.run(handler(args))
 

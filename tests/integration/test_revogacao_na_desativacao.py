@@ -811,11 +811,14 @@ async def test_etapa_com_trava_desligada_audita_e_nao_escreve(db) -> None:
         assert audit["target_count"] == 0
         # Sem trava: as contagens e os gestores do plano (afirmados em
         # `test_etapa_com_trava_desligada_diz_quem_seria_atingido`), nada de pares.
+        # As conexões OAuth de desativado (25/11) moram só no lado Google: só ele as tem.
+        conexoes = {"conexoes_a_revogar": 0} if plataforma == "google" else {}
         assert _contagens(audit) == {
             "apply": False,
             "a_revogar": a_revogar,
             "a_restaurar": 0,
             "a_remarcar": 0,
+            **conexoes,
         }
         assert sorted(k for k in _summary(audit) if k.startswith(("pares_", "gestores_"))) == [
             "gestores_a_remarcar",
@@ -876,6 +879,9 @@ async def test_etapa_com_trava_ligada_converge(db) -> None:
         "revogados": 1,
         "restaurados": 1,
         "remarcados": 1,
+        "conexoes_a_revogar": 0,
+        "conexoes_revogadas": 0,
+        "conexoes_de": [],
     }
     assert audit_google["target_count"] == 2
     assert _contagens(audit_meta) == {
@@ -902,7 +908,12 @@ async def test_etapa_com_trava_ligada_converge(db) -> None:
     for plataforma in ("google", "meta"):
         segunda = audits[plataforma][1]
         assert segunda["target_count"] == 0
-        assert _contagens(segunda) == {"apply": True, **zeros}
+        conexoes = (
+            {"conexoes_a_revogar": 0, "conexoes_revogadas": 0, "conexoes_de": []}
+            if plataforma == "google"
+            else {}
+        )
+        assert _contagens(segunda) == {"apply": True, **zeros, **conexoes}
 
 
 def _job_sobre_o_pool_do_teste(settings: Settings) -> ExitStack:

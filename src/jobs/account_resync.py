@@ -255,7 +255,7 @@ async def run() -> int:
             await _etapa_purge(pool)
             return 1
         falhou_google = desfecho_google is Desfecho.FALHOU
-        falhou_meta = await _etapa_meta(pool)
+        falhou_meta = await _etapa_meta(pool, settings)
         # Depois de Google e Meta, para a convergencia ver o estado final do dia;
         # antes do purge, como as outras reconciliacoes.
         falhou_gestores = await _etapa_gestores(pool, settings)
@@ -429,7 +429,7 @@ async def _etapa_google(pool: connection.PoolValidado, settings: Settings) -> De
     return Desfecho.FALHOU if resumo["blocked_reason"] is not None else Desfecho.OK
 
 
-async def _etapa_meta(pool: connection.PoolValidado) -> bool:
+async def _etapa_meta(pool: connection.PoolValidado, settings: Settings) -> bool:
     """Piggyback: refresh do inventário Meta no MESMO job. True = falhou.
 
     Roda no MESMO job/scheduler pra conta nova aparecer zero-touch.
@@ -448,6 +448,22 @@ async def _etapa_meta(pool: connection.PoolValidado) -> bool:
     e `record_job_crash` já embrulha o próprio I/O em `best_effort` (F83),
     então o audit não vira um segundo crash por cima do primeiro.
     """
+    if not settings.meta_habilitada:
+        # Desligada de propósito (META_HABILITADA=false): não é falha, e não chama a Graph.
+        # A linha no audit diz que a etapa foi pulada por decisão, não esquecida.
+        async with (
+            best_effort("job_run_audit_failed", operation="meta_reconcile"),
+            pool.acquire() as conn_meta,
+        ):
+            await record_job_run(
+                conn_meta,
+                operation="meta_reconcile",
+                platform="meta",
+                status="success",
+                params_summary={"desligada": True},
+            )
+        print("OK: Meta desligada (META_HABILITADA=false) — etapa pulada")
+        return False
     try:
         from src.jobs.meta_resync import reconcile_meta
 
@@ -529,6 +545,16 @@ async def convergir_gestores(
                     "pares_remarcados": pares_em_texto(remarcados),
                 }
             resumos[plataforma] = resumo
+        # JML pelo ESTADO, como os grants: conexão OAuth viva de gestor desativado (por
+        # qualquer caminho, SQL direto incluído) é revogada aqui, atrás da mesma trava. Sem
+        # isto, o backfill do CLI dependeria de alguém lembrar de rodá-lo (revisão final, I5).
+        vivas = await google_oauth_connections.list_live_of_inactive_managers(conn)
+        resumos["google"]["conexoes_a_revogar"] = len(vivas)
+        if apply:
+            for linha in vivas:
+                await google_oauth_connections.revoke(conn, linha["id"])
+            resumos["google"]["conexoes_revogadas"] = len(vivas)
+            resumos["google"]["conexoes_de"] = sorted({str(r["manager_email"]) for r in vivas})
     return resumos
 
 

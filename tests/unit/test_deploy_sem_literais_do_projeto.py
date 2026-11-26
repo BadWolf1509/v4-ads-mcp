@@ -75,3 +75,12 @@ def test_jobs_recebem_o_bucket_de_backup_do_proprio_projeto() -> None:
 
 def test_default_do_bucket_de_backup_e_vazio() -> None:
     assert Settings.model_fields["backup_bucket"].default == ""
+
+
+def test_deploy_passa_meta_habilitada_ao_servico_e_aos_jobs() -> None:
+    """Desligar a Meta é uma var do repo, sem código: o default (`true`) mantém o erro alto."""
+    esperado = "META_HABILITADA=${{ vars.META_HABILITADA || 'true' }}"
+    [servico] = re.findall(r'--set-env-vars="([^"]*)"', DEPLOY)
+    assert esperado in servico.split(",")
+    [job_env] = re.findall(r'^      JOB_ENV_VARS: "([^"]*)"$', DEPLOY, re.M)
+    assert esperado in job_env.split(",")

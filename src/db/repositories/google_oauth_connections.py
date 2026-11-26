@@ -6,6 +6,12 @@ from uuid import UUID
 
 import asyncpg
 
+from src.db.repositories._acesso_comum import (
+    PREDICADO_DESATIVADO,
+    PREDICADO_NAO_DESATIVADO,
+)
+from src.db.repositories._comum import linhas_afetadas
+
 
 @dataclass(slots=True, frozen=True)
 class OAuthConnection:
@@ -96,10 +102,12 @@ async def pick_admin_active(conn: asyncpg.Connection) -> OAuthConnection | None:
 
 
 async def pick_latest_active(conn: asyncpg.Connection) -> OAuthConnection | None:
-    """Conexão ativa mais recente de qualquer gestor (fallback quando nenhum admin tem uma)."""
+    """Conexão ativa mais recente de gestor NÃO desativado (fallback quando nenhum admin tem
+    uma). Nunca a credencial de quem saiu, mesmo que a conexão tenha ficado viva."""
     row = await conn.fetchrow(
-        "SELECT * FROM google_oauth_connections WHERE revoked_at IS NULL"
-        " ORDER BY connected_at DESC, id DESC LIMIT 1"
+        "SELECT oc.* FROM google_oauth_connections oc JOIN managers m ON m.id = oc.manager_id"
+        f" WHERE oc.revoked_at IS NULL AND {PREDICADO_NAO_DESATIVADO}"
+        " ORDER BY oc.connected_at DESC, oc.id DESC LIMIT 1"
     )
     return _row_to_conn(row) if row else None
 
@@ -109,6 +117,33 @@ async def revoke(conn: asyncpg.Connection, connection_id: UUID) -> None:
         "UPDATE google_oauth_connections SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL",
         connection_id,
     )
+
+
+async def revoke_all_for_manager(conn: asyncpg.Connection, manager_id: UUID) -> int:
+    """Revoga (soft) toda conexão viva do gestor; devolve quantas. Desligamento = credencial
+    revogada (JML): o gestor desativado não deixa refresh token utilizável para trás."""
+    return linhas_afetadas(
+        await conn.execute(
+            "UPDATE google_oauth_connections SET revoked_at = now() "
+            "WHERE manager_id = $1 AND revoked_at IS NULL",
+            manager_id,
+        )
+    )
+
+
+async def list_live_of_inactive_managers(conn: asyncpg.Connection) -> list[asyncpg.Record]:
+    """Conexões vivas de gestor desativado (mesmo predicado da revogação de grants)."""
+    linhas: list[asyncpg.Record] = await conn.fetch(
+        f"""
+        SELECT oc.id, oc.manager_id, oc.google_email, m.email AS manager_email
+          FROM google_oauth_connections oc
+          JOIN managers m ON m.id = oc.manager_id
+         WHERE oc.revoked_at IS NULL
+           AND {PREDICADO_DESATIVADO}
+         ORDER BY m.email, oc.google_email
+        """
+    )
+    return linhas
 
 
 async def list_for_manager(conn: asyncpg.Connection, manager_id: UUID) -> list[asyncpg.Record]:
