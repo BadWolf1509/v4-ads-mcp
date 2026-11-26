@@ -43,6 +43,11 @@ This document records the cloud-console actions performed once to bootstrap the 
 - **Backup:** bucket `gs://fluxo-certo-ads-backups`, passado ao job por `BACKUP_BUCKET` (#286; sem ele o
   job falha fechado). Primeiro backup em 25/11 (13 tabelas, audit 12853); `v4-ads-mcp-backup-weekly`
   **ligado** desde 25/11.
+- **Resync:** `v4-ads-mcp-resync-daily` **ligado** desde 25/11, com as três travas (`GOOGLE_RECONCILE_APPLY`,
+  `META_RECONCILE_APPLY`, `MANAGER_OFFBOARDING_APPLY`) em `true`. Meta desligada por
+  `vars.META_HABILITADA=false`. Inventário reduzido à MDO por `admin descomissionar --by <admin>
+  --manter-google 7862230676 --manter-meta act_27798855556414269 [--apply]`: o comando é soft, grava trilha
+  por conta e recusa id a manter que não seja conta ativa.
 - **GitHub:** secrets `GCP_PROJECT_ID=fluxo-certo-ads`, `GCP_REGION`, `GCP_WIF_PROVIDER`
   (`projects/505452482961/.../providers/github-provider`), `GCP_DEPLOY_SA`
   (`v4-ads-mcp-deploy@fluxo-certo-ads.iam.gserviceaccount.com`); vars `PUBLIC_BASE_URL` (obrigatória,
