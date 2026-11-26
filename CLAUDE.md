@@ -25,7 +25,7 @@ Produção, contagens, pendências, o que aguarda deploy e decision gates vivem 
 - `gcloud` pode estar **sem credencial válida** (perde durante a noite) — confirme antes de
   tarefa de infra, e **nunca com `2>/dev/null`**: ele tenta reautenticar e pendura em silêncio.
 - **As duas reconciliações REVOGAM** acesso de conta que sai do MCC/BM; churn sozinho não revoga. Detalhe em `convencoes/processo.md`.
-- **Resync e backup PAUSADOS** no projeto novo: com login-customer-id de conta (não MCC), a reconciliação Google revogaria o inventário — gate no `estado-atual.md`. **Não despause sem decisão.**
+- **Escopo = 1 conta Google + 1 Meta** (as outras foram descomissionadas em 25/11, #289). Resync e backup ligados. Meta **desligada** por `vars.META_HABILITADA=false`. Conta nova entra por `admin` + grant, não por subir o teto de segurança.
 - **Tool nova só aparece pra sessão nova** (F140), e parâmetro novo pede conversa nova: o catálogo vem do handshake. Reconecte antes do smoke e prove chamando, não lendo o schema. Detalhe em `convencoes/processo.md`.
 - **Docker** para o full sweep: se o engine não responde, abra o Docker Desktop (o engine sobe em
   ~15 s mesmo com `com.docker.service` em `Stopped`, medido em 29/09).
