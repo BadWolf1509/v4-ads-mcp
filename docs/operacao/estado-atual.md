@@ -42,7 +42,7 @@
 | Login-customer-id | **`7862230676`** (a própria MDO, acesso direto do Gmail) — **provisório**, sem MCC próprio |
 | Admin | `wellington.ribeiro.eng@gmail.com` (`bootstrap-admin`, audit `cli_bootstrap_admin`) |
 | OAuth | cliente web do projeto novo; marca **não verificada**; publicação em Produção pedida ao Wellington (em Teste, o token expira em 7 dias) — **não conferido** |
-| Agendamentos | **os dois ligados**: `v4-ads-mcp-backup-weekly` (25/11, backup manual provado: 13 tabelas, audit 12853) e `v4-ads-mcp-resync-daily` (25/11, depois de uma rodada sem aplicar com exit 0: audits 12931–12935) |
+| Agendamentos | **os dois ligados**: `v4-ads-mcp-backup-weekly` (25/11, backup manual provado: 13 tabelas, audit 12853) e `v4-ads-mcp-resync-daily` (25/11, depois de uma rodada sem aplicar com exit 0: audits 12931–12935). Primeira rodada agendada aplicando, em 26/11 às 06:00 BRT (`v4-ads-mcp-resync-rz4c4`, audits 12936–12940): sucesso, 1 conta Google, nada adicionado, removido ou com `bumped`, Meta `{desligada: true}` e `conexoes_a_revogar=0` |
 | Escopo | **1 conta Google** (`7862230676`) e **1 Meta** (`act_27798855556414269`) ativas; 23 + 25 descomissionadas em 25/11 (`cli_decommission`, 48 linhas `*_access_cleanup`); 1 grant vivo por plataforma e 1 conexão OAuth viva, todos do Gmail |
 | Meta | **desligada explícita**: var `META_HABILITADA=false` (a etapa grava `meta_reconcile` `{desligada: true}` e não derruba o job) |
 | Alertas | canal do Gmail + uptime + 2 métricas + **5 policies** (IDs no `infra-setup.md`), versionados em `scripts/infra/monitoramento_defs/`; e-mail do job falho forçado **chegou** (confirmado pelo Wellington em 25/11) |
@@ -71,13 +71,11 @@ Nenhum. Os quatro de 25/11 fecharam no mesmo dia:
 
 ## Próximo trabalho (em ordem)
 
-1. **Acompanhar o primeiro resync agendado** (26/11, 06:00 BRT): `exit 0`, `google_reconcile` sem
-   `bumped` e `meta_reconcile` `{desligada: true}`.
-2. **Meta:** BM e app próprios, system user all-targets (F64), parceria com o BM da MDO, 3 secrets e
+1. **Meta:** BM e app próprios, system user all-targets (F64), parceria com o BM da MDO, 3 secrets e
    `vars.META_BUSINESS_ID`.
-3. **Domínio próprio** na frente do Cloud Run (F67) — pré-requisito da verificação de marca do OAuth
+2. **Domínio próprio** na frente do Cloud Run (F67) — pré-requisito da verificação de marca do OAuth
    com redirect em domínio autorizado; o Básico já saiu sem ele.
-4. Pendências menores da migração: M1/M5/M6 do bootstrap; logo definitivo no lugar da marca "FC";
+3. Pendências menores da migração: M1/M5/M6 do bootstrap; logo definitivo no lugar da marca "FC";
    revisar privacidade e termos (rascunho; a verificação de marca usa as páginas da Vercel em
    `www.fluxocerto.dev.br`).
 
