@@ -8,7 +8,12 @@
 
 > **Última sessão:** [`session-2026-11-24-25-handoff.md`](session-2026-11-24-25-handoff.md) — 24–25/11:
 > desligamento da V4, **migração para o projeto `fluxo-certo-ads`** (#283, #284), rebrand para
-> **Fluxo Certo Ads**, Google Ads API no nível **Básico**. Antes:
+> **Fluxo Certo Ads**, Google Ads API no nível **Básico**. Na parte 2, ainda em 25/11:
+> - backup corrigido (#286);
+> - alertas recriados e versionados (#288);
+> - resync com escopo de um cliente (#289), com inventário só da MDO e resync ligado.
+>
+> Antes:
 > [`session-2026-11-17-handoff.md`](session-2026-11-17-handoff.md) (revogação na desativação, F213).
 
 ## Direção (desde 24/11)
@@ -42,7 +47,7 @@
 | Meta | **desligada explícita**: var `META_HABILITADA=false` (a etapa grava `meta_reconcile` `{desligada: true}` e não derruba o job) |
 | Alertas | canal do Gmail + uptime + 2 métricas + **5 policies** (IDs no `infra-setup.md`), versionados em `scripts/infra/monitoramento_defs/`; e-mail do job falho forçado **chegou** (confirmado pelo Wellington em 25/11) |
 | Banco | o mesmo Supabase (Session Pooler `:5432`), 11 migrations, `audit_log` íntegro |
-| Catálogo | até **F215** (~6.400 linhas, 631 KB); candidatos desta sessão no handoff |
+| Catálogo | até **F215** (~6.400 linhas, 631 KB); 10 candidatos desta sessão no handoff (5 da parte 1, 5 da parte 2) |
 
 **Projeto antigo `v4-ads-mcp` (`299432068772`):** dentro da organização `v4company.com`, faturamento
 **desligado em 24/11 às 21:30 BRT** pela própria conta `@v4company.com` (log de auditoria), serviço 503.
